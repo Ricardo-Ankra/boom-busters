@@ -137,9 +137,9 @@ Recorded whenever the spec left something open and an implementation was chosen.
 3. **Env validation is tiered.** Spec §4 requires the app to "refuse to start
    listing missing keys", but M1 predates the R2/Inngest/broker/YouTube
    infrastructure. `packages/schemas/src/env.ts` therefore splits §4's
-   variables into *required at boot* (`DATABASE_URL`, `AUTH_SECRET`,
+   variables into _required at boot_ (`DATABASE_URL`, `AUTH_SECRET`,
    `AUTH_GOOGLE_ID`, `AUTH_GOOGLE_SECRET`, `AUTH_URL`, `OWNER_EMAIL`,
-   `SECRETS_ENCRYPTION_KEY`) and *required at first use* (`R2_*`,
+   `SECRETS_ENCRYPTION_KEY`) and _required at first use_ (`R2_*`,
    `AWS_BROKER_*`, `INNGEST_*`, `YOUTUBE_*`), the latter reached only through a
    `requireEnv()` accessor that throws a typed `ConfigError` naming the missing
    keys. Boot-time failure still lists every missing required key at once.
