@@ -1,0 +1,87 @@
+name: CI
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Throwaway values for the ephemeral CI database and mock-provider mode.
+  # Nothing here is a secret: the database lives for the length of one job and
+  # the keys encrypt nothing that outlives it. Real credentials are never
+  # needed in CI, because every provider is mocked (build spec section 13).
+  DATABASE_URL: postgresql://postgres:postgres@localhost:5432/boom_busters
+  AUTH_SECRET: ci-only-secret-not-used-outside-this-job-0000
+  AUTH_URL: http://localhost:3100
+  OWNER_EMAIL: ci@boom-busters.test
+  SECRETS_ENCRYPTION_KEY: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+  MOCK_PROVIDERS: '1'
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: boom_busters
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      # Zero-warning policy (CLAUDE.md): `pnpm lint` passes --max-warnings 0.
+      - name: Lint
+        run: pnpm lint
+
+      - name: Format check
+        run: pnpm format:check
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      # Proves the checked-in migration actually applies and the seed is
+      # runnable, not just that the schema compiles.
+      - name: Migrate
+        run: pnpm db:migrate
+
+      - name: Seed
+        run: pnpm db:seed
+
+      - name: Unit and component tests
+        run: pnpm test
+
+      - name: Install Playwright browsers
+        run: pnpm --filter @boom-busters/e2e exec playwright install --with-deps chromium
+
+      - name: End-to-end tests
+        run: pnpm e2e
+
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: e2e/playwright-report/
+          retention-days: 7
