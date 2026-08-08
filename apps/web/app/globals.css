@@ -1,0 +1,18 @@
+@import 'tailwindcss';
+@import '@boom-busters/ui-tokens/tokens.css';
+
+/* Tailwind v4 scans the importing project by default; the workspace packages
+   need declaring so classes used inside them are not purged. */
+@source '../../../packages/ui-tokens/src';
+
+@layer base {
+  html {
+    /* Dense but scannable: 14px base, 13px in tables (section 11.1). */
+    font-size: 16px;
+  }
+
+  /* Screens are full width; only settings and text screens get a max width. */
+  .prose-measure {
+    max-width: 72ch;
+  }
+}
