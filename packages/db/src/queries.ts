@@ -3,7 +3,7 @@ import type { Provider, Settings, SettingsPatch } from '@boom-busters/schemas'
 import { and, count, eq } from 'drizzle-orm'
 import type { Database } from './client'
 import { encryptSecret, keyHint, maskKey } from './crypto'
-import { assets, providerCredentials, settings as settingsTable } from './schema'
+import { assets, cases, providerCredentials, settings as settingsTable } from './schema'
 import { mergeSettings, normaliseSettings } from './settings-merge'
 
 const SETTINGS_ID = 'singleton' as const
@@ -154,6 +154,11 @@ export async function importProviderEnvSeeds(
 /** Music beds are user-uploaded assets; the checklist requires at least three. */
 export async function countMusicBeds(db: Database): Promise<number> {
   const [row] = await db.select({ value: count() }).from(assets).where(eq(assets.kind, 'music'))
+  return row?.value ?? 0
+}
+
+export async function countCases(db: Database): Promise<number> {
+  const [row] = await db.select({ value: count() }).from(cases)
   return row?.value ?? 0
 }
 

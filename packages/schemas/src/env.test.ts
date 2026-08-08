@@ -83,6 +83,38 @@ describe('parseBootEnv', () => {
     }
   })
 
+  it('requires the Google client outside mock mode', () => {
+    const source = validBootEnv()
+    delete source['AUTH_GOOGLE_ID']
+
+    try {
+      parseBootEnv(source)
+      expect.unreachable('should have thrown')
+    } catch (error) {
+      expect((error as EnvValidationError).missing).toEqual(['AUTH_GOOGLE_ID'])
+    }
+  })
+
+  it('allows the Google client to be absent in mock mode', () => {
+    const source: Record<string, string> = { ...validBootEnv(), MOCK_PROVIDERS: '1' }
+    delete source['AUTH_GOOGLE_ID']
+    delete source['AUTH_GOOGLE_SECRET']
+
+    expect(parseBootEnv(source).MOCK_PROVIDERS).toBe(true)
+  })
+
+  it('still requires the Google client in production, even with MOCK_PROVIDERS set', () => {
+    const source: Record<string, string> = {
+      ...validBootEnv(),
+      NODE_ENV: 'production',
+      MOCK_PROVIDERS: '1',
+    }
+    delete source['AUTH_GOOGLE_ID']
+    delete source['AUTH_GOOGLE_SECRET']
+
+    expect(() => parseBootEnv(source)).toThrow(EnvValidationError)
+  })
+
   it('parses MOCK_PROVIDERS as a boolean', () => {
     expect(parseBootEnv({ ...validBootEnv(), MOCK_PROVIDERS: '1' }).MOCK_PROVIDERS).toBe(true)
     expect(parseBootEnv({ ...validBootEnv(), MOCK_PROVIDERS: 'true' }).MOCK_PROVIDERS).toBe(true)

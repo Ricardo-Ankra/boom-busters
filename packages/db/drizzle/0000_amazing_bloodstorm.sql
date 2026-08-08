@@ -19,21 +19,6 @@ CREATE TYPE "public"."source_type" AS ENUM('court', 'regulator', 'major_outlet',
 CREATE TYPE "public"."stage_status" AS ENUM('queued', 'running', 'awaiting_review', 'approved', 'failed', 'cancelled');--> statement-breakpoint
 CREATE TYPE "public"."verify_status" AS ENUM('ok', 'invalid', 'unchecked');--> statement-breakpoint
 CREATE TYPE "public"."voice_take_status" AS ENUM('pending', 'generated', 'flagged', 'approved');--> statement-breakpoint
-CREATE TABLE "accounts" (
-	"user_id" text NOT NULL,
-	"type" text NOT NULL,
-	"provider" text NOT NULL,
-	"provider_account_id" text NOT NULL,
-	"refresh_token" text,
-	"access_token" text,
-	"expires_at" integer,
-	"token_type" text,
-	"scope" text,
-	"id_token" text,
-	"session_state" text,
-	CONSTRAINT "accounts_provider_provider_account_id_pk" PRIMARY KEY("provider","provider_account_id")
-);
---> statement-breakpoint
 CREATE TABLE "analytics_snapshots" (
 	"id" text PRIMARY KEY NOT NULL,
 	"video_id" text NOT NULL,
@@ -238,12 +223,6 @@ CREATE TABLE "scripts" (
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
-CREATE TABLE "sessions" (
-	"session_token" text PRIMARY KEY NOT NULL,
-	"user_id" text NOT NULL,
-	"expires" timestamp with time zone NOT NULL
-);
---> statement-breakpoint
 CREATE TABLE "settings" (
 	"id" text PRIMARY KEY DEFAULT 'singleton' NOT NULL,
 	"value" jsonb NOT NULL,
@@ -291,22 +270,6 @@ CREATE TABLE "timelines" (
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
-CREATE TABLE "users" (
-	"id" text PRIMARY KEY NOT NULL,
-	"name" text,
-	"email" text NOT NULL,
-	"email_verified" timestamp with time zone,
-	"image" text,
-	CONSTRAINT "users_email_unique" UNIQUE("email")
-);
---> statement-breakpoint
-CREATE TABLE "verification_tokens" (
-	"identifier" text NOT NULL,
-	"token" text NOT NULL,
-	"expires" timestamp with time zone NOT NULL,
-	CONSTRAINT "verification_tokens_identifier_token_pk" PRIMARY KEY("identifier","token")
-);
---> statement-breakpoint
 CREATE TABLE "voice_takes" (
 	"id" text PRIMARY KEY NOT NULL,
 	"project_id" text NOT NULL,
@@ -325,7 +288,6 @@ CREATE TABLE "voice_takes" (
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
-ALTER TABLE "accounts" ADD CONSTRAINT "accounts_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "chapters" ADD CONSTRAINT "chapters_script_id_scripts_id_fk" FOREIGN KEY ("script_id") REFERENCES "public"."scripts"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "claim_refs" ADD CONSTRAINT "claim_refs_chapter_id_chapters_id_fk" FOREIGN KEY ("chapter_id") REFERENCES "public"."chapters"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "claim_refs" ADD CONSTRAINT "claim_refs_claim_id_claims_id_fk" FOREIGN KEY ("claim_id") REFERENCES "public"."claims"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
@@ -339,7 +301,6 @@ ALTER TABLE "run_events" ADD CONSTRAINT "run_events_run_id_runs_id_fk" FOREIGN K
 ALTER TABLE "runs" ADD CONSTRAINT "runs_project_id_projects_id_fk" FOREIGN KEY ("project_id") REFERENCES "public"."projects"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "script_edits" ADD CONSTRAINT "script_edits_chapter_id_chapters_id_fk" FOREIGN KEY ("chapter_id") REFERENCES "public"."chapters"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "scripts" ADD CONSTRAINT "scripts_project_id_projects_id_fk" FOREIGN KEY ("project_id") REFERENCES "public"."projects"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "sessions" ADD CONSTRAINT "sessions_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "shorts" ADD CONSTRAINT "shorts_project_id_projects_id_fk" FOREIGN KEY ("project_id") REFERENCES "public"."projects"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "shot_slots" ADD CONSTRAINT "shot_slots_project_id_projects_id_fk" FOREIGN KEY ("project_id") REFERENCES "public"."projects"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "shot_slots" ADD CONSTRAINT "shot_slots_chapter_id_chapters_id_fk" FOREIGN KEY ("chapter_id") REFERENCES "public"."chapters"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint

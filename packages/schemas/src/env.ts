@@ -73,22 +73,44 @@ const base32ByteKey = z
     { message: 'must be a base64-encoded 32-byte key (openssl rand -base64 32)' },
   )
 
-export const BootEnvSchema = z.object({
-  NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
+export const BootEnvSchema = z
+  .object({
+    NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
 
-  DATABASE_URL: z.string().min(1).startsWith('postgres', 'must be a postgres:// connection string'),
+    DATABASE_URL: z
+      .string()
+      .min(1)
+      .startsWith('postgres', 'must be a postgres:// connection string'),
 
-  AUTH_SECRET: z.string().min(32, 'must be at least 32 characters (npx auth secret)'),
-  AUTH_URL: z.url(),
-  AUTH_GOOGLE_ID: z.string().min(1),
-  AUTH_GOOGLE_SECRET: z.string().min(1),
+    AUTH_SECRET: z.string().min(32, 'must be at least 32 characters (npx auth secret)'),
+    AUTH_URL: z.url(),
+    /**
+     * Optional only in mock mode, where the credentials provider stands in for
+     * Google so Playwright can sign in (spec section 13). The refinement below
+     * makes them mandatory everywhere else, so a real deploy still fails fast.
+     */
+    AUTH_GOOGLE_ID: z.string().optional(),
+    AUTH_GOOGLE_SECRET: z.string().optional(),
 
-  OWNER_EMAIL: z.email(),
+    OWNER_EMAIL: z.email(),
 
-  SECRETS_ENCRYPTION_KEY: base32ByteKey,
+    SECRETS_ENCRYPTION_KEY: base32ByteKey,
 
-  MOCK_PROVIDERS: booleanish,
-})
+    MOCK_PROVIDERS: booleanish,
+  })
+  .superRefine((env, ctx) => {
+    if (env.MOCK_PROVIDERS && env.NODE_ENV !== 'production') return
+
+    for (const key of ['AUTH_GOOGLE_ID', 'AUTH_GOOGLE_SECRET'] as const) {
+      if (!env[key] || env[key].trim() === '') {
+        ctx.addIssue({
+          code: 'custom',
+          path: [key],
+          message: 'required unless MOCK_PROVIDERS=1 (Google is the only real sign-in)',
+        })
+      }
+    }
+  })
 
 export type BootEnv = z.infer<typeof BootEnvSchema>
 
