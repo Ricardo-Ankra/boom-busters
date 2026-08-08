@@ -12,38 +12,48 @@ A milestone is not started until the previous one's tests are green in CI.
 > Monorepo, env validation, auth (allowlist), DB schema + migrations + seed
 > script, settings CRUD, app shell, first-run setup checklist, CI.
 
-**Status:** `[~]` in progress · branch `m1-skeleton`
+**Status:** `[~]` code complete, all suites green locally · branch `m1-skeleton`
 
 ### Deliverables
 
-- [ ] **Repo hygiene** — docs renamed to kebab-case, initial commit, `m1-skeleton` branch, pnpm activated via corepack
-- [ ] **Monorepo scaffold** — pnpm workspace + Turborepo, `tsconfig.base.json` (`strict`), ESLint flat config (zero-warning), Prettier, `.gitignore`
-- [ ] **`.env.example`** — every spec §4 variable with placeholder values, no real secrets
-- [ ] **`packages/schemas`** — tiered env schema + `requireEnv`, `SettingsSchema` with defaults, ULID branded ids; zero `any`; unit tests
-- [ ] **`packages/db`** — full spec §5 Drizzle schema, generated migration checked in, `db:migrate`, `db:seed` fixture case + project, settings query helpers, AES-GCM credential crypto; unit tests
-- [ ] **`packages/ui-tokens`** — spec §11.1 app design tokens (zinc/indigo, 8px grid, radius 8, Geist + JetBrains Mono, motion tokens)
-- [ ] **Auth** — Auth.js v5 Google provider, hard one-email allowlist (`OWNER_EMAIL`), `proxy.ts` protecting every route, `MOCK_PROVIDERS=1` credentials path for CI only; unit tests
-- [ ] **App shell** — left rail (6 items), top bar (breadcrumb · active-runs · cost meter), Activity drawer, dark-default theming, route stubs
-- [ ] **Settings CRUD** — single-row settings read/write through `SettingsSchema`, tabbed UI (Models · Budgets · Brand Kit · Publishing · Connections), optimistic updates
-- [ ] **First-run setup checklist** — 5 deep-linking items with computed done-state, replaces the dashboard until complete
-- [ ] **CI** — GitHub Actions: lint, typecheck, migrate, seed, unit, E2E; green on `m1-skeleton` before merge
-- [ ] **E2E** — auth redirect, first-run checklist, settings round-trip, 390px mobile pass, button-only assertion
+- [x] **Repo hygiene** — docs renamed to kebab-case, initial commit, `m1-skeleton` branch, pnpm 11.20 installed
+- [x] **Monorepo scaffold** — pnpm workspace + Turborepo, `tsconfig.base.json` (`strict`), ESLint flat config (zero-warning), Prettier, `.gitignore`
+- [x] **`.env.example`** — every spec §4 variable with placeholder values, no real secrets
+- [x] **`packages/schemas`** — tiered env schema + `requireEnv`, `SettingsSchema` with defaults, ULID branded ids; zero `any`; 41 unit tests
+- [x] **`packages/db`** — full spec §5 Drizzle schema (21 tables, one migration), `db:migrate`, `db:seed` fixture case + project, settings query helpers, AES-GCM credential crypto; 36 tests (26 unit + 10 integration)
+- [x] **`packages/ui-tokens`** — spec §11.1 app design tokens (zinc/indigo, 8px grid, radius 8, Geist + JetBrains Mono, motion tokens); 21 tests including WCAG AA contrast in both themes
+- [x] **Auth** — Auth.js v5 Google provider, hard one-email allowlist (`OWNER_EMAIL`), `proxy.ts` protecting every route, `MOCK_PROVIDERS=1` credentials path for dev/CI only
+- [x] **App shell** — left rail (6 items), top bar (breadcrumb · active-runs · cost meter), Activity drawer, dark-default theming, route stubs
+- [x] **Settings CRUD** — single-row settings read/write through `SettingsSchema`, tabbed UI (Models · Budgets · Brand Kit · Publishing · Connections), optimistic updates with rollback toast
+- [x] **First-run setup checklist** — 5 deep-linking items with computed done-state, replaces the dashboard until complete
+- [x] **CI** — GitHub Actions: lint, format, typecheck, migrate, seed, unit, E2E against a Postgres service container
+- [x] **E2E** — 19 Playwright tests: auth redirect, first-run checklist, settings round-trip, 390px mobile pass, 40px hit-target audit, credential masking
 
 ### Commands that must work when M1 closes
 
-- [ ] `pnpm dev`
-- [ ] `pnpm test`
-- [ ] `pnpm e2e`
-- [ ] `pnpm db:migrate`
-- [ ] `pnpm db:seed`
-- [ ] `pnpm typecheck`
-- [ ] `pnpm lint`
+- [x] `pnpm dev`
+- [x] `pnpm test` — 125 tests across 4 workspaces
+- [x] `pnpm e2e` — 19 tests, mock-provider mode
+- [x] `pnpm db:migrate`
+- [x] `pnpm db:seed`
+- [x] `pnpm typecheck`
+- [x] `pnpm lint`
+
+### Verified locally (2026-08-08)
+
+Against Postgres 16 in Docker, from an empty database: migrate → seed → seed
+again (idempotent) → 125 unit/component tests → 19 E2E tests, all green.
+`next build` produces a working production bundle with the proxy registered.
 
 ### Blocked on the human
 
-- [ ] `DATABASE_URL` (Neon/Supabase) — needed to apply migrations and run the seed
-- [ ] `AUTH_GOOGLE_ID` / `AUTH_GOOGLE_SECRET` — redirect URI `http://localhost:3000/api/auth/callback/google`
-- [ ] Confirm `OWNER_EMAIL` for the allowlist
+- [ ] **`DATABASE_URL`** — a Neon or Supabase connection string for real dev. Local
+      Docker Postgres was used for verification; swapping the URL needs no code change.
+- [ ] **`AUTH_GOOGLE_ID` / `AUTH_GOOGLE_SECRET`** — authorised redirect URI
+      `http://localhost:3000/api/auth/callback/google`. Until these exist, sign-in works
+      through the mock-mode button; `next build` refuses without them, which is the
+      intended production guard.
+- [x] `OWNER_EMAIL` — set to `ricardo.desousa96@gmail.com` in `.env.local`; change it there if wrong.
 
 ---
 
@@ -171,3 +181,30 @@ Recorded whenever the spec left something open and an implementation was chosen.
 8. **Docs renamed** to `01-channel-roadmap.md`, `02-app-spec-and-dev-plan.md`
    and `03-build-spec.md` to match CLAUDE.md's references and the kebab-case
    rule in spec §3. Content unchanged.
+
+9. **No `users` / `accounts` / `sessions` tables.** Auth.js runs with the JWT
+   session strategy. The app has exactly one allowlisted account, so a sessions
+   table would hold a single row, and a database adapter would force `proxy.ts`
+   off the edge runtime purely to read it. This also keeps the schema to
+   exactly the tables spec §5 names — it lists no auth tables.
+
+10. **The narration voice is stored once.** Spec §4 calls it `settings.tts` and
+    §10 calls it `brandKit.voice`, describing the same five fields. It is stored
+    at `settings.tts` and projected into the Brand Kit snapshot by
+    `resolveBrandKit()`; two writable copies of the same fact would drift.
+
+11. **One `.env.local` at the repository root**, not one per workspace. The same
+    `DATABASE_URL` and `SECRETS_ENCRYPTION_KEY` are needed by `pnpm db:migrate`,
+    `pnpm db:seed` and the web app. Next only reads env from the app directory,
+    so `apps/web/next.config.ts` loads the root file explicitly, with real
+    environment variables (Vercel, CI) still winning.
+
+12. **E2E runs against `next dev`, not a production build.** The mock credentials
+    provider is hard-guarded off when `NODE_ENV=production` — that guard is the
+    point, so the suite works with it rather than around it. Playwright sets
+    `AUTH_URL` to its own base URL, because Auth.js rewrites the request origin
+    from it and `proxy.ts` builds redirects from that.
+
+13. **`devIndicators: false`.** Next's floating dev-tools button is a 32px control
+    that fails the 40px hit-target audit the E2E suite runs over every visible
+    control, and it is not part of the app.
