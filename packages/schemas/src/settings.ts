@@ -184,6 +184,15 @@ export const BudgetsSchema = z.object({
 })
 export type Budgets = z.infer<typeof BudgetsSchema>
 
+/**
+ * Budgets as a patch: the per-provider map is merged key by key, so raising
+ * the ElevenLabs cap must not require resending every other provider's.
+ */
+export const BudgetsPatchSchema = z.object({
+  perProviderMonthlyUSD: z.partialRecord(ProviderSchema, z.number().min(0)).optional(),
+  killSwitch: z.boolean().optional(),
+})
+
 export const RenderSettingsSchema = z.object({
   concurrency: z.number().int().min(1).max(10).default(2),
   timeoutMinutes: z.number().int().min(5).max(180).default(30),
@@ -245,7 +254,7 @@ export const SettingsPatchSchema = z.object({
   modelRouting: ModelRoutingSchema.partial().optional(),
   fallbackChain: FallbackChainSchema.optional(),
   tts: VoiceConfigSchema.partial().optional(),
-  budgets: BudgetsSchema.partial().optional(),
+  budgets: BudgetsPatchSchema.optional(),
   render: RenderSettingsSchema.partial().optional(),
   publish: PublishSettingsSchema.partial().optional(),
   brandKit: BrandKitStoredSchema.partial().optional(),
