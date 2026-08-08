@@ -1,0 +1,31 @@
+node_modules/
+.pnpm-store/
+
+# Build output
+.next/
+out/
+dist/
+.turbo/
+*.tsbuildinfo
+
+# Env — never commit secrets (CLAUDE.md rule 5). Only .env.example is tracked.
+.env
+.env.*
+!.env.example
+
+# Test artefacts
+coverage/
+playwright-report/
+test-results/
+blob-report/
+.playwright/
+
+# Editor / OS
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# Local scratch
+*.log

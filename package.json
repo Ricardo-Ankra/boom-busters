@@ -1,0 +1,35 @@
+{
+  "name": "boom-busters",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Single-user production console for the Boom & Busters YouTube channel",
+  "packageManager": "pnpm@11.20.0",
+  "engines": {
+    "node": ">=22.14.0"
+  },
+  "scripts": {
+    "dev": "turbo run dev --filter=@boom-busters/web",
+    "build": "turbo run build",
+    "test": "turbo run test",
+    "e2e": "pnpm --filter @boom-busters/e2e test",
+    "typecheck": "turbo run typecheck",
+    "lint": "eslint . --max-warnings 0",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "db:generate": "pnpm --filter @boom-busters/db generate",
+    "db:migrate": "pnpm --filter @boom-busters/db migrate",
+    "db:seed": "pnpm --filter @boom-busters/db seed"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.5",
+    "@types/node": "^22.20.1",
+    "eslint": "^9.39.5",
+    "eslint-config-prettier": "^10.1.8",
+    "prettier": "^3.9.6",
+    "prettier-plugin-tailwindcss": "^0.8.1",
+    "tsx": "^4.23.11",
+    "turbo": "^2.10.9",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.66.0"
+  }
+}
