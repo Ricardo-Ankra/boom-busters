@@ -34,7 +34,8 @@
     "resend": "^6.18.1",
     "tailwind-merge": "^3.4.1",
     "web-push": "^3.6.7",
-    "zod": "^4.4.3"
+    "zod": "^4.4.3",
+    "@boom-busters/providers": "workspace:*"
   },
   "devDependencies": {
     "@inngest/test": "^1.0.0",

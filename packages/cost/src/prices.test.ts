@@ -1,4 +1,5 @@
-import { KNOWN_MODELS, ValidationError } from '@boom-busters/schemas'
+import { LLM_MODELS } from '@boom-busters/providers'
+import { ValidationError } from '@boom-busters/schemas'
 import { describe, expect, it } from 'vitest'
 import {
   LLM_PRICES,
@@ -18,8 +19,22 @@ describe('price table completeness', () => {
   })
 
   it('covers every LLM provider Settings can route at', () => {
-    for (const provider of Object.keys(KNOWN_MODELS)) {
+    for (const provider of Object.keys(LLM_MODELS)) {
       expect(Object.keys(LLM_PRICES[provider as keyof typeof LLM_PRICES]).length).toBeGreaterThan(0)
+    }
+  })
+
+  it('is the adapters own table, not a second copy of it', () => {
+    // The guard used to keep its own hand-written prices beside the adapters'.
+    // Two tables drift, and the one the guard happened to read decided whether
+    // a cap held. This asserts they are the same numbers, by construction.
+    for (const [provider, models] of Object.entries(LLM_MODELS)) {
+      for (const model of models) {
+        expect(LLM_PRICES[provider as keyof typeof LLM_PRICES][model.id]).toEqual({
+          inputPerMTok: model.inputPerMTok,
+          outputPerMTok: model.outputPerMTok,
+        })
+      }
     }
   })
 
@@ -45,7 +60,7 @@ describe('estimateLlmUsd', () => {
     expect(
       estimateLlmUsd({
         provider: 'anthropic',
-        model: 'sonnet',
+        model: 'claude-sonnet-5',
         inputTokens: 1_000_000,
         outputTokens: 1_000_000,
       }),
@@ -55,7 +70,7 @@ describe('estimateLlmUsd', () => {
   it('scales linearly and stays honest at small sizes', () => {
     const cost = estimateLlmUsd({
       provider: 'anthropic',
-      model: 'haiku',
+      model: 'claude-haiku-4-5-20251001',
       inputTokens: 3_000,
       outputTokens: 1_000,
     })

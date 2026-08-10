@@ -1,13 +1,19 @@
-import { KNOWN_MODELS, ValidationError } from '@boom-busters/schemas'
+import { LLM_MODELS } from '@boom-busters/providers'
+import { ValidationError } from '@boom-busters/schemas'
 import type { LlmProvider, Provider, TtsProvider } from '@boom-busters/schemas'
 
 /**
  * Price tables for the budget guard.
  *
- * PROVISIONAL. Build spec section 6 makes the per-model price table part of
- * each `LLMProvider` adapter, which lands in M3. Until then the guard needs
- * *some* table, and this is it: list prices in USD, reviewed when the adapters
- * arrive and then deleted in favour of the adapters' own.
+ * LLM prices are no longer written here. Build spec section 6 puts the
+ * per-model price table on each `LLMProvider` adapter, and M3 delivered it, so
+ * this module now derives from `LLM_MODELS` rather than keeping a second copy.
+ * Two hand-maintained tables would eventually disagree, and the one the guard
+ * happened to read would decide whether a cap held.
+ *
+ * The adapters' figures are themselves PROVISIONAL — see the note in
+ * `packages/providers/src/llm/anthropic.ts`. Confirm them against the vendors'
+ * current price lists before the first live run.
  *
  * The one rule that is not provisional: an unpriced model is an error, never
  * a free one. A silent $0 estimate would make every cap in the app pass, which
@@ -21,21 +27,25 @@ export interface LlmPrice {
   outputPerMTok: number
 }
 
-export const LLM_PRICES: Record<LlmProvider, Record<string, LlmPrice>> = {
-  anthropic: {
-    opus: { inputPerMTok: 15, outputPerMTok: 75 },
-    sonnet: { inputPerMTok: 3, outputPerMTok: 15 },
-    haiku: { inputPerMTok: 1, outputPerMTok: 5 },
-  },
-  openai: {
-    'gpt-5': { inputPerMTok: 10, outputPerMTok: 30 },
-    'gpt-5-mini': { inputPerMTok: 1, outputPerMTok: 4 },
-  },
-  google: {
-    'gemini-3-pro': { inputPerMTok: 5, outputPerMTok: 15 },
-    'gemini-3-flash': { inputPerMTok: 0.5, outputPerMTok: 2 },
-  },
+function pricesFromAdapters(): Record<LlmProvider, Record<string, LlmPrice>> {
+  const table = {} as Record<LlmProvider, Record<string, LlmPrice>>
+
+  for (const [provider, models] of Object.entries(LLM_MODELS) as [
+    LlmProvider,
+    (typeof LLM_MODELS)[LlmProvider],
+  ][]) {
+    table[provider] = Object.fromEntries(
+      models.map((model) => [
+        model.id,
+        { inputPerMTok: model.inputPerMTok, outputPerMTok: model.outputPerMTok },
+      ]),
+    )
+  }
+
+  return table
 }
+
+export const LLM_PRICES: Record<LlmProvider, Record<string, LlmPrice>> = pricesFromAdapters()
 
 /** USD per 1,000 characters of synthesised narration. Also provisional. */
 export const TTS_PRICES: Record<TtsProvider, number> = {
@@ -100,9 +110,9 @@ export function estimateChapterTokens(targetWords: number): number {
 /** Every model offered in Settings must have a price. Asserted by a test. */
 export function unpricedKnownModels(): string[] {
   const missing: string[] = []
-  for (const [provider, models] of Object.entries(KNOWN_MODELS)) {
+  for (const [provider, models] of Object.entries(LLM_MODELS)) {
     for (const model of models) {
-      if (!LLM_PRICES[provider as LlmProvider][model]) missing.push(`${provider}/${model}`)
+      if (!LLM_PRICES[provider as LlmProvider][model.id]) missing.push(`${provider}/${model.id}`)
     }
   }
   return missing

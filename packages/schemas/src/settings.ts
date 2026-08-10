@@ -39,22 +39,30 @@ export const LlmTaskSchema = z.enum(LLM_TASKS)
 export type LlmTask = z.infer<typeof LlmTaskSchema>
 
 /**
- * Model choices offered by the Settings -> Models dropdowns.
+ * Short model names written by M1 and M2, mapped to the wire ids the adapters
+ * use from M3 onward.
  *
- * PROVISIONAL: in M3 each `LLMProvider` adapter exposes its own known-model
- * list (build spec section 6) and this table is replaced by that export. Until
- * then the routing matrix validates against these, and any unlisted model is
- * accepted with a warning rather than rejected, so a newer model can be
- * configured without waiting for a code change.
+ * The list of valid models now lives on each `LLMProvider` adapter (build spec
+ * section 6), which this package cannot import — `providers` depends on
+ * `schemas`, not the other way round. What remains here is the one thing the
+ * adapters cannot supply: a translation for settings rows already sitting in
+ * the database. Without it, a console that has been running since M1 would
+ * boot with `modelRouting.research.model = 'opus'`, and the router's pre-flight
+ * would refuse every research task on a model it has never heard of.
  */
-export const KNOWN_MODELS = {
-  anthropic: ['opus', 'sonnet', 'haiku'],
-  openai: ['gpt-5', 'gpt-5-mini'],
-  google: ['gemini-3-pro', 'gemini-3-flash'],
-} as const satisfies Record<LlmProvider, readonly string[]>
+export const LEGACY_MODEL_IDS: Record<LlmProvider, Record<string, string>> = {
+  anthropic: {
+    opus: 'claude-opus-5',
+    sonnet: 'claude-sonnet-5',
+    haiku: 'claude-haiku-4-5-20251001',
+  },
+  openai: {},
+  google: {},
+}
 
-export function isKnownModel(provider: LlmProvider, model: string): boolean {
-  return (KNOWN_MODELS[provider] as readonly string[]).includes(model)
+/** The stored name brought forward, or the name unchanged if it is current. */
+export function canonicalModelId(provider: LlmProvider, model: string): string {
+  return LEGACY_MODEL_IDS[provider][model] ?? model
 }
 
 // ---------------------------------------------------------------------------
@@ -310,13 +318,15 @@ const defaultTypeRole = (family: string, weight: number, sizeScale = 1): TypeRol
 })
 
 export const DEFAULT_SETTINGS: Settings = {
+  // Spec section 7 assigns the tiers: Opus researches, Sonnet drafts, Haiku
+  // does the mechanical passes (self-check, shot list, metadata, digest).
   modelRouting: {
-    research: { provider: 'anthropic', model: 'opus' },
-    scripting: { provider: 'anthropic', model: 'sonnet' },
-    editing: { provider: 'anthropic', model: 'haiku' },
-    shotlist: { provider: 'anthropic', model: 'haiku' },
-    metadata: { provider: 'anthropic', model: 'haiku' },
-    digest: { provider: 'anthropic', model: 'haiku' },
+    research: { provider: 'anthropic', model: 'claude-opus-5' },
+    scripting: { provider: 'anthropic', model: 'claude-sonnet-5' },
+    editing: { provider: 'anthropic', model: 'claude-haiku-4-5-20251001' },
+    shotlist: { provider: 'anthropic', model: 'claude-haiku-4-5-20251001' },
+    metadata: { provider: 'anthropic', model: 'claude-haiku-4-5-20251001' },
+    digest: { provider: 'anthropic', model: 'claude-haiku-4-5-20251001' },
   },
   fallbackChain: [],
   tts: {
