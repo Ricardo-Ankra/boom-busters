@@ -145,7 +145,47 @@ proven on production infrastructure (2026-08-11).
 > Script Studio (editor, warnings, diff regenerate, edit trail), model router
 > with fallback.
 
-**Status:** `[ ]` not started
+**Status:** `[~]` in progress on `m3-writing-room` (started 2026-08-11)
+
+**Spending:** every provider call is mocked by default (`MOCK_PROVIDERS=1`).
+Real API calls happen only when the human explicitly asks for a live run
+(CLAUDE.md rule 6), so this milestone can be built and tested end to end
+without spending anything.
+
+### Deliverables
+
+- [ ] **`packages/providers`** — the `LLMProvider` interface, three adapters
+      (Anthropic, OpenAI, Google) normalising messages/batch/caching behind one
+      `LLMTask` shape, each exposing its known-model list and price table, plus
+      a deterministic mock adapter used by every test
+- [ ] **Model router** — resolves `task → {provider, model}` from settings at
+      call time; on `overloaded`/5xx after retries falls back one tier down
+      within the provider, then to the configured cross-provider chain; every
+      downgrade written to `run_events` so the UI can show "written with
+      fallback model"; a task whose provider has no working key fails at
+      pre-flight with a `ValidationError` pointing at Settings → Connections
+- [ ] **Case Library** — sortable table, `Suggest cases` streaming proposals
+      into draft rows, per-row `Accept` / `Dismiss`, `New project` from a
+      shortlisted case
+- [ ] **dossier-runner** — research passes (brief → timeline → claims with
+      sources) → dossier + claims rows → gate, with a revision step on
+      `gate/dossier.changes_requested`
+- [ ] **Dossier review UI** — two-pane document + claims table, source
+      favicon/domain, type and confidence chips, quarantine, unverified claims
+      amber and floated to top, approve blocked while any claim is neither
+      verified nor quarantined
+- [ ] **script-runner** — outline → chapters drafted sequentially (each step
+      fed the outline, previous chapter tail and only non-quarantined claims)
+      → self-check pass writing `claim_refs` and gutter warnings → Shorts
+      candidate marking → gate
+- [ ] **Script Studio** — outline column, markdown-backed editor, context panel
+      (claim popovers, warnings, Shorts segments), gutter markers with one-click
+      fixes, select → `Regenerate…` → diff with per-hunk accept/reject,
+      autosave with visible saved state, every human edit written to
+      `script_edits`
+- [ ] **Tests** — router fallback and pre-flight, adapters against recorded
+      fixtures, claim quarantine exclusion, self-check warning generation, the
+      diff/hunk logic, component tests per screen, E2E through the writing room
 
 ---
 
