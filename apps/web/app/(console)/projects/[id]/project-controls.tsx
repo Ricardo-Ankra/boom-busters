@@ -28,8 +28,10 @@ function useAction() {
   const router = useRouter()
   const { toast } = useToast()
 
+  // Returns whether it worked, so a caller can stand its own controls down
+  // without repeating the toast-and-refresh dance.
   return React.useCallback(
-    async (run: () => Promise<ActionResult>, success: string) => {
+    async (run: () => Promise<ActionResult>, success: string): Promise<boolean> => {
       const result = await run()
       if (result.ok) {
         toast({ title: success })
@@ -37,6 +39,7 @@ function useAction() {
       } else {
         toast({ title: 'That did not work', description: result.error, variant: 'error' })
       }
+      return result.ok
     },
     [router, toast],
   )
@@ -118,6 +121,24 @@ export function GateActionBar({
   const [note, setNote] = React.useState('')
   const [showNote, setShowNote] = React.useState(false)
   const [busy, setBusy] = React.useState<'approve' | 'changes' | null>(null)
+  const [handedOff, setHandedOff] = React.useState(false)
+
+  /**
+   * An approval is handed to Inngest, not applied here: the parked run resumes
+   * seconds later in another process. Until the page next re-reads itself the
+   * gate still looks open, so the buttons stand down rather than inviting a
+   * second approval that would land on a run no longer waiting for one.
+   */
+  if (handedOff) {
+    return (
+      <div className="sticky bottom-0 z-10 -mx-4 mt-6 border-t border-[var(--color-border)] bg-[var(--color-surface)] p-4 md:-mx-6 md:px-6">
+        <p className="text-[13px] text-[var(--color-text-secondary)]">
+          Handed to the pipeline. The run picks this up within a few seconds, and this screen
+          updates itself.
+        </p>
+      </div>
+    )
+  }
 
   return (
     <div className="sticky bottom-0 z-10 -mx-4 mt-6 border-t border-[var(--color-border)] bg-[var(--color-surface)] p-4 md:-mx-6 md:px-6">
@@ -175,7 +196,11 @@ export function GateActionBar({
             onClick={async () => {
               setBusy('approve')
               try {
-                await act(() => approveGate(projectId, stage), 'Approved — the run is moving on')
+                const handed = await act(
+                  () => approveGate(projectId, stage),
+                  'Approved — handed to the pipeline',
+                )
+                if (handed) setHandedOff(true)
               } finally {
                 setBusy(null)
               }

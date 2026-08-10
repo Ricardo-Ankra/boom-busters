@@ -2,9 +2,11 @@ import { getProject, hasLiveRun, listActivity, listOpenBudgetGates } from '@boom
 import { notFound } from 'next/navigation'
 import { ActivityList } from '@/components/activity-list'
 import { BudgetGateCard } from '@/components/budget-gate-card'
+import { LiveRefresh } from '@/components/live-refresh'
 import { PipelineRail } from '@/components/pipeline-rail'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { db } from '@/lib/db'
+import { isGateOpen, isMoving, isStranded } from '@/lib/run-state'
 import { GateActionBar, StartRunButton, StopButton } from './project-controls'
 
 export const dynamic = 'force-dynamic'
@@ -36,8 +38,9 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
   // project can read `awaiting_review` with nothing waiting on it — the seeded
   // fixture does — and offering Approve there would send an event no run is
   // listening for, then claim the run had moved on.
-  const atGate = project.stageStatus === 'awaiting_review' && liveRun
-  const stranded = project.stageStatus === 'awaiting_review' && !liveRun
+  const atGate = isGateOpen(project, liveRun)
+  const stranded = isStranded(project, liveRun)
+  const moving = isMoving(project, liveRun)
 
   return (
     <div className="flex flex-col gap-6">
@@ -51,6 +54,7 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          <LiveRefresh active={moving} />
           {liveRun ? (
             <StopButton projectId={project.id} />
           ) : (

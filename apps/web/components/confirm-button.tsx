@@ -24,7 +24,8 @@ export function ConfirmButton({
   confirmLabel: React.ReactNode
   /** What clicking through will actually do. Shown beside the confirm. */
   consequence: string
-  onConfirm: () => void | Promise<void>
+  /** Any return value is ignored; awaited so the button stays busy until done. */
+  onConfirm: () => unknown | Promise<unknown>
   confirmVariant?: ButtonProps['variant']
 }) {
   const [armed, setArmed] = React.useState(false)

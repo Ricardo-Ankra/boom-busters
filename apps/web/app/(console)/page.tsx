@@ -11,6 +11,7 @@ import {
 import { CheckCircle2, Circle } from 'lucide-react'
 import type { Route } from 'next'
 import Link from 'next/link'
+import { LiveRefresh } from '@/components/live-refresh'
 import { NeedsYouQueue, buildNeedsYouCards } from '@/components/needs-you-queue'
 import { Button } from '@/components/ui/button'
 import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -56,7 +57,10 @@ export default async function DashboardPage() {
       <NeedsYouQueue cards={cards} />
 
       <section className="flex flex-col gap-2">
-        <h2 className="text-[15px] font-semibold">Active runs</h2>
+        <div className="flex items-baseline justify-between gap-3">
+          <h2 className="text-[15px] font-semibold">Active runs</h2>
+          <LiveRefresh active={activeRuns.length > 0} />
+        </div>
         {activeRuns.length === 0 ? (
           <p className="rounded-[8px] border border-[var(--color-border)] p-6 text-center text-[13px] text-[var(--color-text-muted)]">
             Nothing is running.
