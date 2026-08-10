@@ -12,7 +12,7 @@ A milestone is not started until the previous one's tests are green in CI.
 > Monorepo, env validation, auth (allowlist), DB schema + migrations + seed
 > script, settings CRUD, app shell, first-run setup checklist, CI.
 
-**Status:** `[~]` code complete, all suites green locally · branch `m1-skeleton`
+**Status:** `[x]` **done** — CI green, merged to `master` (2026-08-10)
 
 ### Deliverables
 
@@ -39,21 +39,23 @@ A milestone is not started until the previous one's tests are green in CI.
 - [x] `pnpm typecheck`
 - [x] `pnpm lint`
 
-### Verified locally (2026-08-08)
+### Verified
 
-Against Postgres 16 in Docker, from an empty database: migrate → seed → seed
-again (idempotent) → 125 unit/component tests → 19 E2E tests, all green.
-`next build` produces a working production bundle with the proxy registered.
+- **CI (GitHub Actions, run #4):** lint → format → typecheck → migrate → seed →
+  131 unit/component tests → 19 Playwright tests, all green against a Postgres
+  service container.
+- **Locally against Neon:** migrate, idempotent seed, full suites, `pnpm dev`.
+- `next build` produces a working production bundle with the proxy registered.
 
 ### Blocked on the human
 
-- [ ] **`DATABASE_URL`** — a Neon or Supabase connection string for real dev. Local
-      Docker Postgres was used for verification; swapping the URL needs no code change.
-- [ ] **`AUTH_GOOGLE_ID` / `AUTH_GOOGLE_SECRET`** — authorised redirect URI
-      `http://localhost:3000/api/auth/callback/google`. Until these exist, sign-in works
-      through the mock-mode button; `next build` refuses without them, which is the
-      intended production guard.
-- [x] `OWNER_EMAIL` — set to `ricardo.desousa96@gmail.com` in `.env.local`; change it there if wrong.
+- [x] **`DATABASE_URL`** — Neon (`eu`/`us-east-1`, pooled) plus `DATABASE_URL_UNPOOLED`
+      for migrations.
+- [ ] **`AUTH_GOOGLE_ID` / `AUTH_GOOGLE_SECRET`** — the one M1 item still open. Sign-in
+      works through the mock-mode button until then, and `next build` refuses without
+      them, which is the intended production guard. Carried into M2.
+- [x] `OWNER_EMAIL` — `ricardo@ankra.solutions`. Sign-in must use that exact Google
+      account; every other identity is refused.
 
 ---
 
