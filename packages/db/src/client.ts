@@ -15,6 +15,16 @@ export function createDb(connectionString: string, options?: { max?: number }) {
     // a long idle timeout would exhaust Neon's pooler.
     idle_timeout: 20,
     connect_timeout: 10,
+    /**
+     * Neon's pooled endpoint is PgBouncer in transaction mode, which rejects
+     * the named prepared statements postgres.js uses by default. The Vercel
+     * integration injects the POOLED url as DATABASE_URL, so this is the
+     * configuration that actually gets used in production.
+     *
+     * It costs nothing on a direct connection: postgres.js simply sends
+     * unnamed statements, which are still parameterised and still safe.
+     */
+    prepare: false,
   })
   return { sql, db: drizzle(sql, { schema }) }
 }

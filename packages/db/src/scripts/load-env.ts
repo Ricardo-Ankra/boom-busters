@@ -31,9 +31,17 @@ export function databaseUrlOrPlaceholder(): string {
   return process.env['DATABASE_URL'] ?? OFFLINE_PLACEHOLDER_URL
 }
 
+/**
+ * Connection string for schema changes.
+ *
+ * Migrations run DDL, which belongs on a direct connection rather than through
+ * a transaction-mode pooler. Neon's Vercel integration sets both, so prefer
+ * the unpooled one when it exists and fall back to DATABASE_URL — which is
+ * what a plain local Postgres or a direct Neon string gives you.
+ */
 export function requireDatabaseUrl(): string {
   loadEnvFiles()
-  const url = process.env['DATABASE_URL']
+  const url = process.env['DATABASE_URL_UNPOOLED'] || process.env['DATABASE_URL']
   if (!url || url === OFFLINE_PLACEHOLDER_URL) {
     throw new Error(
       'DATABASE_URL is not set. Copy .env.example to .env.local and fill in your ' +
