@@ -38,12 +38,13 @@ export async function seed(
     })
     .onConflictDoNothing()
 
-  for (const claim of fixtureClaims) {
-    await db
-      .insert(claims)
-      .values({ ...claim, dossierId: FIXTURE_DOSSIER_ID })
-      .onConflictDoNothing()
-  }
+  // One statement, not one per claim. Against a hosted database every round
+  // trip is ~100ms, and the shot-list and voice-take fan-outs in later
+  // milestones insert far more rows than this.
+  await db
+    .insert(claims)
+    .values(fixtureClaims.map((claim) => ({ ...claim, dossierId: FIXTURE_DOSSIER_ID })))
+    .onConflictDoNothing()
 
   const credentialsImported = options.encryptionKey
     ? await importProviderEnvSeeds(db, options.encryptionKey, options.env)
