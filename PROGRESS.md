@@ -65,9 +65,9 @@ A milestone is not started until the previous one's tests are green in CI.
 > notification plumbing, demo no-op pipeline with two fake gates proving
 > park/resume/cancel on production infra.
 
-**Status:** `[~]` code complete, suites green — branch `m2-orchestration`.
-The one item still open is the "on production infra" proof, which needs the
-Inngest keys listed under _Blocked on the human_.
+**Status:** `[~]` merged to `master` (2026-08-10), CI green. The one item still
+open is the "on production infra" proof: driving the demo pipeline against
+Inngest Cloud from the Vercel deployment.
 
 ### Verified
 
@@ -116,10 +116,13 @@ Inngest keys listed under _Blocked on the human_.
 
 ### Blocked on the human
 
-- [ ] **`INNGEST_EVENT_KEY` / `INNGEST_SIGNING_KEY`** — needed only to run on
-      Inngest Cloud. Local development and CI use the Inngest Dev Server
-      (`npx inngest-cli@latest dev`), which needs no keys, so this blocks
-      nothing except the "on production infra" verification above.
+- [x] **`INNGEST_EVENT_KEY` / `INNGEST_SIGNING_KEY`** — set in Vercel. Local
+      development and CI use the Inngest Dev Server
+      (`npx inngest-cli@latest dev`), which needs no keys.
+- [x] **`INNGEST_SERVE_ORIGIN`** — set to the stable production alias. Vercel's
+      per-deployment URLs sit behind Deployment Protection and answer Inngest's
+      sync with a 302 to an SSO page; without this the SDK advertises one of
+      those and every sync lands in "Unattached Syncs".
 - [ ] **`VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY`** — generated locally, no
       account needed:
       `pnpm --filter @boom-busters/web exec web-push generate-vapid-keys`.
