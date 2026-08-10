@@ -10,7 +10,13 @@ import { auth } from './auth'
  * it to a list.
  */
 
-const PUBLIC_PATHS = ['/signin', '/api/auth']
+/**
+ * `/api/inngest` is public to the session check because its caller is Inngest,
+ * not a browser: it authenticates with a signing key that `serve()` verifies
+ * on every request (spec section 12). Redirecting it to /signin would simply
+ * break the orchestrator.
+ */
+const PUBLIC_PATHS = ['/signin', '/api/auth', '/api/inngest']
 
 export default auth((request) => {
   const { pathname } = request.nextUrl

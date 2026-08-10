@@ -14,6 +14,12 @@ import { UlidSchema } from './ids'
  * Stages that have no runner yet (M3 onward) still define their events here:
  * the contract is what the milestone codes against, and defining it once
  * avoids renaming events later when a runner finally lands.
+ *
+ * **No `.default()` anywhere in this file.** These schemas are handed to
+ * Inngest as Standard Schemas, and Inngest rejects any schema whose input and
+ * output types differ — a default is a transform. That constraint is a good
+ * one for wire payloads regardless: a field the sender omits should be absent,
+ * not silently filled in with a value the sender never chose.
  */
 
 // ---------------------------------------------------------------------------
@@ -49,7 +55,8 @@ export const ProjectCreatedSchema = z.object({
 
 export const ProjectCancelledSchema = z.object({
   ...projectRef,
-  reason: z.string().default('cancelled by user'),
+  /** Required: a run that vanished without a stated reason is a support case. */
+  reason: z.string().min(1),
 })
 
 export const ProjectMasterReadySchema = z.object({
@@ -67,14 +74,14 @@ export const RenderCompletedSchema = z.object({
   ...projectRef,
   renderId: UlidSchema,
   outputS3Key: z.string().min(1),
-  costUsd: z.number().min(0).default(0),
+  costUsd: z.number().min(0),
 })
 
 export const RenderFailedSchema = z.object({
   ...projectRef,
   renderId: UlidSchema,
   reason: z.enum(['error', 'timeout']),
-  message: z.string().default(''),
+  message: z.string().optional(),
 })
 
 /**
@@ -101,7 +108,7 @@ export const BudgetAbortedSchema = z.object({
 export const DemoRequestedSchema = z.object({
   ...projectRef,
   /** Forces a `BudgetExceededError` at step 2, to exercise the budget gate. */
-  forceBudgetGate: z.boolean().default(false),
+  forceBudgetGate: z.boolean().optional(),
 })
 
 // ---------------------------------------------------------------------------
@@ -143,16 +150,6 @@ export type EventName = keyof typeof EVENT_SCHEMAS
 export type EventPayload<N extends EventName> = z.infer<(typeof EVENT_SCHEMAS)[N]>
 
 export const EVENT_NAMES = Object.keys(EVENT_SCHEMAS) as EventName[]
-
-/**
- * The `{ [name]: { data: schema } }` shape Inngest's `EventSchemas.fromZod`
- * wants. Kept here so the client file stays a wiring file.
- */
-export function inngestEventSchemas(): { [N in EventName]: { data: (typeof EVENT_SCHEMAS)[N] } } {
-  const out: Record<string, { data: z.ZodType }> = {}
-  for (const [name, schema] of Object.entries(EVENT_SCHEMAS)) out[name] = { data: schema }
-  return out as { [N in EventName]: { data: (typeof EVENT_SCHEMAS)[N] } }
-}
 
 // ---------------------------------------------------------------------------
 // Gate helpers

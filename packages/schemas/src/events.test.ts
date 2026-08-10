@@ -6,7 +6,6 @@ import {
   GATE_STAGES,
   gateApprovedEvent,
   gateChangesRequestedEvent,
-  inngestEventSchemas,
   parseEventData,
 } from './events'
 
@@ -27,10 +26,19 @@ describe('event registry', () => {
     }
   })
 
-  it('exposes the registry to Inngest under a `data` key', () => {
-    const schemas = inngestEventSchemas()
-    expect(Object.keys(schemas)).toEqual(EVENT_NAMES)
-    expect(schemas['project/created'].data).toBe(EVENT_SCHEMAS['project/created'])
+  it('uses no defaults — Inngest rejects a schema whose input and output differ', () => {
+    // A `.default()` makes a field optional on the way in and required on the
+    // way out, which Standard Schema treats as a transform. Asserted here
+    // rather than discovered at the client, where the error is a wall of
+    // conditional-type text.
+    for (const [name, schema] of Object.entries(EVENT_SCHEMAS)) {
+      for (const [field, shape] of Object.entries(schema.shape)) {
+        expect(
+          shape.def.type,
+          `${name}.${field} must not carry a default`,
+        ).not.toBe('default')
+      }
+    }
   })
 })
 
@@ -43,10 +51,11 @@ describe('payload validation', () => {
     expect(() => parseEventData('project/created', { projectId: 'nope', caseId })).toThrow()
   })
 
-  it('defaults the cancellation reason rather than storing undefined', () => {
-    expect(parseEventData('project/cancelled', { projectId })).toEqual({
+  it('makes a cancellation state its reason — a run that vanished silently is a support case', () => {
+    expect(() => parseEventData('project/cancelled', { projectId })).toThrow()
+    expect(parseEventData('project/cancelled', { projectId, reason: 'stopped by user' })).toEqual({
       projectId,
-      reason: 'cancelled by user',
+      reason: 'stopped by user',
     })
   })
 
@@ -80,17 +89,16 @@ describe('payload validation', () => {
       projectId,
       renderId,
       reason: 'timeout',
-      message: '',
     })
     expect(() =>
       parseEventData('render/failed', { projectId, renderId, reason: 'cancelled' }),
     ).toThrow()
   })
 
-  it('defaults the demo pipeline to the happy path', () => {
-    expect(parseEventData('demo/pipeline.requested', { projectId })).toEqual({
-      projectId,
-      forceBudgetGate: false,
-    })
+  it('lets the demo pipeline run without opting into the budget gate', () => {
+    expect(parseEventData('demo/pipeline.requested', { projectId })).toEqual({ projectId })
+    expect(
+      parseEventData('demo/pipeline.requested', { projectId, forceBudgetGate: true }),
+    ).toEqual({ projectId, forceBudgetGate: true })
   })
 })
