@@ -32,23 +32,46 @@ export function databaseUrlOrPlaceholder(): string {
 }
 
 /**
- * Connection string for schema changes.
+ * Pick the connection migrations should run on.
  *
- * Migrations run DDL, which belongs on a direct connection rather than through
- * a transaction-mode pooler. Neon's Vercel integration sets both, so prefer
- * the unpooled one when it exists and fall back to DATABASE_URL — which is
- * what a plain local Postgres or a direct Neon string gives you.
+ * DDL belongs on a direct connection rather than through a transaction-mode
+ * pooler, so DATABASE_URL_UNPOOLED wins when it is present — Neon's Vercel
+ * integration sets both, differing only in hostname.
+ *
+ * But the two must be the same database. A `DATABASE_URL` overridden in the
+ * shell while a stale `DATABASE_URL_UNPOOLED` lingers in `.env.local` would
+ * otherwise migrate one database and run the app against another, surfacing
+ * later as a baffling "relation does not exist". Fail loudly instead.
  */
+export function resolveMigrationUrl(databaseUrl: string, unpooledUrl?: string): string {
+  if (!unpooledUrl || unpooledUrl.trim() === '') return databaseUrl
+
+  const identity = (url: string) => {
+    const parsed = new URL(url)
+    return `${parsed.username}@${parsed.pathname}`
+  }
+
+  if (identity(databaseUrl) !== identity(unpooledUrl)) {
+    throw new Error(
+      'DATABASE_URL and DATABASE_URL_UNPOOLED point at different databases.\n' +
+        'They must be the same database (Neon gives you two hostnames for one).\n' +
+        'Migrating one while the app reads the other is never what you want.',
+    )
+  }
+
+  return unpooledUrl
+}
+
 export function requireDatabaseUrl(): string {
   loadEnvFiles()
-  const url = process.env['DATABASE_URL_UNPOOLED'] || process.env['DATABASE_URL']
+  const url = process.env['DATABASE_URL']
   if (!url || url === OFFLINE_PLACEHOLDER_URL) {
     throw new Error(
       'DATABASE_URL is not set. Copy .env.example to .env.local and fill in your ' +
         'Neon or Supabase connection string.',
     )
   }
-  return url
+  return resolveMigrationUrl(url, process.env['DATABASE_URL_UNPOOLED'])
 }
 
 export function encryptionKeyOrEmpty(): string {

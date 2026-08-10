@@ -11,7 +11,7 @@
     "dev": "turbo run dev --filter=@boom-busters/web",
     "build": "turbo run build",
     "test": "turbo run test",
-    "e2e": "pnpm --filter @boom-busters/e2e test",
+    "e2e": "pnpm --filter @boom-busters/e2e e2e",
     "typecheck": "turbo run typecheck",
     "lint": "eslint . --max-warnings 0",
     "format": "prettier --write .",
