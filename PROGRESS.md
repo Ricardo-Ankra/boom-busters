@@ -65,17 +65,25 @@ A milestone is not started until the previous one's tests are green in CI.
 > notification plumbing, demo no-op pipeline with two fake gates proving
 > park/resume/cancel on production infra.
 
-**Status:** `[~]` merged to `master` (2026-08-10), CI green. The one item still
-open is the "on production infra" proof: driving the demo pipeline against
-Inngest Cloud from the Vercel deployment.
+**Status:** `[x]` **done** — CI green, merged to `master` (2026-08-10), and
+proven on production infrastructure (2026-08-11).
 
 ### Verified
 
+- **On production infra (2026-08-11):** the demo pipeline driven end to end
+  against Inngest Cloud from the Vercel deployment, mirrored into Neon. The run
+  trace reads `run.started` → `spend-demo-research-0` (a real reservation
+  through the cost guard) → `gate.opened` → `gate.closed` → `gate.opened` →
+  `gate.closed` → `run.completed`: park, resume, park, resume, complete. A
+  separate `cancel-reconciler` run confirms cancellation on the same infra.
 - **Locally against Neon:** `pnpm test` — 241 tests across 5 workspaces
   (schemas 74 · db 62 · cost 29 · ui-tokens 21 · web 55).
 - **`pnpm e2e`** — 33 Playwright tests, mock-provider mode, including the
   project screens, the gate action bar, the Costs screen and a 390px pass.
 - **`pnpm build`** — production bundle with `/api/inngest` registered.
+- **The test-database guard works (2026-08-11):** with `TEST_DATABASE_URL` set
+  to a Neon branch, a full `pnpm test` wrote its 4 runs and its ledger row to
+  the branch and left production's rows untouched.
 
 ### Deliverables
 
@@ -110,9 +118,9 @@ Inngest Cloud from the Vercel deployment.
 - [x] **Tests** — cost guard (cap edges, kill switch, concurrent reservation),
       Inngest harness (parking, budget gate, cancellation), gate helpers
       (resume), fan-out partial-failure thresholds, component and E2E
-- [ ] **Verified on production infra** — the demo pipeline driven end to end
-      against Inngest Cloud from the Vercel deployment. Needs the two Inngest
-      keys below; everything else is green locally and in CI.
+- [x] **Verified on production infra** — the demo pipeline driven end to end
+      against Inngest Cloud from the Vercel deployment (2026-08-11), with the
+      full park/resume/park/resume/complete trace in the run mirror.
 
 ### Blocked on the human
 
