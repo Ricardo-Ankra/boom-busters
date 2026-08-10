@@ -51,9 +51,9 @@ A milestone is not started until the previous one's tests are green in CI.
 
 - [x] **`DATABASE_URL`** — Neon (`eu`/`us-east-1`, pooled) plus `DATABASE_URL_UNPOOLED`
       for migrations.
-- [ ] **`AUTH_GOOGLE_ID` / `AUTH_GOOGLE_SECRET`** — the one M1 item still open. Sign-in
-      works through the mock-mode button until then, and `next build` refuses without
-      them, which is the intended production guard. Carried into M2.
+- [x] **`AUTH_GOOGLE_ID` / `AUTH_GOOGLE_SECRET`** — Google OAuth client created; real
+      sign-in verified on the production deployment
+      (`https://boom-busters-web-rho.vercel.app`, 2026-08-10).
 - [x] `OWNER_EMAIL` — `ricardo@ankra.solutions`. Sign-in must use that exact Google
       account; every other identity is refused.
 
@@ -65,7 +65,49 @@ A milestone is not started until the previous one's tests are green in CI.
 > notification plumbing, demo no-op pipeline with two fake gates proving
 > park/resume/cancel on production infra.
 
-**Status:** `[ ]` not started
+**Status:** `[~]` in progress — branch `m2-orchestration`
+
+### Deliverables
+
+- [ ] **Error taxonomy (`packages/schemas`)** — `TransientProviderError`,
+      `RateLimitError` (carries `retryAfterMs`), `ValidationError`,
+      `ContentPolicyError`, `BudgetExceededError`, plus the `isRetriable()`
+      predicate the runners' retry policy reads (spec §7)
+- [ ] **Event contracts (`packages/schemas`)** — every `project/*`, `gate/*`,
+      `budget/*`, `render/*` and demo event as a Zod schema, one exported map,
+      typed end to end into the Inngest client
+- [ ] **`packages/cost`** — price tables, `monthSpend` aggregate, `withCost()`
+      budget guard with an advisory-locked reservation, kill switch
+- [ ] **Run mirror (`packages/db`)** — `runs`/`run_events` helpers written by
+      Inngest middleware, so the drawer never depends on the Inngest dashboard
+- [ ] **Inngest wiring** — client with typed events, run-mirror middleware,
+      `/api/inngest` serve route (signing-key verified, `maxDuration=300`)
+- [ ] **Demo pipeline** — no-op function with two gates, proving park →
+      resume → cancel, plus the budget gate on `BudgetExceededError`
+- [ ] **Costs screen** — per-provider spend vs budget bars, per-project
+      breakdown, filterable ledger, kill-switch toggle, budget editors
+- [ ] **Activity drawer** — live feed from `run_events` (steps, retries,
+      fallbacks, spend)
+- [ ] **Top bar live** — active-runs indicator and month cost meter fed by the
+      run mirror and the ledger instead of placeholders
+- [ ] **Project screens** — projects list with mini pipeline rail; project view
+      with the stage rail, gate action bar (`Approve` / `Request changes`) and
+      the two-step `Stop`
+- [ ] **Needs-you queue** — open gates, budget gates and failed runs as cards
+      that deep-link into the review screen
+- [ ] **Notifications** — web push (VAPID) + optional Resend email on
+      gate-open, run-failure and budget-gate
+- [ ] **Tests** — cost guard (cap edges, kill switch, concurrent reservation),
+      Inngest harness (park/resume/cancel, memoisation, budget gate,
+      partial-failure thresholds), component and E2E
+
+### Blocked on the human
+
+- [ ] **`INNGEST_EVENT_KEY` / `INNGEST_SIGNING_KEY`** — needed only to run on
+      Inngest Cloud. Local development and CI use the Inngest Dev Server, which
+      needs no keys, so this does not block the build.
+- [ ] **`VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY`** — generated locally, no
+      account needed. `RESEND_API_KEY` is optional; email is skipped without it.
 
 ---
 
