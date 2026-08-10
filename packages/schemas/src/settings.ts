@@ -178,9 +178,26 @@ export type BrandKitTokens = z.infer<typeof BrandKitTokensSchema>
 // Budgets, render, publish
 // ---------------------------------------------------------------------------
 
+export const MonthKeySchema = z
+  .string()
+  .regex(/^\d{4}-(0[1-9]|1[0-2])$/, 'must be a YYYY-MM month key')
+
+/**
+ * Headroom the human granted at a budget gate (build spec section 6). Stored
+ * with the month it applies to, so it expires on its own at the month
+ * boundary — an overage approved in March must not quietly raise April's cap.
+ */
+export const BudgetOverageSchema = z.object({
+  month: MonthKeySchema,
+  usd: z.number().min(0),
+  approvedAt: z.iso.datetime().optional(),
+})
+export type BudgetOverage = z.infer<typeof BudgetOverageSchema>
+
 export const BudgetsSchema = z.object({
   perProviderMonthlyUSD: z.record(ProviderSchema, z.number().min(0)),
   killSwitch: z.boolean().default(false),
+  approvedOverages: z.partialRecord(ProviderSchema, BudgetOverageSchema).default({}),
 })
 export type Budgets = z.infer<typeof BudgetsSchema>
 
@@ -191,7 +208,24 @@ export type Budgets = z.infer<typeof BudgetsSchema>
 export const BudgetsPatchSchema = z.object({
   perProviderMonthlyUSD: z.partialRecord(ProviderSchema, z.number().min(0)).optional(),
   killSwitch: z.boolean().optional(),
+  approvedOverages: z.partialRecord(ProviderSchema, BudgetOverageSchema).optional(),
 })
+
+/** `YYYY-MM` in UTC — the bucket both the ledger and the caps are keyed by. */
+export function monthKey(when: Date): string {
+  return `${when.getUTCFullYear()}-${String(when.getUTCMonth() + 1).padStart(2, '0')}`
+}
+
+/**
+ * The cap the guard actually compares against: the configured monthly budget
+ * plus any overage approved *for this month*. Pure, so the cap arithmetic is
+ * unit-testable without a database.
+ */
+export function effectiveBudgetUsd(budgets: Budgets, provider: Provider, when: Date): number {
+  const base = budgets.perProviderMonthlyUSD[provider] ?? 0
+  const overage = budgets.approvedOverages[provider]
+  return overage && overage.month === monthKey(when) ? base + overage.usd : base
+}
 
 export const RenderSettingsSchema = z.object({
   concurrency: z.number().int().min(1).max(10).default(2),
@@ -304,6 +338,7 @@ export const DEFAULT_SETTINGS: Settings = {
       'hosted-alignment': 0,
     },
     killSwitch: false,
+    approvedOverages: {},
   },
   render: { concurrency: 2, timeoutMinutes: 30, chapterChunking: true },
   publish: {

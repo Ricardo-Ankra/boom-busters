@@ -5,8 +5,10 @@ import {
   PROVIDERS,
   SettingsPatchSchema,
   SettingsSchema,
+  effectiveBudgetUsd,
   firstRunBlockers,
   isKnownModel,
+  monthKey,
   resolveBrandKit,
 } from './settings'
 
@@ -133,5 +135,48 @@ describe('firstRunBlockers', () => {
     const settings = structuredClone(DEFAULT_SETTINGS)
     settings.tts.voiceId = 'Charon'
     expect(firstRunBlockers(settings, 3)).toEqual([])
+  })
+})
+
+describe('effectiveBudgetUsd', () => {
+  const settings = structuredClone(DEFAULT_SETTINGS)
+  const march = new Date('2026-03-15T00:00:00.000Z')
+
+  it('is the configured cap when no overage was approved', () => {
+    expect(effectiveBudgetUsd(settings.budgets, 'anthropic', march)).toBe(30)
+  })
+
+  it('adds an overage approved for that same month', () => {
+    const budgets = {
+      ...settings.budgets,
+      approvedOverages: { anthropic: { month: '2026-03', usd: 12 } },
+    }
+    expect(effectiveBudgetUsd(budgets, 'anthropic', march)).toBe(42)
+  })
+
+  it('expires the overage at the month boundary — March generosity is not April policy', () => {
+    const budgets = {
+      ...settings.budgets,
+      approvedOverages: { anthropic: { month: '2026-03', usd: 12 } },
+    }
+    expect(effectiveBudgetUsd(budgets, 'anthropic', new Date('2026-04-01T00:00:00.000Z'))).toBe(30)
+  })
+
+  it('treats a provider with no cap as zero, not unlimited', () => {
+    const budgets = { ...settings.budgets, perProviderMonthlyUSD: {} as never }
+    expect(effectiveBudgetUsd(budgets, 'fal', march)).toBe(0)
+  })
+})
+
+describe('monthKey', () => {
+  it('is UTC and zero-padded', () => {
+    expect(monthKey(new Date('2026-01-05T00:00:00.000Z'))).toBe('2026-01')
+    expect(monthKey(new Date('2026-12-31T23:59:59.000Z'))).toBe('2026-12')
+  })
+
+  it('does not drift across a local-time boundary', () => {
+    // 23:30 UTC on the last day of March is still March everywhere the
+    // ledger cares about, whatever the server's local timezone says.
+    expect(monthKey(new Date('2026-03-31T23:30:00.000Z'))).toBe('2026-03')
   })
 })
