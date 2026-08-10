@@ -1,6 +1,4 @@
-import { config } from 'dotenv'
-import { existsSync } from 'node:fs'
-import { resolve } from 'node:path'
+import { e2eDatabaseUrl } from './database'
 
 /**
  * Put the database into a known state before the suite runs.
@@ -12,14 +10,7 @@ import { resolve } from 'node:path'
  * which is the worst kind of flake.
  */
 export default async function globalSetup(): Promise<void> {
-  const repoRoot = resolve(import.meta.dirname, '..')
-  for (const file of ['.env.local', '.env']) {
-    const path = resolve(repoRoot, file)
-    if (existsSync(path)) config({ path, override: false, quiet: true })
-  }
-
-  const url = process.env['DATABASE_URL']
-  if (!url) throw new Error('E2E needs DATABASE_URL — the app reads a real database.')
+  const url = e2eDatabaseUrl()
 
   const {
     createDb,

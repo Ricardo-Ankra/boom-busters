@@ -1,4 +1,5 @@
 import { defineConfig, devices } from '@playwright/test'
+import { e2eDatabaseUrl } from './database'
 
 const PORT = 3100
 // `localhost`, not `127.0.0.1`: Next's dev server blocks cross-origin
@@ -62,6 +63,11 @@ export default defineConfig({
       // its redirects from that. Leaving the developer's own AUTH_URL in place
       // would send every protected route to whatever port they use for dev.
       AUTH_URL: baseURL,
+      // The app under test must read the same database global setup prepared.
+      // Without this the dev server would pick DATABASE_URL out of .env.local
+      // — the deployment's database — and the suite would assert against one
+      // database while having seeded another.
+      DATABASE_URL: e2eDatabaseUrl(),
     },
   },
 })

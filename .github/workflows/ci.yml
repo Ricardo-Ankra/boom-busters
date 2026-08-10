@@ -15,6 +15,10 @@ env:
   # the keys encrypt nothing that outlives it. Real credentials are never
   # needed in CI, because every provider is mocked (build spec section 13).
   DATABASE_URL: postgresql://postgres:postgres@localhost:5432/boom_busters
+  # The destructive suites read this, never DATABASE_URL, so they can never be
+  # pointed at a deployment's database by forgetting something. Here the two
+  # are the same throwaway container.
+  TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/boom_busters
   AUTH_SECRET: ci-only-secret-not-used-outside-this-job-0000
   AUTH_URL: http://localhost:3100
   OWNER_EMAIL: ci@boom-busters.test

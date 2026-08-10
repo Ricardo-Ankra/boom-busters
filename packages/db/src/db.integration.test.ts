@@ -15,11 +15,9 @@ import {
 } from './queries'
 import { seed } from './seed'
 import { cases, claims, dossiers, projects, providerCredentials, settings } from './schema'
-import { loadEnvFiles } from './scripts/load-env'
+import { requireTestDatabase } from './test-database'
 
-loadEnvFiles()
-
-const DATABASE_URL = process.env['DATABASE_URL']
+const DATABASE_URL = requireTestDatabase()
 const KEY = Buffer.alloc(32, 3).toString('base64')
 
 /**

@@ -24,11 +24,9 @@ import {
 } from './runs'
 import { runEvents, runs } from './schema'
 import { seed } from './seed'
-import { loadEnvFiles } from './scripts/load-env'
+import { requireTestDatabase } from './test-database'
 
-loadEnvFiles()
-
-const DATABASE_URL = process.env['DATABASE_URL']
+const DATABASE_URL = requireTestDatabase()
 const describeDb = DATABASE_URL ? describe : describe.skip
 
 describeDb('run mirror', () => {

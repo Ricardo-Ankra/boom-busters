@@ -1,4 +1,4 @@
-import { costLedger, createDb, loadEnvFiles, seed, type Database } from '@boom-busters/db'
+import { costLedger, createDb, requireTestDatabase, seed, type Database } from '@boom-busters/db'
 import {
   BudgetExceededError,
   DEFAULT_SETTINGS,
@@ -17,16 +17,14 @@ import {
   recordCost,
 } from './ledger'
 
-loadEnvFiles()
-
-const DATABASE_URL = process.env['DATABASE_URL']
-
 /**
  * The cost guard is mostly SQL: an advisory lock, an aggregate and an insert
- * in one transaction. Testing it against a mock would test the mock. These
- * skip when no database is configured so `pnpm test` works on a fresh clone;
- * CI always sets DATABASE_URL.
+ * in one transaction. Testing it against a mock would test the mock.
+ *
+ * This truncates the ledger, so it runs only against TEST_DATABASE_URL — never
+ * the database a deployment reads. See `requireTestDatabase`.
  */
+const DATABASE_URL = requireTestDatabase()
 const describeDb = DATABASE_URL ? describe : describe.skip
 
 /** Mid-month, so a test never straddles a real month boundary. */

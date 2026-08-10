@@ -7,6 +7,7 @@ import {
   listOpenBudgetGates,
   listRunEvents,
   listRuns,
+  requireTestDatabase,
   seed,
   setProjectStage,
   truncateRunMirror,
@@ -39,8 +40,10 @@ import {
  * both representations of a gate checked together.
  */
 
-const DATABASE_URL = process.env['DATABASE_URL']
-const describeDb = DATABASE_URL ? describe : describe.skip
+// Gated on TEST_DATABASE_URL, not DATABASE_URL: these truncate the run
+// mirror and the ledger, and must never reach a deployment's database.
+// `vitest.setup.ts` rebinds DATABASE_URL to it for the code under test.
+const describeDb = requireTestDatabase() ? describe : describe.skip
 
 let counter = 0
 

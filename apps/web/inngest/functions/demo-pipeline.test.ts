@@ -6,6 +6,7 @@ import {
   listOpenBudgetGates,
   listRunEvents,
   listRuns,
+  requireTestDatabase,
   seed,
   setProjectStage,
   truncateRunMirror,
@@ -33,8 +34,10 @@ import { demoPipeline } from './demo-pipeline'
  * helpers in `../lib/gates.test.ts`.
  */
 
-const DATABASE_URL = process.env['DATABASE_URL']
-const describeDb = DATABASE_URL ? describe : describe.skip
+// Gated on TEST_DATABASE_URL, not DATABASE_URL: these truncate the run
+// mirror and the ledger, and must never reach a deployment's database.
+// `vitest.setup.ts` rebinds DATABASE_URL to it for the code under test.
+const describeDb = requireTestDatabase() ? describe : describe.skip
 
 /** The event that starts a demo run for the fixture project. */
 function demoEvent(
