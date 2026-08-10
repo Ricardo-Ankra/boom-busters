@@ -9,6 +9,11 @@ allowBuilds:
   '@tailwindcss/oxide': true
   sharp: true
   unrs-resolver: true
+  # Pulled in transitively by inngest -> OpenTelemetry. Its postinstall only
+  # provisions the protobuf CLI tooling, which nothing here invokes; the
+  # runtime encoder works without it. Denied rather than merely unlisted, so
+  # the decision is recorded instead of re-prompting on every install.
+  protobufjs: false
 
 minimumReleaseAgeExclude:
   - '@turbo/darwin-64@2.10.9'

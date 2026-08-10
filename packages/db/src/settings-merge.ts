@@ -27,6 +27,10 @@ export function mergeSettings(current: Settings, patch: SettingsPatch): Settings
         ...current.budgets.perProviderMonthlyUSD,
         ...patch.budgets?.perProviderMonthlyUSD,
       },
+      approvedOverages: {
+        ...current.budgets.approvedOverages,
+        ...patch.budgets?.approvedOverages,
+      },
     },
     render: { ...current.render, ...patch.render },
     publish: { ...current.publish, ...patch.publish },
@@ -58,6 +62,10 @@ export function normaliseSettings(stored: unknown): Settings {
       perProviderMonthlyUSD: {
         ...DEFAULT_SETTINGS.budgets.perProviderMonthlyUSD,
         ...partial.budgets?.perProviderMonthlyUSD,
+      },
+      approvedOverages: {
+        ...DEFAULT_SETTINGS.budgets.approvedOverages,
+        ...partial.budgets?.approvedOverages,
       },
     },
     render: { ...DEFAULT_SETTINGS.render, ...partial.render },

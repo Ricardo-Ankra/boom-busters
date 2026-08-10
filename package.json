@@ -10,7 +10,7 @@
   "scripts": {
     "dev": "turbo run dev --filter=@boom-busters/web",
     "build": "turbo run build",
-    "test": "turbo run test",
+    "test": "turbo run test --concurrency=1",
     "e2e": "pnpm --filter @boom-busters/e2e e2e",
     "typecheck": "turbo run typecheck",
     "lint": "eslint . --max-warnings 0",

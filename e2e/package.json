@@ -11,8 +11,11 @@
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
+    "@boom-busters/cost": "workspace:*",
+    "@boom-busters/db": "workspace:*",
     "@playwright/test": "^1.62.1",
     "@types/node": "^22.20.1",
+    "dotenv": "^17.4.2",
     "typescript": "^5.9.3"
   }
 }

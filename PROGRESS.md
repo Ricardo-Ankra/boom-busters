@@ -51,9 +51,9 @@ A milestone is not started until the previous one's tests are green in CI.
 
 - [x] **`DATABASE_URL`** — Neon (`eu`/`us-east-1`, pooled) plus `DATABASE_URL_UNPOOLED`
       for migrations.
-- [ ] **`AUTH_GOOGLE_ID` / `AUTH_GOOGLE_SECRET`** — the one M1 item still open. Sign-in
-      works through the mock-mode button until then, and `next build` refuses without
-      them, which is the intended production guard. Carried into M2.
+- [x] **`AUTH_GOOGLE_ID` / `AUTH_GOOGLE_SECRET`** — Google OAuth client created; real
+      sign-in verified on the production deployment
+      (`https://boom-busters-web-rho.vercel.app`, 2026-08-10).
 - [x] `OWNER_EMAIL` — `ricardo@ankra.solutions`. Sign-in must use that exact Google
       account; every other identity is refused.
 
@@ -65,7 +65,66 @@ A milestone is not started until the previous one's tests are green in CI.
 > notification plumbing, demo no-op pipeline with two fake gates proving
 > park/resume/cancel on production infra.
 
-**Status:** `[ ]` not started
+**Status:** `[~]` code complete, suites green — branch `m2-orchestration`.
+The one item still open is the "on production infra" proof, which needs the
+Inngest keys listed under _Blocked on the human_.
+
+### Verified
+
+- **Locally against Neon:** `pnpm test` — 241 tests across 5 workspaces
+  (schemas 74 · db 62 · cost 29 · ui-tokens 21 · web 55).
+- **`pnpm e2e`** — 33 Playwright tests, mock-provider mode, including the
+  project screens, the gate action bar, the Costs screen and a 390px pass.
+- **`pnpm build`** — production bundle with `/api/inngest` registered.
+
+### Deliverables
+
+- [x] **Error taxonomy (`packages/schemas`)** — `TransientProviderError`,
+      `RateLimitError` (carries `retryAfterMs`), `ValidationError`,
+      `ContentPolicyError`, `BudgetExceededError`, plus the `isRetriable()`
+      predicate the runners' retry policy reads (spec §7)
+- [x] **Event contracts (`packages/schemas`)** — every `project/*`, `gate/*`,
+      `budget/*`, `render/*` and demo event as a Zod schema, one exported map,
+      typed end to end into the Inngest client
+- [x] **`packages/cost`** — price tables, `monthSpend` aggregate, `withCost()`
+      budget guard with an advisory-locked reservation, kill switch
+- [x] **Run mirror (`packages/db`)** — `runs`/`run_events` helpers written by
+      Inngest middleware, so the drawer never depends on the Inngest dashboard
+- [x] **Inngest wiring** — client with typed events, run-mirror middleware,
+      `/api/inngest` serve route (signing-key verified, `maxDuration=300`)
+- [x] **Demo pipeline** — no-op function with two gates, proving park →
+      resume → cancel, plus the budget gate on `BudgetExceededError`
+- [x] **Costs screen** — per-provider spend vs budget bars, per-project
+      breakdown, filterable ledger, kill-switch toggle, budget editors
+- [x] **Activity drawer** — live feed from `run_events` (steps, retries,
+      fallbacks, spend)
+- [x] **Top bar live** — active-runs indicator and month cost meter fed by the
+      run mirror and the ledger instead of placeholders
+- [x] **Project screens** — projects list with mini pipeline rail; project view
+      with the stage rail, gate action bar (`Approve` / `Request changes`) and
+      the two-step `Stop`
+- [x] **Needs-you queue** — open gates, budget gates and failed runs as cards
+      that deep-link into the review screen
+- [x] **Notifications** — web push (VAPID) + optional Resend email on
+      gate-open, run-failure and budget-gate
+- [x] **Tests** — cost guard (cap edges, kill switch, concurrent reservation),
+      Inngest harness (parking, budget gate, cancellation), gate helpers
+      (resume), fan-out partial-failure thresholds, component and E2E
+- [ ] **Verified on production infra** — the demo pipeline driven end to end
+      against Inngest Cloud from the Vercel deployment. Needs the two Inngest
+      keys below; everything else is green locally and in CI.
+
+### Blocked on the human
+
+- [ ] **`INNGEST_EVENT_KEY` / `INNGEST_SIGNING_KEY`** — needed only to run on
+      Inngest Cloud. Local development and CI use the Inngest Dev Server
+      (`npx inngest-cli@latest dev`), which needs no keys, so this blocks
+      nothing except the "on production infra" verification above.
+- [ ] **`VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY`** — generated locally, no
+      account needed:
+      `pnpm --filter @boom-busters/web exec web-push generate-vapid-keys`.
+      Without them the app logs what it would have sent and carries on.
+      `RESEND_API_KEY` + `NOTIFY_FROM_EMAIL` are optional on top.
 
 ---
 
@@ -210,3 +269,64 @@ Recorded whenever the spec left something open and an implementation was chosen.
 13. **`devIndicators: false`.** Next's floating dev-tools button is a 32px control
     that fails the 40px hit-target audit the E2E suite runs over every visible
     control, and it is not part of the app.
+
+### M2
+
+14. **The error taxonomy and event contracts live in `packages/schemas`.** Spec
+    §6 associates the error types with the provider layer, but `cost`, the
+    Inngest runners and the UI all classify errors, and none of them may depend
+    on the provider adapters (§3: `providers` never imports from `db`). Putting
+    them in the contract package everything already depends on avoids a
+    dependency inversion when `providers` lands in M3.
+
+15. **Event payloads carry no `.default()`.** Inngest 4 replaced `EventSchemas`
+    with `eventType(name, {schema})` over Standard Schema, and rejects any
+    schema whose input and output types differ — a default is a transform. It
+    is the right constraint for wire payloads anyway: a field the sender omits
+    should be absent, not filled in with a value the sender never chose. A
+    schemas test asserts no default creeps back in.
+
+16. **Cancellation is a separate `cancel-reconciler` function, not a `finally`
+    handler.** Spec §7 describes a `finally` that writes `stageStatus='cancelled'`
+    and releases resources. A cancelled Inngest run cannot durably execute new
+    steps, so a `finally` block cannot reliably write that state — which is
+    exactly the state the UI reads. A function triggered by the same
+    `project/cancelled` event gives the guarantee without the fragility, and
+    works whoever emitted the event. It excludes its own mirror row, since the
+    event names the project it is itself attributed to.
+
+17. **Approved budget overages live in `settings.budgets.approvedOverages`,
+    keyed by month.** Spec §6 says the run parks on `waitForEvent('budget/approved')`
+    but not where the granted headroom is recorded. Settings is where the cap
+    already lives, so the guard and the Costs screen read one number — and a
+    month key means March's generosity expires without anyone remembering to
+    revoke it.
+
+18. **A gate is not a table.** A review gate _is_ `projects.stageStatus =
+'awaiting_review'`; a budget gate _is_ a run at `awaiting_gate` with its
+    latest `gate.opened` event unclosed. A `gates` table would be a second home
+    for a fact that already has one, and two homes eventually disagree.
+
+19. **`push_subscriptions` is a new table, beyond spec §5.** VAPID push has no
+    server-side identity: the browser returns an endpoint plus two keys, and
+    without somewhere to keep them there is no way to tell anyone a gate opened.
+
+20. **Memoisation is not asserted through the Inngest harness.**
+    `@inngest/test` 1.0.0 persists no step state between executions and cannot
+    mock a non-runnable step, so it can neither drive a run past a gate nor
+    observe "the provider was called once". The tests assert what is genuinely
+    observable — deterministic step ids, which is the property that makes
+    memoisation work — and the resume half of park/resume is asserted against
+    the gate helpers directly. Recorded here because the gap is deliberate.
+
+21. **`pnpm test` runs `turbo run test --concurrency=1`.** Three workspaces now
+    exercise the same database and truncate each other's tables; in parallel
+    they fail in ways that look like logic bugs. It is the same reason
+    `fileParallelism: false` is already set inside each package.
+
+22. **E2E covers the screens; the orchestration is covered by the harness.**
+    Driving a real run through Playwright would mean running the Inngest Dev
+    Server inside CI to assert things the unit-level harness already asserts
+    deterministically. The `pnpm e2e` global setup resets the fixture project,
+    run mirror and ledger, so the suite does not inherit whatever the
+    orchestration tests left behind.

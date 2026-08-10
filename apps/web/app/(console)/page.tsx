@@ -1,8 +1,19 @@
-import { countCases, countMusicBeds, getSettings, isYoutubeConnected } from '@boom-busters/db'
+import {
+  countCases,
+  countMusicBeds,
+  getSettings,
+  isYoutubeConnected,
+  listActiveRuns,
+  listFailedRuns,
+  listOpenBudgetGates,
+  listProjectsAwaitingReview,
+} from '@boom-busters/db'
 import { CheckCircle2, Circle } from 'lucide-react'
+import type { Route } from 'next'
 import Link from 'next/link'
+import { NeedsYouQueue, buildNeedsYouCards } from '@/components/needs-you-queue'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { db } from '@/lib/db'
 import { buildChecklist, isSetupComplete, pipelineBlockers } from '@/lib/first-run'
 
@@ -22,7 +33,60 @@ export default async function DashboardPage() {
     return <FirstRunChecklist items={items} />
   }
 
-  return <NeedsYouQueue />
+  const [awaitingReview, budgetGates, failedRuns, activeRuns] = await Promise.all([
+    listProjectsAwaitingReview(db),
+    listOpenBudgetGates(db),
+    listFailedRuns(db),
+    listActiveRuns(db),
+  ])
+
+  const cards = buildNeedsYouCards({ awaitingReview, budgetGates, failedRuns })
+
+  return (
+    <div className="flex flex-col gap-6">
+      <h1 className="text-[20px] font-semibold">
+        Needs you
+        {cards.length > 0 ? (
+          <span className="ml-2 font-mono text-[15px] text-[var(--color-text-muted)]">
+            {cards.length}
+          </span>
+        ) : null}
+      </h1>
+
+      <NeedsYouQueue cards={cards} />
+
+      <section className="flex flex-col gap-2">
+        <h2 className="text-[15px] font-semibold">Active runs</h2>
+        {activeRuns.length === 0 ? (
+          <p className="rounded-[8px] border border-[var(--color-border)] p-6 text-center text-[13px] text-[var(--color-text-muted)]">
+            Nothing is running.
+          </p>
+        ) : (
+          <ul className="flex flex-col divide-y divide-[var(--color-border)] rounded-[8px] border border-[var(--color-border)]">
+            {activeRuns.map((run) => (
+              <li key={run.id} className="flex flex-wrap items-center gap-3 p-3 text-[13px]">
+                <span
+                  aria-hidden
+                  className="size-2 animate-pulse rounded-full bg-[var(--color-accent)] motion-reduce:animate-none"
+                />
+                <span className="min-w-0 flex-1 truncate">
+                  {run.projectTitle ?? run.functionName}
+                </span>
+                <span className="font-mono text-[12px] text-[var(--color-text-muted)]">
+                  {run.currentStep ?? run.functionName}
+                </span>
+                {run.projectId ? (
+                  <Button asChild variant="outline">
+                    <Link href={`/projects/${run.projectId}` as Route}>View</Link>
+                  </Button>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+    </div>
+  )
 }
 
 function FirstRunChecklist({ items }: { items: ReturnType<typeof buildChecklist> }) {
@@ -82,29 +146,6 @@ function FirstRunChecklist({ items }: { items: ReturnType<typeof buildChecklist>
           </li>
         ))}
       </ol>
-    </div>
-  )
-}
-
-/**
- * "Needs you" is the whole point of the dashboard (spec section 11.3). M2
- * onwards fills it with open gates, budget gates, failed runs and flagged QC
- * reports; the empty state is the state a healthy pipeline sits in.
- */
-function NeedsYouQueue() {
-  return (
-    <div className="flex flex-col gap-6">
-      <h1 className="text-[20px] font-semibold">Needs you</h1>
-      <Card>
-        <CardContent className="flex flex-col items-center gap-2 py-16 text-center">
-          <p className="text-[15px] text-[var(--color-text-primary)]">
-            All clear — pipeline is running itself.
-          </p>
-          <p className="text-[13px] text-[var(--color-text-muted)]">
-            Open gates, budget approvals and failed runs appear here.
-          </p>
-        </CardContent>
-      </Card>
     </div>
   )
 }

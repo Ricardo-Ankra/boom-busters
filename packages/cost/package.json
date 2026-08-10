@@ -1,0 +1,26 @@
+{
+  "name": "@boom-busters/cost",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./prices": "./src/prices.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@boom-busters/db": "workspace:*",
+    "@boom-busters/schemas": "workspace:*",
+    "drizzle-orm": "^0.45.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.1",
+    "dotenv": "^17.2.4",
+    "postgres": "^3.4.7",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.10"
+  }
+}

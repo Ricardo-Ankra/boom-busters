@@ -70,7 +70,10 @@ jobs:
       - name: Seed
         run: pnpm db:seed
 
-      - name: Unit and component tests
+      # Includes the Inngest harness tests, which run the real durable
+      # functions against the service container above. They need no Inngest
+      # account: the SDK only talks to Inngest Cloud when NODE_ENV=production.
+      - name: Unit, component and orchestration tests
         run: pnpm test
 
       # Run from the e2e workspace rather than through `pnpm --filter ... exec`,
