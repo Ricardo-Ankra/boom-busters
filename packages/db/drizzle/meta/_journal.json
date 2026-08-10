@@ -8,6 +8,13 @@
       "when": 1786201021235,
       "tag": "0000_amazing_bloodstorm",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1786384917221,
+      "tag": "0001_strong_stone_men",
+      "breakpoints": true
     }
   ]
 }
