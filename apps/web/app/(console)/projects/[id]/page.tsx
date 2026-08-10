@@ -1,4 +1,4 @@
-import { getProject, listActivity, listOpenBudgetGates } from '@boom-busters/db'
+import { getProject, hasLiveRun, listActivity, listOpenBudgetGates } from '@boom-busters/db'
 import { notFound } from 'next/navigation'
 import { ActivityList } from '@/components/activity-list'
 import { BudgetGateCard } from '@/components/budget-gate-card'
@@ -25,18 +25,19 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
   const project = await getProject(db, id)
   if (!project) notFound()
 
-  const [activity, budgetGates] = await Promise.all([
+  const [activity, budgetGates, liveRun] = await Promise.all([
     listActivity(db, { projectId: id, limit: 50 }),
     listOpenBudgetGates(db),
+    hasLiveRun(db, id),
   ])
   const budgetGate = budgetGates.find((gate) => gate.projectId === id)
 
-  const isRunning = project.stageStatus === 'running' || project.stageStatus === 'queued'
-  const atGate = project.stageStatus === 'awaiting_review'
-  const isIdle =
-    project.stageStatus === 'approved' ||
-    project.stageStatus === 'failed' ||
-    project.stageStatus === 'cancelled'
+  // Whether a run exists is the run mirror's answer, not `stageStatus`'s. A
+  // project can read `awaiting_review` with nothing waiting on it — the seeded
+  // fixture does — and offering Approve there would send an event no run is
+  // listening for, then claim the run had moved on.
+  const atGate = project.stageStatus === 'awaiting_review' && liveRun
+  const stranded = project.stageStatus === 'awaiting_review' && !liveRun
 
   return (
     <div className="flex flex-col gap-6">
@@ -50,8 +51,11 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          {isRunning || atGate ? <StopButton projectId={project.id} /> : null}
-          {isIdle ? <StartRunButton projectId={project.id} /> : null}
+          {liveRun ? (
+            <StopButton projectId={project.id} />
+          ) : (
+            <StartRunButton projectId={project.id} />
+          )}
         </div>
       </header>
 
@@ -59,10 +63,14 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
 
       {budgetGate ? <BudgetGateCard gate={budgetGate} /> : null}
 
-      <Card>
+      <Card className={stranded ? 'border-[var(--color-warning)]' : undefined}>
         <CardHeader>
           <CardTitle className="capitalize">{project.stage}</CardTitle>
-          <CardDescription>{stageSummary(project.stageStatus, project.stage)}</CardDescription>
+          <CardDescription>
+            {stranded
+              ? 'Marked awaiting review, but no run is waiting on it — nothing would receive an approval. Start a run.'
+              : stageSummary(project.stageStatus, project.stage)}
+          </CardDescription>
         </CardHeader>
         <CardContent>
           <p className="text-[13px] text-[var(--color-text-muted)]">

@@ -370,6 +370,24 @@ export async function listOpenBudgetGates(db: Database): Promise<OpenBudgetGate[
   })
 }
 
+/**
+ * Whether a project has a run actually in flight — executing or parked at a
+ * gate.
+ *
+ * The project's own `stageStatus` is not enough to answer this. A seeded or
+ * hand-edited project can read `awaiting_review` with no run waiting on it, and
+ * the UI must not then offer an Approve button whose event nothing is
+ * listening for.
+ */
+export async function hasLiveRun(db: Database, projectId: string): Promise<boolean> {
+  const [row] = await db
+    .select({ id: runs.id })
+    .from(runs)
+    .where(and(eq(runs.projectId, projectId), inArray(runs.status, ['running', 'awaiting_gate'])))
+    .limit(1)
+  return row !== undefined
+}
+
 /** Every mirrored run, newest first. Used by tests and the run inspector. */
 export async function listRuns(db: Database, limit = 50): Promise<RunRow[]> {
   return db.select().from(runs).orderBy(desc(runs.startedAt)).limit(limit)

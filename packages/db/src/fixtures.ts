@@ -34,7 +34,10 @@ export const fixtureProject: NewProject = {
   caseId: FIXTURE_CASE_ID,
   title: 'Wirecard: The €1.9 Billion That Never Existed',
   stage: 'dossier',
-  stageStatus: 'awaiting_review',
+  // `queued`, not `awaiting_review`: the fixture has never been run, and a
+  // project claiming to await a review of work that does not exist is a lie
+  // the console would repeat on its dashboard.
+  stageStatus: 'queued',
   targetRuntimeMin: 18,
 }
 

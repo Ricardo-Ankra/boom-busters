@@ -53,8 +53,11 @@ test.describe('app shell', () => {
     await page.goto('/')
 
     await page.getByRole('button', { name: 'Activity' }).click()
-    await expect(page.getByRole('dialog')).toBeVisible()
-    await expect(page.getByText('No pipeline runs yet.')).toBeVisible()
+    const drawer = page.getByRole('dialog')
+    await expect(drawer).toBeVisible()
+    // Global setup parks a mirrored run at the dossier gate, so the feed has
+    // something in it: the drawer reads `run_events`, never Inngest's API.
+    await expect(drawer.getByText('Gate opened')).toBeVisible()
 
     await page.getByRole('button', { name: 'Close' }).click()
     await expect(page.getByRole('dialog')).toBeHidden()

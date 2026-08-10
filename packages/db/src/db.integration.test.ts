@@ -130,7 +130,7 @@ describeDb('database integration', () => {
       const [project] = await db.select().from(projects)
       expect(project?.id).toBe(FIXTURE_PROJECT_ID)
       expect(project?.caseId).toBe(FIXTURE_CASE_ID)
-      expect(project?.stageStatus).toBe('awaiting_review')
+      expect(project?.stageStatus).toBe('queued')
 
       const storedClaims = await db.select().from(claims)
       expect(storedClaims).toHaveLength(fixtureClaims.length)

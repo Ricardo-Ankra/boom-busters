@@ -1,6 +1,6 @@
 'use server'
 
-import { getProject, markProjectCancelled, setProjectStage } from '@boom-busters/db'
+import { getProject, hasLiveRun, markProjectCancelled, setProjectStage } from '@boom-busters/db'
 import { GateStageSchema, ProviderSchema, UlidSchema } from '@boom-busters/schemas'
 import type { GateStage } from '@boom-busters/schemas'
 import { revalidatePath } from 'next/cache'
@@ -82,10 +82,10 @@ export async function startDemoPipeline(
   const project = await getProject(db, projectId)
   if (!project) return { ok: false, error: 'Unknown project' }
 
-  // A second run of the same project would race the first over the same
-  // stage columns. Refuse plainly rather than producing two runs whose
-  // writes interleave.
-  if (project.stageStatus === 'running' || project.stageStatus === 'awaiting_review') {
+  // A second run of the same project would race the first over the same stage
+  // columns. The mirror is what knows, not `stageStatus`: a project left at
+  // `awaiting_review` with no run behind it must still be startable.
+  if (await hasLiveRun(db, projectId)) {
     return { ok: false, error: 'This project already has a run in flight.' }
   }
 
@@ -136,8 +136,10 @@ export async function approveGate(projectId: string, stage: string): Promise<Act
   if (!parsedStage.success) return { ok: false, error: `Unknown gate "${stage}"` }
 
   const project = await getProject(db, projectId)
-  if (project?.stageStatus !== 'awaiting_review') {
-    return { ok: false, error: 'This gate is not open.' }
+  if (project?.stageStatus !== 'awaiting_review' || !(await hasLiveRun(db, projectId))) {
+    // Refused rather than sent into the void: an approval with no run waiting
+    // on it would report success and change nothing.
+    return { ok: false, error: 'No run is waiting at this gate.' }
   }
 
   const sent = await send(
