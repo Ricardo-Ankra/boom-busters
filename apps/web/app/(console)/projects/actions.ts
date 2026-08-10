@@ -34,6 +34,32 @@ function badId(projectId: string): ActionResult | null {
   return UlidSchema.safeParse(projectId).success ? null : { ok: false, error: 'Unknown project' }
 }
 
+/**
+ * Send an event, turning an unreachable orchestrator into a message rather
+ * than a 500.
+ *
+ * Locally that means the Inngest Dev Server is not running; in production it
+ * means Inngest is down or the keys are wrong. Either way the honest thing is
+ * to say so on the button the user just pressed.
+ */
+async function send(
+  event: Parameters<typeof inngest.send>[0],
+  what: string,
+): Promise<ActionResult> {
+  try {
+    await inngest.send(event)
+    return { ok: true }
+  } catch (error) {
+    console.error(`[projects] could not send ${what}`, error)
+    return {
+      ok: false,
+      error:
+        `Could not reach Inngest to ${what}. ` +
+        'Start the dev server with `npx inngest-cli@latest dev`, or check INNGEST_EVENT_KEY.',
+    }
+  }
+}
+
 function refresh(projectId: string): void {
   revalidatePath('/projects')
   revalidatePath(`/projects/${projectId}`)
@@ -69,15 +95,16 @@ export async function startDemoPipeline(
     inngestRunId: null,
   })
 
-  await inngest.send(
+  const sent = await send(
     events.demoRequested.create({
       projectId,
       ...(options.forceBudgetGate ? { forceBudgetGate: true } : {}),
     }),
+    'start the run',
   )
 
   refresh(projectId)
-  return { ok: true }
+  return sent
 }
 
 // ---------------------------------------------------------------------------
@@ -113,10 +140,13 @@ export async function approveGate(projectId: string, stage: string): Promise<Act
     return { ok: false, error: 'This gate is not open.' }
   }
 
-  await inngest.send(GATE_EVENT[parsedStage.data].create({ projectId, approvedBy }))
+  const sent = await send(
+    GATE_EVENT[parsedStage.data].create({ projectId, approvedBy }),
+    'approve the gate',
+  )
 
   refresh(projectId)
-  return { ok: true }
+  return sent
 }
 
 export async function requestChanges(
@@ -134,10 +164,13 @@ export async function requestChanges(
   const trimmed = note.trim()
   if (trimmed === '') return { ok: false, error: 'Say what needs to change.' }
 
-  await inngest.send(CHANGES_EVENT[parsedStage.data].create({ projectId, note: trimmed }))
+  const sent = await send(
+    CHANGES_EVENT[parsedStage.data].create({ projectId, note: trimmed }),
+    'send the change request',
+  )
 
   refresh(projectId)
-  return { ok: true }
+  return sent
 }
 
 // ---------------------------------------------------------------------------
@@ -154,15 +187,16 @@ export async function stopProject(projectId: string, reason?: string): Promise<A
   // Inngest delivers the event.
   await markProjectCancelled(db, projectId)
 
-  await inngest.send(
+  const sent = await send(
     events.projectCancelled.create({
       projectId,
       reason: reason?.trim() || 'Stopped from the project screen',
     }),
+    'stop the run',
   )
 
   refresh(projectId)
-  return { ok: true }
+  return sent
 }
 
 // ---------------------------------------------------------------------------
@@ -185,16 +219,17 @@ export async function approveOverage(
     return { ok: false, error: 'Enter how much extra to allow, in dollars.' }
   }
 
-  await inngest.send(
+  const sent = await send(
     events.budgetApproved.create({
       projectId,
       provider: parsedProvider.data,
       additionalUsd,
     }),
+    'approve the overage',
   )
 
   refresh(projectId)
-  return { ok: true }
+  return sent
 }
 
 export async function abortOverage(projectId: string, provider: string): Promise<ActionResult> {
@@ -205,8 +240,11 @@ export async function abortOverage(projectId: string, provider: string): Promise
   const parsedProvider = ProviderSchema.safeParse(provider)
   if (!parsedProvider.success) return { ok: false, error: `Unknown provider "${provider}"` }
 
-  await inngest.send(events.budgetAborted.create({ projectId, provider: parsedProvider.data }))
+  const sent = await send(
+    events.budgetAborted.create({ projectId, provider: parsedProvider.data }),
+    'abort the run',
+  )
   await stopProject(projectId, `Aborted at the ${parsedProvider.data} budget gate`)
 
-  return { ok: true }
+  return sent
 }

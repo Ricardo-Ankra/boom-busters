@@ -209,6 +209,14 @@ export async function recordCost(
   return row.id
 }
 
+/**
+ * Test-only: empty the ledger. Exported so tests need not depend on
+ * `drizzle-orm` directly — SQL stays inside the packages that own it.
+ */
+export async function truncateLedger(db: DbLike): Promise<void> {
+  await db.execute(sql`TRUNCATE TABLE ${costLedger}`)
+}
+
 /** Providers the budget guard governs, in a stable order for lock keys. */
 export const GUARDED_PROVIDERS: readonly Provider[] = [
   'anthropic',

@@ -1,17 +1,10 @@
-import {
-  ensureRun,
-  markProjectCancelled,
-  recordRunEvent,
-  setProjectStage,
-  setRunStatus,
-  updateSettings,
-} from '@boom-busters/db'
+import { recordRunEvent, setProjectStage, setRunStatus, updateSettings } from '@boom-busters/db'
 import type { ProjectStage } from '@boom-busters/db'
 import { monthKey } from '@boom-busters/schemas'
 import type { BudgetExceededError, GateStage, Provider } from '@boom-busters/schemas'
 import { db } from '@/lib/db'
 import { notify } from '@/lib/notify'
-import { stageOfFunction } from '../middleware/run-mirror'
+import { resolveRunRowId } from '../middleware/run-mirror'
 
 /**
  * Opening and closing gates — the two places where a durable run hands control
@@ -30,11 +23,10 @@ export interface GateContext {
 }
 
 async function runRowId(ctx: GateContext): Promise<string> {
-  return ensureRun(db, {
+  return resolveRunRowId({
     inngestRunId: ctx.inngestRunId,
-    functionName: ctx.functionId,
+    functionId: ctx.functionId,
     projectId: ctx.projectId,
-    stage: stageOfFunction(ctx.functionId),
   })
 }
 
@@ -174,13 +166,4 @@ export async function markStageFailed(
     body: String(error['message'] ?? 'Unknown error'),
     href: `/projects/${ctx.projectId}`,
   })
-}
-
-/**
- * The `finally` half of the cancellation contract (spec section 7): the UI's
- * Stop button emits `project/cancelled`, Inngest kills the run, and this puts
- * the project and its mirror rows into the state the UI reports.
- */
-export async function releaseOnCancel(projectId: string): Promise<void> {
-  await markProjectCancelled(db, projectId)
 }

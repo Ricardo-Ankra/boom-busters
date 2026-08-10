@@ -33,10 +33,7 @@ describe('event registry', () => {
     // conditional-type text.
     for (const [name, schema] of Object.entries(EVENT_SCHEMAS)) {
       for (const [field, shape] of Object.entries(schema.shape)) {
-        expect(
-          shape.def.type,
-          `${name}.${field} must not carry a default`,
-        ).not.toBe('default')
+        expect(shape.def.type, `${name}.${field} must not carry a default`).not.toBe('default')
       }
     }
   })
@@ -97,8 +94,8 @@ describe('payload validation', () => {
 
   it('lets the demo pipeline run without opting into the budget gate', () => {
     expect(parseEventData('demo/pipeline.requested', { projectId })).toEqual({ projectId })
-    expect(
-      parseEventData('demo/pipeline.requested', { projectId, forceBudgetGate: true }),
-    ).toEqual({ projectId, forceBudgetGate: true })
+    expect(parseEventData('demo/pipeline.requested', { projectId, forceBudgetGate: true })).toEqual(
+      { projectId, forceBudgetGate: true },
+    )
   })
 })

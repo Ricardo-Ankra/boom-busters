@@ -15,7 +15,15 @@ import { RunMirrorMiddleware } from './middleware/run-mirror'
 export const inngest = new Inngest({
   id: 'boom-busters',
   middleware: [RunMirrorMiddleware],
-  isDev: process.env['INNGEST_DEV'] === '1' || process.env['NODE_ENV'] === 'development',
+  /**
+   * Cloud only for a production build. Every Vercel deployment sets
+   * `NODE_ENV=production`, local dev sets `development` and Vitest sets
+   * `test` — so this is precisely "talk to Inngest Cloud when deployed, and to
+   * the Dev Server (or nothing) otherwise". Without it the SDK treats a test
+   * run as production and spends seconds per run trying to reach
+   * `api.inngest.com` for registration and tracing.
+   */
+  isDev: process.env['INNGEST_DEV'] === '1' || process.env['NODE_ENV'] !== 'production',
 })
 
 /** Whether cloud Inngest is wired up. False means the Dev Server, or nothing. */

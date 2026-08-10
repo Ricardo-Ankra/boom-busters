@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, isNull, sql } from 'drizzle-orm'
+import { and, desc, eq, inArray, isNull, ne, sql } from 'drizzle-orm'
 import type { Database } from './client'
 import { projects, runEvents, runs } from './schema'
 import type { ProjectStage, RunEventRow, RunRow, RunStatus } from './schema'
@@ -134,12 +134,27 @@ export async function setRunStatus(
 /**
  * Close out any run still marked running for a project. Used by the cancel
  * path, where Inngest stops the function without giving us a final hook.
+ *
+ * `exceptRunId` exists because the canceller is itself a run: it is triggered
+ * by `project/cancelled`, whose payload names the project, so the mirror
+ * attributes it to that project too. Without the exclusion it would cancel
+ * itself and report doing so.
  */
-export async function cancelRunsForProject(db: Database, projectId: string): Promise<number> {
+export async function cancelRunsForProject(
+  db: Database,
+  projectId: string,
+  options: { exceptRunId?: string } = {},
+): Promise<number> {
   const cancelled = await db
     .update(runs)
     .set({ status: 'cancelled', completedAt: new Date(), updatedAt: new Date() })
-    .where(and(eq(runs.projectId, projectId), inArray(runs.status, ['running', 'awaiting_gate'])))
+    .where(
+      and(
+        eq(runs.projectId, projectId),
+        inArray(runs.status, ['running', 'awaiting_gate']),
+        options.exceptRunId ? ne(runs.id, options.exceptRunId) : undefined,
+      ),
+    )
     .returning({ id: runs.id })
 
   await recordRunEvents(
@@ -355,6 +370,11 @@ export async function listOpenBudgetGates(db: Database): Promise<OpenBudgetGate[
   })
 }
 
+/** Every mirrored run, newest first. Used by tests and the run inspector. */
+export async function listRuns(db: Database, limit = 50): Promise<RunRow[]> {
+  return db.select().from(runs).orderBy(desc(runs.startedAt)).limit(limit)
+}
+
 export async function getRunByInngestId(
   db: Database,
   inngestRunId: string,
@@ -366,4 +386,15 @@ export async function getRunByInngestId(
 /** Runs whose Inngest id never arrived — only the demo harness produces these. */
 export async function listUnlinkedRuns(db: Database): Promise<RunRow[]> {
   return db.select().from(runs).where(isNull(runs.inngestRunId))
+}
+
+/**
+ * Test-only: empty the mirror.
+ *
+ * It lives here rather than in each test because `drizzle-orm` is not a
+ * dependency of `apps/web` — SQL belongs to this package (spec section 3), and
+ * a test that reached around that boundary would be the first crack in it.
+ */
+export async function truncateRunMirror(db: Database): Promise<void> {
+  await db.execute(sql`TRUNCATE TABLE ${runEvents}, ${runs} RESTART IDENTITY CASCADE`)
 }

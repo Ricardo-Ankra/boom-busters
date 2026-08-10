@@ -150,7 +150,17 @@ describe('requireEnv', () => {
   })
 
   it('covers every deferred group declared in the spec', () => {
-    expect(Object.keys(DEFERRED_GROUPS)).toEqual(['r2', 'broker', 'inngest', 'youtube'])
+    // `push` and `email` are M2 additions for notifications (spec §11.4) and
+    // are optional even at the point of use: unlike the four spec §4 groups,
+    // the app degrades to a log line rather than throwing when they are absent.
+    expect(Object.keys(DEFERRED_GROUPS)).toEqual([
+      'r2',
+      'broker',
+      'inngest',
+      'youtube',
+      'push',
+      'email',
+    ])
   })
 })
 

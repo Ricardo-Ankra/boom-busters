@@ -65,6 +65,49 @@ async function mirror(what: string, write: () => Promise<void>): Promise<void> {
   }
 }
 
+/**
+ * Inngest run id -> mirror row id, for the lifetime of this instance.
+ *
+ * Every hook needs the row id, and without this each one costs an upsert on
+ * top of its own insert — doubling the database traffic of the whole pipeline
+ * to re-derive a value that cannot change. Bounded so a long-lived instance
+ * cannot grow it without limit.
+ */
+const RUN_ROW_IDS = new Map<string, string>()
+const MAX_CACHED_RUNS = 256
+
+/**
+ * The mirror row for an Inngest run, memoised. Shared with the gate helpers so
+ * both sides of a step transition agree on the row without re-deriving it.
+ */
+export async function resolveRunRowId(identity: {
+  inngestRunId: string
+  functionId: string
+  projectId?: string | null
+}): Promise<string> {
+  const cached = RUN_ROW_IDS.get(identity.inngestRunId)
+  if (cached) return cached
+
+  const rowId = await ensureRun(db, {
+    inngestRunId: identity.inngestRunId,
+    functionName: identity.functionId,
+    projectId: identity.projectId ?? null,
+    stage: stageOfFunction(identity.functionId),
+  })
+
+  if (RUN_ROW_IDS.size >= MAX_CACHED_RUNS) {
+    const oldest = RUN_ROW_IDS.keys().next().value
+    if (oldest !== undefined) RUN_ROW_IDS.delete(oldest)
+  }
+  RUN_ROW_IDS.set(identity.inngestRunId, rowId)
+  return rowId
+}
+
+/** Test-only: drop the memo so a truncated mirror is not remembered. */
+export function forgetRunRows(): void {
+  RUN_ROW_IDS.clear()
+}
+
 export class RunMirrorMiddleware extends Middleware.BaseMiddleware {
   readonly id = 'run-mirror'
 
@@ -74,11 +117,10 @@ export class RunMirrorMiddleware extends Middleware.BaseMiddleware {
     if (!inngestRunId) return null
 
     try {
-      return await ensureRun(db, {
+      return await resolveRunRowId({
         inngestRunId,
-        functionName: functionId,
+        functionId,
         projectId: projectIdOf(ctx),
-        stage: stageOfFunction(functionId),
       })
     } catch (error) {
       console.error('[run-mirror] could not open a run row', error)

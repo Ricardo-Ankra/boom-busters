@@ -15,6 +15,9 @@ const baseURL = `http://localhost:${PORT}`
  */
 export default defineConfig({
   testDir: './tests',
+  // Resets the fixture project, run mirror and ledger, so the suite does not
+  // inherit whatever the Inngest integration tests left in the database.
+  globalSetup: './global-setup.ts',
   fullyParallel: false,
   workers: 1,
   forbidOnly: Boolean(process.env['CI']),

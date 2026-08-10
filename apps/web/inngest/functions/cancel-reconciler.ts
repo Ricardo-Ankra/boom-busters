@@ -2,6 +2,7 @@ import { cancelRunsForProject, markProjectCancelled } from '@boom-busters/db'
 import { db } from '@/lib/db'
 import { inngest } from '../client'
 import { events } from '../events'
+import { resolveRunRowId } from '../middleware/run-mirror'
 
 /**
  * Reconcile the database when a project is cancelled (build spec section 7).
@@ -23,12 +24,20 @@ export const cancelReconciler = inngest.createFunction(
     retries: 4,
     triggers: [events.projectCancelled],
   },
-  async ({ event, step }) => {
+  async ({ event, step, runId }) => {
     const { projectId, reason } = event.data
 
     const closed = await step.run('release', async () => {
       await markProjectCancelled(db, projectId)
-      return cancelRunsForProject(db, projectId)
+
+      // This function is itself a run against the same project, so it has to
+      // exclude its own mirror row or it cancels itself.
+      const ownRunRow = await resolveRunRowId({
+        inngestRunId: runId,
+        functionId: 'cancel-reconciler',
+        projectId,
+      })
+      return cancelRunsForProject(db, projectId, { exceptRunId: ownRunRow })
     })
 
     return { projectId, reason, runsClosed: closed }

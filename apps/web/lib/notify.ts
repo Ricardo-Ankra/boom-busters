@@ -114,10 +114,12 @@ async function sendEmail(notification: Notification): Promise<void> {
 
 export async function notify(notification: Notification): Promise<void> {
   if (!pushConfigured() && !emailConfigured()) {
-    // Said once, plainly, rather than silently doing nothing.
+    // The log line carries the whole notification, not just its title: with
+    // no push and no email this is the only record that a gate opened, and a
+    // headline without the numbers is not a record.
     console.warn(
-      `[notify] ${notification.kind}: "${notification.title}" not delivered — ` +
-        'neither VAPID nor Resend is configured.',
+      `[notify] ${notification.kind}: ${notification.title} — ${notification.body} ` +
+        `(${notification.href}). Not delivered: neither VAPID nor Resend is configured.`,
     )
     return
   }
