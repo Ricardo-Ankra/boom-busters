@@ -1,0 +1,137 @@
+import { describe, expect, it } from 'vitest'
+import {
+  DEFAULT_SETTINGS,
+  LLM_TASKS,
+  PROVIDERS,
+  SettingsPatchSchema,
+  SettingsSchema,
+  firstRunBlockers,
+  isKnownModel,
+  resolveBrandKit,
+} from './settings'
+
+describe('SettingsSchema', () => {
+  it('accepts the shipped defaults', () => {
+    expect(SettingsSchema.parse(DEFAULT_SETTINGS)).toEqual(DEFAULT_SETTINGS)
+  })
+
+  it('routes every task named in the spec', () => {
+    for (const task of LLM_TASKS) {
+      expect(DEFAULT_SETTINGS.modelRouting[task]).toBeDefined()
+    }
+  })
+
+  it('budgets every provider the app can spend against', () => {
+    for (const provider of PROVIDERS) {
+      expect(DEFAULT_SETTINGS.budgets.perProviderMonthlyUSD[provider]).toBeTypeOf('number')
+    }
+  })
+
+  it('rejects an unknown LLM provider in the routing matrix', () => {
+    const bad = {
+      ...DEFAULT_SETTINGS,
+      modelRouting: {
+        ...DEFAULT_SETTINGS.modelRouting,
+        research: { provider: 'elevenlabs', model: 'opus' },
+      },
+    }
+    expect(SettingsSchema.safeParse(bad).success).toBe(false)
+  })
+
+  it('rejects a malformed brand colour', () => {
+    const bad = structuredClone(DEFAULT_SETTINGS)
+    bad.brandKit.colors.accent = 'orange'
+    expect(SettingsSchema.safeParse(bad).success).toBe(false)
+  })
+
+  it('rejects a chart palette with fewer than three series', () => {
+    const bad = structuredClone(DEFAULT_SETTINGS)
+    bad.brandKit.colors.chartSeries = ['#ffffff', '#000000']
+    expect(SettingsSchema.safeParse(bad).success).toBe(false)
+  })
+
+  it('rejects a schedule slot that is not 24h UTC HH:MM', () => {
+    const bad = structuredClone(DEFAULT_SETTINGS)
+    bad.publish.defaultScheduleSlots = [{ kind: 'longform', weekday: 5, timeUtc: '3pm' }]
+    expect(SettingsSchema.safeParse(bad).success).toBe(false)
+
+    const alsoBad = structuredClone(DEFAULT_SETTINGS)
+    alsoBad.publish.defaultScheduleSlots = [{ kind: 'longform', weekday: 5, timeUtc: '24:00' }]
+    expect(SettingsSchema.safeParse(alsoBad).success).toBe(false)
+  })
+
+  it('rejects a render concurrency outside the broker cap', () => {
+    const bad = structuredClone(DEFAULT_SETTINGS)
+    bad.render.concurrency = 0
+    expect(SettingsSchema.safeParse(bad).success).toBe(false)
+  })
+
+  it('defaults hero slots off — no video adapter exists at launch', () => {
+    expect(DEFAULT_SETTINGS.features.heroSlots).toBe(false)
+  })
+
+  it('defaults apiAuditPassed false so publish shows the manual checklist', () => {
+    expect(DEFAULT_SETTINGS.publish.apiAuditPassed).toBe(false)
+  })
+})
+
+describe('SettingsPatchSchema', () => {
+  it('accepts a partial nested patch', () => {
+    const patch = SettingsPatchSchema.parse({ budgets: { killSwitch: true } })
+    expect(patch.budgets?.killSwitch).toBe(true)
+  })
+
+  it('still validates the values inside a partial patch', () => {
+    expect(SettingsPatchSchema.safeParse({ render: { concurrency: 99 } }).success).toBe(false)
+  })
+})
+
+describe('resolveBrandKit', () => {
+  it('projects the narration voice into the Brand Kit snapshot', () => {
+    const settings = structuredClone(DEFAULT_SETTINGS)
+    settings.tts = {
+      provider: 'elevenlabs',
+      voiceId: 'v-123',
+      stylePrompt: 'measured',
+      pacing: 0.95,
+      locked: true,
+    }
+
+    const kit = resolveBrandKit(settings)
+
+    expect(kit.voice).toEqual(settings.tts)
+    expect(kit.colors).toEqual(settings.brandKit.colors)
+  })
+})
+
+describe('isKnownModel', () => {
+  it('recognises the spec defaults', () => {
+    expect(isKnownModel('anthropic', 'opus')).toBe(true)
+    expect(isKnownModel('anthropic', 'haiku')).toBe(true)
+  })
+
+  it('reports an unlisted model without rejecting it', () => {
+    expect(isKnownModel('anthropic', 'some-future-model')).toBe(false)
+    expect(
+      SettingsSchema.safeParse({
+        ...DEFAULT_SETTINGS,
+        modelRouting: {
+          ...DEFAULT_SETTINGS.modelRouting,
+          research: { provider: 'anthropic', model: 'some-future-model' },
+        },
+      }).success,
+    ).toBe(true)
+  })
+})
+
+describe('firstRunBlockers', () => {
+  it('blocks a fresh install on voice and music beds', () => {
+    expect(firstRunBlockers(DEFAULT_SETTINGS, 0)).toEqual(['narration-voice', 'music-beds'])
+  })
+
+  it('clears once the voice is chosen and three beds exist', () => {
+    const settings = structuredClone(DEFAULT_SETTINGS)
+    settings.tts.voiceId = 'Charon'
+    expect(firstRunBlockers(settings, 3)).toEqual([])
+  })
+})

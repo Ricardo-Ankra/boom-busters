@@ -1,0 +1,442 @@
+'use client'
+
+import {
+  KNOWN_MODELS,
+  LLM_PROVIDERS,
+  LLM_TASKS,
+  PROVIDERS,
+  type LlmProvider,
+  type LlmTask,
+  type Provider,
+  type Settings,
+  type SettingsPatch,
+} from '@boom-busters/schemas'
+import type { MaskedCredential } from '@boom-busters/db'
+import * as React from 'react'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Input, Label, NumberInput, Select } from '@/components/ui/input'
+import { Switch } from '@/components/ui/switch'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { useToast } from '@/components/ui/toast'
+import { saveProviderKey, saveSettings } from './actions'
+
+const TASK_LABELS: Record<LlmTask, string> = {
+  research: 'Research (dossiers)',
+  scripting: 'Script drafting',
+  editing: 'Editing and self-checks',
+  shotlist: 'Shot lists',
+  metadata: 'Titles and descriptions',
+  digest: 'Weekly digest',
+}
+
+const CREDENTIAL_PROVIDERS: Provider[] = [...PROVIDERS]
+
+export function SettingsForm({
+  initialSettings,
+  credentials,
+}: {
+  initialSettings: Settings
+  credentials: MaskedCredential[]
+}) {
+  const [settings, setSettings] = React.useState(initialSettings)
+  const [saving, setSaving] = React.useState(false)
+  const { toast } = useToast()
+
+  /**
+   * Optimistic update with a rollback toast on failure (spec section 11.1).
+   * The previous value is captured before the write so a rejected patch
+   * restores exactly what was on screen, not a stale refetch.
+   */
+  const commit = React.useCallback(
+    async (patch: SettingsPatch, optimistic: Settings) => {
+      const previous = settings
+      setSettings(optimistic)
+      setSaving(true)
+
+      const result = await saveSettings(patch)
+
+      setSaving(false)
+      if (!result.ok) {
+        setSettings(previous)
+        toast({ title: 'Could not save', description: result.error, variant: 'error' })
+      } else {
+        toast({ title: 'Saved' })
+      }
+    },
+    [settings, toast],
+  )
+
+  return (
+    <Tabs defaultValue="models">
+      <TabsList>
+        <TabsTrigger value="models">Models</TabsTrigger>
+        <TabsTrigger value="budgets">Budgets</TabsTrigger>
+        <TabsTrigger value="brand-kit">Brand Kit</TabsTrigger>
+        <TabsTrigger value="publishing">Publishing</TabsTrigger>
+        <TabsTrigger value="connections">Connections</TabsTrigger>
+      </TabsList>
+
+      <TabsContent value="models">
+        <ModelsTab settings={settings} saving={saving} commit={commit} />
+      </TabsContent>
+
+      <TabsContent value="budgets">
+        <BudgetsTab settings={settings} saving={saving} commit={commit} />
+      </TabsContent>
+
+      <TabsContent value="brand-kit">
+        <BrandKitTab settings={settings} saving={saving} commit={commit} />
+      </TabsContent>
+
+      <TabsContent value="publishing">
+        <PublishingTab settings={settings} saving={saving} commit={commit} />
+      </TabsContent>
+
+      <TabsContent value="connections">
+        <ConnectionsTab credentials={credentials} />
+      </TabsContent>
+    </Tabs>
+  )
+}
+
+interface TabProps {
+  settings: Settings
+  saving: boolean
+  commit: (patch: SettingsPatch, optimistic: Settings) => Promise<void>
+}
+
+function ModelsTab({ settings, saving, commit }: TabProps) {
+  const setRoute = (task: LlmTask, provider: LlmProvider, model: string) => {
+    const next = structuredClone(settings)
+    next.modelRouting[task] = { provider, model }
+    void commit({ modelRouting: { [task]: { provider, model } } }, next)
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Model routing</CardTitle>
+        <CardDescription>
+          Which model runs each task. Changing one never redeploys anything — routing is resolved
+          from these settings at call time.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-4">
+        {LLM_TASKS.map((task) => {
+          const route = settings.modelRouting[task]
+          return (
+            <div key={task} className="grid items-center gap-2 sm:grid-cols-[1fr_auto_auto]">
+              <Label htmlFor={`route-${task}-provider`}>{TASK_LABELS[task]}</Label>
+
+              <Select
+                id={`route-${task}-provider`}
+                aria-label={`${TASK_LABELS[task]} provider`}
+                value={route.provider}
+                disabled={saving}
+                onChange={(event) => {
+                  const provider = event.target.value as LlmProvider
+                  setRoute(task, provider, KNOWN_MODELS[provider][0])
+                }}
+                className="sm:w-40"
+              >
+                {LLM_PROVIDERS.map((provider) => (
+                  <option key={provider} value={provider}>
+                    {provider}
+                  </option>
+                ))}
+              </Select>
+
+              <Select
+                aria-label={`${TASK_LABELS[task]} model`}
+                value={route.model}
+                disabled={saving}
+                onChange={(event) => setRoute(task, route.provider, event.target.value)}
+                className="sm:w-48"
+              >
+                {(KNOWN_MODELS[route.provider] as readonly string[]).map((model) => (
+                  <option key={model} value={model}>
+                    {model}
+                  </option>
+                ))}
+                {(KNOWN_MODELS[route.provider] as readonly string[]).includes(
+                  route.model,
+                ) ? null : (
+                  <option value={route.model}>{route.model} (unlisted)</option>
+                )}
+              </Select>
+            </div>
+          )
+        })}
+      </CardContent>
+    </Card>
+  )
+}
+
+function BudgetsTab({ settings, saving, commit }: TabProps) {
+  return (
+    <div className="flex flex-col gap-4">
+      <Card>
+        <CardHeader>
+          <CardTitle>Kill switch</CardTitle>
+          <CardDescription>
+            Stops every paid call. A run that hits it parks on a budget gate rather than failing, so
+            nothing is lost.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="flex items-center gap-3">
+          <Switch
+            id="kill-switch"
+            checked={settings.budgets.killSwitch}
+            disabled={saving}
+            onCheckedChange={(checked) => {
+              const next = structuredClone(settings)
+              next.budgets.killSwitch = checked
+              void commit({ budgets: { killSwitch: checked } }, next)
+            }}
+          />
+          <Label htmlFor="kill-switch">
+            {settings.budgets.killSwitch ? 'All spending paused' : 'Spending allowed'}
+          </Label>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Monthly cap per provider</CardTitle>
+          <CardDescription>US dollars. Zero means the provider is not used.</CardDescription>
+        </CardHeader>
+        <CardContent className="grid gap-3 sm:grid-cols-2">
+          {CREDENTIAL_PROVIDERS.map((provider) => (
+            <div key={provider} className="flex items-center gap-3">
+              <Label htmlFor={`budget-${provider}`} className="w-36 shrink-0">
+                {provider}
+              </Label>
+              <NumberInput
+                id={`budget-${provider}`}
+                min={0}
+                step={1}
+                disabled={saving}
+                defaultValue={settings.budgets.perProviderMonthlyUSD[provider] ?? 0}
+                onBlur={(event) => {
+                  const value = Number(event.target.value)
+                  if (!Number.isFinite(value) || value < 0) return
+                  if (value === settings.budgets.perProviderMonthlyUSD[provider]) return
+
+                  const next = structuredClone(settings)
+                  next.budgets.perProviderMonthlyUSD[provider] = value
+                  void commit({ budgets: { perProviderMonthlyUSD: { [provider]: value } } }, next)
+                }}
+              />
+            </div>
+          ))}
+        </CardContent>
+      </Card>
+    </div>
+  )
+}
+
+function BrandKitTab({ settings, saving, commit }: TabProps) {
+  const { colors } = settings.brandKit
+
+  const setColor = (key: 'primary' | 'accent' | 'captionHighlight', value: string) => {
+    const next = structuredClone(settings)
+    next.brandKit.colors[key] = value
+    void commit({ brandKit: { ...next.brandKit } }, next)
+  }
+
+  return (
+    <div className="flex flex-col gap-4">
+      <Card>
+        <CardHeader>
+          <CardTitle>Colours</CardTitle>
+          <CardDescription>
+            Timelines snapshot these at compile time, so a rebrand never changes how an old project
+            re-renders.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="grid gap-3 sm:grid-cols-3">
+          {(['primary', 'accent', 'captionHighlight'] as const).map((key) => (
+            <div key={key} className="flex flex-col gap-1.5">
+              <Label htmlFor={`colour-${key}`}>{key}</Label>
+              <div className="flex items-center gap-2">
+                <Input
+                  id={`colour-${key}`}
+                  type="color"
+                  className="h-10 w-14 p-1"
+                  disabled={saving}
+                  defaultValue={colors[key]}
+                  onBlur={(event) => setColor(key, event.target.value)}
+                />
+                <span className="font-mono text-[13px] text-[var(--color-text-secondary)]">
+                  {colors[key]}
+                </span>
+              </div>
+            </div>
+          ))}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Chart series palette</CardTitle>
+          <CardDescription>
+            Ordered and colour-blind safe. Charts are the anti-slop differentiator, so this palette
+            is used in order, never randomly.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-wrap gap-2">
+          {colors.chartSeries.map((colour, index) => (
+            <span
+              key={`${colour}-${index}`}
+              className="flex items-center gap-2 rounded-[8px] border border-[var(--color-border)] px-2 py-1"
+            >
+              <span
+                aria-hidden
+                className="size-4 rounded-[4px]"
+                style={{ backgroundColor: colour }}
+              />
+              <span className="font-mono text-[12px]">{colour}</span>
+            </span>
+          ))}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Live specimen panel</CardTitle>
+          <CardDescription>
+            Arrives in M6. A lower third, chapter card, chart and caption rendered through
+            @remotion/player with these exact values.
+          </CardDescription>
+        </CardHeader>
+      </Card>
+    </div>
+  )
+}
+
+function PublishingTab({ settings, saving, commit }: TabProps) {
+  return (
+    <div className="flex flex-col gap-4">
+      <Card>
+        <CardHeader>
+          <CardTitle>YouTube API audit</CardTitle>
+          <CardDescription>
+            Until the audit passes, the publish screen shows a manual &ldquo;flip to public in
+            Studio&rdquo; checklist instead of pretending the API can do it.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="flex items-center gap-3">
+          <Switch
+            id="api-audit"
+            checked={settings.publish.apiAuditPassed}
+            disabled={saving}
+            onCheckedChange={(checked) => {
+              const next = structuredClone(settings)
+              next.publish.apiAuditPassed = checked
+              void commit({ publish: { ...next.publish } }, next)
+            }}
+          />
+          <Label htmlFor="api-audit">
+            {settings.publish.apiAuditPassed ? 'Audit passed' : 'Audit not passed yet'}
+          </Label>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Default schedule slots</CardTitle>
+          <CardDescription>
+            Stored as UTC; the calendar renders them in your timezone.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-2">
+          {settings.publish.defaultScheduleSlots.map((slot, index) => (
+            <div
+              key={`${slot.kind}-${slot.weekday}-${slot.timeUtc}-${index}`}
+              className="flex items-center gap-3 text-[14px]"
+            >
+              <span className="w-20 text-[var(--color-text-secondary)]">{slot.kind}</span>
+              <span className="w-28">{WEEKDAYS[slot.weekday]}</span>
+              <span className="font-mono tabular-nums">{slot.timeUtc} UTC</span>
+            </div>
+          ))}
+        </CardContent>
+      </Card>
+    </div>
+  )
+}
+
+const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
+
+function ConnectionsTab({ credentials }: { credentials: MaskedCredential[] }) {
+  const byProvider = new Map(credentials.map((credential) => [credential.provider, credential]))
+
+  return (
+    <div className="grid gap-3 sm:grid-cols-2">
+      {CREDENTIAL_PROVIDERS.map((provider) => (
+        <ConnectionCard key={provider} provider={provider} credential={byProvider.get(provider)} />
+      ))}
+    </div>
+  )
+}
+
+function ConnectionCard({
+  provider,
+  credential,
+}: {
+  provider: Provider
+  credential: MaskedCredential | undefined
+}) {
+  const [value, setValue] = React.useState('')
+  const [saving, setSaving] = React.useState(false)
+  const { toast } = useToast()
+
+  const submit = async () => {
+    setSaving(true)
+    const result = await saveProviderKey(provider, value)
+    setSaving(false)
+
+    if (result.ok) {
+      setValue('')
+      toast({ title: `${provider} key saved` })
+    } else {
+      toast({ title: 'Could not save key', description: result.error, variant: 'error' })
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center justify-between gap-2">
+          {provider}
+          <span
+            className={
+              credential
+                ? 'text-[12px] font-normal text-[var(--color-success)]'
+                : 'text-[12px] font-normal text-[var(--color-text-muted)]'
+            }
+          >
+            {credential ? credential.verifyStatus : 'not set'}
+          </span>
+        </CardTitle>
+        <CardDescription className="font-mono">
+          {credential ? credential.masked : 'No key stored'}
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="flex items-center gap-2">
+        <Input
+          type="password"
+          aria-label={`${provider} API key`}
+          placeholder={credential ? 'Replace key' : 'Paste key'}
+          value={value}
+          onChange={(event) => setValue(event.target.value)}
+          disabled={saving}
+        />
+        <Button variant="outline" busy={saving} disabled={value.trim() === ''} onClick={submit}>
+          Save
+        </Button>
+      </CardContent>
+    </Card>
+  )
+}

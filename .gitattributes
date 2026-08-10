@@ -1,0 +1,12 @@
+# Normalise line endings so CI (Linux) and dev (Windows) agree.
+* text=auto eol=lf
+
+*.png binary
+*.jpg binary
+*.ico binary
+*.woff binary
+*.woff2 binary
+*.mp3 binary
+*.mp4 binary
+*.wav binary
+pnpm-lock.yaml linguist-generated=true

@@ -1,0 +1,18 @@
+{
+  "name": "@boom-busters/e2e",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "//": "Deliberately NOT named `test`: `pnpm test` is `turbo run test`, which would otherwise run this suite in every package sweep -- before CI has installed browsers, and twice on a machine where they exist.",
+    "e2e": "playwright test",
+    "e2e:ui": "playwright test --ui",
+    "install-browsers": "playwright install --with-deps chromium",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.62.1",
+    "@types/node": "^22.20.1",
+    "typescript": "^5.9.3"
+  }
+}
