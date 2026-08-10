@@ -40,11 +40,11 @@ jobs:
           --health-retries 10
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: pnpm
@@ -73,13 +73,24 @@ jobs:
       - name: Unit and component tests
         run: pnpm test
 
+      # Run from the e2e workspace rather than through `pnpm --filter ... exec`,
+      # and name the headless shell explicitly: Playwright ships it as a
+      # separate download from `chromium`, and it is what the Chromium device
+      # profiles actually launch. Getting only one of the two is what makes
+      # every spec fail with "Executable doesn't exist".
       - name: Install Playwright browsers
-        run: pnpm --filter @boom-busters/e2e exec playwright install --with-deps chromium
+        working-directory: e2e
+        run: pnpm exec playwright install --with-deps chromium chromium-headless-shell
+
+      # Fail here, loudly, rather than 19 tests later with a confusing message.
+      - name: Verify browsers are installed
+        working-directory: e2e
+        run: pnpm exec playwright install --dry-run
 
       - name: End-to-end tests
         run: pnpm e2e
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: failure()
         with:
           name: playwright-report
