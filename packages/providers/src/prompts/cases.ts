@@ -1,6 +1,7 @@
 import { CaseSuggestionsSchema } from '@boom-busters/schemas'
 import type { CaseSuggestion } from '@boom-busters/schemas'
 import { parseJsonCompletion } from './json'
+import { outputBudget } from '../llm/types'
 import type { LLMTaskRequest } from '../llm/types'
 
 /**
@@ -57,10 +58,7 @@ export function buildSuggestCasesRequest(input: SuggestCasesInput): LLMTaskReque
     task: 'research',
     system: SYSTEM,
     messages: [{ role: 'user', content: `Propose ${input.count} cases.${steer}${avoid}` }],
-    // Roughly 250 output tokens per suggestion with headroom; a truncated
-    // answer is a parse failure, and re-running research is the expensive
-    // kind of retry.
-    maxTokens: Math.min(8000, 400 * input.count + 500),
+    maxTokens: outputBudget(900 * input.count),
   }
 }
 

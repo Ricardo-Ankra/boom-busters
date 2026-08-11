@@ -1,6 +1,7 @@
 import { CaseBriefSchema, ClaimsSchema, ResearchTimelineSchema } from '@boom-busters/schemas'
 import type { CaseBrief, DraftClaim, TimelineEvent } from '@boom-busters/schemas'
 import { parseJsonCompletion } from './json'
+import { outputBudget } from '../llm/types'
 import type { LLMTaskRequest } from '../llm/types'
 
 /**
@@ -58,7 +59,7 @@ Produce a case brief:
  "principals": [{"name": string, "role": string}],
  "openQuestions": [string]}`,
     messages: [{ role: 'user', content: `${caseHeader(input)}\n\nWrite the brief.` }],
-    maxTokens: 3000,
+    maxTokens: outputBudget(3000),
   }
 }
 
@@ -88,7 +89,7 @@ Include the events that make the turning point make sense, not every event.`,
     // The case header is identical across all three passes in a run, so it is
     // worth caching where the provider supports it.
     cacheablePrefixMessages: 1,
-    maxTokens: 6000,
+    maxTokens: outputBudget(6000),
   }
 }
 
@@ -127,7 +128,7 @@ Extract every factual claim the script will need, each with its source:
       { role: 'user', content: 'Now the claims.' },
     ],
     cacheablePrefixMessages: 1,
-    maxTokens: 8000,
+    maxTokens: outputBudget(8000),
   }
 }
 

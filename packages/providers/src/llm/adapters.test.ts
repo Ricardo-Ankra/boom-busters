@@ -3,6 +3,7 @@ import {
   RateLimitError,
   TransientProviderError,
   ValidationError,
+  isRetriable,
 } from '@boom-busters/schemas'
 import { describe, expect, it } from 'vitest'
 import { anthropic } from './anthropic'
@@ -10,6 +11,7 @@ import { google } from './google'
 import { openai } from './openai'
 import { parseRetryAfter } from './http'
 import { LLM_MODELS, knownModel, llmAdapters, topModel } from './registry'
+import { outputBudget } from './types'
 import type { LLMProvider, LLMTaskRequest } from './types'
 
 /**
@@ -344,5 +346,81 @@ describe('the adapter registry', () => {
     expect(knownModel('anthropic', 'claude-opus-5')?.tier).toBe(0)
     expect(knownModel('anthropic', 'nope')).toBeUndefined()
     expect(topModel('google').tier).toBe(0)
+  })
+})
+
+describe('anthropic: a completion that spends everything and writes nothing', () => {
+  const thinkingOnly = {
+    content: [{ type: 'thinking', thinking: 'considering...' }],
+    stop_reason: 'max_tokens',
+    usage: { input_tokens: 900, output_tokens: 1300 },
+  }
+
+  it('names the real cause rather than blaming the JSON', async () => {
+    // This is the failure that reached production: 1,300 tokens spent, no
+    // text block, and an error that said "the model returned no JSON" and
+    // sent the reader looking at the prompt.
+    const error = await anthropic
+      .complete(
+        { ...request, maxTokens: 1300 },
+        { apiKey: 'k', model: 'claude-opus-5', fetchImpl: respondWith(thinkingOnly) },
+      )
+      .catch((e: unknown) => e)
+
+    expect(error).toBeInstanceOf(ValidationError)
+    expect((error as Error).message).toMatch(/used all 1300 output tokens/)
+    expect((error as Error).message).toMatch(/maxTokens was 1300/)
+    // The block types are reported, because "only thinking came back" is the
+    // whole diagnosis.
+    expect((error as Error).message).toMatch(/thinking/)
+  })
+
+  it('is not retriable — the identical request truncates identically', async () => {
+    const error = await anthropic
+      .complete(
+        { ...request, maxTokens: 1300 },
+        { apiKey: 'k', model: 'claude-opus-5', fetchImpl: respondWith(thinkingOnly) },
+      )
+      .catch((e: unknown) => e)
+
+    expect(isRetriable(error)).toBe(false)
+  })
+
+  it('still returns a short answer that merely ran out of room', async () => {
+    // Truncated but non-empty is a real answer. Only silence is a failure.
+    const result = await anthropic.complete(request, {
+      apiKey: 'k',
+      model: 'claude-opus-5',
+      fetchImpl: respondWith({
+        content: [{ type: 'text', text: 'Half a sentence' }],
+        stop_reason: 'max_tokens',
+        usage: { input_tokens: 10, output_tokens: 5 },
+      }),
+    })
+
+    expect(result.text).toBe('Half a sentence')
+    expect(result.truncated).toBe(true)
+  })
+
+  it('verifyKey survives its own one-token request', async () => {
+    // verifyKey asks for a single token, so it always stops at max_tokens with
+    // nothing written. Routing it through complete() would fail every good key.
+    await expect(
+      anthropic.verifyKey('k', { fetchImpl: respondWith(thinkingOnly) }),
+    ).resolves.toBeUndefined()
+  })
+})
+
+describe('outputBudget', () => {
+  it('adds room to think on top of the room to answer', () => {
+    expect(outputBudget(1000)).toBe(5000)
+  })
+
+  it('caps at the ceiling', () => {
+    expect(outputBudget(1_000_000)).toBe(32_000)
+  })
+
+  it('never returns zero for an empty answer', () => {
+    expect(outputBudget(0)).toBeGreaterThan(0)
   })
 })

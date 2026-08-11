@@ -148,3 +148,27 @@ export function priceOf(model: KnownModel, usage: TokenUsage): number {
   // the settled figure comparable rather than differing in the sixth decimal.
   return Math.round(usd * 10_000) / 10_000
 }
+
+/**
+ * Room for the model to think *and* answer.
+ *
+ * `max_tokens` is one budget covering reasoning and the reply, so a figure
+ * sized from the expected answer alone can be spent entirely on thinking —
+ * the call returns at full price with no text block at all. That is exactly
+ * how the first live `Suggest cases` failed: 1,300 tokens, all consumed,
+ * nothing written, and an error blaming the JSON parser.
+ *
+ * So every prompt asks for what it needs for the answer and this adds the
+ * headroom. Over-asking is close to free: `max_tokens` is a ceiling, and the
+ * ledger settles on tokens actually produced. Under-asking costs the whole
+ * call.
+ */
+export const THINKING_HEADROOM_TOKENS = 4000
+export const MAX_OUTPUT_TOKENS = 32_000
+
+export function outputBudget(answerTokens: number): number {
+  return Math.min(
+    MAX_OUTPUT_TOKENS,
+    Math.max(1, Math.round(answerTokens)) + THINKING_HEADROOM_TOKENS,
+  )
+}

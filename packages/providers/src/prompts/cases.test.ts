@@ -44,11 +44,12 @@ describe('buildSuggestCasesRequest', () => {
     expect(request.messages[0]?.content).not.toContain('asks specifically')
   })
 
-  it('scales the token budget with the count but caps it', () => {
+  it('scales the token budget with the count, with room to think, but caps it', () => {
     expect(buildSuggestCasesRequest({ existingTitles: [], count: 3 }).maxTokens).toBeLessThan(
       buildSuggestCasesRequest({ existingTitles: [], count: 10 }).maxTokens,
     )
-    expect(buildSuggestCasesRequest({ existingTitles: [], count: 100 }).maxTokens).toBe(8000)
+    // Capped, so a silly count cannot ask for an unbounded completion.
+    expect(buildSuggestCasesRequest({ existingTitles: [], count: 100 }).maxTokens).toBe(32_000)
   })
 
   it('tells the model not to invent cases', () => {

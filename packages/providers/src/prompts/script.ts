@@ -7,6 +7,7 @@ import {
 } from '@boom-busters/schemas'
 import type { Outline, SelfCheck, ShortsCandidate } from '@boom-busters/schemas'
 import { parseJsonCompletion } from './json'
+import { outputBudget } from '../llm/types'
 import type { LLMTaskRequest } from '../llm/types'
 
 /**
@@ -89,7 +90,7 @@ needs must be in the beat.`,
       { role: 'user', content: `Claims available:\n${claimList(input.claims)}` },
       { role: 'user', content: `Outline it for roughly ${input.targetRuntimeMin} minutes.` },
     ],
-    maxTokens: 4000,
+    maxTokens: outputBudget(4000),
   }
 }
 
@@ -137,9 +138,8 @@ Target about ${chapter.targetWords} words.`,
       { role: 'user', content: `Write "${chapter.title}". It must: ${chapter.beat}` },
     ],
     cacheablePrefixMessages: 1,
-    // Roughly 1.6 tokens per word plus headroom; a truncated chapter reads as
-    // a chapter that stops mid-sentence.
-    maxTokens: Math.min(16_000, Math.round(chapter.targetWords * 2.2) + 500),
+    // A truncated chapter reads as a chapter that stops mid-sentence.
+    maxTokens: outputBudget(Math.round(chapter.targetWords * 2.2)),
   }
 }
 
@@ -180,7 +180,7 @@ matched back to the text character for character.
       { role: 'user', content: `Chapter "${input.chapterTitle}":\n\n${input.contentMd}` },
     ],
     cacheablePrefixMessages: 1,
-    maxTokens: 8000,
+    maxTokens: outputBudget(8000),
   }
 }
 
@@ -213,7 +213,7 @@ Quote the first and last sentence of each segment EXACTLY as they appear.
           .join('\n\n'),
       },
     ],
-    maxTokens: 3000,
+    maxTokens: outputBudget(3000),
   }
 }
 
@@ -337,7 +337,7 @@ Keep roughly the same length unless the instruction says otherwise.`,
       },
     ],
     cacheablePrefixMessages: 1,
-    maxTokens: Math.min(8000, Math.round(countWords(input.selection) * 4) + 500),
+    maxTokens: outputBudget(Math.round(countWords(input.selection) * 4)),
   }
 }
 
