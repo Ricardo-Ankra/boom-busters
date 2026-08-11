@@ -267,6 +267,12 @@ export const dossiers = pgTable(
       .references(() => projects.id, { onDelete: 'cascade' }),
     contentMd: text('content_md').notNull().default(''),
     approvedAt: timestamp('approved_at', { withTimezone: true }),
+    /**
+     * How many times the human has sent this dossier back for changes. The
+     * reviser refuses past a limit: past three rounds the research is not the
+     * problem, and another Opus pass will not fix it.
+     */
+    revisions: integer('revisions').notNull().default(0),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },

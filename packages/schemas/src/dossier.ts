@@ -1,0 +1,91 @@
+import { z } from 'zod'
+
+/**
+ * Provider IO for the dossier-runner's research passes (build spec section 7).
+ *
+ * The channel's whole liability sits in this file. A claim that reaches a
+ * script is a claim that gets narrated over footage to an audience, and the
+ * subjects of these stories are real companies and living people. So the
+ * schema is strict where it protects, not merely where it parses:
+ *
+ *  - A claim carries its own source. There is no "sourced" without a URL,
+ *    enforced below rather than hoped for in the prompt.
+ *  - `confidence` is a closed set the review UI knows how to render. An
+ *    invented fourth value would render as nothing and read as "fine".
+ *  - Adjudication is tracked separately from confidence, because "this is
+ *    well sourced" and "a court has ruled on this" are different facts and
+ *    the second is what decides whether the script must say "alleged".
+ */
+
+export const CLAIM_SOURCE_TYPES = ['court', 'regulator', 'major_outlet', 'book', 'other'] as const
+export const ClaimSourceTypeSchema = z.enum(CLAIM_SOURCE_TYPES)
+export type ClaimSourceTypeName = z.infer<typeof ClaimSourceTypeSchema>
+
+export const CLAIM_CONFIDENCES = ['sourced', 'single_source', 'unverified'] as const
+export const ClaimConfidenceSchema = z.enum(CLAIM_CONFIDENCES)
+export type ClaimConfidenceName = z.infer<typeof ClaimConfidenceSchema>
+
+export const DraftClaimSchema = z
+  .object({
+    text: z.string().trim().min(10).max(1000),
+    sourceUrl: z.string().url().optional(),
+    sourceType: ClaimSourceTypeSchema,
+    confidence: ClaimConfidenceSchema,
+    /**
+     * Whether a court or regulator has actually ruled. Drives the self-check
+     * pass's "'alleged' missing for non-adjudicated claim" warning.
+     */
+    adjudicated: z.boolean(),
+  })
+  .refine((claim) => claim.confidence === 'unverified' || claim.sourceUrl !== undefined, {
+    message: 'a claim can only be sourced or single_source if it carries a source URL',
+    path: ['sourceUrl'],
+  })
+  .refine((claim) => !claim.adjudicated || claim.sourceUrl !== undefined, {
+    message: 'an adjudicated claim must cite the ruling',
+    path: ['sourceUrl'],
+  })
+export type DraftClaim = z.infer<typeof DraftClaimSchema>
+
+/** One dated event on the case timeline. */
+export const TimelineEventSchema = z.object({
+  /** Free text rather than a date: "March 2001", "late 2019" are all real. */
+  when: z.string().trim().min(3).max(100),
+  what: z.string().trim().min(10).max(1000),
+  sourceUrl: z.string().url().optional(),
+})
+export type TimelineEvent = z.infer<typeof TimelineEventSchema>
+
+export const CaseBriefSchema = z.object({
+  summary: z.string().trim().min(50).max(5000),
+  /** Why this story turns — the moment the script builds toward. */
+  turningPoint: z.string().trim().min(20).max(2000),
+  /** Named people and organisations, so the script can be consistent. */
+  principals: z.array(z.object({ name: z.string().min(2), role: z.string().min(2) })).max(30),
+  /** What the research could not establish. Shown to the human, not hidden. */
+  openQuestions: z.array(z.string().min(10)).max(20),
+})
+export type CaseBrief = z.infer<typeof CaseBriefSchema>
+
+/**
+ * Named `Research*` because M6 introduces `TimelineSchema` for the compiled
+ * video timeline. Two different things called "timeline" in one codebase is a
+ * bug waiting for whoever imports the wrong one.
+ */
+export const ResearchTimelineSchema = z.object({
+  events: z.array(TimelineEventSchema).min(1).max(60),
+})
+
+export const ClaimsSchema = z.object({
+  claims: z.array(DraftClaimSchema).min(1).max(120),
+})
+
+/**
+ * How many claims may be unsourced before the dossier is not worth reviewing.
+ *
+ * Not a hard failure — the review UI exists precisely so a human can verify or
+ * quarantine them. But a research pass that returns mostly unverified claims
+ * has not done the job, and saying so at the gate is more useful than handing
+ * over 40 amber rows without comment.
+ */
+export const UNVERIFIED_CLAIM_WARNING_RATIO = 0.4

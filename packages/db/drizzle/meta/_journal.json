@@ -15,6 +15,13 @@
       "when": 1786384917221,
       "tag": "0001_strong_stone_men",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1786447155761,
+      "tag": "0002_massive_skin",
+      "breakpoints": true
     }
   ]
 }
