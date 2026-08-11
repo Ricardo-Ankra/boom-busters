@@ -131,11 +131,22 @@ proven on production infrastructure (2026-08-11).
       per-deployment URLs sit behind Deployment Protection and answer Inngest's
       sync with a 302 to an SSO page; without this the SDK advertises one of
       those and every sync lands in "Unattached Syncs".
-- [ ] **`VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY`** — generated locally, no
-      account needed:
-      `pnpm --filter @boom-busters/web exec web-push generate-vapid-keys`.
-      Without them the app logs what it would have sent and carries on.
-      `RESEND_API_KEY` + `NOTIFY_FROM_EMAIL` are optional on top.
+- [~] **Notification delivery is deliberately deferred** (decided 2026-08-11).
+      The plumbing is built and tested; no keys are set, so `notify()` logs what
+      it would have sent and carries on. Nothing depends on it — the Needs-you
+      queue reads from the database and is always correct.
+
+      **Email (Resend) is the channel to enable, not push**, and it lands as a
+      final layer rather than now. Web push reaches a desktop browser that is
+      running; on iOS it needs the site installed to the home screen as a PWA,
+      which is not how anyone expects "push" to behave. Email reaches a phone
+      with nothing installed.
+
+      Revisit when waits get long enough to walk away from — M6 renders are the
+      first real case. To enable then: `RESEND_API_KEY` + `NOTIFY_FROM_EMAIL`,
+      and optionally
+      `pnpm --filter @boom-busters/web exec web-push generate-vapid-keys` for
+      `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY`.
 
 ---
 
