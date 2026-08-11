@@ -1,6 +1,12 @@
 'use server'
 
-import { getProject, hasLiveRun, markProjectCancelled, setProjectStage } from '@boom-busters/db'
+import {
+  blockingClaims,
+  getProject,
+  hasLiveRun,
+  markProjectCancelled,
+  setProjectStage,
+} from '@boom-busters/db'
 import { GateStageSchema, ProviderSchema, UlidSchema } from '@boom-busters/schemas'
 import type { GateStage } from '@boom-busters/schemas'
 import { revalidatePath } from 'next/cache'
@@ -140,6 +146,27 @@ export async function approveGate(projectId: string, stage: string): Promise<Act
     // Refused rather than sent into the void: an approval with no run waiting
     // on it would report success and change nothing.
     return { ok: false, error: 'No run is waiting at this gate.' }
+  }
+
+  /**
+   * The dossier gate's blocker, enforced here and not only by a disabled
+   * button (spec section 11.3).
+   *
+   * A disabled button is a hint. This is the thing that actually stops an
+   * unsourced assertion reaching a script: the action refuses even if the
+   * request arrives from a stale tab, a replayed form post, or anything else
+   * that never rendered the button at all.
+   */
+  if (parsedStage.data === 'dossier') {
+    const blocking = await blockingClaims(db, projectId)
+    if (blocking.length > 0) {
+      return {
+        ok: false,
+        error:
+          `${blocking.length} claim(s) are still unsourced. Verify each against a source, or ` +
+          'quarantine it to keep it out of the script.',
+      }
+    }
   }
 
   const sent = await send(

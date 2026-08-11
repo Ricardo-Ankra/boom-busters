@@ -18,7 +18,8 @@
     "format:check": "prettier --check .",
     "db:generate": "pnpm --filter @boom-busters/db generate",
     "db:migrate": "pnpm --filter @boom-busters/db migrate",
-    "db:seed": "pnpm --filter @boom-busters/db seed"
+    "db:seed": "pnpm --filter @boom-busters/db seed",
+    "db:migrate:test": "pnpm --filter @boom-busters/db migrate:test"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.5",

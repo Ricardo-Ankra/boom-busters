@@ -1,0 +1,1 @@
+ALTER TABLE "dossiers" ADD COLUMN "revisions" integer DEFAULT 0 NOT NULL;

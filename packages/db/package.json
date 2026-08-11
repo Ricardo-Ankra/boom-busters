@@ -14,7 +14,8 @@
     "generate": "drizzle-kit generate",
     "migrate": "tsx src/scripts/migrate.ts",
     "seed": "tsx src/scripts/seed.ts",
-    "studio": "drizzle-kit studio"
+    "studio": "drizzle-kit studio",
+    "migrate:test": "tsx src/scripts/migrate-test.ts"
   },
   "dependencies": {
     "@boom-busters/schemas": "workspace:*",

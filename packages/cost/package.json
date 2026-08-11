@@ -14,7 +14,8 @@
   "dependencies": {
     "@boom-busters/db": "workspace:*",
     "@boom-busters/schemas": "workspace:*",
-    "drizzle-orm": "^0.45.2"
+    "drizzle-orm": "^0.45.2",
+    "@boom-busters/providers": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^22.20.1",

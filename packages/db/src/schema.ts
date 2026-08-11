@@ -267,6 +267,12 @@ export const dossiers = pgTable(
       .references(() => projects.id, { onDelete: 'cascade' }),
     contentMd: text('content_md').notNull().default(''),
     approvedAt: timestamp('approved_at', { withTimezone: true }),
+    /**
+     * How many times the human has sent this dossier back for changes. The
+     * reviser refuses past a limit: past three rounds the research is not the
+     * problem, and another Opus pass will not fix it.
+     */
+    revisions: integer('revisions').notNull().default(0),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
@@ -322,6 +328,16 @@ export const chapters = pgTable(
     title: text('title').notNull(),
     contentMd: text('content_md').notNull().default(''),
     estRuntimeSec: integer('est_runtime_sec').notNull().default(0),
+    /**
+     * Gutter warnings from the self-check pass (spec section 7.2). Stored on
+     * the chapter rather than in their own table: a warning has no identity
+     * beyond the sentence it points at, and it is replaced wholesale every
+     * time the chapter is re-checked.
+     */
+    warnings: jsonb('warnings')
+      .notNull()
+      .default(sql`'[]'::jsonb`)
+      .$type<{ kind: string; sentence: string; message: string }[]>(),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
@@ -777,6 +793,11 @@ export type ProjectRow = typeof projects.$inferSelect
 export type NewProject = typeof projects.$inferInsert
 export type ClaimRow = typeof claims.$inferSelect
 export type ChapterRow = typeof chapters.$inferSelect
+export type ScriptRow = typeof scripts.$inferSelect
+export type ScriptEditRow = typeof scriptEdits.$inferSelect
+export type ClaimRefRow = typeof claimRefs.$inferSelect
+export type ScriptStatus = (typeof scriptStatusEnum.enumValues)[number]
+export type EditType = (typeof editTypeEnum.enumValues)[number]
 export type VoiceTakeRow = typeof voiceTakes.$inferSelect
 export type ShotSlotRow = typeof shotSlots.$inferSelect
 export type AssetRow = typeof assets.$inferSelect
@@ -790,3 +811,12 @@ export type PushSubscriptionRow = typeof pushSubscriptions.$inferSelect
 export type ProjectStage = (typeof projectStageEnum.enumValues)[number]
 export type StageStatus = (typeof stageStatusEnum.enumValues)[number]
 export type RunStatus = (typeof runStatusEnum.enumValues)[number]
+export type CaseCategory = (typeof caseCategoryEnum.enumValues)[number]
+export type CaseStatus = (typeof caseStatusEnum.enumValues)[number]
+export type ClaimConfidence = (typeof claimConfidenceEnum.enumValues)[number]
+export type ClaimSourceType = (typeof sourceTypeEnum.enumValues)[number]
+
+export const CASE_CATEGORIES = caseCategoryEnum.enumValues
+export const CASE_STATUSES = caseStatusEnum.enumValues
+export const CLAIM_CONFIDENCES = claimConfidenceEnum.enumValues
+export const CLAIM_SOURCE_TYPES = sourceTypeEnum.enumValues

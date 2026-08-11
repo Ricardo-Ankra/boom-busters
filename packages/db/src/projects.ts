@@ -1,7 +1,7 @@
 import { desc, eq } from 'drizzle-orm'
 import type { Database } from './client'
 import { cases, projects } from './schema'
-import type { ProjectStage, StageStatus } from './schema'
+import type { ProjectRow, ProjectStage, StageStatus } from './schema'
 
 /**
  * Project queries for the pipeline screens (build spec section 11.3).
@@ -110,4 +110,36 @@ export function nextStage(stage: ProjectStage): ProjectStage | null {
   const index = PIPELINE_STAGES.indexOf(stage)
   if (index < 0 || index === PIPELINE_STAGES.length - 1) return null
   return PIPELINE_STAGES[index + 1] ?? null
+}
+
+/**
+ * Start a project from a case.
+ *
+ * The project begins at `dossier`/`queued`, which is the state the pipeline
+ * rail renders as "waiting to start" and the state `isMoving()` polls on — so
+ * the screen updates itself the moment the runner picks the work up, without
+ * the human refreshing.
+ *
+ * `targetRuntimeMin` is a project-level decision rather than a case-level one:
+ * the same case can be a 12-minute telling or a 25-minute one, and the script
+ * runner's outline is built against it.
+ */
+export async function createProjectFromCase(
+  db: Database,
+  input: { caseId: string; title: string; targetRuntimeMin?: number },
+): Promise<ProjectRow> {
+  const [row] = await db
+    .insert(projects)
+    .values({
+      caseId: input.caseId,
+      title: input.title,
+      stage: 'dossier',
+      stageStatus: 'queued',
+      ...(input.targetRuntimeMin === undefined
+        ? {}
+        : { targetRuntimeMin: input.targetRuntimeMin }),
+    })
+    .returning()
+
+  return row!
 }

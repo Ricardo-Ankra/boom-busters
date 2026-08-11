@@ -1,0 +1,1 @@
+ALTER TABLE "chapters" ADD COLUMN "warnings" jsonb DEFAULT '[]'::jsonb NOT NULL;

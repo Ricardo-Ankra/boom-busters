@@ -1,5 +1,5 @@
-import { DEFAULT_SETTINGS, SettingsSchema } from '@boom-busters/schemas'
-import type { Settings, SettingsPatch } from '@boom-busters/schemas'
+import { DEFAULT_SETTINGS, LLM_TASKS, SettingsSchema, canonicalModelId } from '@boom-busters/schemas'
+import type { ModelRouting, Settings, SettingsPatch } from '@boom-busters/schemas'
 
 /**
  * Apply a patch to the settings row.
@@ -42,16 +42,37 @@ export function mergeSettings(current: Settings, patch: SettingsPatch): Settings
 }
 
 /**
+ * Rewrite the short model names M1 and M2 stored (`opus`, `sonnet`, `haiku`)
+ * into the wire ids the M3 adapters answer to.
+ *
+ * `SettingsSchema` accepts any non-empty string as a model, so a stale name
+ * parses cleanly and only fails later, at the router's pre-flight, as "the
+ * provider does not offer this model" — halfway into a run and nowhere near
+ * the cause. Fixing it on read means the upgrade happens once, silently, at
+ * the boundary where the old value enters the app.
+ */
+function canonicaliseRouting(routing: ModelRouting): ModelRouting {
+  const migrated = { ...routing }
+  for (const task of LLM_TASKS) {
+    const route = migrated[task]
+    migrated[task] = { ...route, model: canonicalModelId(route.provider, route.model) }
+  }
+  return migrated
+}
+
+/**
  * Bring a stored row forward to the current schema. A settings row written by
  * an older deploy may be missing a section added since; filling from defaults
  * beats refusing to boot.
  */
 export function normaliseSettings(stored: unknown): Settings {
   const parsed = SettingsSchema.safeParse(stored)
-  if (parsed.success) return parsed.data
+  if (parsed.success) {
+    return { ...parsed.data, modelRouting: canonicaliseRouting(parsed.data.modelRouting) }
+  }
 
   const partial = (stored ?? {}) as Partial<Settings>
-  return SettingsSchema.parse({
+  const merged = SettingsSchema.parse({
     ...DEFAULT_SETTINGS,
     ...partial,
     modelRouting: { ...DEFAULT_SETTINGS.modelRouting, ...partial.modelRouting },
@@ -73,4 +94,6 @@ export function normaliseSettings(stored: unknown): Settings {
     brandKit: { ...DEFAULT_SETTINGS.brandKit, ...partial.brandKit },
     features: { ...DEFAULT_SETTINGS.features, ...partial.features },
   })
+
+  return { ...merged, modelRouting: canonicaliseRouting(merged.modelRouting) }
 }

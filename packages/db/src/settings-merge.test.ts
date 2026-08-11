@@ -87,6 +87,38 @@ describe('normaliseSettings', () => {
     expect(normaliseSettings(null)).toEqual(DEFAULT_SETTINGS)
   })
 
+  it('upgrades the short model names M1 and M2 wrote', () => {
+    // The row in the live database still says `opus`. Left alone it parses
+    // fine and then fails at the router's pre-flight, mid-run, as "anthropic
+    // does not offer opus" — a long way from the cause.
+    const stored = structuredClone(DEFAULT_SETTINGS)
+    stored.modelRouting.research = { provider: 'anthropic', model: 'opus' }
+    stored.modelRouting.scripting = { provider: 'anthropic', model: 'sonnet' }
+
+    const normalised = normaliseSettings(stored)
+
+    expect(normalised.modelRouting.research.model).toBe('claude-opus-5')
+    expect(normalised.modelRouting.scripting.model).toBe('claude-sonnet-5')
+  })
+
+  it('upgrades model names even in a row that is otherwise incomplete', () => {
+    const stored = structuredClone(DEFAULT_SETTINGS) as Record<string, unknown>
+    delete stored['features']
+    ;(stored['modelRouting'] as Record<string, unknown>)['research'] = {
+      provider: 'anthropic',
+      model: 'opus',
+    }
+
+    expect(normaliseSettings(stored).modelRouting.research.model).toBe('claude-opus-5')
+  })
+
+  it('leaves a model it does not recognise for pre-flight to reject', () => {
+    const stored = structuredClone(DEFAULT_SETTINGS)
+    stored.modelRouting.research = { provider: 'anthropic', model: 'claude-something-new' }
+
+    expect(normaliseSettings(stored).modelRouting.research.model).toBe('claude-something-new')
+  })
+
   it('still throws when a stored value is corrupt beyond repair', () => {
     const stored = structuredClone(DEFAULT_SETTINGS)
     stored.brandKit.colors.accent = 'not-a-colour'

@@ -7,7 +7,7 @@ import {
   SettingsSchema,
   effectiveBudgetUsd,
   firstRunBlockers,
-  isKnownModel,
+  canonicalModelId,
   monthKey,
   resolveBrandKit,
 } from './settings'
@@ -106,14 +106,26 @@ describe('resolveBrandKit', () => {
   })
 })
 
-describe('isKnownModel', () => {
-  it('recognises the spec defaults', () => {
-    expect(isKnownModel('anthropic', 'opus')).toBe(true)
-    expect(isKnownModel('anthropic', 'haiku')).toBe(true)
+describe('canonicalModelId', () => {
+  it('brings the short names M1 and M2 stored up to the adapters wire ids', () => {
+    expect(canonicalModelId('anthropic', 'opus')).toBe('claude-opus-5')
+    expect(canonicalModelId('anthropic', 'sonnet')).toBe('claude-sonnet-5')
+    expect(canonicalModelId('anthropic', 'haiku')).toBe('claude-haiku-4-5-20251001')
   })
 
-  it('reports an unlisted model without rejecting it', () => {
-    expect(isKnownModel('anthropic', 'some-future-model')).toBe(false)
+  it('leaves a current id alone', () => {
+    expect(canonicalModelId('anthropic', 'claude-opus-5')).toBe('claude-opus-5')
+    expect(canonicalModelId('google', 'gemini-3-pro')).toBe('gemini-3-pro')
+  })
+
+  it('leaves an unknown id alone rather than guessing', () => {
+    // The router's pre-flight is what rejects it, with a message naming the
+    // task and pointing at Settings. Silently substituting a model here would
+    // spend money on something the human did not choose.
+    expect(canonicalModelId('anthropic', 'some-future-model')).toBe('some-future-model')
+  })
+
+  it('still lets an unlisted model be stored', () => {
     expect(
       SettingsSchema.safeParse({
         ...DEFAULT_SETTINGS,
@@ -123,6 +135,12 @@ describe('isKnownModel', () => {
         },
       }).success,
     ).toBe(true)
+  })
+
+  it('ships defaults that are current ids, not legacy ones', () => {
+    for (const route of Object.values(DEFAULT_SETTINGS.modelRouting)) {
+      expect(canonicalModelId(route.provider, route.model)).toBe(route.model)
+    }
   })
 })
 

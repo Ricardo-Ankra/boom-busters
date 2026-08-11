@@ -1,7 +1,6 @@
 'use client'
 
 import {
-  KNOWN_MODELS,
   LLM_PROVIDERS,
   LLM_TASKS,
   PROVIDERS,
@@ -11,6 +10,7 @@ import {
   type Settings,
   type SettingsPatch,
 } from '@boom-busters/schemas'
+import { LLM_MODELS, knownModel, topModel } from '@boom-busters/providers'
 import type { MaskedCredential } from '@boom-busters/db'
 import * as React from 'react'
 import { Button } from '@/components/ui/button'
@@ -136,7 +136,9 @@ function ModelsTab({ settings, saving, commit }: TabProps) {
                 disabled={saving}
                 onChange={(event) => {
                   const provider = event.target.value as LlmProvider
-                  setRoute(task, provider, KNOWN_MODELS[provider][0])
+                  // Switching provider keeps the tier, not the model id: the
+                  // old id means nothing to the new provider.
+                  setRoute(task, provider, topModel(provider).id)
                 }}
                 className="sm:w-40"
               >
@@ -154,14 +156,15 @@ function ModelsTab({ settings, saving, commit }: TabProps) {
                 onChange={(event) => setRoute(task, route.provider, event.target.value)}
                 className="sm:w-48"
               >
-                {(KNOWN_MODELS[route.provider] as readonly string[]).map((model) => (
-                  <option key={model} value={model}>
-                    {model}
+                {LLM_MODELS[route.provider].map((model) => (
+                  <option key={model.id} value={model.id}>
+                    {model.label}
                   </option>
                 ))}
-                {(KNOWN_MODELS[route.provider] as readonly string[]).includes(
-                  route.model,
-                ) ? null : (
+                {/* A model the adapters do not list is shown rather than
+                    silently swapped, because it is what the run will actually
+                    be refused on at pre-flight. */}
+                {knownModel(route.provider, route.model) ? null : (
                   <option value={route.model}>{route.model} (unlisted)</option>
                 )}
               </Select>
