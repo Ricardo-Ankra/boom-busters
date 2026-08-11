@@ -86,20 +86,47 @@ describe('parseClaims', () => {
     expect(parseClaims(JSON.stringify({ claims: [claim] }))).toHaveLength(1)
   })
 
-  it('refuses a sourced claim with no source URL', () => {
+  it('downgrades a "sourced" claim that carries no source', () => {
     // The single most important rule in the file: "sourced" without a source
-    // is the exact shape of an unchecked assertion reaching a script.
+    // is the exact shape of an unchecked assertion reaching a script. It is
+    // enforced by demotion rather than rejection, so one bad field cannot
+    // throw away — and re-charge — a whole research pass.
     const { sourceUrl, ...unsourced } = claim
     void sourceUrl
-    expect(() => parseClaims(JSON.stringify({ claims: [unsourced] }))).toThrow(ValidationError)
+
+    const [parsed] = parseClaims(JSON.stringify({ claims: [unsourced] }))
+
+    expect(parsed?.confidence).toBe('unverified')
+    expect(parsed?.adjudicated).toBe(false)
   })
 
-  it('refuses an adjudicated claim with no source URL', () => {
-    const { sourceUrl, ...rest } = claim
-    void sourceUrl
-    expect(() =>
-      parseClaims(JSON.stringify({ claims: [{ ...rest, confidence: 'unverified' }] })),
-    ).toThrow(/adjudicated claim must cite/)
+  it('downgrades a claim whose source is a citation rather than a URL', () => {
+    // What a model actually returns when asked for a sourceUrl it does not
+    // have: "Munich court judgment, 2021", "FT, June 2020", "N/A".
+    const [parsed] = parseClaims(
+      JSON.stringify({ claims: [{ ...claim, sourceUrl: 'Munich court judgment, 2021' }] }),
+    )
+
+    expect(parsed?.sourceUrl).toBeUndefined()
+    expect(parsed?.confidence).toBe('unverified')
+  })
+
+  it('refuses a source that is not a web address at all', () => {
+    // Rendered as a link on the review screen, so a javascript: "source" is
+    // not merely useless.
+    const [parsed] = parseClaims(
+      JSON.stringify({ claims: [{ ...claim, sourceUrl: 'javascript:alert(1)' }] }),
+    )
+
+    expect(parsed?.sourceUrl).toBeUndefined()
+  })
+
+  it('keeps a claim whose source really is a URL', () => {
+    const [parsed] = parseClaims(JSON.stringify({ claims: [claim] }))
+
+    expect(parsed?.sourceUrl).toBe('https://example.com/filing')
+    expect(parsed?.confidence).toBe('sourced')
+    expect(parsed?.adjudicated).toBe(true)
   })
 
   it('allows an unverified claim with no source', () => {
@@ -147,6 +174,26 @@ describe('parseBrief and parseTimeline', () => {
 
   it('rejects an empty timeline', () => {
     expect(() => parseTimeline('{"events":[]}')).toThrow(ValidationError)
+  })
+
+  it('keeps a timeline whose sources are citations rather than URLs', () => {
+    // This exact payload failed a live run and was retried four times at full
+    // price. A timeline entry is context, not an assertion the script narrates,
+    // so an unsourced one is simply unsourced.
+    const events = parseTimeline(
+      JSON.stringify({
+        events: [
+          { when: '2001', what: 'Bankruptcy filed.', sourceUrl: 'Court records, Houston' },
+          { when: '2002', what: 'Executives charged.', sourceUrl: '' },
+          { when: '2006', what: 'Convictions returned.', sourceUrl: 'https://example.com/ruling' },
+        ],
+      }),
+    )
+
+    expect(events).toHaveLength(3)
+    expect(events[0]?.sourceUrl).toBeUndefined()
+    expect(events[1]?.sourceUrl).toBeUndefined()
+    expect(events[2]?.sourceUrl).toBe('https://example.com/ruling')
   })
 
   it('accepts an imprecise date, because the record often is', () => {

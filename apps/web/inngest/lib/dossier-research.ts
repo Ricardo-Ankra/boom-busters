@@ -12,7 +12,12 @@ import {
   mockProvidersEnabled,
 } from '@boom-busters/providers'
 import type { CaseBrief, DraftClaim, TimelineEvent } from '@boom-busters/schemas'
-import { BudgetExceededError, UNVERIFIED_CLAIM_WARNING_RATIO } from '@boom-busters/schemas'
+import {
+  BudgetExceededError,
+  UNVERIFIED_CLAIM_WARNING_RATIO,
+  isRetriable,
+} from '@boom-busters/schemas'
+import { NonRetriableError } from 'inngest'
 import type { GetStepTools } from 'inngest'
 import { callLlm } from '@/lib/llm'
 import type { inngest } from '../client'
@@ -51,12 +56,25 @@ type Guarded<T> = { ok: true; value: T } | { ok: false; gate: Record<string, unk
  * `BudgetExceededError` is caught here rather than thrown, because throwing it
  * into Inngest's retry machinery would retry a call the guard has already
  * refused, four more times, to be refused four more times.
+ *
+ * Everything else the taxonomy calls non-retriable is re-thrown as
+ * `NonRetriableError`, which is spec section 7 and was missing. Without it
+ * Inngest applied the same four attempts to a `ValidationError`, and a research
+ * pass that came back in the wrong shape was paid for five times over before
+ * anyone saw it fail. Retrying is for a provider having a bad minute; it is
+ * not a way to argue with a schema.
  */
 async function guarded<T>(fn: () => Promise<T>): Promise<Guarded<T>> {
   try {
     return { ok: true, value: await fn() }
   } catch (error) {
     if (error instanceof BudgetExceededError) return { ok: false, gate: budgetGateData(error) }
+    if (!isRetriable(error)) {
+      throw new NonRetriableError(
+        error instanceof Error ? error.message : String(error),
+        error instanceof Error ? { cause: error } : {},
+      )
+    }
     throw error
   }
 }

@@ -25,10 +25,36 @@ export const CLAIM_CONFIDENCES = ['sourced', 'single_source', 'unverified'] as c
 export const ClaimConfidenceSchema = z.enum(CLAIM_CONFIDENCES)
 export type ClaimConfidenceName = z.infer<typeof ClaimConfidenceSchema>
 
+/**
+ * A source the model offered, kept only if it is genuinely a web address.
+ *
+ * Asked for a `sourceUrl`, a model will often give a citation instead — "Munich
+ * court judgment, 2021", "FT, June 2020", "N/A". Rejecting the whole research
+ * pass over that was wrong twice over: it threw away a good timeline because
+ * one field was prose, and it did so *after* paying for the completion.
+ *
+ * So a value that does not parse as an http(s) URL is dropped rather than
+ * fatal. What is not softened is the consequence — see `DraftClaimSchema`,
+ * where losing the URL costs the claim its confidence.
+ */
+function usableSourceUrl(value: unknown): string | undefined {
+  if (typeof value !== 'string' || value.trim() === '') return undefined
+  try {
+    const parsed = new URL(value.trim())
+    // Only http(s): a `file:` or `javascript:` "source" is not one, and this
+    // string is rendered as a link on the review screen.
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:' ? value.trim() : undefined
+  } catch {
+    return undefined
+  }
+}
+
+const SourceUrlSchema = z.preprocess(usableSourceUrl, z.string().optional())
+
 export const DraftClaimSchema = z
   .object({
     text: z.string().trim().min(10).max(1000),
-    sourceUrl: z.string().url().optional(),
+    sourceUrl: SourceUrlSchema,
     sourceType: ClaimSourceTypeSchema,
     confidence: ClaimConfidenceSchema,
     /**
@@ -37,22 +63,35 @@ export const DraftClaimSchema = z
      */
     adjudicated: z.boolean(),
   })
-  .refine((claim) => claim.confidence === 'unverified' || claim.sourceUrl !== undefined, {
-    message: 'a claim can only be sourced or single_source if it carries a source URL',
-    path: ['sourceUrl'],
-  })
-  .refine((claim) => !claim.adjudicated || claim.sourceUrl !== undefined, {
-    message: 'an adjudicated claim must cite the ruling',
-    path: ['sourceUrl'],
-  })
+  /**
+   * A claim with no usable source is unverified, whatever the model called it,
+   * and it is not adjudicated either.
+   *
+   * This replaces two refinements that rejected the batch instead. Rejecting
+   * was the stricter-looking option and the weaker one: it failed the whole
+   * research pass, and a retry would produce the same shape again. Downgrading
+   * keeps the claim, states the truth about it, and hands it to the reviewer as
+   * an amber row that blocks approval until they source or quarantine it —
+   * which is the mechanism that already exists for exactly this.
+   */
+  .transform((claim) =>
+    claim.sourceUrl === undefined
+      ? { ...claim, confidence: 'unverified' as const, adjudicated: false }
+      : claim,
+  )
 export type DraftClaim = z.infer<typeof DraftClaimSchema>
 
-/** One dated event on the case timeline. */
+/**
+ * One dated event on the case timeline.
+ *
+ * Unlike a claim, a timeline entry is context rather than an assertion the
+ * script will narrate, so an unsourced one is simply an unsourced one.
+ */
 export const TimelineEventSchema = z.object({
   /** Free text rather than a date: "March 2001", "late 2019" are all real. */
   when: z.string().trim().min(3).max(100),
   what: z.string().trim().min(10).max(1000),
-  sourceUrl: z.string().url().optional(),
+  sourceUrl: SourceUrlSchema,
 })
 export type TimelineEvent = z.infer<typeof TimelineEventSchema>
 
