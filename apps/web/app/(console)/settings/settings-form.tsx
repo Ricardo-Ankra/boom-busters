@@ -19,7 +19,7 @@ import { Input, Label, NumberInput, Select } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useToast } from '@/components/ui/toast'
-import { saveProviderKey, saveSettings } from './actions'
+import { saveProviderKey, saveSettings, verifyProviderKey } from './actions'
 
 const TASK_LABELS: Record<LlmTask, string> = {
   research: 'Research (dossiers)',
@@ -35,9 +35,12 @@ const CREDENTIAL_PROVIDERS: Provider[] = [...PROVIDERS]
 export function SettingsForm({
   initialSettings,
   credentials,
+  mockProviders,
 }: {
   initialSettings: Settings
   credentials: MaskedCredential[]
+  /** Resolved on the server: `process.env` is not readable from the client. */
+  mockProviders: boolean
 }) {
   const [settings, setSettings] = React.useState(initialSettings)
   const [saving, setSaving] = React.useState(false)
@@ -94,7 +97,7 @@ export function SettingsForm({
       </TabsContent>
 
       <TabsContent value="connections">
-        <ConnectionsTab credentials={credentials} />
+        <ConnectionsTab credentials={credentials} mockProviders={mockProviders} />
       </TabsContent>
     </Tabs>
   )
@@ -372,16 +375,70 @@ function PublishingTab({ settings, saving, commit }: TabProps) {
 
 const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
 
-function ConnectionsTab({ credentials }: { credentials: MaskedCredential[] }) {
+function ConnectionsTab({
+  credentials,
+  mockProviders,
+}: {
+  credentials: MaskedCredential[]
+  mockProviders: boolean
+}) {
   const byProvider = new Map(credentials.map((credential) => [credential.provider, credential]))
 
   return (
-    <div className="grid gap-3 sm:grid-cols-2">
-      {CREDENTIAL_PROVIDERS.map((provider) => (
-        <ConnectionCard key={provider} provider={provider} credential={byProvider.get(provider)} />
-      ))}
+    <div className="flex flex-col gap-3">
+      {/* Which mode this deployment is in decides whether pressing anything
+          here spends money. It was previously invisible, and "no provider was
+          called" is not something to infer from an absent environment
+          variable. */}
+      <p
+        className={`rounded-[8px] border p-3 text-[13px] ${
+          mockProviders
+            ? 'border-[var(--color-border)] text-[var(--color-text-secondary)]'
+            : 'border-[var(--color-warning)]/50 text-[var(--color-warning)]'
+        }`}
+      >
+        {mockProviders ? (
+          <>
+            <span className="font-medium">Mock providers are on.</span> Nothing here reaches a
+            vendor and nothing costs money. Pipeline runs return deterministic placeholder text.
+          </>
+        ) : (
+          <>
+            <span className="font-medium">Live providers.</span> Every pipeline run and every Verify
+            press calls the real API and is billed to you. The monthly caps on the Budgets tab are
+            what stands between a runaway run and your card.
+          </>
+        )}
+      </p>
+
+      <div className="grid gap-3 sm:grid-cols-2">
+        {CREDENTIAL_PROVIDERS.map((provider) => (
+          <ConnectionCard
+            key={provider}
+            provider={provider}
+            credential={byProvider.get(provider)}
+          />
+        ))}
+      </div>
     </div>
   )
+}
+
+/**
+ * "unchecked" is not a warning and not a success — it means nobody has asked
+ * the vendor yet. Saying so in words beats a green chip that implies the key
+ * was tested when it was only stored.
+ */
+const STATUS_LABELS: Record<string, string> = {
+  ok: 'verified',
+  invalid: 'rejected',
+  unchecked: 'stored, not verified',
+}
+
+function statusColour(status: string | undefined): string {
+  if (status === 'ok') return 'text-[var(--color-success)]'
+  if (status === 'invalid') return 'text-[var(--color-danger)]'
+  return 'text-[var(--color-text-muted)]'
 }
 
 function ConnectionCard({
@@ -393,7 +450,12 @@ function ConnectionCard({
 }) {
   const [value, setValue] = React.useState('')
   const [saving, setSaving] = React.useState(false)
+  const [verifying, setVerifying] = React.useState(false)
   const { toast } = useToast()
+
+  // Only the three LLM providers have adapters, so only they can be verified.
+  // The others show no button rather than one that always fails.
+  const verifiable = provider === 'anthropic' || provider === 'openai' || provider === 'google'
 
   const submit = async () => {
     setSaving(true)
@@ -408,19 +470,29 @@ function ConnectionCard({
     }
   }
 
+  const verify = async () => {
+    setVerifying(true)
+    const result = await verifyProviderKey(provider)
+    setVerifying(false)
+
+    if (result.ok) {
+      toast({
+        title: result.mocked
+          ? `${provider} answered — but mock providers are on, so nothing was checked`
+          : `${provider} key works`,
+      })
+    } else {
+      toast({ title: `${provider} key not verified`, description: result.error, variant: 'error' })
+    }
+  }
+
   return (
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center justify-between gap-2">
           {provider}
-          <span
-            className={
-              credential
-                ? 'text-[12px] font-normal text-[var(--color-success)]'
-                : 'text-[12px] font-normal text-[var(--color-text-muted)]'
-            }
-          >
-            {credential ? credential.verifyStatus : 'not set'}
+          <span className={`text-[12px] font-normal ${statusColour(credential?.verifyStatus)}`}>
+            {credential ? STATUS_LABELS[credential.verifyStatus] : 'not set'}
           </span>
         </CardTitle>
         <CardDescription className="font-mono">
@@ -439,6 +511,11 @@ function ConnectionCard({
         <Button variant="outline" busy={saving} disabled={value.trim() === ''} onClick={submit}>
           Save
         </Button>
+        {verifiable && credential ? (
+          <Button variant="ghost" busy={verifying} onClick={verify}>
+            Verify
+          </Button>
+        ) : null}
       </CardContent>
     </Card>
   )

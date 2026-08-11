@@ -3,6 +3,8 @@
 import {
   editChapter,
   getChapter,
+  getLatestScript,
+  reorderChapters,
   projectIdForChapter,
   scriptableClaims,
   setClaimQuarantined,
@@ -12,7 +14,7 @@ import {
 import {
   buildRegenerateRequest,
   mockRegeneratedSection,
-  useMockProviders,
+  mockProvidersEnabled,
 } from '@boom-busters/providers'
 import {
   ClaimConfidenceSchema,
@@ -214,7 +216,7 @@ export async function regenerateSection(
   }))
 
   try {
-    const proposal = useMockProviders()
+    const proposal = mockProvidersEnabled()
       ? mockRegeneratedSection(selection, note)
       : (
           await callLlm(
@@ -273,4 +275,40 @@ export async function applyRegeneratedText(
 
   revalidatePath(`/projects/${projectId}`)
   return { ok: true }
+}
+
+/**
+ * Reorder a script's chapters (spec section 11.3, "drag-reorder").
+ *
+ * Reordering does not rewrite the prose. Chapters were drafted sequentially,
+ * each seamed onto the tail of the one before, so the caller is told which
+ * chapters now open in the wrong place rather than being left to discover it
+ * while reading.
+ */
+export async function reorderScriptChapters(
+  projectId: string,
+  scriptId: string,
+  orderedChapterIds: string[],
+): Promise<ActionResult & { reseamNeeded?: number[] }> {
+  await requireOwner()
+  const invalid = badIds(projectId, scriptId, ...orderedChapterIds)
+  if (invalid) return invalid
+
+  const script = await getLatestScript(db, projectId)
+  if (!script || script.script.id !== scriptId) {
+    return { ok: false, error: 'That script is not the current one for this project' }
+  }
+
+  const before = script.chapters.map((chapter) => chapter.id)
+  const result = await reorderChapters(db, scriptId, orderedChapterIds)
+  if (!result.ok) return { ok: false, error: result.error }
+
+  // Which positions changed hands — those are the chapters whose opening
+  // sentences now follow a different chapter than they were written to follow.
+  const reseamNeeded = orderedChapterIds
+    .map((id, position) => (before[position] === id ? -1 : position))
+    .filter((position) => position >= 0)
+
+  revalidatePath(`/projects/${projectId}`)
+  return { ok: true, reseamNeeded }
 }

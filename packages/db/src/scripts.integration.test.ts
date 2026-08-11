@@ -11,9 +11,11 @@ import {
   listClaimRefs,
   listScriptEdits,
   projectIdForChapter,
+  reorderChapters,
   saveChapter,
   saveClaimRefs,
   setChapterWarnings,
+  setShortsCandidates,
 } from './scripts'
 import { requireTestDatabase } from './test-database'
 
@@ -259,5 +261,123 @@ suite('scripts and the edit trail', () => {
     })
 
     expect(await projectIdForChapter(db, row.id)).toBe(projectId)
+  })
+  describe('reorderChapters', () => {
+    let ids: string[] = []
+
+    beforeEach(async () => {
+      ids = []
+      for (const [index, title] of ['One', 'Two', 'Three'].entries()) {
+        const row = await saveChapter(db, {
+          scriptId,
+          index,
+          title,
+          contentMd: title,
+          estRuntimeSec: 1,
+        })
+        ids.push(row.id)
+      }
+    })
+
+    const titles = async () =>
+      (await getLatestScript(db, projectId))!.chapters.map((chapter) => chapter.title)
+
+    it('swaps two chapters without tripping the unique index', async () => {
+      // Writing final indexes directly collides: the first update lands on an
+      // index the second still holds. The two-phase parking is what avoids it.
+      const result = await reorderChapters(db, scriptId, [ids[1]!, ids[0]!, ids[2]!])
+
+      expect(result.ok).toBe(true)
+      expect(await titles()).toEqual(['Two', 'One', 'Three'])
+    })
+
+    it('moves a chapter from the end to the front', async () => {
+      await reorderChapters(db, scriptId, [ids[2]!, ids[0]!, ids[1]!])
+      expect(await titles()).toEqual(['Three', 'One', 'Two'])
+    })
+
+    it('reverses the whole script', async () => {
+      await reorderChapters(db, scriptId, [ids[2]!, ids[1]!, ids[0]!])
+      expect(await titles()).toEqual(['Three', 'Two', 'One'])
+    })
+
+    it('leaves indexes contiguous from zero', async () => {
+      await reorderChapters(db, scriptId, [ids[2]!, ids[0]!, ids[1]!])
+
+      const indexes = (await getLatestScript(db, projectId))!.chapters.map((c) => c.index)
+      expect(indexes).toEqual([0, 1, 2])
+    })
+
+    it('refuses an order that drops a chapter', async () => {
+      const result = await reorderChapters(db, scriptId, [ids[0]!, ids[1]!])
+
+      expect(result).toEqual({ ok: false, error: expect.stringContaining('Expected 3 chapters') })
+      expect(await titles()).toEqual(['One', 'Two', 'Three'])
+    })
+
+    it('refuses an order listing the same chapter twice', async () => {
+      const result = await reorderChapters(db, scriptId, [ids[0]!, ids[0]!, ids[1]!])
+
+      expect(result.ok).toBe(false)
+      expect(await titles()).toEqual(['One', 'Two', 'Three'])
+    })
+
+    it('refuses a chapter from another script', async () => {
+      const other = await createScriptVersion(db, projectId)
+      const stranger = await saveChapter(db, {
+        scriptId: other.id,
+        index: 0,
+        title: 'Stranger',
+        contentMd: 'x',
+        estRuntimeSec: 1,
+      })
+
+      const result = await reorderChapters(db, scriptId, [ids[0]!, ids[1]!, stranger.id])
+      expect(result.ok).toBe(false)
+    })
+
+    it('does not disturb claim refs — they key on chapterId, not position', async () => {
+      const dossier = await saveDossier(db, {
+        projectId,
+        contentMd: '#',
+        claims: [
+          {
+            text: 'A claim to pin.',
+            sourceUrl: 'https://example.com',
+            sourceType: 'court',
+            confidence: 'sourced',
+          },
+        ],
+      })
+      await saveClaimRefs(db, {
+        chapterId: ids[0]!,
+        projectId,
+        refs: [{ claimId: dossier.claims[0]!.id, sentence: 'One' }],
+      })
+
+      await reorderChapters(db, scriptId, [ids[2]!, ids[1]!, ids[0]!])
+
+      expect(await listClaimRefs(db, ids[0]!)).toHaveLength(1)
+    })
+  })
+
+  it('stores Shorts candidates on the script', async () => {
+    // They used to be generated, counted at the gate, and thrown away.
+    await setShortsCandidates(db, scriptId, [
+      {
+        chapterIndex: 0,
+        startSentence: 'A.',
+        endSentence: 'B.',
+        hookRationale: 'It is surprising.',
+      },
+    ])
+
+    const script = await getLatestScript(db, projectId)
+    expect(script?.script.shortsCandidates).toHaveLength(1)
+    expect(script?.script.shortsCandidates[0]?.hookRationale).toBe('It is surprising.')
+  })
+
+  it('defaults Shorts candidates to an empty list, never null', async () => {
+    expect((await getLatestScript(db, projectId))?.script.shortsCandidates).toEqual([])
   })
 })

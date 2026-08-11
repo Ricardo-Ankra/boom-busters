@@ -9,7 +9,7 @@ import {
   parseBrief,
   parseClaims,
   parseTimeline,
-  useMockProviders,
+  mockProvidersEnabled,
 } from '@boom-busters/providers'
 import type { CaseBrief, DraftClaim, TimelineEvent } from '@boom-busters/schemas'
 import { BudgetExceededError, UNVERIFIED_CLAIM_WARNING_RATIO } from '@boom-busters/schemas'
@@ -79,7 +79,7 @@ export async function researchDossier(
   },
 ): Promise<ResearchResult> {
   const { projectId, caseContext, round, note } = input
-  const mocked = useMockProviders()
+  const mocked = mockProvidersEnabled()
 
   const brief = await step.run(`research-brief-${round}`, async (): Promise<Guarded<CaseBrief>> => {
     if (mocked) return { ok: true, value: mockBrief(caseContext) }

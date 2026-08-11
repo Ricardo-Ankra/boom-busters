@@ -161,6 +161,12 @@ export function placeWarnings(
  * Insert a hedge into a sentence that states an unadjudicated claim as fact
  * (spec section 11.3: "insert 'alleged'").
  *
+ * No longer wired to a button: the one-click fix now routes through the
+ * regenerate flow, so the model's wording arrives as a proposal the human
+ * approves rather than an edit that lands unseen. This stays because it is the
+ * only hedge available when no provider can be reached, and because it is the
+ * cheap check `containsHedge` is built from.
+ *
  * It goes after the first verb-ish position we can find cheaply — in practice,
  * after the subject's first comma or before the main clause — and falls back to
  * prefixing "Reportedly, ". The fallback is deliberate: a hedge in a slightly

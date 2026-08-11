@@ -28,14 +28,21 @@ export function mockAdapters(): Record<LlmProvider, LLMProvider> {
   }
 }
 
-export function useMockProviders(env: Record<string, string | undefined> = process.env): boolean {
+/**
+ * Named `mockProvidersEnabled`, not `useMockProviders`: in a React codebase a
+ * `use` prefix means a hook, and this is a plain environment read called from
+ * server components and Inngest steps where hook rules do not apply.
+ */
+export function mockProvidersEnabled(
+  env: Record<string, string | undefined> = process.env,
+): boolean {
   return env['MOCK_PROVIDERS'] === '1'
 }
 
 export function llmAdapters(
   env: Record<string, string | undefined> = process.env,
 ): Record<LlmProvider, LLMProvider> {
-  return useMockProviders(env) ? mockAdapters() : LIVE_ADAPTERS
+  return mockProvidersEnabled(env) ? mockAdapters() : LIVE_ADAPTERS
 }
 
 /**

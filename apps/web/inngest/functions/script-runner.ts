@@ -7,6 +7,7 @@ import {
   saveChapter,
   saveClaimRefs,
   scriptableClaims,
+  setShortsCandidates,
   setChapterWarnings,
   setProjectStage,
   setScriptStatus,
@@ -24,7 +25,7 @@ import {
   parseOutline,
   parseSelfCheck,
   parseShortsCandidates,
-  useMockProviders,
+  mockProvidersEnabled,
 } from '@boom-busters/providers'
 import type { ScriptClaim } from '@boom-busters/providers'
 import type { Outline, ShortsCandidate } from '@boom-busters/schemas'
@@ -123,7 +124,7 @@ export const scriptRunner = inngest.createFunction(
       }
     })
 
-    const mocked = useMockProviders()
+    const mocked = mockProvidersEnabled()
 
     // -----------------------------------------------------------------------
     // Outline
@@ -285,6 +286,7 @@ export const scriptRunner = inngest.createFunction(
     })
 
     const summary = await step.run('finish-draft', async () => {
+      await setShortsCandidates(db, setup.scriptId, shorts)
       await setScriptStatus(db, setup.scriptId, 'self_checked')
       const latest = await getLatestScript(db, projectId)
       const warnings = latest ? countWarnings(latest.chapters) : 0

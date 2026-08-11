@@ -16,7 +16,7 @@ import {
   buildSuggestCasesRequest,
   mockSuggestedCases,
   parseSuggestedCases,
-  useMockProviders,
+  mockProvidersEnabled,
 } from '@boom-busters/providers'
 import { CaseCategorySchema, UlidSchema, serialiseError } from '@boom-busters/schemas'
 import { revalidatePath } from 'next/cache'
@@ -160,7 +160,7 @@ export async function suggestCases(input: unknown): Promise<SuggestResult> {
   const parsed = SuggestInputSchema.safeParse(input)
   if (!parsed.success) return { ok: false, error: 'Ask for between 1 and 20 cases' }
 
-  const mocked = useMockProviders()
+  const mocked = mockProvidersEnabled()
 
   try {
     const suggestions = mocked

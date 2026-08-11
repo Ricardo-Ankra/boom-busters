@@ -1,6 +1,6 @@
 import { asc, desc, eq, inArray, sql } from 'drizzle-orm'
 import { sentenceHash } from '@boom-busters/schemas'
-import type { GutterWarning } from '@boom-busters/schemas'
+import type { GutterWarning, ShortsCandidate } from '@boom-busters/schemas'
 import type { Database } from './client'
 import { chapters, claimRefs, claims, dossiers, scriptEdits, scripts } from './schema'
 import type { ChapterRow, EditType, ScriptRow, ScriptStatus } from './schema'
@@ -274,4 +274,84 @@ export async function projectIdForChapter(
 
 export async function truncateScripts(db: Database): Promise<void> {
   await db.execute(sql`truncate table ${scripts} restart identity cascade`)
+}
+
+/**
+ * Store the Shorts segments the runner marked.
+ *
+ * Previously the runner generated these, the gate card counted them, and
+ * nothing kept them — so Script Studio was handed an empty list and said
+ * "None marked in this chapter" beside a gate claiming five. A paid model call
+ * was thrown away on every script run.
+ */
+export async function setShortsCandidates(
+  db: Database,
+  scriptId: string,
+  candidates: readonly ShortsCandidate[],
+): Promise<void> {
+  await db
+    .update(scripts)
+    .set({ shortsCandidates: [...candidates], updatedAt: new Date() })
+    .where(eq(scripts.id, scriptId))
+}
+
+/**
+ * Put a script's chapters in a new order.
+ *
+ * Two phases inside one transaction. `(scriptId, index)` is unique, so writing
+ * the final indexes directly collides the moment two chapters swap: the first
+ * update lands on an index the second still holds. Parking everything at
+ * negative indexes first vacates the range, and negatives can never collide
+ * with a real index because the column is only ever written as 0 or greater.
+ *
+ * `claim_refs` are untouched. They key on `chapterId` and a sentence hash,
+ * neither of which reordering changes — an earlier note in PROGRESS.md
+ * claimed otherwise and was wrong.
+ *
+ * What reordering *does* invalidate is the prose. Chapters were drafted
+ * sequentially, each seamed onto the tail of the one before, so a moved
+ * chapter opens by referring to something the audience has not met yet. That
+ * is the caller's problem to surface, not something to silently repair.
+ */
+export async function reorderChapters(
+  db: Database,
+  scriptId: string,
+  orderedChapterIds: readonly string[],
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const existing = await db
+    .select({ id: chapters.id })
+    .from(chapters)
+    .where(eq(chapters.scriptId, scriptId))
+
+  const known = new Set(existing.map((row) => row.id))
+
+  if (orderedChapterIds.length !== known.size) {
+    return {
+      ok: false,
+      error: `Expected ${known.size} chapters in the new order, got ${orderedChapterIds.length}.`,
+    }
+  }
+  if (new Set(orderedChapterIds).size !== orderedChapterIds.length) {
+    return { ok: false, error: 'The new order lists the same chapter twice.' }
+  }
+  if (orderedChapterIds.some((id) => !known.has(id))) {
+    return { ok: false, error: 'The new order names a chapter from another script.' }
+  }
+
+  await db.transaction(async (tx) => {
+    for (const [position, id] of orderedChapterIds.entries()) {
+      await tx
+        .update(chapters)
+        .set({ index: -(position + 1) })
+        .where(eq(chapters.id, id))
+    }
+    for (const [position, id] of orderedChapterIds.entries()) {
+      await tx
+        .update(chapters)
+        .set({ index: position, updatedAt: new Date() })
+        .where(eq(chapters.id, id))
+    }
+  })
+
+  return { ok: true }
 }

@@ -1,7 +1,14 @@
 'use server'
 
-import { setCredential, updateSettings } from '@boom-busters/db'
-import { ProviderSchema, SettingsPatchSchema, type Settings } from '@boom-busters/schemas'
+import { llmCredentials, recordVerifyResult, setCredential, updateSettings } from '@boom-busters/db'
+import { llmAdapters, mockProvidersEnabled } from '@boom-busters/providers'
+import {
+  LlmProviderSchema,
+  ProviderSchema,
+  SettingsPatchSchema,
+  isRetriable,
+  type Settings,
+} from '@boom-busters/schemas'
 import { revalidatePath } from 'next/cache'
 import { auth } from '@/auth'
 import { db } from '@/lib/db'
@@ -63,6 +70,75 @@ export async function saveProviderKey(provider: string, apiKey: string): Promise
 
   revalidatePath('/settings')
   return { ok: true }
+}
+
+export interface VerifyResult extends ActionResult {
+  /** True when the key was proven against the vendor, not merely stored. */
+  verified?: boolean
+  /** Set when the call was answered by a mock rather than the vendor. */
+  mocked?: boolean
+}
+
+/**
+ * The `Verify` button (build spec section 11.3).
+ *
+ * M1 deferred this to M3 because it needs the provider adapters; the adapters
+ * landed with M3 and this closes the loop. Until it existed every stored key
+ * read `unchecked` forever, which is indistinguishable from a key that does
+ * not work — and finding that out mid-pipeline is exactly what the router's
+ * pre-flight was built to avoid.
+ *
+ * It calls the adapter's cheapest model with a one-token request. That costs
+ * a fraction of a cent against a real key, which is the point: a health check
+ * nobody can afford to press is not a health check.
+ */
+export async function verifyProviderKey(provider: string): Promise<VerifyResult> {
+  await requireOwner()
+
+  const parsedProvider = LlmProviderSchema.safeParse(provider)
+  if (!parsedProvider.success) {
+    return {
+      ok: false,
+      error: `Verifying ${provider} is not supported yet — only the LLM providers have adapters.`,
+    }
+  }
+
+  const keys = await llmCredentials(db, env.SECRETS_ENCRYPTION_KEY)
+  const apiKey = keys[parsedProvider.data]
+  if (!apiKey) {
+    return { ok: false, error: 'No key is stored for that provider yet.' }
+  }
+
+  const mocked = mockProvidersEnabled()
+  const adapter = llmAdapters()[parsedProvider.data]
+
+  try {
+    await adapter.verifyKey(apiKey)
+    await recordVerifyResult(db, parsedProvider.data, 'ok')
+    revalidatePath('/settings')
+    return { ok: true, verified: true, mocked }
+  } catch (error) {
+    // A wrong key, a revoked key and a provider outage are different problems
+    // and the chip cannot tell them apart, so only a refusal is recorded as
+    // `invalid`. Marking a key invalid because Anthropic had a bad minute
+    // would send you rotating a key that was fine.
+    const transient = isRetriable(error)
+    if (!transient) await recordVerifyResult(db, parsedProvider.data, 'invalid')
+
+    revalidatePath('/settings')
+    return {
+      ok: false,
+      verified: false,
+      mocked,
+      error: transient
+        ? `${provider} could not be reached, so the key is still unchecked: ${
+            error instanceof Error ? error.message : String(error)
+          }`
+        : error instanceof Error
+          ? error.message
+          : 'The key was refused',
+    }
+  }
 }
 
 export type { Settings }

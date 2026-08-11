@@ -2,6 +2,7 @@ import { getSettings, listCredentials } from '@boom-busters/db'
 import { NotificationToggle } from '@/components/notification-toggle'
 import { db } from '@/lib/db'
 import { emailConfigured, vapidPublicKey } from '@/lib/notify'
+import { mockProvidersEnabled } from '@boom-busters/providers'
 import { SettingsForm } from './settings-form'
 
 export const dynamic = 'force-dynamic'
@@ -22,7 +23,11 @@ export default async function SettingsPage() {
 
       <NotificationToggle vapidPublicKey={vapidPublicKey()} emailConfigured={emailConfigured()} />
 
-      <SettingsForm initialSettings={settings} credentials={credentials} />
+      <SettingsForm
+        initialSettings={settings}
+        credentials={credentials}
+        mockProviders={mockProvidersEnabled()}
+      />
     </div>
   )
 }

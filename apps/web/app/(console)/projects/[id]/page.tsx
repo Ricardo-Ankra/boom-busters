@@ -96,7 +96,8 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
           projectId={project.id}
           chapters={script.chapters}
           targetRuntimeMin={project.targetRuntimeMin}
-          shorts={[]}
+          scriptId={script.script.id}
+          shorts={script.script.shortsCandidates}
           usedFallbackModel={usedFallbackModel}
         />
       ) : showDossier ? (

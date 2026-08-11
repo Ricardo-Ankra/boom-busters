@@ -311,6 +311,26 @@ export const scripts = pgTable(
       .references(() => projects.id, { onDelete: 'cascade' }),
     version: integer('version').notNull().default(1),
     status: scriptStatusEnum('status').notNull().default('draft'),
+    /**
+     * Shorts segments marked by the script runner (spec section 7.2).
+     *
+     * On the script rather than in the `shorts` table: a row there is a Short
+     * being produced, with a title, a description and a render. A candidate is
+     * a marking on the script made before anyone decided to build it, and
+     * creating five `shorts` rows per script would fill the Shorts screen with
+     * things nobody asked for.
+     */
+    shortsCandidates: jsonb('shorts_candidates')
+      .notNull()
+      .default(sql`'[]'::jsonb`)
+      .$type<
+        {
+          chapterIndex: number
+          startSentence: string
+          endSentence: string
+          hookRationale: string
+        }[]
+      >(),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },

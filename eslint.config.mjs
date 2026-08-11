@@ -43,9 +43,13 @@ export default tseslint.config(
     },
   },
 
-  // Scripts run from the CLI (migrate, seed) legitimately report to stdout.
+  // Scripts run from the CLI (migrate, seed) and from the deploy pipeline
+  // legitimately report to stdout, and run in Node rather than the browser.
   {
-    files: ['packages/db/src/scripts/**/*.ts', '**/*.config.{ts,mts,mjs,js}'],
+    files: ['packages/db/src/scripts/**/*.ts', 'scripts/**/*.mjs', '**/*.config.{ts,mts,mjs,js}'],
+    languageOptions: {
+      globals: { process: 'readonly', console: 'readonly' },
+    },
     rules: { 'no-console': 'off' },
   },
 

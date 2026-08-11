@@ -1,0 +1,1 @@
+ALTER TABLE "scripts" ADD COLUMN "shorts_candidates" jsonb DEFAULT '[]'::jsonb NOT NULL;

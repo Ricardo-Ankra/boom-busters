@@ -4,8 +4,28 @@ The canonical checklist for reviewing what M3 shipped. Run it against the
 Vercel deployment rather than `pnpm dev`: the runners have never been driven
 against Inngest Cloud, so this walkthrough is also the proof that they work.
 
-Everything below runs in **mock-provider mode** — no paid API calls, no spend.
-The dossiers and scripts you see will be placeholder text that says so.
+## Which mode you are in decides whether this costs money
+
+An earlier version of this guide said the walkthrough runs in mock mode and
+costs nothing. That is true locally and **false on the deployment**.
+
+`mockProvidersEnabled()` returns true only when `MOCK_PROVIDERS=1`. That is set
+in `.env.local` and in CI; it is deliberately *not* set in production, because
+production is where real videos get made. So on the deployment, with a real
+Anthropic key stored, **every pipeline run calls Opus and Sonnet and is billed
+to you**.
+
+Settings → Connections now states which mode the deployment is in, at the top
+of the tab. Check it before you start.
+
+What stands between a walkthrough and a surprise bill is the budget guard:
+Anthropic is capped at **$30/month**, and a run that would cross the cap parks
+on a budget gate instead of spending. A single dossier run is on the order of a
+dollar or two.
+
+If you would rather review without spending, run `pnpm dev` locally —
+`.env.local` has `MOCK_PROVIDERS=1`, and everything below behaves identically
+with placeholder text.
 
 ---
 
@@ -121,9 +141,10 @@ seeing it first? It should not be possible.
 
 | Gap | Severity | Recommended fix |
 |---|---|---|
-| **Shorts candidates are generated then discarded.** The gate counts them; Studio is handed an empty array and says "None marked". A model call is paid for and thrown away on every script run. | High | Persist to a `shortsCandidates` jsonb column on `scripts`, and pass it through. Not the `shorts` table — that represents a Short being produced (title, renderId), and writing rows at script time would fill the M7 Shorts screen with unbuilt items. ~1 hour. |
-| **Chapter outline does not drag-reorder** (spec §11.3). | Medium | Two-phase index swap in one transaction, because `(scriptId, index)` is unique. Reordering does **not** invalidate `claim_ref` rows — they key on `chapterId`. It does leave the prose seams reading wrongly, so flag moved chapters. ~half a day. |
-| **The one-click hedge prefixes** "Reportedly," rather than placing it naturally. | Low | Reuse the regenerate flow: the button pre-fills the instruction for that sentence and opens the diff. Keeps "never write without approval" and drops the awkward prefix. ~1 hour, best value of the three. |
+| ~~Shorts candidates generated then discarded~~ | **Fixed** | Persisted to `scripts.shorts_candidates` and shown in the Studio context panel. |
+| ~~Chapter outline does not drag-reorder~~ | **Fixed** | Drag, plus up/down buttons so it is not pointer-only. Reordering reports how many chapters now follow different text, because the prose seams are not rewritten. |
+| ~~One-click hedge prefixes "Reportedly,"~~ | **Fixed** | The button now runs a regenerate scoped to that sentence and opens the diff, so the wording is approved rather than applied unseen. |
+| ~~No Verify button in Connections~~ | **Fixed** | M1 deferred it to M3 and it was missed. A stored key now reads "stored, not verified" until you press Verify. A provider outage leaves it unchecked rather than marking a good key invalid. |
 | **The runners are not driven end to end in tests.** `@inngest/test` cannot get past a `waitForEvent`. | Medium | This walkthrough, run on the deployment, is the proof. |
 | **Model prices are provisional** (accepted 2026-08-11). | Low | After the first live run, compare ledger totals to the provider dashboards. If they diverge more than ~10%, update the adapter tables. One 15-minute check. |
 | **No notification delivery is configured.** | Deferred | Deliberate (2026-08-11). The plumbing is built; `notify()` logs and carries on, and nothing depends on it — the Needs-you queue reads from the database. When it is worth enabling, use **Resend email, not web push**: push needs a running desktop browser, or the site installed as a PWA on iOS. Revisit around M6, when renders make waits long enough to walk away from. |

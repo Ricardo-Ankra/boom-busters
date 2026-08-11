@@ -2,7 +2,7 @@
 
 import type { ChapterWithWarnings } from '@boom-busters/db'
 import type { ShortsCandidate } from '@boom-busters/schemas'
-import { AlertTriangle, Check, Sparkles, X } from 'lucide-react'
+import { AlertTriangle, Check, ChevronDown, ChevronUp, Sparkles, X } from 'lucide-react'
 import { Extension } from '@tiptap/core'
 import { Plugin, PluginKey } from '@tiptap/pm/state'
 import { Decoration, DecorationSet } from '@tiptap/pm/view'
@@ -17,13 +17,17 @@ import {
   applyHunks,
   diffChapters,
   formatDuration,
-  hedgeSentence,
   placeWarnings,
   replaceSentence,
   runtimeDelta,
 } from '@/lib/script-editing'
 import type { ScriptDiff } from '@/lib/script-editing'
-import { applyRegeneratedText, regenerateSection, saveChapterText } from './actions'
+import {
+  applyRegeneratedText,
+  regenerateSection,
+  reorderScriptChapters,
+  saveChapterText,
+} from './actions'
 
 /**
  * Script Studio (build spec section 11.3): outline · editor · context panel.
@@ -46,16 +50,28 @@ import { applyRegeneratedText, regenerateSection, saveChapterText } from './acti
 
 const AUTOSAVE_MS = 500
 
+/**
+ * What the one-click fix asks for. Written out rather than composed at the
+ * call site so the note recorded in `script_edits` reads the same every time
+ * and the trail can be scanned for it.
+ */
+const HEDGE_INSTRUCTION =
+  'This states as established fact something no court or regulator adjudicated. ' +
+  'Rewrite it with appropriate hedging (alleged, reportedly, according to), ' +
+  'changing as little else as possible.'
+
 type SaveState = 'idle' | 'dirty' | 'saving' | 'saved' | 'error'
 
 export function ScriptStudio({
   projectId,
+  scriptId,
   chapters,
   targetRuntimeMin,
   shorts,
   usedFallbackModel,
 }: {
   projectId: string
+  scriptId: string
   chapters: ChapterWithWarnings[]
   targetRuntimeMin: number
   shorts: ShortsCandidate[]
@@ -104,7 +120,13 @@ export function ScriptStudio({
       </header>
 
       <div className="grid gap-3 lg:grid-cols-[200px_1fr_280px]">
-        <ChapterList chapters={chapters} activeIndex={activeIndex} onSelect={setActiveIndex} />
+        <ChapterList
+          projectId={projectId}
+          scriptId={scriptId}
+          chapters={chapters}
+          activeIndex={activeIndex}
+          onSelect={setActiveIndex}
+        />
 
         {active ? (
           <ChapterEditor key={active.id} projectId={projectId} chapter={active} />
@@ -129,38 +151,137 @@ export function ScriptStudio({
 }
 
 function ChapterList({
+  projectId,
+  scriptId,
   chapters,
   activeIndex,
   onSelect,
 }: {
+  projectId: string
+  scriptId: string
   chapters: ChapterWithWarnings[]
   activeIndex: number
   onSelect: (index: number) => void
 }) {
+  const router = useRouter()
+  const { toast } = useToast()
+  const [order, setOrder] = React.useState(() => chapters.map((chapter) => chapter.id))
+  const [dragging, setDragging] = React.useState<string | null>(null)
+  const [saving, setSaving] = React.useState(false)
+
+  React.useEffect(() => {
+    setOrder(chapters.map((chapter) => chapter.id))
+  }, [chapters])
+
+  const byId = new Map(chapters.map((chapter) => [chapter.id, chapter]))
+  const ordered = order
+    .map((id) => byId.get(id))
+    .filter((chapter): chapter is ChapterWithWarnings => chapter !== undefined)
+
+  const commit = async (next: string[]) => {
+    setSaving(true)
+    try {
+      const result = await reorderScriptChapters(projectId, scriptId, next)
+      if (!result.ok) {
+        setOrder(chapters.map((chapter) => chapter.id))
+        toast({ title: 'Could not reorder', description: result.error, variant: 'error' })
+        return
+      }
+      toast({
+        title: 'Chapters reordered',
+        // Reordering does not rewrite the prose. Each chapter was drafted onto
+        // the tail of the one before it, so a moved chapter now opens by
+        // referring to something that has not happened yet.
+        ...(result.reseamNeeded?.length
+          ? {
+              description: `${result.reseamNeeded.length} chapter(s) now follow different text — reread their openings.`,
+            }
+          : {}),
+      })
+      router.refresh()
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const move = (from: number, to: number) => {
+    if (to < 0 || to >= order.length || from === to) return
+    const next = [...order]
+    const [moved] = next.splice(from, 1)
+    if (!moved) return
+    next.splice(to, 0, moved)
+    setOrder(next)
+    void commit(next)
+  }
+
   return (
     <Card>
       <CardHeader>
         <CardTitle>Outline</CardTitle>
       </CardHeader>
       <CardContent className="flex flex-col gap-1 p-2">
-        {chapters.map((chapter, index) => (
-          <button
+        {ordered.map((chapter, index) => (
+          <div
             key={chapter.id}
-            type="button"
-            onClick={() => onSelect(index)}
-            aria-current={index === activeIndex}
-            className={`flex min-h-[40px] flex-col items-start gap-0.5 rounded-[6px] p-2 text-left text-[13px] ${
+            draggable={!saving}
+            onDragStart={() => setDragging(chapter.id)}
+            onDragEnd={() => setDragging(null)}
+            onDragOver={(event) => event.preventDefault()}
+            onDrop={(event) => {
+              event.preventDefault()
+              if (!dragging) return
+              move(order.indexOf(dragging), index)
+              setDragging(null)
+            }}
+            className={`flex items-start gap-1 rounded-[6px] ${
+              dragging === chapter.id ? 'opacity-50' : ''
+            } ${
               index === activeIndex
-                ? 'bg-[var(--color-surface-raised)] text-[var(--color-text-primary)]'
-                : 'text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-raised)]'
+                ? 'bg-[var(--color-surface-raised)]'
+                : 'hover:bg-[var(--color-surface-raised)]'
             }`}
           >
-            <span className="font-medium">{chapter.title}</span>
-            <span className="text-[12px] text-[var(--color-text-muted)]">
-              {formatDuration(chapter.estRuntimeSec)}
-              {chapter.warnings.length > 0 ? ` · ${chapter.warnings.length} warnings` : ''}
+            <button
+              type="button"
+              onClick={() => onSelect(index)}
+              aria-current={index === activeIndex}
+              className={`flex min-h-[40px] flex-1 flex-col items-start gap-0.5 p-2 text-left text-[13px] ${
+                index === activeIndex
+                  ? 'text-[var(--color-text-primary)]'
+                  : 'text-[var(--color-text-secondary)]'
+              }`}
+            >
+              <span className="font-medium">{chapter.title}</span>
+              <span className="text-[12px] text-[var(--color-text-muted)]">
+                {formatDuration(chapter.estRuntimeSec)}
+                {chapter.warnings.length > 0 ? ` · ${chapter.warnings.length} warnings` : ''}
+              </span>
+            </button>
+
+            {/* Dragging is not an action everyone can perform, and spec 11.1
+                rules out anything reachable by pointer alone, so the same move
+                is available as two ordinary buttons. */}
+            <span className="flex flex-col p-1">
+              <button
+                type="button"
+                aria-label={`Move ${chapter.title} up`}
+                disabled={index === 0 || saving}
+                onClick={() => move(index, index - 1)}
+                className="px-1 text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] disabled:opacity-30"
+              >
+                <ChevronUp aria-hidden className="size-4" />
+              </button>
+              <button
+                type="button"
+                aria-label={`Move ${chapter.title} down`}
+                disabled={index === ordered.length - 1 || saving}
+                onClick={() => move(index, index + 1)}
+                className="px-1 text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] disabled:opacity-30"
+              >
+                <ChevronDown aria-hidden className="size-4" />
+              </button>
             </span>
-          </button>
+          </div>
         ))}
       </CardContent>
     </Card>
@@ -180,6 +301,7 @@ function ChapterEditor({
   const [state, setState] = React.useState<SaveState>('idle')
   const [selection, setSelection] = React.useState('')
   const [proposal, setProposal] = React.useState<{ diff: ScriptDiff; note: string } | null>(null)
+  const [hedging, setHedging] = React.useState<string | null>(null)
   // Autosave on a debounce. The timer is cleared on unmount and on every
   // keystroke, so switching chapters mid-edit does not fire a save against the
   // chapter you just left.
@@ -259,10 +381,44 @@ function ChapterEditor({
         {placed.length > 0 ? (
           <GutterWarnings
             warnings={placed}
-            onFix={(sentence) => {
-              const next = replaceSentence(text, sentence, hedgeSentence(sentence))
-              setText(next)
-              setState('dirty')
+            busy={hedging !== null}
+            hedgingSentence={hedging}
+            onFix={async (sentence) => {
+              /**
+               * The fix goes through the same regenerate path as everything
+               * else, so the model's wording arrives as a proposal the human
+               * accepts or rejects. It used to prefix "Reportedly," in place,
+               * which was safe but read badly, and — worse — was the one edit
+               * in this screen that changed the script without being shown
+               * first.
+               */
+              setHedging(sentence)
+              try {
+                const result = await regenerateSection(
+                  projectId,
+                  chapter.id,
+                  sentence,
+                  HEDGE_INSTRUCTION,
+                )
+                if (result.ok && result.proposal) {
+                  setSelection(sentence)
+                  setProposal({
+                    diff: diffChapters(
+                      text,
+                      replaceSentence(text, sentence, result.proposal.trim()),
+                    ),
+                    note: HEDGE_INSTRUCTION,
+                  })
+                } else {
+                  toast({
+                    title: 'Could not rewrite that sentence',
+                    description: result.error,
+                    variant: 'error',
+                  })
+                }
+              } finally {
+                setHedging(null)
+              }
             }}
           />
         ) : null}
@@ -438,9 +594,13 @@ function SavedState({ state }: { state: SaveState }) {
 
 function GutterWarnings({
   warnings,
+  busy,
+  hedgingSentence,
   onFix,
 }: {
   warnings: ReturnType<typeof placeWarnings>
+  busy: boolean
+  hedgingSentence: string | null
   onFix: (sentence: string) => void
 }) {
   return (
@@ -471,8 +631,13 @@ function GutterWarnings({
             </p>
           ) : warning.kind === 'missing-alleged' ? (
             <div>
-              <Button variant="outline" onClick={() => onFix(warning.sentence)}>
-                Insert “Reportedly”
+              <Button
+                variant="outline"
+                busy={hedgingSentence === warning.sentence}
+                disabled={busy}
+                onClick={() => onFix(warning.sentence)}
+              >
+                Rewrite with hedging…
               </Button>
             </div>
           ) : null}
