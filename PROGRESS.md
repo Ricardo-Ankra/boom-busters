@@ -161,11 +161,19 @@ proven on production infrastructure (2026-08-11).
 
 ### Known gaps
 
+- **Shorts candidates are generated and then discarded.** `script-runner`
+  marks them, the gate card counts them ("5 Shorts candidates"), and nothing
+  persists them — Script Studio is handed an empty array, so its panel says
+  "None marked in this chapter" beside a gate that just claimed five. A model
+  call is paid for on every script run and thrown away. This is the first
+  thing to fix in M4.
 - **The chapter outline does not drag-reorder.** Spec §11.3 asks for it;
-  selection and per-chapter runtime are built, reordering is not. Reordering
-  chapters after drafting also invalidates every `claim_ref` sentence hash in
-  the moved chapters, so it needs a decision about what happens to the
-  references before it is worth building.
+  selection and per-chapter runtime are built, reordering is not.
+  (An earlier note here claimed reordering would invalidate the `claim_ref`
+  sentence hashes. That is wrong: refs key on `chapterId`, which reordering
+  does not change. The real costs are smaller — the `(scriptId, index)` unique
+  index needs a two-phase swap, and reordering does not rewrite the prose
+  seams the sequential drafting created.)
 - **The one-click "insert 'alleged'" fix prefixes rather than placing the hedge
   mid-sentence.** An awkward hedge beats a fix that silently does nothing, but
   a human will often prefer to edit by hand.
