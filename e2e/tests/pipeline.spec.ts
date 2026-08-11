@@ -40,7 +40,9 @@ test.describe('projects', () => {
 
     await expect(page).toHaveURL(/\/projects\/[0-9A-Z]{26}/)
     await expect(page.getByRole('list', { name: 'Pipeline stages' })).toBeVisible()
-    await expect(page.getByText('Waiting for you. Approve or request changes below.')).toBeVisible()
+    // The fixture is parked at the dossier gate, so the dossier review screen
+    // is what the stage renders (M3). Before M3 this was a placeholder card.
+    await expect(page.getByRole('heading', { name: 'Dossier' })).toBeVisible()
   })
 })
 
@@ -51,8 +53,22 @@ test.describe('gate action bar', () => {
   })
 
   test('offers both gate actions as visible labelled buttons', async ({ page }) => {
-    await expect(page.getByRole('button', { name: 'Approve' })).toBeEnabled()
+    await expect(page.getByRole('button', { name: 'Approve' })).toBeVisible()
     await expect(page.getByRole('button', { name: 'Request changes' })).toBeVisible()
+  })
+
+  test('Approve is blocked while a claim is unsourced, and says why', async ({ page }) => {
+    // The fixture carries one unverified claim precisely so this path is
+    // exercised: an unsourced assertion must not reach a script.
+    await expect(page.getByRole('button', { name: 'Approve' })).toBeDisabled()
+    await expect(page.getByText(/unsourced claim\(s\) — verify or quarantine each one/)).toBeVisible()
+  })
+
+  test('quarantining the unsourced claim unblocks Approve', async ({ page }) => {
+    await page.getByRole('button', { name: 'Quarantine' }).first().click()
+    await expect(page.getByText('Quarantined — excluded from scripting').first()).toBeVisible()
+
+    await expect(page.getByRole('button', { name: 'Approve' })).toBeEnabled()
   })
 
   test('a change request asks what to change before it can be sent', async ({ page }) => {

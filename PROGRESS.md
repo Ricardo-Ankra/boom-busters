@@ -145,7 +145,30 @@ proven on production infrastructure (2026-08-11).
 > Script Studio (editor, warnings, diff regenerate, edit trail), model router
 > with fallback.
 
-**Status:** `[~]` in progress on `m3-writing-room` (started 2026-08-11)
+**Status:** `[x]` **done** — merged to `master` (2026-08-11)
+
+### Verified
+
+- **`pnpm test`** — 531 tests across 6 workspaces (schemas 97 · db 113 ·
+  providers 167 · cost 30 · ui-tokens 21 · web 103).
+- **`pnpm e2e`** — 42 Playwright tests, mock-provider mode, including the Case
+  Library triage flow and the dossier gate's approval blocker.
+- **`pnpm build`** — production bundle, TipTap included.
+- Not verified: the runners themselves end to end. `@inngest/test` cannot drive
+  a run past a `waitForEvent` (decision 20), so `dossier-runner`,
+  `dossier-reviser` and `script-runner` are proven the way M2's demo pipeline
+  was — by running against Inngest Cloud from the deployment.
+
+### Known gaps
+
+- **The chapter outline does not drag-reorder.** Spec §11.3 asks for it;
+  selection and per-chapter runtime are built, reordering is not. Reordering
+  chapters after drafting also invalidates every `claim_ref` sentence hash in
+  the moved chapters, so it needs a decision about what happens to the
+  references before it is worth building.
+- **The one-click "insert 'alleged'" fix prefixes rather than placing the hedge
+  mid-sentence.** An awkward hedge beats a fix that silently does nothing, but
+  a human will often prefer to edit by hand.
 
 **Spending:** every provider call is mocked by default (`MOCK_PROVIDERS=1`).
 Real API calls happen only when the human explicitly asks for a live run
@@ -154,36 +177,36 @@ without spending anything.
 
 ### Deliverables
 
-- [ ] **`packages/providers`** — the `LLMProvider` interface, three adapters
+- [x] **`packages/providers`** — the `LLMProvider` interface, three adapters
       (Anthropic, OpenAI, Google) normalising messages/batch/caching behind one
       `LLMTask` shape, each exposing its known-model list and price table, plus
       a deterministic mock adapter used by every test
-- [ ] **Model router** — resolves `task → {provider, model}` from settings at
+- [x] **Model router** — resolves `task → {provider, model}` from settings at
       call time; on `overloaded`/5xx after retries falls back one tier down
       within the provider, then to the configured cross-provider chain; every
       downgrade written to `run_events` so the UI can show "written with
       fallback model"; a task whose provider has no working key fails at
       pre-flight with a `ValidationError` pointing at Settings → Connections
-- [ ] **Case Library** — sortable table, `Suggest cases` streaming proposals
+- [x] **Case Library** — sortable table, `Suggest cases` streaming proposals
       into draft rows, per-row `Accept` / `Dismiss`, `New project` from a
       shortlisted case
-- [ ] **dossier-runner** — research passes (brief → timeline → claims with
+- [x] **dossier-runner** — research passes (brief → timeline → claims with
       sources) → dossier + claims rows → gate, with a revision step on
       `gate/dossier.changes_requested`
-- [ ] **Dossier review UI** — two-pane document + claims table, source
+- [x] **Dossier review UI** — two-pane document + claims table, source
       favicon/domain, type and confidence chips, quarantine, unverified claims
       amber and floated to top, approve blocked while any claim is neither
       verified nor quarantined
-- [ ] **script-runner** — outline → chapters drafted sequentially (each step
+- [x] **script-runner** — outline → chapters drafted sequentially (each step
       fed the outline, previous chapter tail and only non-quarantined claims)
       → self-check pass writing `claim_refs` and gutter warnings → Shorts
       candidate marking → gate
-- [ ] **Script Studio** — outline column, markdown-backed editor, context panel
+- [x] **Script Studio** — outline column, markdown-backed editor, context panel
       (claim popovers, warnings, Shorts segments), gutter markers with one-click
       fixes, select → `Regenerate…` → diff with per-hunk accept/reject,
       autosave with visible saved state, every human edit written to
       `script_edits`
-- [ ] **Tests** — router fallback and pre-flight, adapters against recorded
+- [x] **Tests** — router fallback and pre-flight, adapters against recorded
       fixtures, claim quarantine exclusion, self-check warning generation, the
       diff/hunk logic, component tests per screen, E2E through the writing room
 
@@ -381,3 +404,97 @@ Recorded whenever the spec left something open and an implementation was chosen.
     deterministically. The `pnpm e2e` global setup resets the fixture project,
     run mirror and ledger, so the suite does not inherit whatever the
     orchestration tests left behind.
+
+### M3
+
+23. **The adapters own the model list and the price table.** Spec §6 puts both
+    on each `LLMProvider`, so `packages/cost` now derives `LLM_PRICES` from
+    `LLM_MODELS` instead of keeping the hand-written copy M1 shipped. Two
+    tables drift, and the one the guard happened to read would decide whether
+    a cap held. A test asserts the numbers are identical by construction.
+    **The figures themselves are still provisional** — carried over from M2 and
+    accepted as-is by the human (2026-08-11) rather than verified against the
+    vendors' current price lists.
+
+24. **Model ids moved from short names to wire ids**, and `normaliseSettings`
+    rewrites `opus`/`sonnet`/`haiku` on read. `SettingsSchema` accepts any
+    non-empty string as a model, so an M1-era settings row parses cleanly and
+    would only fail later, at the router's pre-flight, as "anthropic does not
+    offer opus" — halfway into a run and nowhere near the cause.
+
+25. **Prompt builders and response parsers live in `packages/providers`.** They
+    are logic, and spec §3 keeps logic in packages rather than in
+    `apps/web/lib`. `providers` still imports nothing from `db`: the router
+    takes decrypted credentials as an argument and reports downgrades through a
+    callback, so the "adapters are pure" rule survives.
+
+26. **`parseJsonCompletion` extracts JSON but never repairs it.** Fences and
+    prose around the object are stripped, because that is presentation. A
+    trailing comma is not: malformed JSON means the generation went wrong, and
+    patching the syntax yields a dossier with half a claim in it. The runner
+    retries instead.
+
+27. **Change requests are a separate Inngest function, not a second wait.**
+    `dossier-runner` waits only on `gate/dossier.approved`; `dossier-reviser`
+    triggers on `gate/dossier.changes_requested`, re-researches and re-opens the
+    gate while the main run stays parked. Racing two `waitForEvent` steps
+    leaves the losing wait of every round outstanding in the run plan, and
+    cannot be tested — `@inngest/test` cannot drive a run past a
+    `waitForEvent` at all (see decision 20). `cancel-reconciler` proved this
+    shape in M2.
+
+28. **Nothing crosses a step boundary except plain JSON.** Inngest serialises
+    step return values, so a `BudgetExceededError` arrives as a shapeless
+    object that `instanceof` will not recognise — it would have been re-thrown
+    as an unknown error and retried four times. Budget gates travel as the same
+    plain record the Needs-you card renders from.
+
+29. **The dossier approval blocker is enforced in the server action.** A
+    disabled button is a hint; `approveGate` refuses outright while any claim
+    is unsourced and unquarantined, so a stale tab or a replayed post cannot
+    walk an unchecked assertion into a script. The predicate lives in
+    `lib/claim-review.ts` and is read by the screen, the gate bar and the
+    action alike.
+
+30. **Sentence splitting and hashing live in `packages/schemas`.** Three places
+    must agree on what a sentence is: the self-check that warns against one,
+    the `claim_ref` that pins a claim to one, and the Studio gutter that draws a
+    marker beside one. The hash normalises whitespace, case and punctuation, so
+    fixing a typo does not orphan every claim reference in the chapter — only a
+    real rewording breaks the link, which is exactly when the claim should be
+    re-checked.
+
+31. **Chapters are drafted sequentially, not fanned out.** Each is fed the tail
+    of the previous one. Parallel chapters read like separate essays about the
+    same company, each re-introducing the principals. Each chapter is still its
+    own step, so a failure in chapter six does not re-charge one to five.
+
+32. **Warnings are a `jsonb` column on `chapters`, not a table.** A warning has
+    no identity beyond the sentence it points at and is replaced wholesale on
+    every re-check. Migration `0003`.
+
+33. **The Studio editor is TipTap over a paragraph-only document.** Narration
+    has no other structure — the drafting prompt forbids headings, bullets and
+    stage directions because the text is read aloud exactly as written — so the
+    markdown round trip is lossless without a parser inventing structure. Warned
+    sentences are a ProseMirror *decoration*, never a wrapper node: what reaches
+    the voice stage must be exactly what the human saw.
+
+34. **Regenerate returns a proposal and never writes.** The human accepts or
+    rejects each hunk and only that decision is saved. Nothing is accepted by
+    default, and applying zero hunks returns the original byte for byte — the
+    property that makes "Reject all" safe. The diff is by sentence, matching the
+    unit warnings and claims already use.
+
+35. **The seed resets fixture claims rather than skipping them.**
+    `onConflictDoNothing` left a claim quarantined by a previous E2E run, so the
+    fixture's whole point — one unverified claim blocking the dossier gate —
+    quietly stopped being true on the second run. `deleteCasesExcept` likewise
+    clears rows the suite created, because repeatability is the value of having
+    a fixture at all.
+
+36. **`pnpm db:migrate:test`.** A Neon branch is a point-in-time clone, not a
+    follower, so migrations must be applied to it too. The obvious
+    `DATABASE_URL=… pnpm db:migrate` trips the same-database guard by leaving a
+    stale `DATABASE_URL_UNPOOLED` pointing at production — the guard is right,
+    so the script exists instead.

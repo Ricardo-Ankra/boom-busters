@@ -7,6 +7,7 @@ import {
   fixtureProject,
 } from './fixtures'
 import { getSettings, importProviderEnvSeeds } from './queries'
+import { sql } from 'drizzle-orm'
 import { cases, claims, dossiers, projects } from './schema'
 
 export interface SeedResult {
@@ -44,7 +45,23 @@ export async function seed(
   await db
     .insert(claims)
     .values(fixtureClaims.map((claim) => ({ ...claim, dossierId: FIXTURE_DOSSIER_ID })))
-    .onConflictDoNothing()
+    /**
+     * Reset, not skip. `onConflictDoNothing` left a claim quarantined or
+     * re-sourced by a previous test run, so the fixture's whole point — one
+     * unverified claim blocking the dossier gate — quietly stopped being true
+     * on the second run of the E2E suite.
+     */
+    .onConflictDoUpdate({
+      target: claims.id,
+      set: {
+        text: sql`excluded.text`,
+        sourceUrl: sql`excluded.source_url`,
+        sourceType: sql`excluded.source_type`,
+        confidence: sql`excluded.confidence`,
+        quarantined: false,
+        updatedAt: new Date(),
+      },
+    })
 
   const credentialsImported = options.encryptionKey
     ? await importProviderEnvSeeds(db, options.encryptionKey, options.env)

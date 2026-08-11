@@ -20,7 +20,9 @@ export default async function globalSetup(): Promise<void> {
     setProjectStage,
     setRunStatus,
     truncateRunMirror,
+    FIXTURE_CASE_ID,
     FIXTURE_PROJECT_ID,
+    deleteCasesExcept,
     updateSettings,
   } = await import('@boom-busters/db')
   const { truncateLedger } = await import('@boom-busters/cost')
@@ -28,6 +30,9 @@ export default async function globalSetup(): Promise<void> {
   const connection = createDb(url, { max: 2 })
   try {
     await seed(connection.db)
+    // Rows the previous run's tests created, before re-seeding leaves them
+    // beside the fixture and every exact assertion starts matching twice.
+    await deleteCasesExcept(connection.db, [FIXTURE_CASE_ID])
     await truncateRunMirror(connection.db)
     await truncateLedger(connection.db)
     // A project parked at a gate, as the runner would leave it: the project

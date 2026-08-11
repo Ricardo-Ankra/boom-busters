@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, inArray, notInArray, sql } from 'drizzle-orm'
 import type { Database } from './client'
 import { cases, projects } from './schema'
 import type { CaseCategory, CaseRow, CaseStatus } from './schema'
@@ -216,4 +216,35 @@ export async function markCaseInProduction(db: Database, id: string): Promise<vo
     .update(cases)
     .set({ status: 'in_production', updatedAt: new Date() })
     .where(and(eq(cases.id, id), inArray(cases.status, ['idea', 'shortlisted'])))
+}
+
+/**
+ * Delete every case except the ones named, and the projects that came from
+ * them.
+ *
+ * The E2E suite adds cases and starts projects; without this the database
+ * carries them into the next run and assertions that were exact ("this case
+ * appears once") start matching two rows. Repeatability is the whole value of
+ * a fixture, so it is restored here rather than worked around by loosening the
+ * assertions.
+ *
+ * Projects go first because `projects.caseId` is `onDelete: 'restrict'` — the
+ * database will not let a case that produced something be deleted out from
+ * under it, which is the right rule for the app and simply means test cleanup
+ * has to be explicit about what it is destroying.
+ */
+export async function deleteCasesExcept(
+  db: Database,
+  keepIds: readonly string[],
+): Promise<number> {
+  const doomed = keepIds.length > 0 ? notInArray(cases.id, [...keepIds]) : undefined
+
+  const targets = await db.select({ id: cases.id }).from(cases).where(doomed)
+  if (targets.length === 0) return 0
+
+  const ids = targets.map((row) => row.id)
+  await db.delete(projects).where(inArray(projects.caseId, ids))
+
+  const deleted = await db.delete(cases).where(inArray(cases.id, ids)).returning({ id: cases.id })
+  return deleted.length
 }
