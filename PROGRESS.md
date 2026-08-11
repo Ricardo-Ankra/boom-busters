@@ -132,9 +132,9 @@ proven on production infrastructure (2026-08-11).
       sync with a 302 to an SSO page; without this the SDK advertises one of
       those and every sync lands in "Unattached Syncs".
 - [~] **Notification delivery is deliberately deferred** (decided 2026-08-11).
-      The plumbing is built and tested; no keys are set, so `notify()` logs what
-      it would have sent and carries on. Nothing depends on it — the Needs-you
-      queue reads from the database and is always correct.
+  The plumbing is built and tested; no keys are set, so `notify()` logs what
+  it would have sent and carries on. Nothing depends on it — the Needs-you
+  queue reads from the database and is always correct.
 
       **Email (Resend) is the channel to enable, not push**, and it lands as a
       final layer rather than now. Web push reaches a desktop browser that is
