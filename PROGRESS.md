@@ -238,9 +238,19 @@ as a stop that worked; and `startProjectFromCase` marking a project `failed`
 when the event could not be sent, rather than leaving it `queued` and looking
 like it is on its way.
 
-**The demo pipeline function and its tests remain** as M2's orchestration
-proof. Nothing in the UI sends `demo/pipeline.requested` any more, so it is
-inert in production.
+**The demo pipeline is unregistered** (`apps/web/inngest/functions/index.ts`).
+Removing the button was not enough: `demoPipeline` waits on the same
+`gate/dossier.approved` and `gate/script.approved` events the real runners do,
+so a demo run already parked on a real project would resume on that project's
+next approval — and its `finish` step drops the project straight to `done`.
+Production had exactly that: a stale `demo-runner` parked at the script gate of
+a project whose real script was written and waiting for review. Unregistering
+archives it on the next Inngest sync, which is what stops those parked runs
+resuming at all.
+
+The function and its tests stay in the tree, so `pnpm test` still exercises the
+orchestration spine end to end. Its production proof is the M2 trace above, and
+that stands.
 
 **And the suite now covers the beginning of a project's life:**
 `e2e/tests/project-lifecycle.spec.ts` drives a fresh project, a project created
