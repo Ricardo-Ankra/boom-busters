@@ -328,6 +328,16 @@ export const chapters = pgTable(
     title: text('title').notNull(),
     contentMd: text('content_md').notNull().default(''),
     estRuntimeSec: integer('est_runtime_sec').notNull().default(0),
+    /**
+     * Gutter warnings from the self-check pass (spec section 7.2). Stored on
+     * the chapter rather than in their own table: a warning has no identity
+     * beyond the sentence it points at, and it is replaced wholesale every
+     * time the chapter is re-checked.
+     */
+    warnings: jsonb('warnings')
+      .notNull()
+      .default(sql`'[]'::jsonb`)
+      .$type<{ kind: string; sentence: string; message: string }[]>(),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
@@ -783,6 +793,11 @@ export type ProjectRow = typeof projects.$inferSelect
 export type NewProject = typeof projects.$inferInsert
 export type ClaimRow = typeof claims.$inferSelect
 export type ChapterRow = typeof chapters.$inferSelect
+export type ScriptRow = typeof scripts.$inferSelect
+export type ScriptEditRow = typeof scriptEdits.$inferSelect
+export type ClaimRefRow = typeof claimRefs.$inferSelect
+export type ScriptStatus = (typeof scriptStatusEnum.enumValues)[number]
+export type EditType = (typeof editTypeEnum.enumValues)[number]
 export type VoiceTakeRow = typeof voiceTakes.$inferSelect
 export type ShotSlotRow = typeof shotSlots.$inferSelect
 export type AssetRow = typeof assets.$inferSelect

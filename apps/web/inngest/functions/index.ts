@@ -2,6 +2,7 @@ import { cancelReconciler } from './cancel-reconciler'
 import { demoPipeline } from './demo-pipeline'
 import { dossierReviser } from './dossier-reviser'
 import { dossierRunner } from './dossier-runner'
+import { scriptRunner } from './script-runner'
 
 /**
  * Every Inngest function this app serves. The serve route registers exactly
@@ -12,6 +13,12 @@ import { dossierRunner } from './dossier-runner'
  * `render-runner`, `shorts-runner`, `publish-runner` and `analytics-runner`
  * (spec section 7).
  */
-export const functions = [demoPipeline, cancelReconciler, dossierRunner, dossierReviser]
+export const functions = [
+  demoPipeline,
+  cancelReconciler,
+  dossierRunner,
+  dossierReviser,
+  scriptRunner,
+]
 
-export { cancelReconciler, demoPipeline, dossierReviser, dossierRunner }
+export { cancelReconciler, demoPipeline, dossierReviser, dossierRunner, scriptRunner }
