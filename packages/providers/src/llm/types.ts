@@ -126,16 +126,11 @@ export function findModel(provider: LLMProvider, modelId: string): KnownModel | 
  * in the middle of a provider's line-up cannot silently reorder the fallback
  * path.
  */
-export function nextTierDown(
-  provider: LLMProvider,
-  modelId: string,
-): KnownModel | undefined {
+export function nextTierDown(provider: LLMProvider, modelId: string): KnownModel | undefined {
   const current = findModel(provider, modelId)
   if (!current) return undefined
 
-  return provider.models
-    .filter((m) => m.tier > current.tier)
-    .sort((a, b) => a.tier - b.tier)[0]
+  return provider.models.filter((m) => m.tier > current.tier).sort((a, b) => a.tier - b.tier)[0]
 }
 
 /** USD for a completed call, from the model's own price row. */

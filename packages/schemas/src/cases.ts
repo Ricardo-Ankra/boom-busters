@@ -15,13 +15,7 @@ import { z } from 'zod'
  *    occasionally answer 9.5, "high", or 1000.
  */
 
-export const CASE_CATEGORIES = [
-  'collapse',
-  'con',
-  'meltdown',
-  'turnaround',
-  'empire',
-] as const
+export const CASE_CATEGORIES = ['collapse', 'con', 'meltdown', 'turnaround', 'empire'] as const
 export const CaseCategorySchema = z.enum(CASE_CATEGORIES)
 export type CaseCategoryName = z.infer<typeof CaseCategorySchema>
 

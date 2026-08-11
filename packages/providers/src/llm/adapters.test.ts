@@ -251,7 +251,9 @@ describe('the package as a whole', () => {
 
     for (const { adapter } of CASES) {
       const intercepted = (async () =>
-        new Response(JSON.stringify(FIXTURES.anthropic), { status: 200 })) as unknown as typeof fetch
+        new Response(JSON.stringify(FIXTURES.anthropic), {
+          status: 200,
+        })) as unknown as typeof fetch
 
       const original = globalThis.fetch
       globalThis.fetch = forbidden
@@ -300,7 +302,11 @@ describe('the adapter registry', () => {
   it('offers the live model line-up to Settings even in mock mode', () => {
     // Settings outlives a test run; writing "mock-large" into the routing
     // matrix would leave nonsense behind after the mocks were switched off.
-    expect(Object.values(LLM_MODELS).flat().map((m) => m.id)).not.toContain('mock-large')
+    expect(
+      Object.values(LLM_MODELS)
+        .flat()
+        .map((m) => m.id),
+    ).not.toContain('mock-large')
   })
 
   it('gives every provider at least two tiers, so a tier-down exists', () => {

@@ -153,7 +153,6 @@ function gateContext(
   stage: string,
   dossier: { claims: { confidence: string; quarantined: boolean }[] } | undefined,
 ): string {
-
   if (stage === 'dossier' && dossier) {
     const blocking = blockingCount(dossier.claims)
     const quarantined = dossier.claims.filter((claim) => claim.quarantined).length

@@ -135,9 +135,7 @@ export async function createProjectFromCase(
       title: input.title,
       stage: 'dossier',
       stageStatus: 'queued',
-      ...(input.targetRuntimeMin === undefined
-        ? {}
-        : { targetRuntimeMin: input.targetRuntimeMin }),
+      ...(input.targetRuntimeMin === undefined ? {} : { targetRuntimeMin: input.targetRuntimeMin }),
     })
     .returning()
 

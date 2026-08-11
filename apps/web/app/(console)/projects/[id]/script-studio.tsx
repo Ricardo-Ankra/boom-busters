@@ -73,10 +73,7 @@ export function ScriptStudio({
           <span>
             <span className="text-[var(--color-text-secondary)]">Runtime </span>
             <span className="font-mono">{formatDuration(totalSec)}</span>
-            <span className="text-[var(--color-text-muted)]">
-              {' '}
-              / {formatDuration(targetSec)}
-            </span>
+            <span className="text-[var(--color-text-muted)]"> / {formatDuration(targetSec)}</span>
           </span>
           <span
             className={
@@ -91,7 +88,8 @@ export function ScriptStudio({
           </span>
           <span className="text-[var(--color-text-secondary)]">
             {chapters.reduce(
-              (total, chapter) => total + chapter.contentMd.trim().split(/\s+/).filter(Boolean).length,
+              (total, chapter) =>
+                total + chapter.contentMd.trim().split(/\s+/).filter(Boolean).length,
               0,
             )}{' '}
             words
@@ -106,11 +104,7 @@ export function ScriptStudio({
       </header>
 
       <div className="grid gap-3 lg:grid-cols-[200px_1fr_280px]">
-        <ChapterList
-          chapters={chapters}
-          activeIndex={activeIndex}
-          onSelect={setActiveIndex}
-        />
+        <ChapterList chapters={chapters} activeIndex={activeIndex} onSelect={setActiveIndex} />
 
         {active ? (
           <ChapterEditor key={active.id} projectId={projectId} chapter={active} />
@@ -204,7 +198,10 @@ function ChapterEditor({
     return () => window.clearTimeout(timer)
   }, [state, text, projectId, chapter.id, toast])
 
-  const placed = React.useMemo(() => placeWarnings(text, chapter.warnings), [text, chapter.warnings])
+  const placed = React.useMemo(
+    () => placeWarnings(text, chapter.warnings),
+    [text, chapter.warnings],
+  )
 
   return (
     <Card>
@@ -219,7 +216,10 @@ function ChapterEditor({
             chapterId={chapter.id}
             selection={selection}
             onProposal={(newText, note) => {
-              setProposal({ diff: diffChapters(text, replaceSelection(text, selection, newText)), note })
+              setProposal({
+                diff: diffChapters(text, replaceSelection(text, selection, newText)),
+                note,
+              })
             }}
             onCancel={() => setSelection('')}
           />

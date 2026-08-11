@@ -29,9 +29,9 @@ describe('buildSuggestCasesRequest', () => {
   })
 
   it('omits the exclusion list entirely for an empty library', () => {
-    expect(buildSuggestCasesRequest({ existingTitles: [], count: 3 }).messages[0]?.content).not.toContain(
-      'do not propose',
-    )
+    expect(
+      buildSuggestCasesRequest({ existingTitles: [], count: 3 }).messages[0]?.content,
+    ).not.toContain('do not propose')
   })
 
   it('passes the human steer through', () => {
@@ -85,9 +85,9 @@ describe('parseSuggestedCases', () => {
   })
 
   it('rejects a competitor link that is not a URL', () => {
-    expect(() => parseSuggestedCases(valid.replace('https://example.com/video', 'see YouTube'))).toThrow(
-      ValidationError,
-    )
+    expect(() =>
+      parseSuggestedCases(valid.replace('https://example.com/video', 'see YouTube')),
+    ).toThrow(ValidationError)
   })
 
   it('rejects an empty suggestion list rather than showing an empty table', () => {

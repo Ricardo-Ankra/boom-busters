@@ -1,4 +1,9 @@
-import { DEFAULT_SETTINGS, LLM_TASKS, SettingsSchema, canonicalModelId } from '@boom-busters/schemas'
+import {
+  DEFAULT_SETTINGS,
+  LLM_TASKS,
+  SettingsSchema,
+  canonicalModelId,
+} from '@boom-busters/schemas'
 import type { ModelRouting, Settings, SettingsPatch } from '@boom-busters/schemas'
 
 /**

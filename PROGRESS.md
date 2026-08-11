@@ -485,7 +485,7 @@ Recorded whenever the spec left something open and an implementation was chosen.
     has no other structure — the drafting prompt forbids headings, bullets and
     stage directions because the text is read aloud exactly as written — so the
     markdown round trip is lossless without a parser inventing structure. Warned
-    sentences are a ProseMirror *decoration*, never a wrapper node: what reaches
+    sentences are a ProseMirror _decoration_, never a wrapper node: what reaches
     the voice stage must be exactly what the human saw.
 
 34. **Regenerate returns a proposal and never writes.** The human accepts or

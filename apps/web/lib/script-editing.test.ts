@@ -150,9 +150,7 @@ describe('hedgeSentence', () => {
 
 describe('replaceSentence', () => {
   it('replaces only the target, leaving the rest byte-identical', () => {
-    expect(replaceSentence('One. Two. Three.', 'Two.', 'Rewritten.')).toBe(
-      'One. Rewritten. Three.',
-    )
+    expect(replaceSentence('One. Two. Three.', 'Two.', 'Rewritten.')).toBe('One. Rewritten. Three.')
   })
 
   it('returns the text unchanged when the sentence is gone', () => {

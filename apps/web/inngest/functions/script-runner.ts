@@ -28,7 +28,12 @@ import {
 } from '@boom-busters/providers'
 import type { ScriptClaim } from '@boom-busters/providers'
 import type { Outline, ShortsCandidate } from '@boom-busters/schemas'
-import { BudgetExceededError, estimateRuntimeSec, parseEventData, serialiseError } from '@boom-busters/schemas'
+import {
+  BudgetExceededError,
+  estimateRuntimeSec,
+  parseEventData,
+  serialiseError,
+} from '@boom-busters/schemas'
 import { NonRetriableError } from 'inngest'
 import { db } from '@/lib/db'
 import { callLlm } from '@/lib/llm'
@@ -124,32 +129,36 @@ export const scriptRunner = inngest.createFunction(
     // Outline
     // -----------------------------------------------------------------------
 
-    const outlineStep = await step.run('outline', async (): Promise<
-      { ok: true; outline: Outline } | { ok: false; gate: Record<string, unknown> }
-    > => {
-      if (mocked) return { ok: true, outline: mockOutline(setup.targetRuntimeMin) }
-      try {
-        return {
-          ok: true,
-          outline: parseOutline(
-            (
-              await callLlm(
-                buildOutlineRequest({
-                  caseTitle: setup.caseTitle,
-                  dossierMd: setup.dossierMd,
-                  claims: setup.claims,
-                  targetRuntimeMin: setup.targetRuntimeMin,
-                }),
-                { projectId },
-              )
-            ).text,
-          ),
+    const outlineStep = await step.run(
+      'outline',
+      async (): Promise<
+        { ok: true; outline: Outline } | { ok: false; gate: Record<string, unknown> }
+      > => {
+        if (mocked) return { ok: true, outline: mockOutline(setup.targetRuntimeMin) }
+        try {
+          return {
+            ok: true,
+            outline: parseOutline(
+              (
+                await callLlm(
+                  buildOutlineRequest({
+                    caseTitle: setup.caseTitle,
+                    dossierMd: setup.dossierMd,
+                    claims: setup.claims,
+                    targetRuntimeMin: setup.targetRuntimeMin,
+                  }),
+                  { projectId },
+                )
+              ).text,
+            ),
+          }
+        } catch (error) {
+          if (error instanceof BudgetExceededError)
+            return { ok: false, gate: budgetGateData(error) }
+          throw error
         }
-      } catch (error) {
-        if (error instanceof BudgetExceededError) return { ok: false, gate: budgetGateData(error) }
-        throw error
-      }
-    })
+      },
+    )
 
     if (!outlineStep.ok) {
       await step.run('outline-over-budget', () => markStageFailed(ctx, outlineStep.gate))
@@ -166,44 +175,48 @@ export const scriptRunner = inngest.createFunction(
     const written: { index: number; title: string; contentMd: string; chapterId: string }[] = []
 
     for (const [index, chapter] of outline.chapters.entries()) {
-      const drafted = await step.run(`draft-chapter-${index}`, async (): Promise<
-        { ok: true; chapterId: string; contentMd: string } | { ok: false; gate: Record<string, unknown> }
-      > => {
-        let contentMd: string
-        if (mocked) {
-          contentMd = mockChapter(chapter.title)
-        } else {
-          try {
-            contentMd = (
-              await callLlm(
-                buildChapterRequest({
-                  caseTitle: setup.caseTitle,
-                  outline,
-                  chapterIndex: index,
-                  previousTail,
-                  claims: setup.claims,
-                }),
-                { projectId, estimateOutputTokens: Math.round(chapter.targetWords * 1.6) },
-              )
-            ).text
-          } catch (error) {
-            if (error instanceof BudgetExceededError) {
-              return { ok: false, gate: budgetGateData(error) }
+      const drafted = await step.run(
+        `draft-chapter-${index}`,
+        async (): Promise<
+          | { ok: true; chapterId: string; contentMd: string }
+          | { ok: false; gate: Record<string, unknown> }
+        > => {
+          let contentMd: string
+          if (mocked) {
+            contentMd = mockChapter(chapter.title)
+          } else {
+            try {
+              contentMd = (
+                await callLlm(
+                  buildChapterRequest({
+                    caseTitle: setup.caseTitle,
+                    outline,
+                    chapterIndex: index,
+                    previousTail,
+                    claims: setup.claims,
+                  }),
+                  { projectId, estimateOutputTokens: Math.round(chapter.targetWords * 1.6) },
+                )
+              ).text
+            } catch (error) {
+              if (error instanceof BudgetExceededError) {
+                return { ok: false, gate: budgetGateData(error) }
+              }
+              throw error
             }
-            throw error
           }
-        }
 
-        const row = await saveChapter(db, {
-          scriptId: setup.scriptId,
-          index,
-          title: chapter.title,
-          contentMd,
-          estRuntimeSec: estimateRuntimeSec(contentMd),
-        })
+          const row = await saveChapter(db, {
+            scriptId: setup.scriptId,
+            index,
+            title: chapter.title,
+            contentMd,
+            estRuntimeSec: estimateRuntimeSec(contentMd),
+          })
 
-        return { ok: true, chapterId: row.id, contentMd }
-      })
+          return { ok: true, chapterId: row.id, contentMd }
+        },
+      )
 
       if (!drafted.ok) {
         // Chapters already written are kept: they cost money and a human can

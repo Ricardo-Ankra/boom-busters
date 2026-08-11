@@ -233,10 +233,7 @@ export async function markCaseInProduction(db: Database, id: string): Promise<vo
  * under it, which is the right rule for the app and simply means test cleanup
  * has to be explicit about what it is destroying.
  */
-export async function deleteCasesExcept(
-  db: Database,
-  keepIds: readonly string[],
-): Promise<number> {
+export async function deleteCasesExcept(db: Database, keepIds: readonly string[]): Promise<number> {
   const doomed = keepIds.length > 0 ? notInArray(cases.id, [...keepIds]) : undefined
 
   const targets = await db.select({ id: cases.id }).from(cases).where(doomed)

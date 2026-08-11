@@ -80,7 +80,10 @@ function sleep(ms: number): Promise<void> {
  * row the cost guard cannot estimate the call, and a guard that cannot
  * estimate is a guard that passes everything.
  */
-export function preflight(config: RouterConfig, task: LlmTask): {
+export function preflight(
+  config: RouterConfig,
+  task: LlmTask,
+): {
   adapter: LLMProvider
   choice: ModelChoice
 } {
@@ -199,8 +202,7 @@ export async function route(
         // three more times. Only transient trouble is worth another model.
         if (!isRetriable(error)) throw error
 
-        const lastAttemptOnLastModel =
-          attempt === attempts - 1 && index === path.length - 1
+        const lastAttemptOnLastModel = attempt === attempts - 1 && index === path.length - 1
         if (lastAttemptOnLastModel) throw error
 
         if (attempt < attempts - 1) {

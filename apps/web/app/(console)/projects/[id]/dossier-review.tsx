@@ -51,7 +51,7 @@ export function DossierReview({
               this text comes from a language model, and putting model output
               through a HTML renderer is a needless injection surface on a
               screen whose whole job is scrutiny. */}
-          <pre className="max-h-[70vh] overflow-auto whitespace-pre-wrap font-sans text-[14px] leading-relaxed">
+          <pre className="max-h-[70vh] overflow-auto font-sans text-[14px] leading-relaxed whitespace-pre-wrap">
             {contentMd || 'The dossier is empty.'}
           </pre>
         </CardContent>

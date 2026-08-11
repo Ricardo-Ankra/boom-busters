@@ -167,7 +167,9 @@ export function renderDossierMarkdown(input: {
 
   lines.push('## Timeline', '')
   for (const event of input.timeline) {
-    lines.push(`- **${event.when}** — ${event.what}${event.sourceUrl ? ` ([source](${event.sourceUrl}))` : ''}`)
+    lines.push(
+      `- **${event.when}** — ${event.what}${event.sourceUrl ? ` ([source](${event.sourceUrl}))` : ''}`,
+    )
   }
   lines.push('')
 

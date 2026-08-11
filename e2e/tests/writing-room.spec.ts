@@ -45,7 +45,10 @@ test.describe('Case Library', () => {
     // deduplicated against the whole library, so how many are on screen
     // depends on what earlier tests left behind — the row disappearing is the
     // behaviour, the total is not.
-    const row = page.getByRole('listitem').filter({ hasText: /not a real case/ }).first()
+    const row = page
+      .getByRole('listitem')
+      .filter({ hasText: /not a real case/ })
+      .first()
     const title = (await row.locator('p').first().innerText()).trim()
 
     await row.getByRole('button', { name: 'Dismiss' }).click()

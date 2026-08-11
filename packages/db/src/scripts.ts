@@ -174,7 +174,11 @@ export async function setChapterWarnings(
  */
 export async function saveClaimRefs(
   db: Database,
-  input: { chapterId: string; projectId: string; refs: readonly { claimId: string; sentence: string }[] },
+  input: {
+    chapterId: string
+    projectId: string
+    refs: readonly { claimId: string; sentence: string }[]
+  },
 ): Promise<number> {
   await db.delete(claimRefs).where(eq(claimRefs.chapterId, input.chapterId))
   if (input.refs.length === 0) return 0
@@ -199,7 +203,9 @@ export async function saveClaimRefs(
 
   // The unique index is (chapter, claim, sentence): a model reporting the same
   // pairing twice is normal, not an error.
-  const deduped = [...new Map(rows.map((row) => [`${row.claimId}:${row.sentenceHash}`, row])).values()]
+  const deduped = [
+    ...new Map(rows.map((row) => [`${row.claimId}:${row.sentenceHash}`, row])).values(),
+  ]
   if (deduped.length === 0) return 0
 
   await db.insert(claimRefs).values(deduped).onConflictDoNothing()
@@ -235,10 +241,7 @@ export async function setScriptStatus(
   scriptId: string,
   status: ScriptStatus,
 ): Promise<void> {
-  await db
-    .update(scripts)
-    .set({ status, updatedAt: new Date() })
-    .where(eq(scripts.id, scriptId))
+  await db.update(scripts).set({ status, updatedAt: new Date() }).where(eq(scripts.id, scriptId))
 }
 
 /** Every warning across a script — the count the gate card shows. */
@@ -272,5 +275,3 @@ export async function projectIdForChapter(
 export async function truncateScripts(db: Database): Promise<void> {
   await db.execute(sql`truncate table ${scripts} restart identity cascade`)
 }
-
-

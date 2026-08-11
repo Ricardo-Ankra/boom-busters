@@ -49,7 +49,9 @@ export function buildSuggestCasesRequest(input: SuggestCasesInput): LLMTaskReque
           .join('\n')}`
       : ''
 
-  const steer = input.steer?.trim() ? `\n\nThe human asks specifically for: ${input.steer.trim()}` : ''
+  const steer = input.steer?.trim()
+    ? `\n\nThe human asks specifically for: ${input.steer.trim()}`
+    : ''
 
   return {
     task: 'research',

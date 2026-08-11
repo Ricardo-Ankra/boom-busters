@@ -229,7 +229,12 @@ export async function startProjectFromCase(
     return { ok: false, error: 'That case is retired. Move it back to shortlisted first.' }
   }
 
-  const runtime = z.number().int().min(3).max(60).safeParse(targetRuntimeMin ?? 15)
+  const runtime = z
+    .number()
+    .int()
+    .min(3)
+    .max(60)
+    .safeParse(targetRuntimeMin ?? 15)
   if (!runtime.success) return { ok: false, error: 'Target runtime must be 3-60 minutes' }
 
   const project = await createProjectFromCase(db, {

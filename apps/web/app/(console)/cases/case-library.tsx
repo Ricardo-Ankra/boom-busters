@@ -218,7 +218,9 @@ function BacklogRow({ item, run }: { item: CaseSummary; run: Run }) {
         <Select
           aria-label={`${item.title} status`}
           value={item.status}
-          onChange={(event) => void run(() => setStatus(item.id, event.target.value), 'Status updated')}
+          onChange={(event) =>
+            void run(() => setStatus(item.id, event.target.value), 'Status updated')
+          }
           className="w-40"
         >
           {Object.entries(STATUS_LABELS).map(([value, label]) => (

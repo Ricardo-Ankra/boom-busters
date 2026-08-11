@@ -151,7 +151,9 @@ describe('parseBrief and parseTimeline', () => {
 
   it('accepts an imprecise date, because the record often is', () => {
     expect(
-      parseTimeline(JSON.stringify({ events: [{ when: 'late 2019', what: 'Something happened.' }] })),
+      parseTimeline(
+        JSON.stringify({ events: [{ when: 'late 2019', what: 'Something happened.' }] }),
+      ),
     ).toHaveLength(1)
   })
 })

@@ -1,8 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { approvalBlockedReason, blockingCount, blocksApproval, sourceDomain } from './claim-review'
 
-const claim = (confidence: string, quarantined = false) =>
-  ({ confidence, quarantined }) as never
+const claim = (confidence: string, quarantined = false) => ({ confidence, quarantined }) as never
 
 describe('blocksApproval', () => {
   it('blocks on an unsourced claim nobody excluded', () => {

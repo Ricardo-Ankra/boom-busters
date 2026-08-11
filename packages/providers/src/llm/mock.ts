@@ -41,9 +41,30 @@ export interface MockLLM extends LLMProvider {
 }
 
 const MOCK_MODELS: readonly KnownModel[] = [
-  { id: 'mock-large', label: 'Mock Large', tier: 0, inputPerMTok: 15, outputPerMTok: 75, supportsBatch: true },
-  { id: 'mock-medium', label: 'Mock Medium', tier: 1, inputPerMTok: 3, outputPerMTok: 15, supportsBatch: true },
-  { id: 'mock-small', label: 'Mock Small', tier: 2, inputPerMTok: 1, outputPerMTok: 5, supportsBatch: false },
+  {
+    id: 'mock-large',
+    label: 'Mock Large',
+    tier: 0,
+    inputPerMTok: 15,
+    outputPerMTok: 75,
+    supportsBatch: true,
+  },
+  {
+    id: 'mock-medium',
+    label: 'Mock Medium',
+    tier: 1,
+    inputPerMTok: 3,
+    outputPerMTok: 15,
+    supportsBatch: true,
+  },
+  {
+    id: 'mock-small',
+    label: 'Mock Small',
+    tier: 2,
+    inputPerMTok: 1,
+    outputPerMTok: 5,
+    supportsBatch: false,
+  },
 ]
 
 /** Stable pseudo-randomness: same request in, same number out, forever. */
@@ -89,9 +110,7 @@ function usageFor(request: LLMTaskRequest, text: string) {
   const promptChars =
     request.system.length + request.messages.reduce((n, m) => n + m.content.length, 0)
   const cacheable = request.cacheablePrefixMessages ?? 0
-  const cachedChars = request.messages
-    .slice(0, cacheable)
-    .reduce((n, m) => n + m.content.length, 0)
+  const cachedChars = request.messages.slice(0, cacheable).reduce((n, m) => n + m.content.length, 0)
 
   // ~4 characters per token is the usual rule of thumb and close enough that
   // mock-mode cost figures land in the right order of magnitude.
@@ -102,10 +121,7 @@ function usageFor(request: LLMTaskRequest, text: string) {
   }
 }
 
-export function createMockLLM(
-  script: MockScript = {},
-  id: LlmProvider = 'anthropic',
-): MockLLM {
+export function createMockLLM(script: MockScript = {}, id: LlmProvider = 'anthropic'): MockLLM {
   const calls: { request: LLMTaskRequest; model: string }[] = []
   let failuresLeft = script.failFirst?.times ?? 0
 
@@ -127,7 +143,8 @@ export function createMockLLM(
         throw script.failFirst?.error() ?? new TransientProviderError(id, 'mock failure')
       }
 
-      const text = script.respond?.(request, options.model) ?? defaultResponse(request, options.model)
+      const text =
+        script.respond?.(request, options.model) ?? defaultResponse(request, options.model)
       const usage = usageFor(request, text)
 
       return {

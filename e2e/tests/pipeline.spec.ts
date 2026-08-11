@@ -61,7 +61,9 @@ test.describe('gate action bar', () => {
     // The fixture carries one unverified claim precisely so this path is
     // exercised: an unsourced assertion must not reach a script.
     await expect(page.getByRole('button', { name: 'Approve' })).toBeDisabled()
-    await expect(page.getByText(/unsourced claim\(s\) — verify or quarantine each one/)).toBeVisible()
+    await expect(
+      page.getByText(/unsourced claim\(s\) — verify or quarantine each one/),
+    ).toBeVisible()
   })
 
   test('quarantining the unsourced claim unblocks Approve', async ({ page }) => {
