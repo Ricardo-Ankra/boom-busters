@@ -1,4 +1,10 @@
-import { getProject, hasLiveRun, listActivity, listOpenBudgetGates } from '@boom-busters/db'
+import {
+  getDossier,
+  getProject,
+  hasLiveRun,
+  listActivity,
+  listOpenBudgetGates,
+} from '@boom-busters/db'
 import { notFound } from 'next/navigation'
 import { ActivityList } from '@/components/activity-list'
 import { BudgetGateCard } from '@/components/budget-gate-card'
@@ -6,7 +12,9 @@ import { LiveRefresh } from '@/components/live-refresh'
 import { PipelineRail } from '@/components/pipeline-rail'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { db } from '@/lib/db'
+import { approvalBlockedReason, blockingCount } from '@/lib/claim-review'
 import { isGateOpen, isMoving, isStranded } from '@/lib/run-state'
+import { DossierReview } from './dossier-review'
 import { GateActionBar, StartRunButton, StopButton } from './project-controls'
 
 export const dynamic = 'force-dynamic'
@@ -27,10 +35,11 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
   const project = await getProject(db, id)
   if (!project) notFound()
 
-  const [activity, budgetGates, liveRun] = await Promise.all([
+  const [activity, budgetGates, liveRun, dossier] = await Promise.all([
     listActivity(db, { projectId: id, limit: 50 }),
     listOpenBudgetGates(db),
     hasLiveRun(db, id),
+    getDossier(db, id),
   ])
   const budgetGate = budgetGates.find((gate) => gate.projectId === id)
 
@@ -41,6 +50,12 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
   const atGate = isGateOpen(project, liveRun)
   const stranded = isStranded(project, liveRun)
   const moving = isMoving(project, liveRun)
+
+  // The dossier is shown whenever one exists, not only at its gate: after
+  // approval it is the reference the script was written from, and the claims
+  // it was built on are what a later dispute turns on.
+  const showDossier = dossier !== undefined && project.stage === 'dossier'
+  const blockedReason = dossier ? approvalBlockedReason(dossier.claims) : undefined
 
   return (
     <div className="flex flex-col gap-6">
@@ -67,23 +82,31 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
 
       {budgetGate ? <BudgetGateCard gate={budgetGate} /> : null}
 
-      <Card className={stranded ? 'border-[var(--color-warning)]' : undefined}>
-        <CardHeader>
-          <CardTitle className="capitalize">{project.stage}</CardTitle>
-          <CardDescription>
-            {stranded
-              ? 'Marked awaiting review, but no run is waiting on it — nothing would receive an approval. Start a run.'
-              : stageSummary(project.stageStatus, project.stage)}
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <p className="text-[13px] text-[var(--color-text-muted)]">
-            The demo pipeline does no real work — it exists to prove that gates park, resume and
-            cancel on the deployment the real runners will use. The dossier and script review
-            screens arrive with their runners in M3.
-          </p>
-        </CardContent>
-      </Card>
+      {showDossier ? (
+        <DossierReview
+          projectId={project.id}
+          contentMd={dossier.contentMd}
+          claims={dossier.claims}
+        />
+      ) : (
+        <Card className={stranded ? 'border-[var(--color-warning)]' : undefined}>
+          <CardHeader>
+            <CardTitle className="capitalize">{project.stage}</CardTitle>
+            <CardDescription>
+              {stranded
+                ? 'Marked awaiting review, but no run is waiting on it — nothing would receive an approval. Start a run.'
+                : stageSummary(project.stageStatus, project.stage)}
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <p className="text-[13px] text-[var(--color-text-muted)]">
+              {project.stage === 'dossier'
+                ? 'No dossier has been researched yet.'
+                : 'The review screen for this stage arrives with its runner.'}
+            </p>
+          </CardContent>
+        </Card>
+      )}
 
       <section className="flex flex-col gap-2">
         <h2 className="text-[15px] font-semibold">Activity</h2>
@@ -94,11 +117,27 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
         <GateActionBar
           projectId={project.id}
           stage={project.stage}
-          context={`${project.stage} gate · demo run · nothing was generated`}
+          context={gateContext(project.stage, dossier)}
+          {...(project.stage === 'dossier' && blockedReason ? { blockedReason } : {})}
         />
       ) : null}
     </div>
   )
+}
+
+function gateContext(
+  stage: string,
+  dossier: { claims: { confidence: string; quarantined: boolean }[] } | undefined,
+): string {
+  if (stage === 'dossier' && dossier) {
+    const blocking = blockingCount(dossier.claims)
+    const quarantined = dossier.claims.filter((claim) => claim.quarantined).length
+    return (
+      `${dossier.claims.length} claims · ${blocking} unsourced · ${quarantined} quarantined. ` +
+      'Approving sends this to the script runner.'
+    )
+  }
+  return `${stage} gate`
 }
 
 function stageSummary(status: string, stage: string): string {

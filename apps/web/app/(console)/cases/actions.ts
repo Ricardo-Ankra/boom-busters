@@ -23,6 +23,8 @@ import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { auth } from '@/auth'
 import { db } from '@/lib/db'
+import { inngest } from '@/inngest/client'
+import { events } from '@/inngest/events'
 import { callLlm } from '@/lib/llm'
 
 /**
@@ -206,10 +208,13 @@ export interface StartProjectResult extends ActionResult {
 /**
  * Start a project from a shortlisted case — the `New project` button.
  *
- * Creates the project row and moves the case into production. The project
- * lands at `dossier`/`queued`; emitting `project/created` so the dossier-runner
- * picks it up is wired in M3.4, and until then the row sits queued rather than
- * claiming work that is not happening.
+ * Creates the project row, moves the case into production, and hands
+ * `project/created` to Inngest so the dossier-runner picks it up.
+ *
+ * The project row is written *before* the event is sent, and the row survives
+ * a send failure: a queued project with an error toast is recoverable, whereas
+ * an event referring to a project that was never inserted is a run that fails
+ * on its first step.
  */
 export async function startProjectFromCase(
   id: string,
@@ -233,8 +238,21 @@ export async function startProjectFromCase(
     targetRuntimeMin: runtime.data,
   })
   await markCaseInProduction(db, id)
-
   revalidatePath('/cases')
   revalidatePath('/projects')
+
+  try {
+    await inngest.send(events.projectCreated.create({ projectId: project.id, caseId: id }))
+  } catch (error) {
+    console.error('[cases] could not start the dossier run', serialiseError(error))
+    return {
+      ok: false,
+      projectId: project.id,
+      error:
+        'The project was created, but the pipeline could not be reached. Open the project and ' +
+        'start the run from there.',
+    }
+  }
+
   return { ok: true, projectId: project.id }
 }
