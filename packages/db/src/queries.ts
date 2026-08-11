@@ -1,8 +1,8 @@
 import { DEFAULT_SETTINGS, PROVIDER_ENV_SEEDS } from '@boom-busters/schemas'
-import type { Provider, Settings, SettingsPatch } from '@boom-busters/schemas'
-import { and, count, eq } from 'drizzle-orm'
+import type { LlmProvider, Provider, Settings, SettingsPatch } from '@boom-busters/schemas'
+import { and, count, eq, inArray } from 'drizzle-orm'
 import type { Database } from './client'
-import { encryptSecret, keyHint, maskKey } from './crypto'
+import { decryptSecret, encryptSecret, keyHint, maskKey } from './crypto'
 import { assets, cases, providerCredentials, settings as settingsTable } from './schema'
 import { mergeSettings, normaliseSettings } from './settings-merge'
 
@@ -170,4 +170,55 @@ export async function isYoutubeConnected(db: Database): Promise<boolean> {
       and(eq(providerCredentials.provider, 'youtube'), eq(providerCredentials.verifyStatus, 'ok')),
     )
   return row !== undefined
+}
+
+/**
+ * Decrypted keys for the LLM providers, for the model router.
+ *
+ * Deliberately separate from `listCredentials`, which exists precisely so that
+ * screens cannot get at key material. This one returns the real thing, so it
+ * is only ever called server-side by the pipeline and by the Verify button.
+ *
+ * A key that cannot be decrypted is omitted rather than thrown on: it means
+ * `SECRETS_ENCRYPTION_KEY` was rotated without re-entering the keys, and the
+ * useful outcome is the router's pre-flight saying "anthropic has no working
+ * API key" and pointing at Settings, not every screen 500ing.
+ */
+export async function llmCredentials(
+  db: Database,
+  encryptionKey: string,
+): Promise<Partial<Record<LlmProvider, string>>> {
+  const rows = await db
+    .select({
+      provider: providerCredentials.provider,
+      encryptedKey: providerCredentials.encryptedKey,
+    })
+    .from(providerCredentials)
+    .where(inArray(providerCredentials.provider, ['anthropic', 'openai', 'google']))
+
+  const keys: Partial<Record<LlmProvider, string>> = {}
+  for (const row of rows) {
+    try {
+      keys[row.provider as LlmProvider] = decryptSecret(row.encryptedKey, encryptionKey)
+    } catch {
+      // Left absent on purpose — see the note above.
+    }
+  }
+  return keys
+}
+
+/** Stamp the outcome of Settings -> Connections' Verify button. */
+export async function recordVerifyResult(
+  db: Database,
+  provider: MaskedCredential['provider'],
+  status: 'ok' | 'invalid',
+): Promise<void> {
+  await db
+    .update(providerCredentials)
+    .set({
+      verifyStatus: status,
+      lastVerifiedAt: status === 'ok' ? new Date() : null,
+      updatedAt: new Date(),
+    })
+    .where(eq(providerCredentials.provider, provider))
 }

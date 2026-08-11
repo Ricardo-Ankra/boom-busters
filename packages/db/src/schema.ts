@@ -790,3 +790,12 @@ export type PushSubscriptionRow = typeof pushSubscriptions.$inferSelect
 export type ProjectStage = (typeof projectStageEnum.enumValues)[number]
 export type StageStatus = (typeof stageStatusEnum.enumValues)[number]
 export type RunStatus = (typeof runStatusEnum.enumValues)[number]
+export type CaseCategory = (typeof caseCategoryEnum.enumValues)[number]
+export type CaseStatus = (typeof caseStatusEnum.enumValues)[number]
+export type ClaimConfidence = (typeof claimConfidenceEnum.enumValues)[number]
+export type ClaimSourceType = (typeof sourceTypeEnum.enumValues)[number]
+
+export const CASE_CATEGORIES = caseCategoryEnum.enumValues
+export const CASE_STATUSES = caseStatusEnum.enumValues
+export const CLAIM_CONFIDENCES = claimConfidenceEnum.enumValues
+export const CLAIM_SOURCE_TYPES = sourceTypeEnum.enumValues
