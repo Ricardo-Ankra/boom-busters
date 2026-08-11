@@ -14,10 +14,10 @@ import { PipelineRail } from '@/components/pipeline-rail'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { db } from '@/lib/db'
 import { approvalBlockedReason, blockingCount } from '@/lib/claim-review'
-import { isGateOpen, isMoving, isStranded } from '@/lib/run-state'
+import { isGateOpen, isMoving, projectControl } from '@/lib/run-state'
 import { DossierReview } from './dossier-review'
 import { ScriptStudio } from './script-studio'
-import { GateActionBar, StartRunButton, StopButton } from './project-controls'
+import { GateActionBar, RestartRunButton, StopButton } from './project-controls'
 
 export const dynamic = 'force-dynamic'
 
@@ -51,8 +51,11 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
   // fixture does — and offering Approve there would send an event no run is
   // listening for, then claim the run had moved on.
   const atGate = isGateOpen(project, liveRun)
-  const stranded = isStranded(project, liveRun)
   const moving = isMoving(project, liveRun)
+  // One answer to "what does the header offer, and why", so the two can never
+  // disagree — a button whose caption contradicts the card beside it is how a
+  // no-op demo run came to look like the way to start a project.
+  const control = projectControl(project, liveRun)
 
   // The dossier is shown whenever one exists, not only at its gate: after
   // approval it is the reference the script was written from, and the claims
@@ -79,13 +82,27 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
 
         <div className="flex flex-wrap items-center gap-2">
           <LiveRefresh active={moving} />
-          {liveRun ? (
-            <StopButton projectId={project.id} />
-          ) : (
-            <StartRunButton projectId={project.id} />
-          )}
+          {control.kind === 'stop' ? <StopButton projectId={project.id} /> : null}
+          {control.kind === 'restart' ? (
+            <RestartRunButton projectId={project.id} label={control.label} />
+          ) : null}
         </div>
       </header>
+
+      {/* Why there is no button, when there is no button. An empty header on a
+          project that is plainly not finished reads as a broken screen. */}
+      {control.kind !== 'stop' ? (
+        <p
+          className={
+            control.kind === 'working'
+              ? 'text-[13px] text-[var(--color-text-secondary)]'
+              : 'text-[13px] text-[var(--color-warning)]'
+          }
+          role={control.kind === 'working' ? 'status' : undefined}
+        >
+          {control.message}
+        </p>
+      ) : null}
 
       <PipelineRail stage={project.stage} stageStatus={project.stageStatus} />
 
@@ -107,14 +124,12 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
           claims={dossier.claims}
         />
       ) : (
-        <Card className={stranded ? 'border-[var(--color-warning)]' : undefined}>
+        <Card className={control.kind === 'blocked' ? 'border-[var(--color-warning)]' : undefined}>
           <CardHeader>
             <CardTitle className="capitalize">{project.stage}</CardTitle>
-            <CardDescription>
-              {stranded
-                ? 'Marked awaiting review, but no run is waiting on it — nothing would receive an approval. Start a run.'
-                : stageSummary(project.stageStatus, project.stage)}
-            </CardDescription>
+            {/* Deliberately not repeating `control.message`, which is already
+                on screen above: the same sentence twice reads as two problems. */}
+            <CardDescription>{stageSummary(project.stageStatus, project.stage)}</CardDescription>
           </CardHeader>
           <CardContent>
             <p className="text-[13px] text-[var(--color-text-muted)]">
@@ -133,6 +148,10 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
 
       {atGate && !budgetGate ? (
         <GateActionBar
+          /* One bar per gate. The bar keeps a little state about the approval
+             it just handed over, and without a key that state would follow the
+             component from the dossier gate to the script gate. */
+          key={project.stage}
           projectId={project.id}
           stage={project.stage}
           context={
@@ -176,9 +195,9 @@ function stageSummary(status: string, stage: string): string {
     case 'approved':
       return 'Approved. Nothing is running.'
     case 'failed':
-      return 'This stage failed. Start a new run when the cause is fixed.'
+      return 'This stage failed.'
     case 'cancelled':
-      return 'Stopped. Start a new run when you are ready.'
+      return 'Stopped.'
     default:
       return ''
   }

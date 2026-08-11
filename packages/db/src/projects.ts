@@ -1,4 +1,4 @@
-import { desc, eq } from 'drizzle-orm'
+import { desc, eq, notInArray } from 'drizzle-orm'
 import type { Database } from './client'
 import { cases, projects } from './schema'
 import type { ProjectRow, ProjectStage, StageStatus } from './schema'
@@ -85,7 +85,18 @@ export async function listProjectsAwaitingReview(db: Database): Promise<ProjectS
 export async function setProjectStage(
   db: Database,
   id: string,
-  next: { stage?: ProjectStage; stageStatus: StageStatus; inngestRunId?: string | null },
+  next: {
+    stage?: ProjectStage
+    stageStatus: StageStatus
+    inngestRunId?: string | null
+    /**
+     * Pass `null` to clear a previous stop. Restarting a cancelled project has
+     * to, or the row keeps a `cancelledAt` describing a run that is no longer
+     * the current one — and every screen that reads it goes on saying the
+     * project was stopped while it is plainly running.
+     */
+    cancelledAt?: Date | null
+  },
 ): Promise<void> {
   await db
     .update(projects)
@@ -93,9 +104,36 @@ export async function setProjectStage(
       ...(next.stage ? { stage: next.stage } : {}),
       stageStatus: next.stageStatus,
       ...(next.inngestRunId === undefined ? {} : { inngestRunId: next.inngestRunId }),
+      ...(next.cancelledAt === undefined ? {} : { cancelledAt: next.cancelledAt }),
       updatedAt: new Date(),
     })
     .where(eq(projects.id, id))
+}
+
+/**
+ * Drop every project except the ones named — the projects counterpart of
+ * `deleteCasesExcept`, and needed for the same reason.
+ *
+ * The E2E suite seeds projects in the states a project passes through, and
+ * seeds them against the *fixture* case, which `deleteCasesExcept` deliberately
+ * keeps. So nothing removed them and each run left two more behind, until an
+ * assertion that a title appears once started matching four rows. State that
+ * accumulates across runs is the flake that only shows up on the second run.
+ *
+ * Everything hanging off a project cascades (dossiers, scripts, runs, shots),
+ * so this is a single delete rather than a teardown order to keep in step with
+ * the schema.
+ */
+export async function deleteProjectsExcept(
+  db: Database,
+  keepIds: readonly string[],
+): Promise<number> {
+  const deleted = await db
+    .delete(projects)
+    .where(keepIds.length > 0 ? notInArray(projects.id, [...keepIds]) : undefined)
+    .returning({ id: projects.id })
+
+  return deleted.length
 }
 
 export async function markProjectCancelled(db: Database, id: string): Promise<void> {

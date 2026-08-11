@@ -2,6 +2,7 @@
 
 import {
   blockingClaims,
+  cancelRunsForProject,
   getProject,
   hasLiveRun,
   markProjectCancelled,
@@ -74,40 +75,72 @@ function refresh(projectId: string): void {
 }
 
 // ---------------------------------------------------------------------------
-// Starting
+// Restarting
 // ---------------------------------------------------------------------------
 
-export async function startDemoPipeline(
-  projectId: string,
-  options: { forceBudgetGate?: boolean } = {},
-): Promise<ActionResult> {
-  await requireOwner()
+/**
+ * Run the current stage again.
+ *
+ * There is deliberately no "start" action. Research begins when the project is
+ * created and every later stage begins when the one before it is approved, so
+ * the only thing a human ever needs is a way back from a stage that stopped —
+ * a failure, a Stop, or a project stranded at a review with no run behind it.
+ *
+ * This replaces `startDemoPipeline`, which was M2 scaffolding and outlived its
+ * purpose badly. It was the only button on the project screen, so it read as
+ * *the* way to start a project; pressing it reset the stage and started the
+ * no-op demo pipeline **alongside** the real dossier run. The demo then opened
+ * and closed genuine review gates on a genuine project, and approving one of
+ * its fake gates sent `gate/dossier.approved` to the script runner with no
+ * dossier written — which is exactly the "The dossier is gone, so there is
+ * nothing to script from" failure in the production run mirror.
+ */
+export async function restartStage(projectId: string): Promise<ActionResult> {
+  const approvedBy = await requireOwner()
   const invalid = badId(projectId)
   if (invalid) return invalid
 
   const project = await getProject(db, projectId)
   if (!project) return { ok: false, error: 'Unknown project' }
 
-  // A second run of the same project would race the first over the same stage
-  // columns. The mirror is what knows, not `stageStatus`: a project left at
-  // `awaiting_review` with no run behind it must still be startable.
+  // A second run would race the first over the same stage columns. The mirror
+  // is what knows, not `stageStatus`: a project left at `awaiting_review` with
+  // no run behind it must still be restartable.
   if (await hasLiveRun(db, projectId)) {
-    return { ok: false, error: 'This project already has a run in flight.' }
+    return {
+      ok: false,
+      error: 'This project already has a run in flight. Stop it first if you want to start over.',
+    }
+  }
+
+  /**
+   * Re-entering a stage means re-sending the event its runner triggers on.
+   * Only these two have runners; anything else would send an event nothing is
+   * subscribed to, report success, and do nothing.
+   */
+  const entry =
+    project.stage === 'dossier'
+      ? events.projectCreated.create({ projectId, caseId: project.caseId })
+      : project.stage === 'script'
+        ? events.dossierApproved.create({ projectId, approvedBy })
+        : null
+
+  if (!entry) {
+    return {
+      ok: false,
+      error: `The ${project.stage} stage has no runner yet, so there is nothing to restart.`,
+    }
   }
 
   await setProjectStage(db, projectId, {
-    stage: 'dossier',
     stageStatus: 'queued',
     inngestRunId: null,
+    // The stop this is recovering from is over. Left in place it would keep
+    // every screen calling a running project cancelled.
+    cancelledAt: null,
   })
 
-  const sent = await send(
-    events.demoRequested.create({
-      projectId,
-      ...(options.forceBudgetGate ? { forceBudgetGate: true } : {}),
-    }),
-    'start the run',
-  )
+  const sent = await send(entry, 'restart the stage')
 
   refresh(projectId)
   return sent
@@ -211,11 +244,16 @@ export async function stopProject(projectId: string, reason?: string): Promise<A
   const invalid = badId(projectId)
   if (invalid) return invalid
 
-  // Stamped here, before the event goes out, so the UI reflects the stop the
-  // moment the button returns. `cancel-reconciler` closes the run rows when
-  // Inngest delivers the event.
-  await markProjectCancelled(db, projectId)
-
+  /**
+   * The event goes first, and nothing is stamped until it is accepted.
+   *
+   * It used to be the other way round, so that the screen would reflect the
+   * stop the instant the button returned. That reads well and is a lie when the
+   * send fails: the project shows `cancelled` while its run carries on spending
+   * money, and — because the run mirror still holds a live run — the screen
+   * goes on offering Stop and refuses a restart. A project could be stopped,
+   * still running, and unrecoverable at the same time.
+   */
   const sent = await send(
     events.projectCancelled.create({
       projectId,
@@ -223,6 +261,13 @@ export async function stopProject(projectId: string, reason?: string): Promise<A
     }),
     'stop the run',
   )
+  if (!sent.ok) return sent
+
+  await markProjectCancelled(db, projectId)
+  // `cancel-reconciler` does this too when Inngest delivers the event. Doing it
+  // here as well is what makes the screen honest immediately: until the mirror
+  // shows no live run, the project has no way back.
+  await cancelRunsForProject(db, projectId)
 
   refresh(projectId)
   return sent

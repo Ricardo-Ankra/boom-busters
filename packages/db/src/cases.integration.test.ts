@@ -13,7 +13,7 @@ import {
   truncateCases,
   updateCase,
 } from './cases'
-import { createProjectFromCase } from './projects'
+import { createProjectFromCase, deleteProjectsExcept, listProjects } from './projects'
 import { requireTestDatabase } from './test-database'
 
 /**
@@ -48,6 +48,24 @@ suite('cases', () => {
     await createProjectFromCase(db, { caseId: row.id, title: 'Enron, again' })
 
     expect((await getCase(db, row.id))?.projectCount).toBe(2)
+  })
+
+  it('clears projects that share a kept case', async () => {
+    // `deleteCasesExcept` only reaches projects whose *case* is going. The E2E
+    // suite seeds its extra projects against the fixture case precisely because
+    // that case is kept — so without this they survived every reset and piled
+    // up one run at a time.
+    const row = await createCase(db, { title: 'Enron', category: 'collapse' })
+    const keep = await createProjectFromCase(db, { caseId: row.id, title: 'The one to keep' })
+    await createProjectFromCase(db, { caseId: row.id, title: 'Left over from last run' })
+    await createProjectFromCase(db, { caseId: row.id, title: 'And the run before that' })
+
+    expect(await deleteProjectsExcept(db, [keep.id])).toBe(2)
+
+    const remaining = await listProjects(db)
+    expect(remaining.map((project) => project.title)).toEqual(['The one to keep'])
+    // The case itself is untouched: this clears projects, not the library.
+    expect(await getCase(db, row.id)).toBeDefined()
   })
 
   it('counts zero projects without dropping the case from the list', async () => {

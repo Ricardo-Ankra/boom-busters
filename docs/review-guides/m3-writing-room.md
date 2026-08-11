@@ -59,15 +59,31 @@ for real weeks later by someone who has forgotten where they came from.
 
 ## 2 · Starting a project
 
-On a *Shortlisted* row → **New project**.
+On a *Shortlisted* row → **New project**. That is the whole of it: **there is
+no Start button anywhere, and there should not be one.** Research begins when
+the project is created, and each later stage begins when the one before it is
+approved.
+
+Open the project and the screen says so in as many words: *"Queued. The
+pipeline picks this up within a few seconds — nothing to press."*
 
 - The project appears at **Dossier · queued** with the pulsing
   "Updating automatically" marker.
 - Within seconds it moves to *running*, then parks at the gate —
   **without you refreshing**.
 
-If it sits on *queued* forever, the dossier runner is not receiving
-`project/created` and the Inngest sync is the thing to check.
+| What you see | What it means |
+|---|---|
+| No button, "nothing to press" | Normal. It is on its way. |
+| **Stop** | A run is live. This is the only control while one is. |
+| **Run the dossier stage again** | Nothing is running — it failed, was stopped, or its event never arrived. Pressing it costs what the stage cost the first time. |
+| "Queued for several minutes with no run behind it" | The event never reached Inngest. Check the sync, then use the button beside the message. |
+
+**If you saw "Start demo pipeline" here, you are on an old deployment.** That
+button was M2 scaffolding and is gone. Pressing it started a no-op run
+*alongside* the real research, which then opened fake review gates on a real
+project — approving one sent the script runner after a dossier that had never
+been written. See PROGRESS.md, M3.1.
 
 ---
 
@@ -96,7 +112,19 @@ outright, so a stale tab cannot bypass it.
 
 ## 4 · Script Studio
 
-Approve the dossier. The screen advances on its own to **Script**.
+Approve the dossier. The gate bar stands its buttons down and says *"Handed to
+the pipeline"* — an approval is delivered to Inngest and applied seconds later
+in another process, so a second press would land on a run no longer waiting for
+one.
+
+**That note is temporary in both directions now.** It clears itself after 30
+seconds, it carries a **Show the buttons again** control, and it belongs to the
+gate it was raised on — so it cannot follow you to the script gate. It used to:
+a finished script would arrive at its gate with no Approve and no Request
+changes, under a note about an approval given minutes earlier.
+
+The screen then advances on its own to **Script**, and when the script is
+written the bar comes back with *"N chapters · N self-check warnings"*.
 
 | Do this | Expect |
 |---|---|

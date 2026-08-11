@@ -82,6 +82,39 @@ describe('parseJsonCompletion', () => {
     )
   })
 
+  it('calls a cut-off answer cut off, and points at maxTokens', () => {
+    // Verbatim from the production run mirror: the model wrote most of a good
+    // brief and ran out of tokens mid-sentence. The old message was "returned
+    // no JSON… It answered: {" — which sends you to read a prompt that is
+    // fine, and never mentions the budget that actually ran out.
+    const call = () =>
+      parseJsonCompletion(
+        '{\n  "summary": "Carillion plc was the UK\'s second-largest construction firm and a major',
+        schema,
+        'case brief',
+      )
+
+    expect(call).toThrow(ValidationError)
+    expect(call).toThrow(/cut off mid-answer/)
+    expect(call).toThrow(/maxTokens/)
+    expect(call).not.toThrow(/returned no JSON/)
+  })
+
+  it('does not call a prose refusal truncated just because it contains a brace', () => {
+    // A paragraph that trails off into a stray brace is a model declining, not
+    // a model running out of room, and "raise maxTokens" would be nonsense
+    // advice. The opener has to arrive early, as it does when a model actually
+    // answers in JSON.
+    expect(() =>
+      parseJsonCompletion(
+        'I am not able to research this case, because every source I can reach is behind a ' +
+          'paywall and I will not invent one. For reference the shape you wanted was {incomplete',
+        schema,
+        'thing',
+      ),
+    ).toThrow(/returned no JSON/)
+  })
+
   it('truncates a very long refusal in the error message', () => {
     const long = 'no. '.repeat(500)
     const error = (() => {

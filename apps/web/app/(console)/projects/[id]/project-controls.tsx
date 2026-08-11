@@ -1,6 +1,6 @@
 'use client'
 
-import { Play, Square } from 'lucide-react'
+import { RotateCcw, Square } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import * as React from 'react'
 import { ConfirmButton } from '@/components/confirm-button'
@@ -9,7 +9,7 @@ import { useToast } from '@/components/ui/toast'
 import {
   approveGate,
   requestChanges,
-  startDemoPipeline,
+  restartStage,
   stopProject,
   type ActionResult,
 } from '../actions'
@@ -45,44 +45,31 @@ function useAction() {
   )
 }
 
-export function StartRunButton({ projectId }: { projectId: string }) {
+/**
+ * The way back from a stage that stopped — and the only start-shaped control
+ * the project screen has.
+ *
+ * There is no plain "Start". A project's research begins the moment it is
+ * created and each later stage begins when the one before it is approved, so a
+ * start button could only ever start something a second time, on top of the
+ * run already doing it.
+ */
+export function RestartRunButton({ projectId, label }: { projectId: string; label: string }) {
   const act = useAction()
-  const [busy, setBusy] = React.useState(false)
 
   return (
-    <div className="flex flex-wrap items-center gap-2">
-      <Button
-        variant="primary"
-        busy={busy}
-        onClick={async () => {
-          setBusy(true)
-          try {
-            await act(() => startDemoPipeline(projectId), 'Run queued')
-          } finally {
-            setBusy(false)
-          }
-        }}
-      >
-        <Play aria-hidden />
-        Start demo pipeline
-      </Button>
-
-      {/* The only way to see a budget gate without waiting for real spend to
-          cross a real cap. It asks the guard for more than any cap can hold,
-          so the refusal is the guard's, not a mock. */}
-      <ConfirmButton
-        label="Start with a forced budget gate"
-        confirmLabel="Start it"
-        confirmVariant="primary"
-        consequence="The first step will ask for $1,000,000 and park on the budget gate."
-        onConfirm={() =>
-          act(
-            () => startDemoPipeline(projectId, { forceBudgetGate: true }),
-            'Run queued — it will park at the budget gate',
-          )
-        }
-      />
-    </div>
+    <ConfirmButton
+      label={
+        <>
+          <RotateCcw aria-hidden />
+          {label}
+        </>
+      }
+      confirmLabel="Run it again"
+      confirmVariant="primary"
+      consequence="This stage runs from the start and replaces what it produced last time. It costs what it cost the first time."
+      onConfirm={() => act(() => restartStage(projectId), 'Sent to the pipeline')}
+    />
   )
 }
 
@@ -109,6 +96,7 @@ export function GateActionBar({
   stage,
   context,
   blockedReason,
+  handOffTimeoutMs = 30_000,
 }: {
   projectId: string
   stage: string
@@ -116,26 +104,58 @@ export function GateActionBar({
   context: string
   /** When set, `Approve` is disabled and this is shown next to it. */
   blockedReason?: string | undefined
+  /** Injectable so the expiry can be tested without waiting out half a minute. */
+  handOffTimeoutMs?: number
 }) {
   const act = useAction()
   const [note, setNote] = React.useState('')
   const [showNote, setShowNote] = React.useState(false)
   const [busy, setBusy] = React.useState<'approve' | 'changes' | null>(null)
-  const [handedOff, setHandedOff] = React.useState(false)
 
   /**
+   * Which gate was handed to the pipeline — not *whether* one was.
+   *
    * An approval is handed to Inngest, not applied here: the parked run resumes
    * seconds later in another process. Until the page next re-reads itself the
    * gate still looks open, so the buttons stand down rather than inviting a
    * second approval that would land on a run no longer waiting for one.
+   *
+   * Storing the stage rather than a boolean is the fix for a real failure. As a
+   * boolean this never reset, and its only escape was the component
+   * unmounting — which needed the server to be observed in a state where no
+   * gate was open. In production it never was: a stale run left the project at
+   * `awaiting_review` continuously across the dossier-to-script handover, the
+   * three-second poll never caught the one-second gap between them, and the
+   * script gate inherited the dossier's flag. The result was a screen with a
+   * finished script, no Approve, no Request changes, and a "handed to the
+   * pipeline" note about an approval given several minutes earlier.
    */
-  if (handedOff) {
+  const [handedOff, setHandedOff] = React.useState<string | null>(null)
+  const waiting = handedOff === stage
+
+  /**
+   * And it expires. If the run has not moved on within half a minute it is not
+   * coming back on its own, and a human staring at a note about a hand-off that
+   * evidently did not happen needs the buttons back, not reassurance.
+   */
+  React.useEffect(() => {
+    if (!waiting) return
+    const timer = window.setTimeout(() => setHandedOff(null), handOffTimeoutMs)
+    return () => window.clearTimeout(timer)
+  }, [waiting, handOffTimeoutMs])
+
+  if (waiting) {
     return (
       <div className="sticky bottom-0 z-10 -mx-4 mt-6 border-t border-[var(--color-border)] bg-[var(--color-surface)] p-4 md:-mx-6 md:px-6">
-        <p className="text-[13px] text-[var(--color-text-secondary)]">
-          Handed to the pipeline. The run picks this up within a few seconds, and this screen
-          updates itself.
-        </p>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <p className="text-[13px] text-[var(--color-text-secondary)]">
+            Handed to the pipeline. The run picks this up within a few seconds, and this screen
+            updates itself.
+          </p>
+          <Button variant="ghost" onClick={() => setHandedOff(null)}>
+            Show the buttons again
+          </Button>
+        </div>
       </div>
     )
   }
@@ -200,7 +220,7 @@ export function GateActionBar({
                   () => approveGate(projectId, stage),
                   'Approved — handed to the pipeline',
                 )
-                if (handed) setHandedOff(true)
+                if (handed) setHandedOff(stage)
               } finally {
                 setBusy(null)
               }

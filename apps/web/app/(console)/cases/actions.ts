@@ -9,6 +9,7 @@ import {
   getCase,
   markCaseInProduction,
   setCaseStatus,
+  setProjectStage,
   updateCase,
 } from '@boom-busters/db'
 import type { CaseCategory, CaseStatus } from '@boom-busters/db'
@@ -250,12 +251,25 @@ export async function startProjectFromCase(
     await inngest.send(events.projectCreated.create({ projectId: project.id, caseId: id }))
   } catch (error) {
     console.error('[cases] could not start the dossier run', serialiseError(error))
+
+    /**
+     * The row stays, but it must not stay `queued`.
+     *
+     * `queued` means "sent, waiting to be picked up", and the project screen
+     * says so — no button, nothing to do but wait. That is the right thing to
+     * show when the event is genuinely in flight and a lie when the send just
+     * failed in front of us. Marking it failed is what puts the "run it again"
+     * button on the screen the human is about to open.
+     */
+    await setProjectStage(db, project.id, { stageStatus: 'failed' })
+    revalidatePath('/projects')
+
     return {
       ok: false,
       projectId: project.id,
       error:
-        'The project was created, but the pipeline could not be reached. Open the project and ' +
-        'start the run from there.',
+        'The project was created, but the pipeline could not be reached, so nothing is ' +
+        'researching it. Open the project and run the dossier stage again.',
     }
   }
 

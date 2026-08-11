@@ -70,6 +70,28 @@ export function extractJson(text: string): string | undefined {
 export function parseJsonCompletion<T>(text: string, schema: z.ZodType<T>, what: string): T {
   const json = extractJson(text)
   if (!json) {
+    /**
+     * An answer that begins a JSON object and never closes it was cut off, not
+     * malformed — and the two need completely different responses. "No JSON"
+     * sends you to read the prompt; the prompt is fine, and `maxTokens` is the
+     * thing to raise.
+     *
+     * The adapter already reports the case where the model wrote *nothing*.
+     * This is its other half: the model wrote most of a brief and ran out mid
+     * sentence, which in production read as "The model returned no JSON for
+     * case brief. It answered: { "summary": "Carillion plc was the UK's..." —
+     * an error message quoting a perfectly good answer while claiming there
+     * wasn't one.
+     */
+    if (startsJson(text)) {
+      throw new ValidationError(
+        `The model's ${what} was cut off mid-answer — it opened a JSON object and never ` +
+          `closed it, which means it ran out of output tokens. Raise maxTokens for this task. ` +
+          `It got as far as: ${preview(text)}`,
+        { field: 'maxTokens' },
+      )
+    }
+
     throw new ValidationError(
       `The model returned no JSON for ${what}. It answered: ${preview(text)}`,
       { field: what },
@@ -95,6 +117,23 @@ export function parseJsonCompletion<T>(text: string, schema: z.ZodType<T>, what:
   }
 
   return result.data
+}
+
+/**
+ * Did the model start writing JSON?
+ *
+ * Only reached when `extractJson` found no complete value, so an opener with
+ * no matching closer means the answer stops in the middle of one. Prose that
+ * merely mentions a brace ("use { and }") does not qualify — the opener has to
+ * be the first non-whitespace thing after any prologue the model wrote, which
+ * is what a model answering in JSON actually produces.
+ */
+function startsJson(text: string): boolean {
+  const start = text.search(/[[{]/)
+  if (start === -1) return false
+  // Anything before the brace must be a short lead-in ("Here is the JSON:"),
+  // not a paragraph that happens to contain one.
+  return text.slice(0, start).trim().length <= 60
 }
 
 function preview(text: string): string {

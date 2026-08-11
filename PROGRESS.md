@@ -192,7 +192,63 @@ proven on production infrastructure (2026-08-11).
 **Spending:** every provider call is mocked by default (`MOCK_PROVIDERS=1`).
 Real API calls happen only when the human explicitly asks for a live run
 (CLAUDE.md rule 6), so this milestone can be built and tested end to end
-without spending anything.
+without spending anything. **The Vercel deployment is not mocked** — it has no
+`MOCK_PROVIDERS`, so every run there is real spend against the caps.
+
+### M3.1 — what the first live walkthrough found (2026-08-11)
+
+Five faults, four of them one fault. Recorded in full because the pattern
+matters more than the fixes: **every one was invisible to the test suite
+because the suite only ever drove the middle of a project's life.**
+
+Global setup parked the seeded fixture at the dossier gate with a live run
+behind it, and every project test opened that fixture. Nothing ever loaded the
+screen a human meets _first_.
+
+1. **The project screen offered "Start demo pipeline" as its only button.** M2
+   scaffolding that nothing removed when the real runners arrived. Research
+   already begins on `project/created`, so the only start-shaped control on the
+   screen started a _second_, no-op run — which then opened and closed genuine
+   review gates on a genuine project. The production run mirror shows four
+   `demo-runner` rows racing the real ones on a single project.
+2. **Approving a demo gate sent the script runner after a dossier that was
+   never written** — `The dossier is gone, so there is nothing to script from`,
+   four times.
+3. **A stopped or failed project had no way back.** Its only button was the
+   same demo pipeline, so "press Stop" was a one-way door.
+4. **The gate bar's "Handed to the pipeline" note never cleared.** It was a
+   boolean with no reset whose only escape was unmounting — which needed the
+   server to be observed with no gate open. A stale demo run held the project
+   at `awaiting_review` straight across the dossier-to-script handover, the
+   three-second poll never caught the one-second gap, and the script gate
+   inherited the dossier's flag. A finished script arrived with no Approve and
+   no Request changes.
+5. **A truncated completion was reported as malformed JSON.** Independent of
+   the above: the adapter catches a completion with _no_ text, but one cut off
+   mid-object fell through to the parser, which blamed the prompt instead of
+   `maxTokens`.
+
+**Fixed by:** `projectControl()` — one pure, exhaustively tested function that
+answers "what does this header offer, and why" for every (stage × status ×
+live-run) combination; a real `restartStage` action re-entering `dossier` on
+`project/created` and `script` on `gate/dossier.approved`; the hand-off note
+keyed to the gate it belongs to, with a manual escape and a 30-second expiry;
+`stopProject` sending before it stamps, so a stop that failed is not reported
+as a stop that worked; and `startProjectFromCase` marking a project `failed`
+when the event could not be sent, rather than leaving it `queued` and looking
+like it is on its way.
+
+**The demo pipeline function and its tests remain** as M2's orchestration
+proof. Nothing in the UI sends `demo/pipeline.requested` any more, so it is
+inert in production.
+
+**And the suite now covers the beginning of a project's life:**
+`e2e/tests/project-lifecycle.spec.ts` drives a fresh project, a project created
+from a case, and a stopped project, asserting in each that no start-shaped
+button exists and that a stopped stage always has a way back. Global setup
+seeds the two extra states — and `deleteProjectsExcept` clears them, because
+they hang off the _fixture_ case that `deleteCasesExcept` deliberately keeps,
+so without it they accumulated two per run.
 
 ### Deliverables
 

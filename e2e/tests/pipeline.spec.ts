@@ -29,7 +29,16 @@ test.describe('projects', () => {
   test('the mini rail names each stage and its state for a screen reader', async ({ page }) => {
     await page.goto('/projects')
 
-    const rail = page.getByRole('list', { name: 'Pipeline stages' }).first()
+    // Scoped to the row that is actually at a gate rather than to the first
+    // row on the page. The list is ordered by recency, so `.first()` meant
+    // "whichever project was touched last" — which held only while the fixture
+    // was the sole project, and broke the moment the suite gained projects in
+    // the other states a project can be in.
+    const row = page
+      .getByRole('listitem')
+      .filter({ has: page.getByRole('link', { name: 'Review' }) })
+    const rail = row.getByRole('list', { name: 'Pipeline stages' })
+
     await expect(rail.getByText(/^Dossier — awaiting review$/)).toBeAttached()
     await expect(rail.getByText(/^Publish — not started$/)).toBeAttached()
   })
