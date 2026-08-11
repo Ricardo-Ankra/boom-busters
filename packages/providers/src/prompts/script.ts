@@ -294,3 +294,61 @@ export function mockShortsCandidates(
 export function scriptWordCount(chapters: readonly { contentMd: string }[]): number {
   return chapters.reduce((total, chapter) => total + countWords(chapter.contentMd), 0)
 }
+
+// ---------------------------------------------------------------------------
+// Per-section regenerate (spec section 11.3)
+// ---------------------------------------------------------------------------
+
+/**
+ * Rewrite one selected passage of a chapter.
+ *
+ * The whole chapter goes in as context but only the selection comes back, so
+ * the model cannot quietly reword the paragraphs around it — the diff view
+ * would then show changes the human never asked for, and reviewing those is
+ * exactly the work the diff view exists to avoid.
+ */
+export function buildRegenerateRequest(input: {
+  chapterTitle: string
+  contentMd: string
+  selection: string
+  note: string
+  claims: readonly ScriptClaim[]
+}): LLMTaskRequest {
+  return {
+    task: 'editing',
+    system: `${HOUSE_STYLE}
+
+You are rewriting ONE passage of an existing chapter.
+
+Return ONLY the rewritten passage as plain prose. No preamble, no quotes
+around it, no explanation, no markdown fences. It is spliced back into the
+chapter exactly as you return it.
+
+Keep roughly the same length unless the instruction says otherwise.`,
+    messages: [
+      { role: 'user', content: `Claims:\n${claimList(input.claims)}` },
+      {
+        role: 'user',
+        content: `Chapter "${input.chapterTitle}" for context:\n\n${input.contentMd}`,
+      },
+      {
+        role: 'user',
+        content: `Rewrite this passage:\n\n"${input.selection}"\n\nThe instruction: ${input.note}`,
+      },
+    ],
+    cacheablePrefixMessages: 1,
+    maxTokens: Math.min(8000, Math.round(countWords(input.selection) * 4) + 500),
+  }
+}
+
+/**
+ * Mock regenerate. Returns visibly different text so the diff view has hunks
+ * to render — a mock that echoed the selection back would produce an empty
+ * diff and leave the accept/reject UI untested.
+ */
+export function mockRegeneratedSection(selection: string, note: string): string {
+  return (
+    `[mock regenerate — nothing was rewritten by a provider] ${selection} ` +
+    `(the instruction was: ${note || 'none given'})`
+  )
+}

@@ -1,5 +1,6 @@
 import {
   getDossier,
+  getLatestScript,
   getProject,
   hasLiveRun,
   listActivity,
@@ -15,6 +16,7 @@ import { db } from '@/lib/db'
 import { approvalBlockedReason, blockingCount } from '@/lib/claim-review'
 import { isGateOpen, isMoving, isStranded } from '@/lib/run-state'
 import { DossierReview } from './dossier-review'
+import { ScriptStudio } from './script-studio'
 import { GateActionBar, StartRunButton, StopButton } from './project-controls'
 
 export const dynamic = 'force-dynamic'
@@ -35,11 +37,12 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
   const project = await getProject(db, id)
   if (!project) notFound()
 
-  const [activity, budgetGates, liveRun, dossier] = await Promise.all([
+  const [activity, budgetGates, liveRun, dossier, script] = await Promise.all([
     listActivity(db, { projectId: id, limit: 50 }),
     listOpenBudgetGates(db),
     hasLiveRun(db, id),
     getDossier(db, id),
+    getLatestScript(db, id),
   ])
   const budgetGate = budgetGates.find((gate) => gate.projectId === id)
 
@@ -55,6 +58,12 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
   // approval it is the reference the script was written from, and the claims
   // it was built on are what a later dispute turns on.
   const showDossier = dossier !== undefined && project.stage === 'dossier'
+  const showScript = script !== undefined && project.stage === 'script'
+
+  // The badge in the Studio header. A downgrade is recorded on the run, so a
+  // chapter written by the fallback model can be labelled as such rather than
+  // passing as the model you configured.
+  const usedFallbackModel = activity.some((entry) => entry.kind === 'model.fallback')
   const blockedReason = dossier ? approvalBlockedReason(dossier.claims) : undefined
 
   return (
@@ -82,7 +91,15 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
 
       {budgetGate ? <BudgetGateCard gate={budgetGate} /> : null}
 
-      {showDossier ? (
+      {showScript ? (
+        <ScriptStudio
+          projectId={project.id}
+          chapters={script.chapters}
+          targetRuntimeMin={project.targetRuntimeMin}
+          shorts={[]}
+          usedFallbackModel={usedFallbackModel}
+        />
+      ) : showDossier ? (
         <DossierReview
           projectId={project.id}
           contentMd={dossier.contentMd}
@@ -117,7 +134,14 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
         <GateActionBar
           projectId={project.id}
           stage={project.stage}
-          context={gateContext(project.stage, dossier)}
+          context={
+            project.stage === 'script' && script
+              ? `${script.chapters.length} chapters · ${script.chapters.reduce(
+                  (total, chapter) => total + chapter.warnings.length,
+                  0,
+                )} self-check warnings. Approving sends this to the voice stage.`
+              : gateContext(project.stage, dossier)
+          }
           {...(project.stage === 'dossier' && blockedReason ? { blockedReason } : {})}
         />
       ) : null}
@@ -129,6 +153,7 @@ function gateContext(
   stage: string,
   dossier: { claims: { confidence: string; quarantined: boolean }[] } | undefined,
 ): string {
+
   if (stage === 'dossier' && dossier) {
     const blocking = blockingCount(dossier.claims)
     const quarantined = dossier.claims.filter((claim) => claim.quarantined).length
