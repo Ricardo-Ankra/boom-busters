@@ -141,6 +141,35 @@ export function splitSentences(text: string): string[] {
   return sentences.filter((sentence) => sentence.length > 0)
 }
 
+// ---------------------------------------------------------------------------
+// Paragraphs
+// ---------------------------------------------------------------------------
+
+/**
+ * Split a chapter into paragraphs — the unit of narration (spec section 7).
+ *
+ * "Chapters split into paragraphs on blank lines of the approved `contentMd`,
+ * before any TTS call; paragraph indexes are stable thereafter and are the unit
+ * for takes, retakes, alignment merge and Shorts segment refs."
+ *
+ * That stability is the whole contract, and it is why this is one shared
+ * function rather than a `split('\n\n')` at each call site. A take is addressed
+ * by `(chapterId, paragraphIndex)`; if the runner and the review screen
+ * disagreed by one about where paragraph 4 begins, the row you flagged and the
+ * audio that got re-synthesised would be different paragraphs.
+ *
+ * Blank lines are the only separator, exactly as the spec says. A single
+ * newline inside a paragraph is a soft wrap, and joining those back into one
+ * line matters: narration read aloud must not pause where the markdown happened
+ * to wrap.
+ */
+export function splitParagraphs(contentMd: string): string[] {
+  return contentMd
+    .split(/\r?\n\s*\r?\n/)
+    .map((paragraph) => paragraph.replace(/\s*\r?\n\s*/g, ' ').trim())
+    .filter((paragraph) => paragraph.length > 0)
+}
+
 /**
  * The stable identity of a sentence, for `claim_refs.sentenceHash`.
  *

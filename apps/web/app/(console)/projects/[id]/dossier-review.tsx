@@ -147,7 +147,13 @@ function ClaimRowView({ projectId, claim }: { projectId: string; claim: ClaimRow
             href={claim.sourceUrl}
             target="_blank"
             rel="noreferrer noopener"
-            className="inline-flex items-center gap-1 text-[var(--color-accent)] underline"
+            /* `min-h-[40px]` is the section 11.1 hit target, and this link
+               needed it: at 24px it was the smallest control in the app and the
+               one most worth pressing — checking where a claim's source
+               actually points is the entire job of this screen. It went
+               unnoticed because the audit that would have caught it was opening
+               a different project. */
+            className="inline-flex min-h-[40px] items-center gap-1 text-[var(--color-accent)] underline"
           >
             {sourceDomain(claim.sourceUrl)}
             <ExternalLink aria-hidden className="size-3" />

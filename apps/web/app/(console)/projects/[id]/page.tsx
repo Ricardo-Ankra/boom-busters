@@ -7,6 +7,7 @@ import {
   listOpenBudgetGates,
   projectDeletionSummary,
 } from '@boom-busters/db'
+import { voiceReviewModel } from '@/lib/voice-review'
 import { notFound } from 'next/navigation'
 import { ActivityList } from '@/components/activity-list'
 import { BudgetGateCard } from '@/components/budget-gate-card'
@@ -19,6 +20,7 @@ import { RESTARTABLE_STAGES, isGateOpen, isMoving, projectControl } from '@/lib/
 import { downstreamOf, resolveViewedStage, stageViewsForProject } from '@/lib/stage-view'
 import { DossierReview } from './dossier-review'
 import { ScriptStudio } from './script-studio'
+import { VoiceReview } from './voice-review'
 import { StageBanner } from './stage-banner'
 import {
   DeleteProjectButton,
@@ -52,14 +54,16 @@ export default async function ProjectPage({
   const project = await getProject(db, id)
   if (!project) notFound()
 
-  const [activity, budgetGates, liveRun, dossier, script, deletionSummary] = await Promise.all([
-    listActivity(db, { projectId: id, limit: 50 }),
-    listOpenBudgetGates(db),
-    hasLiveRun(db, id),
-    getDossier(db, id),
-    getLatestScript(db, id),
-    projectDeletionSummary(db, id),
-  ])
+  const [activity, budgetGates, liveRun, dossier, script, deletionSummary, voice] =
+    await Promise.all([
+      listActivity(db, { projectId: id, limit: 50 }),
+      listOpenBudgetGates(db),
+      hasLiveRun(db, id),
+      getDossier(db, id),
+      getLatestScript(db, id),
+      projectDeletionSummary(db, id),
+      voiceReviewModel(db, id),
+    ])
   const budgetGate = budgetGates.find((gate) => gate.projectId === id)
 
   /**
@@ -85,13 +89,17 @@ export default async function ProjectPage({
   // One answer to "what does the header offer, and why", so the two can never
   // disagree — a button whose caption contradicts the card beside it is how a
   // no-op demo run came to look like the way to start a project.
-  const control = projectControl(project, liveRun, { hasDossier: dossier !== undefined })
+  const control = projectControl(project, liveRun, {
+    hasDossier: dossier !== undefined,
+    hasScript: script !== undefined,
+  })
 
   // Driven by the stage on screen rather than the stage the project is on, so
   // the dossier stays readable from anywhere. It is not only a gate screen:
   // after approval it is the reference the script was written from.
   const showDossier = dossier !== undefined && viewing === 'dossier'
   const showScript = script !== undefined && viewing === 'script'
+  const showVoice = viewing === 'voice' && voice.expectedParagraphs > 0
 
   // The badge in the Studio header. A downgrade is recorded on the run, so a
   // chapter written by the fallback model can be labelled as such rather than
@@ -115,7 +123,9 @@ export default async function ProjectPage({
     viewed?.availability !== 'upcoming' &&
     // The script is written from the dossier's claims; without one the run
     // would die on its first step.
-    (viewing !== 'script' || dossier !== undefined)
+    (viewing !== 'script' || dossier !== undefined) &&
+    // And the narration is read from the script, for the same reason.
+    (viewing !== 'voice' || script !== undefined)
 
   return (
     <div className="flex flex-col gap-6">
@@ -175,9 +185,15 @@ export default async function ProjectPage({
                   (total, chapter) => total + chapter.warnings.length,
                   0,
                 )} self-check warnings. Approving sends this to the voice stage.`
-              : gateContext(project.stage, dossier)
+              : project.stage === 'voice'
+                ? `${voice.coverage.paragraphs} of ${voice.expectedParagraphs} paragraphs narrated · ` +
+                  `${voice.coverage.flagged} flagged. Approving sends this to the visuals stage.`
+                : gateContext(project.stage, dossier)
           }
           {...(project.stage === 'dossier' && blockedReason ? { blockedReason } : {})}
+          {...(project.stage === 'voice' && voice.blockedReason
+            ? { blockedReason: voice.blockedReason }
+            : {})}
         />
       ) : null}
 
@@ -194,7 +210,9 @@ export default async function ProjectPage({
 
       {budgetGate ? <BudgetGateCard gate={budgetGate} /> : null}
 
-      {showScript ? (
+      {showVoice ? (
+        <VoiceReview model={voice} />
+      ) : showScript ? (
         <ScriptStudio
           projectId={project.id}
           chapters={script.chapters}
@@ -223,7 +241,9 @@ export default async function ProjectPage({
             <p className="text-[13px] text-[var(--color-text-muted)]">
               {viewing === 'dossier'
                 ? 'No dossier has been researched yet.'
-                : 'The review screen for this stage arrives with its runner.'}
+                : viewing === 'voice'
+                  ? 'Nothing has been narrated yet. Narration is read from the approved script.'
+                  : 'The review screen for this stage arrives with its runner.'}
             </p>
           </CardContent>
         </Card>

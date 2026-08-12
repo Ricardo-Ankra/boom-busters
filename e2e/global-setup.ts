@@ -7,6 +7,8 @@ export const STALE_PROJECT_TITLE = 'Script written from an older dossier (E2E)'
 export const BEYOND_RUNNERS_TITLE = 'Past the last runner we have built (E2E)'
 export const NO_DOSSIER_TITLE = 'Script stage, no dossier to write from (E2E)'
 export const DENSE_WARNINGS_TITLE = 'A chapter with every warning kind (E2E)'
+export const NARRATED_PROJECT_TITLE = 'Narration ready for review (E2E)'
+export const FLAGGED_TAKE_TITLE = 'Narration with a flagged take (E2E)'
 
 /**
  * Twenty-two warnings across all three kinds, which is what the self-check
@@ -62,9 +64,13 @@ export default async function globalSetup(): Promise<void> {
     createScriptVersion,
     ensureRun,
     recordRunEvent,
+    claimTake,
+    flagTake,
+    mockVoiceTakeKey,
     saveChapter,
     saveDossier,
     seed,
+    storeTakeAudio,
     setChapterWarnings,
     setProjectStage,
     setRunStatus,
@@ -76,6 +82,7 @@ export default async function globalSetup(): Promise<void> {
     updateSettings,
   } = await import('@boom-busters/db')
   const { truncateLedger } = await import('@boom-busters/cost')
+  const { takeIdempotencyKey } = await import('@boom-busters/schemas')
 
   const connection = createDb(url, { max: 2 })
   try {
@@ -186,9 +193,12 @@ export default async function globalSetup(): Promise<void> {
      * than invented. Between them they are the states this suite kept missing.
      */
 
-    // 1. A project past the last runner that exists. Production has one sitting
-    //    at `voice`/`running` with no live run — approved through the script
-    //    gate into a stage M4 has not built yet. Nothing may offer to re-run it.
+    // 1. A project past the last runner that exists. Production had one sitting
+    //    at `voice`/`running` with no live run; M4 built the voice runner, so
+    //    the same shape now lives one stage further on, at `visuals`. The state
+    //    being tested is unchanged — a stage with no runner behind it, and a
+    //    `running` column with nothing running — and it has to move whenever a
+    //    milestone lands, because "past the last runner" is a moving target.
     const beyond = await createProjectFromCase(connection.db, {
       caseId: FIXTURE_CASE_ID,
       title: BEYOND_RUNNERS_TITLE,
@@ -207,7 +217,7 @@ export default async function globalSetup(): Promise<void> {
       estRuntimeSec: 120,
     })
     await setProjectStage(connection.db, beyond.id, {
-      stage: 'voice',
+      stage: 'visuals',
       // `running` with nothing running — the exact combination that turned a
       // spinner for a day.
       stageStatus: 'running',
@@ -251,8 +261,111 @@ export default async function globalSetup(): Promise<void> {
       stageStatus: 'approved',
     })
 
+    /**
+     * 4 and 5. Narration, in the two states the voice gate cares about.
+     *
+     * Seeded through `claimTake`/`storeTakeAudio` rather than by inserting
+     * rows, so the fixture exercises the idempotency key and the take
+     * numbering the runner depends on. Nothing is written to R2: the takes
+     * carry `mock://` keys and the audio route regenerates their bytes, which
+     * is what lets the suite actually press Play.
+     */
+    const narratedText = [
+      'The auditors signed the accounts for eighteen straight years.',
+      'Nobody asked the obvious question about where the cash actually sat.',
+      'By the time anyone did, the answer was that it had never existed.',
+    ]
+
+    async function narrate(
+      title: string,
+      options: { retakeFirst?: boolean; flagSecond?: boolean } = {},
+    ): Promise<void> {
+      const project = await createProjectFromCase(connection.db, {
+        caseId: FIXTURE_CASE_ID,
+        title,
+      })
+      await saveDossier(connection.db, {
+        projectId: project.id,
+        contentMd: '# The research the narration was ultimately read from.',
+        claims: [],
+      })
+      const script = await createScriptVersion(connection.db, project.id)
+      const chapter = await saveChapter(connection.db, {
+        scriptId: script.id,
+        index: 0,
+        title: 'The audit that never happened',
+        // Blank lines, because that is what `splitParagraphs` splits on.
+        contentMd: narratedText.join('\n\n'),
+        estRuntimeSec: 90,
+      })
+
+      for (const [paragraphIndex, text] of narratedText.entries()) {
+        const key = takeIdempotencyKey({
+          projectId: project.id,
+          chapterId: chapter.id,
+          paragraphIndex,
+          text,
+          voiceId: 'mock-narrator',
+        })
+
+        const claimed = await claimTake(connection.db, {
+          projectId: project.id,
+          chapterId: chapter.id,
+          paragraphIndex,
+          idempotencyKey: key,
+          provider: 'gemini',
+          voiceId: 'mock-narrator',
+          builtFromScriptVersion: script.version,
+        })
+        await storeTakeAudio(connection.db, claimed.take.id, {
+          r2Key: mockVoiceTakeKey(claimed.take.id),
+          durationMs: 6_000 + paragraphIndex * 1_500,
+          costUsd: 0.0009,
+          waveform: Array.from({ length: 32 }, (_, i) => (i * 7 + paragraphIndex * 11) % 100),
+        })
+
+        // A paragraph that was flagged and retaken, so the A/B toggle has
+        // something real to compare.
+        if (paragraphIndex === 0 && options.retakeFirst) {
+          await flagTake(connection.db, claimed.take.id, 'Swallowed the word "eighteen".')
+          const retake = await claimTake(connection.db, {
+            projectId: project.id,
+            chapterId: chapter.id,
+            paragraphIndex,
+            idempotencyKey: key,
+            provider: 'gemini',
+            voiceId: 'mock-narrator',
+            builtFromScriptVersion: script.version,
+            takeNumber: 2,
+          })
+          await storeTakeAudio(connection.db, retake.take.id, {
+            r2Key: mockVoiceTakeKey(retake.take.id),
+            durationMs: 6_400,
+            costUsd: 0.0009,
+            waveform: Array.from({ length: 32 }, (_, i) => (i * 3 + 20) % 100),
+          })
+        }
+
+        // A flag with no retake behind it: the state the gate must refuse on.
+        if (paragraphIndex === 1 && options.flagSecond) {
+          await flagTake(connection.db, claimed.take.id, 'Read the figure as a question.')
+        }
+      }
+
+      await setProjectStage(connection.db, project.id, {
+        stage: 'voice',
+        stageStatus: 'awaiting_review',
+      })
+    }
+
+    await narrate(NARRATED_PROJECT_TITLE, { retakeFirst: true })
+    await narrate(FLAGGED_TAKE_TITLE, { flagSecond: true })
+
     await updateSettings(connection.db, {
       budgets: { killSwitch: false, approvedOverages: {} },
+      // A voice must be chosen for the stage to be runnable at all; the mock
+      // adapter answers to any id, and this one says plainly what it is.
+      tts: { provider: 'gemini', voiceId: 'mock-narrator', locked: true },
     })
   } finally {
     await connection.sql.end({ timeout: 5 })

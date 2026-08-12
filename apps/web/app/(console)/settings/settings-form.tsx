@@ -18,6 +18,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input, Label, NumberInput, Select } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { VoiceTab } from './voice-tab'
 import { useToast } from '@/components/ui/toast'
 import { saveProviderKey, saveSettings, verifyProviderKey } from './actions'
 
@@ -76,6 +77,7 @@ export function SettingsForm({
         <TabsTrigger value="models">Models</TabsTrigger>
         <TabsTrigger value="budgets">Budgets</TabsTrigger>
         <TabsTrigger value="brand-kit">Brand Kit</TabsTrigger>
+        <TabsTrigger value="voice">Voice</TabsTrigger>
         <TabsTrigger value="publishing">Publishing</TabsTrigger>
         <TabsTrigger value="connections">Connections</TabsTrigger>
       </TabsList>
@@ -90,6 +92,10 @@ export function SettingsForm({
 
       <TabsContent value="brand-kit">
         <BrandKitTab settings={settings} saving={saving} commit={commit} />
+      </TabsContent>
+
+      <TabsContent value="voice">
+        <VoiceTab settings={settings} saving={saving} commit={commit} />
       </TabsContent>
 
       <TabsContent value="publishing">

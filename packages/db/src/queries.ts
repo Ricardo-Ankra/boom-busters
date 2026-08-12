@@ -1,5 +1,15 @@
-import { DEFAULT_SETTINGS, PROVIDER_ENV_SEEDS } from '@boom-busters/schemas'
-import type { LlmProvider, Provider, Settings, SettingsPatch } from '@boom-busters/schemas'
+import {
+  DEFAULT_SETTINGS,
+  PROVIDER_ENV_SEEDS,
+  TTS_CREDENTIAL_PROVIDER,
+} from '@boom-busters/schemas'
+import type {
+  LlmProvider,
+  Provider,
+  Settings,
+  SettingsPatch,
+  TtsProvider,
+} from '@boom-busters/schemas'
 import { and, count, eq, inArray } from 'drizzle-orm'
 import type { Database } from './client'
 import { decryptSecret, encryptSecret, keyHint, maskKey } from './crypto'
@@ -205,6 +215,35 @@ export async function llmCredentials(
     }
   }
   return keys
+}
+
+/**
+ * The decrypted key a TTS provider needs, on the same terms as `llmCredentials`.
+ *
+ * Resolved through `TTS_CREDENTIAL_PROVIDER`, because "gemini" is a model line
+ * rather than an account: its TTS endpoint takes the same Google key as the
+ * Gemini text models. Looking for a credential row called `gemini` would find
+ * nothing and report a missing key that has been configured all along.
+ */
+export async function ttsCredential(
+  db: Database,
+  provider: TtsProvider,
+  encryptionKey: string,
+): Promise<string | undefined> {
+  const [row] = await db
+    .select({ encryptedKey: providerCredentials.encryptedKey })
+    .from(providerCredentials)
+    .where(eq(providerCredentials.provider, TTS_CREDENTIAL_PROVIDER[provider]))
+    .limit(1)
+
+  if (!row) return undefined
+
+  try {
+    return decryptSecret(row.encryptedKey, encryptionKey)
+  } catch {
+    // Absent rather than thrown, for the reason `llmCredentials` gives.
+    return undefined
+  }
 }
 
 /** Stamp the outcome of Settings -> Connections' Verify button. */

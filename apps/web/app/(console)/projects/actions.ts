@@ -6,12 +6,14 @@ import {
   cancelRunsForProject,
   deleteProject,
   getDossier,
+  getLatestScript,
   getProject,
   hasLiveRun,
   markProjectCancelled,
   projectDeletionSummary,
   setProjectStage,
 } from '@boom-busters/db'
+import { voiceGateBlockedReason } from '@/lib/voice-review'
 import type { ProjectStage } from '@boom-busters/db'
 import { GateStageSchema, ProviderSchema, UlidSchema } from '@boom-busters/schemas'
 import type { GateStage } from '@boom-busters/schemas'
@@ -155,17 +157,29 @@ export async function restartStage(projectId: string, stage?: string): Promise<A
     }
   }
 
+  // The same rule one stage down: narration is read from the script.
+  if (target === 'voice' && !(await getLatestScript(db, projectId))) {
+    return {
+      ok: false,
+      error:
+        'There is no script to narrate. Run the script stage first — the narration is read from ' +
+        'its chapters.',
+    }
+  }
+
   /**
    * Re-entering a stage means re-sending the event its runner triggers on.
-   * Only these two have runners; anything else would send an event nothing is
-   * subscribed to, report success, and do nothing.
+   * Only these three have runners; anything else would send an event nothing
+   * is subscribed to, report success, and do nothing.
    */
   const entry =
     target === 'dossier'
       ? events.projectCreated.create({ projectId, caseId: project.caseId })
       : target === 'script'
         ? events.dossierApproved.create({ projectId, approvedBy })
-        : null
+        : target === 'voice'
+          ? events.scriptApproved.create({ projectId, approvedBy })
+          : null
 
   if (!entry) {
     return {
@@ -252,6 +266,20 @@ export async function approveGate(projectId: string, stage: string): Promise<Act
           'quarantine it to keep it out of the script.',
       }
     }
+  }
+
+  /**
+   * The voice gate's blocker, and it is the spec's wording rather than a
+   * convenience: "the main run's gate wait is only satisfied when the UI
+   * approve action verifies zero flagged takes server-side" (section 7.3).
+   *
+   * Server-side is the load-bearing part. A flagged paragraph whose retake
+   * never arrived would otherwise be approved into an assembly that narrates
+   * the take you rejected.
+   */
+  if (parsedStage.data === 'voice') {
+    const blocked = await voiceGateBlockedReason(db, projectId)
+    if (blocked) return { ok: false, error: blocked }
   }
 
   const sent = await send(

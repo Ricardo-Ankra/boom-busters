@@ -48,7 +48,11 @@ export interface ProjectSummary {
    */
   dossierVersion: number | null
   hasScript: boolean
+  scriptVersion: number | null
   scriptBuiltFromDossierVersion: number | null
+  /** How many takes exist at all, and the oldest script version among them. */
+  voiceTakes: number
+  voiceBuiltFromScriptVersion: number | null
   /**
    * Whether the run mirror shows anything executing or parked on this project.
    *
@@ -79,10 +83,31 @@ const summaryColumns = {
   hasScript: sql<boolean>`exists (
     select 1 from ${scripts} where ${scripts.projectId} = ${projects.id}
   )`,
+  scriptVersion: sql<number | null>`(
+    select ${scripts.version} from ${scripts}
+    where ${scripts.projectId} = ${projects.id}
+    order by ${scripts.version} desc limit 1
+  )`,
   scriptBuiltFromDossierVersion: sql<number | null>`(
     select ${scripts.builtFromDossierVersion} from ${scripts}
     where ${scripts.projectId} = ${projects.id}
     order by ${scripts.version} desc limit 1
+  )`,
+  /**
+   * The narration, in the two numbers the rail needs.
+   *
+   * The count answers "is there any audio at all"; the version answers "was it
+   * read from the script that exists now". `min` rather than `max` on the
+   * version deliberately: a project whose script was re-run and only partly
+   * re-narrated has some takes from the old script, and the honest reading of
+   * that mixture is the oldest one — some of this narration is out of date.
+   */
+  voiceTakes: sql<number>`(
+    select count(*)::int from voice_takes vt where vt.project_id = projects.id
+  )`,
+  voiceBuiltFromScriptVersion: sql<number | null>`(
+    select min(vt.built_from_script_version) from voice_takes vt
+    where vt.project_id = projects.id
   )`,
   hasActiveRun: sql<boolean>`exists (
     select 1 from runs r

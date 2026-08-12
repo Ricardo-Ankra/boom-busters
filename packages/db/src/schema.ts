@@ -452,6 +452,28 @@ export const voiceTakes = pgTable(
     /** hash(projectId, chapterId, paragraphIndex, textHash, voiceId): re-runs are free. */
     idempotencyKey: text('idempotency_key').notNull(),
     note: text('note'),
+    /**
+     * Peak amplitude per bucket, 0-100, for the review row's waveform strip.
+     *
+     * Computed once at synthesis rather than in the browser: decoding a
+     * megabyte of WAV per row to draw a 200-pixel strip would make the review
+     * screen wait on sixty downloads before it could render, and the numbers
+     * never change once the audio exists.
+     */
+    waveform: jsonb('waveform')
+      .notNull()
+      .default(sql`'[]'::jsonb`)
+      .$type<number[]>(),
+    /**
+     * The script version this audio was read from — the provenance column that
+     * makes voice staleness derivable, exactly as `scripts.
+     * built_from_dossier_version` does one stage up (decision, M3.2).
+     *
+     * Nullable, because takes made before this column existed cannot honestly
+     * claim a version. Those read as `unknown-provenance` rather than being
+     * assumed current.
+     */
+    builtFromScriptVersion: integer('built_from_script_version'),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },

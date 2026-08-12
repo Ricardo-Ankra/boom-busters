@@ -43,6 +43,13 @@
       "when": 1786516316375,
       "tag": "0005_curvy_wallow",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1786568284328,
+      "tag": "0006_real_morbius",
+      "breakpoints": true
     }
   ]
 }
