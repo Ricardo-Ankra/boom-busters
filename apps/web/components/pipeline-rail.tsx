@@ -4,6 +4,7 @@ import {
   AlertCircle,
   Check,
   CircleDashed,
+  CircleDot,
   History,
   Loader2,
   MinusCircle,
@@ -38,6 +39,8 @@ export type SegmentState =
   | 'cancelled'
   | 'upcoming'
   | 'stale'
+  /** The stage the project sits on, with nothing executing. */
+  | 'current'
 
 const SEGMENT_LABELS: Record<ProjectStage, string> = {
   dossier: 'Dossier',
@@ -59,6 +62,7 @@ const STATE_LABELS: Record<SegmentState, string> = {
   cancelled: 'cancelled',
   upcoming: 'not started',
   stale: 'needs re-running',
+  current: 'the current stage, nothing running',
 }
 
 /**
@@ -75,6 +79,18 @@ export function segmentState(view: StageView): SegmentState {
   const outdated = view.availability === 'stale' || view.availability === 'unknown-provenance'
 
   if (view.current && view.status) {
+    /**
+     * A spinner is a promise that something is happening, so it is spent only
+     * on a run the mirror can actually see.
+     *
+     * `stageStatus` reads `running` from the moment a runner sets it until
+     * something sets it otherwise — which includes every run that failed, was
+     * cancelled, or was superseded. Animating on that meant a project that had
+     * been sitting untouched for a day still turned a spinner, and the only
+     * way to find out nothing was running was to wait.
+     */
+    if (view.status === 'running' && !view.live) return 'current'
+
     /**
      * Staleness overrides `approved`, and nothing else.
      *
@@ -112,6 +128,9 @@ function StateIcon({ state }: { state: SegmentState }) {
       return <MinusCircle className="size-3.5" aria-hidden />
     case 'stale':
       return <History className="size-3.5" aria-hidden />
+    // Solid and still: this is where the project is, and nothing is moving.
+    case 'current':
+      return <CircleDot className="size-3.5" aria-hidden />
     default:
       return <CircleDashed className="size-3.5" aria-hidden />
   }
@@ -128,6 +147,9 @@ const STATE_CLASSES: Record<SegmentState, string> = {
   // Dashed, because stale is neither done nor undone: the work exists and
   // cannot be relied on.
   stale: 'border-dashed border-[var(--color-warning)] text-[var(--color-warning)]',
+  // The same accent as `running`, deliberately: both mean "this is the stage
+  // in play". Only the spinner separates them, and only a real run earns it.
+  current: 'border-[var(--color-accent)] text-[var(--color-accent)]',
 }
 
 export function PipelineRail({
@@ -208,7 +230,7 @@ export function MiniPipelineRail({ views }: { views: readonly StageView[] }) {
           <li key={view.stage}>
             <span
               className={cn('block size-2 rounded-full border', STATE_CLASSES[state], {
-                'bg-current': state === 'approved' || state === 'running',
+                'bg-current': state === 'approved' || state === 'running' || state === 'current',
               })}
             />
             <span className="sr-only">

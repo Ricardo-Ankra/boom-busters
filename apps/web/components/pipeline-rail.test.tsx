@@ -69,6 +69,38 @@ describe('PipelineRail', () => {
     )
   })
 
+  /**
+   * A spinner is a promise that something is happening. `stageStatus` reads
+   * `running` from the moment a runner sets it until something sets it
+   * otherwise — including every run that died — so a project untouched for a
+   * day still turned a spinner, and the only way to learn nothing was running
+   * was to keep waiting.
+   */
+  describe('the spinner', () => {
+    const onScript = (liveRun: boolean) => ({
+      project: { stage: 'script' as const, stageStatus: 'running' as const },
+      liveRun,
+      dossier: { version: 1 },
+      script: { builtFromDossierVersion: 1 },
+    })
+
+    it('turns only when the run mirror can see a run', () => {
+      const { container } = renderRail(onScript(true), 'script')
+      expect(container.querySelector('.animate-spin')).not.toBeNull()
+      expect(screen.getByRole('link', { name: /Script/ })).toHaveAccessibleName(/running/)
+    })
+
+    it('is still when the column says running and nothing is', () => {
+      const { container } = renderRail(onScript(false), 'script')
+
+      expect(container.querySelector('.animate-spin')).toBeNull()
+      // Still the stage in play, and said in words rather than only in colour.
+      expect(screen.getByRole('link', { name: /Script/ })).toHaveAccessibleName(
+        /the current stage, nothing running/,
+      )
+    })
+  })
+
   it('calls an approved-but-outdated stage stale rather than approved', () => {
     // "Approved" is true and misleading in the same breath: it was approved,
     // and what it was approved against has since been replaced.

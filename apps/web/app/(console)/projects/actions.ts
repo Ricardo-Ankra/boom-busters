@@ -4,9 +4,11 @@ import {
   PIPELINE_STAGES,
   blockingClaims,
   cancelRunsForProject,
+  deleteProject,
   getProject,
   hasLiveRun,
   markProjectCancelled,
+  projectDeletionSummary,
   setProjectStage,
 } from '@boom-busters/db'
 import type { ProjectStage } from '@boom-busters/db'
@@ -301,6 +303,68 @@ export async function stopProject(projectId: string, reason?: string): Promise<A
 
   refresh(projectId)
   return sent
+}
+
+// ---------------------------------------------------------------------------
+// Deleting
+// ---------------------------------------------------------------------------
+
+/**
+ * Delete a project and everything produced under it.
+ *
+ * Deliberately a hard delete rather than an archive. A project you have decided
+ * against is clutter on the one screen you use to see what needs you, and an
+ * archive that nothing can filter is a second list nobody reads. This is the
+ * same call `deleteCase` makes: destroy when nothing depends on it, refuse when
+ * something does.
+ *
+ * Two refusals, both because deleting would leave something incoherent rather
+ * than merely lost:
+ *
+ * - **A live run.** Its next step would write a dossier, a chapter or a gate
+ *   against a project row that no longer exists, and the failure would surface
+ *   minutes later as an unexplained run error.
+ * - **Anything published.** `publish_records` is polymorphic, so no foreign key
+ *   stops a delete from stranding a row that points at a live YouTube video.
+ *   The record of what is public has to outlast the console's tidying.
+ *
+ * The spend survives either way: `cost_ledger.project_id` is `set null`, so the
+ * Costs screen never gets cheaper because a project was deleted.
+ */
+export async function deleteProjectAction(projectId: string): Promise<ActionResult> {
+  await requireOwner()
+  const invalid = badId(projectId)
+  if (invalid) return invalid
+
+  const project = await getProject(db, projectId)
+  if (!project) return { ok: false, error: 'Unknown project' }
+
+  if (await hasLiveRun(db, projectId)) {
+    return {
+      ok: false,
+      error: 'A run is still in flight on this project. Stop it first, then delete it.',
+    }
+  }
+
+  const summary = await projectDeletionSummary(db, projectId)
+  if (summary.publishedCount > 0) {
+    return {
+      ok: false,
+      error:
+        'This project has been published to YouTube. Deleting it would leave the publish record ' +
+        'pointing at nothing — take the video down first if you really mean to remove it.',
+    }
+  }
+
+  const deleted = await deleteProject(db, projectId)
+  if (!deleted) return { ok: false, error: 'That project no longer exists' }
+
+  revalidatePath('/projects')
+  revalidatePath('/')
+  revalidatePath('/cases')
+  revalidatePath('/costs')
+
+  return { ok: true }
 }
 
 // ---------------------------------------------------------------------------

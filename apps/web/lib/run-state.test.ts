@@ -25,6 +25,14 @@ describe('isMoving', () => {
   it('does not poll forever on a project stranded at a review', () => {
     expect(isMoving({ stageStatus: 'awaiting_review' }, false)).toBe(false)
   })
+
+  it('does not believe a `running` column with no run behind it', () => {
+    // `ensureRun` fires on run start, before any step, so a genuinely running
+    // runner always has a mirror row. `running` without one means a runner set
+    // that column and then stopped existing — and polling on it told the user
+    // something was happening for as long as they were willing to watch.
+    expect(isMoving({ stageStatus: 'running' }, false)).toBe(false)
+  })
 })
 
 describe('isGateOpen', () => {

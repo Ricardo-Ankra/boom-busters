@@ -40,6 +40,17 @@ export interface StageView {
   status: StageStatus | null
   /** True for the stage the project is on right now. */
   current: boolean
+  /**
+   * Whether a run is genuinely executing on this stage — the run mirror's
+   * answer, not the project row's.
+   *
+   * These come apart, and the rail was reading the wrong one. `stageStatus`
+   * says `running` from the moment a runner sets it until something sets it to
+   * anything else, which includes every run that died, was cancelled, or was
+   * superseded. Spinning an icon on that told the user work was in progress
+   * when nothing at all was happening.
+   */
+  live: boolean
   /** Whether there is a screen worth opening. */
   viewable: boolean
   /** Why it is stale, in words, when it is. */
@@ -48,6 +59,8 @@ export interface StageView {
 
 export interface StageInputs {
   project: { stage: ProjectStage; stageStatus: StageStatus }
+  /** From the run mirror: is anything actually executing on this project? */
+  liveRun?: boolean
   dossier?: { version: number } | undefined
   script?: { builtFromDossierVersion: number | null } | undefined
 }
@@ -122,6 +135,7 @@ export function stageViews(input: StageInputs): StageView[] {
       availability: derived.availability,
       status: current ? input.project.stageStatus : null,
       current,
+      live: current && (input.liveRun ?? false),
       // The current stage is always worth opening, even with nothing in it —
       // that is where the run's status and its controls live.
       viewable: current || derived.availability !== 'upcoming',
@@ -135,15 +149,19 @@ export function stageViews(input: StageInputs): StageView[] {
  * columns. One helper so the Projects list and the project screen cannot
  * disagree about what a rail segment means.
  */
-export function stageViewsForProject(project: {
-  stage: ProjectStage
-  stageStatus: StageStatus
-  dossierVersion: number | null
-  hasScript: boolean
-  scriptBuiltFromDossierVersion: number | null
-}): StageView[] {
+export function stageViewsForProject(
+  project: {
+    stage: ProjectStage
+    stageStatus: StageStatus
+    dossierVersion: number | null
+    hasScript: boolean
+    scriptBuiltFromDossierVersion: number | null
+  },
+  liveRun = false,
+): StageView[] {
   return stageViews({
     project: { stage: project.stage, stageStatus: project.stageStatus },
+    liveRun,
     ...(project.dossierVersion === null ? {} : { dossier: { version: project.dossierVersion } }),
     ...(project.hasScript
       ? { script: { builtFromDossierVersion: project.scriptBuiltFromDossierVersion } }

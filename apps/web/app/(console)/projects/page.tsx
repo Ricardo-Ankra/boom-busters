@@ -67,7 +67,7 @@ function ProjectRow({ project }: { project: ProjectSummary }) {
         </p>
       </div>
 
-      <MiniPipelineRail views={stageViewsForProject(project)} />
+      <MiniPipelineRail views={stageViewsForProject(project, project.hasActiveRun)} />
 
       <span className="font-mono text-[13px] text-[var(--color-text-muted)] tabular-nums">
         {project.targetRuntimeMin} min

@@ -147,6 +147,53 @@ test.describe('a project that was stopped', () => {
  * narration was written from — the research, and the sources any later dispute
  * turns on, were unreachable from the screen that needed them most.
  */
+test.describe('deleting a project', () => {
+  const CASE_TITLE = 'A case whose project gets deleted (E2E)'
+
+  test('removes it, states what goes, and keeps the case', async ({ page }) => {
+    // Self-contained: it makes its own case and project rather than deleting a
+    // shared fixture out from under the tests that follow it.
+    await page.goto('/cases')
+    await page.getByRole('button', { name: 'Add case' }).click()
+    await page.getByLabel('Title').fill(CASE_TITLE)
+    await page.getByLabel('Angle').fill('An angle, so the form is valid.')
+    await page.getByRole('button', { name: 'Save case' }).click()
+    await expect(page.getByText('Case added to your backlog').first()).toBeVisible()
+
+    await page
+      .getByRole('listitem')
+      .filter({ hasText: CASE_TITLE })
+      .getByRole('button', { name: 'New project' })
+      .click()
+    await expect(page.getByText(/nothing is researching it/i).first()).toBeVisible()
+
+    await openProject(page, CASE_TITLE)
+
+    await page.getByRole('button', { name: /Delete this project/i }).click()
+    // Named consequences, not "this cannot be undone".
+    await expect(page.getByText(/The case it came from is kept/i)).toBeVisible()
+    await page.getByRole('button', { name: 'Delete it' }).click()
+
+    await expect(page).toHaveURL(/\/projects$/)
+    await expect(page.getByRole('listitem').filter({ hasText: CASE_TITLE })).toHaveCount(0)
+
+    // The case survives: a case is a story worth telling, and abandoning one
+    // attempt at it does not retract that.
+    await page.goto('/cases')
+    await expect(page.getByText(CASE_TITLE)).toBeVisible()
+  })
+
+  test('is not offered while a run is in flight', async ({ page }) => {
+    // The fixture is parked at its gate with a live run behind it. Deleting it
+    // there would leave the runner writing to a project that no longer exists.
+    await page.goto('/projects')
+    await page.getByRole('link', { name: 'Review' }).first().click()
+
+    await expect(page.getByRole('button', { name: /Delete this project/i })).toHaveCount(0)
+    await expect(page.getByText(/Not while a run is in flight/i)).toBeVisible()
+  })
+})
+
 test.describe('moving between stages', () => {
   test('the dossier is reachable from the script stage', async ({ page }) => {
     await openProject(page, STALE_PROJECT_TITLE)

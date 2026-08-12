@@ -1,6 +1,6 @@
 'use client'
 
-import { RotateCcw, Square } from 'lucide-react'
+import { RotateCcw, Square, Trash2 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import * as React from 'react'
 import { ConfirmButton } from '@/components/confirm-button'
@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button'
 import { useToast } from '@/components/ui/toast'
 import {
   approveGate,
+  deleteProjectAction,
   requestChanges,
   restartStage,
   stopProject,
@@ -120,6 +121,64 @@ export function StopButton({ projectId }: { projectId: string }) {
   )
 }
 
+/**
+ * Delete the project and everything under it.
+ *
+ * Kept at the bottom of the screen, well away from Approve, and phrased around
+ * what actually disappears. "This cannot be undone" is a warning nobody can
+ * weigh; "18 claims, 6 chapters and $2.34 of research" is one they can.
+ *
+ * It also says what *survives*, because the surprising half is the money: the
+ * spend stays on the Costs screen attributed to no project. A console whose
+ * monthly total dropped every time you tidied up would be a console that could
+ * not be used to answer "what has this channel cost me".
+ */
+export function DeleteProjectButton({
+  projectId,
+  summary,
+}: {
+  projectId: string
+  summary: { claims: number; chapters: number; scripts: number; runs: number; spendUsd: number }
+}) {
+  const act = useAction()
+  const router = useRouter()
+
+  const parts = [
+    summary.claims > 0 ? `${summary.claims} claim${summary.claims === 1 ? '' : 's'}` : null,
+    summary.chapters > 0 ? `${summary.chapters} chapter${summary.chapters === 1 ? '' : 's'}` : null,
+    summary.runs > 0 ? `${summary.runs} run${summary.runs === 1 ? '' : 's'}` : null,
+  ].filter(Boolean)
+
+  const consequence =
+    (parts.length > 0
+      ? `This deletes the project and its ${parts.join(', ')}. `
+      : 'This deletes the project. ') +
+    (summary.spendUsd > 0
+      ? `The $${summary.spendUsd.toFixed(2)} it has already cost stays on the Costs screen — the money was spent either way. `
+      : '') +
+    'The case it came from is kept. Nothing here can be recovered.'
+
+  return (
+    <ConfirmButton
+      label={
+        <>
+          <Trash2 aria-hidden />
+          Delete this project
+        </>
+      }
+      confirmLabel="Delete it"
+      consequence={consequence}
+      onConfirm={async () => {
+        const done = await act(() => deleteProjectAction(projectId), 'Project deleted')
+        // Staying on the screen of a project that no longer exists would 404 on
+        // the next refresh.
+        if (done) router.push('/projects')
+        return done
+      }}
+    />
+  )
+}
+
 export function GateActionBar({
   projectId,
   stage,
@@ -173,9 +232,21 @@ export function GateActionBar({
     return () => window.clearTimeout(timer)
   }, [waiting, handOffTimeoutMs])
 
+  /**
+   * At the top of the screen with the other controls, not stuck to the bottom.
+   *
+   * Spec 11.3 asks for a sticky bar along the bottom edge. On the dossier that
+   * was fine; on the Script Studio it permanently covered the last few lines of
+   * the chapter you were reading, on the one screen whose entire job is reading.
+   * A control bar that competes with the content it acts on is the wrong
+   * trade — so it sits with `Stop` and the re-run controls instead, where the
+   * eye already goes for actions.
+   */
+  const frame = 'rounded-[8px] border border-[var(--color-border)] bg-[var(--color-surface)] p-3'
+
   if (waiting) {
     return (
-      <div className="sticky bottom-0 z-10 -mx-4 mt-6 border-t border-[var(--color-border)] bg-[var(--color-surface)] p-4 md:-mx-6 md:px-6">
+      <div className={frame}>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <p className="text-[13px] text-[var(--color-text-secondary)]">
             Handed to the pipeline. The run picks this up within a few seconds, and this screen
@@ -190,7 +261,7 @@ export function GateActionBar({
   }
 
   return (
-    <div className="sticky bottom-0 z-10 -mx-4 mt-6 border-t border-[var(--color-border)] bg-[var(--color-surface)] p-4 md:-mx-6 md:px-6">
+    <div className={frame}>
       <div className="flex flex-col gap-3">
         <p className="text-[13px] text-[var(--color-text-secondary)]">{context}</p>
 

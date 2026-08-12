@@ -5,6 +5,7 @@ import {
   hasLiveRun,
   listActivity,
   listOpenBudgetGates,
+  projectDeletionSummary,
 } from '@boom-busters/db'
 import { notFound } from 'next/navigation'
 import { ActivityList } from '@/components/activity-list'
@@ -19,7 +20,12 @@ import { downstreamOf, resolveViewedStage, stageViewsForProject } from '@/lib/st
 import { DossierReview } from './dossier-review'
 import { ScriptStudio } from './script-studio'
 import { StageBanner } from './stage-banner'
-import { GateActionBar, RestartRunButton, StopButton } from './project-controls'
+import {
+  DeleteProjectButton,
+  GateActionBar,
+  RestartRunButton,
+  StopButton,
+} from './project-controls'
 
 export const dynamic = 'force-dynamic'
 
@@ -46,12 +52,13 @@ export default async function ProjectPage({
   const project = await getProject(db, id)
   if (!project) notFound()
 
-  const [activity, budgetGates, liveRun, dossier, script] = await Promise.all([
+  const [activity, budgetGates, liveRun, dossier, script, deletionSummary] = await Promise.all([
     listActivity(db, { projectId: id, limit: 50 }),
     listOpenBudgetGates(db),
     hasLiveRun(db, id),
     getDossier(db, id),
     getLatestScript(db, id),
+    projectDeletionSummary(db, id),
   ])
   const budgetGate = budgetGates.find((gate) => gate.projectId === id)
 
@@ -64,7 +71,7 @@ export default async function ProjectPage({
    * narration was written from, and the sources any later dispute turns on,
    * have to be reachable from the screen that needs them.
    */
-  const views = stageViewsForProject(project)
+  const views = stageViewsForProject(project, liveRun)
   const viewing = resolveViewedStage(requestedStage, views, project.stage)
   const viewingCurrent = viewing === project.stage
   const viewed = views.find((view) => view.stage === viewing)
@@ -147,6 +154,30 @@ export default async function ProjectPage({
         </p>
       ) : null}
 
+      {/* Directly under the header, beside where Stop and the re-run controls
+          live — not stuck along the bottom edge. On the Script Studio the
+          sticky version permanently covered the last lines of the chapter you
+          were reading, on the one screen whose whole job is reading. */}
+      {atGate && !budgetGate && viewingCurrent ? (
+        <GateActionBar
+          /* One bar per gate. The bar keeps a little state about the approval
+             it just handed over, and without a key that state would follow the
+             component from the dossier gate to the script gate. */
+          key={project.stage}
+          projectId={project.id}
+          stage={project.stage}
+          context={
+            project.stage === 'script' && script
+              ? `${script.chapters.length} chapters · ${script.chapters.reduce(
+                  (total, chapter) => total + chapter.warnings.length,
+                  0,
+                )} self-check warnings. Approving sends this to the voice stage.`
+              : gateContext(project.stage, dossier)
+          }
+          {...(project.stage === 'dossier' && blockedReason ? { blockedReason } : {})}
+        />
+      ) : null}
+
       <PipelineRail views={views} projectId={project.id} viewing={viewing} />
 
       <StageBanner
@@ -200,28 +231,20 @@ export default async function ProjectPage({
         <ActivityList entries={activity} emptyMessage="Nothing has happened on this project yet." />
       </section>
 
-      {/* Never off-stage. Reading an old dossier and pressing Approve on it
-          would approve the gate the project is actually parked at, which is a
-          different stage entirely — the banner above says so instead. */}
-      {atGate && !budgetGate && viewingCurrent ? (
-        <GateActionBar
-          /* One bar per gate. The bar keeps a little state about the approval
-             it just handed over, and without a key that state would follow the
-             component from the dossier gate to the script gate. */
-          key={project.stage}
-          projectId={project.id}
-          stage={project.stage}
-          context={
-            project.stage === 'script' && script
-              ? `${script.chapters.length} chapters · ${script.chapters.reduce(
-                  (total, chapter) => total + chapter.warnings.length,
-                  0,
-                )} self-check warnings. Approving sends this to the voice stage.`
-              : gateContext(project.stage, dossier)
-          }
-          {...(project.stage === 'dossier' && blockedReason ? { blockedReason } : {})}
-        />
-      ) : null}
+      {/* Last on the page and a long way from Approve. A destructive control
+          that sits near the one you press every day is a control you will
+          eventually press by accident. */}
+      <section className="flex flex-wrap items-center justify-between gap-3 rounded-[8px] border border-[var(--color-border)] p-3">
+        <div className="min-w-0">
+          <h2 className="text-[13px] font-semibold">Delete this project</h2>
+          <p className="text-[12px] text-[var(--color-text-muted)]">
+            {liveRun
+              ? 'Not while a run is in flight — stop it first.'
+              : 'Removes the project and everything produced under it. The case is kept.'}
+          </p>
+        </div>
+        {liveRun ? null : <DeleteProjectButton projectId={project.id} summary={deletionSummary} />}
+      </section>
     </div>
   )
 }

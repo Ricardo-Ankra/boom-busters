@@ -387,6 +387,72 @@ were invisible until an E2E opened a Script Studio that had chapters in it:
 
 ---
 
+## M3.3 — Deleting a project, and three UI corrections
+
+**Status:** `[x]` **done** (2026-08-12).
+
+Project deletion was in no milestone. The spec's only danger-zone action is
+cancel-all-runs (§11.3), so the ability to remove a project you have decided
+against did not exist anywhere on the roadmap.
+
+### Decisions made
+
+- **A hard delete, not an archive** (2026-08-12). A project you have abandoned
+  is clutter on the one screen you use to see what needs you, and an archive
+  nothing can filter is a second list nobody reads. This follows `deleteCase`:
+  destroy when nothing depends on it, refuse when something does.
+- **The spend survives.** `cost_ledger.project_id` is `set null`, so deleting a
+  project leaves its ledger rows attributed to no project. A Costs screen that
+  got cheaper whenever you tidied up could not answer "what has this channel
+  cost me", which is the only question it exists for.
+- **The case survives.** A case is a story worth telling; abandoning one attempt
+  at it does not retract that. It simply reads as having nothing produced from
+  it, and becomes startable again.
+- **Two refusals, both about incoherence rather than loss.** A live run, because
+  its next step would write against a project row that no longer exists. And
+  anything published: `publish_records` is polymorphic, so no foreign key stops
+  a delete stranding a row that points at a live YouTube video.
+
+### Deliverables
+
+- [x] **`projectDeletionSummary`** — counts what would go (claims, chapters,
+      runs) and what it cost, so the confirm names it. "This cannot be undone"
+      is a warning nobody can weigh
+- [x] **`deleteProject` + `deleteProjectAction`** with both guards
+- [x] **A delete control** at the foot of the project screen, a long way from
+      Approve, replaced by an explanation while a run is live
+- [x] **Tests** — 8 db integration tests (cascade, ledger survival, case
+      survival), 2 E2E
+
+### Three UI corrections shipped alongside
+
+- **The rail spun when nothing was running.** `stageStatus` reads `running`
+  from the moment a runner sets it until something sets it otherwise, which
+  includes every run that failed, was cancelled or was superseded — so a project
+  untouched for a day still turned a spinner. The spinner is now spent only on a
+  run the mirror can see; the current stage otherwise stays accent-coloured and
+  still. `isMoving` was wrong the same way and polled forever on it.
+- **The gate action bar was moved out of the sticky footer**, up beside `Stop`
+  and the re-run controls. This is a deliberate deviation from spec §11.3
+  ("sticky gate action bar (bottom)"): on the dossier it was fine, but on the
+  Script Studio it permanently covered the last lines of the chapter you were
+  reading — a control bar competing with the content it acts on, on the one
+  screen whose whole job is reading.
+- **The chapter reorder chevrons are gone.** They were redundant — the rows
+  were already draggable — and once widened to the 40px minimum they overflowed
+  the narrow outline column into the editor beside it. Replaced by a single grip
+  handle with a visible instruction, a drop-target ring, and arrow-key support,
+  because spec §11.1 rules out anything reachable by pointer alone and drag is
+  exactly that.
+
+### Verified
+
+- **`pnpm test`** — 604 tests across 6 workspaces (schemas 97 · db 132 ·
+  providers 179 · cost 30 · ui-tokens 21 · web 145).
+- **`pnpm e2e`** — 60 Playwright tests, run twice.
+
+---
+
 ## M4 — Voice
 
 > TTS adapters (Gemini batch, ElevenLabs), voice-runner, review UI with

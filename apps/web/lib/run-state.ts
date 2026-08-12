@@ -11,7 +11,14 @@ import type { ProjectStage, StageStatus } from '@boom-busters/db'
  * it. `stageStatus` covers that window.
  */
 export function isMoving(project: { stageStatus: StageStatus }, liveRun: boolean): boolean {
-  return project.stageStatus === 'queued' || project.stageStatus === 'running' || liveRun
+  // `queued` and nothing else, because that is the one window the mirror
+  // genuinely cannot see: the event has been sent and Inngest has not picked it
+  // up. Once a runner is executing it has a mirror row — `ensureRun` happens on
+  // run start, before any step — so `stageStatus === 'running'` with no live run
+  // does not mean "starting", it means a runner set that column and then
+  // stopped existing. Polling on it forever told the user something was
+  // happening when nothing was.
+  return liveRun || project.stageStatus === 'queued'
 }
 
 /**

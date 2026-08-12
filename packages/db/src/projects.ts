@@ -49,6 +49,14 @@ export interface ProjectSummary {
   dossierVersion: number | null
   hasScript: boolean
   scriptBuiltFromDossierVersion: number | null
+  /**
+   * Whether the run mirror shows anything executing or parked on this project.
+   *
+   * Carried here so the Projects list can tell "running" from "a column that
+   * still says running", without a query per row. `stageStatus` alone cannot:
+   * it keeps whatever the last runner wrote, including from runs that died.
+   */
+  hasActiveRun: boolean
 }
 
 const summaryColumns = {
@@ -75,6 +83,10 @@ const summaryColumns = {
     select ${scripts.builtFromDossierVersion} from ${scripts}
     where ${scripts.projectId} = ${projects.id}
     order by ${scripts.version} desc limit 1
+  )`,
+  hasActiveRun: sql<boolean>`exists (
+    select 1 from runs r
+    where r.project_id = projects.id and r.status in ('running', 'awaiting_gate')
   )`,
 }
 
@@ -155,6 +167,102 @@ export async function deleteProjectsExcept(
     .returning({ id: projects.id })
 
   return deleted.length
+}
+
+export interface ProjectDeletionSummary {
+  claims: number
+  chapters: number
+  scripts: number
+  runs: number
+  /** Every dollar this project has cost, all time — not this month's slice. */
+  spendUsd: number
+  /** Anything published to YouTube from this project. Blocks deletion. */
+  publishedCount: number
+}
+
+/**
+ * What deleting this project would destroy, counted so the confirm can say it.
+ *
+ * "This cannot be undone" is a warning nobody can weigh. "18 claims, 6 chapters
+ * and $2.34 of research" is one they can.
+ */
+export async function projectDeletionSummary(
+  db: Database,
+  id: string,
+): Promise<ProjectDeletionSummary> {
+  /**
+   * Written with literal table names and explicit aliases rather than
+   * interpolated column objects.
+   *
+   * Drizzle emits a bare `"id"` for an interpolated column inside a correlated
+   * subquery, so `where ${dossiers.projectId} = ${projects.id}` becomes
+   * `where "project_id" = "id"` — which Postgres rejects as ambiguous, and
+   * which would silently correlate to the wrong table if it ever resolved.
+   */
+  const [row] = await db
+    .select({
+      claims: sql<number>`(
+        select count(*)::int from claims c
+        join dossiers d on d.id = c.dossier_id
+        where d.project_id = projects.id
+      )`,
+      chapters: sql<number>`(
+        select count(*)::int from chapters ch
+        join scripts s on s.id = ch.script_id
+        where s.project_id = projects.id
+      )`,
+      scripts: sql<number>`(
+        select count(*)::int from scripts s where s.project_id = projects.id
+      )`,
+      runs: sql<number>`(
+        select count(*)::int from runs r where r.project_id = projects.id
+      )`,
+      spendUsd: sql<number>`(
+        select coalesce(sum(coalesce(cl.actual_usd, cl.estimated_usd)), 0)::float8
+        from cost_ledger cl where cl.project_id = projects.id
+      )`,
+      /**
+       * Anything of this project's already on YouTube — the master, or any
+       * Short cut from it.
+       *
+       * `publish_records` is polymorphic: `targetType`/`targetId` rather than a
+       * foreign key, so nothing in the database stops a delete from stranding a
+       * row that points at a live video. Shorts have to be counted through
+       * `shorts`, because deleting the project cascades them away and takes
+       * their publish records' referents with them.
+       */
+      publishedCount: sql<number>`(
+        select count(*)::int from publish_records pr
+        where (pr.target_type = 'master' and pr.target_id = projects.id)
+           or (pr.target_type = 'short' and pr.target_id in (
+                 select sh.id from shorts sh where sh.project_id = projects.id
+              ))
+      )`,
+    })
+    .from(projects)
+    .where(eq(projects.id, id))
+
+  return row ?? { claims: 0, chapters: 0, scripts: 0, runs: 0, spendUsd: 0, publishedCount: 0 }
+}
+
+/**
+ * Delete a project and everything produced under it.
+ *
+ * Every table that hangs off a project cascades, with one deliberate exception:
+ * `cost_ledger.project_id` is `set null`, so the spend survives. The money was
+ * really spent, and a Costs screen that quietly got cheaper because a project
+ * was tidied away would be a Costs screen nobody could trust. Those rows stay,
+ * attributed to no project.
+ *
+ * The case itself is untouched. It is a library entry describing a story worth
+ * telling, and deleting an attempt at it does not retract that.
+ */
+export async function deleteProject(db: Database, id: string): Promise<boolean> {
+  const deleted = await db
+    .delete(projects)
+    .where(eq(projects.id, id))
+    .returning({ id: projects.id })
+  return deleted.length > 0
 }
 
 export async function markProjectCancelled(db: Database, id: string): Promise<void> {

@@ -2,7 +2,7 @@
 
 import type { ChapterWithWarnings } from '@boom-busters/db'
 import type { ShortsCandidate } from '@boom-busters/schemas'
-import { AlertTriangle, Check, ChevronDown, ChevronUp, Sparkles, X } from 'lucide-react'
+import { AlertTriangle, Check, GripVertical, Sparkles, X } from 'lucide-react'
 import { Extension } from '@tiptap/core'
 import { Plugin, PluginKey } from '@tiptap/pm/state'
 import { Decoration, DecorationSet } from '@tiptap/pm/view'
@@ -167,6 +167,8 @@ function ChapterList({
   const { toast } = useToast()
   const [order, setOrder] = React.useState(() => chapters.map((chapter) => chapter.id))
   const [dragging, setDragging] = React.useState<string | null>(null)
+  /** The row the pointer is currently over, so the drop target is visible. */
+  const [dragOver, setDragOver] = React.useState<string | null>(null)
   const [saving, setSaving] = React.useState(false)
 
   React.useEffect(() => {
@@ -220,32 +222,83 @@ function ChapterList({
         <CardTitle>Outline</CardTitle>
       </CardHeader>
       <CardContent className="flex flex-col gap-1 p-2">
+        {/* Said once, plainly, rather than left for the user to discover.
+            Reordering is not a thing anyone expects to be able to do until
+            they are told, and a grip icon alone says "draggable" only to
+            people who already knew. */}
+        <p className="px-2 pb-1 text-[12px] text-[var(--color-text-muted)]">
+          Drag a chapter by its handle to reorder, or focus a handle and use the arrow keys.
+        </p>
+
         {ordered.map((chapter, index) => (
           <div
             key={chapter.id}
             draggable={!saving}
             onDragStart={() => setDragging(chapter.id)}
-            onDragEnd={() => setDragging(null)}
-            onDragOver={(event) => event.preventDefault()}
+            onDragEnd={() => {
+              setDragging(null)
+              setDragOver(null)
+            }}
+            onDragOver={(event) => {
+              event.preventDefault()
+              if (dragging && dragging !== chapter.id) setDragOver(chapter.id)
+            }}
+            onDragLeave={() => setDragOver((current) => (current === chapter.id ? null : current))}
             onDrop={(event) => {
               event.preventDefault()
+              setDragOver(null)
               if (!dragging) return
               move(order.indexOf(dragging), index)
               setDragging(null)
             }}
-            className={`flex items-start gap-1 rounded-[6px] ${
+            className={`flex items-stretch gap-1 rounded-[6px] ${
               dragging === chapter.id ? 'opacity-50' : ''
+            } ${
+              // Where it would land, drawn as a line rather than left to
+              // guesswork about which side of the row counts.
+              dragOver === chapter.id ? 'ring-2 ring-[var(--color-accent)]' : ''
             } ${
               index === activeIndex
                 ? 'bg-[var(--color-surface-raised)]'
                 : 'hover:bg-[var(--color-surface-raised)]'
             }`}
           >
+            {/**
+             * One handle, on the left, where a gutter already exists.
+             *
+             * This replaces a pair of up/down chevrons that were redundant —
+             * the rows were already draggable — and that overflowed the narrow
+             * outline column into the editor beside it once each was widened
+             * to the 40px minimum.
+             *
+             * It stays a real focusable button with arrow-key handling, because
+             * spec 11.1 rules out anything reachable by pointer alone and drag
+             * is exactly that. The grip is the affordance; the keyboard is the
+             * guarantee.
+             */}
+            <button
+              type="button"
+              disabled={saving}
+              aria-label={`Reorder ${chapter.title}, position ${index + 1} of ${ordered.length}. Use the up and down arrow keys to move it.`}
+              onKeyDown={(event) => {
+                if (event.key === 'ArrowUp' && index > 0) {
+                  event.preventDefault()
+                  move(index, index - 1)
+                } else if (event.key === 'ArrowDown' && index < ordered.length - 1) {
+                  event.preventDefault()
+                  move(index, index + 1)
+                }
+              }}
+              className="flex w-10 shrink-0 cursor-grab items-center justify-center rounded-[6px] text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-accent)] active:cursor-grabbing disabled:cursor-default disabled:opacity-30"
+            >
+              <GripVertical aria-hidden className="size-4" />
+            </button>
+
             <button
               type="button"
               onClick={() => onSelect(index)}
               aria-current={index === activeIndex}
-              className={`flex min-h-[40px] flex-1 flex-col items-start gap-0.5 p-2 text-left text-[13px] ${
+              className={`flex min-h-[40px] min-w-0 flex-1 flex-col items-start gap-0.5 py-2 pr-2 text-left text-[13px] ${
                 index === activeIndex
                   ? 'text-[var(--color-text-primary)]'
                   : 'text-[var(--color-text-secondary)]'
@@ -257,34 +310,6 @@ function ChapterList({
                 {chapter.warnings.length > 0 ? ` · ${chapter.warnings.length} warnings` : ''}
               </span>
             </button>
-
-            {/* Dragging is not an action everyone can perform, and spec 11.1
-                rules out anything reachable by pointer alone, so the same move
-                is available as two ordinary buttons.
-
-                Side by side rather than stacked: each has to clear the 40px
-                minimum (also 11.1), and stacking two 40px targets puts an 80px
-                column beside a chapter row barely taller than one of them. */}
-            <span className="flex shrink-0 items-center">
-              <button
-                type="button"
-                aria-label={`Move ${chapter.title} up`}
-                disabled={index === 0 || saving}
-                onClick={() => move(index, index - 1)}
-                className="flex size-10 items-center justify-center rounded-[8px] text-[var(--color-text-muted)] hover:bg-[var(--color-surface-raised)] hover:text-[var(--color-text-primary)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-accent)] disabled:opacity-30"
-              >
-                <ChevronUp aria-hidden className="size-4" />
-              </button>
-              <button
-                type="button"
-                aria-label={`Move ${chapter.title} down`}
-                disabled={index === ordered.length - 1 || saving}
-                onClick={() => move(index, index + 1)}
-                className="flex size-10 items-center justify-center rounded-[8px] text-[var(--color-text-muted)] hover:bg-[var(--color-surface-raised)] hover:text-[var(--color-text-primary)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-accent)] disabled:opacity-30"
-              >
-                <ChevronDown aria-hidden className="size-4" />
-              </button>
-            </span>
           </div>
         ))}
       </CardContent>
