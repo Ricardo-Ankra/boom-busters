@@ -54,8 +54,37 @@ function useAction() {
  * start button could only ever start something a second time, on top of the
  * run already doing it.
  */
-export function RestartRunButton({ projectId, label }: { projectId: string; label: string }) {
+export function RestartRunButton({
+  projectId,
+  stage,
+  label,
+  downstream = [],
+}: {
+  projectId: string
+  stage: string
+  label: string
+  /** The stages this re-run would leave stale, named rather than implied. */
+  downstream?: readonly { stage: string }[]
+}) {
   const act = useAction()
+
+  /**
+   * The consequence is spelled out per stage, because "this will invalidate
+   * downstream work" is not something anyone can act on.
+   *
+   * Downstream work is kept, not deleted (decision, PROGRESS.md M3.2). So the
+   * sentence has to say both halves — the old script stays readable, and it
+   * stops being current — or the dialog reads like a delete warning and gets
+   * dismissed by people who did not want to delete anything.
+   */
+  const consequence =
+    downstream.length > 0
+      ? `This stage runs from the start and costs what it cost the first time. ` +
+        `The ${downstream.map((view) => view.stage).join(' and ')} stage${
+          downstream.length === 1 ? '' : 's'
+        } will be marked as built from older work — kept and still readable, ` +
+        `but needing a re-run to be current again.`
+      : 'This stage runs from the start and replaces what it produced last time. It costs what it cost the first time.'
 
   return (
     <ConfirmButton
@@ -67,8 +96,8 @@ export function RestartRunButton({ projectId, label }: { projectId: string; labe
       }
       confirmLabel="Run it again"
       confirmVariant="primary"
-      consequence="This stage runs from the start and replaces what it produced last time. It costs what it cost the first time."
-      onConfirm={() => act(() => restartStage(projectId), 'Sent to the pipeline')}
+      consequence={consequence}
+      onConfirm={() => act(() => restartStage(projectId, stage), 'Sent to the pipeline')}
     />
   )
 }

@@ -1,6 +1,6 @@
-import { desc, eq, notInArray } from 'drizzle-orm'
+import { desc, eq, notInArray, sql } from 'drizzle-orm'
 import type { Database } from './client'
-import { cases, projects } from './schema'
+import { cases, dossiers, projects, scripts } from './schema'
 import type { ProjectRow, ProjectStage, StageStatus } from './schema'
 
 /**
@@ -38,6 +38,17 @@ export interface ProjectSummary {
   cancelledAt: Date | null
   createdAt: Date
   updatedAt: Date
+  /**
+   * Enough provenance for the rail to say which stages hold work and whether
+   * that work is still trustworthy (`apps/web/lib/stage-view.ts`).
+   *
+   * Carried on the summary rather than fetched per project, because the
+   * Projects list draws a rail per row: eight rows would otherwise be eight
+   * extra round trips to answer a question one join already answers.
+   */
+  dossierVersion: number | null
+  hasScript: boolean
+  scriptBuiltFromDossierVersion: number | null
 }
 
 const summaryColumns = {
@@ -53,31 +64,41 @@ const summaryColumns = {
   cancelledAt: projects.cancelledAt,
   createdAt: projects.createdAt,
   updatedAt: projects.updatedAt,
+  dossierVersion: dossiers.version,
+  // `hasScript` is separate from the version because a null version means two
+  // different things — no script at all, or a script written before provenance
+  // was recorded — and the rail says something different about each.
+  hasScript: sql<boolean>`exists (
+    select 1 from ${scripts} where ${scripts.projectId} = ${projects.id}
+  )`,
+  scriptBuiltFromDossierVersion: sql<number | null>`(
+    select ${scripts.builtFromDossierVersion} from ${scripts}
+    where ${scripts.projectId} = ${projects.id}
+    order by ${scripts.version} desc limit 1
+  )`,
 }
 
-export async function listProjects(db: Database): Promise<ProjectSummary[]> {
+/** The two joins every summary needs, kept together so they cannot drift. */
+function summaryFrom(db: Database) {
   return db
     .select(summaryColumns)
     .from(projects)
     .innerJoin(cases, eq(projects.caseId, cases.id))
-    .orderBy(desc(projects.updatedAt))
+    .leftJoin(dossiers, eq(dossiers.projectId, projects.id))
+}
+
+export async function listProjects(db: Database): Promise<ProjectSummary[]> {
+  return summaryFrom(db).orderBy(desc(projects.updatedAt))
 }
 
 export async function getProject(db: Database, id: string): Promise<ProjectSummary | undefined> {
-  const [row] = await db
-    .select(summaryColumns)
-    .from(projects)
-    .innerJoin(cases, eq(projects.caseId, cases.id))
-    .where(eq(projects.id, id))
+  const [row] = await summaryFrom(db).where(eq(projects.id, id))
   return row
 }
 
 /** Projects parked at a gate — the review half of the Needs-you queue. */
 export async function listProjectsAwaitingReview(db: Database): Promise<ProjectSummary[]> {
-  return db
-    .select(summaryColumns)
-    .from(projects)
-    .innerJoin(cases, eq(projects.caseId, cases.id))
+  return summaryFrom(db)
     .where(eq(projects.stageStatus, 'awaiting_review'))
     .orderBy(projects.updatedAt)
 }

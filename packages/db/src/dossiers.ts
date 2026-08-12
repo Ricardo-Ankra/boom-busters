@@ -43,12 +43,30 @@ export async function saveDossier(
   db: Database,
   input: { projectId: string; contentMd: string; claims: readonly DraftClaimInput[] },
 ): Promise<DossierWithClaims> {
+  /**
+   * Every save is a new version, and the bump happens in the same statement as
+   * the write.
+   *
+   * Only the runner and the reviser call this, and each call is a completed
+   * research pass that replaces the markdown *and* every claim beneath it — so
+   * there is no such thing as a save that leaves the dossier unchanged.
+   * Comparing content to decide whether to bump would miss the case that
+   * matters most: identical prose over a different set of claims.
+   *
+   * Doing it in the `set` rather than as a read-then-write means two concurrent
+   * saves cannot both read version 3 and both write 4. Gaps are fine — nothing
+   * counts versions, everything compares them.
+   */
   const [dossier] = await db
     .insert(dossiers)
     .values({ projectId: input.projectId, contentMd: input.contentMd })
     .onConflictDoUpdate({
       target: dossiers.projectId,
-      set: { contentMd: input.contentMd, updatedAt: new Date() },
+      set: {
+        contentMd: input.contentMd,
+        version: sql`${dossiers.version} + 1`,
+        updatedAt: new Date(),
+      },
     })
     .returning()
 

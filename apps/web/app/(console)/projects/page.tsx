@@ -3,6 +3,7 @@ import type { ProjectSummary } from '@boom-busters/db'
 import type { Route } from 'next'
 import Link from 'next/link'
 import { MiniPipelineRail } from '@/components/pipeline-rail'
+import { stageViewsForProject } from '@/lib/stage-view'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { db } from '@/lib/db'
@@ -66,7 +67,7 @@ function ProjectRow({ project }: { project: ProjectSummary }) {
         </p>
       </div>
 
-      <MiniPipelineRail stage={project.stage} stageStatus={project.stageStatus} />
+      <MiniPipelineRail views={stageViewsForProject(project)} />
 
       <span className="font-mono text-[13px] text-[var(--color-text-muted)] tabular-nums">
         {project.targetRuntimeMin} min

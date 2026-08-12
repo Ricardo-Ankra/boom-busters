@@ -260,14 +260,18 @@ function ChapterList({
 
             {/* Dragging is not an action everyone can perform, and spec 11.1
                 rules out anything reachable by pointer alone, so the same move
-                is available as two ordinary buttons. */}
-            <span className="flex flex-col p-1">
+                is available as two ordinary buttons.
+
+                Side by side rather than stacked: each has to clear the 40px
+                minimum (also 11.1), and stacking two 40px targets puts an 80px
+                column beside a chapter row barely taller than one of them. */}
+            <span className="flex shrink-0 items-center">
               <button
                 type="button"
                 aria-label={`Move ${chapter.title} up`}
                 disabled={index === 0 || saving}
                 onClick={() => move(index, index - 1)}
-                className="px-1 text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] disabled:opacity-30"
+                className="flex size-10 items-center justify-center rounded-[8px] text-[var(--color-text-muted)] hover:bg-[var(--color-surface-raised)] hover:text-[var(--color-text-primary)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-accent)] disabled:opacity-30"
               >
                 <ChevronUp aria-hidden className="size-4" />
               </button>
@@ -276,7 +280,7 @@ function ChapterList({
                 aria-label={`Move ${chapter.title} down`}
                 disabled={index === ordered.length - 1 || saving}
                 onClick={() => move(index, index + 1)}
-                className="px-1 text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] disabled:opacity-30"
+                className="flex size-10 items-center justify-center rounded-[8px] text-[var(--color-text-muted)] hover:bg-[var(--color-surface-raised)] hover:text-[var(--color-text-primary)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-accent)] disabled:opacity-30"
               >
                 <ChevronDown aria-hidden className="size-4" />
               </button>

@@ -65,10 +65,26 @@ function ActiveRunsIndicator({ runs }: { runs: ActiveRun[] }) {
   )
 }
 
+/**
+ * Money actually spent this month, not money expected to be spent.
+ *
+ * The ledger sums `coalesce(actual_usd, estimated_usd)`: a finished call
+ * contributes the cost settled from the tokens the provider reported, and the
+ * estimate stands in only for a reservation still in flight — which the budget
+ * guard requires, or two concurrent calls could each pass a cap they jointly
+ * break. In practice that is a few seconds per call.
+ *
+ * Said out loud on the control, because "is this actual or estimated" is a
+ * reasonable question to have about a number with a dollar sign on it, and a
+ * figure you cannot interpret is a figure you cannot act on.
+ */
 function CostMeter({ monthSpendUsd }: { monthSpendUsd: number }) {
   return (
-    <span className="hidden items-center gap-1.5 text-[13px] sm:flex">
-      <span className="text-[var(--color-text-muted)]">This month</span>
+    <span
+      className="hidden items-center gap-1.5 text-[13px] sm:flex"
+      title="Actual spend this month, settled from provider token counts. A call still in flight counts at its estimate until it settles."
+    >
+      <span className="text-[var(--color-text-muted)]">Spent this month</span>
       <span className="font-mono text-[var(--color-text-secondary)] tabular-nums">
         ${monthSpendUsd.toFixed(2)}
       </span>

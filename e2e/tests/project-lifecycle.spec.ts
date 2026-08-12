@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
-import { QUEUED_PROJECT_TITLE, STOPPED_PROJECT_TITLE } from '../global-setup'
+import { QUEUED_PROJECT_TITLE, STALE_PROJECT_TITLE, STOPPED_PROJECT_TITLE } from '../global-setup'
 import { expectHitTargets, signIn } from './fixtures'
 
 /**
@@ -138,5 +138,91 @@ test.describe('a project that was stopped', () => {
     // "Resume" on the list has to lead somewhere that can actually resume.
     const row = page.getByRole('listitem').filter({ hasText: STOPPED_PROJECT_TITLE })
     await expect(row.getByRole('link', { name: 'Resume' })).toBeVisible()
+  })
+})
+
+/**
+ * Spec §11.3 says each rail segment "is clickable". It shipped as eight
+ * `<div>`s, so a project on the script stage had no way back to the dossier its
+ * narration was written from — the research, and the sources any later dispute
+ * turns on, were unreachable from the screen that needed them most.
+ */
+test.describe('moving between stages', () => {
+  test('the dossier is reachable from the script stage', async ({ page }) => {
+    await openProject(page, STALE_PROJECT_TITLE)
+
+    await page.getByRole('link', { name: /Dossier/ }).click()
+
+    await expect(page).toHaveURL(/\?stage=dossier/)
+    await expect(page.getByText(/The research was re-run/)).toBeVisible()
+  })
+
+  test('says which stage you are reading and which the project is on', async ({ page }) => {
+    await openProject(page, STALE_PROJECT_TITLE)
+    await page.getByRole('link', { name: /Dossier/ }).click()
+
+    await expect(page.getByText(/You are reading the/)).toContainText(/dossier/)
+    await expect(page.getByText(/This project is on/)).toContainText(/script/)
+  })
+
+  test('refuses to offer an approval from a stage you have navigated away to', async ({ page }) => {
+    // Approving from an off-stage screen would approve the gate the project is
+    // actually parked at — a different stage entirely.
+    await openProject(page, STALE_PROJECT_TITLE)
+    await page.getByRole('link', { name: /Dossier/ }).click()
+
+    await expect(page.getByRole('button', { name: 'Approve' })).toHaveCount(0)
+    await expect(page.getByRole('button', { name: 'Request changes' })).toHaveCount(0)
+  })
+
+  test('comes back to where the project actually is', async ({ page }) => {
+    await openProject(page, STALE_PROJECT_TITLE)
+    await page.getByRole('link', { name: /Dossier/ }).click()
+
+    await page.getByRole('link', { name: /Back to script/i }).click()
+    await expect(page).toHaveURL(/\?stage=script/)
+  })
+
+  test('every control on an off-stage screen still meets the 40px hit target', async ({ page }) => {
+    await openProject(page, STALE_PROJECT_TITLE)
+    await page.getByRole('link', { name: /Dossier/ }).click()
+    await expectHitTargets(page)
+  })
+})
+
+test.describe('work built from research that has since been replaced', () => {
+  test('says so, rather than presenting the old script as current', async ({ page }) => {
+    await openProject(page, STALE_PROJECT_TITLE)
+
+    await expect(page.getByText(/Written from an older dossier/)).toBeVisible()
+    // Kept, not deleted — the decision this milestone turns on.
+    await expect(
+      page.getByText('Narration produced before the research was replaced.'),
+    ).toBeVisible()
+  })
+
+  test('offers a re-run from the stage that is stale, naming its cost', async ({ page }) => {
+    await openProject(page, STALE_PROJECT_TITLE)
+    await page.getByRole('link', { name: /Dossier/ }).click()
+
+    await page.getByRole('button', { name: /Run the dossier stage again/i }).click()
+
+    // The consequence names the downstream stage rather than saying
+    // "downstream work will be invalidated", which nobody can act on.
+    await expect(
+      page.getByText(/script stage will be marked as built from older work/i),
+    ).toBeVisible()
+    await expect(page.getByText(/kept and still readable/i)).toBeVisible()
+
+    await page.getByRole('button', { name: 'Keep going' }).click()
+  })
+
+  test('marks the stale stage on the rail without relying on colour', async ({ page }) => {
+    await openProject(page, STALE_PROJECT_TITLE)
+
+    const rail = page.getByRole('list', { name: 'Pipeline stages' })
+    await expect(
+      rail.getByText(/^Script — needs re-running, the stage this project is on$/),
+    ).toBeAttached()
   })
 })

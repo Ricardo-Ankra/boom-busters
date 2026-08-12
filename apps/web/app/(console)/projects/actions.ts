@@ -1,6 +1,7 @@
 'use server'
 
 import {
+  PIPELINE_STAGES,
   blockingClaims,
   cancelRunsForProject,
   getProject,
@@ -8,6 +9,7 @@ import {
   markProjectCancelled,
   setProjectStage,
 } from '@boom-busters/db'
+import type { ProjectStage } from '@boom-busters/db'
 import { GateStageSchema, ProviderSchema, UlidSchema } from '@boom-busters/schemas'
 import type { GateStage } from '@boom-busters/schemas'
 import { revalidatePath } from 'next/cache'
@@ -95,13 +97,31 @@ function refresh(projectId: string): void {
  * dossier written — which is exactly the "The dossier is gone, so there is
  * nothing to script from" failure in the production run mirror.
  */
-export async function restartStage(projectId: string): Promise<ActionResult> {
+export async function restartStage(projectId: string, stage?: string): Promise<ActionResult> {
   const approvedBy = await requireOwner()
   const invalid = badId(projectId)
   if (invalid) return invalid
 
   const project = await getProject(db, projectId)
   if (!project) return { ok: false, error: 'Unknown project' }
+
+  /**
+   * Which stage to re-run, defaulting to the one the project is on.
+   *
+   * Taking it as an argument is what makes going *back* possible. Without it a
+   * project that had reached `script` could only ever re-run the script: its
+   * dossier — the research the narration was written from — was unreachable,
+   * which is half of why the rail needed to be navigable at all.
+   */
+  const target = stage ?? project.stage
+  if (!PIPELINE_STAGES.includes(target as ProjectStage)) {
+    return { ok: false, error: `Unknown stage "${target}"` }
+  }
+  if (PIPELINE_STAGES.indexOf(target as ProjectStage) > PIPELINE_STAGES.indexOf(project.stage)) {
+    // Re-running a stage the project has not reached would run it on inputs
+    // that do not exist yet.
+    return { ok: false, error: `This project has not reached the ${target} stage yet.` }
+  }
 
   // A second run would race the first over the same stage columns. The mirror
   // is what knows, not `stageStatus`: a project left at `awaiting_review` with
@@ -119,20 +139,30 @@ export async function restartStage(projectId: string): Promise<ActionResult> {
    * subscribed to, report success, and do nothing.
    */
   const entry =
-    project.stage === 'dossier'
+    target === 'dossier'
       ? events.projectCreated.create({ projectId, caseId: project.caseId })
-      : project.stage === 'script'
+      : target === 'script'
         ? events.dossierApproved.create({ projectId, approvedBy })
         : null
 
   if (!entry) {
     return {
       ok: false,
-      error: `The ${project.stage} stage has no runner yet, so there is nothing to restart.`,
+      error: `The ${target} stage has no runner yet, so there is nothing to restart.`,
     }
   }
 
+  /**
+   * The project moves back to the stage being re-run.
+   *
+   * Downstream work is deliberately left where it is (decision, PROGRESS.md
+   * M3.2): the old script stays in the database and stays readable, and the
+   * version stamp it carries is what makes the rail show it as built from
+   * research that has since been replaced. Deleting it here would make a
+   * mis-click destroy work that was paid for.
+   */
   await setProjectStage(db, projectId, {
+    stage: target as ProjectStage,
     stageStatus: 'queued',
     inngestRunId: null,
     // The stop this is recovering from is over. Left in place it would keep

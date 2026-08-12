@@ -297,6 +297,96 @@ so without it they accumulated two per run.
 
 ---
 
+## M3.2 — Stage navigation and staleness
+
+> Make the pipeline rail navigable, let any completed stage be read and re-run
+> from anywhere, and model what a re-run invalidates downstream.
+
+**Status:** `[x]` **done** (2026-08-12) — inserted before M4 by decision.
+
+### Why here, and not later
+
+Two of these are corrections, not new scope. Spec §11.3 says the rail's
+segments are **clickable** and they were built as plain `<div>`s — an M2
+deliverable ticked off with only its display half done. And `restartStage` can
+only re-run the stage a project is _currently_ on, so once a project reaches
+`script` its dossier is unreachable: there is no "go back".
+
+The third is genuinely new. Spec principle 5 ("every pipeline step can be
+re-run without side effects or double spend") is about idempotency, not about
+what a re-run _invalidates_. Nothing models staleness.
+
+It goes before M4 because **voice is the first stage that produces expensive
+artefacts**. A staleness model built after there are takes and renders to
+protect is a model retrofitted onto exactly the thing it exists to protect.
+
+### Decisions made
+
+- **Downstream work is kept and marked stale, never deleted** (decided
+  2026-08-12). A re-run of the dossier leaves the script readable, badged
+  "written from an older dossier", with its own re-run button. The alternative
+  — deleting downstream artefacts on re-run — makes a mis-click destroy paid-for
+  work with no way back. Branching the whole project into versions was
+  considered and rejected as far more change than the problem needs: every table
+  would grow a version axis to solve a problem that only exists across stage
+  boundaries.
+- **Staleness is derived, not stored.** Each artefact records the version of the
+  input it was built from (`scripts.built_from_dossier_version`), and stale-ness
+  is that number differing from the current one. A stored `isStale` flag would
+  be a second version of the truth that nothing keeps in step.
+- **The rail stops deriving state from position.** `segmentState` called every
+  stage before the current one `approved`, which cannot represent "the dossier
+  is done, and the project has gone back to it" or "the script exists but the
+  project is on dossier again". It is given what each stage actually has.
+
+### Deliverables
+
+- [x] **Schema** — `dossiers.version`, `scripts.built_from_dossier_version`,
+      migration `0005`, applied to production 2026-08-12
+- [x] **Versioning in `packages/db`** — `saveDossier` bumps the version in the
+      same statement as the write; `createScriptVersion` stamps the dossier
+      version it is about to be written from
+- [x] **Staleness model** — `apps/web/lib/stage-view.ts`, one pure function
+      mapping (project, dossier, script) to per-stage state, with the shape
+      M4-M7 extend
+- [x] **Navigable rail** — every stage with something to show is a link; the
+      segment on screen is `aria-current`; stale stages carry their own state
+      and their own icon
+- [x] **Read any stage from anywhere** — `?stage=` on the project screen,
+      no gate bar outside the current stage, and a banner saying which stage you
+      are reading and which the project is on
+- [x] **Re-run any completed stage** — `restartStage(projectId, stage)`, with a
+      confirm that names the downstream stage by name and says it is kept
+- [x] **Tests** — 17 staleness unit tests, 8 rail component tests, 9 E2E across
+      navigation and staleness
+
+### Verified
+
+- **`pnpm test`** — 593 tests across 6 workspaces (schemas 97 · db 124 ·
+  providers 179 · cost 30 · ui-tokens 21 · web 142).
+- **`pnpm e2e`** — 58 Playwright tests, run twice to catch state leaks.
+- **Production migrated** (2026-08-12): both columns present. Existing scripts
+  carry `built_from_dossier_version = null` and are reported as
+  `unknown-provenance` — "which dossier this was written from is not recorded"
+  — rather than being assumed current. That is the honest reading and it is why
+  the column is nullable rather than defaulted to 1.
+
+### Two things the new fixture found on its first run
+
+Both were live defects, neither had anything to do with staleness, and both
+were invisible until an E2E opened a Script Studio that had chapters in it:
+
+- **The chapter reorder buttons were 32px**, against the 40px minimum in spec
+  §11.1. Stacked vertically they could not be made compliant without an 80px
+  column beside a shorter row, so they are side by side now.
+- **The rail called an outdated stage "approved"** when the project was sitting
+  on it. True and misleading together: it _was_ approved, and what it was
+  approved against had been replaced. Staleness now overrides `approved` and
+  nothing else — a running or failed stage is describing something happening
+  now, which matters more.
+
+---
+
 ## M4 — Voice
 
 > TTS adapters (Gemini batch, ElevenLabs), voice-runner, review UI with

@@ -14,9 +14,11 @@ import { PipelineRail } from '@/components/pipeline-rail'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { db } from '@/lib/db'
 import { approvalBlockedReason, blockingCount } from '@/lib/claim-review'
-import { isGateOpen, isMoving, projectControl } from '@/lib/run-state'
+import { RESTARTABLE_STAGES, isGateOpen, isMoving, projectControl } from '@/lib/run-state'
+import { downstreamOf, resolveViewedStage, stageViewsForProject } from '@/lib/stage-view'
 import { DossierReview } from './dossier-review'
 import { ScriptStudio } from './script-studio'
+import { StageBanner } from './stage-banner'
 import { GateActionBar, RestartRunButton, StopButton } from './project-controls'
 
 export const dynamic = 'force-dynamic'
@@ -31,8 +33,15 @@ export const dynamic = 'force-dynamic'
  * rail, gate bar and Stop control they hang from are what this milestone
  * proves.
  */
-export default async function ProjectPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function ProjectPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>
+  searchParams: Promise<{ stage?: string }>
+}) {
   const { id } = await params
+  const { stage: requestedStage } = await searchParams
 
   const project = await getProject(db, id)
   if (!project) notFound()
@@ -46,6 +55,20 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
   ])
   const budgetGate = budgetGates.find((gate) => gate.projectId === id)
 
+  /**
+   * Where the project is, and what you are looking at, are two different
+   * things now.
+   *
+   * The rail is navigable (spec section 11.3), so a project on the script stage
+   * can have its dossier on screen — which is the point: the research the
+   * narration was written from, and the sources any later dispute turns on,
+   * have to be reachable from the screen that needs them.
+   */
+  const views = stageViewsForProject(project)
+  const viewing = resolveViewedStage(requestedStage, views, project.stage)
+  const viewingCurrent = viewing === project.stage
+  const viewed = views.find((view) => view.stage === viewing)
+
   // Whether a run exists is the run mirror's answer, not `stageStatus`'s. A
   // project can read `awaiting_review` with nothing waiting on it — the seeded
   // fixture does — and offering Approve there would send an event no run is
@@ -57,17 +80,32 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
   // no-op demo run came to look like the way to start a project.
   const control = projectControl(project, liveRun)
 
-  // The dossier is shown whenever one exists, not only at its gate: after
-  // approval it is the reference the script was written from, and the claims
-  // it was built on are what a later dispute turns on.
-  const showDossier = dossier !== undefined && project.stage === 'dossier'
-  const showScript = script !== undefined && project.stage === 'script'
+  // Driven by the stage on screen rather than the stage the project is on, so
+  // the dossier stays readable from anywhere. It is not only a gate screen:
+  // after approval it is the reference the script was written from.
+  const showDossier = dossier !== undefined && viewing === 'dossier'
+  const showScript = script !== undefined && viewing === 'script'
 
   // The badge in the Studio header. A downgrade is recorded on the run, so a
   // chapter written by the fallback model can be labelled as such rather than
   // passing as the model you configured.
   const usedFallbackModel = activity.some((entry) => entry.kind === 'model.fallback')
   const blockedReason = dossier ? approvalBlockedReason(dossier.claims) : undefined
+
+  /**
+   * Re-running a stage you have navigated *back* to.
+   *
+   * Only for stages that are not the current one — for the current stage
+   * `projectControl` already decides, and offering two restart buttons that
+   * disagree about whether a re-run is possible would be worse than offering
+   * none. A live run rules it out either way: two runs would race over the same
+   * stage columns.
+   */
+  const canRerun =
+    !viewingCurrent &&
+    !liveRun &&
+    RESTARTABLE_STAGES.includes(viewing) &&
+    viewed?.availability !== 'upcoming'
 
   return (
     <div className="flex flex-col gap-6">
@@ -83,15 +121,20 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
         <div className="flex flex-wrap items-center gap-2">
           <LiveRefresh active={moving} />
           {control.kind === 'stop' ? <StopButton projectId={project.id} /> : null}
-          {control.kind === 'restart' ? (
-            <RestartRunButton projectId={project.id} label={control.label} />
+          {control.kind === 'restart' && viewingCurrent ? (
+            <RestartRunButton
+              projectId={project.id}
+              stage={project.stage}
+              label={control.label}
+              downstream={downstreamOf(project.stage, views)}
+            />
           ) : null}
         </div>
       </header>
 
       {/* Why there is no button, when there is no button. An empty header on a
           project that is plainly not finished reads as a broken screen. */}
-      {control.kind !== 'stop' ? (
+      {control.kind !== 'stop' && viewingCurrent ? (
         <p
           className={
             control.kind === 'working'
@@ -104,7 +147,16 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
         </p>
       ) : null}
 
-      <PipelineRail stage={project.stage} stageStatus={project.stageStatus} />
+      <PipelineRail views={views} projectId={project.id} viewing={viewing} />
+
+      <StageBanner
+        projectId={project.id}
+        projectStage={project.stage}
+        viewed={viewed}
+        viewingCurrent={viewingCurrent}
+        canRerun={canRerun}
+        downstream={downstreamOf(viewing, views)}
+      />
 
       {budgetGate ? <BudgetGateCard gate={budgetGate} /> : null}
 
@@ -126,14 +178,16 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
       ) : (
         <Card className={control.kind === 'blocked' ? 'border-[var(--color-warning)]' : undefined}>
           <CardHeader>
-            <CardTitle className="capitalize">{project.stage}</CardTitle>
+            <CardTitle className="capitalize">{viewing}</CardTitle>
             {/* Deliberately not repeating `control.message`, which is already
                 on screen above: the same sentence twice reads as two problems. */}
-            <CardDescription>{stageSummary(project.stageStatus, project.stage)}</CardDescription>
+            <CardDescription>
+              {viewingCurrent ? stageSummary(project.stageStatus, project.stage) : ''}
+            </CardDescription>
           </CardHeader>
           <CardContent>
             <p className="text-[13px] text-[var(--color-text-muted)]">
-              {project.stage === 'dossier'
+              {viewing === 'dossier'
                 ? 'No dossier has been researched yet.'
                 : 'The review screen for this stage arrives with its runner.'}
             </p>
@@ -146,7 +200,10 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
         <ActivityList entries={activity} emptyMessage="Nothing has happened on this project yet." />
       </section>
 
-      {atGate && !budgetGate ? (
+      {/* Never off-stage. Reading an old dossier and pressing Approve on it
+          would approve the gate the project is actually parked at, which is a
+          different stage entirely — the banner above says so instead. */}
+      {atGate && !budgetGate && viewingCurrent ? (
         <GateActionBar
           /* One bar per gate. The bar keeps a little state about the approval
              it just handed over, and without a key that state would follow the

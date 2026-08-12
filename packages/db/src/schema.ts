@@ -273,6 +273,21 @@ export const dossiers = pgTable(
      * problem, and another Opus pass will not fix it.
      */
     revisions: integer('revisions').notNull().default(0),
+    /**
+     * Bumped whenever the research is actually replaced, and the anchor
+     * everything downstream is measured against.
+     *
+     * A script records the dossier version it was written from, so "this script
+     * is stale" is that number differing from this one — derived, never stored.
+     * A stored staleness flag would be a second version of the truth, and the
+     * moment one write forgets to set it the console starts lying about which
+     * of two documents the narration came from.
+     *
+     * Distinct from `revisions`, which counts how many times a human sent it
+     * back. A revision changes the content and so bumps this too; a re-run from
+     * scratch bumps this without being a revision.
+     */
+    version: integer('version').notNull().default(1),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
@@ -310,6 +325,14 @@ export const scripts = pgTable(
       .notNull()
       .references(() => projects.id, { onDelete: 'cascade' }),
     version: integer('version').notNull().default(1),
+    /**
+     * The `dossiers.version` this script was written from.
+     *
+     * Null for scripts written before this column existed: their provenance is
+     * genuinely unknown, and guessing "1" would assert freshness nothing
+     * checked. The staleness model treats unknown as unknown and says so.
+     */
+    builtFromDossierVersion: integer('built_from_dossier_version'),
     status: scriptStatusEnum('status').notNull().default('draft'),
     /**
      * Shorts segments marked by the script runner (spec section 7.2).

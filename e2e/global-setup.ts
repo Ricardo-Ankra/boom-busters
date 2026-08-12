@@ -3,6 +3,7 @@ import { e2eDatabaseUrl } from './database'
 /** Named here and asserted on in `project-lifecycle.spec.ts`. */
 export const QUEUED_PROJECT_TITLE = 'Just created, nothing mirrored yet (E2E)'
 export const STOPPED_PROJECT_TITLE = 'Stopped, needs a way back (E2E)'
+export const STALE_PROJECT_TITLE = 'Script written from an older dossier (E2E)'
 
 /**
  * Put the database into a known state before the suite runs.
@@ -19,8 +20,11 @@ export default async function globalSetup(): Promise<void> {
   const {
     createDb,
     createProjectFromCase,
+    createScriptVersion,
     ensureRun,
     recordRunEvent,
+    saveChapter,
+    saveDossier,
     seed,
     setProjectStage,
     setRunStatus,
@@ -99,6 +103,42 @@ export default async function globalSetup(): Promise<void> {
     await setProjectStage(connection.db, stopped.id, {
       stage: 'dossier',
       stageStatus: 'cancelled',
+    })
+
+    /**
+     * And a project whose script was written from research that has since been
+     * replaced — built the way one really arises: research, script, re-research.
+     *
+     * `saveDossier` bumps `dossiers.version` on every save and
+     * `createScriptVersion` stamps the version it read, so the second save is
+     * what makes the script stale. Setting the columns by hand would test the
+     * assertion rather than the mechanism.
+     */
+    const stale = await createProjectFromCase(connection.db, {
+      caseId: FIXTURE_CASE_ID,
+      title: STALE_PROJECT_TITLE,
+    })
+    await saveDossier(connection.db, {
+      projectId: stale.id,
+      contentMd: '# First pass\n\nThe research the script below was written from.',
+      claims: [],
+    })
+    const staleScript = await createScriptVersion(connection.db, stale.id)
+    await saveChapter(connection.db, {
+      scriptId: staleScript.id,
+      index: 0,
+      title: 'Chapter written from the first pass',
+      contentMd: 'Narration produced before the research was replaced.',
+      estRuntimeSec: 60,
+    })
+    await saveDossier(connection.db, {
+      projectId: stale.id,
+      contentMd: '# Second pass\n\nThe research was re-run, so the script above is behind.',
+      claims: [],
+    })
+    await setProjectStage(connection.db, stale.id, {
+      stage: 'script',
+      stageStatus: 'approved',
     })
 
     await updateSettings(connection.db, {

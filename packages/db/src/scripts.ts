@@ -32,6 +32,17 @@ export interface ScriptWithChapters {
  * destroy the script a human already edited, because those edits are the
  * evidence trail.
  */
+/**
+ * Start a new script version, stamped with the dossier it is about to be
+ * written from.
+ *
+ * The stamp is what makes staleness derivable: re-researching the dossier bumps
+ * `dossiers.version`, and every script whose `builtFromDossierVersion` is
+ * behind it is, by definition, narration written from research that has since
+ * been replaced. Recording it at creation rather than at completion is
+ * deliberate — a run that dies halfway still leaves chapters behind, and those
+ * chapters came from a knowable dossier.
+ */
 export async function createScriptVersion(db: Database, projectId: string): Promise<ScriptRow> {
   const [latest] = await db
     .select({ version: scripts.version })
@@ -40,9 +51,20 @@ export async function createScriptVersion(db: Database, projectId: string): Prom
     .orderBy(desc(scripts.version))
     .limit(1)
 
+  const [dossier] = await db
+    .select({ version: dossiers.version })
+    .from(dossiers)
+    .where(eq(dossiers.projectId, projectId))
+    .limit(1)
+
   const [row] = await db
     .insert(scripts)
-    .values({ projectId, version: (latest?.version ?? 0) + 1, status: 'draft' })
+    .values({
+      projectId,
+      version: (latest?.version ?? 0) + 1,
+      status: 'draft',
+      ...(dossier ? { builtFromDossierVersion: dossier.version } : {}),
+    })
     .returning()
 
   return row!

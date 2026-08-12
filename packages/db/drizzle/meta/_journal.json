@@ -36,6 +36,13 @@
       "when": 1786475404456,
       "tag": "0004_clever_kingpin",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1786516316375,
+      "tag": "0005_curvy_wallow",
+      "breakpoints": true
     }
   ]
 }

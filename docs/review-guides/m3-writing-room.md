@@ -87,6 +87,36 @@ been written. See PROGRESS.md, M3.1.
 
 ---
 
+## 2b · Moving between stages
+
+The rail at the top is eight buttons, not a progress bar. Any stage that holds
+something is a link.
+
+| Do this | Expect |
+|---|---|
+| From the script stage, click **Dossier** | The dossier and its claims, with the URL at `?stage=dossier` |
+| Look at the banner | *"You are reading the dossier. This project is on script, so nothing here can be approved from this screen."* |
+| Look for **Approve** | Not there. Approving from an off-stage screen would approve whatever gate the project is actually parked at |
+| Click **Back to script** | Returns to where the project is |
+| A stage with nothing in it (Voice, before M4) | Plain text, not a link — nothing to open |
+
+**Re-running a stage.** Any completed stage carries a re-run button on its own
+screen. The confirm names what it costs you downstream by name:
+
+> *"The script stage will be marked as built from older work — kept and still
+> readable, but needing a re-run to be current again."*
+
+Nothing downstream is deleted. That is a deliberate decision (PROGRESS.md,
+M3.2): a mis-click must not destroy work you paid for. A stale stage keeps its
+screen, keeps its content, and gains a badge and a re-run button.
+
+**What you will see on existing projects.** Scripts written before this shipped
+have no record of which dossier they came from, so they report *"predates
+provenance tracking"* rather than claiming to be current. That is accurate —
+nothing checked it at the time.
+
+---
+
 ## 3 · Dossier review
 
 Open the fixture project (or the one you just made).
