@@ -179,7 +179,10 @@ export function PipelineRail({
             <span className="sr-only">
               {' '}
               — {STATE_LABELS[state]}
-              {view.current ? ', the stage this project is on' : ''}
+              {/* `current` already says so in its own label; appending the
+                  suffix produced "the current stage, nothing running, the stage
+                  this project is on". */}
+              {view.current && state !== 'current' ? ', the stage this project is on' : ''}
             </span>
           </>
         )

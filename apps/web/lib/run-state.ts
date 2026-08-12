@@ -85,19 +85,40 @@ export type ProjectControl =
  * starts itself.** Research begins when the project is created. Anything the
  * human can press before that is a way to interfere with it.
  */
+export interface ControlInputs {
+  /**
+   * Whether a dossier exists.
+   *
+   * Required rather than defaulted, because defaulting it to `true` is exactly
+   * the assumption that shipped the bug: the script stage's first step loads
+   * the dossier and gives up without one, so a `script`/`failed` project with
+   * no dossier was offered a re-run button that could only ever fail. It did,
+   * in production, on `load-dossier`.
+   */
+  hasDossier: boolean
+  now?: Date
+}
+
 export function projectControl(
   project: { stage: ProjectStage; stageStatus: StageStatus; updatedAt: Date },
   liveRun: boolean,
-  now: Date = new Date(),
+  inputs: ControlInputs,
 ): ProjectControl {
   if (liveRun) return { kind: 'stop' }
 
-  const restartable = RESTARTABLE_STAGES.includes(project.stage)
+  const now = inputs.now ?? new Date()
+  // A stage is only restartable if its runner exists *and* the thing it runs
+  // from exists. The script is written from the dossier's claims.
+  const restartable =
+    RESTARTABLE_STAGES.includes(project.stage) && (project.stage !== 'script' || inputs.hasDossier)
   const stalled = now.getTime() - project.updatedAt.getTime() > QUEUED_STUCK_AFTER_MS
 
   const cannotRestart = (why: string): ProjectControl => ({
     kind: 'blocked',
-    message: `${why} Restarting the ${project.stage} stage arrives with its runner.`,
+    message:
+      project.stage === 'script' && !inputs.hasDossier
+        ? `${why} There is no dossier to write this script from — run the dossier stage first.`
+        : `${why} Restarting the ${project.stage} stage arrives with its runner.`,
   })
 
   switch (project.stageStatus) {

@@ -54,7 +54,7 @@ describe('the gate bar and the restart button are mutually exclusive', () => {
         stageStatus: 'awaiting_review',
         updatedAt: new Date(),
       } as const
-      const control = projectControl(project, liveRun)
+      const control = projectControl(project, liveRun, { hasDossier: true })
       expect(isGateOpen(project, liveRun) && control.kind === 'restart').toBe(false)
     }
   })
@@ -91,7 +91,10 @@ describe('projectControl', () => {
    * console could show here is a way to interfere with it.
    */
   it('offers no button on a project whose research is already on its way', () => {
-    const control = projectControl(project('dossier', 'queued'), false, NOW)
+    const control = projectControl(project('dossier', 'queued'), false, {
+      hasDossier: true,
+      now: NOW,
+    })
 
     expect(control.kind).toBe('working')
     expect(control).toMatchObject({ message: expect.stringContaining('nothing to press') })
@@ -101,7 +104,9 @@ describe('projectControl', () => {
     // Whatever the project row claims, a live run means the only honest
     // control is Stop — including at a gate, where Stop must stay reachable.
     for (const status of ALL_STATUSES) {
-      expect(projectControl(project('dossier', status), true, NOW)).toEqual({ kind: 'stop' })
+      expect(
+        projectControl(project('dossier', status), true, { hasDossier: true, now: NOW }),
+      ).toEqual({ kind: 'stop' })
     }
   })
 
@@ -109,7 +114,10 @@ describe('projectControl', () => {
     const stalled = projectControl(
       project('dossier', 'queued', QUEUED_STUCK_AFTER_MS + 1_000),
       false,
-      NOW,
+      {
+        hasDossier: true,
+        now: NOW,
+      },
     )
 
     expect(stalled.kind).toBe('restart')
@@ -120,7 +128,10 @@ describe('projectControl', () => {
     // A boundary rather than a vibe: at exactly the cutoff it is still
     // starting, so a slow-but-fine pickup does not flash a scary button.
     expect(
-      projectControl(project('dossier', 'queued', QUEUED_STUCK_AFTER_MS), false, NOW).kind,
+      projectControl(project('dossier', 'queued', QUEUED_STUCK_AFTER_MS), false, {
+        hasDossier: true,
+        now: NOW,
+      }).kind,
     ).toBe('working')
   })
 
@@ -129,14 +140,19 @@ describe('projectControl', () => {
     // screen offering the demo pipeline as its only button — which reset the
     // stage and started a no-op run.
     for (const status of ['failed', 'cancelled', 'awaiting_review'] as const) {
-      const control = projectControl(project('dossier', status), false, NOW)
+      const control = projectControl(project('dossier', status), false, {
+        hasDossier: true,
+        now: NOW,
+      })
       expect(control.kind).toBe('restart')
       expect(control).toMatchObject({ label: expect.stringContaining('dossier') })
     }
   })
 
   it('restarts the script stage too, since its runner also re-enters on one event', () => {
-    expect(projectControl(project('script', 'failed'), false, NOW)).toMatchObject({
+    expect(
+      projectControl(project('script', 'failed'), false, { hasDossier: true, now: NOW }),
+    ).toMatchObject({
       kind: 'restart',
     })
   })
@@ -145,10 +161,41 @@ describe('projectControl', () => {
     // A button that sends an event nothing subscribes to would report success
     // and do nothing, which is worse than saying so.
     for (const stage of ['voice', 'visuals', 'assembly', 'shorts', 'publish'] as const) {
-      const control = projectControl(project(stage, 'failed'), false, NOW)
+      const control = projectControl(project(stage, 'failed'), false, {
+        hasDossier: true,
+        now: NOW,
+      })
       expect(control.kind).toBe('blocked')
       expect(control).toMatchObject({ message: expect.stringContaining('arrives with its runner') })
     }
+  })
+
+  /**
+   * Taken straight from the production run mirror.
+   *
+   * A `script`/`failed` project with no dossier row was offered "Run the script
+   * stage again". The script runner's first step loads the dossier and gives
+   * up without one, so the button could only ever fail — and did, on
+   * `load-dossier`: "The dossier is gone, so there is nothing to script from."
+   */
+  it('does not offer to re-run a script that has no dossier to be written from', () => {
+    for (const status of ['failed', 'cancelled', 'awaiting_review'] as const) {
+      const control = projectControl(project('script', status), false, {
+        hasDossier: false,
+        now: NOW,
+      })
+
+      expect(control.kind).toBe('blocked')
+      expect(control).toMatchObject({
+        message: expect.stringContaining('run the dossier stage first'),
+      })
+    }
+  })
+
+  it('still offers the dossier stage when there is no dossier — that is the point of it', () => {
+    expect(
+      projectControl(project('dossier', 'failed'), false, { hasDossier: false, now: NOW }),
+    ).toMatchObject({ kind: 'restart' })
   })
 
   it('always says something, whatever combination it is handed', () => {
@@ -165,8 +212,13 @@ describe('projectControl', () => {
     for (const stage of STAGES) {
       for (const status of ALL_STATUSES) {
         for (const liveRun of [true, false]) {
-          const control = projectControl(project(stage, status), liveRun, NOW)
-          if (control.kind !== 'stop') expect(control.message.length).toBeGreaterThan(10)
+          for (const hasDossier of [true, false]) {
+            const control = projectControl(project(stage, status), liveRun, {
+              hasDossier,
+              now: NOW,
+            })
+            if (control.kind !== 'stop') expect(control.message.length).toBeGreaterThan(10)
+          }
         }
       }
     }

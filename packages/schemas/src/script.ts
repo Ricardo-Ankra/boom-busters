@@ -17,11 +17,34 @@ import { z } from 'zod'
 // Outline
 // ---------------------------------------------------------------------------
 
+/** Sane bounds for a chapter's word target, applied by clamping. */
+export const MIN_CHAPTER_WORDS = 120
+export const MAX_CHAPTER_WORDS = 4000
+
 export const OutlineChapterSchema = z.object({
   title: z.string().trim().min(3).max(200),
   /** What this chapter has to accomplish, fed to the drafting step. */
   beat: z.string().trim().min(20).max(2000),
-  targetWords: z.number().int().min(200).max(4000),
+  /**
+   * How long this chapter should run, clamped rather than validated.
+   *
+   * It was `min(200).max(4000)`, and rejecting on it was expensive and wrong.
+   * `targetWords` is a *hint*: it goes into the drafting prompt and sizes that
+   * chapter's token budget. Nothing downstream breaks if it is 150 — a short
+   * closing chapter is a legitimate thing for a model to plan, and production
+   * shows Opus doing exactly that. What the floor actually did was throw away
+   * a whole good outline over one number and pay for the pass again; the run
+   * mirror has three such retries in a row, each a full outline call, all
+   * failing on `chapters.N.targetWords: Too small`.
+   *
+   * So the bounds still hold — a 40,000-word chapter would blow any sensible
+   * budget — but they are enforced by clamping into range, which costs nothing
+   * and loses nothing, instead of by rejecting the batch.
+   */
+  targetWords: z
+    .number()
+    .int()
+    .transform((words) => Math.min(MAX_CHAPTER_WORDS, Math.max(MIN_CHAPTER_WORDS, words))),
 })
 export type OutlineChapter = z.infer<typeof OutlineChapterSchema>
 

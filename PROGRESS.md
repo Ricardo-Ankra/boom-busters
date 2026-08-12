@@ -453,6 +453,62 @@ against did not exist anywhere on the roadmap.
 
 ---
 
+## M3.4 — Fixtures built from production, not from assumptions
+
+**Status:** `[x]` **done** (2026-08-12).
+
+Four consecutive rounds of live defects had the same cause, and it was not any
+of the individual bugs: **every fixture was designed from what a project was
+expected to look like.** The seeded project sat at a gate with a live run —
+the middle of a project's life — and nothing else existed. So nothing tested
+the beginning, the dead ends, or the densities.
+
+`pnpm survey` now answers "what states has production actually produced",
+read-only against the live database. It is meant to be run before designing
+fixtures for a milestone and after any walkthrough that turns something up:
+read the output, find a row the fixtures cannot produce, add it.
+
+### What the first survey found
+
+Two live bugs, neither previously visible:
+
+- **A script stage could be re-run with no dossier behind it.** The script
+  runner's first step loads the dossier and gives up without one, so the button
+  could only ever fail — and did, in production, on `load-dossier`. Both the
+  action and `projectControl` now require the inputs a stage runs _from_ to
+  exist. `ControlInputs.hasDossier` is required rather than defaulted, because
+  defaulting it true is precisely the assumption that shipped the bug.
+- **`OutlineChapterSchema.targetWords` rejected on `min(200)`.** `targetWords`
+  is a hint that sizes a prompt and a token budget, not a contract, and a short
+  closing chapter is a reasonable thing for a model to plan. Rejecting binned
+  the whole outline and paid for the pass again — the run mirror holds three
+  consecutive Opus outline calls thrown away on `targetWords: Too small`. It is
+  clamped into [120, 4000] now, which costs nothing and loses nothing.
+
+### Fixtures rebuilt from real shapes
+
+- **The seeded dossier carries 19 claims, in production's proportions** — 11
+  single-source from a major outlet, 6 corroborated, 1 from a regulator, 1
+  unverified — instead of one tidy example per confidence level. The
+  proportions are the point: most of what a model returns is single-source
+  reporting, so the review screen's real job is triaging a long list. Exactly
+  one blocker remains, because that is the state the gate must show.
+- **A project past the last runner that exists** (`voice`/`running`, no live
+  run) — approved through the script gate into a stage M4 has not built.
+- **A project on the script stage with no dossier**, the shape that produced
+  the re-run bug above.
+- **A chapter carrying 22 warnings across all three kinds**, which is
+  production's densest. Fixtures with two clean chapters never showed whether
+  the gutter survives that.
+
+### Verified
+
+- **`pnpm test`** — 609 tests across 6 workspaces (schemas 100 · db 132 ·
+  providers 179 · cost 30 · ui-tokens 21 · web 147).
+- **`pnpm e2e`** — 65 Playwright tests, run twice.
+
+---
+
 ## M4 — Voice
 
 > TTS adapters (Gemini batch, ElevenLabs), voice-runner, review UI with

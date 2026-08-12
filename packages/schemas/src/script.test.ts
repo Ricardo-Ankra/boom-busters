@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
+  MAX_CHAPTER_WORDS,
+  MIN_CHAPTER_WORDS,
   OutlineSchema,
   SelfCheckSchema,
   countWords,
@@ -113,10 +115,45 @@ describe('OutlineSchema', () => {
     expect(OutlineSchema.safeParse({ chapters: [chapter] }).success).toBe(false)
   })
 
-  it('rejects an absurd chapter length', () => {
-    expect(
-      OutlineSchema.safeParse({ chapters: [chapter, { ...chapter, targetWords: 40_000 }] }).success,
-    ).toBe(false)
+  /**
+   * `targetWords` is a hint that sizes a prompt and a token budget, not a
+   * contract — so it is clamped into range rather than used to reject the
+   * batch. Production has three consecutive outline retries, each a full Opus
+   * call, all thrown away over `chapters.N.targetWords: Too small`.
+   */
+  it('clamps an absurd chapter length instead of rejecting the outline', () => {
+    const parsed = OutlineSchema.safeParse({
+      chapters: [chapter, { ...chapter, targetWords: 40_000 }],
+    })
+
+    expect(parsed.success).toBe(true)
+    expect(parsed.data?.chapters[1]?.targetWords).toBe(MAX_CHAPTER_WORDS)
+  })
+
+  it('accepts the short closing chapter that used to bin the whole outline', () => {
+    // The shape from production: Opus planning a brief closing chapter under
+    // the old `min(200)` floor. Three consecutive outline calls were thrown
+    // away over it. 150 words is a reasonable plan and is now taken as written.
+    const parsed = OutlineSchema.safeParse({
+      chapters: [chapter, { ...chapter, targetWords: 150 }],
+    })
+
+    expect(parsed.success).toBe(true)
+    expect(parsed.data?.chapters[1]?.targetWords).toBe(150)
+  })
+
+  it('clamps a chapter too short to be a chapter, rather than rejecting', () => {
+    const parsed = OutlineSchema.safeParse({
+      chapters: [chapter, { ...chapter, targetWords: 5 }],
+    })
+
+    expect(parsed.success).toBe(true)
+    expect(parsed.data?.chapters[1]?.targetWords).toBe(MIN_CHAPTER_WORDS)
+  })
+
+  it('leaves a sensible length exactly as planned', () => {
+    const parsed = OutlineSchema.safeParse({ chapters: [chapter, chapter] })
+    expect(parsed.data?.chapters[0]?.targetWords).toBe(900)
   })
 })
 

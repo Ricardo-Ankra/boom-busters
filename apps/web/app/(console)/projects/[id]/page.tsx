@@ -85,7 +85,7 @@ export default async function ProjectPage({
   // One answer to "what does the header offer, and why", so the two can never
   // disagree — a button whose caption contradicts the card beside it is how a
   // no-op demo run came to look like the way to start a project.
-  const control = projectControl(project, liveRun)
+  const control = projectControl(project, liveRun, { hasDossier: dossier !== undefined })
 
   // Driven by the stage on screen rather than the stage the project is on, so
   // the dossier stays readable from anywhere. It is not only a gate screen:
@@ -112,7 +112,10 @@ export default async function ProjectPage({
     !viewingCurrent &&
     !liveRun &&
     RESTARTABLE_STAGES.includes(viewing) &&
-    viewed?.availability !== 'upcoming'
+    viewed?.availability !== 'upcoming' &&
+    // The script is written from the dossier's claims; without one the run
+    // would die on its first step.
+    (viewing !== 'script' || dossier !== undefined)
 
   return (
     <div className="flex flex-col gap-6">

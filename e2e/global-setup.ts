@@ -4,6 +4,45 @@ import { e2eDatabaseUrl } from './database'
 export const QUEUED_PROJECT_TITLE = 'Just created, nothing mirrored yet (E2E)'
 export const STOPPED_PROJECT_TITLE = 'Stopped, needs a way back (E2E)'
 export const STALE_PROJECT_TITLE = 'Script written from an older dossier (E2E)'
+export const BEYOND_RUNNERS_TITLE = 'Past the last runner we have built (E2E)'
+export const NO_DOSSIER_TITLE = 'Script stage, no dossier to write from (E2E)'
+export const DENSE_WARNINGS_TITLE = 'A chapter with every warning kind (E2E)'
+
+/**
+ * Twenty-two warnings across all three kinds, which is what the self-check
+ * really produces.
+ *
+ * Production's densest chapter carries 22; the kinds run `missing-alleged` 31,
+ * `unsourced-claim` 18, `unsupported-attribution` 4. Fixtures with two clean
+ * chapters never exercise the gutter at the density where it has to work.
+ */
+type WarningKind = 'unsourced-claim' | 'missing-alleged' | 'unsupported-attribution'
+
+function denseWarnings(): { kind: WarningKind; sentence: string; message: string }[] {
+  const sentences = Array.from(
+    { length: 22 },
+    (_, index) => `Sentence ${index + 1} of the chapter, which the self-check took issue with.`,
+  )
+
+  return sentences.map((sentence, index) => {
+    const kind: WarningKind =
+      index % 5 === 4
+        ? 'unsupported-attribution'
+        : index % 2 === 0
+          ? 'missing-alleged'
+          : 'unsourced-claim'
+    return {
+      kind,
+      sentence,
+      message:
+        kind === 'missing-alleged'
+          ? 'States as fact something no court has adjudicated.'
+          : kind === 'unsourced-claim'
+            ? 'No claim in the dossier supports this sentence.'
+            : 'Attributes a statement to someone without a source for it.',
+    }
+  })
+}
 
 /**
  * Put the database into a known state before the suite runs.
@@ -26,6 +65,7 @@ export default async function globalSetup(): Promise<void> {
     saveChapter,
     saveDossier,
     seed,
+    setChapterWarnings,
     setProjectStage,
     setRunStatus,
     truncateRunMirror,
@@ -137,6 +177,76 @@ export default async function globalSetup(): Promise<void> {
       claims: [],
     })
     await setProjectStage(connection.db, stale.id, {
+      stage: 'script',
+      stageStatus: 'approved',
+    })
+
+    /**
+     * Three more shapes, every one taken from the production database rather
+     * than invented. Between them they are the states this suite kept missing.
+     */
+
+    // 1. A project past the last runner that exists. Production has one sitting
+    //    at `voice`/`running` with no live run — approved through the script
+    //    gate into a stage M4 has not built yet. Nothing may offer to re-run it.
+    const beyond = await createProjectFromCase(connection.db, {
+      caseId: FIXTURE_CASE_ID,
+      title: BEYOND_RUNNERS_TITLE,
+    })
+    await saveDossier(connection.db, {
+      projectId: beyond.id,
+      contentMd: '# Researched, scripted, and now waiting on a runner that does not exist yet.',
+      claims: [],
+    })
+    const beyondScript = await createScriptVersion(connection.db, beyond.id)
+    await saveChapter(connection.db, {
+      scriptId: beyondScript.id,
+      index: 0,
+      title: 'Approved and handed onward',
+      contentMd: 'The narration this project was approved with.',
+      estRuntimeSec: 120,
+    })
+    await setProjectStage(connection.db, beyond.id, {
+      stage: 'voice',
+      // `running` with nothing running — the exact combination that turned a
+      // spinner for a day.
+      stageStatus: 'running',
+    })
+
+    // 2. A project on the script stage with no dossier at all. Production has
+    //    one, and re-running its script stage failed on `load-dossier` every
+    //    time, because a script is written from a dossier's claims.
+    const orphaned = await createProjectFromCase(connection.db, {
+      caseId: FIXTURE_CASE_ID,
+      title: NO_DOSSIER_TITLE,
+    })
+    await setProjectStage(connection.db, orphaned.id, {
+      stage: 'script',
+      stageStatus: 'failed',
+    })
+
+    // 3. A chapter at the warning density the self-check really produces.
+    const dense = await createProjectFromCase(connection.db, {
+      caseId: FIXTURE_CASE_ID,
+      title: DENSE_WARNINGS_TITLE,
+    })
+    await saveDossier(connection.db, {
+      projectId: dense.id,
+      contentMd: '# The research behind a heavily flagged chapter.',
+      claims: [],
+    })
+    const denseScript = await createScriptVersion(connection.db, dense.id)
+    const denseChapter = await saveChapter(connection.db, {
+      scriptId: denseScript.id,
+      index: 0,
+      title: 'Twenty-two warnings',
+      contentMd: denseWarnings()
+        .map((warning) => warning.sentence)
+        .join(' '),
+      estRuntimeSec: 180,
+    })
+    await setChapterWarnings(connection.db, denseChapter.id, denseWarnings())
+    await setProjectStage(connection.db, dense.id, {
       stage: 'script',
       stageStatus: 'approved',
     })

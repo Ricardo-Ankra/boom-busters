@@ -5,6 +5,7 @@ import {
   blockingClaims,
   cancelRunsForProject,
   deleteProject,
+  getDossier,
   getProject,
   hasLiveRun,
   markProjectCancelled,
@@ -132,6 +133,25 @@ export async function restartStage(projectId: string, stage?: string): Promise<A
     return {
       ok: false,
       error: 'This project already has a run in flight. Stop it first if you want to start over.',
+    }
+  }
+
+  /**
+   * A stage cannot be re-run without the thing it is run *from*.
+   *
+   * The script runner's first step loads the dossier and gives up if there
+   * isn't one. Re-running `script` on a project with no dossier therefore fails
+   * every time, and the production run mirror shows exactly that: a
+   * `script`/`failed` project with no dossier row, restarted from this action,
+   * dying on `load-dossier` with "The dossier is gone, so there is nothing to
+   * script from." A button that can only fail should not be a button.
+   */
+  if (target === 'script' && !(await getDossier(db, projectId))) {
+    return {
+      ok: false,
+      error:
+        'There is no dossier to write this script from. Run the dossier stage first — the ' +
+        'script is written from its claims.',
     }
   }
 

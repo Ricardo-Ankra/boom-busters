@@ -1,5 +1,12 @@
 import { expect, test, type Page } from '@playwright/test'
-import { QUEUED_PROJECT_TITLE, STALE_PROJECT_TITLE, STOPPED_PROJECT_TITLE } from '../global-setup'
+import {
+  BEYOND_RUNNERS_TITLE,
+  DENSE_WARNINGS_TITLE,
+  NO_DOSSIER_TITLE,
+  QUEUED_PROJECT_TITLE,
+  STALE_PROJECT_TITLE,
+  STOPPED_PROJECT_TITLE,
+} from '../global-setup'
 import { expectHitTargets, signIn } from './fixtures'
 
 /**
@@ -147,6 +154,73 @@ test.describe('a project that was stopped', () => {
  * narration was written from — the research, and the sources any later dispute
  * turns on, were unreachable from the screen that needed them most.
  */
+/**
+ * States taken from the production database rather than invented.
+ *
+ * Every fixture above this block was designed from what I expected a project to
+ * look like, and four rounds of live defects came from the gap between that and
+ * what projects actually look like. These three were surveyed out of the run
+ * mirror: a project past the last runner that exists, a project on the script
+ * stage with no dossier behind it, and a chapter at the warning density the
+ * self-check really produces.
+ */
+test.describe('shapes taken from production', () => {
+  test('a project past the last runner is explained, not offered a dead button', async ({
+    page,
+  }) => {
+    // Production has one at `voice`/`running` with no live run: approved
+    // through the script gate into a stage M4 has not built.
+    await openProject(page, BEYOND_RUNNERS_TITLE)
+
+    await expect(page.getByRole('button', { name: /Run the voice stage again/i })).toHaveCount(0)
+    await expect(page.getByText(/arrives with its runner/i)).toBeVisible()
+  })
+
+  test('and it does not turn a spinner at a stage where nothing is running', async ({ page }) => {
+    // `stageStatus` says `running`; the run mirror says nothing is. A spinner
+    // here promised work that was not happening, for as long as you watched.
+    await openProject(page, BEYOND_RUNNERS_TITLE)
+
+    const rail = page.getByRole('list', { name: 'Pipeline stages' })
+    await expect(rail.getByText(/^Voice — the current stage, nothing running$/)).toBeAttached()
+    await expect(page.getByText('Updating automatically')).toHaveCount(0)
+  })
+
+  test('a script stage with no dossier is not offered a re-run that can only fail', async ({
+    page,
+  }) => {
+    /**
+     * The exact production failure: this project was restarted from the console
+     * and died on `load-dossier` — "The dossier is gone, so there is nothing to
+     * script from" — because a script is written from a dossier's claims.
+     */
+    await openProject(page, NO_DOSSIER_TITLE)
+
+    await expect(page.getByRole('button', { name: /Run the script stage again/i })).toHaveCount(0)
+    await expect(page.getByText(/no dossier to write this script from/i)).toBeVisible()
+  })
+
+  test('a heavily flagged chapter stays usable at the density the self-check produces', async ({
+    page,
+  }) => {
+    // Production's densest chapter carries 22 warnings. Fixtures with two clean
+    // chapters never showed whether the gutter survives that.
+    await openProject(page, DENSE_WARNINGS_TITLE)
+
+    await expect(page.getByText(/22 warnings/).first()).toBeVisible()
+    await expectHitTargets(page)
+  })
+
+  test('the whole page still fits at 22 warnings, with no sideways scroll', async ({ page }) => {
+    await openProject(page, DENSE_WARNINGS_TITLE)
+
+    const overflows = await page.evaluate(
+      () => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1,
+    )
+    expect(overflows).toBe(false)
+  })
+})
+
 test.describe('deleting a project', () => {
   const CASE_TITLE = 'A case whose project gets deleted (E2E)'
 
