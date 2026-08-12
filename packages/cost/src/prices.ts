@@ -1,4 +1,4 @@
-import { LLM_MODELS } from '@boom-busters/providers'
+import { LLM_MODELS, TTS_PRICES_PER_KCHAR } from '@boom-busters/providers'
 import { ValidationError } from '@boom-busters/schemas'
 import type { LlmProvider, Provider, TtsProvider } from '@boom-busters/schemas'
 
@@ -47,11 +47,15 @@ function pricesFromAdapters(): Record<LlmProvider, Record<string, LlmPrice>> {
 
 export const LLM_PRICES: Record<LlmProvider, Record<string, LlmPrice>> = pricesFromAdapters()
 
-/** USD per 1,000 characters of synthesised narration. Also provisional. */
-export const TTS_PRICES: Record<TtsProvider, number> = {
-  gemini: 0.015,
-  elevenlabs: 0.18,
-}
+/**
+ * USD per 1,000 characters of synthesised narration.
+ *
+ * Derived from the TTS adapters for the same reason `LLM_PRICES` is: decision
+ * 23 puts the price table on the adapter that knows what it is buying, and two
+ * hand-maintained tables would eventually disagree — with the one the guard
+ * happened to read deciding whether a cap held. Also provisional.
+ */
+export const TTS_PRICES: Record<TtsProvider, number> = TTS_PRICES_PER_KCHAR
 
 /**
  * Providers whose free tiers we stay inside. Listed explicitly rather than

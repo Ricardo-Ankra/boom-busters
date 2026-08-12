@@ -51,13 +51,13 @@ export const QUEUED_STUCK_AFTER_MS = 3 * 60_000
 /**
  * The stages whose runner exists and can be re-entered from a single event.
  *
- * `dossier` re-enters on `project/created`, `script` on `gate/dossier.approved`
- * — the events those two runners trigger on. Nothing else is listed because
- * nothing else has a runner yet (M4 onwards), and a Restart button that sends
- * an event no function is subscribed to is a button that reports success and
- * does nothing.
+ * `dossier` re-enters on `project/created`, `script` on `gate/dossier.approved`,
+ * `voice` on `gate/script.approved` — the events those runners trigger on.
+ * Nothing else is listed because nothing else has a runner yet (M5 onwards),
+ * and a Restart button that sends an event no function is subscribed to is a
+ * button that reports success and does nothing.
  */
-export const RESTARTABLE_STAGES: readonly ProjectStage[] = ['dossier', 'script']
+export const RESTARTABLE_STAGES: readonly ProjectStage[] = ['dossier', 'script', 'voice']
 
 export type ProjectControl =
   /** A run is live: the only useful control is to stop it. */
@@ -96,6 +96,13 @@ export interface ControlInputs {
    * in production, on `load-dossier`.
    */
   hasDossier: boolean
+  /**
+   * Whether a script exists. Required for the same reason as `hasDossier`: the
+   * voice runner's first step loads the script and gives up without one, so a
+   * `voice`/`failed` project with no script would be offered a button that can
+   * only fail.
+   */
+  hasScript: boolean
   now?: Date
 }
 
@@ -110,7 +117,9 @@ export function projectControl(
   // A stage is only restartable if its runner exists *and* the thing it runs
   // from exists. The script is written from the dossier's claims.
   const restartable =
-    RESTARTABLE_STAGES.includes(project.stage) && (project.stage !== 'script' || inputs.hasDossier)
+    RESTARTABLE_STAGES.includes(project.stage) &&
+    (project.stage !== 'script' || inputs.hasDossier) &&
+    (project.stage !== 'voice' || inputs.hasScript)
   const stalled = now.getTime() - project.updatedAt.getTime() > QUEUED_STUCK_AFTER_MS
 
   const cannotRestart = (why: string): ProjectControl => ({
@@ -118,7 +127,9 @@ export function projectControl(
     message:
       project.stage === 'script' && !inputs.hasDossier
         ? `${why} There is no dossier to write this script from — run the dossier stage first.`
-        : `${why} Restarting the ${project.stage} stage arrives with its runner.`,
+        : project.stage === 'voice' && !inputs.hasScript
+          ? `${why} There is no script to narrate — run the script stage first.`
+          : `${why} Restarting the ${project.stage} stage arrives with its runner.`,
   })
 
   switch (project.stageStatus) {

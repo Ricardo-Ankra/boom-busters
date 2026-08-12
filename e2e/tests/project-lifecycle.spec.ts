@@ -2,12 +2,14 @@ import { expect, test, type Page } from '@playwright/test'
 import {
   BEYOND_RUNNERS_TITLE,
   DENSE_WARNINGS_TITLE,
+  FLAGGED_TAKE_TITLE,
+  NARRATED_PROJECT_TITLE,
   NO_DOSSIER_TITLE,
   QUEUED_PROJECT_TITLE,
   STALE_PROJECT_TITLE,
   STOPPED_PROJECT_TITLE,
 } from '../global-setup'
-import { expectHitTargets, signIn } from './fixtures'
+import { expectHitTargets, openFixtureProject, signIn, touchQueuedProject } from './fixtures'
 
 /**
  * What a project screen offers, in the states a real project actually passes
@@ -45,7 +47,29 @@ async function openProject(page: Page, title: string): Promise<void> {
 }
 
 test.describe('a project that was just created', () => {
+  /**
+   * This one re-stamps the fixture before it looks at it.
+   *
+   * "Queued and young" is a state with a three-minute shelf life
+   * (`QUEUED_STUCK_AFTER_MS`): after that the console stops saying "nothing to
+   * press" and correctly starts offering the button that re-sends the event.
+   * A fixture seeded once in global setup ages past that window as the suite
+   * grows, so this assertion began failing not because the screen was wrong but
+   * because the fixture had got old — a test reporting on the clock rather than
+   * on the code.
+   *
+   * Creating one through the UI is not an option: no Inngest Dev Server runs
+   * in this suite, so `project/created` cannot be delivered and the project is
+   * correctly marked `failed` rather than `queued` — which is what the
+   * create-from-case test below asserts.
+   *
+   * So the state is made current instead of being waited out. The other tests
+   * in this block still use the seeded project as it stands: what they assert
+   * (no start-shaped button, no gate bar, 40px targets) is true of a queued
+   * project at any age.
+   */
   test('says its research is on the way and offers nothing to press', async ({ page }) => {
+    await touchQueuedProject()
     await openProject(page, QUEUED_PROJECT_TITLE)
 
     // The question a human asked out loud: does the dossier start on its own,
@@ -168,11 +192,13 @@ test.describe('shapes taken from production', () => {
   test('a project past the last runner is explained, not offered a dead button', async ({
     page,
   }) => {
-    // Production has one at `voice`/`running` with no live run: approved
-    // through the script gate into a stage M4 has not built.
+    // Production had one at `voice`/`running` with no live run: approved
+    // through the script gate into a stage that had no runner. M4 built the
+    // voice runner, so the fixture moved on to `visuals` — the shape is the
+    // point, and "past the last runner" moves with every milestone.
     await openProject(page, BEYOND_RUNNERS_TITLE)
 
-    await expect(page.getByRole('button', { name: /Run the voice stage again/i })).toHaveCount(0)
+    await expect(page.getByRole('button', { name: /Run the visuals stage again/i })).toHaveCount(0)
     await expect(page.getByText(/arrives with its runner/i)).toBeVisible()
   })
 
@@ -182,7 +208,7 @@ test.describe('shapes taken from production', () => {
     await openProject(page, BEYOND_RUNNERS_TITLE)
 
     const rail = page.getByRole('list', { name: 'Pipeline stages' })
-    await expect(rail.getByText(/^Voice — the current stage, nothing running$/)).toBeAttached()
+    await expect(rail.getByText(/^Visuals — the current stage, nothing running$/)).toBeAttached()
     await expect(page.getByText('Updating automatically')).toHaveCount(0)
   })
 
@@ -260,8 +286,7 @@ test.describe('deleting a project', () => {
   test('is not offered while a run is in flight', async ({ page }) => {
     // The fixture is parked at its gate with a live run behind it. Deleting it
     // there would leave the runner writing to a project that no longer exists.
-    await page.goto('/projects')
-    await page.getByRole('link', { name: 'Review' }).first().click()
+    await openFixtureProject(page)
 
     await expect(page.getByRole('button', { name: /Delete this project/i })).toHaveCount(0)
     await expect(page.getByText(/Not while a run is in flight/i)).toBeVisible()
@@ -345,5 +370,84 @@ test.describe('work built from research that has since been replaced', () => {
     await expect(
       rail.getByText(/^Script — needs re-running, the stage this project is on$/),
     ).toBeAttached()
+  })
+})
+
+/**
+ * The voice stage (M4).
+ *
+ * The retake half of this loop cannot be driven here — flagging enqueues
+ * `voice/retake.requested` through Inngest, and the suite runs without a Dev
+ * Server (decision 22). So these tests cover what the *screen* does, and
+ * `voice-review.test.tsx` covers what happens after a successful flag.
+ *
+ * What is genuinely worth an E2E is the thing a component test cannot fake:
+ * that the audio route serves playable bytes for a seeded take.
+ */
+test.describe('voice review', () => {
+  test('lists every paragraph with its duration, take number and status', async ({ page }) => {
+    await openProject(page, NARRATED_PROJECT_TITLE)
+
+    await expect(page.getByText(/The auditors signed the accounts/)).toBeVisible()
+    await expect(page.getByText(/3 paragraphs ·/)).toBeVisible()
+    await expect(page.getByText(/ready to approve/)).toBeVisible()
+  })
+
+  test('serves playable audio for the take the row asked to play', async ({ page }) => {
+    await openProject(page, NARRATED_PROJECT_TITLE)
+
+    await page.getByRole('button', { name: 'Play' }).first().click()
+
+    const src = await page.locator('audio').first().getAttribute('src')
+    expect(src).toMatch(/\/api\/voice-takes\/[0-9A-Z]{26}\/audio/)
+
+    /**
+     * The one assertion no component test can make: the route answers with a
+     * real container. In mock mode nothing was ever written to R2, so this is
+     * also the check that the deterministic regeneration path works — a take
+     * whose audio only exists as a function of its own text and seed.
+     */
+    const audio = await page.request.get(src ?? '')
+    expect(audio.status()).toBe(200)
+    expect(audio.headers()['content-type']).toBe('audio/wav')
+    expect((await audio.body()).subarray(0, 4).toString('ascii')).toBe('RIFF')
+  })
+
+  test('offers an A/B toggle only where a retake exists', async ({ page }) => {
+    await openProject(page, NARRATED_PROJECT_TITLE)
+
+    // Paragraph one was flagged and retaken by the seed; the other two were not.
+    await expect(page.getByRole('button', { name: /Compare with take 1/ })).toHaveCount(1)
+
+    await page.getByRole('button', { name: /Compare with take 1/ }).click()
+    await expect(page.getByRole('button', { name: /Back to take 2/ })).toBeVisible()
+  })
+
+  test('refuses the gate while a take is flagged, and says which', async ({ page }) => {
+    await openProject(page, FLAGGED_TAKE_TITLE)
+
+    await expect(page.getByText(/1 flagged take is unresolved/)).toBeVisible()
+    await expect(page.getByText('Note: Read the figure as a question.')).toBeVisible()
+    // The escape from a mis-click, without paying for a replacement.
+    await expect(page.getByRole('button', { name: 'Clear the flag' })).toBeVisible()
+  })
+
+  test('keeps its controls at the 40px minimum', async ({ page }) => {
+    await openProject(page, NARRATED_PROJECT_TITLE)
+    await expectHitTargets(page)
+  })
+
+  test('reads the voice stage of a project that has moved past it', async ({ page }) => {
+    // The rail is navigable, so narration stays reachable from later stages —
+    // which is where a dispute about what was actually said gets settled.
+    await openProject(page, NARRATED_PROJECT_TITLE)
+
+    const rail = page.getByRole('list', { name: 'Pipeline stages' })
+    await rail.getByRole('link', { name: /Script/ }).click()
+    await expect(page).toHaveURL(/stage=script/)
+
+    await rail.getByRole('link', { name: /Voice/ }).click()
+    await expect(page).toHaveURL(/stage=voice/)
+    await expect(page.getByText(/The auditors signed the accounts/)).toBeVisible()
   })
 })

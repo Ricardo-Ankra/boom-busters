@@ -62,7 +62,13 @@ export interface StageInputs {
   /** From the run mirror: is anything actually executing on this project? */
   liveRun?: boolean
   dossier?: { version: number } | undefined
-  script?: { builtFromDossierVersion: number | null } | undefined
+  script?: { version: number; builtFromDossierVersion: number | null } | undefined
+  /**
+   * The narration, described by the script version its current takes were read
+   * from. `null` where a take predates provenance tracking, exactly as
+   * `builtFromDossierVersion` does one stage up.
+   */
+  voice?: { takes: number; builtFromScriptVersion: number | null } | undefined
 }
 
 /**
@@ -114,6 +120,56 @@ function scriptView(input: StageInputs): Derived {
   return { availability: 'ready' }
 }
 
+/**
+ * The narration, measured against the script it was read from.
+ *
+ * Voice inherits the script's staleness as well as carrying its own: audio read
+ * faithfully from a script that was itself written from replaced research is
+ * still audio you cannot use. Reporting only its own provenance would let a
+ * project show "script: needs re-running" beside "voice: ready", which is true
+ * of the narrow question and wrong about the video.
+ */
+function voiceView(input: StageInputs): Derived {
+  if (!input.voice || input.voice.takes === 0) return { availability: 'upcoming' }
+
+  if (!input.script) {
+    return {
+      availability: 'unknown-provenance',
+      staleReason: 'There is no script behind this narration.',
+    }
+  }
+
+  const builtFrom = input.voice.builtFromScriptVersion
+  if (builtFrom === null) {
+    return {
+      availability: 'unknown-provenance',
+      staleReason:
+        'This narration predates provenance tracking, so which script it was read from is not ' +
+        'recorded. Re-run it if that matters.',
+    }
+  }
+
+  if (builtFrom < input.script.version) {
+    return {
+      availability: 'stale',
+      staleReason:
+        'Read from an older script — the words have been rewritten since. Re-run the voice ' +
+        'stage to narrate the script as it stands.',
+    }
+  }
+
+  const upstream = scriptView(input)
+  if (upstream.availability === 'stale' || upstream.availability === 'unknown-provenance') {
+    return {
+      availability: upstream.availability,
+      staleReason:
+        `Read from a script that is itself out of date. ${upstream.staleReason ?? ''}`.trim(),
+    }
+  }
+
+  return { availability: 'ready' }
+}
+
 /** One view per stage, in pipeline order. */
 export function stageViews(input: StageInputs): StageView[] {
   const currentIndex = PIPELINE_STAGES.indexOf(input.project.stage)
@@ -126,9 +182,11 @@ export function stageViews(input: StageInputs): StageView[] {
         ? dossierView(input)
         : stage === 'script'
           ? scriptView(input)
-          : // M4 onwards. Until a stage has a runner it can only be described
-            // by where the project has got to, which is what position gives.
-            { availability: index < currentIndex ? 'ready' : 'upcoming' }
+          : stage === 'voice'
+            ? voiceView(input)
+            : // M5 onwards. Until a stage has a runner it can only be described
+              // by where the project has got to, which is what position gives.
+              { availability: index < currentIndex ? 'ready' : 'upcoming' }
 
     return {
       stage,
@@ -155,7 +213,10 @@ export function stageViewsForProject(
     stageStatus: StageStatus
     dossierVersion: number | null
     hasScript: boolean
+    scriptVersion: number | null
     scriptBuiltFromDossierVersion: number | null
+    voiceTakes: number
+    voiceBuiltFromScriptVersion: number | null
   },
   liveRun = false,
 ): StageView[] {
@@ -164,7 +225,22 @@ export function stageViewsForProject(
     liveRun,
     ...(project.dossierVersion === null ? {} : { dossier: { version: project.dossierVersion } }),
     ...(project.hasScript
-      ? { script: { builtFromDossierVersion: project.scriptBuiltFromDossierVersion } }
+      ? {
+          script: {
+            // A script row with no version is not a state the schema allows;
+            // 1 is the honest floor rather than a guess.
+            version: project.scriptVersion ?? 1,
+            builtFromDossierVersion: project.scriptBuiltFromDossierVersion,
+          },
+        }
+      : {}),
+    ...(project.voiceTakes > 0
+      ? {
+          voice: {
+            takes: project.voiceTakes,
+            builtFromScriptVersion: project.voiceBuiltFromScriptVersion,
+          },
+        }
       : {}),
   })
 }

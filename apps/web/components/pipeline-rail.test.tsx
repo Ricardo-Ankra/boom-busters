@@ -19,7 +19,7 @@ function renderRail(input: Parameters<typeof stageViews>[0], viewing: 'dossier' 
 const midProject = {
   project: { stage: 'script' as const, stageStatus: 'awaiting_review' as const },
   dossier: { version: 1 },
-  script: { builtFromDossierVersion: 1 },
+  script: { version: 1, builtFromDossierVersion: 1 },
 }
 
 describe('PipelineRail', () => {
@@ -81,7 +81,7 @@ describe('PipelineRail', () => {
       project: { stage: 'script' as const, stageStatus: 'running' as const },
       liveRun,
       dossier: { version: 1 },
-      script: { builtFromDossierVersion: 1 },
+      script: { version: 1, builtFromDossierVersion: 1 },
     })
 
     it('turns only when the run mirror can see a run', () => {
@@ -108,7 +108,7 @@ describe('PipelineRail', () => {
       {
         project: { stage: 'script', stageStatus: 'approved' },
         dossier: { version: 2 },
-        script: { builtFromDossierVersion: 1 },
+        script: { version: 1, builtFromDossierVersion: 1 },
       },
       'script',
     )
@@ -121,7 +121,7 @@ describe('PipelineRail', () => {
       {
         project: { stage: 'script', stageStatus: 'running' },
         dossier: { version: 2 },
-        script: { builtFromDossierVersion: 1 },
+        script: { version: 1, builtFromDossierVersion: 1 },
       },
       'script',
     )
@@ -139,7 +139,7 @@ describe('PipelineRail', () => {
       {
         project: { stage: 'dossier', stageStatus: 'running' },
         dossier: { version: 2 },
-        script: { builtFromDossierVersion: 1 },
+        script: { version: 1, builtFromDossierVersion: 1 },
       },
       'dossier',
     )

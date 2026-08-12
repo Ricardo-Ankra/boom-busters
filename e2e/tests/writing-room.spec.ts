@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { expectHitTargets, signIn } from './fixtures'
+import { expectHitTargets, signIn, openFixtureProject } from './fixtures'
 
 /**
  * The M3 writing room, driven the way a human drives it (build spec section
@@ -89,16 +89,14 @@ test.describe('the dossier gate', () => {
   test('the fixture project is parked at its gate with the action bar offered', async ({
     page,
   }) => {
-    await page.goto('/projects')
-    await page.getByRole('link', { name: 'Review' }).first().click()
+    await openFixtureProject(page)
 
     await expect(page.getByRole('button', { name: 'Approve' })).toBeVisible()
     await expect(page.getByRole('button', { name: 'Request changes' })).toBeVisible()
   })
 
   test('requesting changes needs a note, and says so', async ({ page }) => {
-    await page.goto('/projects')
-    await page.getByRole('link', { name: 'Review' }).first().click()
+    await openFixtureProject(page)
 
     await page.getByRole('button', { name: 'Request changes' }).click()
     await page.getByRole('button', { name: 'Send change request' }).click()

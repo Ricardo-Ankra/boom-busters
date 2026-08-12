@@ -514,7 +514,171 @@ Two live bugs, neither previously visible:
 > TTS adapters (Gemini batch, ElevenLabs), voice-runner, review UI with
 > retakes, phoneme hints, idempotent takes, voice-audition panel in Settings.
 
-**Status:** `[ ]` not started
+**Status:** `[x]` **done** (2026-08-12)
+
+### Deliverables
+
+- [x] **TTS layer (`packages/providers/src/tts`)** — one `TTSProvider`
+      interface, Gemini and ElevenLabs adapters, a deterministic mock, and the
+      registry that swaps them on `MOCK_PROVIDERS=1`. Prices live on the
+      adapters and `packages/cost` derives `TTS_PRICES` from them (decision 23)
+- [x] **Audio, in pure TypeScript** — PCM in, WAV out, duration from the byte
+      count and a 160-bucket waveform from a scan. No FFmpeg, no decoder, no
+      binary dependency
+- [x] **Phoneme hints** — a channel-wide list on `settings.tts`, matched
+      whole-word per paragraph, rendered as prompt instructions for Gemini and
+      inline `<phoneme>` markup for ElevenLabs
+- [x] **Idempotent takes** — `takeIdempotencyKey(projectId, chapterId,
+paragraphIndex, textHash, voiceId)`, and a `claimTake` that reserves the
+      row in one statement before anything is bought
+- [x] **`voice-runner`** — pre-flight, fan-out TTS in bounded batches, the 15%
+      partial-failure policy, gate
+- [x] **`voice-retaker`** — its own function on `voice/retake.requested`, so the
+      main run stays parked while a listen-through produces a dozen retakes
+- [x] **Voice review UI** — chapter accordion, waveform strip, duration, take
+      number, status chip, `Play`/`Flag`, 1×/1.25×/1.5×, continuous
+      listen-through that scrolls the playing row into view, coverage bar, A/B
+      toggle between takes
+- [x] **The zero-flagged gate rule**, enforced in `approveGate` server-side and
+      not only by a disabled button
+- [x] **Settings → Voice** — audition panel (up to 6 voices side by side,
+      through `withCost`), the locked narrator with its typed `CHANGE VOICE`
+      unlock, and the pronunciation editor
+- [x] **Voice staleness** — `voice_takes.built_from_script_version`, migration
+      `0006`, and `voiceView` in the stage model, which inherits the script's
+      staleness as well as carrying its own
+- [x] **Tests** — 23 schema, 71 provider, 16 db integration, 60 web unit and
+      component, 6 E2E
+
+### Decisions made
+
+37. **Gemini TTS uses the synchronous endpoint, not the batch API.** Spec §6
+    says "Gemini adapter uses the batch API", under the general rule "batch APIs
+    where latency is irrelevant". For narration latency is _not_ irrelevant — a
+    human is waiting at the voice gate, and batch turnaround is hours. Taking it
+    would mean approving a script on Monday and being offered its audio on
+    Tuesday, to save roughly fifteen cents a video. It would also need a
+    submit → `step.sleep()` → poll state machine per paragraph to satisfy the
+    step-duration rule (§7), where fanning out sixty short synchronous calls
+    gets the same throughput with none of it. Revisit if TTS spend ever becomes
+    material against the cap; only `gemini.ts` changes.
+
+38. **Adapters return raw PCM; the container is written once, above them.** Both
+    vendors will emit 16-bit mono PCM when asked, so a WAV is a 44-byte header,
+    the duration is a division and the waveform is a scan — no decoder and no
+    FFmpeg in the web layer. Two adapters each writing their own header would be
+    two chances to disagree about how long a paragraph is.
+
+39. **The web layer holds audio bytes, briefly, and this is a deviation.**
+    Design principle 2 says "the web layer never streams, transforms or holds a
+    video/audio byte; all media flows R2/S3 ↔ Lambda". The Lambda it means —
+    media-utils, with its FFmpeg layer — is deployed in M6. The choice was to
+    hold a paragraph of narration for as long as a `PutObject` takes, or to
+    defer the whole voice stage to M6 and reorder the milestones. The part of
+    the principle that actually protects the app is kept intact: the browser is
+    never handed bytes, only a presigned URL it fetches from R2 itself.
+
+40. **Loudness normalisation is not done, and says so.** §7.3 has the runner
+    normalise each chunk to -16 LUFS in media-utils. That needs FFmpeg, so it
+    waits for M6 — and rather than leave the gap in a document, the runner
+    writes a `step.skipped` run event on every voice run. It shows up in the
+    activity drawer, which is where somebody will actually see it.
+
+41. **Gemini spend is attributed to `google`.** "Gemini" is a model line, not a
+    vendor: the TTS endpoint takes the same API key as the Gemini text models,
+    on the same billing account. `TTS_CREDENTIAL_PROVIDER` maps it, so narration
+    lands under the cap that key already has rather than in a second budget for
+    one bill.
+
+42. **The ElevenLabs pronunciation-dictionary endpoint is not used.** §6 names
+    it. A dictionary is an account-level resource that must be created,
+    versioned and referenced by id — three round trips and a piece of vendor
+    state to keep in step with a list a human edits in Settings. Inline markup
+    says the same thing per request, needs nothing stored anywhere, and is a
+    pure string function this package can test. Revisit if a hint list ever
+    grows large enough to matter per request.
+
+43. **A retake never destroys the take it replaces.** Take numbers accumulate
+    under one idempotency key; the review row A/Bs between them. A retake you
+    like less than the original is a real outcome, and without the earlier take
+    there is no way back from it. Only the highest take number counts as
+    current, which `latestTakes` in `packages/schemas` decides — one function,
+    so the runner, the gate and the screen cannot disagree about which audio is
+    the one that will be assembled.
+
+44. **Mock takes carry a `mock://` key rather than a plausible one.** A
+    `MOCK_PROVIDERS=1` run has no bucket, and writing a real-looking
+    `boom-busters/…` path that points at nothing is the kind of thing that gets
+    discovered three milestones later, at assembly. Marked keys mean the audio
+    route regenerates the bytes deterministically instead — which is what lets
+    an E2E actually press Play.
+
+### Where the fixture had to move
+
+`BEYOND_RUNNERS_TITLE` — "a project past the last runner we have built" — sat at
+`voice`/`running`. M4 built that runner, so the fixture moved to `visuals`. The
+state it tests is unchanged, and it will have to move again at M5: "past the
+last runner" is a target that moves with every milestone, which is worth saying
+out loud in the fixture rather than rediscovering when the assertion goes red.
+
+### Not built, and deliberately
+
+- **Loudness normalisation** — decision 40, lands with media-utils in M6.
+- **ElevenLabs `with-timestamps`** — spec §2 makes it the free path to alignment,
+  skipping Whisper entirely when ElevenLabs is the narrator. That is an M6
+  concern; the adapter is built so it can be added without touching anything
+  above it.
+- **Claim-level invalidation** — still outstanding from M3.2, still belongs with
+  the self-check pass.
+
+### Two things adding the fixtures found
+
+Both were live defects in code M4 did not write, and both were invisible because
+a test was quietly driving the wrong screen:
+
+- **The dossier's source links were 24px**, against the 40px minimum in spec
+  §11.1 — the smallest control in the app, and the one most worth pressing,
+  since checking where a claim's source actually points is the entire job of
+  that screen. The audit that should have caught it opened whichever project
+  came first in the list, which stopped being the dossier fixture as soon as the
+  suite gained projects in other states. Scoping the fixture by title rather
+  than by position is what surfaced it.
+- **`.first()` had rotted a second time.** M3.4 replaced "the first row" with
+  "the row that has a Review link"; M4 added two projects parked at the voice
+  gate and that broke too. Both were selectors describing where the fixture
+  happened to sit rather than what it is. It is opened by title now, through one
+  `openFixtureProject` helper, so the next milestone's fixtures cannot move it
+  again.
+
+And one test was reporting on the clock rather than on the code: "queued and
+young" has a three-minute shelf life by design, and a fixture seeded once in
+global setup ages past it as the suite grows. That test re-stamps the row before
+it looks at it, which is the only way to assert on a time-bounded state without
+making the window configurable from outside — and the second would be production
+code shaped by a test.
+
+### Verified
+
+- **`pnpm test`** — 759 tests across 6 workspaces (schemas 123 · db 148 ·
+  providers 250 · cost 30 · ui-tokens 21 · web 187), clean run, exit 0.
+- **`pnpm e2e`** — 71 Playwright tests, run twice to catch state leaks.
+- **`pnpm build`** — production bundle, with `/api/voice-takes/[id]/audio`
+  registered.
+- **Production migrated** (2026-08-12): `voice_takes.waveform` and
+  `voice_takes.built_from_script_version` both present. Existing takes — there
+  are none — would read as `unknown-provenance` rather than being assumed
+  current, which is why the column is nullable.
+- **Not verified: the runners themselves end to end.** `@inngest/test` cannot
+  drive a run past a `waitForEvent` (decision 20), so `voice-runner` and
+  `voice-retaker` are proven the way every runner since M2 has been — by running
+  against Inngest Cloud from the deployment. That has not happened yet, and it
+  is the next thing to do.
+
+**Spending:** every TTS call is mocked by default (`MOCK_PROVIDERS=1`), so this
+milestone was built and tested without spending anything. **The Vercel
+deployment is not mocked** — a voice run there is real spend against the caps,
+and narration is the first stage that fans out over dozens of paid calls in
+seconds.
 
 ---
 

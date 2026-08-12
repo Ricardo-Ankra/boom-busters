@@ -100,6 +100,48 @@ export const TtsProviderSchema = z.enum(TTS_PROVIDERS)
 export type TtsProvider = z.infer<typeof TtsProviderSchema>
 
 /**
+ * Which account a TTS provider actually spends against.
+ *
+ * "Gemini" is a model line, not a vendor: its TTS endpoint takes the same
+ * Google API key as the Gemini text models, on the same billing account and
+ * behind the same monthly cap. So narration spend has to be attributed to
+ * `google`, or the app would keep two budgets for one bill and neither of them
+ * would be right.
+ *
+ * ElevenLabs is its own account, and maps to itself.
+ */
+export const TTS_CREDENTIAL_PROVIDER: Record<TtsProvider, Provider> = {
+  gemini: 'google',
+  elevenlabs: 'elevenlabs',
+}
+
+/** The reverse: which narrator a stored `provider` column refers to. */
+export function ttsProviderFromCredential(provider: Provider): TtsProvider | undefined {
+  return (Object.keys(TTS_CREDENTIAL_PROVIDER) as TtsProvider[]).find(
+    (tts) => TTS_CREDENTIAL_PROVIDER[tts] === provider,
+  )
+}
+
+/**
+ * How a term the model cannot be trusted to say is to be said (spec section 6).
+ *
+ * This subject matter is full of them — Wirecard, Theranos, Ponzi, Sarbanes-Oxley,
+ * the names of foreign regulators — and a narrator that mispronounces the
+ * company halfway through a fifteen-minute video is not fixable by editing.
+ *
+ * Channel-wide rather than per-project: the pronunciation of "Wirecard" is a
+ * property of the narrator, not of one video, and re-entering the list per
+ * project is how it ends up inconsistent between them.
+ */
+export const PhonemeHintSchema = z.object({
+  /** The written form as it appears in the script. Matched whole-word, case-insensitively. */
+  term: z.string().min(1),
+  /** How to say it: IPA in slashes, or a plain respelling like "VEER-card". */
+  hint: z.string().min(1),
+})
+export type PhonemeHint = z.infer<typeof PhonemeHintSchema>
+
+/**
  * The narration voice. Build spec section 4 calls this `settings.tts` and
  * section 10 calls it `brandKit.voice`; they describe the same five fields.
  * It is stored once, here, and projected into the Brand Kit snapshot by
@@ -112,6 +154,12 @@ export const VoiceConfigSchema = z.object({
   pacing: z.number().min(0.5).max(2).default(1),
   /** The voice is a brand asset; unlocking requires typed confirmation in the UI. */
   locked: z.boolean().default(false),
+  /**
+   * Beyond the five fields section 10 lists, because it belongs to the same
+   * decision and nothing else owns it: a hint list is only meaningful next to
+   * the voice that will read from it.
+   */
+  phonemeHints: z.array(PhonemeHintSchema).max(200).default([]),
 })
 export type VoiceConfig = z.infer<typeof VoiceConfigSchema>
 
@@ -335,6 +383,7 @@ export const DEFAULT_SETTINGS: Settings = {
     stylePrompt: '',
     pacing: 1,
     locked: false,
+    phonemeHints: [],
   },
   budgets: {
     perProviderMonthlyUSD: {

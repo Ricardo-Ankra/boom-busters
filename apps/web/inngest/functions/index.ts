@@ -3,15 +3,16 @@ import { demoPipeline } from './demo-pipeline'
 import { dossierReviser } from './dossier-reviser'
 import { dossierRunner } from './dossier-runner'
 import { scriptRunner } from './script-runner'
+import { voiceRetaker } from './voice-retaker'
+import { voiceRunner } from './voice-runner'
 
 /**
  * Every Inngest function this app serves. The serve route registers exactly
  * this array, so a function that is not here is not deployed — which is the
  * behaviour you want when a half-written runner is sitting on a branch.
  *
- * M4-M7 add `voice-runner`, `visuals-runner`, `assembly-runner`,
- * `render-runner`, `shorts-runner`, `publish-runner` and `analytics-runner`
- * (spec section 7).
+ * M5-M7 add `visuals-runner`, `assembly-runner`, `render-runner`,
+ * `shorts-runner`, `publish-runner` and `analytics-runner` (spec section 7).
  *
  * **`demoPipeline` is deliberately not here.** It did its job — spec section
  * 14.2 asked it to prove park/resume/cancel on production infra, and the M2
@@ -28,6 +29,21 @@ import { scriptRunner } from './script-runner'
  * `pnpm test` still exercises the orchestration spine end to end without
  * anything being able to reach it in production.
  */
-export const functions = [cancelReconciler, dossierRunner, dossierReviser, scriptRunner]
+export const functions = [
+  cancelReconciler,
+  dossierRunner,
+  dossierReviser,
+  scriptRunner,
+  voiceRunner,
+  voiceRetaker,
+]
 
-export { cancelReconciler, demoPipeline, dossierReviser, dossierRunner, scriptRunner }
+export {
+  cancelReconciler,
+  demoPipeline,
+  dossierReviser,
+  dossierRunner,
+  scriptRunner,
+  voiceRunner,
+  voiceRetaker,
+}

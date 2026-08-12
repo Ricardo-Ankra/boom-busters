@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { expectHitTargets, signIn } from './fixtures'
+import { expectHitTargets, FIXTURE_PROJECT_TITLE, openFixtureProject, signIn } from './fixtures'
 
 /**
  * The M2 screens (build spec section 14.2): the projects list, the project
@@ -29,14 +29,16 @@ test.describe('projects', () => {
   test('the mini rail names each stage and its state for a screen reader', async ({ page }) => {
     await page.goto('/projects')
 
-    // Scoped to the row that is actually at a gate rather than to the first
-    // row on the page. The list is ordered by recency, so `.first()` meant
-    // "whichever project was touched last" — which held only while the fixture
-    // was the sole project, and broke the moment the suite gained projects in
-    // the other states a project can be in.
-    const row = page
-      .getByRole('listitem')
-      .filter({ has: page.getByRole('link', { name: 'Review' }) })
+    /**
+     * Scoped by title, not by position and not by "has a Review link".
+     *
+     * `.first()` broke at M3.4 when the suite gained projects in other states;
+     * "the row with a Review link" broke again at M4 when it gained two more
+     * projects parked at the voice gate. The fixture is identified by what it
+     * is, which is the only property that does not move when a milestone adds
+     * a state.
+     */
+    const row = page.getByRole('listitem').filter({ hasText: FIXTURE_PROJECT_TITLE })
     const rail = row.getByRole('list', { name: 'Pipeline stages' })
 
     await expect(rail.getByText(/^Dossier — awaiting review$/)).toBeAttached()
@@ -44,8 +46,7 @@ test.describe('projects', () => {
   })
 
   test('opening a project shows the full rail and the stage it is on', async ({ page }) => {
-    await page.goto('/projects')
-    await page.getByRole('link', { name: 'Review' }).first().click()
+    await openFixtureProject(page)
 
     await expect(page).toHaveURL(/\/projects\/[0-9A-Z]{26}/)
     await expect(page.getByRole('list', { name: 'Pipeline stages' })).toBeVisible()
@@ -57,8 +58,7 @@ test.describe('projects', () => {
 
 test.describe('gate action bar', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/projects')
-    await page.getByRole('link', { name: 'Review' }).first().click()
+    await openFixtureProject(page)
   })
 
   test('offers both gate actions as visible labelled buttons', async ({ page }) => {

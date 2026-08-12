@@ -28,6 +28,15 @@ export const RUN_EVENT_KINDS = [
   'step.completed',
   'step.failed',
   'step.retry',
+  /**
+   * A step that deliberately did nothing, and said so.
+   *
+   * Not a failure and not a success: the voice runner's loudness pass needs
+   * media-utils, which is deployed in M6, and a gap that only exists in a
+   * document is a gap nobody sees. This puts it in the activity drawer of every
+   * run it affects.
+   */
+  'step.skipped',
   'gate.opened',
   'gate.closed',
   'model.fallback',
