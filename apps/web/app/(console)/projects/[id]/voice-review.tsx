@@ -34,15 +34,18 @@ import { clearVoiceFlag, flagVoiceTake, rereadParagraph, retakeVoiceTake } from 
  *  - **Playback runs on across rows.** A player that stopped at every paragraph
  *    would turn a listen-through into sixty clicks, and nobody would do it
  *    twice.
- *  - **The playing row scrolls itself into view and carries a large Flag
- *    button**, so the control you need is under the cursor at the moment you
- *    hear the problem — rather than somewhere you have to hunt for while the
- *    next paragraph plays over the top of your search.
- *  - **Flagging is a verdict and costs nothing.** It holds the gate shut and
- *    records why. The repair is a second, deliberate press, because the two
- *    repairs are not the same thing and only one of them exists on every
- *    narrator: `Fix the words` always, `Read it again` only where a second
- *    reading of identical text can come back different.
+ *  - **The playing row scrolls itself into view**, so the controls you need are
+ *    under the cursor at the moment you hear the problem rather than somewhere
+ *    you have to hunt for while the next paragraph plays over your search.
+ *  - **Three independent things, in any order.** `Fix the words` rewrites the
+ *    paragraph and re-reads it, and is the only repair that exists on a
+ *    narrator which reads identical text identically. `Read it again` re-rolls
+ *    the same words, and appears only where that can differ. `Flag` marks a
+ *    problem to come back to and costs nothing.
+ *
+ *    None of them is behind another. Flagging holds the gate shut, but so does
+ *    a re-read in flight — a pending take blocks approval by itself — so
+ *    requiring a flag before a fix was ceremony, not safety.
  *
  * Space toggles play/pause, which is one of the two keyboard behaviours section
  * 11.1 keeps ("the universal ones users expect from media and text"). Every
@@ -503,30 +506,41 @@ function ParagraphRowView({
             {playing ? 'Pause' : 'Play'}
           </Button>
 
+          {/*
+            The repair you reach for the moment you hear a problem, and it is
+            not behind the flag.
+
+            It was, briefly, and that was ceremony: two presses and a required
+            note before you could change a word. The flag's job is to hold the
+            gate shut, and a re-read already does that on its own — the new take
+            is `pending`, and `voiceApprovalBlockedReason` refuses approval while
+            anything is pending. So fixing, re-rolling and marking-for-later are
+            three independent things you can do to a paragraph, in any order.
+          */}
+          <Button onClick={() => setRereading((open) => !open)} disabled={!row.current?.hasAudio}>
+            <Pencil className="size-4" aria-hidden />
+            Fix the words
+          </Button>
+
+          {/* Offered only where a second reading of identical words can come
+              back different. On Cloud TTS it cannot, so the button would be a
+              charge for the audio already on the row. */}
+          {rereadCanDiffer ? (
+            <Button
+              variant="outline"
+              onClick={tryAgain}
+              disabled={retaking || !row.current?.hasAudio}
+            >
+              <RefreshCw className="size-4" aria-hidden />
+              {retaking ? 'Queueing…' : 'Read it again'}
+            </Button>
+          ) : null}
+
           {row.current?.status === 'flagged' ? (
-            <>
-              {/* The repair that always works, listed first because on Chirp it
-                  is the only one. */}
-              <Button onClick={() => setRereading((open) => !open)}>
-                <Pencil className="size-4" aria-hidden />
-                Fix the words
-              </Button>
-
-              {/* Offered only where a second reading of identical words can
-                  come back different. On Cloud TTS it cannot, so the button
-                  would be a charge for the take just rejected. */}
-              {rereadCanDiffer ? (
-                <Button variant="outline" onClick={tryAgain} disabled={retaking}>
-                  <RefreshCw className="size-4" aria-hidden />
-                  {retaking ? 'Queueing…' : 'Read it again'}
-                </Button>
-              ) : null}
-
-              <Button variant="outline" onClick={clearFlag} disabled={clearing}>
-                <Undo2 className="size-4" aria-hidden />
-                {clearing ? 'Clearing…' : 'Clear the flag'}
-              </Button>
-            </>
+            <Button variant="outline" onClick={clearFlag} disabled={clearing}>
+              <Undo2 className="size-4" aria-hidden />
+              {clearing ? 'Clearing…' : 'Clear the flag'}
+            </Button>
           ) : (
             <Button
               variant="outline"
@@ -534,9 +548,9 @@ function ParagraphRowView({
               disabled={!row.current?.hasAudio}
             >
               <Flag className="size-4" aria-hidden />
-              {/* Larger and more explicit while this row is playing: this is
-                  the button you reach for the instant you hear a problem. */}
-              {playing ? 'Flag this paragraph' : 'Flag'}
+              {/* More explicit while this row is playing: marking a problem to
+                  come back to should not need you to stop listening. */}
+              {playing ? 'Flag for later' : 'Flag'}
             </Button>
           )}
 

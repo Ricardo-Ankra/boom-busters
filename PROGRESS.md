@@ -808,6 +808,19 @@ the voice regenerate?"* — whose honest answer was: it won't.
     chapter. Splitting a paragraph in two is refused: it would shift every later
     index and orphan the takes addressed by them (spec §7's stability contract).
 
+71. **The repair is not behind the flag.** Shipped that way for an hour and it
+    was wrong: it made the human flag a take, type a note, and press again
+    before they could change a word — three steps to fix a comma. The
+    justification would have been that the flag holds the gate shut while the
+    repair is in flight, but a re-read already does that on its own: the new
+    take is `pending`, and `voiceApprovalBlockedReason` refuses approval while
+    anything is pending.
+
+    So the row offers three independent things in any order — `Fix the words`,
+    `Read it again` where it can differ, and `Flag` for a problem to come back
+    to. Flagging is now purely triage: mark six things during a listen-through
+    without stopping, deal with them after.
+
 ### M4.8 — what the Chirp 3 HD guide said, and I had not read (2026-08-13)
 
 The human sent Google's Chirp 3 HD page. Two things in it contradict claims I

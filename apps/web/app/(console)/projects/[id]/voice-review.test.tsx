@@ -262,6 +262,52 @@ describe('VoiceReview', () => {
       expect(screen.getByRole('button', { name: 'Fix the words' })).toBeInTheDocument()
     })
 
+    /**
+     * The repair is not behind the flag, which it briefly was.
+     *
+     * Requiring a verdict and a typed note before you may change a word is
+     * ceremony rather than safety: the protection a flag gives at the gate is
+     * already given by the re-read itself, since the new take is `pending` and
+     * `voiceApprovalBlockedReason` refuses approval while anything is pending.
+     */
+    it('offers to fix the words without flagging first', async () => {
+      render(<VoiceReview model={model()} />)
+
+      const [first] = screen.getAllByRole('button', { name: 'Fix the words' })
+      expect(first).toBeInTheDocument()
+
+      await userEvent.click(first!)
+      expect(screen.getByLabelText('The words, as they should be read')).toBeInTheDocument()
+      expect(flagVoiceTake).not.toHaveBeenCalled()
+    })
+
+    it('will not offer to repair a paragraph that has no audio yet', async () => {
+      const silent = model({
+        chapters: [
+          {
+            chapterId: 'c1',
+            title: 'The audit',
+            paragraphs: [
+              {
+                chapterId: 'c1',
+                paragraphIndex: 0,
+                text: 'One.',
+                current: take({ status: 'pending', hasAudio: false }),
+                previous: undefined,
+                takeCount: 1,
+              },
+            ],
+          },
+        ],
+        rereadCanDiffer: true,
+      })
+
+      render(<VoiceReview model={silent} />)
+
+      expect(screen.getByRole('button', { name: 'Fix the words' })).toBeDisabled()
+      expect(screen.getByRole('button', { name: 'Read it again' })).toBeDisabled()
+    })
+
     it('does not offer to read it again when the reading cannot differ', async () => {
       render(<VoiceReview model={flaggedModel({ rereadCanDiffer: false })} />)
       expect(screen.queryByRole('button', { name: /read it again/i })).toBeNull()
