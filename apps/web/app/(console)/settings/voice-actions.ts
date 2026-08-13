@@ -1,17 +1,23 @@
 'use server'
 
-import { createHash } from 'node:crypto'
-import { getSettings, ttsCredential, updateSettings } from '@boom-busters/db'
+import {
+  findAudition,
+  getSettings,
+  listAuditions,
+  saveAudition,
+  ttsCredential,
+  updateSettings,
+} from '@boom-busters/db'
 import { STATIC_VOICES, ttsAdapter } from '@boom-busters/providers'
 import type { KnownVoice } from '@boom-busters/providers'
-import { TTS_PROVIDERS, TtsProviderSchema } from '@boom-busters/schemas'
-import type { TtsProvider } from '@boom-busters/schemas'
+import { TTS_PROVIDERS, TtsProviderSchema, ttsProviderFromCredential } from '@boom-busters/schemas'
+import type { Provider, TtsProvider } from '@boom-busters/schemas'
 import { revalidatePath } from 'next/cache'
 import { auth } from '@/auth'
 import { db } from '@/lib/db'
 import { env } from '@/lib/env'
-import { MAX_AUDITIONS, MAX_SAMPLE_CHARS } from '@/lib/audition'
-import type { AuditionResult } from '@/lib/audition'
+import { MAX_AUDITIONS, MAX_SAMPLE_CHARS, sampleHash } from '@/lib/audition'
+import type { Audition, AuditionResult } from '@/lib/audition'
 import { auditionKey, putObject, storageConfigured } from '@/lib/storage'
 import { synthesise } from '@/lib/tts'
 
@@ -117,7 +123,7 @@ export async function generateAuditions(
   }
 
   const settings = await getSettings(db)
-  const hash = createHash('sha256').update(text).digest('hex').slice(0, 16)
+  const hash = sampleHash(text)
 
   const auditions = await Promise.all(
     choices.map(async (choice) => {
@@ -133,6 +139,29 @@ export async function generateAuditions(
 
       const provider = parsed.data
       const base = { provider, voiceId: choice.voiceId, label: choice.voiceId }
+
+      /**
+       * Bought once, then free forever.
+       *
+       * Without this, leaving the Settings screen and coming back meant paying
+       * to hear the same voice read the same sentence again — the panel's
+       * in-memory cache died with the page, which is exactly the moment you
+       * want to come back and compare.
+       */
+      const cached = await findAudition(db, {
+        provider,
+        voiceId: choice.voiceId,
+        sampleHash: hash,
+      })
+      if (cached) {
+        return {
+          ...base,
+          audio: cached.audioBase64,
+          durationMs: cached.durationMs,
+          costUsd: 0,
+          cached: true,
+        }
+      }
 
       try {
         const narration = await synthesise(
@@ -155,11 +184,24 @@ export async function generateAuditions(
           )
         }
 
-        return {
-          ...base,
-          audio: narration.wav.toString('base64'),
+        const audio = narration.wav.toString('base64')
+        await saveAudition(db, {
+          provider,
+          voiceId: choice.voiceId,
+          sampleHash: hash,
+          audioBase64: audio,
           durationMs: narration.durationMs,
           costUsd: narration.costUsd,
+        })
+
+        return {
+          ...base,
+          audio,
+          durationMs: narration.durationMs,
+          costUsd: narration.costUsd,
+          ...(narration.droppedPronunciations && narration.droppedPronunciations.length > 0
+            ? { droppedPronunciations: narration.droppedPronunciations }
+            : {}),
         }
       } catch (error) {
         // One voice failing must not lose the five that worked and were paid
@@ -173,12 +215,19 @@ export async function generateAuditions(
 }
 
 /**
- * Adopt a voice, and lock it.
+ * Adopt a voice.
  *
- * Locking is the spec's (§10): the narration voice is a brand asset, and
- * changing it halfway through a channel's life makes every earlier video sound
- * like a different show. Unlocking needs a typed confirmation, which the UI
- * enforces and this action re-checks.
+ * **Choosing does not lock it**, which is a deliberate departure from spec
+ * §11.3 ("choosing writes and locks the Brand Kit voice"). That flow assumes
+ * you choose once and are done; auditioning is inherently comparative, so
+ * locking on the first press turned the second press into "Could not choose
+ * that voice — the narration voice is locked", with the unlock ritual sitting
+ * in a different section. The first thing a new console does to you should not
+ * be to trap you.
+ *
+ * The lock survives with its purpose intact — §10 wants a brand asset that
+ * cannot be swapped by accident once the channel is producing — but it is now
+ * something you apply when you are happy, not something applied to you.
  */
 export async function chooseVoice(
   provider: string,
@@ -194,16 +243,28 @@ export async function chooseVoice(
   if (settings.tts.locked) {
     return {
       ok: false,
-      error: 'The narration voice is locked. Unlock it below before choosing a different one.',
+      error: 'The narration voice is locked. Unlock it in "The narrator" below before changing it.',
     }
   }
 
-  await updateSettings(db, {
-    tts: { provider: parsed.data, voiceId: voiceId.trim(), locked: true },
-  })
+  await updateSettings(db, { tts: { provider: parsed.data, voiceId: voiceId.trim() } })
 
   revalidatePath('/settings')
   revalidatePath('/')
+  return { ok: true }
+}
+
+/** Lock the voice in, once you are happy with it (§10). */
+export async function lockVoice(): Promise<{ ok: boolean; error?: string }> {
+  await requireOwner()
+
+  const settings = await getSettings(db)
+  if (settings.tts.voiceId.trim() === '') {
+    return { ok: false, error: 'Choose a voice before locking one in.' }
+  }
+
+  await updateSettings(db, { tts: { locked: true } })
+  revalidatePath('/settings')
   return { ok: true }
 }
 
@@ -279,4 +340,34 @@ export async function checkPronunciation(
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : 'Could not check it' }
   }
+}
+
+/**
+ * Everything already bought for this sample, so the panel opens with it.
+ *
+ * Without this the cache would only help within a page load: you would come
+ * back, see every voice offering to charge you again, and have no way of
+ * knowing which ones were already paid for.
+ */
+export async function cachedAuditions(sample: string): Promise<Record<string, Audition>> {
+  await requireOwner()
+
+  const rows = await listAuditions(db, sampleHash(sample))
+  const byKey: Record<string, Audition> = {}
+
+  for (const row of rows) {
+    const tts = ttsProviderFromCredential(row.provider as Provider)
+    if (!tts) continue
+    byKey[`${tts}:${row.voiceId}`] = {
+      provider: tts,
+      voiceId: row.voiceId,
+      label: row.voiceId,
+      audio: row.audioBase64,
+      durationMs: row.durationMs,
+      costUsd: 0,
+      cached: true,
+    }
+  }
+
+  return byKey
 }

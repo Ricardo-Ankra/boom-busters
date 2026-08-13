@@ -7,11 +7,15 @@ import { createScriptVersion, saveChapter } from './scripts'
 import { requireTestDatabase } from './test-database'
 import {
   approveCurrentTakes,
+  AUDITION_CACHE_LIMIT,
   claimTake,
   currentTake,
+  findAudition,
   flagTake,
   latestScriptParagraphSources,
+  listAuditions,
   listVoiceTakes,
+  saveAudition,
   storeTakeAudio,
   unflagTake,
 } from './voice'
@@ -224,5 +228,113 @@ suite('voice takes', () => {
     await claim()
     await sql`delete from projects where id = ${projectId}`
     expect(await listVoiceTakes(db, projectId)).toHaveLength(0)
+  })
+})
+
+suite('audition cache', () => {
+  const { sql, db } = createDb(url ?? 'postgres://unused', { max: 2 })
+
+  afterAll(async () => {
+    await sql.end({ timeout: 5 })
+  })
+
+  beforeEach(async () => {
+    await sql`delete from voice_auditions`
+  })
+
+  const sample = {
+    provider: 'google-cloud-tts' as const,
+    voiceId: 'en-GB-Chirp3-HD-Achernar',
+    sampleHash: 'abc',
+  }
+
+  it('is empty before a voice has read the sample', async () => {
+    expect(await findAudition(db, sample)).toBeUndefined()
+  })
+
+  /**
+   * The whole point: leaving Settings and coming back must not cost anything.
+   * The panel's in-memory cache dies with the page, which is exactly the moment
+   * you want to return and compare two candidates.
+   */
+  it('hands the same audio back rather than charging for it again', async () => {
+    await saveAudition(db, { ...sample, audioBase64: 'UklGRg==', durationMs: 4200, costUsd: 0.002 })
+
+    const found = await findAudition(db, sample)
+    expect(found?.audioBase64).toBe('UklGRg==')
+    expect(found?.durationMs).toBe(4200)
+  })
+
+  it('treats a different sample as a different audition', async () => {
+    await saveAudition(db, { ...sample, audioBase64: 'a', durationMs: 1, costUsd: 0 })
+    expect(await findAudition(db, { ...sample, sampleHash: 'different' })).toBeUndefined()
+  })
+
+  it('treats a different voice as a different audition', async () => {
+    await saveAudition(db, { ...sample, audioBase64: 'a', durationMs: 1, costUsd: 0 })
+    expect(await findAudition(db, { ...sample, voiceId: 'en-GB-Chirp3-HD-Achird' })).toBeUndefined()
+  })
+
+  it('replaces rather than duplicating when the same audition is re-bought', async () => {
+    await saveAudition(db, { ...sample, audioBase64: 'first', durationMs: 1, costUsd: 0 })
+    await saveAudition(db, { ...sample, audioBase64: 'second', durationMs: 2, costUsd: 0 })
+
+    expect((await findAudition(db, sample))?.audioBase64).toBe('second')
+    expect(await listAuditions(db, 'abc')).toHaveLength(1)
+  })
+
+  it('lists everything bought for one sample, so the panel opens with it', async () => {
+    await saveAudition(db, { ...sample, audioBase64: 'a', durationMs: 1, costUsd: 0 })
+    await saveAudition(db, {
+      ...sample,
+      voiceId: 'en-GB-Chirp3-HD-Achird',
+      audioBase64: 'b',
+      durationMs: 1,
+      costUsd: 0,
+    })
+
+    expect(await listAuditions(db, 'abc')).toHaveLength(2)
+  })
+
+  it('stores Gemini auditions against the Google account, as takes do', async () => {
+    await saveAudition(db, {
+      provider: 'gemini',
+      voiceId: 'Charon',
+      sampleHash: 'abc',
+      audioBase64: 'a',
+      durationMs: 1,
+      costUsd: 0,
+    })
+
+    const [row] = await listAuditions(db, 'abc')
+    expect(row?.provider).toBe('google')
+    // And is found again through the TTS provider it was saved under.
+    expect(
+      await findAudition(db, { provider: 'gemini', voiceId: 'Charon', sampleHash: 'abc' }),
+    ).toBeDefined()
+  })
+
+  it('prunes the oldest once the cache is full', async () => {
+    // A cache that only grows is a cache nobody remembers to empty. The limit
+    // is injected so this costs five round trips rather than a hundred and
+    // twenty-five; the shipped default is asserted separately below.
+    for (let i = 0; i < 5; i += 1) {
+      await saveAudition(
+        db,
+        { ...sample, voiceId: `voice-${i}`, audioBase64: 'a', durationMs: 1, costUsd: 0 },
+        3,
+      )
+    }
+
+    const kept = await listAuditions(db, 'abc')
+    expect(kept).toHaveLength(3)
+    // The newest survive, which is what makes a comparison you are mid-way
+    // through keep working.
+    expect(kept.map((row) => row.voiceId).sort()).toEqual(['voice-2', 'voice-3', 'voice-4'])
+  })
+
+  it('keeps more than one provider’s catalogue by default', () => {
+    // 33 Chirp voices, and room for a second provider beside them.
+    expect(AUDITION_CACHE_LIMIT).toBeGreaterThan(100)
   })
 })

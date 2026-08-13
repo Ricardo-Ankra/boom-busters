@@ -2,8 +2,8 @@ import { and, asc, desc, eq, sql } from 'drizzle-orm'
 import { latestTakes, splitParagraphs, TTS_CREDENTIAL_PROVIDER } from '@boom-busters/schemas'
 import type { TtsProvider, VoiceTakeStatus } from '@boom-busters/schemas'
 import type { Database } from './client'
-import { chapters, scripts, voiceTakes } from './schema'
-import type { VoiceTakeRow } from './schema'
+import { chapters, scripts, voiceAuditions, voiceTakes } from './schema'
+import type { VoiceAuditionRow, VoiceTakeRow } from './schema'
 
 /**
  * Voice-take queries (build spec sections 5, 7.3 and 11.3).
@@ -331,4 +331,87 @@ export async function latestScriptParagraphSources(
     .orderBy(asc(chapters.index))
 
   return { scriptVersion: script.version, chapters: rows }
+}
+
+// ---------------------------------------------------------------------------
+// Audition cache
+// ---------------------------------------------------------------------------
+
+/**
+ * How many auditions are kept before the oldest are dropped.
+ *
+ * Comfortably more than the voices one provider offers, so a full pass through
+ * a catalogue never evicts the earlier half of its own comparison — and small
+ * enough that a settings table does not quietly become the largest thing in the
+ * database.
+ */
+export const AUDITION_CACHE_LIMIT = 120
+
+/** A cached audition, or `undefined` when this voice has not read this sample. */
+export async function findAudition(
+  db: Database,
+  key: { provider: TtsProvider; voiceId: string; sampleHash: string },
+): Promise<VoiceAuditionRow | undefined> {
+  const [row] = await db
+    .select()
+    .from(voiceAuditions)
+    .where(
+      and(
+        eq(voiceAuditions.provider, TTS_CREDENTIAL_PROVIDER[key.provider]),
+        eq(voiceAuditions.voiceId, key.voiceId),
+        eq(voiceAuditions.sampleHash, key.sampleHash),
+      ),
+    )
+    .limit(1)
+
+  return row
+}
+
+/**
+ * Keep an audition so replaying it is free.
+ *
+ * The prune runs on write rather than on a schedule: there is no cron in this
+ * app but the analytics one (spec section 7.9), and a cache that only grows is
+ * a cache nobody remembers to empty.
+ */
+export async function saveAudition(
+  db: Database,
+  input: {
+    provider: TtsProvider
+    voiceId: string
+    sampleHash: string
+    audioBase64: string
+    durationMs: number
+    costUsd: number
+  },
+  /** Injected by tests, so the prune can be exercised without 120 round trips. */
+  limit: number = AUDITION_CACHE_LIMIT,
+): Promise<void> {
+  await db
+    .insert(voiceAuditions)
+    .values({
+      provider: TTS_CREDENTIAL_PROVIDER[input.provider],
+      voiceId: input.voiceId,
+      sampleHash: input.sampleHash,
+      audioBase64: input.audioBase64,
+      durationMs: input.durationMs,
+      costUsd: input.costUsd.toFixed(6),
+    })
+    .onConflictDoUpdate({
+      target: [voiceAuditions.provider, voiceAuditions.voiceId, voiceAuditions.sampleHash],
+      set: { audioBase64: input.audioBase64, durationMs: input.durationMs, updatedAt: sql`now()` },
+    })
+
+  await db.execute(sql`
+    delete from voice_auditions
+    where id in (
+      select id from voice_auditions
+      order by created_at desc, id desc
+      offset ${limit}
+    )`)
+}
+
+/** Every cached audition for a sample, so the panel opens with what it has. */
+export async function listAuditions(db: Database, sampleHash: string): Promise<VoiceAuditionRow[]> {
+  return db.select().from(voiceAuditions).where(eq(voiceAuditions.sampleHash, sampleHash))
 }

@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import type { TtsProvider } from '@boom-busters/schemas'
 
 /**
@@ -13,8 +14,19 @@ import type { TtsProvider } from '@boom-busters/schemas'
 /** Six voices side by side, per spec section 11.3. */
 export const MAX_AUDITIONS = 6
 
-/** Long enough to judge a voice, short enough that six of them are pennies. */
-export const MAX_SAMPLE_CHARS = 600
+/**
+ * Long enough to judge a voice, short enough that a catalogue of them is
+ * pennies — and short enough that the cached audio does not turn the settings
+ * tables into the largest thing in the database.
+ *
+ * Two sentences is what you actually listen to before deciding.
+ */
+export const MAX_SAMPLE_CHARS = 280
+
+/** A different sentence is a different audition, and a different cache entry. */
+export function sampleHash(text: string): string {
+  return createHash('sha256').update(text.trim()).digest('hex').slice(0, 16)
+}
 
 export interface Audition {
   provider: TtsProvider
@@ -25,6 +37,10 @@ export interface Audition {
   durationMs?: number
   costUsd?: number
   error?: string
+  /** True when it came from the cache, so nothing was spent replaying it. */
+  cached?: boolean
+  /** Hints the vendor refused — the audio is still good (principle 6). */
+  droppedPronunciations?: string[]
 }
 
 export interface AuditionResult {

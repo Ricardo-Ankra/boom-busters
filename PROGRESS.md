@@ -613,6 +613,46 @@ paragraphIndex, textHash, voiceId)`, and a `claimTake` that reserves the
     route regenerates the bytes deterministically instead — which is what lets
     an E2E actually press Play.
 
+### M4.4 — the Voice screen, audited (2026-08-13)
+
+Four faults found by using it, all of them mine and all of them the same shape:
+a screen built by someone who knew what the code did rather than by someone
+trying to choose a voice.
+
+53. **Choosing a voice locked it, so the second press failed.** Spec §11.3 says
+    "choosing writes and locks the Brand Kit voice", and taken literally that
+    makes the *first* press a trap: press one voice, and every other voice
+    answers "Could not choose that voice — the narration voice is locked", with
+    the unlock ritual in a section further down the page. Auditioning is
+    inherently comparative. Choosing now selects and nothing more; **Lock this
+    voice in** is a separate, deliberate press. §10's purpose survives — a brand
+    asset that cannot be swapped by accident once the channel is producing —
+    without the console trapping you the first time you use it.
+
+54. **Leaving the screen meant paying to hear the same voice again.** The cache
+    lived in React state and died with the page, which is exactly the moment you
+    leave and come back to compare. Auditions are cached server-side now
+    (`voice_auditions`, migration `0008`), keyed by provider, voice and sample,
+    pruned to the most recent 120 — comfortably more than one provider's
+    catalogue. §10.1 puts these in R2 and the adapter writes them there when
+    storage is configured; this is where they live until it is.
+    `MAX_SAMPLE_CHARS` dropped from 600 to 280 at the same time: two sentences
+    is what you actually listen to before deciding, and it halves both the cost
+    and the stored bytes.
+
+55. **"Delivery direction" did nothing on Cloud TTS.** `stylePrompt` is read by
+    the Gemini adapter alone — Cloud TTS is a speech service with no prompt
+    steering, and ElevenLabs applies its own voice settings instead. The field
+    was a live-looking control that changed nothing on the provider actually in
+    use. It is shown only where it works; elsewhere the screen says plainly
+    what does shape the delivery (the voice, the pacing, the punctuation).
+
+56. **The sections were in the wrong order.** Narrator → pronunciation →
+    audition put the panel that *chooses* a voice below two panels describing
+    one you had not chosen yet, and asked for pronunciation hints for a narrator
+    that did not exist. It reads audition → narrator → pronunciation now, which
+    is the order the work happens in.
+
 ### M4.2 — Google Cloud TTS (Chirp 3 HD) as the narrator (2026-08-13)
 
 Chosen by the human over Gemini TTS, and it is a deviation from spec §2 worth
@@ -670,13 +710,13 @@ there turned up four more faults, three of them mine.
 
 50. **Cloud TTS rejects IPA outright and accepts X-SAMPA.** Verified on every
     voice family, every phrase and every symbol set tried. The adapter sent
-    `PHONETIC_ENCODING_IPA`, so *every* pronunciation hint would have failed.
+    `PHONETIC_ENCODING_IPA`, so _every_ pronunciation hint would have failed.
     Hints stay IPA where a human writes them — that is what Wiktionary prints
     and what ElevenLabs takes — and `ipaToXSampa` converts at the one adapter
     that needs it.
 
 51. **Correct X-SAMPA is necessary and not sufficient.** Google validates a
-    pronunciation against the *voice's own phoneme inventory*: `aI` is accepted
+    pronunciation against the _voice's own phoneme inventory_: `aI` is accepted
     for en-GB and a bare `a` is refused, so a perfectly good IPA transcription
     of a German name is rejected wholesale. That cannot be predicted from the
     notation, and encoding Google's inventory would be guesswork of exactly the
@@ -690,7 +730,7 @@ there turned up four more faults, three of them mine.
 
 52. **The audition panel is one press, not four.** It used to be: tick up to six
     voices, press Generate, press Play on each, press "Choose this voice". Four
-    presses to answer *what does this sound like*, which only listening answers.
+    presses to answer _what does this sound like_, which only listening answers.
     A press now synthesises, plays and selects, and **the selected voice is the
     narrator** — there is nothing else to confirm. Each voice is bought once per
     sample and the price is on the button before you press it.

@@ -12,10 +12,12 @@ import { useToast } from '@/components/ui/toast'
 import { cn } from '@/lib/cn'
 import { MAX_SAMPLE_CHARS } from '@/lib/audition'
 import {
+  cachedAuditions,
   checkPronunciation,
   chooseVoice,
   generateAuditions,
   listAuditionVoices,
+  lockVoice,
   unlockVoice,
 } from './voice-actions'
 
@@ -167,6 +169,25 @@ function AuditionPanel({ settings }: { settings: Settings }) {
     void listAuditionVoices().then(setCatalogue)
   }, [])
 
+  /**
+   * Everything already paid for at this sample, so a voice you have heard says
+   * "play again" rather than offering to charge you for it a second time.
+   */
+  React.useEffect(() => {
+    let current = true
+    void cachedAuditions(sample).then((bought) => {
+      if (!current) return
+      setHeard(
+        Object.fromEntries(
+          Object.entries(bought).map(([id, audition]) => [id, { audio: audition.audio }]),
+        ),
+      )
+    })
+    return () => {
+      current = false
+    }
+  }, [sample])
+
   const keyOf = (provider: string, voiceId: string): string => `${provider}:${voiceId}`
   const selectedKey = keyOf(settings.tts.provider, settings.tts.voiceId)
   const cost = estimateAuditionUsd(sample)
@@ -245,9 +266,11 @@ function AuditionPanel({ settings }: { settings: Settings }) {
             id="audition-sample"
             value={sample}
             onChange={(event) => {
-              setSample(event.target.value)
               // A different sample is a different question, so nothing bought
               // against the old one may be replayed as though it answered this.
+              // The effect above reloads whatever *has* been bought for the new
+              // one, which is usually nothing.
+              setSample(event.target.value)
               setHeard({})
             }}
             rows={3}
@@ -322,11 +345,28 @@ function AuditionPanel({ settings }: { settings: Settings }) {
 // The chosen voice, and its lock
 // ---------------------------------------------------------------------------
 
+/** Providers that take a written style direction. Cloud TTS does not. */
+const STEERABLE_PROVIDERS: TtsProvider[] = ['gemini']
+
 function ChosenVoice({ settings, saving, commit }: TabProps) {
   const [confirmation, setConfirmation] = React.useState('')
   const [unlocking, setUnlocking] = React.useState(false)
+  const [locking, setLocking] = React.useState(false)
   const { toast } = useToast()
   const router = useRouter()
+
+  async function lock(): Promise<void> {
+    setLocking(true)
+    const result = await lockVoice()
+    setLocking(false)
+
+    if (!result.ok) {
+      toast({ title: 'Could not lock it', description: result.error, variant: 'error' })
+      return
+    }
+    toast({ title: 'Voice locked', description: 'Changing it now needs a typed confirmation.' })
+    router.refresh()
+  }
 
   async function unlock(): Promise<void> {
     setUnlocking(true)
@@ -375,25 +415,36 @@ function ChosenVoice({ settings, saving, commit }: TabProps) {
           )}
         </p>
 
-        <div className="flex flex-col gap-1">
-          <Label htmlFor="style-prompt">Delivery direction</Label>
-          <Input
-            id="style-prompt"
-            defaultValue={settings.tts.stylePrompt}
-            placeholder="Measured, documentary, no theatrics."
-            disabled={saving}
-            onBlur={(event) => {
-              if (event.target.value === settings.tts.stylePrompt) return
-              const next = structuredClone(settings)
-              next.tts.stylePrompt = event.target.value
-              void commit({ tts: { stylePrompt: event.target.value } }, next)
-            }}
-          />
+        {/* Only where it does something. Cloud Text-to-Speech has no prompt
+            steering at all — it is a speech service, not a language model — so
+            on Chirp this field was a control that looked live and changed
+            nothing, which is worse than not offering it. */}
+        {STEERABLE_PROVIDERS.includes(settings.tts.provider) ? (
+          <div className="flex flex-col gap-1">
+            <Label htmlFor="style-prompt">Delivery direction</Label>
+            <Input
+              id="style-prompt"
+              defaultValue={settings.tts.stylePrompt}
+              placeholder="Measured, documentary, no theatrics."
+              disabled={saving}
+              onBlur={(event) => {
+                if (event.target.value === settings.tts.stylePrompt) return
+                const next = structuredClone(settings)
+                next.tts.stylePrompt = event.target.value
+                void commit({ tts: { stylePrompt: event.target.value } }, next)
+              }}
+            />
+            <p className="text-[12px] text-[var(--color-text-muted)]">
+              Sent with every paragraph, as an instruction the model follows.
+            </p>
+          </div>
+        ) : (
           <p className="text-[12px] text-[var(--color-text-muted)]">
-            Sent with every paragraph. Gemini follows it as an instruction; ElevenLabs applies it
-            through its own voice settings.
+            This narrator takes no written direction — Cloud Text-to-Speech is a speech service
+            rather than a language model. What shapes the delivery is the voice you picked, the
+            pacing below, and the punctuation in the script itself.
           </p>
-        </div>
+        )}
 
         <div className="flex flex-col gap-1">
           <Label htmlFor="pacing">Pacing ({settings.tts.pacing.toFixed(2)}×)</Label>
@@ -415,6 +466,25 @@ function ChosenVoice({ settings, saving, commit }: TabProps) {
             className="w-full"
           />
         </div>
+
+        {!settings.tts.locked && settings.tts.voiceId !== '' ? (
+          <div className="flex flex-col gap-2 rounded-[8px] border border-[var(--color-border)] p-3">
+            <p className="text-[12px] text-[var(--color-text-muted)]">
+              Locking stops the narrator being changed by accident once the channel is producing.
+              Auditioning stays possible either way — a locked voice can still be listened to.
+            </p>
+            <div>
+              <Button variant="outline" onClick={() => void lock()} disabled={locking}>
+                {locking ? (
+                  <Loader2 className="size-4 animate-spin" aria-hidden />
+                ) : (
+                  <Lock className="size-4" aria-hidden />
+                )}
+                Lock this voice in
+              </Button>
+            </div>
+          </div>
+        ) : null}
 
         {settings.tts.locked ? (
           <div className="flex flex-col gap-2 rounded-[8px] border border-[var(--color-border)] p-3">
@@ -598,12 +668,19 @@ function PhonemeHints({ settings, saving, commit }: TabProps) {
   )
 }
 
+/**
+ * Audition, then narrator, then pronunciation — the order you do them in.
+ *
+ * It used to read narrator → pronunciation → audition, which put the panel that
+ * *chooses* a voice below two panels describing one you had not chosen yet, and
+ * asked you to write pronunciation hints for a narrator that did not exist.
+ */
 export function VoiceTab({ settings, saving, commit }: TabProps) {
   return (
     <div className="flex flex-col gap-4">
+      <AuditionPanel settings={settings} />
       <ChosenVoice settings={settings} saving={saving} commit={commit} />
       <PhonemeHints settings={settings} saving={saving} commit={commit} />
-      <AuditionPanel settings={settings} />
     </div>
   )
 }

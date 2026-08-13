@@ -767,6 +767,40 @@ export const pushSubscriptions = pgTable(
   (t) => [uniqueIndex('push_subscriptions_endpoint_key').on(t.endpoint)],
 )
 
+/**
+ * Audition samples, cached so a voice is bought once.
+ *
+ * Spec section 10.1 puts these in R2 ("the audition sample files in R2 for
+ * later comparison"), and the adapter writes them there when storage is
+ * configured. This is where they live until it is: without a cache of some
+ * kind, leaving the Settings screen and coming back means paying to hear the
+ * same voice read the same sentence again, which is the opposite of what an
+ * audition panel is for.
+ *
+ * Base64 WAV in a text column rather than `bytea`, because that is the form the
+ * browser plays it from and the form it arrives in — decoding it here only to
+ * re-encode it on the way out would be work for nobody.
+ */
+export const voiceAuditions = pgTable(
+  'voice_auditions',
+  {
+    id: id(),
+    provider: providerEnum('provider').notNull(),
+    voiceId: text('voice_id').notNull(),
+    /** Hash of the sample text: a different sentence is a different audition. */
+    sampleHash: text('sample_hash').notNull(),
+    audioBase64: text('audio_base64').notNull(),
+    durationMs: integer('duration_ms').notNull(),
+    costUsd: usd('cost_usd').notNull().default('0'),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [
+    uniqueIndex('voice_auditions_key').on(t.provider, t.voiceId, t.sampleHash),
+    index('voice_auditions_recent_idx').on(t.createdAt),
+  ],
+)
+
 export const analyticsSnapshots = pgTable(
   'analytics_snapshots',
   {
@@ -865,6 +899,7 @@ export type ClaimRefRow = typeof claimRefs.$inferSelect
 export type ScriptStatus = (typeof scriptStatusEnum.enumValues)[number]
 export type EditType = (typeof editTypeEnum.enumValues)[number]
 export type VoiceTakeRow = typeof voiceTakes.$inferSelect
+export type VoiceAuditionRow = typeof voiceAuditions.$inferSelect
 export type ShotSlotRow = typeof shotSlots.$inferSelect
 export type AssetRow = typeof assets.$inferSelect
 export type RenderRow = typeof renders.$inferSelect
