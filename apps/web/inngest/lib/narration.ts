@@ -1,5 +1,6 @@
 import { recordRunEvent } from '@boom-busters/db'
 import { splitParagraphs, takeIdempotencyKey } from '@boom-busters/schemas'
+import type { PhonemeHint } from '@boom-busters/schemas'
 import { db } from '@/lib/db'
 import { storageConfigured } from '@/lib/storage'
 import { resolveRunRowId } from '../middleware/run-mirror'
@@ -30,6 +31,11 @@ export function paragraphJobs(input: {
   projectId: string
   voiceId: string
   chapters: readonly { id: string; title: string; contentMd: string }[]
+  /**
+   * The channel's pronunciation list. Part of a take's identity, so correcting
+   * how a name is said re-reads the paragraphs that say it — and only those.
+   */
+  pronunciations?: readonly PhonemeHint[]
 }): ParagraphJob[] {
   return input.chapters.flatMap((chapter) =>
     splitParagraphs(chapter.contentMd).map((text, paragraphIndex) => ({
@@ -43,6 +49,7 @@ export function paragraphJobs(input: {
         paragraphIndex,
         text,
         voiceId: input.voiceId,
+        ...(input.pronunciations ? { pronunciations: input.pronunciations } : {}),
       }),
     })),
   )

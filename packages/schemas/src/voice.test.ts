@@ -156,3 +156,67 @@ describe('voiceApprovalBlockedReason', () => {
     expect(voiceApprovalBlockedReason([], 0)).toBe('This script has no paragraphs to narrate.')
   })
 })
+
+describe('pronunciations in the take key', () => {
+  const base = {
+    projectId: 'p1',
+    chapterId: 'c1',
+    paragraphIndex: 0,
+    text: 'Jan Marsalek was already gone.',
+    voiceId: 'en-GB-Chirp3-HD-Algieba',
+  }
+
+  /**
+   * A project that has never used a hint must keep every key it already has,
+   * or this change alone would re-narrate every video ever made.
+   */
+  it('is unchanged when there are no hints', () => {
+    expect(takeIdempotencyKey({ ...base, pronunciations: [] })).toBe(takeIdempotencyKey(base))
+  })
+
+  it('is unchanged by a hint whose term is not in this paragraph', () => {
+    expect(
+      takeIdempotencyKey({ ...base, pronunciations: [{ term: 'Theranos', hint: '/ˈθɛrənoʊs/' }] }),
+    ).toBe(takeIdempotencyKey(base))
+  })
+
+  /**
+   * The point of the whole exercise. Correcting how "Jan" is said changes the
+   * audio without changing a character of the script, so without this the fix
+   * was unreachable: a stage re-run matched the old key and handed back the
+   * take that says it wrong.
+   */
+  it('changes when a hint that applies to this paragraph is added', () => {
+    expect(
+      takeIdempotencyKey({ ...base, pronunciations: [{ term: 'Jan', hint: '/dʒæn/' }] }),
+    ).not.toBe(takeIdempotencyKey(base))
+  })
+
+  it('changes when an existing hint is corrected', () => {
+    expect(
+      takeIdempotencyKey({ ...base, pronunciations: [{ term: 'Jan', hint: '/dʒæn/' }] }),
+    ).not.toBe(takeIdempotencyKey({ ...base, pronunciations: [{ term: 'Jan', hint: '/jɑn/' }] }))
+  })
+
+  it('is unchanged by reordering the list, which says the same thing', () => {
+    const hints = [
+      { term: 'Jan', hint: '/dʒæn/' },
+      { term: 'Marsalek', hint: '/ˈmɑːsələk/' },
+    ]
+    expect(takeIdempotencyKey({ ...base, pronunciations: hints })).toBe(
+      takeIdempotencyKey({ ...base, pronunciations: [...hints].reverse() }),
+    )
+  })
+
+  it('matches whole words, so a term does not fire inside a longer one', () => {
+    // "Jan" must not match "January", or a hint for the name would re-read
+    // every paragraph carrying a date.
+    expect(
+      takeIdempotencyKey({
+        ...base,
+        text: 'It collapsed in January.',
+        pronunciations: [{ term: 'Jan', hint: '/dʒæn/' }],
+      }),
+    ).toBe(takeIdempotencyKey({ ...base, text: 'It collapsed in January.' }))
+  })
+})

@@ -170,6 +170,29 @@ export const PhonemeHintSchema = z.object({
 export type PhonemeHint = z.infer<typeof PhonemeHintSchema>
 
 /**
+ * Only the hints whose term actually appears in this paragraph.
+ *
+ * **Shared vocabulary, deliberately.** Two places have to agree about which
+ * hints apply to a paragraph: the adapter, which sends them to the vendor, and
+ * `takeIdempotencyKey`, which folds them into the take's identity so that
+ * changing one re-reads the paragraphs it touches. If those two disagreed, a
+ * take's key would claim a set of pronunciations the request never carried.
+ *
+ * `` is wrong at the edges for terms that start or end in punctuation —
+ * "S&P 500" and "Sarbanes-Oxley" are both real hint terms in this subject
+ * matter — so the boundaries are asserted against letters and digits directly.
+ */
+export function matchedHints(
+  text: string,
+  hints: readonly PhonemeHint[],
+): readonly PhonemeHint[] {
+  return hints.filter((hint) => {
+    const term = hint.term.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    return new RegExp(`(?<![\\p{L}\\p{N}])${term}(?![\\p{L}\\p{N}])`, 'giu').test(text)
+  })
+}
+
+/**
  * The narration voice. Build spec section 4 calls this `settings.tts` and
  * section 10 calls it `brandKit.voice`; they describe the same fields. It is
  * stored once, here, and projected into the Brand Kit snapshot by

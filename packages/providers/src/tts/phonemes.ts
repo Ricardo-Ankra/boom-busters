@@ -1,3 +1,4 @@
+import { matchedHints } from '@boom-busters/schemas'
 import type { PhonemeHint } from '@boom-busters/schemas'
 
 /**
@@ -36,25 +37,27 @@ export function stripSlashes(hint: string): string {
   return hint.trim().replace(/^\/|\/$/g, '')
 }
 
-/** Escape a term for use inside a `RegExp`. */
-function escape(term: string): string {
-  return term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-}
+/**
+ * Which hints apply to a paragraph now lives in `schemas`, and is re-exported
+ * rather than reimplemented: `takeIdempotencyKey` folds the applicable hints
+ * into a take's identity, so the answer it gets and the answer the adapters get
+ * have to be the same one. Two copies of this regex would eventually mean a key
+ * claiming a set of pronunciations the request never carried.
+ */
+export { matchedHints }
 
 /**
- * A whole-word, case-insensitive matcher for a term.
+ * The same whole-word rule, for substituting rather than selecting.
  *
  * `\b` is wrong at the edges for terms that start or end in punctuation —
  * "S&P 500" and "Sarbanes-Oxley" are both real hint terms in this subject
  * matter — so the boundaries are asserted against letters and digits directly.
  */
 function matcher(term: string): RegExp {
-  return new RegExp(`(?<![\\p{L}\\p{N}])${escape(term.trim())}(?![\\p{L}\\p{N}])`, 'giu')
-}
-
-/** Only the hints whose term actually appears in this paragraph. */
-export function matchedHints(text: string, hints: readonly PhonemeHint[]): readonly PhonemeHint[] {
-  return hints.filter((hint) => matcher(hint.term).test(text))
+  return new RegExp(
+    `(?<![\\p{L}\\p{N}])${term.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![\\p{L}\\p{N}])`,
+    'giu',
+  )
 }
 
 /**

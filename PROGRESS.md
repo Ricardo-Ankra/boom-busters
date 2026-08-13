@@ -821,6 +821,37 @@ the voice regenerate?"* — whose honest answer was: it won't.
     to. Flagging is now purely triage: mark six things during a listen-through
     without stopping, deal with them after.
 
+72. **A pronunciation is part of a take's identity.** Found by trying to answer
+    "how do I make the narrator say Jan the English way?" and discovering the
+    answer was: you cannot. `takeIdempotencyKey` hashed
+    `(project, chapter, paragraph, text, voice)` — the pronunciation list was
+    nowhere in it. So correcting a hint changed the audio without changing a
+    character of the script, and every door was shut: a stage re-run matched the
+    old key and handed back the take that says it wrong, `Fix the words` refused
+    because the words had not changed, and `Read it again` does not exist on
+    Chirp. The only way through was to edit the paragraph into something you did
+    not want, purely to force a new hash.
+
+    The key now folds in the hints **that match this paragraph**, so a term
+    added for "Theranos" re-reads the paragraphs saying Theranos and nothing
+    else — and only when there are matching hints at all, so a project with an
+    empty list keeps every key it has and this change re-narrates nothing on its
+    own. Sorted before hashing, because a list reordered in Settings is the same
+    instructions.
+
+    `matchedHints` moved from `providers` to `schemas` and is re-exported, so
+    the key and the vendor request cannot disagree about which hints apply. Two
+    copies of that regex would eventually mean a key claiming pronunciations the
+    request never carried.
+
+73. **A NUL byte was sitting in `voice.ts`, invisible.** The separator in
+    `takeIdempotencyKey`'s `join()` was a literal control character, so the
+    source read `join('')` and was not — which is why `grep` had been reporting
+    the file as binary. It is written `' '` now. The separator itself is
+    kept exactly: it stops `("ab", "c")` hashing the same as `("a", "bc")`, and
+    every take in the database was keyed with it, so "tidying" it to `''` would
+    have silently re-narrated everything.
+
 ### M4.8 — what the Chirp 3 HD guide said, and I had not read (2026-08-13)
 
 The human sent Google's Chirp 3 HD page. Two things in it contradict claims I

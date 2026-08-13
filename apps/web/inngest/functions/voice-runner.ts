@@ -136,7 +136,14 @@ export const voiceRunner = inngest.createFunction(
         )
       }
 
-      const jobs = paragraphJobs({ projectId, voiceId, chapters: sources.chapters })
+      const jobs = paragraphJobs({
+        projectId,
+        voiceId,
+        chapters: sources.chapters,
+        // Part of each take's identity, so a corrected pronunciation re-reads
+        // the paragraphs that use the term and leaves the rest alone.
+        pronunciations: settings.tts.phonemeHints,
+      })
       if (jobs.length === 0) {
         throw new NonRetriableError('The script has no paragraphs to narrate.')
       }

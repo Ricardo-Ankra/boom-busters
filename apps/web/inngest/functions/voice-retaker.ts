@@ -111,6 +111,7 @@ export const voiceRetaker = inngest.createFunction(
         paragraphIndex: take.paragraphIndex,
         text,
         voiceId: settings.tts.voiceId,
+        pronunciations: settings.tts.phonemeHints,
       })
 
       const claimed = await claimTake(db, {
