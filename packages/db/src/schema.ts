@@ -157,6 +157,7 @@ export const providerEnum = pgEnum('provider', [
   'anthropic',
   'openai',
   'google',
+  'google-cloud-tts',
   'elevenlabs',
   'pexels',
   'pixabay',

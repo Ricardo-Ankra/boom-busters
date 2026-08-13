@@ -104,9 +104,10 @@ export interface VerifyResult extends ActionResult {
  *
  * `google` goes through the LLM adapter even though it also narrates: Gemini
  * TTS and the Gemini text models are one API behind one key, so proving the key
- * once proves it for both. `elevenlabs` has no LLM adapter and needs its own —
- * M4 gave it a working `verifyKey` and then left nothing calling it, so the one
- * TTS provider with a key of its own was the one you could not check.
+ * once proves it for both. `elevenlabs` and `google-cloud-tts` are separate
+ * accounts and need their own check — M4 gave ElevenLabs a working `verifyKey`
+ * and then left nothing calling it, so the one TTS provider with a key of its
+ * own was the one you could not check.
  */
 async function verifiableKey(
   provider: string,
@@ -118,11 +119,13 @@ async function verifiableKey(
     return { verify: (apiKey) => adapter.verifyKey(apiKey), apiKey: keys[llm.data] }
   }
 
-  if (provider === 'elevenlabs') {
-    const adapter = ttsAdapter('elevenlabs')
+  // The TTS providers with an account of their own. `gemini` is absent because
+  // it shares the `google` key, which the LLM branch above already proves.
+  if (provider === 'elevenlabs' || provider === 'google-cloud-tts') {
+    const adapter = ttsAdapter(provider)
     return {
       verify: (apiKey) => adapter.verifyKey(apiKey),
-      apiKey: await ttsCredential(db, 'elevenlabs', env.SECRETS_ENCRYPTION_KEY),
+      apiKey: await ttsCredential(db, provider, env.SECRETS_ENCRYPTION_KEY),
     }
   }
 

@@ -613,6 +613,51 @@ paragraphIndex, textHash, voiceId)`, and a `claimTake` that reserves the
     route regenerates the bytes deterministically instead — which is what lets
     an E2E actually press Play.
 
+### M4.2 — Google Cloud TTS (Chirp 3 HD) as the narrator (2026-08-13)
+
+Chosen by the human over Gemini TTS, and it is a deviation from spec §2 worth
+recording properly.
+
+45. **Cloud Text-to-Speech is a third TTS provider, and its own credential.**
+    Spec §2 names "Gemini Flash TTS (batch) default; ElevenLabs behind the same
+    interface". Cloud TTS is a different product on a different host with its
+    own enablement — a Gemini key is refused by `texttospeech.googleapis.com`
+    and a Cloud key is refused by `generativelanguage.googleapis.com`, both
+    observed. So it is `google-cloud-tts` in the provider enum (migration
+    `0007`) rather than sharing the `google` row: one credential for both would
+    mean whichever key you saved last broke the other half of the pipeline.
+
+    The reasons for choosing it over Gemini TTS: Chirp 3 HD is GA where every
+    Gemini TTS model on offer is a `-preview` id — the exact kind that was
+    withdrawn under us this week; the same text in the same voice comes back
+    the same, where a language model performing a line varies run to run; and
+    delivery is set by parameters rather than by persuasion.
+
+46. **Chirp 3 HD does not take SSML, which undercuts part of the reason it was
+    chosen.** The `<phoneme>` tag the older WaveNet and Neural2 voices support
+    is not available on the Chirp families. Pronunciation goes in
+    `customPronunciations` instead — a structured field carrying a phrase and
+    its IPA — and a hint written as a plain respelling still has nowhere to go
+    but the text, the same fallback ElevenLabs uses. Worth stating plainly
+    rather than leaving the impression that full SSML is available.
+
+47. **The voice list is queried, never shipped.** Today's lesson applied before
+    it could happen again: a hand-written list of voice names is a list of
+    assumptions, and this API answers the question for free. Filtered to the
+    Chirp families — an audition panel with two hundred voices in it is a wall,
+    not a choice. Verified live: 33 offered from 63 en-GB voices.
+
+48. **Cloud TTS wraps LINEAR16 in a WAV container**, where Gemini and
+    ElevenLabs return bare samples. Everything above the adapters assumes raw
+    PCM, so the header is detected and stripped by walking the chunk list —
+    detected rather than assumed, because an encoding change that silently ate
+    the first 44 bytes of every take would be very hard to see.
+
+**Still unverified:** the `synthesize` call itself. `voices.list` and
+`verifyKey` are proven against the live key; the response shape, the WAV
+unwrapping and `customPronunciations` are covered only by recorded fixtures,
+because a real synthesis costs money and CLAUDE.md rule 6 says to ask first.
+
 ### M4.1 — what the first live Gemini key found (2026-08-13)
 
 The first real key ever pointed at this app found four faults, and **every one

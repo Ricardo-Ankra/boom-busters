@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest'
 import { NARRATION_SAMPLE_RATE, pcmDurationMs } from './audio'
 import { describeVoice, elevenlabsTts, ELEVENLABS_STABILITY } from './elevenlabs'
 import { buildGeminiPrompt, geminiTts, GEMINI_VOICES, sampleRateFromMimeType } from './gemini'
+import { googleCloudTts } from './google-cloud'
 import { createMockTTS, mockNarrationPcm, mockTakeSeed } from './mock'
 import { ttsAdapter, ttsAdapters, TTS_PRICES_PER_KCHAR } from './registry'
 import { ttsPrice } from './types'
@@ -384,6 +385,7 @@ describe('tts registry', () => {
   it('publishes the live prices even in mock mode, because caps outlive a test run', () => {
     expect(TTS_PRICES_PER_KCHAR).toEqual({
       gemini: geminiTts.pricePerKChar,
+      'google-cloud-tts': googleCloudTts.pricePerKChar,
       elevenlabs: elevenlabsTts.pricePerKChar,
     })
   })

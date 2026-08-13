@@ -2,6 +2,7 @@ import type { TtsProvider } from '@boom-busters/schemas'
 import { mockProvidersEnabled } from '../llm/registry'
 import { elevenlabsTts } from './elevenlabs'
 import { geminiTts, GEMINI_VOICES } from './gemini'
+import { googleCloudTts } from './google-cloud'
 import { createMockTTS } from './mock'
 import type { KnownVoice, TTSProvider } from './types'
 
@@ -13,12 +14,14 @@ import type { KnownVoice, TTSProvider } from './types'
 
 export const LIVE_TTS_ADAPTERS: Record<TtsProvider, TTSProvider> = {
   gemini: geminiTts,
+  'google-cloud-tts': googleCloudTts,
   elevenlabs: elevenlabsTts,
 }
 
 export function mockTtsAdapters(): Record<TtsProvider, TTSProvider> {
   return {
     gemini: createMockTTS({}, 'gemini'),
+    'google-cloud-tts': createMockTTS({}, 'google-cloud-tts'),
     elevenlabs: createMockTTS({}, 'elevenlabs'),
   }
 }
@@ -47,15 +50,22 @@ export function ttsAdapter(
  */
 export const TTS_PRICES_PER_KCHAR: Record<TtsProvider, number> = {
   gemini: geminiTts.pricePerKChar,
+  'google-cloud-tts': googleCloudTts.pricePerKChar,
   elevenlabs: elevenlabsTts.pricePerKChar,
 }
 
 /**
  * The voices that can be offered without a key.
  *
- * Gemini's are a property of the model, so they are always available; the
- * ElevenLabs list is the account's and needs a call, so the audition panel asks
- * for it separately and shows why when it cannot.
+ * Gemini's are a property of the model, so they are always available. The
+ * ElevenLabs and Cloud TTS lists belong to the account and need a call, so the
+ * audition panel asks for them separately and shows why when it cannot.
+ *
+ * **`GEMINI_VOICES` is the one unverified list left in this package.** It was
+ * written from assumption, exactly as the Gemini model ids were, and it has not
+ * been proved against a live key: Google checks billing before it validates a
+ * voice name, so a bogus voice returns 429 rather than 400. Treat it with
+ * suspicion until a funded key says otherwise.
  */
 export const STATIC_VOICES: Partial<Record<TtsProvider, readonly KnownVoice[]>> = {
   gemini: GEMINI_VOICES,

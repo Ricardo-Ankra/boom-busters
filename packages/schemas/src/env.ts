@@ -227,6 +227,7 @@ export const PROVIDER_ENV_SEEDS = {
   anthropic: 'ANTHROPIC_API_KEY',
   openai: 'OPENAI_API_KEY',
   google: 'GOOGLE_API_KEY',
+  'google-cloud-tts': 'GOOGLE_CLOUD_TTS_API_KEY',
   elevenlabs: 'ELEVENLABS_API_KEY',
   pexels: 'PEXELS_API_KEY',
   pixabay: 'PIXABAY_API_KEY',

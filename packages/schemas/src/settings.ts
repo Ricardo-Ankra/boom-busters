@@ -18,6 +18,17 @@ export const PROVIDERS = [
   'anthropic',
   'openai',
   'google',
+  /**
+   * Google Cloud Text-to-Speech, and deliberately separate from `google`.
+   *
+   * They are two products on two hosts with two enablements: a Gemini API key
+   * is refused by `texttospeech.googleapis.com` and a Cloud key is refused by
+   * `generativelanguage.googleapis.com`. One credential row for both would mean
+   * whichever key you saved last broke the other half of the pipeline.
+   *
+   * Beyond spec section 4's list, by decision (2026-08-13) — see PROGRESS.md.
+   */
+  'google-cloud-tts',
   'elevenlabs',
   'pexels',
   'pixabay',
@@ -111,7 +122,7 @@ export const FallbackChainSchema = z.array(LlmProviderSchema).max(2)
 // Voice
 // ---------------------------------------------------------------------------
 
-export const TTS_PROVIDERS = ['gemini', 'elevenlabs'] as const
+export const TTS_PROVIDERS = ['gemini', 'google-cloud-tts', 'elevenlabs'] as const
 export const TtsProviderSchema = z.enum(TTS_PROVIDERS)
 export type TtsProvider = z.infer<typeof TtsProviderSchema>
 
@@ -128,6 +139,7 @@ export type TtsProvider = z.infer<typeof TtsProviderSchema>
  */
 export const TTS_CREDENTIAL_PROVIDER: Record<TtsProvider, Provider> = {
   gemini: 'google',
+  'google-cloud-tts': 'google-cloud-tts',
   elevenlabs: 'elevenlabs',
 }
 
@@ -394,7 +406,7 @@ export const DEFAULT_SETTINGS: Settings = {
   },
   fallbackChain: [],
   tts: {
-    provider: 'gemini',
+    provider: 'google-cloud-tts',
     voiceId: '',
     stylePrompt: '',
     pacing: 1,
@@ -406,6 +418,7 @@ export const DEFAULT_SETTINGS: Settings = {
       anthropic: 30,
       openai: 10,
       google: 15,
+      'google-cloud-tts': 5,
       elevenlabs: 0,
       pexels: 0,
       pixabay: 0,

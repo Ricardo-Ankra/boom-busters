@@ -463,15 +463,16 @@ function ConnectionCard({
    * Which providers have an adapter to ping. The others show no button rather
    * than one that always fails.
    *
-   * `google` covers narration as well as text: Gemini TTS and the Gemini text
-   * models are one API behind one key. `elevenlabs` is its own account, so it
-   * needs its own check — M4 built one and then left nothing calling it.
+   * `google` covers Gemini narration as well as text: they are one API behind
+   * one key. `elevenlabs` and `google-cloud-tts` are separate accounts with
+   * separate keys, so each needs its own check.
    */
   const verifiable =
     provider === 'anthropic' ||
     provider === 'openai' ||
     provider === 'google' ||
-    provider === 'elevenlabs'
+    provider === 'elevenlabs' ||
+    provider === 'google-cloud-tts'
 
   const submit = async () => {
     setSaving(true)
