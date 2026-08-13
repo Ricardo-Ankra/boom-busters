@@ -6,7 +6,7 @@ import { describeVoice, elevenlabsTts, ELEVENLABS_STABILITY } from './elevenlabs
 import { buildGeminiPrompt, geminiTts, GEMINI_VOICES, sampleRateFromMimeType } from './gemini'
 import { googleCloudTts } from './google-cloud'
 import { createMockTTS, mockNarrationPcm, mockTakeSeed } from './mock'
-import { ttsAdapter, ttsAdapters, TTS_PRICES_PER_KCHAR } from './registry'
+import { promptSteered, ttsAdapter, ttsAdapters, TTS_PRICES_PER_KCHAR } from './registry'
 import { ttsPrice } from './types'
 import type { TTSRequest } from './types'
 
@@ -172,6 +172,23 @@ describe('sampleRateFromMimeType', () => {
   it('falls back to the requested rate when the header says nothing', () => {
     expect(sampleRateFromMimeType(undefined)).toBe(NARRATION_SAMPLE_RATE)
     expect(sampleRateFromMimeType('audio/L16')).toBe(NARRATION_SAMPLE_RATE)
+  })
+})
+
+describe('promptSteered', () => {
+  it('is a Gemini-only fact — the prompt is its whole direction channel', () => {
+    // Cloud TTS sends text and a speaking rate; ElevenLabs text and voice
+    // settings. For both, the instructions never leave the app, so editing
+    // them must never re-buy audio.
+    expect(promptSteered('gemini', {})).toBe(true)
+    expect(promptSteered('google-cloud-tts', {})).toBe(false)
+    expect(promptSteered('elevenlabs', {})).toBe(false)
+  })
+
+  it('answers the same in mock mode, so staleness behaves like production', () => {
+    expect(promptSteered('gemini', { MOCK_PROVIDERS: '1' })).toBe(true)
+    expect(promptSteered('google-cloud-tts', { MOCK_PROVIDERS: '1' })).toBe(false)
+    expect(promptSteered('elevenlabs', { MOCK_PROVIDERS: '1' })).toBe(false)
   })
 })
 

@@ -54,6 +54,18 @@ describe('paragraphJobs', () => {
     expect(a).not.toBe(b)
   })
 
+  it('changes the key when the narrator instructions change, so a new brief re-reads', () => {
+    const bare = paragraphJobs({ projectId, voiceId: 'Charon', chapters })[0]?.idempotencyKey
+    const briefed = paragraphJobs({
+      projectId,
+      voiceId: 'Charon',
+      chapters,
+      stylePrompt: 'Dry, level, unhurried.',
+    })[0]?.idempotencyKey
+
+    expect(briefed).not.toBe(bare)
+  })
+
   it('changes the key when pacing moves off 1×, so a speed change re-reads', () => {
     const at1 = paragraphJobs({ projectId, voiceId: 'Charon', chapters })[0]?.idempotencyKey
     const slower = paragraphJobs({ projectId, voiceId: 'Charon', chapters, pacing: 0.9 })[0]

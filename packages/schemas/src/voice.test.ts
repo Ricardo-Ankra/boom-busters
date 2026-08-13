@@ -102,6 +102,34 @@ describe('pacing in the take key', () => {
   })
 })
 
+describe('narrator instructions in the take key', () => {
+  /**
+   * Found live: "I rewrote the narrator brief and re-ran" reused all 37
+   * paragraphs in sixteen seconds, because the instructions were not part of
+   * any take's identity. On a prompt-steered narrator they change every
+   * reading, so they belong in the key — the caller (`voiceKeyFacts`) only
+   * passes them for providers that actually receive them.
+   */
+  it('is unchanged when there are none, so promptless projects keep their keys', () => {
+    expect(takeIdempotencyKey({ ...base, stylePrompt: '' })).toBe(takeIdempotencyKey(base))
+    expect(takeIdempotencyKey({ ...base, stylePrompt: '   ' })).toBe(takeIdempotencyKey(base))
+  })
+
+  it('changes when the instructions change, so a rewritten brief re-reads', () => {
+    const briefed = takeIdempotencyKey({ ...base, stylePrompt: 'Dry, level, unhurried.' })
+    expect(briefed).not.toBe(takeIdempotencyKey(base))
+    expect(briefed).not.toBe(takeIdempotencyKey({ ...base, stylePrompt: 'Bright and quick.' }))
+  })
+
+  it('cannot collide with a pronunciation-only key at the same position', () => {
+    // The style segment is prefixed; a bare hint hash could otherwise occupy
+    // the same slot in a key with no hints.
+    expect(takeIdempotencyKey({ ...base, stylePrompt: 'Dry.' })).not.toBe(
+      takeIdempotencyKey({ ...base, pronunciations: [{ term: 'auditors', hint: '/ˈɔːdɪtəz/' }] }),
+    )
+  })
+})
+
 function take(patch: Partial<TakeRef> = {}): TakeRef {
   return { chapterId: 'c1', paragraphIndex: 0, takeNumber: 1, status: 'generated', ...patch }
 }

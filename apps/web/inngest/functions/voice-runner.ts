@@ -19,6 +19,7 @@ import { NonRetriableError } from 'inngest'
 import { db } from '@/lib/db'
 import { putObject, takeStorage, voiceTakeKey } from '@/lib/storage'
 import { requireTtsKey, synthesise } from '@/lib/tts'
+import { voiceKeyFacts } from '@/lib/voice-identity'
 import { inngest } from '../client'
 import { events } from '../events'
 import {
@@ -136,16 +137,13 @@ export const voiceRunner = inngest.createFunction(
         )
       }
 
+      // Everything settings contribute to a take's identity, from the one
+      // helper all four key-computing call sites share: voice, pronunciations,
+      // pacing, and — on a prompt-steered narrator — the instructions.
       const jobs = paragraphJobs({
         projectId,
-        voiceId,
         chapters: sources.chapters,
-        // Part of each take's identity, so a corrected pronunciation re-reads
-        // the paragraphs that use the term and leaves the rest alone.
-        pronunciations: settings.tts.phonemeHints,
-        // Also identity: a moved pacing slider re-reads everything, because it
-        // changes how every paragraph is spoken.
-        pacing: settings.tts.pacing,
+        ...voiceKeyFacts(settings.tts),
       })
       if (jobs.length === 0) {
         throw new NonRetriableError('The script has no paragraphs to narrate.')

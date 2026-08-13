@@ -87,8 +87,22 @@ export function takeIdempotencyKey(input: {
    * speed change honestly costs.
    */
   pacing?: number
+  /**
+   * The standing narrator instructions (`settings.tts.stylePrompt`) — but only
+   * when the configured provider is prompt-steered; the caller gates that
+   * (`voiceKeyFacts`), because this function does not know providers.
+   *
+   * On Gemini the instructions are the direction channel: editing them changes
+   * every reading, so leaving them out made "I rewrote the narrator brief and
+   * re-ran" a documented no-op — 37 paragraphs reused in sixteen seconds. On
+   * Cloud TTS and ElevenLabs the instructions never leave the app, so folding
+   * them in there would re-buy byte-identical audio. Absent when empty, so
+   * projects that never wrote instructions keep every key they have.
+   */
+  stylePrompt?: string
 }): string {
   const applicable = matchedHints(input.text, input.pronunciations ?? [])
+  const style = input.stylePrompt?.trim() ?? ''
 
   return createHash('sha256')
     .update(
@@ -116,6 +130,11 @@ export function takeIdempotencyKey(input: {
         // The slider value verbatim, prefixed so it can never read as one of
         // the hex hashes around it. Absent at the default — see above.
         ...(input.pacing === undefined || input.pacing === 1 ? [] : [`pacing=${input.pacing}`]),
+        // Hashed (instructions run to paragraphs) and prefixed so a style-only
+        // key can never collide with a hints-only one at the same position.
+        ...(style === ''
+          ? []
+          : [`style=${createHash('sha256').update(style).digest('hex')}`]),
       // A NUL, written as an escape because it was previously a literal control
       // character sitting invisibly in this file — source that reads `join('')`
       // and is not. The separator itself is load-bearing and must not change:

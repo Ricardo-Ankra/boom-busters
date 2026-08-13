@@ -1,5 +1,8 @@
 'use client'
 
+// `promptSteered` is safe in a client component: the mock mirrors the live
+// answer, so the env-dependent adapter switch cannot change what it returns.
+import { promptSteered } from '@boom-busters/providers'
 import type { KnownVoice } from '@boom-busters/providers'
 import type { PhonemeHint, Settings, SettingsPatch, TtsProvider } from '@boom-busters/schemas'
 import { AlertTriangle, Check, Loader2, Play, Plus, Trash2 } from 'lucide-react'
@@ -350,8 +353,9 @@ function AuditionPanel({ settings, commit }: TabProps) {
 // The chosen voice
 // ---------------------------------------------------------------------------
 
-/** Providers that take a written style direction. Cloud TTS does not. */
-const STEERABLE_PROVIDERS: TtsProvider[] = ['gemini']
+// Which providers take written direction is the adapters' fact
+// (`promptSteered`), not a list to maintain here — a second copy of it is how
+// the field shows for a narrator that ignores it.
 
 function ChosenVoice({ settings, saving, commit }: TabProps) {
   return (
@@ -382,7 +386,7 @@ function ChosenVoice({ settings, saving, commit }: TabProps) {
             steering at all — it is a speech service, not a language model — so
             on Chirp this field was a control that looked live and changed
             nothing, which is worse than not offering it. */}
-        {STEERABLE_PROVIDERS.includes(settings.tts.provider) ? (
+        {promptSteered(settings.tts.provider) ? (
           <div className="flex flex-col gap-1">
             <Label htmlFor="style-prompt">Delivery direction</Label>
             <Input
@@ -398,7 +402,10 @@ function ChosenVoice({ settings, saving, commit }: TabProps) {
               }}
             />
             <p className="text-[12px] text-[var(--color-text-muted)]">
-              Sent with every paragraph, as an instruction the model follows.
+              Sent with every paragraph, as an instruction the model follows. Describe a
+              performance, not a genre — pitch, tempo, register — and it holds the narrator
+              steady across paragraphs. Editing it changes how everything is read, so existing
+              narration is marked “Changed since read” and the next voice run re-reads it.
             </p>
           </div>
         ) : (

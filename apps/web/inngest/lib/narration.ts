@@ -38,6 +38,11 @@ export function paragraphJobs(input: {
   pronunciations?: readonly PhonemeHint[]
   /** `settings.tts.pacing`. Part of the identity too — a speed change re-reads. */
   pacing?: number
+  /**
+   * The narrator instructions, passed only for prompt-steered providers — the
+   * caller gates through `voiceKeyFacts`, which owns that decision.
+   */
+  stylePrompt?: string
 }): ParagraphJob[] {
   return input.chapters.flatMap((chapter) =>
     splitParagraphs(chapter.contentMd).map((text, paragraphIndex) => ({
@@ -53,6 +58,7 @@ export function paragraphJobs(input: {
         voiceId: input.voiceId,
         ...(input.pronunciations ? { pronunciations: input.pronunciations } : {}),
         ...(input.pacing === undefined ? {} : { pacing: input.pacing }),
+        ...(input.stylePrompt === undefined ? {} : { stylePrompt: input.stylePrompt }),
       }),
     })),
   )

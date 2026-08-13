@@ -139,6 +139,9 @@ export function createMockTTS(script: MockTTSScript = {}, id: TtsProvider = 'gem
     // Seeded on the take number, so a retake is audibly different — which is
     // what lets an E2E prove the A/B toggle is comparing two things.
     rereadCanDiffer: true,
+    // Mirrors the vendor this mock stands in for, so mock-mode staleness
+    // behaves the way the live provider's would.
+    promptSteered: id === 'gemini',
     calls,
 
     reset() {

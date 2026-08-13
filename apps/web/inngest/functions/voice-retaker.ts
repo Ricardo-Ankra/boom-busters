@@ -17,6 +17,7 @@ import { NonRetriableError } from 'inngest'
 import { db } from '@/lib/db'
 import { putObject, takeStorage, voiceTakeKey } from '@/lib/storage'
 import { synthesise } from '@/lib/tts'
+import { voiceKeyFacts } from '@/lib/voice-identity'
 import { inngest } from '../client'
 import { events } from '../events'
 import { budgetGateData, markStageFailed, type GateContext } from '../lib/gates'
@@ -113,9 +114,7 @@ export const voiceRetaker = inngest.createFunction(
         chapterId: take.chapterId,
         paragraphIndex: take.paragraphIndex,
         text,
-        voiceId: settings.tts.voiceId,
-        pronunciations: settings.tts.phonemeHints,
-        pacing: settings.tts.pacing,
+        ...voiceKeyFacts(settings.tts),
       })
 
       const claimed = await claimTake(db, {

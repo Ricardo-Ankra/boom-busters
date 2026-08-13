@@ -122,6 +122,16 @@ export interface TTSProvider {
    * *input*, which is why they belong to the re-read and not to this flag.
    */
   readonly rereadCanDiffer: boolean
+  /**
+   * Whether the standing narrator instructions (`stylePrompt`) reach this
+   * vendor at all. True only for Gemini, whose entire direction channel is the
+   * prompt; Cloud TTS sends plain text and a speaking rate, and ElevenLabs
+   * sends text and voice settings — for both, the instructions never leave the
+   * app, so editing them cannot change the audio and must not re-buy it. This
+   * flag is what folds the instructions into a take's identity where they are
+   * real and keeps them out of it where they are decoration.
+   */
+  readonly promptSteered: boolean
   synthesise(request: TTSRequest, options: TTSCallOptions): Promise<TTSResult>
   /**
    * The voices on offer. Gemini's list is static and ships with the adapter;

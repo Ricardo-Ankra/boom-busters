@@ -981,6 +981,39 @@ adapter.
     alone does not interrupt a playing element, which is why Pause appeared to
     wait politely for the end of the take.
 
+### M4.12 — the narrator instructions join the take's identity (2026-08-14)
+
+The human rewrote the narrator brief and re-ran the voice stage: "nothing
+happened." The run mirror confirms it did exactly what it was built to —
+"Narration ready · 37 paragraphs · 37 reused", sixteen seconds, $0 — because
+the instructions were not part of any take's fingerprint. Third member of the
+same bug class (pronunciations, decision 72; pacing, decision 79): something
+that changes how a paragraph is spoken without changing a character of it.
+
+86. **`promptSteered` is an adapter fact.** Only Gemini receives the
+    instructions at all — Cloud TTS takes text and a speaking rate, ElevenLabs
+    text and voice settings — so folding the brief into every provider's keys
+    would re-buy byte-identical audio on two of the three. The flag lives on
+    the adapter beside `rereadCanDiffer`, is resolved through the registry
+    (mock mirrors the stood-in provider), and replaced the hand-rolled
+    `STEERABLE_PROVIDERS` list in the voice tab — which was a second copy of
+    the same fact waiting to disagree.
+
+87. **`voiceKeyFacts` is the one assembly of settings-owned identity.** Four
+    places compute take fingerprints (runner, retaker, review model, retake
+    action) and each had hand-assembled voice/pronunciations/pacing. All four
+    now spread one helper, which is also where the `promptSteered` gate lives.
+    A fifth field joining the key touches one function.
+
+88. **Re-running the stage stays reuse-by-default, deliberately.** The human
+    proposed re-run = fresh takes on everything, now that single rows can be
+    retaken. Declined in favour of the fingerprint doing the work: with the
+    instructions in the key, "I changed the brief, re-run" re-reads everything
+    anyway — while a re-run after a crash (nothing changed) still resumes
+    free, which is what let the rate-limit-killed Gemini run recover without
+    re-buying 37 paragraphs. Re-run means "make the audio match the project";
+    the fingerprint decides what that costs.
+
 ### M4.8 — what the Chirp 3 HD guide said, and I had not read (2026-08-13)
 
 The human sent Google's Chirp 3 HD page. Two things in it contradict claims I

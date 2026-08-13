@@ -55,6 +55,20 @@ export function rereadCanDiffer(
 }
 
 /**
+ * Whether the standing narrator instructions reach this vendor at all — the
+ * fact that decides whether editing them changes the audio, and therefore
+ * whether they belong in a take's identity. Resolved through `ttsAdapters` for
+ * the same reason `rereadCanDiffer` is: in mock mode the mock's answer is the
+ * one the code under test must live with.
+ */
+export function promptSteered(
+  provider: TtsProvider,
+  env: Record<string, string | undefined> = process.env,
+): boolean {
+  return ttsAdapter(provider, env).promptSteered
+}
+
+/**
  * USD per 1,000 characters, by provider — the table `packages/cost` derives its
  * TTS prices from.
  *

@@ -126,6 +126,8 @@ export const geminiTts: TTSProvider = {
   sampleRate: NARRATION_SAMPLE_RATE,
   // An LLM taking a written style prompt: it samples, so it varies.
   rereadCanDiffer: true,
+  // The prompt is the only direction channel there is.
+  promptSteered: true,
 
   async synthesise(request: TTSRequest, options: TTSCallOptions): Promise<TTSResult> {
     const doFetch = options.fetchImpl ?? fetch

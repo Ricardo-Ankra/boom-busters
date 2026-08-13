@@ -207,6 +207,8 @@ export const googleCloudTts: TTSProvider = {
   // the same performance. Changing the input — punctuation, pause markup, a
   // pronunciation — is what changes the reading.
   rereadCanDiffer: false,
+  // Plain text and a speaking rate; the instructions never reach the vendor.
+  promptSteered: false,
 
   async synthesise(request: TTSRequest, options: TTSCallOptions): Promise<TTSResult> {
     const doFetch = options.fetchImpl ?? fetch

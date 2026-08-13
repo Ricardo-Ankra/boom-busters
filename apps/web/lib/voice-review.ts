@@ -1,6 +1,7 @@
 import { getSettings, latestScriptParagraphSources, listVoiceTakes } from '@boom-busters/db'
 import type { Database, VoiceTakeRow } from '@boom-busters/db'
 import { rereadCanDiffer } from '@boom-busters/providers'
+import { voiceKeyFacts } from '@/lib/voice-identity'
 import {
   splitParagraphs,
   takeIdempotencyKey,
@@ -142,9 +143,7 @@ export async function voiceReviewModel(db: Database, projectId: string): Promise
         chapterId: chapter.id,
         paragraphIndex,
         text,
-        voiceId: settings.tts.voiceId,
-        pronunciations: settings.tts.phonemeHints,
-        pacing: settings.tts.pacing,
+        ...voiceKeyFacts(settings.tts),
       })
 
       return {
@@ -193,8 +192,9 @@ export async function voiceReviewModel(db: Database, projectId: string): Promise
     voiceApprovalBlockedReason(live, expectedParagraphs) ??
     (staleParagraphs > 0
       ? `${staleParagraphs} paragraph${staleParagraphs === 1 ? ' has' : 's have'} changed since ` +
-        'being read — the words, the voice, the pacing or a pronunciation moved on, so the audio ' +
-        'is of the old version. Re-run the voice stage; only the changed paragraphs are re-read.'
+        'being read — the words, the voice, its instructions, the pacing or a pronunciation ' +
+        'moved on, so the audio is of the old version. Re-run the voice stage; only the changed ' +
+        'paragraphs are re-read.'
       : undefined)
 
   return {

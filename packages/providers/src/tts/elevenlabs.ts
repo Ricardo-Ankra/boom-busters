@@ -70,6 +70,8 @@ export const elevenlabsTts: TTSProvider = {
   sampleRate: NARRATION_SAMPLE_RATE,
   // `stability: 0.38` with no seed — a second read is a genuine second take.
   rereadCanDiffer: true,
+  // Samples, but takes no prompt: text and voice settings only.
+  promptSteered: false,
 
   async synthesise(request: TTSRequest, options: TTSCallOptions): Promise<TTSResult> {
     const doFetch = options.fetchImpl ?? fetch

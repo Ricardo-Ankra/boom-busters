@@ -14,6 +14,7 @@ import { auth } from '@/auth'
 import { inngest } from '@/inngest/client'
 import { events } from '@/inngest/events'
 import { db } from '@/lib/db'
+import { voiceKeyFacts } from '@/lib/voice-identity'
 import type { ActionResult } from '../actions'
 
 /**
@@ -200,9 +201,7 @@ export async function retakeVoiceTake(takeId: string, direction?: string): Promi
       chapterId: take.chapterId,
       paragraphIndex: take.paragraphIndex,
       text,
-      voiceId: settings.tts.voiceId,
-      pronunciations: settings.tts.phonemeHints,
-      pacing: settings.tts.pacing,
+      ...voiceKeyFacts(settings.tts),
     })
 
   if (!stale && !canDiffer) {
