@@ -33,6 +33,31 @@ const TASK_LABELS: Record<LlmTask, string> = {
 
 const CREDENTIAL_PROVIDERS: Provider[] = [...PROVIDERS]
 
+/**
+ * What each key is *for*, beside the id it is stored under.
+ *
+ * Not decoration. `google` and `google-cloud-tts` are two Google products on
+ * two hosts that refuse each other's keys, and a card labelled only `google`
+ * is how a Cloud Text-to-Speech key came to be filed against the Gemini API —
+ * which then reported a perfectly good key as `API_KEY_SERVICE_BLOCKED`, twice,
+ * before anyone looked at which row it was in.
+ *
+ * The names of the two are genuinely confusable. Saying what each one drives is
+ * the cheapest thing that stops the next person making the same mistake, and
+ * "the next person" here is the same person.
+ */
+const PROVIDER_PURPOSE: Record<Provider, string> = {
+  anthropic: 'Research, scripting and the self-check — the default for every task',
+  openai: 'Alternative for any task, and the cross-provider fallback',
+  google: 'Gemini text models. A key from AI Studio, not the Cloud console',
+  'google-cloud-tts': 'The narration voice (Chirp 3 HD). A Cloud console key, not a Gemini one',
+  elevenlabs: 'Alternative narration voice, with free word timings for alignment',
+  pexels: 'Stock footage and stills',
+  pixabay: 'Stock footage and stills',
+  fal: 'Flux image generation for slots nothing stock can cover',
+  'hosted-alignment': 'Fallback caption alignment, when Whisper is not used',
+}
+
 export function SettingsForm({
   initialSettings,
   credentials,
@@ -512,6 +537,7 @@ function ConnectionCard({
             {credential ? STATUS_LABELS[credential.verifyStatus] : 'not set'}
           </span>
         </CardTitle>
+        <CardDescription>{PROVIDER_PURPOSE[provider]}</CardDescription>
         <CardDescription className="font-mono">
           {credential ? credential.masked : 'No key stored'}
         </CardDescription>
