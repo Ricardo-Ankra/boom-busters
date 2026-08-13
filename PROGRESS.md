@@ -839,14 +839,38 @@ had made confidently, in code comments and to their face, in this same session.
     alignment and Shorts segments must do the same when M6 builds them — a
     caption reading "[pause long]" is this decision's failure mode.
 
-69. **IPA versus X-SAMPA is an open conflict, recorded rather than resolved.**
-    Google documents `PHONETIC_ENCODING_IPA` and `PHONETIC_ENCODING_X_SAMPA` as
-    equally supported. Against a live key on 2026-08-13 every IPA pronunciation
-    was refused, on every voice family and every phrase tried, while the
-    identical pronunciation as X-SAMPA was accepted. One of those is wrong and
-    it is not settled. X-SAMPA stays because it is the one observed to work;
-    the conflict is now written where the conversion happens rather than an
-    assertion that Google rejects IPA.
+69. **IPA works, X-SAMPA was never needed, and the whole layer is deleted.**
+    Settled with a live probe (four calls, about $0.0004), authorised for this
+    purpose. The earlier finding — "Cloud TTS rejects `PHONETIC_ENCODING_IPA`
+    outright, verified on every voice family and every phrase" — was wrong, and
+    the shape of the error is the lesson.
+
+    That test used `/ˈvaɪɐkart/`. It carries `ɐ`, which is not an en-GB phoneme.
+    Google validates the *phonemes* against the voice's language and returns the
+    same "custom pronunciation phrases are invalid" either way, so a bad phoneme
+    is indistinguishable from a bad encoding unless you hold one of them still.
+    I changed both at once, saw the X-SAMPA arm pass, and concluded the encoding
+    was at fault.
+
+    Re-run holding the sounds constant and varying only the encoding:
+
+        "cat"  IPA ˈkæt   → 200      X-SAMPA "k{t → 200
+        "dog"  IPA ˈdɒɡ   → 200      X-SAMPA "dQg → 200
+        "Wirecard"  IPA ˈvaɪɐkart → 400 invalid phrases: Wirecard
+
+    The conversion had never been load-bearing either: `ipaToXSampa` renders `ɐ`
+    as `6`, the same phoneme, equally refused. What actually kept those
+    paragraphs alive was the drop-and-retry.
+
+    So `x-sampa.ts` and its tests are deleted, and a hint reaches the vendor as
+    the human typed it. That removes a lossy step which silently dropped any
+    symbol missing from its table — a transform that could only ever turn a
+    correct transcription into a quieter wrong one.
+
+    The real constraint is unchanged and now stated correctly everywhere: a
+    pronunciation must use sounds the *voice's language* has. `checkPronunciation`
+    catching that at the moment of typing is the thing that matters, and it
+    already did.
 
 70. **Pacing floors at 0.25, not 0.5.** `speakingRate` accepts 0.25–2.0, so the
     slider offers what the vendor offers.

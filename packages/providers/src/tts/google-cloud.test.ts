@@ -109,28 +109,34 @@ describe('stripWavHeader', () => {
 
 describe('pronunciation on Chirp', () => {
   /**
-   * Chirp 3 HD takes plain text, not SSML — the `<phoneme>` tag the older
-   * WaveNet voices accept is not available. A pronunciation goes in
-   * `customPronunciations` instead, and a respelling has nowhere to go but the
-   * text.
+   * A pronunciation goes in `customPronunciations`, as IPA, exactly as the
+   * human wrote it. A respelling has nowhere to go but the text.
    *
-   * **As X-SAMPA, never IPA.** Verified against a live key: every
-   * `PHONETIC_ENCODING_IPA` pronunciation was refused, on every voice family
-   * and every phrase, while the same sounds as X-SAMPA were accepted.
+   * This asserted X-SAMPA and a conversion in front of it, because a live test
+   * had every IPA pronunciation refused. That test used `/ˈvaɪɐkart/`, whose
+   * `ɐ` is not an en-GB phoneme — Google refuses on the phoneme and the message
+   * reads the same either way, so a bad phoneme was read as a bad encoding.
+   * Re-tested with the sounds held constant (`/ˈkæt/`, `/ˈdɒɡ/`): IPA is
+   * accepted. The conversion was never load-bearing either — it turned `ɐ` into
+   * `6`, which is the same phoneme and equally refused.
    */
-  it('converts the hint to X-SAMPA, keyed by the written term', () => {
+  it('sends the hint as IPA, keyed by the written term', () => {
     expect(customPronunciations(request.text, hints)).toEqual([
       {
         phrase: 'Wirecard',
-        phoneticEncoding: 'PHONETIC_ENCODING_X_SAMPA',
-        pronunciation: '"vaI6kart',
+        phoneticEncoding: 'PHONETIC_ENCODING_IPA',
+        pronunciation: 'ˈvaɪɐkart',
       },
     ])
   })
 
-  it('omits a hint that converts to nothing usable', () => {
-    // Better no pronunciation than a pronunciation of marks alone.
-    expect(customPronunciations('Wirecard.', [{ term: 'Wirecard', hint: '/ˈ/' }])).toEqual([])
+  it('strips the slashes, which are notation and not phonemes', () => {
+    const [entry] = customPronunciations('Cat.', [{ term: 'Cat', hint: '/ˈkæt/' }])
+    expect(entry?.pronunciation).toBe('ˈkæt')
+  })
+
+  it('omits a hint that is nothing but slashes', () => {
+    expect(customPronunciations('Wirecard.', [{ term: 'Wirecard', hint: '//' }])).toEqual([])
   })
 
   it('does not offer a respelling as a phonetic encoding, because it is not one', () => {

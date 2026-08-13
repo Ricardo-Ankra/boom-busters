@@ -231,11 +231,13 @@ export async function generateAuditions(
  * Ask the vendor whether it will actually accept a pronunciation hint.
  *
  * Google validates a custom pronunciation against a **per-language phoneme
- * inventory**, not merely against X-SAMPA being well-formed — verified against
- * a live key: `aI` is accepted for en-GB and a bare `a` is refused, so a
- * perfectly good IPA transcription of a German name is rejected wholesale. That
- * cannot be predicted from the notation, and encoding Google's inventory here
- * would be guesswork of exactly the kind that has cost this project two days.
+ * inventory**, not merely against the notation being well-formed — verified
+ * against a live key: `/ˈkæt/` is accepted for en-GB while `/ˈvaɪɐkart/` is
+ * refused, because `ɐ` is not an en-GB phoneme. So a perfectly good IPA
+ * transcription of a German name is rejected wholesale, and no amount of
+ * re-notating it helps. That cannot be predicted from the notation, and
+ * encoding Google's inventory here would be guesswork of exactly the kind that
+ * has already cost this project a transliteration layer it did not need.
  *
  * So the hint is checked with the vendor at the moment it is typed, where a
  * human is present to fix it — rather than in a run, where the adapter drops it

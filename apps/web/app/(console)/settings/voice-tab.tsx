@@ -584,10 +584,11 @@ function PhonemeHints({ settings, saving, commit }: TabProps) {
         ) : null}
 
         <p className="text-[12px] text-[var(--color-text-muted)]">
-          IPA between slashes is converted to the notation the narrator takes; anything else is
-          treated as a respelling and read in place of the word. A pronunciation is checked with the
-          voice when you add it, because each voice validates against its own phoneme set — a
-          transcription can be correct IPA and still be refused, and a respelling always works.
+          IPA between slashes is sent to the narrator as written; anything else is treated as a
+          respelling and read in place of the word. A pronunciation is checked with the voice when
+          you add it, because each voice validates against the phoneme set of its own language — so
+          a transcription can be correct IPA and still be refused, usually because it uses a sound
+          that language does not have. A respelling always works.
         </p>
       </CardContent>
     </Card>

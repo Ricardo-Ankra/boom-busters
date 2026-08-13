@@ -30,7 +30,9 @@ export function isIpa(hint: string): boolean {
   return /^\/.+\/$/.test(hint.trim())
 }
 
-function stripSlashes(hint: string): string {
+/** `/ˈkæt/` → `ˈkæt`. The slashes are how a human writes a transcription, not
+ *  part of it, and no vendor's phonetic field wants them. */
+export function stripSlashes(hint: string): string {
   return hint.trim().replace(/^\/|\/$/g, '')
 }
 

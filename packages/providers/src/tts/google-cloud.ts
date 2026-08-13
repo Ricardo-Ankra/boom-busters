@@ -2,8 +2,7 @@ import { hasPauseMarkup, ValidationError } from '@boom-busters/schemas'
 import type { PhonemeHint } from '@boom-busters/schemas'
 import { mapNetworkError, throwForResponse } from '../llm/http'
 import { NARRATION_SAMPLE_RATE, pcmDurationMs } from './audio'
-import { isIpa, matchedHints } from './phonemes'
-import { ipaToXSampa, isUsableXSampa } from './x-sampa'
+import { isIpa, matchedHints, stripSlashes } from './phonemes'
 import type {
   KnownVoice,
   TTSCallOptions,
@@ -99,7 +98,7 @@ export function stripWavHeader(buffer: Buffer): Buffer {
  * Pronunciation, as Chirp 3 HD actually takes it.
  *
  * Through `customPronunciations`, a structured field on the request carrying a
- * phrase and its phonetic form — not through SSML's `<phoneme>`.
+ * phrase and its IPA form — not through SSML's `<phoneme>`.
  *
  * Google's Chirp 3 HD page does list SSML as supported, at Preview. It is not
  * used here: `customPronunciations` and the `markup` pause field cover what
@@ -114,20 +113,28 @@ export function stripWavHeader(buffer: Buffer): Buffer {
 export interface CustomPronunciation {
   phrase: string
   /**
-   * X-SAMPA, never IPA — and this one is an open conflict, recorded rather than
-   * resolved.
+   * IPA, sent as written.
    *
-   * Google's documentation lists `PHONETIC_ENCODING_IPA` and
-   * `PHONETIC_ENCODING_X_SAMPA` as equally supported. Against a live key on
-   * 2026-08-13, every IPA pronunciation was refused on every voice family and
-   * every phrase tried, while the identical pronunciation as X-SAMPA was
-   * accepted. One of those is wrong and it has not been settled.
+   * This was `PHONETIC_ENCODING_X_SAMPA` with a conversion table in front of
+   * it, on the strength of a live test on 2026-08-13 in which every IPA
+   * pronunciation was refused. That conclusion was wrong, and the way it was
+   * wrong is worth keeping: the test used `/ˈvaɪɐkart/`, a German name carrying
+   * `ɐ`, which is not in en-GB's phoneme inventory. Google refuses on the
+   * *phoneme*, and the refusal reads the same either way — so a bad phoneme was
+   * read as a bad encoding, and a whole transliteration layer was built on it.
    *
-   * X-SAMPA is used because it is the one that has been observed to work.
-   * The hints stay IPA where a human writes them, since that is what a
-   * dictionary prints; the conversion happens here.
+   * Re-tested 2026-08-13 holding the sounds constant and varying only the
+   * encoding: `/ˈkæt/` and `/ˈdɒɡ/` as IPA both returned 200, as did their
+   * exact X-SAMPA equivalents. The conversion never helped in any case —
+   * `ipaToXSampa('ˈvaɪɐkart')` is `"vaI6kart`, and `6` *is* `ɐ`, so the phrase
+   * that motivated it would have been refused just the same. What actually
+   * saved those paragraphs was the drop-and-retry below.
+   *
+   * So the hint now reaches the vendor as the human typed it, and the lossy
+   * step in between — which silently dropped any symbol missing from its table
+   * — is gone.
    */
-  phoneticEncoding: 'PHONETIC_ENCODING_X_SAMPA'
+  phoneticEncoding: 'PHONETIC_ENCODING_IPA'
   pronunciation: string
 }
 
@@ -139,10 +146,11 @@ export function customPronunciations(
     .filter((hint) => isIpa(hint.hint))
     .map((hint) => ({
       phrase: hint.term,
-      phoneticEncoding: 'PHONETIC_ENCODING_X_SAMPA' as const,
-      pronunciation: ipaToXSampa(hint.hint),
+      phoneticEncoding: 'PHONETIC_ENCODING_IPA' as const,
+      // The slashes are how a transcription is written down, not part of it.
+      pronunciation: stripSlashes(hint.hint),
     }))
-    .filter((entry) => isUsableXSampa(entry.pronunciation))
+    .filter((entry) => entry.pronunciation !== '')
 }
 
 /**
