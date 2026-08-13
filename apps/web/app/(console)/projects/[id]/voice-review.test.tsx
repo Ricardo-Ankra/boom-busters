@@ -20,11 +20,15 @@ import { VoiceReview } from './voice-review'
  */
 
 const flagVoiceTake = vi.fn()
+const rereadParagraph = vi.fn()
+const retakeVoiceTake = vi.fn()
 const clearVoiceFlag = vi.fn()
 const refresh = vi.fn()
 
 vi.mock('./voice-actions', () => ({
   flagVoiceTake: (...args: unknown[]) => flagVoiceTake(...args),
+  rereadParagraph: (...args: unknown[]) => rereadParagraph(...args),
+  retakeVoiceTake: (...args: unknown[]) => retakeVoiceTake(...args),
   clearVoiceFlag: (...args: unknown[]) => clearVoiceFlag(...args),
 }))
 
@@ -36,6 +40,8 @@ vi.mock('@/components/ui/toast', () => ({ useToast: () => ({ toast }) }))
 beforeEach(() => {
   vi.clearAllMocks()
   flagVoiceTake.mockResolvedValue({ ok: true })
+  rereadParagraph.mockResolvedValue({ ok: true })
+  retakeVoiceTake.mockResolvedValue({ ok: true })
   clearVoiceFlag.mockResolvedValue({ ok: true })
   vi.spyOn(HTMLMediaElement.prototype, 'play').mockResolvedValue(undefined)
   Element.prototype.scrollIntoView = vi.fn()
@@ -106,6 +112,10 @@ function model(patch: Partial<VoiceReviewModel> = {}): VoiceReviewModel {
     totalDurationMs: 16_800,
     blockedReason: voiceApprovalBlockedReason(takes, expectedParagraphs),
     orphanedTakes: 0,
+    // The narrator in production is Cloud TTS, which cannot vary a re-read, so
+    // that is the default a fixture should describe. The tests that care about
+    // "read it again" turn it on explicitly.
+    rereadCanDiffer: false,
     ...patch,
   }
 }
@@ -136,12 +146,28 @@ describe('VoiceReview', () => {
   })
 
   describe('flagging', () => {
-    it('requires a note before the retake can be queued', async () => {
+    it('requires a note, so the row still means something a week later', async () => {
       render(<VoiceReview model={model()} />)
 
       await userEvent.click(screen.getAllByRole('button', { name: /^Flag$/ })[0]!)
-      // A retake with no direction is the same synthesis rolled again.
-      expect(screen.getByRole('button', { name: 'Flag and retake' })).toBeDisabled()
+      expect(screen.getByRole('button', { name: 'Flag this take' })).toBeDisabled()
+    })
+
+    /**
+     * Flagging used to enqueue a retake in the same press. On a narrator that
+     * cannot vary a re-read that was a charge for the take just rejected, and
+     * the note explaining what was wrong never left the database.
+     */
+    it('costs nothing: no synthesis is asked for', async () => {
+      render(<VoiceReview model={model()} />)
+
+      await userEvent.click(screen.getAllByRole('button', { name: /^Flag$/ })[0]!)
+      await userEvent.type(screen.getByLabelText('What was wrong with it?'), 'Too fast.')
+      await userEvent.click(screen.getByRole('button', { name: 'Flag this take' }))
+
+      expect(flagVoiceTake).toHaveBeenCalled()
+      expect(retakeVoiceTake).not.toHaveBeenCalled()
+      expect(rereadParagraph).not.toHaveBeenCalled()
     })
 
     it('sends the note with the take id and refreshes', async () => {
@@ -149,7 +175,7 @@ describe('VoiceReview', () => {
 
       await userEvent.click(screen.getAllByRole('button', { name: /^Flag$/ })[0]!)
       await userEvent.type(screen.getByLabelText('What was wrong with it?'), 'Swallowed a word.')
-      await userEvent.click(screen.getByRole('button', { name: 'Flag and retake' }))
+      await userEvent.click(screen.getByRole('button', { name: 'Flag this take' }))
 
       expect(flagVoiceTake).toHaveBeenCalledWith('take-1', 'Swallowed a word.')
       expect(refresh).toHaveBeenCalled()
@@ -160,13 +186,13 @@ describe('VoiceReview', () => {
      * orchestrator being unreachable, not the note, and discarding what the
      * user typed would make them write it again to find that out.
      */
-    it('keeps the note on screen when the retake could not be queued', async () => {
-      flagVoiceTake.mockResolvedValue({ ok: false, error: 'Inngest unreachable' })
+    it('keeps the note on screen when the flag could not be saved', async () => {
+      flagVoiceTake.mockResolvedValue({ ok: false, error: 'Database unreachable' })
       render(<VoiceReview model={model()} />)
 
       await userEvent.click(screen.getAllByRole('button', { name: /^Flag$/ })[0]!)
       await userEvent.type(screen.getByLabelText('What was wrong with it?'), 'Too fast.')
-      await userEvent.click(screen.getByRole('button', { name: 'Flag and retake' }))
+      await userEvent.click(screen.getByRole('button', { name: 'Flag this take' }))
 
       expect(toast).toHaveBeenCalledWith(expect.objectContaining({ variant: 'error' }))
       expect(screen.getByLabelText('What was wrong with it?')).toHaveValue('Too fast.')
@@ -197,6 +223,102 @@ describe('VoiceReview', () => {
       expect(screen.getByText('Note: Mispronounced Wirecard.')).toBeInTheDocument()
       await userEvent.click(screen.getByRole('button', { name: 'Clear the flag' }))
       expect(clearVoiceFlag).toHaveBeenCalledWith('take-1')
+    })
+  })
+
+  /**
+   * The two repairs, and which narrator gets which.
+   *
+   * The distinction is not cosmetic. On a provider that reads identical text
+   * identically, "read it again" is a charge for the take the human just
+   * rejected — so the button is not there, and the one that changes the words
+   * is, because the words are the only lever that exists.
+   */
+  describe('repairing a flagged take', () => {
+    function flaggedModel(patch: Partial<VoiceReviewModel> = {}): VoiceReviewModel {
+      return model({
+        chapters: [
+          {
+            chapterId: 'c1',
+            title: 'The audit',
+            paragraphs: [
+              {
+                chapterId: 'c1',
+                paragraphIndex: 0,
+                text: 'The auditors signed it off for eighteen years, nobody asked where the cash was.',
+                current: take({ status: 'flagged', note: 'Ran the two halves together.' }),
+                previous: undefined,
+                takeCount: 1,
+              },
+            ],
+          },
+        ],
+        ...patch,
+      })
+    }
+
+    it('offers to fix the words on every narrator', async () => {
+      render(<VoiceReview model={flaggedModel()} />)
+      expect(screen.getByRole('button', { name: 'Fix the words' })).toBeInTheDocument()
+    })
+
+    it('does not offer to read it again when the reading cannot differ', async () => {
+      render(<VoiceReview model={flaggedModel({ rereadCanDiffer: false })} />)
+      expect(screen.queryByRole('button', { name: /read it again/i })).toBeNull()
+    })
+
+    it('offers to read it again where a second reading is a genuine second take', async () => {
+      render(<VoiceReview model={flaggedModel({ rereadCanDiffer: true })} />)
+
+      await userEvent.click(screen.getByRole('button', { name: 'Read it again' }))
+      expect(retakeVoiceTake).toHaveBeenCalledWith('take-1')
+    })
+
+    it('opens the words for editing, prefilled with what was read', async () => {
+      render(<VoiceReview model={flaggedModel()} />)
+
+      await userEvent.click(screen.getByRole('button', { name: 'Fix the words' }))
+      expect(screen.getByLabelText('The words, as they should be read')).toHaveValue(
+        'The auditors signed it off for eighteen years, nobody asked where the cash was.',
+      )
+    })
+
+    it('will not spend on words that did not change', async () => {
+      render(<VoiceReview model={flaggedModel()} />)
+
+      await userEvent.click(screen.getByRole('button', { name: 'Fix the words' }))
+      // Untouched: same words, and on this narrator the same reading.
+      expect(screen.getByRole('button', { name: 'Save and re-read' })).toBeDisabled()
+    })
+
+    it('sends the edited paragraph and refreshes', async () => {
+      render(<VoiceReview model={flaggedModel()} />)
+
+      await userEvent.click(screen.getByRole('button', { name: 'Fix the words' }))
+      const box = screen.getByLabelText('The words, as they should be read')
+      await userEvent.clear(box)
+      await userEvent.type(box, 'The auditors signed it off for eighteen years. Nobody asked.')
+      await userEvent.click(screen.getByRole('button', { name: 'Save and re-read' }))
+
+      expect(rereadParagraph).toHaveBeenCalledWith(
+        'take-1',
+        'The auditors signed it off for eighteen years. Nobody asked.',
+      )
+      expect(refresh).toHaveBeenCalled()
+    })
+
+    it('keeps the draft when the re-read is refused', async () => {
+      rereadParagraph.mockResolvedValue({ ok: false, error: 'A paragraph cannot be split in two.' })
+      render(<VoiceReview model={flaggedModel()} />)
+
+      await userEvent.click(screen.getByRole('button', { name: 'Fix the words' }))
+      const box = screen.getByLabelText('The words, as they should be read')
+      await userEvent.clear(box)
+      await userEvent.type(box, 'Rewritten.')
+      await userEvent.click(screen.getByRole('button', { name: 'Save and re-read' }))
+
+      expect(toast).toHaveBeenCalledWith(expect.objectContaining({ variant: 'error' }))
+      expect(screen.getByLabelText('The words, as they should be read')).toHaveValue('Rewritten.')
     })
   })
 

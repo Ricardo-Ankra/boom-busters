@@ -763,6 +763,94 @@ stored against 21,000 ms for the mock).
     provider. Not covered: the runners' call into it — `@inngest/test` cannot
     drive a voice run (decision 20), so that wiring is one reviewed line.
 
+### M4.7 — the flag that bought nothing, and the pause control I said did not exist (2026-08-13)
+
+Started from a question — *"if I flag a paragraph and suggest changes, how will
+the voice regenerate?"* — whose honest answer was: it won't.
+
+63. **Flagging is a verdict and no longer spends.** Spec §11.3 has flagging
+    "enqueue the retake immediately", and it did: `flagVoiceTake` sent
+    `voice/retake.requested`, the retaker re-synthesised the same text in the
+    same voice at the same rate, and the note explaining what was wrong was
+    stored on the row and never sent anywhere. On Chirp that is identical audio
+    by construction. Every flag cost about a cent to reproduce the take just
+    rejected, and the form's own copy — *"the note steers the retake"* — was a
+    promise the code never kept.
+
+    What flagging is actually for survives untouched: `voiceApprovalBlockedReason`
+    refuses the gate while anything is flagged, so a listen-through can mark six
+    problems and the stage stays shut until each is dealt with. That is a review
+    ledger and it is worth keeping. The repair is now a second, explicit press.
+
+64. **Two repairs, and a provider fact that decides which is offered.**
+    `TTSProvider.rereadCanDiffer` — true for ElevenLabs (`stability: 0.38`, no
+    seed) and Gemini (an LLM taking a style prompt), false for Cloud TTS (no
+    temperature, seed or style field). `Read it again` appears only where it is
+    true, and `retakeVoiceTake` re-checks server-side rather than trusting the
+    button. `Fix the words` appears everywhere, because on Chirp the input is
+    the only lever there is.
+
+65. **`claimTake` recognises a paragraph by its words, not by its take number.**
+    It matched `(idempotencyKey, takeNumber)` with the runner always asking for
+    take 1 — right only while a paragraph has exactly one take. After any retake
+    the good audio sits at take 2 under a key derived from the current text, and
+    the next stage re-run asked for take 1 of that key, found nothing, and
+    bought words it was already holding. Every stage re-run after any retake
+    paid for the retaken paragraph again. It now asks the question the caller
+    means: *is the current take of this paragraph already this text in this
+    voice?* An explicitly named `takeNumber` still forces a purchase — that is
+    how a deliberate second attempt at identical input is requested, and nothing
+    but "read it again" should name one.
+
+66. **A re-read edits the script through `editChapter`, not around it.**
+    `replaceParagraph` swaps one block and leaves every other byte alone, so the
+    edit trail shows the sentence that changed rather than a reflow of the whole
+    chapter. Splitting a paragraph in two is refused: it would shift every later
+    index and orphan the takes addressed by them (spec §7's stability contract).
+
+### M4.8 — what the Chirp 3 HD guide said, and I had not read (2026-08-13)
+
+The human sent Google's Chirp 3 HD page. Two things in it contradict claims I
+had made confidently, in code comments and to their face, in this same session.
+
+67. **Chirp 3 HD has a pause control, and I said it had none.** The input has a
+    `markup` field alongside `text` carrying `[pause]`, `[pause short]` and
+    `[pause long]`. I had told the human the only levers were words, punctuation
+    and the global pacing slider — twice — on the strength of an adapter comment
+    reading *"Plain text, never SSML: the Chirp families do not accept it"*,
+    which I wrote from assumption and never checked. SSML is in fact supported
+    too, at Preview.
+
+    The adapter now sends `markup` when a paragraph carries a tag and `text`
+    when it does not — routing matters, because `[pause long]` sent as `text`
+    would be *read aloud*. The re-read form has the three tags as buttons.
+
+    SSML is still not used, and now by decision rather than by error:
+    `customPronunciations` and `markup` cover narration, and they are documented
+    for this family without the Preview caveat that took `gemini-*-preview` away
+    from us this week.
+
+68. **Pause markup is the one thing in a script that is not words.** It lives in
+    `chapters.contentMd`, because a pause is a property of how the line is
+    written and a re-read has to reproduce it. So everything that is not the
+    synthesiser reads through `stripNarrationMarkup`: `countWords` (and through
+    it every runtime estimate and length warning) and `sentenceHash` (so adding
+    a pause to a sentence does not orphan the claim pinned to it). Captions,
+    alignment and Shorts segments must do the same when M6 builds them — a
+    caption reading "[pause long]" is this decision's failure mode.
+
+69. **IPA versus X-SAMPA is an open conflict, recorded rather than resolved.**
+    Google documents `PHONETIC_ENCODING_IPA` and `PHONETIC_ENCODING_X_SAMPA` as
+    equally supported. Against a live key on 2026-08-13 every IPA pronunciation
+    was refused, on every voice family and every phrase tried, while the
+    identical pronunciation as X-SAMPA was accepted. One of those is wrong and
+    it is not settled. X-SAMPA stays because it is the one observed to work;
+    the conflict is now written where the conversion happens rather than an
+    assertion that Google rejects IPA.
+
+70. **Pacing floors at 0.25, not 0.5.** `speakingRate` accepts 0.25–2.0, so the
+    slider offers what the vendor offers.
+
 ### M4.2 — Google Cloud TTS (Chirp 3 HD) as the narrator (2026-08-13)
 
 Chosen by the human over Gemini TTS, and it is a deviation from spec §2 worth

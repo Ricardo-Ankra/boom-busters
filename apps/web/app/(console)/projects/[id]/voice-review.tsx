@@ -9,7 +9,10 @@ import {
   Flag,
   Loader2,
   Pause,
+  Pencil,
   Play,
+  RefreshCw,
+  Timer,
   Undo2,
 } from 'lucide-react'
 import * as React from 'react'
@@ -17,9 +20,10 @@ import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { useToast } from '@/components/ui/toast'
+import { PAUSE_TAGS } from '@boom-busters/schemas'
 import { cn } from '@/lib/cn'
 import type { ChapterGroup, ParagraphRow, TakeView, VoiceReviewModel } from '@/lib/voice-review'
-import { clearVoiceFlag, flagVoiceTake } from './voice-actions'
+import { clearVoiceFlag, flagVoiceTake, rereadParagraph, retakeVoiceTake } from './voice-actions'
 
 /**
  * Voice review (build spec section 11.3).
@@ -34,9 +38,11 @@ import { clearVoiceFlag, flagVoiceTake } from './voice-actions'
  *    button**, so the control you need is under the cursor at the moment you
  *    hear the problem — rather than somewhere you have to hunt for while the
  *    next paragraph plays over the top of your search.
- *  - **Flagging asks what was wrong and enqueues the retake in the same
- *    press.** A note is required: a retake with no direction is the same
- *    synthesis rolled again.
+ *  - **Flagging is a verdict and costs nothing.** It holds the gate shut and
+ *    records why. The repair is a second, deliberate press, because the two
+ *    repairs are not the same thing and only one of them exists on every
+ *    narrator: `Fix the words` always, `Read it again` only where a second
+ *    reading of identical text can come back different.
  *
  * Space toggles play/pause, which is one of the two keyboard behaviours section
  * 11.1 keeps ("the universal ones users expect from media and text"). Every
@@ -184,13 +190,15 @@ function FlagForm({
 
     setBusy(false)
     if (!result.ok) {
-      toast({ title: 'The retake was not queued', description: result.error, variant: 'error' })
-      // Not dismissed: the note the user typed is still in the box, and the
-      // failure is usually the orchestrator being down rather than the note.
+      toast({ title: 'Not flagged', description: result.error, variant: 'error' })
+      // Not dismissed: the note the user typed is still in the box.
       return
     }
 
-    toast({ title: 'Retake queued', description: 'The replacement appears here when it lands.' })
+    toast({
+      title: 'Flagged',
+      description: 'The stage cannot be approved until this is dealt with.',
+    })
     onDone()
     router.refresh()
   }
@@ -212,14 +220,134 @@ function FlagForm({
         placeholder='Swallowed the word "insolvency"; read the date too fast.'
         className="w-full rounded-[8px] border border-[var(--color-border)] bg-[var(--color-surface)] p-2 text-[13px] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-accent)]"
       />
+      {/* It used to say "the note steers the retake". It never did — the note
+          is stored on the row and no vendor ever sees it. Saying what a press
+          actually does is worth more than a placeholder promise. */}
       <p className="text-[12px] text-[var(--color-text-muted)]">
-        The note steers the retake, so it is worth being specific. This spends another synthesis of
-        this paragraph.
+        Costs nothing. Flagging holds the stage shut and records why; the fix is the next press.
       </p>
       <div className="flex flex-wrap gap-2">
         <Button type="submit" disabled={busy || note.trim() === ''}>
           {busy ? <Loader2 className="size-4 animate-spin" aria-hidden /> : null}
-          {busy ? 'Queueing…' : 'Flag and retake'}
+          {busy ? 'Flagging…' : 'Flag this take'}
+        </Button>
+        <Button type="button" variant="outline" onClick={onCancel} disabled={busy}>
+          Cancel
+        </Button>
+      </div>
+    </form>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Fixing the words
+// ---------------------------------------------------------------------------
+
+/**
+ * The repair that works on every narrator: change the words, read them again.
+ *
+ * On Cloud Text-to-Speech it is the *only* one. The request carries plain text
+ * and a speaking rate — no SSML, which the Chirp families reject, and no style
+ * prompt, which is a Gemini idea. So punctuation is the pacing control: a full
+ * stop where a comma was, an em dash, an ellipsis. That is worth saying on the
+ * form, because it is not guessable and it is the answer to the most common
+ * complaint about a take.
+ *
+ * The edit goes through the same `editChapter` the Script Studio uses, so it is
+ * in the edit trail and reviewable as a diff.
+ */
+function RereadForm({
+  takeId,
+  text,
+  onDone,
+  onCancel,
+}: {
+  takeId: string
+  text: string
+  onDone: () => void
+  onCancel: () => void
+}) {
+  const [draft, setDraft] = React.useState(text)
+  const [busy, setBusy] = React.useState(false)
+  const box = React.useRef<HTMLTextAreaElement>(null)
+  const { toast } = useToast()
+  const router = useRouter()
+
+  /**
+   * Drop a pause tag in at the cursor.
+   *
+   * Buttons rather than a syntax to remember, because the tags are the one
+   * thing in a script that is not prose and nobody should have to recall
+   * whether it is `[pause long]` or `[long pause]` while listening to a take.
+   */
+  function insert(tag: string): void {
+    const element = box.current
+    const at = element?.selectionStart ?? draft.length
+    const before = draft.slice(0, at).replace(/\s+$/, '')
+    const after = draft.slice(at).replace(/^\s+/, '')
+
+    setDraft(`${before} ${tag} ${after}`.trim())
+    element?.focus()
+  }
+
+  async function submit(event: React.FormEvent): Promise<void> {
+    event.preventDefault()
+    setBusy(true)
+
+    const result = await rereadParagraph(takeId, draft)
+
+    setBusy(false)
+    if (!result.ok) {
+      toast({ title: 'Not re-read', description: result.error, variant: 'error' })
+      return
+    }
+
+    toast({
+      title: 'Re-reading it',
+      description: 'The script is updated and the new take appears here when it lands.',
+    })
+    onDone()
+    router.refresh()
+  }
+
+  return (
+    <form
+      onSubmit={submit}
+      className="flex flex-col gap-2 border-t border-[var(--color-border)] p-3"
+    >
+      <label className="text-[12px] font-medium" htmlFor={`reread-${takeId}`}>
+        The words, as they should be read
+      </label>
+      <textarea
+        id={`reread-${takeId}`}
+        ref={box}
+        value={draft}
+        onChange={(event) => setDraft(event.target.value)}
+        rows={3}
+        autoFocus
+        className="w-full rounded-[8px] border border-[var(--color-border)] bg-[var(--color-surface)] p-2 text-[13px] leading-relaxed focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-accent)]"
+      />
+
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-[12px] text-[var(--color-text-muted)]">Insert a pause:</span>
+        {PAUSE_TAGS.map((tag) => (
+          <Button key={tag} type="button" variant="ghost" size="icon" onClick={() => insert(tag)}>
+            <Timer className="size-4" aria-hidden />
+            {tag.replace(/[[\]]/g, '')}
+          </Button>
+        ))}
+      </div>
+
+      <p className="text-[12px] text-[var(--color-text-muted)]">
+        A pause tag is an intent, not a duration — the narrator fits the length to the sentence
+        around it, and occasionally ignores one. Punctuation works too: a full stop where a comma
+        was, an em dash, or an ellipsis. This edits the script and spends one synthesis of this
+        paragraph.
+      </p>
+      <div className="flex flex-wrap gap-2">
+        <Button type="submit" disabled={busy || draft.trim() === '' || draft.trim() === text.trim()}>
+          {busy ? <Loader2 className="size-4 animate-spin" aria-hidden /> : null}
+          {busy ? 'Queueing…' : 'Save and re-read'}
         </Button>
         <Button type="button" variant="outline" onClick={onCancel} disabled={busy}>
           Cancel
@@ -271,17 +399,22 @@ function StatusChip({ take }: { take: TakeView | undefined }) {
 function ParagraphRowView({
   row,
   playingTakeId,
+  rereadCanDiffer,
   onPlay,
   onStop,
 }: {
   row: ParagraphRow
   playingTakeId: string | null
+  /** Whether "try again" would buy anything different. */
+  rereadCanDiffer: boolean
   onPlay: (takeId: string) => void
   onStop: () => void
 }) {
   const [flagging, setFlagging] = React.useState(false)
+  const [rereading, setRereading] = React.useState(false)
   const [comparing, setComparing] = React.useState(false)
   const [clearing, setClearing] = React.useState(false)
+  const [retaking, setRetaking] = React.useState(false)
   const { toast } = useToast()
   const router = useRouter()
 
@@ -304,6 +437,20 @@ function ParagraphRowView({
       toast({ title: 'Could not clear the flag', description: result.error, variant: 'error' })
       return
     }
+    router.refresh()
+  }
+
+  async function tryAgain(): Promise<void> {
+    if (!row.current) return
+    setRetaking(true)
+    const result = await retakeVoiceTake(row.current.id)
+    setRetaking(false)
+
+    if (!result.ok) {
+      toast({ title: 'Not queued', description: result.error, variant: 'error' })
+      return
+    }
+    toast({ title: 'Reading it again', description: 'The new take appears here when it lands.' })
     router.refresh()
   }
 
@@ -357,10 +504,29 @@ function ParagraphRowView({
           </Button>
 
           {row.current?.status === 'flagged' ? (
-            <Button variant="outline" onClick={clearFlag} disabled={clearing}>
-              <Undo2 className="size-4" aria-hidden />
-              {clearing ? 'Clearing…' : 'Clear the flag'}
-            </Button>
+            <>
+              {/* The repair that always works, listed first because on Chirp it
+                  is the only one. */}
+              <Button onClick={() => setRereading((open) => !open)}>
+                <Pencil className="size-4" aria-hidden />
+                Fix the words
+              </Button>
+
+              {/* Offered only where a second reading of identical words can
+                  come back different. On Cloud TTS it cannot, so the button
+                  would be a charge for the take just rejected. */}
+              {rereadCanDiffer ? (
+                <Button variant="outline" onClick={tryAgain} disabled={retaking}>
+                  <RefreshCw className="size-4" aria-hidden />
+                  {retaking ? 'Queueing…' : 'Read it again'}
+                </Button>
+              ) : null}
+
+              <Button variant="outline" onClick={clearFlag} disabled={clearing}>
+                <Undo2 className="size-4" aria-hidden />
+                {clearing ? 'Clearing…' : 'Clear the flag'}
+              </Button>
+            </>
           ) : (
             <Button
               variant="outline"
@@ -391,6 +557,15 @@ function ParagraphRowView({
           onCancel={() => setFlagging(false)}
         />
       ) : null}
+
+      {rereading && row.current ? (
+        <RereadForm
+          takeId={row.current.id}
+          text={row.text}
+          onDone={() => setRereading(false)}
+          onCancel={() => setRereading(false)}
+        />
+      ) : null}
     </li>
   )
 }
@@ -404,6 +579,7 @@ function ChapterSection({
   open,
   onToggle,
   playingTakeId,
+  rereadCanDiffer,
   onPlay,
   onStop,
 }: {
@@ -411,6 +587,7 @@ function ChapterSection({
   open: boolean
   onToggle: () => void
   playingTakeId: string | null
+  rereadCanDiffer: boolean
   onPlay: (takeId: string) => void
   onStop: () => void
 }) {
@@ -451,6 +628,7 @@ function ChapterSection({
               key={paragraphKey(row)}
               row={row}
               playingTakeId={playingTakeId}
+              rereadCanDiffer={rereadCanDiffer}
               onPlay={onPlay}
               onStop={onStop}
             />
@@ -575,6 +753,7 @@ export function VoiceReview({ model }: { model: VoiceReviewModel }) {
             <ChapterSection
               key={chapter.chapterId}
               chapter={chapter}
+              rereadCanDiffer={model.rereadCanDiffer}
               open={openChapters.has(chapter.chapterId)}
               onToggle={() =>
                 setOpenChapters((open) => {

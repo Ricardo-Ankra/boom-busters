@@ -188,7 +188,9 @@ export const VoiceConfigSchema = z.object({
   provider: TtsProviderSchema,
   voiceId: z.string(),
   stylePrompt: z.string().default(''),
-  pacing: z.number().min(0.5).max(2).default(1),
+  // Cloud TTS accepts `speakingRate` from 0.25 to 2.0, so the slider offers
+  // what the vendor offers rather than a rounder number.
+  pacing: z.number().min(0.25).max(2).default(1),
   /**
    * Beyond the five fields section 10 lists, because it belongs to the same
    * decision and nothing else owns it: a hint list is only meaningful next to

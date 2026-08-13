@@ -1,5 +1,6 @@
-import { latestScriptParagraphSources, listVoiceTakes } from '@boom-busters/db'
+import { getSettings, latestScriptParagraphSources, listVoiceTakes } from '@boom-busters/db'
 import type { Database, VoiceTakeRow } from '@boom-busters/db'
+import { rereadCanDiffer } from '@boom-busters/providers'
 import { splitParagraphs, voiceApprovalBlockedReason, voiceCoverage } from '@boom-busters/schemas'
 import type { VoiceCoverage } from '@boom-busters/schemas'
 
@@ -75,6 +76,14 @@ export interface VoiceReviewModel {
   blockedReason: string | undefined
   /** Takes whose paragraph no longer exists — the script was edited after narration. */
   orphanedTakes: number
+  /**
+   * Whether this narrator can read the same words differently a second time.
+   *
+   * Resolved on the server because the answer is a property of the configured
+   * provider, and carried in the model so the review screen can offer "try
+   * again" only where pressing it is not a purchase of what was just rejected.
+   */
+  rereadCanDiffer: boolean
 }
 
 /** Group takes by the paragraph they belong to, newest take number first. */
@@ -89,9 +98,10 @@ function takesFor(
 }
 
 export async function voiceReviewModel(db: Database, projectId: string): Promise<VoiceReviewModel> {
-  const [sources, takes] = await Promise.all([
+  const [sources, takes, settings] = await Promise.all([
     latestScriptParagraphSources(db, projectId),
     listVoiceTakes(db, projectId),
+    getSettings(db),
   ])
 
   let expectedParagraphs = 0
@@ -139,6 +149,7 @@ export async function voiceReviewModel(db: Database, projectId: string): Promise
     totalDurationMs: currentTakes.reduce((total, take) => total + (take.durationMs ?? 0), 0),
     blockedReason: voiceApprovalBlockedReason(live, expectedParagraphs),
     orphanedTakes: takes.length - live.length,
+    rereadCanDiffer: rereadCanDiffer(settings.tts.provider),
   }
 }
 

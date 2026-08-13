@@ -165,9 +165,111 @@ export function splitSentences(text: string): string[] {
  */
 export function splitParagraphs(contentMd: string): string[] {
   return contentMd
-    .split(/\r?\n\s*\r?\n/)
+    .split(PARAGRAPH_BREAK)
     .map((paragraph) => paragraph.replace(/\s*\r?\n\s*/g, ' ').trim())
     .filter((paragraph) => paragraph.length > 0)
+}
+
+// ---------------------------------------------------------------------------
+// Narration markup
+// ---------------------------------------------------------------------------
+
+/**
+ * The pause tags Chirp 3 HD understands, written into the script itself.
+ *
+ * Google's Chirp 3 HD input has a `markup` field alongside `text`, carrying
+ * `[pause]`, `[pause short]` and `[pause long]`. They are *intent* rather than
+ * duration — the model fits the length to the sentence around it, and may
+ * occasionally ignore one — which is why they are offered as three named
+ * strengths instead of a millisecond box that would promise precision the
+ * vendor does not give.
+ *
+ * They live in `chapters.contentMd` because the pause is a property of how the
+ * line is written, and because a re-read has to be able to reproduce it. That
+ * makes them the one thing in the script that is *not* words, so everything
+ * downstream of narration — captions, alignment, Shorts segments, metadata —
+ * must read the script through `stripNarrationMarkup`. A caption that says
+ * "[pause long]" would be this decision's failure mode.
+ */
+export const PAUSE_TAGS = ['[pause short]', '[pause]', '[pause long]'] as const
+export type PauseTag = (typeof PAUSE_TAGS)[number]
+
+const PAUSE_MARKUP = /\[pause(?:\s+(?:short|long))?\]/gi
+
+/** Whether a paragraph carries anything the plain `text` input would mangle. */
+export function hasPauseMarkup(text: string): boolean {
+  PAUSE_MARKUP.lastIndex = 0
+  return PAUSE_MARKUP.test(text)
+}
+
+/**
+ * The words alone, for everything that is not the synthesiser.
+ *
+ * Collapses the whitespace a removed tag leaves behind, and tidies the space
+ * before punctuation, so `there [pause] , and` does not become `there  , and`
+ * in a caption.
+ */
+export function stripNarrationMarkup(text: string): string {
+  return text
+    .replace(PAUSE_MARKUP, ' ')
+    .replace(/\s+([,.;:!?])/g, '$1')
+    .replace(/[^\S\r\n]{2,}/g, ' ')
+    .replace(/[^\S\r\n]+$/gm, '')
+    .trim()
+}
+
+/** Blank lines, and nothing else — the separator `splitParagraphs` splits on. */
+const PARAGRAPH_BREAK = /\r?\n\s*\r?\n/
+/** The same rule, capturing, so a chapter can be put back together unchanged. */
+const PARAGRAPH_BREAK_KEEPING_SEPARATORS = /(\r?\n\s*\r?\n)/
+
+/**
+ * Rewrite one paragraph of a chapter, leaving every other byte alone.
+ *
+ * The obvious implementation — `splitParagraphs`, replace, `join('\n\n')` — is
+ * wrong, and quietly. `splitParagraphs` normalises: it folds soft wraps into
+ * spaces and trims. Rejoining its output would rewrite the entire chapter to
+ * that normal form, so a one-word fix to paragraph 4 would arrive in the edit
+ * trail as a diff touching every line, and the human reviewing it could not see
+ * what actually changed. So the raw blocks are kept and only one is swapped.
+ *
+ * **Returns `undefined` rather than the original when the index is out of
+ * range**, because the caller is about to spend money narrating whatever comes
+ * back, and "nothing changed" and "I could not find it" must not look alike.
+ *
+ * A replacement containing a blank line is refused for the same reason spec §7
+ * calls paragraph indexes stable: it would split one paragraph into two, shift
+ * every index after it in the chapter, and orphan the takes addressed by them.
+ * Splitting a paragraph is a script edit, not a re-read.
+ */
+export function replaceParagraph(
+  contentMd: string,
+  index: number,
+  replacement: string,
+): string | undefined {
+  if (index < 0 || !Number.isInteger(index)) return undefined
+  if (replacement.trim() === '') return undefined
+  if (PARAGRAPH_BREAK.test(replacement)) return undefined
+
+  const parts = contentMd.split(PARAGRAPH_BREAK_KEEPING_SEPARATORS)
+  let seen = -1
+
+  // Even positions hold blocks, odd positions the separators between them.
+  for (let i = 0; i < parts.length; i += 2) {
+    const block = parts[i] ?? ''
+    if (block.trim() === '') continue
+
+    seen += 1
+    if (seen !== index) continue
+
+    // Keep the block's own surrounding whitespace: in markdown it may be
+    // meaningful indentation, and it is never what the edit was about.
+    const [, lead = '', , trail = ''] = /^(\s*)([\s\S]*?)(\s*)$/.exec(block) ?? []
+    parts[i] = `${lead}${replacement.trim()}${trail}`
+    return parts.join('')
+  }
+
+  return undefined
 }
 
 /**
@@ -180,7 +282,7 @@ export function splitParagraphs(contentMd: string): string[] {
  * the sentence should be re-checked.
  */
 export function sentenceHash(sentence: string): string {
-  const normalised = sentence
+  const normalised = stripNarrationMarkup(sentence)
     .toLowerCase()
     .replace(/[‘’]/g, "'")
     .replace(/[“”]/g, '"')
@@ -195,7 +297,11 @@ export function sentenceHash(sentence: string): string {
 export const NARRATION_WPM = 150
 
 export function countWords(text: string): number {
-  return text.trim() === '' ? 0 : text.trim().split(/\s+/).length
+  // Markup is not words. A paragraph with three pause tags in it is not eleven
+  // words longer, and every runtime estimate and chapter-length warning in the
+  // app is built on this number.
+  const words = stripNarrationMarkup(text)
+  return words === '' ? 0 : words.split(/\s+/).length
 }
 
 export function estimateRuntimeSec(text: string): number {

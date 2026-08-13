@@ -96,6 +96,8 @@ export const geminiTts: TTSProvider = {
   id: 'gemini',
   pricePerKChar: 0.015,
   sampleRate: NARRATION_SAMPLE_RATE,
+  // An LLM taking a written style prompt: it samples, so it varies.
+  rereadCanDiffer: true,
 
   async synthesise(request: TTSRequest, options: TTSCallOptions): Promise<TTSResult> {
     const doFetch = options.fetchImpl ?? fetch

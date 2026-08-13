@@ -404,8 +404,10 @@ function ChosenVoice({ settings, saving, commit }: TabProps) {
         ) : (
           <p className="text-[12px] text-[var(--color-text-muted)]">
             This narrator takes no written direction — Cloud Text-to-Speech is a speech service
-            rather than a language model. What shapes the delivery is the voice you picked, the
-            pacing below, and the punctuation in the script itself.
+            rather than a language model, so there is no prose to steer it with. Delivery is shaped
+            by the voice, the pacing below, the punctuation in the script, and{' '}
+            <span className="font-mono">[pause]</span> markup written into a paragraph — which is
+            what the Voice review screen inserts when you fix the words of a take.
           </p>
         )}
 
@@ -414,7 +416,7 @@ function ChosenVoice({ settings, saving, commit }: TabProps) {
           <input
             id="pacing"
             type="range"
-            min={0.5}
+            min={0.25}
             max={2}
             step={0.05}
             defaultValue={settings.tts.pacing}

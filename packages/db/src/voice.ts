@@ -134,7 +134,11 @@ export interface ClaimTakeInput {
   provider: TtsProvider
   voiceId: string
   builtFromScriptVersion: number
-  /** A retake asks for the next number; the runner always asks for 1. */
+  /**
+   * Force a specific take number. Almost nothing should: leaving it out asks
+   * for "the next one for this paragraph", which is what both the runner and a
+   * retake actually want.
+   */
   takeNumber?: number
   note?: string
 }
@@ -155,10 +159,64 @@ export type ClaimTakeResult =
  * treated as existing audio: the caller re-synthesises into it. A run that died
  * between claiming and storing must be resumable, and the alternative is a
  * paragraph that is silent forever with a row saying otherwise.
+ *
+ * **"Already bought" is a question about the paragraph, not about a take
+ * number.** It used to be answered by looking for `(idempotencyKey, takeNumber)`
+ * with the runner always asking for take 1, which is right only while a
+ * paragraph has exactly one take. As soon as it has two — a retake, or a re-read
+ * after the words were fixed — the good audio is at take 2 under a key derived
+ * from the new text, and the next stage re-run asks for take 1 of that key,
+ * finds nothing, and buys words it is already holding. So the question asked
+ * here is the one the caller means: *is the current take of this paragraph
+ * already this text in this voice?*
  */
 export async function claimTake(db: Database, input: ClaimTakeInput): Promise<ClaimTakeResult> {
-  const takeNumber = input.takeNumber ?? 1
+  // The paragraph's current take, whatever number it wears.
+  const [current] = await db
+    .select()
+    .from(voiceTakes)
+    .where(
+      and(
+        eq(voiceTakes.chapterId, input.chapterId),
+        eq(voiceTakes.paragraphIndex, input.paragraphIndex),
+      ),
+    )
+    .orderBy(desc(voiceTakes.takeNumber))
+    .limit(1)
 
+  /** The current take is *this* claim: same words, same narrator. */
+  const isSameClaim =
+    current !== undefined &&
+    current.idempotencyKey === input.idempotencyKey &&
+    current.voiceId === input.voiceId
+
+  /**
+   * Handed back only when it is the same words in the same voice *and* it holds
+   * audio. A take of superseded text is not this paragraph's narration however
+   * recently it was made, and a `pending` row is not audio at all.
+   *
+   * Skipped when the caller named a take number, because naming one is how a
+   * deliberate second attempt at *identical* input is asked for — the "try
+   * again" a human presses on a provider whose output varies between calls.
+   * Nothing else should name one.
+   */
+  if (input.takeNumber === undefined && isSameClaim && current.r2Key !== null) {
+    return { kind: 'existing', take: current }
+  }
+
+  const takeNumber =
+    input.takeNumber ??
+    (current === undefined
+      ? 1
+      : isSameClaim && current.r2Key === null
+        ? // The row this same claim already reserved and never filled: resume
+          // it in place rather than leaving an orphan behind and taking a new
+          // number, which is what makes a died-mid-run stage re-runnable.
+          current.takeNumber
+        : current.takeNumber + 1)
+
+  // The row this exact claim may already have reserved — an Inngest step
+  // retried while its first attempt was in flight lands here.
   const [existing] = await db
     .select()
     .from(voiceTakes)

@@ -7,7 +7,12 @@ import {
   storeTakeAudio,
   takeWithParagraph,
 } from '@boom-busters/db'
-import { BudgetExceededError, parseEventData, serialiseError } from '@boom-busters/schemas'
+import {
+  BudgetExceededError,
+  parseEventData,
+  serialiseError,
+  takeIdempotencyKey,
+} from '@boom-busters/schemas'
 import { NonRetriableError } from 'inngest'
 import { db } from '@/lib/db'
 import { putObject, takeStorage, voiceTakeKey } from '@/lib/storage'
@@ -89,17 +94,37 @@ export const voiceRetaker = inngest.createFunction(
 
       const { scriptVersion } = await latestScriptParagraphSources(db, projectId)
 
+      /**
+       * The key is computed from the text *as it stands now*, not copied off
+       * the take being replaced.
+       *
+       * Those are the same string for a plain retake and different ones after a
+       * re-read, and the difference matters: copying the old key would file
+       * audio of the new words under a hash of the old ones, and the next stage
+       * re-run would compute the real key, find nothing, and buy the paragraph
+       * again. `claimTake` recognises a paragraph by its current take's key, so
+       * getting this right is what makes a re-read free to re-run over.
+       */
+      const idempotencyKey = takeIdempotencyKey({
+        projectId,
+        chapterId: take.chapterId,
+        paragraphIndex: take.paragraphIndex,
+        text,
+        voiceId: settings.tts.voiceId,
+      })
+
       const claimed = await claimTake(db, {
         projectId,
         chapterId: take.chapterId,
         paragraphIndex: take.paragraphIndex,
-        // The same paragraph key: this is another take *of the same paragraph*,
-        // which is exactly what the take number distinguishes.
-        idempotencyKey: take.idempotencyKey,
+        idempotencyKey,
         provider: settings.tts.provider,
         voiceId: settings.tts.voiceId,
         builtFromScriptVersion: scriptVersion,
-        takeNumber: take.takeNumber + 1,
+        // Named on purpose: an unchanged key would otherwise be handed back its
+        // own audio, and a deliberate second attempt is the one case where
+        // buying the same input again is the point.
+        ...(idempotencyKey === take.idempotencyKey ? { takeNumber: take.takeNumber + 1 } : {}),
         note,
       })
 
@@ -112,7 +137,7 @@ export const voiceRetaker = inngest.createFunction(
       try {
         const narration = await synthesise({
           text,
-          idempotencyKey: `${take.idempotencyKey}#${claimed.take.takeNumber}`,
+          idempotencyKey: `${idempotencyKey}#${claimed.take.takeNumber}`,
           projectId,
         })
 

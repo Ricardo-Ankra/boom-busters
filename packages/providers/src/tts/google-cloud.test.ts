@@ -195,14 +195,52 @@ describe('google cloud tts adapter', () => {
     })
   })
 
-  it('sends plain text, never SSML, because Chirp does not accept it', async () => {
+  it('sends an ordinary paragraph as plain text, not SSML and not markup', async () => {
     const { fetchImpl, seen } = capture(AUDIO)
     await googleCloudTts.synthesise(request, { apiKey: 'k', fetchImpl })
 
     const body = JSON.parse(String(seen.init?.body)) as { input: Record<string, unknown> }
     expect(body.input).toHaveProperty('text')
+    expect(body.input).not.toHaveProperty('markup')
+    // SSML is offered on Chirp 3 HD at Preview and deliberately not used: the
+    // markup and customPronunciations fields cover narration without it.
     expect(body.input).not.toHaveProperty('ssml')
     expect(String(body.input['text'])).not.toContain('<phoneme')
+  })
+
+  /**
+   * The pause control, and the reason it is worth routing two ways.
+   *
+   * `[pause]`, `[pause short]` and `[pause long]` are only read from the
+   * `markup` input; sent as `text` they would be narrated aloud as the words
+   * "pause long", which is the worst available failure — audible, wrong, and
+   * bought.
+   */
+  it('sends a paragraph carrying pause markup through the markup field', async () => {
+    const { fetchImpl, seen } = capture(AUDIO)
+    await googleCloudTts.synthesise(
+      { ...request, text: 'It signed off for years. [pause long] Nobody asked.' },
+      { apiKey: 'k', fetchImpl },
+    )
+
+    const body = JSON.parse(String(seen.init?.body)) as { input: Record<string, unknown> }
+    expect(body.input).toHaveProperty('markup')
+    expect(body.input).not.toHaveProperty('text')
+    expect(String(body.input['markup'])).toContain('[pause long]')
+  })
+
+  it('still carries pronunciations alongside markup', async () => {
+    const { fetchImpl, seen } = capture(AUDIO)
+    await googleCloudTts.synthesise(
+      { ...request, text: `${request.text} [pause] And again.` },
+      { apiKey: 'k', fetchImpl },
+    )
+
+    const body = JSON.parse(String(seen.init?.body)) as {
+      input: { markup?: string; customPronunciations?: { pronunciations: unknown[] } }
+    }
+    expect(body.input.markup).toBeDefined()
+    expect(body.input.customPronunciations?.pronunciations).toHaveLength(1)
   })
 
   it('carries IPA hints in customPronunciations', async () => {

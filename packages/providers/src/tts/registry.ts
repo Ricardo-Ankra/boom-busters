@@ -40,6 +40,21 @@ export function ttsAdapter(
 }
 
 /**
+ * Whether asking this narrator to read the same words again can produce a
+ * different performance — the fact behind offering "try again" or not.
+ *
+ * Resolved through `ttsAdapters` rather than the live table, so that in mock
+ * mode the answer is the mock's: it seeds on the take number and genuinely does
+ * vary, which is what lets an E2E prove the A/B toggle compares two things.
+ */
+export function rereadCanDiffer(
+  provider: TtsProvider,
+  env: Record<string, string | undefined> = process.env,
+): boolean {
+  return ttsAdapter(provider, env).rereadCanDiffer
+}
+
+/**
  * USD per 1,000 characters, by provider — the table `packages/cost` derives its
  * TTS prices from.
  *

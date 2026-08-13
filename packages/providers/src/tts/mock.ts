@@ -136,6 +136,9 @@ export function createMockTTS(script: MockTTSScript = {}, id: TtsProvider = 'gem
     // pass by accident, and the guard is the thing those tests exist for.
     pricePerKChar: 0.015,
     sampleRate: NARRATION_SAMPLE_RATE,
+    // Seeded on the take number, so a retake is audibly different — which is
+    // what lets an E2E prove the A/B toggle is comparing two things.
+    rereadCanDiffer: true,
     calls,
 
     reset() {

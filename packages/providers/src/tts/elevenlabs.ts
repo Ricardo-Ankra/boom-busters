@@ -68,6 +68,8 @@ export const elevenlabsTts: TTSProvider = {
   id: 'elevenlabs',
   pricePerKChar: 0.18,
   sampleRate: NARRATION_SAMPLE_RATE,
+  // `stability: 0.38` with no seed — a second read is a genuine second take.
+  rereadCanDiffer: true,
 
   async synthesise(request: TTSRequest, options: TTSCallOptions): Promise<TTSResult> {
     const doFetch = options.fetchImpl ?? fetch

@@ -7,6 +7,10 @@ import {
   countWords,
   estimateRuntimeSec,
   sentenceHash,
+  hasPauseMarkup,
+  replaceParagraph,
+  stripNarrationMarkup,
+  splitParagraphs,
   splitSentences,
 } from './script'
 
@@ -169,5 +173,117 @@ describe('SelfCheckSchema', () => {
         refs: [],
       }).success,
     ).toBe(false)
+  })
+})
+
+describe('splitParagraphs and replaceParagraph', () => {
+  // A chapter with the two things that break naive rejoining: a soft wrap
+  // inside a paragraph, and an irregular blank-line separator.
+  const chapter = 'The auditors signed it off\nfor eighteen years.\n\n  Nobody asked where the cash was.\n\nThen June came.'
+
+  it('folds soft wraps into the paragraph, so narration does not pause at them', () => {
+    expect(splitParagraphs(chapter)).toEqual([
+      'The auditors signed it off for eighteen years.',
+      'Nobody asked where the cash was.',
+      'Then June came.',
+    ])
+  })
+
+  it('changes only the paragraph asked for, byte for byte elsewhere', () => {
+    const edited = replaceParagraph(chapter, 2, 'Then, in June, it came.')
+
+    expect(edited).toBe(
+      'The auditors signed it off\nfor eighteen years.\n\n  Nobody asked where the cash was.\n\nThen, in June, it came.',
+    )
+    // The point of the exercise: the untouched paragraphs still hold their own
+    // line breaks, so the edit trail shows a one-line diff and not a rewrite.
+    expect(edited).toContain('signed it off\nfor eighteen years.')
+  })
+
+  it('keeps a block indentation that was never what the edit was about', () => {
+    expect(replaceParagraph(chapter, 1, 'Nobody asked.')).toContain('\n\n  Nobody asked.\n\n')
+  })
+
+  it('counts paragraphs the way splitParagraphs does, ignoring blank blocks', () => {
+    const padded = 'One.\n\n\n\nTwo.\n\n   \n\nThree.'
+    expect(splitParagraphs(padded)).toEqual(['One.', 'Two.', 'Three.'])
+    expect(replaceParagraph(padded, 2, 'Third.')).toContain('Third.')
+  })
+
+  it('refuses a replacement that would split one paragraph into two', () => {
+    // It would shift every index after it and orphan the takes addressed by
+    // them (spec section 7: paragraph indexes are stable thereafter).
+    expect(replaceParagraph(chapter, 0, 'First half.\n\nSecond half.')).toBeUndefined()
+  })
+
+  it('refuses an index that is not there, rather than returning the original', () => {
+    // The caller is about to pay to narrate whatever comes back, so "nothing
+    // changed" and "I could not find it" must not look alike.
+    expect(replaceParagraph(chapter, 9, 'Nope.')).toBeUndefined()
+    expect(replaceParagraph(chapter, -1, 'Nope.')).toBeUndefined()
+  })
+
+  it('refuses an empty replacement', () => {
+    expect(replaceParagraph(chapter, 0, '   ')).toBeUndefined()
+  })
+})
+
+describe('narration markup', () => {
+  it('recognises the three pause strengths, however they are spaced or cased', () => {
+    expect(hasPauseMarkup('Let me look, [pause long] yes.')).toBe(true)
+    expect(hasPauseMarkup('Wait. [pause] Then it fell.')).toBe(true)
+    expect(hasPauseMarkup('Wait. [Pause  Short] Then.')).toBe(true)
+    expect(hasPauseMarkup('Nothing to see here.')).toBe(false)
+  })
+
+  /**
+   * A regex with the `g` flag carries `lastIndex` between calls, so the second
+   * of two identical questions can answer `false`. Worth a test because the
+   * consequence is a paragraph silently synthesised through the wrong input
+   * field, and it would only show up on every other take.
+   */
+  it('answers the same question the same way twice', () => {
+    const text = 'Wait. [pause] Then it fell.'
+    expect(hasPauseMarkup(text)).toBe(true)
+    expect(hasPauseMarkup(text)).toBe(true)
+  })
+
+  it('gives the words alone to everything that is not the synthesiser', () => {
+    // A caption reading "[pause long]" is this decision's failure mode.
+    expect(stripNarrationMarkup('Let me look, [pause long] yes, I see it.')).toBe(
+      'Let me look, yes, I see it.',
+    )
+  })
+
+  it('does not leave a space stranded before punctuation', () => {
+    expect(stripNarrationMarkup('It fell [pause] , hard.')).toBe('It fell, hard.')
+  })
+
+  it('leaves paragraph structure alone, so stripping does not merge paragraphs', () => {
+    expect(stripNarrationMarkup('One. [pause]\n\nTwo.')).toBe('One.\n\nTwo.')
+  })
+
+  it('leaves text with no markup exactly as it was', () => {
+    expect(stripNarrationMarkup('The auditors signed it off.')).toBe(
+      'The auditors signed it off.',
+    )
+  })
+})
+
+describe('markup is not words', () => {
+  it('does not inflate a word count, and so does not inflate a runtime', () => {
+    // Every chapter-length warning and runtime estimate is built on this.
+    expect(countWords('One two three. [pause long] Four five.')).toBe(5)
+    expect(estimateRuntimeSec('One two three. [pause long] Four five.')).toBe(
+      estimateRuntimeSec('One two three. Four five.'),
+    )
+  })
+
+  it('does not orphan a claim when a pause is added to its sentence', () => {
+    // `claim_refs.sentenceHash` pins a claim to a sentence. Inserting a pause
+    // changes how it is *read*, not what it asserts, so the claim must survive.
+    expect(sentenceHash('The auditors signed it off. [pause] Nobody asked.')).toBe(
+      sentenceHash('The auditors signed it off. Nobody asked.'),
+    )
   })
 })

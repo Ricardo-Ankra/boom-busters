@@ -184,6 +184,65 @@ suite('voice takes', () => {
       const first = await claim()
       await expect(unflagTake(db, first.take.id)).rejects.toThrow('not flagged')
     })
+
+    /**
+     * The double-spend that made re-reading a paragraph unsafe to offer.
+     *
+     * Fix the words of paragraph 0 and re-read them, and the good audio is at
+     * take 2 under a key derived from the new text. The next stage re-run
+     * computes that same key from that same text — and used to ask for *take 1*
+     * of it, find nothing, and buy words it was already holding. Every stage
+     * re-run after any retake paid for the retaken paragraph again.
+     */
+    it('recognises the current take by its words, not by its take number', async () => {
+      await storeTakeAudio(db, (await claim()).take.id, audio)
+
+      const reread = await claim(0, 'One paragraph, with a pause.')
+      expect(reread.take.takeNumber).toBe(2)
+      await storeTakeAudio(db, reread.take.id, { ...audio, r2Key: 'take-2.wav' })
+
+      // What the runner does on the next pass over an unchanged script.
+      const rerun = await claim(0, 'One paragraph, with a pause.')
+
+      expect(rerun.kind).toBe('existing')
+      expect(rerun.take.id).toBe(reread.take.id)
+      expect(await listVoiceTakes(db, projectId)).toHaveLength(2)
+    })
+
+    it('takes the next number without being told which, so callers cannot collide', async () => {
+      await storeTakeAudio(db, (await claim()).take.id, audio)
+      await storeTakeAudio(db, (await claim(0, 'Second wording.')).take.id, audio)
+
+      expect((await claim(0, 'Third wording.')).take.takeNumber).toBe(3)
+    })
+
+    /**
+     * Superseded text is not this paragraph's narration however recently it was
+     * read, so the newest take being the wrong words must not read as "bought".
+     */
+    it('does not hand back the current take when the words have moved on', async () => {
+      await storeTakeAudio(db, (await claim()).take.id, audio)
+      await storeTakeAudio(db, (await claim(0, 'Edited once.')).take.id, audio)
+
+      expect((await claim(0, 'One paragraph.')).kind).toBe('claimed')
+    })
+
+    it('does not hand back a take read in a different voice', async () => {
+      await storeTakeAudio(db, (await claim()).take.id, audio)
+
+      const other = await claimTake(db, {
+        projectId,
+        chapterId,
+        paragraphIndex: 0,
+        idempotencyKey: key(),
+        provider: 'gemini',
+        voiceId: 'Puck',
+        builtFromScriptVersion: 1,
+      })
+
+      expect(other.kind).toBe('claimed')
+      expect(other.take.takeNumber).toBe(2)
+    })
   })
 
   describe('approving at the gate', () => {

@@ -29,7 +29,7 @@ export interface TTSRequest {
   phonemeHints: readonly PhonemeHint[]
   /** `hash(projectId, chapterId, paragraphIndex, textHash, voiceId)`. */
   idempotencyKey: string
-  /** `settings.tts.pacing`, 0.5–2. Adapters without a speed control ignore it. */
+  /** `settings.tts.pacing`, 0.25–2. Adapters without a speed control ignore it. */
   pacing?: number
 }
 
@@ -93,6 +93,25 @@ export interface TTSProvider {
    * the duration arithmetic honest.
    */
   readonly sampleRate: number
+  /**
+   * Whether reading the same text again can produce a different performance.
+   *
+   * A property of the vendor, so it belongs beside its price rather than being
+   * guessed at by the UI. It decides whether "try again" is a button worth
+   * offering: on a provider that cannot vary, pressing it buys audio identical
+   * to what was just rejected, and the honest screen is one that says so and
+   * points at the words instead.
+   *
+   * True for ElevenLabs, which samples at `stability: 0.38` with no seed, and
+   * for Gemini, which is an LLM taking a written style prompt. False for Cloud
+   * Text-to-Speech, which exposes no sampling control — no temperature, no
+   * seed, no style field — so the same request returns the same reading.
+   *
+   * Not the same as "cannot be directed". Chirp 3 HD takes pause markup and
+   * custom pronunciations and responds to punctuation; all of those change the
+   * *input*, which is why they belong to the re-read and not to this flag.
+   */
+  readonly rereadCanDiffer: boolean
   synthesise(request: TTSRequest, options: TTSCallOptions): Promise<TTSResult>
   /**
    * The voices on offer. Gemini's list is static and ships with the adapter;

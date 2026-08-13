@@ -1,4 +1,4 @@
-import { ValidationError } from '@boom-busters/schemas'
+import { hasPauseMarkup, ValidationError } from '@boom-busters/schemas'
 import type { PhonemeHint } from '@boom-busters/schemas'
 import { mapNetworkError, throwForResponse } from '../llm/http'
 import { NARRATION_SAMPLE_RATE, pcmDurationMs } from './audio'
@@ -98,12 +98,14 @@ export function stripWavHeader(buffer: Buffer): Buffer {
 /**
  * Pronunciation, as Chirp 3 HD actually takes it.
  *
- * **Not SSML.** The Chirp families accept plain text only — the `<phoneme>` tag
- * that the older WaveNet and Neural2 voices support is not available on them,
- * which is worth stating plainly because SSML was part of the reason this
- * provider was chosen. What Chirp 3 HD does take is `customPronunciations`, a
- * structured field on the request carrying a phrase and its IPA or X-SAMPA
- * form, and that is what an IPA hint becomes here.
+ * Through `customPronunciations`, a structured field on the request carrying a
+ * phrase and its phonetic form — not through SSML's `<phoneme>`.
+ *
+ * Google's Chirp 3 HD page does list SSML as supported, at Preview. It is not
+ * used here: `customPronunciations` and the `markup` pause field cover what
+ * narration needs and are documented for this voice family without a preview
+ * caveat, and a preview surface is exactly what moved under this project once
+ * already this week.
  *
  * A hint written as a plain respelling ("VEER-card") is not a phonetic alphabet
  * and cannot go in that field, so it is substituted into the text instead —
@@ -112,12 +114,18 @@ export function stripWavHeader(buffer: Buffer): Buffer {
 export interface CustomPronunciation {
   phrase: string
   /**
-   * X-SAMPA, never IPA.
+   * X-SAMPA, never IPA — and this one is an open conflict, recorded rather than
+   * resolved.
    *
-   * Cloud TTS rejects `PHONETIC_ENCODING_IPA` outright — verified against a
-   * live key on every voice family, every phrase and every symbol set tried,
-   * while the identical pronunciation as X-SAMPA was accepted. The hints stay
-   * IPA where a human writes them; the conversion happens here.
+   * Google's documentation lists `PHONETIC_ENCODING_IPA` and
+   * `PHONETIC_ENCODING_X_SAMPA` as equally supported. Against a live key on
+   * 2026-08-13, every IPA pronunciation was refused on every voice family and
+   * every phrase tried, while the identical pronunciation as X-SAMPA was
+   * accepted. One of those is wrong and it has not been settled.
+   *
+   * X-SAMPA is used because it is the one that has been observed to work.
+   * The hints stay IPA where a human writes them, since that is what a
+   * dictionary prints; the conversion happens here.
    */
   phoneticEncoding: 'PHONETIC_ENCODING_X_SAMPA'
   pronunciation: string
@@ -187,6 +195,10 @@ export const googleCloudTts: TTSProvider = {
   // Chirp 3 HD is billed per character at the top voice tier. PROVISIONAL.
   pricePerKChar: 0.03,
   sampleRate: NARRATION_SAMPLE_RATE,
+  // No temperature, seed or style field: reading the same input again returns
+  // the same performance. Changing the input — punctuation, pause markup, a
+  // pronunciation — is what changes the reading.
+  rereadCanDiffer: false,
 
   async synthesise(request: TTSRequest, options: TTSCallOptions): Promise<TTSResult> {
     const doFetch = options.fetchImpl ?? fetch
@@ -198,9 +210,21 @@ export const googleCloudTts: TTSProvider = {
           method: 'POST',
           headers: { 'content-type': 'application/json', 'x-goog-api-key': options.apiKey },
           body: JSON.stringify({
+            /**
+             * `markup` when the paragraph asks for a pause, `text` otherwise.
+             *
+             * Chirp 3 HD has a markup input carrying `[pause]`, `[pause short]`
+             * and `[pause long]` — a purpose-built pause control, and the
+             * answer to the most common complaint about a take. Google's own
+             * note is worth passing on: the model treats them as intent rather
+             * than duration, adjusting to context, and may occasionally
+             * disregard one.
+             *
+             * Only when there is a tag to carry, so an ordinary paragraph takes
+             * the plainest input the API offers and cannot be mis-parsed by it.
+             */
             input: {
-              // Plain text, never SSML: the Chirp families do not accept it.
-              text,
+              ...(hasPauseMarkup(text) ? { markup: text } : { text }),
               ...(pronunciations.length > 0 ? { customPronunciations: { pronunciations } } : {}),
             },
             voice: {
