@@ -6,13 +6,11 @@ import {
   listAuditions,
   saveAudition,
   ttsCredential,
-  updateSettings,
 } from '@boom-busters/db'
 import { STATIC_VOICES, ttsAdapter } from '@boom-busters/providers'
 import type { KnownVoice } from '@boom-busters/providers'
 import { TTS_PROVIDERS, TtsProviderSchema, ttsProviderFromCredential } from '@boom-busters/schemas'
 import type { Provider, TtsProvider } from '@boom-busters/schemas'
-import { revalidatePath } from 'next/cache'
 import { auth } from '@/auth'
 import { db } from '@/lib/db'
 import { env } from '@/lib/env'
@@ -215,33 +213,19 @@ export async function generateAuditions(
 }
 
 /**
- * Adopt a voice. One press, and the previously chosen one stops being chosen —
- * there is exactly one narrator, so choosing is the whole interaction.
+ * Adopting a voice is **not** here. It is a settings write like any other, so
+ * `Add voice` goes through `saveSettings` and the panel's optimistic `commit`
+ * along with pacing, the model routing and the budgets. A dedicated action was
+ * tried and removed: it could only push the new value to the server, and the
+ * screen renders from client state, so the card kept showing the old narrator
+ * until the page was reloaded.
  *
- * **No lock, in either direction.** Spec §11.3 has choosing write *and lock*
- * the Brand Kit voice, with a typed `CHANGE VOICE` to undo it. Both halves are
- * gone. The lock protected a single-user console from its single user, on the
- * one screen built for comparing voices against each other, and every time it
- * fired it fired on the person it belonged to. What it was guarding — swapping
- * a brand asset by accident — is already guarded by the change being a
- * deliberate press on a settings screen.
+ * There is also **no lock, in either direction**. Spec §11.3 has choosing write
+ * *and lock* the Brand Kit voice, with a typed `CHANGE VOICE` to undo it. Both
+ * halves are gone: the lock protected a single-user console from its single
+ * user, on the one screen built for comparing voices against each other, and
+ * every time it fired it fired on the person it belonged to.
  */
-export async function chooseVoice(
-  provider: string,
-  voiceId: string,
-): Promise<{ ok: boolean; error?: string }> {
-  await requireOwner()
-
-  const parsed = TtsProviderSchema.safeParse(provider)
-  if (!parsed.success) return { ok: false, error: `Unknown TTS provider "${provider}"` }
-  if (voiceId.trim() === '') return { ok: false, error: 'Pick a voice.' }
-
-  await updateSettings(db, { tts: { provider: parsed.data, voiceId: voiceId.trim() } })
-
-  revalidatePath('/settings')
-  revalidatePath('/')
-  return { ok: true }
-}
 
 /**
  * Ask the vendor whether it will actually accept a pronunciation hint.

@@ -691,6 +691,25 @@ right, and the reasoning in 53 should have carried all the way.
 
     The grid went from four columns to three to give the two buttons room.
 
+59. **A settings write must go through `commit`, not through a server action and
+    `router.refresh()`.** `Add voice` shipped as its own action that wrote
+    `settings.tts` and refreshed — and the card did not change until the page
+    was reloaded. `SettingsForm` holds the settings in `useState`, seeded once
+    from `initialSettings`; refreshing re-renders the server component, which
+    hands down a new prop that the already-mounted state ignores. Every control
+    on the screen that *did* update instantly was going through the optimistic
+    `commit` from M1, and the voice was the one that had grown its own path.
+
+    `chooseVoice` is deleted. There is now one way to write a setting from this
+    screen, which is also the way that rolls back with a toast when the write is
+    refused.
+
+    Guarded by `voice-tab.test.tsx`, which renders `SettingsForm` rather than
+    `VoiceTab` — the fault was in who owns the state, so a panel tested in
+    isolation with a stub `commit` passes every assertion in that file while the
+    browser still shows the old narrator. Confirmed by reverting `add` to the
+    server-only write: three of the six fail.
+
 ### M4.2 — Google Cloud TTS (Chirp 3 HD) as the narrator (2026-08-13)
 
 Chosen by the human over Gemini TTS, and it is a deviation from spec §2 worth

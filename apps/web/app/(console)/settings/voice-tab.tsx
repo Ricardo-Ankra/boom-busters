@@ -4,7 +4,6 @@ import type { KnownVoice } from '@boom-busters/providers'
 import type { PhonemeHint, Settings, SettingsPatch, TtsProvider } from '@boom-busters/schemas'
 import { AlertTriangle, Check, Loader2, Play, Plus, Trash2 } from 'lucide-react'
 import * as React from 'react'
-import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input, Label } from '@/components/ui/input'
@@ -14,7 +13,6 @@ import { MAX_SAMPLE_CHARS } from '@/lib/audition'
 import {
   cachedAuditions,
   checkPronunciation,
-  chooseVoice,
   generateAuditions,
   listAuditionVoices,
 } from './voice-actions'
@@ -163,7 +161,7 @@ interface Heard {
   error?: string
 }
 
-function AuditionPanel({ settings }: { settings: Settings }) {
+function AuditionPanel({ settings, commit }: TabProps) {
   const [sample, setSample] = React.useState(DEFAULT_SAMPLE)
   const [catalogue, setCatalogue] = React.useState<
     { provider: TtsProvider; voices: KnownVoice[]; error?: string }[] | null
@@ -173,7 +171,6 @@ function AuditionPanel({ settings }: { settings: Settings }) {
   const [loading, setLoading] = React.useState<string | null>(null)
   const audio = React.useRef<HTMLAudioElement>(null)
   const { toast } = useToast()
-  const router = useRouter()
 
   React.useEffect(() => {
     void listAuditionVoices().then(setCatalogue)
@@ -209,15 +206,22 @@ function AuditionPanel({ settings }: { settings: Settings }) {
     void element.play().catch(() => undefined)
   }
 
-  /** Adding *is* the choice — one narrator, so the previous one simply stops. */
+  /**
+   * Adding *is* the choice — one narrator, so the previous one simply stops.
+   *
+   * Through the same optimistic `commit` every other control on this screen
+   * uses, and for a reason worth writing down: this was briefly its own server
+   * action that called `router.refresh()`, and the card did not change until the
+   * page was reloaded. `SettingsForm` holds the settings in `useState`, so a
+   * refreshed server component hands down a new prop that the already-mounted
+   * state ignores. `commit` updates that state, which is what the cards are
+   * actually rendered from — and it rolls back with a toast if the write fails.
+   */
   async function add(provider: TtsProvider, voice: KnownVoice): Promise<void> {
-    const result = await chooseVoice(provider, voice.id)
-    if (!result.ok) {
-      toast({ title: 'Could not add that voice', description: result.error, variant: 'error' })
-      return
-    }
-    toast({ title: `${voice.label} is the narrator`, description: 'Every script is read in it.' })
-    router.refresh()
+    const next = structuredClone(settings)
+    next.tts.provider = provider
+    next.tts.voiceId = voice.id
+    await commit({ tts: { provider, voiceId: voice.id } }, next)
   }
 
   /** Listening never changes the narrator, and never charges twice. */
@@ -598,7 +602,7 @@ function PhonemeHints({ settings, saving, commit }: TabProps) {
 export function VoiceTab({ settings, saving, commit }: TabProps) {
   return (
     <div className="flex flex-col gap-4">
-      <AuditionPanel settings={settings} />
+      <AuditionPanel settings={settings} saving={saving} commit={commit} />
       <ChosenVoice settings={settings} saving={saving} commit={commit} />
       <PhonemeHints settings={settings} saving={saving} commit={commit} />
     </div>
