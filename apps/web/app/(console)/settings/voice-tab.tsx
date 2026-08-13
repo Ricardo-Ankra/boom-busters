@@ -2,7 +2,7 @@
 
 import type { KnownVoice } from '@boom-busters/providers'
 import type { PhonemeHint, Settings, SettingsPatch, TtsProvider } from '@boom-busters/schemas'
-import { AlertTriangle, Check, Loader2, Lock, LockOpen, Play, Plus, Trash2 } from 'lucide-react'
+import { AlertTriangle, Check, Loader2, Play, Plus, Trash2 } from 'lucide-react'
 import * as React from 'react'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
@@ -17,8 +17,6 @@ import {
   chooseVoice,
   generateAuditions,
   listAuditionVoices,
-  lockVoice,
-  unlockVoice,
 } from './voice-actions'
 
 /**
@@ -29,10 +27,8 @@ import {
  * properties of the voice rather than of any one video, which is why neither is
  * a per-project setting.
  *
- * The lock is the spec's (§10): the narration voice is a brand asset, and
- * swapping it halfway through a channel makes every earlier video sound like a
- * different show. Unlocking takes a typed confirmation, and the server action
- * re-checks it rather than trusting the button.
+ * There is no lock on the narrator any more — see `chooseVoice` for why the
+ * spec's §11.3 lock was built and then taken back out.
  */
 
 const DEFAULT_SAMPLE =
@@ -50,23 +46,27 @@ interface TabProps {
 // ---------------------------------------------------------------------------
 
 /**
- * The audition panel: press a voice, hear it, keep the one you leave selected.
+ * The audition panel. Each voice is a card with exactly two buttons on it:
+ * **Play**, which is the only thing that spends money, and **Add voice**, which
+ * makes it the narrator.
  *
- * It used to be a four-press affair — tick up to six voices, press "Generate N
- * auditions", press Play on each result, then press "Choose this voice". Four
- * presses to answer one question, and the question is *what does this sound
- * like*, which only listening answers. A press now synthesises, plays and
- * selects in one go, and **the selected voice is the narrator**: there is
- * nothing else to confirm.
+ * Splitting them is the whole design. Before, the card *was* the button, so
+ * listening and choosing were the same press — you could not hear a voice
+ * without adopting it, and adopting was tangled up with a lock that then
+ * refused the next press. Two labelled buttons, one per intention, and there is
+ * nothing to explain.
  *
- * Two things follow from a press spending money:
+ * Adding is a radio, not a checkbox: there is one narrator, so adding a voice
+ * drops the previous one with no separate un-choosing to do.
+ *
+ * Two things follow from Play spending money:
  *
  *  - **Each voice is bought once.** The audio is cached against the voice and
  *    the sample, so going back and forth between two candidates is free after
  *    the first pass of each. Editing the sample clears the cache, because it is
  *    then a different question.
  *  - **The price is on the button before you press it.** A voice you have not
- *    heard says what it will cost; one you have says "play again".
+ *    heard says what it will cost; one you have says "Play again".
  */
 
 /** Chirp 3 HD's per-character rate — shown where the spending happens (§11.1). */
@@ -82,68 +82,78 @@ const PROVIDER_LABELS: Record<TtsProvider, string> = {
 
 type VoiceState = 'idle' | 'loading' | 'ready' | 'failed'
 
-function VoiceButton({
+function VoiceCard({
   voice,
   provider,
   state,
   selected,
   costUsd,
-  onPress,
+  onPlay,
+  onAdd,
 }: {
   voice: KnownVoice
   provider: TtsProvider
   state: VoiceState
   selected: boolean
   costUsd: number
-  onPress: () => void
+  onPlay: () => void
+  onAdd: () => void
 }) {
   return (
-    <li>
-      <button
-        type="button"
-        onClick={onPress}
-        aria-pressed={selected}
-        disabled={state === 'loading'}
-        className={cn(
-          'flex min-h-[72px] w-full flex-col items-start gap-0.5 rounded-[8px] border px-3 py-2 text-left',
-          'transition-colors duration-150 focus-visible:outline-2 focus-visible:outline-offset-2',
-          'focus-visible:outline-[var(--color-accent)]',
-          selected
-            ? 'border-[var(--color-accent)] bg-[var(--color-surface-raised)]'
-            : 'border-[var(--color-border)] hover:bg-[var(--color-surface-raised)]',
+    <li
+      className={cn(
+        'flex flex-col gap-2 rounded-[8px] border p-2',
+        selected
+          ? 'border-[var(--color-accent)] bg-[var(--color-surface-raised)]'
+          : 'border-[var(--color-border)]',
+      )}
+    >
+      <div className="flex items-start gap-2">
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-[14px] font-medium">{voice.label}</p>
+          <p className="truncate text-[11px] text-[var(--color-text-muted)]">
+            {voice.description ?? provider}
+          </p>
+        </div>
+
+        {/* Top-right, one per card: the only control that changes the narrator.
+            Adding a second voice drops the first — there is nothing to untick,
+            so the chosen one carries a state chip rather than a dead button. */}
+        {selected ? (
+          <span className="inline-flex h-10 shrink-0 items-center gap-2 px-2 text-[13px] font-medium text-[var(--color-accent)]">
+            <Check className="size-4" aria-hidden />
+            Narrator
+          </span>
+        ) : (
+          <Button variant="outline" size="icon" onClick={onAdd}>
+            <Plus aria-hidden />
+            Add voice
+          </Button>
         )}
+      </div>
+
+      {/* The only button that spends. Its label says what it costs, before the
+          press, per §11.1. */}
+      <Button
+        variant="ghost"
+        size="icon"
+        className="w-full justify-start"
+        busy={state === 'loading'}
+        onClick={onPlay}
       >
-        <span className="flex w-full items-center gap-2">
-          {state === 'loading' ? (
-            <Loader2 className="size-4 shrink-0 animate-spin" aria-hidden />
-          ) : state === 'failed' ? (
-            <AlertTriangle className="size-4 shrink-0 text-[var(--color-danger)]" aria-hidden />
-          ) : (
-            <Play className="size-4 shrink-0" aria-hidden />
-          )}
-          <span className="min-w-0 flex-1 truncate text-[14px] font-medium">{voice.label}</span>
-          {selected ? (
-            <Check className="size-4 shrink-0 text-[var(--color-accent)]" aria-hidden />
-          ) : null}
+        {state === 'failed' ? (
+          <AlertTriangle className="text-[var(--color-danger)]" aria-hidden />
+        ) : (
+          <Play aria-hidden />
+        )}
+        <span className="truncate">
+          {state === 'failed'
+            ? 'Failed — try again'
+            : state === 'ready'
+              ? 'Play again'
+              : `Hear it · $${costUsd.toFixed(4)}`}
         </span>
-
-        <span className="w-full truncate text-[11px] text-[var(--color-text-muted)]">
-          {voice.description ?? provider}
-        </span>
-
-        {/* Never colour or icon alone: what a press will do, in words. */}
-        <span className="text-[11px] text-[var(--color-text-secondary)]">
-          {state === 'loading'
-            ? 'Synthesising…'
-            : state === 'failed'
-              ? 'Failed — press to try again'
-              : state === 'ready'
-                ? selected
-                  ? 'The narrator · play again'
-                  : 'Heard · play again'
-                : `Hear it · $${costUsd.toFixed(4)}`}
-        </span>
-      </button>
+      </Button>
     </li>
   )
 }
@@ -192,31 +202,31 @@ function AuditionPanel({ settings }: { settings: Settings }) {
   const selectedKey = keyOf(settings.tts.provider, settings.tts.voiceId)
   const cost = estimateAuditionUsd(sample)
 
-  function play(base64: string): void {
+  function sound(base64: string): void {
     const element = audio.current
     if (!element) return
     element.src = `data:audio/wav;base64,${base64}`
     void element.play().catch(() => undefined)
   }
 
-  /** Selection *is* the choice — there is no separate confirm step. */
-  async function select(provider: TtsProvider, voice: KnownVoice): Promise<void> {
+  /** Adding *is* the choice — one narrator, so the previous one simply stops. */
+  async function add(provider: TtsProvider, voice: KnownVoice): Promise<void> {
     const result = await chooseVoice(provider, voice.id)
     if (!result.ok) {
-      toast({ title: 'Could not choose that voice', description: result.error, variant: 'error' })
+      toast({ title: 'Could not add that voice', description: result.error, variant: 'error' })
       return
     }
+    toast({ title: `${voice.label} is the narrator`, description: 'Every script is read in it.' })
     router.refresh()
   }
 
-  async function press(provider: TtsProvider, voice: KnownVoice): Promise<void> {
+  /** Listening never changes the narrator, and never charges twice. */
+  async function play(provider: TtsProvider, voice: KnownVoice): Promise<void> {
     const id = keyOf(provider, voice.id)
 
-    // Already bought at this sample: replay it for nothing.
     const already = heard[id]
     if (already?.audio) {
-      play(already.audio)
-      if (id !== selectedKey && !settings.tts.locked) await select(provider, voice)
+      sound(already.audio)
       return
     }
 
@@ -242,10 +252,7 @@ function AuditionPanel({ settings }: { settings: Settings }) {
 
     const bought = audition.audio
     setHeard((current) => ({ ...current, [id]: { audio: bought } }))
-    play(bought)
-
-    // Listening while locked is fine; changing the narrator is not.
-    if (!settings.tts.locked) await select(provider, voice)
+    sound(bought)
   }
 
   return (
@@ -253,9 +260,9 @@ function AuditionPanel({ settings }: { settings: Settings }) {
       <CardHeader>
         <CardTitle>Voice audition</CardTitle>
         <CardDescription>
-          Press a voice to hear it read the sample. Whichever stays selected is the narrator — there
-          is nothing else to confirm. Each voice is synthesised once per sample, and charged against
-          the same monthly cap as the pipeline.
+          <strong>Play</strong> hears a voice read the sample; <strong>Add voice</strong> makes it
+          the narrator. Only Play spends anything — each voice is synthesised once per sample and
+          then replays for free, charged against the same monthly cap as the pipeline.
         </CardDescription>
       </CardHeader>
 
@@ -282,13 +289,6 @@ function AuditionPanel({ settings }: { settings: Settings }) {
           </p>
         </div>
 
-        {settings.tts.locked ? (
-          <p className="text-[13px] text-[var(--color-warning)]">
-            The narrator is locked, so pressing a voice will play it but not adopt it. Unlock it
-            above to change which voice reads the scripts.
-          </p>
-        ) : null}
-
         {catalogue === null ? (
           <p className="text-[13px] text-[var(--color-text-muted)]">Loading voices…</p>
         ) : (
@@ -300,7 +300,7 @@ function AuditionPanel({ settings }: { settings: Settings }) {
               ) : group.voices.length === 0 ? (
                 <p className="text-[12px] text-[var(--color-text-muted)]">No voices on offer.</p>
               ) : (
-                <ul className="grid gap-2 sm:grid-cols-3 lg:grid-cols-4">
+                <ul className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
                   {group.voices.map((voice) => {
                     const id = keyOf(group.provider, voice.id)
                     const entry = heard[id]
@@ -314,14 +314,15 @@ function AuditionPanel({ settings }: { settings: Settings }) {
                             : 'idle'
 
                     return (
-                      <VoiceButton
+                      <VoiceCard
                         key={voice.id}
                         voice={voice}
                         provider={group.provider}
                         selected={id === selectedKey}
                         costUsd={cost}
                         state={state}
-                        onPress={() => void press(group.provider, voice)}
+                        onPlay={() => void play(group.provider, voice)}
+                        onAdd={() => void add(group.provider, voice)}
                       />
                     )
                   })}
@@ -342,46 +343,13 @@ function AuditionPanel({ settings }: { settings: Settings }) {
 }
 
 // ---------------------------------------------------------------------------
-// The chosen voice, and its lock
+// The chosen voice
 // ---------------------------------------------------------------------------
 
 /** Providers that take a written style direction. Cloud TTS does not. */
 const STEERABLE_PROVIDERS: TtsProvider[] = ['gemini']
 
 function ChosenVoice({ settings, saving, commit }: TabProps) {
-  const [confirmation, setConfirmation] = React.useState('')
-  const [unlocking, setUnlocking] = React.useState(false)
-  const [locking, setLocking] = React.useState(false)
-  const { toast } = useToast()
-  const router = useRouter()
-
-  async function lock(): Promise<void> {
-    setLocking(true)
-    const result = await lockVoice()
-    setLocking(false)
-
-    if (!result.ok) {
-      toast({ title: 'Could not lock it', description: result.error, variant: 'error' })
-      return
-    }
-    toast({ title: 'Voice locked', description: 'Changing it now needs a typed confirmation.' })
-    router.refresh()
-  }
-
-  async function unlock(): Promise<void> {
-    setUnlocking(true)
-    const result = await unlockVoice(confirmation)
-    setUnlocking(false)
-
-    if (!result.ok) {
-      toast({ title: 'Still locked', description: result.error, variant: 'error' })
-      return
-    }
-    setConfirmation('')
-    toast({ title: 'Voice unlocked', description: 'Choose a different one below.' })
-    router.refresh()
-  }
-
   return (
     <Card>
       <CardHeader>
@@ -402,15 +370,6 @@ function ChosenVoice({ settings, saving, commit }: TabProps) {
             <>
               <span className="font-mono">{settings.tts.voiceId}</span> on{' '}
               <span className="font-mono">{settings.tts.provider}</span>
-              {settings.tts.locked ? (
-                <span className="ml-2 inline-flex items-center gap-1 text-[12px] text-[var(--color-text-secondary)]">
-                  <Lock className="size-3.5" aria-hidden /> locked
-                </span>
-              ) : (
-                <span className="ml-2 inline-flex items-center gap-1 text-[12px] text-[var(--color-warning)]">
-                  <LockOpen className="size-3.5" aria-hidden /> unlocked
-                </span>
-              )}
             </>
           )}
         </p>
@@ -467,52 +426,13 @@ function ChosenVoice({ settings, saving, commit }: TabProps) {
           />
         </div>
 
-        {!settings.tts.locked && settings.tts.voiceId !== '' ? (
-          <div className="flex flex-col gap-2 rounded-[8px] border border-[var(--color-border)] p-3">
-            <p className="text-[12px] text-[var(--color-text-muted)]">
-              Locking stops the narrator being changed by accident once the channel is producing.
-              Auditioning stays possible either way — a locked voice can still be listened to.
-            </p>
-            <div>
-              <Button variant="outline" onClick={() => void lock()} disabled={locking}>
-                {locking ? (
-                  <Loader2 className="size-4 animate-spin" aria-hidden />
-                ) : (
-                  <Lock className="size-4" aria-hidden />
-                )}
-                Lock this voice in
-              </Button>
-            </div>
-          </div>
-        ) : null}
-
-        {settings.tts.locked ? (
-          <div className="flex flex-col gap-2 rounded-[8px] border border-[var(--color-border)] p-3">
-            <Label htmlFor="unlock-voice">
-              Type <span className="font-mono">CHANGE VOICE</span> to unlock
-            </Label>
-            <div className="flex flex-wrap gap-2">
-              <Input
-                id="unlock-voice"
-                value={confirmation}
-                onChange={(event) => setConfirmation(event.target.value)}
-                className="max-w-[220px]"
-              />
-              <Button
-                variant="outline"
-                onClick={unlock}
-                disabled={unlocking || confirmation.trim() === ''}
-              >
-                <LockOpen className="size-4" aria-hidden />
-                Unlock the voice
-              </Button>
-            </div>
-            <p className="text-[12px] text-[var(--color-text-muted)]">
-              Changing the narrator makes every video made so far sound like a different channel.
-              Existing narration is not re-read.
-            </p>
-          </div>
-        ) : null}
+        {settings.tts.voiceId === '' ? null : (
+          <p className="text-[12px] text-[var(--color-text-muted)]">
+            Changing the narrator makes every video made so far sound like a different channel, so
+            it is worth doing once. Narration already recorded is not re-read — press{' '}
+            <strong>Add voice</strong> above and only new takes use the new voice.
+          </p>
+        )}
       </CardContent>
     </Card>
   )

@@ -215,19 +215,16 @@ export async function generateAuditions(
 }
 
 /**
- * Adopt a voice.
+ * Adopt a voice. One press, and the previously chosen one stops being chosen —
+ * there is exactly one narrator, so choosing is the whole interaction.
  *
- * **Choosing does not lock it**, which is a deliberate departure from spec
- * §11.3 ("choosing writes and locks the Brand Kit voice"). That flow assumes
- * you choose once and are done; auditioning is inherently comparative, so
- * locking on the first press turned the second press into "Could not choose
- * that voice — the narration voice is locked", with the unlock ritual sitting
- * in a different section. The first thing a new console does to you should not
- * be to trap you.
- *
- * The lock survives with its purpose intact — §10 wants a brand asset that
- * cannot be swapped by accident once the channel is producing — but it is now
- * something you apply when you are happy, not something applied to you.
+ * **No lock, in either direction.** Spec §11.3 has choosing write *and lock*
+ * the Brand Kit voice, with a typed `CHANGE VOICE` to undo it. Both halves are
+ * gone. The lock protected a single-user console from its single user, on the
+ * one screen built for comparing voices against each other, and every time it
+ * fired it fired on the person it belonged to. What it was guarding — swapping
+ * a brand asset by accident — is already guarded by the change being a
+ * deliberate press on a settings screen.
  */
 export async function chooseVoice(
   provider: string,
@@ -239,45 +236,10 @@ export async function chooseVoice(
   if (!parsed.success) return { ok: false, error: `Unknown TTS provider "${provider}"` }
   if (voiceId.trim() === '') return { ok: false, error: 'Pick a voice.' }
 
-  const settings = await getSettings(db)
-  if (settings.tts.locked) {
-    return {
-      ok: false,
-      error: 'The narration voice is locked. Unlock it in "The narrator" below before changing it.',
-    }
-  }
-
   await updateSettings(db, { tts: { provider: parsed.data, voiceId: voiceId.trim() } })
 
   revalidatePath('/settings')
   revalidatePath('/')
-  return { ok: true }
-}
-
-/** Lock the voice in, once you are happy with it (§10). */
-export async function lockVoice(): Promise<{ ok: boolean; error?: string }> {
-  await requireOwner()
-
-  const settings = await getSettings(db)
-  if (settings.tts.voiceId.trim() === '') {
-    return { ok: false, error: 'Choose a voice before locking one in.' }
-  }
-
-  await updateSettings(db, { tts: { locked: true } })
-  revalidatePath('/settings')
-  return { ok: true }
-}
-
-/** Unlock the voice — the UI requires the words "CHANGE VOICE" typed out (§10). */
-export async function unlockVoice(confirmation: string): Promise<{ ok: boolean; error?: string }> {
-  await requireOwner()
-
-  if (confirmation.trim().toUpperCase() !== 'CHANGE VOICE') {
-    return { ok: false, error: 'Type CHANGE VOICE exactly to unlock it.' }
-  }
-
-  await updateSettings(db, { tts: { locked: false } })
-  revalidatePath('/settings')
   return { ok: true }
 }
 

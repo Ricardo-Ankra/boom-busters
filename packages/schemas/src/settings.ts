@@ -171,17 +171,24 @@ export type PhonemeHint = z.infer<typeof PhonemeHintSchema>
 
 /**
  * The narration voice. Build spec section 4 calls this `settings.tts` and
- * section 10 calls it `brandKit.voice`; they describe the same five fields.
- * It is stored once, here, and projected into the Brand Kit snapshot by
+ * section 10 calls it `brandKit.voice`; they describe the same fields. It is
+ * stored once, here, and projected into the Brand Kit snapshot by
  * `resolveBrandKit()` so the two can never drift.
+ *
+ * **There is no `locked` flag**, which spec §4 and §11.3 both ask for. It was
+ * built, used, and removed: a single-user console has no one to protect the
+ * narrator from, so the lock only ever fired on its owner — and it fired on the
+ * one screen whose whole purpose is trying voices against each other. What it
+ * was guarding against (swapping a brand asset by accident) is a one-press
+ * change on a screen you have to navigate to, next to a plain statement of
+ * which voice is current. Zod strips the field from any settings row that still
+ * carries it.
  */
 export const VoiceConfigSchema = z.object({
   provider: TtsProviderSchema,
   voiceId: z.string(),
   stylePrompt: z.string().default(''),
   pacing: z.number().min(0.5).max(2).default(1),
-  /** The voice is a brand asset; unlocking requires typed confirmation in the UI. */
-  locked: z.boolean().default(false),
   /**
    * Beyond the five fields section 10 lists, because it belongs to the same
    * decision and nothing else owns it: a hint list is only meaningful next to
@@ -410,7 +417,6 @@ export const DEFAULT_SETTINGS: Settings = {
     voiceId: '',
     stylePrompt: '',
     pacing: 1,
-    locked: false,
     phonemeHints: [],
   },
   budgets: {

@@ -53,15 +53,15 @@ describe('buildChecklist', () => {
     expect(voice?.detail).toContain('Charon')
   })
 
-  it('shows the locked state once the voice is locked', () => {
+  it('names the provider alongside the voice, so two Charons are told apart', () => {
     const items = buildChecklist({
       ...freshInstall,
       settings: settingsWith((s) => {
+        s.tts.provider = 'elevenlabs'
         s.tts.voiceId = 'Charon'
-        s.tts.locked = true
       }),
     })
-    expect(items.find((item) => item.id === 'voice')?.detail).toContain('locked')
+    expect(items.find((item) => item.id === 'voice')?.detail).toContain('elevenlabs')
   })
 
   it('requires three music beds, not one', () => {

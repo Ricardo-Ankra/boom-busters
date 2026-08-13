@@ -541,9 +541,9 @@ paragraphIndex, textHash, voiceId)`, and a `claimTake` that reserves the
       toggle between takes
 - [x] **The zero-flagged gate rule**, enforced in `approveGate` server-side and
       not only by a disabled button
-- [x] **Settings → Voice** — audition panel (up to 6 voices side by side,
-      through `withCost`), the locked narrator with its typed `CHANGE VOICE`
-      unlock, and the pronunciation editor
+- [x] **Settings → Voice** — audition panel (through `withCost`), the narrator,
+      and the pronunciation editor. Spec §11.3's lock and its typed
+      `CHANGE VOICE` unlock were built, used, and removed — decision 57.
 - [x] **Voice staleness** — `voice_takes.built_from_script_version`, migration
       `0006`, and `voiceView` in the stage model, which inherits the script's
       staleness as well as carrying its own
@@ -629,6 +629,10 @@ trying to choose a voice.
     asset that cannot be swapped by accident once the channel is producing —
     without the console trapping you the first time you use it.
 
+    **Superseded by decision 57**, which deletes the lock outright. Half-fixing
+    it here was the mistake: the argument that the lock should not fire on the
+    first press is the same argument for it not existing.
+
 54. **Leaving the screen meant paying to hear the same voice again.** The cache
     lived in React state and died with the page, which is exactly the moment you
     leave and come back to compare. Auditions are cached server-side now
@@ -652,6 +656,40 @@ trying to choose a voice.
     one you had not chosen yet, and asked for pronunciation hints for a narrator
     that did not exist. It reads audition → narrator → pronunciation now, which
     is the order the work happens in.
+
+### M4.5 — the lock, deleted (2026-08-13)
+
+Decision 53 kept the lock and made it deliberate. That was still one concept too
+many, and the human said so plainly: *"the selecting and unselecting of a voice
+and locking in a voice is just so overcomplicated and unnecessary."* They are
+right, and the reasoning in 53 should have carried all the way.
+
+57. **There is no voice lock, in the schema or the UI.** Spec §4 lists
+    `locked: boolean` on `settings.tts`, §11.3 has choosing write *and* lock it,
+    and §10 has the unlock ritual with `CHANGE VOICE` typed out. All of it is
+    gone: `VoiceConfigSchema` has no `locked` field (Zod strips it from any row
+    that still carries one), `lockVoice`/`unlockVoice` are deleted, and
+    `chooseVoice` no longer refuses.
+
+    The lock was protecting a single-user console from its single user. Every
+    time it fired, it fired on the person it belonged to — and it fired on the
+    screen whose entire purpose is trying voices against each other. The risk it
+    named is real (swap the narrator mid-channel and every earlier video sounds
+    like a different show) but the mitigation for that is *saying so*, which the
+    narrator card now does, next to a plain statement of which voice is current.
+    A modal ritual is what you build when other people can reach the setting.
+
+58. **Play and Add voice are separate buttons on each card.** The card used to
+    *be* the button, so listening and choosing were the same press and you could
+    not hear a voice without adopting it. Now the card is a card: name and
+    description on the left, **+ Add voice** in the top-right corner, and a full
+    width **Play** below it whose label carries the price before the press
+    (§11.1). Only Play spends. Adding is a radio rather than a checkbox — there
+    is one narrator, so adding a voice drops the previous one and there is
+    nothing to untick, which is what removed the "unselecting" the human was
+    complaining about.
+
+    The grid went from four columns to three to give the two buttons room.
 
 ### M4.2 — Google Cloud TTS (Chirp 3 HD) as the narrator (2026-08-13)
 

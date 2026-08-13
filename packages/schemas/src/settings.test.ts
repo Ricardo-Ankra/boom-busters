@@ -96,7 +96,6 @@ describe('resolveBrandKit', () => {
       voiceId: 'v-123',
       stylePrompt: 'measured',
       pacing: 0.95,
-      locked: true,
       phonemeHints: [{ term: 'Wirecard', hint: '/ˈvaɪɐkart/' }],
     }
 

@@ -55,8 +55,8 @@ export function buildChecklist(input: FirstRunInput): ChecklistItem[] {
       label: 'Choose narration voice',
       detail:
         settings.tts.voiceId.trim() === ''
-          ? 'The voice is a brand asset: chosen once by audition, then locked.'
-          : `${settings.tts.provider} · ${settings.tts.voiceId}${settings.tts.locked ? ' · locked' : ''}`,
+          ? 'The voice is a brand asset: chosen once, by audition.'
+          : `${settings.tts.provider} · ${settings.tts.voiceId}`,
       href: '/settings?tab=voice',
       buttonLabel: settings.tts.voiceId.trim() === '' ? 'Open audition' : 'Review voice',
       done: settings.tts.voiceId.trim() !== '',
