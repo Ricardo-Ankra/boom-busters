@@ -613,6 +613,45 @@ paragraphIndex, textHash, voiceId)`, and a `claimTake` that reserves the
     route regenerates the bytes deterministically instead — which is what lets
     an E2E actually press Play.
 
+### M4.1 — what the first live Gemini key found (2026-08-13)
+
+The first real key ever pointed at this app found four faults, and **every one
+of them reported itself as something other than what it was.** Recorded in full
+because the pattern is the M3.1 pattern again: nothing here was reachable by any
+test, because every test in the suite talks to a mock.
+
+1. **A Google Cloud Text-to-Speech key is not a Gemini key.** They are different
+   products on different hosts — `texttospeech.googleapis.com` versus
+   `generativelanguage.googleapis.com` — and a Cloud key restricted to the first
+   answers the second with `API_KEY_SERVICE_BLOCKED`. Not a code fault, but the
+   console said "the key was refused", which sends you to rotate a key that was
+   perfectly good. Worth knowing the two exist.
+2. **`gemini-3-pro` and `gemini-3-flash` never existed.** They were written from
+   assumption in M3 and carried a "prices are provisional" note that said
+   nothing about the ids. `verifyKey` calls the cheapest model, so the first
+   press of Verify with a valid key got a 404 and reported it as a refusal. The
+   list is now read off `GET /v1beta/models` with a live key.
+3. **A model in the catalogue is not a model you can call.** `gemini-2.5-pro`
+   and `gemini-2.5-flash` are both listed by `GET /models` and both answer
+   `generateContent` with "no longer available to new users". A listing is not
+   an offer, which is why the replacement ids were each proved with a real
+   one-token call rather than taken from the list.
+4. **A 429 that means "you have run out of money" is not a rate limit.** Google
+   returns `RESOURCE_EXHAUSTED` for both capacity and billing, and only the body
+   separates them. Treating "your prepayment credits are depleted" as transient
+   meant four retries with backoff into a wall, then a failure card describing a
+   provider outage — pointing at a status page instead of a billing page. It is
+   a `ValidationError` now, and it says the key itself is fine.
+
+**Also fixed:** ElevenLabs had no Verify button. M4 gave its adapter a working
+`verifyKey` and then left `verifiable` hardcoded to the three LLM providers, so
+the one TTS provider with a key of its own was the one you could not check.
+
+**Still outstanding, and not a code problem:** the Gemini account has no
+prepaid credits, so nothing will run against it until it is topped up. The key,
+the models and the adapter are all confirmed good — `geminiTts.verifyKey`
+passes, and every text model returns 429-billing rather than 404.
+
 ### Where the fixture had to move
 
 `BEYOND_RUNNERS_TITLE` — "a project past the last runner we have built" — sat at

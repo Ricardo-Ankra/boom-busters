@@ -459,9 +459,19 @@ function ConnectionCard({
   const [verifying, setVerifying] = React.useState(false)
   const { toast } = useToast()
 
-  // Only the three LLM providers have adapters, so only they can be verified.
-  // The others show no button rather than one that always fails.
-  const verifiable = provider === 'anthropic' || provider === 'openai' || provider === 'google'
+  /**
+   * Which providers have an adapter to ping. The others show no button rather
+   * than one that always fails.
+   *
+   * `google` covers narration as well as text: Gemini TTS and the Gemini text
+   * models are one API behind one key. `elevenlabs` is its own account, so it
+   * needs its own check — M4 built one and then left nothing calling it.
+   */
+  const verifiable =
+    provider === 'anthropic' ||
+    provider === 'openai' ||
+    provider === 'google' ||
+    provider === 'elevenlabs'
 
   const submit = async () => {
     setSaving(true)

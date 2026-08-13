@@ -3,13 +3,14 @@ import {
   RateLimitError,
   TransientProviderError,
   ValidationError,
+  canonicalModelId,
   isRetriable,
 } from '@boom-busters/schemas'
 import { describe, expect, it } from 'vitest'
 import { anthropic } from './anthropic'
 import { google } from './google'
 import { openai } from './openai'
-import { parseRetryAfter } from './http'
+import { mapHttpFailure, parseRetryAfter } from './http'
 import { LLM_MODELS, knownModel, llmAdapters, topModel } from './registry'
 import { outputBudget } from './types'
 import type { LLMProvider, LLMTaskRequest } from './types'
@@ -422,5 +423,72 @@ describe('outputBudget', () => {
 
   it('never returns zero for an empty answer', () => {
     expect(outputBudget(0)).toBeGreaterThan(0)
+  })
+})
+
+/**
+ * What the first live Gemini key found (2026-08-13).
+ *
+ * Three separate faults, all invisible until a real key was pointed at the
+ * adapter, and each one presented as a different problem than it was.
+ */
+describe('lessons from the first live key', () => {
+  it('offers no model id that Google has retired', () => {
+    // `gemini-3-pro` and `gemini-3-flash` never existed; `gemini-2.5-pro` is
+    // listed by `GET /models` and then 404s on use. All three were reported to
+    // the human as "the key was refused".
+    const ids = LLM_MODELS.google.map((model) => model.id)
+
+    for (const dead of ['gemini-3-pro', 'gemini-3-flash', 'gemini-2.5-pro', 'gemini-2.5-flash']) {
+      expect(ids).not.toContain(dead)
+    }
+  })
+
+  it('carries every retired id forward rather than stranding a saved settings row', () => {
+    // A routing matrix saved when these were on offer must not fail pre-flight.
+    for (const dead of ['gemini-3-pro', 'gemini-3-flash', 'gemini-2.5-pro', 'gemini-2.5-flash']) {
+      const current = canonicalModelId('google', dead)
+      expect(current).not.toBe(dead)
+      expect(LLM_MODELS.google.map((model) => model.id)).toContain(current)
+    }
+  })
+
+  it('verifies against a model that exists, and the cheapest one', () => {
+    // `verifyKey` calls the last entry, so the ladder's order is load-bearing.
+    const last = LLM_MODELS.google[LLM_MODELS.google.length - 1]
+    const dearest = [...LLM_MODELS.google].sort((a, b) => a.tier - b.tier)[0]
+
+    expect(last?.tier).toBeGreaterThan(dearest?.tier ?? 0)
+  })
+
+  describe('a 429 that means "out of credit"', () => {
+    const outOfCredit =
+      'Your prepayment credits are depleted. Please go to AI Studio to manage billing.'
+
+    it('is not retriable, because retrying cannot help', () => {
+      const error = mapHttpFailure('google', { status: 429, message: outOfCredit })
+
+      expect(error).toBeInstanceOf(ValidationError)
+      expect(isRetriable(error)).toBe(false)
+    })
+
+    it('says the key is fine, and points at the account', () => {
+      const error = mapHttpFailure('google', { status: 429, message: outOfCredit })
+
+      expect(error.message).toContain('no credit left')
+      expect(error.message).toContain('The key itself is fine')
+    })
+
+    it('leaves an ordinary rate limit retriable', () => {
+      // Capacity exhaustion really does clear in a minute. Widening the billing
+      // match until it swallowed this would turn every 429 into a hard stop.
+      const error = mapHttpFailure('google', {
+        status: 429,
+        message: 'Resource has been exhausted (e.g. check quota).',
+      })
+
+      expect(error).toBeInstanceOf(RateLimitError)
+      expect(isRetriable(error)).toBe(true)
+    })
   })
 })

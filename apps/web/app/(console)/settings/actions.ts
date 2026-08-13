@@ -1,7 +1,13 @@
 'use server'
 
-import { llmCredentials, recordVerifyResult, setCredential, updateSettings } from '@boom-busters/db'
-import { llmAdapters, mockProvidersEnabled } from '@boom-busters/providers'
+import {
+  llmCredentials,
+  recordVerifyResult,
+  setCredential,
+  ttsCredential,
+  updateSettings,
+} from '@boom-busters/db'
+import { llmAdapters, mockProvidersEnabled, ttsAdapter } from '@boom-busters/providers'
 import {
   LlmProviderSchema,
   ProviderSchema,
@@ -88,32 +94,63 @@ export interface VerifyResult extends ActionResult {
  * not work — and finding that out mid-pipeline is exactly what the router's
  * pre-flight was built to avoid.
  *
- * It calls the adapter's cheapest model with a one-token request. That costs
- * a fraction of a cent against a real key, which is the point: a health check
- * nobody can afford to press is not a health check.
+ * It calls the adapter's cheapest endpoint. That costs a fraction of a cent
+ * against a real key, which is the point: a health check nobody can afford to
+ * press is not a health check.
  */
-export async function verifyProviderKey(provider: string): Promise<VerifyResult> {
-  await requireOwner()
 
-  const parsedProvider = LlmProviderSchema.safeParse(provider)
-  if (!parsedProvider.success) {
+/**
+ * Which providers can be verified, and through which adapter.
+ *
+ * `google` goes through the LLM adapter even though it also narrates: Gemini
+ * TTS and the Gemini text models are one API behind one key, so proving the key
+ * once proves it for both. `elevenlabs` has no LLM adapter and needs its own —
+ * M4 gave it a working `verifyKey` and then left nothing calling it, so the one
+ * TTS provider with a key of its own was the one you could not check.
+ */
+async function verifiableKey(
+  provider: string,
+): Promise<{ verify: (apiKey: string) => Promise<void>; apiKey: string | undefined } | undefined> {
+  const llm = LlmProviderSchema.safeParse(provider)
+  if (llm.success) {
+    const keys = await llmCredentials(db, env.SECRETS_ENCRYPTION_KEY)
+    const adapter = llmAdapters()[llm.data]
+    return { verify: (apiKey) => adapter.verifyKey(apiKey), apiKey: keys[llm.data] }
+  }
+
+  if (provider === 'elevenlabs') {
+    const adapter = ttsAdapter('elevenlabs')
     return {
-      ok: false,
-      error: `Verifying ${provider} is not supported yet — only the LLM providers have adapters.`,
+      verify: (apiKey) => adapter.verifyKey(apiKey),
+      apiKey: await ttsCredential(db, 'elevenlabs', env.SECRETS_ENCRYPTION_KEY),
     }
   }
 
-  const keys = await llmCredentials(db, env.SECRETS_ENCRYPTION_KEY)
-  const apiKey = keys[parsedProvider.data]
-  if (!apiKey) {
+  return undefined
+}
+
+export async function verifyProviderKey(provider: string): Promise<VerifyResult> {
+  await requireOwner()
+
+  const parsedProvider = ProviderSchema.safeParse(provider)
+  if (!parsedProvider.success) return { ok: false, error: `Unknown provider "${provider}"` }
+
+  const verifiable = await verifiableKey(parsedProvider.data)
+  if (!verifiable) {
+    return {
+      ok: false,
+      error: `Verifying ${provider} is not supported yet — it has no adapter to ping.`,
+    }
+  }
+
+  if (!verifiable.apiKey) {
     return { ok: false, error: 'No key is stored for that provider yet.' }
   }
 
   const mocked = mockProvidersEnabled()
-  const adapter = llmAdapters()[parsedProvider.data]
 
   try {
-    await adapter.verifyKey(apiKey)
+    await verifiable.verify(verifiable.apiKey)
     await recordVerifyResult(db, parsedProvider.data, 'ok')
     revalidatePath('/settings')
     return { ok: true, verified: true, mocked }

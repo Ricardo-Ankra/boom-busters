@@ -116,7 +116,18 @@ describe('canonicalModelId', () => {
 
   it('leaves a current id alone', () => {
     expect(canonicalModelId('anthropic', 'claude-opus-5')).toBe('claude-opus-5')
-    expect(canonicalModelId('google', 'gemini-3-pro')).toBe('gemini-3-pro')
+    // Was `gemini-3-pro` here, which encoded the same wrong assumption the
+    // adapter did: a test asserting a made-up id is current cannot notice that
+    // it never was.
+    expect(canonicalModelId('google', 'gemini-3.6-flash')).toBe('gemini-3.6-flash')
+  })
+
+  it('carries the Gemini ids that were never real, or have been retired', () => {
+    expect(canonicalModelId('google', 'gemini-3-pro')).toBe('gemini-pro-latest')
+    expect(canonicalModelId('google', 'gemini-3-flash')).toBe('gemini-3.6-flash')
+    // Listed by `GET /models`, then 404 on use: "no longer available to new users".
+    expect(canonicalModelId('google', 'gemini-2.5-pro')).toBe('gemini-pro-latest')
+    expect(canonicalModelId('google', 'gemini-2.5-flash')).toBe('gemini-3.6-flash')
   })
 
   it('leaves an unknown id alone rather than guessing', () => {

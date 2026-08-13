@@ -34,6 +34,27 @@ export function mapHttpFailure(provider: string, failure: HttpFailure): Error {
   if (failure.refusal) return new ContentPolicyError(provider, message)
 
   if (status === 429) {
+    /**
+     * A 429 that means "you have run out of money" is not a rate limit.
+     *
+     * Both arrive as 429 `RESOURCE_EXHAUSTED` from Google, and only the body
+     * separates them: "Resource has been exhausted" clears in a minute, while
+     * "Your prepayment credits are depleted" does not clear until a human tops
+     * the account up. Treating the second as transient means four retries with
+     * backoff against a wall, then a run that reports itself as a provider
+     * outage — sending you to look at a status page instead of a billing page.
+     *
+     * Found the first time a real Gemini key was pointed at this app: the key
+     * was valid, the models were right, and the account had no credits.
+     */
+    if (BILLING_EXHAUSTED.test(message)) {
+      return new ValidationError(
+        `${provider} has no credit left, so nothing will run until the account is topped up. ` +
+          `The key itself is fine. Provider said: ${message.slice(0, 200)}`,
+        { field: `connections.${provider}` },
+      )
+    }
+
     return new RateLimitError(provider, message, {
       status,
       ...(failure.retryAfterMs === undefined ? {} : { retryAfterMs: failure.retryAfterMs }),
@@ -75,6 +96,17 @@ export function mapNetworkError(provider: string, cause: unknown): Error {
 
 /** Vendor error bodies differ; what counts as "it refused me" does not. */
 const REFUSAL = /content.?(policy|filter)|safety|refus|blocked/i
+
+/**
+ * A 429 that will not clear on its own.
+ *
+ * Deliberately narrow: it matches money running out, not capacity running out.
+ * "Resource has been exhausted" and "quota exceeded" stay retriable, because
+ * those really do clear in a minute — widening this would turn every rate limit
+ * into a hard stop.
+ */
+const BILLING_EXHAUSTED =
+  /prepayment|credits? (are |is )?(depleted|exhausted)|billing|insufficient (funds|credit)|payment required/i
 
 /**
  * Read a failed response and throw the mapped error. Shared by every adapter

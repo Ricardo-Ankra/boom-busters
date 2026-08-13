@@ -57,7 +57,23 @@ export const LEGACY_MODEL_IDS: Record<LlmProvider, Record<string, string>> = {
     haiku: 'claude-haiku-4-5-20251001',
   },
   openai: {},
-  google: {},
+  /**
+   * `gemini-3-pro` and `gemini-3-flash` were never real. They were written from
+   * assumption in M3 and nothing pointed a live key at them until M4, when the
+   * Verify button reported a perfectly good key as refused — a 404 for a model
+   * that does not exist, presented as "the key was refused".
+   *
+   * Mapped rather than merely deleted, because a settings row saved while they
+   * were on offer would otherwise fail at the router's pre-flight, and this is
+   * exactly what that mapping exists for.
+   */
+  google: {
+    'gemini-3-pro': 'gemini-pro-latest',
+    'gemini-3-flash': 'gemini-3.6-flash',
+    // Retired for new API keys: listed by `GET /models`, then 404 on use.
+    'gemini-2.5-pro': 'gemini-pro-latest',
+    'gemini-2.5-flash': 'gemini-3.6-flash',
+  },
 }
 
 /** The stored name brought forward, or the name unchanged if it is current. */
