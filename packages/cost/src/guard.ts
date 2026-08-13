@@ -3,7 +3,7 @@ import type { Database } from '@boom-busters/db'
 import { BudgetExceededError, effectiveBudgetUsd, spentUsd } from '@boom-busters/schemas'
 import type { Provider, Settings } from '@boom-busters/schemas'
 import { eq, sql } from 'drizzle-orm'
-import { GUARDED_PROVIDERS, monthSpendUsd, round4, type DbLike } from './ledger'
+import { monthSpendUsd, round4, type DbLike } from './ledger'
 
 /**
  * The budget guard (build spec section 6):
@@ -27,10 +27,26 @@ import { GUARDED_PROVIDERS, monthSpendUsd, round4, type DbLike } from './ledger'
 /** Postgres advisory-lock namespace. Arbitrary, but ours alone. */
 const LOCK_NAMESPACE = 0x62_62 // 'bb'
 
-function lockKey(provider: Provider): number {
-  const index = GUARDED_PROVIDERS.indexOf(provider)
-  if (index < 0) throw new Error(`${provider} is not a guarded provider`)
-  return index
+/**
+ * The advisory-lock key for a provider: a stable hash of its name.
+ *
+ * It used to be the provider's index in a hand-ordered list, which made the
+ * ordering load-bearing — inserting a provider in the middle would renumber
+ * every provider after it, and a run in flight across a deploy could then take
+ * a different lock than the one guarding the same cap. A hash of the name has
+ * no ordering to get wrong.
+ *
+ * FNV-1a, masked to 31 bits because `pg_advisory_xact_lock` takes signed
+ * 32-bit integers. A collision would only ever mean two providers sharing a
+ * lock, which costs a little concurrency and cannot corrupt a reservation.
+ */
+export function lockKey(provider: Provider): number {
+  let hash = 0x81_1c_9d_c5
+  for (let i = 0; i < provider.length; i += 1) {
+    hash ^= provider.charCodeAt(i)
+    hash = Math.imul(hash, 0x01_00_01_93)
+  }
+  return hash & 0x7f_ff_ff_ff
 }
 
 /** What a guarded call returns: its value, plus what it actually cost. */

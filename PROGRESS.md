@@ -653,10 +653,47 @@ recording properly.
     detected rather than assumed, because an encoding change that silently ate
     the first 44 bytes of every take would be very hard to see.
 
-**Still unverified:** the `synthesize` call itself. `voices.list` and
-`verifyKey` are proven against the live key; the response shape, the WAV
-unwrapping and `customPronunciations` are covered only by recorded fixtures,
-because a real synthesis costs money and CLAUDE.md rule 6 says to ask first.
+### M4.3 — what a real synthesis found (2026-08-13)
+
+The `synthesize` path is now proven end to end against the live key: 236 KB of
+bare PCM for a 72-character sentence, header stripped, 4.92 s, $0.00216, a
+waveform with real dynamic range, and a re-wrapped WAV that reads back. Getting
+there turned up four more faults, three of them mine.
+
+49. **`GUARDED_PROVIDERS` was a hand-written copy of `PROVIDERS` and drifted.**
+    `google-cloud-tts` reached the enum, the price table and the settings
+    screen, and the first audition through it died on "google-cloud-tts is not
+    a guarded provider". Failing closed on a spend path is the right failure,
+    but the list should never have been separate — it is derived now, and the
+    advisory-lock key is a hash of the provider name rather than its index in a
+    hand-ordered list, so ordering is no longer load-bearing either.
+
+50. **Cloud TTS rejects IPA outright and accepts X-SAMPA.** Verified on every
+    voice family, every phrase and every symbol set tried. The adapter sent
+    `PHONETIC_ENCODING_IPA`, so *every* pronunciation hint would have failed.
+    Hints stay IPA where a human writes them — that is what Wiktionary prints
+    and what ElevenLabs takes — and `ipaToXSampa` converts at the one adapter
+    that needs it.
+
+51. **Correct X-SAMPA is necessary and not sufficient.** Google validates a
+    pronunciation against the *voice's own phoneme inventory*: `aI` is accepted
+    for en-GB and a bare `a` is refused, so a perfectly good IPA transcription
+    of a German name is rejected wholesale. That cannot be predicted from the
+    notation, and encoding Google's inventory would be guesswork of exactly the
+    kind that has cost this project two days. So two things instead: the adapter
+    **drops a refused pronunciation and retries once**, because a hint is a
+    nicety and the sentence being spoken is not — otherwise one bad entry in
+    Settings would permanently fail every paragraph containing that word — and
+    Settings **checks a hint with the vendor when it is typed**, where a human
+    is present to fix it. A refusal is a free 400; an acceptance synthesises the
+    term alone.
+
+52. **The audition panel is one press, not four.** It used to be: tick up to six
+    voices, press Generate, press Play on each, press "Choose this voice". Four
+    presses to answer *what does this sound like*, which only listening answers.
+    A press now synthesises, plays and selects, and **the selected voice is the
+    narrator** — there is nothing else to confirm. Each voice is bought once per
+    sample and the price is on the button before you press it.
 
 ### M4.1 — what the first live Gemini key found (2026-08-13)
 

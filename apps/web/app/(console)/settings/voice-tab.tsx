@@ -2,7 +2,7 @@
 
 import type { KnownVoice } from '@boom-busters/providers'
 import type { PhonemeHint, Settings, SettingsPatch, TtsProvider } from '@boom-busters/schemas'
-import { Loader2, Lock, LockOpen, Plus, Trash2 } from 'lucide-react'
+import { AlertTriangle, Check, Loader2, Lock, LockOpen, Play, Plus, Trash2 } from 'lucide-react'
 import * as React from 'react'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
@@ -10,9 +10,14 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input, Label } from '@/components/ui/input'
 import { useToast } from '@/components/ui/toast'
 import { cn } from '@/lib/cn'
-import { MAX_AUDITIONS, MAX_SAMPLE_CHARS } from '@/lib/audition'
-import type { Audition } from '@/lib/audition'
-import { chooseVoice, generateAuditions, listAuditionVoices, unlockVoice } from './voice-actions'
+import { MAX_SAMPLE_CHARS } from '@/lib/audition'
+import {
+  checkPronunciation,
+  chooseVoice,
+  generateAuditions,
+  listAuditionVoices,
+  unlockVoice,
+} from './voice-actions'
 
 /**
  * Settings → Voice (build spec section 11.3).
@@ -42,77 +47,108 @@ interface TabProps {
 // Auditions
 // ---------------------------------------------------------------------------
 
-function AuditionCard({
-  audition,
-  chosen,
-  onChosen,
-  locked,
+/**
+ * The audition panel: press a voice, hear it, keep the one you leave selected.
+ *
+ * It used to be a four-press affair — tick up to six voices, press "Generate N
+ * auditions", press Play on each result, then press "Choose this voice". Four
+ * presses to answer one question, and the question is *what does this sound
+ * like*, which only listening answers. A press now synthesises, plays and
+ * selects in one go, and **the selected voice is the narrator**: there is
+ * nothing else to confirm.
+ *
+ * Two things follow from a press spending money:
+ *
+ *  - **Each voice is bought once.** The audio is cached against the voice and
+ *    the sample, so going back and forth between two candidates is free after
+ *    the first pass of each. Editing the sample clears the cache, because it is
+ *    then a different question.
+ *  - **The price is on the button before you press it.** A voice you have not
+ *    heard says what it will cost; one you have says "play again".
+ */
+
+/** Chirp 3 HD's per-character rate — shown where the spending happens (§11.1). */
+function estimateAuditionUsd(sample: string): number {
+  return (sample.trim().length / 1000) * 0.03
+}
+
+const PROVIDER_LABELS: Record<TtsProvider, string> = {
+  'google-cloud-tts': 'Google Cloud TTS — Chirp 3 HD',
+  gemini: 'Gemini TTS',
+  elevenlabs: 'ElevenLabs',
+}
+
+type VoiceState = 'idle' | 'loading' | 'ready' | 'failed'
+
+function VoiceButton({
+  voice,
+  provider,
+  state,
+  selected,
+  costUsd,
+  onPress,
 }: {
-  audition: Audition
-  chosen: boolean
-  onChosen: () => void
-  locked: boolean
+  voice: KnownVoice
+  provider: TtsProvider
+  state: VoiceState
+  selected: boolean
+  costUsd: number
+  onPress: () => void
 }) {
-  const [busy, setBusy] = React.useState(false)
-  const { toast } = useToast()
-  const router = useRouter()
-
-  async function choose(): Promise<void> {
-    setBusy(true)
-    const result = await chooseVoice(audition.provider, audition.voiceId)
-    setBusy(false)
-
-    if (!result.ok) {
-      toast({ title: 'Could not choose that voice', description: result.error, variant: 'error' })
-      return
-    }
-
-    toast({ title: 'Voice chosen and locked', description: `${audition.voiceId} will narrate.` })
-    onChosen()
-    router.refresh()
-  }
-
   return (
-    <li
-      className={cn(
-        'flex flex-col gap-2 rounded-[8px] border p-3',
-        chosen ? 'border-[var(--color-accent)]' : 'border-[var(--color-border)]',
-      )}
-    >
-      <div className="flex items-baseline justify-between gap-2">
-        <span className="truncate text-[14px] font-medium">{audition.voiceId}</span>
-        <span className="font-mono text-[11px] text-[var(--color-text-muted)]">
-          {audition.provider}
+    <li>
+      <button
+        type="button"
+        onClick={onPress}
+        aria-pressed={selected}
+        disabled={state === 'loading'}
+        className={cn(
+          'flex min-h-[72px] w-full flex-col items-start gap-0.5 rounded-[8px] border px-3 py-2 text-left',
+          'transition-colors duration-150 focus-visible:outline-2 focus-visible:outline-offset-2',
+          'focus-visible:outline-[var(--color-accent)]',
+          selected
+            ? 'border-[var(--color-accent)] bg-[var(--color-surface-raised)]'
+            : 'border-[var(--color-border)] hover:bg-[var(--color-surface-raised)]',
+        )}
+      >
+        <span className="flex w-full items-center gap-2">
+          {state === 'loading' ? (
+            <Loader2 className="size-4 shrink-0 animate-spin" aria-hidden />
+          ) : state === 'failed' ? (
+            <AlertTriangle className="size-4 shrink-0 text-[var(--color-danger)]" aria-hidden />
+          ) : (
+            <Play className="size-4 shrink-0" aria-hidden />
+          )}
+          <span className="min-w-0 flex-1 truncate text-[14px] font-medium">{voice.label}</span>
+          {selected ? (
+            <Check className="size-4 shrink-0 text-[var(--color-accent)]" aria-hidden />
+          ) : null}
         </span>
-      </div>
 
-      {audition.error ? (
-        <p className="text-[12px] text-[var(--color-danger)]">{audition.error}</p>
-      ) : (
-        <>
-          {/* A plain <audio> with controls: this is the one place in the app
-              where the browser's own transport is exactly right — you scrub
-              back over the same six seconds comparing voices. */}
-          <audio
-            controls
-            preload="none"
-            src={`data:audio/wav;base64,${audition.audio ?? ''}`}
-            className="w-full"
-          >
-            <track kind="captions" />
-          </audio>
-          <p className="font-mono text-[11px] text-[var(--color-text-muted)]">
-            {((audition.durationMs ?? 0) / 1000).toFixed(1)}s · $
-            {(audition.costUsd ?? 0).toFixed(4)}
-          </p>
-          <Button onClick={choose} disabled={busy || locked || chosen} variant="outline">
-            {busy ? <Loader2 className="size-4 animate-spin" aria-hidden /> : null}
-            {chosen ? 'This is the narrator' : 'Choose this voice'}
-          </Button>
-        </>
-      )}
+        <span className="w-full truncate text-[11px] text-[var(--color-text-muted)]">
+          {voice.description ?? provider}
+        </span>
+
+        {/* Never colour or icon alone: what a press will do, in words. */}
+        <span className="text-[11px] text-[var(--color-text-secondary)]">
+          {state === 'loading'
+            ? 'Synthesising…'
+            : state === 'failed'
+              ? 'Failed — press to try again'
+              : state === 'ready'
+                ? selected
+                  ? 'The narrator · play again'
+                  : 'Heard · play again'
+                : `Hear it · $${costUsd.toFixed(4)}`}
+        </span>
+      </button>
     </li>
   )
+}
+
+interface Heard {
+  audio?: string
+  error?: string
 }
 
 function AuditionPanel({ settings }: { settings: Settings }) {
@@ -120,50 +156,75 @@ function AuditionPanel({ settings }: { settings: Settings }) {
   const [catalogue, setCatalogue] = React.useState<
     { provider: TtsProvider; voices: KnownVoice[]; error?: string }[] | null
   >(null)
-  const [selected, setSelected] = React.useState<Set<string>>(new Set())
-  const [auditions, setAuditions] = React.useState<Audition[]>([])
-  const [busy, setBusy] = React.useState(false)
+  /** Keyed `provider:voiceId`, cleared whenever the sample changes. */
+  const [heard, setHeard] = React.useState<Record<string, Heard>>({})
+  const [loading, setLoading] = React.useState<string | null>(null)
+  const audio = React.useRef<HTMLAudioElement>(null)
   const { toast } = useToast()
+  const router = useRouter()
 
   React.useEffect(() => {
     void listAuditionVoices().then(setCatalogue)
   }, [])
 
-  const key = (provider: string, voiceId: string) => `${provider}:${voiceId}`
+  const keyOf = (provider: string, voiceId: string): string => `${provider}:${voiceId}`
+  const selectedKey = keyOf(settings.tts.provider, settings.tts.voiceId)
+  const cost = estimateAuditionUsd(sample)
 
-  function toggle(provider: TtsProvider, voiceId: string): void {
-    setSelected((current) => {
-      const next = new Set(current)
-      const id = key(provider, voiceId)
-      if (next.has(id)) next.delete(id)
-      // Refused rather than silently dropped: a cap you hit without being told
-      // reads as a broken checkbox.
-      else if (next.size >= MAX_AUDITIONS) {
-        toast({
-          title: `${MAX_AUDITIONS} voices at a time`,
-          description: 'Each one is a separate synthesis, and each one costs.',
-        })
-      } else next.add(id)
-      return next
-    })
+  function play(base64: string): void {
+    const element = audio.current
+    if (!element) return
+    element.src = `data:audio/wav;base64,${base64}`
+    void element.play().catch(() => undefined)
   }
 
-  async function generate(): Promise<void> {
-    setBusy(true)
-    const result = await generateAuditions(
-      sample,
-      [...selected].map((id) => {
-        const [provider = '', voiceId = ''] = id.split(':')
-        return { provider, voiceId }
-      }),
-    )
-    setBusy(false)
+  /** Selection *is* the choice — there is no separate confirm step. */
+  async function select(provider: TtsProvider, voice: KnownVoice): Promise<void> {
+    const result = await chooseVoice(provider, voice.id)
+    if (!result.ok) {
+      toast({ title: 'Could not choose that voice', description: result.error, variant: 'error' })
+      return
+    }
+    router.refresh()
+  }
+
+  async function press(provider: TtsProvider, voice: KnownVoice): Promise<void> {
+    const id = keyOf(provider, voice.id)
+
+    // Already bought at this sample: replay it for nothing.
+    const already = heard[id]
+    if (already?.audio) {
+      play(already.audio)
+      if (id !== selectedKey && !settings.tts.locked) await select(provider, voice)
+      return
+    }
+
+    setLoading(id)
+    const result = await generateAuditions(sample, [{ provider, voiceId: voice.id }])
+    setLoading(null)
 
     if (!result.ok) {
       toast({ title: 'Nothing was generated', description: result.error, variant: 'error' })
       return
     }
-    setAuditions(result.auditions ?? [])
+
+    const audition = result.auditions?.[0]
+    if (!audition?.audio) {
+      setHeard((current) => ({ ...current, [id]: { error: audition?.error ?? 'No audio' } }))
+      toast({
+        title: `${voice.label} could not be synthesised`,
+        description: audition?.error,
+        variant: 'error',
+      })
+      return
+    }
+
+    const bought = audition.audio
+    setHeard((current) => ({ ...current, [id]: { audio: bought } }))
+    play(bought)
+
+    // Listening while locked is fine; changing the narrator is not.
+    if (!settings.tts.locked) await select(provider, voice)
   }
 
   return (
@@ -171,8 +232,9 @@ function AuditionPanel({ settings }: { settings: Settings }) {
       <CardHeader>
         <CardTitle>Voice audition</CardTitle>
         <CardDescription>
-          Paste a paragraph and hear it in up to {MAX_AUDITIONS} voices side by side. Each audition
-          is a real synthesis and is charged against the same monthly cap as the pipeline.
+          Press a voice to hear it read the sample. Whichever stays selected is the narrator — there
+          is nothing else to confirm. Each voice is synthesised once per sample, and charged against
+          the same monthly cap as the pipeline.
         </CardDescription>
       </CardHeader>
 
@@ -182,71 +244,75 @@ function AuditionPanel({ settings }: { settings: Settings }) {
           <textarea
             id="audition-sample"
             value={sample}
-            onChange={(event) => setSample(event.target.value)}
+            onChange={(event) => {
+              setSample(event.target.value)
+              // A different sample is a different question, so nothing bought
+              // against the old one may be replayed as though it answered this.
+              setHeard({})
+            }}
             rows={3}
             maxLength={MAX_SAMPLE_CHARS}
             className="w-full rounded-[8px] border border-[var(--color-border)] bg-[var(--color-surface)] p-2 text-[13px] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-accent)]"
           />
           <p className="font-mono text-[11px] text-[var(--color-text-muted)]">
-            {sample.length}/{MAX_SAMPLE_CHARS}
+            {sample.length}/{MAX_SAMPLE_CHARS} · ${cost.toFixed(4)} per voice
           </p>
         </div>
+
+        {settings.tts.locked ? (
+          <p className="text-[13px] text-[var(--color-warning)]">
+            The narrator is locked, so pressing a voice will play it but not adopt it. Unlock it
+            above to change which voice reads the scripts.
+          </p>
+        ) : null}
 
         {catalogue === null ? (
           <p className="text-[13px] text-[var(--color-text-muted)]">Loading voices…</p>
         ) : (
           catalogue.map((group) => (
             <div key={group.provider} className="flex flex-col gap-2">
-              <h3 className="text-[13px] font-semibold capitalize">{group.provider}</h3>
+              <h3 className="text-[13px] font-semibold">{PROVIDER_LABELS[group.provider]}</h3>
               {group.error ? (
                 <p className="text-[12px] text-[var(--color-warning)]">{group.error}</p>
+              ) : group.voices.length === 0 ? (
+                <p className="text-[12px] text-[var(--color-text-muted)]">No voices on offer.</p>
               ) : (
-                <ul className="flex flex-wrap gap-2">
-                  {group.voices.map((voice) => (
-                    <li key={voice.id}>
-                      <Button
-                        variant={
-                          selected.has(key(group.provider, voice.id)) ? 'primary' : 'outline'
-                        }
-                        aria-pressed={selected.has(key(group.provider, voice.id))}
-                        onClick={() => toggle(group.provider, voice.id)}
-                        title={voice.description ?? voice.label}
-                      >
-                        {voice.label}
-                      </Button>
-                    </li>
-                  ))}
+                <ul className="grid gap-2 sm:grid-cols-3 lg:grid-cols-4">
+                  {group.voices.map((voice) => {
+                    const id = keyOf(group.provider, voice.id)
+                    const entry = heard[id]
+                    const state: VoiceState =
+                      loading === id
+                        ? 'loading'
+                        : entry?.error
+                          ? 'failed'
+                          : entry?.audio
+                            ? 'ready'
+                            : 'idle'
+
+                    return (
+                      <VoiceButton
+                        key={voice.id}
+                        voice={voice}
+                        provider={group.provider}
+                        selected={id === selectedKey}
+                        costUsd={cost}
+                        state={state}
+                        onPress={() => void press(group.provider, voice)}
+                      />
+                    )
+                  })}
                 </ul>
               )}
             </div>
           ))
         )}
 
-        <div>
-          <Button onClick={generate} disabled={busy || selected.size === 0}>
-            {busy ? <Loader2 className="size-4 animate-spin" aria-hidden /> : null}
-            {busy
-              ? 'Generating…'
-              : `Generate ${selected.size} audition${selected.size === 1 ? '' : 's'}`}
-          </Button>
-        </div>
-
-        {auditions.length > 0 ? (
-          <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {auditions.map((audition) => (
-              <AuditionCard
-                key={`${audition.provider}:${audition.voiceId}`}
-                audition={audition}
-                chosen={
-                  settings.tts.provider === audition.provider &&
-                  settings.tts.voiceId === audition.voiceId
-                }
-                onChosen={() => undefined}
-                locked={settings.tts.locked}
-              />
-            ))}
-          </ul>
-        ) : null}
+        {/* One player for the whole panel: thirty-three <audio> elements would
+            each hold a data URL of their own. */}
+        <audio ref={audio} className="sr-only">
+          <track kind="captions" />
+        </audio>
       </CardContent>
     </Card>
   )
@@ -389,6 +455,8 @@ function ChosenVoice({ settings, saving, commit }: TabProps) {
 function PhonemeHints({ settings, saving, commit }: TabProps) {
   const [term, setTerm] = React.useState('')
   const [hint, setHint] = React.useState('')
+  const [checking, setChecking] = React.useState(false)
+  const [check, setCheck] = React.useState<{ ok: boolean; error?: string } | null>(null)
 
   function save(hints: PhonemeHint[]): void {
     const next = structuredClone(settings)
@@ -396,16 +464,38 @@ function PhonemeHints({ settings, saving, commit }: TabProps) {
     void commit({ tts: { phonemeHints: hints } }, next)
   }
 
-  function add(): void {
+  /**
+   * Checked with the vendor before it is kept.
+   *
+   * Google validates a pronunciation against the voice's own phoneme
+   * inventory, not merely against the notation being well-formed, so a correct
+   * IPA transcription can still be refused — and there is no way to know but to
+   * ask. Asking here means finding out with the cursor still in the box, rather
+   * than three chapters into a run where the adapter quietly drops the hint and
+   * narrates the word its own way.
+   *
+   * The hint is stored either way: a refusal is worth keeping so it can be
+   * edited, and the run degrades safely if it never is.
+   */
+  async function add(): Promise<void> {
     if (term.trim() === '' || hint.trim() === '') return
+
+    setChecking(true)
+    const result = await checkPronunciation(term, hint)
+    setChecking(false)
+    setCheck(result)
+
     save([
       ...settings.tts.phonemeHints.filter(
         (existing) => existing.term.toLowerCase() !== term.trim().toLowerCase(),
       ),
       { term: term.trim(), hint: hint.trim() },
     ])
-    setTerm('')
-    setHint('')
+
+    if (result.ok) {
+      setTerm('')
+      setHint('')
+    }
   }
 
   return (
@@ -470,15 +560,38 @@ function PhonemeHints({ settings, saving, commit }: TabProps) {
               className="max-w-[260px]"
             />
           </div>
-          <Button onClick={add} disabled={saving || term.trim() === '' || hint.trim() === ''}>
-            <Plus className="size-4" aria-hidden />
-            Add
+          <Button
+            onClick={() => void add()}
+            disabled={saving || checking || term.trim() === '' || hint.trim() === ''}
+          >
+            {checking ? (
+              <Loader2 className="size-4 animate-spin" aria-hidden />
+            ) : (
+              <Plus className="size-4" aria-hidden />
+            )}
+            {checking ? 'Checking with the voice…' : 'Add'}
           </Button>
         </div>
 
+        {check ? (
+          <p
+            className={cn(
+              'text-[12px]',
+              check.ok ? 'text-[var(--color-success)]' : 'text-[var(--color-warning)]',
+            )}
+            role="status"
+          >
+            {check.ok
+              ? 'The narrator accepted that pronunciation and will use it.'
+              : `Saved, but not applied. ${check.error ?? ''}`}
+          </p>
+        ) : null}
+
         <p className="text-[12px] text-[var(--color-text-muted)]">
-          IPA between slashes becomes a phoneme tag where the provider supports one. Anything else
-          is treated as a respelling and is read in place of the word.
+          IPA between slashes is converted to the notation the narrator takes; anything else is
+          treated as a respelling and read in place of the word. A pronunciation is checked with the
+          voice when you add it, because each voice validates against its own phoneme set — a
+          transcription can be correct IPA and still be refused, and a respelling always works.
         </p>
       </CardContent>
     </Card>

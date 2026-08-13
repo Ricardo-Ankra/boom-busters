@@ -219,3 +219,64 @@ export async function unlockVoice(confirmation: string): Promise<{ ok: boolean; 
   revalidatePath('/settings')
   return { ok: true }
 }
+
+/**
+ * Ask the vendor whether it will actually accept a pronunciation hint.
+ *
+ * Google validates a custom pronunciation against a **per-language phoneme
+ * inventory**, not merely against X-SAMPA being well-formed — verified against
+ * a live key: `aI` is accepted for en-GB and a bare `a` is refused, so a
+ * perfectly good IPA transcription of a German name is rejected wholesale. That
+ * cannot be predicted from the notation, and encoding Google's inventory here
+ * would be guesswork of exactly the kind that has cost this project two days.
+ *
+ * So the hint is checked with the vendor at the moment it is typed, where a
+ * human is present to fix it — rather than in a run, where the adapter drops it
+ * and narrates the word its own way. A refusal is a 400 and costs nothing; an
+ * acceptance synthesises the term alone, which is a small fraction of a cent.
+ */
+export async function checkPronunciation(
+  term: string,
+  hint: string,
+): Promise<{ ok: boolean; error?: string; applied?: boolean }> {
+  await requireOwner()
+
+  if (term.trim() === '' || hint.trim() === '') {
+    return { ok: false, error: 'Both a term and a pronunciation are needed.' }
+  }
+
+  const settings = await getSettings(db)
+  const provider = settings.tts.provider
+  const voiceId = settings.tts.voiceId
+
+  if (voiceId.trim() === '') {
+    return { ok: false, error: 'Choose a narrator first — a hint is checked against its voice.' }
+  }
+
+  try {
+    const narration = await synthesise(
+      {
+        // The term on its own: enough to exercise the pronunciation, and the
+        // shortest thing that can be charged for.
+        text: term.trim(),
+        idempotencyKey: `hint-check:${provider}:${voiceId}`,
+        voiceOverride: { provider, voiceId },
+      },
+      // Only this hint, so the answer is about this hint.
+      { ...settings, tts: { ...settings.tts, phonemeHints: [{ term, hint }] } },
+    )
+
+    return narration.droppedPronunciations && narration.droppedPronunciations.length > 0
+      ? {
+          ok: false,
+          applied: false,
+          error:
+            `${provider} refused this pronunciation. It validates against the voice's own phoneme ` +
+            'set, so a transcription can be correct IPA and still be outside it — try the ' +
+            'nearest English sounds, or write it as a respelling instead.',
+        }
+      : { ok: true, applied: true }
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : 'Could not check it' }
+  }
+}

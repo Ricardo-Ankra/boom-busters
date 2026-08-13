@@ -3,6 +3,7 @@ import type { PhonemeHint } from '@boom-busters/schemas'
 import { mapNetworkError, throwForResponse } from '../llm/http'
 import { NARRATION_SAMPLE_RATE, pcmDurationMs } from './audio'
 import { isIpa, matchedHints } from './phonemes'
+import { ipaToXSampa, isUsableXSampa } from './x-sampa'
 import type {
   KnownVoice,
   TTSCallOptions,
@@ -108,17 +109,53 @@ export function stripWavHeader(buffer: Buffer): Buffer {
  * and cannot go in that field, so it is substituted into the text instead —
  * the same fallback the ElevenLabs adapter uses, for the same reason.
  */
+export interface CustomPronunciation {
+  phrase: string
+  /**
+   * X-SAMPA, never IPA.
+   *
+   * Cloud TTS rejects `PHONETIC_ENCODING_IPA` outright — verified against a
+   * live key on every voice family, every phrase and every symbol set tried,
+   * while the identical pronunciation as X-SAMPA was accepted. The hints stay
+   * IPA where a human writes them; the conversion happens here.
+   */
+  phoneticEncoding: 'PHONETIC_ENCODING_X_SAMPA'
+  pronunciation: string
+}
+
 export function customPronunciations(
   text: string,
   hints: readonly PhonemeHint[],
-): { phrase: string; phoneticEncoding: 'PHONETIC_ENCODING_IPA'; pronunciation: string }[] {
+): CustomPronunciation[] {
   return matchedHints(text, hints)
     .filter((hint) => isIpa(hint.hint))
     .map((hint) => ({
       phrase: hint.term,
-      phoneticEncoding: 'PHONETIC_ENCODING_IPA' as const,
-      pronunciation: hint.hint.trim().replace(/^\/|\/$/g, ''),
+      phoneticEncoding: 'PHONETIC_ENCODING_X_SAMPA' as const,
+      pronunciation: ipaToXSampa(hint.hint),
     }))
+    .filter((entry) => isUsableXSampa(entry.pronunciation))
+}
+
+/**
+ * The phrases named in a "custom pronunciation phrases are invalid" refusal.
+ *
+ * Google returns a 400 listing them, which is a non-retriable `ValidationError`
+ * in our taxonomy — so without this, one malformed hint in Settings would fail
+ * *every paragraph containing that word*, permanently, and the narration of a
+ * whole chapter with it. A pronunciation is a nicety; the words being spoken at
+ * all is not.
+ */
+export function invalidPhrases(message: string): string[] {
+  // Loose about the wording between "pronunciation" and the colon, tight about
+  // the shape. If Google rewords the sentence, the worst case is one wasted
+  // retry; if the pattern were exact, a reworded message would silently take
+  // the fallback away and paragraphs would start failing again.
+  const match = /pronunciation[^:]*invalid[^:]*:\s*([^.]+)/i.exec(message)
+  return (match?.[1] ?? '')
+    .split(',')
+    .map((phrase) => phrase.trim())
+    .filter((phrase) => phrase.length > 0)
 }
 
 /** Respellings applied in the text, since they cannot be a phonetic encoding. */
@@ -153,34 +190,64 @@ export const googleCloudTts: TTSProvider = {
 
   async synthesise(request: TTSRequest, options: TTSCallOptions): Promise<TTSResult> {
     const doFetch = options.fetchImpl ?? fetch
-    const pronunciations = customPronunciations(request.text, request.phonemeHints)
+    const text = applyRespellings(request.text, request.phonemeHints)
 
-    let response: Response
-    try {
-      response = await doFetch(`${BASE}/text:synthesize`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json', 'x-goog-api-key': options.apiKey },
-        body: JSON.stringify({
-          input: {
-            // Plain text, never SSML: the Chirp families do not accept it.
-            text: applyRespellings(request.text, request.phonemeHints),
-            ...(pronunciations.length > 0 ? { customPronunciations: { pronunciations } } : {}),
-          },
-          voice: {
-            languageCode: languageOfVoice(request.voiceId),
-            name: request.voiceId,
-          },
-          audioConfig: {
-            audioEncoding: 'LINEAR16',
-            sampleRateHertz: NARRATION_SAMPLE_RATE,
-            // Cloud TTS centres speaking rate on 1, as our pacing does.
-            speakingRate: request.pacing ?? 1,
-          },
-        }),
-        ...(options.signal ? { signal: options.signal } : {}),
-      })
-    } catch (cause) {
-      throw mapNetworkError('google-cloud-tts', cause)
+    const send = async (pronunciations: CustomPronunciation[]): Promise<Response> => {
+      try {
+        return await doFetch(`${BASE}/text:synthesize`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', 'x-goog-api-key': options.apiKey },
+          body: JSON.stringify({
+            input: {
+              // Plain text, never SSML: the Chirp families do not accept it.
+              text,
+              ...(pronunciations.length > 0 ? { customPronunciations: { pronunciations } } : {}),
+            },
+            voice: {
+              languageCode: languageOfVoice(request.voiceId),
+              name: request.voiceId,
+            },
+            audioConfig: {
+              audioEncoding: 'LINEAR16',
+              sampleRateHertz: NARRATION_SAMPLE_RATE,
+              // Cloud TTS centres speaking rate on 1, as our pacing does.
+              speakingRate: request.pacing ?? 1,
+            },
+          }),
+          ...(options.signal ? { signal: options.signal } : {}),
+        })
+      } catch (cause) {
+        throw mapNetworkError('google-cloud-tts', cause)
+      }
+    }
+
+    const wanted = customPronunciations(request.text, request.phonemeHints)
+    let response = await send(wanted)
+    let dropped: string[] = []
+
+    /**
+     * A pronunciation the vendor will not accept must not cost us the words.
+     *
+     * Google refuses the whole request with a 400 naming the offending phrases,
+     * which our taxonomy maps to a non-retriable `ValidationError` — so a
+     * single malformed hint in Settings would otherwise fail every paragraph
+     * containing that word, for good, and take the chapter's narration with it.
+     * The hint is a nicety; the sentence being spoken is not.
+     *
+     * Retried once without the rejected phrases, and the drop is reported on
+     * the result rather than swallowed: spec principle 6 allows degrading, but
+     * never silently.
+     */
+    if (response.status === 400 && wanted.length > 0) {
+      const message = await response.clone().text()
+      const rejected = invalidPhrases(message)
+
+      if (rejected.length > 0) {
+        const lowered = rejected.map((phrase) => phrase.toLowerCase())
+        const kept = wanted.filter((entry) => !lowered.includes(entry.phrase.toLowerCase()))
+        dropped = rejected
+        response = await send(kept)
+      }
     }
 
     if (!response.ok) await throwForResponse('google-cloud-tts', response)
@@ -201,6 +268,7 @@ export const googleCloudTts: TTSProvider = {
       estimatedCostUsd: (request.text.length / 1000) * googleCloudTts.pricePerKChar,
       provider: 'google-cloud-tts',
       voiceId: request.voiceId,
+      ...(dropped.length > 0 ? { droppedPronunciations: dropped } : {}),
     }
   },
 

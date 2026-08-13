@@ -50,6 +50,14 @@ export interface Narration {
   waveform: number[]
   provider: TtsProvider
   voiceId: string
+  /**
+   * Pronunciation hints the vendor refused and the adapter therefore dropped.
+   *
+   * The take is still good — the words were spoken, just the narrator's own way
+   * — but principle 6 forbids degrading silently, so this travels up to be
+   * recorded on the run and shown beside the hint that caused it.
+   */
+  droppedPronunciations?: string[]
 }
 
 /**
@@ -135,5 +143,8 @@ export async function synthesise(
     waveform: waveformPeaks(result.audioBuffer),
     provider: result.provider,
     voiceId: result.voiceId,
+    ...(result.droppedPronunciations && result.droppedPronunciations.length > 0
+      ? { droppedPronunciations: result.droppedPronunciations }
+      : {}),
   }
 }

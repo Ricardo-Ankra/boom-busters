@@ -1,6 +1,8 @@
 import { LLM_MODELS } from '@boom-busters/providers'
-import { ValidationError } from '@boom-busters/schemas'
+import { PROVIDERS, TTS_PROVIDERS, ValidationError } from '@boom-busters/schemas'
 import { describe, expect, it } from 'vitest'
+import { lockKey } from './guard'
+import { GUARDED_PROVIDERS } from './ledger'
 import {
   LLM_PRICES,
   TTS_PRICES,
@@ -110,5 +112,46 @@ describe('estimateChapterTokens', () => {
 
   it('returns whole tokens', () => {
     expect(Number.isInteger(estimateChapterTokens(2_333))).toBe(true)
+  })
+})
+
+/**
+ * The guard's coverage, asserted rather than assumed.
+ *
+ * `GUARDED_PROVIDERS` used to be a hand-written copy of `PROVIDERS` and drifted
+ * the first time a provider was added: `google-cloud-tts` reached the enum, the
+ * price table and the settings screen, and the first audition through it died
+ * on "google-cloud-tts is not a guarded provider". Failing closed on a spend
+ * path is the right failure — but the list should never have been separate.
+ */
+describe('every provider is guarded', () => {
+  it('guards exactly the providers that exist', () => {
+    expect([...GUARDED_PROVIDERS].sort()).toEqual([...PROVIDERS].sort())
+  })
+
+  it('gives every provider a lock key, and every TTS provider a price', () => {
+    for (const provider of PROVIDERS) {
+      expect(Number.isInteger(lockKey(provider))).toBe(true)
+      // Signed 32-bit, because that is what pg_advisory_xact_lock takes.
+      expect(lockKey(provider)).toBeGreaterThanOrEqual(0)
+      expect(lockKey(provider)).toBeLessThanOrEqual(0x7f_ff_ff_ff)
+    }
+
+    for (const provider of TTS_PROVIDERS) {
+      expect(estimateTtsUsd({ provider, characters: 1000 })).toBeGreaterThan(0)
+    }
+  })
+
+  it('gives different providers different lock keys', () => {
+    const keys = new Set(PROVIDERS.map((provider) => lockKey(provider)))
+    expect(keys.size).toBe(PROVIDERS.length)
+  })
+
+  it('keeps a provider\u2019s lock key stable regardless of list order', () => {
+    // The old index-based key made ordering load-bearing: inserting a provider
+    // renumbered every one after it, so a run in flight across a deploy could
+    // take a different lock than the one guarding the same cap.
+    expect(lockKey('anthropic')).toBe(lockKey('anthropic'))
+    expect(lockKey('google')).not.toBe(lockKey('google-cloud-tts'))
   })
 })

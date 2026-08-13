@@ -7,6 +7,7 @@ import {
   customPronunciations,
   DEFAULT_LANGUAGE_CODE,
   googleCloudTts,
+  invalidPhrases,
   languageOfVoice,
   stripWavHeader,
 } from './google-cloud'
@@ -109,17 +110,27 @@ describe('stripWavHeader', () => {
 describe('pronunciation on Chirp', () => {
   /**
    * Chirp 3 HD takes plain text, not SSML — the `<phoneme>` tag the older
-   * WaveNet voices accept is not available. IPA goes in `customPronunciations`
-   * instead, and a respelling has nowhere to go but the text.
+   * WaveNet voices accept is not available. A pronunciation goes in
+   * `customPronunciations` instead, and a respelling has nowhere to go but the
+   * text.
+   *
+   * **As X-SAMPA, never IPA.** Verified against a live key: every
+   * `PHONETIC_ENCODING_IPA` pronunciation was refused, on every voice family
+   * and every phrase, while the same sounds as X-SAMPA were accepted.
    */
-  it('sends IPA as a custom pronunciation, keyed by the written term', () => {
+  it('converts the hint to X-SAMPA, keyed by the written term', () => {
     expect(customPronunciations(request.text, hints)).toEqual([
       {
         phrase: 'Wirecard',
-        phoneticEncoding: 'PHONETIC_ENCODING_IPA',
-        pronunciation: 'ˈvaɪɐkart',
+        phoneticEncoding: 'PHONETIC_ENCODING_X_SAMPA',
+        pronunciation: '"vaI6kart',
       },
     ])
+  })
+
+  it('omits a hint that converts to nothing usable', () => {
+    // Better no pronunciation than a pronunciation of marks alone.
+    expect(customPronunciations('Wirecard.', [{ term: 'Wirecard', hint: '/ˈ/' }])).toEqual([])
   })
 
   it('does not offer a respelling as a phonetic encoding, because it is not one', () => {
@@ -300,5 +311,99 @@ describe('google cloud tts voices', () => {
 
     expect(seen.url).toContain('/voices')
     expect(seen.init?.method).toBeUndefined()
+  })
+})
+
+/**
+ * A pronunciation the vendor refuses must not cost us the words.
+ *
+ * Google validates against the voice's own phoneme inventory — `aI` passes for
+ * en-GB, a bare `a` does not — and refuses the whole request with a 400 naming
+ * the phrases. Our taxonomy makes that a non-retriable `ValidationError`, so
+ * without a fallback one bad hint in Settings would fail every paragraph
+ * containing that word, permanently, and take the chapter's narration with it.
+ */
+describe('a refused pronunciation', () => {
+  const PCM_B64 = encodeWav(PCM, { sampleRate: NARRATION_SAMPLE_RATE }).toString('base64')
+
+  function refuseThenAccept(): { fetchImpl: typeof fetch; bodies: string[] } {
+    const bodies: string[] = []
+    const fetchImpl = (async (_url: string, init: RequestInit) => {
+      bodies.push(String(init.body))
+      if (bodies.length === 1) {
+        return new Response(
+          JSON.stringify({
+            error: {
+              code: 400,
+              message:
+                'The following custom pronunciation phrases are invalid: Wirecard. Please ensure the phrases are well-structured.',
+            },
+          }),
+          { status: 400, headers: { 'content-type': 'application/json' } },
+        )
+      }
+      return new Response(JSON.stringify({ audioContent: PCM_B64 }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      })
+    }) as unknown as typeof fetch
+
+    return { fetchImpl, bodies }
+  }
+
+  it('retries once without it, so the paragraph is still narrated', async () => {
+    const { fetchImpl, bodies } = refuseThenAccept()
+    const result = await googleCloudTts.synthesise(request, { apiKey: 'k', fetchImpl })
+
+    expect(bodies).toHaveLength(2)
+    expect(result.audioBuffer).toEqual(PCM)
+
+    // The retry carries the words, and no longer the pronunciation.
+    const second = JSON.parse(bodies[1]!) as { input: Record<string, unknown> }
+    expect(second.input).not.toHaveProperty('customPronunciations')
+    expect(second.input['text']).toBe(
+      String((JSON.parse(bodies[0]!) as { input: { text: string } }).input.text),
+    )
+  })
+
+  it('reports what it dropped rather than degrading silently', () => {
+    // Principle 6: anything auto-substituted must be visibly flagged.
+    // The vendor's real wording, recorded from a live 400.
+    expect(
+      invalidPhrases(
+        'The following custom pronunciation phrases are invalid: Wirecard. Please ensure the phrases are well-structured and that the phonemes are valid.',
+      ),
+    ).toEqual(['Wirecard'])
+
+    expect(
+      invalidPhrases('The following custom pronunciation phrases are invalid: Wirecard, Theranos.'),
+    ).toEqual(['Wirecard', 'Theranos'])
+
+    // Tolerant of rewording, because an exact match that stopped matching would
+    // silently take the fallback away.
+    expect(invalidPhrases('custom pronunciation entries were invalid: Enron.')).toEqual(['Enron'])
+
+    // And says nothing about a 400 that is not about pronunciation at all.
+    expect(invalidPhrases('Bad voice name')).toEqual([])
+  })
+
+  it('carries the dropped phrases up on the result', async () => {
+    const { fetchImpl } = refuseThenAccept()
+    const result = await googleCloudTts.synthesise(request, { apiKey: 'k', fetchImpl })
+    expect(result.droppedPronunciations).toEqual(['Wirecard'])
+  })
+
+  it('does not retry a 400 that is about something else', async () => {
+    let calls = 0
+    const fetchImpl = (async () => {
+      calls += 1
+      return new Response(JSON.stringify({ error: { code: 400, message: 'Bad voice name' } }), {
+        status: 400,
+        headers: { 'content-type': 'application/json' },
+      })
+    }) as unknown as typeof fetch
+
+    await expect(googleCloudTts.synthesise(request, { apiKey: 'k', fetchImpl })).rejects.toThrow()
+    expect(calls).toBe(1)
   })
 })

@@ -42,6 +42,15 @@ export interface TTSResult {
   /** What actually spoke, for the ledger and the take row. */
   provider: TtsProvider
   voiceId: string
+  /**
+   * Pronunciation hints the vendor refused, and which were therefore dropped.
+   *
+   * The take is still good — the words were spoken, just with the narrator's
+   * own idea of how to say them. Reported rather than swallowed because spec
+   * principle 6 allows degrading and forbids doing it quietly: something
+   * auto-substituted must be visibly flagged.
+   */
+  droppedPronunciations?: string[]
 }
 
 /**
