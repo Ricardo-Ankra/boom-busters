@@ -744,30 +744,6 @@ export const runEvents = pgTable(
 )
 
 /**
- * Web Push subscriptions (spec section 11.4).
- *
- * Not one of the tables spec section 5 enumerates, but VAPID push has no
- * server-side identity of its own: the browser hands back an endpoint plus two
- * keys, and without somewhere to keep them there is no way to notify anyone
- * that a gate opened. One row per browser the owner signs in from.
- */
-export const pushSubscriptions = pgTable(
-  'push_subscriptions',
-  {
-    id: id(),
-    endpoint: text('endpoint').notNull(),
-    /** Client public key and auth secret from `PushSubscription.toJSON()`. */
-    p256dh: text('p256dh').notNull(),
-    auth: text('auth').notNull(),
-    userAgent: text('user_agent'),
-    lastNotifiedAt: timestamp('last_notified_at', { withTimezone: true }),
-    createdAt: createdAt(),
-    updatedAt: updatedAt(),
-  },
-  (t) => [uniqueIndex('push_subscriptions_endpoint_key').on(t.endpoint)],
-)
-
-/**
  * Audition samples, cached so a voice is bought once.
  *
  * Spec section 10.1 puts these in R2 ("the audition sample files in R2 for
@@ -908,7 +884,6 @@ export type ProviderCredentialRow = typeof providerCredentials.$inferSelect
 export type CostLedgerRow = typeof costLedger.$inferSelect
 export type RunRow = typeof runs.$inferSelect
 export type RunEventRow = typeof runEvents.$inferSelect
-export type PushSubscriptionRow = typeof pushSubscriptions.$inferSelect
 export type ProjectStage = (typeof projectStageEnum.enumValues)[number]
 export type StageStatus = (typeof stageStatusEnum.enumValues)[number]
 export type RunStatus = (typeof runStatusEnum.enumValues)[number]

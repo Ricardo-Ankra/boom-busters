@@ -15,13 +15,13 @@ export function Card({ className, ...props }: React.HTMLAttributes<HTMLDivElemen
 }
 
 export function CardHeader({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
-  return <div className={cn('flex flex-col gap-1 p-4', className)} {...props} />
+  return <div className={cn('flex flex-col gap-0.5 p-3', className)} {...props} />
 }
 
 export function CardTitle({ className, ...props }: React.HTMLAttributes<HTMLHeadingElement>) {
   return (
     <h3
-      className={cn('text-[15px] font-semibold text-[var(--color-text-primary)]', className)}
+      className={cn('text-[14px] font-semibold text-[var(--color-text-primary)]', className)}
       {...props}
     />
   )
@@ -37,9 +37,9 @@ export function CardDescription({
 }
 
 export function CardContent({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
-  return <div className={cn('p-4 pt-0', className)} {...props} />
+  return <div className={cn('p-3 pt-0', className)} {...props} />
 }
 
 export function CardFooter({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
-  return <div className={cn('flex items-center gap-2 p-4 pt-0', className)} {...props} />
+  return <div className={cn('flex items-center gap-2 p-3 pt-0', className)} {...props} />
 }

@@ -1,7 +1,7 @@
 import { recordRunEvent, setProjectStage, setRunStatus, updateSettings } from '@boom-busters/db'
 import type { ProjectStage } from '@boom-busters/db'
 import { monthKey } from '@boom-busters/schemas'
-import type { BudgetExceededError, GateStage, Provider } from '@boom-busters/schemas'
+import type { BudgetExceededError, GateStage } from '@boom-busters/schemas'
 import { db } from '@/lib/db'
 import { notify } from '@/lib/notify'
 import { resolveRunRowId } from '../middleware/run-mirror'
@@ -89,7 +89,6 @@ export function budgetGateData(error: BudgetExceededError): Record<string, unkno
     budgetUsd: error.budgetUsd,
     monthSpendUsd: error.monthSpendUsd,
     estimateUsd: error.estimateUsd,
-    killSwitch: error.killSwitch,
   }
 }
 
@@ -133,19 +132,13 @@ export async function closeBudgetGate(ctx: GateContext, message: string): Promis
  * held in the run, so the cap the guard reads and the cap the Costs screen
  * shows are the same number — and so it expires with the month.
  */
-export async function grantOverage(
-  provider: Provider,
-  additionalUsd: number,
-  now: Date = new Date(),
-): Promise<void> {
+export async function grantOverage(additionalUsd: number, now: Date = new Date()): Promise<void> {
   await updateSettings(db, {
     budgets: {
-      approvedOverages: {
-        [provider]: {
-          month: monthKey(now),
-          usd: additionalUsd,
-          approvedAt: now.toISOString(),
-        },
+      approvedOverage: {
+        month: monthKey(now),
+        usd: additionalUsd,
+        approvedAt: now.toISOString(),
       },
     },
   })

@@ -64,11 +64,7 @@ describeDb('gate helpers', () => {
     forgetRunRows()
     await setProjectStage(db, FIXTURE_PROJECT_ID, { stage: 'dossier', stageStatus: 'running' })
     await updateSettings(db, {
-      budgets: {
-        killSwitch: false,
-        perProviderMonthlyUSD: { anthropic: 30 },
-        approvedOverages: {},
-      },
+      budgets: { monthlyCeilingUsd: 30, approvedOverage: null },
     })
   })
 
@@ -149,7 +145,6 @@ describeDb('gate helpers', () => {
         budgetUsd: 30,
         monthSpendUsd: 29.8,
         estimateUsd: 0.45,
-        killSwitch: false,
       })
     })
 
@@ -167,39 +162,39 @@ describeDb('gate helpers', () => {
   })
 
   describe('grantOverage', () => {
-    it('raises the cap the guard reads, for this month only', async () => {
+    it('raises the ceiling the guard reads, for this month only', async () => {
       const settingsBefore = await getSettings(db)
-      const before = await budgetStatus(db, 'anthropic', settingsBefore, { estimateUsd: 40 })
+      const before = await budgetStatus(db, settingsBefore, { estimateUsd: 40 })
       expect(before.wouldRefuse).toBe(true)
 
-      await grantOverage('anthropic', 25)
+      await grantOverage(25)
 
       const settingsAfter = await getSettings(db)
-      expect(settingsAfter.budgets.approvedOverages.anthropic).toMatchObject({
+      expect(settingsAfter.budgets.approvedOverage).toMatchObject({
         month: monthKey(new Date()),
         usd: 25,
       })
 
-      const after = await budgetStatus(db, 'anthropic', settingsAfter, { estimateUsd: 40 })
-      expect(after.budgetUsd).toBe(55)
+      const after = await budgetStatus(db, settingsAfter, { estimateUsd: 40 })
+      expect(after.ceilingUsd).toBe(55)
       expect(after.wouldRefuse).toBe(false)
     })
 
-    it('stamps when it was approved, because a raised cap is an audit trail', async () => {
-      await grantOverage('anthropic', 5)
+    it('stamps when it was approved, because a raised ceiling is an audit trail', async () => {
+      await grantOverage(5)
       const settings = await getSettings(db)
-      expect(settings.budgets.approvedOverages.anthropic?.approvedAt).toBeTruthy()
+      expect(settings.budgets.approvedOverage?.approvedAt).toBeTruthy()
     })
 
     it('does not apply to a different month', async () => {
       const march = new Date('2026-03-15T00:00:00.000Z')
-      await grantOverage('anthropic', 25, march)
+      await grantOverage(25, march)
 
       const settings = await getSettings(db)
-      const august = await budgetStatus(db, 'anthropic', settings, {
+      const august = await budgetStatus(db, settings, {
         now: new Date('2026-08-15T00:00:00.000Z'),
       })
-      expect(august.budgetUsd).toBe(30)
+      expect(august.ceilingUsd).toBe(30)
     })
   })
 

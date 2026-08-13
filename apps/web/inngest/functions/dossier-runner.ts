@@ -8,7 +8,6 @@ import {
 } from '@boom-busters/db'
 import { renderDossierMarkdown } from '@boom-busters/providers'
 import { parseEventData, serialiseError } from '@boom-busters/schemas'
-import type { Provider } from '@boom-busters/schemas'
 import { NonRetriableError } from 'inngest'
 import type { GetStepTools } from 'inngest'
 import { db } from '@/lib/db'
@@ -188,7 +187,7 @@ async function waitOutBudgetGate(
   const decision = parseEventData('budget/approved', approved.data)
 
   await step.run(`apply-overage-${round}`, async () => {
-    await grantOverage(decision.provider as Provider, decision.additionalUsd)
+    await grantOverage(decision.additionalUsd)
     await closeBudgetGate(
       ctx,
       `Overage of $${decision.additionalUsd.toFixed(2)} approved for ${decision.provider}`,

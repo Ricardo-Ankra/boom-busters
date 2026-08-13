@@ -2,10 +2,9 @@ import { describe, expect, it } from 'vitest'
 import {
   DEFAULT_SETTINGS,
   LLM_TASKS,
-  PROVIDERS,
   SettingsPatchSchema,
   SettingsSchema,
-  effectiveBudgetUsd,
+  effectiveCeilingUsd,
   firstRunBlockers,
   canonicalModelId,
   monthKey,
@@ -23,10 +22,8 @@ describe('SettingsSchema', () => {
     }
   })
 
-  it('budgets every provider the app can spend against', () => {
-    for (const provider of PROVIDERS) {
-      expect(DEFAULT_SETTINGS.budgets.perProviderMonthlyUSD[provider]).toBeTypeOf('number')
-    }
+  it('ships one spending ceiling, not a matrix', () => {
+    expect(DEFAULT_SETTINGS.budgets.monthlyCeilingUsd).toBeGreaterThan(0)
   })
 
   it('rejects an unknown LLM provider in the routing matrix', () => {
@@ -79,8 +76,8 @@ describe('SettingsSchema', () => {
 
 describe('SettingsPatchSchema', () => {
   it('accepts a partial nested patch', () => {
-    const patch = SettingsPatchSchema.parse({ budgets: { killSwitch: true } })
-    expect(patch.budgets?.killSwitch).toBe(true)
+    const patch = SettingsPatchSchema.parse({ budgets: { monthlyCeilingUsd: 25 } })
+    expect(patch.budgets?.monthlyCeilingUsd).toBe(25)
   })
 
   it('still validates the values inside a partial patch', () => {
@@ -167,33 +164,41 @@ describe('firstRunBlockers', () => {
   })
 })
 
-describe('effectiveBudgetUsd', () => {
-  const settings = structuredClone(DEFAULT_SETTINGS)
+describe('effectiveCeilingUsd', () => {
   const march = new Date('2026-03-15T00:00:00.000Z')
 
-  it('is the configured cap when no overage was approved', () => {
-    expect(effectiveBudgetUsd(settings.budgets, 'anthropic', march)).toBe(30)
+  it('is the configured ceiling when no overage was approved', () => {
+    expect(effectiveCeilingUsd({ monthlyCeilingUsd: 100 }, march)).toBe(100)
   })
 
   it('adds an overage approved for that same month', () => {
-    const budgets = {
-      ...settings.budgets,
-      approvedOverages: { anthropic: { month: '2026-03', usd: 12 } },
-    }
-    expect(effectiveBudgetUsd(budgets, 'anthropic', march)).toBe(42)
+    expect(
+      effectiveCeilingUsd(
+        { monthlyCeilingUsd: 100, approvedOverage: { month: '2026-03', usd: 12 } },
+        march,
+      ),
+    ).toBe(112)
   })
 
   it('expires the overage at the month boundary — March generosity is not April policy', () => {
-    const budgets = {
-      ...settings.budgets,
-      approvedOverages: { anthropic: { month: '2026-03', usd: 12 } },
-    }
-    expect(effectiveBudgetUsd(budgets, 'anthropic', new Date('2026-04-01T00:00:00.000Z'))).toBe(30)
+    expect(
+      effectiveCeilingUsd(
+        { monthlyCeilingUsd: 100, approvedOverage: { month: '2026-03', usd: 12 } },
+        new Date('2026-04-01T00:00:00.000Z'),
+      ),
+    ).toBe(100)
   })
 
-  it('treats a provider with no cap as zero, not unlimited', () => {
-    const budgets = { ...settings.budgets, perProviderMonthlyUSD: {} as never }
-    expect(effectiveBudgetUsd(budgets, 'fal', march)).toBe(0)
+  it('survives a settings row written before the ceiling existed', () => {
+    // The production row carries the old shape: a per-provider matrix and a
+    // kill switch. Zod strips what it does not know and catches the missing
+    // ceiling at 100 — a parse failure here would take the whole app down.
+    const parsed = SettingsSchema.parse({
+      ...DEFAULT_SETTINGS,
+      budgets: { perProviderMonthlyUSD: { anthropic: 30 }, killSwitch: true },
+    })
+    expect(parsed.budgets.monthlyCeilingUsd).toBe(100)
+    expect('killSwitch' in parsed.budgets).toBe(false)
   })
 })
 

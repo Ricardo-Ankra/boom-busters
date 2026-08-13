@@ -62,9 +62,7 @@ async function resetFixture(): Promise<void> {
   await truncateLedger(db)
   // The mirror memo would otherwise point at rows the truncate deleted.
   forgetRunRows()
-  await updateSettings(db, {
-    budgets: { killSwitch: false, perProviderMonthlyUSD: { anthropic: 30 }, approvedOverages: {} },
-  })
+  await updateSettings(db, { budgets: { monthlyCeilingUsd: 30, approvedOverage: null } })
 }
 
 describeDb('demo pipeline', () => {
@@ -148,7 +146,7 @@ describeDb('demo pipeline', () => {
       })
 
       const [gate] = await listOpenBudgetGates(db)
-      expect(gate).toMatchObject({ provider: 'anthropic', budgetUsd: 30, killSwitch: false })
+      expect(gate).toMatchObject({ provider: 'anthropic', budgetUsd: 30 })
       expect(gate?.estimateUsd).toBe(1_000_000)
 
       // Parked, not failed: a cap is a question, not an error.
@@ -164,13 +162,13 @@ describeDb('demo pipeline', () => {
       expect(await listLedger(db)).toEqual([])
     })
 
-    it('parks the same way when the kill switch is on', async () => {
-      await updateSettings(db, { budgets: { killSwitch: true } })
+    it('parks the same way at a ceiling of zero, which is the kill switch now', async () => {
+      await updateSettings(db, { budgets: { monthlyCeilingUsd: 0 } })
 
       await engine.executeStep('open-budget-gate-0', { events: demoEvent() })
 
       const [gate] = await listOpenBudgetGates(db)
-      expect(gate?.killSwitch).toBe(true)
+      expect(gate?.budgetUsd).toBe(0)
       // The estimate is the real one, not the forced million.
       expect(gate?.estimateUsd).toBeCloseTo(0.0001)
     })

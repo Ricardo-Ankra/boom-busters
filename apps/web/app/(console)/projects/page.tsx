@@ -23,7 +23,7 @@ export default async function ProjectsPage() {
   const projects = await listProjects(db)
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-4">
       <header className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-[20px] font-semibold">Projects</h1>
       </header>

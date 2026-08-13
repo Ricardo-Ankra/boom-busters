@@ -30,25 +30,11 @@ const describeDb = DATABASE_URL ? describe : describe.skip
 /** Mid-month, so a test never straddles a real month boundary. */
 const NOW = new Date('2026-03-15T12:00:00.000Z')
 
-/**
- * Defaults with a few caps overridden. Every provider keeps a cap, so a test
- * that forgets one still exercises a real budget rather than an absent key.
- */
-function settingsWith(patch: {
-  budgets?: Omit<Partial<Settings['budgets']>, 'perProviderMonthlyUSD'> & {
-    perProviderMonthlyUSD?: Partial<Settings['budgets']['perProviderMonthlyUSD']>
-  }
-}): Settings {
+/** Defaults with the ceiling overridden — the one number the guard reads. */
+function settingsWith(patch: { budgets?: Partial<Settings['budgets']> }): Settings {
   return {
     ...DEFAULT_SETTINGS,
-    budgets: {
-      ...DEFAULT_SETTINGS.budgets,
-      ...patch.budgets,
-      perProviderMonthlyUSD: {
-        ...DEFAULT_SETTINGS.budgets.perProviderMonthlyUSD,
-        ...patch.budgets?.perProviderMonthlyUSD,
-      },
-    },
+    budgets: { ...DEFAULT_SETTINGS.budgets, ...patch.budgets },
   }
 }
 
@@ -76,7 +62,7 @@ describeDb('cost guard', () => {
   // -------------------------------------------------------------------------
 
   it('lets a call through when there is room', async () => {
-    const settings = settingsWith({ budgets: { perProviderMonthlyUSD: { anthropic: 10 } } })
+    const settings = settingsWith({ budgets: { monthlyCeilingUsd: 10 } })
 
     const value = await withCost(
       db,
@@ -90,7 +76,7 @@ describeDb('cost guard', () => {
   })
 
   it('allows spend that lands exactly on the cap', async () => {
-    const settings = settingsWith({ budgets: { perProviderMonthlyUSD: { anthropic: 10 } } })
+    const settings = settingsWith({ budgets: { monthlyCeilingUsd: 10 } })
 
     await withCost(
       db,
@@ -109,7 +95,7 @@ describeDb('cost guard', () => {
   })
 
   it('refuses the call that would cross the cap, not the one that reaches it', async () => {
-    const settings = settingsWith({ budgets: { perProviderMonthlyUSD: { anthropic: 10 } } })
+    const settings = settingsWith({ budgets: { monthlyCeilingUsd: 10 } })
     await recordCost(db, {
       provider: 'anthropic',
       operation: 'prior',
@@ -130,7 +116,7 @@ describeDb('cost guard', () => {
   it('does not trip on a floating-point artefact', async () => {
     // 29.9 + 0.1 > 30 is *true* in IEEE 754. Rounding to the ledger's own
     // scale before comparing is what stops a budget gate opening on nothing.
-    const settings = settingsWith({ budgets: { perProviderMonthlyUSD: { anthropic: 30 } } })
+    const settings = settingsWith({ budgets: { monthlyCeilingUsd: 30 } })
     await recordCost(db, {
       provider: 'anthropic',
       operation: 'prior',
@@ -149,7 +135,7 @@ describeDb('cost guard', () => {
   })
 
   it('carries the arithmetic on the error, so the gate card can show it', async () => {
-    const settings = settingsWith({ budgets: { perProviderMonthlyUSD: { google: 5 } } })
+    const settings = settingsWith({ budgets: { monthlyCeilingUsd: 5 } })
     await recordCost(db, {
       provider: 'google',
       operation: 'prior',
@@ -174,7 +160,7 @@ describeDb('cost guard', () => {
   })
 
   it('never calls the provider when it refuses', async () => {
-    const settings = settingsWith({ budgets: { perProviderMonthlyUSD: { anthropic: 0 } } })
+    const settings = settingsWith({ budgets: { monthlyCeilingUsd: 0 } })
     let called = 0
 
     await expect(
@@ -194,24 +180,40 @@ describeDb('cost guard', () => {
   })
 
   // -------------------------------------------------------------------------
-  // Kill switch
+  // The ceiling is global
   // -------------------------------------------------------------------------
 
-  it('refuses everything while the kill switch is on, however much room there is', async () => {
-    const settings = settingsWith({
-      budgets: { perProviderMonthlyUSD: { anthropic: 1000 }, killSwitch: true },
-    })
+  /**
+   * The whole point of one number: spend on any provider counts against it.
+   * Under the old per-provider caps this call would have sailed through with
+   * anthropic untouched.
+   */
+  it("counts every provider's spend against the one ceiling", async () => {
+    const settings = settingsWith({ budgets: { monthlyCeilingUsd: 10 } })
+    await recordCost(db, { provider: 'google', operation: 'a', actualUsd: 6, occurredAt: NOW })
+    await recordCost(db, { provider: 'elevenlabs', operation: 'b', actualUsd: 3.5, occurredAt: NOW })
 
-    const error = await withCost(
-      db,
-      { provider: 'anthropic', operation: 'research', estimateUsd: 0.01 },
-      async () => ({ result: null }),
-      { settings, now: NOW },
-    ).catch((e: unknown) => e)
+    await expect(
+      withCost(
+        db,
+        { provider: 'anthropic', operation: 'research', estimateUsd: 1 },
+        async () => ({ result: null }),
+        { settings, now: NOW },
+      ),
+    ).rejects.toBeInstanceOf(BudgetExceededError)
+  })
 
-    expect(error).toBeInstanceOf(BudgetExceededError)
-    expect((error as BudgetExceededError).killSwitch).toBe(true)
-    expect((error as BudgetExceededError).message).toContain('Kill switch is on')
+  it('a ceiling of zero refuses everything, which is all the kill switch ever did', async () => {
+    const settings = settingsWith({ budgets: { monthlyCeilingUsd: 0 } })
+
+    await expect(
+      withCost(
+        db,
+        { provider: 'anthropic', operation: 'research', estimateUsd: 0.01 },
+        async () => ({ result: null }),
+        { settings, now: NOW },
+      ),
+    ).rejects.toBeInstanceOf(BudgetExceededError)
   })
 
   // -------------------------------------------------------------------------
@@ -220,10 +222,7 @@ describeDb('cost guard', () => {
 
   it('lets an approved overage raise this month, and only this month', async () => {
     const settings = settingsWith({
-      budgets: {
-        perProviderMonthlyUSD: { elevenlabs: 5 },
-        approvedOverages: { elevenlabs: { month: '2026-03', usd: 3 } },
-      },
+      budgets: { monthlyCeilingUsd: 5, approvedOverage: { month: '2026-03', usd: 3 } },
     })
     await recordCost(db, {
       provider: 'elevenlabs',
@@ -243,8 +242,8 @@ describeDb('cost guard', () => {
 
     // April's guard sees the same grant expired.
     const april = new Date('2026-04-02T00:00:00.000Z')
-    const status = await budgetStatus(db, 'elevenlabs', settings, { estimateUsd: 0.01, now: april })
-    expect(status.budgetUsd).toBeCloseTo(5)
+    const status = await budgetStatus(db, settings, { estimateUsd: 0.01, now: april })
+    expect(status.ceilingUsd).toBeCloseTo(5)
   })
 
   // -------------------------------------------------------------------------
@@ -254,7 +253,7 @@ describeDb('cost guard', () => {
   it('serialises concurrent reservations so only what fits gets through', async () => {
     // Room for exactly three $1 calls. Ten fan-out steps race for it; the
     // advisory lock is what stops all ten reading "there is room" at once.
-    const settings = settingsWith({ budgets: { perProviderMonthlyUSD: { fal: 3 } } })
+    const settings = settingsWith({ budgets: { monthlyCeilingUsd: 3 } })
 
     const attempts = await Promise.allSettled(
       Array.from({ length: 10 }, (_, index) =>
@@ -279,7 +278,7 @@ describeDb('cost guard', () => {
   })
 
   it('counts an unsettled reservation at its estimate', async () => {
-    const settings = settingsWith({ budgets: { perProviderMonthlyUSD: { openai: 10 } } })
+    const settings = settingsWith({ budgets: { monthlyCeilingUsd: 10 } })
     const ledgerId = await reserve(
       db,
       { provider: 'openai', operation: 'in-flight', estimateUsd: 4 },
@@ -298,7 +297,7 @@ describeDb('cost guard', () => {
   // -------------------------------------------------------------------------
 
   it('records the estimate when the provider reports no usage', async () => {
-    const settings = settingsWith({ budgets: { perProviderMonthlyUSD: { pexels: 1 } } })
+    const settings = settingsWith({ budgets: { monthlyCeilingUsd: 1 } })
 
     await withCost(
       db,
@@ -313,7 +312,7 @@ describeDb('cost guard', () => {
   })
 
   it('releases the reservation when the call spent nothing', async () => {
-    const settings = settingsWith({ budgets: { perProviderMonthlyUSD: { anthropic: 10 } } })
+    const settings = settingsWith({ budgets: { monthlyCeilingUsd: 10 } })
 
     await expect(
       withCost(
@@ -332,7 +331,7 @@ describeDb('cost guard', () => {
   })
 
   it('keeps spend the provider already charged for on a failed call', async () => {
-    const settings = settingsWith({ budgets: { perProviderMonthlyUSD: { elevenlabs: 10 } } })
+    const settings = settingsWith({ budgets: { monthlyCeilingUsd: 10 } })
 
     await expect(
       withCost(
@@ -349,7 +348,7 @@ describeDb('cost guard', () => {
   })
 
   it('drops a reservation on release', async () => {
-    const settings = settingsWith({ budgets: { perProviderMonthlyUSD: { openai: 10 } } })
+    const settings = settingsWith({ budgets: { monthlyCeilingUsd: 10 } })
     const ledgerId = await reserve(
       db,
       { provider: 'openai', operation: 'x', estimateUsd: 1 },
@@ -414,14 +413,13 @@ describeDb('cost guard', () => {
   // -------------------------------------------------------------------------
 
   it('reports what the guard would decide without reserving anything', async () => {
-    const settings = settingsWith({ budgets: { perProviderMonthlyUSD: { anthropic: 10 } } })
+    const settings = settingsWith({ budgets: { monthlyCeilingUsd: 10 } })
     await recordCost(db, { provider: 'anthropic', operation: 'p', actualUsd: 9.5, occurredAt: NOW })
 
-    const status = await budgetStatus(db, 'anthropic', settings, { estimateUsd: 1, now: NOW })
+    const status = await budgetStatus(db, settings, { estimateUsd: 1, now: NOW })
 
     expect(status).toMatchObject({
-      provider: 'anthropic',
-      budgetUsd: 10,
+      ceilingUsd: 10,
       wouldRefuse: true,
     })
     expect(status.remainingUsd).toBeCloseTo(0.5)

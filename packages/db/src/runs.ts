@@ -321,7 +321,6 @@ export interface OpenBudgetGate {
   budgetUsd: number
   monthSpendUsd: number
   estimateUsd: number
-  killSwitch: boolean
   openedAt: Date
 }
 
@@ -373,7 +372,6 @@ export async function listOpenBudgetGates(db: Database): Promise<OpenBudgetGate[
       budgetUsd: Number(data['budgetUsd'] ?? 0),
       monthSpendUsd: Number(data['monthSpendUsd'] ?? 0),
       estimateUsd: Number(data['estimateUsd'] ?? 0),
-      killSwitch: Boolean(data['killSwitch'] ?? false),
       openedAt: row.openedAt,
     }
   })

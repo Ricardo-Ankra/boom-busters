@@ -1,8 +1,9 @@
 'use client'
 
 import type { ChapterWithWarnings } from '@boom-busters/db'
+import { PAUSE_TAGS } from '@boom-busters/schemas'
 import type { ShortsCandidate } from '@boom-busters/schemas'
-import { AlertTriangle, Check, GripVertical, Sparkles, X } from 'lucide-react'
+import { AlertTriangle, Check, GripVertical, Sparkles, Timer, Volume2, X } from 'lucide-react'
 import { Extension } from '@tiptap/core'
 import { Plugin, PluginKey } from '@tiptap/pm/state'
 import { Decoration, DecorationSet } from '@tiptap/pm/view'
@@ -22,6 +23,7 @@ import {
   runtimeDelta,
 } from '@/lib/script-editing'
 import type { ScriptDiff } from '@/lib/script-editing'
+import { addPronunciation } from '@/app/(console)/settings/voice-actions'
 import {
   applyRegeneratedText,
   regenerateSection,
@@ -361,6 +363,10 @@ function ChapterEditor({
         <SavedState state={state} />
       </CardHeader>
       <CardContent className="flex flex-col gap-2">
+        {isPronounceable(selection) && !proposal ? (
+          <PronounceBar term={selection.trim()} onDone={() => setSelection('')} />
+        ) : null}
+
         {selection.trim().length >= 20 && !proposal ? (
           <RegenerateBar
             projectId={projectId}
@@ -464,6 +470,76 @@ function replaceSelection(text: string, selection: string, replacement: string):
 }
 
 /**
+ * A term is worth offering a pronunciation for when it is a name-sized
+ * selection, not a passage: a word or three, no sentence punctuation.
+ */
+function isPronounceable(selection: string): boolean {
+  const trimmed = selection.trim()
+  return (
+    trimmed.length >= 2 &&
+    trimmed.length <= 30 &&
+    trimmed.split(/\s+/).length <= 3 &&
+    !/[.!?\n]/.test(trimmed)
+  )
+}
+
+/**
+ * Teach the narrator a word, from the place you noticed it.
+ *
+ * The pronunciation list lives in Settings, but the moment a term is *found* is
+ * while reading a script — so selecting a name here offers the same add-and-
+ * check the Settings editor does, without the three-screen round trip. Since a
+ * hint is part of each take’s identity, saving one is also what makes the next
+ * voice run re-read exactly the paragraphs containing the term.
+ */
+function PronounceBar({ term, onDone }: { term: string; onDone: () => void }) {
+  const [hint, setHint] = React.useState('')
+  const [busy, setBusy] = React.useState(false)
+  const { toast } = useToast()
+
+  async function save(): Promise<void> {
+    setBusy(true)
+    const result = await addPronunciation(term, hint)
+    setBusy(false)
+
+    if (result.ok) {
+      toast({
+        title: `"${term}" saved to the pronunciation list`,
+        description: 'The narrator accepted it. Paragraphs using it re-read on the next voice run.',
+      })
+      onDone()
+    } else {
+      toast({
+        title: result.applied === false ? 'Saved, but the narrator refused it' : 'Not saved',
+        description: result.error,
+        variant: 'error',
+      })
+      if (result.applied === false) onDone()
+    }
+  }
+
+  return (
+    <div className="flex flex-wrap items-center gap-2 rounded-[8px] border border-[var(--color-border)] p-2">
+      <Volume2 className="size-4 shrink-0 text-[var(--color-text-muted)]" aria-hidden />
+      <span className="font-mono text-[13px]">{term}</span>
+      <input
+        aria-label={`How to pronounce ${term}`}
+        value={hint}
+        onChange={(event) => setHint(event.target.value)}
+        placeholder="/dʒæn/ or JAN as in January"
+        className="min-w-[200px] flex-1 rounded-[8px] border border-[var(--color-border)] bg-[var(--color-surface)] px-2 py-1.5 text-[13px] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-accent)]"
+      />
+      <Button type="button" busy={busy} disabled={hint.trim() === ''} onClick={() => void save()}>
+        Save pronunciation
+      </Button>
+      <Button type="button" variant="ghost" onClick={onDone} disabled={busy}>
+        Cancel
+      </Button>
+    </div>
+  )
+}
+
+/**
  * The editor itself: TipTap over a paragraph-only document.
  *
  * Paragraphs are the whole of narration's structure — the drafting prompt
@@ -521,7 +597,32 @@ function ProseEditor({
     editor?.view.dispatch(editor.state.tr.setMeta('warnedSentences', warnedSentences))
   }, [editor, warnedSentences])
 
-  return <EditorContent editor={editor} />
+  return (
+    <div className="flex flex-col gap-2">
+      {/* The one thing in a script that is not words: Chirp's pause markup.
+          Buttons rather than a syntax to remember — the same three the voice
+          review's re-read form offers, inserted at the cursor. */}
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-[12px] text-[var(--color-text-muted)]">Insert a pause:</span>
+        {PAUSE_TAGS.map((tag) => (
+          <Button
+            key={tag}
+            type="button"
+            variant="ghost"
+            size="icon"
+            onClick={() => editor?.chain().focus().insertContent(` ${tag} `).run()}
+          >
+            <Timer className="size-4" aria-hidden />
+            {tag.replace(/[[\]]/g, '')}
+          </Button>
+        ))}
+        <span className="text-[11px] text-[var(--color-text-muted)]">
+          An intent, not a duration — the narrator fits it to the sentence.
+        </span>
+      </div>
+      <EditorContent editor={editor} />
+    </div>
+  )
 }
 
 /** Paragraphs in, ProseMirror JSON out. Blank lines separate paragraphs. */

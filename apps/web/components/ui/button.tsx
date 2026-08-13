@@ -35,8 +35,8 @@ const buttonVariants = cva(
       },
       size: {
         // 40px minimum hit target, section 11.1.
-        default: 'h-10 px-4 text-[14px]',
-        lg: 'h-12 px-6 text-[15px]',
+        default: 'h-10 px-3 text-[13px]',
+        lg: 'h-11 px-5 text-[14px]',
         /** Icon buttons still carry a visible text label beside the icon. */
         icon: 'h-10 min-w-10 px-2 text-[13px]',
       },

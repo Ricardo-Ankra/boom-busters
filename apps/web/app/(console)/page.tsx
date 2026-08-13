@@ -44,7 +44,7 @@ export default async function DashboardPage() {
   const cards = buildNeedsYouCards({ awaitingReview, budgetGates, failedRuns })
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-4">
       <h1 className="text-[20px] font-semibold">
         Needs you
         {cards.length > 0 ? (
@@ -97,7 +97,7 @@ function FirstRunChecklist({ items }: { items: ReturnType<typeof buildChecklist>
   const blockers = pipelineBlockers(items)
 
   return (
-    <div className="prose-measure mx-auto flex flex-col gap-6">
+    <div className="prose-measure mx-auto flex flex-col gap-4">
       <header className="flex flex-col gap-1">
         <h1 className="text-[20px] font-semibold">Set up Boom-Busters</h1>
         <p className="text-[14px] text-[var(--color-text-secondary)]">

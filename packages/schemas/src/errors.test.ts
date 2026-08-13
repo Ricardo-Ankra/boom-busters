@@ -109,20 +109,19 @@ describe('budget error message', () => {
     })
     expect(error.message).toContain('$29.80 spent')
     expect(error.message).toContain('$0.4500 estimated')
-    expect(error.message).toContain('$30.00 cap')
+    expect(error.message).toContain('$30.00 ceiling')
   })
 
-  it('says so plainly when the kill switch is the reason', () => {
+  it('names the ceiling, not a provider cap — the ceiling is global', () => {
     const error = new BudgetExceededError({
       provider: 'anthropic',
       operation: 'research',
       budgetUsd: 30,
-      monthSpendUsd: 0,
+      monthSpendUsd: 29.5,
       estimateUsd: 1.2,
-      killSwitch: true,
     })
-    expect(error.message).toContain('Kill switch is on')
-    expect(error.killSwitch).toBe(true)
+    expect(error.message).toContain('ceiling')
+    expect(error.provider).toBe('anthropic')
   })
 })
 

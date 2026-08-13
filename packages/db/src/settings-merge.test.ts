@@ -8,24 +8,25 @@ describe('mergeSettings', () => {
   })
 
   it('applies a single nested field without disturbing its siblings', () => {
-    const next = mergeSettings(DEFAULT_SETTINGS, { budgets: { killSwitch: true } })
+    const next = mergeSettings(DEFAULT_SETTINGS, { budgets: { monthlyCeilingUsd: 42 } })
 
-    expect(next.budgets.killSwitch).toBe(true)
-    expect(next.budgets.perProviderMonthlyUSD).toEqual(
-      DEFAULT_SETTINGS.budgets.perProviderMonthlyUSD,
-    )
+    expect(next.budgets.monthlyCeilingUsd).toBe(42)
     expect(next.modelRouting).toEqual(DEFAULT_SETTINGS.modelRouting)
   })
 
-  it('merges per-provider budgets rather than replacing the map', () => {
-    const next = mergeSettings(DEFAULT_SETTINGS, {
-      budgets: { perProviderMonthlyUSD: { elevenlabs: 22 } },
+  it('keeps an approved overage a ceiling change did not mention', () => {
+    // The overage is the one budget field the app writes for itself (at a
+    // budget gate), so a settings save must not quietly erase it.
+    const withOverage = mergeSettings(DEFAULT_SETTINGS, {
+      budgets: { approvedOverage: { month: '2026-08', usd: 10 } },
     })
+    const next = mergeSettings(withOverage, { budgets: { monthlyCeilingUsd: 42 } })
 
-    expect(next.budgets.perProviderMonthlyUSD.elevenlabs).toBe(22)
-    expect(next.budgets.perProviderMonthlyUSD.anthropic).toBe(
-      DEFAULT_SETTINGS.budgets.perProviderMonthlyUSD.anthropic,
-    )
+    expect(next.budgets.approvedOverage).toMatchObject({ month: '2026-08', usd: 10 })
+
+    // And null clears it explicitly.
+    const cleared = mergeSettings(next, { budgets: { approvedOverage: null } })
+    expect(cleared.budgets.approvedOverage).toBeUndefined()
   })
 
   it('reroutes one task and leaves the other five alone', () => {
@@ -51,7 +52,7 @@ describe('mergeSettings', () => {
 
   it('does not mutate the input', () => {
     const before = structuredClone(DEFAULT_SETTINGS)
-    mergeSettings(DEFAULT_SETTINGS, { budgets: { killSwitch: true } })
+    mergeSettings(DEFAULT_SETTINGS, { budgets: { monthlyCeilingUsd: 1 } })
     expect(DEFAULT_SETTINGS).toEqual(before)
   })
 })

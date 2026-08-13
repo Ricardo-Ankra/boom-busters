@@ -15,7 +15,7 @@ import type { MaskedCredential } from '@boom-busters/db'
 import * as React from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Input, Label, NumberInput, Select } from '@/components/ui/input'
+import { Input, Label, Select } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { VoiceTab } from './voice-tab'
@@ -100,7 +100,6 @@ export function SettingsForm({
     <Tabs defaultValue="models">
       <TabsList>
         <TabsTrigger value="models">Models</TabsTrigger>
-        <TabsTrigger value="budgets">Budgets</TabsTrigger>
         <TabsTrigger value="brand-kit">Brand Kit</TabsTrigger>
         <TabsTrigger value="voice">Voice</TabsTrigger>
         <TabsTrigger value="publishing">Publishing</TabsTrigger>
@@ -109,10 +108,6 @@ export function SettingsForm({
 
       <TabsContent value="models">
         <ModelsTab settings={settings} saving={saving} commit={commit} />
-      </TabsContent>
-
-      <TabsContent value="budgets">
-        <BudgetsTab settings={settings} saving={saving} commit={commit} />
       </TabsContent>
 
       <TabsContent value="brand-kit">
@@ -156,7 +151,7 @@ function ModelsTab({ settings, saving, commit }: TabProps) {
           from these settings at call time.
         </CardDescription>
       </CardHeader>
-      <CardContent className="flex flex-col gap-4">
+      <CardContent className="flex flex-col gap-3">
         {LLM_TASKS.map((task) => {
           const route = settings.modelRouting[task]
           return (
@@ -210,69 +205,6 @@ function ModelsTab({ settings, saving, commit }: TabProps) {
   )
 }
 
-function BudgetsTab({ settings, saving, commit }: TabProps) {
-  return (
-    <div className="flex flex-col gap-4">
-      <Card>
-        <CardHeader>
-          <CardTitle>Kill switch</CardTitle>
-          <CardDescription>
-            Stops every paid call. A run that hits it parks on a budget gate rather than failing, so
-            nothing is lost.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="flex items-center gap-3">
-          <Switch
-            id="kill-switch"
-            checked={settings.budgets.killSwitch}
-            disabled={saving}
-            onCheckedChange={(checked) => {
-              const next = structuredClone(settings)
-              next.budgets.killSwitch = checked
-              void commit({ budgets: { killSwitch: checked } }, next)
-            }}
-          />
-          <Label htmlFor="kill-switch">
-            {settings.budgets.killSwitch ? 'All spending paused' : 'Spending allowed'}
-          </Label>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Monthly cap per provider</CardTitle>
-          <CardDescription>US dollars. Zero means the provider is not used.</CardDescription>
-        </CardHeader>
-        <CardContent className="grid gap-3 sm:grid-cols-2">
-          {CREDENTIAL_PROVIDERS.map((provider) => (
-            <div key={provider} className="flex items-center gap-3">
-              <Label htmlFor={`budget-${provider}`} className="w-36 shrink-0">
-                {provider}
-              </Label>
-              <NumberInput
-                id={`budget-${provider}`}
-                min={0}
-                step={1}
-                disabled={saving}
-                defaultValue={settings.budgets.perProviderMonthlyUSD[provider] ?? 0}
-                onBlur={(event) => {
-                  const value = Number(event.target.value)
-                  if (!Number.isFinite(value) || value < 0) return
-                  if (value === settings.budgets.perProviderMonthlyUSD[provider]) return
-
-                  const next = structuredClone(settings)
-                  next.budgets.perProviderMonthlyUSD[provider] = value
-                  void commit({ budgets: { perProviderMonthlyUSD: { [provider]: value } } }, next)
-                }}
-              />
-            </div>
-          ))}
-        </CardContent>
-      </Card>
-    </div>
-  )
-}
-
 function BrandKitTab({ settings, saving, commit }: TabProps) {
   const { colors } = settings.brandKit
 
@@ -283,7 +215,7 @@ function BrandKitTab({ settings, saving, commit }: TabProps) {
   }
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-3">
       <Card>
         <CardHeader>
           <CardTitle>Colours</CardTitle>
@@ -354,7 +286,7 @@ function BrandKitTab({ settings, saving, commit }: TabProps) {
 
 function PublishingTab({ settings, saving, commit }: TabProps) {
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-3">
       <Card>
         <CardHeader>
           <CardTitle>YouTube API audit</CardTitle>

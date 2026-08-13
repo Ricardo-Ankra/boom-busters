@@ -22,7 +22,7 @@ export function TopBar({
   activity: ActivityEntry[]
 }) {
   return (
-    <header className="flex h-14 shrink-0 items-center gap-4 border-b border-[var(--color-border)] bg-[var(--color-surface)] px-4">
+    <header className="flex h-12 shrink-0 items-center gap-4 border-b border-[var(--color-border)] bg-[var(--color-surface)] px-4">
       <Breadcrumb />
 
       <div className="ml-auto flex items-center gap-4">

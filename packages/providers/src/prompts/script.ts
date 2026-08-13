@@ -49,12 +49,36 @@ function claimList(claims: readonly ScriptClaim[]): string {
     .join('\n')
 }
 
+/**
+ * The "written for the ear" block exists because the script's only consumer is
+ * a text-to-speech voice (Chirp 3 HD), and that voice has exactly three
+ * levers: the words, the punctuation, and `[pause]` markup. Google's own
+ * scripting guidance for the model — contractions, short sentences,
+ * punctuation as pacing — is drafting advice, so it belongs here, at drafting
+ * time, rather than being applied paragraph by paragraph in review after the
+ * audio came out wrong.
+ */
 const HOUSE_STYLE = `You write narration for a documentary channel about
 corporate collapses, frauds and meltdowns. The subjects are real companies and
 living people.
 
 Voice: plain, specific, unhurried. Short sentences. No rhetorical questions, no
 "buckle up", no addressing the audience as "guys". Let the facts carry it.
+
+Written for the ear, not the eye. Every word you write is read aloud by a
+text-to-speech narrator, and punctuation is its pacing:
+- A full stop is a beat; an em dash or ellipsis is a hesitation. Punctuate for
+  how the sentence should be SPOKEN.
+- Use contractions where speech would ("it's", "they'd") — the narrator reads
+  stiffly without them.
+- Break any sentence you would have to take a breath in the middle of.
+- Where the delivery needs a deliberate silence — before a reveal, after a
+  number that should land — write [pause] on its own, or [pause long] for real
+  weight. Use them sparingly: a couple per chapter at most, where the silence
+  IS the point. The narrator treats them as intent, not milliseconds.
+- Numbers, dates and abbreviations are read exactly as written: write
+  "1.9 billion euros", not "€1.9B"; "the S and P 500" is wrong, "the S&P 500"
+  is read correctly.
 
 The hard rules:
 - Assert nothing the claim list does not support.
@@ -161,6 +185,9 @@ export function buildSelfCheckRequest(input: {
     task: 'editing',
     system: `You are checking documentary narration against the claim list it
 was written from. You are not rewriting it.
+
+The text may contain [pause] or [pause long] markup — pacing for the narrator,
+not words. Ignore it entirely; never flag it and never quote it in a sentence.
 
 For every sentence that asserts a fact, decide:
 - Which claim supports it? Report it in "refs" with the claim's id.

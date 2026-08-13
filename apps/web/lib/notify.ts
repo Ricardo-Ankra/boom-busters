@@ -1,17 +1,21 @@
-import { deletePushSubscription, listPushSubscriptions, markPushNotified } from '@boom-busters/db'
 import { hasEnvGroup, requireEnv } from '@boom-busters/schemas'
 import 'server-only'
-import webpush from 'web-push'
-import { db } from './db'
 import { env } from './env'
 
 /**
- * Notification plumbing (build spec section 11.4).
+ * Notification plumbing (build spec section 11.4), reduced to what is used.
  *
- * Web push (VAPID) always, email (Resend) when configured. Both are optional
- * infrastructure: a console that refuses to run a pipeline because nobody set
- * up push notifications would be absurd, so every path here degrades to a log
- * line and returns.
+ * Spec 11.4 asks for web push, and it was built — a VAPID key pair, a service
+ * worker, a subscriptions table, a Settings toggle. It was then removed by
+ * decision (2026-08-13): a single-user console whose owner is in the app when
+ * anything interesting happens does not need a push channel, and the one
+ * visible effect the machinery ever had was a Settings popup demanding VAPID
+ * keys nobody intended to create.
+ *
+ * What remains is the email path (Resend, inert until a key is configured,
+ * kept because the "final layer" of notifications was deferred rather than
+ * abandoned) and the log line. The Activity drawer reads run events from the
+ * database and is not part of this module.
  *
  * **`notify()` never throws.** It is called from inside Inngest steps, and a
  * failed notification must not fail — or worse, retry — the work it was
@@ -35,69 +39,11 @@ export interface Notification {
   href: string
 }
 
-export function pushConfigured(): boolean {
-  return hasEnvGroup('push')
-}
-
 export function emailConfigured(): boolean {
   return hasEnvGroup('email')
 }
 
-/** The key the browser needs to subscribe. Public by design. */
-export function vapidPublicKey(): string | null {
-  return pushConfigured() ? requireEnv('push').VAPID_PUBLIC_KEY : null
-}
-
-function configureWebPush(): boolean {
-  if (!pushConfigured()) return false
-  const keys = requireEnv('push')
-  webpush.setVapidDetails(
-    `mailto:${env.OWNER_EMAIL}`,
-    keys.VAPID_PUBLIC_KEY,
-    keys.VAPID_PRIVATE_KEY,
-  )
-  return true
-}
-
-async function sendPush(notification: Notification): Promise<void> {
-  if (!configureWebPush()) return
-
-  const subscriptions = await listPushSubscriptions(db)
-  const payload = JSON.stringify({
-    title: notification.title,
-    body: notification.body,
-    href: notification.href,
-    kind: notification.kind,
-  })
-
-  await Promise.all(
-    subscriptions.map(async (subscription) => {
-      try {
-        await webpush.sendNotification(
-          {
-            endpoint: subscription.endpoint,
-            keys: { p256dh: subscription.p256dh, auth: subscription.auth },
-          },
-          payload,
-        )
-        await markPushNotified(db, subscription.endpoint)
-      } catch (error) {
-        const status = (error as { statusCode?: number }).statusCode
-        if (status === 404 || status === 410) {
-          // The browser dropped the subscription. Keeping it would burn a
-          // failed request per notification, forever.
-          await deletePushSubscription(db, subscription.endpoint)
-          return
-        }
-        console.error('[notify] push failed', error)
-      }
-    }),
-  )
-}
-
 async function sendEmail(notification: Notification): Promise<void> {
-  if (!emailConfigured()) return
-
   const { RESEND_API_KEY, NOTIFY_FROM_EMAIL } = requireEnv('email')
   const { Resend } = await import('resend')
   const resend = new Resend(RESEND_API_KEY)
@@ -113,19 +59,19 @@ async function sendEmail(notification: Notification): Promise<void> {
 }
 
 export async function notify(notification: Notification): Promise<void> {
-  if (!pushConfigured() && !emailConfigured()) {
-    // The log line carries the whole notification, not just its title: with
-    // no push and no email this is the only record that a gate opened, and a
-    // headline without the numbers is not a record.
+  if (!emailConfigured()) {
+    // The log line carries the whole notification, not just its title: with no
+    // email configured this is the only record outside the Activity drawer
+    // that a gate opened, and a headline without the numbers is not a record.
     console.warn(
       `[notify] ${notification.kind}: ${notification.title} — ${notification.body} ` +
-        `(${notification.href}). Not delivered: neither VAPID nor Resend is configured.`,
+        `(${notification.href})`,
     )
     return
   }
 
   try {
-    await Promise.all([sendPush(notification), sendEmail(notification)])
+    await sendEmail(notification)
   } catch (error) {
     console.error('[notify] delivery failed', error)
   }

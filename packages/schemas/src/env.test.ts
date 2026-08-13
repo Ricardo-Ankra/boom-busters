@@ -150,17 +150,11 @@ describe('requireEnv', () => {
   })
 
   it('covers every deferred group declared in the spec', () => {
-    // `push` and `email` are M2 additions for notifications (spec §11.4) and
-    // are optional even at the point of use: unlike the four spec §4 groups,
-    // the app degrades to a log line rather than throwing when they are absent.
-    expect(Object.keys(DEFERRED_GROUPS)).toEqual([
-      'r2',
-      'broker',
-      'inngest',
-      'youtube',
-      'push',
-      'email',
-    ])
+    // `email` is an M2 addition for notifications (spec §11.4) and is optional
+    // even at the point of use: the app degrades to a log line when it is
+    // absent. `push` (VAPID) was built for the same section and then removed
+    // by decision — a single-user console does not need a push channel.
+    expect(Object.keys(DEFERRED_GROUPS)).toEqual(['r2', 'broker', 'inngest', 'youtube', 'email'])
   })
 })
 

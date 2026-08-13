@@ -100,7 +100,7 @@ function VoiceCard({
   return (
     <li
       className={cn(
-        'flex flex-col gap-2 rounded-[8px] border p-2',
+        'flex flex-col gap-1.5 rounded-[8px] border p-2',
         selected
           ? 'border-[var(--color-accent)] bg-[var(--color-surface-raised)]'
           : 'border-[var(--color-border)]',
@@ -270,7 +270,7 @@ function AuditionPanel({ settings, commit }: TabProps) {
         </CardDescription>
       </CardHeader>
 
-      <CardContent className="flex flex-col gap-4">
+      <CardContent className="flex flex-col gap-3">
         <div className="flex flex-col gap-1">
           <Label htmlFor="audition-sample">Sample paragraph</Label>
           <textarea
@@ -364,7 +364,7 @@ function ChosenVoice({ settings, saving, commit }: TabProps) {
         </CardDescription>
       </CardHeader>
 
-      <CardContent className="flex flex-col gap-4">
+      <CardContent className="flex flex-col gap-3">
         <p className="text-[14px]">
           {settings.tts.voiceId === '' ? (
             <span className="text-[var(--color-warning)]">
@@ -604,7 +604,7 @@ function PhonemeHints({ settings, saving, commit }: TabProps) {
  */
 export function VoiceTab({ settings, saving, commit }: TabProps) {
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-3">
       <AuditionPanel settings={settings} saving={saving} commit={commit} />
       <ChosenVoice settings={settings} saving={saving} commit={commit} />
       <PhonemeHints settings={settings} saving={saving} commit={commit} />

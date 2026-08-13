@@ -46,11 +46,9 @@ export function buildNeedsYouCards(input: {
     ...input.budgetGates.map((gate): NeedsYouCard => ({
       id: `budget-${gate.runId}`,
       kind: 'budget',
-      title: gate.killSwitch
-        ? `Kill switch blocked ${gate.provider}`
-        : `Over budget on ${gate.provider}`,
+      title: `Ceiling reached — ${gate.provider} is asking to spend`,
       context:
-        `$${gate.monthSpendUsd.toFixed(2)} spent of a $${gate.budgetUsd.toFixed(2)} cap · ` +
+        `$${gate.monthSpendUsd.toFixed(2)} spent of the $${gate.budgetUsd.toFixed(2)} ceiling · ` +
         `this call needs $${gate.estimateUsd.toFixed(4)}`,
       href: (gate.projectId ? `/projects/${gate.projectId}` : '/costs') as Route,
       buttonLabel: 'Decide',

@@ -1,9 +1,9 @@
 import { costLedger, getSettings } from '@boom-busters/db'
 import type { Database } from '@boom-busters/db'
-import { BudgetExceededError, effectiveBudgetUsd, spentUsd } from '@boom-busters/schemas'
+import { BudgetExceededError, effectiveCeilingUsd, spentUsd } from '@boom-busters/schemas'
 import type { Provider, Settings } from '@boom-busters/schemas'
 import { eq, sql } from 'drizzle-orm'
-import { monthSpendUsd, round4, type DbLike } from './ledger'
+import { monthTotalUsd, round4, type DbLike } from './ledger'
 
 /**
  * The budget guard (build spec section 6):
@@ -12,42 +12,33 @@ import { monthSpendUsd, round4, type DbLike } from './ledger'
  * withCost(provider, operation, projectId, estimate, fn)
  * ```
  *
- * Pre-flight: if the kill switch is on, or `monthSpend + estimate` would cross
- * the cap, throw `BudgetExceededError`. That is *not* a failure — the run
- * parks on a budget gate and the UI asks the human to approve the overage or
- * abort. Nothing silently dies because a cap was hit.
+ * Pre-flight: if total month spend + the estimate would cross the single
+ * monthly ceiling, throw `BudgetExceededError`. That is *not* a failure — the
+ * run parks on a budget gate and the UI asks the human to approve the overage
+ * or abort. Nothing silently dies because the ceiling was hit.
+ *
+ * The cap used to be a per-provider matrix plus a kill switch; both were
+ * removed by decision (2026-08-13) in favour of one number over the whole
+ * ledger. Setting it to zero refuses everything, which is all the kill switch
+ * ever did.
  *
  * The pre-flight check and the reservation happen in one transaction under a
- * per-provider advisory lock, so two fan-out steps cannot each read "there is
- * room for one more" and then both spend it. The reservation is a ledger row
- * with `actual_usd IS NULL`, which `monthSpendUsd` counts at its estimate
- * until it settles.
+ * single advisory lock, so two fan-out steps cannot each read "there is room
+ * for one more" and then both spend it. The reservation is a ledger row with
+ * `actual_usd IS NULL`, which the spend queries count at its estimate until it
+ * settles.
  */
 
 /** Postgres advisory-lock namespace. Arbitrary, but ours alone. */
 const LOCK_NAMESPACE = 0x62_62 // 'bb'
 
 /**
- * The advisory-lock key for a provider: a stable hash of its name.
- *
- * It used to be the provider's index in a hand-ordered list, which made the
- * ordering load-bearing — inserting a provider in the middle would renumber
- * every provider after it, and a run in flight across a deploy could then take
- * a different lock than the one guarding the same cap. A hash of the name has
- * no ordering to get wrong.
- *
- * FNV-1a, masked to 31 bits because `pg_advisory_xact_lock` takes signed
- * 32-bit integers. A collision would only ever mean two providers sharing a
- * lock, which costs a little concurrency and cannot corrupt a reservation.
+ * One lock, because there is one ceiling. The per-provider hash this replaced
+ * existed to let independent caps reserve concurrently; a global cap read
+ * under provider-scoped locks would race — two providers could each see room
+ * for one more call and both take it.
  */
-export function lockKey(provider: Provider): number {
-  let hash = 0x81_1c_9d_c5
-  for (let i = 0; i < provider.length; i += 1) {
-    hash ^= provider.charCodeAt(i)
-    hash = Math.imul(hash, 0x01_00_01_93)
-  }
-  return hash & 0x7f_ff_ff_ff
-}
+export const CEILING_LOCK_KEY = 1
 
 /** What a guarded call returns: its value, plus what it actually cost. */
 export interface Costed<T> {
@@ -118,24 +109,21 @@ export async function reserve(
   }
 
   return db.transaction(async (tx) => {
-    await tx.execute(
-      sql`select pg_advisory_xact_lock(${LOCK_NAMESPACE}, ${lockKey(spec.provider)})`,
-    )
+    await tx.execute(sql`select pg_advisory_xact_lock(${LOCK_NAMESPACE}, ${CEILING_LOCK_KEY})`)
 
-    const monthSpend = await monthSpendUsd(tx, spec.provider, now)
-    const cap = round4(effectiveBudgetUsd(settings.budgets, spec.provider, now))
+    const monthSpend = await monthTotalUsd(tx, now)
+    const ceiling = round4(effectiveCeilingUsd(settings.budgets, now))
 
     // Rounded to the ledger's own scale before comparing: at floating-point
     // precision `29.9 + 0.1 > 30` is true, and tripping a budget gate on a
     // rounding artefact would be indefensible.
-    if (settings.budgets.killSwitch || round4(monthSpend + estimate) > cap) {
+    if (round4(monthSpend + estimate) > ceiling) {
       throw new BudgetExceededError({
         provider: spec.provider,
         operation: spec.operation,
-        budgetUsd: cap,
+        budgetUsd: ceiling,
         monthSpendUsd: monthSpend,
         estimateUsd: estimate,
-        killSwitch: settings.budgets.killSwitch,
       })
     }
 
@@ -175,13 +163,12 @@ export async function release(db: DbLike, ledgerId: string): Promise<void> {
 // ---------------------------------------------------------------------------
 
 export interface BudgetStatus {
-  provider: Provider
+  /** Total across every provider — the ceiling is global. */
   monthSpendUsd: number
-  budgetUsd: number
+  ceilingUsd: number
   remainingUsd: number
   /** True when the guard would refuse the next call of this size. */
   wouldRefuse: boolean
-  killSwitch: boolean
 }
 
 /**
@@ -191,21 +178,18 @@ export interface BudgetStatus {
  */
 export async function budgetStatus(
   db: DbLike,
-  provider: Provider,
   settings: Settings,
   options: { estimateUsd?: number; now?: Date } = {},
 ): Promise<BudgetStatus> {
   const now = options.now ?? new Date()
   const estimate = round4(options.estimateUsd ?? 0)
-  const monthSpend = await monthSpendUsd(db, provider, now)
-  const budget = round4(effectiveBudgetUsd(settings.budgets, provider, now))
+  const monthSpend = await monthTotalUsd(db, now)
+  const ceiling = round4(effectiveCeilingUsd(settings.budgets, now))
 
   return {
-    provider,
     monthSpendUsd: monthSpend,
-    budgetUsd: budget,
-    remainingUsd: round4(Math.max(0, budget - monthSpend)),
-    wouldRefuse: settings.budgets.killSwitch || round4(monthSpend + estimate) > budget,
-    killSwitch: settings.budgets.killSwitch,
+    ceilingUsd: ceiling,
+    remainingUsd: round4(Math.max(0, ceiling - monthSpend)),
+    wouldRefuse: round4(monthSpend + estimate) > ceiling,
   }
 }

@@ -208,7 +208,7 @@ async function spendThroughBudgetGate(
     const decision = parseEventData('budget/approved', approved.data)
 
     await step.run(`apply-overage-${round}`, async () => {
-      await grantOverage(decision.provider as Provider, decision.additionalUsd)
+      await grantOverage(decision.additionalUsd)
       await closeBudgetGate(
         ctx,
         `Overage of $${decision.additionalUsd.toFixed(2)} approved for ${decision.provider}`,

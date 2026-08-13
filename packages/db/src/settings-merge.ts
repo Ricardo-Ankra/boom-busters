@@ -18,6 +18,28 @@ import type { ModelRouting, Settings, SettingsPatch } from '@boom-busters/schema
  * The result is re-validated before it is returned, so a patch can never
  * write a settings row that `SettingsSchema` would reject.
  */
+
+/**
+ * `approvedOverage: null` in a patch clears the grant; absent leaves it alone.
+ * The distinction matters because an overage is the one budget field the app
+ * writes for itself (at a budget gate), so a settings save that merely did not
+ * mention it must not erase it.
+ */
+function mergeBudgets(
+  current: Settings['budgets'],
+  patch?: SettingsPatch['budgets'],
+): Settings['budgets'] {
+  const overage =
+    patch && 'approvedOverage' in patch
+      ? (patch.approvedOverage ?? undefined)
+      : current.approvedOverage
+
+  return {
+    monthlyCeilingUsd: patch?.monthlyCeilingUsd ?? current.monthlyCeilingUsd,
+    ...(overage === undefined ? {} : { approvedOverage: overage }),
+  }
+}
+
 export function mergeSettings(current: Settings, patch: SettingsPatch): Settings {
   const merged: Settings = {
     ...current,
@@ -25,18 +47,7 @@ export function mergeSettings(current: Settings, patch: SettingsPatch): Settings
     fallbackChain: patch.fallbackChain ?? current.fallbackChain,
     modelRouting: { ...current.modelRouting, ...patch.modelRouting },
     tts: { ...current.tts, ...patch.tts },
-    budgets: {
-      ...current.budgets,
-      ...patch.budgets,
-      perProviderMonthlyUSD: {
-        ...current.budgets.perProviderMonthlyUSD,
-        ...patch.budgets?.perProviderMonthlyUSD,
-      },
-      approvedOverages: {
-        ...current.budgets.approvedOverages,
-        ...patch.budgets?.approvedOverages,
-      },
-    },
+    budgets: mergeBudgets(current.budgets, patch.budgets),
     render: { ...current.render, ...patch.render },
     publish: { ...current.publish, ...patch.publish },
     brandKit: { ...current.brandKit, ...patch.brandKit },
@@ -82,18 +93,7 @@ export function normaliseSettings(stored: unknown): Settings {
     ...partial,
     modelRouting: { ...DEFAULT_SETTINGS.modelRouting, ...partial.modelRouting },
     tts: { ...DEFAULT_SETTINGS.tts, ...partial.tts },
-    budgets: {
-      ...DEFAULT_SETTINGS.budgets,
-      ...partial.budgets,
-      perProviderMonthlyUSD: {
-        ...DEFAULT_SETTINGS.budgets.perProviderMonthlyUSD,
-        ...partial.budgets?.perProviderMonthlyUSD,
-      },
-      approvedOverages: {
-        ...DEFAULT_SETTINGS.budgets.approvedOverages,
-        ...partial.budgets?.approvedOverages,
-      },
-    },
+    budgets: mergeBudgets(DEFAULT_SETTINGS.budgets, partial.budgets),
     render: { ...DEFAULT_SETTINGS.render, ...partial.render },
     publish: { ...DEFAULT_SETTINGS.publish, ...partial.publish },
     brandKit: { ...DEFAULT_SETTINGS.brandKit, ...partial.brandKit },

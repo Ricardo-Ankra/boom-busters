@@ -852,6 +852,59 @@ the voice regenerate?"* — whose honest answer was: it won't.
     every take in the database was keyed with it, so "tidying" it to `''` would
     have silently re-narrated everything.
 
+### M4.9 — the audit: dead machinery out, voice-first scripting in (2026-08-13)
+
+A review the human asked for, with three decisions that deviate from spec and
+one structural correction they diagnosed themselves.
+
+74. **Web push (VAPID) is gone entirely.** Spec §11.4 asks for it; it was
+    built — key pair, service worker, subscriptions table, Settings toggle —
+    and its one visible effect was a permanent Settings popup demanding VAPID
+    keys nobody intended to create. Deleted: the toggle, the worker, the API
+    routes, `packages/db/src/push.ts`, the `push_subscriptions` table
+    (migration `0009`, applied to production), the env group, and the
+    `web-push` dependency. `notify()` keeps the email path (inert until a
+    Resend key exists — notifications' "final layer" is deferred, not
+    abandoned) and otherwise logs.
+
+75. **Budgets are one number.** Spec §4's per-provider cap matrix and §11.3's
+    kill switch are removed: `budgets` is now `{ monthlyCeilingUsd,
+    approvedOverage? }`, checked by the same guard under one advisory lock
+    against `monthTotalUsd`. A ceiling of zero refuses everything, which is all
+    the kill switch ever did as a separate concept. Chosen over "remove
+    everything" deliberately: the ceiling is the only automatic brake between a
+    runaway paid fan-out and a card, and the voice stage buys sixty calls in
+    seconds. `.catch(100)` on the schema field so the production row's old
+    shape parses instead of taking the app down. The Budgets tab is gone; the
+    one input lives on the Costs screen next to the number it limits.
+
+76. **The scripting prompt writes for the ear.** The human's diagnosis was
+    exact: the voice stage was doing script work — pauses and pronunciations
+    patched in at review, paragraph by paragraph, at synthesis prices — because
+    the drafting prompt did not know its output would be read aloud. It does
+    now: punctuation-as-pacing, contractions, breath-length sentences, numbers
+    written as speech, and `[pause]` markup where silence is the point, all in
+    `HOUSE_STYLE` so the outline's beats and every chapter get it. The
+    self-check is told the markup is pacing, not words. Prosodic continuity is
+    a drafting property — Chirp is stateless and deterministic, so there is no
+    tone drift between paragraphs to fix downstream; what reads wrong aloud was
+    written wrong.
+
+77. **Pause and pronunciation tools live in the Script Studio.** The same three
+    pause buttons as the voice review's re-read form, inserting at the cursor;
+    and selecting a name offers "Save pronunciation" — the same add-and-check
+    the Settings editor does (`addPronunciation`), without the three-screen
+    round trip. Because a hint is part of each take's identity (decision 72),
+    saving one from here is also what makes the next voice run re-read exactly
+    the paragraphs that contain the term.
+
+78. **A density pass, inside the spec's floor.** Card padding 16→12px, page
+    stacks 24→16px, shell padding and top bar tightened, default button text
+    13px. The 40px hit target (§11.1) is untouched — it is asserted by an E2E
+    test and it is the floor the button-first rule stands on; what read as
+    "aggressive padding" was the compounding of container paddings, not the
+    controls.
+
 ### M4.8 — what the Chirp 3 HD guide said, and I had not read (2026-08-13)
 
 The human sent Google's Chirp 3 HD page. Two things in it contradict claims I

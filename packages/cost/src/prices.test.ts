@@ -1,7 +1,6 @@
 import { LLM_MODELS } from '@boom-busters/providers'
 import { PROVIDERS, TTS_PROVIDERS, ValidationError } from '@boom-busters/schemas'
 import { describe, expect, it } from 'vitest'
-import { lockKey } from './guard'
 import { GUARDED_PROVIDERS } from './ledger'
 import {
   LLM_PRICES,
@@ -129,29 +128,10 @@ describe('every provider is guarded', () => {
     expect([...GUARDED_PROVIDERS].sort()).toEqual([...PROVIDERS].sort())
   })
 
-  it('gives every provider a lock key, and every TTS provider a price', () => {
-    for (const provider of PROVIDERS) {
-      expect(Number.isInteger(lockKey(provider))).toBe(true)
-      // Signed 32-bit, because that is what pg_advisory_xact_lock takes.
-      expect(lockKey(provider)).toBeGreaterThanOrEqual(0)
-      expect(lockKey(provider)).toBeLessThanOrEqual(0x7f_ff_ff_ff)
-    }
-
+  it('gives every TTS provider a price', () => {
     for (const provider of TTS_PROVIDERS) {
       expect(estimateTtsUsd({ provider, characters: 1000 })).toBeGreaterThan(0)
     }
   })
 
-  it('gives different providers different lock keys', () => {
-    const keys = new Set(PROVIDERS.map((provider) => lockKey(provider)))
-    expect(keys.size).toBe(PROVIDERS.length)
-  })
-
-  it('keeps a provider\u2019s lock key stable regardless of list order', () => {
-    // The old index-based key made ordering load-bearing: inserting a provider
-    // renumbered every one after it, so a run in flight across a deploy could
-    // take a different lock than the one guarding the same cap.
-    expect(lockKey('anthropic')).toBe(lockKey('anthropic'))
-    expect(lockKey('google')).not.toBe(lockKey('google-cloud-tts'))
-  })
 })

@@ -178,7 +178,7 @@ export type PhonemeHint = z.infer<typeof PhonemeHintSchema>
  * changing one re-reads the paragraphs it touches. If those two disagreed, a
  * take's key would claim a set of pronunciations the request never carried.
  *
- * `` is wrong at the edges for terms that start or end in punctuation —
+ * A word boundary is wrong at the edges for terms that start or end in punctuation —
  * "S&P 500" and "Sarbanes-Oxley" are both real hint terms in this subject
  * matter — so the boundaries are asserted against letters and digits directly.
  */
@@ -310,21 +310,32 @@ export const BudgetOverageSchema = z.object({
 })
 export type BudgetOverage = z.infer<typeof BudgetOverageSchema>
 
+/**
+ * One number, deliberately.
+ *
+ * Spec §4 asks for a per-provider cap matrix and a kill switch, and both were
+ * built, shipped, and removed by decision (2026-08-13): nine numbers to keep
+ * plausible is administration, and the user of a single-user console does not
+ * need protecting from themselves provider by provider. What the machinery was
+ * actually for — a runaway paid fan-out cannot empty a card — survives intact
+ * as a single ceiling on total monthly spend, enforced by the same guard, with
+ * the same parking behaviour when a run would cross it.
+ *
+ * There is no separate kill switch because the ceiling already is one: set it
+ * to zero and every priced call parks. `.catch(100)` rather than `.default`,
+ * because the production settings row predates this shape and a parse failure
+ * here would take the whole app down over a budget field.
+ */
 export const BudgetsSchema = z.object({
-  perProviderMonthlyUSD: z.record(ProviderSchema, z.number().min(0)),
-  killSwitch: z.boolean().default(false),
-  approvedOverages: z.partialRecord(ProviderSchema, BudgetOverageSchema).default({}),
+  monthlyCeilingUsd: z.number().min(0).catch(100),
+  /** Headroom granted at a budget gate. Expires with its month. */
+  approvedOverage: BudgetOverageSchema.optional(),
 })
 export type Budgets = z.infer<typeof BudgetsSchema>
 
-/**
- * Budgets as a patch: the per-provider map is merged key by key, so raising
- * the ElevenLabs cap must not require resending every other provider's.
- */
 export const BudgetsPatchSchema = z.object({
-  perProviderMonthlyUSD: z.partialRecord(ProviderSchema, z.number().min(0)).optional(),
-  killSwitch: z.boolean().optional(),
-  approvedOverages: z.partialRecord(ProviderSchema, BudgetOverageSchema).optional(),
+  monthlyCeilingUsd: z.number().min(0).optional(),
+  approvedOverage: BudgetOverageSchema.nullable().optional(),
 })
 
 /** `YYYY-MM` in UTC — the bucket both the ledger and the caps are keyed by. */
@@ -337,10 +348,11 @@ export function monthKey(when: Date): string {
  * plus any overage approved *for this month*. Pure, so the cap arithmetic is
  * unit-testable without a database.
  */
-export function effectiveBudgetUsd(budgets: Budgets, provider: Provider, when: Date): number {
-  const base = budgets.perProviderMonthlyUSD[provider] ?? 0
-  const overage = budgets.approvedOverages[provider]
-  return overage && overage.month === monthKey(when) ? base + overage.usd : base
+export function effectiveCeilingUsd(budgets: Budgets, when: Date): number {
+  const overage = budgets.approvedOverage
+  return overage && overage.month === monthKey(when)
+    ? budgets.monthlyCeilingUsd + overage.usd
+    : budgets.monthlyCeilingUsd
 }
 
 export const RenderSettingsSchema = z.object({
@@ -444,21 +456,9 @@ export const DEFAULT_SETTINGS: Settings = {
     pacing: 1,
     phonemeHints: [],
   },
-  budgets: {
-    perProviderMonthlyUSD: {
-      anthropic: 30,
-      openai: 10,
-      google: 15,
-      'google-cloud-tts': 5,
-      elevenlabs: 0,
-      pexels: 0,
-      pixabay: 0,
-      fal: 0,
-      'hosted-alignment': 0,
-    },
-    killSwitch: false,
-    approvedOverages: {},
-  },
+  // The sum of the old per-provider defaults was $60/month; $100 leaves the
+  // same order of magnitude with headroom for a real production month.
+  budgets: { monthlyCeilingUsd: 100 },
   render: { concurrency: 2, timeoutMinutes: 30, chapterChunking: true },
   publish: {
     defaultScheduleSlots: [

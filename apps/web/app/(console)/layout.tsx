@@ -28,7 +28,7 @@ export default async function ConsoleLayout({ children }: { children: React.Reac
 
       <div className="flex min-w-0 flex-1 flex-col">
         <TopBar monthSpendUsd={monthSpendUsd} activeRuns={activeRuns} activity={activity} />
-        <main className="flex-1 overflow-y-auto p-4 md:p-6">{children}</main>
+        <main className="flex-1 overflow-y-auto p-3 md:p-4">{children}</main>
       </div>
     </div>
   )

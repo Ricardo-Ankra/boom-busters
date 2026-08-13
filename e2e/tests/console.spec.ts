@@ -85,18 +85,21 @@ test.describe('app shell', () => {
 
 test.describe('settings', () => {
   test('a change persists across a reload', async ({ page }) => {
+    // The Budgets tab this test used to flip a switch on is gone — budgets are
+    // one ceiling on the Costs screen now. The Publishing audit toggle is the
+    // same shape of control through the same save path.
     await page.goto('/settings')
-    await page.getByRole('tab', { name: 'Budgets' }).click()
+    await page.getByRole('tab', { name: 'Publishing' }).click()
 
-    const killSwitch = page.getByRole('switch', { name: /Spending allowed|All spending paused/ })
-    const wasOn = (await killSwitch.getAttribute('data-state')) === 'checked'
+    const audit = page.getByRole('switch', { name: /Audit passed|Audit not passed yet/ })
+    const wasOn = (await audit.getAttribute('data-state')) === 'checked'
 
-    await killSwitch.click()
+    await audit.click()
     // Radix renders the toast plus an aria-live announcement copy.
     await expect(page.getByText('Saved').first()).toBeVisible()
 
     await page.reload()
-    await page.getByRole('tab', { name: 'Budgets' }).click()
+    await page.getByRole('tab', { name: 'Publishing' }).click()
     await expect(page.getByRole('switch').first()).toHaveAttribute(
       'data-state',
       wasOn ? 'unchecked' : 'checked',

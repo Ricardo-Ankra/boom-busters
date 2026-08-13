@@ -201,7 +201,6 @@ describeDb('run mirror', () => {
       budgetUsd: 30,
       monthSpendUsd: 29.8,
       estimateUsd: 0.45,
-      killSwitch: false,
     }
 
     it('surfaces a parked run with the numbers the card needs', async () => {

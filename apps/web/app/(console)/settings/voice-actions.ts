@@ -6,11 +6,13 @@ import {
   listAuditions,
   saveAudition,
   ttsCredential,
+  updateSettings,
 } from '@boom-busters/db'
 import { STATIC_VOICES, ttsAdapter } from '@boom-busters/providers'
 import type { KnownVoice } from '@boom-busters/providers'
 import { TTS_PROVIDERS, TtsProviderSchema, ttsProviderFromCredential } from '@boom-busters/schemas'
 import type { Provider, TtsProvider } from '@boom-busters/schemas'
+import { revalidatePath } from 'next/cache'
 import { auth } from '@/auth'
 import { db } from '@/lib/db'
 import { env } from '@/lib/env'
@@ -226,6 +228,49 @@ export async function generateAuditions(
  * user, on the one screen built for comparing voices against each other, and
  * every time it fired it fired on the person it belonged to.
  */
+
+/**
+ * Add a pronunciation to the channel list, from wherever the word was found.
+ *
+ * The list lives in Settings, but the moment you *learn* a term needs one is
+ * while reading a script or hearing a take — three screens away. So the Script
+ * Studio offers "pronounce" on a selected name, and this is what it calls:
+ * save the hint (replacing any existing hint for the same term), then check it
+ * with the voice the way the Settings editor does. The hint is kept even when
+ * the check refuses it, so it can be edited rather than retyped; the run
+ * degrades safely if it never is.
+ *
+ * Since 41d1441 a hint is part of each take’s identity, so adding one is also
+ * what makes the next voice-stage run re-read exactly the paragraphs that
+ * contain the term.
+ */
+export async function addPronunciation(
+  term: string,
+  hint: string,
+): Promise<{ ok: boolean; error?: string; applied?: boolean }> {
+  await requireOwner()
+
+  const cleanTerm = term.trim()
+  const cleanHint = hint.trim()
+  if (cleanTerm === '' || cleanHint === '') {
+    return { ok: false, error: 'Both a term and a pronunciation are needed.' }
+  }
+
+  const settings = await getSettings(db)
+  await updateSettings(db, {
+    tts: {
+      phonemeHints: [
+        ...settings.tts.phonemeHints.filter(
+          (existing) => existing.term.toLowerCase() !== cleanTerm.toLowerCase(),
+        ),
+        { term: cleanTerm, hint: cleanHint },
+      ],
+    },
+  })
+  revalidatePath('/settings')
+
+  return checkPronunciation(cleanTerm, cleanHint)
+}
 
 /**
  * Ask the vendor whether it will actually accept a pronunciation hint.

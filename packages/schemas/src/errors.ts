@@ -98,12 +98,14 @@ export class ContentPolicyError extends PipelineError {
  */
 export class BudgetExceededError extends PipelineError {
   override readonly gated = true
+  /** The provider whose call tripped the ceiling — attribution, not a cap. */
   readonly provider: string
   readonly operation: string
+  /** The global monthly ceiling. One number across every provider. */
   readonly budgetUsd: number
+  /** Total spent this month, across every provider. */
   readonly monthSpendUsd: number
   readonly estimateUsd: number
-  readonly killSwitch: boolean
 
   constructor(details: {
     provider: string
@@ -111,22 +113,17 @@ export class BudgetExceededError extends PipelineError {
     budgetUsd: number
     monthSpendUsd: number
     estimateUsd: number
-    killSwitch?: boolean
   }) {
-    const killSwitch = details.killSwitch ?? false
     super(
-      killSwitch
-        ? `Kill switch is on — refused ${details.provider} ${details.operation} (est. $${details.estimateUsd.toFixed(4)}).`
-        : `${details.provider} monthly budget would be exceeded: ` +
-            `$${details.monthSpendUsd.toFixed(2)} spent + $${details.estimateUsd.toFixed(4)} estimated ` +
-            `> $${details.budgetUsd.toFixed(2)} cap.`,
+      `The monthly spend ceiling would be crossed by ${details.provider} ${details.operation}: ` +
+        `$${details.monthSpendUsd.toFixed(2)} spent + $${details.estimateUsd.toFixed(4)} estimated ` +
+        `> $${details.budgetUsd.toFixed(2)} ceiling.`,
     )
     this.provider = details.provider
     this.operation = details.operation
     this.budgetUsd = details.budgetUsd
     this.monthSpendUsd = details.monthSpendUsd
     this.estimateUsd = details.estimateUsd
-    this.killSwitch = killSwitch
   }
 }
 
@@ -178,7 +175,6 @@ export function serialiseError(error: unknown): Record<string, unknown> {
       budgetUsd: error.budgetUsd,
       monthSpendUsd: error.monthSpendUsd,
       estimateUsd: error.estimateUsd,
-      killSwitch: error.killSwitch,
     }
   }
 

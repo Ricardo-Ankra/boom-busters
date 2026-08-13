@@ -64,14 +64,14 @@ describeDb('database integration', () => {
 
   describe('updateSettings', () => {
     it('persists a patch and leaves untouched sections alone', async () => {
-      await updateSettings(db, { budgets: { killSwitch: true } })
+      await updateSettings(db, { budgets: { monthlyCeilingUsd: 42 } })
       const stored = await getSettings(db)
 
-      expect(stored.budgets.killSwitch).toBe(true)
+      expect(stored.budgets.monthlyCeilingUsd).toBe(42)
       expect(stored.modelRouting).toEqual(DEFAULT_SETTINGS.modelRouting)
 
-      await updateSettings(db, { budgets: { killSwitch: false } })
-      expect((await getSettings(db)).budgets.killSwitch).toBe(false)
+      await updateSettings(db, { budgets: { monthlyCeilingUsd: 100 } })
+      expect((await getSettings(db)).budgets.monthlyCeilingUsd).toBe(100)
     })
 
     it('rejects a patch that would store an invalid row', async () => {

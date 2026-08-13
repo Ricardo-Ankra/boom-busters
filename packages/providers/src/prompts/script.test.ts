@@ -111,6 +111,31 @@ describe('buildChapterRequest', () => {
     expect(request.system).toMatch(/read aloud exactly as written/)
   })
 
+  /**
+   * The script's only consumer is a TTS narrator whose levers are the words,
+   * the punctuation, and pause markup. That is drafting guidance, and drafting
+   * is where it has to live — teaching it to the reviewer instead means every
+   * script is written for the eye and then repaired paragraph by paragraph at
+   * synthesis prices.
+   */
+  it('writes for the ear: punctuation as pacing, pauses as markup', () => {
+    expect(request.system).toContain('Written for the ear')
+    expect(request.system).toContain('[pause]')
+    expect(request.system).toMatch(/contractions/i)
+  })
+
+  it('gives the outline pass the same voice rules as the chapters', () => {
+    // The outline sets each chapter's beat; a beat written for the eye
+    // produces chapters written for the eye.
+    const outlineRequest = buildOutlineRequest({
+      caseTitle: 'Enron',
+      dossierMd: '# Dossier',
+      claims,
+      targetRuntimeMin: 18,
+    })
+    expect(outlineRequest.system).toContain('Written for the ear')
+  })
+
   it('budgets tokens from the chapter target, with headroom', () => {
     expect(request.maxTokens).toBeGreaterThan(900 * 1.6)
   })

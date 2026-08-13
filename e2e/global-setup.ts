@@ -362,7 +362,7 @@ export default async function globalSetup(): Promise<void> {
     await narrate(FLAGGED_TAKE_TITLE, { flagSecond: true })
 
     await updateSettings(connection.db, {
-      budgets: { killSwitch: false, approvedOverages: {} },
+      budgets: { monthlyCeilingUsd: 100, approvedOverage: null },
       // A voice must be chosen for the stage to be runnable at all; the mock
       // adapter answers to any id, and this one says plainly what it is.
       tts: { provider: 'gemini', voiceId: 'mock-narrator' },

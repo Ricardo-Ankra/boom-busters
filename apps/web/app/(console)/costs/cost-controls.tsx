@@ -1,120 +1,49 @@
 'use client'
 
-import { PROVIDERS } from '@boom-busters/schemas'
-import type { Budgets } from '@boom-busters/schemas'
-import { ShieldAlert, ShieldCheck } from 'lucide-react'
-import { useRouter } from 'next/navigation'
 import * as React from 'react'
+import { useRouter } from 'next/navigation'
 import { saveSettings } from '@/app/(console)/settings/actions'
-import { ConfirmButton } from '@/components/confirm-button'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { useToast } from '@/components/ui/toast'
 
 /**
- * The kill switch and budget editors (build spec section 11.3).
+ * The one spending control (2026-08-13; supersedes spec section 11.3's kill
+ * switch and per-provider budget editors, both removed by decision).
  *
- * Both write through `saveSettings`, the same validated action the Settings
- * screen uses — budgets live in the settings row, and having two write paths
- * to one row is how they drift.
+ * A single number: how much the whole pipeline may spend this month, across
+ * every provider. A run that would cross it parks on a budget gate rather than
+ * failing — the machinery under it is unchanged. Setting it to zero refuses
+ * every priced call, which is everything the kill switch did as a separate
+ * concept.
+ *
+ * It writes through `saveSettings`, the same validated action the Settings
+ * screen uses: two write paths to one row is how they drift.
  */
-
-export function KillSwitch({ enabled }: { enabled: boolean }) {
+export function CeilingEditor({ ceilingUsd }: { ceilingUsd: number }) {
   const router = useRouter()
   const { toast } = useToast()
+  const [draft, setDraft] = React.useState(String(ceilingUsd))
   const [busy, setBusy] = React.useState(false)
 
-  async function set(next: boolean): Promise<void> {
-    setBusy(true)
-    try {
-      const result = await saveSettings({ budgets: { killSwitch: next } })
-      if (result.ok) {
-        toast({ title: next ? 'Kill switch on — all spending refused' : 'Kill switch off' })
-        router.refresh()
-      } else {
-        toast({
-          title: 'Could not change the kill switch',
-          description: result.error,
-          variant: 'error',
-        })
-      }
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  return (
-    <Card className={enabled ? 'border-[var(--color-danger)]' : undefined}>
-      <CardContent className="flex flex-wrap items-center justify-between gap-3 p-4">
-        <div className="flex items-center gap-3">
-          {enabled ? (
-            <ShieldAlert className="size-5 text-[var(--color-danger)]" aria-hidden />
-          ) : (
-            <ShieldCheck className="size-5 text-[var(--color-success)]" aria-hidden />
-          )}
-          <div>
-            <p className="text-[14px] font-medium">
-              {enabled ? 'Kill switch is on' : 'Kill switch is off'}
-            </p>
-            <p className="text-[13px] text-[var(--color-text-secondary)]">
-              {enabled
-                ? 'Every priced provider call is refused. Runs park on a budget gate rather than failing.'
-                : 'Spending is allowed up to each provider cap.'}
-            </p>
-          </div>
-        </div>
-
-        {enabled ? (
-          <Button variant="primary" busy={busy} onClick={() => set(false)}>
-            Turn the kill switch off
-          </Button>
-        ) : (
-          <ConfirmButton
-            label="Turn the kill switch on"
-            confirmLabel="Stop all spending"
-            consequence="Every run that needs a paid call will park on a budget gate until you turn this off."
-            onConfirm={() => set(true)}
-          />
-        )}
-      </CardContent>
-    </Card>
-  )
-}
-
-export function BudgetEditor({ budgets }: { budgets: Budgets }) {
-  const router = useRouter()
-  const { toast } = useToast()
-  const [draft, setDraft] = React.useState<Record<string, string>>(() =>
-    Object.fromEntries(
-      PROVIDERS.map((provider) => [provider, String(budgets.perProviderMonthlyUSD[provider] ?? 0)]),
-    ),
-  )
-  const [busy, setBusy] = React.useState(false)
-
-  const dirty = PROVIDERS.some(
-    (provider) => Number(draft[provider]) !== (budgets.perProviderMonthlyUSD[provider] ?? 0),
-  )
+  const parsed = Number(draft)
+  const valid = Number.isFinite(parsed) && parsed >= 0
+  const dirty = valid && parsed !== ceilingUsd
 
   async function save(): Promise<void> {
-    const changed: Record<string, number> = {}
-    for (const provider of PROVIDERS) {
-      const next = Number(draft[provider])
-      if (!Number.isFinite(next) || next < 0) {
-        toast({ title: `${provider}: enter a number of dollars`, variant: 'error' })
-        return
-      }
-      if (next !== (budgets.perProviderMonthlyUSD[provider] ?? 0)) changed[provider] = next
-    }
-
     setBusy(true)
     try {
-      const result = await saveSettings({ budgets: { perProviderMonthlyUSD: changed } })
+      const result = await saveSettings({ budgets: { monthlyCeilingUsd: parsed } })
       if (result.ok) {
-        toast({ title: 'Budgets saved' })
+        toast({
+          title: `Ceiling set to $${parsed.toFixed(2)}/month`,
+          ...(parsed === 0
+            ? { description: 'Every priced call now parks on a budget gate.' }
+            : {}),
+        })
         router.refresh()
       } else {
-        toast({ title: 'Could not save budgets', description: result.error, variant: 'error' })
+        toast({ title: 'Could not save the ceiling', description: result.error, variant: 'error' })
       }
     } finally {
       setBusy(false)
@@ -122,35 +51,26 @@ export function BudgetEditor({ budgets }: { budgets: Budgets }) {
   }
 
   return (
-    <div className="flex flex-col gap-4">
-      <div className="grid gap-3 sm:grid-cols-2">
-        {PROVIDERS.map((provider) => (
-          <label key={provider} className="flex items-center justify-between gap-3 text-[13px]">
-            <span>{provider}</span>
-            <Input
-              type="number"
-              min="0"
-              step="1"
-              inputMode="decimal"
-              aria-label={`${provider} monthly budget in US dollars`}
-              value={draft[provider] ?? '0'}
-              onChange={(event) =>
-                setDraft((current) => ({ ...current, [provider]: event.target.value }))
-              }
-              className="w-28 font-mono tabular-nums"
-            />
-          </label>
-        ))}
-      </div>
-
-      <div className="flex items-center gap-3">
-        <Button variant="primary" busy={busy} disabled={!dirty} onClick={save}>
-          Save budgets
-        </Button>
-        {dirty ? null : (
-          <span className="text-[13px] text-[var(--color-text-muted)]">No changes to save.</span>
-        )}
-      </div>
+    <div className="flex flex-wrap items-center gap-3">
+      <label htmlFor="monthly-ceiling" className="text-[13px]">
+        Monthly ceiling, US dollars
+      </label>
+      <Input
+        id="monthly-ceiling"
+        type="number"
+        min="0"
+        step="1"
+        inputMode="decimal"
+        value={draft}
+        onChange={(event) => setDraft(event.target.value)}
+        className="w-28 font-mono tabular-nums"
+      />
+      <Button variant="primary" busy={busy} disabled={!dirty} onClick={save}>
+        Save
+      </Button>
+      <span className="text-[12px] text-[var(--color-text-muted)]">
+        One number for everything. A run that would cross it parks and asks; zero parks every run.
+      </span>
     </div>
   )
 }

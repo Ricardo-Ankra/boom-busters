@@ -53,9 +53,7 @@ export function BudgetGateCard({ gate }: { gate: OpenBudgetGate }) {
       <CardHeader>
         <CardTitle>Over budget — the run is parked</CardTitle>
         <CardDescription>
-          {gate.killSwitch
-            ? `The kill switch is on, so every ${gate.provider} call is refused.`
-            : `${gate.provider} · ${gate.operation}`}
+          {`${gate.provider} · ${gate.operation}`}
         </CardDescription>
       </CardHeader>
 
