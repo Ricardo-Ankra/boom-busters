@@ -74,6 +74,19 @@ export function takeIdempotencyKey(input: {
    * change re-narrates nothing by itself.
    */
   pronunciations?: readonly PhonemeHint[]
+  /**
+   * `settings.tts.pacing` — the global speaking-rate slider (0.25–2).
+   *
+   * In the key for the same reason the pronunciations are: it changes how a
+   * paragraph is *spoken* without changing a character of it. Left out, moving
+   * the slider was a silent no-op — every fingerprint still matched, a re-run
+   * handed back all the old audio at the old speed, and no button existed to
+   * force the difference. Folded in only when it is off the default 1×, so
+   * every take bought before this field existed keeps the key it was bought
+   * under; moving the slider re-reads the whole script, which is what a global
+   * speed change honestly costs.
+   */
+  pacing?: number
 }): string {
   const applicable = matchedHints(input.text, input.pronunciations ?? [])
 
@@ -100,6 +113,9 @@ export function takeIdempotencyKey(input: {
                 )
                 .digest('hex'),
             ]),
+        // The slider value verbatim, prefixed so it can never read as one of
+        // the hex hashes around it. Absent at the default — see above.
+        ...(input.pacing === undefined || input.pacing === 1 ? [] : [`pacing=${input.pacing}`]),
       // A NUL, written as an escape because it was previously a literal control
       // character sitting invisibly in this file — source that reads `join('')`
       // and is not. The separator itself is load-bearing and must not change:

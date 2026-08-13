@@ -75,6 +75,33 @@ describe('splitParagraphs', () => {
   })
 })
 
+describe('pacing in the take key', () => {
+  /**
+   * Same contract as the pronunciations: every take bought before pacing
+   * joined the key was bought at the default 1×, so the default must produce
+   * the key it always did — or this change alone would re-buy every video.
+   */
+  it('is unchanged at the default 1×, so existing takes keep their keys', () => {
+    expect(takeIdempotencyKey({ ...base, pacing: 1 })).toBe(takeIdempotencyKey(base))
+  })
+
+  /**
+   * The bug this field fixes. Pacing changes how every paragraph is spoken
+   * without changing a character of the script, so with it outside the key a
+   * moved slider was a silent no-op: every fingerprint still matched, a re-run
+   * handed back the old audio at the old speed, and nothing on screen said so.
+   */
+  it('changes when the slider moves, so a re-run re-reads at the new speed', () => {
+    expect(takeIdempotencyKey({ ...base, pacing: 0.95 })).not.toBe(takeIdempotencyKey(base))
+  })
+
+  it('distinguishes two non-default speeds', () => {
+    expect(takeIdempotencyKey({ ...base, pacing: 0.9 })).not.toBe(
+      takeIdempotencyKey({ ...base, pacing: 1.1 }),
+    )
+  })
+})
+
 function take(patch: Partial<TakeRef> = {}): TakeRef {
   return { chapterId: 'c1', paragraphIndex: 0, takeNumber: 1, status: 'generated', ...patch }
 }
@@ -206,6 +233,14 @@ describe('pronunciations in the take key', () => {
     expect(takeIdempotencyKey({ ...base, pronunciations: hints })).toBe(
       takeIdempotencyKey({ ...base, pronunciations: [...hints].reverse() }),
     )
+  })
+
+  it('composes with pacing rather than colliding with it', () => {
+    // A hints-only key and a pacing-only key must never hash the same — the
+    // pacing segment is prefixed so it cannot read as a hint hash.
+    expect(
+      takeIdempotencyKey({ ...base, pronunciations: [{ term: 'Jan', hint: '/dʒæn/' }] }),
+    ).not.toBe(takeIdempotencyKey({ ...base, pacing: 0.95 }))
   })
 
   it('matches whole words, so a term does not fire inside a longer one', () => {

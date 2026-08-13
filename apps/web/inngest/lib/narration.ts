@@ -36,6 +36,8 @@ export function paragraphJobs(input: {
    * how a name is said re-reads the paragraphs that say it — and only those.
    */
   pronunciations?: readonly PhonemeHint[]
+  /** `settings.tts.pacing`. Part of the identity too — a speed change re-reads. */
+  pacing?: number
 }): ParagraphJob[] {
   return input.chapters.flatMap((chapter) =>
     splitParagraphs(chapter.contentMd).map((text, paragraphIndex) => ({
@@ -50,6 +52,7 @@ export function paragraphJobs(input: {
         text,
         voiceId: input.voiceId,
         ...(input.pronunciations ? { pronunciations: input.pronunciations } : {}),
+        ...(input.pacing === undefined ? {} : { pacing: input.pacing }),
       }),
     })),
   )

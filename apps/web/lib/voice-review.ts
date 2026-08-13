@@ -1,7 +1,12 @@
 import { getSettings, latestScriptParagraphSources, listVoiceTakes } from '@boom-busters/db'
 import type { Database, VoiceTakeRow } from '@boom-busters/db'
 import { rereadCanDiffer } from '@boom-busters/providers'
-import { splitParagraphs, voiceApprovalBlockedReason, voiceCoverage } from '@boom-busters/schemas'
+import {
+  splitParagraphs,
+  takeIdempotencyKey,
+  voiceApprovalBlockedReason,
+  voiceCoverage,
+} from '@boom-busters/schemas'
 import type { VoiceCoverage } from '@boom-busters/schemas'
 
 /**
@@ -57,6 +62,18 @@ export interface ParagraphRow {
   /** The one before it, for the A/B toggle. Absent until a retake exists. */
   previous: TakeView | undefined
   takeCount: number
+  /**
+   * The audio on this row is not what these words would buy today.
+   *
+   * Decided by the take fingerprint, not by guessing at causes: the current
+   * take's stored key is compared against the key this paragraph would be
+   * claimed under right now — same text, same voice, same pacing, same
+   * applicable pronunciations. Any of those moving after the take was bought
+   * makes the row stale, which is precisely the set of changes that alter how
+   * a paragraph is spoken. The audio still plays; it is just of the old
+   * version, and re-running the stage re-buys exactly the stale rows.
+   */
+  stale: boolean
 }
 
 export interface ChapterGroup {
@@ -76,6 +93,8 @@ export interface VoiceReviewModel {
   blockedReason: string | undefined
   /** Takes whose paragraph no longer exists — the script was edited after narration. */
   orphanedTakes: number
+  /** How many rows are `stale` — audio of an older text, voice, pacing or pronunciation. */
+  staleParagraphs: number
   /**
    * Whether this narrator can read the same words differently a second time.
    *
@@ -115,6 +134,19 @@ export async function voiceReviewModel(db: Database, projectId: string): Promise
       const history = takesFor(takes, chapter.id, paragraphIndex)
       const [current, previous] = history
 
+      // The key this paragraph would be claimed under if the stage ran now —
+      // computed by the same function the runner buys with, so the screen and
+      // the purchase can never disagree about what "changed" means.
+      const expectedKey = takeIdempotencyKey({
+        projectId,
+        chapterId: chapter.id,
+        paragraphIndex,
+        text,
+        voiceId: settings.tts.voiceId,
+        pronunciations: settings.tts.phonemeHints,
+        pacing: settings.tts.pacing,
+      })
+
       return {
         chapterId: chapter.id,
         paragraphIndex,
@@ -122,6 +154,7 @@ export async function voiceReviewModel(db: Database, projectId: string): Promise
         current: current ? takeView(current) : undefined,
         previous: previous ? takeView(previous) : undefined,
         takeCount: history.length,
+        stale: current !== undefined && current.idempotencyKey !== expectedKey,
       }
     })
 
@@ -142,13 +175,36 @@ export async function voiceReviewModel(db: Database, projectId: string): Promise
     chapter.paragraphs.map((paragraph) => paragraph.current).filter((take) => take !== undefined),
   )
 
+  const staleParagraphs = chapters.reduce(
+    (total, chapter) => total + chapter.paragraphs.filter((paragraph) => paragraph.stale).length,
+    0,
+  )
+
+  /**
+   * Staleness blocks approval, after the harder blockers have had their say.
+   *
+   * Approving is a statement about the audio that will be assembled, and audio
+   * of words the script no longer says — or a voice, speed or pronunciation
+   * the settings no longer choose — is not that audio. Without this, changing
+   * the pacing slider was approvable silence: every row still read
+   * "generated", the gate opened, and the change never reached your ears.
+   */
+  const blockedReason =
+    voiceApprovalBlockedReason(live, expectedParagraphs) ??
+    (staleParagraphs > 0
+      ? `${staleParagraphs} paragraph${staleParagraphs === 1 ? ' has' : 's have'} changed since ` +
+        'being read — the words, the voice, the pacing or a pronunciation moved on, so the audio ' +
+        'is of the old version. Re-run the voice stage; only the changed paragraphs are re-read.'
+      : undefined)
+
   return {
     chapters,
     coverage: voiceCoverage(live),
     expectedParagraphs,
     totalDurationMs: currentTakes.reduce((total, take) => total + (take.durationMs ?? 0), 0),
-    blockedReason: voiceApprovalBlockedReason(live, expectedParagraphs),
+    blockedReason,
     orphanedTakes: takes.length - live.length,
+    staleParagraphs,
     rereadCanDiffer: rereadCanDiffer(settings.tts.provider),
   }
 }

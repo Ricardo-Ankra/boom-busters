@@ -7,6 +7,7 @@ import {
   ChevronRight,
   CircleDashed,
   Flag,
+  History,
   Loader2,
   Pause,
   Pencil,
@@ -161,7 +162,10 @@ function CoverageBar({ model }: { model: VoiceReviewModel }) {
         {expectedParagraphs} paragraphs ·{' '}
         {segments.map((segment) => `${segment.count} ${segment.label}`).join(' · ') ||
           'none narrated'}{' '}
-        · {formatDuration(model.totalDurationMs)} total
+        {/* Not a coverage status — a generated take can be stale — so it is
+            appended here rather than drawn as a bar segment. */}
+        {model.staleParagraphs > 0 ? `· ${model.staleParagraphs} changed since read ` : ''}·{' '}
+        {formatDuration(model.totalDurationMs)} total
       </p>
     </div>
   )
@@ -486,6 +490,17 @@ function ParagraphRowView({
             {row.takeCount > 1 ? ` of ${row.takeCount}` : ''}
           </span>
           <StatusChip take={shown} />
+          {/* The flag's sibling: the same at-a-glance treatment for "this audio
+              is of an older version". A flag says a human rejected the take; this
+              says an edit or a settings change quietly outdated it — words, voice,
+              pacing or a pronunciation — and re-running the stage re-reads only
+              the rows that carry it. */}
+          {row.stale ? (
+            <span className="inline-flex items-center gap-1 text-[12px] text-[var(--color-warning)]">
+              <History className="size-3.5" aria-hidden />
+              Changed since read
+            </span>
+          ) : null}
         </div>
 
         {shown?.note ? (
@@ -607,6 +622,7 @@ function ChapterSection({
 }) {
   const flagged = chapter.paragraphs.filter((p) => p.current?.status === 'flagged').length
   const missing = chapter.paragraphs.filter((p) => !p.current).length
+  const stale = chapter.paragraphs.filter((p) => p.stale).length
 
   return (
     <section className="rounded-[8px] border border-[var(--color-border)]">
@@ -632,6 +648,9 @@ function ChapterSection({
           <span className="shrink-0 text-[12px] text-[var(--color-warning)]">
             {missing} without audio
           </span>
+        ) : null}
+        {stale > 0 ? (
+          <span className="shrink-0 text-[12px] text-[var(--color-warning)]">{stale} changed</span>
         ) : null}
       </button>
 

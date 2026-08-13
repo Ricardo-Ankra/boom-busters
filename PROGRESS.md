@@ -847,7 +847,7 @@ the voice regenerate?"* — whose honest answer was: it won't.
 73. **A NUL byte was sitting in `voice.ts`, invisible.** The separator in
     `takeIdempotencyKey`'s `join()` was a literal control character, so the
     source read `join('')` and was not — which is why `grep` had been reporting
-    the file as binary. It is written `' '` now. The separator itself is
+    the file as binary. It is written `'\u0000'` now. The separator itself is
     kept exactly: it stops `("ab", "c")` hashing the same as `("a", "bc")`, and
     every take in the database was keyed with it, so "tidying" it to `''` would
     have silently re-narrated everything.
@@ -904,6 +904,36 @@ one structural correction they diagnosed themselves.
     test and it is the floor the button-first rule stands on; what read as
     "aggressive padding" was the compounding of container paddings, not the
     controls.
+
+### M4.10 — pacing in the take key, and staleness made visible (2026-08-13)
+
+The human asked whether re-running the voice stage re-reads only changed
+paragraphs (yes), then found the hole: changing the pacing slider changed
+nothing. Same class of bug as the pronunciations (decision 72) — pacing alters
+how a paragraph is *spoken* without changing a character of it — and I missed
+it when I fixed that one.
+
+79. **Pacing is part of a take's identity.** `takeIdempotencyKey` folds
+    `settings.tts.pacing` in, but only when it is off the default 1×, so every
+    take already bought (all made at 1×) keeps its key and this change alone
+    re-buys nothing. Moving the slider changes every fingerprint and the next
+    run re-reads the whole script at the new speed — which is what a global
+    speed change honestly costs. The segment is written `pacing=<value>`,
+    prefixed so it can never hash-collide with the pronunciation segment.
+
+80. **Staleness is computed from the fingerprint and shown like a flag.** The
+    human's second point: after a change, nothing on screen said a re-run was
+    needed — the parked run reads "running", every row reads "Generated", and
+    the only way to hear that the audio was old was by ear. `voiceReviewModel`
+    now recomputes each paragraph's expected key (same function the runner buys
+    with, so screen and purchase cannot disagree) and marks rows whose current
+    take was bought under a different one: a "Changed since read" chip on the
+    row, a count on the chapter header and the coverage line, and — the part
+    that bites — approval is blocked while anything is stale, because approving
+    audio of words, a voice, a speed or a pronunciation the project no longer
+    has is approving the wrong video. No `isStale` column anywhere: it is
+    derived on read, per M3's "staleness is derived, not stored" rule, so no
+    write can forget to set it.
 
 ### M4.8 — what the Chirp 3 HD guide said, and I had not read (2026-08-13)
 

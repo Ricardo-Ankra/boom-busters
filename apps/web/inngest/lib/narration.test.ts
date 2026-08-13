@@ -48,6 +48,19 @@ describe('paragraphJobs', () => {
     expect(a).not.toBe(b)
   })
 
+  it('changes the key when pacing moves off 1×, so a speed change re-reads', () => {
+    const at1 = paragraphJobs({ projectId, voiceId: 'Charon', chapters })[0]?.idempotencyKey
+    const slower = paragraphJobs({ projectId, voiceId: 'Charon', chapters, pacing: 0.9 })[0]
+      ?.idempotencyKey
+
+    expect(slower).not.toBe(at1)
+    // And the default explicit is the default absent, so takes bought before
+    // pacing joined the key are still recognised and not re-bought.
+    expect(paragraphJobs({ projectId, voiceId: 'Charon', chapters, pacing: 1 })[0]?.idempotencyKey).toBe(
+      at1,
+    )
+  })
+
   it('leaves untouched paragraphs with untouched keys when one is edited', () => {
     // This is what makes a re-run after a small edit cost one paragraph rather
     // than sixty.

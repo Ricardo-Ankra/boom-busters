@@ -73,6 +73,7 @@ function model(patch: Partial<VoiceReviewModel> = {}): VoiceReviewModel {
           current: take(),
           previous: undefined,
           takeCount: 1,
+          stale: false,
         },
         {
           chapterId: 'c1',
@@ -81,6 +82,7 @@ function model(patch: Partial<VoiceReviewModel> = {}): VoiceReviewModel {
           current: take({ id: 'take-2' }),
           previous: undefined,
           takeCount: 1,
+          stale: false,
         },
       ],
     },
@@ -112,6 +114,10 @@ function model(patch: Partial<VoiceReviewModel> = {}): VoiceReviewModel {
     totalDurationMs: 16_800,
     blockedReason: voiceApprovalBlockedReason(takes, expectedParagraphs),
     orphanedTakes: 0,
+    staleParagraphs: chapters.reduce(
+      (total, chapter) => total + chapter.paragraphs.filter((paragraph) => paragraph.stale).length,
+      0,
+    ),
     // The narrator in production is Cloud TTS, which cannot vary a re-read, so
     // that is the default a fixture should describe. The tests that care about
     // "read it again" turn it on explicitly.
@@ -212,6 +218,7 @@ describe('VoiceReview', () => {
                 current: take({ status: 'flagged', note: 'Mispronounced Wirecard.' }),
                 previous: undefined,
                 takeCount: 1,
+                stale: false,
               },
             ],
           },
@@ -249,6 +256,7 @@ describe('VoiceReview', () => {
                 current: take({ status: 'flagged', note: 'Ran the two halves together.' }),
                 previous: undefined,
                 takeCount: 1,
+                stale: false,
               },
             ],
           },
@@ -295,6 +303,7 @@ describe('VoiceReview', () => {
                 current: take({ status: 'pending', hasAudio: false }),
                 previous: undefined,
                 takeCount: 1,
+                stale: false,
               },
             ],
           },
@@ -382,6 +391,7 @@ describe('VoiceReview', () => {
               current: take({ id: 'take-2', takeNumber: 2, durationMs: 9_000 }),
               previous: take({ id: 'take-1', takeNumber: 1, status: 'flagged' }),
               takeCount: 2,
+              stale: false,
             },
           ],
         },
@@ -447,6 +457,7 @@ describe('VoiceReview', () => {
                 current: take({ status: 'pending', hasAudio: false, durationMs: null }),
                 previous: undefined,
                 takeCount: 1,
+                stale: false,
               },
             ],
           },
@@ -455,6 +466,68 @@ describe('VoiceReview', () => {
 
       render(<VoiceReview model={pending} />)
       expect(screen.getByRole('button', { name: 'Play' })).toBeDisabled()
+    })
+  })
+
+  /**
+   * The flag's sibling. A flag says a human rejected the take; `stale` says an
+   * edit or a settings change quietly outdated it — the words, the voice, the
+   * pacing or a pronunciation moved on after it was read. Without the marker,
+   * a moved pacing slider looked like nothing at all: every row still said
+   * "Generated" and the only way to learn the audio was old was to notice it
+   * by ear.
+   */
+  describe('a paragraph that changed after it was read', () => {
+    function staleModel(): VoiceReviewModel {
+      return model({
+        chapters: [
+          {
+            chapterId: 'c1',
+            title: 'The audit',
+            paragraphs: [
+              {
+                chapterId: 'c1',
+                paragraphIndex: 0,
+                text: 'The auditors signed it off for eighteen years — allegedly.',
+                current: take(),
+                previous: undefined,
+                takeCount: 1,
+                stale: true,
+              },
+              {
+                chapterId: 'c1',
+                paragraphIndex: 1,
+                text: 'Nobody asked where the cash was.',
+                current: take({ id: 'take-2' }),
+                previous: undefined,
+                takeCount: 1,
+                stale: false,
+              },
+            ],
+          },
+        ],
+      })
+    }
+
+    it('marks the row, like a flag, so the outdated audio is visible in place', () => {
+      render(<VoiceReview model={staleModel()} />)
+      expect(screen.getByText('Changed since read')).toBeInTheDocument()
+    })
+
+    it('counts the changed rows beside the coverage, in words', () => {
+      render(<VoiceReview model={staleModel()} />)
+      expect(screen.getByText(/1 changed since read/)).toBeInTheDocument()
+    })
+
+    it('counts them on the chapter header, so a collapsed chapter still says so', () => {
+      render(<VoiceReview model={staleModel()} />)
+      expect(screen.getByText('1 changed')).toBeInTheDocument()
+    })
+
+    it('marks nothing when nothing has changed', () => {
+      render(<VoiceReview model={model()} />)
+      expect(screen.queryByText('Changed since read')).not.toBeInTheDocument()
+      expect(screen.queryByText(/changed since read/)).not.toBeInTheDocument()
     })
   })
 

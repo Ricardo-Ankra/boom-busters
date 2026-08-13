@@ -143,6 +143,9 @@ export const voiceRunner = inngest.createFunction(
         // Part of each take's identity, so a corrected pronunciation re-reads
         // the paragraphs that use the term and leaves the rest alone.
         pronunciations: settings.tts.phonemeHints,
+        // Also identity: a moved pacing slider re-reads everything, because it
+        // changes how every paragraph is spoken.
+        pacing: settings.tts.pacing,
       })
       if (jobs.length === 0) {
         throw new NonRetriableError('The script has no paragraphs to narrate.')
