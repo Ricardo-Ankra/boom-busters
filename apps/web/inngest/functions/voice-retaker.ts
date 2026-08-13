@@ -10,7 +10,7 @@ import {
 import { BudgetExceededError, parseEventData, serialiseError } from '@boom-busters/schemas'
 import { NonRetriableError } from 'inngest'
 import { db } from '@/lib/db'
-import { putObject, storageConfigured, voiceTakeKey } from '@/lib/storage'
+import { putObject, takeStorage, voiceTakeKey } from '@/lib/storage'
 import { synthesise } from '@/lib/tts'
 import { inngest } from '../client'
 import { events } from '../events'
@@ -76,6 +76,17 @@ export const voiceRetaker = inngest.createFunction(
       }
 
       const settings = await getSettings(db)
+
+      // Before the claim, so a retake with nowhere to go does not burn a take
+      // number. See `takeStorage`.
+      try {
+        takeStorage()
+      } catch (error) {
+        throw new NonRetriableError(
+          error instanceof Error ? error.message : 'Narration has nowhere to be stored.',
+        )
+      }
+
       const { scriptVersion } = await latestScriptParagraphSources(db, projectId)
 
       const claimed = await claimTake(db, {
@@ -105,20 +116,21 @@ export const voiceRetaker = inngest.createFunction(
           projectId,
         })
 
-        const key = storageConfigured()
-          ? (
-              await putObject(
-                voiceTakeKey({
-                  projectId,
-                  chapterId: take.chapterId,
-                  paragraphIndex: take.paragraphIndex,
-                  takeId: claimed.take.id,
-                }),
-                narration.wav,
-                'audio/wav',
-              )
-            ).key
-          : mockVoiceTakeKey(claimed.take.id)
+        const key =
+          takeStorage() === 'r2'
+            ? (
+                await putObject(
+                  voiceTakeKey({
+                    projectId,
+                    chapterId: take.chapterId,
+                    paragraphIndex: take.paragraphIndex,
+                    takeId: claimed.take.id,
+                  }),
+                  narration.wav,
+                  'audio/wav',
+                )
+              ).key
+            : mockVoiceTakeKey(claimed.take.id)
 
         await storeTakeAudio(db, claimed.take.id, {
           r2Key: key,

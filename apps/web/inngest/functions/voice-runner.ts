@@ -17,7 +17,7 @@ import {
 } from '@boom-busters/schemas'
 import { NonRetriableError } from 'inngest'
 import { db } from '@/lib/db'
-import { putObject, storageConfigured, voiceTakeKey } from '@/lib/storage'
+import { putObject, takeStorage, voiceTakeKey } from '@/lib/storage'
 import { requireTtsKey, synthesise } from '@/lib/tts'
 import { inngest } from '../client'
 import { events } from '../events'
@@ -115,6 +115,20 @@ export const voiceRunner = inngest.createFunction(
       // Throws a `ValidationError` naming Settings → Connections.
       await requireTtsKey(provider)
 
+      /**
+       * A key to buy with is only half of it: there has to be somewhere to put
+       * what was bought. A missing bucket will not fix itself between retries,
+       * and each retry of this stage is another sixty paid calls, so this is
+       * the one place it can be raised — before the first one.
+       */
+      try {
+        takeStorage()
+      } catch (error) {
+        throw new NonRetriableError(
+          error instanceof Error ? error.message : 'Narration has nowhere to be stored.',
+        )
+      }
+
       const sources = await latestScriptParagraphSources(db, projectId)
       if (sources.chapters.length === 0) {
         throw new NonRetriableError(
@@ -171,23 +185,25 @@ export const voiceRunner = inngest.createFunction(
                   projectId,
                 })
 
-                const key = storageConfigured()
-                  ? (
-                      await putObject(
-                        voiceTakeKey({
-                          projectId,
-                          chapterId: job.chapterId,
-                          paragraphIndex: job.paragraphIndex,
-                          takeId: claimed.take.id,
-                        }),
-                        narration.wav,
-                        'audio/wav',
-                      )
-                    ).key
-                  : // No bucket configured: the take is marked as holding no real
-                    // object, and the audio route regenerates it. See
-                    // `MOCK_KEY_PREFIX`.
-                    mockVoiceTakeKey(claimed.take.id)
+                const key =
+                  takeStorage() === 'r2'
+                    ? (
+                        await putObject(
+                          voiceTakeKey({
+                            projectId,
+                            chapterId: job.chapterId,
+                            paragraphIndex: job.paragraphIndex,
+                            takeId: claimed.take.id,
+                          }),
+                          narration.wav,
+                          'audio/wav',
+                        )
+                      ).key
+                    : // The mock made these bytes, so the audio route re-derives
+                      // them rather than storing them. See `MOCK_KEY_PREFIX` —
+                      // and `takeStorage` for why this is not a fallback for a
+                      // missing bucket.
+                      mockVoiceTakeKey(claimed.take.id)
 
                 await storeTakeAudio(db, claimed.take.id, {
                   r2Key: key,

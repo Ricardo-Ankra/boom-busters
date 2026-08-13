@@ -2,6 +2,7 @@ import { isMockKey, takeWithParagraph } from '@boom-busters/db'
 import {
   encodeWav,
   mockNarrationPcm,
+  mockProvidersEnabled,
   mockTakeSeed,
   NARRATION_SAMPLE_RATE,
 } from '@boom-busters/providers'
@@ -47,6 +48,26 @@ export async function GET(
   }
 
   if (isMockKey(take.r2Key)) {
+    /**
+     * A `mock://` take on a live deployment is not a mock take — it is a take
+     * that was bought from a vendor and then not stored, because the runner
+     * used to fall back to this key whenever R2 was missing. Regenerating the
+     * mock here would answer with tone bursts under the waveform of the real
+     * narration, which is what made the fault so hard to see: the screen looked
+     * right and the speaker did not.
+     *
+     * `takeStorage` stops any new take reaching this state. The ones already in
+     * the table say what happened instead of impersonating audio.
+     */
+    if (!mockProvidersEnabled()) {
+      return new Response(
+        'This take has no audio. It was synthesised before R2 was configured, so the vendor was ' +
+          'paid and the result was never stored. Flag it for a retake, or re-run the voice stage ' +
+          'once storage is set up.',
+        { status: 409 },
+      )
+    }
+
     if (text === undefined) {
       return new Response('The paragraph this take was read from no longer exists.', {
         status: 409,

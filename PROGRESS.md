@@ -710,6 +710,59 @@ right, and the reasoning in 53 should have carried all the way.
     browser still shows the old narrator. Confirmed by reverting `add` to the
     server-only write: three of the six fail.
 
+### M4.6 — narration that was paid for and thrown away (2026-08-13)
+
+Reported as *"the audio generated is not speech, it's just random sounds"* on
+project `0PRJECT0000000000000000001`. It was not a codec, a sample rate, or the
+X-SAMPA work. The audio was real and it no longer exists.
+
+**How it was established, because guessing is what caused it.** `.env.local`
+carries `MOCK_PROVIDERS="1"`, which looks like the whole answer and is not: the
+cost ledger shows `tts.google-cloud-tts` at $0.0103 for 345 characters and
+$0.0138 for 460, which is exactly Chirp 3 HD's $0.03/1k. The mock's rate is
+$0.015/1k and would have written half those figures. So the live adapter ran —
+almost certainly from the Vercel deployment, where `.env.local` does not apply.
+Confirmed independently against `voice_takes.waveform`, which is computed from
+whatever PCM the adapter returned: the stored peaks vary like speech
+(`63, 74, 90, 77, 72, 20`) while the mock's are pinned near 28 by its fixed
+7,000-amplitude envelope, and the durations disagree by seconds (24,644 ms
+stored against 21,000 ms for the mock).
+
+60. **`mock://` meant two different things, and the two halves of the app read
+    different ones.** The runner chose the key by *bucket*:
+
+        const key = storageConfigured() ? (await putObject(...)).key
+                                        : mockVoiceTakeKey(take.id)
+
+    while the audio route reads it by *provider* — any `mock://` key is a mock
+    take, so it regenerates the bytes from `mockNarrationPcm`. With live
+    providers and no `R2_*` configured the two disagree, and every paragraph was
+    synthesised by Google, charged, discarded unstored, and played back as the
+    mock's 90–150 Hz tone bursts. The waveform strip above the player was drawn
+    from the real narration, so the screen looked correct while the speaker did
+    not — which is why this survived a green suite and a live walkthrough.
+
+    `mock://` now means one thing: the mock made this. `takeStorage()` returns
+    `'r2' | 'regenerated'` and **throws** for live-providers-with-no-bucket,
+    because that is a configuration error and not a fallback.
+
+61. **The refusal happens at pre-flight, not at the store.** Both runners call
+    `takeStorage()` before the first claim — the runner beside `requireTtsKey`,
+    the retaker before it burns a take number. Spec §6's "fail at the key, not
+    mid-pipeline" is the same argument: a missing bucket will not fix itself
+    between retries, and each retry of the voice stage is another sixty paid
+    calls. The message names both ways out, R2 or `MOCK_PROVIDERS=1`, because
+    the cheap one should not need discovering.
+
+62. **The existing takes say what happened rather than impersonating audio.**
+    Their bytes are gone and cannot be recovered. Rather than keep serving tone
+    bursts, the route answers 409 with the reason whenever a `mock://` take is
+    read while providers are live.
+
+    Covered by `lib/storage.test.ts` over all four combinations of bucket ×
+    provider. Not covered: the runners' call into it — `@inngest/test` cannot
+    drive a voice run (decision 20), so that wiring is one reviewed line.
+
 ### M4.2 — Google Cloud TTS (Chirp 3 HD) as the narrator (2026-08-13)
 
 Chosen by the human over Gemini TTS, and it is a deviation from spec §2 worth

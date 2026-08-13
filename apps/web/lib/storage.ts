@@ -2,7 +2,8 @@ import 'server-only'
 
 import { GetObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3'
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
-import { hasEnvGroup, requireEnv } from '@boom-busters/schemas'
+import { mockProvidersEnabled } from '@boom-busters/providers'
+import { hasEnvGroup, requireEnv, ValidationError } from '@boom-busters/schemas'
 
 /**
  * Cloudflare R2, through the S3 SDK (build spec section 2).
@@ -72,6 +73,50 @@ export function r2(): { client: S3Client; bucket: string } {
 /** Whether object storage is configured at all — for status chips and skips. */
 export function storageConfigured(): boolean {
   return hasEnvGroup('r2')
+}
+
+/** Where a bought take's bytes go. */
+export type TakeStorage =
+  /** Uploaded to R2, and the take holds the key. */
+  | 'r2'
+  /** The mock made them, so the audio route re-derives them on play. */
+  | 'regenerated'
+
+/**
+ * Where the next take's audio can be put — or a refusal to buy it.
+ *
+ * This exists because of a bug that cost real money and produced narration that
+ * was not narration. The runner used to choose the `mock://` key whenever R2 was
+ * absent:
+ *
+ *     const key = storageConfigured() ? (await putObject(...)).key
+ *                                     : mockVoiceTakeKey(take.id)
+ *
+ * which reads as "no bucket, so nothing to upload" and was written for
+ * `MOCK_PROVIDERS=1`, where there genuinely is nothing to upload. But the
+ * condition is about the *bucket*, and the audio route's condition is about the
+ * *provider*: it treats any `mock://` key as a mock take and regenerates the
+ * bytes from `mockNarrationPcm`. Put a live provider behind an unconfigured
+ * bucket and the two disagree — every paragraph was synthesised by Google,
+ * charged at Chirp's rate, thrown away unstored, and then played back as the
+ * mock's tone bursts. The waveform strip above the player was drawn from the
+ * real audio, so the screen showed speech and the speaker produced beeps.
+ *
+ * `mock://` now means one thing only: **the mock made this**. Live providers
+ * with nowhere to store the result is not a fallback, it is a configuration
+ * error, and it is raised before the first character is paid for.
+ */
+export function takeStorage(): TakeStorage {
+  if (storageConfigured()) return 'r2'
+  if (mockProvidersEnabled()) return 'regenerated'
+
+  throw new ValidationError(
+    'Narration has nowhere to be stored. R2 is not configured and the providers are live, so ' +
+      'every paragraph would be bought from the vendor and then discarded. Set R2_ACCOUNT_ID, ' +
+      'R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY and R2_BUCKET, or set MOCK_PROVIDERS=1 to run the ' +
+      'stage without spending anything.',
+    { field: 'env.R2_BUCKET' },
+  )
 }
 
 /**
