@@ -31,6 +31,16 @@ export interface TTSRequest {
   idempotencyKey: string
   /** `settings.tts.pacing`, 0.25–2. Adapters without a speed control ignore it. */
   pacing?: number
+  /**
+   * Direction for *this take only*: "slower on the dates", "less cheerful".
+   *
+   * Distinct from `stylePrompt`, which is the channel's standing voice. This
+   * one comes from a retake form or a flag note and applies to one purchase.
+   * Only a prompt-steered narrator (Gemini) can honour it; the parameterised
+   * vendors have nowhere to put a sentence of English and ignore it — which is
+   * why the UI only offers a direction field where `rereadCanDiffer`.
+   */
+  direction?: string
 }
 
 export interface TTSResult {

@@ -32,7 +32,7 @@ import {
   chunk,
   paragraphJobs,
   recordLoudnessDeferred,
-  TTS_CONCURRENCY,
+  ttsConcurrency,
   withinFailureTolerance,
 } from '../lib/narration'
 
@@ -167,7 +167,7 @@ export const voiceRunner = inngest.createFunction(
 
     const outcomes: ParagraphOutcome[] = []
 
-    for (const batch of chunk(setup.jobs, TTS_CONCURRENCY)) {
+    for (const batch of chunk(setup.jobs, ttsConcurrency(setup.provider))) {
       const results = await Promise.all(
         batch.map((job) =>
           step.run(

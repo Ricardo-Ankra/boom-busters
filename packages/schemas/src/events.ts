@@ -68,6 +68,13 @@ export const VoiceRetakeRequestedSchema = z.object({
   ...projectRef,
   takeId: UlidSchema,
   note: z.string().min(1),
+  /**
+   * Direction for the narrator, distinct from `note` (the record of why).
+   * Present only when the narrator can act on it — Gemini reads it as part of
+   * its prompt; the parameterised vendors have nowhere to put a sentence, so
+   * the action never sends one for them.
+   */
+  direction: z.string().min(1).max(500).optional(),
 })
 
 export const RenderCompletedSchema = z.object({

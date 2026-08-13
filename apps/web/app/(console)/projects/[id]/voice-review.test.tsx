@@ -1,5 +1,5 @@
 import { voiceApprovalBlockedReason, voiceCoverage } from '@boom-busters/schemas'
-import { render, screen, within } from '@testing-library/react'
+import { fireEvent, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { TakeView, VoiceReviewModel } from '@/lib/voice-review'
@@ -44,6 +44,7 @@ beforeEach(() => {
   retakeVoiceTake.mockResolvedValue({ ok: true })
   clearVoiceFlag.mockResolvedValue({ ok: true })
   vi.spyOn(HTMLMediaElement.prototype, 'play').mockResolvedValue(undefined)
+  vi.spyOn(HTMLMediaElement.prototype, 'pause').mockImplementation(() => undefined)
   Element.prototype.scrollIntoView = vi.fn()
 })
 
@@ -314,19 +315,41 @@ describe('VoiceReview', () => {
       render(<VoiceReview model={silent} />)
 
       expect(screen.getByRole('button', { name: 'Fix the words' })).toBeDisabled()
-      expect(screen.getByRole('button', { name: 'Read it again' })).toBeDisabled()
+      expect(screen.getByRole('button', { name: 'Another take' })).toBeDisabled()
     })
 
-    it('does not offer to read it again when the reading cannot differ', async () => {
+    it('does not offer another take when the reading cannot differ', async () => {
       render(<VoiceReview model={flaggedModel({ rereadCanDiffer: false })} />)
-      expect(screen.queryByRole('button', { name: /read it again/i })).toBeNull()
+      expect(screen.queryByRole('button', { name: /another take/i })).toBeNull()
     })
 
-    it('offers to read it again where a second reading is a genuine second take', async () => {
+    /**
+     * The flag note is the direction: what was wrong with the take is exactly
+     * what the narrator should be told to do differently. On Gemini it lands
+     * in the prompt as director's notes.
+     */
+    it('prefills the direction with the flag note and sends it with the retake', async () => {
       render(<VoiceReview model={flaggedModel({ rereadCanDiffer: true })} />)
 
-      await userEvent.click(screen.getByRole('button', { name: 'Read it again' }))
-      expect(retakeVoiceTake).toHaveBeenCalledWith('take-1')
+      await userEvent.click(screen.getByRole('button', { name: 'Another take' }))
+
+      const box = screen.getByLabelText('Direction for this take (optional)')
+      expect(box).toHaveValue('Ran the two halves together.')
+
+      await userEvent.click(screen.getByRole('button', { name: 'Record another take' }))
+      expect(retakeVoiceTake).toHaveBeenCalledWith('take-1', 'Ran the two halves together.')
+    })
+
+    it('re-rolls without direction when the box is left empty', async () => {
+      render(<VoiceReview model={model({ rereadCanDiffer: true })} />)
+
+      await userEvent.click(screen.getAllByRole('button', { name: 'Another take' })[0]!)
+
+      const box = screen.getByLabelText('Direction for this take (optional)')
+      expect(box).toHaveValue('')
+
+      await userEvent.click(screen.getByRole('button', { name: 'Record another take' }))
+      expect(retakeVoiceTake).toHaveBeenCalledWith('take-1', undefined)
     })
 
     it('opens the words for editing, prefilled with what was read', async () => {
@@ -443,6 +466,41 @@ describe('VoiceReview', () => {
       )
     })
 
+    it("a row's play ends with its paragraph instead of rolling on", async () => {
+      const { container } = render(<VoiceReview model={model()} />)
+
+      await userEvent.click(screen.getAllByRole('button', { name: 'Play' })[0]!)
+      fireEvent.ended(container.querySelector('audio')!)
+
+      // Nothing follows: the spot check is over when the paragraph is.
+      expect(container.querySelector('audio')?.getAttribute('src')).toBeNull()
+    })
+
+    it('listen through rolls on to the next paragraph', async () => {
+      const { container } = render(<VoiceReview model={model()} />)
+
+      await userEvent.click(screen.getByRole('button', { name: 'Listen through' }))
+      fireEvent.ended(container.querySelector('audio')!)
+
+      expect(container.querySelector('audio')?.getAttribute('src')).toBe(
+        '/api/voice-takes/take-2/audio',
+      )
+    })
+
+    it('pause stops the audio now, not at the end of the paragraph', async () => {
+      render(<VoiceReview model={model()} />)
+
+      await userEvent.click(screen.getByRole('button', { name: 'Listen through' }))
+
+      const pause = vi.mocked(HTMLMediaElement.prototype.pause)
+      pause.mockClear()
+
+      await userEvent.click(screen.getAllByRole('button', { name: 'Pause' })[0]!)
+      // The element itself was told to stop — clearing the src attribute alone
+      // lets the take play out to its end, which is the bug this pins.
+      expect(pause).toHaveBeenCalled()
+    })
+
     it('will not offer to play a take that has no audio', () => {
       const pending = model({
         chapters: [
@@ -528,6 +586,26 @@ describe('VoiceReview', () => {
       render(<VoiceReview model={model()} />)
       expect(screen.queryByText('Changed since read')).not.toBeInTheDocument()
       expect(screen.queryByText(/changed since read/)).not.toBeInTheDocument()
+    })
+
+    it('offers Regenerate on the changed row, so the fix is where the problem is', async () => {
+      render(<VoiceReview model={staleModel()} />)
+
+      await userEvent.click(screen.getByRole('button', { name: 'Regenerate' }))
+      expect(retakeVoiceTake).toHaveBeenCalledWith('take-1')
+    })
+
+    it('offers Regenerate even where a re-read cannot differ — the input changed', () => {
+      // staleModel keeps the fixture default rereadCanDiffer: false. That gate
+      // is about identical input; a stale row's input is different by
+      // definition, so every narrator qualifies.
+      render(<VoiceReview model={staleModel()} />)
+      expect(screen.getByRole('button', { name: 'Regenerate' })).toBeInTheDocument()
+    })
+
+    it('offers no Regenerate on rows whose audio still matches', () => {
+      render(<VoiceReview model={model()} />)
+      expect(screen.queryByRole('button', { name: 'Regenerate' })).toBeNull()
     })
   })
 

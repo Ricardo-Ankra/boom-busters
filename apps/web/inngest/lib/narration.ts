@@ -1,6 +1,6 @@
 import { recordRunEvent } from '@boom-busters/db'
 import { splitParagraphs, takeIdempotencyKey } from '@boom-busters/schemas'
-import type { PhonemeHint } from '@boom-busters/schemas'
+import type { PhonemeHint, TtsProvider } from '@boom-busters/schemas'
 import { db } from '@/lib/db'
 import { storageConfigured } from '@/lib/storage'
 import { resolveRunRowId } from '../middleware/run-mirror'
@@ -80,6 +80,17 @@ export function withinFailureTolerance(failed: number, total: number): boolean {
  * work (spec section 7).
  */
 export const TTS_CONCURRENCY = 5
+
+/**
+ * Gemini's preview TTS models carry single-digit requests-per-minute caps, so
+ * five concurrent requests just means five simultaneous 429s to wait out. Two
+ * abreast meets the cap with less churn; the per-call rate-limit patience in
+ * `lib/tts.ts` absorbs whatever still gets through. The other vendors take the
+ * full fan-out.
+ */
+export function ttsConcurrency(provider: TtsProvider): number {
+  return provider === 'gemini' ? 2 : TTS_CONCURRENCY
+}
 
 export function chunk<T>(items: readonly T[], size: number): T[][] {
   const chunks: T[][] = []

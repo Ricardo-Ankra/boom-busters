@@ -1,6 +1,12 @@
 import { takeIdempotencyKey } from '@boom-busters/schemas'
 import { describe, expect, it } from 'vitest'
-import { chunk, paragraphJobs, TTS_CONCURRENCY, withinFailureTolerance } from './narration'
+import {
+  chunk,
+  paragraphJobs,
+  TTS_CONCURRENCY,
+  ttsConcurrency,
+  withinFailureTolerance,
+} from './narration'
 
 const projectId = '01HQ0000000000000000000001'
 
@@ -110,6 +116,14 @@ describe('withinFailureTolerance', () => {
 
   it('is false for no items, rather than vacuously true', () => {
     expect(withinFailureTolerance(0, 0)).toBe(false)
+  })
+})
+
+describe('ttsConcurrency', () => {
+  it('goes gentler on Gemini, whose preview TTS models have single-digit RPM caps', () => {
+    expect(ttsConcurrency('gemini')).toBe(2)
+    expect(ttsConcurrency('elevenlabs')).toBe(TTS_CONCURRENCY)
+    expect(ttsConcurrency('google-cloud-tts')).toBe(TTS_CONCURRENCY)
   })
 })
 

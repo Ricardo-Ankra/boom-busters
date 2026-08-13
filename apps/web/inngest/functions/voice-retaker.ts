@@ -65,7 +65,10 @@ export const voiceRetaker = inngest.createFunction(
     triggers: [events.voiceRetakeRequested],
   },
   async ({ event, step, runId }) => {
-    const { projectId, takeId, note } = parseEventData('voice/retake.requested', event.data)
+    const { projectId, takeId, note, direction } = parseEventData(
+      'voice/retake.requested',
+      event.data,
+    )
     const ctx: GateContext = { inngestRunId: runId, functionId: FUNCTION_ID, projectId }
 
     const retake = await step.run('synthesise-retake', async () => {
@@ -141,6 +144,9 @@ export const voiceRetaker = inngest.createFunction(
           text,
           idempotencyKey: `${idempotencyKey}#${claimed.take.takeNumber}`,
           projectId,
+          // The human's steer for this take — how a Gemini retake comes back
+          // different on purpose rather than by dice roll.
+          ...(direction ? { direction } : {}),
         })
 
         const key =

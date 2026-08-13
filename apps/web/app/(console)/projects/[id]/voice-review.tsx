@@ -32,17 +32,20 @@ import { clearVoiceFlag, flagVoiceTake, rereadParagraph, retakeVoiceTake } from 
  * The screen is built around one activity: listening to fifteen minutes of
  * narration and stopping when something is wrong. Everything follows from that.
  *
- *  - **Playback runs on across rows.** A player that stopped at every paragraph
- *    would turn a listen-through into sixty clicks, and nobody would do it
- *    twice.
+ *  - **"Listen through" runs on across rows; a row's Play does not.** The top
+ *    button is the sixty-row review and rolls to the next paragraph on its
+ *    own. A row's Play is a spot check — you pressed it to hear that one take,
+ *    and it ends where the paragraph does.
  *  - **The playing row scrolls itself into view**, so the controls you need are
  *    under the cursor at the moment you hear the problem rather than somewhere
  *    you have to hunt for while the next paragraph plays over your search.
- *  - **Three independent things, in any order.** `Fix the words` rewrites the
- *    paragraph and re-reads it, and is the only repair that exists on a
- *    narrator which reads identical text identically. `Read it again` re-rolls
- *    the same words, and appears only where that can differ. `Flag` marks a
- *    problem to come back to and costs nothing.
+ *  - **Independent repairs, in any order.** `Fix the words` rewrites the
+ *    paragraph and re-reads it — the only repair that exists on a narrator
+ *    which reads identical text identically. `Another take` re-performs the
+ *    same words with optional direction, and appears only where that can
+ *    differ. `Regenerate` appears on a stale row and re-buys it at the current
+ *    words and settings. `Flag` marks a problem to come back to and costs
+ *    nothing — and where the narrator takes direction, the note prefills it.
  *
  *    None of them is behind another. Flagging holds the gate shut, but so does
  *    a re-read in flight — a pending take blocks approval by itself — so
@@ -177,10 +180,13 @@ function CoverageBar({ model }: { model: VoiceReviewModel }) {
 
 function FlagForm({
   takeId,
+  steersRetake,
   onDone,
   onCancel,
 }: {
   takeId: string
+  /** Whether this narrator will read the note as direction on "Another take". */
+  steersRetake: boolean
   onDone: () => void
   onCancel: () => void
 }) {
@@ -227,11 +233,14 @@ function FlagForm({
         placeholder='Swallowed the word "insolvency"; read the date too fast.'
         className="w-full rounded-[8px] border border-[var(--color-border)] bg-[var(--color-surface)] p-2 text-[13px] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-accent)]"
       />
-      {/* It used to say "the note steers the retake". It never did — the note
-          is stored on the row and no vendor ever sees it. Saying what a press
-          actually does is worth more than a placeholder promise. */}
+      {/* On a prompt-steered narrator the note genuinely reaches the vendor
+          now: "Another take" prefills its direction from it. Elsewhere the old
+          honest copy stands — the note is a record, not a steer. */}
       <p className="text-[12px] text-[var(--color-text-muted)]">
-        Costs nothing. Flagging holds the stage shut and records why; the fix is the next press.
+        {steersRetake
+          ? 'Costs nothing. Flagging holds the stage shut and records why — and the note ' +
+            'prefills the direction when you ask for another take.'
+          : 'Costs nothing. Flagging holds the stage shut and records why; the fix is the next press.'}
       </p>
       <div className="flex flex-wrap gap-2">
         <Button type="submit" disabled={busy || note.trim() === ''}>
@@ -365,6 +374,89 @@ function RereadForm({
 }
 
 // ---------------------------------------------------------------------------
+// Another take
+// ---------------------------------------------------------------------------
+
+/**
+ * The same words, performed again — the repair that only exists on a narrator
+ * whose readings vary (Gemini, ElevenLabs). The direction box is what makes it
+ * more than a dice roll: on Gemini the text goes into the prompt as director's
+ * notes, so "slower on the dates, less cheerful" is a steer the narrator
+ * actually receives. Prefilled from the flag note, because the note already
+ * says what was wrong.
+ */
+function RetakeForm({
+  takeId,
+  prefill,
+  onDone,
+  onCancel,
+}: {
+  takeId: string
+  /** The flag note, when the row is flagged — what was wrong is the direction. */
+  prefill: string
+  onDone: () => void
+  onCancel: () => void
+}) {
+  const [direction, setDirection] = React.useState(prefill)
+  const [busy, setBusy] = React.useState(false)
+  const { toast } = useToast()
+  const router = useRouter()
+
+  async function submit(event: React.FormEvent): Promise<void> {
+    event.preventDefault()
+    setBusy(true)
+
+    const result = await retakeVoiceTake(takeId, direction.trim() === '' ? undefined : direction)
+
+    setBusy(false)
+    if (!result.ok) {
+      toast({ title: 'Not queued', description: result.error, variant: 'error' })
+      return
+    }
+
+    toast({
+      title: 'Another take queued',
+      description: 'The new performance appears on this row when it lands.',
+    })
+    onDone()
+    router.refresh()
+  }
+
+  return (
+    <form
+      onSubmit={submit}
+      className="flex flex-col gap-2 border-t border-[var(--color-border)] p-3"
+    >
+      <label className="text-[12px] font-medium" htmlFor={`direction-${takeId}`}>
+        Direction for this take (optional)
+      </label>
+      <textarea
+        id={`direction-${takeId}`}
+        value={direction}
+        onChange={(event) => setDirection(event.target.value)}
+        rows={2}
+        autoFocus
+        placeholder="Slower on the dates. Less cheerful — this is a bankruptcy."
+        className="w-full rounded-[8px] border border-[var(--color-border)] bg-[var(--color-surface)] p-2 text-[13px] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-accent)]"
+      />
+      <p className="text-[12px] text-[var(--color-text-muted)]">
+        Same words, a new performance — this narrator varies between takes and follows direction.
+        Leave the box empty to simply re-roll. Spends one synthesis of this paragraph.
+      </p>
+      <div className="flex flex-wrap gap-2">
+        <Button type="submit" disabled={busy}>
+          {busy ? <Loader2 className="size-4 animate-spin" aria-hidden /> : null}
+          {busy ? 'Queueing…' : 'Record another take'}
+        </Button>
+        <Button type="button" variant="outline" onClick={onCancel} disabled={busy}>
+          Cancel
+        </Button>
+      </div>
+    </form>
+  )
+}
+
+// ---------------------------------------------------------------------------
 // A paragraph row
 // ---------------------------------------------------------------------------
 
@@ -422,6 +514,7 @@ function ParagraphRowView({
   const [comparing, setComparing] = React.useState(false)
   const [clearing, setClearing] = React.useState(false)
   const [retaking, setRetaking] = React.useState(false)
+  const [retakeOpen, setRetakeOpen] = React.useState(false)
   const { toast } = useToast()
   const router = useRouter()
 
@@ -447,7 +540,9 @@ function ParagraphRowView({
     router.refresh()
   }
 
-  async function tryAgain(): Promise<void> {
+  /** Re-buy a stale row at the current words, voice and settings. No direction
+      needed — the changed input is the direction. */
+  async function regenerate(): Promise<void> {
     if (!row.current) return
     setRetaking(true)
     const result = await retakeVoiceTake(row.current.id)
@@ -457,7 +552,10 @@ function ParagraphRowView({
       toast({ title: 'Not queued', description: result.error, variant: 'error' })
       return
     }
-    toast({ title: 'Reading it again', description: 'The new take appears here when it lands.' })
+    toast({
+      title: 'Regenerating',
+      description: 'Re-reading with the current words, voice and settings. It lands on this row.',
+    })
     router.refresh()
   }
 
@@ -537,17 +635,28 @@ function ParagraphRowView({
             Fix the words
           </Button>
 
+          {/* The stale row's own repair: no walking to the top of the page to
+              re-run the stage for one paragraph. Any narrator qualifies — the
+              input changed, so the audio will too. */}
+          {row.stale ? (
+            <Button onClick={regenerate} disabled={retaking || !row.current?.hasAudio}>
+              <RefreshCw className="size-4" aria-hidden />
+              {retaking ? 'Queueing…' : 'Regenerate'}
+            </Button>
+          ) : null}
+
           {/* Offered only where a second reading of identical words can come
               back different. On Cloud TTS it cannot, so the button would be a
-              charge for the audio already on the row. */}
+              charge for the audio already on the row. The form takes optional
+              direction, which Gemini reads as director's notes. */}
           {rereadCanDiffer ? (
             <Button
               variant="outline"
-              onClick={tryAgain}
-              disabled={retaking || !row.current?.hasAudio}
+              onClick={() => setRetakeOpen((open) => !open)}
+              disabled={!row.current?.hasAudio}
             >
               <RefreshCw className="size-4" aria-hidden />
-              {retaking ? 'Queueing…' : 'Read it again'}
+              Another take
             </Button>
           ) : null}
 
@@ -582,6 +691,7 @@ function ParagraphRowView({
       {flagging && row.current ? (
         <FlagForm
           takeId={row.current.id}
+          steersRetake={rereadCanDiffer}
           onDone={() => setFlagging(false)}
           onCancel={() => setFlagging(false)}
         />
@@ -593,6 +703,15 @@ function ParagraphRowView({
           text={row.text}
           onDone={() => setRereading(false)}
           onCancel={() => setRereading(false)}
+        />
+      ) : null}
+
+      {retakeOpen && row.current ? (
+        <RetakeForm
+          takeId={row.current.id}
+          prefill={row.current.status === 'flagged' && row.current.note ? row.current.note : ''}
+          onDone={() => setRetakeOpen(false)}
+          onCancel={() => setRetakeOpen(false)}
         />
       ) : null}
     </li>
@@ -675,6 +794,14 @@ function ChapterSection({
 export function VoiceReview({ model }: { model: VoiceReviewModel }) {
   const audio = React.useRef<HTMLAudioElement>(null)
   const [playingTakeId, setPlayingTakeId] = React.useState<string | null>(null)
+  /**
+   * Whether playback rolls on to the next paragraph when this one ends.
+   *
+   * Only the top "Listen through" button turns it on. A row's own Play is a
+   * spot check — you pressed it to hear *this* paragraph, and being carried
+   * into the next one means hunting for Pause instead of listening.
+   */
+  const [listenThrough, setListenThrough] = React.useState(false)
   const [speed, setSpeed] = React.useState<(typeof SPEEDS)[number]>(1)
   const [openChapters, setOpenChapters] = React.useState<Set<string>>(
     // The first chapter open, the rest collapsed: a fifteen-minute script is
@@ -706,6 +833,23 @@ export function VoiceReview({ model }: { model: VoiceReviewModel }) {
     setPlayingTakeId(takeId)
   }
 
+  /**
+   * Stop *now*. Clearing the state alone only removes the `src` attribute,
+   * which does not interrupt a playing element — Pause then appeared to wait
+   * politely for the end of the paragraph, which is not what Pause means.
+   */
+  function stopPlayback(): void {
+    audio.current?.pause()
+    setPlayingTakeId(null)
+  }
+
+  /** A row's Play is a spot check of that paragraph, not a place to resume
+      the full read-through from. */
+  function playOne(takeId: string): void {
+    setListenThrough(false)
+    play(takeId)
+  }
+
   /** Continuous listen-through: the next paragraph follows on its own. */
   function playNext(): void {
     const index = playable.findIndex((take) => take.id === playingTakeId)
@@ -728,9 +872,15 @@ export function VoiceReview({ model }: { model: VoiceReviewModel }) {
           <CardTitle>Narration</CardTitle>
           <div className="flex flex-wrap items-center gap-2">
             <Button
-              onClick={() =>
-                playingTakeId ? setPlayingTakeId(null) : playable[0] && play(playable[0].id)
-              }
+              onClick={() => {
+                if (playingTakeId) {
+                  stopPlayback()
+                } else if (playable[0]) {
+                  // The one entry point to continuous playback.
+                  setListenThrough(true)
+                  play(playable[0].id)
+                }
+              }}
               disabled={playable.length === 0}
             >
               {playingTakeId ? (
@@ -797,8 +947,8 @@ export function VoiceReview({ model }: { model: VoiceReviewModel }) {
                 })
               }
               playingTakeId={playingTakeId}
-              onPlay={play}
-              onStop={() => setPlayingTakeId(null)}
+              onPlay={playOne}
+              onStop={stopPlayback}
             />
           ))
         )}
@@ -808,7 +958,9 @@ export function VoiceReview({ model }: { model: VoiceReviewModel }) {
         <audio
           ref={audio}
           {...(playingTakeId ? { src: `/api/voice-takes/${playingTakeId}/audio` } : {})}
-          onEnded={playNext}
+          // Rolling on is the listen-through's behaviour, not Play's: a row's
+          // Play is a spot check and ends where the paragraph does.
+          onEnded={() => (listenThrough ? playNext() : setPlayingTakeId(null))}
           onPause={() => undefined}
           className="sr-only"
         >

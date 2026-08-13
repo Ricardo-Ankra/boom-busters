@@ -1,4 +1,4 @@
-import { ValidationError } from '@boom-busters/schemas'
+import { ValidationError, hasPauseMarkup } from '@boom-busters/schemas'
 import { mapNetworkError, throwForResponse } from '../llm/http'
 import { NARRATION_SAMPLE_RATE, pcmDurationMs } from './audio'
 import { stylePromptWithHints } from './phonemes'
@@ -74,22 +74,50 @@ export function sampleRateFromMimeType(mimeType: string | undefined): number {
 }
 
 /**
- * Gemini takes direction as plain language before the text (its "style
- * prompt"), so pacing and pronunciation are words rather than parameters.
+ * Gemini takes direction as plain language before the text, so pacing,
+ * pronunciation and per-take direction are words rather than parameters.
+ *
+ * The shape follows Google's TTS prompting guide (reviewed 2026-08-13): a
+ * "Director's notes" block, then a clear preamble marking where the speech
+ * begins — an LLM given direction and transcript in one undifferentiated blob
+ * will sometimes read the direction aloud or paraphrase the transcript.
+ * "Exactly as written" is there for the second failure mode. The guide's other
+ * advice — don't overspecify, keep direction and script tonally coherent,
+ * chunk long transcripts — is honoured by construction: direction is a couple
+ * of sentences, and the unit of synthesis is one paragraph.
+ *
+ * Two of our own inputs need translating for a prompt-steered narrator:
+ *
+ *  - **`[pause]` markup.** The drafting prompt plants it and Chirp has a field
+ *    for it; Gemini does not, and sent bare it risks being read aloud. A note
+ *    explains it whenever the text carries a tag.
+ *  - **`direction`** — the retake note. Appended after the standing style so a
+ *    "slower, with more menace" retake actually reaches the narrator, which is
+ *    the whole reason a Gemini retake can come back different.
  */
 export function buildGeminiPrompt(request: TTSRequest): string {
   const pacing = request.pacing ?? 1
   const speed = pacing > 1.1 ? 'Read briskly.' : pacing < 0.9 ? 'Read slowly and deliberately.' : ''
 
   const style = stylePromptWithHints(
-    [request.stylePrompt ?? '', speed].filter((part) => part.trim().length > 0).join(' '),
+    [request.stylePrompt ?? '', speed, request.direction ?? '']
+      .map((part) => part.trim())
+      .filter((part) => part.length > 0)
+      .join(' '),
     request.text,
     request.phonemeHints,
   ).trim()
 
-  // The colon form is what Gemini's TTS documentation uses to separate
-  // direction from the words to be spoken.
-  return style ? `${style}:\n${request.text}` : request.text
+  const pauseNote = hasPauseMarkup(request.text)
+    ? 'Where the text says [pause], [pause short] or [pause long], leave a silent beat of ' +
+      'that length — never say the bracketed words aloud.'
+    : ''
+
+  const notes = [style, pauseNote].filter((part) => part.length > 0).join('\n')
+
+  return notes
+    ? `Director's notes:\n${notes}\n\nRead the following narration aloud, exactly as written:\n${request.text}`
+    : request.text
 }
 
 export const geminiTts: TTSProvider = {

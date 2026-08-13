@@ -7,6 +7,7 @@ import {
   estimateRuntimeSec,
   replaceParagraph,
   splitParagraphs,
+  takeIdempotencyKey,
 } from '@boom-busters/schemas'
 import { revalidatePath } from 'next/cache'
 import { auth } from '@/auth'
@@ -142,22 +143,69 @@ export async function rereadParagraph(takeId: string, text: string): Promise<Act
 }
 
 /**
- * Read the same words again, on a narrator whose reading can differ.
+ * Buy this paragraph again — as another performance, or as a regeneration.
  *
- * Refused where it cannot, rather than taking the money to return what was just
- * rejected. The UI hides the button there too, but a server that only trusts the
- * UI is a server with no rule.
+ * Two distinct reasons arrive at the same purchase, and the server sorts out
+ * which is which rather than trusting the UI:
+ *
+ *  - **Another take** (`direction` optional): the same words performed again,
+ *    only meaningful where `rereadCanDiffer`. On Gemini the direction travels
+ *    into the prompt, so "slower on the dates" is a steer, not a hope.
+ *  - **Regenerate a stale row**: the paragraph's fingerprint no longer matches
+ *    its audio — the words, voice, pacing or a pronunciation moved on — so a
+ *    fresh read is different *by input* and every narrator qualifies. The
+ *    retaker recomputes the key from the current text and settings, which is
+ *    exactly the regeneration wanted.
+ *
+ * Refused only when neither holds: identical input on a deterministic narrator
+ * would buy the take just rejected, and the honest answer is to say so and
+ * point at the words.
  */
-export async function retakeVoiceTake(takeId: string): Promise<ActionResult> {
+export async function retakeVoiceTake(takeId: string, direction?: string): Promise<ActionResult> {
   await requireOwner()
 
   if (!UlidSchema.safeParse(takeId).success) return { ok: false, error: 'Unknown take' }
+
+  const trimmedDirection = direction?.trim() ?? ''
+  if (trimmedDirection.length > 500) {
+    return {
+      ok: false,
+      error: 'Keep the direction under 500 characters — it is a steer, not a brief.',
+    }
+  }
 
   const take = await getVoiceTake(db, takeId)
   if (!take) return { ok: false, error: 'That take no longer exists.' }
 
   const settings = await getSettings(db)
-  if (!rereadCanDiffer(settings.tts.provider)) {
+  const canDiffer = rereadCanDiffer(settings.tts.provider)
+
+  // The same staleness the review screen shows: does the audio still match
+  // what this paragraph would buy today?
+  const chapter = await getChapter(db, take.chapterId)
+  const text = chapter ? splitParagraphs(chapter.contentMd)[take.paragraphIndex] : undefined
+  if (text === undefined) {
+    return {
+      ok: false,
+      error:
+        'That paragraph is no longer in the chapter — it has been edited since this take was ' +
+        'made. Re-run the voice stage to narrate the script as it stands.',
+    }
+  }
+
+  const stale =
+    take.idempotencyKey !==
+    takeIdempotencyKey({
+      projectId: take.projectId,
+      chapterId: take.chapterId,
+      paragraphIndex: take.paragraphIndex,
+      text,
+      voiceId: settings.tts.voiceId,
+      pronunciations: settings.tts.phonemeHints,
+      pacing: settings.tts.pacing,
+    })
+
+  if (!stale && !canDiffer) {
     return {
       ok: false,
       error:
@@ -166,16 +214,38 @@ export async function retakeVoiceTake(takeId: string): Promise<ActionResult> {
     }
   }
 
-  return enqueueRetake(take.projectId, takeId, take.note ?? 'Retake')
+  const note =
+    trimmedDirection !== ''
+      ? trimmedDirection
+      : stale
+        ? 'Regenerated after a change'
+        : (take.note ?? 'Retake')
+
+  // Direction only where a narrator can act on it — sending "less cheerful" to
+  // a vendor with no prompt field would be recorded as honoured and wasn't.
+  return enqueueRetake(
+    take.projectId,
+    takeId,
+    note,
+    canDiffer && trimmedDirection !== '' ? trimmedDirection : undefined,
+  )
 }
 
 async function enqueueRetake(
   projectId: string,
   takeId: string,
   note: string,
+  direction?: string,
 ): Promise<ActionResult> {
   try {
-    await inngest.send(events.voiceRetakeRequested.create({ projectId, takeId, note }))
+    await inngest.send(
+      events.voiceRetakeRequested.create({
+        projectId,
+        takeId,
+        note,
+        ...(direction ? { direction } : {}),
+      }),
+    )
   } catch (error) {
     console.error('[voice] could not enqueue the retake', error)
     refresh(projectId)

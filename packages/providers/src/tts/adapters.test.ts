@@ -176,10 +176,35 @@ describe('sampleRateFromMimeType', () => {
 })
 
 describe('buildGeminiPrompt', () => {
-  it('puts the direction before the words, separated by a colon', () => {
+  it("frames direction as director's notes with a clear preamble", () => {
+    // The shape Google's TTS prompting guide recommends: notes, then an
+    // explicit marker for where the speech begins — an LLM given both in one
+    // blob will sometimes read the direction aloud or paraphrase the words.
     expect(buildGeminiPrompt({ ...request, phonemeHints: [] })).toBe(
-      `Measured and dry.:\n${request.text}`,
+      `Director's notes:\nMeasured and dry.\n\n` +
+        `Read the following narration aloud, exactly as written:\n${request.text}`,
     )
+  })
+
+  it('carries per-take direction into the notes, after the standing style', () => {
+    const prompt = buildGeminiPrompt({
+      ...request,
+      phonemeHints: [],
+      direction: 'Slower on the dates.',
+    })
+    expect(prompt).toContain('Measured and dry. Slower on the dates.')
+  })
+
+  it('explains pause markup rather than letting it be read aloud', () => {
+    const prompt = buildGeminiPrompt({
+      ...request,
+      stylePrompt: '',
+      phonemeHints: [],
+      text: 'It was over. [pause long] Nobody said so.',
+    })
+    expect(prompt).toContain('never say the bracketed words aloud')
+    // The markup itself stays in the transcript, where the beat belongs.
+    expect(prompt).toContain('It was over. [pause long] Nobody said so.')
   })
 
   it('folds matched pronunciation into the direction', () => {

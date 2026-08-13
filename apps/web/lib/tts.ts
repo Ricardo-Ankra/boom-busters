@@ -2,7 +2,7 @@ import 'server-only'
 
 import { estimateTtsUsd, withCost } from '@boom-busters/cost'
 import { getSettings, ttsCredential } from '@boom-busters/db'
-import { encodeWav, ttsAdapter, waveformPeaks } from '@boom-busters/providers'
+import { encodeWav, ttsAdapter, waveformPeaks, withRateLimitPatience } from '@boom-busters/providers'
 import type { TTSRequest, TTSResult } from '@boom-busters/providers'
 import { TTS_CREDENTIAL_PROVIDER, ValidationError } from '@boom-busters/schemas'
 import type { Settings, TtsProvider } from '@boom-busters/schemas'
@@ -38,6 +38,8 @@ export interface SynthesisInput {
   projectId?: string
   /** Overrides the configured voice — the audition panel's whole purpose. */
   voiceOverride?: { provider: TtsProvider; voiceId: string }
+  /** One-take direction from a retake form or flag note. See `TTSRequest.direction`. */
+  direction?: string
   signal?: AbortSignal
 }
 
@@ -110,30 +112,44 @@ export async function synthesise(
     phonemeHints: voice.phonemeHints,
     idempotencyKey: input.idempotencyKey,
     pacing: voice.pacing,
+    ...(input.direction && input.direction.trim() !== ''
+      ? { direction: input.direction.trim() }
+      : {}),
   }
 
-  const result = await withCost(
-    db,
-    {
-      // The account the key belongs to, not the model line — see
-      // `TTS_CREDENTIAL_PROVIDER`. One key, one bill, one cap.
-      provider: TTS_CREDENTIAL_PROVIDER[provider],
-      operation: `tts.${provider}`,
-      ...(input.projectId ? { projectId: input.projectId } : {}),
-      estimateUsd: estimateTtsUsd({ provider, characters: input.text.length }),
-      meta: { voiceId, characters: input.text.length },
-    },
-    async (): Promise<{ result: TTSResult; actualUsd: number }> => {
-      const synthesised = await adapter.synthesise(request, {
-        apiKey,
-        ...(input.signal ? { signal: input.signal } : {}),
-      })
-      // Characters are what both vendors bill on, so the estimate and the
-      // settlement come from the same number — but the adapter's figure is
-      // authoritative in case a vendor's rate differs from ours.
-      return { result: synthesised, actualUsd: synthesised.estimatedCostUsd }
-    },
-    { settings },
+  /**
+   * The whole guarded call sits inside the rate-limit patience, not just the
+   * vendor request: each retry re-reserves against the ceiling and settles or
+   * releases on its own, so a wait can never hold a reservation open. Gemini's
+   * preview TTS models carry single-digit RPM caps, which makes 429s the
+   * *normal* weather of a sixty-paragraph fan-out — before this, each one was
+   * counted as a permanently failed paragraph and a full-script run died on
+   * the 15% tolerance while the vendor behaved exactly as documented.
+   */
+  const result = await withRateLimitPatience(() =>
+    withCost(
+      db,
+      {
+        // The account the key belongs to, not the model line — see
+        // `TTS_CREDENTIAL_PROVIDER`. One key, one bill, one cap.
+        provider: TTS_CREDENTIAL_PROVIDER[provider],
+        operation: `tts.${provider}`,
+        ...(input.projectId ? { projectId: input.projectId } : {}),
+        estimateUsd: estimateTtsUsd({ provider, characters: input.text.length }),
+        meta: { voiceId, characters: input.text.length },
+      },
+      async (): Promise<{ result: TTSResult; actualUsd: number }> => {
+        const synthesised = await adapter.synthesise(request, {
+          apiKey,
+          ...(input.signal ? { signal: input.signal } : {}),
+        })
+        // Characters are what both vendors bill on, so the estimate and the
+        // settlement come from the same number — but the adapter's figure is
+        // authoritative in case a vendor's rate differs from ours.
+        return { result: synthesised, actualUsd: synthesised.estimatedCostUsd }
+      },
+      { settings },
+    ),
   )
 
   return {

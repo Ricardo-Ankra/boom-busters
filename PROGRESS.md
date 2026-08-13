@@ -935,6 +935,52 @@ it when I fixed that one.
     derived on read, per M3's "staleness is derived, not stored" rule, so no
     write can forget to set it.
 
+### M4.11 — Gemini as the narrator, and the review screen grows up (2026-08-13)
+
+The human switched to Gemini TTS by ear ("the voice sounds more natural"), hit
+an error completing a run, and listed four review-screen frictions in one
+message. Google's TTS prompting guide reviewed (2026-08-13) before touching the
+adapter.
+
+81. **Rate limits are weather, not failure.** Gemini's preview TTS models carry
+    single-digit RPM caps and rolling spend windows, so a sixty-paragraph
+    fan-out *will* meet 429s in normal operation — and the runner was counting
+    each one as a permanently failed paragraph, killing the run on the 15%
+    tolerance. `withRateLimitPatience` now wraps every synthesis: retry only
+    `RateLimitError`, honour the vendor's retry-after, back off 5/15/30s when
+    it is silent, give up rather than wait past a minute. A plain in-process
+    wait, not an Inngest sleep — throwing to reach a durable sleep would retry
+    the whole batch and re-buy whatever was in flight. Gemini also fans out two
+    abreast instead of five (`ttsConcurrency`).
+
+82. **The Gemini prompt follows Google's guide.** Director's-notes block, then
+    "Read the following narration aloud, exactly as written:" — an LLM given
+    direction and transcript in one blob sometimes reads the direction aloud
+    or paraphrases the words. `[pause]` markup gets an explanatory note
+    (Gemini has no markup field; sent bare it risks being spoken). Style,
+    pacing words, per-take direction and pronunciation hints all live in the
+    notes.
+
+83. **The flag note now steers the retake — the workflow as originally
+    intended, unlocked by a steerable narrator.** "Read it again" (which the
+    human could not guess the purpose of) became "Another take": a form with
+    an optional direction box, prefilled from the flag note, sent through the
+    retake event into the Gemini prompt. Direction travels only where the
+    narrator can act on it; the parameterised vendors never receive one.
+
+84. **Stale rows regenerate in place.** The row's "Regenerate" button enqueues
+    the retaker, which recomputes the fingerprint from current text and
+    settings — exactly a one-paragraph re-run, no walk to the top of the page.
+    Allowed on every narrator (the server checks staleness itself): the
+    `rereadCanDiffer` gate is about identical input, and a stale row's input
+    is different by definition.
+
+85. **Playback: a row's Play is a spot check.** Only "Listen through" rolls on
+    to the next paragraph; a row's Play ends where the paragraph does. And
+    Pause now calls `pause()` on the element — clearing the `src` attribute
+    alone does not interrupt a playing element, which is why Pause appeared to
+    wait politely for the end of the take.
+
 ### M4.8 — what the Chirp 3 HD guide said, and I had not read (2026-08-13)
 
 The human sent Google's Chirp 3 HD page. Two things in it contradict claims I
