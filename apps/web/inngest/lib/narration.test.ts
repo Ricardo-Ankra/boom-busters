@@ -2,7 +2,7 @@ import { takeIdempotencyKey } from '@boom-busters/schemas'
 import { describe, expect, it } from 'vitest'
 import {
   chunk,
-  paragraphJobs,
+  narrationJobs,
   TTS_CONCURRENCY,
   ttsConcurrency,
   withinFailureTolerance,
@@ -10,32 +10,57 @@ import {
 
 const projectId = '01HQ0000000000000000000001'
 
+const LIVE = { MOCK_PROVIDERS: undefined }
+
 const chapters = [
   { id: 'c1', title: 'The audit', contentMd: 'First paragraph.\n\nSecond paragraph.' },
   { id: 'c2', title: 'The unwind', contentMd: 'Third paragraph.' },
 ]
 
-describe('paragraphJobs', () => {
-  it('flattens the script into paragraphs in speaking order', () => {
-    const jobs = paragraphJobs({ projectId, voiceId: 'Charon', chapters })
+describe('narrationJobs', () => {
+  // A paragraph-unit provider, so these tests keep meaning "per paragraph".
+  const base = { projectId, provider: 'elevenlabs', voiceId: 'Charon', env: LIVE } as const
 
-    expect(jobs.map((job) => [job.chapterId, job.paragraphIndex, job.text])).toEqual([
+  it('flattens the script into paragraph units in speaking order', () => {
+    const jobs = narrationJobs({ ...base, chapters })
+
+    expect(jobs.map((job) => [job.chapterId, job.unitIndex, job.text])).toEqual([
       ['c1', 0, 'First paragraph.'],
       ['c1', 1, 'Second paragraph.'],
       ['c2', 0, 'Third paragraph.'],
     ])
   })
 
-  it('numbers paragraphs within a chapter, not across the script', () => {
-    // `(chapterId, paragraphIndex)` addresses a take, a retake, an alignment
+  it('numbers units within a chapter, not across the script', () => {
+    // `(chapterId, unitIndex)` addresses a take, a retake, an alignment
     // merge and a Shorts segment ref. A global counter would renumber every
-    // paragraph after a chapter that gained one.
-    const jobs = paragraphJobs({ projectId, voiceId: 'Charon', chapters })
-    expect(jobs.filter((job) => job.chapterId === 'c2')[0]?.paragraphIndex).toBe(0)
+    // unit after a chapter that gained one.
+    const jobs = narrationJobs({ ...base, chapters })
+    expect(jobs.filter((job) => job.chapterId === 'c2')[0]?.unitIndex).toBe(0)
   })
 
-  it('gives every paragraph the key the runner will look it up by', () => {
-    const [first] = paragraphJobs({ projectId, voiceId: 'Charon', chapters })
+  it('makes the unit the scene on a prompt-steered narrator', () => {
+    // One request per scene: one continuous performance, and a day's request
+    // allowance goes seven times as far.
+    const jobs = narrationJobs({ ...base, provider: 'gemini', chapters })
+
+    expect(jobs.map((job) => [job.chapterId, job.unitIndex, job.text])).toEqual([
+      ['c1', 0, 'First paragraph.\n\nSecond paragraph.'],
+      ['c2', 0, 'Third paragraph.'],
+    ])
+    expect(jobs[0]?.idempotencyKey).toBe(
+      takeIdempotencyKey({
+        projectId,
+        chapterId: 'c1',
+        paragraphIndex: 0,
+        text: 'First paragraph.\n\nSecond paragraph.',
+        voiceId: 'Charon',
+      }),
+    )
+  })
+
+  it('gives every unit the key the runner will look it up by', () => {
+    const [first] = narrationJobs({ ...base, chapters })
 
     expect(first?.idempotencyKey).toBe(
       takeIdempotencyKey({
@@ -49,16 +74,15 @@ describe('paragraphJobs', () => {
   })
 
   it('changes the key when the voice changes, so a new narrator re-reads', () => {
-    const a = paragraphJobs({ projectId, voiceId: 'Charon', chapters })[0]?.idempotencyKey
-    const b = paragraphJobs({ projectId, voiceId: 'Kore', chapters })[0]?.idempotencyKey
+    const a = narrationJobs({ ...base, chapters })[0]?.idempotencyKey
+    const b = narrationJobs({ ...base, voiceId: 'Kore', chapters })[0]?.idempotencyKey
     expect(a).not.toBe(b)
   })
 
   it('changes the key when the narrator instructions change, so a new brief re-reads', () => {
-    const bare = paragraphJobs({ projectId, voiceId: 'Charon', chapters })[0]?.idempotencyKey
-    const briefed = paragraphJobs({
-      projectId,
-      voiceId: 'Charon',
+    const bare = narrationJobs({ ...base, chapters })[0]?.idempotencyKey
+    const briefed = narrationJobs({
+      ...base,
       chapters,
       stylePrompt: 'Dry, level, unhurried.',
     })[0]?.idempotencyKey
@@ -67,25 +91,21 @@ describe('paragraphJobs', () => {
   })
 
   it('changes the key when pacing moves off 1×, so a speed change re-reads', () => {
-    const at1 = paragraphJobs({ projectId, voiceId: 'Charon', chapters })[0]?.idempotencyKey
-    const slower = paragraphJobs({ projectId, voiceId: 'Charon', chapters, pacing: 0.9 })[0]
-      ?.idempotencyKey
+    const at1 = narrationJobs({ ...base, chapters })[0]?.idempotencyKey
+    const slower = narrationJobs({ ...base, chapters, pacing: 0.9 })[0]?.idempotencyKey
 
     expect(slower).not.toBe(at1)
     // And the default explicit is the default absent, so takes bought before
     // pacing joined the key are still recognised and not re-bought.
-    expect(paragraphJobs({ projectId, voiceId: 'Charon', chapters, pacing: 1 })[0]?.idempotencyKey).toBe(
-      at1,
-    )
+    expect(narrationJobs({ ...base, chapters, pacing: 1 })[0]?.idempotencyKey).toBe(at1)
   })
 
-  it('leaves untouched paragraphs with untouched keys when one is edited', () => {
-    // This is what makes a re-run after a small edit cost one paragraph rather
+  it('leaves untouched units with untouched keys when one is edited', () => {
+    // This is what makes a re-run after a small edit cost one unit rather
     // than sixty.
-    const before = paragraphJobs({ projectId, voiceId: 'Charon', chapters })
-    const after = paragraphJobs({
-      projectId,
-      voiceId: 'Charon',
+    const before = narrationJobs({ ...base, chapters })
+    const after = narrationJobs({
+      ...base,
       chapters: [
         { ...chapters[0]!, contentMd: 'First paragraph.\n\nSecond paragraph, revised.' },
         chapters[1]!,
@@ -99,11 +119,7 @@ describe('paragraphJobs', () => {
 
   it('produces nothing for a script of empty chapters', () => {
     expect(
-      paragraphJobs({
-        projectId,
-        voiceId: 'Charon',
-        chapters: [{ id: 'c', title: 'x', contentMd: '   ' }],
-      }),
+      narrationJobs({ ...base, chapters: [{ id: 'c', title: 'x', contentMd: '   ' }] }),
     ).toEqual([])
   })
 })

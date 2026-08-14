@@ -186,7 +186,8 @@ export default async function ProjectPage({
                   0,
                 )} self-check warnings. Approving sends this to the voice stage.`
               : project.stage === 'voice'
-                ? `${voice.coverage.paragraphs} of ${voice.expectedParagraphs} paragraphs narrated · ` +
+                ? `${voice.coverage.paragraphs} of ${voice.expectedParagraphs} ` +
+                  `${voice.unit === 'scene' ? 'scenes' : 'paragraphs'} narrated · ` +
                   `${voice.coverage.flagged} flagged. Approving sends this to the visuals stage.`
                 : gateContext(project.stage, dossier)
           }

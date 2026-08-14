@@ -1014,6 +1014,53 @@ that changes how a paragraph is spoken without changing a character of it.
     re-buying 37 paragraphs. Re-run means "make the audio match the project";
     the fingerprint decides what that costs.
 
+### M4.13 — the scene becomes Gemini's narration unit (2026-08-14)
+
+The human reported Google's tier caps requests per *day* (about 200 on their
+tier), proposed temperature 0, and asked whether synthesis should go scene by
+scene instead of paragraph by paragraph. Verified against Google's docs before
+touching anything: **temperature is a placebo here** — "the API ignores the
+`temperature`, `top_k` and `top_p` generation config parameters" for
+Gemini-TTS — and the text field caps at ~4,000 bytes, which bounds a scene.
+
+89. **The narration unit is the provider's fact.** `narrationUnits` yields
+    scenes (a chapter, split only past `SCENE_TEXT_BYTE_BUDGET` = 3,500 bytes,
+    always at paragraph boundaries) for prompt-steered narrators, and
+    paragraphs for everyone else. One request per scene is one continuous
+    performance — the actual fix for the "alternating narrators" drift, per
+    Google's own chunking guidance — and it spends ~7 requests per run instead
+    of ~38 against a 200/day allowance. Chirp keeps paragraphs: it is
+    deterministic (no drift to fix) and its API caps requests at ~4,000 bytes
+    anyway. `unitIndex` lives in the `paragraph_index` column; in paragraph
+    mode nothing changed at all.
+
+90. **Everything re-derives units from one function.** The runner, retaker,
+    review model, retake action and the audio route's mock regeneration all go
+    through `narrationUnits` (the web-side take lookup is `takeUnit`);
+    `takeWithParagraph` left the db package with its last caller. "Fix the
+    words" on a scene replaces exactly the paragraph span the scene covers —
+    splits allowed there, since scene addressing is re-packed — while
+    paragraph mode keeps the byte-preserving, split-refusing path.
+
+91. **Wording follows the unit.** Coverage, gate context, blocked reasons and
+    the row marker say "scenes"/§ on a scene narrator and "paragraphs"/¶
+    otherwise. The E2E fixture pins its provider to ElevenLabs (a
+    paragraph-unit narrator) so its per-paragraph seeds stay honest; scene
+    packing is covered by unit tests.
+
+92. **The E2E suite had quietly rotted, and this session's run found it.**
+    Four costs specs still drove the kill switch and per-provider budget
+    matrix deleted on 2026-08-13 — the Playwright suite had not been run
+    locally since, and the audit updated `console.spec.ts` but missed
+    `pipeline.spec.ts`. Rewritten against the one-ceiling screen. Two more
+    were latent: the Connections spec's `^google\b` regex started
+    double-matching when the `google-cloud-tts` card arrived (fixed by
+    asserting all seven cards with a space boundary), and the quarantine spec
+    raced the toast against the server re-render (the toast is not the
+    re-render; the enabled-check now waits out a cold compile). The lesson: a
+    suite that is not run is a suite that agrees with everything — `pnpm e2e`
+    belongs in the definition of done for anything that touches a screen.
+
 ### M4.8 — what the Chirp 3 HD guide said, and I had not read (2026-08-13)
 
 The human sent Google's Chirp 3 HD page. Two things in it contradict claims I

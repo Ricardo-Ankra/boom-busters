@@ -230,6 +230,12 @@ export function voiceCoverage(takes: readonly TakeRef[]): VoiceCoverage {
 export function voiceApprovalBlockedReason(
   takes: readonly TakeRef[],
   expectedParagraphs: number,
+  /**
+   * The noun a row goes by: paragraphs everywhere, scenes on a prompt-steered
+   * narrator whose unit of synthesis is the scene. Wording only — the counting
+   * is unit-agnostic, since a unit is whatever the takes were addressed by.
+   */
+  unit: 'paragraph' | 'scene' = 'paragraph',
 ): string | undefined {
   if (expectedParagraphs === 0) return 'This script has no paragraphs to narrate.'
 
@@ -237,11 +243,11 @@ export function voiceApprovalBlockedReason(
 
   if (coverage.paragraphs < expectedParagraphs) {
     const missing = expectedParagraphs - coverage.paragraphs
-    return `${missing} of ${expectedParagraphs} paragraphs have no audio yet.`
+    return `${missing} of ${expectedParagraphs} ${unit}s have no audio yet.`
   }
 
   if (coverage.pending > 0) {
-    return `${coverage.pending} ${coverage.pending === 1 ? 'paragraph is' : 'paragraphs are'} still being synthesised.`
+    return `${coverage.pending} ${unit}${coverage.pending === 1 ? ' is' : 's are'} still being synthesised.`
   }
 
   if (coverage.flagged > 0) {

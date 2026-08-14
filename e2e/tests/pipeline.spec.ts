@@ -79,7 +79,10 @@ test.describe('gate action bar', () => {
     await page.getByRole('button', { name: 'Quarantine' }).first().click()
     await expect(page.getByText('Quarantined — excluded from scripting').first()).toBeVisible()
 
-    await expect(page.getByRole('button', { name: 'Approve' })).toBeEnabled()
+    // The text above is the action's toast; Approve only enables once the
+    // server re-render lands, which on a cold dev-server compile can take
+    // longer than the default expect timeout.
+    await expect(page.getByRole('button', { name: 'Approve' })).toBeEnabled({ timeout: 15_000 })
   })
 
   test('a change request asks what to change before it can be sent', async ({ page }) => {
@@ -108,53 +111,45 @@ test.describe('gate action bar', () => {
   })
 })
 
+/**
+ * The Costs screen after the 2026-08-13 audit: accurate tracking plus one
+ * monthly ceiling. The per-provider budget matrix and the kill switch these
+ * tests used to drive were removed by decision — zero on the ceiling is the
+ * kill switch now — and the specs describing them outlived the screen.
+ */
 test.describe('costs', () => {
-  test('shows a bar per provider against the configured cap', async ({ page }) => {
+  test('shows the month total against the one ceiling', async ({ page }) => {
     await page.goto('/costs')
 
     await expect(page.getByRole('heading', { name: 'Costs' })).toBeVisible()
-    for (const provider of ['anthropic', 'openai', 'google', 'elevenlabs']) {
-      await expect(page.getByRole('meter', { name: `${provider} spend` })).toBeVisible()
-    }
+    await expect(page.getByRole('meter', { name: 'Month spend against the ceiling' })).toBeVisible()
+    // One number for everything, and zero is the kill switch — said in place.
+    await expect(page.getByText(/zero parks every run/)).toBeVisible()
   })
 
-  test('the kill switch is a two-step that says what it will do', async ({ page }) => {
+  test('a ceiling edit persists across a reload', async ({ page }) => {
     await page.goto('/costs')
 
-    await expect(page.getByText('Kill switch is off')).toBeVisible()
-    await page.getByRole('button', { name: 'Turn the kill switch on' }).click()
-    await expect(page.getByText(/will park on a budget gate until you turn this off/)).toBeVisible()
-
-    await page.getByRole('button', { name: 'Stop all spending' }).click()
-    await expect(page.getByText('Kill switch is on')).toBeVisible()
-
-    // Put it back, and prove the off path works too.
-    await page.getByRole('button', { name: 'Turn the kill switch off' }).click()
-    await expect(page.getByText('Kill switch is off')).toBeVisible()
-  })
-
-  test('a budget edit persists across a reload', async ({ page }) => {
-    await page.goto('/costs')
-
-    const field = page.getByLabel('pexels monthly budget in US dollars')
-    await field.fill('7')
-    await page.getByRole('button', { name: 'Save budgets' }).click()
-    await expect(page.getByText('Budgets saved').first()).toBeVisible()
+    const field = page.getByLabel('Monthly ceiling, US dollars')
+    await field.fill('120')
+    await page.getByRole('button', { name: 'Save' }).click()
+    // `.first()`: the toast renders its text twice — once visibly, once in the
+    // screen-reader live region.
+    await expect(page.getByText('Ceiling set to $120.00/month').first()).toBeVisible()
 
     await page.reload()
-    await expect(page.getByLabel('pexels monthly budget in US dollars')).toHaveValue('7')
+    await expect(page.getByLabel('Monthly ceiling, US dollars')).toHaveValue('120')
 
     // Leave the fixture database as we found it.
-    await page.getByLabel('pexels monthly budget in US dollars').fill('0')
-    await page.getByRole('button', { name: 'Save budgets' }).click()
-    await expect(page.getByText('Budgets saved').first()).toBeVisible()
+    await page.getByLabel('Monthly ceiling, US dollars').fill('100')
+    await page.getByRole('button', { name: 'Save' }).click()
+    await expect(page.getByText('Ceiling set to $100.00/month').first()).toBeVisible()
   })
 
-  test('Save is disabled until something actually changes', async ({ page }) => {
+  test('Save is disabled until the number actually changes', async ({ page }) => {
     await page.goto('/costs')
 
-    await expect(page.getByRole('button', { name: 'Save budgets' })).toBeDisabled()
-    await expect(page.getByText('No changes to save.')).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Save', exact: true })).toBeDisabled()
   })
 
   test('the ledger filters by provider through visible buttons', async ({ page }) => {

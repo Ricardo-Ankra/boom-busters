@@ -1,13 +1,9 @@
 import { getSettings, latestScriptParagraphSources, listVoiceTakes } from '@boom-busters/db'
 import type { Database, VoiceTakeRow } from '@boom-busters/db'
-import { rereadCanDiffer } from '@boom-busters/providers'
+import { narrationUnitKind, narrationUnits, rereadCanDiffer } from '@boom-busters/providers'
+import type { NarrationUnitKind } from '@boom-busters/providers'
 import { voiceKeyFacts } from '@/lib/voice-identity'
-import {
-  splitParagraphs,
-  takeIdempotencyKey,
-  voiceApprovalBlockedReason,
-  voiceCoverage,
-} from '@boom-busters/schemas'
+import { takeIdempotencyKey, voiceApprovalBlockedReason, voiceCoverage } from '@boom-busters/schemas'
 import type { VoiceCoverage } from '@boom-busters/schemas'
 
 /**
@@ -97,6 +93,12 @@ export interface VoiceReviewModel {
   /** How many rows are `stale` — audio of an older text, voice, pacing or pronunciation. */
   staleParagraphs: number
   /**
+   * What one row is: a paragraph, or — on a prompt-steered narrator — a scene.
+   * Decides the noun and the row marker, nothing structural: rows are units
+   * either way.
+   */
+  unit: NarrationUnitKind
+  /**
    * Whether this narrator can read the same words differently a second time.
    *
    * Resolved on the server because the answer is a property of the configured
@@ -126,30 +128,38 @@ export async function voiceReviewModel(db: Database, projectId: string): Promise
 
   let expectedParagraphs = 0
   const seen = new Set<string>()
+  const unit = narrationUnitKind(settings.tts.provider)
 
   const chapters: ChapterGroup[] = sources.chapters.map((chapter) => {
-    const paragraphs = splitParagraphs(chapter.contentMd).map((text, paragraphIndex) => {
-      expectedParagraphs += 1
-      seen.add(`${chapter.id}:${paragraphIndex}`)
+    // The same units the runner would buy: paragraphs, or scenes on a
+    // prompt-steered narrator. Rows are units, whichever kind they are.
+    const units = narrationUnits({
+      provider: settings.tts.provider,
+      chapters: [{ id: chapter.id, title: chapter.title, contentMd: chapter.contentMd }],
+    })
 
-      const history = takesFor(takes, chapter.id, paragraphIndex)
+    const paragraphs = units.map((row) => {
+      expectedParagraphs += 1
+      seen.add(`${chapter.id}:${row.unitIndex}`)
+
+      const history = takesFor(takes, chapter.id, row.unitIndex)
       const [current, previous] = history
 
-      // The key this paragraph would be claimed under if the stage ran now —
+      // The key this unit would be claimed under if the stage ran now —
       // computed by the same function the runner buys with, so the screen and
       // the purchase can never disagree about what "changed" means.
       const expectedKey = takeIdempotencyKey({
         projectId,
         chapterId: chapter.id,
-        paragraphIndex,
-        text,
+        paragraphIndex: row.unitIndex,
+        text: row.text,
         ...voiceKeyFacts(settings.tts),
       })
 
       return {
         chapterId: chapter.id,
-        paragraphIndex,
-        text,
+        paragraphIndex: row.unitIndex,
+        text: row.text,
         current: current ? takeView(current) : undefined,
         previous: previous ? takeView(previous) : undefined,
         takeCount: history.length,
@@ -189,12 +199,12 @@ export async function voiceReviewModel(db: Database, projectId: string): Promise
    * "generated", the gate opened, and the change never reached your ears.
    */
   const blockedReason =
-    voiceApprovalBlockedReason(live, expectedParagraphs) ??
+    voiceApprovalBlockedReason(live, expectedParagraphs, unit) ??
     (staleParagraphs > 0
-      ? `${staleParagraphs} paragraph${staleParagraphs === 1 ? ' has' : 's have'} changed since ` +
+      ? `${staleParagraphs} ${unit}${staleParagraphs === 1 ? ' has' : 's have'} changed since ` +
         'being read — the words, the voice, its instructions, the pacing or a pronunciation ' +
         'moved on, so the audio is of the old version. Re-run the voice stage; only the changed ' +
-        'paragraphs are re-read.'
+        `${unit}s are re-read.`
       : undefined)
 
   return {
@@ -205,6 +215,7 @@ export async function voiceReviewModel(db: Database, projectId: string): Promise
     blockedReason,
     orphanedTakes: takes.length - live.length,
     staleParagraphs,
+    unit,
     rereadCanDiffer: rereadCanDiffer(settings.tts.provider),
   }
 }

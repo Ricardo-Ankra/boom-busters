@@ -115,6 +115,7 @@ function model(patch: Partial<VoiceReviewModel> = {}): VoiceReviewModel {
     totalDurationMs: 16_800,
     blockedReason: voiceApprovalBlockedReason(takes, expectedParagraphs),
     orphanedTakes: 0,
+    unit: 'paragraph',
     staleParagraphs: chapters.reduce(
       (total, chapter) => total + chapter.paragraphs.filter((paragraph) => paragraph.stale).length,
       0,
@@ -140,6 +141,14 @@ describe('VoiceReview', () => {
     // Section 11.1: state is never conveyed by colour or shape alone.
     render(<VoiceReview model={model()} />)
     expect(screen.getByText(/2 paragraphs · 2 generated/)).toBeInTheDocument()
+  })
+
+  it('calls the rows scenes when the narrator reads scene by scene', () => {
+    // On Gemini a unit is a scene, and the screen must not miscount it as
+    // paragraphs — the whole point of the unit is that one row is one request.
+    render(<VoiceReview model={model({ unit: 'scene' })} />)
+    expect(screen.getByText(/2 scenes · 2 generated/)).toBeInTheDocument()
+    expect(screen.getByText('§1')).toBeInTheDocument()
   })
 
   it('says it is ready when nothing is flagged and nothing is missing', () => {

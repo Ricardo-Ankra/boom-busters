@@ -1,4 +1,4 @@
-import { isMockKey, takeWithParagraph } from '@boom-busters/db'
+import { getVoiceTake, isMockKey } from '@boom-busters/db'
 import {
   encodeWav,
   mockNarrationPcm,
@@ -9,6 +9,7 @@ import {
 import { auth } from '@/auth'
 import { db } from '@/lib/db'
 import { presignGet } from '@/lib/storage'
+import { takeUnit } from '@/lib/take-unit'
 
 /**
  * Where the voice review screen gets its audio.
@@ -36,10 +37,8 @@ export async function GET(
   if (!session?.user?.email) return new Response('Unauthorized', { status: 401 })
 
   const { id } = await params
-  const found = await takeWithParagraph(db, id)
-  if (!found) return new Response('No such take', { status: 404 })
-
-  const { take, text } = found
+  const take = await getVoiceTake(db, id)
+  if (!take) return new Response('No such take', { status: 404 })
 
   if (take.r2Key === null) {
     // Claimed but never filled: the run died between reserving the row and
@@ -68,15 +67,18 @@ export async function GET(
       )
     }
 
-    if (text === undefined) {
-      return new Response('The paragraph this take was read from no longer exists.', {
+    // The mock's bytes are a function of the unit text, so the regenerated
+    // audio has the length and shape of what the take claims to hold.
+    const unit = await takeUnit(db, take)
+    if (!unit) {
+      return new Response('The section this take was read from no longer exists.', {
         status: 409,
       })
     }
 
     const wav = encodeWav(
       mockNarrationPcm(
-        text,
+        unit.text,
         mockTakeSeed(take.voiceId, `${take.idempotencyKey}#${take.takeNumber}`),
       ),
       { sampleRate: NARRATION_SAMPLE_RATE },

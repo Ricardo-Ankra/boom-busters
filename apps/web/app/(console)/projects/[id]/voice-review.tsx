@@ -162,7 +162,7 @@ function CoverageBar({ model }: { model: VoiceReviewModel }) {
       </div>
       {/* The same counts in words, because a bar is not readable state. */}
       <p className="font-mono text-[12px] text-[var(--color-text-secondary)]">
-        {expectedParagraphs} paragraphs ·{' '}
+        {expectedParagraphs} {model.unit === 'scene' ? 'scenes' : 'paragraphs'} ·{' '}
         {segments.map((segment) => `${segment.count} ${segment.label}`).join(' · ') ||
           'none narrated'}{' '}
         {/* Not a coverage status — a generated take can be stale — so it is
@@ -339,7 +339,8 @@ function RereadForm({
         ref={box}
         value={draft}
         onChange={(event) => setDraft(event.target.value)}
-        rows={3}
+        // A scene is a whole chapter's text; a paragraph is a sentence or two.
+        rows={Math.min(14, Math.max(3, Math.ceil(text.length / 90)))}
         autoFocus
         className="w-full rounded-[8px] border border-[var(--color-border)] bg-[var(--color-surface)] p-2 text-[13px] leading-relaxed focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-accent)]"
       />
@@ -499,6 +500,7 @@ function ParagraphRowView({
   row,
   playingTakeId,
   rereadCanDiffer,
+  unitMark,
   onPlay,
   onStop,
 }: {
@@ -506,6 +508,8 @@ function ParagraphRowView({
   playingTakeId: string | null
   /** Whether "try again" would buy anything different. */
   rereadCanDiffer: boolean
+  /** `¶` for paragraph units, `§` for scenes. */
+  unitMark: string
   onPlay: (takeId: string) => void
   onStop: () => void
 }) {
@@ -572,7 +576,8 @@ function ParagraphRowView({
       <div className="flex flex-col gap-2 p-3">
         <div className="flex items-start gap-3">
           <span className="mt-1 shrink-0 font-mono text-[12px] text-[var(--color-text-muted)]">
-            ¶{row.paragraphIndex + 1}
+            {unitMark}
+            {row.paragraphIndex + 1}
           </span>
           <p className="min-w-0 flex-1 text-[14px] leading-relaxed">{row.text}</p>
         </div>
@@ -728,6 +733,7 @@ function ChapterSection({
   onToggle,
   playingTakeId,
   rereadCanDiffer,
+  unitMark,
   onPlay,
   onStop,
 }: {
@@ -736,6 +742,7 @@ function ChapterSection({
   onToggle: () => void
   playingTakeId: string | null
   rereadCanDiffer: boolean
+  unitMark: string
   onPlay: (takeId: string) => void
   onStop: () => void
 }) {
@@ -758,7 +765,7 @@ function ChapterSection({
         )}
         <span className="min-w-0 flex-1 truncate text-[14px] font-medium">{chapter.title}</span>
         <span className="shrink-0 font-mono text-[12px] text-[var(--color-text-muted)]">
-          {chapter.paragraphs.length} ¶
+          {chapter.paragraphs.length} {unitMark}
         </span>
         {flagged > 0 ? (
           <span className="shrink-0 text-[12px] text-[var(--color-danger)]">{flagged} flagged</span>
@@ -781,6 +788,7 @@ function ChapterSection({
               row={row}
               playingTakeId={playingTakeId}
               rereadCanDiffer={rereadCanDiffer}
+              unitMark={unitMark}
               onPlay={onPlay}
               onStop={onStop}
             />
@@ -937,6 +945,7 @@ export function VoiceReview({ model }: { model: VoiceReviewModel }) {
               key={chapter.chapterId}
               chapter={chapter}
               rereadCanDiffer={model.rereadCanDiffer}
+              unitMark={model.unit === 'scene' ? '§' : '¶'}
               open={openChapters.has(chapter.chapterId)}
               onToggle={() =>
                 setOpenChapters((open) => {

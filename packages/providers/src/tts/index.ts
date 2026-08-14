@@ -4,6 +4,7 @@ export * from './phonemes'
 export * from './mock'
 export * from './registry'
 export * from './retry'
+export * from './units'
 export { geminiTts, GEMINI_VOICES, GEMINI_TTS_MODEL, buildGeminiPrompt } from './gemini'
 export {
   googleCloudTts,

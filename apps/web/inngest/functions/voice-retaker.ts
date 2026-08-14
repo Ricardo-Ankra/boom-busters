@@ -2,10 +2,10 @@ import {
   claimTake,
   mockVoiceTakeKey,
   getSettings,
+  getVoiceTake,
   latestScriptParagraphSources,
   setTakeStatus,
   storeTakeAudio,
-  takeWithParagraph,
 } from '@boom-busters/db'
 import {
   BudgetExceededError,
@@ -16,6 +16,7 @@ import {
 import { NonRetriableError } from 'inngest'
 import { db } from '@/lib/db'
 import { putObject, takeStorage, voiceTakeKey } from '@/lib/storage'
+import { takeUnit } from '@/lib/take-unit'
 import { synthesise } from '@/lib/tts'
 import { voiceKeyFacts } from '@/lib/voice-identity'
 import { inngest } from '../client'
@@ -73,16 +74,19 @@ export const voiceRetaker = inngest.createFunction(
     const ctx: GateContext = { inngestRunId: runId, functionId: FUNCTION_ID, projectId }
 
     const retake = await step.run('synthesise-retake', async () => {
-      const found = await takeWithParagraph(db, takeId)
-      if (!found) throw new NonRetriableError(`Voice take ${takeId} no longer exists`)
+      const take = await getVoiceTake(db, takeId)
+      if (!take) throw new NonRetriableError(`Voice take ${takeId} no longer exists`)
 
-      const { take, text } = found
-      if (text === undefined) {
+      // Re-derived from the current script and provider, exactly as the
+      // runner would — the unit's text is what the fingerprint hashes.
+      const unit = await takeUnit(db, take)
+      if (!unit) {
         throw new NonRetriableError(
-          'The paragraph this take was read from is gone — the chapter has been edited since. ' +
+          'The section this take was read from is gone — the chapter has been edited since. ' +
             'Re-run the voice stage to narrate the script as it stands.',
         )
       }
+      const text = unit.text
 
       const settings = await getSettings(db)
 

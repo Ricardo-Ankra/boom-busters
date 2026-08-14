@@ -1,5 +1,7 @@
 import { recordRunEvent } from '@boom-busters/db'
-import { splitParagraphs, takeIdempotencyKey } from '@boom-busters/schemas'
+import { narrationUnits } from '@boom-busters/providers'
+import type { NarrationUnit } from '@boom-busters/providers'
+import { takeIdempotencyKey } from '@boom-busters/schemas'
 import type { PhonemeHint, TtsProvider } from '@boom-busters/schemas'
 import { db } from '@/lib/db'
 import { storageConfigured } from '@/lib/storage'
@@ -11,29 +13,29 @@ import type { GateContext } from './gates'
  * are worth testing without an Inngest harness around them.
  */
 
-export interface ParagraphJob {
-  chapterId: string
-  chapterTitle: string
-  paragraphIndex: number
-  text: string
+export interface NarrationJob extends NarrationUnit {
   idempotencyKey: string
 }
 
 /**
- * Every paragraph of a script, in the order it will be spoken.
+ * Every narration unit of a script, in the order it will be spoken.
  *
- * The unit of the whole stage (spec section 7): takes, retakes, alignment merge
- * and Shorts segment refs are all addressed by `(chapterId, paragraphIndex)`,
- * and the indexes have to be stable across re-runs. They are, because they come
- * from one `splitParagraphs` over the approved `contentMd` and nothing else.
+ * The unit of the whole stage (spec section 7 says paragraphs; decision 89
+ * widens it to `narrationUnits`, which is paragraphs everywhere except a
+ * prompt-steered narrator, where it is the scene). Takes, retakes, alignment
+ * merge and Shorts segment refs address `(chapterId, unitIndex)` — stored in
+ * the `paragraph_index` column — and the indexes are stable across re-runs
+ * because they come from one deterministic `narrationUnits` over the approved
+ * `contentMd` and nothing else.
  */
-export function paragraphJobs(input: {
+export function narrationJobs(input: {
   projectId: string
+  provider: TtsProvider
   voiceId: string
   chapters: readonly { id: string; title: string; contentMd: string }[]
   /**
    * The channel's pronunciation list. Part of a take's identity, so correcting
-   * how a name is said re-reads the paragraphs that say it — and only those.
+   * how a name is said re-reads the units that say it — and only those.
    */
   pronunciations?: readonly PhonemeHint[]
   /** `settings.tts.pacing`. Part of the identity too — a speed change re-reads. */
@@ -43,25 +45,25 @@ export function paragraphJobs(input: {
    * caller gates through `voiceKeyFacts`, which owns that decision.
    */
   stylePrompt?: string
-}): ParagraphJob[] {
-  return input.chapters.flatMap((chapter) =>
-    splitParagraphs(chapter.contentMd).map((text, paragraphIndex) => ({
-      chapterId: chapter.id,
-      chapterTitle: chapter.title,
-      paragraphIndex,
-      text,
-      idempotencyKey: takeIdempotencyKey({
-        projectId: input.projectId,
-        chapterId: chapter.id,
-        paragraphIndex,
-        text,
-        voiceId: input.voiceId,
-        ...(input.pronunciations ? { pronunciations: input.pronunciations } : {}),
-        ...(input.pacing === undefined ? {} : { pacing: input.pacing }),
-        ...(input.stylePrompt === undefined ? {} : { stylePrompt: input.stylePrompt }),
-      }),
-    })),
-  )
+  env?: Record<string, string | undefined>
+}): NarrationJob[] {
+  return narrationUnits({
+    provider: input.provider,
+    chapters: input.chapters,
+    ...(input.env ? { env: input.env } : {}),
+  }).map((unit) => ({
+    ...unit,
+    idempotencyKey: takeIdempotencyKey({
+      projectId: input.projectId,
+      chapterId: unit.chapterId,
+      paragraphIndex: unit.unitIndex,
+      text: unit.text,
+      voiceId: input.voiceId,
+      ...(input.pronunciations ? { pronunciations: input.pronunciations } : {}),
+      ...(input.pacing === undefined ? {} : { pacing: input.pacing }),
+      ...(input.stylePrompt === undefined ? {} : { stylePrompt: input.stylePrompt }),
+    }),
+  }))
 }
 
 /**

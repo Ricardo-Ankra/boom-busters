@@ -210,6 +210,15 @@ describe('voiceApprovalBlockedReason', () => {
   it('refuses a script with nothing to narrate rather than passing it as complete', () => {
     expect(voiceApprovalBlockedReason([], 0)).toBe('This script has no paragraphs to narrate.')
   })
+
+  it('names the unit it counts — scenes, on a narrator that reads scene by scene', () => {
+    expect(voiceApprovalBlockedReason([take()], 3, 'scene')).toBe(
+      '2 of 3 scenes have no audio yet.',
+    )
+    expect(voiceApprovalBlockedReason([take({ status: 'pending' })], 1, 'scene')).toContain(
+      'scene is still being synthesised',
+    )
+  })
 })
 
 describe('pronunciations in the take key', () => {

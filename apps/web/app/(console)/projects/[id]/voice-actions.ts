@@ -1,7 +1,7 @@
 'use server'
 
 import { editChapter, flagTake, getChapter, getSettings, getVoiceTake, unflagTake } from '@boom-busters/db'
-import { rereadCanDiffer } from '@boom-busters/providers'
+import { narrationUnitKind, narrationUnits, rereadCanDiffer } from '@boom-busters/providers'
 import {
   UlidSchema,
   estimateRuntimeSec,
@@ -94,7 +94,7 @@ export async function rereadParagraph(takeId: string, text: string): Promise<Act
   if (!UlidSchema.safeParse(takeId).success) return { ok: false, error: 'Unknown take' }
 
   const trimmed = text.trim()
-  if (trimmed === '') return { ok: false, error: 'The paragraph cannot be empty.' }
+  if (trimmed === '') return { ok: false, error: 'The words cannot be empty.' }
 
   const take = await getVoiceTake(db, takeId)
   if (!take) return { ok: false, error: 'That take no longer exists.' }
@@ -102,41 +102,64 @@ export async function rereadParagraph(takeId: string, text: string): Promise<Act
   const chapter = await getChapter(db, take.chapterId)
   if (!chapter) return { ok: false, error: 'The chapter this take belongs to is gone.' }
 
-  const current = splitParagraphs(chapter.contentMd)[take.paragraphIndex]
-  if (current === undefined) {
+  const settings = await getSettings(db)
+  const unitKind = narrationUnitKind(settings.tts.provider)
+
+  const unit = narrationUnits({
+    provider: settings.tts.provider,
+    chapters: [{ id: chapter.id, title: chapter.title, contentMd: chapter.contentMd }],
+  }).find((candidate) => candidate.unitIndex === take.paragraphIndex)
+
+  if (!unit) {
     return {
       ok: false,
       error:
-        'That paragraph is no longer in the chapter — it has been edited since this take was ' +
+        `That ${unitKind} is no longer in the chapter — it has been edited since this take was ` +
         'made. Re-run the voice stage to narrate the script as it stands.',
     }
   }
 
-  if (current === trimmed) {
+  if (unit.text === trimmed) {
     return {
       ok: false,
       error:
-        'Those are the same words. On this narrator the same words give the same reading, so ' +
-        'change something — punctuation is what buys a pause.',
+        'Those are the same words. To change the reading without changing them, use ' +
+        '"Another take" where it is offered — otherwise change something; punctuation is what ' +
+        'buys a pause.',
     }
   }
 
-  const contentMd = replaceParagraph(chapter.contentMd, take.paragraphIndex, trimmed)
-  if (contentMd === undefined) {
-    return {
-      ok: false,
-      error:
-        'A paragraph cannot be split in two from here: every later paragraph would shift by one ' +
-        'and lose the narration addressed to it. Split it in the Script Studio and re-run the ' +
-        'voice stage.',
+  let contentMd: string | undefined
+  if (unitKind === 'paragraph') {
+    // Byte-preserving, and refuses splits: in paragraph mode every later
+    // paragraph's narration is addressed by its index.
+    contentMd = replaceParagraph(chapter.contentMd, take.paragraphIndex, trimmed)
+    if (contentMd === undefined) {
+      return {
+        ok: false,
+        error:
+          'A paragraph cannot be split in two from here: every later paragraph would shift by ' +
+          'one and lose the narration addressed to it. Split it in the Script Studio and re-run ' +
+          'the voice stage.',
+      }
     }
+  } else {
+    /**
+     * A scene covers a run of source paragraphs; the edit replaces exactly
+     * that span. Splits are fine here — the scene is re-packed from whatever
+     * paragraphs it now contains, and only this chapter's later scenes (rare:
+     * most chapters are one scene) can shift.
+     */
+    const paragraphs = splitParagraphs(chapter.contentMd)
+    const [start, end] = unit.paragraphSpan
+    contentMd = [...paragraphs.slice(0, start), trimmed, ...paragraphs.slice(end)].join('\n\n')
   }
 
   await editChapter(db, {
     chapterId: take.chapterId,
     afterText: contentMd,
     editType: 'human',
-    note: `Re-read of paragraph ${take.paragraphIndex + 1}`,
+    note: `Re-read of ${unitKind} ${take.paragraphIndex + 1}`,
     estRuntimeSec: estimateRuntimeSec(contentMd),
   })
 
@@ -182,14 +205,19 @@ export async function retakeVoiceTake(takeId: string, direction?: string): Promi
   const canDiffer = rereadCanDiffer(settings.tts.provider)
 
   // The same staleness the review screen shows: does the audio still match
-  // what this paragraph would buy today?
+  // what this unit would buy today?
   const chapter = await getChapter(db, take.chapterId)
-  const text = chapter ? splitParagraphs(chapter.contentMd)[take.paragraphIndex] : undefined
-  if (text === undefined) {
+  const unit = chapter
+    ? narrationUnits({
+        provider: settings.tts.provider,
+        chapters: [{ id: chapter.id, title: chapter.title, contentMd: chapter.contentMd }],
+      }).find((candidate) => candidate.unitIndex === take.paragraphIndex)
+    : undefined
+  if (!unit) {
     return {
       ok: false,
       error:
-        'That paragraph is no longer in the chapter — it has been edited since this take was ' +
+        'That section is no longer in the chapter — it has been edited since this take was ' +
         'made. Re-run the voice stage to narrate the script as it stands.',
     }
   }
@@ -200,7 +228,7 @@ export async function retakeVoiceTake(takeId: string, direction?: string): Promi
       projectId: take.projectId,
       chapterId: take.chapterId,
       paragraphIndex: take.paragraphIndex,
-      text,
+      text: unit.text,
       ...voiceKeyFacts(settings.tts),
     })
 

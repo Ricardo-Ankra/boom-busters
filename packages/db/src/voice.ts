@@ -1,5 +1,5 @@
 import { and, asc, desc, eq, sql } from 'drizzle-orm'
-import { latestTakes, splitParagraphs, TTS_CREDENTIAL_PROVIDER } from '@boom-busters/schemas'
+import { latestTakes, TTS_CREDENTIAL_PROVIDER } from '@boom-busters/schemas'
 import type { TtsProvider, VoiceTakeStatus } from '@boom-busters/schemas'
 import type { Database } from './client'
 import { chapters, scripts, voiceAuditions, voiceTakes } from './schema'
@@ -93,37 +93,10 @@ export async function currentTake(
   return row
 }
 
-/**
- * A take together with the words it speaks.
- *
- * The text is not stored on the take — it lives on the chapter, split by
- * `splitParagraphs`, and duplicating it would create a second copy that a
- * script edit could silently leave behind. So it is re-derived from the same
- * function the runner used, which is the only way "paragraph 4" means the same
- * thing to both.
- *
- * `undefined` text is a real state, not an error: a chapter edited down to
- * fewer paragraphs leaves takes pointing past its end, and the review screen
- * needs to say so rather than crash.
- */
-export async function takeWithParagraph(
-  db: Database,
-  id: string,
-): Promise<{ take: VoiceTakeRow; text: string | undefined } | undefined> {
-  const take = await getVoiceTake(db, id)
-  if (!take) return undefined
-
-  const [chapter] = await db
-    .select({ contentMd: chapters.contentMd })
-    .from(chapters)
-    .where(eq(chapters.id, take.chapterId))
-    .limit(1)
-
-  return {
-    take,
-    text: chapter ? splitParagraphs(chapter.contentMd)[take.paragraphIndex] : undefined,
-  }
-}
+// The words a take speaks are re-derived, never stored — but *which* words a
+// take covers now depends on the configured provider's narration unit, which
+// the db layer does not know. `apps/web/lib/take-unit.ts` owns that lookup;
+// the per-paragraph `takeWithParagraph` that lived here is gone with it.
 
 export interface ClaimTakeInput {
   projectId: string
