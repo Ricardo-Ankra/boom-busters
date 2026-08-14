@@ -18,18 +18,33 @@ export async function signIn(page: Page): Promise<void> {
 /**
  * Asserts that every interactive control on screen clears the 40px minimum
  * hit target from spec section 11.1.
+ *
+ * The sweep works over a snapshot of element handles, not `nth(index)`
+ * re-queries. A screen can re-render mid-sweep — a project page live-refreshes
+ * while anything is moving — and re-resolving index `i` against a list that
+ * just shrank leaves `boundingBox()` waiting the whole test timeout for an
+ * element that no longer exists. That was CI's one red test, deterministic on
+ * a slow runner and a near-miss everywhere else. A handle whose element
+ * detached answers `null` (or throws) and is skipped: the control it replaced
+ * is measured by the next sweep of the same screen.
  */
 export async function expectHitTargets(page: Page): Promise<void> {
   const controls = page.locator('button:visible, a[href]:visible, select:visible')
-  const count = await controls.count()
-  expect(count).toBeGreaterThan(0)
+  const handles = await controls.elementHandles()
+  expect(handles.length).toBeGreaterThan(0)
 
-  for (let index = 0; index < count; index++) {
-    const control = controls.nth(index)
-    const box = await control.boundingBox()
-    if (!box) continue
-    const name = (await control.textContent())?.trim() || (await control.getAttribute('aria-label'))
-    expect(box.height, `"${name}" is ${box.height}px tall`).toBeGreaterThanOrEqual(40)
+  for (const handle of handles) {
+    try {
+      const box = await handle.boundingBox()
+      if (!box) continue
+      const name =
+        (await handle.textContent())?.trim() || (await handle.getAttribute('aria-label'))
+      expect(box.height, `"${name}" is ${box.height}px tall`).toBeGreaterThanOrEqual(40)
+    } catch (error) {
+      // Only a vanished element is forgiven; a failed assertion is not.
+      if (error instanceof Error && /not attached|detached/i.test(error.message)) continue
+      throw error
+    }
   }
 }
 

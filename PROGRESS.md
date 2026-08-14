@@ -1061,6 +1061,17 @@ Gemini-TTS — and the text field caps at ~4,000 bytes, which bounds a scene.
     suite that is not run is a suite that agrees with everything — `pnpm e2e`
     belongs in the definition of done for anything that touches a screen.
 
+    And the reason none of this ever showed in CI: **the Prettier format
+    check, which gates every later step, had been failing since run 30** — 63
+    files of drift, because `format:check` was never part of the local
+    pre-push routine (lint and typecheck were). Formatted; the routine now
+    includes it. CI's first full run in eleven pushes then found one more
+    latent bug, this time in the harness itself: `expectHitTargets` re-queried
+    `nth(i)` mid-sweep, so a live-refresh re-render that shrank the control
+    list left `boundingBox()` waiting the whole timeout for an index that no
+    longer existed. The sweep now walks a snapshot of element handles and
+    forgives only vanished elements, never short ones.
+
 ### M4.8 — what the Chirp 3 HD guide said, and I had not read (2026-08-13)
 
 The human sent Google's Chirp 3 HD page. Two things in it contradict claims I
