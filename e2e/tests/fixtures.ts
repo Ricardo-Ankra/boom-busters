@@ -37,8 +37,7 @@ export async function expectHitTargets(page: Page): Promise<void> {
     try {
       const box = await handle.boundingBox()
       if (!box) continue
-      const name =
-        (await handle.textContent())?.trim() || (await handle.getAttribute('aria-label'))
+      const name = (await handle.textContent())?.trim() || (await handle.getAttribute('aria-label'))
       expect(box.height, `"${name}" is ${box.height}px tall`).toBeGreaterThanOrEqual(40)
     } catch (error) {
       // Only a vanished element is forgiven; a failed assertion is not.
