@@ -13,6 +13,7 @@ import {
   Pencil,
   Play,
   RefreshCw,
+  Sparkles,
   Timer,
   Undo2,
 } from 'lucide-react'
@@ -21,7 +22,7 @@ import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { useToast } from '@/components/ui/toast'
-import { PAUSE_TAGS } from '@boom-busters/schemas'
+import { EXPRESSION_TAGS, PAUSE_TAGS } from '@boom-busters/schemas'
 import { cn } from '@/lib/cn'
 import type { ChapterGroup, ParagraphRow, TakeView, VoiceReviewModel } from '@/lib/voice-review'
 import { clearVoiceFlag, flagVoiceTake, rereadParagraph, retakeVoiceTake } from './voice-actions'
@@ -40,12 +41,12 @@ import { clearVoiceFlag, flagVoiceTake, rereadParagraph, retakeVoiceTake } from 
  *    under the cursor at the moment you hear the problem rather than somewhere
  *    you have to hunt for while the next paragraph plays over your search.
  *  - **Independent repairs, in any order.** `Fix the words` rewrites the
- *    paragraph and re-reads it — the only repair that exists on a narrator
- *    which reads identical text identically. `Another take` re-performs the
- *    same words with optional direction, and appears only where that can
- *    differ. `Regenerate` appears on a stale row and re-buys it at the current
- *    words and settings. `Flag` marks a problem to come back to and costs
- *    nothing — and where the narrator takes direction, the note prefills it.
+ *    paragraph and re-reads it — and on Eleven v3 it is also where direction
+ *    goes: audio tags, pause tags and respellings live in the text, and the
+ *    form offers them as buttons. `Another take` re-performs the same words;
+ *    this narrator samples, so a second reading genuinely differs.
+ *    `Regenerate` appears on a stale row and re-buys it at the current words
+ *    and settings. `Flag` marks a problem to come back to and costs nothing.
  *
  *    None of them is behind another. Flagging holds the gate shut, but so does
  *    a re-read in flight — a pending take blocks approval by itself — so
@@ -162,7 +163,7 @@ function CoverageBar({ model }: { model: VoiceReviewModel }) {
       </div>
       {/* The same counts in words, because a bar is not readable state. */}
       <p className="font-mono text-[12px] text-[var(--color-text-secondary)]">
-        {expectedParagraphs} {model.unit === 'scene' ? 'scenes' : 'paragraphs'} ·{' '}
+        {expectedParagraphs} paragraphs ·{' '}
         {segments.map((segment) => `${segment.count} ${segment.label}`).join(' · ') ||
           'none narrated'}{' '}
         {/* Not a coverage status — a generated take can be stale — so it is
@@ -180,13 +181,10 @@ function CoverageBar({ model }: { model: VoiceReviewModel }) {
 
 function FlagForm({
   takeId,
-  steersRetake,
   onDone,
   onCancel,
 }: {
   takeId: string
-  /** Whether this narrator will read the note as direction on "Another take". */
-  steersRetake: boolean
   onDone: () => void
   onCancel: () => void
 }) {
@@ -233,14 +231,8 @@ function FlagForm({
         placeholder='Swallowed the word "insolvency"; read the date too fast.'
         className="w-full rounded-[8px] border border-[var(--color-border)] bg-[var(--color-surface)] p-2 text-[13px] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-accent)]"
       />
-      {/* On a prompt-steered narrator the note genuinely reaches the vendor
-          now: "Another take" prefills its direction from it. Elsewhere the old
-          honest copy stands — the note is a record, not a steer. */}
       <p className="text-[12px] text-[var(--color-text-muted)]">
-        {steersRetake
-          ? 'Costs nothing. Flagging holds the stage shut and records why — and the note ' +
-            'prefills the direction when you ask for another take.'
-          : 'Costs nothing. Flagging holds the stage shut and records why; the fix is the next press.'}
+        Costs nothing. Flagging holds the stage shut and records why; the fix is the next press.
       </p>
       <div className="flex flex-wrap gap-2">
         <Button type="submit" disabled={busy || note.trim() === ''}>
@@ -260,14 +252,13 @@ function FlagForm({
 // ---------------------------------------------------------------------------
 
 /**
- * The repair that works on every narrator: change the words, read them again.
- *
- * On Cloud Text-to-Speech it is the *only* one. The request carries plain text
- * and a speaking rate — no SSML, which the Chirp families reject, and no style
- * prompt, which is a Gemini idea. So punctuation is the pacing control: a full
- * stop where a comma was, an em dash, an ellipsis. That is worth saying on the
- * form, because it is not guessable and it is the answer to the most common
- * complaint about a take.
+ * The precise repair: change the words, read them again — and on Eleven v3,
+ * "the words" includes the direction. Anything bracketed is a stage direction
+ * the narrator acts on but never speaks: `[pause]`, `[whispers]`, `[sighs]`,
+ * or free-form direction like `[grave, measured]`. The curated tags are
+ * buttons; the free form is worth naming in the helper copy because it is
+ * not guessable. Punctuation steers too: a full stop where a comma was, an
+ * em dash, an ellipsis.
  *
  * The edit goes through the same `editChapter` the Script Studio uses, so it is
  * in the edit trail and reviewable as a diff.
@@ -339,7 +330,6 @@ function RereadForm({
         ref={box}
         value={draft}
         onChange={(event) => setDraft(event.target.value)}
-        // A scene is a whole chapter's text; a paragraph is a sentence or two.
         rows={Math.min(14, Math.max(3, Math.ceil(text.length / 90)))}
         autoFocus
         className="w-full rounded-[8px] border border-[var(--color-border)] bg-[var(--color-surface)] p-2 text-[13px] leading-relaxed focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-accent)]"
@@ -355,11 +345,23 @@ function RereadForm({
         ))}
       </div>
 
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-[12px] text-[var(--color-text-muted)]">Expression:</span>
+        {EXPRESSION_TAGS.map((tag) => (
+          <Button key={tag} type="button" variant="ghost" size="icon" onClick={() => insert(tag)}>
+            <Sparkles className="size-4" aria-hidden />
+            {tag.replace(/[[\]]/g, '')}
+          </Button>
+        ))}
+      </div>
+
       <p className="text-[12px] text-[var(--color-text-muted)]">
-        A pause tag is an intent, not a duration — the narrator fits the length to the sentence
-        around it, and occasionally ignores one. Punctuation works too: a full stop where a comma
-        was, an em dash, or an ellipsis. This edits the script and spends one synthesis of this
-        paragraph.
+        Anything in square brackets is a stage direction — acted on, never read aloud, and these
+        buttons are not the whole vocabulary: write your own, like{' '}
+        <span className="font-mono">[grave, measured]</span>. A tag is an intent, not a guarantee;
+        punctuation steers too — a full stop where a comma was, an em dash, an ellipsis. To fix a
+        mispronounced word, spell it the way it sounds. This edits the script and spends one
+        synthesis of this paragraph.
       </p>
       <div className="flex flex-wrap gap-2">
         <Button
@@ -368,89 +370,6 @@ function RereadForm({
         >
           {busy ? <Loader2 className="size-4 animate-spin" aria-hidden /> : null}
           {busy ? 'Queueing…' : 'Save and re-read'}
-        </Button>
-        <Button type="button" variant="outline" onClick={onCancel} disabled={busy}>
-          Cancel
-        </Button>
-      </div>
-    </form>
-  )
-}
-
-// ---------------------------------------------------------------------------
-// Another take
-// ---------------------------------------------------------------------------
-
-/**
- * The same words, performed again — the repair that only exists on a narrator
- * whose readings vary (Gemini, ElevenLabs). The direction box is what makes it
- * more than a dice roll: on Gemini the text goes into the prompt as director's
- * notes, so "slower on the dates, less cheerful" is a steer the narrator
- * actually receives. Prefilled from the flag note, because the note already
- * says what was wrong.
- */
-function RetakeForm({
-  takeId,
-  prefill,
-  onDone,
-  onCancel,
-}: {
-  takeId: string
-  /** The flag note, when the row is flagged — what was wrong is the direction. */
-  prefill: string
-  onDone: () => void
-  onCancel: () => void
-}) {
-  const [direction, setDirection] = React.useState(prefill)
-  const [busy, setBusy] = React.useState(false)
-  const { toast } = useToast()
-  const router = useRouter()
-
-  async function submit(event: React.FormEvent): Promise<void> {
-    event.preventDefault()
-    setBusy(true)
-
-    const result = await retakeVoiceTake(takeId, direction.trim() === '' ? undefined : direction)
-
-    setBusy(false)
-    if (!result.ok) {
-      toast({ title: 'Not queued', description: result.error, variant: 'error' })
-      return
-    }
-
-    toast({
-      title: 'Another take queued',
-      description: 'The new performance appears on this row when it lands.',
-    })
-    onDone()
-    router.refresh()
-  }
-
-  return (
-    <form
-      onSubmit={submit}
-      className="flex flex-col gap-2 border-t border-[var(--color-border)] p-3"
-    >
-      <label className="text-[12px] font-medium" htmlFor={`direction-${takeId}`}>
-        Direction for this take (optional)
-      </label>
-      <textarea
-        id={`direction-${takeId}`}
-        value={direction}
-        onChange={(event) => setDirection(event.target.value)}
-        rows={2}
-        autoFocus
-        placeholder="Slower on the dates. Less cheerful — this is a bankruptcy."
-        className="w-full rounded-[8px] border border-[var(--color-border)] bg-[var(--color-surface)] p-2 text-[13px] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-accent)]"
-      />
-      <p className="text-[12px] text-[var(--color-text-muted)]">
-        Same words, a new performance — this narrator varies between takes and follows direction.
-        Leave the box empty to simply re-roll. Spends one synthesis of this paragraph.
-      </p>
-      <div className="flex flex-wrap gap-2">
-        <Button type="submit" disabled={busy}>
-          {busy ? <Loader2 className="size-4 animate-spin" aria-hidden /> : null}
-          {busy ? 'Queueing…' : 'Record another take'}
         </Button>
         <Button type="button" variant="outline" onClick={onCancel} disabled={busy}>
           Cancel
@@ -502,17 +421,11 @@ function StatusChip({ take }: { take: TakeView | undefined }) {
 function ParagraphRowView({
   row,
   playingTakeId,
-  rereadCanDiffer,
-  unitMark,
   onPlay,
   onStop,
 }: {
   row: ParagraphRow
   playingTakeId: string | null
-  /** Whether "try again" would buy anything different. */
-  rereadCanDiffer: boolean
-  /** `¶` for paragraph units, `§` for scenes. */
-  unitMark: string
   onPlay: (takeId: string) => void
   onStop: () => void
 }) {
@@ -521,7 +434,6 @@ function ParagraphRowView({
   const [comparing, setComparing] = React.useState(false)
   const [clearing, setClearing] = React.useState(false)
   const [retaking, setRetaking] = React.useState(false)
-  const [retakeOpen, setRetakeOpen] = React.useState(false)
   const { toast } = useToast()
   const router = useRouter()
 
@@ -547,9 +459,9 @@ function ParagraphRowView({
     router.refresh()
   }
 
-  /** Re-buy a stale row at the current words, voice and settings. No direction
-      needed — the changed input is the direction. */
-  async function regenerate(): Promise<void> {
+  /** One purchase, two labels: a stale row regenerates at the current words
+      and settings; a fresh row simply rolls another performance. */
+  async function retake(kind: 'regenerate' | 'another'): Promise<void> {
     if (!row.current) return
     setRetaking(true)
     const result = await retakeVoiceTake(row.current.id)
@@ -559,10 +471,20 @@ function ParagraphRowView({
       toast({ title: 'Not queued', description: result.error, variant: 'error' })
       return
     }
-    toast({
-      title: 'Regenerating',
-      description: 'Re-reading with the current words, voice and settings. It lands on this row.',
-    })
+    toast(
+      kind === 'regenerate'
+        ? {
+            title: 'Regenerating',
+            description:
+              'Re-reading with the current words, voice and settings. It lands on this row.',
+          }
+        : {
+            title: 'Another take queued',
+            description:
+              'Same words, a fresh performance — this narrator varies between takes. To steer ' +
+              'it, use Fix the words and add a tag.',
+          },
+    )
     router.refresh()
   }
 
@@ -579,8 +501,7 @@ function ParagraphRowView({
       <div className="flex flex-col gap-2 p-3">
         <div className="flex items-start gap-3">
           <span className="mt-1 shrink-0 font-mono text-[12px] text-[var(--color-text-muted)]">
-            {unitMark}
-            {row.paragraphIndex + 1}
+            ¶{row.paragraphIndex + 1}
           </span>
           <p className="min-w-0 flex-1 text-[14px] leading-relaxed">{row.text}</p>
         </div>
@@ -599,7 +520,7 @@ function ParagraphRowView({
           {/* The flag's sibling: the same at-a-glance treatment for "this audio
               is of an older version". A flag says a human rejected the take; this
               says an edit or a settings change quietly outdated it — words, voice,
-              pacing or a pronunciation — and re-running the stage re-reads only
+              stability or a pronunciation — and re-running the stage re-reads only
               the rows that carry it. */}
           {row.stale ? (
             <span className="inline-flex items-center gap-1 text-[12px] text-[var(--color-warning)]">
@@ -644,29 +565,27 @@ function ParagraphRowView({
           </Button>
 
           {/* The stale row's own repair: no walking to the top of the page to
-              re-run the stage for one paragraph. Any narrator qualifies — the
-              input changed, so the audio will too. */}
+              re-run the stage for one paragraph. On a fresh row the same
+              purchase is offered as "Another take" — the narrator samples, so
+              a second reading is a genuine second performance. */}
           {row.stale ? (
-            <Button onClick={regenerate} disabled={retaking || !row.current?.hasAudio}>
+            <Button
+              onClick={() => void retake('regenerate')}
+              disabled={retaking || !row.current?.hasAudio}
+            >
               <RefreshCw className="size-4" aria-hidden />
               {retaking ? 'Queueing…' : 'Regenerate'}
             </Button>
-          ) : null}
-
-          {/* Offered only where a second reading of identical words can come
-              back different. On Cloud TTS it cannot, so the button would be a
-              charge for the audio already on the row. The form takes optional
-              direction, which Gemini reads as director's notes. */}
-          {rereadCanDiffer ? (
+          ) : (
             <Button
               variant="outline"
-              onClick={() => setRetakeOpen((open) => !open)}
-              disabled={!row.current?.hasAudio}
+              onClick={() => void retake('another')}
+              disabled={retaking || !row.current?.hasAudio}
             >
               <RefreshCw className="size-4" aria-hidden />
-              Another take
+              {retaking ? 'Queueing…' : 'Another take'}
             </Button>
-          ) : null}
+          )}
 
           {row.current?.status === 'flagged' ? (
             <Button variant="outline" onClick={clearFlag} disabled={clearing}>
@@ -699,7 +618,6 @@ function ParagraphRowView({
       {flagging && row.current ? (
         <FlagForm
           takeId={row.current.id}
-          steersRetake={rereadCanDiffer}
           onDone={() => setFlagging(false)}
           onCancel={() => setFlagging(false)}
         />
@@ -711,15 +629,6 @@ function ParagraphRowView({
           text={row.text}
           onDone={() => setRereading(false)}
           onCancel={() => setRereading(false)}
-        />
-      ) : null}
-
-      {retakeOpen && row.current ? (
-        <RetakeForm
-          takeId={row.current.id}
-          prefill={row.current.status === 'flagged' && row.current.note ? row.current.note : ''}
-          onDone={() => setRetakeOpen(false)}
-          onCancel={() => setRetakeOpen(false)}
         />
       ) : null}
     </li>
@@ -735,8 +644,6 @@ function ChapterSection({
   open,
   onToggle,
   playingTakeId,
-  rereadCanDiffer,
-  unitMark,
   onPlay,
   onStop,
 }: {
@@ -744,8 +651,6 @@ function ChapterSection({
   open: boolean
   onToggle: () => void
   playingTakeId: string | null
-  rereadCanDiffer: boolean
-  unitMark: string
   onPlay: (takeId: string) => void
   onStop: () => void
 }) {
@@ -768,7 +673,7 @@ function ChapterSection({
         )}
         <span className="min-w-0 flex-1 truncate text-[14px] font-medium">{chapter.title}</span>
         <span className="shrink-0 font-mono text-[12px] text-[var(--color-text-muted)]">
-          {chapter.paragraphs.length} {unitMark}
+          {chapter.paragraphs.length} ¶
         </span>
         {flagged > 0 ? (
           <span className="shrink-0 text-[12px] text-[var(--color-danger)]">{flagged} flagged</span>
@@ -790,8 +695,6 @@ function ChapterSection({
               key={paragraphKey(row)}
               row={row}
               playingTakeId={playingTakeId}
-              rereadCanDiffer={rereadCanDiffer}
-              unitMark={unitMark}
               onPlay={onPlay}
               onStop={onStop}
             />
@@ -947,8 +850,6 @@ export function VoiceReview({ model }: { model: VoiceReviewModel }) {
             <ChapterSection
               key={chapter.chapterId}
               chapter={chapter}
-              rereadCanDiffer={model.rereadCanDiffer}
-              unitMark={model.unit === 'scene' ? '§' : '¶'}
               open={openChapters.has(chapter.chapterId)}
               onToggle={() =>
                 setOpenChapters((open) => {

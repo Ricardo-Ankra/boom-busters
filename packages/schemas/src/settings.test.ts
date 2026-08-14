@@ -85,14 +85,55 @@ describe('SettingsPatchSchema', () => {
   })
 })
 
+describe('the one-narrator migration', () => {
+  /**
+   * The production settings row predates the ElevenLabs-only decision: it says
+   * `gemini` and names a Gemini voice. Parsing must neither crash the app nor
+   * silently keep a voice id the new vendor has never heard of — it coerces to
+   * the honest state, "no narrator chosen yet", which every screen already
+   * knows how to prompt about.
+   */
+  it('coerces a settings row saved under a retired narrator', () => {
+    const stored = structuredClone(DEFAULT_SETTINGS) as Record<string, unknown>
+    stored['tts'] = {
+      provider: 'gemini',
+      voiceId: 'Charon',
+      stylePrompt: 'Netflix-style documentary.',
+      pacing: 0.95,
+      phonemeHints: [{ term: 'Wirecard', hint: 'VEER-card' }],
+    }
+
+    const parsed = SettingsSchema.parse(stored)
+
+    expect(parsed.tts.provider).toBe('elevenlabs')
+    expect(parsed.tts.voiceId).toBe('')
+    expect(parsed.tts.stability).toBe('natural')
+    // The hint list survives: it belongs to the channel, not to the vendor.
+    expect(parsed.tts.phonemeHints).toEqual([{ term: 'Wirecard', hint: 'VEER-card' }])
+    // The retired fields are stripped rather than smuggled along.
+    expect('stylePrompt' in parsed.tts).toBe(false)
+    expect('pacing' in parsed.tts).toBe(false)
+  })
+
+  it('leaves an ElevenLabs row exactly as saved', () => {
+    const stored = structuredClone(DEFAULT_SETTINGS)
+    stored.tts = {
+      provider: 'elevenlabs',
+      voiceId: 'v-123',
+      stability: 'robust',
+      phonemeHints: [],
+    }
+    expect(SettingsSchema.parse(stored).tts).toEqual(stored.tts)
+  })
+})
+
 describe('resolveBrandKit', () => {
   it('projects the narration voice into the Brand Kit snapshot', () => {
     const settings = structuredClone(DEFAULT_SETTINGS)
     settings.tts = {
       provider: 'elevenlabs',
       voiceId: 'v-123',
-      stylePrompt: 'measured',
-      pacing: 0.95,
+      stability: 'robust',
       phonemeHints: [{ term: 'Wirecard', hint: '/ˈvaɪɐkart/' }],
     }
 

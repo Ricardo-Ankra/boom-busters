@@ -54,7 +54,7 @@ suite('voice takes', () => {
       chapterId,
       paragraphIndex,
       text,
-      voiceId: 'Charon',
+      voiceId: 'v-narrator',
     })
   }
 
@@ -64,8 +64,8 @@ suite('voice takes', () => {
       chapterId,
       paragraphIndex,
       idempotencyKey: key(paragraphIndex, text),
-      provider: 'gemini',
-      voiceId: 'Charon',
+      provider: 'elevenlabs',
+      voiceId: 'v-narrator',
       builtFromScriptVersion: 1,
       ...(takeNumber === undefined ? {} : { takeNumber }),
     })
@@ -88,12 +88,13 @@ suite('voice takes', () => {
   })
 
   /**
-   * Gemini is a Google model line, not a vendor: its TTS endpoint takes the
-   * same key and bills the same account, so narration spend has to land under
-   * the cap that key already has.
+   * Stored under the account the spend lands on (`TTS_CREDENTIAL_PROVIDER`).
+   * With one narrator the mapping is the identity, but the column keeps
+   * meaning "the bill", not "the model line" — that distinction is why the
+   * mapping survived the Gemini era.
    */
-  it('stores Gemini narration against the Google account', async () => {
-    expect((await claim()).take.provider).toBe('google')
+  it('stores narration against the account it spends from', async () => {
+    expect((await claim()).take.provider).toBe('elevenlabs')
   })
 
   it('hands back existing audio instead of buying it twice', async () => {
@@ -235,8 +236,8 @@ suite('voice takes', () => {
         chapterId,
         paragraphIndex: 0,
         idempotencyKey: key(),
-        provider: 'gemini',
-        voiceId: 'Puck',
+        provider: 'elevenlabs',
+        voiceId: 'v-other',
         builtFromScriptVersion: 1,
       })
 
@@ -302,8 +303,8 @@ suite('audition cache', () => {
   })
 
   const sample = {
-    provider: 'google-cloud-tts' as const,
-    voiceId: 'en-GB-Chirp3-HD-Achernar',
+    provider: 'elevenlabs' as const,
+    voiceId: 'v-achernar',
     sampleHash: 'abc',
   }
 
@@ -331,7 +332,7 @@ suite('audition cache', () => {
 
   it('treats a different voice as a different audition', async () => {
     await saveAudition(db, { ...sample, audioBase64: 'a', durationMs: 1, costUsd: 0 })
-    expect(await findAudition(db, { ...sample, voiceId: 'en-GB-Chirp3-HD-Achird' })).toBeUndefined()
+    expect(await findAudition(db, { ...sample, voiceId: 'v-achird' })).toBeUndefined()
   })
 
   it('replaces rather than duplicating when the same audition is re-bought', async () => {
@@ -346,7 +347,7 @@ suite('audition cache', () => {
     await saveAudition(db, { ...sample, audioBase64: 'a', durationMs: 1, costUsd: 0 })
     await saveAudition(db, {
       ...sample,
-      voiceId: 'en-GB-Chirp3-HD-Achird',
+      voiceId: 'v-achird',
       audioBase64: 'b',
       durationMs: 1,
       costUsd: 0,
@@ -355,10 +356,10 @@ suite('audition cache', () => {
     expect(await listAuditions(db, 'abc')).toHaveLength(2)
   })
 
-  it('stores Gemini auditions against the Google account, as takes do', async () => {
+  it('stores auditions against the account they spend from, as takes do', async () => {
     await saveAudition(db, {
-      provider: 'gemini',
-      voiceId: 'Charon',
+      provider: 'elevenlabs',
+      voiceId: 'v-narrator',
       sampleHash: 'abc',
       audioBase64: 'a',
       durationMs: 1,
@@ -366,10 +367,10 @@ suite('audition cache', () => {
     })
 
     const [row] = await listAuditions(db, 'abc')
-    expect(row?.provider).toBe('google')
+    expect(row?.provider).toBe('elevenlabs')
     // And is found again through the TTS provider it was saved under.
     expect(
-      await findAudition(db, { provider: 'gemini', voiceId: 'Charon', sampleHash: 'abc' }),
+      await findAudition(db, { provider: 'elevenlabs', voiceId: 'v-narrator', sampleHash: 'abc' }),
     ).toBeDefined()
   })
 
@@ -392,8 +393,9 @@ suite('audition cache', () => {
     expect(kept.map((row) => row.voiceId).sort()).toEqual(['voice-2', 'voice-3', 'voice-4'])
   })
 
-  it('keeps more than one provider’s catalogue by default', () => {
-    // 33 Chirp voices, and room for a second provider beside them.
+  it('keeps a whole account catalogue by default', () => {
+    // An ElevenLabs account can hold dozens of voices, auditioned repeatedly
+    // while choosing a narrator; the cache must outlast that comparison.
     expect(AUDITION_CACHE_LIMIT).toBeGreaterThan(100)
   })
 })

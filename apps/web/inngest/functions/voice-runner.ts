@@ -29,12 +29,11 @@ import {
   openReviewGate,
   type GateContext,
 } from '../lib/gates'
-import { narrationUnitKind } from '@boom-busters/providers'
 import {
   chunk,
   narrationJobs,
   recordLoudnessDeferred,
-  ttsConcurrency,
+  TTS_CONCURRENCY,
   withinFailureTolerance,
 } from '../lib/narration'
 
@@ -139,12 +138,10 @@ export const voiceRunner = inngest.createFunction(
       }
 
       // Everything settings contribute to a take's identity, from the one
-      // helper all four key-computing call sites share: voice, pronunciations,
-      // pacing, and — on a prompt-steered narrator — the instructions. The
-      // unit is the provider's: scenes on Gemini, paragraphs elsewhere.
+      // helper all four key-computing call sites share: voice, pronunciations
+      // and stability.
       const jobs = narrationJobs({
         projectId,
-        provider,
         chapters: sources.chapters,
         ...voiceKeyFacts(settings.tts),
       })
@@ -168,7 +165,7 @@ export const voiceRunner = inngest.createFunction(
 
     const outcomes: ParagraphOutcome[] = []
 
-    for (const batch of chunk(setup.jobs, ttsConcurrency(setup.provider))) {
+    for (const batch of chunk(setup.jobs, TTS_CONCURRENCY)) {
       const results = await Promise.all(
         batch.map((job) =>
           step.run(`tts-${job.chapterId}-${job.unitIndex}`, async (): Promise<ParagraphOutcome> => {
@@ -303,9 +300,7 @@ export const voiceRunner = inngest.createFunction(
         stage: 'voice',
         projectStage: 'voice',
         summary:
-          `Narration ready · ${summary.paragraphs} ${
-            narrationUnitKind(setup.provider) === 'scene' ? 'scenes' : 'paragraphs'
-          } · ~${summary.runtimeMin} min` +
+          `Narration ready · ${summary.paragraphs} paragraphs · ~${summary.runtimeMin} min` +
           (summary.reused > 0 ? ` · ${summary.reused} reused` : '') +
           (summary.failed > 0 ? ` · ${summary.failed} failed, flagged for you` : ''),
       }),

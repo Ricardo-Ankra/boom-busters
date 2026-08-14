@@ -75,57 +75,31 @@ describe('splitParagraphs', () => {
   })
 })
 
-describe('pacing in the take key', () => {
+describe('stability in the take key', () => {
   /**
-   * Same contract as the pronunciations: every take bought before pacing
-   * joined the key was bought at the default 1×, so the default must produce
-   * the key it always did — or this change alone would re-buy every video.
+   * Same contract as the pronunciations had, and the pacing slider before it:
+   * every take bought before stability joined the key was bought at the
+   * default, so the default must produce the key it always did — or this
+   * change alone would re-buy every video.
    */
-  it('is unchanged at the default 1×, so existing takes keep their keys', () => {
-    expect(takeIdempotencyKey({ ...base, pacing: 1 })).toBe(takeIdempotencyKey(base))
+  it('is unchanged at the default natural, so existing takes keep their keys', () => {
+    expect(takeIdempotencyKey({ ...base, stability: 'natural' })).toBe(takeIdempotencyKey(base))
   })
 
   /**
-   * The bug this field fixes. Pacing changes how every paragraph is spoken
-   * without changing a character of the script, so with it outside the key a
-   * moved slider was a silent no-op: every fingerprint still matched, a re-run
-   * handed back the old audio at the old speed, and nothing on screen said so.
+   * The lesson this project has now learned three times: a setting that
+   * changes how every paragraph is spoken without changing a character of the
+   * script must be part of the take's identity, or changing it is a silent
+   * no-op — every fingerprint still matches and a re-run hands back the old
+   * audio at the old delivery.
    */
-  it('changes when the slider moves, so a re-run re-reads at the new speed', () => {
-    expect(takeIdempotencyKey({ ...base, pacing: 0.95 })).not.toBe(takeIdempotencyKey(base))
+  it('changes when the tier moves, so a re-run re-reads at the new delivery', () => {
+    expect(takeIdempotencyKey({ ...base, stability: 'robust' })).not.toBe(takeIdempotencyKey(base))
   })
 
-  it('distinguishes two non-default speeds', () => {
-    expect(takeIdempotencyKey({ ...base, pacing: 0.9 })).not.toBe(
-      takeIdempotencyKey({ ...base, pacing: 1.1 }),
-    )
-  })
-})
-
-describe('narrator instructions in the take key', () => {
-  /**
-   * Found live: "I rewrote the narrator brief and re-ran" reused all 37
-   * paragraphs in sixteen seconds, because the instructions were not part of
-   * any take's identity. On a prompt-steered narrator they change every
-   * reading, so they belong in the key — the caller (`voiceKeyFacts`) only
-   * passes them for providers that actually receive them.
-   */
-  it('is unchanged when there are none, so promptless projects keep their keys', () => {
-    expect(takeIdempotencyKey({ ...base, stylePrompt: '' })).toBe(takeIdempotencyKey(base))
-    expect(takeIdempotencyKey({ ...base, stylePrompt: '   ' })).toBe(takeIdempotencyKey(base))
-  })
-
-  it('changes when the instructions change, so a rewritten brief re-reads', () => {
-    const briefed = takeIdempotencyKey({ ...base, stylePrompt: 'Dry, level, unhurried.' })
-    expect(briefed).not.toBe(takeIdempotencyKey(base))
-    expect(briefed).not.toBe(takeIdempotencyKey({ ...base, stylePrompt: 'Bright and quick.' }))
-  })
-
-  it('cannot collide with a pronunciation-only key at the same position', () => {
-    // The style segment is prefixed; a bare hint hash could otherwise occupy
-    // the same slot in a key with no hints.
-    expect(takeIdempotencyKey({ ...base, stylePrompt: 'Dry.' })).not.toBe(
-      takeIdempotencyKey({ ...base, pronunciations: [{ term: 'auditors', hint: '/ˈɔːdɪtəz/' }] }),
+  it('distinguishes the two non-default tiers', () => {
+    expect(takeIdempotencyKey({ ...base, stability: 'creative' })).not.toBe(
+      takeIdempotencyKey({ ...base, stability: 'robust' }),
     )
   })
 })
@@ -210,15 +184,6 @@ describe('voiceApprovalBlockedReason', () => {
   it('refuses a script with nothing to narrate rather than passing it as complete', () => {
     expect(voiceApprovalBlockedReason([], 0)).toBe('This script has no paragraphs to narrate.')
   })
-
-  it('names the unit it counts — scenes, on a narrator that reads scene by scene', () => {
-    expect(voiceApprovalBlockedReason([take()], 3, 'scene')).toBe(
-      '2 of 3 scenes have no audio yet.',
-    )
-    expect(voiceApprovalBlockedReason([take({ status: 'pending' })], 1, 'scene')).toContain(
-      'scene is still being synthesised',
-    )
-  })
 })
 
 describe('pronunciations in the take key', () => {
@@ -272,12 +237,12 @@ describe('pronunciations in the take key', () => {
     )
   })
 
-  it('composes with pacing rather than colliding with it', () => {
-    // A hints-only key and a pacing-only key must never hash the same — the
-    // pacing segment is prefixed so it cannot read as a hint hash.
+  it('composes with stability rather than colliding with it', () => {
+    // A hints-only key and a stability-only key must never hash the same —
+    // the stability segment is prefixed so it cannot read as a hint hash.
     expect(
       takeIdempotencyKey({ ...base, pronunciations: [{ term: 'Jan', hint: '/dʒæn/' }] }),
-    ).not.toBe(takeIdempotencyKey({ ...base, pacing: 0.95 }))
+    ).not.toBe(takeIdempotencyKey({ ...base, stability: 'robust' }))
   })
 
   it('matches whole words, so a term does not fire inside a longer one', () => {

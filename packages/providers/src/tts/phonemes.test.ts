@@ -1,6 +1,6 @@
 import type { PhonemeHint } from '@boom-busters/schemas'
 import { describe, expect, it } from 'vitest'
-import { isIpa, markUpPhonemes, matchedHints, stylePromptWithHints } from './phonemes'
+import { applyPronunciations, isIpa, matchedHints } from './phonemes'
 
 const hints: PhonemeHint[] = [
   { term: 'Wirecard', hint: '/ˈvaɪɐkart/' },
@@ -43,63 +43,44 @@ describe('matchedHints', () => {
   })
 })
 
-describe('stylePromptWithHints', () => {
-  it('leaves the prompt untouched when nothing matches', () => {
-    // No empty heading for the model to invent entries under, and no tokens
-    // spent saying nothing — on every paragraph of every chapter.
-    expect(stylePromptWithHints('Measured and dry.', 'Nothing to declare.', hints)).toBe(
-      'Measured and dry.',
+describe('applyPronunciations', () => {
+  it('substitutes a respelling into the text', () => {
+    expect(applyPronunciations('Theranos raised $700m.', hints).text).toBe(
+      'THAIR-uh-nose raised $700m.',
     )
   })
 
-  it('appends only the matched terms', () => {
-    const prompt = stylePromptWithHints('Measured.', 'Wirecard collapsed.', hints)
-    expect(prompt).toContain('"Wirecard" is pronounced ˈvaɪɐkart (IPA)')
-    expect(prompt).not.toContain('Theranos')
+  it('substitutes every occurrence, not just the first', () => {
+    const { text } = applyPronunciations('Theranos, and Theranos again.', hints)
+    expect(text.match(/THAIR-uh-nose/g)).toHaveLength(2)
   })
 
-  it('spells out a respelling as given', () => {
-    expect(stylePromptWithHints('', 'Theranos ran out of blood.', hints)).toContain(
-      '"Theranos" is pronounced "THAIR-uh-nose"',
-    )
+  /**
+   * Eleven v3 takes no phoneme markup — no SSML, no `<phoneme>` tag — so an
+   * IPA transcription has no way into the request. Dropped and *named*, per
+   * spec principle 6: degrading is allowed, doing it quietly is not, and the
+   * settings screen turns the report into "write it as a respelling instead".
+   */
+  it('drops an IPA hint by name rather than sending markup v3 does not take', () => {
+    const { text, dropped } = applyPronunciations('Wirecard collapsed.', hints)
+    expect(text).toBe('Wirecard collapsed.')
+    expect(dropped).toEqual(['Wirecard'])
   })
 
-  it('tells the model not to read the guidance aloud', () => {
-    // Without it, "Pronounce these terms exactly as given" ends up in the audio.
-    expect(stylePromptWithHints('', 'Wirecard.', hints)).toContain('do not read the guidance aloud')
-  })
-
-  it('works with no style prompt at all', () => {
-    expect(stylePromptWithHints('', 'Nothing matches.', hints)).toBe('')
-  })
-})
-
-describe('markUpPhonemes', () => {
-  it('wraps an IPA hint in a phoneme tag around the original word', () => {
-    expect(markUpPhonemes('Wirecard collapsed.', hints)).toBe(
-      '<phoneme alphabet="ipa" ph="ˈvaɪɐkart">Wirecard</phoneme> collapsed.',
-    )
-  })
-
-  it('substitutes a respelling, because it is not a phonetic alphabet', () => {
-    expect(markUpPhonemes('Theranos raised $700m.', hints)).toBe('THAIR-uh-nose raised $700m.')
-  })
-
-  it('preserves the casing the paragraph used inside the tag', () => {
-    expect(markUpPhonemes('WIRECARD collapsed.', hints)).toContain('>WIRECARD</phoneme>')
-  })
-
-  it('marks up every occurrence, not just the first', () => {
-    const marked = markUpPhonemes('Wirecard, and Wirecard again.', hints)
-    expect(marked.match(/<phoneme/g)).toHaveLength(2)
-  })
-
-  it('returns the text untouched when nothing matches', () => {
-    expect(markUpPhonemes('Nothing to declare.', hints)).toBe('Nothing to declare.')
+  it('drops nothing when nothing matches', () => {
+    const { text, dropped } = applyPronunciations('Nothing to declare.', hints)
+    expect(text).toBe('Nothing to declare.')
+    expect(dropped).toEqual([])
   })
 
   it('does not treat a hint term as a regular expression', () => {
     const odd: PhonemeHint[] = [{ term: 'S&P 500', hint: 'S and P five hundred' }]
-    expect(markUpPhonemes('The S&P 500 fell.', odd)).toBe('The S and P five hundred fell.')
+    expect(applyPronunciations('The S&P 500 fell.', odd).text).toBe(
+      'The S and P five hundred fell.',
+    )
+  })
+
+  it('replaces the casing the paragraph used, because a respelling is the spoken form', () => {
+    expect(applyPronunciations('THERANOS collapsed.', hints).text).toBe('THAIR-uh-nose collapsed.')
   })
 })

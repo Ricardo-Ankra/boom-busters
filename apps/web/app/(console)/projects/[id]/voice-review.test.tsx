@@ -115,15 +115,10 @@ function model(patch: Partial<VoiceReviewModel> = {}): VoiceReviewModel {
     totalDurationMs: 16_800,
     blockedReason: voiceApprovalBlockedReason(takes, expectedParagraphs),
     orphanedTakes: 0,
-    unit: 'paragraph',
     staleParagraphs: chapters.reduce(
       (total, chapter) => total + chapter.paragraphs.filter((paragraph) => paragraph.stale).length,
       0,
     ),
-    // The narrator in production is Cloud TTS, which cannot vary a re-read, so
-    // that is the default a fixture should describe. The tests that care about
-    // "read it again" turn it on explicitly.
-    rereadCanDiffer: false,
     ...patch,
   }
 }
@@ -141,14 +136,6 @@ describe('VoiceReview', () => {
     // Section 11.1: state is never conveyed by colour or shape alone.
     render(<VoiceReview model={model()} />)
     expect(screen.getByText(/2 paragraphs · 2 generated/)).toBeInTheDocument()
-  })
-
-  it('calls the rows scenes when the narrator reads scene by scene', () => {
-    // On Gemini a unit is a scene, and the screen must not miscount it as
-    // paragraphs — the whole point of the unit is that one row is one request.
-    render(<VoiceReview model={model({ unit: 'scene' })} />)
-    expect(screen.getByText(/2 scenes · 2 generated/)).toBeInTheDocument()
-    expect(screen.getByText('§1')).toBeInTheDocument()
   })
 
   it('says it is ready when nothing is flagged and nothing is missing', () => {
@@ -318,7 +305,6 @@ describe('VoiceReview', () => {
             ],
           },
         ],
-        rereadCanDiffer: true,
       })
 
       render(<VoiceReview model={silent} />)
@@ -327,38 +313,27 @@ describe('VoiceReview', () => {
       expect(screen.getByRole('button', { name: 'Another take' })).toBeDisabled()
     })
 
-    it('does not offer another take when the reading cannot differ', async () => {
-      render(<VoiceReview model={flaggedModel({ rereadCanDiffer: false })} />)
-      expect(screen.queryByRole('button', { name: /another take/i })).toBeNull()
-    })
-
     /**
-     * The flag note is the direction: what was wrong with the take is exactly
-     * what the narrator should be told to do differently. On Gemini it lands
-     * in the prompt as director's notes.
+     * One press, one purchase. There is no direction box: this narrator is
+     * steered in the text, so a steer arrives through Fix the words — the
+     * toast says as much.
      */
-    it('prefills the direction with the flag note and sends it with the retake', async () => {
-      render(<VoiceReview model={flaggedModel({ rereadCanDiffer: true })} />)
+    it('queues another take in one press and says how to steer it', async () => {
+      render(<VoiceReview model={flaggedModel()} />)
 
       await userEvent.click(screen.getByRole('button', { name: 'Another take' }))
 
-      const box = screen.getByLabelText('Direction for this take (optional)')
-      expect(box).toHaveValue('Ran the two halves together.')
-
-      await userEvent.click(screen.getByRole('button', { name: 'Record another take' }))
-      expect(retakeVoiceTake).toHaveBeenCalledWith('take-1', 'Ran the two halves together.')
+      expect(retakeVoiceTake).toHaveBeenCalledWith('take-1')
+      expect(toast).toHaveBeenCalledWith(expect.objectContaining({ title: 'Another take queued' }))
+      expect(refresh).toHaveBeenCalled()
     })
 
-    it('re-rolls without direction when the box is left empty', async () => {
-      render(<VoiceReview model={model({ rereadCanDiffer: true })} />)
+    it('surfaces the refusal when the retake cannot be queued', async () => {
+      retakeVoiceTake.mockResolvedValue({ ok: false, error: 'Inngest is unreachable.' })
+      render(<VoiceReview model={flaggedModel()} />)
 
-      await userEvent.click(screen.getAllByRole('button', { name: 'Another take' })[0]!)
-
-      const box = screen.getByLabelText('Direction for this take (optional)')
-      expect(box).toHaveValue('')
-
-      await userEvent.click(screen.getByRole('button', { name: 'Record another take' }))
-      expect(retakeVoiceTake).toHaveBeenCalledWith('take-1', undefined)
+      await userEvent.click(screen.getByRole('button', { name: 'Another take' }))
+      expect(toast).toHaveBeenCalledWith(expect.objectContaining({ variant: 'error' }))
     })
 
     it('opens the words for editing, prefilled with what was read', async () => {
@@ -368,6 +343,21 @@ describe('VoiceReview', () => {
       expect(screen.getByLabelText('The words, as they should be read')).toHaveValue(
         'The auditors signed it off for eighteen years, nobody asked where the cash was.',
       )
+    })
+
+    it('offers pause and expression tags as buttons in the edit form', async () => {
+      render(<VoiceReview model={flaggedModel()} />)
+
+      await userEvent.click(screen.getByRole('button', { name: 'Fix the words' }))
+
+      // One from each set; the full lists live in schemas and are not
+      // re-asserted here.
+      await userEvent.click(screen.getByRole('button', { name: 'pause' }))
+      await userEvent.click(screen.getByRole('button', { name: 'sighs' }))
+
+      const box = screen.getByLabelText<HTMLTextAreaElement>('The words, as they should be read')
+      expect(box.value).toContain('[pause]')
+      expect(box.value).toContain('[sighs]')
     })
 
     it('will not spend on words that did not change', async () => {
@@ -604,17 +594,10 @@ describe('VoiceReview', () => {
       expect(retakeVoiceTake).toHaveBeenCalledWith('take-1')
     })
 
-    it('offers Regenerate even where a re-read cannot differ — the input changed', () => {
-      // staleModel keeps the fixture default rereadCanDiffer: false. That gate
-      // is about identical input; a stale row's input is different by
-      // definition, so every narrator qualifies.
-      render(<VoiceReview model={staleModel()} />)
-      expect(screen.getByRole('button', { name: 'Regenerate' })).toBeInTheDocument()
-    })
-
-    it('offers no Regenerate on rows whose audio still matches', () => {
+    it('offers no Regenerate on rows whose audio still matches — those get Another take', () => {
       render(<VoiceReview model={model()} />)
       expect(screen.queryByRole('button', { name: 'Regenerate' })).toBeNull()
+      expect(screen.getAllByRole('button', { name: 'Another take' }).length).toBeGreaterThan(0)
     })
   })
 

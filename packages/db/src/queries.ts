@@ -68,6 +68,15 @@ export interface MaskedCredential {
   lastVerifiedAt: Date | null
 }
 
+/**
+ * Providers that exist in the database enum but no longer in the app.
+ * Postgres cannot drop an enum value without rebuilding the type, so a
+ * credential row saved for a retired vendor may still exist; it is filtered
+ * on read rather than deleted, because a stored secret should outlive a
+ * product decision that might yet be reversed.
+ */
+const RETIRED_PROVIDERS = new Set<string>(['google-cloud-tts'])
+
 /** Never returns key material — only what Settings -> Connections may display. */
 export async function listCredentials(db: Database): Promise<MaskedCredential[]> {
   const rows = await db
@@ -79,12 +88,17 @@ export async function listCredentials(db: Database): Promise<MaskedCredential[]>
     })
     .from(providerCredentials)
 
-  return rows.map((row) => ({
-    provider: row.provider,
-    masked: maskKey(row.keyHint),
-    verifyStatus: row.verifyStatus,
-    lastVerifiedAt: row.lastVerifiedAt,
-  }))
+  return rows
+    .filter(
+      (row): row is typeof row & { provider: MaskedCredential['provider'] } =>
+        !RETIRED_PROVIDERS.has(row.provider),
+    )
+    .map((row) => ({
+      provider: row.provider,
+      masked: maskKey(row.keyHint),
+      verifyStatus: row.verifyStatus,
+      lastVerifiedAt: row.lastVerifiedAt,
+    }))
 }
 
 export async function setCredential(
@@ -220,10 +234,9 @@ export async function llmCredentials(
 /**
  * The decrypted key a TTS provider needs, on the same terms as `llmCredentials`.
  *
- * Resolved through `TTS_CREDENTIAL_PROVIDER`, because "gemini" is a model line
- * rather than an account: its TTS endpoint takes the same Google key as the
- * Gemini text models. Looking for a credential row called `gemini` would find
- * nothing and report a missing key that has been configured all along.
+ * Resolved through `TTS_CREDENTIAL_PROVIDER`. With one narrator the mapping
+ * is the identity, but it stays: the column means "the account the spend
+ * lands on", and the Gemini era proved those are not always the same name.
  */
 export async function ttsCredential(
   db: Database,

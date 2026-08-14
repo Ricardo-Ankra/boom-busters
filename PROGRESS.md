@@ -1072,6 +1072,71 @@ Gemini-TTS — and the text field caps at ~4,000 bytes, which bounds a scene.
     longer existed. The sweep now walks a snapshot of element handles and
     forgives only vanished elements, never short ones.
 
+### M4.14 — one narrator: the Google vendors are deleted, ElevenLabs Eleven v3 remains (2026-08-14)
+
+The human called it: the style shifting between edits and calls on the Google
+narrators is the problem, and ElevenLabs is the vendor with real control —
+expression tags, pauses, inline pronunciation. Their instruction was to scrap
+the Google architecture and plumbing entirely, not park it. So `gemini.ts`
+and `google-cloud.ts` are deleted, `TTS_PROVIDERS` is a list of one, and
+every capability abstraction those vendors forced — `promptSteered`,
+`rereadCanDiffer`, scene units, the style prompt, the pacing slider, the
+per-take `direction` side channel — is gone with them.
+
+93. **The model is Eleven v3, and its direction channel is the text itself.**
+    Anything in square brackets is a stage direction, acted on and never
+    spoken — `[pause]`, `[whispers]`, `[sighs]`, free-form `[grave,
+measured]`. That collapses what used to be three mechanisms (style
+    prompt, retake direction, pause markup) into one that already existed
+    here: narration tags in `chapters.contentMd`, inserted as buttons in the
+    Script Studio and the review's "Fix the words" form, reproduced by every
+    re-read, stripped by `stripNarrationMarkup` for captions. `PAUSE_TAGS`
+    take v3's spelling (`[short pause]`, not Chirp's `[pause short]`; the
+    strip regex accepts both, and on v3 any bracketed run is direction
+    anyway), and a curated `EXPRESSION_TAGS` list joins them.
+
+94. **Stability replaces pacing in the settings and in the take key.** v3 has
+    no speed parameter and no request stitching; its one delivery control is
+    stability, a discrete three-way (0.0/0.5/1.0) surfaced as Creative /
+    Natural / Robust buttons. It changes how every paragraph is spoken
+    without changing a character of the script, so it joins the fingerprint —
+    the pacing lesson, third time applied, first time pre-emptively. Absent
+    at the default `natural`, so existing keys hold.
+
+95. **The old settings row migrates by becoming honest.** The production row
+    says `gemini`/`Charon`, a voice ElevenLabs has never heard of. A
+    `preprocess` on `VoiceConfigSchema` coerces any non-ElevenLabs row to
+    `elevenlabs` **and blanks the voice id**: keeping "Charon" would surface
+    as a vendor 404 halfway through a paid run, whereas an empty voice id is
+    the state every screen already prompts about (first-run checklist,
+    runner pre-flight, voice tab warning). Retired fields are stripped by
+    Zod; the hint list survives, because it belongs to the channel.
+
+96. **IPA hints are dropped and named, not smuggled.** v3 takes no phoneme
+    markup, so `applyPronunciations` substitutes respellings into the text
+    and reports IPA hints in `droppedPronunciations` (principle 6: degrade,
+    never quietly). The pronunciation check in Settings now says the honest
+    thing — write it the way it sounds — and the old `<phoneme>` tag path,
+    which multilingual-v2 never actually supported either, is gone.
+
+97. **"Another take" is one press again, and the direction box is deleted.**
+    ElevenLabs samples, so a second reading genuinely differs; there is no
+    prompt to carry a sentence of English, so offering a textarea would
+    re-create the control-that-does-nothing bug (decision 55) in the other
+    direction. The toast points at "Fix the words" for steering. The
+    `direction` field is gone from the retake event, the retaker, `lib/tts`
+    and `TTSRequest`.
+
+98. **Scene units are deleted, not parked.** `narrationUnits` is one unit per
+    paragraph, unconditionally; `takeUnit`, the review model, the retaker
+    and the audio route keep resolving through it, so the shared-derivation
+    property survives the simplification. The per-paragraph rows are what
+    make the per-row Regenerate/Another-take buttons meaningful. The
+    `google-cloud-tts` value stays in the Postgres enum (dropping an enum
+    value means rebuilding the type) with nothing writing it, and a stray
+    credential row for it is filtered on read rather than deleted — a stored
+    secret should outlive a product decision that might yet be reversed.
+
 ### M4.8 — what the Chirp 3 HD guide said, and I had not read (2026-08-13)
 
 The human sent Google's Chirp 3 HD page. Two things in it contradict claims I

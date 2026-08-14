@@ -8,12 +8,11 @@ import {
   getVoiceTake,
   unflagTake,
 } from '@boom-busters/db'
-import { narrationUnitKind, narrationUnits, rereadCanDiffer } from '@boom-busters/providers'
+import { narrationUnits } from '@boom-busters/providers'
 import {
   UlidSchema,
   estimateRuntimeSec,
   replaceParagraph,
-  splitParagraphs,
   takeIdempotencyKey,
 } from '@boom-busters/schemas'
 import { revalidatePath } from 'next/cache'
@@ -39,14 +38,14 @@ import type { ActionResult } from '../actions'
  * What flagging is genuinely for is the gate: `voiceApprovalBlockedReason`
  * refuses approval while any take is flagged, so a listen-through can mark six
  * problems and the stage stays shut until each is dealt with. That is a review
- * ledger and it is worth keeping. The repair is now an explicit second press:
+ * ledger and it is worth keeping. The repair is an explicit second press:
  *
- *  - **`rereadParagraph`** — fix the words and read them again. The only lever
- *    that exists on Chirp, and the right one for a missing pause, an awkward
- *    line, or a name the narrator mangles.
- *  - **`retakeVoiceTake`** — read the same words again, offered only where that
- *    can differ (`rereadCanDiffer`): ElevenLabs samples, Gemini prompts, Chirp
- *    does neither.
+ *  - **`rereadParagraph`** — fix the words and read them again. The precise
+ *    lever, and on ElevenLabs it carries the direction too: audio tags, pause
+ *    tags and respellings all live in the text.
+ *  - **`retakeVoiceTake`** — the same words performed again. ElevenLabs
+ *    samples, so this is a genuine second take, not a re-purchase of the one
+ *    just rejected.
  */
 
 async function requireOwner(): Promise<string> {
@@ -112,11 +111,7 @@ export async function rereadParagraph(takeId: string, text: string): Promise<Act
   const chapter = await getChapter(db, take.chapterId)
   if (!chapter) return { ok: false, error: 'The chapter this take belongs to is gone.' }
 
-  const settings = await getSettings(db)
-  const unitKind = narrationUnitKind(settings.tts.provider)
-
   const unit = narrationUnits({
-    provider: settings.tts.provider,
     chapters: [{ id: chapter.id, title: chapter.title, contentMd: chapter.contentMd }],
   }).find((candidate) => candidate.unitIndex === take.paragraphIndex)
 
@@ -124,7 +119,7 @@ export async function rereadParagraph(takeId: string, text: string): Promise<Act
     return {
       ok: false,
       error:
-        `That ${unitKind} is no longer in the chapter — it has been edited since this take was ` +
+        'That paragraph is no longer in the chapter — it has been edited since this take was ' +
         'made. Re-run the voice stage to narrate the script as it stands.',
     }
   }
@@ -134,42 +129,29 @@ export async function rereadParagraph(takeId: string, text: string): Promise<Act
       ok: false,
       error:
         'Those are the same words. To change the reading without changing them, use ' +
-        '"Another take" where it is offered — otherwise change something; punctuation is what ' +
-        'buys a pause.',
+        '"Another take" — otherwise change something: a tag like [pause] or [sighs], or the ' +
+        'punctuation, is what changes the delivery.',
     }
   }
 
-  let contentMd: string | undefined
-  if (unitKind === 'paragraph') {
-    // Byte-preserving, and refuses splits: in paragraph mode every later
-    // paragraph's narration is addressed by its index.
-    contentMd = replaceParagraph(chapter.contentMd, take.paragraphIndex, trimmed)
-    if (contentMd === undefined) {
-      return {
-        ok: false,
-        error:
-          'A paragraph cannot be split in two from here: every later paragraph would shift by ' +
-          'one and lose the narration addressed to it. Split it in the Script Studio and re-run ' +
-          'the voice stage.',
-      }
+  // Byte-preserving, and refuses splits: every later paragraph's narration is
+  // addressed by its index.
+  const contentMd = replaceParagraph(chapter.contentMd, take.paragraphIndex, trimmed)
+  if (contentMd === undefined) {
+    return {
+      ok: false,
+      error:
+        'A paragraph cannot be split in two from here: every later paragraph would shift by ' +
+        'one and lose the narration addressed to it. Split it in the Script Studio and re-run ' +
+        'the voice stage.',
     }
-  } else {
-    /**
-     * A scene covers a run of source paragraphs; the edit replaces exactly
-     * that span. Splits are fine here — the scene is re-packed from whatever
-     * paragraphs it now contains, and only this chapter's later scenes (rare:
-     * most chapters are one scene) can shift.
-     */
-    const paragraphs = splitParagraphs(chapter.contentMd)
-    const [start, end] = unit.paragraphSpan
-    contentMd = [...paragraphs.slice(0, start), trimmed, ...paragraphs.slice(end)].join('\n\n')
   }
 
   await editChapter(db, {
     chapterId: take.chapterId,
     afterText: contentMd,
     editType: 'human',
-    note: `Re-read of ${unitKind} ${take.paragraphIndex + 1}`,
+    note: `Re-read of paragraph ${take.paragraphIndex + 1}`,
     estRuntimeSec: estimateRuntimeSec(contentMd),
   })
 
@@ -179,47 +161,34 @@ export async function rereadParagraph(takeId: string, text: string): Promise<Act
 /**
  * Buy this paragraph again — as another performance, or as a regeneration.
  *
- * Two distinct reasons arrive at the same purchase, and the server sorts out
- * which is which rather than trusting the UI:
+ * Two distinct reasons arrive at the same purchase:
  *
- *  - **Another take** (`direction` optional): the same words performed again,
- *    only meaningful where `rereadCanDiffer`. On Gemini the direction travels
- *    into the prompt, so "slower on the dates" is a steer, not a hope.
- *  - **Regenerate a stale row**: the paragraph's fingerprint no longer matches
- *    its audio — the words, voice, pacing or a pronunciation moved on — so a
- *    fresh read is different *by input* and every narrator qualifies. The
- *    retaker recomputes the key from the current text and settings, which is
- *    exactly the regeneration wanted.
+ *  - **Another take**: the same words performed again. ElevenLabs samples, so
+ *    a second reading is a genuine second performance. To *steer* it, edit
+ *    the words instead — tags and punctuation are the direction channel.
+ *  - **Regenerate a stale row**: the paragraph's fingerprint no longer
+ *    matches its audio — the words, voice, stability or a pronunciation
+ *    moved on. The retaker recomputes the key from the current text and
+ *    settings, which is exactly the regeneration wanted.
  *
- * Refused only when neither holds: identical input on a deterministic narrator
- * would buy the take just rejected, and the honest answer is to say so and
- * point at the words.
+ * The distinction only decides the note on the new take; the server computes
+ * it rather than trusting the UI.
  */
-export async function retakeVoiceTake(takeId: string, direction?: string): Promise<ActionResult> {
+export async function retakeVoiceTake(takeId: string): Promise<ActionResult> {
   await requireOwner()
 
   if (!UlidSchema.safeParse(takeId).success) return { ok: false, error: 'Unknown take' }
-
-  const trimmedDirection = direction?.trim() ?? ''
-  if (trimmedDirection.length > 500) {
-    return {
-      ok: false,
-      error: 'Keep the direction under 500 characters — it is a steer, not a brief.',
-    }
-  }
 
   const take = await getVoiceTake(db, takeId)
   if (!take) return { ok: false, error: 'That take no longer exists.' }
 
   const settings = await getSettings(db)
-  const canDiffer = rereadCanDiffer(settings.tts.provider)
 
   // The same staleness the review screen shows: does the audio still match
-  // what this unit would buy today?
+  // what this unit would buy today? Only the note depends on the answer.
   const chapter = await getChapter(db, take.chapterId)
   const unit = chapter
     ? narrationUnits({
-        provider: settings.tts.provider,
         chapters: [{ id: chapter.id, title: chapter.title, contentMd: chapter.contentMd }],
       }).find((candidate) => candidate.unitIndex === take.paragraphIndex)
     : undefined
@@ -227,7 +196,7 @@ export async function retakeVoiceTake(takeId: string, direction?: string): Promi
     return {
       ok: false,
       error:
-        'That section is no longer in the chapter — it has been edited since this take was ' +
+        'That paragraph is no longer in the chapter — it has been edited since this take was ' +
         'made. Re-run the voice stage to narrate the script as it stands.',
     }
   }
@@ -242,47 +211,18 @@ export async function retakeVoiceTake(takeId: string, direction?: string): Promi
       ...voiceKeyFacts(settings.tts),
     })
 
-  if (!stale && !canDiffer) {
-    return {
-      ok: false,
-      error:
-        `${settings.tts.provider} reads the same words the same way every time, so this would ` +
-        'buy the take you just rejected. Edit the words instead.',
-    }
-  }
+  const note = stale ? 'Regenerated after a change' : (take.note ?? 'Another take')
 
-  const note =
-    trimmedDirection !== ''
-      ? trimmedDirection
-      : stale
-        ? 'Regenerated after a change'
-        : (take.note ?? 'Retake')
-
-  // Direction only where a narrator can act on it — sending "less cheerful" to
-  // a vendor with no prompt field would be recorded as honoured and wasn't.
-  return enqueueRetake(
-    take.projectId,
-    takeId,
-    note,
-    canDiffer && trimmedDirection !== '' ? trimmedDirection : undefined,
-  )
+  return enqueueRetake(take.projectId, takeId, note)
 }
 
 async function enqueueRetake(
   projectId: string,
   takeId: string,
   note: string,
-  direction?: string,
 ): Promise<ActionResult> {
   try {
-    await inngest.send(
-      events.voiceRetakeRequested.create({
-        projectId,
-        takeId,
-        note,
-        ...(direction ? { direction } : {}),
-      }),
-    )
+    await inngest.send(events.voiceRetakeRequested.create({ projectId, takeId, note }))
   } catch (error) {
     console.error('[voice] could not enqueue the retake', error)
     refresh(projectId)

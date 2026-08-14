@@ -91,15 +91,8 @@ describe('estimateTtsUsd', () => {
     expect(estimateTtsUsd({ provider: 'elevenlabs', characters: 1000 })).toBeCloseTo(
       TTS_PRICES.elevenlabs,
     )
-    expect(estimateTtsUsd({ provider: 'gemini', characters: 500 })).toBeCloseTo(
-      TTS_PRICES.gemini / 2,
-    )
-  })
-
-  it('makes the provider choice visible in the number', () => {
-    const chapter = 12_000
-    expect(estimateTtsUsd({ provider: 'elevenlabs', characters: chapter })).toBeGreaterThan(
-      estimateTtsUsd({ provider: 'gemini', characters: chapter }),
+    expect(estimateTtsUsd({ provider: 'elevenlabs', characters: 500 })).toBeCloseTo(
+      TTS_PRICES.elevenlabs / 2,
     )
   })
 })

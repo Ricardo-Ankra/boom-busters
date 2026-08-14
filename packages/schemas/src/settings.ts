@@ -18,17 +18,6 @@ export const PROVIDERS = [
   'anthropic',
   'openai',
   'google',
-  /**
-   * Google Cloud Text-to-Speech, and deliberately separate from `google`.
-   *
-   * They are two products on two hosts with two enablements: a Gemini API key
-   * is refused by `texttospeech.googleapis.com` and a Cloud key is refused by
-   * `generativelanguage.googleapis.com`. One credential row for both would mean
-   * whichever key you saved last broke the other half of the pipeline.
-   *
-   * Beyond spec section 4's list, by decision (2026-08-13) — see PROGRESS.md.
-   */
-  'google-cloud-tts',
   'elevenlabs',
   'pexels',
   'pixabay',
@@ -122,24 +111,29 @@ export const FallbackChainSchema = z.array(LlmProviderSchema).max(2)
 // Voice
 // ---------------------------------------------------------------------------
 
-export const TTS_PROVIDERS = ['gemini', 'google-cloud-tts', 'elevenlabs'] as const
+/**
+ * One narrator, by decision (2026-08-14): ElevenLabs.
+ *
+ * Three vendors were built and two were removed. Google Cloud TTS (Chirp) read
+ * identical text identically, which made every repair a text edit; Gemini TTS
+ * was an LLM performing each request independently, so the style drifted
+ * between paragraphs, between edits, and between calls — and its Tier 1 quota
+ * was 200 requests a *day*. ElevenLabs is the one vendor with real per-take
+ * control: audio tags for expression, pause tags, respellings for
+ * pronunciation, and sampling that makes "another take" a genuine second
+ * performance. The list stays a list so nothing downstream special-cases the
+ * count, but it is a list of one on purpose.
+ */
+export const TTS_PROVIDERS = ['elevenlabs'] as const
 export const TtsProviderSchema = z.enum(TTS_PROVIDERS)
 export type TtsProvider = z.infer<typeof TtsProviderSchema>
 
 /**
- * Which account a TTS provider actually spends against.
- *
- * "Gemini" is a model line, not a vendor: its TTS endpoint takes the same
- * Google API key as the Gemini text models, on the same billing account and
- * behind the same monthly cap. So narration spend has to be attributed to
- * `google`, or the app would keep two budgets for one bill and neither of them
- * would be right.
- *
- * ElevenLabs is its own account, and maps to itself.
+ * Which account a TTS provider spends against. ElevenLabs is its own account
+ * and maps to itself; the record shape survives from the multi-vendor era so
+ * the ledger keeps resolving spend the same way.
  */
 export const TTS_CREDENTIAL_PROVIDER: Record<TtsProvider, Provider> = {
-  gemini: 'google',
-  'google-cloud-tts': 'google-cloud-tts',
   elevenlabs: 'elevenlabs',
 }
 
@@ -204,13 +198,26 @@ export function matchedHints(text: string, hints: readonly PhonemeHint[]): reado
  * which voice is current. Zod strips the field from any settings row that still
  * carries it.
  */
-export const VoiceConfigSchema = z.object({
-  provider: TtsProviderSchema,
+/**
+ * Eleven v3's stability control, which is a three-way choice rather than a
+ * slider: the model accepts exactly 0.0, 0.5 and 1.0, and ElevenLabs names
+ * them. Creative performs hardest and follows audio tags most eagerly;
+ * Robust holds the delivery steadiest between paragraphs and takes; Natural
+ * is the middle and the default.
+ *
+ * A settings field rather than an adapter constant because it changes how
+ * every paragraph is *spoken* — which is the pacing lesson again: anything
+ * with that property must also live in the take fingerprint, or changing it
+ * is a silent no-op on a re-run.
+ */
+export const STABILITY_TIERS = ['creative', 'natural', 'robust'] as const
+export const StabilityTierSchema = z.enum(STABILITY_TIERS)
+export type StabilityTier = z.infer<typeof StabilityTierSchema>
+
+const VoiceConfigShape = z.object({
+  provider: TtsProviderSchema.default('elevenlabs'),
   voiceId: z.string(),
-  stylePrompt: z.string().default(''),
-  // Cloud TTS accepts `speakingRate` from 0.25 to 2.0, so the slider offers
-  // what the vendor offers rather than a rounder number.
-  pacing: z.number().min(0.25).max(2).default(1),
+  stability: StabilityTierSchema.default('natural'),
   /**
    * Beyond the five fields section 10 lists, because it belongs to the same
    * decision and nothing else owns it: a hint list is only meaningful next to
@@ -218,7 +225,27 @@ export const VoiceConfigSchema = z.object({
    */
   phonemeHints: z.array(PhonemeHintSchema).max(200).default([]),
 })
-export type VoiceConfig = z.infer<typeof VoiceConfigSchema>
+
+/**
+ * Wrapped in a preprocess because the production settings row predates the
+ * one-narrator decision: a row saved under `gemini` or `google-cloud-tts`
+ * must parse rather than take the app down, and its voice id ("Charon") names
+ * a voice ElevenLabs has never heard of. Coercing the provider *and blanking
+ * the voice* turns the stored row into the honest state — no narrator chosen
+ * yet — which the first-run checklist and the voice tab both already know how
+ * to prompt about. Silently keeping the old voice id would instead surface as
+ * a vendor 404 halfway through a paid run.
+ */
+export const VoiceConfigSchema = z.preprocess((raw) => {
+  if (raw !== null && typeof raw === 'object') {
+    const record = raw as Record<string, unknown>
+    if (record['provider'] !== undefined && record['provider'] !== 'elevenlabs') {
+      return { ...record, provider: 'elevenlabs', voiceId: '' }
+    }
+  }
+  return raw
+}, VoiceConfigShape)
+export type VoiceConfig = z.infer<typeof VoiceConfigShape>
 
 // ---------------------------------------------------------------------------
 // Brand Kit (build spec section 10)
@@ -412,7 +439,9 @@ export type Settings = z.infer<typeof SettingsSchema>
 export const SettingsPatchSchema = z.object({
   modelRouting: ModelRoutingSchema.partial().optional(),
   fallbackChain: FallbackChainSchema.optional(),
-  tts: VoiceConfigSchema.partial().optional(),
+  // The bare shape: a partial of a preprocessed schema is not a thing, and a
+  // patch never needs the old-provider coercion — it can only say 'elevenlabs'.
+  tts: VoiceConfigShape.partial().optional(),
   budgets: BudgetsPatchSchema.optional(),
   render: RenderSettingsSchema.partial().optional(),
   publish: PublishSettingsSchema.partial().optional(),
@@ -447,10 +476,9 @@ export const DEFAULT_SETTINGS: Settings = {
   },
   fallbackChain: [],
   tts: {
-    provider: 'google-cloud-tts',
+    provider: 'elevenlabs',
     voiceId: '',
-    stylePrompt: '',
-    pacing: 1,
+    stability: 'natural',
     phonemeHints: [],
   },
   // The sum of the old per-provider defaults was $60/month; $100 leaves the

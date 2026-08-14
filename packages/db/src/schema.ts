@@ -157,6 +157,9 @@ export const providerEnum = pgEnum('provider', [
   'anthropic',
   'openai',
   'google',
+  // Retired with the one-narrator decision (2026-08-14). Postgres cannot drop
+  // an enum value without rebuilding the type, so it stays as a dead value;
+  // nothing writes it, and the Connections screen no longer offers a card.
   'google-cloud-tts',
   'elevenlabs',
   'pexels',

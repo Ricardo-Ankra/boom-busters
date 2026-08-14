@@ -126,7 +126,7 @@ export function mockNarrationPcm(text: string, seed: string): Buffer {
   return pcm
 }
 
-export function createMockTTS(script: MockTTSScript = {}, id: TtsProvider = 'gemini'): MockTTS {
+export function createMockTTS(script: MockTTSScript = {}, id: TtsProvider = 'elevenlabs'): MockTTS {
   const calls: TTSRequest[] = []
   let failuresLeft = script.failFirst?.times ?? 0
 
@@ -136,12 +136,6 @@ export function createMockTTS(script: MockTTSScript = {}, id: TtsProvider = 'gem
     // pass by accident, and the guard is the thing those tests exist for.
     pricePerKChar: 0.015,
     sampleRate: NARRATION_SAMPLE_RATE,
-    // Seeded on the take number, so a retake is audibly different — which is
-    // what lets an E2E prove the A/B toggle is comparing two things.
-    rereadCanDiffer: true,
-    // Mirrors the vendor this mock stands in for, so mock-mode staleness
-    // behaves the way the live provider's would.
-    promptSteered: id === 'gemini',
     calls,
 
     reset() {

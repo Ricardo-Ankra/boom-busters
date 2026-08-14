@@ -131,18 +131,10 @@ test.describe('settings', () => {
     await page.getByRole('tab', { name: 'Connections' }).click()
 
     const panel = page.getByRole('tabpanel', { name: 'Connections' })
-    // `google-cloud-tts` is in the list on purpose, and the boundary after the
-    // name is a space (the status label follows) rather than `\b` — a word
-    // boundary let "google" also match the google-cloud-tts card.
-    for (const provider of [
-      'anthropic',
-      'openai',
-      'google',
-      'google-cloud-tts',
-      'elevenlabs',
-      'pexels',
-      'pixabay',
-    ]) {
+    // The boundary after the name is a space (the status label follows)
+    // rather than `\b` — a word boundary once let "google" also match a
+    // sibling card whose name it prefixed.
+    for (const provider of ['anthropic', 'openai', 'google', 'elevenlabs', 'pexels', 'pixabay']) {
       await expect(
         panel.getByRole('heading', { name: new RegExp(`^${provider}(\\s|$)`) }),
       ).toBeVisible()

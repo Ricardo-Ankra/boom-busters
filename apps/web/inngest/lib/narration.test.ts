@@ -1,16 +1,8 @@
 import { takeIdempotencyKey } from '@boom-busters/schemas'
 import { describe, expect, it } from 'vitest'
-import {
-  chunk,
-  narrationJobs,
-  TTS_CONCURRENCY,
-  ttsConcurrency,
-  withinFailureTolerance,
-} from './narration'
+import { chunk, narrationJobs, TTS_CONCURRENCY, withinFailureTolerance } from './narration'
 
 const projectId = '01HQ0000000000000000000001'
-
-const LIVE = { MOCK_PROVIDERS: undefined }
 
 const chapters = [
   { id: 'c1', title: 'The audit', contentMd: 'First paragraph.\n\nSecond paragraph.' },
@@ -18,8 +10,7 @@ const chapters = [
 ]
 
 describe('narrationJobs', () => {
-  // A paragraph-unit provider, so these tests keep meaning "per paragraph".
-  const base = { projectId, provider: 'elevenlabs', voiceId: 'Charon', env: LIVE } as const
+  const base = { projectId, voiceId: 'v-narrator' } as const
 
   it('flattens the script into paragraph units in speaking order', () => {
     const jobs = narrationJobs({ ...base, chapters })
@@ -39,26 +30,6 @@ describe('narrationJobs', () => {
     expect(jobs.filter((job) => job.chapterId === 'c2')[0]?.unitIndex).toBe(0)
   })
 
-  it('makes the unit the scene on a prompt-steered narrator', () => {
-    // One request per scene: one continuous performance, and a day's request
-    // allowance goes seven times as far.
-    const jobs = narrationJobs({ ...base, provider: 'gemini', chapters })
-
-    expect(jobs.map((job) => [job.chapterId, job.unitIndex, job.text])).toEqual([
-      ['c1', 0, 'First paragraph.\n\nSecond paragraph.'],
-      ['c2', 0, 'Third paragraph.'],
-    ])
-    expect(jobs[0]?.idempotencyKey).toBe(
-      takeIdempotencyKey({
-        projectId,
-        chapterId: 'c1',
-        paragraphIndex: 0,
-        text: 'First paragraph.\n\nSecond paragraph.',
-        voiceId: 'Charon',
-      }),
-    )
-  })
-
   it('gives every unit the key the runner will look it up by', () => {
     const [first] = narrationJobs({ ...base, chapters })
 
@@ -68,36 +39,27 @@ describe('narrationJobs', () => {
         chapterId: 'c1',
         paragraphIndex: 0,
         text: 'First paragraph.',
-        voiceId: 'Charon',
+        voiceId: 'v-narrator',
       }),
     )
   })
 
   it('changes the key when the voice changes, so a new narrator re-reads', () => {
     const a = narrationJobs({ ...base, chapters })[0]?.idempotencyKey
-    const b = narrationJobs({ ...base, voiceId: 'Kore', chapters })[0]?.idempotencyKey
+    const b = narrationJobs({ ...base, voiceId: 'v-other', chapters })[0]?.idempotencyKey
     expect(a).not.toBe(b)
   })
 
-  it('changes the key when the narrator instructions change, so a new brief re-reads', () => {
-    const bare = narrationJobs({ ...base, chapters })[0]?.idempotencyKey
-    const briefed = narrationJobs({
-      ...base,
-      chapters,
-      stylePrompt: 'Dry, level, unhurried.',
-    })[0]?.idempotencyKey
+  it('changes the key when stability moves off natural, so a delivery change re-reads', () => {
+    const natural = narrationJobs({ ...base, chapters })[0]?.idempotencyKey
+    const robust = narrationJobs({ ...base, chapters, stability: 'robust' })[0]?.idempotencyKey
 
-    expect(briefed).not.toBe(bare)
-  })
-
-  it('changes the key when pacing moves off 1×, so a speed change re-reads', () => {
-    const at1 = narrationJobs({ ...base, chapters })[0]?.idempotencyKey
-    const slower = narrationJobs({ ...base, chapters, pacing: 0.9 })[0]?.idempotencyKey
-
-    expect(slower).not.toBe(at1)
+    expect(robust).not.toBe(natural)
     // And the default explicit is the default absent, so takes bought before
-    // pacing joined the key are still recognised and not re-bought.
-    expect(narrationJobs({ ...base, chapters, pacing: 1 })[0]?.idempotencyKey).toBe(at1)
+    // stability joined the key are still recognised and not re-bought.
+    expect(narrationJobs({ ...base, chapters, stability: 'natural' })[0]?.idempotencyKey).toBe(
+      natural,
+    )
   })
 
   it('leaves untouched units with untouched keys when one is edited', () => {
@@ -144,14 +106,6 @@ describe('withinFailureTolerance', () => {
 
   it('is false for no items, rather than vacuously true', () => {
     expect(withinFailureTolerance(0, 0)).toBe(false)
-  })
-})
-
-describe('ttsConcurrency', () => {
-  it('goes gentler on Gemini, whose preview TTS models have single-digit RPM caps', () => {
-    expect(ttsConcurrency('gemini')).toBe(2)
-    expect(ttsConcurrency('elevenlabs')).toBe(TTS_CONCURRENCY)
-    expect(ttsConcurrency('google-cloud-tts')).toBe(TTS_CONCURRENCY)
   })
 })
 

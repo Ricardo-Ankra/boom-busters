@@ -313,7 +313,7 @@ export default async function globalSetup(): Promise<void> {
           chapterId: chapter.id,
           paragraphIndex,
           idempotencyKey: key,
-          provider: 'gemini',
+          provider: 'elevenlabs',
           voiceId: 'mock-narrator',
           builtFromScriptVersion: script.version,
         })
@@ -333,7 +333,7 @@ export default async function globalSetup(): Promise<void> {
             chapterId: chapter.id,
             paragraphIndex,
             idempotencyKey: key,
-            provider: 'gemini',
+            provider: 'elevenlabs',
             voiceId: 'mock-narrator',
             builtFromScriptVersion: script.version,
             takeNumber: 2,
@@ -365,13 +365,6 @@ export default async function globalSetup(): Promise<void> {
       budgets: { monthlyCeilingUsd: 100, approvedOverage: null },
       // A voice must be chosen for the stage to be runnable at all; the mock
       // adapter answers to any id, and this one says plainly what it is.
-      //
-      // ElevenLabs rather than Gemini, deliberately: the narration unit is a
-      // provider fact (scenes on a prompt-steered narrator, paragraphs
-      // elsewhere), and this suite's fixtures — and the review-screen flows
-      // they exercise — are per-paragraph. Scene packing has its own unit
-      // tests; what the E2E proves (play, flag, A/B, the gate refusal) is
-      // unit-agnostic.
       tts: { provider: 'elevenlabs', voiceId: 'mock-narrator' },
     })
   } finally {

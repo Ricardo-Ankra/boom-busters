@@ -8,7 +8,7 @@ import {
   ttsCredential,
   updateSettings,
 } from '@boom-busters/db'
-import { STATIC_VOICES, ttsAdapter } from '@boom-busters/providers'
+import { ttsAdapter } from '@boom-busters/providers'
 import type { KnownVoice } from '@boom-busters/providers'
 import { TTS_PROVIDERS, TtsProviderSchema, ttsProviderFromCredential } from '@boom-busters/schemas'
 import type { Provider, TtsProvider } from '@boom-busters/schemas'
@@ -50,12 +50,10 @@ async function requireOwner(): Promise<string> {
 }
 
 /**
- * Which voices can be offered, by provider.
+ * Which voices can be offered.
  *
- * Gemini's list ships with the adapter; ElevenLabs' is the account's, so it
- * needs the key. A provider with no key contributes nothing rather than
- * failing the whole panel — auditioning Gemini voices should not require an
- * ElevenLabs subscription.
+ * ElevenLabs' list is the account's, so it needs the key. A missing key
+ * contributes an explanation rather than failing the panel.
  */
 export async function listAuditionVoices(): Promise<
   { provider: TtsProvider; voices: KnownVoice[]; error?: string }[]
@@ -64,9 +62,6 @@ export async function listAuditionVoices(): Promise<
 
   return Promise.all(
     TTS_PROVIDERS.map(async (provider) => {
-      const shipped = STATIC_VOICES[provider]
-      if (shipped) return { provider, voices: [...shipped] }
-
       const apiKey = await ttsCredential(db, provider, env.SECRETS_ENCRYPTION_KEY)
       if (!apiKey) {
         return {
@@ -130,7 +125,7 @@ export async function generateAuditions(
       const parsed = TtsProviderSchema.safeParse(choice.provider)
       if (!parsed.success) {
         return {
-          provider: 'gemini' as TtsProvider,
+          provider: 'elevenlabs' as TtsProvider,
           voiceId: choice.voiceId,
           label: choice.voiceId,
           error: 'Unknown provider',
@@ -171,8 +166,8 @@ export async function generateAuditions(
             voiceOverride: { provider, voiceId: choice.voiceId },
           },
           // The configured voice must not leak into an audition of a different
-          // one, but the pronunciation list and pacing should — you are judging
-          // how this voice will read *your* scripts.
+          // one, but the pronunciation list and stability should — you are
+          // judging how this voice will read *your* scripts.
           settings,
         )
 
@@ -273,21 +268,16 @@ export async function addPronunciation(
 }
 
 /**
- * Ask the vendor whether it will actually accept a pronunciation hint.
+ * Check whether a pronunciation hint will actually reach the narrator.
  *
- * Google validates a custom pronunciation against a **per-language phoneme
- * inventory**, not merely against the notation being well-formed — verified
- * against a live key: `/ˈkæt/` is accepted for en-GB while `/ˈvaɪɐkart/` is
- * refused, because `ɐ` is not an en-GB phoneme. So a perfectly good IPA
- * transcription of a German name is rejected wholesale, and no amount of
- * re-notating it helps. That cannot be predicted from the notation, and
- * encoding Google's inventory here would be guesswork of exactly the kind that
- * has already cost this project a transliteration layer it did not need.
- *
- * So the hint is checked with the vendor at the moment it is typed, where a
- * human is present to fix it — rather than in a run, where the adapter drops it
- * and narrates the word its own way. A refusal is a 400 and costs nothing; an
- * acceptance synthesises the term alone, which is a small fraction of a cent.
+ * On Eleven v3 the answer is structural rather than per-language: the model
+ * takes no phonetic alphabet, so an IPA hint is dropped by the adapter and
+ * reported in `droppedPronunciations`, while a respelling is substituted into
+ * the text and always applies. Checking at the moment the hint is typed —
+ * where a human is present to rewrite it — beats finding out in a run, where
+ * the adapter degrades safely and the word is narrated the narrator's own
+ * way. An applied check synthesises the term alone, a fraction of a cent,
+ * which also lets you *hear* the respelling before trusting it.
  */
 export async function checkPronunciation(
   term: string,
@@ -325,9 +315,9 @@ export async function checkPronunciation(
           ok: false,
           applied: false,
           error:
-            `${provider} refused this pronunciation. It validates against the voice's own phoneme ` +
-            'set, so a transcription can be correct IPA and still be outside it — try the ' +
-            'nearest English sounds, or write it as a respelling instead.',
+            'Eleven v3 takes no phonetic alphabet, so an IPA transcription never reaches the ' +
+            'narrator. Write it the way it sounds instead — a respelling like "VEER-card" is ' +
+            'read in place of the word.',
         }
       : { ok: true, applied: true }
   } catch (error) {

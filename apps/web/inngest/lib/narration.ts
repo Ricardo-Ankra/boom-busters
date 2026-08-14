@@ -2,7 +2,7 @@ import { recordRunEvent } from '@boom-busters/db'
 import { narrationUnits } from '@boom-busters/providers'
 import type { NarrationUnit } from '@boom-busters/providers'
 import { takeIdempotencyKey } from '@boom-busters/schemas'
-import type { PhonemeHint, TtsProvider } from '@boom-busters/schemas'
+import type { PhonemeHint, StabilityTier } from '@boom-busters/schemas'
 import { db } from '@/lib/db'
 import { storageConfigured } from '@/lib/storage'
 import { resolveRunRowId } from '../middleware/run-mirror'
@@ -20,17 +20,14 @@ export interface NarrationJob extends NarrationUnit {
 /**
  * Every narration unit of a script, in the order it will be spoken.
  *
- * The unit of the whole stage (spec section 7 says paragraphs; decision 89
- * widens it to `narrationUnits`, which is paragraphs everywhere except a
- * prompt-steered narrator, where it is the scene). Takes, retakes, alignment
- * merge and Shorts segment refs address `(chapterId, unitIndex)` — stored in
- * the `paragraph_index` column — and the indexes are stable across re-runs
+ * The unit is the paragraph (spec section 7). Takes, retakes, alignment merge
+ * and Shorts segment refs address `(chapterId, unitIndex)` — stored in the
+ * `paragraph_index` column — and the indexes are stable across re-runs
  * because they come from one deterministic `narrationUnits` over the approved
  * `contentMd` and nothing else.
  */
 export function narrationJobs(input: {
   projectId: string
-  provider: TtsProvider
   voiceId: string
   chapters: readonly { id: string; title: string; contentMd: string }[]
   /**
@@ -38,20 +35,10 @@ export function narrationJobs(input: {
    * how a name is said re-reads the units that say it — and only those.
    */
   pronunciations?: readonly PhonemeHint[]
-  /** `settings.tts.pacing`. Part of the identity too — a speed change re-reads. */
-  pacing?: number
-  /**
-   * The narrator instructions, passed only for prompt-steered providers — the
-   * caller gates through `voiceKeyFacts`, which owns that decision.
-   */
-  stylePrompt?: string
-  env?: Record<string, string | undefined>
+  /** `settings.tts.stability`. Part of the identity too — a delivery change re-reads. */
+  stability?: StabilityTier
 }): NarrationJob[] {
-  return narrationUnits({
-    provider: input.provider,
-    chapters: input.chapters,
-    ...(input.env ? { env: input.env } : {}),
-  }).map((unit) => ({
+  return narrationUnits({ chapters: input.chapters }).map((unit) => ({
     ...unit,
     idempotencyKey: takeIdempotencyKey({
       projectId: input.projectId,
@@ -60,8 +47,7 @@ export function narrationJobs(input: {
       text: unit.text,
       voiceId: input.voiceId,
       ...(input.pronunciations ? { pronunciations: input.pronunciations } : {}),
-      ...(input.pacing === undefined ? {} : { pacing: input.pacing }),
-      ...(input.stylePrompt === undefined ? {} : { stylePrompt: input.stylePrompt }),
+      ...(input.stability === undefined ? {} : { stability: input.stability }),
     }),
   }))
 }
@@ -88,17 +74,6 @@ export function withinFailureTolerance(failed: number, total: number): boolean {
  * work (spec section 7).
  */
 export const TTS_CONCURRENCY = 5
-
-/**
- * Gemini's preview TTS models carry single-digit requests-per-minute caps, so
- * five concurrent requests just means five simultaneous 429s to wait out. Two
- * abreast meets the cap with less churn; the per-call rate-limit patience in
- * `lib/tts.ts` absorbs whatever still gets through. The other vendors take the
- * full fan-out.
- */
-export function ttsConcurrency(provider: TtsProvider): number {
-  return provider === 'gemini' ? 2 : TTS_CONCURRENCY
-}
 
 export function chunk<T>(items: readonly T[], size: number): T[][] {
   const chunks: T[][] = []

@@ -7,7 +7,7 @@ import {
   countWords,
   estimateRuntimeSec,
   sentenceHash,
-  hasPauseMarkup,
+  hasNarrationTags,
   replaceParagraph,
   stripNarrationMarkup,
   splitParagraphs,
@@ -230,11 +230,20 @@ describe('splitParagraphs and replaceParagraph', () => {
 })
 
 describe('narration markup', () => {
-  it('recognises the three pause strengths, however they are spaced or cased', () => {
-    expect(hasPauseMarkup('Let me look, [pause long] yes.')).toBe(true)
-    expect(hasPauseMarkup('Wait. [pause] Then it fell.')).toBe(true)
-    expect(hasPauseMarkup('Wait. [Pause  Short] Then.')).toBe(true)
-    expect(hasPauseMarkup('Nothing to see here.')).toBe(false)
+  it('recognises pause and expression tags alike — anything bracketed is direction', () => {
+    expect(hasNarrationTags('Let me look, [long pause] yes.')).toBe(true)
+    expect(hasNarrationTags('Wait. [pause] Then it fell.')).toBe(true)
+    expect(hasNarrationTags('[sighs] The auditors signed it off.')).toBe(true)
+    // Free-form direction is as real to the narrator as a curated tag.
+    expect(hasNarrationTags('It was gone. [grave, measured] All of it.')).toBe(true)
+    expect(hasNarrationTags('Nothing to see here.')).toBe(false)
+  })
+
+  it('still recognises the old Chirp-era spelling, which scripts may carry', () => {
+    // `[pause long]` predates the ElevenLabs move. It must still strip from
+    // captions — and Eleven v3 reads any bracketed run as direction anyway.
+    expect(hasNarrationTags('Wait. [Pause  Long] Then.')).toBe(true)
+    expect(stripNarrationMarkup('Wait. [pause long] Then.')).toBe('Wait. Then.')
   })
 
   /**
@@ -245,14 +254,17 @@ describe('narration markup', () => {
    */
   it('answers the same question the same way twice', () => {
     const text = 'Wait. [pause] Then it fell.'
-    expect(hasPauseMarkup(text)).toBe(true)
-    expect(hasPauseMarkup(text)).toBe(true)
+    expect(hasNarrationTags(text)).toBe(true)
+    expect(hasNarrationTags(text)).toBe(true)
   })
 
   it('gives the words alone to everything that is not the synthesiser', () => {
-    // A caption reading "[pause long]" is this decision's failure mode.
-    expect(stripNarrationMarkup('Let me look, [pause long] yes, I see it.')).toBe(
+    // A caption reading "[long pause]" is this decision's failure mode.
+    expect(stripNarrationMarkup('Let me look, [long pause] yes, I see it.')).toBe(
       'Let me look, yes, I see it.',
+    )
+    expect(stripNarrationMarkup('[whispers] Two billion euros. [sighs] Gone.')).toBe(
+      'Two billion euros. Gone.',
     )
   })
 
@@ -272,8 +284,8 @@ describe('narration markup', () => {
 describe('markup is not words', () => {
   it('does not inflate a word count, and so does not inflate a runtime', () => {
     // Every chapter-length warning and runtime estimate is built on this.
-    expect(countWords('One two three. [pause long] Four five.')).toBe(5)
-    expect(estimateRuntimeSec('One two three. [pause long] Four five.')).toBe(
+    expect(countWords('One two three. [long pause] Four five.')).toBe(5)
+    expect(estimateRuntimeSec('One two three. [sighs] Four five.')).toBe(
       estimateRuntimeSec('One two three. Four five.'),
     )
   })

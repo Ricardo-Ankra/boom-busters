@@ -5,14 +5,4 @@ export * from './mock'
 export * from './registry'
 export * from './retry'
 export * from './units'
-export { geminiTts, GEMINI_VOICES, GEMINI_TTS_MODEL, buildGeminiPrompt } from './gemini'
-export {
-  googleCloudTts,
-  stripWavHeader,
-  customPronunciations,
-  applyRespellings,
-  languageOfVoice,
-  invalidPhrases,
-  DEFAULT_LANGUAGE_CODE,
-} from './google-cloud'
-export { elevenlabsTts, ELEVENLABS_STABILITY, ELEVENLABS_MODEL, describeVoice } from './elevenlabs'
+export { elevenlabsTts, ELEVENLABS_MODEL, ELEVEN_V3_STABILITY, describeVoice } from './elevenlabs'

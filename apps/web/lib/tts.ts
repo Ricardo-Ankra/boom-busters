@@ -19,8 +19,8 @@ import { env } from '@/lib/env'
  *
  * Same three non-optional things bound together, for the same reason:
  *
- *  1. **Configuration** comes from the settings row, read fresh: which
- *     provider, which voice, what pacing, which pronunciations.
+ *  1. **Configuration** comes from the settings row, read fresh: which voice,
+ *     what stability, which pronunciations.
  *  2. **The budget guard** wraps it, so a paragraph that would cross a monthly
  *     cap raises `BudgetExceededError` before a vendor is contacted. Narration
  *     is the first stage that fans out over dozens of paid calls in a few
@@ -43,8 +43,6 @@ export interface SynthesisInput {
   projectId?: string
   /** Overrides the configured voice — the audition panel's whole purpose. */
   voiceOverride?: { provider: TtsProvider; voiceId: string }
-  /** One-take direction from a retake form or flag note. See `TTSRequest.direction`. */
-  direction?: string
   signal?: AbortSignal
 }
 
@@ -113,23 +111,19 @@ export async function synthesise(
   const request: TTSRequest = {
     text: input.text,
     voiceId,
-    stylePrompt: voice.stylePrompt,
     phonemeHints: voice.phonemeHints,
     idempotencyKey: input.idempotencyKey,
-    pacing: voice.pacing,
-    ...(input.direction && input.direction.trim() !== ''
-      ? { direction: input.direction.trim() }
-      : {}),
+    stability: voice.stability,
   }
 
   /**
    * The whole guarded call sits inside the rate-limit patience, not just the
    * vendor request: each retry re-reserves against the ceiling and settles or
-   * releases on its own, so a wait can never hold a reservation open. Gemini's
-   * preview TTS models carry single-digit RPM caps, which makes 429s the
-   * *normal* weather of a sixty-paragraph fan-out — before this, each one was
-   * counted as a permanently failed paragraph and a full-script run died on
-   * the 15% tolerance while the vendor behaved exactly as documented.
+   * releases on its own, so a wait can never hold a reservation open. A
+   * sixty-paragraph fan-out can outrun any vendor's concurrency allowance,
+   * and a 429 during one is weather, not a failed paragraph — before this,
+   * each one was counted as permanent and a full-script run died on the 15%
+   * tolerance while the vendor behaved exactly as documented.
    */
   const result = await withRateLimitPatience(() =>
     withCost(

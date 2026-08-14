@@ -1,7 +1,8 @@
 import { ValidationError } from '@boom-busters/schemas'
+import type { StabilityTier } from '@boom-busters/schemas'
 import { mapNetworkError, throwForResponse } from '../llm/http'
 import { NARRATION_SAMPLE_RATE, pcmDurationMs } from './audio'
-import { markUpPhonemes } from './phonemes'
+import { applyPronunciations } from './phonemes'
 import type {
   KnownVoice,
   TTSCallOptions,
@@ -12,50 +13,62 @@ import type {
 } from './types'
 
 /**
- * ElevenLabs — the alternative narrator (spec section 6).
+ * ElevenLabs — the narrator (spec section 6; sole vendor by decision,
+ * 2026-08-14).
  *
- * Three settings are the spec's, not preferences:
+ * The model is **Eleven v3**, which is what made it worth deleting the other
+ * two vendors for: the direction channel is *inline*. Anything bracketed in
+ * the text is a stage direction rather than words — `[pause]`, `[whispers]`,
+ * `[sighs]`, free-form `[grave, measured]` — so the script itself carries the
+ * performance, a re-read reproduces it, and there is no side-channel prompt
+ * whose effect on the audio would have to be fingerprinted separately.
  *
- *  - **`stability ≈ 0.38`**, verbatim from section 6. Low enough that the
- *    delivery varies with the sentence rather than droning; high enough that a
- *    retake of the same paragraph is recognisably the same performance.
- *  - **PCM output**, so this adapter and the Gemini one hand back the same kind
- *    of bytes and the WAV writer above them has one job.
- *  - **Pronunciation inline**, not via the dictionary endpoint. Section 6 names
- *    that endpoint, and it is a deliberate deviation: a pronunciation dictionary
- *    is an account-level resource that has to be created, versioned and
- *    referenced by id, which is three round trips and a piece of vendor state to
- *    keep in step with a settings list that a human edits. Inline markup says
- *    the same thing per request, needs nothing stored anywhere, and is a pure
- *    string function this package can actually test. Revisit if a hint list ever
- *    grows large enough to matter per request.
+ * What v3 does *not* take, and how each gap is handled:
  *
- * There is a second reason to keep this adapter working even while Gemini is the
- * default: section 2 makes ElevenLabs' `with-timestamps` response the free path
- * to alignment in M6, skipping Whisper entirely.
+ *  - **No speed parameter.** Pace is steered with pause tags, punctuation and
+ *    sentence structure. (The old pacing slider died with Chirp.)
+ *  - **No phoneme markup.** Respellings are substituted into the text by
+ *    `applyPronunciations`; IPA hints are dropped and reported.
+ *  - **No request stitching.** Continuity between paragraphs comes from the
+ *    voice itself and the stability setting, which is a discrete three-way
+ *    on v3 — exposed in Settings as Creative / Natural / Robust.
  *
+ * PCM output at 24 kHz keeps the WAV writer above this adapter with one job.
  * PRICES ARE PROVISIONAL. Confirm before the first live run.
  */
 
 const BASE = 'https://api.elevenlabs.io/v1'
 
-/** Spec section 6, verbatim. */
-export const ELEVENLABS_STABILITY = 0.38
+/**
+ * The expressive model. Not configurable: offering a model choice would be
+ * rebuilding the multi-vendor capability matrix inside one vendor, and the
+ * whole reason ElevenLabs is the narrator is what this model does with tags.
+ */
+export const ELEVENLABS_MODEL = 'eleven_v3'
 
 /**
- * `pcm_24000` matches `NARRATION_SAMPLE_RATE`, so takes from either provider
- * concatenate at assembly without a resample.
+ * v3 accepts exactly these three stability values — it is a switch, not a
+ * dial. The tier names are ElevenLabs' own: Creative performs hardest and
+ * follows tags most eagerly, Robust holds the delivery steadiest across
+ * paragraphs and takes, Natural sits between and is the default.
+ */
+export const ELEVEN_V3_STABILITY: Record<StabilityTier, number> = {
+  creative: 0.0,
+  natural: 0.5,
+  robust: 1.0,
+}
+
+/**
+ * `pcm_24000` matches `NARRATION_SAMPLE_RATE`, so takes concatenate at
+ * assembly without a resample.
  */
 const OUTPUT_FORMAT = 'pcm_24000'
-
-/** Multilingual v2 handles the European names this subject matter is full of. */
-export const ELEVENLABS_MODEL = 'eleven_multilingual_v2'
 
 interface ElevenLabsVoicesResponse {
   voices?: { voice_id?: string; name?: string; labels?: Record<string, string> }[]
 }
 
-/** The account's own voices, described from whatever labels it carries. */
+/** The account's own voices, described from whatever labels each carries. */
 export function describeVoice(labels: Record<string, string> | undefined): string | undefined {
   const parts = ['accent', 'age', 'gender', 'description', 'use_case']
     .map((key) => labels?.[key])
@@ -68,13 +81,11 @@ export const elevenlabsTts: TTSProvider = {
   id: 'elevenlabs',
   pricePerKChar: 0.18,
   sampleRate: NARRATION_SAMPLE_RATE,
-  // `stability: 0.38` with no seed — a second read is a genuine second take.
-  rereadCanDiffer: true,
-  // Samples, but takes no prompt: text and voice settings only.
-  promptSteered: false,
 
   async synthesise(request: TTSRequest, options: TTSCallOptions): Promise<TTSResult> {
     const doFetch = options.fetchImpl ?? fetch
+
+    const { text, dropped } = applyPronunciations(request.text, request.phonemeHints)
 
     let response: Response
     try {
@@ -84,14 +95,10 @@ export const elevenlabsTts: TTSProvider = {
           method: 'POST',
           headers: { 'content-type': 'application/json', 'xi-api-key': options.apiKey },
           body: JSON.stringify({
-            text: markUpPhonemes(request.text, request.phonemeHints),
+            text,
             model_id: ELEVENLABS_MODEL,
             voice_settings: {
-              stability: ELEVENLABS_STABILITY,
-              similarity_boost: 0.75,
-              // ElevenLabs' speed control is centred on 1 like ours, so pacing
-              // passes straight through rather than being described in words.
-              speed: request.pacing ?? 1,
+              stability: ELEVEN_V3_STABILITY[request.stability ?? 'natural'],
             },
           }),
           ...(options.signal ? { signal: options.signal } : {}),
@@ -118,6 +125,7 @@ export const elevenlabsTts: TTSProvider = {
       estimatedCostUsd: (request.text.length / 1000) * elevenlabsTts.pricePerKChar,
       provider: 'elevenlabs',
       voiceId: request.voiceId,
+      ...(dropped.length > 0 ? { droppedPronunciations: dropped } : {}),
     }
   },
 

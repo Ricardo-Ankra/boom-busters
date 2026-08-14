@@ -1,7 +1,7 @@
 'use client'
 
 import type { ChapterWithWarnings } from '@boom-busters/db'
-import { PAUSE_TAGS } from '@boom-busters/schemas'
+import { EXPRESSION_TAGS, PAUSE_TAGS } from '@boom-busters/schemas'
 import type { ShortsCandidate } from '@boom-busters/schemas'
 import { AlertTriangle, Check, GripVertical, Sparkles, Timer, Volume2, X } from 'lucide-react'
 import { Extension } from '@tiptap/core'
@@ -599,9 +599,10 @@ function ProseEditor({
 
   return (
     <div className="flex flex-col gap-2">
-      {/* The one thing in a script that is not words: Chirp's pause markup.
-          Buttons rather than a syntax to remember — the same three the voice
-          review's re-read form offers, inserted at the cursor. */}
+      {/* The one thing in a script that is not words: narration tags. On
+          Eleven v3 anything bracketed is a stage direction — acted on, never
+          read aloud. Buttons rather than a syntax to remember — the same sets
+          the voice review's re-read form offers, inserted at the cursor. */}
       <div className="flex flex-wrap items-center gap-2">
         <span className="text-[12px] text-[var(--color-text-muted)]">Insert a pause:</span>
         {PAUSE_TAGS.map((tag) => (
@@ -616,8 +617,23 @@ function ProseEditor({
             {tag.replace(/[[\]]/g, '')}
           </Button>
         ))}
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-[12px] text-[var(--color-text-muted)]">Expression:</span>
+        {EXPRESSION_TAGS.map((tag) => (
+          <Button
+            key={tag}
+            type="button"
+            variant="ghost"
+            size="icon"
+            onClick={() => editor?.chain().focus().insertContent(` ${tag} `).run()}
+          >
+            <Sparkles className="size-4" aria-hidden />
+            {tag.replace(/[[\]]/g, '')}
+          </Button>
+        ))}
         <span className="text-[11px] text-[var(--color-text-muted)]">
-          An intent, not a duration — the narrator fits it to the sentence.
+          An intent, not a guarantee — and any bracketed direction works, not only these.
         </span>
       </div>
       <EditorContent editor={editor} />

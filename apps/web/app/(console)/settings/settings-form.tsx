@@ -36,13 +36,9 @@ const CREDENTIAL_PROVIDERS: Provider[] = [...PROVIDERS]
 /**
  * What each key is *for*, beside the id it is stored under.
  *
- * Not decoration. `google` and `google-cloud-tts` are two Google products on
- * two hosts that refuse each other's keys, and a card labelled only `google`
- * is how a Cloud Text-to-Speech key came to be filed against the Gemini API —
- * which then reported a perfectly good key as `API_KEY_SERVICE_BLOCKED`, twice,
- * before anyone looked at which row it was in.
- *
- * The names of the two are genuinely confusable. Saying what each one drives is
+ * Not decoration: the Gemini era proved that two confusable names with no
+ * stated purpose is how a key ends up filed against the wrong API and
+ * reported as refused. Saying what each one drives is
  * the cheapest thing that stops the next person making the same mistake, and
  * "the next person" here is the same person.
  */
@@ -50,8 +46,7 @@ const PROVIDER_PURPOSE: Record<Provider, string> = {
   anthropic: 'Research, scripting and the self-check — the default for every task',
   openai: 'Alternative for any task, and the cross-provider fallback',
   google: 'Gemini text models. A key from AI Studio, not the Cloud console',
-  'google-cloud-tts': 'The narration voice (Chirp 3 HD). A Cloud console key, not a Gemini one',
-  elevenlabs: 'Alternative narration voice, with free word timings for alignment',
+  elevenlabs: 'The narration voice (Eleven v3), with free word timings for alignment',
   pexels: 'Stock footage and stills',
   pixabay: 'Stock footage and stills',
   fal: 'Flux image generation for slots nothing stock can cover',
@@ -419,17 +414,12 @@ function ConnectionCard({
   /**
    * Which providers have an adapter to ping. The others show no button rather
    * than one that always fails.
-   *
-   * `google` covers Gemini narration as well as text: they are one API behind
-   * one key. `elevenlabs` and `google-cloud-tts` are separate accounts with
-   * separate keys, so each needs its own check.
    */
   const verifiable =
     provider === 'anthropic' ||
     provider === 'openai' ||
     provider === 'google' ||
-    provider === 'elevenlabs' ||
-    provider === 'google-cloud-tts'
+    provider === 'elevenlabs'
 
   const submit = async () => {
     setSaving(true)

@@ -67,14 +67,15 @@ export const ProjectMasterReadySchema = z.object({
 export const VoiceRetakeRequestedSchema = z.object({
   ...projectRef,
   takeId: UlidSchema,
-  note: z.string().min(1),
   /**
-   * Direction for the narrator, distinct from `note` (the record of why).
-   * Present only when the narrator can act on it — Gemini reads it as part of
-   * its prompt; the parameterised vendors have nowhere to put a sentence, so
-   * the action never sends one for them.
+   * The record of why this retake exists — a flag note, "Re-read after an
+   * edit", or "Another take". There is no separate `direction` field any
+   * more: it existed for Gemini, whose prompt could carry a sentence of
+   * English. ElevenLabs is steered *in the text* — audio tags, pause tags,
+   * punctuation — so a steer arrives as a re-read of edited words, not as a
+   * side channel the vendor may or may not honour.
    */
-  direction: z.string().min(1).max(500).optional(),
+  note: z.string().min(1),
 })
 
 export const RenderCompletedSchema = z.object({

@@ -1,32 +1,32 @@
-import { RateLimitError, TransientProviderError, ValidationError } from '@boom-busters/schemas'
+import { ValidationError } from '@boom-busters/schemas'
 import type { PhonemeHint } from '@boom-busters/schemas'
 import { describe, expect, it } from 'vitest'
 import { NARRATION_SAMPLE_RATE, pcmDurationMs } from './audio'
-import { describeVoice, elevenlabsTts, ELEVENLABS_STABILITY } from './elevenlabs'
-import { buildGeminiPrompt, geminiTts, GEMINI_VOICES, sampleRateFromMimeType } from './gemini'
-import { googleCloudTts } from './google-cloud'
+import { describeVoice, elevenlabsTts, ELEVENLABS_MODEL, ELEVEN_V3_STABILITY } from './elevenlabs'
 import { createMockTTS, mockNarrationPcm, mockTakeSeed } from './mock'
-import { promptSteered, ttsAdapter, ttsAdapters, TTS_PRICES_PER_KCHAR } from './registry'
+import { ttsAdapter, ttsAdapters, TTS_PRICES_PER_KCHAR } from './registry'
 import { ttsPrice } from './types'
 import type { TTSRequest } from './types'
 
 /**
- * Adapters are tested against recorded response bodies (spec section 13), never
- * against the live APIs — a suite that needed network access would cost money
- * to run and would go red whenever a vendor had an outage.
+ * The adapter is tested against recorded response bodies (spec section 13),
+ * never against the live API — a suite that needed network access would cost
+ * money to run and would go red whenever the vendor had an outage.
  */
 
-const hints: PhonemeHint[] = [{ term: 'Wirecard', hint: '/ˈvaɪɐkart/' }]
+const hints: PhonemeHint[] = [
+  { term: 'Wirecard', hint: 'VEER-card' },
+  { term: 'Marsalek', hint: '/ˈmɑːsələk/' },
+]
 
 const request: TTSRequest = {
   text: 'Wirecard filed for insolvency in June 2020.',
-  voiceId: 'Charon',
-  stylePrompt: 'Measured and dry.',
+  voiceId: 'v-narrator',
   phonemeHints: hints,
   idempotencyKey: 'abc123',
 }
 
-/** One second of quiet PCM, base64 for Gemini's inline shape. */
+/** One second of quiet PCM. */
 const ONE_SECOND = Buffer.alloc(NARRATION_SAMPLE_RATE * 2, 0)
 
 function respondWith(body: unknown, init: ResponseInit = {}): typeof fetch {
@@ -57,194 +57,6 @@ function capture(body: unknown): {
 }
 
 // ---------------------------------------------------------------------------
-// Gemini
-// ---------------------------------------------------------------------------
-
-describe('gemini TTS adapter', () => {
-  const FIXTURE = {
-    candidates: [
-      {
-        content: {
-          parts: [
-            {
-              inlineData: {
-                mimeType: 'audio/L16;codec=pcm;rate=24000',
-                data: ONE_SECOND.toString('base64'),
-              },
-            },
-          ],
-        },
-        finishReason: 'STOP',
-      },
-    ],
-  }
-
-  it('decodes inline PCM and derives the duration from it', async () => {
-    const result = await geminiTts.synthesise(request, {
-      apiKey: 'k',
-      fetchImpl: respondWith(FIXTURE),
-    })
-
-    expect(result.audioBuffer.length).toBe(ONE_SECOND.length)
-    expect(result.sampleRate).toBe(24_000)
-    expect(result.durationMs).toBe(1000)
-    expect(result.provider).toBe('gemini')
-  })
-
-  it('prices from the text, because no TTS vendor returns a charge', async () => {
-    const result = await geminiTts.synthesise(request, {
-      apiKey: 'k',
-      fetchImpl: respondWith(FIXTURE),
-    })
-    expect(result.estimatedCostUsd).toBeCloseTo((request.text.length / 1000) * 0.015, 10)
-  })
-
-  it('sends the key in a header, never in the URL', async () => {
-    const { fetchImpl, seen } = capture(FIXTURE)
-    await geminiTts.synthesise(request, { apiKey: 'secret-key', fetchImpl })
-
-    expect(seen.url).not.toContain('secret-key')
-    expect((seen.init?.headers as Record<string, string>)['x-goog-api-key']).toBe('secret-key')
-  })
-
-  it('asks for audio, and names the voice', async () => {
-    const { fetchImpl, seen } = capture(FIXTURE)
-    await geminiTts.synthesise(request, { apiKey: 'k', fetchImpl })
-
-    const body = JSON.parse(String(seen.init?.body)) as Record<string, never>
-    expect(body).toMatchObject({
-      generationConfig: {
-        responseModalities: ['AUDIO'],
-        speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Charon' } } },
-      },
-    })
-  })
-
-  it('refuses a response with no audio rather than storing an empty take', async () => {
-    await expect(
-      geminiTts.synthesise(request, {
-        apiKey: 'k',
-        fetchImpl: respondWith({ candidates: [{ finishReason: 'SAFETY' }] }),
-      }),
-    ).rejects.toThrow(ValidationError)
-  })
-
-  it('maps a 429 into the retriable taxonomy', async () => {
-    await expect(
-      geminiTts.synthesise(request, {
-        apiKey: 'k',
-        fetchImpl: respondWith('slow down', { status: 429 }),
-      }),
-    ).rejects.toThrow(RateLimitError)
-  })
-
-  it('maps a 5xx as transient', async () => {
-    await expect(
-      geminiTts.synthesise(request, {
-        apiKey: 'k',
-        fetchImpl: respondWith('boom', { status: 503 }),
-      }),
-    ).rejects.toThrow(TransientProviderError)
-  })
-
-  it('verifies a key by listing models, which costs nothing', async () => {
-    const { fetchImpl, seen } = capture({ models: [] })
-    await geminiTts.verifyKey('k', { fetchImpl })
-    expect(seen.url).toContain('/models')
-    expect(seen.init?.method).toBeUndefined()
-  })
-
-  it('ships its voices without a call', async () => {
-    await expect(geminiTts.voices({ apiKey: '' })).resolves.toEqual([...GEMINI_VOICES])
-  })
-})
-
-describe('sampleRateFromMimeType', () => {
-  it('reads the declared rate', () => {
-    expect(sampleRateFromMimeType('audio/L16;codec=pcm;rate=16000')).toBe(16_000)
-  })
-
-  /**
-   * Falling back rather than throwing, but only because the fallback is the
-   * rate we asked for. An assumed rate that was wrong would make every duration
-   * in the app wrong by a constant factor with nothing to indicate why.
-   */
-  it('falls back to the requested rate when the header says nothing', () => {
-    expect(sampleRateFromMimeType(undefined)).toBe(NARRATION_SAMPLE_RATE)
-    expect(sampleRateFromMimeType('audio/L16')).toBe(NARRATION_SAMPLE_RATE)
-  })
-})
-
-describe('promptSteered', () => {
-  it('is a Gemini-only fact — the prompt is its whole direction channel', () => {
-    // Cloud TTS sends text and a speaking rate; ElevenLabs text and voice
-    // settings. For both, the instructions never leave the app, so editing
-    // them must never re-buy audio.
-    expect(promptSteered('gemini', {})).toBe(true)
-    expect(promptSteered('google-cloud-tts', {})).toBe(false)
-    expect(promptSteered('elevenlabs', {})).toBe(false)
-  })
-
-  it('answers the same in mock mode, so staleness behaves like production', () => {
-    expect(promptSteered('gemini', { MOCK_PROVIDERS: '1' })).toBe(true)
-    expect(promptSteered('google-cloud-tts', { MOCK_PROVIDERS: '1' })).toBe(false)
-    expect(promptSteered('elevenlabs', { MOCK_PROVIDERS: '1' })).toBe(false)
-  })
-})
-
-describe('buildGeminiPrompt', () => {
-  it("frames direction as director's notes with a clear preamble", () => {
-    // The shape Google's TTS prompting guide recommends: notes, then an
-    // explicit marker for where the speech begins — an LLM given both in one
-    // blob will sometimes read the direction aloud or paraphrase the words.
-    expect(buildGeminiPrompt({ ...request, phonemeHints: [] })).toBe(
-      `Director's notes:\nMeasured and dry.\n\n` +
-        `Read the following narration aloud, exactly as written:\n${request.text}`,
-    )
-  })
-
-  it('carries per-take direction into the notes, after the standing style', () => {
-    const prompt = buildGeminiPrompt({
-      ...request,
-      phonemeHints: [],
-      direction: 'Slower on the dates.',
-    })
-    expect(prompt).toContain('Measured and dry. Slower on the dates.')
-  })
-
-  it('explains pause markup rather than letting it be read aloud', () => {
-    const prompt = buildGeminiPrompt({
-      ...request,
-      stylePrompt: '',
-      phonemeHints: [],
-      text: 'It was over. [pause long] Nobody said so.',
-    })
-    expect(prompt).toContain('never say the bracketed words aloud')
-    // The markup itself stays in the transcript, where the beat belongs.
-    expect(prompt).toContain('It was over. [pause long] Nobody said so.')
-  })
-
-  it('folds matched pronunciation into the direction', () => {
-    expect(buildGeminiPrompt(request)).toContain('"Wirecard" is pronounced ˈvaɪɐkart (IPA)')
-  })
-
-  it('describes pacing in words, since Gemini has no speed parameter', () => {
-    expect(buildGeminiPrompt({ ...request, phonemeHints: [], pacing: 1.4 })).toContain(
-      'Read briskly.',
-    )
-    expect(buildGeminiPrompt({ ...request, phonemeHints: [], pacing: 0.7 })).toContain(
-      'Read slowly and deliberately.',
-    )
-  })
-
-  it('sends the text alone when there is no direction at all', () => {
-    expect(buildGeminiPrompt({ ...request, stylePrompt: '', phonemeHints: [], pacing: 1 })).toBe(
-      request.text,
-    )
-  })
-})
-
-// ---------------------------------------------------------------------------
 // ElevenLabs
 // ---------------------------------------------------------------------------
 
@@ -259,41 +71,80 @@ describe('elevenlabs TTS adapter', () => {
     expect(result.provider).toBe('elevenlabs')
   })
 
-  it('asks for pcm_24000, so both providers hand back the same kind of bytes', async () => {
+  it('asks for pcm_24000, so the WAV writer above it has one job', async () => {
     const { fetchImpl, seen } = capture(ONE_SECOND)
     await elevenlabsTts.synthesise(request, { apiKey: 'k', fetchImpl })
     expect(seen.url).toContain('output_format=pcm_24000')
   })
 
-  it('sets stability to the figure the spec names', async () => {
+  it('speaks through Eleven v3, whose bracketed tags are the direction channel', async () => {
+    const { fetchImpl, seen } = capture(ONE_SECOND)
+    await elevenlabsTts.synthesise(request, { apiKey: 'k', fetchImpl })
+
+    const body = JSON.parse(String(seen.init?.body)) as { model_id: string }
+    expect(body.model_id).toBe(ELEVENLABS_MODEL)
+    expect(ELEVENLABS_MODEL).toBe('eleven_v3')
+  })
+
+  it('defaults stability to natural, the middle of the three-way switch', async () => {
     const { fetchImpl, seen } = capture(ONE_SECOND)
     await elevenlabsTts.synthesise(request, { apiKey: 'k', fetchImpl })
 
     const body = JSON.parse(String(seen.init?.body)) as { voice_settings: { stability: number } }
-    expect(body.voice_settings.stability).toBe(ELEVENLABS_STABILITY)
-    expect(ELEVENLABS_STABILITY).toBe(0.38)
+    expect(body.voice_settings.stability).toBe(0.5)
   })
 
-  it('marks pronunciation up inline rather than sending the raw text', async () => {
+  it('maps the stability tiers to the exact values v3 accepts — it is a switch, not a dial', async () => {
+    expect(ELEVEN_V3_STABILITY).toEqual({ creative: 0.0, natural: 0.5, robust: 1.0 })
+
+    const { fetchImpl, seen } = capture(ONE_SECOND)
+    await elevenlabsTts.synthesise({ ...request, stability: 'robust' }, { apiKey: 'k', fetchImpl })
+
+    const body = JSON.parse(String(seen.init?.body)) as { voice_settings: { stability: number } }
+    expect(body.voice_settings.stability).toBe(1.0)
+  })
+
+  it('substitutes respellings into the text — the one pronunciation channel v3 has', async () => {
     const { fetchImpl, seen } = capture(ONE_SECOND)
     await elevenlabsTts.synthesise(request, { apiKey: 'k', fetchImpl })
 
     const body = JSON.parse(String(seen.init?.body)) as { text: string }
-    expect(body.text).toContain('<phoneme alphabet="ipa" ph="ˈvaɪɐkart">Wirecard</phoneme>')
+    expect(body.text).toBe('VEER-card filed for insolvency in June 2020.')
   })
 
-  it('passes pacing straight through, since its speed control is centred on 1', async () => {
-    const { fetchImpl, seen } = capture(ONE_SECOND)
-    await elevenlabsTts.synthesise({ ...request, pacing: 1.15 }, { apiKey: 'k', fetchImpl })
+  it('reports an IPA hint as dropped rather than smuggling markup v3 does not take', async () => {
+    const result = await elevenlabsTts.synthesise(
+      { ...request, text: 'Jan Marsalek was already gone.' },
+      { apiKey: 'k', fetchImpl: respondWith(ONE_SECOND) },
+    )
 
-    const body = JSON.parse(String(seen.init?.body)) as { voice_settings: { speed: number } }
-    expect(body.voice_settings.speed).toBe(1.15)
+    // Spec principle 6: degrade, but never quietly.
+    expect(result.droppedPronunciations).toEqual(['Marsalek'])
+  })
+
+  it('leaves narration tags in the text verbatim — they are the direction', async () => {
+    const { fetchImpl, seen } = capture(ONE_SECOND)
+    await elevenlabsTts.synthesise(
+      { ...request, phonemeHints: [], text: '[sighs] It was over. [long pause] Nobody said so.' },
+      { apiKey: 'k', fetchImpl },
+    )
+
+    const body = JSON.parse(String(seen.init?.body)) as { text: string }
+    expect(body.text).toBe('[sighs] It was over. [long pause] Nobody said so.')
   })
 
   it('escapes a voice id into the path', async () => {
     const { fetchImpl, seen } = capture(ONE_SECOND)
     await elevenlabsTts.synthesise({ ...request, voiceId: 'a/b' }, { apiKey: 'k', fetchImpl })
     expect(seen.url).toContain('text-to-speech/a%2Fb')
+  })
+
+  it('sends the key in a header, never in the URL', async () => {
+    const { fetchImpl, seen } = capture(ONE_SECOND)
+    await elevenlabsTts.synthesise(request, { apiKey: 'secret-key', fetchImpl })
+
+    expect(seen.url).not.toContain('secret-key')
+    expect((seen.init?.headers as Record<string, string>)['xi-api-key']).toBe('secret-key')
   })
 
   it('refuses an empty body rather than storing a silent take', async () => {
@@ -303,6 +154,17 @@ describe('elevenlabs TTS adapter', () => {
         fetchImpl: respondWith(Buffer.alloc(0)),
       }),
     ).rejects.toThrow(ValidationError)
+  })
+
+  it('prices from the text, because no TTS vendor returns a charge', async () => {
+    const result = await elevenlabsTts.synthesise(request, {
+      apiKey: 'k',
+      fetchImpl: respondWith(ONE_SECOND),
+    })
+    expect(result.estimatedCostUsd).toBeCloseTo(
+      (request.text.length / 1000) * elevenlabsTts.pricePerKChar,
+      10,
+    )
   })
 
   it('reads the account voices, which are not shipped with the adapter', async () => {
@@ -353,19 +215,26 @@ describe('mock TTS adapter', () => {
     )
   })
 
+  it('stands in for the narrator, so a mock run looks like a live one', async () => {
+    const result = await createMockTTS().synthesise(request, { apiKey: 'k' })
+    expect(result.provider).toBe('elevenlabs')
+  })
+
   it('is deterministic, which is what lets the audio route regenerate a take', () => {
-    const seed = mockTakeSeed('Charon', 'abc123')
+    const seed = mockTakeSeed('v-narrator', 'abc123')
     expect(mockNarrationPcm('The auditors signed it off.', seed)).toEqual(
       mockNarrationPcm('The auditors signed it off.', seed),
     )
   })
 
   it('gives different text and different voices different audio', () => {
-    const a = mockNarrationPcm('The auditors signed it off.', mockTakeSeed('Charon', 'k'))
-    expect(mockNarrationPcm('The auditors did not.', mockTakeSeed('Charon', 'k'))).not.toEqual(a)
-    expect(mockNarrationPcm('The auditors signed it off.', mockTakeSeed('Kore', 'k'))).not.toEqual(
+    const a = mockNarrationPcm('The auditors signed it off.', mockTakeSeed('v-narrator', 'k'))
+    expect(mockNarrationPcm('The auditors did not.', mockTakeSeed('v-narrator', 'k'))).not.toEqual(
       a,
     )
+    expect(
+      mockNarrationPcm('The auditors signed it off.', mockTakeSeed('v-other', 'k')),
+    ).not.toEqual(a)
   })
 
   /**
@@ -384,14 +253,16 @@ describe('mock TTS adapter', () => {
   })
 
   it('is not silent, so a waveform strip has something to draw', () => {
-    const pcm = mockNarrationPcm('One two three four five.', mockTakeSeed('Charon', 'k'))
+    const pcm = mockNarrationPcm('One two three four five.', mockTakeSeed('v-narrator', 'k'))
     let peak = 0
     for (let i = 0; i < pcm.length; i += 2) peak = Math.max(peak, Math.abs(pcm.readInt16LE(i)))
     expect(peak).toBeGreaterThan(1_000)
   })
 
   it('narrates an empty paragraph as silence rather than throwing', () => {
-    expect(mockNarrationPcm('   ', mockTakeSeed('Charon', 'k')).every((b) => b === 0)).toBe(true)
+    expect(mockNarrationPcm('   ', mockTakeSeed('v-narrator', 'k')).every((b) => b === 0)).toBe(
+      true,
+    )
   })
 
   it('records its calls and can fail on demand, for the runner tests', async () => {
@@ -412,33 +283,28 @@ describe('mock TTS adapter', () => {
 })
 
 describe('tts registry', () => {
-  it('swaps both vendors for mocks under MOCK_PROVIDERS=1', async () => {
+  it('swaps the vendor for the mock under MOCK_PROVIDERS=1', async () => {
     const adapters = ttsAdapters({ MOCK_PROVIDERS: '1' })
     const result = await adapters.elevenlabs.synthesise(request, { apiKey: 'k' })
     // The live adapter would have needed a fetch; the mock needs nothing.
     expect(result.audioBuffer.length).toBeGreaterThan(0)
   })
 
-  it('returns the live adapters when the flag is absent', () => {
-    expect(ttsAdapter('gemini', {})).toBe(geminiTts)
+  it('returns the live adapter when the flag is absent', () => {
     expect(ttsAdapter('elevenlabs', {})).toBe(elevenlabsTts)
   })
 
-  it('publishes the live prices even in mock mode, because caps outlive a test run', () => {
-    expect(TTS_PRICES_PER_KCHAR).toEqual({
-      gemini: geminiTts.pricePerKChar,
-      'google-cloud-tts': googleCloudTts.pricePerKChar,
-      elevenlabs: elevenlabsTts.pricePerKChar,
-    })
+  it('publishes the live price even in mock mode, because caps outlive a test run', () => {
+    expect(TTS_PRICES_PER_KCHAR).toEqual({ elevenlabs: elevenlabsTts.pricePerKChar })
   })
 })
 
 describe('ttsPrice', () => {
   it('is per thousand characters', () => {
-    expect(ttsPrice(geminiTts, 'x'.repeat(2_000))).toBeCloseTo(0.03, 10)
+    expect(ttsPrice(elevenlabsTts, 'x'.repeat(2_000))).toBeCloseTo(0.36, 10)
   })
 
   it('is zero for nothing', () => {
-    expect(ttsPrice(geminiTts, '')).toBe(0)
+    expect(ttsPrice(elevenlabsTts, '')).toBe(0)
   })
 })

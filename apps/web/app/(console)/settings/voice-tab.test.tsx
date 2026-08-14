@@ -40,8 +40,8 @@ vi.mock('./voice-actions', () => ({
 const toast = vi.fn()
 vi.mock('@/components/ui/toast', () => ({ useToast: () => ({ toast }) }))
 
-const ACHIRD = 'en-GB-Chirp3-HD-Achird'
-const VINDEMIATRIX = 'en-GB-Chirp3-HD-Vindemiatrix'
+const ACHIRD = 'v-achird'
+const VINDEMIATRIX = 'v-vindemiatrix'
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -49,7 +49,7 @@ beforeEach(() => {
   cachedAuditions.mockResolvedValue({})
   listAuditionVoices.mockResolvedValue([
     {
-      provider: 'google-cloud-tts',
+      provider: 'elevenlabs',
       voices: [
         { id: ACHIRD, label: 'Achird', description: 'en-GB · warm' },
         { id: VINDEMIATRIX, label: 'Vindemiatrix', description: 'en-GB · dry' },
@@ -88,7 +88,7 @@ describe('choosing a narrator', () => {
     expect(within(card('Achird')).getByText('Narrator')).toBeTruthy()
     expect(within(card('Achird')).queryByRole('button', { name: /add voice/i })).toBeNull()
     expect(saveSettings).toHaveBeenCalledWith({
-      tts: { provider: 'google-cloud-tts', voiceId: ACHIRD },
+      tts: { provider: 'elevenlabs', voiceId: ACHIRD },
     })
   })
 
@@ -127,13 +127,27 @@ describe('choosing a narrator', () => {
   })
 })
 
+describe('delivery stability', () => {
+  it('saves the chosen tier and shows it pressed, with no refresh', async () => {
+    await openVoiceTab()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Robust' }))
+
+    expect(saveSettings).toHaveBeenCalledWith({ tts: { stability: 'robust' } })
+    expect(screen.getByRole('button', { name: 'Robust' })).toHaveAttribute('aria-pressed', 'true')
+  })
+
+  it('starts at Natural, the vendor default', async () => {
+    await openVoiceTab()
+    expect(screen.getByRole('button', { name: 'Natural' })).toHaveAttribute('aria-pressed', 'true')
+  })
+})
+
 describe('hearing a voice', () => {
   it('synthesises on the first press and replays without paying again', async () => {
     generateAuditions.mockResolvedValue({
       ok: true,
-      auditions: [
-        { provider: 'google-cloud-tts', voiceId: ACHIRD, label: 'Achird', audio: 'AAAA' },
-      ],
+      auditions: [{ provider: 'elevenlabs', voiceId: ACHIRD, label: 'Achird', audio: 'AAAA' }],
     })
     await openVoiceTab()
 
@@ -147,9 +161,7 @@ describe('hearing a voice', () => {
   it('does not change the narrator', async () => {
     generateAuditions.mockResolvedValue({
       ok: true,
-      auditions: [
-        { provider: 'google-cloud-tts', voiceId: ACHIRD, label: 'Achird', audio: 'AAAA' },
-      ],
+      auditions: [{ provider: 'elevenlabs', voiceId: ACHIRD, label: 'Achird', audio: 'AAAA' }],
     })
     await openVoiceTab()
 

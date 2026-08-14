@@ -1,10 +1,15 @@
 'use client'
 
-// `promptSteered` is safe in a client component: the mock mirrors the live
-// answer, so the env-dependent adapter switch cannot change what it returns.
-import { promptSteered } from '@boom-busters/providers'
+import { TTS_PRICES_PER_KCHAR } from '@boom-busters/providers'
 import type { KnownVoice } from '@boom-busters/providers'
-import type { PhonemeHint, Settings, SettingsPatch, TtsProvider } from '@boom-busters/schemas'
+import { STABILITY_TIERS } from '@boom-busters/schemas'
+import type {
+  PhonemeHint,
+  Settings,
+  SettingsPatch,
+  StabilityTier,
+  TtsProvider,
+} from '@boom-busters/schemas'
 import { AlertTriangle, Check, Loader2, Play, Plus, Trash2 } from 'lucide-react'
 import * as React from 'react'
 import { Button } from '@/components/ui/button'
@@ -70,15 +75,13 @@ interface TabProps {
  *    heard says what it will cost; one you have says "Play again".
  */
 
-/** Chirp 3 HD's per-character rate — shown where the spending happens (§11.1). */
+/** The narrator's per-character rate — shown where the spending happens (§11.1). */
 function estimateAuditionUsd(sample: string): number {
-  return (sample.trim().length / 1000) * 0.03
+  return (sample.trim().length / 1000) * TTS_PRICES_PER_KCHAR.elevenlabs
 }
 
 const PROVIDER_LABELS: Record<TtsProvider, string> = {
-  'google-cloud-tts': 'Google Cloud TTS — Chirp 3 HD',
-  gemini: 'Gemini TTS',
-  elevenlabs: 'ElevenLabs',
+  elevenlabs: 'ElevenLabs — Eleven v3',
 }
 
 type VoiceState = 'idle' | 'loading' | 'ready' | 'failed'
@@ -353,11 +356,37 @@ function AuditionPanel({ settings, commit }: TabProps) {
 // The chosen voice
 // ---------------------------------------------------------------------------
 
-// Which providers take written direction is the adapters' fact
-// (`promptSteered`), not a list to maintain here — a second copy of it is how
-// the field shows for a narrator that ignores it.
+/**
+ * How each stability tier is explained on its button. The tier names and the
+ * three-way shape are the vendor's — Eleven v3 accepts exactly 0.0, 0.5 and
+ * 1.0 — so the UI offers three labelled buttons rather than a slider that
+ * would promise a range the model does not have.
+ */
+const STABILITY_COPY: Record<StabilityTier, { label: string; hint: string }> = {
+  creative: {
+    label: 'Creative',
+    hint: 'Performs hardest and follows expression tags most eagerly. Varies most between takes.',
+  },
+  natural: {
+    label: 'Natural',
+    hint: 'The middle, and the default. Expressive but recognisably the same narrator each take.',
+  },
+  robust: {
+    label: 'Robust',
+    hint: 'Steadiest delivery across paragraphs and takes; responds least to expression tags.',
+  },
+}
 
 function ChosenVoice({ settings, saving, commit }: TabProps) {
+  const stability = settings.tts.stability
+
+  function setStability(tier: StabilityTier): void {
+    if (tier === stability) return
+    const next = structuredClone(settings)
+    next.tts.stability = tier
+    void commit({ tts: { stability: tier } }, next)
+  }
+
   return (
     <Card>
       <CardHeader>
@@ -377,67 +406,41 @@ function ChosenVoice({ settings, saving, commit }: TabProps) {
           ) : (
             <>
               <span className="font-mono">{settings.tts.voiceId}</span> on{' '}
-              <span className="font-mono">{settings.tts.provider}</span>
+              <span className="font-mono">ElevenLabs · Eleven v3</span>
             </>
           )}
         </p>
 
-        {/* Only where it does something. Cloud Text-to-Speech has no prompt
-            steering at all — it is a speech service, not a language model — so
-            on Chirp this field was a control that looked live and changed
-            nothing, which is worse than not offering it. */}
-        {promptSteered(settings.tts.provider) ? (
-          <div className="flex flex-col gap-1">
-            <Label htmlFor="style-prompt">Delivery direction</Label>
-            <Input
-              id="style-prompt"
-              defaultValue={settings.tts.stylePrompt}
-              placeholder="Measured, documentary, no theatrics."
-              disabled={saving}
-              onBlur={(event) => {
-                if (event.target.value === settings.tts.stylePrompt) return
-                const next = structuredClone(settings)
-                next.tts.stylePrompt = event.target.value
-                void commit({ tts: { stylePrompt: event.target.value } }, next)
-              }}
-            />
-            <p className="text-[12px] text-[var(--color-text-muted)]">
-              Sent with every paragraph, as an instruction the model follows. Describe a
-              performance, not a genre — pitch, tempo, register — and it holds the narrator steady
-              across paragraphs. Editing it changes how everything is read, so existing narration is
-              marked “Changed since read” and the next voice run re-reads it.
-            </p>
-          </div>
-        ) : (
-          <p className="text-[12px] text-[var(--color-text-muted)]">
-            This narrator takes no written direction — Cloud Text-to-Speech is a speech service
-            rather than a language model, so there is no prose to steer it with. Delivery is shaped
-            by the voice, the pacing below, the punctuation in the script, and{' '}
-            <span className="font-mono">[pause]</span> markup written into a paragraph — which is
-            what the Voice review screen inserts when you fix the words of a take.
-          </p>
-        )}
-
         <div className="flex flex-col gap-1">
-          <Label htmlFor="pacing">Pacing ({settings.tts.pacing.toFixed(2)}×)</Label>
-          <input
-            id="pacing"
-            type="range"
-            min={0.25}
-            max={2}
-            step={0.05}
-            defaultValue={settings.tts.pacing}
-            disabled={saving}
-            onMouseUp={(event) => {
-              const pacing = Number(event.currentTarget.value)
-              if (pacing === settings.tts.pacing) return
-              const next = structuredClone(settings)
-              next.tts.pacing = pacing
-              void commit({ tts: { pacing } }, next)
-            }}
-            className="w-full"
-          />
+          <Label htmlFor="stability-creative">Delivery stability</Label>
+          <div className="flex flex-wrap gap-2" role="group" aria-label="Delivery stability">
+            {STABILITY_TIERS.map((tier) => (
+              <Button
+                key={tier}
+                id={`stability-${tier}`}
+                variant={stability === tier ? 'primary' : 'outline'}
+                aria-pressed={stability === tier}
+                disabled={saving}
+                onClick={() => setStability(tier)}
+              >
+                {STABILITY_COPY[tier].label}
+              </Button>
+            ))}
+          </div>
+          <p className="text-[12px] text-[var(--color-text-muted)]">
+            {STABILITY_COPY[stability].hint} Changing it changes how every paragraph is read, so
+            existing narration is marked “Changed since read” and the next voice run re-reads it.
+          </p>
         </div>
+
+        <p className="text-[12px] text-[var(--color-text-muted)]">
+          Everything else about the delivery is directed <em>in the script</em>: anything in square
+          brackets is a stage direction the narrator acts on but never reads aloud —{' '}
+          <span className="font-mono">[pause]</span>, <span className="font-mono">[whispers]</span>,{' '}
+          <span className="font-mono">[sighs]</span>, or your own words like{' '}
+          <span className="font-mono">[grave, measured]</span>. The Script Studio and the Voice
+          review’s “Fix the words” form insert them as buttons; punctuation steers pace.
+        </p>
 
         {settings.tts.voiceId === '' ? null : (
           <p className="text-[12px] text-[var(--color-text-muted)]">
@@ -559,7 +562,7 @@ function PhonemeHints({ settings, saving, commit }: TabProps) {
               id="hint-value"
               value={hint}
               onChange={(event) => setHint(event.target.value)}
-              placeholder="/ˈvaɪɐkart/ or VEER-card"
+              placeholder="VEER-card"
               className="max-w-[260px]"
             />
           </div>
@@ -591,11 +594,11 @@ function PhonemeHints({ settings, saving, commit }: TabProps) {
         ) : null}
 
         <p className="text-[12px] text-[var(--color-text-muted)]">
-          IPA between slashes is sent to the narrator as written; anything else is treated as a
-          respelling and read in place of the word. A pronunciation is checked with the voice when
-          you add it, because each voice validates against the phoneme set of its own language — so
-          a transcription can be correct IPA and still be refused, usually because it uses a sound
-          that language does not have. A respelling always works.
+          Write it the way it sounds — a respelling like{' '}
+          <span className="font-mono">VEER-card</span> is read in place of the word wherever it
+          appears. Eleven v3 takes no phonetic alphabet, so IPA between slashes is kept but never
+          reaches the narrator; the check on Add says so at the moment you type it rather than three
+          chapters into a run.
         </p>
       </CardContent>
     </Card>

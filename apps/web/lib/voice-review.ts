@@ -1,7 +1,6 @@
 import { getSettings, latestScriptParagraphSources, listVoiceTakes } from '@boom-busters/db'
 import type { Database, VoiceTakeRow } from '@boom-busters/db'
-import { narrationUnitKind, narrationUnits, rereadCanDiffer } from '@boom-busters/providers'
-import type { NarrationUnitKind } from '@boom-busters/providers'
+import { narrationUnits } from '@boom-busters/providers'
 import { voiceKeyFacts } from '@/lib/voice-identity'
 import {
   takeIdempotencyKey,
@@ -68,7 +67,7 @@ export interface ParagraphRow {
    *
    * Decided by the take fingerprint, not by guessing at causes: the current
    * take's stored key is compared against the key this paragraph would be
-   * claimed under right now — same text, same voice, same pacing, same
+   * claimed under right now — same text, same voice, same stability, same
    * applicable pronunciations. Any of those moving after the take was bought
    * makes the row stale, which is precisely the set of changes that alter how
    * a paragraph is spoken. The audio still plays; it is just of the old
@@ -94,22 +93,8 @@ export interface VoiceReviewModel {
   blockedReason: string | undefined
   /** Takes whose paragraph no longer exists — the script was edited after narration. */
   orphanedTakes: number
-  /** How many rows are `stale` — audio of an older text, voice, pacing or pronunciation. */
+  /** How many rows are `stale` — audio of an older text, voice, stability or pronunciation. */
   staleParagraphs: number
-  /**
-   * What one row is: a paragraph, or — on a prompt-steered narrator — a scene.
-   * Decides the noun and the row marker, nothing structural: rows are units
-   * either way.
-   */
-  unit: NarrationUnitKind
-  /**
-   * Whether this narrator can read the same words differently a second time.
-   *
-   * Resolved on the server because the answer is a property of the configured
-   * provider, and carried in the model so the review screen can offer "try
-   * again" only where pressing it is not a purchase of what was just rejected.
-   */
-  rereadCanDiffer: boolean
 }
 
 /** Group takes by the paragraph they belong to, newest take number first. */
@@ -132,13 +117,10 @@ export async function voiceReviewModel(db: Database, projectId: string): Promise
 
   let expectedParagraphs = 0
   const seen = new Set<string>()
-  const unit = narrationUnitKind(settings.tts.provider)
 
   const chapters: ChapterGroup[] = sources.chapters.map((chapter) => {
-    // The same units the runner would buy: paragraphs, or scenes on a
-    // prompt-steered narrator. Rows are units, whichever kind they are.
+    // The same units the runner would buy, so a row is a purchasable thing.
     const units = narrationUnits({
-      provider: settings.tts.provider,
       chapters: [{ id: chapter.id, title: chapter.title, contentMd: chapter.contentMd }],
     })
 
@@ -203,12 +185,12 @@ export async function voiceReviewModel(db: Database, projectId: string): Promise
    * "generated", the gate opened, and the change never reached your ears.
    */
   const blockedReason =
-    voiceApprovalBlockedReason(live, expectedParagraphs, unit) ??
+    voiceApprovalBlockedReason(live, expectedParagraphs) ??
     (staleParagraphs > 0
-      ? `${staleParagraphs} ${unit}${staleParagraphs === 1 ? ' has' : 's have'} changed since ` +
-        'being read — the words, the voice, its instructions, the pacing or a pronunciation ' +
-        'moved on, so the audio is of the old version. Re-run the voice stage; only the changed ' +
-        `${unit}s are re-read.`
+      ? `${staleParagraphs} paragraph${staleParagraphs === 1 ? ' has' : 's have'} changed since ` +
+        'being read — the words, the voice, its stability or a pronunciation moved on, so the ' +
+        'audio is of the old version. Re-run the voice stage; only the changed paragraphs are ' +
+        're-read.'
       : undefined)
 
   return {
@@ -219,8 +201,6 @@ export async function voiceReviewModel(db: Database, projectId: string): Promise
     blockedReason,
     orphanedTakes: takes.length - live.length,
     staleParagraphs,
-    unit,
-    rereadCanDiffer: rereadCanDiffer(settings.tts.provider),
   }
 }
 

@@ -175,31 +175,59 @@ export function splitParagraphs(contentMd: string): string[] {
 // ---------------------------------------------------------------------------
 
 /**
- * The pause tags Chirp 3 HD understands, written into the script itself.
+ * Narration tags, written into the script itself.
  *
- * Google's Chirp 3 HD input has a `markup` field alongside `text`, carrying
- * `[pause]`, `[pause short]` and `[pause long]`. They are *intent* rather than
- * duration — the model fits the length to the sentence around it, and may
- * occasionally ignore one — which is why they are offered as three named
- * strengths instead of a millisecond box that would promise precision the
- * vendor does not give.
+ * Eleven v3's direction channel is *inline*: anything in square brackets is
+ * read as a stage direction rather than spoken — `[pause]`, `[whispers]`,
+ * `[sighs]`, or free-form direction like `[grave, measured]`. The two lists
+ * here are the curated buttons the script studio and the voice review offer;
+ * they are not a whitelist, and anything bracketed is treated as markup.
  *
- * They live in `chapters.contentMd` because the pause is a property of how the
- * line is written, and because a re-read has to be able to reproduce it. That
- * makes them the one thing in the script that is *not* words, so everything
- * downstream of narration — captions, alignment, Shorts segments, metadata —
- * must read the script through `stripNarrationMarkup`. A caption that says
- * "[pause long]" would be this decision's failure mode.
+ * Tags are *intent* rather than guarantee — the model fits the delivery to
+ * the sentence around it, and occasionally ignores one — which is why pauses
+ * are three named strengths instead of a millisecond box that would promise
+ * precision the vendor does not give.
+ *
+ * They live in `chapters.contentMd` because the delivery is a property of how
+ * the line is written, and because a re-read has to be able to reproduce it.
+ * That makes them the one thing in the script that is *not* words, so
+ * everything downstream of narration — captions, alignment, Shorts segments,
+ * metadata — must read the script through `stripNarrationMarkup`. A caption
+ * that says "[long pause]" would be this decision's failure mode.
  */
-export const PAUSE_TAGS = ['[pause short]', '[pause]', '[pause long]'] as const
+export const PAUSE_TAGS = ['[short pause]', '[pause]', '[long pause]'] as const
 export type PauseTag = (typeof PAUSE_TAGS)[number]
 
-const PAUSE_MARKUP = /\[pause(?:\s+(?:short|long))?\]/gi
+/**
+ * The expression tags worth a button, chosen for a finance documentary's
+ * register — this narrator sighs at an audit and pauses on a number; it does
+ * not giggle. The full space is anything Eleven v3 will interpret, which is
+ * any bracketed phrase; these are the ones reached for while listening to a
+ * take rather than composing an essay about one.
+ */
+export const EXPRESSION_TAGS = [
+  '[whispers]',
+  '[sighs]',
+  '[exhales]',
+  '[curious]',
+  '[excited]',
+  '[laughs]',
+] as const
+export type ExpressionTag = (typeof EXPRESSION_TAGS)[number]
 
-/** Whether a paragraph carries anything the plain `text` input would mangle. */
-export function hasPauseMarkup(text: string): boolean {
-  PAUSE_MARKUP.lastIndex = 0
-  return PAUSE_MARKUP.test(text)
+/**
+ * Any bracketed run on one line, bounded so a genuine parenthetical use of
+ * square brackets across lines cannot be swallowed. Matching everything
+ * bracketed rather than a whitelist mirrors the vendor exactly: v3 treats any
+ * such run as direction and never speaks it, so the words-only view must drop
+ * exactly the same set.
+ */
+const NARRATION_TAG_MARKUP = /\[[^\][\r\n]{1,60}\]/g
+
+/** Whether a paragraph carries narration tags — direction that is not words. */
+export function hasNarrationTags(text: string): boolean {
+  NARRATION_TAG_MARKUP.lastIndex = 0
+  return NARRATION_TAG_MARKUP.test(text)
 }
 
 /**
@@ -211,7 +239,7 @@ export function hasPauseMarkup(text: string): boolean {
  */
 export function stripNarrationMarkup(text: string): string {
   return text
-    .replace(PAUSE_MARKUP, ' ')
+    .replace(NARRATION_TAG_MARKUP, ' ')
     .replace(/\s+([,.;:!?])/g, '$1')
     .replace(/[^\S\r\n]{2,}/g, ' ')
     .replace(/[^\S\r\n]+$/gm, '')

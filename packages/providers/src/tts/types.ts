@@ -1,46 +1,45 @@
-import type { PhonemeHint, TtsProvider } from '@boom-busters/schemas'
+import type { PhonemeHint, StabilityTier, TtsProvider } from '@boom-busters/schemas'
 
 /**
- * The provider-independent shape of a narration call (build spec section 6).
+ * The shape of a narration call (build spec section 6), sized to the one
+ * vendor that remains.
  *
- * Two deliberate differences from the spec's sketch, both about where a
+ * Until 2026-08-14 this interface abstracted over three vendors, and carried
+ * the capability flags (`rereadCanDiffer`, `promptSteered`) and per-vendor
+ * fields (`stylePrompt`, `pacing`, `direction`) that let the app ask which
+ * narrator it was talking to. The Google narrators are gone — Chirp could not
+ * vary a reading, Gemini could not hold one steady — and with them went the
+ * flags: ElevenLabs samples, so a second take always differs; nothing is
+ * prompt-steered, so direction lives *in the text* as audio tags rather than
+ * in a side channel.
+ *
+ * Two deliberate carry-overs from the multi-vendor era, both about where a
  * decision belongs:
  *
- * **Adapters return raw PCM, not a container.** The spec's `TTSResult` says
- * `audioBuffer`, and this is it — 16-bit signed little-endian mono samples,
- * exactly as both vendors will emit them when asked. Wrapping those into a WAV
- * is done once, above the adapters, so that one piece of code decides the
- * container, computes the duration from the byte count, and derives the
- * waveform. Two adapters each writing their own header is two chances to
- * disagree about how long a paragraph is.
+ * **Adapters return raw PCM, not a container** — 16-bit signed little-endian
+ * mono samples. Wrapping into a WAV is done once, above the adapter, so one
+ * piece of code decides the container, computes the duration from the byte
+ * count, and derives the waveform.
  *
- * **`estimatedCostUsd` is priced from the text, not from the response.** No TTS
- * vendor returns a per-request charge, so the honest word is "estimated" and
- * the ledger settles on characters synthesised — which is what both vendors
- * bill on anyway.
+ * **`estimatedCostUsd` is priced from the text, not from the response.** No
+ * TTS vendor returns a per-request charge, so the honest word is "estimated"
+ * and the ledger settles on characters synthesised.
  */
 
 export interface TTSRequest {
+  /**
+   * The narration text, verbatim from the script — including narration tags.
+   * On Eleven v3 anything bracketed is direction, never spoken, so the tags
+   * ride along rather than being stripped or translated.
+   */
   text: string
   voiceId: string
-  /** Free-text direction: "measured, documentary, no theatrics". */
-  stylePrompt?: string
   /** Terms this narrator cannot be trusted to say (spec section 6). */
   phonemeHints: readonly PhonemeHint[]
-  /** `hash(projectId, chapterId, paragraphIndex, textHash, voiceId)`. */
+  /** `hash(projectId, chapterId, paragraphIndex, textHash, voiceId, …)`. */
   idempotencyKey: string
-  /** `settings.tts.pacing`, 0.25–2. Adapters without a speed control ignore it. */
-  pacing?: number
-  /**
-   * Direction for *this take only*: "slower on the dates", "less cheerful".
-   *
-   * Distinct from `stylePrompt`, which is the channel's standing voice. This
-   * one comes from a retake form or a flag note and applies to one purchase.
-   * Only a prompt-steered narrator (Gemini) can honour it; the parameterised
-   * vendors have nowhere to put a sentence of English and ignore it — which is
-   * why the UI only offers a direction field where `rereadCanDiffer`.
-   */
-  direction?: string
+  /** `settings.tts.stability` — Eleven v3's three-way delivery control. */
+  stability?: StabilityTier
 }
 
 export interface TTSResult {
@@ -53,12 +52,14 @@ export interface TTSResult {
   provider: TtsProvider
   voiceId: string
   /**
-   * Pronunciation hints the vendor refused, and which were therefore dropped.
+   * Pronunciation hints the vendor cannot honour, and which were therefore
+   * dropped.
    *
-   * The take is still good — the words were spoken, just with the narrator's
-   * own idea of how to say them. Reported rather than swallowed because spec
-   * principle 6 allows degrading and forbids doing it quietly: something
-   * auto-substituted must be visibly flagged.
+   * On Eleven v3 that is every IPA hint: the model takes no phoneme markup,
+   * only respellings substituted into the text. The take is still good — the
+   * words were spoken, just with the narrator's own idea of how to say them.
+   * Reported rather than swallowed because spec principle 6 allows degrading
+   * and forbids doing it quietly.
    */
   droppedPronunciations?: string[]
 }
@@ -66,8 +67,8 @@ export interface TTSResult {
 /**
  * A voice as the audition panel needs to show it.
  *
- * Referenced, never stored (spec section 10.1): the app persists a provider and
- * a voice id, and the vendor owns the audio model behind it.
+ * Referenced, never stored (spec section 10.1): the app persists a voice id,
+ * and the vendor owns the audio model behind it.
  */
 export interface KnownVoice {
   id: string
@@ -103,40 +104,8 @@ export interface TTSProvider {
    * the duration arithmetic honest.
    */
   readonly sampleRate: number
-  /**
-   * Whether reading the same text again can produce a different performance.
-   *
-   * A property of the vendor, so it belongs beside its price rather than being
-   * guessed at by the UI. It decides whether "try again" is a button worth
-   * offering: on a provider that cannot vary, pressing it buys audio identical
-   * to what was just rejected, and the honest screen is one that says so and
-   * points at the words instead.
-   *
-   * True for ElevenLabs, which samples at `stability: 0.38` with no seed, and
-   * for Gemini, which is an LLM taking a written style prompt. False for Cloud
-   * Text-to-Speech, which exposes no sampling control — no temperature, no
-   * seed, no style field — so the same request returns the same reading.
-   *
-   * Not the same as "cannot be directed". Chirp 3 HD takes pause markup and
-   * custom pronunciations and responds to punctuation; all of those change the
-   * *input*, which is why they belong to the re-read and not to this flag.
-   */
-  readonly rereadCanDiffer: boolean
-  /**
-   * Whether the standing narrator instructions (`stylePrompt`) reach this
-   * vendor at all. True only for Gemini, whose entire direction channel is the
-   * prompt; Cloud TTS sends plain text and a speaking rate, and ElevenLabs
-   * sends text and voice settings — for both, the instructions never leave the
-   * app, so editing them cannot change the audio and must not re-buy it. This
-   * flag is what folds the instructions into a take's identity where they are
-   * real and keeps them out of it where they are decoration.
-   */
-  readonly promptSteered: boolean
   synthesise(request: TTSRequest, options: TTSCallOptions): Promise<TTSResult>
-  /**
-   * The voices on offer. Gemini's list is static and ships with the adapter;
-   * ElevenLabs' is whatever the account holds, so it is a call.
-   */
+  /** The voices on offer — whatever the account holds, so it is a call. */
   voices(options: VoiceListOptions): Promise<KnownVoice[]>
   /** The cheapest call that proves a key works, for Settings → Connections. */
   verifyKey(apiKey: string, options?: Omit<VoiceListOptions, 'apiKey'>): Promise<void>

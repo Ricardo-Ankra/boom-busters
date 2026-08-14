@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto'
 import { z } from 'zod'
 import { matchedHints } from './settings'
-import type { PhonemeHint } from './settings'
+import type { PhonemeHint, StabilityTier } from './settings'
 
 /**
  * The voice stage's shared vocabulary (build spec sections 5, 6 and 7).
@@ -75,34 +75,20 @@ export function takeIdempotencyKey(input: {
    */
   pronunciations?: readonly PhonemeHint[]
   /**
-   * `settings.tts.pacing` — the global speaking-rate slider (0.25–2).
+   * `settings.tts.stability` — Eleven v3's three-way delivery control.
    *
-   * In the key for the same reason the pronunciations are: it changes how a
-   * paragraph is *spoken* without changing a character of it. Left out, moving
-   * the slider was a silent no-op — every fingerprint still matched, a re-run
-   * handed back all the old audio at the old speed, and no button existed to
-   * force the difference. Folded in only when it is off the default 1×, so
-   * every take bought before this field existed keeps the key it was bought
-   * under; moving the slider re-reads the whole script, which is what a global
-   * speed change honestly costs.
+   * In the key for the reason the pacing slider was, when there was one: it
+   * changes how a paragraph is *spoken* without changing a character of it,
+   * and anything with that property left out of the key makes changing it a
+   * silent no-op — the fingerprints all still match and a re-run hands back
+   * the old audio. (This project shipped that bug twice, once for
+   * pronunciations and once for pacing, before the rule was learned.) Folded
+   * in only when it is off the default `natural`, so every take bought before
+   * this field existed keeps the key it was bought under.
    */
-  pacing?: number
-  /**
-   * The standing narrator instructions (`settings.tts.stylePrompt`) — but only
-   * when the configured provider is prompt-steered; the caller gates that
-   * (`voiceKeyFacts`), because this function does not know providers.
-   *
-   * On Gemini the instructions are the direction channel: editing them changes
-   * every reading, so leaving them out made "I rewrote the narrator brief and
-   * re-ran" a documented no-op — 37 paragraphs reused in sixteen seconds. On
-   * Cloud TTS and ElevenLabs the instructions never leave the app, so folding
-   * them in there would re-buy byte-identical audio. Absent when empty, so
-   * projects that never wrote instructions keep every key they have.
-   */
-  stylePrompt?: string
+  stability?: StabilityTier
 }): string {
   const applicable = matchedHints(input.text, input.pronunciations ?? [])
-  const style = input.stylePrompt?.trim() ?? ''
 
   return createHash('sha256')
     .update(
@@ -127,12 +113,11 @@ export function takeIdempotencyKey(input: {
                 )
                 .digest('hex'),
             ]),
-        // The slider value verbatim, prefixed so it can never read as one of
-        // the hex hashes around it. Absent at the default — see above.
-        ...(input.pacing === undefined || input.pacing === 1 ? [] : [`pacing=${input.pacing}`]),
-        // Hashed (instructions run to paragraphs) and prefixed so a style-only
-        // key can never collide with a hints-only one at the same position.
-        ...(style === '' ? [] : [`style=${createHash('sha256').update(style).digest('hex')}`]),
+        // The tier name verbatim, prefixed so it can never read as one of the
+        // hex hashes around it. Absent at the default — see above.
+        ...(input.stability === undefined || input.stability === 'natural'
+          ? []
+          : [`stability=${input.stability}`]),
         // A NUL, written as an escape because it was previously a literal control
         // character sitting invisibly in this file — source that reads `join('')`
         // and is not. The separator itself is load-bearing and must not change:
@@ -228,12 +213,6 @@ export function voiceCoverage(takes: readonly TakeRef[]): VoiceCoverage {
 export function voiceApprovalBlockedReason(
   takes: readonly TakeRef[],
   expectedParagraphs: number,
-  /**
-   * The noun a row goes by: paragraphs everywhere, scenes on a prompt-steered
-   * narrator whose unit of synthesis is the scene. Wording only — the counting
-   * is unit-agnostic, since a unit is whatever the takes were addressed by.
-   */
-  unit: 'paragraph' | 'scene' = 'paragraph',
 ): string | undefined {
   if (expectedParagraphs === 0) return 'This script has no paragraphs to narrate.'
 
@@ -241,11 +220,11 @@ export function voiceApprovalBlockedReason(
 
   if (coverage.paragraphs < expectedParagraphs) {
     const missing = expectedParagraphs - coverage.paragraphs
-    return `${missing} of ${expectedParagraphs} ${unit}s have no audio yet.`
+    return `${missing} of ${expectedParagraphs} paragraphs have no audio yet.`
   }
 
   if (coverage.pending > 0) {
-    return `${coverage.pending} ${unit}${coverage.pending === 1 ? ' is' : 's are'} still being synthesised.`
+    return `${coverage.pending} paragraph${coverage.pending === 1 ? ' is' : 's are'} still being synthesised.`
   }
 
   if (coverage.flagged > 0) {
