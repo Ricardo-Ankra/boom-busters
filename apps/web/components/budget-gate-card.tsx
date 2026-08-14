@@ -52,9 +52,7 @@ export function BudgetGateCard({ gate }: { gate: OpenBudgetGate }) {
     <Card className="border-[var(--color-warning)]">
       <CardHeader>
         <CardTitle>Over budget — the run is parked</CardTitle>
-        <CardDescription>
-          {`${gate.provider} · ${gate.operation}`}
-        </CardDescription>
+        <CardDescription>{`${gate.provider} · ${gate.operation}`}</CardDescription>
       </CardHeader>
 
       <CardContent className="flex flex-col gap-4">

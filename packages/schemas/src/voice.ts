@@ -132,14 +132,12 @@ export function takeIdempotencyKey(input: {
         ...(input.pacing === undefined || input.pacing === 1 ? [] : [`pacing=${input.pacing}`]),
         // Hashed (instructions run to paragraphs) and prefixed so a style-only
         // key can never collide with a hints-only one at the same position.
-        ...(style === ''
-          ? []
-          : [`style=${createHash('sha256').update(style).digest('hex')}`]),
-      // A NUL, written as an escape because it was previously a literal control
-      // character sitting invisibly in this file — source that reads `join('')`
-      // and is not. The separator itself is load-bearing and must not change:
-      // it keeps ("ab", "c") from hashing the same as ("a", "bc"), and every
-      // take already in the database was keyed with it.
+        ...(style === '' ? [] : [`style=${createHash('sha256').update(style).digest('hex')}`]),
+        // A NUL, written as an escape because it was previously a literal control
+        // character sitting invisibly in this file — source that reads `join('')`
+        // and is not. The separator itself is load-bearing and must not change:
+        // it keeps ("ab", "c") from hashing the same as ("a", "bc"), and every
+        // take already in the database was keyed with it.
       ].join('\u0000'),
     )
     .digest('hex')

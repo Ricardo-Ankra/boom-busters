@@ -133,5 +133,4 @@ describe('every provider is guarded', () => {
       expect(estimateTtsUsd({ provider, characters: 1000 })).toBeGreaterThan(0)
     }
   })
-
 })

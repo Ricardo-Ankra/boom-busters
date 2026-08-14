@@ -621,7 +621,7 @@ trying to choose a voice.
 
 53. **Choosing a voice locked it, so the second press failed.** Spec §11.3 says
     "choosing writes and locks the Brand Kit voice", and taken literally that
-    makes the *first* press a trap: press one voice, and every other voice
+    makes the _first_ press a trap: press one voice, and every other voice
     answers "Could not choose that voice — the narration voice is locked", with
     the unlock ritual in a section further down the page. Auditioning is
     inherently comparative. Choosing now selects and nothing more; **Lock this
@@ -652,7 +652,7 @@ trying to choose a voice.
     what does shape the delivery (the voice, the pacing, the punctuation).
 
 56. **The sections were in the wrong order.** Narrator → pronunciation →
-    audition put the panel that *chooses* a voice below two panels describing
+    audition put the panel that _chooses_ a voice below two panels describing
     one you had not chosen yet, and asked for pronunciation hints for a narrator
     that did not exist. It reads audition → narrator → pronunciation now, which
     is the order the work happens in.
@@ -660,12 +660,12 @@ trying to choose a voice.
 ### M4.5 — the lock, deleted (2026-08-13)
 
 Decision 53 kept the lock and made it deliberate. That was still one concept too
-many, and the human said so plainly: *"the selecting and unselecting of a voice
-and locking in a voice is just so overcomplicated and unnecessary."* They are
+many, and the human said so plainly: _"the selecting and unselecting of a voice
+and locking in a voice is just so overcomplicated and unnecessary."_ They are
 right, and the reasoning in 53 should have carried all the way.
 
 57. **There is no voice lock, in the schema or the UI.** Spec §4 lists
-    `locked: boolean` on `settings.tts`, §11.3 has choosing write *and* lock it,
+    `locked: boolean` on `settings.tts`, §11.3 has choosing write _and_ lock it,
     and §10 has the unlock ritual with `CHANGE VOICE` typed out. All of it is
     gone: `VoiceConfigSchema` has no `locked` field (Zod strips it from any row
     that still carries one), `lockVoice`/`unlockVoice` are deleted, and
@@ -675,12 +675,12 @@ right, and the reasoning in 53 should have carried all the way.
     time it fired, it fired on the person it belonged to — and it fired on the
     screen whose entire purpose is trying voices against each other. The risk it
     named is real (swap the narrator mid-channel and every earlier video sounds
-    like a different show) but the mitigation for that is *saying so*, which the
+    like a different show) but the mitigation for that is _saying so_, which the
     narrator card now does, next to a plain statement of which voice is current.
     A modal ritual is what you build when other people can reach the setting.
 
 58. **Play and Add voice are separate buttons on each card.** The card used to
-    *be* the button, so listening and choosing were the same press and you could
+    _be_ the button, so listening and choosing were the same press and you could
     not hear a voice without adopting it. Now the card is a card: name and
     description on the left, **+ Add voice** in the top-right corner, and a full
     width **Play** below it whose label carries the price before the press
@@ -697,7 +697,7 @@ right, and the reasoning in 53 should have carried all the way.
     was reloaded. `SettingsForm` holds the settings in `useState`, seeded once
     from `initialSettings`; refreshing re-renders the server component, which
     hands down a new prop that the already-mounted state ignores. Every control
-    on the screen that *did* update instantly was going through the optimistic
+    on the screen that _did_ update instantly was going through the optimistic
     `commit` from M1, and the voice was the one that had grown its own path.
 
     `chooseVoice` is deleted. There is now one way to write a setting from this
@@ -712,7 +712,7 @@ right, and the reasoning in 53 should have carried all the way.
 
 ### M4.6 — narration that was paid for and thrown away (2026-08-13)
 
-Reported as *"the audio generated is not speech, it's just random sounds"* on
+Reported as _"the audio generated is not speech, it's just random sounds"_ on
 project `0PRJECT0000000000000000001`. It was not a codec, a sample rate, or the
 X-SAMPA work. The audio was real and it no longer exists.
 
@@ -729,12 +729,12 @@ whatever PCM the adapter returned: the stored peaks vary like speech
 stored against 21,000 ms for the mock).
 
 60. **`mock://` meant two different things, and the two halves of the app read
-    different ones.** The runner chose the key by *bucket*:
+    different ones.** The runner chose the key by _bucket_:
 
         const key = storageConfigured() ? (await putObject(...)).key
                                         : mockVoiceTakeKey(take.id)
 
-    while the audio route reads it by *provider* — any `mock://` key is a mock
+    while the audio route reads it by _provider_ — any `mock://` key is a mock
     take, so it regenerates the bytes from `mockNarrationPcm`. With live
     providers and no `R2_*` configured the two disagree, and every paragraph was
     synthesised by Google, charged, discarded unstored, and played back as the
@@ -765,8 +765,8 @@ stored against 21,000 ms for the mock).
 
 ### M4.7 — the flag that bought nothing, and the pause control I said did not exist (2026-08-13)
 
-Started from a question — *"if I flag a paragraph and suggest changes, how will
-the voice regenerate?"* — whose honest answer was: it won't.
+Started from a question — _"if I flag a paragraph and suggest changes, how will
+the voice regenerate?"_ — whose honest answer was: it won't.
 
 63. **Flagging is a verdict and no longer spends.** Spec §11.3 has flagging
     "enqueue the retake immediately", and it did: `flagVoiceTake` sent
@@ -774,7 +774,7 @@ the voice regenerate?"* — whose honest answer was: it won't.
     same voice at the same rate, and the note explaining what was wrong was
     stored on the row and never sent anywhere. On Chirp that is identical audio
     by construction. Every flag cost about a cent to reproduce the take just
-    rejected, and the form's own copy — *"the note steers the retake"* — was a
+    rejected, and the form's own copy — _"the note steers the retake"_ — was a
     promise the code never kept.
 
     What flagging is actually for survives untouched: `voiceApprovalBlockedReason`
@@ -797,8 +797,8 @@ the voice regenerate?"* — whose honest answer was: it won't.
     the next stage re-run asked for take 1 of that key, found nothing, and
     bought words it was already holding. Every stage re-run after any retake
     paid for the retaken paragraph again. It now asks the question the caller
-    means: *is the current take of this paragraph already this text in this
-    voice?* An explicitly named `takeNumber` still forces a purchase — that is
+    means: _is the current take of this paragraph already this text in this
+    voice?_ An explicitly named `takeNumber` still forces a purchase — that is
     how a deliberate second attempt at identical input is requested, and nothing
     but "read it again" should name one.
 
@@ -808,7 +808,7 @@ the voice regenerate?"* — whose honest answer was: it won't.
     chapter. Splitting a paragraph in two is refused: it would shift every later
     index and orphan the takes addressed by them (spec §7's stability contract).
 
-71. **The repair is not behind the flag.** Shipped that way for an hour and it
+67. **The repair is not behind the flag.** Shipped that way for an hour and it
     was wrong: it made the human flag a take, type a note, and press again
     before they could change a word — three steps to fix a comma. The
     justification would have been that the flag holds the gate shut while the
@@ -821,7 +821,7 @@ the voice regenerate?"* — whose honest answer was: it won't.
     to. Flagging is now purely triage: mark six things during a listen-through
     without stopping, deal with them after.
 
-72. **A pronunciation is part of a take's identity.** Found by trying to answer
+68. **A pronunciation is part of a take's identity.** Found by trying to answer
     "how do I make the narrator say Jan the English way?" and discovering the
     answer was: you cannot. `takeIdempotencyKey` hashed
     `(project, chapter, paragraph, text, voice)` — the pronunciation list was
@@ -844,7 +844,7 @@ the voice regenerate?"* — whose honest answer was: it won't.
     copies of that regex would eventually mean a key claiming pronunciations the
     request never carried.
 
-73. **A NUL byte was sitting in `voice.ts`, invisible.** The separator in
+69. **A NUL byte was sitting in `voice.ts`, invisible.** The separator in
     `takeIdempotencyKey`'s `join()` was a literal control character, so the
     source read `join('')` and was not — which is why `grep` had been reporting
     the file as binary. It is written `'\u0000'` now. The separator itself is
@@ -869,7 +869,7 @@ one structural correction they diagnosed themselves.
 
 75. **Budgets are one number.** Spec §4's per-provider cap matrix and §11.3's
     kill switch are removed: `budgets` is now `{ monthlyCeilingUsd,
-    approvedOverage? }`, checked by the same guard under one advisory lock
+approvedOverage? }`, checked by the same guard under one advisory lock
     against `monthTotalUsd`. A ceiling of zero refuses everything, which is all
     the kill switch ever did as a separate concept. Chosen over "remove
     everything" deliberately: the ceiling is the only automatic brake between a
@@ -910,7 +910,7 @@ one structural correction they diagnosed themselves.
 The human asked whether re-running the voice stage re-reads only changed
 paragraphs (yes), then found the hole: changing the pacing slider changed
 nothing. Same class of bug as the pronunciations (decision 72) — pacing alters
-how a paragraph is *spoken* without changing a character of it — and I missed
+how a paragraph is _spoken_ without changing a character of it — and I missed
 it when I fixed that one.
 
 79. **Pacing is part of a take's identity.** `takeIdempotencyKey` folds
@@ -944,7 +944,7 @@ adapter.
 
 81. **Rate limits are weather, not failure.** Gemini's preview TTS models carry
     single-digit RPM caps and rolling spend windows, so a sixty-paragraph
-    fan-out *will* meet 429s in normal operation — and the runner was counting
+    fan-out _will_ meet 429s in normal operation — and the runner was counting
     each one as a permanently failed paragraph, killing the run on the 15%
     tolerance. `withRateLimitPatience` now wraps every synthesis: retry only
     `RateLimitError`, honour the vendor's retry-after, back off 5/15/30s when
@@ -1016,7 +1016,7 @@ that changes how a paragraph is spoken without changing a character of it.
 
 ### M4.13 — the scene becomes Gemini's narration unit (2026-08-14)
 
-The human reported Google's tier caps requests per *day* (about 200 on their
+The human reported Google's tier caps requests per _day_ (about 200 on their
 tier), proposed temperature 0, and asked whether synthesis should go scene by
 scene instead of paragraph by paragraph. Verified against Google's docs before
 touching anything: **temperature is a placebo here** — "the API ignores the
@@ -1070,13 +1070,13 @@ had made confidently, in code comments and to their face, in this same session.
     `markup` field alongside `text` carrying `[pause]`, `[pause short]` and
     `[pause long]`. I had told the human the only levers were words, punctuation
     and the global pacing slider — twice — on the strength of an adapter comment
-    reading *"Plain text, never SSML: the Chirp families do not accept it"*,
+    reading _"Plain text, never SSML: the Chirp families do not accept it"_,
     which I wrote from assumption and never checked. SSML is in fact supported
     too, at Preview.
 
     The adapter now sends `markup` when a paragraph carries a tag and `text`
     when it does not — routing matters, because `[pause long]` sent as `text`
-    would be *read aloud*. The re-read form has the three tags as buttons.
+    would be _read aloud_. The re-read form has the three tags as buttons.
 
     SSML is still not used, and now by decision rather than by error:
     `customPronunciations` and `markup` cover narration, and they are documented
@@ -1099,7 +1099,7 @@ had made confidently, in code comments and to their face, in this same session.
     the shape of the error is the lesson.
 
     That test used `/ˈvaɪɐkart/`. It carries `ɐ`, which is not an en-GB phoneme.
-    Google validates the *phonemes* against the voice's language and returns the
+    Google validates the _phonemes_ against the voice's language and returns the
     same "custom pronunciation phrases are invalid" either way, so a bad phoneme
     is indistinguishable from a bad encoding unless you hold one of them still.
     I changed both at once, saw the X-SAMPA arm pass, and concluded the encoding
@@ -1121,7 +1121,7 @@ had made confidently, in code comments and to their face, in this same session.
     correct transcription into a quieter wrong one.
 
     The real constraint is unchanged and now stated correctly everywhere: a
-    pronunciation must use sounds the *voice's language* has. `checkPronunciation`
+    pronunciation must use sounds the _voice's language_ has. `checkPronunciation`
     catching that at the moment of typing is the thing that matters, and it
     already did.
 

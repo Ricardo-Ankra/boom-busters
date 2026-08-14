@@ -1,6 +1,13 @@
 'use server'
 
-import { editChapter, flagTake, getChapter, getSettings, getVoiceTake, unflagTake } from '@boom-busters/db'
+import {
+  editChapter,
+  flagTake,
+  getChapter,
+  getSettings,
+  getVoiceTake,
+  unflagTake,
+} from '@boom-busters/db'
 import { narrationUnitKind, narrationUnits, rereadCanDiffer } from '@boom-busters/providers'
 import {
   UlidSchema,
@@ -61,7 +68,10 @@ export async function flagVoiceTake(takeId: string, note: string): Promise<Actio
 
   const trimmed = note.trim()
   if (trimmed === '') {
-    return { ok: false, error: 'Say what was wrong with it, so the row still means something later.' }
+    return {
+      ok: false,
+      error: 'Say what was wrong with it, so the row still means something later.',
+    }
   }
 
   const take = await getVoiceTake(db, takeId)

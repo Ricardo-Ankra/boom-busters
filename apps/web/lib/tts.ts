@@ -2,7 +2,12 @@ import 'server-only'
 
 import { estimateTtsUsd, withCost } from '@boom-busters/cost'
 import { getSettings, ttsCredential } from '@boom-busters/db'
-import { encodeWav, ttsAdapter, waveformPeaks, withRateLimitPatience } from '@boom-busters/providers'
+import {
+  encodeWav,
+  ttsAdapter,
+  waveformPeaks,
+  withRateLimitPatience,
+} from '@boom-busters/providers'
 import type { TTSRequest, TTSResult } from '@boom-busters/providers'
 import { TTS_CREDENTIAL_PROVIDER, ValidationError } from '@boom-busters/schemas'
 import type { Settings, TtsProvider } from '@boom-busters/schemas'

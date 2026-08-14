@@ -179,7 +179,8 @@ describe('SelfCheckSchema', () => {
 describe('splitParagraphs and replaceParagraph', () => {
   // A chapter with the two things that break naive rejoining: a soft wrap
   // inside a paragraph, and an irregular blank-line separator.
-  const chapter = 'The auditors signed it off\nfor eighteen years.\n\n  Nobody asked where the cash was.\n\nThen June came.'
+  const chapter =
+    'The auditors signed it off\nfor eighteen years.\n\n  Nobody asked where the cash was.\n\nThen June came.'
 
   it('folds soft wraps into the paragraph, so narration does not pause at them', () => {
     expect(splitParagraphs(chapter)).toEqual([
@@ -264,9 +265,7 @@ describe('narration markup', () => {
   })
 
   it('leaves text with no markup exactly as it was', () => {
-    expect(stripNarrationMarkup('The auditors signed it off.')).toBe(
-      'The auditors signed it off.',
-    )
+    expect(stripNarrationMarkup('The auditors signed it off.')).toBe('The auditors signed it off.')
   })
 })
 

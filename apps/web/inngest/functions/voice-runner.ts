@@ -171,75 +171,72 @@ export const voiceRunner = inngest.createFunction(
     for (const batch of chunk(setup.jobs, ttsConcurrency(setup.provider))) {
       const results = await Promise.all(
         batch.map((job) =>
-          step.run(
-            `tts-${job.chapterId}-${job.unitIndex}`,
-            async (): Promise<ParagraphOutcome> => {
-              const claimed = await claimTake(db, {
+          step.run(`tts-${job.chapterId}-${job.unitIndex}`, async (): Promise<ParagraphOutcome> => {
+            const claimed = await claimTake(db, {
+              projectId,
+              chapterId: job.chapterId,
+              paragraphIndex: job.unitIndex,
+              idempotencyKey: job.idempotencyKey,
+              provider: setup.provider,
+              voiceId: setup.voiceId,
+              builtFromScriptVersion: setup.scriptVersion,
+            })
+
+            // Already bought, at this text, in this voice. Nothing to do.
+            if (claimed.kind === 'existing') return { ok: true, reused: true }
+
+            try {
+              const narration = await synthesise({
+                text: job.text,
+                // The synthesis's own identity, not the paragraph's: a retake
+                // is a different purchase of the same paragraph.
+                idempotencyKey: `${job.idempotencyKey}#${claimed.take.takeNumber}`,
                 projectId,
-                chapterId: job.chapterId,
-                paragraphIndex: job.unitIndex,
-                idempotencyKey: job.idempotencyKey,
-                provider: setup.provider,
-                voiceId: setup.voiceId,
-                builtFromScriptVersion: setup.scriptVersion,
               })
 
-              // Already bought, at this text, in this voice. Nothing to do.
-              if (claimed.kind === 'existing') return { ok: true, reused: true }
+              const key =
+                takeStorage() === 'r2'
+                  ? (
+                      await putObject(
+                        voiceTakeKey({
+                          projectId,
+                          chapterId: job.chapterId,
+                          paragraphIndex: job.unitIndex,
+                          takeId: claimed.take.id,
+                        }),
+                        narration.wav,
+                        'audio/wav',
+                      )
+                    ).key
+                  : // The mock made these bytes, so the audio route re-derives
+                    // them rather than storing them. See `MOCK_KEY_PREFIX` —
+                    // and `takeStorage` for why this is not a fallback for a
+                    // missing bucket.
+                    mockVoiceTakeKey(claimed.take.id)
 
-              try {
-                const narration = await synthesise({
-                  text: job.text,
-                  // The synthesis's own identity, not the paragraph's: a retake
-                  // is a different purchase of the same paragraph.
-                  idempotencyKey: `${job.idempotencyKey}#${claimed.take.takeNumber}`,
-                  projectId,
-                })
+              await storeTakeAudio(db, claimed.take.id, {
+                r2Key: key,
+                durationMs: narration.durationMs,
+                costUsd: narration.costUsd,
+                waveform: narration.waveform,
+              })
 
-                const key =
-                  takeStorage() === 'r2'
-                    ? (
-                        await putObject(
-                          voiceTakeKey({
-                            projectId,
-                            chapterId: job.chapterId,
-                            paragraphIndex: job.unitIndex,
-                            takeId: claimed.take.id,
-                          }),
-                          narration.wav,
-                          'audio/wav',
-                        )
-                      ).key
-                    : // The mock made these bytes, so the audio route re-derives
-                      // them rather than storing them. See `MOCK_KEY_PREFIX` —
-                      // and `takeStorage` for why this is not a fallback for a
-                      // missing bucket.
-                      mockVoiceTakeKey(claimed.take.id)
-
-                await storeTakeAudio(db, claimed.take.id, {
-                  r2Key: key,
-                  durationMs: narration.durationMs,
-                  costUsd: narration.costUsd,
-                  waveform: narration.waveform,
-                })
-
-                return { ok: true, reused: false }
-              } catch (error) {
-                if (error instanceof BudgetExceededError) {
-                  return { ok: false, gate: budgetGateData(error) }
-                }
-                /**
-                 * Swallowed on purpose, and only here. The fan-out policy needs
-                 * per-item outcomes to count against the 15% tolerance, and a
-                 * thrown step would take the whole batch down with it — including
-                 * paragraphs that succeeded and were paid for. The take stays
-                 * `pending`, which is what the coverage bar and the gate blocker
-                 * read.
-                 */
-                return { ok: false, error: String(serialiseError(error).message ?? 'unknown') }
+              return { ok: true, reused: false }
+            } catch (error) {
+              if (error instanceof BudgetExceededError) {
+                return { ok: false, gate: budgetGateData(error) }
               }
-            },
-          ),
+              /**
+               * Swallowed on purpose, and only here. The fan-out policy needs
+               * per-item outcomes to count against the 15% tolerance, and a
+               * thrown step would take the whole batch down with it — including
+               * paragraphs that succeeded and were paid for. The take stays
+               * `pending`, which is what the coverage bar and the gate blocker
+               * read.
+               */
+              return { ok: false, error: String(serialiseError(error).message ?? 'unknown') }
+            }
+          }),
         ),
       )
 

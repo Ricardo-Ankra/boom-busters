@@ -127,7 +127,7 @@ export const DEFERRED_GROUPS = {
   inngest: ['INNGEST_EVENT_KEY', 'INNGEST_SIGNING_KEY'],
   /** YouTube Data + Analytics OAuth client. M7. */
   youtube: ['YOUTUBE_CLIENT_ID', 'YOUTUBE_CLIENT_SECRET'],
-    /** Resend, for the optional email copy of a notification. M2. */
+  /** Resend, for the optional email copy of a notification. M2. */
   email: ['RESEND_API_KEY', 'NOTIFY_FROM_EMAIL'],
 } as const satisfies Record<string, readonly string[]>
 

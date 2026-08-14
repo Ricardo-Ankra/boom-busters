@@ -403,9 +403,9 @@ function ChosenVoice({ settings, saving, commit }: TabProps) {
             />
             <p className="text-[12px] text-[var(--color-text-muted)]">
               Sent with every paragraph, as an instruction the model follows. Describe a
-              performance, not a genre — pitch, tempo, register — and it holds the narrator
-              steady across paragraphs. Editing it changes how everything is read, so existing
-              narration is marked “Changed since read” and the next voice run re-reads it.
+              performance, not a genre — pitch, tempo, register — and it holds the narrator steady
+              across paragraphs. Editing it changes how everything is read, so existing narration is
+              marked “Changed since read” and the next voice run re-reads it.
             </p>
           </div>
         ) : (

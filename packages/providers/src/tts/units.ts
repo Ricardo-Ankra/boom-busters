@@ -72,15 +72,13 @@ export function narrationUnits(input: {
     const paragraphs = splitParagraphs(chapter.contentMd)
 
     if (kind === 'paragraph') {
-      return paragraphs.map(
-        (text, index): NarrationUnit => ({
-          chapterId: chapter.id,
-          chapterTitle: chapter.title,
-          unitIndex: index,
-          text,
-          paragraphSpan: [index, index + 1],
-        }),
-      )
+      return paragraphs.map((text, index): NarrationUnit => ({
+        chapterId: chapter.id,
+        chapterTitle: chapter.title,
+        unitIndex: index,
+        text,
+        paragraphSpan: [index, index + 1],
+      }))
     }
 
     // Scene: greedily pack whole paragraphs up to the byte budget. Usually a

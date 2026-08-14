@@ -182,10 +182,7 @@ export type PhonemeHint = z.infer<typeof PhonemeHintSchema>
  * "S&P 500" and "Sarbanes-Oxley" are both real hint terms in this subject
  * matter — so the boundaries are asserted against letters and digits directly.
  */
-export function matchedHints(
-  text: string,
-  hints: readonly PhonemeHint[],
-): readonly PhonemeHint[] {
+export function matchedHints(text: string, hints: readonly PhonemeHint[]): readonly PhonemeHint[] {
   return hints.filter((hint) => {
     const term = hint.term.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
     return new RegExp(`(?<![\\p{L}\\p{N}])${term}(?![\\p{L}\\p{N}])`, 'giu').test(text)

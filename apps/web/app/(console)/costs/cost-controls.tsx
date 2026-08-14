@@ -37,9 +37,7 @@ export function CeilingEditor({ ceilingUsd }: { ceilingUsd: number }) {
       if (result.ok) {
         toast({
           title: `Ceiling set to $${parsed.toFixed(2)}/month`,
-          ...(parsed === 0
-            ? { description: 'Every priced call now parks on a budget gate.' }
-            : {}),
+          ...(parsed === 0 ? { description: 'Every priced call now parks on a budget gate.' } : {}),
         })
         router.refresh()
       } else {

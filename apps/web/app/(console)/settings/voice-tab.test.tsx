@@ -68,7 +68,13 @@ function card(label: string): HTMLElement {
 }
 
 async function openVoiceTab(): Promise<void> {
-  render(<SettingsForm initialSettings={structuredClone(DEFAULT_SETTINGS)} credentials={[]} mockProviders />)
+  render(
+    <SettingsForm
+      initialSettings={structuredClone(DEFAULT_SETTINGS)}
+      credentials={[]}
+      mockProviders
+    />,
+  )
   await userEvent.click(screen.getByRole('tab', { name: 'Voice' }))
   await screen.findByText('Achird')
 }
@@ -125,7 +131,9 @@ describe('hearing a voice', () => {
   it('synthesises on the first press and replays without paying again', async () => {
     generateAuditions.mockResolvedValue({
       ok: true,
-      auditions: [{ provider: 'google-cloud-tts', voiceId: ACHIRD, label: 'Achird', audio: 'AAAA' }],
+      auditions: [
+        { provider: 'google-cloud-tts', voiceId: ACHIRD, label: 'Achird', audio: 'AAAA' },
+      ],
     })
     await openVoiceTab()
 
@@ -139,7 +147,9 @@ describe('hearing a voice', () => {
   it('does not change the narrator', async () => {
     generateAuditions.mockResolvedValue({
       ok: true,
-      auditions: [{ provider: 'google-cloud-tts', voiceId: ACHIRD, label: 'Achird', audio: 'AAAA' }],
+      auditions: [
+        { provider: 'google-cloud-tts', voiceId: ACHIRD, label: 'Achird', audio: 'AAAA' },
+      ],
     })
     await openVoiceTab()
 

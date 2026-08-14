@@ -362,7 +362,10 @@ function RereadForm({
         paragraph.
       </p>
       <div className="flex flex-wrap gap-2">
-        <Button type="submit" disabled={busy || draft.trim() === '' || draft.trim() === text.trim()}>
+        <Button
+          type="submit"
+          disabled={busy || draft.trim() === '' || draft.trim() === text.trim()}
+        >
           {busy ? <Loader2 className="size-4 animate-spin" aria-hidden /> : null}
           {busy ? 'Queueing…' : 'Save and re-read'}
         </Button>

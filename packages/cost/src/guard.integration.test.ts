@@ -191,7 +191,12 @@ describeDb('cost guard', () => {
   it("counts every provider's spend against the one ceiling", async () => {
     const settings = settingsWith({ budgets: { monthlyCeilingUsd: 10 } })
     await recordCost(db, { provider: 'google', operation: 'a', actualUsd: 6, occurredAt: NOW })
-    await recordCost(db, { provider: 'elevenlabs', operation: 'b', actualUsd: 3.5, occurredAt: NOW })
+    await recordCost(db, {
+      provider: 'elevenlabs',
+      operation: 'b',
+      actualUsd: 3.5,
+      occurredAt: NOW,
+    })
 
     await expect(
       withCost(
