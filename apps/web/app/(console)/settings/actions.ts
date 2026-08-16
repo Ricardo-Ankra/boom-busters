@@ -6,8 +6,15 @@ import {
   setCredential,
   ttsCredential,
   updateSettings,
+  visualCredentials,
 } from '@boom-busters/db'
-import { llmAdapters, mockProvidersEnabled, ttsAdapter } from '@boom-busters/providers'
+import {
+  falImageGen,
+  llmAdapters,
+  mockProvidersEnabled,
+  stockAdapter,
+  ttsAdapter,
+} from '@boom-busters/providers'
 import {
   LlmProviderSchema,
   ProviderSchema,
@@ -122,6 +129,17 @@ async function verifiableKey(
       verify: (apiKey) => adapter.verifyKey(apiKey),
       apiKey: await ttsCredential(db, provider, env.SECRETS_ENCRYPTION_KEY),
     }
+  }
+
+  // The visuals-stage providers (M5). Stock verifies through a one-result
+  // search; fal through its auth-before-method check — none of them spend.
+  if (provider === 'pexels' || provider === 'pixabay' || provider === 'fal') {
+    const keys = await visualCredentials(db, env.SECRETS_ENCRYPTION_KEY)
+    const verify =
+      provider === 'fal'
+        ? (apiKey: string) => (mockProvidersEnabled() ? Promise.resolve() : falImageGen.verifyKey(apiKey))
+        : (apiKey: string) => stockAdapter(provider).verifyKey(apiKey)
+    return { verify, apiKey: keys[provider] }
   }
 
   return undefined
