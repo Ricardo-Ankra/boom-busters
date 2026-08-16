@@ -36,7 +36,7 @@ export interface ScriptClaim {
  * having to reproduce a 26-character ULID correctly — which it will not do
  * reliably, and a mistyped id silently drops a claim reference.
  */
-function claimList(claims: readonly ScriptClaim[]): string {
+export function claimList(claims: readonly ScriptClaim[]): string {
   if (claims.length === 0) return 'No claims survived review. Do not assert any specific facts.'
 
   return claims

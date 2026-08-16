@@ -5,6 +5,7 @@ import {
   ShotBriefSchema,
   SlotCandidateSchema,
   mapClaimRefs,
+  resolvePlannedBrief,
   visualsApprovalBlockedReason,
   visualsCoverage,
 } from './visuals'
@@ -155,6 +156,47 @@ describe('mapClaimRefs', () => {
     expect(mapClaimRefs([3], ids)).toBeNull()
     expect(mapClaimRefs([0], ids)).toBeNull()
     expect(mapClaimRefs([1, 99], ids)).toBeNull()
+  })
+})
+
+describe('resolvePlannedBrief', () => {
+  const ids = [CLAIM_A, CLAIM_B]
+
+  it('passes non-chart briefs through untouched', () => {
+    const stock = {
+      type: 'stock' as const,
+      ...common,
+      query: 'empty office dusk',
+      rejectionCriteria: [],
+    }
+    expect(resolvePlannedBrief(stock, ids)).toEqual(stock)
+  })
+
+  it('swaps chart claim numbers for ids, or refuses', () => {
+    const chart = {
+      type: 'chart' as const,
+      ...common,
+      chartKind: 'line' as const,
+      series: [
+        {
+          label: 'Share price',
+          unit: 'EUR',
+          points: [
+            { x: '2020-06-17', y: 104.5 },
+            { x: '2020-06-26', y: 1.28 },
+          ],
+        },
+      ],
+      dataRefs: [2, 1],
+      takeaway: 'The nine-day collapse.',
+      reveal: 'draw-on' as const,
+    }
+
+    const resolved = resolvePlannedBrief(chart, ids)
+    expect(resolved).not.toBeNull()
+    if (resolved?.type === 'chart') expect(resolved.dataRefs).toEqual([CLAIM_B, CLAIM_A])
+
+    expect(resolvePlannedBrief({ ...chart, dataRefs: [7] }, ids)).toBeNull()
   })
 })
 

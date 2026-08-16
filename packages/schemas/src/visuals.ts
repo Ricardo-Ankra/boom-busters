@@ -262,20 +262,40 @@ export const STILL_GENERATIONS = 2
  *    caller. Models do not reproduce 26-character ULIDs reliably, and a
  *    mistyped id would silently orphan the chart's sourcing.
  */
+/**
+ * The wire shape a chart brief takes inside the model's JSON: identical to
+ * `ChartBriefSchema` except `dataRefs` are 1-based claim numbers into the
+ * prompt's numbered claim list. `resolvePlannedBrief` converts.
+ */
+export const PlannedChartBriefSchema = ChartBriefSchema.omit({ dataRefs: true }).extend({
+  dataRefs: z
+    .array(z.number().int().min(1))
+    .min(1, 'a chart must cite the claims its numbers come from'),
+})
+export type PlannedChartBrief = z.infer<typeof PlannedChartBriefSchema>
+
+export const PlannedBriefSchema = z.discriminatedUnion('type', [
+  StockBriefSchema,
+  ArchivalBriefSchema,
+  StillBriefSchema,
+  PlannedChartBriefSchema,
+  MapBriefSchema,
+  HeroBriefSchema,
+])
+export type PlannedBrief = z.infer<typeof PlannedBriefSchema>
+
 export const PlannedSlotSchema = z.object({
   paragraphIndex: z.number().int().min(0),
   /** On-screen seconds the model intends; clamped to the paragraph by the runner. */
   seconds: z.number().positive(),
-  brief: ShotBriefSchema,
+  brief: PlannedBriefSchema,
 })
 export type PlannedSlot = z.infer<typeof PlannedSlotSchema>
 
-/**
- * The wire shape ChartBrief takes inside the model's JSON: same fields, but
- * `dataRefs` are claim numbers. `mapClaimRefs` converts. Everything else in
- * the union passes through untouched.
- */
-export const PlannedChartRefsSchema = z.array(z.number().int().min(1)).min(1)
+export const ShotListOutputSchema = z.object({
+  slots: z.array(PlannedSlotSchema).min(1, 'a chapter with narration needs at least one slot'),
+})
+export type ShotListOutput = z.infer<typeof ShotListOutputSchema>
 
 /**
  * Swap a planned chart's claim numbers for real claim IDs. Returns `null`
@@ -294,6 +314,22 @@ export function mapClaimRefs(
     mapped.push(id)
   }
   return [...new Set(mapped)]
+}
+
+/**
+ * A planned brief made storable: charts get real claim IDs, everything else
+ * passes through untouched. `null` means the chart cited a claim that does
+ * not exist — the slot cannot be stored as a chart, and the caller decides
+ * whether that is a placeholder or a re-ask.
+ */
+export function resolvePlannedBrief(
+  brief: PlannedBrief,
+  claimIds: readonly string[],
+): ShotBrief | null {
+  if (brief.type !== 'chart') return brief
+  const mapped = mapClaimRefs(brief.dataRefs, claimIds)
+  if (!mapped) return null
+  return { ...brief, dataRefs: mapped }
 }
 
 // ---------------------------------------------------------------------------
