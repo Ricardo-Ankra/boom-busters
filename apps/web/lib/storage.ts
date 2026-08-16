@@ -141,6 +141,15 @@ export function auditionKey(input: { provider: string; voiceId: string; hash: st
   return `${R2_PREFIX}/auditions/${input.provider}/${encodeURIComponent(input.voiceId)}/${input.hash}.wav`
 }
 
+/**
+ * Where a generated still lives. Keyed by content hash rather than by slot:
+ * `assets.contentHash` dedupes identical bytes, and a key that named the slot
+ * would give the same frame two homes the first time two briefs converged.
+ */
+export function stillKey(input: { projectId: string; contentHash: string }): string {
+  return `${R2_PREFIX}/stills/${input.projectId}/${input.contentHash}.png`
+}
+
 export async function putObject(
   key: string,
   body: Buffer,

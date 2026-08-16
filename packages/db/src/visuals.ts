@@ -151,7 +151,7 @@ export async function chooseSlotCandidate(
     const { chosen: _chosen, ...rest } = candidate
     return candidate.id === candidateId ? { ...rest, chosen: true } : rest
   })
-  const chosenAssetId = updated.find((candidate) => candidate.chosen)?.assetId ?? null
+  const chosenAssetId = candidates.find((candidate) => candidate.id === candidateId)?.assetId ?? null
 
   const [row] = await db
     .update(shotSlots)

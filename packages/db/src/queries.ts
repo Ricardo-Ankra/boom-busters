@@ -252,6 +252,37 @@ export async function ttsCredential(
   }
 }
 
+/** The keyed visual-asset providers — Wikimedia Commons needs none. */
+export type VisualKeyProvider = 'pexels' | 'pixabay' | 'fal'
+
+/**
+ * The decrypted keys the visuals stage may need, on the same terms as
+ * `llmCredentials`: server-side only, and a key that cannot be decrypted is
+ * omitted so the stage pre-flight can name the provider that needs re-entry.
+ */
+export async function visualCredentials(
+  db: Database,
+  encryptionKey: string,
+): Promise<Partial<Record<VisualKeyProvider, string>>> {
+  const rows = await db
+    .select({
+      provider: providerCredentials.provider,
+      encryptedKey: providerCredentials.encryptedKey,
+    })
+    .from(providerCredentials)
+    .where(inArray(providerCredentials.provider, ['pexels', 'pixabay', 'fal']))
+
+  const keys: Partial<Record<VisualKeyProvider, string>> = {}
+  for (const row of rows) {
+    try {
+      keys[row.provider as VisualKeyProvider] = decryptSecret(row.encryptedKey, encryptionKey)
+    } catch {
+      // Left absent on purpose — see `llmCredentials`.
+    }
+  }
+  return keys
+}
+
 /** Stamp the outcome of Settings -> Connections' Verify button. */
 export async function recordVerifyResult(
   db: Database,
