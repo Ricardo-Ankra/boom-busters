@@ -317,7 +317,9 @@ export const visualsRunner = inngest.createFunction(
       return { projectId, outcome: 'gate-timeout' as const }
     }
 
-    await step.run('close-gate', () => closeReviewGate(ctx, { stage: 'visuals', nextStage: 'assembly' }))
+    await step.run('close-gate', () =>
+      closeReviewGate(ctx, { stage: 'visuals', nextStage: 'assembly' }),
+    )
 
     return { projectId, outcome: 'approved' as const, ...summary }
   },

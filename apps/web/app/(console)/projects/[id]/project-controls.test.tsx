@@ -151,4 +151,37 @@ describe('GateActionBar', () => {
     expect(screen.getByRole('button', { name: 'Approve' })).toBeDisabled()
     expect(screen.getByText(/verify or quarantine each one/)).toBeInTheDocument()
   })
+
+  /**
+   * Spec 11.3: placeholders can be approved past "only via explicit 'approve
+   * with N placeholders' wording". The wording is the button's own label, and
+   * the count it names is the count the server verifies — a board that
+   * drifted after render is a refused approval, not a silent wave-through.
+   */
+  it('approves visuals placeholders only through the explicit wording', async () => {
+    render(
+      <GateActionBar
+        projectId="01J0000000000000000000000A"
+        stage="visuals"
+        context="12 slots"
+        placeholders={2}
+      />,
+    )
+
+    expect(screen.queryByRole('button', { name: 'Approve' })).not.toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Approve with 2 placeholders' }))
+    expect(approveGate).toHaveBeenCalledWith('01J0000000000000000000000A', 'visuals', {
+      acknowledgePlaceholders: 2,
+    })
+  })
+
+  it('keeps the plain Approve on a clean visuals board', async () => {
+    render(
+      <GateActionBar projectId="01J0000000000000000000000A" stage="visuals" context="12 slots" />,
+    )
+
+    expect(screen.getByText(/Changes happen on the cards/i)).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Approve' }))
+    expect(approveGate).toHaveBeenCalledWith('01J0000000000000000000000A', 'visuals', undefined)
+  })
 })

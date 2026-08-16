@@ -205,7 +205,12 @@ describe('the visuals gate', () => {
 
   it('counts coverage', () => {
     expect(
-      visualsCoverage([slot('resolved'), slot('resolved'), slot('placeholder'), slot('unresolved')]),
+      visualsCoverage([
+        slot('resolved'),
+        slot('resolved'),
+        slot('placeholder'),
+        slot('unresolved'),
+      ]),
     ).toEqual({ slots: 4, resolved: 2, placeholder: 1, unresolved: 1 })
   })
 

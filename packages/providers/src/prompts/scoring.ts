@@ -36,7 +36,9 @@ function criteria(brief: ScorableBrief): string {
   return (
     `The image MUST show: ${brief.mustShow}. If the metadata does not indicate it, ` +
     `score at most 40.` +
-    (brief.eraRange ? `\nAcceptable era: ${brief.eraRange}. Wrong-era results score at most 20.` : '')
+    (brief.eraRange
+      ? `\nAcceptable era: ${brief.eraRange}. Wrong-era results score at most 20.`
+      : '')
   )
 }
 

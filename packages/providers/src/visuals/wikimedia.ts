@@ -124,9 +124,6 @@ export const wikimediaStock: StockProvider = {
   // Keyless — "verifying" it is just proving Commons answers, which the
   // Connections screen never asks for. Kept because the interface promises it.
   async verifyKey(_apiKey, options = {}) {
-    await this.search(
-      { query: 'test', brief: '', rejectionCriteria: [], count: 1 },
-      options,
-    )
+    await this.search({ query: 'test', brief: '', rejectionCriteria: [], count: 1 }, options)
   },
 }

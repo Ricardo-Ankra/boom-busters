@@ -90,43 +90,41 @@ export const pexelsStock: StockProvider = {
       call(`/videos/search?query=${term}&per_page=${videoCount}`, apiKey, options),
     ])
 
-    const photos = PhotoResponseSchema.parse(photosRaw).photos.map(
-      (photo): SlotCandidate => ({
-        id: String(photo.id),
-        provider: 'pexels',
-        kind: 'image',
-        sourceUrl: photo.src.large2x,
-        pageUrl: photo.url,
-        thumbUrl: photo.src.medium,
-        width: photo.width,
-        height: photo.height,
-        licence: 'Pexels License',
-        ...(photo.photographer ? { attributionText: `Photo by ${photo.photographer} on Pexels` } : {}),
-        ...(photo.alt ? { summary: photo.alt } : {}),
-      }),
-    )
+    const photos = PhotoResponseSchema.parse(photosRaw).photos.map((photo): SlotCandidate => ({
+      id: String(photo.id),
+      provider: 'pexels',
+      kind: 'image',
+      sourceUrl: photo.src.large2x,
+      pageUrl: photo.url,
+      thumbUrl: photo.src.medium,
+      width: photo.width,
+      height: photo.height,
+      licence: 'Pexels License',
+      ...(photo.photographer
+        ? { attributionText: `Photo by ${photo.photographer} on Pexels` }
+        : {}),
+      ...(photo.alt ? { summary: photo.alt } : {}),
+    }))
 
-    const videos = VideoResponseSchema.parse(videosRaw).videos.flatMap(
-      (video): SlotCandidate[] => {
-        const file = bestVideoFile(video.video_files)
-        if (!file) return []
-        return [
-          {
-            id: String(video.id),
-            provider: 'pexels',
-            kind: 'video',
-            sourceUrl: file.link,
-            pageUrl: video.url,
-            thumbUrl: video.image,
-            width: file.width ?? video.width,
-            height: file.height ?? video.height,
-            durationMs: Math.round(video.duration * 1000),
-            licence: 'Pexels License',
-            ...(video.user?.name ? { attributionText: `Video by ${video.user.name} on Pexels` } : {}),
-          },
-        ]
-      },
-    )
+    const videos = VideoResponseSchema.parse(videosRaw).videos.flatMap((video): SlotCandidate[] => {
+      const file = bestVideoFile(video.video_files)
+      if (!file) return []
+      return [
+        {
+          id: String(video.id),
+          provider: 'pexels',
+          kind: 'video',
+          sourceUrl: file.link,
+          pageUrl: video.url,
+          thumbUrl: video.image,
+          width: file.width ?? video.width,
+          height: file.height ?? video.height,
+          durationMs: Math.round(video.duration * 1000),
+          licence: 'Pexels License',
+          ...(video.user?.name ? { attributionText: `Video by ${video.user.name} on Pexels` } : {}),
+        },
+      ]
+    })
 
     return [...videos, ...photos]
   },

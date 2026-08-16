@@ -87,20 +87,18 @@ export const pixabayStock: StockProvider = {
 
     const images = ImageResponseSchema.parse(imagesRaw)
       .hits.slice(0, photoCount)
-      .map(
-        (hit): SlotCandidate => ({
-          id: String(hit.id),
-          provider: 'pixabay',
-          kind: 'image',
-          sourceUrl: hit.largeImageURL,
-          pageUrl: hit.pageURL,
-          thumbUrl: hit.webformatURL,
-          width: hit.imageWidth,
-          height: hit.imageHeight,
-          licence: 'Pixabay Content License',
-          ...(hit.tags ? { summary: hit.tags } : {}),
-        }),
-      )
+      .map((hit): SlotCandidate => ({
+        id: String(hit.id),
+        provider: 'pixabay',
+        kind: 'image',
+        sourceUrl: hit.largeImageURL,
+        pageUrl: hit.pageURL,
+        thumbUrl: hit.webformatURL,
+        width: hit.imageWidth,
+        height: hit.imageHeight,
+        licence: 'Pixabay Content License',
+        ...(hit.tags ? { summary: hit.tags } : {}),
+      }))
 
     const videos = VideoResponseSchema.parse(videosRaw)
       .hits.slice(0, videoCount)

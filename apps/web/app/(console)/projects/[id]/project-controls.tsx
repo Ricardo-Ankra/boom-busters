@@ -185,6 +185,7 @@ export function GateActionBar({
   stage,
   context,
   blockedReason,
+  placeholders = 0,
   handOffTimeoutMs = 8_000,
 }: {
   projectId: string
@@ -193,6 +194,14 @@ export function GateActionBar({
   context: string
   /** When set, `Approve` is disabled and this is shown next to it. */
   blockedReason?: string | undefined
+  /**
+   * Visuals gate only: unresolved-into-placeholder slots the approval would
+   * wave past. Spec 11.3 — "approve allowed with placeholders only via
+   * explicit 'approve with N placeholders' wording", so a non-zero count
+   * changes the button's own label, and the action verifies the count the
+   * button actually named.
+   */
+  placeholders?: number
   /** Injectable so the expiry can be tested without waiting out half a minute. */
   handOffTimeoutMs?: number
 }) {
@@ -317,7 +326,9 @@ export function GateActionBar({
             <span className="text-[13px] text-[var(--color-text-muted)]">
               {stage === 'script'
                 ? 'Changes happen in the Studio below — edits are saved as you make them.'
-                : 'Changes happen on the rows below — fix, retake or flag a paragraph.'}
+                : stage === 'visuals'
+                  ? 'Changes happen on the cards below — swap a candidate, edit a brief, or upload your own.'
+                  : 'Changes happen on the rows below — fix, retake or flag a paragraph.'}
             </span>
           )}
 
@@ -329,12 +340,25 @@ export function GateActionBar({
               setBusy('approve')
               try {
                 const handed = await act(
-                  () => approveGate(projectId, stage),
+                  () =>
+                    approveGate(
+                      projectId,
+                      stage,
+                      // The count the button's label named — the action
+                      // refuses if the board has drifted since this render.
+                      stage === 'visuals' && placeholders > 0
+                        ? { acknowledgePlaceholders: placeholders }
+                        : undefined,
+                    ),
                   stage === 'dossier'
                     ? 'Approved — the script drafts now, and parks only if the self-check finds problems'
                     : stage === 'script'
                       ? 'Approved — narration is being synthesised; review the audio when it lands'
-                      : 'Approved — moving on',
+                      : stage === 'voice'
+                        ? 'Approved — the visual board is being planned; review it when it lands'
+                        : stage === 'visuals'
+                          ? 'Approved — the board is locked; assembly arrives with M6'
+                          : 'Approved — moving on',
                 )
                 if (handed) setHandedOff(stage)
               } finally {
@@ -342,7 +366,9 @@ export function GateActionBar({
               }
             }}
           >
-            Approve
+            {stage === 'visuals' && placeholders > 0
+              ? `Approve with ${placeholders} placeholder${placeholders === 1 ? '' : 's'}`
+              : 'Approve'}
           </Button>
 
           {blockedReason ? (

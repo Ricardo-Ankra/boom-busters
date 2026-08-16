@@ -3,11 +3,7 @@ import 'server-only'
 import { createHash } from 'node:crypto'
 import { estimateImageGenUsd, withCost } from '@boom-busters/cost'
 import { upsertAssetByHash, visualCredentials } from '@boom-busters/db'
-import {
-  applyScores,
-  STILL_GENERATIONS,
-  ValidationError,
-} from '@boom-busters/schemas'
+import { applyScores, STILL_GENERATIONS, ValidationError } from '@boom-busters/schemas'
 import type {
   ArchivalBrief,
   ShotBrief,
@@ -94,9 +90,7 @@ export async function requireVisualKeys(types: ReadonlySet<ShotBrief['type']>): 
 // ---------------------------------------------------------------------------
 
 async function fetchStockCandidates(brief: StockBrief): Promise<SlotCandidate[]> {
-  const keys = mockProvidersEnabled()
-    ? {}
-    : await visualCredentials(db, env.SECRETS_ENCRYPTION_KEY)
+  const keys = mockProvidersEnabled() ? {} : await visualCredentials(db, env.SECRETS_ENCRYPTION_KEY)
 
   const query: StockQuery = {
     query: brief.query,
@@ -113,7 +107,9 @@ async function fetchStockCandidates(brief: StockBrief): Promise<SlotCandidate[]>
 
   const results = await Promise.allSettled(
     sources.map((provider) =>
-      stockAdapter(provider).search(query, { ...(keys[provider] ? { apiKey: keys[provider] } : {}) }),
+      stockAdapter(provider).search(query, {
+        ...(keys[provider] ? { apiKey: keys[provider] } : {}),
+      }),
     ),
   )
 
@@ -156,9 +152,7 @@ async function generateStillCandidates(
   projectId: string,
 ): Promise<SlotCandidate[]> {
   const adapter = imageGenAdapter()
-  const keys = mockProvidersEnabled()
-    ? {}
-    : await visualCredentials(db, env.SECRETS_ENCRYPTION_KEY)
+  const keys = mockProvidersEnabled() ? {} : await visualCredentials(db, env.SECRETS_ENCRYPTION_KEY)
 
   const result = await withCost(
     db,
@@ -248,9 +242,7 @@ export async function scoreSlotCandidates(
 
   const scores = mockProvidersEnabled()
     ? mockScores(candidates)
-    : parseScores(
-        (await callLlm(buildScoringRequest({ brief, candidates }), { projectId })).text,
-      )
+    : parseScores((await callLlm(buildScoringRequest({ brief, candidates }), { projectId })).text)
 
   return applyScores(candidates, scores)
 }

@@ -71,9 +71,30 @@ suite('shot slots', () => {
 
   function slots() {
     return [
-      { chapterId: chapterB, index: 0, type: 'stock' as const, brief: stockBrief, startMs: 0, durationMs: 8000 },
-      { chapterId: chapterA, index: 0, type: 'stock' as const, brief: stockBrief, startMs: 0, durationMs: 6000 },
-      { chapterId: chapterA, index: 1, type: 'stock' as const, brief: stockBrief, startMs: 6000, durationMs: 5000 },
+      {
+        chapterId: chapterB,
+        index: 0,
+        type: 'stock' as const,
+        brief: stockBrief,
+        startMs: 0,
+        durationMs: 8000,
+      },
+      {
+        chapterId: chapterA,
+        index: 0,
+        type: 'stock' as const,
+        brief: stockBrief,
+        startMs: 0,
+        durationMs: 6000,
+      },
+      {
+        chapterId: chapterA,
+        index: 1,
+        type: 'stock' as const,
+        brief: stockBrief,
+        startMs: 6000,
+        durationMs: 5000,
+      },
     ]
   }
 
@@ -102,7 +123,14 @@ suite('shot slots', () => {
   it('replaces the whole board on a re-run, never interleaving plans', async () => {
     await replaceShotList(db, projectId, slots())
     await replaceShotList(db, projectId, [
-      { chapterId: chapterA, index: 0, type: 'still', brief: stockBrief, startMs: 0, durationMs: 4000 },
+      {
+        chapterId: chapterA,
+        index: 0,
+        type: 'still',
+        brief: stockBrief,
+        startMs: 0,
+        durationMs: 4000,
+      },
     ])
 
     const board = await listShotSlots(db, projectId)

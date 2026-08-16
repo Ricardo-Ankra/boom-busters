@@ -1,11 +1,6 @@
 import { DEFAULT_SETTINGS, ShotListOutputSchema } from '@boom-busters/schemas'
 import { describe, expect, it } from 'vitest'
-import {
-  buildShotListRequest,
-  mockShotList,
-  parseShotList,
-  stillStyleAnchors,
-} from './shotlist'
+import { buildShotListRequest, mockShotList, parseShotList, stillStyleAnchors } from './shotlist'
 import type { ShotParagraph } from './shotlist'
 import type { ScriptClaim } from './script'
 

@@ -77,7 +77,9 @@ describe('pexelsStock', () => {
   it('maps photos and videos into candidates, HD file preferred over 4K', async () => {
     const candidates = await pexelsStock.search(QUERY, {
       apiKey: 'key',
-      fetchImpl: fetchReturning((url) => (url.includes('/videos/') ? PEXELS_VIDEOS : PEXELS_PHOTOS)),
+      fetchImpl: fetchReturning((url) =>
+        url.includes('/videos/') ? PEXELS_VIDEOS : PEXELS_PHOTOS,
+      ),
     })
 
     expect(candidates).toHaveLength(2)

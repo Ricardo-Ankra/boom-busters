@@ -1,8 +1,4 @@
-import {
-  HERO_SLOTS_ENABLED,
-  ShotListOutputSchema,
-  STILL_GENERATIONS,
-} from '@boom-busters/schemas'
+import { HERO_SLOTS_ENABLED, ShotListOutputSchema, STILL_GENERATIONS } from '@boom-busters/schemas'
 import type { BrandKitStored, ShotListOutput } from '@boom-busters/schemas'
 import { claimList, type ScriptClaim } from './script'
 import { parseJsonCompletion } from './json'
@@ -42,8 +38,7 @@ export interface ShotParagraph {
 export function stillStyleAnchors(brandKit: BrandKitStored): string {
   const { grainPreset } = brandKit.look
   const { primary, accent, background } = brandKit.colors
-  const grain =
-    grainPreset === 'none' ? 'clean, no grain' : `${grainPreset} film grain`
+  const grain = grainPreset === 'none' ? 'clean, no grain' : `${grainPreset} film grain`
 
   return (
     `${grain}; muted documentary colour grade anchored on ${primary} and ${accent} ` +

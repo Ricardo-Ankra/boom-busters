@@ -154,9 +154,7 @@ export const ChartBriefSchema = z.object({
   dataRefs: z.array(UlidSchema).min(1, 'a chart must cite the claims its numbers come from'),
   /** The single thing the chart must make the viewer see. */
   takeaway: z.string().min(1),
-  annotations: z
-    .array(z.object({ atX: z.string().min(1), text: z.string().min(1) }))
-    .optional(),
+  annotations: z.array(z.object({ atX: z.string().min(1), text: z.string().min(1) })).optional(),
   reveal: z.enum(['draw-on', 'none']),
 })
 export type ChartBrief = z.infer<typeof ChartBriefSchema>

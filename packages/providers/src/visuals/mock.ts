@@ -49,7 +49,10 @@ export function createMockStock(id: StockProviderId): StockProvider {
     requiresKey: false,
 
     async search(query: StockQuery): Promise<SlotCandidate[]> {
-      const slug = query.query.toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 40)
+      const slug = query.query
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .slice(0, 40)
 
       return Array.from({ length: query.count }, (_, index) => {
         const isVideo = id !== 'wikimedia' && index % 2 === 1

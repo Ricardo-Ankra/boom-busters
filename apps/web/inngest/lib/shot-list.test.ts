@@ -1,11 +1,6 @@
 import type { PlannedSlot } from '@boom-busters/schemas'
 import { describe, expect, it } from 'vitest'
-import {
-  MIN_SLOT_MS,
-  plannedToRows,
-  promptParagraphs,
-  timedParagraphs,
-} from './shot-list'
+import { MIN_SLOT_MS, plannedToRows, promptParagraphs, timedParagraphs } from './shot-list'
 
 const CLAIM_A = '01HQ00000000000000000000AA'
 const CLAIM_B = '01HQ00000000000000000000AB'

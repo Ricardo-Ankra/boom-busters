@@ -94,7 +94,11 @@ export async function getShotSlot(db: Database, id: string): Promise<ShotSlotRow
  * resolves it again. The stale candidates stay visible in the meantime —
  * a board that blanks while re-fetching reads as data loss.
  */
-export async function updateSlotBrief(db: Database, slotId: string, brief: ShotBrief): Promise<void> {
+export async function updateSlotBrief(
+  db: Database,
+  slotId: string,
+  brief: ShotBrief,
+): Promise<void> {
   await db
     .update(shotSlots)
     .set({
@@ -151,7 +155,8 @@ export async function chooseSlotCandidate(
     const { chosen: _chosen, ...rest } = candidate
     return candidate.id === candidateId ? { ...rest, chosen: true } : rest
   })
-  const chosenAssetId = candidates.find((candidate) => candidate.id === candidateId)?.assetId ?? null
+  const chosenAssetId =
+    candidates.find((candidate) => candidate.id === candidateId)?.assetId ?? null
 
   const [row] = await db
     .update(shotSlots)
