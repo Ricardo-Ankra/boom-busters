@@ -1,6 +1,6 @@
 import { LLM_MODELS, TTS_PRICES_PER_KCHAR } from '@boom-busters/providers'
 import { ValidationError } from '@boom-busters/schemas'
-import type { LlmProvider, Provider, TtsProvider } from '@boom-busters/schemas'
+import type { LlmProvider, TtsProvider } from '@boom-busters/schemas'
 
 /**
  * Price tables for the budget guard.
@@ -56,13 +56,6 @@ export const LLM_PRICES: Record<LlmProvider, Record<string, LlmPrice>> = pricesF
  * happened to read deciding whether a cap held. Also provisional.
  */
 export const TTS_PRICES: Record<TtsProvider, number> = TTS_PRICES_PER_KCHAR
-
-/**
- * Providers whose free tiers we stay inside. Listed explicitly rather than
- * defaulted, so a provider that starts charging shows up as an unpriced error
- * instead of quietly estimating zero.
- */
-export const FREE_PROVIDERS: readonly Provider[] = ['pexels', 'pixabay']
 
 // ---------------------------------------------------------------------------
 // Estimates

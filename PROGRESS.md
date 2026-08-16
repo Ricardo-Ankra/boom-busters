@@ -1137,6 +1137,105 @@ measured]`. That collapses what used to be three mechanisms (style
     credential row for it is filtered on read rather than deleted — a stored
     secret should outlive a product decision that might yet be reversed.
 
+### M4.15 — the platform audit: exception-based gates, a reachable dashboard, and the stale machinery swept (2026-08-16)
+
+Before M5, the human asked for a full review — product, engineering,
+architecture, UX — with one directive attached: approvals at every step are
+friction, especially now that stage navigation lets work move back and forth.
+Two read-only reviews (a dead-machinery audit and a screen-by-screen UX walk)
+fed one implementation pass.
+
+99. **Gates are exception-based.** A review gate exists to stop something that
+    needs a human; when a stage finishes with none of those, parking anyway
+    is ceremony — the human walks over, finds a green screen, and presses
+    Approve to confirm what the machine already verified. So the dossier gate
+    auto-approves when zero claims are unverified-and-unquarantined (the same
+    predicate `approveGate` enforces), and the script gate auto-approves when
+    the self-check found zero warnings — every sentence traced to a verified
+    claim. Both record the same opened-and-closed trail a manual approval
+    leaves, marked `auto: true`, and notify with the summary the human would
+    have reviewed. The voice gate still parks, deliberately: audio cannot be
+    machine-checked, and it is the natural final look before M5's paid
+    downstream. The parked path is byte-for-byte the old one, and stage
+    navigation can always walk back.
+
+100. **The dashboard is the Needs-you queue, always.** §11.3's full-page setup
+     checklist gated the dashboard on _all five_ items being done — and two
+     (YouTube, music beds) belong to milestones that have not shipped, so the
+     queue was unreachable in the running product, forever. Setup is now a
+     strip above the queue showing only items actionable today; future-
+     milestone items are one muted "coming with M6/M7" line; the Brand Kit
+     item is deleted outright (its done-predicate was satisfied by the
+     schema's own `min(3)`, so it ticked itself on a fresh install). And the
+     music item no longer claims to block the pipeline — nothing before
+     assembly needs a bed.
+
+101. **Failure cards retire themselves.** `listFailedRuns` returned every
+     failed run in history, so a failure fixed three weeks ago still sat on
+     the queue with a red border — the queue the user is meant to empty could
+     not be emptied. It now returns only failures whose project is still
+     `failed`; acting on the project clears the card, the same way approving
+     clears a gate card.
+
+102. **Request changes exists only where something listens.** The button on
+     the script and voice gates sent `gate/*.changes_requested` events with no
+     subscriber, toasted "sent back to the runner", and dropped the note — a
+     control that teaches the user gates ignore them. It now renders on the
+     dossier gate alone (the reviser listens there), and the other gates say
+     where changes actually happen: the Studio's editor, the voice rows'
+     repairs. Similarly deleted: the `budget/aborted` event, sent on every
+     abort and awaited by nothing — aborting _is_ `stopProject`, and now says
+     so.
+
+103. **Bulk repairs where the per-row click load was the friction.**
+     "Quarantine all N" on the dossier claims header (the twelve-claim triage
+     was twelve identical clicks) and "Regenerate all N changed" on the voice
+     coverage bar (a settings change staled dozens of rows across collapsed
+     chapters, and the blocked-reason copy told the user to re-run a stage
+     the screen did not offer). Both compute their set server-side from the
+     same predicates the approve action enforces.
+
+104. **Labels stopped lying, in one sweep.** "Resume" ran a stage from
+     scratch at full cost → "Re-run stage". "Add voice" replaced the narrator
+     → "Use as narrator". The overage card said the extra applied to one
+     provider; the ceiling is global, and now it says so. The Connections
+     banner pointed at a "Budgets tab" deleted on 08-13 → the Costs screen.
+     The four credential cards nothing reads before M5/M6 say so. The re-run
+     confirm now warns that hand edits to the current script are not carried
+     into a newly drafted one. ConfirmButton's escape says "Cancel" like
+     every other way out. The top-bar meter gained its denominator
+     ($41.20 / $100, coloured past 80%) — a spend without its ceiling cannot
+     tell 41% from 98%, and the first sign of a nearly-spent month must not
+     be a parked run. Settings `?tab=` deep links finally land on the tab
+     they name.
+
+105. **The dead-machinery sweep, each item verified consumer-by-consumer
+     before deletion.** Gone: `FREE_PROVIDERS` (zero consumers, unenforced
+     safety claim), `GUARDED_PROVIDERS` + its x === x test (the guard reads
+     one ceiling), `resetEnvCache`, `firstRunBlockers` (a second, unreachable
+     implementation of what `lib/first-run.ts` owns), `deleteCredential`,
+     `listUnlinkedRuns` (demo-only), `stripSlashes`, `VoiceTakeStatusSchema`
+     (type stays, derived from the const), `SENTRY_DSN` from `.env.example`
+     (names a capability that exists nowhere). Kept deliberately: the demo
+     pipeline function + test (the only end-to-end coverage of the
+     budget-gate-inside-a-step loop) minus its barrel export, which made an
+     unregistered function look registered; the M5-M7 event bindings (settled
+     contracts); `resolveBrandKit` (the M6 timeline snapshot). Fixed rather
+     than deleted: `WaveformSchema` is now parsed at the one write site, so
+     the bound its docstring claimed is enforced; the event-drift test
+     `inngest/events.ts` promised for years now exists.
+
+106. **Deferred to the next phase, recorded so they are decisions rather than
+     omissions:** re-running an upstream stage still rewinds `project.stage`
+     and re-gates everything downstream — the full fix (mark downstream stale
+     in place, carry unchanged approvals forward) is the single biggest
+     remaining gating reduction and needs the stage model reworked, not
+     patched; a row-level "narrate this paragraph" for takes that never got
+     audio (today the only exit is Stop + re-run); approve-from-the-card on
+     the Needs-you queue; toast action buttons; the activity drawer as a
+     work list (filter + linked titles). Push notifications stay absent by
+     the M4.9 decision — email fills the gap when a Resend key exists.
+
 ### M4.8 — what the Chirp 3 HD guide said, and I had not read (2026-08-13)
 
 The human sent Google's Chirp 3 HD page. Two things in it contradict claims I

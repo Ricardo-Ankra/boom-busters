@@ -1,5 +1,4 @@
 import {
-  BudgetAbortedSchema,
   BudgetApprovedSchema,
   DemoRequestedSchema,
   EVENT_NAMES,
@@ -63,7 +62,6 @@ export const events = {
   }),
 
   budgetApproved: eventType('budget/approved', { schema: BudgetApprovedSchema }),
-  budgetAborted: eventType('budget/aborted', { schema: BudgetAbortedSchema }),
 
   voiceRetakeRequested: eventType('voice/retake.requested', {
     schema: VoiceRetakeRequestedSchema,

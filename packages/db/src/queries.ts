@@ -128,13 +128,6 @@ export async function setCredential(
     })
 }
 
-export async function deleteCredential(
-  db: Database,
-  provider: MaskedCredential['provider'],
-): Promise<void> {
-  await db.delete(providerCredentials).where(eq(providerCredentials.provider, provider))
-}
-
 export async function hasCredential(
   db: Database,
   provider: MaskedCredential['provider'],

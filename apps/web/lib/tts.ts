@@ -9,7 +9,7 @@ import {
   withRateLimitPatience,
 } from '@boom-busters/providers'
 import type { TTSRequest, TTSResult } from '@boom-busters/providers'
-import { TTS_CREDENTIAL_PROVIDER, ValidationError } from '@boom-busters/schemas'
+import { TTS_CREDENTIAL_PROVIDER, ValidationError, WaveformSchema } from '@boom-busters/schemas'
 import type { Settings, TtsProvider } from '@boom-busters/schemas'
 import { db } from '@/lib/db'
 import { env } from '@/lib/env'
@@ -155,7 +155,11 @@ export async function synthesise(
     wav: encodeWav(result.audioBuffer, { sampleRate: result.sampleRate }),
     durationMs: result.durationMs,
     costUsd: result.estimatedCostUsd,
-    waveform: waveformPeaks(result.audioBuffer),
+    // Parsed at the one write site, so the bound `WaveformSchema` documents —
+    // no more than WAVEFORM_BUCKETS integer percentages into a jsonb column —
+    // is enforced rather than merely described. Audited 2026-08-16: the schema
+    // existed, claimed this property, and nothing applied it.
+    waveform: WaveformSchema.parse(waveformPeaks(result.audioBuffer)),
     provider: result.provider,
     voiceId: result.voiceId,
     ...(result.droppedPronunciations && result.droppedPronunciations.length > 0

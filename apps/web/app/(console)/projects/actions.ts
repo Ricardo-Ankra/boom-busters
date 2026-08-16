@@ -448,6 +448,13 @@ export async function approveOverage(
   return sent
 }
 
+/**
+ * Aborting at a budget gate *is* stopping the project — `project/cancelled`
+ * is the event every runner's `cancelOn` and the reconciler actually honour.
+ * A `budget/aborted` event used to be sent here first; nothing ever waited on
+ * it (audited 2026-08-16), so it was an event into the void that read as if a
+ * runner were listening. Deleted rather than kept for show.
+ */
 export async function abortOverage(projectId: string, provider: string): Promise<ActionResult> {
   await requireOwner()
   const invalid = badId(projectId)
@@ -456,11 +463,5 @@ export async function abortOverage(projectId: string, provider: string): Promise
   const parsedProvider = ProviderSchema.safeParse(provider)
   if (!parsedProvider.success) return { ok: false, error: `Unknown provider "${provider}"` }
 
-  const sent = await send(
-    events.budgetAborted.create({ projectId, provider: parsedProvider.data }),
-    'abort the run',
-  )
-  await stopProject(projectId, `Aborted at the ${parsedProvider.data} budget gate`)
-
-  return sent
+  return stopProject(projectId, `Aborted at the ${parsedProvider.data} budget gate`)
 }

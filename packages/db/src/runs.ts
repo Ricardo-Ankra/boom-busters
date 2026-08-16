@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, isNull, ne, sql } from 'drizzle-orm'
+import { and, desc, eq, inArray, isNull, ne, or, sql } from 'drizzle-orm'
 import type { Database } from './client'
 import { projects, runEvents, runs } from './schema'
 import type { ProjectStage, RunEventRow, RunRow, RunStatus } from './schema'
@@ -293,7 +293,17 @@ export interface FailedRun {
   completedAt: Date | null
 }
 
-/** Failed runs for the Needs-you queue (spec section 11.3). */
+/**
+ * Failed runs for the Needs-you queue (spec section 11.3) — but only the ones
+ * still *needing* someone. A failure whose project has since been re-run and
+ * recovered used to sit on the queue forever with a red border: the query
+ * returned every failed run in history, so the queue the user is meant to
+ * empty could not be emptied. The project's own `stageStatus` is the recovery
+ * signal — `restartStage` clears it the moment the human acts — so a failure
+ * card now retires itself the same way a gate card does. Runs with no project
+ * (none exist in production since the demo harness was unregistered) are kept
+ * visible, because nothing else would ever surface them.
+ */
 export async function listFailedRuns(db: Database, limit = 20): Promise<FailedRun[]> {
   return db
     .select({
@@ -307,7 +317,12 @@ export async function listFailedRuns(db: Database, limit = 20): Promise<FailedRu
     })
     .from(runs)
     .leftJoin(projects, eq(runs.projectId, projects.id))
-    .where(eq(runs.status, 'failed'))
+    .where(
+      and(
+        eq(runs.status, 'failed'),
+        or(isNull(runs.projectId), eq(projects.stageStatus, 'failed')),
+      ),
+    )
     .orderBy(desc(runs.completedAt))
     .limit(limit)
 }
@@ -406,11 +421,6 @@ export async function getRunByInngestId(
 ): Promise<RunRow | undefined> {
   const [row] = await db.select().from(runs).where(eq(runs.inngestRunId, inngestRunId))
   return row
-}
-
-/** Runs whose Inngest id never arrived — only the demo harness produces these. */
-export async function listUnlinkedRuns(db: Database): Promise<RunRow[]> {
-  return db.select().from(runs).where(isNull(runs.inngestRunId))
 }
 
 /**

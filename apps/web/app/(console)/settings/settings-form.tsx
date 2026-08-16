@@ -47,21 +47,27 @@ const PROVIDER_PURPOSE: Record<Provider, string> = {
   openai: 'Alternative for any task, and the cross-provider fallback',
   google: 'Gemini text models. A key from AI Studio, not the Cloud console',
   elevenlabs: 'The narration voice (Eleven v3), with free word timings for alignment',
-  pexels: 'Stock footage and stills',
-  pixabay: 'Stock footage and stills',
-  fal: 'Flux image generation for slots nothing stock can cover',
-  'hosted-alignment': 'Fallback caption alignment, when Whisper is not used',
+  // The milestone notes matter: these four cards store a key that nothing
+  // reads yet. A card that silently swallows a key reads as wired; saying
+  // when it starts spending is the difference between a store and a trap.
+  pexels: 'Stock footage and stills. Not used until the visuals stage (M5)',
+  pixabay: 'Stock footage and stills. Not used until the visuals stage (M5)',
+  fal: 'Flux image generation for slots nothing stock can cover. Not used until M5',
+  'hosted-alignment': 'Fallback caption alignment, when Whisper is not used. Not used until M6',
 }
 
 export function SettingsForm({
   initialSettings,
   credentials,
   mockProviders,
+  initialTab = 'models',
 }: {
   initialSettings: Settings
   credentials: MaskedCredential[]
   /** Resolved on the server: `process.env` is not readable from the client. */
   mockProviders: boolean
+  /** From `?tab=`, validated by the page — deep links land on the right tab. */
+  initialTab?: string
 }) {
   const [settings, setSettings] = React.useState(initialSettings)
   const [saving, setSaving] = React.useState(false)
@@ -92,7 +98,7 @@ export function SettingsForm({
   )
 
   return (
-    <Tabs defaultValue="models">
+    <Tabs defaultValue={initialTab}>
       <TabsList>
         <TabsTrigger value="models">Models</TabsTrigger>
         <TabsTrigger value="brand-kit">Brand Kit</TabsTrigger>
@@ -363,8 +369,8 @@ function ConnectionsTab({
         ) : (
           <>
             <span className="font-medium">Live providers.</span> Every pipeline run and every Verify
-            press calls the real API and is billed to you. The monthly caps on the Budgets tab are
-            what stands between a runaway run and your card.
+            press calls the real API and is billed to you. The monthly ceiling on the Costs screen
+            is what stands between a runaway run and your card.
           </>
         )}
       </p>

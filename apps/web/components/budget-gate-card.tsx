@@ -96,7 +96,8 @@ export function BudgetGateCard({ gate }: { gate: OpenBudgetGate }) {
         </div>
 
         <p className="text-[12px] text-[var(--color-text-muted)]">
-          The extra applies to {gate.provider} for this calendar month only, and expires on its own.
+          The extra raises the one monthly ceiling — every provider spends against it — for this
+          calendar month only, and expires on its own.
         </p>
       </CardContent>
     </Card>

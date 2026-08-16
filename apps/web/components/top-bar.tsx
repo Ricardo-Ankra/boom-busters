@@ -14,10 +14,13 @@ import { SignOutButton } from '@/components/sign-out-button'
  */
 export function TopBar({
   monthSpendUsd,
+  ceilingUsd,
   activeRuns,
   activity,
 }: {
   monthSpendUsd: number
+  /** `effectiveCeilingUsd` — the configured ceiling plus this month's overage. */
+  ceilingUsd: number
   activeRuns: ActiveRun[]
   activity: ActivityEntry[]
 }) {
@@ -27,7 +30,7 @@ export function TopBar({
 
       <div className="ml-auto flex items-center gap-4">
         <ActiveRunsIndicator runs={activeRuns} />
-        <CostMeter monthSpendUsd={monthSpendUsd} />
+        <CostMeter monthSpendUsd={monthSpendUsd} ceilingUsd={ceilingUsd} />
         <ActivityDrawer entries={activity} />
         <ThemeToggle />
         <SignOutButton />
@@ -78,15 +81,25 @@ function ActiveRunsIndicator({ runs }: { runs: ActiveRun[] }) {
  * reasonable question to have about a number with a dollar sign on it, and a
  * figure you cannot interpret is a figure you cannot act on.
  */
-function CostMeter({ monthSpendUsd }: { monthSpendUsd: number }) {
+function CostMeter({ monthSpendUsd, ceilingUsd }: { monthSpendUsd: number; ceilingUsd: number }) {
+  // The denominator is the point. "Spent $41.20" cannot tell 41% from 98%,
+  // and the first sign of a nearly-spent month must not be a parked run.
+  const ratio = ceilingUsd > 0 ? monthSpendUsd / ceilingUsd : 1
+  const tone =
+    ratio >= 1
+      ? 'text-[var(--color-danger)]'
+      : ratio > 0.8
+        ? 'text-[var(--color-warning)]'
+        : 'text-[var(--color-text-secondary)]'
+
   return (
     <span
       className="hidden items-center gap-1.5 text-[13px] sm:flex"
-      title="Actual spend this month, settled from provider token counts. A call still in flight counts at its estimate until it settles."
+      title="Actual spend this month against the monthly ceiling. A call still in flight counts at its estimate until it settles."
     >
-      <span className="text-[var(--color-text-muted)]">Spent this month</span>
-      <span className="font-mono text-[var(--color-text-secondary)] tabular-nums">
-        ${monthSpendUsd.toFixed(2)}
+      <span className="text-[var(--color-text-muted)]">Month</span>
+      <span className={`font-mono tabular-nums ${tone}`}>
+        ${monthSpendUsd.toFixed(2)} / ${ceilingUsd.toFixed(0)}
       </span>
     </span>
   )

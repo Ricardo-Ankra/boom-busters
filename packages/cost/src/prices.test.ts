@@ -1,7 +1,6 @@
 import { LLM_MODELS } from '@boom-busters/providers'
-import { PROVIDERS, TTS_PROVIDERS, ValidationError } from '@boom-busters/schemas'
+import { TTS_PROVIDERS, ValidationError } from '@boom-busters/schemas'
 import { describe, expect, it } from 'vitest'
-import { GUARDED_PROVIDERS } from './ledger'
 import {
   LLM_PRICES,
   TTS_PRICES,
@@ -107,20 +106,10 @@ describe('estimateChapterTokens', () => {
   })
 })
 
-/**
- * The guard's coverage, asserted rather than assumed.
- *
- * `GUARDED_PROVIDERS` used to be a hand-written copy of `PROVIDERS` and drifted
- * the first time a provider was added: `google-cloud-tts` reached the enum, the
- * price table and the settings screen, and the first audition through it died
- * on "google-cloud-tts is not a guarded provider". Failing closed on a spend
- * path is the right failure — but the list should never have been separate.
- */
 describe('every provider is guarded', () => {
-  it('guards exactly the providers that exist', () => {
-    expect([...GUARDED_PROVIDERS].sort()).toEqual([...PROVIDERS].sort())
-  })
-
+  // The guard reads one ceiling and never checks provider membership, so the
+  // old GUARDED_PROVIDERS list (and its x === x test) is gone. What remains
+  // worth asserting is that every narrator has a price.
   it('gives every TTS provider a price', () => {
     for (const provider of TTS_PROVIDERS) {
       expect(estimateTtsUsd({ provider, characters: 1000 })).toBeGreaterThan(0)

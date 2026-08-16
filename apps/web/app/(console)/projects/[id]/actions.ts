@@ -1,6 +1,7 @@
 'use server'
 
 import {
+  blockingClaims,
   editChapter,
   getChapter,
   getLatestScript,
@@ -64,6 +65,33 @@ export async function quarantineClaim(
 
   const updated = await setClaimQuarantined(db, claimId, quarantined)
   if (!updated) return { ok: false, error: 'That claim no longer exists' }
+
+  revalidatePath(`/projects/${projectId}`)
+  return { ok: true }
+}
+
+/**
+ * Quarantine every claim still blocking approval, in one press.
+ *
+ * Triaging one by one is right when the claims deserve different verdicts;
+ * when the verdict is "none of these made the cut", a twelve-claim dossier
+ * was twelve clicks of the same button. The set is computed server-side by
+ * the same `blockingClaims` predicate the approve action enforces, so this
+ * can only ever quarantine exactly what was blocking.
+ */
+export async function quarantineAllBlocking(projectId: string): Promise<ActionResult> {
+  await requireOwner()
+  const invalid = badIds(projectId)
+  if (invalid) return invalid
+
+  const blocking = await blockingClaims(db, projectId)
+  if (blocking.length === 0) {
+    return { ok: false, error: 'Nothing is blocking approval.' }
+  }
+
+  for (const claim of blocking) {
+    await setClaimQuarantined(db, claim.id, true)
+  }
 
   revalidatePath(`/projects/${projectId}`)
   return { ok: true }

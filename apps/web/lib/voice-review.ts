@@ -189,8 +189,8 @@ export async function voiceReviewModel(db: Database, projectId: string): Promise
     (staleParagraphs > 0
       ? `${staleParagraphs} paragraph${staleParagraphs === 1 ? ' has' : 's have'} changed since ` +
         'being read — the words, the voice, its stability or a pronunciation moved on, so the ' +
-        'audio is of the old version. Re-run the voice stage; only the changed paragraphs are ' +
-        're-read.'
+        'audio is of the old version. Press Regenerate on each changed row' +
+        (staleParagraphs > 1 ? ', or regenerate them all from the button above the list.' : '.')
       : undefined)
 
   return {

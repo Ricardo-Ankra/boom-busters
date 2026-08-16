@@ -58,13 +58,20 @@ export async function expectHitTargets(page: Page): Promise<void> {
  */
 export async function openFixtureProject(page: Page): Promise<void> {
   await page.goto('/projects')
-  await page
-    .getByRole('listitem')
-    .filter({ hasText: FIXTURE_PROJECT_TITLE })
-    .getByRole('link')
-    .first()
-    .click()
-  await expect(page).toHaveURL(/\/projects\/[0-9A-Z]{26}/)
+  // Click-and-verify, retried: a click that lands before hydration on a
+  // mid-compile dev server vanishes without navigating. The inner wait must
+  // be LONGER than a slow-but-real navigation (a cold compile takes ~2-3s) —
+  // a short inner timeout re-clicks mid-navigation and restarts the very
+  // thing it is waiting for, which turned one flaky spec into twenty.
+  await expect(async () => {
+    await page
+      .getByRole('listitem')
+      .filter({ hasText: FIXTURE_PROJECT_TITLE })
+      .getByRole('link')
+      .first()
+      .click()
+    await expect(page).toHaveURL(/\/projects\/[0-9A-Z]{26}/, { timeout: 8_000 })
+  }).toPass({ timeout: 30_000 })
 }
 
 /**

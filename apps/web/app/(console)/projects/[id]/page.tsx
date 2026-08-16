@@ -212,7 +212,7 @@ export default async function ProjectPage({
       {budgetGate ? <BudgetGateCard gate={budgetGate} /> : null}
 
       {showVoice ? (
-        <VoiceReview model={voice} />
+        <VoiceReview projectId={project.id} model={voice} />
       ) : showScript ? (
         <ScriptStudio
           projectId={project.id}
@@ -282,7 +282,7 @@ function gateContext(
     const quarantined = dossier.claims.filter((claim) => claim.quarantined).length
     return (
       `${dossier.claims.length} claims · ${blocking} unsourced · ${quarantined} quarantined. ` +
-      'Approving sends this to the script runner.'
+      'Approving sends this to the script stage.'
     )
   }
   return `${stage} gate`

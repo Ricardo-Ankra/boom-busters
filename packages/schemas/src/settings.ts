@@ -538,16 +538,3 @@ export const DEFAULT_SETTINGS: Settings = {
 export function resolveBrandKit(settings: Settings): BrandKitTokens {
   return { ...settings.brandKit, voice: settings.tts }
 }
-
-/**
- * Gate on starting a project: build spec section 11.3 blocks the pipeline
- * until the voice, Brand Kit and music beds are set up. Music beds live in
- * `assets`, so the caller supplies that count.
- */
-export function firstRunBlockers(settings: Settings, musicBedCount: number): string[] {
-  const blockers: string[] = []
-  if (settings.tts.voiceId.trim() === '') blockers.push('narration-voice')
-  if (settings.brandKit.colors.chartSeries.length < 3) blockers.push('brand-kit')
-  if (musicBedCount < 3) blockers.push('music-beds')
-  return blockers
-}

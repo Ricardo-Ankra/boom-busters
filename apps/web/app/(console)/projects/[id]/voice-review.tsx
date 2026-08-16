@@ -25,7 +25,13 @@ import { useToast } from '@/components/ui/toast'
 import { EXPRESSION_TAGS, PAUSE_TAGS } from '@boom-busters/schemas'
 import { cn } from '@/lib/cn'
 import type { ChapterGroup, ParagraphRow, TakeView, VoiceReviewModel } from '@/lib/voice-review'
-import { clearVoiceFlag, flagVoiceTake, rereadParagraph, retakeVoiceTake } from './voice-actions'
+import {
+  clearVoiceFlag,
+  flagVoiceTake,
+  regenerateChangedParagraphs,
+  rereadParagraph,
+  retakeVoiceTake,
+} from './voice-actions'
 
 /**
  * Voice review (build spec section 11.3).
@@ -705,7 +711,38 @@ function ChapterSection({
   )
 }
 
-export function VoiceReview({ model }: { model: VoiceReviewModel }) {
+/** The one-press repair for a settings change that touched many rows. */
+function RegenerateAllButton({ projectId, count }: { projectId: string; count: number }) {
+  const [busy, setBusy] = React.useState(false)
+  const { toast } = useToast()
+  const router = useRouter()
+
+  return (
+    <Button
+      variant="outline"
+      busy={busy}
+      onClick={async () => {
+        setBusy(true)
+        const result = await regenerateChangedParagraphs(projectId)
+        setBusy(false)
+        if (!result.ok) {
+          toast({ title: 'Not queued', description: result.error, variant: 'error' })
+          return
+        }
+        toast({
+          title: `Regenerating ${count} paragraphs`,
+          description: 'Each re-reads with the current words, voice and settings.',
+        })
+        router.refresh()
+      }}
+    >
+      <RefreshCw className="size-4" aria-hidden />
+      {busy ? 'Queueing…' : `Regenerate all ${count} changed`}
+    </Button>
+  )
+}
+
+export function VoiceReview({ projectId, model }: { projectId: string; model: VoiceReviewModel }) {
   const audio = React.useRef<HTMLAudioElement>(null)
   const [playingTakeId, setPlayingTakeId] = React.useState<string | null>(null)
   /**
@@ -822,6 +859,12 @@ export function VoiceReview({ model }: { model: VoiceReviewModel }) {
         </div>
 
         <CoverageBar model={model} />
+
+        {model.staleParagraphs > 1 ? (
+          <div>
+            <RegenerateAllButton projectId={projectId} count={model.staleParagraphs} />
+          </div>
+        ) : null}
 
         {model.blockedReason ? (
           <p className="text-[13px] text-[var(--color-warning)]">{model.blockedReason}</p>

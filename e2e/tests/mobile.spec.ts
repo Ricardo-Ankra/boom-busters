@@ -9,7 +9,7 @@ import { expectHitTargets, signIn } from './fixtures'
 test.describe('390px', () => {
   test('signing in works on a phone', async ({ page }) => {
     await signIn(page)
-    await expect(page.getByRole('heading', { name: 'Set up Boom-Busters' })).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Needs you' })).toBeVisible()
   })
 
   test('the page never scrolls sideways', async ({ page }) => {

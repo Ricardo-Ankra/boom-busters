@@ -41,6 +41,7 @@ import { callLlm } from '@/lib/llm'
 import { inngest } from '../client'
 import { events } from '../events'
 import {
+  autoCloseReviewGate,
   budgetGateData,
   closeReviewGate,
   markStageFailed,
@@ -301,13 +302,39 @@ export const scriptRunner = inngest.createFunction(
       }
     })
 
+    const gateSummary =
+      `Script ready · ${summary.chapters} chapters · ~${summary.runtimeMin} min · ` +
+      `${summary.warnings} warnings · ${summary.shorts} Shorts candidates`
+
+    /**
+     * Exception-based gating (decision, 2026-08-16): the self-check is the
+     * reviewer of record here. A warning means a sentence asserts something
+     * the claim list does not support — exactly what a human read of the
+     * draft is for — so any warning parks the gate. Zero warnings means every
+     * sentence traced back to a verified claim, and the one remaining
+     * question ("do I like these words?") is better answered at the voice
+     * screen, where the text sits beside its audio and an edit re-reads only
+     * the paragraph it touches.
+     */
+    if (summary.warnings === 0) {
+      await step.run('auto-approve', async () => {
+        await setScriptStatus(db, setup.scriptId, 'approved')
+        await autoCloseReviewGate(ctx, {
+          stage: 'script',
+          nextStage: 'voice',
+          summary: gateSummary,
+        })
+      })
+      await step.sendEvent('advance-to-voice', events.scriptApproved.create({ projectId }))
+
+      return { projectId, outcome: 'auto-approved' as const, ...summary }
+    }
+
     await step.run('open-gate', () =>
       openReviewGate(ctx, {
         stage: 'script',
         projectStage: 'script',
-        summary:
-          `Script ready · ${summary.chapters} chapters · ~${summary.runtimeMin} min · ` +
-          `${summary.warnings} warnings · ${summary.shorts} Shorts candidates`,
+        summary: gateSummary,
       }),
     )
 

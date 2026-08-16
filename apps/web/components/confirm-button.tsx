@@ -58,8 +58,10 @@ export function ConfirmButton({
       >
         {confirmLabel}
       </Button>
+      {/* "Cancel", like every other way out in the app — the escape used to
+          say "Keep going", the one place backing out had its own vocabulary. */}
       <Button variant="ghost" onClick={() => setArmed(false)} disabled={busy}>
-        Keep going
+        Cancel
       </Button>
     </span>
   )

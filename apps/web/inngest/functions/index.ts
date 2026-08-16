@@ -1,5 +1,4 @@
 import { cancelReconciler } from './cancel-reconciler'
-import { demoPipeline } from './demo-pipeline'
 import { dossierReviser } from './dossier-reviser'
 import { dossierRunner } from './dossier-runner'
 import { scriptRunner } from './script-runner'
@@ -38,12 +37,7 @@ export const functions = [
   voiceRetaker,
 ]
 
-export {
-  cancelReconciler,
-  demoPipeline,
-  dossierReviser,
-  dossierRunner,
-  scriptRunner,
-  voiceRunner,
-  voiceRetaker,
-}
+// `demoPipeline` is deliberately absent here too: its test imports it from
+// `./demo-pipeline` directly, and a barrel export made an unregistered
+// function look registered.
+export { cancelReconciler, dossierReviser, dossierRunner, scriptRunner, voiceRunner, voiceRetaker }

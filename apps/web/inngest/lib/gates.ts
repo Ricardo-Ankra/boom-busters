@@ -76,6 +76,52 @@ export async function closeReviewGate(
   await setProjectStage(db, ctx.projectId, { stage: gate.nextStage, stageStatus: 'running' })
 }
 
+/**
+ * The gate that did not need to park — exception-based gating, by decision
+ * (2026-08-16).
+ *
+ * A review gate exists to stop something that needs a human: an unsourced
+ * claim, a self-check warning, a flagged take. When the stage finishes with
+ * *none* of those, parking anyway is ceremony — the human walks over, finds a
+ * green screen, and presses Approve to confirm what the machine already
+ * verified. So a clean stage records that the gate opened and closed in the
+ * same breath, tells the human it moved on (the Activity drawer and a
+ * notification both say so, with the summary they would have reviewed), and
+ * the pipeline continues. Everything is still reviewable after the fact, and
+ * stage navigation can always walk back and re-run.
+ *
+ * The caller decides what "clean" means — the blockers are stage facts, and
+ * they are the same predicates the approve action enforces server-side, so
+ * the auto path can never wave through what a human could not have.
+ */
+export async function autoCloseReviewGate(
+  ctx: GateContext,
+  gate: { stage: GateStage; nextStage: ProjectStage; summary: string },
+): Promise<void> {
+  const runId = await runRowId(ctx)
+
+  await recordRunEvent(db, {
+    runId,
+    kind: 'gate.opened',
+    message: gate.summary,
+    data: { gate: gate.stage },
+  })
+  await recordRunEvent(db, {
+    runId,
+    kind: 'gate.closed',
+    message: `${gate.stage} clean — approved automatically and moved on`,
+    data: { gate: gate.stage, auto: true },
+  })
+  await setProjectStage(db, ctx.projectId, { stage: gate.nextStage, stageStatus: 'running' })
+
+  await notify({
+    kind: 'gate-auto',
+    title: `${gate.stage} clean — moved on without you`,
+    body: gate.summary,
+    href: `/projects/${ctx.projectId}`,
+  })
+}
+
 // ---------------------------------------------------------------------------
 // Budget gate
 // ---------------------------------------------------------------------------

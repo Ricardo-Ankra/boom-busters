@@ -30,12 +30,6 @@ export function isIpa(hint: string): boolean {
   return /^\/.+\/$/.test(hint.trim())
 }
 
-/** `/ˈkæt/` → `ˈkæt`. The slashes are how a human writes a transcription, not
- *  part of it. */
-export function stripSlashes(hint: string): string {
-  return hint.trim().replace(/^\/|\/$/g, '')
-}
-
 /**
  * Which hints apply to a paragraph lives in `schemas`, and is re-exported
  * rather than reimplemented: `takeIdempotencyKey` folds the applicable hints

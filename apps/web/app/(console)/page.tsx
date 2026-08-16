@@ -14,12 +14,21 @@ import Link from 'next/link'
 import { LiveRefresh } from '@/components/live-refresh'
 import { NeedsYouQueue, buildNeedsYouCards } from '@/components/needs-you-queue'
 import { Button } from '@/components/ui/button'
-import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
 import { db } from '@/lib/db'
-import { buildChecklist, isSetupComplete, pipelineBlockers } from '@/lib/first-run'
+import { actionableSetup, buildChecklist, pipelineBlockers, upcomingSetup } from '@/lib/first-run'
+import type { ChecklistItem } from '@/lib/first-run'
 
 export const dynamic = 'force-dynamic'
 
+/**
+ * The dashboard is the Needs-you queue, always (spec section 11.3, amended by
+ * decision 2026-08-16). It used to be *replaced* by the setup checklist until
+ * every item was done — and two items belong to milestones that have not
+ * shipped, so the queue was unreachable in the running product. Setup is now
+ * a strip above the queue: still first thing on the screen while anything is
+ * missing, no longer a wall in front of the actual work.
+ */
 export default async function DashboardPage() {
   const [settings, youtubeConnected, musicBedCount, caseCount] = await Promise.all([
     getSettings(db),
@@ -29,10 +38,8 @@ export default async function DashboardPage() {
   ])
 
   const items = buildChecklist({ settings, youtubeConnected, musicBedCount, caseCount })
-
-  if (!isSetupComplete(items)) {
-    return <FirstRunChecklist items={items} />
-  }
+  const actionable = actionableSetup(items)
+  const upcoming = upcomingSetup(items)
 
   const [awaitingReview, budgetGates, failedRuns, activeRuns] = await Promise.all([
     listProjectsAwaitingReview(db),
@@ -45,6 +52,8 @@ export default async function DashboardPage() {
 
   return (
     <div className="flex flex-col gap-4">
+      {actionable.length > 0 ? <SetupStrip items={actionable} /> : null}
+
       <h1 className="text-[20px] font-semibold">
         Needs you
         {cards.length > 0 ? (
@@ -89,67 +98,65 @@ export default async function DashboardPage() {
           </ul>
         )}
       </section>
+
+      {upcoming.length > 0 ? (
+        // One muted line, no buttons: work that belongs to a later milestone
+        // is coming, not owed, and must not read as an unticked to-do.
+        <p className="text-[12px] text-[var(--color-text-muted)]">
+          Coming with later milestones:{' '}
+          {upcoming
+            .map((item) => `${item.label.toLowerCase()} (${item.availableFrom})`)
+            .join(' · ')}
+        </p>
+      ) : null}
     </div>
   )
 }
 
-function FirstRunChecklist({ items }: { items: ReturnType<typeof buildChecklist> }) {
+/**
+ * The setup that still needs doing, as a strip rather than a wall. Each row
+ * keeps the checklist's deep-linking button; the blocker sentence names what
+ * actually stops a project from starting, and only that.
+ */
+function SetupStrip({ items }: { items: ChecklistItem[] }) {
   const blockers = pipelineBlockers(items)
 
   return (
-    <div className="prose-measure mx-auto flex flex-col gap-4">
-      <header className="flex flex-col gap-1">
-        <h1 className="text-[20px] font-semibold">Set up Boom-Busters</h1>
-        <p className="text-[14px] text-[var(--color-text-secondary)]">
-          {blockers.length === 0
-            ? 'Everything the pipeline needs is in place. Finish the rest whenever you like.'
-            : `The pipeline cannot start a project until ${blockers
-                .map((item) => item.label.toLowerCase())
-                .join(', ')} ${blockers.length === 1 ? 'is' : 'are'} done.`}
-        </p>
-      </header>
+    <Card>
+      <CardContent className="flex flex-col gap-3 p-4">
+        <div className="flex flex-col gap-0.5">
+          <h2 className="text-[15px] font-semibold">Set up Boom-Busters</h2>
+          <p className="text-[13px] text-[var(--color-text-secondary)]">
+            {blockers.length === 0
+              ? 'Nothing here blocks the pipeline — finish whenever you like.'
+              : `The pipeline cannot start a project until ${blockers
+                  .map((item) => item.label.toLowerCase())
+                  .join(', ')} ${blockers.length === 1 ? 'is' : 'are'} done.`}
+          </p>
+        </div>
 
-      <ol className="flex flex-col gap-3">
-        {items.map((item, index) => (
-          <li key={item.id}>
-            <Card>
-              <CardHeader className="flex-row items-start gap-3">
-                {item.done ? (
-                  <CheckCircle2
-                    className="mt-0.5 size-5 shrink-0 text-[var(--color-success)]"
-                    aria-hidden
-                  />
-                ) : (
-                  <Circle
-                    className="mt-0.5 size-5 shrink-0 text-[var(--color-text-muted)]"
-                    aria-hidden
-                  />
-                )}
-
-                <div className="min-w-0 flex-1">
-                  <CardTitle>
-                    <span className="font-mono text-[var(--color-text-muted)]">{index + 1}. </span>
-                    {item.label}
-                    <span className="sr-only">{item.done ? ' — done' : ' — not done'}</span>
-                  </CardTitle>
-                  <CardDescription>{item.detail}</CardDescription>
-                </div>
-
-                <div className="flex shrink-0 flex-col items-end gap-1">
-                  <Button asChild variant={item.done ? 'outline' : 'primary'}>
-                    <Link href={item.href}>{item.buttonLabel}</Link>
-                  </Button>
-                  {item.availableFrom ? (
-                    <span className="text-[12px] text-[var(--color-text-muted)]">
-                      Arrives in {item.availableFrom}
-                    </span>
-                  ) : null}
-                </div>
-              </CardHeader>
-            </Card>
-          </li>
-        ))}
-      </ol>
-    </div>
+        <ul className="flex flex-col gap-2">
+          {items.map((item) => (
+            <li key={item.id} className="flex flex-wrap items-center gap-3">
+              {item.done ? (
+                <CheckCircle2 className="size-4 shrink-0 text-[var(--color-success)]" aria-hidden />
+              ) : (
+                <Circle className="size-4 shrink-0 text-[var(--color-text-muted)]" aria-hidden />
+              )}
+              <div className="min-w-0 flex-1">
+                <p className="text-[14px] font-medium">
+                  {item.label}
+                  <span className="sr-only">{item.done ? ' — done' : ' — not done'}</span>
+                </p>
+                <p className="text-[12px] text-[var(--color-text-muted)]">{item.detail}</p>
+              </div>
+              <Button asChild variant="outline">
+                <Link href={item.href}>{item.buttonLabel}</Link>
+              </Button>
+            </li>
+          ))}
+        </ul>
+      </CardContent>
+    </Card>
   )
 }

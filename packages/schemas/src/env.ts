@@ -169,11 +169,6 @@ export function getEnv(source: EnvSource = process.env): BootEnv {
   return cached
 }
 
-/** Test-only: drop the memoised value so a new source can be parsed. */
-export function resetEnvCache(): void {
-  cached = undefined
-}
-
 /**
  * Fetch a deferred infrastructure group, throwing `ConfigError` if any member
  * is absent. Call this at the point of use, never at module load.

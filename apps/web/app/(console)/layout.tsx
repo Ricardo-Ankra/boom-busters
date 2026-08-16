@@ -1,5 +1,6 @@
-import { listActiveRuns, listActivity } from '@boom-busters/db'
+import { getSettings, listActiveRuns, listActivity } from '@boom-busters/db'
 import { monthTotalUsd } from '@boom-busters/cost'
+import { effectiveCeilingUsd } from '@boom-busters/schemas'
 import { AppRail } from '@/components/app-rail'
 import { TopBar } from '@/components/top-bar'
 import { db } from '@/lib/db'
@@ -14,11 +15,13 @@ import { db } from '@/lib/db'
 export const dynamic = 'force-dynamic'
 
 export default async function ConsoleLayout({ children }: { children: React.ReactNode }) {
-  const [monthSpendUsd, activeRuns, activity] = await Promise.all([
+  const [monthSpendUsd, activeRuns, activity, settings] = await Promise.all([
     monthTotalUsd(db, new Date()),
     listActiveRuns(db),
     listActivity(db, { limit: 60 }),
+    getSettings(db),
   ])
+  const ceilingUsd = effectiveCeilingUsd(settings.budgets, new Date())
 
   return (
     <div className="flex h-dvh overflow-hidden bg-[var(--color-background)]">
@@ -27,7 +30,12 @@ export default async function ConsoleLayout({ children }: { children: React.Reac
       </div>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <TopBar monthSpendUsd={monthSpendUsd} activeRuns={activeRuns} activity={activity} />
+        <TopBar
+          monthSpendUsd={monthSpendUsd}
+          ceilingUsd={ceilingUsd}
+          activeRuns={activeRuns}
+          activity={activity}
+        />
         <main className="flex-1 overflow-y-auto p-3 md:p-4">{children}</main>
       </div>
     </div>

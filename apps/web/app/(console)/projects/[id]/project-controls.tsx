@@ -84,7 +84,8 @@ export function RestartRunButton({
         `The ${downstream.map((view) => view.stage).join(' and ')} stage${
           downstream.length === 1 ? '' : 's'
         } will be marked as built from older work — kept and still readable, ` +
-        `but needing a re-run to be current again.`
+        `but needing a re-run to be current again. Hand edits to the current script are kept ` +
+        `on the old version and are NOT carried into a newly drafted one.`
       : 'This stage runs from the start and replaces what it produced last time. It costs what it cost the first time.'
 
   return (
@@ -184,7 +185,7 @@ export function GateActionBar({
   stage,
   context,
   blockedReason,
-  handOffTimeoutMs = 30_000,
+  handOffTimeoutMs = 8_000,
 }: {
   projectId: string
   stage: string
@@ -222,9 +223,11 @@ export function GateActionBar({
   const waiting = handedOff === stage
 
   /**
-   * And it expires. If the run has not moved on within half a minute it is not
-   * coming back on its own, and a human staring at a note about a hand-off that
-   * evidently did not happen needs the buttons back, not reassurance.
+   * And it expires on its own. The page polls every three seconds, so after
+   * two polls the server state is authoritative either way — the buttons come
+   * back if the run truly has not moved. The old "Show the buttons again"
+   * escape hatch existed to undo the UI's guess by hand; a control whose
+   * meaning is "the app is not sure your click worked" is not a control.
    */
   React.useEffect(() => {
     if (!waiting) return
@@ -247,15 +250,10 @@ export function GateActionBar({
   if (waiting) {
     return (
       <div className={frame}>
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <p className="text-[13px] text-[var(--color-text-secondary)]">
-            Handed to the pipeline. The run picks this up within a few seconds, and this screen
-            updates itself.
-          </p>
-          <Button variant="ghost" onClick={() => setHandedOff(null)}>
-            Show the buttons again
-          </Button>
-        </div>
+        <p className="text-[13px] text-[var(--color-text-secondary)]">
+          Handed to the pipeline. The run picks this up within a few seconds, and this screen
+          updates itself.
+        </p>
       </div>
     )
   }
@@ -265,7 +263,7 @@ export function GateActionBar({
       <div className="flex flex-col gap-3">
         <p className="text-[13px] text-[var(--color-text-secondary)]">{context}</p>
 
-        {showNote ? (
+        {stage === 'dossier' && showNote ? (
           <label className="flex flex-col gap-1 text-[13px]">
             <span className="text-[var(--color-text-secondary)]">What needs to change?</span>
             <textarea
@@ -278,35 +276,49 @@ export function GateActionBar({
         ) : null}
 
         <div className="flex flex-wrap items-center gap-2">
-          {showNote ? (
-            <>
-              <Button
-                variant="outline"
-                busy={busy === 'changes'}
-                onClick={async () => {
-                  setBusy('changes')
-                  try {
-                    await act(
-                      () => requestChanges(projectId, stage, note),
-                      'Change request sent back to the runner',
-                    )
-                    setNote('')
-                    setShowNote(false)
-                  } finally {
-                    setBusy(null)
-                  }
-                }}
-              >
-                Send change request
+          {/* Only where something listens. `gate/dossier.changes_requested`
+              drives the dossier reviser; the script and voice equivalents had
+              no subscriber, so the button collected a note, toasted success,
+              and dropped both (audited 2026-08-16). On those stages the real
+              change channel is the screen itself — the Studio's editor, the
+              voice rows' repairs — and the bar says so instead of lying. */}
+          {stage === 'dossier' ? (
+            showNote ? (
+              <>
+                <Button
+                  variant="outline"
+                  busy={busy === 'changes'}
+                  onClick={async () => {
+                    setBusy('changes')
+                    try {
+                      await act(
+                        () => requestChanges(projectId, stage, note),
+                        'Re-researching — the gate re-opens when the new dossier lands',
+                      )
+                      setNote('')
+                      setShowNote(false)
+                    } finally {
+                      setBusy(null)
+                    }
+                  }}
+                >
+                  Send change request
+                </Button>
+                <Button variant="ghost" onClick={() => setShowNote(false)}>
+                  Cancel
+                </Button>
+              </>
+            ) : (
+              <Button variant="outline" onClick={() => setShowNote(true)}>
+                Request changes
               </Button>
-              <Button variant="ghost" onClick={() => setShowNote(false)}>
-                Cancel
-              </Button>
-            </>
+            )
           ) : (
-            <Button variant="outline" onClick={() => setShowNote(true)}>
-              Request changes
-            </Button>
+            <span className="text-[13px] text-[var(--color-text-muted)]">
+              {stage === 'script'
+                ? 'Changes happen in the Studio below — edits are saved as you make them.'
+                : 'Changes happen on the rows below — fix, retake or flag a paragraph.'}
+            </span>
           )}
 
           <Button
@@ -318,7 +330,11 @@ export function GateActionBar({
               try {
                 const handed = await act(
                   () => approveGate(projectId, stage),
-                  'Approved — handed to the pipeline',
+                  stage === 'dossier'
+                    ? 'Approved — the script drafts now, and parks only if the self-check finds problems'
+                    : stage === 'script'
+                      ? 'Approved — narration is being synthesised; review the audio when it lands'
+                      : 'Approved — moving on',
                 )
                 if (handed) setHandedOff(stage)
               } finally {

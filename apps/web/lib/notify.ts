@@ -24,6 +24,8 @@ import { env } from './env'
 
 export const NOTIFICATION_KINDS = [
   'gate-open',
+  /** A clean stage that closed its own gate and moved on — informational. */
+  'gate-auto',
   'budget-gate',
   'run-failed',
   'qc-failed',

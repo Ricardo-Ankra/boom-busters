@@ -60,16 +60,6 @@ describe('GateActionBar', () => {
     expect(screen.getByRole('button', { name: 'Approve' })).toBeInTheDocument()
   })
 
-  it('can be brought back by hand', async () => {
-    renderBar()
-    await userEvent.click(screen.getByRole('button', { name: 'Approve' }))
-
-    await userEvent.click(screen.getByRole('button', { name: /Show the buttons again/i }))
-
-    expect(screen.getByRole('button', { name: 'Approve' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Request changes' })).toBeInTheDocument()
-  })
-
   it('gives up waiting and puts the buttons back on its own', async () => {
     render(
       <GateActionBar
@@ -112,7 +102,30 @@ describe('GateActionBar', () => {
 
     expect(screen.queryByText(/Handed to the pipeline/i)).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Approve' })).toBeInTheDocument()
+  })
+
+  /**
+   * Request changes exists only where something listens. The dossier reviser
+   * subscribes to `gate/dossier.changes_requested`; the script and voice
+   * equivalents had no subscriber, so the button collected a note, toasted
+   * success, and dropped both. On those stages the change channel is the
+   * screen itself, and the bar says so instead.
+   */
+  it('offers Request changes on the dossier gate only', () => {
+    const view = renderBar('dossier')
     expect(screen.getByRole('button', { name: 'Request changes' })).toBeInTheDocument()
+
+    view.rerender(
+      <GateActionBar projectId="01J0000000000000000000000A" stage="script" context="6 chapters" />,
+    )
+    expect(screen.queryByRole('button', { name: 'Request changes' })).not.toBeInTheDocument()
+    expect(screen.getByText(/Changes happen in the Studio/i)).toBeInTheDocument()
+
+    view.rerender(
+      <GateActionBar projectId="01J0000000000000000000000A" stage="voice" context="12 takes" />,
+    )
+    expect(screen.queryByRole('button', { name: 'Request changes' })).not.toBeInTheDocument()
+    expect(screen.getByText(/Changes happen on the rows/i)).toBeInTheDocument()
   })
 
   it('refuses an empty change request without asking the server', async () => {

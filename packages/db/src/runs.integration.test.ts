@@ -185,11 +185,35 @@ describeDb('run mirror', () => {
         stage: 'dossier',
       })
       await setRunStatus(db, runId, 'failed', { name: 'ValidationError', message: 'no sources' })
+      // What `markStageFailed` always does alongside the run: in production a
+      // failed run and a failed project stage arrive together.
+      await setProjectStage(db, FIXTURE_PROJECT_ID, { stageStatus: 'failed' })
 
       const [failed] = await listFailedRuns(db)
       expect(failed?.error).toMatchObject({ name: 'ValidationError' })
       expect(failed?.completedAt).toBeInstanceOf(Date)
       expect(failed?.projectTitle).toBeTruthy()
+    })
+
+    /**
+     * The queue must be emptiable. A failure whose project has since been
+     * re-run (its stageStatus cleared) used to sit on the Needs-you queue
+     * forever; acting on the project now retires the card.
+     */
+    it('drops a failure once its project has moved on', async () => {
+      const runId = await ensureRun(db, {
+        inngestRunId: '01JRUN0012',
+        functionName: 'demo-runner',
+        projectId: FIXTURE_PROJECT_ID,
+        stage: 'dossier',
+      })
+      await setRunStatus(db, runId, 'failed', { name: 'ValidationError', message: 'no sources' })
+      await setProjectStage(db, FIXTURE_PROJECT_ID, { stageStatus: 'failed' })
+      expect(await listFailedRuns(db)).toHaveLength(1)
+
+      // The human pressed re-run: the stage is queued again.
+      await setProjectStage(db, FIXTURE_PROJECT_ID, { stageStatus: 'queued' })
+      expect(await listFailedRuns(db)).toHaveLength(0)
     })
   })
 

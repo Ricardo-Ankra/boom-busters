@@ -102,7 +102,7 @@ test.describe('gate action bar', () => {
       page.getByText(/The run stops where it is\. Work already done is kept/),
     ).toBeVisible()
     // And it can be backed out of without doing anything.
-    await page.getByRole('button', { name: 'Keep going' }).click()
+    await page.getByRole('button', { name: 'Cancel' }).click()
     await expect(page.getByRole('button', { name: 'Stop' })).toBeVisible()
   })
 

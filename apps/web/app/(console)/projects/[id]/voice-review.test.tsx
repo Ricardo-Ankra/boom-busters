@@ -23,6 +23,7 @@ const flagVoiceTake = vi.fn()
 const rereadParagraph = vi.fn()
 const retakeVoiceTake = vi.fn()
 const clearVoiceFlag = vi.fn()
+const regenerateChangedParagraphs = vi.fn()
 const refresh = vi.fn()
 
 vi.mock('./voice-actions', () => ({
@@ -30,6 +31,7 @@ vi.mock('./voice-actions', () => ({
   rereadParagraph: (...args: unknown[]) => rereadParagraph(...args),
   retakeVoiceTake: (...args: unknown[]) => retakeVoiceTake(...args),
   clearVoiceFlag: (...args: unknown[]) => clearVoiceFlag(...args),
+  regenerateChangedParagraphs: (...args: unknown[]) => regenerateChangedParagraphs(...args),
 }))
 
 vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh }) }))
@@ -43,6 +45,7 @@ beforeEach(() => {
   rereadParagraph.mockResolvedValue({ ok: true })
   retakeVoiceTake.mockResolvedValue({ ok: true })
   clearVoiceFlag.mockResolvedValue({ ok: true })
+  regenerateChangedParagraphs.mockResolvedValue({ ok: true })
   vi.spyOn(HTMLMediaElement.prototype, 'play').mockResolvedValue(undefined)
   vi.spyOn(HTMLMediaElement.prototype, 'pause').mockImplementation(() => undefined)
   Element.prototype.scrollIntoView = vi.fn()
@@ -125,7 +128,7 @@ function model(patch: Partial<VoiceReviewModel> = {}): VoiceReviewModel {
 
 describe('VoiceReview', () => {
   it('shows every paragraph with its duration and take number', () => {
-    render(<VoiceReview model={model()} />)
+    render(<VoiceReview projectId="01HQ0000000000000000000009" model={model()} />)
 
     expect(screen.getByText('The auditors signed it off for eighteen years.')).toBeInTheDocument()
     expect(screen.getAllByText('0:08')).toHaveLength(2)
@@ -134,23 +137,28 @@ describe('VoiceReview', () => {
 
   it('states the coverage in words, not only as a bar', () => {
     // Section 11.1: state is never conveyed by colour or shape alone.
-    render(<VoiceReview model={model()} />)
+    render(<VoiceReview projectId="01HQ0000000000000000000009" model={model()} />)
     expect(screen.getByText(/2 paragraphs · 2 generated/)).toBeInTheDocument()
   })
 
   it('says it is ready when nothing is flagged and nothing is missing', () => {
-    render(<VoiceReview model={model()} />)
+    render(<VoiceReview projectId="01HQ0000000000000000000009" model={model()} />)
     expect(screen.getByText(/ready to approve/)).toBeInTheDocument()
   })
 
   it('says why it is not ready when a paragraph has no audio', () => {
-    render(<VoiceReview model={model({ expectedParagraphs: 5 })} />)
+    render(
+      <VoiceReview
+        projectId="01HQ0000000000000000000009"
+        model={model({ expectedParagraphs: 5 })}
+      />,
+    )
     expect(screen.getByText('3 of 5 paragraphs have no audio yet.')).toBeInTheDocument()
   })
 
   describe('flagging', () => {
     it('requires a note, so the row still means something a week later', async () => {
-      render(<VoiceReview model={model()} />)
+      render(<VoiceReview projectId="01HQ0000000000000000000009" model={model()} />)
 
       await userEvent.click(screen.getAllByRole('button', { name: /^Flag$/ })[0]!)
       expect(screen.getByRole('button', { name: 'Flag this take' })).toBeDisabled()
@@ -162,7 +170,7 @@ describe('VoiceReview', () => {
      * the note explaining what was wrong never left the database.
      */
     it('costs nothing: no synthesis is asked for', async () => {
-      render(<VoiceReview model={model()} />)
+      render(<VoiceReview projectId="01HQ0000000000000000000009" model={model()} />)
 
       await userEvent.click(screen.getAllByRole('button', { name: /^Flag$/ })[0]!)
       await userEvent.type(screen.getByLabelText('What was wrong with it?'), 'Too fast.')
@@ -174,7 +182,7 @@ describe('VoiceReview', () => {
     })
 
     it('sends the note with the take id and refreshes', async () => {
-      render(<VoiceReview model={model()} />)
+      render(<VoiceReview projectId="01HQ0000000000000000000009" model={model()} />)
 
       await userEvent.click(screen.getAllByRole('button', { name: /^Flag$/ })[0]!)
       await userEvent.type(screen.getByLabelText('What was wrong with it?'), 'Swallowed a word.')
@@ -191,7 +199,7 @@ describe('VoiceReview', () => {
      */
     it('keeps the note on screen when the flag could not be saved', async () => {
       flagVoiceTake.mockResolvedValue({ ok: false, error: 'Database unreachable' })
-      render(<VoiceReview model={model()} />)
+      render(<VoiceReview projectId="01HQ0000000000000000000009" model={model()} />)
 
       await userEvent.click(screen.getAllByRole('button', { name: /^Flag$/ })[0]!)
       await userEvent.type(screen.getByLabelText('What was wrong with it?'), 'Too fast.')
@@ -222,7 +230,7 @@ describe('VoiceReview', () => {
         ],
       })
 
-      render(<VoiceReview model={flagged} />)
+      render(<VoiceReview projectId="01HQ0000000000000000000009" model={flagged} />)
 
       expect(screen.getByText('Note: Mispronounced Wirecard.')).toBeInTheDocument()
       await userEvent.click(screen.getByRole('button', { name: 'Clear the flag' }))
@@ -263,7 +271,7 @@ describe('VoiceReview', () => {
     }
 
     it('offers to fix the words on every narrator', async () => {
-      render(<VoiceReview model={flaggedModel()} />)
+      render(<VoiceReview projectId="01HQ0000000000000000000009" model={flaggedModel()} />)
       expect(screen.getByRole('button', { name: 'Fix the words' })).toBeInTheDocument()
     })
 
@@ -276,7 +284,7 @@ describe('VoiceReview', () => {
      * `voiceApprovalBlockedReason` refuses approval while anything is pending.
      */
     it('offers to fix the words without flagging first', async () => {
-      render(<VoiceReview model={model()} />)
+      render(<VoiceReview projectId="01HQ0000000000000000000009" model={model()} />)
 
       const [first] = screen.getAllByRole('button', { name: 'Fix the words' })
       expect(first).toBeInTheDocument()
@@ -307,7 +315,7 @@ describe('VoiceReview', () => {
         ],
       })
 
-      render(<VoiceReview model={silent} />)
+      render(<VoiceReview projectId="01HQ0000000000000000000009" model={silent} />)
 
       expect(screen.getByRole('button', { name: 'Fix the words' })).toBeDisabled()
       expect(screen.getByRole('button', { name: 'Another take' })).toBeDisabled()
@@ -319,7 +327,7 @@ describe('VoiceReview', () => {
      * toast says as much.
      */
     it('queues another take in one press and says how to steer it', async () => {
-      render(<VoiceReview model={flaggedModel()} />)
+      render(<VoiceReview projectId="01HQ0000000000000000000009" model={flaggedModel()} />)
 
       await userEvent.click(screen.getByRole('button', { name: 'Another take' }))
 
@@ -330,14 +338,14 @@ describe('VoiceReview', () => {
 
     it('surfaces the refusal when the retake cannot be queued', async () => {
       retakeVoiceTake.mockResolvedValue({ ok: false, error: 'Inngest is unreachable.' })
-      render(<VoiceReview model={flaggedModel()} />)
+      render(<VoiceReview projectId="01HQ0000000000000000000009" model={flaggedModel()} />)
 
       await userEvent.click(screen.getByRole('button', { name: 'Another take' }))
       expect(toast).toHaveBeenCalledWith(expect.objectContaining({ variant: 'error' }))
     })
 
     it('opens the words for editing, prefilled with what was read', async () => {
-      render(<VoiceReview model={flaggedModel()} />)
+      render(<VoiceReview projectId="01HQ0000000000000000000009" model={flaggedModel()} />)
 
       await userEvent.click(screen.getByRole('button', { name: 'Fix the words' }))
       expect(screen.getByLabelText('The words, as they should be read')).toHaveValue(
@@ -346,7 +354,7 @@ describe('VoiceReview', () => {
     })
 
     it('offers pause and expression tags as buttons in the edit form', async () => {
-      render(<VoiceReview model={flaggedModel()} />)
+      render(<VoiceReview projectId="01HQ0000000000000000000009" model={flaggedModel()} />)
 
       await userEvent.click(screen.getByRole('button', { name: 'Fix the words' }))
 
@@ -361,7 +369,7 @@ describe('VoiceReview', () => {
     })
 
     it('will not spend on words that did not change', async () => {
-      render(<VoiceReview model={flaggedModel()} />)
+      render(<VoiceReview projectId="01HQ0000000000000000000009" model={flaggedModel()} />)
 
       await userEvent.click(screen.getByRole('button', { name: 'Fix the words' }))
       // Untouched: same words, and on this narrator the same reading.
@@ -369,7 +377,7 @@ describe('VoiceReview', () => {
     })
 
     it('sends the edited paragraph and refreshes', async () => {
-      render(<VoiceReview model={flaggedModel()} />)
+      render(<VoiceReview projectId="01HQ0000000000000000000009" model={flaggedModel()} />)
 
       await userEvent.click(screen.getByRole('button', { name: 'Fix the words' }))
       const box = screen.getByLabelText('The words, as they should be read')
@@ -386,7 +394,7 @@ describe('VoiceReview', () => {
 
     it('keeps the draft when the re-read is refused', async () => {
       rereadParagraph.mockResolvedValue({ ok: false, error: 'A paragraph cannot be split in two.' })
-      render(<VoiceReview model={flaggedModel()} />)
+      render(<VoiceReview projectId="01HQ0000000000000000000009" model={flaggedModel()} />)
 
       await userEvent.click(screen.getByRole('button', { name: 'Fix the words' }))
       const box = screen.getByLabelText('The words, as they should be read')
@@ -421,12 +429,12 @@ describe('VoiceReview', () => {
     })
 
     it('only appears once there is something to compare against', () => {
-      render(<VoiceReview model={model()} />)
+      render(<VoiceReview projectId="01HQ0000000000000000000009" model={model()} />)
       expect(screen.queryByRole('button', { name: /Compare with take/ })).not.toBeInTheDocument()
     })
 
     it('switches the row to the earlier take and back', async () => {
-      render(<VoiceReview model={retaken} />)
+      render(<VoiceReview projectId="01HQ0000000000000000000009" model={retaken} />)
 
       expect(screen.getByText(/take 2 of 2/)).toBeInTheDocument()
 
@@ -440,7 +448,9 @@ describe('VoiceReview', () => {
 
   describe('playback', () => {
     it('plays the take the row is showing', async () => {
-      const { container } = render(<VoiceReview model={model()} />)
+      const { container } = render(
+        <VoiceReview projectId="01HQ0000000000000000000009" model={model()} />,
+      )
 
       await userEvent.click(screen.getAllByRole('button', { name: 'Play' })[0]!)
 
@@ -450,7 +460,7 @@ describe('VoiceReview', () => {
     })
 
     it('offers the three speeds the spec names, and records which is chosen', async () => {
-      render(<VoiceReview model={model()} />)
+      render(<VoiceReview projectId="01HQ0000000000000000000009" model={model()} />)
       const speeds = screen.getByRole('group', { name: 'Playback speed' })
 
       expect(within(speeds).getByRole('button', { name: '1×' })).toHaveAttribute(
@@ -466,7 +476,9 @@ describe('VoiceReview', () => {
     })
 
     it("a row's play ends with its paragraph instead of rolling on", async () => {
-      const { container } = render(<VoiceReview model={model()} />)
+      const { container } = render(
+        <VoiceReview projectId="01HQ0000000000000000000009" model={model()} />,
+      )
 
       await userEvent.click(screen.getAllByRole('button', { name: 'Play' })[0]!)
       fireEvent.ended(container.querySelector('audio')!)
@@ -476,7 +488,9 @@ describe('VoiceReview', () => {
     })
 
     it('listen through rolls on to the next paragraph', async () => {
-      const { container } = render(<VoiceReview model={model()} />)
+      const { container } = render(
+        <VoiceReview projectId="01HQ0000000000000000000009" model={model()} />,
+      )
 
       await userEvent.click(screen.getByRole('button', { name: 'Listen through' }))
       fireEvent.ended(container.querySelector('audio')!)
@@ -487,7 +501,7 @@ describe('VoiceReview', () => {
     })
 
     it('pause stops the audio now, not at the end of the paragraph', async () => {
-      render(<VoiceReview model={model()} />)
+      render(<VoiceReview projectId="01HQ0000000000000000000009" model={model()} />)
 
       await userEvent.click(screen.getByRole('button', { name: 'Listen through' }))
 
@@ -521,7 +535,7 @@ describe('VoiceReview', () => {
         ],
       })
 
-      render(<VoiceReview model={pending} />)
+      render(<VoiceReview projectId="01HQ0000000000000000000009" model={pending} />)
       expect(screen.getByRole('button', { name: 'Play' })).toBeDisabled()
     })
   })
@@ -567,35 +581,35 @@ describe('VoiceReview', () => {
     }
 
     it('marks the row, like a flag, so the outdated audio is visible in place', () => {
-      render(<VoiceReview model={staleModel()} />)
+      render(<VoiceReview projectId="01HQ0000000000000000000009" model={staleModel()} />)
       expect(screen.getByText('Changed since read')).toBeInTheDocument()
     })
 
     it('counts the changed rows beside the coverage, in words', () => {
-      render(<VoiceReview model={staleModel()} />)
+      render(<VoiceReview projectId="01HQ0000000000000000000009" model={staleModel()} />)
       expect(screen.getByText(/1 changed since read/)).toBeInTheDocument()
     })
 
     it('counts them on the chapter header, so a collapsed chapter still says so', () => {
-      render(<VoiceReview model={staleModel()} />)
+      render(<VoiceReview projectId="01HQ0000000000000000000009" model={staleModel()} />)
       expect(screen.getByText('1 changed')).toBeInTheDocument()
     })
 
     it('marks nothing when nothing has changed', () => {
-      render(<VoiceReview model={model()} />)
+      render(<VoiceReview projectId="01HQ0000000000000000000009" model={model()} />)
       expect(screen.queryByText('Changed since read')).not.toBeInTheDocument()
       expect(screen.queryByText(/changed since read/)).not.toBeInTheDocument()
     })
 
     it('offers Regenerate on the changed row, so the fix is where the problem is', async () => {
-      render(<VoiceReview model={staleModel()} />)
+      render(<VoiceReview projectId="01HQ0000000000000000000009" model={staleModel()} />)
 
       await userEvent.click(screen.getByRole('button', { name: 'Regenerate' }))
       expect(retakeVoiceTake).toHaveBeenCalledWith('take-1')
     })
 
     it('offers no Regenerate on rows whose audio still matches — those get Another take', () => {
-      render(<VoiceReview model={model()} />)
+      render(<VoiceReview projectId="01HQ0000000000000000000009" model={model()} />)
       expect(screen.queryByRole('button', { name: 'Regenerate' })).toBeNull()
       expect(screen.getAllByRole('button', { name: 'Another take' }).length).toBeGreaterThan(0)
     })
@@ -605,12 +619,19 @@ describe('VoiceReview', () => {
     // The script was edited after narration. Silently ignoring them would let
     // the coverage bar read complete while a flagged orphan blocked the gate
     // with no row on screen to unflag.
-    render(<VoiceReview model={model({ orphanedTakes: 3 })} />)
+    render(
+      <VoiceReview projectId="01HQ0000000000000000000009" model={model({ orphanedTakes: 3 })} />,
+    )
     expect(screen.getByText(/3 takes no longer match any paragraph/)).toBeInTheDocument()
   })
 
   it('says so rather than rendering an empty accordion with no script', () => {
-    render(<VoiceReview model={model({ chapters: [], expectedParagraphs: 0 })} />)
+    render(
+      <VoiceReview
+        projectId="01HQ0000000000000000000009"
+        model={model({ chapters: [], expectedParagraphs: 0 })}
+      />,
+    )
     expect(screen.getByText('There is no script to narrate yet.')).toBeInTheDocument()
   })
 })

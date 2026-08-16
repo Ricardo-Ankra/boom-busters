@@ -21,6 +21,7 @@ import { inngest } from '@/inngest/client'
 import { events } from '@/inngest/events'
 import { db } from '@/lib/db'
 import { voiceKeyFacts } from '@/lib/voice-identity'
+import { voiceReviewModel } from '@/lib/voice-review'
 import type { ActionResult } from '../actions'
 
 /**
@@ -226,6 +227,56 @@ async function enqueueRetake(
   } catch (error) {
     console.error('[voice] could not enqueue the retake', error)
     refresh(projectId)
+    return {
+      ok: false,
+      error:
+        'Could not queue it: Inngest is unreachable. Start the dev server with ' +
+        '`npx inngest-cli@latest dev`, or check INNGEST_EVENT_KEY.',
+    }
+  }
+
+  refresh(projectId)
+  return { ok: true }
+}
+
+/**
+ * Regenerate every paragraph that changed since it was read, in one press.
+ *
+ * The per-row Regenerate is right for one paragraph; after a settings change
+ * (a new voice, a moved stability tier, an added pronunciation) *dozens* of
+ * rows go stale at once, and the repair was N presses spread across collapsed
+ * chapters. The stale set is computed server-side by the same fingerprint the
+ * review screen shows and the runner buys with, so this can only ever re-buy
+ * exactly what changed.
+ */
+export async function regenerateChangedParagraphs(projectId: string): Promise<ActionResult> {
+  await requireOwner()
+
+  if (!UlidSchema.safeParse(projectId).success) return { ok: false, error: 'Unknown project' }
+
+  const model = await voiceReviewModel(db, projectId)
+  const staleTakeIds = model.chapters.flatMap((chapter) =>
+    chapter.paragraphs
+      .filter((paragraph) => paragraph.stale && paragraph.current?.hasAudio)
+      .map((paragraph) => paragraph.current!.id),
+  )
+
+  if (staleTakeIds.length === 0) {
+    return { ok: false, error: 'Nothing has changed since it was read.' }
+  }
+
+  try {
+    await inngest.send(
+      staleTakeIds.map((takeId) =>
+        events.voiceRetakeRequested.create({
+          projectId,
+          takeId,
+          note: 'Regenerated after a change',
+        }),
+      ),
+    )
+  } catch (error) {
+    console.error('[voice] could not enqueue the regeneration', error)
     return {
       ok: false,
       error:

@@ -8,7 +8,7 @@ import { SettingsForm } from './settings-form'
  * Choosing a narrator, through the whole screen rather than the panel alone.
  *
  * It renders `SettingsForm` and not `VoiceTab` deliberately. The bug this file
- * exists for was not in the panel: `Add voice` called a server action that
+ * exists for was not in the panel: `Use as narrator` (né `Add voice`) called a server action that
  * wrote the new voice and then `router.refresh()`, which re-renders the server
  * component — while the screen renders from `SettingsForm`'s `useState`, seeded
  * once at mount and deaf to the new prop. Every assertion below passes against
@@ -83,10 +83,10 @@ describe('choosing a narrator', () => {
   it('marks the voice on the card straight away, with no refresh', async () => {
     await openVoiceTab()
 
-    await userEvent.click(within(card('Achird')).getByRole('button', { name: /add voice/i }))
+    await userEvent.click(within(card('Achird')).getByRole('button', { name: /use as narrator/i }))
 
     expect(within(card('Achird')).getByText('Narrator')).toBeTruthy()
-    expect(within(card('Achird')).queryByRole('button', { name: /add voice/i })).toBeNull()
+    expect(within(card('Achird')).queryByRole('button', { name: /use as narrator/i })).toBeNull()
     expect(saveSettings).toHaveBeenCalledWith({
       tts: { provider: 'elevenlabs', voiceId: ACHIRD },
     })
@@ -95,13 +95,15 @@ describe('choosing a narrator', () => {
   it('drops the previous narrator when a second voice is added', async () => {
     await openVoiceTab()
 
-    await userEvent.click(within(card('Achird')).getByRole('button', { name: /add voice/i }))
-    await userEvent.click(within(card('Vindemiatrix')).getByRole('button', { name: /add voice/i }))
+    await userEvent.click(within(card('Achird')).getByRole('button', { name: /use as narrator/i }))
+    await userEvent.click(
+      within(card('Vindemiatrix')).getByRole('button', { name: /use as narrator/i }),
+    )
 
     // One narrator. Adding the second is the whole of un-choosing the first —
     // there is no second press to undo anything.
     expect(within(card('Vindemiatrix')).getByText('Narrator')).toBeTruthy()
-    expect(within(card('Achird')).getByRole('button', { name: /add voice/i })).toBeTruthy()
+    expect(within(card('Achird')).getByRole('button', { name: /use as narrator/i })).toBeTruthy()
     expect(screen.getAllByText('Narrator')).toHaveLength(1)
   })
 
@@ -109,9 +111,9 @@ describe('choosing a narrator', () => {
     await openVoiceTab()
     saveSettings.mockResolvedValue({ ok: false, error: 'Database is away' })
 
-    await userEvent.click(within(card('Achird')).getByRole('button', { name: /add voice/i }))
+    await userEvent.click(within(card('Achird')).getByRole('button', { name: /use as narrator/i }))
 
-    expect(within(card('Achird')).getByRole('button', { name: /add voice/i })).toBeTruthy()
+    expect(within(card('Achird')).getByRole('button', { name: /use as narrator/i })).toBeTruthy()
     expect(toast).toHaveBeenCalledWith(
       expect.objectContaining({ variant: 'error', description: 'Database is away' }),
     )
@@ -120,7 +122,7 @@ describe('choosing a narrator', () => {
   it('never asks the vendor for audio just because a voice was added', async () => {
     await openVoiceTab()
 
-    await userEvent.click(within(card('Achird')).getByRole('button', { name: /add voice/i }))
+    await userEvent.click(within(card('Achird')).getByRole('button', { name: /use as narrator/i }))
 
     // Add is free; Play is the only button on the card that spends.
     expect(generateAuditions).not.toHaveBeenCalled()
@@ -169,6 +171,6 @@ describe('hearing a voice', () => {
 
     // The press that used to adopt a voice as a side effect of listening to it.
     expect(saveSettings).not.toHaveBeenCalled()
-    expect(within(card('Achird')).getByRole('button', { name: /add voice/i })).toBeTruthy()
+    expect(within(card('Achird')).getByRole('button', { name: /use as narrator/i })).toBeTruthy()
   })
 })

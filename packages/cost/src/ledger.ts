@@ -1,7 +1,5 @@
 import { costLedger, projects } from '@boom-busters/db'
 import type { Database } from '@boom-busters/db'
-import { PROVIDERS } from '@boom-busters/schemas'
-import type { Provider } from '@boom-busters/schemas'
 import { and, desc, eq, gte, lt, sql } from 'drizzle-orm'
 
 /**
@@ -217,18 +215,3 @@ export async function recordCost(
 export async function truncateLedger(db: DbLike): Promise<void> {
   await db.execute(sql`TRUNCATE TABLE ${costLedger}`)
 }
-
-/**
- * Providers the budget guard governs — every one of them, derived.
- *
- * This was a hand-written copy of `PROVIDERS`, and it drifted the moment a
- * provider was added: `google-cloud-tts` landed in the enum, in the price table
- * and on the settings screen, and the first audition through it died on
- * "google-cloud-tts is not a guarded provider". A spend path that fails closed
- * is the right failure, but the list should not have been separate at all.
- *
- * Derived rather than extended, for the reason decision 23 gives about price
- * tables: two lists of the same thing eventually disagree, and the one the
- * guard happens to read decides whether money can be spent.
- */
-export const GUARDED_PROVIDERS: readonly Provider[] = PROVIDERS

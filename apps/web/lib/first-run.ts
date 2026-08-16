@@ -2,19 +2,27 @@ import type { Settings } from '@boom-busters/schemas'
 import type { Route } from 'next'
 
 /**
- * The first-run setup checklist (build spec section 11.3). On first login
- * with empty settings the dashboard is replaced by this list; each item is a
- * button that deep-links, and each shows a done-state.
+ * The first-run setup checklist (build spec section 11.3), reduced to items a
+ * human can actually act on.
  *
- * Items 2-4 block the pipeline: no project can start until the narration
- * voice, Brand Kit and at least three music beds exist. The checklist says so
- * plainly rather than letting a run fail later for a missing bed.
+ * §11.3 sketches this as a page that *replaces* the dashboard until all five
+ * items are done. Built that way, it locked the dashboard forever: YouTube
+ * connects in M7 and music beds upload in M6, so two items could never be
+ * ticked and the Needs-you queue — the whole point of the dashboard — was
+ * unreachable in the running product. By decision (2026-08-16) the checklist
+ * is a strip *above* the queue instead, and an item whose milestone has not
+ * arrived is listed as coming rather than counted as undone.
+ *
+ * The Brand Kit item is gone entirely: its done-predicate (three chart
+ * colours) was satisfied by the schema's own `min(3)`, so it ticked itself on
+ * a fresh install and was permanent green noise. It returns in M6 when the
+ * specimen panel exists and "configured" can mean something.
  *
  * Pure so it can be unit-tested without a database.
  */
 
 export interface ChecklistItem {
-  id: 'youtube' | 'voice' | 'brand-kit' | 'music' | 'cases'
+  id: 'youtube' | 'voice' | 'music' | 'cases'
   label: string
   detail: string
   /** Typed against the app's real routes, so a rename breaks the build. */
@@ -39,18 +47,6 @@ export function buildChecklist(input: FirstRunInput): ChecklistItem[] {
 
   return [
     {
-      id: 'youtube',
-      label: 'Connect YouTube',
-      detail: youtubeConnected
-        ? 'Connected.'
-        : 'Needed only to publish. Everything up to the publish gate works without it.',
-      href: '/settings?tab=connections',
-      buttonLabel: youtubeConnected ? 'Manage connection' : 'Connect',
-      done: youtubeConnected,
-      blocksPipeline: false,
-      ...(youtubeConnected ? {} : { availableFrom: 'M7' }),
-    },
-    {
       id: 'voice',
       label: 'Choose narration voice',
       detail:
@@ -61,29 +57,6 @@ export function buildChecklist(input: FirstRunInput): ChecklistItem[] {
       buttonLabel: settings.tts.voiceId.trim() === '' ? 'Open audition' : 'Review voice',
       done: settings.tts.voiceId.trim() !== '',
       blocksPipeline: true,
-      ...(settings.tts.voiceId.trim() === '' ? { availableFrom: 'M4' } : {}),
-    },
-    {
-      id: 'brand-kit',
-      label: 'Set up Brand Kit',
-      detail: 'Typography, colours, chart palette and music defaults. Timelines snapshot these.',
-      href: '/settings?tab=brand-kit',
-      buttonLabel: 'Edit Brand Kit',
-      done: brandKitConfigured(settings),
-      blocksPipeline: true,
-    },
-    {
-      id: 'music',
-      label: 'Add at least 3 music beds',
-      detail:
-        musicBedCount === 0
-          ? 'Download cleared tracks from the YouTube Audio Library and upload them here.'
-          : `${musicBedCount} of 3 uploaded.`,
-      href: '/settings?tab=music',
-      buttonLabel: 'Open music library',
-      done: musicBedCount >= 3,
-      blocksPipeline: true,
-      ...(musicBedCount >= 3 ? {} : { availableFrom: 'M6' }),
     },
     {
       id: 'cases',
@@ -96,26 +69,56 @@ export function buildChecklist(input: FirstRunInput): ChecklistItem[] {
       buttonLabel: caseCount === 0 ? 'Add cases' : 'Open Case Library',
       done: caseCount > 0,
       blocksPipeline: false,
-      ...(caseCount > 0 ? {} : { availableFrom: 'M3' }),
+    },
+    {
+      id: 'music',
+      label: 'Add at least 3 music beds',
+      detail:
+        musicBedCount === 0
+          ? 'Needed by assembly, not before. The upload arrives with the music library.'
+          : `${musicBedCount} of 3 uploaded.`,
+      href: '/settings',
+      buttonLabel: 'Open music library',
+      done: musicBedCount >= 3,
+      // Assembly (M6) is what needs beds; nothing before it does, so an item
+      // that cannot be completed yet must not claim to block the pipeline.
+      blocksPipeline: false,
+      ...(musicBedCount >= 3 ? {} : { availableFrom: 'M6' }),
+    },
+    {
+      id: 'youtube',
+      label: 'Connect YouTube',
+      detail: youtubeConnected
+        ? 'Connected.'
+        : 'Needed only to publish. Everything up to the publish gate works without it.',
+      href: '/settings?tab=connections',
+      buttonLabel: youtubeConnected ? 'Manage connection' : 'Connect',
+      done: youtubeConnected,
+      blocksPipeline: false,
+      ...(youtubeConnected ? {} : { availableFrom: 'M7' }),
     },
   ]
-}
-
-/**
- * The Brand Kit counts as configured once the human has moved it off the
- * shipped defaults in a way that matters to a render: a logo, or an edited
- * chart palette. Anything looser would tick itself on a fresh install.
- */
-function brandKitConfigured(settings: Settings): boolean {
-  const { look, colors } = settings.brandKit
-  return look.logoR2Key !== null || colors.chartSeries.length >= 3
 }
 
 export function isSetupComplete(items: ChecklistItem[]): boolean {
   return items.every((item) => item.done)
 }
 
-/** Items that must be done before any project can start (section 11.3). */
+/**
+ * Items that must be done before any project can start — and that *can* be
+ * done: an item whose milestone has not arrived is coming, not blocking, or
+ * the dashboard would be gated on work the user cannot perform.
+ */
 export function pipelineBlockers(items: ChecklistItem[]): ChecklistItem[] {
-  return items.filter((item) => item.blocksPipeline && !item.done)
+  return items.filter((item) => item.blocksPipeline && !item.done && !item.availableFrom)
+}
+
+/** Undone items the user can act on today — the setup strip's button rows. */
+export function actionableSetup(items: ChecklistItem[]): ChecklistItem[] {
+  return items.filter((item) => !item.done && !item.availableFrom)
+}
+
+/** Undone items whose milestone has not arrived — one muted line, no buttons. */
+export function upcomingSetup(items: ChecklistItem[]): ChecklistItem[] {
+  return items.filter((item) => !item.done && item.availableFrom !== undefined)
 }

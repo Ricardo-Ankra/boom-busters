@@ -28,8 +28,7 @@ import type { PhonemeHint, StabilityTier } from './settings'
 
 /** Mirrors the `voice_take_status` enum in `packages/db` (spec section 5). */
 export const VOICE_TAKE_STATUSES = ['pending', 'generated', 'flagged', 'approved'] as const
-export const VoiceTakeStatusSchema = z.enum(VOICE_TAKE_STATUSES)
-export type VoiceTakeStatus = z.infer<typeof VoiceTakeStatusSchema>
+export type VoiceTakeStatus = (typeof VOICE_TAKE_STATUSES)[number]
 
 // ---------------------------------------------------------------------------
 // Idempotency

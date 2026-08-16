@@ -62,8 +62,8 @@ function ProjectRow({ project }: { project: ProjectSummary }) {
           <span className="rounded-[4px] border border-[var(--color-border)] px-1.5 py-0.5 font-mono text-[11px]">
             {project.caseCategory}
           </span>{' '}
-          <span className="capitalize">{project.stage}</span> · {statusLabel(project.stageStatus)} ·
-          waiting {relativeAge(project.updatedAt)}
+          <span className="capitalize">{project.stage}</span> · {statusLabel(project.stageStatus)}{' '}
+          {ageVerb(project.stageStatus)} {relativeAge(project.updatedAt)}
         </p>
       </div>
 
@@ -86,7 +86,11 @@ function primaryAction(project: ProjectSummary): { label: string; primary: boole
       return { label: 'Review', primary: true }
     case 'failed':
     case 'cancelled':
-      return { label: 'Resume', primary: true }
+      // Not "Resume": what the screen behind this offers is `restartStage`,
+      // which runs the stage from the start and costs what it cost the first
+      // time. A label that promises continuation and delivers a re-purchase
+      // is a label that teaches people not to read labels.
+      return { label: 'Re-run stage', primary: true }
     default:
       return { label: 'View', primary: false }
   }
@@ -94,6 +98,21 @@ function primaryAction(project: ProjectSummary): { label: string; primary: boole
 
 function statusLabel(status: ProjectSummary['stageStatus']): string {
   return status === 'awaiting_review' ? 'awaiting review' : status
+}
+
+/** "running for 4 min", "waiting 2 h", "failed 3 d ago" — the verb follows
+ *  the status instead of every row claiming to wait. */
+function ageVerb(status: ProjectSummary['stageStatus']): string {
+  switch (status) {
+    case 'running':
+    case 'queued':
+      return '· for'
+    case 'failed':
+    case 'cancelled':
+      return '·'
+    default:
+      return '· waiting'
+  }
 }
 
 /** Coarse on purpose: "waiting 2 d" is the fact, not the exact minute. */

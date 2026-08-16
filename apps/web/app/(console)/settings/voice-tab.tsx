@@ -121,8 +121,8 @@ function VoiceCard({
         </div>
 
         {/* Top-right, one per card: the only control that changes the narrator.
-            Adding a second voice drops the first — there is nothing to untick,
-            so the chosen one carries a state chip rather than a dead button. */}
+            "Use as narrator" rather than "Add voice" — there is one narrator,
+            so the verb says replacement and no paragraph of copy has to. */}
         {selected ? (
           <span className="inline-flex h-10 shrink-0 items-center gap-2 px-2 text-[13px] font-medium text-[var(--color-accent)]">
             <Check className="size-4" aria-hidden />
@@ -131,7 +131,7 @@ function VoiceCard({
         ) : (
           <Button variant="outline" size="icon" onClick={onAdd}>
             <Plus aria-hidden />
-            Add voice
+            Use as narrator
           </Button>
         )}
       </div>
@@ -270,9 +270,10 @@ function AuditionPanel({ settings, commit }: TabProps) {
       <CardHeader>
         <CardTitle>Voice audition</CardTitle>
         <CardDescription>
-          <strong>Play</strong> hears a voice read the sample; <strong>Add voice</strong> makes it
-          the narrator. Only Play spends anything — each voice is synthesised once per sample and
-          then replays for free, charged against the same monthly cap as the pipeline.
+          <strong>Play</strong> hears a voice read the sample; <strong>Use as narrator</strong>{' '}
+          adopts it, replacing the previous choice. Only Play spends anything — each voice is
+          synthesised once per sample and then replays for free, charged against the same monthly
+          cap as the pipeline.
         </CardDescription>
       </CardHeader>
 
@@ -446,7 +447,7 @@ function ChosenVoice({ settings, saving, commit }: TabProps) {
           <p className="text-[12px] text-[var(--color-text-muted)]">
             Changing the narrator makes every video made so far sound like a different channel, so
             it is worth doing once. Narration already recorded is not re-read — press{' '}
-            <strong>Add voice</strong> above and only new takes use the new voice.
+            <strong>Use as narrator</strong> above and only new takes use the new voice.
           </p>
         )}
       </CardContent>

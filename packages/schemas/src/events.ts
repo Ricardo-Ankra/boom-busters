@@ -103,11 +103,6 @@ export const BudgetApprovedSchema = z.object({
   additionalUsd: z.number().min(0),
 })
 
-export const BudgetAbortedSchema = z.object({
-  ...projectRef,
-  provider: z.string().min(1),
-})
-
 /**
  * The M2 demo pipeline: a no-op run with two gates that proves park, resume
  * and cancel against real Inngest infrastructure (spec section 14.2). It is
@@ -145,7 +140,6 @@ export const EVENT_SCHEMAS = {
   'gate/preview.changes_requested': GateChangesRequestedSchema,
 
   'budget/approved': BudgetApprovedSchema,
-  'budget/aborted': BudgetAbortedSchema,
 
   'voice/retake.requested': VoiceRetakeRequestedSchema,
   'render/completed': RenderCompletedSchema,

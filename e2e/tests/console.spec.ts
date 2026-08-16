@@ -5,30 +5,37 @@ test.beforeEach(async ({ page }) => {
   await signIn(page)
 })
 
-test.describe('first-run setup checklist', () => {
-  test('replaces the dashboard and names what blocks the pipeline', async ({ page }) => {
+test.describe('dashboard', () => {
+  /**
+   * The dashboard is the Needs-you queue, always. It used to be replaced by
+   * the setup checklist until every item was done — and two items belong to
+   * milestones that have not shipped, so the queue was unreachable in the
+   * running product.
+   */
+  test('shows the Needs-you queue, never the old full-page checklist', async ({ page }) => {
     await page.goto('/')
 
-    await expect(page.getByRole('heading', { name: 'Set up Boom-Busters' })).toBeVisible()
-    await expect(page.getByText(/pipeline cannot start a project until/i)).toBeVisible()
-
-    for (const label of [
-      'Connect YouTube',
-      'Choose narration voice',
-      'Set up Brand Kit',
-      'Add at least 3 music beds',
-      'Add your first cases',
-    ]) {
-      await expect(page.getByText(label, { exact: false }).first()).toBeVisible()
-    }
+    await expect(page.getByRole('heading', { name: 'Needs you' })).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Set up Boom-Busters' })).toBeHidden()
+    // Fixture projects parked at gates surface as cards with a Review button.
+    await expect(page.getByRole('link', { name: 'Review' }).first()).toBeVisible()
   })
 
-  test('every checklist item deep-links somewhere real', async ({ page }) => {
+  test('names setup that belongs to later milestones without blocking anything', async ({
+    page,
+  }) => {
     await page.goto('/')
+    await expect(page.getByText(/Coming with later milestones/)).toBeVisible()
+  })
 
-    await page.getByRole('link', { name: 'Open music library' }).click()
-    await expect(page).toHaveURL(/\/settings/)
-    await expect(page.getByRole('heading', { name: 'Settings' })).toBeVisible()
+  test('a settings deep link lands on the tab it names', async ({ page }) => {
+    // Every checklist button and cross-link addresses a tab as `?tab=`; until
+    // this was honoured, all of them landed on Models.
+    await page.goto('/settings?tab=connections')
+    await expect(page.getByRole('tab', { name: 'Connections' })).toHaveAttribute(
+      'data-state',
+      'active',
+    )
   })
 })
 

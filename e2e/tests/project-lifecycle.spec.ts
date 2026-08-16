@@ -42,8 +42,20 @@ test.beforeEach(async ({ page }) => {
 
 async function openProject(page: Page, title: string): Promise<void> {
   await page.goto('/projects')
-  await page.getByRole('listitem').filter({ hasText: title }).getByRole('link').first().click()
-  await expect(page).toHaveURL(/\/projects\/[0-9A-Z]{26}/)
+
+  /**
+   * Click-and-verify, retried. On a dev server mid-compile the click can land
+   * before hydration and simply vanish — the link resolves, the click fires,
+   * the URL never changes. Three separate specs in this family have each
+   * flaked exactly this way. `toPass` re-clicks until the navigation actually
+   * happened, which is the assertion that mattered all along. The inner wait
+   * must be LONGER than a slow-but-real navigation (~2-3s on a cold compile):
+   * a short one re-clicks mid-navigation and restarts what it is waiting for.
+   */
+  await expect(async () => {
+    await page.getByRole('listitem').filter({ hasText: title }).getByRole('link').first().click()
+    await expect(page).toHaveURL(/\/projects\/[0-9A-Z]{26}/, { timeout: 8_000 })
+  }).toPass({ timeout: 30_000 })
 }
 
 test.describe('a project that was just created', () => {
@@ -142,7 +154,7 @@ test.describe('making a project from a case', () => {
     await expect(page.getByText(/It costs what it cost the first time/i)).toBeVisible()
 
     // And it can be backed out of, like every other consequential control.
-    await page.getByRole('button', { name: 'Keep going' }).click()
+    await page.getByRole('button', { name: 'Cancel' }).click()
     await expect(page.getByRole('button', { name: /Run the dossier stage again/i })).toBeVisible()
   })
 })
@@ -166,9 +178,11 @@ test.describe('a project that was stopped', () => {
   test('the projects list agrees with the project screen', async ({ page }) => {
     await page.goto('/projects')
 
-    // "Resume" on the list has to lead somewhere that can actually resume.
+    // "Re-run stage" on the list has to lead somewhere that can actually
+    // re-run. (It said "Resume" until 2026-08-16 — a label promising
+    // continuation on an action that runs the stage from scratch at full cost.)
     const row = page.getByRole('listitem').filter({ hasText: STOPPED_PROJECT_TITLE })
-    await expect(row.getByRole('link', { name: 'Resume' })).toBeVisible()
+    await expect(row.getByRole('link', { name: 'Re-run stage' })).toBeVisible()
   })
 })
 
@@ -360,7 +374,7 @@ test.describe('work built from research that has since been replaced', () => {
     ).toBeVisible()
     await expect(page.getByText(/kept and still readable/i)).toBeVisible()
 
-    await page.getByRole('button', { name: 'Keep going' }).click()
+    await page.getByRole('button', { name: 'Cancel' }).click()
   })
 
   test('marks the stale stage on the rail without relying on colour', async ({ page }) => {

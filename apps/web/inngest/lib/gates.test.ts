@@ -19,6 +19,7 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import { db } from '@/lib/db'
 import { forgetRunRows } from '../middleware/run-mirror'
 import {
+  autoCloseReviewGate,
   budgetGateData,
   closeBudgetGate,
   closeReviewGate,
@@ -122,6 +123,47 @@ describeDb('gate helpers', () => {
       await openReviewGate(ctx, { stage: 'script', projectStage: 'script', summary: 'b' })
 
       expect(await listRuns(db)).toHaveLength(1)
+    })
+  })
+
+  /**
+   * Exception-based gating: a clean stage closes its own gate. The project
+   * must never pass through `awaiting_review` — the whole point is that
+   * nothing needed the human — but the trail must read exactly as if the gate
+   * had opened and been approved, because it was, by the same predicates.
+   */
+  describe('autoCloseReviewGate', () => {
+    it('moves straight to the next stage without parking', async () => {
+      await autoCloseReviewGate(context(), {
+        stage: 'dossier',
+        nextStage: 'script',
+        summary: 'Dossier ready · 12 claims',
+      })
+
+      const project = await getProject(db, FIXTURE_PROJECT_ID)
+      expect(project).toMatchObject({ stage: 'script', stageStatus: 'running' })
+
+      // The run never parked: no awaiting_gate status was ever written.
+      const [run] = await listRuns(db)
+      expect(run?.status).not.toBe('awaiting_gate')
+    })
+
+    it('leaves the same opened-and-closed trail a manual approval would, marked auto', async () => {
+      await autoCloseReviewGate(context(), {
+        stage: 'dossier',
+        nextStage: 'script',
+        summary: 'Dossier ready · 12 claims',
+      })
+
+      const [run] = await listRuns(db)
+      const events = await listRunEvents(db, run?.id as string)
+      expect(events.map((event) => event.kind)).toEqual(['gate.opened', 'gate.closed'])
+
+      const closed = events.find((event) => event.kind === 'gate.closed')
+      expect(closed?.data).toMatchObject({ gate: 'dossier', auto: true })
+      // The summary the human would have reviewed is still on the record.
+      const opened = events.find((event) => event.kind === 'gate.opened')
+      expect(opened?.message).toContain('12 claims')
     })
   })
 

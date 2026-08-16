@@ -6,8 +6,26 @@ import { SettingsForm } from './settings-form'
 export const dynamic = 'force-dynamic'
 export const metadata = { title: 'Settings · Boom-Busters' }
 
-export default async function SettingsPage() {
-  const [settings, credentials] = await Promise.all([getSettings(db), listCredentials(db)])
+const TABS = ['models', 'brand-kit', 'voice', 'publishing', 'connections'] as const
+type SettingsTab = (typeof TABS)[number]
+
+export default async function SettingsPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>
+}) {
+  const [settings, credentials, params] = await Promise.all([
+    getSettings(db),
+    listCredentials(db),
+    searchParams,
+  ])
+
+  // Every checklist and cross-link in the app addresses a tab as `?tab=`;
+  // until this was honoured, all of them landed on Models.
+  const requested = typeof params['tab'] === 'string' ? params['tab'] : undefined
+  const tab: SettingsTab = (TABS as readonly string[]).includes(requested ?? '')
+    ? (requested as SettingsTab)
+    : 'models'
 
   return (
     <div className="prose-measure mx-auto flex max-w-4xl flex-col gap-4">
@@ -23,6 +41,7 @@ export default async function SettingsPage() {
         initialSettings={settings}
         credentials={credentials}
         mockProviders={mockProvidersEnabled()}
+        initialTab={tab}
       />
     </div>
   )

@@ -4,12 +4,13 @@ import type { ClaimRow } from '@boom-busters/db'
 import { ExternalLink, Pencil, ShieldAlert } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import * as React from 'react'
+import { ConfirmButton } from '@/components/confirm-button'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input, Label, Select } from '@/components/ui/input'
 import { useToast } from '@/components/ui/toast'
 import { blocksApproval, blockingCount, sourceDomain } from '@/lib/claim-review'
-import { editClaim, quarantineClaim, verifyClaimAction } from './actions'
+import { editClaim, quarantineAllBlocking, quarantineClaim, verifyClaimAction } from './actions'
 
 /**
  * Dossier review (build spec section 11.3): the document on the left, the
@@ -58,7 +59,7 @@ export function DossierReview({
       </Card>
 
       <Card>
-        <CardHeader>
+        <CardHeader className="flex-row flex-wrap items-center justify-between gap-2">
           <CardTitle>
             Claims — {claims.length}
             {blocking > 0 ? (
@@ -67,6 +68,10 @@ export function DossierReview({
               </span>
             ) : null}
           </CardTitle>
+          {/* The bulk verdict, beside the count it acts on. One-by-one triage
+              stays for claims that deserve different answers; this is for the
+              day the answer is "none of these made the cut". */}
+          {blocking > 1 ? <QuarantineAllButton projectId={projectId} count={blocking} /> : null}
         </CardHeader>
         <CardContent className="flex flex-col gap-2">
           {claims.length === 0 ? (
@@ -85,6 +90,36 @@ export function DossierReview({
         </CardContent>
       </Card>
     </div>
+  )
+}
+
+function QuarantineAllButton({ projectId, count }: { projectId: string; count: number }) {
+  const router = useRouter()
+  const { toast } = useToast()
+
+  return (
+    <ConfirmButton
+      label={
+        <>
+          <ShieldAlert aria-hidden />
+          Quarantine all {count}
+        </>
+      }
+      confirmLabel={`Quarantine ${count} claims`}
+      consequence={
+        `All ${count} claims still blocking approval are excluded from scripting. ` +
+        'Each stays visible, struck through, and can be un-quarantined on its own.'
+      }
+      onConfirm={async () => {
+        const result = await quarantineAllBlocking(projectId)
+        if (result.ok) {
+          toast({ title: `${count} claims quarantined — excluded from scripting` })
+          router.refresh()
+        } else {
+          toast({ title: 'That did not work', description: result.error, variant: 'error' })
+        }
+      }}
+    />
   )
 }
 

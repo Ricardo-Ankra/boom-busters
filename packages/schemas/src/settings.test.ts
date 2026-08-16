@@ -5,7 +5,6 @@ import {
   SettingsPatchSchema,
   SettingsSchema,
   effectiveCeilingUsd,
-  firstRunBlockers,
   canonicalModelId,
   monthKey,
   resolveBrandKit,
@@ -190,18 +189,6 @@ describe('canonicalModelId', () => {
     for (const route of Object.values(DEFAULT_SETTINGS.modelRouting)) {
       expect(canonicalModelId(route.provider, route.model)).toBe(route.model)
     }
-  })
-})
-
-describe('firstRunBlockers', () => {
-  it('blocks a fresh install on voice and music beds', () => {
-    expect(firstRunBlockers(DEFAULT_SETTINGS, 0)).toEqual(['narration-voice', 'music-beds'])
-  })
-
-  it('clears once the voice is chosen and three beds exist', () => {
-    const settings = structuredClone(DEFAULT_SETTINGS)
-    settings.tts.voiceId = 'Charon'
-    expect(firstRunBlockers(settings, 3)).toEqual([])
   })
 })
 

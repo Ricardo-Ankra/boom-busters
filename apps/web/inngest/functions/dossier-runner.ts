@@ -14,6 +14,7 @@ import { db } from '@/lib/db'
 import { inngest } from '../client'
 import { events } from '../events'
 import {
+  autoCloseReviewGate,
   closeBudgetGate,
   closeReviewGate,
   grantOverage,
@@ -126,6 +127,28 @@ export const dossierRunner = inngest.createFunction(
       })
       return countClaims(saved.claims)
     })
+
+    /**
+     * Exception-based gating (decision, 2026-08-16): the gate parks only when
+     * something actually needs a human. `counts.blocking` is the same
+     * predicate `approveGate` enforces server-side — unverified claims not
+     * yet quarantined — so a dossier with zero of them is one the human
+     * could only have rubber-stamped. It approves itself, says so, and the
+     * script runner starts on the same event a manual approval would send.
+     */
+    if (counts.blocking === 0) {
+      await step.run('auto-approve', async () => {
+        await markDossierApproved(db, projectId)
+        await autoCloseReviewGate(ctx, {
+          stage: 'dossier',
+          nextStage: 'script',
+          summary: gateSummary(counts),
+        })
+      })
+      await step.sendEvent('advance-to-script', events.dossierApproved.create({ projectId }))
+
+      return { projectId, outcome: 'auto-approved' as const, claims: counts.total }
+    }
 
     await step.run('open-gate', () =>
       openReviewGate(ctx, {
