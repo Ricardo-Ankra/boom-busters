@@ -248,6 +248,42 @@ export type SlotCandidate = z.infer<typeof SlotCandidateSchema>
 /** How many candidates the board shows per slot (product spec: "top 4 scored"). */
 export const CANDIDATES_SHOWN = 4
 
+/**
+ * The scoring model's output: one entry per candidate id it judged. Build
+ * spec section 6 — one batched call per SLOT, never a call per candidate.
+ */
+export const CandidateScoresSchema = z.object({
+  scores: z.array(
+    z.object({
+      id: z.string().min(1),
+      score: z.number().min(0).max(100),
+      reason: z.string().min(1),
+    }),
+  ),
+})
+export type CandidateScores = z.infer<typeof CandidateScoresSchema>
+
+/**
+ * Merge scores into candidates and order best-first. A candidate the model
+ * did not score keeps no score and sorts last — visible as unscored rather
+ * than silently dropped, so a model that judged half the list is a model
+ * that can be caught doing it.
+ */
+export function applyScores(
+  candidates: readonly SlotCandidate[],
+  scores: CandidateScores,
+): SlotCandidate[] {
+  const byId = new Map(scores.scores.map((entry) => [entry.id, entry]))
+
+  return candidates
+    .map((candidate) => {
+      const entry = byId.get(candidate.id)
+      if (!entry) return candidate
+      return { ...candidate, score: entry.score, scoreReason: entry.reason }
+    })
+    .sort((a, b) => (b.score ?? -1) - (a.score ?? -1))
+}
+
 /** How many generations a still prompt buys per resolution pass. */
 export const STILL_GENERATIONS = 2
 
