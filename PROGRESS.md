@@ -1265,7 +1265,7 @@ fed one implementation pass.
      adapter — the render is 1080p and 4K sources are bandwidth spent making
      the export slower. Commons is keyless and its licence field is the whole
      point: reported verbatim (`LicenseShortName`), `Unknown — verify at
-     source` when absent, artist HTML stripped to plain-text credits. Stock
+source` when absent, artist HTML stripped to plain-text credits. Stock
      pre-flight needs ONE of the two keys (one missing key degrades coverage,
      loudly); zero is a `ValidationError` naming Settings → Connections.
 
@@ -1642,8 +1642,8 @@ seconds.
 - [x] **Connections** — pexels/pixabay/fal verifiable (searches and the fal
       auth-before-method check; none of them spend); purpose lines updated.
 - [~] **Tests** — schemas 168 · providers 287 · web 252 unit/component, db
-      integration for slots/assets, E2E visual-board spec against a seeded
-      board fixture; CI green pending merge.
+  integration for slots/assets, E2E visual-board spec against a seeded
+  board fixture; CI green pending merge.
 
 ---
 

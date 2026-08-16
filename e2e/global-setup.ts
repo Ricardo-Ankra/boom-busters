@@ -372,9 +372,7 @@ export default async function globalSetup(): Promise<void> {
      * adapters' own trick), so the strip renders with no storage behind it.
      */
     {
-      const { replaceShotList, listShotSlots, setSlotResolution } = await import(
-        '@boom-busters/db'
-      )
+      const { replaceShotList, listShotSlots, setSlotResolution } = await import('@boom-busters/db')
 
       const board = await createProjectFromCase(connection.db, {
         caseId: FIXTURE_CASE_ID,

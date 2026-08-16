@@ -137,7 +137,8 @@ async function verifiableKey(
     const keys = await visualCredentials(db, env.SECRETS_ENCRYPTION_KEY)
     const verify =
       provider === 'fal'
-        ? (apiKey: string) => (mockProvidersEnabled() ? Promise.resolve() : falImageGen.verifyKey(apiKey))
+        ? (apiKey: string) =>
+            mockProvidersEnabled() ? Promise.resolve() : falImageGen.verifyKey(apiKey)
         : (apiKey: string) => stockAdapter(provider).verifyKey(apiKey)
     return { verify, apiKey: keys[provider] }
   }
