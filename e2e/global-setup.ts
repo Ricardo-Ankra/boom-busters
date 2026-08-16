@@ -9,6 +9,7 @@ export const NO_DOSSIER_TITLE = 'Script stage, no dossier to write from (E2E)'
 export const DENSE_WARNINGS_TITLE = 'A chapter with every warning kind (E2E)'
 export const NARRATED_PROJECT_TITLE = 'Narration ready for review (E2E)'
 export const FLAGGED_TAKE_TITLE = 'Narration with a flagged take (E2E)'
+export const VISUAL_BOARD_TITLE = 'Visual board ready for review (E2E)'
 
 /**
  * Twenty-two warnings across all three kinds, which is what the self-check
@@ -194,11 +195,12 @@ export default async function globalSetup(): Promise<void> {
      */
 
     // 1. A project past the last runner that exists. Production had one sitting
-    //    at `voice`/`running` with no live run; M4 built the voice runner, so
-    //    the same shape now lives one stage further on, at `visuals`. The state
-    //    being tested is unchanged — a stage with no runner behind it, and a
-    //    `running` column with nothing running — and it has to move whenever a
-    //    milestone lands, because "past the last runner" is a moving target.
+    //    at `voice`/`running` with no live run; M4 built the voice runner and
+    //    M5 the visuals runner, so the same shape now lives at `assembly`. The
+    //    state being tested is unchanged — a stage with no runner behind it,
+    //    and a `running` column with nothing running — and it has to move
+    //    whenever a milestone lands, because "past the last runner" is a
+    //    moving target.
     const beyond = await createProjectFromCase(connection.db, {
       caseId: FIXTURE_CASE_ID,
       title: BEYOND_RUNNERS_TITLE,
@@ -217,7 +219,7 @@ export default async function globalSetup(): Promise<void> {
       estRuntimeSec: 120,
     })
     await setProjectStage(connection.db, beyond.id, {
-      stage: 'visuals',
+      stage: 'assembly',
       // `running` with nothing running — the exact combination that turned a
       // spinner for a day.
       stageStatus: 'running',
@@ -360,6 +362,213 @@ export default async function globalSetup(): Promise<void> {
 
     await narrate(NARRATED_PROJECT_TITLE, { retakeFirst: true })
     await narrate(FLAGGED_TAKE_TITLE, { flagSecond: true })
+
+    /**
+     * 6. A project parked at the visuals gate, board resolved — the M5 review
+     * screen in the state the runner leaves it: a stock slot with scored
+     * candidates and one chosen, a claim-sourced chart, a map, and one
+     * placeholder so the gate must take the explicit "approve with 1
+     * placeholder" wording. Thumbnails are inline SVG data URLs (the mock
+     * adapters' own trick), so the strip renders with no storage behind it.
+     */
+    {
+      const { replaceShotList, listShotSlots, setSlotResolution } = await import(
+        '@boom-busters/db'
+      )
+
+      const board = await createProjectFromCase(connection.db, {
+        caseId: FIXTURE_CASE_ID,
+        title: VISUAL_BOARD_TITLE,
+      })
+      await saveDossier(connection.db, {
+        projectId: board.id,
+        contentMd: '# The research the board below was planned from.',
+        claims: [],
+      })
+      const boardScript = await createScriptVersion(connection.db, board.id)
+      const boardChapter = await saveChapter(connection.db, {
+        scriptId: boardScript.id,
+        index: 0,
+        title: 'The collapse on screen',
+        contentMd: narratedText.join('\n\n'),
+        estRuntimeSec: 90,
+      })
+
+      // Narration takes, so the scrubber has audio to play (mock:// keys).
+      for (const [paragraphIndex, text] of narratedText.entries()) {
+        const key = takeIdempotencyKey({
+          projectId: board.id,
+          chapterId: boardChapter.id,
+          paragraphIndex,
+          text,
+          voiceId: 'mock-narrator',
+        })
+        const claimed = await claimTake(connection.db, {
+          projectId: board.id,
+          chapterId: boardChapter.id,
+          paragraphIndex,
+          idempotencyKey: key,
+          provider: 'elevenlabs',
+          voiceId: 'mock-narrator',
+          builtFromScriptVersion: boardScript.version,
+        })
+        await storeTakeAudio(connection.db, claimed.take.id, {
+          r2Key: mockVoiceTakeKey(claimed.take.id),
+          durationMs: 6_000,
+          costUsd: 0.0009,
+          waveform: Array.from({ length: 32 }, (_, i) => (i * 5) % 100),
+        })
+      }
+
+      const thumb = (label: string, hue: number) =>
+        `data:image/svg+xml;base64,${Buffer.from(
+          `<svg xmlns="http://www.w3.org/2000/svg" width="320" height="180">` +
+            `<rect width="320" height="180" fill="hsl(${hue},18%,22%)"/>` +
+            `<text x="160" y="95" font-family="monospace" font-size="14" fill="#ddd" text-anchor="middle">${label}</text></svg>`,
+        ).toString('base64')}`
+
+      const common = {
+        motion: { kind: 'static' as const },
+        transition: 'cut' as const,
+      }
+
+      await replaceShotList(connection.db, board.id, [
+        {
+          chapterId: boardChapter.id,
+          index: 0,
+          type: 'stock',
+          brief: {
+            type: 'stock',
+            ...common,
+            coversText: narratedText[0]!,
+            description: 'Deserted open-plan office at dusk, cool blue grade.',
+            query: 'empty office dusk',
+            rejectionCriteria: ['no watermarks'],
+          },
+          startMs: 0,
+          durationMs: 6000,
+        },
+        {
+          chapterId: boardChapter.id,
+          index: 1,
+          type: 'chart',
+          brief: {
+            type: 'chart',
+            ...common,
+            coversText: narratedText[1]!,
+            description: 'The nine-day share-price collapse, drawn on.',
+            chartKind: 'line',
+            series: [
+              {
+                label: 'Share price',
+                unit: 'EUR',
+                points: [
+                  { x: '2020-06-17', y: 104.5 },
+                  { x: '2020-06-22', y: 14.44 },
+                  { x: '2020-06-26', y: 1.28 },
+                ],
+              },
+            ],
+            // A legal ULID matters: Crockford base32 has no I, L, O or U, and
+            // an illegal one fails the brief schema — which the board would
+            // faithfully render as the chart ERROR card instead of a chart.
+            dataRefs: ['01E2EC000000000000000000AA'],
+            takeaway: 'From 104 to 1.28 in nine days.',
+            reveal: 'draw-on',
+          },
+          startMs: 6000,
+          durationMs: 6000,
+        },
+        {
+          chapterId: boardChapter.id,
+          index: 2,
+          type: 'map',
+          brief: {
+            type: 'map',
+            ...common,
+            coversText: narratedText[2]!,
+            description: 'The money moves from Munich to Manila.',
+            locations: [
+              { label: 'Munich', lat: 48.14, lon: 11.58 },
+              { label: 'Manila', lat: 14.6, lon: 120.98 },
+            ],
+            route: true,
+          },
+          startMs: 12000,
+          durationMs: 6000,
+        },
+        {
+          chapterId: boardChapter.id,
+          index: 3,
+          type: 'stock',
+          brief: {
+            type: 'stock',
+            ...common,
+            coversText: narratedText[2]!,
+            description: 'A courtroom sketch nothing free will ever have.',
+            query: 'courtroom nothing matches this',
+            rejectionCriteria: [],
+          },
+          startMs: 12000,
+          durationMs: 6000,
+        },
+      ])
+
+      const slots = await listShotSlots(connection.db, board.id)
+      await setSlotResolution(connection.db, slots[0]!.id, {
+        candidates: [
+          {
+            id: 'e2e-a1',
+            provider: 'pexels',
+            kind: 'image',
+            sourceUrl: 'https://example.com/office-1.jpg',
+            pageUrl: 'https://example.com/office-1',
+            thumbUrl: thumb('office dusk 1', 210),
+            licence: 'Pexels License',
+            attributionText: 'Photo by Somebody on Pexels',
+            score: 91,
+            scoreReason: 'Subject and mood match the brief.',
+            chosen: true,
+          },
+          {
+            id: 'e2e-b2',
+            provider: 'pixabay',
+            kind: 'image',
+            sourceUrl: 'https://example.com/office-2.jpg',
+            thumbUrl: thumb('office dusk 2', 30),
+            licence: 'Pixabay Content License',
+            score: 55,
+            scoreReason: 'Right subject, wrong era.',
+          },
+        ],
+        status: 'resolved',
+      })
+      await setSlotResolution(connection.db, slots[1]!.id, { candidates: [], status: 'resolved' })
+      await setSlotResolution(connection.db, slots[2]!.id, { candidates: [], status: 'resolved' })
+      // The one nothing usable was found for — the explicit-wording case.
+      await setSlotResolution(connection.db, slots[3]!.id, {
+        candidates: [],
+        status: 'placeholder',
+      })
+
+      await setProjectStage(connection.db, board.id, {
+        stage: 'visuals',
+        stageStatus: 'awaiting_review',
+      })
+      const boardRunId = await ensureRun(connection.db, {
+        inngestRunId: '01E2ESETUP0000000000000002',
+        functionName: 'visuals-runner',
+        projectId: board.id,
+        stage: 'visuals',
+      })
+      await recordRunEvent(connection.db, {
+        runId: boardRunId,
+        kind: 'gate.opened',
+        message: 'Visual board ready · 4 slots · 3 resolved · 1 placeholder',
+        data: { gate: 'visuals' },
+      })
+      await setRunStatus(connection.db, boardRunId, 'awaiting_gate')
+    }
 
     await updateSettings(connection.db, {
       budgets: { monthlyCeilingUsd: 100, approvedOverage: null },

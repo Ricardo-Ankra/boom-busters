@@ -12,10 +12,16 @@ import {
   markProjectCancelled,
   projectDeletionSummary,
   setProjectStage,
+  shotSlotStatuses,
 } from '@boom-busters/db'
 import { voiceGateBlockedReason } from '@/lib/voice-review'
 import type { ProjectStage } from '@boom-busters/db'
-import { GateStageSchema, ProviderSchema, UlidSchema } from '@boom-busters/schemas'
+import {
+  GateStageSchema,
+  ProviderSchema,
+  UlidSchema,
+  visualsApprovalBlockedReason,
+} from '@boom-busters/schemas'
 import type { GateStage } from '@boom-busters/schemas'
 import { revalidatePath } from 'next/cache'
 import { auth } from '@/auth'
@@ -167,6 +173,16 @@ export async function restartStage(projectId: string, stage?: string): Promise<A
     }
   }
 
+  // And once more: the shot list is planned against the script's paragraphs.
+  if (target === 'visuals' && !(await getLatestScript(db, projectId))) {
+    return {
+      ok: false,
+      error:
+        'There is no script to plan visuals for. Run the script stage first — the board is ' +
+        'planned against its paragraphs.',
+    }
+  }
+
   /**
    * Re-entering a stage means re-sending the event its runner triggers on.
    * Only these three have runners; anything else would send an event nothing
@@ -179,7 +195,9 @@ export async function restartStage(projectId: string, stage?: string): Promise<A
         ? events.dossierApproved.create({ projectId, approvedBy })
         : target === 'voice'
           ? events.scriptApproved.create({ projectId, approvedBy })
-          : null
+          : target === 'visuals'
+            ? events.voiceApproved.create({ projectId, approvedBy })
+            : null
 
   if (!entry) {
     return {
@@ -232,7 +250,11 @@ const CHANGES_EVENT = {
   preview: events.previewChangesRequested,
 } as const satisfies Record<GateStage, unknown>
 
-export async function approveGate(projectId: string, stage: string): Promise<ActionResult> {
+export async function approveGate(
+  projectId: string,
+  stage: string,
+  options?: { acknowledgePlaceholders?: number },
+): Promise<ActionResult> {
   const approvedBy = await requireOwner()
   const invalid = badId(projectId)
   if (invalid) return invalid
@@ -279,6 +301,21 @@ export async function approveGate(projectId: string, stage: string): Promise<Act
    */
   if (parsedStage.data === 'voice') {
     const blocked = await voiceGateBlockedReason(db, projectId)
+    if (blocked) return { ok: false, error: blocked }
+  }
+
+  /**
+   * The visuals gate's blockers, verified server-side like the voice gate's:
+   * unresolved slots refuse outright, and placeholders refuse unless the
+   * approval names their EXACT count — which is what the "approve with N
+   * placeholders" button passes. A board that gained a placeholder after the
+   * screen rendered therefore refuses a stale click (spec section 11.3).
+   */
+  if (parsedStage.data === 'visuals') {
+    const blocked = visualsApprovalBlockedReason(
+      await shotSlotStatuses(db, projectId),
+      options?.acknowledgePlaceholders,
+    )
     if (blocked) return { ok: false, error: blocked }
   }
 

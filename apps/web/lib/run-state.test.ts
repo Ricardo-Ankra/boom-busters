@@ -168,7 +168,7 @@ describe('projectControl', () => {
   it('refuses to offer a restart for a stage that has no runner yet', () => {
     // A button that sends an event nothing subscribes to would report success
     // and do nothing, which is worse than saying so.
-    for (const stage of ['visuals', 'assembly', 'shorts', 'publish'] as const) {
+    for (const stage of ['assembly', 'shorts', 'publish'] as const) {
       const control = projectControl(project(stage, 'failed'), false, {
         hasDossier: true,
         hasScript: true,
@@ -179,14 +179,28 @@ describe('projectControl', () => {
     }
   })
 
-  it('offers a restart for the voice stage, which has a runner from M4', () => {
-    expect(
-      projectControl(project('voice', 'failed'), false, {
-        hasDossier: true,
-        hasScript: true,
-        now: NOW,
-      }),
-    ).toMatchObject({ kind: 'restart' })
+  it('offers a restart for the voice and visuals stages, whose runners exist', () => {
+    for (const stage of ['voice', 'visuals'] as const) {
+      expect(
+        projectControl(project(stage, 'failed'), false, {
+          hasDossier: true,
+          hasScript: true,
+          now: NOW,
+        }),
+      ).toMatchObject({ kind: 'restart' })
+    }
+  })
+
+  it('blocks a visuals restart when there is no script to plan against', () => {
+    const control = projectControl(project('visuals', 'failed'), false, {
+      hasDossier: true,
+      hasScript: false,
+      now: NOW,
+    })
+    expect(control.kind).toBe('blocked')
+    expect(control).toMatchObject({
+      message: expect.stringContaining('no script to plan visuals for'),
+    })
   })
 
   /**

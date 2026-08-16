@@ -1236,6 +1236,106 @@ fed one implementation pass.
      work list (filter + linked titles). Push notifications stay absent by
      the M4.9 decision — email fills the gap when a Resend key exists.
 
+### M5 — visuals (2026-08-16)
+
+107. **The shot-list model plans, the runner does the arithmetic.** One Haiku
+     call per chapter (claim list as the cacheable prefix, like every script
+     prompt); the model anchors slots to paragraph indexes and asks for
+     seconds, and `timedParagraphs`/`plannedToRows` turn that into real times
+     from MEASURED take durations laid end to end — visuals runs after the
+     voice gate, so every duration is a bought take, not an estimate. On the
+     wire, charts cite claims by list number (`PlannedChartBriefSchema`),
+     because models mistype ULIDs; `resolvePlannedBrief` swaps numbers for
+     ids and a chart citing a claim outside the list is REJECTED and counted,
+     never stored with invented sourcing.
+
+108. **The chart rule has teeth at three layers.** `ChartBriefSchema.dataRefs`
+     is `min(1)` — spec §7.4's "a chart brief without claim refs is a
+     ValidationError" enforced by schema, not etiquette; conversion rejects
+     ghost refs; and the board renders a broken chart brief as an ERROR CARD
+     (`role="alert"`), never as a chart.
+
+109. **Hero stays a switch, not a project.** `HERO_SLOTS_ENABLED = false` in
+     one place; the schema and UI badge exist, the prompt forbids emission,
+     and resolution marks any hero slot `placeholder`. Flipping the flag is
+     the whole feature request.
+
+110. **Stock is Pexels + Pixabay, half photos half clips, HD-capped; archival
+     is Wikimedia Commons.** Video files above 1920px are rejected at the
+     adapter — the render is 1080p and 4K sources are bandwidth spent making
+     the export slower. Commons is keyless and its licence field is the whole
+     point: reported verbatim (`LicenseShortName`), `Unknown — verify at
+     source` when absent, artist HTML stripped to plain-text credits. Stock
+     pre-flight needs ONE of the two keys (one missing key degrades coverage,
+     loudly); zero is a `ValidationError` naming Settings → Connections.
+
+111. **Scoring is metadata-only and says so.** One batched Haiku call per
+     slot; the model sees alt text/tags/descriptions/dimensions, never
+     pixels, so scores are a ranking aid and the human still chooses from
+     thumbnails. Rejection criteria become hard score caps. A candidate the
+     model skipped stays unscored and sorts last — visible, not dropped.
+     Free searches are NOT wrapped in `withCost`: a $0 reservation guards
+     nothing while still writing ledger rows. fal generation IS wrapped, at
+     `estimateImageGenUsd` (price owned by the adapter, ~$0.03/image).
+
+112. **FLUX has no negative-prompt input.** It is guidance-distilled; the
+     brief's negative prompt is folded into the prompt as an "Avoid:" clause
+     rather than dropped silently (principle 6). `verifyKey` leans on fal
+     validating auth before method: 401 is a bad key, 405 is a good one,
+     nothing is bought.
+
+113. **The chosen candidate lives in the candidates jsonb, not in
+     `chosenAssetId`.** A chosen STOCK candidate has no bytes in our storage
+     yet — media never streams through the app layer, so stock is
+     materialised by the render side in M6 — and `chosenAssetId` points at an
+     `assets` row only when bytes already exist. Generated stills are pulled
+     into R2 the moment they exist (fal URLs expire), keyed by content hash
+     so `assets.contentHash` dedupe holds; uploads the same.
+
+114. **Resolution pre-chooses the top-scored candidate, and the visuals gate
+     ALWAYS parks.** The board is for swapping a default, not assembling one
+     from nothing — gate 4 would otherwise be forty mandatory decisions.
+     But no auto-close: whether the chosen clip actually fits the sentence is
+     precisely what no metadata check can answer, so exception-based gating
+     (decision 99) does not apply here, same reasoning as the voice gate.
+
+115. **Placeholders approve only through the button's own wording.** The
+     primary button reads "Approve with N placeholders"; the action verifies
+     the count the button named against the board as it stands, so a board
+     that drifted after render refuses a stale click. Unresolved slots block
+     outright.
+
+116. **Chart/map previews are pure SVG, not `@remotion/player`.** Spec §11.3
+     asks for small player instances, but the compositions package does not
+     exist until M6, and a preview faked with a different renderer would
+     drift from the eventual frames anyway. The previews draw from the same
+     brief the M6 compositions will consume, with the real Brand Kit tokens
+     (palette, chart series, semantic collapse red). Maps are schematic —
+     points, labels, route, graticule, auto-zoomed bbox — because the story a
+     map slot tells is "the money moved from HERE to THERE", not streets.
+
+117. **The scrubber plays paragraph takes sequentially on the shot-list
+     clock.** Clicking a slot (filmstrip or card) seeks the narration to the
+     moment the slot is on screen; segments hand over on `ended`. True
+     gapless concatenated audio is an M6 alignment product; this is the same
+     audio at the same moments. The timeline bar is presentational — a 12px
+     band can never be a legal 40px control, so jumping belongs to the
+     filmstrip and the cards.
+
+118. **`Upload own` takes images only (≤8 MB).** A video upload would stream
+     media bytes through the app layer, which the architecture forbids; a
+     poster image is small enough to be the exception the narration WAVs
+     already are. Uploads land in R2 keyed by content hash, win the slot's
+     choice, and the fetched candidates stay for comparison. Re-fetch and
+     regenerate go through `visuals/refetch.requested` → `slot-refetcher`,
+     which shares `resolveSlotBrief` with the runner so a re-fetch can never
+     behave differently from the pass that made the board.
+
+**Spending:** every fetch, score and generation is mocked by default
+(`MOCK_PROVIDERS=1`); a real visuals run costs one Haiku call per chapter +
+one per fetched slot (scoring) + ~$0.06 per still slot (2 FLUX images).
+Stock and archival searches are free at any volume.
+
 ### M4.8 — what the Chirp 3 HD guide said, and I had not read (2026-08-13)
 
 The human sent Google's Chirp 3 HD page. Two things in it contradict claims I
@@ -1498,7 +1598,52 @@ seconds.
 > Shot-list generation with typed briefs, stock/archival adapters + scoring,
 > Flux adapter, visual board UI, chart/map live previews.
 
-**Status:** `[ ]` not started
+**Status:** `[~]` in progress — branch `m5-visuals` (started 2026-08-16)
+
+### Deliverables
+
+- [x] **Typed briefs (`packages/schemas`)** — discriminated union per slot type
+      (`stock|archival|still|chart|map|hero`): common fields (covered script
+      text, duration, visual description, motion, transition) plus per-type
+      shapes per product-spec §7. Chart briefs REQUIRE ≥1 claim `dataRef` at
+      the schema level. `hero` typed but feature-flagged off. Candidate schema
+      (source URL, dimensions, licence, attribution, score, summary).
+- [x] **Shot-list prompt** — Haiku converts the approved script + non-quarantined
+      claims into timed slots, one call per chapter with the claim list as the
+      cacheable prefix; instructed never to emit `hero` while the flag is off;
+      chart values must be verbatim from claims, cited by claim number.
+- [x] **Stock adapters (`packages/providers`)** — Pexels + Pixabay behind the
+      `StockQuery` interface (photos and clips half each, HD cap); Wikimedia
+      Commons for `archival` with the licence field populated verbatim; mock
+      adapters, deterministic, thumbnails as inline SVG data URLs.
+- [x] **Candidate scoring** — one Haiku call per slot scoring all candidates
+      against the brief + rejection criteria (batched, never per candidate);
+      metadata-only, scores stored with candidates, unscored sort last.
+- [x] **Flux adapter** — fal.ai FLUX.1 [dev] for `still` slots, 2 generations
+      per prompt, pulled into R2 immediately (fal URLs expire) as `assets`;
+      mock generator prices at the live figure.
+- [x] **DB helpers** — `replaceShotList` (transactional whole-board swap),
+      script-order listing, candidate selection, brief edit re-opens the slot,
+      asset upsert deduped on `contentHash`.
+- [x] **visuals-runner** — `gate/voice.approved` → per-chapter shot-list
+      generation → key pre-flight from the types the plan actually needs →
+      fan-out per-slot resolution → 15% partial-failure policy (failed slots
+      become `placeholder`) → gate 4, which ALWAYS parks. `slot-refetcher`
+      handles re-fetch/regenerate (the voice-retaker pattern) through the same
+      `resolveSlotBrief` the runner uses.
+- [x] **Visual board UI** — filmstrip synced to an audio scrubber playing the
+      narration takes on the shot-list clock, slot cards with 4-candidate
+      strips (Selected ring, score+reason on hover, licence + attribution as
+      the audit line), `Edit brief & re-fetch` / `Regenerate` (cost named on
+      stills) / `Upload own` (images only), approve requires explicit
+      "Approve with N placeholders" wording verified server-side by count.
+- [x] **Chart/map live previews** — pure SVG from the brief + real Brand Kit
+      tokens; a broken chart brief renders an error card, never a chart.
+- [x] **Connections** — pexels/pixabay/fal verifiable (searches and the fal
+      auth-before-method check; none of them spend); purpose lines updated.
+- [~] **Tests** — schemas 168 · providers 287 · web 252 unit/component, db
+      integration for slots/assets, E2E visual-board spec against a seeded
+      board fixture; CI green pending merge.
 
 ---
 

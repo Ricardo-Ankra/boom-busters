@@ -2,12 +2,14 @@ import {
   getDossier,
   getLatestScript,
   getProject,
+  getSettings,
   hasLiveRun,
   listActivity,
   listOpenBudgetGates,
   projectDeletionSummary,
 } from '@boom-busters/db'
 import { voiceReviewModel } from '@/lib/voice-review'
+import { visualsReviewModel } from '@/lib/visuals-review'
 import { notFound } from 'next/navigation'
 import { ActivityList } from '@/components/activity-list'
 import { BudgetGateCard } from '@/components/budget-gate-card'
@@ -20,6 +22,7 @@ import { RESTARTABLE_STAGES, isGateOpen, isMoving, projectControl } from '@/lib/
 import { downstreamOf, resolveViewedStage, stageViewsForProject } from '@/lib/stage-view'
 import { DossierReview } from './dossier-review'
 import { ScriptStudio } from './script-studio'
+import { VisualBoard } from './visual-board'
 import { VoiceReview } from './voice-review'
 import { StageBanner } from './stage-banner'
 import {
@@ -54,16 +57,27 @@ export default async function ProjectPage({
   const project = await getProject(db, id)
   if (!project) notFound()
 
-  const [activity, budgetGates, liveRun, dossier, script, deletionSummary, voice] =
-    await Promise.all([
-      listActivity(db, { projectId: id, limit: 50 }),
-      listOpenBudgetGates(db),
-      hasLiveRun(db, id),
-      getDossier(db, id),
-      getLatestScript(db, id),
-      projectDeletionSummary(db, id),
-      voiceReviewModel(db, id),
-    ])
+  const [
+    activity,
+    budgetGates,
+    liveRun,
+    dossier,
+    script,
+    deletionSummary,
+    voice,
+    visuals,
+    settings,
+  ] = await Promise.all([
+    listActivity(db, { projectId: id, limit: 50 }),
+    listOpenBudgetGates(db),
+    hasLiveRun(db, id),
+    getDossier(db, id),
+    getLatestScript(db, id),
+    projectDeletionSummary(db, id),
+    voiceReviewModel(db, id),
+    visualsReviewModel(db, id),
+    getSettings(db),
+  ])
   const budgetGate = budgetGates.find((gate) => gate.projectId === id)
 
   /**
@@ -100,6 +114,7 @@ export default async function ProjectPage({
   const showDossier = dossier !== undefined && viewing === 'dossier'
   const showScript = script !== undefined && viewing === 'script'
   const showVoice = viewing === 'voice' && voice.expectedParagraphs > 0
+  const showVisuals = viewing === 'visuals' && visuals.coverage.slots > 0
 
   // The badge in the Studio header. A downgrade is recorded on the run, so a
   // chapter written by the fallback model can be labelled as such rather than
@@ -124,8 +139,9 @@ export default async function ProjectPage({
     // The script is written from the dossier's claims; without one the run
     // would die on its first step.
     (viewing !== 'script' || dossier !== undefined) &&
-    // And the narration is read from the script, for the same reason.
-    (viewing !== 'voice' || script !== undefined)
+    // And the narration is read from the script, for the same reason —
+    // as is the visual board.
+    ((viewing !== 'voice' && viewing !== 'visuals') || script !== undefined)
 
   return (
     <div className="flex flex-col gap-4">
@@ -189,12 +205,19 @@ export default async function ProjectPage({
                 ? `${voice.coverage.paragraphs} of ${voice.expectedParagraphs} ` +
                   `paragraphs narrated · ` +
                   `${voice.coverage.flagged} flagged. Approving sends this to the visuals stage.`
-                : gateContext(project.stage, dossier)
+                : project.stage === 'visuals'
+                  ? `${visuals.coverage.slots} slots · ${visuals.coverage.resolved} resolved · ` +
+                    `${visuals.coverage.placeholder} placeholders. Approving locks the board for assembly (M6).`
+                  : gateContext(project.stage, dossier)
           }
           {...(project.stage === 'dossier' && blockedReason ? { blockedReason } : {})}
           {...(project.stage === 'voice' && voice.blockedReason
             ? { blockedReason: voice.blockedReason }
             : {})}
+          {...(project.stage === 'visuals' && visuals.blockedReason
+            ? { blockedReason: visuals.blockedReason }
+            : {})}
+          {...(project.stage === 'visuals' ? { placeholders: visuals.placeholders } : {})}
         />
       ) : null}
 
@@ -211,7 +234,20 @@ export default async function ProjectPage({
 
       {budgetGate ? <BudgetGateCard gate={budgetGate} /> : null}
 
-      {showVoice ? (
+      {showVisuals ? (
+        <VisualBoard
+          projectId={project.id}
+          model={visuals}
+          colors={{
+            accent: settings.brandKit.colors.accent,
+            surface: settings.brandKit.colors.surface,
+            textPrimary: settings.brandKit.colors.textPrimary,
+            textSecondary: settings.brandKit.colors.textSecondary,
+            chartSeries: settings.brandKit.colors.chartSeries,
+            collapse: settings.brandKit.colors.semantic.collapse,
+          }}
+        />
+      ) : showVoice ? (
         <VoiceReview projectId={project.id} model={voice} />
       ) : showScript ? (
         <ScriptStudio
@@ -244,7 +280,9 @@ export default async function ProjectPage({
                 ? 'No dossier has been researched yet.'
                 : viewing === 'voice'
                   ? 'Nothing has been narrated yet. Narration is read from the approved script.'
-                  : 'The review screen for this stage arrives with its runner.'}
+                  : viewing === 'visuals'
+                    ? 'No shot list has been planned yet. The board is planned from the approved narration.'
+                    : 'The review screen for this stage arrives with its runner.'}
             </p>
           </CardContent>
         </Card>

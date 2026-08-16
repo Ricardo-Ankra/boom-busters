@@ -47,12 +47,12 @@ const PROVIDER_PURPOSE: Record<Provider, string> = {
   openai: 'Alternative for any task, and the cross-provider fallback',
   google: 'Gemini text models. A key from AI Studio, not the Cloud console',
   elevenlabs: 'The narration voice (Eleven v3), with free word timings for alignment',
-  // The milestone notes matter: these four cards store a key that nothing
-  // reads yet. A card that silently swallows a key reads as wired; saying
-  // when it starts spending is the difference between a store and a trap.
-  pexels: 'Stock footage and stills. Not used until the visuals stage (M5)',
-  pixabay: 'Stock footage and stills. Not used until the visuals stage (M5)',
-  fal: 'Flux image generation for slots nothing stock can cover. Not used until M5',
+  pexels: 'Stock footage and stills for the visual board. Free API — searches cost nothing',
+  pixabay: 'Stock footage and stills for the visual board. Free API — searches cost nothing',
+  fal: 'FLUX still generation for slots nothing stock can cover (~$0.03 per image)',
+  // The milestone note matters: this card stores a key that nothing reads
+  // yet. A card that silently swallows a key reads as wired; saying when it
+  // starts spending is the difference between a store and a trap.
   'hosted-alignment': 'Fallback caption alignment, when Whisper is not used. Not used until M6',
 }
 
@@ -425,7 +425,10 @@ function ConnectionCard({
     provider === 'anthropic' ||
     provider === 'openai' ||
     provider === 'google' ||
-    provider === 'elevenlabs'
+    provider === 'elevenlabs' ||
+    provider === 'pexels' ||
+    provider === 'pixabay' ||
+    provider === 'fal'
 
   const submit = async () => {
     setSaving(true)

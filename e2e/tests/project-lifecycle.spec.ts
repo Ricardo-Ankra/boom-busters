@@ -208,11 +208,12 @@ test.describe('shapes taken from production', () => {
   }) => {
     // Production had one at `voice`/`running` with no live run: approved
     // through the script gate into a stage that had no runner. M4 built the
-    // voice runner, so the fixture moved on to `visuals` — the shape is the
-    // point, and "past the last runner" moves with every milestone.
+    // voice runner, M5 the visuals runner, so the fixture has moved on to
+    // `assembly` — the shape is the point, and "past the last runner" moves
+    // with every milestone.
     await openProject(page, BEYOND_RUNNERS_TITLE)
 
-    await expect(page.getByRole('button', { name: /Run the visuals stage again/i })).toHaveCount(0)
+    await expect(page.getByRole('button', { name: /Run the assembly stage again/i })).toHaveCount(0)
     await expect(page.getByText(/arrives with its runner/i)).toBeVisible()
   })
 
@@ -222,7 +223,7 @@ test.describe('shapes taken from production', () => {
     await openProject(page, BEYOND_RUNNERS_TITLE)
 
     const rail = page.getByRole('list', { name: 'Pipeline stages' })
-    await expect(rail.getByText(/^Visuals — the current stage, nothing running$/)).toBeAttached()
+    await expect(rail.getByText(/^Assembly — the current stage, nothing running$/)).toBeAttached()
     await expect(page.getByText('Updating automatically')).toHaveCount(0)
   })
 
