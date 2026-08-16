@@ -1598,7 +1598,9 @@ seconds.
 > Shot-list generation with typed briefs, stock/archival adapters + scoring,
 > Flux adapter, visual board UI, chart/map live previews.
 
-**Status:** `[~]` in progress — branch `m5-visuals` (started 2026-08-16)
+**Status:** `[x]` **done** — CI green on `master` (2026-08-16), branch
+`m5-visuals` merged. Suites at close: schemas 168 · providers 287 · web 252 ·
+db 170 · cost 31 unit/component/integration, Playwright 80/80.
 
 ### Deliverables
 
@@ -1641,9 +1643,21 @@ seconds.
       tokens; a broken chart brief renders an error card, never a chart.
 - [x] **Connections** — pexels/pixabay/fal verifiable (searches and the fal
       auth-before-method check; none of them spend); purpose lines updated.
-- [~] **Tests** — schemas 168 · providers 287 · web 252 unit/component, db
-  integration for slots/assets, E2E visual-board spec against a seeded
-  board fixture; CI green pending merge.
+- [x] **Tests** — schemas 168 · providers 287 · web 252 unit/component, db
+      integration for slots/assets, E2E visual-board spec against a seeded
+      board fixture; CI green on the merge.
+
+### Not verified
+
+- **The visuals runner end to end.** Same boundary as every runner since M2:
+  `@inngest/test` cannot drive a run past a `waitForEvent`, so the
+  visuals-runner and slot-refetcher are proven on Inngest Cloud from the
+  deployment — which needs the Vercel deployment updated and a project driven
+  through the voice gate with real (or mock) providers.
+- **Real-provider fetches.** Pexels/Pixabay/Commons/fal adapters are tested
+  against recorded fixtures; nothing has been fetched live. First live run
+  needs the three keys entered in Settings → Connections (all free to obtain;
+  fal is pay-per-image).
 
 ---
 
