@@ -62,9 +62,10 @@ test.describe('app shell', () => {
     await page.getByRole('button', { name: 'Activity' }).click()
     const drawer = page.getByRole('dialog')
     await expect(drawer).toBeVisible()
-    // Global setup parks a mirrored run at the dossier gate, so the feed has
-    // something in it: the drawer reads `run_events`, never Inngest's API.
-    await expect(drawer.getByText('Gate opened')).toBeVisible()
+    // Global setup parks mirrored runs at the dossier AND visuals gates, so
+    // the feed has entries in it — plural since M5, hence `.first()`: the
+    // drawer reads `run_events`, never Inngest's API.
+    await expect(drawer.getByText('Gate opened').first()).toBeVisible()
 
     await page.getByRole('button', { name: 'Close' }).click()
     await expect(page.getByRole('dialog')).toBeHidden()

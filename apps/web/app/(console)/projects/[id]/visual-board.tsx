@@ -183,19 +183,18 @@ export function VisualBoard({
             ) : null}
           </div>
 
-          {/* The whole timeline as one clickable bar, slots as bands. */}
+          {/* The timeline as slot bands — presentational only. Jumping is the
+              filmstrip's and the cards' job, whose targets clear 40px; a 12px
+              band could never be a legal button under spec 11.1. */}
           <div
             className="relative flex h-3 w-full overflow-hidden rounded-full bg-[var(--color-background)]"
             aria-hidden
           >
             {allSlots.map((slot) => (
-              <button
+              <div
                 key={slot.id}
-                type="button"
-                tabIndex={-1}
                 title={`${slot.type} · ${timecode(slot.startMs)}`}
-                onClick={() => jumpToSlot(slot)}
-                className="h-full border-r border-[var(--color-surface)] transition-opacity hover:opacity-70"
+                className="h-full border-r border-[var(--color-surface)]"
                 style={{
                   width: `${model.totalMs > 0 ? (slot.durationMs / model.totalMs) * 100 : 0}%`,
                   background:
@@ -519,11 +518,13 @@ function ChosenFacts({ slot }: { slot: SlotView }) {
       {chosen.pageUrl ? (
         <>
           {' · '}
+          {/* Padded to the 40px hit target the sweep enforces — a bare text
+              link at caption size is an illegal control under spec 11.1. */}
           <a
             href={chosen.pageUrl}
             target="_blank"
             rel="noreferrer"
-            className="underline hover:text-[var(--color-text-secondary)]"
+            className="inline-flex min-h-[40px] items-center px-1 underline hover:text-[var(--color-text-secondary)]"
           >
             source
           </a>
