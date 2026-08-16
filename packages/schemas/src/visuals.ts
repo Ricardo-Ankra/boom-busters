@@ -242,6 +242,18 @@ export const SlotCandidateSchema = z.object({
   /** 0–100 against the brief, from the scoring pass. Absent until scored. */
   score: z.number().min(0).max(100).optional(),
   scoreReason: z.string().optional(),
+  /**
+   * Whether this candidate is the slot's current choice. Lives on the
+   * candidate rather than in `shot_slots.chosenAssetId` because a chosen
+   * STOCK candidate has no asset row yet — bytes never stream through the
+   * app layer (product-spec architecture rule), so stock is pulled into
+   * storage by the render side in M6, not at choose time. `chosenAssetId`
+   * is set only when the choice already has bytes in R2 (generated stills,
+   * uploads) via `assetId` below.
+   */
+  chosen: z.boolean().optional(),
+  /** The `assets` row holding this candidate's bytes, once any exist. */
+  assetId: UlidSchema.optional(),
 })
 export type SlotCandidate = z.infer<typeof SlotCandidateSchema>
 
