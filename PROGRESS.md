@@ -1498,7 +1498,41 @@ seconds.
 > Shot-list generation with typed briefs, stock/archival adapters + scoring,
 > Flux adapter, visual board UI, chart/map live previews.
 
-**Status:** `[ ]` not started
+**Status:** `[~]` in progress — branch `m5-visuals` (started 2026-08-16)
+
+### Deliverables
+
+- [ ] **Typed briefs (`packages/schemas`)** — discriminated union per slot type
+      (`stock|archival|still|chart|map|hero`): common fields (covered script
+      text, duration, visual description, motion, transition) plus per-type
+      shapes per product-spec §7. Chart briefs REQUIRE ≥1 claim `dataRef` at
+      the schema level. `hero` typed but feature-flagged off. Candidate schema
+      (source URL, dimensions, licence, attribution, score).
+- [ ] **Shot-list prompt** — Haiku converts the approved script + non-quarantined
+      claims into timed slots; instructed never to emit `hero` while the flag
+      is off; a chart brief without claim refs is a `ValidationError`.
+- [ ] **Stock adapters (`packages/providers`)** — Pexels + Pixabay behind the
+      `StockQuery` interface; Wikimedia Commons for `archival` with the licence
+      field populated; mock adapters with deterministic fixtures.
+- [ ] **Candidate scoring** — one Haiku call per slot scoring all candidates
+      against the brief + rejection criteria (batched, never per candidate);
+      scores stored with candidates.
+- [ ] **Flux adapter** — fal.ai for `still` slots, 2 generations per prompt,
+      results stored in R2 as `assets`; mock adapter in dev/CI.
+- [ ] **DB helpers** — shot-slot CRUD, candidate selection, asset upsert
+      deduped on `contentHash`.
+- [ ] **visuals-runner** — `gate/voice.approved` → shot-list generation →
+      fan-out per-slot resolution → 15% partial-failure policy (failed slots
+      become `placeholder`) → gate 4. Slot-level re-fetch/regenerate as its own
+      function (the voice-retaker pattern).
+- [ ] **Visual board UI** — filmstrip synced to an audio scrubber, slot cards
+      with 4-candidate strips, `Edit brief & re-fetch` / `Regenerate` /
+      `Upload own`, unresolved counter, approve requires explicit
+      "approve with N placeholders" wording when placeholders remain.
+- [ ] **Chart/map live previews** — rendered with real Brand Kit tokens; a
+      chart with no claim ref renders an error card, never a chart.
+- [ ] **Tests** — unit with every piece, adapters against recorded fixtures,
+      E2E visual-board flow in mock-provider mode; CI green.
 
 ---
 

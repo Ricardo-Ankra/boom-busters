@@ -78,6 +78,17 @@ export const VoiceRetakeRequestedSchema = z.object({
   note: z.string().min(1),
 })
 
+export const VisualsRefetchRequestedSchema = z.object({
+  ...projectRef,
+  slotId: UlidSchema,
+  /**
+   * Why this slot is being bought again — "Brief edited", "Regenerate",
+   * "Another pass". Required for the same reason a retake note is: a paid
+   * call with no stated cause is unauditable.
+   */
+  note: z.string().min(1),
+})
+
 export const RenderCompletedSchema = z.object({
   ...projectRef,
   renderId: UlidSchema,
@@ -142,6 +153,7 @@ export const EVENT_SCHEMAS = {
   'budget/approved': BudgetApprovedSchema,
 
   'voice/retake.requested': VoiceRetakeRequestedSchema,
+  'visuals/refetch.requested': VisualsRefetchRequestedSchema,
   'render/completed': RenderCompletedSchema,
   'render/failed': RenderFailedSchema,
 

@@ -7,6 +7,7 @@ import {
   ProjectMasterReadySchema,
   RenderCompletedSchema,
   RenderFailedSchema,
+  VisualsRefetchRequestedSchema,
   VoiceRetakeRequestedSchema,
   EVENT_SCHEMAS,
 } from '@boom-busters/schemas'
@@ -65,6 +66,9 @@ export const events = {
 
   voiceRetakeRequested: eventType('voice/retake.requested', {
     schema: VoiceRetakeRequestedSchema,
+  }),
+  visualsRefetchRequested: eventType('visuals/refetch.requested', {
+    schema: VisualsRefetchRequestedSchema,
   }),
   renderCompleted: eventType('render/completed', { schema: RenderCompletedSchema }),
   renderFailed: eventType('render/failed', { schema: RenderFailedSchema }),
