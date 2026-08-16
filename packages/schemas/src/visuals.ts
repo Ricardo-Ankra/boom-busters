@@ -233,6 +233,12 @@ export const SlotCandidateSchema = z.object({
   /** Required. An asset whose licence nobody recorded is unusable (product spec: archival licence "to verify"). */
   licence: z.string().min(1),
   attributionText: z.string().optional(),
+  /**
+   * The source's own words about the asset — alt text, tags, a Commons file
+   * description. This is what the scoring pass judges against the brief
+   * (scoring reads metadata, not pixels), and what the board shows on hover.
+   */
+  summary: z.string().optional(),
   /** 0–100 against the brief, from the scoring pass. Absent until scored. */
   score: z.number().min(0).max(100).optional(),
   scoreReason: z.string().optional(),
