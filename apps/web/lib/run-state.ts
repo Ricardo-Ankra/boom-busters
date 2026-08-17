@@ -156,10 +156,32 @@ export function projectControl(
         : cannotRestart('Queued for several minutes with no run behind it.')
 
     case 'running':
-      return {
-        kind: 'working',
-        message: `Running the ${project.stage} stage. This screen updates itself.`,
+      // Reaching this line already means no live run — a live one returned
+      // `stop` above — and a genuinely running runner always has a mirror row,
+      // because `ensureRun` fires before any step. So `running` with nothing
+      // behind it is a runner that set the column and stopped existing. The one
+      // honest window is the handoff: closing a gate stamps the *next* stage
+      // `running` a beat before that stage's runner has mirrored itself. Past
+      // the same threshold `queued` uses, the handoff plainly never happened —
+      // production's case was a voice gate approved on a deployment whose
+      // visuals runner did not exist yet, leaving the project "running" a stage
+      // nothing had picked up, with the screen promising it would update
+      // itself.
+      if (!stalled) {
+        return {
+          kind: 'working',
+          message: `Running the ${project.stage} stage. This screen updates itself.`,
+        }
       }
+      return restartable
+        ? {
+            kind: 'restart',
+            label: `Run the ${project.stage} stage again`,
+            message:
+              'Marked running, but no run is behind it — the stage was handed over and nothing ' +
+              'picked it up. Running the stage again is the way out.',
+          }
+        : cannotRestart('Marked running, but no run is behind it.')
 
     case 'approved':
       return { kind: 'working', message: 'Approved. The next stage starts on its own.' }

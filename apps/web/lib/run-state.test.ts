@@ -153,6 +153,53 @@ describe('projectControl', () => {
     }
   })
 
+  /**
+   * Taken straight from the production database, again.
+   *
+   * A voice gate approved on a deployment whose visuals runner did not exist
+   * yet left the project at `visuals`/`running` with no run behind it — and the
+   * header answered that state with "This screen updates itself", which is a
+   * promise nothing was going to keep. `running` with no mirror row is a dead
+   * end like any other once the handoff window has passed.
+   */
+  it('offers a way out of `running` once nothing has picked the stage up', () => {
+    const control = projectControl(
+      project('visuals', 'running', QUEUED_STUCK_AFTER_MS + 1_000),
+      false,
+      { hasDossier: true, hasScript: true, now: NOW },
+    )
+
+    expect(control.kind).toBe('restart')
+    expect(control).toMatchObject({
+      label: 'Run the visuals stage again',
+      message: expect.stringContaining('nothing picked it up'),
+    })
+  })
+
+  it('holds the running message through the gate handoff window', () => {
+    // Closing a gate stamps the next stage `running` a beat before that
+    // stage's runner mirrors itself. A restart button in that beat would be an
+    // invitation to start a second run against the one about to appear.
+    expect(
+      projectControl(project('visuals', 'running'), false, {
+        hasDossier: true,
+        hasScript: true,
+        now: NOW,
+      }),
+    ).toMatchObject({ kind: 'working', message: expect.stringContaining('updates itself') })
+  })
+
+  it('explains a stalled `running` stage that has no runner instead of offering one', () => {
+    const control = projectControl(
+      project('assembly', 'running', QUEUED_STUCK_AFTER_MS + 1_000),
+      false,
+      { hasDossier: true, hasScript: true, now: NOW },
+    )
+
+    expect(control.kind).toBe('blocked')
+    expect(control).toMatchObject({ message: expect.stringContaining('arrives with its runner') })
+  })
+
   it('restarts the script stage too, since its runner also re-enters on one event', () => {
     expect(
       projectControl(project('script', 'failed'), false, {
