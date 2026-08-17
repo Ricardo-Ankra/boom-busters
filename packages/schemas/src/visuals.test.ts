@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   ChartBriefSchema,
   HERO_SLOTS_ENABLED,
+  PlannedBriefSchema,
   ShotBriefSchema,
   SlotCandidateSchema,
   mapClaimRefs,
@@ -156,6 +157,33 @@ describe('mapClaimRefs', () => {
     expect(mapClaimRefs([3], ids)).toBeNull()
     expect(mapClaimRefs([0], ids)).toBeNull()
     expect(mapClaimRefs([1, 99], ids)).toBeNull()
+  })
+})
+
+describe('PlannedBriefSchema', () => {
+  const archival = {
+    type: 'archival' as const,
+    ...common,
+    query: 'Carillion headquarters',
+    mustShow: 'the Wolverhampton headquarters building',
+  }
+
+  it('joins an era range the model wrote as an array', () => {
+    // Live Haiku writes ["1919", "2008"] about as often as "1919–2008"
+    // whatever the prompt says; the first real board burned five paid retries
+    // on exactly this. The wire accepts the array, the stored shape stays one
+    // string.
+    const brief = PlannedBriefSchema.parse({ ...archival, eraRange: ['1919', '2008'] })
+    if (brief.type === 'archival') expect(brief.eraRange).toBe('1919–2008')
+    expect(ShotBriefSchema.parse(brief)).toBeTruthy()
+  })
+
+  it('keeps a plain-string era range as written, and stays optional', () => {
+    const brief = PlannedBriefSchema.parse({ ...archival, eraRange: 'pre-war' })
+    if (brief.type === 'archival') expect(brief.eraRange).toBe('pre-war')
+
+    const bare = PlannedBriefSchema.parse(archival)
+    if (bare.type === 'archival') expect(bare.eraRange).toBeUndefined()
   })
 })
 

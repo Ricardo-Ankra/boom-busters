@@ -138,6 +138,79 @@ describe('parseShotList', () => {
       ),
     ).toThrow(/cite the claims/)
   })
+
+  /**
+   * The Carillion failure, pinned. Live Haiku plans one-point chart series and
+   * array era ranges as habits, so a strict whole-list parse burned five paid
+   * retries on the same chapter and then killed the run. A malformed slot is
+   * dropped and reported; only a list with nothing usable in it throws.
+   */
+  it('drops a malformed slot and keeps the rest, reporting why', () => {
+    const good = {
+      paragraphIndex: 0,
+      seconds: 8,
+      brief: {
+        type: 'stock',
+        coversText: 'By June, the auditors could not find the money.',
+        description: 'Deserted office at dusk.',
+        motion: { kind: 'static' },
+        transition: 'cut',
+        query: 'empty office dusk',
+        rejectionCriteria: [],
+      },
+    }
+    const onePointChart = {
+      paragraphIndex: 1,
+      seconds: 8,
+      brief: {
+        type: 'chart',
+        coversText: 'x',
+        description: 'x',
+        motion: { kind: 'static' },
+        transition: 'cut',
+        chartKind: 'line',
+        series: [{ label: 'p', unit: 'GBP', points: [{ x: '2018', y: 845 }] }],
+        dataRefs: [1],
+        takeaway: 'x',
+        reveal: 'none',
+      },
+    }
+
+    const output = parseShotList(JSON.stringify({ slots: [good, onePointChart] }))
+    expect(output.slots).toHaveLength(1)
+    expect(output.slots[0]?.brief.type).toBe('stock')
+    expect(output.malformed).toHaveLength(1)
+    expect(output.malformed[0]).toMatchObject({
+      index: 1,
+      reason: expect.stringContaining('at least two points'),
+    })
+  })
+
+  it('accepts an archival era range written as an array', () => {
+    const output = parseShotList(
+      JSON.stringify({
+        slots: [
+          {
+            paragraphIndex: 0,
+            seconds: 6,
+            brief: {
+              type: 'archival',
+              coversText: 'Founded in 1919 as a Wolverhampton builder.',
+              description: 'The original headquarters.',
+              motion: { kind: 'static' },
+              transition: 'cut',
+              query: 'Carillion headquarters',
+              mustShow: 'the Wolverhampton building',
+              eraRange: ['1919', '2008'],
+            },
+          },
+        ],
+      }),
+    )
+    expect(output.malformed).toHaveLength(0)
+    const brief = output.slots[0]?.brief
+    if (brief?.type === 'archival') expect(brief.eraRange).toBe('1919–2008')
+  })
 })
 
 describe('mockShotList', () => {

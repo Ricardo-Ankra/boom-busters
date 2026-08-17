@@ -142,7 +142,7 @@ function preview(text: string): string {
 }
 
 /** Issue paths, not a dumped stack — this goes into a run event and a toast. */
-function formatIssues(error: z.ZodError): string {
+export function formatIssues(error: z.ZodError): string {
   return error.issues
     .slice(0, 5)
     .map((issue) => `${issue.path.join('.') || '(root)'}: ${issue.message}`)

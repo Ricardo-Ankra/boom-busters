@@ -135,7 +135,7 @@ export const visualsRunner = inngest.createFunction(
     // -----------------------------------------------------------------------
 
     const allRows: NewShotSlot[] = []
-    let rejectedCharts = 0
+    let rejectedSlots = 0
 
     for (const [index, chapter] of setup.chapters.entries()) {
       const planned = await step.run(
@@ -147,12 +147,17 @@ export const visualsRunner = inngest.createFunction(
           const paragraphs = promptParagraphs(setup.paragraphs, chapter.id)
           if (paragraphs.length === 0) return { ok: true, rows: [], rejected: 0 }
 
-          let output
+          let slots
+          // Slots the model planned but that could not be used — malformed
+          // JSON shapes, charts citing claims that do not exist. Dropped and
+          // counted rather than fatal: a gap on the board is repairable from
+          // a card, a failed chapter kills the run.
+          let dropped = 0
           if (mocked) {
-            output = mockShotList({ paragraphs, claimCount: setup.claims.length })
+            slots = mockShotList({ paragraphs, claimCount: setup.claims.length }).slots
           } else {
             try {
-              output = parseShotList(
+              const parsed = parseShotList(
                 (
                   await callLlm(
                     buildShotListRequest({
@@ -166,6 +171,8 @@ export const visualsRunner = inngest.createFunction(
                   )
                 ).text,
               )
+              slots = parsed.slots
+              dropped += parsed.malformed.length
             } catch (error) {
               if (error instanceof BudgetExceededError) {
                 return { ok: false, gate: budgetGateData(error) }
@@ -176,12 +183,12 @@ export const visualsRunner = inngest.createFunction(
 
           const conversion = plannedToRows({
             chapterId: chapter.id,
-            planned: output.slots,
+            planned: slots,
             paragraphs: setup.paragraphs,
             claimIds,
           })
 
-          return { ok: true, rows: conversion.rows, rejected: conversion.rejected.length }
+          return { ok: true, rows: conversion.rows, rejected: dropped + conversion.rejected.length }
         },
       )
 
@@ -191,7 +198,7 @@ export const visualsRunner = inngest.createFunction(
       }
 
       allRows.push(...planned.rows)
-      rejectedCharts += planned.rejected
+      rejectedSlots += planned.rejected
     }
 
     if (allRows.length === 0) {
@@ -288,7 +295,7 @@ export const visualsRunner = inngest.createFunction(
 
     const summary = await step.run('finish-board', async () => {
       const coverage = visualsCoverage(await shotSlotStatuses(db, projectId))
-      return { ...coverage, rejectedCharts }
+      return { ...coverage, rejectedSlots }
     })
 
     await step.run('open-gate', () =>
@@ -298,8 +305,8 @@ export const visualsRunner = inngest.createFunction(
         summary:
           `Visual board ready · ${summary.slots} slots · ${summary.resolved} resolved` +
           (summary.placeholder > 0 ? ` · ${summary.placeholder} placeholders` : '') +
-          (summary.rejectedCharts > 0
-            ? ` · ${summary.rejectedCharts} charts dropped for citing unknown claims`
+          (summary.rejectedSlots > 0
+            ? ` · ${summary.rejectedSlots} planned slots dropped — malformed or citing unknown claims`
             : ''),
       }),
     )

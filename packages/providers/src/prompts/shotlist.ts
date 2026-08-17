@@ -1,7 +1,13 @@
-import { HERO_SLOTS_ENABLED, ShotListOutputSchema, STILL_GENERATIONS } from '@boom-busters/schemas'
-import type { BrandKitStored, ShotListOutput } from '@boom-busters/schemas'
+import {
+  HERO_SLOTS_ENABLED,
+  PlannedSlotSchema,
+  STILL_GENERATIONS,
+  ValidationError,
+} from '@boom-busters/schemas'
+import type { BrandKitStored, PlannedSlot, ShotListOutput } from '@boom-busters/schemas'
+import { z } from 'zod'
 import { claimList, type ScriptClaim } from './script'
-import { parseJsonCompletion } from './json'
+import { formatIssues, parseJsonCompletion } from './json'
 import { outputBudget } from '../llm/types'
 import type { LLMTaskRequest } from '../llm/types'
 
@@ -53,7 +59,7 @@ const SLOT_SHAPES = `Every slot: {"paragraphIndex": number, "seconds": number, "
 - {"type": "stock", "coversText", "description", "motion", "transition",
    "query", "rejectionCriteria": [string]}
 - {"type": "archival", "coversText", "description", "motion", "transition",
-   "query", "mustShow", "eraRange"?}
+   "query", "mustShow", "eraRange"? (ONE string like "1995–2008", never an array)}
 - {"type": "still", "coversText", "description", "motion", "transition",
    "prompt", "negativePrompt"?}
 - {"type": "chart", "coversText", "description", "motion", "transition",
@@ -95,8 +101,9 @@ Return JSON: {"slots": [...]}
 ${SLOT_SHAPES}
 
 Planning rules:
-- Cover every paragraph. A slot runs 4-15 seconds; a paragraph's slots should
-  add up to roughly its narration length.
+- Cover every paragraph. A slot runs 4-15 seconds ("seconds" is always a
+  positive number); a paragraph's slots should add up to roughly its narration
+  length.
 - Each brief is a full creative direction, not a keyword: subject, composition,
   era, mood, lighting and colour grade in "description". "coversText" quotes
   the sentence(s) the slot plays under, EXACTLY as written.
@@ -105,7 +112,9 @@ Planning rules:
 - "chart" is the strictest type: every value in "series" must appear in the
   claim list below, verbatim — never estimate, interpolate or invent a number.
   "dataRefs" lists the claim NUMBERS (e.g. [3, 7]) the values come from. If the
-  claims do not contain the numbers, do not make a chart.
+  claims do not contain the numbers, do not make a chart. Every series needs at
+  least two points — a single figure is not a chart; put it in a stock or still
+  slot instead.
 - "stock" queries are 2-5 concrete words; "rejectionCriteria" names what would
   make a result unusable (watermarks, wrong era, modern tech in a period
   segment, identifiable faces).
@@ -129,8 +138,51 @@ ${HERO_SLOTS_ENABLED ? '' : '- Never emit type "hero". It is disabled.\n'}`,
   }
 }
 
-export function parseShotList(text: string): ShotListOutput {
-  return parseJsonCompletion(text, ShotListOutputSchema, 'shot list')
+export interface ShotListParse {
+  slots: PlannedSlot[]
+  /** Slots dropped because their JSON matched no brief shape, with why. */
+  malformed: { index: number; reason: string }[]
+}
+
+const ShotListEnvelopeSchema = z.object({
+  slots: z.array(z.unknown()).min(1, 'a chapter with narration needs at least one slot'),
+})
+
+/**
+ * Slot-by-slot rather than one strict parse of the whole list, learned from
+ * the first real board: live Haiku's malformations are habits, not noise — a
+ * one-point chart series, a zero-second slot — so a retry re-buys the whole
+ * chapter's plan and gets the same habit back. Five retries on one chapter
+ * failed that way, and the failed *chapter* killed the run. A malformed slot
+ * costs a gap on the board that a card can repair; it is never worth the
+ * chapter.
+ *
+ * The envelope stays strict: no JSON, or no slot array at all, is a broken
+ * completion, and so is a list where *every* slot is malformed — those throw,
+ * and the retry buys a genuinely fresh answer.
+ */
+export function parseShotList(text: string): ShotListParse {
+  const envelope = parseJsonCompletion(text, ShotListEnvelopeSchema, 'shot list')
+
+  const slots: PlannedSlot[] = []
+  const malformed: { index: number; reason: string }[] = []
+  for (const [index, raw] of envelope.slots.entries()) {
+    const result = PlannedSlotSchema.safeParse(raw)
+    if (result.success) slots.push(result.data)
+    else malformed.push({ index, reason: formatIssues(result.error) })
+  }
+
+  if (slots.length === 0) {
+    throw new ValidationError(
+      `Every slot in the model's shot list was malformed: ${malformed
+        .slice(0, 3)
+        .map((slot) => `slot ${slot.index} — ${slot.reason}`)
+        .join('; ')}`,
+      { field: 'shot list' },
+    )
+  }
+
+  return { slots, malformed }
 }
 
 // ---------------------------------------------------------------------------

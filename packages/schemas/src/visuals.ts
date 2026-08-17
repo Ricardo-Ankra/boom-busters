@@ -326,9 +326,25 @@ export const PlannedChartBriefSchema = ChartBriefSchema.omit({ dataRefs: true })
 })
 export type PlannedChartBrief = z.infer<typeof PlannedChartBriefSchema>
 
+/**
+ * The wire shape of an archival brief: `ArchivalBriefSchema`, except
+ * `eraRange` also arrives as an array. Live models write a range as
+ * ["1919", "2008"] about as often as "1919–2008" whatever the prompt says —
+ * the first real board burned five paid retries on exactly this. An array is
+ * a faithful statement of the same fact, so the wire joins it; the stored
+ * schema stays a single string.
+ */
+export const PlannedArchivalBriefSchema = ArchivalBriefSchema.extend({
+  eraRange: z
+    .union([z.string().min(1), z.array(z.string().min(1)).min(1)])
+    .transform((value) => (Array.isArray(value) ? value.join('–') : value))
+    .optional(),
+})
+export type PlannedArchivalBrief = z.infer<typeof PlannedArchivalBriefSchema>
+
 export const PlannedBriefSchema = z.discriminatedUnion('type', [
   StockBriefSchema,
-  ArchivalBriefSchema,
+  PlannedArchivalBriefSchema,
   StillBriefSchema,
   PlannedChartBriefSchema,
   MapBriefSchema,
