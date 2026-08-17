@@ -1,6 +1,16 @@
 'use client'
 
-import { ImagePlus, Pause, Play, RefreshCw, Search } from 'lucide-react'
+import {
+  ChevronLeft,
+  ChevronRight,
+  ImagePlus,
+  Maximize2,
+  Pause,
+  Play,
+  RefreshCw,
+  Search,
+  X,
+} from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import * as React from 'react'
 import type { SlotCandidate } from '@boom-busters/schemas'
@@ -41,6 +51,20 @@ function candidateThumb(candidate: SlotCandidate): string | undefined {
     return candidate.sourceUrl
   }
   return undefined
+}
+
+/**
+ * The best URL for the ENLARGED view, which is not the thumbnail's order:
+ * bytes we hold (stills, uploads) beat the provider's full-size URL, and the
+ * small thumb is the last resort rather than the first. Mock candidates'
+ * `mock://` sources fall through to their data: thumbs.
+ */
+function candidateFull(candidate: SlotCandidate): string | undefined {
+  if (candidate.assetId) return `/api/assets/${candidate.assetId}/file`
+  if (candidate.sourceUrl.startsWith('data:') || candidate.sourceUrl.startsWith('http')) {
+    return candidate.sourceUrl
+  }
+  return candidate.thumbUrl
 }
 
 const STATUS_STYLE: Record<string, string> = {
@@ -310,6 +334,10 @@ function SlotCard({
   act: (slotId: string, run: () => Promise<ActionResult>, success: string) => Promise<void>
 }) {
   const [editing, setEditing] = React.useState(false)
+  // Which candidate the lightbox shows, or null when it is closed. Opens on
+  // the current choice, since "how does the selected media actually look at
+  // size" is the question the button answers.
+  const [previewIndex, setPreviewIndex] = React.useState<number | null>(null)
   const brief = slot.brief
 
   return (
@@ -382,6 +410,18 @@ function SlotCard({
             after a dossier change, which Regenerate covers. */}
         {brief && !slot.briefError ? (
           <div className="flex flex-wrap items-center gap-2">
+            {slot.candidates.length > 0 ? (
+              <Button
+                variant="outline"
+                onClick={() => {
+                  const chosen = slot.candidates.findIndex((candidate) => candidate.chosen)
+                  setPreviewIndex(chosen === -1 ? 0 : chosen)
+                }}
+              >
+                <Maximize2 aria-hidden />
+                Preview
+              </Button>
+            ) : null}
             {brief.type !== 'hero' ? (
               <>
                 <Button
@@ -425,8 +465,168 @@ function SlotCard({
             onDone={() => setEditing(false)}
           />
         ) : null}
+
+        {previewIndex !== null ? (
+          <MediaLightbox
+            slot={slot}
+            projectId={projectId}
+            index={Math.min(previewIndex, slot.candidates.length - 1)}
+            onIndexChange={setPreviewIndex}
+            onClose={() => setPreviewIndex(null)}
+            act={act}
+            busy={busy}
+          />
+        ) : null}
       </CardContent>
     </Card>
+  )
+}
+
+/**
+ * The enlarged view of a slot's candidates: one at a time at real size, with
+ * the same choose action the strip has — judging a clip at thumbnail size
+ * and committing to it full-screen are different acts, and the second is the
+ * one the gate's approval is really about. Videos play here (muted, looped),
+ * which the 168px strip cannot do at all.
+ */
+function MediaLightbox({
+  slot,
+  projectId,
+  index,
+  onIndexChange,
+  onClose,
+  act,
+  busy,
+}: {
+  slot: SlotView
+  projectId: string
+  index: number
+  onIndexChange: (index: number) => void
+  onClose: () => void
+  act: (slotId: string, run: () => Promise<ActionResult>, success: string) => Promise<void>
+  busy: boolean
+}) {
+  const closeRef = React.useRef<HTMLButtonElement | null>(null)
+  const candidate = slot.candidates[index]
+
+  // Escape closes — on top of the visible Close button, never instead of it.
+  React.useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onClose])
+
+  React.useEffect(() => {
+    closeRef.current?.focus()
+  }, [])
+
+  if (!candidate) return null
+  const full = candidateFull(candidate)
+  const chosen = candidate.chosen === true
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label={`Preview: ${slot.brief?.coversText ?? slot.id}`}
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4"
+      onClick={(event) => {
+        // The backdrop, not anything inside the panel.
+        if (event.target === event.currentTarget) onClose()
+      }}
+    >
+      <div className="flex max-h-[92vh] w-full max-w-[960px] flex-col gap-3 rounded-[8px] border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0">
+            <p className="text-[13px] text-[var(--color-text-secondary)]">
+              “{slot.brief?.coversText}”
+            </p>
+            <p className="font-mono text-[11px] text-[var(--color-text-muted)]">
+              {candidate.kind}
+              {candidate.score !== undefined ? ` · score ${Math.round(candidate.score)}` : ''}
+              {` · candidate ${index + 1} of ${slot.candidates.length}`}
+            </p>
+          </div>
+          <Button ref={closeRef} variant="ghost" onClick={onClose}>
+            <X aria-hidden />
+            Close
+          </Button>
+        </div>
+
+        <div className="flex min-h-0 flex-1 items-center justify-center rounded-[8px] bg-[var(--color-background)]">
+          {full && candidate.kind === 'video' ? (
+            // Muted + looped: this is a framing check, and the narration is
+            // the scrubber's job. Provider CDN URLs are fine here — the
+            // board's preview is exactly what they are for.
+            <video
+              src={full}
+              controls
+              autoPlay
+              muted
+              loop
+              playsInline
+              className="max-h-[60vh] max-w-full rounded-[8px]"
+              aria-label={candidate.summary ?? candidate.id}
+            />
+          ) : full ? (
+            // Plain <img> on purpose: provider-CDN and data: sources, which
+            // next/image can neither optimise nor allowlist.
+            <img
+              src={full}
+              alt={candidate.summary ?? candidate.id}
+              className="max-h-[60vh] max-w-full rounded-[8px] object-contain"
+            />
+          ) : (
+            <p className="p-8 text-[13px] text-[var(--color-text-muted)]">
+              This candidate has no previewable media URL.
+            </p>
+          )}
+        </div>
+
+        <p className="text-[11px] text-[var(--color-text-muted)]">
+          {candidate.licence}
+          {candidate.attributionText ? ` · ${candidate.attributionText}` : ''}
+          {candidate.summary ? ` · ${candidate.summary}` : ''}
+        </p>
+
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              disabled={index === 0}
+              onClick={() => onIndexChange(index - 1)}
+            >
+              <ChevronLeft aria-hidden />
+              Previous
+            </Button>
+            <Button
+              variant="outline"
+              disabled={index >= slot.candidates.length - 1}
+              onClick={() => onIndexChange(index + 1)}
+            >
+              Next
+              <ChevronRight aria-hidden />
+            </Button>
+          </div>
+          <Button
+            variant="primary"
+            disabled={chosen}
+            busy={busy}
+            onClick={() =>
+              act(
+                slot.id,
+                () => chooseCandidateAction(projectId, slot.id, candidate.id),
+                'Selected',
+              )
+            }
+          >
+            {chosen ? 'Selected for this slot' : 'Use this candidate'}
+          </Button>
+        </div>
+      </div>
+    </div>
   )
 }
 

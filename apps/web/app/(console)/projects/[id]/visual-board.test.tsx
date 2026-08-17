@@ -275,4 +275,42 @@ describe('VisualBoard', () => {
     const filmstrip = screen.getByRole('list', { name: 'Filmstrip' })
     expect(within(filmstrip).getAllByRole('listitem')).toHaveLength(2)
   })
+
+  it('enlarges the chosen candidate from the Preview button, at full size', async () => {
+    render(<VisualBoard projectId={PROJECT} model={model([stockSlot])} colors={COLORS} />)
+
+    await userEvent.click(screen.getByRole('button', { name: 'Preview' }))
+
+    const dialog = screen.getByRole('dialog')
+    // The full-size source, not the thumbnail — enlarging the thumb would be
+    // zooming a 168px jpeg.
+    expect(within(dialog).getByRole('img')).toHaveAttribute(
+      'src',
+      'https://images.pexels.com/a1.jpg',
+    )
+    expect(within(dialog).getByText(/candidate 1 of 2/)).toBeInTheDocument()
+    expect(within(dialog).getByRole('button', { name: 'Selected for this slot' })).toBeDisabled()
+
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Close' }))
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  })
+
+  it('steps to the next candidate, plays video there, and can select it', async () => {
+    render(<VisualBoard projectId={PROJECT} model={model([stockSlot])} colors={COLORS} />)
+
+    await userEvent.click(screen.getByRole('button', { name: 'Preview' }))
+    const dialog = screen.getByRole('dialog')
+    expect(within(dialog).getByRole('button', { name: 'Previous' })).toBeDisabled()
+
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Next' }))
+
+    // The video candidate gets a real <video>, which the 168px strip cannot.
+    const video = within(dialog).getByLabelText('b2')
+    expect(video.tagName).toBe('VIDEO')
+    expect(video).toHaveAttribute('src', 'https://cdn.pixabay.com/b2.mp4')
+    expect(within(dialog).getByRole('button', { name: 'Next' })).toBeDisabled()
+
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Use this candidate' }))
+    expect(chooseCandidateAction).toHaveBeenCalledWith(PROJECT, SLOT_A, 'b2')
+  })
 })

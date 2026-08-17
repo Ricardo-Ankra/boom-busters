@@ -90,6 +90,28 @@ test.describe('the visual board', () => {
     await expect(page.getByLabel('Search query')).toHaveCount(0)
   })
 
+  test('Preview enlarges the chosen candidate with its facts, and closes', async ({ page }) => {
+    await page.getByRole('button', { name: 'Preview' }).first().click()
+
+    const dialog = page.getByRole('dialog')
+    await expect(dialog).toBeVisible()
+    await expect(dialog.getByRole('img')).toBeVisible()
+    await expect(dialog.getByText(/candidate 1 of 2/)).toBeVisible()
+    // Which candidate is chosen depends on the swap test that ran before
+    // this one, so assert the audit line's presence, not its provider.
+    await expect(dialog.getByText(/License/)).toBeVisible()
+    // The current choice cannot be re-chosen; the whole point of the button
+    // is judging it at size.
+    await expect(dialog.getByRole('button', { name: 'Selected for this slot' })).toBeDisabled()
+
+    // The lightbox's controls only exist while it is open, so the page-wide
+    // sweep below never sees them — sweep here.
+    await expectHitTargets(page)
+
+    await dialog.getByRole('button', { name: 'Close' }).click()
+    await expect(page.getByRole('dialog')).toHaveCount(0)
+  })
+
   test('every control clears the 40px hit target', async ({ page }) => {
     await expectHitTargets(page)
   })
