@@ -45,11 +45,15 @@ const CREDENTIAL_PROVIDERS: Provider[] = [...PROVIDERS]
 const PROVIDER_PURPOSE: Record<Provider, string> = {
   anthropic: 'Research, scripting and the self-check — the default for every task',
   openai: 'Alternative for any task, and the cross-provider fallback',
-  google: 'Gemini text models. A key from AI Studio, not the Cloud console',
+  google:
+    'Gemini text models, and still-image generation for the visual board ' +
+    '(~$0.04 per image). A key from AI Studio, not the Cloud console',
   elevenlabs: 'The narration voice (Eleven v3), with free word timings for alignment',
   pexels: 'Stock footage and stills for the visual board. Free API — searches cost nothing',
   pixabay: 'Stock footage and stills for the visual board. Free API — searches cost nothing',
-  fal: 'FLUX still generation for slots nothing stock can cover (~$0.03 per image)',
+  fal:
+    'Alternative still generator (FLUX, ~$0.03 per image) — used only when ' +
+    'no Google key is stored',
   // The milestone note matters: this card stores a key that nothing reads
   // yet. A card that silently swallows a key reads as wired; saying when it
   // starts spending is the difference between a store and a trap.

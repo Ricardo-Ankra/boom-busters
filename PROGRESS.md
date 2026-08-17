@@ -1331,10 +1331,27 @@ source` when absent, artist HTML stripped to plain-text credits. Stock
      which shares `resolveSlotBrief` with the runner so a re-fetch can never
      behave differently from the pass that made the board.
 
+119. **Gemini is the default still generator; fal is the alternative**
+     (2026-08-17, user-directed, supersedes the fal-only reading of §14.5).
+     The first real run pre-flighted a fal key the user did not have, while
+     the Google key already in Settings drives Gemini 2.5 Flash Image
+     ("Nano Banana") — same job, no new account. `imageGenAdapter` now takes
+     a provider id; resolution picks `google` whenever that key exists, `fal`
+     otherwise; either key satisfies the stills pre-flight. Gemini returns
+     bytes inline (surfaced as `data:` URLs and decoded straight into R2 —
+     the mock-vs-real test is now mock _mode_, never the URL scheme), has no
+     `num_images`, so N variants are N parallel calls at ~$0.04/image
+     (1290 output tokens at $30/M, rounded up), and folds the negative
+     prompt in as an "Avoid:" clause exactly as FLUX does. Cost estimates
+     come from the chosen adapter via `imageGenPrice`; `estimateImageGenUsd`
+     and `FAL_PRICE_PER_IMAGE` are gone. Licence lines record the generator:
+     "Generated (Gemini 2.5 Flash Image)" / "Generated (FLUX.1 dev via
+     fal.ai)".
+
 **Spending:** every fetch, score and generation is mocked by default
 (`MOCK_PROVIDERS=1`); a real visuals run costs one Haiku call per chapter +
-one per fetched slot (scoring) + ~$0.06 per still slot (2 FLUX images).
-Stock and archival searches are free at any volume.
+one per fetched slot (scoring) + ~$0.08 per still slot (2 Gemini images;
+~$0.06 on fal). Stock and archival searches are free at any volume.
 
 ### M4.8 — what the Chirp 3 HD guide said, and I had not read (2026-08-13)
 

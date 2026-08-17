@@ -404,7 +404,10 @@ function SlotCard({
                   }
                 >
                   <RefreshCw aria-hidden />
-                  {brief.type === 'still' ? 'Regenerate · ≈$0.06' : 'Regenerate'}
+                  {/* Two variants at the dearer generator's price (Gemini,
+                      $0.04/image) — the label errs against the budget, like
+                      every estimate. */}
+                  {brief.type === 'still' ? 'Regenerate · ≈$0.08' : 'Regenerate'}
                 </Button>
               </>
             ) : null}
@@ -617,7 +620,7 @@ function BriefEditor({
       ) : null}
       <div className="flex gap-2">
         <Button type="submit" variant="primary">
-          Save & re-fetch{brief.type === 'still' ? ' · ≈$0.06' : ''}
+          Save & re-fetch{brief.type === 'still' ? ' · ≈$0.08' : ''}
         </Button>
         <Button type="button" variant="ghost" onClick={onDone}>
           Cancel

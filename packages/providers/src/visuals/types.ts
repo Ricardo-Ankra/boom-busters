@@ -57,8 +57,9 @@ export interface GeneratedImage {
   /**
    * Where the bytes are RIGHT NOW. fal's output URLs expire, so the caller
    * must pull these into R2 immediately — a generated image whose only home
-   * is this URL is an image the board will lose. Mock adapters return
-   * `data:` URLs, which need no download at all.
+   * is this URL is an image the board will lose. Gemini returns its bytes
+   * inline, surfaced here as `data:` URLs the caller decodes rather than
+   * fetches; the mock adapter's `data:` thumbnails need no download at all.
    */
   url: string
   width: number
@@ -70,8 +71,18 @@ export interface ImageGenResult {
   estimatedCostUsd: number
 }
 
+/**
+ * `google` is Gemini's image model riding the same key the LLM/TTS adapters
+ * already use, which is why it is the default still generator: it costs the
+ * user no extra account. `fal` (FLUX) is the alternative when no Google key
+ * is stored.
+ */
+export type ImageGenProviderId = 'fal' | 'google'
+
 export interface ImageGenProvider {
-  readonly id: 'fal'
+  readonly id: ImageGenProviderId
+  /** The model behind it, human-readable — licence lines say "Generated (<label>)". */
+  readonly label: string
   /** USD per generated image. Owned here, like every provider price. */
   readonly pricePerImage: number
   generate(request: ImageGenRequest, options: StockCallOptions): Promise<ImageGenResult>

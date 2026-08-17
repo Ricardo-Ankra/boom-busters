@@ -252,8 +252,12 @@ export async function ttsCredential(
   }
 }
 
-/** The keyed visual-asset providers — Wikimedia Commons needs none. */
-export type VisualKeyProvider = 'pexels' | 'pixabay' | 'fal'
+/**
+ * The keyed visual-asset providers — Wikimedia Commons needs none. `google`
+ * is here because Gemini's image model is the default still generator: the
+ * same key the LLM adapters use, read on the visuals stage's terms.
+ */
+export type VisualKeyProvider = 'pexels' | 'pixabay' | 'fal' | 'google'
 
 /**
  * The decrypted keys the visuals stage may need, on the same terms as
@@ -270,7 +274,7 @@ export async function visualCredentials(
       encryptedKey: providerCredentials.encryptedKey,
     })
     .from(providerCredentials)
-    .where(inArray(providerCredentials.provider, ['pexels', 'pixabay', 'fal']))
+    .where(inArray(providerCredentials.provider, ['pexels', 'pixabay', 'fal', 'google']))
 
   const keys: Partial<Record<VisualKeyProvider, string>> = {}
   for (const row of rows) {

@@ -40,6 +40,7 @@ const IMAGE_SIZE = 'landscape_16_9'
 
 export const falImageGen: ImageGenProvider = {
   id: 'fal',
+  label: 'FLUX.1 dev via fal.ai',
   pricePerImage: PRICE_PER_IMAGE_USD,
 
   async generate(request: ImageGenRequest, options: StockCallOptions): Promise<ImageGenResult> {

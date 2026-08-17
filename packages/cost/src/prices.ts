@@ -1,4 +1,4 @@
-import { FAL_PRICE_PER_IMAGE, LLM_MODELS, TTS_PRICES_PER_KCHAR } from '@boom-busters/providers'
+import { LLM_MODELS, TTS_PRICES_PER_KCHAR } from '@boom-busters/providers'
 import { ValidationError } from '@boom-busters/schemas'
 import type { LlmProvider, TtsProvider } from '@boom-busters/schemas'
 
@@ -95,14 +95,13 @@ export function estimateTtsUsd(args: { provider: TtsProvider; characters: number
 }
 
 /**
- * USD for a still-generation call. Derived from the fal adapter's own price,
- * same rule as every table above. Stock and archival searches have no entry
- * here on purpose: the APIs are free, and their ledger rows record $0 actual
- * rather than passing through an invented estimate.
+ * Still generation has no entry here: with two generators (Gemini, fal) the
+ * price depends on which adapter runs, so the caller derives it from the
+ * adapter itself via `imageGenPrice` — price owned by the adapter, the same
+ * rule as every table above. Stock and archival searches have no entry
+ * either, on purpose: the APIs are free, and their ledger rows record $0
+ * actual rather than passing through an invented estimate.
  */
-export function estimateImageGenUsd(count: number): number {
-  return FAL_PRICE_PER_IMAGE * count
-}
 
 /**
  * Rough output-token budget for a chapter of narration. Scripting steps draft

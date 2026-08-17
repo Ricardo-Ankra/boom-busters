@@ -199,7 +199,14 @@ export type ShotBrief = z.infer<typeof ShotBriefSchema>
 // Candidates
 // ---------------------------------------------------------------------------
 
-export const CANDIDATE_PROVIDERS = ['pexels', 'pixabay', 'wikimedia', 'fal', 'upload'] as const
+export const CANDIDATE_PROVIDERS = [
+  'pexels',
+  'pixabay',
+  'wikimedia',
+  'fal',
+  'google',
+  'upload',
+] as const
 export const CandidateProviderSchema = z.enum(CANDIDATE_PROVIDERS)
 export type CandidateProvider = z.infer<typeof CandidateProviderSchema>
 

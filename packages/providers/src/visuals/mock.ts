@@ -82,6 +82,7 @@ export function createMockStock(id: StockProviderId): StockProvider {
 
 export const mockImageGen: ImageGenProvider = {
   id: 'fal',
+  label: '[mock] image generator',
   // The LIVE price, same rule as the mock TTS and LLM adapters: budgets are
   // configuration that outlives a test run, and a mock that priced itself at
   // zero would make every cap hold or break for the wrong reason.

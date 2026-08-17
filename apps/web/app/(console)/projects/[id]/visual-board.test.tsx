@@ -232,7 +232,7 @@ describe('VisualBoard', () => {
     }
     render(<VisualBoard projectId={PROJECT} model={model([still])} colors={COLORS} />)
 
-    await userEvent.click(screen.getByRole('button', { name: /Regenerate · ≈\$0.06/ }))
+    await userEvent.click(screen.getByRole('button', { name: /Regenerate · ≈\$0.08/ }))
     expect(refetchSlotAction).toHaveBeenCalledWith(PROJECT, SLOT_B, 'Regenerate')
   })
 

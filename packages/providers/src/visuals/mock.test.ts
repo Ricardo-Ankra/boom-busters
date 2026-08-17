@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { createMockStock, mockImageGen } from './mock'
 import { imageGenAdapter, stockAdapters, LIVE_STOCK_ADAPTERS } from './registry'
 import { falImageGen } from './fal'
+import { geminiImageGen } from './gemini'
 import type { StockQuery } from './types'
 
 const QUERY: StockQuery = {
@@ -48,11 +49,16 @@ describe('mockImageGen', () => {
 describe('the registry switch', () => {
   it('serves mocks only when MOCK_PROVIDERS=1, never by default', async () => {
     expect(stockAdapters({})).toBe(LIVE_STOCK_ADAPTERS)
-    expect(imageGenAdapter({})).toBe(falImageGen)
+    expect(imageGenAdapter('fal', {})).toBe(falImageGen)
 
     const mocked = stockAdapters({ MOCK_PROVIDERS: '1' })
     const [candidate] = await mocked.pexels.search(QUERY, {})
     expect(candidate?.licence).toContain('[mock]')
-    expect(imageGenAdapter({ MOCK_PROVIDERS: '1' })).toBe(mockImageGen)
+    expect(imageGenAdapter('fal', { MOCK_PROVIDERS: '1' })).toBe(mockImageGen)
+    expect(imageGenAdapter('google', { MOCK_PROVIDERS: '1' })).toBe(mockImageGen)
+  })
+
+  it('serves Gemini when asked for the google generator', () => {
+    expect(imageGenAdapter('google', {})).toBe(geminiImageGen)
   })
 })

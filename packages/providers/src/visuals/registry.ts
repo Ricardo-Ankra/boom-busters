@@ -1,9 +1,10 @@
 import { mockProvidersEnabled } from '../llm/registry'
 import { falImageGen } from './fal'
+import { geminiImageGen } from './gemini'
 import { createMockStock, mockImageGen } from './mock'
 import { pexelsStock } from './pexels'
 import { pixabayStock } from './pixabay'
-import type { ImageGenProvider, StockProvider, StockProviderId } from './types'
+import type { ImageGenProvider, ImageGenProviderId, StockProvider, StockProviderId } from './types'
 import { wikimediaStock } from './wikimedia'
 
 /**
@@ -39,15 +40,14 @@ export function stockAdapter(
   return stockAdapters(env)[provider]
 }
 
-export function imageGenAdapter(
-  env: Record<string, string | undefined> = process.env,
-): ImageGenProvider {
-  return mockProvidersEnabled(env) ? mockImageGen : falImageGen
+export const LIVE_IMAGE_GEN_ADAPTERS: Record<ImageGenProviderId, ImageGenProvider> = {
+  fal: falImageGen,
+  google: geminiImageGen,
 }
 
-/**
- * USD per generated image — the figure `packages/cost` derives the fal price
- * from. Always the live figure, even in mock mode, for the reason every
- * price table here is.
- */
-export const FAL_PRICE_PER_IMAGE = falImageGen.pricePerImage
+export function imageGenAdapter(
+  provider: ImageGenProviderId,
+  env: Record<string, string | undefined> = process.env,
+): ImageGenProvider {
+  return mockProvidersEnabled(env) ? mockImageGen : LIVE_IMAGE_GEN_ADAPTERS[provider]
+}

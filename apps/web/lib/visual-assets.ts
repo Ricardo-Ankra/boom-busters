@@ -1,7 +1,7 @@
 import 'server-only'
 
 import { createHash } from 'node:crypto'
-import { estimateImageGenUsd, withCost } from '@boom-busters/cost'
+import { withCost } from '@boom-busters/cost'
 import { upsertAssetByHash, visualCredentials } from '@boom-busters/db'
 import { applyScores, STILL_GENERATIONS, ValidationError } from '@boom-busters/schemas'
 import type {
@@ -15,12 +15,13 @@ import type {
 import {
   buildScoringRequest,
   imageGenAdapter,
+  imageGenPrice,
   mockProvidersEnabled,
   mockScores,
   parseScores,
   stockAdapter,
 } from '@boom-busters/providers'
-import type { StockQuery } from '@boom-busters/providers'
+import type { ImageGenProviderId, StockQuery } from '@boom-busters/providers'
 import { db } from '@/lib/db'
 import { env } from '@/lib/env'
 import { callLlm } from '@/lib/llm'
@@ -37,8 +38,9 @@ import { putObject, stillKey, storageConfigured } from '@/lib/storage'
  *  - Stock and archival searches are free; they are not wrapped in the cost
  *    guard because there is nothing to guard — the guard exists to stop
  *    spend, and a $0 reservation stops nothing while still writing rows.
- *  - Still generation is paid (fal), so it runs inside `withCost` and a
- *    `BudgetExceededError` propagates up for the runner to park on.
+ *  - Still generation is paid (Gemini by default, fal as the alternative),
+ *    so it runs inside `withCost` and a `BudgetExceededError` propagates up
+ *    for the runner to park on.
  *  - Scoring is an LLM call through `callLlm`, which carries its own guard.
  */
 
@@ -68,17 +70,20 @@ export async function requireVisualKeys(types: ReadonlySet<ShotBrief['type']>): 
   }
 
   if (types.has('still')) {
-    if (!keys.fal) {
+    // Gemini (the Google key) is the default generator; fal is the
+    // alternative. Either one satisfies the plan.
+    if (!keys.google && !keys.fal) {
       throw new ValidationError(
-        'The shot list includes generated stills but fal.ai has no working key. Add it in ' +
+        'The shot list includes generated stills but there is no key to generate them with. ' +
+          'Add a Google key (Gemini generates the stills) or a fal.ai key in ' +
           'Settings → Connections, then re-run the visuals stage.',
-        { field: 'connections.fal' },
+        { field: 'connections.google' },
       )
     }
     if (!storageConfigured()) {
       throw new ValidationError(
-        'Generated stills have nowhere to be stored — fal output URLs expire, so every image ' +
-          'would be bought and then lost. Configure R2, or set MOCK_PROVIDERS=1.',
+        'Generated stills have nowhere to be stored, so every image would be bought and then ' +
+          'lost. Configure R2, or set MOCK_PROVIDERS=1.',
         { field: 'env.R2_BUCKET' },
       )
     }
@@ -151,16 +156,24 @@ async function generateStillCandidates(
   brief: StillBrief,
   projectId: string,
 ): Promise<SlotCandidate[]> {
-  const adapter = imageGenAdapter()
-  const keys = mockProvidersEnabled() ? {} : await visualCredentials(db, env.SECRETS_ENCRYPTION_KEY)
+  const mocked = mockProvidersEnabled()
+  const keys = mocked ? {} : await visualCredentials(db, env.SECRETS_ENCRYPTION_KEY)
+
+  // Gemini rides the Google key Settings already holds for the LLM adapters,
+  // which is why it wins when both keys exist: fal is the generator that
+  // needs an account the user may not have. In mock mode the registry serves
+  // the mock whichever id is asked for.
+  const provider: ImageGenProviderId = keys.google ? 'google' : 'fal'
+  const adapter = imageGenAdapter(provider)
+  const apiKey = provider === 'google' ? keys.google : keys.fal
 
   const result = await withCost(
     db,
     {
-      provider: 'fal',
+      provider,
       operation: 'image.generate',
       projectId,
-      estimateUsd: estimateImageGenUsd(STILL_GENERATIONS),
+      estimateUsd: imageGenPrice(adapter, STILL_GENERATIONS),
       meta: { prompt: brief.prompt.slice(0, 200) },
     },
     async () => {
@@ -170,7 +183,7 @@ async function generateStillCandidates(
           ...(brief.negativePrompt ? { negativePrompt: brief.negativePrompt } : {}),
           count: STILL_GENERATIONS,
         },
-        { ...(keys.fal ? { apiKey: keys.fal } : {}) },
+        { ...(apiKey ? { apiKey } : {}) },
       )
       return { result: generated, actualUsd: generated.estimatedCostUsd }
     },
@@ -178,13 +191,14 @@ async function generateStillCandidates(
 
   return Promise.all(
     result.images.map(async (image, index) => {
-      // Mock generations arrive as data: URLs — displayable as-is, nothing to
-      // download, no asset row. Real fal URLs expire, so the bytes are pulled
-      // into R2 NOW and the asset row is the durable record.
-      if (image.url.startsWith('data:')) {
+      // Mock generations are data: SVG thumbnails — displayable as-is,
+      // nothing to download, no asset row. Gated on mock mode, NOT on the
+      // URL scheme: real Gemini output is also a data: URL, and it must be
+      // stored, not waved through as a mock.
+      if (mocked) {
         return {
-          id: `fal-mock-${index + 1}`,
-          provider: 'fal',
+          id: `${adapter.id}-mock-${index + 1}`,
+          provider: adapter.id,
           kind: 'image',
           sourceUrl: image.url,
           thumbUrl: image.url,
@@ -195,29 +209,45 @@ async function generateStillCandidates(
         } satisfies SlotCandidate
       }
 
-      const response = await fetch(image.url)
-      if (!response.ok) {
-        throw new Error(`fal image ${index + 1} could not be fetched (${response.status})`)
+      // The bytes land in R2 NOW either way; the asset row is the durable
+      // record. Gemini hands them over inline as a data: URL (decode, never
+      // fetch); fal hands over an expiring URL that must be fetched at once.
+      let bytes: Buffer
+      if (image.url.startsWith('data:')) {
+        bytes = Buffer.from(image.url.slice(image.url.indexOf(',') + 1), 'base64')
+      } else {
+        const response = await fetch(image.url)
+        if (!response.ok) {
+          throw new Error(
+            `${adapter.id} image ${index + 1} could not be fetched (${response.status})`,
+          )
+        }
+        bytes = Buffer.from(await response.arrayBuffer())
       }
-      const bytes = Buffer.from(await response.arrayBuffer())
       const contentHash = createHash('sha256').update(bytes).digest('hex')
       const { key } = await putObject(stillKey({ projectId, contentHash }), bytes, 'image/png')
+
+      // A megabyte data: URL must never be written into a jsonb candidate or
+      // an asset row — the stored copy in R2 is the source now.
+      const sourceUrl = image.url.startsWith('data:')
+        ? `generated://${adapter.id}/${contentHash.slice(0, 12)}`
+        : image.url
 
       const asset = await upsertAssetByHash(db, {
         kind: 'image',
         r2Key: key,
-        sourceUrl: image.url,
-        licence: 'Generated (FLUX.1 dev via fal.ai)',
+        sourceUrl,
+        licence: `Generated (${adapter.label})`,
         contentHash,
         width: image.width,
         height: image.height,
       })
 
       return {
-        id: `fal-${contentHash.slice(0, 12)}`,
-        provider: 'fal',
+        id: `${adapter.id}-${contentHash.slice(0, 12)}`,
+        provider: adapter.id,
         kind: 'image',
-        sourceUrl: image.url,
+        sourceUrl,
         r2Key: key,
         assetId: asset.id,
         width: image.width,
