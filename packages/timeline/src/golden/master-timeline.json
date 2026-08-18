@@ -48,7 +48,14 @@
       "surface": "#16181d",
       "textPrimary": "#f4f4f5",
       "textSecondary": "#a1a1aa",
-      "chartSeries": ["#f5a524", "#3b82f6", "#10b981", "#a855f7", "#ef4444", "#14b8a6"],
+      "chartSeries": [
+        "#f5a524",
+        "#3b82f6",
+        "#10b981",
+        "#a855f7",
+        "#ef4444",
+        "#14b8a6"
+      ],
       "captionHighlight": "#f5a524",
       "semantic": {
         "collapse": "#ef4444",
@@ -343,7 +350,9 @@
             ]
           }
         ],
-        "dataRefs": ["01HQ00000000000000000000AA"],
+        "dataRefs": [
+          "01HQ00000000000000000000AA"
+        ],
         "takeaway": "The nine-day collapse.",
         "reveal": "draw-on"
       }

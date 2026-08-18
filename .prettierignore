@@ -14,3 +14,9 @@ apps/web/next-env.d.ts
 
 # Authored specification documents — formatted by hand, not by tooling.
 docs
+
+# Golden test artefacts: their bytes are owned by the compiler under test
+# (REGEN_GOLDEN=1 regenerates them), never by the formatter. Prettier
+# rewriting one after the last test run is exactly how CI went red on
+# 6b54724 while local was green.
+packages/timeline/src/golden/
