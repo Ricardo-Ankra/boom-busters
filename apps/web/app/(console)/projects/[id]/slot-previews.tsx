@@ -1,6 +1,7 @@
 'use client'
 
 import * as React from 'react'
+import { fitBounds, graticule, landPaths, projector } from '@boom-busters/compositions/geo'
 import type { ChartBrief, MapBrief } from '@boom-busters/schemas'
 
 /**
@@ -292,36 +293,17 @@ export function ChartErrorCard({ message }: { message: string }) {
 // ---------------------------------------------------------------------------
 
 /**
- * A schematic map: locations and routes projected onto a plain graticule,
- * zoomed to fit. Deliberately not a tile basemap — the point of a map slot is
- * "the money moved from HERE to THERE", and labels, points and a route say
- * that; street detail is M6's problem if it ever is one.
+ * The map preview, on the same bundled world geometry the M6 `AnimatedMap`
+ * composition renders — real Natural Earth coastlines, projected by the
+ * shared `@boom-busters/compositions/geo` module, so the board can never
+ * show a different world than the render (M6.5; supersedes the M5 schematic
+ * of decision 116). Still no tiles and no network: the land is data in the
+ * repo.
  */
 export function MapPreview({ brief, colors }: { brief: MapBrief; colors: BrandChartColors }) {
-  const lats = brief.locations.map((location) => location.lat)
-  const lons = brief.locations.map((location) => location.lon)
-
-  // The viewing window: the locations' bounding box, padded, and never so
-  // tight that a single city becomes a featureless void.
-  const padLon = Math.max(8, (Math.max(...lons) - Math.min(...lons)) * 0.25)
-  const padLat = Math.max(5, (Math.max(...lats) - Math.min(...lats)) * 0.25)
-  const west = Math.max(-180, Math.min(...lons) - padLon)
-  const east = Math.min(180, Math.max(...lons) + padLon)
-  const south = Math.max(-90, Math.min(...lats) - padLat)
-  const north = Math.min(90, Math.max(...lats) + padLat)
-
-  const x = (lon: number) => ((lon - west) / (east - west)) * WIDTH
-  const y = (lat: number) => ((north - lat) / (north - south)) * HEIGHT
-
-  // Graticule lines at a spacing that yields a handful of lines, not a grid.
-  const lonStep = Math.ceil((east - west) / 6 / 5) * 5 || 5
-  const latStep = Math.ceil((north - south) / 4 / 5) * 5 || 5
-  const lonLines: number[] = []
-  for (let lon = Math.ceil(west / lonStep) * lonStep; lon <= east; lon += lonStep)
-    lonLines.push(lon)
-  const latLines: number[] = []
-  for (let lat = Math.ceil(south / latStep) * latStep; lat <= north; lat += latStep)
-    latLines.push(lat)
+  const bounds = fitBounds(brief.locations)
+  const { x, y } = projector(bounds, WIDTH, HEIGHT)
+  const { lons: lonLines, lats: latLines } = graticule(bounds)
 
   return (
     <svg
@@ -331,6 +313,17 @@ export function MapPreview({ brief, colors }: { brief: MapBrief; colors: BrandCh
       className="w-full rounded-[8px]"
       style={{ background: colors.surface }}
     >
+      {landPaths(bounds, WIDTH, HEIGHT).map((d, index) => (
+        <path
+          key={index}
+          d={d}
+          fill={colors.textSecondary}
+          fillOpacity={0.12}
+          fillRule="evenodd"
+          stroke={colors.textSecondary}
+          strokeOpacity={0.3}
+        />
+      ))}
       {lonLines.map((lon) => (
         <line
           key={`lon${lon}`}

@@ -13,6 +13,7 @@
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1108.0",
     "@aws-sdk/s3-request-presigner": "^3.1108.0",
+    "@boom-busters/compositions": "workspace:*",
     "@boom-busters/cost": "workspace:*",
     "@boom-busters/db": "workspace:*",
     "@boom-busters/providers": "workspace:*",

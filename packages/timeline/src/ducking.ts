@@ -106,17 +106,7 @@ export function buildDuckingCurve(
   return collapsed
 }
 
-/** The bed's gain at time t — the interpolation MusicBed will mirror. */
-export function gainAt(curve: readonly DuckingPoint[], tMs: number): number {
-  if (curve.length === 0) return 0
-  if (tMs <= curve[0]!.tMs) return curve[0]!.gainDb
-  for (let index = 1; index < curve.length; index += 1) {
-    const previous = curve[index - 1]!
-    const current = curve[index]!
-    if (tMs <= current.tMs) {
-      const progress = (tMs - previous.tMs) / (current.tMs - previous.tMs)
-      return previous.gainDb + (current.gainDb - previous.gainDb) * progress
-    }
-  }
-  return curve[curve.length - 1]!.gainDb
-}
+// The bed's gain at time t — the interpolation MusicBed mirrors. The
+// implementation moved into the schemas CONTRACT (compositions may import
+// only schemas); re-exported here so preview code keeps one import path.
+export { gainAt } from '@boom-busters/schemas'

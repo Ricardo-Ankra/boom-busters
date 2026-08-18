@@ -1707,7 +1707,7 @@ db 170 · cost 31 unit/component/integration, Playwright 80/80.
       beds to R2 (`assets` kind `music`), licence dropdown REQUIRED
       (`yt-audio-library|epidemic|artlist|generated|other`), mood tags,
       inline preview, delete; first-run checklist item 4 goes live.
-- [ ] **M6.5 `packages/compositions`** — Remotion project importing only
+- [x] **M6.5 `packages/compositions`** — Remotion project importing only
       from `schemas`: `DocumentaryMaster`, components (`KenBurnsImage`,
       `StockClip`, `ChartReveal`, `AnimatedMap`, `LowerThird`, `ChapterCard`,
       `KaraokeCaptions`, `MusicBed`), `AVAILABLE_FONTS` export (bundled,
@@ -1782,9 +1782,66 @@ db 170 · cost 31 unit/component/integration, Playwright 80/80.
      best-effort because orphaned bytes are a lifecycle-rule problem while
      missing rows with live bytes are no problem at all.
 
+126. **The map's world is data in the repo** (M6.5, 2026-08-18). Natural
+     Earth 1:110m `ne_110m_land` (public domain), coordinates rounded to
+     0.01°, ~75 KB of compact JSON — no tiles, no network, no API key. One
+     shared module, `@boom-busters/compositions/geo` (no React/Remotion
+     imports), is drawn by BOTH the `AnimatedMap` composition and the
+     visual board's `MapPreview`, so the board can never show a different
+     world than the render — this closes the "map shot has no map" gap
+     from the Carillion board. Projection is equirectangular over the
+     fitted window (`fitBounds` extracted verbatim from the M5 preview).
+     Visibility culling is bbox + any-vertex-in-window + point-in-polygon
+     on the window centre: continent-sized bounding boxes blanket oceans
+     they never touch, and Kansas has no coastline vertices yet must
+     still be land.
+
+127. **Two contract additions the compositions forced** (M6.5). `gainAt`
+     moved from `packages/timeline` into the schemas contract — MusicBed
+     may import only schemas, and one interpolation must serve both the
+     preview's gain line and the render (timeline re-exports it, one
+     import path for the app). `NarrationSegmentSchema`/`MusicTrackSchema`
+     gained the optional materialised `url` field MediaRef already had
+     (the broker resolves r2Keys at invoke time and needs somewhere to put
+     them); `canonicalTimelineIssues` now flags those too.
+
+128. **Snapshots are perceptual, not byte-exact** (M6.5). `renderStill`
+     at 0.25 scale through the real webpack + headless-Chrome pipeline,
+     compared with pixelmatch (threshold 0.1, allowed differing-pixel
+     ratio 3% — 6% for text-heavy frames): Chrome rasterises fonts
+     differently per OS, so goldens regenerated on Windows must still pass
+     on Linux CI. `REGEN_GOLDEN=1 pnpm test` rewrites them, same
+     convention as the timeline goldens; the golden dir and the geometry
+     JSON are prettier-ignored. A webpack override strips the `node:`
+     scheme and drops `crypto` — schemas hashes content for cache keys,
+     compositions never do, and if one ever called `createHash` in a
+     render it SHOULD fail loudly.
+
+129. **Three fonts, loaded at render time, unbundled means refuse**
+     (M6.5). `AVAILABLE_FONTS` = Inter, Archivo, JetBrains Mono, all
+     SIL OFL 1.1, exported as pure data via
+     `@boom-busters/compositions/fonts` for the Brand Kit UI (which today
+     has no typography editor — the specimen panel era reads it).
+     Loading rides `@remotion/google-fonts` (spec-blessed, section 8.2);
+     a timeline naming any other family throws before a frame renders —
+     never a silent OS-font fallback.
+
+130. **Deliberate stand-ins, recorded** (M6.5). `ShortVertical` (spec
+     §8.3) waits for the shorts milestone — the master is what M6 needs,
+     and `KaraokeCaptions` already carries the tested 9:16 safe zones.
+     The watermark overlay renders a typographic "Boom & Busters"
+     wordmark until a logo pipeline exists (brand.look has a logo r2Key
+     but no materialisation path yet). The StockClip Studio fixture
+     points at a public sample MP4 — dev-only; renders and snapshots
+     never touch it. The fixture timeline is a materialised copy with
+     data-URI media, and its test asserts the canonical guard FLAGS it —
+     the guard working is part of the fixture's job.
+
 **Status:** `[~]` in progress — branch `m6-assembly` started 2026-08-18;
-M6.1–M6.4 done (timeline contract; snap/ducking/compiler with goldens;
-word timings at synthesis; music library live in Settings)
+M6.1–M6.5 done (timeline contract; snap/ducking/compiler with goldens;
+word timings at synthesis; music library live in Settings; Remotion
+component library with bundled world geometry, fonts, Studio fixtures
+and renderStill snapshots)
 
 ---
 

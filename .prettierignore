@@ -20,3 +20,9 @@ docs
 # rewriting one after the last test run is exactly how CI went red on
 # 6b54724 while local was green.
 packages/timeline/src/golden/
+packages/compositions/src/snapshot/golden/
+
+# Bundled world geometry (Natural Earth 110m, public domain): one compact
+# line by design — prettier expanding it to thousands of lines would bloat
+# every diff that touches the file.
+packages/compositions/src/geo/world-land.json

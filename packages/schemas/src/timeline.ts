@@ -58,6 +58,8 @@ export type MediaRef = z.infer<typeof MediaRefSchema>
 
 export const NarrationSegmentSchema = z.object({
   r2Key: z.string().min(1),
+  /** Materialised copies only — same contract as MediaRef.url. */
+  url: z.url().optional(),
   startMs: z.number().int().min(0),
   durationMs: z.number().int().positive(),
   chapterId: UlidSchema,
@@ -80,6 +82,8 @@ export const MusicCuePointSchema = z.object({
 
 export const MusicTrackSchema = z.object({
   r2Key: z.string().min(1),
+  /** Materialised copies only — same contract as MediaRef.url. */
+  url: z.url().optional(),
   /** Base bed gain, dB. Ducking points are absolute gains, not offsets. */
   gainDb: z.number().max(0),
   /** Piecewise-linear gain envelope, strictly ordered by tMs (compiler-enforced). */
@@ -266,12 +270,38 @@ export function timelineDurationMs(timeline: Timeline): number {
 }
 
 /**
+ * The bed's gain at time t, in dB — piecewise-linear over the ducking curve,
+ * clamped to the first/last point outside it. This lives in the CONTRACT, not
+ * in a package, because two independent consumers must agree on it exactly:
+ * the preview screen's gain visualisation (via `packages/timeline`) and the
+ * `MusicBed` composition (which may import only from schemas). One
+ * interpolation, two importers, zero drift.
+ */
+export function gainAt(curve: readonly DuckingPoint[], tMs: number): number {
+  if (curve.length === 0) return 0
+  if (tMs <= curve[0]!.tMs) return curve[0]!.gainDb
+  for (let index = 1; index < curve.length; index += 1) {
+    const previous = curve[index - 1]!
+    const current = curve[index]!
+    if (tMs <= current.tMs) {
+      const progress = (tMs - previous.tMs) / (current.tMs - previous.tMs)
+      return previous.gainDb + (current.gainDb - previous.gainDb) * progress
+    }
+  }
+  return curve[curve.length - 1]!.gainDb
+}
+
+/**
  * The canonical-form guard: a stored timeline must reference media by key,
  * never by materialised URL. Returns the offending paths (empty = clean),
  * so the compiler can assert and the broker can refuse before spending.
  */
 export function canonicalTimelineIssues(timeline: Timeline): string[] {
   const issues: string[] = []
+  timeline.narration.forEach((segment, index) => {
+    if (segment.url !== undefined) issues.push(`narration.${index}.url`)
+  })
+  if (timeline.music?.url !== undefined) issues.push('music.url')
   timeline.slots.forEach((slot, index) => {
     if (slot.payload.kind === 'image' || slot.payload.kind === 'video') {
       if (slot.payload.src.url !== undefined) {

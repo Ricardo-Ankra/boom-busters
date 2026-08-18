@@ -21,7 +21,14 @@ const nextConfig: NextConfig = {
   reactStrictMode: true,
   // Workspace packages ship TypeScript source rather than a build step, so
   // Next compiles them alongside the app. One fewer build to keep in sync.
-  transpilePackages: ['@boom-busters/schemas', '@boom-busters/db', '@boom-busters/ui-tokens'],
+  transpilePackages: [
+    '@boom-busters/schemas',
+    '@boom-busters/db',
+    '@boom-busters/ui-tokens',
+    // Only the `/geo` subpath is imported — world geometry for the
+    // visual board's MapPreview; no React or Remotion comes with it.
+    '@boom-busters/compositions',
+  ],
   serverExternalPackages: ['postgres'],
   typedRoutes: true,
   // Next's floating dev-tools button is a 32px control that only exists in

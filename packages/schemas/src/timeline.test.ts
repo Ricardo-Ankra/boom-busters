@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { DEFAULT_SETTINGS, resolveBrandKit } from './settings'
 import {
   canonicalTimelineIssues,
+  gainAt,
   TIMELINE_VERSION,
   timelineDurationMs,
   TimelineSchema,
@@ -171,6 +172,19 @@ describe('timelineDurationMs', () => {
   })
 })
 
+describe('gainAt', () => {
+  it('interpolates the ducking curve piecewise-linearly, clamped at the ends', () => {
+    const curve = [
+      { tMs: 1000, gainDb: -25 },
+      { tMs: 2000, gainDb: -37 },
+    ]
+    expect(gainAt(curve, 0)).toBe(-25)
+    expect(gainAt(curve, 1500)).toBeCloseTo(-31)
+    expect(gainAt(curve, 9000)).toBe(-37)
+    expect(gainAt([], 500)).toBe(0)
+  })
+})
+
 describe('canonicalTimelineIssues', () => {
   it('passes a keys-only timeline and names any materialised URL', () => {
     const timeline = fixtureTimeline()
@@ -182,5 +196,14 @@ describe('canonicalTimelineIssues', () => {
     expect(canonicalTimelineIssues(TimelineSchema.parse(leaked))).toEqual([
       'slots.0.payload.src.url',
     ])
+  })
+
+  it('names materialised narration and music URLs too', () => {
+    const leaked = JSON.parse(JSON.stringify(fixtureTimeline())) as Timeline
+    leaked.narration[0]!.url = 'https://r2.example.com/presigned?sig=abc'
+    if (leaked.music) leaked.music.url = 'https://r2.example.com/presigned?sig=def'
+    const issues = canonicalTimelineIssues(TimelineSchema.parse(leaked))
+    expect(issues).toContain('narration.0.url')
+    if (leaked.music) expect(issues).toContain('music.url')
   })
 })
