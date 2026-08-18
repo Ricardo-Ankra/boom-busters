@@ -1717,7 +1717,7 @@ db 170 · cost 31 unit/component/integration, Playwright 80/80.
       `MapPreview` reuses the same geometry** — closing the "map has no map"
       gap flagged on the Carillion board (2026-08-18); M5's schematic was
       decision 116's stand-in.
-- [ ] **M6.6 `infra/` CDK** — `boom-busters-broker` (endpoints per §8,
+- [x] **M6.6 `infra/` CDK** — `boom-busters-broker` (endpoints per §8,
       bearer token, tombstone cancel set, URL materialisation) +
       `boom-busters-media-utils` (FFmpeg layer + Whisper.cpp; qc, loudnorm,
       transcribe; HMAC completion webhooks) + Remotion Lambda function/site
@@ -1837,11 +1837,59 @@ db 170 · cost 31 unit/component/integration, Playwright 80/80.
      data-URI media, and its test asserts the canonical guard FLAGS it —
      the guard working is part of the fixture's job.
 
+131. **The broker API DTOs live in schemas, built with M6.6 not M6.1**
+     (2026-08-18). M6.1's checklist named them but only the timeline
+     contract was actually built then — corrected here rather than
+     papered over. `broker.ts` now carries render requests/progress/
+     cancel, the loose Remotion webhook shape, the four media jobs with
+     typed results (qc report, loudnorm, whisper words, YouTube upload),
+     the callback envelopes, and the HMAC sign/verify pair both sides of
+     every webhook share. The broker never invents IDs: the app's ULIDs
+     key every record, tombstone and callback.
+
+132. **One callback route for everything asynchronous** (M6.6). The
+     broker's normalised render outcome and every media-utils completion
+     POST HMAC-signed payloads to a single app hook (built in M6.7); the
+     app verifies and emits the Inngest events. The Lambdas never hold
+     Inngest credentials, and dev/CI work identically because events
+     enter through the app.
+
+133. **Lambda Function URL, S3 state, no DynamoDB** (M6.6). The spec
+     allowed API Gateway or function URLs — the URL costs nothing and
+     bearer auth is app-level either way. Render records, the remotion-id
+     index and the 8.1 tombstones are S3 objects in the state bucket
+     (lifecycle: renders 90 d, broker state 180 d); at one-user render
+     volume a database would be ceremony. Cancel tombstones BEFORE
+     updating the record, so racing the webhook can never emit a
+     completion event. The concurrency cap (2) counts running state
+     records and refuses with 409 before any money moves.
+
+134. **Remotion keeps its version-encoded function name** (M6.6).
+     Remotion Lambda does not support custom function names;
+     `boom-busters-render` stays the logical name, the deploy script
+     prints the physical one into REMOTION_FUNCTION_NAME, and the
+     cost-allocation tag does the accounting. The deploy script also
+     publishes the compositions site through the same webpackOverride the
+     snapshot tests bundle with — one bundling path, no drift.
+
+135. **QC thresholds and media-job conventions** (M6.6). Silence ≥ 2.5 s
+     at -45 dB, black ≥ 1.5 s, frozen frame ≥ 0.5 s ("glitch scan"),
+     integrated loudness within ±1.5 LU of target (-14 master / -16
+     voice); an unmeasurable loudness FAILS QC, never passes it. Storage
+     routing is by prefix: keys under `boom-busters/` are R2, anything
+     else is the Remotion render bucket — the two never share a prefix.
+     Whisper tokens (-ml 1) join into words on the leading-space
+     convention; bracketed noise is dropped. Daily spend guarding is an
+     AWS Budget (email direct), not billing-metric gymnastics; alarms
+     cover errors, 5xx, signature failures and cap-busting concurrency.
+
 **Status:** `[~]` in progress — branch `m6-assembly` started 2026-08-18;
-M6.1–M6.5 done (timeline contract; snap/ducking/compiler with goldens;
+M6.1–M6.6 done (timeline contract; snap/ducking/compiler with goldens;
 word timings at synthesis; music library live in Settings; Remotion
 component library with bundled world geometry, fonts, Studio fixtures
-and renderStill snapshots)
+and renderStill snapshots; broker + media-utils CDK stacks, tested
+offline — DEPLOY still pending: needs AWS credentials for the
+Reelscript account, per infra/README.md)
 
 ---
 

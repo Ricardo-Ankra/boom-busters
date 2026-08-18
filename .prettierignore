@@ -26,3 +26,4 @@ packages/compositions/src/snapshot/golden/
 # line by design — prettier expanding it to thousands of lines would bloat
 # every diff that touches the file.
 packages/compositions/src/geo/world-land.json
+infra/cdk.out

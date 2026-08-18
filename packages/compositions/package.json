@@ -6,7 +6,8 @@
   "exports": {
     ".": "./src/index.ts",
     "./geo": "./src/geo/index.ts",
-    "./fonts": "./src/fonts/catalog.ts"
+    "./fonts": "./src/fonts/catalog.ts",
+    "./webpack-override": "./src/webpack-override.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

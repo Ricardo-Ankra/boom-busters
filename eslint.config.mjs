@@ -45,8 +45,16 @@ export default tseslint.config(
 
   // Scripts run from the CLI (migrate, seed) and from the deploy pipeline
   // legitimately report to stdout, and run in Node rather than the browser.
+  // The infra Lambdas log structured JSON to CloudWatch — console IS the
+  // log sink there (spec section 12) — and the deploy scripts print steps.
   {
-    files: ['packages/db/src/scripts/**/*.ts', 'scripts/**/*.mjs', '**/*.config.{ts,mts,mjs,js}'],
+    files: [
+      'packages/db/src/scripts/**/*.ts',
+      'scripts/**/*.mjs',
+      '**/*.config.{ts,mts,mjs,js}',
+      'infra/lambdas/**/*.ts',
+      'infra/scripts/**/*.ts',
+    ],
     languageOptions: {
       globals: { process: 'readonly', console: 'readonly' },
     },

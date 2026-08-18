@@ -1,0 +1,6 @@
+{
+  "app": "tsx bin/infra.ts",
+  "context": {
+    "@aws-cdk/core:enableStackNameDuplicates": false
+  }
+}
