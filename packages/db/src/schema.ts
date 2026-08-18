@@ -890,6 +890,7 @@ export type VoiceTakeRow = typeof voiceTakes.$inferSelect
 export type VoiceAuditionRow = typeof voiceAuditions.$inferSelect
 export type ShotSlotRow = typeof shotSlots.$inferSelect
 export type AssetRow = typeof assets.$inferSelect
+export type TimelineRow = typeof timelines.$inferSelect
 export type RenderRow = typeof renders.$inferSelect
 export type PublishRecordRow = typeof publishRecords.$inferSelect
 export type ProviderCredentialRow = typeof providerCredentials.$inferSelect

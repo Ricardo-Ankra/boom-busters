@@ -183,10 +183,20 @@ export async function restartStage(projectId: string, stage?: string): Promise<A
     }
   }
 
+  // Assembly compiles narration takes cut to the script's paragraphs.
+  if (target === 'assembly' && !(await getLatestScript(db, projectId))) {
+    return {
+      ok: false,
+      error:
+        'There is no script to assemble. Run the script stage first — the timeline is compiled ' +
+        'from its paragraphs and their takes.',
+    }
+  }
+
   /**
    * Re-entering a stage means re-sending the event its runner triggers on.
-   * Only these three have runners; anything else would send an event nothing
-   * is subscribed to, report success, and do nothing.
+   * Only stages with runners appear here; anything else would send an event
+   * nothing is subscribed to, report success, and do nothing.
    */
   const entry =
     target === 'dossier'
@@ -197,7 +207,9 @@ export async function restartStage(projectId: string, stage?: string): Promise<A
           ? events.scriptApproved.create({ projectId, approvedBy })
           : target === 'visuals'
             ? events.voiceApproved.create({ projectId, approvedBy })
-            : null
+            : target === 'assembly'
+              ? events.visualsApproved.create({ projectId, approvedBy })
+              : null
 
   if (!entry) {
     return {

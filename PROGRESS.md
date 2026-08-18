@@ -1724,7 +1724,7 @@ db 170 · cost 31 unit/component/integration, Playwright 80/80.
       deploy scripts, `project=boom-busters` tags, concurrency cap 2,
       CloudWatch alarms. Deploy targets the existing Reelscript AWS account —
       **credentials requested from the human when this lands, not before**.
-- [ ] **M6.7 assembly-runner** — `gate/visuals.approved` → alignment
+- [x] **M6.7 assembly-runner** — `gate/visuals.approved` → alignment
       (stored ElevenLabs timings when present, else media-utils Whisper,
       mock in CI) → snap → compile → validate → timeline stored by key →
       preview-ready (Gate 5a always parks).
@@ -1883,13 +1883,46 @@ db 170 · cost 31 unit/component/integration, Playwright 80/80.
      AWS Budget (email direct), not billing-metric gymnastics; alarms
      cover errors, 5xx, signature failures and cap-busting concurrency.
 
+136. **One snap pipeline, whatever the timing source** (M6.7). Takes
+     with stored ElevenLabs timings and takes transcribed by Whisper both
+     go through the same snap-to-script and the same QC-gap definition —
+     ElevenLabs timings are already script text, so the snap is a no-op
+     there, and uniformity means one code path, one gap report, one set
+     of tests. In mock-provider mode alignment is evenly-spaced words
+     across the take's measured duration, so CI exercises the exact
+     snap/offset arithmetic live audio would.
+
+137. **Assembly is restartable; the beyond-runners fixture moves on**
+     (M6.7). `assembly` joined RESTARTABLE_STAGES (re-enters on
+     `gate/visuals.approved`, requires a script). The production-shaped
+     "past the last runner" e2e fixture moved from `assembly` to `shorts`
+     — its own comment says the shape moves with every milestone. The
+     broker hook route (`/api/hooks/broker`) is live: HMAC-verified
+     callbacks become `render/completed`, `render/failed` or the new
+     `media/job.completed` event; signature failures are logged and
+     401'd, signed-but-unreadable payloads are logged and 200'd so a
+     version skew can never become a retry storm.
+
+138. **Timeline plumbing defaults** (M6.7). Versions are append-only
+     (`insertTimeline` validates against TimelineSchema on the way in;
+     an old renders row must be able to say exactly what it rendered
+     forever); the compiled JSON is uploaded to
+     `boom-busters/timelines/<project>/v<n>.json` when storage is
+     configured. The first preview's music bed is simply the newest
+     track in the library — the M6.8 picker swaps beds and recompiles
+     for free, so this is a starting point, not a verdict. Slots that
+     cannot compile (placeholders, hero, missing bytes) are skipped AND
+     counted into the gate summary; Gate 5a always parks.
+
 **Status:** `[~]` in progress — branch `m6-assembly` started 2026-08-18;
-M6.1–M6.6 done (timeline contract; snap/ducking/compiler with goldens;
+M6.1–M6.7 done (timeline contract; snap/ducking/compiler with goldens;
 word timings at synthesis; music library live in Settings; Remotion
 component library with bundled world geometry, fonts, Studio fixtures
 and renderStill snapshots; broker + media-utils CDK stacks, tested
 offline — DEPLOY still pending: needs AWS credentials for the
-Reelscript account, per infra/README.md)
+Reelscript account, per infra/README.md; assembly-runner compiling
+stored timelines and parking at Gate 5a, with the broker hook route
+live)
 
 ---
 

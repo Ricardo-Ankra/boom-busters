@@ -1,3 +1,4 @@
+import { assemblyRunner } from './assembly-runner'
 import { cancelReconciler } from './cancel-reconciler'
 import { dossierReviser } from './dossier-reviser'
 import { dossierRunner } from './dossier-runner'
@@ -39,12 +40,14 @@ export const functions = [
   voiceRetaker,
   visualsRunner,
   slotRefetcher,
+  assemblyRunner,
 ]
 
 // `demoPipeline` is deliberately absent here too: its test imports it from
 // `./demo-pipeline` directly, and a barrel export made an unregistered
 // function look registered.
 export {
+  assemblyRunner,
   cancelReconciler,
   dossierReviser,
   dossierRunner,

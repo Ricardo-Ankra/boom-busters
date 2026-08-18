@@ -18,6 +18,7 @@
     "@boom-busters/db": "workspace:*",
     "@boom-busters/providers": "workspace:*",
     "@boom-busters/schemas": "workspace:*",
+    "@boom-busters/timeline": "workspace:*",
     "@boom-busters/ui-tokens": "workspace:*",
     "@radix-ui/react-dialog": "^1.1.16",
     "@radix-ui/react-label": "^2.1.8",

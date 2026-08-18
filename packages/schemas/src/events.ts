@@ -89,6 +89,21 @@ export const VisualsRefetchRequestedSchema = z.object({
   note: z.string().min(1),
 })
 
+/**
+ * A media-utils job finished (M6.7). The broker hook route verifies the
+ * HMAC and emits this; the waiting runner matches on jobId. `result` stays
+ * untyped here — the waiting step parses it against the job kind's result
+ * schema from broker.ts, which owns those shapes.
+ */
+export const MediaJobCompletedSchema = z.object({
+  ...projectRef,
+  jobId: UlidSchema,
+  kind: z.enum(['qc', 'loudnorm', 'transcribe', 'upload-youtube']),
+  ok: z.boolean(),
+  result: z.unknown().optional(),
+  error: z.string().optional(),
+})
+
 export const RenderCompletedSchema = z.object({
   ...projectRef,
   renderId: UlidSchema,
@@ -154,6 +169,7 @@ export const EVENT_SCHEMAS = {
 
   'voice/retake.requested': VoiceRetakeRequestedSchema,
   'visuals/refetch.requested': VisualsRefetchRequestedSchema,
+  'media/job.completed': MediaJobCompletedSchema,
   'render/completed': RenderCompletedSchema,
   'render/failed': RenderFailedSchema,
 

@@ -222,7 +222,7 @@ export default async function globalSetup(): Promise<void> {
       estRuntimeSec: 120,
     })
     await setProjectStage(connection.db, beyond.id, {
-      stage: 'assembly',
+      stage: 'shorts',
       // `running` with nothing running — the exact combination that turned a
       // spinner for a day.
       stageStatus: 'running',

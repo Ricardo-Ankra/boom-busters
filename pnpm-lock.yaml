@@ -62,6 +62,9 @@ importers:
       '@boom-busters/schemas':
         specifier: workspace:*
         version: link:../../packages/schemas
+      '@boom-busters/timeline':
+        specifier: workspace:*
+        version: link:../../packages/timeline
       '@boom-busters/ui-tokens':
         specifier: workspace:*
         version: link:../../packages/ui-tokens

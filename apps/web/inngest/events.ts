@@ -1,5 +1,6 @@
 import {
   BudgetApprovedSchema,
+  MediaJobCompletedSchema,
   DemoRequestedSchema,
   EVENT_NAMES,
   ProjectCancelledSchema,
@@ -70,6 +71,7 @@ export const events = {
   visualsRefetchRequested: eventType('visuals/refetch.requested', {
     schema: VisualsRefetchRequestedSchema,
   }),
+  mediaJobCompleted: eventType('media/job.completed', { schema: MediaJobCompletedSchema }),
   renderCompleted: eventType('render/completed', { schema: RenderCompletedSchema }),
   renderFailed: eventType('render/failed', { schema: RenderFailedSchema }),
 

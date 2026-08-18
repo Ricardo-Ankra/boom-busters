@@ -28,6 +28,7 @@ const nextConfig: NextConfig = {
     // Only the `/geo` subpath is imported — world geometry for the
     // visual board's MapPreview; no React or Remotion comes with it.
     '@boom-busters/compositions',
+    '@boom-busters/timeline',
   ],
   serverExternalPackages: ['postgres'],
   typedRoutes: true,

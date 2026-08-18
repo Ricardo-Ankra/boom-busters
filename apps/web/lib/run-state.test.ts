@@ -191,7 +191,7 @@ describe('projectControl', () => {
 
   it('explains a stalled `running` stage that has no runner instead of offering one', () => {
     const control = projectControl(
-      project('assembly', 'running', QUEUED_STUCK_AFTER_MS + 1_000),
+      project('shorts', 'running', QUEUED_STUCK_AFTER_MS + 1_000),
       false,
       { hasDossier: true, hasScript: true, now: NOW },
     )
@@ -215,7 +215,7 @@ describe('projectControl', () => {
   it('refuses to offer a restart for a stage that has no runner yet', () => {
     // A button that sends an event nothing subscribes to would report success
     // and do nothing, which is worse than saying so.
-    for (const stage of ['assembly', 'shorts', 'publish'] as const) {
+    for (const stage of ['shorts', 'publish'] as const) {
       const control = projectControl(project(stage, 'failed'), false, {
         hasDossier: true,
         hasScript: true,
@@ -226,8 +226,8 @@ describe('projectControl', () => {
     }
   })
 
-  it('offers a restart for the voice and visuals stages, whose runners exist', () => {
-    for (const stage of ['voice', 'visuals'] as const) {
+  it('offers a restart for the voice, visuals and assembly stages, whose runners exist', () => {
+    for (const stage of ['voice', 'visuals', 'assembly'] as const) {
       expect(
         projectControl(project(stage, 'failed'), false, {
           hasDossier: true,
