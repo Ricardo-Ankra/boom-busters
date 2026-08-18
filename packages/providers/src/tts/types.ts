@@ -1,4 +1,4 @@
-import type { PhonemeHint, StabilityTier, TtsProvider } from '@boom-busters/schemas'
+import type { PhonemeHint, StabilityTier, TtsProvider, WordTiming } from '@boom-busters/schemas'
 
 /**
  * The shape of a narration call (build spec section 6), sized to the one
@@ -51,6 +51,12 @@ export interface TTSResult {
   /** What actually spoke, for the ledger and the take row. */
   provider: TtsProvider
   voiceId: string
+  /**
+   * Word-level timings from the vendor's character alignment, when the
+   * endpoint returns one. Stored on the take so assembly aligns for free;
+   * absent means the take will need Whisper at assembly time.
+   */
+  wordTimings?: WordTiming[]
   /**
    * Pronunciation hints the vendor cannot honour, and which were therefore
    * dropped.

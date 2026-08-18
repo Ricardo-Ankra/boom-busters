@@ -1700,7 +1700,7 @@ db 170 · cost 31 unit/component/integration, Playwright 80/80.
       ducking-curve maths (bed gain + duck depth from Brand Kit, cue points),
       timeline compiler (approved board + takes + music + brand snapshot →
       byte-stable timeline JSON, fixture-project golden test).
-- [ ] **M6.3 Word timings at synthesis** — ElevenLabs adapter switches to
+- [x] **M6.3 Word timings at synthesis** — ElevenLabs adapter switches to
       `/with-timestamps`; character timings stored on `voice_takes`
       (migration; old takes read as timing-less and fall back to Whisper).
 - [ ] **M6.4 Music library** — Settings → Music library: upload licensed
@@ -1762,8 +1762,20 @@ db 170 · cost 31 unit/component/integration, Playwright 80/80.
      `packages/timeline/src/golden/master-timeline.json`; the diff of the
      golden is the review artefact for any compiler change.
 
+124. **Timings ride the same synthesis call** (M6.3, 2026-08-18). The
+     ElevenLabs adapter moved to `/with-timestamps` — same price, same audio,
+     plus a character alignment collapsed to word timings on the result and
+     stored on the take (`voice_takes.timings`, nullable jsonb, migration
+     0010). Bracketed tags never get a timing (direction is not spoken), and
+     the alignment of the INPUT text is preferred over the normalised one
+     because its words are the script's words. Null timings — old takes, or
+     a vendor without alignment — mean Whisper at assembly. The mock adapter
+     emits deterministic evenly-spaced timings so the alignment path is
+     exercised in CI.
+
 **Status:** `[~]` in progress — branch `m6-assembly` started 2026-08-18;
-M6.1 + M6.2 done (timeline contract, snap/ducking/compiler with goldens)
+M6.1–M6.3 done (timeline contract; snap/ducking/compiler with goldens;
+word timings captured at synthesis)
 
 ---
 

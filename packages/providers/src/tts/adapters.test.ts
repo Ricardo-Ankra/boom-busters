@@ -2,7 +2,13 @@ import { ValidationError } from '@boom-busters/schemas'
 import type { PhonemeHint } from '@boom-busters/schemas'
 import { describe, expect, it } from 'vitest'
 import { NARRATION_SAMPLE_RATE, pcmDurationMs } from './audio'
-import { describeVoice, elevenlabsTts, ELEVENLABS_MODEL, ELEVEN_V3_STABILITY } from './elevenlabs'
+import {
+  describeVoice,
+  elevenlabsTts,
+  ELEVENLABS_MODEL,
+  ELEVEN_V3_STABILITY,
+  wordTimingsFromAlignment,
+} from './elevenlabs'
 import { createMockTTS, mockNarrationPcm, mockTakeSeed } from './mock'
 import { ttsAdapter, ttsAdapters, TTS_PRICES_PER_KCHAR } from './registry'
 import { ttsPrice } from './types'
@@ -28,6 +34,31 @@ const request: TTSRequest = {
 
 /** One second of quiet PCM. */
 const ONE_SECOND = Buffer.alloc(NARRATION_SAMPLE_RATE * 2, 0)
+
+/**
+ * The `/with-timestamps` envelope the adapter now speaks: audio as base64
+ * with an optional character alignment beside it.
+ */
+function timed(
+  pcm: Buffer,
+  alignment?: {
+    characters: string[]
+    character_start_times_seconds: number[]
+    character_end_times_seconds: number[]
+  },
+): unknown {
+  return { audio_base64: pcm.toString('base64'), alignment: alignment ?? null }
+}
+
+/** A character alignment for the two words "By June". */
+function byJuneAlignment() {
+  const characters = ['B', 'y', ' ', 'J', 'u', 'n', 'e']
+  return {
+    characters,
+    character_start_times_seconds: characters.map((_, index) => index * 0.1),
+    character_end_times_seconds: characters.map((_, index) => index * 0.1 + 0.08),
+  }
+}
 
 function respondWith(body: unknown, init: ResponseInit = {}): typeof fetch {
   return (async () =>
@@ -64,7 +95,7 @@ describe('elevenlabs TTS adapter', () => {
   it('returns the PCM body and its duration', async () => {
     const result = await elevenlabsTts.synthesise(request, {
       apiKey: 'k',
-      fetchImpl: respondWith(ONE_SECOND),
+      fetchImpl: respondWith(timed(ONE_SECOND)),
     })
 
     expect(result.durationMs).toBe(pcmDurationMs(ONE_SECOND.length, NARRATION_SAMPLE_RATE))
@@ -72,13 +103,13 @@ describe('elevenlabs TTS adapter', () => {
   })
 
   it('asks for pcm_24000, so the WAV writer above it has one job', async () => {
-    const { fetchImpl, seen } = capture(ONE_SECOND)
+    const { fetchImpl, seen } = capture(timed(ONE_SECOND))
     await elevenlabsTts.synthesise(request, { apiKey: 'k', fetchImpl })
     expect(seen.url).toContain('output_format=pcm_24000')
   })
 
   it('speaks through Eleven v3, whose bracketed tags are the direction channel', async () => {
-    const { fetchImpl, seen } = capture(ONE_SECOND)
+    const { fetchImpl, seen } = capture(timed(ONE_SECOND))
     await elevenlabsTts.synthesise(request, { apiKey: 'k', fetchImpl })
 
     const body = JSON.parse(String(seen.init?.body)) as { model_id: string }
@@ -87,7 +118,7 @@ describe('elevenlabs TTS adapter', () => {
   })
 
   it('defaults stability to natural, the middle of the three-way switch', async () => {
-    const { fetchImpl, seen } = capture(ONE_SECOND)
+    const { fetchImpl, seen } = capture(timed(ONE_SECOND))
     await elevenlabsTts.synthesise(request, { apiKey: 'k', fetchImpl })
 
     const body = JSON.parse(String(seen.init?.body)) as { voice_settings: { stability: number } }
@@ -97,7 +128,7 @@ describe('elevenlabs TTS adapter', () => {
   it('maps the stability tiers to the exact values v3 accepts — it is a switch, not a dial', async () => {
     expect(ELEVEN_V3_STABILITY).toEqual({ creative: 0.0, natural: 0.5, robust: 1.0 })
 
-    const { fetchImpl, seen } = capture(ONE_SECOND)
+    const { fetchImpl, seen } = capture(timed(ONE_SECOND))
     await elevenlabsTts.synthesise({ ...request, stability: 'robust' }, { apiKey: 'k', fetchImpl })
 
     const body = JSON.parse(String(seen.init?.body)) as { voice_settings: { stability: number } }
@@ -105,7 +136,7 @@ describe('elevenlabs TTS adapter', () => {
   })
 
   it('substitutes respellings into the text — the one pronunciation channel v3 has', async () => {
-    const { fetchImpl, seen } = capture(ONE_SECOND)
+    const { fetchImpl, seen } = capture(timed(ONE_SECOND))
     await elevenlabsTts.synthesise(request, { apiKey: 'k', fetchImpl })
 
     const body = JSON.parse(String(seen.init?.body)) as { text: string }
@@ -115,7 +146,7 @@ describe('elevenlabs TTS adapter', () => {
   it('reports an IPA hint as dropped rather than smuggling markup v3 does not take', async () => {
     const result = await elevenlabsTts.synthesise(
       { ...request, text: 'Jan Marsalek was already gone.' },
-      { apiKey: 'k', fetchImpl: respondWith(ONE_SECOND) },
+      { apiKey: 'k', fetchImpl: respondWith(timed(ONE_SECOND)) },
     )
 
     // Spec principle 6: degrade, but never quietly.
@@ -123,7 +154,7 @@ describe('elevenlabs TTS adapter', () => {
   })
 
   it('leaves narration tags in the text verbatim — they are the direction', async () => {
-    const { fetchImpl, seen } = capture(ONE_SECOND)
+    const { fetchImpl, seen } = capture(timed(ONE_SECOND))
     await elevenlabsTts.synthesise(
       { ...request, phonemeHints: [], text: '[sighs] It was over. [long pause] Nobody said so.' },
       { apiKey: 'k', fetchImpl },
@@ -133,14 +164,42 @@ describe('elevenlabs TTS adapter', () => {
     expect(body.text).toBe('[sighs] It was over. [long pause] Nobody said so.')
   })
 
+  it('asks the with-timestamps endpoint — the alignment is free there', async () => {
+    const { fetchImpl, seen } = capture(timed(ONE_SECOND))
+    await elevenlabsTts.synthesise(request, { apiKey: 'k', fetchImpl })
+    expect(seen.url).toContain('/with-timestamps')
+  })
+
+  it('collapses the character alignment into word timings on the result', async () => {
+    const result = await elevenlabsTts.synthesise(request, {
+      apiKey: 'k',
+      fetchImpl: respondWith(timed(ONE_SECOND, byJuneAlignment())),
+    })
+
+    expect(result.wordTimings).toEqual([
+      { text: 'By', startMs: 0, endMs: 180 },
+      { text: 'June', startMs: 300, endMs: 680 },
+    ])
+  })
+
+  it('never emits a timing for a bracketed tag — direction is not spoken', () => {
+    const characters = [...'[sighs] It']
+    const timings = wordTimingsFromAlignment({
+      characters,
+      character_start_times_seconds: characters.map((_, index) => index * 0.1),
+      character_end_times_seconds: characters.map((_, index) => index * 0.1 + 0.05),
+    })
+    expect(timings.map((timing) => timing.text)).toEqual(['It'])
+  })
+
   it('escapes a voice id into the path', async () => {
-    const { fetchImpl, seen } = capture(ONE_SECOND)
+    const { fetchImpl, seen } = capture(timed(ONE_SECOND))
     await elevenlabsTts.synthesise({ ...request, voiceId: 'a/b' }, { apiKey: 'k', fetchImpl })
     expect(seen.url).toContain('text-to-speech/a%2Fb')
   })
 
   it('sends the key in a header, never in the URL', async () => {
-    const { fetchImpl, seen } = capture(ONE_SECOND)
+    const { fetchImpl, seen } = capture(timed(ONE_SECOND))
     await elevenlabsTts.synthesise(request, { apiKey: 'secret-key', fetchImpl })
 
     expect(seen.url).not.toContain('secret-key')
@@ -151,7 +210,7 @@ describe('elevenlabs TTS adapter', () => {
     await expect(
       elevenlabsTts.synthesise(request, {
         apiKey: 'k',
-        fetchImpl: respondWith(Buffer.alloc(0)),
+        fetchImpl: respondWith(timed(Buffer.alloc(0))),
       }),
     ).rejects.toThrow(ValidationError)
   })
@@ -159,7 +218,7 @@ describe('elevenlabs TTS adapter', () => {
   it('prices from the text, because no TTS vendor returns a charge', async () => {
     const result = await elevenlabsTts.synthesise(request, {
       apiKey: 'k',
-      fetchImpl: respondWith(ONE_SECOND),
+      fetchImpl: respondWith(timed(ONE_SECOND)),
     })
     expect(result.estimatedCostUsd).toBeCloseTo(
       (request.text.length / 1000) * elevenlabsTts.pricePerKChar,

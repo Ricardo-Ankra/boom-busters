@@ -163,13 +163,29 @@ export function createMockTTS(script: MockTTSScript = {}, id: TtsProvider = 'ele
         mockTakeSeed(request.voiceId, request.idempotencyKey),
       )
 
+      const durationMs = pcmDurationMs(audioBuffer.length, NARRATION_SAMPLE_RATE)
+
+      // Deterministic word timings, evenly spaced across the take, tags
+      // excluded — so assembly's alignment path is exercised in mock mode
+      // exactly as a live ElevenLabs response would exercise it.
+      const spoken = request.text
+        .split(/\s+/)
+        .filter((word) => word.length > 0 && !/^\[[^\]]+\]$/.test(word))
+      const step = spoken.length > 0 ? durationMs / spoken.length : 0
+      const wordTimings = spoken.map((text, index) => ({
+        text,
+        startMs: Math.round(index * step),
+        endMs: Math.round((index + 1) * step),
+      }))
+
       return {
         audioBuffer,
         sampleRate: NARRATION_SAMPLE_RATE,
-        durationMs: pcmDurationMs(audioBuffer.length, NARRATION_SAMPLE_RATE),
+        durationMs,
         estimatedCostUsd: (request.text.length / 1000) * 0.015,
         provider: id,
         voiceId: request.voiceId,
+        ...(wordTimings.length > 0 ? { wordTimings } : {}),
       }
     },
 

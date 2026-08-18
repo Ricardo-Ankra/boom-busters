@@ -1,0 +1,1 @@
+ALTER TABLE "voice_takes" ADD COLUMN "timings" jsonb;

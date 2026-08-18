@@ -1,5 +1,5 @@
 import { newId } from '@boom-busters/schemas'
-import type { Settings } from '@boom-busters/schemas'
+import type { Settings, WordTiming } from '@boom-busters/schemas'
 import { relations, sql } from 'drizzle-orm'
 import {
   boolean,
@@ -478,6 +478,13 @@ export const voiceTakes = pgTable(
      * assumed current.
      */
     builtFromScriptVersion: integer('built_from_script_version'),
+    /**
+     * Word timings from the vendor's character alignment (M6.3), captured at
+     * synthesis because they are free there and cost a Whisper run anywhere
+     * else. Null means "no timings" — takes made before this column, or from
+     * a vendor without alignment — and assembly falls back to transcription.
+     */
+    timings: jsonb('timings').$type<WordTiming[] | null>(),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },

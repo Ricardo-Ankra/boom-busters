@@ -71,6 +71,13 @@
       "when": 1786649766693,
       "tag": "0009_dashing_oracle",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1787041539590,
+      "tag": "0010_lucky_hydra",
+      "breakpoints": true
     }
   ]
 }
