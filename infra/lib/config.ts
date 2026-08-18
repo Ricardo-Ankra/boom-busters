@@ -23,10 +23,18 @@ export interface InfraConfig {
     /** The deployed site's serve URL. */
     serveUrl: string
   }
+  /** Remotion's render output bucket (remotionlambda-*), from its deploy. */
+  renderBucket: string
   /** Alarm + budget notifications; omit to skip email subscriptions. */
   alertEmail: string | undefined
   dailyBudgetUsd: number
   renderCap: number
+  /**
+   * media-utils Lambda memory. Spec section 8 says 10240; new AWS accounts
+   * cap functions at 3008 MB until a quota increase lands, so this is
+   * overridable per deploy rather than a reason not to deploy at all.
+   */
+  mediaLambdaMemoryMb: number
 }
 
 export function configFromEnv(env: Record<string, string | undefined> = process.env): InfraConfig {
@@ -47,8 +55,10 @@ export function configFromEnv(env: Record<string, string | undefined> = process.
       functionName: read('REMOTION_FUNCTION_NAME', 'remotion-render-set-me'),
       serveUrl: read('REMOTION_SERVE_URL', 'https://set-me.s3.amazonaws.com/sites/boom-busters'),
     },
+    renderBucket: read('RENDER_BUCKET', 'remotionlambda-unset'),
     alertEmail: env['ALERT_EMAIL'] !== '' ? env['ALERT_EMAIL'] : undefined,
     dailyBudgetUsd: Number(read('DAILY_BUDGET_USD', '25')),
     renderCap: Number(read('RENDER_CAP', '2')),
+    mediaLambdaMemoryMb: Number(read('MEDIA_LAMBDA_MEMORY_MB', '10240')),
   }
 }

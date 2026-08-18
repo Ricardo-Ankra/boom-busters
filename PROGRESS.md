@@ -1968,6 +1968,65 @@ db 170 · cost 31 unit/component/integration, Playwright 80/80.
      open gate offers "Render again" — a music swap is free, but pixels
      are an explicit spend decision every time.
 
+### M6.9 — the AWS deploy, and what only a real account teaches (2026-08-18)
+
+The M6.6 stacks were "deployable and tested offline"; deploying them for
+real surfaced five faults, none visible to the template tests, every one
+found by driving the deployed thing and reading its logs.
+
+144. **A stale CDK v1 flag broke every CLI invocation.**
+     `infra/cdk.json` carried `@aws-cdk/core:enableStackNameDuplicates`,
+     which the v2 CLI rejects outright. The template tests construct
+     `App` directly and never read `cdk.json`, so this shipped green.
+     Removed; there is no offline guard for it, but the very first
+     `cdk synth` of any deploy now covers it.
+
+145. **`RENDER_BUCKET` was a hardcoded placeholder.** The media-utils
+     stack ignored the export the README asked for and baked in
+     `remotionlambda-unset` — QC of a finished master would have hit a
+     bucket that does not exist. Wired through `InfraConfig.renderBucket`
+     with a template test pinning it (test-first; it failed red).
+
+146. **The account caps Lambda memory at 3008 MB.** AWS tiers new
+     accounts: the "Max allocated MicroVM memory" quota reads 8 GB
+     against a service default of 400, and the increase API refuses
+     requests below the default — the tier rises with account history,
+     not on request. `MEDIA_LAMBDA_MEMORY_MB` overrides per deploy
+     (deployed at 3008); the spec's 10,240 stays the default and the
+     template test still asserts it.
+
+147. **The broker died at init: CJS bundling vs `@remotion/lambda`.**
+     Remotion calls `createRequire(import.meta.url)` at module scope and
+     esbuild's CommonJS output rewrites `import.meta.url` to `undefined`,
+     so every invocation was a 502 before any code of ours ran. Both
+     Lambdas now bundle as ESM with the documented aliased banner
+     (`createRequire as topLevelCreateRequire` — unaliased, it collides
+     with the bundle's own declaration). Proven by curl: 401 without a
+     token, 401 with a wrong one, 404 with the right one.
+
+148. **A whisper binary that runs on Amazon Linux is not one that runs
+     on Lambda.** The default build links `libgomp.so.1`; the Lambda
+     Node 20 runtime image ships no OpenMP, so transcription would have
+     crashed on first use. Built with `GGML_OPENMP=OFF` (ggml's own
+     thread pool) and `GGML_NATIVE=OFF`, and verified inside
+     `public.ecr.aws/lambda/nodejs:20` before upload — the layer README
+     now records the exact commands, because "build per whisper.cpp's
+     README" is precisely what produces the broken one.
+
+     Also new: `pnpm deploy:stacks` (`scripts/deploy-stacks.ts`) replaces
+     the README's manual export dance — R2 values and the owner email
+     read from `.env.local`, the broker token from
+     `~/.boom-busters-broker-token`, the Remotion outputs required from
+     the environment because they change with every Remotion version.
+
+     **Deployed and live (2026-08-18):** CDK bootstrapped in `eu-west-1`;
+     Remotion function `remotion-render-4-0-512-mem2048mb-disk10240mb-240sec`
+     + compositions site; both stacks CREATE_COMPLETE; whisper binary and
+     `ggml-base.en.bin` in the WhisperAssets bucket; `AWS_BROKER_URL` /
+     `AWS_BROKER_TOKEN` in `.env.local`. Still open: the same two
+     variables in Vercel (production calls the broker from there), the
+     SNS subscription confirmation email, and the real staging render.
+
 ### Verified (M6.8, 2026-08-18)
 
 - **`pnpm typecheck`** and **`pnpm lint`** clean, zero warnings.
@@ -1987,13 +2046,13 @@ db 170 · cost 31 unit/component/integration, Playwright 80/80.
 M6.1–M6.8 done (timeline contract; snap/ducking/compiler with goldens;
 word timings at synthesis; music library live in Settings; Remotion
 component library with bundled world geometry, fonts, Studio fixtures
-and renderStill snapshots; broker + media-utils CDK stacks, tested
-offline — DEPLOY still pending: needs AWS credentials for the
-Reelscript account, per infra/README.md; assembly-runner compiling
+and renderStill snapshots; broker + media-utils CDK stacks DEPLOYED
+to the Reelscript account in eu-west-1 (M6.9, 2026-08-18), whisper
+assets uploaded, broker smoke-tested live; assembly-runner compiling
 stored timelines and parking at Gate 5a, with the broker hook route
 live; preview & render screen with the local fixture render path —
-the whole milestone is code-complete, awaiting the AWS deploy and a
-real staging render)
+awaiting only the broker env vars in Vercel and the real staging
+render)
 
 ---
 

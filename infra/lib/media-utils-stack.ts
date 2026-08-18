@@ -57,7 +57,7 @@ export class MediaUtilsStack extends Stack {
       functionName: 'boom-busters-media-utils',
       entry: path.join(here, '..', 'lambdas', 'media-utils', 'handler.ts'),
       runtime: lambda.Runtime.NODEJS_20_X,
-      memorySize: 10_240,
+      memorySize: config.mediaLambdaMemoryMb,
       ephemeralStorageSize: Size.gibibytes(10),
       timeout: Duration.minutes(15),
       layers: [ffmpegLayer],
@@ -68,7 +68,7 @@ export class MediaUtilsStack extends Stack {
         R2_ACCESS_KEY_ID: config.r2.accessKeyId,
         R2_SECRET_ACCESS_KEY: config.r2.secretAccessKey,
         R2_BUCKET: config.r2.bucket,
-        RENDER_BUCKET: 'remotionlambda-unset',
+        RENDER_BUCKET: config.renderBucket,
         WHISPER_BUCKET: whisperAssets.bucketName,
         WHISPER_BINARY_KEY: 'boom-busters/whisper/main',
         WHISPER_MODEL_KEY: 'boom-busters/whisper/ggml-base.en.bin',
@@ -77,6 +77,9 @@ export class MediaUtilsStack extends Stack {
       bundling: {
         // The Node 20 runtime ships AWS SDK v3.
         externalModules: ['@aws-sdk/*'],
+        // Same ESM bundling as the broker — one format, no drift.
+        format: nodejs.OutputFormat.ESM,
+        banner: "import { createRequire as topLevelCreateRequire } from 'node:module'; const require = topLevelCreateRequire(import.meta.url);",
       },
     })
 

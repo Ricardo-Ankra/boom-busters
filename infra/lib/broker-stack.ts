@@ -81,6 +81,12 @@ export class BrokerStack extends Stack {
       },
       bundling: {
         externalModules: ['@aws-sdk/*'],
+        // ESM output: @remotion/lambda calls createRequire(import.meta.url)
+        // at module scope, which esbuild's CJS output rewrites to undefined —
+        // the function then dies at init. The banner is Remotion's documented
+        // companion so bundled CJS dependencies can still require().
+        format: nodejs.OutputFormat.ESM,
+        banner: "import { createRequire as topLevelCreateRequire } from 'node:module'; const require = topLevelCreateRequire(import.meta.url);",
       },
     })
 

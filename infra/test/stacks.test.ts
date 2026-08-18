@@ -21,6 +21,7 @@ beforeAll(() => {
     ...configFromEnv({}),
     alertEmail: 'alerts@example.com',
     remotion: { functionName: 'remotion-render-4-0-512-test', serveUrl: 'https://site.example' },
+    renderBucket: 'remotionlambda-test',
   }
   const mediaStack = new MediaUtilsStack(app, 'boom-busters-media-utils', { config })
   const brokerStack = new BrokerStack(app, 'boom-busters-broker', {
@@ -35,6 +36,13 @@ beforeAll(() => {
 }, 120_000)
 
 describe('media-utils stack', () => {
+  it('hands the Lambda the configured Remotion render bucket, not a placeholder', () => {
+    media.hasResourceProperties('AWS::Lambda::Function', {
+      FunctionName: 'boom-busters-media-utils',
+      Environment: { Variables: Match.objectLike({ RENDER_BUCKET: 'remotionlambda-test' }) },
+    })
+  })
+
   it('sizes the Lambda per spec section 8: 10240 MB, 10 GB disk, 15 min', () => {
     media.hasResourceProperties('AWS::Lambda::Function', {
       FunctionName: 'boom-busters-media-utils',
