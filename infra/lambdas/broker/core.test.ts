@@ -138,6 +138,8 @@ function world(overrides: Partial<BrokerDeps> = {}): TestWorld {
           return Promise.resolve()
         },
         presign: (key) => Promise.resolve(`https://r2.example.com/${key}?sig=fresh`),
+        presignRender: (bucketName, key) =>
+          Promise.resolve(`https://s3.example.com/${bucketName}/${key}?sig=render`),
       },
       dispatchMediaJob: (job) => {
         dispatched.push(job)
@@ -309,7 +311,29 @@ describe('GET /renders/:id', () => {
       },
       w.deps,
     )
-    expect(response.body).toMatchObject({ status: 'completed', outputS3Key: 'renders/x/out.mp4' })
+    expect(response.body).toMatchObject({
+      status: 'completed',
+      outputS3Key: 'renders/x/out.mp4',
+      // Playable straight from the response: the app holds no AWS
+      // credentials, so this presign is the master player's only src.
+      outputUrl: 'https://s3.example.com/remotionlambda-test/renders/x/out.mp4?sig=render',
+    })
+  })
+
+  it('never presigns an output for a failed or cancelled render', async () => {
+    const w = world()
+    w.records.set(RENDER, { ...running(RENDER), status: 'failed', message: 'boom' })
+    const response = await handleBrokerRequest(
+      {
+        method: 'GET',
+        path: `/renders/${RENDER}`,
+        headers: { authorization: `Bearer ${TOKEN}` },
+        body: '',
+      },
+      w.deps,
+    )
+    expect(response.body).toMatchObject({ status: 'failed', message: 'boom' })
+    expect(response.body).not.toHaveProperty('outputUrl')
   })
 
   it('404s an unknown render', async () => {

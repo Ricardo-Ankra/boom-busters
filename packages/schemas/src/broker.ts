@@ -56,10 +56,35 @@ export const RenderProgressSchema = z.object({
   /** 0..1. Remotion's overallProgress while running; 1 when done. */
   overallProgress: z.number().min(0).max(1),
   outputS3Key: z.string().min(1).optional(),
+  /**
+   * A playable URL for the finished master, presigned by the broker — the
+   * only party holding AWS credentials for the render bucket. Completed
+   * renders only; expires like any presign, so the UI fetches progress
+   * again rather than storing it.
+   */
+  outputUrl: z.url().optional(),
   costUsd: z.number().min(0).optional(),
   message: z.string().optional(),
 })
 export type RenderProgress = z.infer<typeof RenderProgressSchema>
+
+// ---------------------------------------------------------------------------
+// Cost estimate
+// ---------------------------------------------------------------------------
+
+/** Spec section 8.1: a full master ≈ $0.25 for ~15 minutes of video. */
+export const ESTIMATED_COST_PER_VIDEO_SECOND_USD = 0.25 / 900
+
+/**
+ * What a render is expected to cost, from its duration. In the contract
+ * package because two parties quote it: the preview screen's Render button
+ * (the real cancel point, section 8.1 — the number shown BEFORE the click)
+ * and the broker's accept response. One formula, or the confirm dialog and
+ * the invoice drift apart.
+ */
+export function estimateRenderCostUsd(expectedDurationSec: number): number {
+  return Math.round(expectedDurationSec * ESTIMATED_COST_PER_VIDEO_SECOND_USD * 10_000) / 10_000
+}
 
 /** POST /renders/:id/cancel — the section 8.1 honest contract. */
 export const CancelAcceptedSchema = z.object({

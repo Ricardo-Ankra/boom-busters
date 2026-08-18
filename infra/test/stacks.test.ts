@@ -30,7 +30,9 @@ beforeAll(() => {
   })
   media = Template.fromStack(mediaStack)
   broker = Template.fromStack(brokerStack)
-})
+  // Synthesising two stacks is tens of seconds under a loaded machine;
+  // vitest's 10 s default hook timeout flakes when the full suite runs.
+}, 120_000)
 
 describe('media-utils stack', () => {
   it('sizes the Lambda per spec section 8: 10240 MB, 10 GB disk, 15 min', () => {

@@ -1728,13 +1728,13 @@ db 170 · cost 31 unit/component/integration, Playwright 80/80.
       (stored ElevenLabs timings when present, else media-utils Whisper,
       mock in CI) → snap → compile → validate → timeline stored by key →
       preview-ready (Gate 5a always parks).
-- [ ] **M6.8 Preview & render screen** — full-width `@remotion/player` of
+- [x] **M6.8 Preview & render screen** — full-width `@remotion/player` of
       the compiled timeline, chapter markers, caption toggle, duck
       visualisation, music picker (recompile is free), `Render master` with
       est. cost + inline two-step; render-runner (`gate/preview.approved` →
       broker invoke → webhook wait → QC → `project/master.ready`), stop
       semantics with the §8.1 honest caveat, 2 s progress polling.
-- [ ] Tests land with every part; CI green on every commit; E2E drives
+- [x] Tests land with every part; CI green on every commit; E2E drives
       preview + a local 20-second `renderMedia` fixture render instead of
       Lambda (spec §13).
 
@@ -1914,15 +1914,86 @@ db 170 · cost 31 unit/component/integration, Playwright 80/80.
      cannot compile (placeholders, hero, missing bytes) are skipped AND
      counted into the gate summary; Gate 5a always parks.
 
+139. **One cost estimate, two quoters; one interpolation, three readers**
+     (M6.8). `estimateRenderCostUsd` moved into `schemas` beside `gainAt`:
+     the Render button's number and the broker's accept response come from
+     the same formula, and the preview's gain line, `MusicBed` and the
+     ducking compiler all read the same `gainAt`. `RenderProgressSchema`
+     gained an optional `outputUrl` — the broker presigns the finished
+     master on progress requests, because it is the only party holding AWS
+     credentials, and "the master playable from S3" needs a URL the app
+     can hand a <video>.
+
+140. **`DocumentaryMaster` gained `calculateMetadata`** (M6.8) — a latent
+     M6.5/M6.6 bug: the composition's duration was pinned to the 14-second
+     Studio fixture, so any real timeline handed to the deployed site would
+     have rendered exactly 14 seconds and stopped. Duration, fps and frame
+     size now follow the inputProps timeline. Also new:
+     `renderFixtureTimeline()`, a 20-second extension of the fixture
+     (deep-cloned; the snapshot goldens' fixture is never touched) and
+     `scripts/render-timeline.ts`, the local `renderMedia` path used by
+     mock-mode renders and the E2E suite alike.
+
+141. **`Render master` IS the gate approval** (M6.8). Section 7.6 triggers
+     the render-runner on `gate/preview.approved`, so the button calls
+     `approveGate(projectId, 'preview')` — one click, one event, and the
+     assembly-runner's park closes as the render begins. The runner
+     reserves the spend on the cost ledger BEFORE the broker invoke
+     (provider `remotion` — `CostSpec` widened to the ledger's own enum,
+     since Remotion and YouTube spend money without holding an API-key
+     card) and settles it from the webhook's actual cost.
+
+142. **Mock renders render the 20-second fixture, for real** (M6.8). In
+     mock-provider mode the render-runner spawns a genuine local
+     `renderMedia` — bundle, Chrome, h264 — but of the self-contained
+     fixture rather than the project timeline, whose mock narration lives
+     behind the app's authenticated audio route that headless Chrome has
+     no session for. QC is a constructed pass (media-utils does not exist
+     locally); the file lands under `RENDER_LOCAL_DIR` as `local://<id>`
+     and is served by `/api/renders/[id]/file` in mock mode only. E2E
+     renders the same fixture once in global-setup (cached in
+     `e2e/.artifacts`), seeds it as a done render, and asserts the QC
+     card, a playable ~20 s master, and the two-step confirm.
+
+143. **The preview materialiser drops what it cannot resolve, and says
+     so** (M6.8). Compositions throw on unmaterialised media by design; a
+     preview exists to be looked at now, so `materialiseForPreview`
+     resolves `mock://` narration to the voice-audio route, presigns real
+     keys when R2 exists, passes external URLs through — and DROPS
+     anything unresolvable, counted into an "N items not previewable"
+     notice instead of a crashed player. Stopping mid-render marks the
+     row cancelled and tombstones the broker from the stop action itself
+     (the cancelled Inngest run can no longer do it); the Stop confirm
+     carries the §8.1 caveat verbatim, and a finished master beside an
+     open gate offers "Render again" — a music swap is free, but pixels
+     are an explicit spend decision every time.
+
+### Verified (M6.8, 2026-08-18)
+
+- **`pnpm typecheck`** and **`pnpm lint`** clean, zero warnings.
+- **`pnpm test`** — 1161 tests across 9 workspaces (schemas 199 · db 178 ·
+  providers 297 · web 299 · cost 31 · ui-tokens 21 · timeline 35 ·
+  compositions 58 · infra 43).
+- **`pnpm e2e`** — 85 Playwright tests, mock-provider mode, including
+  `preview-render.spec.ts` against a real ~20 s local `renderMedia` master
+  rendered once in global setup and cached in `e2e/.artifacts`.
+- One flake fixed during verification: the CDK synth `beforeAll` in
+  `infra/test/stacks.test.ts` now carries an explicit 120 s timeout. Under
+  full-suite load its module import alone took 18 s and the synth blew
+  vitest's 10 s default; alone, the same file passes in under 9 s. Timing,
+  not a regression.
+
 **Status:** `[~]` in progress — branch `m6-assembly` started 2026-08-18;
-M6.1–M6.7 done (timeline contract; snap/ducking/compiler with goldens;
+M6.1–M6.8 done (timeline contract; snap/ducking/compiler with goldens;
 word timings at synthesis; music library live in Settings; Remotion
 component library with bundled world geometry, fonts, Studio fixtures
 and renderStill snapshots; broker + media-utils CDK stacks, tested
 offline — DEPLOY still pending: needs AWS credentials for the
 Reelscript account, per infra/README.md; assembly-runner compiling
 stored timelines and parking at Gate 5a, with the broker hook route
-live)
+live; preview & render screen with the local fixture render path —
+the whole milestone is code-complete, awaiting the AWS deploy and a
+real staging render)
 
 ---
 

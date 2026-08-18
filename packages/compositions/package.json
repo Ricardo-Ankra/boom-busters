@@ -12,7 +12,8 @@
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "studio": "remotion studio"
+    "studio": "remotion studio",
+    "render:timeline": "tsx scripts/render-timeline.ts"
   },
   "dependencies": {
     "@boom-busters/schemas": "workspace:*",
@@ -31,6 +32,7 @@
     "pixelmatch": "^7.1.0",
     "pngjs": "^7.0.0",
     "typescript": "^5.9.3",
-    "vitest": "^4.1.10"
+    "vitest": "^4.1.10",
+    "tsx": "^4.23.12"
   }
 }

@@ -1,4 +1,5 @@
 import {
+  PIPELINE_STAGES,
   getDossier,
   getLatestScript,
   getProject,
@@ -10,6 +11,10 @@ import {
 } from '@boom-busters/db'
 import { voiceReviewModel } from '@/lib/voice-review'
 import { visualsReviewModel } from '@/lib/visuals-review'
+import { emptyPreviewModel, previewModel } from '@/lib/preview-review'
+import { materialiseForPreview } from '@/lib/materialise'
+import { brokerConfigured } from '@/lib/broker'
+import { presignGet, storageConfigured } from '@/lib/storage'
 import { notFound } from 'next/navigation'
 import { ActivityList } from '@/components/activity-list'
 import { BudgetGateCard } from '@/components/budget-gate-card'
@@ -21,6 +26,8 @@ import { approvalBlockedReason, blockingCount } from '@/lib/claim-review'
 import { RESTARTABLE_STAGES, isGateOpen, isMoving, projectControl } from '@/lib/run-state'
 import { downstreamOf, resolveViewedStage, stageViewsForProject } from '@/lib/stage-view'
 import { DossierReview } from './dossier-review'
+import { PreviewScreen } from './preview-screen'
+import type { PreviewRenderProp } from './preview-screen'
 import { ScriptStudio } from './script-studio'
 import { VisualBoard } from './visual-board'
 import { VoiceReview } from './voice-review'
@@ -67,6 +74,7 @@ export default async function ProjectPage({
     voice,
     visuals,
     settings,
+    preview,
   ] = await Promise.all([
     listActivity(db, { projectId: id, limit: 50 }),
     listOpenBudgetGates(db),
@@ -77,6 +85,13 @@ export default async function ProjectPage({
     voiceReviewModel(db, id),
     visualsReviewModel(db, id),
     getSettings(db),
+    // Preview queries only from assembly onwards: a dossier-stage page
+    // re-renders on every gate action, and three queries for a timeline
+    // that cannot exist yet were measurable drag on that loop.
+    PIPELINE_STAGES.indexOf(project.stage) >= PIPELINE_STAGES.indexOf('assembly') ||
+    requestedStage === 'assembly'
+      ? previewModel(db, id)
+      : Promise.resolve(emptyPreviewModel()),
   ])
   const budgetGate = budgetGates.find((gate) => gate.projectId === id)
 
@@ -115,6 +130,33 @@ export default async function ProjectPage({
   const showScript = script !== undefined && viewing === 'script'
   const showVoice = viewing === 'voice' && voice.expectedParagraphs > 0
   const showVisuals = viewing === 'visuals' && visuals.coverage.slots > 0
+  const showPreview = viewing === 'assembly' && preview.timeline !== null
+
+  /**
+   * The preview copy is materialised server-side with short-lived URLs
+   * (spec section 8.2) — mock narration resolves to the app's own audio
+   * route, real keys presign when R2 exists, and anything unresolvable is
+   * dropped and counted rather than crashing the player.
+   */
+  const previewMaterialised = showPreview
+    ? await materialiseForPreview(preview.timeline!, {
+        origin: (process.env['AUTH_URL'] ?? 'http://localhost:3000').replace(/\/$/, ''),
+        presign: storageConfigured() ? (key) => presignGet(key) : null,
+      })
+    : null
+
+  const previewRender: PreviewRenderProp | null = preview.render
+    ? {
+        id: preview.render.id,
+        status: preview.render.status,
+        progressPct: preview.render.progressPct,
+        costUsd: preview.render.costUsd,
+        qcReport: (preview.render.qcReport ?? null) as PreviewRenderProp['qcReport'],
+        error: (preview.render.error ?? null) as PreviewRenderProp['error'],
+        startedAt: preview.render.startedAt?.toISOString() ?? null,
+        completedAt: preview.render.completedAt?.toISOString() ?? null,
+      }
+    : null
 
   // The badge in the Studio header. A downgrade is recorded on the run, so a
   // chapter written by the fallback model can be labelled as such rather than
@@ -156,7 +198,15 @@ export default async function ProjectPage({
 
         <div className="flex flex-wrap items-center gap-2">
           <LiveRefresh active={moving} />
-          {control.kind === 'stop' ? <StopButton projectId={project.id} /> : null}
+          {control.kind === 'stop' ? (
+            <StopButton
+              projectId={project.id}
+              renderInFlight={
+                preview.render !== undefined &&
+                ['queued', 'invoking', 'rendering', 'qc'].includes(preview.render.status)
+              }
+            />
+          ) : null}
           {control.kind === 'restart' && viewingCurrent ? (
             <RestartRunButton
               projectId={project.id}
@@ -187,7 +237,7 @@ export default async function ProjectPage({
           live — not stuck along the bottom edge. On the Script Studio the
           sticky version permanently covered the last lines of the chapter you
           were reading, on the one screen whose whole job is reading. */}
-      {atGate && !budgetGate && viewingCurrent ? (
+      {atGate && !budgetGate && viewingCurrent && project.stage !== 'assembly' ? (
         <GateActionBar
           /* One bar per gate. The bar keeps a little state about the approval
              it just handed over, and without a key that state would follow the
@@ -234,7 +284,22 @@ export default async function ProjectPage({
 
       {budgetGate ? <BudgetGateCard gate={budgetGate} /> : null}
 
-      {showVisuals ? (
+      {showPreview && previewMaterialised ? (
+        <PreviewScreen
+          projectId={project.id}
+          timeline={previewMaterialised.timeline}
+          dropped={previewMaterialised.dropped}
+          chapters={preview.stats.chapters}
+          version={preview.version}
+          slotCount={preview.stats.slotCount}
+          beds={preview.beds}
+          currentBedKey={preview.currentBedKey}
+          estimatedCostUsd={preview.estimatedCostUsd}
+          live={brokerConfigured()}
+          atGate={atGate && project.stage === 'assembly'}
+          render={previewRender}
+        />
+      ) : showVisuals ? (
         <VisualBoard
           projectId={project.id}
           model={visuals}
@@ -282,7 +347,9 @@ export default async function ProjectPage({
                   ? 'Nothing has been narrated yet. Narration is read from the approved script.'
                   : viewing === 'visuals'
                     ? 'No shot list has been planned yet. The board is planned from the approved narration.'
-                    : 'The review screen for this stage arrives with its runner.'}
+                    : viewing === 'assembly'
+                      ? 'No timeline has been compiled yet. Assembly cuts the approved takes and board into one.'
+                      : 'The review screen for this stage arrives with its runner.'}
             </p>
           </CardContent>
         </Card>

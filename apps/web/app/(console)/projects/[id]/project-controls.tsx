@@ -25,7 +25,7 @@ import {
  * a disabled button that will not say why is worse than no button.
  */
 
-function useAction() {
+export function useAction() {
   const router = useRouter()
   const { toast } = useToast()
 
@@ -104,7 +104,14 @@ export function RestartRunButton({
   )
 }
 
-export function StopButton({ projectId }: { projectId: string }) {
+export function StopButton({
+  projectId,
+  renderInFlight = false,
+}: {
+  projectId: string
+  /** Section 8.1: a Lambda render cannot be aborted, and the confirm says so. */
+  renderInFlight?: boolean
+}) {
   const act = useAction()
 
   return (
@@ -116,7 +123,12 @@ export function StopButton({ projectId }: { projectId: string }) {
         </>
       }
       confirmLabel="Stop this run"
-      consequence="The run stops where it is. Work already done is kept; nothing is refunded."
+      consequence={
+        renderInFlight
+          ? "Render can't be aborted mid-flight; it will finish in the background, be " +
+            'discarded, and cost ≈ $0.25.'
+          : 'The run stops where it is. Work already done is kept; nothing is refunded.'
+      }
       onConfirm={() => act(() => stopProject(projectId), 'Run stopped')}
     />
   )

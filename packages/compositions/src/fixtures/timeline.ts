@@ -148,3 +148,68 @@ export const FIXTURE_TIMELINE: Timeline = {
 
 /** A second still, so Studio has both fixture images on show. */
 export const FIXTURE_IMAGE_ALT = FIXTURE_IMAGE_HARBOUR
+
+/**
+ * The RENDER fixture: the spec section 13 "local `renderMedia` of a
+ * 20-second fixture instead of Lambda in CI". The 14-second Studio fixture
+ * above, extended by a closing chapter — a third narration segment, a
+ * harbour still, a handful of captions — to reach exactly 20 seconds.
+ * Built fresh per call (deep-cloned) so no renderer can mutate the Studio
+ * fixture the snapshot goldens were rendered from.
+ */
+export function renderFixtureTimeline(): Timeline {
+  const CHAPTER_TWO = '01HQ0000000000000000000CH2'
+  const base: Timeline = structuredClone(FIXTURE_TIMELINE)
+
+  base.narration.push({
+    r2Key: 'boom-busters/voice/fixture-p2.wav',
+    url: FIXTURE_AUDIO_SILENCE,
+    startMs: 14_000,
+    durationMs: 6000,
+    chapterId: CHAPTER_TWO,
+    paragraphIndex: 0,
+  })
+
+  base.slots.push({
+    type: 'still',
+    startMs: 14_000,
+    durationMs: 6000,
+    transition: 'dissolve',
+    motion: { kind: 'kenburns', direction: 'out', intensity: 0.1 },
+    payload: {
+      kind: 'image',
+      src: { r2Key: 'boom-busters/stills/fixture-harbour.png', url: FIXTURE_IMAGE_HARBOUR },
+    },
+  })
+
+  base.captions.words.push(
+    { text: 'The', startMs: 14_400, endMs: 14_560, timestampMs: 14_480, confidence: null },
+    { text: 'money', startMs: 14_560, endMs: 15_000, timestampMs: 14_780, confidence: null },
+    { text: 'was', startMs: 15_070, endMs: 15_240, timestampMs: 15_155, confidence: null },
+    { text: 'never', startMs: 15_240, endMs: 15_680, timestampMs: 15_460, confidence: null },
+    { text: 'in', startMs: 15_750, endMs: 15_870, timestampMs: 15_810, confidence: null },
+    { text: 'Manila.', startMs: 15_870, endMs: 16_450, timestampMs: 16_160, confidence: null },
+  )
+
+  base.overlays.push({
+    kind: 'chapterCard',
+    startMs: 14_000,
+    durationMs: 2600,
+    props: { index: 2, title: 'The escrow that was not there' },
+  })
+  for (const overlay of base.overlays) {
+    if (overlay.kind === 'watermark') overlay.durationMs = 20_000
+  }
+
+  if (base.music) {
+    base.music.duckingCurve.push(
+      { tMs: 13_800, gainDb: -37 },
+      { tMs: 14_600, gainDb: -25 },
+      { tMs: 15_000, gainDb: -25 },
+      { tMs: 15_200, gainDb: -37 },
+    )
+    base.music.cuePoints.push({ tMs: 14_000, style: 'chapter' })
+  }
+
+  return base
+}

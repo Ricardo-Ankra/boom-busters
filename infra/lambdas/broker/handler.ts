@@ -188,6 +188,13 @@ function buildDeps(webhookUrl: string): BrokerDeps {
           expiresIn: PRESIGN_TTL_SECONDS,
         })
       },
+      presignRender(bucketName, key) {
+        // The render's own bucket, not R2 — Remotion Lambda writes masters
+        // where it was deployed, and the record carries the bucket name.
+        return getSignedUrl(s3, new GetObjectCommand({ Bucket: bucketName, Key: key }), {
+          expiresIn: PRESIGN_TTL_SECONDS,
+        })
+      },
     },
     async dispatchMediaJob(job) {
       await lambda.send(

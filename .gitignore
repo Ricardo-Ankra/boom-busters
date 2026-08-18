@@ -32,3 +32,5 @@ Thumbs.db
 
 # CDK synth output
 infra/cdk.out
+e2e/.artifacts/
+apps/web/.local-renders/

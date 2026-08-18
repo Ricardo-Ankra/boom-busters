@@ -1,3 +1,4 @@
+import path from 'node:path'
 import { defineConfig, devices } from '@playwright/test'
 import { e2eDatabaseUrl } from './database'
 
@@ -68,6 +69,8 @@ export default defineConfig({
       // — the deployment's database — and the suite would assert against one
       // database while having seeded another.
       DATABASE_URL: e2eDatabaseUrl(),
+      // Where global-setup put the seeded master; the file route serves it.
+      RENDER_LOCAL_DIR: path.join(import.meta.dirname, '.artifacts', 'renders'),
     },
   },
 })

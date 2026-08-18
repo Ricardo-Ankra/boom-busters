@@ -1,6 +1,7 @@
 import {
   canonicalTimelineIssues,
   CancelAcceptedSchema,
+  estimateRenderCostUsd,
   MediaJobSchema,
   RemotionWebhookSchema,
   RenderRequestSchema,
@@ -80,6 +81,12 @@ export interface StorageClient {
   putJson(key: string, value: unknown): Promise<void>
   /** Fresh presigned GET (24 h) for a media storage key. */
   presign(key: string): Promise<string>
+  /**
+   * Presigned GET for a finished render in Remotion's own bucket — the
+   * app's "master playable from S3" (section 11.3) comes through here,
+   * because the broker is the only party holding AWS credentials.
+   */
+  presignRender(bucketName: string, key: string): Promise<string>
 }
 
 export interface BrokerDeps {
@@ -113,12 +120,13 @@ export interface BrokerResponse {
 // Cost estimate
 // ---------------------------------------------------------------------------
 
-/** Spec section 8.1: a full master ≈ $0.25 for ~15 minutes of video. */
-export const ESTIMATED_COST_PER_VIDEO_SECOND_USD = 0.25 / 900
-
-export function estimateRenderCostUsd(expectedDurationSec: number): number {
-  return Math.round(expectedDurationSec * ESTIMATED_COST_PER_VIDEO_SECOND_USD * 10_000) / 10_000
-}
+/**
+ * Moved into `@boom-busters/schemas` (M6.8): the preview screen's Render
+ * button quotes the same number the broker's accept response does, so the
+ * formula lives in the contract package. Re-exported to keep one import
+ * path on this side.
+ */
+export { ESTIMATED_COST_PER_VIDEO_SECOND_USD, estimateRenderCostUsd } from '@boom-busters/schemas'
 
 // ---------------------------------------------------------------------------
 // Materialisation (spec section 8.2)
@@ -296,12 +304,19 @@ async function handleProgress(renderId: string, deps: BrokerDeps): Promise<Broke
   const record = await deps.store.getRender(renderId)
   if (!record) return { status: 404, body: { error: `unknown render ${renderId}` } }
 
+  // A completed render answers with a playable URL, not only a key: the app
+  // has no AWS credentials, so a presign minted here is the only way the
+  // preview screen's master player gets its src (section 11.3).
+  const playable = async (key: string | undefined) =>
+    key !== undefined ? { outputUrl: await deps.storage.presignRender(record.bucketName, key) } : {}
+
   if (record.status !== 'running') {
     const body: RenderProgress = {
       renderId,
       status: record.status,
       overallProgress: record.status === 'completed' ? 1 : 0,
       ...(record.outputS3Key !== undefined ? { outputS3Key: record.outputS3Key } : {}),
+      ...(record.status === 'completed' ? await playable(record.outputS3Key) : {}),
       ...(record.costUsd !== undefined ? { costUsd: record.costUsd } : {}),
       ...(record.message !== undefined ? { message: record.message } : {}),
     }
@@ -317,6 +332,7 @@ async function handleProgress(renderId: string, deps: BrokerDeps): Promise<Broke
           status: 'completed',
           overallProgress: 1,
           ...(progress.outputFile !== null ? { outputS3Key: progress.outputFile } : {}),
+          ...(await playable(progress.outputFile ?? undefined)),
           ...(progress.costUsd !== null ? { costUsd: progress.costUsd } : {}),
         }
       : { renderId, status: 'running', overallProgress: progress.overallProgress }

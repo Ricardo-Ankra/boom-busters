@@ -35,6 +35,15 @@ export async function expectHitTargets(page: Page): Promise<void> {
 
   for (const handle of handles) {
     try {
+      // The Remotion Player's internal transport (play, fullscreen) is
+      // third-party UI scaled to the video surface, not one of the app's
+      // own controls; the section 11.1 rule is asserted on ours. The shell
+      // marker is on OUR wrapper because the player renders its control bar
+      // as a sibling of its `.__remotion-player` container.
+      const insidePlayer = await handle.evaluate(
+        (element) => (element as Element).closest('[data-player-shell]') !== null,
+      )
+      if (insidePlayer) continue
       const box = await handle.boundingBox()
       if (!box) continue
       const name = (await handle.textContent())?.trim() || (await handle.getAttribute('aria-label'))

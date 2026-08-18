@@ -120,6 +120,16 @@ export function Root() {
         durationInFrames={masterDuration}
         {...WIDE}
         defaultProps={{ timeline: FIXTURE_TIMELINE }}
+        /* A real render passes its own timeline as inputProps, and the
+           metadata must follow IT — with the numbers above fixed, a
+           45-minute master handed to the deployed site would render
+           exactly the fixture's 14 seconds and stop. */
+        calculateMetadata={({ props }) => ({
+          durationInFrames: msToFrames(timelineDurationMs(props.timeline), props.timeline.fps),
+          fps: props.timeline.fps,
+          width: props.timeline.width,
+          height: props.timeline.height,
+        })}
       />
 
       <Composition

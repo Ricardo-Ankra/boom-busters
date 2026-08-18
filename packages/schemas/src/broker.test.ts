@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   brokerSignature,
   CancelAcceptedSchema,
+  estimateRenderCostUsd,
   MediaJobCallbackSchema,
   MediaJobSchema,
   QcReportSchema,
@@ -44,6 +45,24 @@ describe('RenderProgressSchema', () => {
     const base = { renderId: RENDER, status: 'running', overallProgress: 0.5 }
     expect(RenderProgressSchema.parse(base).overallProgress).toBe(0.5)
     expect(RenderProgressSchema.safeParse({ ...base, overallProgress: 1.2 }).success).toBe(false)
+  })
+
+  it('carries a playable outputUrl only as a real URL', () => {
+    const done = { renderId: RENDER, status: 'completed', overallProgress: 1 }
+    expect(
+      RenderProgressSchema.parse({ ...done, outputUrl: 'https://s3.example.com/out.mp4?sig=x' })
+        .outputUrl,
+    ).toContain('out.mp4')
+    expect(RenderProgressSchema.safeParse({ ...done, outputUrl: 'renders/out.mp4' }).success).toBe(
+      false,
+    )
+  })
+})
+
+describe('estimateRenderCostUsd', () => {
+  it('quotes the section 8.1 anchor: ~$0.25 for a 15-minute master', () => {
+    expect(estimateRenderCostUsd(900)).toBe(0.25)
+    expect(estimateRenderCostUsd(20)).toBeCloseTo(0.0056, 4)
   })
 })
 

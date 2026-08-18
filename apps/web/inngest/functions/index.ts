@@ -2,6 +2,7 @@ import { assemblyRunner } from './assembly-runner'
 import { cancelReconciler } from './cancel-reconciler'
 import { dossierReviser } from './dossier-reviser'
 import { dossierRunner } from './dossier-runner'
+import { renderRunner } from './render-runner'
 import { scriptRunner } from './script-runner'
 import { slotRefetcher } from './slot-refetcher'
 import { visualsRunner } from './visuals-runner'
@@ -13,8 +14,8 @@ import { voiceRunner } from './voice-runner'
  * this array, so a function that is not here is not deployed — which is the
  * behaviour you want when a half-written runner is sitting on a branch.
  *
- * M6-M7 add `assembly-runner`, `render-runner`, `shorts-runner`,
- * `publish-runner` and `analytics-runner` (spec section 7).
+ * M7 adds `shorts-runner`, `publish-runner` and `analytics-runner`
+ * (spec section 7).
  *
  * **`demoPipeline` is deliberately not here.** It did its job — spec section
  * 14.2 asked it to prove park/resume/cancel on production infra, and the M2
@@ -41,6 +42,7 @@ export const functions = [
   visualsRunner,
   slotRefetcher,
   assemblyRunner,
+  renderRunner,
 ]
 
 // `demoPipeline` is deliberately absent here too: its test imports it from
@@ -49,6 +51,7 @@ export const functions = [
 export {
   assemblyRunner,
   cancelReconciler,
+  renderRunner,
   dossierReviser,
   dossierRunner,
   scriptRunner,
