@@ -1688,13 +1688,13 @@ db 170 · cost 31 unit/component/integration, Playwright 80/80.
 
 **Deliverables (spec §14.6, §6, §8, §10.1, §11.3), in build order:**
 
-- [ ] **M6.1 Timeline contract** — `TimelineSchema` v1 in `packages/schemas`
+- [x] **M6.1 Timeline contract** — `TimelineSchema` v1 in `packages/schemas`
       (§8.2: brand snapshot, narration, music + ducking curve, captions in
       `@remotion/captions` word format, slots with typed payloads, overlays;
       storage keys only, never URLs), broker API DTOs (`POST /renders`,
       cancel, progress, webhook, media jobs), alignment request/caption
       schemas. Valid/invalid fixtures per schema.
-- [ ] **M6.2 `packages/timeline`** — pure, golden-tested: snap-to-script
+- [x] **M6.2 `packages/timeline`** — pure, golden-tested: snap-to-script
       (Needleman-Wunsch, case/punctuation-insensitive; TIMINGS from the
       aligner, TEXT from the script; unmatched stretches >1.5 s flagged),
       ducking-curve maths (bed gain + duck depth from Brand Kit, cue points),
@@ -1738,7 +1738,32 @@ db 170 · cost 31 unit/component/integration, Playwright 80/80.
       preview + a local 20-second `renderMedia` fixture render instead of
       Lambda (spec §13).
 
-**Status:** `[~]` in progress — branch `m6-assembly` started 2026-08-18
+**Decisions made (M6, continuing the numbering):**
+
+120. **Compiler mappings that the spec left open** (2026-08-18). A worded
+     `pan` brief becomes a medium push-in (`kenburns in, 0.10`) rather than a
+     frozen frame — a real pan needs per-image framing data the board does
+     not collect. Chart slots' motion is owned by their reveal (`draw-on` or
+     `static`); map slots are `static` because `AnimatedMap` animates
+     internally. Ken Burns speeds map to scale intensities 0.06/0.10/0.16.
+121. **Snap-to-script lets a diagonal mismatch donate its timing.** A
+     same-position different-spelling pair ("nineteen" vs "€1.9bn") is the
+     mistranscription the snap exists to survive: timing from the audio,
+     letters from the script. Bracketed performance tags are stripped before
+     alignment so a [pause] can never become a caption. Unheard stretches
+     > 1.5 s are returned as QC gaps.
+122. **Ducking defaults**: attack 200 ms, release 600 ms, and the bed only
+     rises into silences ≥2 s — a breath between sentences is not an
+     invitation to swell the soundtrack. Points are absolute dB gains,
+     strictly increasing, and `gainAt` is the exact interpolation MusicBed
+     will mirror, exported so the preview's gain line and the render can
+     never disagree.
+123. **Golden regeneration is explicit**: `REGEN_GOLDEN=1 pnpm test` rewrites
+     `packages/timeline/src/golden/master-timeline.json`; the diff of the
+     golden is the review artefact for any compiler change.
+
+**Status:** `[~]` in progress — branch `m6-assembly` started 2026-08-18;
+M6.1 + M6.2 done (timeline contract, snap/ducking/compiler with goldens)
 
 ---
 
