@@ -214,7 +214,14 @@ test.describe('shapes taken from production', () => {
     await openProject(page, BEYOND_RUNNERS_TITLE)
 
     await expect(page.getByRole('button', { name: /Run the assembly stage again/i })).toHaveCount(0)
-    await expect(page.getByText(/arrives with its runner/i)).toBeVisible()
+    // Seeded minutes ago, so the running-with-no-run state has aged past the
+    // grace window: the header explains the dead stage instead of promising
+    // the screen will update itself. The stage banner carries its own
+    // "arrives with its runner" line, hence the specific text.
+    await expect(page.getByText(/Marked running, but no run is behind it/)).toBeVisible()
+    await expect(
+      page.getByText(/Restarting the assembly stage arrives with its runner/),
+    ).toBeVisible()
   })
 
   test('and it does not turn a spinner at a stage where nothing is running', async ({ page }) => {

@@ -169,6 +169,17 @@ export async function setProjectStage(
 }
 
 /**
+ * Fixture-only: age a project's `updatedAt` so time-gated states are
+ * deterministic in tests. The console treats `running`/`queued` younger than
+ * three minutes as a grace window; a fixture meant to demonstrate the
+ * *stalled* form of those states must not depend on how long the suite has
+ * been running before its test opens the page.
+ */
+export async function backdateProject(db: Database, id: string, date: Date): Promise<void> {
+  await db.update(projects).set({ updatedAt: date }).where(eq(projects.id, id))
+}
+
+/**
  * Drop every project except the ones named — the projects counterpart of
  * `deleteCasesExcept`, and needed for the same reason.
  *

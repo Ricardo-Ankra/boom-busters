@@ -76,6 +76,9 @@ export default async function globalSetup(): Promise<void> {
     setProjectStage,
     setRunStatus,
     truncateRunMirror,
+    backdateProject,
+    insertMusicBed,
+    listMusicBeds,
     FIXTURE_CASE_ID,
     FIXTURE_PROJECT_ID,
     deleteCasesExcept,
@@ -224,6 +227,10 @@ export default async function globalSetup(): Promise<void> {
       // spinner for a day.
       stageStatus: 'running',
     })
+    // Aged past the handoff grace window on purpose, so the header's honest
+    // "marked running, but no run is behind it" state is what every test
+    // sees, regardless of how soon after seeding it opens the page.
+    await backdateProject(connection.db, beyond.id, new Date(Date.now() - 10 * 60_000))
 
     // 2. A project on the script stage with no dossier at all. Production has
     //    one, and re-running its script stage failed on `load-dossier` every
@@ -574,6 +581,22 @@ export default async function globalSetup(): Promise<void> {
       // adapter answers to any id, and this one says plainly what it is.
       tts: { provider: 'elevenlabs', voiceId: 'mock-narrator' },
     })
+
+    // Three beds, because the fixture install is "fully set up apart from
+    // what no milestone has delivered yet" — and M6.4 delivered the music
+    // library, so a bedless fixture would resurrect the setup strip on the
+    // dashboard. mock:// keys: nothing in the suite plays them.
+    if ((await listMusicBeds(connection.db)).length < 3) {
+      for (const index of [1, 2, 3]) {
+        await insertMusicBed(connection.db, {
+          r2Key: `mock://music/e2e-bed-${index}`,
+          contentHash: `e2e-music-${index}`,
+          title: `Documentary tension 0${index} (E2E)`,
+          licence: 'yt-audio-library',
+          moodTags: ['tension'],
+        })
+      }
+    }
   } finally {
     await connection.sql.end({ timeout: 5 })
   }
