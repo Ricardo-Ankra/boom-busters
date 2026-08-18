@@ -1686,7 +1686,59 @@ db 170 · cost 31 unit/component/integration, Playwright 80/80.
 > media-utils, broker URL materialisation, preview screen, render flow +
 > webhook + QC + stop semantics.
 
-**Status:** `[ ]` not started
+**Deliverables (spec §14.6, §6, §8, §10.1, §11.3), in build order:**
+
+- [ ] **M6.1 Timeline contract** — `TimelineSchema` v1 in `packages/schemas`
+      (§8.2: brand snapshot, narration, music + ducking curve, captions in
+      `@remotion/captions` word format, slots with typed payloads, overlays;
+      storage keys only, never URLs), broker API DTOs (`POST /renders`,
+      cancel, progress, webhook, media jobs), alignment request/caption
+      schemas. Valid/invalid fixtures per schema.
+- [ ] **M6.2 `packages/timeline`** — pure, golden-tested: snap-to-script
+      (Needleman-Wunsch, case/punctuation-insensitive; TIMINGS from the
+      aligner, TEXT from the script; unmatched stretches >1.5 s flagged),
+      ducking-curve maths (bed gain + duck depth from Brand Kit, cue points),
+      timeline compiler (approved board + takes + music + brand snapshot →
+      byte-stable timeline JSON, fixture-project golden test).
+- [ ] **M6.3 Word timings at synthesis** — ElevenLabs adapter switches to
+      `/with-timestamps`; character timings stored on `voice_takes`
+      (migration; old takes read as timing-less and fall back to Whisper).
+- [ ] **M6.4 Music library** — Settings → Music library: upload licensed
+      beds to R2 (`assets` kind `music`), licence dropdown REQUIRED
+      (`yt-audio-library|epidemic|artlist|generated|other`), mood tags,
+      inline preview, delete; first-run checklist item 4 goes live.
+- [ ] **M6.5 `packages/compositions`** — Remotion project importing only
+      from `schemas`: `DocumentaryMaster`, components (`KenBurnsImage`,
+      `StockClip`, `ChartReveal`, `AnimatedMap`, `LowerThird`, `ChapterCard`,
+      `KaraokeCaptions`, `MusicBed`), `AVAILABLE_FONTS` export (bundled,
+      SIL-OFL), Studio fixtures, `renderStill` snapshot tests.
+      **`AnimatedMap` draws real land outlines from world geometry bundled
+      into the repo (no tiles, no network), and the visual board's
+      `MapPreview` reuses the same geometry** — closing the "map has no map"
+      gap flagged on the Carillion board (2026-08-18); M5's schematic was
+      decision 116's stand-in.
+- [ ] **M6.6 `infra/` CDK** — `boom-busters-broker` (endpoints per §8,
+      bearer token, tombstone cancel set, URL materialisation) +
+      `boom-busters-media-utils` (FFmpeg layer + Whisper.cpp; qc, loudnorm,
+      transcribe; HMAC completion webhooks) + Remotion Lambda function/site
+      deploy scripts, `project=boom-busters` tags, concurrency cap 2,
+      CloudWatch alarms. Deploy targets the existing Reelscript AWS account —
+      **credentials requested from the human when this lands, not before**.
+- [ ] **M6.7 assembly-runner** — `gate/visuals.approved` → alignment
+      (stored ElevenLabs timings when present, else media-utils Whisper,
+      mock in CI) → snap → compile → validate → timeline stored by key →
+      preview-ready (Gate 5a always parks).
+- [ ] **M6.8 Preview & render screen** — full-width `@remotion/player` of
+      the compiled timeline, chapter markers, caption toggle, duck
+      visualisation, music picker (recompile is free), `Render master` with
+      est. cost + inline two-step; render-runner (`gate/preview.approved` →
+      broker invoke → webhook wait → QC → `project/master.ready`), stop
+      semantics with the §8.1 honest caveat, 2 s progress polling.
+- [ ] Tests land with every part; CI green on every commit; E2E drives
+      preview + a local 20-second `renderMedia` fixture render instead of
+      Lambda (spec §13).
+
+**Status:** `[~]` in progress — branch `m6-assembly` started 2026-08-18
 
 ---
 
