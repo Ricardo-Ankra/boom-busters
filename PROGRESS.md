@@ -1703,7 +1703,7 @@ db 170 · cost 31 unit/component/integration, Playwright 80/80.
 - [x] **M6.3 Word timings at synthesis** — ElevenLabs adapter switches to
       `/with-timestamps`; character timings stored on `voice_takes`
       (migration; old takes read as timing-less and fall back to Whisper).
-- [ ] **M6.4 Music library** — Settings → Music library: upload licensed
+- [x] **M6.4 Music library** — Settings → Music library: upload licensed
       beds to R2 (`assets` kind `music`), licence dropdown REQUIRED
       (`yt-audio-library|epidemic|artlist|generated|other`), mood tags,
       inline preview, delete; first-run checklist item 4 goes live.
@@ -1773,9 +1773,18 @@ db 170 · cost 31 unit/component/integration, Playwright 80/80.
      emits deterministic evenly-spaced timings so the alignment path is
      exercised in CI.
 
+125. **Music beds get a `title` column** (M6.4, migration 0011). Assets
+     never needed display names until a human had to pick one from a list;
+     stock keeps its metadata in candidates, so the column is nullable and
+     music simply uses it. Re-uploading the same bytes is a rename/re-tag,
+     never a duplicate (content-hash conflict refreshes title/licence/tags
+     and keeps the original key). Deletes are DB-first; R2 removal is
+     best-effort because orphaned bytes are a lifecycle-rule problem while
+     missing rows with live bytes are no problem at all.
+
 **Status:** `[~]` in progress — branch `m6-assembly` started 2026-08-18;
-M6.1–M6.3 done (timeline contract; snap/ducking/compiler with goldens;
-word timings captured at synthesis)
+M6.1–M6.4 done (timeline contract; snap/ducking/compiler with goldens;
+word timings at synthesis; music library live in Settings)
 
 ---
 

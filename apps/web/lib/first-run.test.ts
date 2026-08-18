@@ -54,9 +54,11 @@ describe('buildChecklist', () => {
   })
 
   it('splits the undone items into actionable-today and coming-later', () => {
+    // Music moved from coming-later to actionable when its library arrived
+    // with M6.4; YouTube stays upcoming until M7 delivers OAuth.
     const items = buildChecklist(freshInstall)
-    expect(actionableSetup(items).map((item) => item.id)).toEqual(['voice', 'cases'])
-    expect(upcomingSetup(items).map((item) => item.id)).toEqual(['music', 'youtube'])
+    expect(actionableSetup(items).map((item) => item.id)).toEqual(['voice', 'cases', 'music'])
+    expect(upcomingSetup(items).map((item) => item.id)).toEqual(['youtube'])
   })
 
   it('counts the voice as done once a voice id is chosen', () => {
@@ -100,6 +102,11 @@ describe('buildChecklist', () => {
     expect(items.find((item) => item.id === 'music')?.detail).toBe('2 of 3 uploaded.')
   })
 
+  it('deep-links the music item straight to its tab', () => {
+    const items = buildChecklist(freshInstall)
+    expect(items.find((item) => item.id === 'music')?.href).toBe('/settings?tab=music')
+  })
+
   it('completes once every item is satisfied', () => {
     const items = buildChecklist({
       settings: settingsWith((s) => {
@@ -118,13 +125,14 @@ describe('buildChecklist', () => {
 
   it('says which milestone an unavailable item arrives in — and only unavailable ones', () => {
     const items = buildChecklist(freshInstall)
-    // Voice shipped in M4: it is actionable now and must not carry a marker.
+    // Voice shipped in M4 and the music library in M6.4: both actionable
+    // now, so neither may carry a marker. YouTube waits for M7's OAuth.
     expect(items.find((item) => item.id === 'voice')?.availableFrom).toBeUndefined()
-    expect(items.find((item) => item.id === 'music')?.availableFrom).toBe('M6')
+    expect(items.find((item) => item.id === 'music')?.availableFrom).toBeUndefined()
     expect(items.find((item) => item.id === 'youtube')?.availableFrom).toBe('M7')
   })
 
-  it('drops the milestone note once an item is done', () => {
+  it('keeps the music item clean once it is done', () => {
     const items = buildChecklist({ ...freshInstall, musicBedCount: 3 })
     const music = items.find((item) => item.id === 'music')
     expect(music?.done).toBe(true)

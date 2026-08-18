@@ -1,4 +1,4 @@
-import { getSettings, listCredentials } from '@boom-busters/db'
+import { getSettings, listCredentials, listMusicBeds } from '@boom-busters/db'
 import { db } from '@/lib/db'
 import { mockProvidersEnabled } from '@boom-busters/providers'
 import { SettingsForm } from './settings-form'
@@ -6,7 +6,7 @@ import { SettingsForm } from './settings-form'
 export const dynamic = 'force-dynamic'
 export const metadata = { title: 'Settings · Boom-Busters' }
 
-const TABS = ['models', 'brand-kit', 'voice', 'publishing', 'connections'] as const
+const TABS = ['models', 'brand-kit', 'voice', 'music', 'publishing', 'connections'] as const
 type SettingsTab = (typeof TABS)[number]
 
 export default async function SettingsPage({
@@ -14,9 +14,10 @@ export default async function SettingsPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>
 }) {
-  const [settings, credentials, params] = await Promise.all([
+  const [settings, credentials, beds, params] = await Promise.all([
     getSettings(db),
     listCredentials(db),
+    listMusicBeds(db),
     searchParams,
   ])
 
@@ -42,6 +43,13 @@ export default async function SettingsPage({
         credentials={credentials}
         mockProviders={mockProvidersEnabled()}
         initialTab={tab}
+        musicBeds={beds.map((bed) => ({
+          id: bed.id,
+          title: bed.title ?? 'Untitled track',
+          licence: bed.licence,
+          moodTags: bed.moodTags,
+          createdAt: bed.createdAt.toISOString(),
+        }))}
       />
     </div>
   )

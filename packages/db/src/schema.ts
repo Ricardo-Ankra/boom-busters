@@ -513,6 +513,8 @@ export const assets = pgTable(
     height: integer('height'),
     durationMs: integer('duration_ms'),
     attributionText: text('attribution_text'),
+    /** Display name; music beds carry one, fetched stock does not need one. */
+    title: text('title'),
     /** Music only — powers the music picker on the preview screen. */
     moodTags: text('mood_tags')
       .array()
