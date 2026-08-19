@@ -79,7 +79,8 @@ export class MediaUtilsStack extends Stack {
         externalModules: ['@aws-sdk/*'],
         // Same ESM bundling as the broker — one format, no drift.
         format: nodejs.OutputFormat.ESM,
-        banner: "import { createRequire as topLevelCreateRequire } from 'node:module'; const require = topLevelCreateRequire(import.meta.url);",
+        banner:
+          "import { createRequire as topLevelCreateRequire } from 'node:module'; const require = topLevelCreateRequire(import.meta.url);",
       },
     })
 

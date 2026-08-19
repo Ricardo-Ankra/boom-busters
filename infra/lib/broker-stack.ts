@@ -86,7 +86,8 @@ export class BrokerStack extends Stack {
         // the function then dies at init. The banner is Remotion's documented
         // companion so bundled CJS dependencies can still require().
         format: nodejs.OutputFormat.ESM,
-        banner: "import { createRequire as topLevelCreateRequire } from 'node:module'; const require = topLevelCreateRequire(import.meta.url);",
+        banner:
+          "import { createRequire as topLevelCreateRequire } from 'node:module'; const require = topLevelCreateRequire(import.meta.url);",
       },
     })
 

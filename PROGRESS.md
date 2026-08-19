@@ -2021,11 +2021,11 @@ found by driving the deployed thing and reading its logs.
 
      **Deployed and live (2026-08-18):** CDK bootstrapped in `eu-west-1`;
      Remotion function `remotion-render-4-0-512-mem2048mb-disk10240mb-240sec`
-     + compositions site; both stacks CREATE_COMPLETE; whisper binary and
-     `ggml-base.en.bin` in the WhisperAssets bucket; `AWS_BROKER_URL` /
-     `AWS_BROKER_TOKEN` in `.env.local`. Still open: the same two
-     variables in Vercel (production calls the broker from there), the
-     SNS subscription confirmation email, and the real staging render.
+     - compositions site; both stacks CREATE_COMPLETE; whisper binary and
+       `ggml-base.en.bin` in the WhisperAssets bucket; `AWS_BROKER_URL` /
+       `AWS_BROKER_TOKEN` in `.env.local`. Still open: the same two
+       variables in Vercel (production calls the broker from there), the
+       SNS subscription confirmation email, and the real staging render.
 
 ### Verified (M6.8, 2026-08-18)
 
