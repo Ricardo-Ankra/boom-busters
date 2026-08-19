@@ -19,6 +19,7 @@ import { Input, Label, Select } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { VoiceTab } from './voice-tab'
+import { MusicTab, type MusicBedView } from './music-tab'
 import { useToast } from '@/components/ui/toast'
 import { saveProviderKey, saveSettings, verifyProviderKey } from './actions'
 
@@ -65,6 +66,7 @@ export function SettingsForm({
   credentials,
   mockProviders,
   initialTab = 'models',
+  musicBeds = [],
 }: {
   initialSettings: Settings
   credentials: MaskedCredential[]
@@ -72,6 +74,7 @@ export function SettingsForm({
   mockProviders: boolean
   /** From `?tab=`, validated by the page — deep links land on the right tab. */
   initialTab?: string
+  musicBeds?: MusicBedView[]
 }) {
   const [settings, setSettings] = React.useState(initialSettings)
   const [saving, setSaving] = React.useState(false)
@@ -107,6 +110,7 @@ export function SettingsForm({
         <TabsTrigger value="models">Models</TabsTrigger>
         <TabsTrigger value="brand-kit">Brand Kit</TabsTrigger>
         <TabsTrigger value="voice">Voice</TabsTrigger>
+        <TabsTrigger value="music">Music library</TabsTrigger>
         <TabsTrigger value="publishing">Publishing</TabsTrigger>
         <TabsTrigger value="connections">Connections</TabsTrigger>
       </TabsList>
@@ -121,6 +125,10 @@ export function SettingsForm({
 
       <TabsContent value="voice">
         <VoiceTab settings={settings} saving={saving} commit={commit} />
+      </TabsContent>
+
+      <TabsContent value="music">
+        <MusicTab beds={musicBeds} />
       </TabsContent>
 
       <TabsContent value="publishing">

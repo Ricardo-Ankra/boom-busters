@@ -1,4 +1,49 @@
+import { spawnSync } from 'node:child_process'
+import { copyFileSync, existsSync, mkdirSync } from 'node:fs'
+import path from 'node:path'
 import { e2eDatabaseUrl } from './database'
+
+/**
+ * Where locally rendered masters live for the suite. The web server is
+ * started with RENDER_LOCAL_DIR pointing at the same directory
+ * (playwright.config.ts), so the file route can serve what is seeded here.
+ */
+export const RENDER_ARTIFACTS_DIR = path.join(import.meta.dirname, '.artifacts')
+export const RENDER_LOCAL_DIR = path.join(RENDER_ARTIFACTS_DIR, 'renders')
+
+/**
+ * The spec section 13 render: a real `renderMedia` of the 20-second fixture
+ * on this machine instead of Lambda. It is the slowest thing the suite does
+ * (a webpack bundle plus 600 frames of headless Chrome), so the mp4 is
+ * cached across runs - delete e2e/.artifacts to force a fresh render.
+ */
+function renderFixtureMaster(): string {
+  const cached = path.join(RENDER_ARTIFACTS_DIR, 'fixture-master.mp4')
+  if (existsSync(cached)) return cached
+
+  mkdirSync(RENDER_ARTIFACTS_DIR, { recursive: true })
+  console.warn('[e2e setup] rendering the 20-second fixture master locally (renderMedia)...')
+  const result = spawnSync(
+    'pnpm',
+    [
+      '--filter',
+      '@boom-busters/compositions',
+      'exec',
+      'tsx',
+      'scripts/render-timeline.ts',
+      '--fixture',
+      // shell mode joins arguments without quoting, and this repo's own
+      // path contains spaces ("Boom & Busters") - quote it ourselves.
+      `"${cached}"`,
+    ],
+    // shell: pnpm is pnpm.cmd on Windows. Arguments are all literals.
+    { cwd: path.join(import.meta.dirname, '..'), shell: true, stdio: 'inherit', timeout: 600_000 },
+  )
+  if (result.status !== 0 || !existsSync(cached)) {
+    throw new Error(`the fixture render failed (exit ${result.status})`)
+  }
+  return cached
+}
 
 /** Named here and asserted on in `project-lifecycle.spec.ts`. */
 export const QUEUED_PROJECT_TITLE = 'Just created, nothing mirrored yet (E2E)'
@@ -10,6 +55,7 @@ export const DENSE_WARNINGS_TITLE = 'A chapter with every warning kind (E2E)'
 export const NARRATED_PROJECT_TITLE = 'Narration ready for review (E2E)'
 export const FLAGGED_TAKE_TITLE = 'Narration with a flagged take (E2E)'
 export const VISUAL_BOARD_TITLE = 'Visual board ready for review (E2E)'
+export const PREVIEW_PROJECT_TITLE = 'Preview compiled, master rendered (E2E)'
 
 /**
  * Twenty-two warnings across all three kinds, which is what the self-check
@@ -76,8 +122,13 @@ export default async function globalSetup(): Promise<void> {
     setProjectStage,
     setRunStatus,
     truncateRunMirror,
+    backdateProject,
+    insertMusicBed,
+    listMusicBeds,
     FIXTURE_CASE_ID,
     FIXTURE_PROJECT_ID,
+    renders,
+    timelines,
     deleteCasesExcept,
     deleteProjectsExcept,
     updateSettings,
@@ -97,6 +148,12 @@ export default async function globalSetup(): Promise<void> {
     await deleteProjectsExcept(connection.db, [FIXTURE_PROJECT_ID])
     await truncateRunMirror(connection.db)
     await truncateLedger(connection.db)
+    // Render bookkeeping leaks the same way the run mirror does: the
+    // render-runner unit tests leave rows on the FIXTURE project (an
+    // in-flight one puts the section 8.1 render caveat on the demo
+    // fixture's Stop confirm), and `seed` does not clear them.
+    await connection.db.delete(renders)
+    await connection.db.delete(timelines)
     // A project parked at a gate, as the runner would leave it: the project
     // row *and* a mirrored run waiting on it. Setting only the project row
     // would produce the stranded state the project screen deliberately
@@ -219,11 +276,15 @@ export default async function globalSetup(): Promise<void> {
       estRuntimeSec: 120,
     })
     await setProjectStage(connection.db, beyond.id, {
-      stage: 'assembly',
+      stage: 'shorts',
       // `running` with nothing running — the exact combination that turned a
       // spinner for a day.
       stageStatus: 'running',
     })
+    // Aged past the handoff grace window on purpose, so the header's honest
+    // "marked running, but no run is behind it" state is what every test
+    // sees, regardless of how soon after seeding it opens the page.
+    await backdateProject(connection.db, beyond.id, new Date(Date.now() - 10 * 60_000))
 
     // 2. A project on the script stage with no dossier at all. Production has
     //    one, and re-running its script stage failed on `load-dossier` every
@@ -574,6 +635,222 @@ export default async function globalSetup(): Promise<void> {
       // adapter answers to any id, and this one says plainly what it is.
       tts: { provider: 'elevenlabs', voiceId: 'mock-narrator' },
     })
+
+    // Three beds, because the fixture install is "fully set up apart from
+    // what no milestone has delivered yet" — and M6.4 delivered the music
+    // library, so a bedless fixture would resurrect the setup strip on the
+    // dashboard. mock:// keys: nothing in the suite plays them.
+    if ((await listMusicBeds(connection.db)).length < 3) {
+      for (const index of [1, 2, 3]) {
+        await insertMusicBed(connection.db, {
+          r2Key: `mock://music/e2e-bed-${index}`,
+          contentHash: `e2e-music-${index}`,
+          title: `Documentary tension 0${index} (E2E)`,
+          licence: 'yt-audio-library',
+          moodTags: ['tension'],
+        })
+      }
+    }
+
+    /**
+     * 8. The preview screen (M6.8): a project parked at Gate 5a with a
+     * compiled timeline, and a finished master beside it - QC card, playable
+     * file and the "Render again" spend decision all on one screen. The
+     * master is a REAL local render of the 20-second fixture (spec section
+     * 13); the timeline is compiled by the real compiler from real seeded
+     * takes, so the preview player resolves its narration through the
+     * voice-audio route exactly as a mock assembly run would.
+     */
+    {
+      const { compileTimeline } = await import('@boom-busters/timeline')
+      const { getSettings, insertRender, insertTimeline, setTimelineKey, updateRender } =
+        await import('@boom-busters/db')
+      const { resolveBrandKit } = await import('@boom-busters/schemas')
+
+      const previewText = [
+        'The auditors signed the accounts for eighteen straight years.',
+        'By the time anyone asked, the money had never existed.',
+      ]
+
+      const preview = await createProjectFromCase(connection.db, {
+        caseId: FIXTURE_CASE_ID,
+        title: PREVIEW_PROJECT_TITLE,
+      })
+      await saveDossier(connection.db, {
+        projectId: preview.id,
+        contentMd: '# Research the preview timeline was cut from.',
+        claims: [],
+      })
+      const previewScript = await createScriptVersion(connection.db, preview.id)
+
+      const paragraphs: {
+        chapterId: string
+        chapterIndex: number
+        chapterTitle: string
+        paragraphIndex: number
+        r2Key: string
+        durationMs: number
+      }[] = []
+      const captionWords: {
+        text: string
+        startMs: number
+        endMs: number
+        timestampMs: number | null
+        confidence: number | null
+      }[] = []
+      let clock = 0
+
+      for (const [chapterIndex, text] of previewText.entries()) {
+        const chapterTitle = chapterIndex === 0 ? 'The audit' : 'The collapse'
+        const chapter = await saveChapter(connection.db, {
+          scriptId: previewScript.id,
+          index: chapterIndex,
+          title: chapterTitle,
+          contentMd: text,
+          estRuntimeSec: 8,
+        })
+        const claimed = await claimTake(connection.db, {
+          projectId: preview.id,
+          chapterId: chapter.id,
+          paragraphIndex: 0,
+          idempotencyKey: takeIdempotencyKey({
+            projectId: preview.id,
+            chapterId: chapter.id,
+            paragraphIndex: 0,
+            text,
+            voiceId: 'mock-narrator',
+          }),
+          provider: 'elevenlabs',
+          voiceId: 'mock-narrator',
+          builtFromScriptVersion: previewScript.version,
+        })
+        const durationMs = 7_000 + chapterIndex * 1_000
+        await storeTakeAudio(connection.db, claimed.take.id, {
+          r2Key: mockVoiceTakeKey(claimed.take.id),
+          durationMs,
+          costUsd: 0.0009,
+          waveform: Array.from({ length: 32 }, (_, i) => (i * 5 + chapterIndex * 13) % 100),
+        })
+        paragraphs.push({
+          chapterId: chapter.id,
+          chapterIndex,
+          chapterTitle,
+          paragraphIndex: 0,
+          r2Key: mockVoiceTakeKey(claimed.take.id),
+          durationMs,
+        })
+        // Evenly spaced words, the same shape mock alignment produces.
+        const words = text.split(/\s+/)
+        const per = durationMs / words.length
+        for (const [wordIndex, word] of words.entries()) {
+          captionWords.push({
+            text: word,
+            startMs: Math.round(clock + wordIndex * per),
+            endMs: Math.round(clock + (wordIndex + 1) * per),
+            timestampMs: null,
+            confidence: null,
+          })
+        }
+        clock += durationMs
+      }
+
+      const timeline = compileTimeline({
+        brand: resolveBrandKit(await getSettings(connection.db)),
+        paragraphs,
+        slots: [
+          {
+            type: 'chart',
+            startMs: 0,
+            durationMs: paragraphs[0]!.durationMs,
+            transition: 'cut',
+            // Chart motion is owned by its reveal (decision 120).
+            motion: { kind: 'static' },
+            chart: {
+              chartKind: 'line',
+              series: [
+                {
+                  label: 'Share price',
+                  unit: '\u20ac',
+                  points: [
+                    { x: 'Jun 17', y: 104.5 },
+                    { x: 'Jun 22', y: 14.4 },
+                    { x: 'Jun 26', y: 1.28 },
+                  ],
+                },
+              ],
+              dataRefs: ['01HQ00000000000000000000AA'],
+              takeaway: 'Nine days. Ninety-nine percent gone.',
+              reveal: 'draw-on',
+            },
+          },
+          {
+            type: 'map',
+            startMs: paragraphs[0]!.durationMs,
+            durationMs: paragraphs[1]!.durationMs,
+            transition: 'dissolve',
+            motion: { kind: 'static' },
+            map: {
+              locations: [
+                { label: 'Munich', lat: 48.14, lon: 11.58 },
+                { label: 'Manila', lat: 14.6, lon: 120.98 },
+              ],
+              route: true,
+            },
+          },
+        ],
+        music: null,
+        captions: { words: captionWords, style: 'karaoke' },
+      })
+
+      const timelineRow = await insertTimeline(connection.db, {
+        projectId: preview.id,
+        json: timeline,
+        s3Key: '',
+      })
+      await setTimelineKey(
+        connection.db,
+        timelineRow.id,
+        `boom-busters/timelines/${preview.id}/v${timelineRow.version}.json`,
+      )
+
+      await setProjectStage(connection.db, preview.id, {
+        stage: 'assembly',
+        stageStatus: 'awaiting_review',
+      })
+      const previewRunId = await ensureRun(connection.db, {
+        inngestRunId: '01E2ESETUP0000000000000003',
+        functionName: 'assembly-runner',
+        projectId: preview.id,
+        stage: 'assembly',
+      })
+      await recordRunEvent(connection.db, {
+        runId: previewRunId,
+        kind: 'gate.opened',
+        message: 'Preview ready \u00b7 v1 \u00b7 0m16s \u00b7 2 slots',
+        data: { gate: 'preview' },
+      })
+      await setRunStatus(connection.db, previewRunId, 'awaiting_gate')
+
+      // The finished master: the real 20-second fixture render, seeded as a
+      // done renders row whose local:// key the file route serves.
+      const master = renderFixtureMaster()
+      const renderRow = await insertRender(connection.db, {
+        projectId: preview.id,
+        timelineVersion: timelineRow.version,
+        kind: 'master',
+        costUsd: '0',
+      })
+      mkdirSync(RENDER_LOCAL_DIR, { recursive: true })
+      copyFileSync(master, path.join(RENDER_LOCAL_DIR, `${renderRow.id}.mp4`))
+      await updateRender(connection.db, renderRow.id, {
+        status: 'done',
+        progressPct: 100,
+        outputS3Key: `local://${renderRow.id}.mp4`,
+        qcReport: { passed: true, integratedLufs: -14, issues: [] },
+        startedAt: new Date(Date.now() - 3 * 60_000),
+        completedAt: new Date(Date.now() - 60_000),
+      })
+    }
   } finally {
     await connection.sql.end({ timeout: 5 })
   }

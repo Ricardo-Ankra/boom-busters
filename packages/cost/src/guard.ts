@@ -1,9 +1,9 @@
 import { costLedger, getSettings } from '@boom-busters/db'
 import type { Database } from '@boom-busters/db'
 import { BudgetExceededError, effectiveCeilingUsd, spentUsd } from '@boom-busters/schemas'
-import type { Provider, Settings } from '@boom-busters/schemas'
+import type { Settings } from '@boom-busters/schemas'
 import { eq, sql } from 'drizzle-orm'
-import { monthTotalUsd, round4, type DbLike } from './ledger'
+import { monthTotalUsd, round4, type DbLike, type LedgerProvider } from './ledger'
 
 /**
  * The budget guard (build spec section 6):
@@ -48,7 +48,12 @@ export interface Costed<T> {
 }
 
 export interface CostSpec {
-  provider: Provider
+  /**
+   * The ledger's own enum, not the Connections-card list: `remotion` and
+   * `youtube` spend real money without ever holding an API key card
+   * (M6.8 — the render-runner reserves the master's estimate).
+   */
+  provider: LedgerProvider
   /** Free text, shown in the ledger: `scripting`, `tts`, `stock-search`. */
   operation: string
   projectId?: string | null

@@ -11,8 +11,10 @@ import {
   hasLiveRun,
   markProjectCancelled,
   projectDeletionSummary,
+  renderInFlight,
   setProjectStage,
   shotSlotStatuses,
+  updateRender,
 } from '@boom-busters/db'
 import { voiceGateBlockedReason } from '@/lib/voice-review'
 import type { ProjectStage } from '@boom-busters/db'
@@ -27,6 +29,7 @@ import { revalidatePath } from 'next/cache'
 import { auth } from '@/auth'
 import { events } from '@/inngest/events'
 import { inngest } from '@/inngest/client'
+import { brokerConfigured, cancelRender } from '@/lib/broker'
 import { db } from '@/lib/db'
 
 /**
@@ -183,10 +186,20 @@ export async function restartStage(projectId: string, stage?: string): Promise<A
     }
   }
 
+  // Assembly compiles narration takes cut to the script's paragraphs.
+  if (target === 'assembly' && !(await getLatestScript(db, projectId))) {
+    return {
+      ok: false,
+      error:
+        'There is no script to assemble. Run the script stage first — the timeline is compiled ' +
+        'from its paragraphs and their takes.',
+    }
+  }
+
   /**
    * Re-entering a stage means re-sending the event its runner triggers on.
-   * Only these three have runners; anything else would send an event nothing
-   * is subscribed to, report success, and do nothing.
+   * Only stages with runners appear here; anything else would send an event
+   * nothing is subscribed to, report success, and do nothing.
    */
   const entry =
     target === 'dossier'
@@ -197,7 +210,9 @@ export async function restartStage(projectId: string, stage?: string): Promise<A
           ? events.scriptApproved.create({ projectId, approvedBy })
           : target === 'visuals'
             ? events.voiceApproved.create({ projectId, approvedBy })
-            : null
+            : target === 'assembly'
+              ? events.visualsApproved.create({ projectId, approvedBy })
+              : null
 
   if (!entry) {
     return {
@@ -385,6 +400,27 @@ export async function stopProject(projectId: string, reason?: string): Promise<A
   // here as well is what makes the screen honest immediately: until the mirror
   // shows no live run, the project has no way back.
   await cancelRunsForProject(db, projectId)
+
+  /**
+   * The section 8.1 half of stopping: the cancelled Inngest run can no longer
+   * talk to the broker, so the tombstone is set here. The broker acknowledges
+   * the render's eventual webhook, discards the artefacts, and emits nothing;
+   * the spend — ≈ $0.25 for a master — is sunk, exactly as the Stop confirm
+   * said it would be. Local mock renders just finish and are ignored.
+   */
+  const inFlight = await renderInFlight(db, projectId)
+  if (inFlight) {
+    await updateRender(db, inFlight.id, { status: 'cancelled', completedAt: new Date() })
+    if (brokerConfigured() && inFlight.brokerRenderId) {
+      try {
+        await cancelRender(inFlight.id)
+      } catch {
+        // The tombstone failing to land means the completion webhook will
+        // still arrive and be emitted; the runner is gone, so the event
+        // falls on no one. The row already says cancelled — the honest state.
+      }
+    }
+  }
 
   refresh(projectId)
   return sent

@@ -235,3 +235,21 @@ export function voiceApprovalBlockedReason(
 
   return undefined
 }
+
+// ---------------------------------------------------------------------------
+// Word timings (M6 alignment)
+// ---------------------------------------------------------------------------
+
+/**
+ * One spoken word's place in a take's audio, captured at synthesis from
+ * ElevenLabs' character alignment. Stored on the take (nullable jsonb):
+ * takes with timings align for free at assembly; takes without fall back to
+ * Whisper in media-utils. The snap step treats either source the same way —
+ * timings from the audio, text from the script.
+ */
+export const WordTimingSchema = z.object({
+  text: z.string().min(1),
+  startMs: z.number().int().min(0),
+  endMs: z.number().int().min(0),
+})
+export type WordTiming = z.infer<typeof WordTimingSchema>

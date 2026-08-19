@@ -75,15 +75,15 @@ export function buildChecklist(input: FirstRunInput): ChecklistItem[] {
       label: 'Add at least 3 music beds',
       detail:
         musicBedCount === 0
-          ? 'Needed by assembly, not before. The upload arrives with the music library.'
+          ? 'Download licensed beds (the YouTube Audio Library is free) and upload them.'
           : `${musicBedCount} of 3 uploaded.`,
-      href: '/settings',
+      href: '/settings?tab=music',
       buttonLabel: 'Open music library',
       done: musicBedCount >= 3,
-      // Assembly (M6) is what needs beds; nothing before it does, so an item
-      // that cannot be completed yet must not claim to block the pipeline.
+      // Assembly is what needs beds; nothing before it does. The library
+      // arrived with M6.4, so the item is actionable now — but a missing bed
+      // still only bites at the preview screen's music picker.
       blocksPipeline: false,
-      ...(musicBedCount >= 3 ? {} : { availableFrom: 'M6' }),
     },
     {
       id: 'youtube',

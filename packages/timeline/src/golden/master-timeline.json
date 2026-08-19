@@ -1,0 +1,406 @@
+{
+  "version": 1,
+  "fps": 30,
+  "width": 1920,
+  "height": 1080,
+  "brand": {
+    "typography": {
+      "heading": {
+        "family": "Inter",
+        "weight": 700,
+        "sizeScale": 1.4,
+        "letterSpacing": 0,
+        "transform": "none"
+      },
+      "title": {
+        "family": "Inter",
+        "weight": 600,
+        "sizeScale": 1.2,
+        "letterSpacing": 0,
+        "transform": "none"
+      },
+      "body": {
+        "family": "Inter",
+        "weight": 400,
+        "sizeScale": 1,
+        "letterSpacing": 0,
+        "transform": "none"
+      },
+      "numbers": {
+        "family": "JetBrains Mono",
+        "weight": 500,
+        "sizeScale": 1,
+        "letterSpacing": 0,
+        "transform": "none"
+      },
+      "captions": {
+        "family": "Inter",
+        "weight": 700,
+        "sizeScale": 1.1,
+        "letterSpacing": 0,
+        "transform": "none"
+      }
+    },
+    "colors": {
+      "primary": "#0f1115",
+      "accent": "#f5a524",
+      "background": "#0a0a0b",
+      "surface": "#16181d",
+      "textPrimary": "#f4f4f5",
+      "textSecondary": "#a1a1aa",
+      "chartSeries": [
+        "#f5a524",
+        "#3b82f6",
+        "#10b981",
+        "#a855f7",
+        "#ef4444",
+        "#14b8a6"
+      ],
+      "captionHighlight": "#f5a524",
+      "semantic": {
+        "collapse": "#ef4444",
+        "recovery": "#10b981"
+      }
+    },
+    "look": {
+      "logoR2Key": null,
+      "watermarkPlacement": "br",
+      "grainPreset": "subtle",
+      "lowerThirdVariant": "bar",
+      "chapterCardVariant": "full"
+    },
+    "music": {
+      "longFormStyle": "documentary-tension",
+      "shortsStyle": "driving",
+      "bedGainDb": -25,
+      "duckDepthDb": -12
+    },
+    "voice": {
+      "provider": "elevenlabs",
+      "voiceId": "",
+      "stability": "natural",
+      "phonemeHints": []
+    }
+  },
+  "narration": [
+    {
+      "r2Key": "boom-busters/voice/ch1-p0.wav",
+      "startMs": 0,
+      "durationMs": 8000,
+      "chapterId": "01HQ0000000000000000000CH1",
+      "paragraphIndex": 0
+    },
+    {
+      "r2Key": "boom-busters/voice/ch1-p1.wav",
+      "startMs": 8000,
+      "durationMs": 6000,
+      "chapterId": "01HQ0000000000000000000CH1",
+      "paragraphIndex": 1
+    },
+    {
+      "r2Key": "boom-busters/voice/ch2-p0.wav",
+      "startMs": 14000,
+      "durationMs": 7000,
+      "chapterId": "01HQ0000000000000000000CH2",
+      "paragraphIndex": 0
+    }
+  ],
+  "music": {
+    "r2Key": "boom-busters/music/documentary-tension-01.mp3",
+    "gainDb": -25,
+    "duckingCurve": [
+      {
+        "tMs": 0,
+        "gainDb": -37
+      },
+      {
+        "tMs": 21000,
+        "gainDb": -37
+      },
+      {
+        "tMs": 21600,
+        "gainDb": -25
+      }
+    ],
+    "cuePoints": [
+      {
+        "tMs": 0,
+        "style": "chapter"
+      },
+      {
+        "tMs": 14000,
+        "style": "chapter"
+      }
+    ]
+  },
+  "captions": {
+    "words": [
+      {
+        "text": "By",
+        "startMs": 0,
+        "endMs": 350,
+        "timestampMs": 175,
+        "confidence": null
+      },
+      {
+        "text": "June,",
+        "startMs": 400,
+        "endMs": 750,
+        "timestampMs": 575,
+        "confidence": null
+      },
+      {
+        "text": "the",
+        "startMs": 800,
+        "endMs": 1150,
+        "timestampMs": 975,
+        "confidence": null
+      },
+      {
+        "text": "auditors",
+        "startMs": 1200,
+        "endMs": 1550,
+        "timestampMs": 1375,
+        "confidence": null
+      },
+      {
+        "text": "could",
+        "startMs": 1600,
+        "endMs": 1950,
+        "timestampMs": 1775,
+        "confidence": null
+      },
+      {
+        "text": "not",
+        "startMs": 2000,
+        "endMs": 2350,
+        "timestampMs": 2175,
+        "confidence": null
+      },
+      {
+        "text": "find",
+        "startMs": 2400,
+        "endMs": 2750,
+        "timestampMs": 2575,
+        "confidence": null
+      },
+      {
+        "text": "the",
+        "startMs": 2800,
+        "endMs": 3150,
+        "timestampMs": 2975,
+        "confidence": null
+      },
+      {
+        "text": "money.",
+        "startMs": 3200,
+        "endMs": 3550,
+        "timestampMs": 3375,
+        "confidence": null
+      },
+      {
+        "text": "EY",
+        "startMs": 8000,
+        "endMs": 8350,
+        "timestampMs": 8175,
+        "confidence": null
+      },
+      {
+        "text": "refused",
+        "startMs": 8400,
+        "endMs": 8750,
+        "timestampMs": 8575,
+        "confidence": null
+      },
+      {
+        "text": "to",
+        "startMs": 8800,
+        "endMs": 9150,
+        "timestampMs": 8975,
+        "confidence": null
+      },
+      {
+        "text": "sign",
+        "startMs": 9200,
+        "endMs": 9550,
+        "timestampMs": 9375,
+        "confidence": null
+      },
+      {
+        "text": "the",
+        "startMs": 9600,
+        "endMs": 9950,
+        "timestampMs": 9775,
+        "confidence": null
+      },
+      {
+        "text": "accounts.",
+        "startMs": 10000,
+        "endMs": 10350,
+        "timestampMs": 10175,
+        "confidence": null
+      },
+      {
+        "text": "The",
+        "startMs": 14000,
+        "endMs": 14350,
+        "timestampMs": 14175,
+        "confidence": null
+      },
+      {
+        "text": "shares",
+        "startMs": 14400,
+        "endMs": 14750,
+        "timestampMs": 14575,
+        "confidence": null
+      },
+      {
+        "text": "collapsed",
+        "startMs": 14800,
+        "endMs": 15150,
+        "timestampMs": 14975,
+        "confidence": null
+      },
+      {
+        "text": "in",
+        "startMs": 15200,
+        "endMs": 15550,
+        "timestampMs": 15375,
+        "confidence": null
+      },
+      {
+        "text": "nine",
+        "startMs": 15600,
+        "endMs": 15950,
+        "timestampMs": 15775,
+        "confidence": null
+      },
+      {
+        "text": "days.",
+        "startMs": 16000,
+        "endMs": 16350,
+        "timestampMs": 16175,
+        "confidence": null
+      }
+    ],
+    "style": "karaoke"
+  },
+  "slots": [
+    {
+      "type": "stock",
+      "startMs": 0,
+      "durationMs": 8000,
+      "transition": "cut",
+      "motion": {
+        "kind": "kenburns",
+        "direction": "in",
+        "intensity": 0.06
+      },
+      "payload": {
+        "kind": "video",
+        "src": {
+          "externalUrl": "https://cdn.example.com/office.mp4"
+        },
+        "muted": true
+      }
+    },
+    {
+      "type": "still",
+      "startMs": 8000,
+      "durationMs": 6000,
+      "transition": "dissolve",
+      "motion": {
+        "kind": "kenburns",
+        "direction": "in",
+        "intensity": 0.1
+      },
+      "payload": {
+        "kind": "image",
+        "src": {
+          "r2Key": "boom-busters/stills/p1/abc123.png"
+        },
+        "width": 1344,
+        "height": 768
+      }
+    },
+    {
+      "type": "chart",
+      "startMs": 14000,
+      "durationMs": 4000,
+      "transition": "cut",
+      "motion": {
+        "kind": "draw-on"
+      },
+      "payload": {
+        "kind": "chart",
+        "chartKind": "line",
+        "series": [
+          {
+            "label": "Share price",
+            "unit": "EUR",
+            "points": [
+              {
+                "x": "2020-06-17",
+                "y": 104.5
+              },
+              {
+                "x": "2020-06-26",
+                "y": 1.28
+              }
+            ]
+          }
+        ],
+        "dataRefs": [
+          "01HQ00000000000000000000AA"
+        ],
+        "takeaway": "The nine-day collapse.",
+        "reveal": "draw-on"
+      }
+    },
+    {
+      "type": "map",
+      "startMs": 18000,
+      "durationMs": 3000,
+      "transition": "dissolve",
+      "motion": {
+        "kind": "static"
+      },
+      "payload": {
+        "kind": "map",
+        "locations": [
+          {
+            "label": "Munich",
+            "lat": 48.14,
+            "lon": 11.58
+          },
+          {
+            "label": "Manila",
+            "lat": 14.6,
+            "lon": 120.98
+          }
+        ],
+        "route": true
+      }
+    }
+  ],
+  "overlays": [
+    {
+      "kind": "chapterCard",
+      "startMs": 0,
+      "durationMs": 2600,
+      "props": {
+        "index": 1,
+        "title": "The audit"
+      }
+    },
+    {
+      "kind": "chapterCard",
+      "startMs": 14000,
+      "durationMs": 2600,
+      "props": {
+        "index": 2,
+        "title": "The collapse"
+      }
+    }
+  ]
+}

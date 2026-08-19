@@ -1686,7 +1686,373 @@ db 170 · cost 31 unit/component/integration, Playwright 80/80.
 > media-utils, broker URL materialisation, preview screen, render flow +
 > webhook + QC + stop semantics.
 
-**Status:** `[ ]` not started
+**Deliverables (spec §14.6, §6, §8, §10.1, §11.3), in build order:**
+
+- [x] **M6.1 Timeline contract** — `TimelineSchema` v1 in `packages/schemas`
+      (§8.2: brand snapshot, narration, music + ducking curve, captions in
+      `@remotion/captions` word format, slots with typed payloads, overlays;
+      storage keys only, never URLs), broker API DTOs (`POST /renders`,
+      cancel, progress, webhook, media jobs), alignment request/caption
+      schemas. Valid/invalid fixtures per schema.
+- [x] **M6.2 `packages/timeline`** — pure, golden-tested: snap-to-script
+      (Needleman-Wunsch, case/punctuation-insensitive; TIMINGS from the
+      aligner, TEXT from the script; unmatched stretches >1.5 s flagged),
+      ducking-curve maths (bed gain + duck depth from Brand Kit, cue points),
+      timeline compiler (approved board + takes + music + brand snapshot →
+      byte-stable timeline JSON, fixture-project golden test).
+- [x] **M6.3 Word timings at synthesis** — ElevenLabs adapter switches to
+      `/with-timestamps`; character timings stored on `voice_takes`
+      (migration; old takes read as timing-less and fall back to Whisper).
+- [x] **M6.4 Music library** — Settings → Music library: upload licensed
+      beds to R2 (`assets` kind `music`), licence dropdown REQUIRED
+      (`yt-audio-library|epidemic|artlist|generated|other`), mood tags,
+      inline preview, delete; first-run checklist item 4 goes live.
+- [x] **M6.5 `packages/compositions`** — Remotion project importing only
+      from `schemas`: `DocumentaryMaster`, components (`KenBurnsImage`,
+      `StockClip`, `ChartReveal`, `AnimatedMap`, `LowerThird`, `ChapterCard`,
+      `KaraokeCaptions`, `MusicBed`), `AVAILABLE_FONTS` export (bundled,
+      SIL-OFL), Studio fixtures, `renderStill` snapshot tests.
+      **`AnimatedMap` draws real land outlines from world geometry bundled
+      into the repo (no tiles, no network), and the visual board's
+      `MapPreview` reuses the same geometry** — closing the "map has no map"
+      gap flagged on the Carillion board (2026-08-18); M5's schematic was
+      decision 116's stand-in.
+- [x] **M6.6 `infra/` CDK** — `boom-busters-broker` (endpoints per §8,
+      bearer token, tombstone cancel set, URL materialisation) +
+      `boom-busters-media-utils` (FFmpeg layer + Whisper.cpp; qc, loudnorm,
+      transcribe; HMAC completion webhooks) + Remotion Lambda function/site
+      deploy scripts, `project=boom-busters` tags, concurrency cap 2,
+      CloudWatch alarms. Deploy targets the existing Reelscript AWS account —
+      **credentials requested from the human when this lands, not before**.
+- [x] **M6.7 assembly-runner** — `gate/visuals.approved` → alignment
+      (stored ElevenLabs timings when present, else media-utils Whisper,
+      mock in CI) → snap → compile → validate → timeline stored by key →
+      preview-ready (Gate 5a always parks).
+- [x] **M6.8 Preview & render screen** — full-width `@remotion/player` of
+      the compiled timeline, chapter markers, caption toggle, duck
+      visualisation, music picker (recompile is free), `Render master` with
+      est. cost + inline two-step; render-runner (`gate/preview.approved` →
+      broker invoke → webhook wait → QC → `project/master.ready`), stop
+      semantics with the §8.1 honest caveat, 2 s progress polling.
+- [x] Tests land with every part; CI green on every commit; E2E drives
+      preview + a local 20-second `renderMedia` fixture render instead of
+      Lambda (spec §13).
+
+**Decisions made (M6, continuing the numbering):**
+
+120. **Compiler mappings that the spec left open** (2026-08-18). A worded
+     `pan` brief becomes a medium push-in (`kenburns in, 0.10`) rather than a
+     frozen frame — a real pan needs per-image framing data the board does
+     not collect. Chart slots' motion is owned by their reveal (`draw-on` or
+     `static`); map slots are `static` because `AnimatedMap` animates
+     internally. Ken Burns speeds map to scale intensities 0.06/0.10/0.16.
+121. **Snap-to-script lets a diagonal mismatch donate its timing.** A
+     same-position different-spelling pair ("nineteen" vs "€1.9bn") is the
+     mistranscription the snap exists to survive: timing from the audio,
+     letters from the script. Bracketed performance tags are stripped before
+     alignment so a [pause] can never become a caption. Unheard stretches
+     > 1.5 s are returned as QC gaps.
+122. **Ducking defaults**: attack 200 ms, release 600 ms, and the bed only
+     rises into silences ≥2 s — a breath between sentences is not an
+     invitation to swell the soundtrack. Points are absolute dB gains,
+     strictly increasing, and `gainAt` is the exact interpolation MusicBed
+     will mirror, exported so the preview's gain line and the render can
+     never disagree.
+123. **Golden regeneration is explicit**: `REGEN_GOLDEN=1 pnpm test` rewrites
+     `packages/timeline/src/golden/master-timeline.json`; the diff of the
+     golden is the review artefact for any compiler change.
+
+124. **Timings ride the same synthesis call** (M6.3, 2026-08-18). The
+     ElevenLabs adapter moved to `/with-timestamps` — same price, same audio,
+     plus a character alignment collapsed to word timings on the result and
+     stored on the take (`voice_takes.timings`, nullable jsonb, migration
+     0010). Bracketed tags never get a timing (direction is not spoken), and
+     the alignment of the INPUT text is preferred over the normalised one
+     because its words are the script's words. Null timings — old takes, or
+     a vendor without alignment — mean Whisper at assembly. The mock adapter
+     emits deterministic evenly-spaced timings so the alignment path is
+     exercised in CI.
+
+125. **Music beds get a `title` column** (M6.4, migration 0011). Assets
+     never needed display names until a human had to pick one from a list;
+     stock keeps its metadata in candidates, so the column is nullable and
+     music simply uses it. Re-uploading the same bytes is a rename/re-tag,
+     never a duplicate (content-hash conflict refreshes title/licence/tags
+     and keeps the original key). Deletes are DB-first; R2 removal is
+     best-effort because orphaned bytes are a lifecycle-rule problem while
+     missing rows with live bytes are no problem at all.
+
+126. **The map's world is data in the repo** (M6.5, 2026-08-18). Natural
+     Earth 1:110m `ne_110m_land` (public domain), coordinates rounded to
+     0.01°, ~75 KB of compact JSON — no tiles, no network, no API key. One
+     shared module, `@boom-busters/compositions/geo` (no React/Remotion
+     imports), is drawn by BOTH the `AnimatedMap` composition and the
+     visual board's `MapPreview`, so the board can never show a different
+     world than the render — this closes the "map shot has no map" gap
+     from the Carillion board. Projection is equirectangular over the
+     fitted window (`fitBounds` extracted verbatim from the M5 preview).
+     Visibility culling is bbox + any-vertex-in-window + point-in-polygon
+     on the window centre: continent-sized bounding boxes blanket oceans
+     they never touch, and Kansas has no coastline vertices yet must
+     still be land.
+
+127. **Two contract additions the compositions forced** (M6.5). `gainAt`
+     moved from `packages/timeline` into the schemas contract — MusicBed
+     may import only schemas, and one interpolation must serve both the
+     preview's gain line and the render (timeline re-exports it, one
+     import path for the app). `NarrationSegmentSchema`/`MusicTrackSchema`
+     gained the optional materialised `url` field MediaRef already had
+     (the broker resolves r2Keys at invoke time and needs somewhere to put
+     them); `canonicalTimelineIssues` now flags those too.
+
+128. **Snapshots are perceptual, not byte-exact** (M6.5). `renderStill`
+     at 0.25 scale through the real webpack + headless-Chrome pipeline,
+     compared with pixelmatch (threshold 0.1, allowed differing-pixel
+     ratio 3% — 6% for text-heavy frames): Chrome rasterises fonts
+     differently per OS, so goldens regenerated on Windows must still pass
+     on Linux CI. `REGEN_GOLDEN=1 pnpm test` rewrites them, same
+     convention as the timeline goldens; the golden dir and the geometry
+     JSON are prettier-ignored. A webpack override strips the `node:`
+     scheme and drops `crypto` — schemas hashes content for cache keys,
+     compositions never do, and if one ever called `createHash` in a
+     render it SHOULD fail loudly.
+
+129. **Three fonts, loaded at render time, unbundled means refuse**
+     (M6.5). `AVAILABLE_FONTS` = Inter, Archivo, JetBrains Mono, all
+     SIL OFL 1.1, exported as pure data via
+     `@boom-busters/compositions/fonts` for the Brand Kit UI (which today
+     has no typography editor — the specimen panel era reads it).
+     Loading rides `@remotion/google-fonts` (spec-blessed, section 8.2);
+     a timeline naming any other family throws before a frame renders —
+     never a silent OS-font fallback.
+
+130. **Deliberate stand-ins, recorded** (M6.5). `ShortVertical` (spec
+     §8.3) waits for the shorts milestone — the master is what M6 needs,
+     and `KaraokeCaptions` already carries the tested 9:16 safe zones.
+     The watermark overlay renders a typographic "Boom & Busters"
+     wordmark until a logo pipeline exists (brand.look has a logo r2Key
+     but no materialisation path yet). The StockClip Studio fixture
+     points at a public sample MP4 — dev-only; renders and snapshots
+     never touch it. The fixture timeline is a materialised copy with
+     data-URI media, and its test asserts the canonical guard FLAGS it —
+     the guard working is part of the fixture's job.
+
+131. **The broker API DTOs live in schemas, built with M6.6 not M6.1**
+     (2026-08-18). M6.1's checklist named them but only the timeline
+     contract was actually built then — corrected here rather than
+     papered over. `broker.ts` now carries render requests/progress/
+     cancel, the loose Remotion webhook shape, the four media jobs with
+     typed results (qc report, loudnorm, whisper words, YouTube upload),
+     the callback envelopes, and the HMAC sign/verify pair both sides of
+     every webhook share. The broker never invents IDs: the app's ULIDs
+     key every record, tombstone and callback.
+
+132. **One callback route for everything asynchronous** (M6.6). The
+     broker's normalised render outcome and every media-utils completion
+     POST HMAC-signed payloads to a single app hook (built in M6.7); the
+     app verifies and emits the Inngest events. The Lambdas never hold
+     Inngest credentials, and dev/CI work identically because events
+     enter through the app.
+
+133. **Lambda Function URL, S3 state, no DynamoDB** (M6.6). The spec
+     allowed API Gateway or function URLs — the URL costs nothing and
+     bearer auth is app-level either way. Render records, the remotion-id
+     index and the 8.1 tombstones are S3 objects in the state bucket
+     (lifecycle: renders 90 d, broker state 180 d); at one-user render
+     volume a database would be ceremony. Cancel tombstones BEFORE
+     updating the record, so racing the webhook can never emit a
+     completion event. The concurrency cap (2) counts running state
+     records and refuses with 409 before any money moves.
+
+134. **Remotion keeps its version-encoded function name** (M6.6).
+     Remotion Lambda does not support custom function names;
+     `boom-busters-render` stays the logical name, the deploy script
+     prints the physical one into REMOTION_FUNCTION_NAME, and the
+     cost-allocation tag does the accounting. The deploy script also
+     publishes the compositions site through the same webpackOverride the
+     snapshot tests bundle with — one bundling path, no drift.
+
+135. **QC thresholds and media-job conventions** (M6.6). Silence ≥ 2.5 s
+     at -45 dB, black ≥ 1.5 s, frozen frame ≥ 0.5 s ("glitch scan"),
+     integrated loudness within ±1.5 LU of target (-14 master / -16
+     voice); an unmeasurable loudness FAILS QC, never passes it. Storage
+     routing is by prefix: keys under `boom-busters/` are R2, anything
+     else is the Remotion render bucket — the two never share a prefix.
+     Whisper tokens (-ml 1) join into words on the leading-space
+     convention; bracketed noise is dropped. Daily spend guarding is an
+     AWS Budget (email direct), not billing-metric gymnastics; alarms
+     cover errors, 5xx, signature failures and cap-busting concurrency.
+
+136. **One snap pipeline, whatever the timing source** (M6.7). Takes
+     with stored ElevenLabs timings and takes transcribed by Whisper both
+     go through the same snap-to-script and the same QC-gap definition —
+     ElevenLabs timings are already script text, so the snap is a no-op
+     there, and uniformity means one code path, one gap report, one set
+     of tests. In mock-provider mode alignment is evenly-spaced words
+     across the take's measured duration, so CI exercises the exact
+     snap/offset arithmetic live audio would.
+
+137. **Assembly is restartable; the beyond-runners fixture moves on**
+     (M6.7). `assembly` joined RESTARTABLE_STAGES (re-enters on
+     `gate/visuals.approved`, requires a script). The production-shaped
+     "past the last runner" e2e fixture moved from `assembly` to `shorts`
+     — its own comment says the shape moves with every milestone. The
+     broker hook route (`/api/hooks/broker`) is live: HMAC-verified
+     callbacks become `render/completed`, `render/failed` or the new
+     `media/job.completed` event; signature failures are logged and
+     401'd, signed-but-unreadable payloads are logged and 200'd so a
+     version skew can never become a retry storm.
+
+138. **Timeline plumbing defaults** (M6.7). Versions are append-only
+     (`insertTimeline` validates against TimelineSchema on the way in;
+     an old renders row must be able to say exactly what it rendered
+     forever); the compiled JSON is uploaded to
+     `boom-busters/timelines/<project>/v<n>.json` when storage is
+     configured. The first preview's music bed is simply the newest
+     track in the library — the M6.8 picker swaps beds and recompiles
+     for free, so this is a starting point, not a verdict. Slots that
+     cannot compile (placeholders, hero, missing bytes) are skipped AND
+     counted into the gate summary; Gate 5a always parks.
+
+139. **One cost estimate, two quoters; one interpolation, three readers**
+     (M6.8). `estimateRenderCostUsd` moved into `schemas` beside `gainAt`:
+     the Render button's number and the broker's accept response come from
+     the same formula, and the preview's gain line, `MusicBed` and the
+     ducking compiler all read the same `gainAt`. `RenderProgressSchema`
+     gained an optional `outputUrl` — the broker presigns the finished
+     master on progress requests, because it is the only party holding AWS
+     credentials, and "the master playable from S3" needs a URL the app
+     can hand a <video>.
+
+140. **`DocumentaryMaster` gained `calculateMetadata`** (M6.8) — a latent
+     M6.5/M6.6 bug: the composition's duration was pinned to the 14-second
+     Studio fixture, so any real timeline handed to the deployed site would
+     have rendered exactly 14 seconds and stopped. Duration, fps and frame
+     size now follow the inputProps timeline. Also new:
+     `renderFixtureTimeline()`, a 20-second extension of the fixture
+     (deep-cloned; the snapshot goldens' fixture is never touched) and
+     `scripts/render-timeline.ts`, the local `renderMedia` path used by
+     mock-mode renders and the E2E suite alike.
+
+141. **`Render master` IS the gate approval** (M6.8). Section 7.6 triggers
+     the render-runner on `gate/preview.approved`, so the button calls
+     `approveGate(projectId, 'preview')` — one click, one event, and the
+     assembly-runner's park closes as the render begins. The runner
+     reserves the spend on the cost ledger BEFORE the broker invoke
+     (provider `remotion` — `CostSpec` widened to the ledger's own enum,
+     since Remotion and YouTube spend money without holding an API-key
+     card) and settles it from the webhook's actual cost.
+
+142. **Mock renders render the 20-second fixture, for real** (M6.8). In
+     mock-provider mode the render-runner spawns a genuine local
+     `renderMedia` — bundle, Chrome, h264 — but of the self-contained
+     fixture rather than the project timeline, whose mock narration lives
+     behind the app's authenticated audio route that headless Chrome has
+     no session for. QC is a constructed pass (media-utils does not exist
+     locally); the file lands under `RENDER_LOCAL_DIR` as `local://<id>`
+     and is served by `/api/renders/[id]/file` in mock mode only. E2E
+     renders the same fixture once in global-setup (cached in
+     `e2e/.artifacts`), seeds it as a done render, and asserts the QC
+     card, a playable ~20 s master, and the two-step confirm.
+
+143. **The preview materialiser drops what it cannot resolve, and says
+     so** (M6.8). Compositions throw on unmaterialised media by design; a
+     preview exists to be looked at now, so `materialiseForPreview`
+     resolves `mock://` narration to the voice-audio route, presigns real
+     keys when R2 exists, passes external URLs through — and DROPS
+     anything unresolvable, counted into an "N items not previewable"
+     notice instead of a crashed player. Stopping mid-render marks the
+     row cancelled and tombstones the broker from the stop action itself
+     (the cancelled Inngest run can no longer do it); the Stop confirm
+     carries the §8.1 caveat verbatim, and a finished master beside an
+     open gate offers "Render again" — a music swap is free, but pixels
+     are an explicit spend decision every time.
+
+### M6.9 — the AWS deploy, and what only a real account teaches (2026-08-18)
+
+The M6.6 stacks were "deployable and tested offline"; deploying them for
+real surfaced five faults, none visible to the template tests, every one
+found by driving the deployed thing and reading its logs.
+
+144. **A stale CDK v1 flag broke every CLI invocation.**
+     `infra/cdk.json` carried `@aws-cdk/core:enableStackNameDuplicates`,
+     which the v2 CLI rejects outright. The template tests construct
+     `App` directly and never read `cdk.json`, so this shipped green.
+     Removed; there is no offline guard for it, but the very first
+     `cdk synth` of any deploy now covers it.
+
+145. **`RENDER_BUCKET` was a hardcoded placeholder.** The media-utils
+     stack ignored the export the README asked for and baked in
+     `remotionlambda-unset` — QC of a finished master would have hit a
+     bucket that does not exist. Wired through `InfraConfig.renderBucket`
+     with a template test pinning it (test-first; it failed red).
+
+146. **The account caps Lambda memory at 3008 MB.** AWS tiers new
+     accounts: the "Max allocated MicroVM memory" quota reads 8 GB
+     against a service default of 400, and the increase API refuses
+     requests below the default — the tier rises with account history,
+     not on request. `MEDIA_LAMBDA_MEMORY_MB` overrides per deploy
+     (deployed at 3008); the spec's 10,240 stays the default and the
+     template test still asserts it.
+
+147. **The broker died at init: CJS bundling vs `@remotion/lambda`.**
+     Remotion calls `createRequire(import.meta.url)` at module scope and
+     esbuild's CommonJS output rewrites `import.meta.url` to `undefined`,
+     so every invocation was a 502 before any code of ours ran. Both
+     Lambdas now bundle as ESM with the documented aliased banner
+     (`createRequire as topLevelCreateRequire` — unaliased, it collides
+     with the bundle's own declaration). Proven by curl: 401 without a
+     token, 401 with a wrong one, 404 with the right one.
+
+148. **A whisper binary that runs on Amazon Linux is not one that runs
+     on Lambda.** The default build links `libgomp.so.1`; the Lambda
+     Node 20 runtime image ships no OpenMP, so transcription would have
+     crashed on first use. Built with `GGML_OPENMP=OFF` (ggml's own
+     thread pool) and `GGML_NATIVE=OFF`, and verified inside
+     `public.ecr.aws/lambda/nodejs:20` before upload — the layer README
+     now records the exact commands, because "build per whisper.cpp's
+     README" is precisely what produces the broken one.
+
+     Also new: `pnpm deploy:stacks` (`scripts/deploy-stacks.ts`) replaces
+     the README's manual export dance — R2 values and the owner email
+     read from `.env.local`, the broker token from
+     `~/.boom-busters-broker-token`, the Remotion outputs required from
+     the environment because they change with every Remotion version.
+
+     **Deployed and live (2026-08-18):** CDK bootstrapped in `eu-west-1`;
+     Remotion function `remotion-render-4-0-512-mem2048mb-disk10240mb-240sec`
+     - compositions site; both stacks CREATE_COMPLETE; whisper binary and
+       `ggml-base.en.bin` in the WhisperAssets bucket; `AWS_BROKER_URL` /
+       `AWS_BROKER_TOKEN` in `.env.local`. Still open: the same two
+       variables in Vercel (production calls the broker from there), the
+       SNS subscription confirmation email, and the real staging render.
+
+### Verified (M6.8, 2026-08-18)
+
+- **`pnpm typecheck`** and **`pnpm lint`** clean, zero warnings.
+- **`pnpm test`** — 1161 tests across 9 workspaces (schemas 199 · db 178 ·
+  providers 297 · web 299 · cost 31 · ui-tokens 21 · timeline 35 ·
+  compositions 58 · infra 43).
+- **`pnpm e2e`** — 85 Playwright tests, mock-provider mode, including
+  `preview-render.spec.ts` against a real ~20 s local `renderMedia` master
+  rendered once in global setup and cached in `e2e/.artifacts`.
+- One flake fixed during verification: the CDK synth `beforeAll` in
+  `infra/test/stacks.test.ts` now carries an explicit 120 s timeout. Under
+  full-suite load its module import alone took 18 s and the synth blew
+  vitest's 10 s default; alone, the same file passes in under 9 s. Timing,
+  not a regression.
+
+**Status:** `[~]` in progress — branch `m6-assembly` started 2026-08-18;
+M6.1–M6.8 done (timeline contract; snap/ducking/compiler with goldens;
+word timings at synthesis; music library live in Settings; Remotion
+component library with bundled world geometry, fonts, Studio fixtures
+and renderStill snapshots; broker + media-utils CDK stacks DEPLOYED
+to the Reelscript account in eu-west-1 (M6.9, 2026-08-18), whisper
+assets uploaded, broker smoke-tested live; assembly-runner compiling
+stored timelines and parking at Gate 5a, with the broker hook route
+live; preview & render screen with the local fixture render path —
+awaiting only the broker env vars in Vercel and the real staging
+render)
 
 ---
 

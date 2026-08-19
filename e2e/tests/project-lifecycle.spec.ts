@@ -208,13 +208,20 @@ test.describe('shapes taken from production', () => {
   }) => {
     // Production had one at `voice`/`running` with no live run: approved
     // through the script gate into a stage that had no runner. M4 built the
-    // voice runner, M5 the visuals runner, so the fixture has moved on to
-    // `assembly` — the shape is the point, and "past the last runner" moves
-    // with every milestone.
+    // voice runner, M5 the visuals runner, M6.7 the assembly runner, so the
+    // fixture has moved on to `shorts` — the shape is the point, and "past
+    // the last runner" moves with every milestone.
     await openProject(page, BEYOND_RUNNERS_TITLE)
 
-    await expect(page.getByRole('button', { name: /Run the assembly stage again/i })).toHaveCount(0)
-    await expect(page.getByText(/arrives with its runner/i)).toBeVisible()
+    await expect(page.getByRole('button', { name: /Run the shorts stage again/i })).toHaveCount(0)
+    // Seeded minutes ago, so the running-with-no-run state has aged past the
+    // grace window: the header explains the dead stage instead of promising
+    // the screen will update itself. The stage banner carries its own
+    // "arrives with its runner" line, hence the specific text.
+    await expect(page.getByText(/Marked running, but no run is behind it/)).toBeVisible()
+    await expect(
+      page.getByText(/Restarting the shorts stage arrives with its runner/),
+    ).toBeVisible()
   })
 
   test('and it does not turn a spinner at a stage where nothing is running', async ({ page }) => {
@@ -223,7 +230,7 @@ test.describe('shapes taken from production', () => {
     await openProject(page, BEYOND_RUNNERS_TITLE)
 
     const rail = page.getByRole('list', { name: 'Pipeline stages' })
-    await expect(rail.getByText(/^Assembly — the current stage, nothing running$/)).toBeAttached()
+    await expect(rail.getByText(/^Shorts — the current stage, nothing running$/)).toBeAttached()
     await expect(page.getByText('Updating automatically')).toHaveCount(0)
   })
 

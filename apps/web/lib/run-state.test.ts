@@ -191,7 +191,7 @@ describe('projectControl', () => {
 
   it('explains a stalled `running` stage that has no runner instead of offering one', () => {
     const control = projectControl(
-      project('assembly', 'running', QUEUED_STUCK_AFTER_MS + 1_000),
+      project('shorts', 'running', QUEUED_STUCK_AFTER_MS + 1_000),
       false,
       { hasDossier: true, hasScript: true, now: NOW },
     )
@@ -215,7 +215,7 @@ describe('projectControl', () => {
   it('refuses to offer a restart for a stage that has no runner yet', () => {
     // A button that sends an event nothing subscribes to would report success
     // and do nothing, which is worse than saying so.
-    for (const stage of ['assembly', 'shorts', 'publish'] as const) {
+    for (const stage of ['shorts', 'publish'] as const) {
       const control = projectControl(project(stage, 'failed'), false, {
         hasDossier: true,
         hasScript: true,
@@ -226,8 +226,8 @@ describe('projectControl', () => {
     }
   })
 
-  it('offers a restart for the voice and visuals stages, whose runners exist', () => {
-    for (const stage of ['voice', 'visuals'] as const) {
+  it('offers a restart for the voice, visuals and assembly stages, whose runners exist', () => {
+    for (const stage of ['voice', 'visuals', 'assembly'] as const) {
       expect(
         projectControl(project(stage, 'failed'), false, {
           hasDossier: true,
@@ -236,6 +236,35 @@ describe('projectControl', () => {
         }),
       ).toMatchObject({ kind: 'restart' })
     }
+  })
+
+  /**
+   * The exact shape production project 01KZYGHGF4264Q34ZT6C96B7YT was left in
+   * (2026-08-17): its visuals gate was approved on a deployment whose
+   * assembly-runner did not exist yet, so the handover stamped `assembly`
+   * `running` and nothing ever picked it up. Once the runner exists, this
+   * state must offer the way out, not the pre-M6.7 "arrives with its runner".
+   */
+  it('rescues a project stranded at assembly by a pre-M6 gate approval', () => {
+    expect(
+      projectControl(project('assembly', 'running', QUEUED_STUCK_AFTER_MS + 1_000), false, {
+        hasDossier: true,
+        hasScript: true,
+        now: NOW,
+      }),
+    ).toMatchObject({ kind: 'restart', label: 'Run the assembly stage again' })
+  })
+
+  it('blocks an assembly restart with no script, and says that, not "no runner"', () => {
+    const control = projectControl(project('assembly', 'failed'), false, {
+      hasDossier: true,
+      hasScript: false,
+      now: NOW,
+    })
+    expect(control.kind).toBe('blocked')
+    expect(control).toMatchObject({
+      message: expect.stringContaining('no script to assemble'),
+    })
   })
 
   it('blocks a visuals restart when there is no script to plan against', () => {

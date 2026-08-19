@@ -166,6 +166,7 @@ export const voiceRetaker = inngest.createFunction(
           r2Key: key,
           durationMs: narration.durationMs,
           costUsd: narration.costUsd,
+          timings: narration.wordTimings ?? null,
           waveform: narration.waveform,
         })
 

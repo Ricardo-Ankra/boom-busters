@@ -1,5 +1,5 @@
 import { newId } from '@boom-busters/schemas'
-import type { Settings } from '@boom-busters/schemas'
+import type { Settings, WordTiming } from '@boom-busters/schemas'
 import { relations, sql } from 'drizzle-orm'
 import {
   boolean,
@@ -478,6 +478,13 @@ export const voiceTakes = pgTable(
      * assumed current.
      */
     builtFromScriptVersion: integer('built_from_script_version'),
+    /**
+     * Word timings from the vendor's character alignment (M6.3), captured at
+     * synthesis because they are free there and cost a Whisper run anywhere
+     * else. Null means "no timings" — takes made before this column, or from
+     * a vendor without alignment — and assembly falls back to transcription.
+     */
+    timings: jsonb('timings').$type<WordTiming[] | null>(),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
@@ -506,6 +513,8 @@ export const assets = pgTable(
     height: integer('height'),
     durationMs: integer('duration_ms'),
     attributionText: text('attribution_text'),
+    /** Display name; music beds carry one, fetched stock does not need one. */
+    title: text('title'),
     /** Music only — powers the music picker on the preview screen. */
     moodTags: text('mood_tags')
       .array()
@@ -881,6 +890,7 @@ export type VoiceTakeRow = typeof voiceTakes.$inferSelect
 export type VoiceAuditionRow = typeof voiceAuditions.$inferSelect
 export type ShotSlotRow = typeof shotSlots.$inferSelect
 export type AssetRow = typeof assets.$inferSelect
+export type TimelineRow = typeof timelines.$inferSelect
 export type RenderRow = typeof renders.$inferSelect
 export type PublishRecordRow = typeof publishRecords.$inferSelect
 export type ProviderCredentialRow = typeof providerCredentials.$inferSelect

@@ -1,0 +1,38 @@
+{
+  "name": "@boom-busters/compositions",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./geo": "./src/geo/index.ts",
+    "./fonts": "./src/fonts/catalog.ts",
+    "./webpack-override": "./src/webpack-override.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "studio": "remotion studio",
+    "render:timeline": "tsx scripts/render-timeline.ts"
+  },
+  "dependencies": {
+    "@boom-busters/schemas": "workspace:*",
+    "@remotion/google-fonts": "4.0.512",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "remotion": "4.0.512"
+  },
+  "devDependencies": {
+    "@remotion/bundler": "4.0.512",
+    "@remotion/cli": "4.0.512",
+    "@remotion/renderer": "4.0.512",
+    "@types/node": "^22.20.1",
+    "@types/pngjs": "^6.0.5",
+    "@types/react": "^19.2.2",
+    "pixelmatch": "^7.1.0",
+    "pngjs": "^7.0.0",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.10",
+    "tsx": "^4.23.12"
+  }
+}

@@ -29,3 +29,11 @@ Thumbs.db
 
 # Local scratch
 *.log
+
+# CDK synth output
+infra/cdk.out
+e2e/.artifacts/
+apps/web/.local-renders/
+
+# Claude Code personal settings
+.claude/settings.local.json

@@ -216,6 +216,7 @@ export const voiceRunner = inngest.createFunction(
                 durationMs: narration.durationMs,
                 costUsd: narration.costUsd,
                 waveform: narration.waveform,
+                timings: narration.wordTimings ?? null,
               })
 
               return { ok: true, reused: false }

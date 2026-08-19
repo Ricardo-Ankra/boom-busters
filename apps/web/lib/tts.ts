@@ -10,7 +10,7 @@ import {
 } from '@boom-busters/providers'
 import type { TTSRequest, TTSResult } from '@boom-busters/providers'
 import { TTS_CREDENTIAL_PROVIDER, ValidationError, WaveformSchema } from '@boom-busters/schemas'
-import type { Settings, TtsProvider } from '@boom-busters/schemas'
+import type { Settings, TtsProvider, WordTiming } from '@boom-busters/schemas'
 import { db } from '@/lib/db'
 import { env } from '@/lib/env'
 
@@ -55,6 +55,8 @@ export interface Narration {
   waveform: number[]
   provider: TtsProvider
   voiceId: string
+  /** Word timings from the vendor's alignment — free at synthesis, M6.3. */
+  wordTimings?: WordTiming[]
   /**
    * Pronunciation hints the vendor refused and the adapter therefore dropped.
    *
@@ -162,6 +164,9 @@ export async function synthesise(
     waveform: WaveformSchema.parse(waveformPeaks(result.audioBuffer)),
     provider: result.provider,
     voiceId: result.voiceId,
+    ...(result.wordTimings && result.wordTimings.length > 0
+      ? { wordTimings: result.wordTimings }
+      : {}),
     ...(result.droppedPronunciations && result.droppedPronunciations.length > 0
       ? { droppedPronunciations: result.droppedPronunciations }
       : {}),

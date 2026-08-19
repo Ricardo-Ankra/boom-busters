@@ -1,6 +1,11 @@
 import 'server-only'
 
-import { GetObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3'
+import {
+  DeleteObjectCommand,
+  GetObjectCommand,
+  PutObjectCommand,
+  S3Client,
+} from '@aws-sdk/client-s3'
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
 import { mockProvidersEnabled } from '@boom-busters/providers'
 import { hasEnvGroup, requireEnv, ValidationError } from '@boom-busters/schemas'
@@ -150,6 +155,15 @@ export function stillKey(input: { projectId: string; contentHash: string }): str
   return `${R2_PREFIX}/stills/${input.projectId}/${input.contentHash}.png`
 }
 
+/**
+ * Where a music bed lives. Content-hash keyed like stills: the same track
+ * uploaded twice is one object, and no project owns it — the library is
+ * channel-wide by design (spec section 10.1).
+ */
+export function musicKey(input: { contentHash: string; ext: string }): string {
+  return `${R2_PREFIX}/music/${input.contentHash}.${input.ext}`
+}
+
 export async function putObject(
   key: string,
   body: Buffer,
@@ -162,6 +176,12 @@ export async function putObject(
   )
 
   return { key }
+}
+
+/** Best-effort removal — a failed delete leaves bytes for lifecycle rules. */
+export async function deleteObject(key: string): Promise<void> {
+  const { client, bucket } = r2()
+  await client.send(new DeleteObjectCommand({ Bucket: bucket, Key: key }))
 }
 
 /** A short-lived URL the browser can fetch the object from directly. */

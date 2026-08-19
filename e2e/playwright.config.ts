@@ -1,3 +1,4 @@
+import path from 'node:path'
 import { defineConfig, devices } from '@playwright/test'
 import { e2eDatabaseUrl } from './database'
 
@@ -68,6 +69,15 @@ export default defineConfig({
       // — the deployment's database — and the suite would assert against one
       // database while having seeded another.
       DATABASE_URL: e2eDatabaseUrl(),
+      // Where global-setup put the seeded master; the file route serves it.
+      RENDER_LOCAL_DIR: path.join(import.meta.dirname, '.artifacts', 'renders'),
+      // Deliberately present alongside MOCK_PROVIDERS=1: mock mode must never
+      // touch a broker however configured it looks. Found 2026-08-19 on a dev
+      // machine whose .env.local gained the real broker env — the preview
+      // spec failed there and nowhere else, because CI had no broker vars and
+      // so never exercised the combination.
+      AWS_BROKER_URL: 'https://broker.invalid',
+      AWS_BROKER_TOKEN: 'e2e-dummy-token',
     },
   },
 })

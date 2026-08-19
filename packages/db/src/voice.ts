@@ -1,6 +1,6 @@
 import { and, asc, desc, eq, sql } from 'drizzle-orm'
 import { latestTakes, TTS_CREDENTIAL_PROVIDER } from '@boom-busters/schemas'
-import type { TtsProvider, VoiceTakeStatus } from '@boom-busters/schemas'
+import type { TtsProvider, VoiceTakeStatus, WordTiming } from '@boom-busters/schemas'
 import type { Database } from './client'
 import { chapters, scripts, voiceAuditions, voiceTakes } from './schema'
 import type { VoiceAuditionRow, VoiceTakeRow } from './schema'
@@ -239,7 +239,14 @@ export async function claimTake(db: Database, input: ClaimTakeInput): Promise<Cl
 export async function storeTakeAudio(
   db: Database,
   id: string,
-  audio: { r2Key: string; durationMs: number; costUsd: number; waveform: number[] },
+  audio: {
+    r2Key: string
+    durationMs: number
+    costUsd: number
+    waveform: number[]
+    /** Word timings captured at synthesis; null when the vendor gave none. */
+    timings?: WordTiming[] | null
+  },
 ): Promise<VoiceTakeRow> {
   const [row] = await db
     .update(voiceTakes)
@@ -248,6 +255,7 @@ export async function storeTakeAudio(
       durationMs: audio.durationMs,
       costUsd: audio.costUsd.toFixed(6),
       waveform: audio.waveform,
+      timings: audio.timings ?? null,
       status: 'generated',
       updatedAt: sql`now()`,
     })

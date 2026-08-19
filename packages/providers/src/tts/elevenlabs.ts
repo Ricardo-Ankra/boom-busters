@@ -1,5 +1,6 @@
 import { ValidationError } from '@boom-busters/schemas'
-import type { StabilityTier } from '@boom-busters/schemas'
+import type { StabilityTier, WordTiming } from '@boom-busters/schemas'
+import { z } from 'zod'
 import { mapNetworkError, throwForResponse } from '../llm/http'
 import { NARRATION_SAMPLE_RATE, pcmDurationMs } from './audio'
 import { applyPronunciations } from './phonemes'
@@ -64,6 +65,66 @@ export const ELEVEN_V3_STABILITY: Record<StabilityTier, number> = {
  */
 const OUTPUT_FORMAT = 'pcm_24000'
 
+/**
+ * The `/with-timestamps` response: audio as base64 plus a per-character
+ * alignment. `normalized_alignment` maps the text as spoken (numbers
+ * expanded, abbreviations read out); `alignment` maps the input text. The
+ * input-text one is preferred — its words are the script's words, which is
+ * what the snap step aligns against.
+ */
+const AlignmentSchema = z.object({
+  characters: z.array(z.string()),
+  character_start_times_seconds: z.array(z.number()),
+  character_end_times_seconds: z.array(z.number()),
+})
+
+const WithTimestampsResponseSchema = z.object({
+  // No min-length: an empty body must reach the adapter's own empty-audio
+  // check, which throws the ValidationError the caller knows how to show.
+  audio_base64: z.string(),
+  alignment: AlignmentSchema.nullish(),
+  normalized_alignment: AlignmentSchema.nullish(),
+})
+
+/** Bracketed spans are direction, never spoken — no timing is real for them. */
+const TAG_WORD = /^\[[^\]]+\]$/
+
+/**
+ * Collapse a character alignment into word timings: split on whitespace,
+ * a word's start is its first character's start and its end its last
+ * character's end. Exported for tests.
+ */
+export function wordTimingsFromAlignment(alignment: z.infer<typeof AlignmentSchema>): WordTiming[] {
+  const words: WordTiming[] = []
+  let current = ''
+  let startSec = 0
+  let endSec = 0
+
+  const flush = () => {
+    if (current.length > 0 && !TAG_WORD.test(current)) {
+      words.push({
+        text: current,
+        startMs: Math.round(startSec * 1000),
+        endMs: Math.round(endSec * 1000),
+      })
+    }
+    current = ''
+  }
+
+  alignment.characters.forEach((character, index) => {
+    if (/\s/.test(character)) {
+      flush()
+      return
+    }
+    if (current === '') startSec = alignment.character_start_times_seconds[index] ?? 0
+    current += character
+    endSec = alignment.character_end_times_seconds[index] ?? startSec
+  })
+  flush()
+
+  return words
+}
+
 interface ElevenLabsVoicesResponse {
   voices?: { voice_id?: string; name?: string; labels?: Record<string, string> }[]
 }
@@ -89,8 +150,11 @@ export const elevenlabsTts: TTSProvider = {
 
     let response: Response
     try {
+      // `/with-timestamps` costs the same as the plain endpoint and returns a
+      // character alignment beside the audio — free word timings, which is
+      // what makes assembly's alignment step free for ElevenLabs takes.
       response = await doFetch(
-        `${BASE}/text-to-speech/${encodeURIComponent(request.voiceId)}?output_format=${OUTPUT_FORMAT}`,
+        `${BASE}/text-to-speech/${encodeURIComponent(request.voiceId)}/with-timestamps?output_format=${OUTPUT_FORMAT}`,
         {
           method: 'POST',
           headers: { 'content-type': 'application/json', 'xi-api-key': options.apiKey },
@@ -110,13 +174,17 @@ export const elevenlabsTts: TTSProvider = {
 
     if (!response.ok) await throwForResponse('elevenlabs', response)
 
-    const audioBuffer = Buffer.from(await response.arrayBuffer())
+    const parsed = WithTimestampsResponseSchema.parse(await response.json())
+    const audioBuffer = Buffer.from(parsed.audio_base64, 'base64')
 
     if (audioBuffer.length === 0) {
       throw new ValidationError(
         'ElevenLabs returned an empty audio body. Nothing was spoken, so there is nothing to store.',
       )
     }
+
+    const alignment = parsed.alignment ?? parsed.normalized_alignment
+    const wordTimings = alignment ? wordTimingsFromAlignment(alignment) : []
 
     return {
       audioBuffer,
@@ -125,6 +193,7 @@ export const elevenlabsTts: TTSProvider = {
       estimatedCostUsd: (request.text.length / 1000) * elevenlabsTts.pricePerKChar,
       provider: 'elevenlabs',
       voiceId: request.voiceId,
+      ...(wordTimings.length > 0 ? { wordTimings } : {}),
       ...(dropped.length > 0 ? { droppedPronunciations: dropped } : {}),
     }
   },

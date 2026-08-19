@@ -13,10 +13,12 @@
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1108.0",
     "@aws-sdk/s3-request-presigner": "^3.1108.0",
+    "@boom-busters/compositions": "workspace:*",
     "@boom-busters/cost": "workspace:*",
     "@boom-busters/db": "workspace:*",
     "@boom-busters/providers": "workspace:*",
     "@boom-busters/schemas": "workspace:*",
+    "@boom-busters/timeline": "workspace:*",
     "@boom-busters/ui-tokens": "workspace:*",
     "@radix-ui/react-dialog": "^1.1.16",
     "@radix-ui/react-label": "^2.1.8",
@@ -41,7 +43,9 @@
     "react-dom": "^19.2.8",
     "resend": "^6.18.1",
     "tailwind-merge": "^3.4.1",
-    "zod": "^4.4.3"
+    "zod": "^4.4.3",
+    "@remotion/player": "4.0.512",
+    "remotion": "4.0.512"
   },
   "devDependencies": {
     "@inngest/test": "^1.0.0",

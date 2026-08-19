@@ -1,6 +1,9 @@
 'use server'
 
+import { createHash } from 'node:crypto'
 import {
+  deleteMusicBed,
+  insertMusicBed,
   llmCredentials,
   recordVerifyResult,
   setCredential,
@@ -17,6 +20,8 @@ import {
 } from '@boom-busters/providers'
 import {
   LlmProviderSchema,
+  MUSIC_MAX_BYTES,
+  MusicLicenceSchema,
   ProviderSchema,
   SettingsPatchSchema,
   isRetriable,
@@ -26,6 +31,7 @@ import { revalidatePath } from 'next/cache'
 import { auth } from '@/auth'
 import { db } from '@/lib/db'
 import { env } from '@/lib/env'
+import { deleteObject, musicKey, putObject, storageConfigured } from '@/lib/storage'
 
 /**
  * Settings CRUD. Every action re-checks the session server-side: the proxy
@@ -196,3 +202,79 @@ export async function verifyProviderKey(provider: string): Promise<VerifyResult>
 }
 
 export type { Settings }
+
+// ---------------------------------------------------------------------------
+// Music library (M6.4, spec section 10.1)
+// ---------------------------------------------------------------------------
+
+/** Upload MIME type → stored extension. */
+const MUSIC_EXTENSIONS: Record<string, string> = {
+  'audio/mpeg': 'mp3',
+  'audio/wav': 'wav',
+  'audio/x-wav': 'wav',
+  'audio/mp4': 'm4a',
+  'audio/ogg': 'ogg',
+}
+
+export async function uploadMusicBedAction(formData: FormData): Promise<ActionResult> {
+  await requireOwner()
+
+  const file = formData.get('file')
+  if (!(file instanceof File)) return { ok: false, error: 'No file arrived.' }
+
+  const extension = MUSIC_EXTENSIONS[file.type]
+  if (!extension) {
+    return { ok: false, error: 'Only MP3, WAV, M4A or OGG audio can be uploaded here.' }
+  }
+  if (file.size > MUSIC_MAX_BYTES) {
+    return { ok: false, error: 'That file is over the 25 MB limit for music beds.' }
+  }
+
+  // The licence is REQUIRED, and it is a human statement, not metadata: the
+  // app never fetches music, so the human who downloaded the track is the
+  // only one who knows what right they have to use it.
+  const licence = MusicLicenceSchema.safeParse(formData.get('licence'))
+  if (!licence.success) {
+    return { ok: false, error: 'Choose the licence this track was downloaded under.' }
+  }
+
+  const title = String(formData.get('title') ?? '').trim() || file.name.replace(/\.[^.]+$/, '')
+  const moodTags = String(formData.get('moodTags') ?? '')
+    .split(',')
+    .map((tag) => tag.trim())
+    .filter((tag) => tag.length > 0)
+
+  if (!storageConfigured()) {
+    return { ok: false, error: 'Uploads need R2 configured — there is nowhere to store audio.' }
+  }
+
+  const bytes = Buffer.from(await file.arrayBuffer())
+  const contentHash = createHash('sha256').update(bytes).digest('hex')
+  const key = musicKey({ contentHash, ext: extension })
+  await putObject(key, bytes, file.type)
+
+  await insertMusicBed(db, { r2Key: key, contentHash, title, licence: licence.data, moodTags })
+
+  revalidatePath('/settings')
+  revalidatePath('/')
+  return { ok: true }
+}
+
+export async function deleteMusicBedAction(id: string): Promise<ActionResult> {
+  await requireOwner()
+
+  const row = await deleteMusicBed(db, id)
+  if (!row) return { ok: false, error: 'That track is already gone.' }
+
+  // Best-effort: the row is authoritative and already deleted; bytes left
+  // behind are a lifecycle-rule concern, not a correctness one.
+  try {
+    await deleteObject(row.r2Key)
+  } catch {
+    // Deliberately swallowed — see above.
+  }
+
+  revalidatePath('/settings')
+  revalidatePath('/')
+  return { ok: true }
+}

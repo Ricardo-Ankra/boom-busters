@@ -52,12 +52,19 @@ export const QUEUED_STUCK_AFTER_MS = 3 * 60_000
  * The stages whose runner exists and can be re-entered from a single event.
  *
  * `dossier` re-enters on `project/created`, `script` on `gate/dossier.approved`,
- * `voice` on `gate/script.approved`, `visuals` on `gate/voice.approved` — the
- * events those runners trigger on. Nothing else is listed because nothing else
- * has a runner yet (M6 onwards), and a Restart button that sends an event no
- * function is subscribed to is a button that reports success and does nothing.
+ * `voice` on `gate/script.approved`, `visuals` on `gate/voice.approved`,
+ * `assembly` on `gate/visuals.approved` (M6.7) — the events those runners
+ * trigger on. Nothing else is listed because nothing else has a runner yet
+ * (M7 onwards), and a Restart button that sends an event no function is
+ * subscribed to is a button that reports success and does nothing.
  */
-export const RESTARTABLE_STAGES: readonly ProjectStage[] = ['dossier', 'script', 'voice', 'visuals']
+export const RESTARTABLE_STAGES: readonly ProjectStage[] = [
+  'dossier',
+  'script',
+  'voice',
+  'visuals',
+  'assembly',
+]
 
 export type ProjectControl =
   /** A run is live: the only useful control is to stop it. */
@@ -119,8 +126,10 @@ export function projectControl(
   const restartable =
     RESTARTABLE_STAGES.includes(project.stage) &&
     (project.stage !== 'script' || inputs.hasDossier) &&
-    // Narration is read from the script, and the board is planned against it.
-    ((project.stage !== 'voice' && project.stage !== 'visuals') || inputs.hasScript)
+    // Narration is read from the script, the board is planned against it,
+    // and assembly compiles takes cut to its paragraphs.
+    ((project.stage !== 'voice' && project.stage !== 'visuals' && project.stage !== 'assembly') ||
+      inputs.hasScript)
   const stalled = now.getTime() - project.updatedAt.getTime() > QUEUED_STUCK_AFTER_MS
 
   const cannotRestart = (why: string): ProjectControl => ({
@@ -132,7 +141,9 @@ export function projectControl(
           ? `${why} There is no script to narrate — run the script stage first.`
           : project.stage === 'visuals' && !inputs.hasScript
             ? `${why} There is no script to plan visuals for — run the script stage first.`
-            : `${why} Restarting the ${project.stage} stage arrives with its runner.`,
+            : project.stage === 'assembly' && !inputs.hasScript
+              ? `${why} There is no script to assemble — run the script stage first.`
+              : `${why} Restarting the ${project.stage} stage arrives with its runner.`,
   })
 
   switch (project.stageStatus) {
