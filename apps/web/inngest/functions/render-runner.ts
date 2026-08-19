@@ -19,6 +19,7 @@ import {
   TimelineSchema,
 } from '@boom-busters/schemas'
 import type { QcReport } from '@boom-busters/schemas'
+import { mockProvidersEnabled } from '@boom-busters/providers'
 import { NonRetriableError } from 'inngest'
 import { db } from '@/lib/db'
 import { brokerCallbackUrl, brokerConfigured, submitMediaJob, submitRender } from '@/lib/broker'
@@ -34,15 +35,20 @@ import { budgetGateData, markStageFailed, type GateContext } from '../lib/gates'
  * user clicked "Render master", the real spend decision — → broker invoke →
  * wait for the webhook-driven completion event → QC → `project/master.ready`.
  *
- * Two paths, one shape:
- * - **Live** (broker configured): the timeline's canonical JSON is on R2,
- *   the broker materialises and invokes Remotion Lambda, and completion
+ * Two paths, one shape, forked on MOCK_PROVIDERS — never on whether the
+ * broker env vars happen to exist (the M4.6 lesson: env presence as a mode
+ * switch is one fact with two meanings, and the day AWS_BROKER_URL landed
+ * in a dev .env.local every "mock" render became a real Lambda invoke):
+ * - **Live** (mock off): the timeline's canonical JSON is on R2, the
+ *   broker materialises and invokes Remotion Lambda, and completion
  *   arrives as `render/completed`/`render/failed` through the broker hook.
- *   QC runs in media-utils on the finished master.
- * - **Mock/local** (no broker): a real `renderMedia` of the 20-second
- *   fixture on this machine (spec section 13), progress mirrored into the
- *   renders row; QC is a deterministic pass, since media-utils does not
- *   exist locally.
+ *   QC runs in media-utils on the finished master. Live with no broker
+ *   configured refuses at pre-flight (decision 61's rule) — a missing
+ *   deployment will not fix itself between retries.
+ * - **Mock/local** (MOCK_PROVIDERS=1): a real `renderMedia` of the
+ *   20-second fixture on this machine (spec section 13), progress mirrored
+ *   into the renders row; QC is a deterministic pass, since media-utils
+ *   does not exist locally.
  *
  * Stopping (section 8.1): `project/cancelled` cancels this run. The broker
  * cancel — tombstone, discard, no completion event — is issued by the stop
@@ -125,7 +131,7 @@ export const renderRunner = inngest.createFunction(
     // Mock/local path: a real render of the 20-second fixture, no AWS
     // -----------------------------------------------------------------------
 
-    if (!brokerConfigured()) {
+    if (mockProvidersEnabled()) {
       const localOutcome = await step.run('render-local', async () => {
         await updateRender(db, setup.renderId, { status: 'rendering', startedAt: new Date() })
         try {
@@ -186,6 +192,24 @@ export const renderRunner = inngest.createFunction(
     // -----------------------------------------------------------------------
     // Live path: canonical JSON to R2, broker invoke, webhook wait
     // -----------------------------------------------------------------------
+
+    // Refused before the reservation: nothing is spent, and the message
+    // names both ways out because the cheap one should not need discovering.
+    if (!brokerConfigured()) {
+      await step.run('missing-broker', async () => {
+        const message =
+          'Providers are live but no render broker is configured. Set AWS_BROKER_URL and ' +
+          'AWS_BROKER_TOKEN (deployed per infra/README.md), or run with MOCK_PROVIDERS=1 ' +
+          'for a local fixture render.'
+        await updateRender(db, setup.renderId, {
+          status: 'failed',
+          error: { message },
+          completedAt: new Date(),
+        })
+        await markStageFailed(ctx, { message })
+      })
+      return { projectId, outcome: 'failed' as const }
+    }
 
     const invoked = await step.run('invoke-broker', async () => {
       if (!storageConfigured()) {

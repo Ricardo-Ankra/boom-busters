@@ -13,7 +13,7 @@ import { voiceReviewModel } from '@/lib/voice-review'
 import { visualsReviewModel } from '@/lib/visuals-review'
 import { emptyPreviewModel, previewModel } from '@/lib/preview-review'
 import { materialiseForPreview } from '@/lib/materialise'
-import { brokerConfigured } from '@/lib/broker'
+import { mockProvidersEnabled } from '@boom-busters/providers'
 import { presignGet, storageConfigured } from '@/lib/storage'
 import { notFound } from 'next/navigation'
 import { ActivityList } from '@/components/activity-list'
@@ -295,7 +295,7 @@ export default async function ProjectPage({
           beds={preview.beds}
           currentBedKey={preview.currentBedKey}
           estimatedCostUsd={preview.estimatedCostUsd}
-          live={brokerConfigured()}
+          live={!mockProvidersEnabled()}
           atGate={atGate && project.stage === 'assembly'}
           render={previewRender}
         />

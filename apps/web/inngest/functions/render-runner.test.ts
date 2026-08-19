@@ -76,6 +76,18 @@ vi.mock('@/lib/storage', () => ({
   putObject: storage.putObject,
 }))
 
+/**
+ * The mock/live fork is MOCK_PROVIDERS, never broker-env presence: the day
+ * the broker env vars landed in a dev .env.local, every "mock" render would
+ * otherwise have invoked real Remotion Lambda (found 2026-08-19, by the E2E
+ * suite on exactly that machine).
+ */
+const providers = vi.hoisted(() => ({ mock: true }))
+vi.mock('@boom-busters/providers', async (importOriginal) => {
+  const actual = (await importOriginal()) as Record<string, unknown>
+  return { ...actual, mockProvidersEnabled: () => providers.mock }
+})
+
 const describeDb = requireTestDatabase() ? describe : describe.skip
 
 const CHAPTER = '01HQ0000000000000000000CH1'
@@ -145,6 +157,7 @@ describeDb('render-runner', () => {
     vi.clearAllMocks()
     broker.configured = false
     storage.configured = false
+    providers.mock = true
     await seed(db)
     await truncateRunMirror(db)
     await truncateLedger(db)
@@ -218,12 +231,53 @@ describeDb('render-runner', () => {
         expect((await getProject(db, FIXTURE_PROJECT_ID))?.stageStatus).toBe('failed')
       },
     )
+
+    it(
+      'stays on this machine in mock mode even when a broker is configured',
+      { timeout: 120_000 },
+      async () => {
+        broker.configured = true
+        localRender.renderFixtureLocally.mockImplementation(
+          (input: { renderId: string }): Promise<{ outputKey: string }> =>
+            Promise.resolve({ outputKey: `local://${input.renderId}.mp4` }),
+        )
+
+        const { result } = await engine.execute({
+          events: approvedEvent(),
+          steps: [{ id: 'emit-master-ready', handler: () => undefined }],
+        })
+
+        expect(result).toMatchObject({ outcome: 'master-ready' })
+        expect(broker.submitRender).not.toHaveBeenCalled()
+      },
+    )
+  })
+
+  describe('live with no broker', () => {
+    it('refuses at pre-flight and names both ways out', { timeout: 120_000 }, async () => {
+      providers.mock = false
+      broker.configured = false
+
+      const { result } = await engine.execute({ events: approvedEvent() })
+
+      expect(result).toMatchObject({ outcome: 'failed' })
+      expect(broker.submitRender).not.toHaveBeenCalled()
+      expect(localRender.renderFixtureLocally).not.toHaveBeenCalled()
+      const rows = await db.select().from(renders)
+      const failed = rows.find((row) => row.status === 'failed')
+      expect(failed?.error).toMatchObject({
+        message: expect.stringContaining('AWS_BROKER_URL'),
+      })
+      expect((await getProject(db, FIXTURE_PROJECT_ID))?.stageStatus).toBe('failed')
+      expect(await listLedger(db)).toEqual([])
+    })
   })
 
   describe('live path', () => {
     beforeEach(() => {
       broker.configured = true
       storage.configured = true
+      providers.mock = false
     })
 
     it(
