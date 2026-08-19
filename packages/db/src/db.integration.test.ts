@@ -14,7 +14,7 @@ import {
   updateSettings,
 } from './queries'
 import { seed } from './seed'
-import { cases, claims, dossiers, projects, providerCredentials, settings } from './schema'
+import { assets, cases, claims, dossiers, projects, providerCredentials, settings } from './schema'
 import { requireTestDatabase } from './test-database'
 
 const DATABASE_URL = requireTestDatabase()
@@ -37,8 +37,12 @@ describeDb('database integration', () => {
     connection = createDb(DATABASE_URL as string, { max: 2 })
     db = connection.db
     // Start from a known state; the migration must already be applied.
+    // `assets` is here because the music-bed test asserts over it: an E2E run
+    // uploads beds through the Settings UI and leaves them (found 2026-08-19,
+    // when this suite first ran after one), so without the truncate this
+    // suite's result depends on which suite ran before it.
     await db.execute(
-      sql`TRUNCATE TABLE ${settings}, ${providerCredentials}, ${cases}, ${projects}, ${dossiers}, ${claims} RESTART IDENTITY CASCADE`,
+      sql`TRUNCATE TABLE ${settings}, ${providerCredentials}, ${cases}, ${projects}, ${dossiers}, ${claims}, ${assets} RESTART IDENTITY CASCADE`,
     )
   })
 
