@@ -1,3 +1,4 @@
+import { useMemo } from 'react'
 import { AbsoluteFill, spring, useCurrentFrame, useVideoConfig } from 'remotion'
 import type { BrandKitTokens, SlotPayload } from '@boom-busters/schemas'
 import { fitBounds, graticule, interpolateBounds, landPaths, projector, scaleBounds } from '../geo'
@@ -33,15 +34,29 @@ export function AnimatedMap({
 
   // Camera: settle from 1.35× wider onto the fitted window in the first
   // 2.5 s (or 40% of a short slot), eased both ways.
-  const fitted = fitBounds(payload.locations)
+  const fitted = useMemo(() => fitBounds(payload.locations), [payload.locations])
+  const widest = useMemo(() => scaleBounds(fitted, 1.35), [fitted])
   const settleMs = Math.min(2500, slotMs * 0.4)
-  const camera = interpolateBounds(
-    scaleBounds(fitted, 1.35),
-    fitted,
-    easeInOut(Math.min(1, tMs / settleMs)),
-  )
+  const camera = interpolateBounds(widest, fitted, easeInOut(Math.min(1, tMs / settleMs)))
   const { x, y } = projector(camera, width, height)
   const grid = graticule(camera)
+
+  /**
+   * The land is projected ONCE, for the widest camera, and the settle is an
+   * affine transform on the group — the projection is linear in lon/lat, so
+   * the two are pixel-identical. Rebuilding every world path string per
+   * frame was fine in the offline render and dropped the @remotion/player
+   * below real time in a browser (found on the first production preview,
+   * 2026-08-19). Strokes keep screen width via vector-effect.
+   */
+  const landD = useMemo(() => landPaths(widest, width, height), [widest, width, height])
+  const spanLon = camera.east - camera.west
+  const spanLat = camera.north - camera.south
+  const landTransform =
+    `translate(${(((widest.west - camera.west) / spanLon) * width).toFixed(4)} ` +
+    `${(((camera.north - widest.north) / spanLat) * height).toFixed(4)}) ` +
+    `scale(${((widest.east - widest.west) / spanLon).toFixed(6)} ` +
+    `${((widest.north - widest.south) / spanLat).toFixed(6)})`
 
   // The route draws on once the camera has mostly settled.
   const routeStartMs = settleMs * 0.8
@@ -56,17 +71,20 @@ export function AnimatedMap({
   return (
     <AbsoluteFill style={{ backgroundColor: colors.background }}>
       <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`}>
-        {landPaths(camera, width, height).map((d, index) => (
-          <path
-            key={index}
-            d={d}
-            fill={colors.surface}
-            fillRule="evenodd"
-            stroke={colors.textSecondary}
-            strokeOpacity={0.35}
-            strokeWidth={1.5 * scale}
-          />
-        ))}
+        <g transform={landTransform}>
+          {landD.map((d, index) => (
+            <path
+              key={index}
+              d={d}
+              fill={colors.surface}
+              fillRule="evenodd"
+              stroke={colors.textSecondary}
+              strokeOpacity={0.35}
+              strokeWidth={1.5 * scale}
+              vectorEffect="non-scaling-stroke"
+            />
+          ))}
+        </g>
 
         {grid.lons.map((lon) => (
           <line

@@ -80,8 +80,16 @@ export function DocumentaryMaster({ timeline }: { timeline: Timeline }) {
           from={msToFrames(segment.startMs, fps)}
           durationInFrames={msToFrames(segment.durationMs, fps)}
           name={`narration ${index}`}
+          // Mounted 4 s early, paused: without this, each paragraph's WAV
+          // starts downloading at the frame it must already be playing —
+          // an audible glitch at every boundary in the @remotion/player
+          // (the offline render never noticed; found 2026-08-19).
+          premountFor={fps * 4}
         >
-          <Audio src={materialisedUrl(segment.url, `narration segment ${index}`)} />
+          <Audio
+            src={materialisedUrl(segment.url, `narration segment ${index}`)}
+            pauseWhenBuffering
+          />
         </Sequence>
       ))}
 

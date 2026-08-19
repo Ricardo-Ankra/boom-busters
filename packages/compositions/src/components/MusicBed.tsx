@@ -15,6 +15,7 @@ export function MusicBed({ music }: { music: MusicTrack }) {
   return (
     <Audio
       loop
+      pauseWhenBuffering
       src={src}
       volume={(frame) =>
         dbToGain(

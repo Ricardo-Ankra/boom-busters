@@ -1,3 +1,4 @@
+import { useMemo } from 'react'
 import { AbsoluteFill, useCurrentFrame, useVideoConfig } from 'remotion'
 import type { BrandKitTokens, SlotPayload } from '@boom-busters/schemas'
 import {
@@ -42,17 +43,22 @@ export function ChartReveal({
 
   const titleZone = Math.round(170 * scale)
   const margin = Math.round(96 * scale)
-  const frameBox = {
-    width: width - margin * 2,
-    height: height - titleZone - margin * 2,
-    pad: {
-      top: Math.round(30 * scale),
-      right: Math.round(40 * scale),
-      bottom: Math.round(56 * scale),
-      left: Math.round(110 * scale),
-    },
-  }
-  const layout = chartLayout(payload.series, payload.chartKind, frameBox)
+  // Memoised: the layout depends on the payload and the frame size, never
+  // the current frame — recomputing it 30 times a second was free offline
+  // and jank in the @remotion/player.
+  const { frameBox, layout } = useMemo(() => {
+    const box = {
+      width: width - margin * 2,
+      height: height - titleZone - margin * 2,
+      pad: {
+        top: Math.round(30 * scale),
+        right: Math.round(40 * scale),
+        bottom: Math.round(56 * scale),
+        left: Math.round(110 * scale),
+      },
+    }
+    return { frameBox: box, layout: chartLayout(payload.series, payload.chartKind, box) }
+  }, [payload.series, payload.chartKind, width, height, scale, margin, titleZone])
   const seriesColour = (index: number) =>
     colors.chartSeries[index % colors.chartSeries.length] ?? colors.accent
 

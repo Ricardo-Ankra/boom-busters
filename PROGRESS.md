@@ -2027,6 +2027,35 @@ found by driving the deployed thing and reading its logs.
        variables in Vercel (production calls the broker from there), the
        SNS subscription confirmation email, and the real staging render.
 
+### M6.10 — the first production preview, and what it taught (2026-08-19)
+
+Driving the stranded Carillion project through assembly on the deployed
+app found two faults the suites could not see, both now guarded:
+
+149. **The proxy ate every Lambda callback.** `/api/hooks/broker` was not
+     in PUBLIC_PATHS, so completion POSTs from the broker and media-utils
+     were 307'd to /signin; fetch followed, took the sign-in page's 200 as
+     delivery, and the waiting run timed out 30 minutes later — twice,
+     while Whisper succeeded both times in 12 seconds. The route's unit
+     tests call the handler directly, so the proxy never sat between
+     them; `broker-hook.spec.ts` now POSTs through the real proxy
+     (unsigned must get the route's own 401, never a redirect).
+
+150. **The preview player needs browser-frame-rate discipline the render
+     never does.** Offline, a frame may take as long as it likes; the
+     @remotion/player has 33 ms. Three fixes, snapshot-verified: the map
+     projects the world geometry once and plays the camera settle as an
+     affine group transform (the projection is linear, so pixels are
+     identical; strokes keep width via vector-effect); the chart layout
+     is memoised off the frame path; and narration sequences premount
+     4 s early with `pauseWhenBuffering`, because an <Audio> mounting at
+     the frame it must already be playing is an audible glitch at every
+     paragraph boundary.
+
+     Also: both Lambdas moved to Node 24 (AWS retired nodejs20.x, Health
+     notice 2026-08-19); the whisper binary re-verified in the Node 24
+     runtime image before the redeploy.
+
 ### Verified (M6.8, 2026-08-18)
 
 - **`pnpm typecheck`** and **`pnpm lint`** clean, zero warnings.
