@@ -238,6 +238,35 @@ describe('projectControl', () => {
     }
   })
 
+  /**
+   * The exact shape production project 01KZYGHGF4264Q34ZT6C96B7YT was left in
+   * (2026-08-17): its visuals gate was approved on a deployment whose
+   * assembly-runner did not exist yet, so the handover stamped `assembly`
+   * `running` and nothing ever picked it up. Once the runner exists, this
+   * state must offer the way out, not the pre-M6.7 "arrives with its runner".
+   */
+  it('rescues a project stranded at assembly by a pre-M6 gate approval', () => {
+    expect(
+      projectControl(project('assembly', 'running', QUEUED_STUCK_AFTER_MS + 1_000), false, {
+        hasDossier: true,
+        hasScript: true,
+        now: NOW,
+      }),
+    ).toMatchObject({ kind: 'restart', label: 'Run the assembly stage again' })
+  })
+
+  it('blocks an assembly restart with no script, and says that, not "no runner"', () => {
+    const control = projectControl(project('assembly', 'failed'), false, {
+      hasDossier: true,
+      hasScript: false,
+      now: NOW,
+    })
+    expect(control.kind).toBe('blocked')
+    expect(control).toMatchObject({
+      message: expect.stringContaining('no script to assemble'),
+    })
+  })
+
   it('blocks a visuals restart when there is no script to plan against', () => {
     const control = projectControl(project('visuals', 'failed'), false, {
       hasDossier: true,

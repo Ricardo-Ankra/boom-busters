@@ -141,7 +141,9 @@ export function projectControl(
           ? `${why} There is no script to narrate — run the script stage first.`
           : project.stage === 'visuals' && !inputs.hasScript
             ? `${why} There is no script to plan visuals for — run the script stage first.`
-            : `${why} Restarting the ${project.stage} stage arrives with its runner.`,
+            : project.stage === 'assembly' && !inputs.hasScript
+              ? `${why} There is no script to assemble — run the script stage first.`
+              : `${why} Restarting the ${project.stage} stage arrives with its runner.`,
   })
 
   switch (project.stageStatus) {
