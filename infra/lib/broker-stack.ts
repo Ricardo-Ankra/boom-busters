@@ -62,7 +62,7 @@ export class BrokerStack extends Stack {
     this.handler = new nodejs.NodejsFunction(this, 'Handler', {
       functionName: 'boom-busters-broker',
       entry: path.join(here, '..', 'lambdas', 'broker', 'handler.ts'),
-      runtime: lambda.Runtime.NODEJS_20_X,
+      runtime: lambda.Runtime.NODEJS_24_X,
       memorySize: 1024,
       timeout: Duration.minutes(2),
       logGroup,

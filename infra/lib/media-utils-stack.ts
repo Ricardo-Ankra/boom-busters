@@ -44,7 +44,7 @@ export class MediaUtilsStack extends Stack {
 
     const ffmpegLayer = new lambda.LayerVersion(this, 'FfmpegLayer', {
       code: lambda.Code.fromAsset(path.join(here, '..', 'layers', 'ffmpeg')),
-      compatibleRuntimes: [lambda.Runtime.NODEJS_20_X],
+      compatibleRuntimes: [lambda.Runtime.NODEJS_24_X],
       description: 'Static ffmpeg at /opt/bin/ffmpeg (see layers/ffmpeg/README.md)',
     })
 
@@ -56,7 +56,7 @@ export class MediaUtilsStack extends Stack {
     this.handler = new nodejs.NodejsFunction(this, 'Handler', {
       functionName: 'boom-busters-media-utils',
       entry: path.join(here, '..', 'lambdas', 'media-utils', 'handler.ts'),
-      runtime: lambda.Runtime.NODEJS_20_X,
+      runtime: lambda.Runtime.NODEJS_24_X,
       memorySize: config.mediaLambdaMemoryMb,
       ephemeralStorageSize: Size.gibibytes(10),
       timeout: Duration.minutes(15),
