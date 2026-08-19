@@ -15,8 +15,15 @@ import { auth } from './auth'
  * not a browser: it authenticates with a signing key that `serve()` verifies
  * on every request (spec section 12). Redirecting it to /signin would simply
  * break the orchestrator.
+ *
+ * `/api/hooks/broker` is public for the same reason: its callers are the
+ * render broker and media-utils Lambdas, authenticated by the HMAC over the
+ * raw body. Redirected to /signin, their POSTs followed the redirect, took
+ * the sign-in page's 200 as delivery, and every waiting run timed out —
+ * which is how M6's first production transcription "failed" twice while
+ * Whisper succeeded both times (2026-08-19).
  */
-const PUBLIC_PATHS = ['/signin', '/api/auth', '/api/inngest']
+const PUBLIC_PATHS = ['/signin', '/api/auth', '/api/inngest', '/api/hooks/broker']
 
 export default auth((request) => {
   const { pathname } = request.nextUrl
