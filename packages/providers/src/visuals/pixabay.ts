@@ -1,7 +1,7 @@
 import { z } from 'zod'
 import type { SlotCandidate } from '@boom-busters/schemas'
 import { mapNetworkError, throwForResponse } from '../llm/http'
-import type { StockCallOptions, StockProvider, StockQuery } from './types'
+import type { StockCallOptions, StockProvider, StockQuery, StockRefetch } from './types'
 
 /**
  * Pixabay (https://pixabay.com/api/docs/): images and videos, keyed but free,
@@ -55,6 +55,26 @@ async function call(path: string, options: StockCallOptions): Promise<unknown> {
   } catch (cause) {
     throw mapNetworkError('pixabay', cause)
   }
+  if (!response.ok) await throwForResponse('pixabay', response)
+  return response.json()
+}
+
+/**
+ * Like `call`, but for id lookups, where Pixabay answers an unknown id with
+ * a 400 (`[ERROR 400] "id" is invalid`) rather than a 404 — so on this path
+ * a 400 means "the asset is gone", not "the request was malformed".
+ */
+async function callOrGone(path: string, options: StockCallOptions): Promise<unknown | null> {
+  const fetchImpl = options.fetchImpl ?? fetch
+  let response: Response
+  try {
+    response = await fetchImpl(`${PIXABAY}${path}`, {
+      ...(options.signal ? { signal: options.signal } : {}),
+    })
+  } catch (cause) {
+    throw mapNetworkError('pixabay', cause)
+  }
+  if (response.status === 400 || response.status === 404) return null
   if (!response.ok) await throwForResponse('pixabay', response)
   return response.json()
 }
@@ -128,6 +148,38 @@ export const pixabayStock: StockProvider = {
       })
 
     return [...videos, ...images]
+  },
+
+  async refetch(input, options): Promise<StockRefetch | null> {
+    const apiKey = options.apiKey
+    if (!apiKey) throw new Error('pixabay requires an API key')
+    const auth = `key=${encodeURIComponent(apiKey)}`
+    const id = encodeURIComponent(input.id)
+
+    if (input.kind === 'image') {
+      const raw = await callOrGone(`/?${auth}&id=${id}`, options)
+      if (raw === null) return null
+      const hit = ImageResponseSchema.parse(raw).hits[0]
+      if (!hit) return null
+      return { sourceUrl: hit.largeImageURL, width: hit.imageWidth, height: hit.imageHeight }
+    }
+
+    const raw = await callOrGone(`/videos/?${auth}&id=${id}`, options)
+    if (raw === null) return null
+    const hit = VideoResponseSchema.parse(raw).hits[0]
+    if (!hit) return null
+    const variants = [hit.videos.large, hit.videos.medium, hit.videos.small]
+      .filter((variant): variant is z.infer<typeof VideoVariantSchema> => Boolean(variant?.url))
+      .filter((variant) => variant.width <= 1920)
+      .sort((a, b) => b.width - a.width)
+    const file = variants[0]
+    if (!file) return null
+    return {
+      sourceUrl: file.url,
+      width: file.width,
+      height: file.height,
+      durationMs: Math.round(hit.duration * 1000),
+    }
   },
 
   async verifyKey(apiKey, options = {}) {

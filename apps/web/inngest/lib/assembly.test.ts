@@ -214,6 +214,18 @@ describe('slotPlan', () => {
     expect(media?.externalUrl).toBeUndefined()
   })
 
+  it('skips a slot ingestion could not secure bytes for, carrying the reason', () => {
+    const plan = slotPlan({
+      slots: [slotRow({ id: 'dead' }), slotRow({ id: 'alive' })],
+      assetsById: new Map(),
+      unusable: { dead: 'pixabay no longer offers this asset (id 42)' },
+    })
+    expect(plan.slots).toHaveLength(1)
+    expect(plan.skipped).toEqual([
+      { slotId: 'dead', reason: 'pixabay no longer offers this asset (id 42)' },
+    ])
+  })
+
   it('skips placeholders and hero slots, with reasons', () => {
     const plan = slotPlan({
       slots: [slotRow({ id: 'p', status: 'placeholder' }), slotRow({ id: 'h', type: 'hero' })],

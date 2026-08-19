@@ -187,11 +187,22 @@ function chosenCandidate(row: AssemblySlotRow): ChosenCandidate | null {
 export function slotPlan(input: {
   slots: AssemblySlotRow[]
   assetsById: Map<string, { r2Key: string }>
+  /**
+   * Slots ingestion could not secure bytes for, with the reason. Skipped
+   * rather than hotlinked: a URL that just refused a download is a URL the
+   * render cannot trust either.
+   */
+  unusable?: Record<string, string>
 }): SlotPlan {
   const slots: CompileSlot[] = []
   const skipped: SlotPlan['skipped'] = []
 
   for (const row of input.slots) {
+    const unusableReason = input.unusable?.[row.id]
+    if (unusableReason !== undefined) {
+      skipped.push({ slotId: row.id, reason: unusableReason })
+      continue
+    }
     if (row.type === 'hero') {
       skipped.push({ slotId: row.id, reason: 'hero slots are feature-flagged off' })
       continue
@@ -252,6 +263,10 @@ export function slotPlan(input: {
 
     const asset = row.chosenAssetId ? input.assetsById.get(row.chosenAssetId) : undefined
     const r2Key = asset?.r2Key ?? candidate.r2Key
+    // The URL fallback is a last resort for runs ingestion could not touch
+    // (live mode without R2). Ingestion normally leaves every media slot
+    // with an r2Key — provider download URLs expire (Pixabay's within a
+    // day), which is why hotlinking them broke the first live preview.
     const externalUrl =
       r2Key === undefined && /^https?:\/\//.test(candidate.sourceUrl)
         ? candidate.sourceUrl

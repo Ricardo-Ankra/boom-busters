@@ -2056,6 +2056,38 @@ app found two faults the suites could not see, both now guarded:
      notice 2026-08-19); the whisper binary re-verified in the Node 24
      runtime image before the redeploy.
 
+151. **Chosen stock is ingested into R2 at assembly time; the timeline
+     never hotlinks a provider URL again.** The candidate contract always
+     said stock "is pulled into storage by the render side in M6"
+     (`SlotCandidateSchema`), but M6's assembly instead wrote
+     `candidate.sourceUrl` into the timeline as an `externalUrl`. Pixabay
+     download URLs are session-signed and die within a day: in the first
+     live preview all 16 Pixabay shots were HTTP 400 broken images, and
+     the master render would have failed on the same URLs. Now
+     `apps/web/lib/stock-ingest.ts` downloads each resolved stock or
+     archival slot's chosen candidate (one Inngest step per slot),
+     stores it content-hash keyed under `boom-busters/stock/`, records
+     an asset row, and writes the key back into the candidate jsonb.
+     When the stored URL has already expired, the provider's new
+     `refetch` (Pexels and Pixabay, by permanent id — a Pixabay id
+     lookup answers 400 for "gone", not 404) mints a fresh one. A slot
+     ingestion cannot secure bytes for is SKIPPED with the reason
+     (`slotPlan`'s `unusable` map), never hotlinked: a URL that just
+     refused a download is a URL the render cannot trust either. Bytes
+     do stream through the app layer here — the same documented trade
+     as fal stills and narration; a broker `ingest` job can take over
+     the transport later. Re-running the assembly stage repairs a
+     timeline compiled before this fix.
+
+152. **The preview can be fully buffered on demand.** "Buffer full
+     preview (N files)" on the preview screen pulls every media URL the
+     materialised timeline references into blob URLs via Remotion's
+     `prefetch` (four at a time, freed on unmount), so playback then
+     never touches the network — no mid-play buffering and no presigned
+     URL expiring mid-session (they live one hour). A button rather
+     than automatic, per the button-first rule and because it moves
+     hundreds of megabytes the human should choose to download.
+
 ### Verified (M6.8, 2026-08-18)
 
 - **`pnpm typecheck`** and **`pnpm lint`** clean, zero warnings.

@@ -1,7 +1,7 @@
 import { z } from 'zod'
 import type { SlotCandidate } from '@boom-busters/schemas'
 import { mapNetworkError, throwForResponse } from '../llm/http'
-import type { StockCallOptions, StockProvider, StockQuery } from './types'
+import type { StockCallOptions, StockProvider, StockQuery, StockRefetch } from './types'
 
 /**
  * Pexels (https://www.pexels.com/api/): photos and videos, one keyed call
@@ -70,6 +70,27 @@ async function call(path: string, apiKey: string, options: StockCallOptions): Pr
   return response.json()
 }
 
+/** Like `call`, but a 404 is an answer (the asset is gone), not an error. */
+async function callOrGone(
+  path: string,
+  apiKey: string,
+  options: StockCallOptions,
+): Promise<unknown | null> {
+  const fetchImpl = options.fetchImpl ?? fetch
+  let response: Response
+  try {
+    response = await fetchImpl(`${PEXELS}${path}`, {
+      headers: { Authorization: apiKey },
+      ...(options.signal ? { signal: options.signal } : {}),
+    })
+  } catch (cause) {
+    throw mapNetworkError('pexels', cause)
+  }
+  if (response.status === 404) return null
+  if (!response.ok) await throwForResponse('pexels', response)
+  return response.json()
+}
+
 export const pexelsStock: StockProvider = {
   id: 'pexels',
   requiresKey: true,
@@ -127,6 +148,30 @@ export const pexelsStock: StockProvider = {
     })
 
     return [...videos, ...photos]
+  },
+
+  async refetch(input, options): Promise<StockRefetch | null> {
+    const apiKey = options.apiKey
+    if (!apiKey) throw new Error('pexels requires an API key')
+
+    if (input.kind === 'image') {
+      const raw = await callOrGone(`/v1/photos/${encodeURIComponent(input.id)}`, apiKey, options)
+      if (raw === null) return null
+      const photo = PhotoSchema.parse(raw)
+      return { sourceUrl: photo.src.large2x, width: photo.width, height: photo.height }
+    }
+
+    const raw = await callOrGone(`/videos/videos/${encodeURIComponent(input.id)}`, apiKey, options)
+    if (raw === null) return null
+    const video = VideoSchema.parse(raw)
+    const file = bestVideoFile(video.video_files)
+    if (!file) return null
+    return {
+      sourceUrl: file.link,
+      width: file.width ?? video.width,
+      height: file.height ?? video.height,
+      durationMs: Math.round(video.duration * 1000),
+    }
   },
 
   async verifyKey(apiKey, options = {}) {

@@ -108,6 +108,40 @@ describe('pexelsStock', () => {
       pexelsStock.search(QUERY, { apiKey: 'bad', fetchImpl: fetchFailing(401) }),
     ).rejects.toBeInstanceOf(ValidationError)
   })
+
+  it('refetches a photo and a video by id, and answers null when gone', async () => {
+    const photo = await pexelsStock.refetch!(
+      { id: '1181605', kind: 'image' },
+      {
+        apiKey: 'key',
+        fetchImpl: fetchReturning((url) => {
+          expect(url).toContain('/v1/photos/1181605')
+          return PEXELS_PHOTOS.photos[0]!
+        }),
+      },
+    )
+    expect(photo?.sourceUrl).toBe('https://images.pexels.com/photos/1181605/office.jpeg?w=1920')
+
+    const video = await pexelsStock.refetch!(
+      { id: '3129957', kind: 'video' },
+      {
+        apiKey: 'key',
+        fetchImpl: fetchReturning((url) => {
+          expect(url).toContain('/videos/videos/3129957')
+          return PEXELS_VIDEOS.videos[0]!
+        }),
+      },
+    )
+    expect(video?.sourceUrl).toBe('https://player.pexels.com/hd.mp4')
+    expect(video?.durationMs).toBe(12000)
+
+    await expect(
+      pexelsStock.refetch!(
+        { id: '404404', kind: 'image' },
+        { apiKey: 'key', fetchImpl: fetchFailing(404) },
+      ),
+    ).resolves.toBeNull()
+  })
 })
 
 // ---------------------------------------------------------------------------
@@ -187,6 +221,35 @@ describe('pixabayStock', () => {
       },
     )
     expect(urls.every((url) => /per_page=3/.test(url))).toBe(true)
+  })
+
+  it('refetches by id — the fresh signed URL Pixabay mints for a permanent id', async () => {
+    const image = await pixabayStock.refetch!(
+      { id: '2557396', kind: 'image' },
+      {
+        apiKey: 'key',
+        fetchImpl: fetchReturning((url) => {
+          expect(url).toContain('id=2557396')
+          return PIXABAY_IMAGES
+        }),
+      },
+    )
+    expect(image?.sourceUrl).toBe('https://pixabay.com/get/office_1280.jpg')
+
+    const video = await pixabayStock.refetch!(
+      { id: '31377', kind: 'video' },
+      { apiKey: 'key', fetchImpl: fetchReturning(() => PIXABAY_VIDEOS) },
+    )
+    expect(video?.sourceUrl).toBe('https://cdn.pixabay.com/video/large.mp4')
+  })
+
+  it('treats an id-lookup 400 as "gone" — Pixabay has no 404 for unknown ids', async () => {
+    await expect(
+      pixabayStock.refetch!(
+        { id: '999999999', kind: 'image' },
+        { apiKey: 'key', fetchImpl: fetchFailing(400, '[ERROR 400] "id" is invalid.') },
+      ),
+    ).resolves.toBeNull()
   })
 })
 

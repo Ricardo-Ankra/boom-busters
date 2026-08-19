@@ -28,6 +28,14 @@ export interface StockCallOptions {
 
 export type StockProviderId = 'pexels' | 'pixabay' | 'wikimedia'
 
+/** A fresh download for a known asset — what `StockProvider.refetch` returns. */
+export interface StockRefetch {
+  sourceUrl: string
+  width?: number
+  height?: number
+  durationMs?: number
+}
+
 /**
  * One search source. `search` returns plain candidates — no scores; scoring
  * is a separate pass owned by the runner, so a provider swap never changes
@@ -38,6 +46,18 @@ export interface StockProvider {
   /** Wikimedia Commons is keyless; the other two are keyed but free. */
   readonly requiresKey: boolean
   search(query: StockQuery, options: StockCallOptions): Promise<SlotCandidate[]>
+  /**
+   * A fresh `sourceUrl` for an asset this provider already returned, looked
+   * up by the candidate's provider-scoped id. Exists because a download URL
+   * can expire while the id stays permanent — Pixabay's image URLs are
+   * session-signed and die within a day — and ingestion needs a live URL to
+   * pull bytes from. Null means the asset is gone from the provider. Absent
+   * on providers whose URLs are stable (Wikimedia).
+   */
+  refetch?(
+    input: { id: string; kind: 'image' | 'video' },
+    options: StockCallOptions,
+  ): Promise<StockRefetch | null>
   /** The cheapest call that proves a key works, for Settings → Connections. */
   verifyKey(apiKey: string, options?: Omit<StockCallOptions, 'apiKey'>): Promise<void>
 }

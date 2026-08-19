@@ -22,6 +22,14 @@ vi.mock('@remotion/player', () => ({
 }))
 vi.mock('@boom-busters/compositions', () => ({ DocumentaryMaster: () => null }))
 
+const prefetched = vi.hoisted(() => [] as string[])
+vi.mock('remotion', () => ({
+  prefetch: (url: string) => {
+    prefetched.push(url)
+    return { free: vi.fn(), waitUntilDone: () => Promise.resolve(url) }
+  },
+}))
+
 const approveGate = vi.fn()
 const stopProject = vi.fn()
 vi.mock('../actions', () => ({
@@ -42,6 +50,7 @@ vi.mock('@/components/ui/toast', () => ({ useToast: () => ({ toast }) }))
 
 beforeEach(() => {
   vi.clearAllMocks()
+  prefetched.length = 0
   approveGate.mockResolvedValue({ ok: true })
   stopProject.mockResolvedValue({ ok: true })
   chooseMusicBed.mockResolvedValue({ ok: true })
@@ -160,6 +169,27 @@ describe('PreviewScreen', () => {
     render(<PreviewScreen {...props()} />)
     await user.click(screen.getByRole('button', { name: /Hide captions/ }))
     expect(screen.getByRole('button', { name: /Show captions/ })).toBeInTheDocument()
+  })
+
+  it('buffers every media file into memory through the labelled button', async () => {
+    const user = userEvent.setup()
+    render(<PreviewScreen {...props()} />)
+
+    // Two narration WAVs and the music bed; the chart slot has no file.
+    const button = screen.getByRole('button', { name: /Buffer full preview \(3 files\)/ })
+    await user.click(button)
+
+    expect(prefetched).toEqual(
+      expect.arrayContaining([
+        'http://localhost:3000/api/voice-takes/t1/audio',
+        'http://localhost:3000/api/voice-takes/t2/audio',
+        'https://r2.example.com/bed.mp3',
+      ]),
+    )
+    expect(prefetched).toHaveLength(3)
+    expect(
+      await screen.findByRole('button', { name: /Fully buffered — plays from memory/ }),
+    ).toBeDisabled()
   })
 
   it('draws the gain line for a timeline with music, and says so without one', () => {

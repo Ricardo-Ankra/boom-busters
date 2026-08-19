@@ -26,6 +26,7 @@ import { compileTimeline } from '@boom-busters/timeline'
 import { NonRetriableError } from 'inngest'
 import { db } from '@/lib/db'
 import { brokerCallbackUrl, submitMediaJob } from '@/lib/broker'
+import { ingestSlotStock, needsStockIngest } from '@/lib/stock-ingest'
 import { storageConfigured, putObject } from '@/lib/storage'
 import { inngest } from '../client'
 import { events } from '../events'
@@ -133,10 +134,44 @@ export const assemblyRunner = inngest.createFunction(
     }
 
     // -----------------------------------------------------------------------
-    // Alignment: stored timings are free; whisper covers the rest
+    // Stock ingestion: chosen candidates become our bytes, never hotlinks
     // -----------------------------------------------------------------------
 
     const mocked = mockProvidersEnabled()
+
+    // Provider download URLs expire (Pixabay's within a day), so the
+    // timeline may only ever reference bytes in R2 (spec section 8.2). One
+    // step per slot: each download is retried and checkpointed on its own,
+    // and a failure skips that slot instead of hotlinking a dying URL.
+    const ingested: Record<string, { r2Key: string; assetId: string }> = {}
+    const unusable: Record<string, string> = {}
+    if (!mocked && storageConfigured()) {
+      for (const slot of setup.slots.filter(needsStockIngest)) {
+        const outcome = await step.run(`ingest-stock-${slot.id}`, () => ingestSlotStock(slot))
+        if (outcome.ok) ingested[slot.id] = { r2Key: outcome.r2Key, assetId: outcome.assetId }
+        else unusable[slot.id] = outcome.reason
+      }
+    }
+
+    // The board rows were loaded before ingestion wrote keys back; patch
+    // the in-memory copies so the compiler sees what the DB now holds.
+    const slotsWithBytes = setup.slots.map((slot) => {
+      const hit = ingested[slot.id]
+      if (!hit) return slot
+      return {
+        ...slot,
+        chosenAssetId: hit.assetId,
+        candidates: slot.candidates.map((candidate) =>
+          candidate['chosen'] === true
+            ? { ...candidate, r2Key: hit.r2Key, assetId: hit.assetId }
+            : candidate,
+        ),
+      }
+    })
+
+    // -----------------------------------------------------------------------
+    // Alignment: stored timings are free; whisper covers the rest
+    // -----------------------------------------------------------------------
     const aligned: ((typeof setup.plan.paragraphs)[number] & { words: WordTiming[] })[] = []
 
     for (const paragraph of setup.plan.paragraphs) {
@@ -207,7 +242,11 @@ export const assemblyRunner = inngest.createFunction(
 
     const compiled = await step.run('compile-timeline', async () => {
       const captions = assembleCaptions(aligned)
-      const plan = slotPlan({ slots: setup.slots, assetsById: new Map(setup.assets) })
+      const plan = slotPlan({
+        slots: slotsWithBytes,
+        assetsById: new Map(setup.assets),
+        unusable,
+      })
 
       try {
         const timeline = compileTimeline({

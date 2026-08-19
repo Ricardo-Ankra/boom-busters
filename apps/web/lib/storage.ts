@@ -164,6 +164,15 @@ export function musicKey(input: { contentHash: string; ext: string }): string {
   return `${R2_PREFIX}/music/${input.contentHash}.${input.ext}`
 }
 
+/**
+ * Where ingested stock/archival bytes live. Content-hash keyed and
+ * channel-wide like music: the same Pexels clip chosen in two projects is
+ * one object, owned by neither.
+ */
+export function stockKey(input: { contentHash: string; ext: string }): string {
+  return `${R2_PREFIX}/stock/${input.contentHash}.${input.ext}`
+}
+
 export async function putObject(
   key: string,
   body: Buffer,

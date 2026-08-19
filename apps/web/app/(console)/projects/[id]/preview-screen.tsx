@@ -2,10 +2,11 @@
 
 import { Player } from '@remotion/player'
 import type { PlayerRef } from '@remotion/player'
+import { prefetch } from 'remotion'
 import { DocumentaryMaster } from '@boom-busters/compositions'
 import { gainAt } from '@boom-busters/schemas'
 import type { QcReport, Timeline } from '@boom-busters/schemas'
-import { Captions, Film, Music, Square } from 'lucide-react'
+import { Captions, Download, Film, Music, Square } from 'lucide-react'
 import * as React from 'react'
 import { ConfirmButton } from '@/components/confirm-button'
 import { Button } from '@/components/ui/button'
@@ -69,6 +70,22 @@ function timelineDuration(timeline: Timeline): number {
     for (const item of list) end = Math.max(end, item.startMs + item.durationMs)
   }
   return end
+}
+
+/** Every URL the player will fetch, deduped — the buffer button's manifest. */
+function mediaUrls(timeline: Timeline): string[] {
+  const urls = new Set<string>()
+  for (const slot of timeline.slots) {
+    if (slot.payload.kind === 'image' || slot.payload.kind === 'video') {
+      const url = slot.payload.src.url ?? slot.payload.src.externalUrl
+      if (url !== undefined) urls.add(url)
+    }
+  }
+  for (const segment of timeline.narration) {
+    if (segment.url !== undefined) urls.add(segment.url)
+  }
+  if (timeline.music?.url !== undefined) urls.add(timeline.music.url)
+  return [...urls]
 }
 
 export function PreviewScreen({
@@ -161,6 +178,7 @@ export function PreviewScreen({
             <Captions aria-hidden />
             {captionsOn ? 'Hide captions' : 'Show captions'}
           </Button>
+          <BufferControl timeline={timeline} />
           {droppedTotal > 0 ? (
             <p className="text-[13px] text-[var(--color-warning)]">
               {droppedTotal} item{droppedTotal === 1 ? ' is' : 's are'} not previewable here
@@ -209,6 +227,78 @@ export function PreviewScreen({
         />
       </div>
     </div>
+  )
+}
+
+/**
+ * "Buffer full preview": every media file the timeline references, fetched
+ * into blob URLs up front via Remotion's `prefetch`, so playback never
+ * touches the network — no mid-play buffering, no presigned URL expiring
+ * an hour into a long moderation session. A button rather than automatic
+ * (spec section 11.1, button-first) because it moves real megabytes: a
+ * 14-minute cut's narration and clips are a few hundred MB, a download the
+ * human should choose, not pay on every page load.
+ */
+function BufferControl({ timeline }: { timeline: Timeline }) {
+  const urls = React.useMemo(() => mediaUrls(timeline), [timeline])
+  const [phase, setPhase] = React.useState<'idle' | 'busy' | 'done'>('idle')
+  const [progress, setProgress] = React.useState({ done: 0, failed: 0 })
+  const handles = React.useRef<{ free: () => void }[]>([])
+
+  // Blob URLs hold their bytes until freed; leaving the screen releases them.
+  React.useEffect(
+    () => () => {
+      for (const handle of handles.current) handle.free()
+      handles.current = []
+    },
+    [],
+  )
+
+  if (urls.length === 0) return null
+
+  const buffer = async () => {
+    setPhase('busy')
+    setProgress({ done: 0, failed: 0 })
+    const queue = [...urls]
+    let done = 0
+    let failed = 0
+    // Four at a time: enough to fill the pipe without stampeding the CDN.
+    const worker = async () => {
+      for (let url = queue.shift(); url !== undefined; url = queue.shift()) {
+        try {
+          const handle = prefetch(url, { method: 'blob-url' })
+          handles.current.push(handle)
+          await handle.waitUntilDone()
+          done += 1
+        } catch {
+          failed += 1
+        }
+        setProgress({ done, failed })
+      }
+    }
+    await Promise.all(Array.from({ length: Math.min(4, urls.length) }, worker))
+    setPhase('done')
+  }
+
+  const label =
+    phase === 'busy'
+      ? `Buffering ${progress.done + progress.failed} of ${urls.length}…`
+      : phase === 'done' && progress.failed === 0
+        ? 'Fully buffered — plays from memory'
+        : phase === 'done'
+          ? `Buffered — ${progress.failed} file${progress.failed === 1 ? '' : 's'} failed, retry`
+          : `Buffer full preview (${urls.length} files)`
+
+  return (
+    <Button
+      variant="outline"
+      busy={phase === 'busy'}
+      disabled={phase === 'done' && progress.failed === 0}
+      onClick={() => void buffer()}
+    >
+      <Download aria-hidden />
+      {label}
+    </Button>
   )
 }
 
