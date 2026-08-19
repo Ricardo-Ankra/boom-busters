@@ -1,4 +1,11 @@
-import { AbsoluteFill, Audio, Sequence, useCurrentFrame, useVideoConfig } from 'remotion'
+import {
+  AbsoluteFill,
+  Audio,
+  getRemotionEnvironment,
+  Sequence,
+  useCurrentFrame,
+  useVideoConfig,
+} from 'remotion'
 import type { BrandKitTokens, Timeline, TimelineSlot } from '@boom-busters/schemas'
 import { loadBrandFonts } from '../fonts/load'
 import { materialisedUrl, mediaUrl, msToFrames, transitionOpacity } from '../lib/motion'
@@ -34,6 +41,9 @@ export function DocumentaryMaster({ timeline }: { timeline: Timeline }) {
           from={msToFrames(slot.startMs, fps)}
           durationInFrames={msToFrames(slot.durationMs, fps)}
           name={`${slot.type} slot ${index}`}
+          // Same premount reasoning as narration: a stock clip or image
+          // fetching at its own start frame is a visible hitch in the player.
+          premountFor={fps * 3}
         >
           <SlotView slot={slot} brand={brand} />
         </Sequence>
@@ -136,12 +146,28 @@ const GRAIN_OPACITY: Record<BrandKitTokens['look']['grainPreset'], number> = {
   heavy: 0.16,
 }
 
-/** Static film grain via SVG turbulence — texture, not animation. */
+/**
+ * Static film grain via SVG turbulence — texture, not animation.
+ *
+ * The overlay blend is what the spec look wants, and the offline render
+ * keeps it. In the @remotion/player it is dropped: `mix-blend-mode` forces
+ * the browser to recomposite the blend against every repaint of everything
+ * underneath — at 30 fps that is a full-frame blend per frame for a 5-9%
+ * texture. Plain alpha at the same opacity reads near-identically at
+ * preview size and costs one cached layer.
+ */
 function Grain({ preset }: { preset: BrandKitTokens['look']['grainPreset'] }) {
   const opacity = GRAIN_OPACITY[preset]
   if (opacity === 0) return null
+  const { isRendering } = getRemotionEnvironment()
   return (
-    <AbsoluteFill style={{ opacity, mixBlendMode: 'overlay', pointerEvents: 'none' }}>
+    <AbsoluteFill
+      style={{
+        opacity,
+        ...(isRendering ? { mixBlendMode: 'overlay' as const } : {}),
+        pointerEvents: 'none',
+      }}
+    >
       <svg width="100%" height="100%">
         <filter id="bb-grain">
           <feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2" />

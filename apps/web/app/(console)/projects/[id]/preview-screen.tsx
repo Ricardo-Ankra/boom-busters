@@ -131,8 +131,13 @@ export function PreviewScreen({
             inputProps={{ timeline: shown }}
             durationInFrames={durationInFrames}
             fps={timeline.fps}
-            compositionWidth={timeline.width}
-            compositionHeight={timeline.height}
+            // Half resolution, preview only: the compositions size everything
+            // through frameScale, so 960×540 is the same picture with a
+            // quarter of the pixels to paint per frame — and the player is
+            // CSS-scaled into a ~800px column anyway. The render reads the
+            // timeline's real dimensions and is untouched.
+            compositionWidth={Math.round(timeline.width / 2)}
+            compositionHeight={Math.round(timeline.height / 2)}
             controls
             acknowledgeRemotionLicense
             style={{ width: '100%' }}
