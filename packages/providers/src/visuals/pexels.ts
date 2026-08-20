@@ -55,6 +55,18 @@ function bestVideoFile(files: z.infer<typeof VideoFileSchema>[]) {
   return usable[0]
 }
 
+/**
+ * The browser preview's proxy: the smallest variant still ≥426 px wide
+ * (below that Pexels serves thumbnails-with-motion, not footage). Decode
+ * cost scales with source pixels, so this is what keeps the @remotion/player
+ * smooth on machines whose video decode runs in software.
+ */
+function previewVideoFile(files: z.infer<typeof VideoFileSchema>[]) {
+  const usable = files.filter((file) => (file.width ?? 0) >= 426 && file.link)
+  usable.sort((a, b) => (a.width ?? 0) - (b.width ?? 0))
+  return usable[0]
+}
+
 async function call(path: string, apiKey: string, options: StockCallOptions): Promise<unknown> {
   const fetchImpl = options.fetchImpl ?? fetch
   let response: Response
@@ -130,12 +142,14 @@ export const pexelsStock: StockProvider = {
     const videos = VideoResponseSchema.parse(videosRaw).videos.flatMap((video): SlotCandidate[] => {
       const file = bestVideoFile(video.video_files)
       if (!file) return []
+      const preview = previewVideoFile(video.video_files)
       return [
         {
           id: String(video.id),
           provider: 'pexels',
           kind: 'video',
           sourceUrl: file.link,
+          ...(preview && preview.link !== file.link ? { previewSourceUrl: preview.link } : {}),
           pageUrl: video.url,
           thumbUrl: video.image,
           width: file.width ?? video.width,
@@ -166,8 +180,10 @@ export const pexelsStock: StockProvider = {
     const video = VideoSchema.parse(raw)
     const file = bestVideoFile(video.video_files)
     if (!file) return null
+    const preview = previewVideoFile(video.video_files)
     return {
       sourceUrl: file.link,
+      ...(preview && preview.link !== file.link ? { previewSourceUrl: preview.link } : {}),
       width: file.width ?? video.width,
       height: file.height ?? video.height,
       durationMs: Math.round(video.duration * 1000),

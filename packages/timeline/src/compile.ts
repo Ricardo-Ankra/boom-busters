@@ -51,6 +51,8 @@ export interface CompileSlot {
     kind: 'image' | 'video'
     r2Key?: string
     externalUrl?: string
+    /** The small preview proxy's storage key — browser player only. */
+    previewR2Key?: string
     width?: number
     height?: number
   }
@@ -158,6 +160,7 @@ export function compileTimeline(input: CompileInput): Timeline {
     const src = {
       ...(slot.media.r2Key !== undefined ? { r2Key: slot.media.r2Key } : {}),
       ...(slot.media.externalUrl !== undefined ? { externalUrl: slot.media.externalUrl } : {}),
+      ...(slot.media.previewR2Key !== undefined ? { previewR2Key: slot.media.previewR2Key } : {}),
     }
     if (slot.media.kind === 'video') {
       return { ...base, payload: { kind: 'video' as const, src, muted: true as const } }

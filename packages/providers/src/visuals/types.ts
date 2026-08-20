@@ -31,6 +31,8 @@ export type StockProviderId = 'pexels' | 'pixabay' | 'wikimedia'
 /** A fresh download for a known asset — what `StockProvider.refetch` returns. */
 export interface StockRefetch {
   sourceUrl: string
+  /** The small variant for the browser preview, when the provider offers one. */
+  previewSourceUrl?: string
   width?: number
   height?: number
   durationMs?: number

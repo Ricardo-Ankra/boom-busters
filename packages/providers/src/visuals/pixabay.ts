@@ -39,8 +39,30 @@ const VideoHitSchema = z.object({
     large: VideoVariantSchema.nullish(),
     medium: VideoVariantSchema.nullish(),
     small: VideoVariantSchema.nullish(),
+    tiny: VideoVariantSchema.nullish(),
   }),
 })
+
+type VideoVariant = z.infer<typeof VideoVariantSchema>
+
+/** Largest variant at or under HD — the render's source (same rule as Pexels). */
+function bestVariant(hit: z.infer<typeof VideoHitSchema>): VideoVariant | undefined {
+  return [hit.videos.large, hit.videos.medium, hit.videos.small]
+    .filter((variant): variant is VideoVariant => Boolean(variant?.url))
+    .filter((variant) => variant.width <= 1920)
+    .sort((a, b) => b.width - a.width)[0]
+}
+
+/**
+ * Smallest variant still ≥426 px wide — the browser preview's proxy, kept
+ * cheap enough for machines whose video decode runs in software.
+ */
+function previewVariant(hit: z.infer<typeof VideoHitSchema>): VideoVariant | undefined {
+  return [hit.videos.large, hit.videos.medium, hit.videos.small, hit.videos.tiny]
+    .filter((variant): variant is VideoVariant => Boolean(variant?.url))
+    .filter((variant) => variant.width >= 426)
+    .sort((a, b) => a.width - b.width)[0]
+}
 
 const ImageResponseSchema = z.object({ hits: z.array(ImageHitSchema) })
 const VideoResponseSchema = z.object({ hits: z.array(VideoHitSchema) })
@@ -123,19 +145,16 @@ export const pixabayStock: StockProvider = {
     const videos = VideoResponseSchema.parse(videosRaw)
       .hits.slice(0, videoCount)
       .flatMap((hit): SlotCandidate[] => {
-        // Largest variant at or under HD, same rule as Pexels.
-        const variants = [hit.videos.large, hit.videos.medium, hit.videos.small]
-          .filter((variant): variant is z.infer<typeof VideoVariantSchema> => Boolean(variant?.url))
-          .filter((variant) => variant.width <= 1920)
-          .sort((a, b) => b.width - a.width)
-        const file = variants[0]
+        const file = bestVariant(hit)
         if (!file) return []
+        const preview = previewVariant(hit)
         return [
           {
             id: String(hit.id),
             provider: 'pixabay',
             kind: 'video',
             sourceUrl: file.url,
+            ...(preview && preview.url !== file.url ? { previewSourceUrl: preview.url } : {}),
             pageUrl: hit.pageURL,
             ...(file.thumbnail ? { thumbUrl: file.thumbnail } : {}),
             width: file.width,
@@ -168,14 +187,12 @@ export const pixabayStock: StockProvider = {
     if (raw === null) return null
     const hit = VideoResponseSchema.parse(raw).hits[0]
     if (!hit) return null
-    const variants = [hit.videos.large, hit.videos.medium, hit.videos.small]
-      .filter((variant): variant is z.infer<typeof VideoVariantSchema> => Boolean(variant?.url))
-      .filter((variant) => variant.width <= 1920)
-      .sort((a, b) => b.width - a.width)
-    const file = variants[0]
+    const file = bestVariant(hit)
     if (!file) return null
+    const preview = previewVariant(hit)
     return {
       sourceUrl: file.url,
+      ...(preview && preview.url !== file.url ? { previewSourceUrl: preview.url } : {}),
       width: file.width,
       height: file.height,
       durationMs: Math.round(hit.duration * 1000),

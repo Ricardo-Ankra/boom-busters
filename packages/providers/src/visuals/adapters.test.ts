@@ -86,6 +86,8 @@ describe('pexelsStock', () => {
 
     const video = candidates.find((candidate) => candidate.kind === 'video')
     expect(video?.sourceUrl).toBe('https://player.pexels.com/hd.mp4')
+    // The smallest variant ≥426px wide rides along as the preview proxy.
+    expect(video?.previewSourceUrl).toBe('https://player.pexels.com/sd.mp4')
     expect(video?.durationMs).toBe(12000)
     expect(video?.licence).toBe('Pexels License')
 
@@ -205,6 +207,7 @@ describe('pixabayStock', () => {
 
     const video = candidates.find((candidate) => candidate.kind === 'video')
     expect(video?.sourceUrl).toBe('https://cdn.pixabay.com/video/large.mp4')
+    expect(video?.previewSourceUrl).toBe('https://cdn.pixabay.com/video/medium.mp4')
     expect(video?.durationMs).toBe(16000)
   })
 

@@ -228,10 +228,18 @@ export const SlotCandidateSchema = z.object({
   provider: CandidateProviderSchema,
   kind: z.enum(['image', 'video']),
   sourceUrl: z.string().min(1),
+  /**
+   * The provider's SMALL variant of the same clip (Pexels SD, Pixabay
+   * small) — the browser preview's proxy. Videos only; expiring like
+   * `sourceUrl`, so ingestion stores its bytes as `previewR2Key`.
+   */
+  previewSourceUrl: z.string().optional(),
   /** The human-facing page (attribution target), where the source has one. */
   pageUrl: z.string().optional(),
   thumbUrl: z.string().optional(),
   r2Key: z.string().optional(),
+  /** Ingested bytes of `previewSourceUrl` — see `MediaRefSchema.previewR2Key`. */
+  previewR2Key: z.string().optional(),
   width: z.number().int().positive().optional(),
   height: z.number().int().positive().optional(),
   durationMs: z.number().int().positive().optional(),

@@ -7,12 +7,22 @@ import { msToFrames } from '../lib/motion'
 /**
  * A stock video slot. Always muted BY TYPE upstream (the timeline schema
  * pins `muted: true`) — narration and music own the mix; a clip's own audio
- * never plays. `OffthreadVideo` extracts frames server-side during renders;
- * in the player, `@remotion/media`'s `<Video>` paints WebCodecs frames onto
- * a canvas in exact timeline sync instead of seek-correcting a video tag
- * (see `mediaEngine`), falling back to `OffthreadVideo` on refusal.
+ * never plays. `OffthreadVideo` extracts frames server-side during renders,
+ * always from the full-quality `src`; in the player, `@remotion/media`'s
+ * `<Video>` paints WebCodecs frames onto a canvas in exact timeline sync
+ * (see `mediaEngine`), and it decodes `previewSrc` — the small proxy
+ * ingestion stored — when one exists, because decode cost scales with
+ * source pixels and the moderator's machine may only have software decode.
  */
-export function StockClip({ src, trimStartMs }: { src: string; trimStartMs?: number }) {
+export function StockClip({
+  src,
+  previewSrc,
+  trimStartMs,
+}: {
+  src: string
+  previewSrc?: string
+  trimStartMs?: number
+}) {
   const { fps } = useVideoConfig()
   const trimBefore = msToFrames(trimStartMs ?? 0, fps)
   return (
@@ -27,7 +37,7 @@ export function StockClip({ src, trimStartMs }: { src: string; trimStartMs?: num
         />
       ) : (
         <Video
-          src={src}
+          src={previewSrc ?? src}
           muted
           trimBefore={trimBefore}
           objectFit="cover"

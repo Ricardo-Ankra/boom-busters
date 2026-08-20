@@ -2148,6 +2148,25 @@ app found two faults the suites could not see, both now guarded:
      draft render for moderation — the master render was always
      perfectly smooth; only the live preview ever glitched.
 
+157. **Preview proxies: videos are ingested twice, full-quality for the
+     render and a small variant for the browser.** With the WebCodecs
+     engine live and everything buffered, playback measured clean here
+     (55 fps, one 51 ms long task in 22 s — the earlier "stalls" were
+     the measurement's own screenshot overhead), yet still hiccuped
+     rhythmically on the production machine, whose graphics acceleration
+     had been off. Decode cost scales with SOURCE pixels: the ingested
+     clips are 1080-1920 px, and a machine on software decode cannot hold
+     30 fps on them — the engine then pauses honestly (buffer state),
+     which reads as "buffering every few seconds". So ingestion now also
+     stores the provider's small variant (Pexels SD, Pixabay small/tiny —
+     smallest ≥426 px wide; `previewSourceUrl` on the candidate,
+     `previewR2Key` once ingested, minted fresh by id when expired), the
+     timeline's MediaRef carries it, browser materialisation presigns it
+     as `previewUrl`, and the player's `<Video>` decodes the proxy — about
+     nine times cheaper — while `OffthreadVideo` offline always uses the
+     full clip. A missing proxy is never an error, and re-running
+     assembly gives already-ingested videos a preview-only pass.
+
 ### Verified (M6.8, 2026-08-18)
 
 - **`pnpm typecheck`** and **`pnpm lint`** clean, zero warnings.

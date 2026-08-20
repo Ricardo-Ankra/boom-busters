@@ -85,7 +85,17 @@ export async function materialiseForPreview(
       dropped.slots += 1
       continue
     }
-    slots.push({ ...slot, payload: { ...slot.payload, src: { ...src, url } } })
+    // The preview proxy, when ingestion stored one — the player's source.
+    // Unresolvable is fine: the slot still previews from the full clip.
+    const previewUrl =
+      src.previewR2Key !== undefined ? await resolveKey(src.previewR2Key, deps) : null
+    slots.push({
+      ...slot,
+      payload: {
+        ...slot.payload,
+        src: { ...src, url, ...(previewUrl !== null ? { previewUrl } : {}) },
+      },
+    })
   }
   timeline.slots = slots
 

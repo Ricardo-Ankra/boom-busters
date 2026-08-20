@@ -167,6 +167,7 @@ interface ChosenCandidate {
   kind: 'image' | 'video'
   assetId?: string
   r2Key?: string
+  previewR2Key?: string
   sourceUrl: string
   width?: number
   height?: number
@@ -283,6 +284,7 @@ export function slotPlan(input: {
         kind: candidate.kind,
         ...(r2Key !== undefined ? { r2Key } : {}),
         ...(externalUrl !== undefined ? { externalUrl } : {}),
+        ...(candidate.previewR2Key !== undefined ? { previewR2Key: candidate.previewR2Key } : {}),
         ...(candidate.width !== undefined ? { width: candidate.width } : {}),
         ...(candidate.height !== undefined ? { height: candidate.height } : {}),
       },

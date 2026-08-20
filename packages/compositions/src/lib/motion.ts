@@ -48,6 +48,15 @@ export function mediaUrl(ref: MediaRef): string {
 }
 
 /**
+ * The materialised preview proxy, when the pipeline stored one — the small
+ * variant the browser player decodes instead of the render-grade clip.
+ * Optional by design: no proxy simply means the player pays full decode.
+ */
+export function previewMediaUrl(ref: MediaRef): string | undefined {
+  return ref.previewUrl
+}
+
+/**
  * A materialised URL or a loud failure — the narration/music counterpart of
  * `mediaUrl`, for fields where the canonical form is a bare r2Key.
  */

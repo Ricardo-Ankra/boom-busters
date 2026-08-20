@@ -71,12 +71,21 @@ function timelineDuration(timeline: Timeline): number {
   return end
 }
 
+/** What the player actually fetches for a media slot: the proxy when one exists. */
+function slotPlayerUrl(src: {
+  url?: string
+  previewUrl?: string
+  externalUrl?: string
+}): string | undefined {
+  return src.previewUrl ?? src.url ?? src.externalUrl
+}
+
 /** Every URL the player will fetch, deduped — the buffer button's manifest. */
 function mediaUrls(timeline: Timeline): string[] {
   const urls = new Set<string>()
   for (const slot of timeline.slots) {
     if (slot.payload.kind === 'image' || slot.payload.kind === 'video') {
-      const url = slot.payload.src.url ?? slot.payload.src.externalUrl
+      const url = slotPlayerUrl(slot.payload.src)
       if (url !== undefined) urls.add(url)
     }
   }
@@ -107,15 +116,14 @@ export function substituteMedia(timeline: Timeline, blobs: ReadonlyMap<string, s
         : timeline.music,
     slots: timeline.slots.map((slot) => {
       if (slot.payload.kind !== 'image' && slot.payload.kind !== 'video') return slot
-      const url = slot.payload.src.url ?? slot.payload.src.externalUrl
+      const url = slotPlayerUrl(slot.payload.src)
       if (url === undefined || !blobs.has(url)) return slot
-      return {
-        ...slot,
-        payload: {
-          ...slot.payload,
-          src: { ...slot.payload.src, url: blobs.get(url)! },
-        },
-      }
+      // Swap the field the player reads: the proxy when one exists.
+      const swapped =
+        slot.payload.src.previewUrl !== undefined
+          ? { ...slot.payload.src, previewUrl: blobs.get(url)! }
+          : { ...slot.payload.src, url: blobs.get(url)! }
+      return { ...slot, payload: { ...slot.payload, src: swapped } }
     }),
   }
 }

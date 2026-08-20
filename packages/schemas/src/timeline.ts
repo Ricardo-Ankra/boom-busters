@@ -37,15 +37,22 @@ export const TIMELINE_VERSION = 1
  * have not been ingested: a STABLE provider CDN URL (a Pexels file URL, a
  * Commons original), never a presigned or otherwise expiring one.
  *
- * `url` is the materialised form and is only ever present in the copy the
- * broker writes for one render; the canonical stored timeline must not
- * contain it (`canonicalTimelineIssues` enforces this).
+ * `previewR2Key` is the browser's proxy: the provider's small variant of the
+ * same clip, ingested beside the original. The render always uses the full
+ * `r2Key`; the @remotion/player decodes in the moderator's browser, where a
+ * 1080p+ source can outrun software decode — a 360p proxy plays anywhere.
+ *
+ * `url`/`previewUrl` are the materialised forms and are only ever present in
+ * the copy written for one render or one preview; the canonical stored
+ * timeline must not contain them (`canonicalTimelineIssues` enforces this).
  */
 export const MediaRefSchema = z
   .object({
     r2Key: z.string().min(1).optional(),
     externalUrl: z.url().optional(),
+    previewR2Key: z.string().min(1).optional(),
     url: z.url().optional(),
+    previewUrl: z.url().optional(),
   })
   .refine((ref) => ref.r2Key !== undefined || ref.externalUrl !== undefined, {
     message: 'a media reference needs an r2Key or a stable externalUrl',
@@ -306,6 +313,9 @@ export function canonicalTimelineIssues(timeline: Timeline): string[] {
     if (slot.payload.kind === 'image' || slot.payload.kind === 'video') {
       if (slot.payload.src.url !== undefined) {
         issues.push(`slots.${index}.payload.src.url`)
+      }
+      if (slot.payload.src.previewUrl !== undefined) {
+        issues.push(`slots.${index}.payload.src.previewUrl`)
       }
     }
   })

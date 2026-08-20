@@ -22,7 +22,13 @@ vi.mock('@/lib/storage', () => ({
 }))
 vi.mock('@boom-busters/db', () => dbHelpers)
 
-import { downloadStock, ingestSlotStock, needsStockIngest, stockExtension } from './stock-ingest'
+import {
+  downloadStock,
+  downloadStockPreview,
+  ingestSlotStock,
+  needsStockIngest,
+  stockExtension,
+} from './stock-ingest'
 
 function candidate(overrides: Partial<SlotCandidate> = {}): SlotCandidate {
   return {
@@ -78,6 +84,85 @@ describe('needsStockIngest', () => {
     expect(needsStockIngest(slotWith(candidate({ sourceUrl: 'mock://pexels/office/1' })))).toBe(
       false,
     )
+  })
+
+  it('re-visits an ingested VIDEO that still lacks its preview proxy', () => {
+    expect(
+      needsStockIngest(slotWith(candidate({ kind: 'video', r2Key: 'boom-busters/stock/abc.mp4' }))),
+    ).toBe(true)
+    expect(
+      needsStockIngest(
+        slotWith(
+          candidate({
+            kind: 'video',
+            r2Key: 'boom-busters/stock/abc.mp4',
+            previewR2Key: 'boom-busters/stock/small.mp4',
+          }),
+        ),
+      ),
+    ).toBe(false)
+  })
+})
+
+describe('downloadStockPreview', () => {
+  it('fetches the stored preview variant when it still answers', async () => {
+    const result = await downloadStockPreview(
+      candidate({ kind: 'video', previewSourceUrl: 'https://cdn.pixabay.com/video/small.mp4' }),
+      {
+        keys: {},
+        fetchImpl: fetchRouting({
+          'https://cdn.pixabay.com/video/small.mp4': ok(JPEG, 'video/mp4'),
+        }),
+      },
+    )
+    expect(result?.url).toBe('https://cdn.pixabay.com/video/small.mp4')
+  })
+
+  it('mints a fresh preview by id when nothing stored answers', async () => {
+    const result = await downloadStockPreview(
+      candidate({ kind: 'video' }), // no previewSourceUrl stored (pre-proxy candidate)
+      {
+        keys: { pixabay: 'pixa-key' },
+        fetchImpl: fetchRouting({
+          'https://pixabay.com/api/videos/?key=pixa-key&id=2557396': ok(
+            JSON.stringify({
+              hits: [
+                {
+                  id: 2557396,
+                  pageURL: 'https://pixabay.com/videos/office-2557396/',
+                  duration: 16,
+                  videos: {
+                    large: {
+                      url: 'https://cdn.pixabay.com/video/large.mp4',
+                      width: 1920,
+                      height: 1080,
+                    },
+                    medium: {
+                      url: 'https://cdn.pixabay.com/video/medium.mp4',
+                      width: 1280,
+                      height: 720,
+                    },
+                    small: null,
+                    tiny: null,
+                  },
+                },
+              ],
+            }),
+            'application/json',
+          ),
+          'https://cdn.pixabay.com/video/medium.mp4': ok(JPEG, 'video/mp4'),
+        }),
+      },
+    )
+    expect(result?.url).toBe('https://cdn.pixabay.com/video/medium.mp4')
+  })
+
+  it('answers null, never a throw, when no preview can be had', async () => {
+    const result = await downloadStockPreview(candidate({ kind: 'video' }), {
+      keys: {},
+      fetchImpl: fetchRouting({ 'https://': gone }),
+    })
+    expect(result).toBeNull()
   })
 })
 
@@ -191,6 +276,38 @@ describe('ingestSlotStock', () => {
     expect(slotId).toBe('slot-1')
     expect(resolution.chosenAssetId).toBe('01HQ00000000000000000ASSET')
     expect(resolution.candidates[0]).toMatchObject({ r2Key: outcome.r2Key })
+  })
+
+  it('stores the preview proxy beside a video and writes both keys back', async () => {
+    vi.stubGlobal(
+      'fetch',
+      fetchRouting({
+        'https://pixabay.com/get/expired': ok(JPEG, 'video/mp4'),
+        'https://cdn.pixabay.com/video/small.mp4': ok('small-bytes', 'video/mp4'),
+      }),
+    )
+    const slot = slotWith(
+      candidate({
+        kind: 'video',
+        previewSourceUrl: 'https://cdn.pixabay.com/video/small.mp4',
+      }),
+    )
+    const outcome = await ingestSlotStock(slot)
+
+    expect(outcome.ok).toBe(true)
+    if (!outcome.ok) return
+    expect(outcome.previewR2Key).toMatch(/^boom-busters\/stock\/[0-9a-f]{64}\.mp4$/)
+    expect(outcome.previewR2Key).not.toBe(outcome.r2Key)
+
+    const [, , resolution] = dbHelpers.setSlotResolution.mock.calls[0] as unknown as [
+      unknown,
+      string,
+      { candidates: Record<string, unknown>[] },
+    ]
+    expect(resolution.candidates[0]).toMatchObject({
+      r2Key: outcome.r2Key,
+      previewR2Key: outcome.previewR2Key,
+    })
   })
 
   it('answers a failure reason, not a throw, when the bytes are unreachable', async () => {

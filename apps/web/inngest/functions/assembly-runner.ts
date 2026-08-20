@@ -143,13 +143,18 @@ export const assemblyRunner = inngest.createFunction(
     // timeline may only ever reference bytes in R2 (spec section 8.2). One
     // step per slot: each download is retried and checkpointed on its own,
     // and a failure skips that slot instead of hotlinking a dying URL.
-    const ingested: Record<string, { r2Key: string; assetId: string }> = {}
+    const ingested: Record<string, { r2Key: string; assetId?: string; previewR2Key?: string }> = {}
     const unusable: Record<string, string> = {}
     if (!mocked && storageConfigured()) {
       for (const slot of setup.slots.filter(needsStockIngest)) {
         const outcome = await step.run(`ingest-stock-${slot.id}`, () => ingestSlotStock(slot))
-        if (outcome.ok) ingested[slot.id] = { r2Key: outcome.r2Key, assetId: outcome.assetId }
-        else unusable[slot.id] = outcome.reason
+        if (outcome.ok) {
+          ingested[slot.id] = {
+            r2Key: outcome.r2Key,
+            ...(outcome.assetId !== undefined ? { assetId: outcome.assetId } : {}),
+            ...(outcome.previewR2Key !== undefined ? { previewR2Key: outcome.previewR2Key } : {}),
+          }
+        } else unusable[slot.id] = outcome.reason
       }
     }
 
@@ -160,10 +165,15 @@ export const assemblyRunner = inngest.createFunction(
       if (!hit) return slot
       return {
         ...slot,
-        chosenAssetId: hit.assetId,
+        chosenAssetId: hit.assetId ?? slot.chosenAssetId,
         candidates: slot.candidates.map((candidate) =>
           candidate['chosen'] === true
-            ? { ...candidate, r2Key: hit.r2Key, assetId: hit.assetId }
+            ? {
+                ...candidate,
+                r2Key: hit.r2Key,
+                ...(hit.assetId !== undefined ? { assetId: hit.assetId } : {}),
+                ...(hit.previewR2Key !== undefined ? { previewR2Key: hit.previewR2Key } : {}),
+              }
             : candidate,
         ),
       }

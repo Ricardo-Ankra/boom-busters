@@ -11,7 +11,13 @@ import type { BrandKitTokens, Timeline, TimelineSlot } from '@boom-busters/schem
 import { mediaCrossOrigin } from '../lib/cross-origin'
 import { mediaEngine } from '../lib/media-engine'
 import { loadBrandFonts } from '../fonts/load'
-import { materialisedUrl, mediaUrl, msToFrames, transitionOpacity } from '../lib/motion'
+import {
+  materialisedUrl,
+  mediaUrl,
+  msToFrames,
+  previewMediaUrl,
+  transitionOpacity,
+} from '../lib/motion'
 import { AnimatedMap } from './AnimatedMap'
 import { frameScale, typeStyle, withAlpha } from './brand'
 import { ChapterCard } from './ChapterCard'
@@ -139,6 +145,9 @@ function SlotView({ slot, brand }: { slot: TimelineSlot; brand: BrandKitTokens }
       ) : slot.payload.kind === 'video' ? (
         <StockClip
           src={mediaUrl(slot.payload.src)}
+          {...(previewMediaUrl(slot.payload.src) !== undefined
+            ? { previewSrc: previewMediaUrl(slot.payload.src) }
+            : {})}
           {...(slot.payload.trimStartMs !== undefined
             ? { trimStartMs: slot.payload.trimStartMs }
             : {})}
