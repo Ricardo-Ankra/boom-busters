@@ -23,9 +23,13 @@ vi.mock('@remotion/player', () => ({
 vi.mock('@boom-busters/compositions', () => ({ DocumentaryMaster: () => null }))
 
 const prefetched = vi.hoisted(() => [] as string[])
+const failOnce = vi.hoisted(() => new Set<string>())
 vi.mock('remotion', () => ({
   prefetch: (url: string) => {
     prefetched.push(url)
+    if (failOnce.delete(url)) {
+      return { free: vi.fn(), waitUntilDone: () => Promise.reject(new Error('transient')) }
+    }
     return { free: vi.fn(), waitUntilDone: () => Promise.resolve(url) }
   },
 }))
@@ -51,6 +55,7 @@ vi.mock('@/components/ui/toast', () => ({ useToast: () => ({ toast }) }))
 beforeEach(() => {
   vi.clearAllMocks()
   prefetched.length = 0
+  failOnce.clear()
   approveGate.mockResolvedValue({ ok: true })
   stopProject.mockResolvedValue({ ok: true })
   chooseMusicBed.mockResolvedValue({ ok: true })
@@ -187,6 +192,20 @@ describe('PreviewScreen', () => {
       ]),
     )
     expect(prefetched).toHaveLength(3)
+    expect(
+      await screen.findByRole('button', { name: /Fully buffered — plays from memory/ }),
+    ).toBeDisabled()
+  })
+
+  it('rides out a transient fetch failure with one quiet retry per file', async () => {
+    const user = userEvent.setup()
+    failOnce.add('https://r2.example.com/bed.mp3')
+    render(<PreviewScreen {...props()} />)
+
+    await user.click(screen.getByRole('button', { name: /Buffer full preview/ }))
+
+    // The flaky file was fetched twice; the outcome is still a full buffer.
+    expect(prefetched.filter((url) => url === 'https://r2.example.com/bed.mp3')).toHaveLength(2)
     expect(
       await screen.findByRole('button', { name: /Fully buffered — plays from memory/ }),
     ).toBeDisabled()

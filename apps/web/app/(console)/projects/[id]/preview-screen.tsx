@@ -265,18 +265,25 @@ function BufferControl({ timeline }: { timeline: Timeline }) {
     // Four at a time: enough to fill the pipe without stampeding the CDN.
     const worker = async () => {
       for (let url = queue.shift(); url !== undefined; url = queue.shift()) {
-        try {
-          const handle = prefetch(url, { method: 'blob-url' })
-          handles.current.push(handle)
-          await handle.waitUntilDone()
-          done += 1
-        } catch (error) {
-          failed += 1
-          // Named in devtools on purpose. `prefetch` is a fetch(), so it
-          // needs CORS the player's media tags never did — a bucket without
-          // a CORS policy fails ALL of these while playing back fine.
-          console.warn(`Buffer failed for ${url}`, error)
+        // One quiet retry per file: two transient drops out of ninety
+        // fetches is normal weather, and a failure that survives both
+        // attempts is worth the human's attention.
+        let buffered = false
+        for (let attempt = 0; attempt < 2 && !buffered; attempt += 1) {
+          try {
+            const handle = prefetch(url, { method: 'blob-url' })
+            handles.current.push(handle)
+            await handle.waitUntilDone()
+            buffered = true
+          } catch (error) {
+            // Named in devtools on purpose. `prefetch` is a fetch(), so it
+            // needs CORS the player's media tags never did — a bucket
+            // without a CORS policy fails ALL of these while playing fine.
+            if (attempt === 1) console.warn(`Buffer failed for ${url}`, error)
+          }
         }
+        if (buffered) done += 1
+        else failed += 1
         setProgress({ done, failed })
       }
     }
