@@ -16,23 +16,29 @@ import type { PreviewRenderProp } from './preview-screen'
 vi.mock('@remotion/player', () => ({
   Player: Object.assign(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    ({ durationInFrames }: any) => <div data-testid="player">frames:{durationInFrames}</div>,
+    ({ durationInFrames, inputProps }: any) => (
+      <div data-testid="player">
+        frames:{durationInFrames} narration0:{inputProps.timeline.narration[0]?.url}
+      </div>
+    ),
     { displayName: 'Player' },
   ),
 }))
 vi.mock('@boom-busters/compositions', () => ({ DocumentaryMaster: () => null }))
 
-const prefetched = vi.hoisted(() => [] as string[])
+/** The buffer button's downloads: URL → outcome, transient failures scripted. */
+const buffered = vi.hoisted(() => [] as string[])
 const failOnce = vi.hoisted(() => new Set<string>())
-vi.mock('remotion', () => ({
-  prefetch: (url: string) => {
-    prefetched.push(url)
-    if (failOnce.delete(url)) {
-      return { free: vi.fn(), waitUntilDone: () => Promise.reject(new Error('transient')) }
-    }
-    return { free: vi.fn(), waitUntilDone: () => Promise.resolve(url) }
-  },
-}))
+function bufferFetch(input: RequestInfo | URL, init?: RequestInit) {
+  const url = String(input)
+  if (init?.cache === 'no-store') {
+    buffered.push(url)
+    if (failOnce.delete(url)) return Promise.reject(new TypeError('Failed to fetch'))
+    return Promise.resolve({ ok: true, blob: () => Promise.resolve(new Blob(['x'])) } as Response)
+  }
+  // Everything else (the render-progress poll) stays unavailable.
+  return Promise.resolve({ ok: false, json: () => Promise.resolve({}) } as unknown as Response)
+}
 
 const approveGate = vi.fn()
 const stopProject = vi.fn()
@@ -54,12 +60,18 @@ vi.mock('@/components/ui/toast', () => ({ useToast: () => ({ toast }) }))
 
 beforeEach(() => {
   vi.clearAllMocks()
-  prefetched.length = 0
+  buffered.length = 0
   failOnce.clear()
   approveGate.mockResolvedValue({ ok: true })
   stopProject.mockResolvedValue({ ok: true })
   chooseMusicBed.mockResolvedValue({ ok: true })
-  vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, json: () => Promise.resolve({}) }))
+  vi.stubGlobal('fetch', vi.fn(bufferFetch))
+  // jsdom's URL lacks object-URL support; the mapping is what we assert on.
+  let blobCount = 0
+  Object.assign(globalThis.URL, {
+    createObjectURL: vi.fn(() => `blob:mock-${(blobCount += 1)}`),
+    revokeObjectURL: vi.fn(),
+  })
 })
 
 const PROJECT = '01J0000000000000000000000A'
@@ -176,25 +188,31 @@ describe('PreviewScreen', () => {
     expect(screen.getByRole('button', { name: /Show captions/ })).toBeInTheDocument()
   })
 
-  it('buffers every media file into memory through the labelled button', async () => {
+  it('buffers every media file and hands the player blob URLs in place of the network', async () => {
     const user = userEvent.setup()
     render(<PreviewScreen {...props()} />)
 
-    // Two narration WAVs and the music bed; the chart slot has no file.
-    const button = screen.getByRole('button', { name: /Buffer full preview \(3 files\)/ })
-    await user.click(button)
+    // Before buffering the player reads the materialised URL.
+    expect(screen.getByTestId('player')).toHaveTextContent(
+      'narration0:http://localhost:3000/api/voice-takes/t1/audio',
+    )
 
-    expect(prefetched).toEqual(
+    // Two narration WAVs and the music bed; the chart slot has no file.
+    await user.click(screen.getByRole('button', { name: /Buffer full preview \(3 files\)/ }))
+
+    expect(buffered).toEqual(
       expect.arrayContaining([
         'http://localhost:3000/api/voice-takes/t1/audio',
         'http://localhost:3000/api/voice-takes/t2/audio',
         'https://r2.example.com/bed.mp3',
       ]),
     )
-    expect(prefetched).toHaveLength(3)
+    expect(buffered).toHaveLength(3)
     expect(
       await screen.findByRole('button', { name: /Fully buffered — plays from memory/ }),
     ).toBeDisabled()
+    // After buffering the player is handed the blob copy outright.
+    expect(screen.getByTestId('player')).toHaveTextContent(/narration0:blob:mock-\d/)
   })
 
   it('rides out a transient fetch failure with one quiet retry per file', async () => {
@@ -205,7 +223,7 @@ describe('PreviewScreen', () => {
     await user.click(screen.getByRole('button', { name: /Buffer full preview/ }))
 
     // The flaky file was fetched twice; the outcome is still a full buffer.
-    expect(prefetched.filter((url) => url === 'https://r2.example.com/bed.mp3')).toHaveLength(2)
+    expect(buffered.filter((url) => url === 'https://r2.example.com/bed.mp3')).toHaveLength(2)
     expect(
       await screen.findByRole('button', { name: /Fully buffered — plays from memory/ }),
     ).toBeDisabled()

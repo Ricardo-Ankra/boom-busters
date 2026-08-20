@@ -2112,6 +2112,20 @@ app found two faults the suites could not see, both now guarded:
      Consequence, noted on decision 153: the R2 CORS policy is now
      required for live preview PLAYBACK, not just buffering.
 
+155. **The buffer stopped sharing the browser's HTTP cache with the
+     player.** Decision 154's crossOrigin pass fixed most poisoned-cache
+     failures but one image (the paused player's frame-0 poster) kept
+     losing the race, so the dependence on cache-entry compatibility went
+     away entirely: `BufferControl` now downloads with `cache: 'no-store'`
+     (always a fresh CORS request — verified good against R2 for the
+     failing object, preflight included) and the player is handed a
+     timeline whose media URLs are replaced outright by blob URLs
+     (`substituteMedia`). "Plays from memory" is now literal, Remotion's
+     internal prefetch registry is no longer involved, and a URL the blob
+     map lacks degrades to exactly the pre-buffer behaviour. Blob URLs are
+     revoked on unmount; a recompiled timeline (music swap) resets the
+     control via `key={version}`.
+
 ### Verified (M6.8, 2026-08-18)
 
 - **`pnpm typecheck`** and **`pnpm lint`** clean, zero warnings.

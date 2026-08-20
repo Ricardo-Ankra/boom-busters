@@ -2,7 +2,6 @@
 
 import { Player } from '@remotion/player'
 import type { PlayerRef } from '@remotion/player'
-import { prefetch } from 'remotion'
 import { DocumentaryMaster } from '@boom-busters/compositions'
 import { gainAt } from '@boom-busters/schemas'
 import type { QcReport, Timeline } from '@boom-busters/schemas'
@@ -88,6 +87,39 @@ function mediaUrls(timeline: Timeline): string[] {
   return [...urls]
 }
 
+/**
+ * The buffered copy: every media URL the map covers replaced by its blob
+ * URL, so the player reads memory, not the network. A URL the map lacks
+ * (a buffer failure, or a recompiled timeline) stays as it was — degraded
+ * to exactly the pre-buffer behaviour, never worse.
+ */
+export function substituteMedia(timeline: Timeline, blobs: ReadonlyMap<string, string>): Timeline {
+  return {
+    ...timeline,
+    narration: timeline.narration.map((segment) =>
+      segment.url !== undefined && blobs.has(segment.url)
+        ? { ...segment, url: blobs.get(segment.url)! }
+        : segment,
+    ),
+    music:
+      timeline.music && timeline.music.url !== undefined && blobs.has(timeline.music.url)
+        ? { ...timeline.music, url: blobs.get(timeline.music.url)! }
+        : timeline.music,
+    slots: timeline.slots.map((slot) => {
+      if (slot.payload.kind !== 'image' && slot.payload.kind !== 'video') return slot
+      const url = slot.payload.src.url ?? slot.payload.src.externalUrl
+      if (url === undefined || !blobs.has(url)) return slot
+      return {
+        ...slot,
+        payload: {
+          ...slot.payload,
+          src: { ...slot.payload.src, url: blobs.get(url)! },
+        },
+      }
+    }),
+  }
+}
+
 export function PreviewScreen({
   projectId,
   timeline,
@@ -121,17 +153,17 @@ export function PreviewScreen({
   const act = useAction()
   const playerRef = React.useRef<PlayerRef>(null)
   const [captionsOn, setCaptionsOn] = React.useState(true)
+  const [blobs, setBlobs] = React.useState<ReadonlyMap<string, string> | null>(null)
 
   const durationMs = timelineDuration(timeline)
   const durationInFrames = Math.max(1, msToFrames(durationMs, timeline.fps))
 
-  const shown = React.useMemo<Timeline>(
-    () =>
-      captionsOn
-        ? timeline
-        : { ...timeline, captions: { ...timeline.captions, style: 'none' as const } },
-    [timeline, captionsOn],
-  )
+  const shown = React.useMemo<Timeline>(() => {
+    const buffered = blobs ? substituteMedia(timeline, blobs) : timeline
+    return captionsOn
+      ? buffered
+      : { ...buffered, captions: { ...buffered.captions, style: 'none' as const } }
+  }, [timeline, captionsOn, blobs])
 
   const droppedTotal = dropped.narration + dropped.slots + (dropped.music ? 1 : 0)
 
@@ -178,7 +210,7 @@ export function PreviewScreen({
             <Captions aria-hidden />
             {captionsOn ? 'Hide captions' : 'Show captions'}
           </Button>
-          <BufferControl timeline={timeline} />
+          <BufferControl key={version} timeline={timeline} onBuffered={setBlobs} />
           {droppedTotal > 0 ? (
             <p className="text-[13px] text-[var(--color-warning)]">
               {droppedTotal} item{droppedTotal === 1 ? ' is' : 's are'} not previewable here
@@ -231,25 +263,34 @@ export function PreviewScreen({
 }
 
 /**
- * "Buffer full preview": every media file the timeline references, fetched
- * into blob URLs up front via Remotion's `prefetch`, so playback never
- * touches the network — no mid-play buffering, no presigned URL expiring
- * an hour into a long moderation session. A button rather than automatic
- * (spec section 11.1, button-first) because it moves real megabytes: a
- * 14-minute cut's narration and clips are a few hundred MB, a download the
- * human should choose, not pay on every page load.
+ * "Buffer full preview": every media file the timeline references,
+ * downloaded into blob URLs the player is then handed outright (via
+ * `substituteMedia`), so playback reads memory, never the network — no
+ * mid-play buffering, no presigned URL expiring an hour into a long
+ * moderation session. Downloads use `cache: 'no-store'`: the player's
+ * media tags and this fetch would otherwise share the browser's HTTP
+ * cache, and a media-tag response cached without CORS headers silently
+ * fails the fetch of the same URL (two rounds of that, 2026-08-20).
+ * A button rather than automatic (spec section 11.1, button-first)
+ * because it moves real megabytes the human should choose to download.
  */
-function BufferControl({ timeline }: { timeline: Timeline }) {
+function BufferControl({
+  timeline,
+  onBuffered,
+}: {
+  timeline: Timeline
+  onBuffered: (blobs: ReadonlyMap<string, string>) => void
+}) {
   const urls = React.useMemo(() => mediaUrls(timeline), [timeline])
   const [phase, setPhase] = React.useState<'idle' | 'busy' | 'done'>('idle')
   const [progress, setProgress] = React.useState({ done: 0, failed: 0 })
-  const handles = React.useRef<{ free: () => void }[]>([])
+  const objectUrls = React.useRef<string[]>([])
 
-  // Blob URLs hold their bytes until freed; leaving the screen releases them.
+  // Blob URLs hold their bytes until revoked; leaving the screen releases them.
   React.useEffect(
     () => () => {
-      for (const handle of handles.current) handle.free()
-      handles.current = []
+      for (const url of objectUrls.current) URL.revokeObjectURL(url)
+      objectUrls.current = []
     },
     [],
   )
@@ -260,6 +301,7 @@ function BufferControl({ timeline }: { timeline: Timeline }) {
     setPhase('busy')
     setProgress({ done: 0, failed: 0 })
     const queue = [...urls]
+    const blobs = new Map<string, string>()
     let done = 0
     let failed = 0
     // Four at a time: enough to fill the pipe without stampeding the CDN.
@@ -271,14 +313,13 @@ function BufferControl({ timeline }: { timeline: Timeline }) {
         let buffered = false
         for (let attempt = 0; attempt < 2 && !buffered; attempt += 1) {
           try {
-            const handle = prefetch(url, { method: 'blob-url' })
-            handles.current.push(handle)
-            await handle.waitUntilDone()
+            const response = await fetch(url, { cache: 'no-store' })
+            if (!response.ok) throw new Error(`HTTP ${response.status}`)
+            const blobUrl = URL.createObjectURL(await response.blob())
+            objectUrls.current.push(blobUrl)
+            blobs.set(url, blobUrl)
             buffered = true
           } catch (error) {
-            // Named in devtools on purpose. `prefetch` is a fetch(), so it
-            // needs CORS the player's media tags never did — a bucket
-            // without a CORS policy fails ALL of these while playing fine.
             if (attempt === 1) console.warn(`Buffer failed for ${url}`, error)
           }
         }
@@ -288,6 +329,7 @@ function BufferControl({ timeline }: { timeline: Timeline }) {
       }
     }
     await Promise.all(Array.from({ length: Math.min(4, urls.length) }, worker))
+    onBuffered(blobs)
     setPhase('done')
   }
 
