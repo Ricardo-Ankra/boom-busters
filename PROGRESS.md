@@ -2088,6 +2088,17 @@ app found two faults the suites could not see, both now guarded:
      than automatic, per the button-first rule and because it moves
      hundreds of megabytes the human should choose to download.
 
+153. **The R2 bucket needs a browser CORS policy for the buffer button.**
+     `prefetch` is a `fetch()`, and fetch enforces CORS where the player's
+     media tags never did — so a bucket with no CORS policy plays back
+     fine and fails every single prefetch (all 89 files, 2026-08-20).
+     The app's R2 token is object-scoped and cannot edit bucket settings
+     (`PutBucketCors` → AccessDenied), so the policy is set once by hand:
+     Cloudflare dashboard → R2 → bucket → Settings → CORS policy, allowing
+     GET/HEAD from the deployed origin and localhost:3000. The catch in
+     `BufferControl` now `console.warn`s each failed URL so the browser
+     names the reason instead of a bare count.
+
 ### Verified (M6.8, 2026-08-18)
 
 - **`pnpm typecheck`** and **`pnpm lint`** clean, zero warnings.

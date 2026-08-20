@@ -270,8 +270,12 @@ function BufferControl({ timeline }: { timeline: Timeline }) {
           handles.current.push(handle)
           await handle.waitUntilDone()
           done += 1
-        } catch {
+        } catch (error) {
           failed += 1
+          // Named in devtools on purpose. `prefetch` is a fetch(), so it
+          // needs CORS the player's media tags never did — a bucket without
+          // a CORS policy fails ALL of these while playing back fine.
+          console.warn(`Buffer failed for ${url}`, error)
         }
         setProgress({ done, failed })
       }
