@@ -7,6 +7,7 @@ import {
   useVideoConfig,
 } from 'remotion'
 import type { BrandKitTokens, Timeline, TimelineSlot } from '@boom-busters/schemas'
+import { mediaCrossOrigin } from '../lib/cross-origin'
 import { loadBrandFonts } from '../fonts/load'
 import { materialisedUrl, mediaUrl, msToFrames, transitionOpacity } from '../lib/motion'
 import { AnimatedMap } from './AnimatedMap'
@@ -98,6 +99,7 @@ export function DocumentaryMaster({ timeline }: { timeline: Timeline }) {
         >
           <Audio
             src={materialisedUrl(segment.url, `narration segment ${index}`)}
+            crossOrigin={mediaCrossOrigin()}
             pauseWhenBuffering
           />
         </Sequence>

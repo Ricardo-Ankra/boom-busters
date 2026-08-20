@@ -2099,6 +2099,19 @@ app found two faults the suites could not see, both now guarded:
      `BufferControl` now `console.warn`s each failed URL so the browser
      names the reason instead of a bare count.
 
+154. **Player media tags send CORS requests (`crossOrigin="anonymous"`),
+     player only.** With the bucket policy in place, buffering still
+     failed for exactly the files the player had already preloaded: media
+     tags fetch without an Origin header, the browser caches those
+     header-less responses, and the buffer button's `fetch()` of the same
+     URL is answered from that cache and CORS-blocked (the console's
+     `ERR_FAILED 304` was the tell). `mediaCrossOrigin()` returns
+     `anonymous` under `isPlayer` and undefined offline, so both consumers
+     make CORS requests and agree on the cached copy while the renderer —
+     which has no page origin the bucket policy lists — is untouched.
+     Consequence, noted on decision 153: the R2 CORS policy is now
+     required for live preview PLAYBACK, not just buffering.
+
 ### Verified (M6.8, 2026-08-18)
 
 - **`pnpm typecheck`** and **`pnpm lint`** clean, zero warnings.

@@ -1,4 +1,5 @@
 import { AbsoluteFill, OffthreadVideo, useVideoConfig } from 'remotion'
+import { mediaCrossOrigin } from '../lib/cross-origin'
 import { msToFrames } from '../lib/motion'
 
 /**
@@ -13,6 +14,7 @@ export function StockClip({ src, trimStartMs }: { src: string; trimStartMs?: num
     <AbsoluteFill style={{ overflow: 'hidden' }}>
       <OffthreadVideo
         src={src}
+        crossOrigin={mediaCrossOrigin()}
         muted
         startFrom={msToFrames(trimStartMs ?? 0, fps)}
         style={{ width: '100%', height: '100%', objectFit: 'cover' }}

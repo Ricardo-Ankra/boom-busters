@@ -1,6 +1,7 @@
 import { Audio, useVideoConfig } from 'remotion'
 import { gainAt } from '@boom-busters/schemas'
 import type { MusicTrack } from '@boom-busters/schemas'
+import { mediaCrossOrigin } from '../lib/cross-origin'
 import { dbToGain, materialisedUrl } from '../lib/motion'
 
 /**
@@ -16,6 +17,7 @@ export function MusicBed({ music }: { music: MusicTrack }) {
     <Audio
       loop
       pauseWhenBuffering
+      crossOrigin={mediaCrossOrigin()}
       src={src}
       volume={(frame) =>
         dbToGain(

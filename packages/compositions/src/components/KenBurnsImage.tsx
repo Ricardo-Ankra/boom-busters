@@ -1,5 +1,6 @@
 import { AbsoluteFill, Img, useCurrentFrame } from 'remotion'
 import type { TimelineMotion } from '@boom-busters/schemas'
+import { mediaCrossOrigin } from '../lib/cross-origin'
 import { kenburnsScale } from '../lib/motion'
 
 /**
@@ -26,6 +27,7 @@ export function KenBurnsImage({
     <AbsoluteFill style={{ overflow: 'hidden' }}>
       <Img
         src={src}
+        crossOrigin={mediaCrossOrigin()}
         style={{
           width: '100%',
           height: '100%',
