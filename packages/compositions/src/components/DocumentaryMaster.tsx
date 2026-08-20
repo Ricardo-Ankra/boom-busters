@@ -1,3 +1,4 @@
+import { Audio as WebCodecsAudio } from '@remotion/media'
 import {
   AbsoluteFill,
   Audio,
@@ -8,6 +9,7 @@ import {
 } from 'remotion'
 import type { BrandKitTokens, Timeline, TimelineSlot } from '@boom-busters/schemas'
 import { mediaCrossOrigin } from '../lib/cross-origin'
+import { mediaEngine } from '../lib/media-engine'
 import { loadBrandFonts } from '../fonts/load'
 import { materialisedUrl, mediaUrl, msToFrames, transitionOpacity } from '../lib/motion'
 import { AnimatedMap } from './AnimatedMap'
@@ -97,17 +99,26 @@ export function DocumentaryMaster({ timeline }: { timeline: Timeline }) {
           // (the offline render never noticed; found 2026-08-19).
           premountFor={fps * 4}
         >
-          <Audio
-            src={materialisedUrl(segment.url, `narration segment ${index}`)}
-            crossOrigin={mediaCrossOrigin()}
-            pauseWhenBuffering
-          />
+          <NarrationAudio src={materialisedUrl(segment.url, `narration segment ${index}`)} />
         </Sequence>
       ))}
 
       {timeline.music ? <MusicBed music={timeline.music} /> : null}
     </AbsoluteFill>
   )
+}
+
+/**
+ * One narration paragraph's audio. Offline it is the core tag the renderer
+ * mixes; in the player it plays through Web Audio (see `mediaEngine`), so
+ * paragraph boundaries are sample-accurate instead of shared-audio-tag
+ * swaps — the audible tick that survived premounting and full buffering.
+ */
+function NarrationAudio({ src }: { src: string }) {
+  if (mediaEngine() === 'core-tags') {
+    return <Audio src={src} crossOrigin={mediaCrossOrigin()} pauseWhenBuffering />
+  }
+  return <WebCodecsAudio src={src} />
 }
 
 /** One slot, dispatched by payload kind, with its dissolve-in if any. */

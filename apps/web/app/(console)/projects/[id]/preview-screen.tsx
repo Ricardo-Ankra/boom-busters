@@ -189,6 +189,10 @@ export function PreviewScreen({
             compositionHeight={Math.round(timeline.height / 2)}
             controls
             acknowledgeRemotionLicense
+            // The WebCodecs audio path schedules through one AudioContext;
+            // keeping it alive across pauses removes the resume latency a
+            // fresh context pays on every play press.
+            _experimentalKeepAudioContextAlive
             style={{ width: '100%' }}
           />
         </div>

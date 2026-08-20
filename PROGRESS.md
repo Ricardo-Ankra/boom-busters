@@ -2126,6 +2126,28 @@ app found two faults the suites could not see, both now guarded:
      revoked on unmount; a recompiled timeline (music swap) resets the
      control via `key={version}`.
 
+156. **The player's media engine is WebCodecs (`@remotion/media`);
+     the render's is unchanged.** With the network fully out of the
+     picture (89/89 buffered to blob URLs), small playback glitches
+     remained. Root cause research: in the @remotion/player the core
+     tags are HTML5 media elements — video stays in sync by corrective
+     seeking (0.45 s drift threshold) and audio plays through a pool of
+     five shared tags whose src is swapped at every Sequence boundary.
+     With 37 narration paragraphs and 50-odd slots, every swap and seek
+     is a small glitch by construction; premounting, half-resolution and
+     buffering could shrink but never remove them. `mediaEngine()` now
+     forks the three media tags (StockClip, narration, MusicBed): the
+     offline render keeps OffthreadVideo/core Audio — the goldens pin
+     that path byte-for-byte — while the player gets @remotion/media,
+     which decodes with WebCodecs, paints video frame-exact onto a
+     canvas, schedules audio sample-accurately through Web Audio, and
+     falls back to the core tags automatically if a codec, CORS or the
+     browser refuses. The Player also keeps its AudioContext alive
+     across pauses (`_experimentalKeepAudioContextAlive`). If glitches
+     ever matter again beyond this, the remaining option is a cheap
+     draft render for moderation — the master render was always
+     perfectly smooth; only the live preview ever glitched.
+
 ### Verified (M6.8, 2026-08-18)
 
 - **`pnpm typecheck`** and **`pnpm lint`** clean, zero warnings.
