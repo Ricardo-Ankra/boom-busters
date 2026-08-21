@@ -2225,6 +2225,24 @@ app found two faults the suites could not see, both now guarded:
      before rethrowing, in both runners. The Draft card also shows a
      pulsing "Rendering" cue while in flight.
 
+161. **The render fan-out is capped to fit a 10-concurrency account.**
+     The retried draft got past the invoke and died on Remotion's side:
+     "AWS Concurrency limit reached (Rate Exceeded)". This account's
+     Lambda concurrency quota is 10 (verified via get-account-settings —
+     the new-account throttle; mature accounts get 1000), and Remotion's
+     default fan-out for a 14-minute video spawns far more chunk lambdas
+     than that. The broker now computes `framesPerLambda` from the
+     timeline's own clock so a render fits in `RENDER_FANOUT` chunks
+     (default 4: one orchestrator + four renderers + the broker + a
+     webhook stays inside 10). Fewer chunks means bigger ones, so the
+     Remotion function is redeployed at Lambda's 900 s maximum timeout
+     (was 240 s — 6,300-frame chunks need the headroom); its name embeds
+     the timeout, so the broker's REMOTION_FUNCTION_NAME moved with it.
+     The real fix is the quota: request "Lambda Concurrent executions →
+     1000" in Service Quotas, then raise RENDER_FANOUT and enjoy fast
+     renders. The 240 s function is deleted once a draft has proven the
+     new one.
+
 ### Verified (M6.8, 2026-08-18)
 
 - **`pnpm typecheck`** and **`pnpm lint`** clean, zero warnings.

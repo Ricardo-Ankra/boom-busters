@@ -69,6 +69,7 @@ interface TestWorld {
   stored: Map<string, unknown>
   renderCalls: number
   renderScales: number[]
+  renderChunks: number[]
   discards: string[]
   signatureOk: boolean
 }
@@ -89,11 +90,13 @@ function world(overrides: Partial<BrokerDeps> = {}): TestWorld {
     stored,
     renderCalls: 0,
     renderScales: [],
+    renderChunks: [],
     discards: [],
     signatureOk: true,
     deps: {
       token: TOKEN,
       renderCap: 2,
+      renderFanout: 4,
       store: {
         getRender: (id) => Promise.resolve(records.get(id) ?? null),
         putRender: (record) => {
@@ -113,9 +116,10 @@ function world(overrides: Partial<BrokerDeps> = {}): TestWorld {
         },
       },
       remotion: {
-        render: ({ scale }) => {
+        render: ({ scale, framesPerLambda }) => {
           state.renderCalls += 1
           state.renderScales.push(scale)
+          state.renderChunks.push(framesPerLambda)
           return Promise.resolve({
             remotionRenderId: `rem-${state.renderCalls}`,
             bucketName: 'remotionlambda-test',
@@ -210,6 +214,9 @@ describe('POST /renders', () => {
     expect(copy.music?.url).toContain('sig=fresh')
     expect(w.records.get(RENDER)?.status).toBe('running')
     expect(w.renderScales).toEqual([1])
+    // 8 s at 30 fps is 240 frames; a fan-out of 4 means 60-frame chunks —
+    // the whole render fits the account's Lambda concurrency quota.
+    expect(w.renderChunks).toEqual([60])
   })
 
   it('renders a draft at half scale and quotes a quarter of the price', async () => {

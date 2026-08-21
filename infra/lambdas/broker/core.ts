@@ -6,6 +6,7 @@ import {
   RemotionWebhookSchema,
   RENDER_SCALES,
   RenderRequestSchema,
+  timelineDurationMs,
   TimelineSchema,
 } from '@boom-busters/schemas'
 import type {
@@ -62,6 +63,8 @@ export interface RemotionClient {
     renderId: string
     /** Remotion's scale — 1 for masters and shorts, 0.5 for drafts. */
     scale: number
+    /** Chunk size chosen so the fan-out fits the account's concurrency. */
+    framesPerLambda: number
   }): Promise<{ remotionRenderId: string; bucketName: string }>
   progress(
     remotionRenderId: string,
@@ -95,6 +98,15 @@ export interface StorageClient {
 export interface BrokerDeps {
   token: string
   renderCap: number
+  /**
+   * How many renderer chunks one render may fan out to. This account's
+   * Lambda concurrency quota is 10 (new-account throttle; AWS raises it
+   * on request), and Remotion's default fan-out for a long video spawns
+   * far more — every invoke died on "Rate Exceeded" (2026-08-21). The
+   * cap keeps one render + its orchestrator + the broker + media-utils
+   * inside the quota; raise RENDER_FANOUT once AWS grants the increase.
+   */
+  renderFanout: number
   store: BrokerStore
   remotion: RemotionClient
   storage: StorageClient
@@ -258,11 +270,19 @@ async function handleCreateRender(
   )
   await deps.storage.putJson(`renders/${render.renderId}/timeline.json`, materialised)
 
+  // Chunk size from the timeline's own clock: the whole render must fit
+  // in `renderFanout` chunks. Remotion refuses framesPerLambda below 4.
+  const totalFrames = Math.ceil(
+    (timelineDurationMs(timelineParsed.data) / 1000) * timelineParsed.data.fps,
+  )
+  const framesPerLambda = Math.max(4, Math.ceil(totalFrames / Math.max(1, deps.renderFanout)))
+
   const { remotionRenderId, bucketName } = await deps.remotion.render({
     composition: render.composition,
     timeline: materialised,
     renderId: render.renderId,
     scale: RENDER_SCALES[render.kind],
+    framesPerLambda,
   })
 
   await deps.store.putRender({

@@ -82,6 +82,7 @@ export class BrokerStack extends Stack {
         RENDER_BUCKET: config.renderBucket,
         MEDIA_UTILS_FUNCTION_NAME: props.mediaUtilsFunction.functionName,
         RENDER_CAP: String(config.renderCap),
+        RENDER_FANOUT: String(config.renderFanout),
       },
       bundling: {
         externalModules: ['@aws-sdk/*'],

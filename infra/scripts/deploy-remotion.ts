@@ -25,7 +25,10 @@ async function main() {
     createCloudWatchLogGroup: true,
     memorySizeInMb: 2048,
     diskSizeInMb: 10_240,
-    timeoutInSeconds: 240,
+    // Lambda's maximum. The account's 10-concurrency quota forces a small
+    // fan-out (RENDER_FANOUT chunks), so each chunk carries thousands of
+    // frames and 240 s killed them mid-render (2026-08-21).
+    timeoutInSeconds: 900,
   })
   console.log(`function: ${functionName}${alreadyExisted ? ' (already deployed)' : ''}`)
 

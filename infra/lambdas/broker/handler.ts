@@ -128,9 +128,10 @@ function buildDeps(webhookUrl: string): BrokerDeps {
   return {
     token,
     renderCap: Number(process.env['RENDER_CAP'] ?? '2'),
+    renderFanout: Number(process.env['RENDER_FANOUT'] ?? '4'),
     store: s3Store(stateBucket),
     remotion: {
-      async render({ composition, timeline, renderId, scale }) {
+      async render({ composition, timeline, renderId, scale, framesPerLambda }) {
         const { renderId: remotionRenderId, bucketName } = await renderMediaOnLambda({
           region: region() as never,
           functionName: env('REMOTION_FUNCTION_NAME'),
@@ -139,6 +140,7 @@ function buildDeps(webhookUrl: string): BrokerDeps {
           inputProps: { timeline },
           codec: 'h264',
           scale,
+          framesPerLambda,
           // Discovery calls s3:ListAllMyBuckets, which this role is not
           // allowed (found 2026-08-21: every POST /renders 502'd on it).
           forceBucketName: env('RENDER_BUCKET'),

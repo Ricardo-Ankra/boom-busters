@@ -30,6 +30,11 @@ export interface InfraConfig {
   dailyBudgetUsd: number
   renderCap: number
   /**
+   * Renderer chunks per render. Small because the account's Lambda
+   * concurrency quota is 10; raise with the quota.
+   */
+  renderFanout: number
+  /**
    * media-utils Lambda memory. Spec section 8 says 10240; new AWS accounts
    * cap functions at 3008 MB until a quota increase lands, so this is
    * overridable per deploy rather than a reason not to deploy at all.
@@ -59,6 +64,7 @@ export function configFromEnv(env: Record<string, string | undefined> = process.
     alertEmail: env['ALERT_EMAIL'] !== '' ? env['ALERT_EMAIL'] : undefined,
     dailyBudgetUsd: Number(read('DAILY_BUDGET_USD', '25')),
     renderCap: Number(read('RENDER_CAP', '2')),
+    renderFanout: Number(read('RENDER_FANOUT', '4')),
     mediaLambdaMemoryMb: Number(read('MEDIA_LAMBDA_MEMORY_MB', '10240')),
   }
 }
