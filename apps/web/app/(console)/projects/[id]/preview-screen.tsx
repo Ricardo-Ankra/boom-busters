@@ -674,6 +674,15 @@ function DraftPanel({
         <CardTitle className="flex items-center gap-2 text-[14px]">
           <Clapperboard aria-hidden className="h-4 w-4" />
           Draft
+          {inFlight ? (
+            <span className="flex items-center gap-1.5 text-[12px] font-normal text-[var(--color-text-muted)]">
+              <span
+                aria-hidden
+                className="size-1.5 animate-pulse rounded-full bg-[var(--color-accent)] motion-reduce:animate-none"
+              />
+              Rendering
+            </span>
+          ) : null}
         </CardTitle>
       </CardHeader>
       <CardContent className="flex flex-col gap-3">

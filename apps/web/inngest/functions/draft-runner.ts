@@ -1,15 +1,17 @@
 import {
+  failInFlightRenders,
   getSettings,
   insertRender,
   latestTimeline,
   setTimelineKey,
   updateRender,
 } from '@boom-busters/db'
-import { reserve, round4, settle } from '@boom-busters/cost'
+import { release, reserve, round4, settle } from '@boom-busters/cost'
 import {
   BudgetExceededError,
   estimateRenderCostUsd,
   parseEventData,
+  serialiseError,
   timelineDurationMs,
   TimelineSchema,
 } from '@boom-busters/schemas'
@@ -58,6 +60,15 @@ export const draftRunner = inngest.createFunction(
         if: 'async.data.projectId == event.data.projectId',
       },
     ],
+    onFailure: async ({ event }) => {
+      // The run died past its retries. The stage is deliberately untouched
+      // (a draft is advisory), but the row it opened must say why the
+      // progress bar stopped — a queued row with a dead run behind it
+      // reads as "Rendering draft… 0%" forever.
+      const projectId = event.data.event.data['projectId']
+      if (typeof projectId !== 'string') return
+      await failInFlightRenders(db, projectId, 'draft', serialiseError(event.data.error))
+    },
     triggers: [events.renderDraftRequested],
   },
   async ({ event, step }) => {
@@ -141,14 +152,23 @@ export const draftRunner = inngest.createFunction(
         throw error
       }
 
-      const accepted = await submitRender({
-        projectId,
-        renderId: setup.renderId,
-        kind: 'draft',
-        timelineS3Key: key,
-        composition: 'DocumentaryMaster',
-        expectedDurationSec: setup.durationSec,
-      })
+      // A refused invoke releases its reservation before the retry: this
+      // step re-runs whole, so a kept reservation per attempt would stack
+      // phantom spend against the ceiling (three 502s did, 2026-08-21).
+      let accepted
+      try {
+        accepted = await submitRender({
+          projectId,
+          renderId: setup.renderId,
+          kind: 'draft',
+          timelineS3Key: key,
+          composition: 'DocumentaryMaster',
+          expectedDurationSec: setup.durationSec,
+        })
+      } catch (error) {
+        await release(db, ledgerId)
+        throw error
+      }
 
       await updateRender(db, setup.renderId, {
         status: 'rendering',

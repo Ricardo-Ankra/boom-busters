@@ -89,6 +89,13 @@ describe('broker stack', () => {
     })
   })
 
+  it('names the render bucket — discovery needs s3:ListAllMyBuckets, which the role must not have', () => {
+    broker.hasResourceProperties('AWS::Lambda::Function', {
+      FunctionName: 'boom-busters-broker',
+      Environment: { Variables: Match.objectLike({ RENDER_BUCKET: 'remotionlambda-test' }) },
+    })
+  })
+
   it('expires renders after 90 days and broker state after 180 (section 12)', () => {
     broker.hasResourceProperties('AWS::S3::Bucket', {
       LifecycleConfiguration: {

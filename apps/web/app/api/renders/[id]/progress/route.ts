@@ -26,9 +26,11 @@ export async function GET(
   const render = await getRender(db, id)
   if (!render) return new Response('No such render', { status: 404 })
 
+  let status = render.status
   let progressPct = render.progressPct
   let outputUrl: string | undefined
   let message: string | undefined
+  let error = render.error ?? null
 
   const inFlight = render.status === 'invoking' || render.status === 'rendering'
   if (brokerConfigured() && render.brokerRenderId) {
@@ -40,6 +42,19 @@ export async function GET(
       if (inFlight && progressPct > render.progressPct) {
         await updateRender(db, render.id, { progressPct })
       }
+      // The broker knowing the render is dead beats a row still saying
+      // 'rendering': surface it NOW, not when the runner's webhook wait
+      // times out half an hour later. Idempotent against the runner's own
+      // failure bookkeeping landing afterwards.
+      if (inFlight && progress.status === 'failed') {
+        status = 'failed'
+        error = { message: progress.message ?? 'The render failed on Lambda.' }
+        await updateRender(db, render.id, {
+          status: 'failed',
+          error,
+          completedAt: new Date(),
+        })
+      }
     } catch {
       // The broker being briefly unreachable is a poll's problem, not the
       // render's — answer from the row and let the next poll try again.
@@ -50,13 +65,13 @@ export async function GET(
 
   return Response.json({
     id: render.id,
-    status: render.status,
+    status,
     progressPct,
     startedAt: render.startedAt,
     completedAt: render.completedAt,
     costUsd: render.costUsd,
     qcReport: render.qcReport ?? null,
-    error: render.error ?? null,
+    error,
     ...(outputUrl !== undefined ? { outputUrl } : {}),
     ...(message !== undefined ? { message } : {}),
   })

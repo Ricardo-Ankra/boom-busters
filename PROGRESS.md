@@ -2186,6 +2186,45 @@ app found two faults the suites could not see, both now guarded:
      rendered (a free music swap leaves it a version behind, said out
      loud), and offers "Re-render draft" as an explicit ~$0.06 confirm.
 
+159. **LiveRefresh polls a pulse, not the page — Neon's transfer
+     allowance was going into a 3-second loop.** One project-page render
+     from assembly onward reads ~400 KB out of Postgres (timeline JSON
+     45 KB, voice takes 101 KB, slot candidates 138 KB+, measured
+     2026-08-21 on a 7 MB database), and LiveRefresh re-ran the whole
+     page every 3 s for as long as any run was moving: ~8 MB of Neon
+     egress per run-minute, which is what emptied the month's transfer
+     quota. Now `/api/pulse` answers an opaque change token (epoch of
+     the newest change to the project row, its run mirror, or a run
+     event; `projectPulse`/`globalPulse` in the db package) and
+     LiveRefresh re-renders only when the token moves — a failing pulse
+     degrades to the old refresh-every-tick bargain rather than going
+     stale. Renders are deliberately outside the pulse: their progress
+     writes land every 2 s and the render panel already self-polls;
+     the run mirror still moves on every runner step, so terminal
+     transitions refresh. Also: `deploy:stacks` now defaults
+     MEDIA_LAMBDA_MEMORY_MB to 3008 (the account's Lambda cap) so
+     `--all` deploys stop tripping over the spec's 10,240 MB ask;
+     export the big number once the quota increase lands.
+
+160. **The first live draft failed silently — three fixes from one 502.**
+     `POST /renders` died because `renderMediaOnLambda` discovers
+     Remotion's bucket via `s3:ListAllMyBuckets`, an account-wide read
+     the broker's role must not have (the M6.6 smoke test only exercised
+     GET routes, so no live invoke had ever run). The bucket is known at
+     deploy time: the broker now carries `RENDER_BUCKET` and passes
+     `forceBucketName`. Around the failure, two silences: (a) the run
+     died after retries with the renders row still 'queued', so the
+     Draft card showed an honest-looking 0% forever — both runners'
+     `onFailure` now calls `failInFlightRenders` (new db helper) so the
+     row says why, and the progress route promotes a broker-reported
+     failure onto the row immediately instead of waiting out the
+     30-minute webhook grace; (b) each retry of the invoke step
+     re-reserved the estimate and never settled it — three phantom
+     $0.0572 reservations counted against the ceiling (released by
+     hand). `submitRender` failures now release their reservation
+     before rethrowing, in both runners. The Draft card also shows a
+     pulsing "Rendering" cue while in flight.
+
 ### Verified (M6.8, 2026-08-18)
 
 - **`pnpm typecheck`** and **`pnpm lint`** clean, zero warnings.

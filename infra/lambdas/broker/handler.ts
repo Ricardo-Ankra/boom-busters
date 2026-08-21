@@ -139,6 +139,9 @@ function buildDeps(webhookUrl: string): BrokerDeps {
           inputProps: { timeline },
           codec: 'h264',
           scale,
+          // Discovery calls s3:ListAllMyBuckets, which this role is not
+          // allowed (found 2026-08-21: every POST /renders 502'd on it).
+          forceBucketName: env('RENDER_BUCKET'),
           webhook: { url: webhookUrl, secret: token, customData: { renderId } },
         })
         return { remotionRenderId, bucketName }

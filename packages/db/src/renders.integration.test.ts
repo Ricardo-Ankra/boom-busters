@@ -2,7 +2,14 @@ import { sql as dsql } from 'drizzle-orm'
 import { afterAll, beforeEach, describe, expect, it } from 'vitest'
 import { createDb } from './client'
 import { FIXTURE_PROJECT_ID, fixtureCase, fixtureProject } from './fixtures'
-import { getRender, insertRender, latestRender, renderInFlight, updateRender } from './renders'
+import {
+  failInFlightRenders,
+  getRender,
+  insertRender,
+  latestRender,
+  renderInFlight,
+  updateRender,
+} from './renders'
 import { cases, projects } from './schema'
 import { requireTestDatabase } from './test-database'
 
@@ -71,5 +78,34 @@ suite('render bookkeeping', () => {
     })
     expect(first.id).not.toBe(second.id)
     expect((await latestRender(db, FIXTURE_PROJECT_ID))?.timelineVersion).toBe(2)
+  })
+
+  it('failInFlightRenders fails only the in-flight rows of that kind', async () => {
+    const stuck = await insertRender(db, {
+      projectId: FIXTURE_PROJECT_ID,
+      timelineVersion: 1,
+      kind: 'draft',
+    })
+    const done = await insertRender(db, {
+      projectId: FIXTURE_PROJECT_ID,
+      timelineVersion: 1,
+      kind: 'draft',
+    })
+    await updateRender(db, done.id, { status: 'done', progressPct: 100 })
+    const master = await insertRender(db, {
+      projectId: FIXTURE_PROJECT_ID,
+      timelineVersion: 1,
+      kind: 'master',
+    })
+
+    await failInFlightRenders(db, FIXTURE_PROJECT_ID, 'draft', { message: 'broker answered 502' })
+
+    expect((await getRender(db, stuck.id))?.status).toBe('failed')
+    expect((await getRender(db, stuck.id))?.error).toMatchObject({
+      message: 'broker answered 502',
+    })
+    // A finished draft and an in-flight master are none of its business.
+    expect((await getRender(db, done.id))?.status).toBe('done')
+    expect((await getRender(db, master.id))?.status).toBe('queued')
   })
 })

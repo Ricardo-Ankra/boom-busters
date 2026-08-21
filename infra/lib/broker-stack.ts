@@ -76,6 +76,10 @@ export class BrokerStack extends Stack {
         R2_BUCKET: config.r2.bucket,
         REMOTION_FUNCTION_NAME: config.remotion.functionName,
         REMOTION_SERVE_URL: config.remotion.serveUrl,
+        // Named, not discovered: renderMediaOnLambda's bucket discovery
+        // needs s3:ListAllMyBuckets, an account-wide read this role must
+        // not have. The bucket is known at deploy time; force it.
+        RENDER_BUCKET: config.renderBucket,
         MEDIA_UTILS_FUNCTION_NAME: props.mediaUtilsFunction.functionName,
         RENDER_CAP: String(config.renderCap),
       },

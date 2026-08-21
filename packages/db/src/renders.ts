@@ -72,6 +72,31 @@ export async function renderInFlight(
   return row
 }
 
+/**
+ * Terminal bookkeeping for a runner that died: every in-flight render of
+ * the kind is marked failed with the reason. Without this, a run that
+ * throws before its own failure step leaves the row 'queued' or
+ * 'rendering' forever — and the UI shows an honest-looking progress bar
+ * stuck at 0% with no error anywhere (the first live draft, 2026-08-21).
+ */
+export async function failInFlightRenders(
+  db: Database,
+  projectId: string,
+  kind: RenderRow['kind'],
+  error: Record<string, unknown>,
+): Promise<void> {
+  await db
+    .update(renders)
+    .set({ status: 'failed', error, completedAt: new Date() })
+    .where(
+      and(
+        eq(renders.projectId, projectId),
+        eq(renders.kind, kind),
+        inArray(renders.status, [...IN_FLIGHT]),
+      ),
+    )
+}
+
 export async function updateRender(
   db: Database,
   id: string,
