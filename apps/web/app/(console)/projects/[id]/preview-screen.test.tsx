@@ -310,7 +310,7 @@ describe('PreviewScreen', () => {
     expect(screen.getByRole('button', { name: /Render draft · est\. \$0\.06/ })).toBeEnabled()
   })
 
-  it('reports a failed draft without touching the master panel', () => {
+  it('a failed draft is a note beside the retry button, not a lingering card', () => {
     const draft: PreviewDraftProp = {
       id: '01J0000000000000000000000C',
       status: 'failed',
@@ -324,8 +324,12 @@ describe('PreviewScreen', () => {
     }
     render(<PreviewScreen {...props({ draft })} />)
 
-    expect(screen.getByText(/The draft failed: render timeout/)).toBeInTheDocument()
-    // The master's invoke card is untouched by an advisory failure.
+    // No Draft card — nothing to show or play.
+    expect(screen.queryByText(/^Draft$/)).not.toBeInTheDocument()
+    // The reason sits in the render card, next to the button that retries.
+    expect(screen.getByText(/The last draft failed: render timeout/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Render draft · est\. \$0\.06/ })).toBeEnabled()
+    // The master's invoke path is untouched by an advisory failure.
     expect(screen.getByRole('button', { name: /Render master · est\. \$0\.24/ })).toBeEnabled()
   })
 

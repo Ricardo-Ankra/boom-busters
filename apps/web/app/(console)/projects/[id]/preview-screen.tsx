@@ -218,7 +218,14 @@ export function PreviewScreen({
           </CardContent>
         </Card>
 
-        {draft ? <DraftPanel version={version} draft={draft} state={draftState} /> : null}
+        {/* Only a draft with something to show gets a card: progress, or the
+            file. A FAILED draft is a one-line note beside the button that
+            retries it (in the render card), not a lingering card of its own. */}
+        {draft &&
+        draftState.current?.status !== 'failed' &&
+        draftState.current?.status !== 'cancelled' ? (
+          <DraftPanel version={version} draft={draft} state={draftState} />
+        ) : null}
 
         <MusicPicker projectId={projectId} beds={beds} currentBedKey={currentBedKey} act={act} />
 
@@ -229,6 +236,11 @@ export function PreviewScreen({
           estimatedCostUsd={estimatedCostUsd}
           estimatedDraftCostUsd={estimatedDraftCostUsd}
           draftBusy={draftState.inFlight}
+          draftError={
+            draftState.current?.status === 'failed'
+              ? (draftState.current.error?.message ?? 'unknown error')
+              : null
+          }
           live={live}
           atGate={atGate}
           render={render}
@@ -519,12 +531,6 @@ function DraftPanel({
             </p>
           </>
         ) : null}
-        {current?.status === 'failed' ? (
-          <p className="text-[13px] text-[var(--color-danger)]">
-            The draft failed{current.error?.message ? `: ${current.error.message}` : '.'} The live
-            preview above still plays.
-          </p>
-        ) : null}
         {current?.status === 'done' && poll?.outputUrl ? (
           <video
             controls
@@ -564,6 +570,7 @@ function RenderPanel({
   estimatedCostUsd,
   estimatedDraftCostUsd,
   draftBusy,
+  draftError,
   live,
   atGate,
   render,
@@ -576,6 +583,8 @@ function RenderPanel({
   estimatedDraftCostUsd: number
   /** A draft is in flight — its button hides until the card above settles. */
   draftBusy: boolean
+  /** The last draft died: said here, beside the button that retries it. */
+  draftError: string | null
   live: boolean
   atGate: boolean
   render: PreviewRenderProp | null
@@ -646,6 +655,11 @@ function RenderPanel({
           <p className="text-[13px] text-[var(--color-danger)]">
             The last render failed
             {current.error?.message ? `: ${current.error.message}` : '.'}
+          </p>
+        ) : null}
+        {draftError !== null ? (
+          <p className="text-[13px] text-[var(--color-danger)]">
+            The last draft failed: {draftError}
           </p>
         ) : null}
         <p className="text-[13px] text-[var(--color-text-secondary)]">
