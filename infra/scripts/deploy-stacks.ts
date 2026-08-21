@@ -77,6 +77,12 @@ const config: Record<string, string> = {
   REMOTION_SERVE_URL: required('REMOTION_SERVE_URL'),
   RENDER_BUCKET: required('RENDER_BUCKET'),
   ALERT_EMAIL: process.env['ALERT_EMAIL'] ?? dotenv['OWNER_EMAIL'] ?? '',
+  // Spec section 8 wants 10,240 MB (Lambda CPU scales with memory; the
+  // full-master ffmpeg QC scan and whisper.cpp are CPU-bound), but this AWS
+  // account caps functions at 3008 MB until a quota increase lands, and a
+  // template asking for more fails the whole deploy. Default to what the
+  // account allows; export MEDIA_LAMBDA_MEMORY_MB=10240 once AWS says yes.
+  MEDIA_LAMBDA_MEMORY_MB: process.env['MEDIA_LAMBDA_MEMORY_MB'] ?? '3008',
 }
 
 console.log(

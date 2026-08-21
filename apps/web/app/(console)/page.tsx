@@ -2,6 +2,7 @@ import {
   countCases,
   countMusicBeds,
   getSettings,
+  globalPulse,
   isYoutubeConnected,
   listActiveRuns,
   listFailedRuns,
@@ -41,11 +42,12 @@ export default async function DashboardPage() {
   const actionable = actionableSetup(items)
   const upcoming = upcomingSetup(items)
 
-  const [awaitingReview, budgetGates, failedRuns, activeRuns] = await Promise.all([
+  const [awaitingReview, budgetGates, failedRuns, activeRuns, pulse] = await Promise.all([
     listProjectsAwaitingReview(db),
     listOpenBudgetGates(db),
     listFailedRuns(db),
     listActiveRuns(db),
+    globalPulse(db),
   ])
 
   const cards = buildNeedsYouCards({ awaitingReview, budgetGates, failedRuns })
@@ -68,7 +70,7 @@ export default async function DashboardPage() {
       <section className="flex flex-col gap-2">
         <div className="flex items-baseline justify-between gap-3">
           <h2 className="text-[15px] font-semibold">Active runs</h2>
-          <LiveRefresh active={activeRuns.length > 0} />
+          <LiveRefresh active={activeRuns.length > 0} pulseUrl="/api/pulse" initialPulse={pulse} />
         </div>
         {activeRuns.length === 0 ? (
           <p className="rounded-[8px] border border-[var(--color-border)] p-6 text-center text-[13px] text-[var(--color-text-muted)]">

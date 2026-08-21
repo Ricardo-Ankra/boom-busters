@@ -8,6 +8,7 @@ import {
   listActivity,
   listOpenBudgetGates,
   projectDeletionSummary,
+  projectPulse,
 } from '@boom-busters/db'
 import { voiceReviewModel } from '@/lib/voice-review'
 import { visualsReviewModel } from '@/lib/visuals-review'
@@ -75,6 +76,7 @@ export default async function ProjectPage({
     visuals,
     settings,
     preview,
+    pulse,
   ] = await Promise.all([
     listActivity(db, { projectId: id, limit: 50 }),
     listOpenBudgetGates(db),
@@ -92,6 +94,7 @@ export default async function ProjectPage({
     requestedStage === 'assembly'
       ? previewModel(db, id)
       : Promise.resolve(emptyPreviewModel()),
+    projectPulse(db, id),
   ])
   const budgetGate = budgetGates.find((gate) => gate.projectId === id)
 
@@ -201,7 +204,11 @@ export default async function ProjectPage({
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          <LiveRefresh active={moving} />
+          <LiveRefresh
+            active={moving}
+            pulseUrl={`/api/pulse?project=${project.id}`}
+            initialPulse={pulse}
+          />
           {control.kind === 'stop' ? (
             <StopButton
               projectId={project.id}
