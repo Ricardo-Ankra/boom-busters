@@ -15,7 +15,12 @@ import { fileURLToPath } from 'node:url'
  *
  *   AWS_PROFILE=... AWS_REGION=eu-west-1 \
  *   REMOTION_FUNCTION_NAME=... REMOTION_SERVE_URL=... RENDER_BUCKET=... \
- *   pnpm deploy:stacks
+ *   pnpm deploy:stacks [stack-name ...]
+ *
+ * With no arguments every stack deploys. Naming stacks deploys only those —
+ * needed while the account's Lambda memory quota (3008 MB) blocks the
+ * media-utils update to 10,240 MB: `pnpm deploy:stacks boom-busters-broker`
+ * ships a broker change without tripping over the parked one.
  */
 
 const here = path.dirname(fileURLToPath(import.meta.url))
@@ -78,9 +83,15 @@ console.log(
   `deploying with CALLBACK_URL=${config['CALLBACK_URL']}, ALERT_EMAIL=${config['ALERT_EMAIL']}`,
 )
 
+// Named stacks deploy `--exclusively`: without it CDK walks the strong
+// cross-stack reference and deploys media-utils first anyway, which is
+// exactly the stack the quota blocks.
+const stacks = process.argv.slice(2)
+const selection = stacks.length > 0 ? [...stacks, '--exclusively'] : ['--all']
+
 const result = spawnSync(
   'pnpm',
-  ['exec', 'cdk', 'deploy', '--all', '--require-approval', 'never'],
+  ['exec', 'cdk', 'deploy', ...selection, '--require-approval', 'never'],
   {
     cwd: path.join(here, '..'),
     env: { ...process.env, ...config },
