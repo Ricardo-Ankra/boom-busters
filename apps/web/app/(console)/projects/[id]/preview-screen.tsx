@@ -5,7 +5,7 @@ import type { PlayerRef } from '@remotion/player'
 import { DocumentaryMaster } from '@boom-busters/compositions'
 import { gainAt } from '@boom-busters/schemas'
 import type { QcReport, Timeline } from '@boom-busters/schemas'
-import { Captions, Clapperboard, Download, Film, Music, Square } from 'lucide-react'
+import { Captions, Clapperboard, Film, Music, Square } from 'lucide-react'
 import * as React from 'react'
 import { ConfirmButton } from '@/components/confirm-button'
 import { Button } from '@/components/ui/button'
@@ -18,10 +18,19 @@ import { useAction } from './project-controls'
  * Preview & render — Gate 5a (build spec section 11.3). Full-width
  * `@remotion/player` of the compiled timeline with chapter markers, a
  * caption toggle and the music-duck gain line; beside it the stats, the
- * music picker (a swap recompiles the timeline — cheap and free), and the
- * "Render master" button, which IS the gate approval: section 7.6 starts
- * the render-runner on `gate/preview.approved`, so the click that spends
- * the money and the event that closes the gate are one action.
+ * music picker (a swap recompiles the timeline — cheap and free), and two
+ * render choices side by side: a half-resolution draft (~a quarter of the
+ * price, a real file to check before committing) and "Render master",
+ * which IS the gate approval — section 7.6 starts the render-runner on
+ * `gate/preview.approved`, so the click that spends the money and the
+ * event that closes the gate are one action.
+ *
+ * There used to be a "Buffer full preview" button and an automatic draft
+ * per assembly run. Both existed to work around a glitchy live player,
+ * and the glitch turned out to be the page's own 3-second refresh loop
+ * handing the player freshly signed URLs mid-play (decision 159/162).
+ * With that fixed the player is smooth from the network, so the buffer
+ * machinery is gone and the draft is a button, not an automatism.
  */
 
 export interface PreviewChapterProp {
@@ -74,63 +83,6 @@ function timelineDuration(timeline: Timeline): number {
   return end
 }
 
-/** What the player actually fetches for a media slot: the proxy when one exists. */
-function slotPlayerUrl(src: {
-  url?: string
-  previewUrl?: string
-  externalUrl?: string
-}): string | undefined {
-  return src.previewUrl ?? src.url ?? src.externalUrl
-}
-
-/** Every URL the player will fetch, deduped — the buffer button's manifest. */
-function mediaUrls(timeline: Timeline): string[] {
-  const urls = new Set<string>()
-  for (const slot of timeline.slots) {
-    if (slot.payload.kind === 'image' || slot.payload.kind === 'video') {
-      const url = slotPlayerUrl(slot.payload.src)
-      if (url !== undefined) urls.add(url)
-    }
-  }
-  for (const segment of timeline.narration) {
-    if (segment.url !== undefined) urls.add(segment.url)
-  }
-  if (timeline.music?.url !== undefined) urls.add(timeline.music.url)
-  return [...urls]
-}
-
-/**
- * The buffered copy: every media URL the map covers replaced by its blob
- * URL, so the player reads memory, not the network. A URL the map lacks
- * (a buffer failure, or a recompiled timeline) stays as it was — degraded
- * to exactly the pre-buffer behaviour, never worse.
- */
-export function substituteMedia(timeline: Timeline, blobs: ReadonlyMap<string, string>): Timeline {
-  return {
-    ...timeline,
-    narration: timeline.narration.map((segment) =>
-      segment.url !== undefined && blobs.has(segment.url)
-        ? { ...segment, url: blobs.get(segment.url)! }
-        : segment,
-    ),
-    music:
-      timeline.music && timeline.music.url !== undefined && blobs.has(timeline.music.url)
-        ? { ...timeline.music, url: blobs.get(timeline.music.url)! }
-        : timeline.music,
-    slots: timeline.slots.map((slot) => {
-      if (slot.payload.kind !== 'image' && slot.payload.kind !== 'video') return slot
-      const url = slotPlayerUrl(slot.payload.src)
-      if (url === undefined || !blobs.has(url)) return slot
-      // Swap the field the player reads: the proxy when one exists.
-      const swapped =
-        slot.payload.src.previewUrl !== undefined
-          ? { ...slot.payload.src, previewUrl: blobs.get(url)! }
-          : { ...slot.payload.src, url: blobs.get(url)! }
-      return { ...slot, payload: { ...slot.payload, src: swapped } }
-    }),
-  }
-}
-
 export function PreviewScreen({
   projectId,
   timeline,
@@ -169,17 +121,19 @@ export function PreviewScreen({
   const act = useAction()
   const playerRef = React.useRef<PlayerRef>(null)
   const [captionsOn, setCaptionsOn] = React.useState(true)
-  const [blobs, setBlobs] = React.useState<ReadonlyMap<string, string> | null>(null)
 
   const durationMs = timelineDuration(timeline)
   const durationInFrames = Math.max(1, msToFrames(durationMs, timeline.fps))
 
-  const shown = React.useMemo<Timeline>(() => {
-    const buffered = blobs ? substituteMedia(timeline, blobs) : timeline
-    return captionsOn
-      ? buffered
-      : { ...buffered, captions: { ...buffered.captions, style: 'none' as const } }
-  }, [timeline, captionsOn, blobs])
+  // The draft's poll lives here so the render card can hide its draft
+  // button while one is in flight, and the draft card can show progress.
+  const draftState = useRenderPoll(draft)
+
+  const shown = React.useMemo<Timeline>(
+    () =>
+      captionsOn ? timeline : { ...timeline, captions: { ...timeline.captions, style: 'none' } },
+    [timeline, captionsOn],
+  )
 
   const droppedTotal = dropped.narration + dropped.slots + (dropped.music ? 1 : 0)
 
@@ -230,7 +184,6 @@ export function PreviewScreen({
             <Captions aria-hidden />
             {captionsOn ? 'Hide captions' : 'Show captions'}
           </Button>
-          <BufferControl key={version} timeline={timeline} onBuffered={setBlobs} />
           {droppedTotal > 0 ? (
             <p className="text-[13px] text-[var(--color-warning)]">
               {droppedTotal} item{droppedTotal === 1 ? ' is' : 's are'} not previewable here
@@ -265,14 +218,7 @@ export function PreviewScreen({
           </CardContent>
         </Card>
 
-        <DraftPanel
-          projectId={projectId}
-          version={version}
-          draft={draft}
-          estimatedDraftCostUsd={estimatedDraftCostUsd}
-          live={live}
-          act={act}
-        />
+        {draft ? <DraftPanel version={version} draft={draft} state={draftState} /> : null}
 
         <MusicPicker projectId={projectId} beds={beds} currentBedKey={currentBedKey} act={act} />
 
@@ -281,6 +227,8 @@ export function PreviewScreen({
           durationMs={durationMs}
           durationInFrames={durationInFrames}
           estimatedCostUsd={estimatedCostUsd}
+          estimatedDraftCostUsd={estimatedDraftCostUsd}
+          draftBusy={draftState.inFlight}
           live={live}
           atGate={atGate}
           render={render}
@@ -288,99 +236,6 @@ export function PreviewScreen({
         />
       </div>
     </div>
-  )
-}
-
-/**
- * "Buffer full preview": every media file the timeline references,
- * downloaded into blob URLs the player is then handed outright (via
- * `substituteMedia`), so playback reads memory, never the network — no
- * mid-play buffering, no presigned URL expiring an hour into a long
- * moderation session. Downloads use `cache: 'no-store'`: the player's
- * media tags and this fetch would otherwise share the browser's HTTP
- * cache, and a media-tag response cached without CORS headers silently
- * fails the fetch of the same URL (two rounds of that, 2026-08-20).
- * A button rather than automatic (spec section 11.1, button-first)
- * because it moves real megabytes the human should choose to download.
- */
-function BufferControl({
-  timeline,
-  onBuffered,
-}: {
-  timeline: Timeline
-  onBuffered: (blobs: ReadonlyMap<string, string>) => void
-}) {
-  const urls = React.useMemo(() => mediaUrls(timeline), [timeline])
-  const [phase, setPhase] = React.useState<'idle' | 'busy' | 'done'>('idle')
-  const [progress, setProgress] = React.useState({ done: 0, failed: 0 })
-  const objectUrls = React.useRef<string[]>([])
-
-  // Blob URLs hold their bytes until revoked; leaving the screen releases them.
-  React.useEffect(
-    () => () => {
-      for (const url of objectUrls.current) URL.revokeObjectURL(url)
-      objectUrls.current = []
-    },
-    [],
-  )
-
-  if (urls.length === 0) return null
-
-  const buffer = async () => {
-    setPhase('busy')
-    setProgress({ done: 0, failed: 0 })
-    const queue = [...urls]
-    const blobs = new Map<string, string>()
-    let done = 0
-    let failed = 0
-    // Four at a time: enough to fill the pipe without stampeding the CDN.
-    const worker = async () => {
-      for (let url = queue.shift(); url !== undefined; url = queue.shift()) {
-        // One quiet retry per file: two transient drops out of ninety
-        // fetches is normal weather, and a failure that survives both
-        // attempts is worth the human's attention.
-        let buffered = false
-        for (let attempt = 0; attempt < 2 && !buffered; attempt += 1) {
-          try {
-            const response = await fetch(url, { cache: 'no-store' })
-            if (!response.ok) throw new Error(`HTTP ${response.status}`)
-            const blobUrl = URL.createObjectURL(await response.blob())
-            objectUrls.current.push(blobUrl)
-            blobs.set(url, blobUrl)
-            buffered = true
-          } catch (error) {
-            if (attempt === 1) console.warn(`Buffer failed for ${url}`, error)
-          }
-        }
-        if (buffered) done += 1
-        else failed += 1
-        setProgress({ done, failed })
-      }
-    }
-    await Promise.all(Array.from({ length: Math.min(4, urls.length) }, worker))
-    onBuffered(blobs)
-    setPhase('done')
-  }
-
-  const label =
-    phase === 'busy'
-      ? `Buffering ${progress.done + progress.failed} of ${urls.length}…`
-      : phase === 'done' && progress.failed === 0
-        ? 'Fully buffered — plays from memory'
-        : phase === 'done'
-          ? `Buffered — ${progress.failed} file${progress.failed === 1 ? '' : 's'} failed, retry`
-          : `Buffer full preview (${urls.length} files)`
-
-  return (
-    <Button
-      variant="outline"
-      busy={phase === 'busy'}
-      disabled={phase === 'done' && progress.failed === 0}
-      onClick={() => void buffer()}
-    >
-      <Download aria-hidden />
-      {label}
-    </Button>
   )
 }
 
@@ -607,66 +462,25 @@ function useRenderPoll(render: PreviewRenderProp | null): {
 }
 
 /**
- * The draft card (M6.8): the half-resolution copy the assembly stage
- * renders automatically, played through a NATIVE video element — measured
- * 2026-08-21: on a software-decode machine the live player above manages
- * 14fps with half-second pauses, while a plain video element plays the
- * same content flawlessly. This file is the honest way to judge the cut.
- * A music swap recompiles the timeline for free, which leaves the draft a
- * version behind; the card says so and offers a re-render as an explicit
- * small spend. Hidden in mock mode: no broker, no drafts, and the master
- * button already renders locally for free.
+ * The draft card: display only — the request button lives beside "Render
+ * master" in the render card, so the two spend choices sit together. This
+ * card shows whatever the newest draft is doing: progress while rendering,
+ * the file itself when done (a real render at half resolution — exactly
+ * what the master will look like), the reason when it failed, and a
+ * staleness note when a free music swap has moved the timeline past it.
  */
 function DraftPanel({
-  projectId,
   version,
   draft,
-  estimatedDraftCostUsd,
-  live,
-  act,
+  state,
 }: {
-  projectId: string
   version: number
-  draft: PreviewDraftProp | null
-  estimatedDraftCostUsd: number
-  live: boolean
-  act: ReturnType<typeof useAction>
+  draft: PreviewDraftProp
+  state: ReturnType<typeof useRenderPoll>
 }) {
-  const { current, poll, inFlight } = useRenderPoll(draft)
-  const [handedOff, setHandedOff] = React.useState(false)
+  const { current, poll, inFlight } = state
 
-  if (!live) return null
-
-  const stale = draft !== null && draft.timelineVersion !== version
-  const requestButton = inFlight ? null : handedOff &&
-    current?.status !== 'done' &&
-    current?.status !== 'failed' ? (
-    <p className="text-[13px] text-[var(--color-text-secondary)]">
-      Handed to the render pipeline — progress appears here shortly.
-    </p>
-  ) : (
-    <ConfirmButton
-      variant="outline"
-      label={
-        <>
-          <Clapperboard aria-hidden />
-          {draft ? 'Re-render draft' : 'Render draft'} · est. ${estimatedDraftCostUsd.toFixed(2)}
-        </>
-      }
-      confirmLabel="Render draft"
-      consequence={
-        `Invokes Remotion Lambda at half resolution, est. ` +
-        `$${estimatedDraftCostUsd.toFixed(2)}. Cheap, but real money.`
-      }
-      onConfirm={async () => {
-        const ok = await act(
-          () => requestDraftRender(projectId),
-          'Draft render started — progress appears here',
-        )
-        if (ok) setHandedOff(true)
-      }}
-    />
-  )
+  const stale = draft.timelineVersion !== version
 
   return (
     <Card>
@@ -686,12 +500,6 @@ function DraftPanel({
         </CardTitle>
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
-        {!draft ? (
-          <p className="text-[13px] text-[var(--color-text-muted)]">
-            A half-resolution draft renders automatically after each assembly run — it plays
-            smoothly on any machine, unlike the live preview on weaker hardware.
-          </p>
-        ) : null}
         {inFlight ? (
           <>
             <div
@@ -726,7 +534,7 @@ function DraftPanel({
             data-testid="draft-video"
           />
         ) : null}
-        {draft && current?.status === 'done' ? (
+        {current?.status === 'done' ? (
           <p className="text-[12px] text-[var(--color-text-muted)]">
             Draft of timeline v{draft.timelineVersion} · half resolution · cost $
             {Number(current.costUsd).toFixed(2)}
@@ -735,25 +543,27 @@ function DraftPanel({
         {stale && !inFlight ? (
           <p className="text-[13px] text-[var(--color-warning)]">
             The timeline has moved on to v{version} (a music swap recompiles for free) — this draft
-            still plays v{draft.timelineVersion}.
+            still plays v{draft.timelineVersion}. Render a fresh one below.
           </p>
         ) : null}
-        {requestButton}
       </CardContent>
     </Card>
   )
 }
 
 /**
- * The render half of the screen: the button (the REAL cancel point — spec
- * section 8.1 — so it carries the cost and an inline two-step), then the
- * 2-second progress poll, then the QC report card and the master itself.
+ * The render half of the screen: the two spend choices side by side (the
+ * cheap half-resolution draft, and "Render master" — the REAL cancel point,
+ * spec section 8.1, so both carry their costs and an inline two-step), then
+ * the 2-second progress poll, then the QC report card and the master itself.
  */
 function RenderPanel({
   projectId,
   durationMs,
   durationInFrames,
   estimatedCostUsd,
+  estimatedDraftCostUsd,
+  draftBusy,
   live,
   atGate,
   render,
@@ -763,6 +573,9 @@ function RenderPanel({
   durationMs: number
   durationInFrames: number
   estimatedCostUsd: number
+  estimatedDraftCostUsd: number
+  /** A draft is in flight — its button hides until the card above settles. */
+  draftBusy: boolean
   live: boolean
   atGate: boolean
   render: PreviewRenderProp | null
@@ -770,6 +583,39 @@ function RenderPanel({
 }) {
   const { current, poll, inFlight } = useRenderPoll(render)
   const [handedOff, setHandedOff] = React.useState(false)
+  const [draftHandedOff, setDraftHandedOff] = React.useState(false)
+  // Once the draft's own card is showing progress, the hand-off note is done.
+  React.useEffect(() => {
+    if (draftBusy) setDraftHandedOff(false)
+  }, [draftBusy])
+
+  // Drafts only exist live: in mock mode the master button already renders
+  // on this machine for free, so a cheap copy has nothing to be cheaper than.
+  const draftButton =
+    live && !draftBusy ? (
+      <ConfirmButton
+        variant="outline"
+        label={
+          <>
+            <Clapperboard aria-hidden />
+            Render draft · est. ${estimatedDraftCostUsd.toFixed(2)}
+          </>
+        }
+        confirmLabel="Render draft"
+        consequence={
+          `Invokes Remotion Lambda at half resolution, est. ` +
+          `$${estimatedDraftCostUsd.toFixed(2)} — a real file to check before the master. ` +
+          'Cheap, but real money.'
+        }
+        onConfirm={async () => {
+          const ok = await act(
+            () => requestDraftRender(projectId),
+            'Draft render started — progress appears in the Draft card',
+          )
+          if (ok) setDraftHandedOff(true)
+        }}
+      />
+    ) : null
 
   const cost = live ? `$${estimatedCostUsd.toFixed(2)}` : '$0.00 (renders locally in mock mode)'
 
@@ -792,7 +638,7 @@ function RenderPanel({
     <Card>
       <CardHeader>
         <CardTitle className="text-[14px]">
-          {current?.status === 'done' ? 'Render again' : 'Render master'}
+          {current?.status === 'done' ? 'Render again' : 'Render'}
         </CardTitle>
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
@@ -803,28 +649,37 @@ function RenderPanel({
           </p>
         ) : null}
         <p className="text-[13px] text-[var(--color-text-secondary)]">
-          {fmtClock(durationMs)} of video · est. {cost}
+          {fmtClock(durationMs)} of video · draft est. ${estimatedDraftCostUsd.toFixed(2)} · master
+          est. {cost}
         </p>
-        <ConfirmButton
-          variant="primary"
-          confirmVariant="primary"
-          label={<>Render master · est. {live ? `$${estimatedCostUsd.toFixed(2)}` : '$0.00'}</>}
-          confirmLabel="Render now"
-          consequence={
-            live
-              ? `Invokes Remotion Lambda for ${fmtClock(durationMs)} of video at est. ` +
-                `$${estimatedCostUsd.toFixed(2)}. Once started it cannot be aborted — ` +
-                'stopping discards the file but the cost is still spent.'
-              : 'Renders on this machine in mock mode. Costs nothing and can take a few minutes.'
-          }
-          onConfirm={async () => {
-            const ok = await act(
-              () => approveGate(projectId, 'preview'),
-              'Render started — progress appears here',
-            )
-            if (ok) setHandedOff(true)
-          }}
-        />
+        <div className="flex flex-wrap items-center gap-2">
+          {draftButton}
+          <ConfirmButton
+            variant="primary"
+            confirmVariant="primary"
+            label={<>Render master · est. {live ? `$${estimatedCostUsd.toFixed(2)}` : '$0.00'}</>}
+            confirmLabel="Render now"
+            consequence={
+              live
+                ? `Invokes Remotion Lambda for ${fmtClock(durationMs)} of video at est. ` +
+                  `$${estimatedCostUsd.toFixed(2)}. Once started it cannot be aborted — ` +
+                  'stopping discards the file but the cost is still spent.'
+                : 'Renders on this machine in mock mode. Costs nothing and can take a few minutes.'
+            }
+            onConfirm={async () => {
+              const ok = await act(
+                () => approveGate(projectId, 'preview'),
+                'Render started — progress appears here',
+              )
+              if (ok) setHandedOff(true)
+            }}
+          />
+        </div>
+        {draftHandedOff && !draftBusy ? (
+          <p className="text-[12px] text-[var(--color-text-muted)]">
+            Draft handed to the render pipeline — its card appears above shortly.
+          </p>
+        ) : null}
       </CardContent>
     </Card>
   ) : null

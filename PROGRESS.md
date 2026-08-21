@@ -2243,6 +2243,25 @@ app found two faults the suites could not see, both now guarded:
      renders. The 240 s function is deleted once a draft has proven the
      new one.
 
+162. **The player's residual glitch was the page refreshing under it;
+     with that gone, the buffer button and the automatic draft are
+     withdrawn.** A run parked at Gate 5a still counts as live, so
+     LiveRefresh's 3-second full-page loop ran through every moderation
+     session — each refresh re-materialised the timeline with freshly
+     signed URLs, the player saw "new" sources mid-play and re-decoded
+     (the rhythmic hiccup), the buffer button's blob map was keyed to
+     URLs each refresh replaced (why buffering "didn't persist"), and a
+     paused frame blinked as its source was swapped. The pulse (159)
+     removed the loop and the already-shipped player fixes (WebCodecs
+     engine, preview proxies) finally showed: playback is smooth from
+     the network. So: the buffer button and `substituteMedia` are
+     deleted; the automatic draft request is removed from the
+     assembly-runner (158 withdrawn); and the preview screen offers two
+     explicit spend choices side by side — "Render draft" (~quarter
+     price, half resolution, the real-output check) and "Render master"
+     (still the gate approval). The draft card remains, display-only,
+     shown when a draft exists.
+
 ### Verified (M6.8, 2026-08-18)
 
 - **`pnpm typecheck`** and **`pnpm lint`** clean, zero warnings.

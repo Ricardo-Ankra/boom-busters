@@ -26,17 +26,8 @@ vi.mock('@remotion/player', () => ({
 }))
 vi.mock('@boom-busters/compositions', () => ({ DocumentaryMaster: () => null }))
 
-/** The buffer button's downloads: URL → outcome, transient failures scripted. */
-const buffered = vi.hoisted(() => [] as string[])
-const failOnce = vi.hoisted(() => new Set<string>())
-function bufferFetch(input: RequestInfo | URL, init?: RequestInit) {
-  const url = String(input)
-  if (init?.cache === 'no-store') {
-    buffered.push(url)
-    if (failOnce.delete(url)) return Promise.reject(new TypeError('Failed to fetch'))
-    return Promise.resolve({ ok: true, blob: () => Promise.resolve(new Blob(['x'])) } as Response)
-  }
-  // Everything else (the render-progress poll) stays unavailable.
+/** The render-progress poll stays unavailable — cards answer from props. */
+function pollFetch() {
   return Promise.resolve({ ok: false, json: () => Promise.resolve({}) } as unknown as Response)
 }
 
@@ -62,19 +53,11 @@ vi.mock('@/components/ui/toast', () => ({ useToast: () => ({ toast }) }))
 
 beforeEach(() => {
   vi.clearAllMocks()
-  buffered.length = 0
-  failOnce.clear()
   approveGate.mockResolvedValue({ ok: true })
   stopProject.mockResolvedValue({ ok: true })
   chooseMusicBed.mockResolvedValue({ ok: true })
   requestDraftRender.mockResolvedValue({ ok: true })
-  vi.stubGlobal('fetch', vi.fn(bufferFetch))
-  // jsdom's URL lacks object-URL support; the mapping is what we assert on.
-  let blobCount = 0
-  Object.assign(globalThis.URL, {
-    createObjectURL: vi.fn(() => `blob:mock-${(blobCount += 1)}`),
-    revokeObjectURL: vi.fn(),
-  })
+  vi.stubGlobal('fetch', vi.fn(pollFetch))
 })
 
 const PROJECT = '01J0000000000000000000000A'
@@ -193,45 +176,12 @@ describe('PreviewScreen', () => {
     expect(screen.getByRole('button', { name: /Show captions/ })).toBeInTheDocument()
   })
 
-  it('buffers every media file and hands the player blob URLs in place of the network', async () => {
-    const user = userEvent.setup()
+  it('hands the player the materialised URLs directly — no buffer step', () => {
     render(<PreviewScreen {...props()} />)
-
-    // Before buffering the player reads the materialised URL.
     expect(screen.getByTestId('player')).toHaveTextContent(
       'narration0:http://localhost:3000/api/voice-takes/t1/audio',
     )
-
-    // Two narration WAVs and the music bed; the chart slot has no file.
-    await user.click(screen.getByRole('button', { name: /Buffer full preview \(3 files\)/ }))
-
-    expect(buffered).toEqual(
-      expect.arrayContaining([
-        'http://localhost:3000/api/voice-takes/t1/audio',
-        'http://localhost:3000/api/voice-takes/t2/audio',
-        'https://r2.example.com/bed.mp3',
-      ]),
-    )
-    expect(buffered).toHaveLength(3)
-    expect(
-      await screen.findByRole('button', { name: /Fully buffered — plays from memory/ }),
-    ).toBeDisabled()
-    // After buffering the player is handed the blob copy outright.
-    expect(screen.getByTestId('player')).toHaveTextContent(/narration0:blob:mock-\d/)
-  })
-
-  it('rides out a transient fetch failure with one quiet retry per file', async () => {
-    const user = userEvent.setup()
-    failOnce.add('https://r2.example.com/bed.mp3')
-    render(<PreviewScreen {...props()} />)
-
-    await user.click(screen.getByRole('button', { name: /Buffer full preview/ }))
-
-    // The flaky file was fetched twice; the outcome is still a full buffer.
-    expect(buffered.filter((url) => url === 'https://r2.example.com/bed.mp3')).toHaveLength(2)
-    expect(
-      await screen.findByRole('button', { name: /Fully buffered — plays from memory/ }),
-    ).toBeDisabled()
+    expect(screen.queryByRole('button', { name: /Buffer/ })).not.toBeInTheDocument()
   })
 
   it('draws the gain line for a timeline with music, and says so without one', () => {
@@ -298,28 +248,30 @@ describe('PreviewScreen', () => {
     expect(stopProject).toHaveBeenCalledWith(PROJECT)
   })
 
-  it('offers the draft as a two-step confirm carrying its own small cost', async () => {
+  it('offers draft and master side by side, each behind its own confirm', async () => {
     const user = userEvent.setup()
     render(<PreviewScreen {...props()} />)
 
-    // No draft yet: the card says one arrives automatically.
-    expect(screen.getByText(/renders automatically after each assembly run/)).toBeInTheDocument()
-
+    // Both spend choices live in the one render card.
+    expect(screen.getByRole('button', { name: /Render master · est\. \$0\.24/ })).toBeEnabled()
     await user.click(screen.getByRole('button', { name: /Render draft · est\. \$0\.06/ }))
     expect(requestDraftRender).not.toHaveBeenCalled()
     expect(screen.getByText(/half resolution, est\. \$0\.06/)).toBeInTheDocument()
 
     await user.click(screen.getByRole('button', { name: /^Render draft$/ }))
     expect(requestDraftRender).toHaveBeenCalledWith(PROJECT)
+    // The master path was never touched.
+    expect(approveGate).not.toHaveBeenCalled()
   })
 
-  it('hides the draft card in mock mode — no broker, no drafts', () => {
+  it('offers no draft button in mock mode — no broker, no drafts', () => {
     render(<PreviewScreen {...props({ live: false })} />)
-    expect(screen.queryByText(/^Draft$/)).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /Render draft/ })).not.toBeInTheDocument()
+    // The master button still renders locally for free.
+    expect(screen.getByRole('button', { name: /Render master/ })).toBeEnabled()
   })
 
-  it('shows draft progress while one is rendering', () => {
+  it('shows draft progress while one is rendering, and hides its button', () => {
     const draft: PreviewDraftProp = {
       id: '01J0000000000000000000000C',
       status: 'rendering',
@@ -335,7 +287,7 @@ describe('PreviewScreen', () => {
 
     expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '55')
     expect(screen.getByText(/Rendering draft… 55%/)).toBeInTheDocument()
-    // No re-render button while one is in flight.
+    // No second draft while one is in flight.
     expect(screen.queryByRole('button', { name: /Render draft/ })).not.toBeInTheDocument()
   })
 
@@ -355,7 +307,7 @@ describe('PreviewScreen', () => {
 
     // The timeline is v2; the draft rendered v1 (a music swap in between).
     expect(screen.getByText(/moved on to v2/)).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /Re-render draft · est\. \$0\.06/ })).toBeEnabled()
+    expect(screen.getByRole('button', { name: /Render draft · est\. \$0\.06/ })).toBeEnabled()
   })
 
   it('reports a failed draft without touching the master panel', () => {
