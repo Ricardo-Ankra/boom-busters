@@ -4,7 +4,7 @@ import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { PreviewScreen } from './preview-screen'
-import type { PreviewRenderProp } from './preview-screen'
+import type { PreviewDraftProp, PreviewRenderProp } from './preview-screen'
 
 /**
  * The preview screen's controls (build spec section 11.3): stats, chapter
@@ -48,8 +48,10 @@ vi.mock('../actions', () => ({
 }))
 
 const chooseMusicBed = vi.fn()
+const requestDraftRender = vi.fn()
 vi.mock('./preview-actions', () => ({
   chooseMusicBed: (...args: unknown[]) => chooseMusicBed(...args),
+  requestDraftRender: (...args: unknown[]) => requestDraftRender(...args),
 }))
 
 const refresh = vi.fn()
@@ -65,6 +67,7 @@ beforeEach(() => {
   approveGate.mockResolvedValue({ ok: true })
   stopProject.mockResolvedValue({ ok: true })
   chooseMusicBed.mockResolvedValue({ ok: true })
+  requestDraftRender.mockResolvedValue({ ok: true })
   vi.stubGlobal('fetch', vi.fn(bufferFetch))
   // jsdom's URL lacks object-URL support; the mapping is what we assert on.
   let blobCount = 0
@@ -162,9 +165,11 @@ function props(overrides: Partial<Parameters<typeof PreviewScreen>[0]> = {}) {
     ],
     currentBedKey: 'boom-busters/music/bed.mp3',
     estimatedCostUsd: 0.24,
+    estimatedDraftCostUsd: 0.06,
     live: true,
     atGate: true,
     render: null,
+    draft: null,
     ...overrides,
   }
 }
@@ -291,6 +296,85 @@ describe('PreviewScreen', () => {
     ).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: /Stop the run/ }))
     expect(stopProject).toHaveBeenCalledWith(PROJECT)
+  })
+
+  it('offers the draft as a two-step confirm carrying its own small cost', async () => {
+    const user = userEvent.setup()
+    render(<PreviewScreen {...props()} />)
+
+    // No draft yet: the card says one arrives automatically.
+    expect(screen.getByText(/renders automatically after each assembly run/)).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: /Render draft · est\. \$0\.06/ }))
+    expect(requestDraftRender).not.toHaveBeenCalled()
+    expect(screen.getByText(/half resolution, est\. \$0\.06/)).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: /^Render draft$/ }))
+    expect(requestDraftRender).toHaveBeenCalledWith(PROJECT)
+  })
+
+  it('hides the draft card in mock mode — no broker, no drafts', () => {
+    render(<PreviewScreen {...props({ live: false })} />)
+    expect(screen.queryByText(/^Draft$/)).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Render draft/ })).not.toBeInTheDocument()
+  })
+
+  it('shows draft progress while one is rendering', () => {
+    const draft: PreviewDraftProp = {
+      id: '01J0000000000000000000000C',
+      status: 'rendering',
+      progressPct: 55,
+      costUsd: '0.06',
+      qcReport: null,
+      error: null,
+      startedAt: new Date().toISOString(),
+      completedAt: null,
+      timelineVersion: 2,
+    }
+    render(<PreviewScreen {...props({ draft })} />)
+
+    expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '55')
+    expect(screen.getByText(/Rendering draft… 55%/)).toBeInTheDocument()
+    // No re-render button while one is in flight.
+    expect(screen.queryByRole('button', { name: /Render draft/ })).not.toBeInTheDocument()
+  })
+
+  it('says when the draft is a version behind the timeline', () => {
+    const draft: PreviewDraftProp = {
+      id: '01J0000000000000000000000C',
+      status: 'done',
+      progressPct: 100,
+      costUsd: '0.06',
+      qcReport: null,
+      error: null,
+      startedAt: new Date().toISOString(),
+      completedAt: new Date().toISOString(),
+      timelineVersion: 1,
+    }
+    render(<PreviewScreen {...props({ draft })} />)
+
+    // The timeline is v2; the draft rendered v1 (a music swap in between).
+    expect(screen.getByText(/moved on to v2/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Re-render draft · est\. \$0\.06/ })).toBeEnabled()
+  })
+
+  it('reports a failed draft without touching the master panel', () => {
+    const draft: PreviewDraftProp = {
+      id: '01J0000000000000000000000C',
+      status: 'failed',
+      progressPct: 0,
+      costUsd: '0.06',
+      qcReport: null,
+      error: { message: 'render timeout' },
+      startedAt: new Date().toISOString(),
+      completedAt: new Date().toISOString(),
+      timelineVersion: 2,
+    }
+    render(<PreviewScreen {...props({ draft })} />)
+
+    expect(screen.getByText(/The draft failed: render timeout/)).toBeInTheDocument()
+    // The master's invoke card is untouched by an advisory failure.
+    expect(screen.getByRole('button', { name: /Render master · est\. \$0\.24/ })).toBeEnabled()
   })
 
   it('shows the QC report card for a finished render', () => {

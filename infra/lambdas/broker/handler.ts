@@ -130,7 +130,7 @@ function buildDeps(webhookUrl: string): BrokerDeps {
     renderCap: Number(process.env['RENDER_CAP'] ?? '2'),
     store: s3Store(stateBucket),
     remotion: {
-      async render({ composition, timeline, renderId }) {
+      async render({ composition, timeline, renderId, scale }) {
         const { renderId: remotionRenderId, bucketName } = await renderMediaOnLambda({
           region: region() as never,
           functionName: env('REMOTION_FUNCTION_NAME'),
@@ -138,6 +138,7 @@ function buildDeps(webhookUrl: string): BrokerDeps {
           composition,
           inputProps: { timeline },
           codec: 'h264',
+          scale,
           webhook: { url: webhookUrl, secret: token, customData: { renderId } },
         })
         return { remotionRenderId, bucketName }

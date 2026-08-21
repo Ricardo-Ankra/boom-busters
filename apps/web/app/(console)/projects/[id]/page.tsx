@@ -145,17 +145,21 @@ export default async function ProjectPage({
       })
     : null
 
+  const toRenderProp = (row: NonNullable<typeof preview.render>): PreviewRenderProp => ({
+    id: row.id,
+    status: row.status,
+    progressPct: row.progressPct,
+    costUsd: row.costUsd,
+    qcReport: (row.qcReport ?? null) as PreviewRenderProp['qcReport'],
+    error: (row.error ?? null) as PreviewRenderProp['error'],
+    startedAt: row.startedAt?.toISOString() ?? null,
+    completedAt: row.completedAt?.toISOString() ?? null,
+  })
   const previewRender: PreviewRenderProp | null = preview.render
-    ? {
-        id: preview.render.id,
-        status: preview.render.status,
-        progressPct: preview.render.progressPct,
-        costUsd: preview.render.costUsd,
-        qcReport: (preview.render.qcReport ?? null) as PreviewRenderProp['qcReport'],
-        error: (preview.render.error ?? null) as PreviewRenderProp['error'],
-        startedAt: preview.render.startedAt?.toISOString() ?? null,
-        completedAt: preview.render.completedAt?.toISOString() ?? null,
-      }
+    ? toRenderProp(preview.render)
+    : null
+  const previewDraft = preview.draft
+    ? { ...toRenderProp(preview.draft), timelineVersion: preview.draft.timelineVersion }
     : null
 
   // The badge in the Studio header. A downgrade is recorded on the run, so a
@@ -295,9 +299,11 @@ export default async function ProjectPage({
           beds={preview.beds}
           currentBedKey={preview.currentBedKey}
           estimatedCostUsd={preview.estimatedCostUsd}
+          estimatedDraftCostUsd={preview.estimatedDraftCostUsd}
           live={!mockProvidersEnabled()}
           atGate={atGate && project.stage === 'assembly'}
           render={previewRender}
+          draft={previewDraft}
         />
       ) : showVisuals ? (
         <VisualBoard

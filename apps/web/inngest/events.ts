@@ -7,6 +7,7 @@ import {
   ProjectCreatedSchema,
   ProjectMasterReadySchema,
   RenderCompletedSchema,
+  RenderDraftRequestedSchema,
   RenderFailedSchema,
   VisualsRefetchRequestedSchema,
   VoiceRetakeRequestedSchema,
@@ -72,6 +73,9 @@ export const events = {
     schema: VisualsRefetchRequestedSchema,
   }),
   mediaJobCompleted: eventType('media/job.completed', { schema: MediaJobCompletedSchema }),
+  renderDraftRequested: eventType('render/draft.requested', {
+    schema: RenderDraftRequestedSchema,
+  }),
   renderCompleted: eventType('render/completed', { schema: RenderCompletedSchema }),
   renderFailed: eventType('render/failed', { schema: RenderFailedSchema }),
 

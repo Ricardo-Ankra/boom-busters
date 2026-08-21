@@ -6,7 +6,10 @@ import { swapMusicBed } from '@boom-busters/timeline'
 import { revalidatePath } from 'next/cache'
 import { auth } from '@/auth'
 import { db } from '@/lib/db'
+import { inngest } from '@/inngest/client'
+import { events } from '@/inngest/events'
 import { timelineKey } from '@/inngest/lib/assembly'
+import { brokerConfigured } from '@/lib/broker'
 import { putObject, storageConfigured } from '@/lib/storage'
 
 /**
@@ -66,6 +69,40 @@ export async function chooseMusicBed(
     await putObject(key, Buffer.from(JSON.stringify(swapped)), 'application/json')
   }
   await setTimelineKey(db, stored.id, key)
+
+  revalidatePath(`/projects/${projectId}`)
+  return { ok: true }
+}
+
+/**
+ * "Render draft" (M6.8): re-request the half-resolution moderation copy —
+ * the same event the assembly-runner sends automatically after compiling.
+ * The button exists for the timeline versions no assembly run made: a music
+ * swap recompiles for free, which leaves the automatic draft one version
+ * behind, and re-drafting the new cut is an explicit small spend decision.
+ */
+export async function requestDraftRender(projectId: string): Promise<ActionResult> {
+  await requireOwner()
+  if (!UlidSchema.safeParse(projectId).success) return { ok: false, error: 'Unknown project' }
+
+  if (!brokerConfigured() || !storageConfigured()) {
+    return {
+      ok: false,
+      error: 'Drafts render on Remotion Lambda — configure the broker and R2 first.',
+    }
+  }
+
+  const row = await latestTimeline(db, projectId)
+  if (!row) {
+    return { ok: false, error: 'There is no compiled timeline yet — run the assembly stage.' }
+  }
+
+  try {
+    await inngest.send(events.renderDraftRequested.create({ projectId }))
+  } catch (error) {
+    console.error('[preview] could not request a draft render', error)
+    return { ok: false, error: 'Could not reach Inngest to start the draft render.' }
+  }
 
   revalidatePath(`/projects/${projectId}`)
   return { ok: true }

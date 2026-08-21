@@ -2167,6 +2167,25 @@ app found two faults the suites could not see, both now guarded:
      full clip. A missing proxy is never an error, and re-running
      assembly gives already-ingested videos a preview-only pass.
 
+158. **Assembly's output is a watchable draft, not only a timeline.** The
+     proxies made the live player good, not smooth: at a 6x CPU throttle
+     (the production machine's shape) it manages 14 fps with nineteen
+     half-second pauses in 20 s, while a native `<video>` element playing
+     the same proxy file holds a locked 60 fps with zero drops — per-frame
+     React on the main thread is the ceiling, not the data. So the
+     assembly-runner now sends `render/draft.requested` after storing a
+     timeline (live mode with broker and R2 only — mock stays free), and a
+     new `draft-runner` renders a half-resolution copy on Remotion Lambda:
+     renders `kind: 'draft'` (enum migration 0012), Remotion `scale` from
+     `RENDER_SCALES` in the contract, cost a quarter of the master's
+     (scale squared) through `reserve`/`settle` as `render-draft`. The
+     draft never touches gates or stages — Gate 5a still parks, "Render
+     master" is still the spend decision, and a draft failure (budget
+     included) fails only its own renders row. The preview screen's Draft
+     card plays the file natively, shows which timeline version it
+     rendered (a free music swap leaves it a version behind, said out
+     loud), and offers "Re-render draft" as an explicit ~$0.06 confirm.
+
 ### Verified (M6.8, 2026-08-18)
 
 - **`pnpm typecheck`** and **`pnpm lint`** clean, zero warnings.

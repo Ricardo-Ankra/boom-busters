@@ -104,6 +104,16 @@ export const MediaJobCompletedSchema = z.object({
   error: z.string().optional(),
 })
 
+/**
+ * Ask for a cheap half-resolution draft of the latest timeline (M6.8). The
+ * assembly-runner sends it after storing a compiled timeline, and the
+ * preview screen's "Render draft" button re-sends it after a music swap.
+ * The draft-runner never touches gates or stages — a draft is advisory.
+ */
+export const RenderDraftRequestedSchema = z.object({
+  ...projectRef,
+})
+
 export const RenderCompletedSchema = z.object({
   ...projectRef,
   renderId: UlidSchema,
@@ -170,6 +180,7 @@ export const EVENT_SCHEMAS = {
   'voice/retake.requested': VoiceRetakeRequestedSchema,
   'visuals/refetch.requested': VisualsRefetchRequestedSchema,
   'media/job.completed': MediaJobCompletedSchema,
+  'render/draft.requested': RenderDraftRequestedSchema,
   'render/completed': RenderCompletedSchema,
   'render/failed': RenderFailedSchema,
 

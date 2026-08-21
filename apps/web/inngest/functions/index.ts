@@ -2,6 +2,7 @@ import { assemblyRunner } from './assembly-runner'
 import { cancelReconciler } from './cancel-reconciler'
 import { dossierReviser } from './dossier-reviser'
 import { dossierRunner } from './dossier-runner'
+import { draftRunner } from './draft-runner'
 import { renderRunner } from './render-runner'
 import { scriptRunner } from './script-runner'
 import { slotRefetcher } from './slot-refetcher'
@@ -42,6 +43,7 @@ export const functions = [
   visualsRunner,
   slotRefetcher,
   assemblyRunner,
+  draftRunner,
   renderRunner,
 ]
 
@@ -51,6 +53,7 @@ export const functions = [
 export {
   assemblyRunner,
   cancelReconciler,
+  draftRunner,
   renderRunner,
   dossierReviser,
   dossierRunner,

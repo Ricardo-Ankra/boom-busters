@@ -4,6 +4,7 @@ import {
   estimateRenderCostUsd,
   MediaJobSchema,
   RemotionWebhookSchema,
+  RENDER_SCALES,
   RenderRequestSchema,
   TimelineSchema,
 } from '@boom-busters/schemas'
@@ -59,6 +60,8 @@ export interface RemotionClient {
     timeline: Timeline
     /** Forwarded so the webhook can be verified and routed back here. */
     renderId: string
+    /** Remotion's scale — 1 for masters and shorts, 0.5 for drafts. */
+    scale: number
   }): Promise<{ remotionRenderId: string; bucketName: string }>
   progress(
     remotionRenderId: string,
@@ -259,6 +262,7 @@ async function handleCreateRender(
     composition: render.composition,
     timeline: materialised,
     renderId: render.renderId,
+    scale: RENDER_SCALES[render.kind],
   })
 
   await deps.store.putRender({
@@ -277,7 +281,7 @@ async function handleCreateRender(
     body: {
       brokerRenderId: render.renderId,
       remotionRenderId,
-      estimatedCostUsd: estimateRenderCostUsd(render.expectedDurationSec),
+      estimatedCostUsd: estimateRenderCostUsd(render.expectedDurationSec, render.kind),
     },
   }
 }

@@ -129,7 +129,7 @@ export const shotStatusEnum = pgEnum('shot_status', ['unresolved', 'resolved', '
 
 export const assetKindEnum = pgEnum('asset_kind', ['image', 'video', 'music', 'logo'])
 
-export const renderKindEnum = pgEnum('render_kind', ['master', 'short'])
+export const renderKindEnum = pgEnum('render_kind', ['master', 'short', 'draft'])
 export const renderStatusEnum = pgEnum('render_status', [
   'queued',
   'invoking',

@@ -5,13 +5,13 @@ import type { PlayerRef } from '@remotion/player'
 import { DocumentaryMaster } from '@boom-busters/compositions'
 import { gainAt } from '@boom-busters/schemas'
 import type { QcReport, Timeline } from '@boom-busters/schemas'
-import { Captions, Download, Film, Music, Square } from 'lucide-react'
+import { Captions, Clapperboard, Download, Film, Music, Square } from 'lucide-react'
 import * as React from 'react'
 import { ConfirmButton } from '@/components/confirm-button'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { approveGate, stopProject } from '../actions'
-import { chooseMusicBed } from './preview-actions'
+import { chooseMusicBed, requestDraftRender } from './preview-actions'
 import { useAction } from './project-controls'
 
 /**
@@ -40,6 +40,9 @@ export interface PreviewRenderProp {
   startedAt: string | null
   completedAt: string | null
 }
+
+/** A draft also says which timeline version it rendered — staleness is visible. */
+export type PreviewDraftProp = PreviewRenderProp & { timelineVersion: number }
 
 interface RenderPoll {
   status: PreviewRenderProp['status']
@@ -138,9 +141,11 @@ export function PreviewScreen({
   beds,
   currentBedKey,
   estimatedCostUsd,
+  estimatedDraftCostUsd,
   live,
   atGate,
   render,
+  draft,
 }: {
   projectId: string
   /** The MATERIALISED preview copy — every reference already a URL. */
@@ -152,11 +157,14 @@ export function PreviewScreen({
   beds: { r2Key: string; title: string }[]
   currentBedKey: string | null
   estimatedCostUsd: number
+  estimatedDraftCostUsd: number
   /** Whether a broker is configured — false means renders run locally, free. */
   live: boolean
   /** Whether the preview gate is open, i.e. Render master would be heard. */
   atGate: boolean
   render: PreviewRenderProp | null
+  /** The newest half-resolution draft, if one exists. */
+  draft: PreviewDraftProp | null
 }) {
   const act = useAction()
   const playerRef = React.useRef<PlayerRef>(null)
@@ -256,6 +264,15 @@ export function PreviewScreen({
             ))}
           </CardContent>
         </Card>
+
+        <DraftPanel
+          projectId={projectId}
+          version={version}
+          draft={draft}
+          estimatedDraftCostUsd={estimatedDraftCostUsd}
+          live={live}
+          act={act}
+        />
 
         <MusicPicker projectId={projectId} beds={beds} currentBedKey={currentBedKey} act={act} />
 
@@ -537,6 +554,188 @@ function MusicPicker({
 }
 
 /**
+ * The 2-second progress poll every render card shares: poll while a render
+ * is in flight, one fetch when it is done — the finished file's playable
+ * URL only exists on the poll response, freshly presigned. The poll resets
+ * when the row changes, so a re-requested draft never wears its
+ * predecessor's progress.
+ */
+function useRenderPoll(render: PreviewRenderProp | null): {
+  current: RenderPoll | null
+  poll: RenderPoll | null
+  inFlight: boolean
+} {
+  const renderId = render?.id
+  const [poll, setPoll] = React.useState<RenderPoll | null>(null)
+  const [polledId, setPolledId] = React.useState(renderId)
+  if (polledId !== renderId) {
+    setPolledId(renderId)
+    setPoll(null)
+  }
+
+  const current: RenderPoll | null = (polledId === renderId ? poll : null) ?? render
+  const inFlight =
+    current !== null &&
+    (current.status === 'queued' ||
+      current.status === 'invoking' ||
+      current.status === 'rendering' ||
+      current.status === 'qc')
+
+  const needsUrl = current?.status === 'done' && poll?.outputUrl === undefined
+  React.useEffect(() => {
+    if (!renderId || (!inFlight && !needsUrl)) return
+    let cancelled = false
+    const tick = async () => {
+      try {
+        const response = await fetch(`/api/renders/${renderId}/progress`)
+        if (!response.ok || cancelled) return
+        setPoll((await response.json()) as RenderPoll)
+      } catch {
+        // A missed poll is the next poll's problem.
+      }
+    }
+    void tick()
+    if (!inFlight) return
+    const timer = window.setInterval(() => void tick(), 2000)
+    return () => {
+      cancelled = true
+      window.clearInterval(timer)
+    }
+  }, [renderId, inFlight, needsUrl])
+
+  return { current, poll, inFlight }
+}
+
+/**
+ * The draft card (M6.8): the half-resolution copy the assembly stage
+ * renders automatically, played through a NATIVE video element — measured
+ * 2026-08-21: on a software-decode machine the live player above manages
+ * 14fps with half-second pauses, while a plain video element plays the
+ * same content flawlessly. This file is the honest way to judge the cut.
+ * A music swap recompiles the timeline for free, which leaves the draft a
+ * version behind; the card says so and offers a re-render as an explicit
+ * small spend. Hidden in mock mode: no broker, no drafts, and the master
+ * button already renders locally for free.
+ */
+function DraftPanel({
+  projectId,
+  version,
+  draft,
+  estimatedDraftCostUsd,
+  live,
+  act,
+}: {
+  projectId: string
+  version: number
+  draft: PreviewDraftProp | null
+  estimatedDraftCostUsd: number
+  live: boolean
+  act: ReturnType<typeof useAction>
+}) {
+  const { current, poll, inFlight } = useRenderPoll(draft)
+  const [handedOff, setHandedOff] = React.useState(false)
+
+  if (!live) return null
+
+  const stale = draft !== null && draft.timelineVersion !== version
+  const requestButton = inFlight ? null : handedOff &&
+    current?.status !== 'done' &&
+    current?.status !== 'failed' ? (
+    <p className="text-[13px] text-[var(--color-text-secondary)]">
+      Handed to the render pipeline — progress appears here shortly.
+    </p>
+  ) : (
+    <ConfirmButton
+      variant="outline"
+      label={
+        <>
+          <Clapperboard aria-hidden />
+          {draft ? 'Re-render draft' : 'Render draft'} · est. ${estimatedDraftCostUsd.toFixed(2)}
+        </>
+      }
+      confirmLabel="Render draft"
+      consequence={
+        `Invokes Remotion Lambda at half resolution, est. ` +
+        `$${estimatedDraftCostUsd.toFixed(2)}. Cheap, but real money.`
+      }
+      onConfirm={async () => {
+        const ok = await act(
+          () => requestDraftRender(projectId),
+          'Draft render started — progress appears here',
+        )
+        if (ok) setHandedOff(true)
+      }}
+    />
+  )
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-[14px]">
+          <Clapperboard aria-hidden className="h-4 w-4" />
+          Draft
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-3">
+        {!draft ? (
+          <p className="text-[13px] text-[var(--color-text-muted)]">
+            A half-resolution draft renders automatically after each assembly run — it plays
+            smoothly on any machine, unlike the live preview on weaker hardware.
+          </p>
+        ) : null}
+        {inFlight ? (
+          <>
+            <div
+              role="progressbar"
+              aria-valuenow={Math.max(0, Math.min(100, current?.progressPct ?? 0))}
+              aria-valuemin={0}
+              aria-valuemax={100}
+              className="h-[8px] overflow-hidden rounded-full bg-[var(--color-surface)]"
+            >
+              <div
+                className="h-full bg-[var(--color-accent)] transition-[width] duration-500"
+                style={{ width: `${Math.max(0, Math.min(100, current?.progressPct ?? 0))}%` }}
+              />
+            </div>
+            <p className="text-[13px] text-[var(--color-text-secondary)]">
+              Rendering draft… {current?.progressPct ?? 0}%
+            </p>
+          </>
+        ) : null}
+        {current?.status === 'failed' ? (
+          <p className="text-[13px] text-[var(--color-danger)]">
+            The draft failed{current.error?.message ? `: ${current.error.message}` : '.'} The live
+            preview above still plays.
+          </p>
+        ) : null}
+        {current?.status === 'done' && poll?.outputUrl ? (
+          <video
+            controls
+            preload="metadata"
+            src={poll.outputUrl}
+            className="w-full rounded-[8px] bg-black"
+            data-testid="draft-video"
+          />
+        ) : null}
+        {draft && current?.status === 'done' ? (
+          <p className="text-[12px] text-[var(--color-text-muted)]">
+            Draft of timeline v{draft.timelineVersion} · half resolution · cost $
+            {Number(current.costUsd).toFixed(2)}
+          </p>
+        ) : null}
+        {stale && !inFlight ? (
+          <p className="text-[13px] text-[var(--color-warning)]">
+            The timeline has moved on to v{version} (a music swap recompiles for free) — this draft
+            still plays v{draft.timelineVersion}.
+          </p>
+        ) : null}
+        {requestButton}
+      </CardContent>
+    </Card>
+  )
+}
+
+/**
  * The render half of the screen: the button (the REAL cancel point — spec
  * section 8.1 — so it carries the cost and an inline two-step), then the
  * 2-second progress poll, then the QC report card and the master itself.
@@ -560,41 +759,8 @@ function RenderPanel({
   render: PreviewRenderProp | null
   act: ReturnType<typeof useAction>
 }) {
-  const [poll, setPoll] = React.useState<RenderPoll | null>(null)
+  const { current, poll, inFlight } = useRenderPoll(render)
   const [handedOff, setHandedOff] = React.useState(false)
-
-  const current: RenderPoll | null = poll ?? render
-  const inFlight =
-    current !== null &&
-    (current.status === 'queued' ||
-      current.status === 'invoking' ||
-      current.status === 'rendering' ||
-      current.status === 'qc')
-
-  // 2 s polling while a render is in flight, one fetch when it is done —
-  // the finished master's playable URL only exists on the poll response.
-  const renderId = render?.id
-  const needsUrl = current?.status === 'done' && poll?.outputUrl === undefined
-  React.useEffect(() => {
-    if (!renderId || (!inFlight && !needsUrl)) return
-    let cancelled = false
-    const tick = async () => {
-      try {
-        const response = await fetch(`/api/renders/${renderId}/progress`)
-        if (!response.ok || cancelled) return
-        setPoll((await response.json()) as RenderPoll)
-      } catch {
-        // A missed poll is the next poll's problem.
-      }
-    }
-    void tick()
-    if (!inFlight) return
-    const timer = window.setInterval(() => void tick(), 2000)
-    return () => {
-      cancelled = true
-      window.clearInterval(timer)
-    }
-  }, [renderId, inFlight, needsUrl])
 
   const cost = live ? `$${estimatedCostUsd.toFixed(2)}` : '$0.00 (renders locally in mock mode)'
 

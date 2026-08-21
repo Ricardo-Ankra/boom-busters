@@ -31,6 +31,10 @@ describe('RenderRequestSchema', () => {
     expect(RenderRequestSchema.parse(valid).kind).toBe('master')
   })
 
+  it('accepts a draft — the assembly stage invokes these automatically', () => {
+    expect(RenderRequestSchema.parse({ ...valid, kind: 'draft' }).kind).toBe('draft')
+  })
+
   it('rejects a non-ULID render id — the broker never invents IDs', () => {
     expect(RenderRequestSchema.safeParse({ ...valid, renderId: 'render-1' }).success).toBe(false)
   })
@@ -63,6 +67,11 @@ describe('estimateRenderCostUsd', () => {
   it('quotes the section 8.1 anchor: ~$0.25 for a 15-minute master', () => {
     expect(estimateRenderCostUsd(900)).toBe(0.25)
     expect(estimateRenderCostUsd(20)).toBeCloseTo(0.0056, 4)
+  })
+
+  it('quotes a half-scale draft at a quarter of the master price', () => {
+    expect(estimateRenderCostUsd(900, 'draft')).toBeCloseTo(0.0625, 4)
+    expect(estimateRenderCostUsd(900, 'short')).toBe(0.25)
   })
 })
 

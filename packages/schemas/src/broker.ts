@@ -20,9 +20,21 @@ import { CaptionSchema } from './timeline'
 // Renders
 // ---------------------------------------------------------------------------
 
-export const RENDER_KINDS = ['master', 'short'] as const
+export const RENDER_KINDS = ['master', 'short', 'draft'] as const
 export const RenderKindSchema = z.enum(RENDER_KINDS)
 export type RenderKind = z.infer<typeof RenderKindSchema>
+
+/**
+ * Remotion's `scale` per render kind. A draft is the moderation copy the
+ * assembly stage produces automatically: half resolution (a quarter of the
+ * pixels), because its job is judging the cut in a native video element,
+ * not being published. Masters and shorts render at full scale.
+ */
+export const RENDER_SCALES: Record<RenderKind, number> = {
+  master: 1,
+  short: 1,
+  draft: 0.5,
+}
 
 /** POST /renders */
 export const RenderRequestSchema = z.object({
@@ -76,14 +88,23 @@ export type RenderProgress = z.infer<typeof RenderProgressSchema>
 export const ESTIMATED_COST_PER_VIDEO_SECOND_USD = 0.25 / 900
 
 /**
- * What a render is expected to cost, from its duration. In the contract
- * package because two parties quote it: the preview screen's Render button
- * (the real cancel point, section 8.1 — the number shown BEFORE the click)
- * and the broker's accept response. One formula, or the confirm dialog and
- * the invoice drift apart.
+ * What a render is expected to cost, from its duration and kind. In the
+ * contract package because two parties quote it: the preview screen's
+ * render buttons (the real cancel point, section 8.1 — the number shown
+ * BEFORE the click) and the broker's accept response. One formula, or the
+ * confirm dialog and the invoice drift apart. Lambda's bill scales with
+ * pixels painted, so a kind's cost factor is its scale squared — a
+ * half-resolution draft is a quarter of the master's price.
  */
-export function estimateRenderCostUsd(expectedDurationSec: number): number {
-  return Math.round(expectedDurationSec * ESTIMATED_COST_PER_VIDEO_SECOND_USD * 10_000) / 10_000
+export function estimateRenderCostUsd(
+  expectedDurationSec: number,
+  kind: RenderKind = 'master',
+): number {
+  const scale = RENDER_SCALES[kind]
+  return (
+    Math.round(expectedDurationSec * ESTIMATED_COST_PER_VIDEO_SECOND_USD * scale * scale * 10_000) /
+    10_000
+  )
 }
 
 /** POST /renders/:id/cancel — the section 8.1 honest contract. */

@@ -1,0 +1,1 @@
+ALTER TYPE "public"."render_kind" ADD VALUE 'draft';

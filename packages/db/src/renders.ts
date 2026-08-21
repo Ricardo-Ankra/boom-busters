@@ -19,7 +19,7 @@ export async function insertRender(
   input: {
     projectId: string
     timelineVersion: number
-    kind: 'master' | 'short'
+    kind: RenderRow['kind']
     costUsd?: string
   },
 ): Promise<RenderRow> {
@@ -43,11 +43,11 @@ export async function getRender(db: Database, id: string): Promise<RenderRow | u
   return row
 }
 
-/** The newest master render — what the preview screen's render panel shows. */
+/** The newest render of a kind — what the preview screen's panels show. */
 export async function latestRender(
   db: Database,
   projectId: string,
-  kind: 'master' | 'short' = 'master',
+  kind: RenderRow['kind'] = 'master',
 ): Promise<RenderRow | undefined> {
   const [row] = await db
     .select()

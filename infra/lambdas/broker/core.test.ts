@@ -68,6 +68,7 @@ interface TestWorld {
   logs: Record<string, unknown>[]
   stored: Map<string, unknown>
   renderCalls: number
+  renderScales: number[]
   discards: string[]
   signatureOk: boolean
 }
@@ -87,6 +88,7 @@ function world(overrides: Partial<BrokerDeps> = {}): TestWorld {
     logs,
     stored,
     renderCalls: 0,
+    renderScales: [],
     discards: [],
     signatureOk: true,
     deps: {
@@ -111,8 +113,9 @@ function world(overrides: Partial<BrokerDeps> = {}): TestWorld {
         },
       },
       remotion: {
-        render: () => {
+        render: ({ scale }) => {
           state.renderCalls += 1
+          state.renderScales.push(scale)
           return Promise.resolve({
             remotionRenderId: `rem-${state.renderCalls}`,
             bucketName: 'remotionlambda-test',
@@ -206,6 +209,19 @@ describe('POST /renders', () => {
     expect(copy.narration[0]!.url).toContain('sig=fresh')
     expect(copy.music?.url).toContain('sig=fresh')
     expect(w.records.get(RENDER)?.status).toBe('running')
+    expect(w.renderScales).toEqual([1])
+  })
+
+  it('renders a draft at half scale and quotes a quarter of the price', async () => {
+    const w = world()
+    const response = await handleBrokerRequest(
+      post('/renders', { ...renderRequest, kind: 'draft' }),
+      w.deps,
+    )
+    expect(response.status).toBe(201)
+    expect(response.body).toMatchObject({ estimatedCostUsd: 0.0625 })
+    expect(w.renderScales).toEqual([0.5])
+    expect(w.records.get(RENDER)?.kind).toBe('draft')
   })
 
   it('refuses past the concurrency cap — preventive, not reactive', async () => {

@@ -28,7 +28,10 @@ export interface PreviewModel {
   beds: { r2Key: string; title: string }[]
   currentBedKey: string | null
   render: RenderRow | undefined
+  /** The newest half-resolution draft — assembly requests one automatically. */
+  draft: RenderRow | undefined
   estimatedCostUsd: number
+  estimatedDraftCostUsd: number
 }
 
 /**
@@ -71,15 +74,18 @@ export function emptyPreviewModel(): PreviewModel {
     beds: [],
     currentBedKey: null,
     render: undefined,
+    draft: undefined,
     estimatedCostUsd: 0,
+    estimatedDraftCostUsd: 0,
   }
 }
 
 export async function previewModel(db: Database, projectId: string): Promise<PreviewModel> {
-  const [timelineRow, beds, render] = await Promise.all([
+  const [timelineRow, beds, render, draft] = await Promise.all([
     latestTimeline(db, projectId),
     listMusicBeds(db),
     latestRender(db, projectId, 'master'),
+    latestRender(db, projectId, 'draft'),
   ])
 
   const timeline = timelineRow ? TimelineSchema.parse(timelineRow.json) : null
@@ -99,6 +105,8 @@ export async function previewModel(db: Database, projectId: string): Promise<Pre
     })),
     currentBedKey: timeline?.music?.r2Key ?? null,
     render,
+    draft,
     estimatedCostUsd: estimateRenderCostUsd(durationMs / 1000),
+    estimatedDraftCostUsd: estimateRenderCostUsd(durationMs / 1000, 'draft'),
   }
 }

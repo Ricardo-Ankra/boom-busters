@@ -25,7 +25,7 @@ import type { WordTiming } from '@boom-busters/schemas'
 import { compileTimeline } from '@boom-busters/timeline'
 import { NonRetriableError } from 'inngest'
 import { db } from '@/lib/db'
-import { brokerCallbackUrl, submitMediaJob } from '@/lib/broker'
+import { brokerCallbackUrl, brokerConfigured, submitMediaJob } from '@/lib/broker'
 import { ingestSlotStock, needsStockIngest } from '@/lib/stock-ingest'
 import { storageConfigured, putObject } from '@/lib/storage'
 import { inngest } from '../client'
@@ -308,6 +308,21 @@ export const assemblyRunner = inngest.createFunction(
     })
 
     // -----------------------------------------------------------------------
+    // The draft: assembly's output is a watchable file, not only a timeline
+    // -----------------------------------------------------------------------
+
+    // Requested, not awaited: the draft-runner renders a half-resolution
+    // copy (~a quarter of the master's price) while Gate 5a parks below,
+    // and the preview screen shows its progress beside the live player.
+    // Live-only — in mock mode the player is free and CI must not render.
+    const draftRequested = !mocked && brokerConfigured() && storageConfigured()
+    if (draftRequested) {
+      await step.sendEvent('request-draft-render', [
+        events.renderDraftRequested.create({ projectId }),
+      ])
+    }
+
+    // -----------------------------------------------------------------------
     // Gate 5a — always parks; the preview player is the judgment seat
     // -----------------------------------------------------------------------
 
@@ -321,7 +336,8 @@ export const assemblyRunner = inngest.createFunction(
             runtimeSec % 60,
           ).padStart(2, '0')}s · ${compiled.slots} slots` +
           (compiled.skipped.length > 0 ? ` · ${compiled.skipped.length} skipped` : '') +
-          (compiled.gaps > 0 ? ` · ${compiled.gaps} caption QC gap(s)` : ''),
+          (compiled.gaps > 0 ? ` · ${compiled.gaps} caption QC gap(s)` : '') +
+          (draftRequested ? ' · draft rendering' : ''),
       }),
     )
 
