@@ -179,6 +179,30 @@ export async function countCases(db: Database): Promise<number> {
   return row?.value ?? 0
 }
 
+/**
+ * The decrypted YouTube refresh token, on `llmCredentials`' terms:
+ * server-side only, absent rather than thrown when it cannot be decrypted.
+ * Only the web app ever reads it — media-utils gets short-lived access
+ * tokens minted FROM it, never the token itself (spec section 9).
+ */
+export async function youtubeRefreshToken(
+  db: Database,
+  encryptionKey: string,
+): Promise<string | undefined> {
+  const [row] = await db
+    .select({ encryptedKey: providerCredentials.encryptedKey })
+    .from(providerCredentials)
+    .where(eq(providerCredentials.provider, 'youtube'))
+    .limit(1)
+
+  if (!row) return undefined
+  try {
+    return decryptSecret(row.encryptedKey, encryptionKey)
+  } catch {
+    return undefined
+  }
+}
+
 export async function isYoutubeConnected(db: Database): Promise<boolean> {
   const [row] = await db
     .select({ id: providerCredentials.id })

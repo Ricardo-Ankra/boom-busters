@@ -1,4 +1,5 @@
 import { getSettings, listCredentials, listMusicBeds } from '@boom-busters/db'
+import { hasEnvGroup } from '@boom-busters/schemas'
 import { db } from '@/lib/db'
 import { mockProvidersEnabled } from '@boom-busters/providers'
 import { SettingsForm } from './settings-form'
@@ -42,6 +43,7 @@ export default async function SettingsPage({
         initialSettings={settings}
         credentials={credentials}
         mockProviders={mockProvidersEnabled()}
+        youtubeEnvReady={hasEnvGroup('youtube')}
         initialTab={tab}
         musicBeds={beds.map((bed) => ({
           id: bed.id,

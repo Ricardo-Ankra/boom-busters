@@ -2355,12 +2355,21 @@ and the Shorts and Publish screens.
       render exists (decision 168), two-step Render with est. cost,
       related-link chip. Tests: 4 schemas resolver, 4 db shorts
       integration, 3+4 runner, 9 component.
-- [ ] **M7.4 YouTube OAuth** — Settings → Connections card: OAuth with
-      exactly `youtube.upload`, `youtube`, `yt-analytics.readonly`;
-      refresh token AES-GCM encrypted; daily `channels.list` health ping
-      as a status chip; short-lived access-token exchange for media-utils
-      plus the token-refresh callback endpoint (§9: the Lambda never sees
-      the refresh token).
+- [x] **M7.4 YouTube OAuth** — `lib/youtube.ts` (auth URL with exactly
+      the three §9 scopes + `access_type=offline&prompt=consent`, code
+      exchange, access-token refresh distinguishing `invalid_grant` as
+      needs-reconnect, `channels.list` ping);
+      `/api/youtube/connect` + `/callback` (state cookie as the CSRF
+      lock, declined consent is not an error, refresh token stored
+      AES-GCM under provider `youtube`, ping verdict stamped in the
+      same breath so the first-run "Connect YouTube" only completes
+      against a real channel); `youtubeRefreshToken(db, key)` reader;
+      Connections tab gains the YouTube card (OAuth, not a key paste:
+      health chip, Connect/Reconnect link, Verify button). The DAILY
+      ping rides M8's analytics cron — the only cron (decision 171);
+      the media-utils token-refresh callback endpoint lands with the
+      publish-runner (M7.6), its first caller. Tests: 9 lib, 6 route,
+      5 card.
 - [ ] **M7.5 Error mapper + quota queue** — every YouTube error mapped
       (`quotaExceeded` → requeue tomorrow + notify; `uploadLimitExceeded`
       → pause queue 24 h; auth errors → "Reconnect YouTube" card in
@@ -2442,6 +2451,19 @@ and the Shorts and Publish screens.
      Shorts screen and the E2E suite with no cards to drive. So mock mode
      completes the row against the master's `local://` file — a 16:9
      file in a 9:16 player is visibly a stand-in, which is honest.
+170. **The OAuth flow forces `prompt=consent` and treats the state cookie
+     as the lock** (2026-08-22). Without forced consent Google omits the
+     refresh token on a repeat grant — the connection would store nothing
+     and read as connected. The state rides an httpOnly cookie scoped to
+     `/api/youtube` and is deleted on arrival whatever happens; a
+     mismatch refuses before any token call. `invalid_grant` is
+     distinguished everywhere as "needs reconnect": it is the one failure
+     a retry can never fix, and the chip says so in words.
+171. **The daily `channels.list` ping rides M8's analytics cron**
+     (2026-08-22). Spec §7 is explicit that the analytics-runner is "the
+     only cron"; adding a second scheduler for a 1-unit health ping would
+     contradict it. Until M8, health is stamped at connect time and by
+     the card's Verify button — the same check, human-triggered.
 
 **Blocked on the human (when M7.4 lands, not before):** a Google OAuth
 client for YouTube (`YOUTUBE_CLIENT_ID` / `YOUTUBE_CLIENT_SECRET`), the

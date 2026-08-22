@@ -278,3 +278,52 @@ export async function deleteMusicBedAction(id: string): Promise<ActionResult> {
   revalidatePath('/')
   return { ok: true }
 }
+
+/**
+ * The YouTube card's Verify (build spec section 9): mint a short-lived
+ * access token from the stored refresh token and ping `channels.list` —
+ * the same health check the daily ping will run from the M8 cron. An
+ * `invalid_grant` means the refresh token is dead (consent revoked) and
+ * only reconnecting helps; the chip says so.
+ */
+export async function verifyYoutubeConnection(): Promise<
+  ActionResult & { channelTitle?: string; needsReconnect?: boolean }
+> {
+  await requireOwner()
+
+  const { youtubeRefreshToken } = await import('@boom-busters/db')
+  const { pingChannel, refreshAccessToken, YoutubeAuthError, youtubeConfigured } =
+    await import('@/lib/youtube')
+
+  if (!youtubeConfigured()) {
+    return {
+      ok: false,
+      error: 'Set YOUTUBE_CLIENT_ID and YOUTUBE_CLIENT_SECRET in the environment first.',
+    }
+  }
+
+  const refreshToken = await youtubeRefreshToken(db, env.SECRETS_ENCRYPTION_KEY)
+  if (!refreshToken) {
+    return { ok: false, error: 'YouTube is not connected yet.' }
+  }
+
+  try {
+    const grant = await refreshAccessToken(refreshToken)
+    const ping = await pingChannel(grant.accessToken)
+    await recordVerifyResult(db, 'youtube', ping.ok ? 'ok' : 'invalid')
+    revalidatePath('/settings')
+    if (!ping.ok) return { ok: false, error: ping.error ?? 'The channel ping failed.' }
+    return { ok: true, ...(ping.channelTitle ? { channelTitle: ping.channelTitle } : {}) }
+  } catch (error) {
+    await recordVerifyResult(db, 'youtube', 'invalid')
+    revalidatePath('/settings')
+    if (error instanceof YoutubeAuthError && error.needsReconnect) {
+      return {
+        ok: false,
+        needsReconnect: true,
+        error: 'Google no longer honours the stored consent - reconnect YouTube.',
+      }
+    }
+    return { ok: false, error: 'Could not reach Google to verify the connection.' }
+  }
+}

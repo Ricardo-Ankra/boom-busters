@@ -20,6 +20,7 @@ import { Switch } from '@/components/ui/switch'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { VoiceTab } from './voice-tab'
 import { MusicTab, type MusicBedView } from './music-tab'
+import { YoutubeCard } from './youtube-card'
 import { useToast } from '@/components/ui/toast'
 import { saveProviderKey, saveSettings, verifyProviderKey } from './actions'
 
@@ -65,6 +66,7 @@ export function SettingsForm({
   initialSettings,
   credentials,
   mockProviders,
+  youtubeEnvReady = false,
   initialTab = 'models',
   musicBeds = [],
 }: {
@@ -72,6 +74,8 @@ export function SettingsForm({
   credentials: MaskedCredential[]
   /** Resolved on the server: `process.env` is not readable from the client. */
   mockProviders: boolean
+  /** Whether the YouTube OAuth client env vars exist — server-resolved too. */
+  youtubeEnvReady?: boolean
   /** From `?tab=`, validated by the page — deep links land on the right tab. */
   initialTab?: string
   musicBeds?: MusicBedView[]
@@ -136,7 +140,11 @@ export function SettingsForm({
       </TabsContent>
 
       <TabsContent value="connections">
-        <ConnectionsTab credentials={credentials} mockProviders={mockProviders} />
+        <ConnectionsTab
+          credentials={credentials}
+          mockProviders={mockProviders}
+          youtubeEnvReady={youtubeEnvReady}
+        />
       </TabsContent>
     </Tabs>
   )
@@ -354,9 +362,11 @@ const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Frida
 function ConnectionsTab({
   credentials,
   mockProviders,
+  youtubeEnvReady,
 }: {
   credentials: MaskedCredential[]
   mockProviders: boolean
+  youtubeEnvReady: boolean
 }) {
   const byProvider = new Map(credentials.map((credential) => [credential.provider, credential]))
 
@@ -386,6 +396,9 @@ function ConnectionsTab({
           </>
         )}
       </p>
+
+      {/* OAuth, not a key paste — its own card, above the key grid. */}
+      <YoutubeCard credential={byProvider.get('youtube')} envReady={youtubeEnvReady} />
 
       <div className="grid gap-3 sm:grid-cols-2">
         {CREDENTIAL_PROVIDERS.map((provider) => (
