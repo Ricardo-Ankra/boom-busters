@@ -2277,17 +2277,24 @@ app found two faults the suites could not see, both now guarded:
   vitest's 10 s default; alone, the same file passes in under 9 s. Timing,
   not a regression.
 
-**Status:** `[~]` in progress — branch `m6-assembly` started 2026-08-18;
-M6.1–M6.8 done (timeline contract; snap/ducking/compiler with goldens;
-word timings at synthesis; music library live in Settings; Remotion
-component library with bundled world geometry, fonts, Studio fixtures
-and renderStill snapshots; broker + media-utils CDK stacks DEPLOYED
-to the Reelscript account in eu-west-1 (M6.9, 2026-08-18), whisper
-assets uploaded, broker smoke-tested live; assembly-runner compiling
-stored timelines and parking at Gate 5a, with the broker hook route
-live; preview & render screen with the local fixture render path —
-awaiting only the broker env vars in Vercel and the real staging
-render)
+**Status:** `[x]` complete (closed 2026-08-22, branch `m6-assembly` merged
+to master). M6.1 to M6.10 done: timeline contract; snap/ducking/compiler
+with goldens; word timings at synthesis; music library live in Settings;
+Remotion component library with bundled world geometry, fonts, Studio
+fixtures and renderStill snapshots; broker + media-utils CDK stacks
+deployed to the Reelscript account in eu-west-1, whisper assets uploaded,
+broker smoke-tested live; assembly-runner compiling stored timelines and
+parking at Gate 5a; preview & render screen live in production with
+pulse-driven refresh and side-by-side draft/master render buttons, the
+render fan-out capped to fit the account's 10-concurrency quota.
+
+One item deliberately deferred, not dropped: the **real staging master
+render on Lambda** cannot complete until AWS grants the concurrent-
+executions quota increase (a human action via Service Quotas, requested
+2026-08-19). The spec lists "staging render" under M8's deliverables and
+§13's definition of done, so it rolls forward there. When the quota lands:
+raise `RENDER_FANOUT` on the broker stack, redeploy media-utils at
+10,240 MB, delete the old 240 s Remotion function.
 
 ---
 
@@ -2297,7 +2304,70 @@ render)
 > quota queue, publish calendar + thumbnail dropzone, private-until-audit
 > checklist mode.
 
-**Status:** `[ ]` not started
+**What already exists** (surveyed 2026-08-22, before the first M7 commit):
+the `shorts` and `publish_records` tables shipped in the M1 skeleton;
+script-runner stores `shortsCandidates` on the script (5 segments with hook
+rationale); `project/master.ready` is in the events registry and
+render-runner's QC step is specced to emit it; media-utils already
+implements the `upload-youtube` resumable job (8 MB chunks, resume on
+5xx/308); `KaraokeCaptions` has 9:16 safe zones. What does not exist:
+`ShortVertical` composition, a vertical timeline compiler, shorts-runner,
+publish-runner, the YouTube OAuth flow, the error mapper + quota queue,
+and the Shorts and Publish screens.
+
+**Deliverables (spec §14.7, §9, §7.2 items 7-8, §11.3), in build order:**
+
+- [ ] **M7.1 Vertical timeline** — `packages/timeline` compiles a Short
+      timeline from a segmentRef (chapterId + paragraph range): narration
+      chunks reused as-is, visuals re-framed to 9:16, karaoke captions,
+      shorts-style music bed, loop or CTA ending. Golden-tested like the
+      master compiler. Schema additions in `packages/schemas` as needed.
+- [ ] **M7.2 `ShortVertical` composition** — 1080×1920 in
+      `packages/compositions`, Studio fixture, `renderStill` snapshot
+      tests including the caption safe-zone test (spec §13).
+- [ ] **M7.3 shorts-runner + Shorts screen** — `project/master.ready` →
+      per approved candidate: compile vertical timeline → render via
+      broker (parallel, capped) → QC → ready card. Shorts screen per
+      §11.3: card grid, 9:16 player, ending toggle, editable
+      title/description, render state, Related-link checklist chip
+      (blocks scheduling until checked).
+- [ ] **M7.4 YouTube OAuth** — Settings → Connections card: OAuth with
+      exactly `youtube.upload`, `youtube`, `yt-analytics.readonly`;
+      refresh token AES-GCM encrypted; daily `channels.list` health ping
+      as a status chip; short-lived access-token exchange for media-utils
+      plus the token-refresh callback endpoint (§9: the Lambda never sees
+      the refresh token).
+- [ ] **M7.5 Error mapper + quota queue** — every YouTube error mapped
+      (`quotaExceeded` → requeue tomorrow + notify; `uploadLimitExceeded`
+      → pause queue 24 h; auth errors → "Reconnect YouTube" card in
+      Needs-you); self-enforced daily upload budget (default 4) with a
+      queue. Unit-tested per §13's "YouTube error mapper" line.
+- [ ] **M7.6 publish-runner** — per item on UI schedule action.
+      Preconditions: thumbnail uploaded (master only), metadata approved,
+      slot chosen. Atomic `draft→uploading` (`UPDATE … WHERE
+      status='draft'`) before any upload; media-utils streams S3 →
+      YouTube; `privacyStatus:'private'` + `publishAt`; poll processing;
+      `status='scheduled'`; notify.
+- [ ] **M7.7 Publish screen** — week calendar with drag-to-slot
+      (defaults from Publishing settings), item editor: generated title
+      options as a radio list + free edit, description live preview
+      (hook, chapter timestamps, sources, disclaimer auto-blocks), tags,
+      thumbnail dropzone (up to 3 Canva PNGs, ≥1280×720, ≤2 MB,
+      client-validated; first set via API, rest stored for manual Test &
+      Compare), status chips `draft→uploading→scheduled→live`, mapped
+      errors with retry. **Private-until-audit**: while `apiAuditPassed`
+      is unset, the screen shows the completion checklist ending in
+      "flip to public in YouTube Studio".
+- [ ] **M7.8 E2E** — Playwright drives the mock-provider flow through
+      schedule-publish (YouTube mocked), buttons only.
+- [ ] Tests land with every part; CI green on every commit.
+
+**Blocked on the human (when M7.4 lands, not before):** a Google OAuth
+client for YouTube (`YOUTUBE_CLIENT_ID` / `YOUTUBE_CLIENT_SECRET`), the
+redirect URI supplied by me at that point. Everything is built and tested
+mock-first per CLAUDE.md rule 6.
+
+**Status:** `[~]` in progress — branch `m7-shorts` started 2026-08-22
 
 ---
 
