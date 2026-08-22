@@ -2382,12 +2382,23 @@ and the Shorts and Publish screens.
       `draft→uploading` with the stamp inside it), `countUploadsSince`
       (failures included — their quota units were spent). The runner
       wires these in M7.6. Tests: 12 mapper/quota-day, 3 integration.
-- [ ] **M7.6 publish-runner** — per item on UI schedule action.
-      Preconditions: thumbnail uploaded (master only), metadata approved,
-      slot chosen. Atomic `draft→uploading` (`UPDATE … WHERE
-      status='draft'`) before any upload; media-utils streams S3 →
-      YouTube; `privacyStatus:'private'` + `publishAt`; poll processing;
-      `status='scheduled'`; notify.
+- [x] **M7.6 publish-runner** — `publish/requested {targetType,
+      targetId, attempt?}` per item, concurrency 1. Preconditions checked
+      in words and refusals leave the record in `draft` with the reason
+      in its error field (decision 173): slot chosen, metadata parses
+      against `PublishMetadataSchema` (YouTube's own limits), thumbnail
+      present (masters), related-link ticked + finished render (Shorts),
+      YouTube connected (live). Daily budget over → notify + sleep into
+      the next Pacific quota day, re-check once, defer honestly if still
+      spent. Then the §5 atomic claim, the media-utils `upload-youtube`
+      job carrying a freshly minted SHORT-LIVED access token and
+      `privacyStatus:'private'` + `publishAt`, the webhook wait (7 h),
+      failures through the error mapper (requeue/pause re-emit after
+      their sleeps; `retry` re-emits with an attempt cap of 3;
+      `reconnect` stamps the credential invalid), `thumbnails.set` for
+      masters (a failure warns, never unschedules), a bounded processing
+      poll, `status='scheduled'`, notification. Mid-upload token refresh
+      DEFERRED (decision 174). Tests: 6 with the Inngest harness.
 - [ ] **M7.7 Publish screen** — week calendar with drag-to-slot
       (defaults from Publishing settings), item editor: generated title
       options as a radio list + free edit, description live preview
@@ -2477,6 +2488,25 @@ and the Shorts and Publish screens.
      start that later failed still spent its 1600 units, so
      `uploadStartedAt` is stamped inside the atomic `draft→uploading`
      transition and counted regardless of what became of the upload.
+173. **A refused precondition is not a failure** (2026-08-22). The
+     publish-runner writes the reason into the record's error field and
+     leaves it `draft`: the Publish screen shows why and the same button
+     works once it is fixed. Only a real upload failure (or a dead run's
+     onFailure) moves a record to `failed`.
+174. **The §9 mid-upload token-refresh callback is deferred**
+     (2026-08-22). The spec sketches media-utils calling back to the web
+     app if an upload outlives its access token. Tokens live ~1 h; a
+     master streams S3 → YouTube on Lambda's NIC in minutes. The
+     machinery (a new endpoint, HMAC auth for it, Lambda-side refresh
+     handling) is real cost against a failure mode nothing has exhibited
+     — build it when a real upload ever dies at the ~1 h mark, which the
+     mapped timeout error would make visible.
+175. **Deferrals sleep in the run, not in a scheduler** (2026-08-22).
+     Requeue-tomorrow and pause-queue both `sleepUntil` inside the same
+     durable run and re-emit `publish/requested` — no cron, no second
+     queue, and the Inngest dashboard shows exactly what is waiting and
+     until when. The `retry` action re-emits with `attempt+1`, capped at
+     3, so a flapping YouTube cannot loop forever.
 
 **Blocked on the human (when M7.4 lands, not before):** a Google OAuth
 client for YouTube (`YOUTUBE_CLIENT_ID` / `YOUTUBE_CLIENT_SECRET`), the

@@ -13,6 +13,21 @@
  * - everything else: fail this item and show the mapped message.
  */
 
+import { z } from 'zod'
+
+/**
+ * What a publish_records row's `metadata` must hold before an upload may
+ * start (spec section 7.2 item 8: "metadata approved" is a precondition).
+ * Limits are YouTube's own: 100-char titles, 5000-byte descriptions, and a
+ * combined tag budget of about 500 characters.
+ */
+export const PublishMetadataSchema = z.object({
+  title: z.string().trim().min(1).max(100),
+  description: z.string().max(5000),
+  tags: z.array(z.string().trim().min(1).max(100)).max(60).default([]),
+})
+export type PublishMetadata = z.infer<typeof PublishMetadataSchema>
+
 export type YoutubeErrorAction =
   | { kind: 'requeue-tomorrow' }
   | { kind: 'pause-queue'; hours: number }

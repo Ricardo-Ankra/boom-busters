@@ -7,6 +7,7 @@ import {
   ProjectCreatedSchema,
   ProjectMasterReadySchema,
   RenderCompletedSchema,
+  PublishRequestedSchema,
   RenderDraftRequestedSchema,
   RenderFailedSchema,
   ShortsRenderRequestedSchema,
@@ -80,6 +81,7 @@ export const events = {
   shortsRenderRequested: eventType('shorts/render.requested', {
     schema: ShortsRenderRequestedSchema,
   }),
+  publishRequested: eventType('publish/requested', { schema: PublishRequestedSchema }),
   renderCompleted: eventType('render/completed', { schema: RenderCompletedSchema }),
   renderFailed: eventType('render/failed', { schema: RenderFailedSchema }),
 

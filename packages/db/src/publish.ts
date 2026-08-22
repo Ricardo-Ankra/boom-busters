@@ -49,6 +49,24 @@ export async function beginUpload(
   return row
 }
 
+export async function updatePublishRecord(
+  db: Database,
+  id: string,
+  patch: Partial<{
+    status: PublishRecordRow['status']
+    youtubeVideoId: string
+    publishAt: Date
+    uploadedThumbKeys: string[]
+    metadata: Record<string, unknown>
+    error: Record<string, unknown> | null
+  }>,
+): Promise<void> {
+  await db
+    .update(publishRecords)
+    .set({ ...patch, updatedAt: new Date() })
+    .where(eq(publishRecords.id, id))
+}
+
 /**
  * Upload starts since a moment — the daily-budget question, asked with
  * `quotaDayStartUtc(now)` from schemas as the boundary.

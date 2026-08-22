@@ -125,6 +125,19 @@ export const ShortsRenderRequestedSchema = z.object({
   shortId: UlidSchema,
 })
 
+/**
+ * Publish one item (M7.6) — the UI's schedule action creates/updates the
+ * publish_records row FIRST, then sends this. `attempt` exists for the
+ * error mapper's `retry` action: a transient upload failure re-emits with
+ * attempt+1, capped in the runner, so a flapping YouTube cannot loop forever.
+ */
+export const PublishRequestedSchema = z.object({
+  ...projectRef,
+  targetType: z.enum(['master', 'short']),
+  targetId: UlidSchema,
+  attempt: z.number().int().min(0).optional(),
+})
+
 export const RenderCompletedSchema = z.object({
   ...projectRef,
   renderId: UlidSchema,
@@ -193,6 +206,7 @@ export const EVENT_SCHEMAS = {
   'media/job.completed': MediaJobCompletedSchema,
   'render/draft.requested': RenderDraftRequestedSchema,
   'shorts/render.requested': ShortsRenderRequestedSchema,
+  'publish/requested': PublishRequestedSchema,
   'render/completed': RenderCompletedSchema,
   'render/failed': RenderFailedSchema,
 

@@ -129,6 +129,59 @@ export interface ChannelPing {
 }
 
 /**
+ * `thumbnails.set` with the Canva-exported PNG (spec section 9). Masters
+ * only — Shorts get no thumbnail call. Returns an error string rather than
+ * throwing: a master whose thumbnail call failed is still a scheduled
+ * master, and the caller decides how loudly to say so.
+ */
+export async function setThumbnail(
+  accessToken: string,
+  videoId: string,
+  bytes: Buffer,
+  contentType: 'image/png' | 'image/jpeg',
+): Promise<{ ok: boolean; error?: string }> {
+  const params = new URLSearchParams({ videoId })
+  const response = await fetch(
+    `https://www.googleapis.com/upload/youtube/v3/thumbnails/set?${params.toString()}`,
+    {
+      method: 'POST',
+      headers: { authorization: `Bearer ${accessToken}`, 'content-type': contentType },
+      body: new Uint8Array(bytes),
+    },
+  )
+  if (!response.ok) {
+    const payload = (await response.json().catch(() => ({}))) as {
+      error?: { message?: string }
+    }
+    return {
+      ok: false,
+      error: payload.error?.message ?? `thumbnails.set answered ${response.status}`,
+    }
+  }
+  return { ok: true }
+}
+
+/**
+ * Whether YouTube has finished processing an upload — the §7.2 item 8
+ * "poll processing status" read. Errors count as "not yet": the poll's
+ * caller gives up after a bounded wait either way.
+ */
+export async function videoProcessed(accessToken: string, videoId: string): Promise<boolean> {
+  const params = new URLSearchParams({ part: 'processingDetails', id: videoId })
+  const response = await fetch(
+    `https://www.googleapis.com/youtube/v3/videos?${params.toString()}`,
+    {
+      headers: { authorization: `Bearer ${accessToken}` },
+    },
+  )
+  if (!response.ok) return false
+  const payload = (await response.json().catch(() => ({}))) as {
+    items?: { processingDetails?: { processingStatus?: string } }[]
+  }
+  return payload.items?.[0]?.processingDetails?.processingStatus === 'succeeded'
+}
+
+/**
  * The connection-health ping (spec section 9): the cheapest authenticated
  * read there is — `channels.list mine=true`, 1 quota unit.
  */
