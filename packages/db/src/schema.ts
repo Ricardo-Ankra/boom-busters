@@ -665,6 +665,13 @@ export const publishRecords = pgTable(
       .default(sql`'{}'::jsonb`)
       .$type<Record<string, unknown>>(),
     status: publishStatusEnum('status').notNull().default('draft'),
+    /**
+     * Stamped by the atomic draft->uploading transition. This is what the
+     * daily upload budget counts (spec section 9): uploads STARTED in the
+     * current YouTube quota day — Pacific-midnight bounded, see
+     * `quotaDayStartUtc` — whatever became of them afterwards.
+     */
+    uploadStartedAt: timestamp('upload_started_at', { withTimezone: true }),
     error: jsonb('error').$type<Record<string, unknown>>(),
     createdAt: createdAt(),
     updatedAt: updatedAt(),

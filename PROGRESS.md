@@ -2370,11 +2370,18 @@ and the Shorts and Publish screens.
       the media-utils token-refresh callback endpoint lands with the
       publish-runner (M7.6), its first caller. Tests: 9 lib, 6 route,
       5 card.
-- [ ] **M7.5 Error mapper + quota queue** — every YouTube error mapped
-      (`quotaExceeded` → requeue tomorrow + notify; `uploadLimitExceeded`
-      → pause queue 24 h; auth errors → "Reconnect YouTube" card in
-      Needs-you); self-enforced daily upload budget (default 4) with a
-      queue. Unit-tested per §13's "YouTube error mapper" line.
+- [x] **M7.5 Error mapper + quota queue primitives** —
+      `mapYoutubeError` in schemas: vendor strings in, five typed actions
+      out (`requeue-tomorrow`, `pause-queue 24h`, `reconnect`, `retry`,
+      `fail`), reason tokens outranking the HTTP status because a 403 is
+      three different stories; `describeYoutubeAction` for
+      notifications; `quotaDayStartUtc` bounds "today" at midnight
+      PACIFIC, where YouTube actually resets quota (decision 172).
+      DB side: `publish_records.upload_started_at` (migration 0013,
+      applied to prod + test), `beginUpload` (the §5 atomic
+      `draft→uploading` with the stamp inside it), `countUploadsSince`
+      (failures included — their quota units were spent). The runner
+      wires these in M7.6. Tests: 12 mapper/quota-day, 3 integration.
 - [ ] **M7.6 publish-runner** — per item on UI schedule action.
       Preconditions: thumbnail uploaded (master only), metadata approved,
       slot chosen. Atomic `draft→uploading` (`UPDATE … WHERE
@@ -2464,6 +2471,12 @@ and the Shorts and Publish screens.
      only cron"; adding a second scheduler for a 1-unit health ping would
      contradict it. Until M8, health is stamped at connect time and by
      the card's Verify button — the same check, human-triggered.
+172. **The upload budget counts STARTS, in Pacific time** (2026-08-22).
+     YouTube's API quota resets at midnight America/Los_Angeles, not UTC;
+     a UTC day would free the budget seven-to-eight hours early. And a
+     start that later failed still spent its 1600 units, so
+     `uploadStartedAt` is stamped inside the atomic `draft→uploading`
+     transition and counted regardless of what became of the upload.
 
 **Blocked on the human (when M7.4 lands, not before):** a Google OAuth
 client for YouTube (`YOUTUBE_CLIENT_ID` / `YOUTUBE_CLIENT_SECRET`), the
