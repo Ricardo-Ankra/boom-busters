@@ -245,6 +245,18 @@ export const OverlaySchema = z.discriminatedUnion('kind', [
     durationMs: z.number().int().positive(),
     props: z.object({}),
   }),
+  /**
+   * A Short's CTA ending card (spec section 5: `ending: loop|cta`). Only the
+   * Short compiler emits it, over the final moments of a vertical timeline;
+   * a loop ending is the ABSENCE of this overlay — the cut is chosen so the
+   * last frame hands back to the first. Masters never carry it.
+   */
+  z.object({
+    kind: z.literal('endCta'),
+    startMs: z.number().int().min(0),
+    durationMs: z.number().int().positive(),
+    props: z.object({ text: z.string().min(1) }),
+  }),
 ])
 export type Overlay = z.infer<typeof OverlaySchema>
 

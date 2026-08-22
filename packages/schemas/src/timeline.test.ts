@@ -157,6 +157,21 @@ describe('TimelineSchema', () => {
     expect(result.success).toBe(false)
   })
 
+  it('accepts an endCta overlay (a Short CTA ending) and demands its text', () => {
+    const timeline = JSON.parse(JSON.stringify(fixtureTimeline())) as Timeline
+    timeline.overlays.push({
+      kind: 'endCta',
+      startMs: 11_400,
+      durationMs: 2600,
+      props: { text: 'The full story is on the channel' },
+    })
+    expect(TimelineSchema.safeParse(timeline).success).toBe(true)
+
+    const textless = JSON.parse(JSON.stringify(timeline)) as { overlays: { props: object }[] }
+    textless.overlays[1]!.props = {}
+    expect(TimelineSchema.safeParse(textless).success).toBe(false)
+  })
+
   it('keeps chart payloads on the anti-slop leash: claim refs required', () => {
     const timeline = fixtureTimeline()
     const chart = timeline.slots[1]!

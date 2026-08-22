@@ -2317,11 +2317,15 @@ and the Shorts and Publish screens.
 
 **Deliverables (spec §14.7, §9, §7.2 items 7-8, §11.3), in build order:**
 
-- [ ] **M7.1 Vertical timeline** — `packages/timeline` compiles a Short
-      timeline from a segmentRef (chapterId + paragraph range): narration
-      chunks reused as-is, visuals re-framed to 9:16, karaoke captions,
-      shorts-style music bed, loop or CTA ending. Golden-tested like the
-      master compiler. Schema additions in `packages/schemas` as needed.
+- [x] **M7.1 Vertical timeline** — `compileShortTimeline` in
+      `packages/timeline` slices the canonical MASTER timeline by
+      segmentRef (decision 163): narration re-clocked to zero, captions
+      windowed with text untouched, slots clipped (front-clipped videos
+      gain trimStartMs), 1080×1920, shorts-style bed with a rebuilt
+      ducking curve, loop/CTA ending (decision 164, new `endCta` overlay
+      variant in the contract), 180 s ceiling enforced. Golden
+      `short-timeline.json` plus 9 behaviour tests; full suite green
+      (9 workspaces), typecheck and lint clean.
 - [ ] **M7.2 `ShortVertical` composition** — 1080×1920 in
       `packages/compositions`, Studio fixture, `renderStill` snapshot
       tests including the caption safe-zone test (spec §13).
@@ -2361,6 +2365,28 @@ and the Shorts and Publish screens.
 - [ ] **M7.8 E2E** — Playwright drives the mock-provider flow through
       schedule-publish (YouTube mocked), buttons only.
 - [ ] Tests land with every part; CI green on every commit.
+
+**Decisions made (M7, continuing the numbering):**
+
+163. **The Short compiler slices the compiled master, never the board**
+     (2026-08-22). `compileShortTimeline` takes the canonical master
+     timeline plus a segmentRef and re-clocks the window to zero. The
+     master already carries everything in its final, human-approved form:
+     measured narration audio, captions snapped to the script, visuals
+     whose bytes were ingested at assembly. Recompiling from board rows
+     would re-run that work and could drift from what the preview gate
+     approved. Re-framing 16:9 media into 9:16 is not the compiler's job
+     either: the slot components cover-crop whatever canvas they are
+     given. A video slot clipped at the window's front gains trimStartMs
+     so its visible frames match what played at that moment of the master.
+164. **Ending semantics: a loop is an absence, a CTA is an overlay**
+     (2026-08-22). A loop ending adds nothing to the timeline; the cut
+     itself hands the last frame back to the first. A CTA ending is a new
+     `endCta` overlay variant in the contract (props: text), emitted over
+     the final 2600 ms — the chapter card's screen time. Masters never
+     carry it. The compiler also enforces YouTube's 180 s Shorts ceiling
+     as a hard ValidationError, because an overlong vertical would not
+     fail — it would silently upload as a regular video.
 
 **Blocked on the human (when M7.4 lands, not before):** a Google OAuth
 client for YouTube (`YOUTUBE_CLIENT_ID` / `YOUTUBE_CLIENT_SECRET`), the
