@@ -104,7 +104,7 @@ export interface BrokerDeps {
    * on request), and Remotion's default fan-out for a long video spawns
    * far more — every invoke died on "Rate Exceeded" (2026-08-21). The
    * cap keeps one render + its orchestrator + the broker + media-utils
-   * inside the quota; raise RENDER_FANOUT once AWS grants the increase.
+   * inside the quota (10 at first deploy, 1000 since 2026-08-22).
    */
   renderFanout: number
   store: BrokerStore

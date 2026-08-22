@@ -2289,12 +2289,17 @@ pulse-driven refresh and side-by-side draft/master render buttons, the
 render fan-out capped to fit the account's 10-concurrency quota.
 
 One item deliberately deferred, not dropped: the **real staging master
-render on Lambda** cannot complete until AWS grants the concurrent-
-executions quota increase (a human action via Service Quotas, requested
-2026-08-19). The spec lists "staging render" under M8's deliverables and
-§13's definition of done, so it rolls forward there. When the quota lands:
-raise `RENDER_FANOUT` on the broker stack, redeploy media-utils at
-10,240 MB, delete the old 240 s Remotion function.
+render on Lambda** could not complete until AWS granted the concurrent-
+executions quota increase. UPDATE 2026-08-22: the 2026-08-19 request had
+landed in us-east-1 (wrong region — quotas are per-region); the eu-west-1
+case filed 2026-08-22 was GRANTED the same day (1000 concurrent).
+`RENDER_FANOUT` raised to 150 and the broker redeployed. Still open: the
+FUNCTION MEMORY cap is a separate limit (a 10,240 MB media-utils deploy
+was attempted and refused with "MemorySize must be ≤ 3008"; clean
+rollback) — it needs a Support Center service-limit case, human action;
+and the old 240 s Remotion function still exists unreferenced (CLI
+deletion was permission-blocked). The staging render itself remains with
+M8, now unblocked.
 
 ---
 

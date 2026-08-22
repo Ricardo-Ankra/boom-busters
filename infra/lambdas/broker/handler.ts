@@ -128,7 +128,7 @@ function buildDeps(webhookUrl: string): BrokerDeps {
   return {
     token,
     renderCap: Number(process.env['RENDER_CAP'] ?? '2'),
-    renderFanout: Number(process.env['RENDER_FANOUT'] ?? '4'),
+    renderFanout: Number(process.env['RENDER_FANOUT'] ?? '150'),
     store: s3Store(stateBucket),
     remotion: {
       async render({ composition, timeline, renderId, scale, framesPerLambda }) {

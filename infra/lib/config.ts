@@ -30,8 +30,11 @@ export interface InfraConfig {
   dailyBudgetUsd: number
   renderCap: number
   /**
-   * Renderer chunks per render. Small because the account's Lambda
-   * concurrency quota is 10; raise with the quota.
+   * Renderer chunks per render. Sized against the account's Lambda
+   * concurrency quota: 1000 since 2026-08-22 (it was 10 at first deploy,
+   * which forced a fan-out of 4). At 150, a 45-minute master splits into
+   * ~150 chunks of a few hundred frames, and two concurrent renders plus
+   * media-utils still sit far inside the quota.
    */
   renderFanout: number
   /**
@@ -64,7 +67,7 @@ export function configFromEnv(env: Record<string, string | undefined> = process.
     alertEmail: env['ALERT_EMAIL'] !== '' ? env['ALERT_EMAIL'] : undefined,
     dailyBudgetUsd: Number(read('DAILY_BUDGET_USD', '25')),
     renderCap: Number(read('RENDER_CAP', '2')),
-    renderFanout: Number(read('RENDER_FANOUT', '4')),
+    renderFanout: Number(read('RENDER_FANOUT', '150')),
     mediaLambdaMemoryMb: Number(read('MEDIA_LAMBDA_MEMORY_MB', '10240')),
   }
 }
