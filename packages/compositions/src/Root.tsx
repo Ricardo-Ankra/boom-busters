@@ -6,15 +6,18 @@ import { ChapterCard } from './components/ChapterCard'
 import { ChartReveal } from './components/ChartReveal'
 import type { ChartPayload } from './components/ChartReveal'
 import { DocumentaryMaster } from './components/DocumentaryMaster'
+import { EndCta } from './components/EndCta'
 import { KaraokeCaptions } from './components/KaraokeCaptions'
 import { KenBurnsImage } from './components/KenBurnsImage'
 import { LowerThird } from './components/LowerThird'
 import { MusicBed } from './components/MusicBed'
+import { ShortVertical } from './components/ShortVertical'
 import { StockClip } from './components/StockClip'
 import {
   FIXTURE_BRAND,
   FIXTURE_CAPTION_WORDS,
   FIXTURE_MAP_LOCATIONS,
+  FIXTURE_SHORT_TIMELINE,
   FIXTURE_TIMELINE,
 } from './fixtures/timeline'
 import { FIXTURE_IMAGE_SKYLINE } from './fixtures/media'
@@ -130,6 +133,30 @@ export function Root() {
           width: props.timeline.width,
           height: props.timeline.height,
         })}
+      />
+
+      <Composition
+        id="ShortVertical"
+        component={ShortVertical}
+        durationInFrames={msToFrames(timelineDurationMs(FIXTURE_SHORT_TIMELINE), FPS)}
+        {...TALL}
+        defaultProps={{ timeline: FIXTURE_SHORT_TIMELINE }}
+        /* Same contract as the master: a real render's metadata follows the
+           timeline it is handed, not the fixture's numbers. */
+        calculateMetadata={({ props }) => ({
+          durationInFrames: msToFrames(timelineDurationMs(props.timeline), props.timeline.fps),
+          fps: props.timeline.fps,
+          width: props.timeline.width,
+          height: props.timeline.height,
+        })}
+      />
+
+      <Composition
+        id="EndCtaFixture"
+        component={EndCta}
+        durationInFrames={120}
+        {...TALL}
+        defaultProps={{ text: 'The full story is on the channel', brand: FIXTURE_BRAND }}
       />
 
       <Composition

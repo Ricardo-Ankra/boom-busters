@@ -1,7 +1,7 @@
 import { canonicalTimelineIssues, timelineDurationMs, TimelineSchema } from '@boom-busters/schemas'
 import { describe, expect, it } from 'vitest'
 import { FIXTURE_AUDIO_SILENCE, FIXTURE_IMAGE_SKYLINE } from './media'
-import { FIXTURE_TIMELINE, renderFixtureTimeline } from './timeline'
+import { FIXTURE_SHORT_TIMELINE, FIXTURE_TIMELINE, renderFixtureTimeline } from './timeline'
 
 describe('the fixture timeline', () => {
   it('is a valid Timeline under the contract schema', () => {
@@ -17,6 +17,21 @@ describe('the fixture timeline', () => {
     expect(issues).toContain('narration.0.url')
     expect(issues).toContain('music.url')
     expect(issues).toContain('slots.0.payload.src.url')
+  })
+})
+
+describe('the vertical fixture', () => {
+  it('is a valid 9:16 Timeline with a CTA ending over its final moments', () => {
+    const parsed = TimelineSchema.parse(JSON.parse(JSON.stringify(FIXTURE_SHORT_TIMELINE)))
+    expect([parsed.width, parsed.height]).toEqual([1080, 1920])
+    expect(timelineDurationMs(parsed)).toBe(8000)
+    const ending = parsed.overlays.find((overlay) => overlay.kind === 'endCta')
+    expect(ending).toBeDefined()
+    expect((ending?.startMs ?? 0) + (ending?.durationMs ?? 0)).toBe(8000)
+  })
+
+  it('is a MATERIALISED copy, like the master fixture — the guard must flag it', () => {
+    expect(canonicalTimelineIssues(FIXTURE_SHORT_TIMELINE)).toContain('narration.0.url')
   })
 })
 

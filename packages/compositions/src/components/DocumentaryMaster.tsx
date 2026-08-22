@@ -22,6 +22,7 @@ import { AnimatedMap } from './AnimatedMap'
 import { frameScale, typeStyle, withAlpha } from './brand'
 import { ChapterCard } from './ChapterCard'
 import { ChartReveal } from './ChartReveal'
+import { EndCta } from './EndCta'
 import { KaraokeCaptions } from './KaraokeCaptions'
 import { KenBurnsImage } from './KenBurnsImage'
 import { LowerThird } from './LowerThird'
@@ -83,6 +84,8 @@ export function DocumentaryMaster({ timeline }: { timeline: Timeline }) {
               brand={brand}
               durationInFrames={msToFrames(overlay.durationMs, fps)}
             />
+          ) : overlay.kind === 'endCta' ? (
+            <EndCta text={overlay.props.text} brand={brand} />
           ) : (
             <Watermark brand={brand} />
           )}

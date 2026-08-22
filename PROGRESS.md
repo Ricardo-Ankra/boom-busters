@@ -2326,9 +2326,16 @@ and the Shorts and Publish screens.
       variant in the contract), 180 s ceiling enforced. Golden
       `short-timeline.json` plus 9 behaviour tests; full suite green
       (9 workspaces), typecheck and lint clean.
-- [ ] **M7.2 `ShortVertical` composition** — 1080×1920 in
-      `packages/compositions`, Studio fixture, `renderStill` snapshot
-      tests including the caption safe-zone test (spec §13).
+- [x] **M7.2 `ShortVertical` composition** — registered as its own id
+      with 9:16 fixture defaults and timeline-driven metadata, but ONE
+      renderer serves both formats (decision 165): the component wraps
+      the master's, which gained an `EndCta` branch in its overlay
+      chain. New `EndCta` card component; `FIXTURE_SHORT_TIMELINE`
+      (hand-built vertical materialised fixture); snapshots for
+      `ShortVertical` (chart + live caption + CTA card in one frame)
+      and `EndCtaFixture`, goldens reviewed visually; 66 compositions
+      tests green. NOTE: the deployed Remotion site must be redeployed
+      before the first live Short render — it predates `ShortVertical`.
 - [ ] **M7.3 shorts-runner + Shorts screen** — `project/master.ready` →
       per approved candidate: compile vertical timeline → render via
       broker (parallel, capped) → QC → ready card. Shorts screen per
@@ -2387,6 +2394,14 @@ and the Shorts and Publish screens.
      carry it. The compiler also enforces YouTube's 180 s Shorts ceiling
      as a hard ValidationError, because an overlong vertical would not
      fail — it would silently upload as a regular video.
+165. **One timeline renderer, two registered compositions** (2026-08-22).
+     `ShortVertical` wraps `DocumentaryMaster` rather than duplicating
+     it: everything format-specific (canvas, windows, safe zones, the
+     ending) lives in the timeline the Short compiler produced, and the
+     slot components cover-crop into whatever canvas they get. A second
+     renderer would be a second place for the formats to drift. The
+     separate registration exists so the broker addresses
+     `ShortVertical` by id and Studio shows the vertical fixture.
 
 **Blocked on the human (when M7.4 lands, not before):** a Google OAuth
 client for YouTube (`YOUTUBE_CLIENT_ID` / `YOUTUBE_CLIENT_SECRET`), the

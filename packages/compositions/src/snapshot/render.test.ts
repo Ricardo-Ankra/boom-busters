@@ -43,6 +43,10 @@ const CASES: SnapshotCase[] = [
   { id: 'KaraokeCaptionsWide', frame: 20, maxDiffRatio: 0.06 },
   { id: 'KaraokeCaptionsTall', frame: 20, maxDiffRatio: 0.06 },
   { id: 'DocumentaryMaster', frame: 200, maxDiffRatio: 0.06 },
+  // Frame 190 ≈ 6.3 s: the clipped chart, a live caption word and the CTA
+  // ending card all on screen at once — the Short's whole vocabulary.
+  { id: 'ShortVertical', frame: 190, maxDiffRatio: 0.06 },
+  { id: 'EndCtaFixture', frame: 60, maxDiffRatio: 0.06 },
 ]
 
 let serveUrl: string
