@@ -9,6 +9,7 @@ import {
   RenderCompletedSchema,
   RenderDraftRequestedSchema,
   RenderFailedSchema,
+  ShortsRenderRequestedSchema,
   VisualsRefetchRequestedSchema,
   VoiceRetakeRequestedSchema,
   EVENT_SCHEMAS,
@@ -75,6 +76,9 @@ export const events = {
   mediaJobCompleted: eventType('media/job.completed', { schema: MediaJobCompletedSchema }),
   renderDraftRequested: eventType('render/draft.requested', {
     schema: RenderDraftRequestedSchema,
+  }),
+  shortsRenderRequested: eventType('shorts/render.requested', {
+    schema: ShortsRenderRequestedSchema,
   }),
   renderCompleted: eventType('render/completed', { schema: RenderCompletedSchema }),
   renderFailed: eventType('render/failed', { schema: RenderFailedSchema }),

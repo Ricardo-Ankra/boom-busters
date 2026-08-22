@@ -2336,12 +2336,25 @@ and the Shorts and Publish screens.
       and `EndCtaFixture`, goldens reviewed visually; 66 compositions
       tests green. NOTE: the deployed Remotion site must be redeployed
       before the first live Short render — it predates `ShortVertical`.
-- [ ] **M7.3 shorts-runner + Shorts screen** — `project/master.ready` →
-      per approved candidate: compile vertical timeline → render via
-      broker (parallel, capped) → QC → ready card. Shorts screen per
-      §11.3: card grid, 9:16 player, ending toggle, editable
-      title/description, render state, Related-link checklist chip
-      (blocks scheduling until checked).
+- [x] **M7.3 shorts-runner + Shorts screen** — two runners, not one
+      (decision 166): `shorts-runner` (`project/master.ready`) resolves
+      each candidate's sentence anchors to a paragraph range
+      (`resolveCandidateSegment` in schemas, sharing `sentenceHash`'s
+      normal form), compiles as validation, writes `shorts` rows and
+      fans out one `shorts/render.requested` per row; a re-fired
+      master.ready keeps curated rows (decision 167).
+      `short-render-runner` (concurrency 2) compiles the Short at its
+      CURRENT ending + shorts-style bed, invokes `ShortVertical` via
+      the broker, waits the webhook, runs QC; failures mark only that
+      Short's row; a step retry reuses its queued row instead of
+      orphaning it. Mock mode finishes the bookkeeping reusing the
+      local fixture master's file (decision 169). Shorts screen per
+      §11.3: card grid, 9:16 player off the 2 s progress poll's
+      presigned URL, explicit Save for title/description, ending
+      toggle that nulls `renderId` with an inline consequence when a
+      render exists (decision 168), two-step Render with est. cost,
+      related-link chip. Tests: 4 schemas resolver, 4 db shorts
+      integration, 3+4 runner, 9 component.
 - [ ] **M7.4 YouTube OAuth** — Settings → Connections card: OAuth with
       exactly `youtube.upload`, `youtube`, `yt-analytics.readonly`;
       refresh token AES-GCM encrypted; daily `channels.list` health ping
@@ -2402,6 +2415,33 @@ and the Shorts and Publish screens.
      renderer would be a second place for the formats to drift. The
      separate registration exists so the broker addresses
      `ShortVertical` by id and Studio shows the vertical fixture.
+166. **Shorts render as one Inngest run per Short, not one parent loop**
+     (2026-08-22). `waitForEvent` only matches events arriving AFTER the
+     wait starts, so a parent waiting on N completions in sequence would
+     miss any render that finished before its turn. Per-Short runs give
+     every render a wait that starts before its own submit; the
+     function's `concurrency: 2` is the spec's "parallel, capped", and it
+     matches the broker stack's RENDER_CAP so the queue forms in Inngest,
+     visibly, instead of as broker 429s.
+167. **A re-fired master.ready never recreates shorts rows**
+     (2026-08-22). The rows carry human curation — titles, endings,
+     related-link ticks. If any exist, the runner keeps them all and
+     creates none; re-rendering against the new master is each card's
+     explicit button. Candidate resolution failures are skipped with a
+     reason in the run result, never guessed at: a mis-anchored segment
+     would put the wrong words in a Short.
+168. **`shorts.renderId` points at the render of the CURRENT
+     configuration** (2026-08-22). Toggling the ending nulls it (with an
+     inline-two-step consequence when a render exists) rather than
+     leaving it aimed at a render of something else; the old render row
+     survives in `renders` because its cost was real. Title and
+     description do not null it — they are publish copy, not pixels.
+169. **Mock Short renders reuse the local fixture master's file**
+     (2026-08-22). Rendering a real vertical per Short in CI would cost
+     minutes each; skipping entirely (the draft's choice) would leave the
+     Shorts screen and the E2E suite with no cards to drive. So mock mode
+     completes the row against the master's `local://` file — a 16:9
+     file in a 9:16 player is visibly a stand-in, which is honest.
 
 **Blocked on the human (when M7.4 lands, not before):** a Google OAuth
 client for YouTube (`YOUTUBE_CLIENT_ID` / `YOUTUBE_CLIENT_SECRET`), the

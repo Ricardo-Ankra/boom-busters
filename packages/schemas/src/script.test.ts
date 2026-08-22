@@ -9,6 +9,7 @@ import {
   sentenceHash,
   hasNarrationTags,
   replaceParagraph,
+  resolveCandidateSegment,
   stripNarrationMarkup,
   splitParagraphs,
   splitSentences,
@@ -296,5 +297,92 @@ describe('markup is not words', () => {
     expect(sentenceHash('The auditors signed it off. [pause] Nobody asked.')).toBe(
       sentenceHash('The auditors signed it off. Nobody asked.'),
     )
+  })
+})
+
+describe('resolveCandidateSegment', () => {
+  const CHAPTER_ONE = '01HQ0000000000000000000CH1'
+  const CHAPTER_TWO = '01HQ0000000000000000000CH2'
+  const chapters = [
+    {
+      id: CHAPTER_ONE,
+      contentMd:
+        'By June, the auditors could not find the money. They looked in Manila.\n\n' +
+        '[grave] EY refused to sign the accounts — €1.9bn was "missing".\n\n' +
+        'The shares collapsed in nine days.',
+    },
+    { id: CHAPTER_TWO, contentMd: 'A single closing paragraph.' },
+  ]
+
+  it('places anchors across paragraphs and returns the range', () => {
+    expect(
+      resolveCandidateSegment(
+        {
+          chapterIndex: 0,
+          startSentence: 'They looked in Manila.',
+          endSentence: 'The shares collapsed in nine days.',
+        },
+        chapters,
+      ),
+    ).toEqual({ chapterId: CHAPTER_ONE, fromParagraph: 0, toParagraph: 2 })
+  })
+
+  it('matches through markup, curly quotes, case and punctuation drift', () => {
+    // The model quoted the sentence without the narration tag, with straight
+    // quotes and a plain hyphen — none of that may orphan the segment.
+    expect(
+      resolveCandidateSegment(
+        {
+          chapterIndex: 0,
+          startSentence: "EY refused to sign the accounts - EUR... no: €1.9bn was 'missing'",
+          endSentence: 'ey refused to sign the accounts — €1.9bn was “missing”.',
+        },
+        chapters,
+      ),
+    ).toBeNull()
+    // (the drifted START above also drifted in WORDS — that must fail) —
+    // whereas pure punctuation/markup drift resolves:
+    expect(
+      resolveCandidateSegment(
+        {
+          chapterIndex: 0,
+          startSentence: "ey refused to sign the accounts €1.9bn was 'missing'",
+          endSentence: 'EY refused to sign the accounts — €1.9bn was “missing”.',
+        },
+        chapters,
+      ),
+    ).toEqual({ chapterId: CHAPTER_ONE, fromParagraph: 1, toParagraph: 1 })
+  })
+
+  it('returns null for an unknown chapter or unplaceable sentences', () => {
+    expect(
+      resolveCandidateSegment(
+        { chapterIndex: 9, startSentence: 'x.', endSentence: 'y.' },
+        chapters,
+      ),
+    ).toBeNull()
+    expect(
+      resolveCandidateSegment(
+        {
+          chapterIndex: 0,
+          startSentence: 'This sentence is not in the chapter.',
+          endSentence: 'x',
+        },
+        chapters,
+      ),
+    ).toBeNull()
+  })
+
+  it('refuses a backwards segment: the end must sit at or after the start', () => {
+    expect(
+      resolveCandidateSegment(
+        {
+          chapterIndex: 0,
+          startSentence: 'The shares collapsed in nine days.',
+          endSentence: 'They looked in Manila.',
+        },
+        chapters,
+      ),
+    ).toBeNull()
   })
 })

@@ -310,15 +310,70 @@ export function replaceParagraph(
  * the sentence should be re-checked.
  */
 export function sentenceHash(sentence: string): string {
-  const normalised = stripNarrationMarkup(sentence)
+  return createHash('sha256').update(normaliseForMatch(sentence)).digest('hex').slice(0, 32)
+}
+
+/**
+ * The matching normal form `sentenceHash` hashes and Shorts-segment
+ * resolution searches with: markup stripped, lowercased, quotes folded,
+ * punctuation dropped, whitespace collapsed. One normal form, because both
+ * features answer the same question — "is this the same sentence?" — and
+ * must keep answering it identically.
+ */
+function normaliseForMatch(text: string): string {
+  return stripNarrationMarkup(text)
     .toLowerCase()
     .replace(/[‘’]/g, "'")
     .replace(/[“”]/g, '"')
     .replace(/[^\p{L}\p{N}\s]/gu, '')
     .replace(/\s+/g, ' ')
     .trim()
+}
 
-  return createHash('sha256').update(normalised).digest('hex').slice(0, 32)
+// ---------------------------------------------------------------------------
+// Shorts segments
+// ---------------------------------------------------------------------------
+
+/** chapterId + paragraph range — the `shorts.segmentRef` shape (spec §5). */
+export interface SegmentRef {
+  chapterId: string
+  fromParagraph: number
+  toParagraph: number
+}
+
+/**
+ * Resolve a Shorts candidate's sentence anchors to the paragraph range the
+ * pipeline actually addresses (spec §7: paragraphs are "the unit for takes,
+ * retakes, alignment merge and Shorts segment refs").
+ *
+ * The candidate was written by a model reading the chapter, so anchors are
+ * matched in the normal form above — a straight quote, a fixed typo or a
+ * narration tag between candidate-marking and assembly must not orphan the
+ * segment. `null` means "could not place it": the caller skips the candidate
+ * and says so, because guessing a paragraph range would put someone else's
+ * words in a Short.
+ */
+export function resolveCandidateSegment(
+  candidate: Pick<ShortsCandidate, 'chapterIndex' | 'startSentence' | 'endSentence'>,
+  chapters: readonly { id: string; contentMd: string }[],
+): SegmentRef | null {
+  const chapter = chapters[candidate.chapterIndex]
+  if (!chapter) return null
+
+  const paragraphs = splitParagraphs(chapter.contentMd).map(normaliseForMatch)
+  const start = normaliseForMatch(candidate.startSentence)
+  const end = normaliseForMatch(candidate.endSentence)
+  if (start === '' || end === '') return null
+
+  const fromParagraph = paragraphs.findIndex((paragraph) => paragraph.includes(start))
+  if (fromParagraph === -1) return null
+
+  // The end anchor only counts from the start's paragraph onward — a segment
+  // cannot run backwards, so an earlier match is a different sentence.
+  const relative = paragraphs.slice(fromParagraph).findIndex((paragraph) => paragraph.includes(end))
+  if (relative === -1) return null
+
+  return { chapterId: chapter.id, fromParagraph, toParagraph: fromParagraph + relative }
 }
 
 /** Words per minute of narration, for the runtime estimate on each chapter. */

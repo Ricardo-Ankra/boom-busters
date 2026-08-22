@@ -114,6 +114,17 @@ export const RenderDraftRequestedSchema = z.object({
   ...projectRef,
 })
 
+/**
+ * Render (or re-render) one Short (M7.3). The shorts-runner fans these out
+ * after resolving candidates, and the Shorts screen's per-card render button
+ * re-sends one after an ending change made the last render stale. Handled by
+ * the short-render-runner, one Short per run, concurrency-capped.
+ */
+export const ShortsRenderRequestedSchema = z.object({
+  ...projectRef,
+  shortId: UlidSchema,
+})
+
 export const RenderCompletedSchema = z.object({
   ...projectRef,
   renderId: UlidSchema,
@@ -181,6 +192,7 @@ export const EVENT_SCHEMAS = {
   'visuals/refetch.requested': VisualsRefetchRequestedSchema,
   'media/job.completed': MediaJobCompletedSchema,
   'render/draft.requested': RenderDraftRequestedSchema,
+  'shorts/render.requested': ShortsRenderRequestedSchema,
   'render/completed': RenderCompletedSchema,
   'render/failed': RenderFailedSchema,
 

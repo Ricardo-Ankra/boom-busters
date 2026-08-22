@@ -13,6 +13,7 @@ import {
 import { voiceReviewModel } from '@/lib/voice-review'
 import { visualsReviewModel } from '@/lib/visuals-review'
 import { emptyPreviewModel, previewModel } from '@/lib/preview-review'
+import { emptyShortsModel, shortsModel } from '@/lib/shorts-review'
 import { materialiseForPreview } from '@/lib/materialise'
 import { mockProvidersEnabled } from '@boom-busters/providers'
 import { presignGet, storageConfigured } from '@/lib/storage'
@@ -30,6 +31,7 @@ import { DossierReview } from './dossier-review'
 import { PreviewScreen } from './preview-screen'
 import type { PreviewRenderProp } from './preview-screen'
 import { ScriptStudio } from './script-studio'
+import { ShortsScreen } from './shorts-screen'
 import { VisualBoard } from './visual-board'
 import { VoiceReview } from './voice-review'
 import { StageBanner } from './stage-banner'
@@ -76,6 +78,7 @@ export default async function ProjectPage({
     visuals,
     settings,
     preview,
+    shortCards,
     pulse,
   ] = await Promise.all([
     listActivity(db, { projectId: id, limit: 50 }),
@@ -94,6 +97,11 @@ export default async function ProjectPage({
     requestedStage === 'assembly'
       ? previewModel(db, id)
       : Promise.resolve(emptyPreviewModel()),
+    // Same economy as the preview: Shorts queries only from that stage on.
+    PIPELINE_STAGES.indexOf(project.stage) >= PIPELINE_STAGES.indexOf('shorts') ||
+    requestedStage === 'shorts'
+      ? shortsModel(db, id)
+      : Promise.resolve(emptyShortsModel()),
     projectPulse(db, id),
   ])
   const budgetGate = budgetGates.find((gate) => gate.projectId === id)
@@ -134,6 +142,7 @@ export default async function ProjectPage({
   const showVoice = viewing === 'voice' && voice.expectedParagraphs > 0
   const showVisuals = viewing === 'visuals' && visuals.coverage.slots > 0
   const showPreview = viewing === 'assembly' && preview.timeline !== null
+  const showShorts = viewing === 'shorts' && shortCards.shorts.length > 0
 
   /**
    * The preview copy is materialised server-side with short-lived URLs
@@ -312,6 +321,12 @@ export default async function ProjectPage({
           render={previewRender}
           draft={previewDraft}
         />
+      ) : showShorts ? (
+        <ShortsScreen
+          projectId={project.id}
+          shorts={shortCards.shorts}
+          live={!mockProvidersEnabled()}
+        />
       ) : showVisuals ? (
         <VisualBoard
           projectId={project.id}
@@ -362,7 +377,9 @@ export default async function ProjectPage({
                     ? 'No shot list has been planned yet. The board is planned from the approved narration.'
                     : viewing === 'assembly'
                       ? 'No timeline has been compiled yet. Assembly cuts the approved takes and board into one.'
-                      : 'The review screen for this stage arrives with its runner.'}
+                      : viewing === 'shorts'
+                        ? 'No Shorts yet. They are cut from the rendered master, from the segments marked on the script.'
+                        : 'The review screen for this stage arrives with its runner.'}
             </p>
           </CardContent>
         </Card>

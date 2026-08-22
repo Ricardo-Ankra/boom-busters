@@ -892,6 +892,7 @@ export type ShotSlotRow = typeof shotSlots.$inferSelect
 export type AssetRow = typeof assets.$inferSelect
 export type TimelineRow = typeof timelines.$inferSelect
 export type RenderRow = typeof renders.$inferSelect
+export type ShortRow = typeof shorts.$inferSelect
 export type PublishRecordRow = typeof publishRecords.$inferSelect
 export type ProviderCredentialRow = typeof providerCredentials.$inferSelect
 export type CostLedgerRow = typeof costLedger.$inferSelect

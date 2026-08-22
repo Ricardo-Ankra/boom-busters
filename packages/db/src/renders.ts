@@ -20,6 +20,8 @@ export async function insertRender(
     projectId: string
     timelineVersion: number
     kind: RenderRow['kind']
+    /** The Short this render belongs to — kind 'short' only. */
+    shortId?: string
     costUsd?: string
   },
 ): Promise<RenderRow> {
@@ -30,6 +32,7 @@ export async function insertRender(
       timelineVersion: input.timelineVersion,
       kind: input.kind,
       status: 'queued',
+      ...(input.shortId !== undefined ? { shortId: input.shortId } : {}),
       ...(input.costUsd !== undefined ? { costUsd: input.costUsd } : {}),
     })
     .returning()
@@ -84,6 +87,12 @@ export async function failInFlightRenders(
   projectId: string,
   kind: RenderRow['kind'],
   error: Record<string, unknown>,
+  /**
+   * Narrow the sweep to one Short's renders. Without it, a dead
+   * short-render run would fail its SIBLINGS' in-flight rows too — several
+   * Shorts render concurrently for the same project.
+   */
+  shortId?: string,
 ): Promise<void> {
   await db
     .update(renders)
@@ -93,6 +102,7 @@ export async function failInFlightRenders(
         eq(renders.projectId, projectId),
         eq(renders.kind, kind),
         inArray(renders.status, [...IN_FLIGHT]),
+        ...(shortId !== undefined ? [eq(renders.shortId, shortId)] : []),
       ),
     )
 }
