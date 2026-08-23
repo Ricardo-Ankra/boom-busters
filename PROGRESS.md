@@ -2240,8 +2240,8 @@ app found two faults the suites could not see, both now guarded:
      the timeout, so the broker's REMOTION_FUNCTION_NAME moved with it.
      The real fix is the quota: request "Lambda Concurrent executions →
      1000" in Service Quotas, then raise RENDER_FANOUT and enjoy fast
-     renders. The 240 s function is deleted once a draft has proven the
-     new one.
+     renders. (Both happened: the quota landed 2026-08-22, fan-out 150
+     deployed; the 240 s function was deleted 2026-08-23.)
 
 162. **The player's residual glitch was the page refreshing under it;
      with that gone, the buffer button and the automatic draft are
@@ -2293,12 +2293,13 @@ render on Lambda** could not complete until AWS granted the concurrent-
 executions quota increase. UPDATE 2026-08-22: the 2026-08-19 request had
 landed in us-east-1 (wrong region — quotas are per-region); the eu-west-1
 case filed 2026-08-22 was GRANTED the same day (1000 concurrent).
-`RENDER_FANOUT` raised to 150 and the broker redeployed. Still open: the
-FUNCTION MEMORY cap is a separate limit (a 10,240 MB media-utils deploy
-was attempted and refused with "MemorySize must be ≤ 3008"; clean
-rollback) — it needs a Support Center service-limit case, human action;
-and the old 240 s Remotion function still exists unreferenced (CLI
-deletion was permission-blocked). The staging render itself remains with
+`RENDER_FANOUT` raised to 150 and the broker redeployed. The old 240 s
+Remotion function was deleted 2026-08-23 (existence verified, the broker
+confirmed pointing at the 900 s one, delete returned 204, gone on
+re-read). Still open: the FUNCTION MEMORY cap is a separate limit (a
+10,240 MB media-utils deploy was attempted and refused with "MemorySize
+must be ≤ 3008"; clean rollback) — it needs a Support Center
+service-limit case, human action. The staging render itself remains with
 M8, now unblocked.
 
 ---
@@ -2592,18 +2593,22 @@ and the Shorts and Publish screens.
      names. The Canva link goes to their YouTube-thumbnail templates;
      no per-channel template URL exists anywhere to deep-link.
 
-**Blocked on the human:** the Google OAuth client's redirect URI was
-registered 2026-08-23 (`…/api/youtube/callback`). Still needed before a
-live connect works: `YOUTUBE_CLIENT_ID` / `YOUTUBE_CLIENT_SECRET` set on
-the Vercel deployment (and `.env.local` for dev). Everything is built and
-tested mock-first per CLAUDE.md rule 6.
+**Blocked on the human:** nothing, as of 2026-08-23 — the OAuth client,
+redirect URIs, API enablement, test user and both environments' env vars
+are all in place (see the status block above). Everything was built and
+tested mock-first per CLAUDE.md rule 6; the first live connect is a
+button press away.
 
-**Status:** `[x]` **done** — all eight parts landed on `m7-shorts`
-(2026-08-23); suites at close: schemas 227 · providers 308 · db 193 ·
-web 397 · e2e 93, typecheck and lint clean. Live-YouTube items that
-need the human: `YOUTUBE_CLIENT_ID`/`SECRET` on Vercel and `.env.local`
-(the redirect URI was registered 2026-08-23), then Settings →
-Connections → Connect. The daily `channels.list` health ping and the
+**Status:** `[x]` **done** — all eight parts landed on `m7-shorts`,
+merged to `master` and deployed (2026-08-23); suites at close:
+schemas 227 · providers 308 · db 193 · web 397 · e2e 93, typecheck and
+lint clean. Live YouTube is fully provisioned by the human
+(2026-08-23): OAuth client (shared with sign-in), both redirect URIs,
+YouTube Data API v3 enabled, test user added,
+`YOUTUBE_CLIENT_ID`/`SECRET` in `.env.local` AND Vercel production —
+Settings → Connections → Connect is ready to press. Testing-status
+caveat: Google expires the refresh token after 7 days until the app is
+published and audited. The daily `channels.list` health ping and the
 "Reconnect YouTube" Needs-you card ride M8's analytics work
 (decision 171).
 
