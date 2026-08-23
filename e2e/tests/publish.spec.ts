@@ -137,9 +137,9 @@ test.describe('the publish flow', () => {
     // Wait for the action to answer — a reload mid-POST aborts it. Either
     // toast is fine: the row is written BEFORE the orchestrator is asked,
     // so "could not reach Inngest" still means the slot was saved.
-    await expect(
-      page.getByText(/the upload starts now|that did not work/i).first(),
-    ).toBeVisible({ timeout: 15_000 })
+    await expect(page.getByText(/the upload starts now|that did not work/i).first()).toBeVisible({
+      timeout: 15_000,
+    })
 
     // The record-first proof: after a reload the card carries its moment.
     await expect(async () => {

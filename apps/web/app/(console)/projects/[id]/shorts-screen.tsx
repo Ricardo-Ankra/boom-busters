@@ -53,14 +53,12 @@ export function ShortsScreen({
       {canAdvance ? (
         <section className="flex flex-wrap items-center justify-between gap-3 rounded-[8px] border border-[var(--color-border)] p-3">
           <p className="text-[13px] text-[var(--color-text-secondary)]">
-            Done curating? Scheduling — slots, titles, thumbnails — happens on the Publish
-            screen. Un-rendered Shorts can still be rendered from here afterwards.
+            Done curating? Scheduling — slots, titles, thumbnails — happens on the Publish screen.
+            Un-rendered Shorts can still be rendered from here afterwards.
           </p>
           <Button
             variant="primary"
-            onClick={() =>
-              void act(() => advanceToPublish(projectId), 'On to the Publish screen')
-            }
+            onClick={() => void act(() => advanceToPublish(projectId), 'On to the Publish screen')}
           >
             Continue to Publish
           </Button>

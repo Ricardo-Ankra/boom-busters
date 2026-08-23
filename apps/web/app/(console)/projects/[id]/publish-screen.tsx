@@ -160,9 +160,9 @@ export function PublishScreen({
       {!model.apiAuditPassed ? <AuditChecklist /> : null}
 
       <p className="text-[12px] text-[var(--color-text-muted)]">
-        {model.uploadsToday} of {model.dailyUploadBudget} upload starts used in today&apos;s
-        YouTube quota day (resets at midnight Pacific). Anything over the budget queues for
-        tomorrow on its own.
+        {model.uploadsToday} of {model.dailyUploadBudget} upload starts used in today&apos;s YouTube
+        quota day (resets at midnight Pacific). Anything over the budget queues for tomorrow on its
+        own.
       </p>
 
       {/* ------------------------------------------------------------------ */}
@@ -184,7 +184,7 @@ export function PublishScreen({
             >
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-[14px]">
-                  <span className="rounded-[4px] border border-[var(--color-border)] px-1.5 py-0.5 text-[10px] uppercase text-[var(--color-text-muted)]">
+                  <span className="rounded-[4px] border border-[var(--color-border)] px-1.5 py-0.5 text-[10px] text-[var(--color-text-muted)] uppercase">
                     {item.targetType === 'master' ? 'Full video' : 'Short'}
                   </span>
                   <span className="truncate">{item.record?.title ?? item.label}</span>
@@ -374,8 +374,8 @@ function AuditChecklist() {
           <li>Scheduling here uploads the video as private — that part is automatic.</li>
           <li>The title, description, tags and thumbnail are set on it — also automatic.</li>
           <li>
-            At the scheduled time, flip it to public in YouTube Studio. Mark the audit as
-            passed in Settings → Publishing once Google approves, and this step disappears.
+            At the scheduled time, flip it to public in YouTube Studio. Mark the audit as passed in
+            Settings → Publishing once Google approves, and this step disappears.
           </li>
         </ol>
       </CardContent>
@@ -462,9 +462,7 @@ function ItemEditor({
           <div className="flex flex-col gap-1">
             <span className="text-[12px] text-[var(--color-text-secondary)]">Title</span>
             <Input value={title} maxLength={100} onChange={(e) => setTitle(e.target.value)} />
-            <span className="text-[11px] text-[var(--color-text-muted)]">
-              {title.length}/100
-            </span>
+            <span className="text-[11px] text-[var(--color-text-muted)]">{title.length}/100</span>
           </div>
 
           {record && record.titleOptions.length > 0 ? (
@@ -500,7 +498,9 @@ function ItemEditor({
               confirmLabel="Generate"
               consequence="One small model call — a fraction of a cent against the metadata task's budget."
               confirmVariant="primary"
-              onConfirm={() => act(() => generateTitles(item.targetType, item.targetId), 'Titles generated')}
+              onConfirm={() =>
+                act(() => generateTitles(item.targetType, item.targetId), 'Titles generated')
+              }
             />
           ) : (
             <Button
@@ -626,8 +626,8 @@ function ItemEditor({
                 {(record?.thumbs.length ?? 0) > 1 ? (
                   <p className="flex items-center gap-1.5 text-[12px] text-[var(--color-text-secondary)]">
                     <Check aria-hidden className="h-3.5 w-3.5" />
-                    Only the first is set via the API — set up Test &amp; Compare with the others
-                    in YouTube Studio yourself.
+                    Only the first is set via the API — set up Test &amp; Compare with the others in
+                    YouTube Studio yourself.
                   </p>
                 ) : null}
               </div>
@@ -643,7 +643,7 @@ function ItemEditor({
               ? ` · ${preview.droppedSources} source(s) trimmed to fit`
               : ''}
           </span>
-          <pre className="max-h-[420px] overflow-auto whitespace-pre-wrap rounded-[8px] border border-[var(--color-border)] bg-[var(--color-surface)] p-3 font-sans text-[12px] text-[var(--color-text-secondary)]">
+          <pre className="max-h-[420px] overflow-auto rounded-[8px] border border-[var(--color-border)] bg-[var(--color-surface)] p-3 font-sans text-[12px] whitespace-pre-wrap text-[var(--color-text-secondary)]">
             {preview.description}
           </pre>
           {item.targetType === 'master' && model.chapters.length > 0 ? (

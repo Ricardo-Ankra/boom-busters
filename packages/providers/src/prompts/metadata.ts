@@ -97,7 +97,7 @@ export function parseTitleOptions(text: string): string[] {
 
   if (titles.length === 0) {
     throw new ValidationError(
-      'Every title in the model\'s answer was unusable — empty or over ' +
+      "Every title in the model's answer was unusable — empty or over " +
         `${TITLE_MAX_CHARS} characters.`,
       { field: 'title options' },
     )

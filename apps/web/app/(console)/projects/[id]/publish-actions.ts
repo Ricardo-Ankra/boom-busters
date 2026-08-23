@@ -73,10 +73,7 @@ async function projectIdOf(
 }
 
 /** Draft fields merged over what the jsonb already holds — never replaced. */
-async function mergeDraft(
-  record: PublishRecordRow,
-  patch: Record<string, unknown>,
-): Promise<void> {
+async function mergeDraft(record: PublishRecordRow, patch: Record<string, unknown>): Promise<void> {
   await updatePublishRecord(db, record.id, {
     metadata: { ...record.metadata, ...patch },
   })
@@ -122,7 +119,7 @@ export async function savePublishDraft(
     return {
       ok: false,
       error:
-        'That draft does not fit YouTube\'s limits — 100 characters of title, 60 tags of 100 ' +
+        "That draft does not fit YouTube's limits — 100 characters of title, 60 tags of 100 " +
         'characters each.',
     }
   }
@@ -379,7 +376,7 @@ export async function schedulePublish(
     return {
       ok: false,
       error:
-        'The composed description is over YouTube\'s 5000-character limit even with sources ' +
+        "The composed description is over YouTube's 5000-character limit even with sources " +
         'trimmed — shorten the opening text.',
     }
   }

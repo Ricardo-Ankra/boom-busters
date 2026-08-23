@@ -2388,8 +2388,8 @@ and the Shorts and Publish screens.
       `draft→uploading` with the stamp inside it), `countUploadsSince`
       (failures included — their quota units were spent). The runner
       wires these in M7.6. Tests: 12 mapper/quota-day, 3 integration.
-- [x] **M7.6 publish-runner** — `publish/requested {targetType,
-      targetId, attempt?}` per item, concurrency 1. Preconditions checked
+- [x] **M7.6 publish-runner** — one `publish/requested` per item
+      (`{targetType, targetId, attempt?}`), concurrency 1. Preconditions checked
       in words and refusals leave the record in `draft` with the reason
       in its error field (decision 173): slot chosen, metadata parses
       against `PublishMetadataSchema` (YouTube's own limits), thumbnail

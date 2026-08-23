@@ -999,10 +999,7 @@ export default async function globalSetup(): Promise<void> {
         kind: 'master',
         costUsd: '0',
       })
-      copyFileSync(
-        renderFixtureMaster(),
-        path.join(RENDER_LOCAL_DIR, `${publishMaster.id}.mp4`),
-      )
+      copyFileSync(renderFixtureMaster(), path.join(RENDER_LOCAL_DIR, `${publishMaster.id}.mp4`))
       await updateRender(connection.db, publishMaster.id, {
         status: 'done',
         progressPct: 100,
@@ -1025,10 +1022,7 @@ export default async function globalSetup(): Promise<void> {
         shortId: readyShort.id,
         costUsd: '0',
       })
-      copyFileSync(
-        renderFixtureMaster(),
-        path.join(RENDER_LOCAL_DIR, `${shortRender.id}.mp4`),
-      )
+      copyFileSync(renderFixtureMaster(), path.join(RENDER_LOCAL_DIR, `${shortRender.id}.mp4`))
       await updateRender(connection.db, shortRender.id, {
         status: 'done',
         progressPct: 100,
