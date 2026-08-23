@@ -333,7 +333,8 @@ describe('PreviewScreen', () => {
     expect(screen.getByRole('button', { name: /Render master · est\. \$0\.24/ })).toBeEnabled()
   })
 
-  it('shows the QC report card for a finished render', () => {
+  it('shows QC findings as located warnings with their fixes, not a verdict', async () => {
+    const user = userEvent.setup()
     const render_: PreviewRenderProp = {
       id: '01J0000000000000000000000B',
       status: 'done',
@@ -343,7 +344,7 @@ describe('PreviewScreen', () => {
         passed: false,
         integratedLufs: -11.2,
         issues: [
-          { kind: 'silence', atMs: 62_000, durationMs: 3100, detail: '3.1 s of silence' },
+          { kind: 'silence', atMs: 9_000, durationMs: 3100, detail: '3.1 s of silence' },
           { kind: 'loudness', atMs: 0, detail: 'Integrated -11.2 LUFS vs target -14' },
         ],
       },
@@ -354,9 +355,58 @@ describe('PreviewScreen', () => {
     render(<PreviewScreen {...props({ render: render_, atGate: false })} />)
 
     const card = screen.getByTestId('qc-report')
-    expect(within(card).getByText('Failed')).toBeInTheDocument()
-    expect(within(card).getByText('1:02')).toBeInTheDocument()
-    expect(within(card).getByText(/3.1 s of silence/)).toBeInTheDocument()
+    // The badge counts warnings; the intro says the pipeline moved on.
+    expect(within(card).getByText('2 warnings')).toBeInTheDocument()
+    expect(within(card).getByText(/pipeline has moved on/)).toBeInTheDocument()
+    // The loudness warning carries its measured delta and its fix.
     expect(within(card).getByText('-11.2 LUFS')).toBeInTheDocument()
+    expect(within(card).getByText(/2\.8 LU louder/)).toBeInTheDocument()
+    // The silence warning names the chapter it sits in, with a suggestion.
+    expect(within(card).getByText(/gap between slots/)).toBeInTheDocument()
+    expect(within(card).getByText(/2\. The collapse/)).toBeInTheDocument()
+    // Raw timestamps stay behind a labelled button (button-first, spec 11.1).
+    expect(within(card).queryByText(/3\.1 s of silence/)).not.toBeInTheDocument()
+    await user.click(within(card).getByRole('button', { name: /Show 1 flagged timestamp/ }))
+    expect(within(card).getByText(/3\.1 s of silence/)).toBeInTheDocument()
+    expect(within(card).getByText('0:09')).toBeInTheDocument()
+  })
+
+  it('never re-covers a settled render with the hand-off note', async () => {
+    const user = userEvent.setup()
+    const view = render(<PreviewScreen {...props()} />)
+    await user.click(screen.getByRole('button', { name: /Render master · est\. \$0\.24/ }))
+    await user.click(screen.getByRole('button', { name: /^Render now$/ }))
+    expect(await screen.findByText(/Handed to the render pipeline/)).toBeInTheDocument()
+
+    // The run picks the click up: the row appears in flight.
+    const inFlight: PreviewRenderProp = {
+      id: '01J0000000000000000000000B',
+      status: 'rendering',
+      progressPct: 10,
+      costUsd: '0.24',
+      qcReport: null,
+      error: null,
+      startedAt: new Date().toISOString(),
+      completedAt: null,
+    }
+    view.rerender(<PreviewScreen {...props({ render: inFlight })} />)
+    expect(screen.getByText('Rendering master')).toBeInTheDocument()
+
+    // It settles with a QC report. The note must not return on top of the
+    // report and the finished master (it did, production 2026-08-23).
+    const settled: PreviewRenderProp = {
+      ...inFlight,
+      status: 'done',
+      progressPct: 100,
+      completedAt: new Date().toISOString(),
+      qcReport: {
+        passed: false,
+        integratedLufs: -18.7,
+        issues: [{ kind: 'glitch', atMs: 400, durationMs: 1633, detail: 'frame frozen for 1.6s' }],
+      },
+    }
+    view.rerender(<PreviewScreen {...props({ render: settled, atGate: false })} />)
+    expect(screen.queryByText(/Handed to the render pipeline/)).not.toBeInTheDocument()
+    expect(screen.getByTestId('qc-report')).toBeInTheDocument()
   })
 })

@@ -327,17 +327,11 @@ export const shortRenderRunner = inngest.createFunction(
       return { projectId, shortId, outcome: 'failed' as const }
     }
 
+    // QC findings are warnings, not a verdict (decision 184, same as the
+    // master): the file exists and plays, so the card becomes ready with the
+    // report attached. Scheduling a Short is a human decision made with the
+    // warnings in view, never around them.
     const qcReport = QcReportSchema.parse(qcDone.data.result)
-    if (!qcReport.passed) {
-      await step.run('qc-failed', async () => {
-        await updateRender(db, setup.renderId, {
-          status: 'failed',
-          qcReport,
-          completedAt: new Date(),
-        })
-      })
-      return { projectId, shortId, outcome: 'qc-failed' as const }
-    }
 
     await step.run('short-ready', async () => {
       await updateRender(db, setup.renderId, {
@@ -347,6 +341,12 @@ export const shortRenderRunner = inngest.createFunction(
       })
     })
 
-    return { projectId, shortId, outcome: 'short-ready' as const, renderId: setup.renderId }
+    return {
+      projectId,
+      shortId,
+      outcome: 'short-ready' as const,
+      renderId: setup.renderId,
+      qcPassed: qcReport.passed,
+    }
   },
 )

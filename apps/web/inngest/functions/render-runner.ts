@@ -340,7 +340,7 @@ export const renderRunner = inngest.createFunction(
     })
 
     // -----------------------------------------------------------------------
-    // QC: never auto-publish around a failure (section 7.6)
+    // QC: measure the finished master; findings become warnings (section 7.6)
     // -----------------------------------------------------------------------
 
     const qcJobId = await step.run('submit-qc', async () => {
@@ -375,24 +375,14 @@ export const renderRunner = inngest.createFunction(
       return { projectId, outcome: 'failed' as const }
     }
 
+    // QC findings are warnings, not a verdict (decision 184): the master
+    // exists and plays, so the pipeline moves on and the report rides along
+    // for the preview screen to show, located on the timeline. Publishing is
+    // always a human button in this app, so section 7.6's "never auto-publish
+    // around a QC failure" holds by construction. Only QC that never RAN
+    // (above) fails the stage; an unmeasured master is a different thing
+    // from a measured one with findings.
     const qcReport = QcReportSchema.parse(qcDone.data.result)
-
-    if (!qcReport.passed) {
-      await step.run('qc-failed', async () => {
-        await updateRender(db, setup.renderId, {
-          status: 'failed',
-          qcReport,
-          completedAt: new Date(),
-        })
-        await markStageFailed(ctx, {
-          message:
-            `QC failed: ${qcReport.issues.length} issue(s), integrated loudness ` +
-            `${qcReport.integratedLufs} LUFS. The master is playable on the preview screen ` +
-            'for inspection; nothing publishes around a QC failure.',
-        })
-      })
-      return { projectId, outcome: 'qc-failed' as const }
-    }
 
     await step.run('master-ready', async () => {
       await updateRender(db, setup.renderId, {
@@ -407,6 +397,11 @@ export const renderRunner = inngest.createFunction(
       events.projectMasterReady.create({ projectId, renderId: setup.renderId }),
     ])
 
-    return { projectId, outcome: 'master-ready' as const, renderId: setup.renderId }
+    return {
+      projectId,
+      outcome: 'master-ready' as const,
+      renderId: setup.renderId,
+      qcPassed: qcReport.passed,
+    }
   },
 )

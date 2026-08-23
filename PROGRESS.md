@@ -2620,6 +2620,25 @@ and the Shorts and Publish screens.
      pinning it. The one affected production row and its broker state
      record were hand-repaired the same day; the file verified
      servable (206, video/mp4) afterwards.
+184. **QC findings are warnings, not a verdict** (2026-08-23, decided by
+     the owner after the first real master render). That render came out
+     fine and QC rejected it anyway: 219 "frozen frame" flags (slow Ken
+     Burns zooms and static title cards sitting under `freezedetect`'s
+     0.003 noise threshold, which identical-by-design frames will always
+     trip) plus one real loudness miss (-18.7 LUFS against -14, since
+     nothing in the pipeline loudnorms the final mix). A hard fail on a
+     playable file was a dead end with no reason shown. Now: the master
+     and Short runners mark the render `done` with the report attached,
+     the stage moves on and `project/master.ready` still fires; the
+     preview screen shows the report as located warnings: chapter-level
+     grouping, a per-kind likely cause and fix, raw timestamps behind a
+     labelled button. Spec §7.6's "never auto-publish around a QC
+     failure" holds by construction because publishing is a human button;
+     only QC that never RAN still fails the stage. Same day, same screen:
+     the "Handed to the render pipeline" note returned whenever the run
+     SETTLED (both done and failed are `!inFlight`) and sat on top of the
+     report and the master; it now clears the first time the run is seen
+     in flight, with a regression test.
 
 **Blocked on the human:** nothing, as of 2026-08-23 — the OAuth client,
 redirect URIs, API enablement, test user and both environments' env vars

@@ -233,6 +233,7 @@ export function PreviewScreen({
           projectId={projectId}
           durationMs={durationMs}
           durationInFrames={durationInFrames}
+          chapters={chapters}
           estimatedCostUsd={estimatedCostUsd}
           estimatedDraftCostUsd={estimatedDraftCostUsd}
           draftBusy={draftState.inFlight}
@@ -567,6 +568,7 @@ function RenderPanel({
   projectId,
   durationMs,
   durationInFrames,
+  chapters,
   estimatedCostUsd,
   estimatedDraftCostUsd,
   draftBusy,
@@ -579,6 +581,8 @@ function RenderPanel({
   projectId: string
   durationMs: number
   durationInFrames: number
+  /** For the QC card: warnings name the chapter they sit in. */
+  chapters: PreviewChapterProp[]
   estimatedCostUsd: number
   estimatedDraftCostUsd: number
   /** A draft is in flight — its button hides until the card above settles. */
@@ -597,6 +601,14 @@ function RenderPanel({
   React.useEffect(() => {
     if (draftBusy) setDraftHandedOff(false)
   }, [draftBusy])
+  // The hand-off note only covers the gap between the click and the run's
+  // row appearing. Once the run has been seen in flight the note is spent:
+  // without this reset it returned when the render SETTLED (done or failed,
+  // both !inFlight) and sat on top of the QC report and the finished master
+  // (production, 2026-08-23).
+  React.useEffect(() => {
+    if (inFlight) setHandedOff(false)
+  }, [inFlight])
 
   // Drafts only exist live: in mock mode the master button already renders
   // on this machine for free, so a cheap copy has nothing to be cheaper than.
@@ -769,7 +781,7 @@ function RenderPanel({
   // open the invoke card sits beneath, offering the next render.
   return (
     <div className="flex flex-col gap-4">
-      {current.qcReport ? <QcCard report={current.qcReport} /> : null}
+      {current.qcReport ? <QcCard report={current.qcReport} chapters={chapters} /> : null}
       {current.status === 'failed' && !current.qcReport ? (
         <Card>
           <CardContent className="pt-4 text-[13px] text-[var(--color-danger)]">
@@ -805,14 +817,57 @@ function RenderPanel({
   )
 }
 
-/** Pass/fail per check, timestamped issues (spec 11.3's QC report card). */
-function QcCard({ report }: { report: QcReport }) {
-  const KINDS: { kind: QcReport['issues'][number]['kind']; label: string }[] = [
-    { kind: 'silence', label: 'Silence' },
-    { kind: 'black-frames', label: 'Black frames' },
-    { kind: 'glitch', label: 'Frozen frames' },
-    { kind: 'loudness', label: 'Loudness' },
-  ]
+/**
+ * The QC report as located warnings (spec 11.3's QC card, reshaped by
+ * decision 184). QC never blocks the pipeline, so this card's job is to make
+ * the findings reviewable: every kind carries its likely cause and its fix,
+ * and every finding names the chapter it sits in. The raw timestamp list
+ * hides behind a labelled button, because 200 rows of slow zooms is noise
+ * while "41 spots in chapter 3" is a review plan.
+ */
+const QC_KINDS: {
+  kind: QcReport['issues'][number]['kind']
+  label: string
+  suggestion: string
+}[] = [
+  {
+    kind: 'silence',
+    label: 'Silence',
+    suggestion:
+      'More than 2.5 s with neither narration nor music. Check the timeline at the flagged ' +
+      'times for a gap between slots; if one is real, fix the slot and re-render.',
+  },
+  {
+    kind: 'black-frames',
+    label: 'Black frames',
+    suggestion:
+      'The picture went black, which usually means a visual failed to materialise. Re-run ' +
+      'assembly if these are not deliberate fades.',
+  },
+  {
+    kind: 'glitch',
+    label: 'Frozen frames',
+    suggestion:
+      'Held frames are usually deliberate stills, title cards or slow zooms sitting under the ' +
+      'motion detector, not a stuck render. Scrub the master at a few of the flagged times; ' +
+      'only a real stutter needs a re-render.',
+  },
+]
+
+/** The chapter a warning sits in, by its start time. */
+function chapterAt(chapters: PreviewChapterProp[], atMs: number): string {
+  let label = 'Opening'
+  chapters.forEach((chapter, index) => {
+    if (chapter.startMs <= atMs) label = `${index + 1}. ${chapter.title}`
+  })
+  return label
+}
+
+function QcCard({ report, chapters }: { report: QcReport; chapters: PreviewChapterProp[] }) {
+  const [showAll, setShowAll] = React.useState(false)
+  const located = report.issues.filter((issue) => issue.kind !== 'loudness')
+  const loudnessOff = report.issues.some((issue) => issue.kind === 'loudness')
+  const loudnessDelta = report.integratedLufs + 14
   return (
     <Card data-testid="qc-report">
       <CardHeader>
@@ -822,38 +877,103 @@ function QcCard({ report }: { report: QcReport }) {
             className={
               report.passed
                 ? 'rounded-full bg-[var(--color-success)]/15 px-2 py-0.5 text-[12px] text-[var(--color-success)]'
-                : 'rounded-full bg-[var(--color-danger)]/15 px-2 py-0.5 text-[12px] text-[var(--color-danger)]'
+                : 'rounded-full bg-[var(--color-warning)]/15 px-2 py-0.5 text-[12px] text-[var(--color-warning)]'
             }
           >
-            {report.passed ? 'Passed' : 'Failed'}
+            {report.passed
+              ? 'Passed'
+              : `${report.issues.length} warning${report.issues.length === 1 ? '' : 's'}`}
           </span>
         </CardTitle>
       </CardHeader>
-      <CardContent className="flex flex-col gap-1 text-[13px]">
-        {KINDS.map(({ kind, label }) => {
-          const issues = report.issues.filter((issue) => issue.kind === kind)
-          return (
-            <p key={kind} className="flex justify-between gap-2">
-              <span>{label}</span>
-              <span
-                className={
-                  issues.length === 0 ? 'text-[var(--color-success)]' : 'text-[var(--color-danger)]'
-                }
-              >
-                {issues.length === 0 ? 'OK' : `${issues.length} found`}
-              </span>
+      <CardContent className="flex flex-col gap-3 text-[13px]">
+        {!report.passed ? (
+          <p className="text-[var(--color-text-secondary)]">
+            Warnings, not a verdict: the master is playable below and the pipeline has moved on.
+            Review them before scheduling the publish.
+          </p>
+        ) : null}
+        <div className="flex flex-col gap-1">
+          <p className="flex justify-between gap-2">
+            <span>Integrated loudness</span>
+            <span
+              className={
+                loudnessOff
+                  ? 'font-mono text-[var(--color-warning)]'
+                  : 'font-mono text-[var(--color-success)]'
+              }
+            >
+              {report.integratedLufs.toFixed(1)} LUFS
+            </span>
+          </p>
+          {loudnessOff ? (
+            <p className="text-[12px] text-[var(--color-text-secondary)]">
+              The mix is {Math.abs(loudnessDelta).toFixed(1)} LU{' '}
+              {loudnessDelta < 0 ? 'quieter' : 'louder'} than the -14 LUFS target, so viewers will
+              hear it {loudnessDelta < 0 ? 'quieter' : 'louder'} than most videos. Raising the mix
+              gain and re-rendering corrects it; leaving it costs only loudness, never a penalty.
             </p>
+          ) : null}
+        </div>
+        {QC_KINDS.map(({ kind, label, suggestion }) => {
+          const issues = report.issues.filter((issue) => issue.kind === kind)
+          const byChapter = new Map<string, { count: number; totalMs: number }>()
+          for (const issue of issues) {
+            const where = chapterAt(chapters, issue.atMs)
+            const entry = byChapter.get(where) ?? { count: 0, totalMs: 0 }
+            entry.count += 1
+            entry.totalMs += issue.durationMs ?? 0
+            byChapter.set(where, entry)
+          }
+          return (
+            <div key={kind} className="flex flex-col gap-1">
+              <p className="flex justify-between gap-2">
+                <span>{label}</span>
+                <span
+                  className={
+                    issues.length === 0
+                      ? 'text-[var(--color-success)]'
+                      : 'text-[var(--color-warning)]'
+                  }
+                >
+                  {issues.length === 0 ? 'OK' : `${issues.length} found`}
+                </span>
+              </p>
+              {issues.length > 0 ? (
+                <>
+                  <p className="text-[12px] text-[var(--color-text-secondary)]">{suggestion}</p>
+                  {[...byChapter.entries()].map(([where, entry]) => (
+                    <p
+                      key={where}
+                      className="flex justify-between gap-2 text-[12px] text-[var(--color-text-secondary)]"
+                    >
+                      <span>{where}</span>
+                      <span className="font-mono">
+                        {entry.count} spot{entry.count === 1 ? '' : 's'} · {fmtClock(entry.totalMs)}{' '}
+                        flagged
+                      </span>
+                    </p>
+                  ))}
+                </>
+              ) : null}
+            </div>
           )
         })}
-        <p className="flex justify-between gap-2">
-          <span>Integrated loudness</span>
-          <span className="font-mono">{report.integratedLufs.toFixed(1)} LUFS</span>
-        </p>
-        {report.issues.map((issue, index) => (
-          <p key={index} className="text-[12px] text-[var(--color-text-secondary)]">
-            <span className="font-mono">{fmtClock(issue.atMs)}</span> · {issue.detail}
-          </p>
-        ))}
+        {located.length > 0 ? (
+          <Button variant="outline" onClick={() => setShowAll((value) => !value)}>
+            {showAll
+              ? 'Hide the timestamp list'
+              : `Show ${located.length} flagged timestamp${located.length === 1 ? '' : 's'}`}
+          </Button>
+        ) : null}
+        {showAll
+          ? located.map((issue, index) => (
+              <p key={index} className="text-[12px] text-[var(--color-text-secondary)]">
+                <span className="font-mono">{fmtClock(issue.atMs)}</span> ·{' '}
+                {chapterAt(chapters, issue.atMs)} · {issue.detail}
+              </p>
+            ))
+          : null}
       </CardContent>
     </Card>
   )
