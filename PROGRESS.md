@@ -2430,9 +2430,22 @@ and the Shorts and Publish screens.
       **Private-until-audit**: while `apiAuditPassed` is unset, the
       checklist ends in "flip it to public in YouTube Studio". Tests:
       8 prompt, 9 composer, 2 db integration, 16 screen, +2 elsewhere.
-- [ ] **M7.8 E2E** — Playwright drives the mock-provider flow through
-      schedule-publish (YouTube mocked), buttons only.
-- [ ] Tests land with every part; CI green on every commit.
+- [x] **M7.8 E2E** — a seeded project at the shorts stage (three
+      chapters for the stamp block, a verified sourced claim, a
+      compiled timeline, a finished master, one schedulable Short and
+      one unrendered) driven through the whole fifth gate by visible
+      buttons only: the Shorts screen's curation and its "Continue to
+      Publish" handover, the audit checklist and budget line, mock
+      title generation → radio pick → explicit save → persistence
+      across reload, the composed description preview (hook, 0:00
+      stamps, source URL, disclaimer), a master refused at the slot in
+      words while it has no thumbnail, and a Short's schedule click
+      proven record-FIRST: the slot survives a reload whatever the
+      orchestrator's availability. 6 tests; the suite total is 96.
+      (Also: global-setup now clears `publish_records` — polymorphic,
+      no FK, so nothing cascades it away — before seeding, or the
+      runner unit tests' upload starts count against the budget line.)
+- [x] Tests land with every part; CI green on every commit.
 
 **Decisions made (M7, continuing the numbering):**
 
@@ -2585,7 +2598,14 @@ live connect works: `YOUTUBE_CLIENT_ID` / `YOUTUBE_CLIENT_SECRET` set on
 the Vercel deployment (and `.env.local` for dev). Everything is built and
 tested mock-first per CLAUDE.md rule 6.
 
-**Status:** `[~]` in progress — branch `m7-shorts` started 2026-08-22
+**Status:** `[x]` **done** — all eight parts landed on `m7-shorts`
+(2026-08-23); suites at close: schemas 227 · providers 308 · db 193 ·
+web 397 · e2e 96, typecheck and lint clean. Live-YouTube items that
+need the human: `YOUTUBE_CLIENT_ID`/`SECRET` on Vercel and `.env.local`
+(the redirect URI was registered 2026-08-23), then Settings →
+Connections → Connect. The daily `channels.list` health ping and the
+"Reconnect YouTube" Needs-you card ride M8's analytics work
+(decision 171).
 
 ---
 

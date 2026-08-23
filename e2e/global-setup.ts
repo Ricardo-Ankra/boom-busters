@@ -56,6 +56,7 @@ export const NARRATED_PROJECT_TITLE = 'Narration ready for review (E2E)'
 export const FLAGGED_TAKE_TITLE = 'Narration with a flagged take (E2E)'
 export const VISUAL_BOARD_TITLE = 'Visual board ready for review (E2E)'
 export const PREVIEW_PROJECT_TITLE = 'Preview compiled, master rendered (E2E)'
+export const PUBLISH_PROJECT_TITLE = 'Shorts cut, ready to publish (E2E)'
 
 /**
  * Twenty-two warnings across all three kinds, which is what the self-check
@@ -127,6 +128,7 @@ export default async function globalSetup(): Promise<void> {
     listMusicBeds,
     FIXTURE_CASE_ID,
     FIXTURE_PROJECT_ID,
+    publishRecords,
     renders,
     timelines,
     deleteCasesExcept,
@@ -154,6 +156,10 @@ export default async function globalSetup(): Promise<void> {
     // fixture's Stop confirm), and `seed` does not clear them.
     await connection.db.delete(renders)
     await connection.db.delete(timelines)
+    // publish_records is polymorphic — no FK, so nothing cascades it away.
+    // The publish-runner unit tests stamp uploadStartedAt rows that would
+    // otherwise count against this suite's daily-budget line.
+    await connection.db.delete(publishRecords)
     // A project parked at a gate, as the runner would leave it: the project
     // row *and* a mirrored run waiting on it. Setting only the project row
     // would produce the stranded state the project screen deliberately
@@ -849,6 +855,202 @@ export default async function globalSetup(): Promise<void> {
         qcReport: { passed: true, integratedLufs: -14, issues: [] },
         startedAt: new Date(Date.now() - 3 * 60_000),
         completedAt: new Date(Date.now() - 60_000),
+      })
+    }
+
+    /**
+     * 9. The publish flow (M7.7/M7.8): a project at the SHORTS stage with
+     * everything the Publish screen composes from — three chapters (the
+     * description's chapter block needs at least three stamps), a verified
+     * sourced claim (the sources block), a compiled timeline, a finished
+     * master, and two Shorts: one rendered with its related-link ticked
+     * (schedulable), one unrendered (the not-ready reason). The spec drives
+     * "Continue to Publish" itself — the handover is part of the flow under
+     * test.
+     */
+    {
+      const { compileTimeline } = await import('@boom-busters/timeline')
+      const {
+        getSettings,
+        insertRender,
+        insertShort,
+        insertTimeline,
+        setTimelineKey,
+        updateRender,
+        updateShort,
+      } = await import('@boom-busters/db')
+      const { resolveBrandKit } = await import('@boom-busters/schemas')
+
+      const publishText = [
+        'The auditors signed the accounts for eighteen straight years.',
+        'Nobody asked the obvious question about where the cash actually sat.',
+        'By the time anyone did, the answer was that it had never existed.',
+      ]
+      const chapterTitles = ['The rise', 'The hole', 'The fall']
+
+      const publish = await createProjectFromCase(connection.db, {
+        caseId: FIXTURE_CASE_ID,
+        title: PUBLISH_PROJECT_TITLE,
+      })
+      await saveDossier(connection.db, {
+        projectId: publish.id,
+        contentMd: '# Research behind the publishable master.',
+        claims: [
+          {
+            text: 'The missing 1.9 billion euros never existed.',
+            sourceUrl: 'https://example.com/e2e-ft-report',
+            sourceType: 'major_outlet',
+            confidence: 'sourced',
+          },
+        ],
+      })
+      const publishScript = await createScriptVersion(connection.db, publish.id)
+
+      const paragraphs: {
+        chapterId: string
+        chapterIndex: number
+        chapterTitle: string
+        paragraphIndex: number
+        r2Key: string
+        durationMs: number
+      }[] = []
+      let clock = 0
+      const slots: Parameters<typeof compileTimeline>[0]['slots'] = []
+      let firstChapterId = ''
+
+      for (const [chapterIndex, text] of publishText.entries()) {
+        const chapter = await saveChapter(connection.db, {
+          scriptId: publishScript.id,
+          index: chapterIndex,
+          title: chapterTitles[chapterIndex]!,
+          contentMd: text,
+          estRuntimeSec: 7,
+        })
+        if (chapterIndex === 0) firstChapterId = chapter.id
+        const claimed = await claimTake(connection.db, {
+          projectId: publish.id,
+          chapterId: chapter.id,
+          paragraphIndex: 0,
+          idempotencyKey: takeIdempotencyKey({
+            projectId: publish.id,
+            chapterId: chapter.id,
+            paragraphIndex: 0,
+            text,
+            voiceId: 'mock-narrator',
+          }),
+          provider: 'elevenlabs',
+          voiceId: 'mock-narrator',
+          builtFromScriptVersion: publishScript.version,
+        })
+        const durationMs = 6_000
+        await storeTakeAudio(connection.db, claimed.take.id, {
+          r2Key: mockVoiceTakeKey(claimed.take.id),
+          durationMs,
+          costUsd: 0.0009,
+          waveform: Array.from({ length: 32 }, (_, i) => (i * 9 + chapterIndex * 7) % 100),
+        })
+        paragraphs.push({
+          chapterId: chapter.id,
+          chapterIndex,
+          chapterTitle: chapterTitles[chapterIndex]!,
+          paragraphIndex: 0,
+          r2Key: mockVoiceTakeKey(claimed.take.id),
+          durationMs,
+        })
+        slots.push({
+          type: 'map',
+          startMs: clock,
+          durationMs,
+          transition: 'cut',
+          motion: { kind: 'static' },
+          map: {
+            locations: [
+              { label: 'Munich', lat: 48.14, lon: 11.58 },
+              { label: 'Manila', lat: 14.6, lon: 120.98 },
+            ],
+            route: false,
+          },
+        })
+        clock += durationMs
+      }
+
+      const publishTimeline = compileTimeline({
+        brand: resolveBrandKit(await getSettings(connection.db)),
+        paragraphs,
+        slots,
+        music: null,
+        captions: { words: [], style: 'karaoke' },
+      })
+      const publishTimelineRow = await insertTimeline(connection.db, {
+        projectId: publish.id,
+        json: publishTimeline,
+        s3Key: '',
+      })
+      await setTimelineKey(
+        connection.db,
+        publishTimelineRow.id,
+        `boom-busters/timelines/${publish.id}/v${publishTimelineRow.version}.json`,
+      )
+
+      // The finished master (the cached 20-second fixture render again).
+      const publishMaster = await insertRender(connection.db, {
+        projectId: publish.id,
+        timelineVersion: publishTimelineRow.version,
+        kind: 'master',
+        costUsd: '0',
+      })
+      copyFileSync(
+        renderFixtureMaster(),
+        path.join(RENDER_LOCAL_DIR, `${publishMaster.id}.mp4`),
+      )
+      await updateRender(connection.db, publishMaster.id, {
+        status: 'done',
+        progressPct: 100,
+        outputS3Key: `local://${publishMaster.id}.mp4`,
+        qcReport: { passed: true, integratedLufs: -14, issues: [] },
+        completedAt: new Date(Date.now() - 60_000),
+      })
+
+      // Short 1: rendered (the master's file as the honest mock stand-in,
+      // decision 169) and related-link ticked — fully schedulable.
+      const readyShort = await insertShort(connection.db, {
+        projectId: publish.id,
+        title: 'The auditors said yes for eighteen years (E2E)',
+        segmentRef: { chapterId: firstChapterId, fromParagraph: 0, toParagraph: 0 },
+      })
+      const shortRender = await insertRender(connection.db, {
+        projectId: publish.id,
+        timelineVersion: publishTimelineRow.version,
+        kind: 'short',
+        shortId: readyShort.id,
+        costUsd: '0',
+      })
+      copyFileSync(
+        renderFixtureMaster(),
+        path.join(RENDER_LOCAL_DIR, `${shortRender.id}.mp4`),
+      )
+      await updateRender(connection.db, shortRender.id, {
+        status: 'done',
+        progressPct: 100,
+        outputS3Key: `local://${shortRender.id}.mp4`,
+        completedAt: new Date(Date.now() - 30_000),
+      })
+      await updateShort(connection.db, readyShort.id, {
+        renderId: shortRender.id,
+        relatedLinkChecked: true,
+      })
+
+      // Short 2: never rendered — the Publish screen must say so instead of
+      // offering it a slot.
+      await insertShort(connection.db, {
+        projectId: publish.id,
+        title: 'Where the cash never was (E2E)',
+        segmentRef: { chapterId: firstChapterId, fromParagraph: 0, toParagraph: 0 },
+      })
+
+      await setProjectStage(connection.db, publish.id, {
+        stage: 'shorts',
+        stageStatus: 'awaiting_review',
       })
     }
   } finally {
