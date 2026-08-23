@@ -80,15 +80,33 @@ describe('payload validation', () => {
     ).toEqual({ projectId, provider: 'anthropic', additionalUsd: 5 })
   })
 
-  it('constrains render failure reasons to the two the broker can report', () => {
+  it('render/settled carries both outcomes in one event — the runner waits once', () => {
     const renderId = fixtureId('render', 1)
-    expect(parseEventData('render/failed', { projectId, renderId, reason: 'timeout' })).toEqual({
-      projectId,
-      renderId,
-      reason: 'timeout',
-    })
+    expect(
+      parseEventData('render/settled', {
+        projectId,
+        renderId,
+        result: 'completed',
+        outputS3Key: 'renders/abc/out.mp4',
+        costUsd: 0.26,
+      }),
+    ).toMatchObject({ result: 'completed', outputS3Key: 'renders/abc/out.mp4' })
+    expect(
+      parseEventData('render/settled', {
+        projectId,
+        renderId,
+        result: 'failed',
+        reason: 'timeout',
+      }),
+    ).toMatchObject({ result: 'failed', reason: 'timeout' })
+    // Failure reasons stay constrained to the two the broker can report.
     expect(() =>
-      parseEventData('render/failed', { projectId, renderId, reason: 'cancelled' }),
+      parseEventData('render/settled', {
+        projectId,
+        renderId,
+        result: 'failed',
+        reason: 'cancelled',
+      }),
     ).toThrow()
   })
 

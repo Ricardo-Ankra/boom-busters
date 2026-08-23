@@ -2593,6 +2593,34 @@ and the Shorts and Publish screens.
      names. The Canva link goes to their YouTube-thumbnail templates;
      no per-channel template URL exists anywhere to deep-link.
 
+182. **One `render/settled` event; never two waits under `Promise.all`**
+     (2026-08-23, found live). The first real draft render finished on
+     Lambda in four minutes and the screen said "Rendering 100%" for
+     forty: the runners waited on a `render/completed`/`render/failed`
+     PAIR with `Promise.all`, which cannot settle until BOTH waits do —
+     and the event that never fires only settles at its timeout
+     (timeoutMinutes + 10 grace). Diagnosed from production evidence:
+     render row parked, broker record `completed` with the webhook
+     logged at 18:53, run mirror showing the runner asleep since
+     18:49, and the 21st's draft waking at exactly the 40-minute mark.
+     The broker hook now emits ONE `render/settled {result}` event
+     (§9's own wording — "normalise into one Inngest event") and all
+     three render runners wait exactly once. The `@inngest/test` suites
+     never caught it because they resolve waits instantly; only wall
+     clocks exhibit it.
+183. **The broker normalises Remotion's URL-shaped `outputFile` to a
+     key** (2026-08-23, found live). Remotion's completion webhook
+     reports the output as a full `https://s3…/bucket/renders/…` URL
+     while its progress API reports the same file as a key; the broker
+     forwarded the webhook's version, a URL landed in
+     `renders.output_s3_key`, every downstream presign broke on it,
+     and the draft player got an unloadable source. The broker now
+     derives the key (path-style and virtual-hosted URLs both handled,
+     deterministic `renders/<id>/out.mp4` fallback), with core tests
+     pinning it. The one affected production row and its broker state
+     record were hand-repaired the same day; the file verified
+     servable (206, video/mp4) afterwards.
+
 **Blocked on the human:** nothing, as of 2026-08-23 — the OAuth client,
 redirect URIs, API enablement, test user and both environments' env vars
 are all in place (see the status block above). Everything was built and

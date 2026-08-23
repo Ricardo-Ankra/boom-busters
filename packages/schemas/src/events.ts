@@ -138,17 +138,25 @@ export const PublishRequestedSchema = z.object({
   attempt: z.number().int().min(0).optional(),
 })
 
-export const RenderCompletedSchema = z.object({
+/**
+ * ONE event per render outcome, success or failure in its `result` field —
+ * exactly the section 9 wording ("normalise into one Inngest event").
+ *
+ * It replaced a `render/completed`/`render/failed` pair on 2026-08-23,
+ * because two event names force the runner into two `waitForEvent` steps,
+ * and `Promise.all` over them cannot settle until BOTH do — the one that
+ * never fires only settles at its timeout, so every render sat "rendering"
+ * for the full timeout window after it had actually finished.
+ */
+export const RenderSettledSchema = z.object({
   ...projectRef,
   renderId: UlidSchema,
-  outputS3Key: z.string().min(1),
-  costUsd: z.number().min(0),
-})
-
-export const RenderFailedSchema = z.object({
-  ...projectRef,
-  renderId: UlidSchema,
-  reason: z.enum(['error', 'timeout']),
+  result: z.enum(['completed', 'failed']),
+  /** Present on completions. */
+  outputS3Key: z.string().min(1).optional(),
+  costUsd: z.number().min(0).optional(),
+  /** Present on failures. */
+  reason: z.enum(['error', 'timeout']).optional(),
   message: z.string().optional(),
 })
 
@@ -207,8 +215,7 @@ export const EVENT_SCHEMAS = {
   'render/draft.requested': RenderDraftRequestedSchema,
   'shorts/render.requested': ShortsRenderRequestedSchema,
   'publish/requested': PublishRequestedSchema,
-  'render/completed': RenderCompletedSchema,
-  'render/failed': RenderFailedSchema,
+  'render/settled': RenderSettledSchema,
 
   'demo/pipeline.requested': DemoRequestedSchema,
 } as const

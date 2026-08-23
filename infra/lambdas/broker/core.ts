@@ -363,6 +363,34 @@ async function handleProgress(renderId: string, deps: BrokerDeps): Promise<Broke
   return { status: 200, body }
 }
 
+/**
+ * What the state and the callback store for a finished render: an S3 KEY,
+ * never a URL. Remotion's completion webhook reports `outputFile` as a full
+ * `https://s3…/bucket/renders/<id>/out.mp4` URL (its progress API reports
+ * the same file as `outKey`, a key — the two halves disagree), and a URL
+ * forwarded as a key broke every downstream presign: the app stored it in
+ * `renders.output_s3_key` and the draft player got an unloadable source
+ * (found in production 2026-08-23).
+ */
+function outputKeyFrom(
+  outputFile: string | null | undefined,
+  record: Pick<RenderRecord, 'remotionRenderId' | 'bucketName'>,
+): string {
+  const fallback = `renders/${record.remotionRenderId}/out.mp4`
+  if (!outputFile) return fallback
+  if (!/^https?:\/\//i.test(outputFile)) return outputFile
+  try {
+    const path = decodeURIComponent(new URL(outputFile).pathname).replace(/^\/+/, '')
+    // Path-style URLs (s3.<region>.amazonaws.com/<bucket>/<key>) carry the
+    // bucket as the first segment; virtual-hosted ones carry it in the host.
+    return path.startsWith(`${record.bucketName}/`)
+      ? path.slice(record.bucketName.length + 1)
+      : path
+  } catch {
+    return fallback
+  }
+}
+
 async function handleRemotionWebhook(
   request: BrokerRequest,
   deps: BrokerDeps,
@@ -398,7 +426,7 @@ async function handleRemotionWebhook(
   }
 
   if (webhook.type === 'success') {
-    const outputS3Key = webhook.outputFile ?? `renders/${record.remotionRenderId}/out.mp4`
+    const outputS3Key = outputKeyFrom(webhook.outputFile, record)
     const costUsd = webhook.costs?.estimatedCost ?? undefined
     await deps.store.putRender({
       ...record,

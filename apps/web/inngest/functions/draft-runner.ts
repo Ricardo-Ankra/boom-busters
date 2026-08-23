@@ -192,24 +192,22 @@ export const draftRunner = inngest.createFunction(
       return { projectId, outcome: 'over-budget' as const }
     }
 
+    // ONE wait on ONE event, success or failure in its `result` field. This
+    // used to be Promise.all over a completed/failed pair — which cannot
+    // settle until BOTH waits do, and the event that never fires only
+    // settles at its timeout, so every draft sat "rendering" for the full
+    // window after it had actually finished (found in production 2026-08-23).
     const webhookTimeout = `${setup.timeoutMinutes + WEBHOOK_GRACE_MINUTES}m`
-    const [completed, failed] = await Promise.all([
-      step.waitForEvent('await-render-completed', {
-        event: 'render/completed',
-        timeout: webhookTimeout,
-        if: `async.data.renderId == "${setup.renderId}"`,
-      }),
-      step.waitForEvent('await-render-failed', {
-        event: 'render/failed',
-        timeout: webhookTimeout,
-        if: `async.data.renderId == "${setup.renderId}"`,
-      }),
-    ])
+    const settled = await step.waitForEvent('await-render-settled', {
+      event: 'render/settled',
+      timeout: webhookTimeout,
+      if: `async.data.renderId == "${setup.renderId}"`,
+    })
 
-    if (!completed) {
+    if (!settled || settled.data.result !== 'completed') {
       await step.run('draft-not-completed', async () => {
-        const detail = failed
-          ? `${failed.data.reason}${failed.data.message ? `: ${failed.data.message}` : ''}`
+        const detail = settled
+          ? `${settled.data.reason ?? 'error'}${settled.data.message ? `: ${settled.data.message}` : ''}`
           : `no webhook within ${webhookTimeout} — the broker may still settle it`
         await updateRender(db, setup.renderId, {
           status: 'failed',
@@ -223,12 +221,12 @@ export const draftRunner = inngest.createFunction(
     }
 
     await step.run('draft-ready', async () => {
-      await settle(db, invoked.ledgerId, round4(completed.data.costUsd))
+      await settle(db, invoked.ledgerId, round4(settled.data.costUsd ?? setup.estimate))
       await updateRender(db, setup.renderId, {
         status: 'done',
         progressPct: 100,
-        outputS3Key: completed.data.outputS3Key,
-        costUsd: String(round4(completed.data.costUsd)),
+        outputS3Key: settled.data.outputS3Key ?? '',
+        costUsd: String(round4(settled.data.costUsd ?? setup.estimate)),
         completedAt: new Date(),
       })
     })

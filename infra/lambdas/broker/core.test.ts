@@ -428,6 +428,42 @@ describe('POST /webhooks/remotion', () => {
     expect(w.records.get(RENDER)?.status).toBe('completed')
   })
 
+  /**
+   * Remotion's webhook reports `outputFile` as a full URL while its progress
+   * API reports the same file as a key. Keys, never URLs, are what the state
+   * and the callback carry — a forwarded URL reached `renders.output_s3_key`
+   * in production (2026-08-23) and every downstream presign broke on it.
+   */
+  it('normalises a URL-shaped outputFile to the S3 key', async () => {
+    const w = world()
+    w.records.set(RENDER, running(RENDER))
+    await handleBrokerRequest(
+      webhook({
+        type: 'success',
+        renderId: `rem-${RENDER}`,
+        outputFile: `https://s3.eu-west-1.amazonaws.com/remotionlambda-test/renders/rem-${RENDER}/out.mp4`,
+        costs: { estimatedCost: 0.26 },
+      }),
+      w.deps,
+    )
+    expect(w.callbacks[0]).toMatchObject({ outputS3Key: `renders/rem-${RENDER}/out.mp4` })
+    expect(w.records.get(RENDER)?.outputS3Key).toBe(`renders/rem-${RENDER}/out.mp4`)
+  })
+
+  it('normalises a virtual-hosted URL too — the bucket lives in the host', async () => {
+    const w = world()
+    w.records.set(RENDER, running(RENDER))
+    await handleBrokerRequest(
+      webhook({
+        type: 'success',
+        renderId: `rem-${RENDER}`,
+        outputFile: `https://remotionlambda-test.s3.eu-west-1.amazonaws.com/renders/rem-${RENDER}/out.mp4`,
+      }),
+      w.deps,
+    )
+    expect(w.callbacks[0]).toMatchObject({ outputS3Key: `renders/rem-${RENDER}/out.mp4` })
+  })
+
   it('normalises timeout into a failed callback with the reason', async () => {
     const w = world()
     w.records.set(RENDER, running(RENDER))

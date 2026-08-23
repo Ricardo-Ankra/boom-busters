@@ -40,27 +40,24 @@ export async function POST(request: Request): Promise<Response> {
   }
 
   if (parsed.source === 'broker') {
-    if (parsed.result === 'completed') {
-      await inngest.send({
-        name: 'render/completed',
-        data: {
-          projectId: parsed.projectId,
-          renderId: parsed.renderId,
-          outputS3Key: parsed.outputS3Key ?? '',
-          costUsd: parsed.costUsd ?? 0,
-        },
-      })
-    } else {
-      await inngest.send({
-        name: 'render/failed',
-        data: {
-          projectId: parsed.projectId,
-          renderId: parsed.renderId,
-          reason: parsed.reason ?? 'error',
-          ...(parsed.message !== undefined ? { message: parsed.message } : {}),
-        },
-      })
-    }
+    // ONE event whatever the outcome. Two names forced the runners into two
+    // waitForEvent steps, and Promise.all over them only settled when the
+    // event that never fired hit its timeout — every render sat "rendering"
+    // for the full window after finishing (found in production 2026-08-23).
+    await inngest.send({
+      name: 'render/settled',
+      data: {
+        projectId: parsed.projectId,
+        renderId: parsed.renderId,
+        result: parsed.result,
+        ...(parsed.result === 'completed'
+          ? { outputS3Key: parsed.outputS3Key ?? '', costUsd: parsed.costUsd ?? 0 }
+          : {
+              reason: parsed.reason ?? 'error',
+              ...(parsed.message !== undefined ? { message: parsed.message } : {}),
+            }),
+      },
+    })
   } else {
     await inngest.send({
       name: 'media/job.completed',

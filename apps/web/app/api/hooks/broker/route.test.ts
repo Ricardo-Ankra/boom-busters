@@ -44,7 +44,14 @@ describe('POST /api/hooks/broker', () => {
     expect(response.status).toBe(401)
   })
 
-  it('turns a completed render callback into render/completed', async () => {
+  /**
+   * ONE event whatever the outcome. The completed/failed pair forced the
+   * runners into two waitForEvent steps under Promise.all, which only
+   * settled when the never-firing wait hit its timeout — every render sat
+   * "rendering" for the full window after finishing (production,
+   * 2026-08-23).
+   */
+  it('turns a completed render callback into render/settled', async () => {
     const response = await POST(
       signedRequest({
         source: 'broker',
@@ -58,17 +65,18 @@ describe('POST /api/hooks/broker', () => {
     )
     expect(response.status).toBe(200)
     expect(send).toHaveBeenCalledWith({
-      name: 'render/completed',
+      name: 'render/settled',
       data: {
         projectId: PROJECT,
         renderId: RENDER,
+        result: 'completed',
         outputS3Key: 'renders/x/out.mp4',
         costUsd: 0.23,
       },
     })
   })
 
-  it('turns a failed render callback into render/failed with the reason', async () => {
+  it('turns a failed render callback into render/settled with the reason', async () => {
     await POST(
       signedRequest({
         source: 'broker',
@@ -81,10 +89,11 @@ describe('POST /api/hooks/broker', () => {
       }),
     )
     expect(send).toHaveBeenCalledWith({
-      name: 'render/failed',
+      name: 'render/settled',
       data: {
         projectId: PROJECT,
         renderId: RENDER,
+        result: 'failed',
         reason: 'timeout',
         message: 'render timed out',
       },

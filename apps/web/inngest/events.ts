@@ -6,10 +6,9 @@ import {
   ProjectCancelledSchema,
   ProjectCreatedSchema,
   ProjectMasterReadySchema,
-  RenderCompletedSchema,
   PublishRequestedSchema,
   RenderDraftRequestedSchema,
-  RenderFailedSchema,
+  RenderSettledSchema,
   ShortsRenderRequestedSchema,
   VisualsRefetchRequestedSchema,
   VoiceRetakeRequestedSchema,
@@ -82,8 +81,7 @@ export const events = {
     schema: ShortsRenderRequestedSchema,
   }),
   publishRequested: eventType('publish/requested', { schema: PublishRequestedSchema }),
-  renderCompleted: eventType('render/completed', { schema: RenderCompletedSchema }),
-  renderFailed: eventType('render/failed', { schema: RenderFailedSchema }),
+  renderSettled: eventType('render/settled', { schema: RenderSettledSchema }),
 
   demoRequested: eventType('demo/pipeline.requested', { schema: DemoRequestedSchema }),
 } as const

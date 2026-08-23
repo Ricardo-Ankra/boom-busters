@@ -257,24 +257,23 @@ export const shortRenderRunner = inngest.createFunction(
       return { projectId, shortId, outcome: 'over-budget' as const }
     }
 
+    // ONE wait on ONE event (see draft-runner: the completed/failed pair
+    // under Promise.all stalled every render for the full timeout window).
     const webhookTimeout = `${setup.timeoutMinutes + WEBHOOK_GRACE_MINUTES}m`
-    const [completed, failed] = await Promise.all([
-      step.waitForEvent('await-render-completed', {
-        event: 'render/completed',
-        timeout: webhookTimeout,
-        if: `async.data.renderId == "${setup.renderId}"`,
-      }),
-      step.waitForEvent('await-render-failed', {
-        event: 'render/failed',
-        timeout: webhookTimeout,
-        if: `async.data.renderId == "${setup.renderId}"`,
-      }),
-    ])
+    const settled = await step.waitForEvent('await-render-settled', {
+      event: 'render/settled',
+      timeout: webhookTimeout,
+      if: `async.data.renderId == "${setup.renderId}"`,
+    })
+    const completed =
+      settled && settled.data.result === 'completed'
+        ? { outputS3Key: settled.data.outputS3Key ?? '', costUsd: settled.data.costUsd ?? 0 }
+        : null
 
     if (!completed) {
       await step.run('short-not-completed', async () => {
-        const detail = failed
-          ? `${failed.data.reason}${failed.data.message ? `: ${failed.data.message}` : ''}`
+        const detail = settled
+          ? `${settled.data.reason ?? 'error'}${settled.data.message ? `: ${settled.data.message}` : ''}`
           : `no webhook within ${webhookTimeout} — the broker may still settle it`
         await updateRender(db, setup.renderId, {
           status: 'failed',
@@ -288,12 +287,12 @@ export const shortRenderRunner = inngest.createFunction(
     }
 
     await step.run('record-completion', async () => {
-      await settle(db, invoked.ledgerId, round4(completed.data.costUsd))
+      await settle(db, invoked.ledgerId, round4(completed.costUsd))
       await updateRender(db, setup.renderId, {
         status: 'qc',
         progressPct: 100,
-        outputS3Key: completed.data.outputS3Key,
-        costUsd: String(round4(completed.data.costUsd)),
+        outputS3Key: completed.outputS3Key,
+        costUsd: String(round4(completed.costUsd)),
       })
     })
 
@@ -304,7 +303,7 @@ export const shortRenderRunner = inngest.createFunction(
         jobId: id,
         projectId,
         callbackUrl: brokerCallbackUrl(),
-        s3Key: completed.data.outputS3Key,
+        s3Key: completed.outputS3Key,
         targetLufs: -14,
       })
       return id
