@@ -2441,7 +2441,7 @@ and the Shorts and Publish screens.
       stamps, source URL, disclaimer), a master refused at the slot in
       words while it has no thumbnail, and a Short's schedule click
       proven record-FIRST: the slot survives a reload whatever the
-      orchestrator's availability. 6 tests; the suite total is 96.
+      orchestrator's availability. 6 tests; the suite total is 93.
       (Also: global-setup now clears `publish_records` — polymorphic,
       no FK, so nothing cascades it away — before seeding, or the
       runner unit tests' upload starts count against the budget line.)
@@ -2600,7 +2600,7 @@ tested mock-first per CLAUDE.md rule 6.
 
 **Status:** `[x]` **done** — all eight parts landed on `m7-shorts`
 (2026-08-23); suites at close: schemas 227 · providers 308 · db 193 ·
-web 397 · e2e 96, typecheck and lint clean. Live-YouTube items that
+web 397 · e2e 93, typecheck and lint clean. Live-YouTube items that
 need the human: `YOUTUBE_CLIENT_ID`/`SECRET` on Vercel and `.env.local`
 (the redirect URI was registered 2026-08-23), then Settings →
 Connections → Connect. The daily `channels.list` health ping and the
