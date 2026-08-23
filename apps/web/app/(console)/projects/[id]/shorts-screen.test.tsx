@@ -29,6 +29,13 @@ vi.mock('./shorts-actions', () => ({
   requestShortRender: (...args: unknown[]) => requestShortRender(...args),
 }))
 
+// The Continue-to-Publish handover lives in publish-actions, whose real
+// module is server-only (storage, Inngest). Mocked like the others.
+const advanceToPublish = vi.fn()
+vi.mock('./publish-actions', () => ({
+  advanceToPublish: (...args: unknown[]) => advanceToPublish(...args),
+}))
+
 const refresh = vi.fn()
 vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh }) }))
 
@@ -180,6 +187,17 @@ describe('ShortsScreen', () => {
     expect(chip).toHaveAttribute('aria-pressed', 'false')
     await user.click(chip)
     expect(setShortRelatedLink).toHaveBeenCalledWith('01HQ00000000000000000000S1', true)
+  })
+
+  it('offers Continue to Publish only while the project owns this stage', async () => {
+    const user = userEvent.setup()
+    const { rerender } = renderScreen([card()])
+    expect(screen.queryByRole('button', { name: /continue to publish/i })).not.toBeInTheDocument()
+
+    rerender(<ShortsScreen projectId={PROJECT} shorts={[card()]} live={false} canAdvance />)
+    advanceToPublish.mockResolvedValue({ ok: true })
+    await user.click(screen.getByRole('button', { name: /continue to publish/i }))
+    expect(advanceToPublish).toHaveBeenCalledWith(PROJECT)
   })
 
   it('every action is a visible labelled button — no menus, no shortcuts', () => {

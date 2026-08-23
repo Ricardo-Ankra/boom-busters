@@ -138,6 +138,21 @@ describe('projectControl', () => {
     ).toBe('working')
   })
 
+  it('treats the shorts and publish reviews as curation, not stranding', () => {
+    // No runner ever waits on those screens — their runners end before the
+    // human starts — so "awaiting review with no run" is their designed
+    // state, and a restart-shaped warning there would be a false alarm.
+    for (const stage of ['shorts', 'publish'] as const) {
+      const control = projectControl(project(stage, 'awaiting_review'), false, {
+        hasDossier: true,
+        hasScript: true,
+        now: NOW,
+      })
+      expect(control.kind).toBe('working')
+      expect(control).toMatchObject({ message: expect.stringContaining('below') })
+    }
+  })
+
   it('offers a way out of every dead end a human can reach', () => {
     // Stop, a failure, and the stranded state all used to leave the project
     // screen offering the demo pipeline as its only button — which reset the

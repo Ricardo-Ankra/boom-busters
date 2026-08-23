@@ -2,7 +2,13 @@ import { sql as dsql } from 'drizzle-orm'
 import { afterAll, beforeEach, describe, expect, it } from 'vitest'
 import { createDb } from './client'
 import { FIXTURE_PROJECT_ID, fixtureCase, fixtureProject } from './fixtures'
-import { beginUpload, countUploadsSince, getPublishRecord } from './publish'
+import {
+  beginUpload,
+  countUploadsSince,
+  ensurePublishRecord,
+  getPublishRecord,
+  listPublishRecords,
+} from './publish'
 import { cases, projects, publishRecords } from './schema'
 import { requireTestDatabase } from './test-database'
 
@@ -58,6 +64,38 @@ suite('publish bookkeeping', () => {
 
     const stored = await getPublishRecord(db, 'master', FIXTURE_PROJECT_ID)
     expect(stored?.status).toBe('uploading')
+  })
+
+  it('ensurePublishRecord makes a draft once and hands it back thereafter', async () => {
+    const first = await ensurePublishRecord(db, 'master', FIXTURE_PROJECT_ID)
+    expect(first.status).toBe('draft')
+
+    const second = await ensurePublishRecord(db, 'master', FIXTURE_PROJECT_ID)
+    expect(second.id).toBe(first.id)
+
+    const rows = await db.select().from(publishRecords)
+    expect(rows).toHaveLength(1)
+  })
+
+  it('listPublishRecords reads the master and the named Shorts in one go', async () => {
+    await ensurePublishRecord(db, 'master', FIXTURE_PROJECT_ID)
+    await ensurePublishRecord(db, 'short', '01HQ00000000000000000000S1')
+    await ensurePublishRecord(db, 'short', '01HQ00000000000000000000S2')
+    // A Short this project does not own is never returned.
+    await ensurePublishRecord(db, 'short', '01HQ00000000000000000000S9')
+
+    const rows = await listPublishRecords(db, {
+      projectId: FIXTURE_PROJECT_ID,
+      shortIds: ['01HQ00000000000000000000S1', '01HQ00000000000000000000S2'],
+    })
+    expect(rows).toHaveLength(3)
+    expect(rows.map((row) => row.targetType).sort()).toEqual(['master', 'short', 'short'])
+
+    const masterOnly = await listPublishRecords(db, {
+      projectId: FIXTURE_PROJECT_ID,
+      shortIds: [],
+    })
+    expect(masterOnly).toHaveLength(1)
   })
 
   it('countUploadsSince counts starts in the window, failures included', async () => {

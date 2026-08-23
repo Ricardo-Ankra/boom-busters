@@ -198,6 +198,22 @@ export function projectControl(
       return { kind: 'working', message: 'Approved. The next stage starts on its own.' }
 
     case 'awaiting_review':
+      // Shorts and publish are curation screens, not gates: their runners
+      // end before the human starts, so "no run is waiting" is the DESIGNED
+      // state, not a stranding. The screens below carry their own buttons.
+      if (project.stage === 'shorts') {
+        return {
+          kind: 'working',
+          message:
+            'The Shorts are cut and ready to curate below. Continue to Publish when you are done.',
+        }
+      }
+      if (project.stage === 'publish') {
+        return {
+          kind: 'working',
+          message: 'Pick a slot per item below — each upload starts when you schedule it.',
+        }
+      }
       // Stranded: `isGateOpen` refused the gate bar because no run is waiting,
       // so this is the only branch that can offer a way out.
       return restartable

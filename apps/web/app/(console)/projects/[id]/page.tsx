@@ -14,6 +14,7 @@ import { voiceReviewModel } from '@/lib/voice-review'
 import { visualsReviewModel } from '@/lib/visuals-review'
 import { emptyPreviewModel, previewModel } from '@/lib/preview-review'
 import { emptyShortsModel, shortsModel } from '@/lib/shorts-review'
+import { emptyPublishModel, publishModel } from '@/lib/publish-review'
 import { materialiseForPreview } from '@/lib/materialise'
 import { mockProvidersEnabled } from '@boom-busters/providers'
 import { presignGet, storageConfigured } from '@/lib/storage'
@@ -30,6 +31,7 @@ import { downstreamOf, resolveViewedStage, stageViewsForProject } from '@/lib/st
 import { DossierReview } from './dossier-review'
 import { PreviewScreen } from './preview-screen'
 import type { PreviewRenderProp } from './preview-screen'
+import { PublishScreen } from './publish-screen'
 import { ScriptStudio } from './script-studio'
 import { ShortsScreen } from './shorts-screen'
 import { VisualBoard } from './visual-board'
@@ -80,6 +82,7 @@ export default async function ProjectPage({
     preview,
     shortCards,
     pulse,
+    publish,
   ] = await Promise.all([
     listActivity(db, { projectId: id, limit: 50 }),
     listOpenBudgetGates(db),
@@ -103,6 +106,13 @@ export default async function ProjectPage({
       ? shortsModel(db, id)
       : Promise.resolve(emptyShortsModel()),
     projectPulse(db, id),
+    // And once more for publish: its reads only matter from that stage on.
+    PIPELINE_STAGES.indexOf(project.stage) >= PIPELINE_STAGES.indexOf('publish') ||
+    requestedStage === 'publish'
+      ? publishModel(db, id, {
+          presign: storageConfigured() ? (key) => presignGet(key) : null,
+        })
+      : Promise.resolve(emptyPublishModel()),
   ])
   const budgetGate = budgetGates.find((gate) => gate.projectId === id)
 
@@ -143,6 +153,7 @@ export default async function ProjectPage({
   const showVisuals = viewing === 'visuals' && visuals.coverage.slots > 0
   const showPreview = viewing === 'assembly' && preview.timeline !== null
   const showShorts = viewing === 'shorts' && shortCards.shorts.length > 0
+  const showPublish = viewing === 'publish' && publish.items.length > 0
 
   /**
    * The preview copy is materialised server-side with short-lived URLs
@@ -321,11 +332,14 @@ export default async function ProjectPage({
           render={previewRender}
           draft={previewDraft}
         />
+      ) : showPublish ? (
+        <PublishScreen projectId={project.id} model={publish} live={!mockProvidersEnabled()} />
       ) : showShorts ? (
         <ShortsScreen
           projectId={project.id}
           shorts={shortCards.shorts}
           live={!mockProvidersEnabled()}
+          canAdvance={project.stage === 'shorts' && !liveRun}
         />
       ) : showVisuals ? (
         <VisualBoard
@@ -379,7 +393,9 @@ export default async function ProjectPage({
                       ? 'No timeline has been compiled yet. Assembly cuts the approved takes and board into one.'
                       : viewing === 'shorts'
                         ? 'No Shorts yet. They are cut from the rendered master, from the segments marked on the script.'
-                        : 'The review screen for this stage arrives with its runner.'}
+                        : viewing === 'publish'
+                          ? 'Nothing to schedule yet. Publishing opens once there is a rendered master.'
+                          : 'The review screen for this stage arrives with its runner.'}
             </p>
           </CardContent>
         </Card>

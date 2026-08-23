@@ -2404,16 +2404,32 @@ and the Shorts and Publish screens.
       masters (a failure warns, never unschedules), a bounded processing
       poll, `status='scheduled'`, notification. Mid-upload token refresh
       DEFERRED (decision 174). Tests: 6 with the Inngest harness.
-- [ ] **M7.7 Publish screen** — week calendar with drag-to-slot
-      (defaults from Publishing settings), item editor: generated title
-      options as a radio list + free edit, description live preview
-      (hook, chapter timestamps, sources, disclaimer auto-blocks), tags,
-      thumbnail dropzone (up to 3 Canva PNGs, ≥1280×720, ≤2 MB,
-      client-validated; first set via API, rest stored for manual Test &
-      Compare), status chips `draft→uploading→scheduled→live`, mapped
-      errors with retry. **Private-until-audit**: while `apiAuditPassed`
-      is unset, the screen shows the completion checklist ending in
-      "flip to public in YouTube Studio".
+- [x] **M7.7 Publish screen** — the next 14 days of the Publishing
+      settings' UTC slots as a calendar (labels local), click-first
+      scheduling (select an item, press the slot's button) with
+      drag-to-slot layered on top (decision 177); one item per
+      publishable thing — the master, then each Short — with status
+      chips `draft→uploading→uploaded→scheduled→live`, the mapped error
+      and a Retry on `failed`, and every runner refusal readable on the
+      card (decision 173 pays off here). Item editor: title free-edit +
+      the 8 generated options as radios (the 'metadata' LLM task via
+      `buildTitlesRequest`/`parseTitleOptions`, `mockTitleOptions` for
+      free in mock mode), description live preview composed by
+      `composeDescription` — editable opening seeded with the script's
+      hook paragraph, then chapter stamps (≥3, first forced to 0:00),
+      dossier sources, and the baked-in disclaimer, sources trimmed
+      from the end to fit 5000 (decision 176) — tags, and for masters a
+      thumbnail dropzone (PNG-only, ≤2 MB, ≥1280×720 — IHDR-parsed
+      server-side, decision 181; up to 3, first "set via the API", rest
+      flagged for manual Test & Compare in Studio, Canva template
+      link). `schedulePublish` writes the `publish_records` row FIRST —
+      `ensurePublishRecord` (lazy create, decision 179), composed final
+      metadata validated against `PublishMetadataSchema` — then emits
+      `publish/requested`. Shorts→publish is the Shorts screen's
+      explicit "Continue to Publish" button (decision 178).
+      **Private-until-audit**: while `apiAuditPassed` is unset, the
+      checklist ends in "flip it to public in YouTube Studio". Tests:
+      8 prompt, 9 composer, 2 db integration, 16 screen, +2 elsewhere.
 - [ ] **M7.8 E2E** — Playwright drives the mock-provider flow through
       schedule-publish (YouTube mocked), buttons only.
 - [ ] Tests land with every part; CI green on every commit.
@@ -2512,11 +2528,62 @@ and the Shorts and Publish screens.
      queue, and the Inngest dashboard shows exactly what is waiting and
      until when. The `retry` action re-emits with `attempt+1`, capped at
      3, so a flapping YouTube cannot loop forever.
+176. **The description is composed, never generated** (2026-08-23). Only
+     titles come from a model; the description's blocks all exist on
+     file already (hook paragraph, chapter stamps from the master
+     timeline, sources from the dossier's verified un-quarantined
+     claims), and a model restating facts is how a description ends up
+     contradicting its video. The 5000-char ceiling is met by dropping
+     sources from the end, never by truncating — a cut-off disclaimer is
+     a liability, not a description. The disclaimer itself (with the
+     AI-disclosure sentence, spec §9) is a baked-in constant rather than
+     a setting: it is legal copy, and a configurable field makes "forgot
+     to set it" a publishable state. `descriptionBody` (the human's
+     opening) lives beside the final `title/description/tags` in the
+     same metadata jsonb; the runner's schema ignores the extra keys.
+177. **Scheduling is click-first; drag is a layer on top** (2026-08-23).
+     Spec §13 has the E2E suite assert no action needs anything but a
+     visible button, so drag-to-slot cannot be the only path. Select an
+     item (or it self-selects), and every eligible future slot carries
+     its own "Schedule here" button; the same cells accept a dragged
+     card. Long-form slots refuse Shorts and vice versa, in words.
+178. **Shorts→publish is a button, not a gate** (2026-08-23). Curation
+     has no machine-detectable "done", so no runner waits on the Shorts
+     screen and an approval event would fall on no one. "Continue to
+     Publish" moves the stage directly; `projectControl` now treats
+     `shorts`/`publish` at `awaiting_review` with no live run as the
+     designed state ("working"), not a stranding to warn about.
+179. **Publish records are created lazily, by the screen's first touch**
+     (2026-08-23). `ensurePublishRecord` (INSERT … ON CONFLICT DO
+     NOTHING, then read) backs every action — a saved draft, a
+     thumbnail, generated titles, the schedule click — so the row exists
+     the moment anything is worth keeping and never exists twice. The
+     schedule action writes slot + composed metadata to the row FIRST
+     and only then emits `publish/requested`, the spec §7.2 ordering: a
+     runner firing between the two finds a claimable record.
+180. **Scheduling falls back to the working title** (2026-08-23). The
+     editor's title field shows the Short's (or project's) title before
+     any draft is saved, so refusing the schedule click for "no title"
+     would contradict a screen that plainly displays one. A saved draft
+     title wins; otherwise the working title is written into the final
+     metadata, cut to YouTube's 100. A slot occupied by the SELECTED
+     draft also keeps offering its button ("Start the upload again"):
+     a runner refusal or a failed event send leaves a draft-with-slot,
+     and re-pressing the slot is the way to ask again once fixed.
+181. **Thumbnail dimensions are read from the PNG's IHDR bytes**
+     (2026-08-23). YouTube wants ≥1280×720 and ≤2 MB; the server
+     re-checks what the client validated, and pulling an image library
+     into the web app for two big-endian uint32s at fixed offsets is not
+     worth the dependency. Non-PNG bytes fail the signature check and
+     are refused with "export one from Canva" — the workflow the spec
+     names. The Canva link goes to their YouTube-thumbnail templates;
+     no per-channel template URL exists anywhere to deep-link.
 
-**Blocked on the human (when M7.4 lands, not before):** a Google OAuth
-client for YouTube (`YOUTUBE_CLIENT_ID` / `YOUTUBE_CLIENT_SECRET`), the
-redirect URI supplied by me at that point. Everything is built and tested
-mock-first per CLAUDE.md rule 6.
+**Blocked on the human:** the Google OAuth client's redirect URI was
+registered 2026-08-23 (`…/api/youtube/callback`). Still needed before a
+live connect works: `YOUTUBE_CLIENT_ID` / `YOUTUBE_CLIENT_SECRET` set on
+the Vercel deployment (and `.env.local` for dev). Everything is built and
+tested mock-first per CLAUDE.md rule 6.
 
 **Status:** `[~]` in progress — branch `m7-shorts` started 2026-08-22
 

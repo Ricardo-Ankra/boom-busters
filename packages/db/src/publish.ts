@@ -1,4 +1,4 @@
-import { and, count, eq, gte } from 'drizzle-orm'
+import { and, count, eq, gte, inArray } from 'drizzle-orm'
 import type { Database } from './client'
 import { publishRecords } from './schema'
 import type { PublishRecordRow } from './schema'
@@ -16,6 +16,57 @@ import type { PublishRecordRow } from './schema'
  *    upload that later failed still spent its 1600 quota units and still
  *    counts.
  */
+
+/**
+ * The one way a publish record comes to exist: the Publish screen's first
+ * touch of an item (a saved draft, an uploaded thumbnail, a chosen slot).
+ * Idempotent against the unique(targetType, targetId) index — a second call
+ * hands back the row the first one made, never a duplicate.
+ */
+export async function ensurePublishRecord(
+  db: Database,
+  targetType: PublishRecordRow['targetType'],
+  targetId: string,
+): Promise<PublishRecordRow> {
+  const [inserted] = await db
+    .insert(publishRecords)
+    .values({ targetType, targetId })
+    .onConflictDoNothing()
+    .returning()
+  if (inserted) return inserted
+
+  const existing = await getPublishRecord(db, targetType, targetId)
+  if (!existing) throw new Error('The publish record could not be created')
+  return existing
+}
+
+/**
+ * Every record the Publish screen shows for one project: the master's (by
+ * projectId) and each Short's (by shortId), in one read.
+ */
+export async function listPublishRecords(
+  db: Database,
+  input: { projectId: string; shortIds: readonly string[] },
+): Promise<PublishRecordRow[]> {
+  const masters = await db
+    .select()
+    .from(publishRecords)
+    .where(
+      and(eq(publishRecords.targetType, 'master'), eq(publishRecords.targetId, input.projectId)),
+    )
+  if (input.shortIds.length === 0) return masters
+
+  const rows = await db
+    .select()
+    .from(publishRecords)
+    .where(
+      and(
+        eq(publishRecords.targetType, 'short'),
+        inArray(publishRecords.targetId, [...input.shortIds]),
+      ),
+    )
+  return [...masters, ...rows]
+}
 
 export async function getPublishRecord(
   db: Database,

@@ -13,6 +13,7 @@ import {
   setShortRelatedLink,
   updateShortDetails,
 } from './shorts-actions'
+import { advanceToPublish } from './publish-actions'
 import { useAction } from './project-controls'
 
 /**
@@ -31,18 +32,41 @@ export function ShortsScreen({
   projectId,
   shorts,
   live,
+  canAdvance = false,
 }: {
   projectId: string
   shorts: ShortCardModel[]
   live: boolean
+  /** True while the project is ON the shorts stage with nothing running. */
+  canAdvance?: boolean
 }) {
-  void projectId
+  const act = useAction()
   return (
-    <section aria-label="Shorts" className="grid gap-4 md:grid-cols-2 2xl:grid-cols-3">
-      {shorts.map((short) => (
-        <ShortCard key={short.id} short={short} live={live} />
-      ))}
-    </section>
+    <div className="flex flex-col gap-4">
+      <section aria-label="Shorts" className="grid gap-4 md:grid-cols-2 2xl:grid-cols-3">
+        {shorts.map((short) => (
+          <ShortCard key={short.id} short={short} live={live} />
+        ))}
+      </section>
+      {/* The handover. Not a gate — no run waits on curation — so the button
+          moves the stage itself. The cards stay reachable from the rail. */}
+      {canAdvance ? (
+        <section className="flex flex-wrap items-center justify-between gap-3 rounded-[8px] border border-[var(--color-border)] p-3">
+          <p className="text-[13px] text-[var(--color-text-secondary)]">
+            Done curating? Scheduling — slots, titles, thumbnails — happens on the Publish
+            screen. Un-rendered Shorts can still be rendered from here afterwards.
+          </p>
+          <Button
+            variant="primary"
+            onClick={() =>
+              void act(() => advanceToPublish(projectId), 'On to the Publish screen')
+            }
+          >
+            Continue to Publish
+          </Button>
+        </section>
+      ) : null}
+    </div>
   )
 }
 
