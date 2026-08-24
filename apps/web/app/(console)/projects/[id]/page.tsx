@@ -1,5 +1,4 @@
 import {
-  PIPELINE_STAGES,
   getDossier,
   getLatestScript,
   getProject,
@@ -10,8 +9,9 @@ import {
   projectDeletionSummary,
   projectPulse,
 } from '@boom-busters/db'
-import { voiceReviewModel } from '@/lib/voice-review'
-import { visualsReviewModel } from '@/lib/visuals-review'
+import type { ProjectStage } from '@boom-busters/db'
+import { emptyVoiceModel, voiceReviewModel } from '@/lib/voice-review'
+import { emptyVisualsModel, visualsReviewModel } from '@/lib/visuals-review'
 import { emptyPreviewModel, previewModel } from '@/lib/preview-review'
 import { emptyShortsModel, shortsModel } from '@/lib/shorts-review'
 import { emptyPublishModel, publishModel } from '@/lib/publish-review'
@@ -66,13 +66,35 @@ export default async function ProjectPage({
   const { id } = await params
   const { stage: requestedStage } = await searchParams
 
-  const project = await getProject(db, id)
+  const [project, liveRun] = await Promise.all([getProject(db, id), hasLiveRun(db, id)])
   if (!project) notFound()
+
+  /**
+   * Where the project is, and what you are looking at, are two different
+   * things now.
+   *
+   * The rail is navigable (spec section 11.3), so a project on the script stage
+   * can have its dossier on screen — which is the point: the research the
+   * narration was written from, and the sources any later dispute turns on,
+   * have to be reachable from the screen that needs them.
+   *
+   * Resolved BEFORE the review models are fetched, because it decides which
+   * of them are fetched at all (decision 186): each stage's model loads only
+   * when that stage is on screen, or is the project's own stage (the gate
+   * action bar needs its context and blockers). Fetching all of them on
+   * every render — the full dossier with claims, the script, the takes, the
+   * board, the timeline JSON — multiplied every refresh by roughly four, on
+   * a database whose data transfer is metered (decision 185).
+   */
+  const views = stageViewsForProject(project, liveRun)
+  const viewing = resolveViewedStage(requestedStage, views, project.stage)
+  const viewingCurrent = viewing === project.stage
+  const viewed = views.find((view) => view.stage === viewing)
+  const wants = (stage: ProjectStage): boolean => viewing === stage || project.stage === stage
 
   const [
     activity,
     budgetGates,
-    liveRun,
     dossier,
     script,
     deletionSummary,
@@ -86,49 +108,25 @@ export default async function ProjectPage({
   ] = await Promise.all([
     listActivity(db, { projectId: id, limit: 50 }),
     listOpenBudgetGates(db),
-    hasLiveRun(db, id),
-    getDossier(db, id),
-    getLatestScript(db, id),
+    wants('dossier') ? getDossier(db, id) : Promise.resolve(undefined),
+    wants('script') ? getLatestScript(db, id) : Promise.resolve(undefined),
     projectDeletionSummary(db, id),
-    voiceReviewModel(db, id),
-    visualsReviewModel(db, id),
+    wants('voice') ? voiceReviewModel(db, id) : Promise.resolve(emptyVoiceModel()),
+    wants('visuals') ? visualsReviewModel(db, id) : Promise.resolve(emptyVisualsModel()),
     getSettings(db),
-    // Preview queries only from assembly onwards: a dossier-stage page
-    // re-renders on every gate action, and three queries for a timeline
-    // that cannot exist yet were measurable drag on that loop.
-    PIPELINE_STAGES.indexOf(project.stage) >= PIPELINE_STAGES.indexOf('assembly') ||
-    requestedStage === 'assembly'
-      ? previewModel(db, id)
-      : Promise.resolve(emptyPreviewModel()),
-    // Same economy as the preview: Shorts queries only from that stage on.
-    PIPELINE_STAGES.indexOf(project.stage) >= PIPELINE_STAGES.indexOf('shorts') ||
-    requestedStage === 'shorts'
-      ? shortsModel(db, id)
-      : Promise.resolve(emptyShortsModel()),
+    // The preview model also loads while the project SITS at assembly but
+    // another stage is on screen: the header's Stop needs to know whether a
+    // master render is in flight, whatever you happen to be looking at.
+    wants('assembly') ? previewModel(db, id) : Promise.resolve(emptyPreviewModel()),
+    viewing === 'shorts' ? shortsModel(db, id) : Promise.resolve(emptyShortsModel()),
     projectPulse(db, id),
-    // And once more for publish: its reads only matter from that stage on.
-    PIPELINE_STAGES.indexOf(project.stage) >= PIPELINE_STAGES.indexOf('publish') ||
-    requestedStage === 'publish'
+    viewing === 'publish'
       ? publishModel(db, id, {
           presign: storageConfigured() ? (key) => presignGet(key) : null,
         })
       : Promise.resolve(emptyPublishModel()),
   ])
   const budgetGate = budgetGates.find((gate) => gate.projectId === id)
-
-  /**
-   * Where the project is, and what you are looking at, are two different
-   * things now.
-   *
-   * The rail is navigable (spec section 11.3), so a project on the script stage
-   * can have its dossier on screen — which is the point: the research the
-   * narration was written from, and the sources any later dispute turns on,
-   * have to be reachable from the screen that needs them.
-   */
-  const views = stageViewsForProject(project, liveRun)
-  const viewing = resolveViewedStage(requestedStage, views, project.stage)
-  const viewingCurrent = viewing === project.stage
-  const viewed = views.find((view) => view.stage === viewing)
 
   // Whether a run exists is the run mirror's answer, not `stageStatus`'s. A
   // project can read `awaiting_review` with nothing waiting on it — the seeded
@@ -139,9 +137,12 @@ export default async function ProjectPage({
   // One answer to "what does the header offer, and why", so the two can never
   // disagree — a button whose caption contradicts the card beside it is how a
   // no-op demo run came to look like the way to start a project.
+  // Presence flags come from the summary row, not from whether the full
+  // models were fetched — after decision 186 those load per-view, and "not
+  // loaded" must never read as "does not exist".
   const control = projectControl(project, liveRun, {
-    hasDossier: dossier !== undefined,
-    hasScript: script !== undefined,
+    hasDossier: project.dossierVersion !== null,
+    hasScript: project.hasScript,
   })
 
   // Driven by the stage on screen rather than the stage the project is on, so
@@ -206,11 +207,12 @@ export default async function ProjectPage({
     RESTARTABLE_STAGES.includes(viewing) &&
     viewed?.availability !== 'upcoming' &&
     // The script is written from the dossier's claims; without one the run
-    // would die on its first step.
-    (viewing !== 'script' || dossier !== undefined) &&
+    // would die on its first step. Summary flags, not model presence — the
+    // models are per-view now (decision 186).
+    (viewing !== 'script' || project.dossierVersion !== null) &&
     // And the narration is read from the script, for the same reason —
     // as is the visual board.
-    ((viewing !== 'voice' && viewing !== 'visuals') || script !== undefined)
+    ((viewing !== 'voice' && viewing !== 'visuals') || project.hasScript)
 
   return (
     <div className="flex flex-col gap-4">

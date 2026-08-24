@@ -2660,9 +2660,26 @@ and the Shorts and Publish screens.
      block lifts within minutes; nothing needs redeploying) and delete
      the now-unused test branch.
 
-**Blocked on the human (2026-08-24):** the Neon plan upgrade — the
-deployed site is down on quota exhaustion until it lands (decision 185).
-Previously: nothing as of 2026-08-23 — the OAuth client,
+186. **Project-page review models load per view** (2026-08-24, the data
+     side of decision 185's diet). The page used to fetch every stage's
+     review model on every server render: the dossier with all claims,
+     the full script, the voice takes, the visual board, and from
+     assembly onwards the timeline JSON — roughly 400 KB a render, most
+     of it for stages nobody was looking at. Now `viewing` is resolved
+     FIRST and each model loads only when its stage is on screen or is
+     the project's current stage (the gate action bar needs its context
+     and blockers); presence flags for `projectControl` and the re-run
+     guard come from the summary row (`dossierVersion`, `hasScript`),
+     because "not loaded" must never read as "does not exist". The
+     preview model also loads while the project sits at assembly with
+     another stage on screen: the header's Stop must know whether a
+     master render is in flight. New `emptyVoiceModel`/
+     `emptyVisualsModel` mirror the existing empty preview/shorts/
+     publish shapes.
+
+**Blocked on the human (2026-08-24):** the Neon plan upgrade landed the
+same day — the site is back, Neon carries production only. Previously:
+nothing as of 2026-08-23 — the OAuth client,
 redirect URIs, API enablement, test user and both environments' env vars
 are all in place (see the status block above). Everything was built and
 tested mock-first per CLAUDE.md rule 6; the first live connect is a

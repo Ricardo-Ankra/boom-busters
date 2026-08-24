@@ -97,6 +97,23 @@ export interface VoiceReviewModel {
   staleParagraphs: number
 }
 
+/**
+ * The shape for pages with no business paying voice queries (decision 186):
+ * the project page loads this instead of querying when neither the viewed
+ * stage nor the project's own stage is `voice`.
+ */
+export function emptyVoiceModel(): VoiceReviewModel {
+  return {
+    chapters: [],
+    coverage: { paragraphs: 0, generated: 0, flagged: 0, approved: 0, pending: 0 },
+    expectedParagraphs: 0,
+    totalDurationMs: 0,
+    blockedReason: undefined,
+    orphanedTakes: 0,
+    staleParagraphs: 0,
+  }
+}
+
 /** Group takes by the paragraph they belong to, newest take number first. */
 function takesFor(
   takes: readonly VoiceTakeRow[],

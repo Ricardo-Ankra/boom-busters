@@ -74,6 +74,22 @@ export interface VisualsReviewModel {
   totalMs: number
 }
 
+/**
+ * The shape for pages with no business paying visuals queries (decision 186):
+ * the project page loads this instead of querying when neither the viewed
+ * stage nor the project's own stage is `visuals`.
+ */
+export function emptyVisualsModel(): VisualsReviewModel {
+  return {
+    chapters: [],
+    coverage: { slots: 0, resolved: 0, placeholder: 0, unresolved: 0 },
+    blockedReason: undefined,
+    placeholders: 0,
+    segments: [],
+    totalMs: 0,
+  }
+}
+
 function parseCandidates(raw: unknown): SlotCandidate[] {
   if (!Array.isArray(raw)) return []
   return raw.flatMap((entry) => {
