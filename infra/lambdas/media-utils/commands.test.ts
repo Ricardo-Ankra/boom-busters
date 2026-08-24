@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   buildQcReport,
   loudnormApplyArgs,
+  loudnormApplyVideoArgs,
   parseBlackFrames,
   parseFreezes,
   parseIntegratedLufs,
@@ -121,6 +122,19 @@ frame= 100
     expect(args).toContain('measured_I=-23.61')
     expect(args).toContain('linear=true')
     expect(args).toContain('-ar 48000')
+  })
+
+  it('copies the video stream untouched when normalising a finished master', () => {
+    const measured = parseLoudnormJson(stderr)!
+    const args = loudnormApplyVideoArgs('/tmp/in.mp4', '/tmp/out.mp4', -14, measured).join(' ')
+    // Same measured pass-2 filter as the audio path...
+    expect(args).toContain('measured_I=-23.61')
+    expect(args).toContain('linear=true')
+    // ...but the picture is a copy, the audio re-encodes, and the moov atom
+    // stays at the front so the replaced file still streams from byte one.
+    expect(args).toContain('-c:v copy')
+    expect(args).toContain('-c:a aac')
+    expect(args).toContain('-movflags +faststart')
   })
 })
 

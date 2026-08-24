@@ -184,6 +184,16 @@ export function parseLoudnormJson(stderr: string): LoudnormMeasurement | null {
   }
 }
 
+/** The pass-2 filter both apply variants share, fed by pass 1's numbers. */
+function loudnormApplyFilter(targetLufs: number, measured: LoudnormMeasurement): string {
+  return (
+    `loudnorm=I=${targetLufs}:TP=-1.5:LRA=11:` +
+    `measured_I=${measured.input_i}:measured_TP=${measured.input_tp}:` +
+    `measured_LRA=${measured.input_lra}:measured_thresh=${measured.input_thresh}:` +
+    `offset=${measured.target_offset}:linear=true`
+  )
+}
+
 /** Pass 2: linear normalisation using pass 1's measurements. */
 export function loudnormApplyArgs(
   inputPath: string,
@@ -197,12 +207,44 @@ export function loudnormApplyArgs(
     '-i',
     inputPath,
     '-af',
-    `loudnorm=I=${targetLufs}:TP=-1.5:LRA=11:` +
-      `measured_I=${measured.input_i}:measured_TP=${measured.input_tp}:` +
-      `measured_LRA=${measured.input_lra}:measured_thresh=${measured.input_thresh}:` +
-      `offset=${measured.target_offset}:linear=true`,
+    loudnormApplyFilter(targetLufs, measured),
     '-ar',
     '48000',
+    outputPath,
+  ]
+}
+
+/**
+ * Pass 2 for a VIDEO container (a finished master or Short, decision 188):
+ * the video stream is COPIED untouched — no re-encode, no generation loss,
+ * seconds of I/O instead of another render — and only the audio passes
+ * through loudnorm into AAC. `+faststart` keeps the moov atom at the front,
+ * which the render itself also does; a normalised file must stream from
+ * byte one exactly like the file it replaces.
+ */
+export function loudnormApplyVideoArgs(
+  inputPath: string,
+  outputPath: string,
+  targetLufs: number,
+  measured: LoudnormMeasurement,
+): string[] {
+  return [
+    '-hide_banner',
+    '-nostats',
+    '-i',
+    inputPath,
+    '-af',
+    loudnormApplyFilter(targetLufs, measured),
+    '-c:v',
+    'copy',
+    '-c:a',
+    'aac',
+    '-b:a',
+    '192k',
+    '-ar',
+    '48000',
+    '-movflags',
+    '+faststart',
     outputPath,
   ]
 }

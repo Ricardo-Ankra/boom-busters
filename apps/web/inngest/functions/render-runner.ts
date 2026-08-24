@@ -64,6 +64,9 @@ const WEBHOOK_GRACE_MINUTES = 10
 /** How long media-utils may chew on a full master's QC scan. */
 const QC_TIMEOUT = '30m'
 
+/** Two ffmpeg passes over the master's audio; the video stream is copied. */
+const LOUDNORM_TIMEOUT = '20m'
+
 export const renderRunner = inngest.createFunction(
   {
     id: FUNCTION_ID,
@@ -337,6 +340,37 @@ export const renderRunner = inngest.createFunction(
         outputS3Key: completed.outputS3Key,
         costUsd: String(round4(completed.costUsd)),
       })
+    })
+
+    // -----------------------------------------------------------------------
+    // Loudness: normalise to -14 LUFS BEFORE QC (decision 188). Section 7.6
+    // says "loudnorm to -14 LUFS integrated", not merely measure — and the
+    // mix comes out of the compositions ~5 LU quiet (the 2026-08-23 master:
+    // -18.7). The job overwrites the SAME key once ffmpeg succeeds, so the
+    // broker presign, the stage player and the YouTube upload all get the
+    // corrected file with no bookkeeping. A loudnorm that fails or times
+    // out downgrades to a warning, never a dead end: QC still runs on the
+    // original file, and its loudness finding says what happened.
+    // -----------------------------------------------------------------------
+
+    const loudnormJobId = await step.run('submit-loudnorm', async () => {
+      const id = newId<'run'>()
+      await submitMediaJob({
+        kind: 'loudnorm',
+        jobId: id,
+        projectId,
+        callbackUrl: brokerCallbackUrl(),
+        s3Key: completed.outputS3Key,
+        outputS3Key: completed.outputS3Key,
+        targetLufs: -14,
+      })
+      return id
+    })
+
+    await step.waitForEvent('await-loudnorm', {
+      event: 'media/job.completed',
+      timeout: LOUDNORM_TIMEOUT,
+      if: `async.data.jobId == "${loudnormJobId}"`,
     })
 
     // -----------------------------------------------------------------------

@@ -8,6 +8,7 @@ import type { Readable } from 'node:stream'
 import {
   buildQcReport,
   loudnormApplyArgs,
+  loudnormApplyVideoArgs,
   loudnormMeasureArgs,
   parseBlackFrames,
   parseFreezes,
@@ -134,18 +135,26 @@ async function runQc(job: Extract<MediaJob, { kind: 'qc' }>) {
 }
 
 async function runLoudnorm(job: Extract<MediaJob, { kind: 'loudnorm' }>) {
-  const input = '/tmp/loudnorm-input'
-  const output = '/tmp/loudnorm-output.wav'
+  // Container-aware (decision 188): an .mp4 output keeps its video stream
+  // (copied, not re-encoded) and may safely name the SAME key as its input
+  // — the upload only happens after ffmpeg succeeded, so a failed pass
+  // leaves the original untouched. Anything else is the original per-chunk
+  // voice path: bare audio out as wav.
+  const video = job.outputS3Key.endsWith('.mp4')
+  const input = video ? '/tmp/loudnorm-input.mp4' : '/tmp/loudnorm-input'
+  const output = video ? '/tmp/loudnorm-output.mp4' : '/tmp/loudnorm-output.wav'
   await download(job.s3Key, input)
   const measureStderr = await ffmpeg(loudnormMeasureArgs(input, job.targetLufs))
   const measured = parseLoudnormJson(measureStderr)
   if (!measured) throw new Error('loudnorm pass 1 produced no measurement')
   const applyStderr = await ffmpeg([
     '-y',
-    ...loudnormApplyArgs(input, output, job.targetLufs, measured),
+    ...(video
+      ? loudnormApplyVideoArgs(input, output, job.targetLufs, measured)
+      : loudnormApplyArgs(input, output, job.targetLufs, measured)),
   ])
   const outputLufs = parseIntegratedLufs(applyStderr) ?? job.targetLufs
-  await upload(job.outputS3Key, output, 'audio/wav')
+  await upload(job.outputS3Key, output, video ? 'video/mp4' : 'audio/wav')
   return {
     outputS3Key: job.outputS3Key,
     inputLufs: Number(measured.input_i),

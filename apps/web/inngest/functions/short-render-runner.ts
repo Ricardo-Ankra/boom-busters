@@ -58,6 +58,9 @@ const WEBHOOK_GRACE_MINUTES = 10
 /** A Short is at most 3 minutes; its QC scan does not get the master's 30. */
 const QC_TIMEOUT = '15m'
 
+/** Two ffmpeg passes over three minutes of audio; the video is copied. */
+const LOUDNORM_TIMEOUT = '10m'
+
 /** The R2 key one Short-render's compiled timeline is stored under. */
 export function shortTimelineKey(projectId: string, shortId: string, renderId: string): string {
   return `boom-busters/timelines/${projectId}/short-${shortId}-${renderId}.json`
@@ -294,6 +297,29 @@ export const shortRenderRunner = inngest.createFunction(
         outputS3Key: completed.outputS3Key,
         costUsd: String(round4(completed.costUsd)),
       })
+    })
+
+    // Loudness before QC, same key in and out (decision 188, the master's
+    // rule applied to its cuts): a Short published quieter than the master
+    // it came from would be its own small mystery.
+    const loudnormJobId = await step.run('submit-loudnorm', async () => {
+      const id = newId<'run'>()
+      await submitMediaJob({
+        kind: 'loudnorm',
+        jobId: id,
+        projectId,
+        callbackUrl: brokerCallbackUrl(),
+        s3Key: completed.outputS3Key,
+        outputS3Key: completed.outputS3Key,
+        targetLufs: -14,
+      })
+      return id
+    })
+
+    await step.waitForEvent('await-loudnorm', {
+      event: 'media/job.completed',
+      timeout: LOUDNORM_TIMEOUT,
+      if: `async.data.jobId == "${loudnormJobId}"`,
     })
 
     const qcJobId = await step.run('submit-qc', async () => {

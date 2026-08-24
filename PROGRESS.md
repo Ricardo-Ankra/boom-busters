@@ -2693,6 +2693,20 @@ and the Shorts and Publish screens.
      decisions and facts: stats, music, the Render card (spends,
      failures, Stop). A failed cut still gets no tab — its reason lives
      beside the button that retries it.
+188. **Loudnorm before QC, same key in and out** (2026-08-24). Section
+     7.6 always said "loudnorm to -14 LUFS integrated"; the QC job only
+     ever MEASURED, which is why the first real master failed at -18.7.
+     Now the master and Short runners submit a loudnorm job between
+     completion and QC: media-utils is container-aware (an .mp4 output
+     copies the video stream untouched, re-encodes only the audio to
+     AAC, keeps `+faststart`), and the job overwrites the SAME S3 key —
+     safe because the upload only happens after ffmpeg succeeded — so
+     the broker presign, the stage player and the YouTube upload all get
+     the corrected file with zero bookkeeping. A loudnorm that fails or
+     times out downgrades to a warning, never a dead end: QC still runs
+     on the original file and its loudness finding says what happened.
+     Voice chunks keep the original wav path untouched.
+
 **Blocked on the human (2026-08-24):** the Neon plan upgrade landed the
 same day — the site is back, Neon carries production only. Previously:
 nothing as of 2026-08-23 — the OAuth client,
