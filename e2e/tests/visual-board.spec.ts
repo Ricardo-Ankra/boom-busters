@@ -51,10 +51,14 @@ test.describe('the visual board', () => {
     await strip.getByRole('listitem').nth(1).click()
     await expect(page.getByText('Selected', { exact: true })).toBeVisible()
 
-    await page.reload()
     // The swap was persisted, not optimistic theatre: the second candidate's
-    // licence line is now the audit line.
-    await expect(page.getByText(/Pixabay Content License/)).toBeVisible()
+    // licence line is now the audit line. Reload-until, because an immediate
+    // reload can race the action's commit on the dev server (the same
+    // bargain publish.spec and preview-render.spec already make).
+    await expect(async () => {
+      await page.reload()
+      await expect(page.getByText(/Pixabay Content License/)).toBeVisible({ timeout: 5_000 })
+    }).toPass({ timeout: 30_000 })
   })
 
   test('renders the chart from real data with its source-claim chip', async ({ page }) => {

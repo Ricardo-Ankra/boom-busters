@@ -333,6 +333,44 @@ describe('PreviewScreen', () => {
     expect(screen.getByRole('button', { name: /Render master · est\. \$0\.24/ })).toBeEnabled()
   })
 
+  it('puts the most final cut on stage by default, with tabs to switch', async () => {
+    const user = userEvent.setup()
+    const master: PreviewRenderProp = {
+      id: '01J0000000000000000000000B',
+      status: 'done',
+      progressPct: 100,
+      costUsd: '0.24',
+      qcReport: { passed: true, integratedLufs: -14, issues: [] },
+      error: null,
+      startedAt: new Date().toISOString(),
+      completedAt: new Date().toISOString(),
+    }
+    const draft: PreviewDraftProp = {
+      id: '01J0000000000000000000000C',
+      status: 'done',
+      progressPct: 100,
+      costUsd: '0.06',
+      qcReport: null,
+      error: null,
+      startedAt: new Date().toISOString(),
+      completedAt: new Date().toISOString(),
+      timelineVersion: 2,
+    }
+    render(<PreviewScreen {...props({ render: master, draft, atGate: false })} />)
+
+    // The master is the default stage, and its QC state rides on its tab.
+    expect(screen.getByRole('button', { name: /Master · QC passed/ })).toBeInTheDocument()
+    expect(screen.getByText(/Fetching the file/)).toBeInTheDocument()
+
+    // The draft tab swaps the stage to the cheap real file.
+    await user.click(screen.getByRole('button', { name: /Draft · v2/ }))
+    expect(screen.getByText(/Draft of timeline v2 · half resolution/)).toBeInTheDocument()
+
+    // And the preview tab brings the live player back.
+    await user.click(screen.getByRole('button', { name: /Preview · v2/ }))
+    expect(screen.getByTestId('player')).toBeInTheDocument()
+  })
+
   it('shows QC findings as located warnings with their fixes, not a verdict', async () => {
     const user = userEvent.setup()
     const render_: PreviewRenderProp = {

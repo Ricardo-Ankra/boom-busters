@@ -53,6 +53,15 @@ export interface PreviewRenderProp {
 /** A draft also says which timeline version it rendered — staleness is visible. */
 export type PreviewDraftProp = PreviewRenderProp & { timelineVersion: number }
 
+/**
+ * One stage, three cuts (decision 187): the same video at three levels of
+ * reality — the live preview (free approximation), the draft (cheap real
+ * file) and the master (the deliverable) — share ONE large surface, chosen
+ * by tab. Before this they were scattered across two columns and three
+ * cards, and the most real artefact played in the smallest box.
+ */
+type Cut = 'preview' | 'draft' | 'master'
+
 interface RenderPoll {
   status: PreviewRenderProp['status']
   progressPct: number
@@ -120,14 +129,47 @@ export function PreviewScreen({
 }) {
   const act = useAction()
   const playerRef = React.useRef<PlayerRef>(null)
+  const fileRef = React.useRef<HTMLVideoElement>(null)
   const [captionsOn, setCaptionsOn] = React.useState(true)
 
   const durationMs = timelineDuration(timeline)
   const durationInFrames = Math.max(1, msToFrames(durationMs, timeline.fps))
 
-  // The draft's poll lives here so the render card can hide its draft
-  // button while one is in flight, and the draft card can show progress.
   const draftState = useRenderPoll(draft)
+  const masterState = useRenderPoll(render)
+
+  // A cut gets a tab only when it has something to stand on. A FAILED cut
+  // is a one-line note beside the button that retries it (in the Render
+  // card), never a tab of its own.
+  const draftCut =
+    draftState.current !== null &&
+    draftState.current.status !== 'failed' &&
+    draftState.current.status !== 'cancelled'
+  const masterCut =
+    masterState.current !== null &&
+    masterState.current.status !== 'failed' &&
+    masterState.current.status !== 'cancelled'
+
+  // The hand-off flags cover the gap between a render click and its row
+  // appearing; once the run is seen in flight they are spent (the 2026-08-23
+  // lesson: keyed on !inFlight alone, the note returned when the render
+  // SETTLED and sat on top of the finished master).
+  const [draftHandedOff, setDraftHandedOff] = React.useState(false)
+  const [masterHandedOff, setMasterHandedOff] = React.useState(false)
+  React.useEffect(() => {
+    if (draftState.inFlight) setDraftHandedOff(false)
+  }, [draftState.inFlight])
+  React.useEffect(() => {
+    if (masterState.inFlight) setMasterHandedOff(false)
+  }, [masterState.inFlight])
+
+  // The most final cut that exists is the default; picking a tab — or
+  // starting a render, which picks its tab — overrides it. The override is
+  // remembered, so the stage never changes identity under the viewer on a
+  // poll tick.
+  const [chosenCut, setChosenCut] = React.useState<Cut | null>(null)
+  const defaultCut: Cut = masterCut ? 'master' : draftCut ? 'draft' : 'preview'
+  const activeCut: Cut = chosenCut ?? defaultCut
 
   const shown = React.useMemo<Timeline>(
     () =>
@@ -137,61 +179,174 @@ export function PreviewScreen({
 
   const droppedTotal = dropped.narration + dropped.slots + (dropped.music ? 1 : 0)
 
+  // The chapter buttons drive whichever cut is on stage — the preview
+  // through the Player, a rendered file through its <video> element. That
+  // is how a QC warning gets checked: Master tab, chapter button, scrub.
+  const seekTo = (ms: number) => {
+    if (activeCut === 'preview') {
+      playerRef.current?.seekTo(msToFrames(ms, timeline.fps))
+    } else if (fileRef.current) {
+      fileRef.current.currentTime = ms / 1000
+    }
+  }
+
+  const draftPct = Math.max(0, Math.min(100, draftState.current?.progressPct ?? 0))
+  const masterPct = Math.max(0, Math.min(100, masterState.current?.progressPct ?? 0))
+  const masterQc = masterState.current?.qcReport ?? null
+  const draftLabel = draftState.inFlight
+    ? `Draft · rendering ${draftPct}%`
+    : draftState.current?.status === 'done' && draft
+      ? `Draft · v${draft.timelineVersion} · $${Number(draftState.current.costUsd).toFixed(2)}`
+      : 'Draft · starting'
+  const masterLabel =
+    masterState.current?.status === 'qc'
+      ? 'Master · quality check'
+      : masterState.inFlight
+        ? `Master · rendering ${masterPct}%`
+        : masterState.current?.status === 'done'
+          ? masterQc
+            ? masterQc.passed
+              ? `Master · QC passed · $${Number(masterState.current.costUsd).toFixed(2)}`
+              : `Master · ${masterQc.issues.length} warning${masterQc.issues.length === 1 ? '' : 's'} · $${Number(masterState.current.costUsd).toFixed(2)}`
+            : `Master · $${Number(masterState.current.costUsd).toFixed(2)}`
+          : 'Master · starting'
+
+  const tab = (cut: Cut, label: React.ReactNode) => (
+    <Button
+      key={cut}
+      variant={activeCut === cut ? 'primary' : 'outline'}
+      aria-pressed={activeCut === cut}
+      onClick={() => setChosenCut(cut)}
+    >
+      {label}
+    </Button>
+  )
+
+  const draftStale = draft !== null && draft.timelineVersion !== version
+
   return (
     <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
       <div className="flex min-w-0 flex-col gap-3">
-        <div
-          data-player-shell
-          className="overflow-hidden rounded-[8px] border border-[var(--color-border)] bg-black"
-        >
-          <Player
-            ref={playerRef}
-            component={DocumentaryMaster}
-            inputProps={{ timeline: shown }}
-            durationInFrames={durationInFrames}
-            fps={timeline.fps}
-            // Half resolution, preview only: the compositions size everything
-            // through frameScale, so 960×540 is the same picture with a
-            // quarter of the pixels to paint per frame — and the player is
-            // CSS-scaled into a ~800px column anyway. The render reads the
-            // timeline's real dimensions and is untouched.
-            compositionWidth={Math.round(timeline.width / 2)}
-            compositionHeight={Math.round(timeline.height / 2)}
-            controls
-            acknowledgeRemotionLicense
-            // The WebCodecs audio path schedules through one AudioContext;
-            // keeping it alive across pauses removes the resume latency a
-            // fresh context pays on every play press.
-            _experimentalKeepAudioContextAlive
-            style={{ width: '100%' }}
-          />
-        </div>
-
-        <ChapterStrip
-          chapters={chapters}
-          durationMs={durationMs}
-          onSeek={(ms) => playerRef.current?.seekTo(msToFrames(ms, timeline.fps))}
-        />
-
-        <GainLine music={timeline.music} durationMs={durationMs} />
-
         <div className="flex flex-wrap items-center gap-2">
-          <Button
-            variant="outline"
-            aria-pressed={captionsOn}
-            onClick={() => setCaptionsOn((on) => !on)}
-          >
-            <Captions aria-hidden />
-            {captionsOn ? 'Hide captions' : 'Show captions'}
-          </Button>
-          {droppedTotal > 0 ? (
-            <p className="text-[13px] text-[var(--color-warning)]">
-              {droppedTotal} item{droppedTotal === 1 ? ' is' : 's are'} not previewable here
-              {dropped.music ? ' (including the music bed)' : ''} — storage is not configured, so
-              their bytes cannot be fetched. The render resolves them for real.
-            </p>
-          ) : null}
+          {tab(
+            'preview',
+            <>
+              <Film aria-hidden />
+              Preview · v{version}
+            </>,
+          )}
+          {draftCut || draftHandedOff
+            ? tab(
+                'draft',
+                <>
+                  <Clapperboard aria-hidden />
+                  {draftLabel}
+                </>,
+              )
+            : null}
+          {masterCut || masterHandedOff ? tab('master', masterLabel) : null}
         </div>
+
+        {activeCut === 'preview' ? (
+          <div
+            data-player-shell
+            className="overflow-hidden rounded-[8px] border border-[var(--color-border)] bg-black"
+          >
+            <Player
+              ref={playerRef}
+              component={DocumentaryMaster}
+              inputProps={{ timeline: shown }}
+              durationInFrames={durationInFrames}
+              fps={timeline.fps}
+              // Half resolution, preview only: the compositions size everything
+              // through frameScale, so 960×540 is the same picture with a
+              // quarter of the pixels to paint per frame — and the player is
+              // CSS-scaled into a ~800px column anyway. The render reads the
+              // timeline's real dimensions and is untouched.
+              compositionWidth={Math.round(timeline.width / 2)}
+              compositionHeight={Math.round(timeline.height / 2)}
+              controls
+              acknowledgeRemotionLicense
+              // The WebCodecs audio path schedules through one AudioContext;
+              // keeping it alive across pauses removes the resume latency a
+              // fresh context pays on every play press.
+              _experimentalKeepAudioContextAlive
+              style={{ width: '100%' }}
+            />
+          </div>
+        ) : activeCut === 'draft' ? (
+          <FileStage
+            state={draftState}
+            handedOff={draftHandedOff}
+            renderingLabel={`Rendering draft… ${draftPct}%`}
+            testId="draft-video"
+            fileRef={fileRef}
+            durationInFrames={durationInFrames}
+            footer={
+              draftState.current?.status === 'done' && draft
+                ? `Draft of timeline v${draft.timelineVersion} · half resolution · cost $${Number(
+                    draftState.current.costUsd,
+                  ).toFixed(2)}`
+                : undefined
+            }
+          />
+        ) : (
+          <FileStage
+            state={masterState}
+            handedOff={masterHandedOff}
+            renderingLabel="Rendering master"
+            testId="master-video"
+            fileRef={fileRef}
+            durationInFrames={durationInFrames}
+            footer={
+              masterState.current?.status === 'done'
+                ? `Cost $${Number(masterState.current.costUsd).toFixed(2)}${
+                    masterState.current.completedAt
+                      ? ` · finished ${new Date(masterState.current.completedAt).toLocaleString()}`
+                      : ''
+                  }`
+                : undefined
+            }
+          />
+        )}
+
+        {activeCut === 'draft' && draftStale && !draftState.inFlight ? (
+          <p className="text-[13px] text-[var(--color-warning)]">
+            The timeline has moved on to v{version} (a music swap recompiles for free) — this draft
+            still plays v{draft?.timelineVersion}. Render a fresh one from the Render card.
+          </p>
+        ) : null}
+
+        <ChapterStrip chapters={chapters} durationMs={durationMs} onSeek={seekTo} />
+
+        {activeCut === 'preview' ? (
+          <>
+            <GainLine music={timeline.music} durationMs={durationMs} />
+
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                variant="outline"
+                aria-pressed={captionsOn}
+                onClick={() => setCaptionsOn((on) => !on)}
+              >
+                <Captions aria-hidden />
+                {captionsOn ? 'Hide captions' : 'Show captions'}
+              </Button>
+              {droppedTotal > 0 ? (
+                <p className="text-[13px] text-[var(--color-warning)]">
+                  {droppedTotal} item{droppedTotal === 1 ? ' is' : 's are'} not previewable here
+                  {dropped.music ? ' (including the music bed)' : ''} — storage is not configured,
+                  so their bytes cannot be fetched. The render resolves them for real.
+                </p>
+              ) : null}
+            </div>
+          </>
+        ) : null}
+
+        {/* The QC report sits directly under the master it describes. */}
+        {activeCut === 'master' && masterQc ? (
+          <QcCard report={masterQc} chapters={chapters} />
+        ) : null}
       </div>
 
       <div className="flex flex-col gap-4">
@@ -218,22 +373,11 @@ export function PreviewScreen({
           </CardContent>
         </Card>
 
-        {/* Only a draft with something to show gets a card: progress, or the
-            file. A FAILED draft is a one-line note beside the button that
-            retries it (in the render card), not a lingering card of its own. */}
-        {draft &&
-        draftState.current?.status !== 'failed' &&
-        draftState.current?.status !== 'cancelled' ? (
-          <DraftPanel version={version} draft={draft} state={draftState} />
-        ) : null}
-
         <MusicPicker projectId={projectId} beds={beds} currentBedKey={currentBedKey} act={act} />
 
-        <RenderPanel
+        <RenderActionsCard
           projectId={projectId}
           durationMs={durationMs}
-          durationInFrames={durationInFrames}
-          chapters={chapters}
           estimatedCostUsd={estimatedCostUsd}
           estimatedDraftCostUsd={estimatedDraftCostUsd}
           draftBusy={draftState.inFlight}
@@ -244,8 +388,16 @@ export function PreviewScreen({
           }
           live={live}
           atGate={atGate}
-          render={render}
+          masterState={masterState}
           act={act}
+          onDraftStarted={() => {
+            setDraftHandedOff(true)
+            setChosenCut('draft')
+          }}
+          onMasterStarted={() => {
+            setMasterHandedOff(true)
+            setChosenCut('master')
+          }}
         />
       </div>
     </div>
@@ -475,140 +627,140 @@ function useRenderPoll(render: PreviewRenderProp | null): {
 }
 
 /**
- * The draft card: display only — the request button lives beside "Render
- * master" in the render card, so the two spend choices sit together. This
- * card shows whatever the newest draft is doing: progress while rendering,
- * the file itself when done (a real render at half resolution — exactly
- * what the master will look like), the reason when it failed, and a
- * staleness note when a free music swap has moved the timeline past it.
+ * A rendered cut on the stage: the hand-off note while the run picks the
+ * click up, the progress bar while Lambda draws frames, the file itself
+ * once it exists. Failures are deliberately NOT here — a failed cut has no
+ * tab, and its reason lives beside the button that retries it.
  */
-function DraftPanel({
-  version,
-  draft,
+function FileStage({
   state,
+  handedOff,
+  renderingLabel,
+  testId,
+  fileRef,
+  durationInFrames,
+  footer,
 }: {
-  version: number
-  draft: PreviewDraftProp
   state: ReturnType<typeof useRenderPoll>
+  handedOff: boolean
+  renderingLabel: string
+  testId: string
+  fileRef: React.RefObject<HTMLVideoElement | null>
+  durationInFrames: number
+  footer: string | undefined
 }) {
   const { current, poll, inFlight } = state
 
-  const stale = draft.timelineVersion !== version
+  if (handedOff && (!current || !inFlight)) {
+    return (
+      <div className="rounded-[8px] border border-[var(--color-border)] p-4 text-[13px] text-[var(--color-text-secondary)]">
+        Handed to the render pipeline — this screen updates itself as soon as the run picks it up.
+      </div>
+    )
+  }
+  if (!current) return null
+
+  if (inFlight) {
+    const pct = Math.max(0, Math.min(100, current.progressPct))
+    const startedAt = current.startedAt ? new Date(current.startedAt).getTime() : null
+    const elapsedMs = startedAt === null ? null : Date.now() - startedAt
+    const remainingMs =
+      elapsedMs !== null && pct > 0 ? Math.round((elapsedMs * (100 - pct)) / pct) : null
+    return (
+      <div className="flex flex-col gap-3 rounded-[8px] border border-[var(--color-border)] p-4">
+        <p className="text-[14px] font-medium">
+          {current.status === 'qc' ? 'Quality check running' : renderingLabel}
+        </p>
+        <div
+          role="progressbar"
+          aria-valuenow={pct}
+          aria-valuemin={0}
+          aria-valuemax={100}
+          className="h-[8px] overflow-hidden rounded-full bg-[var(--color-surface)]"
+        >
+          <div
+            className="h-full bg-[var(--color-accent)] transition-[width] duration-500"
+            style={{ width: `${pct}%` }}
+          />
+        </div>
+        <p className="text-[13px] text-[var(--color-text-secondary)]">
+          {pct}% · frame ~{Math.round((durationInFrames * pct) / 100)} of {durationInFrames}
+          {elapsedMs !== null ? ` · ${fmtClock(elapsedMs)} elapsed` : ''}
+          {remainingMs !== null ? ` · ~${fmtClock(remainingMs)} left` : ''}
+        </p>
+      </div>
+    )
+  }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-[14px]">
-          <Clapperboard aria-hidden className="h-4 w-4" />
-          Draft
-          {inFlight ? (
-            <span className="flex items-center gap-1.5 text-[12px] font-normal text-[var(--color-text-muted)]">
-              <span
-                aria-hidden
-                className="size-1.5 animate-pulse rounded-full bg-[var(--color-accent)] motion-reduce:animate-none"
-              />
-              Rendering
-            </span>
-          ) : null}
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-3">
-        {inFlight ? (
-          <>
-            <div
-              role="progressbar"
-              aria-valuenow={Math.max(0, Math.min(100, current?.progressPct ?? 0))}
-              aria-valuemin={0}
-              aria-valuemax={100}
-              className="h-[8px] overflow-hidden rounded-full bg-[var(--color-surface)]"
-            >
-              <div
-                className="h-full bg-[var(--color-accent)] transition-[width] duration-500"
-                style={{ width: `${Math.max(0, Math.min(100, current?.progressPct ?? 0))}%` }}
-              />
-            </div>
-            <p className="text-[13px] text-[var(--color-text-secondary)]">
-              Rendering draft… {current?.progressPct ?? 0}%
-            </p>
-          </>
-        ) : null}
-        {current?.status === 'done' && poll?.outputUrl ? (
-          <video
-            controls
-            preload="metadata"
-            src={poll.outputUrl}
-            className="w-full rounded-[8px] bg-black"
-            data-testid="draft-video"
-          />
-        ) : null}
-        {current?.status === 'done' ? (
-          <p className="text-[12px] text-[var(--color-text-muted)]">
-            Draft of timeline v{draft.timelineVersion} · half resolution · cost $
-            {Number(current.costUsd).toFixed(2)}
-          </p>
-        ) : null}
-        {stale && !inFlight ? (
-          <p className="text-[13px] text-[var(--color-warning)]">
-            The timeline has moved on to v{version} (a music swap recompiles for free) — this draft
-            still plays v{draft.timelineVersion}. Render a fresh one below.
-          </p>
-        ) : null}
-      </CardContent>
-    </Card>
+    <div className="flex flex-col gap-2">
+      {poll?.outputUrl ? (
+        // Narration and captions are burned into the file itself.
+        <video
+          ref={fileRef}
+          controls
+          preload="metadata"
+          src={poll.outputUrl}
+          className="w-full rounded-[8px] bg-black"
+          data-testid={testId}
+        />
+      ) : (
+        <div className="rounded-[8px] border border-[var(--color-border)] p-4 text-[13px] text-[var(--color-text-muted)]">
+          Fetching the file&apos;s playable link…
+        </div>
+      )}
+      {footer ? (
+        // suppressHydrationWarning: the footer carries a toLocaleString()
+        // timestamp, and the server's locale is not the browser's (the
+        // publish calendar's slot labels made the same bargain).
+        <p suppressHydrationWarning className="text-[12px] text-[var(--color-text-muted)]">
+          {footer}
+        </p>
+      ) : null}
+    </div>
   )
 }
 
 /**
- * The render half of the screen: the two spend choices side by side (the
- * cheap half-resolution draft, and "Render master" — the REAL cancel point,
- * spec section 8.1, so both carry their costs and an inline two-step), then
- * the 2-second progress poll, then the QC report card and the master itself.
+ * The one decisions card (decision 187): the two spend choices side by side
+ * (the cheap half-resolution draft, and "Render master" — the REAL cancel
+ * point, spec section 8.1, so both carry their costs and an inline
+ * two-step), the failure notes beside the buttons that retry them, and Stop
+ * while a master render is in flight. Playback, progress and the QC report
+ * all live on the stage, not here.
  */
-function RenderPanel({
+function RenderActionsCard({
   projectId,
   durationMs,
-  durationInFrames,
-  chapters,
   estimatedCostUsd,
   estimatedDraftCostUsd,
   draftBusy,
   draftError,
   live,
   atGate,
-  render,
+  masterState,
   act,
+  onDraftStarted,
+  onMasterStarted,
 }: {
   projectId: string
   durationMs: number
-  durationInFrames: number
-  /** For the QC card: warnings name the chapter they sit in. */
-  chapters: PreviewChapterProp[]
   estimatedCostUsd: number
   estimatedDraftCostUsd: number
-  /** A draft is in flight — its button hides until the card above settles. */
+  /** A draft is in flight — its button hides until that render settles. */
   draftBusy: boolean
   /** The last draft died: said here, beside the button that retries it. */
   draftError: string | null
   live: boolean
   atGate: boolean
-  render: PreviewRenderProp | null
+  masterState: ReturnType<typeof useRenderPoll>
   act: ReturnType<typeof useAction>
+  /** The stage switches to the cut a click just paid for. */
+  onDraftStarted: () => void
+  onMasterStarted: () => void
 }) {
-  const { current, poll, inFlight } = useRenderPoll(render)
-  const [handedOff, setHandedOff] = React.useState(false)
-  const [draftHandedOff, setDraftHandedOff] = React.useState(false)
-  // Once the draft's own card is showing progress, the hand-off note is done.
-  React.useEffect(() => {
-    if (draftBusy) setDraftHandedOff(false)
-  }, [draftBusy])
-  // The hand-off note only covers the gap between the click and the run's
-  // row appearing. Once the run has been seen in flight the note is spent:
-  // without this reset it returned when the render SETTLED (done or failed,
-  // both !inFlight) and sat on top of the QC report and the finished master
-  // (production, 2026-08-23).
-  React.useEffect(() => {
-    if (inFlight) setHandedOff(false)
-  }, [inFlight])
+  const { current, inFlight } = masterState
+  const cost = live ? `$${estimatedCostUsd.toFixed(2)}` : '$0.00 (renders locally in mock mode)'
 
   // Drafts only exist live: in mock mode the master button already renders
   // on this machine for free, so a cheap copy has nothing to be cheaper than.
@@ -631,35 +783,22 @@ function RenderPanel({
         onConfirm={async () => {
           const ok = await act(
             () => requestDraftRender(projectId),
-            'Draft render started — progress appears in the Draft card',
+            'Draft render started — progress appears on the stage',
           )
-          if (ok) setDraftHandedOff(true)
+          if (ok) onDraftStarted()
         }}
       />
     ) : null
 
-  const cost = live ? `$${estimatedCostUsd.toFixed(2)}` : '$0.00 (renders locally in mock mode)'
-
-  if (handedOff && (!current || !inFlight)) {
-    return (
-      <Card>
-        <CardContent className="pt-4 text-[13px] text-[var(--color-text-secondary)]">
-          Handed to the render pipeline — this screen updates itself as soon as the run picks it up.
-        </CardContent>
-      </Card>
-    )
-  }
-
-  /**
-   * The invoke card. Also offered again beside a FINISHED master when the
-   * gate is open — a music swap recompiles the timeline, and the honest way
-   * to get the new cut into pixels is another explicit spend decision.
-   */
-  const renderButton = atGate ? (
+  return (
     <Card>
       <CardHeader>
         <CardTitle className="text-[14px]">
-          {current?.status === 'done' ? 'Render again' : 'Render'}
+          {inFlight
+            ? 'Rendering'
+            : current?.status === 'done' && atGate
+              ? 'Render again'
+              : 'Render'}
         </CardTitle>
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
@@ -674,146 +813,77 @@ function RenderPanel({
             The last draft failed: {draftError}
           </p>
         ) : null}
-        <p className="text-[13px] text-[var(--color-text-secondary)]">
-          {fmtClock(durationMs)} of video · draft est. ${estimatedDraftCostUsd.toFixed(2)} · master
-          est. {cost}
-        </p>
-        <div className="flex flex-wrap items-center gap-2">
-          {draftButton}
-          <ConfirmButton
-            variant="primary"
-            confirmVariant="primary"
-            label={<>Render master · est. {live ? `$${estimatedCostUsd.toFixed(2)}` : '$0.00'}</>}
-            confirmLabel="Render now"
-            consequence={
-              live
-                ? `Invokes Remotion Lambda for ${fmtClock(durationMs)} of video at est. ` +
-                  `$${estimatedCostUsd.toFixed(2)}. Once started it cannot be aborted — ` +
-                  'stopping discards the file but the cost is still spent.'
-                : 'Renders on this machine in mock mode. Costs nothing and can take a few minutes.'
-            }
-            onConfirm={async () => {
-              const ok = await act(
-                () => approveGate(projectId, 'preview'),
-                'Render started — progress appears here',
-              )
-              if (ok) setHandedOff(true)
-            }}
-          />
-        </div>
-        {draftHandedOff && !draftBusy ? (
-          <p className="text-[12px] text-[var(--color-text-muted)]">
-            Draft handed to the render pipeline — its card appears above shortly.
-          </p>
-        ) : null}
-      </CardContent>
-    </Card>
-  ) : null
-
-  if (!current || current.status === 'cancelled') {
-    return (
-      renderButton ?? (
-        <Card>
-          <CardContent className="pt-4 text-[13px] text-[var(--color-text-muted)]">
+        {inFlight ? (
+          <>
+            <p className="text-[13px] text-[var(--color-text-secondary)]">
+              The master is rendering — progress shows on the stage.
+            </p>
+            <ConfirmButton
+              variant="outline"
+              label={
+                <>
+                  <Square aria-hidden />
+                  Stop
+                </>
+              }
+              confirmLabel="Stop the run"
+              consequence={
+                live
+                  ? "Render can't be aborted mid-flight; it will finish in the background, be " +
+                    'discarded, and cost ≈ $0.25.'
+                  : 'The local render is abandoned; the file is discarded. Nothing was spent.'
+              }
+              onConfirm={() => act(() => stopProject(projectId), 'Run stopped')}
+            />
+          </>
+        ) : atGate ? (
+          /* Also offered again beside a FINISHED master when the gate is
+             open — a music swap recompiles the timeline, and the honest way
+             to get the new cut into pixels is another explicit spend
+             decision. */
+          <>
+            <p className="text-[13px] text-[var(--color-text-secondary)]">
+              {fmtClock(durationMs)} of video · draft est. ${estimatedDraftCostUsd.toFixed(2)} ·
+              master est. {cost}
+            </p>
+            <div className="flex flex-wrap items-center gap-2">
+              {draftButton}
+              <ConfirmButton
+                variant="primary"
+                confirmVariant="primary"
+                label={
+                  <>Render master · est. {live ? `$${estimatedCostUsd.toFixed(2)}` : '$0.00'}</>
+                }
+                confirmLabel="Render now"
+                consequence={
+                  live
+                    ? `Invokes Remotion Lambda for ${fmtClock(durationMs)} of video at est. ` +
+                      `$${estimatedCostUsd.toFixed(2)}. Once started it cannot be aborted — ` +
+                      'stopping discards the file but the cost is still spent.'
+                    : 'Renders on this machine in mock mode. Costs nothing and can take a few minutes.'
+                }
+                onConfirm={async () => {
+                  const ok = await act(
+                    () => approveGate(projectId, 'preview'),
+                    'Render started — progress appears on the stage',
+                  )
+                  if (ok) onMasterStarted()
+                }}
+              />
+            </div>
+          </>
+        ) : !current || current.status === 'cancelled' ? (
+          <p className="text-[13px] text-[var(--color-text-muted)]">
             The preview gate is not open, so there is no run waiting to render. Re-run the assembly
             stage to reopen it.
-          </CardContent>
-        </Card>
-      )
-    )
-  }
-
-  if (inFlight) {
-    const pct = Math.max(0, Math.min(100, current.progressPct))
-    const startedAt = current.startedAt ? new Date(current.startedAt).getTime() : null
-    const elapsedMs = startedAt === null ? null : Date.now() - startedAt
-    const remainingMs =
-      elapsedMs !== null && pct > 0 ? Math.round((elapsedMs * (100 - pct)) / pct) : null
-    return (
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-[14px]">
-            {current.status === 'qc' ? 'Quality check running' : 'Rendering master'}
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-3">
-          <div
-            role="progressbar"
-            aria-valuenow={pct}
-            aria-valuemin={0}
-            aria-valuemax={100}
-            className="h-[8px] overflow-hidden rounded-full bg-[var(--color-surface)]"
-          >
-            <div
-              className="h-full bg-[var(--color-accent)] transition-[width] duration-500"
-              style={{ width: `${pct}%` }}
-            />
-          </div>
-          <p className="text-[13px] text-[var(--color-text-secondary)]">
-            {pct}% · frame ~{Math.round((durationInFrames * pct) / 100)} of {durationInFrames}
-            {elapsedMs !== null ? ` · ${fmtClock(elapsedMs)} elapsed` : ''}
-            {remainingMs !== null ? ` · ~${fmtClock(remainingMs)} left` : ''}
           </p>
-          <ConfirmButton
-            variant="outline"
-            label={
-              <>
-                <Square aria-hidden />
-                Stop
-              </>
-            }
-            confirmLabel="Stop the run"
-            consequence={
-              live
-                ? "Render can't be aborted mid-flight; it will finish in the background, be " +
-                  'discarded, and cost ≈ $0.25.'
-                : 'The local render is abandoned; the file is discarded. Nothing was spent.'
-            }
-            onConfirm={() => act(() => stopProject(projectId), 'Run stopped')}
-          />
-        </CardContent>
-      </Card>
-    )
-  }
-
-  // Terminal: done, or failed-after-render (QC failure keeps the master
-  // playable for inspection; nothing publishes around it). With the gate
-  // open the invoke card sits beneath, offering the next render.
-  return (
-    <div className="flex flex-col gap-4">
-      {current.qcReport ? <QcCard report={current.qcReport} chapters={chapters} /> : null}
-      {current.status === 'failed' && !current.qcReport ? (
-        <Card>
-          <CardContent className="pt-4 text-[13px] text-[var(--color-danger)]">
-            The render failed{current.error?.message ? `: ${current.error.message}` : '.'}
-          </CardContent>
-        </Card>
-      ) : null}
-      {poll?.outputUrl ? (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-[14px]">Master</CardTitle>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-2">
-            {/* Narration and captions are burned into the file itself. */}
-            <video
-              controls
-              preload="metadata"
-              src={poll.outputUrl}
-              className="w-full rounded-[8px] bg-black"
-              data-testid="master-video"
-            />
-            <p className="text-[12px] text-[var(--color-text-muted)]">
-              Cost ${Number(current.costUsd).toFixed(2)}
-              {current.completedAt
-                ? ` · finished ${new Date(current.completedAt).toLocaleString()}`
-                : ''}
-            </p>
-          </CardContent>
-        </Card>
-      ) : null}
-      {renderButton}
-    </div>
+        ) : (
+          <p className="text-[13px] text-[var(--color-text-muted)]">
+            The run has moved on with this master. Re-run the assembly stage to render another cut.
+          </p>
+        )}
+      </CardContent>
+    </Card>
   )
 }
 

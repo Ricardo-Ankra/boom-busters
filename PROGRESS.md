@@ -2677,6 +2677,22 @@ and the Shorts and Publish screens.
      `emptyVisualsModel` mirror the existing empty preview/shorts/
      publish shapes.
 
+187. **The preview screen is one stage with three cuts** (2026-08-24,
+     redesign approved by the owner). Preview, Draft and Master are the
+     same video at three levels of reality, but the old layout scattered
+     them: the free approximation owned the hero surface for ever while
+     the deliverable played inside a 340px sidebar card, which is where
+     both of the week's confusions ("the draft won't play", "the master
+     doesn't show") came from. Now three labelled tab buttons above ONE
+     large surface, each carrying its state (version, rendering %, QC
+     warnings, cost); the most final cut is the default; starting a
+     render switches the stage to it; chapter buttons seek whichever cut
+     is showing (the Player for the preview, the <video> element for a
+     file — that is how a QC warning gets scrubbed); the QC report sits
+     directly under the master it describes. The sidebar keeps only
+     decisions and facts: stats, music, the Render card (spends,
+     failures, Stop). A failed cut still gets no tab — its reason lives
+     beside the button that retries it.
 **Blocked on the human (2026-08-24):** the Neon plan upgrade landed the
 same day — the site is back, Neon carries production only. Previously:
 nothing as of 2026-08-23 — the OAuth client,

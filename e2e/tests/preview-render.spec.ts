@@ -36,6 +36,9 @@ test.describe('the preview screen', () => {
   test('mounts the player over the compiled timeline, with stats and chapters', async ({
     page,
   }) => {
+    // The seeded project has a FINISHED master, so the master owns the
+    // stage by default (decision 187); the live preview is one tab away.
+    await page.getByRole('button', { name: /Preview · v\d/ }).click()
     // The Remotion Player is on screen (it renders into a labelled group).
     await expect(page.locator('.__remotion-player')).toBeVisible()
 
@@ -117,7 +120,9 @@ test.describe('the preview screen', () => {
       await expect(page.getByText(/Timeline v2/)).toBeVisible({ timeout: 5_000 })
     }).toPass({ timeout: 30_000 })
     // The bed's bytes are mock:// with no storage behind them, so the preview
-    // says what it could not fetch instead of crashing the player.
+    // says what it could not fetch instead of crashing the player. That note
+    // lives on the Preview tab (the master owns the stage by default).
+    await page.getByRole('button', { name: /Preview · v2/ }).click()
     await expect(page.getByText(/not previewable/)).toBeVisible()
     await expect(page.getByText('Current', { exact: true })).toBeVisible()
   })
