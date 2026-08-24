@@ -2640,7 +2640,29 @@ and the Shorts and Publish screens.
      report and the master; it now clears the first time the run is seen
      in flight, with a regression test.
 
-**Blocked on the human:** nothing, as of 2026-08-23 — the OAuth client,
+185. **The test database is a local Docker container, never a Neon
+     branch** (2026-08-24, decided by the owner after an outage). Neon
+     meters data transfer per PROJECT and the free plan caps it at 5 GB
+     per month; the Neon-branch test database shared that quota with
+     production, the network-hosted integration suites drained it, and
+     when it ran out Neon refused every query (PostgresError 53000,
+     "exceeded the data transfer quota") and the deployed site 500'd on
+     all pages (surfacing as minified React #441, the RSC error wrapper).
+     Diagnosed by reproducing locally: dev server against the same
+     DATABASE_URL, mock sign-in, full stack in the dev output. Now:
+     `TEST_DATABASE_URL` points at `boom-busters-test-db`, a local
+     `postgres:16-alpine` container on port 5433 (matching CI's service
+     image), migrated via `pnpm db:migrate:test`; all guidance texts
+     (test-database.ts, migrate-test.ts, e2e/database.ts, .env.example)
+     now prescribe the container. Neon carries production traffic only.
+     Side benefit: the db suite dropped from network-bound to 45 s. The
+     human still owns two console actions: upgrade the Neon plan (the
+     block lifts within minutes; nothing needs redeploying) and delete
+     the now-unused test branch.
+
+**Blocked on the human (2026-08-24):** the Neon plan upgrade — the
+deployed site is down on quota exhaustion until it lands (decision 185).
+Previously: nothing as of 2026-08-23 — the OAuth client,
 redirect URIs, API enablement, test user and both environments' env vars
 are all in place (see the status block above). Everything was built and
 tested mock-first per CLAUDE.md rule 6; the first live connect is a

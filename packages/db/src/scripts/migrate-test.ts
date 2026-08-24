@@ -7,10 +7,9 @@ import { testDatabaseUrl } from '../test-database'
 /**
  * Apply migrations to the test database.
  *
- * A Neon branch is a point-in-time clone, not a follower: it carries the
- * schema it was cut from and does not pick up later migrations on its own. So
- * every migration has to be applied here too, or the integration suites fail
- * on a missing relation that exists everywhere else.
+ * The local test container (decision 185) starts EMPTY, and it never follows
+ * production: every migration has to be applied here too, or the integration
+ * suites fail on a missing relation that exists everywhere else.
  *
  * This exists as its own script rather than as `DATABASE_URL=… pnpm db:migrate`
  * because that form trips the same-database guard in `load-env.ts`: overriding
@@ -25,8 +24,8 @@ async function main(): Promise<void> {
   const url = testDatabaseUrl()
   if (!url) {
     throw new Error(
-      'TEST_DATABASE_URL is not set. Create a Neon branch and put its connection string in\n' +
-        '.env.local. See packages/db/src/test-database.ts.',
+      'TEST_DATABASE_URL is not set. Start the local test container and put its connection\n' +
+        'string in .env.local. See packages/db/src/test-database.ts.',
     )
   }
 
