@@ -2730,6 +2730,58 @@ and the Shorts and Publish screens.
      production run was parked at the visuals gate (the one live project
      is at shorts), so the changed step sequence strands nothing.
 
+190. **The format picker converts text-driven types inside the button
+     press; only chart and map go through the retyper — and both of
+     those states are visible on the card** (2026-08-27, fixing the
+     owner's "switching is glitchy, chart and map don't work"). The
+     first cut sent EVERY re-type through `visuals/retype.requested`,
+     so the action returned, toasted success and refreshed before the
+     retyper had written anything: the badge only changed on a second
+     click's refresh (or the next pulse tick), and a chart/map draft,
+     which adds a model call, looked entirely dead — worse, a refusal
+     lived only in the run's return value, which nothing reads.
+     Now: stock/archival/still convert in `retypeSlotAction` itself —
+     `convertBrief` is pure and moves no money, the same class of write
+     as a brief edit, which the actions file already applies directly
+     (board phase then re-fetches through the existing refetch event).
+     Chart and map stamp the new `shot_slots.retype` jsonb (`drafting`)
+     before the event goes, so the very refresh the button triggers
+     already says what is happening; the retyper replaces the marker
+     with `refused` + the model's reason (dismissable on the card, new
+     `dismissRetypeAction`), clears it on success/no-op/budget-gate, and
+     `onFailure` clears it too — a dead run must not say "drafting"
+     forever. Migration 0015 (additive) applied to the test container;
+     production migrates on deploy.
+
+191. **The Calendar rail page is the cross-project week view; scheduling
+     stays on each project's Publish screen** (2026-08-27). The M7
+     placeholder promised "drag-to-slot scheduling" globally, but
+     slotting an item needs its draft metadata, thumbnails and
+     description composer — all of which live on the per-project Publish
+     screen M7 built. Duplicating that machinery globally would be a
+     second scheduler to keep honest. So `/calendar` shows one
+     Monday-anchored UTC week of EVERYTHING slotted across every project
+     (new `scheduledPublishItems` join — `publish_records` carries no
+     projectId, masters join `projects` directly, Shorts through their
+     card), status chips through draft→uploading→scheduled→live, the
+     still-open default slots from Settings → Publishing, week
+     navigation as visible link-buttons, and a deep link per item to
+     `?stage=publish` on its project. Days group by UTC day, the same
+     convention the per-project calendar established; only labels are
+     local. The `MilestonePlaceholder` component is gone — that was its
+     last user.
+
+192. **The Brand Kit live specimen panel exists** (2026-08-27, closing
+     the deferred half of decision 4 — M6 shipped its dependencies but
+     never circled back). Settings → Brand Kit now mounts one
+     `@remotion/player` cycling four three-second beats — chapter card,
+     lower third, chart, karaoke captions — through the SAME components
+     the render farm uses, with `resolveBrandKit` over the form's own
+     optimistic state, so a colour edit re-renders the specimen as it
+     saves. Fixture content on purpose: fixed words make two palettes
+     comparable. Loaded via `next/dynamic` (`ssr: false`) so the other
+     five settings tabs never pay for Remotion in their bundle.
+
 **Blocked on the human (2026-08-24):** the Neon plan upgrade landed the
 same day — the site is back, Neon carries production only. Previously:
 nothing as of 2026-08-23 — the OAuth client,

@@ -8,8 +8,9 @@ import {
   ensurePublishRecord,
   getPublishRecord,
   listPublishRecords,
+  scheduledPublishItems,
 } from './publish'
-import { cases, projects, publishRecords } from './schema'
+import { cases, projects, publishRecords, shorts } from './schema'
 import { requireTestDatabase } from './test-database'
 
 /**
@@ -96,6 +97,42 @@ suite('publish bookkeeping', () => {
       shortIds: [],
     })
     expect(masterOnly).toHaveLength(1)
+  })
+
+  it('scheduledPublishItems joins every slotted target back to its project', async () => {
+    await db.insert(publishRecords).values({
+      targetType: 'master',
+      targetId: FIXTURE_PROJECT_ID,
+      status: 'scheduled',
+      publishAt: new Date('2026-08-28T15:00:00Z'),
+    })
+
+    const segmentRef = { chapterId: '01HQ00000000000000000000C1', fromParagraph: 0, toParagraph: 1 }
+    const [slotted] = await db
+      .insert(shorts)
+      .values({ projectId: FIXTURE_PROJECT_ID, title: 'The nine-day collapse', segmentRef })
+      .returning()
+    await db.insert(publishRecords).values({
+      targetType: 'short',
+      targetId: slotted!.id,
+      status: 'live',
+      publishAt: new Date('2026-08-26T10:00:00Z'),
+    })
+
+    // A draft never slotted stays off the calendar.
+    const [draftShort] = await db
+      .insert(shorts)
+      .values({ projectId: FIXTURE_PROJECT_ID, title: 'Unslotted', segmentRef })
+      .returning()
+    await ensurePublishRecord(db, 'short', draftShort!.id)
+
+    const items = await scheduledPublishItems(db)
+    // Sorted by publish time; the Short's label is its card title, the
+    // master's is the project's, and both carry the project for the deep link.
+    expect(items.map((item) => item.label)).toEqual(['The nine-day collapse', fixtureProject.title])
+    expect(items.map((item) => item.projectId)).toEqual([FIXTURE_PROJECT_ID, FIXTURE_PROJECT_ID])
+    expect(items[0]).toMatchObject({ targetType: 'short', status: 'live' })
+    expect(items[1]).toMatchObject({ targetType: 'master', status: 'scheduled' })
   })
 
   it('countUploadsSince counts starts in the window, failures included', async () => {

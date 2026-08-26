@@ -1,6 +1,6 @@
-import { and, count, eq, gte, inArray } from 'drizzle-orm'
+import { and, count, eq, gte, inArray, isNotNull } from 'drizzle-orm'
 import type { Database } from './client'
-import { publishRecords } from './schema'
+import { projects, publishRecords, shorts } from './schema'
 import type { PublishRecordRow } from './schema'
 
 /**
@@ -116,6 +116,73 @@ export async function updatePublishRecord(
     .update(publishRecords)
     .set({ ...patch, updatedAt: new Date() })
     .where(eq(publishRecords.id, id))
+}
+
+/** One row on the global Calendar: a slotted target and where it belongs. */
+export interface ScheduledPublishItem {
+  id: string
+  targetType: PublishRecordRow['targetType']
+  projectId: string
+  projectTitle: string
+  /** The project's title for a master, the Short card's title for a Short. */
+  label: string
+  status: PublishRecordRow['status']
+  publishAt: Date
+  youtubeVideoId: string | null
+}
+
+/**
+ * Every slotted publish record across every project — the Calendar rail
+ * page's one read. `publish_records` carries no projectId (targetId is the
+ * project for a master, the Short for a Short), so masters join `projects`
+ * directly and Shorts join through their card. Records never slotted
+ * (`publishAt` null) are drafts in progress and stay off the calendar.
+ */
+export async function scheduledPublishItems(db: Database): Promise<ScheduledPublishItem[]> {
+  const masters = await db
+    .select({ record: publishRecords, projectTitle: projects.title })
+    .from(publishRecords)
+    .innerJoin(projects, eq(projects.id, publishRecords.targetId))
+    .where(and(eq(publishRecords.targetType, 'master'), isNotNull(publishRecords.publishAt)))
+
+  const shortRows = await db
+    .select({ record: publishRecords, projectId: shorts.projectId, label: shorts.title })
+    .from(publishRecords)
+    .innerJoin(shorts, eq(shorts.id, publishRecords.targetId))
+    .where(and(eq(publishRecords.targetType, 'short'), isNotNull(publishRecords.publishAt)))
+
+  const shortProjects =
+    shortRows.length > 0
+      ? await db
+          .select({ id: projects.id, title: projects.title })
+          .from(projects)
+          .where(inArray(projects.id, [...new Set(shortRows.map((row) => row.projectId))]))
+      : []
+  const titleOf = new Map(shortProjects.map((project) => [project.id, project.title]))
+
+  const items: ScheduledPublishItem[] = [
+    ...masters.map((row) => ({
+      id: row.record.id,
+      targetType: row.record.targetType,
+      projectId: row.record.targetId,
+      projectTitle: row.projectTitle,
+      label: row.projectTitle,
+      status: row.record.status,
+      publishAt: row.record.publishAt!,
+      youtubeVideoId: row.record.youtubeVideoId,
+    })),
+    ...shortRows.map((row) => ({
+      id: row.record.id,
+      targetType: row.record.targetType,
+      projectId: row.projectId,
+      projectTitle: titleOf.get(row.projectId) ?? row.projectId,
+      label: row.label,
+      status: row.record.status,
+      publishAt: row.record.publishAt!,
+      youtubeVideoId: row.record.youtubeVideoId,
+    })),
+  ]
+  return items.sort((a, b) => a.publishAt.getTime() - b.publishAt.getTime())
 }
 
 /**
