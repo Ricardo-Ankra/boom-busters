@@ -12,6 +12,7 @@ import {
 } from '@boom-busters/schemas'
 import { LLM_MODELS, knownModel, topModel } from '@boom-busters/providers'
 import type { MaskedCredential } from '@boom-busters/db'
+import dynamic from 'next/dynamic'
 import * as React from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -23,6 +24,21 @@ import { MusicTab, type MusicBedView } from './music-tab'
 import { YoutubeCard } from './youtube-card'
 import { useToast } from '@/components/ui/toast'
 import { saveProviderKey, saveSettings, verifyProviderKey } from './actions'
+
+/**
+ * Loaded on demand: the specimen carries @remotion/player and the whole
+ * composition library, which the other five tabs never need. `ssr: false`
+ * because the Player draws frames — there is nothing to server-render.
+ */
+const BrandSpecimenPanel = dynamic(
+  () => import('./brand-specimen').then((module) => module.BrandSpecimenPanel),
+  {
+    ssr: false,
+    loading: () => (
+      <p className="text-[13px] text-[var(--color-text-muted)]">Loading the specimen…</p>
+    ),
+  },
+)
 
 const TASK_LABELS: Record<LlmTask, string> = {
   research: 'Research (dossiers)',
@@ -294,12 +310,16 @@ function BrandKitTab({ settings, saving, commit }: TabProps) {
 
       <Card>
         <CardHeader>
-          <CardTitle>Live specimen panel</CardTitle>
+          <CardTitle>Live specimen</CardTitle>
           <CardDescription>
-            Arrives in M6. A lower third, chapter card, chart and caption rendered through
-            @remotion/player with these exact values.
+            The chapter card, lower third, chart and karaoke captions rendered through
+            @remotion/player with these exact values — the same components every render uses, so
+            this is what the pipeline will draw. Colour edits above show up here as they save.
           </CardDescription>
         </CardHeader>
+        <CardContent>
+          <BrandSpecimenPanel settings={settings} />
+        </CardContent>
       </Card>
     </div>
   )
