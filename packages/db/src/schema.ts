@@ -565,6 +565,13 @@ export const shotSlots = pgTable(
      * never re-buys what nothing changed.
      */
     resolvedBriefHash: text('resolved_brief_hash'),
+    /**
+     * A model-assisted re-type (to chart or map) in flight or refused —
+     * `SlotRetypeState` in schemas. Lives on the row because the work happens
+     * in an Inngest function seconds after the button, and a board that
+     * cannot say "drafting" or "refused, because…" reads as a dead button.
+     */
+    retype: jsonb('retype').$type<Record<string, unknown>>(),
     startMs: integer('start_ms').notNull().default(0),
     durationMs: integer('duration_ms').notNull().default(0),
     createdAt: createdAt(),

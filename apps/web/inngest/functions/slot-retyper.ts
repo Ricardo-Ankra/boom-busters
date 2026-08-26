@@ -5,6 +5,7 @@ import {
   retypeShotSlot,
   scriptableClaims,
   setSlotResolution,
+  setSlotRetype,
   shotBriefHash,
 } from '@boom-busters/db'
 import {
@@ -69,6 +70,11 @@ export const slotRetyper = inngest.createFunction(
     onFailure: async ({ event }) => {
       const projectId = event.data.event.data['projectId']
       if (typeof projectId !== 'string') return
+      // A dead run must not leave the card saying "drafting" forever.
+      const slotId = event.data.event.data['slotId']
+      if (typeof slotId === 'string') {
+        await setSlotRetype(db, slotId, null).catch(() => undefined)
+      }
       await markStageFailed(
         { inngestRunId: '', functionId: FUNCTION_ID, projectId },
         serialiseError(event.data.error),
@@ -86,6 +92,9 @@ export const slotRetyper = inngest.createFunction(
 
       const brief = ShotBriefSchema.parse(slot.brief)
       if (brief.type === targetType) {
+        // Nothing to do — but the action stamped `drafting` before sending,
+        // and a no-op must not leave that on the card.
+        await setSlotRetype(db, slotId, null)
         return { changed: false as const }
       }
 
@@ -104,11 +113,13 @@ export const slotRetyper = inngest.createFunction(
         const claims = await scriptableClaims(db, projectId)
         const claimIds = claims.map((claim) => claim.id)
 
-        if (mockProvidersEnabled()) {
-          next = mockRetypedBrief({ brief, targetType, claimIds })
-        } else {
-          const project = await getProject(db, projectId)
-          try {
+        try {
+          if (mockProvidersEnabled()) {
+            // The mock refuses the same way the real path does — a chart
+            // citing no claims — so it must sit under the same catch.
+            next = mockRetypedBrief({ brief, targetType, claimIds })
+          } else {
+            const project = await getProject(db, projectId)
             next = parseRetypedBrief(
               (
                 await callLlm(
@@ -128,17 +139,24 @@ export const slotRetyper = inngest.createFunction(
               ).text,
               { targetType, claimIds },
             )
-          } catch (error) {
-            if (error instanceof BudgetExceededError) {
-              return { changed: false as const, gate: budgetGateData(error) }
-            }
-            // A refusal or a malformed draft is an answer, not a crash: the
-            // slot keeps its old brief and the board shows why.
-            if (error instanceof ValidationError) {
-              return { changed: false as const, refused: error.message }
-            }
-            throw error
           }
+        } catch (error) {
+          if (error instanceof BudgetExceededError) {
+            await setSlotRetype(db, slotId, null)
+            return { changed: false as const, gate: budgetGateData(error) }
+          }
+          // A refusal or a malformed draft is an answer, not a crash: the
+          // slot keeps its old brief and the card shows the reason until
+          // it is dismissed.
+          if (error instanceof ValidationError) {
+            await setSlotRetype(db, slotId, {
+              state: 'refused',
+              target: targetType,
+              reason: error.message,
+            })
+            return { changed: false as const, refused: error.message }
+          }
+          throw error
         }
       }
 

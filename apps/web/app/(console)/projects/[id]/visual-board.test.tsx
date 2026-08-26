@@ -11,6 +11,7 @@ const refetchSlotAction = vi.fn()
 const uploadOwnAction = vi.fn()
 const approvePlanAction = vi.fn()
 const retypeSlotAction = vi.fn()
+const dismissRetypeAction = vi.fn()
 
 vi.mock('./visuals-actions', () => ({
   chooseCandidateAction: (...args: unknown[]) => chooseCandidateAction(...args),
@@ -19,6 +20,7 @@ vi.mock('./visuals-actions', () => ({
   uploadOwnAction: (...args: unknown[]) => uploadOwnAction(...args),
   approvePlanAction: (...args: unknown[]) => approvePlanAction(...args),
   retypeSlotAction: (...args: unknown[]) => retypeSlotAction(...args),
+  dismissRetypeAction: (...args: unknown[]) => dismissRetypeAction(...args),
 }))
 
 const refresh = vi.fn()
@@ -34,6 +36,7 @@ beforeEach(() => {
   editBriefAction.mockResolvedValue({ ok: true })
   approvePlanAction.mockResolvedValue({ ok: true })
   retypeSlotAction.mockResolvedValue({ ok: true })
+  dismissRetypeAction.mockResolvedValue({ ok: true })
 })
 
 const COLORS: BrandChartColors = {
@@ -93,6 +96,7 @@ const stockSlot: SlotView = {
   ],
   extraCandidates: 3,
   needsFetch: false,
+  retype: null,
 }
 
 const chartSlot: SlotView = {
@@ -128,6 +132,7 @@ const chartSlot: SlotView = {
   candidates: [],
   extraCandidates: 0,
   needsFetch: false,
+  retype: null,
 }
 
 const brokenSlot: SlotView = {
@@ -143,6 +148,7 @@ const brokenSlot: SlotView = {
   candidates: [],
   extraCandidates: 0,
   needsFetch: true,
+  retype: null,
 }
 
 function model(slots: SlotView[], overrides: Partial<VisualsReviewModel> = {}): VisualsReviewModel {
@@ -412,5 +418,51 @@ describe('the plan phase (staged-visuals design)', () => {
     expect(screen.getByRole('group', { name: 'Slot format' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Edit brief & re-fetch' })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /Fetch visuals/ })).not.toBeInTheDocument()
+  })
+
+  it('says the model is drafting a chart, and holds the picker until it lands', () => {
+    const drafting: SlotView = { ...plannedStock, retype: { state: 'drafting', target: 'chart' } }
+    render(
+      <VisualBoard
+        projectId={PROJECT}
+        model={model([drafting], { phase: 'plan', toFetch: 1, stillsToFetch: 0 })}
+        colors={COLORS}
+      />,
+    )
+
+    expect(screen.getByRole('status')).toHaveTextContent(/drafting the chart series and claim refs/)
+    // Every format button waits — a second re-type racing the draft would
+    // write over whichever finished last.
+    const picker = screen.getByRole('group', { name: 'Slot format' })
+    for (const button of within(picker).getAllByRole('button')) {
+      expect(button).toBeDisabled()
+    }
+  })
+
+  it('shows a refusal with the model’s reason, dismissable, keeping the old brief', async () => {
+    const refused: SlotView = {
+      ...plannedStock,
+      retype: {
+        state: 'refused',
+        target: 'chart',
+        reason: 'The claims contain no usable numbers.',
+      },
+    }
+    render(
+      <VisualBoard
+        projectId={PROJECT}
+        model={model([refused], { phase: 'plan', toFetch: 1, stillsToFetch: 0 })}
+        colors={COLORS}
+      />,
+    )
+
+    const alert = screen.getByRole('alert')
+    expect(alert).toHaveTextContent('Could not re-type to chart')
+    expect(alert).toHaveTextContent('The claims contain no usable numbers.')
+    // The slot still offers its old format's actions — nothing was lost.
+    expect(screen.getByRole('group', { name: 'Slot format' })).toBeInTheDocument()
+
+    await userEvent.click(within(alert).getByRole('button', { name: 'Dismiss' }))
+    expect(dismissRetypeAction).toHaveBeenCalledWith(PROJECT, SLOT_A)
   })
 })

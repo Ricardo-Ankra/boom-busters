@@ -1,0 +1,1 @@
+ALTER TABLE "shot_slots" ADD COLUMN "retype" jsonb;

@@ -23,6 +23,7 @@ import type { SlotView, VisualsReviewModel } from '@/lib/visuals-review'
 import {
   approvePlanAction,
   chooseCandidateAction,
+  dismissRetypeAction,
   editBriefAction,
   refetchSlotAction,
   retypeSlotAction,
@@ -564,9 +565,11 @@ function SlotCard({
 
 /**
  * The format picker: one labelled button per slot type, the current one
- * pressed. Re-typing to a text-driven type is instant and free; chart and
- * map say that a model call drafts their data. Hero stays off the picker
- * while its flag is down — a button that always errors is not a button.
+ * pressed. Re-typing to a text-driven type converts inside the click — the
+ * badge changes on the refresh the button itself triggers. Chart and map
+ * need a model draft, so the card says `drafting` until it lands (or shows
+ * the model's refusal, dismissably). Hero stays off the picker while its
+ * flag is down — a button that always errors is not a button.
  */
 function TypePicker({
   slot,
@@ -580,31 +583,63 @@ function TypePicker({
   busy: boolean
 }) {
   const types = SHOT_SLOT_TYPES.filter((type) => type !== 'hero' || slot.type === 'hero')
+  const drafting = slot.retype?.state === 'drafting'
+  const refused = slot.retype?.state === 'refused' ? slot.retype : null
+
   return (
-    <div className="flex flex-wrap items-center gap-1" role="group" aria-label="Slot format">
-      <span className="text-[11px] text-[var(--color-text-muted)]">Format</span>
-      {types.map((type) => {
-        const current = type === slot.type
-        return (
+    <div className="flex flex-col gap-2">
+      <div className="flex flex-wrap items-center gap-1" role="group" aria-label="Slot format">
+        <span className="text-[11px] text-[var(--color-text-muted)]">Format</span>
+        {types.map((type) => {
+          const current = type === slot.type
+          return (
+            <Button
+              key={type}
+              variant={current ? 'primary' : 'ghost'}
+              aria-pressed={current}
+              disabled={current || busy || drafting}
+              onClick={() =>
+                act(
+                  slot.id,
+                  () => retypeSlotAction(projectId, slot.id, type),
+                  type === 'chart' || type === 'map'
+                    ? `Drafting the ${type} — this card updates when it lands`
+                    : `Re-typed to ${type}`,
+                )
+              }
+            >
+              {type}
+            </Button>
+          )
+        })}
+      </div>
+
+      {drafting && slot.retype ? (
+        <p className="text-[13px] text-[var(--color-text-secondary)]" role="status">
+          Claude is drafting the{' '}
+          {slot.retype.target === 'chart' ? 'chart series and claim refs' : 'map locations'} — this
+          card updates when it lands.
+        </p>
+      ) : null}
+
+      {refused ? (
+        <div
+          role="alert"
+          className="flex flex-wrap items-center gap-2 rounded-[8px] border border-[var(--color-warning)] p-2"
+        >
+          <p className="min-w-0 flex-1 text-[13px] text-[var(--color-warning)]">
+            Could not re-type to {refused.target}: {refused.reason} The slot keeps its current
+            brief.
+          </p>
           <Button
-            key={type}
-            variant={current ? 'primary' : 'ghost'}
-            aria-pressed={current}
-            disabled={current || busy}
-            onClick={() =>
-              act(
-                slot.id,
-                () => retypeSlotAction(projectId, slot.id, type),
-                type === 'chart' || type === 'map'
-                  ? `Re-typing to ${type} — Claude drafts the ${type === 'chart' ? 'series and claim refs' : 'locations'}, then it lands here to edit`
-                  : `Re-typed to ${type}`,
-              )
-            }
+            variant="outline"
+            busy={busy}
+            onClick={() => act(slot.id, () => dismissRetypeAction(projectId, slot.id), 'Dismissed')}
           >
-            {type}
+            Dismiss
           </Button>
-        )
-      })}
+        </div>
+      ) : null}
     </div>
   )
 }

@@ -10,6 +10,7 @@ import {
   latestTakes,
   ShotBriefSchema,
   SlotCandidateSchema,
+  SlotRetypeStateSchema,
   visualsApprovalBlockedReason,
   visualsCoverage,
 } from '@boom-busters/schemas'
@@ -17,6 +18,7 @@ import type {
   ShotBrief,
   ShotSlotStatus,
   SlotCandidate,
+  SlotRetypeState,
   VisualsCoverage,
 } from '@boom-busters/schemas'
 import { timedParagraphs } from '@/inngest/lib/shot-list'
@@ -54,6 +56,12 @@ export interface SlotView {
    * unresolved, or resolved for an older brief than the one it carries now.
    */
   needsFetch: boolean
+  /**
+   * A model-assisted re-type in flight (`drafting`) or declined (`refused`,
+   * with the model's reason). Null when nothing is pending — which is always,
+   * for mechanical conversions: those finish inside the button press.
+   */
+  retype: SlotRetypeState | null
 }
 
 export interface ChapterSlots {
@@ -161,6 +169,10 @@ export async function visualsReviewModel(
       candidates: ordered.slice(0, CANDIDATES_SHOWN),
       extraCandidates: Math.max(0, ordered.length - CANDIDATES_SHOWN),
       needsFetch: slotNeedsResolution(row),
+      retype: ((): SlotRetypeState | null => {
+        const state = SlotRetypeStateSchema.safeParse(row.retype)
+        return state.success ? state.data : null
+      })(),
     }
   })
 

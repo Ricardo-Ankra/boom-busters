@@ -4,13 +4,18 @@ import { createHash } from 'node:crypto'
 import {
   chooseSlotCandidate,
   getProject,
+  getSettings,
   getShotSlot,
+  retypeShotSlot,
   setSlotResolution,
+  setSlotRetype,
   shotBriefHash,
   updateSlotBrief,
   upsertAssetByHash,
 } from '@boom-busters/db'
+import { stillStyleAnchors } from '@boom-busters/providers'
 import {
+  convertBrief,
   HERO_SLOTS_ENABLED,
   ShotBriefSchema,
   ShotSlotTypeSchema,
@@ -159,9 +164,19 @@ export async function approvePlanAction(projectId: string): Promise<ActionResult
 
 /**
  * The format picker: still → stock, stock → map, … The suggested type is a
- * suggestion, not a lock. The conversion itself happens in the slot-retyper
- * (mechanical, or one small model call for chart/map), never in a request
- * handler racing a timeout.
+ * suggestion, not a lock.
+ *
+ * Two speeds, honestly split (fixed 2026-08-26 — the event-for-everything
+ * version made every switch look broken, because the button returned before
+ * the retyper had written anything):
+ *
+ * - **Text-driven targets convert right here.** `convertBrief` is pure and
+ *   moves no money — the same class of write as a brief edit, which this file
+ *   already applies directly. The badge changes on the click that asked.
+ * - **Chart and map need a model draft**, which belongs in the slot-retyper
+ *   behind the cost guard, never in a request handler racing a timeout. The
+ *   slot is stamped `drafting` before the event goes, so the card can say
+ *   what is happening — and say why, if the model refuses.
  */
 export async function retypeSlotAction(
   projectId: string,
@@ -182,12 +197,45 @@ export async function retypeSlotAction(
   if (!slot) return { ok: false, error: 'This slot no longer exists.' }
   if (slot.type === parsedType.data) return { ok: true }
 
+  const current = ShotBriefSchema.safeParse(slot.brief)
+  if (!current.success) {
+    return {
+      ok: false,
+      error: 'This brief is broken and cannot be re-typed — regenerate the board.',
+    }
+  }
+
+  const settings = await getSettings(db)
+  const mechanical = convertBrief(current.data, parsedType.data, {
+    stillStyleAnchors: stillStyleAnchors(settings.brandKit),
+  })
+
+  if (mechanical) {
+    await retypeShotSlot(db, slotId, parsedType.data, mechanical)
+
+    // Phase-aware, like a brief edit: on the board the owner is looking at
+    // candidates for the old kind of shot, so fetch new ones now; during
+    // plan review nothing is fetched until "Fetch visuals".
+    const project = await getProject(db, projectId)
+    if (project?.visualsPhase === 'board') {
+      const sent = await sendRefetch(projectId, slotId, `Format changed to ${parsedType.data}`)
+      refresh(projectId)
+      return sent
+    }
+    refresh(projectId)
+    return { ok: true }
+  }
+
+  // Chart or map: stamp the visible state FIRST, so the board the button's
+  // own refresh renders already says "drafting".
+  await setSlotRetype(db, slotId, { state: 'drafting', target: parsedType.data })
   try {
     await inngest.send(
       events.visualsRetypeRequested.create({ projectId, slotId, targetType: parsedType.data }),
     )
   } catch (error) {
     console.error('[visuals] could not send retype', error)
+    await setSlotRetype(db, slotId, null)
     return {
       ok: false,
       error:
@@ -195,6 +243,23 @@ export async function retypeSlotAction(
         'Start the dev server with `npx inngest-cli@latest dev`, or check INNGEST_EVENT_KEY.',
     }
   }
+  refresh(projectId)
+  return { ok: true }
+}
+
+/** Dismiss a refused re-type — the slot keeps its old brief, the note goes. */
+export async function dismissRetypeAction(
+  projectId: string,
+  slotId: string,
+): Promise<ActionResult> {
+  await requireOwner()
+  const invalid = badIds(projectId, slotId)
+  if (invalid) return invalid
+
+  const slot = await getShotSlot(db, slotId)
+  if (!slot) return { ok: false, error: 'This slot no longer exists.' }
+
+  await setSlotRetype(db, slotId, null)
   refresh(projectId)
   return { ok: true }
 }

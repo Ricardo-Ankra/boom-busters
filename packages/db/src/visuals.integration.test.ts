@@ -11,7 +11,9 @@ import {
   getShotSlot,
   listShotSlots,
   replaceShotList,
+  retypeShotSlot,
   setSlotResolution,
+  setSlotRetype,
   shotSlotStatuses,
   unresolvedSlots,
   updateSlotBrief,
@@ -199,6 +201,55 @@ suite('shot slots', () => {
     const statuses = await shotSlotStatuses(db, projectId)
     expect(statuses.filter((row) => row.status === 'placeholder')).toHaveLength(1)
     expect(statuses.filter((row) => row.status === 'unresolved')).toHaveLength(2)
+  })
+
+  it('stamps, replaces and clears a re-type state', async () => {
+    await replaceShotList(db, projectId, slots())
+    const [slot] = await listShotSlots(db, projectId)
+
+    await setSlotRetype(db, slot!.id, { state: 'drafting', target: 'chart' })
+    expect((await getShotSlot(db, slot!.id))?.retype).toEqual({
+      state: 'drafting',
+      target: 'chart',
+    })
+
+    await setSlotRetype(db, slot!.id, {
+      state: 'refused',
+      target: 'chart',
+      reason: 'No usable numbers in the claims.',
+    })
+    expect((await getShotSlot(db, slot!.id))?.retype).toMatchObject({ state: 'refused' })
+
+    await setSlotRetype(db, slot!.id, null)
+    expect((await getShotSlot(db, slot!.id))?.retype).toBeNull()
+  })
+
+  it('a re-type clears the pending state along with the old resolution', async () => {
+    await replaceShotList(db, projectId, slots())
+    const [slot] = await listShotSlots(db, projectId)
+    await setSlotResolution(db, slot!.id, {
+      candidates: [candidate('a1', { chosen: true })],
+      status: 'resolved',
+    })
+    await setSlotRetype(db, slot!.id, { state: 'drafting', target: 'still' })
+
+    await retypeShotSlot(db, slot!.id, 'still', {
+      type: 'still',
+      coversText: stockBrief.coversText,
+      description: stockBrief.description,
+      motion: { kind: 'static' },
+      transition: 'cut',
+      prompt: 'Deserted office at dusk, painterly.',
+    })
+
+    const stored = await getShotSlot(db, slot!.id)
+    expect(stored?.type).toBe('still')
+    expect(stored?.status).toBe('unresolved')
+    expect(stored?.candidates).toEqual([])
+    expect(stored?.chosenAssetId).toBeNull()
+    expect(stored?.resolvedBriefHash).toBeNull()
+    // The write IS the pending re-type's answer — nothing left to show.
+    expect(stored?.retype).toBeNull()
   })
 })
 

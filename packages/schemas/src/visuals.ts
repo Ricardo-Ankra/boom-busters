@@ -361,6 +361,24 @@ export function convertBrief(
   }
 }
 
+/**
+ * A model-assisted re-type as the slot row records it. Mechanical
+ * conversions never store one — they finish inside the button press. The
+ * chart/map draft happens in an Inngest function seconds later, so the row
+ * carries `drafting` from the moment the button returns, and `refused` (with
+ * the model's reason) when the claims cannot honestly support the target —
+ * both states the board must show, or the button reads as dead.
+ */
+export const SlotRetypeStateSchema = z.union([
+  z.object({ state: z.literal('drafting'), target: ShotSlotTypeSchema }),
+  z.object({
+    state: z.literal('refused'),
+    target: ShotSlotTypeSchema,
+    reason: z.string().min(1),
+  }),
+])
+export type SlotRetypeState = z.infer<typeof SlotRetypeStateSchema>
+
 // ---------------------------------------------------------------------------
 // The shot-list model's output
 // ---------------------------------------------------------------------------

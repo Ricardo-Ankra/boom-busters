@@ -5,6 +5,7 @@ import {
   PlannedBriefSchema,
   ShotBriefSchema,
   SlotCandidateSchema,
+  SlotRetypeStateSchema,
   convertBrief,
   mapClaimRefs,
   resolvePlannedBrief,
@@ -266,6 +267,22 @@ describe('the visuals gate', () => {
 
   it('approves a fully resolved board with no ceremony', () => {
     expect(visualsApprovalBlockedReason([slot('resolved'), slot('resolved')])).toBeUndefined()
+  })
+})
+
+describe('SlotRetypeStateSchema — what the card can honestly say', () => {
+  it('accepts drafting and refused, and a refusal must carry its reason', () => {
+    expect(SlotRetypeStateSchema.parse({ state: 'drafting', target: 'chart' })).toEqual({
+      state: 'drafting',
+      target: 'chart',
+    })
+    expect(
+      SlotRetypeStateSchema.parse({ state: 'refused', target: 'map', reason: 'No real places.' }),
+    ).toMatchObject({ state: 'refused' })
+    expect(() =>
+      SlotRetypeStateSchema.parse({ state: 'refused', target: 'map', reason: '' }),
+    ).toThrow()
+    expect(() => SlotRetypeStateSchema.parse({ state: 'done', target: 'map' })).toThrow()
   })
 })
 

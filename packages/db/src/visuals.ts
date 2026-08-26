@@ -1,6 +1,12 @@
 import { createHash } from 'node:crypto'
 import { and, asc, eq, sql } from 'drizzle-orm'
-import type { ShotBrief, ShotSlotStatus, ShotSlotType, SlotCandidate } from '@boom-busters/schemas'
+import type {
+  ShotBrief,
+  ShotSlotStatus,
+  ShotSlotType,
+  SlotCandidate,
+  SlotRetypeState,
+} from '@boom-busters/schemas'
 import type { Database } from './client'
 import { assets, chapters, shotSlots } from './schema'
 import type { AssetRow, ShotSlotRow } from './schema'
@@ -183,6 +189,28 @@ export async function retypeShotSlot(
       status: 'unresolved',
       chosenAssetId: null,
       resolvedBriefHash: null,
+      // Whatever re-type was pending, this write is its answer.
+      retype: null,
+      updatedAt: sql`now()`,
+    })
+    .where(eq(shotSlots.id, slotId))
+}
+
+/**
+ * Stamp or clear a model-assisted re-type's visible state. `drafting` goes on
+ * when the button sends the event; the slot-retyper replaces it with the
+ * outcome — cleared by `retypeShotSlot` on success, `refused` (with the
+ * model's reason) when the conversion cannot honestly happen.
+ */
+export async function setSlotRetype(
+  db: Database,
+  slotId: string,
+  state: SlotRetypeState | null,
+): Promise<void> {
+  await db
+    .update(shotSlots)
+    .set({
+      retype: state as unknown as Record<string, unknown> | null,
       updatedAt: sql`now()`,
     })
     .where(eq(shotSlots.id, slotId))
