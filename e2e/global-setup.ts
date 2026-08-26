@@ -620,6 +620,10 @@ export default async function globalSetup(): Promise<void> {
         stage: 'visuals',
         stageStatus: 'awaiting_review',
       })
+      // The runner stamps the phase in production (staged-visuals design);
+      // this fixture is parked at the BOARD checkpoint, past the plan.
+      const { setVisualsPhase } = await import('@boom-busters/db')
+      await setVisualsPhase(connection.db, board.id, 'board')
       const boardRunId = await ensureRun(connection.db, {
         inngestRunId: '01E2ESETUP0000000000000002',
         functionName: 'visuals-runner',

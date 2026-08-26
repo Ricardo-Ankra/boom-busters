@@ -112,7 +112,9 @@ export default async function ProjectPage({
     wants('script') ? getLatestScript(db, id) : Promise.resolve(undefined),
     projectDeletionSummary(db, id),
     wants('voice') ? voiceReviewModel(db, id) : Promise.resolve(emptyVoiceModel()),
-    wants('visuals') ? visualsReviewModel(db, id) : Promise.resolve(emptyVisualsModel()),
+    wants('visuals')
+      ? visualsReviewModel(db, id, { phase: project.visualsPhase })
+      : Promise.resolve(emptyVisualsModel()),
     getSettings(db),
     // The preview model also loads while the project SITS at assembly but
     // another stage is on screen: the header's Stop needs to know whether a
@@ -270,7 +272,15 @@ export default async function ProjectPage({
           live — not stuck along the bottom edge. On the Script Studio the
           sticky version permanently covered the last lines of the chapter you
           were reading, on the one screen whose whole job is reading. */}
-      {atGate && !budgetGate && viewingCurrent && project.stage !== 'assembly' ? (
+      {/* The visuals PLAN checkpoint has its own primary button inside the
+          board ("Fetch visuals · est $"); the generic Approve here would
+          send gate/visuals.approved at a runner parked on plan.approved —
+          two buttons, two meanings, one of them lost. */}
+      {atGate &&
+      !budgetGate &&
+      viewingCurrent &&
+      project.stage !== 'assembly' &&
+      !(project.stage === 'visuals' && project.visualsPhase === 'plan') ? (
         <GateActionBar
           /* One bar per gate. The bar keeps a little state about the approval
              it just handed over, and without a key that state would follow the

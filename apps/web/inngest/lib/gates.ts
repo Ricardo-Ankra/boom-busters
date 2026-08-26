@@ -62,14 +62,19 @@ export async function openReviewGate(
 
 export async function closeReviewGate(
   ctx: GateContext,
-  gate: { stage: GateStage; nextStage: ProjectStage },
+  gate: {
+    stage: GateStage
+    nextStage: ProjectStage
+    /** Overrides the audit line — the visuals PLAN park closes with its own words. */
+    message?: string
+  },
 ): Promise<void> {
   const runId = await runRowId(ctx)
 
   await recordRunEvent(db, {
     runId,
     kind: 'gate.closed',
-    message: `${gate.stage} approved`,
+    message: gate.message ?? `${gate.stage} approved`,
     data: { gate: gate.stage },
   })
   await setRunStatus(db, runId, 'running')

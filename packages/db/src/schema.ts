@@ -249,6 +249,15 @@ export const projects = pgTable(
     targetRuntimeMin: integer('target_runtime_min').notNull().default(18),
     inngestRunId: text('inngest_run_id'),
     cancelledAt: timestamp('cancelled_at', { withTimezone: true }),
+    /**
+     * Which checkpoint of the visuals stage the project sits at
+     * (staged-visuals design, 2026-08-26): `plan` between shot-list
+     * generation and the fetch, `board` once assets exist. Explicit state,
+     * not a heuristic over slot statuses, because a per-slot pre-fetch
+     * during plan review must not flip the screen. Null outside the stage's
+     * two parks' reach.
+     */
+    visualsPhase: text('visuals_phase', { enum: ['plan', 'board'] }),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
@@ -549,6 +558,13 @@ export const shotSlots = pgTable(
       .$type<Record<string, unknown>[]>(),
     chosenAssetId: text('chosen_asset_id').references(() => assets.id, { onDelete: 'set null' }),
     status: shotStatusEnum('status').notNull().default('unresolved'),
+    /**
+     * sha256 of the brief this slot's candidates were resolved FOR (the
+     * no-waste guard, staged-visuals design): a fetch pass skips a resolved
+     * slot whose stored hash still matches its brief, so "Fetch visuals"
+     * never re-buys what nothing changed.
+     */
+    resolvedBriefHash: text('resolved_brief_hash'),
     startMs: integer('start_ms').notNull().default(0),
     durationMs: integer('duration_ms').notNull().default(0),
     createdAt: createdAt(),

@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { UlidSchema } from './ids'
+import { ShotSlotTypeSchema } from './visuals'
 
 /**
  * The event contracts that chain the pipeline together (build spec section 7).
@@ -87,6 +88,29 @@ export const VisualsRefetchRequestedSchema = z.object({
    * call with no stated cause is unauditable.
    */
   note: z.string().min(1),
+})
+
+/**
+ * The plan checkpoint inside the visuals stage (staged-visuals design,
+ * 2026-08-26): the owner has reviewed and edited the shot PLAN, and asks the
+ * parked visuals-runner to fetch and generate the assets. Deliberately a
+ * plain event rather than a sixth gate stage — it is the first half of gate
+ * 4, not a new gate on the rail.
+ */
+export const VisualsPlanApprovedSchema = z.object({
+  ...projectRef,
+})
+
+/**
+ * Change one slot's type (still → stock, still → map, …). Handled by the
+ * slot-retyper: mechanical when the target's fields derive from the shared
+ * description, one small model call when the target needs structured data
+ * (chart series with claim refs, map coordinates).
+ */
+export const VisualsRetypeRequestedSchema = z.object({
+  ...projectRef,
+  slotId: UlidSchema,
+  targetType: ShotSlotTypeSchema,
 })
 
 /**
@@ -211,6 +235,8 @@ export const EVENT_SCHEMAS = {
 
   'voice/retake.requested': VoiceRetakeRequestedSchema,
   'visuals/refetch.requested': VisualsRefetchRequestedSchema,
+  'visuals/plan.approved': VisualsPlanApprovedSchema,
+  'visuals/retype.requested': VisualsRetypeRequestedSchema,
   'media/job.completed': MediaJobCompletedSchema,
   'render/draft.requested': RenderDraftRequestedSchema,
   'shorts/render.requested': ShortsRenderRequestedSchema,

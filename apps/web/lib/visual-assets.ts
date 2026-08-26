@@ -14,6 +14,8 @@ import type {
 } from '@boom-busters/schemas'
 import {
   buildScoringRequest,
+  falImageGen,
+  geminiImageGen,
   imageGenAdapter,
   imageGenPrice,
   mockProvidersEnabled,
@@ -88,6 +90,19 @@ export async function requireVisualKeys(types: ReadonlySet<ShotBrief['type']>): 
       )
     }
   }
+}
+
+/**
+ * What one still slot will cost to generate, for the plan screen's "Fetch
+ * visuals · est. $X" button (staged-visuals design): the price of whichever
+ * generator the keys select — the same choice `generateStillCandidates`
+ * makes — times the generations a prompt buys. Stock, archival, chart and
+ * map fetches are free, so stills are the whole estimate.
+ */
+export async function stillSlotEstimateUsd(): Promise<number> {
+  const keys = mockProvidersEnabled() ? {} : await visualCredentials(db, env.SECRETS_ENCRYPTION_KEY)
+  const provider = 'google' in keys && keys.google ? geminiImageGen : falImageGen
+  return imageGenPrice(provider, STILL_GENERATIONS)
 }
 
 // ---------------------------------------------------------------------------

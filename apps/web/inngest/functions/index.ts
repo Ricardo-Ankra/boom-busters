@@ -9,6 +9,7 @@ import { scriptRunner } from './script-runner'
 import { shortRenderRunner } from './short-render-runner'
 import { shortsRunner } from './shorts-runner'
 import { slotRefetcher } from './slot-refetcher'
+import { slotRetyper } from './slot-retyper'
 import { visualsRunner } from './visuals-runner'
 import { voiceRetaker } from './voice-retaker'
 import { voiceRunner } from './voice-runner'
@@ -45,6 +46,7 @@ export const functions = [
   voiceRetaker,
   visualsRunner,
   slotRefetcher,
+  slotRetyper,
   assemblyRunner,
   draftRunner,
   renderRunner,
@@ -68,6 +70,7 @@ export {
   shortRenderRunner,
   shortsRunner,
   slotRefetcher,
+  slotRetyper,
   visualsRunner,
   voiceRunner,
   voiceRetaker,

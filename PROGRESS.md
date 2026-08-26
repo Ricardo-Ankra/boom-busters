@@ -2707,6 +2707,29 @@ and the Shorts and Publish screens.
      on the original file and its loudness finding says what happened.
      Voice chunks keep the original wav path untouched.
 
+189. **The visuals stage is staged: an editable plan before any asset is
+     fetched** (2026-08-26, owner-approved design at
+     `docs/superpowers/specs/2026-08-26-staged-visuals-design.md`). The
+     runner now parks TWICE inside the one stage: after shot-list
+     generation it stops with nothing fetched and nothing spent
+     (`visuals_phase='plan'`); the owner edits briefs, re-types slots and
+     optionally pre-fetches single ones; "Fetch visuals · N slots ·
+     est. $X" (`visuals/plan.approved`) wakes it to resolve and park on
+     the familiar board (gate 4, `visuals_phase='board'`). The no-waste
+     guard: every resolution stores `resolved_brief_hash`, and any fetch
+     pass skips a slot resolved for its current brief, so nothing is
+     bought twice — uploads stamp the hash too. Re-typing
+     (`visuals/retype.requested` → slot-retyper): stock/archival/still
+     convert mechanically (`convertBrief`); chart and map get one small
+     model call that drafts the series/claim-refs or coordinates,
+     schema-validated and refusable (a chart still may never cite
+     nothing). In board phase a retype re-fetches immediately; in plan
+     phase it stops at the brief. The generic GateActionBar is
+     suppressed during plan phase — its Approve would speak an event the
+     runner is not listening for. In-flight caveat at deploy: no
+     production run was parked at the visuals gate (the one live project
+     is at shorts), so the changed step sequence strands nothing.
+
 **Blocked on the human (2026-08-24):** the Neon plan upgrade landed the
 same day — the site is back, Neon carries production only. Previously:
 nothing as of 2026-08-23 — the OAuth client,

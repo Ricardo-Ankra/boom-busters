@@ -110,6 +110,20 @@ describe('payload validation', () => {
     ).toThrow()
   })
 
+  it('the plan approval carries only the project — the plan itself is in the rows', () => {
+    expect(parseEventData('visuals/plan.approved', { projectId })).toEqual({ projectId })
+  })
+
+  it('a retype names its slot and a type the schema knows', () => {
+    const slotId = fixtureId('case', 7)
+    expect(
+      parseEventData('visuals/retype.requested', { projectId, slotId, targetType: 'map' }),
+    ).toEqual({ projectId, slotId, targetType: 'map' })
+    expect(() =>
+      parseEventData('visuals/retype.requested', { projectId, slotId, targetType: 'gif' }),
+    ).toThrow()
+  })
+
   it('lets the demo pipeline run without opting into the budget gate', () => {
     expect(parseEventData('demo/pipeline.requested', { projectId })).toEqual({ projectId })
     expect(parseEventData('demo/pipeline.requested', { projectId, forceBudgetGate: true })).toEqual(

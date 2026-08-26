@@ -5,6 +5,7 @@ import {
   PlannedBriefSchema,
   ShotBriefSchema,
   SlotCandidateSchema,
+  convertBrief,
   mapClaimRefs,
   resolvePlannedBrief,
   visualsApprovalBlockedReason,
@@ -265,5 +266,52 @@ describe('the visuals gate', () => {
 
   it('approves a fully resolved board with no ceremony', () => {
     expect(visualsApprovalBlockedReason([slot('resolved'), slot('resolved')])).toBeUndefined()
+  })
+})
+
+describe('convertBrief — re-typing a slot (staged-visuals design)', () => {
+  const still = ShotBriefSchema.parse({
+    type: 'still',
+    ...common,
+    prompt: 'Deserted office, dusk, painterly. Muted palette, film grain.',
+  })
+
+  it('derives a stock query from the description, not the tuned prompt', () => {
+    const converted = convertBrief(still, 'stock')
+    expect(converted).toMatchObject({
+      type: 'stock',
+      query: common.description,
+      rejectionCriteria: [],
+      coversText: common.coversText,
+      motion: common.motion,
+    })
+    // The result is a VALID brief, not merely a similar shape.
+    expect(ShotBriefSchema.parse(converted)).toBeTruthy()
+  })
+
+  it('appends the style anchors when converting INTO a still', () => {
+    const stock = convertBrief(still, 'stock')!
+    const back = convertBrief(stock, 'still', { stillStyleAnchors: 'Muted palette, 35mm grain' })
+    expect(back).toMatchObject({ type: 'still' })
+    expect((back as { prompt: string }).prompt).toBe(
+      `${common.description}. Muted palette, 35mm grain`,
+    )
+    expect(ShotBriefSchema.parse(back)).toBeTruthy()
+  })
+
+  it('fills archival mustShow so the converted brief stands on its own', () => {
+    const archival = convertBrief(still, 'archival')
+    expect(archival).toMatchObject({ type: 'archival', mustShow: common.description })
+    expect(ShotBriefSchema.parse(archival)).toBeTruthy()
+  })
+
+  it('returns the brief unchanged when the target is its own type', () => {
+    expect(convertBrief(still, 'still')).toBe(still)
+  })
+
+  it('refuses the structured types — those need a model, not a template', () => {
+    expect(convertBrief(still, 'chart')).toBeNull()
+    expect(convertBrief(still, 'map')).toBeNull()
+    expect(convertBrief(still, 'hero')).toBeNull()
   })
 })

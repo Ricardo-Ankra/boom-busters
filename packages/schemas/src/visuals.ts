@@ -313,6 +313,55 @@ export function applyScores(
 export const STILL_GENERATIONS = 2
 
 // ---------------------------------------------------------------------------
+// Re-typing (staged-visuals design, 2026-08-26)
+// ---------------------------------------------------------------------------
+
+/**
+ * Mechanical re-typing between the text-driven brief types: stock, archival
+ * and still all express the same idea through different creative strings, so
+ * converting between them derives the target's fields from the shared
+ * description. Chart, map and hero need structured data no string can
+ * mechanically supply (series values, claim refs, coordinates) — those
+ * return null, and the caller asks a model to draft the new brief instead.
+ *
+ * The derivations are deliberately plain: search queries and prompts seed
+ * from the DESCRIPTION (subject, era, mood — the planner's own words), not
+ * from the source type's tuned string, because a still prompt full of style
+ * anchors makes a terrible stock query. The owner edits from there.
+ */
+export function convertBrief(
+  brief: ShotBrief,
+  targetType: ShotSlotType,
+  options: { stillStyleAnchors?: string } = {},
+): ShotBrief | null {
+  if (targetType === brief.type) return brief
+
+  const common = {
+    coversText: brief.coversText,
+    description: brief.description,
+    motion: brief.motion,
+    transition: brief.transition,
+  }
+
+  switch (targetType) {
+    case 'stock':
+      return { type: 'stock', ...common, query: brief.description, rejectionCriteria: [] }
+    case 'archival':
+      return { type: 'archival', ...common, query: brief.description, mustShow: brief.description }
+    case 'still': {
+      const anchors = options.stillStyleAnchors?.trim()
+      return {
+        type: 'still',
+        ...common,
+        prompt: anchors ? `${brief.description}. ${anchors}` : brief.description,
+      }
+    }
+    default:
+      return null
+  }
+}
+
+// ---------------------------------------------------------------------------
 // The shot-list model's output
 // ---------------------------------------------------------------------------
 

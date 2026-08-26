@@ -13,15 +13,19 @@ import {
 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import * as React from 'react'
+import { SHOT_SLOT_TYPES } from '@boom-busters/schemas'
 import type { SlotCandidate } from '@boom-busters/schemas'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { ConfirmButton } from '@/components/confirm-button'
 import { useToast } from '@/components/ui/toast'
 import type { SlotView, VisualsReviewModel } from '@/lib/visuals-review'
 import {
+  approvePlanAction,
   chooseCandidateAction,
   editBriefAction,
   refetchSlotAction,
+  retypeSlotAction,
   uploadOwnAction,
   type ActionResult,
 } from './visuals-actions'
@@ -173,6 +177,52 @@ export function VisualBoard({
   return (
     <div className="flex flex-col gap-4">
       {/* ------------------------------------------------------------------ */}
+      {/* The plan checkpoint (staged-visuals design): the one spend button   */}
+      {/* ------------------------------------------------------------------ */}
+      {model.phase === 'plan' ? (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-[14px]">Shot plan</CardTitle>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-3">
+            <p className="text-[13px] text-[var(--color-text-secondary)]">
+              Nothing has been fetched or generated yet. Edit any brief, change a slot&apos;s
+              format, or fetch a single slot to try it; when the plan reads right, fetch the lot.
+              Slots already fetched for their current brief are never bought twice.
+            </p>
+            <div className="flex flex-wrap items-center gap-2">
+              <ConfirmButton
+                variant="primary"
+                confirmVariant="primary"
+                label={
+                  <>
+                    Fetch visuals · {model.toFetch} slot{model.toFetch === 1 ? '' : 's'} · est. $
+                    {model.fetchEstimateUsd.toFixed(2)}
+                  </>
+                }
+                confirmLabel="Fetch now"
+                consequence={
+                  model.stillsToFetch > 0
+                    ? `Fetches stock, archival, chart and map candidates (free) and generates ` +
+                      `${model.stillsToFetch} still${model.stillsToFetch === 1 ? '' : 's'} at ` +
+                      `est. $${model.fetchEstimateUsd.toFixed(2)}. The board review follows.`
+                    : 'Fetches stock, archival, chart and map candidates — all free. The board ' +
+                      'review follows.'
+                }
+                onConfirm={() =>
+                  act(
+                    'plan',
+                    () => approvePlanAction(projectId),
+                    'Fetching — the board fills in as candidates land',
+                  )
+                }
+              />
+            </div>
+          </CardContent>
+        </Card>
+      ) : null}
+
+      {/* ------------------------------------------------------------------ */}
       {/* Scrubber + filmstrip                                                */}
       {/* ------------------------------------------------------------------ */}
       <Card>
@@ -308,6 +358,7 @@ export function VisualBoard({
               colors={colors}
               busy={busySlot === slot.id}
               act={act}
+              phase={model.phase}
             />
           ))}
         </section>
@@ -326,12 +377,14 @@ function SlotCard({
   colors,
   busy,
   act,
+  phase,
 }: {
   slot: SlotView
   projectId: string
   colors: BrandChartColors
   busy: boolean
   act: (slotId: string, run: () => Promise<ActionResult>, success: string) => Promise<void>
+  phase: VisualsReviewModel['phase']
 }) {
   const [editing, setEditing] = React.useState(false)
   // Which candidate the lightbox shows, or null when it is closed. Opens on
@@ -339,13 +392,15 @@ function SlotCard({
   // size" is the question the button answers.
   const [previewIndex, setPreviewIndex] = React.useState<number | null>(null)
   const brief = slot.brief
+  const planning = phase === 'plan'
 
   return (
     <Card id={`slot-${slot.id}`}>
       <CardHeader className="pb-2">
         <div className="flex flex-wrap items-center gap-2">
           <TypeBadge type={slot.type} />
-          <StatusChip status={slot.status} />
+          {/* During plan review an unresolved slot is not late, it is a plan. */}
+          <StatusChip status={planning && slot.status === 'unresolved' ? 'planned' : slot.status} />
           <span className="font-mono text-[11px] text-[var(--color-text-muted)]">
             {timecode(slot.startMs)} · {Math.round(slot.durationMs / 1000)}s
           </span>
@@ -399,10 +454,17 @@ function SlotCard({
           </p>
         ) : null}
 
-        {slot.status === 'unresolved' ? (
+        {slot.status === 'unresolved' && !planning ? (
           <p className="text-[13px] text-[var(--color-text-muted)]" role="status">
             Being fetched — this row updates itself when candidates land.
           </p>
+        ) : null}
+
+        {/* The format picker (staged-visuals design): the suggested type is a
+            suggestion, not a lock. Chart and map conversions get their
+            structured data drafted by the model, then land back here to edit. */}
+        {brief && !slot.briefError ? (
+          <TypePicker slot={slot} projectId={projectId} act={act} busy={busy} />
         ) : null}
 
         {/* Repairs. Chart and map slots are edited through their briefs too,
@@ -430,7 +492,11 @@ function SlotCard({
                   onClick={() => setEditing((value) => !value)}
                 >
                   <Search aria-hidden />
-                  {editing ? 'Close brief editor' : 'Edit brief & re-fetch'}
+                  {editing
+                    ? 'Close brief editor'
+                    : planning
+                      ? 'Edit brief'
+                      : 'Edit brief & re-fetch'}
                 </Button>
                 <Button
                   variant="outline"
@@ -438,8 +504,15 @@ function SlotCard({
                   onClick={() =>
                     act(
                       slot.id,
-                      () => refetchSlotAction(projectId, slot.id, 'Regenerate'),
-                      'Re-fetching — the row updates when new candidates land',
+                      () =>
+                        refetchSlotAction(
+                          projectId,
+                          slot.id,
+                          planning ? 'Fetched early from the plan' : 'Regenerate',
+                        ),
+                      planning
+                        ? 'Fetching this slot — the card updates when candidates land'
+                        : 'Re-fetching — the row updates when new candidates land',
                     )
                   }
                 >
@@ -447,7 +520,13 @@ function SlotCard({
                   {/* Two variants at the dearer generator's price (Gemini,
                       $0.04/image) — the label errs against the budget, like
                       every estimate. */}
-                  {brief.type === 'still' ? 'Regenerate · ≈$0.08' : 'Regenerate'}
+                  {planning
+                    ? brief.type === 'still'
+                      ? 'Fetch this slot · ≈$0.08'
+                      : 'Fetch this slot'
+                    : brief.type === 'still'
+                      ? 'Regenerate · ≈$0.08'
+                      : 'Regenerate'}
                 </Button>
               </>
             ) : null}
@@ -463,6 +542,7 @@ function SlotCard({
             projectId={projectId}
             act={act}
             onDone={() => setEditing(false)}
+            planning={planning}
           />
         ) : null}
 
@@ -479,6 +559,53 @@ function SlotCard({
         ) : null}
       </CardContent>
     </Card>
+  )
+}
+
+/**
+ * The format picker: one labelled button per slot type, the current one
+ * pressed. Re-typing to a text-driven type is instant and free; chart and
+ * map say that a model call drafts their data. Hero stays off the picker
+ * while its flag is down — a button that always errors is not a button.
+ */
+function TypePicker({
+  slot,
+  projectId,
+  act,
+  busy,
+}: {
+  slot: SlotView
+  projectId: string
+  act: (slotId: string, run: () => Promise<ActionResult>, success: string) => Promise<void>
+  busy: boolean
+}) {
+  const types = SHOT_SLOT_TYPES.filter((type) => type !== 'hero' || slot.type === 'hero')
+  return (
+    <div className="flex flex-wrap items-center gap-1" role="group" aria-label="Slot format">
+      <span className="text-[11px] text-[var(--color-text-muted)]">Format</span>
+      {types.map((type) => {
+        const current = type === slot.type
+        return (
+          <Button
+            key={type}
+            variant={current ? 'primary' : 'ghost'}
+            aria-pressed={current}
+            disabled={current || busy}
+            onClick={() =>
+              act(
+                slot.id,
+                () => retypeSlotAction(projectId, slot.id, type),
+                type === 'chart' || type === 'map'
+                  ? `Re-typing to ${type} — Claude drafts the ${type === 'chart' ? 'series and claim refs' : 'locations'}, then it lands here to edit`
+                  : `Re-typed to ${type}`,
+              )
+            }
+          >
+            {type}
+          </Button>
+        )
+      })}
+    </div>
   )
 }
 
@@ -742,11 +869,14 @@ function BriefEditor({
   projectId,
   act,
   onDone,
+  planning,
 }: {
   slot: SlotView
   projectId: string
   act: (slotId: string, run: () => Promise<ActionResult>, success: string) => Promise<void>
   onDone: () => void
+  /** Plan phase: an edit just saves — nothing is fetched until "Fetch visuals". */
+  planning: boolean
 }) {
   const brief = slot.brief
   const [description, setDescription] = React.useState(brief?.description ?? '')
@@ -774,7 +904,7 @@ function BriefEditor({
               ...(brief.type === 'archival' ? { mustShow } : {}),
               ...(brief.type === 'still' ? { prompt } : {}),
             }),
-          'Brief saved — re-fetching against it now',
+          planning ? 'Brief saved' : 'Brief saved — re-fetching against it now',
         ).then(onDone)
       }}
     >
@@ -820,7 +950,7 @@ function BriefEditor({
       ) : null}
       <div className="flex gap-2">
         <Button type="submit" variant="primary">
-          Save & re-fetch{brief.type === 'still' ? ' · ≈$0.08' : ''}
+          {planning ? 'Save' : `Save & re-fetch${brief.type === 'still' ? ' · ≈$0.08' : ''}`}
         </Button>
         <Button type="button" variant="ghost" onClick={onDone}>
           Cancel

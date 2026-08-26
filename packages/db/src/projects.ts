@@ -61,6 +61,8 @@ export interface ProjectSummary {
    * it keeps whatever the last runner wrote, including from runs that died.
    */
   hasActiveRun: boolean
+  /** Which visuals checkpoint the project sits at (staged-visuals design). */
+  visualsPhase: 'plan' | 'board' | null
 }
 
 const summaryColumns = {
@@ -74,6 +76,7 @@ const summaryColumns = {
   caseCategory: cases.category,
   inngestRunId: projects.inngestRunId,
   cancelledAt: projects.cancelledAt,
+  visualsPhase: projects.visualsPhase,
   createdAt: projects.createdAt,
   updatedAt: projects.updatedAt,
   dossierVersion: dossiers.version,
@@ -165,6 +168,22 @@ export async function setProjectStage(
       ...(next.cancelledAt === undefined ? {} : { cancelledAt: next.cancelledAt }),
       updatedAt: new Date(),
     })
+    .where(eq(projects.id, id))
+}
+
+/**
+ * Which visuals checkpoint the project sits at (staged-visuals design,
+ * 2026-08-26): `plan` between generation and the fetch, `board` once assets
+ * exist, null outside the stage. The visuals-runner is the only writer.
+ */
+export async function setVisualsPhase(
+  db: Database,
+  id: string,
+  phase: 'plan' | 'board' | null,
+): Promise<void> {
+  await db
+    .update(projects)
+    .set({ visualsPhase: phase, updatedAt: new Date() })
     .where(eq(projects.id, id))
 }
 

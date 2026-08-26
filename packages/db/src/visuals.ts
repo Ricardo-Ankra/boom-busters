@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import { and, asc, eq, sql } from 'drizzle-orm'
 import type { ShotBrief, ShotSlotStatus, ShotSlotType, SlotCandidate } from '@boom-busters/schemas'
 import type { Database } from './client'
@@ -22,6 +23,25 @@ import type { AssetRow, ShotSlotRow } from './schema'
  * `chooseSlotCandidate`, keeps the flag, the status and the asset pointer in
  * step.
  */
+
+/**
+ * The fingerprint a resolution stores (the no-waste guard, staged-visuals
+ * design 2026-08-26). Computed over the DB-read jsonb value both at
+ * resolution time and at comparison time, so serialisation is consistent;
+ * any edit to the brief changes the value and therefore the hash.
+ */
+export function shotBriefHash(brief: unknown): string {
+  return createHash('sha256').update(JSON.stringify(brief)).digest('hex')
+}
+
+/** Whether a fetch pass owes this slot work: not resolved, or resolved for an older brief. */
+export function slotNeedsResolution(slot: {
+  status: ShotSlotStatus
+  brief: unknown
+  resolvedBriefHash: string | null
+}): boolean {
+  return slot.status !== 'resolved' || slot.resolvedBriefHash !== shotBriefHash(slot.brief)
+}
 
 export interface NewShotSlot {
   chapterId: string
@@ -121,6 +141,13 @@ export async function setSlotResolution(
     candidates: readonly SlotCandidate[]
     status: ShotSlotStatus
     chosenAssetId?: string | null
+    /**
+     * The hash of the brief this resolution was made FOR (`shotBriefHash`
+     * of the row's brief as the resolver read it). Omitted or null means
+     * "not resolved for any particular brief" — the next fetch pass will
+     * pick the slot up again.
+     */
+    briefHash?: string | null
   },
 ): Promise<void> {
   await db
@@ -129,6 +156,33 @@ export async function setSlotResolution(
       candidates: outcome.candidates as unknown as Record<string, unknown>[],
       status: outcome.status,
       chosenAssetId: outcome.chosenAssetId ?? null,
+      resolvedBriefHash: outcome.briefHash ?? null,
+      updatedAt: sql`now()`,
+    })
+    .where(eq(shotSlots.id, slotId))
+}
+
+/**
+ * Re-type a slot (staged-visuals design): the type column and the brief move
+ * together, the old type's candidates clear — they were fetched for a
+ * different kind of shot — and the slot returns to `unresolved` with no
+ * resolution fingerprint, so the next fetch pass owes it work.
+ */
+export async function retypeShotSlot(
+  db: Database,
+  slotId: string,
+  type: ShotSlotType,
+  brief: ShotBrief,
+): Promise<void> {
+  await db
+    .update(shotSlots)
+    .set({
+      type,
+      brief: brief as unknown as Record<string, unknown>,
+      candidates: [] as unknown as Record<string, unknown>[],
+      status: 'unresolved',
+      chosenAssetId: null,
+      resolvedBriefHash: null,
       updatedAt: sql`now()`,
     })
     .where(eq(shotSlots.id, slotId))

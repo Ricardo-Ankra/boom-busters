@@ -3,12 +3,20 @@
 import { createHash } from 'node:crypto'
 import {
   chooseSlotCandidate,
+  getProject,
   getShotSlot,
   setSlotResolution,
+  shotBriefHash,
   updateSlotBrief,
   upsertAssetByHash,
 } from '@boom-busters/db'
-import { ShotBriefSchema, SlotCandidateSchema, UlidSchema } from '@boom-busters/schemas'
+import {
+  HERO_SLOTS_ENABLED,
+  ShotBriefSchema,
+  ShotSlotTypeSchema,
+  SlotCandidateSchema,
+  UlidSchema,
+} from '@boom-busters/schemas'
 import type { SlotCandidate } from '@boom-busters/schemas'
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
@@ -104,9 +112,91 @@ export async function editBriefAction(
 
   await updateSlotBrief(db, slotId, merged.data)
 
+  // Phase-aware (staged-visuals design): during plan review an edit just
+  // saves — nothing is fetched until "Fetch visuals". On the board it
+  // refetches, because the owner is looking at candidates for the old words.
+  const project = await getProject(db, projectId)
+  if (project?.visualsPhase !== 'board') {
+    refresh(projectId)
+    return { ok: true }
+  }
+
   const sent = await sendRefetch(projectId, slotId, 'Brief edited')
   refresh(projectId)
   return sent
+}
+
+/**
+ * "Fetch visuals" — the plan checkpoint's one primary button. Wakes the
+ * visuals-runner parked on `visuals/plan.approved`; the runner fetches only
+ * the slots the no-waste guard says are owed.
+ */
+export async function approvePlanAction(projectId: string): Promise<ActionResult> {
+  await requireOwner()
+  const invalid = badIds(projectId)
+  if (invalid) return invalid
+
+  const project = await getProject(db, projectId)
+  if (!project) return { ok: false, error: 'This project no longer exists.' }
+  if (project.visualsPhase !== 'plan') {
+    return { ok: false, error: 'The plan checkpoint is not open on this project.' }
+  }
+
+  try {
+    await inngest.send(events.visualsPlanApproved.create({ projectId }))
+  } catch (error) {
+    console.error('[visuals] could not send plan approval', error)
+    return {
+      ok: false,
+      error:
+        'Could not reach Inngest to start the fetch. ' +
+        'Start the dev server with `npx inngest-cli@latest dev`, or check INNGEST_EVENT_KEY.',
+    }
+  }
+  refresh(projectId)
+  return { ok: true }
+}
+
+/**
+ * The format picker: still → stock, stock → map, … The suggested type is a
+ * suggestion, not a lock. The conversion itself happens in the slot-retyper
+ * (mechanical, or one small model call for chart/map), never in a request
+ * handler racing a timeout.
+ */
+export async function retypeSlotAction(
+  projectId: string,
+  slotId: string,
+  targetType: string,
+): Promise<ActionResult> {
+  await requireOwner()
+  const invalid = badIds(projectId, slotId)
+  if (invalid) return invalid
+
+  const parsedType = ShotSlotTypeSchema.safeParse(targetType)
+  if (!parsedType.success) return { ok: false, error: 'That is not a slot type.' }
+  if (parsedType.data === 'hero' && !HERO_SLOTS_ENABLED) {
+    return { ok: false, error: 'AI-video slots are disabled.' }
+  }
+
+  const slot = await getShotSlot(db, slotId)
+  if (!slot) return { ok: false, error: 'This slot no longer exists.' }
+  if (slot.type === parsedType.data) return { ok: true }
+
+  try {
+    await inngest.send(
+      events.visualsRetypeRequested.create({ projectId, slotId, targetType: parsedType.data }),
+    )
+  } catch (error) {
+    console.error('[visuals] could not send retype', error)
+    return {
+      ok: false,
+      error:
+        'Could not reach Inngest to re-type this slot. ' +
+        'Start the dev server with `npx inngest-cli@latest dev`, or check INNGEST_EVENT_KEY.',
+    }
+  }
+  refresh(projectId)
+  return { ok: true }
 }
 
 function cleanPatch(patch: z.infer<typeof BriefPatchSchema>): Record<string, string> {
@@ -227,6 +317,9 @@ export async function uploadOwnAction(formData: FormData): Promise<ActionResult>
     candidates: [candidate, ...others],
     status: 'resolved',
     chosenAssetId: asset.id,
+    // The upload answers the CURRENT brief: without the fingerprint, the
+    // next "Fetch visuals" would treat this slot as owed and fetch over it.
+    briefHash: shotBriefHash(slot.brief),
   })
 
   refresh(projectId)

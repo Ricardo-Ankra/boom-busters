@@ -10,7 +10,9 @@ import {
   RenderDraftRequestedSchema,
   RenderSettledSchema,
   ShortsRenderRequestedSchema,
+  VisualsPlanApprovedSchema,
   VisualsRefetchRequestedSchema,
+  VisualsRetypeRequestedSchema,
   VoiceRetakeRequestedSchema,
   EVENT_SCHEMAS,
 } from '@boom-busters/schemas'
@@ -72,6 +74,12 @@ export const events = {
   }),
   visualsRefetchRequested: eventType('visuals/refetch.requested', {
     schema: VisualsRefetchRequestedSchema,
+  }),
+  visualsPlanApproved: eventType('visuals/plan.approved', {
+    schema: VisualsPlanApprovedSchema,
+  }),
+  visualsRetypeRequested: eventType('visuals/retype.requested', {
+    schema: VisualsRetypeRequestedSchema,
   }),
   mediaJobCompleted: eventType('media/job.completed', { schema: MediaJobCompletedSchema }),
   renderDraftRequested: eventType('render/draft.requested', {

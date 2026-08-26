@@ -1,4 +1,9 @@
-import { latestScriptParagraphSources, listShotSlots, listVoiceTakes } from '@boom-busters/db'
+import {
+  latestScriptParagraphSources,
+  listShotSlots,
+  listVoiceTakes,
+  slotNeedsResolution,
+} from '@boom-busters/db'
 import type { Database } from '@boom-busters/db'
 import {
   CANDIDATES_SHOWN,
@@ -15,6 +20,7 @@ import type {
   VisualsCoverage,
 } from '@boom-busters/schemas'
 import { timedParagraphs } from '@/inngest/lib/shot-list'
+import { stillSlotEstimateUsd } from './visual-assets'
 
 /**
  * What the visual board shows, and what the visuals gate refuses on — one
@@ -43,6 +49,11 @@ export interface SlotView {
   candidates: SlotCandidate[]
   /** How many more were fetched than the strip shows. */
   extraCandidates: number
+  /**
+   * Whether the next fetch pass owes this slot work (staged-visuals design):
+   * unresolved, or resolved for an older brief than the one it carries now.
+   */
+  needsFetch: boolean
 }
 
 export interface ChapterSlots {
@@ -72,6 +83,18 @@ export interface VisualsReviewModel {
   placeholders: number
   segments: NarrationSegment[]
   totalMs: number
+  /**
+   * Which visuals checkpoint the project sits at (staged-visuals design):
+   * `plan` shows editable briefs and the Fetch button, `board` shows the
+   * candidate strips, null means the stage has not run.
+   */
+  phase: 'plan' | 'board' | null
+  /** How many slots the next fetch pass will actually touch. */
+  toFetch: number
+  /** The paid subset of `toFetch` — generated stills. */
+  stillsToFetch: number
+  /** What "Fetch visuals" will spend, in USD. Stills are the whole bill. */
+  fetchEstimateUsd: number
 }
 
 /**
@@ -87,6 +110,10 @@ export function emptyVisualsModel(): VisualsReviewModel {
     placeholders: 0,
     segments: [],
     totalMs: 0,
+    phase: null,
+    toFetch: 0,
+    stillsToFetch: 0,
+    fetchEstimateUsd: 0,
   }
 }
 
@@ -101,6 +128,7 @@ function parseCandidates(raw: unknown): SlotCandidate[] {
 export async function visualsReviewModel(
   db: Database,
   projectId: string,
+  options: { phase?: 'plan' | 'board' | null } = {},
 ): Promise<VisualsReviewModel> {
   const [rows, sources, takes] = await Promise.all([
     listShotSlots(db, projectId),
@@ -132,6 +160,7 @@ export async function visualsReviewModel(
         : 'This brief no longer matches its schema and cannot be rendered or re-fetched as is.',
       candidates: ordered.slice(0, CANDIDATES_SHOWN),
       extraCandidates: Math.max(0, ordered.length - CANDIDATES_SHOWN),
+      needsFetch: slotNeedsResolution(row),
     }
   })
 
@@ -169,6 +198,9 @@ export async function visualsReviewModel(
 
   const coverage = visualsCoverage(slots)
 
+  const toFetch = slots.filter((slot) => slot.needsFetch)
+  const stillsToFetch = toFetch.filter((slot) => slot.type === 'still').length
+
   return {
     chapters,
     coverage,
@@ -178,5 +210,9 @@ export async function visualsReviewModel(
     placeholders: coverage.placeholder,
     segments,
     totalMs: segments.reduce((total, segment) => total + segment.durationMs, 0),
+    phase: options.phase ?? null,
+    toFetch: toFetch.length,
+    stillsToFetch,
+    fetchEstimateUsd: stillsToFetch > 0 ? stillsToFetch * (await stillSlotEstimateUsd()) : 0,
   }
 }

@@ -8,7 +8,10 @@ import {
   scriptableClaims,
   setProjectStage,
   setSlotResolution,
+  setVisualsPhase,
+  shotBriefHash,
   shotSlotStatuses,
+  slotNeedsResolution,
 } from '@boom-busters/db'
 import type { NewShotSlot } from '@boom-busters/db'
 import {
@@ -48,22 +51,26 @@ import {
 } from '../lib/shot-list'
 
 /**
- * visuals-runner (build spec section 7.4).
+ * visuals-runner (build spec section 7.4; staged-visuals design 2026-08-26).
  *
- * `gate/voice.approved` → shot-list generation per chapter → fan-out asset
- * resolution per slot → gate 4.
+ * `gate/voice.approved` → shot-list generation per chapter → **PLAN park**
+ * (the owner reviews and edits the briefs, re-types slots, nothing fetched,
+ * nothing spent) → `visuals/plan.approved` → fan-out asset resolution for
+ * the slots the plan still owes → gate 4 on the finished board.
  *
  * Generation is sequential per chapter (one cheap Haiku call each, claim list
  * as the shared cacheable prefix); resolution fans out, because fetching one
  * slot's candidates depends on nothing but its own brief. Every slot is its
  * own step, so a failure in slot forty does not re-fetch — or re-buy, for
- * generated stills — slots one to thirty-nine.
+ * generated stills — slots one to thirty-nine. Resolution also skips any
+ * slot already resolved for its CURRENT brief (`resolvedBriefHash`), so a
+ * per-slot pre-fetch during plan review is never bought twice.
  *
- * The gate ALWAYS parks. Exception-based gating (decision 99) auto-advances a
- * stage when its machine-checkable blockers are all clear, but a visual board
- * is an aesthetic judgment end to end — whether the chosen clip actually fits
- * the sentence is precisely what no metadata check can answer. Same reasoning
- * as the voice gate, and unlike dossier/script, where clean means clean.
+ * Both parks are real: the plan because a machine cannot judge whether a
+ * still or a chart carries a story beat better, and the board (decision 99's
+ * exception-based gating deliberately does not apply) because whether the
+ * chosen clip actually fits the sentence is precisely what no metadata check
+ * can answer.
  */
 
 const FUNCTION_ID = 'visuals-runner'
@@ -213,17 +220,64 @@ export const visualsRunner = inngest.createFunction(
     }
 
     // -----------------------------------------------------------------------
-    // Save the board, pre-flight the keys the plan actually needs
+    // Save the board and park on the PLAN — nothing fetched, nothing spent
     // -----------------------------------------------------------------------
 
-    const board = await step.run('save-shot-list', async () => {
-      // Before a single fetch: a plan needing stills with no fal key must
-      // fail here, naming Settings → Connections, not on slot seventeen.
-      await requireVisualKeys(new Set(allRows.map((row) => row.type)))
-
+    await step.run('save-shot-list', async () => {
       await replaceShotList(db, projectId, allRows)
+      await setVisualsPhase(db, projectId, 'plan')
+    })
+
+    const stillCount = allRows.filter((row) => row.type === 'still').length
+    await step.run('open-plan-park', () =>
+      openReviewGate(ctx, {
+        stage: 'visuals',
+        projectStage: 'visuals',
+        summary:
+          `Shot plan ready · ${allRows.length} slots` +
+          (stillCount > 0 ? ` · ${stillCount} stills to generate` : '') +
+          (rejectedSlots > 0
+            ? ` · ${rejectedSlots} planned slots dropped — malformed or citing unknown claims`
+            : '') +
+          ' · nothing fetched yet — review the plan, then fetch',
+      }),
+    )
+
+    const planApproval = await step.waitForEvent('await-plan-approval', {
+      event: 'visuals/plan.approved',
+      timeout: '30d',
+      if: 'async.data.projectId == event.data.projectId',
+    })
+
+    if (!planApproval) {
+      await step.run('plan-timed-out', () =>
+        markStageFailed(ctx, { message: 'The shot plan went 30 days without a decision.' }),
+      )
+      return { projectId, outcome: 'plan-timeout' as const }
+    }
+
+    // -----------------------------------------------------------------------
+    // Fetch: only what the plan still owes (the no-waste guard)
+    // -----------------------------------------------------------------------
+
+    const board = await step.run('load-plan', async () => {
+      await closeReviewGate(ctx, {
+        stage: 'visuals',
+        nextStage: 'visuals',
+        message: 'Shot plan approved — fetching the visuals',
+      })
+
+      // Re-read, never reuse the generation-time rows: the whole point of
+      // the park is that the briefs changed while the run slept.
       const slots = await listShotSlots(db, projectId)
-      return slots.map((slot) => ({ id: slot.id, brief: slot.brief }))
+      const owed = slots.filter((slot) => slotNeedsResolution(slot))
+
+      // Before a single fetch: a plan needing stills with no key to make
+      // them must fail here, naming Settings → Connections, not on slot
+      // seventeen. Checked against the types the fetch will actually touch.
+      await requireVisualKeys(new Set(owed.map((slot) => slot.type)))
+
+      return owed.map((slot) => ({ id: slot.id, brief: slot.brief }))
     })
 
     // -----------------------------------------------------------------------
@@ -244,7 +298,13 @@ export const visualsRunner = inngest.createFunction(
             try {
               const brief = ShotBriefSchema.parse(slot.brief)
               const resolution = await resolveSlotBrief({ projectId, brief })
-              await setSlotResolution(db, slot.id, resolution)
+              await setSlotResolution(db, slot.id, {
+                ...resolution,
+                // The fingerprint the no-waste guard compares against: this
+                // resolution answers THIS brief; an edit changes the hash
+                // and the next fetch pass picks the slot up again.
+                briefHash: shotBriefHash(slot.brief),
+              })
               return { ok: true, status: resolution.status }
             } catch (error) {
               if (error instanceof BudgetExceededError) {
@@ -292,6 +352,8 @@ export const visualsRunner = inngest.createFunction(
     // -----------------------------------------------------------------------
     // Gate 4 — always parked; a board is an aesthetic judgment
     // -----------------------------------------------------------------------
+
+    await step.run('enter-board-phase', () => setVisualsPhase(db, projectId, 'board'))
 
     const summary = await step.run('finish-board', async () => {
       const coverage = visualsCoverage(await shotSlotStatuses(db, projectId))

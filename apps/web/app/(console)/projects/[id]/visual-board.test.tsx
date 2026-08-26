@@ -9,12 +9,16 @@ const chooseCandidateAction = vi.fn()
 const editBriefAction = vi.fn()
 const refetchSlotAction = vi.fn()
 const uploadOwnAction = vi.fn()
+const approvePlanAction = vi.fn()
+const retypeSlotAction = vi.fn()
 
 vi.mock('./visuals-actions', () => ({
   chooseCandidateAction: (...args: unknown[]) => chooseCandidateAction(...args),
   editBriefAction: (...args: unknown[]) => editBriefAction(...args),
   refetchSlotAction: (...args: unknown[]) => refetchSlotAction(...args),
   uploadOwnAction: (...args: unknown[]) => uploadOwnAction(...args),
+  approvePlanAction: (...args: unknown[]) => approvePlanAction(...args),
+  retypeSlotAction: (...args: unknown[]) => retypeSlotAction(...args),
 }))
 
 const refresh = vi.fn()
@@ -28,6 +32,8 @@ beforeEach(() => {
   chooseCandidateAction.mockResolvedValue({ ok: true })
   refetchSlotAction.mockResolvedValue({ ok: true })
   editBriefAction.mockResolvedValue({ ok: true })
+  approvePlanAction.mockResolvedValue({ ok: true })
+  retypeSlotAction.mockResolvedValue({ ok: true })
 })
 
 const COLORS: BrandChartColors = {
@@ -86,6 +92,7 @@ const stockSlot: SlotView = {
     },
   ],
   extraCandidates: 3,
+  needsFetch: false,
 }
 
 const chartSlot: SlotView = {
@@ -120,6 +127,7 @@ const chartSlot: SlotView = {
   briefError: undefined,
   candidates: [],
   extraCandidates: 0,
+  needsFetch: false,
 }
 
 const brokenSlot: SlotView = {
@@ -134,6 +142,7 @@ const brokenSlot: SlotView = {
   briefError: 'This brief no longer matches its schema and cannot be rendered or re-fetched as is.',
   candidates: [],
   extraCandidates: 0,
+  needsFetch: true,
 }
 
 function model(slots: SlotView[], overrides: Partial<VisualsReviewModel> = {}): VisualsReviewModel {
@@ -160,6 +169,10 @@ function model(slots: SlotView[], overrides: Partial<VisualsReviewModel> = {}): 
     placeholders: slots.filter((slot) => slot.status === 'placeholder').length,
     segments: [{ takeId: null, startMs: 0, durationMs: 18000 }],
     totalMs: 18000,
+    phase: 'board',
+    toFetch: slots.filter((slot) => slot.needsFetch).length,
+    stillsToFetch: slots.filter((slot) => slot.needsFetch && slot.type === 'still').length,
+    fetchEstimateUsd: 0,
     ...overrides,
   }
 }
@@ -312,5 +325,92 @@ describe('VisualBoard', () => {
 
     await userEvent.click(within(dialog).getByRole('button', { name: 'Use this candidate' }))
     expect(chooseCandidateAction).toHaveBeenCalledWith(PROJECT, SLOT_A, 'b2')
+  })
+})
+
+describe('the plan phase (staged-visuals design)', () => {
+  const plannedStock: SlotView = {
+    ...stockSlot,
+    status: 'unresolved',
+    candidates: [],
+    extraCandidates: 0,
+    needsFetch: true,
+  }
+  const plannedStill: SlotView = {
+    ...stockSlot,
+    id: SLOT_B,
+    type: 'still',
+    status: 'unresolved',
+    candidates: [],
+    extraCandidates: 0,
+    needsFetch: true,
+    brief: {
+      type: 'still',
+      coversText: 'By June, the auditors could not find the money.',
+      description: 'Deserted open-plan office at dusk.',
+      motion: { kind: 'static' },
+      transition: 'cut',
+      prompt: 'Deserted office at dusk, painterly.',
+    },
+  }
+
+  function planModel() {
+    return model([plannedStock, plannedStill], {
+      phase: 'plan',
+      toFetch: 2,
+      stillsToFetch: 1,
+      fetchEstimateUsd: 0.08,
+    })
+  }
+
+  it('offers one Fetch visuals button carrying the count and the price, behind a confirm', async () => {
+    render(<VisualBoard projectId={PROJECT} model={planModel()} colors={COLORS} />)
+
+    // Nothing is "being fetched" during plan review — the chip says planned.
+    expect(screen.getAllByText('planned')).toHaveLength(2)
+    expect(screen.queryByText(/Being fetched/)).not.toBeInTheDocument()
+
+    await userEvent.click(
+      screen.getByRole('button', { name: /Fetch visuals · 2 slots · est\. \$0\.08/ }),
+    )
+    expect(approvePlanAction).not.toHaveBeenCalled()
+    expect(screen.getByText(/generates 1 still at est\. \$0\.08/)).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: /^Fetch now$/ }))
+    expect(approvePlanAction).toHaveBeenCalledWith(PROJECT)
+  })
+
+  it('re-types a slot through the format picker — the suggestion is not a lock', async () => {
+    render(<VisualBoard projectId={PROJECT} model={planModel()} colors={COLORS} />)
+
+    const pickers = screen.getAllByRole('group', { name: 'Slot format' })
+    const first = pickers[0]!
+    // The current type is pressed and disabled; the others are one click.
+    expect(within(first).getByRole('button', { name: 'stock' })).toBeDisabled()
+    await userEvent.click(within(first).getByRole('button', { name: 'map' }))
+    expect(retypeSlotAction).toHaveBeenCalledWith(PROJECT, SLOT_A, 'map')
+  })
+
+  it('edits just save during plan review, and the per-slot fetch is offered', async () => {
+    render(<VisualBoard projectId={PROJECT} model={planModel()} colors={COLORS} />)
+
+    // The board-phase wording promises a re-fetch; the plan must not.
+    expect(screen.queryByRole('button', { name: /Edit brief & re-fetch/ })).not.toBeInTheDocument()
+    const editButtons = screen.getAllByRole('button', { name: 'Edit brief' })
+    await userEvent.click(editButtons[0]!)
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }))
+    expect(editBriefAction).toHaveBeenCalled()
+    expect(refetchSlotAction).not.toHaveBeenCalled()
+
+    // A single risky slot can be tried before committing to the lot.
+    await userEvent.click(screen.getByRole('button', { name: /Fetch this slot · ≈\$0\.08/ }))
+    expect(refetchSlotAction).toHaveBeenCalledWith(PROJECT, SLOT_B, 'Fetched early from the plan')
+  })
+
+  it('keeps the picker on the board phase too, with the re-fetch wording back', () => {
+    render(<VisualBoard projectId={PROJECT} model={model([stockSlot])} colors={COLORS} />)
+    expect(screen.getByRole('group', { name: 'Slot format' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Edit brief & re-fetch' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Fetch visuals/ })).not.toBeInTheDocument()
   })
 })
