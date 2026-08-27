@@ -43,6 +43,10 @@ export interface InfraConfig {
    * overridable per deploy rather than a reason not to deploy at all.
    */
   mediaLambdaMemoryMb: number
+  /** Sentry for both Lambdas (spec section 12); omit to deploy without it. */
+  sentryDsn: string | undefined
+  /** Release tag for Sentry events, e.g. the deploying commit's SHA. */
+  sentryRelease: string
 }
 
 export function configFromEnv(env: Record<string, string | undefined> = process.env): InfraConfig {
@@ -69,5 +73,7 @@ export function configFromEnv(env: Record<string, string | undefined> = process.
     renderCap: Number(read('RENDER_CAP', '2')),
     renderFanout: Number(read('RENDER_FANOUT', '150')),
     mediaLambdaMemoryMb: Number(read('MEDIA_LAMBDA_MEMORY_MB', '10240')),
+    sentryDsn: env['SENTRY_DSN'] !== '' ? env['SENTRY_DSN'] : undefined,
+    sentryRelease: read('SENTRY_RELEASE', 'dev'),
   }
 }

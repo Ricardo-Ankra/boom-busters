@@ -1,3 +1,4 @@
+import * as Sentry from '@sentry/aws-serverless'
 import {
   GetObjectCommand,
   ListObjectsV2Command,
@@ -247,7 +248,19 @@ function buildDeps(webhookUrl: string): BrokerDeps {
   }
 }
 
-export async function handler(event: APIGatewayProxyEventV2): Promise<APIGatewayProxyResultV2> {
+// Error tracking (spec section 12): inert without a DSN — init'd here at
+// module scope so cold starts pay it once, wrapped below so unhandled
+// throws are captured and flushed before the runtime freezes.
+if (process.env['SENTRY_DSN']) {
+  Sentry.init({
+    dsn: process.env['SENTRY_DSN'],
+    release: process.env['SENTRY_RELEASE'] ?? 'dev',
+    environment: 'lambda',
+    tracesSampleRate: 0,
+  })
+}
+
+async function handleEvent(event: APIGatewayProxyEventV2): Promise<APIGatewayProxyResultV2> {
   // The broker learns its own webhook URL from the request that reaches it —
   // no chicken-and-egg between the function URL and its configuration.
   const webhookUrl = `https://${event.requestContext.domainName}/webhooks/remotion`
@@ -278,3 +291,6 @@ export async function handler(event: APIGatewayProxyEventV2): Promise<APIGateway
     body: JSON.stringify(response.body),
   }
 }
+
+/** Wrapped only when Sentry is live — without a DSN this IS `handleEvent`. */
+export const handler = process.env['SENTRY_DSN'] ? Sentry.wrapHandler(handleEvent) : handleEvent

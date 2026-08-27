@@ -15,6 +15,10 @@ allowBuilds:
   # runtime encoder works without it. Denied rather than merely unlisted, so
   # the decision is recorded instead of re-prompting on every install.
   protobufjs: false
+  # The Sentry CLI binary exists only to upload sourcemaps, which this app
+  # deliberately does not do (see apps/web/instrumentation.ts). The SDKs
+  # work without it. Denied so the decision is recorded.
+  '@sentry/cli': false
 
 minimumReleaseAgeExclude:
   - '@turbo/darwin-64@2.10.9'

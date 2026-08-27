@@ -1,6 +1,7 @@
 import { spawn } from 'node:child_process'
 import { chmodSync, createWriteStream, existsSync, readFileSync } from 'node:fs'
 import { pipeline } from 'node:stream/promises'
+import * as Sentry from '@sentry/aws-serverless'
 import { GetObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3'
 import { BROKER_SIGNATURE_HEADER, brokerSignature, MediaJobSchema } from '@boom-busters/schemas'
 import type { MediaJob, MediaJobCallback } from '@boom-busters/schemas'
@@ -268,7 +269,19 @@ async function runUploadYoutube(job: Extract<MediaJob, { kind: 'upload-youtube' 
 
 // ---------------------------------------------------------------------------
 
-export async function handler(event: unknown): Promise<void> {
+// Error tracking (spec section 12): inert without a DSN. Job failures are
+// already reported through the signed callback; Sentry catches what dies
+// BEFORE a callback exists — init crashes, schema-level bugs, OOM aftermath.
+if (process.env['SENTRY_DSN']) {
+  Sentry.init({
+    dsn: process.env['SENTRY_DSN'],
+    release: process.env['SENTRY_RELEASE'] ?? 'dev',
+    environment: 'lambda',
+    tracesSampleRate: 0,
+  })
+}
+
+async function handleEvent(event: unknown): Promise<void> {
   const parsed = MediaJobSchema.safeParse(event)
   if (!parsed.success) {
     // No callbackUrl to report to — log and stop; the broker validated
@@ -310,3 +323,6 @@ export async function handler(event: unknown): Promise<void> {
   await postCallback(job.callbackUrl, callback)
   console.log(JSON.stringify({ event: 'job-finished', jobId: job.jobId, ok: callback.ok }))
 }
+
+/** Wrapped only when Sentry is live — without a DSN this IS `handleEvent`. */
+export const handler = process.env['SENTRY_DSN'] ? Sentry.wrapHandler(handleEvent) : handleEvent

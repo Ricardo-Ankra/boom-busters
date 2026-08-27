@@ -83,6 +83,9 @@ export class BrokerStack extends Stack {
         MEDIA_UTILS_FUNCTION_NAME: props.mediaUtilsFunction.functionName,
         RENDER_CAP: String(config.renderCap),
         RENDER_FANOUT: String(config.renderFanout),
+        ...(config.sentryDsn
+          ? { SENTRY_DSN: config.sentryDsn, SENTRY_RELEASE: config.sentryRelease }
+          : {}),
       },
       bundling: {
         externalModules: ['@aws-sdk/*'],

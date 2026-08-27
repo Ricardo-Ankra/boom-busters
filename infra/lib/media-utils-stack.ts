@@ -73,6 +73,9 @@ export class MediaUtilsStack extends Stack {
         WHISPER_BINARY_KEY: 'boom-busters/whisper/main',
         WHISPER_MODEL_KEY: 'boom-busters/whisper/ggml-base.en.bin',
         FFMPEG_PATH: '/opt/bin/ffmpeg',
+        ...(config.sentryDsn
+          ? { SENTRY_DSN: config.sentryDsn, SENTRY_RELEASE: config.sentryRelease }
+          : {}),
       },
       bundling: {
         // The Node 20 runtime ships AWS SDK v3.

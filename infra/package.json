@@ -18,6 +18,7 @@
     "@boom-busters/compositions": "workspace:*",
     "@boom-busters/schemas": "workspace:*",
     "@remotion/lambda": "4.0.512",
+    "@sentry/aws-serverless": "^10.71.0",
     "aws-cdk-lib": "^2.265.0",
     "constructs": "^10.4.5",
     "zod": "^4.4.3"

@@ -22,6 +22,8 @@ beforeAll(() => {
     alertEmail: 'alerts@example.com',
     remotion: { functionName: 'remotion-render-4-0-512-test', serveUrl: 'https://site.example' },
     renderBucket: 'remotionlambda-test',
+    sentryDsn: 'https://key@sentry.example/1',
+    sentryRelease: 'abc1234',
   }
   const mediaStack = new MediaUtilsStack(app, 'boom-busters-media-utils', { config })
   const brokerStack = new BrokerStack(app, 'boom-busters-broker', {
@@ -73,6 +75,25 @@ describe('media-utils stack', () => {
     })
     media.hasResourceProperties('AWS::CloudWatch::Alarm', {
       AlarmName: 'boom-busters-media-utils-throttles',
+    })
+  })
+
+  it('passes Sentry through to both Lambdas, release-tagged (spec section 12)', () => {
+    for (const template of [media, broker]) {
+      template.hasResourceProperties('AWS::Lambda::Function', {
+        Environment: {
+          Variables: Match.objectLike({
+            SENTRY_DSN: 'https://key@sentry.example/1',
+            SENTRY_RELEASE: 'abc1234',
+          }),
+        },
+      })
+    }
+    // And a DSN-less deploy carries neither — inert means absent, not empty.
+    const bare = new App({ context: { 'aws:cdk:bundling-stacks': [] } })
+    const bareStack = new MediaUtilsStack(bare, 'bare-media', { config: configFromEnv({}) })
+    Template.fromStack(bareStack).hasResourceProperties('AWS::Lambda::Function', {
+      Environment: { Variables: Match.not(Match.objectLike({ SENTRY_DSN: Match.anyValue() })) },
     })
   })
 })
