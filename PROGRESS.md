@@ -2782,6 +2782,34 @@ and the Shorts and Publish screens.
      comparable. Loaded via `next/dynamic` (`ssr: false`) so the other
      five settings tabs never pay for Remotion in their bundle.
 
+### M8
+
+193. **Analytics snapshots store lifetime-to-date numbers, and the digest
+     subtracts two of them** (2026-08-27). Per-day deltas from the API
+     would go silently wrong the first day a cron never ran; two
+     lifetime totals subtract correctly across any gap. Two honesty
+     limits recorded with the data: the Analytics API exposes no
+     impressions CTR, so the spec §5 `ctrBySource` column carries views
+     by traffic source type (the closest thing the API answers); and
+     `rpm` stays null until the `yt-analytics-monetary.readonly` scope
+     is granted, which means a reconnect and is therefore an owner
+     decision, not a default.
+
+194. **The cron is the system's only schedule, and the manual refresh is
+     an event** (2026-08-27). `analytics/refresh.requested` exists so the
+     owner has a button and the tests a trigger, but it feeds the same
+     function with a concurrency limit of 1 — the cron and a manual
+     refresh can never interleave their upserts.
+
+195. **Two app-wide a11y corrections from the Lighthouse pass**
+     (2026-08-27): `CardTitle` renders h2 (h1→h3 fails heading-order on
+     every screen whose cards sit directly under the page title), and
+     dark `--color-text-muted` moved zinc-500 → `#84848e` with a
+     ui-tokens test now holding muted ≥ 4.5:1 on background and surface
+     in both themes — the token was theorised as decoration but actually
+     captions facts at 12px. Scores after: dashboard 100, Script Studio
+     100, Publish 100.
+
 **Blocked on the human (2026-08-24):** the Neon plan upgrade landed the
 same day — the site is back, Neon carries production only. Previously:
 nothing as of 2026-08-23 — the OAuth client,
@@ -2850,12 +2878,32 @@ published and audited. The daily `channels.list` health ping and the
       requeues and notifies on quotaExceeded. M8 added only the Sentry
       env passthrough test. Verify ALERT_EMAIL was set at the last stack
       deploy (and confirm the SNS subscription email) — human action.
-- [ ] **M8.6 polish pass** — empty states, button-affordance audit (visible,
-      labelled, ≥40px), 390px mobile passes, Lighthouse a11y ≥ 95 on
-      dashboard, Script Studio and Publish.
-- [ ] **M8.7 E2E gaps** — the full §13 flow; the staged-visuals leftovers
-      (plan-phase spec: edit → retype → fetch; slot-retyper integration test;
-      `visuals_phase` nulled on stage restart).
+- [x] **M8.6 polish pass** — audited rather than assumed: empty states were
+      already on every list screen (verified, not built); the ≥40px audit
+      already runs on every major screen via `expectHitTargets`; the 390px
+      passes gained the two review screens §13 names (dossier approvable
+      from a phone with the gate bar live; Script Studio single-column, no
+      sideways scroll). **Lighthouse a11y: dashboard 100, Script Studio
+      100, Publish 100** (bar: ≥95), after three real fixes — the icon-only
+      Sign out button below the `sm` breakpoint gained its aria-label; dark
+      `--color-text-muted` raised zinc-500 → `#84848e` (zinc-500 was 3.66:1
+      on the card surface, and the token captions real facts at 12px — age
+      labels, timecodes, licence lines; a ui-tokens test now locks muted ≥
+      4.5 on background and surface in both themes); `CardTitle` renders h2,
+      not h3 (cards sit directly under most screens' h1, and h1→h3 fails
+      heading-order). Method: real Lighthouse runs against the mock dev
+      server with a session cookie, errors-only pages, scores in the JSON.
+- [x] **M8.7 E2E gaps** — the staged-visuals leftovers all paid: slot-retyper
+      integration tests (mechanical, chart-with-claims, refusal-on-the-row,
+      no-op clears the marker), the plan-phase e2e spec on a new seeded
+      fixture (priced Fetch button, planned chips, no generic Approve,
+      save-only edits, re-type landing in-click), `visuals_phase` nulled on
+      visuals restart. The §13 "full flow" is covered piecewise across the
+      spec files — writing room (case → dossier → script), voice, visual
+      board and plan, preview + local render + QC, shorts, publish — which
+      is the shape the fixture-seeded, no-live-Inngest suite supports; the
+      one uncut end-to-end pass is what M8.8's real video IS. e2e suite: 96
+      desktop + 6 mobile.
 - [ ] **M8.8 staging render + first real video** — the real-Lambda staging
       master of the fixture project, then one real 15-minute video end to
       end. Both spend real money; both wait for the owner's explicit

@@ -38,7 +38,10 @@ export const darkPalette: ThemePalette = {
   borderStrong: '#3f3f46', // zinc-700
   textPrimary: '#fafafa', // zinc-50
   textSecondary: '#a1a1aa', // zinc-400
-  textMuted: '#71717a', // zinc-500
+  // Between zinc-500 and zinc-400: zinc-500 was 3.66:1 on the card surface,
+  // under AA's 4.5 for the 12px labels this token actually decorates
+  // (Lighthouse, M8.6). Light keeps zinc-500, which clears AA on white.
+  textMuted: '#84848e',
   accent: '#4f46e5', // indigo-600
   accentHover: '#4338ca', // indigo-700
   accentForeground: '#ffffff',

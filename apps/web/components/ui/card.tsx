@@ -20,7 +20,10 @@ export function CardHeader({ className, ...props }: React.HTMLAttributes<HTMLDiv
 
 export function CardTitle({ className, ...props }: React.HTMLAttributes<HTMLHeadingElement>) {
   return (
-    <h3
+    // h2, not h3: cards sit directly under most screens' h1, and an h1→h3
+    // jump fails heading-order (Lighthouse, M8.6). The size comes from the
+    // class either way — the level is document structure, not styling.
+    <h2
       className={cn('text-[14px] font-semibold text-[var(--color-text-primary)]', className)}
       {...props}
     />

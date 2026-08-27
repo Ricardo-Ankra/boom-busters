@@ -53,6 +53,14 @@ describe.each(themes)('%s theme meets WCAG AA', (_name, palette) => {
     expect(contrastRatio(palette.textSecondary, palette.surface)).toBeGreaterThanOrEqual(4.5)
   })
 
+  it('muted text on background and surface — it captions real facts at 12px', () => {
+    // Muted was exempt on the theory it only decorates; the age labels,
+    // timecodes and licence lines it actually styles are information, and
+    // Lighthouse (M8.6) failed the dashboard on exactly this.
+    expect(contrastRatio(palette.textMuted, palette.background)).toBeGreaterThanOrEqual(4.5)
+    expect(contrastRatio(palette.textMuted, palette.surface)).toBeGreaterThanOrEqual(4.5)
+  })
+
   it('accent button label on the accent fill', () => {
     expect(contrastRatio(palette.accentForeground, palette.accent)).toBeGreaterThanOrEqual(4.5)
     expect(contrastRatio(palette.accentForeground, palette.accentHover)).toBeGreaterThanOrEqual(4.5)

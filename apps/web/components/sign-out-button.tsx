@@ -10,7 +10,9 @@ export function SignOutButton() {
         await signOut({ redirectTo: '/signin' })
       }}
     >
-      <Button type="submit" variant="ghost" size="icon">
+      {/* aria-label, because below the `sm` breakpoint the text span hides
+          and the icon is aria-hidden — an icon-only button with no name. */}
+      <Button type="submit" variant="ghost" size="icon" aria-label="Sign out">
         <LogOut aria-hidden />
         <span className="hidden sm:inline">Sign out</span>
       </Button>

@@ -307,7 +307,9 @@ function ChapterList({
               }`}
             >
               <span className="font-medium">{chapter.title}</span>
-              <span className="text-[12px] text-[var(--color-text-muted)]">
+              {/* Secondary, not muted: this row sits on the RAISED surface,
+                  where muted is under AA at 12px (Lighthouse, M8.6). */}
+              <span className="text-[12px] text-[var(--color-text-secondary)]">
                 {formatDuration(chapter.estRuntimeSec)}
                 {chapter.warnings.length > 0 ? ` · ${chapter.warnings.length} warnings` : ''}
               </span>
