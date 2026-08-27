@@ -1,4 +1,5 @@
 import {
+  AnalyticsRefreshRequestedSchema,
   BudgetApprovedSchema,
   MediaJobCompletedSchema,
   DemoRequestedSchema,
@@ -90,6 +91,10 @@ export const events = {
   }),
   publishRequested: eventType('publish/requested', { schema: PublishRequestedSchema }),
   renderSettled: eventType('render/settled', { schema: RenderSettledSchema }),
+
+  analyticsRefreshRequested: eventType('analytics/refresh.requested', {
+    schema: AnalyticsRefreshRequestedSchema,
+  }),
 
   demoRequested: eventType('demo/pipeline.requested', { schema: DemoRequestedSchema }),
 } as const

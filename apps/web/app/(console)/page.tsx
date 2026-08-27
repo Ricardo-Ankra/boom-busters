@@ -8,6 +8,7 @@ import {
   listFailedRuns,
   listOpenBudgetGates,
   listProjectsAwaitingReview,
+  youtubeReconnectNeeded,
 } from '@boom-busters/db'
 import { CheckCircle2, Circle } from 'lucide-react'
 import type { Route } from 'next'
@@ -42,15 +43,17 @@ export default async function DashboardPage() {
   const actionable = actionableSetup(items)
   const upcoming = upcomingSetup(items)
 
-  const [awaitingReview, budgetGates, failedRuns, activeRuns, pulse] = await Promise.all([
-    listProjectsAwaitingReview(db),
-    listOpenBudgetGates(db),
-    listFailedRuns(db),
-    listActiveRuns(db),
-    globalPulse(db),
-  ])
+  const [awaitingReview, budgetGates, failedRuns, activeRuns, pulse, youtubeReconnect] =
+    await Promise.all([
+      listProjectsAwaitingReview(db),
+      listOpenBudgetGates(db),
+      listFailedRuns(db),
+      listActiveRuns(db),
+      globalPulse(db),
+      youtubeReconnectNeeded(db),
+    ])
 
-  const cards = buildNeedsYouCards({ awaitingReview, budgetGates, failedRuns })
+  const cards = buildNeedsYouCards({ awaitingReview, budgetGates, failedRuns, youtubeReconnect })
 
   return (
     <div className="flex flex-col gap-4">

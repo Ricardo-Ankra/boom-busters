@@ -928,6 +928,7 @@ export type ProviderCredentialRow = typeof providerCredentials.$inferSelect
 export type CostLedgerRow = typeof costLedger.$inferSelect
 export type RunRow = typeof runs.$inferSelect
 export type RunEventRow = typeof runEvents.$inferSelect
+export type AnalyticsSnapshotRow = typeof analyticsSnapshots.$inferSelect
 export type ProjectStage = (typeof projectStageEnum.enumValues)[number]
 export type StageStatus = (typeof stageStatusEnum.enumValues)[number]
 export type RunStatus = (typeof runStatusEnum.enumValues)[number]

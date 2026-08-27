@@ -6,6 +6,7 @@ import {
   getSettings,
   latestRender,
   latestScriptParagraphSources,
+  latestSnapshotForVideo,
   latestTimeline,
   listPublishRecords,
   listShorts,
@@ -52,6 +53,15 @@ export interface PublishItemModel {
   record: PublishRecordProp | null
 }
 
+/** The master's numbers, once the analytics cron has seen it live (M8). */
+export interface MasterAnalytics {
+  videoId: string
+  snapshotDateIso: string
+  views: number | null
+  avgViewDurationSec: number | null
+  retentionCurve: { pct: number; ratio: number }[] | null
+}
+
 export interface PublishModel {
   items: PublishItemModel[]
   /** For the description's chapter block — from the master timeline. */
@@ -64,6 +74,10 @@ export interface PublishModel {
   apiAuditPassed: boolean
   dailyUploadBudget: number
   uploadsToday: number
+  /** Master duration, for the retention overlay's chapter positions. */
+  masterDurationMs: number | null
+  /** Null until the master has a video AND a snapshot. */
+  analytics: MasterAnalytics | null
 }
 
 export function emptyPublishModel(): PublishModel {
@@ -76,6 +90,8 @@ export function emptyPublishModel(): PublishModel {
     apiAuditPassed: false,
     dailyUploadBudget: 0,
     uploadsToday: 0,
+    masterDurationMs: null,
+    analytics: null,
   }
 }
 
@@ -247,6 +263,22 @@ export async function publishModel(
     })
   }
 
+  // The retention overlay (M8): only once the master has a YouTube video
+  // and the analytics cron has snapshotted it — absent, not empty, before.
+  let analytics: MasterAnalytics | null = null
+  if (masterRecord?.youtubeVideoId) {
+    const snapshot = await latestSnapshotForVideo(db, masterRecord.youtubeVideoId)
+    if (snapshot) {
+      analytics = {
+        videoId: masterRecord.youtubeVideoId,
+        snapshotDateIso: snapshot.date.toISOString(),
+        views: snapshot.views,
+        avgViewDurationSec: snapshot.avgViewDurationSec,
+        retentionCurve: snapshot.retentionCurve,
+      }
+    }
+  }
+
   return {
     items,
     chapters,
@@ -256,5 +288,7 @@ export async function publishModel(
     apiAuditPassed: settings.publish.apiAuditPassed,
     dailyUploadBudget: settings.publish.dailyUploadBudget,
     uploadsToday,
+    masterDurationMs,
+    analytics,
   }
 }

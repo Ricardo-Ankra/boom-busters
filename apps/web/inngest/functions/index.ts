@@ -1,3 +1,4 @@
+import { analyticsRunner } from './analytics-runner'
 import { assemblyRunner } from './assembly-runner'
 import { cancelReconciler } from './cancel-reconciler'
 import { dossierReviser } from './dossier-reviser'
@@ -19,8 +20,8 @@ import { voiceRunner } from './voice-runner'
  * this array, so a function that is not here is not deployed — which is the
  * behaviour you want when a half-written runner is sitting on a branch.
  *
- * M7 adds `shorts-runner`, `short-render-runner` and `publish-runner`
- * (below); still to come: `analytics-runner` (M8, spec section 7).
+ * M8 completed the set: `analytics-runner` (the only cron) closed spec
+ * section 7.2's list of nine.
  *
  * **`demoPipeline` is deliberately not here.** It did its job — spec section
  * 14.2 asked it to prove park/resume/cancel on production infra, and the M2
@@ -38,6 +39,7 @@ import { voiceRunner } from './voice-runner'
  * anything being able to reach it in production.
  */
 export const functions = [
+  analyticsRunner,
   cancelReconciler,
   dossierRunner,
   dossierReviser,
@@ -59,6 +61,7 @@ export const functions = [
 // `./demo-pipeline` directly, and a barrel export made an unregistered
 // function look registered.
 export {
+  analyticsRunner,
   assemblyRunner,
   cancelReconciler,
   draftRunner,

@@ -30,6 +30,10 @@ export const NOTIFICATION_KINDS = [
   'run-failed',
   'qc-failed',
   'publish-success',
+  /** The daily ping found the YouTube refresh token dead (M8). */
+  'reconnect-youtube',
+  /** The Monday numbers (M8). */
+  'weekly-digest',
 ] as const
 export type NotificationKind = (typeof NOTIFICATION_KINDS)[number]
 

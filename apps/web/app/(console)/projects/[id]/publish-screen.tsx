@@ -17,6 +17,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import type { PublishItemModel, PublishModel } from '@/lib/publish-review'
+import { RetentionOverlay } from './retention-overlay'
 import {
   generateTitles,
   removeThumbnail,
@@ -158,6 +159,17 @@ export function PublishScreen({
   return (
     <section aria-label="Publish" className="flex flex-col gap-4">
       {!model.apiAuditPassed ? <AuditChecklist /> : null}
+
+      {/* The numbers, once the master is live and the daily pass has seen
+          it (M8) — first on the screen because after publish day this IS
+          the screen. */}
+      {model.analytics ? (
+        <RetentionOverlay
+          analytics={model.analytics}
+          chapters={model.chapters}
+          durationMs={model.masterDurationMs}
+        />
+      ) : null}
 
       <p className="text-[12px] text-[var(--color-text-muted)]">
         {model.uploadsToday} of {model.dailyUploadBudget} upload starts used in today&apos;s YouTube

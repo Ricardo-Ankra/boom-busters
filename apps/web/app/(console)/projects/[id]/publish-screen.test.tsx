@@ -99,6 +99,8 @@ function model(overrides: Partial<PublishModel> = {}): PublishModel {
     apiAuditPassed: false,
     dailyUploadBudget: 4,
     uploadsToday: 1,
+    masterDurationMs: 900_000,
+    analytics: null,
     ...overrides,
   }
 }

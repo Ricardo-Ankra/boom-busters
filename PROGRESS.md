@@ -2811,7 +2811,40 @@ published and audited. The daily `channels.list` health ping and the
 > mobile passes, button-affordance audit, empty states, Lighthouse, full E2E,
 > staging render, one real video produced.
 
-**Status:** `[ ]` not started
+**Status:** `[~]` in progress — branch `m8-analytics-polish`, started 2026-08-27.
+
+### Deliverables
+
+- [ ] **M8.1 analytics-runner** — daily cron (the only cron, spec §7.2 item 9):
+      `channels.list` health ping stamping the YouTube credential's
+      verifyStatus (decision 171); scheduled→live reconciliation via
+      `videos.list` privacyStatus (nothing else ever flips a record to live —
+      the human publishes in Studio while `apiAuditPassed` is off); YouTube
+      Analytics snapshots (retention curve, views, avg view duration, traffic
+      sources) per live video into `analytics_snapshots`; mock-provider mode
+      end to end.
+- [ ] **"Reconnect YouTube" Needs-you card** — driven by
+      verifyStatus='invalid' on the youtube credential row.
+- [ ] **M8.2 retention-vs-chapter overlay** — the master's retention curve
+      with chapter boundaries, on the project page once snapshots exist.
+- [ ] **M8.3 weekly digest** — Mondays inside the cron: last week's numbers
+      composed in code, narrated by the `digest`-routed model, delivered
+      through `notify()`.
+- [ ] **M8.4 Sentry** — web + Inngest + Lambdas, release-tagged, inert until
+      a DSN is configured.
+- [ ] **M8.5 CDK alarms** — spec §12: Lambda error rate, Lambda concurrency
+      near the cap, broker 5xx, webhook signature failures, daily AWS spend
+      anomaly, YouTube quota exhaustion → SNS → email.
+- [ ] **M8.6 polish pass** — empty states, button-affordance audit (visible,
+      labelled, ≥40px), 390px mobile passes, Lighthouse a11y ≥ 95 on
+      dashboard, Script Studio and Publish.
+- [ ] **M8.7 E2E gaps** — the full §13 flow; the staged-visuals leftovers
+      (plan-phase spec: edit → retype → fetch; slot-retyper integration test;
+      `visuals_phase` nulled on stage restart).
+- [ ] **M8.8 staging render + first real video** — the real-Lambda staging
+      master of the fixture project, then one real 15-minute video end to
+      end. Both spend real money; both wait for the owner's explicit
+      go-ahead.
 
 ---
 

@@ -206,6 +206,16 @@ export const DemoRequestedSchema = z.object({
   forceBudgetGate: z.boolean().optional(),
 })
 
+/**
+ * Run the analytics pass NOW rather than at the next 06:00 UTC cron tick
+ * (M8). Carries nothing: the pass reads everything it needs from the
+ * database. Exists so the owner has a button and the tests have a trigger —
+ * the cron stays the only *schedule*.
+ */
+export const AnalyticsRefreshRequestedSchema = z.object({
+  requestedBy: z.string().min(1).optional(),
+})
+
 // ---------------------------------------------------------------------------
 // The registry
 // ---------------------------------------------------------------------------
@@ -242,6 +252,8 @@ export const EVENT_SCHEMAS = {
   'shorts/render.requested': ShortsRenderRequestedSchema,
   'publish/requested': PublishRequestedSchema,
   'render/settled': RenderSettledSchema,
+
+  'analytics/refresh.requested': AnalyticsRefreshRequestedSchema,
 
   'demo/pipeline.requested': DemoRequestedSchema,
 } as const

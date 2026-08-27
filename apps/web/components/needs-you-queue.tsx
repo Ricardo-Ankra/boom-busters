@@ -1,5 +1,5 @@
 import type { FailedRun, OpenBudgetGate, ProjectSummary } from '@boom-busters/db'
-import { AlertCircle, DollarSign, Flag } from 'lucide-react'
+import { AlertCircle, DollarSign, Flag, Youtube } from 'lucide-react'
 import type { Route } from 'next'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
@@ -10,17 +10,15 @@ import { cn } from '@/lib/cn'
  * The Needs-you queue (build spec section 11.3) — "the whole point" of the
  * dashboard.
  *
- * One card per open gate, budget gate and failed run, sorted oldest first,
- * each with a primary button that deep-links straight into the review screen.
- * The user's entire job is emptying this queue (spec principle 1).
- *
- * QC-failure and reconnect-YouTube cards join it in M6 and M7, when those
- * things can happen at all.
+ * One card per open gate, budget gate and failed run — plus, since M8, a
+ * dead YouTube connection — sorted oldest first, each with a primary button
+ * that deep-links straight into the review screen. The user's entire job is
+ * emptying this queue (spec principle 1).
  */
 
 export interface NeedsYouCard {
   id: string
-  kind: 'gate' | 'budget' | 'failure'
+  kind: 'gate' | 'budget' | 'failure' | 'reconnect'
   title: string
   context: string
   href: Route
@@ -32,8 +30,24 @@ export function buildNeedsYouCards(input: {
   awaitingReview: ProjectSummary[]
   budgetGates: OpenBudgetGate[]
   failedRuns: FailedRun[]
+  /** From `youtubeReconnectNeeded` — the daily ping found the token dead. */
+  youtubeReconnect?: { needed: boolean; since: Date | null }
 }): NeedsYouCard[] {
   const cards: NeedsYouCard[] = [
+    ...(input.youtubeReconnect?.needed
+      ? [
+          {
+            id: 'reconnect-youtube',
+            kind: 'reconnect',
+            title: 'Reconnect YouTube',
+            context:
+              'The stored refresh token was refused. Uploads, publishing and analytics stop until you reconnect.',
+            href: '/settings?tab=connections',
+            buttonLabel: 'Reconnect',
+            at: input.youtubeReconnect.since ?? new Date(),
+          } satisfies NeedsYouCard,
+        ]
+      : []),
     ...input.awaitingReview.map((project): NeedsYouCard => ({
       id: `gate-${project.id}`,
       kind: 'gate',
@@ -86,6 +100,11 @@ const KIND_META = {
     tone: 'text-[var(--color-danger)]',
     border: 'border-[var(--color-danger)]',
   },
+  reconnect: {
+    icon: Youtube,
+    tone: 'text-[var(--color-danger)]',
+    border: 'border-[var(--color-danger)]',
+  },
 } as const
 
 export function NeedsYouQueue({ cards }: { cards: NeedsYouCard[] }) {
@@ -112,7 +131,9 @@ export function NeedsYouQueue({ cards }: { cards: NeedsYouCard[] }) {
 
         return (
           <li key={card.id}>
-            <Card className={cn(card.kind === 'failure' && meta.border)}>
+            <Card
+              className={cn((card.kind === 'failure' || card.kind === 'reconnect') && meta.border)}
+            >
               <CardContent className="flex flex-wrap items-center gap-4 p-4">
                 <Icon className={cn('size-5 shrink-0', meta.tone)} aria-hidden />
 

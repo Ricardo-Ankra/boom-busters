@@ -186,6 +186,31 @@ export async function scheduledPublishItems(db: Database): Promise<ScheduledPubl
 }
 
 /**
+ * Every record with a YouTube video behind it — the analytics cron's worklist
+ * (M8): scheduled ones get their privacy reconciled, live ones get snapshots.
+ */
+export async function videoBackedRecords(
+  db: Database,
+): Promise<
+  Pick<
+    PublishRecordRow,
+    'id' | 'targetType' | 'targetId' | 'youtubeVideoId' | 'status' | 'publishAt'
+  >[]
+> {
+  return db
+    .select({
+      id: publishRecords.id,
+      targetType: publishRecords.targetType,
+      targetId: publishRecords.targetId,
+      youtubeVideoId: publishRecords.youtubeVideoId,
+      status: publishRecords.status,
+      publishAt: publishRecords.publishAt,
+    })
+    .from(publishRecords)
+    .where(isNotNull(publishRecords.youtubeVideoId))
+}
+
+/**
  * Upload starts since a moment — the daily-budget question, asked with
  * `quotaDayStartUtc(now)` from schemas as the boundary.
  */

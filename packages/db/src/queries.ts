@@ -214,6 +214,29 @@ export async function isYoutubeConnected(db: Database): Promise<boolean> {
 }
 
 /**
+ * Whether the YouTube connection is known-dead (M8): a stored credential
+ * whose last verify — connect-time or the daily ping — came back invalid.
+ * Drives the "Reconnect YouTube" Needs-you card; `lastVerifiedAt` gives the
+ * card its age.
+ */
+export async function youtubeReconnectNeeded(
+  db: Database,
+): Promise<{ needed: boolean; since: Date | null }> {
+  const [row] = await db
+    // `updatedAt`, not `lastVerifiedAt`: the invalid stamp NULLS the verify
+    // time, and the card's age is "since the stamp", which is this write.
+    .select({ since: providerCredentials.updatedAt })
+    .from(providerCredentials)
+    .where(
+      and(
+        eq(providerCredentials.provider, 'youtube'),
+        eq(providerCredentials.verifyStatus, 'invalid'),
+      ),
+    )
+  return { needed: row !== undefined, since: row?.since ?? null }
+}
+
+/**
  * Decrypted keys for the LLM providers, for the model router.
  *
  * Deliberately separate from `listCredentials`, which exists precisely so that

@@ -124,6 +124,13 @@ describe('payload validation', () => {
     ).toThrow()
   })
 
+  it('an analytics refresh carries nothing — the pass reads the database', () => {
+    expect(parseEventData('analytics/refresh.requested', {})).toEqual({})
+    expect(parseEventData('analytics/refresh.requested', { requestedBy: 'owner' })).toEqual({
+      requestedBy: 'owner',
+    })
+  })
+
   it('lets the demo pipeline run without opting into the budget gate', () => {
     expect(parseEventData('demo/pipeline.requested', { projectId })).toEqual({ projectId })
     expect(parseEventData('demo/pipeline.requested', { projectId, forceBudgetGate: true })).toEqual(
