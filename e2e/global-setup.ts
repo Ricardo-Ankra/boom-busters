@@ -55,6 +55,7 @@ export const DENSE_WARNINGS_TITLE = 'A chapter with every warning kind (E2E)'
 export const NARRATED_PROJECT_TITLE = 'Narration ready for review (E2E)'
 export const FLAGGED_TAKE_TITLE = 'Narration with a flagged take (E2E)'
 export const VISUAL_BOARD_TITLE = 'Visual board ready for review (E2E)'
+export const VISUAL_PLAN_TITLE = 'Shot plan awaiting fetch (E2E)'
 export const PREVIEW_PROJECT_TITLE = 'Preview compiled, master rendered (E2E)'
 export const PUBLISH_PROJECT_TITLE = 'Shorts cut, ready to publish (E2E)'
 
@@ -637,6 +638,90 @@ export default async function globalSetup(): Promise<void> {
         data: { gate: 'visuals' },
       })
       await setRunStatus(connection.db, boardRunId, 'awaiting_gate')
+    }
+
+    /**
+     * 6b. A project parked at the PLAN checkpoint (staged-visuals design):
+     * the shot list written, NOTHING fetched, `visuals_phase='plan'` — the
+     * state the runner leaves after shot-list generation. One still (the
+     * paid kind, so the Fetch button carries a price) and one stock slot.
+     */
+    {
+      const { replaceShotList, setVisualsPhase } = await import('@boom-busters/db')
+
+      const plan = await createProjectFromCase(connection.db, {
+        caseId: FIXTURE_CASE_ID,
+        title: VISUAL_PLAN_TITLE,
+      })
+      await saveDossier(connection.db, {
+        projectId: plan.id,
+        contentMd: '# The research this plan was made from.',
+        claims: [],
+      })
+      const planScript = await createScriptVersion(connection.db, plan.id)
+      const planChapter = await saveChapter(connection.db, {
+        scriptId: planScript.id,
+        index: 0,
+        title: 'The plan on paper',
+        contentMd: narratedText.slice(0, 2).join('\n\n'),
+        estRuntimeSec: 60,
+      })
+
+      await replaceShotList(connection.db, plan.id, [
+        {
+          chapterId: planChapter.id,
+          index: 0,
+          type: 'still',
+          brief: {
+            type: 'still',
+            motion: { kind: 'static' as const },
+            transition: 'cut' as const,
+            coversText: narratedText[0]!,
+            description: 'A boardroom nobody sits in any more.',
+            prompt: 'Empty boardroom at dawn, painterly, muted palette.',
+          },
+          startMs: 0,
+          durationMs: 6000,
+        },
+        {
+          chapterId: planChapter.id,
+          index: 1,
+          type: 'stock',
+          brief: {
+            type: 'stock',
+            motion: { kind: 'static' as const },
+            transition: 'cut' as const,
+            coversText: narratedText[1]!,
+            description: 'Trading floor panic, archive mood.',
+            query: 'trading floor panic',
+            rejectionCriteria: [],
+          },
+          startMs: 6000,
+          durationMs: 6000,
+        },
+      ])
+
+      await setProjectStage(connection.db, plan.id, {
+        stage: 'visuals',
+        stageStatus: 'awaiting_review',
+      })
+      await setVisualsPhase(connection.db, plan.id, 'plan')
+      const planRunId = await ensureRun(connection.db, {
+        // 0004: 0003 belongs to the preview fixture below — `ensureRun`
+        // upserts by inngestRunId, so a reused id STEALS that run row and
+        // strands the other project outside its gate.
+        inngestRunId: '01E2ESETUP0000000000000004',
+        functionName: 'visuals-runner',
+        projectId: plan.id,
+        stage: 'visuals',
+      })
+      await recordRunEvent(connection.db, {
+        runId: planRunId,
+        kind: 'gate.opened',
+        message: 'Shot plan ready · 2 slots · 1 still to generate · nothing fetched yet',
+        data: { gate: 'visuals' },
+      })
+      await setRunStatus(connection.db, planRunId, 'awaiting_gate')
     }
 
     await updateSettings(connection.db, {

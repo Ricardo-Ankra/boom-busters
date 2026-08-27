@@ -2815,26 +2815,41 @@ published and audited. The daily `channels.list` health ping and the
 
 ### Deliverables
 
-- [ ] **M8.1 analytics-runner** — daily cron (the only cron, spec §7.2 item 9):
+- [x] **M8.1 analytics-runner** — daily cron (the only cron, spec §7.2 item 9):
       `channels.list` health ping stamping the YouTube credential's
       verifyStatus (decision 171); scheduled→live reconciliation via
       `videos.list` privacyStatus (nothing else ever flips a record to live —
       the human publishes in Studio while `apiAuditPassed` is off); YouTube
       Analytics snapshots (retention curve, views, avg view duration, traffic
       sources) per live video into `analytics_snapshots`; mock-provider mode
-      end to end.
-- [ ] **"Reconnect YouTube" Needs-you card** — driven by
-      verifyStatus='invalid' on the youtube credential row.
-- [ ] **M8.2 retention-vs-chapter overlay** — the master's retention curve
-      with chapter boundaries, on the project page once snapshots exist.
-- [ ] **M8.3 weekly digest** — Mondays inside the cron: last week's numbers
-      composed in code, narrated by the `digest`-routed model, delivered
-      through `notify()`.
-- [ ] **M8.4 Sentry** — web + Inngest + Lambdas, release-tagged, inert until
-      a DSN is configured.
-- [ ] **M8.5 CDK alarms** — spec §12: Lambda error rate, Lambda concurrency
-      near the cap, broker 5xx, webhook signature failures, daily AWS spend
-      anomaly, YouTube quota exhaustion → SNS → email.
+      end to end. Plus `analytics/refresh.requested` so the owner has a
+      button and the tests a trigger.
+- [x] **"Reconnect YouTube" Needs-you card** — driven by
+      verifyStatus='invalid' on the youtube credential row, aged from the
+      stamp, deep-linking to Connections.
+- [x] **M8.2 retention-vs-chapter overlay** — the master's watch ratio over
+      its own chapter boundaries, server-rendered SVG on the Publish screen,
+      present once a snapshot exists, honest when the curve is not out yet.
+- [x] **M8.3 weekly digest** — Mondays inside the cron: deltas computed in
+      code from snapshot pairs, narrated by the `digest`-routed model,
+      delivered through `notify()`. Over-budget digests are skipped, never
+      parked.
+- [x] **M8.4 Sentry** — web + Inngest (one init in `instrumentation.ts` —
+      the functions run inside the Next server) + both Lambdas
+      (`wrapHandler`), release-tagged from the deploy SHA, INERT until a DSN
+      exists: the SDK is not even imported without one. No sourcemap upload
+      by decision — a build that needs a Sentry account is a build that
+      fails for the wrong reasons. Lambdas read SENTRY_DSN/SENTRY_RELEASE
+      at CDK deploy; needs a redeploy plus a DSN from the human to go live.
+- [x] **M8.5 CDK alarms** — found already SHIPPED with M6.6, not owed:
+      broker errors, broker 5xx, webhook signature failures, render
+      concurrency at the cap, media-utils errors and throttles, and the
+      daily AWS spend budget, all → the `boom-busters-alerts` SNS topic
+      with the ALERT_EMAIL subscription. §12's remaining item, YouTube
+      quota exhaustion, is app-level by design: the M7 error mapper
+      requeues and notifies on quotaExceeded. M8 added only the Sentry
+      env passthrough test. Verify ALERT_EMAIL was set at the last stack
+      deploy (and confirm the SNS subscription email) — human action.
 - [ ] **M8.6 polish pass** — empty states, button-affordance audit (visible,
       labelled, ≥40px), 390px mobile passes, Lighthouse a11y ≥ 95 on
       dashboard, Script Studio and Publish.

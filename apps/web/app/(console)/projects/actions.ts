@@ -13,6 +13,7 @@ import {
   projectDeletionSummary,
   renderInFlight,
   setProjectStage,
+  setVisualsPhase,
   shotSlotStatuses,
   updateRender,
 } from '@boom-busters/db'
@@ -238,6 +239,13 @@ export async function restartStage(projectId: string, stage?: string): Promise<A
     // every screen calling a running project cancelled.
     cancelledAt: null,
   })
+
+  // A visuals re-run starts BEFORE the plan exists. Without this, a stale
+  // 'board' (or 'plan') phase shows yesterday's checkpoint while the shot
+  // list regenerates; the runner re-stamps 'plan' the moment it saves.
+  if (target === 'visuals') {
+    await setVisualsPhase(db, projectId, null)
+  }
 
   const sent = await send(entry, 'restart the stage')
 
