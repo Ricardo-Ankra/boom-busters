@@ -2911,6 +2911,54 @@ published and audited. The daily `channels.list` health ping and the
 
 ---
 
+## Post-M8 UX — inline dossier claims, wider Studio
+
+> Owner-requested spec amendments (2026-08-28) after reviewing the deployed
+> pipeline on a real project: the dossier read as raw markdown next to a
+> half-screen claims table, and the Script Studio's context panel spent
+> 280px repeating the gutter. Spec §11.3 amended in place; branch
+> `ux-dossier-script`.
+
+### Deliverables
+
+- [x] Dossier renders as formatted text (own minimal parser, never HTML);
+      claims anchor inline as pressable highlights opening a modal with the
+      full row actions; a claims bar always lists whatever blocks approval,
+      anchored or not, plus a list-all toggle and Quarantine all.
+- [x] Script Studio context panel dropped; Shorts candidates fold into a
+      strip under the selected chapter's editor; the editor takes the width.
+- [x] Voice `Flag` kept as-is by decision after discussion: it is the
+      zero-cost bookmark of the listen-through, distinct from the two paid
+      repairs; revisit after the first real video.
+
+**Decisions (continuing the numbering):**
+
+196. **Claims anchor to the dossier text fuzzily and honestly**
+     (2026-08-28). `lib/dossier-markdown.ts` parses a deliberate markdown
+     subset (headings, lists, paragraphs, bold, italic, http links; anything
+     else stays literal text — model output is never interpreted as HTML,
+     preserving the old `<pre>`'s injection stance) and anchors each claim
+     by folded verbatim match first, then best-sentence token overlap ≥
+     0.55, else reports it unanchored. Unanchored claims are listed, never
+     hidden, and every blocking claim is always on screen: a claim you
+     cannot find is a gate you cannot pass. Inline highlights are real
+     buttons — the 40px hit target bought with padding + negative margin so
+     the prose line flow is untouched. The seed's dossier body now states
+     two fixture claims verbatim (and upserts contentMd on conflict) so the
+     highlight path is testable end to end.
+
+197. **The Studio's third column is gone** (2026-08-28). Its warnings
+     section duplicated the gutter markers and the outline's per-chapter
+     counts; its only unique content, the Shorts candidates, moved to a
+     collapsible strip under the selected chapter's editor that renders
+     nothing when the chapter has none. The editor gets the 280px back,
+     which is where a 15-minute script is actually read.
+
+**Status:** `[x]` done — dossier + Studio shipped with unit, component and
+e2e coverage; spec §11.3 amended in place with dated notes.
+
+---
+
 # Decisions made
 
 Recorded whenever the spec left something open and an implementation was chosen.

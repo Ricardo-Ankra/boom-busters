@@ -56,7 +56,7 @@ test.describe('390px', () => {
     await signIn(page)
     await openFixtureProject(page)
 
-    // The two-pane screen stacks: document and claims both reachable.
+    // The claims bar and the document below it: both reachable in one column.
     await expect(page.getByRole('heading', { name: /Claims/ })).toBeVisible()
     await expect(page.getByText(/unverified/).first()).toBeVisible()
     // The gate's own controls are on screen and tappable — approving from
@@ -81,8 +81,8 @@ test.describe('390px', () => {
       await expect(page).toHaveURL(/\/projects\/[0-9A-Z]{26}/, { timeout: 8_000 })
     }).toPass({ timeout: 30_000 })
 
-    // The three-column studio stacks to one: outline, editor text and the
-    // warnings panel all reachable. No gate assertions here — the desktop
+    // The two-column studio stacks to one: outline, editor text and the
+    // gutter warnings all reachable. No gate assertions here — the desktop
     // suite runs first and may have approved this fixture already; the
     // phone-approvability of a LIVE gate is the dossier test's job.
     await expect(page.getByRole('heading', { name: 'Outline' })).toBeVisible()
