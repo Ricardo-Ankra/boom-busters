@@ -37,7 +37,16 @@ export async function seed(
       projectId: FIXTURE_PROJECT_ID,
       contentMd: FIXTURE_DOSSIER_MD,
     })
-    .onConflictDoNothing()
+    /**
+     * Reset, not skip — for the same reason the claims below do. The dossier
+     * body is what the inline claim highlights anchor to (decision 196), so
+     * a database seeded before the body gained its summary paragraph would
+     * keep showing a document nothing anchors to.
+     */
+    .onConflictDoUpdate({
+      target: dossiers.id,
+      set: { contentMd: FIXTURE_DOSSIER_MD, updatedAt: new Date() },
+    })
 
   // One statement, not one per claim. Against a hosted database every round
   // trip is ~100ms, and the shot-list and voice-take fan-outs in later
@@ -70,7 +79,22 @@ export async function seed(
   return { settingsCreated: true, credentialsImported }
 }
 
+/**
+ * The summary paragraph states two of the fixture claims verbatim, on
+ * purpose: the dossier screen anchors claims to the text they were extracted
+ * from (decision 196), and a fixture whose document never states any of its
+ * claims would leave the highlight path — the screen's main interaction —
+ * untestable and undemonstrable.
+ */
 const FIXTURE_DOSSIER_MD = `# Wirecard — research dossier
+
+## Summary
+
+Wirecard AG filed for insolvency in June 2020, days after its auditors
+refused to sign off the accounts. EY declined to issue an audit opinion on
+the 2019 accounts, saying it could not verify around €1.9 billion in trustee
+balances. What follows is the timeline the collapse played out on, and the
+numbers a script should hang its chapters from.
 
 ## Timeline
 

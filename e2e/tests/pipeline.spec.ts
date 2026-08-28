@@ -52,7 +52,9 @@ test.describe('projects', () => {
     await expect(page.getByRole('list', { name: 'Pipeline stages' })).toBeVisible()
     // The fixture is parked at the dossier gate, so the dossier review screen
     // is what the stage renders (M3). Before M3 this was a placeholder card.
-    await expect(page.getByRole('heading', { name: 'Dossier' })).toBeVisible()
+    // `exact`, because the document now renders its own headings and the
+    // dossier's title contains the word too.
+    await expect(page.getByRole('heading', { name: 'Dossier', exact: true })).toBeVisible()
   })
 })
 
@@ -83,6 +85,23 @@ test.describe('gate action bar', () => {
     // server re-render lands, which on a cold dev-server compile can take
     // longer than the default expect timeout.
     await expect(page.getByRole('button', { name: 'Approve' })).toBeEnabled({ timeout: 15_000 })
+  })
+
+  test('a claim stated in the dossier is a highlight that opens its actions', async ({ page }) => {
+    // The seeded summary paragraph states this claim verbatim, so the
+    // anchoring path — the screen's main interaction since decision 196 —
+    // is exercised against a real document, not a synthetic one.
+    const highlight = page.getByRole('button', { name: /Review claim: Wirecard AG filed/ })
+    await highlight.click()
+
+    const dialog = page.getByRole('dialog', { name: 'Claim' })
+    await expect(dialog).toBeVisible()
+    // The full claim row is in the modal: source domain, edit, quarantine.
+    await expect(dialog.getByRole('link', { name: /ft\.com/ })).toBeVisible()
+    await expect(dialog.getByRole('button', { name: 'Quarantine' })).toBeVisible()
+
+    await dialog.getByRole('button', { name: 'Close' }).click()
+    await expect(dialog).not.toBeVisible()
   })
 
   test('a change request asks what to change before it can be sent', async ({ page }) => {
