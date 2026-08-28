@@ -3,7 +3,18 @@
 import type { ChapterWithWarnings } from '@boom-busters/db'
 import { EXPRESSION_TAGS, PAUSE_TAGS } from '@boom-busters/schemas'
 import type { ShortsCandidate } from '@boom-busters/schemas'
-import { AlertTriangle, Check, GripVertical, Sparkles, Timer, Volume2, X } from 'lucide-react'
+import {
+  AlertTriangle,
+  Check,
+  ChevronDown,
+  ChevronRight,
+  Clapperboard,
+  GripVertical,
+  Sparkles,
+  Timer,
+  Volume2,
+  X,
+} from 'lucide-react'
 import { Extension } from '@tiptap/core'
 import { Plugin, PluginKey } from '@tiptap/pm/state'
 import { Decoration, DecorationSet } from '@tiptap/pm/view'
@@ -32,7 +43,11 @@ import {
 } from './actions'
 
 /**
- * Script Studio (build spec section 11.3): outline · editor · context panel.
+ * Script Studio (build spec section 11.3, amended 2026-08-28 — decision 197):
+ * outline · editor. The third "context" column is gone: its warnings section
+ * repeated what the gutter and the outline already say, and its Shorts
+ * candidates now sit in a collapsible strip under the selected chapter's
+ * editor — indicated where they are relevant, costing no width when closed.
  *
  * The editor is markdown-backed and paragraph-structured, which is the whole
  * of the structure narration has — the drafting prompt forbids headings,
@@ -121,7 +136,7 @@ export function ScriptStudio({
         ) : null}
       </header>
 
-      <div className="grid gap-3 lg:grid-cols-[200px_1fr_280px]">
+      <div className="grid gap-3 lg:grid-cols-[200px_1fr]">
         <ChapterList
           projectId={projectId}
           scriptId={scriptId}
@@ -131,7 +146,13 @@ export function ScriptStudio({
         />
 
         {active ? (
-          <ChapterEditor key={active.id} projectId={projectId} chapter={active} />
+          <div className="flex min-w-0 flex-col gap-3">
+            <ChapterEditor key={active.id} projectId={projectId} chapter={active} />
+            <ShortsStrip
+              key={`shorts-${active.id}`}
+              shorts={shorts.filter((candidate) => candidate.chapterIndex === active.index)}
+            />
+          </div>
         ) : (
           <Card>
             <CardContent className="py-16 text-center text-[13px] text-[var(--color-text-muted)]">
@@ -139,14 +160,6 @@ export function ScriptStudio({
             </CardContent>
           </Card>
         )}
-
-        {active ? (
-          <ContextPanel
-            projectId={projectId}
-            chapter={active}
-            shorts={shorts.filter((candidate) => candidate.chapterIndex === active.index)}
-          />
-        ) : null}
       </div>
     </div>
   )
@@ -925,45 +938,47 @@ function DiffView({
   )
 }
 
-function ContextPanel({
-  chapter,
-  shorts,
-}: {
-  projectId: string
-  chapter: ChapterWithWarnings
-  shorts: ShortsCandidate[]
-}) {
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Context</CardTitle>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-4 text-[13px]">
-        <div>
-          <p className="font-medium">Warnings</p>
-          <p className="text-[var(--color-text-muted)]">
-            {chapter.warnings.length === 0
-              ? 'The self-check found nothing in this chapter.'
-              : `${chapter.warnings.length} in this chapter.`}
-          </p>
-        </div>
+/**
+ * The Shorts candidates the self-check marked in the selected chapter,
+ * folded away under the editor. A chapter with none shows nothing at all:
+ * the strip is an indicator, and indicating an absence is noise.
+ */
+function ShortsStrip({ shorts }: { shorts: ShortsCandidate[] }) {
+  const [open, setOpen] = React.useState(false)
 
-        <div className="flex flex-col gap-2">
-          <p className="font-medium">Shorts candidates</p>
-          {shorts.length === 0 ? (
-            <p className="text-[var(--color-text-muted)]">None marked in this chapter.</p>
-          ) : (
-            shorts.map((candidate, index) => (
-              <div key={index} className="rounded-[6px] border border-[var(--color-border)] p-2">
-                <p className="text-[var(--color-text-secondary)]">{candidate.hookRationale}</p>
-                <p className="mt-1 text-[12px] text-[var(--color-text-muted)]">
-                  “{candidate.startSentence}” … “{candidate.endSentence}”
-                </p>
-              </div>
-            ))
-          )}
+  if (shorts.length === 0) return null
+
+  return (
+    <section className="rounded-[8px] border border-[var(--color-border)]">
+      <button
+        type="button"
+        onClick={() => setOpen((on) => !on)}
+        aria-expanded={open}
+        className="flex min-h-[44px] w-full items-center gap-2 px-3 py-2 text-left text-[13px] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-accent)]"
+      >
+        {open ? (
+          <ChevronDown className="size-4 shrink-0" aria-hidden />
+        ) : (
+          <ChevronRight className="size-4 shrink-0" aria-hidden />
+        )}
+        <Clapperboard className="size-4 shrink-0 text-[var(--color-text-secondary)]" aria-hidden />
+        <span className="font-medium">
+          {shorts.length} Shorts candidate{shorts.length === 1 ? '' : 's'} in this chapter
+        </span>
+      </button>
+
+      {open ? (
+        <div className="flex flex-col gap-2 p-3 pt-0 text-[13px]">
+          {shorts.map((candidate, index) => (
+            <div key={index} className="rounded-[6px] border border-[var(--color-border)] p-2">
+              <p className="text-[var(--color-text-secondary)]">{candidate.hookRationale}</p>
+              <p className="mt-1 text-[12px] text-[var(--color-text-muted)]">
+                “{candidate.startSentence}” … “{candidate.endSentence}”
+              </p>
+            </div>
+          ))}
         </div>
-      </CardContent>
-    </Card>
+      ) : null}
+    </section>
   )
 }
