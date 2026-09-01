@@ -67,7 +67,10 @@ export function StageBanner({
         </p>
       </div>
 
-      <div className="flex shrink-0 flex-wrap items-center gap-2">
+      {/* min-w-0, never shrink-0: arming the Run-again confirm swaps the
+          button for a sentence, and a container that refuses to shrink lays
+          that sentence out as one line and scrolls the whole page sideways. */}
+      <div className="flex min-w-0 flex-wrap items-center gap-2">
         {canRerun ? (
           <RestartRunButton
             projectId={projectId}

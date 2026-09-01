@@ -382,6 +382,14 @@ test.describe('work built from research that has since been replaced', () => {
     ).toBeVisible()
     await expect(page.getByText(/kept and still readable/i)).toBeVisible()
 
+    // The armed confirm is the longest sentence the banner ever holds, and a
+    // shrink-0 on its container once laid it out as one line and scrolled the
+    // whole page sideways (owner report, 2026-09-01). Wrapping, not scrolling.
+    const overflow = await page.evaluate(
+      () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    )
+    expect(overflow, `armed banner overflows horizontally by ${overflow}px`).toBeLessThanOrEqual(1)
+
     await page.getByRole('button', { name: 'Cancel' }).click()
   })
 
