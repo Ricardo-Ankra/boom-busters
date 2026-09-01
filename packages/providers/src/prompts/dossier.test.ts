@@ -122,6 +122,21 @@ describe('parseClaims', () => {
     expect(parsed?.adjudicated).toBe(false)
   })
 
+  it('folds a variant sourceType label onto the enum instead of failing the pass', () => {
+    // A live run died over three off-enum labels in nineteen claims — the
+    // same demotion-not-rejection rule applies: recognisable variants keep
+    // their strength, anything else lands honestly in "other".
+    const parse = (sourceType: string) =>
+      parseClaims(JSON.stringify({ claims: [{ ...claim, sourceType }] }))[0]?.sourceType
+
+    expect(parse('court_documents')).toBe('court')
+    expect(parse('SEC filing')).toBe('regulator')
+    expect(parse('news_article')).toBe('major_outlet')
+    expect(parse('financial press')).toBe('major_outlet')
+    expect(parse('company_statement')).toBe('other')
+    expect(parse('podcast')).toBe('other')
+  })
+
   it('downgrades a claim whose source is a citation rather than a URL', () => {
     // What a model actually returns when asked for a sourceUrl it does not
     // have: "Munich court judgment, 2021", "FT, June 2020", "N/A".
@@ -192,10 +207,12 @@ describe('parseClaims', () => {
     ).toThrow(ValidationError)
   })
 
-  it('refuses a source type outside the enum', () => {
-    expect(() =>
-      parseClaims(JSON.stringify({ claims: [{ ...claim, sourceType: 'blog' }] })),
-    ).toThrow(ValidationError)
+  it('folds a source type outside the enum to "other" rather than refusing', () => {
+    // Deliberately reversed from refusal: a live run threw away nineteen
+    // paid claims over three variant labels. "other" is the designed
+    // fallback bucket, and refusing was strictness with nothing to protect.
+    const [parsed] = parseClaims(JSON.stringify({ claims: [{ ...claim, sourceType: 'blog' }] }))
+    expect(parsed?.sourceType).toBe('other')
   })
 
   it('refuses an empty claims list', () => {

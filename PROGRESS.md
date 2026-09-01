@@ -3106,6 +3106,19 @@ published and audited. The daily `channels.list` health ping and the
      a CORS rule allowing PUT from the app's origins (the app's R2 token
      cannot manage CORS — set in the Cloudflare dashboard).
 
+206. **A variant sourceType label folds onto the enum, never fails the
+     pass** (2026-09-01, owner bug report: dossier re-run died with
+     "Invalid option" on three of nineteen claims' sourceType). The same
+     demotion-not-rejection rule that already governed sourceUrl and
+     confidence now covers sourceType: recognisable variants keep their
+     strength ("court_documents" → court, "SEC filing" → regulator,
+     "news_article" → major_outlet), anything unrecognisable lands in
+     "other", the designed weakest bucket. Refusing was strictness with
+     nothing to protect — the field drives display and self-check tone,
+     not money or publication — and it threw away a paid research pass
+     over labels. The old "refuses a source type outside the enum" test
+     is deliberately reversed.
+
 **Status:** `[x]` done — dossier + Studio shipped with unit, component and
 e2e coverage; spec §11.3 amended in place with dated notes.
 

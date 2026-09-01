@@ -62,11 +62,54 @@ function usableSourceUrl(value: unknown): string | undefined {
 
 const SourceUrlSchema = z.preprocess(usableSourceUrl, z.string().optional())
 
+/**
+ * Fold the model's sourceType label onto the enum instead of failing on it.
+ *
+ * A live run died with `sourceType: "..."` variants the enum refused — three
+ * labels out of nineteen claims, and the whole paid research pass was thrown
+ * away over them. The label has a designed-in fallback bucket (`other`, the
+ * weakest), so an unrecognised value belongs there, not in a run failure.
+ * Recognisable variants keep their strength: "court_documents" is still a
+ * court source, "SEC filing" still a regulator.
+ */
+function foldSourceType(value: unknown): unknown {
+  if (typeof value !== 'string') return value
+  const folded = value
+    .toLowerCase()
+    .replace(/[^a-z]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+  if ((CLAIM_SOURCE_TYPES as readonly string[]).includes(folded)) return folded
+
+  const words = new Set(folded.split('_'))
+  const has = (...names: string[]) => names.some((name) => words.has(name))
+  if (has('court', 'courts', 'tribunal', 'judgment', 'judgement', 'lawsuit', 'litigation'))
+    return 'court'
+  if (
+    has(
+      'regulator',
+      'regulators',
+      'regulatory',
+      'sec',
+      'fca',
+      'inquiry',
+      'government',
+      'official',
+      'parliament',
+      'parliamentary',
+    )
+  )
+    return 'regulator'
+  if (has('outlet', 'news', 'newspaper', 'press', 'media', 'journalism', 'reporting'))
+    return 'major_outlet'
+  if (has('book', 'books', 'memoir', 'biography')) return 'book'
+  return 'other'
+}
+
 export const DraftClaimSchema = z
   .object({
     text: z.string().trim().min(10).max(1000),
     sourceUrl: SourceUrlSchema,
-    sourceType: ClaimSourceTypeSchema,
+    sourceType: z.preprocess(foldSourceType, ClaimSourceTypeSchema),
     confidence: ClaimConfidenceSchema,
     /**
      * Whether a court or regulator has actually ruled. Drives the self-check
