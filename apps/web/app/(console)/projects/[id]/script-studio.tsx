@@ -136,7 +136,10 @@ export function ScriptStudio({
         ) : null}
       </header>
 
-      <div className="grid gap-3 lg:grid-cols-[200px_1fr]">
+      {/* 260px, not the original 200px: chapter titles were wrapping to three
+          lines beside their runtime and warning counts. The editor still has
+          the room — dropping the context panel freed 280px (decision 197). */}
+      <div className="grid gap-3 lg:grid-cols-[260px_1fr]">
         <ChapterList
           projectId={projectId}
           scriptId={scriptId}
