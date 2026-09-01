@@ -102,8 +102,11 @@ text-to-speech narrator, and punctuation is its pacing:
   stiffly without them.
 - Break any sentence you would have to take a breath in the middle of.
 - Where the delivery needs a deliberate silence — before a reveal, after a
-  number that should land — write [pause] on its own, or [long pause] for real
-  weight. The narrator treats them as intent, not milliseconds.
+  number that should land — write [pause], or [long pause] for real weight,
+  inside the sentence or between sentences of the paragraph. The narrator
+  treats them as intent, not milliseconds. Never write a tag as its own
+  paragraph: a paragraph is one voice take, and a take must contain spoken
+  words — the silence between paragraphs already exists without a tag.
 - Anything in square brackets is a stage direction the narrator acts on but
   never reads aloud. Direct the read inline where a line's delivery is the
   point: [sighs] before the resignation letter, [whispers] for the detail

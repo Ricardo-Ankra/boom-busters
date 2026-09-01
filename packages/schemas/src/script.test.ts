@@ -228,6 +228,37 @@ describe('splitParagraphs and replaceParagraph', () => {
   it('refuses an empty replacement', () => {
     expect(replaceParagraph(chapter, 0, '   ')).toBeUndefined()
   })
+
+  it('drops a block that is only narration tags — a take with no words is a synthesis failure', () => {
+    // The drafter (or a human) wrote `[long pause]` between two paragraphs.
+    // It is direction with nothing to direct: each paragraph is its own TTS
+    // request, so a words-less request can only fail, and the silence between
+    // paragraphs is assembly's job anyway.
+    const tagged = 'The board signed it off.\n\n[long pause]\n\nThe money never existed.'
+    expect(splitParagraphs(tagged)).toEqual([
+      'The board signed it off.',
+      'The money never existed.',
+    ])
+  })
+
+  it('numbers paragraphs identically in replaceParagraph when a tag-only block sits between them', () => {
+    const tagged = 'The board signed it off.\n\n[long pause]\n\nThe money never existed.'
+    // Paragraph 1 is the paragraph splitParagraphs calls 1 — the words after
+    // the tag block, not the tag block itself.
+    expect(replaceParagraph(tagged, 1, 'The money was never there.')).toBe(
+      'The board signed it off.\n\n[long pause]\n\nThe money was never there.',
+    )
+    expect(replaceParagraph(tagged, 2, 'Nope.')).toBeUndefined()
+  })
+
+  it('keeps a paragraph that carries tags alongside its words', () => {
+    const inline = 'Wait. [long pause] Then it fell.'
+    expect(splitParagraphs(inline)).toEqual([inline])
+  })
+
+  it('refuses a replacement that is only tags — the paragraph would vanish and shift every later index', () => {
+    expect(replaceParagraph(chapter, 0, '[sighs] [long pause]')).toBeUndefined()
+  })
 })
 
 describe('narration markup', () => {

@@ -151,6 +151,18 @@ describe('buildChapterRequest', () => {
     expect(request.system).toMatch(/contractions/i)
   })
 
+  /**
+   * A paragraph is one TTS request, so a tag standing alone as its own
+   * paragraph is a request with no words — a guaranteed synthesis failure.
+   * `splitParagraphs` drops such blocks as a backstop, but the drafter should
+   * not write them in the first place; the old wording ("write [pause] on its
+   * own") is exactly what taught it to.
+   */
+  it('forbids a tag as its own paragraph — a take must contain spoken words', () => {
+    expect(request.system).toMatch(/Never write a tag as its own\s+paragraph/)
+    expect(request.system).not.toMatch(/write \[pause\] on its own,/)
+  })
+
   it('gives the outline pass the same voice rules as the chapters', () => {
     // The outline sets each chapter's beat; a beat written for the eye
     // produces chapters written for the eye.

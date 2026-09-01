@@ -3041,6 +3041,22 @@ published and audited. The daily `channels.list` health ping and the
      liability the claims gate exists to stop. Mock mode answers nothing,
      loudly, so no fixture ever looks researched.
 
+202. **A paragraph with no spoken words is not a narration unit**
+     (2026-09-01, owner bug report: a lone `[long pause]` block became its
+     own voice paragraph and failed synthesis forever). Root cause was the
+     drafting prompt itself — "write [pause] on its own" taught the model
+     to put tags on their own line. Three-part fix: the prompt now says a
+     tag is never its own paragraph; `splitParagraphs` drops any block
+     whose `stripNarrationMarkup` form is empty (a paragraph is one TTS
+     request, and a request with no words can only fail — the silence
+     between paragraphs is assembly's gap, not the vendor's); and
+     `replaceParagraph` skips the same blocks when counting and refuses a
+     tag-only replacement, so a Fix-the-words edit cannot make a paragraph
+     vanish and shift every later index. Existing tag-only blocks stay in
+     `contentMd` (visible in the Studio) but never become units; a voice
+     re-run renumbers units past the block and claims fresh takes for the
+     shifted keys, orphaning the stale pending row nothing addresses.
+
 **Status:** `[x]` done — dossier + Studio shipped with unit, component and
 e2e coverage; spec §11.3 amended in place with dated notes.
 

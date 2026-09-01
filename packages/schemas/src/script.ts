@@ -162,12 +162,19 @@ export function splitSentences(text: string): string[] {
  * newline inside a paragraph is a soft wrap, and joining those back into one
  * line matters: narration read aloud must not pause where the markdown happened
  * to wrap.
+ *
+ * A block with no words in it — blank, or nothing but narration tags like a
+ * lone `[long pause]` — is not a paragraph here. A paragraph is one TTS
+ * request, and a request with no words to speak is a synthesis failure, not a
+ * take; the silence *between* paragraphs is assembly's job, not the vendor's.
+ * `replaceParagraph` skips the same blocks so the two never disagree about
+ * which block paragraph 4 is.
  */
 export function splitParagraphs(contentMd: string): string[] {
   return contentMd
     .split(PARAGRAPH_BREAK)
     .map((paragraph) => paragraph.replace(/\s*\r?\n\s*/g, ' ').trim())
-    .filter((paragraph) => paragraph.length > 0)
+    .filter((paragraph) => stripNarrationMarkup(paragraph) !== '')
 }
 
 // ---------------------------------------------------------------------------
@@ -268,7 +275,10 @@ const PARAGRAPH_BREAK_KEEPING_SEPARATORS = /(\r?\n\s*\r?\n)/
  * A replacement containing a blank line is refused for the same reason spec §7
  * calls paragraph indexes stable: it would split one paragraph into two, shift
  * every index after it in the chapter, and orphan the takes addressed by them.
- * Splitting a paragraph is a script edit, not a re-read.
+ * Splitting a paragraph is a script edit, not a re-read. A replacement with no
+ * words — nothing, or nothing but tags — is refused for the mirror reason: it
+ * would make the paragraph vanish from `splitParagraphs` and shift every later
+ * index the other way.
  */
 export function replaceParagraph(
   contentMd: string,
@@ -276,16 +286,18 @@ export function replaceParagraph(
   replacement: string,
 ): string | undefined {
   if (index < 0 || !Number.isInteger(index)) return undefined
-  if (replacement.trim() === '') return undefined
+  if (stripNarrationMarkup(replacement) === '') return undefined
   if (PARAGRAPH_BREAK.test(replacement)) return undefined
 
   const parts = contentMd.split(PARAGRAPH_BREAK_KEEPING_SEPARATORS)
   let seen = -1
 
   // Even positions hold blocks, odd positions the separators between them.
+  // Word-less blocks are skipped exactly as `splitParagraphs` skips them, so
+  // `index` names the same paragraph in both.
   for (let i = 0; i < parts.length; i += 2) {
     const block = parts[i] ?? ''
-    if (block.trim() === '') continue
+    if (stripNarrationMarkup(block) === '') continue
 
     seen += 1
     if (seen !== index) continue
