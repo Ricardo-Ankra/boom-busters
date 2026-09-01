@@ -1,18 +1,30 @@
-import { CaseBriefSchema, ClaimsSchema, ResearchTimelineSchema } from '@boom-busters/schemas'
-import type { CaseBrief, DraftClaim, TimelineEvent } from '@boom-busters/schemas'
+import {
+  CaseBriefSchema,
+  ClaimsSchema,
+  ResearchAnswersSchema,
+  ResearchTimelineSchema,
+} from '@boom-busters/schemas'
+import type {
+  CaseBrief,
+  DraftClaim,
+  ResearchAnswer,
+  ResearchAnswers,
+  TimelineEvent,
+} from '@boom-busters/schemas'
 import { parseJsonCompletion } from './json'
 import { outputBudget } from '../llm/types'
 import type { LLMTaskRequest } from '../llm/types'
 
 /**
- * The dossier-runner's three research passes (build spec section 7.1):
- * case brief → timeline of events → claims extraction with sources.
+ * The dossier-runner's four research passes (build spec section 7.1, amended
+ * by decision 201): case brief → timeline of events → claims extraction with
+ * sources → the brief's open questions, answered.
  *
- * Three passes rather than one, for a reason that survives contact with real
- * output: asking for a brief, a timeline and forty sourced claims in a single
- * completion reliably produces a good brief and a lazy claims list. Each pass
- * also becomes its own `step.run()`, so a failure in claims extraction does not
- * re-run and re-charge the brief.
+ * Separate passes rather than one, for a reason that survives contact with
+ * real output: asking for a brief, a timeline and forty sourced claims in a
+ * single completion reliably produces a good brief and a lazy claims list.
+ * Each pass also becomes its own `step.run()`, so a failure in claims
+ * extraction does not re-run and re-charge the brief.
  */
 
 const HOUSE_RULES = `You research corporate collapses, frauds and meltdowns for
@@ -147,6 +159,64 @@ export function parseClaims(text: string): DraftClaim[] {
 }
 
 // ---------------------------------------------------------------------------
+// Pass 4 — answering the open questions
+// ---------------------------------------------------------------------------
+
+/**
+ * The brief is allowed to raise questions; the dossier is not allowed to
+ * stop there (decision 201). A question left open in the document is the
+ * part a script will either dodge or improvise, so a fourth pass makes the
+ * researcher sit with its own list and answer from the record. `null` stays
+ * legal — "the record does not say" is a finding, and the alternative is an
+ * invention narrated over footage.
+ */
+export function buildAnswersRequest(
+  input: CaseContext,
+  brief: CaseBrief,
+  timeline: readonly TimelineEvent[],
+): LLMTaskRequest {
+  return {
+    task: 'research',
+    system: `${HOUSE_RULES}
+
+Your brief raised open questions. A dossier with open questions is not a
+finished brief — answer each one from the record now:
+{"answers": [{"question": string, "answer": string|null, "sourceUrl": string}],
+ "claims": [{"text": string, "sourceUrl": string,
+  "sourceType": "court"|"regulator"|"major_outlet"|"book"|"other",
+  "confidence": "sourced"|"single_source"|"unverified",
+  "adjudicated": boolean}]}
+
+- Answer from what was reported, found or ruled — inquiry reports, regulator
+  findings, court records, major-outlet reporting — with the same sourcing
+  discipline as everything else. "sourceUrl" points at where the answer lives.
+- Any factual assertion inside an answer that a script might narrate must ALSO
+  appear in "claims", with its own source and confidence — an answer is not a
+  side channel around the claim list.
+- Where the record genuinely does not answer the question — unreported,
+  sealed, still before a court — set "answer" to null. An honest null is shown
+  to the human as still open; an invented answer is a liability read aloud.
+- Repeat each question exactly as it was put.`,
+    messages: [
+      { role: 'user', content: caseHeader(input) },
+      { role: 'assistant', content: JSON.stringify({ brief, timeline }) },
+      {
+        role: 'user',
+        content: `Answer the open questions:\n${brief.openQuestions
+          .map((question) => `- ${question}`)
+          .join('\n')}`,
+      },
+    ],
+    cacheablePrefixMessages: 1,
+    maxTokens: outputBudget(8000),
+  }
+}
+
+export function parseAnswers(text: string): ResearchAnswers {
+  return parseJsonCompletion(text, ResearchAnswersSchema, 'answers')
+}
+
+// ---------------------------------------------------------------------------
 // The dossier document
 // ---------------------------------------------------------------------------
 
@@ -163,6 +233,12 @@ export function renderDossierMarkdown(input: {
   brief: CaseBrief
   timeline: readonly TimelineEvent[]
   claims: readonly DraftClaim[]
+  /**
+   * The fourth pass's output. Absent (old dossiers, tests of the three-pass
+   * shape) the open questions render as before; present, each question
+   * renders answered where it was, and only the honest nulls stay open.
+   */
+  answers?: readonly ResearchAnswer[]
 }): string {
   const lines: string[] = [`# ${input.caseTitle}`, '', '## Summary', '', input.brief.summary, '']
 
@@ -185,12 +261,44 @@ export function renderDossierMarkdown(input: {
   lines.push('')
 
   if (input.brief.openQuestions.length > 0) {
-    // Deliberately in the document, not only in a side panel. What the
-    // research could not establish is the part most likely to be written
-    // around confidently if nobody sees it.
-    lines.push('## Open questions', '')
-    for (const question of input.brief.openQuestions) lines.push(`- ${question}`)
-    lines.push('')
+    // Matched loosely: the answers pass is told to repeat each question
+    // verbatim, but a model trims trailing punctuation often enough that an
+    // exact-string match would misfile real answers as unanswered.
+    const fold = (text: string) =>
+      text
+        .toLowerCase()
+        .replace(/[^\p{L}\p{N}]+/gu, ' ')
+        .trim()
+    const answered = new Map(
+      (input.answers ?? [])
+        .filter((answer) => answer.answer !== null)
+        .map((answer) => [fold(answer.question), answer]),
+    )
+
+    const resolved = input.brief.openQuestions
+      .map((question) => answered.get(fold(question)))
+      .filter((answer): answer is ResearchAnswer => answer !== undefined)
+    const open = input.brief.openQuestions.filter((question) => !answered.has(fold(question)))
+
+    if (resolved.length > 0) {
+      lines.push('## Questions the research answered', '')
+      for (const answer of resolved) {
+        lines.push(
+          `- **${answer.question}** — ${answer.answer}` +
+            `${answer.sourceUrl ? ` ([source](${answer.sourceUrl}))` : ''}`,
+        )
+      }
+      lines.push('')
+    }
+
+    if (open.length > 0) {
+      // Deliberately in the document, not only in a side panel. What the
+      // research could not establish is the part most likely to be written
+      // around confidently if nobody sees it.
+      lines.push('## Open questions', '')
+      for (const question of open) lines.push(`- ${question}`)
+      lines.push('')
+    }
   }
 
   const unverified = input.claims.filter((claim) => claim.confidence === 'unverified')
@@ -233,6 +341,19 @@ export function mockTimeline(): TimelineEvent[] {
     { when: 'Mock date 1', what: 'A placeholder event that did not happen.' },
     { when: 'Mock date 2', what: 'A second placeholder event that also did not happen.' },
   ]
+}
+
+/**
+ * Mock answers: every question honestly unanswered, because mock mode
+ * researches nothing and an answered-looking mock is one somebody will
+ * eventually approve by accident. The answered path is exercised by unit
+ * tests, not by the fixture.
+ */
+export function mockAnswers(brief: CaseBrief): ResearchAnswers {
+  return {
+    answers: brief.openQuestions.map((question) => ({ question, answer: null })),
+    claims: [],
+  }
 }
 
 export function mockClaims(): DraftClaim[] {

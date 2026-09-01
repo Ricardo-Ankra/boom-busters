@@ -117,6 +117,7 @@ export const dossierRunner = inngest.createFunction(
           brief: research.brief,
           timeline: research.timeline,
           claims: research.claims,
+          answers: research.answers,
         }),
         claims: research.claims.map((claim) => ({
           text: claim.text,

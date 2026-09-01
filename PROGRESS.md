@@ -2934,6 +2934,12 @@ published and audited. The daily `channels.list` health ping and the
       `reschedulePublish` re-points the YouTube `publishAt` then the row;
       the screen offers "Move the slot" on scheduled items and "Move here"
       on empty matching slots, drag included. Live items refuse.
+- [x] The dossier answers its own open questions (owner request,
+      2026-09-01): a fourth research pass takes the brief's open questions
+      and answers each from the record before the dossier lands; answered
+      questions render as "Questions the research answered" with sources,
+      facts surfaced while answering join the claim list, and only honest
+      nulls remain under "Open questions".
 - [x] Claims carry their source URL even at low confidence (owner report,
       2026-09-01): the extraction prompt no longer couples confidence to
       having the exact article link — outlet-level URLs are the named
@@ -3018,6 +3024,22 @@ published and audited. The daily `channels.list` health ping and the
      not a source, and a scrubbed link demotes the claim honestly. Net
      effect: fewer false blockers, and the ones that remain carry a
      starting point for the verify flow.
+
+201. **The dossier answers its own open questions** (2026-09-01, owner
+     request: "the Dossier should be a complete brief"). A fourth research
+     pass — `research-answers-{round}`, shared by runner and reviser via
+     `researchDossier`, skipped when the brief raised nothing — puts the
+     brief's open questions back to the model with the timeline in hand.
+     Each answer needs a source; any narratable fact inside an answer must
+     ALSO appear in the claims output (an answer is prose, only claims are
+     gated), and those claims merge into the list deduplicated by
+     normalised text. The one thing the owner's "no open questions" did
+     not get: `answer: null` stays legal, rendered under a now-smaller
+     "Open questions" section, because the record genuinely does not
+     answer some questions (sealed, unreported, before a court) and a
+     model forced to answer anyway would invent — which is the exact
+     liability the claims gate exists to stop. Mock mode answers nothing,
+     loudly, so no fixture ever looks researched.
 
 **Status:** `[x]` done — dossier + Studio shipped with unit, component and
 e2e coverage; spec §11.3 amended in place with dated notes.

@@ -131,6 +131,33 @@ export const ClaimsSchema = z.object({
 })
 
 /**
+ * The fourth research pass: the brief's open questions, answered (decision
+ * 201). `answer: null` is a first-class value — "the record does not say" is
+ * an honest finding, and forcing a string here would force an invention. An
+ * answer under ten characters is treated the same way: "unknown" and "n/a"
+ * are refusals wearing a string type.
+ */
+export const ResearchAnswerSchema = z.object({
+  question: z.string().trim().min(10).max(1000),
+  answer: z.preprocess(
+    (value) => (typeof value === 'string' && value.trim().length >= 10 ? value.trim() : null),
+    z.string().max(3000).nullable(),
+  ),
+  sourceUrl: SourceUrlSchema,
+})
+export type ResearchAnswer = z.infer<typeof ResearchAnswerSchema>
+
+export const ResearchAnswersSchema = z.object({
+  answers: z.array(ResearchAnswerSchema).max(40),
+  /**
+   * Facts surfaced while answering, in the same shape as the claims pass —
+   * an answer the script might narrate must be checkable the same way.
+   */
+  claims: z.array(DraftClaimSchema).max(40).default([]),
+})
+export type ResearchAnswers = z.infer<typeof ResearchAnswersSchema>
+
+/**
  * How many claims may be unsourced before the dossier is not worth reviewing.
  *
  * Not a hard failure — the review UI exists precisely so a human can verify or

@@ -1,17 +1,26 @@
 import { budgetGateData } from './gates'
 import {
+  buildAnswersRequest,
   buildBriefRequest,
   buildClaimsRequest,
   buildTimelineRequest,
+  mockAnswers,
   mockBrief,
   mockClaims,
   mockTimeline,
+  parseAnswers,
   parseBrief,
   parseClaims,
   parseTimeline,
   mockProvidersEnabled,
 } from '@boom-busters/providers'
-import type { CaseBrief, DraftClaim, TimelineEvent } from '@boom-busters/schemas'
+import type {
+  CaseBrief,
+  DraftClaim,
+  ResearchAnswer,
+  ResearchAnswers,
+  TimelineEvent,
+} from '@boom-busters/schemas'
 import {
   BudgetExceededError,
   UNVERIFIED_CLAIM_WARNING_RATIO,
@@ -25,7 +34,7 @@ import type { inngest } from '../client'
 type StepTools = GetStepTools<typeof inngest>
 
 /**
- * The three research passes, shared by `dossier-runner` and `dossier-reviser`
+ * The four research passes, shared by `dossier-runner` and `dossier-reviser`
  * so a revision is researched exactly the way the first pass was.
  *
  * Everything crossing a step boundary here is plain JSON. Inngest serialises
@@ -46,6 +55,8 @@ export interface ResearchResult {
   brief: CaseBrief
   timeline: TimelineEvent[]
   claims: DraftClaim[]
+  /** Pass 4's output (decision 201): the open questions, answered or null. */
+  answers: ResearchAnswer[]
   /** Set when a cap would be crossed; the caller parks on the budget gate. */
   budgetGate?: Record<string, unknown>
 }
@@ -153,11 +164,60 @@ export async function researchDossier(
   )
   if (!claims.ok) return { ...empty(), budgetGate: claims.gate }
 
-  return { brief: brief.value, timeline: timeline.value, claims: claims.value }
+  // Pass 4 (decision 201): the brief's own open questions, answered from the
+  // record before the dossier lands. Skipped entirely when the brief raised
+  // none — there is nothing to spend on.
+  if (brief.value.openQuestions.length === 0) {
+    return { brief: brief.value, timeline: timeline.value, claims: claims.value, answers: [] }
+  }
+
+  const answers = await step.run(
+    `research-answers-${round}`,
+    async (): Promise<Guarded<ResearchAnswers>> => {
+      if (mocked) return { ok: true, value: mockAnswers(brief.value) }
+      return guarded(async () =>
+        parseAnswers(
+          (
+            await callLlm(buildAnswersRequest(caseContext, brief.value, timeline.value), {
+              projectId,
+            })
+          ).text,
+        ),
+      )
+    },
+  )
+  if (!answers.ok) return { ...empty(), budgetGate: answers.gate }
+
+  return {
+    brief: brief.value,
+    timeline: timeline.value,
+    // Facts surfaced while answering join the claim list, minus any the
+    // claims pass already extracted — the model repeats itself often enough
+    // that without this the review screen would show the same assertion as
+    // two rows to triage twice.
+    claims: [...claims.value, ...dedupeAgainst(claims.value, answers.value.claims)],
+    answers: answers.value.answers,
+  }
+}
+
+/** Answer-pass claims minus the ones the claims pass already produced. */
+function dedupeAgainst(existing: readonly DraftClaim[], candidates: readonly DraftClaim[]) {
+  const fold = (text: string) =>
+    text
+      .toLowerCase()
+      .replace(/[^\p{L}\p{N}]+/gu, ' ')
+      .trim()
+  const seen = new Set(existing.map((claim) => fold(claim.text)))
+  return candidates.filter((claim) => {
+    const key = fold(claim.text)
+    if (seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
 }
 
 function empty(): ResearchResult {
-  return { brief: EMPTY_BRIEF, timeline: [], claims: [] }
+  return { brief: EMPTY_BRIEF, timeline: [], claims: [], answers: [] }
 }
 
 /** The one-line context the gate card shows (spec section 11.3). */

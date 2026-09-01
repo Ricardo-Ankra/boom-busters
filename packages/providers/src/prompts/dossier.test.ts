@@ -1,12 +1,15 @@
 import { ValidationError } from '@boom-busters/schemas'
 import { describe, expect, it } from 'vitest'
 import {
+  buildAnswersRequest,
   buildBriefRequest,
   buildClaimsRequest,
   buildTimelineRequest,
+  mockAnswers,
   mockBrief,
   mockClaims,
   mockTimeline,
+  parseAnswers,
   parseBrief,
   parseClaims,
   parseTimeline,
@@ -247,6 +250,77 @@ describe('parseBrief and parseTimeline', () => {
   })
 })
 
+describe('the answers pass (decision 201)', () => {
+  const request = buildAnswersRequest(caseContext, brief, [])
+
+  it('routes at the research task with the case header cacheable', () => {
+    expect(request.task).toBe('research')
+    expect(request.cacheablePrefixMessages).toBe(1)
+  })
+
+  it('puts the open questions to the model, verbatim', () => {
+    expect(JSON.stringify(request.messages)).toContain('What did the board know in 1999?')
+  })
+
+  it('makes the honest null legal and the invented answer not', () => {
+    expect(request.system).toMatch(/set "answer" to null/)
+    expect(request.system).toMatch(/an invented answer is a liability/)
+    expect(request.system).toMatch(/Never invent a URL/)
+  })
+
+  it('routes narratable facts through the claim list, not around it', () => {
+    // An answer is prose in the document; only claims are gated, sourced and
+    // referenced by the script. An answer that bypassed the list would be an
+    // unchecked assertion wearing a heading.
+    expect(request.system).toMatch(/must ALSO\s+appear in "claims"/)
+  })
+
+  it('parses answers, folding a refusal-as-string into the null it is', () => {
+    const parsed = parseAnswers(
+      JSON.stringify({
+        answers: [
+          {
+            question: 'What did the board know in 1999?',
+            answer: 'The 2002 Powers report found the board approved the structures.',
+            sourceUrl: 'https://example.com/powers-report',
+          },
+          { question: 'Why was it liquidation, not administration?', answer: 'unknown' },
+        ],
+      }),
+    )
+    expect(parsed.answers[0]?.answer).toContain('Powers report')
+    expect(parsed.answers[1]?.answer).toBeNull()
+    expect(parsed.claims).toEqual([])
+  })
+
+  it('holds answer-pass claims to the same rules as the claims pass', () => {
+    const parsed = parseAnswers(
+      JSON.stringify({
+        answers: [],
+        claims: [
+          {
+            text: 'The Powers report was published in February 2002.',
+            sourceUrl: 'https://www.google.com/search?q=powers+report',
+            sourceType: 'other',
+            confidence: 'single_source',
+            adjudicated: false,
+          },
+        ],
+      }),
+    )
+    // The search link is scrubbed and the claim demoted, exactly as in pass 3.
+    expect(parsed.claims[0]?.sourceUrl).toBeUndefined()
+    expect(parsed.claims[0]?.confidence).toBe('unverified')
+  })
+
+  it('mock mode answers nothing, loudly', () => {
+    const mocked = mockAnswers(brief)
+    expect(mocked.answers).toHaveLength(1)
+    expect(mocked.answers[0]?.answer).toBeNull()
+    expect(mocked.claims).toEqual([])
+  })
+})
+
 describe('renderDossierMarkdown', () => {
   const rendered = renderDossierMarkdown({
     caseTitle: 'Enron',
@@ -270,11 +344,52 @@ describe('renderDossierMarkdown', () => {
     expect(rendered).toContain('([source](https://example.com))')
   })
 
-  it('puts open questions in the document, not only in a side panel', () => {
+  it('puts open questions in the document when no answers pass ran', () => {
     // What the research could not establish is the part most likely to be
     // written around confidently if nobody sees it.
     expect(rendered).toContain('## Open questions')
     expect(rendered).toContain('What did the board know in 1999?')
+  })
+
+  it('renders an answered question as answered, and only nulls stay open', () => {
+    const withAnswers = renderDossierMarkdown({
+      caseTitle: 'Enron',
+      brief: { ...brief, openQuestions: ['What did the board know in 1999?', 'Who leaked it?'] },
+      timeline: [],
+      claims: [],
+      answers: [
+        {
+          question: 'What did the board know in 1999.', // punctuation drift tolerated
+          answer: 'The Powers report found the board approved the structures.',
+          sourceUrl: 'https://example.com/powers-report',
+        },
+        { question: 'Who leaked it?', answer: null },
+      ],
+    })
+
+    expect(withAnswers).toContain('## Questions the research answered')
+    expect(withAnswers).toContain('Powers report')
+    expect(withAnswers).toContain('([source](https://example.com/powers-report))')
+    expect(withAnswers).toContain('## Open questions')
+    expect(withAnswers).toContain('- Who leaked it?')
+    expect(withAnswers).not.toContain('- What did the board know in 1999?')
+  })
+
+  it('drops the Open questions section entirely when every question is answered', () => {
+    const complete = renderDossierMarkdown({
+      caseTitle: 'Enron',
+      brief,
+      timeline: [],
+      claims: [],
+      answers: [
+        {
+          question: 'What did the board know in 1999?',
+          answer: 'It approved the structures, per the Powers report.',
+        },
+      ],
+    })
+    expect(complete).toContain('## Questions the research answered')
+    expect(complete).not.toContain('## Open questions')
   })
 
   it('says how many claims are unverified and why it matters', () => {
