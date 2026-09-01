@@ -147,4 +147,61 @@ test.describe('the publish flow', () => {
       await expect(page.getByText(/goes public/i).first()).toBeVisible({ timeout: 5_000 })
     }).toPass({ timeout: 30_000 })
   })
+
+  test('a scheduled item can be moved to a different slot, and the move survives reload', async ({
+    page,
+  }) => {
+    // The runner never runs here (no Inngest Dev Server), so the previous
+    // test's record parked at draft-with-slot. Promote it to what the runner
+    // would have left — scheduled, with a video id — the only state the
+    // Move buttons appear for.
+    await markShortScheduled()
+    await page.reload()
+
+    const moment = page.getByText(/goes public/i).first()
+    await expect(moment).toBeVisible()
+    const before = await moment.textContent()
+
+    // Arm the scheduled item, then press an empty slot of its format. Its
+    // own slot shows the title and offers nothing — nowhere to move to.
+    await page.getByRole('button', { name: 'Move the slot' }).click()
+    await page.getByRole('button', { name: 'Move here' }).first().click()
+    await expect(page.getByText(/it goes public at the new time/i).first()).toBeVisible({
+      timeout: 15_000,
+    })
+
+    // Persisted, not optimistic theatre: the new moment survives a reload
+    // and the item still wears its Scheduled chip.
+    await expect(async () => {
+      await page.reload()
+      const after = await page
+        .getByText(/goes public/i)
+        .first()
+        .textContent({ timeout: 5_000 })
+      expect(after).not.toBe(before)
+      await expect(page.getByText('Scheduled', { exact: true }).first()).toBeVisible()
+    }).toPass({ timeout: 30_000 })
+  })
 })
+
+/**
+ * Flip the Short the schedule test parked at draft-with-slot to the state a
+ * completed upload leaves behind. Direct DB, same pattern as
+ * `touchQueuedProject`: `scheduled` is unreachable through the UI without a
+ * live orchestrator, and moving a slot is exactly the feature that only
+ * exists for that state.
+ */
+async function markShortScheduled(): Promise<void> {
+  const { createDb } = await import('@boom-busters/db')
+  const { e2eDatabaseUrl } = await import('../database')
+
+  const connection = createDb(e2eDatabaseUrl(), { max: 1 })
+  try {
+    await connection.sql`
+      update publish_records
+      set status = 'scheduled', youtube_video_id = 'mock-e2e-moved'
+      where status = 'draft' and publish_at is not null`
+  } finally {
+    await connection.sql.end({ timeout: 5 })
+  }
+}

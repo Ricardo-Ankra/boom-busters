@@ -9,8 +9,10 @@ import {
   getShort,
   hasLiveRun,
   latestRender,
+  recordVerifyResult,
   setProjectStage,
   updatePublishRecord,
+  youtubeRefreshToken,
 } from '@boom-busters/db'
 import type { PublishRecordRow } from '@boom-busters/db'
 import {
@@ -28,6 +30,8 @@ import {
 import { revalidatePath } from 'next/cache'
 import { auth } from '@/auth'
 import { db } from '@/lib/db'
+import { env } from '@/lib/env'
+import { movePublishAt, refreshAccessToken, YoutubeAuthError } from '@/lib/youtube'
 import { callLlm } from '@/lib/llm'
 import { descriptionIngredients } from '@/lib/publish-review'
 import { deleteObject, putObject, R2_PREFIX, storageConfigured } from '@/lib/storage'
@@ -401,6 +405,85 @@ export async function schedulePublish(
   }
 
   revalidatePath(`/projects/${projectId}`)
+  return { ok: true }
+}
+
+/**
+ * Move an already-scheduled video to a different slot.
+ *
+ * Scheduling put the video on YouTube as private with a `publishAt`;
+ * nothing about that is final until the moment arrives, and YouTube lets
+ * `videos.update` move it. So "once it's set it's set" was a gap, not a
+ * rule: this action re-points the video's publish moment and then the row,
+ * in that order — the row only says what YouTube has already accepted.
+ * Live videos stay refusable: a public video has no moment left to move.
+ */
+export async function reschedulePublish(
+  targetType: string,
+  targetId: string,
+  publishAtIso: string,
+): Promise<ActionResult> {
+  await requireOwner()
+  const invalid = parseTarget(targetType, targetId)
+  if (invalid) return invalid
+  const type = targetType as 'master' | 'short'
+
+  const projectId = await projectIdOf(type, targetId)
+  if (!projectId) return { ok: false, error: 'Unknown target' }
+
+  const publishAt = new Date(publishAtIso)
+  if (Number.isNaN(publishAt.getTime())) return { ok: false, error: 'That is not a date.' }
+  if (publishAt.getTime() <= Date.now()) {
+    return { ok: false, error: 'That slot is in the past — pick one ahead of now.' }
+  }
+
+  const record = await getPublishRecord(db, type, targetId)
+  if (!record) return { ok: false, error: 'Nothing has been scheduled for this item yet.' }
+  if (record.status !== 'scheduled') {
+    return {
+      ok: false,
+      error:
+        record.status === 'live'
+          ? 'This video is already public — there is no moment left to move.'
+          : record.status === 'uploading' || record.status === 'uploaded'
+            ? 'The upload is still finishing — move it once it reads Scheduled.'
+            : 'This item is not scheduled yet — use a slot button to schedule it.',
+    }
+  }
+  if (!record.youtubeVideoId) {
+    return { ok: false, error: 'The record has no YouTube video id — retry the upload instead.' }
+  }
+
+  if (!mockProvidersEnabled()) {
+    const refreshToken = await youtubeRefreshToken(db, env.SECRETS_ENCRYPTION_KEY)
+    if (!refreshToken) {
+      return { ok: false, error: 'YouTube is not connected — Settings → Connections.' }
+    }
+
+    let accessToken: string
+    try {
+      accessToken = (await refreshAccessToken(refreshToken)).accessToken
+    } catch (error) {
+      if (error instanceof YoutubeAuthError && error.needsReconnect) {
+        await recordVerifyResult(db, 'youtube', 'invalid')
+        return {
+          ok: false,
+          error: 'YouTube no longer honours the stored consent — reconnect in Settings.',
+        }
+      }
+      return { ok: false, error: 'Could not reach YouTube to move the slot. Try again.' }
+    }
+
+    const moved = await movePublishAt(accessToken, record.youtubeVideoId, publishAt.toISOString())
+    if (!moved.ok) return { ok: false, error: moved.error ?? 'YouTube refused the new moment.' }
+  }
+
+  // Only after YouTube accepted (or in mock mode, where nothing is real):
+  // the row must never claim a moment the platform does not hold.
+  await updatePublishRecord(db, record.id, { publishAt })
+
+  revalidatePath(`/projects/${projectId}`)
+  revalidatePath('/calendar')
   return { ok: true }
 }
 

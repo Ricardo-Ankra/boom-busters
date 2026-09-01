@@ -21,6 +21,7 @@ vi.mock('../actions', () => ({
 
 const generateTitles = vi.fn()
 const removeThumbnail = vi.fn()
+const reschedulePublish = vi.fn()
 const retryPublish = vi.fn()
 const savePublishDraft = vi.fn()
 const schedulePublish = vi.fn()
@@ -28,6 +29,7 @@ const uploadThumbnail = vi.fn()
 vi.mock('./publish-actions', () => ({
   generateTitles: (...args: unknown[]) => generateTitles(...args),
   removeThumbnail: (...args: unknown[]) => removeThumbnail(...args),
+  reschedulePublish: (...args: unknown[]) => reschedulePublish(...args),
   retryPublish: (...args: unknown[]) => retryPublish(...args),
   savePublishDraft: (...args: unknown[]) => savePublishDraft(...args),
   schedulePublish: (...args: unknown[]) => schedulePublish(...args),
@@ -45,6 +47,7 @@ beforeEach(() => {
   for (const action of [
     generateTitles,
     removeThumbnail,
+    reschedulePublish,
     retryPublish,
     savePublishDraft,
     schedulePublish,
@@ -341,5 +344,68 @@ describe('PublishScreen', () => {
     expect(screen.getByText(/goes public/i)).toBeInTheDocument()
     // The occupied slot on the calendar wears the item too.
     expect(screen.getAllByText('How Wirecard Fell').length).toBeGreaterThanOrEqual(1)
+  })
+
+  it('a scheduled item can be moved: arm it, press an empty slot, new ISO through', async () => {
+    const user = userEvent.setup()
+    renderScreen({
+      items: [
+        masterItem({
+          record: {
+            id: '01HQ00000000000000000000P1',
+            status: 'scheduled',
+            publishAtIso: '2026-08-28T15:00:00.000Z',
+            youtubeVideoId: 'dQw4w9WgXcQ',
+            errorMessage: null,
+            title: 'How Wirecard Fell',
+            titleOptions: [],
+            descriptionBody: null,
+            tags: [],
+            thumbs: [],
+          },
+        }),
+      ],
+    })
+
+    // Nothing is armed yet, so no slot offers a move.
+    expect(screen.queryByRole('button', { name: 'Move here' })).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Move the slot' }))
+    const slots = screen.getAllByRole('button', { name: 'Move here' })
+    expect(slots.length).toBeGreaterThan(0)
+    await user.click(slots[0]!)
+
+    expect(reschedulePublish).toHaveBeenCalledTimes(1)
+    expect(schedulePublish).not.toHaveBeenCalled()
+    const [targetType, targetId, iso] = reschedulePublish.mock.calls[0] as [string, string, string]
+    expect(targetType).toBe('master')
+    expect(targetId).toBe(PROJECT)
+    // A real future instant on the configured long-form slot: Friday 15:00 UTC.
+    const at = new Date(iso)
+    expect(at.getTime()).toBeGreaterThan(Date.now())
+    expect(at.getUTCDay()).toBe(5)
+    expect(at.getUTCHours()).toBe(15)
+  })
+
+  it('a live item offers no move — there is no moment left to change', () => {
+    renderScreen({
+      items: [
+        masterItem({
+          record: {
+            id: '01HQ00000000000000000000P1',
+            status: 'live',
+            publishAtIso: '2026-08-28T15:00:00.000Z',
+            youtubeVideoId: 'dQw4w9WgXcQ',
+            errorMessage: null,
+            title: 'How Wirecard Fell',
+            titleOptions: [],
+            descriptionBody: null,
+            tags: [],
+            thumbs: [],
+          },
+        }),
+      ],
+    })
+    expect(screen.queryByRole('button', { name: 'Move the slot' })).not.toBeInTheDocument()
   })
 })

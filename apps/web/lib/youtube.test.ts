@@ -3,6 +3,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   exchangeCode,
+  movePublishAt,
   pingChannel,
   refreshAccessToken,
   YOUTUBE_SCOPES,
@@ -140,5 +141,69 @@ describe('pingChannel', () => {
     fetchMock.mockResolvedValue(jsonResponse(403, { error: { message: 'Access Not Configured.' } }))
     const ping = await pingChannel('ya29.access')
     expect(ping).toEqual({ ok: false, error: 'Access Not Configured.' })
+  })
+})
+
+describe('movePublishAt', () => {
+  const CURRENT_STATUS = {
+    privacyStatus: 'private',
+    publishAt: '2026-09-04T15:00:00.000Z',
+    selfDeclaredMadeForKids: false,
+    embeddable: true,
+    license: 'youtube',
+  }
+
+  it('reads the whole status first and writes it back with only the moment changed', async () => {
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse(200, { items: [{ status: CURRENT_STATUS }] }))
+      .mockResolvedValueOnce(jsonResponse(200, { id: 'vid-1' }))
+
+    const moved = await movePublishAt('ya29.access', 'vid-1', '2026-09-11T15:00:00.000Z')
+
+    expect(moved).toEqual({ ok: true })
+    const [readUrl] = fetchMock.mock.calls[0] as [string]
+    expect(readUrl).toContain('part=status')
+    expect(readUrl).toContain('id=vid-1')
+
+    const [writeUrl, writeInit] = fetchMock.mock.calls[1] as [string, RequestInit]
+    expect(writeUrl).toContain('part=status')
+    expect(writeInit.method).toBe('PUT')
+    // The read-back status travels whole: a bare {publishAt} would reset
+    // embeddability, licence and the made-for-kids declaration to defaults.
+    expect(JSON.parse(writeInit.body as string)).toEqual({
+      id: 'vid-1',
+      status: { ...CURRENT_STATUS, publishAt: '2026-09-11T15:00:00.000Z' },
+    })
+  })
+
+  it('refuses a video that is already public — nothing is written', async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse(200, { items: [{ status: { privacyStatus: 'public' } }] }),
+    )
+
+    const moved = await movePublishAt('ya29.access', 'vid-1', '2026-09-11T15:00:00.000Z')
+
+    expect(moved.ok).toBe(false)
+    expect(moved.error).toContain('already public')
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('a video deleted in Studio is a stated failure, not a crash', async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse(200, { items: [] }))
+
+    const moved = await movePublishAt('ya29.access', 'vid-gone', '2026-09-11T15:00:00.000Z')
+
+    expect(moved.ok).toBe(false)
+    expect(moved.error).toContain('no longer knows this video')
+  })
+
+  it('surfaces the API error message on a refused update', async () => {
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse(200, { items: [{ status: CURRENT_STATUS }] }))
+      .mockResolvedValueOnce(jsonResponse(403, { error: { message: 'The request is forbidden.' } }))
+
+    const moved = await movePublishAt('ya29.access', 'vid-1', '2026-09-11T15:00:00.000Z')
+
+    expect(moved).toEqual({ ok: false, error: 'The request is forbidden.' })
   })
 })

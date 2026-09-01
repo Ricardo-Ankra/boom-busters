@@ -162,6 +162,65 @@ export async function setThumbnail(
 }
 
 /**
+ * Move a scheduled video to a new publish moment (`videos.update`,
+ * part=status). Read-then-write, not a blind PUT: an update replaces the
+ * whole status object, so writing only `publishAt` would silently reset
+ * embeddability, licence and the made-for-kids declaration to defaults.
+ * The read also lets this refuse honestly — a video that is already public
+ * cannot be re-scheduled, only edited in Studio.
+ */
+export async function movePublishAt(
+  accessToken: string,
+  videoId: string,
+  publishAtIso: string,
+): Promise<{ ok: boolean; error?: string }> {
+  const readParams = new URLSearchParams({ part: 'status', id: videoId })
+  const read = await fetch(
+    `https://www.googleapis.com/youtube/v3/videos?${readParams.toString()}`,
+    {
+      headers: { authorization: `Bearer ${accessToken}` },
+    },
+  )
+  const current = (await read.json().catch(() => ({}))) as {
+    items?: { status?: Record<string, unknown> }[]
+    error?: { message?: string }
+  }
+  if (!read.ok) {
+    return {
+      ok: false,
+      error: current.error?.message ?? `videos.list answered ${read.status}`,
+    }
+  }
+  const status = current.items?.[0]?.status
+  if (!status) {
+    return { ok: false, error: 'YouTube no longer knows this video — was it deleted in Studio?' }
+  }
+  if (status['privacyStatus'] !== 'private') {
+    return { ok: false, error: 'This video is already public — its moment cannot be moved.' }
+  }
+
+  const writeParams = new URLSearchParams({ part: 'status' })
+  const write = await fetch(
+    `https://www.googleapis.com/youtube/v3/videos?${writeParams.toString()}`,
+    {
+      method: 'PUT',
+      headers: { authorization: `Bearer ${accessToken}`, 'content-type': 'application/json' },
+      body: JSON.stringify({ id: videoId, status: { ...status, publishAt: publishAtIso } }),
+    },
+  )
+  if (!write.ok) {
+    const payload = (await write.json().catch(() => ({}))) as {
+      error?: { message?: string }
+    }
+    return {
+      ok: false,
+      error: payload.error?.message ?? `videos.update answered ${write.status}`,
+    }
+  }
+  return { ok: true }
+}
+
+/**
  * Whether YouTube has finished processing an upload — the §7.2 item 8
  * "poll processing status" read. Errors count as "not yet": the poll's
  * caller gives up after a bounded wait either way.

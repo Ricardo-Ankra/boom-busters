@@ -21,6 +21,7 @@ import { RetentionOverlay } from './retention-overlay'
 import {
   generateTitles,
   removeThumbnail,
+  reschedulePublish,
   retryPublish,
   savePublishDraft,
   schedulePublish,
@@ -90,10 +91,19 @@ function slotKindFor(item: PublishItemModel): 'longform' | 'short' {
   return item.targetType === 'master' ? 'longform' : 'short'
 }
 
-/** Whether the item can be put on (or moved to) a slot right now. */
+/** Whether the item can be put on a slot for the first time right now. */
 function schedulable(item: PublishItemModel): boolean {
   const status = item.record?.status ?? 'draft'
   return item.notReadyReason === null && (status === 'draft' || status === 'failed')
+}
+
+/**
+ * Whether an already-scheduled item can be moved to a different slot. Only
+ * `scheduled` qualifies: an upload in flight has no settled video to move
+ * yet, and a live video has no moment left to move.
+ */
+function movable(item: PublishItemModel): boolean {
+  return item.record?.status === 'scheduled' && Boolean(item.record.youtubeVideoId)
 }
 
 function StatusChip({ item }: { item: PublishItemModel }) {
@@ -156,6 +166,15 @@ export function PublishScreen({
       'Scheduled — the upload starts now',
     )
 
+  // The same gesture as scheduling — select, press a slot — but the video is
+  // already on YouTube, so this re-points its publish moment instead of
+  // starting an upload.
+  const move = (item: PublishItemModel, iso: string) =>
+    act(
+      () => reschedulePublish(item.targetType, item.targetId, iso),
+      'Moved — it goes public at the new time',
+    )
+
   return (
     <section aria-label="Publish" className="flex flex-col gap-4">
       {!model.apiAuditPassed ? <AuditChecklist /> : null}
@@ -187,7 +206,7 @@ export function PublishScreen({
           return (
             <Card
               key={key}
-              draggable={schedulable(item)}
+              draggable={schedulable(item) || movable(item)}
               onDragStart={(event) => {
                 event.dataTransfer.setData('text/boom-busters-item', key)
                 setSelectedKey(key)
@@ -229,7 +248,16 @@ export function PublishScreen({
                     variant={isSelected ? 'primary' : 'outline'}
                     onClick={() => setSelectedKey(key)}
                   >
-                    {isSelected ? 'Editing' : 'Edit metadata'}
+                    {/* A scheduled item's metadata is Studio's to edit, but
+                        its slot is still ours to move — selecting it arms the
+                        calendar's Move-here buttons below. */}
+                    {movable(item)
+                      ? isSelected
+                        ? 'Pick a new slot below'
+                        : 'Move the slot'
+                      : isSelected
+                        ? 'Editing'
+                        : 'Edit metadata'}
                   </Button>
                   {item.record?.status === 'failed' && item.record.publishAtIso ? (
                     <Button
@@ -305,6 +333,10 @@ export function PublishScreen({
                     selected !== null &&
                     fits &&
                     schedulable(selected)
+                  // The already-on-YouTube counterpart: an empty slot offers
+                  // to MOVE the selected scheduled item here. Its own current
+                  // slot offers nothing — there is nowhere to move to.
+                  const moveOfferable = !occupant && selected !== null && fits && movable(selected)
                   return (
                     <div
                       key={slot.iso}
@@ -315,9 +347,9 @@ export function PublishScreen({
                         event.preventDefault()
                         const dropped = event.dataTransfer.getData('text/boom-busters-item')
                         const item = model.items.find((candidate) => keyOf(candidate) === dropped)
-                        if (item && !occupant && slotKindFor(item) === slot.kind) {
-                          void schedule(item, slot.iso)
-                        }
+                        if (!item || occupant || slotKindFor(item) !== slot.kind) return
+                        if (schedulable(item)) void schedule(item, slot.iso)
+                        else if (movable(item)) void move(item, slot.iso)
                       }}
                       className="rounded-[6px] border border-dashed border-[var(--color-border)] p-1.5"
                     >
@@ -342,6 +374,14 @@ export function PublishScreen({
                           onClick={() => void schedule(selected!, slot.iso)}
                         >
                           {occupant === selected ? 'Start the upload again' : 'Schedule here'}
+                        </Button>
+                      ) : moveOfferable ? (
+                        <Button
+                          variant="outline"
+                          className="mt-1 w-full"
+                          onClick={() => void move(selected!, slot.iso)}
+                        >
+                          Move here
                         </Button>
                       ) : !occupant ? (
                         <p className="text-[11px] text-[var(--color-text-muted)]">
