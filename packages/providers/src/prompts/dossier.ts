@@ -181,7 +181,8 @@ export function buildAnswersRequest(
 
 Your brief raised open questions. A dossier with open questions is not a
 finished brief — answer each one from the record now:
-{"answers": [{"question": string, "answer": string|null, "sourceUrl": string}],
+{"answers": [{"index": number, "question": string, "answer": string|null,
+  "sourceUrl": string}],
  "claims": [{"text": string, "sourceUrl": string,
   "sourceType": "court"|"regulator"|"major_outlet"|"book"|"other",
   "confidence": "sourced"|"single_source"|"unverified",
@@ -196,14 +197,19 @@ finished brief — answer each one from the record now:
 - Where the record genuinely does not answer the question — unreported,
   sealed, still before a court — set "answer" to null. An honest null is shown
   to the human as still open; an invented answer is a liability read aloud.
-- Repeat each question exactly as it was put.`,
+- "index" is the question's number exactly as given in the numbered list —
+  it is how each answer finds its question again, so it must be right.
+  Repeat the question verbatim as well.`,
     messages: [
       { role: 'user', content: caseHeader(input) },
       { role: 'assistant', content: JSON.stringify({ brief, timeline }) },
       {
         role: 'user',
+        // Numbered, not bulleted: the number is the join key the renderer
+        // places each answer by (decision 203). Text matching alone lost
+        // every answer of the first live run to paraphrased questions.
         content: `Answer the open questions:\n${brief.openQuestions
-          .map((question) => `- ${question}`)
+          .map((question, at) => `${at + 1}. ${question}`)
           .join('\n')}`,
       },
     ],
@@ -261,28 +267,47 @@ export function renderDossierMarkdown(input: {
   lines.push('')
 
   if (input.brief.openQuestions.length > 0) {
-    // Matched loosely: the answers pass is told to repeat each question
-    // verbatim, but a model trims trailing punctuation often enough that an
-    // exact-string match would misfile real answers as unanswered.
+    // Placed by the numbered index first (decision 203): the first live run
+    // of the answers pass paraphrased every question it echoed back, text
+    // matching placed none of them, and two thousand tokens of real answers
+    // were silently dropped while every question stayed "open". The folded
+    // text match remains only as the fallback for a model that forgot the
+    // number; a non-null answer that still cannot be placed renders anyway,
+    // under its own words — research that was paid for is never discarded
+    // by a join key.
     const fold = (text: string) =>
       text
         .toLowerCase()
         .replace(/[^\p{L}\p{N}]+/gu, ' ')
         .trim()
-    const answered = new Map(
-      (input.answers ?? [])
-        .filter((answer) => answer.answer !== null)
-        .map((answer) => [fold(answer.question), answer]),
-    )
+    const questions = input.brief.openQuestions
+    const byFold = new Map(questions.map((question, at) => [fold(question), at]))
 
-    const resolved = input.brief.openQuestions
-      .map((question) => answered.get(fold(question)))
-      .filter((answer): answer is ResearchAnswer => answer !== undefined)
-    const open = input.brief.openQuestions.filter((question) => !answered.has(fold(question)))
+    const answeredAt = new Map<number, ResearchAnswer>()
+    const unplaced: ResearchAnswer[] = []
+    for (const answer of input.answers ?? []) {
+      if (answer.answer === null) continue
+      const indexed =
+        answer.index !== undefined && answer.index >= 1 && answer.index <= questions.length
+          ? answer.index - 1
+          : undefined
+      const at = indexed ?? byFold.get(fold(answer.question))
+      if (at === undefined) unplaced.push(answer)
+      else if (!answeredAt.has(at)) answeredAt.set(at, answer)
+    }
 
-    if (resolved.length > 0) {
+    if (answeredAt.size > 0 || unplaced.length > 0) {
       lines.push('## Questions the research answered', '')
-      for (const answer of resolved) {
+      for (const [at, question] of questions.entries()) {
+        const answer = answeredAt.get(at)
+        if (!answer) continue
+        // The brief's own wording, not the echo — the human read the brief.
+        lines.push(
+          `- **${question}** — ${answer.answer}` +
+            `${answer.sourceUrl ? ` ([source](${answer.sourceUrl}))` : ''}`,
+        )
+      }
+      for (const answer of unplaced) {
         lines.push(
           `- **${answer.question}** — ${answer.answer}` +
             `${answer.sourceUrl ? ` ([source](${answer.sourceUrl}))` : ''}`,
@@ -291,6 +316,7 @@ export function renderDossierMarkdown(input: {
       lines.push('')
     }
 
+    const open = questions.filter((_, at) => !answeredAt.has(at))
     if (open.length > 0) {
       // Deliberately in the document, not only in a side panel. What the
       // research could not establish is the part most likely to be written
@@ -351,7 +377,11 @@ export function mockTimeline(): TimelineEvent[] {
  */
 export function mockAnswers(brief: CaseBrief): ResearchAnswers {
   return {
-    answers: brief.openQuestions.map((question) => ({ question, answer: null })),
+    answers: brief.openQuestions.map((question, at) => ({
+      index: at + 1,
+      question,
+      answer: null,
+    })),
     claims: [],
   }
 }

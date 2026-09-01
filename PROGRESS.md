@@ -3057,6 +3057,23 @@ published and audited. The daily `channels.list` health ping and the
      re-run renumbers units past the block and claims fresh takes for the
      shifted keys, orphaning the stale pending row nothing addresses.
 
+203. **Answers are placed by question number, and a real answer is never
+     discarded** (2026-09-01, owner bug report: a fresh dossier still showed
+     every open question). The first live run of decision 201's answers
+     pass proved the join key wrong: the cost ledger showed the answers
+     call produced the largest output of all four passes (about two
+     thousand tokens of real answers), yet the dossier rendered no
+     answered section — Haiku paraphrased every question it echoed back,
+     the folded-text match placed none of them, and the renderer silently
+     dropped the lot. Now the request numbers the questions, the schema
+     carries an optional 1-based `index` (optional so a forgetful model
+     does not fail the parse), and the renderer places by index first,
+     falls back to folded text, and renders any non-null answer it still
+     cannot place under the model's own wording rather than discarding
+     research that was paid for — with the unplaced answer's question
+     honestly left open. Placed answers render under the brief's wording,
+     because the brief is what the human read.
+
 **Status:** `[x]` done — dossier + Studio shipped with unit, component and
 e2e coverage; spec §11.3 amended in place with dated notes.
 

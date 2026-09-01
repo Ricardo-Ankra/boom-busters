@@ -138,6 +138,16 @@ export const ClaimsSchema = z.object({
  * are refusals wearing a string type.
  */
 export const ResearchAnswerSchema = z.object({
+  /**
+   * 1-based number of the brief question, as numbered in the request. The
+   * renderer places answers by this, not by comparing question text: models
+   * paraphrase the question they were given often enough that a real answer
+   * matched by text alone can fail to place and vanish from the dossier —
+   * which is exactly what happened the first time this pass ran live.
+   * Optional so a model that forgets it does not fail the whole parse; the
+   * renderer then falls back to text matching.
+   */
+  index: z.number().int().min(1).max(40).optional(),
   question: z.string().trim().min(10).max(1000),
   answer: z.preprocess(
     (value) => (typeof value === 'string' && value.trim().length >= 10 ? value.trim() : null),

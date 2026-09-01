@@ -258,8 +258,12 @@ describe('the answers pass (decision 201)', () => {
     expect(request.cacheablePrefixMessages).toBe(1)
   })
 
-  it('puts the open questions to the model, verbatim', () => {
-    expect(JSON.stringify(request.messages)).toContain('What did the board know in 1999?')
+  it('puts the open questions to the model, verbatim and numbered', () => {
+    // Numbered because the number is the join key (decision 203): the first
+    // live run paraphrased every echoed question, and text matching alone
+    // placed none of its answers.
+    expect(JSON.stringify(request.messages)).toContain('1. What did the board know in 1999?')
+    expect(request.system).toMatch(/"index" is the question's number/)
   })
 
   it('makes the honest null legal and the invented answer not', () => {
@@ -317,6 +321,7 @@ describe('the answers pass (decision 201)', () => {
     const mocked = mockAnswers(brief)
     expect(mocked.answers).toHaveLength(1)
     expect(mocked.answers[0]?.answer).toBeNull()
+    expect(mocked.answers[0]?.index).toBe(1)
     expect(mocked.claims).toEqual([])
   })
 })
@@ -390,6 +395,69 @@ describe('renderDossierMarkdown', () => {
     })
     expect(complete).toContain('## Questions the research answered')
     expect(complete).not.toContain('## Open questions')
+  })
+
+  it('places an answer by its index even when the model paraphrased the question (decision 203)', () => {
+    // The first live run: Haiku rewrote every question it echoed back, the
+    // folded-text match placed nothing, and every real answer vanished while
+    // the questions stayed "open". The index is the deterministic join key.
+    const withIndex = renderDossierMarkdown({
+      caseTitle: 'Enron',
+      brief: { ...brief, openQuestions: ['What did the board know in 1999?', 'Who leaked it?'] },
+      timeline: [],
+      claims: [],
+      answers: [
+        {
+          index: 1,
+          question: "What was the board's knowledge?", // paraphrased — must not matter
+          answer: 'The Powers report found the board approved the structures.',
+        },
+      ],
+    })
+    expect(withIndex).toContain('## Questions the research answered')
+    // Rendered under the brief's own wording, not the paraphrase.
+    expect(withIndex).toContain('- **What did the board know in 1999?** —')
+    expect(withIndex).not.toContain("What was the board's knowledge?")
+    expect(withIndex).toContain('- Who leaked it?')
+  })
+
+  it('never discards a real answer it cannot place — it renders under its own words', () => {
+    const unplaced = renderDossierMarkdown({
+      caseTitle: 'Enron',
+      brief: { ...brief, openQuestions: ['What did the board know in 1999?'] },
+      timeline: [],
+      claims: [],
+      answers: [
+        {
+          question: 'How much did the partnerships hide?', // no index, no text match
+          answer: 'Over one billion dollars in debt, per the Powers report.',
+        },
+      ],
+    })
+    // The answer was paid for and may be true: it renders. The question it
+    // failed to place against honestly stays open.
+    expect(unplaced).toContain('- **How much did the partnerships hide?** —')
+    expect(unplaced).toContain('## Open questions')
+    expect(unplaced).toContain('- What did the board know in 1999?')
+  })
+
+  it('ignores an index pointing outside the question list rather than mis-filing the answer', () => {
+    const outside = renderDossierMarkdown({
+      caseTitle: 'Enron',
+      brief: { ...brief, openQuestions: ['What did the board know in 1999?'] },
+      timeline: [],
+      claims: [],
+      answers: [
+        {
+          index: 7,
+          question: 'What did the board know in 1999?', // text still matches
+          answer: 'It approved the structures, per the Powers report.',
+        },
+      ],
+    })
+    // The bad index falls back to the text match, so the answer still lands.
+    expect(outside).toContain('- **What did the board know in 1999?** —')
+    expect(outside).not.toContain('## Open questions')
   })
 
   it('says how many claims are unverified and why it matters', () => {
