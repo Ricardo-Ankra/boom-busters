@@ -85,6 +85,50 @@ describe('composeDescription', () => {
     expect(description.endsWith(PUBLISH_DISCLAIMER)).toBe(true)
     expect(description).not.toContain('/59')
   })
+
+  it('publishes the music attribution as its own block, between chapters and sources', () => {
+    // Decision 207: the licence rides with every upload that uses the track,
+    // so a Content ID claim is answered by the video's own description.
+    const { description } = composeDescription({
+      body: 'Body.',
+      chapters,
+      sources: ['https://example.com/filing'],
+      musicAttribution: 'Music by Lesfm from Pixabay. Pixabay Content Licence.',
+    })
+
+    const blocks = description.split('\n\n')
+    expect(blocks[2]).toBe('Music:\nMusic by Lesfm from Pixabay. Pixabay Content Licence.')
+    expect(blocks[3]).toContain('Sources:')
+  })
+
+  it('omits the music block when there is no bed or no text — never an empty heading', () => {
+    const bare = composeDescription({ body: 'Body.', chapters: [], sources: [] })
+    expect(bare.description).not.toContain('Music:')
+    const blank = composeDescription({
+      body: 'Body.',
+      chapters: [],
+      sources: [],
+      musicAttribution: '   ',
+    })
+    expect(blank.description).not.toContain('Music:')
+  })
+
+  it('keeps the music attribution while sources are dropped to fit — licence copy never loses', () => {
+    const sources = Array.from(
+      { length: 60 },
+      (_, i) => `https://example.com/${'a'.repeat(90)}/${i}`,
+    )
+    const { description, droppedSources } = composeDescription({
+      body: 'Body.',
+      chapters,
+      sources,
+      musicAttribution: 'Music by Lesfm from Pixabay.',
+    })
+
+    expect(description.length).toBeLessThanOrEqual(DESCRIPTION_MAX_CHARS)
+    expect(droppedSources).toBeGreaterThan(0)
+    expect(description).toContain('Music:\nMusic by Lesfm from Pixabay.')
+  })
 })
 
 describe('PublishDraftSchema', () => {

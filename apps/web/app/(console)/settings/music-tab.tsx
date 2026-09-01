@@ -24,6 +24,8 @@ export interface MusicBedView {
   licence: string
   moodTags: string[]
   createdAt: string
+  /** Published in the YouTube description of every video using this track. */
+  attributionText: string | null
 }
 
 export function MusicTab({ beds }: { beds: MusicBedView[] }) {
@@ -34,6 +36,7 @@ export function MusicTab({ beds }: { beds: MusicBedView[] }) {
   const [title, setTitle] = React.useState('')
   const [licence, setLicence] = React.useState<MusicLicence | ''>('')
   const [moodTags, setMoodTags] = React.useState('')
+  const [attributionText, setAttributionText] = React.useState('')
   const [busy, setBusy] = React.useState(false)
   const [confirmDelete, setConfirmDelete] = React.useState<string | null>(null)
 
@@ -95,6 +98,7 @@ export function MusicTab({ beds }: { beds: MusicBedView[] }) {
         title,
         licence,
         moodTags,
+        attributionText,
       })
       if (result.ok) {
         toast({ title: 'Track added to the library' })
@@ -102,6 +106,7 @@ export function MusicTab({ beds }: { beds: MusicBedView[] }) {
         setTitle('')
         setLicence('')
         setMoodTags('')
+        setAttributionText('')
         if (fileRef.current) fileRef.current.value = ''
         router.refresh()
       } else {
@@ -214,6 +219,21 @@ export function MusicTab({ beds }: { beds: MusicBedView[] }) {
             />
           </label>
 
+          <label className="flex flex-col gap-1 text-[12px] text-[var(--color-text-secondary)]">
+            Licence / attribution text — optional
+            <textarea
+              className={field}
+              rows={4}
+              value={attributionText}
+              onChange={(event) => setAttributionText(event.target.value)}
+              placeholder={
+                'Paste the attribution line or licence certificate the source gives you — ' +
+                'e.g. a Pixabay Licence Certificate. It is published in the YouTube ' +
+                'description of every video that uses this track.'
+              }
+            />
+          </label>
+
           <div>
             <Button
               variant="primary"
@@ -275,6 +295,18 @@ export function MusicTab({ beds }: { beds: MusicBedView[] }) {
                       </Button>
                     )}
                   </div>
+                  {bed.attributionText ? (
+                    <details className="text-[12px] text-[var(--color-text-muted)]">
+                      <summary className="cursor-pointer">
+                        Licence text on file — goes into every description using this track
+                      </summary>
+                      <p className="mt-1 whitespace-pre-wrap">{bed.attributionText}</p>
+                    </details>
+                  ) : (
+                    <p className="text-[12px] text-[var(--color-text-muted)]">
+                      No licence text — re-upload the same file with it to add one.
+                    </p>
+                  )}
                   {/* Preview streams through the auth-checked asset route. */}
                   <audio
                     controls

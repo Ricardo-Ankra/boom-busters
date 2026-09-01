@@ -52,6 +52,7 @@ const BEDS: MusicBedView[] = [
     licence: 'yt-audio-library',
     moodTags: ['tension', 'slow build'],
     createdAt: '2026-08-18T10:00:00.000Z',
+    attributionText: 'Music by Lesfm from Pixabay.',
   },
 ]
 
@@ -59,7 +60,7 @@ const BEDS: MusicBedView[] = [
 async function armUpload() {
   const input = document.querySelector('input[type="file"]') as HTMLInputElement
   await userEvent.upload(input, new File(['ppp'], 'bed.mp3', { type: 'audio/mpeg' }))
-  await userEvent.selectOptions(screen.getByLabelText(/Licence/), 'yt-audio-library')
+  await userEvent.selectOptions(screen.getByLabelText(/Licence — required/), 'yt-audio-library')
 }
 
 describe('MusicTab', () => {
@@ -77,7 +78,7 @@ describe('MusicTab', () => {
     expect(add).toBeDisabled()
     expect(screen.getByText(/licence is required/)).toBeInTheDocument()
 
-    await userEvent.selectOptions(screen.getByLabelText(/Licence/), 'yt-audio-library')
+    await userEvent.selectOptions(screen.getByLabelText(/Licence — required/), 'yt-audio-library')
     expect(add).toBeEnabled()
   })
 
@@ -108,6 +109,7 @@ describe('MusicTab', () => {
         key: 'boom-busters/music/abc.mp3',
         contentHash: created.contentHash,
         licence: 'yt-audio-library',
+        attributionText: '',
       }),
     )
     expect(toast).toHaveBeenCalledWith({ title: 'Track added to the library' })
@@ -151,7 +153,7 @@ describe('MusicTab', () => {
     const big = new File(['x'], 'huge.mp3', { type: 'audio/mpeg' })
     Object.defineProperty(big, 'size', { value: 26 * 1024 * 1024 })
     await userEvent.upload(input, big)
-    await userEvent.selectOptions(screen.getByLabelText(/Licence/), 'yt-audio-library')
+    await userEvent.selectOptions(screen.getByLabelText(/Licence — required/), 'yt-audio-library')
     await userEvent.click(screen.getByRole('button', { name: 'Add to library' }))
 
     expect(createMusicUploadAction).not.toHaveBeenCalled()
@@ -166,6 +168,26 @@ describe('MusicTab', () => {
     const input = document.querySelector('input[type="file"]') as HTMLInputElement
     await userEvent.upload(input, new File(['ppp'], 'night-drive.mp3', { type: 'audio/mpeg' }))
     expect(screen.getByLabelText('Title')).toHaveValue('night-drive')
+  })
+
+  it('sends the pasted licence text through to the finalise step (decision 207)', async () => {
+    render(<MusicTab beds={[]} />)
+    await armUpload()
+    await userEvent.type(
+      screen.getByLabelText(/Licence \/ attribution text/),
+      'Music by Lesfm from Pixabay.',
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'Add to library' }))
+
+    expect(finaliseMusicBedAction).toHaveBeenCalledWith(
+      expect.objectContaining({ attributionText: 'Music by Lesfm from Pixabay.' }),
+    )
+  })
+
+  it('shows the licence text on the bed card, where the record lives', () => {
+    render(<MusicTab beds={BEDS} />)
+    expect(screen.getByText(/Licence text on file/)).toBeInTheDocument()
+    expect(screen.getByText('Music by Lesfm from Pixabay.')).toBeInTheDocument()
   })
 
   it('lists each bed with its licence, tags, and an inline preview', () => {

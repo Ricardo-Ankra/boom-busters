@@ -10,6 +10,7 @@ import {
   latestTimeline,
   listPublishRecords,
   listShorts,
+  musicBedByR2Key,
 } from '@boom-busters/db'
 import type { Database, PublishRecordRow } from '@boom-busters/db'
 import {
@@ -70,6 +71,12 @@ export interface PublishModel {
   sources: string[]
   /** The script's opening paragraph — the seed for the description body. */
   hook: string
+  /**
+   * The timeline bed's licence/attribution text (decision 207) — published
+   * as the description's Music block. Null when there is no bed or the
+   * library row carries no text.
+   */
+  musicAttribution: string | null
   slots: ScheduleSlot[]
   apiAuditPassed: boolean
   dailyUploadBudget: number
@@ -86,6 +93,7 @@ export function emptyPublishModel(): PublishModel {
     chapters: [],
     sources: [],
     hook: '',
+    musicAttribution: null,
     slots: [],
     apiAuditPassed: false,
     dailyUploadBudget: 0,
@@ -143,21 +151,40 @@ export function deriveIngredients(input: {
   return { chapters, sources, hook }
 }
 
+/** The attribution the timeline's bed carries, or null at every gap. */
+async function timelineMusicAttribution(
+  db: Database,
+  master: { music: { r2Key: string } | null } | null,
+): Promise<string | null> {
+  if (!master?.music) return null
+  const bed = await musicBedByR2Key(db, master.music.r2Key)
+  return bed?.attributionText?.trim() || null
+}
+
 /** The same ingredients straight from the database — the actions' entry. */
 export async function descriptionIngredients(
   db: Database,
   projectId: string,
-): Promise<{ chapters: { title: string; startMs: number }[]; sources: string[]; hook: string }> {
+): Promise<{
+  chapters: { title: string; startMs: number }[]
+  sources: string[]
+  hook: string
+  musicAttribution: string | null
+}> {
   const [timelineRow, scriptSources, dossier] = await Promise.all([
     latestTimeline(db, projectId),
     latestScriptParagraphSources(db, projectId),
     getDossier(db, projectId),
   ])
-  return deriveIngredients({
-    master: timelineRow ? TimelineSchema.parse(timelineRow.json) : null,
-    scriptChapters: scriptSources.chapters,
-    claims: dossier?.claims ?? [],
-  })
+  const master = timelineRow ? TimelineSchema.parse(timelineRow.json) : null
+  return {
+    ...deriveIngredients({
+      master,
+      scriptChapters: scriptSources.chapters,
+      claims: dossier?.claims ?? [],
+    }),
+    musicAttribution: await timelineMusicAttribution(db, master),
+  }
 }
 
 function toRecordProp(
@@ -284,6 +311,7 @@ export async function publishModel(
     chapters,
     sources,
     hook,
+    musicAttribution: await timelineMusicAttribution(db, master),
     slots: settings.publish.defaultScheduleSlots,
     apiAuditPassed: settings.publish.apiAuditPassed,
     dailyUploadBudget: settings.publish.dailyUploadBudget,

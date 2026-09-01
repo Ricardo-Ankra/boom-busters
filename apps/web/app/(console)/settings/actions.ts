@@ -19,6 +19,7 @@ import {
 } from '@boom-busters/providers'
 import {
   LlmProviderSchema,
+  MUSIC_ATTRIBUTION_MAX_CHARS,
   MUSIC_MAX_BYTES,
   MusicLicenceSchema,
   ProviderSchema,
@@ -265,6 +266,12 @@ export async function finaliseMusicBedAction(input: {
   title: string
   licence: string
   moodTags: string
+  /**
+   * Attribution/licence text (decision 207) — published verbatim in the
+   * YouTube description of every video that uses this track, so the licence
+   * ships with the upload instead of waiting for a Content ID dispute.
+   */
+  attributionText?: string
 }): Promise<ActionResult> {
   await requireOwner()
 
@@ -307,12 +314,24 @@ export async function finaliseMusicBedAction(input: {
     .map((tag) => tag.trim())
     .filter((tag) => tag.length > 0)
 
+  const attributionText = (input.attributionText ?? '').trim()
+  if (attributionText.length > MUSIC_ATTRIBUTION_MAX_CHARS) {
+    return {
+      ok: false,
+      error:
+        `The licence text is over ${MUSIC_ATTRIBUTION_MAX_CHARS} characters. It is published in ` +
+        'every YouTube description that uses this track, and the description has a 5000-character ' +
+        'ceiling to share.',
+    }
+  }
+
   await insertMusicBed(db, {
     r2Key: input.key,
     contentHash: input.contentHash,
     title,
     licence: licence.data,
     moodTags,
+    attributionText: attributionText || null,
   })
 
   revalidatePath('/settings')

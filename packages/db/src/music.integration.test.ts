@@ -1,7 +1,7 @@
 import { sql as dsql } from 'drizzle-orm'
 import { afterAll, beforeEach, describe, expect, it } from 'vitest'
 import { createDb } from './client'
-import { deleteMusicBed, insertMusicBed, listMusicBeds } from './music'
+import { deleteMusicBed, insertMusicBed, listMusicBeds, musicBedByR2Key } from './music'
 import { countMusicBeds } from './queries'
 import { assets } from './schema'
 import { requireTestDatabase } from './test-database'
@@ -63,6 +63,22 @@ suite('the music library', () => {
     expect(second.r2Key).toBe(first.r2Key)
     expect(second.title).toBe('Renamed')
     expect(await listMusicBeds(db)).toHaveLength(1)
+  })
+
+  it('stores the attribution text and lets a re-upload update it (decision 207)', async () => {
+    const first = await insertMusicBed(db, { ...BED, attributionText: 'Music by A.' })
+    expect(first.attributionText).toBe('Music by A.')
+
+    // The human found the proper certificate later — re-upload carries it in.
+    const second = await insertMusicBed(db, { ...BED, attributionText: 'Music by A, licence X.' })
+    expect(second.id).toBe(first.id)
+    expect(second.attributionText).toBe('Music by A, licence X.')
+  })
+
+  it('finds a bed by the r2 key a timeline stores', async () => {
+    const bed = await insertMusicBed(db, { ...BED, attributionText: 'Music by A.' })
+    expect((await musicBedByR2Key(db, BED.r2Key))?.id).toBe(bed.id)
+    expect(await musicBedByR2Key(db, 'boom-busters/music/nope.mp3')).toBeUndefined()
   })
 
   it('deletes a bed and hands back the row so the bytes can be removed', async () => {

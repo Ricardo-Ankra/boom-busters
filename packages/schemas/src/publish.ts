@@ -65,6 +65,14 @@ export interface ComposeDescriptionInput {
   chapters: readonly DescriptionChapter[]
   /** Source URLs from the dossier's verified claims, already deduplicated. */
   sources: readonly string[]
+  /**
+   * The music bed's attribution/licence text, from the library (decision
+   * 207). Published verbatim in its own block so the licence rides with
+   * every upload that uses the track — a Content ID claim is then answered
+   * by the video's own description. Absent when the timeline has no bed or
+   * the bed carries no text.
+   */
+  musicAttribution?: string | null
 }
 
 export interface ComposedDescription {
@@ -74,11 +82,13 @@ export interface ComposedDescription {
 }
 
 /**
- * Body, then chapters, then sources, then the disclaimer — and it always
- * fits. The ceiling is enforced by dropping sources from the end of the list
- * (the block that grows without bound), never by truncating mid-sentence:
- * a description YouTube would cut off is a bug, and a disclaimer that got
- * cut off is a liability.
+ * Body, then chapters, then music attribution, then sources, then the
+ * disclaimer — and it always fits. The ceiling is enforced by dropping
+ * sources from the end of the list (the block that grows without bound),
+ * never by truncating mid-sentence: a description YouTube would cut off is a
+ * bug, and a disclaimer that got cut off is a liability. The music block is
+ * licence copy, so like the disclaimer it is never the block that gets
+ * dropped.
  */
 export function composeDescription(input: ComposeDescriptionInput): ComposedDescription {
   const body = input.body.trim()
@@ -96,9 +106,12 @@ export function composeDescription(input: ComposeDescriptionInput): ComposedDesc
           .join('\n')
       : null
 
+  const attribution = input.musicAttribution?.trim()
+  const musicBlock = attribution ? `Music:\n${attribution}` : null
+
   const build = (sources: readonly string[]): string => {
     const sourceBlock = sources.length > 0 ? ['Sources:'].concat(sources).join('\n') : null
-    return [body, chapterBlock, sourceBlock, PUBLISH_DISCLAIMER]
+    return [body, chapterBlock, musicBlock, sourceBlock, PUBLISH_DISCLAIMER]
       .filter((block): block is string => block !== null && block !== '')
       .join('\n\n')
   }

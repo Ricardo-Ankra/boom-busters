@@ -23,6 +23,8 @@ export async function insertMusicBed(
     licence: string
     moodTags: string[]
     durationMs?: number | null
+    /** Published in the description of every video using this track. */
+    attributionText?: string | null
   },
 ): Promise<AssetRow> {
   const [row] = await db
@@ -35,6 +37,7 @@ export async function insertMusicBed(
       licence: input.licence,
       moodTags: input.moodTags,
       durationMs: input.durationMs ?? null,
+      attributionText: input.attributionText ?? null,
     })
     .onConflictDoUpdate({
       target: assets.contentHash,
@@ -45,12 +48,27 @@ export async function insertMusicBed(
         title: input.title,
         licence: input.licence,
         moodTags: input.moodTags,
+        attributionText: input.attributionText ?? null,
         updatedAt: new Date(),
       },
     })
     .returning()
 
   if (!row) throw new Error('The music bed could not be stored')
+  return row
+}
+
+/**
+ * The bed a timeline points at. Timelines store the music track by `r2Key`
+ * (keys, never URLs — spec section 8.2), so the publish stage looks the
+ * library row up by key to carry its attribution into the description.
+ */
+export async function musicBedByR2Key(db: Database, r2Key: string): Promise<AssetRow | undefined> {
+  const [row] = await db
+    .select()
+    .from(assets)
+    .where(and(eq(assets.kind, 'music'), eq(assets.r2Key, r2Key)))
+    .limit(1)
   return row
 }
 

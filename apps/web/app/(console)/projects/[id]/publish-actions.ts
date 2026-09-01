@@ -369,6 +369,8 @@ export async function schedulePublish(
     // Chapter stamps only mean something on the full video.
     chapters: type === 'master' ? ingredients.chapters : [],
     sources: ingredients.sources,
+    // The bed plays under Shorts too — the licence rides on every upload.
+    musicAttribution: ingredients.musicAttribution,
   })
 
   const metadata = PublishMetadataSchema.safeParse({

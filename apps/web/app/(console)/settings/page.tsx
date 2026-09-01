@@ -51,6 +51,7 @@ export default async function SettingsPage({
           licence: bed.licence,
           moodTags: bed.moodTags,
           createdAt: bed.createdAt.toISOString(),
+          attributionText: bed.attributionText,
         }))}
       />
     </div>

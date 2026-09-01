@@ -94,6 +94,7 @@ function model(overrides: Partial<PublishModel> = {}): PublishModel {
     ],
     sources: ['https://example.com/ft-report'],
     hook: 'On a June morning in 2020, 1.9 billion euros stopped existing.',
+    musicAttribution: null,
     // Friday 15:00 UTC long-form, Saturday 16:00 UTC Short — the defaults.
     slots: [
       { kind: 'longform', weekday: 5, timeUtc: '15:00' },

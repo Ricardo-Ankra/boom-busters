@@ -458,6 +458,7 @@ function ItemEditor({
     body,
     chapters: item.targetType === 'master' ? model.chapters : [],
     sources: model.sources,
+    musicAttribution: model.musicAttribution,
   })
 
   const dirty =

@@ -31,6 +31,15 @@ export const MUSIC_LICENCE_LABELS: Record<MusicLicence, string> = {
 
 /** Upload constraints: beds are single files, minutes long, not albums. */
 export const MUSIC_MAX_BYTES = 25 * 1024 * 1024
+
+/**
+ * The attribution/licence text a bed may carry (decision 207). It is
+ * published verbatim in the YouTube description of every video that uses
+ * the track, so the cap leaves room for the description's other blocks
+ * inside YouTube's 5000-character ceiling — a full Pixabay licence
+ * certificate fits; an essay does not.
+ */
+export const MUSIC_ATTRIBUTION_MAX_CHARS = 3000
 export const MUSIC_MIME_TYPES = [
   'audio/mpeg',
   'audio/wav',

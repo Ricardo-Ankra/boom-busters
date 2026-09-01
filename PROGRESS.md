@@ -3119,6 +3119,24 @@ published and audited. The daily `channels.list` health ping and the
      over labels. The old "refuses a source type outside the enum" test
      is deliberately reversed.
 
+207. **A music bed carries its licence text, and the description publishes
+     it** (2026-09-01, owner request: "add the license text file to the
+     audio so that when we upload to youtube the license is submitted
+     already"). YouTube offers no licence-submission channel at upload —
+     Content ID disputes happen after a claim, in Studio — so the
+     practical equivalent ships instead: the upload form gains an
+     optional attribution/licence textarea (≤3000 chars, stored in the
+     existing `assets.attributionText` column — no migration), the bed
+     card shows it, and `composeDescription` gains a `Music:` block
+     (after chapters, before sources) published verbatim on every video
+     whose timeline uses the track — masters and Shorts both. Like the
+     disclaimer, the music block never loses to the 5000-character
+     squeeze; sources drop first. The publish path resolves the bed by
+     the timeline's music `r2Key` (`musicBedByR2Key`), so the preview and
+     the scheduled description can never disagree. A claim is then
+     answered by the video's own description, and the certificate is on
+     file in Settings for the dispute form.
+
 **Status:** `[x]` done — dossier + Studio shipped with unit, component and
 e2e coverage; spec §11.3 amended in place with dated notes.
 
