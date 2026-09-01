@@ -22,8 +22,12 @@ a documentary channel. Real companies and living people are the subject, so:
 - Distinguish what a court or regulator FOUND from what was ALLEGED or reported.
 - Where you are unsure, say so. An open question is useful; a confident
   invention is a liability.
-- Never invent a URL. If you do not have the source to hand, omit sourceUrl and
-  mark the claim unverified — a human will check it.
+- Never invent a URL, and never give a search-engine link. Attribute at the
+  most specific level you are CERTAIN is real: the exact article if you know
+  it, otherwise the publication's or regulator's own site or topic page —
+  "https://www.ft.com/wirecard", "https://www.bafin.de/". A reviewer checking
+  the claim starts from that link. Omit sourceUrl only when you cannot even
+  name where it was reported.
 
 Answer with JSON only, no prose around it.`
 
@@ -116,8 +120,14 @@ Extract every factual claim the script will need, each with its source:
   "confidence": "sourced"|"single_source"|"unverified",
   "adjudicated": boolean}]}
 
-- "sourced" means two or more independent sources. "single_source" means one.
-  "unverified" means you could not attribute it — omit sourceUrl for those.
+- Confidence is about the record, not about links. "sourced" means two or more
+  independent sources report it; "single_source" means one; "unverified" means
+  you cannot say who reported it. Do NOT downgrade a claim to unverified just
+  because you lack the exact article URL — name the outlet in sourceType and
+  point sourceUrl at its site.
+- EVERY claim carries the best real sourceUrl you have, including low-confidence
+  ones: an unverified claim with a starting point is checkable; one without a
+  URL blocks the whole dossier until a human sources it from nothing.
 - "adjudicated" is true ONLY where a court or regulator formally ruled. It is
   what decides whether the script must say "alleged", so do not guess it.
 - Figures, dates and quotes each need their own claim. A claim a human cannot

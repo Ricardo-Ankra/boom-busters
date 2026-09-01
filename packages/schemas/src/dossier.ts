@@ -37,13 +37,24 @@ export type ClaimConfidenceName = z.infer<typeof ClaimConfidenceSchema>
  * fatal. What is not softened is the consequence — see `DraftClaimSchema`,
  * where losing the URL costs the claim its confidence.
  */
+/**
+ * A search engine is where you LOOK for a source, not a source. A model that
+ * half-remembers where something was reported will offer a google.com search
+ * link, which renders on the review screen as an authoritative-looking
+ * citation that cites nothing. Dropped like any other non-source, which
+ * downgrades the claim to unverified — the honest state for "go and find it".
+ */
+const SEARCH_ENGINE_HOSTS = /(^|\.)(google\.[a-z.]+|bing\.com|duckduckgo\.com|search\.yahoo\.com)$/i
+
 function usableSourceUrl(value: unknown): string | undefined {
   if (typeof value !== 'string' || value.trim() === '') return undefined
   try {
     const parsed = new URL(value.trim())
     // Only http(s): a `file:` or `javascript:` "source" is not one, and this
     // string is rendered as a link on the review screen.
-    return parsed.protocol === 'http:' || parsed.protocol === 'https:' ? value.trim() : undefined
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return undefined
+    if (SEARCH_ENGINE_HOSTS.test(parsed.hostname)) return undefined
+    return value.trim()
   } catch {
     return undefined
   }

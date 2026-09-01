@@ -2934,6 +2934,11 @@ published and audited. The daily `channels.list` health ping and the
       `reschedulePublish` re-points the YouTube `publishAt` then the row;
       the screen offers "Move the slot" on scheduled items and "Move here"
       on empty matching slots, drag included. Live items refuse.
+- [x] Claims carry their source URL even at low confidence (owner report,
+      2026-09-01): the extraction prompt no longer couples confidence to
+      having the exact article link — outlet-level URLs are the named
+      fallback, search-engine links are scrubbed at the schema, and only a
+      claim whose origin cannot even be named arrives URL-less.
 - [x] Scripts are humanized and performance-directed at drafting time
       (owner request, 2026-09-01): the house style gained a "Sound like a
       person" block distilled from github.com/harshaneel/humanize, and the
@@ -2997,6 +3002,22 @@ published and audited. The daily `channels.list` health ping and the
      snap.test.ts; warnings, claim refs and Shorts anchors match through
      `normaliseForMatch`), which is exactly why the tags were put in
      `contentMd` in the first place.
+
+200. **Confidence describes the record; the URL is the starting point**
+     (2026-09-01, owner report). The extraction rule "omit sourceUrl and
+     mark the claim unverified" coupled two different things: a model
+     researching from memory knew the FT reported something (sourceType
+     major_outlet) but lacked the article link, so it omitted the URL, and
+     `DraftClaimSchema`'s demotion — which stays, it is the right guard —
+     then blocked the gate with claims that showed no source at all. Now
+     the prompt asks for the most specific REAL URL on every claim,
+     publication- or regulator-level when the article is not to hand, and
+     defines unverified as "cannot say who reported it". Search-engine
+     links (google/bing/duckduckgo/yahoo) are scrubbed in
+     `usableSourceUrl`: a search engine is where you look for a source,
+     not a source, and a scrubbed link demotes the claim honestly. Net
+     effect: fewer false blockers, and the ones that remain carry a
+     starting point for the verify flow.
 
 **Status:** `[x]` done — dossier + Studio shipped with unit, component and
 e2e coverage; spec §11.3 amended in place with dated notes.

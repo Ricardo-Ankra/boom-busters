@@ -71,6 +71,25 @@ describe('the research prompts', () => {
     // "alleged" in the script hangs off this field.
     expect(buildClaimsRequest(caseContext, brief, []).system).toMatch(/do not guess it/)
   })
+
+  /**
+   * Decision 200. The old rule — "omit sourceUrl and mark the claim
+   * unverified" — coupled confidence to link-availability, and a model
+   * researching from memory rarely has the exact article link. It knew the
+   * FT reported something, typed it major_outlet, omitted the URL, and the
+   * schema's demotion then blocked the gate with a claim that showed no
+   * source at all. Confidence describes the record; the URL is the best
+   * real starting point, publication-level when the article is not to hand.
+   */
+  it('decouples confidence from having the exact link, and asks for a URL on every claim', () => {
+    const system = buildClaimsRequest(caseContext, brief, []).system
+    expect(system).toMatch(/Confidence is about the record, not about links/)
+    expect(system).toMatch(/Do NOT downgrade a claim to unverified/)
+    expect(system).toMatch(/EVERY claim carries the best real sourceUrl/)
+    // And the house rules name the fallback level and ban search links.
+    expect(system).toMatch(/publication's or regulator's own site or topic page/)
+    expect(system).toMatch(/never give a search-engine link/)
+  })
 })
 
 describe('parseClaims', () => {
@@ -119,6 +138,29 @@ describe('parseClaims', () => {
     )
 
     expect(parsed?.sourceUrl).toBeUndefined()
+  })
+
+  it('refuses a search-engine link as a source — that is where you LOOK for one', () => {
+    // A model that half-remembers the outlet offers a google.com link, which
+    // renders as an authoritative-looking citation that cites nothing
+    // (decision 200). Dropping it demotes the claim honestly.
+    for (const url of [
+      'https://www.google.com/search?q=carillion+jobs+at+risk',
+      'https://google.co.uk/search?q=x',
+      'https://www.bing.com/search?q=x',
+      'https://duckduckgo.com/?q=x',
+    ]) {
+      const [parsed] = parseClaims(JSON.stringify({ claims: [{ ...claim, sourceUrl: url }] }))
+      expect(parsed?.sourceUrl, url).toBeUndefined()
+      expect(parsed?.confidence, url).toBe('unverified')
+    }
+  })
+
+  it('does not mistake a real outlet for a search engine', () => {
+    const [parsed] = parseClaims(
+      JSON.stringify({ claims: [{ ...claim, sourceUrl: 'https://www.theguardian.com/business' }] }),
+    )
+    expect(parsed?.sourceUrl).toBe('https://www.theguardian.com/business')
   })
 
   it('keeps a claim whose source really is a URL', () => {
