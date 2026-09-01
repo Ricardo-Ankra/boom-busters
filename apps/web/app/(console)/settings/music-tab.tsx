@@ -3,7 +3,7 @@
 import { Music, Trash2, Upload } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import * as React from 'react'
-import { MUSIC_LICENCE_LABELS, MUSIC_LICENCES } from '@boom-busters/schemas'
+import { MUSIC_LICENCE_LABELS, MUSIC_LICENCES, MUSIC_MAX_BYTES } from '@boom-busters/schemas'
 import type { MusicLicence } from '@boom-busters/schemas'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -39,6 +39,17 @@ export function MusicTab({ beds }: { beds: MusicBedView[] }) {
 
   const upload = async () => {
     if (!file || licence === '') return
+    // Checked before the bytes travel: the action checks too, but a file the
+    // server will refuse should not be uploaded first — and a request over
+    // the framework's own body cap never reaches the action at all.
+    if (file.size > MUSIC_MAX_BYTES) {
+      toast({
+        title: 'That did not work',
+        description: 'That file is over the 25 MB limit for music beds.',
+        variant: 'error',
+      })
+      return
+    }
     setBusy(true)
     try {
       const data = new FormData()
@@ -58,6 +69,15 @@ export function MusicTab({ beds }: { beds: MusicBedView[] }) {
       } else {
         toast({ title: 'That did not work', description: result.error, variant: 'error' })
       }
+    } catch {
+      // A rejected action call (network drop, request refused before the
+      // action ran) previously surfaced as nothing happening at all — the
+      // worst possible answer to a button press.
+      toast({
+        title: 'That did not work',
+        description: 'The upload never reached the server. Check the connection and try again.',
+        variant: 'error',
+      })
     } finally {
       setBusy(false)
     }
@@ -74,6 +94,12 @@ export function MusicTab({ beds }: { beds: MusicBedView[] }) {
         toast({ title: 'That did not work', description: result.error, variant: 'error' })
       }
       setConfirmDelete(null)
+    } catch {
+      toast({
+        title: 'That did not work',
+        description: 'The request never reached the server. Check the connection and try again.',
+        variant: 'error',
+      })
     } finally {
       setBusy(false)
     }

@@ -76,6 +76,41 @@ describe('MusicTab', () => {
     expect(player).toHaveAttribute('src', `/api/assets/${BEDS[0]!.id}/file`)
   })
 
+  it('says so when the action call itself rejects, instead of doing nothing', async () => {
+    // A request refused before the action runs (over the framework body cap,
+    // a dropped connection) rejects the awaited call. That used to be
+    // swallowed: no toast, no error, a button that "does nothing".
+    uploadMusicBedAction.mockRejectedValue(new Error('Body exceeded 30mb limit'))
+    render(<MusicTab beds={[]} />)
+
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement
+    await userEvent.upload(input, new File(['ppp'], 'bed.mp3', { type: 'audio/mpeg' }))
+    await userEvent.selectOptions(screen.getByLabelText(/Licence/), 'yt-audio-library')
+    await userEvent.click(screen.getByRole('button', { name: 'Add to library' }))
+
+    expect(toast).toHaveBeenCalledWith(
+      expect.objectContaining({ title: 'That did not work', variant: 'error' }),
+    )
+    // The button must come back — a permanently busy button is the same bug.
+    expect(screen.getByRole('button', { name: 'Add to library' })).toBeEnabled()
+  })
+
+  it('refuses a file over 25 MB before uploading a byte', async () => {
+    render(<MusicTab beds={[]} />)
+
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement
+    const big = new File(['x'], 'huge.mp3', { type: 'audio/mpeg' })
+    Object.defineProperty(big, 'size', { value: 26 * 1024 * 1024 })
+    await userEvent.upload(input, big)
+    await userEvent.selectOptions(screen.getByLabelText(/Licence/), 'yt-audio-library')
+    await userEvent.click(screen.getByRole('button', { name: 'Add to library' }))
+
+    expect(uploadMusicBedAction).not.toHaveBeenCalled()
+    expect(toast).toHaveBeenCalledWith(
+      expect.objectContaining({ description: expect.stringContaining('25 MB') }),
+    )
+  })
+
   it('deletes only through the two-step, and can back out', async () => {
     render(<MusicTab beds={BEDS} />)
 

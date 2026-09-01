@@ -39,6 +39,13 @@ const nextConfig: NextConfig = {
   experimental: {
     // Inngest handlers land in M2 and need the long ceiling (spec section 7).
     proxyTimeout: 30_000,
+    serverActions: {
+      // Music beds upload through a server action and the library allows
+      // 25 MB per track (MUSIC_MAX_BYTES). Next's default cap is 1 MB, which
+      // rejected every real audio file before the action ever ran — the
+      // extra headroom covers multipart boundaries and the form fields.
+      bodySizeLimit: '30mb',
+    },
   },
 }
 

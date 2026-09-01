@@ -3074,6 +3074,19 @@ published and audited. The daily `channels.list` health ping and the
      honestly left open. Placed answers render under the brief's wording,
      because the brief is what the human read.
 
+204. **Music uploads must fit through the framework's own door**
+     (2026-09-01, owner bug report: "Add to library" did nothing). Next
+     caps server-action request bodies at 1 MB by default, so every real
+     audio file was refused before `uploadMusicBedAction` ever ran; the
+     awaited call rejected, the component had no catch, and the button
+     silently did nothing — the worst possible answer to a press.
+     Three-part fix: `experimental.serverActions.bodySizeLimit: '30mb'`
+     in next.config (25 MB per MUSIC_MAX_BYTES plus multipart headroom);
+     the component now catches a rejected action call and says so in a
+     toast, for upload and delete both; and a client-side size check
+     refuses a >25 MB file before uploading a byte the server would
+     refuse anyway.
+
 **Status:** `[x]` done — dossier + Studio shipped with unit, component and
 e2e coverage; spec §11.3 amended in place with dated notes.
 
