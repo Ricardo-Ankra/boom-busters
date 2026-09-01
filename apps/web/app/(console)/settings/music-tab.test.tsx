@@ -1,14 +1,17 @@
+import { webcrypto } from 'node:crypto'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { MusicTab } from './music-tab'
 import type { MusicBedView } from './music-tab'
 
-const uploadMusicBedAction = vi.fn()
+const createMusicUploadAction = vi.fn()
+const finaliseMusicBedAction = vi.fn()
 const deleteMusicBedAction = vi.fn()
 
 vi.mock('./actions', () => ({
-  uploadMusicBedAction: (...args: unknown[]) => uploadMusicBedAction(...args),
+  createMusicUploadAction: (...args: unknown[]) => createMusicUploadAction(...args),
+  finaliseMusicBedAction: (...args: unknown[]) => finaliseMusicBedAction(...args),
   deleteMusicBedAction: (...args: unknown[]) => deleteMusicBedAction(...args),
 }))
 
@@ -18,10 +21,28 @@ vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh }) }))
 const toast = vi.fn()
 vi.mock('@/components/ui/toast', () => ({ useToast: () => ({ toast }) }))
 
+// The PUT that carries the bytes goes browser → R2 via fetch, not through an
+// action — the test asserts it is aimed at the presigned URL.
+const fetchMock = vi.fn()
+
 beforeEach(() => {
   vi.clearAllMocks()
-  uploadMusicBedAction.mockResolvedValue({ ok: true })
+  vi.stubGlobal('fetch', fetchMock)
+  // jsdom's crypto has no `subtle`; the component fingerprints the file with
+  // crypto.subtle.digest, so hand it Node's real webcrypto.
+  vi.stubGlobal('crypto', webcrypto)
+  createMusicUploadAction.mockResolvedValue({
+    ok: true,
+    url: 'https://r2.example/presigned-put',
+    key: 'boom-busters/music/abc.mp3',
+  })
+  fetchMock.mockResolvedValue({ ok: true, status: 200 })
+  finaliseMusicBedAction.mockResolvedValue({ ok: true })
   deleteMusicBedAction.mockResolvedValue({ ok: true })
+})
+
+afterEach(() => {
+  vi.unstubAllGlobals()
 })
 
 const BEDS: MusicBedView[] = [
@@ -33,6 +54,13 @@ const BEDS: MusicBedView[] = [
     createdAt: '2026-08-18T10:00:00.000Z',
   },
 ]
+
+/** Choose a file and licence so Add to library becomes pressable. */
+async function armUpload() {
+  const input = document.querySelector('input[type="file"]') as HTMLInputElement
+  await userEvent.upload(input, new File(['ppp'], 'bed.mp3', { type: 'audio/mpeg' }))
+  await userEvent.selectOptions(screen.getByLabelText(/Licence/), 'yt-audio-library')
+}
 
 describe('MusicTab', () => {
   it('keeps Add disabled until a file AND a licence exist — the licence is the record', async () => {
@@ -51,41 +79,62 @@ describe('MusicTab', () => {
 
     await userEvent.selectOptions(screen.getByLabelText(/Licence/), 'yt-audio-library')
     expect(add).toBeEnabled()
-
-    await userEvent.click(add)
-    expect(uploadMusicBedAction).toHaveBeenCalledTimes(1)
-    const sent = uploadMusicBedAction.mock.calls[0]![0] as FormData
-    expect(sent.get('licence')).toBe('yt-audio-library')
-    expect((sent.get('file') as File).name).toBe('bed.mp3')
   })
 
-  it('defaults the title from the file name, minus the extension', async () => {
+  it('uploads browser → R2: presign, PUT the bytes at the presigned URL, then finalise', async () => {
     render(<MusicTab beds={[]} />)
-    const input = document.querySelector('input[type="file"]') as HTMLInputElement
-    await userEvent.upload(input, new File(['ppp'], 'night-drive.mp3', { type: 'audio/mpeg' }))
-    expect(screen.getByLabelText('Title')).toHaveValue('night-drive')
+    await armUpload()
+    await userEvent.click(screen.getByRole('button', { name: 'Add to library' }))
+
+    // Step 1: presign, with the fingerprint of the actual bytes.
+    expect(createMusicUploadAction).toHaveBeenCalledTimes(1)
+    const created = createMusicUploadAction.mock.calls[0]![0] as {
+      fileType: string
+      fileSize: number
+      contentHash: string
+    }
+    expect(created.fileType).toBe('audio/mpeg')
+    expect(created.contentHash).toMatch(/^[0-9a-f]{64}$/)
+
+    // Step 2: the bytes go straight to storage, never through an action.
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://r2.example/presigned-put',
+      expect.objectContaining({ method: 'PUT' }),
+    )
+
+    // Step 3: the row, carrying the key the presign step issued.
+    expect(finaliseMusicBedAction).toHaveBeenCalledWith(
+      expect.objectContaining({
+        key: 'boom-busters/music/abc.mp3',
+        contentHash: created.contentHash,
+        licence: 'yt-audio-library',
+      }),
+    )
+    expect(toast).toHaveBeenCalledWith({ title: 'Track added to the library' })
+    expect(refresh).toHaveBeenCalled()
   })
 
-  it('lists each bed with its licence, tags, and an inline preview', () => {
-    render(<MusicTab beds={BEDS} />)
-
-    expect(screen.getByText('Documentary tension 01')).toBeInTheDocument()
-    expect(screen.getByText(/YouTube Audio Library · tension, slow build/)).toBeInTheDocument()
-    const player = screen.getByLabelText('Preview: Documentary tension 01')
-    expect(player.tagName).toBe('AUDIO')
-    expect(player).toHaveAttribute('src', `/api/assets/${BEDS[0]!.id}/file`)
-  })
-
-  it('says so when the action call itself rejects, instead of doing nothing', async () => {
-    // A request refused before the action runs (over the framework body cap,
-    // a dropped connection) rejects the awaited call. That used to be
-    // swallowed: no toast, no error, a button that "does nothing".
-    uploadMusicBedAction.mockRejectedValue(new Error('Body exceeded 30mb limit'))
+  it('says so when storage refuses the PUT, and never finalises', async () => {
+    fetchMock.mockResolvedValue({ ok: false, status: 403 })
     render(<MusicTab beds={[]} />)
+    await armUpload()
+    await userEvent.click(screen.getByRole('button', { name: 'Add to library' }))
 
-    const input = document.querySelector('input[type="file"]') as HTMLInputElement
-    await userEvent.upload(input, new File(['ppp'], 'bed.mp3', { type: 'audio/mpeg' }))
-    await userEvent.selectOptions(screen.getByLabelText(/Licence/), 'yt-audio-library')
+    expect(finaliseMusicBedAction).not.toHaveBeenCalled()
+    expect(toast).toHaveBeenCalledWith(
+      expect.objectContaining({
+        variant: 'error',
+        description: expect.stringContaining('403'),
+      }),
+    )
+  })
+
+  it('says so when a call in the chain rejects, instead of doing nothing', async () => {
+    // A dropped connection used to be swallowed: no toast, no error, a
+    // button that "does nothing".
+    createMusicUploadAction.mockRejectedValue(new Error('network down'))
+    render(<MusicTab beds={[]} />)
+    await armUpload()
     await userEvent.click(screen.getByRole('button', { name: 'Add to library' }))
 
     expect(toast).toHaveBeenCalledWith(
@@ -105,10 +154,28 @@ describe('MusicTab', () => {
     await userEvent.selectOptions(screen.getByLabelText(/Licence/), 'yt-audio-library')
     await userEvent.click(screen.getByRole('button', { name: 'Add to library' }))
 
-    expect(uploadMusicBedAction).not.toHaveBeenCalled()
+    expect(createMusicUploadAction).not.toHaveBeenCalled()
+    expect(fetchMock).not.toHaveBeenCalled()
     expect(toast).toHaveBeenCalledWith(
       expect.objectContaining({ description: expect.stringContaining('25 MB') }),
     )
+  })
+
+  it('defaults the title from the file name, minus the extension', async () => {
+    render(<MusicTab beds={[]} />)
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement
+    await userEvent.upload(input, new File(['ppp'], 'night-drive.mp3', { type: 'audio/mpeg' }))
+    expect(screen.getByLabelText('Title')).toHaveValue('night-drive')
+  })
+
+  it('lists each bed with its licence, tags, and an inline preview', () => {
+    render(<MusicTab beds={BEDS} />)
+
+    expect(screen.getByText('Documentary tension 01')).toBeInTheDocument()
+    expect(screen.getByText(/YouTube Audio Library · tension, slow build/)).toBeInTheDocument()
+    const player = screen.getByLabelText('Preview: Documentary tension 01')
+    expect(player.tagName).toBe('AUDIO')
+    expect(player).toHaveAttribute('src', `/api/assets/${BEDS[0]!.id}/file`)
   })
 
   it('deletes only through the two-step, and can back out', async () => {

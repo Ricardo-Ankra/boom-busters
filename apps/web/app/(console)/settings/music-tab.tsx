@@ -8,7 +8,7 @@ import type { MusicLicence } from '@boom-busters/schemas'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { useToast } from '@/components/ui/toast'
-import { deleteMusicBedAction, uploadMusicBedAction } from './actions'
+import { createMusicUploadAction, deleteMusicBedAction, finaliseMusicBedAction } from './actions'
 
 /**
  * The music library (build spec section 10.1): user-populated only. The
@@ -37,11 +37,14 @@ export function MusicTab({ beds }: { beds: MusicBedView[] }) {
   const [busy, setBusy] = React.useState(false)
   const [confirmDelete, setConfirmDelete] = React.useState<string | null>(null)
 
+  // Browser → R2 directly (decision 205): Vercel refuses request bodies over
+  // about 4.5 MB at its edge, so the bytes can never travel through a server
+  // action. The server issues a presigned PUT URL, the browser uploads to R2
+  // itself, and the server then verifies the object and writes the row.
   const upload = async () => {
     if (!file || licence === '') return
-    // Checked before the bytes travel: the action checks too, but a file the
-    // server will refuse should not be uploaded first — and a request over
-    // the framework's own body cap never reaches the action at all.
+    // Checked before the bytes travel: the server refuses the same size, but
+    // only after the whole file has been uploaded for nothing.
     if (file.size > MUSIC_MAX_BYTES) {
       toast({
         title: 'That did not work',
@@ -52,12 +55,47 @@ export function MusicTab({ beds }: { beds: MusicBedView[] }) {
     }
     setBusy(true)
     try {
-      const data = new FormData()
-      data.set('file', file)
-      data.set('licence', licence)
-      data.set('title', title)
-      data.set('moodTags', moodTags)
-      const result = await uploadMusicBedAction(data)
+      // The same bytes that upload are the bytes that get fingerprinted —
+      // the hash is the storage key, so identical tracks dedupe to one object.
+      // The Uint8Array view matters: digest() rejects an ArrayBuffer from
+      // another realm (jsdom in tests), and a fresh view is always local.
+      const bytes = new Uint8Array(await file.arrayBuffer())
+      const digest = await crypto.subtle.digest('SHA-256', bytes)
+      const contentHash = Array.from(new Uint8Array(digest))
+        .map((byte) => byte.toString(16).padStart(2, '0'))
+        .join('')
+
+      const created = await createMusicUploadAction({
+        fileType: file.type,
+        fileSize: file.size,
+        contentHash,
+      })
+      if (!created.ok || !created.url || !created.key) {
+        toast({ title: 'That did not work', description: created.error, variant: 'error' })
+        return
+      }
+
+      const put = await fetch(created.url, {
+        method: 'PUT',
+        body: file,
+        headers: { 'Content-Type': file.type },
+      })
+      if (!put.ok) {
+        toast({
+          title: 'That did not work',
+          description: `Storage refused the upload (${put.status}). Try again.`,
+          variant: 'error',
+        })
+        return
+      }
+
+      const result = await finaliseMusicBedAction({
+        key: created.key,
+        contentHash,
+        title,
+        licence,
+        moodTags,
+      })
       if (result.ok) {
         toast({ title: 'Track added to the library' })
         setFile(null)
@@ -70,12 +108,11 @@ export function MusicTab({ beds }: { beds: MusicBedView[] }) {
         toast({ title: 'That did not work', description: result.error, variant: 'error' })
       }
     } catch {
-      // A rejected action call (network drop, request refused before the
-      // action ran) previously surfaced as nothing happening at all — the
-      // worst possible answer to a button press.
+      // A rejected call anywhere in the chain previously surfaced as nothing
+      // happening at all — the worst possible answer to a button press.
       toast({
         title: 'That did not work',
-        description: 'The upload never reached the server. Check the connection and try again.',
+        description: 'The upload did not go through. Check the connection and try again.',
         variant: 'error',
       })
     } finally {

@@ -39,13 +39,11 @@ const nextConfig: NextConfig = {
   experimental: {
     // Inngest handlers land in M2 and need the long ceiling (spec section 7).
     proxyTimeout: 30_000,
-    serverActions: {
-      // Music beds upload through a server action and the library allows
-      // 25 MB per track (MUSIC_MAX_BYTES). Next's default cap is 1 MB, which
-      // rejected every real audio file before the action ever ran — the
-      // extra headroom covers multipart boundaries and the form fields.
-      bodySizeLimit: '30mb',
-    },
+    // No serverActions.bodySizeLimit override: nothing sends a large body
+    // through an action. It was tried for music uploads and cannot work —
+    // Vercel 413s request bodies over ~4.5 MB at its edge regardless of what
+    // Next would accept, which is why music goes browser → R2 directly
+    // (decision 205, lib/storage.ts presignPut).
   },
 }
 

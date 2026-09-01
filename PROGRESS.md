@@ -3087,6 +3087,25 @@ published and audited. The daily `channels.list` health ping and the
      refuses a >25 MB file before uploading a byte the server would
      refuse anyway.
 
+205. **Music uploads go browser → R2 directly** (2026-09-01, superseding
+     decision 204's body-cap raise, which proved insufficient). Measured
+     on production: a 3 MB POST reaches the app, a 5 MB POST is 413'd at
+     Vercel's edge — the platform caps request bodies at about 4.5 MB
+     regardless of Next's `bodySizeLimit`, so a 5-10 MB music bed can
+     never travel through a server action. Design principle 2 now applies
+     on the way in as on the way out: `createMusicUploadAction` validates
+     type/size/fingerprint and issues a presigned PUT URL for the
+     content-hash key (15 min TTL, content type in the signature); the
+     browser PUTs the bytes to R2 itself; `finaliseMusicBedAction`
+     verifies with `headObject` that an object of legal size exists at a
+     key this flow could have issued, then writes the row. The SHA-256 is
+     computed in the browser over the same bytes that upload — trusted
+     for key-picking in a single-owner console, verified for existence
+     and size server-side. The `bodySizeLimit` raise was reverted with a
+     comment saying why it cannot work. MANUAL STEP: the R2 bucket needs
+     a CORS rule allowing PUT from the app's origins (the app's R2 token
+     cannot manage CORS — set in the Cloudflare dashboard).
+
 **Status:** `[x]` done — dossier + Studio shipped with unit, component and
 e2e coverage; spec §11.3 amended in place with dated notes.
 

@@ -1,6 +1,5 @@
 'use server'
 
-import { createHash } from 'node:crypto'
 import {
   deleteMusicBed,
   insertMusicBed,
@@ -31,7 +30,7 @@ import { revalidatePath } from 'next/cache'
 import { auth } from '@/auth'
 import { db } from '@/lib/db'
 import { env } from '@/lib/env'
-import { deleteObject, musicKey, putObject, storageConfigured } from '@/lib/storage'
+import { deleteObject, headObject, musicKey, presignPut, storageConfigured } from '@/lib/storage'
 
 /**
  * Settings CRUD. Every action re-checks the session server-side: the proxy
@@ -216,44 +215,105 @@ const MUSIC_EXTENSIONS: Record<string, string> = {
   'audio/ogg': 'ogg',
 }
 
-export async function uploadMusicBedAction(formData: FormData): Promise<ActionResult> {
+/**
+ * Music uploads go browser → R2 directly, in two actions (decision 205).
+ *
+ * The bytes cannot come through here: Vercel rejects request bodies over
+ * about 4.5 MB at its edge, before any action runs, and a music bed is
+ * routinely 5-10 MB. So the browser asks for a presigned PUT URL, sends the
+ * bytes to R2 itself, and then asks for the row — the app handles two small
+ * JSON round-trips and never a byte of audio.
+ *
+ * The content hash is computed in the browser (crypto.subtle over the same
+ * bytes that get uploaded). It is trusted for what it is used for — picking
+ * the storage key so identical tracks dedupe — because this is a single-owner
+ * console and the only person who could lie about it is the owner, to
+ * themselves. The finalise step still verifies with its own eyes that an
+ * object of a legal size actually exists at the key before writing a row.
+ */
+export async function createMusicUploadAction(input: {
+  fileType: string
+  fileSize: number
+  contentHash: string
+}): Promise<ActionResult & { url?: string; key?: string }> {
   await requireOwner()
 
-  const file = formData.get('file')
-  if (!(file instanceof File)) return { ok: false, error: 'No file arrived.' }
-
-  const extension = MUSIC_EXTENSIONS[file.type]
+  const extension = MUSIC_EXTENSIONS[input.fileType]
   if (!extension) {
     return { ok: false, error: 'Only MP3, WAV, M4A or OGG audio can be uploaded here.' }
   }
-  if (file.size > MUSIC_MAX_BYTES) {
+  if (!Number.isFinite(input.fileSize) || input.fileSize <= 0) {
+    return { ok: false, error: 'That file looks empty.' }
+  }
+  if (input.fileSize > MUSIC_MAX_BYTES) {
     return { ok: false, error: 'That file is over the 25 MB limit for music beds.' }
   }
+  if (!/^[0-9a-f]{64}$/.test(input.contentHash)) {
+    return { ok: false, error: 'The file could not be fingerprinted. Try choosing it again.' }
+  }
+  if (!storageConfigured()) {
+    return { ok: false, error: 'Uploads need R2 configured — there is nowhere to store audio.' }
+  }
+
+  const key = musicKey({ contentHash: input.contentHash, ext: extension })
+  return { ok: true, url: await presignPut(key, input.fileType), key }
+}
+
+export async function finaliseMusicBedAction(input: {
+  key: string
+  contentHash: string
+  title: string
+  licence: string
+  moodTags: string
+}): Promise<ActionResult> {
+  await requireOwner()
 
   // The licence is REQUIRED, and it is a human statement, not metadata: the
   // app never fetches music, so the human who downloaded the track is the
   // only one who knows what right they have to use it.
-  const licence = MusicLicenceSchema.safeParse(formData.get('licence'))
+  const licence = MusicLicenceSchema.safeParse(input.licence)
   if (!licence.success) {
     return { ok: false, error: 'Choose the licence this track was downloaded under.' }
   }
 
-  const title = String(formData.get('title') ?? '').trim() || file.name.replace(/\.[^.]+$/, '')
-  const moodTags = String(formData.get('moodTags') ?? '')
-    .split(',')
-    .map((tag) => tag.trim())
-    .filter((tag) => tag.length > 0)
+  // Only keys this flow could have issued: a content-hash music key. Anything
+  // else is not a music upload, whatever the caller says it is.
+  if (!/^[0-9a-f]{64}$/.test(input.contentHash)) {
+    return { ok: false, error: 'The file could not be fingerprinted. Try choosing it again.' }
+  }
+  const expectedPrefix = musicKey({ contentHash: input.contentHash, ext: '' })
+  if (!input.key.startsWith(expectedPrefix)) {
+    return { ok: false, error: 'That upload does not match its fingerprint. Start again.' }
+  }
 
   if (!storageConfigured()) {
     return { ok: false, error: 'Uploads need R2 configured — there is nowhere to store audio.' }
   }
 
-  const bytes = Buffer.from(await file.arrayBuffer())
-  const contentHash = createHash('sha256').update(bytes).digest('hex')
-  const key = musicKey({ contentHash, ext: extension })
-  await putObject(key, bytes, file.type)
+  // Verified against the bucket, not against the caller's word: the row is a
+  // promise that the preview player can stream this key.
+  const head = await headObject(input.key)
+  if (!head) {
+    return { ok: false, error: 'The upload never arrived in storage. Try again.' }
+  }
+  if (head.size > MUSIC_MAX_BYTES) {
+    await deleteObject(input.key)
+    return { ok: false, error: 'That file is over the 25 MB limit for music beds.' }
+  }
 
-  await insertMusicBed(db, { r2Key: key, contentHash, title, licence: licence.data, moodTags })
+  const title = input.title.trim() || 'Untitled bed'
+  const moodTags = input.moodTags
+    .split(',')
+    .map((tag) => tag.trim())
+    .filter((tag) => tag.length > 0)
+
+  await insertMusicBed(db, {
+    r2Key: input.key,
+    contentHash: input.contentHash,
+    title,
+    licence: licence.data,
+    moodTags,
+  })
 
   revalidatePath('/settings')
   revalidatePath('/')

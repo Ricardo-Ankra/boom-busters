@@ -3,6 +3,7 @@ import 'server-only'
 import {
   DeleteObjectCommand,
   GetObjectCommand,
+  HeadObjectCommand,
   PutObjectCommand,
   S3Client,
 } from '@aws-sdk/client-s3'
@@ -199,4 +200,47 @@ export async function presignGet(key: string, ttlSec = PLAYBACK_URL_TTL_SEC): Pr
   return getSignedUrl(client, new GetObjectCommand({ Bucket: bucket, Key: key }), {
     expiresIn: ttlSec,
   })
+}
+
+/** How long an upload URL lives: long enough for 25 MB on a slow line. */
+export const UPLOAD_URL_TTL_SEC = 15 * 60
+
+/**
+ * A short-lived URL the browser can PUT an object to directly.
+ *
+ * Uploads cannot travel through the app: Vercel rejects request bodies over
+ * about 4.5 MB at its edge (a hard 413, measured — see decision 205), and a
+ * music bed is routinely twice that. So design principle 2 applies on the way
+ * in exactly as it does on the way out: the browser is handed a URL, the bytes
+ * flow browser → R2, and the app only ever sees the key. The content type is
+ * part of the signature so the URL uploads the one thing it was issued for.
+ */
+export async function presignPut(
+  key: string,
+  contentType: string,
+  ttlSec = UPLOAD_URL_TTL_SEC,
+): Promise<string> {
+  const { client, bucket } = r2()
+  return getSignedUrl(
+    client,
+    new PutObjectCommand({ Bucket: bucket, Key: key, ContentType: contentType }),
+    { expiresIn: ttlSec },
+  )
+}
+
+/**
+ * Whether an object exists, and how big it is. The finalise step of a direct
+ * upload calls this before writing a row: a row pointing at a key nobody
+ * uploaded would be a library entry that plays nothing.
+ */
+export async function headObject(
+  key: string,
+): Promise<{ size: number; contentType: string | undefined } | undefined> {
+  const { client, bucket } = r2()
+  try {
+    const head = await client.send(new HeadObjectCommand({ Bucket: bucket, Key: key }))
+    return { size: head.ContentLength ?? 0, contentType: head.ContentType }
+  } catch {
+    return undefined
+  }
 }
