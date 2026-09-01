@@ -2930,6 +2930,16 @@ published and audited. The daily `channels.list` health ping and the
 - [x] Voice `Flag` kept as-is by decision after discussion: it is the
       zero-cost bookmark of the listen-through, distinct from the two paid
       repairs; revisit after the first real video.
+- [x] A scheduled video's slot can be moved (owner request, 2026-09-01):
+      `reschedulePublish` re-points the YouTube `publishAt` then the row;
+      the screen offers "Move the slot" on scheduled items and "Move here"
+      on empty matching slots, drag included. Live items refuse.
+- [x] Scripts are humanized and performance-directed at drafting time
+      (owner request, 2026-09-01): the house style gained a "Sound like a
+      person" block distilled from github.com/harshaneel/humanize, and the
+      chapter prompt's "no stage directions" rule is reversed — the drafter
+      now places [pause] and expression tags inline, where the voice stage
+      reads them.
 
 **Decisions (continuing the numbering):**
 
@@ -2953,6 +2963,40 @@ published and audited. The daily `channels.list` health ping and the
      collapsible strip under the selected chapter's editor that renders
      nothing when the chapter has none. The editor gets the 280px back,
      which is where a 15-minute script is actually read.
+
+198. **Rescheduling reads the status back before writing it** (2026-09-01).
+     "Once it's set it's set" was a gap, not a rule: a scheduled video is
+     private with a `publishAt`, and `videos.update` moves it. Two things
+     shaped the implementation. First, the update replaces the WHOLE status
+     object, so `movePublishAt` reads it back and writes it whole with only
+     the moment changed — a bare `{publishAt}` would silently reset
+     embeddability, licence and the made-for-kids declaration. Second,
+     YouTube is written before the row: the row must never claim a moment
+     the platform does not hold. Only `scheduled` moves; `live` refuses
+     (nothing left to move), `uploading` refuses (nothing settled yet), and
+     the action runs in the server action directly — the same place the
+     Settings Verify button already talks to providers — because a 2-call
+     JSON update needs no runner. In the e2e suite `scheduled` is
+     unreachable through the UI (no orchestrator), so the spec promotes the
+     record directly, the same pattern as `touchQueuedProject`.
+
+199. **Humanize at drafting time, and let the drafter direct the read**
+     (2026-09-01, owner request). The house style prompt gained a "Sound
+     like a person" block distilled from github.com/harshaneel/humanize
+     (MIT): banned AI vocabulary, hard sentence-length variance, one
+     canonical name per referent, asymmetric contrasts, hedge surgery, no
+     summing-up closers. Two of its rules are deliberately rejected — em
+     dashes stay (they are the narrator's hesitation channel), and the
+     legal hedges ("alleged", "reportedly") are mandatory, not filler; a
+     humanizer that cut them would walk defamation into a script. And the
+     chapter prompt's "no stage directions" line — which contradicted the
+     same prompt's own tag guidance and is why generated scripts carried no
+     expressions — is reversed: the drafter places [pause] and expression
+     tags inline. Safe because everything downstream already reads the
+     script through `stripNarrationMarkup` (captions proven by
+     snap.test.ts; warnings, claim refs and Shorts anchors match through
+     `normaliseForMatch`), which is exactly why the tags were put in
+     `contentMd` in the first place.
 
 **Status:** `[x]` done — dossier + Studio shipped with unit, component and
 e2e coverage; spec §11.3 amended in place with dated notes.

@@ -56,28 +56,61 @@ export function claimList(claims: readonly ScriptClaim[]): string {
  * contractions, short sentences, punctuation as pacing — is drafting advice,
  * so it belongs here, at drafting time, rather than being applied paragraph
  * by paragraph in review after the audio came out wrong.
+ *
+ * The "Sound like a person" block distils github.com/harshaneel/humanize
+ * (MIT) down to the levers that survive being read aloud: the banned
+ * vocabulary, sentence-length burstiness, hedge surgery, asymmetric
+ * contrast, one canonical name per referent, no scaffolding. Two of its
+ * rules are deliberately NOT taken: em dashes stay (they are this
+ * narrator's hesitation channel, not decoration), and the legal hedges
+ * ("alleged", "reportedly") are mandatory here, not filler — a humanizer
+ * that deleted them would walk defamation into a script.
  */
 const HOUSE_STYLE = `You write narration for a documentary channel about
 corporate collapses, frauds and meltdowns. The subjects are real companies and
 living people.
 
-Voice: plain, specific, unhurried. Short sentences. No rhetorical questions, no
-"buckle up", no addressing the audience as "guys". Let the facts carry it.
+Voice: plain, specific, unhurried. No rhetorical questions, no "buckle up", no
+addressing the audience as "guys". Let the facts carry it.
+
+Sound like a person, not a language model:
+- Never write: delve, leverage, robust, comprehensive, streamline, foster,
+  facilitate, pivotal, nuanced, multifaceted, tapestry, testament, intricate,
+  landscape, showcase, underscore, crucial, vibrant, furthermore, moreover,
+  notably, "it is important to note", "in conclusion", "at the end of the
+  day", "little did they know".
+- Vary sentence length hard. Put a fragment — five words or fewer — near
+  every long sentence. Never three same-length sentences in a row: metronomic
+  pacing is the loudest tell there is once it is read aloud.
+- One canonical name per person or company, then pronouns. Never "the
+  payments giant", "the embattled firm", "the Munich-based company" — elegant
+  variation is a tell, and it makes a listener work out who you mean.
+- Make contrasts asymmetric. Never "not just X, it's Y", never a neatly
+  balanced pair, never a drumbeat of exactly three parallel items.
+- Cut empty hedges: "generally", "arguably", "in many cases", "some would
+  say". Say the thing. The legal hedges in the hard rules below are the
+  opposite of empty and are never cut.
+- No summing-up closers. A chapter ends on its last fact, not on a
+  restatement or a moral.
 
 Written for the ear, not the eye. Every word you write is read aloud by a
 text-to-speech narrator, and punctuation is its pacing:
 - A full stop is a beat; an em dash or ellipsis is a hesitation. Punctuate for
-  how the sentence should be SPOKEN.
+  how the sentence should be SPOKEN — and if the hesitation is not deliberate,
+  it is a full stop.
 - Use contractions where speech would ("it's", "they'd") — the narrator reads
   stiffly without them.
 - Break any sentence you would have to take a breath in the middle of.
 - Where the delivery needs a deliberate silence — before a reveal, after a
   number that should land — write [pause] on its own, or [long pause] for real
-  weight. Use them sparingly: a couple per chapter at most, where the silence
-  IS the point. The narrator treats them as intent, not milliseconds.
+  weight. The narrator treats them as intent, not milliseconds.
 - Anything in square brackets is a stage direction the narrator acts on but
-  never reads aloud — [sighs], [whispers], [exhales]. Use one only where the
-  delivery genuinely needs it; the default register is even and unforced.
+  never reads aloud. Direct the read inline where a line's delivery is the
+  point: [sighs] before the resignation letter, [whispers] for the detail
+  nobody said out loud, [exhales], or free-form direction like
+  [grave, measured] or [emphasis on "never"]. A handful per chapter, placed
+  where they earn their keep — the default register is even and unforced,
+  and a script that gasps at everything gasps at nothing.
 - Numbers, dates and abbreviations are read exactly as written: write
   "1.9 billion euros", not "€1.9B"; "the S and P 500" is wrong, "the S&P 500"
   is read correctly.
@@ -145,8 +178,10 @@ export function buildChapterRequest(input: {
     task: 'scripting',
     system: `${HOUSE_STYLE}
 
-Write ONE chapter of narration as markdown prose. No headings, no bullet
-points, no stage directions — this text is read aloud exactly as written.
+Write ONE chapter of narration as plain prose paragraphs. No headings, no
+bullet points, no lists — the words are read aloud exactly as written, and
+the bracketed narration tags the house style describes are the one thing in
+the text that is direction rather than words. Place them inline as you draft.
 
 Target about ${chapter.targetWords} words.`,
     messages: [

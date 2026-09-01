@@ -106,9 +106,36 @@ describe('buildChapterRequest', () => {
     expect(request.messages[0]?.content).toContain('A court found')
   })
 
-  it('forbids headings and stage directions — this text is read aloud', () => {
+  it('forbids headings but asks for narration tags inline — the text is read aloud', () => {
     expect(request.system).toMatch(/No headings/)
     expect(request.system).toMatch(/read aloud exactly as written/)
+    // The reversal of the original "no stage directions" rule (decision 199):
+    // Eleven v3's direction channel is inline, everything downstream reads
+    // the script through stripNarrationMarkup, so drafting is where the
+    // delivery belongs — not paragraph-by-paragraph repair at retake prices.
+    expect(request.system).toMatch(/Place them inline/)
+    expect(request.system).not.toMatch(/no stage directions/)
+  })
+
+  /**
+   * The humanize block (decision 199, distilled from
+   * github.com/harshaneel/humanize): the tells a listener hears — banned
+   * AI vocabulary, metronomic pacing, elegant variation, symmetric
+   * contrasts — are banned at drafting time. The two deliberate
+   * exceptions stay: em dashes are the hesitation channel, and the legal
+   * hedges are mandatory, so the block must never tell the model to cut
+   * "alleged".
+   */
+  it('carries the humanize rules, minus the two exceptions', () => {
+    expect(request.system).toContain('Sound like a person')
+    expect(request.system).toMatch(/Never write: delve, leverage/)
+    expect(request.system).toMatch(/Never three same-length sentences/)
+    expect(request.system).toMatch(/One canonical name/)
+    expect(request.system).toMatch(/not just X/)
+    // The legal hedges survive hedge surgery, in so many words.
+    expect(request.system).toMatch(/hard rules below are the\s+opposite of empty and are never cut/)
+    // And the em dash stays a pacing lever, not a banned mark.
+    expect(request.system).toMatch(/em dash or ellipsis is a hesitation/)
   })
 
   /**

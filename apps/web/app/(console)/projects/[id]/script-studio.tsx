@@ -50,9 +50,10 @@ import {
  * editor — indicated where they are relevant, costing no width when closed.
  *
  * The editor is markdown-backed and paragraph-structured, which is the whole
- * of the structure narration has — the drafting prompt forbids headings,
- * bullets and stage directions, because this text is read aloud exactly as
- * written.
+ * of the structure narration has — the drafting prompt forbids headings and
+ * bullets, because this text is read aloud exactly as written. Bracketed
+ * narration tags ([pause], [sighs]) are the one exception: direction the
+ * narrator acts on but never speaks, drafted inline since decision 199.
  *
  * Two behaviours here are load-bearing rather than cosmetic:
  *
