@@ -3180,6 +3180,25 @@ published and audited. The daily `channels.list` health ping and the
      that keeps Imagen 4 Ultra out. A test pins the id list so nothing
      drifts in without the check being redone.
 
+211. **Imagen is gone from the Google list; the ids fold forward**
+     (2026-09-03, owner hit a 404 the first time an Imagen route ran:
+     "imagen-3.0-generate-002 is not found for API version v1beta, or is
+     not supported for predict"). Decision 209 shipped Imagen ids off
+     documentation; the owner's own key's `ListModels` is the truth, and
+     it serves NO `imagen-*` model — every image model on this API is
+     Gemini-family via `generateContent` (Imagen lives behind Vertex AI's
+     separate auth). The Google list is rebuilt from that listing, pinned
+     by test: gemini-2.5-flash-image ($0.04, default),
+     gemini-3.1-flash-image ($0.07, ~$0.067/1K image), gemini-3-pro-image
+     ($0.15 — the preview id went GA). gemini-3.1-flash-lite-image is
+     served but absent until it has a trustworthy price. Retired stored
+     ids fold forward on read via `LEGACY_STILL_MODEL_IDS`, the exact
+     `LEGACY_MODEL_IDS` precedent: Imagen ids → the default flash model,
+     preview → GA. The Imagen `:predict` dialect branch is deleted.
+     Lesson recorded: a model id joins a list only after the key's own
+     ListModels (or the vendor's live schema) confirms it — decision
+     210's rule, now applied to Google too.
+
 **Status:** `[x]` done — dossier + Studio shipped with unit, component and
 e2e coverage; spec §11.3 amended in place with dated notes.
 

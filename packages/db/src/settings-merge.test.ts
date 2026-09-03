@@ -88,6 +88,18 @@ describe('normaliseSettings', () => {
     expect(normaliseSettings(null)).toEqual(DEFAULT_SETTINGS)
   })
 
+  it('folds a retired still model forward on read (decision 211)', () => {
+    // The Imagen ids were briefly offered and are gone from the API; a row
+    // that stored one must come forward instead of refusing every visuals
+    // run at pre-flight.
+    const stored = structuredClone(DEFAULT_SETTINGS)
+    stored.modelRouting.stills = { provider: 'google', model: 'imagen-3.0-generate-002' }
+    expect(normaliseSettings(stored).modelRouting.stills.model).toBe('gemini-2.5-flash-image')
+
+    stored.modelRouting.stills = { provider: 'google', model: 'gemini-3-pro-image-preview' }
+    expect(normaliseSettings(stored).modelRouting.stills.model).toBe('gemini-3-pro-image')
+  })
+
   it('gives a pre-decision-208 row the default stills route', () => {
     // The live settings row was written before `modelRouting.stills` existed.
     // It must come forward as routed-at-Gemini, not refuse to parse.

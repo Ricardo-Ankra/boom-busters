@@ -107,6 +107,26 @@ export const StillRouteSchema = z.object({
 })
 export type StillRoute = z.infer<typeof StillRouteSchema>
 
+/**
+ * Retired still-model ids, folded forward on read exactly like
+ * `LEGACY_MODEL_IDS` (decision 211). The Imagen ids were offered for two
+ * days before the key's own `ListModels` proved Google no longer serves any
+ * `imagen-*` model on this API — a routing that stored one would otherwise
+ * refuse every visuals run at pre-flight. The preview id is the same model
+ * renamed at GA.
+ */
+export const LEGACY_STILL_MODEL_IDS: Record<string, string> = {
+  'gemini-3-pro-image-preview': 'gemini-3-pro-image',
+  'imagen-3.0-generate-002': 'gemini-2.5-flash-image',
+  'imagen-4.0-generate-001': 'gemini-2.5-flash-image',
+  'imagen-4.0-fast-generate-001': 'gemini-2.5-flash-image',
+}
+
+/** The stored still model brought forward, or unchanged if it is current. */
+export function canonicalStillModelId(model: string): string {
+  return LEGACY_STILL_MODEL_IDS[model] ?? model
+}
+
 export const ModelRoutingSchema = z.object({
   research: ModelRefSchema,
   scripting: ModelRefSchema,

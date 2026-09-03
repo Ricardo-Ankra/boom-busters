@@ -3,6 +3,7 @@ import {
   LLM_TASKS,
   SettingsSchema,
   canonicalModelId,
+  canonicalStillModelId,
 } from '@boom-busters/schemas'
 import type { ModelRouting, Settings, SettingsPatch } from '@boom-busters/schemas'
 
@@ -72,6 +73,12 @@ function canonicaliseRouting(routing: ModelRouting): ModelRouting {
   for (const task of LLM_TASKS) {
     const route = migrated[task]
     migrated[task] = { ...route, model: canonicalModelId(route.provider, route.model) }
+  }
+  // The stills route folds retired ids the same way (decision 211): a stored
+  // Imagen id would otherwise refuse every visuals run at pre-flight.
+  migrated.stills = {
+    ...migrated.stills,
+    model: canonicalStillModelId(migrated.stills.model),
   }
   return migrated
 }
