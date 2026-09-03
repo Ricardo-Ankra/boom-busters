@@ -428,6 +428,11 @@ describe('the plan phase (staged-visuals design)', () => {
     const first = pickers[0]!
     // The current type is pressed and disabled; the others are one click.
     expect(within(first).getByRole('button', { name: 'stock' })).toBeDisabled()
+    // The picker speaks the decision-214 names, never the wire ids.
+    expect(within(first).getByRole('button', { name: 'real footage' })).toBeInTheDocument()
+    expect(within(first).getByRole('button', { name: 'AI image' })).toBeInTheDocument()
+    expect(within(first).queryByRole('button', { name: 'archival' })).not.toBeInTheDocument()
+    expect(within(first).queryByRole('button', { name: 'still' })).not.toBeInTheDocument()
     await userEvent.click(within(first).getByRole('button', { name: 'map' }))
     expect(retypeSlotAction).toHaveBeenCalledWith(PROJECT, SLOT_A, 'map')
   })

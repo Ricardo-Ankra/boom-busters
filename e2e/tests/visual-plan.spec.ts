@@ -61,7 +61,7 @@ test.describe('the shot plan checkpoint', () => {
     // The current type's button is pressed and disabled — that is the badge
     // the accessibility tree can actually read (the visual badge uppercases
     // via CSS, which selectors must not depend on).
-    await expect(picker.getByRole('button', { name: 'still' })).toBeDisabled()
+    await expect(picker.getByRole('button', { name: 'AI image' })).toBeDisabled()
 
     await picker.getByRole('button', { name: 'stock' }).click()
 
@@ -70,12 +70,14 @@ test.describe('the shot plan checkpoint', () => {
     await expect(async () => {
       await expect(picker.getByRole('button', { name: 'stock' })).toBeDisabled({ timeout: 5_000 })
     }).toPass({ timeout: 20_000 })
-    await expect(picker.getByRole('button', { name: 'still' })).toBeEnabled()
+    await expect(picker.getByRole('button', { name: 'AI image' })).toBeEnabled()
 
     // Put it back, so a re-run of this file starts from the seeded state.
-    await picker.getByRole('button', { name: 'still' }).click()
+    await picker.getByRole('button', { name: 'AI image' }).click()
     await expect(async () => {
-      await expect(picker.getByRole('button', { name: 'still' })).toBeDisabled({ timeout: 5_000 })
+      await expect(picker.getByRole('button', { name: 'AI image' })).toBeDisabled({
+        timeout: 5_000,
+      })
     }).toPass({ timeout: 20_000 })
   })
 })

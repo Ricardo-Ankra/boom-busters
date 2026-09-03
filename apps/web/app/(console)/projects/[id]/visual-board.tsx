@@ -649,11 +649,11 @@ function TypePicker({
                   () => retypeSlotAction(projectId, slot.id, type),
                   type === 'chart' || type === 'map'
                     ? `Drafting the ${type} — this card updates when it lands`
-                    : `Re-typed to ${type}`,
+                    : `Re-typed to ${slotTypeLabel(type)}`,
                 )
               }
             >
-              {type}
+              {slotTypeLabel(type)}
             </Button>
           )
         })}
@@ -673,8 +673,8 @@ function TypePicker({
           className="flex flex-wrap items-center gap-2 rounded-[8px] border border-[var(--color-warning)] p-2"
         >
           <p className="min-w-0 flex-1 text-[13px] text-[var(--color-warning)]">
-            Could not re-type to {refused.target}: {refused.reason} The slot keeps its current
-            brief.
+            Could not re-type to {slotTypeLabel(refused.target)}: {refused.reason} The slot keeps
+            its current brief.
           </p>
           <Button
             variant="outline"
