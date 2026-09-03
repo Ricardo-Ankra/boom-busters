@@ -369,7 +369,7 @@ export function GateActionBar({
                       : stage === 'voice'
                         ? 'Approved — the visual board is being planned; review it when it lands'
                         : stage === 'visuals'
-                          ? 'Approved — the board is locked; assembly arrives with M6'
+                          ? 'Approved — the timeline is being assembled; review the preview when it lands'
                           : 'Approved — moving on',
                 )
                 if (handed) setHandedOff(stage)

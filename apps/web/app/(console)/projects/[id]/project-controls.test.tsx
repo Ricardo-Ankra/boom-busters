@@ -173,6 +173,11 @@ describe('GateActionBar', () => {
     expect(approveGate).toHaveBeenCalledWith('01J0000000000000000000000A', 'visuals', {
       acknowledgePlaceholders: 2,
     })
+    // The toast says what actually happens next (the M5-era "assembly
+    // arrives with M6" outlived M6 by two milestones).
+    expect(toast).toHaveBeenCalledWith({
+      title: 'Approved — the timeline is being assembled; review the preview when it lands',
+    })
   })
 
   it('keeps the plain Approve on a clean visuals board', async () => {

@@ -300,7 +300,7 @@ export default async function ProjectPage({
                   `${voice.coverage.flagged} flagged. Approving sends this to the visuals stage.`
                 : project.stage === 'visuals'
                   ? `${visuals.coverage.slots} slots · ${visuals.coverage.resolved} resolved · ` +
-                    `${visuals.coverage.placeholder} placeholders. Approving locks the board for assembly (M6).`
+                    `${visuals.coverage.placeholder} placeholders. Approving locks the board and assembles the timeline.`
                   : gateContext(project.stage, dossier)
           }
           {...(project.stage === 'dossier' && blockedReason ? { blockedReason } : {})}

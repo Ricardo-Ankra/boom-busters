@@ -74,10 +74,12 @@ const PROVIDER_PURPOSE: Record<Provider, string> = {
   fal:
     'Alternative still generator (FLUX, ~$0.03 per image) — used only when ' +
     'no Google key is stored',
-  // The milestone note matters: this card stores a key that nothing reads
-  // yet. A card that silently swallows a key reads as wired; saying when it
-  // starts spending is the difference between a store and a trap.
-  'hosted-alignment': 'Fallback caption alignment, when Whisper is not used. Not used until M6',
+  // The "nothing reads this" note matters: a card that silently swallows a
+  // key reads as wired; saying so is the difference between a store and a
+  // trap. ElevenLabs ships word timings with the narration, so this fallback
+  // never got a consumer.
+  'hosted-alignment':
+    'Fallback caption alignment, when Whisper is not used. Nothing reads this key yet',
 }
 
 export function SettingsForm({
