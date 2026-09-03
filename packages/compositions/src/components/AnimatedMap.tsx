@@ -150,7 +150,7 @@ export function AnimatedMap({
                 x={14 * scale}
                 y={-12 * scale}
                 style={{
-                  ...typeStyle(typography.captions, 26, scale),
+                  ...typeStyle(typography.captions, 34, scale),
                   fill: colors.textPrimary,
                   stroke: colors.background,
                   strokeWidth: 6 * scale,

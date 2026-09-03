@@ -41,7 +41,7 @@ export function ChartReveal({
   const revealFrames = Math.max(1, Math.round(durationInFrames * 0.7))
   const progress = payload.reveal === 'none' ? 1 : easeInOut(Math.min(1, frame / revealFrames))
 
-  const titleZone = Math.round(170 * scale)
+  const titleZone = Math.round(200 * scale)
   const margin = Math.round(96 * scale)
   // Memoised: the layout depends on the payload and the frame size, never
   // the current frame — recomputing it 30 times a second was free offline
@@ -53,8 +53,8 @@ export function ChartReveal({
       pad: {
         top: Math.round(30 * scale),
         right: Math.round(40 * scale),
-        bottom: Math.round(56 * scale),
-        left: Math.round(110 * scale),
+        bottom: Math.round(64 * scale),
+        left: Math.round(150 * scale),
       },
     }
     return { frameBox: box, layout: chartLayout(payload.series, payload.chartKind, box) }
@@ -62,9 +62,15 @@ export function ChartReveal({
   const seriesColour = (index: number) =>
     colors.chartSeries[index % colors.chartSeries.length] ?? colors.accent
 
+  // 30px at 1080p (was 20): the bars read from across the room, the words
+  // must too. The stroke-behind (paint-order) keeps a label legible where
+  // it crosses a gridline or a bar.
   const axisText: React.CSSProperties = {
-    ...typeStyle(typography.numbers, 20, scale),
+    ...typeStyle(typography.numbers, 30, scale),
     fill: colors.textSecondary,
+    stroke: colors.background,
+    strokeWidth: 5 * scale,
+    paintOrder: 'stroke',
   }
 
   const first = layout.labels[0]
@@ -74,9 +80,9 @@ export function ChartReveal({
     <AbsoluteFill style={{ backgroundColor: colors.background, padding: margin }}>
       <div
         style={{
-          ...typeStyle(typography.title, 40, scale),
+          ...typeStyle(typography.title, 52, scale),
           color: colors.textPrimary,
-          maxWidth: '80%',
+          maxWidth: '85%',
           lineHeight: 1.25,
           height: titleZone - margin / 2,
         }}
@@ -193,12 +199,21 @@ export function ChartReveal({
             )
           })}
 
-        {(payload.annotations ?? []).map((annotation) => {
+        {(payload.annotations ?? []).map((annotation, annotationIndex) => {
           const index = layout.labels.indexOf(annotation.atX)
           if (index === -1) return null
           const visible = categoryReveal(progress, index, layout.labels.length)
           if (visible < 1) return null
           const x = layout.x(index)
+          // Every annotation used to sit on one row and collide; they now
+          // stagger down three rows in payload order. The width estimate
+          // (0.58em per character) clamps a long label inside the plot.
+          const estimatedWidth = annotation.text.length * 0.58 * 30 * scale
+          const textX = Math.min(
+            x + 12 * scale,
+            Math.max(frameBox.pad.left, frameBox.width - frameBox.pad.right - estimatedWidth),
+          )
+          const textY = frameBox.pad.top + (38 + (annotationIndex % 3) * 42) * scale
           return (
             <g key={annotation.atX}>
               <line
@@ -209,11 +224,7 @@ export function ChartReveal({
                 stroke={colors.accent}
                 strokeDasharray={`${6 * scale} ${6 * scale}`}
               />
-              <text
-                style={{ ...axisText, fill: colors.accent }}
-                x={Math.min(x + 10 * scale, frameBox.width - frameBox.pad.right - 260 * scale)}
-                y={frameBox.pad.top + 26 * scale}
-              >
+              <text style={{ ...axisText, fill: colors.accent }} x={textX} y={textY}>
                 {annotation.text}
               </text>
             </g>

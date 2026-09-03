@@ -1,3 +1,4 @@
+import { stripNarrationMarkup } from '@boom-busters/schemas'
 import type { Caption } from '@boom-busters/schemas'
 
 /**
@@ -36,12 +37,18 @@ export const MAX_UNMATCHED_GAP_MS = 1500
 /**
  * Narration text carries bracketed performance tags — [pause], [sighs] —
  * which the narrator interprets and the viewer must never read. They are
- * direction, not content, so they are not script words.
+ * direction, not content, so they are not script words. Stripped with the
+ * canonical markup rule BEFORE tokenising: a whitespace-split token test
+ * alone let every multi-word tag through ("[long pause]" splits into
+ * "[long" and "pause]", and neither looks like a tag — found on screen in
+ * the first assembled preview). The per-token test stays as a second net.
  */
 const TAG = /^\[[^\]]+\]$/
 
 function scriptTokens(text: string): string[] {
-  return text.split(/\s+/).filter((token) => token.length > 0 && !TAG.test(token))
+  return stripNarrationMarkup(text)
+    .split(/\s+/)
+    .filter((token) => token.length > 0 && !TAG.test(token))
 }
 
 /** Case- and punctuation-insensitive comparison form. */

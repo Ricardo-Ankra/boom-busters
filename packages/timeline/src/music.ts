@@ -21,8 +21,13 @@ export function swapMusicBed(timeline: Timeline, bed: { r2Key: string } | null):
     return TimelineSchema.parse({ ...timeline, music: null })
   }
 
-  // Chapter starts, from the narration: the first segment of each chapter in
-  // playback order. The compiler derives its cue points the same way.
+  // Cue points sit where the chapter cards do (decision 215: the cards play
+  // over inserted silence, ahead of their chapter's first words) — and the
+  // compiled timeline carries the cards, so read them back. Narration-derived
+  // chapter starts remain as the fallback for a timeline without cards.
+  const cardCues = timeline.overlays
+    .filter((overlay) => overlay.kind === 'chapterCard')
+    .map((overlay) => ({ tMs: overlay.startMs, style: 'chapter' }))
   const seen = new Set<string>()
   const cuePoints: { tMs: number; style: string }[] = []
   for (const segment of timeline.narration) {
@@ -30,6 +35,7 @@ export function swapMusicBed(timeline: Timeline, bed: { r2Key: string } | null):
     seen.add(segment.chapterId)
     cuePoints.push({ tMs: segment.startMs, style: 'chapter' })
   }
+  const cues = cardCues.length > 0 ? cardCues : cuePoints
 
   return TimelineSchema.parse({
     ...timeline,
@@ -40,7 +46,7 @@ export function swapMusicBed(timeline: Timeline, bed: { r2Key: string } | null):
         bedGainDb: timeline.brand.music.bedGainDb,
         duckDepthDb: timeline.brand.music.duckDepthDb,
       }),
-      cuePoints,
+      cuePoints: cues,
     },
   })
 }

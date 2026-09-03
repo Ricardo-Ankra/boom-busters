@@ -7,8 +7,13 @@ import { frameScale, typeStyle, withAlpha } from './brand'
  * The chapter card (spec section 8.3), in the Brand Kit's variant: `full`
  * (a title card over the whole frame), `corner` (a chip that leaves the
  * footage visible) or `minimal` (centred type over a dim wash). The compiler
- * overlays it for 2600 ms at each chapter start.
+ * overlays it across inserted silence at each chapter start (decision 215),
+ * with slow fades — the fade-out must stay shorter than the compiler's
+ * CHAPTER_OVERLAP_MS so the slot swap underneath happens while the card is
+ * still opaque.
  */
+const FADE_MS = 700
+
 export function ChapterCard({
   index,
   title,
@@ -27,8 +32,8 @@ export function ChapterCard({
 
   const tMs = (frame / fps) * 1000
   const totalMs = (durationInFrames / fps) * 1000
-  const enter = easeInOut(Math.min(1, tMs / 400))
-  const exit = easeInOut(Math.min(1, Math.max(0, (totalMs - tMs) / 400)))
+  const enter = easeInOut(Math.min(1, tMs / FADE_MS))
+  const exit = easeInOut(Math.min(1, Math.max(0, (totalMs - tMs) / FADE_MS)))
   const opacity = Math.min(enter, exit)
 
   const number = String(index).padStart(2, '0')

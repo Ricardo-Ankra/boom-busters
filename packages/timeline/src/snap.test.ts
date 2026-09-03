@@ -63,6 +63,15 @@ describe('snapToScript', () => {
     expect(result.captions).toHaveLength(7)
   })
 
+  it('strips multi-word tags too — [long pause] reached the screen split in half', () => {
+    // Whitespace-split tokens "[long" and "pause]" pass a whole-token tag
+    // test; the markup must go before tokenising (first assembled preview).
+    const script = '[long pause] The money was gone. [breathes deeply] All of it.'
+    const result = snapToScript(script, heard(['the', 'money', 'was', 'gone', 'all', 'of', 'it']))
+    const texts = result.captions.map((caption) => caption.text)
+    expect(texts).toEqual(['The', 'money', 'was', 'gone.', 'All', 'of', 'it.'])
+  })
+
   it('interpolates unheard words between their matched neighbours', () => {
     // "not find" unheard: two words share the span between "could" and "the".
     const script = 'By June the auditors could not find the money'

@@ -92,7 +92,7 @@
     },
     {
       "r2Key": "boom-busters/voice/ch1-p1.wav",
-      "startMs": 8000,
+      "startMs": 8300,
       "durationMs": 6000,
       "chapterId": "01HQ0000000000000000000CH1",
       "paragraphIndex": 1
@@ -107,11 +107,11 @@
         "gainDb": -37
       },
       {
-        "tMs": 14000,
+        "tMs": 14300,
         "gainDb": -37
       },
       {
-        "tMs": 14600,
+        "tMs": 14900,
         "gainDb": -25
       }
     ],
@@ -189,44 +189,44 @@
       },
       {
         "text": "EY",
-        "startMs": 8000,
-        "endMs": 8350,
-        "timestampMs": 8175,
+        "startMs": 8300,
+        "endMs": 8650,
+        "timestampMs": 8475,
         "confidence": null
       },
       {
         "text": "refused",
-        "startMs": 8400,
-        "endMs": 8750,
-        "timestampMs": 8575,
+        "startMs": 8700,
+        "endMs": 9050,
+        "timestampMs": 8875,
         "confidence": null
       },
       {
         "text": "to",
-        "startMs": 8800,
-        "endMs": 9150,
-        "timestampMs": 8975,
+        "startMs": 9100,
+        "endMs": 9450,
+        "timestampMs": 9275,
         "confidence": null
       },
       {
         "text": "sign",
-        "startMs": 9200,
-        "endMs": 9550,
-        "timestampMs": 9375,
+        "startMs": 9500,
+        "endMs": 9850,
+        "timestampMs": 9675,
         "confidence": null
       },
       {
         "text": "the",
-        "startMs": 9600,
-        "endMs": 9950,
-        "timestampMs": 9775,
+        "startMs": 9900,
+        "endMs": 10250,
+        "timestampMs": 10075,
         "confidence": null
       },
       {
         "text": "accounts.",
-        "startMs": 10000,
-        "endMs": 10350,
-        "timestampMs": 10175,
+        "startMs": 10300,
+        "endMs": 10650,
+        "timestampMs": 10475,
         "confidence": null
       }
     ],
@@ -236,7 +236,7 @@
     {
       "type": "stock",
       "startMs": 0,
-      "durationMs": 8000,
+      "durationMs": 8300,
       "transition": "cut",
       "motion": {
         "kind": "kenburns",
@@ -253,7 +253,7 @@
     },
     {
       "type": "still",
-      "startMs": 8000,
+      "startMs": 8300,
       "durationMs": 6000,
       "transition": "dissolve",
       "motion": {
@@ -274,7 +274,7 @@
   "overlays": [
     {
       "kind": "endCta",
-      "startMs": 11400,
+      "startMs": 11700,
       "durationMs": 2600,
       "props": {
         "text": "The full story is on the channel"

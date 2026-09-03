@@ -3254,6 +3254,36 @@ published and audited. The daily `channels.list` health ping and the
      (15 e2e tests across publish/pipeline/writing-room timed out on
      mutations that silently 500'd). Only e2e catches this class.
 
+215. **Breathing room in the cut** (2026-09-03, owner review of the first
+     assembled preview: chapter transitions too abrupt, chapter cards
+     colliding with the chapter's first image, `[long pause]` visible in
+     captions, chart text unreadably small). Three fixes:
+     - **The compiler stretches the clock** (compile.ts): paragraphs get a
+       PARAGRAPH_GAP_MS (300) breath; each chapter start gets
+       CHAPTER_LEAD_MS (800) of silence, a CHAPTER_CARD_MS (3200) card,
+       and narration resuming CHAPTER_OVERLAP_MS (900) before the card
+       ends — the card (fades now 700ms, was 400) is still opaque when
+       the slots swap underneath, so its fade-out always lands on the new
+       chapter's first visual. Slots shift AND stretch (start and end move
+       independently); caption words ride their paragraph's shift; the
+       ducking curve follows the shifted narration, so the bed swells to
+       full level under every card and re-ducks at the first words; music
+       cues sit at card starts. `swapMusicBed` reads cues back from the
+       chapterCard overlays (narration-derived stays as the fallback for
+       card-less timelines). Goldens regenerated; the shorts compiler
+       inherits the breath inside a chapter window. Publish chapter stamps
+       derive from the timeline and the first is already clamped to 0:00,
+       so YouTube chapters stay valid. The preview screen's chapter list
+       matches cards by their number now, not by equal start times.
+     - **Tags can never reach captions** (snap.ts): script tokens are now
+       produced from `stripNarrationMarkup` BEFORE whitespace-splitting —
+       the old per-token test let every multi-word tag through
+       ("[long pause]" splits into "[long" and "pause]").
+     - **Chart text scaled to the bars** (ChartReveal): takeaway 40→52,
+       axis/annotation text 20→30 with a paint-order background stroke,
+       left pad widened for the bigger numbers, and annotations stagger
+       down three rows instead of colliding on one; map labels 26→34.
+
 **Status:** `[x]` done — dossier + Studio shipped with unit, component and
 e2e coverage; spec §11.3 amended in place with dated notes.
 

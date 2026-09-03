@@ -49,13 +49,15 @@ describe('compileShortTimeline', () => {
     const short = chapterOneShort()
     expect(short.width).toBe(SHORT_WIDTH)
     expect(short.height).toBe(SHORT_HEIGHT)
-    // Chapter one is paragraphs at 0..8000 and 8000..14000 on the master.
-    expect(short.narration.map((segment) => segment.startMs)).toEqual([0, 8000])
-    expect(timelineDurationMs(short)).toBe(14_000)
+    // Chapter one is paragraphs at 2300..10300 and 10600..16600 on the
+    // master (decision 215 breathing room), so the short keeps the beat
+    // between them: 8000ms of words, 300ms of breath, 6000ms of words.
+    expect(short.narration.map((segment) => segment.startMs)).toEqual([0, 8300])
+    expect(timelineDurationMs(short)).toBe(14_300)
     // Slots inside the window survive whole; later chapters' slots are gone.
     expect(short.slots.map((slot) => [slot.startMs, slot.durationMs])).toEqual([
-      [0, 8000],
-      [8000, 6000],
+      [0, 8300],
+      [8300, 6000],
     ])
   })
 
@@ -67,25 +69,25 @@ describe('compileShortTimeline', () => {
       ending: 'loop',
       music: null,
     })
-    // Paragraph 1 spans 8000..14000 on the master clock.
+    // Paragraph 1 spans 10600..16600 on the master clock.
     const masterWords = master.captions.words.filter(
-      (word) => word.startMs >= 8000 && word.startMs < 14_000,
+      (word) => word.startMs >= 10_600 && word.startMs < 16_600,
     )
     expect(short.captions.words.map((word) => word.text)).toEqual(
       masterWords.map((word) => word.text),
     )
     expect(short.captions.words.map((word) => word.startMs)).toEqual(
-      masterWords.map((word) => word.startMs - 8000),
+      masterWords.map((word) => word.startMs - 10_600),
     )
     expect(short.captions.words[0]!.startMs).toBeGreaterThanOrEqual(0)
   })
 
   it('clips a straddling slot and trims a clipped video into its source', () => {
     const master = goldenMaster()
-    // Chapter two starts at 14000; the chart slot (14000..18000) is inside,
+    // Chapter two starts at 19700; the chart slot (19700..23700) is inside,
     // and we stretch the opening video slot to straddle the boundary.
     const stretched = JSON.parse(JSON.stringify(master)) as Timeline
-    stretched.slots[0]!.durationMs = 16_000 // video now runs 0..16000
+    stretched.slots[0]!.durationMs = 19_400 // video now runs 2300..21700
     const short = compileShortTimeline({
       master: stretched,
       segmentRef: { chapterId: CHAPTER_TWO, fromParagraph: 0, toParagraph: 0 },
@@ -94,10 +96,10 @@ describe('compileShortTimeline', () => {
     })
     const video = short.slots[0]!
     expect(video.startMs).toBe(0)
-    expect(video.durationMs).toBe(2000) // 14000..16000 clipped to the window
+    expect(video.durationMs).toBe(2000) // 19700..21700 clipped to the window
     expect(video.payload.kind).toBe('video')
     if (video.payload.kind === 'video') {
-      expect(video.payload.trimStartMs).toBe(14_000) // skips what already played
+      expect(video.payload.trimStartMs).toBe(17_400) // skips what already played
     }
   })
 
@@ -106,7 +108,7 @@ describe('compileShortTimeline', () => {
     expect(short.overlays).toEqual([
       {
         kind: 'endCta',
-        startMs: 14_000 - END_CTA_MS,
+        startMs: 14_300 - END_CTA_MS,
         durationMs: END_CTA_MS,
         props: { text: DEFAULT_CTA_TEXT },
       },

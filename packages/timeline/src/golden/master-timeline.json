@@ -85,21 +85,21 @@
   "narration": [
     {
       "r2Key": "boom-busters/voice/ch1-p0.wav",
-      "startMs": 0,
+      "startMs": 2300,
       "durationMs": 8000,
       "chapterId": "01HQ0000000000000000000CH1",
       "paragraphIndex": 0
     },
     {
       "r2Key": "boom-busters/voice/ch1-p1.wav",
-      "startMs": 8000,
+      "startMs": 10600,
       "durationMs": 6000,
       "chapterId": "01HQ0000000000000000000CH1",
       "paragraphIndex": 1
     },
     {
       "r2Key": "boom-busters/voice/ch2-p0.wav",
-      "startMs": 14000,
+      "startMs": 19700,
       "durationMs": 7000,
       "chapterId": "01HQ0000000000000000000CH2",
       "paragraphIndex": 0
@@ -111,14 +111,38 @@
     "duckingCurve": [
       {
         "tMs": 0,
+        "gainDb": -25
+      },
+      {
+        "tMs": 2100,
+        "gainDb": -25
+      },
+      {
+        "tMs": 2300,
         "gainDb": -37
       },
       {
-        "tMs": 21000,
+        "tMs": 16600,
         "gainDb": -37
       },
       {
-        "tMs": 21600,
+        "tMs": 17200,
+        "gainDb": -25
+      },
+      {
+        "tMs": 19500,
+        "gainDb": -25
+      },
+      {
+        "tMs": 19700,
+        "gainDb": -37
+      },
+      {
+        "tMs": 26700,
+        "gainDb": -37
+      },
+      {
+        "tMs": 27300,
         "gainDb": -25
       }
     ],
@@ -128,7 +152,7 @@
         "style": "chapter"
       },
       {
-        "tMs": 14000,
+        "tMs": 17400,
         "style": "chapter"
       }
     ]
@@ -137,149 +161,149 @@
     "words": [
       {
         "text": "By",
-        "startMs": 0,
-        "endMs": 350,
-        "timestampMs": 175,
+        "startMs": 2300,
+        "endMs": 2650,
+        "timestampMs": 2475,
         "confidence": null
       },
       {
         "text": "June,",
-        "startMs": 400,
-        "endMs": 750,
-        "timestampMs": 575,
+        "startMs": 2700,
+        "endMs": 3050,
+        "timestampMs": 2875,
         "confidence": null
       },
       {
         "text": "the",
-        "startMs": 800,
-        "endMs": 1150,
-        "timestampMs": 975,
+        "startMs": 3100,
+        "endMs": 3450,
+        "timestampMs": 3275,
         "confidence": null
       },
       {
         "text": "auditors",
-        "startMs": 1200,
-        "endMs": 1550,
-        "timestampMs": 1375,
+        "startMs": 3500,
+        "endMs": 3850,
+        "timestampMs": 3675,
         "confidence": null
       },
       {
         "text": "could",
-        "startMs": 1600,
-        "endMs": 1950,
-        "timestampMs": 1775,
+        "startMs": 3900,
+        "endMs": 4250,
+        "timestampMs": 4075,
         "confidence": null
       },
       {
         "text": "not",
-        "startMs": 2000,
-        "endMs": 2350,
-        "timestampMs": 2175,
+        "startMs": 4300,
+        "endMs": 4650,
+        "timestampMs": 4475,
         "confidence": null
       },
       {
         "text": "find",
-        "startMs": 2400,
-        "endMs": 2750,
-        "timestampMs": 2575,
+        "startMs": 4700,
+        "endMs": 5050,
+        "timestampMs": 4875,
         "confidence": null
       },
       {
         "text": "the",
-        "startMs": 2800,
-        "endMs": 3150,
-        "timestampMs": 2975,
+        "startMs": 5100,
+        "endMs": 5450,
+        "timestampMs": 5275,
         "confidence": null
       },
       {
         "text": "money.",
-        "startMs": 3200,
-        "endMs": 3550,
-        "timestampMs": 3375,
+        "startMs": 5500,
+        "endMs": 5850,
+        "timestampMs": 5675,
         "confidence": null
       },
       {
         "text": "EY",
-        "startMs": 8000,
-        "endMs": 8350,
-        "timestampMs": 8175,
+        "startMs": 10600,
+        "endMs": 10950,
+        "timestampMs": 10775,
         "confidence": null
       },
       {
         "text": "refused",
-        "startMs": 8400,
-        "endMs": 8750,
-        "timestampMs": 8575,
+        "startMs": 11000,
+        "endMs": 11350,
+        "timestampMs": 11175,
         "confidence": null
       },
       {
         "text": "to",
-        "startMs": 8800,
-        "endMs": 9150,
-        "timestampMs": 8975,
+        "startMs": 11400,
+        "endMs": 11750,
+        "timestampMs": 11575,
         "confidence": null
       },
       {
         "text": "sign",
-        "startMs": 9200,
-        "endMs": 9550,
-        "timestampMs": 9375,
+        "startMs": 11800,
+        "endMs": 12150,
+        "timestampMs": 11975,
         "confidence": null
       },
       {
         "text": "the",
-        "startMs": 9600,
-        "endMs": 9950,
-        "timestampMs": 9775,
+        "startMs": 12200,
+        "endMs": 12550,
+        "timestampMs": 12375,
         "confidence": null
       },
       {
         "text": "accounts.",
-        "startMs": 10000,
-        "endMs": 10350,
-        "timestampMs": 10175,
+        "startMs": 12600,
+        "endMs": 12950,
+        "timestampMs": 12775,
         "confidence": null
       },
       {
         "text": "The",
-        "startMs": 14000,
-        "endMs": 14350,
-        "timestampMs": 14175,
+        "startMs": 19700,
+        "endMs": 20050,
+        "timestampMs": 19875,
         "confidence": null
       },
       {
         "text": "shares",
-        "startMs": 14400,
-        "endMs": 14750,
-        "timestampMs": 14575,
+        "startMs": 20100,
+        "endMs": 20450,
+        "timestampMs": 20275,
         "confidence": null
       },
       {
         "text": "collapsed",
-        "startMs": 14800,
-        "endMs": 15150,
-        "timestampMs": 14975,
+        "startMs": 20500,
+        "endMs": 20850,
+        "timestampMs": 20675,
         "confidence": null
       },
       {
         "text": "in",
-        "startMs": 15200,
-        "endMs": 15550,
-        "timestampMs": 15375,
+        "startMs": 20900,
+        "endMs": 21250,
+        "timestampMs": 21075,
         "confidence": null
       },
       {
         "text": "nine",
-        "startMs": 15600,
-        "endMs": 15950,
-        "timestampMs": 15775,
+        "startMs": 21300,
+        "endMs": 21650,
+        "timestampMs": 21475,
         "confidence": null
       },
       {
         "text": "days.",
-        "startMs": 16000,
-        "endMs": 16350,
-        "timestampMs": 16175,
+        "startMs": 21700,
+        "endMs": 22050,
+        "timestampMs": 21875,
         "confidence": null
       }
     ],
@@ -288,8 +312,8 @@
   "slots": [
     {
       "type": "stock",
-      "startMs": 0,
-      "durationMs": 8000,
+      "startMs": 2300,
+      "durationMs": 8300,
       "transition": "cut",
       "motion": {
         "kind": "kenburns",
@@ -306,8 +330,8 @@
     },
     {
       "type": "still",
-      "startMs": 8000,
-      "durationMs": 6000,
+      "startMs": 10600,
+      "durationMs": 9100,
       "transition": "dissolve",
       "motion": {
         "kind": "kenburns",
@@ -325,7 +349,7 @@
     },
     {
       "type": "chart",
-      "startMs": 14000,
+      "startMs": 19700,
       "durationMs": 4000,
       "transition": "cut",
       "motion": {
@@ -359,7 +383,7 @@
     },
     {
       "type": "map",
-      "startMs": 18000,
+      "startMs": 23700,
       "durationMs": 3000,
       "transition": "dissolve",
       "motion": {
@@ -387,7 +411,7 @@
     {
       "kind": "chapterCard",
       "startMs": 0,
-      "durationMs": 2600,
+      "durationMs": 3200,
       "props": {
         "index": 1,
         "title": "The audit"
@@ -395,8 +419,8 @@
     },
     {
       "kind": "chapterCard",
-      "startMs": 14000,
-      "durationMs": 2600,
+      "startMs": 17400,
+      "durationMs": 3200,
       "props": {
         "index": 2,
         "title": "The collapse"

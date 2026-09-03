@@ -43,7 +43,9 @@ test.describe('the preview screen', () => {
     await expect(page.locator('.__remotion-player')).toBeVisible()
 
     await expect(page.getByText(/Timeline v1/)).toBeVisible()
-    await expect(page.getByText(/0:15 · 2 slots · 2 chapters/)).toBeVisible()
+    // 15s of narration plus the decision-215 breathing room (opening card,
+    // chapter-two lead + card) stretches the cut to 20.4s.
+    await expect(page.getByText(/0:20 · 2 slots · 2 chapters/)).toBeVisible()
     // Chapter seek buttons, labelled with their timecodes.
     await expect(page.getByRole('button', { name: /1\. The audit/ })).toBeVisible()
     await expect(page.getByRole('button', { name: /2\. The collapse/ })).toBeVisible()

@@ -3,7 +3,15 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { DEFAULT_SETTINGS, resolveBrandKit, timelineDurationMs } from '@boom-busters/schemas'
 import { describe, expect, it } from 'vitest'
-import { compileTimeline, KENBURNS_INTENSITY, resolveMotion } from './compile'
+import {
+  CHAPTER_CARD_MS,
+  CHAPTER_LEAD_MS,
+  CHAPTER_OVERLAP_MS,
+  compileTimeline,
+  KENBURNS_INTENSITY,
+  PARAGRAPH_GAP_MS,
+  resolveMotion,
+} from './compile'
 import type { CompileInput, CompileSlot } from './compile'
 import { offsetCaptions, snapToScript } from './snap'
 
@@ -154,23 +162,59 @@ describe('compileTimeline', () => {
     expect(compiled).toBe(readFileSync(GOLDEN_PATH, 'utf8'))
   })
 
-  it('lays narration end to end on the same clock the board was planned on', () => {
+  it('lays narration in script order with breathing room stretched in (decision 215)', () => {
     const timeline = compileTimeline(goldenInput())
-    expect(timeline.narration.map((segment) => segment.startMs)).toEqual([0, 8000, 14_000])
-    expect(timelineDurationMs(timeline)).toBe(21_000)
+    // Chapter 1's card leads; narration begins while the card is still up.
+    expect(timeline.narration.map((segment) => segment.startMs)).toEqual([2300, 10_600, 19_700])
+    expect(timelineDurationMs(timeline)).toBe(26_700)
   })
 
-  it('opens a chapter card at each chapter start and cues the music there', () => {
+  it('breathes between paragraphs and pauses around every chapter card', () => {
     const timeline = compileTimeline(goldenInput())
-    expect(timeline.overlays.map((overlay) => overlay.startMs)).toEqual([0, 14_000])
-    expect(timeline.music?.cuePoints.map((cue) => cue.tMs)).toEqual([0, 14_000])
+    const [first, second, third] = timeline.narration
+    // A beat between paragraphs of the same chapter.
+    expect(second!.startMs - (first!.startMs + first!.durationMs)).toBe(PARAGRAPH_GAP_MS)
+    // The second chapter's card starts a lead after the last word, and its
+    // narration resumes while the card is still opaque.
+    const card = timeline.overlays[1]!
+    expect(card.startMs).toBe(second!.startMs + second!.durationMs + CHAPTER_LEAD_MS)
+    expect(third!.startMs).toBe(card.startMs + CHAPTER_CARD_MS - CHAPTER_OVERLAP_MS)
+  })
+
+  it('shifts and stretches the other tracks by the same clock', () => {
+    const timeline = compileTimeline(goldenInput())
+    const resume = timeline.narration[2]!.startMs
+    // The slot that ended at the old chapter boundary holds under the card
+    // until the new chapter's first slot begins with its words.
+    const still = timeline.slots[1]!
+    expect(still.startMs + still.durationMs).toBe(resume)
+    expect(timeline.slots[2]!.startMs).toBe(resume)
+    // Caption words ride their paragraph: the third paragraph's first word
+    // starts when its narration does.
+    expect(
+      timeline.captions.words.some((word) => word.text === 'The' && word.startMs === resume),
+    ).toBe(true)
+  })
+
+  it('opens a chapter card over each pause and cues the music there', () => {
+    const timeline = compileTimeline(goldenInput())
+    expect(timeline.overlays.map((overlay) => overlay.startMs)).toEqual([0, 17_400])
+    expect(timeline.overlays.map((overlay) => overlay.durationMs)).toEqual([
+      CHAPTER_CARD_MS,
+      CHAPTER_CARD_MS,
+    ])
+    expect(timeline.music?.cuePoints.map((cue) => cue.tMs)).toEqual([0, 17_400])
   })
 
   it('ducks the music with the Brand Kit gains', () => {
     const timeline = compileTimeline(goldenInput())
     const brand = resolveBrandKit(DEFAULT_SETTINGS)
     expect(timeline.music?.gainDb).toBe(brand.music.bedGainDb)
-    expect(timeline.music?.duckingCurve[0]?.gainDb).toBe(
+    const curve = timeline.music!.duckingCurve
+    // The bed opens at full level — the first words are a card's length in
+    // (decision 215) — and ducks to the brand depth once narration starts.
+    expect(curve[0]?.gainDb).toBe(brand.music.bedGainDb)
+    expect(Math.min(...curve.map((point) => point.gainDb))).toBe(
       brand.music.bedGainDb + brand.music.duckDepthDb,
     )
   })
