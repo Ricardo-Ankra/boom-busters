@@ -27,14 +27,19 @@ import type { ImageGenProvider, ImageGenRequest, ImageGenResult, StockCallOption
  * $0.012/megapixel.
  *
  * The list is a promise, not a preference: every id here has been checked
- * against fal's OpenAPI schema for THIS adapter's contract — `prompt` +
- * `image_size` (with `landscape_16_9`) + `num_images` in, `images[]` with
- * URLs out — and carries a price the budget maths can trust. fal hosts
- * hundreds of models behind other schemas; an id added without that check
- * would fail mid-run with money already spent. Known incompatible: FLUX.2
- * pro and FLUX1.1 ultra take no `num_images` (one image per request), which
- * breaks the N-variants call shape — the same reason Imagen 4 Ultra is
- * absent from the Google list.
+ * against fal's OpenAPI schema and carries a price the budget maths can
+ * trust. fal hosts hundreds of models behind other schemas; an id added
+ * without that check would fail mid-run with money already spent. Known
+ * incompatible: FLUX.2 pro and FLUX1.1 ultra take no `num_images` (one image
+ * per request), which breaks the N-variants call shape. Checked and absent:
+ * every Imagen 4 id (`fal-ai/imagen4/preview` and variants) 404s on fal's
+ * schema endpoint — withdrawn, so not offered.
+ *
+ * Two wire dialects behind one contract (`prompt` + `num_images` in,
+ * `images[]` out): the FLUX family takes `image_size: 'landscape_16_9'` and
+ * no negative-prompt field; `fal-ai/imagen3` takes `aspect_ratio: '16:9'`
+ * and a REAL `negative_prompt` field, so for it the brief's negative prompt
+ * travels as itself rather than folded into an "Avoid:" clause.
  */
 const MODELS = [
   { id: 'fal-ai/flux/dev', label: 'FLUX.1 dev', pricePerImage: 0.03 },
@@ -42,7 +47,14 @@ const MODELS = [
   { id: 'fal-ai/flux-pro/v1.1', label: 'FLUX1.1 pro', pricePerImage: 0.04 },
   { id: 'fal-ai/flux-2', label: 'FLUX.2 dev', pricePerImage: 0.02 },
   { id: 'fal-ai/flux/krea', label: 'FLUX.1 Krea dev', pricePerImage: 0.03 },
+  { id: 'fal-ai/imagen3', label: 'Imagen 3', pricePerImage: 0.05 },
 ] as const
+
+const isImagen = (model: string) => model === 'fal-ai/imagen3'
+
+/** Imagen's 16:9 renders 1408×768 — same class as FLUX's, scaled at compile. */
+const IMAGEN_WIDTH = 1408
+const IMAGEN_HEIGHT = 768
 
 const endpoint = (model: string) => `https://fal.run/${model}`
 
@@ -70,10 +82,28 @@ export const falImageGen: ImageGenProvider = {
 
     // Resolved (and refused, on an unknown id) before any call is made.
     const model = imageGenModel(falImageGen, request.model)
+    const imagen = isImagen(model.id)
 
-    const prompt = request.negativePrompt
-      ? `${request.prompt}. Avoid: ${request.negativePrompt}.`
-      : request.prompt
+    // FLUX has no negative-prompt field, so the brief's negative prompt is
+    // folded in as an "Avoid:" clause. Imagen has the real field.
+    const prompt =
+      request.negativePrompt && !imagen
+        ? `${request.prompt}. Avoid: ${request.negativePrompt}.`
+        : request.prompt
+
+    const body = imagen
+      ? {
+          prompt,
+          ...(request.negativePrompt ? { negative_prompt: request.negativePrompt } : {}),
+          aspect_ratio: '16:9',
+          num_images: request.count,
+        }
+      : {
+          prompt,
+          image_size: IMAGE_SIZE,
+          num_images: request.count,
+          enable_safety_checker: true,
+        }
 
     const fetchImpl = options.fetchImpl ?? fetch
     let response: Response
@@ -84,12 +114,7 @@ export const falImageGen: ImageGenProvider = {
           Authorization: `Key ${apiKey}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          prompt,
-          image_size: IMAGE_SIZE,
-          num_images: request.count,
-          enable_safety_checker: true,
-        }),
+        body: JSON.stringify(body),
         ...(options.signal ? { signal: options.signal } : {}),
       })
     } catch (cause) {
@@ -102,8 +127,8 @@ export const falImageGen: ImageGenProvider = {
     return {
       images: parsed.images.map((image) => ({
         url: image.url,
-        width: image.width ?? 1344,
-        height: image.height ?? 768,
+        width: image.width ?? (imagen ? IMAGEN_WIDTH : 1344),
+        height: image.height ?? (imagen ? IMAGEN_HEIGHT : 768),
       })),
       estimatedCostUsd: model.pricePerImage * parsed.images.length,
     }

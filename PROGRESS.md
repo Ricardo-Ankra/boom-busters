@@ -3199,6 +3199,18 @@ published and audited. The daily `channels.list` health ping and the
      ListModels (or the vendor's live schema) confirms it — decision
      210's rule, now applied to Google too.
 
+212. **Imagen 3 returns, via fal** (2026-09-03, owner asked whether Imagen
+     needs another API). It does not: fal hosts Google's Imagen, so
+     `fal-ai/imagen3` ($0.05/image, schema-verified) joins the fal list
+     as a second dialect behind the same contract — `aspect_ratio:
+     '16:9'` instead of `image_size`, and a REAL `negative_prompt` field,
+     so for Imagen the brief's negative prompt travels as itself instead
+     of folded into an "Avoid:" clause. Imagen 4 on fal was checked and
+     NOT added: every id (`fal-ai/imagen4/preview`, `/fast`, `/ultra`,
+     GA-shaped guesses, the google/ namespace) 404s on fal's own schema
+     endpoint — withdrawn. Using it needs the funded fal account
+     (decision 209's TOP_UP note).
+
 **Status:** `[x]` done — dossier + Studio shipped with unit, component and
 e2e coverage; spec §11.3 amended in place with dated notes.
 

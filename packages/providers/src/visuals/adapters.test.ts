@@ -387,7 +387,54 @@ describe('falImageGen', () => {
       'fal-ai/flux-pro/v1.1',
       'fal-ai/flux-2',
       'fal-ai/flux/krea',
+      'fal-ai/imagen3',
     ])
+  })
+
+  it('speaks the Imagen dialect on fal: aspect_ratio and a REAL negative_prompt (decision 212)', async () => {
+    let calledUrl = ''
+    let sentBody: Record<string, unknown> = {}
+    const result = await falImageGen.generate(
+      {
+        prompt: '1995 trading floor',
+        negativePrompt: 'modern screens',
+        count: 2,
+        model: 'fal-ai/imagen3',
+      },
+      {
+        apiKey: 'key',
+        fetchImpl: (async (url: string | URL | Request, init?: RequestInit) => {
+          calledUrl = String(url)
+          sentBody = JSON.parse(String(init?.body)) as Record<string, unknown>
+          return new Response(
+            JSON.stringify({
+              images: [
+                { url: 'https://fal.media/files/a.png' },
+                { url: 'https://fal.media/b.png' },
+              ],
+            }),
+            { status: 200 },
+          )
+        }) as typeof fetch,
+      },
+    )
+
+    expect(calledUrl).toBe('https://fal.run/fal-ai/imagen3')
+    // The negative prompt travels as itself — not folded into the prompt.
+    expect(sentBody['prompt']).toBe('1995 trading floor')
+    expect(sentBody['negative_prompt']).toBe('modern screens')
+    expect(sentBody['aspect_ratio']).toBe('16:9')
+    expect(sentBody['num_images']).toBe(2)
+    expect(sentBody['image_size']).toBeUndefined()
+    // Imagen's 16:9 dimensions fill in where fal omits them.
+    expect(result.images[0]).toEqual({
+      url: 'https://fal.media/files/a.png',
+      width: 1408,
+      height: 768,
+    })
+    expect(result.estimatedCostUsd).toBeCloseTo(
+      falImageGen.models.find((model) => model.id === 'fal-ai/imagen3')!.pricePerImage * 2,
+    )
   })
 
   it('refuses a model it does not list before any call is made', async () => {
