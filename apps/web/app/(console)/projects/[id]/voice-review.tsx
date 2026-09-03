@@ -573,8 +573,19 @@ function ParagraphRowView({
           {/* The stale row's own repair: no walking to the top of the page to
               re-run the stage for one paragraph. On a fresh row the same
               purchase is offered as "Another take" — the narrator samples, so
-              a second reading is a genuine second performance. */}
-          {row.stale ? (
+              a second reading is a genuine second performance.
+
+              A take with NO audio is the run's swallowed synthesis failure
+              (decision 217): the runner leaves it pending and opens the gate
+              with "N failed, flagged for you" — and until this branch existed
+              every repair on the row gated on hasAudio, so the one paragraph
+              that most needed a button had none. Same purchase, honest label. */}
+          {row.current && !row.current.hasAudio ? (
+            <Button onClick={() => void retake('regenerate')} disabled={retaking}>
+              <RefreshCw className="size-4" aria-hidden />
+              {retaking ? 'Queueing…' : 'Synthesise'}
+            </Button>
+          ) : row.stale ? (
             <Button
               onClick={() => void retake('regenerate')}
               disabled={retaking || !row.current?.hasAudio}

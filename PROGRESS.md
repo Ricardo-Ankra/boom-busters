@@ -3307,6 +3307,20 @@ published and audited. The daily `channels.list` health ping and the
      Pre-216 outlines still draft — they simply carry no contract message.
      Mock outline carries all fields so CI exercises the shape.
 
+217. **A failed synthesis gets a button** (2026-09-03, owner report:
+     project 01M1F7KDJVGDSJ31WE7BPSBKZR "stuck" with one paragraph never
+     synthesised). The voice runner swallows per-take synthesis failures by
+     design (fan-out tolerance) and parks at the gate saying "1 failed,
+     flagged for you" — but the row's every repair (Fix the words, Another
+     take/Regenerate, Flag) gated on `hasAudio`, so the one paragraph that
+     most needed an action had none, and the stage was unfinishable from
+     the UI (spec §11.1 button-first violated). A pending take with no
+     audio now shows a primary "Synthesise" button riding the existing
+     `retakeVoiceTake` action (the retaker re-derives text, key and
+     settings; it never reads the old audio). Fix the words stays
+     audio-gated; the purchase does not. The old test asserting the dead
+     end was deliberately reversed.
+
 **Status:** `[x]` done — dossier + Studio shipped with unit, component and
 e2e coverage; spec §11.3 amended in place with dated notes.
 

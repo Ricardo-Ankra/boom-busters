@@ -156,6 +156,52 @@ describe('VoiceReview', () => {
     expect(screen.getByText('3 of 5 paragraphs have no audio yet.')).toBeInTheDocument()
   })
 
+  /**
+   * Decision 217: a first-pass synthesis failure leaves a `pending` take with
+   * no audio, and the run parks at the gate saying "1 failed, flagged for
+   * you". Every other repair on the row gates on hasAudio, so without this
+   * button the one paragraph that most needed an action had none — the stage
+   * was unfinishable from the UI (found live: 1 of 84 paragraphs).
+   */
+  describe('a take whose synthesis failed (no audio)', () => {
+    const failed = () =>
+      model({
+        chapters: [
+          {
+            chapterId: 'c1',
+            title: 'The audit',
+            paragraphs: [
+              {
+                chapterId: 'c1',
+                paragraphIndex: 0,
+                text: 'Two hundred seventy million dollars.',
+                current: take({ status: 'pending', hasAudio: false, durationMs: null }),
+                previous: undefined,
+                takeCount: 1,
+                stale: false,
+              },
+            ],
+          },
+        ],
+      })
+
+    it('offers Synthesise — the one repair the row can take', async () => {
+      render(<VoiceReview projectId="01HQ0000000000000000000009" model={failed()} />)
+
+      const button = screen.getByRole('button', { name: 'Synthesise' })
+      expect(button).toBeEnabled()
+      await userEvent.click(button)
+      expect(retakeVoiceTake).toHaveBeenCalledWith('take-1')
+    })
+
+    it('keeps the audio-dependent repairs off the row', () => {
+      render(<VoiceReview projectId="01HQ0000000000000000000009" model={failed()} />)
+
+      expect(screen.queryByRole('button', { name: /Another take|Regenerate/ })).toBeNull()
+      expect(screen.getByRole('button', { name: 'Fix the words' })).toBeDisabled()
+    })
+  })
+
   describe('flagging', () => {
     it('requires a note, so the row still means something a week later', async () => {
       render(<VoiceReview projectId="01HQ0000000000000000000009" model={model()} />)
@@ -294,7 +340,14 @@ describe('VoiceReview', () => {
       expect(flagVoiceTake).not.toHaveBeenCalled()
     })
 
-    it('will not offer to repair a paragraph that has no audio yet', async () => {
+    /**
+     * Deliberately reversed by decision 217: this used to assert every repair
+     * was disabled on a no-audio row, and that made a failed synthesis a dead
+     * end — the gate refuses approval over the pending take, and no button on
+     * the row could buy the missing audio. The word-editing repair still waits
+     * for audio; the purchase does not.
+     */
+    it('offers only the synthesis purchase on a paragraph that has no audio yet', () => {
       const silent = model({
         chapters: [
           {
@@ -318,7 +371,8 @@ describe('VoiceReview', () => {
       render(<VoiceReview projectId="01HQ0000000000000000000009" model={silent} />)
 
       expect(screen.getByRole('button', { name: 'Fix the words' })).toBeDisabled()
-      expect(screen.getByRole('button', { name: 'Another take' })).toBeDisabled()
+      expect(screen.queryByRole('button', { name: 'Another take' })).toBeNull()
+      expect(screen.getByRole('button', { name: 'Synthesise' })).toBeEnabled()
     })
 
     /**
