@@ -86,6 +86,9 @@ Behavioural configuration in the `settings` table (single row), editable in the 
     shotlist:  { provider: 'anthropic', model: 'haiku'  },
     metadata:  { provider: 'anthropic', model: 'haiku'  },
     digest:    { provider: 'anthropic', model: 'haiku'  },
+    // Added 2026-09-03, decision 208: the still-image generator is routed
+    // here too — provider 'google' | 'fal', model from that adapter's list.
+    stills:    { provider: 'google', model: 'gemini-2.5-flash-image' },
   },                                               // validated against each adapter's known-model list
   tts: { provider: 'gemini' | 'elevenlabs', voiceId, stylePrompt,
          pacing, locked: boolean },               // §6; changing when locked requires typed confirmation

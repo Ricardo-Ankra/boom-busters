@@ -4,13 +4,15 @@ import {
   LLM_PROVIDERS,
   LLM_TASKS,
   PROVIDERS,
+  STILL_PROVIDERS,
   type LlmProvider,
   type LlmTask,
   type Provider,
   type Settings,
   type SettingsPatch,
+  type StillProvider,
 } from '@boom-busters/schemas'
-import { LLM_MODELS, knownModel, topModel } from '@boom-busters/providers'
+import { LIVE_IMAGE_GEN_ADAPTERS, LLM_MODELS, knownModel, topModel } from '@boom-busters/providers'
 import type { MaskedCredential } from '@boom-busters/db'
 import dynamic from 'next/dynamic'
 import * as React from 'react'
@@ -179,6 +181,15 @@ function ModelsTab({ settings, saving, commit }: TabProps) {
     void commit({ modelRouting: { [task]: { provider, model } } }, next)
   }
 
+  const setStillRoute = (provider: StillProvider, model: string) => {
+    const next = structuredClone(settings)
+    next.modelRouting.stills = { provider, model }
+    void commit({ modelRouting: { stills: { provider, model } } }, next)
+  }
+
+  const stills = settings.modelRouting.stills
+  const stillModels = LIVE_IMAGE_GEN_ADAPTERS[stills.provider].models
+
   return (
     <Card>
       <CardHeader>
@@ -237,6 +248,51 @@ function ModelsTab({ settings, saving, commit }: TabProps) {
             </div>
           )
         })}
+
+        {/* The still-image generator (decision 208) — not an LLM task, but
+            routed where the human looks for every other model decision. */}
+        <div className="grid items-center gap-2 sm:grid-cols-[1fr_auto_auto]">
+          <Label htmlFor="route-stills-provider">Still images (visuals)</Label>
+
+          <Select
+            id="route-stills-provider"
+            aria-label="Still images provider"
+            value={stills.provider}
+            disabled={saving}
+            onChange={(event) => {
+              const provider = event.target.value as StillProvider
+              // Switching provider starts at its default model: the old id
+              // means nothing to the new provider.
+              setStillRoute(provider, LIVE_IMAGE_GEN_ADAPTERS[provider].models[0]!.id)
+            }}
+            className="sm:w-40"
+          >
+            {STILL_PROVIDERS.map((provider) => (
+              <option key={provider} value={provider}>
+                {provider}
+              </option>
+            ))}
+          </Select>
+
+          <Select
+            aria-label="Still images model"
+            value={stills.model}
+            disabled={saving}
+            onChange={(event) => setStillRoute(stills.provider, event.target.value)}
+            className="sm:w-48"
+          >
+            {stillModels.map((model) => (
+              <option key={model.id} value={model.id}>
+                {model.label} (${model.pricePerImage.toFixed(2)}/image)
+              </option>
+            ))}
+            {/* Same rule as the LLM rows: an unlisted id is shown, because it
+                is what generation will actually be refused on. */}
+            {stillModels.some((model) => model.id === stills.model) ? null : (
+              <option value={stills.model}>{stills.model} (unlisted)</option>
+            )}
+          </Select>
+        </div>
       </CardContent>
     </Card>
   )

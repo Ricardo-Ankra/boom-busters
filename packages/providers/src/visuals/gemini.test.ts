@@ -45,7 +45,33 @@ describe('geminiImageGen', () => {
     expect(calls[0]?.url).toContain('gemini-2.5-flash-image:generateContent')
     expect(result.images).toHaveLength(2)
     expect(result.images[0]?.url).toBe(`data:image/png;base64,${PNG_BASE64}`)
-    expect(result.estimatedCostUsd).toBeCloseTo(geminiImageGen.pricePerImage * 2)
+    expect(result.estimatedCostUsd).toBeCloseTo(geminiImageGen.models[0]!.pricePerImage * 2)
+  })
+
+  it('calls the routed model, at its own price (decision 208)', async () => {
+    const calls: { url: string; body: unknown }[] = []
+    const result = await geminiImageGen.generate(
+      { prompt: 'A deserted trading floor at dawn', count: 1, model: 'gemini-3-pro-image-preview' },
+      { apiKey: 'key', fetchImpl: fetchRecording(calls, IMAGE_REPLY) },
+    )
+
+    expect(calls[0]?.url).toContain('gemini-3-pro-image-preview:generateContent')
+    expect(result.estimatedCostUsd).toBeCloseTo(
+      geminiImageGen.models.find((model) => model.id === 'gemini-3-pro-image-preview')!
+        .pricePerImage,
+    )
+  })
+
+  it('refuses a model it does not list before any call is made', async () => {
+    const calls: { url: string; body: unknown }[] = []
+    await expect(
+      geminiImageGen.generate(
+        { prompt: 'A deserted trading floor at dawn', count: 1, model: 'imagen-nope' },
+        { apiKey: 'key', fetchImpl: fetchRecording(calls, IMAGE_REPLY) },
+      ),
+    ).rejects.toThrow(/modelRouting\.stills/)
+    // Refused before the purchase, not after it.
+    expect(calls).toHaveLength(0)
   })
 
   it('asks for 16:9 and folds the negative prompt in, since the API has none', async () => {

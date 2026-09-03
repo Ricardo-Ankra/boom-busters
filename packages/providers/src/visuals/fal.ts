@@ -1,9 +1,13 @@
 import { z } from 'zod'
 import { mapNetworkError, throwForResponse } from '../llm/http'
+import { imageGenModel } from './types'
 import type { ImageGenProvider, ImageGenRequest, ImageGenResult, StockCallOptions } from './types'
 
 /**
- * fal.ai running FLUX.1 [dev] — the `still` slot generator.
+ * fal.ai running FLUX — the alternative `still` slot generator. Which FLUX
+ * runs is `modelRouting.stills` (decision 208); the ids are fal's model
+ * paths, appended to `fal.run`, and all three share the request/response
+ * shape this adapter speaks.
  *
  * The synchronous endpoint (`fal.run`) rather than the queue: a two-image
  * generation returns in seconds, comfortably inside one Inngest step, and the
@@ -16,14 +20,18 @@ import type { ImageGenProvider, ImageGenRequest, ImageGenResult, StockCallOption
  * something and silently ignoring it is the thing spec principle 6 forbids.
  */
 
-const FAL_ENDPOINT = 'https://fal.run/fal-ai/flux/dev'
-
 /**
- * USD per image. fal prices FLUX.1 [dev] at $0.025/megapixel and the 16:9
- * size is ~1.03 MP; rounded UP so the estimate errs against the budget, the
- * same direction every estimate in this app errs.
+ * Prices are USD per image, rounded UP so the estimate errs against the
+ * budget. dev: $0.025/megapixel and the 16:9 size is ~1.03 MP. schnell:
+ * $0.003/megapixel. pro 1.1: a flat $0.04 per image.
  */
-const PRICE_PER_IMAGE_USD = 0.03
+const MODELS = [
+  { id: 'fal-ai/flux/dev', label: 'FLUX.1 dev', pricePerImage: 0.03 },
+  { id: 'fal-ai/flux/schnell', label: 'FLUX.1 schnell', pricePerImage: 0.01 },
+  { id: 'fal-ai/flux-pro/v1.1', label: 'FLUX1.1 pro', pricePerImage: 0.04 },
+] as const
+
+const endpoint = (model: string) => `https://fal.run/${model}`
 
 const ResponseSchema = z.object({
   images: z.array(
@@ -40,12 +48,15 @@ const IMAGE_SIZE = 'landscape_16_9'
 
 export const falImageGen: ImageGenProvider = {
   id: 'fal',
-  label: 'FLUX.1 dev via fal.ai',
-  pricePerImage: PRICE_PER_IMAGE_USD,
+  label: 'FLUX via fal.ai',
+  models: MODELS,
 
   async generate(request: ImageGenRequest, options: StockCallOptions): Promise<ImageGenResult> {
     const apiKey = options.apiKey
     if (!apiKey) throw new Error('fal requires an API key')
+
+    // Resolved (and refused, on an unknown id) before any call is made.
+    const model = imageGenModel(falImageGen, request.model)
 
     const prompt = request.negativePrompt
       ? `${request.prompt}. Avoid: ${request.negativePrompt}.`
@@ -54,7 +65,7 @@ export const falImageGen: ImageGenProvider = {
     const fetchImpl = options.fetchImpl ?? fetch
     let response: Response
     try {
-      response = await fetchImpl(FAL_ENDPOINT, {
+      response = await fetchImpl(endpoint(model.id), {
         method: 'POST',
         headers: {
           Authorization: `Key ${apiKey}`,
@@ -81,7 +92,7 @@ export const falImageGen: ImageGenProvider = {
         width: image.width ?? 1344,
         height: image.height ?? 768,
       })),
-      estimatedCostUsd: PRICE_PER_IMAGE_USD * parsed.images.length,
+      estimatedCostUsd: model.pricePerImage * parsed.images.length,
     }
   },
 
@@ -96,7 +107,7 @@ export const falImageGen: ImageGenProvider = {
     const fetchImpl = options.fetchImpl ?? fetch
     let response: Response
     try {
-      response = await fetchImpl(FAL_ENDPOINT, {
+      response = await fetchImpl(endpoint(MODELS[0].id), {
         method: 'GET',
         headers: { Authorization: `Key ${apiKey}` },
         ...(options.signal ? { signal: options.signal } : {}),

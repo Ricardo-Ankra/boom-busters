@@ -352,7 +352,43 @@ describe('falImageGen', () => {
     expect(sentBody['prompt']).toBe('1995 trading floor. Avoid: modern screens.')
     expect(sentBody['num_images']).toBe(2)
     expect(result.images).toHaveLength(2)
-    expect(result.estimatedCostUsd).toBeCloseTo(falImageGen.pricePerImage * 2)
+    expect(result.estimatedCostUsd).toBeCloseTo(falImageGen.models[0]!.pricePerImage * 2)
+  })
+
+  it('runs the routed FLUX variant at its own endpoint and price (decision 208)', async () => {
+    let calledUrl = ''
+    const result = await falImageGen.generate(
+      { prompt: '1995 trading floor', count: 1, model: 'fal-ai/flux/schnell' },
+      {
+        apiKey: 'key',
+        fetchImpl: (async (url: string | URL | Request) => {
+          calledUrl = String(url)
+          return new Response(
+            JSON.stringify({ images: [{ url: 'https://fal.media/files/a.png' }] }),
+            { status: 200 },
+          )
+        }) as typeof fetch,
+      },
+    )
+
+    expect(calledUrl).toBe('https://fal.run/fal-ai/flux/schnell')
+    expect(result.estimatedCostUsd).toBeCloseTo(
+      falImageGen.models.find((model) => model.id === 'fal-ai/flux/schnell')!.pricePerImage,
+    )
+  })
+
+  it('refuses a model it does not list before any call is made', async () => {
+    await expect(
+      falImageGen.generate(
+        { prompt: '1995 trading floor', count: 1, model: 'fal-ai/some-other-thing' },
+        {
+          apiKey: 'key',
+          fetchImpl: (async () => {
+            throw new Error('must not be called')
+          }) as typeof fetch,
+        },
+      ),
+    ).rejects.toThrow(/modelRouting\.stills/)
   })
 
   it('verifyKey accepts a 405 (wrong method, valid key) and rejects a 401', async () => {

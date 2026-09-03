@@ -73,6 +73,12 @@ export interface ImageGenRequest {
   negativePrompt?: string
   /** How many variants to buy in this one call. */
   count: number
+  /**
+   * Which of the adapter's models to use — `settings.modelRouting.stills`
+   * (decision 208). Absent means the adapter's first listed model. An id the
+   * adapter does not list is refused before any money is spent.
+   */
+  model?: string
 }
 
 export interface GeneratedImage {
@@ -101,17 +107,48 @@ export interface ImageGenResult {
  */
 export type ImageGenProviderId = 'fal' | 'google'
 
-export interface ImageGenProvider {
-  readonly id: ImageGenProviderId
-  /** The model behind it, human-readable — licence lines say "Generated (<label>)". */
+/** One model an image adapter offers — id, label, and its own price. */
+export interface ImageGenModel {
+  readonly id: string
+  /** Human-readable — licence lines say "Generated (<label>)". */
   readonly label: string
   /** USD per generated image. Owned here, like every provider price. */
   readonly pricePerImage: number
+}
+
+export interface ImageGenProvider {
+  readonly id: ImageGenProviderId
+  /** The provider, human-readable — the model labels name the models. */
+  readonly label: string
+  /**
+   * Every model this adapter will accept, the default first — the same shape
+   * as `LLMProvider.models` (decision 208). The Settings → Models dropdown is
+   * rendered from this list, and `generate` refuses an id that is not on it.
+   */
+  readonly models: readonly ImageGenModel[]
   generate(request: ImageGenRequest, options: StockCallOptions): Promise<ImageGenResult>
   verifyKey(apiKey: string, options?: Omit<StockCallOptions, 'apiKey'>): Promise<void>
 }
 
-/** USD for a generation call, from the adapter's own price. */
-export function imageGenPrice(provider: ImageGenProvider, count: number): number {
-  return provider.pricePerImage * count
+/**
+ * The model a request resolves to: the named one, or the adapter's first.
+ * Throws on an id the adapter does not list — the caller is about to spend
+ * money on it, and a typo'd routing must fail before the purchase, naming
+ * the setting that holds it.
+ */
+export function imageGenModel(provider: ImageGenProvider, modelId?: string): ImageGenModel {
+  if (modelId === undefined) return provider.models[0]!
+  const model = provider.models.find((candidate) => candidate.id === modelId)
+  if (!model) {
+    throw new Error(
+      `${provider.id} does not offer the image model "${modelId}" — ` +
+        `fix modelRouting.stills in Settings → Models.`,
+    )
+  }
+  return model
+}
+
+/** USD for a generation call, from the adapter's own per-model price. */
+export function imageGenPrice(provider: ImageGenProvider, count: number, modelId?: string): number {
+  return imageGenModel(provider, modelId).pricePerImage * count
 }

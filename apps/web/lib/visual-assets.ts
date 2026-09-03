@@ -2,7 +2,7 @@ import 'server-only'
 
 import { createHash } from 'node:crypto'
 import { withCost } from '@boom-busters/cost'
-import { upsertAssetByHash, visualCredentials } from '@boom-busters/db'
+import { getSettings, upsertAssetByHash, visualCredentials } from '@boom-busters/db'
 import { applyScores, STILL_GENERATIONS, ValidationError } from '@boom-busters/schemas'
 import type {
   ArchivalBrief,
@@ -14,16 +14,16 @@ import type {
 } from '@boom-busters/schemas'
 import {
   buildScoringRequest,
-  falImageGen,
-  geminiImageGen,
   imageGenAdapter,
+  imageGenModel,
   imageGenPrice,
+  LIVE_IMAGE_GEN_ADAPTERS,
   mockProvidersEnabled,
   mockScores,
   parseScores,
   stockAdapter,
 } from '@boom-busters/providers'
-import type { ImageGenProviderId, StockQuery } from '@boom-busters/providers'
+import type { StockQuery } from '@boom-busters/providers'
 import { db } from '@/lib/db'
 import { env } from '@/lib/env'
 import { callLlm } from '@/lib/llm'
@@ -94,15 +94,16 @@ export async function requireVisualKeys(types: ReadonlySet<ShotBrief['type']>): 
 
 /**
  * What one still slot will cost to generate, for the plan screen's "Fetch
- * visuals · est. $X" button (staged-visuals design): the price of whichever
- * generator the keys select — the same choice `generateStillCandidates`
- * makes — times the generations a prompt buys. Stock, archival, chart and
- * map fetches are free, so stills are the whole estimate.
+ * visuals · est. $X" button (staged-visuals design): the price of the routed
+ * generator (`modelRouting.stills`, decision 208) — the same choice
+ * `generateStillCandidates` makes — times the generations a prompt buys.
+ * Priced from the LIVE adapter even in mock mode, the same rule as every
+ * mock: budgets are configuration that outlives a test run. Stock, archival,
+ * chart and map fetches are free, so stills are the whole estimate.
  */
 export async function stillSlotEstimateUsd(): Promise<number> {
-  const keys = mockProvidersEnabled() ? {} : await visualCredentials(db, env.SECRETS_ENCRYPTION_KEY)
-  const provider = 'google' in keys && keys.google ? geminiImageGen : falImageGen
-  return imageGenPrice(provider, STILL_GENERATIONS)
+  const route = (await getSettings(db)).modelRouting.stills
+  return imageGenPrice(LIVE_IMAGE_GEN_ADAPTERS[route.provider], STILL_GENERATIONS, route.model)
 }
 
 // ---------------------------------------------------------------------------
@@ -174,13 +175,22 @@ async function generateStillCandidates(
   const mocked = mockProvidersEnabled()
   const keys = mocked ? {} : await visualCredentials(db, env.SECRETS_ENCRYPTION_KEY)
 
-  // Gemini rides the Google key Settings already holds for the LLM adapters,
-  // which is why it wins when both keys exist: fal is the generator that
-  // needs an account the user may not have. In mock mode the registry serves
-  // the mock whichever id is asked for.
-  const provider: ImageGenProviderId = keys.google ? 'google' : 'fal'
+  // Which generator and which model is `modelRouting.stills` (decision 208)
+  // — a routed choice like every LLM task, not an inference from which key
+  // happens to exist. In mock mode the registry serves the mock whichever id
+  // is asked for, and the mock ignores the model id.
+  const route = (await getSettings(db)).modelRouting.stills
+  const provider = route.provider
   const adapter = imageGenAdapter(provider)
   const apiKey = provider === 'google' ? keys.google : keys.fal
+  if (!mocked && !apiKey) {
+    throw new ValidationError(
+      `Stills are routed to ${provider} (Settings → Models), but no ` +
+        `${provider === 'google' ? 'Google' : 'fal.ai'} key is stored in Settings → Connections. ` +
+        'Add the key, or route stills at the other generator.',
+      { field: 'modelRouting.stills.provider' },
+    )
+  }
 
   const result = await withCost(
     db,
@@ -188,8 +198,10 @@ async function generateStillCandidates(
       provider,
       operation: 'image.generate',
       projectId,
-      estimateUsd: imageGenPrice(adapter, STILL_GENERATIONS),
-      meta: { prompt: brief.prompt.slice(0, 200) },
+      // Priced from the LIVE adapter even in mock mode — same rule as the
+      // estimate button, so plan and ledger never quote different numbers.
+      estimateUsd: imageGenPrice(LIVE_IMAGE_GEN_ADAPTERS[provider], STILL_GENERATIONS, route.model),
+      meta: { model: route.model, prompt: brief.prompt.slice(0, 200) },
     },
     async () => {
       const generated = await adapter.generate(
@@ -197,6 +209,7 @@ async function generateStillCandidates(
           prompt: brief.prompt,
           ...(brief.negativePrompt ? { negativePrompt: brief.negativePrompt } : {}),
           count: STILL_GENERATIONS,
+          ...(mocked ? {} : { model: route.model }),
         },
         { ...(apiKey ? { apiKey } : {}) },
       )
@@ -248,11 +261,13 @@ async function generateStillCandidates(
         ? `generated://${adapter.id}/${contentHash.slice(0, 12)}`
         : image.url
 
+      // The licence line names the MODEL, not just the provider: which
+      // generator made a frame is provenance the licence field exists for.
       const asset = await upsertAssetByHash(db, {
         kind: 'image',
         r2Key: key,
         sourceUrl,
-        licence: `Generated (${adapter.label})`,
+        licence: `Generated (${imageGenModel(LIVE_IMAGE_GEN_ADAPTERS[provider], route.model).label})`,
         contentHash,
         width: image.width,
         height: image.height,

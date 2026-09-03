@@ -83,10 +83,14 @@ export function createMockStock(id: StockProviderId): StockProvider {
 export const mockImageGen: ImageGenProvider = {
   id: 'fal',
   label: '[mock] image generator',
-  // The LIVE price, same rule as the mock TTS and LLM adapters: budgets are
+  // The LIVE prices, same rule as the mock TTS and LLM adapters: budgets are
   // configuration that outlives a test run, and a mock that priced itself at
-  // zero would make every cap hold or break for the wrong reason.
-  pricePerImage: falImageGen.pricePerImage,
+  // zero would make every cap hold or break for the wrong reason. fal's list
+  // rather than a merged one, because the mock serves for BOTH provider ids
+  // (the registry hands it out whichever is asked for) — so `request.model`
+  // is deliberately not resolved against it: a Gemini id routed in mock mode
+  // must generate a thumbnail, not throw about a list the mock never had.
+  models: falImageGen.models,
 
   async generate(request: ImageGenRequest): Promise<ImageGenResult> {
     return {
@@ -95,7 +99,7 @@ export const mockImageGen: ImageGenProvider = {
         width: 1344,
         height: 768,
       })),
-      estimatedCostUsd: falImageGen.pricePerImage * request.count,
+      estimatedCostUsd: falImageGen.models[0]!.pricePerImage * request.count,
     }
   },
 

@@ -41,7 +41,7 @@ describe('createMockStock', () => {
 describe('mockImageGen', () => {
   it('prices at the LIVE fal price, so budget maths stay honest in mock mode', async () => {
     const result = await mockImageGen.generate({ prompt: 'trading floor', count: 2 }, {})
-    expect(result.estimatedCostUsd).toBeCloseTo(falImageGen.pricePerImage * 2)
+    expect(result.estimatedCostUsd).toBeCloseTo(falImageGen.models[0]!.pricePerImage * 2)
     expect(result.images.every((image) => image.url.startsWith('data:image/svg+xml'))).toBe(true)
   })
 })

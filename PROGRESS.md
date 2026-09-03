@@ -3137,6 +3137,24 @@ published and audited. The daily `channels.list` health ping and the
      answered by the video's own description, and the certificate is on
      file in Settings for the dispute form.
 
+208. **The still-image model is routed, not hard-coded** (2026-09-03,
+     owner request: unable to change which image model generates stills).
+     `modelRouting` gains a `stills` route ({provider: 'google'|'fal',
+     model}) with a Settings → Models row like the LLM tasks; each image
+     adapter now publishes a model list with per-model prices (Google:
+     Gemini 2.5 Flash Image $0.04, Gemini 3 Pro Image $0.15; fal: FLUX.1
+     dev $0.03, FLUX.1 schnell $0.01, FLUX1.1 pro $0.04, ids being fal's
+     endpoint paths) and refuses an unlisted id before any money is
+     spent. `generateStillCandidates` obeys the route instead of
+     inferring the provider from which key exists — a routed provider
+     whose key is missing fails loudly, naming both the setting and the
+     Connections tab. Estimates and the cost ledger price from the LIVE
+     adapter's per-model price in mock mode too, and the asset licence
+     line now names the model, not just the provider. Old settings rows
+     come forward via `normaliseSettings` with the Gemini default; the
+     mock adapter deliberately ignores the model id, since it serves for
+     both provider ids.
+
 **Status:** `[x]` done — dossier + Studio shipped with unit, component and
 e2e coverage; spec §11.3 amended in place with dated notes.
 

@@ -91,6 +91,22 @@ export const ModelRefSchema = z.object({
 })
 export type ModelRef = z.infer<typeof ModelRefSchema>
 
+/**
+ * Where still images are generated (decision 208). Routed like the LLM tasks
+ * — the model used to be a constant inside each adapter, and the provider was
+ * picked by which key happened to exist, which meant the one visual model in
+ * the pipeline was the one model the human could not choose.
+ */
+export const STILL_PROVIDERS = ['google', 'fal'] as const
+export const StillProviderSchema = z.enum(STILL_PROVIDERS)
+export type StillProvider = z.infer<typeof StillProviderSchema>
+
+export const StillRouteSchema = z.object({
+  provider: StillProviderSchema,
+  model: z.string().min(1),
+})
+export type StillRoute = z.infer<typeof StillRouteSchema>
+
 export const ModelRoutingSchema = z.object({
   research: ModelRefSchema,
   scripting: ModelRefSchema,
@@ -98,6 +114,8 @@ export const ModelRoutingSchema = z.object({
   shotlist: ModelRefSchema,
   metadata: ModelRefSchema,
   digest: ModelRefSchema,
+  /** The still-image generator — not an LLM task, but routed where the others are. */
+  stills: StillRouteSchema,
 })
 export type ModelRouting = z.infer<typeof ModelRoutingSchema>
 
@@ -473,6 +491,9 @@ export const DEFAULT_SETTINGS: Settings = {
     shotlist: { provider: 'anthropic', model: 'claude-haiku-4-5-20251001' },
     metadata: { provider: 'anthropic', model: 'claude-haiku-4-5-20251001' },
     digest: { provider: 'anthropic', model: 'claude-haiku-4-5-20251001' },
+    // Gemini rides the Google key Settings already holds for the LLM
+    // adapters, so it is the default that costs no extra account.
+    stills: { provider: 'google', model: 'gemini-2.5-flash-image' },
   },
   fallbackChain: [],
   tts: {

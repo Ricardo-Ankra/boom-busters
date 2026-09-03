@@ -186,9 +186,19 @@ describe('canonicalModelId', () => {
   })
 
   it('ships defaults that are current ids, not legacy ones', () => {
-    for (const route of Object.values(DEFAULT_SETTINGS.modelRouting)) {
+    // The LLM tasks only: legacy short names were an LLM-routing artefact,
+    // and the stills route (decision 208) never had a legacy spelling.
+    for (const task of LLM_TASKS) {
+      const route = DEFAULT_SETTINGS.modelRouting[task]
       expect(canonicalModelId(route.provider, route.model)).toBe(route.model)
     }
+  })
+
+  it('routes stills by default at Gemini, riding the key the LLM adapters already use', () => {
+    expect(DEFAULT_SETTINGS.modelRouting.stills).toEqual({
+      provider: 'google',
+      model: 'gemini-2.5-flash-image',
+    })
   })
 })
 

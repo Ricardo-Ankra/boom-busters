@@ -88,6 +88,19 @@ describe('normaliseSettings', () => {
     expect(normaliseSettings(null)).toEqual(DEFAULT_SETTINGS)
   })
 
+  it('gives a pre-decision-208 row the default stills route', () => {
+    // The live settings row was written before `modelRouting.stills` existed.
+    // It must come forward as routed-at-Gemini, not refuse to parse.
+    const stored = structuredClone(DEFAULT_SETTINGS) as {
+      modelRouting: Record<string, unknown>
+    }
+    delete stored.modelRouting['stills']
+
+    expect(normaliseSettings(stored).modelRouting.stills).toEqual(
+      DEFAULT_SETTINGS.modelRouting.stills,
+    )
+  })
+
   it('upgrades the short model names M1 and M2 wrote', () => {
     // The row in the live database still says `opus`. Left alone it parses
     // fine and then fails at the router's pre-flight, mid-run, as "anthropic
