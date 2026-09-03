@@ -1,8 +1,9 @@
-import { ValidationError } from '@boom-busters/schemas'
+import { OutlineSchema, ValidationError } from '@boom-busters/schemas'
 import { describe, expect, it } from 'vitest'
 import {
   buildChapterRequest,
   buildOutlineRequest,
+  buildRegenerateRequest,
   buildSelfCheckRequest,
   buildShortsRequest,
   chapterTail,
@@ -14,6 +15,7 @@ import {
   parseSelfCheck,
   parseShortsCandidates,
   scriptWordCount,
+  tensionContract,
 } from './script'
 import type { ScriptClaim } from './script'
 
@@ -34,12 +36,22 @@ const claims: ScriptClaim[] = [
   },
 ]
 
-const outline = {
+// Parsed, so the fixture carries the exact Outline shape the runner holds.
+// Chapter two has no tension fields — the pre-216 outlines still draft.
+const outline = OutlineSchema.parse({
+  centralQuestion: 'How did 1.9 billion euros never exist?',
   chapters: [
-    { title: 'The setup', beat: 'x'.repeat(30), targetWords: 800 },
+    {
+      title: 'The setup',
+      beat: 'x'.repeat(30),
+      question: 'Why did the auditors keep signing?',
+      withhold: 'The accounts in Manila were empty all along.',
+      stakes: 'Thirty thousand pensions',
+      targetWords: 800,
+    },
     { title: 'The turn', beat: 'y'.repeat(30), targetWords: 900 },
   ],
-}
+})
 
 describe('buildOutlineRequest', () => {
   const request = buildOutlineRequest({
@@ -67,6 +79,52 @@ describe('buildOutlineRequest', () => {
   it('carries the house rules against inventing facts', () => {
     expect(request.system).toMatch(/Never invent figures/)
     expect(request.system).toMatch(/Assert nothing the claim list does not support/)
+  })
+
+  /**
+   * Decision 216: the outline pass designs the tension arc, not just the
+   * segmentation — a central question, and per chapter a planted question,
+   * a withheld fact and concrete stakes. Without these fields the drafts
+   * come out as well-behaved chronological explainers.
+   */
+  it('asks for the tension contract fields, per the script-craft skill', () => {
+    expect(request.system).toContain('Script craft: how the plot builds')
+    expect(request.system).toContain('"centralQuestion"')
+    expect(request.system).toMatch(/"question"/)
+    expect(request.system).toMatch(/"withhold"/)
+    expect(request.system).toMatch(/"stakes"/)
+    expect(request.system).toMatch(/must NOT answer/)
+  })
+})
+
+describe('tensionContract', () => {
+  it('composes the chapter contract from the outline fields', () => {
+    const contract = tensionContract(outline, 0)
+    expect(contract).toContain('central question')
+    expect(contract).toContain('How did 1.9 billion euros never exist?')
+    expect(contract).toContain('Thirty thousand pensions')
+    expect(contract).toContain('Why did the auditors keep signing?')
+    expect(contract).toContain('The accounts in Manila were empty all along.')
+    // The opening chapter has no predecessor question to answer.
+    expect(contract).not.toContain('previous chapter left open')
+  })
+
+  it('hands the previous chapter its question to answer', () => {
+    const contract = tensionContract(outline, 1)
+    expect(contract).toContain(
+      'Answer the question the previous chapter left open: Why did the auditors keep signing?',
+    )
+  })
+
+  it('is empty for a pre-216 outline with no tension fields', () => {
+    const bare = OutlineSchema.parse({
+      chapters: [
+        { title: 'Act one', beat: 'x'.repeat(30), targetWords: 300 },
+        { title: 'Act two', beat: 'y'.repeat(30), targetWords: 300 },
+      ],
+    })
+    expect(tensionContract(bare, 0)).toBe('')
+    expect(tensionContract(bare, 1)).toBe('')
   })
 })
 
@@ -177,6 +235,47 @@ describe('buildChapterRequest', () => {
 
   it('budgets tokens from the chapter target, with headroom', () => {
     expect(request.maxTokens).toBeGreaterThan(900 * 1.6)
+  })
+
+  /**
+   * Decision 216: every drafting request carries the script-craft skill and
+   * its chapter's tension contract; a bare pre-216 outline just drops the
+   * contract message rather than sending an empty one.
+   */
+  it('carries the script-craft skill and the tension contract', () => {
+    expect(request.system).toContain('Script craft: how the plot builds')
+    const contract = request.messages.find((message) =>
+      message.content.includes('tension contract'),
+    )
+    expect(contract?.content).toContain('Why did the auditors keep signing?')
+
+    const bare = OutlineSchema.parse({
+      chapters: [
+        { title: 'Act one', beat: 'x'.repeat(30), targetWords: 300 },
+        { title: 'Act two', beat: 'y'.repeat(30), targetWords: 300 },
+      ],
+    })
+    const withoutContract = buildChapterRequest({
+      caseTitle: 'Enron',
+      outline: bare,
+      chapterIndex: 0,
+      previousTail: '',
+      claims,
+    })
+    expect(
+      withoutContract.messages.some((message) => message.content.includes('tension contract')),
+    ).toBe(false)
+  })
+
+  it('gives the regenerate pass the same craft rules', () => {
+    const regenerate = buildRegenerateRequest({
+      chapterTitle: 'The turn',
+      contentMd: 'Some narration. More narration.',
+      selection: 'More narration.',
+      note: 'Make it land harder.',
+      claims,
+    })
+    expect(regenerate.system).toContain('Script craft: how the plot builds')
   })
 })
 

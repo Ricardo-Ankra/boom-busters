@@ -21,10 +21,31 @@ import { z } from 'zod'
 export const MIN_CHAPTER_WORDS = 120
 export const MAX_CHAPTER_WORDS = 4000
 
+/**
+ * The tension-contract fields (decision 216) are hints, like `targetWords`:
+ * clamped and folded rather than validated, because rejecting a whole good
+ * outline over one over-long sentence costs a full model call. An empty or
+ * missing value simply means the drafting prompt omits that line.
+ */
+const tensionField = z
+  .string()
+  .transform((value) => {
+    const trimmed = value.trim().slice(0, 500)
+    return trimmed ? trimmed : undefined
+  })
+  .optional()
+  .catch(undefined)
+
 export const OutlineChapterSchema = z.object({
   title: z.string().trim().min(3).max(200),
   /** What this chapter has to accomplish, fed to the drafting step. */
   beat: z.string().trim().min(20).max(2000),
+  /** The open question this chapter plants and must NOT answer. */
+  question: tensionField,
+  /** What this chapter deliberately does not say — a later chapter's reveal. */
+  withhold: tensionField,
+  /** What is at risk, concretely, while this chapter runs. */
+  stakes: tensionField,
   /**
    * How long this chapter should run, clamped rather than validated.
    *
@@ -49,6 +70,8 @@ export const OutlineChapterSchema = z.object({
 export type OutlineChapter = z.infer<typeof OutlineChapterSchema>
 
 export const OutlineSchema = z.object({
+  /** The one question the whole film answers, only in its final chapter. */
+  centralQuestion: tensionField,
   chapters: z.array(OutlineChapterSchema).min(2).max(20),
 })
 export type Outline = z.infer<typeof OutlineSchema>

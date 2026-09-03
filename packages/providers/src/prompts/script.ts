@@ -7,6 +7,7 @@ import {
 } from '@boom-busters/schemas'
 import type { Outline, SelfCheck, ShortsCandidate } from '@boom-busters/schemas'
 import { parseJsonCompletion } from './json'
+import { SCRIPT_CRAFT } from './script-craft'
 import { outputBudget } from '../llm/types'
 import type { LLMTaskRequest } from '../llm/types'
 
@@ -141,12 +142,27 @@ export function buildOutlineRequest(input: {
     task: 'scripting',
     system: `${HOUSE_STYLE}
 
-Produce a chapter outline totalling about ${targetWords} words:
-{"chapters": [{"title": string, "beat": string, "targetWords": number}]}
+${SCRIPT_CRAFT}
 
-"beat" says what the chapter must accomplish — the drafting step sees only the
-beat, the previous chapter's ending and the claim list, so anything the chapter
-needs must be in the beat.`,
+Produce a chapter outline totalling about ${targetWords} words:
+{"centralQuestion": string,
+ "chapters": [{"title": string, "beat": string, "question": string,
+   "withhold": string, "stakes": string, "targetWords": number}]}
+
+"beat" says what the chapter must accomplish — the drafting step sees only its
+own outline entry, the previous chapter's ending and the claim list, so
+anything the chapter needs must be in these fields.
+
+The tension contract, per chapter:
+- "question": the open question this chapter plants and must NOT answer — the
+  next chapter answers it.
+- "withhold": the fact this chapter deliberately does not say, and which later
+  chapter reveals it.
+- "stakes": what is concretely at risk while this chapter runs — people,
+  money, dates.
+"centralQuestion" is the one question the whole film exists to answer; only
+the final chapter answers it. Design the arc so each chapter's stakes are
+larger or more personal than the last.`,
     messages: [
       { role: 'user', content: `Case: ${input.caseTitle}\n\nDossier:\n${input.dossierMd}` },
       { role: 'user', content: `Claims available:\n${claimList(input.claims)}` },
@@ -164,6 +180,42 @@ export function parseOutline(text: string): Outline {
 // Chapter drafting
 // ---------------------------------------------------------------------------
 
+/**
+ * The dramatic contract one chapter drafts under (decision 216), composed
+ * from whatever tension fields the outline carries — an outline written
+ * before the fields existed still drafts, just without the contract lines.
+ */
+export function tensionContract(outline: Outline, chapterIndex: number): string {
+  const chapter = outline.chapters[chapterIndex]!
+  const previous = chapterIndex > 0 ? outline.chapters[chapterIndex - 1] : undefined
+  const lines: string[] = []
+
+  if (outline.centralQuestion) {
+    lines.push(
+      `- The film's central question, answered only in the final chapter: ` +
+        outline.centralQuestion,
+    )
+  }
+  if (chapter.stakes) lines.push(`- At stake in this chapter: ${chapter.stakes}`)
+  if (previous?.question) {
+    lines.push(`- Answer the question the previous chapter left open: ${previous.question}`)
+  }
+  if (chapter.question) {
+    lines.push(
+      `- Plant this question early and do NOT answer it — the next chapter does: ` +
+        chapter.question,
+    )
+  }
+  if (chapter.withhold) {
+    lines.push(
+      `- Withhold entirely (a later chapter reveals it; walk to its edge and stop): ` +
+        chapter.withhold,
+    )
+  }
+
+  return lines.length > 0 ? `The tension contract for this chapter:\n${lines.join('\n')}` : ''
+}
+
 export function buildChapterRequest(input: {
   caseTitle: string
   outline: Outline
@@ -176,10 +228,13 @@ export function buildChapterRequest(input: {
   const outlineSummary = input.outline.chapters
     .map((c, i) => `${i + 1}. ${c.title}${i === input.chapterIndex ? '  <- writing this one' : ''}`)
     .join('\n')
+  const contract = tensionContract(input.outline, input.chapterIndex)
 
   return {
     task: 'scripting',
     system: `${HOUSE_STYLE}
+
+${SCRIPT_CRAFT}
 
 Write ONE chapter of narration as plain prose paragraphs. No headings, no
 bullet points, no lists — the words are read aloud exactly as written, and
@@ -199,6 +254,7 @@ Target about ${chapter.targetWords} words.`,
           ? `The previous chapter ended:\n\n"${input.previousTail}"\n\nContinue from there.`
           : 'This is the opening chapter.',
       },
+      ...(contract ? [{ role: 'user' as const, content: contract }] : []),
       { role: 'user', content: `Write "${chapter.title}". It must: ${chapter.beat}` },
     ],
     cacheablePrefixMessages: 1,
@@ -297,9 +353,13 @@ export function mockOutline(targetRuntimeMin: number): Outline {
   const chapters = Math.max(2, Math.min(8, Math.round(targetRuntimeMin / 3)))
 
   return {
+    centralQuestion: 'Mock central question — no provider designed an arc.',
     chapters: Array.from({ length: chapters }, (_, index) => ({
       title: `[mock] Chapter ${index + 1}`,
       beat: 'Placeholder beat produced in mock mode. Nothing was written by a provider.',
+      question: `Mock open question ${index + 1}`,
+      withhold: `Mock withheld fact ${index + 1}`,
+      stakes: `Mock stakes ${index + 1}`,
       targetWords: 300,
     })),
   }
@@ -385,6 +445,8 @@ export function buildRegenerateRequest(input: {
   return {
     task: 'editing',
     system: `${HOUSE_STYLE}
+
+${SCRIPT_CRAFT}
 
 You are rewriting ONE passage of an existing chapter.
 

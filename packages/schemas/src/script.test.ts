@@ -160,6 +160,33 @@ describe('OutlineSchema', () => {
     const parsed = OutlineSchema.safeParse({ chapters: [chapter, chapter] })
     expect(parsed.data?.chapters[0]?.targetWords).toBe(900)
   })
+
+  /**
+   * Decision 216: the tension-contract fields are hints like targetWords —
+   * folded and clamped, never grounds to reject a whole outline the model
+   * already wrote.
+   */
+  it('carries the tension fields through, and treats them as optional', () => {
+    const parsed = OutlineSchema.parse({
+      centralQuestion: '  How did the money vanish?  ',
+      chapters: [
+        { ...chapter, question: 'Who signed?', withhold: 'The vault was empty.', stakes: 'Jobs' },
+        chapter,
+      ],
+    })
+    expect(parsed.centralQuestion).toBe('How did the money vanish?')
+    expect(parsed.chapters[0]?.question).toBe('Who signed?')
+    expect(parsed.chapters[1]?.question).toBeUndefined()
+  })
+
+  it('folds an empty tension field to absent and clamps an over-long one', () => {
+    const parsed = OutlineSchema.parse({
+      centralQuestion: '   ',
+      chapters: [{ ...chapter, question: 'q'.repeat(900) }, chapter],
+    })
+    expect(parsed.centralQuestion).toBeUndefined()
+    expect(parsed.chapters[0]?.question).toHaveLength(500)
+  })
 })
 
 describe('SelfCheckSchema', () => {

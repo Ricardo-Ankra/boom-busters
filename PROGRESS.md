@@ -3284,6 +3284,29 @@ published and audited. The daily `channels.list` health ping and the
        left pad widened for the bigger numbers, and annotations stagger
        down three rows instead of colliding on one; map labels 26→34.
 
+216. **The script-craft skill** (2026-09-03, owner review: "the plot isn't
+     building — context before stakes, nothing withheld, no questions per
+     beat"). Narrative craft now lives in
+     `packages/providers/src/prompts/script-craft.md` (stakes before
+     context / cold open, a question engine — one central question plus one
+     planted-and-not-answered question per chapter, withholding as a named
+     rule, escalation, end-on-a-turn), threaded into the outline, chapter
+     and regenerate prompts below HOUSE_STYLE and above nothing: the hard
+     rules (claim-list supremacy, legal hedges) stay supreme, and the
+     rhetorical-question ban holds — tension comes from sequencing, never
+     from asking the audience. The markdown is the human-editable source;
+     the shipped constant in `script-craft.ts` is held byte-identical by a
+     unit test, because a runtime file read does not survive every bundler
+     this package runs under. Structurally, the outline schema gains a
+     tension contract: `centralQuestion` on the root and `question` /
+     `withhold` / `stakes` per chapter — all optional hints in the
+     targetWords mould (trimmed, clamped to 500 chars, empty or invalid
+     folds to absent via `.catch`, never a rejected outline), and
+     `tensionContract()` assembles each chapter's drafting message: answer
+     the predecessor's question, plant your own, do not leak the withhold.
+     Pre-216 outlines still draft — they simply carry no contract message.
+     Mock outline carries all fields so CI exercises the shape.
+
 **Status:** `[x]` done — dossier + Studio shipped with unit, component and
 e2e coverage; spec §11.3 amended in place with dated notes.
 
