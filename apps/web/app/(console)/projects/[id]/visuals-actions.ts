@@ -1,6 +1,5 @@
 'use server'
 
-import { createHash } from 'node:crypto'
 import {
   chooseSlotCandidate,
   getProject,
@@ -29,7 +28,7 @@ import { auth } from '@/auth'
 import { events } from '@/inngest/events'
 import { inngest } from '@/inngest/client'
 import { db } from '@/lib/db'
-import { putObject, R2_PREFIX, storageConfigured } from '@/lib/storage'
+import { deleteObject, headObject, presignPut, R2_PREFIX, storageConfigured } from '@/lib/storage'
 
 /**
  * The visual board's buttons (build spec section 11.3): select a candidate,
@@ -314,26 +313,74 @@ const UPLOAD_TYPES: Record<string, string> = {
 /**
  * `Upload own` — images only, deliberately. Video uploads would stream media
  * bytes through the app layer, which the architecture forbids (product spec:
- * "the web layer never touches a video byte"); a poster image is small enough
- * to be the exception the narration WAVs already are.
+ * "the web layer never touches a video byte").
+ *
+ * The image bytes go browser → R2 directly, in two actions (decision 213,
+ * the exact decision-205 shape): the original single action carried the file
+ * through a server action, and Vercel 413s request bodies over ~4.5 MB at
+ * its edge (Next refuses over 1 MB) — every real photo died before the
+ * validation code ever ran, silently. The browser asks for a presigned PUT
+ * URL, uploads to R2 itself, then asks for the row; the server recomputes
+ * the key from the fingerprint and verifies the object landed at a legal
+ * size before anything is recorded.
  */
-export async function uploadOwnAction(formData: FormData): Promise<ActionResult> {
+export async function createOwnUploadAction(input: {
+  projectId: string
+  slotId: string
+  fileType: string
+  fileSize: number
+  contentHash: string
+}): Promise<ActionResult & { url?: string; key?: string }> {
   await requireOwner()
 
-  const projectId = String(formData.get('projectId') ?? '')
-  const slotId = String(formData.get('slotId') ?? '')
-  const invalid = badIds(projectId, slotId)
+  const invalid = badIds(input.projectId, input.slotId)
   if (invalid) return invalid
 
-  const file = formData.get('file')
-  if (!(file instanceof File)) return { ok: false, error: 'No file arrived.' }
-
-  const extension = UPLOAD_TYPES[file.type]
+  const extension = UPLOAD_TYPES[input.fileType]
   if (!extension) {
     return { ok: false, error: 'Only PNG, JPEG or WebP images can be uploaded here.' }
   }
-  if (file.size > MAX_UPLOAD_BYTES) {
+  if (!Number.isFinite(input.fileSize) || input.fileSize <= 0) {
+    return { ok: false, error: 'That file looks empty.' }
+  }
+  if (input.fileSize > MAX_UPLOAD_BYTES) {
     return { ok: false, error: 'That file is over the 8 MB limit for board images.' }
+  }
+  if (!/^[0-9a-f]{64}$/.test(input.contentHash)) {
+    return { ok: false, error: 'The file could not be fingerprinted. Try choosing it again.' }
+  }
+  if (!storageConfigured()) {
+    return {
+      ok: false,
+      error: 'Uploads need R2 configured — there is nowhere to store the image.',
+    }
+  }
+  if (!(await getShotSlot(db, input.slotId))) {
+    return { ok: false, error: 'This slot no longer exists.' }
+  }
+
+  const key = `${R2_PREFIX}/uploads/${input.projectId}/${input.contentHash}.${extension}`
+  return { ok: true, url: await presignPut(key, input.fileType), key }
+}
+
+export async function finaliseOwnUploadAction(input: {
+  projectId: string
+  slotId: string
+  fileType: string
+  fileName: string
+  contentHash: string
+}): Promise<ActionResult> {
+  await requireOwner()
+
+  const invalid = badIds(input.projectId, input.slotId)
+  if (invalid) return invalid
+
+  const extension = UPLOAD_TYPES[input.fileType]
+  if (!extension) {
+    return { ok: false, error: 'Only PNG, JPEG or WebP images can be uploaded here.' }
+  }
+  if (!/^[0-9a-f]{64}$/.test(input.contentHash)) {
+    return { ok: false, error: 'The file could not be fingerprinted. Try choosing it again.' }
   }
   if (!storageConfigured()) {
     return {
@@ -342,14 +389,22 @@ export async function uploadOwnAction(formData: FormData): Promise<ActionResult>
     }
   }
 
-  const slot = await getShotSlot(db, slotId)
+  const slot = await getShotSlot(db, input.slotId)
   if (!slot) return { ok: false, error: 'This slot no longer exists.' }
 
-  const bytes = Buffer.from(await file.arrayBuffer())
-  const contentHash = createHash('sha256').update(bytes).digest('hex')
-  const key = `${R2_PREFIX}/uploads/${projectId}/${contentHash}.${extension}`
-  await putObject(key, bytes, file.type)
-
+  // The key is recomputed, never taken from the caller — this flow can only
+  // ever record an object it issued the URL for. Verified against the
+  // bucket: the row is a promise the board can display this image.
+  const contentHash = input.contentHash
+  const key = `${R2_PREFIX}/uploads/${input.projectId}/${contentHash}.${extension}`
+  const head = await headObject(key)
+  if (!head) {
+    return { ok: false, error: 'The upload never arrived in storage. Try again.' }
+  }
+  if (head.size > MAX_UPLOAD_BYTES) {
+    await deleteObject(key)
+    return { ok: false, error: 'That file is over the 8 MB limit for board images.' }
+  }
   const asset = await upsertAssetByHash(db, {
     kind: 'image',
     r2Key: key,
@@ -365,7 +420,7 @@ export async function uploadOwnAction(formData: FormData): Promise<ActionResult>
     assetId: asset.id,
     r2Key: key,
     licence: asset.licence,
-    summary: file.name,
+    summary: input.fileName,
     chosen: true,
   })
 
@@ -378,7 +433,7 @@ export async function uploadOwnAction(formData: FormData): Promise<ActionResult>
     .filter((entry) => entry.id !== candidate.id)
     .map(({ chosen: _chosen, ...rest }) => rest)
 
-  await setSlotResolution(db, slotId, {
+  await setSlotResolution(db, input.slotId, {
     candidates: [candidate, ...others],
     status: 'resolved',
     chosenAssetId: asset.id,
@@ -387,6 +442,6 @@ export async function uploadOwnAction(formData: FormData): Promise<ActionResult>
     briefHash: shotBriefHash(slot.brief),
   })
 
-  refresh(projectId)
+  refresh(input.projectId)
   return { ok: true }
 }

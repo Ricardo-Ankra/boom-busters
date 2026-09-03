@@ -3203,13 +3203,28 @@ published and audited. The daily `channels.list` health ping and the
      needs another API). It does not: fal hosts Google's Imagen, so
      `fal-ai/imagen3` ($0.05/image, schema-verified) joins the fal list
      as a second dialect behind the same contract — `aspect_ratio:
-     '16:9'` instead of `image_size`, and a REAL `negative_prompt` field,
+'16:9'` instead of `image_size`, and a REAL `negative_prompt` field,
      so for Imagen the brief's negative prompt travels as itself instead
      of folded into an "Avoid:" clause. Imagen 4 on fal was checked and
      NOT added: every id (`fal-ai/imagen4/preview`, `/fast`, `/ultra`,
      GA-shaped guesses, the google/ namespace) 404s on fal's own schema
      endpoint — withdrawn. Using it needs the funded fal account
      (decision 209's TOP_UP note).
+
+213. **"Upload own" goes browser → R2, and no board action fails
+     silently** (2026-09-03, owner bug report: clicking Upload own did
+     nothing). Two layers, both the decision-205 disease: the action
+     carried the image bytes, so Next's 1 MB action cap (and Vercel's
+     ~4.5 MB edge cap) killed any real photo before validation, and the
+     board's `act` helper had try/finally with no catch, so the rejected
+     call showed nothing. Now `createOwnUploadAction` validates and
+     issues a presigned PUT URL, the browser uploads to R2 itself, and
+     `finaliseOwnUploadAction` recomputes the key from the fingerprint
+     (never trusting the caller's), verifies the object with headObject,
+     and writes the asset + chosen candidate exactly as before. All
+     three steps run inside one `act` call for the busy state, `act`
+     gained a catch that toasts, and an oversized pick is refused before
+     a byte is uploaded.
 
 **Status:** `[x]` done — dossier + Studio shipped with unit, component and
 e2e coverage; spec §11.3 amended in place with dated notes.

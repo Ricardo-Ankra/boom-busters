@@ -23,11 +23,12 @@ import type { SlotView, VisualsReviewModel } from '@/lib/visuals-review'
 import {
   approvePlanAction,
   chooseCandidateAction,
+  createOwnUploadAction,
   dismissRetypeAction,
   editBriefAction,
+  finaliseOwnUploadAction,
   refetchSlotAction,
   retypeSlotAction,
-  uploadOwnAction,
   type ActionResult,
 } from './visuals-actions'
 import { ChartErrorCard, ChartPreview, MapPreview, type BrandChartColors } from './slot-previews'
@@ -128,6 +129,15 @@ export function VisualBoard({
         } else {
           toast({ title: 'That did not work', description: result.error, variant: 'error' })
         }
+      } catch {
+        // A rejected action call (network drop, request refused before the
+        // action ran) previously surfaced as nothing happening at all — the
+        // worst possible answer to a button press.
+        toast({
+          title: 'That did not work',
+          description: 'The request never reached the server. Check the connection and try again.',
+          variant: 'error',
+        })
       } finally {
         setBusySlot(null)
       }
@@ -995,6 +1005,16 @@ function BriefEditor({
   )
 }
 
+/** Repeated server-side; here so an oversized pick fails before uploading. */
+const UPLOAD_OWN_MAX_BYTES = 8 * 1024 * 1024
+
+/**
+ * Browser → R2 directly (decision 213, the decision-205 shape): Vercel
+ * refuses request bodies over about 4.5 MB at its edge, so the image can
+ * never travel through a server action. Presign, PUT, then finalise —
+ * all three steps inside one `act` call so the button gets a busy state
+ * and every failure gets a toast.
+ */
 function UploadOwnButton({
   projectId,
   slotId,
@@ -1005,6 +1025,46 @@ function UploadOwnButton({
   act: (slotId: string, run: () => Promise<ActionResult>, success: string) => Promise<void>
 }) {
   const inputRef = React.useRef<HTMLInputElement | null>(null)
+
+  const upload = async (file: File): Promise<ActionResult> => {
+    if (file.size > UPLOAD_OWN_MAX_BYTES) {
+      return { ok: false, error: 'That file is over the 8 MB limit for board images.' }
+    }
+
+    // The Uint8Array view matters: digest() rejects an ArrayBuffer from
+    // another realm (jsdom in tests), and a fresh view is always local.
+    const bytes = new Uint8Array(await file.arrayBuffer())
+    const digest = await crypto.subtle.digest('SHA-256', bytes)
+    const contentHash = Array.from(new Uint8Array(digest))
+      .map((byte) => byte.toString(16).padStart(2, '0'))
+      .join('')
+
+    const created = await createOwnUploadAction({
+      projectId,
+      slotId,
+      fileType: file.type,
+      fileSize: file.size,
+      contentHash,
+    })
+    if (!created.ok || !created.url) return created
+
+    const put = await fetch(created.url, {
+      method: 'PUT',
+      body: file,
+      headers: { 'Content-Type': file.type },
+    })
+    if (!put.ok) {
+      return { ok: false, error: `Storage refused the upload (${put.status}). Try again.` }
+    }
+
+    return finaliseOwnUploadAction({
+      projectId,
+      slotId,
+      fileType: file.type,
+      fileName: file.name,
+      contentHash,
+    })
+  }
 
   return (
     <>
@@ -1022,11 +1082,7 @@ function UploadOwnButton({
           const file = event.target.files?.[0]
           event.target.value = ''
           if (!file) return
-          const formData = new FormData()
-          formData.set('projectId', projectId)
-          formData.set('slotId', slotId)
-          formData.set('file', file)
-          void act(slotId, () => uploadOwnAction(formData), 'Uploaded and selected')
+          void act(slotId, () => upload(file), 'Uploaded and selected')
         }}
       />
     </>
