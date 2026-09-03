@@ -8,7 +8,8 @@ import type { BrandChartColors } from './slot-previews'
 const chooseCandidateAction = vi.fn()
 const editBriefAction = vi.fn()
 const refetchSlotAction = vi.fn()
-const uploadOwnAction = vi.fn()
+const createOwnUploadAction = vi.fn()
+const finaliseOwnUploadAction = vi.fn()
 const approvePlanAction = vi.fn()
 const retypeSlotAction = vi.fn()
 const dismissRetypeAction = vi.fn()
@@ -17,7 +18,8 @@ vi.mock('./visuals-actions', () => ({
   chooseCandidateAction: (...args: unknown[]) => chooseCandidateAction(...args),
   editBriefAction: (...args: unknown[]) => editBriefAction(...args),
   refetchSlotAction: (...args: unknown[]) => refetchSlotAction(...args),
-  uploadOwnAction: (...args: unknown[]) => uploadOwnAction(...args),
+  createOwnUploadAction: (...args: unknown[]) => createOwnUploadAction(...args),
+  finaliseOwnUploadAction: (...args: unknown[]) => finaliseOwnUploadAction(...args),
   approvePlanAction: (...args: unknown[]) => approvePlanAction(...args),
   retypeSlotAction: (...args: unknown[]) => retypeSlotAction(...args),
   dismissRetypeAction: (...args: unknown[]) => dismissRetypeAction(...args),
@@ -233,6 +235,39 @@ describe('VisualBoard', () => {
     expect(screen.queryByRole('img', { name: /chart/ })).not.toBeInTheDocument()
   })
 
+  it('treats a real-footage slot as upload-only (decision 214)', () => {
+    const archivalSlot: SlotView = {
+      ...stockSlot,
+      id: SLOT_B,
+      type: 'archival',
+      status: 'placeholder',
+      candidates: [],
+      extraCandidates: 0,
+      brief: {
+        type: 'archival',
+        coversText: 'Founded in 1919 as a Wolverhampton builder.',
+        description: 'The original headquarters.',
+        motion: { kind: 'static' },
+        transition: 'cut',
+        query: 'Carillion headquarters photograph',
+        mustShow: 'the Wolverhampton building',
+      },
+    }
+    render(<VisualBoard projectId={PROJECT} model={model([archivalSlot])} colors={COLORS} />)
+
+    // The badge (and the filmstrip) say what the type IS, not the wire id.
+    expect(screen.getAllByText('real footage').length).toBeGreaterThan(0)
+    // The placeholder reads as "yours to source", not as a fetch failure.
+    expect(screen.getByText(/Real footage is yours to source/)).toBeInTheDocument()
+    expect(screen.queryByText(/Nothing usable was found/)).not.toBeInTheDocument()
+    // Nothing to fetch: no Regenerate, and the upload takes video too.
+    expect(screen.queryByRole('button', { name: /Regenerate/ })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Upload footage' })).toBeInTheDocument()
+    expect(
+      screen.getByLabelText(/Upload your real footage for this slot — image or video/),
+    ).toHaveAttribute('accept', expect.stringContaining('video/mp4'))
+  })
+
   it('re-fetches from the Regenerate button, naming the cost on stills', async () => {
     const still: SlotView = {
       ...stockSlot,
@@ -380,7 +415,7 @@ describe('the plan phase (staged-visuals design)', () => {
       screen.getByRole('button', { name: /Fetch visuals · 2 slots · est\. \$0\.08/ }),
     )
     expect(approvePlanAction).not.toHaveBeenCalled()
-    expect(screen.getByText(/generates 1 still at est\. \$0\.08/)).toBeInTheDocument()
+    expect(screen.getByText(/generates 1 AI image at est\. \$0\.08/)).toBeInTheDocument()
 
     await userEvent.click(screen.getByRole('button', { name: /^Fetch now$/ }))
     expect(approvePlanAction).toHaveBeenCalledWith(PROJECT)

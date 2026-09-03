@@ -119,8 +119,10 @@ export async function editBriefAction(
   // Phase-aware (staged-visuals design): during plan review an edit just
   // saves — nothing is fetched until "Fetch visuals". On the board it
   // refetches, because the owner is looking at candidates for the old words.
+  // Archival never refetches (decision 214): its brief is guidance for the
+  // human's own search, and there is nothing on the other end to call.
   const project = await getProject(db, projectId)
-  if (project?.visualsPhase !== 'board') {
+  if (project?.visualsPhase !== 'board' || merged.data.type === 'archival') {
     refresh(projectId)
     return { ok: true }
   }
@@ -281,6 +283,17 @@ export async function refetchSlotAction(
   const slot = await getShotSlot(db, slotId)
   if (!slot) return { ok: false, error: 'This slot no longer exists.' }
 
+  // Real footage has nothing to fetch (decision 214). The board hides the
+  // button, but an action is a POST endpoint of its own.
+  if ((slot.brief as { type?: string } | null)?.type === 'archival') {
+    return {
+      ok: false,
+      error:
+        'Real-footage slots are not fetched — the brief guides your own search. Upload the ' +
+        'image or clip instead.',
+    }
+  }
+
   const sent = await sendRefetch(projectId, slotId, note.trim() || 'Another pass')
   refresh(projectId)
   return sent
@@ -301,28 +314,68 @@ async function sendRefetch(projectId: string, slotId: string, note: string): Pro
   }
 }
 
-/** Client-side limit repeated server-side: a poster frame, not a media file. */
-const MAX_UPLOAD_BYTES = 8 * 1024 * 1024
+/** Client-side limits repeated server-side. */
+const MAX_UPLOAD_IMAGE_BYTES = 8 * 1024 * 1024
+// Not exported: a 'use server' module may only export async functions.
+const MAX_UPLOAD_VIDEO_BYTES = 200 * 1024 * 1024
 
-const UPLOAD_TYPES: Record<string, string> = {
+const UPLOAD_IMAGE_TYPES: Record<string, string> = {
   'image/png': 'png',
   'image/jpeg': 'jpg',
   'image/webp': 'webp',
 }
 
+/** Video is legal ONLY on archival slots — real footage is their point. */
+const UPLOAD_VIDEO_TYPES: Record<string, string> = {
+  'video/mp4': 'mp4',
+  'video/quicktime': 'mov',
+  'video/webm': 'webm',
+}
+
 /**
- * `Upload own` — images only, deliberately. Video uploads would stream media
- * bytes through the app layer, which the architecture forbids (product spec:
- * "the web layer never touches a video byte").
- *
- * The image bytes go browser → R2 directly, in two actions (decision 213,
- * the exact decision-205 shape): the original single action carried the file
- * through a server action, and Vercel 413s request bodies over ~4.5 MB at
- * its edge (Next refuses over 1 MB) — every real photo died before the
- * validation code ever ran, silently. The browser asks for a presigned PUT
- * URL, uploads to R2 itself, then asks for the row; the server recomputes
- * the key from the fingerprint and verifies the object landed at a legal
- * size before anything is recorded.
+ * What one slot may receive, given its brief. Archival slots take real
+ * footage — image or video (decision 214); every other visual slot takes a
+ * poster image only. Video through the app layer would have violated the
+ * architecture ("the web layer never touches a video byte"), but the
+ * presigned browser → R2 path (decision 213) means the app never touches
+ * these bytes at all — the rule survives, the capability arrives.
+ */
+function uploadRules(
+  slotBrief: unknown,
+  fileType: string,
+): { extension: string; kind: 'image' | 'video'; maxBytes: number } | { error: string } {
+  const briefType = (slotBrief as { type?: string } | null)?.type
+  const archival = briefType === 'archival'
+
+  const imageExt = UPLOAD_IMAGE_TYPES[fileType]
+  if (imageExt) return { extension: imageExt, kind: 'image', maxBytes: MAX_UPLOAD_IMAGE_BYTES }
+
+  const videoExt = UPLOAD_VIDEO_TYPES[fileType]
+  if (videoExt && archival) {
+    return { extension: videoExt, kind: 'video', maxBytes: MAX_UPLOAD_VIDEO_BYTES }
+  }
+  if (videoExt) {
+    return {
+      error:
+        'Video uploads belong to real-footage (archival) slots. This slot takes PNG, JPEG or ' +
+        'WebP images.',
+    }
+  }
+  return {
+    error: archival
+      ? 'Only PNG, JPEG or WebP images, or MP4, MOV or WebM video, can be uploaded here.'
+      : 'Only PNG, JPEG or WebP images can be uploaded here.',
+  }
+}
+
+/**
+ * `Upload own` — the bytes go browser → R2 directly, in two actions
+ * (decision 213, the exact decision-205 shape): a single action carrying the
+ * file dies at Vercel's ~4.5 MB edge cap (Next refuses over 1 MB) before any
+ * validation runs. The browser asks for a presigned PUT URL, uploads to R2
+ * itself, then asks for the row; the server recomputes the key from the
+ * fingerprint and verifies the object landed at a legal size before
+ * anything is recorded.
  */
 export async function createOwnUploadAction(input: {
   projectId: string
@@ -336,15 +389,20 @@ export async function createOwnUploadAction(input: {
   const invalid = badIds(input.projectId, input.slotId)
   if (invalid) return invalid
 
-  const extension = UPLOAD_TYPES[input.fileType]
-  if (!extension) {
-    return { ok: false, error: 'Only PNG, JPEG or WebP images can be uploaded here.' }
-  }
+  const slot = await getShotSlot(db, input.slotId)
+  if (!slot) return { ok: false, error: 'This slot no longer exists.' }
+
+  const rules = uploadRules(slot.brief, input.fileType)
+  if ('error' in rules) return { ok: false, error: rules.error }
+
   if (!Number.isFinite(input.fileSize) || input.fileSize <= 0) {
     return { ok: false, error: 'That file looks empty.' }
   }
-  if (input.fileSize > MAX_UPLOAD_BYTES) {
-    return { ok: false, error: 'That file is over the 8 MB limit for board images.' }
+  if (input.fileSize > rules.maxBytes) {
+    return {
+      ok: false,
+      error: `That file is over the ${Math.round(rules.maxBytes / 1024 / 1024)} MB limit.`,
+    }
   }
   if (!/^[0-9a-f]{64}$/.test(input.contentHash)) {
     return { ok: false, error: 'The file could not be fingerprinted. Try choosing it again.' }
@@ -352,14 +410,11 @@ export async function createOwnUploadAction(input: {
   if (!storageConfigured()) {
     return {
       ok: false,
-      error: 'Uploads need R2 configured — there is nowhere to store the image.',
+      error: 'Uploads need R2 configured — there is nowhere to store the file.',
     }
   }
-  if (!(await getShotSlot(db, input.slotId))) {
-    return { ok: false, error: 'This slot no longer exists.' }
-  }
 
-  const key = `${R2_PREFIX}/uploads/${input.projectId}/${input.contentHash}.${extension}`
+  const key = `${R2_PREFIX}/uploads/${input.projectId}/${input.contentHash}.${rules.extension}`
   return { ok: true, url: await presignPut(key, input.fileType), key }
 }
 
@@ -369,59 +424,78 @@ export async function finaliseOwnUploadAction(input: {
   fileType: string
   fileName: string
   contentHash: string
+  /**
+   * Video metadata, read by the browser from the file it uploaded. Trusted
+   * for what it is used for (timeline maths in a single-owner console);
+   * existence and size are verified against the bucket regardless.
+   */
+  durationMs?: number
+  width?: number
+  height?: number
 }): Promise<ActionResult> {
   await requireOwner()
 
   const invalid = badIds(input.projectId, input.slotId)
   if (invalid) return invalid
 
-  const extension = UPLOAD_TYPES[input.fileType]
-  if (!extension) {
-    return { ok: false, error: 'Only PNG, JPEG or WebP images can be uploaded here.' }
-  }
+  const slot = await getShotSlot(db, input.slotId)
+  if (!slot) return { ok: false, error: 'This slot no longer exists.' }
+
+  const rules = uploadRules(slot.brief, input.fileType)
+  if ('error' in rules) return { ok: false, error: rules.error }
+
   if (!/^[0-9a-f]{64}$/.test(input.contentHash)) {
     return { ok: false, error: 'The file could not be fingerprinted. Try choosing it again.' }
   }
   if (!storageConfigured()) {
     return {
       ok: false,
-      error: 'Uploads need R2 configured — there is nowhere to store the image.',
+      error: 'Uploads need R2 configured — there is nowhere to store the file.',
     }
   }
 
-  const slot = await getShotSlot(db, input.slotId)
-  if (!slot) return { ok: false, error: 'This slot no longer exists.' }
-
   // The key is recomputed, never taken from the caller — this flow can only
   // ever record an object it issued the URL for. Verified against the
-  // bucket: the row is a promise the board can display this image.
+  // bucket: the row is a promise the board can display this file.
   const contentHash = input.contentHash
-  const key = `${R2_PREFIX}/uploads/${input.projectId}/${contentHash}.${extension}`
+  const key = `${R2_PREFIX}/uploads/${input.projectId}/${contentHash}.${rules.extension}`
   const head = await headObject(key)
   if (!head) {
     return { ok: false, error: 'The upload never arrived in storage. Try again.' }
   }
-  if (head.size > MAX_UPLOAD_BYTES) {
+  if (head.size > rules.maxBytes) {
     await deleteObject(key)
-    return { ok: false, error: 'That file is over the 8 MB limit for board images.' }
+    return {
+      ok: false,
+      error: `That file is over the ${Math.round(rules.maxBytes / 1024 / 1024)} MB limit.`,
+    }
+  }
+  const dims = {
+    ...(input.width && input.width > 0 ? { width: Math.round(input.width) } : {}),
+    ...(input.height && input.height > 0 ? { height: Math.round(input.height) } : {}),
+    ...(rules.kind === 'video' && input.durationMs && input.durationMs > 0
+      ? { durationMs: Math.round(input.durationMs) }
+      : {}),
   }
   const asset = await upsertAssetByHash(db, {
-    kind: 'image',
+    kind: rules.kind,
     r2Key: key,
     licence: 'Uploaded by owner',
     contentHash,
+    ...dims,
   })
 
   const candidate: SlotCandidate = SlotCandidateSchema.parse({
     id: `upload-${contentHash.slice(0, 12)}`,
     provider: 'upload',
-    kind: 'image',
+    kind: rules.kind,
     sourceUrl: `upload://${contentHash}`,
     assetId: asset.id,
     r2Key: key,
     licence: asset.licence,
     summary: input.fileName,
     chosen: true,
+    ...dims,
   })
 
   // The upload joins the strip and wins the choice; fetched candidates stay

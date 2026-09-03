@@ -118,10 +118,15 @@ Planning rules:
 - "stock" queries are 2-5 concrete words; "rejectionCriteria" names what would
   make a result unusable (watermarks, wrong era, modern tech in a period
   segment, identifiable faces).
-- "archival" is for real historical subjects a stock library will not have —
-  named buildings, events, people. "mustShow" is the test a photo must pass.
-- "still" prompts describe one photographable moment in full. Append these
-  style anchors to every prompt verbatim: "${input.styleAnchors}".
+- "archival" is REAL footage or photographs of the actual subject — named
+  buildings, events, people — that the producer sources and uploads by hand.
+  Nothing is fetched for these slots (decision 214): "query" is guidance on
+  where to look and what to search for, "mustShow" is the test the upload
+  must pass. Plan one only where authenticity is the point; every archival
+  slot is manual work for a human.
+- "still" is an AI-GENERATED image. Prompts describe one photographable
+  moment in full. Append these style anchors to every prompt verbatim:
+  "${input.styleAnchors}".
   ${STILL_GENERATIONS} variants are generated per prompt.
 - Narration may contain bracketed tags — [pause], [sighs]. They are direction
   for the narrator, not content; never plan a visual around one and never quote

@@ -5,7 +5,6 @@ import { withCost } from '@boom-busters/cost'
 import { getSettings, upsertAssetByHash, visualCredentials } from '@boom-busters/db'
 import { applyScores, STILL_GENERATIONS, ValidationError } from '@boom-busters/schemas'
 import type {
-  ArchivalBrief,
   ShotBrief,
   ShotSlotStatus,
   SlotCandidate,
@@ -48,9 +47,6 @@ import { putObject, stillKey, storageConfigured } from '@/lib/storage'
 
 /** Fetched per stock provider, before scoring narrows to the shown 4. */
 export const STOCK_FETCH_COUNT = 6
-
-/** Fetched from Commons for an archival slot. */
-export const ARCHIVAL_FETCH_COUNT = 8
 
 /**
  * Fail before the shot list is even generated when a slot type the plan will
@@ -150,18 +146,6 @@ async function fetchStockCandidates(brief: StockBrief): Promise<SlotCandidate[]>
   }
 
   return candidates
-}
-
-async function fetchArchivalCandidates(brief: ArchivalBrief): Promise<SlotCandidate[]> {
-  return stockAdapter('wikimedia').search(
-    {
-      query: brief.query,
-      brief: brief.description,
-      rejectionCriteria: [],
-      count: ARCHIVAL_FETCH_COUNT,
-    },
-    {},
-  )
 }
 
 // ---------------------------------------------------------------------------
@@ -294,7 +278,7 @@ async function generateStillCandidates(
 // ---------------------------------------------------------------------------
 
 export async function scoreSlotCandidates(
-  brief: StockBrief | ArchivalBrief,
+  brief: StockBrief,
   candidates: readonly SlotCandidate[],
   projectId: string,
 ): Promise<SlotCandidate[]> {
@@ -362,12 +346,12 @@ export async function resolveSlotBrief(input: {
     }
 
     case 'archival': {
-      const candidates = await scoreSlotCandidates(
-        brief,
-        await fetchArchivalCandidates(brief),
-        projectId,
-      )
-      return withChoice(candidates)
+      // Real footage is the owner's to source (decision 214): nothing is
+      // fetched — the Wikimedia search this used to run produced lookalikes
+      // where authenticity was the whole point of the slot. The placeholder
+      // status is honest ("a human must act here"), and the board renders it
+      // as an upload prompt rather than a fetch failure.
+      return { candidates: [], status: 'placeholder' }
     }
   }
 }

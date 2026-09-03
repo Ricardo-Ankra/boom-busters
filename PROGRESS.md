@@ -3226,6 +3226,34 @@ published and audited. The daily `channels.list` health ping and the
      gained a catch that toasts, and an oversized pick is refused before
      a byte is uploaded.
 
+214. **The slot taxonomy says where pixels come from** (2026-09-03, owner
+     request: archival is real footage nobody can fetch; still is AI
+     only). Wire ids stay — they live in stored briefs, a pg enum and
+     timeline JSON — but the semantics and words changed. `archival` is
+     now upload-only real footage, image OR video (mp4/mov/webm ≤200 MB,
+     via the decision-213 presigned path; the browser reads duration and
+     dimensions from a clip before it uploads): the runner fetches
+     nothing for it (the old Wikimedia search produced lookalikes where
+     authenticity was the point) and resolves it straight to
+     `placeholder`, which the board renders as "yours to source" with an
+     "Upload footage" button — never as a fetch failure. The shot-list
+     prompt tells the model archival slots are manual work for a human
+     ("query" = where to look, "mustShow" = the acceptance test) and
+     that `still` is an AI-GENERATED image. Refetch is refused for
+     archival server-side, brief edits save without refetching, and the
+     board labels read "real footage" / "AI image" / "AI video" (hero).
+     The Wikimedia adapter stays for candidates fetched before this
+     decision. Generative video was reviewed and deliberately deferred:
+     the `hero` type + `features.heroSlots` flag already reserve its
+     place, and enabling it needs a fal video model chosen, schema- and
+     price-verified, and its per-clip cost accepted — a decision of its
+     own. Hard-won footnote: a `'use server'` module may only export
+     async functions — exporting the video-size constant from
+     visuals-actions.ts compiled fine and passed every unit test, but
+     broke the whole projects route's server-action manifest at runtime
+     (15 e2e tests across publish/pipeline/writing-room timed out on
+     mutations that silently 500'd). Only e2e catches this class.
+
 **Status:** `[x]` done — dossier + Studio shipped with unit, component and
 e2e coverage; spec §11.3 amended in place with dated notes.
 

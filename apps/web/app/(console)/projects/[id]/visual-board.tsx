@@ -89,10 +89,27 @@ function StatusChip({ status }: { status: string }) {
   )
 }
 
+/**
+ * How each slot type reads to a human (decision 214). The wire ids stay —
+ * they live in stored briefs, a pg enum and timeline JSON — but the words
+ * say what each type IS: archival is the owner's real footage (upload only),
+ * still is a machine-made image, hero is the switched-off AI video.
+ */
+const SLOT_TYPE_LABELS: Record<string, string> = {
+  stock: 'stock',
+  archival: 'real footage',
+  still: 'AI image',
+  chart: 'chart',
+  map: 'map',
+  hero: 'AI video',
+}
+
+const slotTypeLabel = (type: string) => SLOT_TYPE_LABELS[type] ?? type
+
 function TypeBadge({ type }: { type: string }) {
   return (
     <span className="rounded-[4px] bg-[var(--color-background)] px-1.5 py-0.5 font-mono text-[11px] text-[var(--color-text-secondary)] uppercase">
-      {type}
+      {slotTypeLabel(type)}
     </span>
   )
 }
@@ -214,11 +231,12 @@ export function VisualBoard({
                 confirmLabel="Fetch now"
                 consequence={
                   model.stillsToFetch > 0
-                    ? `Fetches stock, archival, chart and map candidates (free) and generates ` +
-                      `${model.stillsToFetch} still${model.stillsToFetch === 1 ? '' : 's'} at ` +
-                      `est. $${model.fetchEstimateUsd.toFixed(2)}. The board review follows.`
-                    : 'Fetches stock, archival, chart and map candidates — all free. The board ' +
-                      'review follows.'
+                    ? `Fetches stock, chart and map candidates (free) and generates ` +
+                      `${model.stillsToFetch} AI image${model.stillsToFetch === 1 ? '' : 's'} at ` +
+                      `est. $${model.fetchEstimateUsd.toFixed(2)}. Real-footage slots wait for ` +
+                      `your uploads. The board review follows.`
+                    : 'Fetches stock, chart and map candidates — all free. Real-footage slots ' +
+                      'wait for your uploads. The board review follows.'
                 }
                 onConfirm={() =>
                   act(
@@ -278,7 +296,7 @@ export function VisualBoard({
             {allSlots.map((slot) => (
               <div
                 key={slot.id}
-                title={`${slot.type} · ${timecode(slot.startMs)}`}
+                title={`${slotTypeLabel(slot.type)} · ${timecode(slot.startMs)}`}
                 className="h-full border-r border-[var(--color-surface)]"
                 style={{
                   width: `${model.totalMs > 0 ? (slot.durationMs / model.totalMs) * 100 : 0}%`,
@@ -310,7 +328,7 @@ export function VisualBoard({
                   role="listitem"
                   onClick={() => jumpToSlot(slot)}
                   className="flex h-[64px] w-[96px] shrink-0 flex-col items-center justify-center gap-1 overflow-hidden rounded-[6px] border border-[var(--color-border)] bg-[var(--color-background)] text-[10px] text-[var(--color-text-secondary)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-accent)]"
-                  aria-label={`Jump to ${slot.type} slot at ${timecode(slot.startMs)}`}
+                  aria-label={`Jump to ${slotTypeLabel(slot.type)} slot at ${timecode(slot.startMs)}`}
                 >
                   {thumb ? (
                     // Plain <img> on purpose: provider-CDN and data: thumbnails,
@@ -318,7 +336,7 @@ export function VisualBoard({
                     <img src={thumb} alt="" className="h-full w-full object-cover" />
                   ) : (
                     <>
-                      <span className="font-mono uppercase">{slot.type}</span>
+                      <span className="font-mono uppercase">{slotTypeLabel(slot.type)}</span>
                       <span className="font-mono">{timecode(slot.startMs)}</span>
                     </>
                   )}
@@ -458,7 +476,14 @@ function SlotCard({
           <CandidateStrip slot={slot} projectId={projectId} act={act} />
         )}
 
-        {slot.status === 'placeholder' && brief?.type !== 'hero' ? (
+        {slot.status === 'placeholder' && brief?.type === 'archival' ? (
+          <p className="text-[13px] text-[var(--color-warning)]">
+            Real footage is yours to source — nothing is fetched for this slot. The brief says what
+            to look for and what it must show; upload the image or clip when you have it.
+          </p>
+        ) : null}
+
+        {slot.status === 'placeholder' && brief?.type !== 'hero' && brief?.type !== 'archival' ? (
           <p className="text-[13px] text-[var(--color-warning)]">
             Nothing usable was found for this slot. Edit the brief and re-fetch, or upload your own
             image — approving the board with this still a placeholder must say so explicitly.
@@ -505,44 +530,54 @@ function SlotCard({
                   <Search aria-hidden />
                   {editing
                     ? 'Close brief editor'
-                    : planning
+                    : planning || brief.type === 'archival'
                       ? 'Edit brief'
                       : 'Edit brief & re-fetch'}
                 </Button>
-                <Button
-                  variant="outline"
-                  busy={busy && !editing}
-                  onClick={() =>
-                    act(
-                      slot.id,
-                      () =>
-                        refetchSlotAction(
-                          projectId,
-                          slot.id,
-                          planning ? 'Fetched early from the plan' : 'Regenerate',
-                        ),
-                      planning
-                        ? 'Fetching this slot — the card updates when candidates land'
-                        : 'Re-fetching — the row updates when new candidates land',
-                    )
-                  }
-                >
-                  <RefreshCw aria-hidden />
-                  {/* Two variants at the dearer generator's price (Gemini,
-                      $0.04/image) — the label errs against the budget, like
-                      every estimate. */}
-                  {planning
-                    ? brief.type === 'still'
-                      ? 'Fetch this slot · ≈$0.08'
-                      : 'Fetch this slot'
-                    : brief.type === 'still'
-                      ? 'Regenerate · ≈$0.08'
-                      : 'Regenerate'}
-                </Button>
+                {/* Real footage has nothing to fetch (decision 214): the
+                    brief guides the owner's own search, so the only actions
+                    are editing it and uploading against it. */}
+                {brief.type !== 'archival' ? (
+                  <Button
+                    variant="outline"
+                    busy={busy && !editing}
+                    onClick={() =>
+                      act(
+                        slot.id,
+                        () =>
+                          refetchSlotAction(
+                            projectId,
+                            slot.id,
+                            planning ? 'Fetched early from the plan' : 'Regenerate',
+                          ),
+                        planning
+                          ? 'Fetching this slot — the card updates when candidates land'
+                          : 'Re-fetching — the row updates when new candidates land',
+                      )
+                    }
+                  >
+                    <RefreshCw aria-hidden />
+                    {/* Two variants at the dearer generator's price (Gemini,
+                        $0.04/image) — the label errs against the budget, like
+                        every estimate. */}
+                    {planning
+                      ? brief.type === 'still'
+                        ? 'Fetch this slot · ≈$0.08'
+                        : 'Fetch this slot'
+                      : brief.type === 'still'
+                        ? 'Regenerate · ≈$0.08'
+                        : 'Regenerate'}
+                  </Button>
+                ) : null}
               </>
             ) : null}
             {brief.type === 'stock' || brief.type === 'archival' || brief.type === 'still' ? (
-              <UploadOwnButton projectId={projectId} slotId={slot.id} act={act} />
+              <UploadOwnButton
+                projectId={projectId}
+                slotId={slot.id}
+                act={act}
+                archival={brief.type === 'archival'}
+              />
             ) : null}
           </div>
         ) : null}
@@ -949,7 +984,9 @@ function BriefEditor({
               ...(brief.type === 'archival' ? { mustShow } : {}),
               ...(brief.type === 'still' ? { prompt } : {}),
             }),
-          planning ? 'Brief saved' : 'Brief saved — re-fetching against it now',
+          planning || brief.type === 'archival'
+            ? 'Brief saved'
+            : 'Brief saved — re-fetching against it now',
         ).then(onDone)
       }}
     >
@@ -964,7 +1001,9 @@ function BriefEditor({
       </label>
       {brief.type === 'stock' || brief.type === 'archival' ? (
         <label className="flex flex-col gap-1 text-[12px] text-[var(--color-text-secondary)]">
-          Search query
+          {/* Same stored field, different job: stock sends it to an API,
+              archival hands it to the human as search guidance. */}
+          {brief.type === 'archival' ? 'Where to look' : 'Search query'}
           <input
             value={query}
             onChange={(event) => setQuery(event.target.value)}
@@ -995,7 +1034,9 @@ function BriefEditor({
       ) : null}
       <div className="flex gap-2">
         <Button type="submit" variant="primary">
-          {planning ? 'Save' : `Save & re-fetch${brief.type === 'still' ? ' · ≈$0.08' : ''}`}
+          {planning || brief.type === 'archival'
+            ? 'Save'
+            : `Save & re-fetch${brief.type === 'still' ? ' · ≈$0.08' : ''}`}
         </Button>
         <Button type="button" variant="ghost" onClick={onDone}>
           Cancel
@@ -1006,29 +1047,64 @@ function BriefEditor({
 }
 
 /** Repeated server-side; here so an oversized pick fails before uploading. */
-const UPLOAD_OWN_MAX_BYTES = 8 * 1024 * 1024
+const UPLOAD_OWN_IMAGE_MAX_BYTES = 8 * 1024 * 1024
+const UPLOAD_OWN_VIDEO_MAX_BYTES = 200 * 1024 * 1024
+
+/** Duration and dimensions, read from the picked video before it uploads. */
+function readVideoMetadata(
+  file: File,
+): Promise<{ durationMs: number; width: number; height: number } | undefined> {
+  return new Promise((resolve) => {
+    const url = URL.createObjectURL(file)
+    const video = document.createElement('video')
+    video.preload = 'metadata'
+    video.onloadedmetadata = () => {
+      URL.revokeObjectURL(url)
+      resolve({
+        durationMs: Math.round(video.duration * 1000),
+        width: video.videoWidth,
+        height: video.videoHeight,
+      })
+    }
+    // Unreadable metadata is not a reason to refuse the upload — the server
+    // stores what it gets and the compiler treats it like any other clip.
+    video.onerror = () => {
+      URL.revokeObjectURL(url)
+      resolve(undefined)
+    }
+    video.src = url
+  })
+}
 
 /**
  * Browser → R2 directly (decision 213, the decision-205 shape): Vercel
- * refuses request bodies over about 4.5 MB at its edge, so the image can
+ * refuses request bodies over about 4.5 MB at its edge, so the file can
  * never travel through a server action. Presign, PUT, then finalise —
  * all three steps inside one `act` call so the button gets a busy state
- * and every failure gets a toast.
+ * and every failure gets a toast. Archival slots take real footage, image
+ * or video (decision 214); everything else takes a poster image.
  */
 function UploadOwnButton({
   projectId,
   slotId,
   act,
+  archival,
 }: {
   projectId: string
   slotId: string
   act: (slotId: string, run: () => Promise<ActionResult>, success: string) => Promise<void>
+  archival: boolean
 }) {
   const inputRef = React.useRef<HTMLInputElement | null>(null)
 
   const upload = async (file: File): Promise<ActionResult> => {
-    if (file.size > UPLOAD_OWN_MAX_BYTES) {
-      return { ok: false, error: 'That file is over the 8 MB limit for board images.' }
+    const video = file.type.startsWith('video/')
+    const maxBytes = video ? UPLOAD_OWN_VIDEO_MAX_BYTES : UPLOAD_OWN_IMAGE_MAX_BYTES
+    if (file.size > maxBytes) {
+      return {
+        ok: false,
+        error: `That file is over the ${Math.round(maxBytes / 1024 / 1024)} MB limit.`,
+      }
     }
 
     // The Uint8Array view matters: digest() rejects an ArrayBuffer from
@@ -1057,12 +1133,14 @@ function UploadOwnButton({
       return { ok: false, error: `Storage refused the upload (${put.status}). Try again.` }
     }
 
+    const metadata = video ? await readVideoMetadata(file) : undefined
     return finaliseOwnUploadAction({
       projectId,
       slotId,
       fileType: file.type,
       fileName: file.name,
       contentHash,
+      ...(metadata ?? {}),
     })
   }
 
@@ -1070,14 +1148,22 @@ function UploadOwnButton({
     <>
       <Button variant="outline" onClick={() => inputRef.current?.click()}>
         <ImagePlus aria-hidden />
-        Upload own
+        {archival ? 'Upload footage' : 'Upload own'}
       </Button>
       <input
         ref={inputRef}
         type="file"
-        accept="image/png,image/jpeg,image/webp"
+        accept={
+          archival
+            ? 'image/png,image/jpeg,image/webp,video/mp4,video/quicktime,video/webm'
+            : 'image/png,image/jpeg,image/webp'
+        }
         className="hidden"
-        aria-label="Upload your own image for this slot"
+        aria-label={
+          archival
+            ? 'Upload your real footage for this slot — image or video'
+            : 'Upload your own image for this slot'
+        }
         onChange={(event) => {
           const file = event.target.files?.[0]
           event.target.value = ''

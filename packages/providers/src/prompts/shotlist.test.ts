@@ -51,6 +51,12 @@ describe('buildShotListRequest', () => {
     expect(request.messages[1]?.content).toContain('The trail led from Munich to Manila.')
   })
 
+  it('plans archival as upload-only real footage — nothing is fetched (decision 214)', () => {
+    expect(request.system).toContain('sources and uploads by hand')
+    expect(request.system).toContain('Nothing is fetched for these slots')
+    expect(request.system).toMatch(/"still" is an AI-GENERATED image/)
+  })
+
   it('threads the Brand Kit style anchors into the system prompt', () => {
     expect(request.system).toContain('subtle film grain')
   })
