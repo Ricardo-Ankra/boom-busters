@@ -25,12 +25,29 @@ import type { ImageGenProvider, ImageGenRequest, ImageGenResult, StockCallOption
  * Prices are USD per image, rounded UP so the estimate errs against the
  * budget, the same direction every estimate in this app errs. Flash: image
  * output is $30/1M tokens and one image is 1290 tokens (~$0.039). Pro
- * ("Nano Banana Pro"): a 1K/2K image is ~$0.134 of output tokens.
+ * ("Nano Banana Pro"): a 1K/2K image is ~$0.134 of output tokens. The Imagen
+ * models are flat-priced per image on the same API.
+ *
+ * Imagen 4 Ultra is deliberately absent: it generates one image per request
+ * (sampleCount must be 1), which breaks the N-variants call shape — add it
+ * only with its own fan-out.
  */
 const MODELS = [
   { id: 'gemini-2.5-flash-image', label: 'Gemini 2.5 Flash Image', pricePerImage: 0.04 },
   { id: 'gemini-3-pro-image-preview', label: 'Gemini 3 Pro Image', pricePerImage: 0.15 },
+  { id: 'imagen-4.0-generate-001', label: 'Imagen 4', pricePerImage: 0.04 },
+  { id: 'imagen-4.0-fast-generate-001', label: 'Imagen 4 Fast', pricePerImage: 0.02 },
+  { id: 'imagen-3.0-generate-002', label: 'Imagen 3', pricePerImage: 0.03 },
 ] as const
+
+/**
+ * Imagen rides the same key and host but a different wire dialect:
+ * `:predict` with `instances`/`parameters` instead of `:generateContent`
+ * with `contents`, N images in ONE call via `sampleCount` instead of N
+ * parallel calls, and bytes as `bytesBase64Encoded` predictions. Same
+ * contract out of the adapter either way: `data:` URLs.
+ */
+const isImagen = (model: string) => model.startsWith('imagen-')
 
 const endpoint = (model: string) =>
   `https://generativelanguage.googleapis.com/v1beta/models/${model}`
@@ -58,6 +75,21 @@ const ResponseSchema = z.object({
     .min(1),
 })
 
+/** Imagen's 16:9 renders 1408×768 at 1K — same class, scaled at compile. */
+const IMAGEN_WIDTH = 1408
+const IMAGEN_HEIGHT = 768
+
+const ImagenResponseSchema = z.object({
+  predictions: z
+    .array(
+      z.object({
+        bytesBase64Encoded: z.string().min(1),
+        mimeType: z.string().default('image/png'),
+      }),
+    )
+    .min(1),
+})
+
 export const geminiImageGen: ImageGenProvider = {
   id: 'google',
   label: 'Gemini via Google',
@@ -75,6 +107,39 @@ export const geminiImageGen: ImageGenProvider = {
       : request.prompt
 
     const fetchImpl = options.fetchImpl ?? fetch
+
+    // Imagen: N images in ONE :predict call via sampleCount. No prose-answer
+    // failure mode — a refusal comes back as an error status, not a 200.
+    if (isImagen(model.id)) {
+      let response: Response
+      try {
+        response = await fetchImpl(`${endpoint(model.id)}:predict`, {
+          method: 'POST',
+          headers: {
+            'x-goog-api-key': apiKey,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            instances: [{ prompt }],
+            parameters: { sampleCount: request.count, aspectRatio: ASPECT_RATIO },
+          }),
+          ...(options.signal ? { signal: options.signal } : {}),
+        })
+      } catch (cause) {
+        throw mapNetworkError('google', cause)
+      }
+      if (!response.ok) await throwForResponse('google', response)
+
+      const parsed = ImagenResponseSchema.parse(await response.json())
+      return {
+        images: parsed.predictions.map((prediction) => ({
+          url: `data:${prediction.mimeType};base64,${prediction.bytesBase64Encoded}`,
+          width: IMAGEN_WIDTH,
+          height: IMAGEN_HEIGHT,
+        })),
+        estimatedCostUsd: model.pricePerImage * parsed.predictions.length,
+      }
+    }
 
     const one = async (): Promise<{ url: string; width: number; height: number }> => {
       let response: Response

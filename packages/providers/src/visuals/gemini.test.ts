@@ -62,6 +62,36 @@ describe('geminiImageGen', () => {
     )
   })
 
+  it('speaks the Imagen :predict dialect — N images in one call via sampleCount', async () => {
+    const calls: { url: string; body: unknown }[] = []
+    const reply = {
+      predictions: [
+        { bytesBase64Encoded: PNG_BASE64, mimeType: 'image/png' },
+        { bytesBase64Encoded: PNG_BASE64, mimeType: 'image/png' },
+      ],
+    }
+    const result = await geminiImageGen.generate(
+      { prompt: 'A deserted trading floor at dawn', count: 2, model: 'imagen-4.0-generate-001' },
+      { apiKey: 'key', fetchImpl: fetchRecording(calls, reply) },
+    )
+
+    // One call, not two — Imagen batches via sampleCount.
+    expect(calls).toHaveLength(1)
+    expect(calls[0]?.url).toContain('imagen-4.0-generate-001:predict')
+    const body = calls[0]?.body as {
+      instances: { prompt: string }[]
+      parameters: { sampleCount: number; aspectRatio: string }
+    }
+    expect(body.instances[0]?.prompt).toContain('A deserted trading floor')
+    expect(body.parameters).toEqual({ sampleCount: 2, aspectRatio: '16:9' })
+    expect(result.images).toHaveLength(2)
+    expect(result.images[0]?.url).toBe(`data:image/png;base64,${PNG_BASE64}`)
+    expect(result.estimatedCostUsd).toBeCloseTo(
+      geminiImageGen.models.find((model) => model.id === 'imagen-4.0-generate-001')!.pricePerImage *
+        2,
+    )
+  })
+
   it('refuses a model it does not list before any call is made', async () => {
     const calls: { url: string; body: unknown }[] = []
     await expect(

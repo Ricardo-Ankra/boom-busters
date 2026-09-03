@@ -3155,6 +3155,19 @@ published and audited. The daily `channels.list` health ping and the
      mock adapter deliberately ignores the model id, since it serves for
      both provider ids.
 
+209. **Imagen joins the Google still models** (2026-09-03, owner request).
+     Imagen 3 ($0.03), Imagen 4 ($0.04) and Imagen 4 Fast ($0.02) join
+     the routing list. Same key, same host, different wire dialect: the
+     adapter branches on the `imagen-` prefix to `:predict` with
+     `instances`/`parameters` (N images in ONE call via `sampleCount`,
+     bytes as base64 predictions) instead of Gemini's `:generateContent`
+     (N parallel calls, inline parts). Imagen 4 Ultra is deliberately
+     absent — it takes one image per request, which breaks the N-variant
+     call shape. Also diagnosed this session: the owner's fal key verify
+     "rejection" was fal answering 403 "User is locked. Reason: TOP_UP"
+     to a VALID key — an unfunded account, not a key problem; the verify
+     chip already surfaces fal's own message.
+
 **Status:** `[x]` done — dossier + Studio shipped with unit, component and
 e2e coverage; spec §11.3 amended in place with dated notes.
 
