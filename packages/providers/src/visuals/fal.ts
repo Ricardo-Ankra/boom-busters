@@ -22,13 +22,26 @@ import type { ImageGenProvider, ImageGenRequest, ImageGenResult, StockCallOption
 
 /**
  * Prices are USD per image, rounded UP so the estimate errs against the
- * budget. dev: $0.025/megapixel and the 16:9 size is ~1.03 MP. schnell:
- * $0.003/megapixel. pro 1.1: a flat $0.04 per image.
+ * budget. dev and Krea: $0.025/megapixel and the 16:9 size is ~1.03 MP.
+ * schnell: $0.003/megapixel. pro 1.1: a flat $0.04 per image. FLUX.2 dev:
+ * $0.012/megapixel.
+ *
+ * The list is a promise, not a preference: every id here has been checked
+ * against fal's OpenAPI schema for THIS adapter's contract — `prompt` +
+ * `image_size` (with `landscape_16_9`) + `num_images` in, `images[]` with
+ * URLs out — and carries a price the budget maths can trust. fal hosts
+ * hundreds of models behind other schemas; an id added without that check
+ * would fail mid-run with money already spent. Known incompatible: FLUX.2
+ * pro and FLUX1.1 ultra take no `num_images` (one image per request), which
+ * breaks the N-variants call shape — the same reason Imagen 4 Ultra is
+ * absent from the Google list.
  */
 const MODELS = [
   { id: 'fal-ai/flux/dev', label: 'FLUX.1 dev', pricePerImage: 0.03 },
   { id: 'fal-ai/flux/schnell', label: 'FLUX.1 schnell', pricePerImage: 0.01 },
   { id: 'fal-ai/flux-pro/v1.1', label: 'FLUX1.1 pro', pricePerImage: 0.04 },
+  { id: 'fal-ai/flux-2', label: 'FLUX.2 dev', pricePerImage: 0.02 },
+  { id: 'fal-ai/flux/krea', label: 'FLUX.1 Krea dev', pricePerImage: 0.03 },
 ] as const
 
 const endpoint = (model: string) => `https://fal.run/${model}`

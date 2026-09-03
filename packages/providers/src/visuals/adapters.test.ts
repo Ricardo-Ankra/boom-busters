@@ -377,6 +377,19 @@ describe('falImageGen', () => {
     )
   })
 
+  it('offers exactly the schema-checked FLUX variants — the list is a promise', () => {
+    // Every id here was verified against fal's OpenAPI schema for this
+    // adapter's contract (prompt + image_size + num_images → images[]).
+    // Pinned so an id cannot drift in without that check being redone.
+    expect(falImageGen.models.map((model) => model.id)).toEqual([
+      'fal-ai/flux/dev',
+      'fal-ai/flux/schnell',
+      'fal-ai/flux-pro/v1.1',
+      'fal-ai/flux-2',
+      'fal-ai/flux/krea',
+    ])
+  })
+
   it('refuses a model it does not list before any call is made', async () => {
     await expect(
       falImageGen.generate(

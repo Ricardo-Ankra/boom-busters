@@ -3168,6 +3168,18 @@ published and audited. The daily `channels.list` health ping and the
      to a VALID key — an unfunded account, not a key problem; the verify
      chip already surfaces fal's own message.
 
+210. **The fal list grows only by schema check** (2026-09-03, owner asked
+     why fal offers 3 models when fal hosts hundreds). The list is a
+     promise: every id is verified against fal's OpenAPI schema for this
+     adapter's exact contract (prompt + image_size with landscape_16_9 +
+     num_images in, images[] out) and carries a price the budget maths
+     can trust — an unchecked id would fail mid-run with money spent.
+     FLUX.2 dev ($0.02, $0.012/MP) and FLUX.1 Krea dev ($0.03) passed the
+     check and joined; FLUX.2 pro and FLUX1.1 ultra were checked and
+     excluded — no num_images, one image per request, the same shape
+     that keeps Imagen 4 Ultra out. A test pins the id list so nothing
+     drifts in without the check being redone.
+
 **Status:** `[x]` done — dossier + Studio shipped with unit, component and
 e2e coverage; spec §11.3 amended in place with dated notes.
 
