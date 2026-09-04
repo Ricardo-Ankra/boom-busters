@@ -16,6 +16,16 @@ export function createDb(connectionString: string, options?: { max?: number }) {
     idle_timeout: 20,
     connect_timeout: 10,
     /**
+     * Recycle every pooled connection after five minutes (postgres.js default
+     * is 30-60 min). Fluid Compute freezes instances between invocations, so
+     * a pooled socket Neon has since dropped still looks alive to the client,
+     * and postgres.js has no client-side query timeout: the next query on it
+     * hangs until TCP retransmission gives up (~15+ min). A short lifetime
+     * bounds how stale any pooled socket can be. (Production incident
+     * 2026-09-04: visuals runs wedged mid-planning on exactly this.)
+     */
+    max_lifetime: 60 * 5,
+    /**
      * Neon's pooled endpoint is PgBouncer in transaction mode, which rejects
      * the named prepared statements postgres.js uses by default. The Vercel
      * integration injects the POOLED url as DATABASE_URL, so this is the

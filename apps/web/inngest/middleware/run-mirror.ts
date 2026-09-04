@@ -56,12 +56,36 @@ export function stageOfFunction(functionId: string): ProjectStage | null {
     : null
 }
 
-async function mirror(what: string, write: () => Promise<void>): Promise<void> {
+/**
+ * How long a mirror write may take before it is abandoned.
+ *
+ * A dead pooled socket on a reused serverless instance hangs a query
+ * indefinitely — postgres.js has no client-side query timeout — and a hung
+ * `onStepStart` write held a production execution request open for 18+
+ * minutes, wedging the whole run (2026-09-04). The race keeps the promise at
+ * the top of this file honest: a mirror write may fail, but it may never
+ * hold the pipeline.
+ */
+const MIRROR_TIMEOUT_MS = 5_000
+
+/** Exported for its tests; not part of the middleware's surface. */
+export async function mirror(what: string, write: () => Promise<void>): Promise<void> {
+  let timer: ReturnType<typeof setTimeout> | undefined
   try {
-    await write()
+    await Promise.race([
+      write(),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(
+          () => reject(new Error(`mirror write hung for ${MIRROR_TIMEOUT_MS}ms`)),
+          MIRROR_TIMEOUT_MS,
+        )
+      }),
+    ])
   } catch (error) {
     // Deliberately swallowed: see the note at the top of this file.
     console.error(`[run-mirror] ${what} failed`, error)
+  } finally {
+    if (timer !== undefined) clearTimeout(timer)
   }
 }
 
