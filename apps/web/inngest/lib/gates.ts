@@ -1,4 +1,11 @@
-import { recordRunEvent, setProjectStage, setRunStatus, updateSettings } from '@boom-busters/db'
+import {
+  flagTake,
+  getProject,
+  recordRunEvent,
+  setProjectStage,
+  setRunStatus,
+  updateSettings,
+} from '@boom-busters/db'
 import type { ProjectStage } from '@boom-busters/db'
 import { monthKey } from '@boom-busters/schemas'
 import type { BudgetExceededError, GateStage } from '@boom-busters/schemas'
@@ -208,6 +215,47 @@ export async function markStageFailed(
     kind: 'run-failed',
     title: 'A run failed',
     body: String(error['message'] ?? 'Unknown error'),
+    href: `/projects/${ctx.projectId}`,
+  })
+}
+
+/**
+ * A retake fails INSIDE an open review gate: the parked runner never learns a
+ * retake happened (voice-retaker's header), so the room is still open and the
+ * failure belongs to the ROW, not the stage (decision 219). Calling
+ * markStageFailed here tore the review UI down — the gate bar vanished,
+ * approval became unreachable, and a later successful retake never restored
+ * it (found live: two 401s from a mis-pasted key dead-ended a project whose
+ * every paragraph had audio). Instead the failed take is flagged with the
+ * error, so the row names the problem and the approval blocker holds the
+ * gate shut until the human acts. Only when the stage is NOT parked at
+ * review (the retake raced a restart, say) does the failure escalate to the
+ * stage, as before.
+ */
+export async function markRetakeFailed(
+  ctx: GateContext,
+  takeId: string | undefined,
+  error: Record<string, unknown>,
+): Promise<void> {
+  const project = await getProject(db, ctx.projectId)
+  if (project?.stageStatus !== 'awaiting_review') {
+    await markStageFailed(ctx, error)
+    return
+  }
+
+  const message = String(error['message'] ?? 'The retake failed.')
+  if (takeId) {
+    try {
+      await flagTake(db, takeId, `Retake failed: ${message}`)
+    } catch {
+      // The take can be gone (project deleted mid-flight); the notification
+      // below still carries the failure.
+    }
+  }
+  await notify({
+    kind: 'run-failed',
+    title: 'A retake failed',
+    body: message,
     href: `/projects/${ctx.projectId}`,
   })
 }

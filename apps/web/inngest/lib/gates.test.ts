@@ -1,20 +1,24 @@
 // @vitest-environment node
 
 import {
+  claimTake,
+  createScriptVersion,
   FIXTURE_PROJECT_ID,
   getProject,
   getSettings,
+  getVoiceTake,
   listOpenBudgetGates,
   listRunEvents,
   listRuns,
   requireTestDatabase,
+  saveChapter,
   seed,
   setProjectStage,
   truncateRunMirror,
   updateSettings,
 } from '@boom-busters/db'
 import { budgetStatus, truncateLedger } from '@boom-busters/cost'
-import { BudgetExceededError, monthKey } from '@boom-busters/schemas'
+import { BudgetExceededError, monthKey, takeIdempotencyKey } from '@boom-busters/schemas'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { db } from '@/lib/db'
 import { forgetRunRows } from '../middleware/run-mirror'
@@ -24,6 +28,7 @@ import {
   closeBudgetGate,
   closeReviewGate,
   grantOverage,
+  markRetakeFailed,
   markStageFailed,
   openBudgetGate,
   openReviewGate,
@@ -243,6 +248,69 @@ describeDb('gate helpers', () => {
   describe('markStageFailed', () => {
     it('puts the project into a state the rail can render', async () => {
       await markStageFailed(context(), { name: 'ValidationError', message: 'no sources' })
+      expect((await getProject(db, FIXTURE_PROJECT_ID))?.stageStatus).toBe('failed')
+    })
+  })
+
+  /**
+   * Decision 219: a retake fails inside an OPEN review gate — the parked
+   * runner never learns it happened, so the room must stay open. Marking the
+   * stage failed here dead-ended a live project: the gate bar vanished,
+   * approval became unreachable, and the later successful retake never
+   * restored it.
+   */
+  describe('markRetakeFailed', () => {
+    async function seededTake(): Promise<string> {
+      const script = await createScriptVersion(db, FIXTURE_PROJECT_ID)
+      const chapter = await saveChapter(db, {
+        scriptId: script.id,
+        index: 0,
+        title: 'The audit',
+        contentMd: 'One paragraph.',
+        estRuntimeSec: 20,
+      })
+      const claimed = await claimTake(db, {
+        projectId: FIXTURE_PROJECT_ID,
+        chapterId: chapter.id,
+        paragraphIndex: 0,
+        idempotencyKey: takeIdempotencyKey({
+          projectId: FIXTURE_PROJECT_ID,
+          chapterId: chapter.id,
+          paragraphIndex: 0,
+          text: 'One paragraph.',
+          voiceId: 'v-narrator',
+        }),
+        provider: 'elevenlabs',
+        voiceId: 'v-narrator',
+        builtFromScriptVersion: script.version,
+      })
+      return claimed.take.id
+    }
+
+    it('flags the row and leaves the open review room alone', async () => {
+      const takeId = await seededTake()
+      await setProjectStage(db, FIXTURE_PROJECT_ID, {
+        stage: 'voice',
+        stageStatus: 'awaiting_review',
+      })
+
+      await markRetakeFailed(context(), takeId, {
+        message: 'elevenlabs rejected the API key (401). Check it in Settings → Connections.',
+      })
+
+      // The gate survives; the failure lives on the take, in words.
+      expect((await getProject(db, FIXTURE_PROJECT_ID))?.stageStatus).toBe('awaiting_review')
+      const take = await getVoiceTake(db, takeId)
+      expect(take?.status).toBe('flagged')
+      expect(take?.note).toContain('Retake failed: elevenlabs rejected the API key')
+    })
+
+    it('escalates to the stage when no review room is open', async () => {
+      const takeId = await seededTake()
+      await setProjectStage(db, FIXTURE_PROJECT_ID, { stage: 'voice', stageStatus: 'running' })
+
+      await markRetakeFailed(context(), takeId, { message: 'storage is gone' })
+
       expect((await getProject(db, FIXTURE_PROJECT_ID))?.stageStatus).toBe('failed')
     })
   })

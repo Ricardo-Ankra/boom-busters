@@ -3334,6 +3334,24 @@ published and audited. The daily `channels.list` health ping and the
      re-run at all still reads honestly as stale rather than
      unknown-provenance. Integration tests pin both directions.
 
+219. **A failed retake flags its row, never the stage** (2026-09-04, owner
+     report: voice warning would not clear and Approve was unreachable).
+     Two Synthesise clicks made while the mis-pasted ElevenLabs key was
+     stored failed with 401, and voice-retaker's onFailure called
+     markStageFailed — which set `stageStatus='failed'` and tore down the
+     OPEN review gate (a gate IS `awaiting_review`; the voice-runner was
+     still parked at `awaiting_gate` the whole time). The later successful
+     retake completed but nothing restores the room, so a project whose
+     every paragraph had audio was unapprovable. New `markRetakeFailed` in
+     gates.ts: when the stage is parked at review, flag the take with
+     "Retake failed: <error>" (the row names the problem — the
+     error-visibility gap from decision 217 — and the approval blocker
+     holds the gate shut) and notify; only when no review room is open does
+     it escalate to markStageFailed as before. The retaker's over-budget
+     path keeps markStageFailed deliberately — budget gates are their own
+     mechanism. The stuck project itself is unblocked by "Re-run stage" on
+     Voice, which reuses every generated take free and re-opens the gate.
+
 **Status:** `[x]` done — dossier + Studio shipped with unit, component and
 e2e coverage; spec §11.3 amended in place with dated notes.
 

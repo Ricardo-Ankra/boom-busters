@@ -21,7 +21,7 @@ import { synthesise } from '@/lib/tts'
 import { voiceKeyFacts } from '@/lib/voice-identity'
 import { inngest } from '../client'
 import { events } from '../events'
-import { budgetGateData, markStageFailed, type GateContext } from '../lib/gates'
+import { budgetGateData, markRetakeFailed, markStageFailed, type GateContext } from '../lib/gates'
 
 /**
  * voice-retaker (build spec section 7.3).
@@ -58,9 +58,14 @@ export const voiceRetaker = inngest.createFunction(
     ],
     onFailure: async ({ event }) => {
       const projectId = event.data.event.data['projectId']
+      const takeId = event.data.event.data['takeId']
       if (typeof projectId !== 'string') return
-      await markStageFailed(
+      // Not markStageFailed: the runner is parked at the open gate the whole
+      // time, so a failed retake flags its row instead of tearing the review
+      // room down (decision 219).
+      await markRetakeFailed(
         { inngestRunId: '', functionId: FUNCTION_ID, projectId },
+        typeof takeId === 'string' ? takeId : undefined,
         serialiseError(event.data.error),
       )
     },
