@@ -3352,6 +3352,31 @@ published and audited. The daily `channels.list` health ping and the
      mechanism. The stuck project itself is unblocked by "Re-run stage" on
      Voice, which reuses every generated take free and re-opens the gate.
 
+220. **Bounded mirror writes and pooled-socket staleness** (2026-09-04, owner
+     report: visuals re-runs "stuck or taking exceptionally longer than
+     usual"). Inngest's trace showed the truth the app could not: the next
+     step was dispatched with 0ms delay and the execution request then sat
+     open in "Your server" for 18+ minutes, with no step-start row and no
+     ledger row ever written. The hang was the run-mirror's `onStepStart`
+     insert issued down a dead pooled Postgres socket: Fluid Compute freezes
+     instances between invocations, a frozen socket Neon has since dropped
+     still looks alive to the client (keepalive probes cannot run while
+     frozen), and postgres.js has no client-side query timeout, so the query
+     waits out TCP retransmission. Which instance a request landed on was the
+     coin-flip that made runs advance one or two chapters and then stall.
+     Fixes (1ea0ab3): db client `max_lifetime: 300` recycles every pooled
+     connection within five minutes, and every mirror write races a 5s
+     timeout — the file's "mirroring never fails a run" promise now also
+     covers hangs, which the try/catch alone could not see. Same evening,
+     same project, a related find: a run cancelled in the app's mirror can
+     stay alive inside Inngest and hold up the account's event processing;
+     the recovery is the app's Stop (which sweeps and reconciles), never
+     cancelling individual runs only in the Inngest dashboard. Open debts
+     from the night: one-run-per-project on the runners (stacked re-run
+     events started duplicate runs), the gate re-open race (a late duplicate
+     re-opens an approved gate and misses the approval forever), and
+     reconciling dashboard cancellations via `inngest/function.cancelled`.
+
 **Status:** `[x]` done — dossier + Studio shipped with unit, component and
 e2e coverage; spec §11.3 amended in place with dated notes.
 
