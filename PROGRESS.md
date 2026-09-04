@@ -3321,6 +3321,19 @@ published and audited. The daily `channels.list` health ping and the
      audio-gated; the purchase does not. The old test asserting the dead
      end was deliberately reversed.
 
+218. **Staleness is judged on the takes in play** (2026-09-04, owner
+     report: the "Read from an older script" banner would not clear after
+     a full re-narration). `voiceBuiltFromScriptVersion` in the project
+     summary was `min(built_from_script_version)` over ALL voice takes, so
+     the 45 orphaned takes left behind by a script re-run — the ones the
+     review screen ignores and assembly never reads — pinned the banner at
+     the old version forever. The min now runs over takes whose chapter
+     belongs to the LATEST script (a script re-run creates new chapter
+     rows, so orphanhood is expressible in SQL), with the unfiltered min
+     as coalesce fallback so a project whose voice stage has not been
+     re-run at all still reads honestly as stale rather than
+     unknown-provenance. Integration tests pin both directions.
+
 **Status:** `[x]` done — dossier + Studio shipped with unit, component and
 e2e coverage; spec §11.3 amended in place with dated notes.
 

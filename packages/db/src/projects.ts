@@ -104,12 +104,29 @@ const summaryColumns = {
    * version deliberately: a project whose script was re-run and only partly
    * re-narrated has some takes from the old script, and the honest reading of
    * that mixture is the oldest one — some of this narration is out of date.
+   *
+   * But only over takes that are IN PLAY (decision 218): a script re-run
+   * creates new chapter rows, and takes pointing at replaced chapters are
+   * exactly the ones the review screen ignores and assembly never reads. A
+   * plain min() over everything let those orphans pin the "read from an
+   * older script" banner forever, however completely the owner re-narrated.
+   * The unfiltered min stays as the fallback so a project whose voice stage
+   * has not been re-run at all still reads honestly as stale.
    */
   voiceTakes: sql<number>`(
     select count(*)::int from voice_takes vt where vt.project_id = projects.id
   )`,
   voiceBuiltFromScriptVersion: sql<number | null>`(
-    select min(vt.built_from_script_version) from voice_takes vt
+    select coalesce(
+      min(vt.built_from_script_version) filter (where vt.chapter_id in (
+        select c.id from chapters c where c.script_id = (
+          select s.id from scripts s
+          where s.project_id = projects.id
+          order by s.version desc limit 1
+        )
+      )),
+      min(vt.built_from_script_version)
+    ) from voice_takes vt
     where vt.project_id = projects.id
   )`,
   hasActiveRun: sql<boolean>`exists (

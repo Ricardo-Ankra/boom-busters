@@ -2,7 +2,7 @@ import { takeIdempotencyKey } from '@boom-busters/schemas'
 import { afterAll, beforeEach, describe, expect, it } from 'vitest'
 import { createCase, truncateCases } from './cases'
 import { createDb } from './client'
-import { createProjectFromCase } from './projects'
+import { createProjectFromCase, getProject } from './projects'
 import { createScriptVersion, saveChapter } from './scripts'
 import { requireTestDatabase } from './test-database'
 import {
@@ -85,6 +85,64 @@ suite('voice takes', () => {
     expect(result.take.status).toBe('pending')
     expect(result.take.r2Key).toBeNull()
     expect(result.take.takeNumber).toBe(1)
+  })
+
+  /**
+   * Decision 218: the summary's staleness version is min() over the takes
+   * that are IN PLAY — takes pointing at a replaced script's chapters are
+   * ignored by review and assembly, and letting them into the aggregate
+   * pinned the "read from an older script" banner forever after a full
+   * re-narration (found live on a project with 45 orphaned takes).
+   */
+  describe('voiceBuiltFromScriptVersion', () => {
+    it('ignores orphaned takes from a replaced script once the voice re-ran', async () => {
+      // Narrate v1.
+      const v1 = await claim()
+      if (v1.kind === 'claimed') await storeTakeAudio(db, v1.take.id, audio)
+
+      // Re-run the script (v2 gets its own chapter rows), narrate v2.
+      const scriptV2 = await createScriptVersion(db, projectId)
+      const chapterV2 = await saveChapter(db, {
+        scriptId: scriptV2.id,
+        index: 0,
+        title: 'The audit, rewritten',
+        contentMd: 'New words entirely.',
+        estRuntimeSec: 30,
+      })
+      const v2 = await claimTake(db, {
+        projectId,
+        chapterId: chapterV2.id,
+        paragraphIndex: 0,
+        idempotencyKey: takeIdempotencyKey({
+          projectId,
+          chapterId: chapterV2.id,
+          paragraphIndex: 0,
+          text: 'New words entirely.',
+          voiceId: 'v-narrator',
+        }),
+        provider: 'elevenlabs',
+        voiceId: 'v-narrator',
+        builtFromScriptVersion: 2,
+      })
+      if (v2.kind === 'claimed') await storeTakeAudio(db, v2.take.id, audio)
+
+      const project = await getProject(db, projectId)
+      // The v1 orphan still exists but no longer drags the verdict down.
+      expect(project?.voiceTakes).toBe(2)
+      expect(project?.voiceBuiltFromScriptVersion).toBe(2)
+    })
+
+    it('still reads as the old version while nothing has been re-narrated', async () => {
+      const v1 = await claim()
+      if (v1.kind === 'claimed') await storeTakeAudio(db, v1.take.id, audio)
+
+      // Script re-run, voice not: every take is an orphan, and the honest
+      // verdict is the old version (stale), not unknown provenance.
+      await createScriptVersion(db, projectId)
+
+      const project = await getProject(db, projectId)
+      expect(project?.voiceBuiltFromScriptVersion).toBe(1)
+    })
   })
 
   /**
