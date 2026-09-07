@@ -232,6 +232,31 @@ export function compileTimeline(input: CompileInput): Timeline {
     }
   })
 
+  /**
+   * Close the seams: every slot holds the screen until the next one starts.
+   *
+   * The stretch-across-a-pause above only works when a slot's old end sits
+   * EXACTLY on the paragraph boundary the pause was inserted at. The board's
+   * plan routinely leaves 40-440ms of rounding seam between consecutive
+   * slots (paragraph timing vs shot timing), so the slot before a boundary
+   * misses the breakpoint, takes the smaller shift, and the inserted pause
+   * opens the seam into visible black — 300ms mid-chapter, over a second of
+   * it before a chapter card fades in (production preview, 2026-09-07:
+   * 17 of 86 boundaries). Holding the outgoing shot is the design intent
+   * the comment above already states; this makes it true for every seam,
+   * not only the millimetre-perfect ones. Slots are ordered by start so
+   * "the next one" is well defined; overlaps are left alone (a deliberate
+   * early start is not a seam).
+   */
+  slots.sort((a, b) => a.startMs - b.startMs)
+  for (let i = 0; i < slots.length - 1; i += 1) {
+    const slot = slots[i]!
+    const nextStartMs = slots[i + 1]!.startMs
+    if (slot.startMs + slot.durationMs < nextStartMs) {
+      slot.durationMs = nextStartMs - slot.startMs
+    }
+  }
+
   // Chapter cards over the silence the narration loop carved out; the lower
   // third and watermark are M6.5 composition concerns fed by later passes.
   const overlays = cards.map((chapter) => ({

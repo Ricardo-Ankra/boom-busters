@@ -3377,6 +3377,21 @@ published and audited. The daily `channels.list` health ping and the
      re-opens an approved gate and misses the approval forever), and
      reconciling dashboard cancellations via `inngest/function.cancelled`.
 
+221. **Slot seams close after the shift** (2026-09-07, owner report: quick
+     black frames between some shots in the assembled preview). The board's
+     plan routinely leaves 40-440ms rounding seams between consecutive slots,
+     and decision 215's inserted pauses widened exactly those: a slot whose
+     old end sits even 1ms before a paragraph boundary misses that
+     boundary's breakpoint, takes the smaller shift, and the seam grows by
+     the pause — 300ms of black mid-chapter, and over a second before a
+     chapter card fades in. The production timeline carried 17 gaps across
+     86 boundaries. The compiler already documented the intent ("a slot
+     ending at a boundary holds under the card"); a closing pass now makes
+     it true for every seam: slots ordered by start, any slot ending before
+     the next start is stretched to butt. Overlaps stay untouched. Golden
+     unchanged (its fixture butts exactly). Existing timelines keep their
+     baked-in gaps — re-running Assembly recompiles them away for free.
+
 **Status:** `[x]` done — dossier + Studio shipped with unit, component and
 e2e coverage; spec §11.3 amended in place with dated notes.
 

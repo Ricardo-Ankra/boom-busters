@@ -196,6 +196,23 @@ describe('compileTimeline', () => {
     ).toBe(true)
   })
 
+  it('closes rounding seams so every slot holds until the next one starts', () => {
+    const input = goldenInput()
+    // The board routinely leaves rounding seams between consecutive slots.
+    // Widen one across a paragraph boundary and one across a chapter
+    // boundary: the inserted pauses turned exactly these into visible black
+    // frames in production (2026-09-07 preview review).
+    input.slots[0]!.durationMs = 7960 // 40ms seam before the paragraph pause
+    input.slots[1]!.durationMs = 5950 // 50ms seam before the chapter card
+    const timeline = compileTimeline(input)
+    for (let i = 0; i < timeline.slots.length - 1; i += 1) {
+      const slot = timeline.slots[i]!
+      expect(slot.startMs + slot.durationMs).toBe(timeline.slots[i + 1]!.startMs)
+    }
+    // The held shot still reaches the resumed narration under the card.
+    expect(timeline.slots[2]!.startMs).toBe(timeline.narration[2]!.startMs)
+  })
+
   it('opens a chapter card over each pause and cues the music there', () => {
     const timeline = compileTimeline(goldenInput())
     expect(timeline.overlays.map((overlay) => overlay.startMs)).toEqual([0, 17_400])
