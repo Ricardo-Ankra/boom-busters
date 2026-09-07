@@ -53,9 +53,10 @@ export const QUEUED_STUCK_AFTER_MS = 3 * 60_000
  *
  * `dossier` re-enters on `project/created`, `script` on `gate/dossier.approved`,
  * `voice` on `gate/script.approved`, `visuals` on `gate/voice.approved`,
- * `assembly` on `gate/visuals.approved` (M6.7) — the events those runners
- * trigger on. Nothing else is listed because nothing else has a runner yet
- * (M7 onwards), and a Restart button that sends an event no function is
+ * `assembly` on `gate/visuals.approved` (M6.7), `shorts` on
+ * `project/master.ready` (decision 223) — the events those runners trigger
+ * on. Nothing else is listed because nothing else has a runner that a single
+ * event re-enters, and a Restart button that sends an event no function is
  * subscribed to is a button that reports success and does nothing.
  */
 export const RESTARTABLE_STAGES: readonly ProjectStage[] = [
@@ -64,6 +65,7 @@ export const RESTARTABLE_STAGES: readonly ProjectStage[] = [
   'voice',
   'visuals',
   'assembly',
+  'shorts',
 ]
 
 export type ProjectControl =
@@ -110,6 +112,19 @@ export interface ControlInputs {
    * only fail.
    */
   hasScript: boolean
+  /**
+   * Whether a finished master render exists. Shorts are cut from the rendered
+   * master, so a `shorts` stage with no `done` master cannot be re-entered —
+   * the restart action refuses it server-side with the same reason.
+   */
+  hasMaster: boolean
+  /**
+   * Whether any Shorts rows exist. Distinguishes the shorts stage's designed
+   * `awaiting_review` (cards below, human curating) from a stranding — zero
+   * rows and "awaiting review" is a screen with nothing on it and, without
+   * this flag, no button that changes it (production, 2026-09-07).
+   */
+  hasShorts: boolean
   now?: Date
 }
 
@@ -129,7 +144,9 @@ export function projectControl(
     // Narration is read from the script, the board is planned against it,
     // and assembly compiles takes cut to its paragraphs.
     ((project.stage !== 'voice' && project.stage !== 'visuals' && project.stage !== 'assembly') ||
-      inputs.hasScript)
+      inputs.hasScript) &&
+    // Shorts are cut from the rendered master.
+    (project.stage !== 'shorts' || inputs.hasMaster)
   const stalled = now.getTime() - project.updatedAt.getTime() > QUEUED_STUCK_AFTER_MS
 
   const cannotRestart = (why: string): ProjectControl => ({
@@ -143,7 +160,10 @@ export function projectControl(
             ? `${why} There is no script to plan visuals for — run the script stage first.`
             : project.stage === 'assembly' && !inputs.hasScript
               ? `${why} There is no script to assemble — run the script stage first.`
-              : `${why} Restarting the ${project.stage} stage arrives with its runner.`,
+              : project.stage === 'shorts' && !inputs.hasMaster
+                ? `${why} There is no finished master render to cut Shorts from — run the ` +
+                  `assembly stage first.`
+                : `${why} Restarting the ${project.stage} stage arrives with its runner.`,
   })
 
   switch (project.stageStatus) {
@@ -201,7 +221,22 @@ export function projectControl(
       // Shorts and publish are curation screens, not gates: their runners
       // end before the human starts, so "no run is waiting" is the DESIGNED
       // state, not a stranding. The screens below carry their own buttons.
+      // But that only holds while there is something ON the screen: shorts
+      // at awaiting_review with zero rows is a stranding (an old runner
+      // parked a review over nothing, production 2026-09-07), and the only
+      // way out is running the stage again.
       if (project.stage === 'shorts') {
+        if (!inputs.hasShorts) {
+          return restartable
+            ? {
+                kind: 'restart',
+                label: 'Run the shorts stage again',
+                message:
+                  'Marked awaiting review, but there are no Shorts to curate. Running the ' +
+                  'stage again picks segments from the script and cuts them fresh.',
+              }
+            : cannotRestart('Marked awaiting review, but there are no Shorts to curate.')
+        }
         return {
           kind: 'working',
           message:

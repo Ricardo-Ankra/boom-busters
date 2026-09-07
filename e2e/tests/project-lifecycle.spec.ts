@@ -208,19 +208,20 @@ test.describe('shapes taken from production', () => {
   }) => {
     // Production had one at `voice`/`running` with no live run: approved
     // through the script gate into a stage that had no runner. M4 built the
-    // voice runner, M5 the visuals runner, M6.7 the assembly runner, so the
-    // fixture has moved on to `shorts` — the shape is the point, and "past
-    // the last runner" moves with every milestone.
+    // voice runner, M5 the visuals runner, M6.7 the assembly runner, and
+    // decision 223 gave shorts a re-entry too — but only from a finished
+    // master render, which this fixture deliberately lacks. The shape is the
+    // point: a `running` column with nothing running, and a re-run that
+    // cannot succeed must be explained, never offered.
     await openProject(page, BEYOND_RUNNERS_TITLE)
 
     await expect(page.getByRole('button', { name: /Run the shorts stage again/i })).toHaveCount(0)
     // Seeded minutes ago, so the running-with-no-run state has aged past the
     // grace window: the header explains the dead stage instead of promising
-    // the screen will update itself. The stage banner carries its own
-    // "arrives with its runner" line, hence the specific text.
+    // the screen will update itself.
     await expect(page.getByText(/Marked running, but no run is behind it/)).toBeVisible()
     await expect(
-      page.getByText(/Restarting the shorts stage arrives with its runner/),
+      page.getByText(/no finished master render to cut Shorts from/).first(),
     ).toBeVisible()
   })
 

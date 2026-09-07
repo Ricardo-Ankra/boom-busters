@@ -3418,8 +3418,16 @@ published and audited. The daily `channels.list` health ping and the
      instead of parking a review over nothing; (3) restartStage maps
      `shorts` to `project/master.ready` carrying the latest done master
      render's id, so the stage's Re-run button works at all (it previously
-     answered "no runner yet"). Recovery for the stuck project: Re-run
-     stage on Shorts.
+     answered "no runner yet"). Follow-up the same evening: the header
+     control never OFFERED the button — `shorts` was missing from
+     RESTARTABLE_STAGES, and the awaiting_review branch called every shorts
+     review "curation" even over zero rows. `projectControl` gains
+     `hasMaster` (shorts re-enter only from a done master render; the guard
+     the action enforces, said honestly on the button) and `hasShorts`
+     (zero rows at awaiting_review is a stranding that offers the re-run,
+     not a curation message); the page loads the shorts model whenever the
+     project SITS at shorts, like the preview model. Recovery for the stuck
+     project: Re-run stage on Shorts.
 
 **Status:** `[x]` done — dossier + Studio shipped with unit, component and
 e2e coverage; spec §11.3 amended in place with dated notes.

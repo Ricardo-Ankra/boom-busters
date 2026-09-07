@@ -4,6 +4,7 @@ import {
   getProject,
   getSettings,
   hasLiveRun,
+  latestRender,
   listActivity,
   listOpenBudgetGates,
   projectDeletionSummary,
@@ -120,7 +121,10 @@ export default async function ProjectPage({
     // another stage is on screen: the header's Stop needs to know whether a
     // master render is in flight, whatever you happen to be looking at.
     wants('assembly') ? previewModel(db, id) : Promise.resolve(emptyPreviewModel()),
-    viewing === 'shorts' ? shortsModel(db, id) : Promise.resolve(emptyShortsModel()),
+    // Like the preview: loads while the project SITS at shorts even when
+    // another stage is on screen — the header control must know whether the
+    // stage has cards to curate or is stranded over nothing (decision 223).
+    wants('shorts') ? shortsModel(db, id) : Promise.resolve(emptyShortsModel()),
     projectPulse(db, id),
     viewing === 'publish'
       ? publishModel(db, id, {
@@ -141,10 +145,16 @@ export default async function ProjectPage({
   // no-op demo run came to look like the way to start a project.
   // Presence flags come from the summary row, not from whether the full
   // models were fetched — after decision 186 those load per-view, and "not
-  // loaded" must never read as "does not exist".
+  // loaded" must never read as "does not exist". The two shorts flags are
+  // consulted only when the project SITS at shorts, and `wants('shorts')`
+  // loaded the model exactly then; the master render is one keyed row.
+  const masterRender =
+    project.stage === 'shorts' || viewing === 'shorts' ? await latestRender(db, id) : undefined
   const control = projectControl(project, liveRun, {
     hasDossier: project.dossierVersion !== null,
     hasScript: project.hasScript,
+    hasMaster: masterRender?.status === 'done',
+    hasShorts: shortCards.shorts.length > 0,
   })
 
   // Driven by the stage on screen rather than the stage the project is on, so
@@ -214,7 +224,9 @@ export default async function ProjectPage({
     (viewing !== 'script' || project.dossierVersion !== null) &&
     // And the narration is read from the script, for the same reason —
     // as is the visual board.
-    ((viewing !== 'voice' && viewing !== 'visuals') || project.hasScript)
+    ((viewing !== 'voice' && viewing !== 'visuals') || project.hasScript) &&
+    // Shorts are cut from the rendered master (decision 223).
+    (viewing !== 'shorts' || masterRender?.status === 'done')
 
   return (
     <div className="flex flex-col gap-4">

@@ -54,7 +54,12 @@ describe('the gate bar and the restart button are mutually exclusive', () => {
         stageStatus: 'awaiting_review',
         updatedAt: new Date(),
       } as const
-      const control = projectControl(project, liveRun, { hasDossier: true, hasScript: true })
+      const control = projectControl(project, liveRun, {
+        hasDossier: true,
+        hasScript: true,
+        hasMaster: true,
+        hasShorts: true,
+      })
       expect(isGateOpen(project, liveRun) && control.kind === 'restart').toBe(false)
     }
   })
@@ -94,6 +99,8 @@ describe('projectControl', () => {
     const control = projectControl(project('dossier', 'queued'), false, {
       hasDossier: true,
       hasScript: true,
+      hasMaster: true,
+      hasShorts: true,
       now: NOW,
     })
 
@@ -109,6 +116,8 @@ describe('projectControl', () => {
         projectControl(project('dossier', status), true, {
           hasDossier: true,
           hasScript: true,
+          hasMaster: true,
+          hasShorts: true,
           now: NOW,
         }),
       ).toEqual({ kind: 'stop' })
@@ -119,7 +128,7 @@ describe('projectControl', () => {
     const stalled = projectControl(
       project('dossier', 'queued', QUEUED_STUCK_AFTER_MS + 1_000),
       false,
-      { hasDossier: true, hasScript: true, now: NOW },
+      { hasDossier: true, hasScript: true, hasMaster: true, hasShorts: true, now: NOW },
     )
 
     expect(stalled.kind).toBe('restart')
@@ -133,6 +142,8 @@ describe('projectControl', () => {
       projectControl(project('dossier', 'queued', QUEUED_STUCK_AFTER_MS), false, {
         hasDossier: true,
         hasScript: true,
+        hasMaster: true,
+        hasShorts: true,
         now: NOW,
       }).kind,
     ).toBe('working')
@@ -146,11 +157,48 @@ describe('projectControl', () => {
       const control = projectControl(project(stage, 'awaiting_review'), false, {
         hasDossier: true,
         hasScript: true,
+        hasMaster: true,
+        hasShorts: true,
         now: NOW,
       })
       expect(control.kind).toBe('working')
       expect(control).toMatchObject({ message: expect.stringContaining('below') })
     }
+  })
+
+  /**
+   * The production dead end of 2026-09-07: the script's Shorts marking had
+   * silently failed, the old runner parked `awaiting_review` over zero rows,
+   * and the screen said "no Shorts yet" with no button that changed it.
+   * Curation is only the designed state while there is something to curate.
+   */
+  it('rescues a shorts review that has nothing on it', () => {
+    const control = projectControl(project('shorts', 'awaiting_review'), false, {
+      hasDossier: true,
+      hasScript: true,
+      hasMaster: true,
+      hasShorts: false,
+      now: NOW,
+    })
+    expect(control.kind).toBe('restart')
+    expect(control).toMatchObject({
+      label: 'Run the shorts stage again',
+      message: expect.stringContaining('no Shorts to curate'),
+    })
+  })
+
+  it('blocks the empty-shorts rescue when no finished master exists', () => {
+    const control = projectControl(project('shorts', 'awaiting_review'), false, {
+      hasDossier: true,
+      hasScript: true,
+      hasMaster: false,
+      hasShorts: false,
+      now: NOW,
+    })
+    expect(control.kind).toBe('blocked')
+    expect(control).toMatchObject({
+      message: expect.stringContaining('no finished master render'),
+    })
   })
 
   it('offers a way out of every dead end a human can reach', () => {
@@ -161,6 +209,8 @@ describe('projectControl', () => {
       const control = projectControl(project('dossier', status), false, {
         hasDossier: true,
         hasScript: true,
+        hasMaster: true,
+        hasShorts: true,
         now: NOW,
       })
       expect(control.kind).toBe('restart')
@@ -181,7 +231,7 @@ describe('projectControl', () => {
     const control = projectControl(
       project('visuals', 'running', QUEUED_STUCK_AFTER_MS + 1_000),
       false,
-      { hasDossier: true, hasScript: true, now: NOW },
+      { hasDossier: true, hasScript: true, hasMaster: true, hasShorts: true, now: NOW },
     )
 
     expect(control.kind).toBe('restart')
@@ -199,6 +249,8 @@ describe('projectControl', () => {
       projectControl(project('visuals', 'running'), false, {
         hasDossier: true,
         hasScript: true,
+        hasMaster: true,
+        hasShorts: true,
         now: NOW,
       }),
     ).toMatchObject({ kind: 'working', message: expect.stringContaining('updates itself') })
@@ -206,9 +258,9 @@ describe('projectControl', () => {
 
   it('explains a stalled `running` stage that has no runner instead of offering one', () => {
     const control = projectControl(
-      project('shorts', 'running', QUEUED_STUCK_AFTER_MS + 1_000),
+      project('publish', 'running', QUEUED_STUCK_AFTER_MS + 1_000),
       false,
-      { hasDossier: true, hasScript: true, now: NOW },
+      { hasDossier: true, hasScript: true, hasMaster: true, hasShorts: true, now: NOW },
     )
 
     expect(control.kind).toBe('blocked')
@@ -220,6 +272,8 @@ describe('projectControl', () => {
       projectControl(project('script', 'failed'), false, {
         hasDossier: true,
         hasScript: true,
+        hasMaster: true,
+        hasShorts: true,
         now: NOW,
       }),
     ).toMatchObject({
@@ -230,15 +284,27 @@ describe('projectControl', () => {
   it('refuses to offer a restart for a stage that has no runner yet', () => {
     // A button that sends an event nothing subscribes to would report success
     // and do nothing, which is worse than saying so.
-    for (const stage of ['shorts', 'publish'] as const) {
-      const control = projectControl(project(stage, 'failed'), false, {
+    const control = projectControl(project('publish', 'failed'), false, {
+      hasDossier: true,
+      hasScript: true,
+      hasMaster: true,
+      hasShorts: true,
+      now: NOW,
+    })
+    expect(control.kind).toBe('blocked')
+    expect(control).toMatchObject({ message: expect.stringContaining('arrives with its runner') })
+  })
+
+  it('restarts a failed shorts stage from the rendered master (decision 223)', () => {
+    expect(
+      projectControl(project('shorts', 'failed'), false, {
         hasDossier: true,
         hasScript: true,
+        hasMaster: true,
+        hasShorts: false,
         now: NOW,
-      })
-      expect(control.kind).toBe('blocked')
-      expect(control).toMatchObject({ message: expect.stringContaining('arrives with its runner') })
-    }
+      }),
+    ).toMatchObject({ kind: 'restart', label: 'Run the shorts stage again' })
   })
 
   it('offers a restart for the voice, visuals and assembly stages, whose runners exist', () => {
@@ -247,6 +313,8 @@ describe('projectControl', () => {
         projectControl(project(stage, 'failed'), false, {
           hasDossier: true,
           hasScript: true,
+          hasMaster: true,
+          hasShorts: true,
           now: NOW,
         }),
       ).toMatchObject({ kind: 'restart' })
@@ -265,6 +333,8 @@ describe('projectControl', () => {
       projectControl(project('assembly', 'running', QUEUED_STUCK_AFTER_MS + 1_000), false, {
         hasDossier: true,
         hasScript: true,
+        hasMaster: true,
+        hasShorts: true,
         now: NOW,
       }),
     ).toMatchObject({ kind: 'restart', label: 'Run the assembly stage again' })
@@ -274,6 +344,8 @@ describe('projectControl', () => {
     const control = projectControl(project('assembly', 'failed'), false, {
       hasDossier: true,
       hasScript: false,
+      hasMaster: true,
+      hasShorts: true,
       now: NOW,
     })
     expect(control.kind).toBe('blocked')
@@ -286,6 +358,8 @@ describe('projectControl', () => {
     const control = projectControl(project('visuals', 'failed'), false, {
       hasDossier: true,
       hasScript: false,
+      hasMaster: true,
+      hasShorts: true,
       now: NOW,
     })
     expect(control.kind).toBe('blocked')
@@ -304,6 +378,8 @@ describe('projectControl', () => {
     const control = projectControl(project('voice', 'failed'), false, {
       hasDossier: true,
       hasScript: false,
+      hasMaster: true,
+      hasShorts: true,
       now: NOW,
     })
 
@@ -326,6 +402,8 @@ describe('projectControl', () => {
       const control = projectControl(project('script', status), false, {
         hasDossier: false,
         hasScript: true,
+        hasMaster: true,
+        hasShorts: true,
         now: NOW,
       })
 
@@ -341,6 +419,8 @@ describe('projectControl', () => {
       projectControl(project('dossier', 'failed'), false, {
         hasDossier: false,
         hasScript: true,
+        hasMaster: true,
+        hasShorts: true,
         now: NOW,
       }),
     ).toMatchObject({ kind: 'restart' })
@@ -362,12 +442,18 @@ describe('projectControl', () => {
         for (const liveRun of [true, false]) {
           for (const hasDossier of [true, false]) {
             for (const hasScript of [true, false]) {
-              const control = projectControl(project(stage, status), liveRun, {
-                hasDossier,
-                hasScript,
-                now: NOW,
-              })
-              if (control.kind !== 'stop') expect(control.message.length).toBeGreaterThan(10)
+              for (const hasMaster of [true, false]) {
+                for (const hasShorts of [true, false]) {
+                  const control = projectControl(project(stage, status), liveRun, {
+                    hasDossier,
+                    hasScript,
+                    hasMaster,
+                    hasShorts,
+                    now: NOW,
+                  })
+                  if (control.kind !== 'stop') expect(control.message.length).toBeGreaterThan(10)
+                }
+              }
             }
           }
         }
