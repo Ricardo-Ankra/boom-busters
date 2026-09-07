@@ -128,8 +128,16 @@ export const CHAPTER_LEAD_MS = 800
  * the image the new words are about — never on leftover footage.
  */
 export const CHAPTER_OVERLAP_MS = 900
-/** The cut's own breath between paragraphs; [pause] tags are the narrator's. */
-export const PARAGRAPH_GAP_MS = 300
+/**
+ * The cut's own breath between paragraphs; [pause] tags are the narrator's.
+ *
+ * 300ms proved too tight in review (2026-09-07): a statement's last word and
+ * the next scene's first arrived almost together, reading as a clipped,
+ * rushed transition. 700ms is a real beat — the outgoing shot holds through
+ * all of it (the seam-closing pass stretches it to the next slot's start),
+ * so the pause is felt on screen as a held image, not as black or a jump.
+ */
+export const PARAGRAPH_GAP_MS = 700
 
 export function compileTimeline(input: CompileInput): Timeline {
   if (input.paragraphs.length === 0) {

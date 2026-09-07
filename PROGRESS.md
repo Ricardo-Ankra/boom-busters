@@ -3392,6 +3392,18 @@ published and audited. The daily `channels.list` health ping and the
      unchanged (its fixture butts exactly). Existing timelines keep their
      baked-in gaps — re-running Assembly recompiles them away for free.
 
+222. **The paragraph breath is 700ms** (2026-09-07, owner review after the
+     seam fix: "timings seeming rushed, almost clipped right at the end,
+     before quickly transitioning"). With seams closed, the cut lands
+     exactly on the next paragraph's first word, and the 300ms
+     `PARAGRAPH_GAP_MS` between a statement's last word and that cut read
+     as clipped. Raised to 700ms: the audio pause and the visual hold grow
+     together, because the shift stretches slots across the pause and the
+     seam pass covers the rest — the pause is felt as a held image. Chapter
+     choreography (800ms lead + card + overlap) is untouched. Goldens
+     regenerated; the diff is uniformly +400ms on every post-gap clock.
+     If 700ms still reads wrong in preview it is one constant to tune.
+
 **Status:** `[x]` done — dossier + Studio shipped with unit, component and
 e2e coverage; spec §11.3 amended in place with dated notes.
 

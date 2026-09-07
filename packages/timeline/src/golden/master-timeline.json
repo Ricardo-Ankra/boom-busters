@@ -92,14 +92,14 @@
     },
     {
       "r2Key": "boom-busters/voice/ch1-p1.wav",
-      "startMs": 10600,
+      "startMs": 11000,
       "durationMs": 6000,
       "chapterId": "01HQ0000000000000000000CH1",
       "paragraphIndex": 1
     },
     {
       "r2Key": "boom-busters/voice/ch2-p0.wav",
-      "startMs": 19700,
+      "startMs": 20100,
       "durationMs": 7000,
       "chapterId": "01HQ0000000000000000000CH2",
       "paragraphIndex": 0
@@ -122,27 +122,27 @@
         "gainDb": -37
       },
       {
-        "tMs": 16600,
+        "tMs": 17000,
         "gainDb": -37
       },
       {
-        "tMs": 17200,
+        "tMs": 17600,
         "gainDb": -25
       },
       {
-        "tMs": 19500,
+        "tMs": 19900,
         "gainDb": -25
       },
       {
-        "tMs": 19700,
+        "tMs": 20100,
         "gainDb": -37
       },
       {
-        "tMs": 26700,
+        "tMs": 27100,
         "gainDb": -37
       },
       {
-        "tMs": 27300,
+        "tMs": 27700,
         "gainDb": -25
       }
     ],
@@ -152,7 +152,7 @@
         "style": "chapter"
       },
       {
-        "tMs": 17400,
+        "tMs": 17800,
         "style": "chapter"
       }
     ]
@@ -224,86 +224,86 @@
       },
       {
         "text": "EY",
-        "startMs": 10600,
-        "endMs": 10950,
-        "timestampMs": 10775,
-        "confidence": null
-      },
-      {
-        "text": "refused",
         "startMs": 11000,
         "endMs": 11350,
         "timestampMs": 11175,
         "confidence": null
       },
       {
-        "text": "to",
+        "text": "refused",
         "startMs": 11400,
         "endMs": 11750,
         "timestampMs": 11575,
         "confidence": null
       },
       {
-        "text": "sign",
+        "text": "to",
         "startMs": 11800,
         "endMs": 12150,
         "timestampMs": 11975,
         "confidence": null
       },
       {
-        "text": "the",
+        "text": "sign",
         "startMs": 12200,
         "endMs": 12550,
         "timestampMs": 12375,
         "confidence": null
       },
       {
-        "text": "accounts.",
+        "text": "the",
         "startMs": 12600,
         "endMs": 12950,
         "timestampMs": 12775,
         "confidence": null
       },
       {
-        "text": "The",
-        "startMs": 19700,
-        "endMs": 20050,
-        "timestampMs": 19875,
+        "text": "accounts.",
+        "startMs": 13000,
+        "endMs": 13350,
+        "timestampMs": 13175,
         "confidence": null
       },
       {
-        "text": "shares",
+        "text": "The",
         "startMs": 20100,
         "endMs": 20450,
         "timestampMs": 20275,
         "confidence": null
       },
       {
-        "text": "collapsed",
+        "text": "shares",
         "startMs": 20500,
         "endMs": 20850,
         "timestampMs": 20675,
         "confidence": null
       },
       {
-        "text": "in",
+        "text": "collapsed",
         "startMs": 20900,
         "endMs": 21250,
         "timestampMs": 21075,
         "confidence": null
       },
       {
-        "text": "nine",
+        "text": "in",
         "startMs": 21300,
         "endMs": 21650,
         "timestampMs": 21475,
         "confidence": null
       },
       {
-        "text": "days.",
+        "text": "nine",
         "startMs": 21700,
         "endMs": 22050,
         "timestampMs": 21875,
+        "confidence": null
+      },
+      {
+        "text": "days.",
+        "startMs": 22100,
+        "endMs": 22450,
+        "timestampMs": 22275,
         "confidence": null
       }
     ],
@@ -313,7 +313,7 @@
     {
       "type": "stock",
       "startMs": 2300,
-      "durationMs": 8300,
+      "durationMs": 8700,
       "transition": "cut",
       "motion": {
         "kind": "kenburns",
@@ -330,7 +330,7 @@
     },
     {
       "type": "still",
-      "startMs": 10600,
+      "startMs": 11000,
       "durationMs": 9100,
       "transition": "dissolve",
       "motion": {
@@ -349,7 +349,7 @@
     },
     {
       "type": "chart",
-      "startMs": 19700,
+      "startMs": 20100,
       "durationMs": 4000,
       "transition": "cut",
       "motion": {
@@ -383,7 +383,7 @@
     },
     {
       "type": "map",
-      "startMs": 23700,
+      "startMs": 24100,
       "durationMs": 3000,
       "transition": "dissolve",
       "motion": {
@@ -419,7 +419,7 @@
     },
     {
       "kind": "chapterCard",
-      "startMs": 17400,
+      "startMs": 17800,
       "durationMs": 3200,
       "props": {
         "index": 2,

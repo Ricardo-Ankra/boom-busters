@@ -165,8 +165,8 @@ describe('compileTimeline', () => {
   it('lays narration in script order with breathing room stretched in (decision 215)', () => {
     const timeline = compileTimeline(goldenInput())
     // Chapter 1's card leads; narration begins while the card is still up.
-    expect(timeline.narration.map((segment) => segment.startMs)).toEqual([2300, 10_600, 19_700])
-    expect(timelineDurationMs(timeline)).toBe(26_700)
+    expect(timeline.narration.map((segment) => segment.startMs)).toEqual([2300, 11_000, 20_100])
+    expect(timelineDurationMs(timeline)).toBe(27_100)
   })
 
   it('breathes between paragraphs and pauses around every chapter card', () => {
@@ -215,12 +215,12 @@ describe('compileTimeline', () => {
 
   it('opens a chapter card over each pause and cues the music there', () => {
     const timeline = compileTimeline(goldenInput())
-    expect(timeline.overlays.map((overlay) => overlay.startMs)).toEqual([0, 17_400])
+    expect(timeline.overlays.map((overlay) => overlay.startMs)).toEqual([0, 17_800])
     expect(timeline.overlays.map((overlay) => overlay.durationMs)).toEqual([
       CHAPTER_CARD_MS,
       CHAPTER_CARD_MS,
     ])
-    expect(timeline.music?.cuePoints.map((cue) => cue.tMs)).toEqual([0, 17_400])
+    expect(timeline.music?.cuePoints.map((cue) => cue.tMs)).toEqual([0, 17_800])
   })
 
   it('ducks the music with the Brand Kit gains', () => {
