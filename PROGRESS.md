@@ -3404,6 +3404,23 @@ published and audited. The daily `channels.list` health ping and the
      regenerated; the diff is uniformly +400ms on every post-gap clock.
      If 700ms still reads wrong in preview it is one constant to tune.
 
+223. **The shorts stage marks its own candidates and never reviews nothing**
+     (2026-09-07, owner report: shorts "waiting for approval" but "no shorts
+     yet"). Script v2's marking response failed to parse on 2026-09-03; the
+     script-runner's catch deliberately swallows that (the narration is the
+     script stage's deliverable) and stored an empty list — the only trace
+     was "0 Shorts candidates" in a gate summary. The shorts-runner then
+     parked `awaiting_review` over zero rows: a dead end with no button.
+     Three changes: (1) shorts-runner marks candidates itself when the
+     latest script has none (mock-aware, budget-gated; a marking failure
+     fails THIS stage loudly — picking segments IS its work); (2) zero
+     created and zero reused now fails the stage with the skip reasons
+     instead of parking a review over nothing; (3) restartStage maps
+     `shorts` to `project/master.ready` carrying the latest done master
+     render's id, so the stage's Re-run button works at all (it previously
+     answered "no runner yet"). Recovery for the stuck project: Re-run
+     stage on Shorts.
+
 **Status:** `[x]` done — dossier + Studio shipped with unit, component and
 e2e coverage; spec §11.3 amended in place with dated notes.
 

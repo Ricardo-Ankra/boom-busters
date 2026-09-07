@@ -189,15 +189,54 @@ describeDb('shorts-runner', () => {
     expect(rows[0]?.ending).toBe('loop')
   })
 
-  it('a script with no candidates parks the stage without rows', { timeout: 120_000 }, async () => {
-    await db.update(scripts).set({ shortsCandidates: [] })
+  it(
+    'a script with no candidates gets them marked here, never a review over nothing',
+    { timeout: 120_000 },
+    async () => {
+      // The script-runner swallows its own marking failures (an empty list
+      // reached production on 2026-09-03 and dead-ended this stage), so the
+      // runner must be able to mark candidates itself from the script text.
+      await db.update(scripts).set({ shortsCandidates: [] })
 
-    const { result } = await engine.execute({ events: masterReadyEvent() })
+      const { result } = await engine.execute({
+        events: masterReadyEvent(),
+        steps: [{ id: 'request-short-renders', handler: () => undefined }],
+      })
 
-    expect(result).toMatchObject({ outcome: 'no-candidates', created: 0 })
-    expect(await listShorts(db, FIXTURE_PROJECT_ID)).toEqual([])
-    expect((await getProject(db, FIXTURE_PROJECT_ID))?.stageStatus).toBe('awaiting_review')
-  })
+      expect(result).toMatchObject({ outcome: 'shorts-created', created: 1 })
+      const rows = await listShorts(db, FIXTURE_PROJECT_ID)
+      expect(rows).toHaveLength(1)
+      // The mock candidate spans the whole chapter, first sentence to last.
+      expect(rows[0]?.title).toBe('By June, the auditors could not find the money.')
+      expect((await getProject(db, FIXTURE_PROJECT_ID))?.stageStatus).toBe('awaiting_review')
+    },
+  )
+
+  it(
+    'zero placeable segments fails the stage with the reasons, never awaiting_review',
+    { timeout: 120_000 },
+    async () => {
+      // Candidates exist but none anchor to the script: the stage must fail
+      // loudly (Re-run stage is the recovery) instead of parking a review
+      // gate over an empty screen.
+      await db.update(scripts).set({
+        shortsCandidates: [
+          {
+            chapterIndex: 0,
+            startSentence: 'A sentence that is not in the chapter at all.',
+            endSentence: 'Nor is this one.',
+            hookRationale: 'The model hallucinated this one.',
+          },
+        ],
+      })
+
+      const { result } = await engine.execute({ events: masterReadyEvent() })
+
+      expect(result).toMatchObject({ outcome: 'no-candidates', created: 0 })
+      expect(await listShorts(db, FIXTURE_PROJECT_ID)).toEqual([])
+      expect((await getProject(db, FIXTURE_PROJECT_ID))?.stageStatus).toBe('failed')
+    },
+  )
 })
 
 describe('seedTitle', () => {

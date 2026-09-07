@@ -9,6 +9,7 @@ import {
   getLatestScript,
   getProject,
   hasLiveRun,
+  latestRender,
   markProjectCancelled,
   projectDeletionSummary,
   renderInFlight,
@@ -197,6 +198,21 @@ export async function restartStage(projectId: string, stage?: string): Promise<A
     }
   }
 
+  // Shorts are cut from the rendered master, and `master.ready` names it.
+  let shortsMasterRenderId: string | null = null
+  if (target === 'shorts') {
+    const master = await latestRender(db, projectId)
+    if (!master || master.status !== 'done') {
+      return {
+        ok: false,
+        error:
+          'There is no finished master render to cut Shorts from. Run the assembly stage ' +
+          'first — Shorts are cut from the rendered master.',
+      }
+    }
+    shortsMasterRenderId = master.id
+  }
+
   /**
    * Re-entering a stage means re-sending the event its runner triggers on.
    * Only stages with runners appear here; anything else would send an event
@@ -213,7 +229,9 @@ export async function restartStage(projectId: string, stage?: string): Promise<A
             ? events.voiceApproved.create({ projectId, approvedBy })
             : target === 'assembly'
               ? events.visualsApproved.create({ projectId, approvedBy })
-              : null
+              : target === 'shorts' && shortsMasterRenderId
+                ? events.projectMasterReady.create({ projectId, renderId: shortsMasterRenderId })
+                : null
 
   if (!entry) {
     return {

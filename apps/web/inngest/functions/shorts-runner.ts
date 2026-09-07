@@ -1,4 +1,5 @@
 import {
+  getLatestScript,
   getProject,
   insertShort,
   latestShortsCandidates,
@@ -6,8 +7,16 @@ import {
   latestTimeline,
   listShorts,
   setProjectStage,
+  setShortsCandidates,
 } from '@boom-busters/db'
 import {
+  buildShortsRequest,
+  mockProvidersEnabled,
+  mockShortsCandidates,
+  parseShortsCandidates,
+} from '@boom-busters/providers'
+import {
+  BudgetExceededError,
   parseEventData,
   resolveCandidateSegment,
   serialiseError,
@@ -18,9 +27,10 @@ import {
 import { compileShortTimeline } from '@boom-busters/timeline'
 import { NonRetriableError } from 'inngest'
 import { db } from '@/lib/db'
+import { callLlm } from '@/lib/llm'
 import { inngest } from '../client'
 import { events } from '../events'
-import { markStageFailed } from '../lib/gates'
+import { budgetGateData, markStageFailed, type GateContext } from '../lib/gates'
 
 /**
  * shorts-runner (build spec section 7.2 item 7): `project/master.ready` →
@@ -70,15 +80,67 @@ export const shortsRunner = inngest.createFunction(
     },
     triggers: [events.projectMasterReady],
   },
-  async ({ event, step }) => {
+  async ({ event, step, runId }) => {
     const { projectId } = parseEventData('project/master.ready', event.data)
+    const ctx: GateContext = { inngestRunId: runId, functionId: FUNCTION_ID, projectId }
 
-    const outcome = await step.run('resolve-candidates', async () => {
+    /**
+     * A script can arrive here with no candidates: the script-runner's
+     * marking step deliberately swallows its own failures (the narration is
+     * the script stage's deliverable, not the Shorts), and production did
+     * exactly that on 2026-09-03 — the marking response failed to parse, an
+     * empty list was stored, and this stage later sat "awaiting review" over
+     * nothing. Marking here makes the stage self-healing: a re-run recovers
+     * on its own, and a marking failure fails THIS stage loudly — picking
+     * segments IS this stage's work.
+     */
+    const marking = await step.run('mark-missing-candidates', async () => {
       const project = await getProject(db, projectId)
       if (!project) throw new NonRetriableError(`Project ${projectId} no longer exists`)
 
       await setProjectStage(db, projectId, { stage: 'shorts', stageStatus: 'running' })
 
+      if ((await listShorts(db, projectId)).length > 0) return { ok: true as const, marked: 0 }
+      if ((await latestShortsCandidates(db, projectId)).length > 0) {
+        return { ok: true as const, marked: 0 }
+      }
+
+      const latest = await getLatestScript(db, projectId)
+      if (!latest) {
+        throw new NonRetriableError('There is no script to pick Shorts segments from.')
+      }
+      const chapterSources = latest.chapters.map((chapter) => ({
+        index: chapter.index,
+        title: chapter.title,
+        contentMd: chapter.contentMd,
+      }))
+
+      let picked
+      if (mockProvidersEnabled()) {
+        picked = mockShortsCandidates(chapterSources)
+      } else {
+        try {
+          picked = parseShortsCandidates(
+            (await callLlm(buildShortsRequest({ chapters: chapterSources }), { projectId })).text,
+          )
+        } catch (error) {
+          if (error instanceof BudgetExceededError) {
+            return { ok: false as const, gate: budgetGateData(error) }
+          }
+          // Retries, then onFailure -> markStageFailed. Never a silent [].
+          throw error
+        }
+      }
+      await setShortsCandidates(db, latest.script.id, picked)
+      return { ok: true as const, marked: picked.length }
+    })
+
+    if (!marking.ok) {
+      await step.run('marking-over-budget', () => markStageFailed(ctx, marking.gate))
+      return { projectId, outcome: 'over-budget' as const }
+    }
+
+    const outcome = await step.run('resolve-candidates', async () => {
       // Re-entry guard: rows exist, the human may have curated them. Keep.
       const existing = await listShorts(db, projectId)
       if (existing.length > 0) {
@@ -139,6 +201,31 @@ export const shortsRunner = inngest.createFunction(
       )
     }
 
+    /**
+     * A review over nothing is a dead end, not a gate: zero rows and
+     * `awaiting_review` gives the human a screen that says "no shorts yet"
+     * and no button that changes it. Fail the stage with the reasons instead
+     * — Re-run stage is the recovery, and the marking step above makes that
+     * re-run able to succeed.
+     */
+    if (outcome.reused === 0 && outcome.created.length === 0) {
+      await step.run('nothing-to-review', () =>
+        markStageFailed(ctx, {
+          message:
+            outcome.skipped.length > 0
+              ? `No Shorts could be cut — every segment was skipped: ${outcome.skipped.join(' · ')}`
+              : 'The model picked no usable Shorts segments. Re-run the Shorts stage to try again.',
+        }),
+      )
+      return {
+        projectId,
+        outcome: 'no-candidates' as const,
+        created: 0,
+        reused: 0,
+        skipped: outcome.skipped,
+      }
+    }
+
     // The screen is where the human curates; the stage says so. Skipped
     // candidates are in the run result — the activity drawer shows it.
     await step.run('shorts-ready', () =>
@@ -147,12 +234,8 @@ export const shortsRunner = inngest.createFunction(
 
     return {
       projectId,
-      outcome:
-        outcome.reused > 0
-          ? ('reused-existing' as const)
-          : outcome.created.length > 0
-            ? ('shorts-created' as const)
-            : ('no-candidates' as const),
+      // The empty outcome returned above, so one of these two is true here.
+      outcome: outcome.reused > 0 ? ('reused-existing' as const) : ('shorts-created' as const),
       created: outcome.created.length,
       reused: outcome.reused,
       skipped: outcome.skipped,
