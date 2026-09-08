@@ -3468,7 +3468,12 @@ published and audited. The daily `channels.list` health ping and the
      refusals park the stage like every other paid step. The Shorts screen
      badges the card "Teaser". Test-suite lesson recorded in the runner
      test: seeding never resets the settings row, so the suite starts each
-     test voiceless and the teaser tests opt in explicitly.
+     test voiceless and the teaser tests opt in explicitly. Amended same
+     day: the re-entry guard originally skipped the teaser whenever ANY rows
+     existed, which locked out every project whose excerpts predate the
+     feature (production hit this within the hour). Re-entry now keeps every
+     existing row as curated but builds a missing teaser — the guard is
+     "does a teaser row exist", not "do rows exist".
 
 **Status:** `[x]` done — dossier + Studio shipped with unit, component and
 e2e coverage; spec §11.3 amended in place with dated notes.

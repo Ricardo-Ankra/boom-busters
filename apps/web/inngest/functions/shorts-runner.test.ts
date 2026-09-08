@@ -199,6 +199,54 @@ describeDb('shorts-runner', () => {
   })
 
   it(
+    'a re-entry with no teaser row builds one without touching the curated excerpts',
+    { timeout: 120_000 },
+    async () => {
+      // Production shape, 2026-09-08: the excerpts predate the teaser
+      // feature, so the re-entry guard must not lock the teaser out forever.
+      await updateSettings(db, {
+        tts: { provider: 'elevenlabs', voiceId: 'mock-narrator' },
+        budgets: { monthlyCeilingUsd: 100, approvedOverage: null },
+      })
+      await setCredential(
+        db,
+        'elevenlabs',
+        'mock-key-for-tests',
+        process.env['SECRETS_ENCRYPTION_KEY']!,
+      )
+      await insertShort(db, {
+        projectId: FIXTURE_PROJECT_ID,
+        title: 'My hand-edited title',
+        segmentRef: { chapterId: CHAPTER, fromParagraph: 0, toParagraph: 0 },
+        ending: 'loop',
+      })
+
+      const { result } = await engine.execute({
+        events: masterReadyEvent(),
+        steps: [{ id: 'request-short-renders', handler: () => undefined }],
+      })
+
+      expect(result).toMatchObject({ outcome: 'reused-existing', created: 0, reused: 1 })
+      const rows = await listShorts(db, FIXTURE_PROJECT_ID)
+      expect(rows).toHaveLength(2)
+      expect(rows.find((row) => row.kind === 'excerpt')?.title).toBe('My hand-edited title')
+      expect(rows.find((row) => row.kind === 'teaser')).toBeDefined()
+
+      // A second re-entry keeps the teaser as curated: still two rows. A
+      // fresh engine, because the test engine memoises step results per
+      // instance and would replay the first run instead of re-deciding.
+      const again = await new InngestTestEngine({ function: shortsRunner }).execute({
+        events: masterReadyEvent(),
+        steps: [{ id: 'request-short-renders', handler: () => undefined }],
+      })
+      expect((again.result as { teaser: string | null }).teaser).toMatch(
+        /^skipped: the teaser already exists/,
+      )
+      expect(await listShorts(db, FIXTURE_PROJECT_ID)).toHaveLength(2)
+    },
+  )
+
+  it(
     'a script with no candidates gets them marked here, never a review over nothing',
     { timeout: 120_000 },
     async () => {

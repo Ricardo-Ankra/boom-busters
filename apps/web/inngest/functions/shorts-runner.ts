@@ -60,8 +60,10 @@ import { budgetGateData, markStageFailed, type GateContext } from '../lib/gates'
  *
  * Re-entry (the master re-rendered, `master.ready` fired again): existing
  * rows are kept exactly as the human edited them — titles, endings and
- * related-link ticks survive — and no new rows are made. Re-rendering a
- * Short against the new master is the card's explicit button.
+ * related-link ticks survive — and no new excerpt rows are made.
+ * Re-rendering a Short against the new master is the card's explicit
+ * button. The one additive exception is the teaser (decision 225): a
+ * project with no teaser row gets one built, whatever else exists.
  */
 
 const FUNCTION_ID = 'shorts-runner'
@@ -232,6 +234,11 @@ export const shortsRunner = inngest.createFunction(
      * stage: the excerpts above are complete deliverables, and a re-run
      * rebuilds the teaser (synthesis is idempotency-keyed, so paragraphs
      * already bought are re-served by the vendor, not re-billed).
+     *
+     * Re-entry keeps every EXISTING row exactly as curated, but a missing
+     * teaser is additive and gets built: projects whose excerpts predate the
+     * teaser feature (production, 2026-09-08 morning) would otherwise never
+     * gain one, since their rows trip the guard on every re-run forever.
      */
     const teaserScript = await step.run(
       'write-teaser',
@@ -245,8 +252,10 @@ export const shortsRunner = inngest.createFunction(
         | { ok: false; gate: Record<string, unknown> }
         | { ok: false; skipped: string }
       > => {
-        // Re-entry keeps curated rows, teaser included.
-        if (outcome.reused > 0) return { ok: false, skipped: 'existing rows kept' }
+        const rows = await listShorts(db, projectId)
+        if (rows.some((row) => row.kind === 'teaser')) {
+          return { ok: false, skipped: 'the teaser already exists — kept as curated' }
+        }
 
         const latest = await getLatestScript(db, projectId)
         if (!latest) return { ok: false, skipped: 'there is no script to write a teaser from' }
