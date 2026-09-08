@@ -124,7 +124,11 @@ export default async function ProjectPage({
     // Like the preview: loads while the project SITS at shorts even when
     // another stage is on screen — the header control must know whether the
     // stage has cards to curate or is stranded over nothing (decision 223).
-    wants('shorts') ? shortsModel(db, id) : Promise.resolve(emptyShortsModel()),
+    wants('shorts')
+      ? shortsModel(db, id, {
+          presign: storageConfigured() ? (key) => presignGet(key) : null,
+        })
+      : Promise.resolve(emptyShortsModel()),
     projectPulse(db, id),
     viewing === 'publish'
       ? publishModel(db, id, {

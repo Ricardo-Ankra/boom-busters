@@ -156,6 +156,17 @@ export const TeaserScriptSchema = z.object({
 })
 export type TeaserScript = z.infer<typeof TeaserScriptSchema>
 
+/**
+ * The teaser script as stored on the shorts row (decision 227): the script
+ * plus the version it was written against, which anchors the synthesis
+ * idempotency keys and the R2 audio keys. The teaser studio edits this and
+ * the rebuild runner re-voices from it.
+ */
+export const TeaserScriptRecordSchema = TeaserScriptSchema.extend({
+  scriptVersion: z.number().int().min(1),
+})
+export type TeaserScriptRecord = z.infer<typeof TeaserScriptRecordSchema>
+
 // ---------------------------------------------------------------------------
 // Sentences
 // ---------------------------------------------------------------------------

@@ -24,11 +24,15 @@ const updateShortDetails = vi.fn()
 const setShortEnding = vi.fn()
 const setShortRelatedLink = vi.fn()
 const requestShortRender = vi.fn()
+const saveTeaserScript = vi.fn()
+const rebuildTeaser = vi.fn()
 vi.mock('./shorts-actions', () => ({
   updateShortDetails: (...args: unknown[]) => updateShortDetails(...args),
   setShortEnding: (...args: unknown[]) => setShortEnding(...args),
   setShortRelatedLink: (...args: unknown[]) => setShortRelatedLink(...args),
   requestShortRender: (...args: unknown[]) => requestShortRender(...args),
+  saveTeaserScript: (...args: unknown[]) => saveTeaserScript(...args),
+  rebuildTeaser: (...args: unknown[]) => rebuildTeaser(...args),
 }))
 
 // The Continue-to-Publish handover lives in publish-actions, whose real
@@ -55,6 +59,8 @@ beforeEach(() => {
   setShortEnding.mockResolvedValue({ ok: true })
   setShortRelatedLink.mockResolvedValue({ ok: true })
   requestShortRender.mockResolvedValue({ ok: true })
+  saveTeaserScript.mockResolvedValue({ ok: true })
+  rebuildTeaser.mockResolvedValue({ ok: true })
   vi.stubGlobal('fetch', vi.fn(pollFetch))
 })
 
@@ -74,8 +80,37 @@ function card(overrides: Partial<ShortCardModel> = {}): ShortCardModel {
     durationMs: 42_000,
     estimatedCostUsd: 0.0117,
     render: null,
+    teaser: null,
     ...overrides,
   }
+}
+
+/** A teaser card with a stored, editable script (decision 227). */
+function teaserCard(overrides: Partial<ShortCardModel> = {}): ShortCardModel {
+  return card({
+    kind: 'teaser',
+    durationMs: 32_000,
+    teaser: {
+      hasScript: true,
+      beats: [
+        {
+          text: 'One number was missing, and it was billions.',
+          chapterIndex: 0,
+          chapterTitle: 'The audit',
+          audioUrl: 'https://r2.example.com/beat-0.wav',
+          durationMs: 4200,
+        },
+        {
+          text: 'The auditors finally refused to sign anything at all.',
+          chapterIndex: 0,
+          chapterTitle: 'The audit',
+          audioUrl: null,
+          durationMs: 5100,
+        },
+      ],
+    },
+    ...overrides,
+  })
 }
 
 function renderScreen(shorts: ShortCardModel[], live = false) {
@@ -226,6 +261,73 @@ describe('ShortsScreen', () => {
     restartStage.mockResolvedValue({ ok: true })
     await user.click(screen.getByRole('button', { name: 'Run it again' }))
     expect(restartStage).toHaveBeenCalledWith(PROJECT, 'shorts')
+  })
+
+  it('only a teaser offers the studio, and opening it shows the beats', async () => {
+    const user = userEvent.setup()
+    renderScreen([card(), teaserCard({ id: '01HQ00000000000000000000T1' })])
+
+    const open = screen.getAllByRole('button', { name: 'Open the teaser studio' })
+    expect(open).toHaveLength(1)
+    await user.click(open[0]!)
+
+    expect(screen.getByLabelText('Teaser studio')).toBeInTheDocument()
+    expect(
+      screen.getByDisplayValue('One number was missing, and it was billions.'),
+    ).toBeInTheDocument()
+    expect(screen.getByText(/Beat 1 · cut over The audit/)).toBeInTheDocument()
+    // Voiced audio plays inline; a beat without a playable file says so.
+    expect(screen.getByLabelText('Beat 1 audio')).toBeInTheDocument()
+    expect(screen.getByText(/No playable audio for this beat/)).toBeInTheDocument()
+  })
+
+  it('editing a beat offers an explicit Save that stores the whole script', async () => {
+    const user = userEvent.setup()
+    renderScreen([teaserCard({ id: '01HQ00000000000000000000T1' })])
+    await user.click(screen.getByRole('button', { name: 'Open the teaser studio' }))
+
+    // Nothing changed yet: no save, the rebuild is on offer.
+    expect(screen.queryByRole('button', { name: 'Save the script' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /re-voice & recut/i })).toBeInTheDocument()
+
+    const beat = screen.getByLabelText('Beat 1 words')
+    await user.clear(beat)
+    await user.type(beat, 'Nine days was all it took to erase the company.')
+
+    // Dirty: the rebuild steps aside until the edit is stored.
+    expect(screen.queryByRole('button', { name: /re-voice & recut/i })).not.toBeInTheDocument()
+    expect(screen.getByText(/Save the script first/)).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Save the script' }))
+    expect(saveTeaserScript).toHaveBeenCalledWith('01HQ00000000000000000000T1', [
+      { text: 'Nine days was all it took to erase the company.', chapterIndex: 0 },
+      { text: 'The auditors finally refused to sign anything at all.', chapterIndex: 0 },
+    ])
+  })
+
+  it('Re-voice & recut is a two-step, and says what is re-billed', async () => {
+    const user = userEvent.setup()
+    renderScreen([teaserCard({ id: '01HQ00000000000000000000T1' })], true)
+    await user.click(screen.getByRole('button', { name: 'Open the teaser studio' }))
+
+    await user.click(screen.getByRole('button', { name: 'Re-voice & recut' }))
+    expect(rebuildTeaser).not.toHaveBeenCalled()
+    expect(screen.getByText(/unchanged beats are re-served free/)).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Rebuild the teaser' }))
+    expect(rebuildTeaser).toHaveBeenCalledWith('01HQ00000000000000000000T1')
+  })
+
+  it('a pre-studio teaser explains itself and offers only the rebuild', async () => {
+    const user = userEvent.setup()
+    renderScreen([
+      teaserCard({ id: '01HQ00000000000000000000T1', teaser: { hasScript: false, beats: [] } }),
+    ])
+    await user.click(screen.getByRole('button', { name: 'Open the teaser studio' }))
+
+    expect(screen.getByText(/predates the studio/)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Save the script' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /re-voice & recut/i })).toBeInTheDocument()
   })
 
   it('every action is a visible labelled button — no menus, no shortcuts', () => {

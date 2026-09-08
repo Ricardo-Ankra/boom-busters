@@ -1,7 +1,7 @@
 'use client'
 
 import * as React from 'react'
-import { Check, Clapperboard, Loader2, Save } from 'lucide-react'
+import { Check, Clapperboard, Loader2, PenLine, Save } from 'lucide-react'
 import { ConfirmButton } from '@/components/confirm-button'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -15,6 +15,7 @@ import {
 } from './shorts-actions'
 import { advanceToPublish } from './publish-actions'
 import { RestartRunButton, useAction } from './project-controls'
+import { TeaserStudio } from './teaser-studio'
 
 /**
  * The Shorts screen (build spec section 11.3): a card grid — vertical 9:16
@@ -42,13 +43,34 @@ export function ShortsScreen({
   canAdvance?: boolean
 }) {
   const act = useAction()
+  const [studioId, setStudioId] = React.useState<string | null>(null)
+  const studioShort = shorts.find((short) => short.id === studioId) ?? null
   return (
     <div className="flex flex-col gap-4">
       <section aria-label="Shorts" className="grid gap-4 md:grid-cols-2 2xl:grid-cols-3">
         {shorts.map((short) => (
-          <ShortCard key={short.id} short={short} live={live} />
+          <ShortCard
+            key={short.id}
+            short={short}
+            live={live}
+            studioOpen={short.id === studioId}
+            onToggleStudio={() =>
+              setStudioId((current) => (current === short.id ? null : short.id))
+            }
+          />
         ))}
       </section>
+
+      {/* The teaser studio (decision 227): full width below the grid — a
+          card cell is too narrow for a script worth editing. */}
+      {studioShort ? (
+        <TeaserStudio
+          key={`${studioShort.id}:${studioShort.teaser?.beats.map((beat) => beat.text).join('¶') ?? ''}`}
+          short={studioShort}
+          live={live}
+          onClose={() => setStudioId(null)}
+        />
+      ) : null}
       {/* The handover. Not a gate — no run waits on curation — so the button
           moves the stage itself. The cards stay reachable from the rail. */}
       {canAdvance ? (
@@ -145,7 +167,17 @@ function useShortRenderPoll(render: ShortCardModel['render']) {
   return { current, poll, inFlight }
 }
 
-function ShortCard({ short, live }: { short: ShortCardModel; live: boolean }) {
+function ShortCard({
+  short,
+  live,
+  studioOpen = false,
+  onToggleStudio,
+}: {
+  short: ShortCardModel
+  live: boolean
+  studioOpen?: boolean
+  onToggleStudio?: () => void
+}) {
   const act = useAction()
   const [title, setTitle] = React.useState(short.title)
   const [description, setDescription] = React.useState(short.description)
@@ -210,6 +242,15 @@ function ShortCard({ short, live }: { short: ShortCardModel; live: boolean }) {
           <p className="text-[13px] text-[var(--color-danger)]">
             The render failed: {current?.error?.message ?? 'no reason recorded'}
           </p>
+        ) : null}
+
+        {/* The teaser's own workbench (decision 227): script, voice and cut
+            in one place, opened below the grid where there is room. */}
+        {short.kind === 'teaser' && onToggleStudio ? (
+          <Button variant="outline" onClick={onToggleStudio}>
+            <PenLine aria-hidden className="h-4 w-4" />
+            {studioOpen ? 'Close the teaser studio' : 'Open the teaser studio'}
+          </Button>
         ) : null}
 
         {/* Editable metadata — a labelled Save, not a silent autosave: the

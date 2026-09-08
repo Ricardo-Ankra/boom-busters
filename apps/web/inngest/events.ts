@@ -11,6 +11,7 @@ import {
   RenderDraftRequestedSchema,
   RenderSettledSchema,
   ShortsRenderRequestedSchema,
+  TeaserRebuildRequestedSchema,
   VisualsPlanApprovedSchema,
   VisualsRefetchRequestedSchema,
   VisualsRetypeRequestedSchema,
@@ -88,6 +89,9 @@ export const events = {
   }),
   shortsRenderRequested: eventType('shorts/render.requested', {
     schema: ShortsRenderRequestedSchema,
+  }),
+  teaserRebuildRequested: eventType('teaser/rebuild.requested', {
+    schema: TeaserRebuildRequestedSchema,
   }),
   publishRequested: eventType('publish/requested', { schema: PublishRequestedSchema }),
   renderSettled: eventType('render/settled', { schema: RenderSettledSchema }),

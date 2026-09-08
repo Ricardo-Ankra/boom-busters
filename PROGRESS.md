@@ -3504,7 +3504,7 @@ published and audited. The daily `channels.list` health ping and the
      (a scheduled item whose slot passed while quota-deferred would have
      died on that; now it uploads private with an honest "flip it in
      Studio" notification). `schedulePublish` writes `privacyStatus:
-     'private'` explicitly so a re-scheduled publish-now goes back to being
+'private'` explicitly so a re-scheduled publish-now goes back to being
      a scheduled private video.
      (d) _Custom times._ The calendar only materialised the Settings
      default slots; the backend always took any future ISO. A
@@ -3513,6 +3513,41 @@ published and audited. The daily `channels.list` health ping and the
      timezone. Test-suite lesson: the runner fixtures' hardcoded
      `publishAt: 2026-08-28` rotted into the past and silently became a
      publish-now — fixture moments are computed (`now + 24h`) from here on.
+
+227. **The teaser studio** (2026-09-08, owner direction; branch
+     `teaser-studio`). The owner asked whether the teaser should appear as a
+     tab on the Script, Voice and Assembly pages. Decided against: those are
+     gate screens for the master (a tab would make one Approve silently
+     cover two artefacts), the teaser's inputs are only final after
+     assembly (its visuals are lifted from the resolved board, its cut
+     windowed against the finished master, so an early teaser goes stale on
+     every upstream re-run), and a tab per derivative artefact is clutter
+     by construction. Instead the teaser gets ONE home at the moment
+     everything it depends on is final: an "Open the teaser studio" button
+     on the teaser card expands a full-width panel below the grid with the
+     same three views the tabs would have had — Script (the 2-5 beats,
+     editable, each tagged with the chapter it cuts over), Voice (the
+     beat's current audio, presigned from R2, playable inline) and the
+     rebuild. The contract mirrors the console: Save never spends (it
+     stores the script and nulls `renderId` — the old render is a render of
+     the old words, the ending toggle's rule); "Re-voice & recut" is the
+     spend and queues a fresh render. Mechanics: `shorts.teaserScript`
+     jsonb (migration 0018, applied to prod and test) stores
+     `TeaserScriptRecordSchema` ({title, paragraphs, scriptVersion}),
+     written by the shorts-runner's assemble step; the build steps moved to
+     the shared `inngest/lib/teaser-build.ts` so the shorts-runner and the
+     new `teaser-rebuild-runner` (event `teaser/rebuild.requested`) cannot
+     disagree about keys; the rebuild re-voices from the stored script,
+     recuts over the CURRENT board, updates the row in place (curated title
+     untouched) and never touches the project stage — it can run while the
+     project sits at publish, so failures notify instead of failing a
+     stage. A teaser built before the column existed has no stored script;
+     its first rebuild regenerates one from the outline and stores it. Bug
+     fixed in passing: the TTS idempotency key hashed only the text LENGTH,
+     so an edit that kept the character count would have been handed the
+     old audio back — the key now carries a sha256 prefix of the text
+     (one-time consequence: beats already bought under the old key format
+     re-bill once on their next rebuild, pennies).
 
 **Status:** `[x]` done — dossier + Studio shipped with unit, component and
 e2e coverage; spec §11.3 amended in place with dated notes.

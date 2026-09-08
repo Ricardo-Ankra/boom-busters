@@ -1,7 +1,7 @@
 'use server'
 
 import { getShort, updateShort } from '@boom-busters/db'
-import { UlidSchema } from '@boom-busters/schemas'
+import { TeaserScriptRecordSchema, UlidSchema } from '@boom-busters/schemas'
 import { revalidatePath } from 'next/cache'
 import { auth } from '@/auth'
 import { db } from '@/lib/db'
@@ -81,6 +81,67 @@ export async function setShortRelatedLink(
   if (!short) return { ok: false, error: 'Unknown Short' }
 
   await updateShort(db, shortId, { relatedLinkChecked: checked })
+  revalidatePath(`/projects/${short.projectId}`)
+  return { ok: true }
+}
+
+/**
+ * The teaser studio's script save (decision 227). Edits are stored on the
+ * row and the render pointer is nulled — the last render is a render of the
+ * old words, the same rule the ending toggle lives by. Nothing is re-voiced
+ * here: the Re-voice & recut button spends, a Save never does.
+ */
+export async function saveTeaserScript(
+  shortId: string,
+  paragraphs: { text: string; chapterIndex: number }[],
+): Promise<ActionResult> {
+  await requireOwner()
+  const short = await loadShort(shortId)
+  if (!short) return { ok: false, error: 'Unknown Short' }
+  if (short.kind !== 'teaser') {
+    return { ok: false, error: 'Only a teaser has an editable script.' }
+  }
+
+  const stored = TeaserScriptRecordSchema.safeParse(short.teaserScript)
+  const record = TeaserScriptRecordSchema.safeParse({
+    title: stored.success ? stored.data.title : short.title.slice(0, 90),
+    paragraphs,
+    scriptVersion: stored.success ? stored.data.scriptVersion : 1,
+  })
+  if (!record.success) {
+    return {
+      ok: false,
+      error:
+        'That script does not fit a teaser — 2 to 5 beats, each 10 to 400 characters, read aloud.',
+    }
+  }
+
+  await updateShort(db, shortId, {
+    teaserScript: record.data as unknown as Record<string, unknown>,
+    renderId: null,
+  })
+  revalidatePath(`/projects/${short.projectId}`)
+  return { ok: true }
+}
+
+/** Ask the teaser-rebuild-runner to re-voice the stored script and recut. */
+export async function rebuildTeaser(shortId: string): Promise<ActionResult> {
+  await requireOwner()
+  const short = await loadShort(shortId)
+  if (!short) return { ok: false, error: 'Unknown Short' }
+  if (short.kind !== 'teaser') {
+    return { ok: false, error: 'Only a teaser can be rebuilt — excerpts re-render instead.' }
+  }
+
+  try {
+    await inngest.send(
+      events.teaserRebuildRequested.create({ projectId: short.projectId, shortId }),
+    )
+  } catch (error) {
+    console.error('[teaser] could not request the rebuild', error)
+    return { ok: false, error: 'Could not reach Inngest to start the rebuild.' }
+  }
+
   revalidatePath(`/projects/${short.projectId}`)
   return { ok: true }
 }

@@ -150,6 +150,17 @@ export const ShortsRenderRequestedSchema = z.object({
 })
 
 /**
+ * Rebuild one teaser from its stored script (decision 227): re-voice the
+ * beats (idempotency-keyed, so unchanged text is re-served free), recut over
+ * the current master board, and queue a fresh render. Sent by the teaser
+ * studio's "Re-voice & recut" button; handled by the teaser-rebuild-runner.
+ */
+export const TeaserRebuildRequestedSchema = z.object({
+  ...projectRef,
+  shortId: UlidSchema,
+})
+
+/**
  * Publish one item (M7.6) — the UI's schedule action creates/updates the
  * publish_records row FIRST, then sends this. `attempt` exists for the
  * error mapper's `retry` action: a transient upload failure re-emits with
@@ -250,6 +261,7 @@ export const EVENT_SCHEMAS = {
   'media/job.completed': MediaJobCompletedSchema,
   'render/draft.requested': RenderDraftRequestedSchema,
   'shorts/render.requested': ShortsRenderRequestedSchema,
+  'teaser/rebuild.requested': TeaserRebuildRequestedSchema,
   'publish/requested': PublishRequestedSchema,
   'render/settled': RenderSettledSchema,
 

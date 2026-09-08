@@ -27,6 +27,8 @@ export async function insertShort(
     /** 'teaser' rows carry their own mini master; excerpts leave both unset. */
     kind?: ShortRow['kind']
     sourceTimeline?: Record<string, unknown>
+    /** The teaser's editable script (decision 227); excerpts leave it unset. */
+    teaserScript?: Record<string, unknown>
   },
 ): Promise<ShortRow> {
   const [row] = await db
@@ -39,6 +41,7 @@ export async function insertShort(
       ...(input.ending !== undefined ? { ending: input.ending } : {}),
       ...(input.kind !== undefined ? { kind: input.kind } : {}),
       ...(input.sourceTimeline !== undefined ? { sourceTimeline: input.sourceTimeline } : {}),
+      ...(input.teaserScript !== undefined ? { teaserScript: input.teaserScript } : {}),
     })
     .returning()
 
@@ -69,6 +72,10 @@ export async function updateShort(
     ending: ShortRow['ending']
     renderId: string | null
     relatedLinkChecked: boolean
+    /** The teaser studio's edits and the rebuild runner's recut (decision 227). */
+    segmentRef: ShortRow['segmentRef']
+    sourceTimeline: Record<string, unknown>
+    teaserScript: Record<string, unknown>
   }>,
 ): Promise<void> {
   await db

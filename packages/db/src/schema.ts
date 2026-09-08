@@ -653,6 +653,14 @@ export const shorts = pgTable(
      * for excerpts.
      */
     sourceTimeline: jsonb('source_timeline').$type<Record<string, unknown>>(),
+    /**
+     * The teaser's editable script (decision 227): title, the 2-5 beats with
+     * their chapter indexes, and the script version it was written against.
+     * The teaser studio edits this and the rebuild runner re-voices from it.
+     * Null for excerpts, and for teasers built before the column existed —
+     * the rebuild runner regenerates and stores it on first use.
+     */
+    teaserScript: jsonb('teaser_script').$type<Record<string, unknown>>(),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },

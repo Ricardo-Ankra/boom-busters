@@ -6,18 +6,14 @@ import {
   latestScriptParagraphSources,
   latestTimeline,
   listShorts,
-  MOCK_KEY_PREFIX,
   setProjectStage,
   setShortsCandidates,
 } from '@boom-busters/db'
 import {
   buildShortsRequest,
-  buildTeaserRequest,
   mockProvidersEnabled,
   mockShortsCandidates,
-  mockTeaser,
   parseShortsCandidates,
-  parseTeaser,
   tensionFromOutline,
 } from '@boom-busters/providers'
 import {
@@ -39,11 +35,10 @@ import type { TeaserParagraphAudio } from '@boom-busters/timeline'
 import { NonRetriableError } from 'inngest'
 import { db } from '@/lib/db'
 import { callLlm } from '@/lib/llm'
-import { putObject, takeStorage } from '@/lib/storage'
-import { synthesise } from '@/lib/tts'
 import { inngest } from '../client'
 import { events } from '../events'
 import { budgetGateData, markStageFailed, type GateContext } from '../lib/gates'
+import { voiceTeaserBeat, writeTeaserScript, type TeaserWriteResult } from '../lib/teaser-build'
 
 /**
  * shorts-runner (build spec section 7.2 item 7): `project/master.ready` →
@@ -240,61 +235,15 @@ export const shortsRunner = inngest.createFunction(
      * teaser feature (production, 2026-09-08 morning) would otherwise never
      * gain one, since their rows trip the guard on every re-run forever.
      */
-    const teaserScript = await step.run(
-      'write-teaser',
-      async (): Promise<
-        | {
-            ok: true
-            title: string
-            paragraphs: { text: string; chapterIndex: number }[]
-            scriptVersion: number
-          }
-        | { ok: false; gate: Record<string, unknown> }
-        | { ok: false; skipped: string }
-      > => {
-        const rows = await listShorts(db, projectId)
-        if (rows.some((row) => row.kind === 'teaser')) {
-          return { ok: false, skipped: 'the teaser already exists — kept as curated' }
-        }
-
-        const latest = await getLatestScript(db, projectId)
-        if (!latest) return { ok: false, skipped: 'there is no script to write a teaser from' }
-        const chapterSources = latest.chapters.map((chapter) => ({
-          index: chapter.index,
-          title: chapter.title,
-          contentMd: chapter.contentMd,
-        }))
-        const parsedOutline = OutlineSchema.safeParse(latest.script.outline)
-        const tension = parsedOutline.success ? tensionFromOutline(parsedOutline.data) : undefined
-
-        try {
-          const project = await getProject(db, projectId)
-          const teaser = mockProvidersEnabled()
-            ? mockTeaser(chapterSources)
-            : parseTeaser(
-                (
-                  await callLlm(
-                    buildTeaserRequest({
-                      caseTitle: project?.title ?? '',
-                      chapters: chapterSources,
-                      ...(tension ? { tension } : {}),
-                    }),
-                    { projectId },
-                  )
-                ).text,
-              )
-          return { ok: true, ...teaser, scriptVersion: latest.script.version }
-        } catch (error) {
-          if (error instanceof BudgetExceededError) {
-            return { ok: false, gate: budgetGateData(error) }
-          }
-          return {
-            ok: false,
-            skipped: `the teaser script failed: ${String(serialiseError(error).message ?? 'unknown')}`,
-          }
-        }
-      },
-    )
+    const teaserScript = await step.run('write-teaser', async (): Promise<TeaserWriteResult> => {
+      const rows = await listShorts(db, projectId)
+      if (rows.some((row) => row.kind === 'teaser')) {
+        return { ok: false, skipped: 'the teaser already exists — kept as curated' }
+      }
+      // Shared with the rebuild runner (decision 227) — one implementation
+      // of the write, the voicing and their idempotency keys.
+      return writeTeaserScript(projectId)
+    })
 
     if (!teaserScript.ok && 'gate' in teaserScript) {
       await step.run('teaser-over-budget', () => markStageFailed(ctx, teaserScript.gate))
@@ -308,52 +257,13 @@ export const shortsRunner = inngest.createFunction(
       const voiced: TeaserParagraphAudio[] = []
       for (const [index, paragraph] of teaserScript.paragraphs.entries()) {
         if (teaserSkipped) break
-        const spoken = await step.run(
-          `teaser-tts-${index}`,
-          async (): Promise<
-            | {
-                ok: true
-                r2Key: string
-                durationMs: number
-                wordTimings: TeaserParagraphAudio['wordTimings']
-              }
-            | { ok: false; gate: Record<string, unknown> }
-            | { ok: false; skipped: string }
-          > => {
-            try {
-              const narration = await synthesise({
-                text: paragraph.text,
-                // The teaser's own identity: same script version, same beat,
-                // same text length re-serves the earlier synthesis.
-                idempotencyKey: `teaser:${projectId}:${teaserScript.scriptVersion}:${index}:${paragraph.text.length}`,
-                projectId,
-              })
-              const r2Key =
-                takeStorage() === 'r2'
-                  ? (
-                      await putObject(
-                        `boom-busters/voice/${projectId}/teaser/v${teaserScript.scriptVersion}-${index}.wav`,
-                        narration.wav,
-                        'audio/wav',
-                      )
-                    ).key
-                  : `${MOCK_KEY_PREFIX}voice/teaser-${projectId}-${index}.wav`
-              return {
-                ok: true,
-                r2Key,
-                durationMs: narration.durationMs,
-                wordTimings: narration.wordTimings ?? null,
-              }
-            } catch (error) {
-              if (error instanceof BudgetExceededError) {
-                return { ok: false, gate: budgetGateData(error) }
-              }
-              return {
-                ok: false,
-                skipped: `beat ${index + 1} could not be synthesised: ${String(serialiseError(error).message ?? 'unknown')}`,
-              }
-            }
-          },
+        const spoken = await step.run(`teaser-tts-${index}`, () =>
+          voiceTeaserBeat({
+            projectId,
+            scriptVersion: teaserScript.scriptVersion,
+            index,
+            paragraph,
+          }),
         )
 
         if (!spoken.ok && 'gate' in spoken) {
@@ -394,6 +304,13 @@ export const shortsRunner = inngest.createFunction(
                 },
                 kind: 'teaser',
                 sourceTimeline: teaserTimeline as unknown as Record<string, unknown>,
+                // The editable script (decision 227): what the teaser studio
+                // opens and the rebuild runner re-voices from.
+                teaserScript: {
+                  title: teaserScript.title,
+                  paragraphs: teaserScript.paragraphs,
+                  scriptVersion: teaserScript.scriptVersion,
+                },
               })
               return { shortId: short.id }
             } catch (error) {

@@ -314,6 +314,15 @@ describeDb('shorts-runner', () => {
       expect(mini.slots.length).toBe(mini.narration.length)
       expect(teaser!.segmentRef.fromParagraph).toBe(0)
       expect(teaser!.segmentRef.toParagraph).toBe(mini.narration.length - 1)
+      // The editable script is stored beside the cut (decision 227) — what
+      // the teaser studio opens and the rebuild runner re-voices from.
+      const storedScript = teaser!.teaserScript as {
+        paragraphs: unknown[]
+        scriptVersion: number
+      } | null
+      expect(storedScript).not.toBeNull()
+      expect(storedScript!.paragraphs.length).toBe(mini.narration.length)
+      expect(storedScript!.scriptVersion).toBe(1)
     },
   )
 
