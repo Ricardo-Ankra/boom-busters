@@ -215,6 +215,15 @@ export function projectControl(
         : cannotRestart('Marked running, but no run is behind it.')
 
     case 'approved':
+      // The done stage is the end of the pipeline, not a handover — saying
+      // "the next stage starts on its own" there would promise motion that
+      // is never coming (decision 226).
+      if (project.stage === 'done') {
+        return {
+          kind: 'working',
+          message: 'Done. Every screen stays reachable from the rail.',
+        }
+      }
       return { kind: 'working', message: 'Approved. The next stage starts on its own.' }
 
     case 'awaiting_review':

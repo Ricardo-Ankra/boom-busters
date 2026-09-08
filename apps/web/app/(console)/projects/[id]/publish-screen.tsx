@@ -20,6 +20,8 @@ import type { PublishItemModel, PublishModel } from '@/lib/publish-review'
 import { RetentionOverlay } from './retention-overlay'
 import {
   generateTitles,
+  markProjectDone,
+  publishNow,
   removeThumbnail,
   reschedulePublish,
   retryPublish,
@@ -27,6 +29,7 @@ import {
   schedulePublish,
   uploadThumbnail,
 } from './publish-actions'
+import { setShortRelatedLink } from './shorts-actions'
 import { useAction } from './project-controls'
 
 /**
@@ -140,10 +143,13 @@ export function PublishScreen({
   projectId,
   model,
   live,
+  canFinish = false,
 }: {
   projectId: string
   model: PublishModel
   live: boolean
+  /** True while the project is ON the publish stage with nothing running. */
+  canFinish?: boolean
 }) {
   const act = useAction()
   const [selectedKey, setSelectedKey] = React.useState<string | null>(() => {
@@ -151,6 +157,7 @@ export function PublishScreen({
     return first ? keyOf(first) : null
   })
   const [now] = React.useState(() => new Date())
+  const [customTime, setCustomTime] = React.useState('')
 
   const selected = model.items.find((item) => keyOf(item) === selectedKey) ?? null
   const days = React.useMemo(() => upcomingDays(model.slots, now), [model.slots, now])
@@ -273,7 +280,52 @@ export function PublishScreen({
                       Retry upload
                     </Button>
                   ) : null}
+                  {/* The no-slot path (decision 226): upload immediately.
+                      What "immediately public" means depends on the audit —
+                      the consequence says which world this click lives in. */}
+                  {schedulable(item) ? (
+                    <ConfirmButton
+                      label="Publish now"
+                      confirmLabel={model.apiAuditPassed ? 'Upload and go public' : 'Upload it now'}
+                      consequence={
+                        !live
+                          ? 'Mock mode: the bookkeeping runs; nothing reaches YouTube.'
+                          : model.apiAuditPassed
+                            ? 'Uploads immediately and goes public as soon as YouTube finishes processing. There is no scheduled moment to move afterwards.'
+                            : 'Uploads immediately as private — until the API audit passes, you flip it public in YouTube Studio yourself.'
+                      }
+                      confirmVariant="primary"
+                      onConfirm={() =>
+                        act(
+                          () => publishNow(item.targetType, item.targetId),
+                          'The upload starts now',
+                        )
+                      }
+                    />
+                  ) : null}
                 </div>
+                {/* The related-link reminder (decision 226): the Studio act
+                    only becomes possible once the Short is ON YouTube, so
+                    the chip lives here, on the uploaded card, instead of
+                    gating the upload. */}
+                {item.targetType === 'short' &&
+                item.relatedLinkChecked === false &&
+                (item.record?.status === 'scheduled' || item.record?.status === 'live') ? (
+                  <button
+                    type="button"
+                    aria-pressed={false}
+                    onClick={() =>
+                      void act(
+                        () => setShortRelatedLink(item.targetId, true),
+                        'Related link recorded',
+                      )
+                    }
+                    className="flex min-h-[40px] items-center gap-2 rounded-[8px] border border-[var(--color-warning)] px-3 py-2 text-left text-[13px] text-[var(--color-warning)]"
+                  >
+                    <Check aria-hidden className="h-4 w-4" />
+                    It is on YouTube now — set the related video link in Studio → mark done
+                  </button>
+                ) : null}
               </CardContent>
             </Card>
           )
@@ -401,8 +453,83 @@ export function PublishScreen({
               </div>
             ))}
           </div>
+
+          {/* Any moment at all (decision 226): the backend always accepted an
+              arbitrary future timestamp — only this screen used to restrict
+              the choice to the default slots. */}
+          <div className="mt-3 flex flex-wrap items-end gap-2 rounded-[8px] border border-dashed border-[var(--color-border)] p-3">
+            <label className="flex flex-col gap-1 text-[12px] text-[var(--color-text-secondary)]">
+              Custom time — any moment, in your timezone
+              <Input
+                type="datetime-local"
+                value={customTime}
+                onChange={(event) => setCustomTime(event.target.value)}
+                className="w-auto"
+              />
+            </label>
+            {(() => {
+              const at = customTime ? new Date(customTime) : null
+              const valid = at !== null && !Number.isNaN(at.getTime()) && at.getTime() > Date.now()
+              const mode =
+                selected === null
+                  ? null
+                  : schedulable(selected)
+                    ? ('schedule' as const)
+                    : movable(selected)
+                      ? ('move' as const)
+                      : null
+              return (
+                <>
+                  <Button
+                    variant="outline"
+                    disabled={!valid || mode === null}
+                    onClick={() => {
+                      if (!valid || mode === null || selected === null) return
+                      const iso = at!.toISOString()
+                      void (mode === 'schedule' ? schedule(selected, iso) : move(selected, iso))
+                    }}
+                  >
+                    <CalendarClock aria-hidden className="h-4 w-4" />
+                    {mode === 'move' ? 'Move to this time' : 'Schedule at this time'}
+                  </Button>
+                  {selected === null ? (
+                    <p className="text-[11px] text-[var(--color-text-muted)]">
+                      Select an item above first.
+                    </p>
+                  ) : customTime !== '' && !valid ? (
+                    <p className="text-[11px] text-[var(--color-text-muted)]">
+                      Pick a moment ahead of now.
+                    </p>
+                  ) : null}
+                </>
+              )
+            })()}
+          </div>
         </CardContent>
       </Card>
+
+      {/* The end of the pipeline (decision 226): publish → done is a human
+          decision, like the shorts → publish handover — nothing can guess
+          when the curation of slots is finished, so a button says it. */}
+      {canFinish ? (
+        <section className="flex flex-wrap items-center justify-between gap-3 rounded-[8px] border border-[var(--color-border)] p-3">
+          <p className="text-[13px] text-[var(--color-text-secondary)]">
+            Everything scheduled that you meant to schedule? Marking the project Done files it away
+            — scheduled uploads keep running on their own.
+          </p>
+          <ConfirmButton
+            label="Mark project as Done"
+            confirmLabel="Mark it Done"
+            consequence={
+              'The project leaves the pipeline and shows under Done on the Projects list. ' +
+              'Nothing is cancelled: scheduled uploads still run, and every screen stays ' +
+              'reachable from the rail.'
+            }
+            confirmVariant="primary"
+            onConfirm={() => act(() => markProjectDone(projectId), 'Marked as Done')}
+          />
+        </section>
+      ) : null}
     </section>
   )
 }

@@ -19,9 +19,10 @@ import { RestartRunButton, useAction } from './project-controls'
 /**
  * The Shorts screen (build spec section 11.3): a card grid — vertical 9:16
  * player, segment source line, ending toggle, editable title + description,
- * render state, and the related-link checklist chip that must be ticked
- * before the Short can be scheduled (the Publish screen enforces it; this
- * screen collects it).
+ * render state, and the related-link checklist chip. The chip is
+ * bookkeeping, not a gate (decision 226): the Studio act it records is only
+ * possible once the Short is ON YouTube, so the Publish screen reminds on
+ * scheduled cards instead of refusing to schedule.
  *
  * There is no gate here. The human curates the cards — retitle, re-end,
  * re-render, tick the chip — and the publish decision happens per item on
@@ -292,8 +293,9 @@ function ShortCard({ short, live }: { short: ShortCardModel; live: boolean }) {
           />
         ) : null}
 
-        {/* The related-link checklist chip (spec section 11.3): a human act
-            in YouTube Studio, recorded here, enforced at scheduling. */}
+        {/* The related-link checklist chip (spec section 11.3, softened by
+            decision 226): a human act in YouTube Studio, recorded here —
+            and reminded about on the Publish screen once the Short is up. */}
         <button
           type="button"
           aria-pressed={short.relatedLinkChecked}

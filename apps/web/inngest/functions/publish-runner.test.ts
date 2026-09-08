@@ -14,6 +14,7 @@ import {
   truncateRunMirror,
   updateRender,
   updateSettings,
+  updateShort,
 } from '@boom-busters/db'
 import { InngestTestEngine } from '@inngest/test'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -101,7 +102,9 @@ describeDb('publish-runner', () => {
       .values({
         targetType,
         targetId,
-        publishAt: new Date('2026-08-28T15:00:00Z'),
+        // A moment genuinely ahead: a hardcoded date rotted into the past
+        // and quietly turned every fixture into a publish-now (decision 226).
+        publishAt: new Date(Date.now() + 24 * 3600 * 1000),
         metadata: { title: 'The audit that lied', description: 'Wirecard.', tags: ['finance'] },
         ...overrides,
       })
@@ -176,19 +179,33 @@ describeDb('publish-runner', () => {
     expect(stored?.error).toMatchObject({ message: expect.stringContaining('thumbnail') })
   })
 
-  it('a Short without its related-link tick is refused by name', async () => {
-    const short = await insertShort(db, {
-      projectId: FIXTURE_PROJECT_ID,
-      title: 'x',
-      segmentRef: { chapterId: CHAPTER, fromParagraph: 0, toParagraph: 0 },
-    })
-    await draftRecord('short', short.id)
+  it(
+    'a Short schedules without its related-link tick — the chip reminds after upload (decision 226)',
+    { timeout: 120_000 },
+    async () => {
+      // The Studio act the chip records is only possible once the Short is
+      // ON YouTube, so refusing the upload on it was a deadlock.
+      const short = await insertShort(db, {
+        projectId: FIXTURE_PROJECT_ID,
+        title: 'x',
+        segmentRef: { chapterId: CHAPTER, fromParagraph: 0, toParagraph: 0 },
+      })
+      const render = await insertRender(db, {
+        projectId: FIXTURE_PROJECT_ID,
+        timelineVersion: 1,
+        kind: 'short',
+        shortId: short.id,
+      })
+      await updateRender(db, render.id, { status: 'done', outputS3Key: 'renders/short.mp4' })
+      await updateShort(db, short.id, { renderId: render.id })
+      await draftRecord('short', short.id)
 
-    const { result } = await engine.execute({ events: requestedEvent('short', short.id) })
+      const { result } = await engine.execute({ events: requestedEvent('short', short.id) })
 
-    expect(result).toMatchObject({ outcome: 'refused' })
-    expect((result as { reason: string }).reason).toContain('related-video link')
-  })
+      expect(result).toMatchObject({ outcome: 'mock-scheduled' })
+      expect((await getPublishRecord(db, 'short', short.id))?.status).toBe('scheduled')
+    },
+  )
 
   it('a record already past draft is left exactly alone', async () => {
     await doneMasterRender()
@@ -241,7 +258,7 @@ describeDb('publish-runner', () => {
       { timeout: 120_000 },
       async () => {
         await doneMasterRender()
-        await draftRecord('master', FIXTURE_PROJECT_ID, {
+        const record = await draftRecord('master', FIXTURE_PROJECT_ID, {
           uploadedThumbKeys: ['boom-busters/thumbs/a.png'],
         })
 
@@ -257,12 +274,56 @@ describeDb('publish-runner', () => {
             accessToken: 'ya29.short',
             title: 'The audit that lied',
             privacyStatus: 'private',
-            publishAt: '2026-08-28T15:00:00.000Z',
+            publishAt: record.publishAt!.toISOString(),
           }),
         )
         // The claim happened before the spend: the record is uploading.
         const stored = await getPublishRecord(db, 'master', FIXTURE_PROJECT_ID)
         expect(stored?.status).toBe('uploading')
+      },
+    )
+
+    it(
+      'a publish-now record uploads public, with no publishAt at all (decision 226)',
+      { timeout: 120_000 },
+      async () => {
+        await doneMasterRender()
+        await draftRecord('master', FIXTURE_PROJECT_ID, {
+          uploadedThumbKeys: ['boom-busters/thumbs/a.png'],
+          privacyStatus: 'public',
+          publishAt: new Date(Date.now() - 1000),
+        })
+
+        await engine.executeStep('submit-upload', {
+          events: requestedEvent('master', FIXTURE_PROJECT_ID),
+        })
+
+        const job = broker.submitMediaJob.mock.calls[0]![0] as Record<string, unknown>
+        expect(job['privacyStatus']).toBe('public')
+        // YouTube pairs publishAt with private; a public upload carries none.
+        expect(job).not.toHaveProperty('publishAt')
+      },
+    )
+
+    it(
+      'a pre-audit publish-now uploads private with no moment — the Studio flip stays human',
+      { timeout: 120_000 },
+      async () => {
+        await doneMasterRender()
+        await draftRecord('master', FIXTURE_PROJECT_ID, {
+          uploadedThumbKeys: ['boom-busters/thumbs/a.png'],
+          privacyStatus: 'private',
+          publishAt: new Date(Date.now() - 1000),
+        })
+
+        await engine.executeStep('submit-upload', {
+          events: requestedEvent('master', FIXTURE_PROJECT_ID),
+        })
+
+        const job = broker.submitMediaJob.mock.calls[0]![0] as Record<string, unknown>
+        expect(job['privacyStatus']).toBe('private')
+        // A past publishAt would be rejected by YouTube — it is omitted.
+        expect(job).not.toHaveProperty('publishAt')
       },
     )
   })

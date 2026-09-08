@@ -134,9 +134,9 @@ export const publishRunner = inngest.createFunction(
       } else {
         const short = await getShort(db, targetId)
         if (!short) throw new NonRetriableError(`Short ${targetId} no longer exists`)
-        if (!short.relatedLinkChecked) {
-          return refuse('The related-video link is not marked done in Studio yet.')
-        }
+        // The related-link chip is deliberately not checked here (decision
+        // 226): the link can only be set in Studio once the Short is ON
+        // YouTube, so it is a post-upload reminder, not a precondition.
         const render = short.renderId ? await getRender(db, short.renderId) : undefined
         if (render?.status !== 'done' || !render.outputS3Key) {
           return refuse('This Short has no finished render to upload.')
@@ -153,6 +153,15 @@ export const publishRunner = inngest.createFunction(
       }
 
       const settings = await getSettings(db)
+      /**
+       * How this item goes public (decision 226). A slot ahead of now is the
+       * classic schedule: private with a `publishAt` YouTube flips itself.
+       * A moment that is NOT ahead is a publish-now: `privacyStatus` decides
+       * — 'public' goes live as soon as processing ends (post-audit), and
+       * 'private' goes up with no moment at all, because YouTube rejects a
+       * past `publishAt` and the human flips it in Studio (pre-audit).
+       */
+      const scheduledAhead = record.publishAt.getTime() > Date.now() + 2 * 60_000
       return {
         ok: true as const,
         refusal: null,
@@ -161,6 +170,8 @@ export const publishRunner = inngest.createFunction(
         videoS3Key,
         metadata: metadata.data,
         publishAtIso: record.publishAt.toISOString(),
+        privacyStatus: record.privacyStatus,
+        scheduledAhead,
         thumbKey: record.uploadedThumbKeys[0] ?? null,
         dailyBudget: settings.publish.dailyUploadBudget,
       }
@@ -238,7 +249,9 @@ export const publishRunner = inngest.createFunction(
         await notify({
           kind: 'publish-success',
           title: `Scheduled (mock): ${preflight.metadata.title}`,
-          body: `The ${targetType} is scheduled for ${preflight.publishAtIso} — mock mode, nothing reached YouTube.`,
+          body: preflight.scheduledAhead
+            ? `The ${targetType} is scheduled for ${preflight.publishAtIso} — mock mode, nothing reached YouTube.`
+            : `The ${targetType} would upload immediately — mock mode, nothing reached YouTube.`,
           href: `/projects/${projectId}?stage=publish`,
         })
       })
@@ -287,8 +300,12 @@ export const publishRunner = inngest.createFunction(
         title: preflight.metadata.title,
         description: preflight.metadata.description,
         tags: preflight.metadata.tags,
-        privacyStatus: 'private',
-        publishAt: preflight.publishAtIso,
+        privacyStatus: preflight.privacyStatus,
+        // Only a private video with a moment still ahead carries `publishAt`
+        // — YouTube rejects a past one, and a public upload needs none.
+        ...(preflight.privacyStatus === 'private' && preflight.scheduledAhead
+          ? { publishAt: preflight.publishAtIso }
+          : {}),
       })
       return id
     })
@@ -420,7 +437,12 @@ export const publishRunner = inngest.createFunction(
       await notify({
         kind: 'publish-success',
         title: `Scheduled: ${preflight.metadata.title}`,
-        body: `Private on YouTube (${videoId}), goes public ${preflight.publishAtIso}.`,
+        body:
+          preflight.privacyStatus === 'public'
+            ? `Public on YouTube (${videoId}) — live as soon as processing finishes.`
+            : preflight.scheduledAhead
+              ? `Private on YouTube (${videoId}), goes public ${preflight.publishAtIso}.`
+              : `Private on YouTube (${videoId}) with no scheduled moment — flip it public in Studio.`,
         href: `/projects/${projectId}?stage=publish`,
       })
     })

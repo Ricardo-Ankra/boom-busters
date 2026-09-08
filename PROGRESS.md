@@ -3475,6 +3475,45 @@ published and audited. The daily `channels.list` health ping and the
      existing row as curated but builds a missing teaser — the guard is
      "does a teaser row exist", not "do rows exist".
 
+226. **The Publish stage's four logic fixes** (2026-09-08, owner report:
+     "broken logic or weird logic on the Publish Stage"; branch
+     `publish-flow-fixes`). Four changes, one theme — the screen was more
+     restrictive than YouTube:
+     (a) _The related-link chip no longer gates scheduling._ Spec §11.3 said
+     the chip "must be checked before the Short can be scheduled", but the
+     Studio act it records — setting the Short's related-video link — is only
+     possible AFTER the Short is uploaded, and it points at the full video,
+     which also has to be up. The gate demanded proof of an act it made
+     impossible: a deadlock, hit in production. The chip is now bookkeeping;
+     the Publish screen shows the reminder on scheduled/live Short cards
+     (one click records it via `setShortRelatedLink`), and the model exposes
+     `relatedLinkChecked` per item. Spec deviation, deliberate.
+     (b) _Publish → done is a button._ The stage enum always had `done` and
+     nothing ever set it (deferred decision, now made): `markProjectDone` on
+     the Publish screen moves publish → done (stage guard + no-live-run
+     guard), the same human-decision shape as the shorts → publish handover.
+     `projectControl` stops saying "the next stage starts on its own" on the
+     last stage.
+     (c) _Publish now._ `publishNow` writes the record with `publishAt = now`
+     and `privacyStatus` decided by the audit flag: 'public' after the audit
+     (live as soon as processing ends), 'private' before it (the human flips
+     it in Studio — the checklist's existing step). The runner's preflight
+     passes `record.privacyStatus` through to the upload job and includes
+     `publishAt` ONLY for a private video whose moment is still ahead —
+     YouTube rejects a past `publishAt`, and the old code always sent it
+     (a scheduled item whose slot passed while quota-deferred would have
+     died on that; now it uploads private with an honest "flip it in
+     Studio" notification). `schedulePublish` writes `privacyStatus:
+     'private'` explicitly so a re-scheduled publish-now goes back to being
+     a scheduled private video.
+     (d) _Custom times._ The calendar only materialised the Settings
+     default slots; the backend always took any future ISO. A
+     datetime-local input + "Schedule at this time" / "Move to this time"
+     button on the Schedule card now takes any moment, in the owner's
+     timezone. Test-suite lesson: the runner fixtures' hardcoded
+     `publishAt: 2026-08-28` rotted into the past and silently became a
+     publish-now — fixture moments are computed (`now + 24h`) from here on.
+
 **Status:** `[x]` done — dossier + Studio shipped with unit, component and
 e2e coverage; spec §11.3 amended in place with dated notes.
 

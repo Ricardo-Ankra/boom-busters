@@ -357,7 +357,12 @@ export default async function ProjectPage({
           draft={previewDraft}
         />
       ) : showPublish ? (
-        <PublishScreen projectId={project.id} model={publish} live={!mockProvidersEnabled()} />
+        <PublishScreen
+          projectId={project.id}
+          model={publish}
+          live={!mockProvidersEnabled()}
+          canFinish={project.stage === 'publish' && !liveRun}
+        />
       ) : showShorts ? (
         <ShortsScreen
           projectId={project.id}

@@ -340,6 +340,23 @@ describe('projectControl', () => {
     ).toMatchObject({ kind: 'restart', label: 'Run the assembly stage again' })
   })
 
+  it('a done project promises no further motion — only that its screens remain', () => {
+    // "The next stage starts on its own" would be a lie on the last stage
+    // (decision 226): nothing starts after done.
+    const control = projectControl(project('done', 'approved'), false, {
+      hasDossier: true,
+      hasScript: true,
+      hasMaster: true,
+      hasShorts: true,
+      now: NOW,
+    })
+    expect(control.kind).toBe('working')
+    expect(control).toMatchObject({ message: expect.stringContaining('Done.') })
+    expect(control).not.toMatchObject({
+      message: expect.stringContaining('next stage starts on its own'),
+    })
+  })
+
   it('blocks an assembly restart with no script, and says that, not "no runner"', () => {
     const control = projectControl(project('assembly', 'failed'), false, {
       hasDossier: true,

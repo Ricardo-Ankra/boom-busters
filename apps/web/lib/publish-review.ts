@@ -51,6 +51,13 @@ export interface PublishItemModel {
   durationMs: number | null
   /** Everything the runner would refuse on, said before the button exists. */
   notReadyReason: string | null
+  /**
+   * The Studio related-link bookkeeping — null for the master, the chip's
+   * state for a Short. Not a gate (decision 226): the link can only be set
+   * in Studio AFTER the Short is on YouTube, so the Publish screen reminds
+   * on scheduled cards instead of refusing draft ones.
+   */
+  relatedLinkChecked: boolean | null
   record: PublishRecordProp | null
 }
 
@@ -267,6 +274,7 @@ export async function publishModel(
         masterRender?.status === 'done' && masterRender.outputS3Key
           ? null
           : 'There is no finished master render yet.',
+      relatedLinkChecked: null,
       record: masterRecord ? toRecordProp(masterRecord, await thumbsFor(masterRecord)) : null,
     },
   ]
@@ -274,11 +282,13 @@ export async function publishModel(
   for (const short of shorts) {
     const render = short.renderId ? await getRender(db, short.renderId) : undefined
     const record = recordFor('short', short.id)
+    // The related-link chip is deliberately NOT a readiness condition
+    // (decision 226): the link is a property set on the Short inside Studio,
+    // which only exists once the Short is uploaded — gating the upload on it
+    // was a deadlock. Scheduled cards carry the reminder instead.
     const notReadyReason =
       render?.status === 'done' && render.outputS3Key
-        ? short.relatedLinkChecked
-          ? null
-          : 'The related-video link is not marked done in Studio yet.'
+        ? null
         : 'This Short has no finished render yet.'
     items.push({
       targetType: 'short',
@@ -286,6 +296,7 @@ export async function publishModel(
       label: short.title,
       durationMs: null,
       notReadyReason,
+      relatedLinkChecked: short.relatedLinkChecked,
       record: record ? toRecordProp(record, []) : null,
     })
   }

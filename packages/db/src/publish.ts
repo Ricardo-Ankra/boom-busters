@@ -107,6 +107,7 @@ export async function updatePublishRecord(
     status: PublishRecordRow['status']
     youtubeVideoId: string
     publishAt: Date
+    privacyStatus: PublishRecordRow['privacyStatus']
     uploadedThumbKeys: string[]
     metadata: Record<string, unknown>
     error: Record<string, unknown> | null

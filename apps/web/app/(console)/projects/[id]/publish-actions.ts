@@ -6,6 +6,7 @@ import {
   getProject,
   getPublishRecord,
   getRender,
+  getSettings,
   getShort,
   hasLiveRun,
   latestRender,
@@ -301,30 +302,22 @@ export async function removeThumbnail(projectId: string, key: string): Promise<A
 // Scheduling — the fifth gate
 // ---------------------------------------------------------------------------
 
-export async function schedulePublish(
-  targetType: string,
+/**
+ * The shared write for both ways an upload starts (decision 226): verify the
+ * render, compose the final metadata, write the row — status back to draft
+ * when retrying a failure — and only then emit `publish/requested`.
+ *
+ * The runner re-checks all of this (its preflight is the enforcement), but a
+ * button that accepts and then immediately refuses in the activity feed is a
+ * worse experience than one that says why here.
+ */
+async function requestUpload(
+  type: 'master' | 'short',
   targetId: string,
-  publishAtIso: string,
+  projectId: string,
+  publishAt: Date,
+  privacyStatus: 'private' | 'public',
 ): Promise<ActionResult> {
-  await requireOwner()
-  const invalid = parseTarget(targetType, targetId)
-  if (invalid) return invalid
-  const type = targetType as 'master' | 'short'
-
-  const projectId = await projectIdOf(type, targetId)
-  if (!projectId) return { ok: false, error: 'Unknown target' }
-
-  const publishAt = new Date(publishAtIso)
-  if (Number.isNaN(publishAt.getTime())) return { ok: false, error: 'That is not a date.' }
-  if (publishAt.getTime() <= Date.now()) {
-    return { ok: false, error: 'That slot is in the past — pick one ahead of now.' }
-  }
-
-  /**
-   * The runner re-checks all of this (its preflight is the enforcement),
-   * but a schedule button that accepts and then immediately refuses in the
-   * activity feed is a worse experience than one that says why here.
-   */
   let workingTitle: string
   if (type === 'master') {
     const render = await latestRender(db, projectId, 'master')
@@ -335,12 +328,6 @@ export async function schedulePublish(
   } else {
     const short = await getShort(db, targetId)
     if (!short) return { ok: false, error: 'Unknown Short' }
-    if (!short.relatedLinkChecked) {
-      return {
-        ok: false,
-        error: 'Tick the related-video-link chip on the Shorts screen first.',
-      }
-    }
     const render = short.renderId ? await getRender(db, short.renderId) : undefined
     if (render?.status !== 'done' || !render.outputS3Key) {
       return { ok: false, error: 'This Short has no finished render to upload.' }
@@ -389,9 +376,12 @@ export async function schedulePublish(
 
   // The row first (status back to draft when retrying a failure), THEN the
   // event. A runner that fires between the two finds a claimable record.
+  // `privacyStatus` is written every time so a failed publish-now that gets
+  // re-scheduled onto a slot goes back to private-with-a-moment.
   await updatePublishRecord(db, record.id, {
     status: 'draft',
     publishAt,
+    privacyStatus,
     metadata: { ...record.metadata, ...metadata.data },
     error: null,
   })
@@ -408,6 +398,51 @@ export async function schedulePublish(
 
   revalidatePath(`/projects/${projectId}`)
   return { ok: true }
+}
+
+export async function schedulePublish(
+  targetType: string,
+  targetId: string,
+  publishAtIso: string,
+): Promise<ActionResult> {
+  await requireOwner()
+  const invalid = parseTarget(targetType, targetId)
+  if (invalid) return invalid
+  const type = targetType as 'master' | 'short'
+
+  const projectId = await projectIdOf(type, targetId)
+  if (!projectId) return { ok: false, error: 'Unknown target' }
+
+  const publishAt = new Date(publishAtIso)
+  if (Number.isNaN(publishAt.getTime())) return { ok: false, error: 'That is not a date.' }
+  if (publishAt.getTime() <= Date.now()) {
+    return { ok: false, error: 'That slot is in the past — pick one ahead of now.' }
+  }
+
+  return requestUpload(type, targetId, projectId, publishAt, 'private')
+}
+
+/**
+ * Upload immediately instead of onto a slot (decision 226). Once the API
+ * audit has passed the video goes up public and is live as soon as YouTube
+ * finishes processing; before that the API cannot flip a video public, so it
+ * goes up private with no scheduled moment and the human flips it in Studio
+ * — the same manual step the audit checklist already owns.
+ */
+export async function publishNow(targetType: string, targetId: string): Promise<ActionResult> {
+  await requireOwner()
+  const invalid = parseTarget(targetType, targetId)
+  if (invalid) return invalid
+  const type = targetType as 'master' | 'short'
+
+  const projectId = await projectIdOf(type, targetId)
+  if (!projectId) return { ok: false, error: 'Unknown target' }
+
+  const settings = await getSettings(db)
+  const privacy = settings.publish.apiAuditPassed ? 'public' : 'private'
+  // `publishAt` records the intended public moment — now. The runner sees a
+  // moment that is not ahead and omits it from the upload job.
+  return requestUpload(type, targetId, projectId, new Date(), privacy)
 }
 
 /**
@@ -547,6 +582,34 @@ export async function advanceToPublish(projectId: string): Promise<ActionResult>
   }
 
   await setProjectStage(db, projectId, { stage: 'publish', stageStatus: 'awaiting_review' })
+
+  revalidatePath(`/projects/${projectId}`)
+  revalidatePath('/projects')
+  return { ok: true }
+}
+
+/**
+ * Publish → done is the same shape as shorts → publish: a human decision,
+ * not a gate (decision 226). Nothing waits on "everything is scheduled" —
+ * how many of the Shorts go up, and when, is curation — so a visible button
+ * ends the pipeline instead of a trigger that would have to guess. Scheduled
+ * uploads keep running on their own; every screen stays reachable from the
+ * rail.
+ */
+export async function markProjectDone(projectId: string): Promise<ActionResult> {
+  await requireOwner()
+  if (!UlidSchema.safeParse(projectId).success) return { ok: false, error: 'Unknown project' }
+
+  const project = await getProject(db, projectId)
+  if (!project) return { ok: false, error: 'Unknown project' }
+  if (project.stage !== 'publish') {
+    return { ok: false, error: `This project is on the ${project.stage} stage, not publish.` }
+  }
+  if (await hasLiveRun(db, projectId)) {
+    return { ok: false, error: 'A run is still in flight — let it finish first.' }
+  }
+
+  await setProjectStage(db, projectId, { stage: 'done', stageStatus: 'approved' })
 
   revalidatePath(`/projects/${projectId}`)
   revalidatePath('/projects')

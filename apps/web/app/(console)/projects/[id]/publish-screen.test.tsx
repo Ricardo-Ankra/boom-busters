@@ -1,5 +1,5 @@
 import { PUBLISH_DISCLAIMER } from '@boom-busters/schemas'
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { PublishItemModel, PublishModel } from '@/lib/publish-review'
@@ -20,6 +20,8 @@ vi.mock('../actions', () => ({
 }))
 
 const generateTitles = vi.fn()
+const markProjectDone = vi.fn()
+const publishNow = vi.fn()
 const removeThumbnail = vi.fn()
 const reschedulePublish = vi.fn()
 const retryPublish = vi.fn()
@@ -28,12 +30,21 @@ const schedulePublish = vi.fn()
 const uploadThumbnail = vi.fn()
 vi.mock('./publish-actions', () => ({
   generateTitles: (...args: unknown[]) => generateTitles(...args),
+  markProjectDone: (...args: unknown[]) => markProjectDone(...args),
+  publishNow: (...args: unknown[]) => publishNow(...args),
   removeThumbnail: (...args: unknown[]) => removeThumbnail(...args),
   reschedulePublish: (...args: unknown[]) => reschedulePublish(...args),
   retryPublish: (...args: unknown[]) => retryPublish(...args),
   savePublishDraft: (...args: unknown[]) => savePublishDraft(...args),
   schedulePublish: (...args: unknown[]) => schedulePublish(...args),
   uploadThumbnail: (...args: unknown[]) => uploadThumbnail(...args),
+}))
+
+// The related-link reminder on scheduled Short cards records the Studio act
+// through the Shorts screen's own action — same module, same bookkeeping.
+const setShortRelatedLink = vi.fn()
+vi.mock('./shorts-actions', () => ({
+  setShortRelatedLink: (...args: unknown[]) => setShortRelatedLink(...args),
 }))
 
 const refresh = vi.fn()
@@ -46,11 +57,14 @@ beforeEach(() => {
   vi.clearAllMocks()
   for (const action of [
     generateTitles,
+    markProjectDone,
+    publishNow,
     removeThumbnail,
     reschedulePublish,
     retryPublish,
     savePublishDraft,
     schedulePublish,
+    setShortRelatedLink,
     uploadThumbnail,
   ]) {
     action.mockResolvedValue({ ok: true })
@@ -67,6 +81,7 @@ function masterItem(overrides: Partial<PublishItemModel> = {}): PublishItemModel
     label: 'Wirecard: The 1.9 Billion Euro Lie',
     durationMs: 900_000,
     notReadyReason: null,
+    relatedLinkChecked: null,
     record: null,
     ...overrides,
   }
@@ -79,6 +94,7 @@ function shortItem(overrides: Partial<PublishItemModel> = {}): PublishItemModel 
     label: 'EY refused to sign the accounts.',
     durationMs: null,
     notReadyReason: null,
+    relatedLinkChecked: false,
     record: null,
     ...overrides,
   }
@@ -109,8 +125,15 @@ function model(overrides: Partial<PublishModel> = {}): PublishModel {
   }
 }
 
-function renderScreen(overrides: Partial<PublishModel> = {}, live = false) {
-  return render(<PublishScreen projectId={PROJECT} model={model(overrides)} live={live} />)
+function renderScreen(overrides: Partial<PublishModel> = {}, live = false, canFinish = false) {
+  return render(
+    <PublishScreen
+      projectId={PROJECT}
+      model={model(overrides)}
+      live={live}
+      canFinish={canFinish}
+    />,
+  )
 }
 
 describe('PublishScreen', () => {
@@ -386,6 +409,114 @@ describe('PublishScreen', () => {
     expect(at.getTime()).toBeGreaterThan(Date.now())
     expect(at.getUTCDay()).toBe(5)
     expect(at.getUTCHours()).toBe(15)
+  })
+
+  it('Publish now is a two-step; pre-audit the consequence keeps the Studio flip human', async () => {
+    const user = userEvent.setup()
+    renderScreen({}, true)
+
+    await user.click(screen.getByRole('button', { name: 'Publish now' }))
+    expect(publishNow).not.toHaveBeenCalled()
+    expect(screen.getByText(/flip it public in YouTube Studio yourself/)).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Upload it now' }))
+    expect(publishNow).toHaveBeenCalledWith('master', PROJECT)
+  })
+
+  it('post-audit, Publish now says the video goes public on its own', async () => {
+    const user = userEvent.setup()
+    renderScreen({ apiAuditPassed: true }, true)
+
+    await user.click(screen.getByRole('button', { name: 'Publish now' }))
+    expect(
+      screen.getByText(/goes public as soon as YouTube finishes processing/),
+    ).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Upload and go public' }))
+    expect(publishNow).toHaveBeenCalledWith('master', PROJECT)
+  })
+
+  it('an unready item offers no Publish now either', () => {
+    renderScreen({
+      items: [masterItem({ notReadyReason: 'There is no finished master render yet.' })],
+    })
+    expect(screen.queryByRole('button', { name: 'Publish now' })).not.toBeInTheDocument()
+  })
+
+  it('a custom time schedules the selected item at exactly that moment', async () => {
+    const user = userEvent.setup()
+    renderScreen()
+
+    const input = screen.getByLabelText(/custom time/i)
+    // Ahead of any conceivable test clock; datetime-local speaks local time.
+    // fireEvent.change, because user-event cannot type into datetime-local.
+    fireEvent.change(input, { target: { value: '2035-06-15T09:30' } })
+    await user.click(screen.getByRole('button', { name: 'Schedule at this time' }))
+
+    expect(schedulePublish).toHaveBeenCalledWith(
+      'master',
+      PROJECT,
+      new Date('2035-06-15T09:30').toISOString(),
+    )
+  })
+
+  it('a past custom time gets a refusal in words, not a call', () => {
+    renderScreen()
+
+    fireEvent.change(screen.getByLabelText(/custom time/i), {
+      target: { value: '2001-01-01T00:00' },
+    })
+    expect(screen.getByText('Pick a moment ahead of now.')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Schedule at this time' })).toBeDisabled()
+    expect(schedulePublish).not.toHaveBeenCalled()
+  })
+
+  it('a scheduled Short without its Studio link wears the reminder, and one click records it', async () => {
+    const user = userEvent.setup()
+    renderScreen({
+      items: [
+        shortItem({
+          relatedLinkChecked: false,
+          record: {
+            id: '01HQ00000000000000000000P1',
+            status: 'scheduled',
+            publishAtIso: '2026-08-28T15:00:00.000Z',
+            youtubeVideoId: 'mock-short-1',
+            errorMessage: null,
+            title: 'EY refused to sign.',
+            titleOptions: [],
+            descriptionBody: null,
+            tags: [],
+            thumbs: [],
+          },
+        }),
+      ],
+    })
+
+    const reminder = screen.getByRole('button', { name: /set the related video link in Studio/i })
+    await user.click(reminder)
+    expect(setShortRelatedLink).toHaveBeenCalledWith(SHORT, true)
+  })
+
+  it('a draft Short shows no reminder — there is nothing on YouTube to link yet', () => {
+    renderScreen({ items: [shortItem({ relatedLinkChecked: false })] })
+    expect(
+      screen.queryByRole('button', { name: /set the related video link in Studio/i }),
+    ).not.toBeInTheDocument()
+  })
+
+  it('Mark project as Done is offered only while the project owns the stage, and confirms', async () => {
+    const user = userEvent.setup()
+    const { unmount } = renderScreen()
+    expect(screen.queryByRole('button', { name: 'Mark project as Done' })).not.toBeInTheDocument()
+    unmount()
+
+    renderScreen({}, false, true)
+    await user.click(screen.getByRole('button', { name: 'Mark project as Done' }))
+    expect(markProjectDone).not.toHaveBeenCalled()
+    expect(screen.getByText(/Nothing is cancelled/)).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Mark it Done' }))
+    expect(markProjectDone).toHaveBeenCalledWith(PROJECT)
   })
 
   it('a live item offers no move — there is no moment left to change', () => {

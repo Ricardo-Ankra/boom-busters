@@ -182,6 +182,23 @@ test.describe('the publish flow', () => {
       await expect(page.getByText('Scheduled', { exact: true }).first()).toBeVisible()
     }).toPass({ timeout: 30_000 })
   })
+
+  // Last in the file on purpose: after this the project has left the
+  // pipeline, and every test above needs it parked at publish.
+  test('the pipeline ends on a button: Mark project as Done (decision 226)', async ({ page }) => {
+    await page.getByRole('button', { name: 'Mark project as Done' }).click()
+    await page.getByRole('button', { name: 'Mark it Done' }).click()
+    await expect(page.getByText(/marked as done/i).first()).toBeVisible({ timeout: 15_000 })
+
+    // The stage change survives a reload, and the header stops promising
+    // motion that is never coming.
+    await expect(async () => {
+      await page.reload()
+      await expect(page.getByText(/every screen stays reachable from the rail/i)).toBeVisible({
+        timeout: 5_000,
+      })
+    }).toPass({ timeout: 30_000 })
+  })
 })
 
 /**

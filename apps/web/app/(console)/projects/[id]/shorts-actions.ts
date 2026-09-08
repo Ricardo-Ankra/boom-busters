@@ -11,8 +11,10 @@ import { events } from '@/inngest/events'
 /**
  * The Shorts screen's actions (build spec section 11.3): edit a card's
  * metadata, toggle its ending, tick the related-link checklist, and ask for
- * a (re-)render. Scheduling is NOT here — that is the Publish screen (M7.7),
- * and the related-link chip is its precondition.
+ * a (re-)render. Scheduling is NOT here — that is the Publish screen (M7.7).
+ * The related-link chip is bookkeeping, not a scheduling precondition
+ * (decision 226): the Publish screen also calls `setShortRelatedLink` from
+ * its post-upload reminder.
  */
 
 export interface ActionResult {
