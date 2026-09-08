@@ -13,9 +13,11 @@ import { ShortsScreen } from './shorts-screen'
 
 // project-controls (for useAction) drags '../actions' in, and with it
 // next-auth — which cannot load under jsdom. Same mock the preview test uses.
+const restartStage = vi.fn()
 vi.mock('../actions', () => ({
   approveGate: vi.fn(),
   stopProject: vi.fn(),
+  restartStage: (...args: unknown[]) => restartStage(...args),
 }))
 
 const updateShortDetails = vi.fn()
@@ -207,6 +209,23 @@ describe('ShortsScreen', () => {
     advanceToPublish.mockResolvedValue({ ok: true })
     await user.click(screen.getByRole('button', { name: /continue to publish/i }))
     expect(advanceToPublish).toHaveBeenCalledWith(PROJECT)
+  })
+
+  it('the curation footer can re-run the stage, and says the cards are kept', async () => {
+    // Without this button the curation state had no way to run the stage:
+    // the header shows no restart while there is something to curate, and
+    // the only path was a detour through Publish and back (owner report,
+    // 2026-09-08).
+    const user = userEvent.setup()
+    render(<ShortsScreen projectId={PROJECT} shorts={[card()]} live={false} canAdvance />)
+
+    await user.click(screen.getByRole('button', { name: /run the shorts stage again/i }))
+    expect(restartStage).not.toHaveBeenCalled()
+    expect(screen.getByText(/Your cards are kept exactly as curated/)).toBeInTheDocument()
+
+    restartStage.mockResolvedValue({ ok: true })
+    await user.click(screen.getByRole('button', { name: 'Run it again' }))
+    expect(restartStage).toHaveBeenCalledWith(PROJECT, 'shorts')
   })
 
   it('every action is a visible labelled button — no menus, no shortcuts', () => {

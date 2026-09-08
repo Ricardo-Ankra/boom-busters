@@ -60,12 +60,19 @@ export function RestartRunButton({
   stage,
   label,
   downstream = [],
+  consequence: consequenceOverride,
 }: {
   projectId: string
   stage: string
   label: string
   /** The stages this re-run would leave stale, named rather than implied. */
   downstream?: readonly { stage: string }[]
+  /**
+   * Replaces the generic replace-and-respend sentence for stages whose
+   * re-run does something gentler (shorts re-entry keeps curated rows and
+   * only adds what is missing).
+   */
+  consequence?: string
 }) {
   const act = useAction()
 
@@ -79,14 +86,15 @@ export function RestartRunButton({
    * dismissed by people who did not want to delete anything.
    */
   const consequence =
-    downstream.length > 0
+    consequenceOverride ??
+    (downstream.length > 0
       ? `This stage runs from the start and costs what it cost the first time. ` +
         `The ${downstream.map((view) => view.stage).join(' and ')} stage${
           downstream.length === 1 ? '' : 's'
         } will be marked as built from older work — kept and still readable, ` +
         `but needing a re-run to be current again. Hand edits to the current script are kept ` +
         `on the old version and are NOT carried into a newly drafted one.`
-      : 'This stage runs from the start and replaces what it produced last time. It costs what it cost the first time.'
+      : 'This stage runs from the start and replaces what it produced last time. It costs what it cost the first time.')
 
   return (
     <ConfirmButton

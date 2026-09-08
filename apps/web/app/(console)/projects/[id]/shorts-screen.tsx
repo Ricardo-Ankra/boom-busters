@@ -14,7 +14,7 @@ import {
   updateShortDetails,
 } from './shorts-actions'
 import { advanceToPublish } from './publish-actions'
-import { useAction } from './project-controls'
+import { RestartRunButton, useAction } from './project-controls'
 
 /**
  * The Shorts screen (build spec section 11.3): a card grid — vertical 9:16
@@ -56,12 +56,31 @@ export function ShortsScreen({
             Done curating? Scheduling — slots, titles, thumbnails — happens on the Publish screen.
             Un-rendered Shorts can still be rendered from here afterwards.
           </p>
-          <Button
-            variant="primary"
-            onClick={() => void act(() => advanceToPublish(projectId), 'On to the Publish screen')}
-          >
-            Continue to Publish
-          </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            {/* Re-entry is additive, never destructive: curated cards are
+                kept exactly as edited, and only what is missing — a teaser,
+                new candidates — gets built (decision 225). Without this the
+                curation state had no way to run the stage at all: the header
+                deliberately shows no restart while there is something to
+                curate, and the only path was a detour through Publish. */}
+            <RestartRunButton
+              projectId={projectId}
+              stage="shorts"
+              label="Run the shorts stage again"
+              consequence={
+                'Your cards are kept exactly as curated. The run re-marks nothing that exists — ' +
+                'it only builds what is missing, such as the teaser, and starts its render.'
+              }
+            />
+            <Button
+              variant="primary"
+              onClick={() =>
+                void act(() => advanceToPublish(projectId), 'On to the Publish screen')
+              }
+            >
+              Continue to Publish
+            </Button>
+          </div>
         </section>
       ) : null}
     </div>
