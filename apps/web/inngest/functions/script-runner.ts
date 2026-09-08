@@ -7,6 +7,7 @@ import {
   saveChapter,
   saveClaimRefs,
   scriptableClaims,
+  setScriptOutline,
   setShortsCandidates,
   setChapterWarnings,
   setProjectStage,
@@ -26,6 +27,7 @@ import {
   parseSelfCheck,
   parseShortsCandidates,
   mockProvidersEnabled,
+  tensionFromOutline,
 } from '@boom-busters/providers'
 import type { ScriptClaim } from '@boom-busters/providers'
 import type { Outline, ShortsCandidate } from '@boom-busters/schemas'
@@ -169,6 +171,13 @@ export const scriptRunner = inngest.createFunction(
 
     const outline = outlineStep.outline
 
+    // The outline outlives this run on the script row: its tension fields are
+    // what the Shorts marking and the teaser script select by, and both can
+    // run days later (decision 224).
+    await step.run('save-outline', () =>
+      setScriptOutline(db, setup.scriptId, outline as unknown as Record<string, unknown>),
+    )
+
     // -----------------------------------------------------------------------
     // Chapters, in order, each seamed onto the last
     // -----------------------------------------------------------------------
@@ -278,7 +287,12 @@ export const scriptRunner = inngest.createFunction(
       // convenience for M7; the narration is the deliverable.
       try {
         return parseShortsCandidates(
-          (await callLlm(buildShortsRequest({ chapters: written }), { projectId })).text,
+          (
+            await callLlm(
+              buildShortsRequest({ chapters: written, tension: tensionFromOutline(outline) }),
+              { projectId },
+            )
+          ).text,
         )
       } catch (error) {
         console.error('[script-runner] Shorts marking failed', serialiseError(error))

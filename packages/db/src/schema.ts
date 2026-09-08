@@ -367,6 +367,15 @@ export const scripts = pgTable(
           hookRationale: string
         }[]
       >(),
+    /**
+     * The outline the chapters were drafted from, kept for what it knows and
+     * the chapters do not: the tension fields (decision 216's central
+     * question, per-chapter question and withhold). The Shorts marking and
+     * the teaser script are written FROM those, and both can run long after
+     * the script stage's memory of the outline is gone. Null for scripts
+     * written before this column existed; consumers degrade to text-only.
+     */
+    outline: jsonb('outline').$type<Record<string, unknown>>(),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },

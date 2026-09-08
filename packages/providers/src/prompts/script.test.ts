@@ -16,6 +16,7 @@ import {
   parseShortsCandidates,
   scriptWordCount,
   tensionContract,
+  tensionFromOutline,
 } from './script'
 import type { ScriptClaim } from './script'
 
@@ -369,12 +370,57 @@ describe('parseOutline and parseShortsCandidates', () => {
 })
 
 describe('buildShortsRequest', () => {
-  it('asks for segments that stand alone', () => {
+  it('asks for teaser segments that end before a reveal, not summaries', () => {
     const request = buildShortsRequest({
       chapters: [{ index: 0, title: 'One', contentMd: 'Text.' }],
     })
-    expect(request.system).toMatch(/stands alone/)
+    expect(request.system).toMatch(/TEASER, not a summary/)
+    expect(request.system).toMatch(/END right BEFORE a reveal/)
+    expect(request.system).toMatch(/Never include the sentence that resolves/)
     expect(request.task).toBe('metadata')
+  })
+
+  it('threads the tension fields into the message when the outline carries them', () => {
+    const request = buildShortsRequest({
+      chapters: [{ index: 0, title: 'One', contentMd: 'Text.' }],
+      tension: {
+        centralQuestion: 'How did 1.9 billion euros never exist?',
+        chapters: [
+          { index: 0, question: 'Who signed the audits?', withhold: 'the auditor resigned' },
+          { index: 1 },
+        ],
+      },
+    })
+    const message = request.messages[0]!.content
+    expect(message).toContain('How did 1.9 billion euros never exist?')
+    expect(message).toContain('Who signed the audits?')
+    expect(message).toContain('withholds: the auditor resigned')
+    // A chapter with no tension fields contributes no line.
+    expect(message).not.toContain('Chapter 1:')
+  })
+
+  it('degrades to text-only for a script whose outline was never kept', () => {
+    const request = buildShortsRequest({
+      chapters: [{ index: 0, title: 'One', contentMd: 'Text.' }],
+    })
+    expect(request.messages[0]!.content).not.toContain('withholds')
+    expect(request.messages[0]!.content).toContain('## Chapter 0')
+  })
+})
+
+describe('tensionFromOutline', () => {
+  it('carries the question and withhold per chapter, indexed by position', () => {
+    expect(tensionFromOutline(outline)).toEqual({
+      centralQuestion: 'How did 1.9 billion euros never exist?',
+      chapters: [
+        {
+          index: 0,
+          question: 'Why did the auditors keep signing?',
+          withhold: 'The accounts in Manila were empty all along.',
+        },
+        { index: 1, question: undefined, withhold: undefined },
+      ],
+    })
   })
 })
 

@@ -318,6 +318,22 @@ export async function setShortsCandidates(
 }
 
 /**
+ * Keep the outline the chapters were drafted from.
+ *
+ * The chapters carry the words; only the outline carries the tension fields
+ * (decision 216) that the Shorts marking and the teaser script select by.
+ * Both of those can run long after the script run's memory is gone, so the
+ * outline has to survive on the row.
+ */
+export async function setScriptOutline(
+  db: Database,
+  scriptId: string,
+  outline: Record<string, unknown>,
+): Promise<void> {
+  await db.update(scripts).set({ outline, updatedAt: new Date() }).where(eq(scripts.id, scriptId))
+}
+
+/**
  * Put a script's chapters in a new order.
  *
  * Two phases inside one transaction. `(scriptId, index)` is unique, so writing

@@ -3429,6 +3429,23 @@ published and audited. The daily `channels.list` health ping and the
      project SITS at shorts, like the preview model. Recovery for the stuck
      project: Re-run stage on Shorts.
 
+224. **Shorts are marked as teasers, selected by the outline's tension
+     fields** (2026-09-08, owner direction: a run should yield the full
+     video, one dedicated teaser Short, and smarter excerpt Shorts; this
+     decision ships the excerpt half). The marking prompt asked for segments
+     that "stand alone", which selects summaries; a segment that resolves
+     its own tension gives a scroller no reason to click through. The
+     rewritten prompt selects funnels: open on the most arresting sentence,
+     end right before a reveal, never include the resolving sentence. To
+     select by tension the outline now SURVIVES: migration 0016 adds
+     `scripts.outline` (nullable jsonb; the outline was previously in-memory
+     only), the script-runner persists it after the outline step, and both
+     marking call sites thread `tensionFromOutline` into the prompt. The
+     shorts-runner safeParses the stored outline so a pre-224 script or a
+     malformed row costs the hints, never the marking. The dedicated teaser
+     Short (its own 25-40s script, TTS and mini-timeline) is the next
+     feature, on its own branch.
+
 **Status:** `[x]` done — dossier + Studio shipped with unit, component and
 e2e coverage; spec §11.3 amended in place with dated notes.
 

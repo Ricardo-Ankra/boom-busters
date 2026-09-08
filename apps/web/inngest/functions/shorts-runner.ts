@@ -14,9 +14,11 @@ import {
   mockProvidersEnabled,
   mockShortsCandidates,
   parseShortsCandidates,
+  tensionFromOutline,
 } from '@boom-busters/providers'
 import {
   BudgetExceededError,
+  OutlineSchema,
   parseEventData,
   resolveCandidateSegment,
   serialiseError,
@@ -115,13 +117,28 @@ export const shortsRunner = inngest.createFunction(
         contentMd: chapter.contentMd,
       }))
 
+      // The stored outline carries the tension fields the marking selects
+      // by; a pre-decision-224 script has none, and the prompt degrades to
+      // text-only. safeParse, not parse: a malformed stored outline must
+      // cost the tension hints, never the marking.
+      const parsedOutline = OutlineSchema.safeParse(latest.script.outline)
+      const tension = parsedOutline.success ? tensionFromOutline(parsedOutline.data) : undefined
+
       let picked
       if (mockProvidersEnabled()) {
         picked = mockShortsCandidates(chapterSources)
       } else {
         try {
           picked = parseShortsCandidates(
-            (await callLlm(buildShortsRequest({ chapters: chapterSources }), { projectId })).text,
+            (
+              await callLlm(
+                buildShortsRequest({
+                  chapters: chapterSources,
+                  ...(tension ? { tension } : {}),
+                }),
+                { projectId },
+              )
+            ).text,
           )
         } catch (error) {
           if (error instanceof BudgetExceededError) {

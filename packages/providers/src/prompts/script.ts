@@ -316,14 +316,53 @@ export function parseSelfCheck(text: string): SelfCheck {
 // Shorts candidates
 // ---------------------------------------------------------------------------
 
+/** The tension fields a Shorts marking can select by (decision 224). */
+export interface ShortsTension {
+  centralQuestion?: string | undefined
+  chapters: readonly {
+    index: number
+    question?: string | undefined
+    withhold?: string | undefined
+  }[]
+}
+
 export function buildShortsRequest(input: {
   chapters: readonly { index: number; title: string; contentMd: string }[]
+  /** From the stored outline; absent for scripts written before it was kept. */
+  tension?: ShortsTension
 }): LLMTaskRequest {
+  const tensionLines = input.tension
+    ? [
+        input.tension.centralQuestion
+          ? `The whole film exists to answer: ${input.tension.centralQuestion}`
+          : null,
+        ...input.tension.chapters
+          .filter((chapter) => chapter.question || chapter.withhold)
+          .map(
+            (chapter) =>
+              `Chapter ${chapter.index}:` +
+              (chapter.question ? ` drives on "${chapter.question}"` : '') +
+              (chapter.withhold ? ` and withholds: ${chapter.withhold}` : ''),
+          ),
+      ].filter((line): line is string => line !== null)
+    : []
+
   return {
     task: 'metadata',
-    system: `Pick 5 segments from this script that would work as vertical
-Shorts. A segment is 20-50 seconds of narration — roughly 50 to 125 words —
-that stands alone without the rest of the video.
+    system: `Pick 4 segments from this script that would work as vertical
+Shorts. A segment is 20-50 seconds of narration, roughly 50 to 125 words.
+
+Each segment is a TEASER, not a summary. It funnels a scroller into the
+full video, so:
+
+- OPEN on the most arresting sentence available: a number that should not
+  exist, a person doing something inexplicable, a flat contradiction. Never
+  open on scene-setting or dates.
+- END right BEFORE a reveal. The last sentence must sharpen a question, not
+  answer one. If the chapter answers its question two sentences later, stop
+  before those sentences.
+- Never include the sentence that resolves the tension you opened with. A
+  viewer who has the answer has no reason to click through.
 
 Quote the first and last sentence of each segment EXACTLY as they appear.
 
@@ -332,9 +371,17 @@ Quote the first and last sentence of each segment EXACTLY as they appear.
     messages: [
       {
         role: 'user',
-        content: input.chapters
-          .map((c) => `## Chapter ${c.index} — ${c.title}\n\n${c.contentMd}`)
-          .join('\n\n'),
+        content: [
+          tensionLines.length > 0
+            ? `The questions each chapter drives on, and what it withholds — end segments
+before these are answered:\n${tensionLines.join('\n')}\n`
+            : null,
+          input.chapters
+            .map((c) => `## Chapter ${c.index} — ${c.title}\n\n${c.contentMd}`)
+            .join('\n\n'),
+        ]
+          .filter((part): part is string => part !== null)
+          .join('\n'),
       },
     ],
     maxTokens: outputBudget(3000),
@@ -343,6 +390,18 @@ Quote the first and last sentence of each segment EXACTLY as they appear.
 
 export function parseShortsCandidates(text: string): ShortsCandidate[] {
   return parseJsonCompletion(text, ShortsCandidatesSchema, 'Shorts candidates').candidates
+}
+
+/** The marking-relevant slice of an outline, shaped for `buildShortsRequest`. */
+export function tensionFromOutline(outline: Outline): ShortsTension {
+  return {
+    centralQuestion: outline.centralQuestion,
+    chapters: outline.chapters.map((chapter, index) => ({
+      index,
+      question: chapter.question,
+      withhold: chapter.withhold,
+    })),
+  }
 }
 
 // ---------------------------------------------------------------------------
