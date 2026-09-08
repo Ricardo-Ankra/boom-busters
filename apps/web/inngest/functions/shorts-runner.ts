@@ -6,14 +6,18 @@ import {
   latestScriptParagraphSources,
   latestTimeline,
   listShorts,
+  MOCK_KEY_PREFIX,
   setProjectStage,
   setShortsCandidates,
 } from '@boom-busters/db'
 import {
   buildShortsRequest,
+  buildTeaserRequest,
   mockProvidersEnabled,
   mockShortsCandidates,
+  mockTeaser,
   parseShortsCandidates,
+  parseTeaser,
   tensionFromOutline,
 } from '@boom-busters/providers'
 import {
@@ -26,10 +30,17 @@ import {
   TimelineSchema,
   ValidationError,
 } from '@boom-busters/schemas'
-import { compileShortTimeline } from '@boom-busters/timeline'
+import {
+  compileShortTimeline,
+  compileTeaserMaster,
+  TEASER_CHAPTER_ID,
+} from '@boom-busters/timeline'
+import type { TeaserParagraphAudio } from '@boom-busters/timeline'
 import { NonRetriableError } from 'inngest'
 import { db } from '@/lib/db'
 import { callLlm } from '@/lib/llm'
+import { putObject, takeStorage } from '@/lib/storage'
+import { synthesise } from '@/lib/tts'
 import { inngest } from '../client'
 import { events } from '../events'
 import { budgetGateData, markStageFailed, type GateContext } from '../lib/gates'
@@ -209,12 +220,191 @@ export const shortsRunner = inngest.createFunction(
       return { created, skipped, reused: 0 }
     })
 
-    if (outcome.created.length > 0) {
+    // -------------------------------------------------------------------------
+    // The teaser (decision 225): its own narration, the board's visuals
+    // -------------------------------------------------------------------------
+
+    /**
+     * An excerpt slices what was said; the teaser says something new. Its
+     * 25-40s narration is written for the funnel (cold open, escalation,
+     * cliffhanger), synthesised fresh, and cut over slots lifted from the
+     * master. A teaser failure SKIPS with its reason rather than failing the
+     * stage: the excerpts above are complete deliverables, and a re-run
+     * rebuilds the teaser (synthesis is idempotency-keyed, so paragraphs
+     * already bought are re-served by the vendor, not re-billed).
+     */
+    const teaserScript = await step.run(
+      'write-teaser',
+      async (): Promise<
+        | {
+            ok: true
+            title: string
+            paragraphs: { text: string; chapterIndex: number }[]
+            scriptVersion: number
+          }
+        | { ok: false; gate: Record<string, unknown> }
+        | { ok: false; skipped: string }
+      > => {
+        // Re-entry keeps curated rows, teaser included.
+        if (outcome.reused > 0) return { ok: false, skipped: 'existing rows kept' }
+
+        const latest = await getLatestScript(db, projectId)
+        if (!latest) return { ok: false, skipped: 'there is no script to write a teaser from' }
+        const chapterSources = latest.chapters.map((chapter) => ({
+          index: chapter.index,
+          title: chapter.title,
+          contentMd: chapter.contentMd,
+        }))
+        const parsedOutline = OutlineSchema.safeParse(latest.script.outline)
+        const tension = parsedOutline.success ? tensionFromOutline(parsedOutline.data) : undefined
+
+        try {
+          const project = await getProject(db, projectId)
+          const teaser = mockProvidersEnabled()
+            ? mockTeaser(chapterSources)
+            : parseTeaser(
+                (
+                  await callLlm(
+                    buildTeaserRequest({
+                      caseTitle: project?.title ?? '',
+                      chapters: chapterSources,
+                      ...(tension ? { tension } : {}),
+                    }),
+                    { projectId },
+                  )
+                ).text,
+              )
+          return { ok: true, ...teaser, scriptVersion: latest.script.version }
+        } catch (error) {
+          if (error instanceof BudgetExceededError) {
+            return { ok: false, gate: budgetGateData(error) }
+          }
+          return {
+            ok: false,
+            skipped: `the teaser script failed: ${String(serialiseError(error).message ?? 'unknown')}`,
+          }
+        }
+      },
+    )
+
+    if (!teaserScript.ok && 'gate' in teaserScript) {
+      await step.run('teaser-over-budget', () => markStageFailed(ctx, teaserScript.gate))
+      return { projectId, outcome: 'over-budget' as const }
+    }
+
+    let teaserSkipped = teaserScript.ok ? null : teaserScript.skipped
+    let teaserShortId: string | null = null
+
+    if (teaserScript.ok) {
+      const voiced: TeaserParagraphAudio[] = []
+      for (const [index, paragraph] of teaserScript.paragraphs.entries()) {
+        if (teaserSkipped) break
+        const spoken = await step.run(
+          `teaser-tts-${index}`,
+          async (): Promise<
+            | {
+                ok: true
+                r2Key: string
+                durationMs: number
+                wordTimings: TeaserParagraphAudio['wordTimings']
+              }
+            | { ok: false; gate: Record<string, unknown> }
+            | { ok: false; skipped: string }
+          > => {
+            try {
+              const narration = await synthesise({
+                text: paragraph.text,
+                // The teaser's own identity: same script version, same beat,
+                // same text length re-serves the earlier synthesis.
+                idempotencyKey: `teaser:${projectId}:${teaserScript.scriptVersion}:${index}:${paragraph.text.length}`,
+                projectId,
+              })
+              const r2Key =
+                takeStorage() === 'r2'
+                  ? (
+                      await putObject(
+                        `boom-busters/voice/${projectId}/teaser/v${teaserScript.scriptVersion}-${index}.wav`,
+                        narration.wav,
+                        'audio/wav',
+                      )
+                    ).key
+                  : `${MOCK_KEY_PREFIX}voice/teaser-${projectId}-${index}.wav`
+              return {
+                ok: true,
+                r2Key,
+                durationMs: narration.durationMs,
+                wordTimings: narration.wordTimings ?? null,
+              }
+            } catch (error) {
+              if (error instanceof BudgetExceededError) {
+                return { ok: false, gate: budgetGateData(error) }
+              }
+              return {
+                ok: false,
+                skipped: `beat ${index + 1} could not be synthesised: ${String(serialiseError(error).message ?? 'unknown')}`,
+              }
+            }
+          },
+        )
+
+        if (!spoken.ok && 'gate' in spoken) {
+          await step.run('teaser-tts-over-budget', () => markStageFailed(ctx, spoken.gate))
+          return { projectId, outcome: 'over-budget' as const }
+        }
+        if (!spoken.ok) {
+          teaserSkipped = spoken.skipped
+          break
+        }
+        voiced.push({
+          text: paragraph.text,
+          chapterIndex: paragraph.chapterIndex,
+          r2Key: spoken.r2Key,
+          durationMs: spoken.durationMs,
+          wordTimings: spoken.wordTimings,
+        })
+      }
+
+      if (!teaserSkipped) {
+        const assembled = await step.run(
+          'assemble-teaser',
+          async (): Promise<{ shortId: string } | { skipped: string }> => {
+            const timelineRow = await latestTimeline(db, projectId)
+            if (!timelineRow) return { skipped: 'there is no master timeline to lift visuals from' }
+            try {
+              const teaserTimeline = compileTeaserMaster({
+                master: TimelineSchema.parse(timelineRow.json),
+                paragraphs: voiced,
+              })
+              const short = await insertShort(db, {
+                projectId,
+                title: teaserScript.title,
+                segmentRef: {
+                  chapterId: TEASER_CHAPTER_ID,
+                  fromParagraph: 0,
+                  toParagraph: voiced.length - 1,
+                },
+                kind: 'teaser',
+                sourceTimeline: teaserTimeline as unknown as Record<string, unknown>,
+              })
+              return { shortId: short.id }
+            } catch (error) {
+              if (error instanceof ValidationError) {
+                return { skipped: `the teaser could not be assembled: ${error.message}` }
+              }
+              throw error
+            }
+          },
+        )
+        if ('shortId' in assembled) teaserShortId = assembled.shortId
+        else teaserSkipped = assembled.skipped
+      }
+    }
+
+    const toRender = [...outcome.created, ...(teaserShortId ? [teaserShortId] : [])]
+    if (toRender.length > 0) {
       await step.sendEvent(
         'request-short-renders',
-        outcome.created.map((shortId) =>
-          events.shortsRenderRequested.create({ projectId, shortId }),
-        ),
+        toRender.map((shortId) => events.shortsRenderRequested.create({ projectId, shortId })),
       )
     }
 
@@ -225,7 +415,7 @@ export const shortsRunner = inngest.createFunction(
      * — Re-run stage is the recovery, and the marking step above makes that
      * re-run able to succeed.
      */
-    if (outcome.reused === 0 && outcome.created.length === 0) {
+    if (outcome.reused === 0 && toRender.length === 0) {
       await step.run('nothing-to-review', () =>
         markStageFailed(ctx, {
           message:
@@ -256,6 +446,7 @@ export const shortsRunner = inngest.createFunction(
       created: outcome.created.length,
       reused: outcome.reused,
       skipped: outcome.skipped,
+      teaser: teaserShortId ?? (teaserSkipped ? `skipped: ${teaserSkipped}` : null),
     }
   },
 )

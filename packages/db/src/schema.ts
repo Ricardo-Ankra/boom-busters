@@ -142,6 +142,9 @@ export const renderStatusEnum = pgEnum('render_status', [
 
 export const shortEndingEnum = pgEnum('short_ending', ['loop', 'cta'])
 
+/** Excerpts slice the master; a teaser carries its own narration (decision 225). */
+export const shortKindEnum = pgEnum('short_kind', ['excerpt', 'teaser'])
+
 export const publishTargetEnum = pgEnum('publish_target', ['master', 'short'])
 export const publishStatusEnum = pgEnum('publish_status', [
   'draft',
@@ -635,6 +638,21 @@ export const shorts = pgTable(
     renderId: text('render_id'),
     /** "Set related video link in Studio" must be ticked before scheduling. */
     relatedLinkChecked: boolean('related_link_checked').notNull().default(false),
+    /**
+     * What this Short is (decision 225). An `excerpt` slices the project's
+     * master timeline through `segmentRef`, exactly as every Short did before
+     * the column existed, which is why that is the default. A `teaser` has
+     * its own narration and carries its own mini master in `sourceTimeline`.
+     */
+    kind: shortKindEnum('kind').notNull().default('excerpt'),
+    /**
+     * A teaser's own mini master timeline: purpose-written narration, slots
+     * lifted from the project master, captions from the synthesis timings.
+     * `segmentRef` then points INTO this timeline rather than the project's,
+     * and the render slices it with the same window logic excerpts use. Null
+     * for excerpts.
+     */
+    sourceTimeline: jsonb('source_timeline').$type<Record<string, unknown>>(),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },

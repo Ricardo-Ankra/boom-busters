@@ -2,10 +2,11 @@ import {
   OutlineSchema,
   SelfCheckSchema,
   ShortsCandidatesSchema,
+  TeaserScriptSchema,
   countWords,
   splitSentences,
 } from '@boom-busters/schemas'
-import type { Outline, SelfCheck, ShortsCandidate } from '@boom-busters/schemas'
+import type { Outline, SelfCheck, ShortsCandidate, TeaserScript } from '@boom-busters/schemas'
 import { parseJsonCompletion } from './json'
 import { SCRIPT_CRAFT } from './script-craft'
 import { outputBudget } from '../llm/types'
@@ -390,6 +391,94 @@ before these are answered:\n${tensionLines.join('\n')}\n`
 
 export function parseShortsCandidates(text: string): ShortsCandidate[] {
   return parseJsonCompletion(text, ShortsCandidatesSchema, 'Shorts candidates').candidates
+}
+
+// ---------------------------------------------------------------------------
+// The teaser script (decision 225)
+// ---------------------------------------------------------------------------
+
+export function buildTeaserRequest(input: {
+  caseTitle: string
+  chapters: readonly { index: number; title: string; contentMd: string }[]
+  tension?: ShortsTension
+}): LLMTaskRequest {
+  const tensionBlock = input.tension
+    ? [
+        input.tension.centralQuestion
+          ? `The film's central question, which the teaser must sharpen and NEVER answer: ${input.tension.centralQuestion}`
+          : null,
+        ...input.tension.chapters
+          .filter((chapter) => chapter.withhold)
+          .map((chapter) => `Chapter ${chapter.index} withholds: ${chapter.withhold}`),
+      ].filter((line): line is string => line !== null)
+    : []
+
+  return {
+    task: 'scripting',
+    system: `Write a 25-40 second teaser narration (60-110 words total) for a
+vertical Short that funnels viewers into the full video.
+
+Structure, one paragraph per beat:
+1. COLD OPEN: the single most arresting fact, mid-action, no preamble.
+2-3. ESCALATION: one or two beats that raise what is at stake.
+4. CLIFFHANGER: end on the sharpest open question. Do NOT answer it, and do
+   not soften it with a summary.
+
+Rules:
+- Every fact must come from the script below. Invent nothing.
+- Spoken register: short sentences, concrete nouns, numbers said plainly.
+- No greetings, no "in this video", no channel talk. The end-card asks for
+  the click; the words never do.
+- Each paragraph carries the chapterIndex whose part of the story it draws
+  from, so the edit can show that chapter's visuals behind it.
+
+Return exactly:
+{"title": string, "paragraphs": [{"text": string, "chapterIndex": number}]}`,
+    messages: [
+      {
+        role: 'user',
+        content: [
+          `Case: ${input.caseTitle}`,
+          tensionBlock.length > 0 ? tensionBlock.join('\n') : null,
+          input.chapters
+            .map((c) => `## Chapter ${c.index} — ${c.title}\n\n${c.contentMd}`)
+            .join('\n\n'),
+        ]
+          .filter((part): part is string => part !== null)
+          .join('\n\n'),
+      },
+    ],
+    maxTokens: outputBudget(1500),
+  }
+}
+
+export function parseTeaser(text: string): TeaserScript {
+  return parseJsonCompletion(text, TeaserScriptSchema, 'teaser script')
+}
+
+/** Deterministic, so mock runs and the E2E suite get a stable teaser. */
+export function mockTeaser(
+  chapters: readonly { index: number; title: string; contentMd: string }[],
+): TeaserScript {
+  const first = chapters[0]
+  const last = chapters[chapters.length - 1] ?? first
+  return {
+    title: `What really happened: ${(first?.title ?? 'the case').slice(0, 60)}`,
+    paragraphs: [
+      {
+        text: 'MOCK TEASER — this narration is a stand-in and must never be published.',
+        chapterIndex: first?.index ?? 0,
+      },
+      {
+        text: 'It escalates through the middle of the story without giving anything away.',
+        chapterIndex: last?.index ?? 0,
+      },
+      {
+        text: 'And it ends on the question the full video answers. What happened to the money?',
+        chapterIndex: last?.index ?? 0,
+      },
+    ],
+  }
 }
 
 /** The marking-relevant slice of an outline, shaped for `buildShortsRequest`. */

@@ -65,6 +65,7 @@ function card(overrides: Partial<ShortCardModel> = {}): ShortCardModel {
     description: '',
     ending: 'cta',
     relatedLinkChecked: false,
+    kind: 'excerpt',
     chapterTitle: 'The audit',
     fromParagraph: 1,
     toParagraph: 2,
@@ -83,6 +84,14 @@ describe('ShortsScreen', () => {
   it('shows the segment source line with chapter, paragraphs and runtime', () => {
     renderScreen([card()])
     expect(screen.getByText('The audit · ¶2–3 · 0:42')).toBeInTheDocument()
+  })
+
+  it('labels a teaser and says where its narration comes from', () => {
+    renderScreen([card({ kind: 'teaser', durationMs: 32_000 })])
+    expect(screen.getByText('Teaser')).toBeInTheDocument()
+    expect(
+      screen.getByText('Teaser · its own narration, cut over the board · 0:32'),
+    ).toBeInTheDocument()
   })
 
   it('saving the title and description is an explicit act, not an autosave', async () => {

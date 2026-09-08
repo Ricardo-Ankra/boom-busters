@@ -101,7 +101,12 @@ export const shortRenderRunner = inngest.createFunction(
       if (!timelineRow) {
         throw new NonRetriableError('There is no compiled master timeline to slice.')
       }
-      const master = TimelineSchema.parse(timelineRow.json)
+      // A teaser slices its OWN mini master (decision 225): purpose-written
+      // narration over slots lifted from the project master at creation.
+      // Everything downstream — canvas, ending, bed, QC — is shared.
+      const master = TimelineSchema.parse(
+        short.kind === 'teaser' && short.sourceTimeline ? short.sourceTimeline : timelineRow.json,
+      )
       const beds = await listMusicBeds(db)
 
       const timeline = compileShortTimeline({

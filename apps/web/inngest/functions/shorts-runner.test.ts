@@ -11,9 +11,11 @@ import {
   requireTestDatabase,
   scripts,
   seed,
+  setCredential,
   shorts,
   timelines,
   truncateRunMirror,
+  updateSettings,
 } from '@boom-busters/db'
 import { DEFAULT_SETTINGS, resolveBrandKit } from '@boom-busters/schemas'
 import type { Timeline } from '@boom-busters/schemas'
@@ -42,6 +44,9 @@ vi.mock('@/lib/broker', () => ({
 vi.mock('@/lib/storage', () => ({
   storageConfigured: () => false,
   putObject: vi.fn(),
+  // No bucket in tests and the providers are mocked: the teaser's audio keys
+  // take the mock:// shape, same as voice takes.
+  takeStorage: () => 'regenerated' as const,
 }))
 
 const describeDb = requireTestDatabase() ? describe : describe.skip
@@ -100,6 +105,10 @@ describeDb('shorts-runner', () => {
     engine = new InngestTestEngine({ function: shortsRunner })
     vi.clearAllMocks()
     await seed(db)
+    // Seeding only creates the settings row; it never resets it. A test that
+    // chooses a voice must not leak a teaser into every later test, so each
+    // run starts voiceless and the teaser tests opt in.
+    await updateSettings(db, { tts: { provider: 'elevenlabs', voiceId: '' } })
     await truncateRunMirror(db)
     forgetRunRows()
     await db.delete(renders)
@@ -208,6 +217,73 @@ describeDb('shorts-runner', () => {
       expect(rows).toHaveLength(1)
       // The mock candidate spans the whole chapter, first sentence to last.
       expect(rows[0]?.title).toBe('By June, the auditors could not find the money.')
+      expect((await getProject(db, FIXTURE_PROJECT_ID))?.stageStatus).toBe('awaiting_review')
+    },
+  )
+
+  it(
+    'cuts a teaser with its own narration when a voice is configured',
+    { timeout: 120_000 },
+    async () => {
+      // The teaser needs what the voice stage needs: a chosen voice and a
+      // key. The mock adapter answers to any of it without spending.
+      // setCredential rather than the env import: another suite may have left
+      // a row encrypted under a different key, and the import skips existing
+      // rows, leaving one this process cannot decrypt.
+      await updateSettings(db, {
+        tts: { provider: 'elevenlabs', voiceId: 'mock-narrator' },
+        // The synthesis reserves against the monthly ceiling before calling
+        // the (mock) vendor; the default ceiling refuses it.
+        budgets: { monthlyCeilingUsd: 100, approvedOverage: null },
+      })
+      await setCredential(
+        db,
+        'elevenlabs',
+        'mock-key-for-tests',
+        process.env['SECRETS_ENCRYPTION_KEY']!,
+      )
+
+      const { result } = await engine.execute({
+        events: masterReadyEvent(),
+        steps: [{ id: 'request-short-renders', handler: () => undefined }],
+      })
+
+      // One excerpt (the placeable candidate) plus the teaser. The teaser
+      // field is asserted first: on a skip it carries the reason, which is
+      // the error message worth reading.
+      expect((result as { teaser: string | null }).teaser).not.toMatch(/^skipped:/)
+      expect(result).toMatchObject({ outcome: 'shorts-created', created: 1 })
+      const rows = await listShorts(db, FIXTURE_PROJECT_ID)
+      expect(rows).toHaveLength(2)
+
+      const teaser = rows.find((row) => row.kind === 'teaser')
+      expect(teaser).toBeDefined()
+      expect((result as { teaser: string | null }).teaser).toBe(teaser!.id)
+      // Its own narration on its own clock, ready for the render to window.
+      expect(teaser!.sourceTimeline).not.toBeNull()
+      const mini = teaser!.sourceTimeline as { narration: unknown[]; slots: unknown[] }
+      expect(mini.narration.length).toBeGreaterThanOrEqual(2)
+      expect(mini.slots.length).toBe(mini.narration.length)
+      expect(teaser!.segmentRef.fromParagraph).toBe(0)
+      expect(teaser!.segmentRef.toParagraph).toBe(mini.narration.length - 1)
+    },
+  )
+
+  it(
+    'skips the teaser with its reason when no voice is chosen, keeping the excerpts',
+    { timeout: 120_000 },
+    async () => {
+      // The seeded settings have no voice, so synthesis refuses before
+      // spending. The stage still parks with the excerpts: a missing teaser
+      // is a gap, never a dead stage.
+      const { result } = await engine.execute({
+        events: masterReadyEvent(),
+        steps: [{ id: 'request-short-renders', handler: () => undefined }],
+      })
+
+      expect(result).toMatchObject({ outcome: 'shorts-created', created: 1 })
+      expect((result as { teaser: string | null }).teaser).toMatch(/^skipped:/)
+      expect(await listShorts(db, FIXTURE_PROJECT_ID)).toHaveLength(1)
       expect((await getProject(db, FIXTURE_PROJECT_ID))?.stageStatus).toBe('awaiting_review')
     },
   )

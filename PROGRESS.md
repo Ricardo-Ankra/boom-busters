@@ -3446,6 +3446,30 @@ published and audited. The daily `channels.list` health ping and the
      Short (its own 25-40s script, TTS and mini-timeline) is the next
      feature, on its own branch.
 
+225. **Every run yields a teaser Short with its own narration** (2026-09-08,
+     owner direction; branch `teaser-short`). An excerpt slices what was
+     said; the teaser says something new: a 25-40s script written from the
+     chapters and the outline's tension fields (cold open, escalation,
+     cliffhanger, never the answer), synthesised through the same
+     budget-guarded `synthesise()` the voice stage buys with
+     (idempotency-keyed, so a re-run re-serves paragraphs already bought),
+     and cut over slots LIFTED from the master timeline: each teaser beat
+     names the chapter it draws from, and `pickTeaserSlot` takes that
+     chapter's best already-resolved slot (video, then image, then whatever
+     it has). Nothing is re-fetched or re-generated. The result is a mini
+     master `Timeline` stored on the shorts row (`shorts.kind='teaser'`,
+     `shorts.sourceTimeline`, migration 0017), whose narration lives in the
+     fixed pseudo chapter `TEASER_CHAPTER_ID` (a well-formed ULID, because
+     the schema demands one), and the short-render-runner windows it with
+     `compileShortTimeline` exactly as an excerpt windows the project
+     master, buying the vertical canvas, end CTA, shorts bed and QC with no
+     second render path. A teaser failure SKIPS with its reason instead of
+     failing the stage (the excerpts are complete deliverables); budget
+     refusals park the stage like every other paid step. The Shorts screen
+     badges the card "Teaser". Test-suite lesson recorded in the runner
+     test: seeding never resets the settings row, so the suite starts each
+     test voiceless and the teaser tests opt in explicitly.
+
 **Status:** `[x]` done — dossier + Studio shipped with unit, component and
 e2e coverage; spec §11.3 amended in place with dated notes.
 

@@ -135,9 +135,12 @@ function ShortCard({ short, live }: { short: ShortCardModel; live: boolean }) {
   const failed = current?.status === 'failed'
   const done = current?.status === 'done'
   const segmentLine =
-    `${short.chapterTitle ?? 'Unknown chapter'} · ¶${short.fromParagraph + 1}` +
-    (short.toParagraph !== short.fromParagraph ? `–${short.toParagraph + 1}` : '') +
-    (short.durationMs !== null ? ` · ${fmtClock(short.durationMs)}` : '')
+    short.kind === 'teaser'
+      ? 'Teaser · its own narration, cut over the board' +
+        (short.durationMs !== null ? ` · ${fmtClock(short.durationMs)}` : '')
+      : `${short.chapterTitle ?? 'Unknown chapter'} · ¶${short.fromParagraph + 1}` +
+        (short.toParagraph !== short.fromParagraph ? `–${short.toParagraph + 1}` : '') +
+        (short.durationMs !== null ? ` · ${fmtClock(short.durationMs)}` : '')
 
   return (
     <Card>
@@ -145,6 +148,11 @@ function ShortCard({ short, live }: { short: ShortCardModel; live: boolean }) {
         <CardTitle className="flex items-center gap-2 text-[14px]">
           <Clapperboard aria-hidden className="h-4 w-4" />
           <span className="truncate">{short.title}</span>
+          {short.kind === 'teaser' ? (
+            <span className="shrink-0 rounded-full border border-[var(--color-accent)] px-2 py-0.5 text-[11px] font-medium text-[var(--color-accent)]">
+              Teaser
+            </span>
+          ) : null}
           {inFlight ? (
             <span className="ml-auto flex items-center gap-1.5 text-[12px] font-normal text-[var(--color-text-muted)]">
               <Loader2 aria-hidden className="h-3.5 w-3.5 animate-spin" />

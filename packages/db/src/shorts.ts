@@ -24,6 +24,9 @@ export async function insertShort(
     description?: string
     segmentRef: ShortRow['segmentRef']
     ending?: ShortRow['ending']
+    /** 'teaser' rows carry their own mini master; excerpts leave both unset. */
+    kind?: ShortRow['kind']
+    sourceTimeline?: Record<string, unknown>
   },
 ): Promise<ShortRow> {
   const [row] = await db
@@ -34,6 +37,8 @@ export async function insertShort(
       description: input.description ?? '',
       segmentRef: input.segmentRef,
       ...(input.ending !== undefined ? { ending: input.ending } : {}),
+      ...(input.kind !== undefined ? { kind: input.kind } : {}),
+      ...(input.sourceTimeline !== undefined ? { sourceTimeline: input.sourceTimeline } : {}),
     })
     .returning()
 

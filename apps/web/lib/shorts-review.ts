@@ -29,6 +29,8 @@ export interface ShortCardModel {
   description: string
   ending: 'loop' | 'cta'
   relatedLinkChecked: boolean
+  /** An excerpt slices the master; a teaser speaks its own narration. */
+  kind: 'excerpt' | 'teaser'
   chapterTitle: string | null
   fromParagraph: number
   toParagraph: number
@@ -75,13 +77,22 @@ export async function shortsModel(db: Database, projectId: string): Promise<Shor
   const shorts: ShortCardModel[] = []
   for (const row of rows) {
     const render = row.renderId ? await getRender(db, row.renderId) : undefined
-    const durationMs = segmentDurationMs(master, row.segmentRef)
+    // A teaser's runtime lives in its own mini master, not the project's.
+    const sourceParsed =
+      row.kind === 'teaser' && row.sourceTimeline
+        ? TimelineSchema.safeParse(row.sourceTimeline)
+        : null
+    const durationMs = segmentDurationMs(
+      sourceParsed?.success ? sourceParsed.data : master,
+      row.segmentRef,
+    )
     shorts.push({
       id: row.id,
       title: row.title,
       description: row.description,
       ending: row.ending,
       relatedLinkChecked: row.relatedLinkChecked,
+      kind: row.kind,
       chapterTitle: chapterTitles.get(row.segmentRef.chapterId) ?? null,
       fromParagraph: row.segmentRef.fromParagraph,
       toParagraph: row.segmentRef.toParagraph,

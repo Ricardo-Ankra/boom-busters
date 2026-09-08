@@ -130,6 +130,33 @@ export const ShortsCandidatesSchema = z.object({
 })
 
 // ---------------------------------------------------------------------------
+// The teaser script (decision 225)
+// ---------------------------------------------------------------------------
+
+export const TeaserParagraphSchema = z.object({
+  /** One spoken beat: a sentence or two, written to be read aloud. */
+  text: z.string().trim().min(10).max(400),
+  /**
+   * The chapter whose visuals fit this beat. The assembly lifts a resolved
+   * slot from that chapter's stretch of the master timeline.
+   */
+  chapterIndex: z.number().int().min(0),
+})
+export type TeaserParagraph = z.infer<typeof TeaserParagraphSchema>
+
+/**
+ * A purpose-written 25-40 second teaser: cold-open hook, escalation, a
+ * cliffhanger question, never the answer. Its narration is synthesised
+ * fresh; it is not a slice of the master.
+ */
+export const TeaserScriptSchema = z.object({
+  /** Seeds the Short's title field; editable on the card like any other. */
+  title: z.string().trim().min(3).max(90),
+  paragraphs: z.array(TeaserParagraphSchema).min(2).max(5),
+})
+export type TeaserScript = z.infer<typeof TeaserScriptSchema>
+
+// ---------------------------------------------------------------------------
 // Sentences
 // ---------------------------------------------------------------------------
 
