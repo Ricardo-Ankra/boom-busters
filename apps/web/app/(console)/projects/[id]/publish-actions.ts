@@ -524,6 +524,25 @@ export async function reschedulePublish(
   return { ok: true }
 }
 
+/**
+ * Run the analytics pass now instead of waiting for the next 06:00 UTC cron.
+ * The runner has listened on `analytics/refresh.requested` since M8 "so the
+ * owner has a button" — this is that button's action, finally built (owner
+ * report, 2026-09-09: the snapshot step failed on a Google-side API toggle,
+ * and the only retry on offer was tomorrow). Free apart from YouTube API
+ * quota, so no confirm step.
+ */
+export async function refreshAnalytics(): Promise<ActionResult> {
+  await requireOwner()
+  try {
+    await inngest.send(events.analyticsRefreshRequested.create({ requestedBy: 'publish-screen' }))
+  } catch (error) {
+    console.error('[analytics] could not request the refresh', error)
+    return { ok: false, error: 'Could not reach Inngest to start the analytics pass.' }
+  }
+  return { ok: true }
+}
+
 /** Failed → draft → re-emit. The mapped error stays visible until it works. */
 export async function retryPublish(targetType: string, targetId: string): Promise<ActionResult> {
   await requireOwner()

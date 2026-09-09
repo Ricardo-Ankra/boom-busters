@@ -22,6 +22,7 @@ import {
   generateTitles,
   markProjectDone,
   publishNow,
+  refreshAnalytics,
   removeThumbnail,
   reschedulePublish,
   retryPublish,
@@ -197,11 +198,23 @@ export function PublishScreen({
         />
       ) : null}
 
-      <p className="text-[12px] text-[var(--color-text-muted)]">
-        {model.uploadsToday} of {model.dailyUploadBudget} upload starts used in today&apos;s YouTube
-        quota day (resets at midnight Pacific). Anything over the budget queues for tomorrow on its
-        own.
-      </p>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-[12px] text-[var(--color-text-muted)]">
+          {model.uploadsToday} of {model.dailyUploadBudget} upload starts used in today&apos;s
+          YouTube quota day (resets at midnight Pacific). Anything over the budget queues for
+          tomorrow on its own.
+        </p>
+        {/* The analytics pass runs itself at 06:00 UTC; this asks for it NOW
+            — the retry that was missing when a snapshot failed on a
+            Google-side toggle (owner report, 2026-09-09). */}
+        <Button
+          variant="outline"
+          onClick={() => void act(() => refreshAnalytics(), 'Analytics pass started')}
+        >
+          <RefreshCw aria-hidden className="h-4 w-4" />
+          Refresh analytics now
+        </Button>
+      </div>
 
       {/* ------------------------------------------------------------------ */}
       {/* The items                                                           */}

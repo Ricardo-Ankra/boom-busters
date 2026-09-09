@@ -22,6 +22,7 @@ vi.mock('../actions', () => ({
 const generateTitles = vi.fn()
 const markProjectDone = vi.fn()
 const publishNow = vi.fn()
+const refreshAnalytics = vi.fn()
 const removeThumbnail = vi.fn()
 const reschedulePublish = vi.fn()
 const retryPublish = vi.fn()
@@ -32,6 +33,7 @@ vi.mock('./publish-actions', () => ({
   generateTitles: (...args: unknown[]) => generateTitles(...args),
   markProjectDone: (...args: unknown[]) => markProjectDone(...args),
   publishNow: (...args: unknown[]) => publishNow(...args),
+  refreshAnalytics: (...args: unknown[]) => refreshAnalytics(...args),
   removeThumbnail: (...args: unknown[]) => removeThumbnail(...args),
   reschedulePublish: (...args: unknown[]) => reschedulePublish(...args),
   retryPublish: (...args: unknown[]) => retryPublish(...args),
@@ -59,6 +61,7 @@ beforeEach(() => {
     generateTitles,
     markProjectDone,
     publishNow,
+    refreshAnalytics,
     removeThumbnail,
     reschedulePublish,
     retryPublish,
@@ -151,6 +154,13 @@ describe('PublishScreen', () => {
   it('says where the daily upload budget stands', () => {
     renderScreen()
     expect(screen.getByText(/1 of 4 upload starts used/i)).toBeInTheDocument()
+  })
+
+  it('the analytics pass has its promised button — one click, no ceremony', async () => {
+    const user = userEvent.setup()
+    renderScreen()
+    await user.click(screen.getByRole('button', { name: 'Refresh analytics now' }))
+    expect(refreshAnalytics).toHaveBeenCalledTimes(1)
   })
 
   it('schedules the selected item from the slot button, record-first ISO in hand', async () => {
