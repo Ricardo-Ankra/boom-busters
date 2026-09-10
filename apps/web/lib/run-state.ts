@@ -75,8 +75,13 @@ export type ProjectControl =
   | { kind: 'working'; message: string }
   /** Nothing is running and a human has to start it. */
   | { kind: 'restart'; label: string; message: string }
-  /** Nothing is running and this milestone cannot restart it. */
-  | { kind: 'blocked'; message: string }
+  /**
+   * Nothing is running and this stage cannot be restarted. When the block is
+   * a missing upstream artefact, `prerequisite` names the stage whose re-run
+   * would produce it, so the screen can offer that button instead of leaving
+   * Delete as the only control (decision 243).
+   */
+  | { kind: 'blocked'; message: string; prerequisite?: ProjectStage }
 
 /**
  * The single answer to "what does this project's header offer, and why".
@@ -149,22 +154,48 @@ export function projectControl(
     (project.stage !== 'shorts' || inputs.hasMaster)
   const stalled = now.getTime() - project.updatedAt.getTime() > QUEUED_STUCK_AFTER_MS
 
-  const cannotRestart = (why: string): ProjectControl => ({
-    kind: 'blocked',
-    message:
+  const cannotRestart = (why: string): ProjectControl => {
+    const missing: { message: string; prerequisite: ProjectStage } | null =
       project.stage === 'script' && !inputs.hasDossier
-        ? `${why} There is no dossier to write this script from — run the dossier stage first.`
+        ? {
+            message: `There is no dossier to write this script from — run the dossier stage first.`,
+            prerequisite: 'dossier',
+          }
         : project.stage === 'voice' && !inputs.hasScript
-          ? `${why} There is no script to narrate — run the script stage first.`
+          ? {
+              message: 'There is no script to narrate — run the script stage first.',
+              prerequisite: 'script',
+            }
           : project.stage === 'visuals' && !inputs.hasScript
-            ? `${why} There is no script to plan visuals for — run the script stage first.`
+            ? {
+                message: 'There is no script to plan visuals for — run the script stage first.',
+                prerequisite: 'script',
+              }
             : project.stage === 'assembly' && !inputs.hasScript
-              ? `${why} There is no script to assemble — run the script stage first.`
+              ? {
+                  message: 'There is no script to assemble — run the script stage first.',
+                  prerequisite: 'script',
+                }
               : project.stage === 'shorts' && !inputs.hasMaster
-                ? `${why} There is no finished master render to cut Shorts from — run the ` +
-                  `assembly stage first.`
-                : `${why} Restarting the ${project.stage} stage arrives with its runner.`,
-  })
+                ? {
+                    message:
+                      'There is no finished master render to cut Shorts from — run the ' +
+                      'assembly stage first.',
+                    prerequisite: 'assembly',
+                  }
+                : null
+    if (!missing) {
+      return {
+        kind: 'blocked',
+        message: `${why} Restarting the ${project.stage} stage arrives with its runner.`,
+      }
+    }
+    return {
+      kind: 'blocked',
+      message: `${why} ${missing.message}`,
+      prerequisite: missing.prerequisite,
+    }
+  }
 
   switch (project.stageStatus) {
     case 'queued':

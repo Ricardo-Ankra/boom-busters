@@ -427,8 +427,41 @@ describe('projectControl', () => {
       expect(control.kind).toBe('blocked')
       expect(control).toMatchObject({
         message: expect.stringContaining('run the dossier stage first'),
+        // Named, so the screen can offer that button rather than leaving
+        // Delete as the only control on a project that is plainly not
+        // finished (decision 243).
+        prerequisite: 'dossier',
       })
     }
+  })
+
+  it('names the prerequisite stage for every missing-artefact block', () => {
+    const base = { hasDossier: true, hasScript: true, hasMaster: true, hasShorts: true, now: NOW }
+    expect(
+      projectControl(project('voice', 'failed'), false, { ...base, hasScript: false }),
+    ).toMatchObject({ kind: 'blocked', prerequisite: 'script' })
+    expect(
+      projectControl(project('visuals', 'failed'), false, { ...base, hasScript: false }),
+    ).toMatchObject({ kind: 'blocked', prerequisite: 'script' })
+    expect(
+      projectControl(project('assembly', 'failed'), false, { ...base, hasScript: false }),
+    ).toMatchObject({ kind: 'blocked', prerequisite: 'script' })
+    expect(
+      projectControl(project('shorts', 'failed'), false, {
+        ...base,
+        hasMaster: false,
+        hasShorts: false,
+      }),
+    ).toMatchObject({ kind: 'blocked', prerequisite: 'assembly' })
+    // A stage with no runner has nothing to offer, and says so without a
+    // prerequisite.
+    expect(projectControl(project('publish', 'failed'), false, base)).toMatchObject({
+      kind: 'blocked',
+    })
+    expect(
+      (projectControl(project('publish', 'failed'), false, base) as { prerequisite?: string })
+        .prerequisite,
+    ).toBeUndefined()
   })
 
   it('still offers the dossier stage when there is no dossier — that is the point of it', () => {

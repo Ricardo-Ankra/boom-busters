@@ -10,6 +10,13 @@ import { Button, type ButtonProps } from '@/components/ui/button'
  *
  * The confirm replaces the button in place and states the consequence, so the
  * second click is an informed one rather than a reflex on a dialog.
+ *
+ * Keyboard and screen reader (decision 248): arming used to unmount the
+ * focused button, dropping focus to the document body, so a keyboard user
+ * pressing Enter on Stop was left nowhere and heard nothing. Focus now moves
+ * to the confirm button, which is described by the consequence sentence, and
+ * Cancel puts it back on the trigger. The consequence is primary text: it is
+ * the most important sentence on the screen at that moment, not a caption.
  */
 export function ConfirmButton({
   label,
@@ -39,10 +46,31 @@ export function ConfirmButton({
   const [armed, setArmed] = React.useState(false)
   const [confirming, setConfirming] = React.useState(false)
   const busy = confirming || busyOutside
+  const consequenceId = React.useId()
+  const triggerRef = React.useRef<HTMLButtonElement>(null)
+  const confirmRef = React.useRef<HTMLButtonElement>(null)
+  // Only a keyboard or click that armed the control should move focus; the
+  // initial render and a disarm-after-confirm must not steal it.
+  const [focusTarget, setFocusTarget] = React.useState<'confirm' | 'trigger' | null>(null)
+
+  React.useEffect(() => {
+    if (focusTarget === 'confirm') confirmRef.current?.focus()
+    if (focusTarget === 'trigger') triggerRef.current?.focus()
+    if (focusTarget) setFocusTarget(null)
+  }, [focusTarget, armed])
 
   if (!armed) {
     return (
-      <Button variant={variant} busy={busyOutside} onClick={() => setArmed(true)} {...props}>
+      <Button
+        ref={triggerRef}
+        variant={variant}
+        busy={busyOutside}
+        onClick={() => {
+          setArmed(true)
+          setFocusTarget('confirm')
+        }}
+        {...props}
+      >
         {label}
       </Button>
     )
@@ -50,10 +78,14 @@ export function ConfirmButton({
 
   return (
     <span className="flex flex-wrap items-center gap-2">
-      <span className="text-[13px] text-[var(--color-text-secondary)]">{consequence}</span>
+      <span id={consequenceId} className="text-[14px] text-[var(--color-text-primary)]">
+        {consequence}
+      </span>
       <Button
+        ref={confirmRef}
         variant={confirmVariant}
         busy={busy}
+        aria-describedby={consequenceId}
         onClick={async () => {
           setConfirming(true)
           try {
@@ -69,7 +101,14 @@ export function ConfirmButton({
       </Button>
       {/* "Cancel", like every other way out in the app — the escape used to
           say "Keep going", the one place backing out had its own vocabulary. */}
-      <Button variant="ghost" onClick={() => setArmed(false)} disabled={busy}>
+      <Button
+        variant="ghost"
+        onClick={() => {
+          setArmed(false)
+          setFocusTarget('trigger')
+        }}
+        disabled={busy}
+      >
         Cancel
       </Button>
     </span>

@@ -4,8 +4,10 @@ import type { Route } from 'next'
 import Link from 'next/link'
 import { MiniPipelineRail } from '@/components/pipeline-rail'
 import { stageViewsForProject } from '@/lib/stage-view'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
+import { caseCategoryLabel } from '@/lib/case-category'
 import { db } from '@/lib/db'
 
 export const dynamic = 'force-dynamic'
@@ -33,8 +35,8 @@ export default async function ProjectsPage() {
           <CardContent className="flex flex-col items-center gap-2 py-16 text-center">
             <p className="text-[15px]">No projects yet.</p>
             <p className="text-[13px] text-[var(--color-text-muted)]">
-              Run <span className="font-mono">pnpm db:seed</span> for the fixture project, or add
-              cases once the Case Library lands in M3.
+              A project starts from a shortlisted case. Add or accept one in the Case Library, then
+              press New project on its row.
             </p>
           </CardContent>
         </Card>
@@ -59,9 +61,7 @@ function ProjectRow({ project }: { project: ProjectSummary }) {
       <div className="min-w-0 flex-1">
         <p className="truncate text-[15px] font-medium">{project.title}</p>
         <p className="mt-0.5 text-[13px] text-[var(--color-text-secondary)]">
-          <span className="rounded-[4px] border border-[var(--color-border)] px-1.5 py-0.5 font-mono text-[11px]">
-            {project.caseCategory}
-          </span>{' '}
+          <Badge>{caseCategoryLabel(project.caseCategory)}</Badge>{' '}
           <span className="capitalize">{project.stage}</span> · {statusLabel(project.stageStatus)}{' '}
           {ageVerb(project.stageStatus)} {relativeAge(project.updatedAt)}
         </p>
@@ -119,7 +119,7 @@ function ageVerb(status: ProjectSummary['stageStatus']): string {
 function relativeAge(since: Date): string {
   const ms = Date.now() - since.getTime()
   const minutes = Math.floor(ms / 60_000)
-  if (minutes < 1) return 'moments'
+  if (minutes < 1) return 'under a minute'
   if (minutes < 60) return `${minutes} min`
   const hours = Math.floor(minutes / 60)
   if (hours < 24) return `${hours} h`

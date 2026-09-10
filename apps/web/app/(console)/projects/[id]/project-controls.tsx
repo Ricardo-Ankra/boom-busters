@@ -269,6 +269,7 @@ export function GateActionBar({
   const { act, busy, pressed } = useAction()
   const [note, setNote] = React.useState('')
   const [showNote, setShowNote] = React.useState(false)
+  const blockedReasonId = React.useId()
 
   /**
    * Which gate was handed to the pipeline — not *whether* one was.
@@ -394,6 +395,9 @@ export function GateActionBar({
           <Button
             variant="primary"
             disabled={Boolean(blockedReason) || busy}
+            // The reason is a sibling span; without this a screen reader
+            // meets a disabled Approve and nothing that says why (decision 248).
+            aria-describedby={blockedReason ? blockedReasonId : undefined}
             busy={pressed === 'approve'}
             onClick={async () => {
               const handed = await act(
@@ -427,7 +431,9 @@ export function GateActionBar({
           </Button>
 
           {blockedReason ? (
-            <span className="text-[13px] text-[var(--color-warning)]">{blockedReason}</span>
+            <span id={blockedReasonId} className="text-[13px] text-[var(--color-warning)]">
+              {blockedReason}
+            </span>
           ) : null}
         </div>
       </div>

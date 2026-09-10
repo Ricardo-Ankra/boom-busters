@@ -39,3 +39,4 @@ apps/web/.local-renders/
 .claude/settings.local.json
 
 .vercel
+.impeccable/

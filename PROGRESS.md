@@ -3824,6 +3824,120 @@ pressed }`: a ref guards the call so a double-click fires the server
      the render progress bars, the teaser fetch word states, and
      LiveRefresh's "Updating automatically" cue.
 
+242. **The spacing unit is 4px, so the console renders at the size its
+     classes say** (2026-09-10, audit phase C, the UX/UI pass with the
+     impeccable and intent skills; the critique that opened the phase is
+     archived under `apps/web/.impeccable/critique/`, gitignored). Tailwind
+     v4 computes every numeric utility as `calc(var(--spacing) * n)`, and
+     `--spacing` had been 8px since M1, where spec 11.1's "8px grid" was
+     read as the unit. Every control, gap and icon rendered at exactly 2x:
+     a 448px rail, a 96px top bar, 80px buttons carrying 13px labels, 32px
+     icons, 32px card padding. Decision 232 measured the symptom and
+     reserved geometry around it. The unit is now 4px (the framework
+     default and what every `h-10` "40px hit target" comment assumed); the
+     8px grid is kept by using even steps, and `ui-tokens` tests pin the
+     unit in both the TypeScript source and `tokens.css`. Everything that
+     only met the 40px target through the doubling was repaired by an
+     every-screen sweep of sub-40px controls: the Switch is a 40px button
+     drawing its 24px track with a pseudo-element, the toast Dismiss is
+     40px, the pipeline segments carry `min-h-10`, the inline claim
+     phrases pad to 40px, the music-source select is 40px, and the publish
+     thumbnail strip's reserved height is re-derived (109px, was 158). Before
+     and after screenshots of all 42 screens were compared; the mobile
+     captures were the proof, since at 390px the doubled scale had squeezed
+     Needs-you titles to a single letter.
+
+243. **A blocked stage offers the button for the stage it is blocked on**
+     (2026-09-10, phase C). "There is no dossier to write this script from,
+     run the dossier stage first" was shown on a screen whose only control
+     was Delete this project. `projectControl`'s blocked result now names
+     the `prerequisite` stage and the header renders that stage's re-run
+     button beside the message; `run-state.test.ts` covers every
+     missing-artefact block. Stages with no runner stay blocked without a
+     prerequisite.
+
+244. **A phone has navigation** (2026-09-10, phase C). The rail was
+     `hidden md:flex` with nothing in its place and the breadcrumb was plain
+     spans, so from a notification deep link the only way off a project was
+     the browser's back button, on the device spec 11.4 calls first-class.
+     `MobileNav` is a fixed bottom bar below md with the six rail
+     destinations (icon over label, 56px rows, safe-area padding), sharing
+     the rail's `NAV` array and its `aria-label="Primary"`, so the E2E rail
+     test drives both. Breadcrumb ancestors are links, and a project id in
+     the trail reads "Project" (the h1 carries the title). The top bar
+     truncates the trail instead of painting it under the controls, shows
+     the spend meter at every width (it was hidden below sm), says "near the
+     ceiling" or "over the ceiling" in words beside the tone, and the
+     Activity button goes icon-only below sm like its neighbours. Settings
+     tabs scroll in one row below sm instead of wrapping to three.
+
+245. **Needs-you cards say what is waiting, and stack on a phone**
+     (2026-09-10, phase C). The card title is the project; the context line
+     leads with "Dossier ready for review" and then the category and target
+     runtime. "con · 18 min target" told the owner the category of a video
+     they already knew. The category enum is shown as a word everywhere
+     (`caseCategoryLabel`: Con, Collapse, Meltdown, Turnaround, Empire),
+     never as a monospace identifier. Below sm the card stacks: title on its
+     own line (two lines allowed, never truncated), age and button on the
+     row beneath.
+
+246. **Contrast tokens for the places the palette was actually used**
+     (2026-09-10, phase C). Three failures the M8.6 Lighthouse pass could
+     not see because it measured text on the card surface only:
+     indigo-600 as TEXT on the dark surfaces was 2.8:1 at 11 to 13px in nine
+     files (links, "Today", the running segment's label); `border-strong`
+     was 1.7:1 dark and 2.5:1 light against the 3:1 a control boundary
+     needs; muted text on the raised surface was 4.0:1. New
+     `--color-accent-text` (indigo-400 on dark, indigo-600 on light) is
+     used wherever the accent is foreground text; the accent FILL is
+     unchanged. `border-strong` is zinc-500 in both themes; muted is
+     `#909099` dark and `#6b6b74` light. The focus ring uses the text accent
+     so it is visible on raised rows, and text selection and the caret take
+     the palette. The `ui-tokens` contrast tests now assert muted on all
+     three surfaces, accent-text on all three, border-strong at 3:1 and the
+     status colours at 4.5:1 on surface as well as background.
+
+247. **The accent fill means the gate action and nothing else**
+     (2026-09-10, phase C). Playback speed, the previewed cut, the ledger
+     filter, the publish item being edited, the accepted diff hunk, the
+     voice stability tier and the chosen candidate all used the primary
+     fill for "selected", so every review screen had five indigo buttons
+     and Approve was one of them. `Button` gains a `selected` variant
+     (raised surface, accent-text border) and every toggle uses it; the
+     Projects list's Review and Re-run stage keep the fill because they are
+     actions.
+
+248. **Confirming keeps its focus and its reason** (2026-09-10, phase C).
+     Arming `ConfirmButton` unmounted the focused trigger, so a keyboard
+     user pressing Enter on Stop, Delete, Render master or Publish now was
+     dropped to the document body and heard nothing. Focus now moves to the
+     confirm button, which is `aria-describedby` the consequence sentence,
+     and Cancel returns it to the trigger. The consequence is 14px primary
+     text: it is the most important sentence on the screen at that moment.
+     The disabled Approve is described by its blocked reason, which was a
+     sibling span nothing pointed at. `confirm-button.test.tsx` is the
+     first test file for the component.
+
+249. **The pipeline rail never truncates a stage name** (2026-09-10,
+     phase C). At 1440px the segments read "Doss…", "Visu…", "Asse…",
+     "Sho…", "Publ…"; at 390px they were eight blank coloured boxes, which
+     the file's own comment says must never happen. The rail is a 4-column
+     grid below lg and 8 columns from lg, labels `whitespace-nowrap`, icons
+     `shrink-0`.
+
+250. **One Badge** (2026-09-10, phase C). Seventeen hand-rolled chip styles
+     (three radii, four font sizes, border-only beside tinted, `uppercase`
+     on some, raw enum strings on others) and three copies of the publish
+     status map became `components/ui/badge.tsx` with two shapes (`pill` for
+     a state, `tag` for a kind) and six tones, plus `lib/publish-status.ts`
+     shared by the calendar and the Publish screen. Copy tidied on the way:
+     "1 placeholders", "waiting moments", "waiting for Inngest", and a
+     Projects empty state that still pointed at `pnpm db:seed` and "M3".
+     Deferred from the critique, recorded so they are decisions: Projects
+     filter chips (spec 11.3), stage-specific counts on Needs-you cards (the
+     summary row carries no claim or flag counts; a join is the price), and
+     the Music tab leading with its add form.
+
 **Status:** `[x]` done — dossier + Studio shipped with unit, component and
 e2e coverage; spec §11.3 amended in place with dated notes.
 

@@ -23,9 +23,10 @@ import { notFound } from 'next/navigation'
 import { ActivityList } from '@/components/activity-list'
 import { BudgetGateCard } from '@/components/budget-gate-card'
 import { LiveRefresh } from '@/components/live-refresh'
-import { PipelineRail } from '@/components/pipeline-rail'
+import { PipelineRail, SEGMENT_LABELS } from '@/components/pipeline-rail'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { db } from '@/lib/db'
+import { caseCategoryLabel } from '@/lib/case-category'
 import { approvalBlockedReason, blockingCount } from '@/lib/claim-review'
 import { RESTARTABLE_STAGES, isGateOpen, isMoving, projectControl } from '@/lib/run-state'
 import { downstreamOf, resolveViewedStage, stageViewsForProject } from '@/lib/stage-view'
@@ -243,7 +244,7 @@ export default async function ProjectPage({
         <div className="min-w-0">
           <h1 className="text-[20px] font-semibold">{project.title}</h1>
           <p className="text-[13px] text-[var(--color-text-secondary)]">
-            <span className="font-mono">{project.caseCategory}</span> · {project.caseTitle} ·{' '}
+            {caseCategoryLabel(project.caseCategory)} · {project.caseTitle} ·{' '}
             {project.targetRuntimeMin} min target
           </p>
         </div>
@@ -269,6 +270,17 @@ export default async function ProjectPage({
               stage={project.stage}
               label={control.label}
               downstream={downstreamOf(project.stage, views)}
+            />
+          ) : null}
+          {/* Blocked on a missing upstream artefact: the button for THAT
+              stage, right where the message says to run it. Without this the
+              only control on the screen was Delete (decision 243). */}
+          {control.kind === 'blocked' && control.prerequisite && viewingCurrent ? (
+            <RestartRunButton
+              projectId={project.id}
+              stage={control.prerequisite}
+              label={`Run the ${SEGMENT_LABELS[control.prerequisite].toLowerCase()} stage`}
+              downstream={downstreamOf(control.prerequisite, views)}
             />
           ) : null}
         </div>
@@ -331,7 +343,8 @@ export default async function ProjectPage({
                   `${voice.coverage.flagged} flagged. Approving sends this to the visuals stage.`
                 : project.stage === 'visuals'
                   ? `${visuals.coverage.slots} slots · ${visuals.coverage.resolved} resolved · ` +
-                    `${visuals.coverage.placeholder} placeholders. Approving locks the board and assembles the timeline.`
+                    `${visuals.coverage.placeholder} placeholder${visuals.coverage.placeholder === 1 ? '' : 's'}. ` +
+                    'Approving locks the board and assembles the timeline.'
                   : gateContext(project.stage, dossier)
           }
           {...(project.stage === 'dossier' && blockedReason ? { blockedReason } : {})}
@@ -490,7 +503,7 @@ function gateContext(
 function stageSummary(status: string, stage: string): string {
   switch (status) {
     case 'queued':
-      return 'Queued — waiting for Inngest to pick the run up.'
+      return 'Queued. The pipeline picks it up within a few seconds.'
     case 'running':
       return `Running the ${stage} stage.`
     case 'awaiting_review':

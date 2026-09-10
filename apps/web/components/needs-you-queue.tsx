@@ -2,8 +2,10 @@ import type { FailedRun, OpenBudgetGate, ProjectSummary } from '@boom-busters/db
 import { AlertCircle, DollarSign, Flag, Youtube } from 'lucide-react'
 import type { Route } from 'next'
 import Link from 'next/link'
+import { SEGMENT_LABELS } from '@/components/pipeline-rail'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
+import { caseCategoryLabel } from '@/lib/case-category'
 import { cn } from '@/lib/cn'
 
 /**
@@ -51,8 +53,14 @@ export function buildNeedsYouCards(input: {
     ...input.awaitingReview.map((project): NeedsYouCard => ({
       id: `gate-${project.id}`,
       kind: 'gate',
-      title: `${project.title} · ${project.stage} ready`,
-      context: `${project.caseCategory} · ${project.targetRuntimeMin} min target`,
+      // The title is the project; what is waiting goes on the context line,
+      // which leads with it (decision 245). "con · 18 min target" told the
+      // owner the category of a video they already knew, and nothing about
+      // the decision the card exists for.
+      title: project.title,
+      context:
+        `${SEGMENT_LABELS[project.stage]} ready for review · ` +
+        `${caseCategoryLabel(project.caseCategory)} · ${project.targetRuntimeMin} min target`,
       href: `/projects/${project.id}` as Route,
       buttonLabel: 'Review',
       at: project.updatedAt,
@@ -134,23 +142,30 @@ export function NeedsYouQueue({ cards }: { cards: NeedsYouCard[] }) {
             <Card
               className={cn((card.kind === 'failure' || card.kind === 'reconnect') && meta.border)}
             >
-              <CardContent className="flex flex-wrap items-center gap-4 p-4">
-                <Icon className={cn('size-5 shrink-0', meta.tone)} aria-hidden />
-
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-[15px] font-medium">{card.title}</p>
-                  <p className="mt-0.5 text-[13px] text-[var(--color-text-secondary)]">
-                    {card.context}
-                  </p>
+              {/* Stacked below sm, one row from sm up. At 390px the old
+                  single row squeezed the title to one letter beside a full
+                  width button (decision 245). The title may take two lines;
+                  it is the one thing on the card that must be read whole. */}
+              <CardContent className="flex flex-col gap-3 p-3 sm:flex-row sm:items-center sm:gap-4 sm:p-4">
+                <div className="flex min-w-0 flex-1 items-start gap-3">
+                  <Icon className={cn('mt-0.5 size-5 shrink-0', meta.tone)} aria-hidden />
+                  <div className="min-w-0 flex-1">
+                    <p className="line-clamp-2 text-[15px] font-medium">{card.title}</p>
+                    <p className="mt-0.5 text-[13px] text-[var(--color-text-secondary)]">
+                      {card.context}
+                    </p>
+                  </div>
                 </div>
 
-                <span className="font-mono text-[12px] text-[var(--color-text-muted)] tabular-nums">
-                  {ageLabel(card.at)}
-                </span>
+                <div className="flex items-center justify-between gap-4 pl-8 sm:pl-0">
+                  <span className="font-mono text-[12px] text-[var(--color-text-muted)] tabular-nums">
+                    {ageLabel(card.at)}
+                  </span>
 
-                <Button asChild variant="primary">
-                  <Link href={card.href}>{card.buttonLabel}</Link>
-                </Button>
+                  <Button asChild variant="primary">
+                    <Link href={card.href}>{card.buttonLabel}</Link>
+                  </Button>
+                </div>
               </CardContent>
             </Card>
           </li>
