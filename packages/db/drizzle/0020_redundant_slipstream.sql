@@ -1,0 +1,1 @@
+ALTER TABLE "shorts" ADD COLUMN "teaser_fetches" jsonb;

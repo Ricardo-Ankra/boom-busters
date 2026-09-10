@@ -674,6 +674,12 @@ export const shorts = pgTable(
      * Null for excerpts and for untouched teasers.
      */
     teaserShots: jsonb('teaser_shots').$type<Record<string, unknown>>(),
+    /**
+     * The studio's per-beat fetched/generated new material (decision 231):
+     * TeaserFetchesRecordSchema: request state plus SlotCandidate pools.
+     * Null for excerpts and for teasers that never fetched anything.
+     */
+    teaserFetches: jsonb('teaser_fetches').$type<Record<string, unknown>>(),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },

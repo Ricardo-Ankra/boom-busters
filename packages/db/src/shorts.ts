@@ -82,6 +82,8 @@ export async function updateShort(
     /** The studio's split acts (decision 230): voice and shot choices. */
     teaserVoice: Record<string, unknown>
     teaserShots: Record<string, unknown>
+    /** The studio's fetched new material (decision 231). */
+    teaserFetches: Record<string, unknown>
   }>,
 ): Promise<void> {
   await db

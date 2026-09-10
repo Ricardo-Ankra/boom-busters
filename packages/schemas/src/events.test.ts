@@ -32,8 +32,16 @@ describe('event registry', () => {
     // rather than discovered at the client, where the error is a wall of
     // conditional-type text.
     for (const [name, schema] of Object.entries(EVENT_SCHEMAS)) {
-      for (const [field, shape] of Object.entries(schema.shape)) {
-        expect(shape.def.type, `${name}.${field} must not carry a default`).not.toBe('default')
+      // A discriminated union event (teaser/shots.requested) is checked
+      // branch by branch; a plain object is its own single branch.
+      const branches: { shape: Record<string, { def: { type: string } }> }[] =
+        'options' in schema
+          ? (schema.options as unknown as { shape: Record<string, { def: { type: string } }> }[])
+          : [schema as unknown as { shape: Record<string, { def: { type: string } }> }]
+      for (const branch of branches) {
+        for (const [field, shape] of Object.entries(branch.shape)) {
+          expect(shape.def.type, `${name}.${field} must not carry a default`).not.toBe('default')
+        }
       }
     }
   })
@@ -121,6 +129,41 @@ describe('payload validation', () => {
     ).toEqual({ projectId, slotId, targetType: 'map' })
     expect(() =>
       parseEventData('visuals/retype.requested', { projectId, slotId, targetType: 'gif' }),
+    ).toThrow()
+  })
+
+  it('a teaser shot request is one of three ops, each carrying its own payload', () => {
+    const shortId = fixtureId('case', 3)
+    expect(
+      parseEventData('teaser/shots.requested', {
+        projectId,
+        shortId,
+        beatIndex: 1,
+        op: 'stock',
+        query: 'auditors office at dusk',
+      }),
+    ).toMatchObject({ op: 'stock', query: 'auditors office at dusk' })
+    expect(
+      parseEventData('teaser/shots.requested', {
+        projectId,
+        shortId,
+        beatIndex: 0,
+        op: 'ingest',
+        candidateId: 'pexels-42',
+      }),
+    ).toMatchObject({ op: 'ingest', candidateId: 'pexels-42' })
+    // A still without a prompt, a stock without a query, a sixth beat: refused.
+    expect(() =>
+      parseEventData('teaser/shots.requested', { projectId, shortId, beatIndex: 0, op: 'still' }),
+    ).toThrow()
+    expect(() =>
+      parseEventData('teaser/shots.requested', {
+        projectId,
+        shortId,
+        beatIndex: 5,
+        op: 'stock',
+        query: 'x y',
+      }),
     ).toThrow()
   })
 

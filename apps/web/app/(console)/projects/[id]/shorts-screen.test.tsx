@@ -28,6 +28,9 @@ const saveTeaserScript = vi.fn()
 const saveTeaserShot = vi.fn()
 const rebuildTeaser = vi.fn()
 const assembleTeaser = vi.fn()
+const fetchTeaserShotOptions = vi.fn()
+const generateTeaserStill = vi.fn()
+const pickFetchedTeaserShot = vi.fn()
 vi.mock('./shorts-actions', () => ({
   updateShortDetails: (...args: unknown[]) => updateShortDetails(...args),
   setShortEnding: (...args: unknown[]) => setShortEnding(...args),
@@ -37,6 +40,9 @@ vi.mock('./shorts-actions', () => ({
   saveTeaserShot: (...args: unknown[]) => saveTeaserShot(...args),
   rebuildTeaser: (...args: unknown[]) => rebuildTeaser(...args),
   assembleTeaser: (...args: unknown[]) => assembleTeaser(...args),
+  fetchTeaserShotOptions: (...args: unknown[]) => fetchTeaserShotOptions(...args),
+  generateTeaserStill: (...args: unknown[]) => generateTeaserStill(...args),
+  pickFetchedTeaserShot: (...args: unknown[]) => pickFetchedTeaserShot(...args),
 }))
 
 // The Continue-to-Publish handover lives in publish-actions, whose real
@@ -67,6 +73,9 @@ beforeEach(() => {
   saveTeaserShot.mockResolvedValue({ ok: true })
   rebuildTeaser.mockResolvedValue({ ok: true })
   assembleTeaser.mockResolvedValue({ ok: true })
+  fetchTeaserShotOptions.mockResolvedValue({ ok: true })
+  generateTeaserStill.mockResolvedValue({ ok: true })
+  pickFetchedTeaserShot.mockResolvedValue({ ok: true })
   vi.stubGlobal('fetch', vi.fn(pollFetch))
 })
 
@@ -110,6 +119,7 @@ function teaserCard(overrides: Partial<ShortCardModel> = {}): ShortCardModel {
     durationMs: 32_000,
     teaser: {
       hasScript: true,
+      stillEstimateUsd: 0.08,
       beats: [
         {
           text: 'One number was missing, and it was billions.',
@@ -134,6 +144,8 @@ function teaserCard(overrides: Partial<ShortCardModel> = {}): ShortCardModel {
               selected: false,
             },
           ],
+          fetchState: null,
+          fetched: [],
         },
         {
           text: 'The auditors finally refused to sign anything at all.',
@@ -145,6 +157,8 @@ function teaserCard(overrides: Partial<ShortCardModel> = {}): ShortCardModel {
           auto: null,
           autoSelected: true,
           pool: [],
+          fetchState: null,
+          fetched: [],
         },
       ],
     },
@@ -391,7 +405,10 @@ describe('ShortsScreen', () => {
   it('a pre-studio teaser explains itself and offers only the voicing', async () => {
     const user = userEvent.setup()
     renderScreen([
-      teaserCard({ id: '01HQ00000000000000000000T1', teaser: { hasScript: false, beats: [] } }),
+      teaserCard({
+        id: '01HQ00000000000000000000T1',
+        teaser: { hasScript: false, beats: [], stillEstimateUsd: 0.08 },
+      }),
     ])
     await user.click(screen.getByRole('button', { name: 'Open the teaser studio' }))
 
@@ -399,6 +416,97 @@ describe('ShortsScreen', () => {
     expect(screen.queryByRole('button', { name: 'Save the script' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /assemble & render/i })).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: /voice the script/i })).toBeInTheDocument()
+  })
+
+  it('fetching stock options sends the edited query, not the beat text', async () => {
+    const user = userEvent.setup()
+    renderScreen([teaserCard({ id: '01HQ00000000000000000000T1' })])
+    await user.click(screen.getByRole('button', { name: 'Open the teaser studio' }))
+
+    const [openTools] = screen.getAllByRole('button', { name: 'Fetch new shots for this beat' })
+    await user.click(openTools!)
+    const query = screen.getByLabelText('Beat 1 stock search')
+    // Seeded from the beat's words, then edited.
+    expect(query).toHaveValue('One number was missing, and it was billions.')
+    await user.clear(query)
+    await user.type(query, 'empty vault door')
+    await user.click(screen.getByRole('button', { name: 'Fetch stock options (mock)' }))
+
+    expect(fetchTeaserShotOptions).toHaveBeenCalledWith(
+      '01HQ00000000000000000000T1',
+      0,
+      'empty vault door',
+    )
+  })
+
+  it('generating a still is a two-step spend carrying the routed estimate', async () => {
+    const user = userEvent.setup()
+    renderScreen([teaserCard({ id: '01HQ00000000000000000000T1' })], true)
+    await user.click(screen.getByRole('button', { name: 'Open the teaser studio' }))
+
+    const [openTools] = screen.getAllByRole('button', { name: 'Fetch new shots for this beat' })
+    await user.click(openTools!)
+    await user.click(screen.getByRole('button', { name: 'Generate a still · est. $0.08' }))
+    expect(screen.getByText(/Buys a generation pass/)).toBeInTheDocument()
+    expect(generateTeaserStill).not.toHaveBeenCalled()
+
+    await user.click(screen.getByRole('button', { name: 'Generate it' }))
+    expect(generateTeaserStill).toHaveBeenCalledWith(
+      '01HQ00000000000000000000T1',
+      0,
+      'One number was missing, and it was billions.',
+    )
+  })
+
+  it('a settled fetched option saves its slot; live stock goes through the ingest pick', async () => {
+    const user = userEvent.setup()
+    const readySlot = poolSlot('boom-busters/stills/fal-1.png')
+    const teaser = teaserCard({ id: '01HQ00000000000000000000T1' })
+    teaser.teaser!.beats[0]!.fetched = [
+      {
+        id: 'fal-1',
+        kind: 'image',
+        origin: 'still',
+        url: 'https://r2.example.com/fal-1.png',
+        previewKind: 'image',
+        slot: readySlot,
+        selected: false,
+      },
+      {
+        id: 'pexels-9',
+        kind: 'video',
+        origin: 'stock',
+        url: 'https://cdn.example.com/thumb-9.jpg',
+        previewKind: 'image',
+        slot: null,
+        selected: false,
+      },
+    ]
+    renderScreen([teaser])
+    await user.click(screen.getByRole('button', { name: 'Open the teaser studio' }))
+
+    await user.click(screen.getByRole('button', { name: 'Beat 1 new shot fal-1 (still image)' }))
+    expect(saveTeaserShot).toHaveBeenCalledWith('01HQ00000000000000000000T1', 0, readySlot)
+    expect(pickFetchedTeaserShot).not.toHaveBeenCalled()
+
+    await user.click(screen.getByRole('button', { name: 'Beat 1 new shot pexels-9 (stock video)' }))
+    expect(pickFetchedTeaserShot).toHaveBeenCalledWith('01HQ00000000000000000000T1', 0, 'pexels-9')
+  })
+
+  it('an in-flight fetch shows words, and a failure shows its reason', async () => {
+    const user = userEvent.setup()
+    const teaser = teaserCard({ id: '01HQ00000000000000000000T1' })
+    teaser.teaser!.beats[0]!.fetchState = { state: 'fetching', what: 'stock' }
+    teaser.teaser!.beats[1]!.fetchState = {
+      state: 'failed',
+      what: 'still',
+      reason: 'the budget ceiling refused it',
+    }
+    renderScreen([teaser])
+    await user.click(screen.getByRole('button', { name: 'Open the teaser studio' }))
+
+    expect(screen.getByText('Searching the stock providers…')).toBeInTheDocument()
+    expect(screen.getByText(/the budget ceiling refused it/)).toBeInTheDocument()
   })
 
   it('every action is a visible labelled button — no menus, no shortcuts', () => {

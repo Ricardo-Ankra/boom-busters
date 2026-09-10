@@ -10,6 +10,7 @@ import { scriptRunner } from './script-runner'
 import { shortRenderRunner } from './short-render-runner'
 import { shortsRunner } from './shorts-runner'
 import { teaserRebuildRunner } from './teaser-rebuild-runner'
+import { teaserShotFetcher } from './teaser-shot-fetcher'
 import { slotRefetcher } from './slot-refetcher'
 import { slotRetyper } from './slot-retyper'
 import { visualsRunner } from './visuals-runner'
@@ -56,6 +57,7 @@ export const functions = [
   shortsRunner,
   shortRenderRunner,
   teaserRebuildRunner,
+  teaserShotFetcher,
   publishRunner,
 ]
 
@@ -75,6 +77,7 @@ export {
   shortRenderRunner,
   shortsRunner,
   teaserRebuildRunner,
+  teaserShotFetcher,
   slotRefetcher,
   slotRetyper,
   visualsRunner,

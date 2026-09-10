@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto'
 import { z } from 'zod'
 import { TimelineSlotSchema } from './timeline'
+import { SlotCandidateSchema } from './visuals'
 import { WordTimingSchema } from './voice'
 
 /**
@@ -211,6 +212,48 @@ export const TeaserShotsRecordSchema = z.object({
   choices: z.array(TimelineSlotSchema.nullable()).max(5),
 })
 export type TeaserShotsRecord = z.infer<typeof TeaserShotsRecordSchema>
+
+/**
+ * One beat's in-flight or failed new-material request (decision 231). Written
+ * by the server action the moment the human asks, cleared or replaced by the
+ * teaser-shot-fetcher when it lands; the studio renders this verbatim, so a
+ * runner that dies mid-fetch leaves words on screen, never a dead spinner.
+ */
+export const TeaserFetchStateSchema = z.union([
+  z.object({ state: z.literal('fetching'), what: z.enum(['stock', 'still', 'ingest']) }),
+  z.object({
+    state: z.literal('failed'),
+    what: z.enum(['stock', 'still', 'ingest']),
+    reason: z.string().min(1),
+  }),
+])
+export type TeaserFetchState = z.infer<typeof TeaserFetchStateSchema>
+
+/**
+ * One beat's fetched-and-generated pool (decision 231): the same
+ * `SlotCandidate` shape the visual board stores, because the same adapters
+ * produced them. A stock re-search REPLACES the beat's stock candidates
+ * (search results are free to re-earn); generated stills ACCUMULATE (each one
+ * cost money and is never silently discarded).
+ */
+export const TeaserFetchBeatSchema = z.object({
+  state: TeaserFetchStateSchema.nullable(),
+  candidates: z.array(SlotCandidateSchema).max(40),
+})
+export type TeaserFetchBeat = z.infer<typeof TeaserFetchBeatSchema>
+
+/**
+ * The per-beat new-material record on the shorts row (decision 231),
+ * positionally aligned with the stored script's beats; null at a position
+ * means the beat never fetched anything. Kept apart from
+ * `TeaserShotsRecordSchema` on purpose: choices are written by the human's
+ * picks, this record by a runner, and separate columns cannot clobber each
+ * other's writes.
+ */
+export const TeaserFetchesRecordSchema = z.object({
+  beats: z.array(TeaserFetchBeatSchema.nullable()).max(5),
+})
+export type TeaserFetchesRecord = z.infer<typeof TeaserFetchesRecordSchema>
 
 // ---------------------------------------------------------------------------
 // Sentences

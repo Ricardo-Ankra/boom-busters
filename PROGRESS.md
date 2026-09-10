@@ -3611,6 +3611,39 @@ published and audited. The daily `channels.list` health ping and the
      free, voicing buys only changed beats, assemble spends only on the
      render.
 
+231. **The teaser studio fetches new material** (2026-09-10, phase 2 of
+     decision 230, owner said "Proceed with Phase 2"). Two per-beat acts
+     behind a "Fetch new shots for this beat" toggle, both handled by one
+     new Inngest function (`teaser-shot-fetcher`, event
+     `teaser/shots.requested` with ops `stock`/`still`/`ingest`):
+     (a) _Fetch stock options_, free. An editable query seeded from the
+     beat's words runs through the exact `fetchStockCandidates` path the
+     visual board uses (both providers, no key = degraded not dead),
+     UNSCORED on purpose: the strip is picked by eye, and a scoring pass
+     would spend an LLM call to rank twelve thumbnails a human is already
+     looking at. A re-search replaces the beat's stock results; bought
+     stills always survive.
+     (b) _Generate a still_, paid. An editable prompt through the exact
+     `generateStillCandidates` path (`modelRouting.stills`, `withCost`,
+     bytes in R2 at birth); the ConfirmButton quotes
+     `stillSlotEstimateUsd()`, the same number the plan screen quotes.
+     (c) _Picking_ honours the storage law (spec section 8.2, the Pixabay
+     expiring-URL incident): a candidate whose bytes are settled (stills,
+     mock mode, re-picks) carries a pre-built slot from
+     `slotFromTeaserCandidate` and is picked synchronously via the existing
+     `saveTeaserShot`; live stock without bytes goes through the runner's
+     `ingest` op (`ingestCandidateBytes`, the middle of `ingestSlotStock`
+     extracted) and only then becomes the beat's choice. New images get a
+     gentle kenburns push-in; videos stay static because they already move.
+     (d) _State is words, never a spinner._ Per-beat request state plus
+     candidate pools live on `shorts.teaser_fetches` (migration 0020,
+     `TeaserFetchesRecordSchema`), a SEPARATE column from `teaser_shots`
+     so the runner's writes and the human's picks cannot clobber each
+     other. The action writes `fetching` before emitting; the runner ends
+     every path in `null` or `failed{reason}`; the studio polls
+     `router.refresh()` every 2.5s only while a beat is fetching. Failures
+     also notify, for a studio closed mid-fetch, and never touch the stage.
+
 **Status:** `[x]` done — dossier + Studio shipped with unit, component and
 e2e coverage; spec §11.3 amended in place with dated notes.
 

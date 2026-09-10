@@ -6,16 +6,20 @@ import {
   MOCK_KEY_PREFIX,
 } from '@boom-busters/db'
 import type { Database, RenderRow } from '@boom-busters/db'
+import { mockProvidersEnabled } from '@boom-busters/providers'
 import {
   estimateRenderCostUsd,
   teaserTextHash,
+  TeaserFetchesRecordSchema,
   TeaserScriptRecordSchema,
   TeaserShotsRecordSchema,
   TeaserVoiceRecordSchema,
   TimelineSchema,
 } from '@boom-busters/schemas'
-import type { Timeline, TimelineSlot } from '@boom-busters/schemas'
+import type { SlotCandidate, TeaserFetchState, Timeline, TimelineSlot } from '@boom-busters/schemas'
 import { masterChapterIds, pickTeaserSlot, teaserShotPool } from '@boom-busters/timeline'
+import { slotFromTeaserCandidate, teaserCandidateReady } from '@/lib/teaser-fetch'
+import { stillSlotEstimateUsd } from '@/lib/visual-assets'
 
 /**
  * What the Shorts screen (build spec section 11.3) needs in one read: every
@@ -43,6 +47,27 @@ export interface TeaserShotOption {
   selected: boolean
 }
 
+/** One fetched or generated option in a beat's new-material strip (decision 231). */
+export interface TeaserFetchedOptionProp {
+  /** The candidate's provider-scoped id, what the ingest pick names. */
+  id: string
+  kind: 'image' | 'video'
+  /** Where it came from: a free stock search, or a paid generation. */
+  origin: 'stock' | 'still'
+  /** Provider thumb, data: SVG, or presigned stored bytes; null when nothing shows. */
+  url: string | null
+  /** What `url` actually is: a video's provider thumb is an image. */
+  previewKind: 'image' | 'video'
+  /**
+   * The pre-built slot snapshot when the bytes are settled, picked via the
+   * plain `saveTeaserShot`. Null for live stock not yet ingested: picking
+   * those goes through `pickFetchedTeaserShot` (the runner downloads first).
+   */
+  slot: TimelineSlot | null
+  /** True when the beat's stored choice IS this option's footage. */
+  selected: boolean
+}
+
 /** One spoken beat, as the teaser studio shows it (decisions 227, 230). */
 export interface TeaserBeatProp {
   text: string
@@ -60,6 +85,10 @@ export interface TeaserBeatProp {
   autoSelected: boolean
   /** The chapter's offerable shots, capped for the strip. */
   pool: TeaserShotOption[]
+  /** The beat's in-flight or failed new-material request (decision 231). */
+  fetchState: TeaserFetchState | null
+  /** New material fetched or generated for this beat, oldest first. */
+  fetched: TeaserFetchedOptionProp[]
 }
 
 /** The teaser studio's model — present on teaser cards only. */
@@ -70,6 +99,11 @@ export interface TeaserStudioModel {
    */
   hasScript: boolean
   beats: TeaserBeatProp[]
+  /**
+   * What one "Generate a still" buys (decision 231): the routed generator's
+   * price for the pass, the same number the plan screen quotes.
+   */
+  stillEstimateUsd: number
 }
 
 export interface ShortCardModel {
@@ -159,15 +193,58 @@ export async function shortsModel(
    * each carrying its voice state (stored audio vs the current text's hash),
    * its shot choice, and the chapter's offerable pool from the master board.
    */
+  const mocked = mockProvidersEnabled()
+
+  /** True when the beat's stored choice is this fetched candidate's footage. */
+  const candidatePicked = (chosen: TimelineSlot | null, candidate: SlotCandidate): boolean => {
+    if (!chosen || (chosen.payload.kind !== 'image' && chosen.payload.kind !== 'video')) {
+      return false
+    }
+    const src = chosen.payload.src
+    if (candidate.r2Key !== undefined && src.r2Key === candidate.r2Key) return true
+    const asSlot = slotFromTeaserCandidate(candidate, { mocked })
+    if (
+      asSlot &&
+      (asSlot.payload.kind === 'image' || asSlot.payload.kind === 'video') &&
+      src.r2Key !== undefined &&
+      src.r2Key === asSlot.payload.src.r2Key
+    ) {
+      return true
+    }
+    return src.externalUrl !== undefined && src.externalUrl === candidate.sourceUrl
+  }
+
+  /** A fetched option's thumbnail: provider thumb, stored bytes, stable URL. */
+  const fetchedUrlOf = async (
+    candidate: SlotCandidate,
+  ): Promise<{ url: string | null; previewKind: 'image' | 'video' }> => {
+    // Provider thumbs are pictures even for clips.
+    if (candidate.thumbUrl) return { url: candidate.thumbUrl, previewKind: 'image' }
+    if (candidate.r2Key && !candidate.r2Key.startsWith(MOCK_KEY_PREFIX) && options.presign) {
+      return { url: await options.presign(candidate.r2Key), previewKind: candidate.kind }
+    }
+    return {
+      url: /^https?:\/\//.test(candidate.sourceUrl) ? candidate.sourceUrl : null,
+      previewKind: candidate.kind,
+    }
+  }
+
   const teaserModel = async (
-    row: { teaserScript: unknown; teaserVoice: unknown; teaserShots: unknown },
+    row: {
+      teaserScript: unknown
+      teaserVoice: unknown
+      teaserShots: unknown
+      teaserFetches: unknown
+    },
     source: Timeline | null,
+    stillEstimateUsd: number,
   ): Promise<TeaserStudioModel> => {
     const stored = TeaserScriptRecordSchema.safeParse(row.teaserScript)
-    if (!stored.success) return { hasScript: false, beats: [] }
+    if (!stored.success) return { hasScript: false, beats: [], stillEstimateUsd }
 
     const voice = TeaserVoiceRecordSchema.safeParse(row.teaserVoice)
     const shots = TeaserShotsRecordSchema.safeParse(row.teaserShots)
+    const fetches = TeaserFetchesRecordSchema.safeParse(row.teaserFetches)
     const narration = source ? [...source.narration].sort((a, b) => a.startMs - b.startMs) : []
     const chapterIds = master ? masterChapterIds(master) : []
 
@@ -198,6 +275,26 @@ export async function shortsModel(
         })
       }
 
+      // The beat's fetched new material (decision 231): ready candidates
+      // carry their pre-built slot so picking them IS `saveTeaserShot`.
+      const fetchBeat = fetches.success ? (fetches.data.beats[index] ?? null) : null
+      const fetched: TeaserFetchedOptionProp[] = []
+      for (const candidate of fetchBeat?.candidates ?? []) {
+        const preview = await fetchedUrlOf(candidate)
+        fetched.push({
+          id: candidate.id,
+          kind: candidate.kind,
+          origin:
+            candidate.provider === 'fal' || candidate.provider === 'google' ? 'still' : 'stock',
+          url: preview.url,
+          previewKind: preview.previewKind,
+          slot: teaserCandidateReady(candidate, mocked)
+            ? slotFromTeaserCandidate(candidate, { mocked })
+            : null,
+          selected: candidatePicked(chosen, candidate),
+        })
+      }
+
       beats.push({
         text: paragraph.text,
         chapterIndex: paragraph.chapterIndex,
@@ -208,10 +305,17 @@ export async function shortsModel(
         auto: autoSlot ? { kind: autoSlot.payload.kind, url: await shotUrlOf(autoSlot) } : null,
         autoSelected: chosen === null,
         pool,
+        fetchState: fetchBeat?.state ?? null,
+        fetched,
       })
     }
-    return { hasScript: true, beats }
+    return { hasScript: true, beats, stillEstimateUsd }
   }
+
+  // Priced once per read, only when a teaser will show the studio at all.
+  const stillEstimateUsd = rows.some((row) => row.kind === 'teaser')
+    ? await stillSlotEstimateUsd()
+    : 0
 
   const shorts: ShortCardModel[] = []
   for (const row of rows) {
@@ -248,7 +352,11 @@ export async function shortsModel(
         : null,
       teaser:
         row.kind === 'teaser'
-          ? await teaserModel(row, sourceParsed?.success ? sourceParsed.data : null)
+          ? await teaserModel(
+              row,
+              sourceParsed?.success ? sourceParsed.data : null,
+              stillEstimateUsd,
+            )
           : null,
     })
   }

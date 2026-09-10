@@ -3,6 +3,7 @@
 import { getShort, latestTimeline, updateShort } from '@boom-busters/db'
 import {
   teaserTextHash,
+  TeaserFetchesRecordSchema,
   TeaserScriptRecordSchema,
   TeaserShotsRecordSchema,
   TeaserVoiceRecordSchema,
@@ -11,7 +12,11 @@ import {
   UlidSchema,
   ValidationError,
 } from '@boom-busters/schemas'
-import type { TeaserShotsRecord } from '@boom-busters/schemas'
+import type {
+  TeaserFetchesRecord,
+  TeaserFetchState,
+  TeaserShotsRecord,
+} from '@boom-busters/schemas'
 import { compileTeaserMaster, TEASER_CHAPTER_ID } from '@boom-busters/timeline'
 import type { TeaserParagraphAudio } from '@boom-busters/timeline'
 import { revalidatePath } from 'next/cache'
@@ -280,6 +285,118 @@ export async function assembleTeaser(shortId: string): Promise<ActionResult> {
 
   revalidatePath(`/projects/${short.projectId}`)
   return { ok: true }
+}
+
+/**
+ * Ask for one beat's new material or a fetched pick (decision 231): mark the
+ * beat as fetching so the studio shows words immediately, then hand the op to
+ * the teaser-shot-fetcher. Stock searches and ingests are free; a still
+ * generation spends inside the runner's cost guard, and the UI's confirm
+ * carries the estimate.
+ */
+async function requestTeaserFetch(
+  shortId: string,
+  beatIndex: number,
+  op:
+    | { op: 'stock'; query: string }
+    | { op: 'still'; prompt: string }
+    | { op: 'ingest'; candidateId: string },
+): Promise<ActionResult> {
+  await requireOwner()
+  const short = await loadShort(shortId)
+  if (!short) return { ok: false, error: 'Unknown Short' }
+  if (short.kind !== 'teaser') return { ok: false, error: 'Only a teaser fetches new shots.' }
+
+  const script = TeaserScriptRecordSchema.safeParse(short.teaserScript)
+  if (!script.success || script.data.paragraphs[beatIndex] === undefined) {
+    return { ok: false, error: 'There is no such beat. Save the script first.' }
+  }
+
+  // The state is written BEFORE the event: the studio must show "fetching"
+  // words on the very next render, not whenever the runner gets scheduled.
+  const parsed = TeaserFetchesRecordSchema.safeParse(short.teaserFetches)
+  const beats = parsed.success ? [...parsed.data.beats] : []
+  while (beats.length <= beatIndex) beats.push(null)
+  const stored = beats[beatIndex] ?? { state: null, candidates: [] }
+  const state: TeaserFetchState = { state: 'fetching', what: op.op }
+  beats[beatIndex] = { ...stored, state }
+  const record: TeaserFetchesRecord = { beats }
+  await updateShort(db, shortId, {
+    teaserFetches: record as unknown as Record<string, unknown>,
+  })
+
+  try {
+    await inngest.send(
+      events.teaserShotsRequested.create({
+        projectId: short.projectId,
+        shortId,
+        beatIndex,
+        ...op,
+      }),
+    )
+  } catch (error) {
+    console.error('[teaser] could not request the shot fetch', error)
+    // Undo the optimistic state: nothing is coming.
+    beats[beatIndex] = { ...stored, state: stored.state }
+    await updateShort(db, shortId, {
+      teaserFetches: { beats } as unknown as Record<string, unknown>,
+    })
+    return { ok: false, error: 'Could not reach Inngest to start the fetch.' }
+  }
+
+  revalidatePath(`/projects/${short.projectId}`)
+  return { ok: true }
+}
+
+/** Search the stock providers for one beat: free, and results replace the last search. */
+export async function fetchTeaserShotOptions(
+  shortId: string,
+  beatIndex: number,
+  query: string,
+): Promise<ActionResult> {
+  const trimmed = query.trim()
+  if (trimmed.length < 2 || trimmed.length > 200) {
+    return { ok: false, error: 'A search needs 2 to 200 characters.' }
+  }
+  if (!Number.isInteger(beatIndex) || beatIndex < 0 || beatIndex > 4) {
+    return { ok: false, error: 'Unknown beat.' }
+  }
+  return requestTeaserFetch(shortId, beatIndex, { op: 'stock', query: trimmed })
+}
+
+/** Generate a still for one beat: paid; the runner's cost guard holds the ceiling. */
+export async function generateTeaserStill(
+  shortId: string,
+  beatIndex: number,
+  prompt: string,
+): Promise<ActionResult> {
+  const trimmed = prompt.trim()
+  if (trimmed.length < 4 || trimmed.length > 2000) {
+    return { ok: false, error: 'A generation prompt needs 4 to 2000 characters.' }
+  }
+  if (!Number.isInteger(beatIndex) || beatIndex < 0 || beatIndex > 4) {
+    return { ok: false, error: 'Unknown beat.' }
+  }
+  return requestTeaserFetch(shortId, beatIndex, { op: 'still', prompt: trimmed })
+}
+
+/**
+ * Pick a fetched stock option whose bytes are not ours yet: the runner
+ * ingests them into R2 and stores the slot as the beat's choice. Fetched
+ * options that already hold bytes (generated stills, mock mode, re-picks)
+ * never come here; the studio saves their pre-built slot via
+ * `saveTeaserShot` instead.
+ */
+export async function pickFetchedTeaserShot(
+  shortId: string,
+  beatIndex: number,
+  candidateId: string,
+): Promise<ActionResult> {
+  if (candidateId.trim() === '') return { ok: false, error: 'Unknown option.' }
+  if (!Number.isInteger(beatIndex) || beatIndex < 0 || beatIndex > 4) {
+    return { ok: false, error: 'Unknown beat.' }
+  }
+  return requestTeaserFetch(shortId, beatIndex, { op: 'ingest', candidateId })
 }
 
 export async function requestShortRender(shortId: string): Promise<ActionResult> {

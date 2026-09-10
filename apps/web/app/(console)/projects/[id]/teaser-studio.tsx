@@ -1,12 +1,22 @@
 'use client'
 
 import * as React from 'react'
-import { Save, X } from 'lucide-react'
+import { useRouter } from 'next/navigation'
+import { ImagePlus, Loader2, Save, Search, X } from 'lucide-react'
 import { ConfirmButton } from '@/components/confirm-button'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
 import type { ShortCardModel, TeaserBeatProp } from '@/lib/shorts-review'
-import { assembleTeaser, rebuildTeaser, saveTeaserScript, saveTeaserShot } from './shorts-actions'
+import {
+  assembleTeaser,
+  fetchTeaserShotOptions,
+  generateTeaserStill,
+  pickFetchedTeaserShot,
+  rebuildTeaser,
+  saveTeaserScript,
+  saveTeaserShot,
+} from './shorts-actions'
 import { useAction } from './project-controls'
 
 /**
@@ -33,11 +43,21 @@ export function TeaserStudio({
   onClose: () => void
 }) {
   const act = useAction()
+  const router = useRouter()
   const beats = short.teaser?.beats ?? []
   const [texts, setTexts] = React.useState(() => beats.map((beat) => beat.text))
   const dirty = texts.some((text, index) => text !== beats[index]?.text)
   const allVoiced = beats.length > 0 && beats.every((beat) => beat.voiced)
   const staleCount = beats.filter((beat) => !beat.voiced).length
+
+  // A fetch or generation is running server-side (decision 231): re-read the
+  // page until the runner's result lands, so the strip fills in by itself.
+  const fetching = beats.some((beat) => beat.fetchState?.state === 'fetching')
+  React.useEffect(() => {
+    if (!fetching) return
+    const timer = window.setInterval(() => router.refresh(), 2500)
+    return () => window.clearInterval(timer)
+  }, [fetching, router])
 
   const voiceButton = (
     <ConfirmButton
@@ -87,6 +107,8 @@ export function TeaserStudio({
                 shortId={short.id}
                 index={index}
                 beat={beat}
+                live={live}
+                stillEstimateUsd={short.teaser?.stillEstimateUsd ?? 0}
                 text={texts[index] ?? ''}
                 onText={(value) =>
                   setTexts((current) => current.map((text, at) => (at === index ? value : text)))
@@ -153,12 +175,16 @@ function BeatWorkbench({
   shortId,
   index,
   beat,
+  live,
+  stillEstimateUsd,
   text,
   onText,
 }: {
   shortId: string
   index: number
   beat: TeaserBeatProp
+  live: boolean
+  stillEstimateUsd: number
   text: string
   onText: (value: string) => void
 }) {
@@ -267,6 +293,188 @@ function BeatWorkbench({
                 )}
               </button>
             ))}
+          </div>
+        </div>
+      ) : null}
+
+      <NewShots
+        shortId={shortId}
+        index={index}
+        beat={beat}
+        live={live}
+        stillEstimateUsd={stillEstimateUsd}
+      />
+    </div>
+  )
+}
+
+/**
+ * The beat's new material (decision 231): a free stock search with an
+ * editable query, a paid still generation with an editable prompt, and the
+ * strip of what came back. A fetched option whose bytes are settled is
+ * picked like any board shot; live stock is ingested first, so its pick
+ * shows "preparing" words until the runner has the bytes.
+ */
+function NewShots({
+  shortId,
+  index,
+  beat,
+  live,
+  stillEstimateUsd,
+}: {
+  shortId: string
+  index: number
+  beat: TeaserBeatProp
+  live: boolean
+  stillEstimateUsd: number
+}) {
+  const act = useAction()
+  const [open, setOpen] = React.useState(false)
+  const [query, setQuery] = React.useState(beat.text)
+  const [prompt, setPrompt] = React.useState(beat.text)
+  const busy = beat.fetchState?.state === 'fetching'
+
+  return (
+    <div className="flex flex-col gap-1.5">
+      {beat.fetched.length > 0 ? (
+        <>
+          <span className="text-[12px] text-[var(--color-text-secondary)]">
+            New shots fetched for this beat
+          </span>
+          <div className="flex flex-wrap items-center gap-2">
+            {beat.fetched.map((option) => (
+              <button
+                key={option.id}
+                type="button"
+                aria-pressed={option.selected}
+                aria-label={`Beat ${index + 1} new shot ${option.id} (${option.origin} ${option.kind})`}
+                disabled={busy}
+                onClick={() =>
+                  void act(
+                    () =>
+                      option.slot
+                        ? saveTeaserShot(shortId, index, option.slot)
+                        : pickFetchedTeaserShot(shortId, index, option.id),
+                    option.slot
+                      ? 'Shot picked'
+                      : 'Preparing the clip. It becomes the pick once stored',
+                  )
+                }
+                className={
+                  'flex h-[72px] min-w-[72px] items-center justify-center rounded-[8px] border p-1 ' +
+                  (option.selected
+                    ? 'border-[var(--color-accent)]'
+                    : 'border-[var(--color-border)]')
+                }
+              >
+                {option.url && option.previewKind === 'video' ? (
+                  // The preview URL is the clip itself (no picture thumb
+                  // exists), so preview it the way the pool strip does.
+                  <video
+                    src={option.url}
+                    muted
+                    preload="metadata"
+                    className="h-full w-[88px] rounded-[4px] object-cover"
+                  />
+                ) : option.url ? (
+                  <img
+                    src={option.url}
+                    alt=""
+                    className="h-full w-[88px] rounded-[4px] object-cover"
+                  />
+                ) : (
+                  <span className="px-2 text-[11px] text-[var(--color-text-secondary)] capitalize">
+                    {option.origin} {option.kind}
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
+        </>
+      ) : null}
+
+      {beat.fetchState?.state === 'fetching' ? (
+        <p className="flex items-center gap-1.5 text-[12px] text-[var(--color-text-muted)]">
+          <Loader2 aria-hidden className="h-3.5 w-3.5 animate-spin" />
+          {beat.fetchState.what === 'stock'
+            ? 'Searching the stock providers…'
+            : beat.fetchState.what === 'still'
+              ? 'Generating the still…'
+              : 'Preparing the picked clip…'}
+        </p>
+      ) : null}
+      {beat.fetchState?.state === 'failed' ? (
+        <p className="text-[12px] text-[var(--color-danger)]">
+          The last {beat.fetchState.what === 'ingest' ? 'pick' : 'fetch'} stopped:{' '}
+          {beat.fetchState.reason}
+        </p>
+      ) : null}
+
+      <div>
+        <Button variant="ghost" aria-expanded={open} onClick={() => setOpen((value) => !value)}>
+          <ImagePlus aria-hidden className="h-4 w-4" />
+          {open ? 'Hide the new-shot tools' : 'Fetch new shots for this beat'}
+        </Button>
+      </div>
+
+      {open ? (
+        <div className="flex flex-col gap-2 rounded-[8px] border border-[var(--color-border)] p-3">
+          <label className="flex flex-col gap-1 text-[12px] text-[var(--color-text-secondary)]">
+            Beat {index + 1} stock search
+            <Input
+              value={query}
+              maxLength={200}
+              onChange={(event) => setQuery(event.target.value)}
+            />
+          </label>
+          <div>
+            <Button
+              variant="outline"
+              disabled={busy}
+              onClick={() =>
+                void act(
+                  () => fetchTeaserShotOptions(shortId, index, query),
+                  'Searching. Results land in the strip above',
+                )
+              }
+            >
+              <Search aria-hidden className="h-4 w-4" />
+              {live ? 'Fetch stock options (free)' : 'Fetch stock options (mock)'}
+            </Button>
+          </div>
+
+          <label className="flex flex-col gap-1 text-[12px] text-[var(--color-text-secondary)]">
+            Beat {index + 1} still prompt
+            <textarea
+              value={prompt}
+              rows={2}
+              maxLength={2000}
+              onChange={(event) => setPrompt(event.target.value)}
+              className="rounded-[8px] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-[13px] text-[var(--color-text-primary)] outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)]"
+            />
+          </label>
+          <div>
+            <ConfirmButton
+              label={
+                live
+                  ? `Generate a still · est. $${stillEstimateUsd.toFixed(2)}`
+                  : 'Generate a still (mock)'
+              }
+              confirmLabel="Generate it"
+              consequence={
+                live
+                  ? `Buys a generation pass from the routed model for about $${stillEstimateUsd.toFixed(2)}. The images land in the strip above; nothing is picked for you.`
+                  : 'Mock mode: the bookkeeping runs; no generator is called and nothing is spent.'
+              }
+              confirmVariant="primary"
+              disabled={busy}
+              onConfirm={() =>
+                act(
+                  () => generateTeaserStill(shortId, index, prompt),
+                  'Generating. The stills land in the strip above',
+                )
+              }
+            />
           </div>
         </div>
       ) : null}

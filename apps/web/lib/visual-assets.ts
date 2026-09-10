@@ -106,7 +106,8 @@ export async function stillSlotEstimateUsd(): Promise<number> {
 // Fetching
 // ---------------------------------------------------------------------------
 
-async function fetchStockCandidates(brief: StockBrief): Promise<SlotCandidate[]> {
+/** Exported for the teaser studio's per-beat fetch (decision 231). */
+export async function fetchStockCandidates(brief: StockBrief): Promise<SlotCandidate[]> {
   const keys = mockProvidersEnabled() ? {} : await visualCredentials(db, env.SECRETS_ENCRYPTION_KEY)
 
   const query: StockQuery = {
@@ -152,7 +153,8 @@ async function fetchStockCandidates(brief: StockBrief): Promise<SlotCandidate[]>
 // Generation
 // ---------------------------------------------------------------------------
 
-async function generateStillCandidates(
+/** Exported for the teaser studio's per-beat generation (decision 231). */
+export async function generateStillCandidates(
   brief: StillBrief,
   projectId: string,
 ): Promise<SlotCandidate[]> {

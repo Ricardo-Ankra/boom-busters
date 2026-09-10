@@ -161,6 +161,46 @@ export const TeaserRebuildRequestedSchema = z.object({
 })
 
 /**
+ * The teaser studio's per-beat new-material acts (decision 231, phase 2 of
+ * the studio). One event, one runner (`teaser-shot-fetcher`), three ops:
+ *
+ *  - `stock`: search the stock providers with the human-edited query. Free,
+ *    unscored (the studio's strip is picked by eye, not by a paid judge).
+ *  - `still`: generate images from the human-edited prompt. Paid, routed and
+ *    cost-guarded exactly like a board still.
+ *  - `ingest`: the human picked a fetched stock candidate, whose provider
+ *    URL expires, so pull its bytes into R2 and store the slot snapshot as the
+ *    beat's choice. Free; generated stills never need this (their bytes are
+ *    stored at birth) and are picked synchronously instead.
+ */
+export const TeaserShotsRequestedSchema = z.discriminatedUnion('op', [
+  z.object({
+    ...projectRef,
+    shortId: UlidSchema,
+    beatIndex: z.number().int().min(0).max(4),
+    op: z.literal('stock'),
+    /** The literal search query, seeded from the beat's words and edited. */
+    query: z.string().trim().min(2).max(200),
+  }),
+  z.object({
+    ...projectRef,
+    shortId: UlidSchema,
+    beatIndex: z.number().int().min(0).max(4),
+    op: z.literal('still'),
+    /** The full generation prompt, seeded from the beat's words and edited. */
+    prompt: z.string().trim().min(4).max(2000),
+  }),
+  z.object({
+    ...projectRef,
+    shortId: UlidSchema,
+    beatIndex: z.number().int().min(0).max(4),
+    op: z.literal('ingest'),
+    /** The fetched candidate's id inside the beat's stored pool. */
+    candidateId: z.string().min(1),
+  }),
+])
+
+/**
  * Publish one item (M7.6) — the UI's schedule action creates/updates the
  * publish_records row FIRST, then sends this. `attempt` exists for the
  * error mapper's `retry` action: a transient upload failure re-emits with
@@ -262,6 +302,7 @@ export const EVENT_SCHEMAS = {
   'render/draft.requested': RenderDraftRequestedSchema,
   'shorts/render.requested': ShortsRenderRequestedSchema,
   'teaser/rebuild.requested': TeaserRebuildRequestedSchema,
+  'teaser/shots.requested': TeaserShotsRequestedSchema,
   'publish/requested': PublishRequestedSchema,
   'render/settled': RenderSettledSchema,
 

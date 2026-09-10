@@ -240,6 +240,75 @@ async function storeBytes(input: {
 }
 
 /**
+ * Ingest one bare candidate (decision 231, the teaser studio's picked stock):
+ * bytes into R2 plus a video's preview proxy, an asset row, and the enriched
+ * candidate handed back for the caller to store wherever it lives; this is
+ * `ingestSlotStock`'s middle without the shot_slots row around it. A
+ * candidate that already holds its bytes is returned as-is.
+ */
+export async function ingestCandidateBytes(
+  candidate: SlotCandidate,
+): Promise<{ ok: true; candidate: SlotCandidate } | { ok: false; reason: string }> {
+  if (candidate.r2Key !== undefined && !previewObtainable(candidate)) {
+    return { ok: true, candidate }
+  }
+
+  const keys = await visualCredentials(db, env.SECRETS_ENCRYPTION_KEY)
+  const deps: DownloadDeps = {
+    fetchImpl: fetch,
+    keys: {
+      ...(keys.pexels ? { pexels: keys.pexels } : {}),
+      ...(keys.pixabay ? { pixabay: keys.pixabay } : {}),
+    },
+  }
+
+  let r2Key = candidate.r2Key
+  let assetId = candidate.assetId
+  let freshPreviewUrl: string | undefined
+
+  if (r2Key === undefined) {
+    if (!/^https?:\/\//.test(candidate.sourceUrl)) {
+      return { ok: false, reason: 'the candidate has no downloadable source URL' }
+    }
+    const downloaded = await downloadStock(candidate, deps)
+    if (!downloaded.ok) return downloaded
+    freshPreviewUrl = downloaded.freshPreviewUrl
+    r2Key = await storeBytes(downloaded)
+
+    const asset = await upsertAssetByHash(db, {
+      kind: candidate.kind,
+      r2Key,
+      sourceUrl: candidate.pageUrl ?? candidate.sourceUrl,
+      licence: candidate.licence,
+      contentHash: createHash('sha256').update(downloaded.bytes).digest('hex'),
+      ...(candidate.width !== undefined ? { width: candidate.width } : {}),
+      ...(candidate.height !== undefined ? { height: candidate.height } : {}),
+      ...(candidate.durationMs !== undefined ? { durationMs: candidate.durationMs } : {}),
+      ...(candidate.attributionText !== undefined
+        ? { attributionText: candidate.attributionText }
+        : {}),
+    })
+    assetId = asset.id
+  }
+
+  let previewR2Key = candidate.previewR2Key
+  if (previewObtainable(candidate)) {
+    const preview = await downloadStockPreview(candidate, deps, freshPreviewUrl)
+    if (preview) previewR2Key = await storeBytes(preview)
+  }
+
+  return {
+    ok: true,
+    candidate: {
+      ...candidate,
+      r2Key,
+      ...(assetId !== undefined ? { assetId } : {}),
+      ...(previewR2Key !== undefined ? { previewR2Key } : {}),
+    },
+  }
+}
+
+/**
  * Ingest one slot's chosen candidate: bytes into R2 (the full clip, plus a
  * small preview proxy for videos), an asset row, and the keys written back
  * into the slot's candidates jsonb — so a re-run, the board, and every

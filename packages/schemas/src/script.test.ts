@@ -444,3 +444,48 @@ describe('resolveCandidateSegment', () => {
     ).toBeNull()
   })
 })
+
+describe('TeaserFetchesRecordSchema (decision 231)', () => {
+  const candidate = {
+    id: 'pexels-123',
+    provider: 'pexels',
+    kind: 'image',
+    sourceUrl: 'https://example.com/x.jpg',
+    licence: 'Pexels License',
+  }
+
+  it('parses a beat with a fetching state and candidates', async () => {
+    const { TeaserFetchesRecordSchema } = await import('./script')
+    const record = TeaserFetchesRecordSchema.parse({
+      beats: [null, { state: { state: 'fetching', what: 'stock' }, candidates: [candidate] }],
+    })
+    expect(record.beats[0]).toBeNull()
+    expect(record.beats[1]?.candidates).toHaveLength(1)
+  })
+
+  it('a failure must say why: words on screen, never a dead spinner', async () => {
+    const { TeaserFetchesRecordSchema } = await import('./script')
+    expect(() =>
+      TeaserFetchesRecordSchema.parse({
+        beats: [{ state: { state: 'failed', what: 'still', reason: '' }, candidates: [] }],
+      }),
+    ).toThrow()
+    expect(
+      TeaserFetchesRecordSchema.parse({
+        beats: [
+          {
+            state: { state: 'failed', what: 'still', reason: 'the budget refused it' },
+            candidates: [],
+          },
+        ],
+      }).beats[0]?.state,
+    ).toMatchObject({ state: 'failed' })
+  })
+
+  it('refuses a sixth beat, because the record aligns with the script', async () => {
+    const { TeaserFetchesRecordSchema } = await import('./script')
+    expect(() =>
+      TeaserFetchesRecordSchema.parse({ beats: [null, null, null, null, null, null] }),
+    ).toThrow()
+  })
+})
