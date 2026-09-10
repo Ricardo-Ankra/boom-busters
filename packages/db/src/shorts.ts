@@ -29,6 +29,8 @@ export async function insertShort(
     sourceTimeline?: Record<string, unknown>
     /** The teaser's editable script (decision 227); excerpts leave it unset. */
     teaserScript?: Record<string, unknown>
+    /** The voiced beats (decision 230); stored at build so the studio starts consistent. */
+    teaserVoice?: Record<string, unknown>
   },
 ): Promise<ShortRow> {
   const [row] = await db
@@ -42,6 +44,7 @@ export async function insertShort(
       ...(input.kind !== undefined ? { kind: input.kind } : {}),
       ...(input.sourceTimeline !== undefined ? { sourceTimeline: input.sourceTimeline } : {}),
       ...(input.teaserScript !== undefined ? { teaserScript: input.teaserScript } : {}),
+      ...(input.teaserVoice !== undefined ? { teaserVoice: input.teaserVoice } : {}),
     })
     .returning()
 
@@ -76,6 +79,9 @@ export async function updateShort(
     segmentRef: ShortRow['segmentRef']
     sourceTimeline: Record<string, unknown>
     teaserScript: Record<string, unknown>
+    /** The studio's split acts (decision 230): voice and shot choices. */
+    teaserVoice: Record<string, unknown>
+    teaserShots: Record<string, unknown>
   }>,
 ): Promise<void> {
   await db

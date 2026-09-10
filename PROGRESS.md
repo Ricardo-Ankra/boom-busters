@@ -3581,6 +3581,36 @@ published and audited. The daily `channels.list` health ping and the
      the app URL, privacy policy = /privacy), publish to production, THEN
      reconnect so the stored refresh token is the durable kind.
 
+230. **The teaser studio grows the full mini pipeline** (2026-09-10, owner
+     direction: "the same as our normal video — script, voice, shot list,
+     assemble and render", with reuse of the full video's footage AND room
+     for new shots later). Phase 1 of two, chosen by the owner: the acts
+     split and the shot picker lands; NEW-material fetching (per-beat stock
+     search and paid still generation) is phase 2. The studio is now Script
+     → Voice → Shots → Assemble & render:
+     (a) _Voice split from the cut._ The teaser-rebuild-runner (event name
+     kept) voices the stored script and stops: beats land in
+     `shorts.teaserVoice` (migration 0019, applied to prod and test) as
+     `{textHash, r2Key, durationMs, wordTimings}` per beat —
+     `teaserTextHash` moved into `@boom-busters/schemas` so "is this beat's
+     audio current?" and the TTS idempotency key are the same digest. The
+     shorts-runner's initial build stores the same record so a fresh teaser
+     opens consistent.
+     (b) _Shots._ Per beat, a picker over `teaserShotPool` (the exact pool
+     the auto-pick chooses from, extracted so the studio and the auto-pick
+     can never disagree), capped at 12 thumbnails per beat, plus an Auto
+     chip. Choices live on `shorts.teaserShots` as FULL SLOT SNAPSHOTS,
+     never indexes — a re-assembled master reorders its slots, and an index
+     would silently point a human's choice at other footage.
+     `compileTeaserMaster` gained `chosen?: (TimelineSlot | null)[]`.
+     (c) _Assemble & render is a server action._ `assembleTeaser` compiles
+     from the stored voice + choices (free, synchronous, no vendor),
+     refuses in words when any beat's textHash has fallen behind the
+     script, writes the cut, nulls the render pointer and queues the
+     render. Spend contract unchanged: script saves and shot picks are
+     free, voicing buys only changed beats, assemble spends only on the
+     render.
+
 **Status:** `[x]` done — dossier + Studio shipped with unit, component and
 e2e coverage; spec §11.3 amended in place with dated notes.
 

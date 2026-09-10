@@ -1,5 +1,7 @@
 import { createHash } from 'node:crypto'
 import { z } from 'zod'
+import { TimelineSlotSchema } from './timeline'
+import { WordTimingSchema } from './voice'
 
 /**
  * Provider IO and shared text utilities for the script stage (build spec
@@ -166,6 +168,49 @@ export const TeaserScriptRecordSchema = TeaserScriptSchema.extend({
   scriptVersion: z.number().int().min(1),
 })
 export type TeaserScriptRecord = z.infer<typeof TeaserScriptRecordSchema>
+
+/**
+ * A beat text's identity (decision 230): the digest the TTS idempotency key
+ * carries and the voice record stores. One definition, because "is this
+ * beat's audio current?" and "would the vendor re-serve this beat free?"
+ * must be the same question.
+ */
+export function teaserTextHash(text: string): string {
+  return createHash('sha256').update(text).digest('hex').slice(0, 12)
+}
+
+/**
+ * One voiced beat as stored on the shorts row (decision 230): the audio's
+ * home plus the hash of the TEXT it spoke, so the studio can say — per beat
+ * — whether an edit has outrun the voice. Voicing and cutting are separate
+ * acts in the studio; this record is what sits between them.
+ */
+export const TeaserVoiceBeatSchema = z.object({
+  /** sha256 hex prefix of the beat text, the same digest the TTS idempotency key carries. */
+  textHash: z.string().regex(/^[0-9a-f]{12}$/),
+  r2Key: z.string().min(1),
+  durationMs: z.number().int().positive(),
+  wordTimings: z.array(WordTimingSchema).nullable(),
+})
+export type TeaserVoiceBeat = z.infer<typeof TeaserVoiceBeatSchema>
+
+export const TeaserVoiceRecordSchema = z.object({
+  scriptVersion: z.number().int().min(1),
+  beats: z.array(TeaserVoiceBeatSchema).min(1).max(5),
+})
+export type TeaserVoiceRecord = z.infer<typeof TeaserVoiceRecordSchema>
+
+/**
+ * The studio's explicit per-beat shot choices (decision 230). Full slot
+ * SNAPSHOTS, not indexes into the master: a re-assembled master reorders its
+ * slots freely, and a stored index would silently point a human's choice at
+ * someone else's footage. Null at a position means "auto-pick", the same
+ * lift-from-the-board default the teaser has always had.
+ */
+export const TeaserShotsRecordSchema = z.object({
+  choices: z.array(TimelineSlotSchema.nullable()).max(5),
+})
+export type TeaserShotsRecord = z.infer<typeof TeaserShotsRecordSchema>
 
 // ---------------------------------------------------------------------------
 // Sentences

@@ -17,7 +17,7 @@ import {
   truncateRunMirror,
   updateSettings,
 } from '@boom-busters/db'
-import { DEFAULT_SETTINGS, resolveBrandKit } from '@boom-busters/schemas'
+import { DEFAULT_SETTINGS, resolveBrandKit, teaserTextHash } from '@boom-busters/schemas'
 import type { Timeline } from '@boom-busters/schemas'
 import { TEASER_CHAPTER_ID } from '@boom-busters/timeline'
 import { InngestTestEngine } from '@inngest/test'
@@ -27,11 +27,13 @@ import { forgetRunRows } from '../middleware/run-mirror'
 import { teaserRebuildRunner } from './teaser-rebuild-runner'
 
 /**
- * The teaser-rebuild-runner against the real database (decision 227): the
- * studio's Re-voice & recut. What matters here: an edited stored script is
- * re-voiced and recut in place with the render pointer nulled; a pre-studio
- * teaser with no stored script gets one regenerated and stored; and a
- * refusal (no voice chosen) notifies instead of touching the project stage.
+ * The teaser voice runner against the real database (decisions 227, 230):
+ * the studio's "Voice the script". What matters here: the stored (possibly
+ * edited) script is synthesised and the beats land in `teaserVoice` with the
+ * text hashes — while the CUT is left alone, because assembling is a
+ * separate act; a pre-studio teaser with no stored script gets one
+ * regenerated and stored; and a refusal (no voice chosen) notifies instead
+ * of touching the project stage.
  */
 
 vi.mock('@/lib/storage', () => ({
@@ -154,29 +156,28 @@ describeDb('teaser-rebuild-runner', () => {
   })
 
   it(
-    're-voices the stored script and recuts in place, nulling the render',
+    'voices the stored script into teaserVoice, leaving the cut alone',
     { timeout: 120_000 },
     async () => {
       await chooseVoice()
       const teaser = await insertTeaser({ teaserScript: STORED_SCRIPT })
 
-      const { result } = await engine.execute({
-        events: rebuildEvent(teaser.id),
-        steps: [{ id: 'request-render', handler: () => undefined }],
-      })
+      const { result } = await engine.execute({ events: rebuildEvent(teaser.id) })
 
-      expect(result).toMatchObject({ outcome: 'rebuilt', beats: 2 })
+      expect(result).toMatchObject({ outcome: 'voiced', beats: 2 })
       const stored = await getShort(db, teaser.id)
-      expect(stored?.renderId).toBeNull()
       expect(stored?.title).toBe('Curated by hand')
-      const mini = stored?.sourceTimeline as { narration: unknown[]; slots: unknown[] }
-      expect(mini.narration).toHaveLength(2)
-      expect(mini.slots).toHaveLength(2)
-      expect(stored?.segmentRef).toMatchObject({
-        chapterId: TEASER_CHAPTER_ID,
-        fromParagraph: 0,
-        toParagraph: 1,
-      })
+      const voice = stored?.teaserVoice as {
+        scriptVersion: number
+        beats: { textHash: string; r2Key: string; durationMs: number }[]
+      } | null
+      expect(voice).not.toBeNull()
+      expect(voice!.beats).toHaveLength(2)
+      expect(voice!.beats.map((beat) => beat.textHash)).toEqual(
+        STORED_SCRIPT.paragraphs.map((paragraph) => teaserTextHash(paragraph.text)),
+      )
+      // Assembling is the studio's separate act: the cut is not touched.
+      expect(stored?.sourceTimeline).toBeNull()
       // Not a stage runner: the project's stage is not this run's to touch.
       expect((await getProject(db, FIXTURE_PROJECT_ID))?.stage).not.toBe('failed')
     },
@@ -189,17 +190,14 @@ describeDb('teaser-rebuild-runner', () => {
       await chooseVoice()
       const teaser = await insertTeaser()
 
-      const { result } = await engine.execute({
-        events: rebuildEvent(teaser.id),
-        steps: [{ id: 'request-render', handler: () => undefined }],
-      })
+      const { result } = await engine.execute({ events: rebuildEvent(teaser.id) })
 
-      expect(result).toMatchObject({ outcome: 'rebuilt' })
+      expect(result).toMatchObject({ outcome: 'voiced' })
       const stored = await getShort(db, teaser.id)
       const script = stored?.teaserScript as { paragraphs: unknown[]; scriptVersion: number } | null
       expect(script).not.toBeNull()
       expect(script!.paragraphs.length).toBeGreaterThanOrEqual(2)
-      expect(stored?.sourceTimeline).not.toBeNull()
+      expect(stored?.teaserVoice).not.toBeNull()
     },
   )
 

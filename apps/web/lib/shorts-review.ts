@@ -8,10 +8,14 @@ import {
 import type { Database, RenderRow } from '@boom-busters/db'
 import {
   estimateRenderCostUsd,
+  teaserTextHash,
   TeaserScriptRecordSchema,
+  TeaserShotsRecordSchema,
+  TeaserVoiceRecordSchema,
   TimelineSchema,
 } from '@boom-busters/schemas'
-import type { Timeline } from '@boom-busters/schemas'
+import type { Timeline, TimelineSlot } from '@boom-busters/schemas'
+import { masterChapterIds, pickTeaserSlot, teaserShotPool } from '@boom-busters/timeline'
 
 /**
  * What the Shorts screen (build spec section 11.3) needs in one read: every
@@ -28,7 +32,18 @@ export interface ShortRenderProp {
   error: { message?: string } | null
 }
 
-/** One spoken beat, as the teaser studio shows it (decision 227). */
+/** One offerable shot in a beat's picker (decision 230). */
+export interface TeaserShotOption {
+  kind: 'image' | 'video' | 'chart' | 'map'
+  /** Presigned (or external) preview; null for mock keys, charts and maps. */
+  url: string | null
+  /** The full slot snapshot the save action stores. */
+  slot: TimelineSlot
+  /** True when this option IS the stored choice. */
+  selected: boolean
+}
+
+/** One spoken beat, as the teaser studio shows it (decisions 227, 230). */
 export interface TeaserBeatProp {
   text: string
   chapterIndex: number
@@ -37,6 +52,14 @@ export interface TeaserBeatProp {
   /** Presigned URL of the beat's current audio; null in mock mode or unvoiced. */
   audioUrl: string | null
   durationMs: number | null
+  /** True when stored audio exists AND still speaks the current text. */
+  voiced: boolean
+  /** What the auto-pick takes today — the default the picker starts from. */
+  auto: { kind: string; url: string | null } | null
+  /** True while no explicit choice is stored — the auto-pick applies. */
+  autoSelected: boolean
+  /** The chapter's offerable shots, capped for the strip. */
+  pool: TeaserShotOption[]
 }
 
 /** The teaser studio's model — present on teaser cards only. */
@@ -109,29 +132,82 @@ export async function shortsModel(
   const master = timelineRow ? TimelineSchema.parse(timelineRow.json) : null
   const chapterTitles = new Map(sources.chapters.map((chapter) => [chapter.id, chapter.title]))
 
-  /** The studio's model (decision 227): beats from the stored script, each
-   *  paired positionally with its narration segment for the audio link. */
+  /** Presign a URL for an audio r2Key; mock bookmarks stay unplayable. */
+  const audioUrlOf = async (r2Key: string | undefined): Promise<string | null> =>
+    r2Key && !r2Key.startsWith(MOCK_KEY_PREFIX) && options.presign ? options.presign(r2Key) : null
+
+  /** A slot's preview URL: external as-is, R2 presigned, charts/maps none. */
+  const shotUrlOf = async (slot: TimelineSlot): Promise<string | null> => {
+    if (slot.payload.kind !== 'image' && slot.payload.kind !== 'video') return null
+    const src = slot.payload.src
+    if (src.externalUrl) return src.externalUrl
+    if (src.r2Key && !src.r2Key.startsWith(MOCK_KEY_PREFIX) && options.presign) {
+      return options.presign(src.r2Key)
+    }
+    return null
+  }
+
+  /** Two slots show the same footage when their payloads agree exactly. */
+  const sameShot = (a: TimelineSlot, b: TimelineSlot): boolean =>
+    JSON.stringify(a.payload) === JSON.stringify(b.payload)
+
+  /** How many of a chapter's shots the picker strip offers per beat. */
+  const POOL_CAP = 12
+
+  /**
+   * The studio's model (decisions 227, 230): beats from the stored script,
+   * each carrying its voice state (stored audio vs the current text's hash),
+   * its shot choice, and the chapter's offerable pool from the master board.
+   */
   const teaserModel = async (
-    row: { teaserScript: unknown },
+    row: { teaserScript: unknown; teaserVoice: unknown; teaserShots: unknown },
     source: Timeline | null,
   ): Promise<TeaserStudioModel> => {
     const stored = TeaserScriptRecordSchema.safeParse(row.teaserScript)
     if (!stored.success) return { hasScript: false, beats: [] }
 
+    const voice = TeaserVoiceRecordSchema.safeParse(row.teaserVoice)
+    const shots = TeaserShotsRecordSchema.safeParse(row.teaserShots)
     const narration = source ? [...source.narration].sort((a, b) => a.startMs - b.startMs) : []
+    const chapterIds = master ? masterChapterIds(master) : []
+
     const beats: TeaserBeatProp[] = []
     for (const [index, paragraph] of stored.data.paragraphs.entries()) {
+      const voiceBeat = voice.success ? voice.data.beats[index] : undefined
+      const voiced =
+        voiceBeat !== undefined && voiceBeat.textHash === teaserTextHash(paragraph.text)
+      // Voiced-and-current audio first; the assembled cut's segment second.
       const segment = narration[index]
-      const r2Key = segment?.r2Key
+      const audioUrl = voiced ? await audioUrlOf(voiceBeat.r2Key) : await audioUrlOf(segment?.r2Key)
+
+      const chapterId = master
+        ? chapterIds[Math.min(Math.max(paragraph.chapterIndex, 0), chapterIds.length - 1)]
+        : undefined
+      const poolSlots =
+        master && chapterId ? teaserShotPool(master, chapterId).slice(0, POOL_CAP) : []
+      const chosen = shots.success ? (shots.data.choices[index] ?? null) : null
+      const autoSlot = master && chapterId ? pickTeaserSlot(master, chapterId) : undefined
+
+      const pool: TeaserShotOption[] = []
+      for (const slot of poolSlots) {
+        pool.push({
+          kind: slot.payload.kind,
+          url: await shotUrlOf(slot),
+          slot,
+          selected: chosen !== null && sameShot(chosen, slot),
+        })
+      }
+
       beats.push({
         text: paragraph.text,
         chapterIndex: paragraph.chapterIndex,
         chapterTitle: sources.chapters[paragraph.chapterIndex]?.title ?? null,
-        audioUrl:
-          r2Key && !r2Key.startsWith(MOCK_KEY_PREFIX) && options.presign
-            ? await options.presign(r2Key)
-            : null,
-        durationMs: segment?.durationMs ?? null,
+        audioUrl,
+        durationMs: voiced ? voiceBeat.durationMs : (segment?.durationMs ?? null),
+        voiced,
+        auto: autoSlot ? { kind: autoSlot.payload.kind, url: await shotUrlOf(autoSlot) } : null,
+        autoSelected: chosen === null,
+        pool,
       })
     }
     return { hasScript: true, beats }

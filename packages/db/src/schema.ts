@@ -661,6 +661,19 @@ export const shorts = pgTable(
      * the rebuild runner regenerates and stores it on first use.
      */
     teaserScript: jsonb('teaser_script').$type<Record<string, unknown>>(),
+    /**
+     * The voiced beats between Voice and Assemble (decision 230):
+     * TeaserVoiceRecordSchema — per beat the audio's r2Key, duration, word
+     * timings and the hash of the text it spoke. Null for excerpts and for
+     * teasers voiced before the studio split the two acts.
+     */
+    teaserVoice: jsonb('teaser_voice').$type<Record<string, unknown>>(),
+    /**
+     * The studio's explicit per-beat shot choices (decision 230):
+     * TeaserShotsRecordSchema — full slot snapshots, null meaning auto-pick.
+     * Null for excerpts and for untouched teasers.
+     */
+    teaserShots: jsonb('teaser_shots').$type<Record<string, unknown>>(),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },

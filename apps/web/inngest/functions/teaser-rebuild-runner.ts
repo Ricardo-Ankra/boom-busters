@@ -1,12 +1,6 @@
-import { getShort, latestTimeline, updateShort } from '@boom-busters/db'
-import {
-  parseEventData,
-  TeaserScriptRecordSchema,
-  TimelineSchema,
-  ValidationError,
-} from '@boom-busters/schemas'
-import type { TeaserScriptRecord } from '@boom-busters/schemas'
-import { compileTeaserMaster, TEASER_CHAPTER_ID } from '@boom-busters/timeline'
+import { getShort, updateShort } from '@boom-busters/db'
+import { parseEventData, teaserTextHash, TeaserScriptRecordSchema } from '@boom-busters/schemas'
+import type { TeaserScriptRecord, TeaserVoiceRecord } from '@boom-busters/schemas'
 import type { TeaserParagraphAudio } from '@boom-busters/timeline'
 import { NonRetriableError } from 'inngest'
 import { db } from '@/lib/db'
@@ -16,11 +10,13 @@ import { events } from '../events'
 import { voiceTeaserBeat, writeTeaserScript } from '../lib/teaser-build'
 
 /**
- * teaser-rebuild-runner (decision 227): the teaser studio's "Re-voice &
- * recut" button. Re-voices the stored (possibly edited) script — the
+ * teaser-rebuild-runner (decisions 227, 230): the teaser studio's "Voice the
+ * script" button. Re-voices the stored (possibly edited) script — the
  * idempotency keys hash the text, so unchanged beats are re-served by the
- * vendor, not re-billed — recuts over the CURRENT master board, updates the
- * row in place and queues a fresh render.
+ * vendor, not re-billed — and stores the voiced beats on the row. It stops
+ * there on purpose: the cut is a separate act (`assembleTeaser`, a free
+ * synchronous compile), so the human can hear the narration and pick shots
+ * before anything is assembled.
  *
  * This is not a stage runner: the project may be sitting at shorts or at
  * publish while a teaser is reworked, so failures never touch the stage.
@@ -28,9 +24,8 @@ import { voiceTeaserBeat, writeTeaserScript } from '../lib/teaser-build'
  * them.
  *
  * A teaser built before the studio existed has no stored script; the first
- * rebuild regenerates one from the outline and stores it. The row's curated
- * title is never overwritten — only the script, the cut and the render
- * pointer change.
+ * voicing regenerates one from the outline and stores it. The row's curated
+ * title is never overwritten.
  */
 
 const FUNCTION_ID = 'teaser-rebuild-runner'
@@ -38,7 +33,7 @@ const FUNCTION_ID = 'teaser-rebuild-runner'
 export const teaserRebuildRunner = inngest.createFunction(
   {
     id: FUNCTION_ID,
-    name: 'Teaser rebuild',
+    name: 'Teaser voice',
     retries: 2,
     cancelOn: [
       {
@@ -55,7 +50,7 @@ export const teaserRebuildRunner = inngest.createFunction(
       await step.run(stepName, () =>
         notify({
           kind: 'run-failed',
-          title: 'The teaser rebuild stopped',
+          title: 'The teaser voicing stopped',
           body,
           href: `/projects/${projectId}?stage=shorts`,
         }),
@@ -102,7 +97,7 @@ export const teaserRebuildRunner = inngest.createFunction(
       return { projectId, shortId, outcome: 'over-budget' as const }
     }
     if (!script.ok) {
-      await fail('script-skipped', `Rebuilding stopped before voicing: ${script.skipped}`)
+      await fail('script-skipped', `Voicing stopped before it began: ${script.skipped}`)
       return { projectId, shortId, outcome: 'skipped' as const, reason: script.skipped }
     }
 
@@ -124,7 +119,7 @@ export const teaserRebuildRunner = inngest.createFunction(
         return { projectId, shortId, outcome: 'over-budget' as const }
       }
       if (!spoken.ok) {
-        await fail('tts-skipped', `Rebuilding stopped mid-voice: ${spoken.skipped}`)
+        await fail('tts-skipped', `Voicing stopped mid-way: ${spoken.skipped}`)
         return { projectId, shortId, outcome: 'skipped' as const, reason: spoken.skipped }
       }
       voiced.push({
@@ -136,46 +131,33 @@ export const teaserRebuildRunner = inngest.createFunction(
       })
     }
 
-    const recut = await step.run(
-      'recut',
-      async (): Promise<{ ok: true } | { ok: false; skipped: string }> => {
-        const timelineRow = await latestTimeline(db, projectId)
-        if (!timelineRow) {
-          return { ok: false, skipped: 'there is no master timeline to lift visuals from' }
-        }
-        try {
-          const teaserTimeline = compileTeaserMaster({
-            master: TimelineSchema.parse(timelineRow.json),
-            paragraphs: voiced,
-          })
-          await updateShort(db, shortId, {
-            sourceTimeline: teaserTimeline as unknown as Record<string, unknown>,
-            segmentRef: {
-              chapterId: TEASER_CHAPTER_ID,
-              fromParagraph: 0,
-              toParagraph: voiced.length - 1,
-            },
-            // The old render is a render of the old teaser.
-            renderId: null,
-          })
-          return { ok: true }
-        } catch (error) {
-          if (error instanceof ValidationError) {
-            return { ok: false, skipped: `the teaser could not be recut: ${error.message}` }
-          }
-          throw error
-        }
-      },
-    )
-    if (!recut.ok) {
-      await fail('recut-skipped', `The voice is bought and kept, but ${recut.skipped}`)
-      return { projectId, shortId, outcome: 'skipped' as const, reason: recut.skipped }
-    }
+    // Voice is stored, NOT cut (decision 230): the studio's acts are
+    // separate so the human can hear the narration and pick shots before
+    // the assemble. The compile itself is free and synchronous — it lives
+    // in the `assembleTeaser` server action, not here.
+    await step.run('store-voice', async () => {
+      const record: TeaserVoiceRecord = {
+        scriptVersion: script.record.scriptVersion,
+        beats: voiced.map((beat) => ({
+          textHash: teaserTextHash(beat.text),
+          r2Key: beat.r2Key,
+          durationMs: beat.durationMs,
+          wordTimings: beat.wordTimings,
+        })),
+      }
+      await updateShort(db, shortId, {
+        teaserVoice: record as unknown as Record<string, unknown>,
+      })
+      await notify({
+        kind: 'gate-auto',
+        title: 'The teaser is voiced',
+        body:
+          `${voiced.length} beats are ready to hear in the teaser studio. ` +
+          'Pick the shots, then Assemble & render.',
+        href: `/projects/${projectId}?stage=shorts`,
+      })
+    })
 
-    await step.sendEvent('request-render', [
-      events.shortsRenderRequested.create({ projectId, shortId }),
-    ])
-
-    return { projectId, shortId, outcome: 'rebuilt' as const, beats: voiced.length }
+    return { projectId, shortId, outcome: 'voiced' as const, beats: voiced.length }
   },
 )

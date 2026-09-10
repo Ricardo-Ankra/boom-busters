@@ -1,4 +1,3 @@
-import { createHash } from 'node:crypto'
 import { getLatestScript, getProject, MOCK_KEY_PREFIX } from '@boom-busters/db'
 import {
   buildTeaserRequest,
@@ -7,7 +6,12 @@ import {
   parseTeaser,
   tensionFromOutline,
 } from '@boom-busters/providers'
-import { BudgetExceededError, OutlineSchema, serialiseError } from '@boom-busters/schemas'
+import {
+  BudgetExceededError,
+  OutlineSchema,
+  serialiseError,
+  teaserTextHash,
+} from '@boom-busters/schemas'
 import type { TeaserParagraph } from '@boom-busters/schemas'
 import type { TeaserParagraphAudio } from '@boom-busters/timeline'
 import { db } from '@/lib/db'
@@ -91,8 +95,7 @@ export function teaserBeatIdempotencyKey(
   index: number,
   text: string,
 ): string {
-  const digest = createHash('sha256').update(text).digest('hex').slice(0, 12)
-  return `teaser:${projectId}:${scriptVersion}:${index}:${digest}`
+  return `teaser:${projectId}:${scriptVersion}:${index}:${teaserTextHash(text)}`
 }
 
 /** Synthesise one teaser beat and store its audio; budget-gated like all TTS. */

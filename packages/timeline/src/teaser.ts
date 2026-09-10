@@ -49,6 +49,25 @@ export function masterChapterIds(master: Timeline): string[] {
 }
 
 /**
+ * The shot picker's pool (decision 230): every resolved slot overlapping a
+ * chapter's stretch of the master, falling back to the whole board when the
+ * chapter has none. This is exactly the pool `pickTeaserSlot` chooses from —
+ * one function, so the studio can never offer a shot the auto-pick could
+ * not have taken.
+ */
+export function teaserShotPool(master: Timeline, chapterId: string): TimelineSlot[] {
+  const segments = master.narration.filter((segment) => segment.chapterId === chapterId)
+  if (segments.length === 0) return [...master.slots]
+
+  const windowStart = Math.min(...segments.map((segment) => segment.startMs))
+  const windowEnd = Math.max(...segments.map((segment) => segment.startMs + segment.durationMs))
+  const overlapping = master.slots.filter(
+    (slot) => slot.startMs < windowEnd && slot.startMs + slot.durationMs > windowStart,
+  )
+  return overlapping.length > 0 ? overlapping : [...master.slots]
+}
+
+/**
  * One resolved slot from a chapter's stretch of the master.
  *
  * Preference order is what hooks on a phone: real motion first, then a
@@ -57,16 +76,7 @@ export function masterChapterIds(master: Timeline): string[] {
  * all rather than failing the teaser over one beat's backdrop.
  */
 export function pickTeaserSlot(master: Timeline, chapterId: string): TimelineSlot | undefined {
-  const segments = master.narration.filter((segment) => segment.chapterId === chapterId)
-  if (segments.length === 0) return master.slots[0]
-
-  const windowStart = Math.min(...segments.map((segment) => segment.startMs))
-  const windowEnd = Math.max(...segments.map((segment) => segment.startMs + segment.durationMs))
-  const overlapping = master.slots.filter(
-    (slot) => slot.startMs < windowEnd && slot.startMs + slot.durationMs > windowStart,
-  )
-  const pool = overlapping.length > 0 ? overlapping : master.slots
-
+  const pool = teaserShotPool(master, chapterId)
   const byKind = (kind: string) => pool.find((slot) => slot.payload.kind === kind)
   return byKind('video') ?? byKind('image') ?? pool[0]
 }
@@ -86,6 +96,13 @@ function evenTimings(text: string, durationMs: number): WordTiming[] {
 export function compileTeaserMaster(input: {
   master: Timeline
   paragraphs: readonly TeaserParagraphAudio[]
+  /**
+   * The studio's explicit per-beat shots (decision 230): a stored slot
+   * snapshot wins over the auto-pick; null/undefined at a position keeps
+   * the auto-pick for that beat. Snapshots rather than indexes, so a
+   * re-assembled master cannot silently shift a human's choice.
+   */
+  chosen?: readonly (TimelineSlot | null | undefined)[]
 }): Timeline {
   if (input.paragraphs.length === 0) {
     throw new ValidationError('a teaser needs narration — no synthesised paragraphs were given', {
@@ -115,7 +132,8 @@ export function compileTeaserMaster(input: {
     // teaser — late chapters carry the story's strongest visuals anyway.
     const chapterId =
       chapterIds[Math.min(Math.max(paragraph.chapterIndex, 0), chapterIds.length - 1)]
-    const picked = chapterId ? pickTeaserSlot(input.master, chapterId) : undefined
+    const picked =
+      input.chosen?.[index] ?? (chapterId ? pickTeaserSlot(input.master, chapterId) : undefined)
     if (!picked) {
       throw new ValidationError('the master timeline has no slots to lift teaser visuals from', {
         field: `paragraphs.${index}`,

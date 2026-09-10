@@ -9,6 +9,7 @@ import {
   pickTeaserSlot,
   TEASER_CHAPTER_ID,
   TEASER_GAP_MS,
+  teaserShotPool,
 } from './teaser'
 import type { TeaserParagraphAudio } from './teaser'
 
@@ -69,7 +70,40 @@ describe('pickTeaserSlot', () => {
   })
 })
 
+describe('teaserShotPool', () => {
+  it('is exactly the pool the auto-pick chooses from (decision 230)', () => {
+    for (const chapterId of masterChapterIds(master)) {
+      const pool = teaserShotPool(master, chapterId)
+      expect(pool.length).toBeGreaterThan(0)
+      const picked = pickTeaserSlot(master, chapterId)
+      expect(pool.some((slot) => slot === picked || slot.startMs === picked!.startMs)).toBe(true)
+    }
+  })
+
+  it('falls back to the whole board for a chapter with no narration', () => {
+    expect(teaserShotPool(master, '0NOSUCHCHAPTERNOSUCHCHAPTR')).toHaveLength(master.slots.length)
+  })
+})
+
 describe('compileTeaserMaster', () => {
+  it('an explicit chosen slot wins over the auto-pick, re-clocked to its beat', () => {
+    // Beat 0 auto-picks the video; choose the chart instead (decision 230).
+    const chart = master.slots.find((slot) => slot.payload.kind === 'chart')!
+    const teaser = compileTeaserMaster({
+      master,
+      paragraphs: paragraphs(),
+      chosen: [chart, null],
+    })
+
+    expect(teaser.slots[0]!.payload.kind).toBe('chart')
+    // Re-clocked onto the teaser's clock, not the master's.
+    expect(teaser.slots[0]!.startMs).toBe(0)
+    expect(teaser.slots[0]!.durationMs).toBe(4000 + TEASER_GAP_MS)
+    // The null position keeps the auto-pick.
+    const auto = compileTeaserMaster({ master, paragraphs: paragraphs() })
+    expect(teaser.slots[1]!.payload.kind).toBe(auto.slots[1]!.payload.kind)
+  })
+
   it('lays the beats sequentially with a teaser gap, visuals covering each', () => {
     const teaser = compileTeaserMaster({ master, paragraphs: paragraphs() })
 

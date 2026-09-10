@@ -23,6 +23,7 @@ import {
   resolveCandidateSegment,
   serialiseError,
   stripNarrationMarkup,
+  teaserTextHash,
   TimelineSchema,
   ValidationError,
 } from '@boom-busters/schemas'
@@ -305,11 +306,22 @@ export const shortsRunner = inngest.createFunction(
                 kind: 'teaser',
                 sourceTimeline: teaserTimeline as unknown as Record<string, unknown>,
                 // The editable script (decision 227): what the teaser studio
-                // opens and the rebuild runner re-voices from.
+                // opens and the voice runner re-voices from.
                 teaserScript: {
                   title: teaserScript.title,
                   paragraphs: teaserScript.paragraphs,
                   scriptVersion: teaserScript.scriptVersion,
+                },
+                // The voiced beats (decision 230), so the studio's Voice act
+                // starts consistent with the cut this step just made.
+                teaserVoice: {
+                  scriptVersion: teaserScript.scriptVersion,
+                  beats: voiced.map((beat) => ({
+                    textHash: teaserTextHash(beat.text),
+                    r2Key: beat.r2Key,
+                    durationMs: beat.durationMs,
+                    wordTimings: beat.wordTimings,
+                  })),
                 },
               })
               return { shortId: short.id }

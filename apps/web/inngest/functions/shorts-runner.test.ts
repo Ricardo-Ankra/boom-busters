@@ -323,6 +323,11 @@ describeDb('shorts-runner', () => {
       expect(storedScript).not.toBeNull()
       expect(storedScript!.paragraphs.length).toBe(mini.narration.length)
       expect(storedScript!.scriptVersion).toBe(1)
+      // The voiced beats too (decision 230), so the studio's Voice act
+      // starts consistent with the cut this run just made.
+      const storedVoice = teaser!.teaserVoice as { beats: unknown[] } | null
+      expect(storedVoice).not.toBeNull()
+      expect(storedVoice!.beats.length).toBe(mini.narration.length)
     },
   )
 
