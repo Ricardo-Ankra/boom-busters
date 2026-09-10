@@ -260,7 +260,7 @@ function BeatWorkbench({
               className={
                 'flex h-[72px] min-w-[72px] flex-col items-center justify-center gap-1 rounded-[8px] border px-2 text-[11px] ' +
                 (beat.autoSelected
-                  ? 'border-[var(--color-accent)] text-[var(--color-accent)]'
+                  ? 'border-[var(--color-accent)] text-[var(--color-accent-text)]'
                   : 'border-[var(--color-border)] text-[var(--color-text-secondary)]')
               }
             >

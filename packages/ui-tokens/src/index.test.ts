@@ -9,6 +9,7 @@ import {
   lightPalette,
   relativeLuminance,
   spacing,
+  SPACING_UNIT_PX,
   type ThemePalette,
 } from './index'
 
@@ -59,6 +60,27 @@ describe.each(themes)('%s theme meets WCAG AA', (_name, palette) => {
     // Lighthouse (M8.6) failed the dashboard on exactly this.
     expect(contrastRatio(palette.textMuted, palette.background)).toBeGreaterThanOrEqual(4.5)
     expect(contrastRatio(palette.textMuted, palette.surface)).toBeGreaterThanOrEqual(4.5)
+    // Hover rows and chips put muted text on the raised surface too
+    // (decision 246: it was 4.0:1 there).
+    expect(contrastRatio(palette.textMuted, palette.surfaceRaised)).toBeGreaterThanOrEqual(4.5)
+  })
+
+  it('the accent as text clears AA on every surface', () => {
+    for (const surface of [palette.background, palette.surface, palette.surfaceRaised]) {
+      expect(contrastRatio(palette.accentText, surface)).toBeGreaterThanOrEqual(4.5)
+    }
+  })
+
+  it('a control boundary is a boundary: border-strong clears the 3:1 non-text minimum', () => {
+    expect(contrastRatio(palette.borderStrong, palette.surface)).toBeGreaterThanOrEqual(3)
+    expect(contrastRatio(palette.borderStrong, palette.background)).toBeGreaterThanOrEqual(3)
+  })
+
+  it('status colours as small text on the surfaces they are written on', () => {
+    for (const colour of [palette.success, palette.warning, palette.danger]) {
+      expect(contrastRatio(colour, palette.background)).toBeGreaterThanOrEqual(4.5)
+      expect(contrastRatio(colour, palette.surface)).toBeGreaterThanOrEqual(4.5)
+    }
   })
 
   it('accent button label on the accent fill', () => {
@@ -78,11 +100,18 @@ describe.each(themes)('%s theme meets WCAG AA', (_name, palette) => {
 })
 
 describe('scale', () => {
-  it('is an 8px grid', () => {
+  it('is an 8px grid built on the 4px unit', () => {
+    expect(SPACING_UNIT_PX).toBe(4)
     for (const [step, value] of Object.entries(spacing)) {
       const px = Number(value.replace('px', ''))
-      expect(px).toBe(Number(step) * 8)
+      expect(px).toBe(Number(step) * SPACING_UNIT_PX)
+      expect(px % 8, `${value} is off the 8px grid`).toBe(0)
     }
+  })
+
+  it('tokens.css uses the same unit, so h-10 is the 40px hit target', () => {
+    const css = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), 'tokens.css'), 'utf8')
+    expect(css).toContain(`--spacing: ${SPACING_UNIT_PX}px;`)
   })
 
   it('keeps the minimum hit target the spec requires', () => {

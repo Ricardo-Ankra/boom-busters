@@ -117,28 +117,28 @@ export function segmentState(view: StageView): SegmentState {
 function StateIcon({ state }: { state: SegmentState }) {
   switch (state) {
     case 'running':
-      return <Loader2 className="size-3.5 animate-spin" aria-hidden />
+      return <Loader2 className="size-3.5 shrink-0 animate-spin" aria-hidden />
     case 'awaiting_review':
-      return <Pause className="size-3.5" aria-hidden />
+      return <Pause className="size-3.5 shrink-0" aria-hidden />
     case 'approved':
-      return <Check className="size-3.5" aria-hidden />
+      return <Check className="size-3.5 shrink-0" aria-hidden />
     case 'failed':
-      return <AlertCircle className="size-3.5" aria-hidden />
+      return <AlertCircle className="size-3.5 shrink-0" aria-hidden />
     case 'cancelled':
-      return <MinusCircle className="size-3.5" aria-hidden />
+      return <MinusCircle className="size-3.5 shrink-0" aria-hidden />
     case 'stale':
-      return <History className="size-3.5" aria-hidden />
+      return <History className="size-3.5 shrink-0" aria-hidden />
     // Solid and still: this is where the project is, and nothing is moving.
     case 'current':
-      return <CircleDot className="size-3.5" aria-hidden />
+      return <CircleDot className="size-3.5 shrink-0" aria-hidden />
     default:
-      return <CircleDashed className="size-3.5" aria-hidden />
+      return <CircleDashed className="size-3.5 shrink-0" aria-hidden />
   }
 }
 
 const STATE_CLASSES: Record<SegmentState, string> = {
   queued: 'border-[var(--color-border)] text-[var(--color-text-muted)]',
-  running: 'border-[var(--color-accent)] text-[var(--color-accent)]',
+  running: 'border-[var(--color-accent)] text-[var(--color-accent-text)]',
   awaiting_review: 'border-[var(--color-warning)] text-[var(--color-warning)]',
   approved: 'border-[var(--color-success)] text-[var(--color-success)]',
   failed: 'border-[var(--color-danger)] text-[var(--color-danger)]',
@@ -149,7 +149,7 @@ const STATE_CLASSES: Record<SegmentState, string> = {
   stale: 'border-dashed border-[var(--color-warning)] text-[var(--color-warning)]',
   // The same accent as `running`, deliberately: both mean "this is the stage
   // in play". Only the spinner separates them, and only a real run earns it.
-  current: 'border-[var(--color-accent)] text-[var(--color-accent)]',
+  current: 'border-[var(--color-accent)] text-[var(--color-accent-text)]',
 }
 
 export function PipelineRail({
@@ -165,7 +165,10 @@ export function PipelineRail({
   return (
     <ol
       aria-label="Pipeline stages"
-      className="flex w-full flex-wrap items-center gap-1.5 sm:flex-nowrap"
+      // Two rows of four below lg, one row of eight from lg up. Stage names
+      // are never truncated: the rail is the console's wayfinding, and
+      // "Asse..." is not a place anyone can navigate to.
+      className="grid w-full grid-cols-4 gap-1.5 lg:grid-cols-8"
     >
       {views.map((view) => {
         const state = segmentState(view)
@@ -175,7 +178,7 @@ export function PipelineRail({
         const body = (
           <>
             <StateIcon state={state} />
-            <span className="truncate">{label}</span>
+            <span className="whitespace-nowrap">{label}</span>
             <span className="sr-only">
               {' '}
               — {STATE_LABELS[state]}
@@ -188,7 +191,9 @@ export function PipelineRail({
         )
 
         const shared = cn(
-          'flex items-center justify-center gap-1.5 rounded-[8px] border px-2 py-2 text-[12px]',
+          // min-h-10: the 40px hit target (section 11.1) for the segments
+          // that are links, and the same box for the ones that are not.
+          'flex min-h-10 items-center justify-center gap-1.5 rounded-[8px] border px-2 py-2 text-[12px]',
           STATE_CLASSES[state],
           // The segment you are looking at, distinguished from the stage the
           // project is on — on a project you have navigated back through, they
@@ -198,7 +203,7 @@ export function PipelineRail({
         )
 
         return (
-          <li key={view.stage} className="min-w-0 flex-1">
+          <li key={view.stage} className="min-w-0">
             {view.viewable ? (
               <Link
                 href={`/projects/${projectId}?stage=${view.stage}` as Route}

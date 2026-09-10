@@ -920,7 +920,7 @@ function DiffView({
         {diff.hunks.map((hunk) => (
           <Button
             key={hunk.id}
-            variant={accepted.has(hunk.id) ? 'primary' : 'outline'}
+            variant={accepted.has(hunk.id) ? 'selected' : 'outline'}
             aria-pressed={accepted.has(hunk.id)}
             onClick={() => toggle(hunk.id)}
           >

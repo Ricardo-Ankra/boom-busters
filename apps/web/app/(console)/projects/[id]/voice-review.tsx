@@ -858,7 +858,7 @@ export function VoiceReview({ projectId, model }: { projectId: string; model: Vo
               {SPEEDS.map((option) => (
                 <Button
                   key={option}
-                  variant={speed === option ? 'primary' : 'outline'}
+                  variant={speed === option ? 'selected' : 'outline'}
                   aria-pressed={speed === option}
                   onClick={() => setSpeed(option)}
                 >

@@ -31,6 +31,15 @@ const buttonVariants = cva(
           'border border-[var(--color-border-strong)] bg-transparent text-[var(--color-text-primary)] hover:bg-[var(--color-surface-raised)]',
         ghost:
           'bg-transparent text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-raised)] hover:text-[var(--color-text-primary)]',
+        /**
+         * A toggle that is currently on: playback speed, the cut being
+         * previewed, the sort in force, the item being edited. Raised
+         * surface plus an accent border, never the accent fill (decision
+         * 247): indigo means "the gate action" and nothing else, so the eye
+         * finds Approve without weighing it against "1×".
+         */
+        selected:
+          'border border-[var(--color-accent-text)] bg-[var(--color-surface-raised)] text-[var(--color-text-primary)]',
         danger: 'bg-[var(--color-danger)] text-white hover:opacity-90',
       },
       size: {

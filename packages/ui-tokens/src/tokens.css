@@ -16,8 +16,12 @@
   --radius: 8px;
   --radius-lg: 12px;
 
-  /* 8px grid */
-  --spacing: 8px;
+  /* Tailwind's spacing UNIT, not the grid step. Every numeric utility is
+     `calc(var(--spacing) * n)`, so `h-10` is 40px and `p-2` is 8px only when
+     this is 4px. It was 8px from M1 to 2026-09-10 (decision 242), which
+     silently doubled every control, gap and icon in the console; the 8px grid
+     of spec section 11.1 is kept by using even steps. */
+  --spacing: 4px;
 
   --text-dense: 13px;
   --text-base: 14px;
@@ -34,16 +38,16 @@
   --color-surface: #18181b;
   --color-surface-raised: #27272a;
   --color-border: #27272a;
-  --color-border-strong: #3f3f46;
+  --color-border-strong: #71717a;
   --color-text-primary: #fafafa;
   --color-text-secondary: #a1a1aa;
-  /* Between zinc-500 and zinc-400: zinc-500 was 3.66:1 on the card surface,
-     under AA's 4.5 for the 12px labels this token actually decorates
-     (Lighthouse, M8.6). */
-  --color-text-muted: #84848e;
+  /* Clears AA on all three surfaces, raised included (decision 246). */
+  --color-text-muted: #909099;
   --color-accent: #4f46e5;
   --color-accent-hover: #4338ca;
   --color-accent-foreground: #ffffff;
+  /* The accent as text: indigo-600 is a fill, not a foreground, on dark. */
+  --color-accent-text: #818cf8;
   --color-success: #22c55e;
   --color-warning: #f59e0b;
   --color-danger: #ef4444;
@@ -56,13 +60,14 @@
   --color-surface: #fafafa;
   --color-surface-raised: #f4f4f5;
   --color-border: #e4e4e7;
-  --color-border-strong: #a1a1aa;
+  --color-border-strong: #71717a;
   --color-text-primary: #18181b;
   --color-text-secondary: #52525b;
-  --color-text-muted: #71717a;
+  --color-text-muted: #6b6b74;
   --color-accent: #4f46e5;
   --color-accent-hover: #4338ca;
   --color-accent-foreground: #ffffff;
+  --color-accent-text: #4f46e5;
   --color-success: #15803d;
   --color-warning: #b45309;
   --color-danger: #b91c1c;
@@ -82,6 +87,7 @@
   --color-accent: var(--color-accent);
   --color-accent-hover: var(--color-accent-hover);
   --color-accent-foreground: var(--color-accent-foreground);
+  --color-accent-text: var(--color-accent-text);
   --color-success: var(--color-success);
   --color-warning: var(--color-warning);
   --color-danger: var(--color-danger);
@@ -106,10 +112,20 @@
     font-variant-numeric: tabular-nums lining-nums;
   }
 
-  /* Full focus-visible rings, both themes. */
+  /* Full focus-visible rings, both themes. The text accent, because a ring
+     has to be seen on the raised surface too, where indigo-600 is 2.4:1. */
   :focus-visible {
-    outline: 2px solid var(--color-accent);
+    outline: 2px solid var(--color-accent-text);
     outline-offset: 2px;
+  }
+
+  /* The parts nobody draws still carry the palette: selection and caret. */
+  ::selection {
+    background-color: color-mix(in srgb, var(--color-accent) 35%, transparent);
+    color: var(--color-text-primary);
+  }
+  :root {
+    caret-color: var(--color-accent-text);
   }
 
   /* Motion on state changes only, never on layout during review tasks. */

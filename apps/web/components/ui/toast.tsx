@@ -58,8 +58,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
               if (!open) setMessages((current) => current.filter((m) => m.id !== message.id))
             }}
             className={cn(
-              'flex items-start gap-3 rounded-[8px] border p-4',
-              'data-[state=open]:animate-in data-[state=open]:slide-in-from-bottom-2',
+              'flex items-start gap-3 rounded-[8px] border p-4 shadow-[0_8px_24px_-12px_rgba(0,0,0,0.6)]',
               message.variant === 'error'
                 ? 'border-[var(--color-danger)] bg-[var(--color-surface)]'
                 : 'border-[var(--color-border)] bg-[var(--color-surface)]',
@@ -77,7 +76,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
             </div>
             <ToastPrimitive.Close
               aria-label="Dismiss"
-              className="rounded-[4px] p-1 text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]"
+              className="-m-2 flex size-10 shrink-0 items-center justify-center rounded-[8px] text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-raised)] hover:text-[var(--color-text-primary)]"
             >
               <X className="size-4" aria-hidden />
             </ToastPrimitive.Close>

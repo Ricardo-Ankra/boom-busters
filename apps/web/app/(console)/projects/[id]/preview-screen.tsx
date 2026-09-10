@@ -214,7 +214,7 @@ export function PreviewScreen({
   const tab = (cut: Cut, label: React.ReactNode) => (
     <Button
       key={cut}
-      variant={activeCut === cut ? 'primary' : 'outline'}
+      variant={activeCut === cut ? 'selected' : 'outline'}
       aria-pressed={activeCut === cut}
       onClick={() => setChosenCut(cut)}
     >
@@ -546,7 +546,9 @@ function MusicPicker({
                   <span className="min-w-0 truncate text-[13px]">
                     {bed.title}
                     {isCurrent ? (
-                      <span className="ml-2 text-[12px] text-[var(--color-accent)]">Current</span>
+                      <span className="ml-2 text-[12px] text-[var(--color-accent-text)]">
+                        Current
+                      </span>
                     ) : null}
                   </span>
                   {isCurrent ? null : (

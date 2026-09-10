@@ -3,6 +3,7 @@ import { PROVIDERS } from '@boom-busters/schemas'
 import type { Provider } from '@boom-busters/schemas'
 import type { Route } from 'next'
 import Link from 'next/link'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 
 /**
@@ -22,14 +23,14 @@ export function LedgerTable({
   return (
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-center gap-2">
-        <Button asChild variant={activeProvider === null ? 'primary' : 'outline'}>
+        <Button asChild variant={activeProvider === null ? 'selected' : 'outline'}>
           <Link href={'/costs' as Route}>All providers</Link>
         </Button>
         {PROVIDERS.map((provider) => (
           <Button
             key={provider}
             asChild
-            variant={activeProvider === provider ? 'primary' : 'outline'}
+            variant={activeProvider === provider ? 'selected' : 'outline'}
           >
             <Link href={`/costs?provider=${provider}` as Route}>{provider}</Link>
           </Button>
@@ -72,9 +73,9 @@ export function LedgerTable({
                   <td className="p-3">
                     {entry.operation}
                     {entry.meta['demo'] === true ? (
-                      <span className="ml-2 rounded-[4px] border border-[var(--color-border)] px-1.5 py-0.5 text-[11px] text-[var(--color-text-muted)]">
+                      <Badge shape="tag" className="ml-2">
                         demo
-                      </span>
+                      </Badge>
                     ) : null}
                   </td>
                   <td className="p-3 text-right font-mono tabular-nums">

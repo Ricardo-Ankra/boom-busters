@@ -124,7 +124,7 @@ function VoiceCard({
             "Use as narrator" rather than "Add voice" — there is one narrator,
             so the verb says replacement and no paragraph of copy has to. */}
         {selected ? (
-          <span className="inline-flex h-10 shrink-0 items-center gap-2 px-2 text-[13px] font-medium text-[var(--color-accent)]">
+          <span className="inline-flex h-10 shrink-0 items-center gap-2 px-2 text-[13px] font-medium text-[var(--color-accent-text)]">
             <Check className="size-4" aria-hidden />
             Narrator
           </span>
@@ -419,7 +419,7 @@ function ChosenVoice({ settings, saving, commit }: TabProps) {
               <Button
                 key={tier}
                 id={`stability-${tier}`}
-                variant={stability === tier ? 'primary' : 'outline'}
+                variant={stability === tier ? 'selected' : 'outline'}
                 aria-pressed={stability === tier}
                 disabled={saving}
                 onClick={() => setStability(tier)}

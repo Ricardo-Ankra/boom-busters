@@ -2,7 +2,13 @@
 
 import { CalendarClock, Loader2 } from 'lucide-react'
 import Link from 'next/link'
-import type { CalendarDay, CalendarItemView } from '@/lib/calendar-view'
+import { Badge } from '@/components/ui/badge'
+import type { CalendarDay } from '@/lib/calendar-view'
+import {
+  PUBLISH_STATUS_LABELS,
+  PUBLISH_STATUS_TONES,
+  publishStatusInFlight,
+} from '@/lib/publish-status'
 
 /**
  * One week of the global calendar (build spec section 11.2): every slotted
@@ -15,34 +21,12 @@ import type { CalendarDay, CalendarItemView } from '@/lib/calendar-view'
  * rendering the same instants in UTC.
  */
 
-const STATUS_STYLE: Record<CalendarItemView['status'], string> = {
-  draft: 'border-[var(--color-border)] text-[var(--color-text-secondary)]',
-  uploading: 'border-[var(--color-warning)] text-[var(--color-warning)]',
-  uploaded: 'border-[var(--color-warning)] text-[var(--color-warning)]',
-  scheduled: 'border-[var(--color-success)] text-[var(--color-success)]',
-  live: 'border-[var(--color-success)] text-[var(--color-success)]',
-  failed: 'border-[var(--color-danger)] text-[var(--color-danger)]',
-}
-
-const STATUS_LABEL: Record<CalendarItemView['status'], string> = {
-  draft: 'Draft',
-  uploading: 'Uploading',
-  uploaded: 'Uploaded — finishing',
-  scheduled: 'Scheduled',
-  live: 'Live',
-  failed: 'Failed',
-}
-
 function localTime(iso: string): string {
   return new Date(iso).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
 }
 
 function KindBadge({ kind }: { kind: 'longform' | 'short' }) {
-  return (
-    <span className="rounded-[4px] bg-[var(--color-background)] px-1.5 py-0.5 font-mono text-[11px] text-[var(--color-text-secondary)] uppercase">
-      {kind === 'longform' ? 'long-form' : 'short'}
-    </span>
-  )
+  return <Badge shape="tag">{kind === 'longform' ? 'long-form' : 'short'}</Badge>
 }
 
 export function CalendarWeek({ days, todayIso }: { days: CalendarDay[]; todayIso: string }) {
@@ -73,7 +57,9 @@ export function CalendarWeek({ days, todayIso }: { days: CalendarDay[]; todayIso
                 month: 'short',
               })}
               {isToday ? (
-                <span className="text-[11px] font-normal text-[var(--color-accent)]">Today</span>
+                <span className="text-[11px] font-normal text-[var(--color-accent-text)]">
+                  Today
+                </span>
               ) : null}
             </h2>
 
@@ -91,14 +77,12 @@ export function CalendarWeek({ days, todayIso }: { days: CalendarDay[]; todayIso
                     </span>
                     <KindBadge kind={item.targetType === 'master' ? 'longform' : 'short'} />
                     <span className="min-w-0 text-[var(--color-text-primary)]">{item.label}</span>
-                    <span
-                      className={`rounded-full border px-2 py-0.5 text-[11px] ${STATUS_STYLE[item.status]}`}
-                    >
-                      {item.status === 'uploading' || item.status === 'uploaded' ? (
-                        <Loader2 aria-hidden className="mr-1 inline h-3 w-3 animate-spin" />
+                    <Badge tone={PUBLISH_STATUS_TONES[item.status]}>
+                      {publishStatusInFlight(item.status) ? (
+                        <Loader2 aria-hidden className="animate-spin" />
                       ) : null}
-                      {STATUS_LABEL[item.status]}
-                    </span>
+                      {PUBLISH_STATUS_LABELS[item.status]}
+                    </Badge>
                     {/* Padded to the 40px hit target the sweep enforces. */}
                     <Link
                       href={`/projects/${item.projectId}?stage=publish`}

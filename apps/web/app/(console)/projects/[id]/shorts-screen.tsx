@@ -3,6 +3,7 @@
 import * as React from 'react'
 import { Check, Clapperboard, Loader2, PenLine, Save } from 'lucide-react'
 import { ConfirmButton } from '@/components/confirm-button'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -201,11 +202,7 @@ function ShortCard({
         <CardTitle className="flex items-center gap-2 text-[14px]">
           <Clapperboard aria-hidden className="h-4 w-4" />
           <span className="truncate">{short.title}</span>
-          {short.kind === 'teaser' ? (
-            <span className="shrink-0 rounded-full border border-[var(--color-accent)] px-2 py-0.5 text-[11px] font-medium text-[var(--color-accent)]">
-              Teaser
-            </span>
-          ) : null}
+          {short.kind === 'teaser' ? <Badge tone="accent">Teaser</Badge> : null}
           {inFlight ? (
             <span className="ml-auto flex items-center gap-1.5 text-[12px] font-normal text-[var(--color-text-muted)]">
               <Loader2 aria-hidden className="h-3.5 w-3.5 animate-spin" />

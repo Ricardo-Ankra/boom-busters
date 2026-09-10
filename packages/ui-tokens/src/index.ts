@@ -24,6 +24,13 @@ export interface ThemePalette {
   accent: string
   accentHover: string
   accentForeground: string
+  /**
+   * The accent as FOREGROUND text on the surfaces (links, "Today", the running
+   * segment's label). Indigo-600 is a fill colour: white on it clears AA, but
+   * it on the dark surfaces is 2.8:1 at the 11 to 13px it was being used at
+   * (decision 246). Light keeps indigo-600, which is 7:1 on white.
+   */
+  accentText: string
   success: string
   warning: string
   danger: string
@@ -35,16 +42,22 @@ export const darkPalette: ThemePalette = {
   surface: '#18181b', // zinc-900
   surfaceRaised: '#27272a', // zinc-800
   border: '#27272a',
-  borderStrong: '#3f3f46', // zinc-700
+  // zinc-600, not zinc-700: this border is what makes an outline button or an
+  // input read as a control, and zinc-700 on the card surface was 1.7:1
+  // against the 3:1 WCAG asks of a non-text boundary (decision 246).
+  borderStrong: '#71717a', // zinc-500
   textPrimary: '#fafafa', // zinc-50
   textSecondary: '#a1a1aa', // zinc-400
   // Between zinc-500 and zinc-400: zinc-500 was 3.66:1 on the card surface,
   // under AA's 4.5 for the 12px labels this token actually decorates
   // (Lighthouse, M8.6). Light keeps zinc-500, which clears AA on white.
-  textMuted: '#84848e',
+  // Raised again for decision 246: 4.0:1 on surface-raised, where hover
+  // rows and chips put it. Now clears 4.5 on all three surfaces.
+  textMuted: '#909099',
   accent: '#4f46e5', // indigo-600
   accentHover: '#4338ca', // indigo-700
   accentForeground: '#ffffff',
+  accentText: '#818cf8', // indigo-400
   success: '#22c55e',
   warning: '#f59e0b',
   danger: '#ef4444',
@@ -57,28 +70,42 @@ export const lightPalette: ThemePalette = {
   border: '#e4e4e7', // zinc-200 — the subtle 1px divider
   // zinc-400, not zinc-300: the "strong" border marks inputs and focusable
   // boundaries, and zinc-300 on white is 1.48:1, which reads as no border.
-  borderStrong: '#a1a1aa',
+  // zinc-500: zinc-400 on zinc-50 was 2.5:1, under the 3:1 a control
+  // boundary needs (decision 246).
+  borderStrong: '#71717a',
   textPrimary: '#18181b', // zinc-900
   textSecondary: '#52525b', // zinc-600
-  textMuted: '#71717a', // zinc-500
+  // zinc-500 was 4.4:1 on the raised surface (decision 246).
+  textMuted: '#6b6b74',
   accent: '#4f46e5',
   accentHover: '#4338ca',
   accentForeground: '#ffffff',
+  accentText: '#4f46e5',
   success: '#15803d', // green-700 — AA on white
   warning: '#b45309', // amber-700
   danger: '#b91c1c', // red-700
 }
 
-/** 8px grid (section 11.1). */
+/**
+ * The spacing unit Tailwind multiplies every numeric utility by. 4px, the
+ * framework default, so that `h-10` really is the 40px hit target the
+ * components say it is and `p-4` really is 16px.
+ *
+ * It was 8px from M1 until decision 242 (2026-09-10): the "8px grid" of spec
+ * section 11.1 had been encoded as the unit, which doubled every control, gap
+ * and icon in the console (80px buttons, a 448px rail, 32px icons beside 13px
+ * labels). The grid is a discipline about which steps to use, not a unit.
+ */
+export const SPACING_UNIT_PX = 4
+
+/** The 8px grid (section 11.1): the steps layouts should reach for. */
 export const spacing = {
-  0.5: '4px',
-  1: '8px',
-  1.5: '12px',
-  2: '16px',
-  3: '24px',
-  4: '32px',
-  6: '48px',
-  8: '64px',
+  2: '8px',
+  4: '16px',
+  6: '24px',
+  8: '32px',
+  12: '48px',
+  16: '64px',
 } as const
 
 export const radius = {

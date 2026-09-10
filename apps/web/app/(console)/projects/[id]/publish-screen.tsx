@@ -4,10 +4,17 @@ import * as React from 'react'
 import { CalendarClock, Check, ImagePlus, Loader2, RefreshCw, Save, Sparkles } from 'lucide-react'
 import { composeDescription, formatTimestamp } from '@boom-busters/schemas'
 import { ConfirmButton } from '@/components/confirm-button'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import type { PublishItemModel, PublishModel } from '@/lib/publish-review'
+import {
+  PUBLISH_STATUS_LABELS,
+  PUBLISH_STATUS_TONES,
+  publishStatusInFlight,
+  type PublishStatus,
+} from '@/lib/publish-status'
 import { RetentionOverlay } from './retention-overlay'
 import {
   generateTitles,
@@ -103,32 +110,12 @@ function movable(item: PublishItemModel): boolean {
 }
 
 function StatusChip({ item }: { item: PublishItemModel }) {
-  const status = item.record?.status ?? 'draft'
-  const styles: Record<string, string> = {
-    draft: 'border-[var(--color-border)] text-[var(--color-text-secondary)]',
-    uploading: 'border-[var(--color-warning)] text-[var(--color-warning)]',
-    uploaded: 'border-[var(--color-warning)] text-[var(--color-warning)]',
-    scheduled: 'border-[var(--color-success)] text-[var(--color-success)]',
-    live: 'border-[var(--color-success)] text-[var(--color-success)]',
-    failed: 'border-[var(--color-danger)] text-[var(--color-danger)]',
-  }
-  const labels: Record<string, string> = {
-    draft: 'Draft',
-    uploading: 'Uploading',
-    uploaded: 'Uploaded — finishing',
-    scheduled: 'Scheduled',
-    live: 'Live',
-    failed: 'Failed',
-  }
+  const status = (item.record?.status ?? 'draft') as PublishStatus
   return (
-    <span
-      className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] ${styles[status]}`}
-    >
-      {status === 'uploading' || status === 'uploaded' ? (
-        <Loader2 aria-hidden className="h-3 w-3 animate-spin" />
-      ) : null}
-      {labels[status]}
-    </span>
+    <Badge tone={PUBLISH_STATUS_TONES[status]}>
+      {publishStatusInFlight(status) ? <Loader2 aria-hidden className="animate-spin" /> : null}
+      {PUBLISH_STATUS_LABELS[status]}
+    </Badge>
   )
 }
 
@@ -265,7 +252,7 @@ export function PublishScreen({
                 ) : null}
                 <div className="flex flex-wrap gap-2">
                   <Button
-                    variant={isSelected ? 'primary' : 'outline'}
+                    variant={isSelected ? 'selected' : 'outline'}
                     onClick={() => setSelectedKey(key)}
                   >
                     {/* A scheduled item's metadata is Studio's to edit, but
@@ -836,7 +823,7 @@ function ItemEditor({
                   href="https://www.canva.com/youtube-thumbnails/templates/"
                   target="_blank"
                   rel="noreferrer"
-                  className="inline-flex min-h-[40px] items-center gap-2 rounded-[8px] border border-[var(--color-border)] px-3 py-2 text-[13px] text-[var(--color-accent)]"
+                  className="inline-flex min-h-[40px] items-center gap-2 rounded-[8px] border border-[var(--color-border)] px-3 py-2 text-[13px] text-[var(--color-accent-text)]"
                 >
                   Open the Canva thumbnail templates
                 </a>
@@ -846,10 +833,10 @@ function ItemEditor({
               ) : null}
               {/* The constant-height strip: tiles side by side, placeholder
                   when empty, so an upload swaps words for a tile at the same
-                  height instead of growing the panel. The 158px is one tile
-                  on the app's 8px grid: 45 image + 16 caption + an 80px
-                  button + the two 8px gaps between them. */}
-              <div className="flex min-h-[158px] w-full flex-wrap items-start gap-2">
+                  height instead of growing the panel. The 109px is one tile:
+                  45 image + 16 caption + a 40px button + the two 4px gaps
+                  between them (re-derived for the 4px unit, decision 242). */}
+              <div className="flex min-h-[109px] w-full flex-wrap items-start gap-2">
                 {(record?.thumbs ?? []).length === 0 ? (
                   <p className="self-center text-[12px] text-[var(--color-text-muted)]">
                     No thumbnails stored yet.

@@ -12,22 +12,24 @@ export const Switch = React.forwardRef<
     <SwitchPrimitive.Root
       ref={ref}
       className={cn(
-        // 40px-wide control inside a 40px-tall row: hit target stays legal
-        // even though the visible track is smaller.
-        'peer inline-flex h-6 w-11 shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent',
-        'transition-colors duration-150 ease-[cubic-bezier(0.16,1,0.3,1)]',
+        // The button is the 40px hit target (section 11.1); the 24px track
+        // is drawn inside it with a pseudo-element, so the control reads as a
+        // switch and presses like a button.
+        'peer relative inline-flex h-10 w-11 shrink-0 cursor-pointer items-center rounded-full',
+        'before:absolute before:inset-x-0 before:top-2 before:h-6 before:rounded-full before:content-[""]',
+        'before:transition-colors before:duration-150 before:ease-[cubic-bezier(0.16,1,0.3,1)]',
         'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-accent)]',
         'disabled:cursor-not-allowed disabled:opacity-50',
-        'data-[state=checked]:bg-[var(--color-accent)] data-[state=unchecked]:bg-[var(--color-border-strong)]',
+        'data-[state=checked]:before:bg-[var(--color-accent)] data-[state=unchecked]:before:bg-[var(--color-border-strong)]',
         className,
       )}
       {...props}
     >
       <SwitchPrimitive.Thumb
         className={cn(
-          'pointer-events-none block h-5 w-5 rounded-full bg-white shadow-sm ring-0',
+          'pointer-events-none relative block h-5 w-5 rounded-full bg-white shadow-sm ring-0',
           'transition-transform duration-150 ease-[cubic-bezier(0.16,1,0.3,1)]',
-          'data-[state=checked]:translate-x-5 data-[state=unchecked]:translate-x-0',
+          'data-[state=checked]:translate-x-[22px] data-[state=unchecked]:translate-x-0.5',
         )}
       />
     </SwitchPrimitive.Root>

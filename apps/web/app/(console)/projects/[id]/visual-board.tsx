@@ -15,6 +15,7 @@ import { useRouter } from 'next/navigation'
 import * as React from 'react'
 import { SHOT_SLOT_TYPES } from '@boom-busters/schemas'
 import type { SlotCandidate } from '@boom-busters/schemas'
+import { Badge, type BadgeTone } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ConfirmButton } from '@/components/confirm-button'
@@ -73,20 +74,15 @@ function candidateFull(candidate: SlotCandidate): string | undefined {
   return candidate.thumbUrl
 }
 
-const STATUS_STYLE: Record<string, string> = {
-  resolved: 'text-[var(--color-success)] border-[var(--color-success)]',
-  placeholder: 'text-[var(--color-warning)] border-[var(--color-warning)]',
-  unresolved: 'text-[var(--color-text-muted)] border-[var(--color-border-strong)]',
+const STATUS_TONE: Record<string, BadgeTone> = {
+  resolved: 'success',
+  placeholder: 'warning',
+  unresolved: 'muted',
+  planned: 'muted',
 }
 
 function StatusChip({ status }: { status: string }) {
-  return (
-    <span
-      className={`rounded-full border px-2 py-0.5 text-[11px] ${STATUS_STYLE[status] ?? STATUS_STYLE['unresolved']}`}
-    >
-      {status}
-    </span>
-  )
+  return <Badge tone={STATUS_TONE[status] ?? 'muted'}>{status}</Badge>
 }
 
 /**
@@ -107,11 +103,7 @@ const SLOT_TYPE_LABELS: Record<string, string> = {
 const slotTypeLabel = (type: string) => SLOT_TYPE_LABELS[type] ?? type
 
 function TypeBadge({ type }: { type: string }) {
-  return (
-    <span className="rounded-[4px] bg-[var(--color-background)] px-1.5 py-0.5 font-mono text-[11px] text-[var(--color-text-secondary)] uppercase">
-      {slotTypeLabel(type)}
-    </span>
-  )
+  return <Badge shape="tag">{slotTypeLabel(type)}</Badge>
 }
 
 export function VisualBoard({
@@ -640,7 +632,7 @@ function TypePicker({
           return (
             <Button
               key={type}
-              variant={current ? 'primary' : 'ghost'}
+              variant={current ? 'selected' : 'ghost'}
               aria-pressed={current}
               disabled={current || busy || drafting}
               onClick={() =>

@@ -271,7 +271,7 @@ function SegmentView({ segment }: { segment: InlineSegment }) {
         rel="noreferrer noopener"
         /* The vertical padding + negative margin buys the 40px hit target
            (section 11.1) without disturbing the line flow. */
-        className="-my-[9px] py-[9px] text-[var(--color-accent)] underline"
+        className="-my-[11px] py-[11px] text-[var(--color-accent-text)] underline"
       >
         {segment.text}
       </a>
@@ -365,7 +365,7 @@ function ClaimHighlight({
         }
       }}
       aria-label={`Review claim: ${summary}`}
-      className="-my-[9px] cursor-pointer py-[9px] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-accent)]"
+      className="-my-[11px] cursor-pointer py-[11px] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-accent)]"
     >
       <span className={`rounded-[2px] ${tone}`}>
         {run.pieces.map((piece, pieceIndex) => (
@@ -475,7 +475,7 @@ function ClaimRowView({ projectId, claim }: { projectId: string; claim: ClaimRow
                actually points is the entire job of this screen. It went
                unnoticed because the audit that would have caught it was opening
                a different project. */
-            className="inline-flex min-h-[40px] items-center gap-1 text-[var(--color-accent)] underline"
+            className="inline-flex min-h-[40px] items-center gap-1 text-[var(--color-accent-text)] underline"
           >
             {sourceDomain(claim.sourceUrl)}
             <ExternalLink aria-hidden className="size-3" />

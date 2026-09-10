@@ -14,7 +14,9 @@ export const TabsList = React.forwardRef<
     <TabsPrimitive.List
       ref={ref}
       className={cn(
-        'flex flex-wrap items-center gap-1 border-b border-[var(--color-border)]',
+        // One row that scrolls below sm (six tabs wrapped to three rows at
+        // 390px, decision 244); wraps only once there is room to.
+        'flex items-center gap-1 overflow-x-auto border-b border-[var(--color-border)] sm:flex-wrap sm:overflow-visible',
         className,
       )}
       {...props}
@@ -31,7 +33,7 @@ export const TabsTrigger = React.forwardRef<
       ref={ref}
       className={cn(
         // 40px hit target, per section 11.1.
-        'h-10 rounded-t-[8px] px-4 text-[14px] font-medium text-[var(--color-text-secondary)]',
+        'h-10 shrink-0 rounded-t-[8px] px-4 text-[14px] font-medium text-[var(--color-text-secondary)]',
         'transition-colors duration-150 ease-[cubic-bezier(0.16,1,0.3,1)]',
         'hover:text-[var(--color-text-primary)]',
         'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-accent)]',
