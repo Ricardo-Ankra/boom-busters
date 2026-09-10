@@ -46,6 +46,24 @@ export async function getRender(db: Database, id: string): Promise<RenderRow | u
   return row
 }
 
+/**
+ * The renders a set of cards point at, in one round trip (decision 237). The
+ * Shorts and Publish screens used to look each card's render up one by one,
+ * serially — six Shorts was six full Neon round trips before the screen could
+ * paint, twelve when both screens' models loaded together.
+ */
+export async function getRendersByIds(
+  db: Database,
+  ids: readonly string[],
+): Promise<Map<string, RenderRow>> {
+  if (ids.length === 0) return new Map()
+  const rows = await db
+    .select()
+    .from(renders)
+    .where(inArray(renders.id, [...ids]))
+  return new Map(rows.map((row) => [row.id, row]))
+}
+
 /** The newest render of a kind — what the preview screen's panels show. */
 export async function latestRender(
   db: Database,

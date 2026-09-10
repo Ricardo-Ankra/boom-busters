@@ -2,7 +2,7 @@ import {
   countUploadsSince,
   getDossier,
   getProject,
-  getRender,
+  getRendersByIds,
   getSettings,
   latestRender,
   latestScriptParagraphSources,
@@ -264,6 +264,24 @@ export async function publishModel(
   const masterDurationMs = master
     ? master.narration.reduce((end, seg) => Math.max(end, seg.startMs + seg.durationMs), 0)
     : null
+
+  // Everything below the fold runs while the items assemble (decision 237):
+  // the card renders in one batch instead of one lookup per Short, and the
+  // attribution and retention reads stop serialising behind the loop.
+  const [rendersById, musicAttribution, snapshot, masterThumbs] = await Promise.all([
+    getRendersByIds(
+      db,
+      shorts.flatMap((short) => (short.renderId ? [short.renderId] : [])),
+    ),
+    timelineMusicAttribution(db, master),
+    // The retention overlay (M8): only once the master has a YouTube video
+    // and the analytics cron has snapshotted it — absent, not empty, before.
+    masterRecord?.youtubeVideoId
+      ? latestSnapshotForVideo(db, masterRecord.youtubeVideoId)
+      : Promise.resolve(undefined),
+    masterRecord ? thumbsFor(masterRecord) : Promise.resolve([]),
+  ])
+
   const items: PublishItemModel[] = [
     {
       targetType: 'master',
@@ -275,12 +293,12 @@ export async function publishModel(
           ? null
           : 'There is no finished master render yet.',
       relatedLinkChecked: null,
-      record: masterRecord ? toRecordProp(masterRecord, await thumbsFor(masterRecord)) : null,
+      record: masterRecord ? toRecordProp(masterRecord, masterThumbs) : null,
     },
   ]
 
   for (const short of shorts) {
-    const render = short.renderId ? await getRender(db, short.renderId) : undefined
+    const render = short.renderId ? rendersById.get(short.renderId) : undefined
     const record = recordFor('short', short.id)
     // The related-link chip is deliberately NOT a readiness condition
     // (decision 226): the link is a property set on the Short inside Studio,
@@ -301,28 +319,23 @@ export async function publishModel(
     })
   }
 
-  // The retention overlay (M8): only once the master has a YouTube video
-  // and the analytics cron has snapshotted it — absent, not empty, before.
-  let analytics: MasterAnalytics | null = null
-  if (masterRecord?.youtubeVideoId) {
-    const snapshot = await latestSnapshotForVideo(db, masterRecord.youtubeVideoId)
-    if (snapshot) {
-      analytics = {
-        videoId: masterRecord.youtubeVideoId,
-        snapshotDateIso: snapshot.date.toISOString(),
-        views: snapshot.views,
-        avgViewDurationSec: snapshot.avgViewDurationSec,
-        retentionCurve: snapshot.retentionCurve,
-      }
-    }
-  }
+  const analytics: MasterAnalytics | null =
+    masterRecord?.youtubeVideoId && snapshot
+      ? {
+          videoId: masterRecord.youtubeVideoId,
+          snapshotDateIso: snapshot.date.toISOString(),
+          views: snapshot.views,
+          avgViewDurationSec: snapshot.avgViewDurationSec,
+          retentionCurve: snapshot.retentionCurve,
+        }
+      : null
 
   return {
     items,
     chapters,
     sources,
     hook,
-    musicAttribution: await timelineMusicAttribution(db, master),
+    musicAttribution,
     slots: settings.publish.defaultScheduleSlots,
     apiAuditPassed: settings.publish.apiAuditPassed,
     dailyUploadBudget: settings.publish.dailyUploadBudget,

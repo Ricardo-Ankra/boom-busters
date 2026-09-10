@@ -106,6 +106,7 @@ export default async function ProjectPage({
     shortCards,
     pulse,
     publish,
+    masterRender,
   ] = await Promise.all([
     listActivity(db, { projectId: id, limit: 50 }),
     listOpenBudgetGates(db),
@@ -135,6 +136,12 @@ export default async function ProjectPage({
           presign: storageConfigured() ? (key) => presignGet(key) : null,
         })
       : Promise.resolve(emptyPublishModel()),
+    // Consulted only when the project sits at (or shows) shorts; fetched here
+    // rather than after the batch so it costs no extra round trip of latency
+    // (decision 237). One keyed row either way.
+    project.stage === 'shorts' || viewing === 'shorts'
+      ? latestRender(db, id)
+      : Promise.resolve(undefined),
   ])
   const budgetGate = budgetGates.find((gate) => gate.projectId === id)
 
@@ -152,8 +159,6 @@ export default async function ProjectPage({
   // loaded" must never read as "does not exist". The two shorts flags are
   // consulted only when the project SITS at shorts, and `wants('shorts')`
   // loaded the model exactly then; the master render is one keyed row.
-  const masterRender =
-    project.stage === 'shorts' || viewing === 'shorts' ? await latestRender(db, id) : undefined
   const control = projectControl(project, liveRun, {
     hasDossier: project.dossierVersion !== null,
     hasScript: project.hasScript,

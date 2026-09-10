@@ -194,11 +194,23 @@ export async function deleteObject(key: string): Promise<void> {
   await client.send(new DeleteObjectCommand({ Bucket: bucket, Key: key }))
 }
 
+/**
+ * How coarsely GET presigns round their signing time (decision 237). SigV4
+ * puts the signing instant into the URL, so a naive presign mints a NEW url
+ * for the same bytes on every request — and the screens re-render every few
+ * seconds while a run moves, so the browser's cache never hit and R2 egress
+ * was paid again for thumbnails it already had. Flooring the signing time
+ * means the same key presigns to the SAME url for a while; the price is that
+ * a url's remaining life is the TTL minus at most one bucket.
+ */
+const PRESIGN_BUCKET_MS = 15 * 60 * 1000
+
 /** A short-lived URL the browser can fetch the object from directly. */
 export async function presignGet(key: string, ttlSec = PLAYBACK_URL_TTL_SEC): Promise<string> {
   const { client, bucket } = r2()
   return getSignedUrl(client, new GetObjectCommand({ Bucket: bucket, Key: key }), {
     expiresIn: ttlSec,
+    signingDate: new Date(Math.floor(Date.now() / PRESIGN_BUCKET_MS) * PRESIGN_BUCKET_MS),
   })
 }
 

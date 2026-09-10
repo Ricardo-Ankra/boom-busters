@@ -1,5 +1,5 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { storageConfigured, takeStorage } from './storage'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { presignGet, storageConfigured, takeStorage } from './storage'
 
 /**
  * The four combinations of "is there a bucket" and "is the provider real".
@@ -64,5 +64,29 @@ describe('takeStorage', () => {
     // trying the stage out should not have to set up object storage first.
     expect(() => takeStorage()).toThrow(/R2_BUCKET/)
     expect(() => takeStorage()).toThrow(/MOCK_PROVIDERS=1/)
+  })
+})
+
+describe('presignGet', () => {
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('presigns the same key to the SAME url within a signing bucket (decision 237)', async () => {
+    setEnv(R2)
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-09-10T12:00:30Z'))
+    const first = await presignGet('boom-busters/thumbs/a.png')
+
+    // Ninety seconds later — a handful of live-refresh re-renders — the url
+    // must not have changed, or the browser cache never hits.
+    vi.setSystemTime(new Date('2026-09-10T12:02:00Z'))
+    const second = await presignGet('boom-busters/thumbs/a.png')
+    expect(second).toBe(first)
+
+    // A different bucket of time mints a different signature.
+    vi.setSystemTime(new Date('2026-09-10T12:16:00Z'))
+    const third = await presignGet('boom-busters/thumbs/a.png')
+    expect(third).not.toBe(first)
   })
 })

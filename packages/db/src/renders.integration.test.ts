@@ -5,6 +5,7 @@ import { FIXTURE_PROJECT_ID, fixtureCase, fixtureProject } from './fixtures'
 import {
   failInFlightRenders,
   getRender,
+  getRendersByIds,
   insertRender,
   latestRender,
   renderInFlight,
@@ -63,6 +64,26 @@ suite('render bookkeeping', () => {
     expect(finished?.status).toBe('done')
     expect(finished?.qcReport).toMatchObject({ passed: true })
     expect(await renderInFlight(db, FIXTURE_PROJECT_ID)).toBeUndefined()
+  })
+
+  it('getRendersByIds answers a batch in one query, skipping unknowns', async () => {
+    const first = await insertRender(db, {
+      projectId: FIXTURE_PROJECT_ID,
+      timelineVersion: 1,
+      kind: 'short',
+    })
+    const second = await insertRender(db, {
+      projectId: FIXTURE_PROJECT_ID,
+      timelineVersion: 1,
+      kind: 'short',
+    })
+
+    const found = await getRendersByIds(db, [first.id, second.id, '01UNKNOWN0000000000000000'])
+    expect(found.size).toBe(2)
+    expect(found.get(first.id)?.id).toBe(first.id)
+    expect(found.get(second.id)?.id).toBe(second.id)
+
+    expect((await getRendersByIds(db, [])).size).toBe(0)
   })
 
   it('latestRender answers with the newest master, ignoring shorts', async () => {

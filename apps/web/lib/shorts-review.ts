@@ -1,5 +1,5 @@
 import {
-  getRender,
+  getRendersByIds,
   latestScriptParagraphSources,
   latestTimeline,
   listShorts,
@@ -317,9 +317,15 @@ export async function shortsModel(
     ? await stillSlotEstimateUsd()
     : 0
 
+  // One query for every card's render (decision 237), not one per card.
+  const rendersById = await getRendersByIds(
+    db,
+    rows.flatMap((row) => (row.renderId ? [row.renderId] : [])),
+  )
+
   const shorts: ShortCardModel[] = []
   for (const row of rows) {
-    const render = row.renderId ? await getRender(db, row.renderId) : undefined
+    const render = row.renderId ? rendersById.get(row.renderId) : undefined
     // A teaser's runtime lives in its own mini master, not the project's.
     const sourceParsed =
       row.kind === 'teaser' && row.sourceTimeline
