@@ -28,7 +28,13 @@ export const NOTIFICATION_KINDS = [
   'gate-auto',
   'budget-gate',
   'run-failed',
-  'qc-failed',
+  /**
+   * Something finished or deferred that nothing waits on: a voiced teaser, an
+   * upload queued behind the daily quota. Neither a gate nor a failure
+   * (audit, decision 236). `qc-failed` was retired in the same pass: declared
+   * since M6 and never emitted by anything.
+   */
+  'heads-up',
   'publish-success',
   /** The daily ping found the YouTube refresh token dead (M8). */
   'reconnect-youtube',

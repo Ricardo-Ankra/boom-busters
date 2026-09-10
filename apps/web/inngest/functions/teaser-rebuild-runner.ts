@@ -44,6 +44,18 @@ export const teaserRebuildRunner = inngest.createFunction(
         if: 'async.data.projectId == event.data.projectId',
       },
     ],
+    onFailure: async ({ event }) => {
+      // The in-body refusals notify through `fail`; a crash past the retries
+      // must say so too, or the studio just never hears back (decision 236).
+      const projectId = event.data.event.data['projectId']
+      if (typeof projectId !== 'string') return
+      await notify({
+        kind: 'run-failed',
+        title: 'The teaser voicing stopped',
+        body: String(event.data.error?.message ?? 'Unknown error'),
+        href: `/projects/${projectId}?stage=shorts`,
+      })
+    },
     triggers: [events.teaserRebuildRequested],
   },
   async ({ event, step }) => {
@@ -152,7 +164,7 @@ export const teaserRebuildRunner = inngest.createFunction(
         teaserVoice: record as unknown as Record<string, unknown>,
       })
       await notify({
-        kind: 'gate-auto',
+        kind: 'heads-up',
         title: 'The teaser is voiced',
         body:
           `${voiced.length} beats are ready to hear in the teaser studio. ` +

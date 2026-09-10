@@ -1,5 +1,6 @@
 import { cancelRunsForProject, markProjectCancelled } from '@boom-busters/db'
 import { db } from '@/lib/db'
+import { notify } from '@/lib/notify'
 import { inngest } from '../client'
 import { events } from '../events'
 import { resolveRunRowId } from '../middleware/run-mirror'
@@ -22,6 +23,21 @@ export const cancelReconciler = inngest.createFunction(
     id: 'cancel-reconciler',
     name: 'Release a cancelled project',
     retries: 4,
+    onFailure: async ({ event }) => {
+      // Four failed attempts to release a cancelled project leave it wedged:
+      // runs marked live that are not, restarts refused. Say so instead of
+      // failing into silence (decision 236).
+      const projectId = event.data.event.data['projectId']
+      if (typeof projectId !== 'string') return
+      await notify({
+        kind: 'run-failed',
+        title: 'A stopped project could not be released',
+        body: `The stop was sent but the bookkeeping failed: ${String(
+          event.data.error?.message ?? 'unknown error',
+        )}. Press Stop again to retry the sweep.`,
+        href: `/projects/${projectId}`,
+      })
+    },
     triggers: [events.projectCancelled],
   },
   async ({ event, step, runId }) => {

@@ -5,6 +5,7 @@ import {
   updatePublishRecord,
   upsertAnalyticsSnapshot,
   videoBackedRecords,
+  youtubeReconnectNeeded,
   youtubeRefreshToken,
 } from '@boom-busters/db'
 import { buildDigestRequest, mockDigest, mockProvidersEnabled } from '@boom-busters/providers'
@@ -79,6 +80,16 @@ export const analyticsRunner = inngest.createFunction(
     retries: 2,
     // The cron and a manual refresh must not interleave their upserts.
     concurrency: [{ limit: 1 }],
+    // A cron that dies silently just stops appearing, and nobody notices
+    // missing analytics for weeks (decision 236). Every failure path says so.
+    onFailure: async ({ event }) => {
+      await notify({
+        kind: 'run-failed',
+        title: 'The analytics refresh failed',
+        body: String(event.data.error?.message ?? 'Unknown error'),
+        href: '/costs',
+      })
+    },
     triggers: [{ cron: ANALYTICS_CRON }, events.analyticsRefreshRequested],
   },
   async ({ step }) => {
@@ -97,14 +108,21 @@ export const analyticsRunner = inngest.createFunction(
         return { mode: 'live', accessToken: grant.accessToken }
       } catch (error) {
         if (error instanceof YoutubeAuthError && error.needsReconnect) {
-          // The one failure a retry can never fix — stamp it and say so.
+          // The one failure a retry can never fix — stamp it and say so. Said
+          // ONCE: this is a daily cron, and until someone reconnects, every
+          // morning re-finds the same dead token. Only the transition to
+          // invalid notifies (decision 236); the Needs-you card carries the
+          // standing state.
+          const alreadyDead = (await youtubeReconnectNeeded(db)).needed
           await recordVerifyResult(db, 'youtube', 'invalid')
-          await notify({
-            kind: 'reconnect-youtube',
-            title: 'YouTube needs reconnecting',
-            body: 'The stored refresh token was refused. Uploads and analytics stop until you reconnect.',
-            href: '/settings?tab=connections',
-          })
+          if (!alreadyDead) {
+            await notify({
+              kind: 'reconnect-youtube',
+              title: 'YouTube needs reconnecting',
+              body: 'The stored refresh token was refused. Uploads and analytics stop until you reconnect.',
+              href: '/settings?tab=connections',
+            })
+          }
           return { mode: 'dead' }
         }
         throw error
@@ -114,8 +132,11 @@ export const analyticsRunner = inngest.createFunction(
     if (token.mode === 'live') {
       await step.run('ping-channel', async () => {
         const ping = await pingChannel(token.accessToken)
+        // Transition-only, as above: a ping that keeps failing is one problem,
+        // not one email per day.
+        const alreadyDead = (await youtubeReconnectNeeded(db)).needed
         await recordVerifyResult(db, 'youtube', ping.ok ? 'ok' : 'invalid')
-        if (!ping.ok) {
+        if (!ping.ok && !alreadyDead) {
           await notify({
             kind: 'reconnect-youtube',
             title: 'YouTube needs reconnecting',

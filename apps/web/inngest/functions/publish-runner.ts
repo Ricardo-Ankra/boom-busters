@@ -7,6 +7,7 @@ import {
   latestRender,
   recordVerifyResult,
   updatePublishRecord,
+  youtubeReconnectNeeded,
   youtubeRefreshToken,
 } from '@boom-busters/db'
 import { beginUpload } from '@boom-busters/db'
@@ -89,6 +90,15 @@ export const publishRunner = inngest.createFunction(
       await updatePublishRecord(db, record.id, {
         status: 'failed',
         error: serialiseError(event.data.error),
+      })
+      // The in-body failure paths notify; a crash that exhausted its retries
+      // must not be the one publish failure nobody hears about (decision 236).
+      const projectId = data['projectId']
+      await notify({
+        kind: 'run-failed',
+        title: 'An upload failed',
+        body: String(event.data.error?.message ?? 'Unknown error'),
+        href: typeof projectId === 'string' ? `/projects/${projectId}?stage=publish` : '/calendar',
       })
     },
     triggers: [events.publishRequested],
@@ -203,7 +213,7 @@ export const publishRunner = inngest.createFunction(
     if (!budget.ok && budget.wakeAtIso !== null) {
       await step.run('note-queued', () =>
         notify({
-          kind: 'gate-auto',
+          kind: 'heads-up',
           title: 'Upload queued for tomorrow',
           body:
             `The daily upload budget (${preflight.dailyBudget}) is spent; this ` +
@@ -217,11 +227,21 @@ export const publishRunner = inngest.createFunction(
         return started < preflight.dailyBudget
       })
       if (!retry) {
-        await step.run('budget-still-spent', () =>
-          updatePublishRecord(db, preflight.recordId, {
+        await step.run('budget-still-spent', async () => {
+          await updatePublishRecord(db, preflight.recordId, {
             error: { message: 'The upload budget was spent again before this item ran.' },
-          }),
-        )
+          })
+          // "Queued for tomorrow" made a promise; breaking it silently left
+          // an upload that never happened and nobody told (decision 236).
+          await notify({
+            kind: 'run-failed',
+            title: 'The queued upload did not run',
+            body:
+              'The daily upload budget was spent again before this item got its turn. ' +
+              'Schedule it again when there is room.',
+            href: `/projects/${projectId}?stage=publish`,
+          })
+        })
         return { targetType, targetId, outcome: 'budget-deferred' as const }
       }
     }
@@ -273,17 +293,23 @@ export const publishRunner = inngest.createFunction(
         return { ok: true as const, accessToken: grant.accessToken }
       } catch (error) {
         if (error instanceof YoutubeAuthError && error.needsReconnect) {
+          // Transition-only, and the same kind the analytics cron uses: one
+          // dead token is one problem, not one email per touchpoint
+          // (decision 236). The failed record still names it either way.
+          const alreadyDead = (await youtubeReconnectNeeded(db)).needed
           await recordVerifyResult(db, 'youtube', 'invalid')
           await updatePublishRecord(db, preflight.recordId, {
             status: 'failed',
             error: { message: describeYoutubeAction({ kind: 'reconnect' }) },
           })
-          await notify({
-            kind: 'run-failed',
-            title: 'YouTube needs reconnecting',
-            body: 'The stored consent is no longer honoured. Reconnect in Settings → Connections.',
-            href: '/settings?tab=connections',
-          })
+          if (!alreadyDead) {
+            await notify({
+              kind: 'reconnect-youtube',
+              title: 'YouTube needs reconnecting',
+              body: 'The stored consent is no longer honoured. Reconnect in Settings → Connections.',
+              href: '/settings?tab=connections',
+            })
+          }
           return { ok: false as const }
         }
         throw error

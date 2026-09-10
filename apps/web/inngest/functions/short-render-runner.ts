@@ -26,6 +26,7 @@ import { compileShortTimeline } from '@boom-busters/timeline'
 import { mockProvidersEnabled } from '@boom-busters/providers'
 import { NonRetriableError } from 'inngest'
 import { db } from '@/lib/db'
+import { notify } from '@/lib/notify'
 import { brokerCallbackUrl, brokerConfigured, submitMediaJob, submitRender } from '@/lib/broker'
 import { storageConfigured, putObject } from '@/lib/storage'
 import { pickShortsBed } from '../lib/assembly'
@@ -89,6 +90,14 @@ export const shortRenderRunner = inngest.createFunction(
       const shortId = event.data.event.data['shortId']
       if (typeof projectId !== 'string' || typeof shortId !== 'string') return
       await failInFlightRenders(db, projectId, 'short', serialiseError(event.data.error), shortId)
+      // The card shows the failed row, but only if someone is looking at it.
+      // A render that died past its retries also says so (decision 236).
+      await notify({
+        kind: 'run-failed',
+        title: 'A Short render failed',
+        body: String(event.data.error?.message ?? 'Unknown error'),
+        href: `/projects/${projectId}?stage=shorts`,
+      })
     },
     triggers: [events.shortsRenderRequested],
   },

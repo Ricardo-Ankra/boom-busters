@@ -18,6 +18,7 @@ import {
 import { mockProvidersEnabled } from '@boom-busters/providers'
 import { NonRetriableError } from 'inngest'
 import { db } from '@/lib/db'
+import { notify } from '@/lib/notify'
 import { brokerConfigured, submitRender } from '@/lib/broker'
 import { storageConfigured, putObject } from '@/lib/storage'
 import { timelineKey } from '../lib/assembly'
@@ -70,6 +71,14 @@ export const draftRunner = inngest.createFunction(
       const projectId = event.data.event.data['projectId']
       if (typeof projectId !== 'string') return
       await failInFlightRenders(db, projectId, 'draft', serialiseError(event.data.error))
+      // And say so (decision 236): the row explains the stopped bar to a
+      // watcher, this explains it to the owner who walked away.
+      await notify({
+        kind: 'run-failed',
+        title: 'The draft render failed',
+        body: String(event.data.error?.message ?? 'Unknown error'),
+        href: `/projects/${projectId}`,
+      })
     },
     triggers: [events.renderDraftRequested],
   },
