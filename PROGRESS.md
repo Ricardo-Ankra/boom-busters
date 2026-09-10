@@ -3671,6 +3671,124 @@ published and audited. The daily `channels.list` health ping and the
        so its thumbnail uploads had written real R2 objects under the seeded
        project ids — deleted; no committed test uploads thumbnails.
 
+233. **One live run per key: every runner carries an Inngest singleton**
+     (2026-09-10, backend audit phase A; clears half the decision 220 debt).
+     Stage runners key on `event.data.projectId`, row workers on their row
+     (takeId, slotId, shortId, publish targetId), all `mode: 'skip'`: a
+     duplicate trigger event is skipped, never stacked. This is the durable
+     fix for the gate re-open race too, because `gate/X.approved` is both
+     what a parked run resolves on and the NEXT runner's trigger, so a
+     double-fired approve used to start two runs of the next stage.
+     Deliberately none on `teaser-shot-fetcher` (two beats of one Short
+     fetching at once is a feature; the action guards per beat),
+     `analytics-runner` (cron, no event data; its `concurrency` queues the
+     manual refresh) and the reconcilers (idempotent, every pass welcome).
+     `inngest/functions/index.test.ts` pins the whole map so a new runner
+     must decide. Known trade of `skip`: a restart aimed at a zombie run
+     (mirror closed, Inngest alive) is skipped silently; the recovery stays
+     Stop (which cancels via `cancelOn`) then restart.
+
+234. **Side jobs never fail a parked review, and buttons refuse to spend
+     twice** (2026-09-10, audit phase A). The slot re-fetcher, slot re-typer
+     and the retaker's over-budget path all called `markStageFailed` while
+     the review gate they serve was parked open: the decision 219 bug in
+     three more places. `markSideJobFailed` in `gates.ts` generalises the
+     rule: words (and row-level state; the re-typer writes its refusal onto
+     the card channel it already had) while `awaiting_review`, stage
+     escalation only otherwise. `budgetGateData` now carries the error's own
+     message, ending "A run failed: Unknown error" for the one failure known
+     to the cent. Action-level guards: a beat already `fetching` refuses a
+     second teaser fetch (10 minute cooldown via a new `startedAt` on the
+     state, the escape hatch for a runner that died without a trace); a
+     Short or draft mid-render refuses re-render and re-assemble. First
+     server-action test file (`shorts-actions.test.ts`) covers the guards.
+
+235. **Outside cancellations reconcile via `inngest/function.cancelled`**
+     (2026-09-10, audit phase A; the last decision 220 debt). A dashboard or
+     API cancellation fires no mirror hook, so the run row stayed live
+     forever (restarts refused, Stop offered for a ghost). The new
+     `cancellation-mirror` function closes the row in words; when the dead
+     run was a stage runner and nothing else moves, the stage goes `failed`
+     with a notification saying it was cancelled outside the app. The app's
+     own Stop lands here after its sweep already closed the rows, and doing
+     nothing twice is part of the tested contract.
+
+236. **Every failure notifies once, and only once** (2026-09-10, audit
+     phase A, notification inventory). Delivery is email-or-log only (there
+     is no in-app notification surface; the Activity drawer reads
+     `run_events`), which reframed the audit: gate notifications are the
+     product, silence and repetition are the bugs. Seven silent failure
+     paths gained notifications (Short render and draft render onFailure,
+     publish-runner onFailure, the queued-upload budget re-check,
+     teaser-voicing onFailure, analytics onFailure, cancel-reconciler
+     onFailure). 'YouTube needs reconnecting' notified from three sites on
+     two kinds, one a daily cron with no memory: all three now notify only
+     on the TRANSITION to invalid (`youtubeReconnectNeeded` read before the
+     stamp) under the one `reconnect-youtube` kind. `qc-failed` (declared
+     M6, never emitted) retired; `heads-up` added for the two notifications
+     that were mislabelled `gate-auto`. Known non-change: `run_events` has
+     no retention and grows forever; deleting audit trail is an owner call,
+     flagged rather than made.
+
+237. **Screen loads batch their reads; presigned URLs stop cache-busting**
+     (2026-09-10, audit phase A, query pass). Measured: the Shorts and
+     Publish screens ran ~11 sequential DB round trips (six of them a
+     per-card `getRender` loop, run twice when both models load).
+     `getRendersByIds` answers the batch in one query; the publish model's
+     music attribution, retention snapshot and master thumbs join the
+     parallel batch; the project page's master-render lookup joins the main
+     `Promise.all`. `presignGet` floors its signing time to a 15 minute
+     bucket so the same key presigns to the SAME url across live-refresh
+     re-renders. Before, every 3 s refresh minted fresh query strings for
+     every thumbnail and audio element, so the browser cache never hit and
+     R2 egress was re-paid for held bytes. Deferred, recorded here so it is
+     not re-found: `getSettings`/`latestTimeline`/`latestScriptParagraphSources`
+     still run once per model that wants them (2 to 3 duplicates per
+     request); a `React.cache()` wrapper is the fix if screen loads still
+     feel slow after this pass.
+
+238. **API routes answer in words and let the browser keep bytes**
+     (2026-09-10, audit phase A, endpoint pass). The asset and voice-take
+     file routes guard their presign (R2 down answered a raw 500 per
+     thumbnail) and stamp `Cache-Control: private, max-age=2400` on the 302,
+     sized inside the presigned URL's remaining life (3600 s TTL minus at
+     most one signing bucket). The YouTube callback wraps its post-exchange
+     tail (a store/ping failure mid-OAuth landed on a raw error page) and
+     logs only messages, since Google's error bodies can echo the
+     authorisation code. The broker hook treats a missing token as a bad
+     signature, not a 500 to an unauthenticated caller. Audited and left
+     alone: `/api/pulse` (30-byte payload, sound design), the render
+     progress route's payload (qcReport is null for the whole in-flight
+     window, so trimming it saves nothing), `/api/inngest` and the auth
+     handler (SDK-owned).
+
+239. **The dead-code sweep, and the bug hiding in it** (2026-09-10, audit
+     phase A1). Removed with zero consumers verified per item: the fan-out
+     helper module (`inngest/lib/fan-out.ts`, superseded by the runners' own
+     partial-failure handling), the one-time `clear-unstored-takes` repair
+     script, `@tanstack/react-query` (never imported), cost's `postgres` and
+     `dotenv` devDependencies, and about twenty exports whose only consumer
+     was their own test (`closeDb`, the truncate helpers, `safeEqual`,
+     `countActiveRuns`, `hedgeSentence` and kin), plus the branded-id
+     aliases in `ids.ts` (fourteen types nothing used; ids travel as plain
+     strings and `UlidSchema` guards the boundaries). Eight stale comments
+     fixed (phantom `containsHedge`/`composePublishDescription`/`stageOf`
+     names, the fonts-subpath claim, a `noImplicitReturns` justification for
+     a compiler option that is not on). The bug: the spec section 13 promise
+     "mock mode is never active in a production build" was enforced only by
+     `isMockMode`, a helper NOTHING called; `mockProvidersEnabled`, the
+     check every runner and screen actually uses, had no guard. The guard
+     moved to the real check, with tests. Kept deliberately: demo-pipeline
+     (the documented orchestration test harness), the drizzle relations and
+     enum exports (convention-consumed), ui-tokens' palette mirror (a
+     contrast guard against tokens.css), and ~330 exports used only inside
+     their own file (tightening `export` keywords is churn, not cleanup).
+     Owner-side note, not code: `.env.local` holds `ELEVEN_LABS_API_KEY`
+     and `FAL_AI_API_KEY`, near-misses for the real `ELEVENLABS_API_KEY`
+     and `FAL_API_KEY`, plus `GOOGLE_CLOUD_TTS_API_KEY`, `R2_TOKEN` and
+     `R2_JURISDICTION_ENDPOINT`, which nothing reads. Harmless (keys enter
+     via Settings and are stored encrypted) but worth tidying by hand.
+
 **Status:** `[x]` done — dossier + Studio shipped with unit, component and
 e2e coverage; spec §11.3 amended in place with dated notes.
 

@@ -1,23 +1,9 @@
 import { LLM_MODELS } from '@boom-busters/providers'
 import { TTS_PROVIDERS, ValidationError } from '@boom-busters/schemas'
 import { describe, expect, it } from 'vitest'
-import {
-  LLM_PRICES,
-  TTS_PRICES,
-  estimateChapterTokens,
-  estimateLlmUsd,
-  estimateTtsUsd,
-  llmPrice,
-  unpricedKnownModels,
-} from './prices'
+import { LLM_PRICES, TTS_PRICES, estimateLlmUsd, estimateTtsUsd, llmPrice } from './prices'
 
 describe('price table completeness', () => {
-  it('prices every model Settings offers', () => {
-    // A model in the dropdown with no price would estimate $0 and sail
-    // through every cap. This test is the reason that cannot happen.
-    expect(unpricedKnownModels()).toEqual([])
-  })
-
   it('covers every LLM provider Settings can route at', () => {
     for (const provider of Object.keys(LLM_MODELS)) {
       expect(Object.keys(LLM_PRICES[provider as keyof typeof LLM_PRICES]).length).toBeGreaterThan(0)
@@ -93,16 +79,6 @@ describe('estimateTtsUsd', () => {
     expect(estimateTtsUsd({ provider: 'elevenlabs', characters: 500 })).toBeCloseTo(
       TTS_PRICES.elevenlabs / 2,
     )
-  })
-})
-
-describe('estimateChapterTokens', () => {
-  it('errs high — an estimate that is too low is the one that blows a cap', () => {
-    expect(estimateChapterTokens(2_000)).toBeGreaterThan(2_000)
-  })
-
-  it('returns whole tokens', () => {
-    expect(Number.isInteger(estimateChapterTokens(2_333))).toBe(true)
   })
 })
 

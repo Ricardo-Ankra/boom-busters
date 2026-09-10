@@ -195,11 +195,6 @@ export async function deleteCase(db: Database, id: string): Promise<boolean> {
   return deleted.length > 0
 }
 
-/** Cases eligible to start a project: shortlisted and not already running. */
-export async function listProducibleCases(db: Database): Promise<CaseSummary[]> {
-  return listCases(db, { status: ['shortlisted'] })
-}
-
 export async function truncateCases(db: Database): Promise<void> {
   await db.execute(sql`truncate table ${cases} restart identity cascade`)
 }

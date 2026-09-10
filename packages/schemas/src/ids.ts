@@ -3,9 +3,9 @@ import { z } from 'zod'
 
 /**
  * Every table in the data model (build spec section 5) is keyed by a ULID.
- * Ids are branded per entity so a `CaseId` can never be passed where a
- * `ProjectId` is expected — a real hazard once the pipeline starts threading
- * six kinds of id through Inngest step payloads.
+ * Ids travel through the codebase as plain strings; `UlidSchema` is the
+ * check applied to untrusted id strings at the server-action and webhook
+ * boundaries.
  */
 
 const ULID_PATTERN = /^[0-7][0-9A-HJKMNP-TV-Z]{25}$/
@@ -17,33 +17,9 @@ type Brand<T extends string> = { readonly [brand]: T }
 
 export type Ulid<T extends string> = string & Brand<T>
 
-export type CaseId = Ulid<'case'>
-export type ProjectId = Ulid<'project'>
-export type DossierId = Ulid<'dossier'>
-export type ClaimId = Ulid<'claim'>
-export type ScriptId = Ulid<'script'>
-export type ChapterId = Ulid<'chapter'>
-export type VoiceTakeId = Ulid<'voiceTake'>
-export type ShotSlotId = Ulid<'shotSlot'>
-export type AssetId = Ulid<'asset'>
-export type TimelineId = Ulid<'timeline'>
-export type RenderId = Ulid<'render'>
-export type ShortId = Ulid<'short'>
-export type PublishRecordId = Ulid<'publishRecord'>
-export type RunId = Ulid<'run'>
-
 /** Fresh, monotonically sortable id. */
 export function newId<T extends string>(): Ulid<T> {
   return ulid() as Ulid<T>
-}
-
-/** Parse an untrusted string into a branded id, throwing if malformed. */
-export function toId<T extends string>(value: string): Ulid<T> {
-  return UlidSchema.parse(value) as Ulid<T>
-}
-
-export function isUlid(value: string): boolean {
-  return ULID_PATTERN.test(value)
 }
 
 /**

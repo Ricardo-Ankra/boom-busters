@@ -2,14 +2,14 @@
  * The curated font list (build spec sections 8.2 and 10.1). Compositions
  * cannot load arbitrary fonts at render time, so the Brand Kit's typography
  * choices are limited to exactly this set, bundled via @remotion/google-fonts.
- * The Settings UI reads this export — it can never offer an unbundled font —
- * and adding a font is a change to this file plus a redeploy of the Remotion
+ * Adding a font is a change to this file plus a redeploy of the Remotion
  * site, not a settings change.
  *
- * This module is pure data with no React or Remotion imports: the web app
- * imports it through `@boom-busters/compositions/fonts` without dragging any
- * video machinery into its bundle. All families are SIL OFL 1.1 — safe for
- * commercial video.
+ * This module is pure data with no React or Remotion imports. The only UI
+ * consumer today is the Brand Kit specimen (brand-specimen.tsx), which
+ * imports `loadBrandFonts` from the package root; nothing reads the catalog
+ * through the `@boom-busters/compositions/fonts` subpath. All families are
+ * SIL OFL 1.1, safe for commercial video.
  */
 
 export type FontRole = 'heading' | 'title' | 'body' | 'numbers' | 'captions'

@@ -12,7 +12,7 @@ import type { LLMTaskRequest } from '../llm/types'
  *
  * Only titles are generated. The description is composed deterministically
  * from things that already exist (hook paragraph, chapter timestamps, dossier
- * sources, disclaimer — see `composePublishDescription` in schemas): asking a
+ * sources, disclaimer — see `composeDescription` in schemas): asking a
  * model to restate facts that are already on file is how a description ends
  * up contradicting the video it sits under.
  */

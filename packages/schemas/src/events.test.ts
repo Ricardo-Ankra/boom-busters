@@ -1,13 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { fixtureId } from './ids'
-import {
-  EVENT_NAMES,
-  EVENT_SCHEMAS,
-  GATE_STAGES,
-  gateApprovedEvent,
-  gateChangesRequestedEvent,
-  parseEventData,
-} from './events'
+import { EVENT_NAMES, EVENT_SCHEMAS, GATE_STAGES, parseEventData } from './events'
 
 const projectId = fixtureId('project', 1)
 const caseId = fixtureId('case', 1)
@@ -21,8 +14,8 @@ describe('event registry', () => {
 
   it('defines an approved and a changes_requested event for all five gates', () => {
     for (const stage of GATE_STAGES) {
-      expect(EVENT_NAMES).toContain(gateApprovedEvent(stage))
-      expect(EVENT_NAMES).toContain(gateChangesRequestedEvent(stage))
+      expect(EVENT_NAMES).toContain(`gate/${stage}.approved`)
+      expect(EVENT_NAMES).toContain(`gate/${stage}.changes_requested`)
     }
   })
 

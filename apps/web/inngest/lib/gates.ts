@@ -150,7 +150,7 @@ export function budgetGateData(error: BudgetExceededError): Record<string, unkno
     /**
      * The words every consumer of this record falls back on. Without this,
      * a runner that fails its stage on an overage notified "A run failed:
-     * Unknown error" — the one failure whose cause was known to the cent
+     * Unknown error", the one failure whose cause was known to the cent
      * (audit, decision 234). The error already says it best.
      */
     message: error.message,
@@ -230,7 +230,7 @@ export async function markStageFailed(
  * A side job fails while the main run may be parked at an open review gate
  * (decision 234, generalising decision 219). The retaker, the slot
  * re-fetcher and the slot re-typer all run INSIDE a parked review: failing
- * the STAGE there tears the review room down — the gate bar vanishes,
+ * the STAGE there tears the review room down: the gate bar vanishes,
  * approval becomes unreachable, and later successes never restore it. So
  * while the review is parked, the failure is words (a notification, and
  * whatever row-level state the caller wrote); only when the stage is NOT

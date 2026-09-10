@@ -15,7 +15,6 @@ import {
   setSlotResolution,
   setSlotRetype,
   shotSlotStatuses,
-  unresolvedSlots,
   updateSlotBrief,
   upsertAssetByHash,
 } from './visuals'
@@ -188,9 +187,6 @@ suite('shot slots', () => {
     expect(stored?.status).toBe('unresolved')
     expect((stored?.brief as { query?: string }).query).toBe('abandoned trading floor')
     expect(stored?.candidates).toHaveLength(1)
-
-    const owed = await unresolvedSlots(db, projectId)
-    expect(owed.map((entry) => entry.id)).toContain(slot!.id)
   })
 
   it('counts statuses without loading briefs', async () => {

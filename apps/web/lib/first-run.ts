@@ -100,10 +100,6 @@ export function buildChecklist(input: FirstRunInput): ChecklistItem[] {
   ]
 }
 
-export function isSetupComplete(items: ChecklistItem[]): boolean {
-  return items.every((item) => item.done)
-}
-
 /**
  * Items that must be done before any project can start — and that *can* be
  * done: an item whose milestone has not arrived is coming, not blocking, or

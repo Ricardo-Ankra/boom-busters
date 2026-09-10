@@ -566,11 +566,6 @@ export function mockShortsCandidates(
   })
 }
 
-/** Words in a whole script, for the header in Script Studio. */
-export function scriptWordCount(chapters: readonly { contentMd: string }[]): number {
-  return chapters.reduce((total, chapter) => total + countWords(chapter.contentMd), 0)
-}
-
 // ---------------------------------------------------------------------------
 // Per-section regenerate (spec section 11.3)
 // ---------------------------------------------------------------------------

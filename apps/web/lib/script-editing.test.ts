@@ -3,7 +3,6 @@ import {
   applyHunks,
   diffChapters,
   formatDuration,
-  hedgeSentence,
   placeWarnings,
   replaceSentence,
   runtimeDelta,
@@ -124,27 +123,6 @@ describe('placeWarnings', () => {
 
   it('returns nothing for no warnings', () => {
     expect(placeWarnings(content, [])).toEqual([])
-  })
-})
-
-describe('hedgeSentence', () => {
-  it('hedges a bare assertion', () => {
-    expect(hedgeSentence('The CEO knew about the losses.')).toBe(
-      'Reportedly, the CEO knew about the losses.',
-    )
-  })
-
-  it('leaves a sentence that already hedges alone', () => {
-    // Double-hedging reads as evasive and is not an improvement.
-    const already = 'The CEO allegedly knew about the losses.'
-    expect(hedgeSentence(already)).toBe(already)
-    expect(hedgeSentence('According to filings, he knew.')).toBe('According to filings, he knew.')
-  })
-
-  it('always returns something hedged, even for an awkward sentence', () => {
-    // A fix that silently does nothing leaves the sentence as dangerous as it
-    // was, which is worse than an awkward one.
-    expect(hedgeSentence('Fraud.')).toMatch(/^Reportedly, /)
   })
 })
 

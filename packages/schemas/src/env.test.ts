@@ -4,7 +4,6 @@ import {
   DEFERRED_GROUPS,
   EnvValidationError,
   hasEnvGroup,
-  isMockMode,
   parseBootEnv,
   requireEnv,
 } from './env'
@@ -162,18 +161,5 @@ describe('hasEnvGroup', () => {
   it('reports configured and unconfigured groups without throwing', () => {
     expect(hasEnvGroup('inngest', { INNGEST_EVENT_KEY: 'a', INNGEST_SIGNING_KEY: 'b' })).toBe(true)
     expect(hasEnvGroup('inngest', {})).toBe(false)
-  })
-})
-
-describe('isMockMode', () => {
-  it('is enabled by MOCK_PROVIDERS outside production', () => {
-    expect(isMockMode({ NODE_ENV: 'test', MOCK_PROVIDERS: '1' })).toBe(true)
-    expect(isMockMode({ NODE_ENV: 'development', MOCK_PROVIDERS: 'true' })).toBe(true)
-    expect(isMockMode({ NODE_ENV: 'development' })).toBe(false)
-  })
-
-  it('can never be enabled in production, whatever the env says', () => {
-    expect(isMockMode({ NODE_ENV: 'production', MOCK_PROVIDERS: '1' })).toBe(false)
-    expect(isMockMode({ NODE_ENV: 'production', MOCK_PROVIDERS: 'true' })).toBe(false)
   })
 })

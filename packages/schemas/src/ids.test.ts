@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { UlidSchema, fixtureId, isUlid, newId, toId } from './ids'
+import { UlidSchema, fixtureId, newId } from './ids'
+
+const isUlid = (value: string) => UlidSchema.safeParse(value).success
 
 describe('newId', () => {
   it('produces a valid 26-character ULID', () => {
@@ -15,20 +17,20 @@ describe('newId', () => {
   })
 })
 
-describe('toId', () => {
+describe('UlidSchema', () => {
   it('accepts a well-formed ULID', () => {
     const raw = newId<'case'>()
-    expect(toId<'case'>(raw)).toBe(raw)
+    expect(UlidSchema.parse(raw)).toBe(raw)
   })
 
   it('rejects malformed input, including the ambiguous Crockford letters', () => {
-    expect(() => toId('not-a-ulid')).toThrow()
-    expect(() => toId('01ARZ3NDEKTSV4RRFFQ69G5FA')).toThrow() // 25 chars
-    expect(() => toId('01ARZ3NDEKTSV4RRFFQ69G5FAVX')).toThrow() // 27 chars
-    expect(UlidSchema.safeParse('01ARZ3NDEKTSV4RRFFQ69G5FAI').success).toBe(false) // I
-    expect(UlidSchema.safeParse('01ARZ3NDEKTSV4RRFFQ69G5FAL').success).toBe(false) // L
-    expect(UlidSchema.safeParse('01ARZ3NDEKTSV4RRFFQ69G5FAO').success).toBe(false) // O
-    expect(UlidSchema.safeParse('01ARZ3NDEKTSV4RRFFQ69G5FAU').success).toBe(false) // U
+    expect(isUlid('not-a-ulid')).toBe(false)
+    expect(isUlid('01ARZ3NDEKTSV4RRFFQ69G5FA')).toBe(false) // 25 chars
+    expect(isUlid('01ARZ3NDEKTSV4RRFFQ69G5FAVX')).toBe(false) // 27 chars
+    expect(isUlid('01ARZ3NDEKTSV4RRFFQ69G5FAI')).toBe(false) // I
+    expect(isUlid('01ARZ3NDEKTSV4RRFFQ69G5FAL')).toBe(false) // L
+    expect(isUlid('01ARZ3NDEKTSV4RRFFQ69G5FAO')).toBe(false) // O
+    expect(isUlid('01ARZ3NDEKTSV4RRFFQ69G5FAU')).toBe(false) // U
   })
 })
 

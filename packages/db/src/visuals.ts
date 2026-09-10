@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { and, asc, eq, sql } from 'drizzle-orm'
+import { asc, eq, sql } from 'drizzle-orm'
 import type {
   ShotBrief,
   ShotSlotStatus,
@@ -317,13 +317,4 @@ export async function shotSlotStatuses(
     .select({ status: shotSlots.status })
     .from(shotSlots)
     .where(eq(shotSlots.projectId, projectId))
-}
-
-/** Slots a resolution pass still owes work — unresolved only, board order. */
-export async function unresolvedSlots(db: Database, projectId: string): Promise<ShotSlotRow[]> {
-  return db
-    .select()
-    .from(shotSlots)
-    .where(and(eq(shotSlots.projectId, projectId), eq(shotSlots.status, 'unresolved')))
-    .orderBy(asc(shotSlots.chapterId), asc(shotSlots.index))
 }

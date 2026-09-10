@@ -22,7 +22,7 @@ import { cancellationMirror } from './cancellation-mirror'
  * The outside-cancellation reconciler (decision 235): a run cancelled from
  * the Inngest dashboard must close its mirror row, and a dashboard-cancelled
  * STAGE runner must also stop the rail claiming progress. The app's own Stop
- * arrives here too, after its sweep already closed everything — so the other
+ * arrives here too, after its sweep already closed everything, so the other
  * half of the contract is doing nothing twice.
  */
 

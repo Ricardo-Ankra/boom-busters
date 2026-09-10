@@ -9,7 +9,6 @@ import {
   approveCurrentTakes,
   AUDITION_CACHE_LIMIT,
   claimTake,
-  currentTake,
   findAudition,
   flagTake,
   latestScriptParagraphSources,
@@ -212,13 +211,6 @@ suite('voice takes', () => {
       const all = await listVoiceTakes(db, projectId)
       expect(all).toHaveLength(2)
       expect(all.map((take) => take.takeNumber)).toEqual([1, 2])
-    })
-
-    it('makes the highest take number the current one', async () => {
-      await storeTakeAudio(db, (await claim()).take.id, audio)
-      const retake = await claim(0, 'One paragraph.', 2)
-
-      expect((await currentTake(db, { chapterId, paragraphIndex: 0 }))?.id).toBe(retake.take.id)
     })
 
     it('carries the note on the take it belongs to', async () => {

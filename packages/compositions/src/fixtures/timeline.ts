@@ -146,9 +146,6 @@ export const FIXTURE_TIMELINE: Timeline = {
   ],
 }
 
-/** A second still, so Studio has both fixture images on show. */
-export const FIXTURE_IMAGE_ALT = FIXTURE_IMAGE_HARBOUR
-
 /**
  * The vertical fixture: what `compileShortTimeline` produces for paragraph 0
  * of the fixture project, hand-built and materialised (compositions may

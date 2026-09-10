@@ -200,15 +200,6 @@ export function hasEnvGroup(group: DeferredGroup, source: EnvSource = process.en
 }
 
 /**
- * Mock-provider mode (build spec section 13). Hard-guarded: never active in a
- * production build, whatever the env says.
- */
-export function isMockMode(source: EnvSource = process.env): boolean {
-  if (source['NODE_ENV'] === 'production') return false
-  return source['MOCK_PROVIDERS'] === '1' || source['MOCK_PROVIDERS']?.toLowerCase() === 'true'
-}
-
-/**
  * Optional provider API keys read from env. These are SEEDS ONLY: imported
  * into `provider_credentials` on first boot when no row exists, so local dev
  * works without touching Settings -> Connections (build spec section 4).

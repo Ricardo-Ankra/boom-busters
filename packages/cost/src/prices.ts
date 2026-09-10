@@ -102,24 +102,3 @@ export function estimateTtsUsd(args: { provider: TtsProvider; characters: number
  * either, on purpose: the APIs are free, and their ledger rows record $0
  * actual rather than passing through an invented estimate.
  */
-
-/**
- * Rough output-token budget for a chapter of narration. Scripting steps draft
- * 2-3k words each (spec section 7), and the guard needs a number *before* the
- * call, so this deliberately errs high: an estimate that is too low is the one
- * that lets a run blow through a cap.
- */
-export function estimateChapterTokens(targetWords: number): number {
-  return Math.ceil(targetWords * 1.5)
-}
-
-/** Every model offered in Settings must have a price. Asserted by a test. */
-export function unpricedKnownModels(): string[] {
-  const missing: string[] = []
-  for (const [provider, models] of Object.entries(LLM_MODELS)) {
-    for (const model of models) {
-      if (!LLM_PRICES[provider as LlmProvider][model.id]) missing.push(`${provider}/${model.id}`)
-    }
-  }
-  return missing
-}

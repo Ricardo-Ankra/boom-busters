@@ -197,7 +197,7 @@ export async function deleteObject(key: string): Promise<void> {
 /**
  * How coarsely GET presigns round their signing time (decision 237). SigV4
  * puts the signing instant into the URL, so a naive presign mints a NEW url
- * for the same bytes on every request — and the screens re-render every few
+ * for the same bytes on every request. The screens re-render every few
  * seconds while a run moves, so the browser's cache never hit and R2 egress
  * was paid again for thumbnails it already had. Flooring the signing time
  * means the same key presigns to the SAME url for a while; the price is that

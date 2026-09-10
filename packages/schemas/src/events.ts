@@ -316,18 +316,6 @@ export type EventPayload<N extends EventName> = z.infer<(typeof EVENT_SCHEMAS)[N
 
 export const EVENT_NAMES = Object.keys(EVENT_SCHEMAS) as EventName[]
 
-// ---------------------------------------------------------------------------
-// Gate helpers
-// ---------------------------------------------------------------------------
-
-export function gateApprovedEvent(stage: GateStage): EventName {
-  return `gate/${stage}.approved`
-}
-
-export function gateChangesRequestedEvent(stage: GateStage): EventName {
-  return `gate/${stage}.changes_requested`
-}
-
 /**
  * Parse an untrusted payload for a named event. Server actions and webhooks
  * both go through this, so a malformed event never reaches a runner.

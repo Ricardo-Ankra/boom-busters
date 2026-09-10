@@ -7,7 +7,6 @@ import {
   existingCaseTitles,
   getCase,
   listCases,
-  listProducibleCases,
   markCaseInProduction,
   setCaseStatus,
   truncateCases,
@@ -186,15 +185,6 @@ suite('cases', () => {
 
       expect((await getCase(db, row.id))?.status).toBe('published')
     })
-  })
-
-  it('lists only shortlisted cases as producible', async () => {
-    await createCase(db, { title: 'Idea', category: 'collapse' })
-    await createCase(db, { title: 'Ready', category: 'con', status: 'shortlisted' })
-    await createCase(db, { title: 'Done', category: 'con', status: 'published' })
-
-    const producible = await listProducibleCases(db)
-    expect(producible.map((c) => c.title)).toEqual(['Ready'])
   })
 
   it('lists existing titles alphabetically for the suggestion prompt', async () => {

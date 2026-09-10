@@ -14,7 +14,6 @@ import {
   parseOutline,
   parseSelfCheck,
   parseShortsCandidates,
-  scriptWordCount,
   tensionContract,
   tensionFromOutline,
 } from './script'
@@ -461,11 +460,5 @@ describe('mock script output', () => {
 
   it('produces nothing for an empty chapter rather than an invalid candidate', () => {
     expect(mockShortsCandidates([{ index: 0, contentMd: '' }])).toEqual([])
-  })
-})
-
-describe('scriptWordCount', () => {
-  it('totals every chapter', () => {
-    expect(scriptWordCount([{ contentMd: 'one two' }, { contentMd: 'three' }])).toBe(3)
   })
 })

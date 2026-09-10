@@ -153,34 +153,6 @@ export function placeWarnings(
   })
 }
 
-// ---------------------------------------------------------------------------
-// One-click fixes
-// ---------------------------------------------------------------------------
-
-/**
- * Insert a hedge into a sentence that states an unadjudicated claim as fact
- * (spec section 11.3: "insert 'alleged'").
- *
- * No longer wired to a button: the one-click fix now routes through the
- * regenerate flow, so the model's wording arrives as a proposal the human
- * approves rather than an edit that lands unseen. This stays because it is the
- * only hedge available when no provider can be reached, and because it is the
- * cheap check `containsHedge` is built from.
- *
- * It goes after the first verb-ish position we can find cheaply — in practice,
- * after the subject's first comma or before the main clause — and falls back to
- * prefixing "Reportedly, ". The fallback is deliberate: a hedge in a slightly
- * awkward place is a legal improvement, whereas a fix that silently does
- * nothing leaves the sentence exactly as dangerous as it was.
- */
-export function hedgeSentence(sentence: string): string {
-  if (/\b(alleged|allegedly|reportedly|according to|claims?|said to)\b/i.test(sentence)) {
-    return sentence
-  }
-
-  return `Reportedly, ${sentence.charAt(0).toLowerCase()}${sentence.slice(1)}`
-}
-
 /** Replace one sentence in a chapter, leaving everything else byte-identical. */
 export function replaceSentence(contentMd: string, target: string, replacement: string): string {
   const at = contentMd.indexOf(target)

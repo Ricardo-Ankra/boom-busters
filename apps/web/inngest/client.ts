@@ -9,8 +9,8 @@ import { RunMirrorMiddleware } from './middleware/run-mirror'
  * Keys are read from `INNGEST_EVENT_KEY` / `INNGEST_SIGNING_KEY` by the SDK
  * itself. They are not validated at boot: the Inngest Dev Server needs neither,
  * so demanding them would make `pnpm dev` and CI impossible without a cloud
- * account. `inngestConfigured()` below is what the UI uses to say so honestly
- * instead of pretending a run was queued.
+ * account. When Inngest is unreachable, the send fails and the pressed button
+ * says so (`send` in projects/actions.ts).
  */
 export const inngest = new Inngest({
   id: 'boom-busters',
@@ -25,8 +25,3 @@ export const inngest = new Inngest({
    */
   isDev: process.env['INNGEST_DEV'] === '1' || process.env['NODE_ENV'] !== 'production',
 })
-
-/** Whether cloud Inngest is wired up. False means the Dev Server, or nothing. */
-export function inngestConfigured(source: NodeJS.ProcessEnv = process.env): boolean {
-  return Boolean(source['INNGEST_EVENT_KEY']) && Boolean(source['INNGEST_SIGNING_KEY'])
-}

@@ -19,7 +19,7 @@ import type { ProjectStage, StageStatus } from '@boom-busters/db'
  * to set it starts a quiet lie about which dossier the narration came from.
  *
  * M4-M7 extend this by adding their artefact to `StageInputs` and their rule to
- * `stageOf`. The shape is deliberately one function: the alternative is
+ * `stageViews`. The shape is deliberately one function: the alternative is
  * staleness logic spread across seven screens, each subtly disagreeing.
  */
 

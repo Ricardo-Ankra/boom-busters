@@ -40,10 +40,3 @@ export const MUSIC_MAX_BYTES = 25 * 1024 * 1024
  * certificate fits; an essay does not.
  */
 export const MUSIC_ATTRIBUTION_MAX_CHARS = 3000
-export const MUSIC_MIME_TYPES = [
-  'audio/mpeg',
-  'audio/wav',
-  'audio/x-wav',
-  'audio/mp4',
-  'audio/ogg',
-] as const

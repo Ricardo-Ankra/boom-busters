@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, lte, sql } from 'drizzle-orm'
+import { desc, eq, gte, sql } from 'drizzle-orm'
 import type { Database } from './client'
 import { analyticsSnapshots } from './schema'
 import type { AnalyticsSnapshotRow } from './schema'
@@ -83,21 +83,6 @@ export async function snapshotsSince(db: Database, since: Date): Promise<Analyti
     .from(analyticsSnapshots)
     .where(gte(analyticsSnapshots.date, since))
     .orderBy(analyticsSnapshots.videoId, analyticsSnapshots.date)
-}
-
-/** The snapshot at-or-before a moment for one video, for delta baselines. */
-export async function snapshotBefore(
-  db: Database,
-  videoId: string,
-  before: Date,
-): Promise<AnalyticsSnapshotRow | undefined> {
-  const [row] = await db
-    .select()
-    .from(analyticsSnapshots)
-    .where(and(eq(analyticsSnapshots.videoId, videoId), lte(analyticsSnapshots.date, before)))
-    .orderBy(desc(analyticsSnapshots.date))
-    .limit(1)
-  return row
 }
 
 /** Test-only: empty the table. */

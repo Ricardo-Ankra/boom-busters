@@ -1,4 +1,4 @@
-import { getEnv, isMockMode } from '@boom-busters/schemas'
+import { getEnv } from '@boom-busters/schemas'
 import 'server-only'
 
 /**
@@ -8,6 +8,3 @@ import 'server-only'
  * environment throws `EnvValidationError` naming every missing variable.
  */
 export const env = getEnv()
-
-/** Mock-provider mode, hard-guarded off in production. */
-export const MOCK_MODE = isMockMode()

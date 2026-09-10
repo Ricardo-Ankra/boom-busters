@@ -1,12 +1,6 @@
 import { DEFAULT_SETTINGS, type Settings } from '@boom-busters/schemas'
 import { describe, expect, it } from 'vitest'
-import {
-  actionableSetup,
-  buildChecklist,
-  isSetupComplete,
-  pipelineBlockers,
-  upcomingSetup,
-} from './first-run'
+import { actionableSetup, buildChecklist, pipelineBlockers, upcomingSetup } from './first-run'
 
 function settingsWith(overrides: (settings: Settings) => void): Settings {
   const settings = structuredClone(DEFAULT_SETTINGS)
@@ -32,10 +26,6 @@ describe('buildChecklist', () => {
       'music',
       'youtube',
     ])
-  })
-
-  it('marks a fresh install as incomplete', () => {
-    expect(isSetupComplete(buildChecklist(freshInstall))).toBe(false)
   })
 
   /**
@@ -117,7 +107,7 @@ describe('buildChecklist', () => {
       caseCount: 1,
     })
 
-    expect(isSetupComplete(items)).toBe(true)
+    expect(items.every((item) => item.done)).toBe(true)
     expect(pipelineBlockers(items)).toEqual([])
     expect(actionableSetup(items)).toEqual([])
     expect(upcomingSetup(items)).toEqual([])

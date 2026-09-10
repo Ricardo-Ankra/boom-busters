@@ -1,4 +1,4 @@
-import { asc, desc, eq, inArray, sql } from 'drizzle-orm'
+import { asc, desc, eq } from 'drizzle-orm'
 import { sentenceHash } from '@boom-busters/schemas'
 import type { GutterWarning, ShortsCandidate } from '@boom-busters/schemas'
 import type { Database } from './client'
@@ -234,30 +234,6 @@ export async function saveClaimRefs(
   return deduped.length
 }
 
-export async function listClaimRefs(db: Database, chapterId: string) {
-  return db
-    .select({
-      claimId: claimRefs.claimId,
-      sentenceHash: claimRefs.sentenceHash,
-      text: claims.text,
-      sourceUrl: claims.sourceUrl,
-      confidence: claims.confidence,
-    })
-    .from(claimRefs)
-    .innerJoin(claims, eq(claims.id, claimRefs.claimId))
-    .where(eq(claimRefs.chapterId, chapterId))
-}
-
-export async function listScriptEdits(db: Database, chapterIds: readonly string[]) {
-  if (chapterIds.length === 0) return []
-
-  return db
-    .select()
-    .from(scriptEdits)
-    .where(inArray(scriptEdits.chapterId, [...chapterIds]))
-    .orderBy(desc(scriptEdits.createdAt))
-}
-
 export async function setScriptStatus(
   db: Database,
   scriptId: string,
@@ -292,10 +268,6 @@ export async function projectIdForChapter(
     .limit(1)
 
   return row?.projectId
-}
-
-export async function truncateScripts(db: Database): Promise<void> {
-  await db.execute(sql`truncate table ${scripts} restart identity cascade`)
 }
 
 /**

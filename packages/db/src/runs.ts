@@ -279,10 +279,6 @@ export async function listActiveRuns(db: Database): Promise<ActiveRun[]> {
   return rows
 }
 
-export async function countActiveRuns(db: Database): Promise<number> {
-  return (await listActiveRuns(db)).length
-}
-
 export interface FailedRun {
   id: string
   projectId: string | null

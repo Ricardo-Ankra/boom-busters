@@ -212,7 +212,9 @@ export async function route(
     }
   }
 
-  // Unreachable: the loop above either returns or throws. Kept so the function
-  // has no implicit undefined return under `noImplicitReturns`.
+  // Unreachable: the loop above either returns or throws. Kept because
+  // reaching this line means the routing path was empty or mis-built, which
+  // is a programming error worth failing loudly on rather than returning
+  // undefined and letting a caller carry on.
   throw lastError instanceof Error ? lastError : new Error('router exhausted every model')
 }

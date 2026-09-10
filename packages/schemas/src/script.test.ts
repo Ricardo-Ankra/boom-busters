@@ -7,7 +7,6 @@ import {
   countWords,
   estimateRuntimeSec,
   sentenceHash,
-  hasNarrationTags,
   replaceParagraph,
   resolveCandidateSegment,
   stripNarrationMarkup,
@@ -289,32 +288,10 @@ describe('splitParagraphs and replaceParagraph', () => {
 })
 
 describe('narration markup', () => {
-  it('recognises pause and expression tags alike — anything bracketed is direction', () => {
-    expect(hasNarrationTags('Let me look, [long pause] yes.')).toBe(true)
-    expect(hasNarrationTags('Wait. [pause] Then it fell.')).toBe(true)
-    expect(hasNarrationTags('[sighs] The auditors signed it off.')).toBe(true)
-    // Free-form direction is as real to the narrator as a curated tag.
-    expect(hasNarrationTags('It was gone. [grave, measured] All of it.')).toBe(true)
-    expect(hasNarrationTags('Nothing to see here.')).toBe(false)
-  })
-
-  it('still recognises the old Chirp-era spelling, which scripts may carry', () => {
+  it('still strips the old Chirp-era spelling, which scripts may carry', () => {
     // `[pause long]` predates the ElevenLabs move. It must still strip from
-    // captions — and Eleven v3 reads any bracketed run as direction anyway.
-    expect(hasNarrationTags('Wait. [Pause  Long] Then.')).toBe(true)
+    // captions, and Eleven v3 reads any bracketed run as direction anyway.
     expect(stripNarrationMarkup('Wait. [pause long] Then.')).toBe('Wait. Then.')
-  })
-
-  /**
-   * A regex with the `g` flag carries `lastIndex` between calls, so the second
-   * of two identical questions can answer `false`. Worth a test because the
-   * consequence is a paragraph silently synthesised through the wrong input
-   * field, and it would only show up on every other take.
-   */
-  it('answers the same question the same way twice', () => {
-    const text = 'Wait. [pause] Then it fell.'
-    expect(hasNarrationTags(text)).toBe(true)
-    expect(hasNarrationTags(text)).toBe(true)
   })
 
   it('gives the words alone to everything that is not the synthesiser', () => {

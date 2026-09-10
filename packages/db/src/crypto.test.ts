@@ -1,12 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import {
-  DecryptionError,
-  decryptSecret,
-  encryptSecret,
-  keyHint,
-  maskKey,
-  safeEqual,
-} from './crypto'
+import { DecryptionError, decryptSecret, encryptSecret, keyHint, maskKey } from './crypto'
 
 const KEY = Buffer.alloc(32, 1).toString('base64')
 const OTHER_KEY = Buffer.alloc(32, 2).toString('base64')
@@ -86,14 +79,5 @@ describe('keyHint / maskKey', () => {
     const masked = maskKey(keyHint('sk-ant-api03-abcdef4f2a'))
     expect(masked).toBe('••••4f2a')
     expect(masked).not.toContain('abcdef')
-  })
-})
-
-describe('safeEqual', () => {
-  it('matches identical strings and rejects differing ones', () => {
-    expect(safeEqual('token-abc', 'token-abc')).toBe(true)
-    expect(safeEqual('token-abc', 'token-abd')).toBe(false)
-    expect(safeEqual('token-abc', 'token-abcd')).toBe(false)
-    expect(safeEqual('', '')).toBe(true)
   })
 })

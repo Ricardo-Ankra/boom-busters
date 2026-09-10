@@ -391,12 +391,6 @@ export type ExpressionTag = (typeof EXPRESSION_TAGS)[number]
  */
 const NARRATION_TAG_MARKUP = /\[[^\][\r\n]{1,60}\]/g
 
-/** Whether a paragraph carries narration tags — direction that is not words. */
-export function hasNarrationTags(text: string): boolean {
-  NARRATION_TAG_MARKUP.lastIndex = 0
-  return NARRATION_TAG_MARKUP.test(text)
-}
-
 /**
  * The words alone, for everything that is not the synthesiser.
  *

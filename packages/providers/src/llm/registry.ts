@@ -32,10 +32,16 @@ export function mockAdapters(): Record<LlmProvider, LLMProvider> {
  * Named `mockProvidersEnabled`, not `useMockProviders`: in a React codebase a
  * `use` prefix means a hook, and this is a plain environment read called from
  * server components and Inngest steps where hook rules do not apply.
+ *
+ * Hard-guarded off in a production build, whatever the env says (build spec
+ * section 13). The guard used to live only on `isMockMode` in schemas, which
+ * nothing called: the check every runner and screen actually uses is this
+ * one, so this is where the guard has to be (audit, decision 239).
  */
 export function mockProvidersEnabled(
   env: Record<string, string | undefined> = process.env,
 ): boolean {
+  if (env['NODE_ENV'] === 'production') return false
   return env['MOCK_PROVIDERS'] === '1'
 }
 

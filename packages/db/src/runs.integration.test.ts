@@ -12,7 +12,6 @@ import {
 } from './projects'
 import {
   cancelRunsForProject,
-  countActiveRuns,
   ensureRun,
   listActiveRuns,
   listActivity,
@@ -152,7 +151,7 @@ describeDb('run mirror', () => {
       const active = await listActiveRuns(db)
       expect(active).toHaveLength(1)
       expect(active[0]?.currentStep).toBe('gather-sources')
-      expect(await countActiveRuns(db)).toBe(1)
+      expect((await listActiveRuns(db)).length).toBe(1)
     })
 
     it('does not count a run parked at a gate as active', async () => {
@@ -163,7 +162,7 @@ describeDb('run mirror', () => {
         functionName: 'demo-runner',
       })
       await setRunStatus(db, runId, 'awaiting_gate')
-      expect(await countActiveRuns(db)).toBe(0)
+      expect((await listActiveRuns(db)).length).toBe(0)
     })
 
     it('does not count finished runs', async () => {
@@ -172,7 +171,7 @@ describeDb('run mirror', () => {
         functionName: 'demo-runner',
       })
       await setRunStatus(db, runId, 'completed')
-      expect(await countActiveRuns(db)).toBe(0)
+      expect((await listActiveRuns(db)).length).toBe(0)
     })
   })
 
@@ -293,7 +292,7 @@ describeDb('run mirror', () => {
       await setRunStatus(db, parked, 'awaiting_gate')
 
       expect(await cancelRunsForProject(db, FIXTURE_PROJECT_ID)).toBe(2)
-      expect(await countActiveRuns(db)).toBe(0)
+      expect((await listActiveRuns(db)).length).toBe(0)
       expect((await listRunEvents(db, running)).map((e) => e.kind)).toContain('run.cancelled')
     })
 

@@ -1,4 +1,4 @@
-import { createCipheriv, createDecipheriv, randomBytes, timingSafeEqual } from 'node:crypto'
+import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto'
 
 /**
  * AES-256-GCM for provider API keys and the YouTube refresh token
@@ -88,12 +88,4 @@ export function keyHint(plaintext: string): string {
  */
 export function maskKey(hint: string): string {
   return `••••${hint}`
-}
-
-/** Constant-time comparison for broker tokens and webhook HMACs. */
-export function safeEqual(a: string, b: string): boolean {
-  const bufA = Buffer.from(a, 'utf8')
-  const bufB = Buffer.from(b, 'utf8')
-  if (bufA.length !== bufB.length) return false
-  return timingSafeEqual(bufA, bufB)
 }

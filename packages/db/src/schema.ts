@@ -992,6 +992,5 @@ export type ClaimConfidence = (typeof claimConfidenceEnum.enumValues)[number]
 export type ClaimSourceType = (typeof sourceTypeEnum.enumValues)[number]
 
 export const CASE_CATEGORIES = caseCategoryEnum.enumValues
-export const CASE_STATUSES = caseStatusEnum.enumValues
 export const CLAIM_CONFIDENCES = claimConfidenceEnum.enumValues
 export const CLAIM_SOURCE_TYPES = sourceTypeEnum.enumValues

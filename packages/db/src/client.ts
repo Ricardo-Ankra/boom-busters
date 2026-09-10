@@ -50,11 +50,3 @@ export function getDb(connectionString?: string): Database {
   }
   return singleton.db
 }
-
-/** Test/script teardown. */
-export async function closeDb(): Promise<void> {
-  if (singleton) {
-    await singleton.sql.end({ timeout: 5 })
-    singleton = undefined
-  }
-}

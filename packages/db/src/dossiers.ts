@@ -240,10 +240,6 @@ export function countClaims(rows: readonly ClaimRow[]): ClaimCounts {
   }
 }
 
-export async function truncateDossiers(db: Database): Promise<void> {
-  await db.execute(sql`truncate table ${dossiers} restart identity cascade`)
-}
-
 /** Increment and return the revision count — the reviser's round number. */
 export async function bumpDossierRevisions(db: Database, projectId: string): Promise<number> {
   const [row] = await db

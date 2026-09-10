@@ -13,8 +13,8 @@ import { inngest } from '../client'
 /**
  * cancellation-mirror (decision 235, closing a decision 220 debt).
  *
- * A run cancelled OUTSIDE the app — the Inngest dashboard's Cancel, or the
- * REST API — stops without any of the hooks the run mirror listens to. The
+ * A run cancelled OUTSIDE the app (the Inngest dashboard's Cancel, or the
+ * REST API) stops without any of the hooks the run mirror listens to. The
  * mirror row stayed `running` forever: `hasLiveRun` kept refusing restarts,
  * the screen kept offering Stop for a run that no longer existed, and the
  * only recovery was knowing to press Stop and let the sweep clean up.
@@ -30,7 +30,7 @@ import { inngest } from '../client'
  *   with no other live run behind it, the stage is marked failed so the rail
  *   stops claiming progress nobody is making, and a notification says what
  *   happened in words. A cancelled side job (a retaker, a re-fetch) never
- *   touches the stage — the same rule as decisions 219 and 234.
+ *   touches the stage, the same rule as decisions 219 and 234.
  */
 
 const FUNCTION_ID = 'cancellation-mirror'

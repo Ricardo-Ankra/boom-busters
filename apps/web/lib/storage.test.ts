@@ -78,7 +78,7 @@ describe('presignGet', () => {
     vi.setSystemTime(new Date('2026-09-10T12:00:30Z'))
     const first = await presignGet('boom-busters/thumbs/a.png')
 
-    // Ninety seconds later — a handful of live-refresh re-renders — the url
+    // Ninety seconds and a handful of live-refresh re-renders later, the url
     // must not have changed, or the browser cache never hits.
     vi.setSystemTime(new Date('2026-09-10T12:02:00Z'))
     const second = await presignGet('boom-busters/thumbs/a.png')

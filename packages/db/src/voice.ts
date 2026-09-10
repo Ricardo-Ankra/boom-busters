@@ -48,11 +48,6 @@ export function mockVoiceTakeKey(takeId: string): string {
   return `${MOCK_KEY_PREFIX}voice/${takeId}.wav`
 }
 
-export interface ParagraphRef {
-  chapterId: string
-  paragraphIndex: number
-}
-
 /** Every take of a project, oldest first — the retake history included. */
 export async function listVoiceTakes(db: Database, projectId: string): Promise<VoiceTakeRow[]> {
   return db
@@ -64,32 +59,6 @@ export async function listVoiceTakes(db: Database, projectId: string): Promise<V
 
 export async function getVoiceTake(db: Database, id: string): Promise<VoiceTakeRow | undefined> {
   const [row] = await db.select().from(voiceTakes).where(eq(voiceTakes.id, id)).limit(1)
-  return row
-}
-
-/**
- * The take a paragraph currently speaks with, if any.
- *
- * Ordered by take number rather than by `createdAt`: two retakes requested in
- * the same second are ordered by the number they were given, and a clock is not
- * a sequence.
- */
-export async function currentTake(
-  db: Database,
-  ref: ParagraphRef,
-): Promise<VoiceTakeRow | undefined> {
-  const [row] = await db
-    .select()
-    .from(voiceTakes)
-    .where(
-      and(
-        eq(voiceTakes.chapterId, ref.chapterId),
-        eq(voiceTakes.paragraphIndex, ref.paragraphIndex),
-      ),
-    )
-    .orderBy(desc(voiceTakes.takeNumber))
-    .limit(1)
-
   return row
 }
 

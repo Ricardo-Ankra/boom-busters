@@ -1,15 +1,15 @@
+import { desc, eq } from 'drizzle-orm'
 import { afterAll, beforeEach, describe, expect, it } from 'vitest'
 import { createCase, truncateCases } from './cases'
 import { createDb } from './client'
 import { saveDossier } from './dossiers'
 import { createProjectFromCase } from './projects'
+import { claimRefs, claims, scriptEdits } from './schema'
 import {
   countWarnings,
   createScriptVersion,
   editChapter,
   getLatestScript,
-  listClaimRefs,
-  listScriptEdits,
   projectIdForChapter,
   reorderChapters,
   saveChapter,
@@ -26,6 +26,23 @@ suite('scripts and the edit trail', () => {
   const { sql, db } = createDb(url ?? 'postgres://unused', { max: 2 })
   let projectId = ''
   let scriptId = ''
+
+  // Test-local reads: the production query helpers these tests once leaned on
+  // were removed as dead code, but the rows they exposed are still the evidence
+  // the assertions need.
+  const claimRefsFor = (chapterId: string) =>
+    db
+      .select({ claimId: claimRefs.claimId, text: claims.text })
+      .from(claimRefs)
+      .innerJoin(claims, eq(claims.id, claimRefs.claimId))
+      .where(eq(claimRefs.chapterId, chapterId))
+
+  const editsFor = (chapterId: string) =>
+    db
+      .select()
+      .from(scriptEdits)
+      .where(eq(scriptEdits.chapterId, chapterId))
+      .orderBy(desc(scriptEdits.createdAt))
 
   afterAll(async () => {
     await sql.end({ timeout: 5 })
@@ -93,7 +110,7 @@ suite('scripts and the edit trail', () => {
         estRuntimeSec: 1,
       })
 
-      const [edit] = await listScriptEdits(db, [chapterId])
+      const [edit] = await editsFor(chapterId)
       expect(edit?.beforeText).toBe('The original text.')
       expect(edit?.afterText).toBe('The edited text.')
       expect(edit?.editType).toBe('human')
@@ -108,7 +125,7 @@ suite('scripts and the edit trail', () => {
         estRuntimeSec: 1,
       })
 
-      expect((await listScriptEdits(db, [chapterId]))[0]?.note).toBe('Too breathless')
+      expect((await editsFor(chapterId))[0]?.note).toBe('Too breathless')
     })
 
     it('does not record an edit that changed nothing', async () => {
@@ -121,14 +138,14 @@ suite('scripts and the edit trail', () => {
         estRuntimeSec: 1,
       })
 
-      expect(await listScriptEdits(db, [chapterId])).toHaveLength(0)
+      expect(await editsFor(chapterId)).toHaveLength(0)
     })
 
     it('builds a trail in newest-first order', async () => {
       await editChapter(db, { chapterId, afterText: 'v2', editType: 'human', estRuntimeSec: 1 })
       await editChapter(db, { chapterId, afterText: 'v3', editType: 'human', estRuntimeSec: 1 })
 
-      const trail = await listScriptEdits(db, [chapterId])
+      const trail = await editsFor(chapterId)
       expect(trail).toHaveLength(2)
       expect(trail[0]?.afterText).toBe('v3')
     })
@@ -181,7 +198,7 @@ suite('scripts and the edit trail', () => {
         refs: [{ claimId, sentence: 'Enron filed for bankruptcy.' }],
       })
 
-      const refs = await listClaimRefs(db, chapterId)
+      const refs = await claimRefsFor(chapterId)
       expect(refs).toHaveLength(1)
       expect(refs[0]?.text).toBe('Enron filed in December 2001.')
     })
@@ -222,7 +239,7 @@ suite('scripts and the edit trail', () => {
       })
       await saveClaimRefs(db, { chapterId, projectId, refs: [] })
 
-      expect(await listClaimRefs(db, chapterId)).toHaveLength(0)
+      expect(await claimRefsFor(chapterId)).toHaveLength(0)
     })
   })
 
@@ -357,7 +374,7 @@ suite('scripts and the edit trail', () => {
 
       await reorderChapters(db, scriptId, [ids[2]!, ids[1]!, ids[0]!])
 
-      expect(await listClaimRefs(db, ids[0]!)).toHaveLength(1)
+      expect(await claimRefsFor(ids[0]!)).toHaveLength(1)
     })
   })
 
