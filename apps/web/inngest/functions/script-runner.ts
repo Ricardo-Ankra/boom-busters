@@ -78,6 +78,13 @@ export const scriptRunner = inngest.createFunction(
     id: FUNCTION_ID,
     name: 'Script drafting',
     retries: 4,
+    /**
+     * One live script run per project (decision 233). The trigger event is
+     * also what a parked dossier gate resolves on, so a double-fired approve
+     * used to start two of these; the second drafted a parallel script and
+     * re-opened the gate the human had just closed. Skipped, never stacked.
+     */
+    singleton: { key: 'event.data.projectId', mode: 'skip' },
     cancelOn: [
       {
         event: 'project/cancelled',

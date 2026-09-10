@@ -35,6 +35,9 @@ export const teaserRebuildRunner = inngest.createFunction(
     id: FUNCTION_ID,
     name: 'Teaser voice',
     retries: 2,
+    // One voicing per teaser at a time; a double-fired request is skipped,
+    // never paid twice (decision 233).
+    singleton: { key: 'event.data.shortId', mode: 'skip' },
     cancelOn: [
       {
         event: 'project/cancelled',

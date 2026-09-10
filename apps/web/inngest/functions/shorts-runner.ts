@@ -75,6 +75,8 @@ export const shortsRunner = inngest.createFunction(
     id: FUNCTION_ID,
     name: 'Shorts',
     retries: 4,
+    // A duplicate trigger event is skipped, never stacked (decision 233).
+    singleton: { key: 'event.data.projectId', mode: 'skip' },
     cancelOn: [
       {
         event: 'project/cancelled',

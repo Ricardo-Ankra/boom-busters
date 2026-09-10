@@ -50,6 +50,10 @@ export const voiceRetaker = inngest.createFunction(
     id: FUNCTION_ID,
     name: 'Voice retake',
     retries: 4,
+    // One retake per take at a time; retakes of different takes still run in
+    // parallel. A double-fired request is skipped, never paid twice
+    // (decision 233).
+    singleton: { key: 'event.data.takeId', mode: 'skip' },
     cancelOn: [
       {
         event: 'project/cancelled',

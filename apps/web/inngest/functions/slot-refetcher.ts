@@ -33,6 +33,10 @@ export const slotRefetcher = inngest.createFunction(
     id: FUNCTION_ID,
     name: 'Slot re-fetch',
     retries: 4,
+    // One re-fetch per slot at a time; different slots still run in
+    // parallel. A double-fired request is skipped, never paid twice
+    // (decision 233).
+    singleton: { key: 'event.data.slotId', mode: 'skip' },
     cancelOn: [
       {
         event: 'project/cancelled',

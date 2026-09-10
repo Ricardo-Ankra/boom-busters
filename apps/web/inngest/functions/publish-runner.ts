@@ -68,6 +68,9 @@ export const publishRunner = inngest.createFunction(
     // One upload at a time: quota politeness, and the budget count cannot
     // race itself.
     concurrency: [{ limit: 1 }],
+    // And one live run per target: a double-fired publish for the same video
+    // is skipped, never queued behind the upload it duplicates (decision 233).
+    singleton: { key: 'event.data.targetId', mode: 'skip' },
     cancelOn: [
       {
         event: 'project/cancelled',
