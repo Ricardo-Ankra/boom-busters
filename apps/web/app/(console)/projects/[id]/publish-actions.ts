@@ -198,7 +198,9 @@ export async function generateTitles(targetType: string, targetId: string): Prom
 }
 
 // ---------------------------------------------------------------------------
-// Thumbnails (masters only — Shorts take their frame from the video)
+// Thumbnails — required on masters, optional on Shorts (decision 232). The
+// Shorts feed plays the video itself, but search results and channel pages
+// show the thumbnail, so the owner may set one; nothing gates on it.
 // ---------------------------------------------------------------------------
 
 // A 'use server' module may only export async functions, so the limits the
@@ -220,9 +222,13 @@ function pngDimensions(bytes: Buffer): { width: number; height: number } | null 
 export async function uploadThumbnail(formData: FormData): Promise<ActionResult> {
   await requireOwner()
 
-  const projectId = String(formData.get('projectId') ?? '')
-  if (!UlidSchema.safeParse(projectId).success) return { ok: false, error: 'Unknown project' }
-  if (!(await getProject(db, projectId))) return { ok: false, error: 'Unknown project' }
+  const targetType = String(formData.get('targetType') ?? 'master')
+  const targetId = String(formData.get('targetId') ?? '')
+  const invalid = parseTarget(targetType, targetId)
+  if (invalid) return invalid
+  const type = targetType as 'master' | 'short'
+  const projectId = await projectIdOf(type, targetId)
+  if (!projectId) return { ok: false, error: 'Unknown target' }
 
   const file = formData.get('file')
   if (!(file instanceof File)) return { ok: false, error: 'No file arrived.' }
@@ -248,7 +254,7 @@ export async function uploadThumbnail(formData: FormData): Promise<ActionResult>
     return { ok: false, error: 'Uploads need R2 configured — there is nowhere to store the PNG.' }
   }
 
-  const record = await ensurePublishRecord(db, 'master', projectId)
+  const record = await ensurePublishRecord(db, type, targetId)
   const blocked = editableReason(record)
   if (blocked) return { ok: false, error: blocked }
   if (record.uploadedThumbKeys.length >= THUMB_LIMIT) {
@@ -259,7 +265,9 @@ export async function uploadThumbnail(formData: FormData): Promise<ActionResult>
   }
 
   const hash = createHash('sha256').update(bytes).digest('hex').slice(0, 16)
-  const key = `${R2_PREFIX}/thumbs/${projectId}/${hash}.png`
+  // Keyed by target: the master's targetId IS the projectId, so its keys
+  // keep their historical shape; a Short's live under its own id.
+  const key = `${R2_PREFIX}/thumbs/${targetId}/${hash}.png`
   if (record.uploadedThumbKeys.includes(key)) {
     return { ok: false, error: 'That exact PNG is already uploaded.' }
   }
@@ -273,13 +281,21 @@ export async function uploadThumbnail(formData: FormData): Promise<ActionResult>
   return { ok: true }
 }
 
-export async function removeThumbnail(projectId: string, key: string): Promise<ActionResult> {
+export async function removeThumbnail(
+  targetType: string,
+  targetId: string,
+  key: string,
+): Promise<ActionResult> {
   await requireOwner()
-  if (!UlidSchema.safeParse(projectId).success) return { ok: false, error: 'Unknown project' }
+  const invalid = parseTarget(targetType, targetId)
+  if (invalid) return invalid
+  const type = targetType as 'master' | 'short'
+  const projectId = await projectIdOf(type, targetId)
+  if (!projectId) return { ok: false, error: 'Unknown target' }
 
-  const record = await getPublishRecord(db, 'master', projectId)
+  const record = await getPublishRecord(db, type, targetId)
   if (!record || !record.uploadedThumbKeys.includes(key)) {
-    return { ok: false, error: 'That thumbnail is not on this project.' }
+    return { ok: false, error: 'That thumbnail is not on this item.' }
   }
   const blocked = editableReason(record)
   if (blocked) return { ok: false, error: blocked }

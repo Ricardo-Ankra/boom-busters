@@ -1,16 +1,7 @@
 'use client'
 
 import * as React from 'react'
-import {
-  CalendarClock,
-  Check,
-  ImagePlus,
-  Loader2,
-  RefreshCw,
-  Save,
-  Sparkles,
-  Trash2,
-} from 'lucide-react'
+import { CalendarClock, Check, ImagePlus, Loader2, RefreshCw, Save, Sparkles } from 'lucide-react'
 import { composeDescription, formatTimestamp } from '@boom-busters/schemas'
 import { ConfirmButton } from '@/components/confirm-button'
 import { Button } from '@/components/ui/button'
@@ -372,15 +363,7 @@ export function PublishScreen({
       {/* ------------------------------------------------------------------ */}
       {/* The item editor                                                     */}
       {/* ------------------------------------------------------------------ */}
-      {selected ? (
-        <ItemEditor
-          key={selectedKey}
-          projectId={projectId}
-          item={selected}
-          model={model}
-          live={live}
-        />
-      ) : null}
+      {selected ? <ItemEditor key={selectedKey} item={selected} model={model} live={live} /> : null}
 
       {/* ------------------------------------------------------------------ */}
       {/* The calendar                                                        */}
@@ -600,12 +583,10 @@ function AuditChecklist() {
 }
 
 function ItemEditor({
-  projectId,
   item,
   model,
   live,
 }: {
-  projectId: string
   item: PublishItemModel
   model: PublishModel
   live: boolean
@@ -656,7 +637,8 @@ function ItemEditor({
       }
     }
     const formData = new FormData()
-    formData.set('projectId', projectId)
+    formData.set('targetType', item.targetType)
+    formData.set('targetId', item.targetId)
     formData.set('file', file)
     setUploadingThumb(true)
     try {
@@ -766,21 +748,27 @@ function ItemEditor({
             </Button>
           ) : null}
 
-          {/* Thumbnails — masters only; Shorts use a frame of the video. */}
-          {item.targetType === 'master' ? (
-            <div className="flex flex-col gap-2">
-              <span className="text-[12px] text-[var(--color-text-secondary)]">
-                Thumbnail — export from Canva, drop up to {THUMB_LIMIT} PNGs (1280×720+, ≤2 MB)
-              </span>
-              <div
-                data-testid="thumb-dropzone"
-                onDragOver={(e) => e.preventDefault()}
-                onDrop={(e) => {
-                  e.preventDefault()
-                  void onThumbFile(e.dataTransfer.files[0])
-                }}
-                className="flex flex-col items-start gap-2 rounded-[8px] border border-dashed border-[var(--color-border)] p-3"
-              >
+          {/* Thumbnails — required on masters, optional on Shorts (decision
+              232). The strip's geometry is RESERVED: uploading changes
+              pixels, never the panel's layout — the old grow-per-upload rows
+              lurched the Schedule card ~100px per PNG (owner report,
+              2026-09-10). */}
+          <div className="flex flex-col gap-2">
+            <span className="text-[12px] text-[var(--color-text-secondary)]">
+              {item.targetType === 'master'
+                ? `Thumbnail — export from Canva, drop up to ${THUMB_LIMIT} PNGs (1280×720+, ≤2 MB). Masters need one before upload.`
+                : `Thumbnail — optional for a Short: the feed plays the video itself, but search and channel pages show it. Up to ${THUMB_LIMIT} PNGs (1280×720+, ≤2 MB).`}
+            </span>
+            <div
+              data-testid="thumb-dropzone"
+              onDragOver={(e) => e.preventDefault()}
+              onDrop={(e) => {
+                e.preventDefault()
+                void onThumbFile(e.dataTransfer.files[0])
+              }}
+              className="flex flex-col items-start gap-2 rounded-[8px] border border-dashed border-[var(--color-border)] p-3"
+            >
+              <div className="flex flex-wrap items-center gap-2">
                 <label className="inline-flex">
                   <input
                     type="file"
@@ -808,48 +796,64 @@ function ItemEditor({
                 >
                   Open the Canva thumbnail templates
                 </a>
-                {thumbError ? (
-                  <p className="text-[12px] text-[var(--color-danger)]">{thumbError}</p>
-                ) : null}
-                {(record?.thumbs ?? []).map((thumb, index) => (
-                  <div key={thumb.key} className="flex w-full items-center gap-2">
-                    {thumb.url ? (
-                      // A presigned R2 URL, not an optimisable asset — plain img.
-                      <img
-                        src={thumb.url}
-                        alt={`Thumbnail ${index + 1}`}
-                        className="h-[45px] w-[80px] rounded-[4px] border border-[var(--color-border)] object-cover"
-                      />
-                    ) : (
-                      <span className="text-[11px] text-[var(--color-text-muted)]">
-                        {thumb.key.split('/').pop()}
-                      </span>
-                    )}
-                    <span className="text-[11px] text-[var(--color-text-muted)]">
-                      {index === 0 ? 'Set via the API' : 'For Test & Compare in Studio'}
-                    </span>
-                    <Button
-                      variant="outline"
-                      className="ml-auto"
-                      onClick={() =>
-                        void act(() => removeThumbnail(projectId, thumb.key), 'Thumbnail removed')
-                      }
-                    >
-                      <Trash2 aria-hidden className="h-4 w-4" />
-                      Remove
-                    </Button>
-                  </div>
-                ))}
-                {(record?.thumbs.length ?? 0) > 1 ? (
-                  <p className="flex items-center gap-1.5 text-[12px] text-[var(--color-text-secondary)]">
-                    <Check aria-hidden className="h-3.5 w-3.5" />
-                    Only the first is set via the API — set up Test &amp; Compare with the others in
-                    YouTube Studio yourself.
-                  </p>
-                ) : null}
               </div>
+              {thumbError ? (
+                <p className="text-[12px] text-[var(--color-danger)]">{thumbError}</p>
+              ) : null}
+              {/* The constant-height strip: tiles side by side, placeholder
+                  when empty, so an upload swaps words for a tile at the same
+                  height instead of growing the panel. The 158px is one tile
+                  on the app's 8px grid: 45 image + 16 caption + an 80px
+                  button + the two 8px gaps between them. */}
+              <div className="flex min-h-[158px] w-full flex-wrap items-start gap-2">
+                {(record?.thumbs ?? []).length === 0 ? (
+                  <p className="self-center text-[12px] text-[var(--color-text-muted)]">
+                    No thumbnails stored yet.
+                  </p>
+                ) : (
+                  (record?.thumbs ?? []).map((thumb, index) => (
+                    <div key={thumb.key} className="flex w-[100px] flex-col gap-1">
+                      {thumb.url ? (
+                        // A presigned R2 URL, not an optimisable asset — plain img.
+                        <img
+                          src={thumb.url}
+                          alt={`Thumbnail ${index + 1}`}
+                          className="h-[45px] w-[80px] rounded-[4px] border border-[var(--color-border)] object-cover"
+                        />
+                      ) : (
+                        <span className="flex h-[45px] w-[80px] items-center justify-center rounded-[4px] border border-[var(--color-border)] text-[10px] text-[var(--color-text-muted)]">
+                          PNG
+                        </span>
+                      )}
+                      <span className="min-h-[16px] text-[11px] leading-[16px] whitespace-nowrap text-[var(--color-text-muted)]">
+                        {index === 0 ? 'Set via the API' : 'Test & Compare'}
+                      </span>
+                      {/* No icon: the tile is 100px wide and the label is the
+                          requirement (spec section 11.1), not the glyph. */}
+                      <Button
+                        variant="outline"
+                        className="w-full px-2"
+                        onClick={() =>
+                          void act(
+                            () => removeThumbnail(item.targetType, item.targetId, thumb.key),
+                            'Thumbnail removed',
+                          )
+                        }
+                      >
+                        Remove
+                      </Button>
+                    </div>
+                  ))
+                )}
+              </div>
+              {/* Static, so it never appears/disappears under the cursor. */}
+              <p className="flex items-center gap-1.5 text-[12px] text-[var(--color-text-secondary)]">
+                <Check aria-hidden className="h-3.5 w-3.5" />
+                Only the first is set via the API — set up Test &amp; Compare with the others in
+                YouTube Studio yourself.
+              </p>
             </div>
-          ) : null}
+          </div>
         </div>
 
         {/* The live preview: exactly what the schedule action will write. */}

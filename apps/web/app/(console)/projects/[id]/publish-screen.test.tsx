@@ -309,7 +309,7 @@ describe('PublishScreen', () => {
     expect(screen.getByText(/2 MB thumbnail limit/i)).toBeInTheDocument()
   })
 
-  it('a valid PNG goes to the action as FormData', async () => {
+  it('a valid PNG goes to the action as FormData, naming its target', async () => {
     const user = userEvent.setup()
     const { container } = renderScreen()
 
@@ -318,16 +318,36 @@ describe('PublishScreen', () => {
 
     expect(uploadThumbnail).toHaveBeenCalledTimes(1)
     const formData = uploadThumbnail.mock.calls[0]![0] as FormData
-    expect(formData.get('projectId')).toBe(PROJECT)
+    expect(formData.get('targetType')).toBe('master')
+    expect(formData.get('targetId')).toBe(PROJECT)
     expect((formData.get('file') as File).name).toBe('thumb.png')
   })
 
-  it('a Short offers no thumbnail dropzone — the frame comes from the video', () => {
-    renderScreen({ items: [shortItem()] })
-    expect(screen.queryByTestId('thumb-dropzone')).not.toBeInTheDocument()
+  it('a Short gets the dropzone too, marked optional (decision 232)', async () => {
+    const user = userEvent.setup()
+    const { container } = renderScreen({ items: [shortItem()] })
+
+    expect(screen.getByTestId('thumb-dropzone')).toBeInTheDocument()
+    expect(screen.getByText(/optional for a Short/i)).toBeInTheDocument()
+
+    const input = container.querySelector('input[type="file"]') as HTMLInputElement
+    await user.upload(input, new File(['png bytes'], 'thumb.png', { type: 'image/png' }))
+    const formData = uploadThumbnail.mock.calls[0]![0] as FormData
+    expect(formData.get('targetType')).toBe('short')
+    expect(formData.get('targetId')).toBe(SHORT)
   })
 
-  it('marks the first thumbnail as the API one and the rest for Test & Compare', () => {
+  it('the strip reserves its space — an empty dropzone says so instead of shrinking', () => {
+    renderScreen()
+    // The placeholder and the API note are ALWAYS on screen, so an upload
+    // swaps pixels inside a fixed-height strip instead of lurching the
+    // Schedule card below (the reported drastic shift, decision 232).
+    expect(screen.getByText('No thumbnails stored yet.')).toBeInTheDocument()
+    expect(screen.getByText(/set up test & compare with the others/i)).toBeInTheDocument()
+  })
+
+  it('marks the first thumbnail as the API one; removing names the target', async () => {
+    const user = userEvent.setup()
     renderScreen({
       items: [
         masterItem({
@@ -351,8 +371,12 @@ describe('PublishScreen', () => {
     })
 
     expect(screen.getByText('Set via the API')).toBeInTheDocument()
-    expect(screen.getByText('For Test & Compare in Studio')).toBeInTheDocument()
+    expect(screen.getByText('Test & Compare')).toBeInTheDocument()
     expect(screen.getByText(/set up test & compare with the others/i)).toBeInTheDocument()
+    expect(screen.queryByText('No thumbnails stored yet.')).not.toBeInTheDocument()
+
+    await user.click(screen.getAllByRole('button', { name: /remove/i })[0]!)
+    expect(removeThumbnail).toHaveBeenCalledWith('master', PROJECT, 'boom-busters/thumbs/p/a.png')
   })
 
   it('a scheduled item wears its chip and its public moment', () => {

@@ -297,7 +297,7 @@ export async function publishModel(
       durationMs: null,
       notReadyReason,
       relatedLinkChecked: short.relatedLinkChecked,
-      record: record ? toRecordProp(record, []) : null,
+      record: record ? toRecordProp(record, await thumbsFor(record)) : null,
     })
   }
 

@@ -3644,6 +3644,33 @@ published and audited. The daily `channels.list` health ping and the
      `router.refresh()` every 2.5s only while a beat is fetching. Failures
      also notify, for a studio closed mid-fetch, and never touch the stage.
 
+232. **Shorts get the thumbnail dropzone, and the strip stops moving the
+     page** (2026-09-10, owner request plus owner bug report: "when a
+     thumbnail is uploaded it causes this shift or offset in the panel...
+     its drastic").
+     (a) _Per-target thumbnails._ `uploadThumbnail`/`removeThumbnail` take
+     the publish target instead of assuming the master; keys live at
+     `thumbs/<targetId>/<hash>.png` (the master's targetId IS the project
+     id, so its historical keys keep their shape); the publish model
+     presigns Short thumbs too; the runner's `set-thumbnail` step runs for
+     any target that stored one. The REQUIREMENT stays masters-only: a
+     Short uploads fine without one (the feed plays the video itself;
+     search and channel pages show the thumb when set).
+     (b) _The layout shift, root-caused._ Reproduced with a Playwright
+     `layout-shift` PerformanceObserver: each upload grew the dropzone by
+     ~96px mid-page and lurched the Schedule card below. 96, not the 53 the
+     class names read, because `--spacing: 8px` (the deliberate 8px grid in
+     ui-tokens) makes every numeric Tailwind utility DOUBLE its default:
+     `h-10` buttons are 80px tall. Fix: the strip's geometry is RESERVED —
+     a constant `min-h-[158px]` region (one tile on the real grid: 45 image
+     - 16 caption + 80 button + two 8px gaps) holding 100px-wide tiles side
+       by side, a placeholder when empty, and the Test-and-Compare note
+       static below. Re-measured after: zero layout-shift entries, dropzone
+       box byte-identical before and after an upload.
+       (c) The repro also caught that e2e's dev server inherits `.env.local`,
+       so its thumbnail uploads had written real R2 objects under the seeded
+       project ids — deleted; no committed test uploads thumbnails.
+
 **Status:** `[x]` done — dossier + Studio shipped with unit, component and
 e2e coverage; spec §11.3 amended in place with dated notes.
 

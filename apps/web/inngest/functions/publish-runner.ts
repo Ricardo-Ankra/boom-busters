@@ -35,8 +35,8 @@ import { events } from '../events'
  * schedule action. Preconditions checked in words → the §5 atomic
  * `draft → uploading` claim → media-utils streams S3 → YouTube (the Lambda
  * gets a short-lived access token, never the refresh token, §9) →
- * thumbnail (masters only) → processing poll → `status='scheduled'` →
- * notification.
+ * thumbnail (required on masters, optional on Shorts — decision 232) →
+ * processing poll → `status='scheduled'` → notification.
  *
  * Failures go through the error mapper, never raw: quota exhaustion
  * requeues for the next Pacific quota day, the channel's upload limit
@@ -399,10 +399,12 @@ export const publishRunner = inngest.createFunction(
     )
 
     // -----------------------------------------------------------------------
-    // Thumbnail (masters only) — a failure here warns, never unschedules
+    // Thumbnail — a failure here warns, never unschedules. Required on
+    // masters; a Short's is optional and set only when one is stored
+    // (decision 232 — Shorts surfaces like search show it).
     // -----------------------------------------------------------------------
 
-    if (targetType === 'master' && preflight.thumbKey !== null) {
+    if (preflight.thumbKey !== null) {
       await step.run('set-thumbnail', async () => {
         const url = await presignGet(preflight.thumbKey!)
         const bytes = Buffer.from(await (await fetch(url)).arrayBuffer())
