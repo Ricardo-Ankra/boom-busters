@@ -127,7 +127,7 @@ export function PreviewScreen({
   /** The newest half-resolution draft, if one exists. */
   draft: PreviewDraftProp | null
 }) {
-  const act = useAction()
+  const runner = useAction()
   const playerRef = React.useRef<PlayerRef>(null)
   const fileRef = React.useRef<HTMLVideoElement>(null)
   const [captionsOn, setCaptionsOn] = React.useState(true)
@@ -373,7 +373,12 @@ export function PreviewScreen({
           </CardContent>
         </Card>
 
-        <MusicPicker projectId={projectId} beds={beds} currentBedKey={currentBedKey} act={act} />
+        <MusicPicker
+          projectId={projectId}
+          beds={beds}
+          currentBedKey={currentBedKey}
+          runner={runner}
+        />
 
         <RenderActionsCard
           projectId={projectId}
@@ -389,7 +394,7 @@ export function PreviewScreen({
           live={live}
           atGate={atGate}
           masterState={masterState}
-          act={act}
+          runner={runner}
           onDraftStarted={() => {
             setDraftHandedOff(true)
             setChosenCut('draft')
@@ -502,26 +507,21 @@ function MusicPicker({
   projectId,
   beds,
   currentBedKey,
-  act,
+  runner,
 }: {
   projectId: string
   beds: { r2Key: string; title: string }[]
   currentBedKey: string | null
-  act: ReturnType<typeof useAction>
+  runner: ReturnType<typeof useAction>
 }) {
-  const [busyKey, setBusyKey] = React.useState<string | null>(null)
+  const { act, busy, pressed } = runner
 
-  const choose = async (key: string | null) => {
-    setBusyKey(key ?? 'none')
-    try {
-      await act(
-        () => chooseMusicBed(projectId, key),
-        key === null ? 'Music removed — timeline recompiled' : 'Bed swapped — timeline recompiled',
-      )
-    } finally {
-      setBusyKey(null)
-    }
-  }
+  const choose = (key: string | null) =>
+    act(
+      () => chooseMusicBed(projectId, key),
+      key === null ? 'Music removed — timeline recompiled' : 'Bed swapped — timeline recompiled',
+      key ?? 'none',
+    )
 
   return (
     <Card>
@@ -552,8 +552,9 @@ function MusicPicker({
                   {isCurrent ? null : (
                     <Button
                       variant="outline"
-                      busy={busyKey === bed.r2Key}
-                      onClick={() => choose(bed.r2Key)}
+                      busy={pressed === bed.r2Key}
+                      disabled={busy}
+                      onClick={() => void choose(bed.r2Key)}
                     >
                       Use this bed
                     </Button>
@@ -562,7 +563,12 @@ function MusicPicker({
               )
             })}
             {currentBedKey !== null ? (
-              <Button variant="ghost" busy={busyKey === 'none'} onClick={() => choose(null)}>
+              <Button
+                variant="ghost"
+                busy={pressed === 'none'}
+                disabled={busy}
+                onClick={() => void choose(null)}
+              >
                 Remove music
               </Button>
             ) : null}
@@ -739,7 +745,7 @@ function RenderActionsCard({
   live,
   atGate,
   masterState,
-  act,
+  runner,
   onDraftStarted,
   onMasterStarted,
 }: {
@@ -754,11 +760,12 @@ function RenderActionsCard({
   live: boolean
   atGate: boolean
   masterState: ReturnType<typeof useRenderPoll>
-  act: ReturnType<typeof useAction>
+  runner: ReturnType<typeof useAction>
   /** The stage switches to the cut a click just paid for. */
   onDraftStarted: () => void
   onMasterStarted: () => void
 }) {
+  const { act, busy, pressed } = runner
   const { current, inFlight } = masterState
   const cost = live ? `$${estimatedCostUsd.toFixed(2)}` : '$0.00 (renders locally in mock mode)'
 
@@ -780,10 +787,13 @@ function RenderActionsCard({
           `$${estimatedDraftCostUsd.toFixed(2)} — a real file to check before the master. ` +
           'Cheap, but real money.'
         }
+        busy={pressed === 'draft'}
+        disabled={busy}
         onConfirm={async () => {
           const ok = await act(
             () => requestDraftRender(projectId),
             'Draft render started — progress appears on the stage',
+            'draft',
           )
           if (ok) onDraftStarted()
         }}
@@ -833,7 +843,9 @@ function RenderActionsCard({
                     'discarded, and cost ≈ $0.25.'
                   : 'The local render is abandoned; the file is discarded. Nothing was spent.'
               }
-              onConfirm={() => act(() => stopProject(projectId), 'Run stopped')}
+              busy={pressed === 'stop'}
+              disabled={busy}
+              onConfirm={() => act(() => stopProject(projectId), 'Run stopped', 'stop')}
             />
           </>
         ) : atGate ? (
@@ -862,10 +874,13 @@ function RenderActionsCard({
                       'stopping discards the file but the cost is still spent.'
                     : 'Renders on this machine in mock mode. Costs nothing and can take a few minutes.'
                 }
+                busy={pressed === 'master'}
+                disabled={busy}
                 onConfirm={async () => {
                   const ok = await act(
                     () => approveGate(projectId, 'preview'),
                     'Render started — progress appears on the stage',
+                    'master',
                   )
                   if (ok) onMasterStarted()
                 }}

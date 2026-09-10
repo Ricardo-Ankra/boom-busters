@@ -42,7 +42,7 @@ export function TeaserStudio({
   live: boolean
   onClose: () => void
 }) {
-  const act = useAction()
+  const { act, busy, pressed } = useAction()
   const router = useRouter()
   const beats = short.teaser?.beats ?? []
   const [texts, setTexts] = React.useState(() => beats.map((beat) => beat.text))
@@ -71,7 +71,9 @@ export function TeaserStudio({
           : 'Mock mode: the bookkeeping runs; no vendor is called and nothing is spent.'
       }
       confirmVariant="primary"
-      onConfirm={() => act(() => rebuildTeaser(short.id), 'Voicing the teaser')}
+      busy={pressed === 'voice'}
+      disabled={busy}
+      onConfirm={() => act(() => rebuildTeaser(short.id), 'Voicing the teaser', 'voice')}
     />
   )
 
@@ -121,6 +123,8 @@ export function TeaserStudio({
                 <>
                   <Button
                     variant="outline"
+                    busy={pressed === 'save-script'}
+                    disabled={busy}
                     onClick={() =>
                       void act(
                         () =>
@@ -132,6 +136,7 @@ export function TeaserStudio({
                             })),
                           ),
                         'Teaser script saved',
+                        'save-script',
                       )
                     }
                   >
@@ -156,8 +161,14 @@ export function TeaserStudio({
                           : 'Mock mode: the cut is compiled and stored; no Lambda is invoked and nothing is spent.'
                     }
                     confirmVariant="primary"
+                    busy={pressed === 'assemble'}
+                    disabled={busy}
                     onConfirm={() =>
-                      act(() => assembleTeaser(short.id), 'Assembled — the render starts now')
+                      act(
+                        () => assembleTeaser(short.id),
+                        'Assembled — the render starts now',
+                        'assemble',
+                      )
                     }
                   />
                 </>
@@ -188,7 +199,7 @@ function BeatWorkbench({
   text: string
   onText: (value: string) => void
 }) {
-  const act = useAction()
+  const { act, busy, pressed } = useAction()
   return (
     <div className="flex flex-col gap-2 rounded-[8px] border border-[var(--color-border)] p-3">
       <div className="flex flex-wrap items-center justify-between gap-2 text-[12px] text-[var(--color-text-muted)]">
@@ -237,8 +248,14 @@ function BeatWorkbench({
             <button
               type="button"
               aria-pressed={beat.autoSelected}
+              aria-busy={pressed === 'auto-pick' || undefined}
+              disabled={busy}
               onClick={() =>
-                void act(() => saveTeaserShot(shortId, index, null), 'Back to the auto-pick')
+                void act(
+                  () => saveTeaserShot(shortId, index, null),
+                  'Back to the auto-pick',
+                  'auto-pick',
+                )
               }
               className={
                 'flex h-[72px] min-w-[72px] flex-col items-center justify-center gap-1 rounded-[8px] border px-2 text-[11px] ' +
@@ -263,8 +280,14 @@ function BeatWorkbench({
                 type="button"
                 aria-pressed={option.selected}
                 aria-label={`Beat ${index + 1} shot option ${optionIndex + 1} (${option.kind})`}
+                aria-busy={pressed === `pool-${optionIndex}` || undefined}
+                disabled={busy}
                 onClick={() =>
-                  void act(() => saveTeaserShot(shortId, index, option.slot), 'Shot picked')
+                  void act(
+                    () => saveTeaserShot(shortId, index, option.slot),
+                    'Shot picked',
+                    `pool-${optionIndex}`,
+                  )
                 }
                 className={
                   'flex h-[72px] min-w-[72px] items-center justify-center rounded-[8px] border p-1 ' +
@@ -328,11 +351,14 @@ function NewShots({
   live: boolean
   stillEstimateUsd: number
 }) {
-  const act = useAction()
+  const { act, busy: acting, pressed } = useAction()
   const [open, setOpen] = React.useState(false)
   const [query, setQuery] = React.useState(beat.text)
   const [prompt, setPrompt] = React.useState(beat.text)
-  const busy = beat.fetchState?.state === 'fetching'
+  // Two kinds of waiting: the runner still fetching this beat server-side,
+  // and this component's own action round trip (decision 240). Both hold the
+  // controls; only the second draws a spinner on the pressed control.
+  const busy = beat.fetchState?.state === 'fetching' || acting
 
   return (
     <div className="flex flex-col gap-1.5">
@@ -348,6 +374,7 @@ function NewShots({
                 type="button"
                 aria-pressed={option.selected}
                 aria-label={`Beat ${index + 1} new shot ${option.id} (${option.origin} ${option.kind})`}
+                aria-busy={pressed === `fetched-${option.id}` || undefined}
                 disabled={busy}
                 onClick={() =>
                   void act(
@@ -358,6 +385,7 @@ function NewShots({
                     option.slot
                       ? 'Shot picked'
                       : 'Preparing the clip. It becomes the pick once stored',
+                    `fetched-${option.id}`,
                   )
                 }
                 className={
@@ -430,11 +458,13 @@ function NewShots({
           <div>
             <Button
               variant="outline"
+              busy={pressed === 'fetch-stock'}
               disabled={busy}
               onClick={() =>
                 void act(
                   () => fetchTeaserShotOptions(shortId, index, query),
                   'Searching. Results land in the strip above',
+                  'fetch-stock',
                 )
               }
             >
@@ -467,11 +497,13 @@ function NewShots({
                   : 'Mock mode: the bookkeeping runs; no generator is called and nothing is spent.'
               }
               confirmVariant="primary"
+              busy={pressed === 'generate-still'}
               disabled={busy}
               onConfirm={() =>
                 act(
                   () => generateTeaserStill(shortId, index, prompt),
                   'Generating. The stills land in the strip above',
+                  'generate-still',
                 )
               }
             />

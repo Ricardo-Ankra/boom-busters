@@ -42,7 +42,7 @@ export function ShortsScreen({
   /** True while the project is ON the shorts stage with nothing running. */
   canAdvance?: boolean
 }) {
-  const act = useAction()
+  const { act, busy } = useAction()
   const [studioId, setStudioId] = React.useState<string | null>(null)
   const studioShort = shorts.find((short) => short.id === studioId) ?? null
   return (
@@ -97,6 +97,7 @@ export function ShortsScreen({
             />
             <Button
               variant="primary"
+              busy={busy}
               onClick={() =>
                 void act(() => advanceToPublish(projectId), 'On to the Publish screen')
               }
@@ -178,7 +179,7 @@ function ShortCard({
   studioOpen?: boolean
   onToggleStudio?: () => void
 }) {
-  const act = useAction()
+  const { act, busy, pressed } = useAction()
   const [title, setTitle] = React.useState(short.title)
   const [description, setDescription] = React.useState(short.description)
   const { current, poll, inFlight } = useShortRenderPoll(short.render)
@@ -271,8 +272,14 @@ function ShortCard({
         {dirty ? (
           <Button
             variant="outline"
+            busy={pressed === 'save'}
+            disabled={busy}
             onClick={() =>
-              void act(() => updateShortDetails(short.id, { title, description }), 'Short updated')
+              void act(
+                () => updateShortDetails(short.id, { title, description }),
+                'Short updated',
+                'save',
+              )
             }
           >
             <Save aria-hidden className="h-4 w-4" />
@@ -296,14 +303,26 @@ function ShortCard({
                 confirmLabel={`Switch to ${ending === 'cta' ? 'CTA' : 'loop'}`}
                 consequence="The current render is of the other ending and will need re-rendering."
                 confirmVariant="primary"
-                onConfirm={() => act(() => setShortEnding(short.id, ending), 'Ending changed')}
+                busy={pressed === `ending-${ending}`}
+                disabled={busy}
+                onConfirm={() =>
+                  act(() => setShortEnding(short.id, ending), 'Ending changed', `ending-${ending}`)
+                }
               />
             ) : (
               <Button
                 key={ending}
                 variant="outline"
                 className="capitalize"
-                onClick={() => void act(() => setShortEnding(short.id, ending), 'Ending changed')}
+                busy={pressed === `ending-${ending}`}
+                disabled={busy}
+                onClick={() =>
+                  void act(
+                    () => setShortEnding(short.id, ending),
+                    'Ending changed',
+                    `ending-${ending}`,
+                  )
+                }
               >
                 {ending === 'cta' ? 'CTA' : 'Loop'}
               </Button>
@@ -330,7 +349,9 @@ function ShortCard({
                 : 'Mock mode: the bookkeeping runs; no Lambda is invoked and nothing is spent.'
             }
             confirmVariant="primary"
-            onConfirm={() => act(() => requestShortRender(short.id), 'Render requested')}
+            busy={pressed === 'render'}
+            disabled={busy}
+            onConfirm={() => act(() => requestShortRender(short.id), 'Render requested', 'render')}
           />
         ) : null}
 
@@ -340,10 +361,13 @@ function ShortCard({
         <button
           type="button"
           aria-pressed={short.relatedLinkChecked}
+          aria-busy={pressed === 'related-link' || undefined}
+          disabled={busy}
           onClick={() =>
             void act(
               () => setShortRelatedLink(short.id, !short.relatedLinkChecked),
               short.relatedLinkChecked ? 'Unticked' : 'Related link recorded',
+              'related-link',
             )
           }
           className={

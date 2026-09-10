@@ -144,7 +144,7 @@ export function PublishScreen({
   /** True while the project is ON the publish stage with nothing running. */
   canFinish?: boolean
 }) {
-  const act = useAction()
+  const { act, busy, pressed } = useAction()
   const [selectedKey, setSelectedKey] = React.useState<string | null>(() => {
     const first = model.items.find(schedulable)
     return first ? keyOf(first) : null
@@ -160,19 +160,23 @@ export function PublishScreen({
       .map((item) => [item.record!.publishAtIso!, item]),
   )
 
-  const schedule = (item: PublishItemModel, iso: string) =>
+  // `press` names the button that fired, for the spinner; the grid slots use
+  // their iso, the custom-time control its own name.
+  const schedule = (item: PublishItemModel, iso: string, press: string = iso) =>
     act(
       () => schedulePublish(item.targetType, item.targetId, iso),
       'Scheduled — the upload starts now',
+      press,
     )
 
   // The same gesture as scheduling — select, press a slot — but the video is
   // already on YouTube, so this re-points its publish moment instead of
   // starting an upload.
-  const move = (item: PublishItemModel, iso: string) =>
+  const move = (item: PublishItemModel, iso: string, press: string = iso) =>
     act(
       () => reschedulePublish(item.targetType, item.targetId, iso),
       'Moved — it goes public at the new time',
+      press,
     )
 
   return (
@@ -201,7 +205,11 @@ export function PublishScreen({
             Google-side toggle (owner report, 2026-09-09). */}
         <Button
           variant="outline"
-          onClick={() => void act(() => refreshAnalytics(), 'Analytics pass started')}
+          busy={pressed === 'refresh-analytics'}
+          disabled={busy}
+          onClick={() =>
+            void act(() => refreshAnalytics(), 'Analytics pass started', 'refresh-analytics')
+          }
         >
           <RefreshCw aria-hidden className="h-4 w-4" />
           Refresh analytics now
@@ -274,10 +282,13 @@ export function PublishScreen({
                   {item.record?.status === 'failed' && item.record.publishAtIso ? (
                     <Button
                       variant="outline"
+                      busy={pressed === `retry-${item.targetId}`}
+                      disabled={busy}
                       onClick={() =>
                         void act(
                           () => retryPublish(item.targetType, item.targetId),
                           'Retrying the upload',
+                          `retry-${item.targetId}`,
                         )
                       }
                     >
@@ -300,10 +311,13 @@ export function PublishScreen({
                             : 'Uploads immediately as private — until the API audit passes, you flip it public in YouTube Studio yourself.'
                       }
                       confirmVariant="primary"
+                      busy={pressed === `now-${item.targetId}`}
+                      disabled={busy}
                       onConfirm={() =>
                         act(
                           () => publishNow(item.targetType, item.targetId),
                           'The upload starts now',
+                          `now-${item.targetId}`,
                         )
                       }
                     />
@@ -323,10 +337,13 @@ export function PublishScreen({
                         'The app forgets this upload and the item becomes schedulable again. ' +
                         'The video itself stays on YouTube — delete it in Studio yourself.'
                       }
+                      busy={pressed === `unlink-${item.targetId}`}
+                      disabled={busy}
                       onConfirm={() =>
                         act(
                           () => unlinkPublishRecord(item.targetType, item.targetId),
                           'Upload forgotten — schedule it again below',
+                          `unlink-${item.targetId}`,
                         )
                       }
                     />
@@ -342,10 +359,13 @@ export function PublishScreen({
                   <button
                     type="button"
                     aria-pressed={false}
+                    aria-busy={pressed === `related-${item.targetId}` || undefined}
+                    disabled={busy}
                     onClick={() =>
                       void act(
                         () => setShortRelatedLink(item.targetId, true),
                         'Related link recorded',
+                        `related-${item.targetId}`,
                       )
                     }
                     className="flex min-h-[40px] items-center gap-2 rounded-[8px] border border-[var(--color-warning)] px-3 py-2 text-left text-[13px] text-[var(--color-warning)]"
@@ -443,6 +463,8 @@ export function PublishScreen({
                         <Button
                           variant="outline"
                           className="mt-1 w-full"
+                          busy={pressed === slot.iso}
+                          disabled={busy}
                           onClick={() => void schedule(selected!, slot.iso)}
                         >
                           {occupant === selected ? 'Start the upload again' : 'Schedule here'}
@@ -451,6 +473,8 @@ export function PublishScreen({
                         <Button
                           variant="outline"
                           className="mt-1 w-full"
+                          busy={pressed === slot.iso}
+                          disabled={busy}
                           onClick={() => void move(selected!, slot.iso)}
                         >
                           Move here
@@ -502,11 +526,14 @@ export function PublishScreen({
                 <>
                   <Button
                     variant="outline"
-                    disabled={!valid || mode === null}
+                    busy={pressed === 'custom-time'}
+                    disabled={!valid || mode === null || busy}
                     onClick={() => {
                       if (!valid || mode === null || selected === null) return
                       const iso = at!.toISOString()
-                      void (mode === 'schedule' ? schedule(selected, iso) : move(selected, iso))
+                      void (mode === 'schedule'
+                        ? schedule(selected, iso, 'custom-time')
+                        : move(selected, iso, 'custom-time'))
                     }}
                   >
                     <CalendarClock aria-hidden className="h-4 w-4" />
@@ -546,7 +573,9 @@ export function PublishScreen({
               'reachable from the rail.'
             }
             confirmVariant="primary"
-            onConfirm={() => act(() => markProjectDone(projectId), 'Marked as Done')}
+            busy={pressed === 'done'}
+            disabled={busy}
+            onConfirm={() => act(() => markProjectDone(projectId), 'Marked as Done', 'done')}
           />
         </section>
       ) : null}
@@ -591,7 +620,7 @@ function ItemEditor({
   model: PublishModel
   live: boolean
 }) {
-  const act = useAction()
+  const { act, busy, pressed } = useAction()
   const record = item.record
   const [title, setTitle] = React.useState(record?.title ?? item.label)
   const [body, setBody] = React.useState(record?.descriptionBody ?? model.hook)
@@ -642,7 +671,7 @@ function ItemEditor({
     formData.set('file', file)
     setUploadingThumb(true)
     try {
-      await act(() => uploadThumbnail(formData), 'Thumbnail stored')
+      await act(() => uploadThumbnail(formData), 'Thumbnail stored', 'upload-thumb')
     } finally {
       setUploadingThumb(false)
     }
@@ -697,15 +726,27 @@ function ItemEditor({
               confirmLabel="Generate"
               consequence="One small model call — a fraction of a cent against the metadata task's budget."
               confirmVariant="primary"
+              busy={pressed === 'titles'}
+              disabled={busy}
               onConfirm={() =>
-                act(() => generateTitles(item.targetType, item.targetId), 'Titles generated')
+                act(
+                  () => generateTitles(item.targetType, item.targetId),
+                  'Titles generated',
+                  'titles',
+                )
               }
             />
           ) : (
             <Button
               variant="outline"
+              busy={pressed === 'titles'}
+              disabled={busy}
               onClick={() =>
-                void act(() => generateTitles(item.targetType, item.targetId), 'Titles generated')
+                void act(
+                  () => generateTitles(item.targetType, item.targetId),
+                  'Titles generated',
+                  'titles',
+                )
               }
             >
               <Sparkles aria-hidden className="h-4 w-4" />
@@ -731,6 +772,8 @@ function ItemEditor({
           {dirty ? (
             <Button
               variant="outline"
+              busy={pressed === 'save-draft'}
+              disabled={busy}
               onClick={() =>
                 void act(
                   () =>
@@ -740,6 +783,7 @@ function ItemEditor({
                       tags,
                     }),
                   'Draft saved',
+                  'save-draft',
                 )
               }
             >
@@ -833,10 +877,13 @@ function ItemEditor({
                       <Button
                         variant="outline"
                         className="w-full px-2"
+                        busy={pressed === `rm-${thumb.key}`}
+                        disabled={busy}
                         onClick={() =>
                           void act(
                             () => removeThumbnail(item.targetType, item.targetId, thumb.key),
                             'Thumbnail removed',
+                            `rm-${thumb.key}`,
                           )
                         }
                       >

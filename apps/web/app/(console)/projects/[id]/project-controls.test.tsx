@@ -138,6 +138,29 @@ describe('GateActionBar', () => {
     expect(requestChanges).toHaveBeenCalledWith('01J0000000000000000000000A', 'dossier', '')
   })
 
+  /**
+   * The double-fire guard (decision 240). Approving emits the event the NEXT
+   * stage's runner triggers on, so two clicks used to mean two runs. The
+   * guard is a ref inside useAction: the second click in the same tick finds
+   * the first still running and does nothing.
+   */
+  it('fires the approval once however fast the second click lands', async () => {
+    let release: (value: { ok: boolean }) => void = () => undefined
+    approveGate.mockImplementation(
+      () => new Promise<{ ok: boolean }>((resolve) => (release = resolve)),
+    )
+    renderBar()
+
+    const approve = screen.getByRole('button', { name: 'Approve' })
+    // Two raw clicks in one tick: the busy re-render has not landed yet, so
+    // only the runner's own guard stands between them.
+    await userEvent.dblClick(approve)
+    release({ ok: true })
+
+    expect(approveGate).toHaveBeenCalledTimes(1)
+    expect(await screen.findByText(/Handed to the pipeline/i)).toBeInTheDocument()
+  })
+
   it('disables Approve and says why when the gate is blocked', () => {
     render(
       <GateActionBar

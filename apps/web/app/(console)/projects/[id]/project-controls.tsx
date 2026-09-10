@@ -25,25 +25,63 @@ import {
  * a disabled button that will not say why is worse than no button.
  */
 
-export function useAction() {
+export interface ActionRunner {
+  /**
+   * Run a server action, toast the outcome, refresh the screen. Returns
+   * whether it worked, so a caller can stand its own controls down without
+   * repeating the toast-and-refresh dance. `press` names the button for
+   * `pressed`, for components where several buttons share one runner.
+   */
+  act: (run: () => Promise<ActionResult>, success: string, press?: string) => Promise<boolean>
+  /**
+   * True from the click until the REFRESHED data is on screen, not merely
+   * until the server replied (decision 240). The old hook went quiet the
+   * moment the action returned; the screen then showed stale data for the
+   * length of the refresh round trip, which is exactly the window where a
+   * second click looks reasonable and double-fires.
+   */
+  busy: boolean
+  /** The `press` name of the in-flight action while busy; null otherwise. */
+  pressed: string | null
+}
+
+export function useAction(): ActionRunner {
   const router = useRouter()
   const { toast } = useToast()
+  // The refresh runs inside a transition so `busy` spans it: `refreshing`
+  // stays true until React has painted the re-read server data.
+  const [refreshing, startTransition] = React.useTransition()
+  const [calling, setCalling] = React.useState(false)
+  const [pressedName, setPressedName] = React.useState<string | null>(null)
+  // A ref, not state: the guard must hold within one tick, before any
+  // re-render lands. A double-click fires both handlers synchronously.
+  const running = React.useRef(false)
 
-  // Returns whether it worked, so a caller can stand its own controls down
-  // without repeating the toast-and-refresh dance.
-  return React.useCallback(
-    async (run: () => Promise<ActionResult>, success: string): Promise<boolean> => {
-      const result = await run()
-      if (result.ok) {
-        toast({ title: success })
-        router.refresh()
-      } else {
-        toast({ title: 'That did not work', description: result.error, variant: 'error' })
+  const act = React.useCallback(
+    async (run: () => Promise<ActionResult>, success: string, press?: string) => {
+      if (running.current) return false
+      running.current = true
+      setCalling(true)
+      setPressedName(press ?? null)
+      try {
+        const result = await run()
+        if (result.ok) {
+          toast({ title: success })
+          startTransition(() => router.refresh())
+        } else {
+          toast({ title: 'That did not work', description: result.error, variant: 'error' })
+        }
+        return result.ok
+      } finally {
+        running.current = false
+        setCalling(false)
       }
-      return result.ok
     },
     [router, toast],
   )
+
+  const busy = calling || refreshing
+  return { act, busy, pressed: busy ? pressedName : null }
 }
 
 /**
@@ -74,7 +112,7 @@ export function RestartRunButton({
    */
   consequence?: string
 }) {
-  const act = useAction()
+  const { act, busy } = useAction()
 
   /**
    * The consequence is spelled out per stage, because "this will invalidate
@@ -107,6 +145,7 @@ export function RestartRunButton({
       confirmLabel="Run it again"
       confirmVariant="primary"
       consequence={consequence}
+      busy={busy}
       onConfirm={() => act(() => restartStage(projectId, stage), 'Sent to the pipeline')}
     />
   )
@@ -120,7 +159,7 @@ export function StopButton({
   /** Section 8.1: a Lambda render cannot be aborted, and the confirm says so. */
   renderInFlight?: boolean
 }) {
-  const act = useAction()
+  const { act, busy } = useAction()
 
   return (
     <ConfirmButton
@@ -130,6 +169,7 @@ export function StopButton({
           Stop
         </>
       }
+      busy={busy}
       confirmLabel="Stop this run"
       consequence={
         renderInFlight
@@ -161,7 +201,7 @@ export function DeleteProjectButton({
   projectId: string
   summary: { claims: number; chapters: number; scripts: number; runs: number; spendUsd: number }
 }) {
-  const act = useAction()
+  const { act, busy } = useAction()
   const router = useRouter()
 
   const parts = [
@@ -189,6 +229,7 @@ export function DeleteProjectButton({
       }
       confirmLabel="Delete it"
       consequence={consequence}
+      busy={busy}
       onConfirm={async () => {
         const done = await act(() => deleteProjectAction(projectId), 'Project deleted')
         // Staying on the screen of a project that no longer exists would 404 on
@@ -225,10 +266,9 @@ export function GateActionBar({
   /** Injectable so the expiry can be tested without waiting out half a minute. */
   handOffTimeoutMs?: number
 }) {
-  const act = useAction()
+  const { act, busy, pressed } = useAction()
   const [note, setNote] = React.useState('')
   const [showNote, setShowNote] = React.useState(false)
-  const [busy, setBusy] = React.useState<'approve' | 'changes' | null>(null)
 
   /**
    * Which gate was handed to the pipeline — not *whether* one was.
@@ -316,24 +356,23 @@ export function GateActionBar({
               <>
                 <Button
                   variant="outline"
-                  busy={busy === 'changes'}
+                  busy={pressed === 'changes'}
+                  disabled={busy}
                   onClick={async () => {
-                    setBusy('changes')
-                    try {
-                      await act(
-                        () => requestChanges(projectId, stage, note),
-                        'Re-researching — the gate re-opens when the new dossier lands',
-                      )
+                    const sent = await act(
+                      () => requestChanges(projectId, stage, note),
+                      'Re-researching — the gate re-opens when the new dossier lands',
+                      'changes',
+                    )
+                    if (sent) {
                       setNote('')
                       setShowNote(false)
-                    } finally {
-                      setBusy(null)
                     }
                   }}
                 >
                   Send change request
                 </Button>
-                <Button variant="ghost" onClick={() => setShowNote(false)}>
+                <Button variant="ghost" disabled={busy} onClick={() => setShowNote(false)}>
                   Cancel
                 </Button>
               </>
@@ -354,36 +393,32 @@ export function GateActionBar({
 
           <Button
             variant="primary"
-            disabled={Boolean(blockedReason)}
-            busy={busy === 'approve'}
+            disabled={Boolean(blockedReason) || busy}
+            busy={pressed === 'approve'}
             onClick={async () => {
-              setBusy('approve')
-              try {
-                const handed = await act(
-                  () =>
-                    approveGate(
-                      projectId,
-                      stage,
-                      // The count the button's label named — the action
-                      // refuses if the board has drifted since this render.
-                      stage === 'visuals' && placeholders > 0
-                        ? { acknowledgePlaceholders: placeholders }
-                        : undefined,
-                    ),
-                  stage === 'dossier'
-                    ? 'Approved — the script drafts now, and parks only if the self-check finds problems'
-                    : stage === 'script'
-                      ? 'Approved — narration is being synthesised; review the audio when it lands'
-                      : stage === 'voice'
-                        ? 'Approved — the visual board is being planned; review it when it lands'
-                        : stage === 'visuals'
-                          ? 'Approved — the timeline is being assembled; review the preview when it lands'
-                          : 'Approved — moving on',
-                )
-                if (handed) setHandedOff(stage)
-              } finally {
-                setBusy(null)
-              }
+              const handed = await act(
+                () =>
+                  approveGate(
+                    projectId,
+                    stage,
+                    // The count the button's label named — the action
+                    // refuses if the board has drifted since this render.
+                    stage === 'visuals' && placeholders > 0
+                      ? { acknowledgePlaceholders: placeholders }
+                      : undefined,
+                  ),
+                stage === 'dossier'
+                  ? 'Approved — the script drafts now, and parks only if the self-check finds problems'
+                  : stage === 'script'
+                    ? 'Approved — narration is being synthesised; review the audio when it lands'
+                    : stage === 'voice'
+                      ? 'Approved — the visual board is being planned; review it when it lands'
+                      : stage === 'visuals'
+                        ? 'Approved — the timeline is being assembled; review the preview when it lands'
+                        : 'Approved — moving on',
+                'approve',
+              )
+              if (handed) setHandedOff(stage)
             }}
           >
             {stage === 'visuals' && placeholders > 0

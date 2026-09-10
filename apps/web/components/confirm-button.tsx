@@ -18,6 +18,7 @@ export function ConfirmButton({
   onConfirm,
   variant = 'outline',
   confirmVariant = 'danger',
+  busy: busyOutside = false,
   ...props
 }: Omit<ButtonProps, 'onClick' | 'children'> & {
   label: React.ReactNode
@@ -27,13 +28,21 @@ export function ConfirmButton({
   /** Any return value is ignored; awaited so the button stays busy until done. */
   onConfirm: () => unknown | Promise<unknown>
   confirmVariant?: ButtonProps['variant']
+  /**
+   * Busy from outside the two-step, merged with the internal await. The
+   * internal state ends when `onConfirm` resolves; a caller whose refresh is
+   * still landing passes its own flag so the control never reads idle while
+   * the screen it acts on is mid-change (decision 240).
+   */
+  busy?: boolean
 }) {
   const [armed, setArmed] = React.useState(false)
-  const [busy, setBusy] = React.useState(false)
+  const [confirming, setConfirming] = React.useState(false)
+  const busy = confirming || busyOutside
 
   if (!armed) {
     return (
-      <Button variant={variant} onClick={() => setArmed(true)} {...props}>
+      <Button variant={variant} busy={busyOutside} onClick={() => setArmed(true)} {...props}>
         {label}
       </Button>
     )
@@ -46,11 +55,11 @@ export function ConfirmButton({
         variant={confirmVariant}
         busy={busy}
         onClick={async () => {
-          setBusy(true)
+          setConfirming(true)
           try {
             await onConfirm()
           } finally {
-            setBusy(false)
+            setConfirming(false)
             setArmed(false)
           }
         }}
