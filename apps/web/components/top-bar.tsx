@@ -25,10 +25,14 @@ export function TopBar({
   activity: ActivityEntry[]
 }) {
   return (
-    <header className="flex h-12 shrink-0 items-center gap-4 border-b border-[var(--color-border)] bg-[var(--color-surface)] px-4">
-      <Breadcrumb />
+    <header className="flex h-12 shrink-0 items-center gap-3 border-b border-[var(--color-border)] bg-[var(--color-surface)] px-3 sm:gap-4 sm:px-4">
+      {/* min-w-0 + flex-1 so the trail truncates instead of painting under
+          the controls at 390px (decision 244). */}
+      <div className="min-w-0 flex-1">
+        <Breadcrumb />
+      </div>
 
-      <div className="ml-auto flex items-center gap-4">
+      <div className="flex shrink-0 items-center gap-1 sm:gap-4">
         <ActiveRunsIndicator runs={activeRuns} />
         <CostMeter monthSpendUsd={monthSpendUsd} ceilingUsd={ceilingUsd} />
         <ActivityDrawer entries={activity} />
@@ -92,15 +96,20 @@ function CostMeter({ monthSpendUsd, ceilingUsd }: { monthSpendUsd: number; ceili
         ? 'text-[var(--color-warning)]'
         : 'text-[var(--color-text-secondary)]'
 
+  // Not colour alone (section 11.1): a word says what the tone says.
+  const note = ratio >= 1 ? 'over the ceiling' : ratio > 0.8 ? 'near the ceiling' : null
+
   return (
     <span
-      className="hidden items-center gap-1.5 text-[13px] sm:flex"
+      className="flex items-center gap-1.5 text-[12px] sm:text-[13px]"
       title="Actual spend this month against the monthly ceiling. A call still in flight counts at its estimate until it settles."
     >
-      <span className="text-[var(--color-text-muted)]">Month</span>
+      <span className="hidden text-[var(--color-text-muted)] sm:inline">Month</span>
       <span className={`font-mono tabular-nums ${tone}`}>
         ${monthSpendUsd.toFixed(2)} / ${ceilingUsd.toFixed(0)}
       </span>
+      {note ? <span className={`hidden ${tone} md:inline`}>· {note}</span> : null}
+      {note ? <span className="sr-only">{note}</span> : null}
     </span>
   )
 }

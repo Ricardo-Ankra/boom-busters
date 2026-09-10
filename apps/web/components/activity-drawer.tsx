@@ -30,7 +30,8 @@ export function ActivityDrawer({ entries }: { entries: ActivityEntry[] }) {
       <Dialog.Trigger asChild>
         <Button variant="ghost" size="icon">
           <Activity aria-hidden />
-          <span>Activity</span>
+          {/* Icon-only below sm, like its neighbours; the name stays. */}
+          <span className="sr-only sm:not-sr-only">Activity</span>
         </Button>
       </Dialog.Trigger>
 

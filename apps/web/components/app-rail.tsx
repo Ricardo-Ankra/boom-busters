@@ -30,7 +30,7 @@ import { cn } from '@/lib/cn'
  * the transient hidden copy of the page turned strict text locators across
  * the whole E2E suite into a race (found by that suite, twice).
  */
-function RailIcon({ icon: Icon }: { icon: LucideIcon }) {
+export function RailIcon({ icon: Icon }: { icon: LucideIcon }) {
   const { pending } = useLinkStatus()
   return pending ? (
     <Loader2
@@ -43,7 +43,8 @@ function RailIcon({ icon: Icon }: { icon: LucideIcon }) {
   )
 }
 
-const NAV = [
+/** The information architecture (section 11.2); shared with the mobile bar. */
+export const NAV = [
   { href: '/', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/projects', label: 'Projects', icon: Video },
   { href: '/cases', label: 'Case Library', icon: Library },

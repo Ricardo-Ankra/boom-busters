@@ -2,6 +2,7 @@ import { getSettings, listActiveRuns, listActivity } from '@boom-busters/db'
 import { monthTotalUsd } from '@boom-busters/cost'
 import { effectiveCeilingUsd } from '@boom-busters/schemas'
 import { AppRail } from '@/components/app-rail'
+import { MobileNav } from '@/components/mobile-nav'
 import { TopBar } from '@/components/top-bar'
 import { db } from '@/lib/db'
 
@@ -36,8 +37,11 @@ export default async function ConsoleLayout({ children }: { children: React.Reac
           activeRuns={activeRuns}
           activity={activity}
         />
-        <main className="flex-1 overflow-y-auto p-3 md:p-4">{children}</main>
+        {/* Bottom padding below md clears the fixed mobile bar. */}
+        <main className="flex-1 overflow-y-auto p-3 pb-20 md:p-4">{children}</main>
       </div>
+
+      <MobileNav />
     </div>
   )
 }
