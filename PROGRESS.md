@@ -3789,6 +3789,41 @@ published and audited. The daily `channels.list` health ping and the
      `R2_JURISDICTION_ENDPOINT`, which nothing reads. Harmless (keys enter
      via Settings and are stored encrypted) but worth tidying by hand.
 
+240. **A pressed button stays busy until the new data is on screen**
+     (2026-09-10, audit phase B1). `useAction` returns `{ act, busy,
+pressed }`: a ref guards the call so a double-click fires the server
+     action once however fast the second lands (the approve event is also
+     the next runner's trigger, so two clicks used to mean two runs at the
+     Inngest layer too, now guarded at both layers); the `router.refresh()`
+     runs inside a React transition, so `busy` spans the whole round trip
+     instead of ending while the screen still shows stale data, which was
+     exactly the window that invited the second click. Multi-button
+     components name each press, so the pressed control spins while its
+     siblings stand disabled; `ConfirmButton` merges an external busy with
+     its own await. Every consumer wired: gate bar, restart, stop, delete,
+     Shorts cards, the whole teaser studio, Publish scheduling and metadata,
+     the music picker and both render buttons. A failed change request now
+     keeps its note for the retry instead of clearing it.
+
+241. **Navigation shows pending on the clicked rail item; the background run
+     gets named** (2026-09-10, audit phase B2/B3). Clicking a rail item used
+     to give no feedback until the next screen's whole query batch finished,
+     so the app read as frozen at its busiest moments. First attempt was a
+     segment `loading.tsx` skeleton, REJECTED by its own E2E run: a Suspense
+     boundary makes every route stream in two chunks, and Playwright's
+     strict text locators transiently matched both the hidden streamed copy
+     and the placed one (two tests failed on strict-mode violations; every
+     text locator in the suite would have become a race). Shipped instead:
+     `useLinkStatus` inside each rail link swaps the clicked item's icon for
+     a spinner while its navigation is pending, feedback exactly where the
+     click happened and no change to how routes render. On a project screen,
+     viewing an earlier stage while the pipeline works used to hint at the
+     run only through the header's pulse dot; a status line now names the
+     stage that is moving. Audited and left as they were: the settings and
+     cases screens (their buttons already disable and speak while saving),
+     the render progress bars, the teaser fetch word states, and
+     LiveRefresh's "Updating automatically" cue.
+
 **Status:** `[x]` done — dossier + Studio shipped with unit, component and
 e2e coverage; spec §11.3 amended in place with dated notes.
 

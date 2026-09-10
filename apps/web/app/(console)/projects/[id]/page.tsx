@@ -289,6 +289,16 @@ export default async function ProjectPage({
         </p>
       ) : null}
 
+      {/* The run you are NOT looking at (decision 241). Viewing an earlier
+          stage while the pipeline works, the only hint used to be the pulse
+          dot in the header; these words name what is actually moving. */}
+      {moving && !viewingCurrent ? (
+        <p className="text-[13px] text-[var(--color-text-secondary)]" role="status">
+          The {project.stage} stage is running in the background. The header updates as it moves,
+          and this screen stays fully usable.
+        </p>
+      ) : null}
+
       {/* Directly under the header, beside where Stop and the re-run controls
           live — not stuck along the bottom edge. On the Script Studio the
           sticky version permanently covered the last lines of the chapter you

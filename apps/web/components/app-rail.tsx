@@ -1,7 +1,16 @@
 'use client'
 
-import { Calendar, DollarSign, LayoutDashboard, Library, Settings, Video } from 'lucide-react'
-import Link from 'next/link'
+import {
+  Calendar,
+  DollarSign,
+  LayoutDashboard,
+  Library,
+  Loader2,
+  Settings,
+  Video,
+} from 'lucide-react'
+import type { LucideIcon } from 'lucide-react'
+import Link, { useLinkStatus } from 'next/link'
 import { usePathname } from 'next/navigation'
 import * as React from 'react'
 import { cn } from '@/lib/cn'
@@ -11,6 +20,28 @@ import { cn } from '@/lib/cn'
  * always present in the accessibility tree even when the rail is collapsed —
  * "no action may exist only as an icon" (section 11.1).
  */
+
+/**
+ * The clicked item's icon becomes a spinner while its navigation is pending
+ * (decision 241). Screens query everything server-side before they paint, so
+ * a click on the rail used to give no feedback for exactly the seconds the
+ * app was busiest. Scoped to the link rather than a route `loading.tsx`
+ * because a Suspense boundary makes every route stream in two chunks, and
+ * the transient hidden copy of the page turned strict text locators across
+ * the whole E2E suite into a race (found by that suite, twice).
+ */
+function RailIcon({ icon: Icon }: { icon: LucideIcon }) {
+  const { pending } = useLinkStatus()
+  return pending ? (
+    <Loader2
+      className="size-4 shrink-0 animate-spin motion-reduce:animate-none"
+      aria-hidden
+      data-testid="rail-pending"
+    />
+  ) : (
+    <Icon className="size-4 shrink-0" aria-hidden />
+  )
+}
 
 const NAV = [
   { href: '/', label: 'Dashboard', icon: LayoutDashboard },
@@ -55,7 +86,7 @@ export function AppRail() {
                 : 'text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-raised)] hover:text-[var(--color-text-primary)]',
             )}
           >
-            <Icon className="size-4 shrink-0" aria-hidden />
+            <RailIcon icon={Icon} />
             <span className={cn(expanded ? '' : 'sr-only')}>{label}</span>
           </Link>
         )
