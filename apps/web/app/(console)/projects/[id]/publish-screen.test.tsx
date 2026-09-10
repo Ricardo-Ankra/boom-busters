@@ -28,6 +28,7 @@ const reschedulePublish = vi.fn()
 const retryPublish = vi.fn()
 const savePublishDraft = vi.fn()
 const schedulePublish = vi.fn()
+const unlinkPublishRecord = vi.fn()
 const uploadThumbnail = vi.fn()
 vi.mock('./publish-actions', () => ({
   generateTitles: (...args: unknown[]) => generateTitles(...args),
@@ -39,6 +40,7 @@ vi.mock('./publish-actions', () => ({
   retryPublish: (...args: unknown[]) => retryPublish(...args),
   savePublishDraft: (...args: unknown[]) => savePublishDraft(...args),
   schedulePublish: (...args: unknown[]) => schedulePublish(...args),
+  unlinkPublishRecord: (...args: unknown[]) => unlinkPublishRecord(...args),
   uploadThumbnail: (...args: unknown[]) => uploadThumbnail(...args),
 }))
 
@@ -68,6 +70,7 @@ beforeEach(() => {
     savePublishDraft,
     schedulePublish,
     setShortRelatedLink,
+    unlinkPublishRecord,
     uploadThumbnail,
   ]) {
     action.mockResolvedValue({ ok: true })
@@ -527,6 +530,42 @@ describe('PublishScreen', () => {
 
     await user.click(screen.getByRole('button', { name: 'Mark it Done' }))
     expect(markProjectDone).toHaveBeenCalledWith(PROJECT)
+  })
+
+  it('a scheduled item can start over: forget the upload, become schedulable', async () => {
+    // The wrong-channel recovery (2026-09-10): the app forgets, the human
+    // deletes the stray video in Studio.
+    const user = userEvent.setup()
+    renderScreen({
+      items: [
+        masterItem({
+          record: {
+            id: '01HQ00000000000000000000P1',
+            status: 'scheduled',
+            publishAtIso: '2026-09-11T15:00:00.000Z',
+            youtubeVideoId: 'qCI4-WbhKB4',
+            errorMessage: null,
+            title: 'How Wirecard Fell',
+            titleOptions: [],
+            descriptionBody: null,
+            tags: [],
+            thumbs: [],
+          },
+        }),
+      ],
+    })
+
+    await user.click(screen.getByRole('button', { name: 'Start over on YouTube' }))
+    expect(unlinkPublishRecord).not.toHaveBeenCalled()
+    expect(screen.getByText(/delete it in Studio yourself/)).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Forget this upload' }))
+    expect(unlinkPublishRecord).toHaveBeenCalledWith('master', PROJECT)
+  })
+
+  it('a draft item has no upload to start over from', () => {
+    renderScreen()
+    expect(screen.queryByRole('button', { name: 'Start over on YouTube' })).not.toBeInTheDocument()
   })
 
   it('a live item offers no move — there is no moment left to change', () => {

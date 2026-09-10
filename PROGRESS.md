@@ -3549,6 +3549,23 @@ published and audited. The daily `channels.list` health ping and the
      (one-time consequence: beats already bought under the old key format
      re-bill once on their next rebuild, pennies).
 
+228. **Start over on YouTube** (2026-09-10, owner report: the account's OAuth
+     consent had picked the WRONG of its two channels, so every upload —
+     two masters and a Short — landed there, and `scheduled`/`live` records
+     were locked with no way back). `unlinkPublishRecord` resets the record
+     to draft (video id, moment and privacy cleared), offered as a
+     confirmed "Start over on YouTube" button on any card whose record
+     holds a video id at `scheduled`/`live`/`failed`. Deliberately does NOT
+     delete from YouTube: the stray video is the human's act in Studio, on
+     the channel that holds it. Recovery sequence documented for the owner:
+     reconnect in Settings → Connections choosing the right channel on
+     Google's chooser (Verify toasts the connected channel's name), delete
+     the strays in Studio, Start over, re-schedule. Also from this
+     incident: the analytics pass got its long-promised manual button
+     ("Refresh analytics now" on the Publish screen) after a snapshot
+     failed on the Google-side YouTube Analytics API toggle with no retry
+     short of the next 06:00 UTC cron.
+
 **Status:** `[x]` done — dossier + Studio shipped with unit, component and
 e2e coverage; spec §11.3 amended in place with dated notes.
 

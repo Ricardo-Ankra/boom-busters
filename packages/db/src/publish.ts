@@ -105,8 +105,9 @@ export async function updatePublishRecord(
   id: string,
   patch: Partial<{
     status: PublishRecordRow['status']
-    youtubeVideoId: string
-    publishAt: Date
+    /** Null forgets the upload — the "start over on YouTube" reset. */
+    youtubeVideoId: string | null
+    publishAt: Date | null
     privacyStatus: PublishRecordRow['privacyStatus']
     uploadedThumbKeys: string[]
     metadata: Record<string, unknown>

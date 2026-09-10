@@ -543,6 +543,46 @@ export async function refreshAnalytics(): Promise<ActionResult> {
   return { ok: true }
 }
 
+/**
+ * Forget an item's YouTube upload so it can be scheduled or published again
+ * (owner report, 2026-09-10: the OAuth consent had picked the WRONG channel
+ * of the account's two, and every upload landed there — the records were
+ * locked at `scheduled`/`live` with no way back). Deliberately does not
+ * touch YouTube: deleting the stray video is the human's act in Studio, on
+ * the channel that actually holds it. The refusal while uploading stands —
+ * a job mid-flight would just re-mark the record when it finishes.
+ */
+export async function unlinkPublishRecord(
+  targetType: string,
+  targetId: string,
+): Promise<ActionResult> {
+  await requireOwner()
+  const invalid = parseTarget(targetType, targetId)
+  if (invalid) return invalid
+  const type = targetType as 'master' | 'short'
+
+  const projectId = await projectIdOf(type, targetId)
+  if (!projectId) return { ok: false, error: 'Unknown target' }
+
+  const record = await getPublishRecord(db, type, targetId)
+  if (!record) return { ok: false, error: 'Nothing has been uploaded for this item yet.' }
+  if (record.status === 'uploading' || record.status === 'uploaded') {
+    return { ok: false, error: 'The upload is still finishing — wait for it to settle first.' }
+  }
+
+  await updatePublishRecord(db, record.id, {
+    status: 'draft',
+    youtubeVideoId: null,
+    publishAt: null,
+    privacyStatus: 'private',
+    error: null,
+  })
+
+  revalidatePath(`/projects/${projectId}`)
+  revalidatePath('/calendar')
+  return { ok: true }
+}
+
 /** Failed → draft → re-emit. The mapped error stays visible until it works. */
 export async function retryPublish(targetType: string, targetId: string): Promise<ActionResult> {
   await requireOwner()

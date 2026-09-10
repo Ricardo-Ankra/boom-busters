@@ -28,6 +28,7 @@ import {
   retryPublish,
   savePublishDraft,
   schedulePublish,
+  unlinkPublishRecord,
   uploadThumbnail,
 } from './publish-actions'
 import { setShortRelatedLink } from './shorts-actions'
@@ -312,6 +313,29 @@ export function PublishScreen({
                         act(
                           () => publishNow(item.targetType, item.targetId),
                           'The upload starts now',
+                        )
+                      }
+                    />
+                  ) : null}
+                  {/* The wrong-channel escape hatch (2026-09-10): forget the
+                      upload so the item is schedulable again after a
+                      reconnect. The stray video is deleted in Studio, by a
+                      human, on the channel that holds it. */}
+                  {item.record?.youtubeVideoId &&
+                  (item.record.status === 'scheduled' ||
+                    item.record.status === 'live' ||
+                    item.record.status === 'failed') ? (
+                    <ConfirmButton
+                      label="Start over on YouTube"
+                      confirmLabel="Forget this upload"
+                      consequence={
+                        'The app forgets this upload and the item becomes schedulable again. ' +
+                        'The video itself stays on YouTube — delete it in Studio yourself.'
+                      }
+                      onConfirm={() =>
+                        act(
+                          () => unlinkPublishRecord(item.targetType, item.targetId),
+                          'Upload forgotten — schedule it again below',
                         )
                       }
                     />
