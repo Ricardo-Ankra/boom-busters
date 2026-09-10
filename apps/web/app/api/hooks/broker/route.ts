@@ -22,8 +22,17 @@ export async function POST(request: Request): Promise<Response> {
   const body = await request.text()
   const signature = request.headers.get(BROKER_SIGNATURE_HEADER) ?? ''
 
-  const { AWS_BROKER_TOKEN } = requireEnv('broker')
-  if (!verifyBrokerSignature(body, AWS_BROKER_TOKEN, signature)) {
+  // No token configured means nothing could have signed this legitimately:
+  // refuse like a bad signature rather than escaping as an unstructured 500
+  // to an unauthenticated caller (audit, decision 238).
+  let token: string
+  try {
+    token = requireEnv('broker').AWS_BROKER_TOKEN
+  } catch {
+    console.error(JSON.stringify({ event: 'broker-hook-unconfigured' }))
+    return Response.json({ error: 'bad signature' }, { status: 401 })
+  }
+  if (!verifyBrokerSignature(body, token, signature)) {
     console.error(JSON.stringify({ event: 'broker-hook-signature-rejected' }))
     return Response.json({ error: 'bad signature' }, { status: 401 })
   }

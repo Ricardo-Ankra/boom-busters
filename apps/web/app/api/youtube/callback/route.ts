@@ -45,7 +45,12 @@ export async function GET(request: Request): Promise<Response> {
   try {
     grant = await exchangeCode(code)
   } catch (error) {
-    console.error('[youtube] code exchange failed', error)
+    // The message only: Google's error body can echo request parameters, and
+    // the code in this exchange is a secret that must not reach the logs.
+    console.error(
+      '[youtube] code exchange failed:',
+      error instanceof Error ? error.message : 'unknown error',
+    )
     return back(origin, error instanceof YoutubeAuthError ? 'exchange-failed' : 'error')
   }
 
@@ -55,13 +60,23 @@ export async function GET(request: Request): Promise<Response> {
     return back(origin, 'no-refresh-token')
   }
 
-  await setCredential(db, 'youtube', grant.refreshToken, env.SECRETS_ENCRYPTION_KEY)
+  // Wrapped so a store or ping failure mid-OAuth still lands on the Settings
+  // screen with an outcome, never on a raw error page (audit, decision 238).
+  try {
+    await setCredential(db, 'youtube', grant.refreshToken, env.SECRETS_ENCRYPTION_KEY)
 
-  const ping = await pingChannel(grant.accessToken)
-  await recordVerifyResult(db, 'youtube', ping.ok ? 'ok' : 'invalid')
-  if (!ping.ok) {
-    console.error('[youtube] connected but the channel ping failed:', ping.error)
-    return back(origin, 'no-channel')
+    const ping = await pingChannel(grant.accessToken)
+    await recordVerifyResult(db, 'youtube', ping.ok ? 'ok' : 'invalid')
+    if (!ping.ok) {
+      console.error('[youtube] connected but the channel ping failed:', ping.error)
+      return back(origin, 'no-channel')
+    }
+  } catch (error) {
+    console.error(
+      '[youtube] storing the connection failed:',
+      error instanceof Error ? error.message : 'unknown error',
+    )
+    return back(origin, 'error')
   }
 
   return back(origin, 'connected')

@@ -26,5 +26,29 @@ export async function GET(
   const asset = await getAsset(db, id)
   if (!asset) return new Response('No such asset', { status: 404 })
 
-  return Response.redirect(await presignGet(asset.r2Key), 302)
+  let signed: string
+  try {
+    signed = await presignGet(asset.r2Key)
+  } catch (error) {
+    // R2 unconfigured or unreachable used to escape as a raw 500 on every
+    // thumbnail (audit, decision 238). Words instead.
+    console.error('[assets] presign failed', error)
+    return new Response('Object storage is not reachable. Check the R2 settings.', {
+      status: 503,
+    })
+  }
+
+  return new Response(null, {
+    status: 302,
+    headers: {
+      location: signed,
+      /**
+       * The browser may keep this redirect (decision 238): without it, every
+       * screen refresh re-ran session + DB + presign per image. 2400 s stays
+       * inside the presigned URL's remaining life, which is the 3600 s TTL
+       * minus at most one 15 minute signing bucket. Private: session content.
+       */
+      'cache-control': 'private, max-age=2400',
+    },
+  })
 }

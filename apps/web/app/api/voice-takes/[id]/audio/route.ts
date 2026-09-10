@@ -95,5 +95,24 @@ export async function GET(
     })
   }
 
-  return Response.redirect(await presignGet(take.r2Key), 302)
+  let signed: string
+  try {
+    signed = await presignGet(take.r2Key)
+  } catch (error) {
+    console.error('[voice-takes] presign failed', error)
+    return new Response('Object storage is not reachable. Check the R2 settings.', {
+      status: 503,
+    })
+  }
+
+  return new Response(null, {
+    status: 302,
+    headers: {
+      location: signed,
+      // Same rule as the mock branch above and the assets route: the browser
+      // may keep the redirect for less than the presigned URL's remaining
+      // life (3600 s TTL minus at most one 15 minute signing bucket).
+      'cache-control': 'private, max-age=2400',
+    },
+  })
 }
