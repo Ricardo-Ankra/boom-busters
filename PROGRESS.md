@@ -3566,6 +3566,21 @@ published and audited. The daily `channels.list` health ping and the
      failed on the Google-side YouTube Analytics API toggle with no retry
      short of the next 06:00 UTC cron.
 
+229. **A public /privacy page** (2026-09-10, same incident chain). Google
+     refused to let the OAuth consent screen leave Testing mode without a
+     live privacy-policy URL — and Testing-mode refresh tokens expire every
+     7 days, which would break uploads and analytics weekly. The page is
+     static, honest about the single-operator reality (what YouTube data is
+     used, AES-GCM token storage, no third parties, deletion via disconnect
+     or Google's permissions page), and `/privacy` joins PUBLIC_PATHS in
+     proxy.ts — the one console route reachable without a session, holding
+     no data and no actions. Owner-side sequence recorded: add the brand
+     account's pages.plusgoogle.com address as a TEST USER first (the 403
+     access_denied on reconnect was the brand identity missing from the
+     test-user list), fill Branding (app name, support email, homepage =
+     the app URL, privacy policy = /privacy), publish to production, THEN
+     reconnect so the stored refresh token is the durable kind.
+
 **Status:** `[x]` done — dossier + Studio shipped with unit, component and
 e2e coverage; spec §11.3 amended in place with dated notes.
 

@@ -23,7 +23,12 @@ import { auth } from './auth'
  * which is how M6's first production transcription "failed" twice while
  * Whisper succeeded both times (2026-08-19).
  */
-const PUBLIC_PATHS = ['/signin', '/api/auth', '/api/inngest', '/api/hooks/broker']
+/**
+ * `/privacy` is public because Google demands a reachable privacy-policy URL
+ * before the OAuth consent screen can leave Testing mode (decision 229). It
+ * is a static page holding no data and no actions.
+ */
+const PUBLIC_PATHS = ['/signin', '/api/auth', '/api/inngest', '/api/hooks/broker', '/privacy']
 
 export default auth((request) => {
   const { pathname } = request.nextUrl

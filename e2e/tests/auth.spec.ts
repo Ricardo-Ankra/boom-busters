@@ -15,6 +15,15 @@ test.describe('authentication', () => {
     }
   })
 
+  test('the privacy policy is public — Google reads it without a session', async ({ page }) => {
+    // The OAuth consent screen cannot leave Testing mode without a live
+    // privacy-policy URL (decision 229); a redirect to /signin here would
+    // put the 7-day refresh-token expiry back.
+    await page.goto('/privacy')
+    await expect(page).toHaveURL(/\/privacy$/)
+    await expect(page.getByRole('heading', { name: /privacy policy/i })).toBeVisible()
+  })
+
   test('the intended destination survives the sign-in round trip', async ({ page }) => {
     await page.goto('/settings')
     await expect(page).toHaveURL(/callbackUrl=%2Fsettings/)
