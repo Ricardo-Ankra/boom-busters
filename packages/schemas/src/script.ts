@@ -220,7 +220,18 @@ export type TeaserShotsRecord = z.infer<typeof TeaserShotsRecordSchema>
  * runner that dies mid-fetch leaves words on screen, never a dead spinner.
  */
 export const TeaserFetchStateSchema = z.union([
-  z.object({ state: z.literal('fetching'), what: z.enum(['stock', 'still', 'ingest']) }),
+  z.object({
+    state: z.literal('fetching'),
+    what: z.enum(['stock', 'still', 'ingest']),
+    /**
+     * When the request was made (ISO). The action refuses a second request
+     * for a beat still freshly fetching (decision 234), and this is what
+     * "freshly" reads: a fetch older than its cooldown may be asked again,
+     * so a runner that died without a trace cannot lock a beat forever.
+     * Optional because records written before decision 234 lack it.
+     */
+    startedAt: z.string().optional(),
+  }),
   z.object({
     state: z.literal('failed'),
     what: z.enum(['stock', 'still', 'ingest']),

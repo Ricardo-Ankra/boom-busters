@@ -147,6 +147,13 @@ export function budgetGateData(error: BudgetExceededError): Record<string, unkno
     budgetUsd: error.budgetUsd,
     monthSpendUsd: error.monthSpendUsd,
     estimateUsd: error.estimateUsd,
+    /**
+     * The words every consumer of this record falls back on. Without this,
+     * a runner that fails its stage on an overage notified "A run failed:
+     * Unknown error" — the one failure whose cause was known to the cent
+     * (audit, decision 234). The error already says it best.
+     */
+    message: error.message,
   }
 }
 
@@ -214,6 +221,34 @@ export async function markStageFailed(
   await notify({
     kind: 'run-failed',
     title: 'A run failed',
+    body: String(error['message'] ?? 'Unknown error'),
+    href: `/projects/${ctx.projectId}`,
+  })
+}
+
+/**
+ * A side job fails while the main run may be parked at an open review gate
+ * (decision 234, generalising decision 219). The retaker, the slot
+ * re-fetcher and the slot re-typer all run INSIDE a parked review: failing
+ * the STAGE there tears the review room down — the gate bar vanishes,
+ * approval becomes unreachable, and later successes never restore it. So
+ * while the review is parked, the failure is words (a notification, and
+ * whatever row-level state the caller wrote); only when the stage is NOT
+ * parked does it escalate to the stage, as a plain run failure would.
+ */
+export async function markSideJobFailed(
+  ctx: GateContext,
+  title: string,
+  error: Record<string, unknown>,
+): Promise<void> {
+  const project = await getProject(db, ctx.projectId)
+  if (project?.stageStatus !== 'awaiting_review') {
+    await markStageFailed(ctx, error)
+    return
+  }
+  await notify({
+    kind: 'run-failed',
+    title,
     body: String(error['message'] ?? 'Unknown error'),
     href: `/projects/${ctx.projectId}`,
   })

@@ -30,7 +30,7 @@ import { callLlm } from '@/lib/llm'
 import { requireVisualKeys, resolveSlotBrief } from '@/lib/visual-assets'
 import { inngest } from '../client'
 import { events } from '../events'
-import { budgetGateData, markStageFailed, type GateContext } from '../lib/gates'
+import { budgetGateData, markSideJobFailed, type GateContext } from '../lib/gates'
 
 /**
  * slot-retyper (staged-visuals design, 2026-08-26).
@@ -78,8 +78,11 @@ export const slotRetyper = inngest.createFunction(
       if (typeof slotId === 'string') {
         await setSlotRetype(db, slotId, null).catch(() => undefined)
       }
-      await markStageFailed(
+      // Words, not a stage failure: a re-type runs while the visuals gate is
+      // parked open, and the review room must survive it (decision 234).
+      await markSideJobFailed(
         { inngestRunId: '', functionId: FUNCTION_ID, projectId },
+        'The re-type failed',
         serialiseError(event.data.error),
       )
     },
@@ -169,7 +172,16 @@ export const slotRetyper = inngest.createFunction(
     })
 
     if ('gate' in converted && converted.gate) {
-      await step.run('retype-over-budget', () => markStageFailed(ctx, converted.gate))
+      await step.run('retype-over-budget', async () => {
+        // The card carries the refusal (the same channel a model refusal
+        // uses), and the failure stays off the parked stage (decision 234).
+        await setSlotRetype(db, slotId, {
+          state: 'refused',
+          target: targetType,
+          reason: String(converted.gate['message'] ?? 'Over budget'),
+        })
+        await markSideJobFailed(ctx, 'The re-type stopped', converted.gate)
+      })
       return { projectId, slotId, outcome: 'over-budget' as const }
     }
     if ('refused' in converted && converted.refused) {
@@ -203,7 +215,9 @@ export const slotRetyper = inngest.createFunction(
       })
 
       if ('overBudget' in outcome && outcome.overBudget) {
-        await step.run('resolve-over-budget', () => markStageFailed(ctx, outcome.overBudget))
+        await step.run('resolve-over-budget', () =>
+          markSideJobFailed(ctx, 'The re-typed slot could not be resolved', outcome.overBudget),
+        )
         return { projectId, slotId, outcome: 'over-budget' as const }
       }
     }

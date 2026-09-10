@@ -10,7 +10,7 @@ import { db } from '@/lib/db'
 import { requireVisualKeys, resolveSlotBrief } from '@/lib/visual-assets'
 import { inngest } from '../client'
 import { events } from '../events'
-import { budgetGateData, markStageFailed, type GateContext } from '../lib/gates'
+import { budgetGateData, markSideJobFailed, type GateContext } from '../lib/gates'
 
 /**
  * slot-refetcher (build spec section 11.3, Visual board).
@@ -46,8 +46,12 @@ export const slotRefetcher = inngest.createFunction(
     onFailure: async ({ event }) => {
       const projectId = event.data.event.data['projectId']
       if (typeof projectId !== 'string') return
-      await markStageFailed(
+      // A re-fetch runs while the visuals gate is parked open. Its failure
+      // belongs to words, never to the stage the human is mid-reviewing
+      // (decision 234): the slot keeps its old candidates either way.
+      await markSideJobFailed(
         { inngestRunId: '', functionId: FUNCTION_ID, projectId },
+        'The slot re-fetch failed',
         serialiseError(event.data.error),
       )
     },
@@ -79,7 +83,9 @@ export const slotRefetcher = inngest.createFunction(
     })
 
     if ('overBudget' in outcome && outcome.overBudget) {
-      await step.run('refetch-over-budget', () => markStageFailed(ctx, outcome.overBudget))
+      await step.run('refetch-over-budget', () =>
+        markSideJobFailed(ctx, 'The slot re-fetch stopped', outcome.overBudget),
+      )
       return { projectId, slotId, outcome: 'over-budget' as const }
     }
 

@@ -21,7 +21,7 @@ import { synthesise } from '@/lib/tts'
 import { voiceKeyFacts } from '@/lib/voice-identity'
 import { inngest } from '../client'
 import { events } from '../events'
-import { budgetGateData, markRetakeFailed, markStageFailed, type GateContext } from '../lib/gates'
+import { budgetGateData, markRetakeFailed, type GateContext } from '../lib/gates'
 
 /**
  * voice-retaker (build spec section 7.3).
@@ -199,7 +199,10 @@ export const voiceRetaker = inngest.createFunction(
     })
 
     if ('overBudget' in retake && retake.overBudget) {
-      await step.run('retake-over-budget', () => markStageFailed(ctx, retake.overBudget))
+      // markRetakeFailed, not markStageFailed: the gate is almost certainly
+      // parked open around this retake, and an over-budget refusal must not
+      // tear the review room down (decisions 219 and 234).
+      await step.run('retake-over-budget', () => markRetakeFailed(ctx, takeId, retake.overBudget))
       return { projectId, takeId, outcome: 'over-budget' as const }
     }
 

@@ -29,6 +29,7 @@ import {
   closeReviewGate,
   grantOverage,
   markRetakeFailed,
+  markSideJobFailed,
   markStageFailed,
   openBudgetGate,
   openReviewGate,
@@ -312,6 +313,54 @@ describeDb('gate helpers', () => {
       await markRetakeFailed(context(), takeId, { message: 'storage is gone' })
 
       expect((await getProject(db, FIXTURE_PROJECT_ID))?.stageStatus).toBe('failed')
+    })
+  })
+
+  /**
+   * Decision 234, the same rule for every side job: the slot re-fetcher and
+   * re-typer also run inside a parked visuals review, and their failures must
+   * not tear it down either.
+   */
+  describe('markSideJobFailed', () => {
+    it('leaves the open review room alone', async () => {
+      await setProjectStage(db, FIXTURE_PROJECT_ID, {
+        stage: 'visuals',
+        stageStatus: 'awaiting_review',
+      })
+
+      await markSideJobFailed(context(), 'The slot re-fetch stopped', {
+        message: 'pexels rejected the API key (401).',
+      })
+
+      expect((await getProject(db, FIXTURE_PROJECT_ID))?.stageStatus).toBe('awaiting_review')
+    })
+
+    it('escalates to the stage when no review room is open', async () => {
+      await setProjectStage(db, FIXTURE_PROJECT_ID, { stage: 'visuals', stageStatus: 'running' })
+
+      await markSideJobFailed(context(), 'The slot re-fetch stopped', {
+        message: 'storage is gone',
+      })
+
+      expect((await getProject(db, FIXTURE_PROJECT_ID))?.stageStatus).toBe('failed')
+    })
+  })
+
+  describe('budgetGateData', () => {
+    it('carries the failure in words, to the cent', () => {
+      const data = budgetGateData(
+        new BudgetExceededError({
+          provider: 'pexels',
+          operation: 'stock-search',
+          budgetUsd: 30,
+          monthSpendUsd: 29.5,
+          estimateUsd: 1.2345,
+        }),
+      )
+      expect(String(data['message'])).toBe(
+        'The monthly spend ceiling would be crossed by pexels stock-search: ' +
+          '$29.50 spent + $1.2345 estimated > $30.00 ceiling.',
+      )
     })
   })
 })

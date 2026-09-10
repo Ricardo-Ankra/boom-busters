@@ -1,6 +1,12 @@
 'use server'
 
-import { insertTimeline, latestTimeline, listMusicBeds, setTimelineKey } from '@boom-busters/db'
+import {
+  insertTimeline,
+  latestRender,
+  latestTimeline,
+  listMusicBeds,
+  setTimelineKey,
+} from '@boom-busters/db'
 import { TimelineSchema, UlidSchema } from '@boom-busters/schemas'
 import { swapMusicBed } from '@boom-busters/timeline'
 import { revalidatePath } from 'next/cache'
@@ -95,6 +101,14 @@ export async function requestDraftRender(projectId: string): Promise<ActionResul
   const row = await latestTimeline(db, projectId)
   if (!row) {
     return { ok: false, error: 'There is no compiled timeline yet — run the assembly stage.' }
+  }
+
+  // One draft at a time (decision 234): a second request while the bar is
+  // moving would spend again on the same cut. The runner's singleton covers
+  // the seconds before its row exists.
+  const draft = await latestRender(db, projectId, 'draft')
+  if (draft && ['queued', 'invoking', 'rendering', 'qc'].includes(draft.status)) {
+    return { ok: false, error: 'A draft is already rendering. The bar updates as it moves.' }
   }
 
   try {

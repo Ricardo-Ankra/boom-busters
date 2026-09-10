@@ -1,6 +1,6 @@
 'use server'
 
-import { getShort, latestTimeline, updateShort } from '@boom-busters/db'
+import { getRender, getShort, latestTimeline, updateShort } from '@boom-busters/db'
 import {
   teaserTextHash,
   TeaserFetchesRecordSchema,
@@ -39,6 +39,14 @@ export interface ActionResult {
   error?: string
 }
 
+/**
+ * How long a beat's `fetching` state refuses a second request (decision 234).
+ * Long enough to outlive the runner's retries on a slow provider; short
+ * enough that a runner that vanished without writing its failure cannot lock
+ * the beat for good.
+ */
+const TEASER_FETCH_COOLDOWN_MS = 10 * 60 * 1000
+
 async function requireOwner(): Promise<void> {
   const session = await auth()
   if (!session?.user?.email) throw new Error('Not signed in')
@@ -47,6 +55,19 @@ async function requireOwner(): Promise<void> {
 async function loadShort(shortId: string) {
   if (!UlidSchema.safeParse(shortId).success) return undefined
   return getShort(db, shortId)
+}
+
+/**
+ * Whether the card's current render is still moving (decision 234). The
+ * runner points `renderId` at its row the moment one is queued, so this is
+ * the truth a re-render or re-assemble must check before spending again;
+ * the runner's singleton covers the seconds before that pointer lands.
+ */
+async function renderStillMoving(short: { renderId: string | null }): Promise<boolean> {
+  if (!short.renderId) return false
+  const render = await getRender(db, short.renderId)
+  if (!render) return false
+  return ['queued', 'invoking', 'rendering', 'qc'].includes(render.status)
 }
 
 export async function updateShortDetails(
@@ -213,6 +234,12 @@ export async function assembleTeaser(shortId: string): Promise<ActionResult> {
   if (!short) return { ok: false, error: 'Unknown Short' }
   if (short.kind !== 'teaser') return { ok: false, error: 'Only a teaser assembles here.' }
 
+  // Re-assembling while the current cut renders would null the pointer the
+  // card is tracking and queue a second spend (decision 234).
+  if (await renderStillMoving(short)) {
+    return { ok: false, error: 'This teaser is already rendering. The card updates as it moves.' }
+  }
+
   const script = TeaserScriptRecordSchema.safeParse(short.teaserScript)
   if (!script.success) {
     return {
@@ -318,7 +345,26 @@ async function requestTeaserFetch(
   const beats = parsed.success ? [...parsed.data.beats] : []
   while (beats.length <= beatIndex) beats.push(null)
   const stored = beats[beatIndex] ?? { state: null, candidates: [] }
-  const state: TeaserFetchState = { state: 'fetching', what: op.op }
+
+  // One request per beat at a time (decision 234). A beat already fetching
+  // refuses a second ask rather than double-spending or double-writing; the
+  // cooldown is the escape hatch for a runner that died without a trace,
+  // since a record with no timestamp predates the guard and may retry.
+  if (stored.state?.state === 'fetching') {
+    const startedAt = stored.state.startedAt ? Date.parse(stored.state.startedAt) : Number.NaN
+    if (Number.isFinite(startedAt) && Date.now() - startedAt < TEASER_FETCH_COOLDOWN_MS) {
+      return {
+        ok: false,
+        error: `Beat ${beatIndex + 1} is already fetching. Its results land in a moment.`,
+      }
+    }
+  }
+
+  const state: TeaserFetchState = {
+    state: 'fetching',
+    what: op.op,
+    startedAt: new Date().toISOString(),
+  }
   beats[beatIndex] = { ...stored, state }
   const record: TeaserFetchesRecord = { beats }
   await updateShort(db, shortId, {
@@ -403,6 +449,10 @@ export async function requestShortRender(shortId: string): Promise<ActionResult>
   await requireOwner()
   const short = await loadShort(shortId)
   if (!short) return { ok: false, error: 'Unknown Short' }
+
+  if (await renderStillMoving(short)) {
+    return { ok: false, error: 'This Short is already rendering. The card updates as it moves.' }
+  }
 
   try {
     await inngest.send(events.shortsRenderRequested.create({ projectId: short.projectId, shortId }))
