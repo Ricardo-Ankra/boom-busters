@@ -1,5 +1,6 @@
 import { analyticsRunner } from './analytics-runner'
 import { assemblyRunner } from './assembly-runner'
+import { cancellationMirror } from './cancellation-mirror'
 import { cancelReconciler } from './cancel-reconciler'
 import { dossierReviser } from './dossier-reviser'
 import { dossierRunner } from './dossier-runner'
@@ -42,6 +43,7 @@ import { voiceRunner } from './voice-runner'
  */
 export const functions = [
   analyticsRunner,
+  cancellationMirror,
   cancelReconciler,
   dossierRunner,
   dossierReviser,
@@ -67,6 +69,7 @@ export const functions = [
 export {
   analyticsRunner,
   assemblyRunner,
+  cancellationMirror,
   cancelReconciler,
   draftRunner,
   publishRunner,

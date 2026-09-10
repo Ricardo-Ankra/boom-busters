@@ -38,11 +38,14 @@ const SINGLETONS: Record<string, { key: string; mode: 'skip' } | null> = {
   //   `concurrency: [{ limit: 1 }]` queues the manual refresh instead.
   // - cancel-reconciler is idempotent, and a skipped second sweep could miss
   //   runs that started between the two cancels.
+  // - cancellation-mirror is idempotent for the same reason, and every
+  //   cancellation deserves its own pass.
   // - teaser-shot-fetcher works per beat, and two beats of the same Short
   //   fetching at once is a feature; the action refuses per-beat duplicates
   //   against the stored fetch state instead.
   'analytics-runner': null,
   'cancel-reconciler': null,
+  'cancellation-mirror': null,
   'teaser-shot-fetcher': null,
 }
 
