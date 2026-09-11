@@ -38,6 +38,11 @@ export function CalendarWeek({ days, todayIso }: { days: CalendarDay[]; todayIso
         return (
           <section
             key={day.dayIso}
+            // The same UTC-on-the-server, local-in-the-browser split the
+            // heading and times already declare; this label was the one
+            // locale-formatted string without it, and it put the dev
+            // overlay's "1 Issue" on every calendar visit.
+            suppressHydrationWarning
             aria-label={new Date(day.dayIso).toLocaleDateString(undefined, {
               weekday: 'long',
               day: 'numeric',
