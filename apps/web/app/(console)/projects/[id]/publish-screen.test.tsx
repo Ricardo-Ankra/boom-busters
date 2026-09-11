@@ -328,7 +328,13 @@ describe('PublishScreen', () => {
     const { container } = renderScreen({ items: [shortItem()] })
 
     expect(screen.getByTestId('thumb-dropzone')).toBeInTheDocument()
-    expect(screen.getByText(/optional for a Short/i)).toBeInTheDocument()
+    const hint = screen.getByText(/optional for a Short/i)
+    expect(hint).toBeInTheDocument()
+    // A Short's thumbnail is vertical. Quoting the master's 16:9 floor at it
+    // refused the correct Canva export (decision 251).
+    expect(hint.textContent).toMatch(/9:16/)
+    expect(hint.textContent).toMatch(/1080×1920/)
+    expect(hint.textContent).not.toMatch(/1280×720/)
 
     const input = container.querySelector('input[type="file"]') as HTMLInputElement
     await user.upload(input, new File(['png bytes'], 'thumb.png', { type: 'image/png' }))

@@ -3938,6 +3938,38 @@ pressed }`: a ref guards the call so a double-click fires the server
      summary row carries no claim or flag counts; a join is the price), and
      the Music tab leading with its add form.
 
+251. **A Short's thumbnail is vertical** (2026-09-11, owner report: the
+     dropzone refused a Canva Shorts export with "YouTube wants at least
+     1280×720"). It was the app's rule, not YouTube's, and it was the wrong
+     one. YouTube documents two shapes: a long-form thumbnail is 16:9 with a
+     minimum WIDTH of 640px, a Short's is 9:16 with a minimum HEIGHT of
+     640px. Decision 232 extended the dropzone to Shorts and inherited the
+     master's 1280×720 check, which neither side branched on `targetType`
+     even though the action already resolved it, so 1080×1920 (the Canva
+     Shorts preset, and legal by YouTube's rule at 1920 high) was refused for
+     being 1080 wide. Worse than refusing a good file: YouTube replaces a
+     16:9 thumbnail on a vertical video with an auto-generated 4:5 crop on
+     some surfaces, so the old rule steered the owner toward an asset that
+     would partly be discarded. `lib/thumbnail-rules.ts` now holds one rule
+     per target (master 1280×720 16:9, short 720×1280 9:16 with 1080×1920
+     recommended) plus the refusal wording and the dropzone hint, imported by
+     both the client and the `'use server'` action — which is legal, since
+     only EXPORTS must be async, and it ends the duplicated literals the old
+     comment apologised for. Because each floor names both dimensions, the
+     pair rejects the wrong ORIENTATION with no separate ratio check: a
+     landscape PNG fails a Short's height, a portrait one fails a master's
+     width. The floors are the app's own (a quarter of YouTube's recommended
+     resolution in each orientation, the posture the master rule always had)
+     and the message no longer attributes them to YouTube. Audited and left
+     alone: the 2 MB ceiling is right for this app because the Data API caps
+     `thumbnails.set` at 2 MB whatever Studio's web uploader allows, and
+     PNG-only is an app choice for the Canva workflow though YouTube also
+     takes JPEG. Unverified and worth one real upload: YouTube's help page
+     says custom thumbnails for Shorts can currently only be added in Studio
+     on a computer, while the API reference documents no such restriction and
+     the publish runner sets thumbnails through `thumbnails.set` for both
+     types.
+
 **Status:** `[x]` done — dossier + Studio shipped with unit, component and
 e2e coverage; spec §11.3 amended in place with dated notes.
 

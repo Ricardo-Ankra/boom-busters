@@ -36,6 +36,7 @@ import { movePublishAt, refreshAccessToken, YoutubeAuthError } from '@/lib/youtu
 import { callLlm } from '@/lib/llm'
 import { descriptionIngredients } from '@/lib/publish-review'
 import { deleteObject, putObject, R2_PREFIX, storageConfigured } from '@/lib/storage'
+import { THUMB_LIMIT, THUMB_MAX_BYTES, thumbnailDimensionError } from '@/lib/thumbnail-rules'
 import { inngest } from '@/inngest/client'
 import { events } from '@/inngest/events'
 
@@ -203,12 +204,10 @@ export async function generateTitles(targetType: string, targetId: string): Prom
 // show the thumbnail, so the owner may set one; nothing gates on it.
 // ---------------------------------------------------------------------------
 
-// A 'use server' module may only export async functions, so the limits the
-// client shares live as literals on both sides; the server's are the law.
-const THUMB_MAX_BYTES = 2 * 1024 * 1024
-const THUMB_MIN_WIDTH = 1280
-const THUMB_MIN_HEIGHT = 720
-const THUMB_LIMIT = 3
+// The rule itself lives in `lib/thumbnail-rules.ts`, which the dropzone
+// imports too: a 'use server' module may only EXPORT async functions, but it
+// may import whatever it likes, so the two sides no longer keep their own
+// copies of the numbers (decision 251).
 
 /** PNG IHDR: signature, then the first chunk is always IHDR — width and
  *  height are big-endian at fixed offsets. No image library needed. */
@@ -241,14 +240,10 @@ export async function uploadThumbnail(formData: FormData): Promise<ActionResult>
   if (!dimensions) {
     return { ok: false, error: 'Only PNG files can be dropped here — export one from Canva.' }
   }
-  if (dimensions.width < THUMB_MIN_WIDTH || dimensions.height < THUMB_MIN_HEIGHT) {
-    return {
-      ok: false,
-      error:
-        `That PNG is ${dimensions.width}×${dimensions.height}; YouTube wants at least ` +
-        `${THUMB_MIN_WIDTH}×${THUMB_MIN_HEIGHT}.`,
-    }
-  }
+  // Per target type: a Short's thumbnail is vertical, and enforcing the
+  // master's 16:9 floor on one refused the correct file (decision 251).
+  const tooSmall = thumbnailDimensionError(type, dimensions)
+  if (tooSmall) return { ok: false, error: tooSmall }
 
   if (!storageConfigured()) {
     return { ok: false, error: 'Uploads need R2 configured — there is nowhere to store the PNG.' }

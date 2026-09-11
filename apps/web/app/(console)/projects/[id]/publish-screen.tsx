@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import type { PublishItemModel, PublishModel } from '@/lib/publish-review'
+import { THUMB_MAX_BYTES, thumbnailDimensionError, thumbnailHint } from '@/lib/thumbnail-rules'
 import {
   PUBLISH_STATUS_LABELS,
   PUBLISH_STATUS_TONES,
@@ -46,11 +47,8 @@ import { useAction } from './project-controls'
 
 const DAYS_SHOWN = 14
 
-/** Client-side mirror of the server limits; the action re-checks all three. */
-const THUMB_MAX_BYTES = 2 * 1024 * 1024
-const THUMB_MIN_WIDTH = 1280
-const THUMB_MIN_HEIGHT = 720
-const THUMB_LIMIT = 3
+// Thumbnail limits and copy come from `lib/thumbnail-rules.ts`, shared with
+// the server action; the action re-checks everything (decision 251).
 
 interface SlotInstance {
   iso: string
@@ -644,8 +642,9 @@ function ItemEditor({
         const bitmap = await createImageBitmap(file)
         const { width, height } = bitmap
         bitmap.close()
-        if (width < THUMB_MIN_WIDTH || height < THUMB_MIN_HEIGHT) {
-          setThumbError(`That PNG is ${width}×${height}; YouTube wants at least 1280×720.`)
+        const tooSmall = thumbnailDimensionError(item.targetType, { width, height })
+        if (tooSmall) {
+          setThumbError(tooSmall)
           return
         }
       } catch {
@@ -786,9 +785,7 @@ function ItemEditor({
               2026-09-10). */}
           <div className="flex flex-col gap-2">
             <span className="text-[12px] text-[var(--color-text-secondary)]">
-              {item.targetType === 'master'
-                ? `Thumbnail — export from Canva, drop up to ${THUMB_LIMIT} PNGs (1280×720+, ≤2 MB). Masters need one before upload.`
-                : `Thumbnail — optional for a Short: the feed plays the video itself, but search and channel pages show it. Up to ${THUMB_LIMIT} PNGs (1280×720+, ≤2 MB).`}
+              {thumbnailHint(item.targetType)}
             </span>
             <div
               data-testid="thumb-dropzone"
