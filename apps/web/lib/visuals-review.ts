@@ -1,23 +1,30 @@
 import {
+  getProject,
   latestScriptParagraphSources,
   listShotSlots,
   listVoiceTakes,
   slotNeedsResolution,
 } from '@boom-busters/db'
 import type { Database } from '@boom-busters/db'
+import { BANNED_PROMPT_WORDS } from '@boom-busters/providers'
 import {
   CANDIDATES_SHOWN,
+  DirectorsBookSchema,
   latestTakes,
+  planWarnings,
   ShotBriefSchema,
   SlotCandidateSchema,
+  SlotRefusalSchema,
   SlotRetypeStateSchema,
   visualsApprovalBlockedReason,
   visualsCoverage,
 } from '@boom-busters/schemas'
 import type {
+  DirectorsBook,
   ShotBrief,
   ShotSlotStatus,
   SlotCandidate,
+  SlotRefusal,
   SlotRetypeState,
   VisualsCoverage,
 } from '@boom-busters/schemas'
@@ -62,6 +69,8 @@ export interface SlotView {
    * for mechanical conversions: those finish inside the button press.
    */
   retype: SlotRetypeState | null
+  /** An image model declined this slot's prompt (decision 252). */
+  refusal: SlotRefusal | null
 }
 
 export interface ChapterSlots {
@@ -103,6 +112,10 @@ export interface VisualsReviewModel {
   stillsToFetch: number
   /** What "Fetch visuals" will spend, in USD. Stills are the whole bill. */
   fetchEstimateUsd: number
+  /** The Director's Book (decision 252), null before the visuals stage drafts one. */
+  direction: DirectorsBook | null
+  /** Craft notes from `planWarnings`, in screen order. */
+  warnings: string[]
 }
 
 /**
@@ -122,6 +135,8 @@ export function emptyVisualsModel(): VisualsReviewModel {
     toFetch: 0,
     stillsToFetch: 0,
     fetchEstimateUsd: 0,
+    direction: null,
+    warnings: [],
   }
 }
 
@@ -138,10 +153,11 @@ export async function visualsReviewModel(
   projectId: string,
   options: { phase?: 'plan' | 'board' | null } = {},
 ): Promise<VisualsReviewModel> {
-  const [rows, sources, takes] = await Promise.all([
+  const [rows, sources, takes, project] = await Promise.all([
     listShotSlots(db, projectId),
     latestScriptParagraphSources(db, projectId),
     listVoiceTakes(db, projectId),
+    getProject(db, projectId),
   ])
 
   const slots: SlotView[] = rows.map((row) => {
@@ -171,6 +187,10 @@ export async function visualsReviewModel(
       needsFetch: slotNeedsResolution(row),
       retype: ((): SlotRetypeState | null => {
         const state = SlotRetypeStateSchema.safeParse(row.retype)
+        return state.success ? state.data : null
+      })(),
+      refusal: ((): SlotRefusal | null => {
+        const state = SlotRefusalSchema.safeParse(row.refusal)
         return state.success ? state.data : null
       })(),
     }
@@ -226,5 +246,14 @@ export async function visualsReviewModel(
     toFetch: toFetch.length,
     stillsToFetch,
     fetchEstimateUsd: stillsToFetch > 0 ? stillsToFetch * (await stillSlotEstimateUsd()) : 0,
+    direction: ((): DirectorsBook | null => {
+      const parsed = DirectorsBookSchema.safeParse(project?.direction)
+      return parsed.success ? parsed.data : null
+    })(),
+    // Craft notes (decision 252), in screen order; never a blocker.
+    warnings: planWarnings(
+      slots.flatMap((slot) => (slot.brief ? [{ brief: slot.brief }] : [])),
+      BANNED_PROMPT_WORDS,
+    ),
   }
 }

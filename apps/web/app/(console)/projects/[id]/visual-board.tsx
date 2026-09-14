@@ -32,6 +32,7 @@ import {
   retypeSlotAction,
   type ActionResult,
 } from './visuals-actions'
+import { DirectionCard } from './direction-card'
 import { ChartErrorCard, ChartPreview, MapPreview, type BrandChartColors } from './slot-previews'
 
 /**
@@ -200,47 +201,67 @@ export function VisualBoard({
       {/* The plan checkpoint (staged-visuals design): the one spend button   */}
       {/* ------------------------------------------------------------------ */}
       {model.phase === 'plan' ? (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-[14px]">Shot plan</CardTitle>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-3">
-            <p className="text-[13px] text-[var(--color-text-secondary)]">
-              Nothing has been fetched or generated yet. Edit any brief, change a slot&apos;s
-              format, or fetch a single slot to try it; when the plan reads right, fetch the lot.
-              Slots already fetched for their current brief are never bought twice.
-            </p>
-            <div className="flex flex-wrap items-center gap-2">
-              <ConfirmButton
-                variant="primary"
-                confirmVariant="primary"
-                label={
-                  <>
-                    Fetch visuals · {model.toFetch} slot{model.toFetch === 1 ? '' : 's'} · est. $
-                    {model.fetchEstimateUsd.toFixed(2)}
-                  </>
-                }
-                confirmLabel="Fetch now"
-                consequence={
-                  model.stillsToFetch > 0
-                    ? `Fetches stock, chart and map candidates (free) and generates ` +
-                      `${model.stillsToFetch} AI image${model.stillsToFetch === 1 ? '' : 's'} at ` +
-                      `est. $${model.fetchEstimateUsd.toFixed(2)}. Real-footage slots wait for ` +
-                      `your uploads. The board review follows.`
-                    : 'Fetches stock, chart and map candidates — all free. Real-footage slots ' +
-                      'wait for your uploads. The board review follows.'
-                }
-                onConfirm={() =>
-                  act(
-                    'plan',
-                    () => approvePlanAction(projectId),
-                    'Fetching — the board fills in as candidates land',
-                  )
-                }
-              />
-            </div>
-          </CardContent>
-        </Card>
+        <>
+          {/* The Director's Book (decision 252): edited above the plan it shapes. */}
+          <DirectionCard
+            projectId={projectId}
+            direction={model.direction}
+            slotsFetched={model.coverage.resolved}
+            busy={busySlot !== null && busySlot.startsWith('direction-')}
+            act={act}
+          />
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-[14px]">Shot plan</CardTitle>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-3">
+              <p className="text-[13px] text-[var(--color-text-secondary)]">
+                Nothing has been fetched or generated yet. Edit any brief, change a slot&apos;s
+                format, or fetch a single slot to try it; when the plan reads right, fetch the lot.
+                Slots already fetched for their current brief are never bought twice.
+              </p>
+              {model.warnings.length > 0 ? (
+                <ul
+                  className="list-disc pl-5 text-[12px] text-[var(--color-warning)]"
+                  aria-label="Craft notes"
+                >
+                  {model.warnings.map((warning) => (
+                    <li key={warning}>{warning}</li>
+                  ))}
+                </ul>
+              ) : null}
+              <div className="flex flex-wrap items-center gap-2">
+                <ConfirmButton
+                  variant="primary"
+                  confirmVariant="primary"
+                  label={
+                    <>
+                      Fetch visuals · {model.toFetch} slot{model.toFetch === 1 ? '' : 's'} · est. $
+                      {model.fetchEstimateUsd.toFixed(2)}
+                    </>
+                  }
+                  confirmLabel="Fetch now"
+                  consequence={
+                    model.stillsToFetch > 0
+                      ? `Fetches stock, chart and map candidates (free) and generates ` +
+                        `${model.stillsToFetch} AI image${model.stillsToFetch === 1 ? '' : 's'} at ` +
+                        `est. $${model.fetchEstimateUsd.toFixed(2)}. Real-footage slots wait for ` +
+                        `your uploads. The board review follows.`
+                      : 'Fetches stock, chart and map candidates — all free. Real-footage slots ' +
+                        'wait for your uploads. The board review follows.'
+                  }
+                  onConfirm={() =>
+                    act(
+                      'plan',
+                      () => approvePlanAction(projectId),
+                      'Fetching — the board fills in as candidates land',
+                    )
+                  }
+                />
+              </div>
+            </CardContent>
+          </Card>
+        </>
       ) : null}
 
       {/* ------------------------------------------------------------------ */}

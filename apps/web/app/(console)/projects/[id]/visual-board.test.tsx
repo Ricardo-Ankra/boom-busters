@@ -13,6 +13,9 @@ const finaliseOwnUploadAction = vi.fn()
 const approvePlanAction = vi.fn()
 const retypeSlotAction = vi.fn()
 const dismissRetypeAction = vi.fn()
+const saveDirectionAction = vi.fn()
+const redraftDirectionAction = vi.fn()
+const replanShotsAction = vi.fn()
 
 vi.mock('./visuals-actions', () => ({
   chooseCandidateAction: (...args: unknown[]) => chooseCandidateAction(...args),
@@ -23,6 +26,9 @@ vi.mock('./visuals-actions', () => ({
   approvePlanAction: (...args: unknown[]) => approvePlanAction(...args),
   retypeSlotAction: (...args: unknown[]) => retypeSlotAction(...args),
   dismissRetypeAction: (...args: unknown[]) => dismissRetypeAction(...args),
+  saveDirectionAction: (...args: unknown[]) => saveDirectionAction(...args),
+  redraftDirectionAction: (...args: unknown[]) => redraftDirectionAction(...args),
+  replanShotsAction: (...args: unknown[]) => replanShotsAction(...args),
 }))
 
 const refresh = vi.fn()
@@ -99,6 +105,7 @@ const stockSlot: SlotView = {
   extraCandidates: 3,
   needsFetch: false,
   retype: null,
+  refusal: null,
 }
 
 const chartSlot: SlotView = {
@@ -135,6 +142,7 @@ const chartSlot: SlotView = {
   extraCandidates: 0,
   needsFetch: false,
   retype: null,
+  refusal: null,
 }
 
 const brokenSlot: SlotView = {
@@ -151,6 +159,7 @@ const brokenSlot: SlotView = {
   extraCandidates: 0,
   needsFetch: true,
   retype: null,
+  refusal: null,
 }
 
 function model(slots: SlotView[], overrides: Partial<VisualsReviewModel> = {}): VisualsReviewModel {
@@ -181,6 +190,8 @@ function model(slots: SlotView[], overrides: Partial<VisualsReviewModel> = {}): 
     toFetch: slots.filter((slot) => slot.needsFetch).length,
     stillsToFetch: slots.filter((slot) => slot.needsFetch && slot.type === 'still').length,
     fetchEstimateUsd: 0,
+    direction: null,
+    warnings: [],
     ...overrides,
   }
 }
