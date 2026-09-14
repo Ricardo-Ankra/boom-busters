@@ -7,6 +7,7 @@ import {
   replaceShotList,
   scriptableClaims,
   setProjectStage,
+  setSlotRefusal,
   setSlotResolution,
   setVisualsPhase,
   shotBriefHash,
@@ -18,6 +19,7 @@ import { BANNED_PROMPT_WORDS, stillStyleAnchors } from '@boom-busters/providers'
 import type { ScriptClaim } from '@boom-busters/providers'
 import {
   BudgetExceededError,
+  ContentPolicyError,
   parseEventData,
   planWarnings,
   serialiseError,
@@ -301,6 +303,17 @@ export const visualsRunner = inngest.createFunction(
             } catch (error) {
               if (error instanceof BudgetExceededError) {
                 return { ok: false, gate: budgetGateData(error) }
+              }
+              if (error instanceof ContentPolicyError) {
+                // The image model declined the prompt (decision 252): a
+                // placeholder with the refusal ON THE ROW, so the card can
+                // offer the two ways out instead of a generic "nothing found".
+                await setSlotResolution(db, slot.id, { candidates: [], status: 'placeholder' })
+                await setSlotRefusal(db, slot.id, {
+                  reason: error.message,
+                  at: new Date().toISOString(),
+                })
+                return { ok: false, error: error.message }
               }
               /**
                * Swallowed for the same reason the voice fan-out swallows: the

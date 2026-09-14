@@ -29,6 +29,7 @@ const SINGLETONS: Record<string, { key: string; mode: 'skip' } | null> = {
   'voice-retaker': { key: 'event.data.takeId', mode: 'skip' },
   'slot-refetcher': { key: 'event.data.slotId', mode: 'skip' },
   'slot-retyper': { key: 'event.data.slotId', mode: 'skip' },
+  'slot-redirector': { key: 'event.data.slotId', mode: 'skip' },
   'visuals-replanner': { key: 'event.data.projectId', mode: 'skip' },
   'short-render-runner': { key: 'event.data.shortId', mode: 'skip' },
   'teaser-rebuild-runner': { key: 'event.data.shortId', mode: 'skip' },

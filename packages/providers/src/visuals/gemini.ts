@@ -1,3 +1,4 @@
+import { ContentPolicyError } from '@boom-busters/schemas'
 import { z } from 'zod'
 import { mapNetworkError, throwForResponse } from '../llm/http'
 import { imageGenModel } from './types'
@@ -52,6 +53,9 @@ const WIDTH = 1344
 const HEIGHT = 768
 
 const ResponseSchema = z.object({
+  // Optional, not min(1): a blocked prompt comes back with no candidates at
+  // all and a `promptFeedback.blockReason`, and that is a refusal to report,
+  // not a malformed reply to crash on (decision 252).
   candidates: z
     .array(
       z.object({
@@ -66,7 +70,8 @@ const ResponseSchema = z.object({
           .optional(),
       }),
     )
-    .min(1),
+    .optional(),
+  promptFeedback: z.object({ blockReason: z.string().optional() }).optional(),
 })
 
 export const geminiImageGen: ImageGenProvider = {
@@ -108,14 +113,18 @@ export const geminiImageGen: ImageGenProvider = {
       if (!response.ok) await throwForResponse('google', response)
 
       const parsed = ResponseSchema.parse(await response.json())
-      const image = parsed.candidates
+      const image = (parsed.candidates ?? [])
         .flatMap((candidate) => candidate.content?.parts ?? [])
         .find((part) => part.inlineData)?.inlineData
       if (!image) {
-        // A 200 with no image part means the model answered in prose —
-        // usually a safety refusal. Thrown rather than skipped so the slot
-        // fails loudly instead of quietly generating fewer variants.
-        throw new Error(`Gemini returned no image for this prompt (model ${model.id})`)
+        // A 200 with no image part is the model answering in prose, or a
+        // blocked prompt: a policy refusal either way, and a human's problem
+        // (decision 252), never a retry. Thrown rather than skipped so the
+        // slot fails loudly instead of quietly generating fewer variants.
+        const reason = parsed.promptFeedback?.blockReason
+          ? `blocked the prompt (${parsed.promptFeedback.blockReason})`
+          : 'returned no image for this prompt'
+        throw new ContentPolicyError('google', `${reason} (model ${model.id})`)
       }
 
       return {

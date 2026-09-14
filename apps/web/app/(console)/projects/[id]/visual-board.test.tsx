@@ -16,6 +16,7 @@ const dismissRetypeAction = vi.fn()
 const saveDirectionAction = vi.fn()
 const redraftDirectionAction = vi.fn()
 const replanShotsAction = vi.fn()
+const redirectSceneAction = vi.fn()
 
 vi.mock('./visuals-actions', () => ({
   chooseCandidateAction: (...args: unknown[]) => chooseCandidateAction(...args),
@@ -29,6 +30,7 @@ vi.mock('./visuals-actions', () => ({
   saveDirectionAction: (...args: unknown[]) => saveDirectionAction(...args),
   redraftDirectionAction: (...args: unknown[]) => redraftDirectionAction(...args),
   replanShotsAction: (...args: unknown[]) => replanShotsAction(...args),
+  redirectSceneAction: (...args: unknown[]) => redirectSceneAction(...args),
 }))
 
 const refresh = vi.fn()
@@ -515,5 +517,42 @@ describe('the plan phase (staged-visuals design)', () => {
 
     await userEvent.click(within(alert).getByRole('button', { name: 'Dismiss' }))
     expect(dismissRetypeAction).toHaveBeenCalledWith(PROJECT, SLOT_A)
+  })
+})
+
+describe('a refused still (decision 252)', () => {
+  const refused: SlotView = {
+    ...stockSlot,
+    id: SLOT_C,
+    type: 'still',
+    status: 'placeholder',
+    candidates: [],
+    extraCandidates: 0,
+    needsFetch: true,
+    brief: {
+      type: 'still',
+      coversText: 'Braun took the stage.',
+      description: 'The chief executive at the results presentation.',
+      motion: { kind: 'static' },
+      transition: 'cut',
+      prompt: 'Markus Braun at a podium.',
+      depicts: ['Markus Braun'],
+    },
+    refusal: { reason: 'google: blocked the prompt (SAFETY)', at: '2026-09-14T00:00:00.000Z' },
+  }
+
+  it('offers Redirect the scene and Upload a real image, with the depiction brief', async () => {
+    redirectSceneAction.mockResolvedValue({ ok: true })
+    render(<VisualBoard projectId={PROJECT} model={model([refused])} colors={COLORS} />)
+
+    const card = screen.getByRole('group', { name: 'Refused by the image model' })
+    expect(within(card).getByText(/declined this person: google: blocked/)).toBeInTheDocument()
+    expect(within(card).getByText(/Showing Markus Braun\./)).toBeInTheDocument()
+    expect(within(card).getByRole('button', { name: /Upload/ })).toBeInTheDocument()
+    // The generic "nothing usable" line yields to the refusal.
+    expect(screen.queryByText(/Nothing usable was found/)).toBeNull()
+
+    await userEvent.click(within(card).getByRole('button', { name: /Redirect the scene/ }))
+    expect(redirectSceneAction).toHaveBeenCalledWith(PROJECT, SLOT_C)
   })
 })

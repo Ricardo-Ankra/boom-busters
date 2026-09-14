@@ -587,3 +587,37 @@ async function sendReplan(projectId: string, op: 'direction' | 'shots'): Promise
   refresh(projectId)
   return { ok: true }
 }
+
+/**
+ * "Redirect the scene" (decision 252): an image model refused this still,
+ * so the slot-redirector asks for the same beat without the likeness. The
+ * work happens behind the cost guard, never in the request handler.
+ */
+export async function redirectSceneAction(
+  projectId: string,
+  slotId: string,
+): Promise<ActionResult> {
+  await requireOwner()
+  const invalid = badIds(projectId, slotId)
+  if (invalid) return invalid
+
+  const slot = await getShotSlot(db, slotId)
+  if (!slot) return { ok: false, error: 'This slot no longer exists.' }
+  if ((slot.brief as { type?: string } | null)?.type !== 'still') {
+    return { ok: false, error: 'Only an AI image slot can be redirected.' }
+  }
+
+  try {
+    await inngest.send(events.visualsRedirectRequested.create({ projectId, slotId }))
+  } catch (error) {
+    console.error('[visuals] could not send redirect', error)
+    return {
+      ok: false,
+      error:
+        'Could not reach Inngest to redirect this scene. ' +
+        'Start the dev server with `npx inngest-cli@latest dev`, or check INNGEST_EVENT_KEY.',
+    }
+  }
+  refresh(projectId)
+  return { ok: true }
+}

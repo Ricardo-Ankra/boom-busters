@@ -28,6 +28,7 @@ import {
   dismissRetypeAction,
   editBriefAction,
   finaliseOwnUploadAction,
+  redirectSceneAction,
   refetchSlotAction,
   retypeSlotAction,
   type ActionResult,
@@ -496,7 +497,44 @@ function SlotCard({
           </p>
         ) : null}
 
-        {slot.status === 'placeholder' && brief?.type !== 'hero' && brief?.type !== 'archival' ? (
+        {/* A policy refusal (decision 252): the two ways out, on the card. */}
+        {slot.refusal && brief?.type === 'still' ? (
+          <div
+            className="flex flex-col gap-2 rounded-[8px] border border-[var(--color-warning)] p-3"
+            role="group"
+            aria-label="Refused by the image model"
+          >
+            <p className="text-[13px] text-[var(--color-warning)]">
+              The image model declined this person: {slot.refusal.reason}
+            </p>
+            <p className="text-[12px] text-[var(--color-text-secondary)]">
+              Redirect the scene to the same beat without the likeness, or upload a real image. It
+              should show: {brief.description}
+              {brief.depicts?.length ? ` Showing ${brief.depicts.join(', ')}.` : ''}
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                variant="primary"
+                busy={busy}
+                onClick={() =>
+                  act(
+                    slot.id,
+                    () => redirectSceneAction(projectId, slot.id),
+                    'Redirecting the scene',
+                  )
+                }
+              >
+                Redirect the scene · ≈$0.02
+              </Button>
+              <UploadOwnButton projectId={projectId} slotId={slot.id} act={act} archival={false} />
+            </div>
+          </div>
+        ) : null}
+
+        {slot.status === 'placeholder' &&
+        !slot.refusal &&
+        brief?.type !== 'hero' &&
+        brief?.type !== 'archival' ? (
           <p className="text-[13px] text-[var(--color-warning)]">
             Nothing usable was found for this slot. Edit the brief and re-fetch, or upload your own
             image — approving the board with this still a placeholder must say so explicitly.
