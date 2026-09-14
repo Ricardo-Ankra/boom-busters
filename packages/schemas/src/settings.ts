@@ -34,6 +34,8 @@ export const LLM_TASKS = [
   'shotlist',
   'metadata',
   'digest',
+  /** The per-film Director's Book (decision 252): one call, drafting tier. */
+  'direction',
 ] as const
 export const LlmTaskSchema = z.enum(LLM_TASKS)
 export type LlmTask = z.infer<typeof LlmTaskSchema>
@@ -134,6 +136,7 @@ export const ModelRoutingSchema = z.object({
   shotlist: ModelRefSchema,
   metadata: ModelRefSchema,
   digest: ModelRefSchema,
+  direction: ModelRefSchema,
   /** The still-image generator — not an LLM task, but routed where the others are. */
   stills: StillRouteSchema,
 })
@@ -511,6 +514,9 @@ export const DEFAULT_SETTINGS: Settings = {
     shotlist: { provider: 'anthropic', model: 'claude-haiku-4-5-20251001' },
     metadata: { provider: 'anthropic', model: 'claude-haiku-4-5-20251001' },
     digest: { provider: 'anthropic', model: 'claude-haiku-4-5-20251001' },
+    // One call per film; the book is the highest-leverage prompt in the
+    // picture department, so it gets the drafting tier (decision 252).
+    direction: { provider: 'anthropic', model: 'claude-sonnet-5' },
     // Gemini rides the Google key Settings already holds for the LLM
     // adapters, so it is the default that costs no extra account.
     stills: { provider: 'google', model: 'gemini-2.5-flash-image' },

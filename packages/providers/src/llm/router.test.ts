@@ -13,6 +13,7 @@ const routing: ModelRouting = {
   shotlist: { provider: 'anthropic', model: 'mock-small' },
   metadata: { provider: 'anthropic', model: 'mock-small' },
   digest: { provider: 'anthropic', model: 'mock-small' },
+  direction: { provider: 'anthropic', model: 'mock-medium' },
   // Not an LLM task — present because the type carries it (decision 208);
   // the LLM router never reads it.
   stills: { provider: 'google', model: 'gemini-2.5-flash-image' },
