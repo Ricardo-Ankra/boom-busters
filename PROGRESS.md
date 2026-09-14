@@ -3968,10 +3968,82 @@ pressed }`: a ref guards the call so a double-click fires the server
      says custom thumbnails for Shorts can currently only be added in Studio
      on a computer, while the API reference documents no such restriction and
      the publish runner sets thumbnails through `thumbnails.set` for both
-     types.
+     types. _Verified 2026-09-14 on the first real Short (the Stability AI
+     teaser): the call returned 2xx, no failure was logged, and YouTube kept
+     its own auto-generated frame. The help page is right; the API reference
+     is silent. A Short's thumbnail is set in Studio on a computer._
+
+252. **Visual direction: a House Visual Bible and a per-film Director's
+     Book** (2026-09-14, owner request: "master the direction and shot
+     briefing so videos are extremely high quality, like professional
+     documentaries"; spec `docs/superpowers/specs/2026-09-14-visual-direction-design.md`,
+     plan `docs/superpowers/plans/2026-09-14-visual-direction.md`).
+     _Research first._ Every published Claude skill for AI filmmaking is
+     written for fiction with actors and free-form prompts; none knows typed
+     briefs, claim-sourced charts, a renderer with a fixed motion vocabulary
+     or an archival-poor format, so none was adopted. Three sources were
+     mined for craft: visual-skills by Serge Shima (CC BY 4.0: the three
+     physical facts per shot, the banned-word list, one move and one action
+     per clip, the named final image, the montage staircase), DirectorSKILL
+     (MIT: invariant clauses pasted verbatim into every prompt, the S2 video
+     prompt shape) and the Black Forest Labs and Google prompt guides (FLUX
+     order, no negatives on FLUX, hex colours, Imagen's subject-context-style).
+     (a) _Two layers._ The bible is fixed and lives in the repo as
+     `direction-craft.md`, embedded as `DIRECTION_CRAFT` with the byte-identity
+     test of decision 216: the Netflix money-documentary register, shot
+     grammar for a film made of stills, what a still prompt must contain,
+     the motion the renderer can do (never a pan: the compiler turns one into
+     a push-in), per-model recipes, the people rules, a pre-flight list. The
+     Director's Book is per film (`DirectorsBookSchema`): visual thesis, era
+     locks, a palette inside the house grade, exactly three motifs, an anchor
+     object, never-show, principals with an identity string and a guardrail
+     each, locations, one entry per chapter (dominant shot family, mood
+     shift, key image) and the final image. Drafted once by a new LLM task
+     `direction` (Sonnet by default, one call per film), stored on
+     `projects.direction`, reused on a re-run so the owner's edits survive.
+     (b) _Every chapter plans against both._ The shot-list prompt embeds the
+     bible and puts the rendered book in the cacheable prefix beside the
+     claims; briefs carry an optional `shotSize` and stills and heroes an
+     optional `depicts`. `planWarnings` turns craft misses (three adjacent
+     slots at one size, a banned word) into notes on the plan screen, never
+     rejections. The per-chapter planning moved into `inngest/lib/direction.ts`
+     so the runner and the new `visuals-replanner` share it; the replanner
+     redrafts the book or re-plans the slots at the plan checkpoint while the
+     runner stays parked, and the plan screen grew a Direction card whose
+     fields hold raw text until Save (parsing on every keystroke rewrote the
+     field under the cursor, caught by the component test).
+     (c) _People, as the owner decided._ Real principals may be shown by
+     likeness, the altered-content label is set, and the bible guards against
+     defamation and mockery: documentary-neutral situations the claims
+     support, never an invented act that implies guilt, no caricature, mood
+     in the light and never the face, one guardrail line per principal
+     quoted in every prompt. Noted and accepted: Black Forest Labs' usage
+     policy forbids likenesses of public figures without consent and Google's
+     image models refuse named people in practice, so a share of these
+     prompts will be refused. Hence (d).
+     (d) _The refusal fallback._ Gemini's empty or image-less reply is now a
+     `ContentPolicyError` (fal's refusal bodies already were); the runner and
+     the refetcher turn one into a `placeholder` with the refusal ON THE ROW
+     (`shot_slots.refusal`), and the card offers Redirect the scene
+     (`slot-redirector`: the same beat without the person, `coversText`
+     unchanged, `depicts` stripped, validated) or Upload a real image with
+     the depiction brief above the dropzone.
+     (e) _The label._ `syntheticLikenesses` lists the people shown by a
+     CHOSEN generated still; the Publish screen says so on every item, and
+     the upload job carries `containsSyntheticMedia`, which media-utils sets
+     on `status`. Outstanding: the Lambda must be redeployed for the flag to
+     reach YouTube; until then the on-screen line is the reminder to tick the
+     box in Studio.
+     (f) _Teaser stills_ get the house anchors and a 9:16 framing clause
+     appended once, server-side.
+     Attribution: shot rules adapted in part from visual-skills by Serge
+     Shima (github.com/smixs/visual-skills, CC BY 4.0) and DirectorSKILL
+     (MIT); the bible's footer carries the same line.
 
 **Status:** `[x]` done — dossier + Studio shipped with unit, component and
-e2e coverage; spec §11.3 amended in place with dated notes.
+e2e coverage; spec §11.3 amended in place with dated notes. Decision 252
+shipped on branch `visual-direction` with unit, integration and component
+coverage; the media-utils redeploy for the label is outstanding.
 
 ---
 
