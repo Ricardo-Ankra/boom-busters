@@ -243,6 +243,12 @@ export function PublishScreen({
                 {item.notReadyReason ? (
                   <p className="text-[12px] text-[var(--color-warning)]">{item.notReadyReason}</p>
                 ) : null}
+                {item.syntheticLikenesses.length > 0 ? (
+                  <p className="text-[12px] text-[var(--color-text-secondary)]">
+                    AI likenesses of real people ({item.syntheticLikenesses.join(', ')}): the
+                    altered-content label is set on upload.
+                  </p>
+                ) : null}
                 {item.record?.errorMessage ? (
                   <p className="text-[12px] text-[var(--color-danger)]">
                     {item.record.errorMessage}

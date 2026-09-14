@@ -185,6 +185,12 @@ export const UploadYoutubeJobSchema = z.object({
   tags: z.array(z.string().min(1)),
   privacyStatus: z.enum(['private', 'unlisted', 'public']),
   publishAt: z.iso.datetime().optional(),
+  /**
+   * YouTube's altered-content label (decision 252): set when a chosen still
+   * or hero clip depicts a real person by likeness. Optional so a Lambda
+   * built before the field ignores it rather than rejecting the job.
+   */
+  containsSyntheticMedia: z.boolean().optional(),
 })
 
 export const MediaJobSchema = z.discriminatedUnion('kind', [
