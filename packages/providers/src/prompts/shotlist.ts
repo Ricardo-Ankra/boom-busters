@@ -1,12 +1,19 @@
 import {
   HERO_SLOTS_ENABLED,
   PlannedSlotSchema,
+  renderDirectorsBook,
   STILL_GENERATIONS,
   ValidationError,
 } from '@boom-busters/schemas'
-import type { BrandKitStored, PlannedSlot, ShotListOutput } from '@boom-busters/schemas'
+import type {
+  BrandKitStored,
+  DirectorsBook,
+  PlannedSlot,
+  ShotListOutput,
+} from '@boom-busters/schemas'
 import { z } from 'zod'
 import { claimList, type ScriptClaim } from './script'
+import { DIRECTION_CRAFT } from './direction-craft'
 import { formatIssues, parseJsonCompletion } from './json'
 import { outputBudget } from '../llm/types'
 import type { LLMTaskRequest } from '../llm/types'
@@ -55,13 +62,18 @@ export function stillStyleAnchors(brandKit: BrandKitStored): string {
 
 const SLOT_SHAPES = `Every slot: {"paragraphIndex": number, "seconds": number, "brief": {...}}
 
+Every brief carries "shotSize": "wide"|"medium"|"close"|"macro"|"aerial"|"graphic"
+(charts and maps are "graphic").
+
 "brief" is one of, by "type":
-- {"type": "stock", "coversText", "description", "motion", "transition",
+- {"type": "stock", "coversText", "description", "shotSize", "motion", "transition",
    "query", "rejectionCriteria": [string]}
-- {"type": "archival", "coversText", "description", "motion", "transition",
+- {"type": "archival", "coversText", "description", "shotSize", "motion", "transition",
    "query", "mustShow", "eraRange"? (ONE string like "1995–2008", never an array)}
-- {"type": "still", "coversText", "description", "motion", "transition",
-   "prompt", "negativePrompt"?}
+- {"type": "still", "coversText", "description", "shotSize", "motion", "transition",
+   "prompt", "negativePrompt"?, "depicts"?: [full names of real people shown by likeness]}
+- {"type": "hero", "coversText", "description", "shotSize", "motion", "transition",
+   "prompt", "cameraMovement", "loop": boolean, "depicts"?} (only when hero is enabled)
 - {"type": "chart", "coversText", "description", "motion", "transition",
    "chartKind": "line"|"area"|"bar"|"stacked"|"waterfall",
    "series": [{"label", "unit", "points": [{"x": string, "y": number}]}],
@@ -72,16 +84,20 @@ const SLOT_SHAPES = `Every slot: {"paragraphIndex": number, "seconds": number, "
    "route": boolean}
 
 "motion" is {"kind": "static"} or {"kind": "kenburns", "direction": "in"|"out",
-"speed": "slow"|"medium"|"fast"} or {"kind": "pan", "path": string}.
+"speed": "slow"|"medium"|"fast"}. Never "pan": the renderer cannot do one.
 "transition" is "cut" or "dissolve".`
 
 export function buildShotListRequest(input: {
   caseTitle: string
   chapterTitle: string
+  /** 1-based position in the script; names the Director's Book entry to follow. */
+  chapterNumber?: number
   paragraphs: readonly ShotParagraph[]
   claims: readonly ScriptClaim[]
   /** From `stillStyleAnchors` — appended verbatim to every still prompt. */
   styleAnchors: string
+  /** The per-film Director's Book (decision 252). Absent on projects planned before it. */
+  direction?: DirectorsBook
 }): LLMTaskRequest {
   const paragraphList = input.paragraphs
     .map(
@@ -90,11 +106,25 @@ export function buildShotListRequest(input: {
     )
     .join('\n\n')
 
+  // The claim list and the book are the cacheable prefix: identical for every
+  // chapter of one film, exactly like the drafting and self-check prompts.
+  const prefix =
+    `Case: ${input.caseTitle}\n\nClaims:\n${claimList(input.claims)}` +
+    (input.direction ? `\n\nDirector's book:\n${renderDirectorsBook(input.direction)}` : '')
+
+  const chapterHead =
+    input.direction && input.chapterNumber !== undefined
+      ? `This is chapter ${input.chapterNumber} of the book: follow its entry.\n\n`
+      : ''
+
   return {
     task: 'shotlist',
     system: `You are planning the visuals for one chapter of a documentary about
 a corporate collapse. The narration is already recorded; your slots are what is
-on screen while it plays.
+on screen while it plays. The bible below is the house's fixed direction; the
+Director's Book in the first message is this film's.
+
+${DIRECTION_CRAFT}
 
 Return JSON: {"slots": [...]}
 
@@ -124,19 +154,23 @@ Planning rules:
   where to look and what to search for, "mustShow" is the test the upload
   must pass. Plan one only where authenticity is the point; every archival
   slot is manual work for a human.
-- "still" is an AI-GENERATED image. Prompts describe one photographable
-  moment in full. Append these style anchors to every prompt verbatim:
-  "${input.styleAnchors}".
+- "still" is an AI-GENERATED image. Write the prompt as the bible's "What a
+  still prompt must contain" says: prose, subject first, three physical
+  facts, lens and light named, then the book's era lock, palette and any
+  identity string verbatim, then these Brand Kit anchors verbatim:
+  "${input.styleAnchors}". List every real person shown by likeness in
+  "depicts" and quote their guardrail line in the prompt.
   ${STILL_GENERATIONS} variants are generated per prompt.
 - Narration may contain bracketed tags — [pause], [sighs]. They are direction
   for the narrator, not content; never plan a visual around one and never quote
   one in "coversText".
 ${HERO_SLOTS_ENABLED ? '' : '- Never emit type "hero". It is disabled.\n'}`,
     messages: [
-      // The claim list is the cacheable prefix — identical for every chapter
-      // of the same project, exactly like the drafting and self-check prompts.
-      { role: 'user', content: `Case: ${input.caseTitle}\n\nClaims:\n${claimList(input.claims)}` },
-      { role: 'user', content: `Chapter "${input.chapterTitle}":\n\n${paragraphList}` },
+      { role: 'user', content: prefix },
+      {
+        role: 'user',
+        content: `${chapterHead}Chapter "${input.chapterTitle}":\n\n${paragraphList}`,
+      },
     ],
     cacheablePrefixMessages: 1,
     maxTokens: outputBudget(8000),
@@ -207,7 +241,7 @@ export function mockShotList(input: {
   paragraphs: readonly ShotParagraph[]
   claimCount: number
 }): ShotListOutput {
-  const slots: ShotListOutput['slots'] = input.paragraphs.map((paragraph) => ({
+  const slots: ShotListOutput['slots'] = input.paragraphs.map((paragraph, index) => ({
     paragraphIndex: paragraph.index,
     seconds: Math.max(4, Math.min(15, paragraph.seconds)),
     brief: {
@@ -216,6 +250,8 @@ export function mockShotList(input: {
       description:
         '[mock] Deserted open-plan office at dusk, cool blue grade, empty desks. ' +
         'No provider planned this slot.',
+      // Alternating sizes, so the plan lint has something honest to read.
+      shotSize: index % 2 === 0 ? 'wide' : 'medium',
       motion: { kind: 'kenburns', direction: 'in', speed: 'slow' },
       transition: 'cut',
       query: 'empty office dusk',
@@ -233,6 +269,7 @@ export function mockShotList(input: {
         type: 'chart',
         coversText: first.text.slice(0, 120) || '[mock] empty paragraph',
         description: '[mock] Share-price collapse, drawn on in the accent colour.',
+        shotSize: 'graphic',
         motion: { kind: 'static' },
         transition: 'dissolve',
         chartKind: 'line',
@@ -262,6 +299,7 @@ export function mockShotList(input: {
         type: 'map',
         coversText: second.text.slice(0, 120) || '[mock] empty paragraph',
         description: '[mock] The money moves from Munich to Manila.',
+        shotSize: 'graphic',
         motion: { kind: 'static' },
         transition: 'cut',
         locations: [
