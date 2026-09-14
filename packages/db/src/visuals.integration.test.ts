@@ -1,8 +1,8 @@
-import type { ShotBrief, SlotCandidate } from '@boom-busters/schemas'
+import type { DirectorsBook, ShotBrief, SlotCandidate } from '@boom-busters/schemas'
 import { afterAll, beforeEach, describe, expect, it } from 'vitest'
 import { createCase, truncateCases } from './cases'
 import { createDb } from './client'
-import { createProjectFromCase } from './projects'
+import { createProjectFromCase, getProject, setProjectDirection } from './projects'
 import { createScriptVersion, saveChapter } from './scripts'
 import { requireTestDatabase } from './test-database'
 import {
@@ -12,6 +12,7 @@ import {
   listShotSlots,
   replaceShotList,
   retypeShotSlot,
+  setSlotRefusal,
   setSlotResolution,
   setSlotRetype,
   shotSlotStatuses,
@@ -187,6 +188,46 @@ suite('shot slots', () => {
     expect(stored?.status).toBe('unresolved')
     expect((stored?.brief as { query?: string }).query).toBe('abandoned trading floor')
     expect(stored?.candidates).toHaveLength(1)
+  })
+
+  it('stores a refusal, and a brief edit clears it (decision 252)', async () => {
+    await replaceShotList(db, projectId, slots())
+    const [slot] = await listShotSlots(db, projectId)
+    await setSlotRefusal(db, slot!.id, {
+      reason: 'google: SAFETY',
+      at: new Date().toISOString(),
+    })
+    expect((await getShotSlot(db, slot!.id))?.refusal).toMatchObject({ reason: 'google: SAFETY' })
+
+    await updateSlotBrief(db, slot!.id, { ...stockBrief, query: 'the empty podium' })
+    expect((await getShotSlot(db, slot!.id))?.refusal).toBeNull()
+  })
+
+  it('stores, replaces and clears the Director’s Book on the project (decision 252)', async () => {
+    const book: DirectorsBook = {
+      visualThesis: 'Solid from the street, hollow inside.',
+      eraLocks: [{ span: '2011 to 2020', rules: 'flat screens, glass offices' }],
+      palette: { accent: '#c9a227', temperature: 'cold', note: 'gold on money only' },
+      motifs: ['dark glass', 'empty chairs', 'pages under lamplight'],
+      anchorObject: 'a bound annual report',
+      neverShow: [],
+      principals: [],
+      locations: [],
+      chapters: [
+        {
+          chapter: 1,
+          dominantShotFamily: 'environment',
+          moodShift: 'confident to uneasy',
+          keyImage: 'the empty stage',
+        },
+      ],
+      finalImage: 'one lit floor at night',
+    }
+    await setProjectDirection(db, projectId, book)
+    expect((await getProject(db, projectId))?.direction).toMatchObject({ motifs: book.motifs })
+
+    await setProjectDirection(db, projectId, null)
+    expect((await getProject(db, projectId))?.direction).toBeNull()
   })
 
   it('counts statuses without loading briefs', async () => {
