@@ -162,6 +162,10 @@ describeDb('teaser-shot-fetcher', () => {
     const beat = stored.beats[1]!
     expect(beat.state).toBeNull()
     expect(beat.candidates).toHaveLength(2)
+    // The generator saw the beat's words plus the 9:16 framing clause
+    // (decision 252); the mock records the prompt it was given.
+    expect(beat.candidates[0]?.summary).toContain('a ledger page dissolving into static')
+    expect(beat.candidates[0]?.summary).toContain('Vertical 9:16 frame')
     // Beat 0 was never touched.
     expect(stored.beats[0]).toBeNull()
   })
