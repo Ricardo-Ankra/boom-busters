@@ -114,6 +114,26 @@ export const VisualsRetypeRequestedSchema = z.object({
 })
 
 /**
+ * Re-apply direction during the plan checkpoint (decision 252): `direction`
+ * redrafts the Director's Book, `shots` regenerates every chapter's slots
+ * from the stored book. Handled by the visuals-replanner while the runner
+ * stays parked on `visuals/plan.approved`.
+ */
+export const VisualsReplanRequestedSchema = z.object({
+  ...projectRef,
+  op: z.enum(['direction', 'shots']),
+})
+
+/**
+ * Redirect a still an image model refused (decision 252): the same beat
+ * without the likeness. Handled by the slot-redirector.
+ */
+export const VisualsRedirectRequestedSchema = z.object({
+  ...projectRef,
+  slotId: UlidSchema,
+})
+
+/**
  * A media-utils job finished (M6.7). The broker hook route verifies the
  * HMAC and emits this; the waiting runner matches on jobId. `result` stays
  * untyped here — the waiting step parses it against the job kind's result
@@ -298,6 +318,8 @@ export const EVENT_SCHEMAS = {
   'visuals/refetch.requested': VisualsRefetchRequestedSchema,
   'visuals/plan.approved': VisualsPlanApprovedSchema,
   'visuals/retype.requested': VisualsRetypeRequestedSchema,
+  'visuals/replan.requested': VisualsReplanRequestedSchema,
+  'visuals/redirect.requested': VisualsRedirectRequestedSchema,
   'media/job.completed': MediaJobCompletedSchema,
   'render/draft.requested': RenderDraftRequestedSchema,
   'shorts/render.requested': ShortsRenderRequestedSchema,

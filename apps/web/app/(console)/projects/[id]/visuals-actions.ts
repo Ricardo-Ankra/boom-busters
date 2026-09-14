@@ -6,6 +6,7 @@ import {
   getSettings,
   getShotSlot,
   retypeShotSlot,
+  setProjectDirection,
   setSlotResolution,
   setSlotRetype,
   shotBriefHash,
@@ -15,6 +16,7 @@ import {
 import { stillStyleAnchors } from '@boom-busters/providers'
 import {
   convertBrief,
+  DirectorsBookSchema,
   HERO_SLOTS_ENABLED,
   ShotBriefSchema,
   ShotSlotTypeSchema,
@@ -517,5 +519,71 @@ export async function finaliseOwnUploadAction(input: {
   })
 
   refresh(input.projectId)
+  return { ok: true }
+}
+
+// ---------------------------------------------------------------------------
+// Direction (decision 252): the Director's Book on the plan screen
+// ---------------------------------------------------------------------------
+
+/** Save the owner's edited Director's Book. Free; the next re-plan reads it. */
+export async function saveDirectionAction(projectId: string, book: unknown): Promise<ActionResult> {
+  await requireOwner()
+  const invalid = badIds(projectId)
+  if (invalid) return invalid
+
+  const project = await getProject(db, projectId)
+  if (!project) return { ok: false, error: 'This project no longer exists.' }
+  if (project.visualsPhase !== 'plan') {
+    return { ok: false, error: 'Direction is edited at the plan checkpoint only.' }
+  }
+
+  const parsed = DirectorsBookSchema.safeParse(book)
+  if (!parsed.success) {
+    const issue = parsed.error.issues[0]
+    return {
+      ok: false,
+      error: `That direction does not validate: ${issue ? `${issue.path.join('.')} ${issue.message}` : 'unknown'}`,
+    }
+  }
+
+  await setProjectDirection(db, projectId, parsed.data)
+  refresh(projectId)
+  return { ok: true }
+}
+
+/** Redraft the book with one model call. The owner's edits are replaced. */
+export async function redraftDirectionAction(projectId: string): Promise<ActionResult> {
+  return sendReplan(projectId, 'direction')
+}
+
+/** Plan every chapter again from the saved book. Pre-fetched slots are discarded. */
+export async function replanShotsAction(projectId: string): Promise<ActionResult> {
+  return sendReplan(projectId, 'shots')
+}
+
+async function sendReplan(projectId: string, op: 'direction' | 'shots'): Promise<ActionResult> {
+  await requireOwner()
+  const invalid = badIds(projectId)
+  if (invalid) return invalid
+
+  const project = await getProject(db, projectId)
+  if (!project) return { ok: false, error: 'This project no longer exists.' }
+  if (project.visualsPhase !== 'plan') {
+    return { ok: false, error: 'The plan checkpoint is not open on this project.' }
+  }
+
+  try {
+    await inngest.send(events.visualsReplanRequested.create({ projectId, op }))
+  } catch (error) {
+    console.error('[visuals] could not send replan', error)
+    return {
+      ok: false,
+      error:
+        'Could not reach Inngest to re-plan. ' +
+        'Start the dev server with `npx inngest-cli@latest dev`, or check INNGEST_EVENT_KEY.',
+    }
+  }
+  refresh(projectId)
   return { ok: true }
 }

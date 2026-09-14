@@ -14,6 +14,7 @@ import { teaserRebuildRunner } from './teaser-rebuild-runner'
 import { teaserShotFetcher } from './teaser-shot-fetcher'
 import { slotRefetcher } from './slot-refetcher'
 import { slotRetyper } from './slot-retyper'
+import { visualsReplanner } from './visuals-replanner'
 import { visualsRunner } from './visuals-runner'
 import { voiceRetaker } from './voice-retaker'
 import { voiceRunner } from './voice-runner'
@@ -53,6 +54,7 @@ export const functions = [
   visualsRunner,
   slotRefetcher,
   slotRetyper,
+  visualsReplanner,
   assemblyRunner,
   draftRunner,
   renderRunner,
@@ -83,6 +85,7 @@ export {
   teaserShotFetcher,
   slotRefetcher,
   slotRetyper,
+  visualsReplanner,
   visualsRunner,
   voiceRunner,
   voiceRetaker,
