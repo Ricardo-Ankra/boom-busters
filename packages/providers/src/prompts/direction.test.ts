@@ -62,6 +62,11 @@ describe('buildDirectorsBookRequest', () => {
     expect(request.system).toContain('begins with the full name and role')
   })
 
+  it('asks for a face in the identity string, not a job title', () => {
+    expect(request.system).toContain('face shape, hair, beard or none')
+    expect(request.system).toContain('a job title and a jacket')
+  })
+
   it('threads the Brand Kit anchors in as the palette boundary', () => {
     expect(request.system).toContain('subtle film grain; muted grade')
   })

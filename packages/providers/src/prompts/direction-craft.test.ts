@@ -24,6 +24,8 @@ describe('DIRECTION_CRAFT', () => {
     expect(DIRECTION_CRAFT).toContain('shown by likeness, and the')
     expect(DIRECTION_CRAFT).toContain('a specific act the claims do not establish')
     expect(DIRECTION_CRAFT).toContain('never fences a person away from ordinary')
+    expect(DIRECTION_CRAFT).toContain('No guardrail text appears')
+    expect(DIRECTION_CRAFT).toContain('the person in the reference photo')
     expect(DIRECTION_CRAFT).toContain('no caricature')
     for (const word of BANNED_PROMPT_WORDS) expect(DIRECTION_CRAFT).toContain(word)
   })

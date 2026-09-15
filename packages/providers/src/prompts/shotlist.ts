@@ -187,9 +187,12 @@ Planning rules:
   facts, lens and light named, then the book's era lock, palette and any
   identity string verbatim, then these Brand Kit anchors verbatim:
   "${input.styleAnchors}". A prompt that shows a real person names them
-  first, by full name and role, then their identity string, so the image
-  is of that person and not a stand-in; list them in "depicts" and quote
-  their guardrail line in the prompt.
+  first, by full name and role, then says "the person in the reference
+  photo", then their identity string as one sentence, so the image is of
+  that person and not a stand-in; list them in "depicts". Never quote the
+  guardrail: it decides what you plan, not what the image model reads, and
+  a model reads "never in handcuffs" as a request for handcuffs. Put its
+  concrete nouns in "negativePrompt" instead.
   ${STILL_GENERATIONS} variants are generated per prompt.
 - Narration may contain bracketed tags — [pause], [sighs]. They are direction
   for the narrator, not content; never plan a visual around one and never quote

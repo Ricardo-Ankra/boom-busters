@@ -144,8 +144,17 @@ plain one.
   lists only the defamation and mockery exclusions specific to that person
   ("never handling cash or signing an invented contract; never in
   handcuffs; never mocked"). It never fences a person away from ordinary
-  settings such as desks, documents, boardrooms or meetings. Quote it in
-  every prompt that shows them.
+  settings such as desks, documents, boardrooms or meetings. The guardrail
+  governs what the planner writes; it is never pasted into the image
+  prompt. Image models read negation as suggestion, so "never in
+  handcuffs" in a prompt invites handcuffs. Its concrete nouns may become
+  the negative prompt ("no gavel, no handcuffs, no cash"); its sentences
+  are never quoted.
+- When the cast holds photographs of a person, the still is generated from
+  them: the prompt names the person and says "the person in the reference
+  photo", and the photos travel with the request. The prompt varies
+  clothing, place, light and posture freely; it never adds facial
+  descriptors that could contradict the photograph.
 - Anonymous figures (depiction "anonymous") are described by role, age
   range, build and clothing, face turned away or in shadow, and never
   resemble a named person.
@@ -165,7 +174,8 @@ plain one.
 - Every era lock is obeyed in every prompt it touches.
 - No banned word appears in any prompt.
 - Every prompt showing a real person names them in full, carries their
-  identity string and their guardrail line, and lists them in "depicts".
+  identity string, and lists them in "depicts". No guardrail text appears
+  in any prompt.
 - No guardrail or never-show line keeps a principal away from a desk, a
   document, a boardroom or a meeting; they exclude only what would defame
   or mock.

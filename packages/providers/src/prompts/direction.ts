@@ -78,10 +78,11 @@ Rules for the book:
   on-screen illustrative disclaimer. Never choose "archival-only" yourself;
   that is the producer's call after the book is drafted. "anonymous" is only
   for people the claims do not name.
-- "identityString" begins with the full name and role, then describes the
-  person as press photographs of the period show them (age, hair, beard,
-  glasses, build, dress), so an image model can match the real face. Never
-  a generic description that could be anyone.
+- "identityString" begins with the full name and role, then the face as
+  press photographs of the period show it: face shape, hair, beard or none,
+  glasses or none, apparent age range, build, typical dress. It is what an
+  image model reads when it has no photograph, so a job title and a jacket
+  are not enough. Never a generic description that could be anyone.
 - "guardrail" lists only that person's defamation and mockery exclusions:
   specific acts the claims do not establish (handling cash, signing an
   invented contract, handcuffs), plus caricature, malice, humiliation. It

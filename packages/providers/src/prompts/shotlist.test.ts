@@ -274,6 +274,13 @@ describe('buildShotListRequest with direction (decision 252)', () => {
     expect(request.messages[1]?.content).toContain('This is chapter 2 of the book')
   })
 
+  it('keeps the guardrail out of the image prompt and points at the reference photo', () => {
+    expect(request.system).not.toContain('quote their guardrail line in the prompt')
+    expect(request.system).toContain('never pasted into the image')
+    expect(request.system).toContain('the person in the reference photo')
+    expect(request.system).toContain('Never quote the guardrail')
+  })
+
   it('asks for shotSize on every slot and depicts on likenesses, and bans the pan', () => {
     expect(request.system).toContain('"shotSize"')
     expect(request.system).toContain('"depicts"')
