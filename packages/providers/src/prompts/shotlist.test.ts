@@ -278,7 +278,7 @@ describe('buildShotListRequest with direction (decision 252)', () => {
     expect(request.system).not.toContain('quote their guardrail line in the prompt')
     expect(request.system).toContain('never pasted into the image')
     expect(request.system).toContain('the person in the reference')
-    expect(request.system).toContain('Never quote the guardrail')
+    expect(request.system).toContain('it decides what you plan, not what the image model reads')
   })
 
   it('asks for shotSize on every slot and depicts on likenesses, and bans the pan', () => {
