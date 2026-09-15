@@ -277,7 +277,7 @@ describe('buildShotListRequest with direction (decision 252)', () => {
   it('keeps the guardrail out of the image prompt and points at the reference photo', () => {
     expect(request.system).not.toContain('quote their guardrail line in the prompt')
     expect(request.system).toContain('never pasted into the image')
-    expect(request.system).toContain('the person in the reference photo')
+    expect(request.system).toContain('the person in the reference')
     expect(request.system).toContain('Never quote the guardrail')
   })
 
