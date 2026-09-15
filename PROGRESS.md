@@ -4031,9 +4031,9 @@ pressed }`: a ref guards the call so a double-click fires the server
      (e) _The label._ `syntheticLikenesses` lists the people shown by a
      CHOSEN generated still; the Publish screen says so on every item, and
      the upload job carries `containsSyntheticMedia`, which media-utils sets
-     on `status`. Outstanding: the Lambda must be redeployed for the flag to
-     reach YouTube; until then the on-screen line is the reminder to tick the
-     box in Studio.
+     on `status`. media-utils redeployed 2026-09-15 (release 4a31362,
+     memory 3008 MB, Sentry DSN carried forward), so the flag now reaches
+     YouTube on every upload; the on-screen line stays as the record of why.
      (f) _Teaser stills_ get the house anchors and a 9:16 framing clause
      appended once, server-side.
      Attribution: shot rules adapted in part from visual-skills by Serge
@@ -4043,7 +4043,9 @@ pressed }`: a ref guards the call so a double-click fires the server
 **Status:** `[x]` done — dossier + Studio shipped with unit, component and
 e2e coverage; spec §11.3 amended in place with dated notes. Decision 252
 shipped on branch `visual-direction` with unit, integration and component
-coverage; the media-utils redeploy for the label is outstanding.
+coverage; media-utils redeployed 2026-09-15. Still owed: merge to master
+(migration 0021 applies on the production build) and one real film through
+the Direction stage with mock providers off.
 
 ---
 
