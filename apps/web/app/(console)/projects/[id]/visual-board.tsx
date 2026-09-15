@@ -846,6 +846,9 @@ function MediaLightbox({
         <p className="text-[11px] text-[var(--color-text-muted)]">
           {candidate.licence}
           {candidate.attributionText ? ` · ${candidate.attributionText}` : ''}
+          {candidate.references && candidate.references.length > 0
+            ? ` · reference: ${candidate.references.join(', ')}`
+            : ''}
           {candidate.summary ? ` · ${candidate.summary}` : ''}
         </p>
 
@@ -976,6 +979,9 @@ function ChosenFacts({ slot }: { slot: SlotView }) {
     <p className="text-[11px] text-[var(--color-text-muted)]">
       {chosen.licence}
       {chosen.attributionText ? ` · ${chosen.attributionText}` : ''}
+      {chosen.references && chosen.references.length > 0
+        ? ` · reference: ${chosen.references.join(', ')}`
+        : ''}
       {chosen.pageUrl ? (
         <>
           {' · '}
