@@ -42,7 +42,7 @@ describe('llmPrice', () => {
 
 describe('estimateLlmUsd', () => {
   it('bills input and output at their own rates', () => {
-    // 1M in at $3 + 1M out at $15.
+    // 1M in at $2 + 1M out at $10.
     expect(
       estimateLlmUsd({
         provider: 'anthropic',
@@ -50,7 +50,7 @@ describe('estimateLlmUsd', () => {
         inputTokens: 1_000_000,
         outputTokens: 1_000_000,
       }),
-    ).toBeCloseTo(18)
+    ).toBeCloseTo(12)
   })
 
   it('scales linearly and stays honest at small sizes', () => {

@@ -12,11 +12,13 @@ import type {
 /**
  * Anthropic adapter.
  *
- * PRICES ARE PROVISIONAL. The figures below are carried over from the M2
- * placeholder table and have not been checked against Anthropic's current
- * price list. They are good enough to exercise the budget guard's arithmetic
- * and wrong enough that they must be confirmed before the first live run —
- * a cap enforced against stale prices is a cap that does not hold.
+ * Prices are the first-party list prices per million tokens, checked against
+ * Anthropic's published table on 2026-09-15: Opus 5 at 5 in and 25 out,
+ * Sonnet 5 at 2 and 10, Haiku 4.5 at 1 and 5, cache reads at a tenth of
+ * input. The M2 placeholders that sat here until then (15/75 and 3/15) made
+ * the budget guard reserve two to three times the real cost of every Opus
+ * and Sonnet call, which is the wrong direction to be wrong in: a cap that
+ * parks a run early is a cap that costs a day, not a dollar.
  */
 
 const API = 'https://api.anthropic.com/v1/messages'
@@ -27,18 +29,18 @@ export const ANTHROPIC_MODELS: readonly KnownModel[] = [
     id: 'claude-opus-5',
     label: 'Opus 5',
     tier: 0,
-    inputPerMTok: 15,
-    outputPerMTok: 75,
-    cachedInputPerMTok: 1.5,
+    inputPerMTok: 5,
+    outputPerMTok: 25,
+    cachedInputPerMTok: 0.5,
     supportsBatch: true,
   },
   {
     id: 'claude-sonnet-5',
     label: 'Sonnet 5',
     tier: 1,
-    inputPerMTok: 3,
-    outputPerMTok: 15,
-    cachedInputPerMTok: 0.3,
+    inputPerMTok: 2,
+    outputPerMTok: 10,
+    cachedInputPerMTok: 0.2,
     supportsBatch: true,
   },
   {
