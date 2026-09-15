@@ -1,9 +1,16 @@
 import { DEFAULT_SETTINGS, ShotListOutputSchema } from '@boom-busters/schemas'
 import { describe, expect, it } from 'vitest'
-import { buildShotListRequest, mockShotList, parseShotList, stillStyleAnchors } from './shotlist'
+import {
+  buildShotListRequest,
+  mockShotList,
+  parseShotList,
+  SHOT_LIST_FLOOR_TOKENS,
+  stillStyleAnchors,
+} from './shotlist'
 import type { ShotParagraph } from './shotlist'
 import { mockDirectorsBook } from './direction'
 import type { ScriptClaim } from './script'
+import { MAX_OUTPUT_TOKENS, outputBudget } from '../llm/types'
 
 const CLAIMS: ScriptClaim[] = [
   {
@@ -267,6 +274,30 @@ describe('buildShotListRequest with direction (decision 252)', () => {
     expect(request.system).toContain('"shotSize"')
     expect(request.system).toContain('"depicts"')
     expect(request.system).toContain('Never "pan"')
+  })
+
+  it('sizes the answer budget to the chapter: a long chapter gets room, a short one the floor', () => {
+    // Two paragraphs, twenty seconds: the floor. The first live run under the
+    // book cut off mid-JSON at the old flat 8,000 because every brief now
+    // carries a shot size, physical facts, palette, anchors and a guardrail.
+    expect(request.maxTokens).toBe(outputBudget(SHOT_LIST_FLOOR_TOKENS))
+
+    const longChapter = Array.from({ length: 60 }, (_, index) => ({
+      index,
+      text: `Paragraph ${index} of a long chapter.`,
+      seconds: 10,
+    }))
+    const long = buildShotListRequest({
+      caseTitle: 'Wirecard',
+      chapterTitle: 'x',
+      paragraphs: longChapter,
+      claims: CLAIMS,
+      styleAnchors: 'a',
+      direction,
+    })
+    expect(long.maxTokens).toBeGreaterThan(request.maxTokens)
+    // 600 s of narration → 120 possible slots × 400 tokens = 48,000: capped.
+    expect(long.maxTokens).toBe(MAX_OUTPUT_TOKENS)
   })
 
   it('still works with no book, for re-runs of projects planned before it', () => {

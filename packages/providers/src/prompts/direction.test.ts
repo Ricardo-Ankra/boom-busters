@@ -58,6 +58,19 @@ describe('buildDirectorsBookRequest', () => {
   it('threads the Brand Kit anchors in as the palette boundary', () => {
     expect(request.system).toContain('subtle film grain; muted grade')
   })
+
+  it('gives a longer film a bigger answer budget: one chapter entry per chapter', () => {
+    const eight = buildDirectorsBookRequest({
+      caseTitle: 'Wirecard',
+      chapters: Array.from({ length: 8 }, (_, index) => ({
+        title: `Chapter ${index + 1}`,
+        paragraphs: ['Words.'],
+      })),
+      claims: CLAIMS,
+      styleAnchors: 'a',
+    })
+    expect(eight.maxTokens).toBeGreaterThan(request.maxTokens)
+  })
 })
 
 describe('parseDirectorsBook', () => {

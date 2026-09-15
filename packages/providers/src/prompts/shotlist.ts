@@ -43,6 +43,32 @@ export interface ShotParagraph {
 }
 
 /**
+ * Answer-token budget for a chapter's shot list, sized from its narration.
+ *
+ * The flat 8,000 the prompt shipped with was enough while a brief was a
+ * query and a sentence. Under the Director's Book (decision 252) every brief
+ * carries a shot size, and a still prompt carries three physical facts, the
+ * era lock, palette, identity string, the Brand Kit anchors and a guardrail
+ * line, so a slot runs 300 to 400 tokens and a six-minute chapter no longer
+ * fits: the first live run cut off mid-JSON, three retries at full price.
+ *
+ * Slots are at least 4 s, so narration seconds / 5 is a generous count of how
+ * many the model could plan; 400 tokens each is the long end of a still.
+ * Over-asking costs nothing (max_tokens is a ceiling, the ledger settles on
+ * tokens produced); under-asking costs the whole call. `outputBudget` adds
+ * thinking headroom and clamps to the provider ceiling.
+ */
+export const SHOT_LIST_FLOOR_TOKENS = 8000
+const SECONDS_PER_PLANNED_SLOT = 5
+const TOKENS_PER_SLOT = 400
+
+export function shotListAnswerTokens(paragraphs: readonly ShotParagraph[]): number {
+  const narrationSeconds = paragraphs.reduce((sum, paragraph) => sum + paragraph.seconds, 0)
+  const slots = Math.ceil(narrationSeconds / SECONDS_PER_PLANNED_SLOT)
+  return Math.max(SHOT_LIST_FLOOR_TOKENS, slots * TOKENS_PER_SLOT)
+}
+
+/**
  * Brand Kit → the style anchors every still prompt must carry, so generated
  * frames sit in the channel's look rather than each inventing their own.
  * Composed from the tokens that read as photography direction: grain and the
@@ -173,7 +199,7 @@ ${HERO_SLOTS_ENABLED ? '' : '- Never emit type "hero". It is disabled.\n'}`,
       },
     ],
     cacheablePrefixMessages: 1,
-    maxTokens: outputBudget(8000),
+    maxTokens: outputBudget(shotListAnswerTokens(input.paragraphs)),
   }
 }
 

@@ -4036,6 +4036,16 @@ pressed }`: a ref guards the call so a double-click fires the server
      YouTube on every upload; the on-screen line stays as the record of why.
      (f) _Teaser stills_ get the house anchors and a 9:16 framing clause
      appended once, server-side.
+     (g) _First live run, 2026-09-15._ The Stability AI chapter 1 shot list
+     cut off mid-JSON three times: the prompt's flat 8,000-token answer
+     budget was sized for a brief that was a query and a sentence, and a
+     brief under the book runs 300 to 400 tokens. `shotListAnswerTokens`
+     now sizes the budget from the chapter's narration (seconds / 5 slots
+     × 400 tokens, floor 8,000, clamped by `outputBudget` at the 32,000
+     provider ceiling), and the book's budget grows 300 tokens per chapter.
+     A chapter past about 30 minutes of narration could still hit the
+     ceiling; splitting such a chapter's plan into two calls is the next
+     lever if it ever happens.
      Attribution: shot rules adapted in part from visual-skills by Serge
      Shima (github.com/smixs/visual-skills, CC BY 4.0) and DirectorSKILL
      (MIT); the bible's footer carries the same line.

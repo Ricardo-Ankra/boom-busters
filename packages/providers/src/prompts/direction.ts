@@ -93,7 +93,9 @@ Rules for the book:
       { role: 'user', content: chapterText },
     ],
     cacheablePrefixMessages: 1,
-    maxTokens: outputBudget(3000),
+    // The fixed parts of the book run to about 2,500 tokens; each chapter
+    // entry (family, mood shift, key image) adds a few hundred more.
+    maxTokens: outputBudget(3000 + 300 * input.chapters.length),
   }
 }
 
