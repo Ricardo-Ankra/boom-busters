@@ -9,6 +9,7 @@ import {
   listOpenBudgetGates,
   projectDeletionSummary,
   projectPulse,
+  listCastMembers,
 } from '@boom-busters/db'
 import type { ProjectStage } from '@boom-busters/db'
 import { emptyVoiceModel, voiceReviewModel } from '@/lib/voice-review'
@@ -38,6 +39,7 @@ import { ScriptStudio } from './script-studio'
 import { ShortsScreen } from './shorts-screen'
 import { VisualBoard } from './visual-board'
 import { VoiceReview } from './voice-review'
+import { CastCard } from './cast-card'
 import { StageBanner } from './stage-banner'
 import {
   DeleteProjectButton,
@@ -93,6 +95,19 @@ export default async function ProjectPage({
   const viewingCurrent = viewing === project.stage
   const viewed = views.find((view) => view.stage === viewing)
   const wants = (stage: ProjectStage): boolean => viewing === stage || project.stage === stage
+
+  // The cast (decision 253) is on screen from the script stage onward, in
+  // every phase: the faces outlive the Direction card that names them.
+  const showCast = project.stage !== 'dossier'
+  const cast = showCast ? await listCastMembers(db, project.id) : []
+  const castPhotoUrls: Record<string, string> = {}
+  if (showCast && storageConfigured()) {
+    for (const member of cast) {
+      for (const photo of member.photos) {
+        castPhotoUrls[photo.contentHash] = await presignGet(photo.r2Key)
+      }
+    }
+  }
 
   const [
     activity,
@@ -370,6 +385,10 @@ export default async function ProjectPage({
       />
 
       {budgetGate ? <BudgetGateCard gate={budgetGate} /> : null}
+
+      {showCast ? (
+        <CastCard projectId={project.id} members={cast} photoUrls={castPhotoUrls} />
+      ) : null}
 
       {showPreview && previewMaterialised ? (
         <PreviewScreen
