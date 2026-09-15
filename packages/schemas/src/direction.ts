@@ -134,3 +134,21 @@ export function planWarnings(
 
   return warnings
 }
+
+/**
+ * The cast members the book forgot (decision 253). A note for the plan
+ * screen, never a rejection: the producer can redraft or add the principal
+ * by hand, and a book that covers four of five people still plans four.
+ */
+export function castWarnings(
+  book: { principals: readonly { name: string }[] } | null,
+  castNames: readonly string[],
+): string[] {
+  if (!book) return []
+  const named = new Set(book.principals.map((principal) => principal.name.trim().toLowerCase()))
+  return castNames
+    .filter((name) => !named.has(name.trim().toLowerCase()))
+    .map(
+      (name) => `the book has no principal for ${name}; redraft the direction or add them by hand`,
+    )
+}

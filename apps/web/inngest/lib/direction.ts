@@ -2,6 +2,7 @@ import {
   getLatestScript,
   getProject,
   getSettings,
+  listCastMembers,
   scriptableClaims,
   setProjectDirection,
 } from '@boom-busters/db'
@@ -17,7 +18,11 @@ import {
   parseShotList,
   stillStyleAnchors,
 } from '@boom-busters/providers'
-import type { DirectionChapterInput, ScriptClaim } from '@boom-busters/providers'
+import type {
+  DirectionCastInput,
+  DirectionChapterInput,
+  ScriptClaim,
+} from '@boom-busters/providers'
 import { DirectorsBookSchema, ValidationError } from '@boom-busters/schemas'
 import type { DirectorsBook } from '@boom-busters/schemas'
 import { NonRetriableError } from 'inngest'
@@ -65,6 +70,8 @@ export async function loadDirectionInputs(projectId: string): Promise<{
   chapters: DirectionChapterInput[]
   claims: ScriptClaim[]
   styleAnchors: string
+  /** The project's cast (decision 253): each becomes a likeness principal. */
+  cast: DirectionCastInput[]
 }> {
   const project = await getProject(db, projectId)
   if (!project) throw new NonRetriableError(`Project ${projectId} no longer exists`)
@@ -89,6 +96,11 @@ export async function loadDirectionInputs(projectId: string): Promise<{
     confidence: claim.confidence,
   }))
   const settings = await getSettings(db)
+  const cast = (await listCastMembers(db, projectId)).map((member) => ({
+    name: member.name,
+    role: member.role,
+    identityString: member.identityString,
+  }))
 
   return {
     caseTitle: project.title,
@@ -97,6 +109,7 @@ export async function loadDirectionInputs(projectId: string): Promise<{
     chapters,
     claims,
     styleAnchors: stillStyleAnchors(settings.brandKit),
+    cast,
   }
 }
 
@@ -104,7 +117,11 @@ export async function loadDirectionInputs(projectId: string): Promise<{
 export async function draftDirectorsBook(projectId: string): Promise<DirectorsBook> {
   const inputs = await loadDirectionInputs(projectId)
   const book = mockProvidersEnabled()
-    ? mockDirectorsBook({ caseTitle: inputs.caseTitle, chapterCount: inputs.chapters.length })
+    ? mockDirectorsBook({
+        caseTitle: inputs.caseTitle,
+        chapterCount: inputs.chapters.length,
+        cast: inputs.cast,
+      })
     : parseDirectorsBook(
         (await callLlm(buildDirectorsBookRequest(inputs), { projectId })).text,
         inputs.chapters.length,

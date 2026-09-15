@@ -2,8 +2,11 @@
 
 import {
   createScriptVersion,
+  deleteCastMember,
   FIXTURE_PROJECT_ID,
   getProject,
+  insertCastMember,
+  listCastMembers,
   requireTestDatabase,
   saveChapter,
   seed,
@@ -51,6 +54,21 @@ describeDb('direction helpers (mock mode)', () => {
 
   afterEach(() => {
     vi.unstubAllEnvs()
+  })
+
+  it('drafts the cast into the book as likeness principals (decision 253)', async () => {
+    for (const member of await listCastMembers(db, FIXTURE_PROJECT_ID)) {
+      await deleteCastMember(db, member.id)
+    }
+    await insertCastMember(db, {
+      projectId: FIXTURE_PROJECT_ID,
+      name: 'Emad Mostaque',
+      role: 'Founder',
+    })
+    const inputs = await loadDirectionInputs(FIXTURE_PROJECT_ID)
+    expect(inputs.cast).toEqual([{ name: 'Emad Mostaque', role: 'Founder', identityString: '' }])
+    const book = await loadOrDraftDirectorsBook(FIXTURE_PROJECT_ID)
+    expect(book.principals[0]).toMatchObject({ name: 'Emad Mostaque', depiction: 'likeness' })
   })
 
   it('reads the outline tension fields and splits paragraphs, skipping bare tags', async () => {

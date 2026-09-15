@@ -1,6 +1,7 @@
 import {
   getProject,
   latestScriptParagraphSources,
+  listCastMembers,
   listShotSlots,
   listVoiceTakes,
   slotNeedsResolution,
@@ -11,6 +12,7 @@ import {
   CANDIDATES_SHOWN,
   DirectorsBookSchema,
   latestTakes,
+  castWarnings,
   planWarnings,
   ShotBriefSchema,
   SlotCandidateSchema,
@@ -250,10 +252,17 @@ export async function visualsReviewModel(
       const parsed = DirectorsBookSchema.safeParse(project?.direction)
       return parsed.success ? parsed.data : null
     })(),
-    // Craft notes (decision 252), in screen order; never a blocker.
-    warnings: planWarnings(
-      slots.flatMap((slot) => (slot.brief ? [{ brief: slot.brief }] : [])),
-      BANNED_PROMPT_WORDS,
-    ),
+    // Craft notes (decision 252), in screen order; never a blocker. Plus
+    // any cast member the book forgot (decision 253).
+    warnings: [
+      ...planWarnings(
+        slots.flatMap((slot) => (slot.brief ? [{ brief: slot.brief }] : [])),
+        BANNED_PROMPT_WORDS,
+      ),
+      ...castWarnings(
+        DirectorsBookSchema.safeParse(project?.direction).data ?? null,
+        (project ? await listCastMembers(db, project.id) : []).map((member) => member.name),
+      ),
+    ],
   }
 }
