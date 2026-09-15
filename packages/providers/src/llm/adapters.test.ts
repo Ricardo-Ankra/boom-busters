@@ -237,6 +237,66 @@ describe.each(CASES)('$name adapter', ({ adapter, fixture, truncatedFixture }) =
   })
 })
 
+describe('images on a message reach every vendor ahead of the text (decision 253)', () => {
+  const photo = { mimeType: 'image/jpeg' as const, data: 'QUJD' }
+  const withImage: LLMTaskRequest = {
+    ...request,
+    messages: [{ role: 'user', content: 'Describe this person.', images: [photo] }],
+  }
+  function capture(fixture: unknown): { fetchImpl: typeof fetch; body: () => unknown } {
+    let seen: unknown = {}
+    const fetchImpl = (async (_url: string, init: RequestInit) => {
+      seen = JSON.parse(String(init.body))
+      return new Response(JSON.stringify(fixture), { status: 200 })
+    }) as unknown as typeof fetch
+    return { fetchImpl, body: () => seen }
+  }
+
+  it('anthropic: an image block, then the text block', async () => {
+    const c = capture(FIXTURES.anthropic)
+    await anthropic.complete(withImage, {
+      apiKey: 'k',
+      model: 'claude-sonnet-5',
+      fetchImpl: c.fetchImpl,
+    })
+    const content = (c.body() as { messages: { content: { type: string }[] }[] }).messages[0]!
+      .content
+    expect(content.map((block) => block.type)).toEqual(['image', 'text'])
+    expect(content[0]).toMatchObject({
+      source: { type: 'base64', media_type: 'image/jpeg', data: 'QUJD' },
+    })
+  })
+
+  it('google: an inlineData part, then the text part', async () => {
+    const c = capture(FIXTURES.google)
+    await google.complete(withImage, {
+      apiKey: 'k',
+      model: 'gemini-pro-latest',
+      fetchImpl: c.fetchImpl,
+    })
+    const parts = (c.body() as { contents: { parts: Record<string, unknown>[] }[] }).contents[0]!
+      .parts
+    expect(parts[0]).toEqual({ inlineData: { mimeType: 'image/jpeg', data: 'QUJD' } })
+    expect(parts[1]).toEqual({ text: 'Describe this person.' })
+  })
+
+  it('openai: an image_url data URI, then the text; plain messages stay strings', async () => {
+    const c = capture(FIXTURES.openai)
+    await openai.complete(withImage, { apiKey: 'k', model: 'gpt-5', fetchImpl: c.fetchImpl })
+    const body = c.body() as { messages: { role: string; content: unknown }[] }
+    const user = body.messages[1]!.content as { type: string; image_url?: { url: string } }[]
+    expect(user[0]!.type).toBe('image_url')
+    expect(user[0]!.image_url?.url).toBe('data:image/jpeg;base64,QUJD')
+    expect(user[1]).toEqual({ type: 'text', text: 'Describe this person.' })
+
+    const plain = capture(FIXTURES.openai)
+    await openai.complete(request, { apiKey: 'k', model: 'gpt-5', fetchImpl: plain.fetchImpl })
+    expect((plain.body() as { messages: { content: unknown }[] }).messages[1]!.content).toBe(
+      'Enron',
+    )
+  })
+})
+
 describe('google adapter: Gemini 3 thinking shares the output limit', () => {
   /**
    * The first live shot lists under the Director's Book (decision 252) came

@@ -70,7 +70,20 @@ export const openai: LLMProvider = {
           // automatic prefix caching cover it.
           messages: [
             { role: 'system', content: request.system },
-            ...request.messages.map((m) => ({ role: m.role, content: m.content })),
+            ...request.messages.map((m) =>
+              m.images && m.images.length > 0
+                ? {
+                    role: m.role,
+                    content: [
+                      ...m.images.map((image) => ({
+                        type: 'image_url' as const,
+                        image_url: { url: `data:${image.mimeType};base64,${image.data}` },
+                      })),
+                      { type: 'text' as const, text: m.content },
+                    ],
+                  }
+                : { role: m.role, content: m.content },
+            ),
           ],
         }),
         ...(options.signal ? { signal: options.signal } : {}),
