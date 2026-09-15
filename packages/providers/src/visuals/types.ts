@@ -68,9 +68,25 @@ export interface StockProvider {
 // Image generation
 // ---------------------------------------------------------------------------
 
+/**
+ * A reference photograph of a real person the still must resemble (decision
+ * 253). Base64 bytes for adapters that take images inline (Gemini); fal's
+ * identity endpoints want URLs, which travel separately as `referenceUrls`.
+ */
+export interface ImageReference {
+  /** The person's full name, for the prompt. */
+  name: string
+  mimeType: 'image/jpeg' | 'image/png' | 'image/webp'
+  data: string
+}
+
 export interface ImageGenRequest {
   prompt: string
   negativePrompt?: string
+  /** Reference photos, one per depicted cast member. Absent for a text-only still. */
+  references?: ImageReference[]
+  /** Presigned GET URLs for the same photos, in the same order, for URL-taking endpoints. */
+  referenceUrls?: string[]
   /** How many variants to buy in this one call. */
   count: number
   /**

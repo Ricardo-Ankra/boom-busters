@@ -1,6 +1,6 @@
 import { RateLimitError, TransientProviderError, ValidationError } from '@boom-busters/schemas'
 import { describe, expect, it } from 'vitest'
-import { falImageGen } from './fal'
+import { FAL_REFERENCE_MODELS, falImageGen } from './fal'
 import { pexelsStock } from './pexels'
 import { pixabayStock } from './pixabay'
 import { wikimediaStock } from './wikimedia'
@@ -375,6 +375,66 @@ describe('falImageGen', () => {
     expect(result.estimatedCostUsd).toBeCloseTo(
       falImageGen.models.find((model) => model.id === 'fal-ai/flux/schnell')!.pricePerImage,
     )
+  })
+
+  it('routes a still with one reference photo to Kontext with image_url (decision 253)', async () => {
+    let calledUrl = ''
+    let sentBody: Record<string, unknown> = {}
+    const result = await falImageGen.generate(
+      {
+        prompt: 'Emad Mostaque, the person in the reference photo, at a desk',
+        count: 2,
+        model: 'fal-ai/flux/dev',
+        references: [{ name: 'Emad Mostaque', mimeType: 'image/jpeg', data: 'QUJD' }],
+        referenceUrls: ['https://r2.example/cast/emad.jpg?signed'],
+      },
+      {
+        apiKey: 'key',
+        fetchImpl: (async (url: string | URL | Request, init?: RequestInit) => {
+          calledUrl = String(url)
+          sentBody = JSON.parse(String(init?.body)) as Record<string, unknown>
+          return new Response(
+            JSON.stringify({
+              images: [
+                { url: 'https://fal.media/files/a.png', width: 1344, height: 768 },
+                { url: 'https://fal.media/files/b.png', width: 1344, height: 768 },
+              ],
+            }),
+            { status: 200 },
+          )
+        }) as typeof fetch,
+      },
+    )
+    expect(calledUrl).toBe(`https://fal.run/${FAL_REFERENCE_MODELS.single.id}`)
+    expect(sentBody['image_url']).toBe('https://r2.example/cast/emad.jpg?signed')
+    expect(sentBody['image_urls']).toBeUndefined()
+    expect(sentBody['num_images']).toBe(2)
+    expect(result.estimatedCostUsd).toBeCloseTo(FAL_REFERENCE_MODELS.single.pricePerImage * 2)
+  })
+
+  it('routes two reference photos to the multi-reference Kontext endpoint', async () => {
+    let calledUrl = ''
+    let sentBody: Record<string, unknown> = {}
+    await falImageGen.generate(
+      {
+        prompt: 'two founders in a corridor',
+        count: 1,
+        referenceUrls: ['https://r2.example/a.jpg', 'https://r2.example/b.jpg'],
+      },
+      {
+        apiKey: 'key',
+        fetchImpl: (async (url: string | URL | Request, init?: RequestInit) => {
+          calledUrl = String(url)
+          sentBody = JSON.parse(String(init?.body)) as Record<string, unknown>
+          return new Response(
+            JSON.stringify({ images: [{ url: 'https://fal.media/files/a.png' }] }),
+            { status: 200 },
+          )
+        }) as typeof fetch,
+      },
+    )
+    expect(calledUrl).toBe(`https://fal.run/${FAL_REFERENCE_MODELS.multi.id}`)
+    expect(sentBody['image_urls']).toEqual(['https://r2.example/a.jpg', 'https://r2.example/b.jpg'])
   })
 
   it('offers exactly the schema-checked FLUX variants — the list is a promise', () => {

@@ -1,4 +1,4 @@
-import { ContentPolicyError } from '@boom-busters/schemas'
+import { ContentPolicyError, ValidationError } from '@boom-busters/schemas'
 import { z } from 'zod'
 import { mapNetworkError, throwForResponse } from '../llm/http'
 import { imageGenModel } from './types'
@@ -49,6 +49,13 @@ const endpoint = (model: string) =>
 
 /** The 16:9 preset renders 1344×768, same class as fal's, scaled at compile. */
 const ASPECT_RATIO = '16:9'
+
+/**
+ * Gemini image models take up to three input images with the prompt; a
+ * fourth is refused before any call, because "some of the cast" is not an
+ * answer the producer asked for.
+ */
+export const GEMINI_MAX_REFERENCES = 3
 const WIDTH = 1344
 const HEIGHT = 768
 
@@ -86,6 +93,15 @@ export const geminiImageGen: ImageGenProvider = {
     // Resolved (and refused, on an unknown id) before any call is made.
     const model = imageGenModel(geminiImageGen, request.model)
 
+    const references = request.references ?? []
+    if (references.length > GEMINI_MAX_REFERENCES) {
+      throw new ValidationError(
+        `Gemini takes at most ${GEMINI_MAX_REFERENCES} reference photos in one still; this brief ` +
+          `depicts ${references.length} people. Plan the group anonymously or split the shot.`,
+        { field: 'references' },
+      )
+    }
+
     const prompt = request.negativePrompt
       ? `${request.prompt}. Avoid: ${request.negativePrompt}.`
       : request.prompt
@@ -102,7 +118,18 @@ export const geminiImageGen: ImageGenProvider = {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            contents: [{ parts: [{ text: prompt }] }],
+            // Reference photos first, then the words about them (decision 253):
+            // the model reads the face, then the scene to put it in.
+            contents: [
+              {
+                parts: [
+                  ...references.map((reference) => ({
+                    inlineData: { mimeType: reference.mimeType, data: reference.data },
+                  })),
+                  { text: prompt },
+                ],
+              },
+            ],
             generationConfig: { imageConfig: { aspectRatio: ASPECT_RATIO } },
           }),
           ...(options.signal ? { signal: options.signal } : {}),

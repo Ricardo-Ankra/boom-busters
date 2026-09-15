@@ -1,6 +1,6 @@
-import { ContentPolicyError } from '@boom-busters/schemas'
+import { ContentPolicyError, ValidationError } from '@boom-busters/schemas'
 import { describe, expect, it } from 'vitest'
-import { geminiImageGen } from './gemini'
+import { GEMINI_MAX_REFERENCES, geminiImageGen } from './gemini'
 
 /**
  * Against a recorded response shape, like every adapter test: the JSON is
@@ -97,6 +97,40 @@ describe('geminiImageGen', () => {
     }
     expect(body.contents[0]?.parts[0]?.text).toBe('An empty office. Avoid: text, watermarks.')
     expect(body.generationConfig.imageConfig.aspectRatio).toBe('16:9')
+  })
+
+  it('sends reference photos as inline parts ahead of the prompt (decision 253)', async () => {
+    const calls: { url: string; body: unknown }[] = []
+    await geminiImageGen.generate(
+      {
+        prompt: 'Emad Mostaque, the person in the reference photo, at a desk',
+        count: 1,
+        references: [{ name: 'Emad Mostaque', mimeType: 'image/jpeg', data: 'QUJD' }],
+      },
+      { apiKey: 'key', fetchImpl: fetchRecording(calls, IMAGE_REPLY) },
+    )
+    const parts = (calls[0]?.body as { contents: { parts: Record<string, unknown>[] }[] })
+      .contents[0]!.parts
+    expect(parts[0]).toEqual({ inlineData: { mimeType: 'image/jpeg', data: 'QUJD' } })
+    expect(parts[1]).toEqual({
+      text: 'Emad Mostaque, the person in the reference photo, at a desk',
+    })
+  })
+
+  it('refuses more than three references before spending anything', async () => {
+    const calls: { url: string; body: unknown }[] = []
+    const four = Array.from({ length: GEMINI_MAX_REFERENCES + 1 }, (_, i) => ({
+      name: `Person ${i}`,
+      mimeType: 'image/jpeg' as const,
+      data: 'QUJD',
+    }))
+    await expect(
+      geminiImageGen.generate(
+        { prompt: 'a boardroom', count: 1, references: four },
+        { apiKey: 'key', fetchImpl: fetchRecording(calls, IMAGE_REPLY) },
+      ),
+    ).rejects.toThrow(ValidationError)
+    expect(calls).toHaveLength(0)
   })
 
   it('reports a 200 with prose but no image as a policy refusal (decision 252)', async () => {
