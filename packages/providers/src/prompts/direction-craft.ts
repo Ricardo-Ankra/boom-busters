@@ -75,7 +75,8 @@ plain one.
   medium, 50mm for a close human scale, 85mm for a portrait, 100mm macro
   for texture.
 - Append the director's book invariants verbatim: the era lock for the
-  moment, the palette line, and the identity string of any person shown.
+  moment, the palette line, and the full name and identity string of any
+  person shown.
 - Banned words, because they render nothing: cinematic, stunning,
   dramatic lighting, high quality, masterpiece, epic, beautiful, moody,
   professional. Banned too: an emotion named without a body. Not "a
@@ -107,8 +108,8 @@ plain one.
   colour names; lighting has the largest effect on quality.
 - Imagen 3: subject, then context, then style; lens and proximity words
   ("close-up", "35mm", "wide angle"); keep under 480 tokens; person
-  generation is enabled, still describe people by age range, build,
-  clothing and posture, and add the identity string.
+  generation is enabled: name the person, then the identity string, then
+  posture and clothing.
 - Gemini image models: same prose as FLUX, same anchors; there is no
   negative field, so the avoid list is folded in.
 - Hero video (Veo 3.1 or Kling, when the flag is on), in this shape:
@@ -121,26 +122,45 @@ plain one.
 
 ## People
 
-- Real people may be shown by likeness. The video carries YouTube's
-  altered-content label whenever they are. Every likeness is listed in the
-  brief's "depicts" field by full name.
-- Depict people only in documentary-neutral situations the claims support:
-  a press conference, a courtroom corridor, an office, a car, a doorway, a
-  stage. Never in an invented act that implies guilt: no cash changing
-  hands, no shredders, no handcuffs, no whispered deals, no scene that
-  did not happen.
-- No exaggeration of features, no ageing or deforming, no expression of
-  malice or stupidity, no caricature, no costume that mocks. Neutral to
-  sombre expression, natural posture, period-correct dress.
+- Every named public figure in the claims is shown by likeness, and the
+  likeness must look like the actual person. "likeness" is the default
+  depiction for every principal; the producer alone downgrades someone to
+  "archival-only", never the model. "anonymous" is for people the claims
+  do not name: staff, customers, unnamed investors.
+- A prompt that shows a real person names them first, by full name and
+  role ("Emad Mostaque, founder of Stability AI"), then gives the identity
+  string: a photographic description of that person as press photographs
+  of the period show them (age, hair, beard, glasses, build, dress), so the
+  image model can match the real face. Never a generic "a man in his 40s"
+  standing in for a named person.
+- Re-created scenes are allowed and expected: a principal at a desk with
+  papers, in a boardroom, in a corridor, at a podium, in a car, in an
+  interview, reading a phone. The film says on screen and in its
+  description that re-creations are illustrative, so a scene does not need
+  to have been photographed to be shown. It needs to be consistent with
+  the claims.
+- The line that is never crossed is defamation or mockery. Never show a
+  named person committing a specific act the claims do not establish: no
+  cash changing hands, no shredder, no handcuffs, no whispered deal. No
+  exaggeration of features, no ageing or deforming, no expression of
+  malice, guilt or stupidity, no caricature, no costume that mocks, no
+  sexual, violent or degrading context, no invented quote in the frame.
+  Neutral to sombre expression, natural posture, period-correct dress.
 - The mood is carried by the environment and the light, never by the
   face. A person can stand in a dark room; the room is dark, the person is
   not made sinister.
-- The director's book writes one guardrail line per principal, specific
-  to what the claims establish ("shown at podiums and in corridors; never
-  at a desk with documents"). Quote it in every prompt that shows them.
+- The director's book writes one guardrail line per principal, and it
+  lists only the defamation and mockery exclusions specific to that person
+  ("never handling cash or signing an invented contract; never in
+  handcuffs; never mocked"). It never fences a person away from ordinary
+  settings such as desks, documents, boardrooms or meetings. Quote it in
+  every prompt that shows them.
 - Anonymous figures (depiction "anonymous") are described by role, age
   range, build and clothing, face turned away or in shadow, and never
   resemble a named person.
+- Archival slots hold real photographs and footage the producer uploads,
+  and only those. A generated likeness is never presented as a real
+  photograph, and a real photograph is never planned as a "still".
 - When a model refuses a likeness, the fallback is a redirect: the same
   beat without the person (the empty chair, the podium after the speech,
   the door they walked through) or an anonymous figure. Keep the sentence
@@ -153,8 +173,11 @@ plain one.
 - Every chapter shows at least one motif and builds to its key image.
 - Every era lock is obeyed in every prompt it touches.
 - No banned word appears in any prompt.
-- Every prompt naming a real person carries their identity string and
-  their guardrail line, and lists them in "depicts".
+- Every prompt showing a real person names them in full, carries their
+  identity string and their guardrail line, and lists them in "depicts".
+- No guardrail or never-show line keeps a principal away from a desk, a
+  document, a boardroom or a meeting; they exclude only what would defame
+  or mock.
 - No pan.
 
 Shot rules adapted in part from visual-skills by Serge Shima

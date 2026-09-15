@@ -4060,6 +4060,24 @@ pressed }`: a ref guards the call so a double-click fires the server
      `planChapterSlots` retries a cut-off shot list once at double the
      budget instead of leaving Inngest to replay the identical request.
      An Inngest retry on a truncation was four paid copies of one failure.
+     (i) _The first real book, read._ The Stability AI book downgraded
+     three of five principals to "archival-only", described the other two
+     generically ("a man in his 40s, clean-shaven"), and wrote guardrails
+     and never-show lines that fenced them away from desks, documents and
+     boardrooms. Three causes, all ours: the Brand Kit anchors appended to
+     every still prompt ended "no identifiable real faces", which fought
+     every likeness the bible asked for; the bible's own example guardrail
+     was "never at a desk with documents"; and the book rules told the
+     model to pick "archival-only" itself. Now: likeness is the default for
+     every named public figure and only the producer downgrades it; a
+     prompt names the person by full name and role before the identity
+     string, so the image is of them and not a stand-in; guardrails and
+     never-show lines are limited to defamation, mockery and fabricated
+     evidence, never ordinary settings; the face clause is gone from the
+     anchors; and the publish disclaimer says AI likenesses are illustrative
+     re-creations. Stored books keep their old principals until "Redraft
+     direction" is pressed. Open: an on-screen "Real footage" tag for
+     archival slots and an opening illustrative card need the compositor.
      Attribution: shot rules adapted in part from visual-skills by Serge
      Shima (github.com/smixs/visual-skills, CC BY 4.0) and DirectorSKILL
      (MIT); the bible's footer carries the same line.

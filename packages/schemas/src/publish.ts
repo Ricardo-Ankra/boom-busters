@@ -23,7 +23,8 @@ export const DESCRIPTION_MAX_CHARS = 5000
  */
 export const PUBLISH_DISCLAIMER =
   'This video is documentary commentary for education. It is not financial advice. ' +
-  'Narration is AI-generated and some visuals are re-creations; sources are listed above.'
+  'Narration is AI-generated. Some visuals are AI re-creations for illustration, including ' +
+  'likenesses of real people; they are not photographs of real events. Sources are listed above.'
 
 /**
  * Draft fields the Publish screen stores in `publish_records.metadata`

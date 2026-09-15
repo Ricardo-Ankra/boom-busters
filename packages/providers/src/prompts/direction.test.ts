@@ -55,6 +55,13 @@ describe('buildDirectorsBookRequest', () => {
     expect(request.messages[0]?.content).toContain('Markus Braun was chief executive')
   })
 
+  it('makes likeness the default and keeps guardrails to defamation and mockery', () => {
+    expect(request.system).toContain('every one of them is\n  "likeness"')
+    expect(request.system).toContain('Never choose "archival-only" yourself')
+    expect(request.system).toContain('never keeps them away from desks')
+    expect(request.system).toContain('begins with the full name and role')
+  })
+
   it('threads the Brand Kit anchors in as the palette boundary', () => {
     expect(request.system).toContain('subtle film grain; muted grade')
   })

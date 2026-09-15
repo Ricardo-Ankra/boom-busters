@@ -73,11 +73,25 @@ ${DIRECTION_CRAFT}
 ${BOOK_SHAPE}
 
 Rules for the book:
-- Principals are the real people the claims name. "identityString" describes
-  the person as a photograph would (age range, build, hair, glasses, dress),
-  never their character. "guardrail" names the only situations the claims
-  support showing them in. Use "anonymous" when the person is not a public
-  figure; "archival-only" when only real photographs should show them.
+- Principals are the real people the claims name, and every one of them is
+  "likeness": the film shows the actual person, by AI likeness, under an
+  on-screen illustrative disclaimer. Never choose "archival-only" yourself;
+  that is the producer's call after the book is drafted. "anonymous" is only
+  for people the claims do not name.
+- "identityString" begins with the full name and role, then describes the
+  person as press photographs of the period show them (age, hair, beard,
+  glasses, build, dress), so an image model can match the real face. Never
+  a generic description that could be anyone.
+- "guardrail" lists only that person's defamation and mockery exclusions:
+  specific acts the claims do not establish (handling cash, signing an
+  invented contract, handcuffs), plus caricature, malice, humiliation. It
+  never keeps them away from desks, documents, boardrooms, meetings,
+  interviews or podiums; re-created scenes in ordinary settings are the
+  point of the film.
+- "neverShow" is for this story's factual honesty: fabricated documents
+  presented as real filings, generated images passed off as real
+  photographs, a figure sourced to a filing that does not exist, an invented
+  crime. It is not a list of settings the principals may not appear in.
 - Era locks name objects, not adjectives.
 - The palette sits inside the Brand Kit grade: "${input.styleAnchors}".
 - One chapter entry per chapter, numbered as given, in order.`,

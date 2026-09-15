@@ -81,8 +81,10 @@ export function stillStyleAnchors(brandKit: BrandKitStored): string {
 
   return (
     `${grain}; muted documentary colour grade anchored on ${primary} and ${accent} ` +
+    // No face rule here: the bible decides who is shown (decision 252), and a
+    // blanket "no identifiable real faces" fought every likeness it asked for.
     `against ${background}; cinematic, sombre, photographic realism; no text, no logos, ` +
-    'no watermarks, no identifiable real faces'
+    'no watermarks'
   )
 }
 
@@ -184,8 +186,10 @@ Planning rules:
   still prompt must contain" says: prose, subject first, three physical
   facts, lens and light named, then the book's era lock, palette and any
   identity string verbatim, then these Brand Kit anchors verbatim:
-  "${input.styleAnchors}". List every real person shown by likeness in
-  "depicts" and quote their guardrail line in the prompt.
+  "${input.styleAnchors}". A prompt that shows a real person names them
+  first, by full name and role, then their identity string, so the image
+  is of that person and not a stand-in; list them in "depicts" and quote
+  their guardrail line in the prompt.
   ${STILL_GENERATIONS} variants are generated per prompt.
 - Narration may contain bracketed tags — [pause], [sighs]. They are direction
   for the narrator, not content; never plan a visual around one and never quote

@@ -81,6 +81,10 @@ describe('stillStyleAnchors', () => {
     expect(anchors).toContain(brandKit.colors.primary)
   })
 
+  it('does not forbid faces: the bible decides who is shown, by likeness', () => {
+    expect(stillStyleAnchors(brandKit)).not.toMatch(/faces/)
+  })
+
   it('says "no grain" rather than "none film grain"', () => {
     const clean = {
       ...brandKit,
