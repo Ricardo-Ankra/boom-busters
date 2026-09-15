@@ -94,6 +94,12 @@ export const geminiImageGen: ImageGenProvider = {
     const model = imageGenModel(geminiImageGen, request.model)
 
     const references = request.references ?? []
+    if (references.some((reference) => !reference.data)) {
+      throw new ValidationError(
+        'Gemini takes reference photos inline; a reference without bytes cannot be sent.',
+        { field: 'references' },
+      )
+    }
     if (references.length > GEMINI_MAX_REFERENCES) {
       throw new ValidationError(
         `Gemini takes at most ${GEMINI_MAX_REFERENCES} reference photos in one still; this brief ` +
@@ -124,7 +130,7 @@ export const geminiImageGen: ImageGenProvider = {
               {
                 parts: [
                   ...references.map((reference) => ({
-                    inlineData: { mimeType: reference.mimeType, data: reference.data },
+                    inlineData: { mimeType: reference.mimeType, data: reference.data ?? '' },
                   })),
                   { text: prompt },
                 ],

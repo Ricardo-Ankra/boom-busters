@@ -77,7 +77,8 @@ export interface ImageReference {
   /** The person's full name, for the prompt. */
   name: string
   mimeType: 'image/jpeg' | 'image/png' | 'image/webp'
-  data: string
+  /** Base64 bytes. Absent when the caller only has URLs for a URL-taking endpoint. */
+  data?: string
 }
 
 export interface ImageGenRequest {

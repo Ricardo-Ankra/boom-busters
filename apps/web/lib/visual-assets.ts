@@ -2,8 +2,18 @@ import 'server-only'
 
 import { createHash } from 'node:crypto'
 import { withCost } from '@boom-busters/cost'
-import { getSettings, upsertAssetByHash, visualCredentials } from '@boom-busters/db'
-import { applyScores, STILL_GENERATIONS, ValidationError } from '@boom-busters/schemas'
+import {
+  castMembersNamed,
+  getSettings,
+  upsertAssetByHash,
+  visualCredentials,
+} from '@boom-busters/db'
+import {
+  applyScores,
+  referencePhotos,
+  STILL_GENERATIONS,
+  ValidationError,
+} from '@boom-busters/schemas'
 import type {
   ShotBrief,
   ShotSlotStatus,
@@ -22,11 +32,94 @@ import {
   parseScores,
   stockAdapter,
 } from '@boom-busters/providers'
-import type { StockQuery } from '@boom-busters/providers'
+import type { ImageReference, StockQuery } from '@boom-busters/providers'
 import { db } from '@/lib/db'
 import { env } from '@/lib/env'
 import { callLlm } from '@/lib/llm'
-import { putObject, stillKey, storageConfigured } from '@/lib/storage'
+import { getObjectBytes, presignGet, putObject, stillKey, storageConfigured } from '@/lib/storage'
+
+/**
+ * The most people one still can be conditioned on: Gemini's input-image
+ * limit, and about as many faces as a documentary frame should carry.
+ */
+export const MAX_STILL_REFERENCES = 3
+
+/** The clause the planner is asked to write; prepended if it forgot. */
+const REFERENCE_CLAUSE = 'the person in the reference photo'
+
+/**
+ * The cast members a still depicts, with their photos ready for the routed
+ * generator (decision 253): Gemini wants bytes inline, fal wants URLs. A
+ * still that depicts nobody, or people not in the cast, returns nothing and
+ * generates from text as before. Storage that cannot be read (no bucket in
+ * a dev environment) also falls back to text rather than failing the slot.
+ */
+async function castReferences(
+  brief: StillBrief,
+  projectId: string,
+  provider: 'google' | 'fal',
+  mocked: boolean,
+): Promise<{ names: string[]; references: ImageReference[]; referenceUrls: string[] }> {
+  const none = { names: [], references: [], referenceUrls: [] }
+  if (!brief.depicts || brief.depicts.length === 0) return none
+  const members = (await castMembersNamed(db, projectId, brief.depicts))
+    .filter((member) => member.photos.length > 0)
+    .slice(0, MAX_STILL_REFERENCES)
+  if (members.length === 0) return none
+
+  const names = members.map((member) => member.name)
+  const photos = members.map((member) => ({ member, photo: referencePhotos(member, 1)[0]! }))
+
+  if (mocked) {
+    return {
+      names,
+      references: photos.map(({ member, photo }) => ({
+        name: member.name,
+        mimeType: photo.mimeType,
+        data: 'bW9jaw==',
+      })),
+      referenceUrls: photos.map(({ photo }) => `mock://${photo.r2Key}`),
+    }
+  }
+  try {
+    if (provider === 'google') {
+      const references: ImageReference[] = []
+      for (const { member, photo } of photos) {
+        const object = await getObjectBytes(photo.r2Key)
+        references.push({
+          name: member.name,
+          mimeType: photo.mimeType,
+          data: Buffer.from(object.bytes).toString('base64'),
+        })
+      }
+      return { names, references, referenceUrls: [] }
+    }
+    const referenceUrls: string[] = []
+    for (const { photo } of photos) referenceUrls.push(await presignGet(photo.r2Key))
+    return {
+      names,
+      references: photos.map(({ member, photo }) => ({
+        name: member.name,
+        mimeType: photo.mimeType,
+      })),
+      referenceUrls,
+    }
+  } catch (error) {
+    if (error instanceof ValidationError) return none
+    throw error
+  }
+}
+
+/** "Emad Mostaque, the person in the reference photo. <prompt>" unless the planner already said so. */
+function withReferenceClause(prompt: string, names: readonly string[]): string {
+  if (names.length === 0 || prompt.includes(REFERENCE_CLAUSE)) return prompt
+  const people = names.join(' and ')
+  const clause =
+    names.length === 1
+      ? `${people}, ${REFERENCE_CLAUSE}.`
+      : `${people}, the people in the reference photos.`
+  return `${clause} ${prompt}`
+}
 
 /**
  * Slot resolution — how a brief becomes candidates (build spec section 7.4).
@@ -178,6 +271,11 @@ export async function generateStillCandidates(
     )
   }
 
+  // The cast's photos ride along for every depicted member who has one
+  // (decision 253); the prompt names them as the people in the photos.
+  const cast = await castReferences(brief, projectId, provider, mocked)
+  const prompt = withReferenceClause(brief.prompt, cast.names)
+
   const result = await withCost(
     db,
     {
@@ -187,21 +285,28 @@ export async function generateStillCandidates(
       // Priced from the LIVE adapter even in mock mode — same rule as the
       // estimate button, so plan and ledger never quote different numbers.
       estimateUsd: imageGenPrice(LIVE_IMAGE_GEN_ADAPTERS[provider], STILL_GENERATIONS, route.model),
-      meta: { model: route.model, prompt: brief.prompt.slice(0, 200) },
+      meta: {
+        model: route.model,
+        prompt: prompt.slice(0, 200),
+        ...(cast.names.length > 0 ? { references: cast.names } : {}),
+      },
     },
     async () => {
       const generated = await adapter.generate(
         {
-          prompt: brief.prompt,
+          prompt,
           ...(brief.negativePrompt ? { negativePrompt: brief.negativePrompt } : {}),
           count: STILL_GENERATIONS,
           ...(mocked ? {} : { model: route.model }),
+          ...(cast.references.length > 0 ? { references: cast.references } : {}),
+          ...(cast.referenceUrls.length > 0 ? { referenceUrls: cast.referenceUrls } : {}),
         },
         { ...(apiKey ? { apiKey } : {}) },
       )
       return { result: generated, actualUsd: generated.estimatedCostUsd }
     },
   )
+  const referenced = cast.names.length > 0 ? { references: cast.names } : {}
 
   return Promise.all(
     result.images.map(async (image, index) => {
@@ -219,7 +324,8 @@ export async function generateStillCandidates(
           width: image.width,
           height: image.height,
           licence: '[mock] Generated',
-          summary: `[mock] Generation ${index + 1} for: ${brief.prompt.slice(0, 120)}`,
+          summary: `[mock] Generation ${index + 1} for: ${prompt.slice(0, 120)}`,
+          ...referenced,
         } satisfies SlotCandidate
       }
 
@@ -269,6 +375,7 @@ export async function generateStillCandidates(
         width: image.width,
         height: image.height,
         licence: asset.licence,
+        ...referenced,
         summary: `Generated from: ${brief.prompt.slice(0, 120)}`,
       } satisfies SlotCandidate
     }),
