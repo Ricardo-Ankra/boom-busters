@@ -2,6 +2,7 @@ import { DEFAULT_SETTINGS, ShotListOutputSchema } from '@boom-busters/schemas'
 import { describe, expect, it } from 'vitest'
 import { buildShotListRequest, mockShotList, parseShotList, stillStyleAnchors } from './shotlist'
 import type { ShotParagraph } from './shotlist'
+import { mockDirectorsBook } from './direction'
 import type { ScriptClaim } from './script'
 
 const CLAIMS: ScriptClaim[] = [
@@ -233,5 +234,79 @@ describe('mockShotList', () => {
   it('emits no chart when there are no claims to cite', () => {
     const output = mockShotList({ paragraphs: PARAGRAPHS, claimCount: 0 })
     expect(output.slots.every((slot) => slot.brief.type !== 'chart')).toBe(true)
+  })
+})
+
+describe('buildShotListRequest with direction (decision 252)', () => {
+  const direction = mockDirectorsBook({ caseTitle: 'Wirecard', chapterCount: 2 })
+  const request = buildShotListRequest({
+    caseTitle: 'Wirecard',
+    chapterTitle: 'The Missing Billions',
+    chapterNumber: 2,
+    paragraphs: PARAGRAPHS,
+    claims: CLAIMS,
+    styleAnchors: stillStyleAnchors(brandKit),
+    direction,
+  })
+
+  it('embeds the bible in the system prompt', () => {
+    expect(request.system).toContain('# Direction craft')
+  })
+
+  it('puts the rendered book in the cacheable prefix beside the claims', () => {
+    expect(request.cacheablePrefixMessages).toBe(1)
+    expect(request.messages[0]?.content).toContain('Motifs: [mock] reflections in dark glass')
+    expect(request.messages[0]?.content).toContain('Claims:')
+  })
+
+  it('tells the model which chapter entry is this one', () => {
+    expect(request.messages[1]?.content).toContain('This is chapter 2 of the book')
+  })
+
+  it('asks for shotSize on every slot and depicts on likenesses, and bans the pan', () => {
+    expect(request.system).toContain('"shotSize"')
+    expect(request.system).toContain('"depicts"')
+    expect(request.system).toContain('Never "pan"')
+  })
+
+  it('still works with no book, for re-runs of projects planned before it', () => {
+    const bare = buildShotListRequest({
+      caseTitle: 'Wirecard',
+      chapterTitle: 'x',
+      paragraphs: PARAGRAPHS,
+      claims: CLAIMS,
+      styleAnchors: 'a',
+    })
+    expect(bare.messages[0]?.content).not.toContain('Motifs:')
+    expect(bare.messages[1]?.content).not.toContain('of the book')
+  })
+
+  it('parses shotSize and depicts on a planned still', () => {
+    const parsed = parseShotList(
+      JSON.stringify({
+        slots: [
+          {
+            paragraphIndex: 0,
+            seconds: 6,
+            brief: {
+              type: 'still',
+              coversText: 'By June, the auditors could not find the money.',
+              description: 'An empty audit room.',
+              shotSize: 'wide',
+              motion: { kind: 'static' },
+              transition: 'cut',
+              prompt: 'An empty audit room at dusk, one lamp on.',
+              depicts: ['Markus Braun'],
+            },
+          },
+        ],
+      }),
+    )
+    expect(parsed.slots[0]?.brief).toMatchObject({ shotSize: 'wide', depicts: ['Markus Braun'] })
+  })
+
+  it('gives the mock plan alternating sizes so the lint stays quiet', () => {
+    const plan = mockShotList({ paragraphs: PARAGRAPHS, claimCount: 0 })
+    expect(plan.slots.map((slot) => slot.brief.shotSize)).toEqual(['wide', 'medium', 'graphic'])
   })
 })

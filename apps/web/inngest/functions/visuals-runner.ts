@@ -7,6 +7,7 @@ import {
   replaceShotList,
   scriptableClaims,
   setProjectStage,
+  setSlotRefusal,
   setSlotResolution,
   setVisualsPhase,
   shotBriefHash,
@@ -14,27 +15,23 @@ import {
   slotNeedsResolution,
 } from '@boom-busters/db'
 import type { NewShotSlot } from '@boom-busters/db'
-import {
-  buildShotListRequest,
-  mockProvidersEnabled,
-  mockShotList,
-  parseShotList,
-  stillStyleAnchors,
-} from '@boom-busters/providers'
+import { BANNED_PROMPT_WORDS, stillStyleAnchors } from '@boom-busters/providers'
 import type { ScriptClaim } from '@boom-busters/providers'
 import {
   BudgetExceededError,
+  ContentPolicyError,
   parseEventData,
+  planWarnings,
   serialiseError,
   ShotBriefSchema,
   visualsCoverage,
 } from '@boom-busters/schemas'
 import { NonRetriableError } from 'inngest'
 import { db } from '@/lib/db'
-import { callLlm } from '@/lib/llm'
 import { requireVisualKeys, resolveSlotBrief } from '@/lib/visual-assets'
 import { inngest } from '../client'
 import { events } from '../events'
+import { loadOrDraftDirectorsBook, planChapterSlots } from '../lib/direction'
 import {
   budgetGateData,
   closeReviewGate,
@@ -43,12 +40,7 @@ import {
   type GateContext,
 } from '../lib/gates'
 import { chunk, withinFailureTolerance } from '../lib/narration'
-import {
-  plannedToRows,
-  promptParagraphs,
-  RESOLUTION_CONCURRENCY,
-  timedParagraphs,
-} from '../lib/shot-list'
+import { RESOLUTION_CONCURRENCY, timedParagraphs } from '../lib/shot-list'
 
 /**
  * visuals-runner (build spec section 7.4; staged-visuals design 2026-08-26).
@@ -133,14 +125,32 @@ export const visualsRunner = inngest.createFunction(
       }
     })
 
-    const mocked = mockProvidersEnabled()
     // The order of this array IS the claim numbering every chapter's prompt
     // uses, and the numbering `plannedToRows` maps back to ids. One list,
     // computed once, so they cannot disagree.
     const claimIds = setup.claims.map((claim) => claim.id)
 
     // -----------------------------------------------------------------------
-    // Shot-list generation, chapter by chapter
+    // The Director's Book (decision 252): once per film, reused when stored
+    // -----------------------------------------------------------------------
+
+    const direction = await step.run('directors-book', async () => {
+      try {
+        return { ok: true as const, book: await loadOrDraftDirectorsBook(projectId) }
+      } catch (error) {
+        if (error instanceof BudgetExceededError) {
+          return { ok: false as const, gate: budgetGateData(error) }
+        }
+        throw error
+      }
+    })
+    if (!direction.ok) {
+      await step.run('direction-over-budget', () => markStageFailed(ctx, direction.gate))
+      return { projectId, outcome: 'over-budget' as const }
+    }
+
+    // -----------------------------------------------------------------------
+    // Shot-list generation, chapter by chapter, against the book
     // -----------------------------------------------------------------------
 
     const allRows: NewShotSlot[] = []
@@ -153,51 +163,24 @@ export const visualsRunner = inngest.createFunction(
           | { ok: true; rows: NewShotSlot[]; rejected: number }
           | { ok: false; gate: Record<string, unknown> }
         > => {
-          const paragraphs = promptParagraphs(setup.paragraphs, chapter.id)
-          if (paragraphs.length === 0) return { ok: true, rows: [], rejected: 0 }
-
-          let slots
-          // Slots the model planned but that could not be used — malformed
-          // JSON shapes, charts citing claims that do not exist. Dropped and
-          // counted rather than fatal: a gap on the board is repairable from
-          // a card, a failed chapter kills the run.
-          let dropped = 0
-          if (mocked) {
-            slots = mockShotList({ paragraphs, claimCount: setup.claims.length }).slots
-          } else {
-            try {
-              const parsed = parseShotList(
-                (
-                  await callLlm(
-                    buildShotListRequest({
-                      caseTitle: setup.caseTitle,
-                      chapterTitle: chapter.title,
-                      paragraphs,
-                      claims: setup.claims,
-                      styleAnchors: setup.styleAnchors,
-                    }),
-                    { projectId },
-                  )
-                ).text,
-              )
-              slots = parsed.slots
-              dropped += parsed.malformed.length
-            } catch (error) {
-              if (error instanceof BudgetExceededError) {
-                return { ok: false, gate: budgetGateData(error) }
-              }
-              throw error
+          try {
+            const result = await planChapterSlots({
+              projectId,
+              caseTitle: setup.caseTitle,
+              chapter: { id: chapter.id, title: chapter.title, number: index + 1 },
+              paragraphs: setup.paragraphs,
+              claims: setup.claims,
+              claimIds,
+              styleAnchors: setup.styleAnchors,
+              direction: direction.book,
+            })
+            return { ok: true, ...result }
+          } catch (error) {
+            if (error instanceof BudgetExceededError) {
+              return { ok: false, gate: budgetGateData(error) }
             }
+            throw error
           }
-
-          const conversion = plannedToRows({
-            chapterId: chapter.id,
-            planned: slots,
-            paragraphs: setup.paragraphs,
-            claimIds,
-          })
-
-          return { ok: true, rows: conversion.rows, rejected: dropped + conversion.rejected.length }
         },
       )
 
@@ -231,6 +214,12 @@ export const visualsRunner = inngest.createFunction(
     })
 
     const stillCount = allRows.filter((row) => row.type === 'still').length
+    // Craft misses the model let through (decision 252): notes for the plan
+    // screen, never rejections.
+    const warnings = planWarnings(
+      allRows.map((row) => ({ brief: row.brief })),
+      BANNED_PROMPT_WORDS,
+    )
     await step.run('open-plan-park', () =>
       openReviewGate(ctx, {
         stage: 'visuals',
@@ -240,6 +229,9 @@ export const visualsRunner = inngest.createFunction(
           (stillCount > 0 ? ` · ${stillCount} stills to generate` : '') +
           (rejectedSlots > 0
             ? ` · ${rejectedSlots} planned slots dropped — malformed or citing unknown claims`
+            : '') +
+          (warnings.length > 0
+            ? ` · ${warnings.length} craft note${warnings.length === 1 ? '' : 's'}`
             : '') +
           ' · nothing fetched yet — review the plan, then fetch',
       }),
@@ -311,6 +303,17 @@ export const visualsRunner = inngest.createFunction(
             } catch (error) {
               if (error instanceof BudgetExceededError) {
                 return { ok: false, gate: budgetGateData(error) }
+              }
+              if (error instanceof ContentPolicyError) {
+                // The image model declined the prompt (decision 252): a
+                // placeholder with the refusal ON THE ROW, so the card can
+                // offer the two ways out instead of a generic "nothing found".
+                await setSlotResolution(db, slot.id, { candidates: [], status: 'placeholder' })
+                await setSlotRefusal(db, slot.id, {
+                  reason: error.message,
+                  at: new Date().toISOString(),
+                })
+                return { ok: false, error: error.message }
               }
               /**
                * Swallowed for the same reason the voice fan-out swallows: the

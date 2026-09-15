@@ -1,3 +1,4 @@
+import { ContentPolicyError } from '@boom-busters/schemas'
 import { describe, expect, it } from 'vitest'
 import { geminiImageGen } from './gemini'
 
@@ -98,14 +99,24 @@ describe('geminiImageGen', () => {
     expect(body.generationConfig.imageConfig.aspectRatio).toBe('16:9')
   })
 
-  it('fails loudly when a 200 carries prose but no image — a quiet refusal', async () => {
+  it('reports a 200 with prose but no image as a policy refusal (decision 252)', async () => {
     const refusal = { candidates: [{ content: { parts: [{ text: 'I cannot draw that.' }] } }] }
-    await expect(
-      geminiImageGen.generate(
-        { prompt: 'x', count: 1 },
-        { apiKey: 'key', fetchImpl: fetchRecording([], refusal) },
-      ),
-    ).rejects.toThrow(/no image/)
+    const attempt = geminiImageGen.generate(
+      { prompt: 'x', count: 1 },
+      { apiKey: 'key', fetchImpl: fetchRecording([], refusal) },
+    )
+    await expect(attempt).rejects.toBeInstanceOf(ContentPolicyError)
+    await expect(attempt).rejects.toThrow(/no image/)
+  })
+
+  it('reports a blocked prompt with no candidates as a policy refusal, naming the reason', async () => {
+    const blocked = { promptFeedback: { blockReason: 'SAFETY' }, candidates: [] }
+    const attempt = geminiImageGen.generate(
+      { prompt: 'x', count: 1 },
+      { apiKey: 'key', fetchImpl: fetchRecording([], blocked) },
+    )
+    await expect(attempt).rejects.toBeInstanceOf(ContentPolicyError)
+    await expect(attempt).rejects.toThrow(/SAFETY/)
   })
 
   it('verifies the key against the model card without buying anything', async () => {

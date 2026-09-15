@@ -49,6 +49,7 @@ const TASK_LABELS: Record<LlmTask, string> = {
   shotlist: 'Shot lists',
   metadata: 'Titles and descriptions',
   digest: 'Weekly digest',
+  direction: 'Visual direction',
 }
 
 const CREDENTIAL_PROVIDERS: Provider[] = [...PROVIDERS]

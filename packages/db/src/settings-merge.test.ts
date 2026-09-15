@@ -151,3 +151,15 @@ describe('normaliseSettings', () => {
     expect(() => normaliseSettings(stored)).toThrow()
   })
 })
+
+describe('normaliseSettings and the direction route (decision 252)', () => {
+  it('fills the direction route for settings stored before it existed', () => {
+    const stored = structuredClone(DEFAULT_SETTINGS) as Record<string, unknown>
+    delete (stored['modelRouting'] as Record<string, unknown>)['direction']
+    const settings = normaliseSettings(stored)
+    expect(settings.modelRouting.direction).toEqual({
+      provider: 'anthropic',
+      model: 'claude-sonnet-5',
+    })
+  })
+})

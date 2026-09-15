@@ -1,4 +1,5 @@
 import { desc, eq, notInArray, sql } from 'drizzle-orm'
+import type { DirectorsBook } from '@boom-busters/schemas'
 import type { Database } from './client'
 import { cases, dossiers, projects, scripts } from './schema'
 import type { ProjectRow, ProjectStage, StageStatus } from './schema'
@@ -63,6 +64,8 @@ export interface ProjectSummary {
   hasActiveRun: boolean
   /** Which visuals checkpoint the project sits at (staged-visuals design). */
   visualsPhase: 'plan' | 'board' | null
+  /** The Director's Book as stored (decision 252); parse with `DirectorsBookSchema`. */
+  direction: Record<string, unknown> | null
 }
 
 const summaryColumns = {
@@ -77,6 +80,7 @@ const summaryColumns = {
   inngestRunId: projects.inngestRunId,
   cancelledAt: projects.cancelledAt,
   visualsPhase: projects.visualsPhase,
+  direction: projects.direction,
   createdAt: projects.createdAt,
   updatedAt: projects.updatedAt,
   dossierVersion: dossiers.version,
@@ -201,6 +205,22 @@ export async function setVisualsPhase(
   await db
     .update(projects)
     .set({ visualsPhase: phase, updatedAt: new Date() })
+    .where(eq(projects.id, id))
+}
+
+/**
+ * Store, replace or clear the Director's Book (decision 252). Written by the
+ * visuals-runner's draft, the plan screen's Save and the replanner's
+ * redraft; read back through `getProject().direction`.
+ */
+export async function setProjectDirection(
+  db: Database,
+  id: string,
+  book: DirectorsBook | null,
+): Promise<void> {
+  await db
+    .update(projects)
+    .set({ direction: book as unknown as Record<string, unknown> | null, updatedAt: new Date() })
     .where(eq(projects.id, id))
 }
 

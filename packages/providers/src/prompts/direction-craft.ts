@@ -1,0 +1,175 @@
+/**
+ * The House Visual Bible (decision 252): the fixed layer of visual direction
+ * every shot brief follows. The human-editable source of truth is
+ * `direction-craft.md` beside this file; this constant is what ships, because
+ * a runtime file read does not survive every bundler this package runs under
+ * (Next server build, Inngest, vitest). A unit test holds the two identical
+ * (the decision 216 pattern), so editing the markdown without re-embedding it
+ * fails CI instead of silently shipping the stale prompt.
+ */
+export const DIRECTION_CRAFT = `# Direction craft: how the film looks
+
+These rules shape the director's book and every shot brief. They sit BELOW
+the hard rules: nothing here ever licenses an image the claim list does not
+support, and the legal hedges are never sacrificed for a stronger picture.
+A beautiful frame that implies a fact the claims do not hold is worse than a
+plain one.
+
+## The house look
+
+- Register: the Netflix money documentary. Dark, patient, photographic
+  realism. Rooms after the people have left. Documents, hands, screens,
+  glass, reflections, corridors, car parks at night, empty trading floors.
+- Restraint over spectacle. The story is the drama; the picture holds still
+  and lets it land. One idea per frame.
+- Light carries the mood, never the face. Practical sources the viewer can
+  see: a desk lamp, a monitor, a window at dusk, sodium street light,
+  fluorescent tubes. Name the source, its direction and its quality in
+  every prompt.
+- Grade and grain come from the Brand Kit anchors appended to every still
+  prompt. Do not restate a grade in your own words; use the anchors.
+- Era is a lock, not a flavour. Period-correct objects are named
+  specifically: CRT monitors, a fax machine, a flip phone, paper ledgers.
+  Never write "old fashioned"; write the object.
+
+## Shot grammar for a film made of stills
+
+- Shot sizes, and what each is for:
+  wide (a place and the scale of what happened there),
+  medium (a person in a situation, or a room's purpose),
+  close (one object or gesture that carries the beat),
+  macro (texture, ink, a signature, a screen pixel),
+  aerial (geography, distance, the size of an estate or a city),
+  graphic (charts and maps, which are their own family).
+- Every slot does at least one job: changes the emotion, advances the
+  story, or raises the pressure. A slot that does none is filler; cut it or
+  merge its seconds into its neighbour.
+- No three adjacent slots at the same size. Alternate distance the way an
+  editor would: wide, close, medium, macro.
+- A paragraph that cites a number wants a chart AT the number, not after
+  it. Charts and maps carry facts better than another photograph.
+- Stills and stock alternate; they do not cluster. Two AI stills in a row
+  is the ceiling.
+- Inside a paragraph the rhythm steps down towards the beat that matters:
+  long, shorter, shorter, a pause, impact. The pause before the impact
+  matters more than the speed before it.
+- Every chapter builds to one image, named in the director's book. Plan
+  the chapter so that image lands on the chapter's turn.
+- Motifs recur. The director's book names three; each chapter shows at
+  least one of them, in a new place.
+
+## What a still prompt must contain
+
+- One photographable moment. Not a montage, not a concept, not "the fall
+  of a company". A room, a time of day, a light source, an object.
+- Three physical facts in every prompt: an environmental pressure
+  (rain on the window, a flickering tube, dust in a beam of light), a
+  human trace (a coat on a chair, a half-drunk coffee, a hand on a
+  document, a figure at a doorway), and one motif from the director's
+  book.
+- Written in this order, as prose, not a keyword list: subject, action or
+  state, style anchors, context (place and era), lighting (source,
+  direction, quality), technical (lens, distance, aspect). Lead with the
+  subject; the first third of the prompt gets the most attention.
+- Name the lens: 24mm for a wide that breathes, 35mm for a documentary
+  medium, 50mm for a close human scale, 85mm for a portrait, 100mm macro
+  for texture.
+- Append the director's book invariants verbatim: the era lock for the
+  moment, the palette line, and the identity string of any person shown.
+- Banned words, because they render nothing: cinematic, stunning,
+  dramatic lighting, high quality, masterpiece, epic, beautiful, moody,
+  professional. Banned too: an emotion named without a body. Not "a
+  worried executive"; "an executive, jaw set, both hands flat on the
+  desk".
+- The negative prompt names things, not categories: "no smartphone, no
+  flat screen, no LED strip" for a 1990s office, never "no modern
+  objects".
+- No text, no logos, no watermarks in generated frames. Titles are
+  rendered by the compositor, not the image model.
+
+## Motion the renderer can do
+
+- The compositor renders static, and Ken Burns in or out at slow, medium
+  or fast. That is the whole vocabulary.
+- Never plan a pan. The compiler turns "pan" into a push-in today, so a
+  pan is a broken promise on the board.
+- A push-in on a document or a face; a pull-out on a place, to show its
+  scale after the detail. Static for charts, maps and the chapter's key
+  image, so the frame is allowed to be looked at.
+- Match speed to narration: slow under long sentences, medium under the
+  montage staircase, never fast on a chart.
+
+## Per-model prompt recipes
+
+- FLUX family (dev, schnell, pro, FLUX.2, Krea): prose in the order above;
+  no negative prompt exists, so write what must be there and fold the
+  avoid list into a final sentence ("Avoid: ..."); hex colours beside
+  colour names; lighting has the largest effect on quality.
+- Imagen 3: subject, then context, then style; lens and proximity words
+  ("close-up", "35mm", "wide angle"); keep under 480 tokens; person
+  generation is enabled, still describe people by age range, build,
+  clothing and posture, and add the identity string.
+- Gemini image models: same prose as FLUX, same anchors; there is no
+  negative field, so the avoid list is folded in.
+- Hero video (Veo 3.1 or Kling, when the flag is on), in this shape:
+  format and style; the subject with its identity string; place, era,
+  time of day, weather; ONE primary action with an end state ("the
+  printer runs until the last page drops, then stops"); shot size, lens
+  and ONE camera move or a locked camera; light source, direction and
+  quality; composition; constraints. Five to eight seconds. Name the
+  final frame. No dialogue, no on-screen text.
+
+## People
+
+- Real people may be shown by likeness. The video carries YouTube's
+  altered-content label whenever they are. Every likeness is listed in the
+  brief's "depicts" field by full name.
+- Depict people only in documentary-neutral situations the claims support:
+  a press conference, a courtroom corridor, an office, a car, a doorway, a
+  stage. Never in an invented act that implies guilt: no cash changing
+  hands, no shredders, no handcuffs, no whispered deals, no scene that
+  did not happen.
+- No exaggeration of features, no ageing or deforming, no expression of
+  malice or stupidity, no caricature, no costume that mocks. Neutral to
+  sombre expression, natural posture, period-correct dress.
+- The mood is carried by the environment and the light, never by the
+  face. A person can stand in a dark room; the room is dark, the person is
+  not made sinister.
+- The director's book writes one guardrail line per principal, specific
+  to what the claims establish ("shown at podiums and in corridors; never
+  at a desk with documents"). Quote it in every prompt that shows them.
+- Anonymous figures (depiction "anonymous") are described by role, age
+  range, build and clothing, face turned away or in shadow, and never
+  resemble a named person.
+- When a model refuses a likeness, the fallback is a redirect: the same
+  beat without the person (the empty chair, the podium after the speech,
+  the door they walked through) or an anonymous figure. Keep the sentence
+  the slot covers; change only what is in the frame.
+
+## Pre-flight, before answering
+
+- Every paragraph is covered and its slots add up to its narration.
+- No three adjacent slots share a shot size.
+- Every chapter shows at least one motif and builds to its key image.
+- Every era lock is obeyed in every prompt it touches.
+- No banned word appears in any prompt.
+- Every prompt naming a real person carries their identity string and
+  their guardrail line, and lists them in "depicts".
+- No pan.
+
+Shot rules adapted in part from visual-skills by Serge Shima
+(github.com/smixs/visual-skills, CC BY 4.0) and DirectorSKILL (MIT).
+`
+
+/** Words the bible bans from prompts because they render nothing. Lower case. */
+export const BANNED_PROMPT_WORDS = [
+  'cinematic',
+  'stunning',
+  'dramatic lighting',
+  'high quality',
+  'masterpiece',
+  'epic',
+  'beautiful',
+  'moody',
+  'professional',
+] as const

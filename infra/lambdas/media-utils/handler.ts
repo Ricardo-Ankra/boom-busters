@@ -224,6 +224,9 @@ async function runUploadYoutube(job: Extract<MediaJob, { kind: 'upload-youtube' 
         status: {
           privacyStatus: job.privacyStatus,
           selfDeclaredMadeForKids: false,
+          // The altered-content label (decision 252): generated likenesses
+          // of real people are declared on upload, never left to Studio.
+          ...(job.containsSyntheticMedia ? { containsSyntheticMedia: true } : {}),
           ...(job.publishAt !== undefined ? { publishAt: job.publishAt } : {}),
         },
       }),

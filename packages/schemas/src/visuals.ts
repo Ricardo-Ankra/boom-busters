@@ -83,6 +83,11 @@ export type Transition = z.infer<typeof TransitionSchema>
  * transition"). Duration lives on the slot row (startMs/durationMs), not in
  * the brief: the brief says what to show, the timing comes from narration.
  */
+/** The shot sizes the bible names (decision 252). `graphic` is charts and maps. */
+export const SHOT_SIZES = ['wide', 'medium', 'close', 'macro', 'aerial', 'graphic'] as const
+export const ShotSizeSchema = z.enum(SHOT_SIZES)
+export type ShotSize = z.infer<typeof ShotSizeSchema>
+
 const briefCommon = {
   /** The script sentence(s) this slot covers, verbatim. */
   coversText: z.string().min(1),
@@ -90,6 +95,8 @@ const briefCommon = {
   description: z.string().min(1),
   motion: MotionSpecSchema,
   transition: TransitionSchema,
+  /** Optional so rows planned before decision 252 keep parsing. */
+  shotSize: ShotSizeSchema.optional(),
 }
 
 export const StockBriefSchema = z.object({
@@ -120,6 +127,8 @@ export const StillBriefSchema = z.object({
   /** The complete generation prompt, style anchors included. */
   prompt: z.string().min(1),
   negativePrompt: z.string().min(1).optional(),
+  /** Real people shown by likeness, full names. Drives the label and the refusal fallback (decision 252). */
+  depicts: z.array(z.string().min(1)).optional(),
 })
 export type StillBrief = z.infer<typeof StillBriefSchema>
 
@@ -182,6 +191,8 @@ export const HeroBriefSchema = z.object({
   prompt: z.string().min(1),
   cameraMovement: z.string().min(1),
   loop: z.boolean(),
+  /** Real people shown by likeness, full names (decision 252). */
+  depicts: z.array(z.string().min(1)).optional(),
 })
 export type HeroBrief = z.infer<typeof HeroBriefSchema>
 
@@ -378,6 +389,17 @@ export const SlotRetypeStateSchema = z.union([
   }),
 ])
 export type SlotRetypeState = z.infer<typeof SlotRetypeStateSchema>
+
+/**
+ * An image model declined this slot's prompt (decision 252). Stored on the
+ * row so the card can say so and offer the two ways out: redirect the scene
+ * without the likeness, or upload a real image against the depiction brief.
+ */
+export const SlotRefusalSchema = z.object({
+  reason: z.string().min(1),
+  at: z.iso.datetime(),
+})
+export type SlotRefusal = z.infer<typeof SlotRefusalSchema>
 
 // ---------------------------------------------------------------------------
 // The shot-list model's output

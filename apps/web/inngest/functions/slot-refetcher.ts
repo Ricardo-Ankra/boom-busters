@@ -1,6 +1,7 @@
-import { getShotSlot, setSlotResolution } from '@boom-busters/db'
+import { getShotSlot, setSlotRefusal, setSlotResolution } from '@boom-busters/db'
 import {
   BudgetExceededError,
+  ContentPolicyError,
   parseEventData,
   serialiseError,
   ShotBriefSchema,
@@ -77,6 +78,16 @@ export const slotRefetcher = inngest.createFunction(
       } catch (error) {
         if (error instanceof BudgetExceededError) {
           return { overBudget: budgetGateData(error) }
+        }
+        if (error instanceof ContentPolicyError) {
+          // The image model declined the prompt (decision 252): a placeholder
+          // with the refusal on the row, so the card offers the two ways out.
+          await setSlotResolution(db, slotId, { candidates: [], status: 'placeholder' })
+          await setSlotRefusal(db, slotId, {
+            reason: error.message,
+            at: new Date().toISOString(),
+          })
+          return { status: 'placeholder' as const, candidates: 0, refused: error.message }
         }
         throw error
       }

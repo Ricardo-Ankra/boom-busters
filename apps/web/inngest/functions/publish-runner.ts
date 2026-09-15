@@ -5,6 +5,7 @@ import {
   getSettings,
   getShort,
   latestRender,
+  listShotSlots,
   recordVerifyResult,
   updatePublishRecord,
   youtubeReconnectNeeded,
@@ -26,6 +27,7 @@ import { db } from '@/lib/db'
 import { env } from '@/lib/env'
 import { brokerCallbackUrl, brokerConfigured, submitMediaJob } from '@/lib/broker'
 import { notify } from '@/lib/notify'
+import { syntheticLikenesses } from '@/lib/publish-review'
 import { presignGet, storageConfigured } from '@/lib/storage'
 import { refreshAccessToken, setThumbnail, videoProcessed, YoutubeAuthError } from '@/lib/youtube'
 import { inngest } from '../client'
@@ -166,6 +168,10 @@ export const publishRunner = inngest.createFunction(
       }
 
       const settings = await getSettings(db)
+      // The altered-content label (decision 252): any chosen generated still
+      // that depicts a real person. Shorts are cut from the same visuals.
+      const containsSyntheticMedia =
+        syntheticLikenesses(await listShotSlots(db, projectId)).length > 0
       /**
        * How this item goes public (decision 226). A slot ahead of now is the
        * classic schedule: private with a `publishAt` YouTube flips itself.
@@ -187,6 +193,7 @@ export const publishRunner = inngest.createFunction(
         scheduledAhead,
         thumbKey: record.uploadedThumbKeys[0] ?? null,
         dailyBudget: settings.publish.dailyUploadBudget,
+        containsSyntheticMedia,
       }
     })
 
@@ -330,6 +337,7 @@ export const publishRunner = inngest.createFunction(
         description: preflight.metadata.description,
         tags: preflight.metadata.tags,
         privacyStatus: preflight.privacyStatus,
+        ...(preflight.containsSyntheticMedia ? { containsSyntheticMedia: true } : {}),
         // Only a private video with a moment still ahead carries `publishAt`
         // — YouTube rejects a past one, and a public upload needs none.
         ...(preflight.privacyStatus === 'private' && preflight.scheduledAhead

@@ -10,16 +10,20 @@ import {
   latestTimeline,
   listPublishRecords,
   listShorts,
+  listShotSlots,
   musicBedByR2Key,
 } from '@boom-busters/db'
 import type { Database, PublishRecordRow } from '@boom-busters/db'
 import {
   PublishDraftSchema,
   quotaDayStartUtc,
+  ShotBriefSchema,
+  SlotCandidateSchema,
   stripNarrationMarkup,
   TimelineSchema,
 } from '@boom-busters/schemas'
 import type { ScheduleSlot } from '@boom-busters/schemas'
+import { z } from 'zod'
 
 /**
  * What the Publish screen (build spec section 11.3) needs in one read: an
@@ -59,6 +63,36 @@ export interface PublishItemModel {
    */
   relatedLinkChecked: boolean | null
   record: PublishRecordProp | null
+  /**
+   * Real people shown by generated likeness in the chosen visuals (decision
+   * 252). Non-empty means the upload sets YouTube's altered-content label,
+   * and the card says so. Shorts inherit the master's list: they are cut
+   * from the same visuals.
+   */
+  syntheticLikenesses: string[]
+}
+
+/**
+ * The distinct names in `depicts` across still and hero slots whose CHOSEN
+ * candidate is a generated one (fal or google). An uploaded real photograph
+ * of the same person is not synthetic media, so it does not count.
+ */
+export function syntheticLikenesses(
+  slots: readonly { brief: unknown; candidates: unknown }[],
+): string[] {
+  const names = new Set<string>()
+  for (const slot of slots) {
+    const brief = ShotBriefSchema.safeParse(slot.brief)
+    if (!brief.success || (brief.data.type !== 'still' && brief.data.type !== 'hero')) continue
+    const depicts = brief.data.depicts ?? []
+    if (depicts.length === 0) continue
+    const candidates = z.array(SlotCandidateSchema).safeParse(slot.candidates)
+    const chosen = candidates.success ? candidates.data.find((c) => c.chosen) : undefined
+    if (chosen && (chosen.provider === 'fal' || chosen.provider === 'google')) {
+      for (const name of depicts) names.add(name)
+    }
+  }
+  return [...names]
 }
 
 /** The master's numbers, once the analytics cron has seen it live (M8). */
@@ -225,14 +259,16 @@ export async function publishModel(
   const project = await getProject(db, projectId)
   if (!project) return emptyPublishModel()
 
-  const [shorts, masterRender, timelineRow, scriptSources, dossier, settings] = await Promise.all([
-    listShorts(db, projectId),
-    latestRender(db, projectId, 'master'),
-    latestTimeline(db, projectId),
-    latestScriptParagraphSources(db, projectId),
-    getDossier(db, projectId),
-    getSettings(db),
-  ])
+  const [shorts, masterRender, timelineRow, scriptSources, dossier, settings, slotRows] =
+    await Promise.all([
+      listShorts(db, projectId),
+      latestRender(db, projectId, 'master'),
+      latestTimeline(db, projectId),
+      latestScriptParagraphSources(db, projectId),
+      getDossier(db, projectId),
+      getSettings(db),
+      listShotSlots(db, projectId),
+    ])
 
   const [records, uploadsToday] = await Promise.all([
     listPublishRecords(db, { projectId, shortIds: shorts.map((short) => short.id) }),
@@ -261,6 +297,7 @@ export async function publishModel(
   }
 
   const masterRecord = recordFor('master', projectId)
+  const likenesses = syntheticLikenesses(slotRows)
   const masterDurationMs = master
     ? master.narration.reduce((end, seg) => Math.max(end, seg.startMs + seg.durationMs), 0)
     : null
@@ -294,6 +331,7 @@ export async function publishModel(
           : 'There is no finished master render yet.',
       relatedLinkChecked: null,
       record: masterRecord ? toRecordProp(masterRecord, masterThumbs) : null,
+      syntheticLikenesses: likenesses,
     },
   ]
 
@@ -316,6 +354,7 @@ export async function publishModel(
       notReadyReason,
       relatedLinkChecked: short.relatedLinkChecked,
       record: record ? toRecordProp(record, await thumbsFor(record)) : null,
+      syntheticLikenesses: likenesses,
     })
   }
 

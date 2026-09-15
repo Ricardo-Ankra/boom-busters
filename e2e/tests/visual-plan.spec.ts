@@ -81,3 +81,10 @@ test.describe('the shot plan checkpoint', () => {
     }).toPass({ timeout: 20_000 })
   })
 })
+
+test.describe('the Direction card (decision 252)', () => {
+  test('sits on the plan screen and offers a priced redraft', async ({ page }) => {
+    await expect(page.getByText('Direction', { exact: true })).toBeVisible()
+    await expect(page.getByRole('button', { name: /Redraft direction · ≈\$0\.05/ })).toBeVisible()
+  })
+})

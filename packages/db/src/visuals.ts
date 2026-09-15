@@ -5,6 +5,7 @@ import type {
   ShotSlotStatus,
   ShotSlotType,
   SlotCandidate,
+  SlotRefusal,
   SlotRetypeState,
 } from '@boom-busters/schemas'
 import type { Database } from './client'
@@ -130,6 +131,8 @@ export async function updateSlotBrief(
     .set({
       brief: brief as unknown as Record<string, unknown>,
       status: 'unresolved',
+      // A new brief is a new question; an old refusal no longer applies.
+      refusal: null,
       updatedAt: sql`now()`,
     })
     .where(eq(shotSlots.id, slotId))
@@ -191,6 +194,27 @@ export async function retypeShotSlot(
       resolvedBriefHash: null,
       // Whatever re-type was pending, this write is its answer.
       retype: null,
+      refusal: null,
+      updatedAt: sql`now()`,
+    })
+    .where(eq(shotSlots.id, slotId))
+}
+
+/**
+ * Stamp or clear an image model's refusal (decision 252). Written by the
+ * resolvers when a generator declines the prompt; cleared by any brief write
+ * (`updateSlotBrief`, `retypeShotSlot`), because the refusal was of a prompt
+ * that no longer exists.
+ */
+export async function setSlotRefusal(
+  db: Database,
+  slotId: string,
+  refusal: SlotRefusal | null,
+): Promise<void> {
+  await db
+    .update(shotSlots)
+    .set({
+      refusal: refusal as unknown as Record<string, unknown> | null,
       updatedAt: sql`now()`,
     })
     .where(eq(shotSlots.id, slotId))

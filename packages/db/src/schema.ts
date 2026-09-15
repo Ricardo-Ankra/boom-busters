@@ -261,6 +261,12 @@ export const projects = pgTable(
      * two parks' reach.
      */
     visualsPhase: text('visuals_phase', { enum: ['plan', 'board'] }),
+    /**
+     * The per-film Director's Book (decision 252), `DirectorsBookSchema` in
+     * schemas. Null until the visuals stage drafts one; the owner's edits on
+     * the plan screen are written here and survive a re-run of the stage.
+     */
+    direction: jsonb('direction').$type<Record<string, unknown>>(),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
@@ -584,6 +590,12 @@ export const shotSlots = pgTable(
      * cannot say "drafting" or "refused, because…" reads as a dead button.
      */
     retype: jsonb('retype').$type<Record<string, unknown>>(),
+    /**
+     * An image model's policy refusal for the current brief (decision 252),
+     * `SlotRefusalSchema` in schemas. Cleared by any brief write; the card
+     * shows it with the two ways out (redirect the scene, upload a real image).
+     */
+    refusal: jsonb('refusal').$type<Record<string, unknown>>(),
     startMs: integer('start_ms').notNull().default(0),
     durationMs: integer('duration_ms').notNull().default(0),
     createdAt: createdAt(),
