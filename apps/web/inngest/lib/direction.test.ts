@@ -10,9 +10,14 @@ import {
   setProjectDirection,
   setScriptOutline,
 } from '@boom-busters/db'
+import { MAX_OUTPUT_TOKENS } from '@boom-busters/providers'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/lib/db'
-import { loadDirectionInputs, loadOrDraftDirectorsBook } from './direction'
+import { loadDirectionInputs, loadOrDraftDirectorsBook, planChapterSlots } from './direction'
+import type { TimedParagraph } from './shot-list'
+
+const callLlm = vi.hoisted(() => vi.fn())
+vi.mock('@/lib/llm', () => ({ callLlm }))
 
 /**
  * The direction helpers against the real database, in mock-provider mode
@@ -69,5 +74,92 @@ describeDb('direction helpers (mock mode)', () => {
     })
     const second = await loadOrDraftDirectorsBook(FIXTURE_PROJECT_ID)
     expect(second.visualThesis).toBe('edited by the owner')
+  })
+})
+
+describe('planChapterSlots against a live model', () => {
+  /**
+   * A shot list cut off at max_tokens is deterministic for a given budget, so
+   * an Inngest retry that replays the same request buys the same failure. The
+   * one retry worth making is a bigger one (decision 252, first live run).
+   */
+  const PARAGRAPHS: TimedParagraph[] = [
+    {
+      chapterId: 'ch-1',
+      index: 0,
+      text: 'By June, the auditors could not find it.',
+      startMs: 0,
+      durationMs: 9000,
+    },
+  ]
+  const PLAN = JSON.stringify({
+    slots: [
+      {
+        paragraphIndex: 0,
+        seconds: 9,
+        brief: {
+          type: 'stock',
+          coversText: 'By June, the auditors could not find it.',
+          description: 'An empty audit office at dusk.',
+          shotSize: 'wide',
+          query: 'empty office dusk',
+          rejectionCriteria: [],
+          motion: { kind: 'static' },
+          transition: 'cut',
+        },
+      },
+    ],
+  })
+
+  beforeEach(() => {
+    vi.stubEnv('MOCK_PROVIDERS', '')
+    callLlm.mockReset()
+  })
+
+  afterEach(() => {
+    vi.unstubAllEnvs()
+  })
+
+  it('retries a cut-off shot list once with double the budget, then plans from the answer', async () => {
+    callLlm
+      .mockResolvedValueOnce({
+        text: '```json\n{ "slots": [ { "paragraphIndex": 0, "seconds": 9, "brief": {',
+      })
+      .mockResolvedValueOnce({ text: PLAN })
+
+    const result = await planChapterSlots({
+      projectId: FIXTURE_PROJECT_ID,
+      caseTitle: 'Wirecard',
+      chapter: { id: 'ch-1', title: 'The audit', number: 1 },
+      paragraphs: PARAGRAPHS,
+      claims: [],
+      claimIds: [],
+      styleAnchors: 'a',
+      direction: null,
+    })
+
+    expect(result.rows).toHaveLength(1)
+    expect(callLlm).toHaveBeenCalledTimes(2)
+    const first = callLlm.mock.calls[0]?.[0]?.maxTokens ?? 0
+    const second = callLlm.mock.calls[1]?.[0]?.maxTokens ?? 0
+    expect(second).toBe(Math.min(MAX_OUTPUT_TOKENS, first * 2))
+  })
+
+  it('gives up after the bigger retry is cut off too, with the truncation error', async () => {
+    callLlm.mockResolvedValue({ text: '{ "slots": [ {' })
+
+    await expect(
+      planChapterSlots({
+        projectId: FIXTURE_PROJECT_ID,
+        caseTitle: 'Wirecard',
+        chapter: { id: 'ch-1', title: 'The audit', number: 1 },
+        paragraphs: PARAGRAPHS,
+        claims: [],
+        claimIds: [],
+        styleAnchors: 'a',
+        direction: null,
+      }),
+    ).rejects.toThrow(/cut off mid-answer/)
+    expect(callLlm).toHaveBeenCalledTimes(2)
   })
 })

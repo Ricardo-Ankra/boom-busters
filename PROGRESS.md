@@ -4046,6 +4046,20 @@ pressed }`: a ref guards the call so a double-click fires the server
      A chapter past about 30 minutes of narration could still hit the
      ceiling; splitting such a chapter's plan into two calls is the next
      lever if it ever happens.
+     (h) _Same evening, the real cause._ The bigger budget passed chapter 1
+     and chapter 2 still cut off: the ledger showed the shot-list task
+     routed to `gemini-pro-latest`, successful chapters billing about
+     3,000 answer tokens, and the failures taking 100 s each. Gemini 3
+     thinks at its default depth before it writes and every thought token
+     is spent from the same `maxOutputTokens`; the answer had 14,000 of
+     room and reasoning ate it. Three changes: the Google adapter sends
+     the request budget plus a 16,000-token thinking allowance (clamped at
+     the 65,536 ceiling) and asks for "low" thinking on the cheap-tier
+     tasks (editing, shotlist, metadata, digest); thought tokens now count
+     as output in usage, so the ledger stops under-charging Gemini; and
+     `planChapterSlots` retries a cut-off shot list once at double the
+     budget instead of leaving Inngest to replay the identical request.
+     An Inngest retry on a truncation was four paid copies of one failure.
      Attribution: shot rules adapted in part from visual-skills by Serge
      Shima (github.com/smixs/visual-skills, CC BY 4.0) and DirectorSKILL
      (MIT); the bible's footer carries the same line.

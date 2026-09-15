@@ -8,7 +8,7 @@ import {
 } from '@boom-busters/schemas'
 import { describe, expect, it } from 'vitest'
 import { anthropic } from './anthropic'
-import { google } from './google'
+import { GEMINI_MAX_OUTPUT_TOKENS, GEMINI_THINKING_ALLOWANCE, google } from './google'
 import { openai } from './openai'
 import { mapHttpFailure, parseRetryAfter } from './http'
 import { LLM_MODELS, knownModel, llmAdapters, topModel } from './registry'
@@ -234,6 +234,79 @@ describe.each(CASES)('$name adapter', ({ adapter, fixture, truncatedFixture }) =
         fetchImpl: respondWith('unauthorized', { status: 401 }),
       }),
     ).rejects.toThrow(ValidationError)
+  })
+})
+
+describe('google adapter: Gemini 3 thinking shares the output limit', () => {
+  /**
+   * The first live shot lists under the Director's Book (decision 252) came
+   * back MAX_TOKENS with a few hundred answer tokens billed: gemini-pro-latest
+   * thinks at its default depth before it writes, and every thought token
+   * counts against maxOutputTokens. A budget sized for the answer alone was
+   * spent on reasoning about it.
+   */
+  function captureBody(fixture: unknown): { fetchImpl: typeof fetch; body: () => GenBody } {
+    let seen: GenBody = {}
+    const fetchImpl = (async (_url: string, init: RequestInit) => {
+      seen = JSON.parse(String(init.body)) as GenBody
+      return new Response(JSON.stringify(fixture), { status: 200 })
+    }) as unknown as typeof fetch
+    return { fetchImpl, body: () => seen }
+  }
+  type GenBody = {
+    generationConfig?: { maxOutputTokens?: number; thinkingConfig?: { thinkingLevel?: string } }
+  }
+
+  it('gives thinking its own allowance on top of the answer budget', async () => {
+    const capture = captureBody(FIXTURES.google)
+    await google.complete(
+      { ...request, task: 'shotlist', maxTokens: 12_000 },
+      { apiKey: 'k', model: 'gemini-pro-latest', fetchImpl: capture.fetchImpl },
+    )
+    expect(capture.body().generationConfig?.maxOutputTokens).toBe(
+      12_000 + GEMINI_THINKING_ALLOWANCE,
+    )
+  })
+
+  it('asks for low thinking on the cheap-tier tasks and leaves the heavy ones at the default', async () => {
+    const light = captureBody(FIXTURES.google)
+    await google.complete(
+      { ...request, task: 'shotlist' },
+      { apiKey: 'k', model: 'gemini-pro-latest', fetchImpl: light.fetchImpl },
+    )
+    expect(light.body().generationConfig?.thinkingConfig).toEqual({ thinkingLevel: 'low' })
+
+    const heavy = captureBody(FIXTURES.google)
+    await google.complete(
+      { ...request, task: 'research' },
+      { apiKey: 'k', model: 'gemini-pro-latest', fetchImpl: heavy.fetchImpl },
+    )
+    expect(heavy.body().generationConfig?.thinkingConfig).toBeUndefined()
+  })
+
+  it('never lets the allowance push past the model output ceiling', async () => {
+    const capture = captureBody(FIXTURES.google)
+    await google.complete(
+      { ...request, maxTokens: 60_000 },
+      { apiKey: 'k', model: 'gemini-pro-latest', fetchImpl: capture.fetchImpl },
+    )
+    expect(capture.body().generationConfig?.maxOutputTokens).toBe(GEMINI_MAX_OUTPUT_TOKENS)
+  })
+
+  it('counts thought tokens as output, because Google bills them as output', async () => {
+    const result = await google.complete(request, {
+      apiKey: 'k',
+      model: 'gemini-pro-latest',
+      fetchImpl: respondWith({
+        ...FIXTURES.google,
+        usageMetadata: {
+          promptTokenCount: 1000,
+          candidatesTokenCount: 40,
+          thoughtsTokenCount: 9000,
+        },
+      }),
+    })
+    expect(result.usage.outputTokens).toBe(9040)
   })
 })
 

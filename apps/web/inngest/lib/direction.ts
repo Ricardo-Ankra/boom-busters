@@ -9,6 +9,7 @@ import type { NewShotSlot } from '@boom-busters/db'
 import {
   buildDirectorsBookRequest,
   buildShotListRequest,
+  MAX_OUTPUT_TOKENS,
   mockDirectorsBook,
   mockProvidersEnabled,
   mockShotList,
@@ -17,7 +18,7 @@ import {
   stillStyleAnchors,
 } from '@boom-busters/providers'
 import type { DirectionChapterInput, ScriptClaim } from '@boom-busters/providers'
-import { DirectorsBookSchema } from '@boom-busters/schemas'
+import { DirectorsBookSchema, ValidationError } from '@boom-busters/schemas'
 import type { DirectorsBook } from '@boom-busters/schemas'
 import { NonRetriableError } from 'inngest'
 import { z } from 'zod'
@@ -125,6 +126,32 @@ export async function loadOrDraftDirectorsBook(projectId: string): Promise<Direc
 }
 
 /**
+ * Call the shot-list model, and if the answer was cut off at max_tokens, call
+ * once more with double the budget before giving up.
+ *
+ * A truncated JSON answer is the one failure an Inngest retry cannot help
+ * with: the same request at the same budget is cut off at the same place,
+ * so the four blind retries the runner allows were four identical paid
+ * failures (first live run under the Director's Book, 2026-09-15). The retry
+ * that can succeed is a bigger one, and one doubling is the whole ladder: a
+ * budget that fails twice is a chapter that needs splitting, not more room.
+ * Every other error passes straight through to the runner's handling.
+ */
+async function planWithBudgetEscalation(
+  request: ReturnType<typeof buildShotListRequest>,
+  options: { projectId: string },
+): Promise<ReturnType<typeof parseShotList>> {
+  try {
+    return parseShotList((await callLlm(request, options)).text)
+  } catch (error) {
+    const cutOff = error instanceof ValidationError && error.field === 'maxTokens'
+    if (!cutOff || request.maxTokens >= MAX_OUTPUT_TOKENS) throw error
+    const bigger = { ...request, maxTokens: Math.min(MAX_OUTPUT_TOKENS, request.maxTokens * 2) }
+    return parseShotList((await callLlm(bigger, options)).text)
+  }
+}
+
+/**
  * One chapter's slots, planned and converted to rows. Throws
  * `BudgetExceededError` through; the caller decides whether that parks the
  * stage or fails the side job.
@@ -150,22 +177,16 @@ export async function planChapterSlots(input: {
   if (mockProvidersEnabled()) {
     slots = mockShotList({ paragraphs, claimCount: input.claims.length }).slots
   } else {
-    const parsed = parseShotList(
-      (
-        await callLlm(
-          buildShotListRequest({
-            caseTitle: input.caseTitle,
-            chapterTitle: input.chapter.title,
-            chapterNumber: input.chapter.number,
-            paragraphs,
-            claims: input.claims,
-            styleAnchors: input.styleAnchors,
-            ...(input.direction ? { direction: input.direction } : {}),
-          }),
-          { projectId: input.projectId },
-        )
-      ).text,
-    )
+    const request = buildShotListRequest({
+      caseTitle: input.caseTitle,
+      chapterTitle: input.chapter.title,
+      chapterNumber: input.chapter.number,
+      paragraphs,
+      claims: input.claims,
+      styleAnchors: input.styleAnchors,
+      ...(input.direction ? { direction: input.direction } : {}),
+    })
+    const parsed = await planWithBudgetEscalation(request, { projectId: input.projectId })
     slots = parsed.slots
     dropped = parsed.malformed.length
   }
