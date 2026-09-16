@@ -74,11 +74,17 @@ function canonicaliseRouting(routing: ModelRouting): ModelRouting {
     const route = migrated[task]
     migrated[task] = { ...route, model: canonicalModelId(route.provider, route.model) }
   }
-  // The stills route folds retired ids the same way (decision 211): a stored
+  // Both stills routes fold retired ids the same way (decision 211): a stored
   // Imagen id would otherwise refuse every visuals run at pre-flight.
   migrated.stills = {
     ...migrated.stills,
     model: canonicalStillModelId(migrated.stills.model),
+  }
+  if (migrated.stillsLikeness) {
+    migrated.stillsLikeness = {
+      ...migrated.stillsLikeness,
+      model: canonicalStillModelId(migrated.stillsLikeness.model),
+    }
   }
   return migrated
 }

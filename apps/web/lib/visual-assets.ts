@@ -86,23 +86,34 @@ function spreadReferences(
 }
 
 /**
- * The cast members a still depicts, with their photos ready for the routed
- * generator (decision 253): Gemini wants bytes inline, fal wants URLs. A
- * still that depicts nobody, or people not in the cast, returns nothing and
- * generates from text as before. Storage that cannot be read (no bucket in
- * a dev environment) also falls back to text rather than failing the slot.
+ * The people this still can actually show a likeness of: the cast members it
+ * depicts who have a photograph. Database only, no storage — it runs BEFORE
+ * the route is chosen, because whether a still needs a likeness is what
+ * decides which generator it goes to (decision 253, amended).
+ *
+ * A name the cast has never seen, or one with no photograph yet, is not a
+ * likeness the app can produce, so such a still is routed and generated as a
+ * plain one.
  */
-async function castReferences(
-  brief: StillBrief,
-  projectId: string,
+async function depictedCast(brief: StillBrief, projectId: string): Promise<CastMember[]> {
+  if (!brief.depicts || brief.depicts.length === 0) return []
+  return (await castMembersNamed(db, projectId, brief.depicts))
+    .filter((member) => member.photos.length > 0)
+    .slice(0, MAX_STILL_REFERENCES)
+}
+
+/**
+ * Those members' photographs, in the shape the routed generator wants
+ * (decision 253): Gemini takes bytes inline, fal takes URLs. Storage that
+ * cannot be read (no bucket in a dev environment) falls back to text rather
+ * than failing the slot.
+ */
+async function referenceMaterials(
+  members: readonly CastMember[],
   provider: 'google' | 'fal',
   mocked: boolean,
 ): Promise<{ names: string[]; references: ImageReference[]; referenceUrls: string[] }> {
   const none = { names: [], references: [], referenceUrls: [] }
-  if (!brief.depicts || brief.depicts.length === 0) return none
-  const members = (await castMembersNamed(db, projectId, brief.depicts))
-    .filter((member) => member.photos.length > 0)
-    .slice(0, MAX_STILL_REFERENCES)
   if (members.length === 0) return none
 
   const names = members.map((member) => member.name)
@@ -229,8 +240,17 @@ export async function requireVisualKeys(types: ReadonlySet<ShotBrief['type']>): 
  * chart and map fetches are free, so stills are the whole estimate.
  */
 export async function stillSlotEstimateUsd(): Promise<number> {
-  const route = (await getSettings(db)).modelRouting.stills
-  return imageGenPrice(LIVE_IMAGE_GEN_ADAPTERS[route.provider], STILL_GENERATIONS, route.model)
+  const routing = (await getSettings(db)).modelRouting
+  // Which of the two routes a given slot takes depends on whom it shows, and
+  // the plan screen is quoting a slot before anything has been planned. It
+  // quotes the dearer route, so the button never promises less than the run
+  // can cost (decision 253, amended).
+  const routes = [routing.stills, ...(routing.stillsLikeness ? [routing.stillsLikeness] : [])]
+  return Math.max(
+    ...routes.map((route) =>
+      imageGenPrice(LIVE_IMAGE_GEN_ADAPTERS[route.provider], STILL_GENERATIONS, route.model),
+    ),
+  )
 }
 
 // ---------------------------------------------------------------------------
@@ -292,26 +312,40 @@ export async function generateStillCandidates(
   const mocked = mockProvidersEnabled()
   const keys = mocked ? {} : await visualCredentials(db, env.SECRETS_ENCRYPTION_KEY)
 
+  /**
+   * Who this still shows is settled first, because it decides where the
+   * still goes (decision 253, amended). Holding a real face and inventing an
+   * empty boardroom are different jobs at different prices, so a still of
+   * someone the cast has photographed may be routed to one generator and
+   * every other still to another. With no split configured both are the same
+   * route and this changes nothing.
+   */
+  const members = await depictedCast(brief, projectId)
+  const routing = (await getSettings(db)).modelRouting
+  const likeness = members.length > 0 && routing.stillsLikeness !== null
+  const route = likeness ? routing.stillsLikeness! : routing.stills
+
   // Which generator and which model is `modelRouting.stills` (decision 208)
   // — a routed choice like every LLM task, not an inference from which key
   // happens to exist. In mock mode the registry serves the mock whichever id
   // is asked for, and the mock ignores the model id.
-  const route = (await getSettings(db)).modelRouting.stills
   const provider = route.provider
   const adapter = imageGenAdapter(provider)
   const apiKey = provider === 'google' ? keys.google : keys.fal
   if (!mocked && !apiKey) {
+    const setting = likeness ? 'stills of the cast' : 'stills'
     throw new ValidationError(
-      `Stills are routed to ${provider} (Settings → Models), but no ` +
+      `${likeness ? 'Stills of the cast are' : 'Stills are'} routed to ${provider} ` +
+        `(Settings → Models), but no ` +
         `${provider === 'google' ? 'Google' : 'fal.ai'} key is stored in Settings → Connections. ` +
-        'Add the key, or route stills at the other generator.',
-      { field: 'modelRouting.stills.provider' },
+        `Add the key, or route ${setting} at the other generator.`,
+      { field: likeness ? 'modelRouting.stillsLikeness.provider' : 'modelRouting.stills.provider' },
     )
   }
 
   // The cast's photos ride along for every depicted member who has one
   // (decision 253); the prompt names them as the people in the photos.
-  const cast = await castReferences(brief, projectId, provider, mocked)
+  const cast = await referenceMaterials(members, provider, mocked)
   const prompt = withReferenceClause(brief.prompt, cast.names)
 
   /**

@@ -8,12 +8,14 @@ import {
   requireTestDatabase,
   seed,
   setCastPhotos,
+  updateSettings,
 } from '@boom-busters/db'
 import { mockImageGen } from '@boom-busters/providers'
 import type { StillBrief } from '@boom-busters/schemas'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { listLedger } from '@boom-busters/cost'
 import { db } from '@/lib/db'
-import { generateStillCandidates } from './visual-assets'
+import { generateStillCandidates, stillSlotEstimateUsd } from './visual-assets'
 
 /**
  * Still generation with the cast (decision 253), in mock-provider mode
@@ -44,6 +46,16 @@ function photo(hash: string, view: 'front' | 'profile' | 'three-quarter' | 'full
     height: 1200,
     view,
   }
+}
+
+/**
+ * Which model a generation actually went to. The request itself carries no
+ * model id in mock mode (the mock adapter ignores it), but the cost ledger
+ * records the route for every call, which is the thing worth asserting.
+ */
+async function lastLedgerModel(): Promise<unknown> {
+  const [entry] = await listLedger(db, { projectId: FIXTURE_PROJECT_ID, limit: 1 })
+  return entry?.meta['model']
 }
 
 describeDb('generateStillCandidates with the cast', () => {
@@ -137,6 +149,72 @@ describeDb('generateStillCandidates with the cast', () => {
     // to a second angle rather than being wasted.
     const names = generate.mock.calls[0]?.[0]?.references?.map((reference) => reference.name)
     expect(names).toEqual(['Emad Mostaque', 'Prem Akkaraju', 'Emad Mostaque'])
+  })
+
+  /**
+   * Two routes, chosen by whether the still can show a real face (decision
+   * 253, amended). Mock mode serves the mock adapter whichever id is asked
+   * for, so the assertion is on the model the request carried.
+   */
+  describe('routing a still by whether it shows the cast', () => {
+    beforeEach(async () => {
+      await updateSettings(db, {
+        modelRouting: {
+          stills: { provider: 'google', model: 'gemini-2.5-flash-image' },
+          stillsLikeness: { provider: 'google', model: 'gemini-3-pro-image' },
+        },
+      })
+    })
+
+    afterEach(async () => {
+      await updateSettings(db, { modelRouting: { stillsLikeness: null } })
+    })
+
+    it('sends a still of a photographed cast member to the likeness route', async () => {
+      const emad = await insertCastMember(db, {
+        projectId: FIXTURE_PROJECT_ID,
+        name: 'Emad Mostaque',
+        role: 'Founder',
+      })
+      await setCastPhotos(db, emad.id, [photo('front-1', 'front')])
+
+      await generateStillCandidates(still, FIXTURE_PROJECT_ID)
+      expect(await lastLedgerModel()).toBe('gemini-3-pro-image')
+    })
+
+    it('leaves a still of nobody on the ordinary route', async () => {
+      const plain = { ...still, depicts: [] }
+      await generateStillCandidates(plain, FIXTURE_PROJECT_ID)
+      expect(await lastLedgerModel()).toBe('gemini-2.5-flash-image')
+    })
+
+    it('treats a name the cast cannot photograph as a plain still', async () => {
+      // In the cast, but no photograph: there is no likeness to be had, so
+      // paying the likeness route for it would buy nothing.
+      await insertCastMember(db, {
+        projectId: FIXTURE_PROJECT_ID,
+        name: 'Emad Mostaque',
+        role: 'Founder',
+      })
+      await generateStillCandidates(still, FIXTURE_PROJECT_ID)
+      expect(await lastLedgerModel()).toBe('gemini-2.5-flash-image')
+    })
+
+    it('quotes the dearer route, because a slot is priced before it is planned', async () => {
+      // gemini-3-pro-image is the pricier of the two configured.
+      expect(await stillSlotEstimateUsd()).toBeGreaterThan(0.04 * 2)
+    })
+  })
+
+  it('generates everything on one route when no split is configured', async () => {
+    const emad = await insertCastMember(db, {
+      projectId: FIXTURE_PROJECT_ID,
+      name: 'Emad Mostaque',
+      role: 'Founder',
+    })
+    await setCastPhotos(db, emad.id, [photo('front-1', 'front')])
+    await generateStillCandidates(still, FIXTURE_PROJECT_ID)
+    expect(await lastLedgerModel()).toBe('gemini-2.5-flash-image')
   })
 
   it('does not repeat the clause when the planner already wrote it', async () => {
