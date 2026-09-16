@@ -91,6 +91,9 @@ const stockSlot: SlotView = {
       thumbUrl: 'data:image/svg+xml;base64,PHN2Zy8+',
       licence: 'Pexels License',
       attributionText: 'Photo by Christina Morillo on Pexels',
+      // A stock photo never has one; set here so the audit line test covers
+      // the cast reference wording (decision 253) without a second fixture.
+      references: ['Emad Mostaque'],
       score: 90,
       chosen: true,
     },
@@ -231,6 +234,8 @@ describe('VisualBoard', () => {
   it('shows the chosen candidate’s licence and attribution — the audit line', () => {
     render(<VisualBoard projectId={PROJECT} model={model([stockSlot])} colors={COLORS} />)
     expect(screen.getByText(/Pexels License · Photo by Christina Morillo/)).toBeInTheDocument()
+    // The cast member whose photo conditioned the frame (decision 253).
+    expect(screen.getAllByText(/reference: Emad Mostaque/).length).toBeGreaterThan(0)
   })
 
   it('renders a chart with its takeaway and source-claim chips', () => {

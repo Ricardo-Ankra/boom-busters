@@ -8,9 +8,22 @@ import type { LlmProvider, LlmTask } from '@boom-busters/schemas'
  * which vendor answered — that is what makes the router's fallback possible.
  */
 
+/** A photograph handed to a vision-capable model with the text (decision 253). */
+export interface MsgImage {
+  mimeType: 'image/jpeg' | 'image/png' | 'image/webp'
+  /** Base64, no data-URI prefix. */
+  data: string
+}
+
 export interface Msg {
   role: 'user' | 'assistant'
   content: string
+  /**
+   * Images precede the text in every adapter's wire format, so the model
+   * reads the photo and then the question about it. Optional and rare: only
+   * the cast-identity prompt sets it today.
+   */
+  images?: MsgImage[]
 }
 
 export interface LLMTaskRequest {

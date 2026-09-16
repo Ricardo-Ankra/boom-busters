@@ -62,6 +62,11 @@ describe('buildDirectorsBookRequest', () => {
     expect(request.system).toContain('begins with the full name and role')
   })
 
+  it('asks for a face in the identity string, not a job title', () => {
+    expect(request.system).toContain('face shape, hair, beard or none')
+    expect(request.system).toContain('a job title and a jacket')
+  })
+
   it('threads the Brand Kit anchors in as the palette boundary', () => {
     expect(request.system).toContain('subtle film grain; muted grade')
   })
@@ -77,6 +82,49 @@ describe('buildDirectorsBookRequest', () => {
       styleAnchors: 'a',
     })
     expect(eight.maxTokens).toBeGreaterThan(request.maxTokens)
+  })
+})
+
+describe('buildDirectorsBookRequest with a cast (decision 253)', () => {
+  const cast = [
+    {
+      name: 'Emad Mostaque',
+      role: 'Founder and former CEO, Stability AI',
+      identityString: 'Emad Mostaque, founder: oval face, short dark hair, close-cropped beard',
+    },
+  ]
+  const request = buildDirectorsBookRequest({
+    caseTitle: 'Stability AI',
+    chapters: CHAPTERS,
+    claims: CLAIMS,
+    styleAnchors: 'a',
+    cast,
+  })
+
+  it('lists the cast ahead of the chapters and requires each as a likeness principal', () => {
+    const body = request.messages[1]?.content ?? ''
+    expect(body.startsWith('Cast, already photographed')).toBe(true)
+    expect(body).toContain('- Emad Mostaque, Founder and former CEO, Stability AI. Identity: Emad')
+    expect(request.system).toContain('never drop a cast member')
+  })
+
+  it('says nothing about a cast when there is none', () => {
+    const bare = buildDirectorsBookRequest({
+      caseTitle: 'x',
+      chapters: CHAPTERS,
+      claims: CLAIMS,
+      styleAnchors: 'a',
+    })
+    expect(bare.messages[1]?.content).not.toContain('Cast, already photographed')
+  })
+
+  it('mocks the cast as likeness principals with the exact names', () => {
+    const book = mockDirectorsBook({ caseTitle: 'x', chapterCount: 2, cast })
+    expect(book.principals[0]).toMatchObject({
+      name: 'Emad Mostaque',
+      depiction: 'likeness',
+      identityString: cast[0]!.identityString,
+    })
   })
 })
 

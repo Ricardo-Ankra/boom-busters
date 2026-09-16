@@ -160,7 +160,12 @@ export const google: LLMProvider = {
           contents: request.messages.map((m) => ({
             // Gemini calls the assistant "model"; every other vendor does not.
             role: m.role === 'assistant' ? 'model' : 'user',
-            parts: [{ text: m.content }],
+            parts: [
+              ...(m.images ?? []).map((image) => ({
+                inlineData: { mimeType: image.mimeType, data: image.data },
+              })),
+              { text: m.content },
+            ],
           })),
           generationConfig: geminiGenerationConfig(request),
         }),

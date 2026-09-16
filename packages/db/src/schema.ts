@@ -611,6 +611,38 @@ export const shotSlots = pgTable(
 // Assembly, render, shorts
 // ---------------------------------------------------------------------------
 
+/**
+ * The cast (decision 253): the real people a film shows, with the producer's
+ * reference photographs, one row per person per project. `photos` is
+ * `CastPhoto[]` from schemas; the bytes live in R2 under
+ * `boom-busters/cast/<projectId>/`. Its own table rather than a field on the
+ * Director's Book because the book's card leaves the screen at plan approval
+ * and the faces are needed for every later still.
+ */
+export const castMembers = pgTable(
+  'cast_members',
+  {
+    id: id(),
+    projectId: text('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    /** Exact full name: the join key the shot list's `depicts` and the book's principals use. */
+    name: text('name').notNull(),
+    role: text('role').notNull(),
+    identityString: text('identity_string').notNull().default(''),
+    guardrail: text('guardrail').notNull().default(''),
+    photos: jsonb('photos')
+      .notNull()
+      .default(sql`'[]'::jsonb`)
+      .$type<Record<string, unknown>[]>(),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [uniqueIndex('cast_members_project_name_idx').on(t.projectId, t.name)],
+)
+
+export type CastMemberRow = typeof castMembers.$inferSelect
+
 export const timelines = pgTable(
   'timelines',
   {
@@ -928,6 +960,7 @@ export const projectsRelations = relations(projects, ({ one, many }) => ({
   scripts: many(scripts),
   voiceTakes: many(voiceTakes),
   shotSlots: many(shotSlots),
+  castMembers: many(castMembers),
   timelines: many(timelines),
   renders: many(renders),
   shorts: many(shorts),

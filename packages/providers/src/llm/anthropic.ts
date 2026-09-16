@@ -80,6 +80,10 @@ function buildMessages(request: LLMTaskRequest) {
   return request.messages.map((message, index) => ({
     role: message.role,
     content: [
+      ...(message.images ?? []).map((image) => ({
+        type: 'image' as const,
+        source: { type: 'base64' as const, media_type: image.mimeType, data: image.data },
+      })),
       {
         type: 'text' as const,
         text: message.content,

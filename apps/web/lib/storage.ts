@@ -157,6 +157,19 @@ export function stillKey(input: { projectId: string; contentHash: string }): str
 }
 
 /**
+ * Where a cast member's reference photo lives (decision 253). Content-hash
+ * keyed under the project: the same photo uploaded twice is one object, and a
+ * project's cast goes with the project.
+ */
+export function castPhotoKey(input: {
+  projectId: string
+  contentHash: string
+  ext: 'jpg' | 'png' | 'webp'
+}): string {
+  return `${R2_PREFIX}/cast/${input.projectId}/${input.contentHash}.${input.ext}`
+}
+
+/**
  * Where a music bed lives. Content-hash keyed like stills: the same track
  * uploaded twice is one object, and no project owns it — the library is
  * channel-wide by design (spec section 10.1).
@@ -255,4 +268,26 @@ export async function headObject(
   } catch {
     return undefined
   }
+}
+
+/**
+ * The bytes of one object, for the few callers that must hold them: the
+ * image adapters take reference photos inline (decision 253), so the cast's
+ * photos are read here and handed over as base64. Without a bucket this
+ * throws a `ValidationError`, and callers fall back to text-only generation
+ * rather than fail the still.
+ */
+export async function getObjectBytes(
+  key: string,
+): Promise<{ bytes: Uint8Array; contentType: string }> {
+  if (!storageConfigured()) {
+    throw new ValidationError('Storage is not configured, so no reference photo can be read.', {
+      field: 'R2_BUCKET',
+    })
+  }
+  const { client, bucket } = r2()
+  const object = await client.send(new GetObjectCommand({ Bucket: bucket, Key: key }))
+  const bytes = await object.Body?.transformToByteArray()
+  if (!bytes) throw new ValidationError(`Object ${key} has no body`, { field: 'key' })
+  return { bytes, contentType: object.ContentType ?? 'application/octet-stream' }
 }

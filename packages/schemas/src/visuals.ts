@@ -263,6 +263,12 @@ export const SlotCandidateSchema = z.object({
    * (scoring reads metadata, not pixels), and what the board shows on hover.
    */
   summary: z.string().optional(),
+  /**
+   * Cast members whose reference photos conditioned this generation
+   * (decision 253), by full name. Absent for text-only stills, stock and
+   * uploads. The board shows it; nothing else reads it.
+   */
+  references: z.array(z.string().min(1)).optional(),
   /** 0–100 against the brief, from the scoring pass. Absent until scored. */
   score: z.number().min(0).max(100).optional(),
   scoreReason: z.string().optional(),

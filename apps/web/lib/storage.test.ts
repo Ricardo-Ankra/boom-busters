@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { presignGet, storageConfigured, takeStorage } from './storage'
+import { castPhotoKey, getObjectBytes, presignGet, storageConfigured, takeStorage } from './storage'
 
 /**
  * The four combinations of "is there a bucket" and "is the provider real".
@@ -88,5 +88,33 @@ describe('presignGet', () => {
     vi.setSystemTime(new Date('2026-09-10T12:16:00Z'))
     const third = await presignGet('boom-busters/thumbs/a.png')
     expect(third).not.toBe(first)
+  })
+})
+
+describe('cast photos (decision 253)', () => {
+  beforeEach(() => {
+    setEnv({ ...original })
+  })
+
+  afterEach(() => {
+    setEnv({ ...original })
+  })
+
+  it('keys a photo under the project by content hash', () => {
+    expect(castPhotoKey({ projectId: 'p1', contentHash: 'abc', ext: 'jpg' })).toBe(
+      'boom-busters/cast/p1/abc.jpg',
+    )
+  })
+
+  it('refuses to read bytes without a bucket, so generation falls back to text', async () => {
+    setEnv({
+      R2_ACCOUNT_ID: undefined,
+      R2_ACCESS_KEY_ID: undefined,
+      R2_SECRET_ACCESS_KEY: undefined,
+      R2_BUCKET: undefined,
+    })
+    await expect(getObjectBytes('boom-busters/cast/p1/abc.jpg')).rejects.toThrow(
+      /Storage is not configured/,
+    )
   })
 })

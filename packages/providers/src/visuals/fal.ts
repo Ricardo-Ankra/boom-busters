@@ -52,6 +52,19 @@ const MODELS = [
 
 const isImagen = (model: string) => model === 'fal-ai/imagen3'
 
+/**
+ * Identity-conditioned generation (decision 253): when a still depicts cast
+ * members with photos, the call leaves the routed FLUX model for a Kontext
+ * endpoint that takes the photograph(s) as `image_url` / `image_urls` and
+ * keeps the face. Both ids answered 405 to a GET with a live key on
+ * 2026-09-15 (present; fal validates the key before the method). Prices are
+ * per image, rounded up: Kontext pro $0.04, Kontext max multi $0.08.
+ */
+export const FAL_REFERENCE_MODELS = {
+  single: { id: 'fal-ai/flux-pro/kontext', pricePerImage: 0.04 },
+  multi: { id: 'fal-ai/flux-pro/kontext/max/multi', pricePerImage: 0.08 },
+} as const
+
 /** Imagen's 16:9 renders 1408×768 — same class as FLUX's, scaled at compile. */
 const IMAGEN_WIDTH = 1408
 const IMAGEN_HEIGHT = 768
@@ -91,24 +104,42 @@ export const falImageGen: ImageGenProvider = {
         ? `${request.prompt}. Avoid: ${request.negativePrompt}.`
         : request.prompt
 
-    const body = imagen
+    const referenceUrls = request.referenceUrls ?? []
+    const conditioned =
+      referenceUrls.length === 0
+        ? null
+        : referenceUrls.length === 1
+          ? FAL_REFERENCE_MODELS.single
+          : FAL_REFERENCE_MODELS.multi
+
+    const body = conditioned
       ? {
           prompt,
-          ...(request.negativePrompt ? { negative_prompt: request.negativePrompt } : {}),
+          ...(referenceUrls.length === 1
+            ? { image_url: referenceUrls[0] }
+            : { image_urls: referenceUrls }),
           aspect_ratio: '16:9',
           num_images: request.count,
+          safety_tolerance: '2',
         }
-      : {
-          prompt,
-          image_size: IMAGE_SIZE,
-          num_images: request.count,
-          enable_safety_checker: true,
-        }
+      : imagen
+        ? {
+            prompt,
+            ...(request.negativePrompt ? { negative_prompt: request.negativePrompt } : {}),
+            aspect_ratio: '16:9',
+            num_images: request.count,
+          }
+        : {
+            prompt,
+            image_size: IMAGE_SIZE,
+            num_images: request.count,
+            enable_safety_checker: true,
+          }
 
     const fetchImpl = options.fetchImpl ?? fetch
     let response: Response
     try {
-      response = await fetchImpl(endpoint(model.id), {
+      response = await fetchImpl(endpoint(conditioned ? conditioned.id : model.id), {
         method: 'POST',
         headers: {
           Authorization: `Key ${apiKey}`,
@@ -130,7 +161,8 @@ export const falImageGen: ImageGenProvider = {
         width: image.width ?? (imagen ? IMAGEN_WIDTH : 1344),
         height: image.height ?? (imagen ? IMAGEN_HEIGHT : 768),
       })),
-      estimatedCostUsd: model.pricePerImage * parsed.images.length,
+      estimatedCostUsd:
+        (conditioned ? conditioned.pricePerImage : model.pricePerImage) * parsed.images.length,
     }
   },
 

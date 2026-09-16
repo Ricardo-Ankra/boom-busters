@@ -4085,9 +4085,11 @@ pressed }`: a ref guards the call so a double-click fires the server
 **Status:** `[x]` done — dossier + Studio shipped with unit, component and
 e2e coverage; spec §11.3 amended in place with dated notes. Decision 252
 shipped on branch `visual-direction` with unit, integration and component
-coverage; media-utils redeployed 2026-09-15. Still owed: merge to master
-(migration 0021 applies on the production build) and one real film through
-the Direction stage with mock providers off.
+coverage; media-utils redeployed 2026-09-15; merged and live the same day,
+and the first real film exposed and fixed the shot-list budget, Gemini
+thinking, the guardrail-in-prompt and the likeness defaults (decision 252
+(g) to (i)). Decision 253 (cast references) shipped on branch
+`cast-references`; migration 0022 applies on the production build.
 
 ---
 
@@ -4327,3 +4329,41 @@ Recorded whenever the spec left something open and an implementation was chosen.
     `DATABASE_URL=… pnpm db:migrate` trips the same-database guard by leaving a
     stale `DATABASE_URL_UNPOOLED` pointing at production — the guard is right,
     so the script exists instead.
+
+37. **Cast references: real faces in generated stills** (2026-09-15, owner
+    request after the first Stability AI stills: "it's important that any
+    person or character we show actually looks like the person"; spec
+    `docs/superpowers/specs/2026-09-15-cast-references-design.md`, plan
+    `docs/superpowers/plans/2026-09-15-cast-references.md`).
+    _Why._ A text prompt cannot reproduce a face the image model never
+    memorised, and neither stills route was ever shown a photograph; the
+    prompt also quoted the guardrail ("never in handcuffs"), which image
+    models read as suggestion. The owner chose a per-project cast over a
+    channel-wide library, both image routes with Gemini first, and identity
+    strings written by a vision model.
+    _What._ (a) `cast_members` (migration 0022): name, role, identity
+    string, guardrail, up to four photos in R2 under
+    `boom-busters/cast/<projectId>/`; unique name per project; gone with the
+    project. (b) The Cast card on the project page from the script stage
+    onward, in every phase: add a person, four photo tiles with a view
+    label, presigned PUT uploads (the decision 213 shape), Save, Describe
+    from photos (≈$0.02), Remove. (c) `Msg.images` on LLM messages, emitted
+    by all three adapters ahead of the text; `cast-identity.ts` writes the
+    identity string and a default guardrail from the photos on the
+    `direction` task, once per person on the first photo. (d) The book is
+    drafted from the cast: "Cast, already photographed" with one likeness
+    principal per member, exact name, identity string verbatim;
+    `castWarnings` notes any member the book forgot. (e) Generation:
+    `ImageGenRequest.references` and `referenceUrls`; Gemini sends inline
+    parts before the prompt (three at most, refused before spending);
+    fal switches to `fal-ai/flux-pro/kontext` (one) or
+    `fal-ai/flux-pro/kontext/max/multi` (several), both answering 405 to a
+    GET with the live key on 2026-09-15; `generateStillCandidates` looks
+    up depicted cast members, prepends "<name>, the person in the reference
+    photo" if the planner forgot, records `references` on the candidate,
+    and falls back to text when storage cannot be read. (f) The guardrail
+    leaves the image prompt for good; its nouns go to the negative prompt.
+    _Not done._ Hero video conditioning (the field is shaped for it), face
+    cropping on upload, a channel-wide library, and the on-screen "Real
+    footage" tag. In mock storage the e2e cannot upload a photo (the
+    action refuses without R2), so the spec covers add, edit and save.

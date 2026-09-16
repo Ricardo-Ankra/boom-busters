@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { DirectorsBookSchema, planWarnings, renderDirectorsBook } from './direction'
+import { castWarnings, DirectorsBookSchema, planWarnings, renderDirectorsBook } from './direction'
 import type { ShotBrief } from './visuals'
 
 const book = {
@@ -101,5 +101,15 @@ describe('planWarnings', () => {
     expect(
       planWarnings([{ brief: still('wide', 'a') }, { brief: still('close', 'b') }], banned),
     ).toEqual([])
+  })
+})
+
+describe('castWarnings', () => {
+  it('names each cast member the book left out, case-insensitively, and nothing else', () => {
+    expect(castWarnings(book, ['markus braun', 'Jan Marsalek'])).toEqual([
+      'the book has no principal for Jan Marsalek; redraft the direction or add them by hand',
+    ])
+    expect(castWarnings(null, ['Jan Marsalek'])).toEqual([])
+    expect(castWarnings(book, [])).toEqual([])
   })
 })

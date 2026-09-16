@@ -18,6 +18,13 @@ import type { LLMTaskRequest } from '../llm/types'
  * highest-leverage prompt in the picture department, and it runs once.
  */
 
+/** A cast member (decision 253): photographed already, so the book names them by likeness. */
+export interface DirectionCastInput {
+  name: string
+  role: string
+  identityString: string
+}
+
 export interface DirectionChapterInput {
   title: string
   paragraphs: readonly string[]
@@ -51,7 +58,22 @@ export function buildDirectorsBookRequest(input: {
   claims: readonly ScriptClaim[]
   /** From `stillStyleAnchors`: the Brand Kit grade the palette must sit inside. */
   styleAnchors: string
+  /** The project's cast, if any; each becomes a likeness principal with the exact name. */
+  cast?: readonly DirectionCastInput[]
 }): LLMTaskRequest {
+  const cast = input.cast ?? []
+  const castText =
+    cast.length === 0
+      ? ''
+      : 'Cast, already photographed (one principal each, exact name, depiction "likeness"):\n' +
+        cast
+          .map(
+            (member) =>
+              `- ${member.name}, ${member.role}` +
+              (member.identityString ? `. Identity: ${member.identityString}` : ''),
+          )
+          .join('\n') +
+        '\n\n'
   const chapterText = input.chapters
     .map((chapter, index) => {
       const head = [`Chapter ${index + 1}: ${chapter.title}`]
@@ -78,10 +100,11 @@ Rules for the book:
   on-screen illustrative disclaimer. Never choose "archival-only" yourself;
   that is the producer's call after the book is drafted. "anonymous" is only
   for people the claims do not name.
-- "identityString" begins with the full name and role, then describes the
-  person as press photographs of the period show them (age, hair, beard,
-  glasses, build, dress), so an image model can match the real face. Never
-  a generic description that could be anyone.
+- "identityString" begins with the full name and role, then the face as
+  press photographs of the period show it: face shape, hair, beard or none,
+  glasses or none, apparent age range, build, typical dress. It is what an
+  image model reads when it has no photograph, so a job title and a jacket
+  are not enough. Never a generic description that could be anyone.
 - "guardrail" lists only that person's defamation and mockery exclusions:
   specific acts the claims do not establish (handling cash, signing an
   invented contract, handcuffs), plus caricature, malice, humiliation. It
@@ -94,7 +117,11 @@ Rules for the book:
   crime. It is not a list of settings the principals may not appear in.
 - Era locks name objects, not adjectives.
 - The palette sits inside the Brand Kit grade: "${input.styleAnchors}".
-- One chapter entry per chapter, numbered as given, in order.`,
+- One chapter entry per chapter, numbered as given, in order.
+- Every person listed under "Cast, already photographed" is a principal with
+  that exact name, depiction "likeness", and the identity string copied
+  verbatim where one is given. Add principals the cast does not cover when
+  the claims name them; never drop a cast member.`,
     messages: [
       // The claim list is the cacheable prefix, like every script prompt.
       {
@@ -104,7 +131,7 @@ Rules for the book:
           (input.centralQuestion ? `Central question: ${input.centralQuestion}\n` : '') +
           `\nClaims:\n${claimList(input.claims)}`,
       },
-      { role: 'user', content: chapterText },
+      { role: 'user', content: castText + chapterText },
     ],
     cacheablePrefixMessages: 1,
     // The fixed parts of the book run to about 2,500 tokens; each chapter
@@ -116,6 +143,8 @@ Rules for the book:
 const Envelope = z.looseObject({})
 
 export function parseDirectorsBook(text: string, chapterCount: number): DirectorsBook {
+  // Cast coverage is reported by `castWarnings` on the plan screen rather
+  // than enforced here: a book that covers four of five people plans four.
   const raw = parseJsonCompletion(text, Envelope, "director's book")
   const parsed = DirectorsBookSchema.safeParse(raw)
   if (!parsed.success) {
@@ -146,8 +175,16 @@ export function parseDirectorsBook(text: string, chapterCount: number): Director
 export function mockDirectorsBook(input: {
   caseTitle: string
   chapterCount: number
+  cast?: readonly DirectionCastInput[]
 }): DirectorsBook {
   const families = ['environment', 'document', 'human', 'data', 'map', 'object'] as const
+  const castPrincipals = (input.cast ?? []).map((member) => ({
+    name: member.name,
+    role: member.role,
+    depiction: 'likeness' as const,
+    identityString: member.identityString || `[mock] ${member.name}, ${member.role}`,
+    guardrail: '[mock] never handling cash; never in handcuffs; never mocked',
+  }))
   return {
     visualThesis: `[mock] ${input.caseTitle}: a company that looked solid from the street and hollow from inside.`,
     eraLocks: [{ span: '2011 to 2020', rules: '[mock] flat screens, glass offices, smartphones' }],
@@ -164,6 +201,7 @@ export function mockDirectorsBook(input: {
     anchorObject: '[mock] a bound annual report',
     neverShow: ['[mock] cash in bags'],
     principals: [
+      ...castPrincipals,
       {
         name: '[mock] The chief executive',
         role: 'chief executive',
