@@ -1,6 +1,12 @@
 // @vitest-environment node
 
-import { FIXTURE_PROJECT_ID, listCastMembers, requireTestDatabase, seed } from '@boom-busters/db'
+import {
+  FIXTURE_PROJECT_ID,
+  listCastMembers,
+  requireTestDatabase,
+  seed,
+  seedCastFromPrincipals,
+} from '@boom-busters/db'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/lib/db'
 import {
@@ -63,14 +69,41 @@ describeDb('cast actions (mock mode)', () => {
     return added.id!
   }
 
-  it('adds, edits and removes a person', async () => {
+  it('adds, edits and removes a person; removal deletes the photos and stays removed', async () => {
     const id = await addEmad()
     expect(await updateCastMemberAction(id, { guardrail: 'never in handcuffs' })).toEqual({
       ok: true,
     })
     expect((await listCastMembers(db, FIXTURE_PROJECT_ID))[0]?.guardrail).toBe('never in handcuffs')
+    await finaliseCastPhotoAction({
+      memberId: id,
+      mimeType: 'image/jpeg',
+      contentHash: HASH_A,
+      width: 10,
+      height: 10,
+      view: 'front',
+    })
     expect(await removeCastMemberAction(id)).toEqual({ ok: true })
+    expect(storage.deleted).toContain(`boom-busters/cast/${FIXTURE_PROJECT_ID}/${HASH_A}.jpg`)
     expect(await listCastMembers(db, FIXTURE_PROJECT_ID)).toEqual([])
+    // The book cannot seed them back; the producer can re-add them by hand.
+    expect(
+      await seedCastFromPrincipals(db, FIXTURE_PROJECT_ID, [
+        {
+          name: 'Emad Mostaque',
+          role: 'Founder',
+          depiction: 'likeness',
+          identityString: 'x',
+          guardrail: 'y',
+        },
+      ]),
+    ).toEqual([])
+    expect(await listCastMembers(db, FIXTURE_PROJECT_ID)).toEqual([])
+    const back = await addCastMemberAction(FIXTURE_PROJECT_ID, {
+      name: 'Emad Mostaque',
+      role: 'Founder',
+    })
+    expect(back).toMatchObject({ ok: true, id })
   })
 
   it('refuses a second entry with the same exact name, in words', async () => {

@@ -5,9 +5,11 @@ import { createCase, truncateCases } from './cases'
 import {
   castMembersNamed,
   deleteCastMember,
+  dismissCastMember,
   getCastMember,
   insertCastMember,
   listCastMembers,
+  seedCastFromPrincipals,
   setCastPhotos,
   updateCastMember,
 } from './cast'
@@ -56,11 +58,85 @@ suite('cast members', () => {
     expect(members[0]).toMatchObject({ identityString: '', guardrail: '', photos: [] })
   })
 
-  it('keeps one entry per name per project', async () => {
+  it('keeps one entry per name per project, and says so in words', async () => {
     await insertCastMember(db, { projectId, name: 'Emad Mostaque', role: 'Founder' })
     await expect(
       insertCastMember(db, { projectId, name: 'Emad Mostaque', role: 'Again' }),
-    ).rejects.toThrow()
+    ).rejects.toThrow(/already in the cast/)
+  })
+
+  it('dismisses a person: hidden everywhere, photos gone, name remembered', async () => {
+    const member = await insertCastMember(db, { projectId, name: 'Emad Mostaque', role: 'Founder' })
+    await setCastPhotos(db, member.id, [photo('a')])
+    await dismissCastMember(db, member.id)
+    expect(await listCastMembers(db, projectId)).toEqual([])
+    expect(await getCastMember(db, member.id)).toBeNull()
+    expect(await castMembersNamed(db, projectId, ['Emad Mostaque'])).toEqual([])
+    await expect(updateCastMember(db, member.id, { role: 'x' })).rejects.toThrow(ValidationError)
+
+    // Re-adding by hand revives the same row, with no photos and the new role.
+    const back = await insertCastMember(db, { projectId, name: 'Emad Mostaque', role: 'CEO' })
+    expect(back.id).toBe(member.id)
+    expect(back).toMatchObject({ role: 'CEO', photos: [] })
+    expect((await listCastMembers(db, projectId)).map((m) => m.name)).toEqual(['Emad Mostaque'])
+  })
+
+  describe('seedCastFromPrincipals', () => {
+    const principals = [
+      {
+        name: 'Emad Mostaque',
+        role: 'Founder and former CEO',
+        depiction: 'likeness' as const,
+        identityString: 'Emad Mostaque, founder: oval face, short dark hair, close-cropped beard',
+        guardrail: 'never handling cash; never in handcuffs; never mocked',
+      },
+      {
+        name: 'The chief financial officer',
+        role: 'CFO',
+        depiction: 'anonymous' as const,
+        identityString: 'man in his forties, face turned from camera',
+        guardrail: 'never at a desk with documents',
+      },
+      {
+        name: 'Prem Akkaraju',
+        role: 'CEO from 2024',
+        depiction: 'archival-only' as const,
+        identityString: 'Prem Akkaraju, chief executive: dark hair, clean shaven',
+        guardrail: 'never mocked',
+      },
+    ]
+
+    it('adds every named principal with the book text, and skips anonymous ones', async () => {
+      const added = await seedCastFromPrincipals(db, projectId, principals)
+      expect(added.map((m) => m.name)).toEqual(['Emad Mostaque', 'Prem Akkaraju'])
+      const [emad] = await listCastMembers(db, projectId)
+      expect(emad).toMatchObject({
+        role: 'Founder and former CEO',
+        identityString: principals[0]!.identityString,
+        guardrail: principals[0]!.guardrail,
+        photos: [],
+      })
+    })
+
+    it('leaves existing members alone, whatever their case, and does not revive the dismissed', async () => {
+      const edited = await insertCastMember(db, {
+        projectId,
+        name: 'emad mostaque',
+        role: 'Founder',
+      })
+      await updateCastMember(db, edited.id, { identityString: 'written by the producer' })
+      const gone = await insertCastMember(db, { projectId, name: 'Prem Akkaraju', role: 'CEO' })
+      await dismissCastMember(db, gone.id)
+
+      const added = await seedCastFromPrincipals(db, projectId, principals)
+      expect(added).toEqual([])
+      const members = await listCastMembers(db, projectId)
+      expect(members.map((m) => m.name)).toEqual(['emad mostaque'])
+      expect(members[0]?.identityString).toBe('written by the producer')
+
+      // A second draft adds nothing either.
+      expect(await seedCastFromPrincipals(db, projectId, principals)).toEqual([])
+    })
   })
 
   it('refuses a blank name', async () => {

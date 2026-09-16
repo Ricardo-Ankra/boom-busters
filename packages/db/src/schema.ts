@@ -635,6 +635,12 @@ export const castMembers = pgTable(
       .notNull()
       .default(sql`'[]'::jsonb`)
       .$type<Record<string, unknown>[]>(),
+    /**
+     * Set when the producer removes a person the Director's Book named. The
+     * row stays so the next draft of the book does not add them back; the
+     * cast the app shows and generates from is the rows where this is null.
+     */
+    dismissedAt: timestamp('dismissed_at', { withTimezone: true }),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },

@@ -35,9 +35,10 @@ test.describe('the cast', () => {
     page,
   }) => {
     const card = page.getByLabel('Cast', { exact: true })
-    await expect(card.getByText('The real people this film shows.')).toBeVisible()
+    await expect(card.getByText(/The real people this film shows\./)).toBeVisible()
 
-    // An empty cast opens straight onto the add form; a populated one needs Edit cast.
+    // An empty cast, or one with someone still unphotographed, opens straight
+    // onto the rows and the add form; a fully photographed one needs Edit cast.
     const edit = card.getByRole('button', { name: 'Edit cast' })
     if (await edit.isVisible().catch(() => false)) await edit.click()
 

@@ -4367,3 +4367,21 @@ Recorded whenever the spec left something open and an implementation was chosen.
     cropping on upload, a channel-wide library, and the on-screen "Real
     footage" tag. In mock storage the e2e cannot upload a photo (the
     action refuses without R2), so the spec covers add, edit and save.
+    _Addendum (j), 2026-09-16, owner: "the cast needs to actually be created
+    based on the script ... all I should do is upload the photo"._ The cast
+    is seeded from the Director's Book. Every draft of the book
+    (`draftDirectorsBook`, so the first visuals run and every Redraft
+    direction) calls `seedCastFromPrincipals`: each named principal
+    (depiction likeness or archival-only; anonymous ones have no name to
+    photograph) becomes a member with the book's role, identity string and
+    guardrail, so the name and description are written before the card is
+    opened and the photo upload does not spend a vision call (the first-photo
+    describe only runs on an empty identity string). Names already present,
+    compared without regard to case, are left alone. "Remove person" now
+    dismisses instead of deleting (`cast_members.dismissed_at`, migration
+    0023): the photos are deleted, the row stays invisible to every reader,
+    and the next draft cannot seed the same name again; re-adding by hand
+    revives the row. The card opens itself while anyone lacks a photo, counts
+    them in a status line, and marks each unphotographed row. The cast still
+    fills at the start of the visuals stage, when the book is drafted, so the
+    photos are uploaded at the plan checkpoint before the stills run.
