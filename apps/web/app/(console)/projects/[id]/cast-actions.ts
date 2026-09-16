@@ -25,16 +25,19 @@ import {
   ValidationError,
 } from '@boom-busters/schemas'
 import type { CastMember, CastPhoto } from '@boom-busters/schemas'
+import { createHash } from 'node:crypto'
 import { revalidatePath } from 'next/cache'
 import { auth } from '@/auth'
 import { db } from '@/lib/db'
 import { callLlm } from '@/lib/llm'
+import { fetchRemoteImage } from '@/lib/remote-image'
 import {
   castPhotoKey,
   deleteObject,
   getObjectBytes,
   headObject,
   presignPut,
+  putObject,
   storageConfigured,
 } from '@/lib/storage'
 
@@ -243,6 +246,80 @@ export async function finaliseCastPhotoAction(input: {
     const updated = await setCastPhotos(db, member.id, [...member.photos, photo])
     // The first photo writes the identity string; later ones do not overwrite
     // what the producer may have edited.
+    if (updated.identityString.trim() === '') await describeFromPhotos(updated)
+    refresh(member.projectId)
+    return { ok: true }
+  } catch (error) {
+    return failure(error, 'The photo could not be recorded.')
+  }
+}
+
+/**
+ * Add a photo the producer found on the web, by its address (decision 253
+ * (k)).
+ *
+ * The URL is a way in, not the reference: the server fetches the bytes once,
+ * stores them in R2 exactly as an upload does, and keeps the address only as
+ * provenance. A remote link could not be handed to Gemini anyway, which is
+ * given the photo as inline base64, and a link that rots would break every
+ * later still of that person.
+ */
+export async function addCastPhotoFromUrlAction(input: {
+  memberId: string
+  url: string
+  view: string
+}): Promise<ActionResult> {
+  await requireOwner()
+  const invalid = badIds(input.memberId)
+  if (invalid) return invalid
+
+  const member = await getCastMember(db, input.memberId)
+  if (!member) return { ok: false, error: 'This cast member no longer exists.' }
+  const view = CastPhotoViewSchema.safeParse(input.view)
+  if (!view.success) return { ok: false, error: 'That photo could not be recorded.' }
+  if (member.photos.length >= MAX_CAST_PHOTOS) {
+    return {
+      ok: false,
+      error: `${member.name} already has ${MAX_CAST_PHOTOS} photos. Remove one to add another.`,
+    }
+  }
+  if (!storageConfigured()) {
+    return { ok: false, error: 'Photo uploads need R2 configured; there is nowhere to store them.' }
+  }
+
+  const fetched = await fetchRemoteImage(input.url)
+  if (!fetched.ok) return { ok: false, error: fetched.error }
+  const { bytes, mimeType, width, height, resolvedUrl } = fetched.image
+
+  // The same fingerprint the browser computes, so the same picture arriving
+  // by either route lands on one key and is recognised as already held.
+  const contentHash = createHash('sha256').update(bytes).digest('hex')
+  if (member.photos.some((photo) => photo.contentHash === contentHash)) {
+    return { ok: false, error: `${member.name} already has that exact photo.` }
+  }
+
+  const key = castPhotoKey({
+    projectId: member.projectId,
+    contentHash,
+    ext: castPhotoExtension(mimeType),
+  })
+  try {
+    await putObject(key, bytes, mimeType)
+  } catch {
+    return { ok: false, error: 'That image could not be saved to storage. Try again.' }
+  }
+
+  const photo: CastPhoto = {
+    r2Key: key,
+    contentHash,
+    mimeType,
+    width,
+    height,
+    view: view.data,
+    sourceUrl: resolvedUrl,
+  }
+  try {
+    const updated = await setCastPhotos(db, member.id, [...member.photos, photo])
     if (updated.identityString.trim() === '') await describeFromPhotos(updated)
     refresh(member.projectId)
     return { ok: true }

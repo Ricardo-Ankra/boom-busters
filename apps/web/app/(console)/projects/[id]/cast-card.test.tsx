@@ -6,6 +6,7 @@ import { CastCard } from './cast-card'
 
 const actions = vi.hoisted(() => ({
   addCastMemberAction: vi.fn(),
+  addCastPhotoFromUrlAction: vi.fn(),
   updateCastMemberAction: vi.fn(),
   removeCastMemberAction: vi.fn(),
   createCastPhotoUploadAction: vi.fn(),
@@ -139,6 +140,30 @@ describe('CastCard', () => {
     expect(actions.finaliseCastPhotoAction).toHaveBeenCalledWith(
       expect.objectContaining({ memberId: MEMBER, view: 'profile', mimeType: 'image/jpeg' }),
     )
+  })
+
+  it('adds a photo from a pasted address, with the chosen view, and clears the field', async () => {
+    render(<CastCard projectId={PROJECT} members={[emad]} photoUrls={{}} />)
+    await userEvent.click(screen.getByRole('button', { name: 'Edit cast' }))
+
+    const field = screen.getByLabelText('Or paste an image address')
+    const add = screen.getByRole('button', { name: 'Add from address' })
+    // Nothing to add until something is pasted.
+    expect(add).toBeDisabled()
+
+    await userEvent.type(field, 'https://example.com/emad.jpg')
+    await userEvent.selectOptions(
+      screen.getByLabelText('View of the next photo of Emad Mostaque'),
+      'profile',
+    )
+    await userEvent.click(add)
+
+    expect(actions.addCastPhotoFromUrlAction).toHaveBeenCalledWith({
+      memberId: MEMBER,
+      url: 'https://example.com/emad.jpg',
+      view: 'profile',
+    })
+    await waitFor(() => expect(field).toHaveValue(''))
   })
 
   it('saves edited text, describes from photos, and asks before removing a person', async () => {

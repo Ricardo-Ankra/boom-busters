@@ -4401,3 +4401,26 @@ Recorded whenever the spec left something open and an implementation was chosen.
     them in a status line, and marks each unphotographed row. The cast still
     fills at the start of the visuals stage, when the book is drafted, so the
     photos are uploaded at the plan checkpoint before the stills run.
+    _Addendum (k), 2026-09-16, owner: "instead of uploading a photo
+    physically, what about using the image URL?"_ A photo can also arrive by
+    its web address, which the server fetches once and stores in R2 exactly
+    as an upload does, keeping the address in the existing `sourceUrl` field
+    as provenance. The link is never the reference: Gemini is handed the
+    photo as inline base64 read back from storage, so a remote URL could not
+    be used directly, and a link that rots would break every later still of
+    that person. `apps/web/lib/remote-image.ts` does the fetching, and is
+    deliberately dependency-free and byte-level: the format is read from the
+    magic bytes rather than the Content-Type, which is a claim and is
+    routinely wrong; the pixel size is parsed from the image's own header
+    (PNG IHDR, JPEG SOF, WebP VP8/VP8L/VP8X) because there is no server-side
+    decoder in this app and the browser's `createImageBitmap` is not
+    available here; redirects are followed by hand so every hop is
+    re-checked, not only the first; and the resolved address must be public,
+    so a pasted or redirected URL cannot make the deployment fetch its own
+    private network or the cloud metadata endpoint. Refusals are written as
+    instructions rather than codes: a page address says to copy the image
+    address instead, a 401 or 403 says to save the file and use Add photo,
+    and anything whose shorter edge is under 320 px is refused as a
+    thumbnail, because a small face makes a worse likeness. That floor is on
+    the URL route only; a file picked off disk is a deliberate choice and
+    its dimensions are browser-reported and may legitimately be zero.
