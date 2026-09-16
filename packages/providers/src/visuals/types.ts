@@ -144,6 +144,19 @@ export interface ImageGenProvider {
    */
   readonly models: readonly ImageGenModel[]
   generate(request: ImageGenRequest, options: StockCallOptions): Promise<ImageGenResult>
+  /**
+   * The endpoint that will actually run when this many reference photographs
+   * are attached, when it is not the routed model itself (decision 253,
+   * amended). No text-to-image endpoint accepts a photograph, so fal leaves
+   * the routed model for a reference endpoint in the same family, at a
+   * different price; Gemini takes its references inline on the same model and
+   * implements nothing here.
+   *
+   * The caller needs this BEFORE the call: the ledger reserves against an
+   * estimate, and an estimate for the wrong endpoint under-reserves by two to
+   * four times. Null means the routed model runs as itself.
+   */
+  referenceRoute?(modelId: string | undefined, referenceCount: number): ImageGenModel | null
   verifyKey(apiKey: string, options?: Omit<StockCallOptions, 'apiKey'>): Promise<void>
 }
 

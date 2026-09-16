@@ -4424,3 +4424,30 @@ Recorded whenever the spec left something open and an implementation was chosen.
     thumbnail, because a small face makes a worse likeness. That floor is on
     the URL route only; a file picked off disk is a deliberate choice and
     its dimensions are browser-reported and may legitimately be zero.
+    _Addendum (l), 2026-09-16, owner: "the character reference images are
+    working with Google's image generator, but not the fal router with flux 2
+    dev"._ fal's reference routing left the family the producer chose. When a
+    still depicted cast members the adapter abandoned the routed model for
+    FLUX.1 Kontext, whatever had been routed, because no text-to-image
+    endpoint takes a photograph. For FLUX.2 that was both wrong and
+    unnecessary: checked against fal's OpenAPI schema on 2026-09-16,
+    `fal-ai/flux-2` and `fal-ai/flux-2-dev` have no image input at all, so
+    FLUX.2 dev could never carry a reference itself, but `fal-ai/flux-2/edit`
+    does, taking an `image_urls` array for one reference or several and
+    speaking the FLUX dialect (`image_size`, not Kontext's `aspect_ratio`).
+    References now route inside the family: FLUX.2 to `flux-2/edit`,
+    everything else to Kontext (single or multi), Imagen borrowing Kontext
+    because it has none of its own and a likeness the producer asked for
+    beats staying in family. The schema is now the only accepted proof that
+    a fal id exists: the previous check, a GET to the run endpoint answering
+    405, proves only that the key is live, because fal validates the key
+    before the method, so it would answer 405 for a path that does not
+    exist. Two consequences of the old routing were invisible and are fixed
+    with it: the ledger recorded the routed model though a different endpoint
+    was billed, and the estimate reserved at the routed model's price, which
+    under-reserves by two to four times against Kontext. `referenceRoute` is
+    now part of the `ImageGenProvider` contract, declaring before the call
+    which endpoint will be billed, so the reservation, the ledger's
+    `meta.model` and the asset's licence line all name what actually ran.
+    Gemini implements none of it: it takes its references inline on the same
+    model, which is why that route was working all along.
