@@ -13,10 +13,15 @@ import {
   setProjectDirection,
   setScriptOutline,
 } from '@boom-busters/db'
-import { MAX_OUTPUT_TOKENS } from '@boom-busters/providers'
+import { MAX_OUTPUT_TOKENS, mockDirectorsBook } from '@boom-busters/providers'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/lib/db'
-import { loadDirectionInputs, loadOrDraftDirectorsBook, planChapterSlots } from './direction'
+import {
+  draftDirectorsBook,
+  loadDirectionInputs,
+  loadOrDraftDirectorsBook,
+  planChapterSlots,
+} from './direction'
 import type { TimedParagraph } from './shot-list'
 
 const callLlm = vi.hoisted(() => vi.fn())
@@ -69,6 +74,43 @@ describeDb('direction helpers (mock mode)', () => {
     expect(inputs.cast).toEqual([{ name: 'Emad Mostaque', role: 'Founder', identityString: '' }])
     const book = await loadOrDraftDirectorsBook(FIXTURE_PROJECT_ID)
     expect(book.principals[0]).toMatchObject({ name: 'Emad Mostaque', depiction: 'likeness' })
+  })
+
+  it('seeds the cast from the principals a live draft names (decision 253 (j))', async () => {
+    for (const member of await listCastMembers(db, FIXTURE_PROJECT_ID)) {
+      await deleteCastMember(db, member.id)
+    }
+    // The mock book carries only an anonymous principal, so this test plays
+    // the live route: the model's answer is a book that names two people.
+    vi.stubEnv('MOCK_PROVIDERS', '')
+    const answer = mockDirectorsBook({
+      caseTitle: 'Stability AI',
+      chapterCount: 1,
+      cast: [
+        { name: 'Emad Mostaque', role: 'Founder', identityString: 'oval face, short dark hair' },
+        { name: 'Prem Akkaraju', role: 'CEO from 2024', identityString: '' },
+      ],
+    })
+    callLlm.mockResolvedValueOnce({ text: JSON.stringify(answer) })
+
+    const book = await draftDirectorsBook(FIXTURE_PROJECT_ID)
+    expect(book.principals.map((p) => p.name)).toContain('[mock] The chief executive')
+
+    const cast = await listCastMembers(db, FIXTURE_PROJECT_ID)
+    expect(cast.map((m) => m.name)).toEqual(['Emad Mostaque', 'Prem Akkaraju'])
+    expect(cast[0]).toMatchObject({
+      role: 'Founder',
+      identityString: 'oval face, short dark hair',
+      guardrail: '[mock] never handling cash; never in handcuffs; never mocked',
+      photos: [],
+    })
+    // The anonymous principal is not a person the producer can photograph.
+    expect(cast.map((m) => m.name)).not.toContain('[mock] The chief executive')
+
+    // Drafting again adds nobody twice.
+    callLlm.mockResolvedValueOnce({ text: JSON.stringify(answer) })
+    await draftDirectorsBook(FIXTURE_PROJECT_ID)
+    expect(await listCastMembers(db, FIXTURE_PROJECT_ID)).toHaveLength(2)
   })
 
   it('reads the outline tension fields and splits paragraphs, skipping bare tags', async () => {

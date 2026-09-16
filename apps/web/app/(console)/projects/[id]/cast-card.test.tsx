@@ -69,6 +69,24 @@ describe('CastCard', () => {
     expect(screen.getByLabelText('Identity string')).toHaveValue(emad.identityString)
   })
 
+  it('opens itself while someone seeded from the book still has no photo, and says so', () => {
+    const prem: CastMember = {
+      ...emad,
+      id: '01J0000000000000000000000C',
+      name: 'Prem Akkaraju',
+      role: 'CEO from 2024',
+      photos: [],
+    }
+    render(<CastCard projectId={PROJECT} members={[emad, prem]} photoUrls={{}} />)
+    expect(screen.getByRole('status')).toHaveTextContent('1 person still needs a photo.')
+    // Open from the start: the rows are on screen, not the collapsed list.
+    expect(screen.queryByRole('list', { name: 'Cast members' })).not.toBeInTheDocument()
+    const row = screen.getByRole('region', { name: 'Prem Akkaraju' })
+    expect(within(row).getByText(/none yet; stills of Prem Akkaraju/)).toBeInTheDocument()
+    expect(within(row).getByLabelText('Identity string')).toHaveValue(emad.identityString)
+    expect(screen.getByRole('button', { name: 'Hide cast' })).toBeInTheDocument()
+  })
+
   it('opens straight away when the cast is empty and adds a person', async () => {
     render(<CastCard projectId={PROJECT} members={[]} photoUrls={{}} />)
     await userEvent.type(screen.getByLabelText('Full name'), 'Prem Akkaraju')

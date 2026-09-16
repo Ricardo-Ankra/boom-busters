@@ -4,6 +4,7 @@ import {
   getSettings,
   listCastMembers,
   scriptableClaims,
+  seedCastFromPrincipals,
   setProjectDirection,
 } from '@boom-busters/db'
 import type { NewShotSlot } from '@boom-busters/db'
@@ -113,7 +114,13 @@ export async function loadDirectionInputs(projectId: string): Promise<{
   }
 }
 
-/** Draft the book (one call, or the mock) and store it. Replaces whatever was there. */
+/**
+ * Draft the book (one call, or the mock) and store it. Replaces whatever was
+ * there. Every named principal the book introduces is then added to the cast
+ * with its role, identity string and guardrail (decision 253 (j)), so the
+ * producer's remaining job is the photograph; members already present, and
+ * anyone the producer removed, are left as they are.
+ */
 export async function draftDirectorsBook(projectId: string): Promise<DirectorsBook> {
   const inputs = await loadDirectionInputs(projectId)
   const book = mockProvidersEnabled()
@@ -127,6 +134,7 @@ export async function draftDirectorsBook(projectId: string): Promise<DirectorsBo
         inputs.chapters.length,
       )
   await setProjectDirection(db, projectId, book)
+  await seedCastFromPrincipals(db, projectId, book.principals)
   return book
 }
 

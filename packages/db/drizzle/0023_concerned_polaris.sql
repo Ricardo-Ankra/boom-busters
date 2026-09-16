@@ -1,0 +1,1 @@
+ALTER TABLE "cast_members" ADD COLUMN "dismissed_at" timestamp with time zone;

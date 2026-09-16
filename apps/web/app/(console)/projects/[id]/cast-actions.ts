@@ -1,7 +1,7 @@
 'use server'
 
 import {
-  deleteCastMember,
+  dismissCastMember,
   getCastMember,
   getProject,
   insertCastMember,
@@ -124,9 +124,11 @@ export async function removeCastMemberAction(memberId: string): Promise<ActionRe
   if (invalid) return invalid
   const member = await getCastMember(db, memberId)
   if (!member) return { ok: true }
-  // Photos are conditioning input nobody else references; they go with the row.
+  // Photos are conditioning input nobody else references; they go with the
+  // person. The row itself is kept and marked dismissed, so a redraft of the
+  // Director's Book does not put the same person back (decision 253 (j)).
   for (const photo of member.photos) await deleteObject(photo.r2Key).catch(() => undefined)
-  await deleteCastMember(db, memberId)
+  await dismissCastMember(db, memberId)
   refresh(member.projectId)
   return { ok: true }
 }

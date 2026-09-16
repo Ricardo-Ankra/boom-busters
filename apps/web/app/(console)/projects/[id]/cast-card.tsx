@@ -26,6 +26,11 @@ import {
  * the script stage onward, in every phase, because the faces are needed long
  * after the Direction card has left the screen.
  *
+ * The people arrive by themselves: each draft of the Director's Book adds
+ * every named principal with a role, identity string and guardrail
+ * (decision 253 (j)). The card opens itself while anyone is still without a
+ * photo, because the photo is the one thing only the producer can supply.
+ *
  * Photos go browser → R2 on a presigned PUT, the board's "Upload own" shape:
  * hash the file, ask for a URL, PUT, read the dimensions, finalise. The
  * server writes the identity string from the first photo; the text areas
@@ -52,7 +57,10 @@ export function CastCard({ projectId, members, photoUrls }: CastCardProps) {
   const router = useRouter()
   const { toast } = useToast()
   const [busy, setBusy] = React.useState<string | null>(null)
-  const [open, setOpen] = React.useState(members.length === 0)
+  const [open, setOpen] = React.useState(
+    members.length === 0 || members.some((member) => member.photos.length === 0),
+  )
+  const unphotographed = members.filter((member) => member.photos.length === 0).length
 
   const act = React.useCallback(
     async (key: string, run: () => Promise<ActionResult>, success: string) => {
@@ -84,9 +92,18 @@ export function CastCard({ projectId, members, photoUrls }: CastCardProps) {
         <div>
           <CardTitle>Cast</CardTitle>
           <CardDescription>
-            The real people this film shows. Their photos go to the image model as references so
-            generated stills show this person; they are not placed in the video.
+            The real people this film shows. Everyone the Director&apos;s Book names is added here
+            with a description when it is drafted; add anyone it missed, remove anyone it should not
+            show. Upload one photo of each person: it goes to the image model as a reference so
+            generated stills show this person, and is never placed in the video.
           </CardDescription>
+          {unphotographed > 0 ? (
+            <p className="mt-2 text-[12px] text-[var(--color-warning)]" role="status">
+              {unphotographed === 1
+                ? '1 person still needs a photo.'
+                : `${unphotographed} people still need a photo.`}
+            </p>
+          ) : null}
         </div>
         {members.length > 0 ? (
           <Button variant="outline" onClick={() => setOpen((value) => !value)}>
@@ -100,7 +117,12 @@ export function CastCard({ projectId, members, photoUrls }: CastCardProps) {
             {members.map((member) => (
               <li key={member.id} className="flex items-center gap-2">
                 <Avatar member={member} photoUrls={photoUrls} />
-                <span className="text-[13px]">{member.name}</span>
+                <span className="text-[13px]">
+                  {member.name}
+                  {member.photos.length === 0 ? (
+                    <span className="text-[var(--color-text-muted)]"> · no photo yet</span>
+                  ) : null}
+                </span>
               </li>
             ))}
           </ul>
@@ -237,7 +259,16 @@ function MemberRow({
       </div>
 
       <div className="space-y-2">
-        <p className="text-[12px] text-[var(--color-text-muted)]">Reference photos</p>
+        <p className="text-[12px] text-[var(--color-text-muted)]">
+          Reference photos
+          {member.photos.length === 0 ? (
+            <span className="text-[var(--color-warning)]">
+              {' '}
+              · none yet; stills of {member.name} are drawn from the description alone until one is
+              uploaded
+            </span>
+          ) : null}
+        </p>
         <ul aria-label={`${member.name} photos`} className="flex flex-wrap gap-3">
           {member.photos.map((photo) => {
             const url = photoUrls[photo.contentHash]
@@ -384,7 +415,7 @@ function MemberRow({
           busy={rowBusy}
           label="Remove person"
           confirmLabel={`Remove ${member.name}`}
-          consequence="Their photos are deleted. Stills already generated are kept."
+          consequence="Their photos are deleted and a redraft of the Director's Book will not add them back. Stills already generated are kept."
           onConfirm={() =>
             act(`${member.id}:remove`, () => removeCastMemberAction(member.id), 'Person removed')
           }
