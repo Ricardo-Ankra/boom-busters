@@ -72,8 +72,9 @@ export const publishRunner = inngest.createFunction(
     // race itself.
     concurrency: [{ limit: 1 }],
     // And one live run per target: a double-fired publish for the same video
-    // is skipped, never queued behind the upload it duplicates (decision 233).
-    singleton: { key: 'event.data.targetId', mode: 'skip' },
+    // cancels the upload it duplicates rather than queueing behind it
+    // (decision 233, amended).
+    singleton: { key: 'event.data.targetId', mode: 'cancel' },
     cancelOn: [
       {
         event: 'project/cancelled',

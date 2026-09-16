@@ -62,8 +62,9 @@ export const slotRetyper = inngest.createFunction(
     name: 'Slot re-type',
     retries: 2,
     // One re-type per slot at a time; different slots still run in parallel.
-    // A double-fired request is skipped, never paid twice (decision 233).
-    singleton: { key: 'event.data.slotId', mode: 'skip' },
+    // A double-fired request cancels the one it duplicates, so it is never
+    // paid for twice over (decision 233, amended).
+    singleton: { key: 'event.data.slotId', mode: 'cancel' },
     cancelOn: [
       {
         event: 'project/cancelled',

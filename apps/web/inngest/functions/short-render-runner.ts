@@ -72,9 +72,10 @@ export const shortRenderRunner = inngest.createFunction(
     id: FUNCTION_ID,
     name: 'Render short',
     retries: 2,
-    // One render per Short at a time; a double-fired request is skipped,
-    // never queued behind the render it duplicates (decision 233).
-    singleton: { key: 'event.data.shortId', mode: 'skip' },
+    // One render per Short at a time; a double-fired request cancels the
+    // render it duplicates rather than queueing behind it (decision 233,
+    // amended).
+    singleton: { key: 'event.data.shortId', mode: 'cancel' },
     // The spec's "parallel, capped": five Shorts render two at a time. The
     // broker stack's RENDER_CAP is 2 as well — this cap exists so the queue
     // forms here, visibly, instead of as broker 429s.

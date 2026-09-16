@@ -49,7 +49,7 @@ export const slotRedirector = inngest.createFunction(
     id: FUNCTION_ID,
     name: 'Slot redirect',
     retries: 2,
-    singleton: { key: 'event.data.slotId', mode: 'skip' },
+    singleton: { key: 'event.data.slotId', mode: 'cancel' },
     cancelOn: [
       {
         event: 'project/cancelled',
