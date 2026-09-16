@@ -389,10 +389,10 @@ function MemberRow({
           </div>
         ) : null}
         <p className="text-[12px] text-[var(--color-text-muted)]">
-          One clear front view is enough. Two to four help: three-quarter, profile, full length.
-          Even light, no sunglasses, the face at least 512 px wide, from the years the film covers.
-          An address must point at the image file itself, the one from &quot;Copy image
-          address&quot;, not the page it sits on.
+          One clear front view is enough, but two or three help: add a three-quarter and a profile.
+          Up to three travel with every still that shows this person. Even light, no sunglasses, the
+          face at least 512 px wide, from the years the film covers. An address must point at the
+          image file itself, the one from &quot;Copy image address&quot;, not the page it sits on.
         </p>
       </div>
 
