@@ -190,8 +190,17 @@ function ModelsTab({ settings, saving, commit }: TabProps) {
     void commit({ modelRouting: { stills: { provider, model } } }, next)
   }
 
+  /** Null turns the split off: one route generates every still again. */
+  const setLikenessRoute = (route: { provider: StillProvider; model: string } | null) => {
+    const next = structuredClone(settings)
+    next.modelRouting.stillsLikeness = route
+    void commit({ modelRouting: { stillsLikeness: route } }, next)
+  }
+
   const stills = settings.modelRouting.stills
   const stillModels = LIVE_IMAGE_GEN_ADAPTERS[stills.provider].models
+  const likeness = settings.modelRouting.stillsLikeness
+  const likenessModels = LIVE_IMAGE_GEN_ADAPTERS[likeness?.provider ?? stills.provider].models
 
   return (
     <Card>
@@ -296,6 +305,67 @@ function ModelsTab({ settings, saving, commit }: TabProps) {
             )}
           </Select>
         </div>
+
+        {/* Stills that show a photographed cast member may go somewhere else
+            (decision 253, amended): holding a real face and inventing an
+            empty boardroom are different jobs at different prices. Off by
+            default, and the row above generates everything until it is on. */}
+        <div className="grid items-center gap-2 sm:grid-cols-[1fr_auto_auto]">
+          <Label htmlFor="route-likeness-provider">Stills showing the cast</Label>
+
+          <Select
+            id="route-likeness-provider"
+            aria-label="Stills showing the cast provider"
+            value={likeness?.provider ?? 'same'}
+            disabled={saving}
+            onChange={(event) => {
+              const value = event.target.value
+              if (value === 'same') {
+                setLikenessRoute(null)
+                return
+              }
+              const provider = value as StillProvider
+              setLikenessRoute({
+                provider,
+                model: LIVE_IMAGE_GEN_ADAPTERS[provider].models[0]!.id,
+              })
+            }}
+            className="sm:w-40"
+          >
+            <option value="same">same as above</option>
+            {STILL_PROVIDERS.map((provider) => (
+              <option key={provider} value={provider}>
+                {provider}
+              </option>
+            ))}
+          </Select>
+
+          <Select
+            aria-label="Stills showing the cast model"
+            value={likeness?.model ?? ''}
+            disabled={saving || !likeness}
+            onChange={(event) =>
+              likeness &&
+              setLikenessRoute({ provider: likeness.provider, model: event.target.value })
+            }
+            className="sm:w-48"
+          >
+            {likeness ? null : <option value="">—</option>}
+            {likenessModels.map((model) => (
+              <option key={model.id} value={model.id}>
+                {model.label} (${model.pricePerImage.toFixed(2)}/image)
+              </option>
+            ))}
+            {!likeness || likenessModels.some((model) => model.id === likeness.model) ? null : (
+              <option value={likeness.model}>{likeness.model} (unlisted)</option>
+            )}
+          </Select>
+        </div>
+        <p className="text-[12px] text-[var(--color-text-muted)]">
+          A still counts as showing the cast when it depicts someone the Cast card holds a
+          photograph of. Their photos go to this generator; every other still goes to the row above.
+          Leave it on &quot;same as above&quot; to generate everything one way.
+        </p>
       </CardContent>
     </Card>
   )

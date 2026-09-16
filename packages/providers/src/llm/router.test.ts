@@ -14,9 +14,10 @@ const routing: ModelRouting = {
   metadata: { provider: 'anthropic', model: 'mock-small' },
   digest: { provider: 'anthropic', model: 'mock-small' },
   direction: { provider: 'anthropic', model: 'mock-medium' },
-  // Not an LLM task — present because the type carries it (decision 208);
-  // the LLM router never reads it.
+  // Not LLM tasks — present because the type carries them (decision 208);
+  // the LLM router never reads either.
   stills: { provider: 'google', model: 'gemini-2.5-flash-image' },
+  stillsLikeness: null,
 }
 
 const request: LLMTaskRequest = {

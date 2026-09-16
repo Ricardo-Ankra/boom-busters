@@ -139,6 +139,19 @@ export const ModelRoutingSchema = z.object({
   direction: ModelRefSchema,
   /** The still-image generator — not an LLM task, but routed where the others are. */
   stills: StillRouteSchema,
+  /**
+   * Where a still that shows a cast member goes instead (decision 253,
+   * amended). Holding a real face and inventing an empty boardroom are
+   * different jobs at different prices: the natively multimodal models keep
+   * a likeness best, while a plain room costs less from a cheaper generator.
+   *
+   * Null means there is no split and `stills` generates everything, which is
+   * the behaviour every project had before this existed. A still counts as
+   * showing a cast member only when the cast actually holds a photograph of
+   * someone it depicts, because that is what makes a likeness possible at
+   * all — a name the cast has never seen is a plain still.
+   */
+  stillsLikeness: StillRouteSchema.nullable(),
 })
 export type ModelRouting = z.infer<typeof ModelRoutingSchema>
 
@@ -520,6 +533,9 @@ export const DEFAULT_SETTINGS: Settings = {
     // Gemini rides the Google key Settings already holds for the LLM
     // adapters, so it is the default that costs no extra account.
     stills: { provider: 'google', model: 'gemini-2.5-flash-image' },
+    // No split by default: one route generates everything until the producer
+    // asks for two, so nothing changes under anyone who never opens this.
+    stillsLikeness: null,
   },
   fallbackChain: [],
   tts: {

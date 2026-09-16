@@ -4471,3 +4471,25 @@ Recorded whenever the spec left something open and an implementation was chosen.
     arriving as a surprise. Gemini 2.5 Flash Image remains the default stills
     route: it is natively multimodal, which is why it holds a real face
     better than a diffusion edit pass, and it needs no second account.
+    _Addendum (n), 2026-09-16, owner: "route different image models to
+    different briefs — briefs with people use Gemini, briefs that don't need
+    character likeness use the cheaper FLUX.2"._ `modelRouting.stillsLikeness`
+    is a second stills route, used only when a still shows someone the cast
+    holds a photograph of; null (the default) means no split and `stills`
+    generates everything, exactly as before. The test is deliberately "can
+    this still carry a likeness at all", not "does the brief name a person":
+    a name the cast has never seen, or one with no photograph yet, buys
+    nothing from the dearer generator and is routed as a plain still. That
+    forced a small split in `visual-assets.ts` — `depictedCast` (database
+    only) now runs BEFORE the route is chosen, and `referenceMaterials`
+    fetches the bytes or presigns the URLs afterwards, because the old
+    combined function needed the provider in order to decide, and the
+    provider is what was being decided. `stillSlotEstimateUsd` quotes the
+    dearer of the two routes, since the plan screen prices a slot before
+    anything has been planned and must never promise less than the run can
+    cost. Settings → Models grows one row, "Stills showing the cast",
+    defaulting to "same as above". Both routes fold retired model ids on read
+    (decision 211). Worth remembering when setting it: the cheap route is
+    only cheap for the frames it takes, and a still wrongly classified as
+    plain cannot be rescued by a better prompt, which is why the split keys
+    on a photograph existing rather than on the planner's wording.
