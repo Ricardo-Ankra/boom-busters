@@ -55,8 +55,9 @@ export const dossierRunner = inngest.createFunction(
     id: FUNCTION_ID,
     name: 'Dossier research',
     retries: 4,
-    // A duplicate trigger event is skipped, never stacked (decision 233).
-    singleton: { key: 'event.data.projectId', mode: 'skip' },
+    // One live run per project: a duplicate trigger cancels the run it
+    // duplicates rather than stacking beside it (decision 233, amended).
+    singleton: { key: 'event.data.projectId', mode: 'cancel' },
     cancelOn: [
       {
         event: 'project/cancelled',

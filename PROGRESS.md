@@ -3687,6 +3687,22 @@ published and audited. The daily `channels.list` health ping and the
      must decide. Known trade of `skip`: a restart aimed at a zombie run
      (mirror closed, Inngest alive) is skipped silently; the recovery stays
      Stop (which cancels via `cancelOn`) then restart.
+     _Amended 2026-09-16: every mode is now `cancel`, not `skip`._ The known
+     trade turned out to be a wedge with no recovery at all. After the owner
+     stopped a parked visuals run on the Stability AI project, the singleton
+     lock was never released, and `skip` then dropped five consecutive
+     `gate/voice.approved` events over 40 minutes: the Inngest Events page
+     showed the event received and "Visual planning" matched on every one,
+     the Runs list showed no run created, and the Running filter was empty,
+     so nothing was alive to explain the skip. Stop-then-restart cannot help,
+     because the thing holding the lock is already cancelled. `cancel` keeps
+     decision 233's actual guarantee — never two live runs for one key, so a
+     double-fired approve still ends with exactly one run — while making a
+     trigger always produce a run, which is what a restart means. The cost is
+     that an accidental duplicate now cancels and redoes work instead of
+     being free; a wedged stage that no button can clear is the worse trade.
+     `index.test.ts` grew a second assertion so no singleton can return to
+     `skip`.
 
 234. **Side jobs never fail a parked review, and buttons refuse to spend
      twice** (2026-09-10, audit phase A). The slot re-fetcher, slot re-typer

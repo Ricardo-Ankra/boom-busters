@@ -84,7 +84,7 @@ export const scriptRunner = inngest.createFunction(
      * used to start two of these; the second drafted a parallel script and
      * re-opened the gate the human had just closed. Skipped, never stacked.
      */
-    singleton: { key: 'event.data.projectId', mode: 'skip' },
+    singleton: { key: 'event.data.projectId', mode: 'cancel' },
     cancelOn: [
       {
         event: 'project/cancelled',

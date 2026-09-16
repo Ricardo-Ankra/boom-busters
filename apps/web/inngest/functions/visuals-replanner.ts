@@ -45,9 +45,9 @@ export const visualsReplanner = inngest.createFunction(
     id: FUNCTION_ID,
     name: 'Visual re-plan',
     retries: 2,
-    // One re-plan per project at a time; a double click is skipped, never
-    // paid twice (decision 233).
-    singleton: { key: 'event.data.projectId', mode: 'skip' },
+    // One re-plan per project at a time; a double click cancels the re-plan
+    // it duplicates, so it is never paid for twice (decision 233, amended).
+    singleton: { key: 'event.data.projectId', mode: 'cancel' },
     cancelOn: [
       {
         event: 'project/cancelled',
