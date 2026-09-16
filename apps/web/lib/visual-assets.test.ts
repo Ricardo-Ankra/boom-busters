@@ -35,6 +35,17 @@ const still: StillBrief = {
   depicts: ['Emad Mostaque'],
 }
 
+function photo(hash: string, view: 'front' | 'profile' | 'three-quarter' | 'full') {
+  return {
+    r2Key: `boom-busters/cast/${FIXTURE_PROJECT_ID}/${hash}.jpg`,
+    contentHash: hash,
+    mimeType: 'image/jpeg' as const,
+    width: 1000,
+    height: 1200,
+    view,
+  }
+}
+
 describeDb('generateStillCandidates with the cast', () => {
   const generate = vi.spyOn(mockImageGen, 'generate')
 
@@ -78,6 +89,54 @@ describeDb('generateStillCandidates with the cast', () => {
       true,
     )
     expect(candidates[0]?.references).toEqual(['Emad Mostaque'])
+  })
+
+  it('sends every angle of one person, front view first, up to the limit', async () => {
+    const emad = await insertCastMember(db, {
+      projectId: FIXTURE_PROJECT_ID,
+      name: 'Emad Mostaque',
+      role: 'Founder',
+    })
+    await setCastPhotos(db, emad.id, [
+      photo('profile-1', 'profile'),
+      photo('front-1', 'front'),
+      photo('three-quarter-1', 'three-quarter'),
+      photo('full-1', 'full'),
+    ])
+
+    const candidates = await generateStillCandidates(still, FIXTURE_PROJECT_ID)
+
+    // Three slots, all spent on this one person, the front view leading.
+    const request = generate.mock.calls[0]?.[0]
+    expect(request?.references).toHaveLength(3)
+    expect(request?.references?.every((reference) => reference.name === 'Emad Mostaque')).toBe(true)
+    // The board still names the person once, not once per photograph.
+    expect(candidates[0]?.references).toEqual(['Emad Mostaque'])
+  })
+
+  it('gives every person in the frame a photo before spending a slot on an angle', async () => {
+    const emad = await insertCastMember(db, {
+      projectId: FIXTURE_PROJECT_ID,
+      name: 'Emad Mostaque',
+      role: 'Founder',
+    })
+    const prem = await insertCastMember(db, {
+      projectId: FIXTURE_PROJECT_ID,
+      name: 'Prem Akkaraju',
+      role: 'CEO',
+    })
+    await setCastPhotos(db, emad.id, [photo('e-front', 'front'), photo('e-profile', 'profile')])
+    await setCastPhotos(db, prem.id, [photo('p-front', 'front')])
+
+    await generateStillCandidates(
+      { ...still, depicts: ['Emad Mostaque', 'Prem Akkaraju'] },
+      FIXTURE_PROJECT_ID,
+    )
+
+    // One each first, so neither face is missing, then the spare slot goes
+    // to a second angle rather than being wasted.
+    const names = generate.mock.calls[0]?.[0]?.references?.map((reference) => reference.name)
+    expect(names).toEqual(['Emad Mostaque', 'Prem Akkaraju', 'Emad Mostaque'])
   })
 
   it('does not repeat the clause when the planner already wrote it', async () => {

@@ -15,6 +15,8 @@ import {
   ValidationError,
 } from '@boom-busters/schemas'
 import type {
+  CastMember,
+  CastPhoto,
   ShotBrief,
   ShotSlotStatus,
   SlotCandidate,
@@ -39,13 +41,49 @@ import { callLlm } from '@/lib/llm'
 import { getObjectBytes, presignGet, putObject, stillKey, storageConfigured } from '@/lib/storage'
 
 /**
- * The most people one still can be conditioned on: Gemini's input-image
- * limit, and about as many faces as a documentary frame should carry.
+ * The most reference photographs one still can be conditioned on: Gemini's
+ * input-image limit, and about as much as any of these endpoints reads
+ * usefully.
+ *
+ * Slots, not people. They are spent on the people in the frame first and then
+ * on further angles of them (decision 253, amended): a still showing one
+ * person used to spend one slot and waste two, while the Cast card asked the
+ * producer for two to four angles that were then never sent.
  */
 export const MAX_STILL_REFERENCES = 3
 
 /** The clause the planner is asked to write; prepended if it forgot. */
 const REFERENCE_CLAUSE = 'the person in the reference photo'
+
+/**
+ * How the reference slots are spent across the people in the frame.
+ *
+ * Everyone depicted gets a photograph first, because a face that is never
+ * shown cannot be matched at all. Whatever is left goes round-robin to
+ * further angles of those same people, front view first. One person in the
+ * frame is the common case, and three views of them pin a likeness far
+ * better than one — which is what the Cast card has been asking for all
+ * along, and what every angle past the first was never used for.
+ *
+ * The extra angles are only ever spent on photographs the producer actually
+ * uploaded, so a cast of single front views behaves exactly as before.
+ */
+function spreadReferences(
+  members: readonly CastMember[],
+): { member: CastMember; photo: CastPhoto }[] {
+  const queues = members.map((member) =>
+    referencePhotos(member, MAX_STILL_REFERENCES).map((photo) => ({ member, photo })),
+  )
+  const chosen: { member: CastMember; photo: CastPhoto }[] = []
+  for (let round = 0; round < MAX_STILL_REFERENCES; round += 1) {
+    for (const queue of queues) {
+      if (chosen.length >= MAX_STILL_REFERENCES) return chosen
+      const next = queue[round]
+      if (next) chosen.push(next)
+    }
+  }
+  return chosen
+}
 
 /**
  * The cast members a still depicts, with their photos ready for the routed
@@ -68,7 +106,7 @@ async function castReferences(
   if (members.length === 0) return none
 
   const names = members.map((member) => member.name)
-  const photos = members.map((member) => ({ member, photo: referencePhotos(member, 1)[0]! }))
+  const photos = spreadReferences(members)
 
   if (mocked) {
     return {

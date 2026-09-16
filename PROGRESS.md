@@ -4451,3 +4451,23 @@ Recorded whenever the spec left something open and an implementation was chosen.
     `meta.model` and the asset's licence line all name what actually ran.
     Gemini implements none of it: it takes its references inline on the same
     model, which is why that route was working all along.
+    _Addendum (m), 2026-09-16, owner comparing the two routes: "it did work,
+    but it isn't nearly as good as Gemini Flash Image"._ Part of that gap was
+    self-inflicted. `MAX_STILL_REFERENCES` was a cap on how many PEOPLE a
+    still could be conditioned on, and each of them contributed exactly one
+    photograph, so the common case — one person in the frame — spent one
+    slot and wasted two, while the Cast card asked the producer for two to
+    four angles that were then never sent. The three slots are now spent
+    round-robin: every depicted person gets a photograph first, because a
+    face that is never shown cannot be matched, and what is left goes to
+    further angles of those same people, front view first. A cast holding a
+    single front view each behaves exactly as before, so nothing changes
+    until the producer actually uploads angles. Billing follows the route,
+    and only one route charges for it: Gemini and `flux-2/edit` are flat per
+    image whatever they are given, while FLUX.1 moves from Kontext pro
+    ($0.04) to Kontext max multi ($0.08) at two or more references. Since
+    (l) the reservation and `meta.model` already name the endpoint that will
+    be billed, so that doubling shows up on the Costs screen rather than
+    arriving as a surprise. Gemini 2.5 Flash Image remains the default stills
+    route: it is natively multimodal, which is why it holds a real face
+    better than a diffusion edit pass, and it needs no second account.
