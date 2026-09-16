@@ -11,6 +11,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/lib/db'
 import {
   addCastMemberAction,
+  addCastPhotoFromUrlAction,
   createCastPhotoUploadAction,
   describeCastMemberAction,
   finaliseCastPhotoAction,
@@ -37,12 +38,18 @@ vi.mock('@/lib/storage', () => ({
   castPhotoKey: (input: { projectId: string; contentHash: string; ext: string }) =>
     `boom-busters/cast/${input.projectId}/${input.contentHash}.${input.ext}`,
   presignPut: async (key: string) => `https://r2.example/${key}?signed`,
+  putObject: async (key: string) => ({ key }),
   headObject: async () => ({ size: 120_000, contentType: 'image/jpeg' }),
   deleteObject: async (key: string) => {
     storage.deleted.push(key)
   },
   getObjectBytes: async () => ({ bytes: new Uint8Array([1, 2, 3]), contentType: 'image/jpeg' }),
 }))
+
+// The fetcher has its own suite (address rules, magic bytes, dimensions);
+// here it only has to hand the action some bytes.
+const remote = vi.hoisted(() => ({ fetchRemoteImage: vi.fn() }))
+vi.mock('@/lib/remote-image', () => remote)
 
 const describeDb = requireTestDatabase() ? describe : describe.skip
 
@@ -54,6 +61,16 @@ describeDb('cast actions (mock mode)', () => {
     vi.stubEnv('MOCK_PROVIDERS', '1')
     storage.configured = true
     storage.deleted = []
+    remote.fetchRemoteImage.mockResolvedValue({
+      ok: true,
+      image: {
+        bytes: Buffer.from('a-real-jpeg'),
+        mimeType: 'image/jpeg',
+        width: 1200,
+        height: 1600,
+        resolvedUrl: 'https://example.com/emad.jpg',
+      },
+    })
     await seed(db)
     for (const member of await listCastMembers(db, FIXTURE_PROJECT_ID)) {
       await removeCastMemberAction(member.id)
@@ -212,6 +229,66 @@ describeDb('cast actions (mock mode)', () => {
     expect((await listCastMembers(db, FIXTURE_PROJECT_ID))[0]?.photos).toEqual([])
     const noPhotos = await describeCastMemberAction(id)
     expect(noPhotos.ok).toBe(false)
+  })
+
+  it('adds a photo from a web address, keeping the address as provenance', async () => {
+    const id = await addEmad()
+    expect(
+      await addCastPhotoFromUrlAction({
+        memberId: id,
+        url: 'https://example.com/emad.jpg',
+        view: 'front',
+      }),
+    ).toEqual({ ok: true })
+
+    const [member] = await listCastMembers(db, FIXTURE_PROJECT_ID)
+    expect(member?.photos).toHaveLength(1)
+    expect(member?.photos[0]).toMatchObject({
+      view: 'front',
+      width: 1200,
+      height: 1600,
+      mimeType: 'image/jpeg',
+      sourceUrl: 'https://example.com/emad.jpg',
+    })
+    // Stored under the fingerprint of the bytes, exactly like an upload.
+    expect(member?.photos[0]?.r2Key).toMatch(
+      /^boom-busters\/cast\/[0-9A-Z]{26}\/[0-9a-f]{64}\.jpg$/,
+    )
+    // The first photo still writes the identity string.
+    expect(member?.identityString).toContain('[mock] Emad Mostaque')
+  })
+
+  it('passes the fetcher’s refusal through in its own words', async () => {
+    const id = await addEmad()
+    remote.fetchRemoteImage.mockResolvedValue({
+      ok: false,
+      error: 'That site refuses downloads from a server. Save the image and use Add photo instead.',
+    })
+    const result = await addCastPhotoFromUrlAction({
+      memberId: id,
+      url: 'https://agency.example/x.jpg',
+      view: 'front',
+    })
+    expect(result.ok).toBe(false)
+    expect(result.error).toMatch(/Add photo instead/)
+    expect((await listCastMembers(db, FIXTURE_PROJECT_ID))[0]?.photos).toEqual([])
+  })
+
+  it('refuses the same picture twice, however it arrived', async () => {
+    const id = await addEmad()
+    await addCastPhotoFromUrlAction({
+      memberId: id,
+      url: 'https://example.com/emad.jpg',
+      view: 'front',
+    })
+    const again = await addCastPhotoFromUrlAction({
+      memberId: id,
+      url: 'https://mirror.example/same.jpg',
+      view: 'profile',
+    })
+    expect(again.ok).toBe(false)
+    expect(again.error).toMatch(/already has that exact photo/)
+    expect((await listCastMembers(db, FIXTURE_PROJECT_ID))[0]?.photos).toHaveLength(1)
   })
 
   it('says so when storage is not configured', async () => {

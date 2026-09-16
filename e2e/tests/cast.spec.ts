@@ -5,9 +5,9 @@ import { signIn } from './fixtures'
 /**
  * The Cast card (decision 253) on a project past the dossier: a person is
  * added, their identity string edited and saved, and the card survives a
- * reload. Photo upload needs R2, which mock storage does not have, so the
- * upload path is covered by the action and component suites; here the
- * button is present and the guidance is on screen.
+ * reload. Both photo routes need R2, which mock storage does not have, so
+ * uploading and fetching by address are covered by the action and component
+ * suites; here their controls are present and the guidance is on screen.
  */
 
 const NAME = `Emad Mostaque ${Date.now()}`
@@ -49,6 +49,8 @@ test.describe('the cast', () => {
     const row = card.getByRole('region', { name: NAME })
     await expect(row).toBeVisible({ timeout: 15_000 })
     await expect(row.getByRole('button', { name: 'Add photo' })).toBeVisible()
+    await expect(row.getByLabel('Or paste an image address')).toBeVisible()
+    await expect(row.getByRole('button', { name: 'Add from address' })).toBeVisible()
     await expect(row.getByText(/One clear front view is enough/)).toBeVisible()
 
     await row.getByLabel('Identity string').fill('oval face, short dark hair, close-cropped beard')

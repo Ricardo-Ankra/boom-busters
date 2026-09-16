@@ -11,6 +11,7 @@ import { useToast } from '@/components/ui/toast'
 import { ConfirmButton } from '@/components/confirm-button'
 import {
   addCastMemberAction,
+  addCastPhotoFromUrlAction,
   createCastPhotoUploadAction,
   describeCastMemberAction,
   finaliseCastPhotoAction,
@@ -32,9 +33,11 @@ import {
  * photo, because the photo is the one thing only the producer can supply.
  *
  * Photos go browser → R2 on a presigned PUT, the board's "Upload own" shape:
- * hash the file, ask for a URL, PUT, read the dimensions, finalise. The
- * server writes the identity string from the first photo; the text areas
- * hold raw text and save on the button, never on a keystroke.
+ * hash the file, ask for a URL, PUT, read the dimensions, finalise. A photo
+ * can also arrive by its web address, which the server fetches and stores by
+ * the same route (decision 253 (k)). The server writes the identity string
+ * from the first photo; the text areas hold raw text and save on the button,
+ * never on a keystroke.
  */
 
 const DESCRIBE_ESTIMATE = '≈$0.02'
@@ -196,6 +199,7 @@ function MemberRow({
   const [identity, setIdentity] = React.useState(member.identityString)
   const [guardrail, setGuardrail] = React.useState(member.guardrail)
   const [view, setView] = React.useState<CastPhotoView>('front')
+  const [photoUrl, setPhotoUrl] = React.useState('')
   const inputRef = React.useRef<HTMLInputElement | null>(null)
   const rowBusy = busy !== null && busy.startsWith(member.id)
 
@@ -350,9 +354,45 @@ function MemberRow({
             </li>
           ) : null}
         </ul>
+        {member.photos.length < MAX_CAST_PHOTOS ? (
+          <div className="flex flex-wrap items-end gap-2">
+            <div className="min-w-[240px] flex-1 space-y-1">
+              <Label htmlFor={`cast-${member.id}-url`}>Or paste an image address</Label>
+              <Input
+                id={`cast-${member.id}-url`}
+                value={photoUrl}
+                placeholder="https://example.com/photo.jpg"
+                onChange={(event) => setPhotoUrl(event.target.value)}
+              />
+            </div>
+            <Button
+              variant="outline"
+              disabled={rowBusy || photoUrl.trim() === ''}
+              onClick={() =>
+                void act(
+                  `${member.id}:url`,
+                  async () => {
+                    const result = await addCastPhotoFromUrlAction({
+                      memberId: member.id,
+                      url: photoUrl,
+                      view,
+                    })
+                    if (result.ok) setPhotoUrl('')
+                    return result
+                  },
+                  'Photo added',
+                )
+              }
+            >
+              Add from address
+            </Button>
+          </div>
+        ) : null}
         <p className="text-[12px] text-[var(--color-text-muted)]">
           One clear front view is enough. Two to four help: three-quarter, profile, full length.
           Even light, no sunglasses, the face at least 512 px wide, from the years the film covers.
+          An address must point at the image file itself, the one from &quot;Copy image
+          address&quot;, not the page it sits on.
         </p>
       </div>
 
