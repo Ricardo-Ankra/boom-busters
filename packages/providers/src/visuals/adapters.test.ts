@@ -437,6 +437,90 @@ describe('falImageGen', () => {
     expect(sentBody['image_urls']).toEqual(['https://r2.example/a.jpg', 'https://r2.example/b.jpg'])
   })
 
+  it('keeps FLUX.2 in its own family: references go to flux-2/edit, not Kontext', async () => {
+    let calledUrl = ''
+    let sentBody: Record<string, unknown> = {}
+    const result = await falImageGen.generate(
+      {
+        prompt: 'Emad Mostaque, the person in the reference photo, at a desk',
+        count: 2,
+        model: 'fal-ai/flux-2',
+        referenceUrls: ['https://r2.example/cast/emad.jpg?signed'],
+      },
+      {
+        apiKey: 'key',
+        fetchImpl: (async (url: string | URL | Request, init?: RequestInit) => {
+          calledUrl = String(url)
+          sentBody = JSON.parse(String(init?.body)) as Record<string, unknown>
+          return new Response(
+            JSON.stringify({
+              images: [
+                { url: 'https://fal.media/files/a.png' },
+                { url: 'https://fal.media/b.png' },
+              ],
+            }),
+            { status: 200 },
+          )
+        }) as typeof fetch,
+      },
+    )
+    expect(calledUrl).toBe('https://fal.run/fal-ai/flux-2/edit')
+    // One array field whether there is one reference or several, and the FLUX
+    // dialect: image_size, never Kontext's aspect_ratio.
+    expect(sentBody['image_urls']).toEqual(['https://r2.example/cast/emad.jpg?signed'])
+    expect(sentBody['image_url']).toBeUndefined()
+    expect(sentBody['image_size']).toBe('landscape_16_9')
+    expect(sentBody['aspect_ratio']).toBeUndefined()
+    expect(result.estimatedCostUsd).toBeCloseTo(FAL_REFERENCE_MODELS.flux2.pricePerImage * 2)
+  })
+
+  it('sends several FLUX.2 references to the same endpoint, in one array', async () => {
+    let calledUrl = ''
+    let sentBody: Record<string, unknown> = {}
+    await falImageGen.generate(
+      {
+        prompt: 'two founders in a corridor',
+        count: 1,
+        model: 'fal-ai/flux-2',
+        referenceUrls: ['https://r2.example/a.jpg', 'https://r2.example/b.jpg'],
+      },
+      {
+        apiKey: 'key',
+        fetchImpl: (async (url: string | URL | Request, init?: RequestInit) => {
+          calledUrl = String(url)
+          sentBody = JSON.parse(String(init?.body)) as Record<string, unknown>
+          return new Response(
+            JSON.stringify({ images: [{ url: 'https://fal.media/files/a.png' }] }),
+            { status: 200 },
+          )
+        }) as typeof fetch,
+      },
+    )
+    expect(calledUrl).toBe('https://fal.run/fal-ai/flux-2/edit')
+    expect(sentBody['image_urls']).toEqual(['https://r2.example/a.jpg', 'https://r2.example/b.jpg'])
+  })
+
+  /**
+   * The ledger reserves before the call, so the estimate has to name the
+   * endpoint that will be billed. Quoting the routed model under-reserved by
+   * two to four times every time a still showed a cast member.
+   */
+  it('declares the endpoint a reference call will be billed at, before calling', () => {
+    expect(falImageGen.referenceRoute?.('fal-ai/flux-2', 0)).toBeNull()
+    expect(falImageGen.referenceRoute?.('fal-ai/flux-2', 1)).toMatchObject({
+      id: 'fal-ai/flux-2/edit',
+      pricePerImage: FAL_REFERENCE_MODELS.flux2.pricePerImage,
+    })
+    expect(falImageGen.referenceRoute?.('fal-ai/flux/dev', 1)).toMatchObject({
+      id: FAL_REFERENCE_MODELS.single.id,
+    })
+    expect(falImageGen.referenceRoute?.('fal-ai/flux/dev', 3)).toMatchObject({
+      id: FAL_REFERENCE_MODELS.multi.id,
+    })
+    // What it declares is what it calls.
+    expect(falImageGen.referenceRoute?.('fal-ai/flux-2', 2)?.id).toBe('fal-ai/flux-2/edit')
+  })
+
   it('offers exactly the schema-checked FLUX variants — the list is a promise', () => {
     // Every id here was verified against fal's OpenAPI schema for this
     // adapter's contract (prompt + image_size + num_images → images[]).

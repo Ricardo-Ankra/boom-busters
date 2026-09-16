@@ -276,6 +276,17 @@ export async function generateStillCandidates(
   const cast = await castReferences(brief, projectId, provider, mocked)
   const prompt = withReferenceClause(brief.prompt, cast.names)
 
+  /**
+   * The endpoint that will actually be billed. A still depicting cast members
+   * leaves the routed text-to-image model for a reference endpoint, which on
+   * fal costs two to four times as much, so estimating against the routed
+   * model under-reserves and the ledger records a model that never ran
+   * (decision 253, amended). Null everywhere else, including Gemini, which
+   * takes its references inline on the same model.
+   */
+  const live = LIVE_IMAGE_GEN_ADAPTERS[provider]
+  const billed = live.referenceRoute?.(route.model, cast.referenceUrls.length) ?? null
+
   const result = await withCost(
     db,
     {
@@ -284,9 +295,11 @@ export async function generateStillCandidates(
       projectId,
       // Priced from the LIVE adapter even in mock mode — same rule as the
       // estimate button, so plan and ledger never quote different numbers.
-      estimateUsd: imageGenPrice(LIVE_IMAGE_GEN_ADAPTERS[provider], STILL_GENERATIONS, route.model),
+      estimateUsd: billed
+        ? billed.pricePerImage * STILL_GENERATIONS
+        : imageGenPrice(live, STILL_GENERATIONS, route.model),
       meta: {
-        model: route.model,
+        model: billed ? billed.id : route.model,
         prompt: prompt.slice(0, 200),
         ...(cast.names.length > 0 ? { references: cast.names } : {}),
       },
@@ -359,7 +372,7 @@ export async function generateStillCandidates(
         kind: 'image',
         r2Key: key,
         sourceUrl,
-        licence: `Generated (${imageGenModel(LIVE_IMAGE_GEN_ADAPTERS[provider], route.model).label})`,
+        licence: `Generated (${billed ? billed.label : imageGenModel(live, route.model).label})`,
         contentHash,
         width: image.width,
         height: image.height,
