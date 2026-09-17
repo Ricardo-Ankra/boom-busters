@@ -1,11 +1,14 @@
 import type { ChartSeries } from '@boom-busters/schemas'
 import { describe, expect, it } from 'vitest'
 import {
+  barFigures,
   barGeometry,
   categoryReveal,
   chartLayout,
+  figureBaseline,
+  fitFigureSize,
+  formatFigure,
   lineGeometry,
-  niceNumber,
   polylineLength,
   stackedGeometry,
   waterfallGeometry,
@@ -133,11 +136,119 @@ describe('categoryReveal', () => {
   })
 })
 
-describe('niceNumber', () => {
-  it('compacts like the board preview', () => {
-    expect(niceNumber(1_500_000)).toBe('1.5M')
-    expect(niceNumber(2_400)).toBe('2.4k')
-    expect(niceNumber(120)).toBe('120')
-    expect(niceNumber(0.25)).toBe('0.25')
+describe('formatFigure', () => {
+  it('folds the unit scale into the number, the way the viewer says it', () => {
+    // The case that started this: a bar of 4000 against "USD Millions" is
+    // four billion dollars, and the screen must say so.
+    expect(formatFigure(4000, 'USD Millions')).toBe('$4 Billion')
+    expect(formatFigure(1000, 'USD Millions')).toBe('$1 Billion')
+    expect(formatFigure(1.9, '€bn')).toBe('€1.9 Billion')
+    expect(formatFigure(0.1, '€bn')).toBe('€100 Million')
+    expect(formatFigure(4_000_000_000, 'USD')).toBe('$4 Billion')
+    expect(formatFigure(2.4, '$tn')).toBe('$2.4 Trillion')
+  })
+
+  it('leaves small numbers alone, grouped and with their currency', () => {
+    expect(formatFigure(104.5, '€')).toBe('€105')
+    expect(formatFigure(1.28, '€')).toBe('€1.28')
+    expect(formatFigure(4000, 'GBP')).toBe('£4,000')
+    expect(formatFigure(0, '£bn')).toBe('£0')
+  })
+
+  it('writes a percentage as a percentage and keeps a short noun', () => {
+    expect(formatFigure(42.5, '%')).toBe('42.5%')
+    expect(formatFigure(4000, 'jobs')).toBe('4,000 jobs')
+    // A whole sentence of a unit would not fit under a bar; the number wins.
+    expect(formatFigure(4000, 'full-time equivalent staff')).toBe('4,000')
+  })
+
+  it('keeps the minus in front of the money', () => {
+    expect(formatFigure(-1.1, '£bn')).toBe('-£1.1 Billion')
+  })
+
+  it('keeps a currency it has no symbol for as its code', () => {
+    expect(formatFigure(3, 'ZAR bn')).toBe('R3 Billion')
+    expect(formatFigure(3, 'CHF m')).toBe('CHF 3 Million')
+  })
+})
+
+describe('barFigures', () => {
+  const layout = chartLayout([revenue], 'bar', FRAME)
+
+  it('gives every bar its own figure, above the bar', () => {
+    const figures = barFigures([revenue], 'bar', layout)
+    expect(figures.map((figure) => figure.text)).toEqual([
+      '£4.1 Billion',
+      '£4.6 Billion',
+      '£5.2 Billion',
+    ])
+    expect(figures.every((figure) => !figure.below)).toBe(true)
+    // Centred on the bar it labels.
+    const rects = barGeometry([revenue], layout)
+    expect(figures[0]!.x).toBeCloseTo(rects[0]!.x + rects[0]!.width / 2)
+  })
+
+  it('puts the figure under a bar that went the other way', () => {
+    const stacked = chartLayout([profit], 'bar', FRAME)
+    const figures = barFigures([profit], 'bar', stacked)
+    const falling = figures.find((figure) => figure.text === '-£1.1 Billion')
+    expect(falling?.below).toBe(true)
+  })
+
+  it('reads a stacked column as its total, once', () => {
+    const stackedLayout = chartLayout([revenue, profit], 'stacked', FRAME)
+    const figures = barFigures([revenue, profit], 'stacked', stackedLayout)
+    expect(figures).toHaveLength(stackedLayout.labels.length)
+    // 2015: 4.6 revenue + 0.2 profit.
+    expect(figures[1]!.text).toBe('£4.8 Billion')
+  })
+
+  it('reads a waterfall bar as the level it arrives at, under it when it fell', () => {
+    const fall: ChartSeries = {
+      label: 'Cash',
+      unit: '€bn',
+      points: [
+        { x: '2018', y: 1.9 },
+        { x: 'H1 19', y: 1.4 },
+      ],
+    }
+    const waterfallLayout = chartLayout([fall], 'waterfall', FRAME)
+    const figures = barFigures([fall], 'waterfall', waterfallLayout)
+    expect(figures.map((figure) => figure.text)).toEqual(['€1.9 Billion', '€1.4 Billion'])
+    expect(figures[0]!.below).toBe(false)
+    expect(figures[1]!.below).toBe(true)
+  })
+
+  it('gives a line chart none: there is no bar to sit a figure on', () => {
+    expect(barFigures([revenue], 'line', layout)).toEqual([])
+  })
+})
+
+describe('figure type', () => {
+  const layout = chartLayout([revenue], 'bar', FRAME)
+  const figures = barFigures([revenue], 'bar', layout)
+
+  it('sits above the bar, and under it when the bar fell', () => {
+    const above = figureBaseline({ ...figures[0]!, below: false, edgeY: 200 }, 30)
+    const below = figureBaseline({ ...figures[0]!, below: true, edgeY: 200 }, 30)
+    expect(above).toBeLessThan(200)
+    expect(below).toBeGreaterThan(200)
+  })
+
+  it('shrinks to fit the tightest figure, and never past the floor', () => {
+    expect(fitFigureSize(figures, 30, 18)).toBeLessThanOrEqual(30)
+    const cramped = figures.map((figure) => ({ ...figure, slotWidth: 10 }))
+    expect(fitFigureSize(cramped, 30, 18)).toBe(18)
+    const roomy = figures.map((figure) => ({ ...figure, slotWidth: 10_000 }))
+    expect(fitFigureSize(roomy, 30, 18)).toBe(30)
+  })
+
+  it('is one size for the whole chart, not one per bar', () => {
+    const mixed = [
+      { ...figures[0]!, slotWidth: 400 },
+      { ...figures[1]!, slotWidth: 120 },
+    ]
+    const size = fitFigureSize(mixed, 30, 6)
+    expect(size).toBeCloseTo(120 / (mixed[1]!.text.length * 0.58))
   })
 })

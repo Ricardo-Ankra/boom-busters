@@ -144,7 +144,11 @@ export const ChartPointSchema = z.object({
 
 export const ChartSeriesSchema = z.object({
   label: z.string().min(1),
-  /** "USD", "€bn", "%" — rendered on the axis, so it must exist. */
+  /**
+   * "USD", "USD Millions", "€bn", "%". Not an axis caption: the renderer folds
+   * it into every figure it writes, so a series of 4000 in "USD Millions"
+   * reads "$4 Billion" on the bar (decision 254). It must exist for that.
+   */
   unit: z.string().min(1),
   points: z.array(ChartPointSchema).min(2, 'a chart series needs at least two points'),
 })

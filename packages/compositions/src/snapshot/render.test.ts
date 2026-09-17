@@ -36,6 +36,9 @@ interface SnapshotCase {
 const CASES: SnapshotCase[] = [
   { id: 'KenBurnsImageFixture', frame: 75 },
   { id: 'ChartRevealLine', frame: 160, maxDiffRatio: 0.05 },
+  // The bar chart is where the figures live (decision 254): frame 200 is past
+  // the reveal, so both bars have arrived and both say their number.
+  { id: 'ChartRevealBar', frame: 200, maxDiffRatio: 0.05 },
   { id: 'ChartRevealWaterfall', frame: 200, maxDiffRatio: 0.05 },
   { id: 'AnimatedMapFixture', frame: 200, maxDiffRatio: 0.05 },
   { id: 'LowerThirdBar', frame: 60, maxDiffRatio: 0.06 },

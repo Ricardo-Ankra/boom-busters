@@ -2,11 +2,15 @@ import { useMemo } from 'react'
 import { AbsoluteFill, useCurrentFrame, useVideoConfig } from 'remotion'
 import type { BrandKitTokens, SlotPayload } from '@boom-busters/schemas'
 import {
+  FIGURE_CHAR_EM,
+  barFigures,
   barGeometry,
   categoryReveal,
   chartLayout,
+  figureBaseline,
+  fitFigureSize,
+  formatFigure,
   lineGeometry,
-  niceNumber,
   stackedGeometry,
   waterfallGeometry,
 } from '../lib/chart'
@@ -19,9 +23,14 @@ export type ChartPayload = Extract<SlotPayload, { kind: 'chart' }>
  * The chart component (spec section 8.3): line/area/bar/stacked/waterfall,
  * draw-on reveal cascading left to right, accent-colour emphasis, waterfall
  * falls in the semantic collapse colour. All styling from brand tokens; all
- * geometry from the pure lib, which mirrors the board preview the human
- * approved. The takeaway — the one thing the chart must make the viewer see
- * — is the headline, not a caption.
+ * geometry from the pure lib, which the board preview shares, so the human
+ * approves the chart that renders. The takeaway, the one thing the chart must
+ * make the viewer see, is the headline, not a caption.
+ *
+ * Bars say their own numbers (decision 254): the figure sits at the end of
+ * each bar, written out ("$4 Billion"), and those charts carry no y-axis
+ * numbers and no unit in the corner. A line keeps its axis, because a line has
+ * no bar to sit a figure on.
  */
 export function ChartReveal({
   payload,
@@ -36,6 +45,8 @@ export function ChartReveal({
   const { width, height } = useVideoConfig()
   const scale = frameScale(width, height)
   const { colors, typography } = brand
+  const kind = payload.chartKind
+  const bars = kind === 'bar' || kind === 'stacked' || kind === 'waterfall'
 
   // The reveal occupies the first 70% of the slot; the finished chart holds.
   const revealFrames = Math.max(1, Math.round(durationInFrames * 0.7))
@@ -51,14 +62,16 @@ export function ChartReveal({
       width: width - margin * 2,
       height: height - titleZone - margin * 2,
       pad: {
-        top: Math.round(30 * scale),
+        // Bars need headroom for the figure above the tallest one, and no
+        // left gutter at all: there are no axis numbers to put in it.
+        top: Math.round((bars ? 72 : 30) * scale),
         right: Math.round(40 * scale),
         bottom: Math.round(64 * scale),
-        left: Math.round(150 * scale),
+        left: Math.round((bars ? 40 : 150) * scale),
       },
     }
     return { frameBox: box, layout: chartLayout(payload.series, payload.chartKind, box) }
-  }, [payload.series, payload.chartKind, width, height, scale, margin, titleZone])
+  }, [payload.series, payload.chartKind, width, height, scale, margin, titleZone, bars])
   const seriesColour = (index: number) =>
     colors.chartSeries[index % colors.chartSeries.length] ?? colors.accent
 
@@ -72,6 +85,19 @@ export function ChartReveal({
     strokeWidth: 5 * scale,
     paintOrder: 'stroke',
   }
+
+  // One size for every figure on the chart, fitted to the tightest slot. The
+  // figures are the point of a bar chart, so they start well above axis type
+  // (40px at 1080p against 30) and only come down to fit.
+  const figures = useMemo(
+    () => barFigures(payload.series, payload.chartKind, layout),
+    [payload.series, payload.chartKind, layout],
+  )
+  const figureSize = fitFigureSize(
+    figures,
+    Number(typeStyle(typography.numbers, 40, scale).fontSize) || 40 * scale,
+    20 * scale,
+  )
 
   const first = layout.labels[0]
   const last = layout.labels[layout.labels.length - 1]
@@ -207,8 +233,8 @@ export function ChartReveal({
           const x = layout.x(index)
           // Every annotation used to sit on one row and collide; they now
           // stagger down three rows in payload order. The width estimate
-          // (0.58em per character) clamps a long label inside the plot.
-          const estimatedWidth = annotation.text.length * 0.58 * 30 * scale
+          // clamps a long label inside the plot.
+          const estimatedWidth = annotation.text.length * FIGURE_CHAR_EM * 30 * scale
           const textX = Math.min(
             x + 12 * scale,
             Math.max(frameBox.pad.left, frameBox.width - frameBox.pad.right - estimatedWidth),
@@ -231,26 +257,46 @@ export function ChartReveal({
           )
         })}
 
-        {/* Axis facts: unit, extremes, first and last x — the preview's set. */}
-        <text style={axisText} x={8 * scale} y={frameBox.pad.top + 8 * scale}>
-          {layout.unit}
-        </text>
-        <text
-          style={axisText}
-          x={frameBox.pad.left - 12 * scale}
-          y={layout.y(layout.rawMax) + 8}
-          textAnchor="end"
-        >
-          {niceNumber(layout.rawMax)}
-        </text>
-        <text
-          style={axisText}
-          x={frameBox.pad.left - 12 * scale}
-          y={layout.y(layout.rawMin)}
-          textAnchor="end"
-        >
-          {niceNumber(layout.rawMin)}
-        </text>
+        {/* The figures, arriving as each bar finishes growing. */}
+        {figures.map((figure) => {
+          const grow = categoryReveal(progress, figure.categoryIndex, layout.labels.length)
+          const opacity = Math.min(1, Math.max(0, (grow - 0.55) / 0.45))
+          if (opacity === 0) return null
+          return (
+            <text
+              key={figure.key}
+              style={{ ...axisText, fill: colors.textPrimary, fontSize: figureSize }}
+              x={figure.x}
+              y={figureBaseline(figure, figureSize)}
+              textAnchor="middle"
+              opacity={opacity}
+            >
+              {figure.text}
+            </text>
+          )
+        })}
+
+        {/* A line needs its extremes to be read; a bar has said its number. */}
+        {bars ? null : (
+          <>
+            <text
+              style={axisText}
+              x={frameBox.pad.left - 12 * scale}
+              y={layout.y(layout.rawMax) + 8}
+              textAnchor="end"
+            >
+              {formatFigure(layout.rawMax, layout.unit)}
+            </text>
+            <text
+              style={axisText}
+              x={frameBox.pad.left - 12 * scale}
+              y={layout.y(layout.rawMin)}
+              textAnchor="end"
+            >
+              {formatFigure(layout.rawMin, layout.unit)}
+            </text>
+          </>
+        )}
         {first !== undefined ? (
           <text style={axisText} x={frameBox.pad.left} y={frameBox.height - 12 * scale}>
             {first}

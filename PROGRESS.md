@@ -4568,3 +4568,47 @@ Recorded whenever the spec left something open and an implementation was chosen.
     candidate-and-resolution logic would drift. The resolved address is kept
     as the candidate's `sourceUrl`, so the board shows where footage came
     from.
+
+38. **Every bar says its own number** (decision 254; 2026-09-17, owner watching
+    a preview: "instead of having USD Millions / 4.0K, because it currently
+    overlays on top of the title text, we should just have the figures sit on
+    top or under each bar, like $1 Billion, $4 Billion. Because those are the
+    numbers we are trying to show and it's not clear. This should be a rule
+    across all bar charts we do"). The chart on screen was asking the viewer
+    to read "4.0k" against a "USD Millions" caption in the corner and do the
+    multiplication, while the caption itself sat over the third line of the
+    takeaway. Both problems were the same problem: the number the chart came
+    to show was not written anywhere.
+
+    `formatFigure(value, unit)` in `packages/compositions/src/lib/chart.ts`
+    is the one rule. The unit is prose from the planner ("USD Millions",
+    "€bn", "%", "GBP"), so it is parsed for a currency and a scale, and the
+    SCALE IS FOLDED INTO THE NUMBER: 4000 in "USD Millions" is four billion
+    dollars, and "$4 Billion" is what the screen says. Below a million the
+    figure stays itself, grouped and trimmed ("£4,000", "€1.28"); a unit that
+    is neither currency nor scale rides along while it is short enough to sit
+    under a bar ("4,000 jobs"), and is dropped when it is not. It replaces
+    `niceNumber`, which existed twice, identically, in the render and the
+    board.
+
+    `barFigures` puts one figure on every bar for grouped bars and
+    waterfalls, and one per column for a stack, reading the column's TOTAL.
+    Each sits at the END of its bar, above when the bar grew upward and under
+    when it fell. That is what a waterfall needs to be read at all: a falling
+    segment's level is at its bottom edge, so that is where its figure goes.
+    Line and area charts get none: a line has no bar to sit a figure on, and
+    labelling every point is noise. They keep their two extremes, now written
+    the same way.
+
+    Consequences worth stating. Bar charts no longer draw y-axis numbers or a
+    corner unit at all, so the left gutter decision 215 widened for them is
+    gone (150px → 40 at 1080p, 52 → 12 on the board) and the top pad grew
+    instead (30 → 72) to seat the figures above the tallest bar. One type
+    size serves every figure on a chart (`fitFigureSize` takes the largest
+    that fits the tightest slot, floor 20px), because a chart whose numbers
+    change size between bars looks broken. And the board preview now calls
+    `chartLayout` instead of recomputing the same geometry by hand, which is
+    what the lib's doc comment had claimed since M6: the board is where the
+    human approves the chart, so it has to be the chart. New
+    `ChartRevealBar` fixture and golden; the waterfall, line, master and
+    Short goldens moved with the change.

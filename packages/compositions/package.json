@@ -5,6 +5,7 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
+    "./chart": "./src/lib/chart.ts",
     "./geo": "./src/geo/index.ts",
     "./fonts": "./src/fonts/catalog.ts",
     "./webpack-override": "./src/webpack-override.ts"
