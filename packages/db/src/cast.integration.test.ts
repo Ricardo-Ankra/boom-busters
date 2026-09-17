@@ -3,7 +3,6 @@ import type { CastPhoto } from '@boom-busters/schemas'
 import { afterAll, beforeEach, describe, expect, it } from 'vitest'
 import { createCase, truncateCases } from './cases'
 import {
-  castMembersNamed,
   deleteCastMember,
   dismissCastMember,
   getCastMember,
@@ -71,7 +70,6 @@ suite('cast members', () => {
     await dismissCastMember(db, member.id)
     expect(await listCastMembers(db, projectId)).toEqual([])
     expect(await getCastMember(db, member.id)).toBeNull()
-    expect(await castMembersNamed(db, projectId, ['Emad Mostaque'])).toEqual([])
     await expect(updateCastMember(db, member.id, { role: 'x' })).rejects.toThrow(ValidationError)
 
     // Re-adding by hand revives the same row, with no photos and the new role.
@@ -162,14 +160,6 @@ suite('cast members', () => {
     await expect(setCastPhotos(db, member.id, [...four, photo('e')])).rejects.toThrow(
       ValidationError,
     )
-  })
-
-  it('finds members by exact name only', async () => {
-    await insertCastMember(db, { projectId, name: 'Emad Mostaque', role: 'Founder' })
-    await insertCastMember(db, { projectId, name: 'Prem Akkaraju', role: 'CEO' })
-    const found = await castMembersNamed(db, projectId, ['Emad Mostaque', 'Emad', 'Nobody'])
-    expect(found.map((m) => m.name)).toEqual(['Emad Mostaque'])
-    expect(await castMembersNamed(db, projectId, [])).toEqual([])
   })
 
   it('deletes a member, and the project deletion cascades the rest', async () => {

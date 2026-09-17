@@ -4493,3 +4493,22 @@ Recorded whenever the spec left something open and an implementation was chosen.
     only cheap for the frames it takes, and a still wrongly classified as
     plain cannot be rescued by a better prompt, which is why the split keys
     on a photograph existing rather than on the planner's wording.
+    _Addendum (o), 2026-09-16, owner: "I need that cost estimate for shots to
+    be accurate otherwise what is the point"._ Fair. "Fetch visuals · est.
+    $X" was slot count times one flat per-slot price, and (n) had made that
+    price the dearer of the two routes, so a film of mostly plain stills was
+    quoted as though every frame carried a likeness. The estimate is now
+    computed brief by brief (`stillsEstimateUsd`): every brief is already
+    written when the plan checkpoint is on screen, so which route a slot
+    takes, and how many reference photographs travel with it, are known
+    facts. On fal it also prices the reference endpoint rather than the
+    routed model, and Kontext's single-versus-multi tier by the number of
+    photographs that will actually be sent. A test pins the thing that
+    matters: the number quoted for a brief equals the amount the ledger then
+    reserves when that brief is generated. `depictedFrom` is now the one pure
+    rule for whom a still shows, shared by the generator and the estimate,
+    because the drift between them is what produced a useless number in the
+    first place; `castMembersNamed` went with it, being a second way to ask
+    the same question and now unused. `stillSlotEstimateUsd` survives for the
+    teaser studio alone, which generates a beat at a time before any brief
+    exists and so can only be quoted conservatively; its comment says as much.

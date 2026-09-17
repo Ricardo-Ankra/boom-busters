@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray, isNull } from 'drizzle-orm'
+import { and, asc, eq, isNull } from 'drizzle-orm'
 import { CastMemberSchema, MAX_CAST_PHOTOS, ValidationError } from '@boom-busters/schemas'
 import type { CastMember, CastPhoto, Principal } from '@boom-busters/schemas'
 import type { Database } from './client'
@@ -8,7 +8,9 @@ import type { CastMemberRow } from './schema'
 /**
  * The cast (decision 253): per-project reference people and their photos.
  * Read by the Cast card, the Director's Book drafter (names, roles, identity
- * strings) and still generation (`castMembersNamed` on a slot's `depicts`).
+ * strings) and still generation, which filters this project's cast against a
+ * slot's `depicts` in memory — one rule, in one place, so the generator and
+ * the price estimate cannot disagree about whom a still shows.
  *
  * The cast is seeded from the book's principals each time the book is
  * drafted (decision 253 (j)), so the producer's only job is the photograph.
@@ -148,22 +150,6 @@ export async function dismissCastMember(db: Database, id: string): Promise<void>
 /** Hard delete, for tests and for tearing a project's cast down completely. */
 export async function deleteCastMember(db: Database, id: string): Promise<void> {
   await db.delete(castMembers).where(eq(castMembers.id, id))
-}
-
-/** Members whose exact name appears in `names`: the lookup generation runs on a slot's `depicts`. */
-export async function castMembersNamed(
-  db: Database,
-  projectId: string,
-  names: readonly string[],
-): Promise<CastMember[]> {
-  const wanted = [...new Set(names.map((name) => name.trim()).filter(Boolean))]
-  if (wanted.length === 0) return []
-  const rows = await db
-    .select()
-    .from(castMembers)
-    .where(and(active(projectId), inArray(castMembers.name, wanted)))
-    .orderBy(asc(castMembers.createdAt))
-  return rows.map(toMember)
 }
 
 /**
