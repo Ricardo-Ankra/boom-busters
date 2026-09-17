@@ -195,6 +195,100 @@ describe('slotPlan', () => {
     }
   }
 
+  describe('headline slots (decision 257)', () => {
+    const CLAIM = '01HQ00000000000000000000AA'
+    const headlineBrief = {
+      type: 'headline',
+      coversText: 'covers',
+      description: 'The morning the story broke.',
+      motion: { kind: 'static' },
+      transition: 'cut',
+      sourceClaimId: CLAIM,
+      emphasis: '$1.9 billion',
+    }
+    const article = {
+      url: 'https://financialrecord.example/2023/03/14/auditors',
+      outlet: 'The Financial Record',
+      headline: 'Auditors cannot find the $1.9 billion the company says it holds',
+      author: 'Elena Marsh',
+      publishedAt: '2023-03-14',
+      description: 'Three banks say they never held the escrow accounts.',
+      provenance: {},
+      status: 'fetched' as const,
+      failureReason: null,
+    }
+    const row = (overrides: Partial<AssemblySlotRow> = {}) =>
+      slotRow({
+        type: 'headline',
+        brief: headlineBrief as unknown as Record<string, unknown>,
+        candidates: [],
+        ...overrides,
+      })
+
+    it('embeds the article whole, so the render never needs the page again', () => {
+      const plan = slotPlan({
+        slots: [row()],
+        assetsById: new Map(),
+        articles: new Map([[CLAIM, article]]),
+      })
+      expect(plan.skipped).toEqual([])
+      expect(plan.slots[0]).toMatchObject({
+        type: 'headline',
+        headline: {
+          outlet: 'The Financial Record',
+          headline: article.headline,
+          publishedAt: '2023-03-14',
+          author: 'Elena Marsh',
+          emphasis: '$1.9 billion',
+          sourceLabel: 'financialrecord.example/2023/03/14/auditors',
+          sourceUrl: article.url,
+          claimId: CLAIM,
+        },
+      })
+      // The standfirst is off unless the brief asked for it.
+      expect(plan.slots[0]?.headline?.deck).toBeUndefined()
+    })
+
+    it('carries the standfirst only when the brief says to show it', () => {
+      const plan = slotPlan({
+        slots: [
+          row({ brief: { ...headlineBrief, showDeck: true } as unknown as Record<string, unknown> }),
+        ],
+        assetsById: new Map(),
+        articles: new Map([[CLAIM, article]]),
+      })
+      expect(plan.slots[0]?.headline?.deck).toBe(article.description)
+    })
+
+    it('drops a marker phrase the publication did not print', () => {
+      const plan = slotPlan({
+        slots: [
+          row({
+            brief: { ...headlineBrief, emphasis: 'two billion' } as unknown as Record<
+              string,
+              unknown
+            >,
+          }),
+        ],
+        assetsById: new Map(),
+        articles: new Map([[CLAIM, article]]),
+      })
+      expect(plan.slots[0]?.headline?.emphasis).toBeUndefined()
+    })
+
+    it('skips a card whose article has nothing to show yet, and says so', () => {
+      const unread = { ...article, outlet: null, headline: null, publishedAt: null }
+      expect(
+        slotPlan({ slots: [row()], assetsById: new Map(), articles: new Map([[CLAIM, unread]]) })
+          .skipped[0]?.reason,
+      ).toContain('no headline to show')
+
+      expect(
+        slotPlan({ slots: [row()], assetsById: new Map() }).skipped[0]?.reason,
+      ).toContain('no headline to show')
+    })
+  })
+
   it('maps a chosen stock candidate to a stable external URL', () => {
     const plan = slotPlan({ slots: [slotRow({})], assetsById: new Map() })
     expect(plan.skipped).toEqual([])
