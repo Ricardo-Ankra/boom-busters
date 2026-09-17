@@ -1,5 +1,4 @@
 import { stripNarrationMarkup } from '@boom-busters/schemas'
-import type { Caption } from '@boom-busters/schemas'
 import { normalizeWord } from './snap'
 
 /**
@@ -30,6 +29,16 @@ export interface AnchorableSlot {
   coversText?: string
 }
 
+/**
+ * A spoken word on the clock the slots are on. Structural rather than
+ * `Caption`, so the board can anchor from the two fields it has without
+ * carrying caption confidence it does not have (decision 255, amended).
+ */
+export interface AnchorWord {
+  text: string
+  startMs: number
+}
+
 /** One paragraph's span on the pre-shift clock, which bounds a slot's search. */
 export interface ParagraphSpan {
   startMs: number
@@ -55,7 +64,7 @@ const MIN_ANCHOR_TOKENS = 3
  */
 export function anchorSlots<T extends AnchorableSlot>(
   slots: readonly T[],
-  words: readonly Caption[],
+  words: readonly AnchorWord[],
   paragraphs: readonly ParagraphSpan[],
 ): T[] {
   if (slots.length === 0 || words.length === 0) return [...slots]
@@ -139,7 +148,7 @@ function paragraphAt(paragraphs: readonly ParagraphSpan[], tMs: number): Paragra
 }
 
 /** Index of the first word at or after `tMs`; the end of the list if none. */
-function firstWordFrom(words: readonly Caption[], tMs: number): number {
+function firstWordFrom(words: readonly AnchorWord[], tMs: number): number {
   for (let index = 0; index < words.length; index += 1) {
     if (words[index]!.startMs >= tMs) return index
   }

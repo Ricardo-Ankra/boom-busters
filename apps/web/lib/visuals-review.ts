@@ -30,7 +30,7 @@ import type {
   SlotRetypeState,
   VisualsCoverage,
 } from '@boom-busters/schemas'
-import { timedParagraphs } from '@/inngest/lib/shot-list'
+import { anchoredTimes, timedParagraphs } from '@/inngest/lib/shot-list'
 import { stillsEstimateUsd } from './visual-assets'
 
 /**
@@ -162,8 +162,35 @@ export async function visualsReviewModel(
     getProject(db, projectId),
   ])
 
-  const slots: SlotView[] = rows.map((row) => {
-    const parsed = ShotBriefSchema.safeParse(row.brief)
+  /**
+   * The scrubber's clock is the same clock the runner stamped the slots with:
+   * `timedParagraphs` over the same chapters and takes. Recomputed here rather
+   * than stored, so an edited script shows its drift instead of hiding it.
+   */
+  const paragraphs = timedParagraphs({ chapters: sources.chapters, takes })
+
+  /**
+   * And the slots are put on the words they cover, the same way and with the
+   * same function the compiler uses (decision 255, amended). Recomputed for
+   * the same reason: a project planned before the rule, or re-voiced since,
+   * carries the planner's guessed seconds in its rows, and a card that seeks
+   * to a different moment than the render cuts to is a card that lies.
+   */
+  const briefs = rows.map((row) => ShotBriefSchema.safeParse(row.brief))
+  const times = anchoredTimes(
+    rows.map((row, at) => {
+      const brief = briefs[at]
+      return {
+        startMs: row.startMs,
+        durationMs: row.durationMs,
+        coversText: brief?.success === true ? brief.data.coversText : null,
+      }
+    }),
+    paragraphs,
+  )
+
+  const slots: SlotView[] = rows.map((row, at) => {
+    const parsed = briefs[at]!
     const candidates = parseCandidates(row.candidates)
     // Chosen first, then by score — the strip reads left to right as "what
     // will be used, then the alternatives, best first".
@@ -178,8 +205,8 @@ export async function visualsReviewModel(
       status: row.status,
       chapterIndex: row.chapterIndex,
       chapterTitle: row.chapterTitle,
-      startMs: row.startMs,
-      durationMs: row.durationMs,
+      startMs: times[at]!.startMs,
+      durationMs: times[at]!.durationMs,
       brief: parsed.success ? parsed.data : null,
       briefError: parsed.success
         ? undefined
@@ -210,12 +237,6 @@ export async function visualsReviewModel(
       })
   }
 
-  /**
-   * The scrubber's clock is the same clock the runner stamped the slots with:
-   * `timedParagraphs` over the same chapters and takes. Recomputed here rather
-   * than stored, so an edited script shows its drift instead of hiding it.
-   */
-  const paragraphs = timedParagraphs({ chapters: sources.chapters, takes })
   const current = latestTakes(takes)
   const takeByParagraph = new Map(
     current.map((take) => [`${take.chapterId}:${take.paragraphIndex}`, take]),

@@ -1,7 +1,9 @@
 import { narrationUnits } from '@boom-busters/providers'
 import type { ShotParagraph } from '@boom-busters/providers'
 import { latestTakes, resolvePlannedBrief } from '@boom-busters/schemas'
-import type { PlannedSlot, VoiceTakeStatus } from '@boom-busters/schemas'
+import type { PlannedSlot, VoiceTakeStatus, WordTiming } from '@boom-busters/schemas'
+import { anchorSlots, MIN_SHOT_MS, snapToScript } from '@boom-busters/timeline'
+import type { AnchorWord } from '@boom-busters/timeline'
 import type { NewShotSlot } from '@boom-busters/db'
 
 /**
@@ -21,6 +23,12 @@ export interface TimedParagraph {
   text: string
   startMs: number
   durationMs: number
+  /**
+   * The paragraph's script words on the project clock, snapped to the take
+   * that was heard (decision 255, amended). Empty when the take carries no
+   * timings, and then slots keep the seconds the model asked for.
+   */
+  words: AnchorWord[]
 }
 
 /** ~150 words a minute — the fallback when a paragraph has no measured take. */
@@ -35,6 +43,8 @@ export interface TakeDuration {
   takeNumber: number
   status: string
   durationMs: number | null
+  /** Word timings from the take, which is what puts a shot on its own words. */
+  timings?: unknown
 }
 
 /**
@@ -62,10 +72,20 @@ export function timedParagraphs(input: {
   const durations = new Map(
     current.map((take) => [`${take.chapterId}:${take.paragraphIndex}`, take.durationMs]),
   )
+  const heard = new Map(
+    input.takes.map((take) => [
+      `${take.chapterId}:${take.paragraphIndex}:${take.takeNumber}`,
+      take.timings,
+    ]),
+  )
+  const takeNumbers = new Map(
+    current.map((take) => [`${take.chapterId}:${take.paragraphIndex}`, take.takeNumber]),
+  )
 
   let clock = 0
   return narrationUnits({ chapters: input.chapters }).map((unit) => {
-    const measured = durations.get(`${unit.chapterId}:${unit.unitIndex}`)
+    const key = `${unit.chapterId}:${unit.unitIndex}`
+    const measured = durations.get(key)
     const durationMs = measured ?? estimateParagraphMs(unit.text)
     const paragraph: TimedParagraph = {
       chapterId: unit.chapterId,
@@ -73,10 +93,90 @@ export function timedParagraphs(input: {
       text: unit.text,
       startMs: clock,
       durationMs,
+      words: paragraphWords(unit.text, heard.get(`${key}:${takeNumbers.get(key) ?? -1}`), clock),
     }
     clock += durationMs
     return paragraph
   })
+}
+
+/**
+ * One paragraph's script words on the project clock.
+ *
+ * Snapped to what was heard, exactly as assembly does it, so the times a shot
+ * is planned against are the times it will be rendered against: the script is
+ * the ground truth and the transcription only donates the clock. A take with
+ * no stored timings contributes no words, which leaves its slots on the
+ * planner's own arithmetic rather than guessing.
+ */
+function paragraphWords(text: string, timings: unknown, offsetMs: number): AnchorWord[] {
+  if (!Array.isArray(timings) || timings.length === 0) return []
+  const words = timings as WordTiming[]
+  return snapToScript(text, words).captions.map((caption) => ({
+    text: caption.text,
+    startMs: caption.startMs + offsetMs,
+  }))
+}
+
+/**
+ * Where each slot belongs on the clock, and for how long (decision 255).
+ *
+ * The planner's per-slot seconds are a guess made before the narration was
+ * timed; the brief's own `coversText` is not. Given the narration's words,
+ * every slot moves to the first word of the text it covers, and then runs
+ * until the next slot's words in the same paragraph, or to the end of that
+ * paragraph. Same function the compiler anchors with, so what the board shows
+ * and what the render cuts are the same times.
+ *
+ * Returns times in the order it was given them; callers apply them by index.
+ */
+export function anchoredTimes(
+  items: readonly { startMs: number; durationMs: number; coversText?: string | null }[],
+  paragraphs: readonly TimedParagraph[],
+): { startMs: number; durationMs: number }[] {
+  const planned = items.map((item) => ({ startMs: item.startMs, durationMs: item.durationMs }))
+  const words = paragraphs.flatMap((paragraph) => paragraph.words)
+  if (items.length === 0 || words.length === 0) return planned
+
+  const spans = paragraphs.map((paragraph) => ({
+    startMs: paragraph.startMs,
+    endMs: paragraph.startMs + paragraph.durationMs,
+  }))
+  const times = anchorSlots(
+    items.map((item) => ({
+      startMs: item.startMs,
+      durationMs: item.durationMs,
+      ...(item.coversText ? { coversText: item.coversText } : {}),
+    })),
+    words,
+    spans,
+  ).map((slot) => ({ startMs: slot.startMs, durationMs: slot.durationMs }))
+
+  // Ends, paragraph by paragraph: a shot holds until the next shot's words.
+  // Scoped to the paragraph so that this agrees with the same call made over
+  // one chapter (planning) or over the whole film (the board).
+  const byParagraph = new Map<number, number[]>()
+  for (const [index, time] of times.entries()) {
+    const home = spans.findIndex(
+      (span) => time.startMs >= span.startMs && time.startMs < span.endMs,
+    )
+    const key = home === -1 ? spans.length : home
+    byParagraph.set(key, [...(byParagraph.get(key) ?? []), index])
+  }
+  for (const [key, indexes] of byParagraph) {
+    const ordered = [...indexes].sort((a, b) => times[a]!.startMs - times[b]!.startMs)
+    const endOfParagraph = spans[key]?.endMs
+    for (const [position, index] of ordered.entries()) {
+      const next = ordered[position + 1]
+      const time = times[index]!
+      const endMs =
+        next !== undefined
+          ? times[next]!.startMs
+          : (endOfParagraph ?? time.startMs + time.durationMs)
+      time.durationMs = Math.max(MIN_SHOT_MS, endMs - time.startMs)
+    }
+  }
+  return times
 }
 
 /** The paragraphs of one chapter, shaped for the shot-list prompt. */
@@ -130,6 +230,7 @@ export function plannedToRows(input: {
   )
 
   const rows: NewShotSlot[] = []
+  const covers: (string | null)[] = []
   const rejected: PlannedConversion['rejected'] = []
   const cursors = new Map<number, number>()
   let index = input.startIndex ?? 0
@@ -169,12 +270,28 @@ export function plannedToRows(input: {
       startMs: cursor,
       durationMs,
     })
+    covers.push(brief.coversText)
 
     cursors.set(slot.paragraphIndex, cursor + durationMs)
     index += 1
   }
 
-  return { rows, rejected }
+  // The cursor above is the fallback, not the answer: where the narration has
+  // been timed, every slot moves onto the words its brief quotes (decision
+  // 255). Doing it here means the board's own times are the rendered times.
+  const times = anchoredTimes(
+    rows.map((row, at) => ({
+      startMs: row.startMs,
+      durationMs: row.durationMs,
+      coversText: covers[at] ?? null,
+    })),
+    input.paragraphs,
+  )
+
+  return {
+    rows: rows.map((row, at) => ({ ...row, ...times[at]! })),
+    rejected,
+  }
 }
 
 /** Fan-out width for slot resolution — same reasoning as `TTS_CONCURRENCY`. */
