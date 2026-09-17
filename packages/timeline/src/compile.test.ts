@@ -9,6 +9,7 @@ import {
   CHAPTER_OVERLAP_MS,
   compileTimeline,
   KENBURNS_INTENSITY,
+  MIN_SHOT_MS,
   PARAGRAPH_GAP_MS,
   resolveMotion,
 } from './compile'
@@ -152,6 +153,64 @@ export function goldenInput(): CompileInput {
 const GOLDEN_PATH = join(dirname(fileURLToPath(import.meta.url)), 'golden', 'master-timeline.json')
 
 describe('compileTimeline', () => {
+  /**
+   * Decision 255. The planner's seconds are a guess made before the narration
+   * was timed; the compiler has the words, so the words win.
+   */
+  describe('shots sit on the words they cover', () => {
+    /** The last paragraph, "The shares collapsed in nine days.", starts at 14s. */
+    function twoShotsInOneParagraph(coversText: string | undefined): CompileInput {
+      const input = goldenInput()
+      const chart = input.slots[2]!
+      const map = input.slots[3]!
+      input.slots = [
+        { ...chart, startMs: 14_000, durationMs: 4000, coversText: 'The shares collapsed' },
+        {
+          ...map,
+          startMs: 18_000,
+          durationMs: 3000,
+          ...(coversText === undefined ? {} : { coversText }),
+        },
+      ]
+      return input
+    }
+
+    it('moves the late shot back onto its sentence and trims the one before it', () => {
+      const timeline = compileTimeline(twoShotsInOneParagraph('nine days.'))
+      const [first, second] = timeline.slots
+      // "nine" is the fifth word of the paragraph, 1.6s in; the planner had
+      // put this shot 4s in, so it was arriving 2.4s after its own words.
+      expect(second!.startMs - first!.startMs).toBe(1600)
+      // The outgoing shot gives way at that word rather than painting over it.
+      expect(first!.durationMs).toBe(1600)
+    })
+
+    it('leaves a shot on its planned start when its brief quotes nothing', () => {
+      const timeline = compileTimeline(twoShotsInOneParagraph(undefined))
+      const [first, second] = timeline.slots
+      expect(second!.startMs - first!.startMs).toBe(4000)
+    })
+
+    it('opens on the first shot, whatever its words say', () => {
+      // The quote starts two words into the paragraph, and the narrator takes
+      // a breath before them. Nothing can hold the screen before the opening
+      // shot, so it keeps the opening rather than its words' own moment.
+      const planned = compileTimeline(goldenInput())
+      const input = goldenInput()
+      input.slots = input.slots.map((slot, index) =>
+        index === 0 ? { ...slot, coversText: 'the auditors could not find the money' } : slot,
+      )
+      const anchored = compileTimeline(input)
+      expect(anchored.slots[0]!.startMs).toBe(planned.slots[0]!.startMs)
+    })
+
+    it('never compiles a shot shorter than the floor', () => {
+      // Both shots quote the same opening, so both anchor to the same word.
+      const timeline = compileTimeline(twoShotsInOneParagraph('The shares collapsed'))
+      expect(timeline.slots[0]!.durationMs).toBe(MIN_SHOT_MS)
+    })
+  })
+
   it('matches the committed golden byte for byte', () => {
     const compiled = JSON.stringify(compileTimeline(goldenInput()), null, 2) + '\n'
     if (process.env['REGEN_GOLDEN'] === '1') {

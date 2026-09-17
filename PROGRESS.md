@@ -4612,3 +4612,49 @@ Recorded whenever the spec left something open and an implementation was chosen.
     human approves the chart, so it has to be the chart. New
     `ChartRevealBar` fixture and golden; the waterfall, line, master and
     Short goldens moved with the change.
+
+39. **A shot sits on the words it covers** (decision 255; 2026-09-17, owner
+    watching the cut: "there is something off with the timing for showing the
+    image with Prem Akkaraju. For the first few seconds it is still showing
+    the previous image, so the image is not updating on the beat of when the
+    narration says Prem. This likely happens in other parts as well"). It did
+    happen elsewhere, everywhere, by construction.
+
+    The shot list is planned before a word of it has been timed. The model
+    says how many seconds it wants per slot, and `plannedToRows` lays a
+    paragraph's slots end to end from the paragraph's start, so those guessed
+    seconds ARE the timing. A slot that asks two seconds more than its
+    sentence takes pushes every slot behind it two seconds late, and since the
+    seam pass holds the outgoing shot until the next one starts (decision
+    215), what the viewer sees is the previous image still on screen while the
+    narration has moved on. The drift resets at each paragraph boundary,
+    because the cursor restarts there, which is why it shows on a paragraph's
+    second and third shots and never its first.
+
+    By assembly the narration is timed word by word (snap-to-script), and
+    every brief already quotes the sentences it plays under: the shot-list
+    prompt asks for `coversText` "EXACTLY as written". So `anchorSlots`
+    (`packages/timeline/src/anchor.ts`) moves each slot's start to the first
+    word of its own quote, and the compiler runs it before any shifting,
+    while slots, captions and paragraph spans still share one gapless clock.
+    The search is bounded to the slot's OWN paragraph (paragraph spans are
+    measured take durations, the one thing the planner gets exactly right), so
+    a repeated sentence cannot move a shot into another paragraph, and a
+    monotonic floor stops a repeat pulling a later shot backwards. The whole
+    quote is tried first, then its opening three words, which survives a model
+    that trimmed a clause or fixed a typo on the way past. A slot whose quote
+    is not found keeps its planned start, so nothing is worse than before.
+
+    The seam pass now settles ends as well as gaps: a shot lasts exactly as
+    long as its narration does, ending where the next shot's words begin,
+    floored at `MIN_SHOT_MS` (1s) for the degenerate case of two slots quoting
+    one sentence. Planned durations therefore survive only on the film's last
+    shot.
+
+    Two deliberate limits. The fix is in the COMPILER, not the planner, so it
+    reaches every project already planned without a re-plan (no cost, no
+    re-fetch, no lost selections): re-running the preview build is enough. And
+    the board's own scrubber still seeks by the planned time, so clicking a
+    card can land a second or two early; making the board agree means
+    anchoring at plan time too, which needs word timings carried into the
+    visuals runner's setup step.

@@ -16,6 +16,8 @@ import type {
   TimelineSlot,
   Transition,
 } from '@boom-busters/schemas'
+import { anchorSlots } from './anchor'
+import type { ParagraphSpan } from './anchor'
 import { buildDuckingCurve } from './ducking'
 
 /**
@@ -45,6 +47,13 @@ export interface CompileSlot {
   type: 'stock' | 'archival' | 'still' | 'upload' | 'chart' | 'map'
   startMs: number
   durationMs: number
+  /**
+   * The sentences this slot plays under, quoted from the script. The planned
+   * `startMs` is a guess made before the narration was timed; this is how the
+   * compiler puts the shot on its own words (decision 255). Absent on a slot
+   * whose brief predates the field, and then the planned start stands.
+   */
+  coversText?: string
   transition: Transition
   motion: MotionSpec
   media?: {
@@ -139,6 +148,13 @@ export const CHAPTER_OVERLAP_MS = 900
  */
 export const PARAGRAPH_GAP_MS = 700
 
+/**
+ * A shot's floor once its end is its successor's start. Two slots quoting the
+ * same sentence would otherwise compile to a zero-length flash; 1s of overlap
+ * with the next shot is the cheaper error, and the next shot paints over it.
+ */
+export const MIN_SHOT_MS = 1000
+
 export function compileTimeline(input: CompileInput): Timeline {
   if (input.paragraphs.length === 0) {
     throw new ValidationError('a timeline needs narration — no approved takes were provided', {
@@ -195,7 +211,18 @@ export function compileTimeline(input: CompileInput): Timeline {
     return moved
   }
 
-  const slots: TimelineSlot[] = input.slots.map((slot, index) => {
+  // Every shot on its own words (decision 255), before anything is shifted:
+  // slots, captions and paragraph spans all share the gapless board clock, so
+  // the anchoring reads one clock and the shift below moves the result.
+  const spans: ParagraphSpan[] = []
+  let spanClock = 0
+  for (const paragraph of input.paragraphs) {
+    spans.push({ startMs: spanClock, endMs: spanClock + paragraph.durationMs })
+    spanClock += paragraph.durationMs
+  }
+  const anchoredSlots = anchorSlots(input.slots, input.captions.words, spans)
+
+  const slots: TimelineSlot[] = anchoredSlots.map((slot, index) => {
     const motion = resolveMotion(slot.motion, slot)
     // Start and end shift independently: a slot spanning an inserted pause
     // stretches to keep covering the same words.
@@ -241,7 +268,8 @@ export function compileTimeline(input: CompileInput): Timeline {
   })
 
   /**
-   * Close the seams: every slot holds the screen until the next one starts.
+   * Close the seams: a shot holds the screen until the next shot's words
+   * begin, and ends there.
    *
    * The stretch-across-a-pause above only works when a slot's old end sits
    * EXACTLY on the paragraph boundary the pause was inserted at. The board's
@@ -250,18 +278,31 @@ export function compileTimeline(input: CompileInput): Timeline {
    * misses the breakpoint, takes the smaller shift, and the inserted pause
    * opens the seam into visible black — 300ms mid-chapter, over a second of
    * it before a chapter card fades in (production preview, 2026-09-07:
-   * 17 of 86 boundaries). Holding the outgoing shot is the design intent
-   * the comment above already states; this makes it true for every seam,
-   * not only the millimetre-perfect ones. Slots are ordered by start so
-   * "the next one" is well defined; overlaps are left alone (a deliberate
-   * early start is not a seam).
+   * 17 of 86 boundaries).
+   *
+   * Since decision 255 this settles ENDS as well as gaps: anchoring can move
+   * a shot back onto its sentence, which lands it inside the shot before it,
+   * and the outgoing shot has to give way to the words rather than paint over
+   * them. Planned durations therefore survive only on the film's last shot;
+   * everywhere else a shot lasts exactly as long as its narration does.
    */
   slots.sort((a, b) => a.startMs - b.startMs)
   for (let i = 0; i < slots.length - 1; i += 1) {
     const slot = slots[i]!
     const nextStartMs = slots[i + 1]!.startMs
-    if (slot.startMs + slot.durationMs < nextStartMs) {
-      slot.durationMs = nextStartMs - slot.startMs
+    slot.durationMs = Math.max(MIN_SHOT_MS, nextStartMs - slot.startMs)
+  }
+  // Nothing can hold the screen before the first shot. A narrator who breathes
+  // in before the first word would otherwise open the film on the background
+  // colour, so the opening shot keeps the start the plan gave it (usually
+  // zero) even when its own words begin a moment later.
+  const opening = slots[0]
+  if (opening !== undefined) {
+    const plannedMs = Math.min(...input.slots.map((slot) => slot.startMs))
+    const openedMs = plannedMs + shiftAt(plannedMs)
+    if (opening.startMs > openedMs) {
+      opening.durationMs += opening.startMs - openedMs
+      opening.startMs = openedMs
     }
   }
 
