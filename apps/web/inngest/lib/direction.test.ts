@@ -10,6 +10,7 @@ import {
   requireTestDatabase,
   saveChapter,
   seed,
+  setCastPhotos,
   setProjectDirection,
   setScriptOutline,
 } from '@boom-busters/db'
@@ -72,6 +73,8 @@ describeDb('direction helpers (mock mode)', () => {
     })
     const inputs = await loadDirectionInputs(FIXTURE_PROJECT_ID)
     expect(inputs.cast).toEqual([{ name: 'Emad Mostaque', role: 'Founder', identityString: '' }])
+    // No photograph yet, so nothing for the shot list to treat as photographed.
+    expect(inputs.photographed).toEqual([])
     const book = await loadOrDraftDirectorsBook(FIXTURE_PROJECT_ID)
     expect(book.principals[0]).toMatchObject({ name: 'Emad Mostaque', depiction: 'likeness' })
   })
@@ -111,6 +114,38 @@ describeDb('direction helpers (mock mode)', () => {
     callLlm.mockResolvedValueOnce({ text: JSON.stringify(answer) })
     await draftDirectorsBook(FIXTURE_PROJECT_ID)
     expect(await listCastMembers(db, FIXTURE_PROJECT_ID)).toHaveLength(2)
+  })
+
+  it('names the photographed cast for the shot list, and only them', async () => {
+    for (const member of await listCastMembers(db, FIXTURE_PROJECT_ID)) {
+      await deleteCastMember(db, member.id)
+    }
+    const emad = await insertCastMember(db, {
+      projectId: FIXTURE_PROJECT_ID,
+      name: 'Emad Mostaque',
+      role: 'Founder',
+    })
+    await insertCastMember(db, {
+      projectId: FIXTURE_PROJECT_ID,
+      name: 'Prem Akkaraju',
+      role: 'CEO',
+    })
+    await setCastPhotos(db, emad.id, [
+      {
+        r2Key: `boom-busters/cast/${FIXTURE_PROJECT_ID}/aaa.jpg`,
+        contentHash: 'aaa',
+        mimeType: 'image/jpeg',
+        width: 1000,
+        height: 1200,
+        view: 'front',
+      },
+    ])
+
+    const inputs = await loadDirectionInputs(FIXTURE_PROJECT_ID)
+    // Both are cast; only the one with a photograph may have his written
+    // description withheld from the prompt (decision 253, amended).
+    expect(inputs.cast.map((member) => member.name)).toEqual(['Emad Mostaque', 'Prem Akkaraju'])
+    expect(inputs.photographed).toEqual(['Emad Mostaque'])
   })
 
   it('reads the outline tension fields and splits paragraphs, skipping bare tags', async () => {

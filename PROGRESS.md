@@ -4512,3 +4512,30 @@ Recorded whenever the spec left something open and an implementation was chosen.
     the same question and now unused. `stillSlotEstimateUsd` survives for the
     teaser studio alone, which generates a beat at a time before any brief
     exists and so can only be quoted conservatively; its comment says as much.
+    _Addendum (p), 2026-09-17, owner reading a generated prompt: "only include
+    descriptions for non-named characters ... those descriptions are not
+    necessary and may confuse the image generation"._ The prompt read "Emad
+    Mostaque, founder and former CEO of Stability AI, the person in the
+    reference photo. Emad Mostaque, founder and former CEO of Stability AI,
+    male in his 40s, short dark hair, closely cropped beard, medium build,
+    ..." The model had followed its instruction exactly, and the instruction
+    was wrong: the still rule said to name the person, add the reference-photo
+    clause, AND paste the identity string. The House Visual Bible had said
+    both things too, telling the planner to append "the full name and identity
+    string of any person shown" in one section while forbidding facial
+    descriptors that contradict a photograph in another. The planner also had
+    no way to tell who was photographed, since the book's principals record an
+    identity string whether a photograph exists or not. Fixed on both counts.
+    `buildShotListRequest` takes `photographed`, the exact names the cast holds
+    photographs of, listed in the cacheable prefix with the note that their
+    Identity line is planning context and must never reach a prompt. The still
+    rule now splits people into three kinds that never mix: a photographed
+    person gets name, role and the reference-photo clause and NO physical
+    description at all, since the photograph is the likeness and prose only
+    argues with it, while clothing, posture, place and light stay the
+    planner's to direct; a named person with no photograph still gets the
+    identity string, being all that stands between the image and a stand-in;
+    an unnamed extra gets role, age range, build and clothing and no name.
+    The bible's contradiction is resolved the same way, with the offending
+    prompt quoted in it as the worked example of the mistake. `photographed`
+    is carried by `loadDirectionInputs` and by both runners' own setup steps.

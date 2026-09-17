@@ -73,6 +73,13 @@ export async function loadDirectionInputs(projectId: string): Promise<{
   styleAnchors: string
   /** The project's cast (decision 253): each becomes a likeness principal. */
   cast: DirectionCastInput[]
+  /**
+   * Exact names of cast members who have a reference photograph. The shot
+   * list needs them (decision 253, amended): their prompts must name them
+   * and carry no physical description, because the photograph is the
+   * likeness and a written description argues with it.
+   */
+  photographed: string[]
 }> {
   const project = await getProject(db, projectId)
   if (!project) throw new NonRetriableError(`Project ${projectId} no longer exists`)
@@ -97,11 +104,15 @@ export async function loadDirectionInputs(projectId: string): Promise<{
     confidence: claim.confidence,
   }))
   const settings = await getSettings(db)
-  const cast = (await listCastMembers(db, projectId)).map((member) => ({
+  const members = await listCastMembers(db, projectId)
+  const cast = members.map((member) => ({
     name: member.name,
     role: member.role,
     identityString: member.identityString,
   }))
+  const photographed = members
+    .filter((member) => member.photos.length > 0)
+    .map((member) => member.name)
 
   return {
     caseTitle: project.title,
@@ -111,6 +122,7 @@ export async function loadDirectionInputs(projectId: string): Promise<{
     claims,
     styleAnchors: stillStyleAnchors(settings.brandKit),
     cast,
+    photographed,
   }
 }
 
@@ -190,6 +202,8 @@ export async function planChapterSlots(input: {
   claimIds: readonly string[]
   styleAnchors: string
   direction: DirectorsBook | null
+  /** Cast members with a reference photograph (decision 253, amended). */
+  photographed?: readonly string[]
 }): Promise<{ rows: NewShotSlot[]; rejected: number }> {
   const paragraphs = promptParagraphs(input.paragraphs, input.chapter.id)
   if (paragraphs.length === 0) return { rows: [], rejected: 0 }
@@ -210,6 +224,9 @@ export async function planChapterSlots(input: {
       claims: input.claims,
       styleAnchors: input.styleAnchors,
       ...(input.direction ? { direction: input.direction } : {}),
+      ...(input.photographed && input.photographed.length > 0
+        ? { photographed: input.photographed }
+        : {}),
     })
     const parsed = await planWithBudgetEscalation(request, { projectId: input.projectId })
     slots = parsed.slots
