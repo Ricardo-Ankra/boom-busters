@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { SlotView, VisualsReviewModel } from '@/lib/visuals-review'
@@ -10,6 +10,7 @@ const editBriefAction = vi.fn()
 const refetchSlotAction = vi.fn()
 const createOwnUploadAction = vi.fn()
 const finaliseOwnUploadAction = vi.fn()
+const addSlotImageFromUrlAction = vi.fn()
 const approvePlanAction = vi.fn()
 const retypeSlotAction = vi.fn()
 const dismissRetypeAction = vi.fn()
@@ -24,6 +25,7 @@ vi.mock('./visuals-actions', () => ({
   refetchSlotAction: (...args: unknown[]) => refetchSlotAction(...args),
   createOwnUploadAction: (...args: unknown[]) => createOwnUploadAction(...args),
   finaliseOwnUploadAction: (...args: unknown[]) => finaliseOwnUploadAction(...args),
+  addSlotImageFromUrlAction: (...args: unknown[]) => addSlotImageFromUrlAction(...args),
   approvePlanAction: (...args: unknown[]) => approvePlanAction(...args),
   retypeSlotAction: (...args: unknown[]) => retypeSlotAction(...args),
   dismissRetypeAction: (...args: unknown[]) => dismissRetypeAction(...args),
@@ -284,6 +286,46 @@ describe('VisualBoard', () => {
     expect(
       screen.getByLabelText(/Upload your real footage for this slot — image or video/),
     ).toHaveAttribute('accept', expect.stringContaining('video/mp4'))
+    // Real footage is usually found online, so an address is as good as a file.
+    expect(
+      screen.getByLabelText('Add your real footage for this slot by image address'),
+    ).toBeInTheDocument()
+  })
+
+  it('takes real footage by web address, and only once there is an address', async () => {
+    const archivalSlot: SlotView = {
+      ...stockSlot,
+      id: SLOT_B,
+      type: 'archival',
+      status: 'placeholder',
+      candidates: [],
+      extraCandidates: 0,
+      brief: {
+        type: 'archival',
+        coversText: 'Founded in 1919 as a Wolverhampton builder.',
+        description: 'The original headquarters.',
+        motion: { kind: 'static' },
+        transition: 'cut',
+        query: 'Carillion headquarters photograph',
+        mustShow: 'the Wolverhampton building',
+      },
+    }
+    addSlotImageFromUrlAction.mockResolvedValue({ ok: true })
+    render(<VisualBoard projectId={PROJECT} model={model([archivalSlot])} colors={COLORS} />)
+
+    const add = screen.getByRole('button', { name: 'Add from address' })
+    expect(add).toBeDisabled()
+
+    const field = screen.getByLabelText('Add your real footage for this slot by image address')
+    await userEvent.type(field, 'https://example.com/hq.jpg')
+    await userEvent.click(add)
+
+    expect(addSlotImageFromUrlAction).toHaveBeenCalledWith({
+      projectId: PROJECT,
+      slotId: SLOT_B,
+      url: 'https://example.com/hq.jpg',
+    })
+    await waitFor(() => expect(field).toHaveValue(''))
   })
 
   it('re-fetches from the Regenerate button, naming the cost on stills', async () => {

@@ -22,6 +22,7 @@ import { ConfirmButton } from '@/components/confirm-button'
 import { useToast } from '@/components/ui/toast'
 import type { SlotView, VisualsReviewModel } from '@/lib/visuals-review'
 import {
+  addSlotImageFromUrlAction,
   approvePlanAction,
   chooseCandidateAction,
   createOwnUploadAction,
@@ -1162,7 +1163,9 @@ function readVideoMetadata(
  * never travel through a server action. Presign, PUT, then finalise —
  * all three steps inside one `act` call so the button gets a busy state
  * and every failure gets a toast. Archival slots take real footage, image
- * or video (decision 214); everything else takes a poster image.
+ * or video (decision 214); everything else takes a poster image. Either kind
+ * of slot also takes an image by web address, fetched and stored server-side
+ * exactly as the Cast card does it (decision 214, amended).
  */
 function UploadOwnButton({
   projectId,
@@ -1176,6 +1179,7 @@ function UploadOwnButton({
   archival: boolean
 }) {
   const inputRef = React.useRef<HTMLInputElement | null>(null)
+  const [url, setUrl] = React.useState('')
 
   const upload = async (file: File): Promise<ActionResult> => {
     const video = file.type.startsWith('video/')
@@ -1229,6 +1233,38 @@ function UploadOwnButton({
       <Button variant="outline" onClick={() => inputRef.current?.click()}>
         <ImagePlus aria-hidden />
         {archival ? 'Upload footage' : 'Upload own'}
+      </Button>
+      {/* Real footage is usually found online, so saving it first only to
+          upload it is a step for nothing (decision 214, amended). Images
+          only: video still goes browser to R2 on the presigned path. */}
+      <input
+        type="url"
+        value={url}
+        placeholder="or paste an image address"
+        aria-label={
+          archival
+            ? 'Add your real footage for this slot by image address'
+            : 'Add your own image for this slot by image address'
+        }
+        onChange={(event) => setUrl(event.target.value)}
+        className="min-w-[180px] flex-1 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-2 py-1 text-[12px]"
+      />
+      <Button
+        variant="outline"
+        disabled={url.trim() === ''}
+        onClick={() =>
+          void act(
+            slotId,
+            async () => {
+              const result = await addSlotImageFromUrlAction({ projectId, slotId, url })
+              if (result.ok) setUrl('')
+              return result
+            },
+            'Added and selected',
+          )
+        }
+      >
+        Add from address
       </Button>
       <input
         ref={inputRef}

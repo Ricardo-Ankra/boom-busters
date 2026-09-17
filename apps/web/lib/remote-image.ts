@@ -18,7 +18,7 @@ import { isIP } from 'node:net'
  * way to get a worse likeness without noticing.
  */
 
-/** The same ceiling the browser upload carries. */
+/** The ceiling a cast photo carries, and the default here. */
 export const MAX_REMOTE_IMAGE_BYTES = 15 * 1024 * 1024
 
 /**
@@ -50,6 +50,14 @@ export interface RemoteImage {
 }
 
 export type RemoteImageResult = { ok: true; image: RemoteImage } | { ok: false; error: string }
+
+export interface RemoteImageOptions {
+  fetchImpl?: typeof fetch
+  /** Defaults to `MAX_REMOTE_IMAGE_BYTES`; callers with their own ceiling pass it. */
+  maxBytes?: number
+  /** Defaults to `MIN_REMOTE_IMAGE_EDGE`; 0 accepts any size. */
+  minEdge?: number
+}
 
 /**
  * The format, from the first bytes rather than the Content-Type header.
@@ -206,9 +214,9 @@ async function checkAddress(url: URL): Promise<string | null> {
 }
 
 /** Read the body with the cap applied as it streams, so a huge file is dropped early. */
-async function readCapped(response: Response): Promise<Buffer | null> {
+async function readCapped(response: Response, maxBytes: number): Promise<Buffer | null> {
   const declared = Number(response.headers.get('content-length') ?? '')
-  if (Number.isFinite(declared) && declared > MAX_REMOTE_IMAGE_BYTES) return null
+  if (Number.isFinite(declared) && declared > maxBytes) return null
 
   const body = response.body
   if (!body) return Buffer.from(await response.arrayBuffer())
@@ -220,7 +228,7 @@ async function readCapped(response: Response): Promise<Buffer | null> {
     const { done, value } = await reader.read()
     if (done) break
     total += value.byteLength
-    if (total > MAX_REMOTE_IMAGE_BYTES) {
+    if (total > maxBytes) {
       await reader.cancel().catch(() => undefined)
       return null
     }
@@ -235,9 +243,11 @@ async function readCapped(response: Response): Promise<Buffer | null> {
  */
 export async function fetchRemoteImage(
   rawUrl: string,
-  options: { fetchImpl?: typeof fetch } = {},
+  options: RemoteImageOptions = {},
 ): Promise<RemoteImageResult> {
   const fetchImpl = options.fetchImpl ?? fetch
+  const maxBytes = options.maxBytes ?? MAX_REMOTE_IMAGE_BYTES
+  const minEdge = options.minEdge ?? MIN_REMOTE_IMAGE_EDGE
 
   let url: URL
   try {
@@ -296,8 +306,13 @@ export async function fetchRemoteImage(
     }
   }
 
-  const bytes = await readCapped(response)
-  if (!bytes) return { ok: false, error: 'That image is over the 15 MB limit.' }
+  const bytes = await readCapped(response, maxBytes)
+  if (!bytes) {
+    return {
+      ok: false,
+      error: `That image is over the ${Math.round(maxBytes / 1024 / 1024)} MB limit.`,
+    }
+  }
   if (bytes.length === 0) return { ok: false, error: 'That link returned an empty file.' }
 
   const mimeType = sniffImageMime(bytes)
@@ -313,7 +328,7 @@ export async function fetchRemoteImage(
 
   const size = imageDimensions(bytes, mimeType)
   if (!size) return { ok: false, error: 'That image file is damaged and could not be read.' }
-  if (Math.min(size.width, size.height) < MIN_REMOTE_IMAGE_EDGE) {
+  if (Math.min(size.width, size.height) < minEdge) {
     return {
       ok: false,
       error:

@@ -24,13 +24,22 @@ import {
   UlidSchema,
 } from '@boom-busters/schemas'
 import type { SlotCandidate } from '@boom-busters/schemas'
+import { createHash } from 'node:crypto'
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { auth } from '@/auth'
 import { events } from '@/inngest/events'
 import { inngest } from '@/inngest/client'
 import { db } from '@/lib/db'
-import { deleteObject, headObject, presignPut, R2_PREFIX, storageConfigured } from '@/lib/storage'
+import { fetchRemoteImage } from '@/lib/remote-image'
+import {
+  deleteObject,
+  headObject,
+  presignPut,
+  putObject,
+  R2_PREFIX,
+  storageConfigured,
+} from '@/lib/storage'
 
 /**
  * The visual board's buttons (build spec section 11.3): select a candidate,
@@ -479,47 +488,132 @@ export async function finaliseOwnUploadAction(input: {
       ? { durationMs: Math.round(input.durationMs) }
       : {}),
   }
-  const asset = await upsertAssetByHash(db, {
-    kind: rules.kind,
-    r2Key: key,
-    licence: 'Uploaded by owner',
+  return attachOwnFile({
+    projectId: input.projectId,
+    slot,
+    key,
     contentHash,
-    ...dims,
+    kind: rules.kind,
+    summary: input.fileName,
+    dims,
+  })
+}
+
+/**
+ * Record an object in the bucket as this slot's chosen candidate.
+ *
+ * Shared by the two ways a file arrives — the browser's presigned upload and
+ * a pasted web address (decision 214, amended) — because everything from the
+ * asset row onwards is identical and two copies of it would drift.
+ */
+async function attachOwnFile(input: {
+  projectId: string
+  slot: Awaited<ReturnType<typeof getShotSlot>> & object
+  key: string
+  contentHash: string
+  kind: 'image' | 'video'
+  summary: string
+  dims: { width?: number; height?: number; durationMs?: number }
+  /** Where a pasted image came from; absent for a file off the producer's disk. */
+  sourceUrl?: string
+}): Promise<ActionResult> {
+  const asset = await upsertAssetByHash(db, {
+    kind: input.kind,
+    r2Key: input.key,
+    licence: 'Uploaded by owner',
+    contentHash: input.contentHash,
+    ...input.dims,
   })
 
   const candidate: SlotCandidate = SlotCandidateSchema.parse({
-    id: `upload-${contentHash.slice(0, 12)}`,
+    id: `upload-${input.contentHash.slice(0, 12)}`,
     provider: 'upload',
-    kind: rules.kind,
-    sourceUrl: `upload://${contentHash}`,
+    kind: input.kind,
+    // The address is kept as provenance where there is one; the bytes in R2
+    // are what the render reads either way.
+    sourceUrl: input.sourceUrl ?? `upload://${input.contentHash}`,
     assetId: asset.id,
-    r2Key: key,
+    r2Key: input.key,
     licence: asset.licence,
-    summary: input.fileName,
+    summary: input.summary,
     chosen: true,
-    ...dims,
+    ...input.dims,
   })
 
   // The upload joins the strip and wins the choice; fetched candidates stay
   // for comparison, un-chosen.
-  const existing = Array.isArray(slot.candidates) ? slot.candidates : []
+  const existing = Array.isArray(input.slot.candidates) ? input.slot.candidates : []
   const others = existing
     .map((entry) => SlotCandidateSchema.safeParse(entry))
     .flatMap((parsed) => (parsed.success ? [parsed.data] : []))
     .filter((entry) => entry.id !== candidate.id)
     .map(({ chosen: _chosen, ...rest }) => rest)
 
-  await setSlotResolution(db, input.slotId, {
+  await setSlotResolution(db, input.slot.id, {
     candidates: [candidate, ...others],
     status: 'resolved',
     chosenAssetId: asset.id,
     // The upload answers the CURRENT brief: without the fingerprint, the
     // next "Fetch visuals" would treat this slot as owed and fetch over it.
-    briefHash: shotBriefHash(slot.brief),
+    briefHash: shotBriefHash(input.slot.brief),
   })
 
   refresh(input.projectId)
   return { ok: true }
+}
+
+/**
+ * The same thing by web address rather than by file (decision 214, amended):
+ * real footage is usually found online, and saving it first only to upload it
+ * is a step for nothing.
+ *
+ * Images only. Video is legal on archival slots by file, but pulling 200 MB
+ * through the server is exactly the byte handling decision 213 removed, and
+ * the presigned path exists for it.
+ */
+export async function addSlotImageFromUrlAction(input: {
+  projectId: string
+  slotId: string
+  url: string
+}): Promise<ActionResult> {
+  await requireOwner()
+
+  const invalid = badIds(input.projectId, input.slotId)
+  if (invalid) return invalid
+
+  const slot = await getShotSlot(db, input.slotId)
+  if (!slot) return { ok: false, error: 'This slot no longer exists.' }
+  if (!storageConfigured()) {
+    return { ok: false, error: 'Uploads need R2 configured — there is nowhere to store the file.' }
+  }
+
+  const fetched = await fetchRemoteImage(input.url, { maxBytes: MAX_UPLOAD_IMAGE_BYTES })
+  if (!fetched.ok) return { ok: false, error: fetched.error }
+  const { bytes, mimeType, width, height, resolvedUrl } = fetched.image
+
+  // Run it past the slot's own rules, so an address cannot put an image
+  // somewhere a file of the same type could not go.
+  const rules = uploadRules(slot.brief, mimeType)
+  if ('error' in rules) return { ok: false, error: rules.error }
+
+  const contentHash = createHash('sha256').update(bytes).digest('hex')
+  const key = `${R2_PREFIX}/uploads/${input.projectId}/${contentHash}.${rules.extension}`
+  try {
+    await putObject(key, bytes, mimeType)
+  } catch {
+    return { ok: false, error: 'That image could not be saved to storage. Try again.' }
+  }
+
+  return attachOwnFile({
+    projectId: input.projectId,
+    slot,
+    key,
+    contentHash,
+    kind: 'image',
+    summary: new URL(resolvedUrl).pathname.split('/').pop() || resolvedUrl,
+    dims: { width, height },
+    sourceUrl: resolvedUrl,
+  })
 }
 
 // ---------------------------------------------------------------------------

@@ -4547,3 +4547,24 @@ Recorded whenever the spec left something open and an implementation was chosen.
     Direction card keeps Save and Redraft, which do act on the book, and its
     now-unused `slotsFetched` prop went with the button, the consequence line
     that named the discarded slots having moved too.
+
+    _Addendum (r), 2026-09-17, owner: "for uploading footage for a shot,
+    particularly for the Real footage category, I should be able to add an
+    image via URL, same way we did for the cast."_ Added.
+    `addSlotImageFromUrlAction` fetches the address server-side through the
+    same `lib/remote-image.ts` the Cast card uses, with its magic-byte format
+    check, header-read dimensions, per-hop redirect checks and refusal of
+    private and link-local addresses, and stores the bytes under the same
+    uploads key a browser upload would have used. Two deliberate limits.
+    Images only: video is legal on an archival slot by file, but pulling
+    200 MB through the server is precisely the byte handling decision 213
+    removed, and the presigned path already exists for it. And the fetched
+    image is still put past `uploadRules`, so an address cannot place an
+    image where a file of the same type could not go. The fetcher took two
+    options (`maxBytes`, `minEdge`) so a slot can use its own 8 MB image
+    ceiling rather than the cast's 15 MB. Everything from the asset row
+    onwards is now one shared `attachOwnFile`, because the file route and the
+    address route differ only in how the bytes arrive, and two copies of the
+    candidate-and-resolution logic would drift. The resolved address is kept
+    as the candidate's `sourceUrl`, so the board shows where footage came
+    from.
