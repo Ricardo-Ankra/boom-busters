@@ -4539,3 +4539,11 @@ Recorded whenever the spec left something open and an implementation was chosen.
     The bible's contradiction is resolved the same way, with the offending
     prompt quoted in it as the worked example of the mistake. `photographed`
     is carried by `loadDirectionInputs` and by both runners' own setup steps.
+    _Addendum (q), 2026-09-17, owner: "put the Re-plan shot list button next
+    to the Fetch visuals button in the Shot Plan card."_ Moved. Re-planning
+    acts on the plan, not on the book, and the producer decides a plan reads
+    wrong while reading the plan. The two spends now sit in one row, so the
+    choice they present is the real one: fetch this plan, or plan again. The
+    Direction card keeps Save and Redraft, which do act on the book, and its
+    now-unused `slotsFetched` prop went with the button, the consequence line
+    that named the discarded slots having moved too.
