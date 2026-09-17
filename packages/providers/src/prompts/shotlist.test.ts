@@ -281,6 +281,57 @@ describe('buildShotListRequest with direction (decision 252)', () => {
     expect(request.system).toContain('it decides what you plan, not what the image model reads')
   })
 
+  /**
+   * The bug this replaced: the rule told the model to write the identity
+   * string for anyone shown, so a photographed person's prompt read "Emad
+   * Mostaque, founder and former CEO of Stability AI, the person in the
+   * reference photo. Emad Mostaque, founder and former CEO of Stability AI,
+   * male in his 40s, short dark hair, closely cropped beard..." The model had
+   * followed the instruction exactly; the instruction was wrong.
+   */
+  describe('a photographed person carries no written description', () => {
+    const withPhotos = buildShotListRequest({
+      caseTitle: 'Stability AI',
+      chapterTitle: 'The Missing Billions',
+      chapterNumber: 2,
+      paragraphs: PARAGRAPHS,
+      claims: CLAIMS,
+      styleAnchors: stillStyleAnchors(brandKit),
+      direction,
+      photographed: ['Emad Mostaque'],
+    })
+
+    it('lists the photographed people in the cacheable prefix', () => {
+      const prefix = withPhotos.messages[0]?.content ?? ''
+      expect(prefix).toContain('Photographed')
+      expect(prefix).toContain('- Emad Mostaque')
+      // The book's Identity line is planning context, never prompt text.
+      expect(prefix).toContain('must never')
+    })
+
+    it('forbids age, build and hair for them, and still allows clothing and posture', () => {
+      expect(withPhotos.system).toContain('write NO physical description')
+      expect(withPhotos.system).toContain('no age, build, height, hair, beard, glasses, skin or')
+      expect(withPhotos.system).toContain('Clothing, posture, place, light')
+    })
+
+    it('keeps the identity string for a named person who has no photograph', () => {
+      expect(withPhotos.system).toContain('A named person NOT in that list')
+      expect(withPhotos.system).toContain('the only thing standing between the image and a')
+    })
+
+    it('still describes an unnamed extra by role, age range and build', () => {
+      expect(withPhotos.system).toContain('Anyone unnamed')
+      expect(withPhotos.system).toContain('role, age range, build and clothing')
+      expect(withPhotos.system).toContain('resembling nobody in particular')
+    })
+
+    it('says nothing about photographs when the cast has none', () => {
+      // `request` is built without `photographed`.
+      expect(request.messages[0]?.content).not.toContain('Photographed')
+    })
+  })
+
   it('asks for shotSize on every slot and depicts on likenesses, and bans the pan', () => {
     expect(request.system).toContain('"shotSize"')
     expect(request.system).toContain('"depicts"')

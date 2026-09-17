@@ -126,6 +126,13 @@ export function buildShotListRequest(input: {
   styleAnchors: string
   /** The per-film Director's Book (decision 252). Absent on projects planned before it. */
   direction?: DirectorsBook
+  /**
+   * Exact names of cast members the producer has photographed (decision 253).
+   * Their stills are generated FROM those photographs, so their prompts must
+   * carry no physical description at all: the photograph decides the face and
+   * a written one only argues with it.
+   */
+  photographed?: readonly string[]
 }): LLMTaskRequest {
   const paragraphList = input.paragraphs
     .map(
@@ -136,9 +143,15 @@ export function buildShotListRequest(input: {
 
   // The claim list and the book are the cacheable prefix: identical for every
   // chapter of one film, exactly like the drafting and self-check prompts.
+  const photographed = (input.photographed ?? []).filter((name) => name.trim().length > 0)
   const prefix =
     `Case: ${input.caseTitle}\n\nClaims:\n${claimList(input.claims)}` +
-    (input.direction ? `\n\nDirector's book:\n${renderDirectorsBook(input.direction)}` : '')
+    (input.direction ? `\n\nDirector's book:\n${renderDirectorsBook(input.direction)}` : '') +
+    (photographed.length > 0
+      ? `\n\nPhotographed (the producer holds reference photographs of these people; ` +
+        `their "Identity" line above is planning context for you and must never ` +
+        `be written into a prompt):\n${photographed.map((name) => `- ${name}`).join('\n')}`
+      : '')
 
   const chapterHead =
     input.direction && input.chapterNumber !== undefined
@@ -184,15 +197,26 @@ Planning rules:
   slot is manual work for a human.
 - "still" is an AI-GENERATED image. Write the prompt as the bible's "What a
   still prompt must contain" says: prose, subject first, three physical
-  facts, lens and light named, then the book's era lock, palette and any
-  identity string verbatim, then these Brand Kit anchors verbatim:
-  "${input.styleAnchors}". A prompt that shows a real person names them
-  first, by full name and role, then says "the person in the reference
-  photo", then their identity string as one sentence, so the image is of
-  that person and not a stand-in; list them in "depicts". Never quote the
-  guardrail: it decides what you plan, not what the image model reads, and
-  a model reads "never in handcuffs" as a request for handcuffs. Put its
-  concrete nouns in "negativePrompt" instead.
+  facts, lens and light named, then the book's era lock and palette, then
+  these Brand Kit anchors verbatim: "${input.styleAnchors}".
+  People come in three kinds and they never mix:
+  (a) A name in "Photographed" above. Name them by full name and role, add
+      "the person in the reference photo", and write NO physical description
+      of them whatever: no age, build, height, hair, beard, glasses, skin or
+      face. The photograph is the likeness and any written description fights
+      it. Clothing, posture, place, light and what they are doing are still
+      yours to direct. List them in "depicts".
+  (b) A named person NOT in that list. Name them by full name and role, then
+      their identity string from the book as one sentence — with no
+      photograph it is the only thing standing between the image and a
+      stand-in. List them in "depicts".
+  (c) Anyone unnamed: staff, an aide, a driver, a crowd. No name and no
+      identity string. Describe them by role, age range, build and clothing,
+      face turned away or in shadow, resembling nobody in particular.
+  Never quote the guardrail:
+  it decides what you plan, not what the image model reads, and a model
+  reads "never in handcuffs" as a request for handcuffs. Put its concrete
+  nouns in "negativePrompt" instead.
   ${STILL_GENERATIONS} variants are generated per prompt.
 - Narration may contain bracketed tags — [pause], [sighs]. They are direction
   for the narrator, not content; never plan a visual around one and never quote

@@ -75,8 +75,10 @@ plain one.
   medium, 50mm for a close human scale, 85mm for a portrait, 100mm macro
   for texture.
 - Append the director's book invariants verbatim: the era lock for the
-  moment, the palette line, and the full name and identity string of any
-  person shown.
+  moment and the palette line. Add the full name and role of any person
+  shown, and their identity string ONLY when no photograph of them exists;
+  where one does, the photograph is the likeness and the identity string
+  stays out of the prompt.
 - Banned words, because they render nothing: cinematic, stunning,
   dramatic lighting, high quality, masterpiece, epic, beautiful, moody,
   professional. Banned too: an emotion named without a body. Not "a
@@ -162,8 +164,13 @@ plain one.
 - When the cast holds photographs of a person, the still is generated from
   them: the prompt names the person and says "the person in the reference
   photo", and the photos travel with the request. The prompt varies
-  clothing, place, light and posture freely; it never adds facial
-  descriptors that could contradict the photograph.
+  clothing, place, light and posture freely. It carries NO physical
+  description of them at all: no age, build, height, hair, beard, glasses,
+  skin or face. The photograph settles every one of those, and a written
+  description can only argue with it. "Emad Mostaque, founder of Stability
+  AI, the person in the reference photo, sitting at a desk" is right; adding
+  "male in his 40s, short dark hair, closely cropped beard" after it is the
+  mistake.
 - Anonymous figures (depiction "anonymous") are described by role, age
   range, build and clothing, face turned away or in shadow, and never
   resemble a named person.
@@ -182,9 +189,10 @@ plain one.
 - Every chapter shows at least one motif and builds to its key image.
 - Every era lock is obeyed in every prompt it touches.
 - No banned word appears in any prompt.
-- Every prompt showing a real person names them in full, carries their
-  identity string, and lists them in "depicts". No guardrail text appears
-  in any prompt.
+- Every prompt showing a real person names them in full and lists them in
+  "depicts". It carries their identity string only where no photograph of
+  them exists; a photographed person's prompt carries no physical
+  description of them at all. No guardrail text appears in any prompt.
 - No guardrail or never-show line keeps a principal away from a desk, a
   document, a boardroom or a meeting; they exclude only what would defame
   or mock.

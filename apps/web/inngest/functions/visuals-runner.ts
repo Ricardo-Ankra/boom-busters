@@ -13,6 +13,7 @@ import {
   shotBriefHash,
   shotSlotStatuses,
   slotNeedsResolution,
+  listCastMembers,
 } from '@boom-busters/db'
 import type { NewShotSlot } from '@boom-busters/db'
 import { BANNED_PROMPT_WORDS, stillStyleAnchors } from '@boom-busters/providers'
@@ -123,6 +124,12 @@ export const visualsRunner = inngest.createFunction(
           confidence: claim.confidence,
         })) satisfies ScriptClaim[],
         styleAnchors: stillStyleAnchors(settings.brandKit),
+        // Who the producer has photographed (decision 253, amended). Their
+        // prompts name them and carry no physical description, because the
+        // photograph is the likeness.
+        photographed: (await listCastMembers(db, projectId))
+          .filter((member) => member.photos.length > 0)
+          .map((member) => member.name),
       }
     })
 
@@ -174,6 +181,7 @@ export const visualsRunner = inngest.createFunction(
               claimIds,
               styleAnchors: setup.styleAnchors,
               direction: direction.book,
+              photographed: setup.photographed,
             })
             return { ok: true, ...result }
           } catch (error) {
