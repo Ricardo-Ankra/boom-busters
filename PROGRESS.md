@@ -4711,3 +4711,75 @@ Recorded whenever the spec left something open and an implementation was chosen.
     existing timeline carries no length until it is recompiled, so a project
     planned before this needs the library page opened once (which measures the
     bed) and its preview rebuilt.
+
+41. **A headline shot quotes a real article, and cannot invent one**
+    (decision 257; 2026-09-17, owner: "I want to create a new format for shots
+    which is a Headline or Article where we use remotion to create what looks
+    like a snapshot of the headline of a news article. The Headline, Author,
+    and News outlet should match the real news article, as well as the publish
+    date, just the format looks the same for consistency across brand"). The
+    film quotes reporting constantly and had no way to show it: a sentence
+    leaning on what a paper found played over a stock shot of an office, the
+    weakest frame in the vocabulary.
+
+    A seventh slot type, `headline`, draws the approved clipping: warm paper
+    on the dark grade, the masthead over a double rule, the headline in Source
+    Serif 4, a highlighter under the phrase the narration is on, and the
+    byline, date and source address along the foot. It is the most dangerous
+    card in the set, because it looks like evidence, so the whole design
+    answers one question: where does every string on it come from.
+
+    **The model writes none of it.** The shot-list prompt emits
+    `{"type": "headline", "sourceRef": <claim number>}` and nothing else about
+    the article, the same way a chart cites `dataRefs`. `resolvePlannedBrief`
+    maps the number to a claim id and refuses any claim that is not
+    `major_outlet` with a surviving URL, so a card citing a court filing or an
+    unsourced claim is dropped at plan time with its reason on the board. The
+    claim list marks the eligible ones NEWS ARTICLE so the model can aim, and
+    the rule is enforced in the runner regardless, because a prompt rule with
+    no enforcement is a suggestion. One card a chapter: it is bright, and it
+    works by being rare.
+
+    **The app reads the article itself.** Resolution fetches the claim's URL
+    once and takes the publisher's own declared metadata: JSON-LD first, then
+    Open Graph, then the meta tags, then the `<title>` with the masthead
+    trimmed off. JSON-LD wins because it is the publisher's structured record
+    of the piece and `og:title` is its sharing copy, and they disagree ("$1.9
+    billion" against "$1.9bn"). `dateModified` is never promoted to the
+    publication date, which is the single most tempting mistake here: it sits
+    beside `datePublished` in nearly every block and would put 2024 on screen
+    for a piece written in 2019. Each field records where it came from, and
+    the board shows that, so an outlet guessed from the hostname never reads
+    as a fact.
+
+    The fetch is deliberately dull: honest user agent, no cookies, no browser
+    spoofing, eight seconds, five redirect hops, the body abandoned at
+    `</head>` or 512 KB. Because the URL originates from the research model it
+    is the one piece of attacker-adjacent input in the feature, so every hop
+    is checked against `assertSafeArticleUrl`, which refuses non-web schemes,
+    odd ports, raw addresses and any hostname resolving into a private range.
+    A page that will not answer gets one attempt at a Wayback snapshot, which
+    is keyless and is the difference between working and not for decade-old
+    reporting.
+
+    **What it cannot read, you type.** Paywalls, consent walls and dead links
+    all land on a stored record with its reason, a placeholder slot and a card
+    that says "Open it and fill these in" rather than showing an error: for a
+    paywalled piece that is the normal path, not a repair. A record the owner
+    has corrected is `manual` and no later fetch overwrites it.
+
+    Records live in `article_sources`, keyed by normalised URL rather than by
+    slot, for two reasons: the no-waste guard hashes the brief, so resolution
+    writing into it would re-fetch forever, and one article backs several
+    claims, several shots and several films. Assembly then embeds the five
+    strings in the timeline payload, like a chart's series, because a render
+    six months later must not depend on the page still being online.
+
+    Three legal choices are encoded rather than documented. The outlet's name
+    is set in our own type and there is no logo field at all, because a
+    masthead is an artistic work and a trade mark while a name is a citation.
+    Every card is identical whatever ran the story, which is what separates a
+    quotation from an imitation of somebody's page. And the marker phrase must
+    occur in the headline word for word or it is dropped, because a highlight
+    over words the publication did not print is the same kind of error as a
+    wrong byline, only smaller.

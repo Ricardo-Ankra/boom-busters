@@ -55,6 +55,8 @@ export const DENSE_WARNINGS_TITLE = 'A chapter with every warning kind (E2E)'
 export const NARRATED_PROJECT_TITLE = 'Narration ready for review (E2E)'
 export const FLAGGED_TAKE_TITLE = 'Narration with a flagged take (E2E)'
 export const VISUAL_BOARD_TITLE = 'Visual board ready for review (E2E)'
+/** The article the seeded headline card cites, and cannot read (decision 257). */
+export const HEADLINE_ARTICLE_URL = 'https://financialrecord.example/2023/03/14/auditors'
 export const VISUAL_PLAN_TITLE = 'Shot plan awaiting fetch (E2E)'
 export const PREVIEW_PROJECT_TITLE = 'Preview compiled, master rendered (E2E)'
 export const PUBLISH_PROJECT_TITLE = 'Shorts cut, ready to publish (E2E)'
@@ -440,7 +442,14 @@ export default async function globalSetup(): Promise<void> {
      * adapters' own trick), so the strip renders with no storage behind it.
      */
     {
-      const { replaceShotList, listShotSlots, setSlotResolution } = await import('@boom-busters/db')
+      const {
+        replaceShotList,
+        listShotSlots,
+        setSlotResolution,
+        recordArticleSource,
+        scriptableClaims,
+        updateSlotBrief,
+      } = await import('@boom-busters/db')
 
       const board = await createProjectFromCase(connection.db, {
         caseId: FIXTURE_CASE_ID,
@@ -449,7 +458,17 @@ export default async function globalSetup(): Promise<void> {
       await saveDossier(connection.db, {
         projectId: board.id,
         contentMd: '# The research the board below was planned from.',
-        claims: [],
+        // One news-sourced claim, so the board can carry a headline card
+        // (decision 257). Its article is seeded as a page that would not
+        // answer, which is the path the card has to get right.
+        claims: [
+          {
+            text: 'A newspaper reported that the escrow accounts had never existed.',
+            sourceUrl: HEADLINE_ARTICLE_URL,
+            sourceType: 'major_outlet',
+            confidence: 'sourced',
+          },
+        ],
       })
       const boardScript = await createScriptVersion(connection.db, board.id)
       const boardChapter = await saveChapter(connection.db, {
@@ -565,6 +584,20 @@ export default async function globalSetup(): Promise<void> {
         },
         {
           chapterId: boardChapter.id,
+          index: 4,
+          type: 'headline',
+          brief: {
+            type: 'headline',
+            ...common,
+            coversText: narratedText[1]!,
+            description: 'The morning the story broke.',
+            sourceClaimId: '',
+          },
+          startMs: 18000,
+          durationMs: 6000,
+        },
+        {
+          chapterId: boardChapter.id,
           index: 3,
           type: 'stock',
           brief: {
@@ -616,6 +649,33 @@ export default async function globalSetup(): Promise<void> {
         candidates: [],
         status: 'placeholder',
       })
+
+      // The headline card, pointed at its claim and at an article the
+      // publisher would not give up (decision 257).
+      const boardClaims = await scriptableClaims(connection.db, board.id)
+      const newsClaim = boardClaims.find((claim) => claim.sourceType === 'major_outlet')
+      const headlineSlot = slots.find((slot) => slot.type === 'headline')
+      if (newsClaim && headlineSlot) {
+        await updateSlotBrief(connection.db, headlineSlot.id, {
+          ...(headlineSlot.brief as Record<string, unknown>),
+          sourceClaimId: newsClaim.id,
+        } as never)
+        await setSlotResolution(connection.db, headlineSlot.id, {
+          candidates: [],
+          status: 'placeholder',
+        })
+        await recordArticleSource(connection.db, {
+          url: HEADLINE_ARTICLE_URL,
+          outlet: null,
+          headline: null,
+          author: null,
+          publishedAt: null,
+          description: null,
+          provenance: {},
+          status: 'failed',
+          failureReason: 'The publisher returned 403',
+        })
+      }
 
       await setProjectStage(connection.db, board.id, {
         stage: 'visuals',

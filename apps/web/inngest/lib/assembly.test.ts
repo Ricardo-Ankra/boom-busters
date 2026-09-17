@@ -252,7 +252,9 @@ describe('slotPlan', () => {
     it('carries the standfirst only when the brief says to show it', () => {
       const plan = slotPlan({
         slots: [
-          row({ brief: { ...headlineBrief, showDeck: true } as unknown as Record<string, unknown> }),
+          row({
+            brief: { ...headlineBrief, showDeck: true } as unknown as Record<string, unknown>,
+          }),
         ],
         assetsById: new Map(),
         articles: new Map([[CLAIM, article]]),
@@ -283,9 +285,9 @@ describe('slotPlan', () => {
           .skipped[0]?.reason,
       ).toContain('no headline to show')
 
-      expect(
-        slotPlan({ slots: [row()], assetsById: new Map() }).skipped[0]?.reason,
-      ).toContain('no headline to show')
+      expect(slotPlan({ slots: [row()], assetsById: new Map() }).skipped[0]?.reason).toContain(
+        'no headline to show',
+      )
     })
   })
 

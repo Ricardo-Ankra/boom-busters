@@ -120,3 +120,43 @@ test.describe('the visual board', () => {
     await expectHitTargets(page)
   })
 })
+
+/**
+ * The headline card (decision 257). The seeded article is a page that would
+ * not answer, which is the path that matters: for a paywalled piece, typing
+ * the four fields IS the normal way to fill this card, not a repair.
+ */
+test.describe('a headline card', () => {
+  test('asks for the article details, and keeps them', async ({ page }) => {
+    await expect(page.getByText(/The publisher returned 403/)).toBeVisible()
+
+    await page.getByRole('button', { name: 'Fill these in' }).click()
+    await page.getByLabel('Publication').fill('The Financial Record')
+    await page
+      .getByLabel('Headline, word for word as published')
+      .fill('Auditors cannot find the $1.9 billion the company says it holds')
+    await page.getByLabel('Byline').fill('Elena Marsh')
+    await page.getByLabel('Published (YYYY-MM-DD)').fill('2023-03-14')
+    await page.getByLabel('Highlight this phrase').fill('$1.9 billion')
+    await page.getByRole('button', { name: 'Save' }).click()
+
+    const card = page.getByLabel('Headline card preview')
+    await expect(card.getByText('The Financial Record')).toBeVisible()
+    await expect(card.getByText('By Elena Marsh')).toBeVisible()
+
+    // And it survives a reload, because it was written, not held in state.
+    await page.reload()
+    await expect(page.getByLabel('Headline card preview').getByText('By Elena Marsh')).toBeVisible()
+  })
+
+  test('refuses a highlight the publication did not print', async ({ page }) => {
+    await page.getByRole('button', { name: 'Fill these in' }).click()
+    await page
+      .getByLabel('Headline, word for word as published')
+      .fill('Auditors cannot find the money')
+    await page.getByLabel('Highlight this phrase').fill('two billion')
+    await page.getByRole('button', { name: 'Save' }).click()
+
+    await expect(page.getByText(/has to appear in the headline, word for word/)).toBeVisible()
+  })
+})
