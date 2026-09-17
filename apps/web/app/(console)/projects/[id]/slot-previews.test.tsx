@@ -50,7 +50,7 @@ const valuation: ChartBrief = {
   type: 'chart',
   coversText: 'The valuation quadrupled in six months.',
   description: 'Reported valuation, Oct 2022 to Spring 2023',
-  motion: { kind: 'draw-on' },
+  motion: { kind: 'static' },
   transition: 'cut',
   chartKind: 'bar',
   series: [
