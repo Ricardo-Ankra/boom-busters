@@ -185,6 +185,8 @@ describe('planChapterSlots against a live model', () => {
       text: 'By June, the auditors could not find it.',
       startMs: 0,
       durationMs: 9000,
+      // No stored timings for this take, so slots keep the planner's seconds.
+      words: [],
     },
   ]
   const PLAN = JSON.stringify({

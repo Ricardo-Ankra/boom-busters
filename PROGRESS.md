@@ -4651,10 +4651,21 @@ Recorded whenever the spec left something open and an implementation was chosen.
     one sentence. Planned durations therefore survive only on the film's last
     shot.
 
-    Two deliberate limits. The fix is in the COMPILER, not the planner, so it
-    reaches every project already planned without a re-plan (no cost, no
-    re-fetch, no lost selections): re-running the preview build is enough. And
-    the board's own scrubber still seeks by the planned time, so clicking a
-    card can land a second or two early; making the board agree means
-    anchoring at plan time too, which needs word timings carried into the
-    visuals runner's setup step.
+    The fix is in the COMPILER, not the planner, so it reaches every project
+    already planned without a re-plan (no cost, no re-fetch, no lost
+    selections): re-running the preview build is enough.
+
+    _Addendum (a), 2026-09-17, owner: make the board agree too._ It now does,
+    at both ends. `TimedParagraph` carries the paragraph's script words on the
+    project clock (snapped to the current take exactly as assembly snaps them,
+    empty when a take has no stored timings), so `plannedToRows` anchors the
+    rows it writes and the board's own `visualsReviewModel` anchors what it
+    displays. One function does it in all three places, `anchoredTimes` over
+    `anchorSlots`, and ends are scoped to the paragraph so that anchoring one
+    chapter at planning and the whole film on the board give the same answer.
+    Recomputing on the board rather than trusting the row is the same choice
+    the scrubber's clock already made: a project planned before this rule, or
+    re-voiced since, shows the times the render will cut to instead of the
+    times the planner guessed. The cost is about 90 KB of words crossing the
+    visuals runner's setup step for a 15-minute film, well inside Inngest's
+    step output limit.

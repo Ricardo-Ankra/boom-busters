@@ -1,6 +1,12 @@
 import type { PlannedSlot } from '@boom-busters/schemas'
 import { describe, expect, it } from 'vitest'
-import { MIN_SLOT_MS, plannedToRows, promptParagraphs, timedParagraphs } from './shot-list'
+import {
+  anchoredTimes,
+  MIN_SLOT_MS,
+  plannedToRows,
+  promptParagraphs,
+  timedParagraphs,
+} from './shot-list'
 
 const CLAIM_A = '01HQ00000000000000000000AA'
 const CLAIM_B = '01HQ00000000000000000000AB'
@@ -178,5 +184,126 @@ describe('plannedToRows', () => {
     })
     expect(rows[0]?.index).toBe(3)
     expect(rows[0]?.startMs).toBe(14000)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Anchoring (decision 255): a slot sits on the words its brief quotes
+// ---------------------------------------------------------------------------
+
+const SPOKEN_CHAPTER = {
+  id: 'ch-c',
+  title: 'The meeting',
+  contentMd: 'The board met on a Friday. Prem Akkaraju had already agreed terms.',
+}
+
+/** What the narrator was heard saying: one word every 500ms. */
+function heard(text: string): { text: string; startMs: number; endMs: number }[] {
+  return text
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((word, index) => ({ text: word, startMs: index * 500, endMs: index * 500 + 500 }))
+}
+
+const SPOKEN_TAKE = {
+  ...take('ch-c', 0, 6000),
+  timings: heard(SPOKEN_CHAPTER.contentMd),
+}
+
+function shot(paragraphIndex: number, seconds: number, coversText: string): PlannedSlot {
+  return {
+    paragraphIndex,
+    seconds,
+    brief: {
+      type: 'stock',
+      coversText,
+      description: 'A boardroom, shot from the doorway.',
+      motion: { kind: 'static' },
+      transition: 'cut',
+      query: 'boardroom meeting',
+      rejectionCriteria: [],
+    },
+  } as unknown as PlannedSlot
+}
+
+describe('slots sit on the words they cover', () => {
+  const paragraphs = timedParagraphs({ chapters: [SPOKEN_CHAPTER], takes: [SPOKEN_TAKE] })
+
+  it('snaps the take onto the project clock, word by word', () => {
+    expect(paragraphs[0]?.words[0]).toEqual({ text: 'The', startMs: 0 })
+    // "Prem" is the seventh word.
+    expect(paragraphs[0]?.words[6]).toEqual({ text: 'Prem', startMs: 3000 })
+  })
+
+  it('moves a slot onto its own sentence and ends the one before it there', () => {
+    const { rows } = plannedToRows({
+      chapterId: 'ch-c',
+      // The planner gave the opening shot four seconds; the words take three.
+      planned: [
+        shot(0, 4, 'The board met on a Friday.'),
+        shot(0, 2, 'Prem Akkaraju had already agreed terms.'),
+      ],
+      paragraphs,
+      claimIds: [],
+    })
+    expect(rows.map((row) => [row.startMs, row.durationMs])).toEqual([
+      [0, 3000],
+      [3000, 3000],
+    ])
+  })
+
+  it('keeps the planned time for a quote that is not in the narration', () => {
+    const { rows } = plannedToRows({
+      chapterId: 'ch-c',
+      planned: [
+        shot(0, 4, 'The board met on a Friday.'),
+        shot(0, 2, 'A sentence from a different film.'),
+      ],
+      paragraphs,
+      claimIds: [],
+    })
+    expect(rows[1]?.startMs).toBe(4000)
+  })
+
+  it('ends a paragraph last shot at its paragraph, not the next one first word', () => {
+    // The board anchors every slot of the film in one call and the planner
+    // anchors one chapter at a time; scoping ends to the paragraph is what
+    // makes those two calls agree, so the card and the cut show one time.
+    const twoParagraphs = timedParagraphs({
+      chapters: [
+        {
+          ...SPOKEN_CHAPTER,
+          contentMd: `${SPOKEN_CHAPTER.contentMd}
+
+Nobody said so.`,
+        },
+      ],
+      takes: [SPOKEN_TAKE, { ...take('ch-c', 1, 2000), timings: heard('Nobody said so.') }],
+    })
+    const times = anchoredTimes(
+      [
+        { startMs: 0, durationMs: 6000, coversText: 'The board met on a Friday.' },
+        { startMs: 6000, durationMs: 2000, coversText: 'Nobody said so.' },
+      ],
+      twoParagraphs,
+    )
+    // The first shot runs to the end of its own paragraph, not to the second
+    // shot's first word; the compiler closes that seam at render time.
+    expect(times[0]).toEqual({ startMs: 0, durationMs: 6000 })
+    expect(times[1]).toEqual({ startMs: 6000, durationMs: 2000 })
+  })
+
+  it('leaves every slot on the planner\u2019s arithmetic when the take has no timings', () => {
+    const untimed = timedParagraphs({ chapters: [SPOKEN_CHAPTER], takes: [take('ch-c', 0, 6000)] })
+    const { rows } = plannedToRows({
+      chapterId: 'ch-c',
+      planned: [
+        shot(0, 4, 'The board met on a Friday.'),
+        shot(0, 2, 'Prem Akkaraju had already agreed terms.'),
+      ],
+      paragraphs: untimed,
+      claimIds: [],
+    })
+    expect(rows.map((row) => row.startMs)).toEqual([0, 4000])
   })
 })
