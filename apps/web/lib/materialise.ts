@@ -74,7 +74,13 @@ export async function materialiseForPreview(
 
   const slots: Timeline['slots'] = []
   for (const slot of timeline.slots) {
-    if (slot.payload.kind === 'chart' || slot.payload.kind === 'map') {
+    // Drawn cards carry their own content: a chart's series, a map's
+    // coordinates, a headline's five strings. There are no bytes to resolve.
+    if (
+      slot.payload.kind === 'chart' ||
+      slot.payload.kind === 'map' ||
+      slot.payload.kind === 'headline'
+    ) {
       slots.push(slot)
       continue
     }

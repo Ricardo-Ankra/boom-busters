@@ -41,6 +41,10 @@ const CASES: SnapshotCase[] = [
   { id: 'ChartRevealBar', frame: 200, maxDiffRatio: 0.05 },
   { id: 'ChartRevealWaterfall', frame: 200, maxDiffRatio: 0.05 },
   { id: 'AnimatedMapFixture', frame: 200, maxDiffRatio: 0.05 },
+  // Frame 60 is two seconds in: the clipping has settled and the marker has
+  // finished its sweep (decision 257).
+  { id: 'HeadlineCardWide', frame: 60, maxDiffRatio: 0.06 },
+  { id: 'HeadlineCardTall', frame: 60, maxDiffRatio: 0.06 },
   { id: 'LowerThirdBar', frame: 60, maxDiffRatio: 0.06 },
   { id: 'ChapterCardFull', frame: 40, maxDiffRatio: 0.06 },
   { id: 'KaraokeCaptionsWide', frame: 20, maxDiffRatio: 0.06 },

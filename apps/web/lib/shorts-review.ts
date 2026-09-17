@@ -38,8 +38,8 @@ export interface ShortRenderProp {
 
 /** One offerable shot in a beat's picker (decision 230). */
 export interface TeaserShotOption {
-  kind: 'image' | 'video' | 'chart' | 'map'
-  /** Presigned (or external) preview; null for mock keys, charts and maps. */
+  kind: 'image' | 'video' | 'chart' | 'map' | 'headline'
+  /** Presigned (or external) preview; null for mock keys and drawn cards. */
   url: string | null
   /** The full slot snapshot the save action stores. */
   slot: TimelineSlot

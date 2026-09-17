@@ -211,6 +211,7 @@ export const HeadlinePayloadSchema = z.object({
   sourceUrl: z.string().min(1),
   claimId: UlidSchema,
 })
+export type HeadlinePayload = z.infer<typeof HeadlinePayloadSchema>
 
 export const SlotPayloadSchema = z.discriminatedUnion('kind', [
   ImagePayloadSchema,

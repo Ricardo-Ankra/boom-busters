@@ -113,6 +113,12 @@ export async function getDossier(
   return { ...dossier, claims: rows }
 }
 
+/** One claim, by id. What a headline slot reads its article URL from. */
+export async function getClaim(db: Database, claimId: string): Promise<ClaimRow | undefined> {
+  const [row] = await db.select().from(claims).where(eq(claims.id, claimId)).limit(1)
+  return row
+}
+
 export async function setClaimQuarantined(
   db: Database,
   claimId: string,

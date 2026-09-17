@@ -1,12 +1,13 @@
 import { Composition } from 'remotion'
 import { gainAt, timelineDurationMs } from '@boom-busters/schemas'
-import type { BrandKitTokens } from '@boom-busters/schemas'
+import type { BrandKitTokens, HeadlinePayload } from '@boom-busters/schemas'
 import { AnimatedMap } from './components/AnimatedMap'
 import { ChapterCard } from './components/ChapterCard'
 import { ChartReveal } from './components/ChartReveal'
 import type { ChartPayload } from './components/ChartReveal'
 import { DocumentaryMaster } from './components/DocumentaryMaster'
 import { EndCta } from './components/EndCta'
+import { HeadlineCard } from './components/HeadlineCard'
 import { KaraokeCaptions } from './components/KaraokeCaptions'
 import { KenBurnsImage } from './components/KenBurnsImage'
 import { LowerThird } from './components/LowerThird'
@@ -86,6 +87,24 @@ const CHART_BAR: ChartPayload = {
   dataRefs: ['01HQ00000000000000000000AA'],
   takeaway: 'Four billion dollars, six months, and the product was free.',
   reveal: 'draw-on',
+}
+
+/**
+ * The headline card (decision 257). Invented outlet, invented byline: a
+ * fixture naming a real paper and a real journalist would be a fabricated
+ * record living in the repo, which is the thing this card exists to prevent.
+ */
+const HEADLINE_CARD: HeadlinePayload = {
+  kind: 'headline',
+  outlet: 'The Financial Record',
+  headline: 'Auditors cannot find the $1.9 billion the company says it holds',
+  publishedAt: '2023-03-14',
+  author: 'Elena Marsh',
+  deck: 'Three banks told investigators they had never held the escrow accounts named in the filings.',
+  emphasis: '$1.9 billion',
+  sourceLabel: 'financialrecord.example/2023/03/14',
+  sourceUrl: 'https://financialrecord.example/2023/03/14',
+  claimId: '01HQ00000000000000000000AA',
 }
 
 /** A dev-only sample clip for Studio; never part of a render or snapshot. */
@@ -216,6 +235,22 @@ export function Root() {
         durationInFrames={240}
         {...WIDE}
         defaultProps={{ payload: CHART_BAR, brand: FIXTURE_BRAND, durationInFrames: 240 }}
+      />
+
+      <Composition
+        id="HeadlineCardWide"
+        component={HeadlineCard}
+        durationInFrames={240}
+        {...WIDE}
+        defaultProps={{ payload: HEADLINE_CARD, brand: FIXTURE_BRAND }}
+      />
+
+      <Composition
+        id="HeadlineCardTall"
+        component={HeadlineCard}
+        durationInFrames={240}
+        {...TALL}
+        defaultProps={{ payload: HEADLINE_CARD, brand: FIXTURE_BRAND }}
       />
 
       <Composition

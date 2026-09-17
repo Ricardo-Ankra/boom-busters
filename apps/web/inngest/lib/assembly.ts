@@ -1,5 +1,12 @@
-import { latestTakes, ShotBriefSchema, splitParagraphs } from '@boom-busters/schemas'
-import type { Caption, WordTiming } from '@boom-busters/schemas'
+import {
+  articleIsRenderable,
+  articleSourceLabel,
+  emphasisFits,
+  latestTakes,
+  ShotBriefSchema,
+  splitParagraphs,
+} from '@boom-busters/schemas'
+import type { ArticleMetadata, Caption, WordTiming } from '@boom-busters/schemas'
 import type { VoiceTakeRow } from '@boom-busters/db'
 import { offsetCaptions, snapToScript } from '@boom-busters/timeline'
 import type { CompileParagraph, CompileSlot, SnapGap } from '@boom-busters/timeline'
@@ -148,7 +155,7 @@ export function evenlySpacedWords(text: string, durationMs: number): WordTiming[
  */
 export interface AssemblySlotRow {
   id: string
-  type: 'stock' | 'archival' | 'still' | 'chart' | 'map' | 'hero'
+  type: 'stock' | 'archival' | 'still' | 'chart' | 'map' | 'headline' | 'hero'
   status: 'unresolved' | 'resolved' | 'placeholder'
   brief: Record<string, unknown>
   candidates: Record<string, unknown>[]
@@ -194,6 +201,14 @@ export function slotPlan(input: {
    * render cannot trust either.
    */
   unusable?: Record<string, string>
+  /**
+   * The cited articles, by claim id (decision 257). Read before compiling
+   * rather than looked up here, because this function is pure and a timeline
+   * must embed the strings it was built from: a render months later cannot
+   * depend on the page still being online, or on the record not having been
+   * corrected since.
+   */
+  articles?: ReadonlyMap<string, ArticleMetadata>
 }): SlotPlan {
   const slots: CompileSlot[] = []
   const skipped: SlotPlan['skipped'] = []
@@ -250,6 +265,38 @@ export function slotPlan(input: {
         ...base,
         type: 'map',
         map: { locations: brief.locations, route: brief.route },
+      })
+      continue
+    }
+
+    if (brief.type === 'headline') {
+      const article = input.articles?.get(brief.sourceClaimId)
+      if (!article || !articleIsRenderable(article)) {
+        skipped.push({ slotId: row.id, reason: 'the cited article has no headline to show yet' })
+        continue
+      }
+      // Emphasis is dropped rather than approximated: a marker under words the
+      // publication did not print is the same kind of error as a wrong byline.
+      const emphasis =
+        brief.emphasis !== undefined && emphasisFits(article.headline ?? '', brief.emphasis)
+          ? brief.emphasis
+          : undefined
+      slots.push({
+        ...base,
+        type: 'headline',
+        headline: {
+          outlet: article.outlet as string,
+          headline: article.headline as string,
+          publishedAt: article.publishedAt as string,
+          ...(article.author !== null ? { author: article.author } : {}),
+          ...(brief.showDeck === true && article.description !== null
+            ? { deck: article.description }
+            : {}),
+          ...(emphasis !== undefined ? { emphasis } : {}),
+          sourceLabel: articleSourceLabel(article.url),
+          sourceUrl: article.url,
+          claimId: brief.sourceClaimId,
+        },
       })
       continue
     }

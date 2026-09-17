@@ -17,13 +17,15 @@ import {
   parseEventData,
   resolveBrandKit,
   serialiseError,
+  ShotBriefSchema,
   timelineDurationMs,
   TranscribeResultSchema,
   ValidationError,
 } from '@boom-busters/schemas'
-import type { WordTiming } from '@boom-busters/schemas'
+import type { ArticleMetadata, WordTiming } from '@boom-busters/schemas'
 import { compileTimeline } from '@boom-busters/timeline'
 import { NonRetriableError } from 'inngest'
+import { articleForClaim } from '@/lib/article-source'
 import { db } from '@/lib/db'
 import { brokerCallbackUrl, submitMediaJob } from '@/lib/broker'
 import { ingestSlotStock, needsStockIngest } from '@/lib/stock-ingest'
@@ -255,10 +257,24 @@ export const assemblyRunner = inngest.createFunction(
 
     const compiled = await step.run('compile-timeline', async () => {
       const captions = assembleCaptions(aligned)
+
+      // The cited articles, read once and embedded whole (decision 257). By
+      // now every one of these is a stored record; `articleForClaim` reads it
+      // rather than the page.
+      const articles = new Map<string, ArticleMetadata>()
+      for (const row of slotsWithBytes) {
+        if (row.type !== 'headline') continue
+        const brief = ShotBriefSchema.safeParse(row.brief)
+        if (!brief.success || brief.data.type !== 'headline') continue
+        const article = await articleForClaim(brief.data.sourceClaimId)
+        if (article) articles.set(brief.data.sourceClaimId, article)
+      }
+
       const plan = slotPlan({
         slots: slotsWithBytes,
         assetsById: new Map(setup.assets),
         unusable,
+        articles,
       })
 
       try {
