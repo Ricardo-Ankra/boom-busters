@@ -14,6 +14,7 @@
   },
   "dependencies": {
     "@boom-busters/schemas": "workspace:*",
+    "node-html-parser": "^9.0.4",
     "zod": "^4.4.3"
   },
   "devDependencies": {
