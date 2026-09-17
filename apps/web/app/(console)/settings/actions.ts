@@ -3,6 +3,7 @@
 import {
   deleteMusicBed,
   insertMusicBed,
+  setMusicBedDuration,
   llmCredentials,
   recordVerifyResult,
   setCredential,
@@ -20,6 +21,7 @@ import {
 import {
   LlmProviderSchema,
   MUSIC_ATTRIBUTION_MAX_CHARS,
+  UlidSchema,
   MUSIC_MAX_BYTES,
   MusicLicenceSchema,
   ProviderSchema,
@@ -260,6 +262,13 @@ export async function createMusicUploadAction(input: {
   return { ok: true, url: await presignPut(key, input.fileType), key }
 }
 
+/** A length the browser could not read, or read as nonsense, is no length. */
+function sensibleDurationMs(durationMs: number | undefined): number | null {
+  if (durationMs === undefined || !Number.isFinite(durationMs)) return null
+  const rounded = Math.round(durationMs)
+  return rounded > 0 && rounded < 24 * 60 * 60 * 1000 ? rounded : null
+}
+
 export async function finaliseMusicBedAction(input: {
   key: string
   contentHash: string
@@ -272,6 +281,8 @@ export async function finaliseMusicBedAction(input: {
    * ships with the upload instead of waiting for a Content ID dispute.
    */
   attributionText?: string
+  /** The track's length, measured by the browser before it uploaded. */
+  durationMs?: number
 }): Promise<ActionResult> {
   await requireOwner()
 
@@ -332,10 +343,37 @@ export async function finaliseMusicBedAction(input: {
     licence: licence.data,
     moodTags,
     attributionText: attributionText || null,
+    // Measured in the browser from the file itself. The renderer loops a bed
+    // by overlapping copies of it, which it cannot do without the length
+    // (decision 256); a bed with none plays on a plain loop.
+    durationMs: sensibleDurationMs(input.durationMs),
   })
 
   revalidatePath('/settings')
   revalidatePath('/')
+  return { ok: true }
+}
+
+/**
+ * Record the length of a bed the library never measured (decision 256).
+ *
+ * Beds uploaded before the renderer needed a length have none, and nothing
+ * server-side can read an MP3's duration. The music tab measures each one as
+ * it lists it and posts the number back here, so the library heals itself the
+ * first time the page is opened rather than asking for a re-upload.
+ */
+export async function recordMusicBedDurationAction(input: {
+  id: string
+  durationMs: number
+}): Promise<ActionResult> {
+  await requireOwner()
+
+  if (!UlidSchema.safeParse(input.id).success) return { ok: false, error: 'Unknown track' }
+  const durationMs = sensibleDurationMs(input.durationMs)
+  if (durationMs === null) return { ok: false, error: 'That is not a length.' }
+
+  await setMusicBedDuration(db, input.id, durationMs)
+  revalidatePath('/settings')
   return { ok: true }
 }
 

@@ -55,19 +55,20 @@ export async function chooseMusicBed(
     return { ok: false, error: 'There is no compiled timeline yet — run the assembly stage.' }
   }
 
+  let chosen: { r2Key: string; durationMs?: number | null } | null = null
   if (bedKey !== null) {
     // The picker offers the library; the action verifies against it, so a
-    // stale form cannot write a key the library no longer holds.
+    // stale form cannot write a key the library no longer holds. The row's
+    // own length travels into the timeline with its key (decision 256).
     const beds = await listMusicBeds(db)
-    if (!beds.some((bed) => bed.r2Key === bedKey)) {
+    const bed = beds.find((one) => one.r2Key === bedKey)
+    if (!bed) {
       return { ok: false, error: 'That music bed is no longer in the library.' }
     }
+    chosen = { r2Key: bed.r2Key, durationMs: bed.durationMs }
   }
 
-  const swapped = swapMusicBed(
-    TimelineSchema.parse(row.json),
-    bedKey === null ? null : { r2Key: bedKey },
-  )
+  const swapped = swapMusicBed(TimelineSchema.parse(row.json), chosen)
 
   const stored = await insertTimeline(db, { projectId, json: swapped, s3Key: '' })
   const key = timelineKey(projectId, stored.version)

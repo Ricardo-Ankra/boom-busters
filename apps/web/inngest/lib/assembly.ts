@@ -307,9 +307,11 @@ export function slotPlan(input: {
  * picker swaps beds and recompiles for free — this is a starting point,
  * not a verdict.
  */
-export function pickMusicBed(beds: readonly { r2Key: string }[]): { r2Key: string } | null {
+export function pickMusicBed(
+  beds: readonly { r2Key: string; durationMs?: number | null }[],
+): { r2Key: string; durationMs?: number | null } | null {
   const bed = beds[0]
-  return bed ? { r2Key: bed.r2Key } : null
+  return bed ? { r2Key: bed.r2Key, durationMs: bed.durationMs ?? null } : null
 }
 
 /**
@@ -318,13 +320,13 @@ export function pickMusicBed(beds: readonly { r2Key: string }[]): { r2Key: strin
  * long-form bed still beats a silent one — else nothing.
  */
 export function pickShortsBed(
-  beds: readonly { r2Key: string; moodTags: string[] }[],
+  beds: readonly { r2Key: string; moodTags: string[]; durationMs?: number | null }[],
   shortsStyle: string,
-): { r2Key: string } | null {
+): { r2Key: string; durationMs?: number | null } | null {
   const wanted = shortsStyle.trim().toLowerCase()
   const styled = beds.find((bed) => bed.moodTags.some((tag) => tag.trim().toLowerCase() === wanted))
   const bed = styled ?? beds[0]
-  return bed ? { r2Key: bed.r2Key } : null
+  return bed ? { r2Key: bed.r2Key, durationMs: bed.durationMs ?? null } : null
 }
 
 /** The R2 key a compiled timeline is stored under. */

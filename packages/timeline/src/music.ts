@@ -16,7 +16,10 @@ import { buildDuckingCurve } from './ducking'
  * whose first compile had NO music (empty library) gains a correct curve the
  * moment a bed is chosen.
  */
-export function swapMusicBed(timeline: Timeline, bed: { r2Key: string } | null): Timeline {
+export function swapMusicBed(
+  timeline: Timeline,
+  bed: { r2Key: string; durationMs?: number | null } | null,
+): Timeline {
   if (bed === null) {
     return TimelineSchema.parse({ ...timeline, music: null })
   }
@@ -41,6 +44,9 @@ export function swapMusicBed(timeline: Timeline, bed: { r2Key: string } | null):
     ...timeline,
     music: {
       r2Key: bed.r2Key,
+      // The length travels with the key: the renderer overlaps loop copies
+      // with it rather than restarting the file on its fade-out (decision 256).
+      ...(bed.durationMs ? { durationMs: bed.durationMs } : {}),
       gainDb: timeline.brand.music.bedGainDb,
       duckingCurve: buildDuckingCurve(timeline.narration, {
         bedGainDb: timeline.brand.music.bedGainDb,

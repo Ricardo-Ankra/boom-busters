@@ -93,6 +93,13 @@ export const MusicTrackSchema = z.object({
   url: z.url().optional(),
   /** Base bed gain, dB. Ducking points are absolute gains, not offsets. */
   gainDb: z.number().max(0),
+  /**
+   * The track's own length. A bed shorter than the film is looped, and the
+   * renderer needs the length to overlap the copies instead of restarting the
+   * file on its written fade-out (decision 256). Absent on a bed the library
+   * never measured, and then the renderer plays it on a plain loop.
+   */
+  durationMs: z.number().int().positive().optional(),
   /** Piecewise-linear gain envelope, strictly ordered by tMs (compiler-enforced). */
   duckingCurve: z.array(DuckingPointSchema),
   cuePoints: z.array(MusicCuePointSchema),

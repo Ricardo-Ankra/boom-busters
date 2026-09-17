@@ -8,7 +8,12 @@ import type { MusicLicence } from '@boom-busters/schemas'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { useToast } from '@/components/ui/toast'
-import { createMusicUploadAction, deleteMusicBedAction, finaliseMusicBedAction } from './actions'
+import {
+  createMusicUploadAction,
+  deleteMusicBedAction,
+  finaliseMusicBedAction,
+  recordMusicBedDurationAction,
+} from './actions'
 
 /**
  * The music library (build spec section 10.1): user-populated only. The
@@ -26,6 +31,51 @@ export interface MusicBedView {
   createdAt: string
   /** Published in the YouTube description of every video using this track. */
   attributionText: string | null
+  /**
+   * The track's length. The renderer loops a bed by overlapping copies of it
+   * and cannot do that without one (decision 256), so a bed listed without a
+   * length is measured here and the number sent back.
+   */
+  durationMs: number | null
+}
+
+/**
+ * How long the track is, read from the file itself.
+ *
+ * Nothing server-side can read an MP3's duration, and the browser has both
+ * the file and a decoder. Returns undefined rather than throwing: a bed with
+ * no measured length still uploads, it just loops with a seam.
+ */
+async function measureDurationMs(file: File): Promise<number | undefined> {
+  let url: string | undefined
+  try {
+    const audio = new Audio()
+    // A browser that cannot play the type will never report a length, and
+    // asking anyway leaves the upload waiting on an event that never fires.
+    if (typeof audio.canPlayType !== 'function' || audio.canPlayType(file.type) === '') {
+      return undefined
+    }
+    url = URL.createObjectURL(file)
+    const source = url
+    return await new Promise<number | undefined>((resolve) => {
+      const finish = (value: number | undefined) => {
+        clearTimeout(timer)
+        resolve(value)
+      }
+      const timer = setTimeout(() => finish(undefined), 5000)
+      audio.preload = 'metadata'
+      audio.addEventListener('loadedmetadata', () => {
+        const seconds = audio.duration
+        finish(Number.isFinite(seconds) && seconds > 0 ? seconds * 1000 : undefined)
+      })
+      audio.addEventListener('error', () => finish(undefined))
+      audio.src = source
+    })
+  } catch {
+    return undefined
+  } finally {
+    if (url !== undefined) URL.revokeObjectURL(url)
+  }
 }
 
 export function MusicTab({ beds }: { beds: MusicBedView[] }) {
@@ -92,6 +142,7 @@ export function MusicTab({ beds }: { beds: MusicBedView[] }) {
         return
       }
 
+      const durationMs = await measureDurationMs(file)
       const result = await finaliseMusicBedAction({
         key: created.key,
         contentHash,
@@ -99,6 +150,7 @@ export function MusicTab({ beds }: { beds: MusicBedView[] }) {
         licence,
         moodTags,
         attributionText,
+        ...(durationMs === undefined ? {} : { durationMs }),
       })
       if (result.ok) {
         toast({ title: 'Track added to the library' })
@@ -307,13 +359,24 @@ export function MusicTab({ beds }: { beds: MusicBedView[] }) {
                       No licence text — re-upload the same file with it to add one.
                     </p>
                   )}
-                  {/* Preview streams through the auth-checked asset route. */}
+                  {/* Preview streams through the auth-checked asset route. A
+                      bed the library never measured loads its metadata now, so
+                      listing the library is what heals it (decision 256). */}
                   <audio
                     controls
-                    preload="none"
+                    preload={bed.durationMs === null ? 'metadata' : 'none'}
                     src={`/api/assets/${bed.id}/file`}
                     className="w-full"
                     aria-label={`Preview: ${bed.title}`}
+                    onLoadedMetadata={(event) => {
+                      if (bed.durationMs !== null) return
+                      const seconds = event.currentTarget.duration
+                      if (!Number.isFinite(seconds) || seconds <= 0) return
+                      void recordMusicBedDurationAction({
+                        id: bed.id,
+                        durationMs: Math.round(seconds * 1000),
+                      })
+                    }}
                   />
                 </li>
               ))}

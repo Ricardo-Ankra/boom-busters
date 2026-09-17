@@ -52,6 +52,7 @@ export default async function SettingsPage({
           moodTags: bed.moodTags,
           createdAt: bed.createdAt.toISOString(),
           attributionText: bed.attributionText,
+          durationMs: bed.durationMs,
         }))}
       />
     </div>
