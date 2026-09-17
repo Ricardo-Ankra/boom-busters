@@ -110,6 +110,8 @@ Every brief carries "shotSize": "wide"|"medium"|"close"|"macro"|"aerial"|"graphi
 - {"type": "map", "coversText", "description", "motion", "transition",
    "locations": [{"label", "lat": number, "lon": number}] (max 8),
    "route": boolean}
+- {"type": "headline", "coversText", "description", "motion", "transition",
+   "sourceRef": claim number}
 
 "motion" is {"kind": "static"} or {"kind": "kenburns", "direction": "in"|"out",
 "speed": "slow"|"medium"|"fast"}. Never "pan": the renderer cannot do one.
@@ -218,6 +220,16 @@ Planning rules:
   reads "never in handcuffs" as a request for handcuffs. Put its concrete
   nouns in "negativePrompt" instead.
   ${STILL_GENERATIONS} variants are generated per prompt.
+- "headline" puts a REAL news headline on screen, in the house clipping
+  format. Plan one where the narration leans on what a publication reported:
+  "the Financial Times reported", "the paper found", "when the story broke".
+  "sourceRef" is the NUMBER of the claim whose article it shows, and that
+  claim must be marked NEWS ARTICLE in the list above; anything else has no
+  article behind it to quote. You write NO part of the card: not the outlet,
+  not the headline, not the byline, not the date. Those are read from the
+  article itself, so inventing them is impossible rather than discouraged.
+  AT MOST ONE headline shot per chapter, and never two in a row: it is a
+  bright card in a dark film and it works by being rare.
 - Narration may contain bracketed tags — [pause], [sighs]. They are direction
   for the narrator, not content; never plan a visual around one and never quote
   one in "coversText".
@@ -297,6 +309,12 @@ export function parseShotList(text: string): ShotListParse {
 export function mockShotList(input: {
   paragraphs: readonly ShotParagraph[]
   claimCount: number
+  /**
+   * 1-based positions of claims a headline card may cite (decision 257). The
+   * mock cannot judge that itself, and a mock slot the runner then rejects
+   * would make the offline board disagree with the live one.
+   */
+  newsClaimRefs?: readonly number[]
 }): ShotListOutput {
   const slots: ShotListOutput['slots'] = input.paragraphs.map((paragraph, index) => ({
     paragraphIndex: paragraph.index,
@@ -364,6 +382,24 @@ export function mockShotList(input: {
           { label: 'Manila', lat: 14.6, lon: 120.98 },
         ],
         route: true,
+      },
+    })
+  }
+
+  // A headline card in mock mode, so the board and the e2e run have one to
+  // show. Mirrors the real rule: it cites a claim, and nothing else.
+  if (second && input.newsClaimRefs && input.newsClaimRefs.length > 0) {
+    slots.push({
+      paragraphIndex: second.index,
+      seconds: 7,
+      brief: {
+        type: 'headline',
+        coversText: second.text.slice(0, 120) || '[mock] empty paragraph',
+        description: '[mock] The morning the story broke.',
+        shotSize: 'graphic',
+        motion: { kind: 'static' },
+        transition: 'cut',
+        sourceRef: input.newsClaimRefs[0] as number,
       },
     })
   }

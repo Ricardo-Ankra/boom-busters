@@ -24,7 +24,7 @@ import type {
   DirectionChapterInput,
   ScriptClaim,
 } from '@boom-busters/providers'
-import { DirectorsBookSchema, ValidationError } from '@boom-busters/schemas'
+import { claimCarriesArticle, DirectorsBookSchema, ValidationError } from '@boom-busters/schemas'
 import type { DirectorsBook } from '@boom-busters/schemas'
 import { NonRetriableError } from 'inngest'
 import { z } from 'zod'
@@ -219,7 +219,13 @@ export async function planChapterSlots(input: {
   // than fatal: a gap on the board is repairable from a card.
   let dropped = 0
   if (mockProvidersEnabled()) {
-    slots = mockShotList({ paragraphs, claimCount: input.claims.length }).slots
+    slots = mockShotList({
+      paragraphs,
+      claimCount: input.claims.length,
+      newsClaimRefs: input.claims
+        .map((claim, at) => (claimCarriesArticle(claim) ? at + 1 : 0))
+        .filter((ref) => ref > 0),
+    }).slots
   } else {
     const request = buildShotListRequest({
       caseTitle: input.caseTitle,
