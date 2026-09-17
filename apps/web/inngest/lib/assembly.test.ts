@@ -201,6 +201,9 @@ describe('slotPlan', () => {
     expect(plan.slots[0]).toMatchObject({
       type: 'stock',
       media: { kind: 'video', externalUrl: 'https://videos.pexels.com/clip.mp4' },
+      // The compiler anchors the shot to these words (decision 255); a slot
+      // that reaches it without them keeps the seconds the planner guessed.
+      coversText: 'covers',
     })
   })
 

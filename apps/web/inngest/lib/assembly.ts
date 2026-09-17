@@ -225,6 +225,9 @@ export function slotPlan(input: {
       durationMs: row.durationMs,
       transition: brief.transition,
       motion: brief.motion,
+      // The compiler puts the shot on these words rather than on the seconds
+      // the planner guessed for it (decision 255).
+      coversText: brief.coversText,
     }
 
     if (brief.type === 'chart') {
