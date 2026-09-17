@@ -31,7 +31,7 @@ import type {
   VisualsCoverage,
 } from '@boom-busters/schemas'
 import { timedParagraphs } from '@/inngest/lib/shot-list'
-import { stillSlotEstimateUsd } from './visual-assets'
+import { stillsEstimateUsd } from './visual-assets'
 
 /**
  * What the visual board shows, and what the visuals gate refuses on — one
@@ -234,6 +234,17 @@ export async function visualsReviewModel(
 
   const toFetch = slots.filter((slot) => slot.needsFetch)
   const stillsToFetch = toFetch.filter((slot) => slot.type === 'still').length
+  /**
+   * Priced brief by brief, not slot count times a flat rate. Every brief is
+   * written by the time this checkpoint is on screen, so which route each
+   * still takes — and therefore what it costs — is known (decision 253,
+   * amended). Quoting the dearer route for all of them made the number
+   * useless the moment the two routes differed.
+   */
+  const fetchEstimateUsd = await stillsEstimateUsd(
+    toFetch.flatMap((slot) => (slot.brief ? [slot.brief] : [])),
+    projectId,
+  )
 
   return {
     chapters,
@@ -247,7 +258,7 @@ export async function visualsReviewModel(
     phase: options.phase ?? null,
     toFetch: toFetch.length,
     stillsToFetch,
-    fetchEstimateUsd: stillsToFetch > 0 ? stillsToFetch * (await stillSlotEstimateUsd()) : 0,
+    fetchEstimateUsd,
     direction: ((): DirectorsBook | null => {
       const parsed = DirectorsBookSchema.safeParse(project?.direction)
       return parsed.success ? parsed.data : null

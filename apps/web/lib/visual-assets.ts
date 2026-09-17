@@ -1,10 +1,10 @@
 import 'server-only'
 
 import { createHash } from 'node:crypto'
-import { withCost } from '@boom-busters/cost'
+import { round4, withCost } from '@boom-busters/cost'
 import {
-  castMembersNamed,
   getSettings,
+  listCastMembers,
   upsertAssetByHash,
   visualCredentials,
 } from '@boom-busters/db'
@@ -17,6 +17,7 @@ import {
 import type {
   CastMember,
   CastPhoto,
+  ModelRouting,
   ShotBrief,
   ShotSlotStatus,
   SlotCandidate,
@@ -87,19 +88,78 @@ function spreadReferences(
 
 /**
  * The people this still can actually show a likeness of: the cast members it
- * depicts who have a photograph. Database only, no storage — it runs BEFORE
- * the route is chosen, because whether a still needs a likeness is what
- * decides which generator it goes to (decision 253, amended).
+ * depicts who have a photograph.
+ *
+ * This is THE rule, and it is pure so that the generator and the price
+ * estimate cannot answer it differently. They did once: the estimate assumed
+ * the dearer route for every still and quoted a number no run would ever
+ * spend (decision 253, amended). It also has to be settled before the route
+ * is chosen, because whether a still needs a likeness is what decides which
+ * generator it goes to.
  *
  * A name the cast has never seen, or one with no photograph yet, is not a
- * likeness the app can produce, so such a still is routed and generated as a
- * plain one.
+ * likeness the app can produce, so such a still is routed, priced and
+ * generated as a plain one.
  */
+function depictedFrom(brief: StillBrief, cast: readonly CastMember[]): CastMember[] {
+  const wanted = new Set((brief.depicts ?? []).map((name) => name.trim()).filter(Boolean))
+  if (wanted.size === 0) return []
+  return cast
+    .filter((member) => wanted.has(member.name) && member.photos.length > 0)
+    .slice(0, MAX_STILL_REFERENCES)
+}
+
 async function depictedCast(brief: StillBrief, projectId: string): Promise<CastMember[]> {
   if (!brief.depicts || brief.depicts.length === 0) return []
-  return (await castMembersNamed(db, projectId, brief.depicts))
-    .filter((member) => member.photos.length > 0)
-    .slice(0, MAX_STILL_REFERENCES)
+  return depictedFrom(brief, await listCastMembers(db, projectId))
+}
+
+/** Where a still goes, given who it shows. A null likeness route means no split. */
+function routeFor(members: readonly CastMember[], routing: ModelRouting) {
+  return members.length > 0 && routing.stillsLikeness ? routing.stillsLikeness : routing.stills
+}
+
+/**
+ * What one still brief will cost: its own route, and on fal its own reference
+ * endpoint, which is dearer than the routed model and dearer again for more
+ * than one photograph. Priced from the LIVE adapters even in mock mode, the
+ * same rule as every mock — budgets are configuration that outlives a test run.
+ */
+function stillBriefPriceUsd(
+  brief: StillBrief,
+  cast: readonly CastMember[],
+  routing: ModelRouting,
+): number {
+  const members = depictedFrom(brief, cast)
+  const route = routeFor(members, routing)
+  const live = LIVE_IMAGE_GEN_ADAPTERS[route.provider]
+  const billed = live.referenceRoute?.(route.model, spreadReferences(members).length) ?? null
+  return billed
+    ? billed.pricePerImage * STILL_GENERATIONS
+    : imageGenPrice(live, STILL_GENERATIONS, route.model)
+}
+
+/**
+ * What a set of planned still briefs will cost to generate, priced one brief
+ * at a time — the plan screen's "Fetch visuals · est. $X".
+ *
+ * Exact rather than conservative, which is the whole point of showing a
+ * number: at the plan checkpoint every brief is already written, so which
+ * route each slot takes and how many reference photographs travel with it
+ * are known facts, not guesses. One settings read and one cast read for the
+ * whole list.
+ */
+export async function stillsEstimateUsd(
+  briefs: readonly ShotBrief[],
+  projectId: string,
+): Promise<number> {
+  const stills = briefs.filter((brief): brief is StillBrief => brief.type === 'still')
+  if (stills.length === 0) return 0
+  const routing = (await getSettings(db)).modelRouting
+  const cast = await listCastMembers(db, projectId)
+  return round4(
+    stills.reduce((total, brief) => total + stillBriefPriceUsd(brief, cast, routing), 0),
+  )
 }
 
 /**
@@ -231,20 +291,18 @@ export async function requireVisualKeys(types: ReadonlySet<ShotBrief['type']>): 
 }
 
 /**
- * What one still slot will cost to generate, for the plan screen's "Fetch
- * visuals · est. $X" button (staged-visuals design): the price of the routed
- * generator (`modelRouting.stills`, decision 208) — the same choice
- * `generateStillCandidates` makes — times the generations a prompt buys.
- * Priced from the LIVE adapter even in mock mode, the same rule as every
- * mock: budgets are configuration that outlives a test run. Stock, archival,
- * chart and map fetches are free, so stills are the whole estimate.
+ * What ONE still will cost when there is no brief to price yet — the teaser
+ * studio, whose beats are generated a button at a time before any brief
+ * exists (decision 231).
+ *
+ * With no brief there is no knowing whom the frame will show, so this quotes
+ * the dearer of the two routes and can only over-state. Wherever the briefs
+ * are already planned, `stillsEstimateUsd` prices them exactly and is used
+ * instead. Stock, archival, chart and map fetches are free, so stills are the
+ * whole estimate either way.
  */
 export async function stillSlotEstimateUsd(): Promise<number> {
   const routing = (await getSettings(db)).modelRouting
-  // Which of the two routes a given slot takes depends on whom it shows, and
-  // the plan screen is quoting a slot before anything has been planned. It
-  // quotes the dearer route, so the button never promises less than the run
-  // can cost (decision 253, amended).
   const routes = [routing.stills, ...(routing.stillsLikeness ? [routing.stillsLikeness] : [])]
   return Math.max(
     ...routes.map((route) =>
@@ -322,8 +380,8 @@ export async function generateStillCandidates(
    */
   const members = await depictedCast(brief, projectId)
   const routing = (await getSettings(db)).modelRouting
-  const likeness = members.length > 0 && routing.stillsLikeness !== null
-  const route = likeness ? routing.stillsLikeness! : routing.stills
+  const route = routeFor(members, routing)
+  const likeness = route !== routing.stills
 
   // Which generator and which model is `modelRouting.stills` (decision 208)
   // — a routed choice like every LLM task, not an inference from which key

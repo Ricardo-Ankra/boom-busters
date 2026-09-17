@@ -11,11 +11,12 @@ import {
   updateSettings,
 } from '@boom-busters/db'
 import { mockImageGen } from '@boom-busters/providers'
+import { STILL_GENERATIONS } from '@boom-busters/schemas'
 import type { StillBrief } from '@boom-busters/schemas'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { listLedger } from '@boom-busters/cost'
 import { db } from '@/lib/db'
-import { generateStillCandidates, stillSlotEstimateUsd } from './visual-assets'
+import { generateStillCandidates, stillsEstimateUsd } from './visual-assets'
 
 /**
  * Still generation with the cast (decision 253), in mock-provider mode
@@ -65,6 +66,12 @@ describeDb('generateStillCandidates with the cast', () => {
     vi.stubEnv('MOCK_PROVIDERS', '1')
     generate.mockClear()
     await seed(db)
+    // Every generation here passes the budget guard, and `seed` only creates
+    // the settings row when it is absent — so a ceiling of $0, left in the
+    // shared test database by one of the runner suites that asserts the
+    // budget gate, would fail this file on whatever ran first. Own the
+    // setting rather than inherit it.
+    await updateSettings(db, { budgets: { monthlyCeilingUsd: 100 } })
     for (const member of await listCastMembers(db, FIXTURE_PROJECT_ID)) {
       await deleteCastMember(db, member.id)
     }
@@ -199,10 +206,81 @@ describeDb('generateStillCandidates with the cast', () => {
       await generateStillCandidates(still, FIXTURE_PROJECT_ID)
       expect(await lastLedgerModel()).toBe('gemini-2.5-flash-image')
     })
+  })
 
-    it('quotes the dearer route, because a slot is priced before it is planned', async () => {
-      // gemini-3-pro-image is the pricier of the two configured.
-      expect(await stillSlotEstimateUsd()).toBeGreaterThan(0.04 * 2)
+  /**
+   * The number on "Fetch visuals · est. $X" is the reason the split exists:
+   * quoting the dearer route for every still made it useless. Each brief is
+   * priced on the route it will actually take.
+   */
+  describe('estimating a planned set of stills', () => {
+    const plain: StillBrief = { ...still, depicts: [] }
+
+    beforeEach(async () => {
+      await updateSettings(db, {
+        modelRouting: {
+          stills: { provider: 'google', model: 'gemini-2.5-flash-image' },
+          stillsLikeness: { provider: 'google', model: 'gemini-3-pro-image' },
+        },
+      })
+    })
+
+    afterEach(async () => {
+      await updateSettings(db, { modelRouting: { stillsLikeness: null } })
+    })
+
+    it('prices each brief on its own route, not all of them on the dearest', async () => {
+      const emad = await insertCastMember(db, {
+        projectId: FIXTURE_PROJECT_ID,
+        name: 'Emad Mostaque',
+        role: 'Founder',
+      })
+      await setCastPhotos(db, emad.id, [photo('front-1', 'front')])
+
+      // gemini-2.5-flash-image $0.04, gemini-3-pro-image $0.15, two
+      // generations per slot: one likeness still and three plain ones.
+      const briefs = [still, plain, plain, plain]
+      const expected = (0.15 + 0.04 * 3) * STILL_GENERATIONS
+      expect(await stillsEstimateUsd(briefs, FIXTURE_PROJECT_ID)).toBeCloseTo(expected)
+
+      // Cheaper than quoting every still at the likeness route, which is
+      // exactly the over-statement this replaced.
+      expect(await stillsEstimateUsd(briefs, FIXTURE_PROJECT_ID)).toBeLessThan(
+        0.15 * 4 * STILL_GENERATIONS,
+      )
+    })
+
+    it('prices a depicted person with no photograph as a plain still', async () => {
+      await insertCastMember(db, {
+        projectId: FIXTURE_PROJECT_ID,
+        name: 'Emad Mostaque',
+        role: 'Founder',
+      })
+      expect(await stillsEstimateUsd([still], FIXTURE_PROJECT_ID)).toBeCloseTo(
+        0.04 * STILL_GENERATIONS,
+      )
+    })
+
+    it('ignores briefs that are not stills, which cost nothing to fetch', async () => {
+      const stock = { ...still, type: 'stock' as const }
+      expect(await stillsEstimateUsd([stock as unknown as typeof still], FIXTURE_PROJECT_ID)).toBe(
+        0,
+      )
+      expect(await stillsEstimateUsd([], FIXTURE_PROJECT_ID)).toBe(0)
+    })
+
+    it('quotes what the run then spends, for the same brief', async () => {
+      const emad = await insertCastMember(db, {
+        projectId: FIXTURE_PROJECT_ID,
+        name: 'Emad Mostaque',
+        role: 'Founder',
+      })
+      await setCastPhotos(db, emad.id, [photo('front-1', 'front')])
+
+      const quoted = await stillsEstimateUsd([still], FIXTURE_PROJECT_ID)
+      await generateStillCandidates(still, FIXTURE_PROJECT_ID)
+      const [entry] = await listLedger(db, { projectId: FIXTURE_PROJECT_ID, limit: 1 })
+      expect(entry?.estimatedUsd).toBeCloseTo(quoted)
     })
   })
 
