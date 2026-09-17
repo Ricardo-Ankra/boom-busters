@@ -114,6 +114,37 @@ describe('TimelineSchema', () => {
     expect(TimelineSchema.safeParse(raw).success).toBe(false)
   })
 
+  it('accepts a headline slot and refuses one on another type (decision 257)', () => {
+    const payload = {
+      kind: 'headline',
+      outlet: 'The Financial Record',
+      headline: 'Auditors cannot find the $1.9 billion the company says it holds',
+      publishedAt: '2023-03-14',
+      author: 'Elena Marsh',
+      emphasis: '$1.9 billion',
+      sourceLabel: 'financialrecord.example/2023/03/14',
+      sourceUrl: 'https://financialrecord.example/2023/03/14',
+      claimId: CLAIM,
+    }
+    const slot = {
+      type: 'headline' as const,
+      startMs: 0,
+      durationMs: 6000,
+      transition: 'cut' as const,
+      motion: { kind: 'static' as const },
+      payload,
+    }
+    expect(TimelineSlotSchema.parse(slot).payload.kind).toBe('headline')
+    expect(TimelineSlotSchema.safeParse({ ...slot, type: 'still' }).success).toBe(false)
+    // A timestamp where a date belongs would print a time on screen.
+    expect(
+      TimelineSlotSchema.safeParse({
+        ...slot,
+        payload: { ...payload, publishedAt: '2023-03-14T06:02:11Z' },
+      }).success,
+    ).toBe(false)
+  })
+
   it('rejects a slot whose payload contradicts its type', () => {
     const result = TimelineSlotSchema.safeParse({
       type: 'chart',

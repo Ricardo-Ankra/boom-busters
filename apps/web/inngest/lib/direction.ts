@@ -102,6 +102,8 @@ export async function loadDirectionInputs(projectId: string): Promise<{
     text: claim.text,
     sourceUrl: claim.sourceUrl,
     confidence: claim.confidence,
+    // Which claims a headline card may cite (decision 257).
+    sourceType: claim.sourceType,
   }))
   const settings = await getSettings(db)
   const members = await listCastMembers(db, projectId)
@@ -198,8 +200,11 @@ export async function planChapterSlots(input: {
   caseTitle: string
   chapter: { id: string; title: string; number: number }
   paragraphs: readonly TimedParagraph[]
+  /**
+   * The claim list IN PROMPT ORDER: its positions are the numbers the model
+   * cites, and its source types decide which claims may back a headline card.
+   */
   claims: readonly ScriptClaim[]
-  claimIds: readonly string[]
   styleAnchors: string
   direction: DirectorsBook | null
   /** Cast members with a reference photograph (decision 253, amended). */
@@ -237,7 +242,7 @@ export async function planChapterSlots(input: {
     chapterId: input.chapter.id,
     planned: slots,
     paragraphs: input.paragraphs,
-    claimIds: input.claimIds,
+    claims: input.claims,
   })
   return { rows: conversion.rows, rejected: dropped + conversion.rejected.length }
 }

@@ -3,6 +3,7 @@ import {
   SelfCheckSchema,
   ShortsCandidatesSchema,
   TeaserScriptSchema,
+  claimCarriesArticle,
   countWords,
   splitSentences,
 } from '@boom-busters/schemas'
@@ -29,6 +30,12 @@ export interface ScriptClaim {
   confidence: string
   /** Whether a court or regulator actually ruled. Drives "alleged". */
   adjudicated?: boolean
+  /**
+   * The kind of source behind the claim. Only a `major_outlet` claim with a
+   * surviving URL can back a headline shot (decision 257), so the claim list
+   * marks those and the runner enforces it.
+   */
+  sourceType?: string
 }
 
 /**
@@ -46,7 +53,8 @@ export function claimList(claims: readonly ScriptClaim[]): string {
       (claim, index) =>
         `[${index + 1}] (id: ${claim.id}) ${claim.text}` +
         `${claim.adjudicated ? ' — ADJUDICATED' : ' — NOT adjudicated'}` +
-        `${claim.confidence === 'unverified' ? ' — UNVERIFIED' : ''}`,
+        `${claim.confidence === 'unverified' ? ' — UNVERIFIED' : ''}` +
+        `${claimCarriesArticle(claim) ? ' — NEWS ARTICLE' : ''}`,
     )
     .join('\n')
 }

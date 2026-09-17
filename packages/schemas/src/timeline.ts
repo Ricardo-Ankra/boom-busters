@@ -187,15 +187,49 @@ export const MapPayloadSchema = z.object({
   route: z.boolean(),
 })
 
+/**
+ * A cited news headline, embedded whole (decision 257).
+ *
+ * Every string the card shows is here, for the reason chart series are: a
+ * timeline is a self-contained snapshot, and a render six months from now must
+ * not depend on the article still being online, or on the stored record not
+ * having been corrected since. `claimId` and `sourceUrl` are the audit trail
+ * back to what the frame quotes.
+ */
+export const HeadlinePayloadSchema = z.object({
+  kind: z.literal('headline'),
+  outlet: z.string().min(1),
+  headline: z.string().min(1),
+  /** Day precision: the card shows a date, never a time. */
+  publishedAt: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'must be a YYYY-MM-DD date'),
+  /** Absent is a real answer: plenty of reporting carries no byline. */
+  author: z.string().min(1).optional(),
+  deck: z.string().min(1).optional(),
+  emphasis: z.string().min(1).optional(),
+  /** What the card prints bottom right, already elided to fit. */
+  sourceLabel: z.string().min(1),
+  sourceUrl: z.string().min(1),
+  claimId: UlidSchema,
+})
+
 export const SlotPayloadSchema = z.discriminatedUnion('kind', [
   ImagePayloadSchema,
   VideoPayloadSchema,
   ChartPayloadSchema,
   MapPayloadSchema,
+  HeadlinePayloadSchema,
 ])
 export type SlotPayload = z.infer<typeof SlotPayloadSchema>
 
-export const TIMELINE_SLOT_TYPES = ['stock', 'archival', 'still', 'upload', 'chart', 'map'] as const
+export const TIMELINE_SLOT_TYPES = [
+  'stock',
+  'archival',
+  'still',
+  'upload',
+  'chart',
+  'map',
+  'headline',
+] as const
 export type TimelineSlotType = (typeof TIMELINE_SLOT_TYPES)[number]
 
 /** Which payload kinds each slot type may carry. */
@@ -206,6 +240,7 @@ export const SLOT_PAYLOAD_KINDS: Record<TimelineSlotType, readonly SlotPayload['
   upload: ['image'],
   chart: ['chart'],
   map: ['map'],
+  headline: ['headline'],
 }
 
 export const TimelineSlotSchema = z

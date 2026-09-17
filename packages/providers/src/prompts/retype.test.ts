@@ -73,7 +73,10 @@ describe('parseRetypedBrief', () => {
         reveal: 'draw-on',
       },
     })
-    const brief = parseRetypedBrief(text, { targetType: 'chart', claimIds: [CLAIM_A, CLAIM_B] })
+    const brief = parseRetypedBrief(text, {
+      targetType: 'chart',
+      claims: [{ id: CLAIM_A }, { id: CLAIM_B }],
+    })
     expect(brief).toMatchObject({ type: 'chart', dataRefs: [CLAIM_A] })
     expect(ShotBriefSchema.parse(brief)).toBeTruthy()
   })
@@ -82,7 +85,7 @@ describe('parseRetypedBrief', () => {
     expect(() =>
       parseRetypedBrief(JSON.stringify({ error: 'No sourced numbers cover this beat.' }), {
         targetType: 'chart',
-        claimIds: [CLAIM_A],
+        claims: [{ id: CLAIM_A }],
       }),
     ).toThrow(/No sourced numbers/)
   })
@@ -99,9 +102,9 @@ describe('parseRetypedBrief', () => {
         route: false,
       },
     })
-    expect(() => parseRetypedBrief(text, { targetType: 'chart', claimIds: [CLAIM_A] })).toThrow(
-      /got "map"/,
-    )
+    expect(() =>
+      parseRetypedBrief(text, { targetType: 'chart', claims: [{ id: CLAIM_A }] }),
+    ).toThrow(/got "map"/)
   })
 
   it('rejects a chart citing claim numbers that do not exist', () => {
@@ -128,9 +131,9 @@ describe('parseRetypedBrief', () => {
         reveal: 'none',
       },
     })
-    expect(() => parseRetypedBrief(text, { targetType: 'chart', claimIds: [CLAIM_A] })).toThrow(
-      /do not exist/,
-    )
+    expect(() =>
+      parseRetypedBrief(text, { targetType: 'chart', claims: [{ id: CLAIM_A }] }),
+    ).toThrow(/do not exist/)
   })
 })
 
