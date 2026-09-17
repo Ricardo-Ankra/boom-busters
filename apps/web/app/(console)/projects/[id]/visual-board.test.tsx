@@ -439,6 +439,19 @@ describe('the plan phase (staged-visuals design)', () => {
     expect(approvePlanAction).toHaveBeenCalledWith(PROJECT)
   })
 
+  it('offers the re-plan beside the fetch, naming the slots it discards', async () => {
+    render(<VisualBoard projectId={PROJECT} model={planModel()} colors={COLORS} />)
+
+    // Both spends sit in one row: fetch this plan, or plan again.
+    expect(screen.getByRole('button', { name: /Fetch visuals/ })).toBeVisible()
+    await userEvent.click(screen.getByRole('button', { name: /Re-plan shot list · ≈\$0\.15/ }))
+    expect(replanShotsAction).not.toHaveBeenCalled()
+    expect(screen.getByText(/planned again from the saved direction/)).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: /^Re-plan now$/ }))
+    expect(replanShotsAction).toHaveBeenCalledWith(PROJECT)
+  })
+
   it('re-types a slot through the format picker — the suggestion is not a lock', async () => {
     render(<VisualBoard projectId={PROJECT} model={planModel()} colors={COLORS} />)
 

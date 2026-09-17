@@ -6,18 +6,16 @@ import type { DirectorsBook, Principal } from '@boom-busters/schemas'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ConfirmButton } from '@/components/confirm-button'
-import {
-  redraftDirectionAction,
-  replanShotsAction,
-  saveDirectionAction,
-  type ActionResult,
-} from './visuals-actions'
+import { redraftDirectionAction, saveDirectionAction, type ActionResult } from './visuals-actions'
 
 /**
  * The Director's Book on the plan screen (decision 252). Text areas for the
  * prose fields, one item per line for the lists, one row per principal. Save
- * is free and feeds the next re-plan; Redraft and Re-plan are the two paid
- * buttons, each confirming what it throws away.
+ * is free and feeds the next re-plan; Redraft is the paid button here,
+ * confirming what it throws away. Re-planning the shot list sits on the Shot
+ * plan card beside "Fetch visuals" (decision 252, amended): it acts on the
+ * plan, not on the book, and that is where the producer is looking when they
+ * decide the plan reads wrong.
  *
  * The fields hold RAW text while the owner types and are parsed into the
  * book only on Save. Parsing on every keystroke re-serialised the field
@@ -29,7 +27,6 @@ import {
  */
 
 const REDRAFT_ESTIMATE = '≈$0.05'
-const REPLAN_ESTIMATE = '≈$0.15'
 
 type Act = (key: string, run: () => Promise<ActionResult>, success: string) => Promise<void>
 
@@ -138,14 +135,12 @@ export function fromForm(form: DirectionForm): DirectorsBook {
 export function DirectionCard({
   projectId,
   direction,
-  slotsFetched,
   busy = false,
   act,
 }: {
   projectId: string
   direction: DirectorsBook | null
   /** Slots already resolved during plan review; a re-plan discards them. */
-  slotsFetched: number
   busy?: boolean
   act: Act
 }) {
@@ -239,26 +234,6 @@ export function DirectionCard({
                     'direction-redraft',
                     () => redraftDirectionAction(projectId),
                     'Redrafting the direction',
-                  )
-                }
-              />
-              <ConfirmButton
-                variant="outline"
-                confirmVariant="primary"
-                busy={busy}
-                label={`Re-plan shot list · ${REPLAN_ESTIMATE}`}
-                confirmLabel="Re-plan now"
-                consequence={
-                  'Every chapter is planned again from the saved direction.' +
-                  (slotsFetched > 0
-                    ? ` ${slotsFetched} slot${slotsFetched === 1 ? '' : 's'} already fetched are discarded.`
-                    : '')
-                }
-                onConfirm={() =>
-                  act(
-                    'direction-replan',
-                    () => replanShotsAction(projectId),
-                    'Re-planning the shot list',
                   )
                 }
               />

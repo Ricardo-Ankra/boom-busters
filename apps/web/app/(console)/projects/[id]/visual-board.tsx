@@ -30,6 +30,7 @@ import {
   finaliseOwnUploadAction,
   redirectSceneAction,
   refetchSlotAction,
+  replanShotsAction,
   retypeSlotAction,
   type ActionResult,
 } from './visuals-actions'
@@ -107,6 +108,9 @@ const slotTypeLabel = (type: string) => SLOT_TYPE_LABELS[type] ?? type
 function TypeBadge({ type }: { type: string }) {
   return <Badge shape="tag">{slotTypeLabel(type)}</Badge>
 }
+
+/** What one re-plan of every chapter costs, the Director's Book estimate's twin. */
+const REPLAN_ESTIMATE = '≈$0.15'
 
 export function VisualBoard({
   projectId,
@@ -207,7 +211,6 @@ export function VisualBoard({
           <DirectionCard
             projectId={projectId}
             direction={model.direction}
-            slotsFetched={model.coverage.resolved}
             busy={busySlot !== null && busySlot.startsWith('direction-')}
             act={act}
           />
@@ -257,6 +260,26 @@ export function VisualBoard({
                       () => approvePlanAction(projectId),
                       'Fetching — the board fills in as candidates land',
                     )
+                  }
+                />
+                {/* Beside the spend it competes with (decision 252, amended):
+                    the producer decides the plan reads wrong while looking at
+                    the plan, not while looking at the book above it. */}
+                <ConfirmButton
+                  variant="outline"
+                  confirmVariant="primary"
+                  label={`Re-plan shot list · ${REPLAN_ESTIMATE}`}
+                  confirmLabel="Re-plan now"
+                  consequence={
+                    'Every chapter is planned again from the saved direction.' +
+                    (model.coverage.resolved > 0
+                      ? ` ${model.coverage.resolved} slot${
+                          model.coverage.resolved === 1 ? '' : 's'
+                        } already fetched are discarded.`
+                      : '')
+                  }
+                  onConfirm={() =>
+                    act('replan', () => replanShotsAction(projectId), 'Re-planning the shot list')
                   }
                 />
               </div>

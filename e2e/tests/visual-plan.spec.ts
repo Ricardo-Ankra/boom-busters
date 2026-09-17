@@ -86,5 +86,7 @@ test.describe('the Direction card (decision 252)', () => {
   test('sits on the plan screen and offers a priced redraft', async ({ page }) => {
     await expect(page.getByText('Direction', { exact: true })).toBeVisible()
     await expect(page.getByRole('button', { name: /Redraft direction · ≈\$0\.05/ })).toBeVisible()
+    // Re-planning belongs to the plan, so it sits with the fetch, not here.
+    await expect(page.getByRole('button', { name: /Re-plan shot list/ })).toBeVisible()
   })
 })
