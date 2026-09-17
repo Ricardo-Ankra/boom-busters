@@ -77,7 +77,7 @@ export interface CompileInput {
   /** Script order; the compiler lays them end to end on the clock. */
   paragraphs: CompileParagraph[]
   slots: CompileSlot[]
-  music: { r2Key: string } | null
+  music: { r2Key: string; durationMs?: number | null } | null
   captions: { words: Caption[]; style: 'karaoke' | 'none' }
   fps?: number
   width?: number
@@ -318,6 +318,7 @@ export function compileTimeline(input: CompileInput): Timeline {
   const music = input.music
     ? {
         r2Key: input.music.r2Key,
+        ...(input.music.durationMs ? { durationMs: input.music.durationMs } : {}),
         gainDb: input.brand.music.bedGainDb,
         duckingCurve: buildDuckingCurve(narration, {
           bedGainDb: input.brand.music.bedGainDb,

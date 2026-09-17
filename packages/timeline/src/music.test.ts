@@ -17,6 +17,19 @@ describe('swapMusicBed', () => {
     expect(swapped.slots).toEqual(original.slots)
   })
 
+  it('carries the bed’s own length, which is what lets the loop overlap', () => {
+    const original = compileTimeline(goldenInput())
+    const swapped = swapMusicBed(original, {
+      r2Key: 'boom-busters/music/other.mp3',
+      durationMs: 183_000,
+    })
+    expect(swapped.music?.durationMs).toBe(183_000)
+    // A bed the library never measured leaves the field off rather than
+    // inventing a length: the renderer falls back to a plain loop.
+    const unmeasured = swapMusicBed(original, { r2Key: 'boom-busters/music/old.mp3' })
+    expect(unmeasured.music?.durationMs).toBeUndefined()
+  })
+
   it('builds a correct curve for a timeline first compiled with NO music', () => {
     const silent = compileTimeline({ ...goldenInput(), music: null })
     expect(silent.music).toBeNull()

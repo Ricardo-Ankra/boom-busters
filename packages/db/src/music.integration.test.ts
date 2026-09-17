@@ -1,7 +1,13 @@
 import { sql as dsql } from 'drizzle-orm'
 import { afterAll, beforeEach, describe, expect, it } from 'vitest'
 import { createDb } from './client'
-import { deleteMusicBed, insertMusicBed, listMusicBeds, musicBedByR2Key } from './music'
+import {
+  deleteMusicBed,
+  insertMusicBed,
+  listMusicBeds,
+  musicBedByR2Key,
+  setMusicBedDuration,
+} from './music'
 import { countMusicBeds } from './queries'
 import { assets } from './schema'
 import { requireTestDatabase } from './test-database'
@@ -79,6 +85,19 @@ suite('the music library', () => {
     const bed = await insertMusicBed(db, { ...BED, attributionText: 'Music by A.' })
     expect((await musicBedByR2Key(db, BED.r2Key))?.id).toBe(bed.id)
     expect(await musicBedByR2Key(db, 'boom-busters/music/nope.mp3')).toBeUndefined()
+  })
+
+  it('fills in a length the library never had, and never overwrites one', async () => {
+    // Beds uploaded before the renderer needed a length carry none; listing
+    // the library measures them in the browser and posts the number back.
+    const bed = await insertMusicBed(db, BED)
+    expect(bed.durationMs).toBeNull()
+
+    expect((await setMusicBedDuration(db, bed.id, 183_000))?.durationMs).toBe(183_000)
+    // A second measurement of the same content-addressed bytes changes
+    // nothing: the first answer stands.
+    expect(await setMusicBedDuration(db, bed.id, 999)).toBeUndefined()
+    expect((await musicBedByR2Key(db, BED.r2Key))?.durationMs).toBe(183_000)
   })
 
   it('deletes a bed and hands back the row so the bytes can be removed', async () => {

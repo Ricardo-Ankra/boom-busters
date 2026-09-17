@@ -4669,3 +4669,45 @@ Recorded whenever the spec left something open and an implementation was chosen.
     times the planner guessed. The cost is about 90 KB of words crossing the
     visuals runner's setup step for a 15-minute film, well inside Inngest's
     step output limit.
+
+40. **The music bed loops without a seam** (decision 256; 2026-09-17, owner
+    watching the end of the cut: "we can hear the fade out of the background
+    track, the delay, and then the start of the music loop again before the
+    video ends, which sounds bad because you can hear that change. Is there a
+    way we can blend the loop nicely so there isn't an obvious start and end
+    as it loops"). A library track is written to end: it fades out and leaves
+    a tail of silence. `<Audio loop>` restarts the file at that end, so the
+    written ending became a seam in the middle of the film, the most obviously
+    machine-made sound in the cut.
+
+    The bed is now laid down as overlapping copies. Each copy stops a
+    crossfade short of the file's end, which is where the fade-out lives, and
+    the next starts a crossfade before that, so the two overlap for five
+    seconds: the outgoing follows cos, the incoming sin. That pair is the one
+    that holds a constant loudness for uncorrelated signals, and a track's
+    tail against its own intro is as uncorrelated as it gets, where a straight
+    linear crossfade dips in the middle. The film's last 2.5 seconds take the
+    bed down the same curve, so the music follows the picture out instead of
+    stopping mid-chord on the final frame. The maths is pure and unit-tested
+    in `packages/compositions/src/lib/music-loop.ts`; the component reads the
+    numbers out.
+
+    Overlapping copies need the track's LENGTH, and nothing server-side can
+    read one out of an MP3. So the browser measures it, where the file and a
+    decoder both are: at upload from the file itself, and for beds already in
+    the library, from the `<audio>` element the music tab already renders for
+    each one, posted back through `recordMusicBedDurationAction`. The write
+    only ever fills a blank (`setMusicBedDuration` has `isNull` in its where
+    clause), which is safe because a bed's bytes are content-addressed. The
+    length then travels with the key into the timeline (`MusicTrack.durationMs`,
+    set by both the compiler and `swapMusicBed`), so the renderer is
+    synchronous and every frame of a render sees the same soundtrack. A bed
+    with no measured length still plays: it falls back to the plain loop,
+    because an audible seam beats silence.
+
+    Two notes. The preview screen's gain line is drawn from the ducking curve
+    alone, so it shows neither the crossfades nor the outro fade; the curve is
+    still the whole truth about ducking, which is what the line is for. And an
+    existing timeline carries no length until it is recompiled, so a project
+    planned before this needs the library page opened once (which measures the
+    bed) and its preview rebuilt.

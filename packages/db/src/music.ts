@@ -1,4 +1,4 @@
-import { desc, eq, and } from 'drizzle-orm'
+import { desc, eq, and, isNull } from 'drizzle-orm'
 import type { Database } from './client'
 import { assets } from './schema'
 import type { AssetRow } from './schema'
@@ -55,6 +55,27 @@ export async function insertMusicBed(
     .returning()
 
   if (!row) throw new Error('The music bed could not be stored')
+  return row
+}
+
+/**
+ * Record a bed's length, measured by the browser that listed it.
+ *
+ * Beds uploaded before the renderer needed a length carry none, and nothing
+ * server-side can read one out of an MP3 (decision 256). Only ever fills a
+ * blank: a stored length is the one the file had when it was uploaded, and
+ * the bytes are content-addressed, so it cannot go stale.
+ */
+export async function setMusicBedDuration(
+  db: Database,
+  id: string,
+  durationMs: number,
+): Promise<AssetRow | undefined> {
+  const [row] = await db
+    .update(assets)
+    .set({ durationMs, updatedAt: new Date() })
+    .where(and(eq(assets.id, id), eq(assets.kind, 'music'), isNull(assets.durationMs)))
+    .returning()
   return row
 }
 

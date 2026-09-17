@@ -302,8 +302,16 @@ describe('pickMusicBed', () => {
   it('takes the newest bed, or nothing from an empty library', () => {
     expect(pickMusicBed([{ r2Key: 'boom-busters/music/new.mp3' }, { r2Key: 'old' }])).toEqual({
       r2Key: 'boom-busters/music/new.mp3',
+      durationMs: null,
     })
     expect(pickMusicBed([])).toBeNull()
+  })
+
+  it("carries the bed's length, which is what lets the renderer overlap the loop", () => {
+    expect(pickMusicBed([{ r2Key: 'boom-busters/music/new.mp3', durationMs: 183_000 }])).toEqual({
+      r2Key: 'boom-busters/music/new.mp3',
+      durationMs: 183_000,
+    })
   })
 })
 

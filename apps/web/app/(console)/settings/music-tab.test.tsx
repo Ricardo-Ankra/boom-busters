@@ -8,11 +8,13 @@ import type { MusicBedView } from './music-tab'
 const createMusicUploadAction = vi.fn()
 const finaliseMusicBedAction = vi.fn()
 const deleteMusicBedAction = vi.fn()
+const recordMusicBedDurationAction = vi.fn()
 
 vi.mock('./actions', () => ({
   createMusicUploadAction: (...args: unknown[]) => createMusicUploadAction(...args),
   finaliseMusicBedAction: (...args: unknown[]) => finaliseMusicBedAction(...args),
   deleteMusicBedAction: (...args: unknown[]) => deleteMusicBedAction(...args),
+  recordMusicBedDurationAction: (...args: unknown[]) => recordMusicBedDurationAction(...args),
 }))
 
 const refresh = vi.fn()
@@ -53,6 +55,7 @@ const BEDS: MusicBedView[] = [
     moodTags: ['tension', 'slow build'],
     createdAt: '2026-08-18T10:00:00.000Z',
     attributionText: 'Music by Lesfm from Pixabay.',
+    durationMs: 183_000,
   },
 ]
 
