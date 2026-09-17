@@ -1,6 +1,13 @@
 'use client'
 
 import * as React from 'react'
+import {
+  barFigures,
+  chartLayout,
+  figureBaseline,
+  fitFigureSize,
+  formatFigure,
+} from '@boom-busters/compositions/chart'
 import { fitBounds, graticule, landPaths, projector } from '@boom-busters/compositions/geo'
 import type { ChartBrief, MapBrief } from '@boom-busters/schemas'
 
@@ -30,49 +37,21 @@ export interface BrandChartColors {
 
 const WIDTH = 480
 const HEIGHT = 220
-const PAD = { top: 16, right: 16, bottom: 28, left: 52 }
-
-function niceNumber(value: number): string {
-  if (Math.abs(value) >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`
-  if (Math.abs(value) >= 1_000) return `${(value / 1_000).toFixed(1)}k`
-  return Math.abs(value) >= 100 ? value.toFixed(0) : `${Number(value.toFixed(2))}`
-}
 
 export function ChartPreview({ brief, colors }: { brief: ChartBrief; colors: BrandChartColors }) {
-  const plotW = WIDTH - PAD.left - PAD.right
-  const plotH = HEIGHT - PAD.top - PAD.bottom
-
-  // The x domain is the union of every series' labels, in first-seen order.
-  const labels: string[] = []
-  for (const series of brief.series) {
-    for (const point of series.points) {
-      if (!labels.includes(point.x)) labels.push(point.x)
-    }
-  }
-
   const stacked = brief.chartKind === 'stacked'
-  const values = stacked
-    ? labels.map((label) =>
-        brief.series.reduce(
-          (sum, series) => sum + (series.points.find((p) => p.x === label)?.y ?? 0),
-          0,
-        ),
-      )
-    : brief.series.flatMap((series) => series.points.map((point) => point.y))
+  const bars = brief.chartKind === 'bar' || stacked || brief.chartKind === 'waterfall'
 
-  const rawMin = Math.min(...values, 0)
-  const rawMax = Math.max(...values)
-  const span = rawMax - rawMin || 1
-  const yMin = rawMin
-  const yMax = rawMax + span * 0.06
+  // Bars carry their own figures, so they need headroom above and no left
+  // gutter; a line still needs the gutter for its extremes.
+  const pad = { top: bars ? 26 : 16, right: 16, bottom: 28, left: bars ? 12 : 52 }
+  // The geometry is the render's own module, not a second copy of it: the
+  // board is where the human approves the chart, so it must be the chart.
+  const layout = chartLayout(brief.series, brief.chartKind, { width: WIDTH, height: HEIGHT, pad })
+  const { labels, plotHeight: plotH, bandWidth: bandW, x, y, bandX, unit, yMin } = layout
 
-  const x = (index: number) =>
-    PAD.left + (labels.length <= 1 ? plotW / 2 : (index / (labels.length - 1)) * plotW)
-  const bandX = (index: number) => PAD.left + (index / labels.length) * plotW
-  const bandW = plotW / Math.max(1, labels.length)
-  const y = (value: number) => PAD.top + plotH - ((value - yMin) / (yMax - yMin)) * plotH
-
-  const unit = brief.series[0]?.unit ?? ''
+  const figures = barFigures(brief.series, brief.chartKind, layout)
+  const figureSize = fitFigureSize(figures, 11, 7)
   const first = labels[0]
   const last = labels[labels.length - 1]
 
@@ -88,10 +67,10 @@ export function ChartPreview({ brief, colors }: { brief: ChartBrief; colors: Bra
       {[0.25, 0.5, 0.75].map((t) => (
         <line
           key={t}
-          x1={PAD.left}
-          x2={WIDTH - PAD.right}
-          y1={PAD.top + plotH * t}
-          y2={PAD.top + plotH * t}
+          x1={pad.left}
+          x2={WIDTH - pad.right}
+          y1={pad.top + plotH * t}
+          y2={pad.top + plotH * t}
           stroke={colors.textSecondary}
           strokeOpacity={0.15}
         />
@@ -195,14 +174,14 @@ export function ChartPreview({ brief, colors }: { brief: ChartBrief; colors: Bra
             <line
               x1={x(index)}
               x2={x(index)}
-              y1={PAD.top}
-              y2={PAD.top + plotH}
+              y1={pad.top}
+              y2={pad.top + plotH}
               stroke={colors.accent}
               strokeDasharray="3 3"
             />
             <text
-              x={Math.min(x(index) + 4, WIDTH - PAD.right - 60)}
-              y={PAD.top + 12}
+              x={Math.min(x(index) + 4, WIDTH - pad.right - 60)}
+              y={pad.top + 12}
               fontSize={10}
               fill={colors.accent}
               fontFamily="var(--font-mono, monospace)"
@@ -213,39 +192,50 @@ export function ChartPreview({ brief, colors }: { brief: ChartBrief; colors: Bra
         )
       })}
 
-      {/* Axis facts: unit, extremes, first and last x. */}
-      <text
-        x={8}
-        y={PAD.top + 8}
-        fontSize={10}
-        fill={colors.textSecondary}
-        fontFamily="var(--font-mono, monospace)"
-      >
-        {unit}
-      </text>
-      <text
-        x={PAD.left - 6}
-        y={y(yMax) + 10}
-        fontSize={10}
-        fill={colors.textSecondary}
-        textAnchor="end"
-        fontFamily="var(--font-mono, monospace)"
-      >
-        {niceNumber(rawMax)}
-      </text>
-      <text
-        x={PAD.left - 6}
-        y={y(yMin)}
-        fontSize={10}
-        fill={colors.textSecondary}
-        textAnchor="end"
-        fontFamily="var(--font-mono, monospace)"
-      >
-        {niceNumber(rawMin)}
-      </text>
+      {/* Every bar says its own number (decision 254): the same rule, and the
+          same figures, that the render draws. */}
+      {figures.map((figure) => (
+        <text
+          key={figure.key}
+          x={figure.x}
+          y={figureBaseline(figure, figureSize)}
+          fontSize={figureSize}
+          fill={colors.textPrimary}
+          textAnchor="middle"
+          fontFamily="var(--font-mono, monospace)"
+        >
+          {figure.text}
+        </text>
+      ))}
+
+      {/* A line needs its extremes to be read; a bar has said its number. */}
+      {bars ? null : (
+        <>
+          <text
+            x={pad.left - 6}
+            y={y(layout.rawMax) + 10}
+            fontSize={10}
+            fill={colors.textSecondary}
+            textAnchor="end"
+            fontFamily="var(--font-mono, monospace)"
+          >
+            {formatFigure(layout.rawMax, unit)}
+          </text>
+          <text
+            x={pad.left - 6}
+            y={y(layout.rawMin)}
+            fontSize={10}
+            fill={colors.textSecondary}
+            textAnchor="end"
+            fontFamily="var(--font-mono, monospace)"
+          >
+            {formatFigure(layout.rawMin, unit)}
+          </text>
+        </>
+      )}
       {first ? (
         <text
-          x={PAD.left}
+          x={pad.left}
           y={HEIGHT - 8}
           fontSize={10}
           fill={colors.textSecondary}
@@ -256,7 +246,7 @@ export function ChartPreview({ brief, colors }: { brief: ChartBrief; colors: Bra
       ) : null}
       {last && last !== first ? (
         <text
-          x={WIDTH - PAD.right}
+          x={WIDTH - pad.right}
           y={HEIGHT - 8}
           fontSize={10}
           fill={colors.textSecondary}

@@ -65,6 +65,29 @@ const CHART_WATERFALL: ChartPayload = {
   reveal: 'draw-on',
 }
 
+/**
+ * The bar chart that set the figure rule (decision 254): a unit of "USD
+ * Millions" and bars of 1000 and 4000, which the screen must read as one and
+ * four billion dollars without the viewer doing the multiplication.
+ */
+const CHART_BAR: ChartPayload = {
+  kind: 'chart',
+  chartKind: 'bar',
+  series: [
+    {
+      label: 'Reported valuation',
+      unit: 'USD Millions',
+      points: [
+        { x: 'Oct 2022', y: 1000 },
+        { x: 'Spring 2023', y: 4000 },
+      ],
+    },
+  ],
+  dataRefs: ['01HQ00000000000000000000AA'],
+  takeaway: 'Four billion dollars, six months, and the product was free.',
+  reveal: 'draw-on',
+}
+
 /** A dev-only sample clip for Studio; never part of a render or snapshot. */
 const STOCK_SAMPLE_URL =
   'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4'
@@ -185,6 +208,14 @@ export function Root() {
         durationInFrames={240}
         {...WIDE}
         defaultProps={{ payload: CHART_LINE, brand: FIXTURE_BRAND, durationInFrames: 240 }}
+      />
+
+      <Composition
+        id="ChartRevealBar"
+        component={ChartReveal}
+        durationInFrames={240}
+        {...WIDE}
+        defaultProps={{ payload: CHART_BAR, brand: FIXTURE_BRAND, durationInFrames: 240 }}
       />
 
       <Composition
