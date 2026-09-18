@@ -66,6 +66,13 @@ export const slotRefetcher = inngest.createFunction(
       const slot = await getShotSlot(db, slotId)
       if (!slot) throw new NonRetriableError(`Shot slot ${slotId} no longer exists`)
 
+      // A linked slot shows another slot's shot (decision 261); a fetch for
+      // it would overwrite the copy. The action refuses first; this catches
+      // an event already in flight when the link was made.
+      if (slot.reuseOfSlotId) {
+        return { status: 'skipped' as const, candidates: 0, reused: slot.reuseOfSlotId }
+      }
+
       // Re-parsed rather than trusted: the brief was validated on write, but
       // this is the boundary where jsonb becomes typed again.
       const brief = ShotBriefSchema.parse(slot.brief)

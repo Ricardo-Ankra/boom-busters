@@ -1,4 +1,5 @@
 import {
+  copyReusedShots,
   getProject,
   getSettings,
   latestScriptParagraphSources,
@@ -366,6 +367,10 @@ export const visualsRunner = inngest.createFunction(
       )
       return { projectId, outcome: 'failed' as const, failed, total: outcomes.length }
     }
+
+    // Linked slots (decision 261) skipped the fan-out; they take their
+    // source's chosen shot now, or a placeholder when the source has none.
+    await step.run('copy-reused-shots', () => copyReusedShots(db, projectId))
 
     // -----------------------------------------------------------------------
     // Gate 4 — always parked; a board is an aesthetic judgment

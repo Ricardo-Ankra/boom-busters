@@ -90,4 +90,11 @@ describeDb('visuals-runner (mock mode)', () => {
       visualThesis: 'edited by the owner',
     })
   })
+
+  // The copy-reused-shots step (decision 261) has no engine test: the run
+  // cannot be driven past step.waitForEvent in this harness, even with the
+  // wait stubbed (the limit demo-pipeline.test.ts describes). The step is one
+  // line over copyReusedShots, which the db integration suite proves; the
+  // refetcher guard, which has no wait in front of it, is proved in
+  // slot-refetcher.test.ts.
 })
