@@ -13,7 +13,7 @@ import {
 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import * as React from 'react'
-import { SHOT_SLOT_TYPES } from '@boom-busters/schemas'
+import { REUSABLE_SLOT_TYPES, SHOT_SLOT_TYPES } from '@boom-busters/schemas'
 import type { ShotBrief, SlotCandidate } from '@boom-busters/schemas'
 import { Badge, type BadgeTone } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -21,6 +21,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ConfirmButton } from '@/components/confirm-button'
 import { useToast } from '@/components/ui/toast'
 import type { ArticleClaimOption, SlotView, VisualsReviewModel } from '@/lib/visuals-review'
+import { CLOSE_REUSE_MS, describeGap, timecode } from '@/lib/visuals-reuse'
 import {
   addSlotImageFromUrlAction,
   approvePlanAction,
@@ -32,11 +33,13 @@ import {
   redirectSceneAction,
   refetchArticleAction,
   refetchSlotAction,
+  reuseSlotShotAction,
   saveHeadlineAction,
   replanShotsAction,
   retypeSlotAction,
   rebriefSlotAction,
   retypeToHeadlineAction,
+  unlinkSlotReuseAction,
   type ActionResult,
 } from './visuals-actions'
 import { DirectionCard } from './direction-card'
@@ -59,11 +62,6 @@ import {
  * gapless concatenated audio is an M6 alignment product; here each paragraph
  * take plays in sequence, which is the same audio at the same moments.)
  */
-
-function timecode(ms: number): string {
-  const totalSec = Math.floor(ms / 1000)
-  return `${Math.floor(totalSec / 60)}:${String(totalSec % 60).padStart(2, '0')}`
-}
 
 function candidateThumb(candidate: SlotCandidate): string | undefined {
   if (candidate.thumbUrl) return candidate.thumbUrl
@@ -681,6 +679,7 @@ export function VisualBoard({
               act={act}
               phase={model.phase}
               articleClaims={model.articleClaims}
+              sources={allSlots}
             />
           ))}
         </section>
@@ -701,6 +700,7 @@ function SlotCard({
   act,
   phase,
   articleClaims,
+  sources,
 }: {
   slot: SlotView
   projectId: string
@@ -709,15 +709,20 @@ function SlotCard({
   act: (slotId: string, run: () => Promise<ActionResult>, success: string) => Promise<ActionResult>
   phase: VisualsReviewModel['phase']
   articleClaims: ArticleClaimOption[]
+  sources: SlotView[]
 }) {
   const [editing, setEditing] = React.useState(false)
   const [rebriefing, setRebriefing] = React.useState(false)
+  const [reusing, setReusing] = React.useState(false)
   // Which candidate the lightbox shows, or null when it is closed. Opens on
   // the current choice, since "how does the selected media actually look at
   // size" is the question the button answers.
   const [previewIndex, setPreviewIndex] = React.useState<number | null>(null)
   const brief = slot.brief
   const planning = phase === 'plan'
+  const linked = slot.reuse
+  const lends = sources.filter((other) => other.reuse?.sourceSlotId === slot.id)
+  const picture = REUSABLE_SLOT_TYPES.includes(slot.type as (typeof REUSABLE_SLOT_TYPES)[number])
 
   return (
     <Card id={`slot-${slot.id}`}>
@@ -726,6 +731,11 @@ function SlotCard({
           <TypeBadge type={slot.type} />
           {/* During plan review an unresolved slot is not late, it is a plan. */}
           <StatusChip status={planning && slot.status === 'unresolved' ? 'planned' : slot.status} />
+          {linked ? (
+            <Badge tone="muted">
+              Reused from ch {linked.chapterIndex + 1} · {timecode(linked.startMs)}
+            </Badge>
+          ) : null}
           <span className="font-mono text-[11px] text-[var(--color-text-muted)]">
             {timecode(slot.startMs)} · {Math.round(slot.durationMs / 1000)}s
           </span>
@@ -740,6 +750,20 @@ function SlotCard({
       <CardContent className="flex flex-col gap-3">
         {brief ? (
           <p className="text-[13px] text-[var(--color-text-primary)]">{brief.description}</p>
+        ) : null}
+
+        {linked && slot.candidates.length === 0 ? (
+          <p className="text-[13px] text-[var(--color-text-secondary)]">
+            Reuses the shot at {timecode(linked.startMs)}, which has none yet.
+            {planning
+              ? ' Fetch visuals copies it when that slot lands.'
+              : ' Fetch or regenerate that slot, then pick it again.'}
+          </p>
+        ) : null}
+        {lends.length > 0 ? (
+          <p className="text-[12px] text-[var(--color-text-muted)]">
+            Also used at {lends.map((other) => timecode(other.startMs)).join(', ')}.
+          </p>
         ) : null}
 
         {/* The type-specific middle. */}
@@ -782,7 +806,7 @@ function SlotCard({
         ) : null}
 
         {/* A policy refusal (decision 252): the two ways out, on the card. */}
-        {slot.refusal && brief?.type === 'still' ? (
+        {!linked && slot.refusal && brief?.type === 'still' ? (
           <div
             className="flex flex-col gap-2 rounded-[8px] border border-[var(--color-warning)] p-3"
             role="group"
@@ -834,7 +858,7 @@ function SlotCard({
         {/* The format picker (staged-visuals design): the suggested type is a
             suggestion, not a lock. Chart and map conversions get their
             structured data drafted by the model, then land back here to edit. */}
-        {brief && !slot.briefError ? (
+        {!linked && brief && !slot.briefError ? (
           <TypePicker
             slot={slot}
             projectId={projectId}
@@ -871,15 +895,39 @@ function SlotCard({
                   <Search aria-hidden />
                   {editing
                     ? 'Close brief editor'
-                    : planning || brief.type === 'archival'
+                    : planning || brief.type === 'archival' || linked !== null
                       ? 'Edit brief'
                       : 'Edit brief & re-fetch'}
                 </Button>
+                {picture && !linked ? (
+                  <Button
+                    variant="outline"
+                    aria-expanded={reusing}
+                    onClick={() => setReusing((value) => !value)}
+                  >
+                    {reusing ? 'Close shot picker' : 'Use an existing shot'}
+                  </Button>
+                ) : null}
+                {linked ? (
+                  <Button
+                    variant="outline"
+                    busy={busy}
+                    onClick={() =>
+                      act(
+                        slot.id,
+                        () => unlinkSlotReuseAction(projectId, slot.id),
+                        'This slot will fetch its own shot again',
+                      )
+                    }
+                  >
+                    Choose its own shot
+                  </Button>
+                ) : null}
                 {/* Editing the words yourself and re-planning the whole film
                     were the only two ways to change an idea (decision 258).
                     A headline card is never offered one: every word on it is
                     read from the article, so there is no idea to have again. */}
-                {brief.type !== 'headline' ? (
+                {!linked && brief.type !== 'headline' ? (
                   <Button
                     variant="outline"
                     busy={busy && rebriefing}
@@ -893,7 +941,7 @@ function SlotCard({
                 {/* Real footage has nothing to fetch (decision 214): the
                     brief guides the owner's own search, so the only actions
                     are editing it and uploading against it. */}
-                {brief.type !== 'archival' ? (
+                {!linked && brief.type !== 'archival' ? (
                   <Button
                     variant="outline"
                     busy={busy && !editing}
@@ -927,7 +975,8 @@ function SlotCard({
                 ) : null}
               </>
             ) : null}
-            {brief.type === 'stock' || brief.type === 'archival' || brief.type === 'still' ? (
+            {!linked &&
+            (brief.type === 'stock' || brief.type === 'archival' || brief.type === 'still') ? (
               <UploadOwnButton
                 projectId={projectId}
                 slotId={slot.id}
@@ -944,7 +993,7 @@ function SlotCard({
             projectId={projectId}
             act={act}
             onDone={() => setEditing(false)}
-            planning={planning}
+            planning={planning || linked !== null}
           />
         ) : null}
 
@@ -954,6 +1003,17 @@ function SlotCard({
             projectId={projectId}
             act={act}
             onDone={() => setRebriefing(false)}
+          />
+        ) : null}
+
+        {reusing ? (
+          <ReusePicker
+            slot={slot}
+            sources={sources}
+            phase={phase}
+            projectId={projectId}
+            act={act}
+            onDone={() => setReusing(false)}
           />
         ) : null}
 
@@ -1527,6 +1587,148 @@ function RebriefForm({
         </Button>
       </div>
     </form>
+  )
+}
+
+/** The pictures a source can lend: its chosen one, then anything whose bytes the app holds. */
+function lendable(source: SlotView): SlotCandidate[] {
+  return source.candidates.filter(
+    (candidate) =>
+      candidate.chosen === true || candidate.assetId !== undefined || candidate.r2Key !== undefined,
+  )
+}
+
+/**
+ * "Use an existing shot" (decision 261): the film's other picture slots and,
+ * for each, the shots it holds that this slot could show instead of fetching
+ * its own. Built from the model the board already loaded; nothing is queried.
+ *
+ * Before Fetch nothing has a picture yet, so a row carries one button and the
+ * link is filled when the fan-out lands. On the board a slot with nothing to
+ * lend is not offered: no copy step runs there, so a link to it would never
+ * be filled. Dependants are not offered either; the original is.
+ */
+function ReusePicker({
+  slot,
+  sources,
+  phase,
+  projectId,
+  act,
+  onDone,
+}: {
+  slot: SlotView
+  sources: SlotView[]
+  phase: VisualsReviewModel['phase']
+  projectId: string
+  act: (slotId: string, run: () => Promise<ActionResult>, success: string) => Promise<ActionResult>
+  onDone: () => void
+}) {
+  const planning = phase === 'plan'
+  const offered = sources.filter(
+    (source) =>
+      source.id !== slot.id &&
+      REUSABLE_SLOT_TYPES.includes(source.type as (typeof REUSABLE_SLOT_TYPES)[number]) &&
+      source.reuse === null &&
+      (planning || lendable(source).length > 0),
+  )
+
+  const use = (source: SlotView, candidateId: string | undefined) =>
+    void act(
+      slot.id,
+      () => reuseSlotShotAction(projectId, slot.id, source.id, candidateId),
+      planning
+        ? 'Linked. Fetch visuals will copy the shot when it lands'
+        : `Now showing the shot from ${timecode(source.startMs)}`,
+    ).then((result) => {
+      if (result.ok) onDone()
+    })
+
+  return (
+    <div
+      role="group"
+      aria-label="Shots to reuse"
+      className="flex flex-col gap-3 rounded-[8px] border border-[var(--color-border)] p-3"
+    >
+      <p className="text-[12px] text-[var(--color-text-muted)]">
+        {planning
+          ? 'Fetch visuals will skip this slot and copy the shot the one you pick ends up with.'
+          : 'This slot shows the shot you pick instead of fetching its own.'}
+        {slot.candidates.length > 0
+          ? ` This replaces the ${slot.candidates.length} candidate${
+              slot.candidates.length === 1 ? '' : 's'
+            } fetched for this slot.`
+          : ''}
+      </p>
+      {offered.length === 0 ? (
+        <p className="text-[13px] text-[var(--color-text-secondary)]">
+          No other stock, AI image or real-footage slot in this film has a shot to offer yet.
+        </p>
+      ) : (
+        <ul className="flex flex-col gap-2">
+          {offered.map((source) => {
+            const pictures = lendable(source)
+            return (
+              <li
+                key={source.id}
+                className="flex flex-col gap-2 rounded-[8px] border border-[var(--color-border)] p-2"
+              >
+                <div className="flex flex-wrap items-center gap-2 text-[12px] text-[var(--color-text-secondary)]">
+                  <span className="font-mono text-[11px]">
+                    ch {source.chapterIndex + 1} · {timecode(source.startMs)}
+                  </span>
+                  <span>{describeGap(slot.startMs, source.startMs)}</span>
+                  {Math.abs(source.startMs - slot.startMs) < CLOSE_REUSE_MS ? (
+                    <Badge tone="warning">plays within a minute of this slot</Badge>
+                  ) : null}
+                </div>
+                {source.brief ? (
+                  <p className="text-[13px] text-[var(--color-text-primary)]">
+                    “{source.brief.coversText}”
+                  </p>
+                ) : null}
+                {source.brief ? (
+                  <p className="text-[12px] text-[var(--color-text-secondary)]">
+                    {source.brief.description}
+                  </p>
+                ) : null}
+                {pictures.length === 0 ? (
+                  <div>
+                    <Button variant="outline" onClick={() => use(source, undefined)}>
+                      Use whatever this slot chooses
+                    </Button>
+                  </div>
+                ) : (
+                  <ul className="flex flex-wrap gap-2" aria-label="Shots this slot can lend">
+                    {pictures.map((candidate) => {
+                      const thumb = candidateThumb(candidate)
+                      return (
+                        <li key={candidate.id} className="flex flex-col items-start gap-1">
+                          {thumb ? (
+                            <img
+                              src={thumb}
+                              alt=""
+                              className="h-16 w-28 rounded-[6px] object-cover"
+                            />
+                          ) : null}
+                          <Button variant="outline" onClick={() => use(source, candidate.id)}>
+                            {candidate.chosen ? 'Use this' : 'Use this variant'}
+                          </Button>
+                        </li>
+                      )
+                    })}
+                  </ul>
+                )}
+              </li>
+            )
+          })}
+        </ul>
+      )}
+      <div>
+        <Button type="button" variant="ghost" onClick={onDone}>
+          Cancel
+        </Button>
+      </div>
+    </div>
   )
 }
 
