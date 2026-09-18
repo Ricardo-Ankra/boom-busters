@@ -24,7 +24,7 @@ export function buildRedirectRequest(input: {
     task: 'shotlist',
     system: `You are re-planning ONE still of a documentary. The image model refused the
 current prompt. Rewrite the brief for the same story beat without the person:
-the empty chair, the podium after the speech, the door they walked through, or
+the podium after the speech, the door they walked through, the desk as they left it, or
 an anonymous figure described by role, build and clothing with the face turned
 away. Keep "coversText" EXACTLY as given; keep "motion", "transition" and
 "shotSize"; rewrite "description" and "prompt"; omit "depicts" entirely.

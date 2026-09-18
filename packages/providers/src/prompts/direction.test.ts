@@ -42,6 +42,12 @@ describe('buildDirectorsBookRequest', () => {
     expect(request.system).toContain('exactly three recurring visual motifs')
   })
 
+  it('says how to choose motifs: this story, never the house furniture (decision 260)', () => {
+    expect(request.system).toContain('Motifs are this story')
+    expect(request.system).toContain('never the house look')
+    expect(request.system).toContain('could belong to any corporate collapse')
+  })
+
   it('shows the outline tension fields and numbers the chapters from 1', () => {
     const body = request.messages.map((message) => message.content).join('\n')
     expect(body).toContain('Central question: How did two billion euros never exist?')

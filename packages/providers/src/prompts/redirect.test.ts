@@ -25,6 +25,8 @@ describe('buildRedirectRequest', () => {
   it('asks for the same beat without the person, on the shot-list task', () => {
     expect(request.task).toBe('shotlist')
     expect(request.system).toContain('without the person')
+    expect(request.system).not.toContain('the empty chair')
+    expect(request.system).toContain('the desk as they left it')
     expect(request.system).toContain('# Direction craft')
   })
 
