@@ -6,13 +6,16 @@ import {
   listCastMembers,
   listShotSlots,
   listVoiceTakes,
+  scriptableClaims,
   slotNeedsResolution,
 } from '@boom-busters/db'
 import type { Database } from '@boom-busters/db'
 import { BANNED_PROMPT_WORDS } from '@boom-busters/providers'
 import {
   ArticleMetadataSchema,
+  articleSourceLabel,
   CANDIDATES_SHOWN,
+  claimCarriesArticle,
   DirectorsBookSchema,
   normaliseArticleUrl,
   latestTakes,
@@ -93,6 +96,24 @@ export interface ChapterSlots {
   slots: SlotView[]
 }
 
+/**
+ * A claim this project's headline cards are allowed to quote (decision 257):
+ * `major_outlet` with a surviving URL, which is exactly what
+ * `resolvePlannedBrief` lets the shot-list model cite.
+ *
+ * The board's format picker lists these, because choosing WHICH article is the
+ * only decision a re-type to headline carries — every string on the card comes
+ * from the article itself, so there is nothing for a model to draft, and
+ * nothing to spend a call on.
+ */
+export interface ArticleClaimOption {
+  id: string
+  /** The claim's own text, so the owner can see which fact the card backs. */
+  text: string
+  /** The outlet where one has been read, else the address, elided to fit. */
+  label: string
+}
+
 /** One paragraph of narration, for the scrubber: where it sits and what plays it. */
 export interface NarrationSegment {
   takeId: string | null
@@ -130,6 +151,12 @@ export interface VisualsReviewModel {
   direction: DirectorsBook | null
   /** Craft notes from `planWarnings`, in screen order. */
   warnings: string[]
+  /**
+   * The articles a slot may be re-typed to quote (decision 257). Empty means
+   * this project's dossier has no news claim, and the picker says so rather
+   * than offering a button that can only fail.
+   */
+  articleClaims: ArticleClaimOption[]
 }
 
 /**
@@ -151,6 +178,7 @@ export function emptyVisualsModel(): VisualsReviewModel {
     fetchEstimateUsd: 0,
     direction: null,
     warnings: [],
+    articleClaims: [],
   }
 }
 
@@ -206,16 +234,50 @@ async function articlesForClaims(
   return found
 }
 
+/**
+ * The claims the format picker may offer as a headline's article.
+ *
+ * Read-only for the same reason `articlesForClaims` is: this runs on a page
+ * load. A claim with no stored record yet is still offered — the article is
+ * read when the slot resolves, so the label falls back to the address, which
+ * is enough to tell two sources apart in a list.
+ */
+async function articleClaimOptions(db: Database, projectId: string): Promise<ArticleClaimOption[]> {
+  const eligible = (await scriptableClaims(db, projectId)).filter((claim) =>
+    claimCarriesArticle(claim),
+  )
+  if (eligible.length === 0) return []
+
+  const urlByClaim = new Map<string, string>()
+  for (const claim of eligible) {
+    const url = claim.sourceUrl === null ? null : normaliseArticleUrl(claim.sourceUrl)
+    if (url !== null) urlByClaim.set(claim.id, url)
+  }
+
+  const rows = await getArticleSources(db, [...new Set(urlByClaim.values())])
+  const outletByUrl = new Map(rows.flatMap((row) => (row.outlet ? [[row.url, row.outlet]] : [])))
+
+  return eligible.flatMap((claim) => {
+    const url = urlByClaim.get(claim.id)
+    // A URL that will not normalise is not an address we could ever read.
+    if (url === undefined) return []
+    return [
+      { id: claim.id, text: claim.text, label: outletByUrl.get(url) ?? articleSourceLabel(url) },
+    ]
+  })
+}
+
 export async function visualsReviewModel(
   db: Database,
   projectId: string,
   options: { phase?: 'plan' | 'board' | null } = {},
 ): Promise<VisualsReviewModel> {
-  const [rows, sources, takes, project] = await Promise.all([
+  const [rows, sources, takes, project, articleClaims] = await Promise.all([
     listShotSlots(db, projectId),
     latestScriptParagraphSources(db, projectId),
     listVoiceTakes(db, projectId),
     getProject(db, projectId),
+    articleClaimOptions(db, projectId),
   ])
 
   /**
@@ -367,5 +429,6 @@ export async function visualsReviewModel(
         (project ? await listCastMembers(db, project.id) : []).map((member) => member.name),
       ),
     ],
+    articleClaims,
   }
 }

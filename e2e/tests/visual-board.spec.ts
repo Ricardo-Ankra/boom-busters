@@ -138,6 +138,30 @@ test.describe('a headline card', () => {
     await expect(provenance.getByText(/headline . from the article/)).toBeVisible()
   })
 
+  /**
+   * The format picker asks instead of guessing (fixed 2026-09-18). It used to
+   * treat headline as a structured target like a chart: it stamped the slot
+   * "drafting", told the owner Claude was drafting the map locations, and then
+   * failed, because no model is allowed to choose the article.
+   *
+   * Stops at the question deliberately: pressing "Quote this" writes the brief
+   * and then asks Inngest to read the article, and this suite runs without it.
+   */
+  test('asks which article, rather than telling the owner it is drafting a map', async ({
+    page,
+  }) => {
+    const picker = page.getByRole('group', { name: 'Slot format' }).first()
+    await picker.getByRole('button', { name: 'news headline' }).click()
+
+    const chooser = page.getByRole('group', { name: 'Which article this card quotes' })
+    await expect(chooser.getByText(/the escrow accounts had never existed/)).toBeVisible()
+    await expect(chooser.getByText('The Financial Record')).toBeVisible()
+    await expect(chooser.getByRole('button', { name: 'Quote this' })).toBeVisible()
+
+    // Nothing was re-typed by asking, and nothing claims to be drafting.
+    await expect(page.getByText(/Claude is drafting/)).toHaveCount(0)
+  })
+
   test('takes a correction, refuses an invented highlight, and keeps the rest', async ({
     page,
   }) => {

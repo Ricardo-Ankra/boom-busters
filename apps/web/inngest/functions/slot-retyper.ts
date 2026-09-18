@@ -115,7 +115,20 @@ export const slotRetyper = inngest.createFunction(
       // Structured targets get a model draft — validated, refusable.
       if (!next) {
         if (targetType !== 'chart' && targetType !== 'map') {
-          throw new NonRetriableError(`Re-typing to "${targetType}" is not available.`)
+          /**
+           * A headline card quotes a claim the OWNER picks, and the board
+           * writes that brief itself (decision 257) — no request for one
+           * should ever arrive here. One that does is a stale tab, and it
+           * gets words on the card rather than a crash, because a thrown
+           * error would leave the slot stamped `drafting` for a draft that
+           * is never coming.
+           */
+          const reason =
+            targetType === 'headline'
+              ? 'A headline card has to quote one of this project’s news claims. Choose the article on the card.'
+              : `Re-typing to "${targetType}" is not available.`
+          await setSlotRetype(db, slotId, { state: 'refused', target: targetType, reason })
+          return { changed: false as const, refused: reason }
         }
         const claims = await scriptableClaims(db, projectId)
         const claimIds = claims.map((claim) => claim.id)
