@@ -126,6 +126,8 @@ const stockSlot: SlotView = {
   retype: null,
   refusal: null,
   article: null,
+  reuse: null,
+  reusedBy: 0,
 }
 
 const chartSlot: SlotView = {
@@ -164,6 +166,8 @@ const chartSlot: SlotView = {
   retype: null,
   refusal: null,
   article: null,
+  reuse: null,
+  reusedBy: 0,
 }
 
 const SLOT_D = '01J000000000000000000000AD'
@@ -203,6 +207,8 @@ const headlineSlot: SlotView = {
     status: 'fetched',
     failureReason: null,
   },
+  reuse: null,
+  reusedBy: 0,
 }
 
 /**
@@ -234,6 +240,8 @@ const brokenSlot: SlotView = {
   retype: null,
   refusal: null,
   article: null,
+  reuse: null,
+  reusedBy: 0,
 }
 
 function model(slots: SlotView[], overrides: Partial<VisualsReviewModel> = {}): VisualsReviewModel {

@@ -40,6 +40,13 @@ import type {
 } from '@boom-busters/schemas'
 import { anchoredTimes, timedParagraphs } from '@/inngest/lib/shot-list'
 import { stillsEstimateUsd } from './visual-assets'
+import {
+  reusedByCount,
+  reuseView,
+  sharedShotWarnings,
+  type ReusableRow,
+  type ReuseSource,
+} from './visuals-reuse'
 
 /**
  * What the visual board shows, and what the visuals gate refuses on — one
@@ -88,6 +95,10 @@ export interface SlotView {
    * rather than showing an error.
    */
   article: ArticleMetadata | null
+  /** The slot whose shot this one shows (decision 261), or null when it has its own. */
+  reuse: ReuseSource | null
+  /** How many slots show this slot's shot. */
+  reusedBy: number
 }
 
 export interface ChapterSlots {
@@ -318,6 +329,17 @@ export async function visualsReviewModel(
     paragraphs,
   )
 
+  // The rows as the reuse helpers read them (decision 261): anchored times,
+  // parsed candidates, the link column.
+  const reusable: ReusableRow[] = rows.map((row, at) => ({
+    id: row.id,
+    chapterIndex: row.chapterIndex,
+    startMs: times[at]!.startMs,
+    status: row.status,
+    reuseOfSlotId: row.reuseOfSlotId,
+    candidates: parseCandidates(row.candidates),
+  }))
+
   const slots: SlotView[] = rows.map((row, at) => {
     const parsed = briefs[at]!
     const candidates = parseCandidates(row.candidates)
@@ -355,6 +377,8 @@ export async function visualsReviewModel(
         const state = SlotRefusalSchema.safeParse(row.refusal)
         return state.success ? state.data : null
       })(),
+      reuse: reuseView(reusable[at]!, reusable),
+      reusedBy: reusedByCount(reusable[at]!, reusable),
     }
   })
 
@@ -434,6 +458,7 @@ export async function visualsReviewModel(
         direction,
         (project ? await listCastMembers(db, project.id) : []).map((member) => member.name),
       ),
+      ...sharedShotWarnings(reusable),
     ],
     articleClaims,
   }
