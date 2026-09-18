@@ -394,7 +394,13 @@ export function convertBrief(
   targetType: ShotSlotType,
   options: { stillStyleAnchors?: string; headlineClaimId?: string } = {},
 ): ShotBrief | null {
-  if (targetType === brief.type) return brief
+  /**
+   * A headline card moved to a DIFFERENT article is a real change even though
+   * its type has not moved, so it must not take the short circuit below. Every
+   * other same-type conversion is genuinely a no-op.
+   */
+  const repointing = targetType === 'headline' && options.headlineClaimId !== undefined
+  if (targetType === brief.type && !repointing) return brief
 
   const common = {
     coversText: brief.coversText,
@@ -425,7 +431,22 @@ export function convertBrief(
        * what sends the board to its chooser instead of to the retyper.
        */
       const claimId = options.headlineClaimId
-      return claimId === undefined ? null : { type: 'headline', ...common, sourceClaimId: claimId }
+      if (claimId === undefined) return null
+      return {
+        type: 'headline',
+        ...common,
+        sourceClaimId: claimId,
+        /**
+         * Moved to another article, the card keeps how it is drawn and loses
+         * what it quoted: `showDeck` is a display preference, while `emphasis`
+         * names words the OLD headline printed, and a marker over words this
+         * publication did not print is the thing the emphasis rule exists to
+         * prevent.
+         */
+        ...(brief.type === 'headline' && brief.showDeck !== undefined
+          ? { showDeck: brief.showDeck }
+          : {}),
+      }
     }
     default:
       return null

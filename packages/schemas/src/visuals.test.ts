@@ -431,4 +431,25 @@ describe('convertBrief — re-typing a slot (staged-visuals design)', () => {
     })
     expect(ShotBriefSchema.parse(headline)).toBeTruthy()
   })
+
+  it('re-points a headline at another article, keeping how the card is drawn', () => {
+    const headline = ShotBriefSchema.parse({
+      type: 'headline',
+      ...common,
+      sourceClaimId: CLAIM_A,
+      emphasis: 'could not find the money',
+      showDeck: true,
+    })
+
+    const moved = convertBrief(headline, 'headline', { headlineClaimId: CLAIM_B })
+    // The type has not moved but the card has, so the same-type short circuit
+    // must not hand back the old brief still citing the old claim.
+    expect(moved).toMatchObject({ sourceClaimId: CLAIM_B, showDeck: true })
+    // The marker quoted words the OLD headline printed, so it does not travel.
+    expect(moved).not.toHaveProperty('emphasis')
+    expect(ShotBriefSchema.parse(moved)).toBeTruthy()
+
+    // With no claim to move to, it is still the same brief, untouched.
+    expect(convertBrief(headline, 'headline')).toBe(headline)
+  })
 })

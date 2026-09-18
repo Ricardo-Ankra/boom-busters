@@ -617,6 +617,29 @@ describe('the plan phase (staged-visuals design)', () => {
     expect(retypeToHeadlineAction).not.toHaveBeenCalled()
   })
 
+  it('re-points a headline card at a different article', async () => {
+    render(<VisualBoard projectId={PROJECT} model={model([headlineSlot])} colors={COLORS} />)
+
+    const picker = screen.getByRole('group', { name: 'Slot format' })
+    const button = within(picker).getByRole('button', { name: 'news headline' })
+
+    // The deliberate exception to "the current format's button is disabled":
+    // on a headline slot this button does not change the format, it changes
+    // which article is quoted, which is the only way to change it at all.
+    expect(button).toHaveAttribute('aria-pressed', 'true')
+    expect(button).toBeEnabled()
+    await userEvent.click(button)
+
+    const chooser = screen.getByRole('group', { name: 'Which article this card quotes' })
+    // The article it already quotes is marked, not offered again.
+    expect(within(chooser).getByText('quoted now')).toBeInTheDocument()
+    const offers = within(chooser).getAllByRole('button', { name: 'Quote this' })
+    expect(offers).toHaveLength(1)
+
+    await userEvent.click(offers[0]!)
+    expect(retypeToHeadlineAction).toHaveBeenCalledWith(PROJECT, SLOT_D, ARTICLE_CLAIMS[1]!.id)
+  })
+
   it('keeps the chooser open when the save is refused, so the pick is not lost', async () => {
     retypeToHeadlineAction.mockResolvedValue({ ok: false, error: 'That claim has no article.' })
     render(<VisualBoard projectId={PROJECT} model={model([stockSlot])} colors={COLORS} />)

@@ -310,6 +310,13 @@ export async function retypeToHeadlineAction(
     }
   }
 
+  // Already quoting it: the board marks that row rather than offering it, and
+  // rewriting the brief would clear the resolution and read the article again
+  // for nothing.
+  if (current.data.type === 'headline' && current.data.sourceClaimId === claimId) {
+    return { ok: true }
+  }
+
   const claim = (await scriptableClaims(db, projectId)).find((row) => row.id === claimId)
   if (!claimCarriesArticle(claim)) {
     return {

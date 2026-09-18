@@ -985,6 +985,10 @@ function ArticleChooser({
   articleClaims: ArticleClaimOption[]
   onDone: () => void
 }) {
+  // What this card quotes today, when it is already a headline: that row is
+  // marked and cannot be re-picked, and every other row moves the card.
+  const quoting = slot.brief?.type === 'headline' ? slot.brief.sourceClaimId : null
+
   return (
     <div
       role="group"
@@ -999,8 +1003,9 @@ function ArticleChooser({
       ) : (
         <>
           <p className="text-[12px] text-[var(--color-text-secondary)]">
-            Pick the article. Every word on the card is read from it: the outlet, the headline, the
-            byline and the date.
+            {quoting === null
+              ? 'Pick the article. Every word on the card is read from it: the outlet, the headline, the byline and the date.'
+              : 'Pick a different article. The card is redrawn from that one, and a highlight you set for this headline is dropped rather than moved across.'}
           </p>
           {articleClaims.map((claim) => (
             <div key={claim.id} className="flex flex-wrap items-center gap-2">
@@ -1008,22 +1013,26 @@ function ArticleChooser({
                 <span className="text-[var(--color-text-secondary)]">{claim.label}</span>{' '}
                 <span className="text-[var(--color-text-muted)]">·</span> {claim.text}
               </span>
-              <Button
-                type="button"
-                variant="outline"
-                busy={busy}
-                onClick={() =>
-                  void act(
-                    slot.id,
-                    () => retypeToHeadlineAction(projectId, slot.id, claim.id),
-                    `Now quoting ${claim.label}`,
-                  ).then((result) => {
-                    if (result.ok) onDone()
-                  })
-                }
-              >
-                Quote this
-              </Button>
+              {claim.id === quoting ? (
+                <Badge shape="tag">quoted now</Badge>
+              ) : (
+                <Button
+                  type="button"
+                  variant="outline"
+                  busy={busy}
+                  onClick={() =>
+                    void act(
+                      slot.id,
+                      () => retypeToHeadlineAction(projectId, slot.id, claim.id),
+                      `Now quoting ${claim.label}`,
+                    ).then((result) => {
+                      if (result.ok) onDone()
+                    })
+                  }
+                >
+                  Quote this
+                </Button>
+              )}
             </div>
           ))}
         </>
@@ -1076,7 +1085,10 @@ function TypePicker({
               variant={current ? 'selected' : 'ghost'}
               aria-pressed={current}
               {...(asks ? { 'aria-expanded': choosing } : {})}
-              disabled={current || busy || drafting}
+              /* The one exception to "the current format is disabled": on a
+                 headline slot this button is not how you change the format,
+                 it is how you change WHICH article the card quotes. */
+              disabled={(current && !asks) || busy || drafting}
               onClick={() => {
                 if (asks) {
                   setChoosing((open) => !open)

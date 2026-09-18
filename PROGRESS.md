@@ -4805,3 +4805,14 @@ Recorded whenever the spec left something open and an implementation was chosen.
     that can only fail. And the drafting sentence is now a lookup with a
     fallback that names the format, so an eighth slot type cannot inherit the
     map's wording the way the seventh did.
+
+    The same chooser closes a gap the original decision shipped with: which
+    article a card quotes was set once, by the shot list, with no way to
+    change it. A headline slot's own format button now stays live where every
+    other current-format button is disabled, because on that slot it does not
+    change the format, it changes the article. The row the card already quotes
+    is marked rather than offered. `convertBrief` had to learn the same
+    distinction: a card moved to a different article is a real change even
+    though its type has not moved, so it no longer takes the same-type short
+    circuit. What survives the move is how the card is drawn; the highlight
+    does not, because it names words the previous headline printed.
