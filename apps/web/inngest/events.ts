@@ -14,6 +14,7 @@ import {
   TeaserRebuildRequestedSchema,
   TeaserShotsRequestedSchema,
   VisualsPlanApprovedSchema,
+  VisualsRebriefRequestedSchema,
   VisualsRedirectRequestedSchema,
   VisualsRefetchRequestedSchema,
   VisualsReplanRequestedSchema,
@@ -91,6 +92,9 @@ export const events = {
   }),
   visualsRedirectRequested: eventType('visuals/redirect.requested', {
     schema: VisualsRedirectRequestedSchema,
+  }),
+  visualsRebriefRequested: eventType('visuals/rebrief.requested', {
+    schema: VisualsRebriefRequestedSchema,
   }),
   mediaJobCompleted: eventType('media/job.completed', { schema: MediaJobCompletedSchema }),
   renderDraftRequested: eventType('render/draft.requested', {

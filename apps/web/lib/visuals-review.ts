@@ -24,7 +24,7 @@ import {
   ShotBriefSchema,
   SlotCandidateSchema,
   SlotRefusalSchema,
-  SlotRetypeStateSchema,
+  SlotDraftStateSchema,
   visualsApprovalBlockedReason,
   visualsCoverage,
 } from '@boom-busters/schemas'
@@ -35,7 +35,7 @@ import type {
   ShotSlotStatus,
   SlotCandidate,
   SlotRefusal,
-  SlotRetypeState,
+  SlotDraftState,
   VisualsCoverage,
 } from '@boom-busters/schemas'
 import { anchoredTimes, timedParagraphs } from '@/inngest/lib/shot-list'
@@ -78,7 +78,7 @@ export interface SlotView {
    * with the model's reason). Null when nothing is pending — which is always,
    * for mechanical conversions: those finish inside the button press.
    */
-  retype: SlotRetypeState | null
+  retype: SlotDraftState | null
   /** An image model declined this slot's prompt (decision 252). */
   refusal: SlotRefusal | null
   /**
@@ -347,8 +347,8 @@ export async function visualsReviewModel(
         parsed.success && parsed.data.type === 'headline'
           ? (articlesByClaim.get(parsed.data.sourceClaimId) ?? null)
           : null,
-      retype: ((): SlotRetypeState | null => {
-        const state = SlotRetypeStateSchema.safeParse(row.retype)
+      retype: ((): SlotDraftState | null => {
+        const state = SlotDraftStateSchema.safeParse(row.retype)
         return state.success ? state.data : null
       })(),
       refusal: ((): SlotRefusal | null => {

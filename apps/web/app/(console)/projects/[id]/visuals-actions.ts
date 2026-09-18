@@ -343,6 +343,77 @@ export async function retypeToHeadlineAction(
   return { ok: true }
 }
 
+/** What the owner may type into the steer, repeated server-side. */
+const GuidanceSchema = z.string().trim().max(600).optional()
+
+/**
+ * "Draft a different brief" (decision 258): the owner has rejected this
+ * slot's idea and wants another, optionally saying what they are picturing.
+ *
+ * Always an event, never a write here: this is a model call, so it belongs in
+ * the slot-rebriefer behind the cost guard, not in a request handler racing a
+ * timeout. The slot is stamped before the event goes, so the board the
+ * button's own refresh renders already says what is happening.
+ */
+export async function rebriefSlotAction(
+  projectId: string,
+  slotId: string,
+  guidance: unknown,
+): Promise<ActionResult> {
+  await requireOwner()
+  const invalid = badIds(projectId, slotId)
+  if (invalid) return invalid
+
+  const parsedGuidance = GuidanceSchema.safeParse(guidance)
+  if (!parsedGuidance.success) {
+    return { ok: false, error: 'Keep the steer under 600 characters.' }
+  }
+  const steer = parsedGuidance.data === '' ? undefined : parsedGuidance.data
+
+  const slot = await getShotSlot(db, slotId)
+  if (!slot) return { ok: false, error: 'This slot no longer exists.' }
+
+  const current = ShotBriefSchema.safeParse(slot.brief)
+  if (!current.success) {
+    return {
+      ok: false,
+      error: 'This brief is broken and cannot be re-drafted — regenerate the board.',
+    }
+  }
+  if (current.data.type === 'headline') {
+    return {
+      ok: false,
+      error:
+        'Every word on a headline card is read from the article. Change which article it quotes instead.',
+    }
+  }
+  if (current.data.type === 'hero') {
+    return { ok: false, error: 'An AI-video slot cannot be re-drafted.' }
+  }
+
+  await setSlotRetype(db, slotId, { state: 'rebriefing' })
+  try {
+    await inngest.send(
+      events.visualsRebriefRequested.create({
+        projectId,
+        slotId,
+        ...(steer === undefined ? {} : { guidance: steer }),
+      }),
+    )
+  } catch (error) {
+    console.error('[visuals] could not send rebrief', error)
+    await setSlotRetype(db, slotId, null)
+    return {
+      ok: false,
+      error:
+        'Could not reach Inngest to draft a new brief. ' +
+        'Start the dev server with `npx inngest-cli@latest dev`, or check INNGEST_EVENT_KEY.',
+    }
+  }
+  refresh(projectId)
+  return { ok: true }
+}
+
 /** Dismiss a refused re-type — the slot keeps its old brief, the note goes. */
 export async function dismissRetypeAction(
   projectId: string,

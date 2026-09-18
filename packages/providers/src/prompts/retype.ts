@@ -25,6 +25,13 @@ export interface RetypeInput {
   brief: ShotBrief
   targetType: Extract<ShotSlotType, 'chart' | 'map'>
   claims: readonly ScriptClaim[]
+  /**
+   * The producer's steer (decision 258). Set when the call is a re-brief
+   * rather than a re-type: a chart or map brief is data rather than an idea,
+   * so asking for a different one comes back through this path and its claim
+   * validation, with the target type being the one the slot already has.
+   */
+  guidance?: string
 }
 
 export function buildRetypeRequest(input: RetypeInput): LLMTaskRequest {
@@ -51,9 +58,15 @@ them in order (money flows, HQ hops).`
 
   return {
     task: 'shotlist',
-    system: `You are re-planning ONE visual slot of a documentary. The slot
+    system: `You are re-planning ONE visual slot of a documentary. ${
+      input.brief.type === input.targetType
+        ? `The producer has rejected the current ${input.targetType} and wants a DIFFERENT
+one for the same story beat. Do not restate the current brief in other words:
+it was rejected, so a paraphrase of it is not an answer.`
+        : `The slot
 currently has a brief of type "${input.brief.type}"; the producer wants the
-same story beat expressed as type "${input.targetType}" instead.
+same story beat expressed as type "${input.targetType}" instead.`
+    }
 
 Return JSON: {"brief": {...}} — or {"error": "one sentence why"} if this
 beat cannot honestly be a ${input.targetType}.
@@ -72,6 +85,11 @@ ${target}
     messages: [
       { role: 'user', content: `Case: ${input.caseTitle}\n\nClaims:\n${claimList(input.claims)}` },
       { role: 'user', content: `The current brief:\n${JSON.stringify(input.brief, null, 2)}` },
+      // Last, nearest the answer, and only when there is one: an empty steer
+      // must not read as an empty instruction to follow.
+      ...(input.guidance
+        ? [{ role: 'user' as const, content: `The producer's steer: ${input.guidance}` }]
+        : []),
     ],
     cacheablePrefixMessages: 1,
     maxTokens: outputBudget(1500),
@@ -126,6 +144,12 @@ export function mockRetypedBrief(input: {
   brief: ShotBrief
   targetType: RetypeInput['targetType']
   claimIds: readonly string[]
+  /**
+   * Present when this is a re-brief (decision 258). The mock must then differ
+   * from the brief it replaces, or the offline path would prove nothing: the
+   * whole point of that button is that the second answer is not the first.
+   */
+  guidance?: string
 }): ShotBrief {
   const common = {
     coversText: input.brief.coversText,
@@ -157,7 +181,9 @@ export function mockRetypedBrief(input: {
         },
       ],
       dataRefs: [claimId],
-      takeaway: '[mock] Retyped from a ' + input.brief.type + ' slot.',
+      takeaway: input.guidance
+        ? '[mock] Drafted again: ' + input.guidance
+        : '[mock] Retyped from a ' + input.brief.type + ' slot.',
       reveal: 'draw-on',
     }
   }
@@ -165,6 +191,7 @@ export function mockRetypedBrief(input: {
   return {
     type: 'map',
     ...common,
+    ...(input.guidance ? { description: '[mock] Drafted again: ' + input.guidance } : {}),
     locations: [
       { label: 'Munich', lat: 48.14, lon: 11.58 },
       { label: 'Manila', lat: 14.6, lon: 120.98 },

@@ -6,7 +6,7 @@ import {
   PlannedBriefSchema,
   ShotBriefSchema,
   SlotCandidateSchema,
-  SlotRetypeStateSchema,
+  SlotDraftStateSchema,
   convertBrief,
   mapClaimRefs,
   plannedBriefRejection,
@@ -354,19 +354,19 @@ describe('the visuals gate', () => {
   })
 })
 
-describe('SlotRetypeStateSchema — what the card can honestly say', () => {
+describe('SlotDraftStateSchema — what the card can honestly say', () => {
   it('accepts drafting and refused, and a refusal must carry its reason', () => {
-    expect(SlotRetypeStateSchema.parse({ state: 'drafting', target: 'chart' })).toEqual({
+    expect(SlotDraftStateSchema.parse({ state: 'drafting', target: 'chart' })).toEqual({
       state: 'drafting',
       target: 'chart',
     })
     expect(
-      SlotRetypeStateSchema.parse({ state: 'refused', target: 'map', reason: 'No real places.' }),
+      SlotDraftStateSchema.parse({ state: 'refused', target: 'map', reason: 'No real places.' }),
     ).toMatchObject({ state: 'refused' })
     expect(() =>
-      SlotRetypeStateSchema.parse({ state: 'refused', target: 'map', reason: '' }),
+      SlotDraftStateSchema.parse({ state: 'refused', target: 'map', reason: '' }),
     ).toThrow()
-    expect(() => SlotRetypeStateSchema.parse({ state: 'done', target: 'map' })).toThrow()
+    expect(() => SlotDraftStateSchema.parse({ state: 'done', target: 'map' })).toThrow()
   })
 })
 

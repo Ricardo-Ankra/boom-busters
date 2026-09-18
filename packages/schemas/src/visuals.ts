@@ -454,22 +454,35 @@ export function convertBrief(
 }
 
 /**
- * A model-assisted re-type as the slot row records it. Mechanical
- * conversions never store one — they finish inside the button press. The
- * chart/map draft happens in an Inngest function seconds later, so the row
- * carries `drafting` from the moment the button returns, and `refused` (with
- * the model's reason) when the claims cannot honestly support the target —
- * both states the board must show, or the button reads as dead.
+ * A model-assisted change to one slot's brief, as the row records it. It
+ * lives in the `retype` column, which re-typing was simply the first thing to
+ * use (decision 258 added the second).
+ *
+ * Mechanical conversions never store one: they finish inside the button press.
+ * The drafts that need a model happen in an Inngest function seconds later, so
+ * the row carries a pending state from the moment the button returns, and a
+ * refusal in the model's own words when the claims cannot honestly support
+ * what was asked. The board must show both, or the button reads as dead.
+ *
+ * One column for both jobs on purpose: a slot may only have one model rewriting
+ * its brief at a time, and sharing the state is what lets each button disable
+ * while the other one's work is in flight.
  */
-export const SlotRetypeStateSchema = z.union([
+export const SlotDraftStateSchema = z.union([
   z.object({ state: z.literal('drafting'), target: ShotSlotTypeSchema }),
   z.object({
     state: z.literal('refused'),
     target: ShotSlotTypeSchema,
     reason: z.string().min(1),
   }),
+  /**
+   * A new brief for the SAME format, asked for by the owner (decision 258).
+   * It carries no target because nothing about the format is in question.
+   */
+  z.object({ state: z.literal('rebriefing') }),
+  z.object({ state: z.literal('rebrief-refused'), reason: z.string().min(1) }),
 ])
-export type SlotRetypeState = z.infer<typeof SlotRetypeStateSchema>
+export type SlotDraftState = z.infer<typeof SlotDraftStateSchema>
 
 /**
  * An image model declined this slot's prompt (decision 252). Stored on the
