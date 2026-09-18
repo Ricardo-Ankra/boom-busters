@@ -24,19 +24,78 @@ export interface ChartFrame {
   pad: { top: number; right: number; bottom: number; left: number }
 }
 
-export interface ChartLayout {
-  labels: string[]
+/**
+ * One vertical scale: its domain, the unit every figure drawn against it is
+ * written in, and the projection onto the frame.
+ */
+export interface ChartScale {
   yMin: number
   yMax: number
   rawMin: number
   rawMax: number
   unit: string
+  y: (value: number) => number
+}
+
+export interface ChartLayout {
+  labels: string[]
   plotWidth: number
   plotHeight: number
   x: (index: number) => number
   bandX: (index: number) => number
   bandWidth: number
+  /** The default scale, and the only one on almost every chart. */
+  left: ChartScale
+  /**
+   * The second scale, or null when every series shares the first (decision
+   * 259). Only line, area and bar charts can have one: a stack adds its
+   * series together and a waterfall walks one running total, so neither
+   * means anything with two units in play.
+   */
+  right: ChartScale | null
+  /** Which scale a series is drawn against, by its index. */
+  scaleOf: (seriesIndex: number) => ChartScale
+  // The left scale, flat. Every single-scale caller reads these, and keeping
+  // them means adding a second axis changed no existing chart by a pixel.
+  yMin: number
+  yMax: number
+  rawMin: number
+  rawMax: number
+  unit: string
   y: (value: number) => number
+}
+
+/**
+ * Whether this chart needs a second scale, answerable WITHOUT building the
+ * layout. The renderers need it earlier than that: a right-hand axis has to be
+ * given gutter in the frame box, and the frame box is what the layout is
+ * measured against.
+ */
+export function hasSecondScale(series: readonly ChartSeries[], kind: ChartKind): boolean {
+  return axisSides(series, kind).includes('right')
+}
+
+/**
+ * Which side a series belongs on.
+ *
+ * An explicit `axis` always wins. Otherwise the units decide: series sharing
+ * the first series' unit stay left, and a second unit goes right. A model that
+ * forgets the field should not get a chart that misleads, and two measures on
+ * one scale is exactly that — the smaller flattened onto the floor, labelled
+ * in the larger one's unit.
+ */
+function axisSides(series: readonly ChartSeries[], kind: ChartKind): ('left' | 'right')[] {
+  if (kind === 'stacked' || kind === 'waterfall') return series.map(() => 'left')
+
+  const explicit = series.some((one) => one.axis !== undefined)
+  if (explicit) return series.map((one) => one.axis ?? 'left')
+
+  const firstUnit = series[0]?.unit
+  const units = new Set(series.map((one) => one.unit))
+  // Three or more units cannot be told apart on two axes, so nothing is split:
+  // a chart that confused is the planner's mistake to fix, not ours to hide.
+  if (units.size !== 2) return series.map(() => 'left')
+  return series.map((one) => (one.unit === firstUnit ? 'left' : 'right'))
 }
 
 export function chartLayout(
@@ -54,26 +113,41 @@ export function chartLayout(
     }
   }
 
-  const values =
-    kind === 'stacked'
-      ? labels.map((label) =>
-          series.reduce((sum, one) => sum + (one.points.find((p) => p.x === label)?.y ?? 0), 0),
-        )
-      : series.flatMap((one) => one.points.map((point) => point.y))
+  const sides = axisSides(series, kind)
 
-  const rawMin = Math.min(...values, 0)
-  const rawMax = Math.max(...values)
-  const span = rawMax - rawMin || 1
-  const yMin = rawMin
-  const yMax = rawMax + span * 0.06
+  /** One scale over whichever series belong to it. */
+  const scaleFor = (members: readonly ChartSeries[]): ChartScale => {
+    const values =
+      kind === 'stacked'
+        ? labels.map((label) =>
+            members.reduce((sum, one) => sum + (one.points.find((p) => p.x === label)?.y ?? 0), 0),
+          )
+        : members.flatMap((one) => one.points.map((point) => point.y))
+
+    const rawMin = Math.min(...values, 0)
+    const rawMax = Math.max(...values)
+    const span = rawMax - rawMin || 1
+    const yMin = rawMin
+    const yMax = rawMax + span * 0.06
+    return {
+      yMin,
+      yMax,
+      rawMin,
+      rawMax,
+      unit: members[0]?.unit ?? '',
+      y: (value) => frame.pad.top + plotHeight - ((value - yMin) / (yMax - yMin)) * plotHeight,
+    }
+  }
+
+  const leftSeries = series.filter((_, index) => sides[index] === 'left')
+  const rightSeries = series.filter((_, index) => sides[index] === 'right')
+  // `leftSeries` can only be empty if the planner put everything on the right,
+  // which is the same chart with the axes named backwards.
+  const left = scaleFor(leftSeries.length > 0 ? leftSeries : series)
+  const right = rightSeries.length > 0 ? scaleFor(rightSeries) : null
 
   return {
     labels,
-    yMin,
-    yMax,
-    rawMin,
-    rawMax,
-    unit: series[0]?.unit ?? '',
     plotWidth,
     plotHeight,
     x: (index) =>
@@ -81,7 +155,15 @@ export function chartLayout(
       (labels.length <= 1 ? plotWidth / 2 : (index / (labels.length - 1)) * plotWidth),
     bandX: (index) => frame.pad.left + (index / labels.length) * plotWidth,
     bandWidth: plotWidth / Math.max(1, labels.length),
-    y: (value) => frame.pad.top + plotHeight - ((value - yMin) / (yMax - yMin)) * plotHeight,
+    left,
+    right,
+    scaleOf: (seriesIndex) => (sides[seriesIndex] === 'right' && right ? right : left),
+    yMin: left.yMin,
+    yMax: left.yMax,
+    rawMin: left.rawMin,
+    rawMax: left.rawMax,
+    unit: left.unit,
+    y: left.y,
   }
 }
 
@@ -223,9 +305,12 @@ export interface LineSeries {
 
 export function lineGeometry(series: readonly ChartSeries[], layout: ChartLayout): LineSeries[] {
   return series.map((one, index) => {
+    // Each line against its own scale (decision 259), which is the same scale
+    // for every series on all but a two-measure chart.
+    const scale = layout.scaleOf(index)
     const points = one.points.map((point) => ({
       x: layout.x(layout.labels.indexOf(point.x)),
-      y: layout.y(point.y),
+      y: scale.y(point.y),
     }))
     return { colourIndex: index, points, length: polylineLength(points) }
   })
@@ -260,13 +345,14 @@ export function barGeometry(series: readonly ChartSeries[], layout: ChartLayout)
     series.forEach((one, seriesIndex) => {
       const value = one.points.find((point) => point.x === label)?.y
       if (value === undefined) return
+      const scale = layout.scaleOf(seriesIndex)
       const width = (layout.bandWidth * 0.7) / series.length
       rects.push({
         key: `${label}:${one.label}`,
         x: layout.bandX(categoryIndex) + layout.bandWidth * 0.15 + width * seriesIndex,
-        y: layout.y(Math.max(0, value)),
+        y: scale.y(Math.max(0, value)),
         width,
-        height: Math.abs(layout.y(value) - layout.y(0)),
+        height: Math.abs(scale.y(value) - scale.y(0)),
         colourIndex: seriesIndex,
         categoryIndex,
         value,
@@ -379,7 +465,11 @@ export function barFigures(
       x: rect.x + rect.width / 2,
       edgeY: rect.value < 0 ? rect.y + rect.height : rect.y,
       below: rect.value < 0,
-      text: formatFigure(rect.value, layout.unit),
+      // Each bar says its number in ITS OWN unit (decision 259). On a chart
+      // with two measures the layout's unit is only the left one's, and
+      // writing a margin in billions is the exact lie the figures exist to
+      // prevent.
+      text: formatFigure(rect.value, series[rect.colourIndex]?.unit ?? layout.unit),
       categoryIndex: rect.categoryIndex,
       slotWidth,
     }))
@@ -464,4 +554,17 @@ export function categoryReveal(progress: number, index: number, count: number): 
 
 function clamp01(value: number): number {
   return Math.min(1, Math.max(0, value))
+}
+
+/**
+ * A series name cut to the width it has (decision 259). The axis gutter is
+ * fixed, and a name that runs past it is silently clipped by the SVG edge,
+ * which turns "Operating margin" into "Operating" and loses the half that
+ * distinguishes it from operating profit.
+ */
+export function fitLabel(text: string, maxWidth: number, fontSize: number): string {
+  const characters = Math.floor(maxWidth / (fontSize * FIGURE_CHAR_EM))
+  if (characters >= text.length) return text
+  if (characters <= 1) return ''
+  return `${text.slice(0, characters - 1).trimEnd()}…`
 }

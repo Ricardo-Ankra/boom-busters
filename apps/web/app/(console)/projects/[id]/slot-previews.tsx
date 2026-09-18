@@ -6,7 +6,9 @@ import {
   chartLayout,
   figureBaseline,
   fitFigureSize,
+  fitLabel,
   formatFigure,
+  hasSecondScale,
 } from '@boom-busters/compositions/chart'
 import { fitBounds, graticule, landPaths, projector } from '@boom-busters/compositions/geo'
 import type { ChartBrief, MapBrief } from '@boom-busters/schemas'
@@ -44,7 +46,14 @@ export function ChartPreview({ brief, colors }: { brief: ChartBrief; colors: Bra
 
   // Bars carry their own figures, so they need headroom above and no left
   // gutter; a line still needs the gutter for its extremes.
-  const pad = { top: bars ? 26 : 16, right: 16, bottom: 28, left: bars ? 12 : 52 }
+  // A second measure needs a gutter of its own on the right (decision 259).
+  const twoScales = hasSecondScale(brief.series, brief.chartKind)
+  const pad = {
+    top: bars ? 26 : 16,
+    right: twoScales && !bars ? 52 : 16,
+    bottom: 28,
+    left: bars ? 12 : 52,
+  }
   // The geometry is the render's own module, not a second copy of it: the
   // board is where the human approves the chart, so it must be the chart.
   const layout = chartLayout(brief.series, brief.chartKind, { width: WIDTH, height: HEIGHT, pad })
@@ -211,11 +220,25 @@ export function ChartPreview({ brief, colors }: { brief: ChartBrief; colors: Bra
       {/* A line needs its extremes to be read; a bar has said its number. */}
       {bars ? null : (
         <>
+          {/* Two scales means each axis must say WHICH line it measures: its
+              extreme otherwise lands beside the other one (decision 259). */}
+          {layout.right ? (
+            <text
+              x={pad.left - 6}
+              y={y(layout.rawMax) - 4}
+              fontSize={8}
+              fill={colors.chartSeries[0] ?? colors.accent}
+              textAnchor="end"
+              fontFamily="var(--font-mono, monospace)"
+            >
+              {fitLabel(brief.series[0]?.label ?? '', pad.left - 6, 8)}
+            </text>
+          ) : null}
           <text
             x={pad.left - 6}
             y={y(layout.rawMax) + 10}
             fontSize={10}
-            fill={colors.textSecondary}
+            fill={layout.right ? (colors.chartSeries[0] ?? colors.accent) : colors.textSecondary}
             textAnchor="end"
             fontFamily="var(--font-mono, monospace)"
           >
@@ -225,12 +248,54 @@ export function ChartPreview({ brief, colors }: { brief: ChartBrief; colors: Bra
             x={pad.left - 6}
             y={y(layout.rawMin)}
             fontSize={10}
-            fill={colors.textSecondary}
+            fill={layout.right ? (colors.chartSeries[0] ?? colors.accent) : colors.textSecondary}
             textAnchor="end"
             fontFamily="var(--font-mono, monospace)"
           >
             {formatFigure(layout.rawMin, unit)}
           </text>
+          {/* The second measure reads against its own side, in the colour of
+              the line it belongs to. Without it that line is drawn against a
+              scale nobody can see. */}
+          {layout.right ? (
+            <>
+              <text
+                x={WIDTH - pad.right + 6}
+                y={layout.right.y(layout.right.rawMax) - 4}
+                fontSize={8}
+                fill={colors.chartSeries[1] ?? colors.accent}
+                textAnchor="start"
+                fontFamily="var(--font-mono, monospace)"
+              >
+                {fitLabel(
+                  brief.series.find((one, index) => layout.scaleOf(index) === layout.right)
+                    ?.label ?? '',
+                  pad.right - 6,
+                  8,
+                )}
+              </text>
+              <text
+                x={WIDTH - pad.right + 6}
+                y={layout.right.y(layout.right.rawMax) + 10}
+                fontSize={10}
+                fill={colors.chartSeries[1] ?? colors.accent}
+                textAnchor="start"
+                fontFamily="var(--font-mono, monospace)"
+              >
+                {formatFigure(layout.right.rawMax, layout.right.unit)}
+              </text>
+              <text
+                x={WIDTH - pad.right + 6}
+                y={layout.right.y(layout.right.rawMin)}
+                fontSize={10}
+                fill={colors.chartSeries[1] ?? colors.accent}
+                textAnchor="start"
+                fontFamily="var(--font-mono, monospace)"
+              >
+                {formatFigure(layout.right.rawMin, layout.right.unit)}
+              </text>
+            </>
+          ) : null}
         </>
       )}
       {first ? (

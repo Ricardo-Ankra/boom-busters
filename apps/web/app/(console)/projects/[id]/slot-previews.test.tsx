@@ -89,3 +89,49 @@ describe('ChartPreview', () => {
     expect(screen.queryByText('USD Millions')).toBeNull()
   })
 })
+
+describe('a chart with two measures (decision 259)', () => {
+  const dual: ChartBrief = {
+    type: 'chart',
+    coversText: 'The more it was worth, the more each sale cost them.',
+    description: 'Valuation against margin.',
+    motion: { kind: 'static' },
+    transition: 'cut',
+    chartKind: 'line',
+    series: [
+      {
+        label: 'Valuation',
+        unit: '$bn',
+        points: [
+          { x: '2019', y: 1.2 },
+          { x: '2022', y: 18.1 },
+        ],
+      },
+      {
+        label: 'Operating margin',
+        unit: '%',
+        axis: 'right',
+        points: [
+          { x: '2019', y: -4 },
+          { x: '2022', y: -148 },
+        ],
+      },
+    ],
+    dataRefs: ['01HQ00000000000000000000AA'],
+    takeaway: 'The more it was worth, the more each sale cost them.',
+    reveal: 'draw-on',
+  }
+
+  it('reads each measure in its own unit, on its own side', () => {
+    render(<ChartPreview brief={dual} colors={COLORS} />)
+    // The valuation's extreme in dollars, the margin's in percent. One shared
+    // scale would have written the margin in dollars and flattened it.
+    expect(screen.getByText('$18 Billion')).toBeInTheDocument()
+    expect(screen.getByText('-148%')).toBeInTheDocument()
+    // And each side says which line it belongs to.
+    expect(screen.getByText(/Valuation/)).toBeInTheDocument()
+    // The long one is cut to the gutter it has, with the ellipsis saying so
+    // rather than the SVG edge silently swallowing the rest.
+    expect(screen.getByText(/^Operat.*…$/)).toBeInTheDocument()
+  })
+})

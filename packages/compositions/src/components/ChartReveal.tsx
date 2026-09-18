@@ -9,7 +9,9 @@ import {
   chartLayout,
   figureBaseline,
   fitFigureSize,
+  fitLabel,
   formatFigure,
+  hasSecondScale,
   lineGeometry,
   stackedGeometry,
   waterfallGeometry,
@@ -47,6 +49,9 @@ export function ChartReveal({
   const { colors, typography } = brand
   const kind = payload.chartKind
   const bars = kind === 'bar' || kind === 'stacked' || kind === 'waterfall'
+  // Known before the layout, because the right-hand axis needs gutter in the
+  // frame box the layout is then measured against (decision 259).
+  const twoScales = hasSecondScale(payload.series, kind)
 
   // The reveal occupies the first 70% of the slot; the finished chart holds.
   const revealFrames = Math.max(1, Math.round(durationInFrames * 0.7))
@@ -65,15 +70,21 @@ export function ChartReveal({
         // Bars need headroom for the figure above the tallest one, and no
         // left gutter at all: there are no axis numbers to put in it.
         top: Math.round((bars ? 72 : 30) * scale),
-        right: Math.round(40 * scale),
+        right: Math.round((twoScales && !bars ? 150 : 40) * scale),
         bottom: Math.round(64 * scale),
         left: Math.round((bars ? 40 : 150) * scale),
       },
     }
     return { frameBox: box, layout: chartLayout(payload.series, payload.chartKind, box) }
-  }, [payload.series, payload.chartKind, width, height, scale, margin, titleZone, bars])
+  }, [payload.series, payload.chartKind, width, height, scale, margin, titleZone, bars, twoScales])
   const seriesColour = (index: number) =>
     colors.chartSeries[index % colors.chartSeries.length] ?? colors.accent
+  // The right axis takes its colour from the line it measures, which is how
+  // the viewer knows which of the two it belongs to.
+  const rightIndex = payload.series.findIndex(
+    (_, index) => layout.right !== null && layout.scaleOf(index) === layout.right,
+  )
+  const leftIndex = payload.series.findIndex((_, index) => layout.scaleOf(index) === layout.left)
 
   // 30px at 1080p (was 20): the bars read from across the room, the words
   // must too. The stroke-behind (paint-order) keeps a label legible where
@@ -85,6 +96,12 @@ export function ChartReveal({
     strokeWidth: 5 * scale,
     paintOrder: 'stroke',
   }
+
+  // The axis NAME is a label, not a figure, so it is set smaller than the
+  // numbers: at figure size a gutter sized for "$18 Billion" clips
+  // "Valuation" down to seven characters (decision 259).
+  const axisNameSize = 22 * scale
+  const axisName: React.CSSProperties = { ...axisText, fontSize: axisNameSize }
 
   // One size for every figure on the chart, fitted to the tightest slot. The
   // figures are the point of a bar chart, so they start well above axis type
@@ -279,8 +296,25 @@ export function ChartReveal({
         {/* A line needs its extremes to be read; a bar has said its number. */}
         {bars ? null : (
           <>
+            {/* With two scales the extremes land beside the WRONG line: the
+                valuation's top sits where the margin starts. So each axis
+                takes its series' colour and says its name (decision 259). */}
+            {layout.right ? (
+              <text
+                style={{ ...axisName, fill: seriesColour(leftIndex) }}
+                x={frameBox.pad.left - 12 * scale}
+                y={layout.y(layout.rawMax) - 26 * scale}
+                textAnchor="end"
+              >
+                {fitLabel(
+                  payload.series[leftIndex]?.label ?? '',
+                  frameBox.pad.left - 12 * scale,
+                  axisNameSize,
+                )}
+              </text>
+            ) : null}
             <text
-              style={axisText}
+              style={layout.right ? { ...axisText, fill: seriesColour(leftIndex) } : axisText}
               x={frameBox.pad.left - 12 * scale}
               y={layout.y(layout.rawMax) + 8}
               textAnchor="end"
@@ -288,13 +322,48 @@ export function ChartReveal({
               {formatFigure(layout.rawMax, layout.unit)}
             </text>
             <text
-              style={axisText}
+              style={layout.right ? { ...axisText, fill: seriesColour(leftIndex) } : axisText}
               x={frameBox.pad.left - 12 * scale}
               y={layout.y(layout.rawMin)}
               textAnchor="end"
             >
               {formatFigure(layout.rawMin, layout.unit)}
             </text>
+            {/* The second measure's extremes, on its own side (decision 259).
+                Without these the right-hand line is drawn against a scale the
+                viewer cannot see, which is worse than not drawing it. */}
+            {layout.right ? (
+              <>
+                <text
+                  style={{ ...axisName, fill: seriesColour(rightIndex) }}
+                  x={frameBox.width - frameBox.pad.right + 12 * scale}
+                  y={layout.right.y(layout.right.rawMax) - 26 * scale}
+                  textAnchor="start"
+                >
+                  {fitLabel(
+                    payload.series[rightIndex]?.label ?? '',
+                    frameBox.pad.right - 12 * scale,
+                    axisNameSize,
+                  )}
+                </text>
+                <text
+                  style={{ ...axisText, fill: seriesColour(rightIndex) }}
+                  x={frameBox.width - frameBox.pad.right + 12 * scale}
+                  y={layout.right.y(layout.right.rawMax) + 8}
+                  textAnchor="start"
+                >
+                  {formatFigure(layout.right.rawMax, layout.right.unit)}
+                </text>
+                <text
+                  style={{ ...axisText, fill: seriesColour(rightIndex) }}
+                  x={frameBox.width - frameBox.pad.right + 12 * scale}
+                  y={layout.right.y(layout.right.rawMin)}
+                  textAnchor="start"
+                >
+                  {formatFigure(layout.right.rawMin, layout.right.unit)}
+                </text>
+              </>
+            ) : null}
           </>
         )}
         {first !== undefined ? (

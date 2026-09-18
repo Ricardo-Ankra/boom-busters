@@ -36,6 +36,83 @@ const profit: ChartSeries = {
   ],
 }
 
+/**
+ * Two measures that cannot share a scale (decision 259): a valuation in
+ * billions against a margin in percent. On one scale the margin is a flat line
+ * on the floor, labelled in the valuation's unit.
+ */
+const valuation: ChartSeries = {
+  label: 'Valuation',
+  unit: '$bn',
+  points: [
+    { x: '2019', y: 1.2 },
+    { x: '2020', y: 4.8 },
+    { x: '2021', y: 12.4 },
+  ],
+}
+
+const margin: ChartSeries = {
+  label: 'Operating margin',
+  unit: '%',
+  points: [
+    { x: '2019', y: -4 },
+    { x: '2020', y: -19 },
+    { x: '2021', y: -61 },
+  ],
+}
+
+describe('chartLayout — a second scale (decision 259)', () => {
+  it('keeps one scale when every series measures the same thing', () => {
+    const layout = chartLayout([revenue, profit], 'line', FRAME)
+    expect(layout.right).toBeNull()
+    expect(layout.scaleOf(0)).toBe(layout.left)
+    expect(layout.scaleOf(1)).toBe(layout.left)
+    // The flat fields stay the left scale, so single-scale charts are untouched.
+    expect(layout.unit).toBe(layout.left.unit)
+    expect(layout.y(4.1)).toBe(layout.left.y(4.1))
+  })
+
+  it('infers the split from the units when the model did not say', () => {
+    const layout = chartLayout([valuation, margin], 'line', FRAME)
+    expect(layout.right).not.toBeNull()
+    expect(layout.scaleOf(0)).toBe(layout.left)
+    expect(layout.scaleOf(1)).toBe(layout.right)
+    expect(layout.left.unit).toBe('$bn')
+    expect(layout.right?.unit).toBe('%')
+  })
+
+  it('draws each series against its own extremes, not the pooled ones', () => {
+    const layout = chartLayout([valuation, margin], 'line', FRAME)
+    // The margin's worst point sits at the bottom of ITS scale. Pooled with a
+    // valuation of 12.4 it would have been a flat line along the floor.
+    const worst = layout.right!.y(-61)
+    const best = layout.right!.y(0)
+    expect(worst - best).toBeGreaterThan(layout.plotHeight * 0.5)
+  })
+
+  it('obeys an explicit axis over the inference', () => {
+    const left = { ...margin, axis: 'left' as const }
+    const layout = chartLayout([valuation, left], 'line', FRAME)
+    expect(layout.right).toBeNull()
+    expect(layout.scaleOf(1)).toBe(layout.left)
+  })
+
+  it('never splits a stack or a waterfall, which cannot mean two units', () => {
+    const layout = chartLayout([valuation, margin], 'stacked', FRAME)
+    expect(layout.right).toBeNull()
+  })
+
+  it('writes each bar’s figure in its OWN series unit', () => {
+    const figures = barFigures(
+      [valuation, margin],
+      'bar',
+      chartLayout([valuation, margin], 'bar', FRAME),
+    )
+    expect(figures.some((figure) => figure.text.includes('$'))).toBe(true)
+    expect(figures.some((figure) => figure.text.includes('%'))).toBe(true)
+  })
+})
+
 describe('chartLayout', () => {
   it('takes the x domain as the union of labels in first-seen order', () => {
     const layout = chartLayout([revenue, profit], 'line', FRAME)

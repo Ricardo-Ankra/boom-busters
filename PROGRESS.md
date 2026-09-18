@@ -4853,3 +4853,51 @@ Recorded whenever the spec left something open and an implementation was chosen.
     "a model is rewriting this slot's brief" whichever button asked: one slot
     may only have one such job at a time, and sharing the state is what lets
     each button disable while the other one's work is in flight.
+
+43. **A chart is the kind its data is, and may carry two measures**
+    (decision 259; 2026-09-18, owner: "it feels like there isn't any ability to
+    generate different chart types. Its fixed to bar charts, because I asked it
+    to create a chart like this 'Valuation vs Profitability line charts showing
+    the valuation increasing overtime, but the profitability growing negatively
+    exponentially' and it just generated the same bar chart").
+
+    Three separate things were wrong, and the first was not what it looked
+    like. The five chart kinds were already supported end to end: schema,
+    prompt, board preview and render all branch on all of them, and the preview
+    and the render share one geometry module. Nothing was fixed to bars.
+
+    What actually happened is that no model ever saw the request. On a chart
+    slot "Edit brief" can only change `description`, which is not what draws the
+    chart, and "Regenerate" re-fetches candidates, of which a chart has none.
+    The sequence saved a sentence into a field nobody reads and redrew the
+    identical chart. Decision 258's button is the one that reaches a model, and
+    it had shipped minutes earlier.
+
+    **Nothing told the model how to choose.** The prompts listed five kinds and
+    never said which was for what, and the Director's Book craft notes mention
+    charts three times without naming a kind. A model with no rule falls back on
+    its habit, and its habit is bars. Both prompts now carry the rule: a value
+    through time is a line, a filled line when the size of it is the point, a
+    comparison across things is a bar, parts of a whole are stacked, a bridge
+    between totals is a waterfall, and never a bar because it is the safe
+    choice.
+
+    **And the chart asked for could not be drawn at all.** `chartLayout` pooled
+    every series into one y scale and took one unit from the first series, so a
+    valuation in billions against a margin in percent put the margin flat along
+    the floor, labelled in dollars. Series now carry an optional
+    `axis: 'left' | 'right'`, the layout builds a scale per side, and every
+    drawing path asks which scale a series belongs to. When the model omits the
+    field but the units differ, the split is inferred rather than drawn
+    misleadingly: a forgotten field must not produce a chart that lies. Stacks
+    and waterfalls never split, because adding two units together means nothing.
+
+    Rebasing both series to an index of 100 was the other way to do this, and
+    was rejected: every figure on screen comes from a claim verbatim, and an
+    index puts computed numbers on screen that appear in no claim.
+
+    The golden caught what code review would not have. With two scales the
+    axis extremes land beside the WRONG line: the valuation's top sits exactly
+    where the margin begins. Each axis now names its series and takes that
+    series' colour, and the name is cut to the gutter it has, because the SVG
+    edge was silently swallowing "Operating margin" down to "Operating".

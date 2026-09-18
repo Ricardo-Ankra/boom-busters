@@ -153,6 +153,18 @@ export const ChartPointSchema = z.object({
 export const ChartSeriesSchema = z.object({
   label: z.string().min(1),
   /**
+   * Which vertical scale this series is drawn against (decision 259).
+   *
+   * Optional, and almost always absent: series measured in the same thing
+   * share one scale, which is what makes them comparable. It exists for the
+   * chart that puts two different measures side by side — a valuation in
+   * billions against a margin in percent — where a single shared scale
+   * flattens the smaller one onto the floor and labels it with the other
+   * one's unit. Omitted, the layout infers the split from the units rather
+   * than drawing a chart that misleads.
+   */
+  axis: z.enum(['left', 'right']).optional(),
+  /**
    * "USD", "USD Millions", "€bn", "%". Not an axis caption: the renderer folds
    * it into every figure it writes, so a series of 4000 in "USD Millions"
    * reads "$4 Billion" on the bar (decision 254). It must exist for that.

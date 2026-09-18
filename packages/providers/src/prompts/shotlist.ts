@@ -104,9 +104,25 @@ Every brief carries "shotSize": "wide"|"medium"|"close"|"macro"|"aerial"|"graphi
    "prompt", "cameraMovement", "loop": boolean, "depicts"?} (only when hero is enabled)
 - {"type": "chart", "coversText", "description", "motion", "transition",
    "chartKind": "line"|"area"|"bar"|"stacked"|"waterfall",
-   "series": [{"label", "unit", "points": [{"x": string, "y": number}]}],
+   "series": [{"label", "unit", "axis"?: "left"|"right",
+               "points": [{"x": string, "y": number}]}],
    "dataRefs": [claim number], "takeaway",
    "annotations"?: [{"atX", "text"}], "reveal": "draw-on"|"none"}
+Chart kind, chosen by what the data IS, not by habit:
+- "line" for a value moving through time. The default for any series whose x
+  axis is dates or years.
+- "area" for one value through time where the SIZE of it is the point.
+- "bar" for comparing separate things, or a handful of periods side by side.
+- "stacked" for parts of a whole, where the total matters as much as the split.
+- "waterfall" for a bridge from one total to another through named steps; the
+  points are LEVELS, not the size of each step.
+Never answer with a bar because it is the safe choice. If the producer names a
+kind, use it.
+
+Two measures that are not in the same unit (a valuation in billions against a
+margin in percent) need "axis": "left" on one series and "right" on the other.
+On one scale the smaller series flattens onto the floor and is labelled in the
+other's unit, which is a chart that lies.
 - {"type": "map", "coversText", "description", "motion", "transition",
    "locations": [{"label", "lat": number, "lon": number}] (max 8),
    "route": boolean}
