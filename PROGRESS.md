@@ -4936,3 +4936,61 @@ Recorded whenever the spec left something open and an implementation was chosen.
     slots. A note, never a rejection: the match is a heuristic. The markdown
     bible is now re-embedded by
     `pnpm --filter @boom-busters/providers embed:craft` rather than by hand.
+
+45. **A slot may show another slot's shot** (decision 261; 2026-09-18, owner:
+    "there may also be instances where some shots can be re-used ... from a
+    cost and efficiency perspective it's not a bad idea, as long as the shot
+    fits the narrative and the context and is done so sparingly"; spec
+    `docs/superpowers/specs/2026-09-18-sentence-first-briefs-and-shot-reuse-design.md`).
+
+    _Who decides._ The owner, on the board, in either phase. Chapters are
+    planned by separate calls that cannot see each other, so a model cannot
+    spot a cross-chapter repeat at plan time, and "sparingly, when it fits"
+    is a taste judgment. A model-proposed pass is a possible later decision
+    on the same link.
+
+    _The mechanism_ (approach A of three). `shot_slots.reuse_of_slot_id`
+    (migration 0025) records the link. Before Fetch the link stands alone:
+    `slotNeedsResolution` never owes a linked slot a fetch, so no still is
+    generated for it, and a new runner step `copy-reused-shots` after the
+    fan-out copies each source's chosen candidate into its dependants
+    (status resolved, the target's own brief hash, the source's asset id;
+    a source with nothing chosen leaves a placeholder). On the board the
+    action copies at once. Every downstream reader keeps reading
+    `candidates` as it did: assembly, ingestion, the gate, shorts and the
+    teaser. The copy carries `reusedFrom: { slotId, depicts }` and drops the
+    source's score (judged against another brief); `syntheticLikenesses`
+    reads `reusedFrom.depicts`, so a likeness reused into a stock slot still
+    sets the altered-content label. A live link (every reader follows the
+    column) was rejected as five readers and a gate rule for re-planned
+    sources; a copy with no column was rejected because before Fetch there
+    is nothing to copy, and the saving before Fetch was the point.
+
+    _Rules._ Only stock, still and archival slots reuse or are reused; no
+    self-reuse; no chains (a pick that is itself a dependant re-points to
+    the original); same project only. Every rule lives in the server
+    action, and every fetch-shaped action (Regenerate, Fetch this slot,
+    Draft a different brief, Redirect, Upload, re-type) refuses a linked
+    slot in words; a brief edit saves and never fetches for one, and
+    `updateSlotBrief` keeps a linked slot's status. The refetcher skips a
+    linked slot for an event already in flight.
+
+    _The board._ "Use an existing shot" on picture cards opens a panel of
+    the film's other originals grouped by chapter: the covered sentence,
+    "ch 2 · 3:10", the gap ("3 min 20 s earlier"), one "Use this" per
+    candidate the app holds bytes for (the chosen one, the paid-for still
+    variant nobody chose, uploads), and before Fetch one "Use whatever this
+    slot chooses". Under a minute apart is a note, not a block, and the
+    review model repeats it as "the same shot plays at 3:10 and 3:40". A
+    linked card shows the copy with the chip "Reused from ch 2 · 3:10",
+    keeps Edit brief, hides everything that would fetch, and offers "Choose
+    its own shot". A source card says "Also used at 7:42".
+
+    _Tests._ Pure: the guard, the schema, `reuseView` and the spacing note.
+    DB: link with and without a candidate, copy on resolve, unlink, the
+    brief edit. Runner: the copy step via the engine with the plan-writing
+    steps stubbed. Actions: chains, types, other films, the refusals. Board:
+    the picker and the linked card. E2E: the round trip on the seeded plan
+    project (link, the bill drops to one slot, unlink), and the picker on
+    the seeded board's placeholder, cancelled, because a board copy cannot
+    be put back into the exact seeded state from the UI.
