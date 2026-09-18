@@ -14,6 +14,7 @@ const addSlotImageFromUrlAction = vi.fn()
 const approvePlanAction = vi.fn()
 const retypeSlotAction = vi.fn()
 const retypeToHeadlineAction = vi.fn()
+const rebriefSlotAction = vi.fn()
 const dismissRetypeAction = vi.fn()
 const saveDirectionAction = vi.fn()
 const redraftDirectionAction = vi.fn()
@@ -32,6 +33,7 @@ vi.mock('./visuals-actions', () => ({
   approvePlanAction: (...args: unknown[]) => approvePlanAction(...args),
   retypeSlotAction: (...args: unknown[]) => retypeSlotAction(...args),
   retypeToHeadlineAction: (...args: unknown[]) => retypeToHeadlineAction(...args),
+  rebriefSlotAction: (...args: unknown[]) => rebriefSlotAction(...args),
   dismissRetypeAction: (...args: unknown[]) => dismissRetypeAction(...args),
   saveDirectionAction: (...args: unknown[]) => saveDirectionAction(...args),
   redraftDirectionAction: (...args: unknown[]) => redraftDirectionAction(...args),
@@ -55,6 +57,7 @@ beforeEach(() => {
   approvePlanAction.mockResolvedValue({ ok: true })
   retypeSlotAction.mockResolvedValue({ ok: true })
   retypeToHeadlineAction.mockResolvedValue({ ok: true })
+  rebriefSlotAction.mockResolvedValue({ ok: true })
   dismissRetypeAction.mockResolvedValue({ ok: true })
   saveHeadlineAction.mockResolvedValue({ ok: true })
   refetchArticleAction.mockResolvedValue({ ok: true })
@@ -694,6 +697,67 @@ describe('the plan phase (staged-visuals design)', () => {
     for (const button of within(picker).getAllByRole('button')) {
       expect(button).toBeDisabled()
     }
+  })
+
+  it('asks for a different brief, with an optional steer', async () => {
+    render(<VisualBoard projectId={PROJECT} model={model([stockSlot])} colors={COLORS} />)
+
+    await userEvent.click(screen.getAllByRole('button', { name: 'Draft a different brief' })[0]!)
+    // The steer is optional, so the form must submit empty (decision 258).
+    await userEvent.click(screen.getByRole('button', { name: 'Draft it' }))
+    expect(rebriefSlotAction).toHaveBeenCalledWith(PROJECT, SLOT_A, '')
+  })
+
+  it('sends what the owner typed, and says the steer is not kept', async () => {
+    render(<VisualBoard projectId={PROJECT} model={model([stockSlot])} colors={COLORS} />)
+
+    await userEvent.click(screen.getAllByRole('button', { name: 'Draft a different brief' })[0]!)
+    const form = screen.getByLabelText(/What are you picturing/)
+    await userEvent.type(form, 'People, not another empty room.')
+    // The one-off nature is on the form, not discovered later when a re-plan
+    // wipes the result.
+    expect(screen.getByText(/used once and not kept/)).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Draft it' }))
+    expect(rebriefSlotAction).toHaveBeenCalledWith(
+      PROJECT,
+      SLOT_A,
+      'People, not another empty room.',
+    )
+  })
+
+  it('never offers a headline card a new brief — its words are the article’s', () => {
+    render(<VisualBoard projectId={PROJECT} model={model([headlineSlot])} colors={COLORS} />)
+    expect(
+      screen.queryByRole('button', { name: 'Draft a different brief' }),
+    ).not.toBeInTheDocument()
+  })
+
+  it('says a new brief is being drafted, and holds the card while it is', () => {
+    const drafting: SlotView = { ...stockSlot, retype: { state: 'rebriefing' } }
+    render(<VisualBoard projectId={PROJECT} model={model([drafting])} colors={COLORS} />)
+
+    expect(screen.getByRole('status')).toHaveTextContent(/drafting a new brief/)
+    // Not the re-type sentence, which would name a format nobody asked about.
+    expect(screen.getByRole('status')).not.toHaveTextContent(/map locations/)
+    const picker = screen.getByRole('group', { name: 'Slot format' })
+    for (const button of within(picker).getAllByRole('button')) {
+      expect(button).toBeDisabled()
+    }
+  })
+
+  it('shows a refused re-brief in the model’s words, keeping the brief it has', async () => {
+    const refused: SlotView = {
+      ...stockSlot,
+      retype: { state: 'rebrief-refused', reason: 'This beat has only one honest image.' },
+    }
+    render(<VisualBoard projectId={PROJECT} model={model([refused])} colors={COLORS} />)
+
+    const alert = screen.getByRole('alert')
+    expect(alert).toHaveTextContent(/only one honest image/)
+    expect(alert).toHaveTextContent(/keeps the one it has/)
+    await userEvent.click(within(alert).getByRole('button', { name: 'Dismiss' }))
+    expect(dismissRetypeAction).toHaveBeenCalledWith(PROJECT, SLOT_A)
   })
 
   it('names the format it is drafting, whatever the format is', () => {

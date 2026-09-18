@@ -6,7 +6,7 @@ import type {
   ShotSlotType,
   SlotCandidate,
   SlotRefusal,
-  SlotRetypeState,
+  SlotDraftState,
 } from '@boom-busters/schemas'
 import type { Database } from './client'
 import { assets, chapters, shotSlots } from './schema'
@@ -229,7 +229,7 @@ export async function setSlotRefusal(
 export async function setSlotRetype(
   db: Database,
   slotId: string,
-  state: SlotRetypeState | null,
+  state: SlotDraftState | null,
 ): Promise<void> {
   await db
     .update(shotSlots)

@@ -31,6 +31,42 @@ const claims = [
 ]
 
 describe('buildRetypeRequest', () => {
+  it('asks for a DIFFERENT one when the target is the type it already is', () => {
+    // How a chart or map slot gets a new brief (decision 258): the same path,
+    // so the claim-number validation is the same, but the framing has to say
+    // that a paraphrase of the rejected brief is not an answer.
+    const chart = {
+      ...still,
+      type: 'chart' as const,
+      chartKind: 'line' as const,
+      series: [],
+      dataRefs: [],
+      takeaway: 'x',
+      reveal: 'none' as const,
+    }
+    const request = buildRetypeRequest({
+      caseTitle: 'Wirecard',
+      brief: chart as unknown as ShotBrief,
+      targetType: 'chart',
+      claims,
+      guidance: 'Show the whole decade, not just the collapse.',
+    })
+    expect(request.system).toContain('DIFFERENT')
+    // Not the re-type framing, which would be nonsense here.
+    expect(request.system).not.toContain('expressed as type')
+    expect(request.messages[request.messages.length - 1]?.content).toContain('the whole decade')
+  })
+
+  it('leaves the steer out entirely when there is none', () => {
+    const request = buildRetypeRequest({
+      caseTitle: 'Wirecard',
+      brief: still,
+      targetType: 'chart',
+      claims,
+    })
+    expect(request.messages.some((message) => message.content.includes('steer'))).toBe(false)
+  })
+
   it('carries the current brief, the claims and the target rules', () => {
     const request = buildRetypeRequest({
       caseTitle: 'Wirecard',

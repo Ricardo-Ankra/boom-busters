@@ -45,14 +45,21 @@ test.describe('the shot plan checkpoint', () => {
   })
 
   test('plan-phase edits say Save, never re-fetch', async ({ page }) => {
-    await page.getByRole('button', { name: 'Edit brief', exact: true }).first().click()
-    await expect(page.getByRole('button', { name: 'Save', exact: true })).toBeVisible()
-    await expect(page.getByRole('button', { name: /Save & re-fetch/ })).toHaveCount(0)
+    /**
+     * Scoped to the slot card, not the page. The plan screen also carries the
+     * Cast card, whose editor has a Save of its own once this project has a
+     * cast member, so a page-wide "Save" is two buttons and a strict-mode
+     * failure — intermittently, depending on what earlier specs left behind.
+     */
+    const card = page.locator('[id^="slot-"]').first()
+    await card.getByRole('button', { name: 'Edit brief', exact: true }).click()
+    await expect(card.getByRole('button', { name: 'Save', exact: true })).toBeVisible()
+    await expect(card.getByRole('button', { name: /Save & re-fetch/ })).toHaveCount(0)
 
-    const description = page.getByLabel('Visual description').first()
+    const description = card.getByLabel('Visual description')
     await description.fill('A boardroom nobody sits in any more, dust on the table.')
-    await page.getByRole('button', { name: 'Save', exact: true }).click()
-    await expect(page.getByText('Brief saved', { exact: true })).toBeVisible()
+    await card.getByRole('button', { name: 'Save', exact: true }).click()
+    await expect(page.getByText('Brief saved', { exact: true }).first()).toBeVisible()
   })
 
   test('re-typing still → stock lands on the click that asked', async ({ page }) => {

@@ -4816,3 +4816,40 @@ Recorded whenever the spec left something open and an implementation was chosen.
     though its type has not moved, so it no longer takes the same-type short
     circuit. What survives the move is how the card is drawn; the highlight
     does not, because it names words the previous headline printed.
+
+42. **A shot can be asked for a different idea** (decision 258; 2026-09-18,
+    owner: "I can't re-generate a new visual brief for a shot. So if I don't
+    like it at all, I can't ask to create a new one and provide some guidance
+    of what I am thinking"). The board had two ways to change a brief and
+    nothing in between: retype the words yourself, or re-plan every slot in
+    every chapter. Rejecting one idea meant either writing the replacement by
+    hand or throwing away the whole board to get a second opinion on one shot.
+
+    "Draft a different brief" sits beside Edit brief and opens a box for what
+    the owner is picturing. The steer is optional, because "I do not like this
+    one, give me another" is a complete instruction and demanding a reason for
+    it would turn a small button into a form. It is also one-off, and the form
+    says so: a later re-plan drafts the slot again from the Director's Book,
+    exactly as it already overwrites hand-edits.
+
+    The format is deliberately not in question. A re-type changes what KIND of
+    shot this is and has its own button; this changes the idea inside the kind
+    already chosen, which is what keeps the anti-slop rules where they are. Two
+    prompt paths sit behind the one button, because two kinds of brief exist.
+    Stock, real footage and AI image briefs are ideas, so a new prompt asks for
+    another one under the same craft rules the redirect already follows. Chart
+    and map briefs are data, so they go back through the re-type drafting path
+    with the target set to the type they already have: not a shortcut, but how
+    a redrawn chart still cannot cite numbers the dossier does not hold.
+
+    A headline card is never offered the button at all. Every word on it is
+    read from the article, so there is no idea to have again, and changing
+    which article it quotes is the chooser's job (decision 257).
+
+    The work runs in a `slot-rebriefer` function behind the cost guard, the
+    third instance of the pattern the retyper and redirector established, and
+    a refusal comes back in the model's own words on the card rather than as a
+    failed stage. The pending state shares the `retype` column, which now means
+    "a model is rewriting this slot's brief" whichever button asked: one slot
+    may only have one such job at a time, and sharing the state is what lets
+    each button disable while the other one's work is in flight.

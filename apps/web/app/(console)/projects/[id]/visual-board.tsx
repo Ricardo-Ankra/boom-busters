@@ -35,6 +35,7 @@ import {
   saveHeadlineAction,
   replanShotsAction,
   retypeSlotAction,
+  rebriefSlotAction,
   retypeToHeadlineAction,
   type ActionResult,
 } from './visuals-actions'
@@ -710,6 +711,7 @@ function SlotCard({
   articleClaims: ArticleClaimOption[]
 }) {
   const [editing, setEditing] = React.useState(false)
+  const [rebriefing, setRebriefing] = React.useState(false)
   // Which candidate the lightbox shows, or null when it is closed. Opens on
   // the current choice, since "how does the selected media actually look at
   // size" is the question the button answers.
@@ -873,6 +875,21 @@ function SlotCard({
                       ? 'Edit brief'
                       : 'Edit brief & re-fetch'}
                 </Button>
+                {/* Editing the words yourself and re-planning the whole film
+                    were the only two ways to change an idea (decision 258).
+                    A headline card is never offered one: every word on it is
+                    read from the article, so there is no idea to have again. */}
+                {brief.type !== 'headline' ? (
+                  <Button
+                    variant="outline"
+                    busy={busy && rebriefing}
+                    disabled={slot.retype?.state === 'rebriefing'}
+                    aria-expanded={rebriefing}
+                    onClick={() => setRebriefing((value) => !value)}
+                  >
+                    {rebriefing ? 'Close' : 'Draft a different brief'}
+                  </Button>
+                ) : null}
                 {/* Real footage has nothing to fetch (decision 214): the
                     brief guides the owner's own search, so the only actions
                     are editing it and uploading against it. */}
@@ -928,6 +945,15 @@ function SlotCard({
             act={act}
             onDone={() => setEditing(false)}
             planning={planning}
+          />
+        ) : null}
+
+        {rebriefing && brief ? (
+          <RebriefForm
+            slot={slot}
+            projectId={projectId}
+            act={act}
+            onDone={() => setRebriefing(false)}
           />
         ) : null}
 
@@ -1065,8 +1091,12 @@ function TypePicker({
   articleClaims: ArticleClaimOption[]
 }) {
   const types = SHOT_SLOT_TYPES.filter((type) => type !== 'hero' || slot.type === 'hero')
-  const drafting = slot.retype?.state === 'drafting'
-  const refused = slot.retype?.state === 'refused' ? slot.retype : null
+  const job = slot.retype
+  // Either kind of model job holds every button: a second request racing the
+  // first would write over whichever landed last.
+  const drafting = job?.state === 'drafting' || job?.state === 'rebriefing'
+  const refused = job?.state === 'refused' ? job : null
+  const rebriefRefused = job?.state === 'rebrief-refused' ? job : null
   const [choosing, setChoosing] = React.useState(false)
 
   return (
@@ -1123,10 +1153,15 @@ function TypePicker({
         />
       ) : null}
 
-      {drafting && slot.retype ? (
+      {job?.state === 'drafting' ? (
         <p className="text-[13px] text-[var(--color-text-secondary)]" role="status">
-          Claude is drafting the {draftingNoun(slot.retype.target)}. This card updates when it
-          lands.
+          Claude is drafting the {draftingNoun(job.target)}. This card updates when it lands.
+        </p>
+      ) : null}
+
+      {job?.state === 'rebriefing' ? (
+        <p className="text-[13px] text-[var(--color-text-secondary)]" role="status">
+          Claude is drafting a new brief. This card updates when it lands.
         </p>
       ) : null}
 
@@ -1138,6 +1173,24 @@ function TypePicker({
           <p className="min-w-0 flex-1 text-[13px] text-[var(--color-warning)]">
             Could not re-type to {slotTypeLabel(refused.target)}: {refused.reason} The slot keeps
             its current brief.
+          </p>
+          <Button
+            variant="outline"
+            busy={busy}
+            onClick={() => act(slot.id, () => dismissRetypeAction(projectId, slot.id), 'Dismissed')}
+          >
+            Dismiss
+          </Button>
+        </div>
+      ) : null}
+
+      {rebriefRefused ? (
+        <div
+          role="alert"
+          className="flex flex-wrap items-center gap-2 rounded-[8px] border border-[var(--color-warning)] p-2"
+        >
+          <p className="min-w-0 flex-1 text-[13px] text-[var(--color-warning)]">
+            No new brief: {rebriefRefused.reason} The slot keeps the one it has.
           </p>
           <Button
             variant="outline"
@@ -1410,6 +1463,70 @@ function ChosenFacts({ slot }: { slot: SlotView }) {
         </>
       ) : null}
     </p>
+  )
+}
+
+/**
+ * "Draft a different brief" (decision 258): the idea is rejected, and the
+ * owner may say what they are picturing instead.
+ *
+ * The steer is optional on purpose. "I do not like this one, give me another"
+ * is a complete instruction, and demanding a reason for it would turn a small
+ * button into a form to fill in. It is also one-off: it steers this draft and
+ * is not kept, which the form says plainly rather than letting the owner
+ * discover it when a re-plan wipes the result.
+ */
+function RebriefForm({
+  slot,
+  projectId,
+  act,
+  onDone,
+}: {
+  slot: SlotView
+  projectId: string
+  act: (slotId: string, run: () => Promise<ActionResult>, success: string) => Promise<ActionResult>
+  onDone: () => void
+}) {
+  const [guidance, setGuidance] = React.useState('')
+
+  return (
+    <form
+      className="flex flex-col gap-2 rounded-[8px] border border-[var(--color-border)] p-3"
+      onSubmit={(event) => {
+        event.preventDefault()
+        void act(
+          slot.id,
+          () => rebriefSlotAction(projectId, slot.id, guidance),
+          'Drafting a new brief — this card updates when it lands',
+        ).then((result) => {
+          if (result.ok) onDone()
+        })
+      }}
+    >
+      <label className="flex flex-col gap-1 text-[12px] text-[var(--color-text-secondary)]">
+        What are you picturing? (optional)
+        <textarea
+          value={guidance}
+          onChange={(event) => setGuidance(event.target.value)}
+          rows={2}
+          maxLength={600}
+          placeholder="Leave this empty to just ask for a different idea."
+          className="rounded-[8px] border border-[var(--color-border-strong)] bg-[var(--color-background)] p-2 text-[13px] text-[var(--color-text-primary)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-accent)]"
+        />
+      </label>
+      <p className="text-[12px] text-[var(--color-text-muted)]">
+        This replaces the brief this slot has. The steer is used once and not kept, so re-planning
+        the shot list later will draft this slot again from the Director&rsquo;s Book.
+      </p>
+      <div className="flex flex-wrap gap-2">
+        <Button type="submit" variant="primary">
+          Draft it
+        </Button>
+        <Button type="button" variant="ghost" onClick={onDone}>
+          Cancel
+        </Button>
+      </div>
+    </form>
   )
 }
 

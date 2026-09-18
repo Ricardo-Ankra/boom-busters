@@ -125,6 +125,21 @@ export const VisualsReplanRequestedSchema = z.object({
 })
 
 /**
+ * Draft a DIFFERENT brief for one slot (decision 258), with the producer's
+ * steer. Handled by the slot-rebriefer. The format never changes: only the
+ * idea inside it is in question, which is what separates this from a re-type.
+ */
+export const VisualsRebriefRequestedSchema = z.object({
+  ...projectRef,
+  slotId: UlidSchema,
+  /**
+   * What the owner is picturing, in their words. Optional, because "I do not
+   * like this one, give me another" is a complete instruction on its own.
+   */
+  guidance: z.string().trim().min(1).max(600).optional(),
+})
+
+/**
  * Redirect a still an image model refused (decision 252): the same beat
  * without the likeness. Handled by the slot-redirector.
  */
@@ -320,6 +335,7 @@ export const EVENT_SCHEMAS = {
   'visuals/retype.requested': VisualsRetypeRequestedSchema,
   'visuals/replan.requested': VisualsReplanRequestedSchema,
   'visuals/redirect.requested': VisualsRedirectRequestedSchema,
+  'visuals/rebrief.requested': VisualsRebriefRequestedSchema,
   'media/job.completed': MediaJobCompletedSchema,
   'render/draft.requested': RenderDraftRequestedSchema,
   'shorts/render.requested': ShortsRenderRequestedSchema,

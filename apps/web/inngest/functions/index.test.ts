@@ -38,6 +38,7 @@ const SINGLETONS: Record<string, { key: string; mode: 'cancel' } | null> = {
   'voice-retaker': { key: 'event.data.takeId', mode: 'cancel' },
   'slot-refetcher': { key: 'event.data.slotId', mode: 'cancel' },
   'slot-retyper': { key: 'event.data.slotId', mode: 'cancel' },
+  'slot-rebriefer': { key: 'event.data.slotId', mode: 'cancel' },
   'slot-redirector': { key: 'event.data.slotId', mode: 'cancel' },
   'visuals-replanner': { key: 'event.data.projectId', mode: 'cancel' },
   'short-render-runner': { key: 'event.data.shortId', mode: 'cancel' },

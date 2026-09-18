@@ -126,6 +126,36 @@ test.describe('the visual board', () => {
  * byline, which is the common real case: the fetch worked, one field needs a
  * human, and the card has to make that a small job.
  */
+/**
+ * "Draft a different brief" (decision 258). The board could only edit a brief
+ * by hand or re-plan every slot in the film; this is the control in between.
+ *
+ * Stops at the ask, like the re-type cases: pressing Draft it hands the work
+ * to Inngest, and this suite runs without it.
+ */
+test.describe('asking for a different brief', () => {
+  test('offers a steer, says it is not kept, and never asks a headline card', async ({ page }) => {
+    const buttons = page.getByRole('button', { name: 'Draft a different brief' })
+    await buttons.first().click()
+
+    await expect(page.getByLabel(/What are you picturing/)).toBeVisible()
+    await expect(page.getByText(/used once and not kept/)).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Draft it' })).toBeVisible()
+
+    // The headline card is not offered one: every word on it is read from the
+    // article rather than written. Asserted ON THAT CARD rather than by
+    // counting buttons across the board, which would couple this test to what
+    // every other test on the shared board happens to have done first.
+    const headlineCard = page
+      .locator('[id^="slot-"]')
+      .filter({ has: page.getByLabel('Headline card preview') })
+    await expect(headlineCard).toHaveCount(1)
+    await expect(headlineCard.getByRole('button', { name: 'Draft a different brief' })).toHaveCount(
+      0,
+    )
+  })
+})
+
 test.describe('a headline card', () => {
   test('draws what the article said, and says where each field came from', async ({ page }) => {
     const card = page.getByLabel('Headline card preview')
