@@ -52,4 +52,15 @@ describe('slotNeedsResolution', () => {
   it('owes work to a resolution with no fingerprint (legacy rows, uploads aside)', () => {
     expect(slotNeedsResolution({ status: 'resolved', brief, resolvedBriefHash: null })).toBe(true)
   })
+
+  it('owes nothing to a linked slot, whatever its status or hash (decision 261)', () => {
+    expect(
+      slotNeedsResolution({
+        status: 'unresolved',
+        brief,
+        resolvedBriefHash: null,
+        reuseOfSlotId: '01J000000000000000000000AA',
+      }),
+    ).toBe(false)
+  })
 })

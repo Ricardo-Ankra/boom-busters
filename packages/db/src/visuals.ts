@@ -41,12 +41,18 @@ export function shotBriefHash(brief: unknown): string {
   return createHash('sha256').update(JSON.stringify(brief)).digest('hex')
 }
 
-/** Whether a fetch pass owes this slot work: not resolved, or resolved for an older brief. */
+/**
+ * Whether a fetch pass owes this slot work: not resolved, or resolved for an
+ * older brief. A linked slot (decision 261) shows another slot's shot and is
+ * never owed one, whatever its status or hash say.
+ */
 export function slotNeedsResolution(slot: {
   status: ShotSlotStatus
   brief: unknown
   resolvedBriefHash: string | null
+  reuseOfSlotId?: string | null | undefined
 }): boolean {
+  if (slot.reuseOfSlotId) return false
   return slot.status !== 'resolved' || slot.resolvedBriefHash !== shotBriefHash(slot.brief)
 }
 

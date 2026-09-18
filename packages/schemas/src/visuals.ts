@@ -40,6 +40,9 @@ export const SHOT_SLOT_TYPES = [
 export const ShotSlotTypeSchema = z.enum(SHOT_SLOT_TYPES)
 export type ShotSlotType = z.infer<typeof ShotSlotTypeSchema>
 
+/** The slot types that may reuse a shot or be reused (decision 261): pictures, never data. */
+export const REUSABLE_SLOT_TYPES: readonly ShotSlotType[] = ['stock', 'still', 'archival']
+
 export const SHOT_SLOT_STATUSES = ['unresolved', 'resolved', 'placeholder'] as const
 export const ShotSlotStatusSchema = z.enum(SHOT_SLOT_STATUSES)
 export type ShotSlotStatus = z.infer<typeof ShotSlotStatusSchema>
@@ -339,6 +342,14 @@ export const SlotCandidateSchema = z.object({
   chosen: z.boolean().optional(),
   /** The `assets` row holding this candidate's bytes, once any exist. */
   assetId: UlidSchema.optional(),
+  /**
+   * Where a copied candidate came from (decision 261): the slot whose shot
+   * this one reuses, and the people that shot depicts, so the altered-content
+   * label still counts a likeness that was reused into a stock slot.
+   */
+  reusedFrom: z
+    .object({ slotId: UlidSchema, depicts: z.array(z.string().min(1)).optional() })
+    .optional(),
 })
 export type SlotCandidate = z.infer<typeof SlotCandidateSchema>
 

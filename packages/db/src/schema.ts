@@ -13,6 +13,7 @@ import {
   timestamp,
   unique,
   uniqueIndex,
+  type AnyPgColumn,
 } from 'drizzle-orm/pg-core'
 
 /**
@@ -603,6 +604,15 @@ export const shotSlots = pgTable(
      * shows it with the two ways out (redirect the scene, upload a real image).
      */
     refusal: jsonb('refusal').$type<Record<string, unknown>>(),
+    /**
+     * The slot whose shot this one shows instead of fetching its own
+     * (decision 261). Set by the board's "Use an existing shot"; the copy
+     * lands in `candidates` when the source has one, so every reader of
+     * candidates stays as it is. Nulled if the source row goes.
+     */
+    reuseOfSlotId: text('reuse_of_slot_id').references((): AnyPgColumn => shotSlots.id, {
+      onDelete: 'set null',
+    }),
     startMs: integer('start_ms').notNull().default(0),
     durationMs: integer('duration_ms').notNull().default(0),
     createdAt: createdAt(),

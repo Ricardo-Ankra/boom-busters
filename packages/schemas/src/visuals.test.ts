@@ -4,6 +4,7 @@ import {
   HeadlineBriefSchema,
   HERO_SLOTS_ENABLED,
   PlannedBriefSchema,
+  REUSABLE_SLOT_TYPES,
   ShotBriefSchema,
   SlotCandidateSchema,
   SlotDraftStateSchema,
@@ -148,6 +149,26 @@ describe('SlotCandidateSchema', () => {
     }
     expect(SlotCandidateSchema.parse(candidate).licence).toBe('Pexels License')
     expect(() => SlotCandidateSchema.parse({ ...candidate, licence: '' })).toThrow()
+  })
+
+  it('carries where a copy came from, and is fine without it (decision 261)', () => {
+    const candidate = {
+      id: '123456',
+      provider: 'pexels',
+      kind: 'image',
+      sourceUrl: 'https://images.pexels.com/photos/123456/office.jpeg',
+      licence: 'Pexels License',
+    }
+    expect(SlotCandidateSchema.parse(candidate).reusedFrom).toBeUndefined()
+    expect(
+      SlotCandidateSchema.parse({
+        ...candidate,
+        reusedFrom: { slotId: '01J000000000000000000000AA', depicts: ['Markus Braun'] },
+      }).reusedFrom,
+    ).toEqual({ slotId: '01J000000000000000000000AA', depicts: ['Markus Braun'] })
+    expect(() =>
+      SlotCandidateSchema.parse({ ...candidate, reusedFrom: { slotId: 'nope' } }),
+    ).toThrow()
   })
 })
 
@@ -451,5 +472,11 @@ describe('convertBrief — re-typing a slot (staged-visuals design)', () => {
 
     // With no claim to move to, it is still the same brief, untouched.
     expect(convertBrief(headline, 'headline')).toBe(headline)
+  })
+})
+
+describe('REUSABLE_SLOT_TYPES', () => {
+  it('is pictures, never data (decision 261)', () => {
+    expect(REUSABLE_SLOT_TYPES).toEqual(['stock', 'still', 'archival'])
   })
 })

@@ -1,0 +1,2 @@
+ALTER TABLE "shot_slots" ADD COLUMN "reuse_of_slot_id" text;--> statement-breakpoint
+ALTER TABLE "shot_slots" ADD CONSTRAINT "shot_slots_reuse_of_slot_id_shot_slots_id_fk" FOREIGN KEY ("reuse_of_slot_id") REFERENCES "public"."shot_slots"("id") ON DELETE set null ON UPDATE no action;
