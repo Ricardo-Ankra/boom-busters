@@ -18,6 +18,8 @@ const saveDirectionAction = vi.fn()
 const redraftDirectionAction = vi.fn()
 const replanShotsAction = vi.fn()
 const redirectSceneAction = vi.fn()
+const saveHeadlineAction = vi.fn()
+const refetchArticleAction = vi.fn()
 
 vi.mock('./visuals-actions', () => ({
   chooseCandidateAction: (...args: unknown[]) => chooseCandidateAction(...args),
@@ -33,6 +35,8 @@ vi.mock('./visuals-actions', () => ({
   redraftDirectionAction: (...args: unknown[]) => redraftDirectionAction(...args),
   replanShotsAction: (...args: unknown[]) => replanShotsAction(...args),
   redirectSceneAction: (...args: unknown[]) => redirectSceneAction(...args),
+  saveHeadlineAction: (...args: unknown[]) => saveHeadlineAction(...args),
+  refetchArticleAction: (...args: unknown[]) => refetchArticleAction(...args),
 }))
 
 const refresh = vi.fn()
@@ -49,6 +53,8 @@ beforeEach(() => {
   approvePlanAction.mockResolvedValue({ ok: true })
   retypeSlotAction.mockResolvedValue({ ok: true })
   dismissRetypeAction.mockResolvedValue({ ok: true })
+  saveHeadlineAction.mockResolvedValue({ ok: true })
+  refetchArticleAction.mockResolvedValue({ ok: true })
 })
 
 const COLORS: BrandChartColors = {
@@ -113,6 +119,7 @@ const stockSlot: SlotView = {
   needsFetch: false,
   retype: null,
   refusal: null,
+  article: null,
 }
 
 const chartSlot: SlotView = {
@@ -150,6 +157,46 @@ const chartSlot: SlotView = {
   needsFetch: false,
   retype: null,
   refusal: null,
+  article: null,
+}
+
+const SLOT_D = '01J000000000000000000000AD'
+
+/** Invented outlet and byline: a fixture must never carry a real one. */
+const headlineSlot: SlotView = {
+  id: SLOT_D,
+  type: 'headline',
+  status: 'resolved',
+  chapterIndex: 0,
+  chapterTitle: 'The audit',
+  startMs: 20000,
+  durationMs: 7000,
+  brief: {
+    type: 'headline',
+    coversText: 'The morning the story broke.',
+    description: 'The clipping that started it.',
+    motion: { kind: 'static' },
+    transition: 'cut',
+    sourceClaimId: CLAIM,
+    emphasis: '$1.9 billion',
+  },
+  briefError: undefined,
+  candidates: [],
+  extraCandidates: 0,
+  needsFetch: false,
+  retype: null,
+  refusal: null,
+  article: {
+    url: 'https://financialrecord.example/2023/03/14/auditors',
+    outlet: 'The Financial Record',
+    headline: 'Auditors cannot find the $1.9 billion the company says it holds',
+    author: 'Elena Marsh',
+    publishedAt: '2023-03-14',
+    description: 'Three banks say they never held the escrow accounts.',
+    provenance: { headline: 'jsonld', outlet: 'og', author: 'meta', publishedAt: 'domain' },
+    status: 'fetched',
+    failureReason: null,
+  },
 }
 
 const brokenSlot: SlotView = {
@@ -167,6 +214,7 @@ const brokenSlot: SlotView = {
   needsFetch: true,
   retype: null,
   refusal: null,
+  article: null,
 }
 
 function model(slots: SlotView[], overrides: Partial<VisualsReviewModel> = {}): VisualsReviewModel {
@@ -614,5 +662,80 @@ describe('a refused still (decision 252)', () => {
 
     await userEvent.click(within(card).getByRole('button', { name: /Redirect the scene/ }))
     expect(redirectSceneAction).toHaveBeenCalledWith(PROJECT, SLOT_C)
+  })
+})
+
+describe('the headline card (decision 257)', () => {
+  it('shows what the article said, and where each field came from', () => {
+    render(<VisualBoard projectId={PROJECT} model={model([headlineSlot])} colors={COLORS} />)
+
+    const card = screen.getByLabelText('Headline card preview')
+    expect(within(card).getByText('The Financial Record')).toBeTruthy()
+    expect(within(card).getByText('2023-03-14')).toBeTruthy()
+    expect(within(card).getByText('By Elena Marsh')).toBeTruthy()
+    // The marker splits the headline, so it is rendered in pieces.
+    expect(within(card).getByText('$1.9 billion')).toBeTruthy()
+
+    const provenance = screen.getByLabelText('Where each field came from')
+    expect(within(provenance).getByText(/headline . from the article/)).toBeTruthy()
+    // A guess must read as a guess.
+    expect(within(provenance).getByText(/date . guessed from the domain/)).toBeTruthy()
+  })
+
+  it('asks for the fields when the publisher would not say', () => {
+    const unread: SlotView = {
+      ...headlineSlot,
+      status: 'placeholder',
+      article: {
+        url: headlineSlot.article?.url ?? '',
+        outlet: null,
+        headline: null,
+        author: null,
+        publishedAt: null,
+        description: null,
+        provenance: {},
+        status: 'failed',
+        failureReason: 'The publisher returned 403',
+      },
+    }
+    render(<VisualBoard projectId={PROJECT} model={model([unread])} colors={COLORS} />)
+
+    expect(screen.getByText(/The publisher returned 403/)).toBeTruthy()
+    expect(screen.getByText(/Open it and fill these in/)).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Fill these in' })).toBeTruthy()
+  })
+
+  it('saves a correction, the marker phrase and the standfirst together', async () => {
+    const user = userEvent.setup()
+    render(<VisualBoard projectId={PROJECT} model={model([headlineSlot])} colors={COLORS} />)
+
+    await user.click(screen.getByRole('button', { name: 'Correct the details' }))
+    const byline = screen.getByLabelText('Byline')
+    await user.clear(byline)
+    await user.type(byline, 'Tom Vieira')
+    await user.click(screen.getByLabelText('Show the standfirst on the card'))
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+
+    await waitFor(() => expect(saveHeadlineAction).toHaveBeenCalled())
+    const [, slotId, input] = saveHeadlineAction.mock.calls[0] as [
+      string,
+      string,
+      Record<string, unknown>,
+    ]
+    expect(slotId).toBe(SLOT_D)
+    expect(input).toMatchObject({
+      author: 'Tom Vieira',
+      headline: 'Auditors cannot find the $1.9 billion the company says it holds',
+      emphasis: '$1.9 billion',
+      showDeck: true,
+    })
+  })
+
+  it('re-reads the article on request', async () => {
+    const user = userEvent.setup()
+    render(<VisualBoard projectId={PROJECT} model={model([headlineSlot])} colors={COLORS} />)
+
+    await user.click(screen.getByRole('button', { name: 'Re-fetch' }))
+    await waitFor(() => expect(refetchArticleAction).toHaveBeenCalledWith(PROJECT, SLOT_D))
   })
 })

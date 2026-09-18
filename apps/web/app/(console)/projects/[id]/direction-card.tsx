@@ -28,7 +28,9 @@ import { redraftDirectionAction, saveDirectionAction, type ActionResult } from '
 
 const REDRAFT_ESTIMATE = '≈$0.05'
 
-type Act = (key: string, run: () => Promise<ActionResult>, success: string) => Promise<void>
+/** The board's own `act`, which reports what happened so a refused save can
+ * leave its form open. */
+type Act = (key: string, run: () => Promise<ActionResult>, success: string) => Promise<ActionResult>
 
 interface DirectionForm {
   visualThesis: string

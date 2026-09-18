@@ -24,7 +24,7 @@ import type {
   DirectionChapterInput,
   ScriptClaim,
 } from '@boom-busters/providers'
-import { DirectorsBookSchema, ValidationError } from '@boom-busters/schemas'
+import { claimCarriesArticle, DirectorsBookSchema, ValidationError } from '@boom-busters/schemas'
 import type { DirectorsBook } from '@boom-busters/schemas'
 import { NonRetriableError } from 'inngest'
 import { z } from 'zod'
@@ -102,6 +102,8 @@ export async function loadDirectionInputs(projectId: string): Promise<{
     text: claim.text,
     sourceUrl: claim.sourceUrl,
     confidence: claim.confidence,
+    // Which claims a headline card may cite (decision 257).
+    sourceType: claim.sourceType,
   }))
   const settings = await getSettings(db)
   const members = await listCastMembers(db, projectId)
@@ -198,8 +200,11 @@ export async function planChapterSlots(input: {
   caseTitle: string
   chapter: { id: string; title: string; number: number }
   paragraphs: readonly TimedParagraph[]
+  /**
+   * The claim list IN PROMPT ORDER: its positions are the numbers the model
+   * cites, and its source types decide which claims may back a headline card.
+   */
   claims: readonly ScriptClaim[]
-  claimIds: readonly string[]
   styleAnchors: string
   direction: DirectorsBook | null
   /** Cast members with a reference photograph (decision 253, amended). */
@@ -214,7 +219,13 @@ export async function planChapterSlots(input: {
   // than fatal: a gap on the board is repairable from a card.
   let dropped = 0
   if (mockProvidersEnabled()) {
-    slots = mockShotList({ paragraphs, claimCount: input.claims.length }).slots
+    slots = mockShotList({
+      paragraphs,
+      claimCount: input.claims.length,
+      newsClaimRefs: input.claims
+        .map((claim, at) => (claimCarriesArticle(claim) ? at + 1 : 0))
+        .filter((ref) => ref > 0),
+    }).slots
   } else {
     const request = buildShotListRequest({
       caseTitle: input.caseTitle,
@@ -237,7 +248,7 @@ export async function planChapterSlots(input: {
     chapterId: input.chapter.id,
     planned: slots,
     paragraphs: input.paragraphs,
-    claimIds: input.claimIds,
+    claims: input.claims,
   })
   return { rows: conversion.rows, rejected: dropped + conversion.rejected.length }
 }

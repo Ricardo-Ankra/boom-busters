@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   ChartBriefSchema,
+  HeadlineBriefSchema,
   HERO_SLOTS_ENABLED,
   PlannedBriefSchema,
   ShotBriefSchema,
@@ -8,6 +9,7 @@ import {
   SlotRetypeStateSchema,
   convertBrief,
   mapClaimRefs,
+  plannedBriefRejection,
   resolvePlannedBrief,
   visualsApprovalBlockedReason,
   visualsCoverage,
@@ -16,6 +18,7 @@ import type { SlotRef } from './visuals'
 
 const CLAIM_A = '01HQ00000000000000000000AA'
 const CLAIM_B = '01HQ00000000000000000000AB'
+const CLAIM_C = '01HQ00000000000000000000AC'
 
 const common = {
   coversText: 'By June, the auditors could not find the money.',
@@ -190,9 +193,9 @@ describe('PlannedBriefSchema', () => {
 })
 
 describe('resolvePlannedBrief', () => {
-  const ids = [CLAIM_A, CLAIM_B]
+  const ids = [{ id: CLAIM_A }, { id: CLAIM_B }]
 
-  it('passes non-chart briefs through untouched', () => {
+  it('passes briefs that cite nothing through untouched', () => {
     const stock = {
       type: 'stock' as const,
       ...common,
@@ -227,6 +230,87 @@ describe('resolvePlannedBrief', () => {
     if (resolved?.type === 'chart') expect(resolved.dataRefs).toEqual([CLAIM_B, CLAIM_A])
 
     expect(resolvePlannedBrief({ ...chart, dataRefs: [7] }, ids)).toBeNull()
+  })
+
+  describe('headline briefs (decision 257)', () => {
+    const news = [
+      { id: CLAIM_A, sourceType: 'court', sourceUrl: 'https://courts.example/judgment' },
+      { id: CLAIM_B, sourceType: 'major_outlet', sourceUrl: 'https://news.example/story' },
+      { id: CLAIM_C, sourceType: 'major_outlet', sourceUrl: null },
+    ]
+    const headline = { type: 'headline' as const, ...common, sourceRef: 2 }
+
+    it('swaps the claim number for the id of the claim it cites', () => {
+      const resolved = resolvePlannedBrief(headline, news)
+      expect(resolved).not.toBeNull()
+      if (resolved?.type === 'headline') expect(resolved.sourceClaimId).toBe(CLAIM_B)
+      // Nothing the model could have written about the article survives: the
+      // brief names a claim, and the app reads the article itself.
+      expect(resolved && 'sourceRef' in resolved).toBe(false)
+    })
+
+    it('refuses a claim number outside the list', () => {
+      expect(resolvePlannedBrief({ ...headline, sourceRef: 9 }, news)).toBeNull()
+      expect(plannedBriefRejection({ ...headline, sourceRef: 9 }, news)).toBe(
+        'headline cited a claim number outside the claim list',
+      )
+    })
+
+    it('refuses a claim no news outlet published', () => {
+      expect(resolvePlannedBrief({ ...headline, sourceRef: 1 }, news)).toBeNull()
+      expect(plannedBriefRejection({ ...headline, sourceRef: 1 }, news)).toBe(
+        'headline cited a claim that is not a news report',
+      )
+    })
+
+    it('refuses a news claim whose source URL did not survive research', () => {
+      expect(resolvePlannedBrief({ ...headline, sourceRef: 3 }, news)).toBeNull()
+      expect(plannedBriefRejection({ ...headline, sourceRef: 3 }, news)).toBe(
+        'headline cited a news claim with no source URL to read',
+      )
+    })
+
+    it('says nothing about a brief it accepts', () => {
+      expect(plannedBriefRejection(headline, news)).toBeNull()
+    })
+  })
+})
+
+describe('HeadlineBriefSchema', () => {
+  it('needs the claim it cites', () => {
+    const brief = { type: 'headline' as const, ...common, sourceClaimId: CLAIM_A }
+    expect(HeadlineBriefSchema.parse(brief).sourceClaimId).toBe(CLAIM_A)
+
+    const { sourceClaimId, ...withoutClaim } = brief
+    expect(sourceClaimId).toBe(CLAIM_A)
+    expect(HeadlineBriefSchema.safeParse(withoutClaim).success).toBe(false)
+  })
+
+  it('has no field the model could write the article facts into', () => {
+    const brief = HeadlineBriefSchema.parse({
+      type: 'headline',
+      ...common,
+      sourceClaimId: CLAIM_A,
+      outlet: 'The Financial Record',
+      headline: 'Something nobody published',
+    })
+    expect('outlet' in brief).toBe(false)
+    expect('headline' in brief).toBe(false)
+  })
+
+  it('converts to a text type through the description, but never back', () => {
+    const brief = HeadlineBriefSchema.parse({
+      type: 'headline',
+      ...common,
+      sourceClaimId: CLAIM_A,
+    })
+    expect(convertBrief(brief, 'stock')?.type).toBe('stock')
+    expect(
+      convertBrief(
+        { type: 'stock', ...common, query: 'empty office', rejectionCriteria: [] },
+        'headline',
+      ),
+    ).toBeNull()
   })
 })
 

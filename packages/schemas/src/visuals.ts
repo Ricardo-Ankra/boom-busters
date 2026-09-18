@@ -28,7 +28,15 @@ import { UlidSchema } from './ids'
 // Types and statuses (mirror the pg enums in `packages/db`)
 // ---------------------------------------------------------------------------
 
-export const SHOT_SLOT_TYPES = ['stock', 'archival', 'still', 'chart', 'map', 'hero'] as const
+export const SHOT_SLOT_TYPES = [
+  'stock',
+  'archival',
+  'still',
+  'chart',
+  'map',
+  'headline',
+  'hero',
+] as const
 export const ShotSlotTypeSchema = z.enum(SHOT_SLOT_TYPES)
 export type ShotSlotType = z.infer<typeof ShotSlotTypeSchema>
 
@@ -188,6 +196,36 @@ export const MapBriefSchema = z.object({
 })
 export type MapBrief = z.infer<typeof MapBriefSchema>
 
+/**
+ * A real news headline on screen, in the house clipping format (decision 257).
+ *
+ * The brief carries NO article text. It names the claim whose source article
+ * the card shows, and the app reads the outlet, headline, byline and date from
+ * that article's own declared metadata. This is the same rule charts live
+ * under, for a harder reason: an invented chart is a wrong number, an invented
+ * headline is a false statement attributed to a real publication and a real
+ * journalist.
+ */
+export const HeadlineBriefSchema = z.object({
+  type: z.literal('headline'),
+  ...briefCommon,
+  /** The claim this card cites. Its `sourceUrl` is the article that gets read. */
+  sourceClaimId: UlidSchema,
+  /**
+   * The phrase the marker draws under. Chosen after the headline is known, by
+   * heuristic or by the owner; dropped rather than approximated when it is not
+   * in the headline verbatim.
+   */
+  emphasis: z.string().trim().min(1).max(120).optional(),
+  /**
+   * Whether the standfirst renders. Off by default: the string publishers put
+   * in `og:description` is often a truncated teaser rather than the real
+   * standfirst, and the card reads well without one.
+   */
+  showDeck: z.boolean().optional(),
+})
+export type HeadlineBrief = z.infer<typeof HeadlineBriefSchema>
+
 export const HeroBriefSchema = z.object({
   type: z.literal('hero'),
   ...briefCommon,
@@ -206,6 +244,7 @@ export const ShotBriefSchema = z.discriminatedUnion('type', [
   StillBriefSchema,
   ChartBriefSchema,
   MapBriefSchema,
+  HeadlineBriefSchema,
   HeroBriefSchema,
 ])
 export type ShotBrief = z.infer<typeof ShotBriefSchema>
@@ -456,12 +495,27 @@ export const PlannedArchivalBriefSchema = ArchivalBriefSchema.extend({
 })
 export type PlannedArchivalBrief = z.infer<typeof PlannedArchivalBriefSchema>
 
+/**
+ * The wire shape of a headline brief: a claim NUMBER instead of a claim id,
+ * for the reason charts use one, and none of the fields that can only be
+ * decided once the article has been read.
+ */
+export const PlannedHeadlineBriefSchema = HeadlineBriefSchema.omit({
+  sourceClaimId: true,
+  emphasis: true,
+  showDeck: true,
+}).extend({
+  sourceRef: z.number().int().min(1),
+})
+export type PlannedHeadlineBrief = z.infer<typeof PlannedHeadlineBriefSchema>
+
 export const PlannedBriefSchema = z.discriminatedUnion('type', [
   StockBriefSchema,
   PlannedArchivalBriefSchema,
   StillBriefSchema,
   PlannedChartBriefSchema,
   MapBriefSchema,
+  PlannedHeadlineBriefSchema,
   HeroBriefSchema,
 ])
 export type PlannedBrief = z.infer<typeof PlannedBriefSchema>
@@ -499,19 +553,90 @@ export function mapClaimRefs(
 }
 
 /**
- * A planned brief made storable: charts get real claim IDs, everything else
- * passes through untouched. `null` means the chart cited a claim that does
- * not exist — the slot cannot be stored as a chart, and the caller decides
- * whether that is a placeholder or a re-ask.
+ * What resolution needs to know about a claim: its id, and enough to judge
+ * whether it can back a headline card. A subset of `ScriptClaim`, so callers
+ * pass the claim list they already hold.
+ */
+export interface PlanningClaim {
+  id: string
+  sourceType?: string
+  sourceUrl?: string | null
+}
+
+/**
+ * Whether this claim can back a headline shot: a news outlet published it, at
+ * an address the app can read. Anything else (a court filing, a regulator's
+ * notice, a claim whose URL did not survive validation) has no article behind
+ * it to quote, so the card would have nothing true to show.
+ */
+export function claimCarriesArticle(claim: PlanningClaim | undefined): boolean {
+  if (!claim || claim.sourceType !== 'major_outlet') return false
+  return typeof claim.sourceUrl === 'string' && claim.sourceUrl.trim() !== ''
+}
+
+/**
+ * A planned brief made storable: charts and headlines get real claim IDs,
+ * everything else passes through untouched. `null` means the slot cited a
+ * claim it may not cite — the caller decides whether that is a placeholder or
+ * a re-ask, and `plannedBriefRejection` says which rule was broken.
  */
 export function resolvePlannedBrief(
   brief: PlannedBrief,
-  claimIds: readonly string[],
+  claims: readonly PlanningClaim[],
 ): ShotBrief | null {
-  if (brief.type !== 'chart') return brief
-  const mapped = mapClaimRefs(brief.dataRefs, claimIds)
-  if (!mapped) return null
-  return { ...brief, dataRefs: mapped }
+  if (brief.type === 'chart') {
+    const mapped = mapClaimRefs(
+      brief.dataRefs,
+      claims.map((claim) => claim.id),
+    )
+    if (!mapped) return null
+    return { ...brief, dataRefs: mapped }
+  }
+
+  if (brief.type === 'headline') {
+    const claim = claims[brief.sourceRef - 1]
+    if (!claimCarriesArticle(claim) || !claim) return null
+    return {
+      type: 'headline',
+      coversText: brief.coversText,
+      description: brief.description,
+      motion: brief.motion,
+      transition: brief.transition,
+      ...(brief.shotSize !== undefined ? { shotSize: brief.shotSize } : {}),
+      sourceClaimId: claim.id,
+    }
+  }
+
+  return brief
+}
+
+/**
+ * Why `resolvePlannedBrief` refused, in the words the board's dropped-slot
+ * line uses. Null when it did not refuse.
+ */
+export function plannedBriefRejection(
+  brief: PlannedBrief,
+  claims: readonly PlanningClaim[],
+): string | null {
+  if (brief.type === 'chart') {
+    return mapClaimRefs(
+      brief.dataRefs,
+      claims.map((claim) => claim.id),
+    )
+      ? null
+      : 'chart cited a claim number outside the claim list'
+  }
+
+  if (brief.type === 'headline') {
+    const claim = claims[brief.sourceRef - 1]
+    if (!claim) return 'headline cited a claim number outside the claim list'
+    if (claim.sourceType !== 'major_outlet') {
+      return 'headline cited a claim that is not a news report'
+    }
+    if (!claim.sourceUrl) return 'headline cited a news claim with no source URL to read'
+  }
+
+  return null
 }
 
 // ---------------------------------------------------------------------------

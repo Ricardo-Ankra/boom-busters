@@ -37,6 +37,14 @@ export const AVAILABLE_FONTS: readonly AvailableFont[] = [
     licence: 'SIL OFL 1.1',
   },
   {
+    // The headline card's serif (decision 257). A news clipping set in the
+    // same grotesque as the rest of the film does not read as a clipping.
+    family: 'Source Serif 4',
+    weights: [400, 600, 700],
+    roles: ['heading', 'title', 'body'],
+    licence: 'SIL OFL 1.1',
+  },
+  {
     family: 'JetBrains Mono',
     weights: [400, 500, 600, 700],
     roles: ['numbers'],

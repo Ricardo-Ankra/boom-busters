@@ -93,7 +93,7 @@ describe('plannedToRows', () => {
       chapterId: 'ch-a',
       planned: [stock(0, 5), stock(0, 30), stock(1, 4)],
       paragraphs,
-      claimIds: [],
+      claims: [],
     })
 
     expect(rejected).toEqual([])
@@ -111,7 +111,7 @@ describe('plannedToRows', () => {
       chapterId: 'ch-a',
       planned: [stock(0, 8), stock(0, 5)],
       paragraphs,
-      claimIds: [],
+      claims: [],
     })
     expect(rows[1]?.durationMs).toBe(MIN_SLOT_MS)
   })
@@ -147,7 +147,7 @@ describe('plannedToRows', () => {
       chapterId: 'ch-a',
       planned: [chart([2, 1])],
       paragraphs,
-      claimIds: [CLAIM_A, CLAIM_B],
+      claims: [{ id: CLAIM_A }, { id: CLAIM_B }],
     })
     expect(good.rejected).toEqual([])
     const brief = good.rows[0]?.brief
@@ -157,7 +157,7 @@ describe('plannedToRows', () => {
       chapterId: 'ch-a',
       planned: [chart([9])],
       paragraphs,
-      claimIds: [CLAIM_A, CLAIM_B],
+      claims: [{ id: CLAIM_A }, { id: CLAIM_B }],
     })
     expect(bad.rows).toEqual([])
     expect(bad.rejected[0]?.reason).toContain('outside the claim list')
@@ -168,10 +168,65 @@ describe('plannedToRows', () => {
       chapterId: 'ch-a',
       planned: [stock(7, 5)],
       paragraphs,
-      claimIds: [],
+      claims: [],
     })
     expect(rows).toEqual([])
     expect(rejected[0]?.reason).toContain('does not exist')
+  })
+
+  describe('headline slots (decision 257)', () => {
+    const NEWS = [
+      { id: CLAIM_A, sourceType: 'court', sourceUrl: 'https://courts.example/judgment' },
+      { id: CLAIM_B, sourceType: 'major_outlet', sourceUrl: 'https://news.example/story' },
+    ]
+    const headline = (paragraphIndex: number, sourceRef: number): PlannedSlot => ({
+      paragraphIndex,
+      seconds: 7,
+      brief: {
+        type: 'headline',
+        coversText: 'First paragraph.',
+        description: 'The morning the story broke.',
+        motion: { kind: 'static' },
+        transition: 'cut',
+        sourceRef,
+      },
+    })
+
+    it('stores the claim the card cites', () => {
+      const { rows, rejected } = plannedToRows({
+        chapterId: 'ch-a',
+        planned: [headline(0, 2)],
+        paragraphs,
+        claims: NEWS,
+      })
+      expect(rejected).toEqual([])
+      const brief = rows[0]?.brief
+      expect(rows[0]?.type).toBe('headline')
+      if (brief?.type === 'headline') expect(brief.sourceClaimId).toBe(CLAIM_B)
+    })
+
+    it('refuses a claim no news outlet published, and says so', () => {
+      const { rows, rejected } = plannedToRows({
+        chapterId: 'ch-a',
+        planned: [headline(0, 1)],
+        paragraphs,
+        claims: NEWS,
+      })
+      expect(rows).toEqual([])
+      expect(rejected[0]?.reason).toBe('headline cited a claim that is not a news report')
+    })
+
+    it('keeps one a chapter and drops the surplus', () => {
+      const { rows, rejected } = plannedToRows({
+        chapterId: 'ch-a',
+        planned: [headline(0, 2), headline(1, 2), headline(1, 2)],
+        paragraphs,
+        claims: NEWS,
+      })
+      expect(rows.filter((row) => row.type === 'headline')).toHaveLength(1)
+      expect(rejected).toHaveLength(2)
+      expect(rejected[0]?.reason).toContain('which is the cap')
+    })
   })
 
   it('continues chapter-wide slot indexes from startIndex', () => {
@@ -179,7 +234,7 @@ describe('plannedToRows', () => {
       chapterId: 'ch-b',
       planned: [stock(0, 5)],
       paragraphs,
-      claimIds: [],
+      claims: [],
       startIndex: 3,
     })
     expect(rows[0]?.index).toBe(3)
@@ -244,7 +299,7 @@ describe('slots sit on the words they cover', () => {
         shot(0, 2, 'Prem Akkaraju had already agreed terms.'),
       ],
       paragraphs,
-      claimIds: [],
+      claims: [],
     })
     expect(rows.map((row) => [row.startMs, row.durationMs])).toEqual([
       [0, 3000],
@@ -260,7 +315,7 @@ describe('slots sit on the words they cover', () => {
         shot(0, 2, 'A sentence from a different film.'),
       ],
       paragraphs,
-      claimIds: [],
+      claims: [],
     })
     expect(rows[1]?.startMs).toBe(4000)
   })
@@ -302,7 +357,7 @@ Nobody said so.`,
         shot(0, 2, 'Prem Akkaraju had already agreed terms.'),
       ],
       paragraphs: untimed,
-      claimIds: [],
+      claims: [],
     })
     expect(rows.map((row) => row.startMs)).toEqual([0, 4000])
   })

@@ -334,6 +334,40 @@ describe('resolveMotion', () => {
     })
   })
 
+  it('compiles a headline card to a payload that needs nothing else', () => {
+    const timeline = compileTimeline({
+      ...goldenInput(),
+      slots: [
+        {
+          type: 'headline',
+          startMs: 0,
+          durationMs: 6000,
+          transition: 'cut',
+          motion: { kind: 'static' },
+          headline: {
+            outlet: 'The Financial Record',
+            headline: 'Auditors cannot find the $1.9 billion the company says it holds',
+            publishedAt: '2023-03-14',
+            author: 'Elena Marsh',
+            emphasis: '$1.9 billion',
+            sourceLabel: 'financialrecord.example/2023/03/14',
+            sourceUrl: 'https://financialrecord.example/2023/03/14',
+            claimId: CLAIM,
+          },
+        },
+      ],
+    })
+
+    const slot = timeline.slots[0]
+    expect(slot?.type).toBe('headline')
+    expect(slot?.payload).toMatchObject({
+      kind: 'headline',
+      outlet: 'The Financial Record',
+      publishedAt: '2023-03-14',
+      claimId: CLAIM,
+    })
+  })
+
   it('lets a draw-on chart reveal own the slot motion', () => {
     const chart: CompileSlot = {
       ...still,

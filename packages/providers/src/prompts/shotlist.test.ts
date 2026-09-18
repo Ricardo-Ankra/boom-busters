@@ -74,6 +74,86 @@ describe('buildShotListRequest', () => {
   })
 })
 
+describe('the headline shot (decision 257)', () => {
+  const request = buildShotListRequest({
+    caseTitle: 'Wirecard',
+    chapterTitle: 'The Missing Billions',
+    paragraphs: PARAGRAPHS,
+    claims: CLAIMS,
+    styleAnchors: stillStyleAnchors(brandKit),
+  })
+
+  it('offers the shape, which carries a claim number and nothing else', () => {
+    expect(request.system).toContain('"type": "headline"')
+    expect(request.system).toContain('"sourceRef": claim number')
+  })
+
+  it('tells the model it writes no part of the card, and plans at most one', () => {
+    expect(request.system).toContain('not the outlet')
+    expect(request.system).toContain('AT MOST ONE headline shot per chapter')
+    expect(request.system).toContain('marked NEWS ARTICLE')
+  })
+
+  it('parses a headline slot and drops one with no claim number', () => {
+    const good = parseShotList(
+      JSON.stringify({
+        slots: [
+          {
+            paragraphIndex: 0,
+            seconds: 7,
+            brief: {
+              type: 'headline',
+              coversText: 'By June, the auditors could not find the money.',
+              description: 'The morning the story broke.',
+              motion: { kind: 'static' },
+              transition: 'cut',
+              sourceRef: 2,
+            },
+          },
+        ],
+      }),
+    )
+    expect(good.slots).toHaveLength(1)
+    expect(good.malformed).toHaveLength(0)
+
+    // A slot with no claim number is dropped and named, and the rest of the
+    // chapter's plan survives it: the whole chapter is never worth one slot.
+    const mixed = parseShotList(
+      JSON.stringify({
+        slots: [
+          {
+            paragraphIndex: 0,
+            seconds: 7,
+            brief: {
+              type: 'headline',
+              coversText: 'By June, the auditors could not find the money.',
+              description: 'The morning the story broke.',
+              motion: { kind: 'static' },
+              transition: 'cut',
+            },
+          },
+          {
+            paragraphIndex: 1,
+            seconds: 6,
+            brief: {
+              type: 'stock',
+              coversText: 'The trail led from Munich to Manila.',
+              description: 'Empty office at dusk.',
+              motion: { kind: 'static' },
+              transition: 'cut',
+              query: 'empty office dusk',
+              rejectionCriteria: [],
+            },
+          },
+        ],
+      }),
+    )
+    expect(mixed.slots).toHaveLength(1)
+    expect(mixed.malformed).toHaveLength(1)
+    expect(mixed.malformed[0]?.reason).toContain('sourceRef')
+  })
+})
+
 describe('stillStyleAnchors', () => {
   it('reads grain and palette from the Brand Kit', () => {
     const anchors = stillStyleAnchors(brandKit)
@@ -245,6 +325,16 @@ describe('mockShotList', () => {
   it('emits no chart when there are no claims to cite', () => {
     const output = mockShotList({ paragraphs: PARAGRAPHS, claimCount: 0 })
     expect(output.slots.every((slot) => slot.brief.type !== 'chart')).toBe(true)
+  })
+
+  it('emits a headline card only when a news claim can back one', () => {
+    const without = mockShotList({ paragraphs: PARAGRAPHS, claimCount: 2 })
+    expect(without.slots.every((slot) => slot.brief.type !== 'headline')).toBe(true)
+
+    const output = mockShotList({ paragraphs: PARAGRAPHS, claimCount: 2, newsClaimRefs: [2] })
+    expect(() => ShotListOutputSchema.parse(output)).not.toThrow()
+    const card = output.slots.find((slot) => slot.brief.type === 'headline')
+    expect(card?.brief.type === 'headline' && card.brief.sourceRef).toBe(2)
   })
 })
 

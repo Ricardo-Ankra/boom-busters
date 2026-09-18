@@ -1,7 +1,7 @@
 import { narrationUnits } from '@boom-busters/providers'
 import type { ShotParagraph } from '@boom-busters/providers'
-import { latestTakes, resolvePlannedBrief } from '@boom-busters/schemas'
-import type { PlannedSlot, VoiceTakeStatus, WordTiming } from '@boom-busters/schemas'
+import { latestTakes, plannedBriefRejection, resolvePlannedBrief } from '@boom-busters/schemas'
+import type { PlannedSlot, PlanningClaim, VoiceTakeStatus, WordTiming } from '@boom-busters/schemas'
 import { anchorSlots, MIN_SHOT_MS, snapToScript } from '@boom-busters/timeline'
 import type { AnchorWord } from '@boom-busters/timeline'
 import type { NewShotSlot } from '@boom-busters/db'
@@ -196,6 +196,9 @@ export function promptParagraphs(
 /** A slot may never be shorter than this — a one-frame flash is an error, not a shot. */
 export const MIN_SLOT_MS = 2_000
 
+/** How many headline cards one chapter may carry (decision 257). */
+export const HEADLINES_PER_CHAPTER = 1
+
 export interface PlannedConversion {
   rows: NewShotSlot[]
   /** Chart slots that cited claims outside the list — dropped, and named. */
@@ -219,7 +222,12 @@ export function plannedToRows(input: {
   chapterId: string
   planned: readonly PlannedSlot[]
   paragraphs: readonly TimedParagraph[]
-  claimIds: readonly string[]
+  /**
+   * The claim list, IN PROMPT ORDER: its positions are the numbers the model
+   * cited. Claims rather than ids because a headline slot may only cite a news
+   * report with a readable source (decision 257).
+   */
+  claims: readonly PlanningClaim[]
   /** Slot index offset — indexes are unique per chapter, so the caller counts. */
   startIndex?: number
 }): PlannedConversion {
@@ -234,6 +242,7 @@ export function plannedToRows(input: {
   const rejected: PlannedConversion['rejected'] = []
   const cursors = new Map<number, number>()
   let index = input.startIndex ?? 0
+  let headlines = 0
 
   // Stable order: by paragraph, then as emitted within it.
   const ordered = [...input.planned].sort((a, b) => a.paragraphIndex - b.paragraphIndex)
@@ -248,13 +257,31 @@ export function plannedToRows(input: {
       continue
     }
 
-    const brief = resolvePlannedBrief(slot.brief, input.claimIds)
+    const brief = resolvePlannedBrief(slot.brief, input.claims)
     if (!brief) {
       rejected.push({
         paragraphIndex: slot.paragraphIndex,
-        reason: 'chart cited a claim number outside the claim list',
+        reason:
+          plannedBriefRejection(slot.brief, input.claims) ??
+          'the slot cited a claim it may not cite',
       })
       continue
+    }
+
+    // One headline card a chapter (decision 257). It is a bright card in a
+    // dark film and it works by being rare, so the surplus is dropped here
+    // rather than left to the prompt: a rule with no enforcement is a
+    // suggestion, and the model plans three the moment a chapter quotes three
+    // articles.
+    if (brief.type === 'headline') {
+      if (headlines >= HEADLINES_PER_CHAPTER) {
+        rejected.push({
+          paragraphIndex: slot.paragraphIndex,
+          reason: `chapter already has ${HEADLINES_PER_CHAPTER} headline shot, which is the cap`,
+        })
+        continue
+      }
+      headlines += 1
     }
 
     const cursor = cursors.get(slot.paragraphIndex) ?? paragraph.startMs

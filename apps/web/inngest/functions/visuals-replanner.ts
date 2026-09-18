@@ -125,6 +125,8 @@ export const visualsReplanner = inngest.createFunction(
           text: claim.text,
           sourceUrl: claim.sourceUrl,
           confidence: claim.confidence,
+          // Which claims a headline card may cite (decision 257).
+          sourceType: claim.sourceType,
         })) satisfies ScriptClaim[],
         styleAnchors: stillStyleAnchors(settings.brandKit),
         // Who the producer has photographed (decision 253, amended). Their
@@ -135,7 +137,6 @@ export const visualsReplanner = inngest.createFunction(
           .map((member) => member.name),
       }
     })
-    const claimIds = setup.claims.map((claim) => claim.id)
 
     const rows: NewShotSlot[] = []
     let rejected = 0
@@ -148,7 +149,6 @@ export const visualsReplanner = inngest.createFunction(
             chapter: { id: chapter.id, title: chapter.title, number: index + 1 },
             paragraphs: setup.paragraphs,
             claims: setup.claims,
-            claimIds,
             styleAnchors: setup.styleAnchors,
             direction: setup.direction,
             photographed: setup.photographed,

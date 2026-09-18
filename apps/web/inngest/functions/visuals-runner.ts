@@ -122,6 +122,8 @@ export const visualsRunner = inngest.createFunction(
           text: claim.text,
           sourceUrl: claim.sourceUrl,
           confidence: claim.confidence,
+          // Which claims a headline card may cite (decision 257).
+          sourceType: claim.sourceType,
         })) satisfies ScriptClaim[],
         styleAnchors: stillStyleAnchors(settings.brandKit),
         // Who the producer has photographed (decision 253, amended). Their
@@ -133,10 +135,9 @@ export const visualsRunner = inngest.createFunction(
       }
     })
 
-    // The order of this array IS the claim numbering every chapter's prompt
-    // uses, and the numbering `plannedToRows` maps back to ids. One list,
-    // computed once, so they cannot disagree.
-    const claimIds = setup.claims.map((claim) => claim.id)
+    // The order of `setup.claims` IS the claim numbering every chapter's
+    // prompt uses, and the numbering `plannedToRows` maps back to ids. One
+    // list, carried whole, so they cannot disagree.
 
     // -----------------------------------------------------------------------
     // The Director's Book (decision 252): once per film, reused when stored
@@ -178,7 +179,6 @@ export const visualsRunner = inngest.createFunction(
               chapter: { id: chapter.id, title: chapter.title, number: index + 1 },
               paragraphs: setup.paragraphs,
               claims: setup.claims,
-              claimIds,
               styleAnchors: setup.styleAnchors,
               direction: direction.book,
               photographed: setup.photographed,

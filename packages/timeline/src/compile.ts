@@ -8,6 +8,7 @@ import type {
   BrandKitTokens,
   Caption,
   ChartBrief,
+  HeadlinePayload,
   MapBrief,
   MotionSpec,
   NarrationSegment,
@@ -44,7 +45,7 @@ export interface CompileParagraph {
 
 /** What the board resolved a visual slot to, ready to render. */
 export interface CompileSlot {
-  type: 'stock' | 'archival' | 'still' | 'upload' | 'chart' | 'map'
+  type: 'stock' | 'archival' | 'still' | 'upload' | 'chart' | 'map' | 'headline'
   startMs: number
   durationMs: number
   /**
@@ -70,6 +71,12 @@ export interface CompileSlot {
     'chartKind' | 'series' | 'dataRefs' | 'takeaway' | 'annotations' | 'reveal'
   >
   map?: Pick<MapBrief, 'locations' | 'route'>
+  /**
+   * A cited news headline, already read from the article and already checked
+   * (decision 257). The compiler embeds it whole: a render six months from now
+   * must not depend on the page still being online.
+   */
+  headline?: Omit<HeadlinePayload, 'kind'>
 }
 
 export interface CompileInput {
@@ -241,9 +248,12 @@ export function compileTimeline(input: CompileInput): Timeline {
     if (slot.map) {
       return { ...base, payload: { kind: 'map' as const, ...slot.map } }
     }
+    if (slot.headline) {
+      return { ...base, payload: { kind: 'headline' as const, ...slot.headline } }
+    }
     if (!slot.media) {
       throw new ValidationError(
-        `slot ${index} (${slot.type}) has no media and no chart/map data — placeholders must ` +
+        `slot ${index} (${slot.type}) has no media and no drawn-card data — placeholders must ` +
           'be excluded before compiling',
         { field: `slots.${index}` },
       )

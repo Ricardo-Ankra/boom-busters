@@ -2,6 +2,7 @@ import { OutlineSchema, ValidationError } from '@boom-busters/schemas'
 import { describe, expect, it } from 'vitest'
 import {
   buildChapterRequest,
+  claimList,
   buildOutlineRequest,
   buildRegenerateRequest,
   buildSelfCheckRequest,
@@ -460,5 +461,40 @@ describe('mock script output', () => {
 
   it('produces nothing for an empty chapter rather than an invalid candidate', () => {
     expect(mockShortsCandidates([{ index: 0, contentMd: '' }])).toEqual([])
+  })
+})
+
+describe('claimList', () => {
+  const base = { text: 'A newspaper reported the accounts were empty.', confidence: 'sourced' }
+
+  it('marks the claims a headline card may cite (decision 257)', () => {
+    const list = claimList([
+      {
+        ...base,
+        id: '01ABCDEFGHJKMNPQRSTVWXYZ01',
+        sourceType: 'major_outlet',
+        sourceUrl: 'https://news.example/story',
+      },
+    ])
+    expect(list).toContain('NEWS ARTICLE')
+  })
+
+  it('does not mark a news claim whose URL did not survive research', () => {
+    const list = claimList([
+      { ...base, id: '01ABCDEFGHJKMNPQRSTVWXYZ02', sourceType: 'major_outlet', sourceUrl: null },
+    ])
+    expect(list).not.toContain('NEWS ARTICLE')
+  })
+
+  it('does not mark a court or regulator source, which has no article to quote', () => {
+    const list = claimList([
+      {
+        ...base,
+        id: '01ABCDEFGHJKMNPQRSTVWXYZ03',
+        sourceType: 'court',
+        sourceUrl: 'https://courts.example/judgment',
+      },
+    ])
+    expect(list).not.toContain('NEWS ARTICLE')
   })
 })

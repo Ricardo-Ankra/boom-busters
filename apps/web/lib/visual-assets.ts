@@ -10,6 +10,7 @@ import {
 } from '@boom-busters/db'
 import {
   applyScores,
+  articleIsRenderable,
   referencePhotos,
   STILL_GENERATIONS,
   ValidationError,
@@ -36,6 +37,7 @@ import {
   stockAdapter,
 } from '@boom-busters/providers'
 import type { ImageReference, StockQuery } from '@boom-busters/providers'
+import { articleForClaim } from '@/lib/article-source'
 import { db } from '@/lib/db'
 import { env } from '@/lib/env'
 import { callLlm } from '@/lib/llm'
@@ -579,6 +581,18 @@ export async function resolveSlotBrief(input: {
       // enforced when the brief was stored (charts cannot exist without
       // claim refs), so reaching here means the preview can render.
       return { candidates: [], status: 'resolved' }
+
+    case 'headline': {
+      // Nothing is downloaded: what a headline card needs is five strings, and
+      // they come from the cited article's own metadata (decision 257). A page
+      // that will not give them up is a placeholder with the reason on the
+      // record, which the board turns into a form rather than an error.
+      const article = await articleForClaim(brief.sourceClaimId)
+      return {
+        candidates: [],
+        status: article !== null && articleIsRenderable(article) ? 'resolved' : 'placeholder',
+      }
+    }
 
     case 'hero':
       return { candidates: [], status: 'placeholder' }

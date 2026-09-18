@@ -374,3 +374,93 @@ export function MapPreview({ brief, colors }: { brief: MapBrief; colors: BrandCh
     </svg>
   )
 }
+
+/**
+ * The headline card as the board shows it (decision 257).
+ *
+ * The same clipping the render draws, in DOM rather than SVG: paper, a double
+ * rule under the masthead, the marker under the emphasised phrase. What the
+ * board approves has to be what the frame shows.
+ *
+ * A record with no headline yet renders as the empty card it is, so the
+ * missing fields are obvious at a glance rather than described in a sentence.
+ */
+export function HeadlinePreview({
+  article,
+  emphasis,
+  showDeck,
+  colors,
+}: {
+  article: {
+    outlet: string | null
+    headline: string | null
+    author: string | null
+    publishedAt: string | null
+    description: string | null
+    url: string
+  }
+  emphasis: string | undefined
+  showDeck: boolean
+  colors: BrandChartColors
+}) {
+  const headline = article.headline ?? ''
+  const at = emphasis === undefined || emphasis === '' ? -1 : headline.indexOf(emphasis)
+  const before = at === -1 ? headline : headline.slice(0, at)
+  const hit = at === -1 ? '' : headline.slice(at, at + (emphasis?.length ?? 0))
+  const after = at === -1 ? '' : headline.slice(at + (emphasis?.length ?? 0))
+
+  return (
+    <div
+      className="rounded-[2px] p-4"
+      style={{ backgroundColor: '#f4f1ea', color: '#14161a' }}
+      aria-label="Headline card preview"
+    >
+      <div className="flex items-baseline justify-between gap-3">
+        <span className="text-[11px] font-bold tracking-[0.2em] uppercase">
+          {article.outlet ?? '—'}
+        </span>
+        <span className="text-[10px] tracking-[0.08em] whitespace-nowrap text-[#5f646d] uppercase">
+          {article.publishedAt ?? '—'}
+        </span>
+      </div>
+      <div className="mt-2 h-[2px]" style={{ backgroundColor: '#14161a' }} />
+      <div className="mt-[2px] h-px" style={{ backgroundColor: '#14161a' }} />
+
+      <p className="mt-3 font-serif text-[19px] leading-[1.15] font-bold">
+        {headline === '' ? (
+          <span className="text-[#9aa0a8] italic">No headline yet</span>
+        ) : (
+          <>
+            {before}
+            {hit === '' ? null : (
+              <span
+                style={{
+                  backgroundImage: `linear-gradient(transparent 58%, ${colors.accent}8c 58%)`,
+                }}
+              >
+                {hit}
+              </span>
+            )}
+            {after}
+          </>
+        )}
+      </p>
+
+      {showDeck && article.description ? (
+        <p className="mt-2 font-serif text-[12px] leading-snug text-[#3c414a]">
+          {article.description}
+        </p>
+      ) : null}
+
+      <div className="mt-3 h-px" style={{ backgroundColor: '#c9c3b5' }} />
+      <div className="mt-2 flex items-baseline justify-between gap-3 text-[#5f646d]">
+        <span className="font-serif text-[11px] font-semibold">
+          {article.author === null ? (article.outlet ?? '') : `By ${article.author}`}
+        </span>
+        <span className="truncate font-mono text-[10px]">
+          {article.url.replace(/^https?:\/\//, '')}
+        </span>
+      </div>
+    </div>
+  )
+}

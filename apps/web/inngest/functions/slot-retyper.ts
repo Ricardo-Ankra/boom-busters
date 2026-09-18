@@ -144,7 +144,7 @@ export const slotRetyper = inngest.createFunction(
                   { projectId },
                 )
               ).text,
-              { targetType, claimIds },
+              { targetType, claims },
             )
           }
         } catch (error) {

@@ -17,9 +17,7 @@ vi.mock('./visuals-actions', () => ({
 
 const PROJECT = '01J0000000000000000000000A'
 const book = mockDirectorsBook({ caseTitle: 'Wirecard', chapterCount: 2 })
-const act = vi.fn(async (_key: string, run: () => Promise<ActionResult>) => {
-  await run()
-})
+const act = vi.fn(async (_key: string, run: () => Promise<ActionResult>) => await run())
 
 beforeEach(() => {
   vi.clearAllMocks()

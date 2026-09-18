@@ -1,5 +1,5 @@
 import { PlannedBriefSchema, resolvePlannedBrief, ValidationError } from '@boom-busters/schemas'
-import type { ShotBrief, ShotSlotType } from '@boom-busters/schemas'
+import type { PlanningClaim, ShotBrief, ShotSlotType } from '@boom-busters/schemas'
 import { z } from 'zod'
 import { claimList, type ScriptClaim } from './script'
 import { formatIssues, parseJsonCompletion } from './json'
@@ -85,7 +85,7 @@ const RetypeEnvelopeSchema = z.union([
 
 export function parseRetypedBrief(
   text: string,
-  input: { targetType: RetypeInput['targetType']; claimIds: readonly string[] },
+  input: { targetType: RetypeInput['targetType']; claims: readonly PlanningClaim[] },
 ): ShotBrief {
   const envelope = parseJsonCompletion(text, RetypeEnvelopeSchema, 'retyped brief')
 
@@ -107,7 +107,7 @@ export function parseRetypedBrief(
     })
   }
 
-  const resolved = resolvePlannedBrief(parsed.data, input.claimIds)
+  const resolved = resolvePlannedBrief(parsed.data, input.claims)
   if (!resolved) {
     throw new ValidationError(
       'The retyped chart cites claim numbers that do not exist in this project.',

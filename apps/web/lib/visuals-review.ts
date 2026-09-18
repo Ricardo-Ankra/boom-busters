@@ -1,4 +1,6 @@
 import {
+  getArticleSources,
+  getClaims,
   getProject,
   latestScriptParagraphSources,
   listCastMembers,
@@ -9,8 +11,10 @@ import {
 import type { Database } from '@boom-busters/db'
 import { BANNED_PROMPT_WORDS } from '@boom-busters/providers'
 import {
+  ArticleMetadataSchema,
   CANDIDATES_SHOWN,
   DirectorsBookSchema,
+  normaliseArticleUrl,
   latestTakes,
   castWarnings,
   planWarnings,
@@ -22,6 +26,7 @@ import {
   visualsCoverage,
 } from '@boom-busters/schemas'
 import type {
+  ArticleMetadata,
   DirectorsBook,
   ShotBrief,
   ShotSlotStatus,
@@ -73,6 +78,13 @@ export interface SlotView {
   retype: SlotRetypeState | null
   /** An image model declined this slot's prompt (decision 252). */
   refusal: SlotRefusal | null
+  /**
+   * The cited article, for headline slots (decision 257). Null on every other
+   * type, and on a headline slot whose claim no longer has a readable source.
+   * Carries its own failure reason, so the card can ask for the four fields
+   * rather than showing an error.
+   */
+  article: ArticleMetadata | null
 }
 
 export interface ChapterSlots {
@@ -150,6 +162,50 @@ function parseCandidates(raw: unknown): SlotCandidate[] {
   })
 }
 
+/**
+ * The stored article record behind each cited claim, by claim id.
+ *
+ * Read-only and read-through nothing: a board render must never open a socket
+ * to a publisher, so a claim with no stored record simply has none, and the
+ * card asks for the fields. Normalisation happens here rather than in SQL
+ * because the URL the dossier stored and the URL the store is keyed by are the
+ * same address written two ways.
+ */
+async function articlesForClaims(
+  db: Database,
+  claimIds: readonly string[],
+): Promise<Map<string, ArticleMetadata>> {
+  const found = new Map<string, ArticleMetadata>()
+  if (claimIds.length === 0) return found
+
+  const claims = await getClaims(db, [...new Set(claimIds)])
+  const urlByClaim = new Map<string, string>()
+  for (const claim of claims) {
+    const url = claim.sourceUrl === null ? null : normaliseArticleUrl(claim.sourceUrl)
+    if (url !== null) urlByClaim.set(claim.id, url)
+  }
+
+  const rows = await getArticleSources(db, [...new Set(urlByClaim.values())])
+  const byUrl = new Map(rows.map((row) => [row.url, row]))
+  for (const [claimId, url] of urlByClaim) {
+    const row = byUrl.get(url)
+    if (!row) continue
+    const parsed = ArticleMetadataSchema.safeParse({
+      url: row.url,
+      outlet: row.outlet,
+      headline: row.headline,
+      author: row.author,
+      publishedAt: row.publishedAt,
+      description: row.description,
+      provenance: row.provenance,
+      status: row.status,
+      failureReason: row.failureReason,
+    })
+    if (parsed.success) found.set(claimId, parsed.data)
+  }
+  return found
+}
+
 export async function visualsReviewModel(
   db: Database,
   projectId: string,
@@ -177,6 +233,17 @@ export async function visualsReviewModel(
    * to a different moment than the render cuts to is a card that lies.
    */
   const briefs = rows.map((row) => ShotBriefSchema.safeParse(row.brief))
+
+  /**
+   * The cited articles, read in one query (decision 257). Read-only here: the
+   * board is a screen, and a page load must never open a socket to a
+   * publisher. Resolution and the Re-fetch button are what fetch.
+   */
+  const claimIds = briefs.flatMap((brief) =>
+    brief.success && brief.data.type === 'headline' ? [brief.data.sourceClaimId] : [],
+  )
+  const articlesByClaim = await articlesForClaims(db, claimIds)
+
   const times = anchoredTimes(
     rows.map((row, at) => {
       const brief = briefs[at]
@@ -214,6 +281,10 @@ export async function visualsReviewModel(
       candidates: ordered.slice(0, CANDIDATES_SHOWN),
       extraCandidates: Math.max(0, ordered.length - CANDIDATES_SHOWN),
       needsFetch: slotNeedsResolution(row),
+      article:
+        parsed.success && parsed.data.type === 'headline'
+          ? (articlesByClaim.get(parsed.data.sourceClaimId) ?? null)
+          : null,
       retype: ((): SlotRetypeState | null => {
         const state = SlotRetypeStateSchema.safeParse(row.retype)
         return state.success ? state.data : null

@@ -230,7 +230,6 @@ describe('planChapterSlots against a live model', () => {
       chapter: { id: 'ch-1', title: 'The audit', number: 1 },
       paragraphs: PARAGRAPHS,
       claims: [],
-      claimIds: [],
       styleAnchors: 'a',
       direction: null,
     })
@@ -252,7 +251,6 @@ describe('planChapterSlots against a live model', () => {
         chapter: { id: 'ch-1', title: 'The audit', number: 1 },
         paragraphs: PARAGRAPHS,
         claims: [],
-        claimIds: [],
         styleAnchors: 'a',
         direction: null,
       }),

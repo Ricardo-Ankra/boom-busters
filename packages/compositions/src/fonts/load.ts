@@ -1,6 +1,7 @@
 import { loadFont as loadArchivo } from '@remotion/google-fonts/Archivo'
 import { loadFont as loadInter } from '@remotion/google-fonts/Inter'
 import { loadFont as loadJetBrainsMono } from '@remotion/google-fonts/JetBrainsMono'
+import { loadFont as loadSourceSerif } from '@remotion/google-fonts/SourceSerif4'
 import type { BrandKitTokens } from '@boom-busters/schemas'
 import { assertBundledFamily } from './catalog'
 
@@ -19,6 +20,8 @@ const LOADERS: Record<string, () => { waitUntilDone: () => Promise<void> }> = {
     loadArchivo('normal', { weights: ['500', '600', '700', '800'], subsets: ['latin'] }),
   'JetBrains Mono': () =>
     loadJetBrainsMono('normal', { weights: ['400', '500', '600', '700'], subsets: ['latin'] }),
+  'Source Serif 4': () =>
+    loadSourceSerif('normal', { weights: ['400', '600', '700'], subsets: ['latin'] }),
 }
 
 /**
@@ -26,7 +29,10 @@ const LOADERS: Record<string, () => { waitUntilDone: () => Promise<void> }> = {
  * unbundled family; resolves when all faces are usable.
  */
 export function loadBrandFonts(typography: BrandKitTokens['typography']): Promise<void> {
-  const families = new Set<string>()
+  // Always loaded, whatever the Brand Kit says: the headline card sets the
+  // masthead and the headline in this serif rather than in a brand role
+  // (decision 257), so no typography choice can announce that it is needed.
+  const families = new Set<string>(['Source Serif 4'])
   for (const role of Object.values(typography)) {
     assertBundledFamily(role.family)
     families.add(role.family)

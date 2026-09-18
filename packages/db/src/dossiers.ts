@@ -1,4 +1,4 @@
-import { and, asc, eq, sql } from 'drizzle-orm'
+import { and, asc, eq, inArray, sql } from 'drizzle-orm'
 import type { Database } from './client'
 import { claims, dossiers } from './schema'
 import type { ClaimConfidence, ClaimRow, ClaimSourceType } from './schema'
@@ -111,6 +111,21 @@ export async function getDossier(
     )
 
   return { ...dossier, claims: rows }
+}
+
+/** Several claims, by id. The board reads a chapter's cited articles at once. */
+export async function getClaims(db: Database, ids: readonly string[]): Promise<ClaimRow[]> {
+  if (ids.length === 0) return []
+  return db
+    .select()
+    .from(claims)
+    .where(inArray(claims.id, [...ids]))
+}
+
+/** One claim, by id. What a headline slot reads its article URL from. */
+export async function getClaim(db: Database, claimId: string): Promise<ClaimRow | undefined> {
+  const [row] = await db.select().from(claims).where(eq(claims.id, claimId)).limit(1)
+  return row
 }
 
 export async function setClaimQuarantined(

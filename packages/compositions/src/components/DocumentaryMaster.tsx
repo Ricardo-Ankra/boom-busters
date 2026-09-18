@@ -23,6 +23,7 @@ import { frameScale, typeStyle, withAlpha } from './brand'
 import { ChapterCard } from './ChapterCard'
 import { ChartReveal } from './ChartReveal'
 import { EndCta } from './EndCta'
+import { HeadlineCard } from './HeadlineCard'
 import { KaraokeCaptions } from './KaraokeCaptions'
 import { KenBurnsImage } from './KenBurnsImage'
 import { LowerThird } from './LowerThird'
@@ -157,6 +158,8 @@ function SlotView({ slot, brand }: { slot: TimelineSlot; brand: BrandKitTokens }
         />
       ) : slot.payload.kind === 'chart' ? (
         <ChartReveal payload={slot.payload} brand={brand} durationInFrames={durationInFrames} />
+      ) : slot.payload.kind === 'headline' ? (
+        <HeadlineCard payload={slot.payload} brand={brand} />
       ) : (
         <AnimatedMap payload={slot.payload} brand={brand} durationInFrames={durationInFrames} />
       )}

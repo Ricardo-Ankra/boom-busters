@@ -14,7 +14,7 @@ import {
 import { useRouter } from 'next/navigation'
 import * as React from 'react'
 import { SHOT_SLOT_TYPES } from '@boom-busters/schemas'
-import type { SlotCandidate } from '@boom-busters/schemas'
+import type { ShotBrief, SlotCandidate } from '@boom-busters/schemas'
 import { Badge, type BadgeTone } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -30,13 +30,21 @@ import {
   editBriefAction,
   finaliseOwnUploadAction,
   redirectSceneAction,
+  refetchArticleAction,
   refetchSlotAction,
+  saveHeadlineAction,
   replanShotsAction,
   retypeSlotAction,
   type ActionResult,
 } from './visuals-actions'
 import { DirectionCard } from './direction-card'
-import { ChartErrorCard, ChartPreview, MapPreview, type BrandChartColors } from './slot-previews'
+import {
+  ChartErrorCard,
+  ChartPreview,
+  HeadlinePreview,
+  MapPreview,
+  type BrandChartColors,
+} from './slot-previews'
 
 /**
  * The visual board (build spec section 11.3): a filmstrip synced to an audio
@@ -83,6 +91,238 @@ const STATUS_TONE: Record<string, BadgeTone> = {
   placeholder: 'warning',
   unresolved: 'muted',
   planned: 'muted',
+}
+
+/** Where a field came from, so a guess never reads as a fact. */
+const PROVENANCE_LABEL: Record<string, string> = {
+  jsonld: 'from the article',
+  og: 'from the article',
+  meta: 'from the article',
+  title: 'from the page title',
+  domain: 'guessed from the domain',
+  archive: 'from an archived copy',
+  manual: 'typed by you',
+}
+
+/**
+ * The headline card (decision 257): what the article said, where each field
+ * came from, and a form to correct any of it.
+ *
+ * The manual path is not a repair here, it is the normal path for a paywalled
+ * article, so the empty state asks rather than apologises.
+ */
+function HeadlineSlot({
+  slot,
+  brief,
+  projectId,
+  act,
+  colors,
+}: {
+  slot: SlotView
+  brief: Extract<ShotBrief, { type: 'headline' }>
+  projectId: string
+  act: (slotId: string, run: () => Promise<ActionResult>, success: string) => Promise<ActionResult>
+  colors: BrandChartColors
+}) {
+  const article = slot.article
+  const [editing, setEditing] = React.useState(false)
+
+  if (!article) {
+    return (
+      <p className="rounded-[8px] border border-[var(--color-border)] p-3 text-[13px] text-[var(--color-text-muted)]">
+        The claim this card cites no longer has a source to read. Give the claim a source URL on the
+        dossier screen, or change this slot to another type.
+      </p>
+    )
+  }
+
+  const provenance = article.provenance as Record<string, string>
+
+  return (
+    <div className="flex flex-col gap-2">
+      <HeadlinePreview
+        article={article}
+        emphasis={brief.emphasis}
+        showDeck={brief.showDeck === true}
+        colors={colors}
+      />
+
+      {article.headline === null ? (
+        <p className="text-[13px] text-[var(--color-warning)]">
+          {article.failureReason ?? 'The article did not say.'} Open it and fill these in.
+        </p>
+      ) : (
+        <ul className="flex flex-wrap gap-1" aria-label="Where each field came from">
+          {(['outlet', 'headline', 'author', 'publishedAt'] as const).map((field) =>
+            provenance[field] === undefined ? null : (
+              <li
+                key={field}
+                className="rounded-full border border-[var(--color-border-strong)] px-2 py-0.5 text-[11px] text-[var(--color-text-secondary)]"
+              >
+                {field === 'publishedAt' ? 'date' : field} · {PROVENANCE_LABEL[provenance[field]]}
+              </li>
+            ),
+          )}
+        </ul>
+      )}
+
+      <div className="flex flex-wrap gap-2">
+        <Button type="button" variant="outline" onClick={() => setEditing((open) => !open)}>
+          {editing ? 'Close' : article.headline === null ? 'Fill these in' : 'Correct the details'}
+        </Button>
+        <Button
+          type="button"
+          variant="ghost"
+          onClick={() =>
+            void act(slot.id, () => refetchArticleAction(projectId, slot.id), 'Article read again')
+          }
+        >
+          Re-fetch
+        </Button>
+        {/* A link, but one of our controls: same 40px target as the buttons. */}
+        <a
+          href={article.url}
+          target="_blank"
+          rel="noreferrer noopener"
+          className="inline-flex min-h-10 items-center px-2 font-mono text-[11px] text-[var(--color-accent-text)] underline"
+        >
+          Open the article
+        </a>
+      </div>
+
+      {editing ? (
+        <HeadlineForm
+          slot={slot}
+          brief={brief}
+          article={article}
+          projectId={projectId}
+          act={act}
+          onDone={() => setEditing(false)}
+        />
+      ) : null}
+    </div>
+  )
+}
+
+function HeadlineForm({
+  slot,
+  brief,
+  article,
+  projectId,
+  act,
+  onDone,
+}: {
+  slot: SlotView
+  brief: Extract<ShotBrief, { type: 'headline' }>
+  article: NonNullable<SlotView['article']>
+  projectId: string
+  act: (slotId: string, run: () => Promise<ActionResult>, success: string) => Promise<ActionResult>
+  onDone: () => void
+}) {
+  const [outlet, setOutlet] = React.useState(article.outlet ?? '')
+  const [headline, setHeadline] = React.useState(article.headline ?? '')
+  const [author, setAuthor] = React.useState(article.author ?? '')
+  const [publishedAt, setPublishedAt] = React.useState(article.publishedAt ?? '')
+  const [description, setDescription] = React.useState(article.description ?? '')
+  const [emphasis, setEmphasis] = React.useState(brief.emphasis ?? '')
+  const [showDeck, setShowDeck] = React.useState(brief.showDeck === true)
+
+  const field =
+    'rounded-[8px] border border-[var(--color-border-strong)] bg-[var(--color-background)] p-2 text-[13px] text-[var(--color-text-primary)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-accent)]'
+  const label = 'flex flex-col gap-1 text-[12px] text-[var(--color-text-secondary)]'
+
+  return (
+    <form
+      className="flex flex-col gap-2 rounded-[8px] border border-[var(--color-border)] p-3"
+      onSubmit={(event) => {
+        event.preventDefault()
+        void act(
+          slot.id,
+          () =>
+            saveHeadlineAction(projectId, slot.id, {
+              outlet,
+              headline,
+              author,
+              publishedAt,
+              description,
+              emphasis,
+              showDeck,
+            }),
+          'Headline saved',
+        ).then((result) => {
+          if (result.ok) onDone()
+        })
+      }}
+    >
+      <label className={label}>
+        Publication
+        <input value={outlet} onChange={(e) => setOutlet(e.target.value)} className={field} />
+      </label>
+      <label className={label}>
+        Headline, word for word as published
+        <textarea
+          value={headline}
+          onChange={(e) => setHeadline(e.target.value)}
+          rows={2}
+          className={field}
+        />
+      </label>
+      <div className="grid grid-cols-2 gap-2">
+        <label className={label}>
+          Byline
+          <input
+            value={author}
+            onChange={(e) => setAuthor(e.target.value)}
+            placeholder="leave empty if it has none"
+            className={field}
+          />
+        </label>
+        <label className={label}>
+          Published (YYYY-MM-DD)
+          <input
+            value={publishedAt}
+            onChange={(e) => setPublishedAt(e.target.value)}
+            placeholder="2023-03-14"
+            className={`${field} font-mono`}
+          />
+        </label>
+      </div>
+      <label className={label}>
+        Standfirst
+        <input
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+          className={field}
+        />
+      </label>
+      <label className="flex items-center gap-2 text-[12px] text-[var(--color-text-secondary)]">
+        <input
+          type="checkbox"
+          checked={showDeck}
+          onChange={(e) => setShowDeck(e.target.checked)}
+          className="size-4"
+        />
+        Show the standfirst on the card
+      </label>
+      <label className={label}>
+        Highlight this phrase
+        <input
+          value={emphasis}
+          onChange={(e) => setEmphasis(e.target.value)}
+          placeholder="must appear in the headline"
+          className={field}
+        />
+      </label>
+      <div className="flex gap-2">
+        <Button type="submit" variant="primary">
+          Save
+        </Button>
+        <Button type="button" variant="ghost" onClick={onDone}>
+          Cancel
+        </Button>
+      </div>
+    </form>
+  )
 }
 
 function StatusChip({ status }: { status: string }) {
@@ -134,8 +374,17 @@ export function VisualBoard({
   const playable = model.segments.some((segment) => segment.takeId !== null)
   const allSlots = model.chapters.flatMap((chapter) => chapter.slots)
 
+  /**
+   * Every slot button goes through here, and it RETURNS what happened: a
+   * refused save must leave the form open with what the owner typed in it,
+   * which is not possible if the caller cannot tell success from failure.
+   */
   const act = React.useCallback(
-    async (slotId: string, run: () => Promise<ActionResult>, success: string) => {
+    async (
+      slotId: string,
+      run: () => Promise<ActionResult>,
+      success: string,
+    ): Promise<ActionResult> => {
       setBusySlot(slotId)
       try {
         const result = await run()
@@ -145,6 +394,7 @@ export function VisualBoard({
         } else {
           toast({ title: 'That did not work', description: result.error, variant: 'error' })
         }
+        return result
       } catch {
         // A rejected action call (network drop, request refused before the
         // action ran) previously surfaced as nothing happening at all — the
@@ -154,6 +404,7 @@ export function VisualBoard({
           description: 'The request never reached the server. Check the connection and try again.',
           variant: 'error',
         })
+        return { ok: false, error: 'The request never reached the server.' }
       } finally {
         setBusySlot(null)
       }
@@ -450,7 +701,7 @@ function SlotCard({
   projectId: string
   colors: BrandChartColors
   busy: boolean
-  act: (slotId: string, run: () => Promise<ActionResult>, success: string) => Promise<void>
+  act: (slotId: string, run: () => Promise<ActionResult>, success: string) => Promise<ActionResult>
   phase: VisualsReviewModel['phase']
 }) {
   const [editing, setEditing] = React.useState(false)
@@ -505,6 +756,8 @@ function SlotCard({
           </div>
         ) : brief?.type === 'map' ? (
           <MapPreview brief={brief} colors={colors} />
+        ) : brief?.type === 'headline' ? (
+          <HeadlineSlot slot={slot} brief={brief} projectId={projectId} act={act} colors={colors} />
         ) : brief?.type === 'hero' ? (
           <p className="rounded-[8px] border border-[var(--color-border)] p-3 text-[13px] text-[var(--color-text-muted)]">
             AI video (hero) is switched off until post-monetisation. This slot stays a placeholder;
@@ -699,7 +952,7 @@ function TypePicker({
 }: {
   slot: SlotView
   projectId: string
-  act: (slotId: string, run: () => Promise<ActionResult>, success: string) => Promise<void>
+  act: (slotId: string, run: () => Promise<ActionResult>, success: string) => Promise<ActionResult>
   busy: boolean
 }) {
   const types = SHOT_SLOT_TYPES.filter((type) => type !== 'hero' || slot.type === 'hero')
@@ -785,7 +1038,7 @@ function MediaLightbox({
   index: number
   onIndexChange: (index: number) => void
   onClose: () => void
-  act: (slotId: string, run: () => Promise<ActionResult>, success: string) => Promise<void>
+  act: (slotId: string, run: () => Promise<ActionResult>, success: string) => Promise<ActionResult>
   busy: boolean
 }) {
   const closeRef = React.useRef<HTMLButtonElement | null>(null)
@@ -922,7 +1175,7 @@ function CandidateStrip({
 }: {
   slot: SlotView
   projectId: string
-  act: (slotId: string, run: () => Promise<ActionResult>, success: string) => Promise<void>
+  act: (slotId: string, run: () => Promise<ActionResult>, success: string) => Promise<ActionResult>
 }) {
   if (slot.candidates.length === 0) return null
 
@@ -1034,7 +1287,7 @@ function BriefEditor({
 }: {
   slot: SlotView
   projectId: string
-  act: (slotId: string, run: () => Promise<ActionResult>, success: string) => Promise<void>
+  act: (slotId: string, run: () => Promise<ActionResult>, success: string) => Promise<ActionResult>
   onDone: () => void
   /** Plan phase: an edit just saves — nothing is fetched until "Fetch visuals". */
   planning: boolean
@@ -1068,7 +1321,9 @@ function BriefEditor({
           planning || brief.type === 'archival'
             ? 'Brief saved'
             : 'Brief saved — re-fetching against it now',
-        ).then(onDone)
+        ).then((result) => {
+          if (result.ok) onDone()
+        })
       }}
     >
       <label className="flex flex-col gap-1 text-[12px] text-[var(--color-text-secondary)]">
@@ -1175,7 +1430,7 @@ function UploadOwnButton({
 }: {
   projectId: string
   slotId: string
-  act: (slotId: string, run: () => Promise<ActionResult>, success: string) => Promise<void>
+  act: (slotId: string, run: () => Promise<ActionResult>, success: string) => Promise<ActionResult>
   archival: boolean
 }) {
   const inputRef = React.useRef<HTMLInputElement | null>(null)

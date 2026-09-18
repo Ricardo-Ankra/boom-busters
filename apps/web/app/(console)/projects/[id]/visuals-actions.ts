@@ -2,9 +2,12 @@
 
 import {
   chooseSlotCandidate,
+  getArticleSource,
+  getClaim,
   getProject,
   getSettings,
   getShotSlot,
+  setArticleSourceManual,
   retypeShotSlot,
   setProjectDirection,
   setSlotResolution,
@@ -15,21 +18,25 @@ import {
 } from '@boom-busters/db'
 import { stillStyleAnchors } from '@boom-busters/providers'
 import {
+  articleIsRenderable,
   convertBrief,
   DirectorsBookSchema,
+  emphasisFits,
   HERO_SLOTS_ENABLED,
+  normaliseArticleUrl,
   ShotBriefSchema,
   ShotSlotTypeSchema,
   SlotCandidateSchema,
   UlidSchema,
 } from '@boom-busters/schemas'
-import type { SlotCandidate } from '@boom-busters/schemas'
+import type { HeadlineBrief, ShotBrief, SlotCandidate } from '@boom-busters/schemas'
 import { createHash } from 'node:crypto'
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { auth } from '@/auth'
 import { events } from '@/inngest/events'
 import { inngest } from '@/inngest/client'
+import { articleFromRow, refetchArticle } from '@/lib/article-source'
 import { db } from '@/lib/db'
 import { fetchRemoteImage } from '@/lib/remote-image'
 import {
@@ -280,6 +287,140 @@ function cleanPatch(patch: z.infer<typeof BriefPatchSchema>): Record<string, str
   return Object.fromEntries(
     Object.entries(patch).filter(([, value]) => value !== undefined && value !== ''),
   ) as Record<string, string>
+}
+
+/**
+ * The headline card's own fields (decision 257).
+ *
+ * Two stores in one save, because it is one card to the owner: the article's
+ * facts go to the article record (shared by every shot citing that piece), and
+ * the marker phrase and standfirst toggle go to the brief (this shot's own
+ * editorial choices). An empty string clears a field.
+ */
+const HeadlineEditSchema = z.object({
+  outlet: z.string().trim().max(120),
+  headline: z.string().trim().max(400),
+  author: z.string().trim().max(200),
+  /** YYYY-MM-DD, or empty. The PUBLICATION date, never the date you read it. */
+  publishedAt: z.string().trim().max(10),
+  description: z.string().trim().max(400),
+  emphasis: z.string().trim().max(120),
+  showDeck: z.boolean(),
+})
+
+/** The claim a headline slot cites, and the article URL behind it. */
+async function headlineSource(
+  slotId: string,
+): Promise<{ brief: HeadlineBrief; url: string } | { error: string }> {
+  const slot = await getShotSlot(db, slotId)
+  if (!slot) return { error: 'This slot no longer exists.' }
+
+  const parsed = ShotBriefSchema.safeParse(slot.brief)
+  if (!parsed.success || parsed.data.type !== 'headline') {
+    return { error: 'This is not a headline slot.' }
+  }
+
+  const claim = await getClaim(db, parsed.data.sourceClaimId)
+  const url =
+    claim?.sourceUrl === null || claim === undefined ? null : normaliseArticleUrl(claim.sourceUrl)
+  if (url === null) {
+    return { error: 'The claim this card cites no longer has a source to read.' }
+  }
+  return { brief: parsed.data, url }
+}
+
+export async function saveHeadlineAction(
+  projectId: string,
+  slotId: string,
+  input: unknown,
+): Promise<ActionResult> {
+  await requireOwner()
+  const invalid = badIds(projectId, slotId)
+  if (invalid) return invalid
+
+  const parsed = HeadlineEditSchema.safeParse(input)
+  if (!parsed.success) return { ok: false, error: 'That edit is not valid.' }
+  const fields = parsed.data
+
+  if (fields.publishedAt !== '' && !/^\d{4}-\d{2}-\d{2}$/.test(fields.publishedAt)) {
+    return { ok: false, error: 'The publication date must be written as YYYY-MM-DD.' }
+  }
+  // The marker draws under words the card is showing, so a phrase that is not
+  // in the headline is refused rather than silently dropped: the owner typed
+  // it and deserves to know it did not take.
+  if (fields.emphasis !== '' && !emphasisFits(fields.headline, fields.emphasis)) {
+    return {
+      ok: false,
+      error: 'The highlighted phrase has to appear in the headline, word for word.',
+    }
+  }
+
+  const source = await headlineSource(slotId)
+  if ('error' in source) return { ok: false, error: source.error }
+
+  const blank = (value: string): string | null => (value === '' ? null : value)
+  const record = await setArticleSourceManual(db, source.url, {
+    outlet: blank(fields.outlet),
+    headline: blank(fields.headline),
+    author: blank(fields.author),
+    publishedAt: blank(fields.publishedAt),
+    description: blank(fields.description),
+  })
+
+  const brief: ShotBrief = {
+    ...source.brief,
+    ...(fields.emphasis === '' ? {} : { emphasis: fields.emphasis }),
+    ...(fields.showDeck ? { showDeck: true } : {}),
+  }
+  if (fields.emphasis === '') delete (brief as { emphasis?: string }).emphasis
+  if (!fields.showDeck) delete (brief as { showDeck?: boolean }).showDeck
+  await updateSlotBrief(db, slotId, brief)
+
+  // A card with its facts filled in is resolved, whatever the fetch said.
+  await setSlotResolution(db, slotId, {
+    candidates: [],
+    status: articleIsRenderable(articleFromRow(record)) ? 'resolved' : 'placeholder',
+    briefHash: shotBriefHash(brief),
+  })
+
+  refresh(projectId)
+  return { ok: true }
+}
+
+/**
+ * Read the article again. Refuses a record the owner has corrected, because a
+ * fetch would throw away the one version of these facts somebody checked.
+ */
+export async function refetchArticleAction(
+  projectId: string,
+  slotId: string,
+): Promise<ActionResult> {
+  await requireOwner()
+  const invalid = badIds(projectId, slotId)
+  if (invalid) return invalid
+
+  const source = await headlineSource(slotId)
+  if ('error' in source) return { ok: false, error: source.error }
+
+  const before = await getArticleSource(db, source.url)
+  if (before?.status === 'manual') {
+    return {
+      ok: false,
+      error: 'You have already corrected this article by hand, so a re-fetch would undo your work.',
+    }
+  }
+
+  const article = await refetchArticle(source.url)
+  await setSlotResolution(db, slotId, {
+    candidates: [],
+    status: articleIsRenderable(article) ? 'resolved' : 'placeholder',
+    briefHash: shotBriefHash(source.brief),
+  })
+
+  refresh(projectId)
+  return article.status === 'failed'
+    ? { ok: false, error: article.failureReason ?? 'The article could not be read.' }
+    : { ok: true }
 }
 
 export async function refetchSlotAction(

@@ -123,8 +123,15 @@ export const shotTypeEnum = pgEnum('shot_type', [
   'still',
   'chart',
   'map',
+  'headline',
   'hero',
 ])
+
+/**
+ * How an article's metadata was obtained (decision 257). `manual` is sticky:
+ * a record the owner corrected is never overwritten by a later fetch.
+ */
+export const articleStatusEnum = pgEnum('article_status', ['fetched', 'manual', 'failed'])
 export const shotStatusEnum = pgEnum('shot_status', ['unresolved', 'resolved', 'placeholder'])
 
 export const assetKindEnum = pgEnum('asset_kind', ['image', 'video', 'music', 'logo'])
@@ -1005,6 +1012,41 @@ export const runEventsRelations = relations(runEvents, ({ one }) => ({
   run: one(runs, { fields: [runEvents.runId], references: [runs.id] }),
 }))
 
+/**
+ * A cited news article's own declared metadata (decision 257).
+ *
+ * Keyed by normalised URL rather than by project or slot, because an article's
+ * byline and publication date are fixed the moment it is published: one piece
+ * can back several claims, several shots and several films, and reading it
+ * twice is waste. The row is the cache AND the audit trail for what a headline
+ * card put on screen.
+ *
+ * `provenance` records, per field, whether the value came from the page's
+ * JSON-LD, its Open Graph tags, its title, the domain, an archive snapshot or
+ * the owner. The board shows it, so "the outlet was guessed from the hostname"
+ * is visible rather than hidden behind a confident-looking card.
+ */
+export const articleSources = pgTable('article_sources', {
+  /** The normalised URL: no scheme case, no www., no fragment, no tracking. */
+  url: text('url').primaryKey(),
+  outlet: text('outlet'),
+  headline: text('headline'),
+  author: text('author'),
+  /** Day precision, as text: the card shows a date, never a time or a zone. */
+  publishedAt: text('published_at'),
+  /** The standfirst, stored always and rendered only when the brief asks. */
+  description: text('description'),
+  provenance: jsonb('provenance')
+    .notNull()
+    .default(sql`'{}'::jsonb`)
+    .$type<Record<string, string>>(),
+  status: articleStatusEnum('status').notNull().default('failed'),
+  failureReason: text('failure_reason'),
+  fetchedAt: timestamp('fetched_at', { withTimezone: true }).notNull().defaultNow(),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+})
+
 // ---------------------------------------------------------------------------
 // Inferred row types
 // ---------------------------------------------------------------------------
@@ -1034,6 +1076,8 @@ export type CostLedgerRow = typeof costLedger.$inferSelect
 export type RunRow = typeof runs.$inferSelect
 export type RunEventRow = typeof runEvents.$inferSelect
 export type AnalyticsSnapshotRow = typeof analyticsSnapshots.$inferSelect
+export type ArticleSourceRow = typeof articleSources.$inferSelect
+export type NewArticleSource = typeof articleSources.$inferInsert
 export type ProjectStage = (typeof projectStageEnum.enumValues)[number]
 export type StageStatus = (typeof stageStatusEnum.enumValues)[number]
 export type RunStatus = (typeof runStatusEnum.enumValues)[number]
