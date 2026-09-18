@@ -3,6 +3,7 @@ import type { ShotBrief } from '@boom-busters/schemas'
 import { describe, expect, it } from 'vitest'
 import { mockDirectorsBook } from './direction'
 import { buildRebriefRequest, mockRebriefedBrief, parseRebriefedBrief } from './rebrief'
+import { buildRetypeRequest } from './retype'
 
 const stock: ShotBrief = {
   type: 'stock',
@@ -72,5 +73,23 @@ describe('parseRebriefedBrief', () => {
     expect(() =>
       parseRebriefedBrief(JSON.stringify({ error: 'This beat has only one honest image.' }), stock),
     ).toThrow(/only one honest image/)
+  })
+})
+
+describe('the chart-kind rules (decision 259)', () => {
+  it('tells the re-brief path what each kind is for, and how to split two units', () => {
+    const request = buildRetypeRequest({
+      caseTitle: 'Wirecard',
+      brief: stock,
+      targetType: 'chart',
+      claims: [
+        { id: '01HQ00000000000000000000AA', text: 'x', sourceUrl: null, confidence: 'sourced' },
+      ],
+    })
+    // The gap that made every chart a bar: the shape listed five kinds and
+    // never said which was for what.
+    expect(request.system).toContain('"line" for a value moving through time')
+    expect(request.system).toContain('because it is the safe choice')
+    expect(request.system).toContain('"axis": "left"')
   })
 })

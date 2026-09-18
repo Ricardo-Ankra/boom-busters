@@ -90,6 +90,43 @@ const CHART_BAR: ChartPayload = {
 }
 
 /**
+ * Two measures that cannot share a scale (decision 259), and the chart that
+ * prompted the work: a valuation climbing into the billions against a margin
+ * falling through the floor in percent. On one scale the margin is a flat line
+ * along the bottom, labelled in dollars.
+ */
+const CHART_DUAL_AXIS: ChartPayload = {
+  kind: 'chart',
+  chartKind: 'line',
+  series: [
+    {
+      label: 'Valuation',
+      unit: '$bn',
+      points: [
+        { x: '2019', y: 1.2 },
+        { x: '2020', y: 4.8 },
+        { x: '2021', y: 12.4 },
+        { x: '2022', y: 18.1 },
+      ],
+    },
+    {
+      label: 'Operating margin',
+      unit: '%',
+      axis: 'right',
+      points: [
+        { x: '2019', y: -4 },
+        { x: '2020', y: -19 },
+        { x: '2021', y: -61 },
+        { x: '2022', y: -148 },
+      ],
+    },
+  ],
+  dataRefs: ['01HQ00000000000000000000AA'],
+  takeaway: 'The more it was worth, the more each sale cost them.',
+  reveal: 'draw-on',
+}
+
+/**
  * The headline card (decision 257). Invented outlet, invented byline: a
  * fixture naming a real paper and a real journalist would be a fabricated
  * record living in the repo, which is the thing this card exists to prevent.
@@ -251,6 +288,14 @@ export function Root() {
         durationInFrames={240}
         {...TALL}
         defaultProps={{ payload: HEADLINE_CARD, brand: FIXTURE_BRAND }}
+      />
+
+      <Composition
+        id="ChartRevealDualAxis"
+        component={ChartReveal}
+        durationInFrames={240}
+        {...WIDE}
+        defaultProps={{ payload: CHART_DUAL_AXIS, brand: FIXTURE_BRAND, durationInFrames: 240 }}
       />
 
       <Composition

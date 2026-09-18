@@ -40,6 +40,8 @@ const CASES: SnapshotCase[] = [
   // the reveal, so both bars have arrived and both say their number.
   { id: 'ChartRevealBar', frame: 200, maxDiffRatio: 0.05 },
   { id: 'ChartRevealWaterfall', frame: 200, maxDiffRatio: 0.05 },
+  // Two scales, two units, one chart (decision 259).
+  { id: 'ChartRevealDualAxis', frame: 200, maxDiffRatio: 0.05 },
   { id: 'AnimatedMapFixture', frame: 200, maxDiffRatio: 0.05 },
   // Frame 60 is two seconds in: the clipping has settled and the marker has
   // finished its sweep (decision 257).
