@@ -122,41 +122,49 @@ test.describe('the visual board', () => {
 })
 
 /**
- * The headline card (decision 257). The seeded article is a page that would
- * not answer, which is the path that matters: for a paywalled piece, typing
- * the four fields IS the normal way to fill this card, not a repair.
+ * The headline card (decision 257). The seeded article was read but carried no
+ * byline, which is the common real case: the fetch worked, one field needs a
+ * human, and the card has to make that a small job.
  */
 test.describe('a headline card', () => {
-  test('asks for the article details, and keeps them', async ({ page }) => {
-    await expect(page.getByText(/The publisher returned 403/)).toBeVisible()
+  test('draws what the article said, and says where each field came from', async ({ page }) => {
+    const card = page.getByLabel('Headline card preview')
+    // Twice on purpose: with no byline the card prints the outlet where the
+    // byline goes, rather than inventing a name.
+    await expect(card.getByText('The Financial Record')).toHaveCount(2)
+    await expect(card.getByText(/Auditors cannot find the/)).toBeVisible()
 
-    await page.getByRole('button', { name: 'Fill these in' }).click()
-    await page.getByLabel('Publication').fill('The Financial Record')
-    await page
-      .getByLabel('Headline, word for word as published')
-      .fill('Auditors cannot find the $1.9 billion the company says it holds')
+    const provenance = page.getByLabel('Where each field came from')
+    await expect(provenance.getByText(/headline . from the article/)).toBeVisible()
+  })
+
+  test('takes a correction, refuses an invented highlight, and keeps the rest', async ({
+    page,
+  }) => {
+    await page.getByRole('button', { name: 'Correct the details' }).click()
+
+    // A marker over words the publication did not print is refused, not
+    // quietly dropped: the owner typed it and deserves to know.
+    await page.getByLabel('Highlight this phrase').fill('two billion')
+    await page.getByRole('button', { name: 'Save' }).click()
+    // `.first()`: the toast body and its aria-live announcer both say it.
+    await expect(
+      page.getByText(/has to appear in the headline, word for word/).first(),
+    ).toBeVisible()
+
     await page.getByLabel('Byline').fill('Elena Marsh')
-    await page.getByLabel('Published (YYYY-MM-DD)').fill('2023-03-14')
     await page.getByLabel('Highlight this phrase').fill('$1.9 billion')
     await page.getByRole('button', { name: 'Save' }).click()
 
     const card = page.getByLabel('Headline card preview')
-    await expect(card.getByText('The Financial Record')).toBeVisible()
     await expect(card.getByText('By Elena Marsh')).toBeVisible()
 
     // And it survives a reload, because it was written, not held in state.
     await page.reload()
     await expect(page.getByLabel('Headline card preview').getByText('By Elena Marsh')).toBeVisible()
-  })
-
-  test('refuses a highlight the publication did not print', async ({ page }) => {
-    await page.getByRole('button', { name: 'Fill these in' }).click()
-    await page
-      .getByLabel('Headline, word for word as published')
-      .fill('Auditors cannot find the money')
-    await page.getByLabel('Highlight this phrase').fill('two billion')
-    await page.getByRole('button', { name: 'Save' }).click()
-
-    await expect(page.getByText(/has to appear in the headline, word for word/)).toBeVisible()
+    // The field the owner typed now says so, where the fetched ones do not.
+    await expect(
+      page.getByLabel('Where each field came from').getByText(/author . typed by you/),
+    ).toBeVisible()
   })
 })

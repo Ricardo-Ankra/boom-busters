@@ -121,7 +121,7 @@ function HeadlineSlot({
   slot: SlotView
   brief: Extract<ShotBrief, { type: 'headline' }>
   projectId: string
-  act: (slotId: string, run: () => Promise<ActionResult>, success: string) => Promise<void>
+  act: (slotId: string, run: () => Promise<ActionResult>, success: string) => Promise<ActionResult>
   colors: BrandChartColors
 }) {
   const article = slot.article
@@ -179,11 +179,12 @@ function HeadlineSlot({
         >
           Re-fetch
         </Button>
+        {/* A link, but one of our controls: same 40px target as the buttons. */}
         <a
           href={article.url}
           target="_blank"
           rel="noreferrer noopener"
-          className="self-center font-mono text-[11px] text-[var(--color-accent-text)] underline"
+          className="inline-flex min-h-10 items-center px-2 font-mono text-[11px] text-[var(--color-accent-text)] underline"
         >
           Open the article
         </a>
@@ -215,7 +216,7 @@ function HeadlineForm({
   brief: Extract<ShotBrief, { type: 'headline' }>
   article: NonNullable<SlotView['article']>
   projectId: string
-  act: (slotId: string, run: () => Promise<ActionResult>, success: string) => Promise<void>
+  act: (slotId: string, run: () => Promise<ActionResult>, success: string) => Promise<ActionResult>
   onDone: () => void
 }) {
   const [outlet, setOutlet] = React.useState(article.outlet ?? '')
@@ -248,7 +249,9 @@ function HeadlineForm({
               showDeck,
             }),
           'Headline saved',
-        ).then(onDone)
+        ).then((result) => {
+          if (result.ok) onDone()
+        })
       }}
     >
       <label className={label}>
@@ -371,8 +374,17 @@ export function VisualBoard({
   const playable = model.segments.some((segment) => segment.takeId !== null)
   const allSlots = model.chapters.flatMap((chapter) => chapter.slots)
 
+  /**
+   * Every slot button goes through here, and it RETURNS what happened: a
+   * refused save must leave the form open with what the owner typed in it,
+   * which is not possible if the caller cannot tell success from failure.
+   */
   const act = React.useCallback(
-    async (slotId: string, run: () => Promise<ActionResult>, success: string) => {
+    async (
+      slotId: string,
+      run: () => Promise<ActionResult>,
+      success: string,
+    ): Promise<ActionResult> => {
       setBusySlot(slotId)
       try {
         const result = await run()
@@ -382,6 +394,7 @@ export function VisualBoard({
         } else {
           toast({ title: 'That did not work', description: result.error, variant: 'error' })
         }
+        return result
       } catch {
         // A rejected action call (network drop, request refused before the
         // action ran) previously surfaced as nothing happening at all — the
@@ -391,6 +404,7 @@ export function VisualBoard({
           description: 'The request never reached the server. Check the connection and try again.',
           variant: 'error',
         })
+        return { ok: false, error: 'The request never reached the server.' }
       } finally {
         setBusySlot(null)
       }
@@ -687,7 +701,7 @@ function SlotCard({
   projectId: string
   colors: BrandChartColors
   busy: boolean
-  act: (slotId: string, run: () => Promise<ActionResult>, success: string) => Promise<void>
+  act: (slotId: string, run: () => Promise<ActionResult>, success: string) => Promise<ActionResult>
   phase: VisualsReviewModel['phase']
 }) {
   const [editing, setEditing] = React.useState(false)
@@ -938,7 +952,7 @@ function TypePicker({
 }: {
   slot: SlotView
   projectId: string
-  act: (slotId: string, run: () => Promise<ActionResult>, success: string) => Promise<void>
+  act: (slotId: string, run: () => Promise<ActionResult>, success: string) => Promise<ActionResult>
   busy: boolean
 }) {
   const types = SHOT_SLOT_TYPES.filter((type) => type !== 'hero' || slot.type === 'hero')
@@ -1024,7 +1038,7 @@ function MediaLightbox({
   index: number
   onIndexChange: (index: number) => void
   onClose: () => void
-  act: (slotId: string, run: () => Promise<ActionResult>, success: string) => Promise<void>
+  act: (slotId: string, run: () => Promise<ActionResult>, success: string) => Promise<ActionResult>
   busy: boolean
 }) {
   const closeRef = React.useRef<HTMLButtonElement | null>(null)
@@ -1161,7 +1175,7 @@ function CandidateStrip({
 }: {
   slot: SlotView
   projectId: string
-  act: (slotId: string, run: () => Promise<ActionResult>, success: string) => Promise<void>
+  act: (slotId: string, run: () => Promise<ActionResult>, success: string) => Promise<ActionResult>
 }) {
   if (slot.candidates.length === 0) return null
 
@@ -1273,7 +1287,7 @@ function BriefEditor({
 }: {
   slot: SlotView
   projectId: string
-  act: (slotId: string, run: () => Promise<ActionResult>, success: string) => Promise<void>
+  act: (slotId: string, run: () => Promise<ActionResult>, success: string) => Promise<ActionResult>
   onDone: () => void
   /** Plan phase: an edit just saves — nothing is fetched until "Fetch visuals". */
   planning: boolean
@@ -1307,7 +1321,9 @@ function BriefEditor({
           planning || brief.type === 'archival'
             ? 'Brief saved'
             : 'Brief saved — re-fetching against it now',
-        ).then(onDone)
+        ).then((result) => {
+          if (result.ok) onDone()
+        })
       }}
     >
       <label className="flex flex-col gap-1 text-[12px] text-[var(--color-text-secondary)]">
@@ -1414,7 +1430,7 @@ function UploadOwnButton({
 }: {
   projectId: string
   slotId: string
-  act: (slotId: string, run: () => Promise<ActionResult>, success: string) => Promise<void>
+  act: (slotId: string, run: () => Promise<ActionResult>, success: string) => Promise<ActionResult>
   archival: boolean
 }) {
   const inputRef = React.useRef<HTMLInputElement | null>(null)

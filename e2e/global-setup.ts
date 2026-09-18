@@ -131,6 +131,7 @@ export default async function globalSetup(): Promise<void> {
     listMusicBeds,
     FIXTURE_CASE_ID,
     FIXTURE_PROJECT_ID,
+    articleSources,
     publishRecords,
     renders,
     timelines,
@@ -159,6 +160,10 @@ export default async function globalSetup(): Promise<void> {
     // fixture's Stop confirm), and `seed` does not clear them.
     await connection.db.delete(renders)
     await connection.db.delete(timelines)
+    // Article records leak the same way, and worse: a record this suite types
+    // into becomes `manual`, which the next run's seed is then forbidden to
+    // overwrite (decision 257). Truncating is what makes the seed the truth.
+    await connection.db.delete(articleSources)
     // publish_records is polymorphic — no FK, so nothing cascades it away.
     // The publish-runner unit tests stamp uploadStartedAt rows that would
     // otherwise count against this suite's daily-budget line.
@@ -650,8 +655,15 @@ export default async function globalSetup(): Promise<void> {
         status: 'placeholder',
       })
 
-      // The headline card, pointed at its claim and at an article the
-      // publisher would not give up (decision 257).
+      /**
+       * The headline card (decision 257), pointed at its claim and at an
+       * article that was read but carried no byline: the common real case,
+       * and the one whose repair the board has to make a small job.
+       *
+       * Deliberately RESOLVED. The empty-state path is covered by the unit
+       * suite, and a card this run could move in or out of placeholder would
+       * change the approve button's count under its neighbours on a retry.
+       */
       const boardClaims = await scriptableClaims(connection.db, board.id)
       const newsClaim = boardClaims.find((claim) => claim.sourceType === 'major_outlet')
       const headlineSlot = slots.find((slot) => slot.type === 'headline')
@@ -662,18 +674,18 @@ export default async function globalSetup(): Promise<void> {
         } as never)
         await setSlotResolution(connection.db, headlineSlot.id, {
           candidates: [],
-          status: 'placeholder',
+          status: 'resolved',
         })
         await recordArticleSource(connection.db, {
           url: HEADLINE_ARTICLE_URL,
-          outlet: null,
-          headline: null,
+          outlet: 'The Financial Record',
+          headline: 'Auditors cannot find the $1.9 billion the company says it holds',
           author: null,
-          publishedAt: null,
+          publishedAt: '2023-03-14',
           description: null,
-          provenance: {},
-          status: 'failed',
-          failureReason: 'The publisher returned 403',
+          provenance: { outlet: 'og', headline: 'jsonld', publishedAt: 'jsonld' },
+          status: 'fetched',
+          failureReason: null,
         })
       }
 
