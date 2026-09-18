@@ -493,3 +493,29 @@ describe('buildShotListRequest with direction (decision 252)', () => {
     expect(plan.slots.map((slot) => slot.brief.shotSize)).toEqual(['wide', 'medium', 'graphic'])
   })
 })
+
+describe('the sentence decides the frame (decision 260)', () => {
+  const request = buildShotListRequest({
+    caseTitle: 'Wirecard',
+    chapterTitle: 'The Missing Billions',
+    chapterNumber: 2,
+    paragraphs: PARAGRAPHS,
+    claims: CLAIMS,
+    styleAnchors: stillStyleAnchors(brandKit),
+    direction: mockDirectorsBook({ caseTitle: 'Wirecard', chapterCount: 2 }),
+  })
+
+  it('puts the sentence rule first among the planning rules', () => {
+    const rules = request.system.slice(request.system.indexOf('Planning rules:'))
+    const sentence = rules.indexOf('The sentence decides the frame')
+    const cover = rules.indexOf('Cover every paragraph')
+    expect(sentence).toBeGreaterThan(-1)
+    expect(sentence).toBeLessThan(cover)
+  })
+
+  it('caps each motif at once per chapter, never adjacent, never the subject', () => {
+    expect(request.system).toContain('each motif at most once across the chapter')
+    expect(request.system).toContain('never in consecutive slots')
+    expect(request.system).toContain('needs no motif at all')
+  })
+})

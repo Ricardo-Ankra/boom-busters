@@ -190,6 +190,15 @@ Return JSON: {"slots": [...]}
 ${SLOT_SHAPES}
 
 Planning rules:
+- The sentence decides the frame. Read "coversText" before anything else and
+  show what it says: the place it names, the object it mentions, the thing
+  that happened, the person doing what the sentence says they did. Only when
+  the sentence names nothing photographable do you reach for the book: the
+  chapter's key image, a location, a motif.
+- Motifs are seasoning, not the meal. Use each motif at most once across the chapter,
+  never in consecutive slots, and never as the subject of a frame unless the
+  sentence is about it. A still whose sentence gives you a concrete subject
+  needs no motif at all.
 - Cover every paragraph. A slot runs 4-15 seconds ("seconds" is always a
   positive number); a paragraph's slots should add up to roughly its narration
   length.
