@@ -37,4 +37,15 @@ describe('DIRECTION_CRAFT', () => {
   it('carries no dashes the house style forbids', () => {
     expect(DIRECTION_CRAFT).not.toMatch(/[\u2013\u2014]/)
   })
+
+  it('puts the sentence before the checklist, and caps the motifs (decision 260)', () => {
+    expect(DIRECTION_CRAFT).toContain('The sentence decides the frame')
+    expect(DIRECTION_CRAFT).toContain('sound off')
+    expect(DIRECTION_CRAFT).toContain('each motif at most once per chapter')
+    expect(DIRECTION_CRAFT).toContain('one detail drawn from the sentence itself')
+    // The clause that put a motif into every still is gone.
+    expect(DIRECTION_CRAFT).not.toContain('and one motif from the director')
+    // The fallback no longer canonises one picture.
+    expect(DIRECTION_CRAFT).not.toContain('(the empty chair,')
+  })
 })

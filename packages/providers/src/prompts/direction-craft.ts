@@ -34,6 +34,13 @@ plain one.
 
 ## Shot grammar for a film made of stills
 
+- The sentence decides the frame. Read the narration the slot covers
+  before anything else and show what it names: the place, the object, the
+  event, the document, the person doing what the sentence says they did.
+  A viewer with the sound off should be able to guess the sentence from
+  the frame. Only when a sentence names nothing photographable (an
+  abstraction, a judgment, a number with no scene around it) reach for
+  the director's book: the chapter's key image, a location, a motif.
 - Shot sizes, and what each is for:
   wide (a place and the scale of what happened there),
   medium (a person in a situation, or a room's purpose),
@@ -55,8 +62,12 @@ plain one.
   matters more than the speed before it.
 - Every chapter builds to one image, named in the director's book. Plan
   the chapter so that image lands on the chapter's turn.
-- Motifs recur. The director's book names three; each chapter shows at
-  least one of them, in a new place.
+- Motifs recur, and recur sparingly. The director's book names three;
+  each chapter shows at least one of them, in a new place, and
+  each motif at most once per chapter. Never in two adjacent slots,
+  and never as the subject of the frame unless the sentence is about
+  it. A motif that does not fit the sentence stays out; the floor is
+  one motif per chapter, not one per still.
 
 ## What a still prompt must contain
 
@@ -65,8 +76,10 @@ plain one.
 - Three physical facts in every prompt: an environmental pressure
   (rain on the window, a flickering tube, dust in a beam of light), a
   human trace (a coat on a chair, a half-drunk coffee, a hand on a
-  document, a figure at a doorway), and one motif from the director's
-  book.
+  document, a figure at a doorway), and
+  one detail drawn from the sentence itself (the named object,
+  document, place or time of day). A motif from the director's book
+  may stand in for the third fact, at most once per chapter.
 - Written in this order, as prose, not a keyword list: subject, action or
   state, style anchors, context (place and era), lighting (source,
   direction, quality), technical (lens, distance, aspect). Lead with the
@@ -178,15 +191,16 @@ plain one.
   and only those. A generated likeness is never presented as a real
   photograph, and a real photograph is never planned as a "still".
 - When a model refuses a likeness, the fallback is a redirect: the same
-  beat without the person (the empty chair, the podium after the speech,
-  the door they walked through) or an anonymous figure. Keep the sentence
-  the slot covers; change only what is in the frame.
+  beat without the person (the podium after the speech, the door they
+  walked through, the desk as they left it) or an anonymous figure. Keep
+  the sentence the slot covers; change only what is in the frame.
 
 ## Pre-flight, before answering
 
 - Every paragraph is covered and its slots add up to its narration.
 - No three adjacent slots share a shot size.
-- Every chapter shows at least one motif and builds to its key image.
+- Every chapter shows at least one motif, no motif more than once, and
+  builds to its key image. Every frame shows what its sentence says.
 - Every era lock is obeyed in every prompt it touches.
 - No banned word appears in any prompt.
 - Every prompt showing a real person names them in full and lists them in
