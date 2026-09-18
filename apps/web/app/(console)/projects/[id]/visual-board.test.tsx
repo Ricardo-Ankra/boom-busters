@@ -13,6 +13,7 @@ const finaliseOwnUploadAction = vi.fn()
 const addSlotImageFromUrlAction = vi.fn()
 const approvePlanAction = vi.fn()
 const retypeSlotAction = vi.fn()
+const retypeToHeadlineAction = vi.fn()
 const dismissRetypeAction = vi.fn()
 const saveDirectionAction = vi.fn()
 const redraftDirectionAction = vi.fn()
@@ -30,6 +31,7 @@ vi.mock('./visuals-actions', () => ({
   addSlotImageFromUrlAction: (...args: unknown[]) => addSlotImageFromUrlAction(...args),
   approvePlanAction: (...args: unknown[]) => approvePlanAction(...args),
   retypeSlotAction: (...args: unknown[]) => retypeSlotAction(...args),
+  retypeToHeadlineAction: (...args: unknown[]) => retypeToHeadlineAction(...args),
   dismissRetypeAction: (...args: unknown[]) => dismissRetypeAction(...args),
   saveDirectionAction: (...args: unknown[]) => saveDirectionAction(...args),
   redraftDirectionAction: (...args: unknown[]) => redraftDirectionAction(...args),
@@ -52,6 +54,7 @@ beforeEach(() => {
   editBriefAction.mockResolvedValue({ ok: true })
   approvePlanAction.mockResolvedValue({ ok: true })
   retypeSlotAction.mockResolvedValue({ ok: true })
+  retypeToHeadlineAction.mockResolvedValue({ ok: true })
   dismissRetypeAction.mockResolvedValue({ ok: true })
   saveHeadlineAction.mockResolvedValue({ ok: true })
   refetchArticleAction.mockResolvedValue({ ok: true })
@@ -199,6 +202,19 @@ const headlineSlot: SlotView = {
   },
 }
 
+/**
+ * The claims a headline card may quote (decision 257). Two, so the chooser has
+ * to be a list rather than a confirmation.
+ */
+const ARTICLE_CLAIMS = [
+  { id: CLAIM, text: 'The escrow accounts never existed.', label: 'The Financial Record' },
+  {
+    id: '01HQ00000000000000000000AB',
+    text: 'Three banks denied holding the money.',
+    label: 'ledgerwire.example/2023/03/…',
+  },
+]
+
 const brokenSlot: SlotView = {
   id: SLOT_C,
   type: 'chart',
@@ -247,6 +263,7 @@ function model(slots: SlotView[], overrides: Partial<VisualsReviewModel> = {}): 
     fetchEstimateUsd: 0,
     direction: null,
     warnings: [],
+    articleClaims: ARTICLE_CLAIMS,
     ...overrides,
   }
 }
@@ -558,6 +575,83 @@ describe('the plan phase (staged-visuals design)', () => {
     expect(retypeSlotAction).toHaveBeenCalledWith(PROJECT, SLOT_A, 'map')
   })
 
+  it('asks which article a headline would quote, and never guesses one', async () => {
+    render(<VisualBoard projectId={PROJECT} model={model([stockSlot])} colors={COLORS} />)
+
+    const picker = screen.getByRole('group', { name: 'Slot format' })
+    const button = within(picker).getByRole('button', { name: 'news headline' })
+
+    // The format is not re-typed by pressing it: the card cannot know which
+    // article, and no model may choose one (decision 257).
+    await userEvent.click(button)
+    expect(retypeSlotAction).not.toHaveBeenCalled()
+    expect(button).toHaveAttribute('aria-expanded', 'true')
+
+    const chooser = screen.getByRole('group', { name: 'Which article this card quotes' })
+    expect(within(chooser).getByText(/The escrow accounts never existed/)).toBeInTheDocument()
+    expect(within(chooser).getByText('The Financial Record')).toBeInTheDocument()
+
+    await userEvent.click(within(chooser).getAllByRole('button', { name: 'Quote this' })[0]!)
+    expect(retypeToHeadlineAction).toHaveBeenCalledWith(PROJECT, SLOT_A, CLAIM)
+    // It took, so the chooser closes on its own.
+    await waitFor(() =>
+      expect(
+        screen.queryByRole('group', { name: 'Which article this card quotes' }),
+      ).not.toBeInTheDocument(),
+    )
+  })
+
+  it('says so when the dossier carries no news claim, instead of offering nothing', async () => {
+    render(
+      <VisualBoard
+        projectId={PROJECT}
+        model={model([stockSlot], { articleClaims: [] })}
+        colors={COLORS}
+      />,
+    )
+
+    await userEvent.click(screen.getByRole('button', { name: 'news headline' }))
+    const chooser = screen.getByRole('group', { name: 'Which article this card quotes' })
+    expect(chooser).toHaveTextContent(/no claim in this project’s dossier has one behind it/)
+    expect(within(chooser).queryByRole('button', { name: 'Quote this' })).not.toBeInTheDocument()
+    expect(retypeToHeadlineAction).not.toHaveBeenCalled()
+  })
+
+  it('re-points a headline card at a different article', async () => {
+    render(<VisualBoard projectId={PROJECT} model={model([headlineSlot])} colors={COLORS} />)
+
+    const picker = screen.getByRole('group', { name: 'Slot format' })
+    const button = within(picker).getByRole('button', { name: 'news headline' })
+
+    // The deliberate exception to "the current format's button is disabled":
+    // on a headline slot this button does not change the format, it changes
+    // which article is quoted, which is the only way to change it at all.
+    expect(button).toHaveAttribute('aria-pressed', 'true')
+    expect(button).toBeEnabled()
+    await userEvent.click(button)
+
+    const chooser = screen.getByRole('group', { name: 'Which article this card quotes' })
+    // The article it already quotes is marked, not offered again.
+    expect(within(chooser).getByText('quoted now')).toBeInTheDocument()
+    const offers = within(chooser).getAllByRole('button', { name: 'Quote this' })
+    expect(offers).toHaveLength(1)
+
+    await userEvent.click(offers[0]!)
+    expect(retypeToHeadlineAction).toHaveBeenCalledWith(PROJECT, SLOT_D, ARTICLE_CLAIMS[1]!.id)
+  })
+
+  it('keeps the chooser open when the save is refused, so the pick is not lost', async () => {
+    retypeToHeadlineAction.mockResolvedValue({ ok: false, error: 'That claim has no article.' })
+    render(<VisualBoard projectId={PROJECT} model={model([stockSlot])} colors={COLORS} />)
+
+    await userEvent.click(screen.getByRole('button', { name: 'news headline' }))
+    await userEvent.click(screen.getAllByRole('button', { name: 'Quote this' })[0]!)
+
+    expect(
+      screen.getByRole('group', { name: 'Which article this card quotes' }),
+    ).toBeInTheDocument()
+  })
+
   it('edits just save during plan review, and the per-slot fetch is offered', async () => {
     render(<VisualBoard projectId={PROJECT} model={planModel()} colors={COLORS} />)
 
@@ -592,12 +686,31 @@ describe('the plan phase (staged-visuals design)', () => {
     )
 
     expect(screen.getByRole('status')).toHaveTextContent(/drafting the chart series and claim refs/)
+    // And it is the CHART sentence, not the else branch of a two-way ternary.
+    expect(screen.getByRole('status')).not.toHaveTextContent(/map locations/)
     // Every format button waits — a second re-type racing the draft would
     // write over whichever finished last.
     const picker = screen.getByRole('group', { name: 'Slot format' })
     for (const button of within(picker).getAllByRole('button')) {
       expect(button).toBeDisabled()
     }
+  })
+
+  it('names the format it is drafting, whatever the format is', () => {
+    // The bug this replaces (2026-09-18): a two-way ternary made every target
+    // that was not a chart announce "map locations", so a headline re-type
+    // said the wrong thing on the way to failing.
+    const plan = { phase: 'plan', toFetch: 1, stillsToFetch: 0 } as const
+    const drafting: SlotView = { ...plannedStock, retype: { state: 'drafting', target: 'map' } }
+    const { rerender } = render(
+      <VisualBoard projectId={PROJECT} model={model([drafting], plan)} colors={COLORS} />,
+    )
+    expect(screen.getByRole('status')).toHaveTextContent(/drafting the map locations/)
+
+    const stale: SlotView = { ...plannedStock, retype: { state: 'drafting', target: 'headline' } }
+    rerender(<VisualBoard projectId={PROJECT} model={model([stale], plan)} colors={COLORS} />)
+    expect(screen.getByRole('status')).toHaveTextContent(/drafting the news headline brief/)
+    expect(screen.getByRole('status')).not.toHaveTextContent(/map locations/)
   })
 
   it('shows a refusal with the model’s reason, dismissable, keeping the old brief', async () => {

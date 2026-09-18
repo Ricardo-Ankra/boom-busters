@@ -7,6 +7,7 @@ import {
   getProject,
   getSettings,
   getShotSlot,
+  scriptableClaims,
   setArticleSourceManual,
   retypeShotSlot,
   setProjectDirection,
@@ -19,6 +20,7 @@ import {
 import { stillStyleAnchors } from '@boom-busters/providers'
 import {
   articleIsRenderable,
+  claimCarriesArticle,
   convertBrief,
   DirectorsBookSchema,
   emphasisFits,
@@ -211,6 +213,16 @@ export async function retypeSlotAction(
   if (parsedType.data === 'hero' && !HERO_SLOTS_ENABLED) {
     return { ok: false, error: 'AI-video slots are disabled.' }
   }
+  if (parsedType.data === 'headline') {
+    /**
+     * Which article a card quotes is not derivable from the old brief, and no
+     * model may choose one (decision 257). The board opens its chooser and
+     * calls `retypeToHeadlineAction` with the answer; a call that arrives here
+     * anyway is a stale client, and gets words rather than a `drafting` stamp
+     * no model call will ever clear.
+     */
+    return { ok: false, error: 'Pick which article this card quotes.' }
+  }
 
   const slot = await getShotSlot(db, slotId)
   if (!slot) return { ok: false, error: 'This slot no longer exists.' }
@@ -261,6 +273,71 @@ export async function retypeSlotAction(
         'Could not reach Inngest to re-type this slot. ' +
         'Start the dev server with `npx inngest-cli@latest dev`, or check INNGEST_EVENT_KEY.',
     }
+  }
+  refresh(projectId)
+  return { ok: true }
+}
+
+/**
+ * Re-type a slot into a headline card quoting the article the owner picked
+ * (decision 257).
+ *
+ * Its own action rather than an argument to `retypeSlotAction`, because this
+ * is the one conversion that carries a decision: which claim. Past that it is
+ * as mechanical as still → stock, so it applies inside the button press and
+ * never stamps `drafting` — there is no model call to wait for, and none to
+ * pay for. The claim is looked up among THIS project's un-quarantined claims,
+ * which checks in one read that it exists, belongs here, and carries an
+ * article the card is allowed to quote.
+ */
+export async function retypeToHeadlineAction(
+  projectId: string,
+  slotId: string,
+  claimId: string,
+): Promise<ActionResult> {
+  await requireOwner()
+  const invalid = badIds(projectId, slotId, claimId)
+  if (invalid) return invalid
+
+  const slot = await getShotSlot(db, slotId)
+  if (!slot) return { ok: false, error: 'This slot no longer exists.' }
+
+  const current = ShotBriefSchema.safeParse(slot.brief)
+  if (!current.success) {
+    return {
+      ok: false,
+      error: 'This brief is broken and cannot be re-typed — regenerate the board.',
+    }
+  }
+
+  // Already quoting it: the board marks that row rather than offering it, and
+  // rewriting the brief would clear the resolution and read the article again
+  // for nothing.
+  if (current.data.type === 'headline' && current.data.sourceClaimId === claimId) {
+    return { ok: true }
+  }
+
+  const claim = (await scriptableClaims(db, projectId)).find((row) => row.id === claimId)
+  if (!claimCarriesArticle(claim)) {
+    return {
+      ok: false,
+      error: 'That claim has no news article behind it, so a card cannot quote it.',
+    }
+  }
+
+  const brief = convertBrief(current.data, 'headline', { headlineClaimId: claimId })
+  if (!brief) return { ok: false, error: 'This slot cannot become a headline card.' }
+
+  await retypeShotSlot(db, slotId, 'headline', brief)
+
+  // Phase-aware, exactly as the mechanical conversions are: on the board the
+  // article is read now, during plan review nothing is fetched until the
+  // owner presses "Fetch visuals".
+  const project = await getProject(db, projectId)
+  if (project?.visualsPhase === 'board') {
+    const sent = await sendRefetch(projectId, slotId, 'Re-typed to a headline card')
+    refresh(projectId)
+    return sent
   }
   refresh(projectId)
   return { ok: true }

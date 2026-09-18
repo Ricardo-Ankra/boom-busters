@@ -415,4 +415,41 @@ describe('convertBrief — re-typing a slot (staged-visuals design)', () => {
     expect(convertBrief(still, 'map')).toBeNull()
     expect(convertBrief(still, 'hero')).toBeNull()
   })
+
+  it('converts INTO a headline only once the article has been picked', () => {
+    // Nothing in the old brief says WHICH article, and no model may choose
+    // one (decision 257). So the conversion is null until a claim arrives
+    // with it — that null is what sends the board to its chooser.
+    expect(convertBrief(still, 'headline')).toBeNull()
+
+    const headline = convertBrief(still, 'headline', { headlineClaimId: CLAIM_A })
+    expect(headline).toMatchObject({
+      type: 'headline',
+      sourceClaimId: CLAIM_A,
+      coversText: common.coversText,
+      description: common.description,
+    })
+    expect(ShotBriefSchema.parse(headline)).toBeTruthy()
+  })
+
+  it('re-points a headline at another article, keeping how the card is drawn', () => {
+    const headline = ShotBriefSchema.parse({
+      type: 'headline',
+      ...common,
+      sourceClaimId: CLAIM_A,
+      emphasis: 'could not find the money',
+      showDeck: true,
+    })
+
+    const moved = convertBrief(headline, 'headline', { headlineClaimId: CLAIM_B })
+    // The type has not moved but the card has, so the same-type short circuit
+    // must not hand back the old brief still citing the old claim.
+    expect(moved).toMatchObject({ sourceClaimId: CLAIM_B, showDeck: true })
+    // The marker quoted words the OLD headline printed, so it does not travel.
+    expect(moved).not.toHaveProperty('emphasis')
+    expect(ShotBriefSchema.parse(moved)).toBeTruthy()
+
+    // With no claim to move to, it is still the same brief, untouched.
+    expect(convertBrief(headline, 'headline')).toBe(headline)
+  })
 })

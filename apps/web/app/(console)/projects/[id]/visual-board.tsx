@@ -20,7 +20,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ConfirmButton } from '@/components/confirm-button'
 import { useToast } from '@/components/ui/toast'
-import type { SlotView, VisualsReviewModel } from '@/lib/visuals-review'
+import type { ArticleClaimOption, SlotView, VisualsReviewModel } from '@/lib/visuals-review'
 import {
   addSlotImageFromUrlAction,
   approvePlanAction,
@@ -35,6 +35,7 @@ import {
   saveHeadlineAction,
   replanShotsAction,
   retypeSlotAction,
+  retypeToHeadlineAction,
   type ActionResult,
 } from './visuals-actions'
 import { DirectionCard } from './direction-card'
@@ -341,6 +342,7 @@ const SLOT_TYPE_LABELS: Record<string, string> = {
   still: 'AI image',
   chart: 'chart',
   map: 'map',
+  headline: 'news headline',
   hero: 'AI video',
 }
 
@@ -677,6 +679,7 @@ export function VisualBoard({
               busy={busySlot === slot.id}
               act={act}
               phase={model.phase}
+              articleClaims={model.articleClaims}
             />
           ))}
         </section>
@@ -696,6 +699,7 @@ function SlotCard({
   busy,
   act,
   phase,
+  articleClaims,
 }: {
   slot: SlotView
   projectId: string
@@ -703,6 +707,7 @@ function SlotCard({
   busy: boolean
   act: (slotId: string, run: () => Promise<ActionResult>, success: string) => Promise<ActionResult>
   phase: VisualsReviewModel['phase']
+  articleClaims: ArticleClaimOption[]
 }) {
   const [editing, setEditing] = React.useState(false)
   // Which candidate the lightbox shows, or null when it is closed. Opens on
@@ -828,7 +833,13 @@ function SlotCard({
             suggestion, not a lock. Chart and map conversions get their
             structured data drafted by the model, then land back here to edit. */}
         {brief && !slot.briefError ? (
-          <TypePicker slot={slot} projectId={projectId} act={act} busy={busy} />
+          <TypePicker
+            slot={slot}
+            projectId={projectId}
+            act={act}
+            busy={busy}
+            articleClaims={articleClaims}
+          />
         ) : null}
 
         {/* Repairs. Chart and map slots are edited through their briefs too,
@@ -937,27 +948,126 @@ function SlotCard({
 }
 
 /**
+ * What the card says is being drafted, per target.
+ *
+ * A lookup rather than a ternary on purpose (fixed 2026-09-18): the two-way
+ * version called everything that was not a chart a map, so the day a seventh
+ * format arrived the card started announcing map locations for it.
+ */
+const DRAFTING_NOUN: Record<string, string> = {
+  chart: 'chart series and claim refs',
+  map: 'map locations',
+}
+const draftingNoun = (target: string): string =>
+  DRAFTING_NOUN[target] ?? `${slotTypeLabel(target)} brief`
+
+/**
+ * Which article a headline card quotes (decision 257).
+ *
+ * The only decision a re-type to headline carries, and the owner's to make.
+ * Every string on the card is read from the article itself, so there is
+ * nothing here for a model to draft and no call to pay for: the list is this
+ * project's news-sourced claims, and picking one writes the brief on the spot.
+ * An empty list is an answer, not an error state.
+ */
+function ArticleChooser({
+  slot,
+  projectId,
+  act,
+  busy,
+  articleClaims,
+  onDone,
+}: {
+  slot: SlotView
+  projectId: string
+  act: (slotId: string, run: () => Promise<ActionResult>, success: string) => Promise<ActionResult>
+  busy: boolean
+  articleClaims: ArticleClaimOption[]
+  onDone: () => void
+}) {
+  // What this card quotes today, when it is already a headline: that row is
+  // marked and cannot be re-picked, and every other row moves the card.
+  const quoting = slot.brief?.type === 'headline' ? slot.brief.sourceClaimId : null
+
+  return (
+    <div
+      role="group"
+      aria-label="Which article this card quotes"
+      className="flex flex-col gap-2 rounded-[8px] border border-[var(--color-border-strong)] p-2"
+    >
+      {articleClaims.length === 0 ? (
+        <p className="text-[13px] text-[var(--color-text-secondary)]">
+          A headline card quotes a real news article, and no claim in this project’s dossier has one
+          behind it yet. Source a claim to a news outlet on the dossier screen, then come back.
+        </p>
+      ) : (
+        <>
+          <p className="text-[12px] text-[var(--color-text-secondary)]">
+            {quoting === null
+              ? 'Pick the article. Every word on the card is read from it: the outlet, the headline, the byline and the date.'
+              : 'Pick a different article. The card is redrawn from that one, and a highlight you set for this headline is dropped rather than moved across.'}
+          </p>
+          {articleClaims.map((claim) => (
+            <div key={claim.id} className="flex flex-wrap items-center gap-2">
+              <span className="min-w-0 flex-1 text-[13px] text-[var(--color-text-primary)]">
+                <span className="text-[var(--color-text-secondary)]">{claim.label}</span>{' '}
+                <span className="text-[var(--color-text-muted)]">·</span> {claim.text}
+              </span>
+              {claim.id === quoting ? (
+                <Badge shape="tag">quoted now</Badge>
+              ) : (
+                <Button
+                  type="button"
+                  variant="outline"
+                  busy={busy}
+                  onClick={() =>
+                    void act(
+                      slot.id,
+                      () => retypeToHeadlineAction(projectId, slot.id, claim.id),
+                      `Now quoting ${claim.label}`,
+                    ).then((result) => {
+                      if (result.ok) onDone()
+                    })
+                  }
+                >
+                  Quote this
+                </Button>
+              )}
+            </div>
+          ))}
+        </>
+      )}
+    </div>
+  )
+}
+
+/**
  * The format picker: one labelled button per slot type, the current one
  * pressed. Re-typing to a text-driven type converts inside the click — the
  * badge changes on the refresh the button itself triggers. Chart and map
  * need a model draft, so the card says `drafting` until it lands (or shows
- * the model's refusal, dismissably). Hero stays off the picker while its
- * flag is down — a button that always errors is not a button.
+ * the model's refusal, dismissably). Headline asks instead of converting: it
+ * opens the chooser, because only the owner may say which article is quoted.
+ * Hero stays off the picker while its flag is down — a button that always
+ * errors is not a button.
  */
 function TypePicker({
   slot,
   projectId,
   act,
   busy,
+  articleClaims,
 }: {
   slot: SlotView
   projectId: string
   act: (slotId: string, run: () => Promise<ActionResult>, success: string) => Promise<ActionResult>
   busy: boolean
+  articleClaims: ArticleClaimOption[]
 }) {
   const types = SHOT_SLOT_TYPES.filter((type) => type !== 'hero' || slot.type === 'hero')
   const drafting = slot.retype?.state === 'drafting'
   const refused = slot.retype?.state === 'refused' ? slot.retype : null
+  const [choosing, setChoosing] = React.useState(false)
 
   return (
     <div className="flex flex-col gap-2">
@@ -965,21 +1075,36 @@ function TypePicker({
         <span className="text-[11px] text-[var(--color-text-muted)]">Format</span>
         {types.map((type) => {
           const current = type === slot.type
+          // Headline is the one format that cannot be chosen by pressing a
+          // button: the card quotes an article, and which one is the owner's
+          // to say (decision 257). So this button opens the chooser below.
+          const asks = type === 'headline'
           return (
             <Button
               key={type}
               variant={current ? 'selected' : 'ghost'}
               aria-pressed={current}
-              disabled={current || busy || drafting}
-              onClick={() =>
-                act(
+              {...(asks ? { 'aria-expanded': choosing } : {})}
+              /* The one exception to "the current format is disabled": on a
+                 headline slot this button is not how you change the format,
+                 it is how you change WHICH article the card quotes. */
+              disabled={(current && !asks) || busy || drafting}
+              onClick={() => {
+                if (asks) {
+                  setChoosing((open) => !open)
+                  return
+                }
+                // Any other format answers the question the chooser was
+                // asking, so it goes away with the answer.
+                setChoosing(false)
+                void act(
                   slot.id,
                   () => retypeSlotAction(projectId, slot.id, type),
                   type === 'chart' || type === 'map'
                     ? `Drafting the ${type} — this card updates when it lands`
                     : `Re-typed to ${slotTypeLabel(type)}`,
                 )
-              }
+              }}
             >
               {slotTypeLabel(type)}
             </Button>
@@ -987,11 +1112,21 @@ function TypePicker({
         })}
       </div>
 
+      {choosing ? (
+        <ArticleChooser
+          slot={slot}
+          projectId={projectId}
+          act={act}
+          busy={busy}
+          articleClaims={articleClaims}
+          onDone={() => setChoosing(false)}
+        />
+      ) : null}
+
       {drafting && slot.retype ? (
         <p className="text-[13px] text-[var(--color-text-secondary)]" role="status">
-          Claude is drafting the{' '}
-          {slot.retype.target === 'chart' ? 'chart series and claim refs' : 'map locations'} — this
-          card updates when it lands.
+          Claude is drafting the {draftingNoun(slot.retype.target)}. This card updates when it
+          lands.
         </p>
       ) : null}
 

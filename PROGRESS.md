@@ -4783,3 +4783,36 @@ Recorded whenever the spec left something open and an implementation was chosen.
     occur in the headline word for word or it is dropped, because a highlight
     over words the publication did not print is the same kind of error as a
     wrong byline, only smaller.
+
+    **Amended 2026-09-18** (owner: "When I click on headline, and it redrafts,
+    the message that appears is 'Claude is drafting the map locations' so is it
+    linking correctly"). Adding a seventh slot type put a Headline button on
+    every card automatically, and nothing was behind it. `convertBrief` had no
+    case for it, so the board read that null the way it reads a chart's: it
+    stamped the slot `drafting` and sent the retyper an event. The card then
+    announced the draft through a two-way ternary that called everything which
+    was not a chart a map, and seconds later the retyper refused the target and
+    the card reverted with a generic failure.
+
+    The fix is not a noun. A headline card is unlike a chart or a map: the
+    model may write no part of it, so there is nothing to draft and no call to
+    pay for. The only open question is which article, and the owner is standing
+    right there. The picker now opens a chooser of this project's
+    news-sourced claims, and picking one writes the brief inside the click, the
+    way still becomes stock. `convertBrief` takes the claim as an argument and
+    still returns null without one, so the conversion cannot be made by
+    accident from anywhere. An empty list says so rather than offering a button
+    that can only fail. And the drafting sentence is now a lookup with a
+    fallback that names the format, so an eighth slot type cannot inherit the
+    map's wording the way the seventh did.
+
+    The same chooser closes a gap the original decision shipped with: which
+    article a card quotes was set once, by the shot list, with no way to
+    change it. A headline slot's own format button now stays live where every
+    other current-format button is disabled, because on that slot it does not
+    change the format, it changes the article. The row the card already quotes
+    is marked rather than offered. `convertBrief` had to learn the same
+    distinction: a card moved to a different article is a real change even
+    though its type has not moved, so it no longer takes the same-type short
+    circuit. What survives the move is how the card is drawn; the highlight
+    does not, because it names words the previous headline printed.
