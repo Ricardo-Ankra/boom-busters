@@ -4901,3 +4901,38 @@ Recorded whenever the spec left something open and an implementation was chosen.
     where the margin begins. Each axis now names its series and takes that
     series' colour, and the name is cut to the gutter it has, because the SVG
     edge was silently swallowing "Operating margin" down to "Operating".
+
+44. **A frame shows what its sentence says; motifs are a detail, not the
+    subject** (decision 260; 2026-09-18, owner: "the Director's Book is
+    sticking too strongly with the motifs and elements ... what would have
+    been better is to have looked at the narration text and created a shot
+    that actually captures what the narrator just said").
+
+    The cause was in the fixed bible, not the per-film book. "What a still
+    prompt must contain" required three physical facts in every prompt, the
+    third being "one motif from the director's book", so every AI still was
+    required to carry a motif: a chapter with twelve stills got twelve empty
+    chairs. The chapter rule ("each chapter shows at least one") was a floor
+    with no ceiling, and the per-still rule made the floor irrelevant. Three
+    things compounded it: nothing tied the picture to the sentence
+    (`coversText` had to quote it, nothing had to show it); the book prompt
+    asked for three motifs with no guidance on choosing them, so the model
+    restated the house look; and the redirect fallback named "the empty
+    chair" as its first example.
+
+    Five changes, all prompt craft, no model call added. The bible's shot
+    grammar opens with "the sentence decides the frame" (a viewer with the
+    sound off should be able to guess the sentence); motifs keep the floor
+    and gain a ceiling (each at most once per chapter, never adjacent, never
+    the subject unless the sentence is about it); the third physical fact is
+    a detail drawn from the sentence, with a motif allowed to stand in once
+    per chapter. The shot-list prompt carries the same rule first in its
+    planning rules, in numbers. The book prompt says motifs are this story's
+    own objects from the claims, never the house furniture. A chapter's
+    dominant family renders as "leans towards", so it is not read as the only
+    family. And `planWarnings` counts motifs per chapter by head noun (the
+    last word, plural stripped: "server racks" matches "rack"), warning when
+    one appears in more than one picture brief of a chapter or in adjacent
+    slots. A note, never a rejection: the match is a heuristic. The markdown
+    bible is now re-embedded by `pnpm --filter @boom-busters/providers
+embed:craft` rather than by hand.
