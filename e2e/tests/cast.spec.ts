@@ -55,7 +55,9 @@ test.describe('the cast', () => {
 
     await row.getByLabel('Identity string').fill('oval face, short dark hair, close-cropped beard')
     await row.getByRole('button', { name: 'Save' }).click()
-    await expect(page.getByText(`${NAME} saved`)).toBeVisible({ timeout: 15_000 })
+    // `.first()`: the toast body and its aria-live announcer both say it, and
+    // under a full-suite load the assertion lands while both are mounted.
+    await expect(page.getByText(`${NAME} saved`).first()).toBeVisible({ timeout: 15_000 })
 
     await page.reload()
     const again = page.getByLabel('Cast', { exact: true })
