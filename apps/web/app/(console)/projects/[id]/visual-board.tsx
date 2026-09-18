@@ -1667,9 +1667,14 @@ function ReusePicker({
         <ul className="flex flex-col gap-2">
           {offered.map((source) => {
             const pictures = lendable(source)
+            // The row is named because every row's buttons read "Use this":
+            // without a name on the row a screen reader hears the same label
+            // three times and nothing says which shot each belongs to.
             return (
               <li
                 key={source.id}
+                role="group"
+                aria-label={`Shot at ${timecode(source.startMs)}`}
                 className="flex flex-col gap-2 rounded-[8px] border border-[var(--color-border)] p-2"
               >
                 <div className="flex flex-wrap items-center gap-2 text-[12px] text-[var(--color-text-secondary)]">
