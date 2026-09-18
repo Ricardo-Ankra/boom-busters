@@ -97,3 +97,32 @@ test.describe('the Direction card (decision 252)', () => {
     await expect(page.getByRole('button', { name: /Re-plan shot list/ })).toBeVisible()
   })
 })
+
+/**
+ * Reusing a shot before Fetch (decision 261): the link is recorded, the
+ * priced button drops the slot, and taking it back restores the seeded
+ * state exactly, so a re-run of this file starts where the seed left it.
+ */
+test.describe('reusing a shot (decision 261)', () => {
+  test('links a slot before Fetch, drops it from the bill, and can take it back', async ({
+    page,
+  }) => {
+    const still = page.locator('[id^="slot-"]').filter({ hasText: 'boardroom' })
+    await still.getByRole('button', { name: 'Use an existing shot' }).click()
+
+    const picker = still.getByRole('group', { name: 'Shots to reuse' })
+    await expect(picker.getByText(/Trading floor panic/)).toBeVisible()
+    await expect(picker.getByText('6 s later')).toBeVisible()
+    await picker.getByRole('button', { name: 'Use whatever this slot chooses' }).click()
+
+    await expect(still.getByText('Reused from ch 1 · 0:06')).toBeVisible()
+    await expect(page.getByRole('button', { name: /Fetch visuals · 1 slot/ })).toBeVisible()
+    // The fetch-shaped buttons left the card; the words are still editable.
+    await expect(still.getByRole('button', { name: /Fetch this slot/ })).toHaveCount(0)
+    await expect(still.getByRole('button', { name: 'Edit brief', exact: true })).toBeVisible()
+
+    await still.getByRole('button', { name: 'Choose its own shot' }).click()
+    await expect(still.getByText(/Reused from/)).toHaveCount(0)
+    await expect(page.getByRole('button', { name: /Fetch visuals · 2 slots/ })).toBeVisible()
+  })
+})

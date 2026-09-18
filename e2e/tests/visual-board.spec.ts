@@ -243,3 +243,36 @@ test.describe('a headline card', () => {
     ).toBeVisible()
   })
 })
+
+/**
+ * Reusing a shot on the board (decision 261). Opens the picker on the
+ * placeholder, checks what the film offers and how far away it plays, and
+ * cancels: a copy cannot be put back into the exact seeded placeholder from
+ * the UI, and every test in this file shares the board. The copy itself is
+ * proved by the db, action and component suites.
+ */
+test.describe('reusing a shot on the board (decision 261)', () => {
+  test('offers the film’s fetched shots to the placeholder, with their distance, and cancels', async ({
+    page,
+  }) => {
+    const placeholder = page.locator('[id^="slot-"]').filter({ hasText: 'courtroom sketch' })
+    await placeholder.getByRole('button', { name: 'Use an existing shot' }).click()
+
+    const picker = placeholder.getByRole('group', { name: 'Shots to reuse' })
+    await expect(picker.getByText(/Deserted open-plan office at dusk/)).toBeVisible()
+    await expect(picker.getByText('12 s earlier')).toBeVisible()
+    // The chosen candidate is lendable; the unchosen one with no bytes is not.
+    await expect(picker.getByRole('button', { name: 'Use this', exact: true })).toHaveCount(1)
+
+    await picker.getByRole('button', { name: 'Cancel' }).click()
+    await expect(placeholder.getByRole('group', { name: 'Shots to reuse' })).toHaveCount(0)
+  })
+
+  test('never offers a chart the picker', async ({ page }) => {
+    const chart = page
+      .locator('[id^="slot-"]')
+      .filter({ has: page.getByRole('img', { name: /line chart/ }) })
+    await expect(chart).toHaveCount(1)
+    await expect(chart.getByRole('button', { name: 'Use an existing shot' })).toHaveCount(0)
+  })
+})
