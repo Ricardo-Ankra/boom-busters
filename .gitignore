@@ -40,3 +40,6 @@ apps/web/.local-renders/
 
 .vercel
 .impeccable/
+
+# Subagent-driven development scratch (ledgers, briefs, review packages)
+.superpowers/

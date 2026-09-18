@@ -4901,3 +4901,105 @@ Recorded whenever the spec left something open and an implementation was chosen.
     where the margin begins. Each axis now names its series and takes that
     series' colour, and the name is cut to the gutter it has, because the SVG
     edge was silently swallowing "Operating margin" down to "Operating".
+
+44. **A frame shows what its sentence says; motifs are a detail, not the
+    subject** (decision 260; 2026-09-18, owner: "the Director's Book is
+    sticking too strongly with the motifs and elements ... what would have
+    been better is to have looked at the narration text and created a shot
+    that actually captures what the narrator just said").
+
+    The cause was in the fixed bible, not the per-film book. "What a still
+    prompt must contain" required three physical facts in every prompt, the
+    third being "one motif from the director's book", so every AI still was
+    required to carry a motif: a chapter with twelve stills got twelve empty
+    chairs. The chapter rule ("each chapter shows at least one") was a floor
+    with no ceiling, and the per-still rule made the floor irrelevant. Three
+    things compounded it: nothing tied the picture to the sentence
+    (`coversText` had to quote it, nothing had to show it); the book prompt
+    asked for three motifs with no guidance on choosing them, so the model
+    restated the house look; and the redirect fallback named "the empty
+    chair" as its first example.
+
+    Five changes, all prompt craft, no model call added. The bible's shot
+    grammar opens with "the sentence decides the frame" (a viewer with the
+    sound off should be able to guess the sentence); motifs keep the floor
+    and gain a ceiling (each at most once per chapter, never adjacent, never
+    the subject unless the sentence is about it); the third physical fact is
+    a detail drawn from the sentence, with a motif allowed to stand in once
+    per chapter. The shot-list prompt carries the same rule first in its
+    planning rules, in numbers. The book prompt says motifs are this story's
+    own objects from the claims, never the house furniture. A chapter's
+    dominant family renders as "leans towards", so it is not read as the only
+    family. And `planWarnings` counts motifs per chapter by head noun (the
+    last word, plural stripped: "server racks" matches "rack"), warning when
+    one appears in more than one picture brief of a chapter or in adjacent
+    slots. A note, never a rejection: the match is a heuristic. The markdown
+    bible is now re-embedded by
+    `pnpm --filter @boom-busters/providers embed:craft` rather than by hand.
+
+45. **A slot may show another slot's shot** (decision 261; 2026-09-18, owner:
+    "there may also be instances where some shots can be re-used ... from a
+    cost and efficiency perspective it's not a bad idea, as long as the shot
+    fits the narrative and the context and is done so sparingly"; spec
+    `docs/superpowers/specs/2026-09-18-sentence-first-briefs-and-shot-reuse-design.md`).
+
+    _Who decides._ The owner, on the board, in either phase. Chapters are
+    planned by separate calls that cannot see each other, so a model cannot
+    spot a cross-chapter repeat at plan time, and "sparingly, when it fits"
+    is a taste judgment. A model-proposed pass is a possible later decision
+    on the same link.
+
+    _The mechanism_ (approach A of three). `shot_slots.reuse_of_slot_id`
+    (migration 0025) records the link. Before Fetch the link stands alone:
+    `slotNeedsResolution` never owes a linked slot a fetch, so no still is
+    generated for it, and a new runner step `copy-reused-shots` after the
+    fan-out copies each source's chosen candidate into its dependants,
+    repeating the pass while a fill makes another possible so the write is
+    right whatever order rows arrive in (status resolved, the target's own
+    brief hash, the source's asset id; a source with nothing chosen leaves
+    a placeholder). On the board the action copies at once. Every
+    downstream reader keeps reading `candidates` as it did: assembly,
+    ingestion, the gate, shorts and the teaser. The copy carries
+    `reusedFrom: { slotId, depicts }` and drops the source's score (judged
+    against another brief); `syntheticLikenesses` reads
+    `reusedFrom.depicts`, so a likeness reused into a stock slot still sets
+    the altered-content label. A live link (every reader follows the
+    column) was rejected as five readers and a gate rule for re-planned
+    sources; a copy with no column was rejected because before Fetch there
+    is nothing to copy, and the saving before Fetch was the point.
+
+    _Rules._ Only stock, still and archival slots reuse or are reused; no
+    self-reuse; no chains (a pick that is itself a dependant re-points to
+    the original, and a slot other slots show cannot itself be linked);
+    same project only. Every rule lives in the server action, and every
+    fetch-shaped action (Regenerate, Fetch this slot, Draft a different
+    brief, Redirect, Upload, re-type) refuses a linked slot in words; a
+    brief edit saves and never fetches for one, and `updateSlotBrief` keeps
+    a linked slot's status. The refetcher skips a linked slot for an event
+    already in flight.
+
+    _The board._ "Use an existing shot" on picture cards opens a panel of
+    the film's other originals grouped by chapter: the covered sentence,
+    "ch 2 · 3:10", the gap ("3 min 20 s earlier"), one "Use this" per
+    candidate the app holds bytes for (the chosen one, the paid-for still
+    variant nobody chose, uploads), and before Fetch one "Use whatever this
+    slot chooses". Under a minute apart is a note, not a block, and the
+    review model repeats it as "the same shot plays at 3:10 and 3:40". A
+    linked card shows the copy with the chip "Reused from ch 2 · 3:10",
+    keeps Edit brief, hides everything that would fetch, and offers "Choose
+    its own shot". A source card says "Also used at 7:42". The model
+    carries `reuse` per slot; the per-slot `reusedBy` count the spec named
+    was dropped as unread, since the card derives "Also used at" from the
+    slots it already holds.
+
+    _Tests._ Pure: the guard, the schema, `reuseView` and the spacing note.
+    DB: link with and without a candidate, copy on resolve, unlink, the
+    brief edit. Runner: the copy step is one line over `copyReusedShots`,
+    which the db suite proves, because the test harness cannot drive a run
+    past `step.waitForEvent`; the refetcher's skip is proved by driving the
+    refetcher, which has no wait in front of it. Actions: chains, types,
+    other films, the refusals. Board: the picker and the linked card.
+    E2E: the round trip on the seeded plan project (link, the bill drops to
+    one slot, unlink), and the picker on the seeded board's placeholder,
+    cancelled, because a board copy cannot be put back into the exact
+    seeded state from the UI.

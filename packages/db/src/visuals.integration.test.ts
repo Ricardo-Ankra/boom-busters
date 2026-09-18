@@ -7,15 +7,21 @@ import { createScriptVersion, saveChapter } from './scripts'
 import { requireTestDatabase } from './test-database'
 import {
   chooseSlotCandidate,
+  copyReusedShots,
   getAsset,
   getShotSlot,
+  linkSlotReuse,
   listShotSlots,
+  listSlotDependants,
   replaceShotList,
   retypeShotSlot,
   setSlotRefusal,
   setSlotResolution,
   setSlotRetype,
+  shotBriefHash,
   shotSlotStatuses,
+  slotNeedsResolution,
+  unlinkSlotReuse,
   updateSlotBrief,
   upsertAssetByHash,
 } from './visuals'
@@ -287,6 +293,165 @@ suite('shot slots', () => {
     expect(stored?.resolvedBriefHash).toBeNull()
     // The write IS the pending re-type's answer — nothing left to show.
     expect(stored?.retype).toBeNull()
+  })
+
+  describe('reusing a shot (decision 261)', () => {
+    const stillBrief: ShotBrief = {
+      type: 'still',
+      coversText: 'Braun stood at the podium.',
+      description: 'A podium, one light.',
+      motion: { kind: 'static' },
+      transition: 'cut',
+      prompt: 'Markus Braun at a podium, 35mm.',
+      depicts: ['Markus Braun'],
+    }
+
+    async function twoSlots() {
+      await replaceShotList(db, projectId, slots())
+      const [source, dependant] = await listShotSlots(db, projectId)
+      return { source: source!, dependant: dependant! }
+    }
+
+    it('links before Fetch, and the fetch guard owes the linked slot nothing', async () => {
+      const { source, dependant } = await twoSlots()
+      expect(await linkSlotReuse(db, dependant.id, source.id)).toEqual({ copied: false })
+      const linked = (await getShotSlot(db, dependant.id))!
+      expect(linked.reuseOfSlotId).toBe(source.id)
+      expect(linked.status).toBe('unresolved')
+      expect(linked.candidates).toEqual([])
+      expect(slotNeedsResolution(linked)).toBe(false)
+    })
+
+    it('copies the source’s chosen shot after the pass, once, pointing at its asset', async () => {
+      const { source, dependant } = await twoSlots()
+      await linkSlotReuse(db, dependant.id, source.id)
+      const asset = await upsertAssetByHash(db, {
+        kind: 'image',
+        r2Key: 'boom-busters/stills/p1.png',
+        licence: 'Generated',
+        contentHash: 'c'.repeat(64),
+      })
+      await setSlotResolution(db, source.id, {
+        candidates: [
+          candidate('p1', { chosen: true, assetId: asset.id, score: 91, scoreReason: 'fits' }),
+          candidate('p2'),
+        ],
+        status: 'resolved',
+        chosenAssetId: asset.id,
+      })
+
+      expect(await copyReusedShots(db, projectId)).toEqual({ copied: 1, placeholders: 0 })
+      const after = (await getShotSlot(db, dependant.id))!
+      expect(after.status).toBe('resolved')
+      expect(after.chosenAssetId).toBe(asset.id)
+      expect(after.resolvedBriefHash).toBe(shotBriefHash(after.brief))
+      const [copy, ...rest] = after.candidates as unknown as SlotCandidate[]
+      expect(rest).toEqual([])
+      expect(copy).toMatchObject({
+        id: 'p1',
+        chosen: true,
+        assetId: asset.id,
+        reusedFrom: { slotId: source.id },
+      })
+      // The score was against the source's brief, so it does not travel.
+      expect(copy?.score).toBeUndefined()
+      // Idempotent: a second pass leaves the copy alone.
+      expect(await copyReusedShots(db, projectId)).toEqual({ copied: 0, placeholders: 0 })
+    })
+
+    it('carries who a reused still depicts, for the altered-content label', async () => {
+      const { source, dependant } = await twoSlots()
+      await retypeShotSlot(db, source.id, 'still', stillBrief)
+      await setSlotResolution(db, source.id, {
+        candidates: [candidate('g1', { provider: 'google', chosen: true })],
+        status: 'resolved',
+      })
+      expect(await linkSlotReuse(db, dependant.id, source.id, 'g1')).toEqual({ copied: true })
+      const [copy] = (await getShotSlot(db, dependant.id))!.candidates as unknown as SlotCandidate[]
+      expect(copy?.reusedFrom).toEqual({ slotId: source.id, depicts: ['Markus Braun'] })
+    })
+
+    it('leaves a dependant a placeholder when its source has nothing chosen', async () => {
+      const { source, dependant } = await twoSlots()
+      await linkSlotReuse(db, dependant.id, source.id)
+      await setSlotResolution(db, source.id, { candidates: [], status: 'placeholder' })
+      expect(await copyReusedShots(db, projectId)).toEqual({ copied: 0, placeholders: 1 })
+      expect((await getShotSlot(db, dependant.id))?.status).toBe('placeholder')
+    })
+
+    it('copies at once when a candidate is named, and refuses one the source does not hold', async () => {
+      const { source, dependant } = await twoSlots()
+      await setSlotResolution(db, source.id, {
+        candidates: [candidate('p1', { chosen: true }), candidate('p2')],
+        status: 'resolved',
+      })
+      expect(await linkSlotReuse(db, dependant.id, source.id, 'nope')).toBeNull()
+      expect(await linkSlotReuse(db, dependant.id, source.id, 'p2')).toEqual({ copied: true })
+      const after = (await getShotSlot(db, dependant.id))!
+      expect(after.status).toBe('resolved')
+      expect((after.candidates as unknown as SlotCandidate[])[0]).toMatchObject({
+        id: 'p2',
+        chosen: true,
+        reusedFrom: { slotId: source.id },
+      })
+    })
+
+    it('a brief edit keeps a linked slot resolved, and still re-opens an ordinary one', async () => {
+      const { source, dependant } = await twoSlots()
+      await setSlotResolution(db, source.id, {
+        candidates: [candidate('p1', { chosen: true })],
+        status: 'resolved',
+      })
+      await linkSlotReuse(db, dependant.id, source.id, 'p1')
+      await updateSlotBrief(db, dependant.id, { ...stockBrief, description: 'new words' })
+      await updateSlotBrief(db, source.id, { ...stockBrief, description: 'new words' })
+      expect((await getShotSlot(db, dependant.id))?.status).toBe('resolved')
+      expect((await getShotSlot(db, source.id))?.status).toBe('unresolved')
+    })
+
+    it('fills a two-step chain in one pass, whatever order the rows arrive in', async () => {
+      await replaceShotList(db, projectId, slots())
+      const [a, b, c] = await listShotSlots(db, projectId)
+      await setSlotResolution(db, c!.id, {
+        candidates: [candidate('p1', { chosen: true })],
+        status: 'resolved',
+      })
+      // Built directly, past the action layer's refusal, so the write is
+      // proved right on its own.
+      await linkSlotReuse(db, b!.id, a!.id)
+      await linkSlotReuse(db, a!.id, c!.id)
+
+      expect(await copyReusedShots(db, projectId)).toEqual({ copied: 2, placeholders: 0 })
+      for (const id of [a!.id, b!.id]) {
+        const row = (await getShotSlot(db, id))!
+        expect(row.status).toBe('resolved')
+        expect((row.candidates as unknown as SlotCandidate[])[0]).toMatchObject({
+          id: 'p1',
+          chosen: true,
+        })
+      }
+      expect(await listSlotDependants(db, a!.id)).toHaveLength(1)
+      expect(await listSlotDependants(db, b!.id)).toHaveLength(0)
+    })
+
+    it('unlinking gives the slot its own fetch back', async () => {
+      const { source, dependant } = await twoSlots()
+      await setSlotResolution(db, source.id, {
+        candidates: [candidate('p1', { chosen: true })],
+        status: 'resolved',
+      })
+      await linkSlotReuse(db, dependant.id, source.id, 'p1')
+      await unlinkSlotReuse(db, dependant.id)
+      const after = (await getShotSlot(db, dependant.id))!
+      expect(after).toMatchObject({
+        reuseOfSlotId: null,
+        status: 'unresolved',
+        chosenAssetId: null,
+        resolvedBriefHash: null,
+        candidates: [],
+      })
+      expect(slotNeedsResolution(after)).toBe(true)
+    })
   })
 })
 

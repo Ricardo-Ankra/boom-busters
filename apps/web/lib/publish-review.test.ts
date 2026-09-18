@@ -61,4 +61,27 @@ describe('syntheticLikenesses', () => {
       syntheticLikenesses([{ brief: { type: 'nonsense' }, candidates: 'not a list' }]),
     ).toEqual([])
   })
+
+  it("counts a likeness reused into a stock slot, through the copy's own record (decision 261)", () => {
+    const slots = [
+      {
+        brief: {
+          type: 'stock',
+          coversText: 'x',
+          description: 'x',
+          motion: { kind: 'static' },
+          transition: 'cut',
+          query: 'q',
+          rejectionCriteria: [],
+        },
+        candidates: [
+          {
+            ...candidate('google', true),
+            reusedFrom: { slotId: '01J000000000000000000000AA', depicts: ['Jan Marsalek'] },
+          },
+        ],
+      },
+    ]
+    expect(syntheticLikenesses(slots)).toEqual(['Jan Marsalek'])
+  })
 })

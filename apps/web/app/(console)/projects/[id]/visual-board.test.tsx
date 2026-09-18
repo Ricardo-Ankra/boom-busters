@@ -22,6 +22,8 @@ const replanShotsAction = vi.fn()
 const redirectSceneAction = vi.fn()
 const saveHeadlineAction = vi.fn()
 const refetchArticleAction = vi.fn()
+const reuseSlotShotAction = vi.fn()
+const unlinkSlotReuseAction = vi.fn()
 
 vi.mock('./visuals-actions', () => ({
   chooseCandidateAction: (...args: unknown[]) => chooseCandidateAction(...args),
@@ -41,6 +43,8 @@ vi.mock('./visuals-actions', () => ({
   redirectSceneAction: (...args: unknown[]) => redirectSceneAction(...args),
   saveHeadlineAction: (...args: unknown[]) => saveHeadlineAction(...args),
   refetchArticleAction: (...args: unknown[]) => refetchArticleAction(...args),
+  reuseSlotShotAction: (...args: unknown[]) => reuseSlotShotAction(...args),
+  unlinkSlotReuseAction: (...args: unknown[]) => unlinkSlotReuseAction(...args),
 }))
 
 const refresh = vi.fn()
@@ -61,6 +65,8 @@ beforeEach(() => {
   dismissRetypeAction.mockResolvedValue({ ok: true })
   saveHeadlineAction.mockResolvedValue({ ok: true })
   refetchArticleAction.mockResolvedValue({ ok: true })
+  reuseSlotShotAction.mockResolvedValue({ ok: true })
+  unlinkSlotReuseAction.mockResolvedValue({ ok: true })
 })
 
 const COLORS: BrandChartColors = {
@@ -126,6 +132,7 @@ const stockSlot: SlotView = {
   retype: null,
   refusal: null,
   article: null,
+  reuse: null,
 }
 
 const chartSlot: SlotView = {
@@ -164,6 +171,7 @@ const chartSlot: SlotView = {
   retype: null,
   refusal: null,
   article: null,
+  reuse: null,
 }
 
 const SLOT_D = '01J000000000000000000000AD'
@@ -203,6 +211,7 @@ const headlineSlot: SlotView = {
     status: 'fetched',
     failureReason: null,
   },
+  reuse: null,
 }
 
 /**
@@ -234,6 +243,7 @@ const brokenSlot: SlotView = {
   retype: null,
   refusal: null,
   article: null,
+  reuse: null,
 }
 
 function model(slots: SlotView[], overrides: Partial<VisualsReviewModel> = {}): VisualsReviewModel {
@@ -914,5 +924,139 @@ describe('the headline card (decision 257)', () => {
 
     await user.click(screen.getByRole('button', { name: 'Re-fetch' }))
     await waitFor(() => expect(refetchArticleAction).toHaveBeenCalledWith(PROJECT, SLOT_D))
+  })
+})
+
+describe('reusing a shot (decision 261)', () => {
+  const placeholder: SlotView = {
+    ...stockSlot,
+    id: SLOT_C,
+    status: 'placeholder',
+    startMs: 12000,
+    brief: {
+      ...stockSlot.brief!,
+      coversText: 'The trail led to Manila.',
+      description: 'A courtroom sketch nothing free will ever have.',
+    } as SlotView['brief'],
+    candidates: [],
+    extraCandidates: 0,
+    needsFetch: true,
+  }
+
+  it('offers the film’s other shots to a picture card, with their distance, and links on Use this', async () => {
+    const user = userEvent.setup()
+    render(
+      <VisualBoard projectId={PROJECT} model={model([stockSlot, placeholder])} colors={COLORS} />,
+    )
+
+    const card = document.getElementById(`slot-${SLOT_C}`)!
+    await user.click(within(card).getByRole('button', { name: 'Use an existing shot' }))
+
+    const picker = within(card).getByRole('group', { name: 'Shots to reuse' })
+    expect(within(picker).getByRole('group', { name: 'Shot at 0:00' })).toBeInTheDocument()
+    expect(
+      within(picker).getByText(/By June, the auditors could not find the money/),
+    ).toBeInTheDocument()
+    expect(within(picker).getByText('12 s earlier')).toBeInTheDocument()
+    expect(within(picker).getByText('plays within a minute of this slot')).toBeInTheDocument()
+
+    await user.click(within(picker).getByRole('button', { name: 'Use this' }))
+    await waitFor(() =>
+      expect(reuseSlotShotAction).toHaveBeenCalledWith(PROJECT, SLOT_C, SLOT_A, 'a1'),
+    )
+    expect(toast).toHaveBeenCalledWith({ title: 'Now showing the shot from 0:00' })
+  })
+
+  it('before Fetch offers the link without a picture, and says Fetch will copy', async () => {
+    const user = userEvent.setup()
+    const plannedStock: SlotView = {
+      ...stockSlot,
+      status: 'unresolved',
+      candidates: [],
+      extraCandidates: 0,
+      needsFetch: true,
+    }
+    const plannedTarget: SlotView = { ...placeholder, status: 'unresolved' }
+    render(
+      <VisualBoard
+        projectId={PROJECT}
+        model={model([plannedStock, plannedTarget], { phase: 'plan', toFetch: 2 })}
+        colors={COLORS}
+      />,
+    )
+
+    const card = document.getElementById(`slot-${SLOT_C}`)!
+    await user.click(within(card).getByRole('button', { name: 'Use an existing shot' }))
+    await user.click(within(card).getByRole('button', { name: 'Use whatever this slot chooses' }))
+    await waitFor(() =>
+      expect(reuseSlotShotAction).toHaveBeenCalledWith(PROJECT, SLOT_C, SLOT_A, undefined),
+    )
+    expect(toast).toHaveBeenCalledWith({
+      title: 'Linked. Fetch visuals will copy the shot when it lands',
+    })
+  })
+
+  it('a linked card says where its shot came from, hides the fetch buttons, and offers its own shot back', async () => {
+    const user = userEvent.setup()
+    const linked: SlotView = {
+      ...placeholder,
+      status: 'resolved',
+      candidates: [{ ...stockSlot.candidates[0]!, reusedFrom: { slotId: SLOT_A } }],
+      needsFetch: false,
+      reuse: { sourceSlotId: SLOT_A, chapterIndex: 0, startMs: 0, sourceStatus: 'resolved' },
+    }
+    const source: SlotView = { ...stockSlot }
+    render(<VisualBoard projectId={PROJECT} model={model([source, linked])} colors={COLORS} />)
+
+    const card = document.getElementById(`slot-${SLOT_C}`)!
+    expect(within(card).getByText('Reused from ch 1 · 0:00')).toBeInTheDocument()
+    expect(within(card).queryByRole('button', { name: /^Regenerate/ })).toBeNull()
+    expect(within(card).queryByRole('button', { name: 'Upload own' })).toBeNull()
+    expect(within(card).queryByRole('button', { name: 'Draft a different brief' })).toBeNull()
+    expect(within(card).queryByRole('button', { name: 'Use an existing shot' })).toBeNull()
+    // A name string is matched whole, so this is the plain label and never
+    // "Edit brief & re-fetch".
+    expect(within(card).getByRole('button', { name: 'Edit brief' })).toBeInTheDocument()
+
+    const sourceCard = document.getElementById(`slot-${SLOT_A}`)!
+    expect(within(sourceCard).getByText('Also used at 0:12.')).toBeInTheDocument()
+    expect(within(sourceCard).queryByRole('button', { name: 'Use an existing shot' })).toBeNull()
+
+    await user.click(within(card).getByRole('button', { name: 'Choose its own shot' }))
+    await waitFor(() => expect(unlinkSlotReuseAction).toHaveBeenCalledWith(PROJECT, SLOT_C))
+  })
+
+  it('never offers a chart, a map or a headline the picker, and offers a source with nothing chosen nothing', async () => {
+    const user = userEvent.setup()
+    const emptySource: SlotView = {
+      ...stockSlot,
+      id: SLOT_A,
+      status: 'placeholder',
+      candidates: [],
+      extraCandidates: 0,
+      needsFetch: true,
+    }
+    render(
+      <VisualBoard
+        projectId={PROJECT}
+        model={model([emptySource, chartSlot, headlineSlot, placeholder])}
+        colors={COLORS}
+      />,
+    )
+    for (const id of [chartSlot.id, headlineSlot.id]) {
+      const card = document.getElementById(`slot-${id}`)!
+      expect(within(card).queryByRole('button', { name: 'Use an existing shot' })).toBeNull()
+    }
+    // On the board a source with nothing chosen has nothing to lend, so it is
+    // not offered: no copy step runs there, and a link to it would never fill.
+    const card = document.getElementById(`slot-${SLOT_C}`)!
+    await user.click(within(card).getByRole('button', { name: 'Use an existing shot' }))
+    const picker = within(card).getByRole('group', { name: 'Shots to reuse' })
+    expect(within(picker).queryByRole('group', { name: /^Shot at/ })).toBeNull()
+    expect(
+      within(picker).getByText(
+        'No other stock, AI image or real-footage slot in this film has a shot to offer yet.',
+      ),
+    ).toBeInTheDocument()
   })
 })

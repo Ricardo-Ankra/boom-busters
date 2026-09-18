@@ -176,6 +176,13 @@
       "when": 1789675459228,
       "tag": "0024_rare_blue_blade",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1789751775155,
+      "tag": "0025_brief_doctor_faustus",
+      "breakpoints": true
     }
   ]
 }

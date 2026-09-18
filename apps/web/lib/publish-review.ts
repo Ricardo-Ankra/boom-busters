@@ -74,23 +74,25 @@ export interface PublishItemModel {
 
 /**
  * The distinct names in `depicts` across still and hero slots whose CHOSEN
- * candidate is a generated one (fal or google). An uploaded real photograph
- * of the same person is not synthetic media, so it does not count.
+ * candidate is a generated one (fal or google), plus the names a copied
+ * candidate carries from the still it was reused from (decision 261). An
+ * uploaded real photograph of the same person is not synthetic media, so it
+ * does not count.
  */
 export function syntheticLikenesses(
   slots: readonly { brief: unknown; candidates: unknown }[],
 ): string[] {
   const names = new Set<string>()
   for (const slot of slots) {
-    const brief = ShotBriefSchema.safeParse(slot.brief)
-    if (!brief.success || (brief.data.type !== 'still' && brief.data.type !== 'hero')) continue
-    const depicts = brief.data.depicts ?? []
-    if (depicts.length === 0) continue
     const candidates = z.array(SlotCandidateSchema).safeParse(slot.candidates)
     const chosen = candidates.success ? candidates.data.find((c) => c.chosen) : undefined
-    if (chosen && (chosen.provider === 'fal' || chosen.provider === 'google')) {
-      for (const name of depicts) names.add(name)
-    }
+    if (!chosen || (chosen.provider !== 'fal' && chosen.provider !== 'google')) continue
+    const brief = ShotBriefSchema.safeParse(slot.brief)
+    const own =
+      brief.success && (brief.data.type === 'still' || brief.data.type === 'hero')
+        ? (brief.data.depicts ?? [])
+        : []
+    for (const name of [...own, ...(chosen.reusedFrom?.depicts ?? [])]) names.add(name)
   }
   return [...names]
 }

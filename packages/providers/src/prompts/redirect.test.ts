@@ -25,6 +25,11 @@ describe('buildRedirectRequest', () => {
   it('asks for the same beat without the person, on the shot-list task', () => {
     expect(request.task).toBe('shotlist')
     expect(request.system).toContain('without the person')
+    // The prompt's own words, before the bible is interpolated: the bible
+    // carries both phrases, so a whole-string check would prove nothing.
+    const own = request.system.slice(0, request.system.indexOf('# Direction craft'))
+    expect(own).not.toContain('the empty chair')
+    expect(own).toContain('the desk as they left it')
     expect(request.system).toContain('# Direction craft')
   })
 

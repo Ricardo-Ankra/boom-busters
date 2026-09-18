@@ -116,6 +116,12 @@ Rules for the book:
   photographs, a figure sourced to a filing that does not exist, an invented
   crime. It is not a list of settings the principals may not appear in.
 - Era locks name objects, not adjectives.
+- Motifs are this story's own: an object, a place detail or a recurring
+  situation the claims establish (the product itself, the lobby of the named
+  building, a specific document type, a specific vehicle), each able to sit
+  in the background of a frame whose subject is something else. They are
+  never the house look's own furniture (empty chairs, screens, glass,
+  corridors), which every film already has. A motif that could belong to any corporate collapse is chosen again.
 - The palette sits inside the Brand Kit grade: "${input.styleAnchors}".
 - One chapter entry per chapter, numbered as given, in order.
 - Every person listed under "Cast, already photographed" is a principal with

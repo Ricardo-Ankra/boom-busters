@@ -40,6 +40,7 @@ import type {
 } from '@boom-busters/schemas'
 import { anchoredTimes, timedParagraphs } from '@/inngest/lib/shot-list'
 import { stillsEstimateUsd } from './visual-assets'
+import { reuseView, sharedShotWarnings, type ReusableRow, type ReuseSource } from './visuals-reuse'
 
 /**
  * What the visual board shows, and what the visuals gate refuses on — one
@@ -88,6 +89,8 @@ export interface SlotView {
    * rather than showing an error.
    */
   article: ArticleMetadata | null
+  /** The slot whose shot this one shows (decision 261), or null when it has its own. */
+  reuse: ReuseSource | null
 }
 
 export interface ChapterSlots {
@@ -318,6 +321,17 @@ export async function visualsReviewModel(
     paragraphs,
   )
 
+  // The rows as the reuse helpers read them (decision 261): anchored times,
+  // parsed candidates, the link column.
+  const reusable: ReusableRow[] = rows.map((row, at) => ({
+    id: row.id,
+    chapterIndex: row.chapterIndex,
+    startMs: times[at]!.startMs,
+    status: row.status,
+    reuseOfSlotId: row.reuseOfSlotId,
+    candidates: parseCandidates(row.candidates),
+  }))
+
   const slots: SlotView[] = rows.map((row, at) => {
     const parsed = briefs[at]!
     const candidates = parseCandidates(row.candidates)
@@ -355,6 +369,7 @@ export async function visualsReviewModel(
         const state = SlotRefusalSchema.safeParse(row.refusal)
         return state.success ? state.data : null
       })(),
+      reuse: reuseView(reusable[at]!, reusable),
     }
   })
 
@@ -400,6 +415,11 @@ export async function visualsReviewModel(
     projectId,
   )
 
+  const direction = ((): DirectorsBook | null => {
+    const parsed = DirectorsBookSchema.safeParse(project?.direction)
+    return parsed.success ? parsed.data : null
+  })()
+
   return {
     chapters,
     coverage,
@@ -413,21 +433,23 @@ export async function visualsReviewModel(
     toFetch: toFetch.length,
     stillsToFetch,
     fetchEstimateUsd,
-    direction: ((): DirectorsBook | null => {
-      const parsed = DirectorsBookSchema.safeParse(project?.direction)
-      return parsed.success ? parsed.data : null
-    })(),
-    // Craft notes (decision 252), in screen order; never a blocker. Plus
-    // any cast member the book forgot (decision 253).
+    direction,
+    // Craft notes (decision 252), in screen order; never a blocker. Motif
+    // counts per chapter (decision 260), plus any cast member the book forgot
+    // (decision 253).
     warnings: [
       ...planWarnings(
-        slots.flatMap((slot) => (slot.brief ? [{ brief: slot.brief }] : [])),
+        slots.flatMap((slot) =>
+          slot.brief ? [{ brief: slot.brief, chapter: `chapter ${slot.chapterIndex + 1}` }] : [],
+        ),
         BANNED_PROMPT_WORDS,
+        direction?.motifs ?? [],
       ),
       ...castWarnings(
-        DirectorsBookSchema.safeParse(project?.direction).data ?? null,
+        direction,
         (project ? await listCastMembers(db, project.id) : []).map((member) => member.name),
       ),
+      ...sharedShotWarnings(reusable),
     ],
     articleClaims,
   }

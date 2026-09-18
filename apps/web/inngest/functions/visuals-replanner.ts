@@ -182,9 +182,13 @@ export const visualsReplanner = inngest.createFunction(
 
     await step.run('replace-plan', async () => {
       await replaceShotList(db, projectId, rows)
+      const chapterLabel = new Map(
+        setup.chapters.map((chapter, index) => [chapter.id, `chapter ${index + 1}`]),
+      )
       const warnings = planWarnings(
-        rows.map((row) => ({ brief: row.brief })),
+        rows.map((row) => ({ brief: row.brief, chapter: chapterLabel.get(row.chapterId) })),
         BANNED_PROMPT_WORDS,
+        setup.direction?.motifs ?? [],
       )
       await notify({
         kind: 'heads-up',
