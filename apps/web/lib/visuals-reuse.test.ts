@@ -2,7 +2,6 @@ import type { SlotCandidate } from '@boom-busters/schemas'
 import { describe, expect, it } from 'vitest'
 import {
   describeGap,
-  reusedByCount,
   reuseView,
   sharedShotWarnings,
   timecode,
@@ -48,18 +47,6 @@ describe('reuseView', () => {
   it('is null for a slot with its own shot, and for a source that no longer exists', () => {
     expect(reuseView(row('A', 0), [row('A', 0)])).toBeNull()
     expect(reuseView(row('B', 0, { reuseOfSlotId: 'gone' }), [row('B', 0)])).toBeNull()
-  })
-})
-
-describe('reusedByCount', () => {
-  it('counts the slots that show this slot’s shot', () => {
-    const rows = [
-      row('A', 0),
-      row('B', 0, { reuseOfSlotId: 'A' }),
-      row('C', 0, { reuseOfSlotId: 'A' }),
-    ]
-    expect(reusedByCount(rows[0]!, rows)).toBe(2)
-    expect(reusedByCount(rows[1]!, rows)).toBe(0)
   })
 })
 

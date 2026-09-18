@@ -18,7 +18,13 @@ import type { NewShotSlot } from '@boom-busters/db'
 import type { ShotBrief, SlotCandidate } from '@boom-busters/schemas'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/lib/db'
-import { refetchSlotAction, reuseSlotShotAction, unlinkSlotReuseAction } from './visuals-actions'
+import {
+  finaliseOwnUploadAction,
+  refetchSlotAction,
+  retypeToHeadlineAction,
+  reuseSlotShotAction,
+  unlinkSlotReuseAction,
+} from './visuals-actions'
 
 /**
  * Reusing a shot (decision 261) against the test database, with the seams a
@@ -170,6 +176,15 @@ describeDb('reusing a shot (decision 261)', () => {
     expect((await getShotSlot(db, ids.c))?.reuseOfSlotId).toBe(ids.a)
   })
 
+  it('refuses to link a slot that other slots already show', async () => {
+    await reuseSlotShotAction(FIXTURE_PROJECT_ID, ids.b, ids.a)
+    expect(await reuseSlotShotAction(FIXTURE_PROJECT_ID, ids.a, ids.c)).toMatchObject({
+      ok: false,
+      error: expect.stringContaining('Other slots show this slot'),
+    })
+    expect((await getShotSlot(db, ids.a))?.reuseOfSlotId).toBeNull()
+  })
+
   it('on the board copies the named shot at once, and refuses a source with none', async () => {
     await setVisualsPhase(db, FIXTURE_PROJECT_ID, 'board')
     expect(await reuseSlotShotAction(FIXTURE_PROJECT_ID, ids.b, ids.a)).toMatchObject({
@@ -192,10 +207,25 @@ describeDb('reusing a shot (decision 261)', () => {
 
   it('refuses to fetch for a linked slot, naming where its shot plays', async () => {
     await reuseSlotShotAction(FIXTURE_PROJECT_ID, ids.b, ids.a)
-    expect(await refetchSlotAction(FIXTURE_PROJECT_ID, ids.b, 'Regenerate')).toEqual({
+    const refusal = {
       ok: false,
       error: 'This slot reuses the shot at 0:00. Choose its own shot first.',
-    })
+    }
+    expect(await refetchSlotAction(FIXTURE_PROJECT_ID, ids.b, 'Regenerate')).toEqual(refusal)
+    // A re-type to a headline card and the second half of an upload refuse
+    // the same way: both run past a valid id onto a slot that owns no shot.
+    expect(
+      await retypeToHeadlineAction(FIXTURE_PROJECT_ID, ids.b, '01HQ00000000000000000000AA'),
+    ).toEqual(refusal)
+    expect(
+      await finaliseOwnUploadAction({
+        projectId: FIXTURE_PROJECT_ID,
+        slotId: ids.b,
+        fileType: 'image/png',
+        fileName: 'shot.png',
+        contentHash: 'a'.repeat(64),
+      }),
+    ).toEqual(refusal)
     expect(inngest.send).not.toHaveBeenCalled()
   })
 

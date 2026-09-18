@@ -133,7 +133,6 @@ const stockSlot: SlotView = {
   refusal: null,
   article: null,
   reuse: null,
-  reusedBy: 0,
 }
 
 const chartSlot: SlotView = {
@@ -173,7 +172,6 @@ const chartSlot: SlotView = {
   refusal: null,
   article: null,
   reuse: null,
-  reusedBy: 0,
 }
 
 const SLOT_D = '01J000000000000000000000AD'
@@ -214,7 +212,6 @@ const headlineSlot: SlotView = {
     failureReason: null,
   },
   reuse: null,
-  reusedBy: 0,
 }
 
 /**
@@ -247,7 +244,6 @@ const brokenSlot: SlotView = {
   refusal: null,
   article: null,
   reuse: null,
-  reusedBy: 0,
 }
 
 function model(slots: SlotView[], overrides: Partial<VisualsReviewModel> = {}): VisualsReviewModel {
@@ -1009,7 +1005,7 @@ describe('reusing a shot (decision 261)', () => {
       needsFetch: false,
       reuse: { sourceSlotId: SLOT_A, chapterIndex: 0, startMs: 0, sourceStatus: 'resolved' },
     }
-    const source: SlotView = { ...stockSlot, reusedBy: 1 }
+    const source: SlotView = { ...stockSlot }
     render(<VisualBoard projectId={PROJECT} model={model([source, linked])} colors={COLORS} />)
 
     const card = document.getElementById(`slot-${SLOT_C}`)!
@@ -1024,6 +1020,7 @@ describe('reusing a shot (decision 261)', () => {
 
     const sourceCard = document.getElementById(`slot-${SLOT_A}`)!
     expect(within(sourceCard).getByText('Also used at 0:12.')).toBeInTheDocument()
+    expect(within(sourceCard).queryByRole('button', { name: 'Use an existing shot' })).toBeNull()
 
     await user.click(within(card).getByRole('button', { name: 'Choose its own shot' }))
     await waitFor(() => expect(unlinkSlotReuseAction).toHaveBeenCalledWith(PROJECT, SLOT_C))

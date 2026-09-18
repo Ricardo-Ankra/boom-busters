@@ -365,27 +365,37 @@ export async function linkSlotReuse(
  * source's chosen candidate, or becomes a placeholder when the source has
  * none. Idempotent: a dependant already copied from its source is left
  * alone, so a re-run of the pass never overwrites a choice made since.
+ *
+ * Passes repeat while a fill makes another possible: the action layer
+ * refuses chains, but the write must be right whatever order rows arrive
+ * in, so a dependant whose source was itself filled this pass is filled on
+ * the next. Only when a pass copies nothing do the unfilled rows become
+ * placeholders.
  */
 export async function copyReusedShots(
   db: Database,
   projectId: string,
 ): Promise<{ copied: number; placeholders: number }> {
-  const rows = await db.select().from(shotSlots).where(eq(shotSlots.projectId, projectId))
-  const byId = new Map(rows.map((row) => [row.id, row]))
   let copied = 0
   let placeholders = 0
 
-  for (const row of rows) {
-    if (!row.reuseOfSlotId) continue
-    const held = row.candidates as unknown as SlotCandidate[]
-    if (held.some((candidate) => candidate.reusedFrom?.slotId === row.reuseOfSlotId)) continue
+  for (;;) {
+    const rows = await db.select().from(shotSlots).where(eq(shotSlots.projectId, projectId))
+    const byId = new Map(rows.map((row) => [row.id, row]))
+    const pending = rows.filter((row) => {
+      if (!row.reuseOfSlotId) return false
+      const held = row.candidates as unknown as SlotCandidate[]
+      return !held.some((candidate) => candidate.reusedFrom?.slotId === row.reuseOfSlotId)
+    })
+    if (pending.length === 0) break
 
-    const source = byId.get(row.reuseOfSlotId)
-    const chosen = source
-      ? (source.candidates as unknown as SlotCandidate[]).find((candidate) => candidate.chosen)
-      : undefined
-
-    if (source && chosen) {
+    let filled = 0
+    for (const row of pending) {
+      const source = byId.get(row.reuseOfSlotId!)
+      const chosen = source
+        ? (source.candidates as unknown as SlotCandidate[]).find((candidate) => candidate.chosen)
+        : undefined
+      if (!source || !chosen) continue
       await db
         .update(shotSlots)
         .set({
@@ -397,22 +407,33 @@ export async function copyReusedShots(
         })
         .where(eq(shotSlots.id, row.id))
       copied += 1
-    } else {
-      await db
-        .update(shotSlots)
-        .set({
-          candidates: [] as unknown as Record<string, unknown>[],
-          status: 'placeholder',
-          chosenAssetId: null,
-          resolvedBriefHash: null,
-          updatedAt: sql`now()`,
-        })
-        .where(eq(shotSlots.id, row.id))
-      placeholders += 1
+      filled += 1
+    }
+
+    if (filled === 0) {
+      for (const row of pending) {
+        await db
+          .update(shotSlots)
+          .set({
+            candidates: [] as unknown as Record<string, unknown>[],
+            status: 'placeholder',
+            chosenAssetId: null,
+            resolvedBriefHash: null,
+            updatedAt: sql`now()`,
+          })
+          .where(eq(shotSlots.id, row.id))
+        placeholders += 1
+      }
+      break
     }
   }
 
   return { copied, placeholders }
+}
+
+/** The slots that show this slot's shot (decision 261): its dependants, in any order. */
+export async function listSlotDependants(db: Database, slotId: string): Promise<ShotSlotRow[]> {
+  return db.select().from(shotSlots).where(eq(shotSlots.reuseOfSlotId, slotId))
 }
 
 /**

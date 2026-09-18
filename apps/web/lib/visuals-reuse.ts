@@ -2,9 +2,9 @@ import type { ShotSlotStatus, SlotCandidate } from '@boom-busters/schemas'
 
 /**
  * The pure half of shot reuse on the board (decision 261): what a card says
- * about its link, how many slots lean on it, and the note when one picture
- * plays twice within a minute. The writes live in the db package; this is
- * what the review model and the board read.
+ * about its link, and the note when one picture plays twice within a minute.
+ * The writes live in the db package; this is what the review model and the
+ * board read.
  */
 
 /** Two plays of one picture closer than this get a note, in the picker and on the plan. */
@@ -49,10 +49,6 @@ export function reuseView(row: ReusableRow, rows: readonly ReusableRow[]): Reuse
     startMs: source.startMs,
     sourceStatus: source.status,
   }
-}
-
-export function reusedByCount(row: ReusableRow, rows: readonly ReusableRow[]): number {
-  return rows.filter((other) => other.reuseOfSlotId === row.id).length
 }
 
 /** What identifies a chosen picture: the bytes we hold, else the provider's own id. */

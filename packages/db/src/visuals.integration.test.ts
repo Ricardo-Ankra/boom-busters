@@ -12,6 +12,7 @@ import {
   getShotSlot,
   linkSlotReuse,
   listShotSlots,
+  listSlotDependants,
   replaceShotList,
   retypeShotSlot,
   setSlotRefusal,
@@ -406,6 +407,31 @@ suite('shot slots', () => {
       await updateSlotBrief(db, source.id, { ...stockBrief, description: 'new words' })
       expect((await getShotSlot(db, dependant.id))?.status).toBe('resolved')
       expect((await getShotSlot(db, source.id))?.status).toBe('unresolved')
+    })
+
+    it('fills a two-step chain in one pass, whatever order the rows arrive in', async () => {
+      await replaceShotList(db, projectId, slots())
+      const [a, b, c] = await listShotSlots(db, projectId)
+      await setSlotResolution(db, c!.id, {
+        candidates: [candidate('p1', { chosen: true })],
+        status: 'resolved',
+      })
+      // Built directly, past the action layer's refusal, so the write is
+      // proved right on its own.
+      await linkSlotReuse(db, b!.id, a!.id)
+      await linkSlotReuse(db, a!.id, c!.id)
+
+      expect(await copyReusedShots(db, projectId)).toEqual({ copied: 2, placeholders: 0 })
+      for (const id of [a!.id, b!.id]) {
+        const row = (await getShotSlot(db, id))!
+        expect(row.status).toBe('resolved')
+        expect((row.candidates as unknown as SlotCandidate[])[0]).toMatchObject({
+          id: 'p1',
+          chosen: true,
+        })
+      }
+      expect(await listSlotDependants(db, a!.id)).toHaveLength(1)
+      expect(await listSlotDependants(db, b!.id)).toHaveLength(0)
     })
 
     it('unlinking gives the slot its own fetch back', async () => {

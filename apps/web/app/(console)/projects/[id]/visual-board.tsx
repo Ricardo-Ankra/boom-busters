@@ -899,7 +899,9 @@ function SlotCard({
                       ? 'Edit brief'
                       : 'Edit brief & re-fetch'}
                 </Button>
-                {picture && !linked ? (
+                {/* A card that lends its shot does not offer the picker: a
+                    link from it would be a chain, which the action refuses. */}
+                {picture && !linked && lends.length === 0 ? (
                   <Button
                     variant="outline"
                     aria-expanded={reusing}

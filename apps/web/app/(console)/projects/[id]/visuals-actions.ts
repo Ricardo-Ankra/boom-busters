@@ -8,6 +8,7 @@ import {
   getSettings,
   getShotSlot,
   linkSlotReuse,
+  listSlotDependants,
   scriptableClaims,
   setArticleSourceManual,
   retypeShotSlot,
@@ -53,6 +54,7 @@ import {
   R2_PREFIX,
   storageConfigured,
 } from '@/lib/storage'
+import { timecode } from '@/lib/visuals-reuse'
 
 /**
  * The visual board's buttons (build spec section 11.3): select a candidate,
@@ -87,12 +89,6 @@ function refresh(projectId: string): void {
   revalidatePath('/')
 }
 
-/** m:ss for a refusal that names where a shot plays. The board's own `timecode`, repeated here because a server module cannot import a client component. */
-function mmss(ms: number): string {
-  const totalSec = Math.floor(ms / 1000)
-  return `${Math.floor(totalSec / 60)}:${String(totalSec % 60).padStart(2, '0')}`
-}
-
 /**
  * The refusal every fetch-shaped action gives a linked slot (decision 261).
  * The board hides those buttons; this is for a screen that went stale.
@@ -100,7 +96,7 @@ function mmss(ms: number): string {
 async function linkedSlotRefusal(slot: ShotSlotRow): Promise<ActionResult | null> {
   if (!slot.reuseOfSlotId) return null
   const source = await getShotSlot(db, slot.reuseOfSlotId)
-  const at = source ? ` at ${mmss(source.startMs)}` : ''
+  const at = source ? ` at ${timecode(source.startMs)}` : ''
   return { ok: false, error: `This slot reuses the shot${at}. Choose its own shot first.` }
 }
 
@@ -126,6 +122,12 @@ async function reuseSource(
     return {
       error: 'Only stock, AI image and real-footage slots can reuse a shot or be reused.',
     }
+  }
+  // No chains from the target side either: a slot other slots show cannot
+  // itself point elsewhere, or a two-step link forms that the copy pass has
+  // to chase. Its dependants get their own shots first.
+  if ((await listSlotDependants(db, slotId)).length > 0) {
+    return { error: "Other slots show this slot's shot. Give them their own shot first." }
   }
   const source = picked.reuseOfSlotId ? await getShotSlot(db, picked.reuseOfSlotId) : picked
   if (!source) return { error: 'The shot you picked no longer exists.' }
@@ -409,6 +411,8 @@ export async function retypeToHeadlineAction(
 
   const slot = await getShotSlot(db, slotId)
   if (!slot) return { ok: false, error: 'This slot no longer exists.' }
+  const linked = await linkedSlotRefusal(slot)
+  if (linked) return linked
 
   const current = ShotBriefSchema.safeParse(slot.brief)
   if (!current.success) {
@@ -854,6 +858,8 @@ export async function finaliseOwnUploadAction(input: {
 
   const slot = await getShotSlot(db, input.slotId)
   if (!slot) return { ok: false, error: 'This slot no longer exists.' }
+  const linked = await linkedSlotRefusal(slot)
+  if (linked) return linked
 
   const rules = uploadRules(slot.brief, input.fileType)
   if ('error' in rules) return { ok: false, error: rules.error }
