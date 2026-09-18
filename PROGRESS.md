@@ -4934,5 +4934,5 @@ Recorded whenever the spec left something open and an implementation was chosen.
     last word, plural stripped: "server racks" matches "rack"), warning when
     one appears in more than one picture brief of a chapter or in adjacent
     slots. A note, never a rejection: the match is a heuristic. The markdown
-    bible is now re-embedded by `pnpm --filter @boom-busters/providers
-embed:craft` rather than by hand.
+    bible is now re-embedded by
+    `pnpm --filter @boom-busters/providers embed:craft` rather than by hand.
