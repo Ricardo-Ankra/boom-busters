@@ -124,8 +124,10 @@ export async function getShotSlot(db: Database, id: string): Promise<ShotSlotRow
 /**
  * A brief edit re-opens the slot: whatever was fetched was fetched for the
  * OLD brief, so the status drops back to `unresolved` until a re-fetch
- * resolves it again. The stale candidates stay visible in the meantime —
- * a board that blanks while re-fetching reads as data loss.
+ * resolves it again. The stale candidates stay visible in the meantime (a
+ * board that blanks while re-fetching reads as data loss). A linked slot
+ * keeps its status (decision 261): the words changed, the picture is another
+ * slot's and did not.
  */
 export async function updateSlotBrief(
   db: Database,
@@ -136,7 +138,7 @@ export async function updateSlotBrief(
     .update(shotSlots)
     .set({
       brief: brief as unknown as Record<string, unknown>,
-      status: 'unresolved',
+      status: sql`CASE WHEN ${shotSlots.reuseOfSlotId} IS NULL THEN 'unresolved' ELSE ${shotSlots.status} END`,
       // A new brief is a new question; an old refusal no longer applies.
       refusal: null,
       updatedAt: sql`now()`,
@@ -282,6 +284,153 @@ export async function chooseSlotCandidate(
     .returning()
 
   return row
+}
+
+// ---------------------------------------------------------------------------
+// Reusing a shot (decision 261)
+// ---------------------------------------------------------------------------
+
+/**
+ * The copy a dependant holds: the source's candidate, chosen, stamped with
+ * where it came from and who it depicts. Its id is kept, so the strip and the
+ * lightbox treat it like any other candidate; its score is dropped, because
+ * it was judged against the source's brief, not this one's.
+ */
+function reusedCandidate(source: ShotSlotRow, candidate: SlotCandidate): SlotCandidate {
+  const brief = source.brief as { type?: string; depicts?: string[] }
+  const depicts =
+    (brief.type === 'still' || brief.type === 'hero') && brief.depicts && brief.depicts.length > 0
+      ? brief.depicts
+      : undefined
+  const { chosen: _chosen, score: _score, scoreReason: _reason, ...rest } = candidate
+  return {
+    ...rest,
+    chosen: true,
+    reusedFrom: { slotId: source.id, ...(depicts ? { depicts } : {}) },
+  }
+}
+
+export interface LinkOutcome {
+  copied: boolean
+}
+
+/**
+ * Point a slot at another slot's shot. When `candidateId` names a candidate
+ * the source holds, it is copied now and the slot is resolved for its own
+ * brief; otherwise the link alone is recorded and `copyReusedShots` fills it
+ * after the fetch pass. Callers check the rules (types, chains, same project)
+ * first; this only writes. Null when the slot, the source or the named
+ * candidate no longer exists.
+ */
+export async function linkSlotReuse(
+  db: Database,
+  slotId: string,
+  sourceId: string,
+  candidateId?: string,
+): Promise<LinkOutcome | null> {
+  const [slot, source] = await Promise.all([getShotSlot(db, slotId), getShotSlot(db, sourceId)])
+  if (!slot || !source) return null
+  const held = source.candidates as unknown as SlotCandidate[]
+  const picked =
+    candidateId === undefined ? undefined : held.find((candidate) => candidate.id === candidateId)
+  if (candidateId !== undefined && !picked) return null
+
+  await db
+    .update(shotSlots)
+    .set({
+      reuseOfSlotId: sourceId,
+      ...(picked
+        ? {
+            candidates: [reusedCandidate(source, picked)] as unknown as Record<string, unknown>[],
+            status: 'resolved' as const,
+            chosenAssetId: picked.assetId ?? null,
+            resolvedBriefHash: shotBriefHash(slot.brief),
+          }
+        : {
+            candidates: [] as unknown as Record<string, unknown>[],
+            status: 'unresolved' as const,
+            chosenAssetId: null,
+            resolvedBriefHash: null,
+          }),
+      refusal: null,
+      updatedAt: sql`now()`,
+    })
+    .where(eq(shotSlots.id, slotId))
+
+  return { copied: picked !== undefined }
+}
+
+/**
+ * After the fetch pass: every linked slot that holds no copy yet takes its
+ * source's chosen candidate, or becomes a placeholder when the source has
+ * none. Idempotent: a dependant already copied from its source is left
+ * alone, so a re-run of the pass never overwrites a choice made since.
+ */
+export async function copyReusedShots(
+  db: Database,
+  projectId: string,
+): Promise<{ copied: number; placeholders: number }> {
+  const rows = await db.select().from(shotSlots).where(eq(shotSlots.projectId, projectId))
+  const byId = new Map(rows.map((row) => [row.id, row]))
+  let copied = 0
+  let placeholders = 0
+
+  for (const row of rows) {
+    if (!row.reuseOfSlotId) continue
+    const held = row.candidates as unknown as SlotCandidate[]
+    if (held.some((candidate) => candidate.reusedFrom?.slotId === row.reuseOfSlotId)) continue
+
+    const source = byId.get(row.reuseOfSlotId)
+    const chosen = source
+      ? (source.candidates as unknown as SlotCandidate[]).find((candidate) => candidate.chosen)
+      : undefined
+
+    if (source && chosen) {
+      await db
+        .update(shotSlots)
+        .set({
+          candidates: [reusedCandidate(source, chosen)] as unknown as Record<string, unknown>[],
+          status: 'resolved',
+          chosenAssetId: chosen.assetId ?? null,
+          resolvedBriefHash: shotBriefHash(row.brief),
+          updatedAt: sql`now()`,
+        })
+        .where(eq(shotSlots.id, row.id))
+      copied += 1
+    } else {
+      await db
+        .update(shotSlots)
+        .set({
+          candidates: [] as unknown as Record<string, unknown>[],
+          status: 'placeholder',
+          chosenAssetId: null,
+          resolvedBriefHash: null,
+          updatedAt: sql`now()`,
+        })
+        .where(eq(shotSlots.id, row.id))
+      placeholders += 1
+    }
+  }
+
+  return { copied, placeholders }
+}
+
+/**
+ * Give a linked slot its own shot again: the link, the copy, the chosen
+ * asset and the fingerprint all go, and the next fetch pass owes it work.
+ */
+export async function unlinkSlotReuse(db: Database, slotId: string): Promise<void> {
+  await db
+    .update(shotSlots)
+    .set({
+      reuseOfSlotId: null,
+      candidates: [] as unknown as Record<string, unknown>[],
+      status: 'unresolved',
+      chosenAssetId: null,
+      resolvedBriefHash: null,
+      updatedAt: sql`now()`,
+    })
+    .where(eq(shotSlots.id, slotId))
 }
 
 // ---------------------------------------------------------------------------
