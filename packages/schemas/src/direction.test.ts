@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { castWarnings, DirectorsBookSchema, planWarnings, renderDirectorsBook } from './direction'
+import {
+  castWarnings,
+  DirectorsBookSchema,
+  motifPattern,
+  planWarnings,
+  renderDirectorsBook,
+} from './direction'
 import type { ShotBrief } from './visuals'
 
 const book = {
@@ -63,6 +69,12 @@ describe('renderDirectorsBook', () => {
     expect(text).toContain('Markus Braun (likeness)')
     expect(text).toContain('Chapter 1:')
   })
+
+  it('reads a chapter family as a lean, not a rule (decision 260)', () => {
+    expect(renderDirectorsBook(DirectorsBookSchema.parse(book))).toContain(
+      'Chapter 1: leans towards environment shots;',
+    )
+  })
 })
 
 const still = (shotSize: 'wide' | 'close', prompt: string): ShotBrief => ({
@@ -100,6 +112,95 @@ describe('planWarnings', () => {
   it('is silent on a varied, clean plan', () => {
     expect(
       planWarnings([{ brief: still('wide', 'a') }, { brief: still('close', 'b') }], banned),
+    ).toEqual([])
+  })
+})
+
+describe('planWarnings: motifs (decision 260)', () => {
+  const motifs = ['reflections in dark glass', 'empty chairs', 'server racks']
+  const stock = (description: string): ShotBrief => ({
+    type: 'stock',
+    coversText: 'x',
+    description,
+    motion: { kind: 'static' },
+    transition: 'cut',
+    query: 'q',
+    rejectionCriteria: [],
+  })
+  const chart: ShotBrief = {
+    type: 'chart',
+    coversText: 'x',
+    description: 'a server rack chart',
+    motion: { kind: 'static' },
+    transition: 'cut',
+    chartKind: 'bar',
+    series: [
+      {
+        label: 'a',
+        unit: 'USD',
+        points: [
+          { x: '2019', y: 1 },
+          { x: '2020', y: 2 },
+        ],
+      },
+    ],
+    dataRefs: ['01HQ00000000000000000000AA'],
+    takeaway: 't',
+    reveal: 'none',
+  }
+
+  it('counts a motif in more than one picture brief of a chapter, by its head noun, and flags neighbours', () => {
+    const warnings = planWarnings(
+      [
+        { brief: still('wide', 'A server rack humming in the dark'), chapter: 'chapter 3' },
+        { brief: stock('Rows of server racks'), chapter: 'chapter 3' },
+        { brief: still('close', 'A ledger on a desk'), chapter: 'chapter 3' },
+      ],
+      [],
+      motifs,
+    )
+    expect(warnings).toEqual([
+      'motif "server racks" appears in 2 of 3 picture briefs in chapter 3',
+      'motif "server racks" appears in two adjacent slots (from slot 0)',
+    ])
+  })
+
+  it('is silent when each motif appears once per chapter, however many chapters', () => {
+    expect(
+      planWarnings(
+        [
+          { brief: still('wide', 'an empty chair'), chapter: 'chapter 1' },
+          { brief: still('close', 'a ledger'), chapter: 'chapter 1' },
+          { brief: still('wide', 'an empty chair at the head of the table'), chapter: 'chapter 2' },
+        ],
+        [],
+        motifs,
+      ),
+    ).toEqual([])
+  })
+
+  it('matches the head noun and its plural, never the modifier, and skips data briefs', () => {
+    expect(
+      planWarnings(
+        [
+          { brief: stock('Deserted office, empty desks'), chapter: 'c' },
+          { brief: stock('More empty desks'), chapter: 'c' },
+          { brief: chart, chapter: 'c' },
+          { brief: chart, chapter: 'c' },
+        ],
+        [],
+        motifs,
+      ),
+    ).toEqual([])
+    expect(motifPattern('reflections in dark glass')?.test('her glasses on the desk')).toBe(true)
+    expect(motifPattern('server racks')?.test('a rack of servers')).toBe(true)
+    expect(motifPattern('[mock] empty chairs')?.test('empty desks')).toBe(false)
+    expect(motifPattern('')).toBeNull()
+  })
+
+  it('changes nothing for a caller that passes no motifs', () => {
+    expect(
+      planWarnings([{ brief: still('wide', 'a') }, { brief: still('close', 'b') }], []),
     ).toEqual([])
   })
 })

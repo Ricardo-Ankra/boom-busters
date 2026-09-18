@@ -89,7 +89,8 @@ export function renderDirectorsBook(book: DirectorsBook): string {
   lines.push('Chapters:')
   for (const chapter of book.chapters) {
     lines.push(
-      `- Chapter ${chapter.chapter}: ${chapter.dominantShotFamily} shots; ${chapter.moodShift}; ` +
+      `- Chapter ${chapter.chapter}: leans towards ${chapter.dominantShotFamily} shots; ` +
+        `${chapter.moodShift}; ` +
         `key image: ${chapter.keyImage}`,
     )
   }
@@ -97,15 +98,58 @@ export function renderDirectorsBook(book: DirectorsBook): string {
   return lines.join('\n')
 }
 
+export interface WarnableSlot {
+  brief: ShotBrief
+  /**
+   * The chapter this slot belongs to, in the words a note should use
+   * ("chapter 3"). Groups the motif count; absent, the whole list is one
+   * chapter.
+   */
+  chapter?: string | undefined
+}
+
+/**
+ * The head noun of a motif as a whole-word pattern that also takes the
+ * plural (decision 260): "server racks" matches "rack" and "racks",
+ * "reflections in dark glass" matches "glass" and "glasses". English noun
+ * phrases are head-final, so the last word is the thing itself and the words
+ * before it are modifiers a prompt may drop or vary. A heuristic, which is
+ * why what it finds is a note and never a rejection.
+ */
+export function motifPattern(motif: string): RegExp | null {
+  const words = motif.toLowerCase().match(/[a-z][a-z'-]*/g)
+  const head = words ? words[words.length - 1] : undefined
+  if (!head) return null
+  const stem =
+    head.endsWith('s') && !head.endsWith('ss') && head.length > 3 ? head.slice(0, -1) : head
+  return new RegExp(`\\b${stem.replace(/[-']/g, '\\$&')}(?:s|es)?\\b`, 'i')
+}
+
+/** The words of a brief a motif could hide in. Charts, maps and headlines have none. */
+function motifText(brief: ShotBrief): string | null {
+  switch (brief.type) {
+    case 'still':
+    case 'hero':
+      return `${brief.description} ${brief.prompt}`
+    case 'stock':
+    case 'archival':
+      return `${brief.description} ${brief.query}`
+    default:
+      return null
+  }
+}
+
 /**
  * Craft misses the model let through, in words for the plan summary. Never a
  * rejection: a same-size run is a note for the owner, not a broken slot.
  * Slots arrive in screen order. The banned list is passed in because this
- * package must not import the providers package that owns the bible.
+ * package must not import the providers package that owns the bible; the
+ * motifs are passed in because they are the film's, from its book.
  */
 export function planWarnings(
-  slots: readonly { brief: ShotBrief }[],
+  slots: readonly WarnableSlot[],
   bannedWords: readonly string[],
+  motifs: readonly string[] = [],
 ): string[] {
   const warnings: string[] = []
 
@@ -128,6 +172,46 @@ export function planWarnings(
       if (!seen.has(word) && prompt.includes(word.toLowerCase())) {
         seen.add(word)
         warnings.push(`a prompt uses the banned word "${word}" (slot ${index})`)
+      }
+    }
+  }
+
+  // Motifs (decision 260): the floor is one per chapter and so is the
+  // ceiling, so a motif in two picture briefs of one chapter is a note, and
+  // so is the same motif in two slots that play back to back.
+  const texts = slots.map((slot) => motifText(slot.brief))
+  const groups = new Map<string, string[]>()
+  for (const [index, slot] of slots.entries()) {
+    const text = texts[index]
+    if (text === null || text === undefined) continue
+    const key = slot.chapter ?? ''
+    groups.set(key, [...(groups.get(key) ?? []), text])
+  }
+  for (const motif of motifs) {
+    const pattern = motifPattern(motif)
+    if (!pattern) continue
+    for (const [chapter, group] of groups) {
+      const hits = group.filter((text) => pattern.test(text)).length
+      if (hits > 1) {
+        warnings.push(
+          `motif "${motif}" appears in ${hits} of ${group.length} picture briefs` +
+            (chapter === '' ? '' : ` in ${chapter}`),
+        )
+      }
+    }
+    for (let index = 1; index < texts.length; index += 1) {
+      const previous = texts[index - 1]
+      const current = texts[index]
+      if (
+        previous !== null &&
+        previous !== undefined &&
+        current !== null &&
+        current !== undefined &&
+        pattern.test(previous) &&
+        pattern.test(current)
+      ) {
+        warnings.push(`motif "${motif}" appears in two adjacent slots (from slot ${index - 1})`)
+        break
       }
     }
   }

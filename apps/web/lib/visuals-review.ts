@@ -400,6 +400,11 @@ export async function visualsReviewModel(
     projectId,
   )
 
+  const direction = ((): DirectorsBook | null => {
+    const parsed = DirectorsBookSchema.safeParse(project?.direction)
+    return parsed.success ? parsed.data : null
+  })()
+
   return {
     chapters,
     coverage,
@@ -413,19 +418,20 @@ export async function visualsReviewModel(
     toFetch: toFetch.length,
     stillsToFetch,
     fetchEstimateUsd,
-    direction: ((): DirectorsBook | null => {
-      const parsed = DirectorsBookSchema.safeParse(project?.direction)
-      return parsed.success ? parsed.data : null
-    })(),
-    // Craft notes (decision 252), in screen order; never a blocker. Plus
-    // any cast member the book forgot (decision 253).
+    direction,
+    // Craft notes (decision 252), in screen order; never a blocker. Motif
+    // counts per chapter (decision 260), plus any cast member the book forgot
+    // (decision 253).
     warnings: [
       ...planWarnings(
-        slots.flatMap((slot) => (slot.brief ? [{ brief: slot.brief }] : [])),
+        slots.flatMap((slot) =>
+          slot.brief ? [{ brief: slot.brief, chapter: `chapter ${slot.chapterIndex + 1}` }] : [],
+        ),
         BANNED_PROMPT_WORDS,
+        direction?.motifs ?? [],
       ),
       ...castWarnings(
-        DirectorsBookSchema.safeParse(project?.direction).data ?? null,
+        direction,
         (project ? await listCastMembers(db, project.id) : []).map((member) => member.name),
       ),
     ],

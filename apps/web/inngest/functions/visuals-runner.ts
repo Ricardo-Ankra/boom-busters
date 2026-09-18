@@ -224,10 +224,14 @@ export const visualsRunner = inngest.createFunction(
 
     const stillCount = allRows.filter((row) => row.type === 'still').length
     // Craft misses the model let through (decision 252): notes for the plan
-    // screen, never rejections.
+    // screen, never rejections. The motif count is per chapter (decision 260).
+    const chapterLabel = new Map(
+      setup.chapters.map((chapter, index) => [chapter.id, `chapter ${index + 1}`]),
+    )
     const warnings = planWarnings(
-      allRows.map((row) => ({ brief: row.brief })),
+      allRows.map((row) => ({ brief: row.brief, chapter: chapterLabel.get(row.chapterId) })),
       BANNED_PROMPT_WORDS,
+      direction.book.motifs,
     )
     await step.run('open-plan-park', () =>
       openReviewGate(ctx, {
