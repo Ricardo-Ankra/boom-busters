@@ -7,6 +7,7 @@ import {
   getProject,
   getSettings,
   getShotSlot,
+  linkSlotReuse,
   scriptableClaims,
   setArticleSourceManual,
   retypeShotSlot,
@@ -14,6 +15,7 @@ import {
   setSlotResolution,
   setSlotRetype,
   shotBriefHash,
+  unlinkSlotReuse,
   updateSlotBrief,
   upsertAssetByHash,
 } from '@boom-busters/db'
@@ -26,11 +28,13 @@ import {
   emphasisFits,
   HERO_SLOTS_ENABLED,
   normaliseArticleUrl,
+  REUSABLE_SLOT_TYPES,
   ShotBriefSchema,
   ShotSlotTypeSchema,
   SlotCandidateSchema,
   UlidSchema,
 } from '@boom-busters/schemas'
+import type { ShotSlotRow } from '@boom-busters/db'
 import type { HeadlineBrief, ShotBrief, SlotCandidate } from '@boom-busters/schemas'
 import { createHash } from 'node:crypto'
 import { revalidatePath } from 'next/cache'
@@ -81,6 +85,106 @@ function badIds(...ids: string[]): ActionResult | null {
 function refresh(projectId: string): void {
   revalidatePath(`/projects/${projectId}`)
   revalidatePath('/')
+}
+
+/** m:ss for a refusal that names where a shot plays. The board's own `timecode`, repeated here because a server module cannot import a client component. */
+function mmss(ms: number): string {
+  const totalSec = Math.floor(ms / 1000)
+  return `${Math.floor(totalSec / 60)}:${String(totalSec % 60).padStart(2, '0')}`
+}
+
+/**
+ * The refusal every fetch-shaped action gives a linked slot (decision 261).
+ * The board hides those buttons; this is for a screen that went stale.
+ */
+async function linkedSlotRefusal(slot: ShotSlotRow): Promise<ActionResult | null> {
+  if (!slot.reuseOfSlotId) return null
+  const source = await getShotSlot(db, slot.reuseOfSlotId)
+  const at = source ? ` at ${mmss(source.startMs)}` : ''
+  return { ok: false, error: `This slot reuses the shot${at}. Choose its own shot first.` }
+}
+
+/**
+ * The rules of a reuse link (decision 261), in one place: the slot and the
+ * shot it picked, or the refusal. A pick that is itself a dependant
+ * re-points to the original, so the chip always names the shot that was
+ * paid for and no chain can form.
+ */
+async function reuseSource(
+  projectId: string,
+  slotId: string,
+  sourceSlotId: string,
+): Promise<{ slot: ShotSlotRow; source: ShotSlotRow } | { error: string }> {
+  if (slotId === sourceSlotId) return { error: 'A slot cannot reuse its own shot.' }
+  const [slot, picked] = await Promise.all([getShotSlot(db, slotId), getShotSlot(db, sourceSlotId)])
+  if (!slot) return { error: 'This slot no longer exists.' }
+  if (!picked) return { error: 'The shot you picked no longer exists.' }
+  if (slot.projectId !== projectId || picked.projectId !== projectId) {
+    return { error: 'Shots can only be reused within the same film.' }
+  }
+  if (!REUSABLE_SLOT_TYPES.includes(slot.type) || !REUSABLE_SLOT_TYPES.includes(picked.type)) {
+    return {
+      error: 'Only stock, AI image and real-footage slots can reuse a shot or be reused.',
+    }
+  }
+  const source = picked.reuseOfSlotId ? await getShotSlot(db, picked.reuseOfSlotId) : picked
+  if (!source) return { error: 'The shot you picked no longer exists.' }
+  if (source.id === slotId) return { error: 'A slot cannot reuse its own shot.' }
+  return { slot, source }
+}
+
+/**
+ * "Use an existing shot" (decision 261). Before Fetch the link is recorded
+ * and the fan-out's copy step fills it; on the board the named candidate,
+ * or the source's chosen one, is copied at once. A board-phase source with
+ * nothing to copy is not offered by the picker; a stale screen that asks
+ * anyway gets words, not a link nothing will fill.
+ */
+export async function reuseSlotShotAction(
+  projectId: string,
+  slotId: string,
+  sourceSlotId: string,
+  candidateId?: string,
+): Promise<ActionResult> {
+  await requireOwner()
+  const invalid = badIds(projectId, slotId, sourceSlotId)
+  if (invalid) return invalid
+
+  const checked = await reuseSource(projectId, slotId, sourceSlotId)
+  if ('error' in checked) return { ok: false, error: checked.error }
+
+  const held = checked.source.candidates as unknown as SlotCandidate[]
+  const chosen = candidateId ?? held.find((candidate) => candidate.chosen)?.id
+  const project = await getProject(db, projectId)
+  if (project?.visualsPhase === 'board' && chosen === undefined) {
+    return {
+      ok: false,
+      error: 'That slot has no shot to reuse yet. Fetch or regenerate it first.',
+    }
+  }
+
+  const linked = await linkSlotReuse(db, slotId, checked.source.id, chosen)
+  if (!linked) return { ok: false, error: 'The shot you picked no longer exists.' }
+  refresh(projectId)
+  return { ok: true }
+}
+
+/** "Choose its own shot": the link goes and the next fetch pass owes the slot work again. */
+export async function unlinkSlotReuseAction(
+  projectId: string,
+  slotId: string,
+): Promise<ActionResult> {
+  await requireOwner()
+  const invalid = badIds(projectId, slotId)
+  if (invalid) return invalid
+
+  const slot = await getShotSlot(db, slotId)
+  if (!slot) return { ok: false, error: 'This slot no longer exists.' }
+  if (!slot.reuseOfSlotId) return { ok: true }
+
+  await unlinkSlotReuse(db, slotId)
+  refresh(projectId)
+  return { ok: true }
 }
 
 export async function chooseCandidateAction(
@@ -142,7 +246,9 @@ export async function editBriefAction(
   // Archival never refetches (decision 214): its brief is guidance for the
   // human's own search, and there is nothing on the other end to call.
   const project = await getProject(db, projectId)
-  if (project?.visualsPhase !== 'board' || merged.data.type === 'archival') {
+  // A linked slot's picture is another slot's (decision 261): its words save
+  // and nothing is fetched, in either phase.
+  if (project?.visualsPhase !== 'board' || merged.data.type === 'archival' || slot.reuseOfSlotId) {
     refresh(projectId)
     return { ok: true }
   }
@@ -226,6 +332,8 @@ export async function retypeSlotAction(
 
   const slot = await getShotSlot(db, slotId)
   if (!slot) return { ok: false, error: 'This slot no longer exists.' }
+  const linked = await linkedSlotRefusal(slot)
+  if (linked) return linked
   if (slot.type === parsedType.data) return { ok: true }
 
   const current = ShotBriefSchema.safeParse(slot.brief)
@@ -372,6 +480,8 @@ export async function rebriefSlotAction(
 
   const slot = await getShotSlot(db, slotId)
   if (!slot) return { ok: false, error: 'This slot no longer exists.' }
+  const linked = await linkedSlotRefusal(slot)
+  if (linked) return linked
 
   const current = ShotBriefSchema.safeParse(slot.brief)
   if (!current.success) {
@@ -582,6 +692,8 @@ export async function refetchSlotAction(
 
   const slot = await getShotSlot(db, slotId)
   if (!slot) return { ok: false, error: 'This slot no longer exists.' }
+  const linked = await linkedSlotRefusal(slot)
+  if (linked) return linked
 
   // Real footage has nothing to fetch (decision 214). The board hides the
   // button, but an action is a POST endpoint of its own.
@@ -691,6 +803,8 @@ export async function createOwnUploadAction(input: {
 
   const slot = await getShotSlot(db, input.slotId)
   if (!slot) return { ok: false, error: 'This slot no longer exists.' }
+  const linked = await linkedSlotRefusal(slot)
+  if (linked) return linked
 
   const rules = uploadRules(slot.brief, input.fileType)
   if ('error' in rules) return { ok: false, error: rules.error }
@@ -872,6 +986,8 @@ export async function addSlotImageFromUrlAction(input: {
 
   const slot = await getShotSlot(db, input.slotId)
   if (!slot) return { ok: false, error: 'This slot no longer exists.' }
+  const linked = await linkedSlotRefusal(slot)
+  if (linked) return linked
   if (!storageConfigured()) {
     return { ok: false, error: 'Uploads need R2 configured — there is nowhere to store the file.' }
   }
@@ -986,6 +1102,8 @@ export async function redirectSceneAction(
 
   const slot = await getShotSlot(db, slotId)
   if (!slot) return { ok: false, error: 'This slot no longer exists.' }
+  const linked = await linkedSlotRefusal(slot)
+  if (linked) return linked
   if ((slot.brief as { type?: string } | null)?.type !== 'still') {
     return { ok: false, error: 'Only an AI image slot can be redirected.' }
   }
