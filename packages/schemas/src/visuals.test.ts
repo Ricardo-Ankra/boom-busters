@@ -415,4 +415,20 @@ describe('convertBrief — re-typing a slot (staged-visuals design)', () => {
     expect(convertBrief(still, 'map')).toBeNull()
     expect(convertBrief(still, 'hero')).toBeNull()
   })
+
+  it('converts INTO a headline only once the article has been picked', () => {
+    // Nothing in the old brief says WHICH article, and no model may choose
+    // one (decision 257). So the conversion is null until a claim arrives
+    // with it — that null is what sends the board to its chooser.
+    expect(convertBrief(still, 'headline')).toBeNull()
+
+    const headline = convertBrief(still, 'headline', { headlineClaimId: CLAIM_A })
+    expect(headline).toMatchObject({
+      type: 'headline',
+      sourceClaimId: CLAIM_A,
+      coversText: common.coversText,
+      description: common.description,
+    })
+    expect(ShotBriefSchema.parse(headline)).toBeTruthy()
+  })
 })

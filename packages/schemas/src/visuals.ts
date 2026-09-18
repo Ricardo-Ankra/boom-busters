@@ -392,7 +392,7 @@ export const STILL_GENERATIONS = 2
 export function convertBrief(
   brief: ShotBrief,
   targetType: ShotSlotType,
-  options: { stillStyleAnchors?: string } = {},
+  options: { stillStyleAnchors?: string; headlineClaimId?: string } = {},
 ): ShotBrief | null {
   if (targetType === brief.type) return brief
 
@@ -415,6 +415,17 @@ export function convertBrief(
         ...common,
         prompt: anchors ? `${brief.description}. ${anchors}` : brief.description,
       }
+    }
+    case 'headline': {
+      /**
+       * A headline card quotes ONE claim, and nothing in the old brief says
+       * which. No model may choose it either (decision 257) — every string on
+       * the card comes from the article behind that claim. So this conversion
+       * is mechanical ONCE the owner has picked, and null until then, which is
+       * what sends the board to its chooser instead of to the retyper.
+       */
+      const claimId = options.headlineClaimId
+      return claimId === undefined ? null : { type: 'headline', ...common, sourceClaimId: claimId }
     }
     default:
       return null
