@@ -4953,27 +4953,30 @@ Recorded whenever the spec left something open and an implementation was chosen.
     (migration 0025) records the link. Before Fetch the link stands alone:
     `slotNeedsResolution` never owes a linked slot a fetch, so no still is
     generated for it, and a new runner step `copy-reused-shots` after the
-    fan-out copies each source's chosen candidate into its dependants
-    (status resolved, the target's own brief hash, the source's asset id;
-    a source with nothing chosen leaves a placeholder). On the board the
-    action copies at once. Every downstream reader keeps reading
-    `candidates` as it did: assembly, ingestion, the gate, shorts and the
-    teaser. The copy carries `reusedFrom: { slotId, depicts }` and drops the
-    source's score (judged against another brief); `syntheticLikenesses`
-    reads `reusedFrom.depicts`, so a likeness reused into a stock slot still
-    sets the altered-content label. A live link (every reader follows the
+    fan-out copies each source's chosen candidate into its dependants,
+    repeating the pass while a fill makes another possible so the write is
+    right whatever order rows arrive in (status resolved, the target's own
+    brief hash, the source's asset id; a source with nothing chosen leaves
+    a placeholder). On the board the action copies at once. Every
+    downstream reader keeps reading `candidates` as it did: assembly,
+    ingestion, the gate, shorts and the teaser. The copy carries
+    `reusedFrom: { slotId, depicts }` and drops the source's score (judged
+    against another brief); `syntheticLikenesses` reads
+    `reusedFrom.depicts`, so a likeness reused into a stock slot still sets
+    the altered-content label. A live link (every reader follows the
     column) was rejected as five readers and a gate rule for re-planned
     sources; a copy with no column was rejected because before Fetch there
     is nothing to copy, and the saving before Fetch was the point.
 
     _Rules._ Only stock, still and archival slots reuse or are reused; no
     self-reuse; no chains (a pick that is itself a dependant re-points to
-    the original); same project only. Every rule lives in the server
-    action, and every fetch-shaped action (Regenerate, Fetch this slot,
-    Draft a different brief, Redirect, Upload, re-type) refuses a linked
-    slot in words; a brief edit saves and never fetches for one, and
-    `updateSlotBrief` keeps a linked slot's status. The refetcher skips a
-    linked slot for an event already in flight.
+    the original, and a slot other slots show cannot itself be linked);
+    same project only. Every rule lives in the server action, and every
+    fetch-shaped action (Regenerate, Fetch this slot, Draft a different
+    brief, Redirect, Upload, re-type) refuses a linked slot in words; a
+    brief edit saves and never fetches for one, and `updateSlotBrief` keeps
+    a linked slot's status. The refetcher skips a linked slot for an event
+    already in flight.
 
     _The board._ "Use an existing shot" on picture cards opens a panel of
     the film's other originals grouped by chapter: the covered sentence,
@@ -4984,13 +4987,19 @@ Recorded whenever the spec left something open and an implementation was chosen.
     review model repeats it as "the same shot plays at 3:10 and 3:40". A
     linked card shows the copy with the chip "Reused from ch 2 · 3:10",
     keeps Edit brief, hides everything that would fetch, and offers "Choose
-    its own shot". A source card says "Also used at 7:42".
+    its own shot". A source card says "Also used at 7:42". The model
+    carries `reuse` per slot; the per-slot `reusedBy` count the spec named
+    was dropped as unread, since the card derives "Also used at" from the
+    slots it already holds.
 
     _Tests._ Pure: the guard, the schema, `reuseView` and the spacing note.
     DB: link with and without a candidate, copy on resolve, unlink, the
-    brief edit. Runner: the copy step via the engine with the plan-writing
-    steps stubbed. Actions: chains, types, other films, the refusals. Board:
-    the picker and the linked card. E2E: the round trip on the seeded plan
-    project (link, the bill drops to one slot, unlink), and the picker on
-    the seeded board's placeholder, cancelled, because a board copy cannot
-    be put back into the exact seeded state from the UI.
+    brief edit. Runner: the copy step is one line over `copyReusedShots`,
+    which the db suite proves, because the test harness cannot drive a run
+    past `step.waitForEvent`; the refetcher's skip is proved by driving the
+    refetcher, which has no wait in front of it. Actions: chains, types,
+    other films, the refusals. Board: the picker and the linked card.
+    E2E: the round trip on the seeded plan project (link, the bill drops to
+    one slot, unlink), and the picker on the seeded board's placeholder,
+    cancelled, because a board copy cannot be put back into the exact
+    seeded state from the UI.
