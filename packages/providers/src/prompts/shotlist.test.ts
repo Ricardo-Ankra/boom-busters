@@ -428,6 +428,14 @@ describe('buildShotListRequest with direction (decision 252)', () => {
     expect(request.system).toContain('Never "pan"')
   })
 
+  it('asks for the name alone in depicts: the role stays in the prompt', () => {
+    // The 2026-09-19 plan wrote "Emad Mostaque, founder and former CEO of
+    // Stability AI" into the list, and the exact-name join sent every such
+    // still to the plain route without its photographs.
+    expect(request.system).toContain('by name alone')
+    expect(request.system).toContain('never "Jane Doe, chief executive"')
+  })
+
   it('sizes the answer budget to the chapter: a long chapter gets room, a short one the floor', () => {
     // Two paragraphs, twenty seconds: the floor. The first live run under the
     // book cut off mid-JSON at the old flat 8,000 because every brief now

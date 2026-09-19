@@ -61,3 +61,51 @@ export function referencePhotos(member: Pick<CastMember, 'photos'>, limit = 1): 
 export function castPhotoExtension(mimeType: CastPhotoMime): 'jpg' | 'png' | 'webp' {
   return mimeType === 'image/jpeg' ? 'jpg' : mimeType === 'image/png' ? 'png' : 'webp'
 }
+
+/** Lower-cased, trimmed, runs of whitespace collapsed: how two names are compared. */
+function normaliseName(text: string): string {
+  return text.trim().replace(/\s+/g, ' ').toLowerCase()
+}
+
+/** What may follow the name in a "depicts" entry: a role after a comma, a bracket, a dash. */
+const AFTER_NAME = /^\s*[,;:(/.\-\u2013\u2014]/
+
+/**
+ * Whether one "depicts" entry names this cast member.
+ *
+ * The join key is the exact full name, and the shot-list model is asked for
+ * exactly that. It does not always comply: the plan of 2026-09-19 wrote
+ * "Emad Mostaque, founder and former CEO of Stability AI", the prompt's own
+ * "full name and role" phrasing carried into the list, and an exact-string
+ * join read every such entry as a stranger. Six cast stills were routed,
+ * priced and generated as plain ones, with no reference photograph, while
+ * the two whose list held the bare name went to the likeness generator.
+ *
+ * So an entry names a member when, ignoring case and runs of whitespace, it
+ * IS the name, or it begins with the name and goes on with a separator. A
+ * name that merely appears inside a longer entry ("an aide to Emad
+ * Mostaque") does not depict him, and neither does a longer name that
+ * happens to start the same way.
+ */
+export function depictsName(entry: string, name: string): boolean {
+  const wanted = normaliseName(name)
+  const given = normaliseName(entry)
+  if (wanted.length === 0 || given.length === 0) return false
+  if (given === wanted) return true
+  return given.startsWith(wanted) && AFTER_NAME.test(given.slice(wanted.length))
+}
+
+/**
+ * The cast members a brief's "depicts" list names, in cast order, each once.
+ * THE join between a brief and the cast: routing, pricing, the photographs
+ * sent and the altered-content label all go through it, so none of them can
+ * answer differently.
+ */
+export function depictedMembers<T extends Pick<CastMember, 'name'>>(
+  depicts: readonly string[] | undefined,
+  cast: readonly T[],
+): T[] {
+  const entries = (depicts ?? []).filter((entry) => entry.trim().length > 0)
+  if (entries.length === 0) return []
+  return cast.filter((member) => entries.some((entry) => depictsName(entry, member.name)))
+}

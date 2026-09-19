@@ -189,6 +189,25 @@ describeDb('generateStillCandidates with the cast', () => {
       expect(await lastLedgerModel()).toBe('gemini-3-pro-image')
     })
 
+    it('sends a still whose depicts names the member with their role to the likeness route', async () => {
+      // What the planner wrote on 2026-09-19: the prompt's "full name and
+      // role" carried into the list, and an exact-name join sent every such
+      // still to the plain route without its photographs.
+      const emad = await insertCastMember(db, {
+        projectId: FIXTURE_PROJECT_ID,
+        name: 'Emad Mostaque',
+        role: 'Founder',
+      })
+      await setCastPhotos(db, emad.id, [photo('front-1', 'front')])
+
+      await generateStillCandidates(
+        { ...still, depicts: ['Emad Mostaque, founder and former CEO of Stability AI'] },
+        FIXTURE_PROJECT_ID,
+      )
+      expect(await lastLedgerModel()).toBe('gemini-3-pro-image')
+      expect(generate.mock.calls[0]?.[0].references).toHaveLength(1)
+    })
+
     it('leaves a still of nobody on the ordinary route', async () => {
       const plain = { ...still, depicts: [] }
       await generateStillCandidates(plain, FIXTURE_PROJECT_ID)
@@ -258,6 +277,22 @@ describeDb('generateStillCandidates with the cast', () => {
       })
       expect(await stillsEstimateUsd([still], FIXTURE_PROJECT_ID)).toBeCloseTo(
         0.04 * STILL_GENERATIONS,
+      )
+    })
+
+    it('prices a still whose depicts carries the name and a role at the likeness route', async () => {
+      const emad = await insertCastMember(db, {
+        projectId: FIXTURE_PROJECT_ID,
+        name: 'Emad Mostaque',
+        role: 'Founder',
+      })
+      await setCastPhotos(db, emad.id, [photo('front-1', 'front')])
+      const withRole = {
+        ...still,
+        depicts: ['Emad Mostaque, founder and former CEO of Stability AI'],
+      }
+      expect(await stillsEstimateUsd([withRole], FIXTURE_PROJECT_ID)).toBeCloseTo(
+        0.15 * STILL_GENERATIONS,
       )
     })
 
