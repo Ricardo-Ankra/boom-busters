@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { nameMatches } from './cast'
 import type { ShotBrief } from './visuals'
 
 /**
@@ -139,6 +140,12 @@ function motifText(brief: ShotBrief): string | null {
   }
 }
 
+/** The set a warnable slot names, or null. Only picture briefs can name one. */
+function slotSet(brief: WarnableSlot['brief']): string | null {
+  if (brief.type !== 'still' && brief.type !== 'hero') return null
+  return brief.set?.trim() || null
+}
+
 /**
  * Craft misses the model let through, in words for the plan summary. Never a
  * rejection: a same-size run is a note for the owner, not a broken slot.
@@ -150,6 +157,7 @@ export function planWarnings(
   slots: readonly WarnableSlot[],
   bannedWords: readonly string[],
   motifs: readonly string[] = [],
+  setNames: readonly string[] = [],
 ): string[] {
   const warnings: string[] = []
 
@@ -213,6 +221,51 @@ export function planWarnings(
         warnings.push(`motif "${motif}" appears in two adjacent slots (from slot ${index - 1})`)
         break
       }
+    }
+  }
+
+  // Sets carry decision 260's risk in a new place: a room named on every
+  // brief is the new empty chair. Counted per chapter, like a motif, and
+  // never a rejection.
+  const byChapter = new Map<string, { total: number; sets: Map<string, number> }>()
+  for (const slot of slots) {
+    const chapter = slot.chapter ?? 'the film'
+    const entry = byChapter.get(chapter) ?? { total: 0, sets: new Map() }
+    if (slot.brief.type === 'still' || slot.brief.type === 'hero') {
+      entry.total += 1
+      const named = slotSet(slot.brief)
+      if (named) entry.sets.set(named, (entry.sets.get(named) ?? 0) + 1)
+    }
+    byChapter.set(chapter, entry)
+  }
+  for (const [chapter, entry] of byChapter) {
+    for (const [name, count] of entry.sets) {
+      if (entry.total > 1 && count * 2 > entry.total) {
+        warnings.push(
+          `the set "${name}" carries ${count} of ${entry.total} picture briefs in ${chapter}`,
+        )
+      }
+    }
+  }
+
+  for (const [index, slot] of slots.entries()) {
+    const here = slotSet(slot.brief)
+    const next = slots[index + 1] ? slotSet(slots[index + 1]!.brief) : null
+    if (here && next && here === next) {
+      warnings.push(`the set "${here}" fills two adjacent slots (from slot ${index})`)
+    }
+  }
+
+  // A set nothing holds conditions nothing, exactly like a depicts name with
+  // no photograph, and is worth saying before the money is spent.
+  if (setNames.length > 0) {
+    const unknown = new Set<string>()
+    for (const slot of slots) {
+      const named = slotSet(slot.brief)
+      if (named && !setNames.some((name) => nameMatches(named, name))) unknown.add(named)
+    }
+    for (const name of unknown) {
+      warnings.push(`the film has no set named "${name}", so that shot is generated plain`)
     }
   }
 

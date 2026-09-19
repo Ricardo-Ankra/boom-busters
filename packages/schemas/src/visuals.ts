@@ -140,6 +140,13 @@ export const StillBriefSchema = z.object({
   negativePrompt: z.string().min(1).optional(),
   /** Real people shown by likeness, full names. Drives the label and the refusal fallback (decision 252). */
   depicts: z.array(z.string().min(1)).optional(),
+  /**
+   * The set this shot happens in, by exact name (decision 264). Its plates
+   * ride along with the prompt, so the same room is the same room in every
+   * shot of it. A name the project does not hold generates as a plain
+   * still and is noted on the plan screen.
+   */
+  set: z.string().min(1).optional(),
 })
 export type StillBrief = z.infer<typeof StillBriefSchema>
 
@@ -250,6 +257,8 @@ export const HeroBriefSchema = z.object({
   loop: z.boolean(),
   /** Real people shown by likeness, full names (decision 252). */
   depicts: z.array(z.string().min(1)).optional(),
+  /** The set this shot happens in, by exact name (decision 264). */
+  set: z.string().min(1).optional(),
 })
 export type HeroBrief = z.infer<typeof HeroBriefSchema>
 

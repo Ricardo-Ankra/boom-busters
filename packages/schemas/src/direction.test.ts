@@ -214,3 +214,47 @@ describe('castWarnings', () => {
     expect(castWarnings(book, [])).toEqual([])
   })
 })
+
+describe('planWarnings counts sets', () => {
+  const slot = (chapter: string, set?: string) => ({
+    brief: {
+      type: 'still' as const,
+      coversText: 'x',
+      description: 'x',
+      motion: { kind: 'static' as const },
+      transition: 'cut' as const,
+      prompt: 'a room',
+      ...(set ? { set } : {}),
+    },
+    chapter,
+  })
+
+  it('notes a set carrying more than half a chapter of picture briefs', () => {
+    const slots = [
+      slot('chapter 1', 'Venture Capital Boardroom'),
+      slot('chapter 1', 'Venture Capital Boardroom'),
+      slot('chapter 1', 'Venture Capital Boardroom'),
+      slot('chapter 1'),
+    ]
+    const warnings = planWarnings(slots, [], [], ['Venture Capital Boardroom'])
+    expect(warnings.some((w) => w.includes('3 of 4 picture briefs in chapter 1'))).toBe(true)
+  })
+
+  it('notes a set in two adjacent slots', () => {
+    const slots = [
+      slot('chapter 1', 'Venture Capital Boardroom'),
+      slot('chapter 1', 'Venture Capital Boardroom'),
+    ]
+    const warnings = planWarnings(slots, [], [], ['Venture Capital Boardroom'])
+    expect(warnings.some((w) => w.includes('two adjacent slots'))).toBe(true)
+  })
+
+  it('notes a set the project does not hold, because it conditions nothing', () => {
+    const warnings = planWarnings([slot('chapter 1', 'A car park')], [], [], ['The boardroom'])
+    expect(warnings.some((w) => w.includes('no set named "A car park"'))).toBe(true)
+  })
+
+  it('says nothing when no slot names a set', () => {
+    expect(planWarnings([slot('chapter 1')], [], [], ['The boardroom'])).toEqual([])
+  })
+})

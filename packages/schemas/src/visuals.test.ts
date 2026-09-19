@@ -8,6 +8,7 @@ import {
   ShotBriefSchema,
   SlotCandidateSchema,
   SlotDraftStateSchema,
+  StillBriefSchema,
   convertBrief,
   mapClaimRefs,
   plannedBriefRejection,
@@ -478,5 +479,28 @@ describe('convertBrief — re-typing a slot (staged-visuals design)', () => {
 describe('REUSABLE_SLOT_TYPES', () => {
   it('is pictures, never data (decision 261)', () => {
     expect(REUSABLE_SLOT_TYPES).toEqual(['stock', 'still', 'archival'])
+  })
+})
+
+describe('a still brief may name a set', () => {
+  const base = {
+    type: 'still' as const,
+    coversText: 'x',
+    description: 'x',
+    shotSize: 'medium' as const,
+    motion: { kind: 'static' as const },
+    transition: 'cut' as const,
+    prompt: 'p',
+  }
+
+  it('accepts a set name and leaves it off when absent', () => {
+    expect(StillBriefSchema.parse({ ...base, set: 'Venture Capital Boardroom' }).set).toBe(
+      'Venture Capital Boardroom',
+    )
+    expect(StillBriefSchema.parse(base).set).toBeUndefined()
+  })
+
+  it('refuses an empty set name, which would join to nothing', () => {
+    expect(StillBriefSchema.safeParse({ ...base, set: '' }).success).toBe(false)
   })
 })
