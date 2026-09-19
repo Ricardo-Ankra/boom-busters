@@ -79,12 +79,17 @@ export function stillStyleAnchors(brandKit: BrandKitStored): string {
   const { primary, accent, background } = brandKit.colors
   const grain = grainPreset === 'none' ? 'clean, no grain' : `${grainPreset} film grain`
 
+  // Positive direction only. Two bans have been taken out of this string for
+  // the same reason: it rides on every prompt, so a blanket "no identifiable
+  // real faces" fought every likeness the bible asked for (decision 252), and
+  // "no text, no logos, no watermarks" fought every company mark a film about
+  // a company needs (decision 263). The bible decides both, per shot, and a
+  // slot that truly needs an exclusion has its own negative prompt. "cinematic"
+  // went with them: it is on the bible's banned list, so every still the
+  // planner wrote warned about a word this function had supplied.
   return (
     `${grain}; muted documentary colour grade anchored on ${primary} and ${accent} ` +
-    // No face rule here: the bible decides who is shown (decision 252), and a
-    // blanket "no identifiable real faces" fought every likeness it asked for.
-    `against ${background}; cinematic, sombre, photographic realism; no text, no logos, ` +
-    'no watermarks'
+    `against ${background}; sombre, photographic realism`
   )
 }
 
