@@ -249,6 +249,28 @@ describe('planWarnings counts sets', () => {
     expect(warnings.some((w) => w.includes('two adjacent slots'))).toBe(true)
   })
 
+  it('says nothing at exactly half a chapter, which is not a majority', () => {
+    const slots = [
+      slot('chapter 1', 'Venture Capital Boardroom'),
+      slot('chapter 1'),
+      slot('chapter 1', 'Venture Capital Boardroom'),
+      slot('chapter 1'),
+    ]
+    const warnings = planWarnings(slots, [], [], ['Venture Capital Boardroom'])
+    expect(warnings.some((w) => w.includes('picture briefs in chapter 1'))).toBe(false)
+  })
+
+  it('notes one run of a set once, not once per adjacent pair', () => {
+    const slots = [
+      slot('chapter 1', 'Venture Capital Boardroom'),
+      slot('chapter 1', 'Venture Capital Boardroom'),
+      slot('chapter 1', 'Venture Capital Boardroom'),
+      slot('chapter 1'),
+    ]
+    const warnings = planWarnings(slots, [], [], ['Venture Capital Boardroom'])
+    expect(warnings.filter((w) => w.includes('two adjacent slots'))).toHaveLength(1)
+  })
+
   it('notes a set the project does not hold, because it conditions nothing', () => {
     const warnings = planWarnings([slot('chapter 1', 'A car park')], [], [], ['The boardroom'])
     expect(warnings.some((w) => w.includes('no set named "A car park"'))).toBe(true)

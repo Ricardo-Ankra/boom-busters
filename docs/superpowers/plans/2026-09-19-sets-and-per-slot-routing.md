@@ -345,7 +345,7 @@ In `packages/schemas/src/index.ts`, add `export * from './sets'` immediately aft
 - [ ] **Step 5: Run the tests**
 
 Run: `cd packages/schemas && pnpm exec vitest run src/sets.test.ts`
-Expected: PASS, 9 tests.
+Expected: PASS, 8 tests.
 
 - [ ] **Step 6: Commit**
 

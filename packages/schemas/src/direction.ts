@@ -248,10 +248,14 @@ export function planWarnings(
     }
   }
 
+  // One note per set, like the motif walk above: a run of four slots in one
+  // room is one problem to fix, and three lines about it reads as three.
+  const adjacent = new Set<string>()
   for (const [index, slot] of slots.entries()) {
     const here = slotSet(slot.brief)
     const next = slots[index + 1] ? slotSet(slots[index + 1]!.brief) : null
-    if (here && next && here === next) {
+    if (here && next && here === next && !adjacent.has(here)) {
+      adjacent.add(here)
       warnings.push(`the set "${here}" fills two adjacent slots (from slot ${index})`)
     }
   }
