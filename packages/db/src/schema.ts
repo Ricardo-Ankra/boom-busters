@@ -613,6 +613,14 @@ export const shotSlots = pgTable(
     reuseOfSlotId: text('reuse_of_slot_id').references((): AnyPgColumn => shotSlots.id, {
       onDelete: 'set null',
     }),
+    /**
+     * The image route this slot generates on (decision 264), as
+     * `{ provider, model }`. Derived by rule when the shot list is planned
+     * and changed by the owner in the brief editor; null means fall back to
+     * the derived route at generation time. It is part of the resolution
+     * hash, so changing the model makes the slot owe work.
+     */
+    route: jsonb('route').$type<Record<string, unknown>>(),
     startMs: integer('start_ms').notNull().default(0),
     durationMs: integer('duration_ms').notNull().default(0),
     createdAt: createdAt(),
@@ -665,6 +673,42 @@ export const castMembers = pgTable(
 )
 
 export type CastMemberRow = typeof castMembers.$inferSelect
+
+/**
+ * A film's sets (decision 264): the rooms it returns to, with the reference
+ * plates that keep them the same room in every shot.
+ *
+ * The cast's twin, and its own table for the same reason: the Director's
+ * Book's card leaves the screen when the plan is approved, and the rooms are
+ * needed for every still after that. Seeded from the book's locations.
+ */
+export const projectSets = pgTable(
+  'project_sets',
+  {
+    id: id(),
+    projectId: text('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    /** Exact name: the join key a still brief's `set` names. */
+    name: text('name').notNull(),
+    /** The book's look line, editable. Used to generate a plate, and nowhere else. */
+    look: text('look').notNull().default(''),
+    plates: jsonb('plates')
+      .notNull()
+      .default(sql`'[]'::jsonb`)
+      .$type<Record<string, unknown>[]>(),
+    /**
+     * Set when the producer removes a set the Director's Book named. The row
+     * stays so the next draft of the book does not add it back; the sets the
+     * app shows and generates from are the rows where this is null.
+     */
+    dismissedAt: timestamp('dismissed_at', { withTimezone: true }),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [uniqueIndex('project_sets_project_name_idx').on(t.projectId, t.name)],
+)
+export type ProjectSetRow = typeof projectSets.$inferSelect
 
 export const timelines = pgTable(
   'timelines',
@@ -984,6 +1028,7 @@ export const projectsRelations = relations(projects, ({ one, many }) => ({
   voiceTakes: many(voiceTakes),
   shotSlots: many(shotSlots),
   castMembers: many(castMembers),
+  projectSets: many(projectSets),
   timelines: many(timelines),
   renders: many(renders),
   shorts: many(shorts),
