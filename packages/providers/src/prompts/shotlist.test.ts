@@ -9,6 +9,7 @@ import {
 } from './shotlist'
 import type { ShotParagraph } from './shotlist'
 import { mockDirectorsBook } from './direction'
+import { BANNED_PROMPT_WORDS } from './direction-craft'
 import type { ScriptClaim } from './script'
 import { MAX_OUTPUT_TOKENS, outputBudget } from '../llm/types'
 
@@ -163,6 +164,25 @@ describe('stillStyleAnchors', () => {
 
   it('does not forbid faces: the bible decides who is shown, by likeness', () => {
     expect(stillStyleAnchors(brandKit)).not.toMatch(/faces/)
+  })
+
+  /**
+   * The same move as the face ban, for the same reason (decision 263). A
+   * documentary about a company shows that company's marks, and the anchors
+   * rode on every prompt telling the model not to. The bible decides.
+   */
+  it('does not forbid logos: a film about a company shows its marks', () => {
+    expect(stillStyleAnchors(brandKit)).not.toMatch(/logos/)
+  })
+
+  /**
+   * The anchors are pasted into every still prompt verbatim, and `planWarnings`
+   * scans those prompts for banned words. "cinematic" sat in both, so all 48
+   * stills of a live plan warned about a string the app itself wrote.
+   */
+  it('uses no word the bible bans from prompts', () => {
+    const anchors = stillStyleAnchors(brandKit).toLowerCase()
+    for (const word of BANNED_PROMPT_WORDS) expect(anchors).not.toContain(word)
   })
 
   it('says "no grain" rather than "none film grain"', () => {

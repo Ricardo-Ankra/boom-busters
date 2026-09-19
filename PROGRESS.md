@@ -5051,3 +5051,51 @@ Stability AI"]` where two read `["Emad Mostaque"]`. Equality saw a
     to the likeness model and carries one reference, and prices at the
     likeness rate. Publish: two spellings of one person are one name on the
     label. Prompts: the shot list and the bible ask for the name alone.
+
+47. **The style anchors argued with the bible, in every prompt** (decision
+    263; 2026-09-19, owner: "in our Directors bible I think we should allow
+    logos to be included, especially for a documentary channel on companies
+    as logos are identifiable").
+
+    `stillStyleAnchors` ended with "cinematic, sombre, photographic realism;
+    no text, no logos, no watermarks", and the shot-list prompt tells the
+    planner to paste the anchors verbatim into every still prompt. On the
+    live Stability AI plan that string sat in all 48 of them. Two things were
+    wrong with it.
+
+    **The logo ban fought the genre.** A film about a company is about an
+    identifiable company, and the sign above the door, the badge on a laptop
+    lid and the lanyard on the desk are what make a frame look like it is
+    about that company rather than about an office. Worse, the bible's own
+    rule two sections down says image models read negation as suggestion, and
+    that "never in handcuffs" in a prompt invites handcuffs. The ban printed
+    the word "logos" into every prompt it was meant to keep logos out of.
+    There was already a precedent for exactly this removal: the anchors once
+    carried "no identifiable real faces", and that came out under decision
+    252 because it fought every likeness the bible asked for. A test locks
+    that removal in, and this decision adds its twin.
+
+    **"cinematic" is on the banned list.** `BANNED_PROMPT_WORDS` bans it, and
+    `planWarnings` scans every still prompt for banned words, so all 48
+    stills raised a craft warning against a word this function had supplied.
+    The warning was correct and the prompt was the app's own.
+
+    The anchors now carry positive direction only: grain, the graded palette,
+    sombre, photographic realism. The bible decides marks per shot. It allows
+    a real company's own marks in frame, refuses a mark the frame must render
+    as legible letters (a generated wordmark is a wrong one, and a wrong one
+    reads as a forgery), and keeps titles, captions and lower thirds with the
+    compositor. A slot that genuinely needs an exclusion still has its own
+    negative prompt, which is the per-shot instrument the blanket string was
+    standing in for.
+
+    The headline card is untouched and stays untouched. Its outlet name is set
+    in the house serif with no logo field, and that decision (257) is about
+    reproducing a publisher's page, not about showing a company's mark in a
+    film about that company. Generated logos remain out; the owner's plan is
+    to upload real logo files and composite them, which is the asset library
+    the motion-graphics work will carry.
+
+    _Tests._ The anchors forbid no logos, the twin of the faces assertion; the
+    anchors contain no word from `BANNED_PROMPT_WORDS`; the bible carries the
+    new rule in all three of its parts.

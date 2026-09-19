@@ -100,8 +100,15 @@ plain one.
 - The negative prompt names things, not categories: "no smartphone, no
   flat screen, no LED strip" for a 1990s office, never "no modern
   objects".
-- No text, no logos, no watermarks in generated frames. Titles are
-  rendered by the compositor, not the image model.
+- A real company's own marks belong in frame when the film is about that
+  company: the sign above the door, the badge on a laptop lid, the lanyard
+  on the desk. Name the company and let the shot hold what is really
+  there. Never ask for a mark the frame must render as legible letters,
+  because a generated wordmark is a wrong one and a wrong one reads as a
+  forgery. The same goes for any words the viewer is meant to read: a
+  document can be dense with type, but the sentence it carries is never
+  the point of the frame. Titles, captions and lower thirds are
+  set by the compositor, never by the image model.
 
 ## Motion the renderer can do
 
