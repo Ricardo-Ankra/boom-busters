@@ -4,8 +4,8 @@ import {
   castPhotoExtension,
   CastPhotoSchema,
   depictedMembers,
-  depictsName,
   MAX_CAST_PHOTOS,
+  nameMatches,
   referencePhotos,
 } from './cast'
 import type { CastPhoto } from './cast'
@@ -74,29 +74,29 @@ describe('castPhotoExtension', () => {
  * an exact-string join read as a stranger: six cast stills were routed and
  * priced as plain ones, with no reference photograph.
  */
-describe('depictsName', () => {
+describe('nameMatches', () => {
   it('matches the exact name, ignoring case and runs of whitespace', () => {
-    expect(depictsName('Emad Mostaque', 'Emad Mostaque')).toBe(true)
-    expect(depictsName('  emad   mostaque ', 'Emad Mostaque')).toBe(true)
+    expect(nameMatches('Emad Mostaque', 'Emad Mostaque')).toBe(true)
+    expect(nameMatches('  emad   mostaque ', 'Emad Mostaque')).toBe(true)
   })
 
   it('matches the name followed by a role, however it is punctuated', () => {
     expect(
-      depictsName('Emad Mostaque, founder and former CEO of Stability AI', 'Emad Mostaque'),
+      nameMatches('Emad Mostaque, founder and former CEO of Stability AI', 'Emad Mostaque'),
     ).toBe(true)
-    expect(depictsName('Sean Parker, investor', 'Sean Parker')).toBe(true)
-    expect(depictsName('Prem Akkaraju (CEO of Stability AI)', 'Prem Akkaraju')).toBe(true)
-    expect(depictsName('Prem Akkaraju - CEO', 'Prem Akkaraju')).toBe(true)
-    expect(depictsName('Prem Akkaraju: CEO', 'Prem Akkaraju')).toBe(true)
+    expect(nameMatches('Sean Parker, investor', 'Sean Parker')).toBe(true)
+    expect(nameMatches('Prem Akkaraju (CEO of Stability AI)', 'Prem Akkaraju')).toBe(true)
+    expect(nameMatches('Prem Akkaraju - CEO', 'Prem Akkaraju')).toBe(true)
+    expect(nameMatches('Prem Akkaraju: CEO', 'Prem Akkaraju')).toBe(true)
   })
 
   it('does not match a name that merely appears inside a longer entry', () => {
-    expect(depictsName('an aide to Emad Mostaque', 'Emad Mostaque')).toBe(false)
-    expect(depictsName("Emad Mostaque's assistant", 'Emad Mostaque')).toBe(false)
-    expect(depictsName('Emad Mostaque Junior', 'Emad Mostaque')).toBe(false)
-    expect(depictsName('Emad Mostaquevich', 'Emad Mostaque')).toBe(false)
-    expect(depictsName('Emad', 'Emad Mostaque')).toBe(false)
-    expect(depictsName('', 'Emad Mostaque')).toBe(false)
+    expect(nameMatches('an aide to Emad Mostaque', 'Emad Mostaque')).toBe(false)
+    expect(nameMatches("Emad Mostaque's assistant", 'Emad Mostaque')).toBe(false)
+    expect(nameMatches('Emad Mostaque Junior', 'Emad Mostaque')).toBe(false)
+    expect(nameMatches('Emad Mostaquevich', 'Emad Mostaque')).toBe(false)
+    expect(nameMatches('Emad', 'Emad Mostaque')).toBe(false)
+    expect(nameMatches('', 'Emad Mostaque')).toBe(false)
   })
 })
 

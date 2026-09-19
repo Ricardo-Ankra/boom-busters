@@ -16,7 +16,7 @@ import {
 } from '@boom-busters/db'
 import type { Database, PublishRecordRow } from '@boom-busters/db'
 import {
-  depictsName,
+  nameMatches,
   PublishDraftSchema,
   quotaDayStartUtc,
   ShotBriefSchema,
@@ -91,7 +91,7 @@ export function syntheticLikenesses(
   castNames: readonly string[] = [],
 ): string[] {
   const canonical = (entry: string) =>
-    castNames.find((name) => depictsName(entry, name)) ?? entry.trim()
+    castNames.find((name) => nameMatches(entry, name)) ?? entry.trim()
   const names = new Set<string>()
   for (const slot of slots) {
     const candidates = z.array(SlotCandidateSchema).safeParse(slot.candidates)
