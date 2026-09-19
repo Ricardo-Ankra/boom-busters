@@ -18,6 +18,7 @@ import {
   setSlotRefusal,
   setSlotResolution,
   setSlotRetype,
+  setSlotRoute,
   shotBriefHash,
   shotSlotStatuses,
   slotNeedsResolution,
@@ -451,6 +452,65 @@ suite('shot slots', () => {
         candidates: [],
       })
       expect(slotNeedsResolution(after)).toBe(true)
+    })
+  })
+
+  async function onlySlot() {
+    await replaceShotList(db, projectId, [
+      {
+        chapterId: chapterA,
+        index: 0,
+        type: 'still' as const,
+        brief: {
+          type: 'still',
+          coversText: stockBrief.coversText,
+          description: stockBrief.description,
+          motion: { kind: 'static' },
+          transition: 'cut',
+          prompt: 'Deserted office at dusk, painterly.',
+        },
+        startMs: 0,
+        durationMs: 6000,
+      },
+    ])
+    const [slot] = await listShotSlots(db, projectId)
+    return slot!
+  }
+
+  describe('the route a slot generates on', () => {
+    it('changing the route makes a resolved slot owe work again', async () => {
+      const slot = await onlySlot()
+      await setSlotResolution(db, slot.id, { status: 'resolved', candidates: [] })
+      expect(slotNeedsResolution((await getShotSlot(db, slot.id))!)).toBe(false)
+
+      await setSlotRoute(db, slot.id, { provider: 'google', model: 'gemini-3-pro-image' })
+      expect(slotNeedsResolution((await getShotSlot(db, slot.id))!)).toBe(true)
+    })
+
+    it('clearing the route back to null makes it owe work again too', async () => {
+      const slot = await onlySlot()
+      await setSlotRoute(db, slot.id, { provider: 'google', model: 'gemini-3-pro-image' })
+      await setSlotResolution(db, slot.id, { status: 'resolved', candidates: [] })
+      expect(slotNeedsResolution((await getShotSlot(db, slot.id))!)).toBe(false)
+
+      await setSlotRoute(db, slot.id, null)
+      expect(slotNeedsResolution((await getShotSlot(db, slot.id))!)).toBe(true)
+    })
+
+    it('a brief edit leaves the route alone', async () => {
+      const slot = await onlySlot()
+      const route = { provider: 'google' as const, model: 'gemini-3-pro-image' }
+      await setSlotRoute(db, slot.id, route)
+      await updateSlotBrief(db, slot.id, { ...(slot.brief as ShotBrief), description: 'new words' })
+      expect((await getShotSlot(db, slot.id))?.route).toEqual(route)
+    })
+
+    it('a slot with no route hashes exactly as it did before routes existed', () => {
+      const brief = { type: 'still', prompt: 'p' }
+      expect(shotBriefHash(brief)).toBe(shotBriefHash(brief, null))
+      expect(shotBriefHash(brief)).not.toBe(
+        shotBriefHash(brief, { provider: 'google', model: 'gemini-3-pro-image' }),
+      )
     })
   })
 })

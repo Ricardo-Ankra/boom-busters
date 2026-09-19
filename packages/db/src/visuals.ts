@@ -7,6 +7,7 @@ import type {
   SlotCandidate,
   SlotRefusal,
   SlotDraftState,
+  StillRoute,
 } from '@boom-busters/schemas'
 import type { Database } from './client'
 import { assets, chapters, shotSlots } from './schema'
@@ -32,28 +33,40 @@ import type { AssetRow, ShotSlotRow } from './schema'
  */
 
 /**
- * The fingerprint a resolution stores (the no-waste guard, staged-visuals
- * design 2026-08-26). Computed over the DB-read jsonb value both at
- * resolution time and at comparison time, so serialisation is consistent;
- * any edit to the brief changes the value and therefore the hash.
+ * The no-waste guard's fingerprint (staged-visuals design 2026-08-26), over
+ * the brief AND the route it generates on (decision 264).
+ *
+ * The route is in here because changing the model is a reason to re-buy a
+ * shot, and it is the only such reason that does not touch the brief. Left
+ * out, the owner picks a different model on the board, presses Fetch
+ * visuals, and the pass skips the slot as already resolved.
+ *
+ * A slot with no route hashes exactly as it did before this existed, so
+ * every stamp already in the database stays valid and no live board
+ * suddenly owes work for every slot it holds.
  */
-export function shotBriefHash(brief: unknown): string {
-  return createHash('sha256').update(JSON.stringify(brief)).digest('hex')
+export function shotBriefHash(brief: unknown, route?: unknown): string {
+  return createHash('sha256')
+    .update(JSON.stringify(route ? { brief, route } : brief))
+    .digest('hex')
 }
 
 /**
  * Whether a fetch pass owes this slot work: not resolved, or resolved for an
- * older brief. A linked slot (decision 261) shows another slot's shot and is
- * never owed one, whatever its status or hash say.
+ * older brief or route. A linked slot (decision 261) shows another slot's
+ * shot and is never owed one, whatever its status or hash say.
  */
 export function slotNeedsResolution(slot: {
   status: ShotSlotStatus
   brief: unknown
   resolvedBriefHash: string | null
   reuseOfSlotId?: string | null | undefined
+  route?: unknown
 }): boolean {
   if (slot.reuseOfSlotId) return false
-  return slot.status !== 'resolved' || slot.resolvedBriefHash !== shotBriefHash(slot.brief)
+  return (
+    slot.status !== 'resolved' || slot.resolvedBriefHash !== shotBriefHash(slot.brief, slot.route)
+  )
 }
 
 export interface NewShotSlot {
@@ -147,6 +160,22 @@ export async function updateSlotBrief(
 }
 
 /**
+ * Set or clear the route one slot generates on (decision 264). It does not
+ * touch status: the hash covers the route, so the next pass sees that the
+ * slot owes work without anything else being written.
+ */
+export async function setSlotRoute(
+  db: Database,
+  slotId: string,
+  route: StillRoute | null,
+): Promise<void> {
+  await db
+    .update(shotSlots)
+    .set({ route: route as Record<string, unknown> | null, updatedAt: new Date() })
+    .where(eq(shotSlots.id, slotId))
+}
+
+/**
  * What a resolution pass concluded for one slot — candidates (already scored
  * and ordered), the status that follows, and the chosen asset when the top
  * candidate already holds bytes.
@@ -159,21 +188,25 @@ export async function setSlotResolution(
     status: ShotSlotStatus
     chosenAssetId?: string | null
     /**
-     * The hash of the brief this resolution was made FOR (`shotBriefHash`
-     * of the row's brief as the resolver read it). Omitted or null means
-     * "not resolved for any particular brief" — the next fetch pass will
-     * pick the slot up again.
+     * No longer read (decision 264). The stamped hash now always covers the
+     * route, which a caller computing this ahead of time cannot know unless
+     * it re-reads the row anyway, so the row is read here instead and the
+     * hash is derived from its own brief and route. Kept only so a caller
+     * that still passes it does not have to change.
      */
     briefHash?: string | null
   },
 ): Promise<void> {
+  const slot = await getShotSlot(db, slotId)
+  const resolvedBriefHash =
+    outcome.status === 'resolved' && slot ? shotBriefHash(slot.brief, slot.route) : null
   await db
     .update(shotSlots)
     .set({
       candidates: outcome.candidates as unknown as Record<string, unknown>[],
       status: outcome.status,
       chosenAssetId: outcome.chosenAssetId ?? null,
-      resolvedBriefHash: outcome.briefHash ?? null,
+      resolvedBriefHash,
       updatedAt: sql`now()`,
     })
     .where(eq(shotSlots.id, slotId))
@@ -344,7 +377,7 @@ export async function linkSlotReuse(
             candidates: [reusedCandidate(source, picked)] as unknown as Record<string, unknown>[],
             status: 'resolved' as const,
             chosenAssetId: picked.assetId ?? null,
-            resolvedBriefHash: shotBriefHash(slot.brief),
+            resolvedBriefHash: shotBriefHash(slot.brief, slot.route),
           }
         : {
             candidates: [] as unknown as Record<string, unknown>[],
@@ -402,7 +435,7 @@ export async function copyReusedShots(
           candidates: [reusedCandidate(source, chosen)] as unknown as Record<string, unknown>[],
           status: 'resolved',
           chosenAssetId: chosen.assetId ?? null,
-          resolvedBriefHash: shotBriefHash(row.brief),
+          resolvedBriefHash: shotBriefHash(row.brief, row.route),
           updatedAt: sql`now()`,
         })
         .where(eq(shotSlots.id, row.id))
