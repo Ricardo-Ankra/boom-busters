@@ -204,9 +204,10 @@ plain one.
 - Every era lock is obeyed in every prompt it touches.
 - No banned word appears in any prompt.
 - Every prompt showing a real person names them in full and lists them in
-  "depicts". It carries their identity string only where no photograph of
-  them exists; a photographed person's prompt carries no physical
-  description of them at all. No guardrail text appears in any prompt.
+  "depicts" by name alone, no role after it. It carries their identity
+  string only where no photograph of them exists; a photographed person's
+  prompt carries no physical description of them at all.
+  No guardrail text appears in any prompt.
 - No guardrail or never-show line keeps a principal away from a desk, a
   document, a boardroom or a meeting; they exclude only what would defame
   or mock.

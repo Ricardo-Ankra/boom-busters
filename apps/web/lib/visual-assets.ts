@@ -11,6 +11,7 @@ import {
 import {
   applyScores,
   articleIsRenderable,
+  depictedMembers,
   referencePhotos,
   STILL_GENERATIONS,
   ValidationError,
@@ -102,12 +103,15 @@ function spreadReferences(
  * A name the cast has never seen, or one with no photograph yet, is not a
  * likeness the app can produce, so such a still is routed, priced and
  * generated as a plain one.
+ *
+ * Which entry names which member is `depictedMembers` (decision 262). The
+ * planner is asked for the name alone and has written "Emad Mostaque,
+ * founder and former CEO of Stability AI"; an exact-string join here sent
+ * every such still to the plain route, and the estimate agreed with it.
  */
 function depictedFrom(brief: StillBrief, cast: readonly CastMember[]): CastMember[] {
-  const wanted = new Set((brief.depicts ?? []).map((name) => name.trim()).filter(Boolean))
-  if (wanted.size === 0) return []
-  return cast
-    .filter((member) => wanted.has(member.name) && member.photos.length > 0)
+  return depictedMembers(brief.depicts, cast)
+    .filter((member) => member.photos.length > 0)
     .slice(0, MAX_STILL_REFERENCES)
 }
 

@@ -85,3 +85,19 @@ describe('syntheticLikenesses', () => {
     expect(syntheticLikenesses(slots)).toEqual(['Jan Marsalek'])
   })
 })
+
+describe('syntheticLikenesses with the cast', () => {
+  it('reports an entry that names a member with their role as the member, once', () => {
+    const slots = [
+      { brief: stillBrief(['Emad Mostaque']), candidates: [candidate('google', true)] },
+      {
+        brief: stillBrief([
+          'Emad Mostaque, founder and former CEO of Stability AI',
+          'Nobody Known',
+        ]),
+        candidates: [candidate('fal', true)],
+      },
+    ]
+    expect(syntheticLikenesses(slots, ['Emad Mostaque'])).toEqual(['Emad Mostaque', 'Nobody Known'])
+  })
+})

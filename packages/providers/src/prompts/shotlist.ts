@@ -99,7 +99,8 @@ Every brief carries "shotSize": "wide"|"medium"|"close"|"macro"|"aerial"|"graphi
 - {"type": "archival", "coversText", "description", "shotSize", "motion", "transition",
    "query", "mustShow", "eraRange"? (ONE string like "1995–2008", never an array)}
 - {"type": "still", "coversText", "description", "shotSize", "motion", "transition",
-   "prompt", "negativePrompt"?, "depicts"?: [full names of real people shown by likeness]}
+   "prompt", "negativePrompt"?, "depicts"?: [each real person shown by likeness, by
+   full name alone: "Jane Doe", never "Jane Doe, chief executive"]}
 - {"type": "hero", "coversText", "description", "shotSize", "motion", "transition",
    "prompt", "cameraMovement", "loop": boolean, "depicts"?} (only when hero is enabled)
 - {"type": "chart", "coversText", "description", "motion", "transition",
@@ -232,11 +233,12 @@ Planning rules:
       of them whatever: no age, build, height, hair, beard, glasses, skin or
       face. The photograph is the likeness and any written description fights
       it. Clothing, posture, place, light and what they are doing are still
-      yours to direct. List them in "depicts".
+      yours to direct. List them in "depicts" by name alone, never with the
+      role after it: the name is how the photographs are found.
   (b) A named person NOT in that list. Name them by full name and role, then
       their identity string from the book as one sentence — with no
       photograph it is the only thing standing between the image and a
-      stand-in. List them in "depicts".
+      stand-in. List them in "depicts" by name alone.
   (c) Anyone unnamed: staff, an aide, a driver, a crowd. No name and no
       identity string. Describe them by role, age range, build and clothing,
       face turned away or in shadow, resembling nobody in particular.

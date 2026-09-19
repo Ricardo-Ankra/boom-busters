@@ -8,6 +8,7 @@ import {
   latestScriptParagraphSources,
   latestSnapshotForVideo,
   latestTimeline,
+  listCastMembers,
   listPublishRecords,
   listShorts,
   listShotSlots,
@@ -15,6 +16,7 @@ import {
 } from '@boom-busters/db'
 import type { Database, PublishRecordRow } from '@boom-busters/db'
 import {
+  depictsName,
   PublishDraftSchema,
   quotaDayStartUtc,
   ShotBriefSchema,
@@ -78,10 +80,18 @@ export interface PublishItemModel {
  * candidate carries from the still it was reused from (decision 261). An
  * uploaded real photograph of the same person is not synthetic media, so it
  * does not count.
+ *
+ * An entry that names a cast member is reported as the cast spells them
+ * (decision 262): "Emad Mostaque" and "Emad Mostaque, founder and former
+ * CEO of Stability AI" are one person on the label, not two. A name the
+ * cast does not hold is reported as written.
  */
 export function syntheticLikenesses(
   slots: readonly { brief: unknown; candidates: unknown }[],
+  castNames: readonly string[] = [],
 ): string[] {
+  const canonical = (entry: string) =>
+    castNames.find((name) => depictsName(entry, name)) ?? entry.trim()
   const names = new Set<string>()
   for (const slot of slots) {
     const candidates = z.array(SlotCandidateSchema).safeParse(slot.candidates)
@@ -92,7 +102,9 @@ export function syntheticLikenesses(
       brief.success && (brief.data.type === 'still' || brief.data.type === 'hero')
         ? (brief.data.depicts ?? [])
         : []
-    for (const name of [...own, ...(chosen.reusedFrom?.depicts ?? [])]) names.add(name)
+    for (const name of [...own, ...(chosen.reusedFrom?.depicts ?? [])]) {
+      names.add(canonical(name))
+    }
   }
   return [...names]
 }
@@ -261,7 +273,7 @@ export async function publishModel(
   const project = await getProject(db, projectId)
   if (!project) return emptyPublishModel()
 
-  const [shorts, masterRender, timelineRow, scriptSources, dossier, settings, slotRows] =
+  const [shorts, masterRender, timelineRow, scriptSources, dossier, settings, slotRows, cast] =
     await Promise.all([
       listShorts(db, projectId),
       latestRender(db, projectId, 'master'),
@@ -270,6 +282,7 @@ export async function publishModel(
       getDossier(db, projectId),
       getSettings(db),
       listShotSlots(db, projectId),
+      listCastMembers(db, projectId),
     ])
 
   const [records, uploadsToday] = await Promise.all([
@@ -299,7 +312,10 @@ export async function publishModel(
   }
 
   const masterRecord = recordFor('master', projectId)
-  const likenesses = syntheticLikenesses(slotRows)
+  const likenesses = syntheticLikenesses(
+    slotRows,
+    cast.map((member) => member.name),
+  )
   const masterDurationMs = master
     ? master.narration.reduce((end, seg) => Math.max(end, seg.startMs + seg.durationMs), 0)
     : null

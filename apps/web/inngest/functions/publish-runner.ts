@@ -5,6 +5,7 @@ import {
   getSettings,
   getShort,
   latestRender,
+  listCastMembers,
   listShotSlots,
   recordVerifyResult,
   updatePublishRecord,
@@ -172,7 +173,10 @@ export const publishRunner = inngest.createFunction(
       // The altered-content label (decision 252): any chosen generated still
       // that depicts a real person. Shorts are cut from the same visuals.
       const containsSyntheticMedia =
-        syntheticLikenesses(await listShotSlots(db, projectId)).length > 0
+        syntheticLikenesses(
+          await listShotSlots(db, projectId),
+          (await listCastMembers(db, projectId)).map((member) => member.name),
+        ).length > 0
       /**
        * How this item goes public (decision 226). A slot ahead of now is the
        * classic schedule: private with a `publishAt` YouTube flips itself.

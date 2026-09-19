@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import {
   CastMemberSchema,
-  CastPhotoSchema,
   castPhotoExtension,
+  CastPhotoSchema,
+  depictedMembers,
+  depictsName,
   MAX_CAST_PHOTOS,
   referencePhotos,
 } from './cast'
@@ -63,5 +65,57 @@ describe('castPhotoExtension', () => {
     expect(castPhotoExtension('image/jpeg')).toBe('jpg')
     expect(castPhotoExtension('image/png')).toBe('png')
     expect(castPhotoExtension('image/webp')).toBe('webp')
+  })
+})
+
+/**
+ * The join between a brief's "depicts" list and the cast. The planner is
+ * asked for the name alone and on 2026-09-19 wrote the role after it, which
+ * an exact-string join read as a stranger: six cast stills were routed and
+ * priced as plain ones, with no reference photograph.
+ */
+describe('depictsName', () => {
+  it('matches the exact name, ignoring case and runs of whitespace', () => {
+    expect(depictsName('Emad Mostaque', 'Emad Mostaque')).toBe(true)
+    expect(depictsName('  emad   mostaque ', 'Emad Mostaque')).toBe(true)
+  })
+
+  it('matches the name followed by a role, however it is punctuated', () => {
+    expect(
+      depictsName('Emad Mostaque, founder and former CEO of Stability AI', 'Emad Mostaque'),
+    ).toBe(true)
+    expect(depictsName('Sean Parker, investor', 'Sean Parker')).toBe(true)
+    expect(depictsName('Prem Akkaraju (CEO of Stability AI)', 'Prem Akkaraju')).toBe(true)
+    expect(depictsName('Prem Akkaraju - CEO', 'Prem Akkaraju')).toBe(true)
+    expect(depictsName('Prem Akkaraju: CEO', 'Prem Akkaraju')).toBe(true)
+  })
+
+  it('does not match a name that merely appears inside a longer entry', () => {
+    expect(depictsName('an aide to Emad Mostaque', 'Emad Mostaque')).toBe(false)
+    expect(depictsName("Emad Mostaque's assistant", 'Emad Mostaque')).toBe(false)
+    expect(depictsName('Emad Mostaque Junior', 'Emad Mostaque')).toBe(false)
+    expect(depictsName('Emad Mostaquevich', 'Emad Mostaque')).toBe(false)
+    expect(depictsName('Emad', 'Emad Mostaque')).toBe(false)
+    expect(depictsName('', 'Emad Mostaque')).toBe(false)
+  })
+})
+
+describe('depictedMembers', () => {
+  const prem = { ...member, id: 'c2', name: 'Prem Akkaraju' }
+  const sean = { ...member, id: 'c3', name: 'Sean Parker' }
+
+  it('returns the members some entry names, in cast order, once each', () => {
+    expect(
+      depictedMembers(
+        ['Sean Parker, investor', 'Emad Mostaque', 'emad mostaque, founder'],
+        [member, prem, sean],
+      ),
+    ).toEqual([member, sean])
+  })
+
+  it('returns nothing for no list, an empty list or strangers', () => {
+    expect(depictedMembers(undefined, [member])).toEqual([])
+    expect(depictedMembers([], [member])).toEqual([])
+    expect(depictedMembers(['Nobody Known', '  '], [member])).toEqual([])
   })
 })

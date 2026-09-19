@@ -5003,3 +5003,51 @@ Recorded whenever the spec left something open and an implementation was chosen.
     one slot, unlink), and the picker on the seeded board's placeholder,
     cancelled, because a board copy cannot be put back into the exact
     seeded state from the UI.
+
+46. **A cast name with a role after it was a stranger** (decision 262;
+    2026-09-19, owner: "the shots whose briefs specifically mention a
+    character in the Cast ... it's just routing to flux and not to Gemini who
+    currently is assigned to do the cast AI image generation").
+
+    The join between a brief and the cast is the exact full name, and
+    `depictedFrom` implemented it as exact string equality. The shot-list
+    prompt, however, told the planner to "name them by full name and role"
+    in the prompt and then "list them in depicts" in the same breath, and on
+    the Stability AI plan the model carried the role into the list: six of
+    the eight cast stills read `["Emad Mostaque, founder and former CEO of
+Stability AI"]` where two read `["Emad Mostaque"]`. Equality saw a
+    stranger, so `members` came back empty, `routeFor` took the plain
+    route, and those six went to `fal-ai/flux-2` at $0.04 with no reference
+    photograph attached, while the two bare-name slots went to
+    `gemini-2.5-flash-image` with the photographs. The cost ledger shows
+    both, minutes apart, on the same film: `refs: null` beside
+    `refs: ["Emad Mostaque"]`.
+
+    The fix is one join, in schemas beside the cast itself:
+    `depictsName(entry, name)` matches when the entry IS the name or begins
+    with the name and goes on with a separator (a comma, a bracket, a colon,
+    a dash), all case- and whitespace-insensitive, and `depictedMembers`
+    applies it across the cast in cast order. "An aide to Emad Mostaque",
+    "Emad Mostaque's assistant" and "Emad Mostaque Junior" are not him.
+    Routing, the estimate, the photographs sent and the altered-content
+    label now all go through it, which is what stops the estimate and the
+    ledger disagreeing again.
+
+    Tightening the prompt alone was rejected as the whole fix: the same
+    instruction has been followed loosely twice now (the identity-string
+    duplication of decision 253 was the first), and a planner's near-miss
+    should not silently change which generator is billed. The prompt is
+    tightened as well ("by name alone, never with the role after it", in the
+    slot shape, the person rules and the bible's pre-flight), so new plans
+    write the clean form and old plans still route correctly.
+
+    _Not done._ Slots already generated keep their flux images; the brief
+    has not changed, so a re-fetch skips them on the resolved-brief hash.
+    Regenerate is the board button for that, per slot, and it is the owner's
+    to spend.
+
+    _Tests._ Schemas: the matcher against the bare name, the role forms, and
+    the four near-misses. Web (DB-backed): a role-suffixed `depicts` routes
+    to the likeness model and carries one reference, and prices at the
+    likeness rate. Publish: two spellings of one person are one name on the
+    label. Prompts: the shot list and the bible ask for the name alone.
