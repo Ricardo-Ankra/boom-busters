@@ -11,7 +11,6 @@ import {
   setSlotRefusal,
   setSlotResolution,
   setVisualsPhase,
-  shotBriefHash,
   shotSlotStatuses,
   slotNeedsResolution,
   listCastMembers,
@@ -308,10 +307,6 @@ export const visualsRunner = inngest.createFunction(
               const resolution = await resolveSlotBrief({ projectId, brief })
               await setSlotResolution(db, slot.id, {
                 ...resolution,
-                // The fingerprint the no-waste guard compares against: this
-                // resolution answers THIS brief; an edit changes the hash
-                // and the next fetch pass picks the slot up again.
-                briefHash: shotBriefHash(slot.brief),
               })
               return { ok: true, status: resolution.status }
             } catch (error) {

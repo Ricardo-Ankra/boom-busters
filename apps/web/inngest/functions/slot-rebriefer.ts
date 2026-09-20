@@ -4,7 +4,6 @@ import {
   scriptableClaims,
   setSlotResolution,
   setSlotRetype,
-  shotBriefHash,
   updateSlotBrief,
 } from '@boom-busters/db'
 import {
@@ -227,7 +226,6 @@ export const slotRebriefer = inngest.createFunction(
           const resolution = await resolveSlotBrief({ projectId, brief })
           await setSlotResolution(db, slotId, {
             ...resolution,
-            briefHash: shotBriefHash(slot.brief),
           })
           return { status: resolution.status }
         } catch (error) {

@@ -15,7 +15,6 @@ import {
   setProjectDirection,
   setSlotResolution,
   setSlotRetype,
-  shotBriefHash,
   unlinkSlotReuse,
   updateSlotBrief,
   upsertAssetByHash,
@@ -642,7 +641,6 @@ export async function saveHeadlineAction(
   await setSlotResolution(db, slotId, {
     candidates: [],
     status: articleIsRenderable(articleFromRow(record)) ? 'resolved' : 'placeholder',
-    briefHash: shotBriefHash(brief),
   })
 
   refresh(projectId)
@@ -676,7 +674,6 @@ export async function refetchArticleAction(
   await setSlotResolution(db, slotId, {
     candidates: [],
     status: articleIsRenderable(article) ? 'resolved' : 'placeholder',
-    briefHash: shotBriefHash(source.brief),
   })
 
   refresh(projectId)
@@ -962,9 +959,6 @@ async function attachOwnFile(input: {
     candidates: [candidate, ...others],
     status: 'resolved',
     chosenAssetId: asset.id,
-    // The upload answers the CURRENT brief: without the fingerprint, the
-    // next "Fetch visuals" would treat this slot as owed and fetch over it.
-    briefHash: shotBriefHash(input.slot.brief),
   })
 
   refresh(input.projectId)

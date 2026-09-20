@@ -187,16 +187,25 @@ export async function setSlotResolution(
     candidates: readonly SlotCandidate[]
     status: ShotSlotStatus
     chosenAssetId?: string | null
-    /**
-     * No longer read (decision 264). The stamped hash now always covers the
-     * route, which a caller computing this ahead of time cannot know unless
-     * it re-reads the row anyway, so the row is read here instead and the
-     * hash is derived from its own brief and route. Kept only so a caller
-     * that still passes it does not have to change.
-     */
-    briefHash?: string | null
   },
 ): Promise<void> {
+  /**
+   * The stamp is derived here rather than taken from the caller (decision
+   * 264), because it now has to cover the route as well as the brief and a
+   * caller would have to re-read the row to know it.
+   *
+   * Deriving it also closed two leaks. `slot-refetcher` and `stock-ingest`
+   * passed no hash at all, so the first left a slot it had just paid for
+   * still owing work, and the second wiped the stamp the fan-out had
+   * written; in both cases the next Fetch pass re-bought what was already
+   * bought. A caller cannot forget an argument that no longer exists.
+   *
+   * The cost is a narrow race: if the brief is edited between the resolver
+   * reading it and this write, the stamp names the new brief while the
+   * candidates answer the old one. The slot then looks resolved until
+   * someone regenerates it. A stale picture the owner can see beats a
+   * silent re-purchase of every slot on every pass.
+   */
   const slot = await getShotSlot(db, slotId)
   const resolvedBriefHash =
     outcome.status === 'resolved' && slot ? shotBriefHash(slot.brief, slot.route) : null
