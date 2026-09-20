@@ -1,6 +1,6 @@
 import { ContentPolicyError, ValidationError } from '@boom-busters/schemas'
-import { describe, expect, it } from 'vitest'
-import { GEMINI_MAX_REFERENCES, geminiImageGen } from './gemini'
+import { describe, expect, it, vi } from 'vitest'
+import { geminiImageGen } from './gemini'
 
 /**
  * Against a recorded response shape, like every adapter test: the JSON is
@@ -105,7 +105,9 @@ describe('geminiImageGen', () => {
       {
         prompt: 'Emad Mostaque, the person in the reference photo, at a desk',
         count: 1,
-        references: [{ name: 'Emad Mostaque', mimeType: 'image/jpeg', data: 'QUJD' }],
+        references: [
+          { name: 'Emad Mostaque', kind: 'character', mimeType: 'image/jpeg', data: 'QUJD' },
+        ],
       },
       { apiKey: 'key', fetchImpl: fetchRecording(calls, IMAGE_REPLY) },
     )
@@ -119,11 +121,15 @@ describe('geminiImageGen', () => {
 
   it('refuses more than three references before spending anything', async () => {
     const calls: { url: string; body: unknown }[] = []
-    const four = Array.from({ length: GEMINI_MAX_REFERENCES + 1 }, (_, i) => ({
-      name: `Person ${i}`,
-      mimeType: 'image/jpeg' as const,
-      data: 'QUJD',
-    }))
+    const four = Array.from(
+      { length: geminiImageGen.referenceLimits().characters + 1 },
+      (_, i) => ({
+        name: `Person ${i}`,
+        kind: 'character' as const,
+        mimeType: 'image/jpeg' as const,
+        data: 'QUJD',
+      }),
+    )
     await expect(
       geminiImageGen.generate(
         { prompt: 'a boardroom', count: 1, references: four },
@@ -162,5 +168,82 @@ describe('geminiImageGen', () => {
 
     const rejecting = (async () => new Response('{}', { status: 400 })) as typeof fetch
     await expect(geminiImageGen.verifyKey('bad', { fetchImpl: rejecting })).rejects.toThrow()
+  })
+})
+
+describe('referenceLimits', () => {
+  it('reads the documented budget for each model', () => {
+    expect(geminiImageGen.referenceLimits('gemini-3.1-flash-image')).toEqual({
+      characters: 4,
+      objects: 10,
+    })
+    expect(geminiImageGen.referenceLimits('gemini-3-pro-image')).toEqual({
+      characters: 5,
+      objects: 6,
+    })
+  })
+
+  it('keeps the old conservative budget for the model Google does not document', () => {
+    expect(geminiImageGen.referenceLimits('gemini-2.5-flash-image')).toEqual({
+      characters: 3,
+      objects: 0,
+    })
+  })
+
+  it('defaults to the first model when none is named', () => {
+    expect(geminiImageGen.referenceLimits()).toEqual(
+      geminiImageGen.referenceLimits(geminiImageGen.models[0]!.id),
+    )
+  })
+})
+
+describe('refusing more references than the model takes', () => {
+  const ref = (kind: 'character' | 'object', n: number) => ({
+    name: `r${n}`,
+    kind,
+    mimeType: 'image/jpeg' as const,
+    data: 'AAAA',
+  })
+
+  it('refuses a fifth person on the model that takes four, before spending', async () => {
+    const fetchImpl = vi.fn()
+    await expect(
+      geminiImageGen.generate(
+        {
+          prompt: 'x',
+          count: 1,
+          model: 'gemini-3.1-flash-image',
+          references: [1, 2, 3, 4, 5].map((n) => ref('character', n)),
+        },
+        { apiKey: 'k', fetchImpl },
+      ),
+    ).rejects.toThrow(/at most 4 reference photographs of people/)
+    expect(fetchImpl).not.toHaveBeenCalled()
+  })
+
+  it('refuses a set plate on the model that takes none', async () => {
+    const fetchImpl = vi.fn()
+    await expect(
+      geminiImageGen.generate(
+        { prompt: 'x', count: 1, model: 'gemini-2.5-flash-image', references: [ref('object', 1)] },
+        { apiKey: 'k', fetchImpl },
+      ),
+    ).rejects.toThrow(/takes no set plates/)
+    expect(fetchImpl).not.toHaveBeenCalled()
+  })
+
+  it('accepts people and plates together inside both budgets', async () => {
+    const fetchImpl = vi.fn(fetchRecording([], IMAGE_REPLY))
+    await geminiImageGen.generate(
+      {
+        prompt: 'x',
+        count: 1,
+        model: 'gemini-3.1-flash-image',
+        references: [ref('character', 1), ref('character', 2), ref('object', 3)],
+      },
+      { apiKey: 'k', fetchImpl },
+    )
+    const body = JSON.parse(String(fetchImpl.mock.calls[0]![1]?.body))
+    expect(body.contents[0].parts).toHaveLength(4)
   })
 })

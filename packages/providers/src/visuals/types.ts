@@ -79,6 +79,12 @@ export interface ImageReference {
   mimeType: 'image/jpeg' | 'image/png' | 'image/webp'
   /** Base64 bytes. Absent when the caller only has URLs for a URL-taking endpoint. */
   data?: string
+  /**
+   * Which budget this spends (decision 264). Google documents the two
+   * separately and by different amounts: a face the model must keep is a
+   * character, a room or a prop it must reproduce is an object.
+   */
+  kind: 'character' | 'object'
 }
 
 export interface ImageGenRequest {
@@ -133,6 +139,12 @@ export interface ImageGenModel {
   readonly pricePerImage: number
 }
 
+/** What one call may carry, per model (decision 264). */
+export interface ReferenceLimits {
+  characters: number
+  objects: number
+}
+
 export interface ImageGenProvider {
   readonly id: ImageGenProviderId
   /** The provider, human-readable — the model labels name the models. */
@@ -144,6 +156,13 @@ export interface ImageGenProvider {
    */
   readonly models: readonly ImageGenModel[]
   generate(request: ImageGenRequest, options: StockCallOptions): Promise<ImageGenResult>
+  /**
+   * How many references of each kind this model takes. The caller spends the
+   * budget before building the request, because a refusal after the money is
+   * committed is a refusal that cost something, and because "some of the
+   * cast" is not an answer the producer asked for.
+   */
+  referenceLimits(modelId?: string): ReferenceLimits
   /**
    * The endpoint that will actually run when this many reference photographs
    * are attached, when it is not the routed model itself (decision 253,

@@ -2,7 +2,13 @@ import { ContentPolicyError, ValidationError } from '@boom-busters/schemas'
 import { z } from 'zod'
 import { mapNetworkError, throwForResponse } from '../llm/http'
 import { imageGenModel } from './types'
-import type { ImageGenProvider, ImageGenRequest, ImageGenResult, StockCallOptions } from './types'
+import type {
+  ImageGenProvider,
+  ImageGenRequest,
+  ImageGenResult,
+  ReferenceLimits,
+  StockCallOptions,
+} from './types'
 
 /**
  * Gemini image models — the default `still` slot generator, riding the
@@ -51,11 +57,17 @@ const endpoint = (model: string) =>
 const ASPECT_RATIO = '16:9'
 
 /**
- * Gemini image models take up to three input images with the prompt; a
- * fourth is refused before any call, because "some of the cast" is not an
- * answer the producer asked for.
+ * What each model takes, from Google's own documentation, read 2026-09-19.
+ * The 2.5 row is not documented; it keeps exactly the budget this adapter
+ * enforced before the two pools existed, because guessing a limit upward
+ * spends money to discover it.
  */
-export const GEMINI_MAX_REFERENCES = 3
+const REFERENCE_LIMITS: Record<string, ReferenceLimits> = {
+  'gemini-2.5-flash-image': { characters: 3, objects: 0 },
+  'gemini-3.1-flash-image': { characters: 4, objects: 10 },
+  'gemini-3-pro-image': { characters: 5, objects: 6 },
+}
+
 const WIDTH = 1344
 const HEIGHT = 768
 
@@ -100,10 +112,24 @@ export const geminiImageGen: ImageGenProvider = {
         { field: 'references' },
       )
     }
-    if (references.length > GEMINI_MAX_REFERENCES) {
+    const limits = geminiImageGen.referenceLimits(request.model)
+    const characters = references.filter((reference) => reference.kind === 'character')
+    const objects = references.filter((reference) => reference.kind === 'object')
+    if (characters.length > limits.characters) {
       throw new ValidationError(
-        `Gemini takes at most ${GEMINI_MAX_REFERENCES} reference photos in one still; this brief ` +
-          `depicts ${references.length} people. Plan the group anonymously or split the shot.`,
+        `${model.label} takes at most ${limits.characters} reference photographs of people in ` +
+          `one still; this brief shows ${characters.length}. Plan the group anonymously or ` +
+          `split the shot.`,
+        { field: 'references' },
+      )
+    }
+    if (objects.length > limits.objects) {
+      throw new ValidationError(
+        limits.objects === 0
+          ? `${model.label} takes no set plates. Route this slot at a Gemini 3 model, or drop ` +
+              `the set from the brief.`
+          : `${model.label} takes at most ${limits.objects} set plates in one still; this brief ` +
+              `carries ${objects.length}.`,
         { field: 'references' },
       )
     }
@@ -124,12 +150,13 @@ export const geminiImageGen: ImageGenProvider = {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            // Reference photos first, then the words about them (decision 253):
-            // the model reads the face, then the scene to put it in.
+            // Characters first, then objects, then the words about them
+            // (decision 253, amended 264): the model reads the faces, then
+            // the room, then what to do with them.
             contents: [
               {
                 parts: [
-                  ...references.map((reference) => ({
+                  ...[...characters, ...objects].map((reference) => ({
                     inlineData: { mimeType: reference.mimeType, data: reference.data ?? '' },
                   })),
                   { text: prompt },
@@ -169,6 +196,11 @@ export const geminiImageGen: ImageGenProvider = {
 
     const images = await Promise.all(Array.from({ length: request.count }, one))
     return { images, estimatedCostUsd: model.pricePerImage * images.length }
+  },
+
+  referenceLimits(modelId?: string): ReferenceLimits {
+    const model = imageGenModel(geminiImageGen, modelId)
+    return REFERENCE_LIMITS[model.id] ?? { characters: 3, objects: 0 }
   },
 
   /**

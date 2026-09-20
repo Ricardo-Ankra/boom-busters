@@ -6,6 +6,7 @@ import type {
   ImageGenProvider,
   ImageGenRequest,
   ImageGenResult,
+  ReferenceLimits,
   StockCallOptions,
 } from './types'
 
@@ -225,6 +226,16 @@ export const falImageGen: ImageGenProvider = {
       estimatedCostUsd:
         (conditioned ? conditioned.pricePerImage : model.pricePerImage) * parsed.images.length,
     }
+  },
+
+  /**
+   * fal caps nothing; its reference endpoint simply costs more per image
+   * above one (see `resolveReferenceRoute`). These are the app's own limits,
+   * chosen for what a still can usefully carry rather than what the endpoint
+   * will accept.
+   */
+  referenceLimits(): ReferenceLimits {
+    return { characters: 3, objects: 2 }
   },
 
   /** The same routing the call uses, so the estimate names the endpoint billed. */

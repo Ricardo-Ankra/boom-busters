@@ -190,6 +190,7 @@ async function referenceMaterials(
       names,
       references: photos.map(({ member, photo }) => ({
         name: member.name,
+        kind: 'character',
         mimeType: photo.mimeType,
         data: 'bW9jaw==',
       })),
@@ -203,6 +204,7 @@ async function referenceMaterials(
         const object = await getObjectBytes(photo.r2Key)
         references.push({
           name: member.name,
+          kind: 'character',
           mimeType: photo.mimeType,
           data: Buffer.from(object.bytes).toString('base64'),
         })
@@ -215,6 +217,7 @@ async function referenceMaterials(
       names,
       references: photos.map(({ member, photo }) => ({
         name: member.name,
+        kind: 'character',
         mimeType: photo.mimeType,
       })),
       referenceUrls,

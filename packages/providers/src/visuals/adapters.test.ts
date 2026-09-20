@@ -385,7 +385,9 @@ describe('falImageGen', () => {
         prompt: 'Emad Mostaque, the person in the reference photo, at a desk',
         count: 2,
         model: 'fal-ai/flux/dev',
-        references: [{ name: 'Emad Mostaque', mimeType: 'image/jpeg', data: 'QUJD' }],
+        references: [
+          { name: 'Emad Mostaque', kind: 'character', mimeType: 'image/jpeg', data: 'QUJD' },
+        ],
         referenceUrls: ['https://r2.example/cast/emad.jpg?signed'],
       },
       {

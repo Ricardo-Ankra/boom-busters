@@ -4,6 +4,7 @@ import type {
   ImageGenProvider,
   ImageGenRequest,
   ImageGenResult,
+  ReferenceLimits,
   StockProvider,
   StockProviderId,
   StockQuery,
@@ -101,6 +102,12 @@ export const mockImageGen: ImageGenProvider = {
       })),
       estimatedCostUsd: falImageGen.models[0]!.pricePerImage * request.count,
     }
+  },
+
+  // The most generous shape offered by either live adapter, so mock mode
+  // never refuses a path the live adapters allow.
+  referenceLimits(): ReferenceLimits {
+    return { characters: 4, objects: 10 }
   },
 
   async verifyKey() {
