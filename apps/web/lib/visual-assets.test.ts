@@ -2,12 +2,16 @@
 
 import {
   FIXTURE_PROJECT_ID,
-  insertCastMember,
-  listCastMembers,
   deleteCastMember,
+  deleteProjectSet,
+  insertCastMember,
+  insertProjectSet,
+  listCastMembers,
+  listProjectSets,
   requireTestDatabase,
   seed,
   setCastPhotos,
+  setSetPlates,
   updateSettings,
 } from '@boom-busters/db'
 import { mockImageGen } from '@boom-busters/providers'
@@ -49,6 +53,18 @@ function photo(hash: string, view: 'front' | 'profile' | 'three-quarter' | 'full
   }
 }
 
+function plate(hash: string, view: 'establishing' | 'detail' | 'other') {
+  return {
+    r2Key: `boom-busters/sets/${FIXTURE_PROJECT_ID}/${hash}.jpg`,
+    contentHash: hash,
+    mimeType: 'image/jpeg' as const,
+    width: 1600,
+    height: 900,
+    view,
+    origin: 'uploaded' as const,
+  }
+}
+
 /**
  * Which model a generation actually went to. The request itself carries no
  * model id in mock mode (the mock adapter ignores it), but the cost ledger
@@ -74,6 +90,9 @@ describeDb('generateStillCandidates with the cast', () => {
     await updateSettings(db, { budgets: { monthlyCeilingUsd: 100 } })
     for (const member of await listCastMembers(db, FIXTURE_PROJECT_ID)) {
       await deleteCastMember(db, member.id)
+    }
+    for (const set of await listProjectSets(db, FIXTURE_PROJECT_ID)) {
+      await deleteProjectSet(db, set.id)
     }
   })
 
@@ -366,5 +385,107 @@ describeDb('generateStillCandidates with the cast', () => {
     generate.mockClear()
     await generateStillCandidates({ ...still, depicts: ['Nobody Known'] }, FIXTURE_PROJECT_ID)
     expect(generate.mock.calls[0]?.[0]?.references).toBeUndefined()
+  })
+
+  describe('a still that names a set', () => {
+    beforeEach(async () => {
+      await updateSettings(db, {
+        modelRouting: {
+          stills: { provider: 'google', model: 'gemini-3.1-flash-image' },
+          stillsLikeness: null,
+        },
+      })
+    })
+
+    it('sends the set plate as an object reference beside the person', async () => {
+      const emad = await insertCastMember(db, {
+        projectId: FIXTURE_PROJECT_ID,
+        name: 'Emad Mostaque',
+        role: 'Founder',
+      })
+      await setCastPhotos(db, emad.id, [photo('front-1', 'front')])
+      const room = await insertProjectSet(db, {
+        projectId: FIXTURE_PROJECT_ID,
+        name: 'Venture Capital Boardroom',
+        look: 'A long polished table.',
+      })
+      await setSetPlates(db, room.id, [plate('plate-1', 'establishing')])
+
+      await generateStillCandidates(
+        { ...still, set: 'Venture Capital Boardroom' },
+        FIXTURE_PROJECT_ID,
+      )
+
+      const sent = generate.mock.calls[0]?.[0].references ?? []
+      expect(sent.filter((r) => r.kind === 'character')).toHaveLength(1)
+      expect(sent.filter((r) => r.kind === 'object')).toHaveLength(1)
+    })
+
+    it('names the room in the prompt, so the model knows which image is which', async () => {
+      const room = await insertProjectSet(db, {
+        projectId: FIXTURE_PROJECT_ID,
+        name: 'Venture Capital Boardroom',
+        look: 'A long polished table.',
+      })
+      await setSetPlates(db, room.id, [plate('plate-1', 'establishing')])
+
+      await generateStillCandidates(
+        { ...still, depicts: [], set: 'Venture Capital Boardroom' },
+        FIXTURE_PROJECT_ID,
+      )
+      expect(generate.mock.calls[0]?.[0].prompt).toContain(
+        'Venture Capital Boardroom, the room in the reference photograph',
+      )
+    })
+
+    it('spends people before plates when the budget is tight', async () => {
+      for (const name of ['Emad Mostaque', 'Prem Akkaraju', 'Sean Parker']) {
+        const member = await insertCastMember(db, {
+          projectId: FIXTURE_PROJECT_ID,
+          name,
+          role: 'Principal',
+        })
+        await setCastPhotos(db, member.id, [photo(`front-${name}`, 'front')])
+      }
+      const room = await insertProjectSet(db, {
+        projectId: FIXTURE_PROJECT_ID,
+        name: 'Venture Capital Boardroom',
+        look: 'A long polished table.',
+      })
+      await setSetPlates(db, room.id, [plate('plate-1', 'establishing')])
+
+      await generateStillCandidates(
+        {
+          ...still,
+          depicts: ['Emad Mostaque', 'Prem Akkaraju', 'Sean Parker'],
+          set: 'Venture Capital Boardroom',
+        },
+        FIXTURE_PROJECT_ID,
+      )
+      const sent = generate.mock.calls[0]?.[0].references ?? []
+      expect(sent.filter((r) => r.kind === 'character')).toHaveLength(3)
+      expect(sent.filter((r) => r.kind === 'object')).toHaveLength(1)
+    })
+
+    it('treats a set the project does not hold as no set at all', async () => {
+      await generateStillCandidates(
+        { ...still, depicts: [], set: 'A car park' },
+        FIXTURE_PROJECT_ID,
+      )
+      expect(generate.mock.calls[0]?.[0].references ?? []).toHaveLength(0)
+    })
+
+    it('sends no plate for a set that holds none', async () => {
+      await insertProjectSet(db, {
+        projectId: FIXTURE_PROJECT_ID,
+        name: 'Venture Capital Boardroom',
+        look: 'A long polished table.',
+      })
+      await generateStillCandidates(
+        { ...still, depicts: [], set: 'Venture Capital Boardroom' },
+        FIXTURE_PROJECT_ID,
+      )
+      expect(generate.mock.calls[0]?.[0].references ?? []).toHaveLength(0)
+    })
   })
 })

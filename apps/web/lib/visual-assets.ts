@@ -5,6 +5,7 @@ import { round4, withCost } from '@boom-busters/cost'
 import {
   getSettings,
   listCastMembers,
+  listProjectSets,
   upsertAssetByHash,
   visualCredentials,
 } from '@boom-busters/db'
@@ -13,6 +14,8 @@ import {
   articleIsRenderable,
   depictedMembers,
   referencePhotos,
+  referencePlates,
+  setForBrief,
   STILL_GENERATIONS,
   ValidationError,
 } from '@boom-busters/schemas'
@@ -20,6 +23,7 @@ import type {
   CastMember,
   CastPhoto,
   ModelRouting,
+  ProjectSet,
   ShotBrief,
   ShotSlotStatus,
   SlotCandidate,
@@ -37,7 +41,7 @@ import {
   parseScores,
   stockAdapter,
 } from '@boom-busters/providers'
-import type { ImageReference, StockQuery } from '@boom-busters/providers'
+import type { ImageReference, ReferenceLimits, StockQuery } from '@boom-busters/providers'
 import { articleForClaim } from '@/lib/article-source'
 import { db } from '@/lib/db'
 import { env } from '@/lib/env'
@@ -45,19 +49,23 @@ import { callLlm } from '@/lib/llm'
 import { getObjectBytes, presignGet, putObject, stillKey, storageConfigured } from '@/lib/storage'
 
 /**
- * The most reference photographs one still can be conditioned on: Gemini's
- * input-image limit, and about as much as any of these endpoints reads
- * usefully.
+ * What one still carries, as the app's own policy (decision 264). The routed
+ * model's own limits sit above this and are asked for separately; these are
+ * what a still can usefully hold.
  *
- * Slots, not people. They are spent on the people in the frame first and then
- * on further angles of them (decision 253, amended): a still showing one
- * person used to spend one slot and waste two, while the Cast card asked the
- * producer for two to four angles that were then never sent.
+ * Character slots are spent on the people in the frame first and then on
+ * further angles of them (decision 253, amended). Object slots hold the
+ * named set's plates. People come first when both cannot fit, because a
+ * wrong face is worse than a wrong room.
  */
-export const MAX_STILL_REFERENCES = 3
+export const MAX_CHARACTER_REFERENCES = 3
+export const MAX_SET_REFERENCES = 2
 
 /** The clause the planner is asked to write; prepended if it forgot. */
 const REFERENCE_CLAUSE = 'the person in the reference photo'
+
+/** Names the set's plate the same way, since the adapter sends flat inline images. */
+const SET_REFERENCE_CLAUSE = 'the room in the reference photograph'
 
 /**
  * How the reference slots are spent across the people in the frame.
@@ -74,14 +82,15 @@ const REFERENCE_CLAUSE = 'the person in the reference photo'
  */
 function spreadReferences(
   members: readonly CastMember[],
+  budget: number,
 ): { member: CastMember; photo: CastPhoto }[] {
   const queues = members.map((member) =>
-    referencePhotos(member, MAX_STILL_REFERENCES).map((photo) => ({ member, photo })),
+    referencePhotos(member, budget).map((photo) => ({ member, photo })),
   )
   const chosen: { member: CastMember; photo: CastPhoto }[] = []
-  for (let round = 0; round < MAX_STILL_REFERENCES; round += 1) {
+  for (let round = 0; round < budget; round += 1) {
     for (const queue of queues) {
-      if (chosen.length >= MAX_STILL_REFERENCES) return chosen
+      if (chosen.length >= budget) return chosen
       const next = queue[round]
       if (next) chosen.push(next)
     }
@@ -112,12 +121,24 @@ function spreadReferences(
 function depictedFrom(brief: StillBrief, cast: readonly CastMember[]): CastMember[] {
   return depictedMembers(brief.depicts, cast)
     .filter((member) => member.photos.length > 0)
-    .slice(0, MAX_STILL_REFERENCES)
+    .slice(0, MAX_CHARACTER_REFERENCES)
 }
 
 async function depictedCast(brief: StillBrief, projectId: string): Promise<CastMember[]> {
   if (!brief.depicts || brief.depicts.length === 0) return []
   return depictedFrom(brief, await listCastMembers(db, projectId))
+}
+
+/**
+ * The set this still is shot in, if the project holds it and it has a plate.
+ * A named set nobody has photographed conditions nothing, exactly like a
+ * `depicts` name with no photograph, so it is treated as no set at all and
+ * the plan screen says so.
+ */
+async function setForStill(brief: StillBrief, projectId: string): Promise<ProjectSet | null> {
+  if (!brief.set) return null
+  const found = setForBrief(brief.set, await listProjectSets(db, projectId))
+  return found && found.plates.length > 0 ? found : null
 }
 
 /** Where a still goes, given who it shows. A null likeness route means no split. */
@@ -128,18 +149,29 @@ function routeFor(members: readonly CastMember[], routing: ModelRouting) {
 /**
  * What one still brief will cost: its own route, and on fal its own reference
  * endpoint, which is dearer than the routed model and dearer again for more
- * than one photograph. Priced from the LIVE adapters even in mock mode, the
+ * than one photograph — a set plate is one more reference on that count, the
+ * same as a person's. Priced from the LIVE adapters even in mock mode, the
  * same rule as every mock — budgets are configuration that outlives a test run.
  */
-function stillBriefPriceUsd(
+async function stillBriefPriceUsd(
   brief: StillBrief,
   cast: readonly CastMember[],
   routing: ModelRouting,
-): number {
+  projectId: string,
+): Promise<number> {
   const members = depictedFrom(brief, cast)
   const route = routeFor(members, routing)
   const live = LIVE_IMAGE_GEN_ADAPTERS[route.provider]
-  const billed = live.referenceRoute?.(route.model, spreadReferences(members).length) ?? null
+  const limits = live.referenceLimits(route.model)
+  const set = await setForStill(brief, projectId)
+  const characterCount = spreadReferences(
+    members,
+    Math.min(MAX_CHARACTER_REFERENCES, limits.characters),
+  ).length
+  const plateCount = set
+    ? referencePlates(set, Math.min(MAX_SET_REFERENCES, limits.objects)).length
+    : 0
+  const billed = live.referenceRoute?.(route.model, characterCount + plateCount) ?? null
   return billed
     ? billed.pricePerImage * STILL_GENERATIONS
     : imageGenPrice(live, STILL_GENERATIONS, route.model)
@@ -163,38 +195,68 @@ export async function stillsEstimateUsd(
   if (stills.length === 0) return 0
   const routing = (await getSettings(db)).modelRouting
   const cast = await listCastMembers(db, projectId)
-  return round4(
-    stills.reduce((total, brief) => total + stillBriefPriceUsd(brief, cast, routing), 0),
+  const prices = await Promise.all(
+    stills.map((brief) => stillBriefPriceUsd(brief, cast, routing, projectId)),
   )
+  return round4(prices.reduce((total, price) => total + price, 0))
 }
 
 /**
- * Those members' photographs, in the shape the routed generator wants
- * (decision 253): Gemini takes bytes inline, fal takes URLs. Storage that
- * cannot be read (no bucket in a dev environment) falls back to text rather
- * than failing the slot.
+ * Those members' photographs and the named set's plates, in the shape the
+ * routed generator wants (decision 253, amended 264): Gemini takes bytes
+ * inline, fal takes URLs. Storage that cannot be read (no bucket in a dev
+ * environment) falls back to text rather than failing the slot.
+ *
+ * The app's own policy caps each pool before the routed model's own limits
+ * are even asked to refuse anything (decision 264): three character slots
+ * and two object slots at most, and never more than the model allows. People
+ * are spent first, because a wrong face is worse than a wrong room.
  */
 async function referenceMaterials(
   members: readonly CastMember[],
+  set: ProjectSet | null,
   provider: 'google' | 'fal',
+  limits: ReferenceLimits,
   mocked: boolean,
-): Promise<{ names: string[]; references: ImageReference[]; referenceUrls: string[] }> {
-  const none = { names: [], references: [], referenceUrls: [] }
-  if (members.length === 0) return none
+): Promise<{
+  names: string[]
+  setName: string | null
+  references: ImageReference[]
+  referenceUrls: string[]
+}> {
+  const none = { names: [], setName: null, references: [], referenceUrls: [] }
+  const characterBudget = Math.min(MAX_CHARACTER_REFERENCES, limits.characters)
+  const objectBudget = Math.min(MAX_SET_REFERENCES, limits.objects)
+  const photos = spreadReferences(members, characterBudget)
+  const plates = set ? referencePlates(set, objectBudget) : []
+  if (photos.length === 0 && plates.length === 0) return none
 
   const names = members.map((member) => member.name)
-  const photos = spreadReferences(members)
+  const setName = plates.length > 0 && set ? set.name : null
+  const plateName = setName ?? ''
 
   if (mocked) {
     return {
       names,
-      references: photos.map(({ member, photo }) => ({
-        name: member.name,
-        kind: 'character',
-        mimeType: photo.mimeType,
-        data: 'bW9jaw==',
-      })),
-      referenceUrls: photos.map(({ photo }) => `mock://${photo.r2Key}`),
+      setName,
+      references: [
+        ...photos.map(({ member, photo }) => ({
+          name: member.name,
+          kind: 'character' as const,
+          mimeType: photo.mimeType,
+          data: 'bW9jaw==',
+        })),
+        ...plates.map((plate) => ({
+          name: plateName,
+          kind: 'object' as const,
+          mimeType: plate.mimeType,
+          data: 'bW9jaw==',
+        })),
+      ],
+      referenceUrls: [
+        ...photos.map(({ photo }) => `mock://${photo.r2Key}`),
+        ...plates.map((plate) => `mock://${plate.r2Key}`),
+      ],
     }
   }
   try {
@@ -209,17 +271,35 @@ async function referenceMaterials(
           data: Buffer.from(object.bytes).toString('base64'),
         })
       }
-      return { names, references, referenceUrls: [] }
+      for (const plate of plates) {
+        const object = await getObjectBytes(plate.r2Key)
+        references.push({
+          name: plateName,
+          kind: 'object',
+          mimeType: plate.mimeType,
+          data: Buffer.from(object.bytes).toString('base64'),
+        })
+      }
+      return { names, setName, references, referenceUrls: [] }
     }
     const referenceUrls: string[] = []
     for (const { photo } of photos) referenceUrls.push(await presignGet(photo.r2Key))
+    for (const plate of plates) referenceUrls.push(await presignGet(plate.r2Key))
     return {
       names,
-      references: photos.map(({ member, photo }) => ({
-        name: member.name,
-        kind: 'character',
-        mimeType: photo.mimeType,
-      })),
+      setName,
+      references: [
+        ...photos.map(({ member, photo }) => ({
+          name: member.name,
+          kind: 'character' as const,
+          mimeType: photo.mimeType,
+        })),
+        ...plates.map((plate) => ({
+          name: plateName,
+          kind: 'object' as const,
+          mimeType: plate.mimeType,
+        })),
+      ],
       referenceUrls,
     }
   } catch (error) {
@@ -228,15 +308,31 @@ async function referenceMaterials(
   }
 }
 
-/** "Emad Mostaque, the person in the reference photo. <prompt>" unless the planner already said so. */
-function withReferenceClause(prompt: string, names: readonly string[]): string {
-  if (names.length === 0 || prompt.includes(REFERENCE_CLAUSE)) return prompt
+/**
+ * "Emad Mostaque, the person in the reference photo, in Venture Capital
+ * Boardroom, the room in the reference photograph." The adapter sends flat
+ * inline images, so the prompt is the only thing that can label which is
+ * which. Either clause is skipped when the planner already wrote it.
+ */
+function withReferenceClause(
+  prompt: string,
+  names: readonly string[],
+  setName: string | null,
+): string {
+  const needsPeopleClause = names.length > 0 && !prompt.includes(REFERENCE_CLAUSE)
+  const needsRoomClause = setName !== null && !prompt.includes(SET_REFERENCE_CLAUSE)
+  if (!needsPeopleClause && !needsRoomClause) return prompt
+
   const people = names.join(' and ')
-  const clause =
-    names.length === 1
-      ? `${people}, ${REFERENCE_CLAUSE}.`
-      : `${people}, the people in the reference photos.`
-  return `${clause} ${prompt}`
+  const peoplePart = needsPeopleClause
+    ? names.length === 1
+      ? `${people}, ${REFERENCE_CLAUSE}`
+      : `${people}, the people in the reference photos`
+    : null
+  const roomPart = needsRoomClause ? `in ${setName}, ${SET_REFERENCE_CLAUSE}` : null
+
+  const clause = [peoplePart, roomPart].filter((part): part is string => part !== null).join(', ')
+  return `${clause}. ${prompt}`
 }
 
 /**
@@ -388,6 +484,7 @@ export async function generateStillCandidates(
    * route and this changes nothing.
    */
   const members = await depictedCast(brief, projectId)
+  const set = await setForStill(brief, projectId)
   const routing = (await getSettings(db)).modelRouting
   const route = routeFor(members, routing)
   const likeness = route !== routing.stills
@@ -410,10 +507,15 @@ export async function generateStillCandidates(
     )
   }
 
-  // The cast's photos ride along for every depicted member who has one
-  // (decision 253); the prompt names them as the people in the photos.
-  const cast = await referenceMaterials(members, provider, mocked)
-  const prompt = withReferenceClause(brief.prompt, cast.names)
+  // The cast's photos and the named set's plates ride along (decision 253,
+  // amended 264); the prompt names them as the people and the room in the
+  // photographs. Limits come from the LIVE adapter even in mock mode, the
+  // same rule as the price estimate: budgets are configuration that outlives
+  // a test run.
+  const live = LIVE_IMAGE_GEN_ADAPTERS[provider]
+  const limits = live.referenceLimits(route.model)
+  const cast = await referenceMaterials(members, set, provider, limits, mocked)
+  const prompt = withReferenceClause(brief.prompt, cast.names, cast.setName)
 
   /**
    * The endpoint that will actually be billed. A still depicting cast members
@@ -423,7 +525,6 @@ export async function generateStillCandidates(
    * (decision 253, amended). Null everywhere else, including Gemini, which
    * takes its references inline on the same model.
    */
-  const live = LIVE_IMAGE_GEN_ADAPTERS[provider]
   const billed = live.referenceRoute?.(route.model, cast.referenceUrls.length) ?? null
 
   const result = await withCost(
@@ -441,6 +542,10 @@ export async function generateStillCandidates(
         model: billed ? billed.id : route.model,
         prompt: prompt.slice(0, 200),
         ...(cast.names.length > 0 ? { references: cast.names } : {}),
+        // Recorded whenever the set resolved, even if the model's object
+        // cap left no plate actually attached (decision 264): the brief
+        // named a room, and that is worth keeping on the record.
+        ...(set ? { set: set.name } : {}),
       },
     },
     async () => {
