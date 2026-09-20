@@ -25,6 +25,7 @@ import {
   SlotCandidateSchema,
   SlotRefusalSchema,
   SlotDraftStateSchema,
+  StillRouteSchema,
   visualsApprovalBlockedReason,
   visualsCoverage,
 } from '@boom-busters/schemas'
@@ -409,10 +410,25 @@ export async function visualsReviewModel(
    * still takes — and therefore what it costs — is known (decision 253,
    * amended). Quoting the dearer route for all of them made the number
    * useless the moment the two routes differed.
+   *
+   * Priced from the rows, not from `slots` (decision 264): a route stored on
+   * a slot lives on the database row (`route`, jsonb), not on `SlotView`, and
+   * pricing a re-routed slot at its derived route would quote a number the
+   * fetch will not spend. Brief and route are zipped together before either
+   * array is built, so they stay aligned index for index.
    */
+  const toFetchEntries = rows
+    .map((row, at) => ({ row, brief: briefs[at]! }))
+    .filter(({ row }) => slotNeedsResolution(row))
+    .flatMap(({ row, brief }) => {
+      if (!brief.success) return []
+      const route = StillRouteSchema.nullable().safeParse(row.route)
+      return [{ brief: brief.data, route: route.success ? route.data : null }]
+    })
   const fetchEstimateUsd = await stillsEstimateUsd(
-    toFetch.flatMap((slot) => (slot.brief ? [slot.brief] : [])),
+    toFetchEntries.map((entry) => entry.brief),
     projectId,
+    toFetchEntries.map((entry) => entry.route),
   )
 
   const direction = ((): DirectorsBook | null => {

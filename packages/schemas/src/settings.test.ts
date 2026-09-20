@@ -197,7 +197,7 @@ describe('canonicalModelId', () => {
   it('routes stills by default at Gemini, riding the key the LLM adapters already use', () => {
     expect(DEFAULT_SETTINGS.modelRouting.stills).toEqual({
       provider: 'google',
-      model: 'gemini-2.5-flash-image',
+      model: 'gemini-3.1-flash-image',
     })
   })
 })

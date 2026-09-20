@@ -16,11 +16,11 @@ import {
 } from '@boom-busters/db'
 import { mockImageGen } from '@boom-busters/providers'
 import { STILL_GENERATIONS } from '@boom-busters/schemas'
-import type { StillBrief } from '@boom-busters/schemas'
+import type { CastMember, ModelRouting, ProjectSet, StillBrief } from '@boom-busters/schemas'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { listLedger } from '@boom-busters/cost'
 import { db } from '@/lib/db'
-import { generateStillCandidates, stillsEstimateUsd } from './visual-assets'
+import { generateStillCandidates, routeForBrief, stillsEstimateUsd } from './visual-assets'
 
 /**
  * Still generation with the cast (decision 253), in mock-provider mode
@@ -344,6 +344,15 @@ describeDb('generateStillCandidates with the cast', () => {
   })
 
   it('generates everything on one route when no split is configured', async () => {
+    // Stated explicitly rather than left to the settings default, so this
+    // test still means "no split" once the default model changes underneath
+    // it (decision 264).
+    await updateSettings(db, {
+      modelRouting: {
+        stills: { provider: 'google', model: 'gemini-2.5-flash-image' },
+        stillsLikeness: null,
+      },
+    })
     const emad = await insertCastMember(db, {
       projectId: FIXTURE_PROJECT_ID,
       name: 'Emad Mostaque',
@@ -487,5 +496,66 @@ describeDb('generateStillCandidates with the cast', () => {
       )
       expect(generate.mock.calls[0]?.[0].references ?? []).toHaveLength(0)
     })
+  })
+})
+
+describe('routeForBrief', () => {
+  const routing = {
+    stills: { provider: 'fal' as const, model: 'fal-ai/flux-2' },
+    stillsLikeness: { provider: 'google' as const, model: 'gemini-3-pro-image' },
+  } as ModelRouting
+
+  const cast = [{ name: 'Emad Mostaque', photos: [{}] }] as unknown as CastMember[]
+  const sets = [{ name: 'Venture Capital Boardroom', plates: [{}] }] as unknown as ProjectSet[]
+
+  it('sends a still of a photographed person to the likeness route', () => {
+    expect(routeForBrief({ ...still, depicts: ['Emad Mostaque'] }, cast, sets, routing)).toEqual(
+      routing.stillsLikeness,
+    )
+  })
+
+  it('sends a still in a photographed set to the likeness route too', () => {
+    expect(
+      routeForBrief(
+        { ...still, depicts: [], set: 'Venture Capital Boardroom' },
+        cast,
+        sets,
+        routing,
+      ),
+    ).toEqual(routing.stillsLikeness)
+  })
+
+  it('leaves a still of nobody, nowhere, on the ordinary route', () => {
+    expect(routeForBrief({ ...still, depicts: [] }, cast, sets, routing)).toEqual(routing.stills)
+  })
+
+  it('falls back to the ordinary route when no split is configured', () => {
+    const noSplit = { ...routing, stillsLikeness: null } as ModelRouting
+    expect(routeForBrief({ ...still, depicts: ['Emad Mostaque'] }, cast, sets, noSplit)).toEqual(
+      noSplit.stills,
+    )
+  })
+})
+
+describeDb('the route stored on a slot wins', () => {
+  it('generates on the stored route, not the derived one', async () => {
+    await updateSettings(db, {
+      modelRouting: { stills: { provider: 'fal', model: 'fal-ai/flux-2' }, stillsLikeness: null },
+    })
+    await generateStillCandidates({ ...still, depicts: [] }, FIXTURE_PROJECT_ID, {
+      provider: 'google',
+      model: 'gemini-3-pro-image',
+    })
+    expect(await lastLedgerModel()).toBe('gemini-3-pro-image')
+  })
+
+  it('prices a slot on its stored route', async () => {
+    await updateSettings(db, {
+      modelRouting: { stills: { provider: 'fal', model: 'fal-ai/flux-2' }, stillsLikeness: null },
+    })
+    const stored = { provider: 'google' as const, model: 'gemini-3-pro-image' }
+    expect(
+      await stillsEstimateUsd([{ ...still, depicts: [] }], FIXTURE_PROJECT_ID, [stored]),
+    ).toBeCloseTo(0.15 * STILL_GENERATIONS)
   })
 })

@@ -28,6 +28,7 @@ import type {
   ShotSlotStatus,
   SlotCandidate,
   StillBrief,
+  StillRoute,
   StockBrief,
 } from '@boom-busters/schemas'
 import {
@@ -124,26 +125,41 @@ function depictedFrom(brief: StillBrief, cast: readonly CastMember[]): CastMembe
     .slice(0, MAX_CHARACTER_REFERENCES)
 }
 
-async function depictedCast(brief: StillBrief, projectId: string): Promise<CastMember[]> {
-  if (!brief.depicts || brief.depicts.length === 0) return []
-  return depictedFrom(brief, await listCastMembers(db, projectId))
-}
-
 /**
- * The set this still is shot in, if the project holds it and it has a plate.
- * A named set nobody has photographed conditions nothing, exactly like a
- * `depicts` name with no photograph, so it is treated as no set at all and
- * the plan screen says so.
+ * The set this still is shot in, if the project holds it and it has a plate,
+ * as a synchronous rule that mirrors `depictedFrom`. A named set nobody has
+ * photographed conditions nothing, exactly like a `depicts` name with no
+ * photograph, so it is treated as no set at all and the plan screen says so.
+ *
+ * Sync, and taking the project's sets rather than a project id, for the same
+ * reason `depictedFrom` does: the estimate and the generator must read it
+ * from a list already loaded, not query it once per brief (a 48-still film
+ * must not fire 48 identical set queries to show one price).
  */
-async function setForStill(brief: StillBrief, projectId: string): Promise<ProjectSet | null> {
-  if (!brief.set) return null
-  const found = setForBrief(brief.set, await listProjectSets(db, projectId))
+function setFrom(brief: StillBrief, sets: readonly ProjectSet[]): ProjectSet | null {
+  const found = setForBrief(brief.set, sets)
   return found && found.plates.length > 0 ? found : null
 }
 
-/** Where a still goes, given who it shows. A null likeness route means no split. */
-function routeFor(members: readonly CastMember[], routing: ModelRouting) {
-  return members.length > 0 && routing.stillsLikeness ? routing.stillsLikeness : routing.stills
+/**
+ * Where a still goes, before the owner has said otherwise (decision 264).
+ *
+ * A still that carries any reference needs the reference-capable route, and
+ * that is what `stillsLikeness` is; the setting keeps its name because a
+ * likeness is still the reason it exists. A null split means there is one
+ * route and this changes nothing.
+ */
+export function routeForBrief(
+  brief: ShotBrief,
+  cast: readonly CastMember[],
+  sets: readonly ProjectSet[],
+  routing: ModelRouting,
+): StillRoute {
+  if (brief.type !== 'still' && brief.type !== 'hero') return routing.stills
+  const people = depictedMembers(brief.depicts, cast).filter((m) => m.photos.length > 0)
+  const set = setForBrief(brief.set, sets)
+  const conditioned = people.length > 0 || (set !== null && set.plates.length > 0)
+  return conditioned && routing.stillsLikeness ? routing.stillsLikeness : routing.stills
 }
 
 /**
@@ -151,19 +167,22 @@ function routeFor(members: readonly CastMember[], routing: ModelRouting) {
  * endpoint, which is dearer than the routed model and dearer again for more
  * than one photograph — a set plate is one more reference on that count, the
  * same as a person's. Priced from the LIVE adapters even in mock mode, the
- * same rule as every mock — budgets are configuration that outlives a test run.
+ * same rule as every mock — budgets are configuration that outlives a test
+ * run. A route stored on the slot overrides the derived one, so a re-routed
+ * slot is priced on what it will actually spend.
  */
 async function stillBriefPriceUsd(
   brief: StillBrief,
   cast: readonly CastMember[],
+  sets: readonly ProjectSet[],
   routing: ModelRouting,
-  projectId: string,
+  stored: StillRoute | null | undefined,
 ): Promise<number> {
   const members = depictedFrom(brief, cast)
-  const route = routeFor(members, routing)
+  const route = stored ?? routeForBrief(brief, cast, sets, routing)
   const live = LIVE_IMAGE_GEN_ADAPTERS[route.provider]
   const limits = live.referenceLimits(route.model)
-  const set = await setForStill(brief, projectId)
+  const set = setFrom(brief, sets)
   const characterCount = spreadReferences(
     members,
     Math.min(MAX_CHARACTER_REFERENCES, limits.characters),
@@ -184,19 +203,30 @@ async function stillBriefPriceUsd(
  * Exact rather than conservative, which is the whole point of showing a
  * number: at the plan checkpoint every brief is already written, so which
  * route each slot takes and how many reference photographs travel with it
- * are known facts, not guesses. One settings read and one cast read for the
- * whole list.
+ * are known facts, not guesses. One settings read, one cast read and one
+ * sets read for the whole list, whatever its length.
+ *
+ * `routes` is a stored route per brief, in the same order as `briefs` —
+ * every brief, not only stills, so the two stay aligned. A missing or null
+ * entry means derive the route by rule instead of trusting a stored one.
  */
 export async function stillsEstimateUsd(
   briefs: readonly ShotBrief[],
   projectId: string,
+  routes?: readonly (StillRoute | null | undefined)[],
 ): Promise<number> {
-  const stills = briefs.filter((brief): brief is StillBrief => brief.type === 'still')
+  const stills = briefs
+    .map((brief, at) => ({ brief, stored: routes?.[at] ?? null }))
+    .filter(
+      (entry): entry is { brief: StillBrief; stored: StillRoute | null } =>
+        entry.brief.type === 'still',
+    )
   if (stills.length === 0) return 0
   const routing = (await getSettings(db)).modelRouting
   const cast = await listCastMembers(db, projectId)
+  const sets = await listProjectSets(db, projectId)
   const prices = await Promise.all(
-    stills.map((brief) => stillBriefPriceUsd(brief, cast, routing, projectId)),
+    stills.map(({ brief, stored }) => stillBriefPriceUsd(brief, cast, sets, routing, stored)),
   )
   return round4(prices.reduce((total, price) => total + price, 0))
 }
@@ -467,26 +497,34 @@ export async function fetchStockCandidates(brief: StockBrief): Promise<SlotCandi
 // Generation
 // ---------------------------------------------------------------------------
 
-/** Exported for the teaser studio's per-beat generation (decision 231). */
+/**
+ * Exported for the teaser studio's per-beat generation (decision 231).
+ *
+ * `stored` is the route already sitting on the slot, if any (decision 264):
+ * when given it wins outright, over whatever the rule below would derive.
+ */
 export async function generateStillCandidates(
   brief: StillBrief,
   projectId: string,
+  stored?: StillRoute | null,
 ): Promise<SlotCandidate[]> {
   const mocked = mockProvidersEnabled()
   const keys = mocked ? {} : await visualCredentials(db, env.SECRETS_ENCRYPTION_KEY)
 
   /**
-   * Who this still shows is settled first, because it decides where the
-   * still goes (decision 253, amended). Holding a real face and inventing an
-   * empty boardroom are different jobs at different prices, so a still of
-   * someone the cast has photographed may be routed to one generator and
-   * every other still to another. With no split configured both are the same
-   * route and this changes nothing.
+   * Who this still shows, and where it is shot, is settled first, because it
+   * decides where the still goes (decision 253, amended 264). Holding a real
+   * face or a photographed room and inventing an empty one are different
+   * jobs at different prices, so a still that carries either may be routed
+   * to one generator and every other still to another. With no split
+   * configured both are the same route and this changes nothing.
    */
-  const members = await depictedCast(brief, projectId)
-  const set = await setForStill(brief, projectId)
+  const projectCast = await listCastMembers(db, projectId)
+  const projectSets = await listProjectSets(db, projectId)
+  const members = depictedFrom(brief, projectCast)
+  const set = setFrom(brief, projectSets)
   const routing = (await getSettings(db)).modelRouting
-  const route = routeFor(members, routing)
+  const route = stored ?? routeForBrief(brief, projectCast, projectSets, routing)
   const likeness = route !== routing.stills
 
   // Which generator and which model is `modelRouting.stills` (decision 208)

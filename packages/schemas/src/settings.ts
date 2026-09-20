@@ -532,7 +532,11 @@ export const DEFAULT_SETTINGS: Settings = {
     direction: { provider: 'anthropic', model: 'claude-sonnet-5' },
     // Gemini rides the Google key Settings already holds for the LLM
     // adapters, so it is the default that costs no extra account.
-    stills: { provider: 'google', model: 'gemini-2.5-flash-image' },
+    //
+    // The default is the model that takes both kinds of reference
+    // (decision 264): people and set plates, four and ten of them. A project
+    // configured before this keeps what it has.
+    stills: { provider: 'google', model: 'gemini-3.1-flash-image' },
     // No split by default: one route generates everything until the producer
     // asks for two, so nothing changes under anyone who never opens this.
     stillsLikeness: null,
