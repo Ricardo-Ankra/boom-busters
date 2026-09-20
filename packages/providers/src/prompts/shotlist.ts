@@ -93,7 +93,8 @@ export function stillStyleAnchors(brandKit: BrandKitStored): string {
   )
 }
 
-const SLOT_SHAPES = `Every slot: {"paragraphIndex": number, "seconds": number, "brief": {...}}
+function slotShapes(hasSets: boolean): string {
+  return `Every slot: {"paragraphIndex": number, "seconds": number, "brief": {...}}
 
 Every brief carries "shotSize": "wide"|"medium"|"close"|"macro"|"aerial"|"graphic"
 (charts and maps are "graphic").
@@ -105,7 +106,9 @@ Every brief carries "shotSize": "wide"|"medium"|"close"|"macro"|"aerial"|"graphi
    "query", "mustShow", "eraRange"? (ONE string like "1995–2008", never an array)}
 - {"type": "still", "coversText", "description", "shotSize", "motion", "transition",
    "prompt", "negativePrompt"?, "depicts"?: [each real person shown by likeness, by
-   full name alone: "Jane Doe", never "Jane Doe, chief executive"]}
+   full name alone: "Jane Doe", never "Jane Doe, chief executive"]${
+     hasSets ? ',\n   "set"?: the exact name of one set listed above, alone' : ''
+   }}
 - {"type": "hero", "coversText", "description", "shotSize", "motion", "transition",
    "prompt", "cameraMovement", "loop": boolean, "depicts"?} (only when hero is enabled)
 - {"type": "chart", "coversText", "description", "motion", "transition",
@@ -138,6 +141,7 @@ other's unit, which is a chart that lies.
 "motion" is {"kind": "static"} or {"kind": "kenburns", "direction": "in"|"out",
 "speed": "slow"|"medium"|"fast"}. Never "pan": the renderer cannot do one.
 "transition" is "cut" or "dissolve".`
+}
 
 export function buildShotListRequest(input: {
   caseTitle: string
@@ -157,6 +161,13 @@ export function buildShotListRequest(input: {
    * a written one only argues with it.
    */
   photographed?: readonly string[]
+  /**
+   * The film's sets (decision 264): the rooms it returns to, each held as
+   * reference photographs. A brief that names one is generated with those
+   * photographs attached, so the room is the same room every time. Absent
+   * on a project with no sets, and then no rule about them is sent.
+   */
+  sets?: readonly { name: string; look: string }[]
 }): LLMTaskRequest {
   const paragraphList = input.paragraphs
     .map(
@@ -168,6 +179,7 @@ export function buildShotListRequest(input: {
   // The claim list and the book are the cacheable prefix: identical for every
   // chapter of one film, exactly like the drafting and self-check prompts.
   const photographed = (input.photographed ?? []).filter((name) => name.trim().length > 0)
+  const sets = (input.sets ?? []).filter((set) => set.name.trim().length > 0)
   const prefix =
     `Case: ${input.caseTitle}\n\nClaims:\n${claimList(input.claims)}` +
     (input.direction ? `\n\nDirector's book:\n${renderDirectorsBook(input.direction)}` : '') +
@@ -175,6 +187,11 @@ export function buildShotListRequest(input: {
       ? `\n\nPhotographed (the producer holds reference photographs of these people; ` +
         `their "Identity" line above is planning context for you and must never ` +
         `be written into a prompt):\n${photographed.map((name) => `- ${name}`).join('\n')}`
+      : '') +
+    (sets.length > 0
+      ? `\n\nSets (the rooms this film returns to; the producer holds reference ` +
+        `photographs of each, so naming one puts the shot in that exact room):\n` +
+        sets.map((set) => `- ${set.name}: ${set.look}`).join('\n')
       : '')
 
   const chapterHead =
@@ -193,7 +210,7 @@ ${DIRECTION_CRAFT}
 
 Return JSON: {"slots": [...]}
 
-${SLOT_SHAPES}
+${slotShapes(sets.length > 0)}
 
 Planning rules:
 - The sentence decides the frame. Read "coversText" before anything else and
@@ -247,7 +264,19 @@ Planning rules:
   (c) Anyone unnamed: staff, an aide, a driver, a crowd. No name and no
       identity string. Describe them by role, age range, build and clothing,
       face turned away or in shadow, resembling nobody in particular.
-  Never quote the guardrail:
+${
+  sets.length > 0
+    ? `  Sets are the rooms this film returns to, and the producer holds
+  photographs of each. When the sentence puts us in one,
+  name it in "set" by name alone and write the shot that happens
+  inside it: what the camera sees, who is there, what they are doing,
+  the light. Do not describe the room itself; the photographs are the room,
+  and a written description only argues with them. A sentence that happens
+  somewhere else names no set: a room on every slot is the same mistake as
+  a motif on every slot.
+`
+    : ''
+}  Never quote the guardrail:
   it decides what you plan, not what the image model reads, and a model
   reads "never in handcuffs" as a request for handcuffs. Put its concrete
   nouns in "negativePrompt" instead.

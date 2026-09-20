@@ -520,6 +520,35 @@ describe('buildShotListRequest with direction (decision 252)', () => {
     const plan = mockShotList({ paragraphs: PARAGRAPHS, claimCount: 0 })
     expect(plan.slots.map((slot) => slot.brief.shotSize)).toEqual(['wide', 'medium', 'graphic'])
   })
+
+  describe('the film knows its sets', () => {
+    const withSets = buildShotListRequest({
+      caseTitle: 'Stability AI',
+      chapterTitle: 'The Missing Billions',
+      chapterNumber: 2,
+      paragraphs: PARAGRAPHS,
+      claims: CLAIMS,
+      styleAnchors: stillStyleAnchors(brandKit),
+      direction,
+      sets: [{ name: 'Venture Capital Boardroom', look: 'A long polished table, a glass wall.' }],
+    })
+
+    it('lists the sets and their look in the cacheable prefix', () => {
+      const prefix = withSets.messages[0]?.content ?? ''
+      expect(prefix).toContain('Sets')
+      expect(prefix).toContain('- Venture Capital Boardroom: A long polished table, a glass wall.')
+    })
+
+    it('asks for the set by name alone and forbids re-describing the room', () => {
+      expect(withSets.system).toContain('name it in "set" by name alone')
+      expect(withSets.system).toContain('the photographs are the room')
+    })
+
+    it('says nothing about sets when the film has none', () => {
+      expect(request.messages[0]?.content).not.toContain('Sets')
+      expect(request.system).not.toContain('"set"')
+    })
+  })
 })
 
 describe('the sentence decides the frame (decision 260)', () => {
