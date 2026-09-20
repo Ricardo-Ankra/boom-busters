@@ -33,6 +33,7 @@ import { db } from '@/lib/db'
 import { fetchRemoteImage } from '@/lib/remote-image'
 import {
   deleteObject,
+  getObjectBytes,
   headObject,
   presignPut,
   putObject,
@@ -48,16 +49,6 @@ export interface ActionResult {
 
 /** A set's reference plates are photographs like the cast's; the same 15 MB ceiling applies. */
 const MAX_SET_PLATE_BYTES = 15 * 1024 * 1024
-
-/**
- * The size a generated plate is stored at: what `generateStillCandidates`
- * actually produces (decision 264), namely Gemini's fixed WIDTH/HEIGHT, and
- * fal's default when a request asks for none. There is nothing else to read the
- * true size from: `chooseSetPlateAction` is handed the candidate's URL
- * alone, not its dimensions.
- */
-const GENERATED_PLATE_WIDTH = 1344
-const GENERATED_PLATE_HEIGHT = 768
 
 async function requireOwner(): Promise<string> {
   const session = await auth()
@@ -85,18 +76,6 @@ function failure(error: unknown, fallback: string): ActionResult {
     return { ok: false, error: 'A set with that exact name already exists.' }
   }
   return { ok: false, error: fallback }
-}
-
-/** Bytes from a candidate's URL: base64-decoded if `data:`, fetched otherwise. */
-async function pullCandidateBytes(url: string): Promise<Buffer> {
-  if (url.startsWith('data:')) {
-    return Buffer.from(url.slice(url.indexOf(',') + 1), 'base64')
-  }
-  const response = await fetch(url)
-  if (!response.ok) {
-    throw new Error(`The candidate image could not be fetched (${response.status})`)
-  }
-  return Buffer.from(await response.arrayBuffer())
 }
 
 export async function addSetAction(
@@ -385,14 +364,22 @@ export async function generateSetPlateAction(
 }
 
 /**
- * Store the chosen candidate as a plate: its bytes go to R2 under
- * `setPlateKey`, and the plate is recorded as `origin: 'generated'`,
- * `view: 'establishing'`, since a generated plate is the film's own
- * invention, and always the establishing view of the room it just invented.
+ * Store the chosen candidate as a plate. The server never fetches an
+ * arbitrary client-supplied URL: a live candidate already sits in R2 under
+ * `r2Key` (the same still `generateStillCandidates` stored, read back with
+ * `getObjectBytes` exactly as a Gemini reference is), and a mock candidate's
+ * `sourceUrl` is a self-contained `data:` thumbnail decoded in place. Either
+ * way the bytes are copied under `setPlateKey`, and the plate is recorded as
+ * `origin: 'generated'`, `view: 'establishing'`, since a generated plate is
+ * the film's own invention, and always the establishing view of the room it
+ * just invented.
  */
 export async function chooseSetPlateAction(input: {
   setId: string
-  candidateUrl: string
+  r2Key?: string | null
+  sourceUrl: string
+  width: number
+  height: number
 }): Promise<ActionResult> {
   await requireOwner()
   const invalid = badIds(input.setId)
@@ -402,16 +389,35 @@ export async function chooseSetPlateAction(input: {
   if (set.plates.length >= MAX_SET_PLATES) {
     return { ok: false, error: 'A set keeps at most four plates; remove one first.' }
   }
+  if (
+    !Number.isInteger(input.width) ||
+    input.width <= 0 ||
+    !Number.isInteger(input.height) ||
+    input.height <= 0
+  ) {
+    return { ok: false, error: 'That candidate could not be recorded.' }
+  }
   if (!storageConfigured()) {
     return { ok: false, error: 'Photo uploads need R2 configured; there is nowhere to store them.' }
   }
 
   let bytes: Buffer
-  try {
-    bytes = await pullCandidateBytes(input.candidateUrl)
-  } catch {
-    return { ok: false, error: 'That image could not be saved to storage. Try again.' }
+  if (input.r2Key) {
+    try {
+      const object = await getObjectBytes(input.r2Key)
+      bytes = Buffer.from(object.bytes)
+    } catch {
+      return {
+        ok: false,
+        error: 'That candidate is no longer available; generate the plate again.',
+      }
+    }
+  } else if (input.sourceUrl.startsWith('data:')) {
+    bytes = Buffer.from(input.sourceUrl.slice(input.sourceUrl.indexOf(',') + 1), 'base64')
+  } else {
+    return { ok: false, error: 'That candidate is no longer available; generate the plate again.' }
   }
+
   const contentHash = createHash('sha256').update(bytes).digest('hex')
   if (set.plates.some((plate) => plate.contentHash === contentHash)) {
     return { ok: true }
@@ -428,8 +434,8 @@ export async function chooseSetPlateAction(input: {
     r2Key: key,
     contentHash,
     mimeType: 'image/png',
-    width: GENERATED_PLATE_WIDTH,
-    height: GENERATED_PLATE_HEIGHT,
+    width: input.width,
+    height: input.height,
     view: 'establishing',
     origin: 'generated',
   }

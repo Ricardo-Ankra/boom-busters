@@ -1,5 +1,6 @@
 // @vitest-environment node
 
+import { createHash } from 'node:crypto'
 import { truncateLedger } from '@boom-busters/cost'
 import {
   deleteProjectSet,
@@ -285,15 +286,74 @@ describeDb('set actions (mock mode)', () => {
   it('choosing a generated plate stores it with origin "generated"', async () => {
     const id = await addTradingFloor()
     const generated = await generateSetPlateAction(id)
-    const candidateUrl = generated.candidates?.[0]?.sourceUrl
-    expect(candidateUrl).toBeDefined()
+    const candidate = generated.candidates?.[0]
+    expect(candidate?.sourceUrl).toBeDefined()
+    expect(candidate?.width).toBeDefined()
+    expect(candidate?.height).toBeDefined()
 
-    expect(await chooseSetPlateAction({ setId: id, candidateUrl: candidateUrl! })).toEqual({
-      ok: true,
-    })
+    expect(
+      await chooseSetPlateAction({
+        setId: id,
+        r2Key: candidate?.r2Key ?? null,
+        sourceUrl: candidate!.sourceUrl,
+        width: candidate!.width!,
+        height: candidate!.height!,
+      }),
+    ).toEqual({ ok: true })
     const [set] = await listProjectSets(db, FIXTURE_PROJECT_ID)
     expect(set?.plates).toHaveLength(1)
-    expect(set?.plates[0]).toMatchObject({ origin: 'generated', view: 'establishing' })
+    expect(set?.plates[0]).toMatchObject({
+      origin: 'generated',
+      view: 'establishing',
+      width: candidate!.width,
+      height: candidate!.height,
+      mimeType: 'image/png',
+    })
+  })
+
+  it('choosing a plate already in R2 copies it by r2Key, not by fetching a URL', async () => {
+    const id = await addTradingFloor()
+    // The mock storage's getObjectBytes always answers [1, 2, 3]; the stored
+    // plate's r2Key is a setPlateKey of THAT content's hash, proving the
+    // bytes came from getObjectBytes(r2Key) rather than from sourceUrl.
+    const expectedHash = createHash('sha256')
+      .update(Buffer.from([1, 2, 3]))
+      .digest('hex')
+
+    expect(
+      await chooseSetPlateAction({
+        setId: id,
+        r2Key: 'boom-busters/stills/some-project/deadbeef.png',
+        sourceUrl: 'generated://gemini/deadbeef',
+        width: 1344,
+        height: 768,
+      }),
+    ).toEqual({ ok: true })
+    const [set] = await listProjectSets(db, FIXTURE_PROJECT_ID)
+    expect(set?.plates).toHaveLength(1)
+    expect(set?.plates[0]).toMatchObject({
+      r2Key: `boom-busters/sets/${FIXTURE_PROJECT_ID}/${expectedHash}.png`,
+      origin: 'generated',
+      view: 'establishing',
+      width: 1344,
+      height: 768,
+      mimeType: 'image/png',
+    })
+  })
+
+  it('refuses a candidate with no r2Key and a non-data sourceUrl rather than fetch it', async () => {
+    const id = await addTradingFloor()
+    const result = await chooseSetPlateAction({
+      setId: id,
+      r2Key: null,
+      sourceUrl: 'https://attacker.example/whatever.png',
+      width: 1344,
+      height: 768,
+    })
+    expect(result.ok).toBe(false)
+    expect(result.error).toMatch(/no longer available/)
+    const [set] = await listProjectSets(db, FIXTURE_PROJECT_ID)
+    expect(set?.plates ?? []).toEqual([])
   })
 
   it('every action refuses a caller who is not the owner', async () => {
@@ -338,7 +398,13 @@ describeDb('set actions (mock mode)', () => {
     await expect(generateSetPlateAction(id)).rejects.toThrow('Not signed in')
     authMock.auth.mockResolvedValueOnce(null as never)
     await expect(
-      chooseSetPlateAction({ setId: id, candidateUrl: 'data:image/png;base64,AA==' }),
+      chooseSetPlateAction({
+        setId: id,
+        r2Key: null,
+        sourceUrl: 'data:image/png;base64,AA==',
+        width: 10,
+        height: 10,
+      }),
     ).rejects.toThrow('Not signed in')
   })
 
