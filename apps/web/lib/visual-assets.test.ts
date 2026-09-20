@@ -14,7 +14,7 @@ import {
   setSetPlates,
   updateSettings,
 } from '@boom-busters/db'
-import { mockImageGen } from '@boom-busters/providers'
+import { LIVE_IMAGE_GEN_ADAPTERS, mockImageGen } from '@boom-busters/providers'
 import { STILL_GENERATIONS } from '@boom-busters/schemas'
 import type { CastMember, ModelRouting, ProjectSet, StillBrief } from '@boom-busters/schemas'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -180,6 +180,52 @@ describeDb('generateStillCandidates with the cast', () => {
     // to a second angle rather than being wasted.
     const names = generate.mock.calls[0]?.[0]?.references?.map((reference) => reference.name)
     expect(names).toEqual(['Emad Mostaque', 'Prem Akkaraju', 'Emad Mostaque'])
+  })
+
+  it('names only the people whose photographs the routed model actually takes', async () => {
+    // No shipped model has a character limit under the app's own cap of
+    // three, so this is a guard on the rule rather than on a live model: a
+    // face the model is not shown must not be named as one it was.
+    const tight = vi
+      .spyOn(LIVE_IMAGE_GEN_ADAPTERS.google, 'referenceLimits')
+      .mockReturnValue({ characters: 1, objects: 0 })
+    try {
+      // Own the route: settings persist in the shared test database, and the
+      // spy is on the adapter this route resolves to.
+      await updateSettings(db, {
+        modelRouting: {
+          stills: { provider: 'google', model: 'gemini-3.1-flash-image' },
+          stillsLikeness: null,
+        },
+      })
+      const emad = await insertCastMember(db, {
+        projectId: FIXTURE_PROJECT_ID,
+        name: 'Emad Mostaque',
+        role: 'Founder',
+      })
+      const prem = await insertCastMember(db, {
+        projectId: FIXTURE_PROJECT_ID,
+        name: 'Prem Akkaraju',
+        role: 'CEO',
+      })
+      await setCastPhotos(db, emad.id, [photo('e-front', 'front')])
+      await setCastPhotos(db, prem.id, [photo('p-front', 'front')])
+
+      const candidates = await generateStillCandidates(
+        { ...still, depicts: ['Emad Mostaque', 'Prem Akkaraju'] },
+        FIXTURE_PROJECT_ID,
+      )
+
+      const request = generate.mock.calls[0]?.[0]
+      expect(request?.references?.map((reference) => reference.name)).toEqual(['Emad Mostaque'])
+      expect(request?.prompt.startsWith('Emad Mostaque, the person in the reference photo.')).toBe(
+        true,
+      )
+      expect(request?.prompt).not.toContain('Prem Akkaraju')
+      expect(candidates[0]?.references).toEqual(['Emad Mostaque'])
+    } finally {
+      tight.mockRestore()
+    }
   })
 
   /**

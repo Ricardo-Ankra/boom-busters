@@ -165,9 +165,9 @@ export function routeForBrief(
 /**
  * What one still brief will cost: its own route, and on fal its own reference
  * endpoint, which is dearer than the routed model and dearer again for more
- * than one photograph — a set plate is one more reference on that count, the
+ * than one photograph. A set plate is one more reference on that count, the
  * same as a person's. Priced from the LIVE adapters even in mock mode, the
- * same rule as every mock — budgets are configuration that outlives a test
+ * same rule as every mock: budgets are configuration that outlives a test
  * run. A route stored on the slot overrides the derived one, so a re-routed
  * slot is priced on what it will actually spend.
  */
@@ -206,7 +206,7 @@ async function stillBriefPriceUsd(
  * are known facts, not guesses. One settings read, one cast read and one
  * sets read for the whole list, whatever its length.
  *
- * `routes` is a stored route per brief, in the same order as `briefs` —
+ * `routes` is a stored route per brief, in the same order as `briefs`,
  * every brief, not only stills, so the two stay aligned. A missing or null
  * entry means derive the route by rule instead of trusting a stored one.
  */
@@ -261,7 +261,11 @@ async function referenceMaterials(
   const plates = set ? referencePlates(set, objectBudget) : []
   if (photos.length === 0 && plates.length === 0) return none
 
-  const names = members.map((member) => member.name)
+  // Named from the photographs that actually travel, not from the cast the
+  // brief depicts: a model with a tighter character limit than the app's own
+  // cap would otherwise be told about a face it was never shown. The first
+  // round of the spread walks the cast in order, so the names keep it.
+  const names = [...new Set(photos.map(({ member }) => member.name))]
   const setName = plates.length > 0 && set ? set.name : null
   const plateName = setName ?? ''
 
