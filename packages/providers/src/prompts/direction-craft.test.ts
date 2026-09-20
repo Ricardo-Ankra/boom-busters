@@ -51,5 +51,8 @@ describe('DIRECTION_CRAFT', () => {
     expect(DIRECTION_CRAFT).not.toContain('and one motif from the director')
     // The fallback no longer canonises one picture.
     expect(DIRECTION_CRAFT).not.toContain('(the empty chair,')
+    expect(DIRECTION_CRAFT).toContain('A set is a room the film returns to')
+    expect(DIRECTION_CRAFT).toContain('the photographs are the room')
+    expect(DIRECTION_CRAFT).toContain('A room on every slot is a motif on every slot')
   })
 })

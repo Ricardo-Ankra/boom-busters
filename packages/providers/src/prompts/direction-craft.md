@@ -59,6 +59,14 @@ plain one.
   and never as the subject of the frame unless the sentence is about
   it. A motif that does not fit the sentence stays out; the floor is
   one motif per chapter, not one per still.
+- A set is a room the film returns to, and the producer holds
+  photographs of it. Name one on a brief when the sentence puts us in
+  that room, and then write only what happens inside it: the camera, the
+  people, what they are doing, the light. Never describe the room again;
+  the photographs are the room. A set named on a shot that happens
+  somewhere else is worse than no set at all.
+  A room on every slot is a motif on every slot, and that mistake has
+  been made once already.
 
 ## What a still prompt must contain
 
