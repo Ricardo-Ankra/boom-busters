@@ -1,0 +1,357 @@
+// @vitest-environment node
+
+import { truncateLedger } from '@boom-busters/cost'
+import {
+  deleteProjectSet,
+  FIXTURE_PROJECT_ID,
+  insertProjectSet,
+  listProjectSets,
+  requireTestDatabase,
+  seed,
+  updateSettings,
+} from '@boom-busters/db'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { db } from '@/lib/db'
+import {
+  addSetAction,
+  addSetPlateFromUrlAction,
+  chooseSetPlateAction,
+  createSetPlateUploadAction,
+  finaliseSetPlateAction,
+  generateSetPlateAction,
+  removeSetAction,
+  removeSetPlateAction,
+  updateSetAction,
+} from './set-actions'
+
+/**
+ * The Set card's actions (decision 264) against the test database, with the
+ * seams a server action cannot bring to a unit test replaced: session, cache
+ * revalidation, and R2, which answers as if every upload landed.
+ */
+
+const authMock = vi.hoisted(() => ({
+  auth: vi.fn(async () => ({ user: { email: 'owner@example.com' } })),
+}))
+vi.mock('@/auth', () => authMock)
+vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }))
+
+const storage = vi.hoisted(() => ({
+  configured: true,
+  deleted: [] as string[],
+}))
+vi.mock('@/lib/storage', () => ({
+  storageConfigured: () => storage.configured,
+  setPlateKey: (input: { projectId: string; contentHash: string; ext: string }) =>
+    `boom-busters/sets/${input.projectId}/${input.contentHash}.${input.ext}`,
+  presignPut: async (key: string) => `https://r2.example/${key}?signed`,
+  putObject: async (key: string) => ({ key }),
+  headObject: async () => ({ size: 120_000, contentType: 'image/jpeg' }),
+  deleteObject: async (key: string) => {
+    storage.deleted.push(key)
+  },
+  getObjectBytes: async () => ({ bytes: new Uint8Array([1, 2, 3]), contentType: 'image/jpeg' }),
+  presignGet: async (key: string) => `https://r2.example/${key}?get`,
+  stillKey: (input: { projectId: string; contentHash: string }) =>
+    `boom-busters/stills/${input.projectId}/${input.contentHash}.png`,
+}))
+
+// The fetcher has its own suite (address rules, magic bytes, dimensions);
+// here it only has to hand the action some bytes.
+const remote = vi.hoisted(() => ({ fetchRemoteImage: vi.fn() }))
+vi.mock('@/lib/remote-image', () => remote)
+
+const describeDb = requireTestDatabase() ? describe : describe.skip
+
+const HASH_A = 'a'.repeat(64)
+const HASH_B = 'b'.repeat(64)
+
+describeDb('set actions (mock mode)', () => {
+  beforeEach(async () => {
+    vi.stubEnv('MOCK_PROVIDERS', '1')
+    storage.configured = true
+    storage.deleted = []
+    remote.fetchRemoteImage.mockResolvedValue({
+      ok: true,
+      image: {
+        bytes: Buffer.from('a-real-jpeg'),
+        mimeType: 'image/jpeg',
+        width: 1200,
+        height: 1600,
+        resolvedUrl: 'https://example.com/trading-floor.jpg',
+      },
+    })
+    await seed(db)
+    // The ledger is a real, shared table keyed on the wall-clock month: every
+    // cost-guarded call across the whole suite writes into it, so without a
+    // reset here `generateSetPlateAction` can trip a budget gate purely
+    // because of how much other tests already spent this run.
+    await truncateLedger(db)
+    await updateSettings(db, { budgets: { monthlyCeilingUsd: 100, approvedOverage: null } })
+    for (const set of await listProjectSets(db, FIXTURE_PROJECT_ID)) {
+      await removeSetAction(set.id)
+    }
+    // A dismissed row still occupies the (project, name) unique index, so a
+    // rename left over from an earlier run of this suite would otherwise
+    // collide with "updates the name and the look". Revive-then-hard-delete
+    // every fixed name this suite uses, so each run starts genuinely clean.
+    for (const name of ['The trading floor', 'The boardroom']) {
+      const revived = await insertProjectSet(db, { projectId: FIXTURE_PROJECT_ID, name })
+      await deleteProjectSet(db, revived.id)
+    }
+  })
+
+  async function addTradingFloor(): Promise<string> {
+    const added = await addSetAction(FIXTURE_PROJECT_ID, {
+      name: 'The trading floor',
+      look: 'cold blue light, rows of monitors',
+    })
+    expect(added.ok).toBe(true)
+    return added.id!
+  }
+
+  it('adds a set and refuses a duplicate name in words, not a stack trace', async () => {
+    await addTradingFloor()
+    const again = await addSetAction(FIXTURE_PROJECT_ID, {
+      name: 'The trading floor',
+      look: 'a different look entirely',
+    })
+    expect(again.ok).toBe(false)
+    expect(again.error).toMatch(/already exists/)
+  })
+
+  it('refuses a set with no name', async () => {
+    const result = await addSetAction(FIXTURE_PROJECT_ID, { name: '   ', look: 'x' })
+    expect(result.ok).toBe(false)
+    expect(result.error).toMatch(/needs a name/)
+  })
+
+  it('updates the name and the look', async () => {
+    const id = await addTradingFloor()
+    expect(await updateSetAction(id, { name: 'The boardroom', look: 'warm brass light' })).toEqual({
+      ok: true,
+    })
+    const [set] = await listProjectSets(db, FIXTURE_PROJECT_ID)
+    expect(set).toMatchObject({ name: 'The boardroom', look: 'warm brass light' })
+  })
+
+  it('removing a set deletes its plate objects and hides it', async () => {
+    const id = await addTradingFloor()
+    await finaliseSetPlateAction({
+      setId: id,
+      mimeType: 'image/jpeg',
+      contentHash: HASH_A,
+      width: 10,
+      height: 10,
+      view: 'establishing',
+    })
+    expect(await removeSetAction(id)).toEqual({ ok: true })
+    expect(storage.deleted).toContain(`boom-busters/sets/${FIXTURE_PROJECT_ID}/${HASH_A}.jpg`)
+    expect(await listProjectSets(db, FIXTURE_PROJECT_ID)).toEqual([])
+  })
+
+  it('an upload is refused past four plates', async () => {
+    const id = await addTradingFloor()
+    for (const letter of ['1', '2', '3', '4']) {
+      const done = await finaliseSetPlateAction({
+        setId: id,
+        mimeType: 'image/png',
+        contentHash: letter.repeat(64),
+        width: 10,
+        height: 10,
+        view: 'other',
+      })
+      expect(done.ok).toBe(true)
+    }
+    const fifth = await createSetPlateUploadAction({
+      setId: id,
+      mimeType: 'image/png',
+      fileSize: 10,
+      contentHash: '5'.repeat(64),
+    })
+    expect(fifth.ok).toBe(false)
+    expect(fifth.error).toMatch(/at most four plates/)
+  })
+
+  it('an upload is refused for a MIME type the image models do not take', async () => {
+    const id = await addTradingFloor()
+    const gif = await createSetPlateUploadAction({
+      setId: id,
+      mimeType: 'image/gif',
+      fileSize: 1000,
+      contentHash: HASH_B,
+    })
+    expect(gif.ok).toBe(false)
+    expect(gif.error).toMatch(/JPEG, PNG or WebP/)
+  })
+
+  it('an upload is refused past fifteen megabytes', async () => {
+    const id = await addTradingFloor()
+    const tooBig = await createSetPlateUploadAction({
+      setId: id,
+      mimeType: 'image/jpeg',
+      fileSize: 16 * 1024 * 1024,
+      contentHash: HASH_A,
+    })
+    expect(tooBig.ok).toBe(false)
+    expect(tooBig.error).toMatch(/15 MB/)
+  })
+
+  it('finalising stores the plate with origin "uploaded" and dedupes on content hash', async () => {
+    const id = await addTradingFloor()
+    const done = await finaliseSetPlateAction({
+      setId: id,
+      mimeType: 'image/jpeg',
+      contentHash: HASH_A,
+      width: 1200,
+      height: 1600,
+      view: 'establishing',
+    })
+    expect(done).toEqual({ ok: true })
+    const [set] = await listProjectSets(db, FIXTURE_PROJECT_ID)
+    expect(set?.plates).toHaveLength(1)
+    expect(set?.plates[0]).toMatchObject({
+      origin: 'uploaded',
+      view: 'establishing',
+      width: 1200,
+      height: 1600,
+    })
+
+    // The same fingerprint again is a no-op, not a second plate.
+    const again = await finaliseSetPlateAction({
+      setId: id,
+      mimeType: 'image/jpeg',
+      contentHash: HASH_A,
+      width: 1200,
+      height: 1600,
+      view: 'detail',
+    })
+    expect(again).toEqual({ ok: true })
+    const [after] = await listProjectSets(db, FIXTURE_PROJECT_ID)
+    expect(after?.plates).toHaveLength(1)
+  })
+
+  it('a plate added from a web address stores its source URL', async () => {
+    const id = await addTradingFloor()
+    expect(
+      await addSetPlateFromUrlAction({
+        setId: id,
+        url: 'https://example.com/trading-floor.jpg',
+        view: 'establishing',
+      }),
+    ).toEqual({ ok: true })
+
+    const [set] = await listProjectSets(db, FIXTURE_PROJECT_ID)
+    expect(set?.plates).toHaveLength(1)
+    expect(set?.plates[0]).toMatchObject({
+      origin: 'uploaded',
+      view: 'establishing',
+      width: 1200,
+      height: 1600,
+      mimeType: 'image/jpeg',
+      sourceUrl: 'https://example.com/trading-floor.jpg',
+    })
+    expect(set?.plates[0]?.r2Key).toMatch(/^boom-busters\/sets\/[0-9A-Z]{26}\/[0-9a-f]{64}\.jpg$/)
+  })
+
+  it('removes a plate from storage and the row', async () => {
+    const id = await addTradingFloor()
+    await finaliseSetPlateAction({
+      setId: id,
+      mimeType: 'image/jpeg',
+      contentHash: HASH_A,
+      width: 10,
+      height: 10,
+      view: 'establishing',
+    })
+    expect(await removeSetPlateAction({ setId: id, contentHash: HASH_A })).toEqual({ ok: true })
+    expect(storage.deleted).toContain(`boom-busters/sets/${FIXTURE_PROJECT_ID}/${HASH_A}.jpg`)
+    const [set] = await listProjectSets(db, FIXTURE_PROJECT_ID)
+    expect(set?.plates).toEqual([])
+  })
+
+  it('generating a plate returns candidates and spends nothing in mock mode', async () => {
+    const id = await addTradingFloor()
+    const result = await generateSetPlateAction(id)
+    expect(result.ok).toBe(true)
+    expect(result.candidates?.length).toBeGreaterThan(0)
+    // Mock mode never leaves the process: every candidate is a self-contained
+    // data: thumbnail, never a fetched or billed asset.
+    for (const candidate of result.candidates ?? []) {
+      expect(candidate.sourceUrl.startsWith('data:')).toBe(true)
+    }
+  })
+
+  it('choosing a generated plate stores it with origin "generated"', async () => {
+    const id = await addTradingFloor()
+    const generated = await generateSetPlateAction(id)
+    const candidateUrl = generated.candidates?.[0]?.sourceUrl
+    expect(candidateUrl).toBeDefined()
+
+    expect(await chooseSetPlateAction({ setId: id, candidateUrl: candidateUrl! })).toEqual({
+      ok: true,
+    })
+    const [set] = await listProjectSets(db, FIXTURE_PROJECT_ID)
+    expect(set?.plates).toHaveLength(1)
+    expect(set?.plates[0]).toMatchObject({ origin: 'generated', view: 'establishing' })
+  })
+
+  it('every action refuses a caller who is not the owner', async () => {
+    const id = await addTradingFloor()
+    authMock.auth.mockResolvedValueOnce(null as never)
+    await expect(updateSetAction(id, { name: 'x' })).rejects.toThrow('Not signed in')
+    authMock.auth.mockResolvedValueOnce(null as never)
+    await expect(addSetAction(FIXTURE_PROJECT_ID, { name: 'x', look: 'y' })).rejects.toThrow(
+      'Not signed in',
+    )
+    authMock.auth.mockResolvedValueOnce(null as never)
+    await expect(removeSetAction(id)).rejects.toThrow('Not signed in')
+    authMock.auth.mockResolvedValueOnce(null as never)
+    await expect(
+      createSetPlateUploadAction({
+        setId: id,
+        mimeType: 'image/jpeg',
+        fileSize: 10,
+        contentHash: HASH_A,
+      }),
+    ).rejects.toThrow('Not signed in')
+    authMock.auth.mockResolvedValueOnce(null as never)
+    await expect(
+      finaliseSetPlateAction({
+        setId: id,
+        mimeType: 'image/jpeg',
+        contentHash: HASH_A,
+        width: 10,
+        height: 10,
+        view: 'other',
+      }),
+    ).rejects.toThrow('Not signed in')
+    authMock.auth.mockResolvedValueOnce(null as never)
+    await expect(
+      addSetPlateFromUrlAction({ setId: id, url: 'https://example.com/x.jpg', view: 'other' }),
+    ).rejects.toThrow('Not signed in')
+    authMock.auth.mockResolvedValueOnce(null as never)
+    await expect(removeSetPlateAction({ setId: id, contentHash: HASH_A })).rejects.toThrow(
+      'Not signed in',
+    )
+    authMock.auth.mockResolvedValueOnce(null as never)
+    await expect(generateSetPlateAction(id)).rejects.toThrow('Not signed in')
+    authMock.auth.mockResolvedValueOnce(null as never)
+    await expect(
+      chooseSetPlateAction({ setId: id, candidateUrl: 'data:image/png;base64,AA==' }),
+    ).rejects.toThrow('Not signed in')
+  })
+
+  it('says so when storage is not configured', async () => {
+    const id = await addTradingFloor()
+    storage.configured = false
+    const result = await createSetPlateUploadAction({
+      setId: id,
+      mimeType: 'image/jpeg',
+      fileSize: 10,
+      contentHash: HASH_A,
+    })
+    expect(result.ok).toBe(false)
+    expect(result.error).toMatch(/R2 configured/)
+  })
+})

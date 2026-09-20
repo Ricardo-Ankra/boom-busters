@@ -170,6 +170,19 @@ export function castPhotoKey(input: {
 }
 
 /**
+ * A set's reference plates (decision 264), content-hash keyed under the
+ * project: the same plate uploaded twice is one object, and a film's rooms
+ * go with the film.
+ */
+export function setPlateKey(input: {
+  projectId: string
+  contentHash: string
+  ext: 'jpg' | 'png' | 'webp'
+}): string {
+  return `${R2_PREFIX}/sets/${input.projectId}/${input.contentHash}.${input.ext}`
+}
+
+/**
  * Where a music bed lives. Content-hash keyed like stills: the same track
  * uploaded twice is one object, and no project owns it — the library is
  * channel-wide by design (spec section 10.1).
