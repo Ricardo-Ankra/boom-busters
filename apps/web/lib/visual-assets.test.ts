@@ -102,7 +102,12 @@ describeDb('generateStillCandidates with the cast', () => {
 
     const request = generate.mock.calls[0]?.[0]
     expect(request?.references).toEqual([
-      { name: 'Emad Mostaque', mimeType: 'image/jpeg', data: expect.any(String) },
+      {
+        name: 'Emad Mostaque',
+        kind: 'character',
+        mimeType: 'image/jpeg',
+        data: expect.any(String),
+      },
     ])
     expect(request?.prompt.startsWith('Emad Mostaque, the person in the reference photo.')).toBe(
       true,
