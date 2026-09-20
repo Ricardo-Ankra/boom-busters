@@ -10,6 +10,7 @@ import {
   projectDeletionSummary,
   projectPulse,
   listCastMembers,
+  listProjectSets,
 } from '@boom-busters/db'
 import type { ProjectStage } from '@boom-busters/db'
 import { emptyVoiceModel, voiceReviewModel } from '@/lib/voice-review'
@@ -40,6 +41,7 @@ import { ShortsScreen } from './shorts-screen'
 import { VisualBoard } from './visual-board'
 import { VoiceReview } from './voice-review'
 import { CastCard } from './cast-card'
+import { SetCard } from './set-card'
 import { StageBanner } from './stage-banner'
 import {
   DeleteProjectButton,
@@ -107,6 +109,15 @@ export default async function ProjectPage({
         castPhotoUrls[photo.contentHash] = await presignGet(photo.r2Key)
       }
     }
+  }
+
+  // Sets (decision 264) are the cast's twin for rooms, shown beside it.
+  const sets = showCast ? await listProjectSets(db, project.id) : []
+  const setPlateUrls: Record<string, string> = {}
+  if (showCast && storageConfigured()) {
+    for (const set of sets)
+      for (const plate of set.plates)
+        setPlateUrls[plate.contentHash] = await presignGet(plate.r2Key)
   }
 
   const [
@@ -389,6 +400,8 @@ export default async function ProjectPage({
       {showCast ? (
         <CastCard projectId={project.id} members={cast} photoUrls={castPhotoUrls} />
       ) : null}
+
+      {showCast ? <SetCard projectId={project.id} sets={sets} plateUrls={setPlateUrls} /> : null}
 
       {showPreview && previewMaterialised ? (
         <PreviewScreen
