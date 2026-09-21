@@ -232,9 +232,7 @@ Rows: `kind: 'logo'`, `licence: 'Uploaded by owner'`, `title` the entity name as
 
 ### 6.2 Formats and safety
 
-Accepted: PNG, SVG, WebP; AVIF converted to PNG through `toUploadableImage(file, { format: 'image/png' })` in the browser and `fetchRemoteImage` on the server (decision 266's `format` parameter, transparency kept). JPEG is accepted but the tab warns "this mark has no transparency". 4 MB cap.
-
-SVG is sanitised server-side before storage in `apps/web/lib/svg-sanitise.ts`: `<script>`, `<foreignObject>`, event-handler attributes (`on*`), `href`/`xlink:href` to anything but `#fragment`, and external `<image>` or `<use>` references are removed; the result must still parse as SVG or the upload is refused. The render's Chromium executes whatever an SVG contains, and the library is the one place third-party files enter the compositions.
+Stored logos are always **PNG** (or the WebP or JPEG the owner uploaded). Accepted at the door: PNG, WebP, JPEG, SVG and AVIF. SVG and AVIF are converted to PNG before storage: a picked file in the browser (`toUploadableLogo`, drawing the SVG through an `Image` onto a canvas at 2048 px on the long edge, transparency kept) and a pasted address on the server (`fetchRemoteLogo`, sharp rendering the SVG at the same size). A vector mark loses nothing visible at 2048 px against a 1080p frame, and the render's Chromium never executes anything an upload contained, which is the whole of the safety argument; there is no sanitiser to get wrong. JPEG is accepted but the tab warns that the mark has no transparency. 4 MB cap. *(Amended while writing Plan A: the original text specified an SVG sanitiser; rasterising is smaller and closes the hole completely.)*
 
 ### 6.3 Settings: Logos tab
 
@@ -268,7 +266,7 @@ Nothing is fetched or generated for a graphic; the only spend is the planner's l
 - `resolveSlotBrief`: resolved with every logo, placeholder without.
 - Prompt: the mock shot list emits one graphic; a golden request includes the graphic shape.
 - Logos: `insertLogo` upserts on hash and the title wins; `removeLogo` refuses the channel mark; `findLogoByName` matches "Stability AI" to "Stability AI Ltd" through `nameMatches` and not "AI".
-- SVG sanitiser: a fixture with `<script>`, `onload` and an external `<image>` comes back with none of them and still parses; a non-SVG body is refused.
+- Rasterising: a pasted SVG comes back as PNG bytes with alpha at 2048 px on the long edge; a picked SVG goes through the browser rasteriser seam to a PNG `File`; an SVG that will not render is refused in words.
 - Settings tab: upload, rename, use as mark, remove-refused message.
 - e2e: Logos tab round trip in mock storage; a graphic card on the plan checkpoint with the `Add logo` button and, after an upload, the `resolved` state.
 - Every added line free of em and en dashes.
