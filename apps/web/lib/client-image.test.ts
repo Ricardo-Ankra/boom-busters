@@ -190,4 +190,34 @@ describe('toUploadableLogo', () => {
     expect(result.ok).toBe(false)
     expect(result.ok === false && result.error).toMatch(/could not draw that SVG/i)
   })
+
+  it('treats a file the browser will not type, with a raster extension, as that raster type', async () => {
+    const png = await toUploadableLogo(file('mark.png', ''), { rasterise })
+    expect(png.ok && png.file.type).toBe('image/png')
+    expect(png.ok && png.file.name).toBe('mark.png')
+
+    const jpg = await toUploadableLogo(file('mark.jpg', ''), { rasterise })
+    expect(jpg.ok && jpg.file.type).toBe('image/jpeg')
+
+    const jpeg = await toUploadableLogo(file('mark.jpeg', ''), { rasterise })
+    expect(jpeg.ok && jpeg.file.type).toBe('image/jpeg')
+
+    const webp = await toUploadableLogo(file('mark.webp', ''), { rasterise })
+    expect(webp.ok && webp.file.type).toBe('image/webp')
+  })
+
+  it('refuses a format none of the doors take, naming the format in the error', async () => {
+    const gif = await toUploadableLogo(file('mark.gif', 'image/gif'), { rasterise })
+    expect(gif.ok).toBe(false)
+    expect(gif.ok === false && gif.error).toBe(
+      'That is a GIF. A mark must be a PNG, WebP, JPEG, SVG or AVIF.',
+    )
+
+    // Untyped and unrecognised: named from the extension instead.
+    const untyped = await toUploadableLogo(file('mark.bmp', ''), { rasterise })
+    expect(untyped.ok).toBe(false)
+    expect(untyped.ok === false && untyped.error).toBe(
+      'That is a BMP. A mark must be a PNG, WebP, JPEG, SVG or AVIF.',
+    )
+  })
 })
