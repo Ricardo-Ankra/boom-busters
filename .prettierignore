@@ -27,3 +27,7 @@ packages/compositions/src/snapshot/golden/
 # every diff that touches the file.
 packages/compositions/src/geo/world-land.json
 infra/cdk.out
+
+# Vendored agent skills (remotion-dev/skills via the `skills` CLI). Third-party
+# text, pinned by skills-lock.json; the formatter never owns its bytes.
+.agents

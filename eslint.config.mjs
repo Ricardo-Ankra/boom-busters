@@ -20,6 +20,8 @@ export default tseslint.config(
       '**/test-results/**',
       'packages/db/drizzle/**',
       'infra/cdk.out/**',
+      // Vendored agent skills: third-party text pinned by skills-lock.json.
+      '.agents/**',
     ],
   },
 
