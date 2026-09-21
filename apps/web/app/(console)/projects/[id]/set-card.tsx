@@ -126,7 +126,7 @@ export function SetCard({ projectId, sets, plateUrls }: SetCardProps) {
       </CardHeader>
       <CardContent className="space-y-5">
         {!open ? (
-          <ul aria-label="Sets" className="flex flex-wrap gap-3">
+          <ul aria-label="Set list" className="flex flex-wrap gap-3">
             {sets.map((set) => (
               <li key={set.id} className="flex items-center gap-2">
                 <SetThumbnail set={set} plateUrls={plateUrls} />
@@ -208,6 +208,8 @@ function SetRow({
   const [candidates, setCandidates] = React.useState<SlotCandidate[] | null>(null)
   const inputRef = React.useRef<HTMLInputElement | null>(null)
   const rowBusy = busy !== null && busy.startsWith(set.id)
+  /** Whether another plate would fit: the one condition every way in shares. */
+  const room = set.plates.length < MAX_SET_PLATES
 
   const upload = async (file: File): Promise<ActionResult> => {
     const bytes = new Uint8Array(await file.arrayBuffer())
@@ -249,15 +251,13 @@ function SetRow({
       aria-label={set.name}
       className="space-y-3 rounded-md border border-[var(--color-border)] p-3"
     >
-      <div className="grid gap-3 sm:grid-cols-2">
-        <div className="space-y-1">
-          <Label htmlFor={`set-${set.id}-name`}>Name</Label>
-          <Input
-            id={`set-${set.id}-name`}
-            value={name}
-            onChange={(event) => setName(event.target.value)}
-          />
-        </div>
+      <div className="space-y-1">
+        <Label htmlFor={`set-${set.id}-name`}>Name</Label>
+        <Input
+          id={`set-${set.id}-name`}
+          value={name}
+          onChange={(event) => setName(event.target.value)}
+        />
       </div>
 
       <div className="space-y-1">
@@ -322,7 +322,7 @@ function SetRow({
               </li>
             )
           })}
-          {set.plates.length < MAX_SET_PLATES ? (
+          {room ? (
             <li className="w-28 space-y-1">
               <Button
                 variant="outline"
@@ -359,7 +359,7 @@ function SetRow({
             </li>
           ) : null}
         </ul>
-        {set.plates.length < MAX_SET_PLATES ? (
+        {room ? (
           <div className="flex flex-wrap items-end gap-2">
             <div className="min-w-[240px] flex-1 space-y-1">
               <Label htmlFor={`set-${set.id}-url`}>Or paste an image address</Label>
@@ -398,7 +398,7 @@ function SetRow({
         </p>
       </div>
 
-      {candidates !== null ? (
+      {candidates !== null && room ? (
         <ul aria-label={`${set.name} candidate plates`} className="flex flex-wrap gap-3">
           {candidates.map((candidate, index) => (
             <li key={candidate.id} className="w-28">
@@ -451,20 +451,22 @@ function SetRow({
         >
           Save
         </Button>
-        <Button
-          variant="outline"
-          disabled={rowBusy}
-          onClick={() =>
-            act(
-              `${set.id}:generate`,
-              () => generateSetPlateAction(set.id),
-              'Candidates ready',
-              (result) => setCandidates(result.candidates ?? []),
-            )
-          }
-        >
-          Generate a plate · {PLATE_ESTIMATE}
-        </Button>
+        {room ? (
+          <Button
+            variant="outline"
+            disabled={rowBusy}
+            onClick={() =>
+              act(
+                `${set.id}:generate`,
+                () => generateSetPlateAction(set.id),
+                'Candidates ready',
+                (result) => setCandidates(result.candidates ?? []),
+              )
+            }
+          >
+            Generate a plate · {PLATE_ESTIMATE}
+          </Button>
+        ) : null}
         <ConfirmButton
           variant="outline"
           busy={rowBusy}

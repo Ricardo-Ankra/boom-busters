@@ -22,6 +22,7 @@ import { listLedger } from '@boom-busters/cost'
 import { db } from '@/lib/db'
 import {
   generateStillCandidates,
+  referenceBudgets,
   resolveSlotBrief,
   routeForBrief,
   stillsEstimateUsd,
@@ -588,6 +589,13 @@ describe('routeForBrief', () => {
   })
 })
 
+describe('referenceBudgets', () => {
+  it('spends the app policy under a generous model and the model under a tight one', () => {
+    expect(referenceBudgets({ characters: 5, objects: 6 })).toEqual({ characters: 3, objects: 2 })
+    expect(referenceBudgets({ characters: 1, objects: 0 })).toEqual({ characters: 1, objects: 0 })
+  })
+})
+
 describeDb('the route stored on a slot wins', () => {
   it('generates on the stored route, not the derived one', async () => {
     await updateSettings(db, {
@@ -614,6 +622,29 @@ describeDb('the route stored on a slot wins', () => {
     })
     expect(resolution.status).toBe('resolved')
     expect(await lastLedgerModel()).toBe('gemini-3-pro-image')
+  })
+
+  it('names the plain stills setting for a stored route equal to it by value', async () => {
+    // The stored route is a different object with the same provider and
+    // model; comparing identity named the likeness setting in the
+    // missing-key message for a still that was never on it.
+    await updateSettings(db, {
+      modelRouting: {
+        stills: { provider: 'google', model: 'gemini-3.1-flash-image' },
+        stillsLikeness: null,
+      },
+    })
+    vi.stubEnv('MOCK_PROVIDERS', '')
+    try {
+      await expect(
+        generateStillCandidates({ ...still, depicts: [] }, FIXTURE_PROJECT_ID, {
+          provider: 'google',
+          model: 'gemini-3.1-flash-image',
+        }),
+      ).rejects.toThrow(/^Stills are routed to google/)
+    } finally {
+      vi.unstubAllEnvs()
+    }
   })
 
   it('prices a slot on its stored route', async () => {

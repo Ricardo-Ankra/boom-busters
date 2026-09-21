@@ -230,8 +230,8 @@ export const visualsRunner = inngest.createFunction(
     // No route is stored here (decision 264): `shot_slots.route` holds the
     // owner's explicit choice and nothing else, so a derived route stamped
     // on every planned slot would freeze the Settings default the moment a
-    // plan existed. The rule is re-derived wherever it is needed — the
-    // board, the estimate, generation — and shown as the planned default.
+    // plan existed. The rule is re-derived wherever it is needed, by the
+    // board, the estimate and generation, and shown as the planned default.
     await step.run('save-shot-list', async () => {
       await replaceShotList(db, projectId, allRows)
       await setVisualsPhase(db, projectId, 'plan')

@@ -38,6 +38,7 @@ import {
   presignPut,
   putObject,
   setPlateKey,
+  stillKey,
   storageConfigured,
 } from '@/lib/storage'
 import { generateStillCandidates } from '@/lib/visual-assets'
@@ -49,6 +50,15 @@ export interface ActionResult {
 
 /** A set's reference plates are photographs like the cast's; the same 15 MB ceiling applies. */
 const MAX_SET_PLATE_BYTES = 15 * 1024 * 1024
+
+/**
+ * Where this project's generated stills live, taken from the key helper
+ * itself so there is one spelling of the prefix in the app.
+ */
+function projectStillsPrefix(projectId: string): string {
+  const key = stillKey({ projectId, contentHash: 'x' })
+  return key.slice(0, key.lastIndexOf('/') + 1)
+}
 
 async function requireOwner(): Promise<string> {
   const session = await auth()
@@ -344,6 +354,11 @@ export async function generateSetPlateAction(
   if (invalid) return invalid
   const set = await getProjectSet(db, setId)
   if (!set) return { ok: false, error: 'This set no longer exists.' }
+  // Refused before the generator is called, not after: a full set has
+  // nowhere to put the image the money would have bought.
+  if (set.plates.length >= MAX_SET_PLATES) {
+    return { ok: false, error: 'A set keeps at most four plates; remove one first.' }
+  }
 
   const settings = await getSettings(db)
   const brief: StillBrief = {
@@ -403,6 +418,15 @@ export async function chooseSetPlateAction(input: {
 
   let bytes: Buffer
   if (input.r2Key) {
+    // Only a still this project just generated may be copied in. The key is
+    // the client's to name, and an arbitrary one would make this action a
+    // reader of any object in the bucket.
+    if (!input.r2Key.startsWith(projectStillsPrefix(set.projectId))) {
+      return {
+        ok: false,
+        error: 'That candidate is no longer available; generate the plate again.',
+      }
+    }
     try {
       const object = await getObjectBytes(input.r2Key)
       bytes = Buffer.from(object.bytes)

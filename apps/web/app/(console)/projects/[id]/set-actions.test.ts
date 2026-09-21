@@ -11,6 +11,7 @@ import {
   seed,
   updateSettings,
 } from '@boom-busters/db'
+import { mockImageGen } from '@boom-busters/providers'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/lib/db'
 import {
@@ -68,6 +69,8 @@ const HASH_A = 'a'.repeat(64)
 const HASH_B = 'b'.repeat(64)
 
 describeDb('set actions (mock mode)', () => {
+  const generate = vi.spyOn(mockImageGen, 'generate')
+
   beforeEach(async () => {
     vi.stubEnv('MOCK_PROVIDERS', '1')
     storage.configured = true
@@ -283,6 +286,30 @@ describeDb('set actions (mock mode)', () => {
     }
   })
 
+  it('refuses to generate for a set that already holds four plates, before spending', async () => {
+    const id = await addTradingFloor()
+    for (const letter of ['1', '2', '3', '4']) {
+      expect(
+        await finaliseSetPlateAction({
+          setId: id,
+          mimeType: 'image/png',
+          contentHash: letter.repeat(64),
+          width: 10,
+          height: 10,
+          view: 'other',
+        }),
+      ).toEqual({ ok: true })
+    }
+    generate.mockClear()
+
+    const result = await generateSetPlateAction(id)
+    expect(result).toEqual({
+      ok: false,
+      error: 'A set keeps at most four plates; remove one first.',
+    })
+    expect(generate).not.toHaveBeenCalled()
+  })
+
   it('choosing a generated plate stores it with origin "generated"', async () => {
     const id = await addTradingFloor()
     const generated = await generateSetPlateAction(id)
@@ -311,6 +338,23 @@ describeDb('set actions (mock mode)', () => {
     })
   })
 
+  it('refuses a candidate key from outside this project’s own stills', async () => {
+    // The key is the client's to name, so an arbitrary one would make this
+    // action a reader of any object in the bucket.
+    const id = await addTradingFloor()
+    const result = await chooseSetPlateAction({
+      setId: id,
+      r2Key: 'boom-busters/stills/some-other-project/deadbeef.png',
+      sourceUrl: 'generated://gemini/deadbeef',
+      width: 1344,
+      height: 768,
+    })
+    expect(result.ok).toBe(false)
+    expect(result.error).toMatch(/no longer available/)
+    const [set] = await listProjectSets(db, FIXTURE_PROJECT_ID)
+    expect(set?.plates ?? []).toEqual([])
+  })
+
   it('choosing a plate already in R2 copies it by r2Key, not by fetching a URL', async () => {
     const id = await addTradingFloor()
     // The mock storage's getObjectBytes always answers [1, 2, 3]; the stored
@@ -323,7 +367,7 @@ describeDb('set actions (mock mode)', () => {
     expect(
       await chooseSetPlateAction({
         setId: id,
-        r2Key: 'boom-busters/stills/some-project/deadbeef.png',
+        r2Key: `boom-busters/stills/${FIXTURE_PROJECT_ID}/deadbeef.png`,
         sourceUrl: 'generated://gemini/deadbeef',
         width: 1344,
         height: 768,

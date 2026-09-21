@@ -88,7 +88,7 @@ beforeEach(() => {
 describe('SetCard', () => {
   it('renders each set with its plate count', () => {
     render(<SetCard projectId={PROJECT} sets={[tradingFloor, boardroom]} plateUrls={{}} />)
-    const list = screen.getByRole('list', { name: 'Sets' })
+    const list = screen.getByRole('list', { name: 'Set list' })
     expect(within(list).getByText('The trading floor')).toBeInTheDocument()
     expect(within(list).getByText(/1 plate$/)).toBeInTheDocument()
     expect(within(list).getByText('The boardroom')).toBeInTheDocument()
@@ -99,7 +99,7 @@ describe('SetCard', () => {
     const empty: ProjectSet = { ...boardroom, id: '01J0000000000000000000000D', plates: [] }
     render(<SetCard projectId={PROJECT} sets={[tradingFloor, empty]} plateUrls={{}} />)
     expect(screen.getByRole('status')).toHaveTextContent('1 set still needs a plate.')
-    expect(screen.queryByRole('list', { name: 'Sets' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('list', { name: 'Set list' })).not.toBeInTheDocument()
     expect(screen.getByRole('region', { name: 'The trading floor' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Hide sets' })).toBeInTheDocument()
   })
@@ -206,9 +206,29 @@ describe('SetCard', () => {
     })
   })
 
+  it('offers no way to add a plate to a set that already holds four', async () => {
+    const full: ProjectSet = {
+      ...tradingFloor,
+      plates: (['e', 'f', 'g', 'h'] as const).map((hash) => ({
+        r2Key: `boom-busters/sets/p/${hash}.jpg`,
+        contentHash: hash,
+        mimeType: 'image/jpeg' as const,
+        width: 1600,
+        height: 1200,
+        view: 'other' as const,
+        origin: 'uploaded' as const,
+      })),
+    }
+    render(<SetCard projectId={PROJECT} sets={[full]} plateUrls={{}} />)
+    await userEvent.click(screen.getByRole('button', { name: 'Edit sets' }))
+    const row = screen.getByRole('region', { name: 'The trading floor' })
+    expect(within(row).queryByRole('button', { name: 'Add plate' })).not.toBeInTheDocument()
+    expect(within(row).queryByRole('button', { name: /Generate a plate/ })).not.toBeInTheDocument()
+  })
+
   it('the card is collapsed when every set has a plate', () => {
     render(<SetCard projectId={PROJECT} sets={[tradingFloor, boardroom]} plateUrls={{}} />)
     expect(screen.queryByRole('region', { name: 'The trading floor' })).not.toBeInTheDocument()
-    expect(screen.getByRole('list', { name: 'Sets' })).toBeInTheDocument()
+    expect(screen.getByRole('list', { name: 'Set list' })).toBeInTheDocument()
   })
 })

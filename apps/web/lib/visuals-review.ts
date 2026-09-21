@@ -12,7 +12,7 @@ import {
   slotNeedsResolution,
 } from '@boom-busters/db'
 import type { Database } from '@boom-busters/db'
-import { BANNED_PROMPT_WORDS } from '@boom-busters/providers'
+import { BANNED_PROMPT_WORDS, LIVE_IMAGE_GEN_ADAPTERS } from '@boom-busters/providers'
 import {
   ArticleMetadataSchema,
   articleSourceLabel,
@@ -403,7 +403,14 @@ export async function visualsReviewModel(
       reuse: reuseView(reusable[at]!, reusable),
       route: ((): StillRoute | null => {
         const stored = StillRouteSchema.nullable().safeParse(row.route)
-        return stored.success ? stored.data : null
+        if (!stored.success || stored.data === null) return null
+        // A model the provider has retired is no longer an option the select
+        // can show, so the slot reads as being on the planned default, which
+        // is what it will actually generate on (decision 264).
+        const offered = LIVE_IMAGE_GEN_ADAPTERS[stored.data.provider].models.some(
+          (model) => model.id === stored.data!.model,
+        )
+        return offered ? stored.data : null
       })(),
       // `routeForBrief` already falls back to `settings.modelRouting.stills`
       // for every type but still and hero, so a brief that failed to parse

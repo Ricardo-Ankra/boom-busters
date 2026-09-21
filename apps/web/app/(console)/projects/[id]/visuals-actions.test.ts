@@ -11,14 +11,17 @@ import {
   saveChapter,
   seed,
   setSlotResolution,
+  setSlotRoute,
   setVisualsPhase,
   shotSlots,
   slotNeedsResolution,
+  updateSettings,
 } from '@boom-busters/db'
 import type { NewShotSlot } from '@boom-busters/db'
 import type { ShotBrief, SlotCandidate } from '@boom-busters/schemas'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/lib/db'
+import { visualsReviewModel } from '@/lib/visuals-review'
 import {
   finaliseOwnUploadAction,
   refetchSlotAction,
@@ -339,6 +342,27 @@ describeDb('the model select on a shot (decision 264)', () => {
     const slot = (await getShotSlot(db, ids.still))!
     expect(slot.route).toEqual({ provider: 'google', model: 'gemini-3-pro-image' })
     expect(slotNeedsResolution(slot)).toBe(true)
+  })
+
+  it('falls back to the planned default when the stored model has been retired', async () => {
+    // A provider drops a model and the id stays on the row. Reading it
+    // unguarded threw, which took the whole project page down over one
+    // dead slot (decision 264).
+    await updateSettings(db, {
+      modelRouting: {
+        stills: { provider: 'google', model: 'gemini-3.1-flash-image' },
+        stillsLikeness: null,
+      },
+    })
+    await setSlotRoute(db, ids.still, { provider: 'google', model: 'retired-model' })
+
+    const board = await visualsReviewModel(db, FIXTURE_PROJECT_ID)
+    const view = board.chapters.flatMap((chapter) => chapter.slots).find((s) => s.id === ids.still)
+    expect(view?.route).toBeNull()
+    expect(view?.derivedRoute).toEqual({ provider: 'google', model: 'gemini-3.1-flash-image' })
+    // And it prices on that derived route rather than throwing on a model
+    // no adapter offers any more.
+    expect(board.fetchEstimateUsd).toBeGreaterThan(0)
   })
 
   it('clears the route back to the derived one', async () => {

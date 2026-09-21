@@ -532,7 +532,8 @@ export function VisualBoard({
                       ? ` ${model.coverage.resolved} slot${
                           model.coverage.resolved === 1 ? '' : 's'
                         } already fetched are discarded.`
-                      : '')
+                      : '') +
+                    ' Any image model you picked per shot is discarded with them.'
                   }
                   onConfirm={() =>
                     act('replan', () => replanShotsAction(projectId), 'Re-planning the shot list')
@@ -1742,6 +1743,9 @@ function ReusePicker({
   )
 }
 
+/** The two image providers as people write them, not as the code keys them. */
+const PROVIDER_LABELS: Record<StillProvider, string> = { google: 'Google', fal: 'fal.ai' }
+
 /** A model's label off its own adapter, or the stored id itself if the adapter no longer lists it. */
 function stillModelLabel(provider: StillProvider, model: string): string {
   try {
@@ -1795,7 +1799,7 @@ function ModelRouteSelect({
       >
         <option value="">{`Planned default (${defaultLabel})`}</option>
         {STILL_PROVIDERS.map((provider) => (
-          <optgroup key={provider} label={provider}>
+          <optgroup key={provider} label={PROVIDER_LABELS[provider]}>
             {LIVE_IMAGE_GEN_ADAPTERS[provider].models.map((candidate) => (
               <option key={`${provider}:${candidate.id}`} value={`${provider}:${candidate.id}`}>
                 {candidate.label}

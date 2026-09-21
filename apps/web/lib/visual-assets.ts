@@ -62,6 +62,22 @@ import { getObjectBytes, presignGet, putObject, stillKey, storageConfigured } fr
 export const MAX_CHARACTER_REFERENCES = 3
 export const MAX_SET_REFERENCES = 2
 
+/**
+ * What one still may actually carry: the app's policy above, never more than
+ * the routed model allows. One function because the price estimate and the
+ * generator have to spend the same budget, and two copies of this sum once
+ * quoted a number no run would spend.
+ */
+export function referenceBudgets(limits: ReferenceLimits): {
+  characters: number
+  objects: number
+} {
+  return {
+    characters: Math.min(MAX_CHARACTER_REFERENCES, limits.characters),
+    objects: Math.min(MAX_SET_REFERENCES, limits.objects),
+  }
+}
+
 /** The clause the planner is asked to write; prepended if it forgot. */
 const REFERENCE_CLAUSE = 'the person in the reference photo'
 
@@ -163,6 +179,17 @@ export function routeForBrief(
 }
 
 /**
+ * Whether the route's own adapter still lists its model (decision 264). A
+ * model the provider has retired stays on the row long after it is gone,
+ * and `imageGenModel` throws on it, so an unguarded read of a stored route
+ * would take the whole project page down over one dead slot. The derived
+ * route is the fallback, which is what the slot would have had anyway.
+ */
+function adapterOffers(route: StillRoute): boolean {
+  return LIVE_IMAGE_GEN_ADAPTERS[route.provider].models.some((model) => model.id === route.model)
+}
+
+/**
  * What one still brief will cost: its own route, and on fal its own reference
  * endpoint, which is dearer than the routed model and dearer again for more
  * than one photograph. A set plate is one more reference on that count, the
@@ -179,17 +206,13 @@ async function stillBriefPriceUsd(
   stored: StillRoute | null | undefined,
 ): Promise<number> {
   const members = depictedFrom(brief, cast)
-  const route = stored ?? routeForBrief(brief, cast, sets, routing)
+  const derived = routeForBrief(brief, cast, sets, routing)
+  const route = stored && adapterOffers(stored) ? stored : derived
   const live = LIVE_IMAGE_GEN_ADAPTERS[route.provider]
-  const limits = live.referenceLimits(route.model)
+  const budgets = referenceBudgets(live.referenceLimits(route.model))
   const set = setFrom(brief, sets)
-  const characterCount = spreadReferences(
-    members,
-    Math.min(MAX_CHARACTER_REFERENCES, limits.characters),
-  ).length
-  const plateCount = set
-    ? referencePlates(set, Math.min(MAX_SET_REFERENCES, limits.objects)).length
-    : 0
+  const characterCount = spreadReferences(members, budgets.characters).length
+  const plateCount = set ? referencePlates(set, budgets.objects).length : 0
   const billed = live.referenceRoute?.(route.model, characterCount + plateCount) ?? null
   return billed
     ? billed.pricePerImage * STILL_GENERATIONS
@@ -246,7 +269,7 @@ async function referenceMaterials(
   members: readonly CastMember[],
   set: ProjectSet | null,
   provider: 'google' | 'fal',
-  limits: ReferenceLimits,
+  budgets: { characters: number; objects: number },
   mocked: boolean,
 ): Promise<{
   names: string[]
@@ -255,10 +278,8 @@ async function referenceMaterials(
   referenceUrls: string[]
 }> {
   const none = { names: [], setName: null, references: [], referenceUrls: [] }
-  const characterBudget = Math.min(MAX_CHARACTER_REFERENCES, limits.characters)
-  const objectBudget = Math.min(MAX_SET_REFERENCES, limits.objects)
-  const photos = spreadReferences(members, characterBudget)
-  const plates = set ? referencePlates(set, objectBudget) : []
+  const photos = spreadReferences(members, budgets.characters)
+  const plates = set ? referencePlates(set, budgets.objects) : []
   if (photos.length === 0 && plates.length === 0) return none
 
   // Named from the photographs that actually travel, not from the cast the
@@ -523,13 +544,23 @@ export async function generateStillCandidates(
    * to one generator and every other still to another. With no split
    * configured both are the same route and this changes nothing.
    */
-  const projectCast = await listCastMembers(db, projectId)
-  const projectSets = await listProjectSets(db, projectId)
+  //
+  // Each list is read only when the brief can use it (the rule `setFrom`
+  // states): a 48-still film must not fire 48 cast queries and 48 set
+  // queries for briefs that name neither.
+  const projectCast =
+    brief.depicts && brief.depicts.length > 0 ? await listCastMembers(db, projectId) : []
+  const projectSets = brief.set ? await listProjectSets(db, projectId) : []
   const members = depictedFrom(brief, projectCast)
   const set = setFrom(brief, projectSets)
   const routing = (await getSettings(db)).modelRouting
-  const route = stored ?? routeForBrief(brief, projectCast, projectSets, routing)
-  const likeness = route !== routing.stills
+  const derived = routeForBrief(brief, projectCast, projectSets, routing)
+  const route = stored && adapterOffers(stored) ? stored : derived
+  // By value, not by reference: a stored route equal to the plain one is the
+  // plain one, and comparing object identity named the wrong setting in the
+  // missing-key message every time.
+  const likeness =
+    route.provider !== routing.stills.provider || route.model !== routing.stills.model
 
   // Which generator and which model is `modelRouting.stills` (decision 208)
   // — a routed choice like every LLM task, not an inference from which key
@@ -555,8 +586,13 @@ export async function generateStillCandidates(
   // same rule as the price estimate: budgets are configuration that outlives
   // a test run.
   const live = LIVE_IMAGE_GEN_ADAPTERS[provider]
-  const limits = live.referenceLimits(route.model)
-  const cast = await referenceMaterials(members, set, provider, limits, mocked)
+  const cast = await referenceMaterials(
+    members,
+    set,
+    provider,
+    referenceBudgets(live.referenceLimits(route.model)),
+    mocked,
+  )
   const prompt = withReferenceClause(brief.prompt, cast.names, cast.setName)
 
   /**

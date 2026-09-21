@@ -578,6 +578,8 @@ describe('the plan phase (staged-visuals design)', () => {
     await userEvent.click(screen.getByRole('button', { name: /Re-plan shot list · ≈\$0\.15/ }))
     expect(replanShotsAction).not.toHaveBeenCalled()
     expect(screen.getByText(/planned again from the saved direction/)).toBeInTheDocument()
+    // The per-shot model choices go with the briefs, and the copy says so.
+    expect(screen.getByText(/image model you picked per shot is discarded/)).toBeInTheDocument()
 
     await userEvent.click(screen.getByRole('button', { name: /^Re-plan now$/ }))
     expect(replanShotsAction).toHaveBeenCalledWith(PROJECT)
@@ -891,6 +893,11 @@ describe('the model select on a shot (decision 264)', () => {
     expect(within(select).getByText('Planned default (Gemini 3 Pro Image)')).toBeInTheDocument()
     expect(within(select).getByText('Gemini 3.1 Flash Image')).toBeInTheDocument()
     expect(within(select).getByText('FLUX.1 dev')).toBeInTheDocument()
+    // The groups read as the providers are written, not as they are keyed.
+    expect([...select.querySelectorAll('optgroup')].map((group) => group.label)).toEqual([
+      'Google',
+      'fal.ai',
+    ])
 
     await userEvent.selectOptions(select, 'fal:fal-ai/flux/dev')
     expect(setSlotRouteAction).toHaveBeenCalledWith(PROJECT, SLOT_B, {
