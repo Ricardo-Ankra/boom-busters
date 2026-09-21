@@ -42,6 +42,7 @@ import { VisualBoard } from './visual-board'
 import { VoiceReview } from './voice-review'
 import { CastCard } from './cast-card'
 import { SetCard } from './set-card'
+import { plateEstimateUsd } from '@/lib/visual-assets'
 import { StageBanner } from './stage-banner'
 import {
   DeleteProjectButton,
@@ -113,6 +114,7 @@ export default async function ProjectPage({
 
   // Sets (decision 264) are the cast's twin for rooms, shown beside it.
   const sets = showCast ? await listProjectSets(db, project.id) : []
+  const plateEstimate = showCast ? await plateEstimateUsd() : 0
   const setPlateUrls: Record<string, string> = {}
   if (showCast && storageConfigured()) {
     for (const set of sets)
@@ -401,7 +403,14 @@ export default async function ProjectPage({
         <CastCard projectId={project.id} members={cast} photoUrls={castPhotoUrls} />
       ) : null}
 
-      {showCast ? <SetCard projectId={project.id} sets={sets} plateUrls={setPlateUrls} /> : null}
+      {showCast ? (
+        <SetCard
+          projectId={project.id}
+          sets={sets}
+          plateUrls={setPlateUrls}
+          plateEstimateUsd={plateEstimate}
+        />
+      ) : null}
 
       {showPreview && previewMaterialised ? (
         <PreviewScreen

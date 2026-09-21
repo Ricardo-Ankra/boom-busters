@@ -87,7 +87,14 @@ beforeEach(() => {
 
 describe('SetCard', () => {
   it('renders each set with its plate count', () => {
-    render(<SetCard projectId={PROJECT} sets={[tradingFloor, boardroom]} plateUrls={{}} />)
+    render(
+      <SetCard
+        projectId={PROJECT}
+        sets={[tradingFloor, boardroom]}
+        plateUrls={{}}
+        plateEstimateUsd={0.08}
+      />,
+    )
     const list = screen.getByRole('list', { name: 'Set list' })
     expect(within(list).getByText('The trading floor')).toBeInTheDocument()
     expect(within(list).getByText(/1 plate$/)).toBeInTheDocument()
@@ -97,7 +104,14 @@ describe('SetCard', () => {
 
   it('opens itself when a set has no plate, and says how many', () => {
     const empty: ProjectSet = { ...boardroom, id: '01J0000000000000000000000D', plates: [] }
-    render(<SetCard projectId={PROJECT} sets={[tradingFloor, empty]} plateUrls={{}} />)
+    render(
+      <SetCard
+        projectId={PROJECT}
+        sets={[tradingFloor, empty]}
+        plateUrls={{}}
+        plateEstimateUsd={0.08}
+      />,
+    )
     expect(screen.getByRole('status')).toHaveTextContent('1 set still needs a plate.')
     expect(screen.queryByRole('list', { name: 'Set list' })).not.toBeInTheDocument()
     expect(screen.getByRole('region', { name: 'The trading floor' })).toBeInTheDocument()
@@ -105,7 +119,7 @@ describe('SetCard', () => {
   })
 
   it('adding a set calls the action with the typed name and look', async () => {
-    render(<SetCard projectId={PROJECT} sets={[]} plateUrls={{}} />)
+    render(<SetCard projectId={PROJECT} sets={[]} plateUrls={{}} plateEstimateUsd={0.08} />)
     await userEvent.type(screen.getByLabelText('Name'), 'The trading floor')
     await userEvent.type(screen.getByLabelText('Look'), 'Glass walls, dual monitors')
     await userEvent.click(screen.getByRole('button', { name: 'Add set' }))
@@ -117,8 +131,12 @@ describe('SetCard', () => {
   })
 
   it('saving a set sends only the fields that changed', async () => {
-    render(<SetCard projectId={PROJECT} sets={[tradingFloor]} plateUrls={{}} />)
+    render(
+      <SetCard projectId={PROJECT} sets={[tradingFloor]} plateUrls={{}} plateEstimateUsd={0.08} />,
+    )
     await userEvent.click(screen.getByRole('button', { name: 'Edit sets' }))
+    // The label quotes the routed stills model's price, not a constant.
+    expect(screen.getByRole('button', { name: 'Generate a plate · ≈$0.08' })).toBeInTheDocument()
     const row = screen.getByRole('region', { name: 'The trading floor' })
     const look = within(row).getByLabelText('Look')
     await userEvent.clear(look)
@@ -130,7 +148,9 @@ describe('SetCard', () => {
   })
 
   it('removing a set asks for confirmation first', async () => {
-    render(<SetCard projectId={PROJECT} sets={[tradingFloor]} plateUrls={{}} />)
+    render(
+      <SetCard projectId={PROJECT} sets={[tradingFloor]} plateUrls={{}} plateEstimateUsd={0.08} />,
+    )
     await userEvent.click(screen.getByRole('button', { name: 'Edit sets' }))
     await userEvent.click(screen.getByRole('button', { name: 'Remove set' }))
     expect(actions.removeSetAction).not.toHaveBeenCalled()
@@ -166,7 +186,9 @@ describe('SetCard', () => {
         },
       ],
     })
-    render(<SetCard projectId={PROJECT} sets={[tradingFloor]} plateUrls={{}} />)
+    render(
+      <SetCard projectId={PROJECT} sets={[tradingFloor]} plateUrls={{}} plateEstimateUsd={0.08} />,
+    )
     await userEvent.click(screen.getByRole('button', { name: 'Edit sets' }))
     await userEvent.click(screen.getByRole('button', { name: /Generate a plate/ }))
 
@@ -192,7 +214,9 @@ describe('SetCard', () => {
         },
       ],
     })
-    render(<SetCard projectId={PROJECT} sets={[tradingFloor]} plateUrls={{}} />)
+    render(
+      <SetCard projectId={PROJECT} sets={[tradingFloor]} plateUrls={{}} plateEstimateUsd={0.08} />,
+    )
     await userEvent.click(screen.getByRole('button', { name: 'Edit sets' }))
     await userEvent.click(screen.getByRole('button', { name: /Generate a plate/ }))
     await userEvent.click(await screen.findByRole('button', { name: 'Choose plate 1' }))
@@ -219,7 +243,7 @@ describe('SetCard', () => {
         origin: 'uploaded' as const,
       })),
     }
-    render(<SetCard projectId={PROJECT} sets={[full]} plateUrls={{}} />)
+    render(<SetCard projectId={PROJECT} sets={[full]} plateUrls={{}} plateEstimateUsd={0.08} />)
     await userEvent.click(screen.getByRole('button', { name: 'Edit sets' }))
     const row = screen.getByRole('region', { name: 'The trading floor' })
     expect(within(row).queryByRole('button', { name: 'Add plate' })).not.toBeInTheDocument()
@@ -227,7 +251,14 @@ describe('SetCard', () => {
   })
 
   it('the card is collapsed when every set has a plate', () => {
-    render(<SetCard projectId={PROJECT} sets={[tradingFloor, boardroom]} plateUrls={{}} />)
+    render(
+      <SetCard
+        projectId={PROJECT}
+        sets={[tradingFloor, boardroom]}
+        plateUrls={{}}
+        plateEstimateUsd={0.08}
+      />,
+    )
     expect(screen.queryByRole('region', { name: 'The trading floor' })).not.toBeInTheDocument()
     expect(screen.getByRole('list', { name: 'Set list' })).toBeInTheDocument()
   })

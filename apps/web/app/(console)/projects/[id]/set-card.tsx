@@ -40,9 +40,6 @@ import {
  * nothing until `chooseSetPlateAction` picks one.
  */
 
-// The default stills route (gemini-3.1-flash-image) at two variants.
-const PLATE_ESTIMATE = '≈$0.14'
-
 const VIEW_LABELS: Record<SetPlateView, string> = {
   establishing: 'Establishing',
   detail: 'Detail',
@@ -54,6 +51,8 @@ export interface SetCardProps {
   sets: readonly ProjectSet[]
   /** Presigned GET per plate content hash; absent in mock storage. */
   plateUrls: Readonly<Record<string, string>>
+  /** What Generate a plate will spend on the routed stills model, in USD. */
+  plateEstimateUsd: number
 }
 
 /** `run` results a wider shape than `ActionResult` can carry, such as the candidates a generate call returns. */
@@ -65,7 +64,7 @@ type Act = (
   onOk?: (result: ActResult) => void,
 ) => Promise<void>
 
-export function SetCard({ projectId, sets, plateUrls }: SetCardProps) {
+export function SetCard({ projectId, sets, plateUrls, plateEstimateUsd }: SetCardProps) {
   const router = useRouter()
   const { toast } = useToast()
   const [busy, setBusy] = React.useState<string | null>(null)
@@ -147,7 +146,14 @@ export function SetCard({ projectId, sets, plateUrls }: SetCardProps) {
         ) : (
           <>
             {sets.map((set) => (
-              <SetRow key={set.id} set={set} plateUrls={plateUrls} busy={busy} act={act} />
+              <SetRow
+                key={set.id}
+                set={set}
+                plateUrls={plateUrls}
+                plateEstimateUsd={plateEstimateUsd}
+                busy={busy}
+                act={act}
+              />
             ))}
             <AddSet projectId={projectId} busy={busy} act={act} />
           </>
@@ -193,11 +199,13 @@ function SetThumbnail({
 function SetRow({
   set,
   plateUrls,
+  plateEstimateUsd,
   busy,
   act,
 }: {
   set: ProjectSet
   plateUrls: Readonly<Record<string, string>>
+  plateEstimateUsd: number
   busy: string | null
   act: Act
 }) {
@@ -464,7 +472,7 @@ function SetRow({
               )
             }
           >
-            Generate a plate · {PLATE_ESTIMATE}
+            Generate a plate · ≈${plateEstimateUsd.toFixed(2)}
           </Button>
         ) : null}
         <ConfirmButton

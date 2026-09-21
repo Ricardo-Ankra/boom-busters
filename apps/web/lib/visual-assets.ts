@@ -461,6 +461,19 @@ export async function requireVisualKeys(types: ReadonlySet<ShotBrief['type']>): 
  * instead. Stock, archival, chart and map fetches are free, so stills are the
  * whole estimate either way.
  */
+/**
+ * What one generated set plate will cost: a plate conditions on nothing (no
+ * cast, no set), so it always takes the plain stills route, whatever
+ * Settings says that is (decision 265). The Set card quotes this on its
+ * Generate a plate button, the way the Fetch button quotes its own price.
+ */
+export async function plateEstimateUsd(): Promise<number> {
+  const route = (await getSettings(db)).modelRouting.stills
+  return round4(
+    imageGenPrice(LIVE_IMAGE_GEN_ADAPTERS[route.provider], STILL_GENERATIONS, route.model),
+  )
+}
+
 export async function stillSlotEstimateUsd(): Promise<number> {
   const routing = (await getSettings(db)).modelRouting
   const routes = [routing.stills, ...(routing.stillsLikeness ? [routing.stillsLikeness] : [])]

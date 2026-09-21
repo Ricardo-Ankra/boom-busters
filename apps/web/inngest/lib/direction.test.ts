@@ -187,6 +187,34 @@ describeDb('direction helpers (mock mode)', () => {
     expect(inputs.styleAnchors).toContain('grain')
   })
 
+  it('reusing a stored book still seeds its locations as sets (decision 265)', async () => {
+    // The live project's book was drafted before sets existed. A re-run of
+    // the stage reuses that book, so the seeding must happen on this path
+    // as well, or the film never gets its rooms without a re-plan.
+    const book = await draftDirectorsBook(FIXTURE_PROJECT_ID)
+    for (const set of await listProjectSets(db, FIXTURE_PROJECT_ID)) {
+      await deleteProjectSet(db, set.id)
+    }
+    await setProjectDirection(db, FIXTURE_PROJECT_ID, {
+      ...book,
+      locations: [
+        { name: 'Stability AI London Headquarters', look: 'An open-plan office at night.' },
+        { name: 'The Server Hall', look: 'Rows of black racks under strip lights.' },
+      ],
+    })
+
+    await loadOrDraftDirectorsBook(FIXTURE_PROJECT_ID)
+
+    const sets = await listProjectSets(db, FIXTURE_PROJECT_ID)
+    expect(sets.map((set) => set.name)).toEqual([
+      'Stability AI London Headquarters',
+      'The Server Hall',
+    ])
+    // And again: a second reuse adds nothing twice.
+    await loadOrDraftDirectorsBook(FIXTURE_PROJECT_ID)
+    expect(await listProjectSets(db, FIXTURE_PROJECT_ID)).toHaveLength(2)
+  })
+
   it('drafts a mock book once and reuses the stored one after', async () => {
     const first = await loadOrDraftDirectorsBook(FIXTURE_PROJECT_ID)
     expect(first.chapters).toHaveLength(1)

@@ -163,8 +163,14 @@ export async function draftDirectorsBook(projectId: string): Promise<DirectorsBo
 export async function loadOrDraftDirectorsBook(projectId: string): Promise<DirectorsBook> {
   const project = await getProject(db, projectId)
   const stored = DirectorsBookSchema.safeParse(project?.direction)
-  if (stored.success) return stored.data
-  return draftDirectorsBook(projectId)
+  if (!stored.success) return draftDirectorsBook(projectId)
+  // A book drafted before the cast or the sets existed still names the
+  // film's people and rooms, and a re-run of the stage is the only time the
+  // runner reads it again (decision 265). Both seeders skip what is there
+  // and what the producer removed, so this is free when nothing changed.
+  await seedCastFromPrincipals(db, projectId, stored.data.principals)
+  await seedSetsFromLocations(db, projectId, stored.data.locations)
+  return stored.data
 }
 
 /**
