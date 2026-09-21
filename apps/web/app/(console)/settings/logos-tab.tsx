@@ -107,7 +107,10 @@ export function LogosTab({
       fileSize: mark.size,
       contentHash,
     })
-    if (!created.ok || !created.url || !created.key) return created
+    if (!created.ok) return created
+    if (!created.url || !created.key) {
+      return { ok: false, error: 'The upload could not be prepared. Try again.' }
+    }
     const put = await fetch(created.url, {
       method: 'PUT',
       body: mark,

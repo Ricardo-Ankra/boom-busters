@@ -127,6 +127,33 @@ describe('LogosTab', () => {
     expect(refresh).toHaveBeenCalled()
   })
 
+  it('does not finalise, and reports the error, when the upload could not be prepared', async () => {
+    // `createLogoUploadAction` resolving `ok: true` with no `url`/`key` is
+    // not a success the browser can act on: nothing was presigned to PUT to.
+    actions.createLogoUploadAction.mockResolvedValue({ ok: true })
+    render(<LogosTab logos={[]} channelMarkKey={null} />)
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement
+
+    await userEvent.type(screen.getByLabelText('Name'), 'Stability AI')
+    await userEvent.upload(
+      input,
+      new File([new Uint8Array([1, 2, 3])], 'stability.png', { type: 'image/png' }),
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'Add to library' }))
+
+    await waitFor(() =>
+      expect(toast).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: 'That did not work',
+          description: 'The upload could not be prepared. Try again.',
+          variant: 'error',
+        }),
+      ),
+    )
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(actions.finaliseLogoAction).not.toHaveBeenCalled()
+  })
+
   it('pre-fills the name from the file and warns that a JPEG has no transparency', async () => {
     render(<LogosTab logos={[]} channelMarkKey={null} />)
     const input = document.querySelector('input[type="file"]') as HTMLInputElement
