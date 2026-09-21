@@ -1,5 +1,7 @@
 'use client'
 
+import { LOGO_RASTER_MAX_EDGE } from '@boom-busters/schemas'
+
 /**
  * Preparing a picked image in the browser, before it is uploaded
  * (decision 266).
@@ -155,4 +157,80 @@ export async function readImageSize(file: File): Promise<{ width: number; height
   } catch {
     return { width: 0, height: 0 }
   }
+}
+
+/**
+ * Draw an SVG to a bitmap at `maxEdge` on its long side, or null when the
+ * browser will not render it. Behind a type so a test can stand in for it:
+ * jsdom has neither an image decoder nor a canvas encoder.
+ */
+export type SvgRasteriser = (
+  file: File,
+  maxEdge: number,
+) => Promise<{ blob: Blob; width: number; height: number } | null>
+
+export const browserSvgRasteriser: SvgRasteriser = async (file, maxEdge) => {
+  const url = URL.createObjectURL(file)
+  try {
+    const image = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const element = new Image()
+      element.onload = () => resolve(element)
+      element.onerror = () => reject(new Error('svg did not load'))
+      element.src = url
+    })
+    // A vector mark upscales losslessly, so it is drawn AT the long edge, not
+    // capped by it. An SVG with no intrinsic size reports the browser's
+    // 300 by 150 default; its shape is still the file's own.
+    const sourceWidth = image.naturalWidth || 300
+    const sourceHeight = image.naturalHeight || 150
+    const scale = maxEdge / Math.max(sourceWidth, sourceHeight)
+    const width = Math.max(1, Math.round(sourceWidth * scale))
+    const height = Math.max(1, Math.round(sourceHeight * scale))
+    const canvas = document.createElement('canvas')
+    canvas.width = width
+    canvas.height = height
+    const context = canvas.getContext('2d')
+    if (!context) return null
+    context.drawImage(image, 0, 0, width, height)
+    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'))
+    return blob ? { blob, width, height } : null
+  } catch {
+    return null
+  } finally {
+    URL.revokeObjectURL(url)
+  }
+}
+
+function isSvg(file: File): boolean {
+  return file.type === 'image/svg+xml' || (file.type === '' && /\.svg$/i.test(file.name))
+}
+
+/**
+ * The file to upload as a logo (decision 268). A raster mark passes through;
+ * an SVG is drawn to a PNG at the logo edge; an AVIF is converted to PNG, not
+ * JPEG, because a mark's transparency is the point of it.
+ */
+export async function toUploadableLogo<T extends DecodedImage>(
+  file: File,
+  options: { codec?: ImageCodec<T>; rasterise?: SvgRasteriser } = {},
+): Promise<UploadableImage> {
+  if (isSvg(file)) {
+    const drawn = await (options.rasterise ?? browserSvgRasteriser)(file, LOGO_RASTER_MAX_EDGE)
+    if (!drawn) {
+      return {
+        ok: false,
+        error:
+          'This browser could not draw that SVG. Export it as a PNG with a transparent ' +
+          'background and add that instead.',
+      }
+    }
+    return {
+      ok: true,
+      file: new File([drawn.blob], renamed(file.name, 'image/png'), { type: 'image/png' }),
+    }
+  }
+  return toUploadableImage(file, {
+    ...(options.codec ? { codec: options.codec } : {}),
+    format: 'image/png',
+  })
 }
