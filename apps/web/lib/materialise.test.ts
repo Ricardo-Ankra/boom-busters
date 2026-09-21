@@ -136,4 +136,22 @@ describe('materialiseForPreview', () => {
     await materialiseForPreview(original, { origin: ORIGIN, presign: null })
     expect(JSON.stringify(original)).toBe(before)
   })
+
+  it('resolves the channel mark to a URL, and leaves it out when it cannot', async () => {
+    const withMark = structuredClone(canonical())
+    withMark.brand.look.logoR2Key = 'boom-busters/logos/abc.png'
+
+    const resolved = await materialiseForPreview(withMark, {
+      origin: ORIGIN,
+      presign: (key) => Promise.resolve(`https://r2.example.com/${key}?sig=x`),
+    })
+    expect(resolved.timeline.brand.look.logoUrl).toBe(
+      'https://r2.example.com/boom-busters/logos/abc.png?sig=x',
+    )
+    // Nothing was dropped: the mark is not a slot.
+    expect(resolved.dropped).toEqual({ narration: 0, slots: 0, music: false })
+
+    const unresolved = await materialiseForPreview(withMark, { origin: ORIGIN, presign: null })
+    expect(unresolved.timeline.brand.look.logoUrl).toBeUndefined()
+  })
 })

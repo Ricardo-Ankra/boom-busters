@@ -163,6 +163,9 @@ export async function materialiseTimeline(
   if (copy.music) {
     copy.music.url = await presign(copy.music.r2Key)
   }
+  if (copy.brand.look.logoR2Key) {
+    copy.brand.look.logoUrl = await presign(copy.brand.look.logoR2Key)
+  }
   for (const slot of copy.slots) {
     if (slot.payload.kind === 'image' || slot.payload.kind === 'video') {
       const src = slot.payload.src
