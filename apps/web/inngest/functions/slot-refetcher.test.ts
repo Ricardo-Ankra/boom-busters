@@ -91,7 +91,12 @@ describeDb('slot-refetcher (mock mode)', () => {
     const slots = await listShotSlots(db, FIXTURE_PROJECT_ID)
     source = slots[0]!.id
     dependant = slots[1]!.id
-    await setSlotResolution(db, source, { candidates: [candidate('p1', true)], status: 'resolved' })
+    const sourceRow = (await getShotSlot(db, source))!
+    await setSlotResolution(db, source, {
+      candidates: [candidate('p1', true)],
+      status: 'resolved',
+      answered: { brief: sourceRow.brief, route: sourceRow.route },
+    })
     await linkSlotReuse(db, dependant, source, 'p1')
   })
 

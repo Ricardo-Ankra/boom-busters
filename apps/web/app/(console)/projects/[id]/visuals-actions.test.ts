@@ -193,9 +193,11 @@ describeDb('reusing a shot (decision 261)', () => {
       ok: false,
       error: expect.stringContaining('no shot to reuse yet'),
     })
+    const sourceRow = (await getShotSlot(db, ids.a))!
     await setSlotResolution(db, ids.a, {
       candidates: [candidate('p1', true), candidate('p2')],
       status: 'resolved',
+      answered: { brief: sourceRow.brief, route: sourceRow.route },
     })
     expect(await reuseSlotShotAction(FIXTURE_PROJECT_ID, ids.b, ids.a, 'p2')).toEqual({ ok: true })
     const b = (await getShotSlot(db, ids.b))!
@@ -262,6 +264,16 @@ const hero: ShotBrief = {
 describeDb('the model select on a shot (decision 264)', () => {
   let ids: { still: string; linked: string; hero: string; stock: string }
 
+  /** Resolve a slot against the brief and route the row currently holds. */
+  async function resolveAsRead(slotId: string): Promise<void> {
+    const row = (await getShotSlot(db, slotId))!
+    await setSlotResolution(db, slotId, {
+      status: 'resolved',
+      candidates: [],
+      answered: { brief: row.brief, route: row.route },
+    })
+  }
+
   beforeEach(async () => {
     vi.clearAllMocks()
     await seed(db)
@@ -314,7 +326,7 @@ describeDb('the model select on a shot (decision 264)', () => {
   })
 
   it('stores a route on a still slot and makes it owe work again', async () => {
-    await setSlotResolution(db, ids.still, { status: 'resolved', candidates: [] })
+    await resolveAsRead(ids.still)
     expect(slotNeedsResolution((await getShotSlot(db, ids.still))!)).toBe(false)
 
     expect(
@@ -334,7 +346,7 @@ describeDb('the model select on a shot (decision 264)', () => {
       provider: 'google',
       model: 'gemini-3-pro-image',
     })
-    await setSlotResolution(db, ids.still, { status: 'resolved', candidates: [] })
+    await resolveAsRead(ids.still)
     expect(slotNeedsResolution((await getShotSlot(db, ids.still))!)).toBe(false)
 
     expect(await setSlotRouteAction(FIXTURE_PROJECT_ID, ids.still, null)).toEqual({ ok: true })

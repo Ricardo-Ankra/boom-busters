@@ -36,6 +36,16 @@ suite('shot slots', () => {
   let chapterA = ''
   let chapterB = ''
 
+  /**
+   * The snapshot a resolved outcome carries (decision 264): the slot as the
+   * resolver read it before it went to work. Read from the row here, the way
+   * every production caller does.
+   */
+  async function answering(slotId: string): Promise<{ brief: unknown; route: unknown }> {
+    const row = (await getShotSlot(db, slotId))!
+    return { brief: row.brief, route: row.route }
+  }
+
   afterAll(async () => {
     await sql.end({ timeout: 5 })
   })
@@ -154,6 +164,7 @@ suite('shot slots', () => {
     await setSlotResolution(db, slot!.id, {
       candidates: [candidate('a1', { score: 90, chosen: true }), candidate('b2', { score: 40 })],
       status: 'resolved',
+      answered: await answering(slot!.id),
     })
 
     const stored = await getShotSlot(db, slot!.id)
@@ -168,6 +179,7 @@ suite('shot slots', () => {
     await setSlotResolution(db, slot!.id, {
       candidates: [candidate('a1', { chosen: true }), candidate('b2')],
       status: 'resolved',
+      answered: await answering(slot!.id),
     })
 
     const updated = await chooseSlotCandidate(db, slot!.id, 'b2')
@@ -187,6 +199,7 @@ suite('shot slots', () => {
     await setSlotResolution(db, slot!.id, {
       candidates: [candidate('a1', { chosen: true })],
       status: 'resolved',
+      answered: await answering(slot!.id),
     })
 
     await updateSlotBrief(db, slot!.id, { ...stockBrief, query: 'abandoned trading floor' })
@@ -274,6 +287,7 @@ suite('shot slots', () => {
     await setSlotResolution(db, slot!.id, {
       candidates: [candidate('a1', { chosen: true })],
       status: 'resolved',
+      answered: await answering(slot!.id),
     })
     await setSlotRetype(db, slot!.id, { state: 'drafting', target: 'still' })
 
@@ -339,6 +353,7 @@ suite('shot slots', () => {
         ],
         status: 'resolved',
         chosenAssetId: asset.id,
+        answered: await answering(source.id),
       })
 
       expect(await copyReusedShots(db, projectId)).toEqual({ copied: 1, placeholders: 0 })
@@ -366,6 +381,7 @@ suite('shot slots', () => {
       await setSlotResolution(db, source.id, {
         candidates: [candidate('g1', { provider: 'google', chosen: true })],
         status: 'resolved',
+        answered: await answering(source.id),
       })
       expect(await linkSlotReuse(db, dependant.id, source.id, 'g1')).toEqual({ copied: true })
       const [copy] = (await getShotSlot(db, dependant.id))!.candidates as unknown as SlotCandidate[]
@@ -385,6 +401,7 @@ suite('shot slots', () => {
       await setSlotResolution(db, source.id, {
         candidates: [candidate('p1', { chosen: true }), candidate('p2')],
         status: 'resolved',
+        answered: await answering(source.id),
       })
       expect(await linkSlotReuse(db, dependant.id, source.id, 'nope')).toBeNull()
       expect(await linkSlotReuse(db, dependant.id, source.id, 'p2')).toEqual({ copied: true })
@@ -402,6 +419,7 @@ suite('shot slots', () => {
       await setSlotResolution(db, source.id, {
         candidates: [candidate('p1', { chosen: true })],
         status: 'resolved',
+        answered: await answering(source.id),
       })
       await linkSlotReuse(db, dependant.id, source.id, 'p1')
       await updateSlotBrief(db, dependant.id, { ...stockBrief, description: 'new words' })
@@ -416,6 +434,7 @@ suite('shot slots', () => {
       await setSlotResolution(db, c!.id, {
         candidates: [candidate('p1', { chosen: true })],
         status: 'resolved',
+        answered: await answering(c!.id),
       })
       // Built directly, past the action layer's refusal, so the write is
       // proved right on its own.
@@ -440,6 +459,7 @@ suite('shot slots', () => {
       await setSlotResolution(db, source.id, {
         candidates: [candidate('p1', { chosen: true })],
         status: 'resolved',
+        answered: await answering(source.id),
       })
       await linkSlotReuse(db, dependant.id, source.id, 'p1')
       await unlinkSlotReuse(db, dependant.id)
@@ -480,7 +500,11 @@ suite('shot slots', () => {
   describe('the route a slot generates on', () => {
     it('changing the route makes a resolved slot owe work again', async () => {
       const slot = await onlySlot()
-      await setSlotResolution(db, slot.id, { status: 'resolved', candidates: [] })
+      await setSlotResolution(db, slot.id, {
+        status: 'resolved',
+        candidates: [],
+        answered: await answering(slot.id),
+      })
       expect(slotNeedsResolution((await getShotSlot(db, slot.id))!)).toBe(false)
 
       await setSlotRoute(db, slot.id, { provider: 'google', model: 'gemini-3-pro-image' })
@@ -490,7 +514,11 @@ suite('shot slots', () => {
     it('clearing the route back to null makes it owe work again too', async () => {
       const slot = await onlySlot()
       await setSlotRoute(db, slot.id, { provider: 'google', model: 'gemini-3-pro-image' })
-      await setSlotResolution(db, slot.id, { status: 'resolved', candidates: [] })
+      await setSlotResolution(db, slot.id, {
+        status: 'resolved',
+        candidates: [],
+        answered: await answering(slot.id),
+      })
       expect(slotNeedsResolution((await getShotSlot(db, slot.id))!)).toBe(false)
 
       await setSlotRoute(db, slot.id, null)
@@ -503,6 +531,25 @@ suite('shot slots', () => {
       await setSlotRoute(db, slot.id, route)
       await updateSlotBrief(db, slot.id, { ...(slot.brief as ShotBrief), description: 'new words' })
       expect((await getShotSlot(db, slot.id))?.route).toEqual(route)
+    })
+
+    it('a resolve that answers an older brief leaves the slot owing work', async () => {
+      // The snapshot is the caller's, not the row's (decision 264): a brief
+      // edited while the candidates were being fetched must not be stamped
+      // as answered by a fetch that never saw it.
+      const slot = await onlySlot()
+      const answeredBefore = await answering(slot.id)
+      await updateSlotBrief(db, slot.id, {
+        ...(slot.brief as ShotBrief),
+        description: 'the owner changed it mid-fetch',
+      })
+
+      await setSlotResolution(db, slot.id, {
+        status: 'resolved',
+        candidates: [],
+        answered: answeredBefore,
+      })
+      expect(slotNeedsResolution((await getShotSlot(db, slot.id))!)).toBe(true)
     })
 
     it('a slot with no route hashes exactly as it did before routes existed', () => {

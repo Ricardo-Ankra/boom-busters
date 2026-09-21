@@ -21,6 +21,7 @@ import {
   parseEventData,
   serialiseError,
   ShotBriefSchema,
+  StillRouteSchema,
   ValidationError,
 } from '@boom-busters/schemas'
 import type { ShotBrief } from '@boom-busters/schemas'
@@ -222,11 +223,20 @@ export const slotRebriefer = inngest.createFunction(
         if (!slot) throw new NonRetriableError(`Shot slot ${slotId} vanished mid-re-brief`)
         const brief = ShotBriefSchema.parse(slot.brief)
         await requireVisualKeys(new Set([brief.type]))
+        const route = StillRouteSchema.nullable().safeParse(slot.route)
         try {
-          const resolution = await resolveSlotBrief({ projectId, brief })
-          await setSlotResolution(db, slotId, {
-            ...resolution,
+          const resolution = await resolveSlotBrief({
+            projectId,
+            brief,
+            route: route.success ? route.data : null,
           })
+          await setSlotResolution(
+            db,
+            slotId,
+            resolution.status === 'resolved'
+              ? { ...resolution, answered: { brief: slot.brief, route: slot.route } }
+              : resolution,
+          )
           return { status: resolution.status }
         } catch (error) {
           if (error instanceof BudgetExceededError) {

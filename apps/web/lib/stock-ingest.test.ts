@@ -49,6 +49,10 @@ function slotWith(chosen: SlotCandidate) {
     type: 'stock',
     status: 'resolved',
     candidates: [chosen as unknown as Record<string, unknown>],
+    // The snapshot the write-back stamps (decision 264): ingestion rewrites
+    // keys on the candidates, never the brief they answered.
+    brief: { type: 'stock', query: 'trading floor' },
+    route: null,
   }
 }
 

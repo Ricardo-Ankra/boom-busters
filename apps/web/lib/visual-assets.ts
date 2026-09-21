@@ -703,11 +703,15 @@ export async function scoreSlotCandidates(
 // The one entry point
 // ---------------------------------------------------------------------------
 
-export interface SlotResolution {
-  candidates: SlotCandidate[]
-  status: ShotSlotStatus
-  chosenAssetId?: string | null
-}
+/**
+ * A union rather than one shape with an optional asset id, so that the
+ * caller writing the resolution to the row is narrowed to the resolved case
+ * before it can be asked for the brief and route the candidates answered
+ * (decision 264).
+ */
+export type SlotResolution =
+  | { status: 'resolved'; candidates: SlotCandidate[]; chosenAssetId?: string | null }
+  | { status: Exclude<ShotSlotStatus, 'resolved'>; candidates: SlotCandidate[] }
 
 /**
  * Resolve one slot's brief into what the board shows.
@@ -721,12 +725,18 @@ export interface SlotResolution {
  * `BudgetExceededError` (still generation, scoring) propagates to the caller;
  * everything else is the caller's per-item failure to count against the
  * fan-out tolerance.
+ *
+ * `route` is the model the owner chose for this slot, parsed from the row by
+ * the caller, or null when they chose none (decision 264). Every production
+ * fetch path comes through here, so a stored route that stopped at this
+ * boundary would make the board's model select decorative.
  */
 export async function resolveSlotBrief(input: {
   projectId: string
   brief: ShotBrief
+  route: StillRoute | null
 }): Promise<SlotResolution> {
-  const { brief, projectId } = input
+  const { brief, projectId, route } = input
 
   switch (brief.type) {
     case 'chart':
@@ -742,17 +752,16 @@ export async function resolveSlotBrief(input: {
       // that will not give them up is a placeholder with the reason on the
       // record, which the board turns into a form rather than an error.
       const article = await articleForClaim(brief.sourceClaimId)
-      return {
-        candidates: [],
-        status: article !== null && articleIsRenderable(article) ? 'resolved' : 'placeholder',
-      }
+      return article !== null && articleIsRenderable(article)
+        ? { candidates: [], status: 'resolved' }
+        : { candidates: [], status: 'placeholder' }
     }
 
     case 'hero':
       return { candidates: [], status: 'placeholder' }
 
     case 'still': {
-      const candidates = await generateStillCandidates(brief, projectId)
+      const candidates = await generateStillCandidates(brief, projectId, route)
       return withChoice(candidates)
     }
 

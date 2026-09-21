@@ -41,6 +41,13 @@ export interface StockIngestSlot {
   type: string
   status: string
   candidates: Record<string, unknown>[]
+  /**
+   * The brief and route these candidates already answer. Carried so the
+   * write-back can stamp the row it read rather than the row as it stands
+   * afterwards (decision 264).
+   */
+  brief: unknown
+  route: unknown
 }
 
 export type IngestOutcome =
@@ -382,6 +389,9 @@ export async function ingestSlotStock(slot: StockIngestSlot): Promise<IngestOutc
       candidates: updated as unknown as SlotCandidate[],
       status: 'resolved',
       chosenAssetId: assetId ?? null,
+      // Ingestion rewrites keys on candidates the slot already held; the
+      // brief and route it answered are unchanged by that.
+      answered: { brief: slot.brief, route: slot.route },
     })
   }
 

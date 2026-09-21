@@ -5,6 +5,7 @@ import {
   parseEventData,
   serialiseError,
   ShotBriefSchema,
+  StillRouteSchema,
 } from '@boom-busters/schemas'
 import { NonRetriableError } from 'inngest'
 import { db } from '@/lib/db'
@@ -78,9 +79,20 @@ export const slotRefetcher = inngest.createFunction(
       const brief = ShotBriefSchema.parse(slot.brief)
       await requireVisualKeys(new Set([brief.type]))
 
+      const route = StillRouteSchema.nullable().safeParse(slot.route)
       try {
-        const resolution = await resolveSlotBrief({ projectId, brief })
-        await setSlotResolution(db, slotId, resolution)
+        const resolution = await resolveSlotBrief({
+          projectId,
+          brief,
+          route: route.success ? route.data : null,
+        })
+        await setSlotResolution(
+          db,
+          slotId,
+          resolution.status === 'resolved'
+            ? { ...resolution, answered: { brief: slot.brief, route: slot.route } }
+            : resolution,
+        )
         return { status: resolution.status, candidates: resolution.candidates.length }
       } catch (error) {
         if (error instanceof BudgetExceededError) {

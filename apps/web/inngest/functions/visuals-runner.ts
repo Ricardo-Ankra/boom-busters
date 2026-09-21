@@ -11,7 +11,6 @@ import {
   setProjectStage,
   setSlotRefusal,
   setSlotResolution,
-  setSlotRoute,
   setVisualsPhase,
   shotSlotStatuses,
   slotNeedsResolution,
@@ -27,11 +26,12 @@ import {
   planWarnings,
   serialiseError,
   ShotBriefSchema,
+  StillRouteSchema,
   visualsCoverage,
 } from '@boom-busters/schemas'
 import { NonRetriableError } from 'inngest'
 import { db } from '@/lib/db'
-import { requireVisualKeys, resolveSlotBrief, routeForBrief } from '@/lib/visual-assets'
+import { requireVisualKeys, resolveSlotBrief } from '@/lib/visual-assets'
 import { inngest } from '../client'
 import { events } from '../events'
 import { loadOrDraftDirectorsBook, planChapterSlots } from '../lib/direction'
@@ -112,9 +112,9 @@ export const visualsRunner = inngest.createFunction(
       const takes = await listVoiceTakes(db, projectId)
       const claims = await scriptableClaims(db, projectId)
       const settings = await getSettings(db)
-      // Loaded once for the whole run, reused by every chapter's stamping
-      // step below rather than reloaded per slot (decision 264).
       const cast = await listCastMembers(db, projectId)
+      // Loaded once for the whole run: the shot-list prompt lists the film's
+      // rooms, and the craft notes count how often each one is used.
       const sets = await listProjectSets(db, projectId)
 
       await setProjectStage(db, projectId, { stage: 'visuals', stageStatus: 'running' })
@@ -138,13 +138,9 @@ export const visualsRunner = inngest.createFunction(
         photographed: cast
           .filter((member) => member.photos.length > 0)
           .map((member) => member.name),
-        // Full rows for `routeForBrief` below; the shot-list prompt only
-        // ever needs the name and look, mapped at the call site.
-        cast,
-        sets,
-        // For `routeForBrief`, stamped on every still and hero slot once the
-        // board is written (decision 264).
-        routing: settings.modelRouting,
+        // The film's rooms: named and described for the shot-list prompt,
+        // and counted by the craft notes below (decision 264).
+        sets: sets.map(({ name, look }) => ({ name, look })),
       }
     })
 
@@ -195,7 +191,7 @@ export const visualsRunner = inngest.createFunction(
               styleAnchors: setup.styleAnchors,
               direction: direction.book,
               photographed: setup.photographed,
-              sets: setup.sets.map(({ name, look }) => ({ name, look })),
+              sets: setup.sets,
             })
             return { ok: true, ...result }
           } catch (error) {
@@ -231,21 +227,14 @@ export const visualsRunner = inngest.createFunction(
     // Save the board and park on the PLAN — nothing fetched, nothing spent
     // -----------------------------------------------------------------------
 
+    // No route is stored here (decision 264): `shot_slots.route` holds the
+    // owner's explicit choice and nothing else, so a derived route stamped
+    // on every planned slot would freeze the Settings default the moment a
+    // plan existed. The rule is re-derived wherever it is needed — the
+    // board, the estimate, generation — and shown as the planned default.
     await step.run('save-shot-list', async () => {
       await replaceShotList(db, projectId, allRows)
       await setVisualsPhase(db, projectId, 'plan')
-
-      // Every still and hero slot is stamped with its derived route here, in
-      // the same step that wrote the slots, so a retry redoes both together
-      // rather than leaving half the board unstamped (decision 264). Read
-      // back rather than zipped against `allRows`, because the inserted rows
-      // are the ones with ids.
-      const written = await listShotSlots(db, projectId)
-      for (const slot of written) {
-        if (slot.type !== 'still' && slot.type !== 'hero') continue
-        const brief = ShotBriefSchema.parse(slot.brief)
-        await setSlotRoute(db, slot.id, routeForBrief(brief, setup.cast, setup.sets, setup.routing))
-      }
     })
 
     const stillCount = allRows.filter((row) => row.type === 'still').length
@@ -258,6 +247,7 @@ export const visualsRunner = inngest.createFunction(
       allRows.map((row) => ({ brief: row.brief, chapter: chapterLabel.get(row.chapterId) })),
       BANNED_PROMPT_WORDS,
       direction.book.motifs,
+      setup.sets.map((set) => set.name),
     )
     await step.run('open-plan-park', () =>
       openReviewGate(ctx, {
@@ -310,7 +300,9 @@ export const visualsRunner = inngest.createFunction(
       // seventeen. Checked against the types the fetch will actually touch.
       await requireVisualKeys(new Set(owed.map((slot) => slot.type)))
 
-      return owed.map((slot) => ({ id: slot.id, brief: slot.brief }))
+      // The route travels with the brief (decision 264): it decides which
+      // generator is billed, and it is half of the resolution stamp.
+      return owed.map((slot) => ({ id: slot.id, brief: slot.brief, route: slot.route }))
     })
 
     // -----------------------------------------------------------------------
@@ -330,10 +322,19 @@ export const visualsRunner = inngest.createFunction(
           step.run(`resolve-${slot.id}`, async (): Promise<SlotOutcome> => {
             try {
               const brief = ShotBriefSchema.parse(slot.brief)
-              const resolution = await resolveSlotBrief({ projectId, brief })
-              await setSlotResolution(db, slot.id, {
-                ...resolution,
+              const route = StillRouteSchema.nullable().safeParse(slot.route)
+              const resolution = await resolveSlotBrief({
+                projectId,
+                brief,
+                route: route.success ? route.data : null,
               })
+              await setSlotResolution(
+                db,
+                slot.id,
+                resolution.status === 'resolved'
+                  ? { ...resolution, answered: { brief: slot.brief, route: slot.route } }
+                  : resolution,
+              )
               return { ok: true, status: resolution.status }
             } catch (error) {
               if (error instanceof BudgetExceededError) {

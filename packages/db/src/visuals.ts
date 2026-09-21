@@ -177,38 +177,51 @@ export async function setSlotRoute(
 
 /**
  * What a resolution pass concluded for one slot — candidates (already scored
- * and ordered), the status that follows, and the chosen asset when the top
- * candidate already holds bytes.
+ * and ordered), the status that follows, the chosen asset when the top
+ * candidate already holds bytes, and, on a resolved outcome, the brief and
+ * route those candidates were generated against.
  */
+export type SlotResolutionOutcome =
+  | {
+      status: 'resolved'
+      candidates: readonly SlotCandidate[]
+      chosenAssetId?: string | null
+      /** The slot as the caller read it when it began the work. */
+      answered: { brief: unknown; route: unknown }
+    }
+  | {
+      status: Exclude<ShotSlotStatus, 'resolved'>
+      candidates: readonly SlotCandidate[]
+      chosenAssetId?: string | null
+      answered?: never
+    }
+
 export async function setSlotResolution(
   db: Database,
   slotId: string,
-  outcome: {
-    candidates: readonly SlotCandidate[]
-    status: ShotSlotStatus
-    chosenAssetId?: string | null
-  },
+  outcome: SlotResolutionOutcome,
 ): Promise<void> {
   /**
-   * The stamp is derived here rather than taken from the caller (decision
-   * 264), because it now has to cover the route as well as the brief and a
-   * caller would have to re-read the row to know it.
+   * The stamp is computed here and only here (decision 264), so one author
+   * writes every one of them and the hash covers the route as well as the
+   * brief.
    *
-   * Deriving it also closed two leaks. `slot-refetcher` and `stock-ingest`
-   * passed no hash at all, so the first left a slot it had just paid for
-   * still owing work, and the second wiped the stamp the fan-out had
-   * written; in both cases the next Fetch pass re-bought what was already
-   * bought. A caller cannot forget an argument that no longer exists.
+   * Computing it in one place closed two leaks. `slot-refetcher` and
+   * `stock-ingest` passed no hash at all, so the first left a slot it had
+   * just paid for still owing work, and the second wiped the stamp the
+   * fan-out had written; in both cases the next Fetch pass re-bought what
+   * was already bought.
    *
-   * The cost is a narrow race: if the brief is edited between the resolver
-   * reading it and this write, the stamp names the new brief while the
-   * candidates answer the old one. The slot then looks resolved until
-   * someone regenerates it. A stale picture the owner can see beats a
-   * silent re-purchase of every slot on every pass.
+   * `answered` is required rather than re-read from the row because the row
+   * may have moved on: a brief or route edited while the candidates were
+   * being fetched would be stamped as answered by work that never saw it.
+   * A required field on the resolved outcome is the one form of this a
+   * caller cannot forget.
    */
-  const slot = await getShotSlot(db, slotId)
   const resolvedBriefHash =
-    outcome.status === 'resolved' && slot ? shotBriefHash(slot.brief, slot.route) : null
+    outcome.status === 'resolved'
+      ? shotBriefHash(outcome.answered.brief, outcome.answered.route)
+      : null
   await db
     .update(shotSlots)
     .set({

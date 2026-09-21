@@ -3,11 +3,9 @@ import {
   getSettings,
   latestScriptParagraphSources,
   listProjectSets,
-  listShotSlots,
   listVoiceTakes,
   replaceShotList,
   scriptableClaims,
-  setSlotRoute,
   listCastMembers,
 } from '@boom-busters/db'
 import type { NewShotSlot } from '@boom-busters/db'
@@ -19,12 +17,10 @@ import {
   parseEventData,
   planWarnings,
   serialiseError,
-  ShotBriefSchema,
 } from '@boom-busters/schemas'
 import { NonRetriableError } from 'inngest'
 import { db } from '@/lib/db'
 import { notify } from '@/lib/notify'
-import { routeForBrief } from '@/lib/visual-assets'
 import { inngest } from '../client'
 import { events } from '../events'
 import { draftDirectorsBook, planChapterSlots } from '../lib/direction'
@@ -120,9 +116,9 @@ export const visualsReplanner = inngest.createFunction(
       const takes = await listVoiceTakes(db, projectId)
       const claims = await scriptableClaims(db, projectId)
       const settings = await getSettings(db)
-      // Loaded once for the whole re-plan, reused by the stamping step below
-      // rather than reloaded per slot (decision 264).
       const cast = await listCastMembers(db, projectId)
+      // Loaded once for the whole re-plan: the shot-list prompt lists the
+      // film's rooms, and the craft notes count how often each is used.
       const sets = await listProjectSets(db, projectId)
       return {
         caseTitle: project.title,
@@ -144,13 +140,9 @@ export const visualsReplanner = inngest.createFunction(
         photographed: cast
           .filter((member) => member.photos.length > 0)
           .map((member) => member.name),
-        // Full rows for `routeForBrief` below; the shot-list prompt only
-        // ever needs the name and look, mapped at the call site.
-        cast,
-        sets,
-        // For `routeForBrief`, stamped on every still and hero slot once the
-        // re-plan is written (decision 264).
-        routing: settings.modelRouting,
+        // The film's rooms: named and described for the shot-list prompt,
+        // and counted by the craft notes below (decision 264).
+        sets: sets.map(({ name, look }) => ({ name, look })),
       }
     })
 
@@ -168,7 +160,7 @@ export const visualsReplanner = inngest.createFunction(
             styleAnchors: setup.styleAnchors,
             direction: setup.direction,
             photographed: setup.photographed,
-            sets: setup.sets.map(({ name, look }) => ({ name, look })),
+            sets: setup.sets,
           })
           return { ok: true as const, ...result }
         } catch (error) {
@@ -198,19 +190,10 @@ export const visualsReplanner = inngest.createFunction(
     }
 
     await step.run('replace-plan', async () => {
+      // No route is stored (decision 264): a re-plan replaces the slot rows
+      // and with them every override, and the derived route is re-computed
+      // wherever it is needed rather than frozen onto a row here.
       await replaceShotList(db, projectId, rows)
-
-      // Every still and hero slot is stamped with its derived route here, in
-      // the same step that wrote the slots, so a retry redoes both together
-      // rather than leaving half the re-plan unstamped (decision 264). Read
-      // back rather than zipped against `rows`, because the inserted rows
-      // are the ones with ids.
-      const written = await listShotSlots(db, projectId)
-      for (const slot of written) {
-        if (slot.type !== 'still' && slot.type !== 'hero') continue
-        const brief = ShotBriefSchema.parse(slot.brief)
-        await setSlotRoute(db, slot.id, routeForBrief(brief, setup.cast, setup.sets, setup.routing))
-      }
 
       const chapterLabel = new Map(
         setup.chapters.map((chapter, index) => [chapter.id, `chapter ${index + 1}`]),
@@ -219,6 +202,7 @@ export const visualsReplanner = inngest.createFunction(
         rows.map((row) => ({ brief: row.brief, chapter: chapterLabel.get(row.chapterId) })),
         BANNED_PROMPT_WORDS,
         setup.direction?.motifs ?? [],
+        setup.sets.map((set) => set.name),
       )
       await notify({
         kind: 'heads-up',

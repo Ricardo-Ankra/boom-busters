@@ -449,6 +449,7 @@ export default async function globalSetup(): Promise<void> {
     {
       const {
         replaceShotList,
+        getShotSlot,
         listShotSlots,
         setSlotResolution,
         recordArticleSource,
@@ -646,9 +647,18 @@ export default async function globalSetup(): Promise<void> {
           },
         ],
         status: 'resolved',
+        answered: { brief: slots[0]!.brief, route: slots[0]!.route },
       })
-      await setSlotResolution(connection.db, slots[1]!.id, { candidates: [], status: 'resolved' })
-      await setSlotResolution(connection.db, slots[2]!.id, { candidates: [], status: 'resolved' })
+      await setSlotResolution(connection.db, slots[1]!.id, {
+        candidates: [],
+        status: 'resolved',
+        answered: { brief: slots[1]!.brief, route: slots[1]!.route },
+      })
+      await setSlotResolution(connection.db, slots[2]!.id, {
+        candidates: [],
+        status: 'resolved',
+        answered: { brief: slots[2]!.brief, route: slots[2]!.route },
+      })
       // The one nothing usable was found for — the explicit-wording case.
       await setSlotResolution(connection.db, slots[3]!.id, {
         candidates: [],
@@ -672,9 +682,11 @@ export default async function globalSetup(): Promise<void> {
           ...(headlineSlot.brief as Record<string, unknown>),
           sourceClaimId: newsClaim.id,
         } as never)
+        const rewritten = await getShotSlot(connection.db, headlineSlot.id)
         await setSlotResolution(connection.db, headlineSlot.id, {
           candidates: [],
           status: 'resolved',
+          answered: { brief: rewritten?.brief, route: rewritten?.route },
         })
         await recordArticleSource(connection.db, {
           url: HEADLINE_ARTICLE_URL,

@@ -624,7 +624,10 @@ const HeadlineEditSchema = z.object({
 /** The claim a headline slot cites, and the article URL behind it. */
 async function headlineSource(
   slotId: string,
-): Promise<{ brief: HeadlineBrief; url: string } | { error: string }> {
+): Promise<
+  | { brief: HeadlineBrief; url: string; slot: { brief: unknown; route: unknown } }
+  | { error: string }
+> {
   const slot = await getShotSlot(db, slotId)
   if (!slot) return { error: 'This slot no longer exists.' }
 
@@ -639,7 +642,9 @@ async function headlineSource(
   if (url === null) {
     return { error: 'The claim this card cites no longer has a source to read.' }
   }
-  return { brief: parsed.data, url }
+  // The row itself travels too: the resolution stamp is taken over the
+  // stored brief and route, never over the parsed copy (decision 264).
+  return { brief: parsed.data, url, slot: { brief: slot.brief, route: slot.route } }
 }
 
 export async function saveHeadlineAction(
@@ -690,10 +695,20 @@ export async function saveHeadlineAction(
   await updateSlotBrief(db, slotId, brief)
 
   // A card with its facts filled in is resolved, whatever the fetch said.
-  await setSlotResolution(db, slotId, {
-    candidates: [],
-    status: articleIsRenderable(articleFromRow(record)) ? 'resolved' : 'placeholder',
-  })
+  // The stamp answers the row as the database now holds it, which is the
+  // brief just written (decision 264).
+  const written = await getShotSlot(db, slotId)
+  await setSlotResolution(
+    db,
+    slotId,
+    articleIsRenderable(articleFromRow(record))
+      ? {
+          candidates: [],
+          status: 'resolved',
+          answered: { brief: written?.brief ?? brief, route: written?.route ?? null },
+        }
+      : { candidates: [], status: 'placeholder' },
+  )
 
   refresh(projectId)
   return { ok: true }
@@ -723,10 +738,17 @@ export async function refetchArticleAction(
   }
 
   const article = await refetchArticle(source.url)
-  await setSlotResolution(db, slotId, {
-    candidates: [],
-    status: articleIsRenderable(article) ? 'resolved' : 'placeholder',
-  })
+  await setSlotResolution(
+    db,
+    slotId,
+    articleIsRenderable(article)
+      ? {
+          candidates: [],
+          status: 'resolved',
+          answered: { brief: source.slot.brief, route: source.slot.route },
+        }
+      : { candidates: [], status: 'placeholder' },
+  )
 
   refresh(projectId)
   return article.status === 'failed'
@@ -1011,6 +1033,9 @@ async function attachOwnFile(input: {
     candidates: [candidate, ...others],
     status: 'resolved',
     chosenAssetId: asset.id,
+    // An upload answers the brief the slot already carries; nothing here
+    // rewrites it.
+    answered: { brief: input.slot.brief, route: input.slot.route },
   })
 
   refresh(input.projectId)

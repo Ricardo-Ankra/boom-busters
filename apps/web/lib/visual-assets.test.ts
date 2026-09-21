@@ -20,7 +20,12 @@ import type { CastMember, ModelRouting, ProjectSet, StillBrief } from '@boom-bus
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { listLedger } from '@boom-busters/cost'
 import { db } from '@/lib/db'
-import { generateStillCandidates, routeForBrief, stillsEstimateUsd } from './visual-assets'
+import {
+  generateStillCandidates,
+  resolveSlotBrief,
+  routeForBrief,
+  stillsEstimateUsd,
+} from './visual-assets'
 
 /**
  * Still generation with the cast (decision 253), in mock-provider mode
@@ -592,6 +597,22 @@ describeDb('the route stored on a slot wins', () => {
       provider: 'google',
       model: 'gemini-3-pro-image',
     })
+    expect(await lastLedgerModel()).toBe('gemini-3-pro-image')
+  })
+
+  it('carries the stored route through resolveSlotBrief, which every fetch goes through', async () => {
+    // The five production fetch paths all call `resolveSlotBrief`, never the
+    // generator directly, so a route that stops at this boundary makes the
+    // board's model select decorative (decision 264).
+    await updateSettings(db, {
+      modelRouting: { stills: { provider: 'fal', model: 'fal-ai/flux-2' }, stillsLikeness: null },
+    })
+    const resolution = await resolveSlotBrief({
+      projectId: FIXTURE_PROJECT_ID,
+      brief: { ...still, depicts: [] },
+      route: { provider: 'google', model: 'gemini-3-pro-image' },
+    })
+    expect(resolution.status).toBe('resolved')
     expect(await lastLedgerModel()).toBe('gemini-3-pro-image')
   })
 

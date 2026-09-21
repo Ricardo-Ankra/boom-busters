@@ -22,6 +22,7 @@ import { DirectorsBookSchema } from '@boom-busters/schemas'
 import { InngestTestEngine } from '@inngest/test'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/lib/db'
+import { visualsReviewModel } from '@/lib/visuals-review'
 import { forgetRunRows } from '../middleware/run-mirror'
 import { visualsRunner } from './visuals-runner'
 
@@ -109,10 +110,11 @@ describeDb('visuals-runner (mock mode)', () => {
   })
 
   /**
-   * Route stamping (decision 264): the write step derives each still's route
-   * from whether it depicts a photographed cast member, and stores it on the
-   * row in the same step that inserts the slots. Live-model mode here, not
-   * mock, because `mockShotList` never plans a "still" brief.
+   * Routing (decision 264): the runner stores NO route. `shot_slots.route`
+   * holds the owner's explicit choice and nothing else, so the Settings
+   * default keeps moving every planned slot; the rule is re-derived where it
+   * is read, and the board shows it as the planned default. Live-model mode
+   * here, not mock, because `mockShotList` never plans a "still" brief.
    *
    * `callLlm` answers by request task rather than by call order: the harness
    * cannot drive `step.waitForEvent`, so `executeStep` may replay the
@@ -127,12 +129,12 @@ describeDb('visuals-runner (mock mode)', () => {
     })
   }
 
-  it('a planned still that shows a photographed person is stamped with the likeness route', async () => {
+  it('derives the likeness route for a still of a photographed person, storing none', async () => {
     vi.stubEnv('MOCK_PROVIDERS', '')
     await updateSettings(db, {
       modelRouting: {
         stills: { provider: 'google', model: 'gemini-3.1-flash-image' },
-        stillsLikeness: { provider: 'fal', model: 'nano-banana' },
+        stillsLikeness: { provider: 'fal', model: 'fal-ai/flux/dev' },
       },
     })
     // A previous test's cast is not this test's business.
@@ -180,16 +182,22 @@ describeDb('visuals-runner (mock mode)', () => {
     })
 
     const slots = await listShotSlots(db, FIXTURE_PROJECT_ID)
-    const still = slots.find((slot) => slot.type === 'still')
-    expect(still?.route).toEqual({ provider: 'fal', model: 'nano-banana' })
+    expect(slots.some((slot) => slot.type === 'still')).toBe(true)
+    // Nothing is stamped; the board derives it and offers it as the default.
+    expect(slots.every((slot) => slot.route === null)).toBe(true)
+
+    const board = await visualsReviewModel(db, FIXTURE_PROJECT_ID)
+    const still = board.chapters.flatMap((chapter) => chapter.slots).find((s) => s.type === 'still')
+    expect(still?.route).toBeNull()
+    expect(still?.derivedRoute).toEqual({ provider: 'fal', model: 'fal-ai/flux/dev' })
   })
 
-  it('a planned still of nobody is stamped with the ordinary route', async () => {
+  it('leaves every planned slot without a route of its own', async () => {
     vi.stubEnv('MOCK_PROVIDERS', '')
     await updateSettings(db, {
       modelRouting: {
         stills: { provider: 'google', model: 'gemini-3.1-flash-image' },
-        stillsLikeness: { provider: 'fal', model: 'nano-banana' },
+        stillsLikeness: { provider: 'fal', model: 'fal-ai/flux/dev' },
       },
     })
     for (const member of await listCastMembers(db, FIXTURE_PROJECT_ID)) {
@@ -220,8 +228,8 @@ describeDb('visuals-runner (mock mode)', () => {
     })
 
     const slots = await listShotSlots(db, FIXTURE_PROJECT_ID)
-    const still = slots.find((slot) => slot.type === 'still')
-    expect(still?.route).toEqual({ provider: 'google', model: 'gemini-3.1-flash-image' })
+    expect(slots.length).toBeGreaterThan(0)
+    expect(slots.every((slot) => slot.route === null)).toBe(true)
   })
 
   // The copy-reused-shots step (decision 261) has no engine test: the run
