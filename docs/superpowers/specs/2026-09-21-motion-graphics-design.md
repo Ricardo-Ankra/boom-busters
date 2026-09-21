@@ -265,7 +265,7 @@ Nothing is fetched or generated for a graphic; the only spend is the planner's l
 - Materialiser: logo keys resolved; an unresolvable one drops the slot.
 - `resolveSlotBrief`: resolved with every logo, placeholder without.
 - Prompt: the mock shot list emits one graphic; a golden request includes the graphic shape.
-- Logos: `insertLogo` upserts on hash and the title wins; `removeLogo` refuses the channel mark; `findLogoByName` matches "Stability AI" to "Stability AI Ltd" through `nameMatches` and not "AI".
+- Logos: `insertLogo` upserts on hash and the title wins; the channel mark cannot be removed while chosen; `findLogoByName` joins through `nameMatches` in both directions, so "Stability AI, the image company" finds a mark titled "Stability AI" and a mark titled "Stability AI, London" answers to "Stability AI", while "AI" finds nothing. A suffix with no separator ("Stability AI Ltd") is a different name by the cast's rule, on purpose, or "Wire" would find "Wirecard". *(Corrected after the final review of Plan A: the earlier example asked for a match the rule forbids.)*
 - Rasterising: a pasted SVG comes back as PNG bytes with alpha at 2048 px on the long edge; a picked SVG goes through the browser rasteriser seam to a PNG `File`; an SVG that will not render is refused in words.
 - Settings tab: upload, rename, use as mark, remove-refused message.
 - e2e: Logos tab round trip in mock storage; a graphic card on the plan checkpoint with the `Add logo` button and, after an upload, the `resolved` state.
