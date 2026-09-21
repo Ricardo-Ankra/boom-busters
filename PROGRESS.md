@@ -5336,6 +5336,15 @@ Stability AI"]` where two read `["Emad Mostaque"]`. Equality saw a
     mark at 1.6 caption heights and 0.6 alpha with the typographic wordmark as
     the fallback.
 
+    Finishing this entry: `e2e/playwright.config.ts` now blanks the four
+    `R2_*` variables in the web-server env, mirroring the broker guard,
+    because a developer machine's `.env.local` held real R2 credentials and
+    "Add from address" reached the network during the suite; the e2e suite
+    therefore never exercises configured storage, which the action and
+    component tests cover. A final review also widened `logoForEntity` to
+    check both directions, so a stored title carrying a role or suffix is
+    found too, not only a query written that way.
+
     _Tests._ Schema: stored formats, the picker's accept string, the entity
     matcher including the contained-name refusal, the resolved-only URL.
     Database: dedupe on re-upload as a rename, the name join, never a bed.
@@ -5347,4 +5356,5 @@ Stability AI"]` where two read `["Emad Mostaque"]`. Equality saw a
     the whole browser-to-R2 path, the JPEG warning, rename, confirm-remove.
     Materialisers: both resolve the mark; the preview drops nothing for one it
     cannot. Snapshot: `WatermarkLogo`, new golden only. e2e: seeded marks,
-    channel mark chosen and cleared across a reload, rename round trip.
+    channel mark chosen and cleared across a reload, rename round trip. Full
+    suite 9 of 9 workspaces, apps/web 80 files, typecheck 10 of 10, e2e 117.

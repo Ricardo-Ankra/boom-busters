@@ -84,7 +84,8 @@ export default defineConfig({
       // carries real R2 credentials, "Add from address" reached out to
       // https://example.com over the network instead of refusing for lack
       // of storage, the one behaviour the mock-provider suite is meant to
-      // exercise.
+      // exercise. With these blanked, no spec can exercise configured
+      // storage; that is covered by the action and component tests instead.
       R2_ACCOUNT_ID: '',
       R2_ACCESS_KEY_ID: '',
       R2_SECRET_ACCESS_KEY: '',
