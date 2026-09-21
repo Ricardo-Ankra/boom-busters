@@ -751,6 +751,7 @@ export default async function globalSetup(): Promise<void> {
             coversText: narratedText[0]!,
             description: 'A boardroom nobody sits in any more.',
             prompt: 'Empty boardroom at dawn, painterly, muted palette.',
+            set: 'Venture Capital Boardroom',
           },
           startMs: 0,
           durationMs: 6000,
@@ -770,6 +771,27 @@ export default async function globalSetup(): Promise<void> {
           },
           startMs: 6000,
           durationMs: 6000,
+        },
+      ])
+
+      // Decision 264: one set with one plate, so the Set card starts
+      // collapsed (every set has a plate) and the "sets" test opens it with
+      // "Edit sets" rather than finding it already open.
+      const { insertProjectSet, setSetPlates } = await import('@boom-busters/db')
+      const planSet = await insertProjectSet(connection.db, {
+        projectId: plan.id,
+        name: 'Venture Capital Boardroom',
+        look: 'Glass walls, a long table nobody has sat at in months, city light at dusk.',
+      })
+      await setSetPlates(connection.db, planSet.id, [
+        {
+          r2Key: `boom-busters/sets/${plan.id}/e2e-boardroom.jpg`,
+          contentHash: 'e2e0000000000000000000000000000000000000000000000000000000000000',
+          mimeType: 'image/jpeg',
+          width: 1600,
+          height: 900,
+          view: 'establishing',
+          origin: 'uploaded',
         },
       ])
 

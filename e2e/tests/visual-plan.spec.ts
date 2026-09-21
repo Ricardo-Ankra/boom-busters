@@ -126,3 +126,49 @@ test.describe('reusing a shot (decision 261)', () => {
     await expect(page.getByRole('button', { name: /Fetch visuals · 2 slots/ })).toBeVisible()
   })
 })
+
+/**
+ * The Set card (decision 264): seeded with one set carrying one plate, so
+ * the card opens collapsed and the test drives it open with "Edit sets".
+ * Adding a set is scoped to the add-a-set form by id, because "Look" is
+ * ambiguous once a set row exists on the page too.
+ */
+test.describe('sets (decision 264)', () => {
+  test('the Set card lists the rooms and takes a new one', async ({ page }) => {
+    // The Card itself carries aria-label="Sets"; the collapsed-state list
+    // inside it carries the same label on a <ul>, so the selector is
+    // narrowed to the <div> to stay unambiguous.
+    const card = page.locator('div[aria-label="Sets"]')
+    await card.getByRole('button', { name: 'Edit sets' }).click()
+    // Each set row is a <section aria-label={set.name}> (role "region"); the
+    // name also sits inside an <input>'s value, which getByText cannot see.
+    await expect(card.getByRole('region', { name: 'Venture Capital Boardroom' })).toBeVisible()
+    await expect(
+      card.getByText('Up to two plates travel with every still shot in this room.'),
+    ).toBeVisible()
+
+    await card.locator('#set-new-name').fill('Stability AI London Headquarters')
+    await card.locator('#set-new-look').fill('An open-plan office at night, monitors glowing.')
+    await card.getByRole('button', { name: 'Add set' }).click()
+    await expect(
+      card.getByRole('region', { name: 'Stability AI London Headquarters' }),
+    ).toBeVisible()
+  })
+})
+
+/**
+ * The per-slot model select (decision 264): scoped to the still card's own
+ * brief editor, the same "Edit brief" button the plan-phase edit test above
+ * uses, since the plan screen never offers "Save & re-fetch".
+ */
+test.describe('per-slot model routing (decision 264)', () => {
+  test('a slot can be pointed at a different model', async ({ page }) => {
+    const card = page.locator('[id^="slot-"]').filter({ hasText: 'boardroom' })
+    await card.getByRole('button', { name: 'Edit brief', exact: true }).click()
+    // playwright's selectOption takes a literal label, not a RegExp.
+    await card.getByLabel('Image model').selectOption({ label: 'Gemini 3 Pro Image' })
+    await expect(
+      page.getByText('Model changed; re-fetch this shot to buy it', { exact: true }).first(),
+    ).toBeVisible()
+  })
+})
