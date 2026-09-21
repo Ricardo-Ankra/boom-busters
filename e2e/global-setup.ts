@@ -129,6 +129,8 @@ export default async function globalSetup(): Promise<void> {
     backdateProject,
     insertMusicBed,
     listMusicBeds,
+    insertLogo,
+    listLogos,
     FIXTURE_CASE_ID,
     FIXTURE_PROJECT_ID,
     articleSources,
@@ -856,6 +858,23 @@ export default async function globalSetup(): Promise<void> {
           title: `Documentary tension 0${index} (E2E)`,
           licence: 'yt-audio-library',
           moodTags: ['tension'],
+        })
+      }
+    }
+
+    // Two marks (decision 268), on mock:// keys like the beds: the tab
+    // lists them, the watermark never draws them (mock storage has no bytes).
+    if ((await listLogos(connection.db)).length < 2) {
+      for (const [index, title] of [
+        [1, 'Stability AI (E2E)'],
+        [2, 'Wirecard AG (E2E)'],
+      ] as const) {
+        await insertLogo(connection.db, {
+          r2Key: `mock://logos/e2e-mark-${index}`,
+          contentHash: `e2e-logo-${index}`,
+          title,
+          width: 1200,
+          height: 400,
         })
       }
     }

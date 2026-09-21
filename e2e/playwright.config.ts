@@ -78,6 +78,17 @@ export default defineConfig({
       // so never exercised the combination.
       AWS_BROKER_URL: 'https://broker.invalid',
       AWS_BROKER_TOKEN: 'e2e-dummy-token',
+      // Same guard, for R2 (decision 268): blanked so storageConfigured()
+      // reads false regardless of the developer's own .env.local. Found
+      // 2026-09-21 seeding the Logos tab, on a dev machine whose .env.local
+      // carries real R2 credentials, "Add from address" reached out to
+      // https://example.com over the network instead of refusing for lack
+      // of storage, the one behaviour the mock-provider suite is meant to
+      // exercise.
+      R2_ACCOUNT_ID: '',
+      R2_ACCESS_KEY_ID: '',
+      R2_SECRET_ACCESS_KEY: '',
+      R2_BUCKET: '',
     },
   },
 })
