@@ -354,7 +354,7 @@ export async function visualsReviewModel(
    * The three loads every slot's route needs (decision 264): the cast and
    * sets a still or hero brief may depict, and the settings that hold the
    * fallback routing. One read of each for the whole board, not one per
-   * slot — `castWarnings` below reuses this same cast rather than loading it
+   * slot. `castWarnings` below reuses this same cast rather than loading it
    * again.
    */
   const [cast, sets, settings] = await Promise.all([

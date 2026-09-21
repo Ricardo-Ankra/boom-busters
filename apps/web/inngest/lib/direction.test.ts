@@ -51,7 +51,7 @@ describeDb('direction helpers (mock mode)', () => {
     }
     // A dismissed row still occupies the (project, name) unique index, and
     // `seedSetsFromLocations` checks the name against EVERY row for the
-    // project, live or dismissed (the producer's removals stick) — so a
+    // project, live or dismissed (the producer's removals stick), so a
     // leftover dismissed "[mock] Headquarters" from an earlier run of this
     // suite would silently block reseeding. Revive, then hard-delete.
     const revived = await insertProjectSet(db, {

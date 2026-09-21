@@ -1755,7 +1755,7 @@ function stillModelLabel(provider: StillProvider, model: string): string {
  * The model select on a still or hero brief (decision 264): what the routing
  * rule would pick, plus every model either image provider offers, so the
  * owner can see the plan's own choice and put it back. Changing it writes at
- * once — nothing here waits on the form's Save button, because the model is
+ * once. Nothing here waits on the form's Save button, because the model is
  * not a word in the brief, it is which generator spends the money.
  */
 function ModelRouteSelect({
