@@ -5312,3 +5312,39 @@ Stability AI"]` where two read `["Emad Mostaque"]`. Equality saw a
     sets.integration: a revived person, and a revived room, sort after the
     one added while they were away. Both red first. Full suite 9 of 9
     workspaces, typecheck 10 of 10, e2e 114.
+
+52. **The logo library, and the watermark draws the channel mark**
+    (decision 268, Plan A; 2026-09-21, owner: "logos shouldn't be generated,
+    they should be uploaded and then composited").
+
+    Marks are `assets` rows of kind `logo`, the enum value that has existed
+    since M1 with nothing writing it, channel-wide and deduped by content hash
+    like music, titled with the entity's name as the dossier writes it. That
+    name is the join: `logoForEntity` matches a graphic's "logo" element to
+    the library with the cast's tolerant `nameMatches`, ready for Plan B.
+
+    Stored marks are always raster. SVG and AVIF are drawn to PNG at the door
+    (the browser's canvas for a picked file, sharp for a pasted address, 2048
+    px on the long edge, transparency kept), so the render's Chromium never
+    executes anything an upload contained. The spec had named an SVG
+    sanitiser; rasterising is smaller and closes the hole completely, and the
+    spec was amended to say so.
+
+    `brand.look.logoR2Key`, empty since M6, is now set from the Logos tab;
+    both materialisers resolve it to `look.logoUrl`, which exists only in the
+    resolved brand form, and `Watermark`, now its own component, draws the
+    mark at 1.6 caption heights and 0.6 alpha with the typographic wordmark as
+    the fallback.
+
+    _Tests._ Schema: stored formats, the picker's accept string, the entity
+    matcher including the contained-name refusal, the resolved-only URL.
+    Database: dedupe on re-upload as a rename, the name join, never a bed.
+    Browser: SVG and AVIF to PNG through the codec and rasteriser seams.
+    Server: a pasted SVG comes back as PNG bytes with alpha at 2048 px; the 4
+    MB cap; no thumbnail floor for a mark. Actions: the presign refuses SVG
+    and AVIF by design; finalise checks the key shape; add by address hashes
+    the fetched bytes; the channel mark cannot be removed while chosen. Tab:
+    the whole browser-to-R2 path, the JPEG warning, rename, confirm-remove.
+    Materialisers: both resolve the mark; the preview drops nothing for one it
+    cannot. Snapshot: `WatermarkLogo`, new golden only. e2e: seeded marks,
+    channel mark chosen and cleared across a reload, rename round trip.
