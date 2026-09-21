@@ -130,7 +130,6 @@ export default async function globalSetup(): Promise<void> {
     insertMusicBed,
     listMusicBeds,
     insertLogo,
-    listLogos,
     FIXTURE_CASE_ID,
     FIXTURE_PROJECT_ID,
     articleSources,
@@ -139,6 +138,7 @@ export default async function globalSetup(): Promise<void> {
     timelines,
     deleteCasesExcept,
     deleteProjectsExcept,
+    getSettings,
     updateSettings,
   } = await import('@boom-busters/db')
   const { truncateLedger } = await import('@boom-busters/cost')
@@ -832,6 +832,11 @@ export default async function globalSetup(): Promise<void> {
       await setRunStatus(connection.db, planRunId, 'awaiting_gate')
     }
 
+    // Read before the reset: the merge replaces `brandKit.look` wholesale
+    // (decision 268), so clearing `logoR2Key` below must carry the rest of
+    // the current look forward rather than dropping it back to defaults.
+    const settingsBeforeReset = await getSettings(connection.db)
+
     await updateSettings(connection.db, {
       budgets: { monthlyCeilingUsd: 100, approvedOverage: null },
       // Own the image routing: the plan checkpoint quotes a price per still,
@@ -844,6 +849,10 @@ export default async function globalSetup(): Promise<void> {
       // A voice must be chosen for the stage to be runnable at all; the mock
       // adapter answers to any id, and this one says plainly what it is.
       tts: { provider: 'elevenlabs', voiceId: 'mock-narrator' },
+      // No channel mark by default (decision 268): a previous run's "choose
+      // as channel mark" click must not survive into this one, or the
+      // watermark test would find a mark already chosen before it acts.
+      brandKit: { look: { ...settingsBeforeReset.brandKit.look, logoR2Key: null } },
     })
 
     // Three beds, because the fixture install is "fully set up apart from
@@ -864,19 +873,21 @@ export default async function globalSetup(): Promise<void> {
 
     // Two marks (decision 268), on mock:// keys like the beds: the tab
     // lists them, the watermark never draws them (mock storage has no bytes).
-    if ((await listLogos(connection.db)).length < 2) {
-      for (const [index, title] of [
-        [1, 'Stability AI (E2E)'],
-        [2, 'Wirecard AG (E2E)'],
-      ] as const) {
-        await insertLogo(connection.db, {
-          r2Key: `mock://logos/e2e-mark-${index}`,
-          contentHash: `e2e-logo-${index}`,
-          title,
-          width: 1200,
-          height: 400,
-        })
-      }
+    // No length guard: `insertLogo` upserts on `contentHash`, so re-running
+    // this every setup restores both titles even after a spec renamed one
+    // and failed to revert it, the same guarantee `insertMusicBed` above
+    // gets from its own guard only by luck of the beds never being renamed.
+    for (const [index, title] of [
+      [1, 'Stability AI (E2E)'],
+      [2, 'Wirecard AG (E2E)'],
+    ] as const) {
+      await insertLogo(connection.db, {
+        r2Key: `mock://logos/e2e-mark-${index}`,
+        contentHash: `e2e-logo-${index}`,
+        title,
+        width: 1200,
+        height: 400,
+      })
     }
 
     /**
