@@ -5099,3 +5099,107 @@ Stability AI"]` where two read `["Emad Mostaque"]`. Equality saw a
     _Tests._ The anchors forbid no logos, the twin of the faces assertion; the
     anchors contain no word from `BANNED_PROMPT_WORDS`; the bible carries the
     new rule in all three of its parts.
+
+48. **A room is the cast's twin, and a shot says which model it spends on**
+    (decision 264; 2026-09-19 to 2026-09-21, owner: "we upload a few
+    examples of an Office set and the same office set can be used with the
+    characters in the image generation ... like any documentary or movie,
+    the person's office doesn't change" and "when we edit a brief, we should
+    have a drop down to actually change the model ... when the shot list is
+    created a model gets picked based on the brief but we can change it").
+
+    The Cast (decision 253) gave a film's people a face the image model
+    could hold. Its rooms had nothing: the Director's Book already named
+    them as `locations`, but a boardroom was re-invented on every still, and
+    an Apple laptop on one desk was a generic one on the next. Sets are the
+    cast's twin, down to the module shape: a `project_sets` table beside
+    `cast_members`, a Set card beside the Cast card, `set-actions.ts`
+    mirroring `cast-actions.ts`, and `setForBrief` joining a brief's new
+    `set` field to the library through the same tolerant `nameMatches` the
+    cast join uses. The book seeds a set for each location when it is
+    drafted, once; the producer's removals stick. Up to four plates per set,
+    uploaded or generated from the set's own look and chosen by the owner,
+    establishing view first.
+
+    **Two reference pools, with the limits each model documents.** Google
+    budgets character references and object references separately and the
+    numbers differ by model: gemini-3.1-flash-image takes 4 and 10,
+    gemini-3-pro-image 5 and 6, and gemini-2.5-flash-image is undocumented,
+    so it keeps the old conservative 3 and 0. Every `ImageReference` now
+    carries a `kind`, every adapter exposes `referenceLimits(model)`, and
+    the Gemini adapter refuses a request that exceeds either pool rather
+    than letting the endpoint fail it. Above the model's limits sits the
+    app's own policy: at most three character photographs and two set
+    plates in one still, spent people first (one front view each, then one
+    establishing plate, then further angles, then one more plate), because
+    a wrong face is worse than a wrong room. The prompt names only the
+    people whose photographs actually travel, so a tighter model can never
+    be told about a face it was not shown.
+
+    **The route is chosen by rule and stored on the slot.** `routeForBrief`
+    sends a still that shows a photographed person or a photographed set to
+    the reference-capable route (`stillsLikeness`, else `stills`) and
+    everything else to `stills`. Nothing is written at plan time: the brief
+    editor's `Image model` select shows the rule's choice as the Planned
+    default, and only an owner's change is stored on the slot, where it
+    wins in generation and in the estimate. The stored route is part of the
+    fingerprint the fetch pass compares, so changing the model makes the
+    slot owe work again and nothing regenerates on its own: the toast says
+    so in words. A re-plan replaces the slot rows and the board warns that
+    model choices go with them. A stored model an adapter later retires
+    falls back to the rule rather than breaking the page. The first cut
+    stamped a derived route on every planned slot; the whole-branch review
+    showed that made the Settings default inert for any existing plan, and
+    the stamp came out. The default stills model moves from
+    gemini-2.5-flash-image to gemini-3.1-flash-image, the one that takes
+    both kinds of reference; a project configured before this keeps what it
+    has. At two variants a slot, flux-2 is $0.04, 2.5 flash $0.08, 3.1
+    flash $0.14 and 3 pro $0.30; a 48-still film all on 3.1 flash is $6.72
+    against $2.24 today.
+
+    **Two leaks closed on the way.** Deriving the resolution stamp inside
+    `setSlotResolution` from the row, instead of trusting each caller to
+    pass it, exposed two paths that never stamped: the single-slot
+    refetcher left a shot it had just paid for marked as owed, so the next
+    Fetch bought it again, and stock ingestion wiped the runner's stamp so
+    every ingested stock slot was re-fetched on the following pass. Both
+    stamp correctly now. The first cut re-read the row to derive the stamp
+    and accepted a race; the whole-branch review showed a route changed
+    mid-fetch would then stamp a correct-looking picture against a model
+    that never ran. So a resolved outcome now carries the brief and route
+    the candidates answered, as a required argument, and the stamp is
+    computed from that snapshot in the one place that writes it. Forgetting
+    is a type error, which is the property the first cut was reaching for.
+
+    **Plan warnings know about rooms.** A set carrying more than half a
+    chapter's picture briefs, the same set on adjacent slots, and a set the
+    film does not hold each get one note, in the words the plan screen
+    already uses for motifs and unphotographed names. The shot-list prompt
+    lists the film's sets with their look, and the bible's new line says
+    what a set is for: "the photographs are the room", name one when the
+    sentence is in it, and never describe the room again.
+
+    _Not done._ The owner's live project is still routed at fal for plain
+    stills and Gemini 2.5 for likeness; that is one change in Settings. Its
+    existing plan names no sets until it is re-planned or the briefs are
+    edited by hand. No paid generation was run in development; the one
+    spike that would prove the plates change a real Gemini frame (about
+    $0.21) waits for the owner's go-ahead. The Generate a plate label quotes
+    the default model's price ($0.14) as a constant, the way the cast card's
+    Describe button does, so it is off for an owner who routes stills at
+    fal; the ledger charges the true amount.
+
+    _Tests._ Final run on the branch head: schemas 316, db 256, providers 484, apps/web 774 across 77 files, e2e 114; typecheck 10 of 10, lint and prettier clean, no dash on any added line. Schemas: set and plate shapes, the
+    establishing-first order, the tolerant join, the three set warnings and
+    the exact-half boundary. DB: the set library round trips, seeding
+    idempotence, the byte-identical no-route hash, a route change making a
+    slot owe work. Providers: the limits table, refusal when either pool
+    overflows and acceptance at the limit, the prompt's sets block and its
+    byte-identical no-sets path, the bible phrases. Web: plates ride beside
+    faces in the request sent, the spend order, a name only with a photo
+    behind it, the route by rule, a stored route winning in generation and
+    in the estimate, every set action against the database including the
+    chosen plate copied from storage, the Set card, the model select and
+    its six refusals, the runner seeding sets and leaving every route
+    null after a plan. e2e: the Set card
+    takes a new room and a slot takes a new model.
