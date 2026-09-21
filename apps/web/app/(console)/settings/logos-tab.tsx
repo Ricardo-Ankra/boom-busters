@@ -309,12 +309,11 @@ function LogoRow({
           <Button
             variant="ghost"
             disabled={busy}
-            aria-label={`Use ${logo.title} as channel mark`}
             onClick={() =>
               void run(() => setChannelMarkAction(logo.id), `${logo.title} is the channel mark`)
             }
           >
-            Use as channel mark
+            Use {logo.title} as channel mark
           </Button>
         )}
       </div>
