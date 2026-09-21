@@ -9,6 +9,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input, Label, Select } from '@/components/ui/input'
 import { useToast } from '@/components/ui/toast'
 import { ConfirmButton } from '@/components/confirm-button'
+import { readImageSize, toUploadableImage } from '@/lib/client-image'
 import {
   addCastMemberAction,
   addCastPhotoFromUrlAction,
@@ -203,7 +204,14 @@ function MemberRow({
   const inputRef = React.useRef<HTMLInputElement | null>(null)
   const rowBusy = busy !== null && busy.startsWith(member.id)
 
-  const upload = async (file: File): Promise<ActionResult> => {
+  const upload = async (picked: File): Promise<ActionResult> => {
+    // An AVIF becomes a JPEG before anything else happens, so the hash, the
+    // upload and the recorded photo all describe the file the models will
+    // actually be given (decision 266).
+    const ready = await toUploadableImage(picked)
+    if (!ready.ok) return ready
+    const file = ready.file
+
     const bytes = new Uint8Array(await file.arrayBuffer())
     const digest = await crypto.subtle.digest('SHA-256', bytes)
     const contentHash = Array.from(new Uint8Array(digest))
@@ -341,7 +349,7 @@ function MemberRow({
               <input
                 ref={inputRef}
                 type="file"
-                accept="image/jpeg,image/png,image/webp"
+                accept="image/jpeg,image/png,image/webp,image/avif,.avif"
                 className="hidden"
                 aria-label={`Upload a photo of ${member.name}`}
                 onChange={(event) => {
@@ -515,22 +523,4 @@ function AddPerson({ projectId, busy, act }: { projectId: string; busy: string |
       </Button>
     </form>
   )
-}
-
-/**
- * Dimensions read in the browser with createImageBitmap; zero where the
- * environment cannot decode images (jsdom in tests), and the server rounds
- * zero up to one. No object URLs and no Image element: in jsdom those never
- * fire load or error, and the upload sat waiting on them.
- */
-async function readImageSize(file: File): Promise<{ width: number; height: number }> {
-  if (typeof createImageBitmap !== 'function') return { width: 0, height: 0 }
-  try {
-    const bitmap = await createImageBitmap(file)
-    const size = { width: bitmap.width, height: bitmap.height }
-    bitmap.close()
-    return size
-  } catch {
-    return { width: 0, height: 0 }
-  }
 }

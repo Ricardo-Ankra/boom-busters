@@ -16,6 +16,22 @@ const actions = vi.hoisted(() => ({
 }))
 vi.mock('./cast-actions', () => actions)
 
+/**
+ * The real converter needs a browser decoder jsdom does not have, so it is
+ * replaced by one that renames an AVIF and leaves everything else alone.
+ * What the card is on the hook for is using what it hands back.
+ */
+vi.mock('@/lib/client-image', () => ({
+  readImageSize: async () => ({ width: 0, height: 0 }),
+  toUploadableImage: async (file: File) =>
+    file.type === 'image/avif'
+      ? {
+          ok: true,
+          file: new File([new Uint8Array([9, 9, 9, 9])], 'converted.jpg', { type: 'image/jpeg' }),
+        }
+      : { ok: true, file },
+}))
+
 const refresh = vi.fn()
 vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh }) }))
 const toast = vi.fn()
@@ -139,6 +155,28 @@ describe('CastCard', () => {
     )
     expect(actions.finaliseCastPhotoAction).toHaveBeenCalledWith(
       expect.objectContaining({ memberId: MEMBER, view: 'profile', mimeType: 'image/jpeg' }),
+    )
+  })
+
+  it('uploads the converted JPEG when the producer picks an AVIF, never the AVIF', async () => {
+    render(<CastCard projectId={PROJECT} members={[emad]} photoUrls={{}} />)
+    await userEvent.click(screen.getByRole('button', { name: 'Edit cast' }))
+
+    const picker = screen.getByLabelText('Upload a photo of Emad Mostaque')
+    expect(picker).toHaveAttribute('accept', expect.stringContaining('image/avif'))
+    await userEvent.upload(
+      picker,
+      new File([new Uint8Array([1, 2, 3])], 'emad.avif', { type: 'image/avif' }),
+    )
+
+    await waitFor(() => expect(actions.finaliseCastPhotoAction).toHaveBeenCalled())
+    // The four converted bytes, not the three that were picked: the hash and
+    // the recorded type describe the file that reaches the image model.
+    expect(actions.createCastPhotoUploadAction).toHaveBeenCalledWith(
+      expect.objectContaining({ mimeType: 'image/jpeg', fileSize: 4 }),
+    )
+    expect(actions.finaliseCastPhotoAction).toHaveBeenCalledWith(
+      expect.objectContaining({ mimeType: 'image/jpeg' }),
     )
   })
 

@@ -11,11 +11,17 @@ import { isIP } from 'node:net'
  * link could not be used directly even if link rot were acceptable, and it
  * is not: the same face has to regenerate identically weeks later.
  *
- * Everything here is deliberately dependency-free and byte-level. The type a
- * server announces is a claim, not a fact, so the format is read from the
- * magic bytes, and the dimensions from the image's own header, because there
- * is no server-side decoder in this app and a pasted thumbnail is the easiest
- * way to get a worse likeness without noticing.
+ * Everything here is byte-level. The type a server announces is a claim, not
+ * a fact, so the format is read from the magic bytes, and the dimensions from
+ * the image's own header, because a pasted thumbnail is the easiest way to
+ * get a worse likeness without noticing.
+ *
+ * AVIF is the one exception to the no-dependency rule (decision 266). Its
+ * header can be read byte by byte like any other, but no image model accepts
+ * AVIF. Gemini takes PNG, JPEG, WebP, HEIC and HEIF, Anthropic takes PNG,
+ * JPEG, GIF and WebP, so an AVIF cannot be stored and handed on the way the
+ * other three can. It is decoded to a JPEG here at the door, and nothing
+ * downstream ever learns the format existed.
  */
 
 /** The ceiling a cast photo carries, and the default here. */
@@ -38,7 +44,22 @@ const MAX_REDIRECTS = 4
 
 const FETCH_TIMEOUT_MS = 15_000
 
+/**
+ * The longest edge a converted image keeps.
+ *
+ * Only conversion is capped, because only conversion re-encodes: a PNG the
+ * producer pasted is stored at whatever size it came in. Every image model
+ * works at around a thousand pixels, so this is generous, and it is what
+ * bounds the JPEG an enormous AVIF turns into, because a 15 MB AVIF holds far
+ * more pixels than a 15 MB JPEG ever could.
+ */
+export const MAX_CONVERTED_IMAGE_EDGE = 3072
+
+/** The three formats a stored image may be, because every model reads all three. */
 export type RemoteImageMime = 'image/jpeg' | 'image/png' | 'image/webp'
+
+/** What may arrive. AVIF is accepted but never stored; it is converted first. */
+export type SniffedImageMime = RemoteImageMime | 'image/avif'
 
 export interface RemoteImage {
   bytes: Buffer
@@ -60,11 +81,31 @@ export interface RemoteImageOptions {
 }
 
 /**
+ * AVIF: an ISOBMFF file whose `ftyp` box names `avif` (a still) or `avis` (a
+ * sequence) as its major brand or among its compatible ones. The brand list
+ * has to be walked rather than only the major brand read, because encoders
+ * routinely write `mif1` as the major and leave `avif` in the list.
+ */
+function isAvif(bytes: Buffer): boolean {
+  if (bytes.length < 12 || bytes.subarray(4, 8).toString('ascii') !== 'ftyp') return false
+  const declared = bytes.readUInt32BE(0)
+  const end = Math.min(bytes.length, declared > 8 ? declared : bytes.length)
+  // The major brand sits at 8, the minor version at 12 is a number rather
+  // than a brand, and the compatible brands run four bytes each after it.
+  for (let at = 8; at + 4 <= end; at += 4) {
+    if (at === 12) continue
+    const brand = bytes.subarray(at, at + 4).toString('ascii')
+    if (brand === 'avif' || brand === 'avis') return true
+  }
+  return false
+}
+
+/**
  * The format, from the first bytes rather than the Content-Type header.
  * Returns null for anything that is not one of the three the image models
- * take as a reference.
+ * take as a reference, or an AVIF, which is converted into one of them.
  */
-export function sniffImageMime(bytes: Buffer): RemoteImageMime | null {
+export function sniffImageMime(bytes: Buffer): SniffedImageMime | null {
   if (bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) {
     return 'image/jpeg'
   }
@@ -78,7 +119,37 @@ export function sniffImageMime(bytes: Buffer): RemoteImageMime | null {
   ) {
     return 'image/webp'
   }
+  if (isAvif(bytes)) return 'image/avif'
   return null
+}
+
+/**
+ * Decode an AVIF and re-encode it as a JPEG, or null when the file cannot be
+ * read at all.
+ *
+ * `sharp` is imported here rather than at the top of the file so that the
+ * native module is only ever loaded by a request that actually pasted an
+ * AVIF. Chroma subsampling is turned off because these are faces and rooms a
+ * model has to match, and 4:2:0 is exactly where a JPEG throws away the
+ * colour detail around an eye.
+ */
+async function convertToJpeg(bytes: Buffer): Promise<Buffer | null> {
+  try {
+    const { default: sharp } = await import('sharp')
+    return await sharp(bytes)
+      // Honour an orientation tag rather than storing a sideways reference.
+      .rotate()
+      .resize({
+        width: MAX_CONVERTED_IMAGE_EDGE,
+        height: MAX_CONVERTED_IMAGE_EDGE,
+        fit: 'inside',
+        withoutEnlargement: true,
+      })
+      .jpeg({ quality: 92, chromaSubsampling: '4:4:4' })
+      .toBuffer()
+  } catch {
+    return null
+  }
 }
 
 /** PNG: width and height are the two big-endian words of the IHDR chunk. */
@@ -306,25 +377,33 @@ export async function fetchRemoteImage(
     }
   }
 
-  const bytes = await readCapped(response, maxBytes)
-  if (!bytes) {
+  const fetched = await readCapped(response, maxBytes)
+  if (!fetched) {
     return {
       ok: false,
       error: `That image is over the ${Math.round(maxBytes / 1024 / 1024)} MB limit.`,
     }
   }
-  if (bytes.length === 0) return { ok: false, error: 'That link returned an empty file.' }
+  if (fetched.length === 0) return { ok: false, error: 'That link returned an empty file.' }
 
-  const mimeType = sniffImageMime(bytes)
-  if (!mimeType) {
+  const sniffed = sniffImageMime(fetched)
+  if (!sniffed) {
     // Overwhelmingly this is a page URL rather than the image on it.
     return {
       ok: false,
       error:
-        'That link is not a JPEG, PNG or WebP image. Right-click the image itself and copy its ' +
-        'image address, not the page address.',
+        'That link is not a JPEG, PNG, WebP or AVIF image. Right-click the image itself and copy ' +
+        'its image address, not the page address.',
     }
   }
+
+  // An AVIF becomes a JPEG here, and every check below runs on the file that
+  // will actually be stored: the size floor measures the pixels the model
+  // gets, not the pixels the link advertised.
+  const converted = sniffed === 'image/avif' ? await convertToJpeg(fetched) : fetched
+  if (!converted) return { ok: false, error: 'That image file is damaged and could not be read.' }
+  const bytes = converted
+  const mimeType: RemoteImageMime = sniffed === 'image/avif' ? 'image/jpeg' : sniffed
 
   const size = imageDimensions(bytes, mimeType)
   if (!size) return { ok: false, error: 'That image file is damaged and could not be read.' }
