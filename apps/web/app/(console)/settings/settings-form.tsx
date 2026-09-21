@@ -23,6 +23,7 @@ import { Switch } from '@/components/ui/switch'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { VoiceTab } from './voice-tab'
 import { MusicTab, type MusicBedView } from './music-tab'
+import { LogosTab, type LogoView } from './logos-tab'
 import { YoutubeCard } from './youtube-card'
 import { useToast } from '@/components/ui/toast'
 import { saveProviderKey, saveSettings, verifyProviderKey } from './actions'
@@ -90,6 +91,8 @@ export function SettingsForm({
   youtubeEnvReady = false,
   initialTab = 'models',
   musicBeds = [],
+  logos = [],
+  channelMarkKey = null,
 }: {
   initialSettings: Settings
   credentials: MaskedCredential[]
@@ -100,6 +103,8 @@ export function SettingsForm({
   /** From `?tab=`, validated by the page — deep links land on the right tab. */
   initialTab?: string
   musicBeds?: MusicBedView[]
+  logos?: LogoView[]
+  channelMarkKey?: string | null
 }) {
   const [settings, setSettings] = React.useState(initialSettings)
   const [saving, setSaving] = React.useState(false)
@@ -136,6 +141,7 @@ export function SettingsForm({
         <TabsTrigger value="brand-kit">Brand Kit</TabsTrigger>
         <TabsTrigger value="voice">Voice</TabsTrigger>
         <TabsTrigger value="music">Music library</TabsTrigger>
+        <TabsTrigger value="logos">Logos</TabsTrigger>
         <TabsTrigger value="publishing">Publishing</TabsTrigger>
         <TabsTrigger value="connections">Connections</TabsTrigger>
       </TabsList>
@@ -154,6 +160,10 @@ export function SettingsForm({
 
       <TabsContent value="music">
         <MusicTab beds={musicBeds} />
+      </TabsContent>
+
+      <TabsContent value="logos">
+        <LogosTab logos={logos} channelMarkKey={channelMarkKey} />
       </TabsContent>
 
       <TabsContent value="publishing">
