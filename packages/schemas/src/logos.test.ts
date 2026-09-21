@@ -52,9 +52,25 @@ describe('logoForEntity', () => {
     expect(logoForEntity('Wirecard AG, the payments processor', logos)?.id).toBe('b')
   })
 
-  it('refuses a name merely contained in a longer title', () => {
+  it('matches the other direction: a stored title carrying a role or suffix', () => {
+    const withSuffix = [
+      { id: 'a', title: 'Stability AI' },
+      { id: 'b', title: 'Wirecard AG (Germany)' },
+    ]
+    expect(logoForEntity('Wirecard AG', withSuffix)?.id).toBe('b')
+  })
+
+  it('refuses a name merely contained in a longer title, in either direction', () => {
     expect(logoForEntity('AI', logos)).toBeNull()
     expect(logoForEntity('Wirecard', logos)).toBeNull()
+    // "Stability AI Ltd" carries no separator after "Stability AI" (no comma,
+    // bracket or dash, just a space before the suffix word), so it stays a
+    // stranger, the same as "Emad Mostaque Junior" against "Emad Mostaque"
+    // in the cast's own matcher tests: a bare space is never a boundary.
+    expect(logoForEntity('Stability AI', [{ id: 'c', title: 'Stability AI Ltd' }])).toBeNull()
+    expect(logoForEntity('AI', [{ id: 'a', title: 'Stability AI' }])).toBeNull()
+    expect(logoForEntity('AI', [{ id: 'c', title: 'Stability AI Ltd' }])).toBeNull()
+    expect(logoForEntity('AI', [{ id: 'b', title: 'Wirecard AG' }])).toBeNull()
   })
 
   it('returns null for an empty library', () => {

@@ -42,9 +42,14 @@ export interface LogoIndex {
 /**
  * The mark an entity name refers to, or null. The join between a graphic's
  * "logo" element and the library (Plan B), through the cast's tolerant
- * matcher: the exact title, or the title followed by a role, never a title
- * merely contained in a longer name.
+ * matcher, tried in both directions: the exact name, or either side
+ * followed by a role or suffix, never a bare substring. The reverse
+ * direction matters because the query can carry the role ("Wirecard AG, the
+ * payments processor" against a title of "Wirecard AG") or the stored title
+ * can ("Wirecard AG (Germany)" against a query of "Wirecard AG").
  */
 export function logoForEntity<T extends LogoIndex>(entity: string, logos: readonly T[]): T | null {
-  return logos.find((logo) => nameMatches(entity, logo.title)) ?? null
+  return (
+    logos.find((logo) => nameMatches(entity, logo.title) || nameMatches(logo.title, entity)) ?? null
+  )
 }
