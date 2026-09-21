@@ -276,6 +276,13 @@ describe('planWarnings counts sets', () => {
     expect(warnings.some((w) => w.includes('no set named "A car park"'))).toBe(true)
   })
 
+  it('notes an unknown set even when the project holds no sets at all', () => {
+    // The loudest case of a brief conditioning nothing, and the one the plan
+    // screen most needs to say out loud.
+    const warnings = planWarnings([slot('chapter 1', 'A car park')], [], [], [])
+    expect(warnings.some((w) => w.includes('no set named "A car park"'))).toBe(true)
+  })
+
   it('says nothing when no slot names a set', () => {
     expect(planWarnings([slot('chapter 1')], [], [], ['The boardroom'])).toEqual([])
   })

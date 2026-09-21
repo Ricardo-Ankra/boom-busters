@@ -39,7 +39,9 @@ export async function listCastMembers(db: Database, projectId: string): Promise<
     .select()
     .from(castMembers)
     .where(active(projectId))
-    .orderBy(asc(castMembers.createdAt))
+    // The id breaks the tie: two members seeded in one statement share a
+    // timestamp, and ULIDs are monotonic, so this is insertion order.
+    .orderBy(asc(castMembers.createdAt), asc(castMembers.id))
   return rows.map(toMember)
 }
 

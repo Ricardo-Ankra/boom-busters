@@ -3,7 +3,6 @@ import {
   getProject,
   getSettings,
   listCastMembers,
-  listProjectSets,
   scriptableClaims,
   seedCastFromPrincipals,
   seedSetsFromLocations,
@@ -82,11 +81,6 @@ export async function loadDirectionInputs(projectId: string): Promise<{
    * likeness and a written description argues with it.
    */
   photographed: string[]
-  /**
-   * The project's sets (decision 264): each carries the reference plates the
-   * shot list needs to know a name is available to put a brief in.
-   */
-  sets: { name: string; look: string }[]
 }> {
   const project = await getProject(db, projectId)
   if (!project) throw new NonRetriableError(`Project ${projectId} no longer exists`)
@@ -122,8 +116,6 @@ export async function loadDirectionInputs(projectId: string): Promise<{
   const photographed = members
     .filter((member) => member.photos.length > 0)
     .map((member) => member.name)
-  const sets = (await listProjectSets(db, projectId)).map(({ name, look }) => ({ name, look }))
-
   return {
     caseTitle: project.title,
     centralQuestion: outline.success ? outline.data.centralQuestion : undefined,
@@ -133,7 +125,6 @@ export async function loadDirectionInputs(projectId: string): Promise<{
     styleAnchors: stillStyleAnchors(settings.brandKit),
     cast,
     photographed,
-    sets,
   }
 }
 

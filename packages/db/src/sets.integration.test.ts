@@ -1,8 +1,10 @@
 import { ValidationError } from '@boom-busters/schemas'
 import type { SetPlate } from '@boom-busters/schemas'
+import { eq } from 'drizzle-orm'
 import { afterAll, beforeEach, describe, expect, it } from 'vitest'
 import { createCase, truncateCases } from './cases'
 import { createDb } from './client'
+import { projectSets } from './schema'
 import { createProjectFromCase, deleteProjectsExcept } from './projects'
 import {
   dismissProjectSet,
@@ -126,6 +128,26 @@ suite('project sets', () => {
     await dismissProjectSet(db, set.id)
     expect(await listProjectSets(db, projectId)).toEqual([])
     expect(await getProjectSet(db, set.id)).toBeNull()
+    // The row itself, past the two readers that hide it: the plates are the
+    // half of "dismissed" neither of them can show.
+    const [row] = await db.select().from(projectSets).where(eq(projectSets.id, set.id))
+    expect(row?.dismissedAt).not.toBeNull()
+    expect(row?.plates).toEqual([])
+  })
+
+  it('treats a name as taken whatever its case, reviving the dismissed row', async () => {
+    const original = await insertProjectSet(db, { projectId, name: 'The Lobby' })
+    await dismissProjectSet(db, original.id)
+
+    const revived = await insertProjectSet(db, { projectId, name: 'the lobby', look: 'marble' })
+    expect(revived.id).toBe(original.id)
+    expect(revived).toMatchObject({ name: 'The Lobby', look: 'marble' })
+    expect((await listProjectSets(db, projectId)).map((s) => s.name)).toEqual(['The Lobby'])
+
+    // And a live one under another case is still refused, not duplicated.
+    await expect(insertProjectSet(db, { projectId, name: 'THE LOBBY' })).rejects.toThrow(
+      ValidationError,
+    )
   })
 
   it("seedSetsFromLocations inserts the book's locations and skips one already held", async () => {

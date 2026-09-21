@@ -1,4 +1,4 @@
-import { and, asc, eq, isNull } from 'drizzle-orm'
+import { and, asc, eq, isNull, sql } from 'drizzle-orm'
 import { MAX_SET_PLATES, ProjectSetSchema, ValidationError } from '@boom-busters/schemas'
 import type { ProjectSet, SetPlate } from '@boom-busters/schemas'
 import type { Database } from './client'
@@ -32,7 +32,9 @@ export async function listProjectSets(db: Database, projectId: string): Promise<
     .select()
     .from(projectSets)
     .where(active(projectId))
-    .orderBy(asc(projectSets.createdAt))
+    // The id breaks the tie: two sets seeded in one statement share a
+    // timestamp, and ULIDs are monotonic, so this is insertion order.
+    .orderBy(asc(projectSets.createdAt), asc(projectSets.id))
   return rows.map(toSet)
 }
 
@@ -49,6 +51,10 @@ export async function getProjectSet(db: Database, id: string): Promise<ProjectSe
  * Add a set by hand. Re-adding one the producer dismissed revives the same
  * row (the unique name index would refuse a second one), with the new look;
  * the plates were deleted at dismissal and start empty.
+ *
+ * The match ignores case, because everything else that joins a name to a set
+ * does: seeding and `nameMatches` both do, and an exact-case lookup here let
+ * "the lobby" be added beside a dismissed "The Lobby".
  */
 export async function insertProjectSet(
   db: Database,
@@ -60,7 +66,12 @@ export async function insertProjectSet(
   const [same] = await db
     .select({ id: projectSets.id, dismissedAt: projectSets.dismissedAt })
     .from(projectSets)
-    .where(and(eq(projectSets.projectId, input.projectId), eq(projectSets.name, name)))
+    .where(
+      and(
+        eq(projectSets.projectId, input.projectId),
+        sql`lower(${projectSets.name}) = lower(${name})`,
+      ),
+    )
     .limit(1)
   if (same && same.dismissedAt === null) {
     throw new ValidationError('A set with that exact name already exists.', {

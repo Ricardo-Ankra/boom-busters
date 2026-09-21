@@ -261,16 +261,15 @@ export function planWarnings(
   }
 
   // A set nothing holds conditions nothing, exactly like a depicts name with
-  // no photograph, and is worth saying before the money is spent.
-  if (setNames.length > 0) {
-    const unknown = new Set<string>()
-    for (const slot of slots) {
-      const named = slotSet(slot.brief)
-      if (named && !setNames.some((name) => nameMatches(named, name))) unknown.add(named)
-    }
-    for (const name of unknown) {
-      warnings.push(`the film has no set named "${name}", so that shot is generated plain`)
-    }
+  // no photograph, and is worth saying before the money is spent. A project
+  // with no sets at all is the loudest case of it, not an exemption.
+  const unknown = new Set<string>()
+  for (const slot of slots) {
+    const named = slotSet(slot.brief)
+    if (named && !setNames.some((name) => nameMatches(named, name))) unknown.add(named)
+  }
+  for (const name of unknown) {
+    warnings.push(`the film has no set named "${name}", so that shot is generated plain`)
   }
 
   return warnings
