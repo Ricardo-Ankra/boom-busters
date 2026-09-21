@@ -832,6 +832,13 @@ export default async function globalSetup(): Promise<void> {
 
     await updateSettings(connection.db, {
       budgets: { monthlyCeilingUsd: 100, approvedOverage: null },
+      // Own the image routing: the plan checkpoint quotes a price per still,
+      // and a settings row left by a unit-test run would otherwise decide
+      // which model that is. The shipped default (decision 264).
+      modelRouting: {
+        stills: { provider: 'google', model: 'gemini-3.1-flash-image' },
+        stillsLikeness: null,
+      },
       // A voice must be chosen for the stage to be runnable at all; the mock
       // adapter answers to any id, and this one says plainly what it is.
       tts: { provider: 'elevenlabs', voiceId: 'mock-narrator' },

@@ -83,7 +83,7 @@ function failure(error: unknown, fallback: string): ActionResult {
   const cause = error instanceof Error ? (error.cause as { code?: string } | undefined) : undefined
   const text = [error, cause].map((e) => (e instanceof Error ? e.message : '')).join(' ')
   if (cause?.code === '23505' || /unique|duplicate/i.test(text)) {
-    return { ok: false, error: 'A set with that exact name already exists.' }
+    return { ok: false, error: 'A set with that name already exists.' }
   }
   return { ok: false, error: fallback }
 }

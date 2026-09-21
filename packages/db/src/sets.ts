@@ -74,7 +74,7 @@ export async function insertProjectSet(
     )
     .limit(1)
   if (same && same.dismissedAt === null) {
-    throw new ValidationError('A set with that exact name already exists.', {
+    throw new ValidationError('A set with that name already exists.', {
       field: 'name',
     })
   }

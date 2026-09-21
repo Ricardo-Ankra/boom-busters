@@ -614,11 +614,11 @@ export const shotSlots = pgTable(
       onDelete: 'set null',
     }),
     /**
-     * The image route this slot generates on (decision 264), as
-     * `{ provider, model }`. Derived by rule when the shot list is planned
-     * and changed by the owner in the brief editor; null means fall back to
-     * the derived route at generation time. It is part of the resolution
-     * hash, so changing the model makes the slot owe work.
+     * The image route the owner chose for this slot in the brief editor
+     * (decision 264), as `{ provider, model }`. Nothing writes it at plan
+     * time: null means derive the route by rule at generation time, which
+     * is what every slot the owner has not touched does. It is part of the
+     * resolution hash, so changing the model makes the slot owe work.
      */
     route: jsonb('route').$type<Record<string, unknown>>(),
     startMs: integer('start_ms').notNull().default(0),

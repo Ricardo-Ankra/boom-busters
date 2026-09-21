@@ -202,9 +202,11 @@ export async function setSlotResolution(
   outcome: SlotResolutionOutcome,
 ): Promise<void> {
   /**
-   * The stamp is computed here and only here (decision 264), so one author
-   * writes every one of them and the hash covers the route as well as the
-   * brief.
+   * Every stamp for a generated or fetched slot is computed here (decision
+   * 264), so one author writes them and the hash covers the route as well
+   * as the brief. The reuse paths (`linkSlotReuse`, `copyReusedShots`)
+   * stamp their own rows, from the row, because a reuse row answers
+   * another slot's shot rather than a generation of its own.
    *
    * Computing it in one place closed two leaks. `slot-refetcher` and
    * `stock-ingest` passed no hash at all, so the first left a slot it had

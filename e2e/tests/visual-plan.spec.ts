@@ -31,11 +31,12 @@ test.beforeEach(async ({ page }) => {
 
 test.describe('the shot plan checkpoint', () => {
   test('one priced Fetch button, planned chips, and no generic Approve', async ({ page }) => {
-    // The still is the only paid slot. The exact price depends on which
-    // image key the environment seeded (fal $0.06, Gemini $0.08) — the
-    // contract is that the button carries A price, not which generator won.
+    // The still is the only paid slot, and global-setup owns the routing:
+    // the shipped default, gemini-3.1-flash-image, at two variants a slot
+    // (decision 264). A settings row left behind by a unit-test run must
+    // not decide this number.
     await expect(
-      page.getByRole('button', { name: /Fetch visuals · 2 slots · est\. \$0\.0[68]/ }),
+      page.getByRole('button', { name: 'Fetch visuals · 2 slots · est. $0.14' }),
     ).toBeVisible()
     await expect(page.getByText('planned').first()).toBeVisible()
     // The plan bar owns approval; the generic gate bar would speak an event
