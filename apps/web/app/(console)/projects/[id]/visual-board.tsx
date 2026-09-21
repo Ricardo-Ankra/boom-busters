@@ -22,6 +22,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ConfirmButton } from '@/components/confirm-button'
 import { Label, Select } from '@/components/ui/input'
 import { useToast } from '@/components/ui/toast'
+import { toUploadableImage } from '@/lib/client-image'
 import type { ArticleClaimOption, SlotView, VisualsReviewModel } from '@/lib/visuals-review'
 import { CLOSE_REUSE_MS, describeGap, timecode } from '@/lib/visuals-reuse'
 import {
@@ -1973,7 +1974,13 @@ function UploadOwnButton({
   const inputRef = React.useRef<HTMLInputElement | null>(null)
   const [url, setUrl] = React.useState('')
 
-  const upload = async (file: File): Promise<ActionResult> => {
+  const upload = async (picked: File): Promise<ActionResult> => {
+    // An AVIF becomes a JPEG first; video passes straight through untouched
+    // (decision 266). The size check below then measures what is uploaded.
+    const ready = await toUploadableImage(picked)
+    if (!ready.ok) return ready
+    const file = ready.file
+
     const video = file.type.startsWith('video/')
     const maxBytes = video ? UPLOAD_OWN_VIDEO_MAX_BYTES : UPLOAD_OWN_IMAGE_MAX_BYTES
     if (file.size > maxBytes) {
@@ -2063,8 +2070,8 @@ function UploadOwnButton({
         type="file"
         accept={
           archival
-            ? 'image/png,image/jpeg,image/webp,video/mp4,video/quicktime,video/webm'
-            : 'image/png,image/jpeg,image/webp'
+            ? 'image/png,image/jpeg,image/webp,image/avif,.avif,video/mp4,video/quicktime,video/webm'
+            : 'image/png,image/jpeg,image/webp,image/avif,.avif'
         }
         className="hidden"
         aria-label={

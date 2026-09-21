@@ -10,10 +10,18 @@ describe('newId', () => {
     expect(isUlid(id)).toBe(true)
   })
 
-  it('produces unique, lexicographically sortable ids', () => {
+  it('produces unique ids', () => {
     const ids = Array.from({ length: 200 }, () => newId<'project'>())
     expect(new Set(ids).size).toBe(200)
-    expect([...ids].sort()).toEqual([...ids].sort((a, b) => a.localeCompare(b)))
+  })
+
+  it('sorts in creation order even when minted inside one millisecond', () => {
+    // A loop like this is how the book seeds its principals and its
+    // locations, and several rows then share a created_at to the
+    // millisecond. Every list query breaks that tie on the id, so the id
+    // has to carry the order or the cast comes back shuffled.
+    const ids = Array.from({ length: 500 }, () => newId<'cast'>())
+    expect([...ids].sort()).toEqual(ids)
   })
 })
 

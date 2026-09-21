@@ -79,6 +79,22 @@ suite('cast members', () => {
     expect((await listCastMembers(db, projectId)).map((m) => m.name)).toEqual(['Emad Mostaque'])
   })
 
+  it('puts a revived person where a new one goes, not back in their old place', async () => {
+    // Re-adding someone is adding them now (decision 267). The row is
+    // reused, so without a fresh timestamp they would reappear wherever the
+    // book first put them, and the list order decides which face leads the
+    // references sent to the image model.
+    const first = await insertCastMember(db, { projectId, name: 'Emad Mostaque', role: 'Founder' })
+    await insertCastMember(db, { projectId, name: 'Prem Akkaraju', role: 'CEO' })
+    await dismissCastMember(db, first.id)
+    await insertCastMember(db, { projectId, name: 'Emad Mostaque', role: 'Back' })
+
+    expect((await listCastMembers(db, projectId)).map((member) => member.name)).toEqual([
+      'Prem Akkaraju',
+      'Emad Mostaque',
+    ])
+  })
+
   describe('seedCastFromPrincipals', () => {
     const principals = [
       {

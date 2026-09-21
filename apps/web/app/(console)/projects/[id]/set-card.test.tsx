@@ -147,6 +147,17 @@ describe('SetCard', () => {
     })
   })
 
+  it('offers AVIF at the plate picker, which converts before it uploads', async () => {
+    render(
+      <SetCard projectId={PROJECT} sets={[tradingFloor]} plateUrls={{}} plateEstimateUsd={0.08} />,
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'Edit sets' }))
+    expect(screen.getByLabelText('Upload a plate of The trading floor')).toHaveAttribute(
+      'accept',
+      expect.stringContaining('image/avif'),
+    )
+  })
+
   it('removing a set asks for confirmation first', async () => {
     render(
       <SetCard projectId={PROJECT} sets={[tradingFloor]} plateUrls={{}} plateEstimateUsd={0.08} />,

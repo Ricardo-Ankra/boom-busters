@@ -40,7 +40,8 @@ export async function listCastMembers(db: Database, projectId: string): Promise<
     .from(castMembers)
     .where(active(projectId))
     // The id breaks the tie: two members seeded in one statement share a
-    // timestamp, and ULIDs are monotonic, so this is insertion order.
+    // timestamp, and `newId` mints in creation order (decision 267), so
+    // this is insertion order.
     .orderBy(asc(castMembers.createdAt), asc(castMembers.id))
   return rows.map(toMember)
 }
@@ -79,9 +80,13 @@ export async function insertCastMember(
     })
   }
   if (same) {
+    const now = new Date()
+    // A fresh `createdAt`: re-adding is adding, and the list is ordered
+    // oldest first, so a reused row must not carry the place the book first
+    // gave it (decision 267).
     const [revived] = await db
       .update(castMembers)
-      .set({ role, dismissedAt: null, photos: [], updatedAt: new Date() })
+      .set({ role, dismissedAt: null, photos: [], createdAt: now, updatedAt: now })
       .where(eq(castMembers.id, same.id))
       .returning()
     return toMember(revived!)

@@ -15,6 +15,7 @@ const {
   fetchRemoteImage,
   imageDimensions,
   sniffImageMime,
+  MAX_CONVERTED_IMAGE_EDGE,
   MAX_REMOTE_IMAGE_BYTES,
   MIN_REMOTE_IMAGE_EDGE,
 } = await import('./remote-image')
@@ -68,6 +69,32 @@ function respond(bytes: Buffer, init: ResponseInit = {}): Response {
   return new Response(new Uint8Array(bytes), init)
 }
 
+/**
+ * A real AVIF, encoded on the spot rather than checked in as a fixture: the
+ * point of the AVIF path is that it survives a genuine decode, and a
+ * hand-built header would prove only that the sniffer reads four bytes.
+ */
+async function avif(width: number, height: number): Promise<Buffer> {
+  const { default: sharp } = await import('sharp')
+  return sharp({
+    create: { width, height, channels: 3, background: { r: 20, g: 80, b: 160 } },
+  })
+    .avif({ quality: 50 })
+    .toBuffer()
+}
+
+/** An ISOBMFF header whose major brand is something else and `avis` a compatible one. */
+function avisHeader(): Buffer {
+  const bytes = Buffer.alloc(24)
+  bytes.writeUInt32BE(24, 0)
+  bytes.write('ftyp', 4, 'ascii')
+  bytes.write('mif1', 8, 'ascii')
+  bytes.writeUInt32BE(0, 12)
+  bytes.write('miaf', 16, 'ascii')
+  bytes.write('avis', 20, 'ascii')
+  return bytes
+}
+
 beforeEach(() => {
   vi.clearAllMocks()
   dns.lookup.mockResolvedValue([{ address: '93.184.216.34', family: 4 }])
@@ -80,6 +107,14 @@ describe('sniffImageMime', () => {
     expect(sniffImageMime(webpExtended(400, 400))).toBe('image/webp')
     expect(sniffImageMime(Buffer.from('<!doctype html><html>'))).toBeNull()
     expect(sniffImageMime(Buffer.from('GIF89a'))).toBeNull()
+  })
+
+  it('recognises AVIF by its major brand and by a compatible one', async () => {
+    expect(sniffImageMime(await avif(320, 320))).toBe('image/avif')
+    expect(sniffImageMime(avisHeader())).toBe('image/avif')
+    // An ISOBMFF file that is not an image at all stays unrecognised.
+    const mp4 = Buffer.from('000000186674797069736f6d0000020069736f6d', 'hex')
+    expect(sniffImageMime(mp4)).toBeNull()
   })
 })
 
@@ -116,6 +151,48 @@ describe('fetchRemoteImage', () => {
     })
     // The lying Content-Type was ignored in favour of the bytes.
     expect(fetchImpl).toHaveBeenCalledTimes(1)
+  })
+
+  it('converts a pasted AVIF to JPEG, because no image model reads AVIF', async () => {
+    const bytes = await avif(1200, 800)
+    const fetchImpl = vi.fn(async () =>
+      respond(bytes, { headers: { 'content-type': 'image/avif' } }),
+    )
+    const result = await fetchRemoteImage('https://example.com/office.avif', { fetchImpl })
+
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.image.mimeType).toBe('image/jpeg')
+    // The stored bytes really are a JPEG, not an AVIF wearing a label.
+    expect(result.image.bytes.subarray(0, 3).toString('hex')).toBe('ffd8ff')
+    expect(sniffImageMime(result.image.bytes)).toBe('image/jpeg')
+    expect(result.image).toMatchObject({ width: 1200, height: 800 })
+  })
+
+  it('holds an AVIF to the same thumbnail floor as everything else', async () => {
+    const bytes = await avif(MIN_REMOTE_IMAGE_EDGE - 1, 900)
+    const fetchImpl = vi.fn(async () => respond(bytes))
+    const result = await fetchRemoteImage('https://example.com/thumb.avif', { fetchImpl })
+    expect(result.ok).toBe(false)
+    expect(result.ok === false && result.error).toMatch(/thumbnail/i)
+  })
+
+  it('caps a huge AVIF on its longest edge rather than storing a giant JPEG', async () => {
+    const bytes = await avif(4400, 2200)
+    const fetchImpl = vi.fn(async () => respond(bytes))
+    const result = await fetchRemoteImage('https://example.com/wide.avif', { fetchImpl })
+
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.image).toMatchObject({ width: MAX_CONVERTED_IMAGE_EDGE, height: 1536 })
+  })
+
+  it('refuses a damaged AVIF instead of storing an unreadable file', async () => {
+    const bytes = (await avif(640, 480)).subarray(0, 40)
+    const fetchImpl = vi.fn(async () => respond(bytes))
+    const result = await fetchRemoteImage('https://example.com/broken.avif', { fetchImpl })
+    expect(result.ok).toBe(false)
+    expect(result.ok === false && result.error).toMatch(/damaged/i)
   })
 
   it('refuses a page address, and says to copy the image address instead', async () => {

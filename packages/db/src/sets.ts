@@ -33,7 +33,8 @@ export async function listProjectSets(db: Database, projectId: string): Promise<
     .from(projectSets)
     .where(active(projectId))
     // The id breaks the tie: two sets seeded in one statement share a
-    // timestamp, and ULIDs are monotonic, so this is insertion order.
+    // timestamp, and `newId` mints in creation order (decision 267), so
+    // this is insertion order.
     .orderBy(asc(projectSets.createdAt), asc(projectSets.id))
   return rows.map(toSet)
 }
@@ -79,9 +80,13 @@ export async function insertProjectSet(
     })
   }
   if (same) {
+    const now = new Date()
+    // A fresh `createdAt`: re-adding is adding, and the list is ordered
+    // oldest first, so a reused row must not carry the place the book first
+    // gave it (decision 267).
     const [revived] = await db
       .update(projectSets)
-      .set({ look, dismissedAt: null, plates: [], updatedAt: new Date() })
+      .set({ look, dismissedAt: null, plates: [], createdAt: now, updatedAt: now })
       .where(eq(projectSets.id, same.id))
       .returning()
     return toSet(revived!)
