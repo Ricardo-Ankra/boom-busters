@@ -5271,10 +5271,44 @@ Stability AI"]` where two read `["Emad Mostaque"]`. Equality saw a
     the converted file rather than the AVIF. Full suite 9 of 9 workspaces,
     apps/web 78 files, e2e 114.
 
-    _Known, not fixed here._ `newId` uses `ulid()`, not the monotonic
-    factory, so two ids minted in the same millisecond sort arbitrarily.
-    `listCastMembers` orders by `(createdAt, id)` and its comment claims
-    ULIDs are monotonic, which is only true of the monotonic factory. It
-    shows up as an intermittent reference-order failure in
-    visual-assets.test.ts and, in production, as the weighted first
-    reference slot going to either of two people seeded together.
+    _Noticed here, fixed in 51._ An intermittent reference-order failure in
+    visual-assets.test.ts. The first diagnosis, that `newId` was not
+    monotonic, was a real defect but not this one.
+
+51. **A re-added person came back in their old place, and `newId` was not
+    monotonic** (decision 267; 2026-09-21, found while finishing 50).
+
+    `visual-assets.test.ts` failed intermittently on the order of the
+    reference photographs sent to the image model: Prem before Emad, when
+    the test inserts Emad first. Run alone it failed, run with its file it
+    passed, which is the shape of a test reading state the shared test
+    database was left in rather than state it set.
+
+    _The cause._ Dismissing is a soft delete, and `insertCastMember`
+    revives a dismissed row rather than refusing the name. The revival kept
+    the row's original `createdAt`, and `listCastMembers` orders by
+    `(createdAt, id)`. So a person re-added after being dismissed came back
+    wherever the Director's Book first put them, weeks of edits ago. The
+    test's `beforeEach` dismisses the fixture's cast, so every later insert
+    was a revival carrying the seed's order. `insertProjectSet` had the
+    same shape. Both now stamp `createdAt` afresh: re-adding is adding.
+    The order this decides is not cosmetic. It is the order the references
+    reach the image model in, and the first one carries the most weight.
+
+    _And a second, real defect found on the way._ `newId` called `ulid()`,
+    whose random half is fresh every call, so two ids minted in the same
+    millisecond sorted by coin flip. Rows created in one loop, which is how
+    the book seeds its principals and its locations, share a `created_at`
+    to the millisecond and are tie-broken on the id. It now uses
+    `monotonicFactory()`. The comments in `listCastMembers` and
+    `listProjectSets` asserting that ULIDs are monotonic were, until this
+    change, simply false; they now name the reason. This was the first
+    diagnosis of the failure above and it was wrong: the fix is kept because
+    the defect is real, not because it fixed that test.
+
+    _Tests._ ids.test.ts: 500 ids minted in a tight loop already sort in
+    creation order, which was red on `ulid()`. Its predecessor compared two
+    identical sorts and could not fail; it is gone. cast.integration and
+    sets.integration: a revived person, and a revived room, sort after the
+    one added while they were away. Both red first. Full suite 9 of 9
+    workspaces, typecheck 10 of 10, e2e 114.

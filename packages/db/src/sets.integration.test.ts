@@ -105,6 +105,20 @@ suite('project sets', () => {
     expect((await listProjectSets(db, projectId)).map((s) => s.name)).toEqual(['The trading floor'])
   })
 
+  it('puts a revived set where a new one goes, not back in its old place', async () => {
+    // Re-adding a room is adding it now (decision 267); the reused row must
+    // not carry the position the book first gave it.
+    const first = await insertProjectSet(db, { projectId, name: 'The trading floor' })
+    await insertProjectSet(db, { projectId, name: 'The server hall' })
+    await dismissProjectSet(db, first.id)
+    await insertProjectSet(db, { projectId, name: 'The trading floor' })
+
+    expect((await listProjectSets(db, projectId)).map((set) => set.name)).toEqual([
+      'The server hall',
+      'The trading floor',
+    ])
+  })
+
   it('refuses a set with no name', async () => {
     await expect(insertProjectSet(db, { projectId, name: '  ' })).rejects.toThrow(ValidationError)
   })
