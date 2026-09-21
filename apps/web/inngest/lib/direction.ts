@@ -3,8 +3,10 @@ import {
   getProject,
   getSettings,
   listCastMembers,
+  listProjectSets,
   scriptableClaims,
   seedCastFromPrincipals,
+  seedSetsFromLocations,
   setProjectDirection,
 } from '@boom-busters/db'
 import type { NewShotSlot } from '@boom-busters/db'
@@ -80,6 +82,11 @@ export async function loadDirectionInputs(projectId: string): Promise<{
    * likeness and a written description argues with it.
    */
   photographed: string[]
+  /**
+   * The project's sets (decision 264): each carries the reference plates the
+   * shot list needs to know a name is available to put a brief in.
+   */
+  sets: { name: string; look: string }[]
 }> {
   const project = await getProject(db, projectId)
   if (!project) throw new NonRetriableError(`Project ${projectId} no longer exists`)
@@ -115,6 +122,7 @@ export async function loadDirectionInputs(projectId: string): Promise<{
   const photographed = members
     .filter((member) => member.photos.length > 0)
     .map((member) => member.name)
+  const sets = (await listProjectSets(db, projectId)).map(({ name, look }) => ({ name, look }))
 
   return {
     caseTitle: project.title,
@@ -125,6 +133,7 @@ export async function loadDirectionInputs(projectId: string): Promise<{
     styleAnchors: stillStyleAnchors(settings.brandKit),
     cast,
     photographed,
+    sets,
   }
 }
 
@@ -149,6 +158,9 @@ export async function draftDirectorsBook(projectId: string): Promise<DirectorsBo
       )
   await setProjectDirection(db, projectId, book)
   await seedCastFromPrincipals(db, projectId, book.principals)
+  // The book's locations are the film's sets, exactly as its principals are
+  // the film's cast (decision 264). Seeded once; the producer's removals stick.
+  await seedSetsFromLocations(db, projectId, book.locations)
   return book
 }
 
@@ -209,6 +221,8 @@ export async function planChapterSlots(input: {
   direction: DirectorsBook | null
   /** Cast members with a reference photograph (decision 253, amended). */
   photographed?: readonly string[]
+  /** The project's sets (decision 264), threaded exactly like `photographed`. */
+  sets?: readonly { name: string; look: string }[]
 }): Promise<{ rows: NewShotSlot[]; rejected: number }> {
   const paragraphs = promptParagraphs(input.paragraphs, input.chapter.id)
   if (paragraphs.length === 0) return { rows: [], rejected: 0 }
@@ -238,6 +252,7 @@ export async function planChapterSlots(input: {
       ...(input.photographed && input.photographed.length > 0
         ? { photographed: input.photographed }
         : {}),
+      ...(input.sets && input.sets.length > 0 ? { sets: input.sets } : {}),
     })
     const parsed = await planWithBudgetEscalation(request, { projectId: input.projectId })
     slots = parsed.slots

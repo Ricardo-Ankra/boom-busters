@@ -3,6 +3,7 @@ import {
   getProject,
   getSettings,
   latestScriptParagraphSources,
+  listProjectSets,
   listShotSlots,
   listVoiceTakes,
   replaceShotList,
@@ -10,6 +11,7 @@ import {
   setProjectStage,
   setSlotRefusal,
   setSlotResolution,
+  setSlotRoute,
   setVisualsPhase,
   shotSlotStatuses,
   slotNeedsResolution,
@@ -29,7 +31,7 @@ import {
 } from '@boom-busters/schemas'
 import { NonRetriableError } from 'inngest'
 import { db } from '@/lib/db'
-import { requireVisualKeys, resolveSlotBrief } from '@/lib/visual-assets'
+import { requireVisualKeys, resolveSlotBrief, routeForBrief } from '@/lib/visual-assets'
 import { inngest } from '../client'
 import { events } from '../events'
 import { loadOrDraftDirectorsBook, planChapterSlots } from '../lib/direction'
@@ -110,6 +112,10 @@ export const visualsRunner = inngest.createFunction(
       const takes = await listVoiceTakes(db, projectId)
       const claims = await scriptableClaims(db, projectId)
       const settings = await getSettings(db)
+      // Loaded once for the whole run, reused by every chapter's stamping
+      // step below rather than reloaded per slot (decision 264).
+      const cast = await listCastMembers(db, projectId)
+      const sets = await listProjectSets(db, projectId)
 
       await setProjectStage(db, projectId, { stage: 'visuals', stageStatus: 'running' })
 
@@ -129,9 +135,16 @@ export const visualsRunner = inngest.createFunction(
         // Who the producer has photographed (decision 253, amended). Their
         // prompts name them and carry no physical description, because the
         // photograph is the likeness.
-        photographed: (await listCastMembers(db, projectId))
+        photographed: cast
           .filter((member) => member.photos.length > 0)
           .map((member) => member.name),
+        // Full rows for `routeForBrief` below; the shot-list prompt only
+        // ever needs the name and look, mapped at the call site.
+        cast,
+        sets,
+        // For `routeForBrief`, stamped on every still and hero slot once the
+        // board is written (decision 264).
+        routing: settings.modelRouting,
       }
     })
 
@@ -182,6 +195,7 @@ export const visualsRunner = inngest.createFunction(
               styleAnchors: setup.styleAnchors,
               direction: direction.book,
               photographed: setup.photographed,
+              sets: setup.sets.map(({ name, look }) => ({ name, look })),
             })
             return { ok: true, ...result }
           } catch (error) {
@@ -220,6 +234,18 @@ export const visualsRunner = inngest.createFunction(
     await step.run('save-shot-list', async () => {
       await replaceShotList(db, projectId, allRows)
       await setVisualsPhase(db, projectId, 'plan')
+
+      // Every still and hero slot is stamped with its derived route here, in
+      // the same step that wrote the slots, so a retry redoes both together
+      // rather than leaving half the board unstamped (decision 264). Read
+      // back rather than zipped against `allRows`, because the inserted rows
+      // are the ones with ids.
+      const written = await listShotSlots(db, projectId)
+      for (const slot of written) {
+        if (slot.type !== 'still' && slot.type !== 'hero') continue
+        const brief = ShotBriefSchema.parse(slot.brief)
+        await setSlotRoute(db, slot.id, routeForBrief(brief, setup.cast, setup.sets, setup.routing))
+      }
     })
 
     const stillCount = allRows.filter((row) => row.type === 'still').length

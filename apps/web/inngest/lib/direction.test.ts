@@ -3,10 +3,13 @@
 import {
   createScriptVersion,
   deleteCastMember,
+  deleteProjectSet,
   FIXTURE_PROJECT_ID,
   getProject,
   insertCastMember,
+  insertProjectSet,
   listCastMembers,
+  listProjectSets,
   requireTestDatabase,
   saveChapter,
   seed,
@@ -42,6 +45,20 @@ describeDb('direction helpers (mock mode)', () => {
     vi.stubEnv('MOCK_PROVIDERS', '1')
     await seed(db)
     await setProjectDirection(db, FIXTURE_PROJECT_ID, null)
+    // Sets from an earlier test are not this test's business.
+    for (const set of await listProjectSets(db, FIXTURE_PROJECT_ID)) {
+      await deleteProjectSet(db, set.id)
+    }
+    // A dismissed row still occupies the (project, name) unique index, and
+    // `seedSetsFromLocations` checks the name against EVERY row for the
+    // project, live or dismissed (the producer's removals stick) — so a
+    // leftover dismissed "[mock] Headquarters" from an earlier run of this
+    // suite would silently block reseeding. Revive, then hard-delete.
+    const revived = await insertProjectSet(db, {
+      projectId: FIXTURE_PROJECT_ID,
+      name: '[mock] Headquarters',
+    })
+    await deleteProjectSet(db, revived.id)
     const script = await createScriptVersion(db, FIXTURE_PROJECT_ID)
     await saveChapter(db, {
       scriptId: script.id,
@@ -114,6 +131,20 @@ describeDb('direction helpers (mock mode)', () => {
     callLlm.mockResolvedValueOnce({ text: JSON.stringify(answer) })
     await draftDirectorsBook(FIXTURE_PROJECT_ID)
     expect(await listCastMembers(db, FIXTURE_PROJECT_ID)).toHaveLength(2)
+  })
+
+  it('drafting the book seeds a set for each of its locations (decision 264)', async () => {
+    await draftDirectorsBook(FIXTURE_PROJECT_ID)
+    const sets = await listProjectSets(db, FIXTURE_PROJECT_ID)
+    expect(sets.map((set) => set.name)).toEqual(['[mock] Headquarters'])
+    expect(sets[0]?.look).toBe('[mock] glass box on a business park, grey sky')
+  })
+
+  it('a second draft does not duplicate the sets', async () => {
+    await draftDirectorsBook(FIXTURE_PROJECT_ID)
+    await draftDirectorsBook(FIXTURE_PROJECT_ID)
+    const sets = await listProjectSets(db, FIXTURE_PROJECT_ID)
+    expect(sets).toHaveLength(1)
   })
 
   it('names the photographed cast for the shot list, and only them', async () => {
@@ -239,6 +270,24 @@ describe('planChapterSlots against a live model', () => {
     const first = callLlm.mock.calls[0]?.[0]?.maxTokens ?? 0
     const second = callLlm.mock.calls[1]?.[0]?.maxTokens ?? 0
     expect(second).toBe(Math.min(MAX_OUTPUT_TOKENS, first * 2))
+  })
+
+  it("the shot-list request carries the project's sets", async () => {
+    callLlm.mockResolvedValueOnce({ text: PLAN })
+
+    await planChapterSlots({
+      projectId: FIXTURE_PROJECT_ID,
+      caseTitle: 'Wirecard',
+      chapter: { id: 'ch-1', title: 'The audit', number: 1 },
+      paragraphs: PARAGRAPHS,
+      claims: [],
+      styleAnchors: 'a',
+      direction: null,
+      sets: [{ name: 'Boardroom', look: 'dark wood panelling, one window' }],
+    })
+
+    const prefix = callLlm.mock.calls[0]?.[0]?.messages?.[0]?.content ?? ''
+    expect(prefix).toContain('Boardroom: dark wood panelling, one window')
   })
 
   it('gives up after the bigger retry is cut off too, with the truncation error', async () => {

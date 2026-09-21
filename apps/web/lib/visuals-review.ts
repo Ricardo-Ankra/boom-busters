@@ -500,6 +500,7 @@ export async function visualsReviewModel(
         ),
         BANNED_PROMPT_WORDS,
         direction?.motifs ?? [],
+        sets.map((set) => set.name),
       ),
       ...castWarnings(
         direction,
