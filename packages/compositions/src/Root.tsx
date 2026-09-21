@@ -14,6 +14,7 @@ import { LowerThird } from './components/LowerThird'
 import { MusicBed } from './components/MusicBed'
 import { ShortVertical } from './components/ShortVertical'
 import { StockClip } from './components/StockClip'
+import { WatermarkFixture } from './components/Watermark'
 import {
   FIXTURE_BRAND,
   FIXTURE_CAPTION_WORDS,
@@ -288,6 +289,23 @@ export function Root() {
         durationInFrames={240}
         {...TALL}
         defaultProps={{ payload: HEADLINE_CARD, brand: FIXTURE_BRAND }}
+      />
+
+      <Composition
+        id="WatermarkLogo"
+        component={WatermarkFixture}
+        durationInFrames={30}
+        {...WIDE}
+        defaultProps={{
+          brand: {
+            ...FIXTURE_BRAND,
+            look: {
+              ...FIXTURE_BRAND.look,
+              logoR2Key: 'boom-busters/logos/fixture.png',
+              logoUrl: FIXTURE_IMAGE_SKYLINE,
+            },
+          },
+        }}
       />
 
       <Composition

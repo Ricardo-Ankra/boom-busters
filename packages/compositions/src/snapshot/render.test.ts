@@ -56,6 +56,8 @@ const CASES: SnapshotCase[] = [
   // ending card all on screen at once — the Short's whole vocabulary.
   { id: 'ShortVertical', frame: 190, maxDiffRatio: 0.06 },
   { id: 'EndCtaFixture', frame: 60, maxDiffRatio: 0.06 },
+  // The channel mark in the corner (decision 268): an image, not the wordmark.
+  { id: 'WatermarkLogo', frame: 10, maxDiffRatio: 0.03 },
 ]
 
 let serveUrl: string

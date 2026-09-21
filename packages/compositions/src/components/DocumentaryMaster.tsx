@@ -19,7 +19,6 @@ import {
   transitionOpacity,
 } from '../lib/motion'
 import { AnimatedMap } from './AnimatedMap'
-import { frameScale, typeStyle, withAlpha } from './brand'
 import { ChapterCard } from './ChapterCard'
 import { ChartReveal } from './ChartReveal'
 import { EndCta } from './EndCta'
@@ -29,6 +28,7 @@ import { KenBurnsImage } from './KenBurnsImage'
 import { LowerThird } from './LowerThird'
 import { MusicBed } from './MusicBed'
 import { StockClip } from './StockClip'
+import { Watermark } from './Watermark'
 
 /**
  * The master composition (spec section 8.3): a MATERIALISED timeline in,
@@ -203,37 +203,5 @@ function Grain({ preset }: { preset: BrandKitTokens['look']['grainPreset'] }) {
         <rect width="100%" height="100%" filter="url(#bb-grain)" />
       </svg>
     </AbsoluteFill>
-  )
-}
-
-/**
- * The corner watermark. A typographic wordmark until a logo pipeline exists
- * — brand.look carries a logo r2Key but no materialised URL yet, and a
- * broken image in every frame would be worse than clean type ("Boom &
- * Busters" with the ampersand: public-facing copy, per the naming rule).
- */
-function Watermark({ brand }: { brand: BrandKitTokens }) {
-  const { width, height } = useVideoConfig()
-  const scale = frameScale(width, height)
-  const placement = brand.look.watermarkPlacement
-  if (placement === 'none') return null
-  const inset = Math.round(36 * scale)
-  const position: React.CSSProperties = {
-    position: 'absolute',
-    ...(placement === 'tl' || placement === 'tr' ? { top: inset } : { bottom: inset }),
-    ...(placement === 'tl' || placement === 'bl' ? { left: inset } : { right: inset }),
-  }
-  return (
-    <div
-      style={{
-        ...position,
-        ...typeStyle(brand.typography.captions, 24, scale),
-        color: withAlpha(brand.colors.textPrimary, 0.45),
-        letterSpacing: '0.08em',
-        textTransform: 'uppercase',
-      }}
-    >
-      Boom &amp; Busters
-    </div>
   )
 }
