@@ -15,11 +15,12 @@ import {
   setProjectDirection,
   setSlotResolution,
   setSlotRetype,
+  setSlotRoute,
   unlinkSlotReuse,
   updateSlotBrief,
   upsertAssetByHash,
 } from '@boom-busters/db'
-import { stillStyleAnchors } from '@boom-busters/providers'
+import { imageGenModel, LIVE_IMAGE_GEN_ADAPTERS, stillStyleAnchors } from '@boom-busters/providers'
 import {
   articleIsRenderable,
   claimCarriesArticle,
@@ -32,10 +33,11 @@ import {
   ShotBriefSchema,
   ShotSlotTypeSchema,
   SlotCandidateSchema,
+  StillRouteSchema,
   UlidSchema,
 } from '@boom-busters/schemas'
 import type { ShotSlotRow } from '@boom-busters/db'
-import type { HeadlineBrief, ShotBrief, SlotCandidate } from '@boom-busters/schemas'
+import type { HeadlineBrief, ShotBrief, SlotCandidate, StillRoute } from '@boom-busters/schemas'
 import { createHash } from 'node:crypto'
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
@@ -257,6 +259,56 @@ export async function editBriefAction(
   const sent = await sendRefetch(projectId, slotId, 'Brief edited')
   refresh(projectId)
   return sent
+}
+
+/**
+ * Store or clear the model one still or hero slot generates on (decision
+ * 264). No event goes out: the route is part of the resolution hash, so the
+ * slot simply owes work again, and re-buying it is the owner's own Regenerate
+ * button to press, not something this action decides for them.
+ */
+export async function setSlotRouteAction(
+  projectId: string,
+  slotId: string,
+  route: { provider: string; model: string } | null,
+): Promise<ActionResult> {
+  await requireOwner()
+  const invalid = badIds(projectId, slotId)
+  if (invalid) return invalid
+
+  let parsedRoute: StillRoute | null = null
+  if (route !== null) {
+    const parsed = StillRouteSchema.safeParse(route)
+    if (!parsed.success) return { ok: false, error: 'That is not a model this app offers.' }
+    parsedRoute = parsed.data
+  }
+
+  const slot = await getShotSlot(db, slotId)
+  if (!slot) return { ok: false, error: 'This slot no longer exists.' }
+  if (slot.projectId !== projectId)
+    return { ok: false, error: 'This slot belongs to another film.' }
+  const linked = await linkedSlotRefusal(slot)
+  if (linked) return linked
+
+  const current = ShotBriefSchema.safeParse(slot.brief)
+  if (!current.success || (current.data.type !== 'still' && current.data.type !== 'hero')) {
+    return { ok: false, error: 'Only a still or AI-video slot generates on a chosen model.' }
+  }
+
+  if (parsedRoute) {
+    try {
+      imageGenModel(LIVE_IMAGE_GEN_ADAPTERS[parsedRoute.provider], parsedRoute.model)
+    } catch (error) {
+      return {
+        ok: false,
+        error: error instanceof Error ? error.message : 'That model is not offered.',
+      }
+    }
+  }
+
+  await setSlotRoute(db, slotId, parsedRoute)
+  refresh(projectId)
+  return { ok: true }
 }
 
 /**

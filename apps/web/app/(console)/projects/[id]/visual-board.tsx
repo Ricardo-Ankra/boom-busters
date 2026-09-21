@@ -13,12 +13,14 @@ import {
 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import * as React from 'react'
-import { REUSABLE_SLOT_TYPES, SHOT_SLOT_TYPES } from '@boom-busters/schemas'
-import type { ShotBrief, SlotCandidate } from '@boom-busters/schemas'
+import { imageGenModel, LIVE_IMAGE_GEN_ADAPTERS } from '@boom-busters/providers'
+import { REUSABLE_SLOT_TYPES, SHOT_SLOT_TYPES, STILL_PROVIDERS } from '@boom-busters/schemas'
+import type { ShotBrief, SlotCandidate, StillProvider } from '@boom-busters/schemas'
 import { Badge, type BadgeTone } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ConfirmButton } from '@/components/confirm-button'
+import { Label, Select } from '@/components/ui/input'
 import { useToast } from '@/components/ui/toast'
 import type { ArticleClaimOption, SlotView, VisualsReviewModel } from '@/lib/visuals-review'
 import { CLOSE_REUSE_MS, describeGap, timecode } from '@/lib/visuals-reuse'
@@ -39,6 +41,7 @@ import {
   retypeSlotAction,
   rebriefSlotAction,
   retypeToHeadlineAction,
+  setSlotRouteAction,
   unlinkSlotReuseAction,
   type ActionResult,
 } from './visuals-actions'
@@ -1739,6 +1742,72 @@ function ReusePicker({
   )
 }
 
+/** A model's label off its own adapter, or the stored id itself if the adapter no longer lists it. */
+function stillModelLabel(provider: StillProvider, model: string): string {
+  try {
+    return imageGenModel(LIVE_IMAGE_GEN_ADAPTERS[provider], model).label
+  } catch {
+    return model
+  }
+}
+
+/**
+ * The model select on a still or hero brief (decision 264): what the routing
+ * rule would pick, plus every model either image provider offers, so the
+ * owner can see the plan's own choice and put it back. Changing it writes at
+ * once — nothing here waits on the form's Save button, because the model is
+ * not a word in the brief, it is which generator spends the money.
+ */
+function ModelRouteSelect({
+  slot,
+  projectId,
+  act,
+}: {
+  slot: SlotView
+  projectId: string
+  act: (slotId: string, run: () => Promise<ActionResult>, success: string) => Promise<ActionResult>
+}) {
+  const id = `route-${slot.id}`
+  const value = slot.route ? `${slot.route.provider}:${slot.route.model}` : ''
+  const defaultLabel = stillModelLabel(slot.derivedRoute.provider, slot.derivedRoute.model)
+
+  return (
+    <div className="flex flex-col gap-1 text-[12px] text-[var(--color-text-secondary)]">
+      <Label htmlFor={id}>Image model</Label>
+      <Select
+        id={id}
+        value={value}
+        onChange={(event) => {
+          const raw = event.target.value
+          const route =
+            raw === ''
+              ? null
+              : ((): { provider: string; model: string } => {
+                  const at = raw.indexOf(':')
+                  return { provider: raw.slice(0, at), model: raw.slice(at + 1) }
+                })()
+          void act(
+            slot.id,
+            () => setSlotRouteAction(projectId, slot.id, route),
+            'Model changed; re-fetch this shot to buy it',
+          )
+        }}
+      >
+        <option value="">{`Planned default (${defaultLabel})`}</option>
+        {STILL_PROVIDERS.map((provider) => (
+          <optgroup key={provider} label={provider}>
+            {LIVE_IMAGE_GEN_ADAPTERS[provider].models.map((candidate) => (
+              <option key={`${provider}:${candidate.id}`} value={`${provider}:${candidate.id}`}>
+                {candidate.label}
+              </option>
+            ))}
+          </optgroup>
+        ))}
+      </Select>
+    </div>
+  )
+}
+
 function BriefEditor({
   slot,
   projectId,
@@ -1828,6 +1897,9 @@ function BriefEditor({
             className={field}
           />
         </label>
+      ) : null}
+      {brief.type === 'still' || brief.type === 'hero' ? (
+        <ModelRouteSelect slot={slot} projectId={projectId} act={act} />
       ) : null}
       <div className="flex gap-2">
         <Button type="submit" variant="primary">

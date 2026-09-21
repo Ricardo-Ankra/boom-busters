@@ -2,8 +2,10 @@ import {
   getArticleSources,
   getClaims,
   getProject,
+  getSettings,
   latestScriptParagraphSources,
   listCastMembers,
+  listProjectSets,
   listShotSlots,
   listVoiceTakes,
   scriptableClaims,
@@ -37,10 +39,11 @@ import type {
   SlotCandidate,
   SlotRefusal,
   SlotDraftState,
+  StillRoute,
   VisualsCoverage,
 } from '@boom-busters/schemas'
 import { anchoredTimes, timedParagraphs } from '@/inngest/lib/shot-list'
-import { stillsEstimateUsd } from './visual-assets'
+import { routeForBrief, stillsEstimateUsd } from './visual-assets'
 import { reuseView, sharedShotWarnings, type ReusableRow, type ReuseSource } from './visuals-reuse'
 
 /**
@@ -92,6 +95,20 @@ export interface SlotView {
   article: ArticleMetadata | null
   /** The slot whose shot this one shows (decision 261), or null when it has its own. */
   reuse: ReuseSource | null
+  /**
+   * The model the owner chose for this slot (decision 264), overriding the
+   * derived route below. Null means nothing is stored and generation falls
+   * back to `derivedRoute`.
+   */
+  route: StillRoute | null
+  /**
+   * What the routing rule picks for this slot (decision 264): a still or
+   * hero brief's own route, computed from the cast, the sets and the
+   * settings' model routing; every other slot type gets
+   * `settings.modelRouting.stills`, so the field is always present even
+   * where the board renders no select for it.
+   */
+  derivedRoute: StillRoute
 }
 
 export interface ChapterSlots {
@@ -333,6 +350,19 @@ export async function visualsReviewModel(
     candidates: parseCandidates(row.candidates),
   }))
 
+  /**
+   * The three loads every slot's route needs (decision 264): the cast and
+   * sets a still or hero brief may depict, and the settings that hold the
+   * fallback routing. One read of each for the whole board, not one per
+   * slot — `castWarnings` below reuses this same cast rather than loading it
+   * again.
+   */
+  const [cast, sets, settings] = await Promise.all([
+    listCastMembers(db, projectId),
+    listProjectSets(db, projectId),
+    getSettings(db),
+  ])
+
   const slots: SlotView[] = rows.map((row, at) => {
     const parsed = briefs[at]!
     const candidates = parseCandidates(row.candidates)
@@ -371,6 +401,16 @@ export async function visualsReviewModel(
         return state.success ? state.data : null
       })(),
       reuse: reuseView(reusable[at]!, reusable),
+      route: ((): StillRoute | null => {
+        const stored = StillRouteSchema.nullable().safeParse(row.route)
+        return stored.success ? stored.data : null
+      })(),
+      // `routeForBrief` already falls back to `settings.modelRouting.stills`
+      // for every type but still and hero, so a brief that failed to parse
+      // gets the same fallback rather than a special case here.
+      derivedRoute: parsed.success
+        ? routeForBrief(parsed.data, cast, sets, settings.modelRouting)
+        : settings.modelRouting.stills,
     }
   })
 
@@ -463,7 +503,7 @@ export async function visualsReviewModel(
       ),
       ...castWarnings(
         direction,
-        (project ? await listCastMembers(db, project.id) : []).map((member) => member.name),
+        cast.map((member) => member.name),
       ),
       ...sharedShotWarnings(reusable),
     ],

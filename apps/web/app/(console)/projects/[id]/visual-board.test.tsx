@@ -24,6 +24,7 @@ const saveHeadlineAction = vi.fn()
 const refetchArticleAction = vi.fn()
 const reuseSlotShotAction = vi.fn()
 const unlinkSlotReuseAction = vi.fn()
+const setSlotRouteAction = vi.fn()
 
 vi.mock('./visuals-actions', () => ({
   chooseCandidateAction: (...args: unknown[]) => chooseCandidateAction(...args),
@@ -45,6 +46,7 @@ vi.mock('./visuals-actions', () => ({
   refetchArticleAction: (...args: unknown[]) => refetchArticleAction(...args),
   reuseSlotShotAction: (...args: unknown[]) => reuseSlotShotAction(...args),
   unlinkSlotReuseAction: (...args: unknown[]) => unlinkSlotReuseAction(...args),
+  setSlotRouteAction: (...args: unknown[]) => setSlotRouteAction(...args),
 }))
 
 const refresh = vi.fn()
@@ -67,6 +69,7 @@ beforeEach(() => {
   refetchArticleAction.mockResolvedValue({ ok: true })
   reuseSlotShotAction.mockResolvedValue({ ok: true })
   unlinkSlotReuseAction.mockResolvedValue({ ok: true })
+  setSlotRouteAction.mockResolvedValue({ ok: true })
 })
 
 const COLORS: BrandChartColors = {
@@ -133,6 +136,8 @@ const stockSlot: SlotView = {
   refusal: null,
   article: null,
   reuse: null,
+  route: null,
+  derivedRoute: { provider: 'google', model: 'gemini-3-pro-image' },
 }
 
 const chartSlot: SlotView = {
@@ -172,6 +177,8 @@ const chartSlot: SlotView = {
   refusal: null,
   article: null,
   reuse: null,
+  route: null,
+  derivedRoute: { provider: 'google', model: 'gemini-3-pro-image' },
 }
 
 const SLOT_D = '01J000000000000000000000AD'
@@ -212,6 +219,8 @@ const headlineSlot: SlotView = {
     failureReason: null,
   },
   reuse: null,
+  route: null,
+  derivedRoute: { provider: 'google', model: 'gemini-3-pro-image' },
 }
 
 /**
@@ -244,6 +253,8 @@ const brokenSlot: SlotView = {
   refusal: null,
   article: null,
   reuse: null,
+  route: null,
+  derivedRoute: { provider: 'google', model: 'gemini-3-pro-image' },
 }
 
 function model(slots: SlotView[], overrides: Partial<VisualsReviewModel> = {}): VisualsReviewModel {
@@ -849,6 +860,69 @@ describe('a refused still (decision 252)', () => {
 
     await userEvent.click(within(card).getByRole('button', { name: /Redirect the scene/ }))
     expect(redirectSceneAction).toHaveBeenCalledWith(PROJECT, SLOT_C)
+  })
+})
+
+describe('the model select on a shot (decision 264)', () => {
+  const stillSlot: SlotView = {
+    ...stockSlot,
+    id: SLOT_B,
+    type: 'still',
+    brief: {
+      type: 'still',
+      coversText: 'The trading floor, 1995.',
+      description: 'CRT monitors, cigarette smoke.',
+      motion: { kind: 'static' },
+      transition: 'cut',
+      prompt: '1995 trading floor',
+    },
+    candidates: [],
+    extraCandidates: 0,
+    route: null,
+    derivedRoute: { provider: 'google', model: 'gemini-3-pro-image' },
+  }
+
+  it('offers a model select on a still card, and changing it calls the action', async () => {
+    render(<VisualBoard projectId={PROJECT} model={model([stillSlot])} colors={COLORS} />)
+    await userEvent.click(screen.getByRole('button', { name: /Edit brief/ }))
+
+    const select = screen.getByLabelText('Image model') as HTMLSelectElement
+    expect(select.tagName).toBe('SELECT')
+    expect(within(select).getByText('Planned default (Gemini 3 Pro Image)')).toBeInTheDocument()
+    expect(within(select).getByText('Gemini 3.1 Flash Image')).toBeInTheDocument()
+    expect(within(select).getByText('FLUX.1 dev')).toBeInTheDocument()
+
+    await userEvent.selectOptions(select, 'fal:fal-ai/flux/dev')
+    expect(setSlotRouteAction).toHaveBeenCalledWith(PROJECT, SLOT_B, {
+      provider: 'fal',
+      model: 'fal-ai/flux/dev',
+    })
+    expect(toast).toHaveBeenCalledWith({ title: 'Model changed; re-fetch this shot to buy it' })
+  })
+
+  it('shows the stored route when there is one', async () => {
+    const routed: SlotView = { ...stillSlot, route: { provider: 'fal', model: 'fal-ai/flux/dev' } }
+    render(<VisualBoard projectId={PROJECT} model={model([routed])} colors={COLORS} />)
+    await userEvent.click(screen.getByRole('button', { name: /Edit brief/ }))
+
+    const select = screen.getByLabelText('Image model') as HTMLSelectElement
+    expect(select.value).toBe('fal:fal-ai/flux/dev')
+  })
+
+  it('marks the plan’s own choice as the default', async () => {
+    render(<VisualBoard projectId={PROJECT} model={model([stillSlot])} colors={COLORS} />)
+    await userEvent.click(screen.getByRole('button', { name: /Edit brief/ }))
+
+    const select = screen.getByLabelText('Image model') as HTMLSelectElement
+    expect(select.value).toBe('')
+    expect(screen.getByText('Planned default (Gemini 3 Pro Image)')).toBeInTheDocument()
+  })
+
+  it('a chart card has no model select', async () => {
+    render(<VisualBoard projectId={PROJECT} model={model([chartSlot])} colors={COLORS} />)
+    await userEvent.click(screen.getByRole('button', { name: /Edit brief/ }))
+
+    expect(screen.queryByLabelText('Image model')).toBeNull()
   })
 })
 

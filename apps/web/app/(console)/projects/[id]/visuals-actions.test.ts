@@ -4,6 +4,7 @@ import {
   createScriptVersion,
   FIXTURE_PROJECT_ID,
   getShotSlot,
+  linkSlotReuse,
   listShotSlots,
   replaceShotList,
   requireTestDatabase,
@@ -23,6 +24,7 @@ import {
   refetchSlotAction,
   retypeToHeadlineAction,
   reuseSlotShotAction,
+  setSlotRouteAction,
   unlinkSlotReuseAction,
 } from './visuals-actions'
 
@@ -235,5 +237,151 @@ describeDb('reusing a shot (decision 261)', () => {
     const b = (await getShotSlot(db, ids.b))!
     expect(b.reuseOfSlotId).toBeNull()
     expect(slotNeedsResolution(b)).toBe(true)
+  })
+})
+
+const still = (coversText: string, prompt: string): ShotBrief => ({
+  type: 'still',
+  coversText,
+  description: 'a boardroom, empty',
+  motion: { kind: 'static' },
+  transition: 'cut',
+  prompt,
+})
+const hero: ShotBrief = {
+  type: 'hero',
+  coversText: 'Five.',
+  description: 'the walkout, in motion',
+  motion: { kind: 'static' },
+  transition: 'cut',
+  prompt: 'p',
+  cameraMovement: 'push in',
+  loop: false,
+}
+
+describeDb('the model select on a shot (decision 264)', () => {
+  let ids: { still: string; linked: string; hero: string; stock: string }
+
+  beforeEach(async () => {
+    vi.clearAllMocks()
+    await seed(db)
+    await db.delete(shotSlots)
+    const script = await createScriptVersion(db, FIXTURE_PROJECT_ID)
+    const chapter = await saveChapter(db, {
+      scriptId: script.id,
+      index: 0,
+      title: 'The audit',
+      contentMd: 'One.\n\nTwo.\n\nThree.\n\nFour.\n\nFive.',
+      estRuntimeSec: 30,
+    })
+    const rows: NewShotSlot[] = [
+      {
+        chapterId: chapter.id,
+        index: 0,
+        type: 'still',
+        brief: still('One.', 'a boardroom, empty'),
+        startMs: 0,
+        durationMs: 6000,
+      },
+      {
+        chapterId: chapter.id,
+        index: 1,
+        type: 'still',
+        brief: still('Two.', 'a boardroom, from another angle'),
+        startMs: 6000,
+        durationMs: 6000,
+      },
+      {
+        chapterId: chapter.id,
+        index: 2,
+        type: 'hero',
+        brief: hero,
+        startMs: 12000,
+        durationMs: 6000,
+      },
+      {
+        chapterId: chapter.id,
+        index: 3,
+        type: 'stock',
+        brief: stock('Four.', 'the car park'),
+        startMs: 18000,
+        durationMs: 6000,
+      },
+    ]
+    await replaceShotList(db, FIXTURE_PROJECT_ID, rows)
+    const slots = await listShotSlots(db, FIXTURE_PROJECT_ID)
+    ids = { still: slots[0]!.id, linked: slots[1]!.id, hero: slots[2]!.id, stock: slots[3]!.id }
+  })
+
+  it('stores a route on a still slot and makes it owe work again', async () => {
+    await setSlotResolution(db, ids.still, { status: 'resolved', candidates: [] })
+    expect(slotNeedsResolution((await getShotSlot(db, ids.still))!)).toBe(false)
+
+    expect(
+      await setSlotRouteAction(FIXTURE_PROJECT_ID, ids.still, {
+        provider: 'google',
+        model: 'gemini-3-pro-image',
+      }),
+    ).toEqual({ ok: true })
+
+    const slot = (await getShotSlot(db, ids.still))!
+    expect(slot.route).toEqual({ provider: 'google', model: 'gemini-3-pro-image' })
+    expect(slotNeedsResolution(slot)).toBe(true)
+  })
+
+  it('clears the route back to the derived one', async () => {
+    await setSlotRouteAction(FIXTURE_PROJECT_ID, ids.still, {
+      provider: 'google',
+      model: 'gemini-3-pro-image',
+    })
+    await setSlotResolution(db, ids.still, { status: 'resolved', candidates: [] })
+    expect(slotNeedsResolution((await getShotSlot(db, ids.still))!)).toBe(false)
+
+    expect(await setSlotRouteAction(FIXTURE_PROJECT_ID, ids.still, null)).toEqual({ ok: true })
+
+    const slot = (await getShotSlot(db, ids.still))!
+    expect(slot.route).toBeNull()
+    expect(slotNeedsResolution(slot)).toBe(true)
+  })
+
+  it('refuses a model the provider does not offer, in words', async () => {
+    expect(
+      await setSlotRouteAction(FIXTURE_PROJECT_ID, ids.still, {
+        provider: 'google',
+        model: 'not-a-real-model',
+      }),
+    ).toMatchObject({ ok: false, error: expect.stringContaining('does not offer') })
+    expect((await getShotSlot(db, ids.still))?.route).toBeNull()
+  })
+
+  it('refuses a route on a slot that is not a still or hero', async () => {
+    expect(
+      await setSlotRouteAction(FIXTURE_PROJECT_ID, ids.stock, {
+        provider: 'google',
+        model: 'gemini-3-pro-image',
+      }),
+    ).toMatchObject({ ok: false, error: expect.stringContaining('still or AI-video') })
+    expect((await getShotSlot(db, ids.stock))?.route).toBeNull()
+  })
+
+  it('refuses a linked slot, which shows another slot’s shot', async () => {
+    await linkSlotReuse(db, ids.linked, ids.still)
+    expect(
+      await setSlotRouteAction(FIXTURE_PROJECT_ID, ids.linked, {
+        provider: 'google',
+        model: 'gemini-3-pro-image',
+      }),
+    ).toMatchObject({ ok: false, error: expect.stringContaining('reuses the shot') })
+    expect((await getShotSlot(db, ids.linked))?.route).toBeNull()
+  })
+
+  it('refuses a slot in another project', async () => {
+    expect(
+      await setSlotRouteAction('01J0000000000000000000000Z', ids.still, {
+        provider: 'google',
+        model: 'gemini-3-pro-image',
+      }),
+    ).toMatchObject({ ok: false, error: expect.stringContaining('another film') })
+    expect((await getShotSlot(db, ids.still))?.route).toBeNull()
   })
 })
