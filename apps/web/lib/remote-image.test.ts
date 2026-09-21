@@ -13,7 +13,9 @@ vi.mock('node:dns/promises', () => ({ lookup: dns.lookup }))
 
 const {
   fetchRemoteImage,
+  fetchRemoteLogo,
   imageDimensions,
+  isSvgText,
   sniffImageMime,
   MAX_CONVERTED_IMAGE_EDGE,
   MAX_REMOTE_IMAGE_BYTES,
@@ -290,5 +292,84 @@ describe('fetchRemoteImage', () => {
       expect((await fetchRemoteImage(bad, { fetchImpl })).ok).toBe(false)
     }
     expect(fetchImpl).not.toHaveBeenCalled()
+  })
+})
+
+const SVG = Buffer.from(
+  '<?xml version="1.0"?><svg xmlns="http://www.w3.org/2000/svg" width="300" height="100">' +
+    '<rect width="300" height="100" rx="20" fill="#1e40af"/></svg>',
+)
+
+describe('fetchRemoteLogo', () => {
+  it('recognises SVG text with or without the XML prologue, and not HTML', () => {
+    expect(isSvgText(SVG)).toBe(true)
+    expect(isSvgText(Buffer.from('﻿  <svg xmlns="http://www.w3.org/2000/svg"/>'))).toBe(true)
+    expect(isSvgText(Buffer.from('<!doctype html><html><svg></svg></html>'))).toBe(false)
+  })
+
+  it('rasterises a pasted SVG to a PNG with transparency at the logo edge', async () => {
+    const fetchImpl = vi.fn(async () =>
+      respond(SVG, { headers: { 'content-type': 'image/svg+xml' } }),
+    )
+    const result = await fetchRemoteLogo('https://example.com/mark.svg', { fetchImpl })
+
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.logo.mimeType).toBe('image/png')
+    expect(result.logo.width).toBe(2048)
+    expect(result.logo.height).toBeGreaterThanOrEqual(682)
+    expect(result.logo.height).toBeLessThanOrEqual(683)
+    const { default: sharp } = await import('sharp')
+    const meta = await sharp(result.logo.bytes).metadata()
+    expect(meta.format).toBe('png')
+    expect(meta.hasAlpha).toBe(true)
+  })
+
+  it('converts a pasted AVIF mark to PNG, keeping its size, and passes a PNG through', async () => {
+    const avifBytes = await avif(640, 200)
+    const result = await fetchRemoteLogo('https://example.com/mark.avif', {
+      fetchImpl: vi.fn(async () => respond(avifBytes)),
+    })
+    expect(result.ok && result.logo.mimeType).toBe('image/png')
+    expect(result.ok && result.logo.width).toBe(640)
+
+    const pngBytes = png(400, 120)
+    const passed = await fetchRemoteLogo('https://example.com/mark.png', {
+      fetchImpl: vi.fn(async () => respond(pngBytes)),
+    })
+    expect(passed.ok && passed.logo.mimeType).toBe('image/png')
+    expect(passed.ok && passed.logo.bytes.equals(pngBytes)).toBe(true)
+  })
+
+  it('has no thumbnail floor, since a small mark is a mark, but keeps the 4 MB cap', async () => {
+    const small = await fetchRemoteLogo('https://example.com/tiny.png', {
+      fetchImpl: vi.fn(async () => respond(png(64, 64))),
+    })
+    expect(small.ok).toBe(true)
+
+    const big = await fetchRemoteLogo('https://example.com/huge.png', {
+      fetchImpl: vi.fn(async () =>
+        respond(png(900, 900), { headers: { 'content-length': String(5 * 1024 * 1024) } }),
+      ),
+    })
+    expect(big.ok).toBe(false)
+    expect(big.ok === false && big.error).toMatch(/4 MB/)
+  })
+
+  it('refuses a page address in words that mention SVG', async () => {
+    const result = await fetchRemoteLogo('https://example.com/about', {
+      fetchImpl: vi.fn(async () => respond(Buffer.from('<!doctype html><html></html>'))),
+    })
+    expect(result.ok === false && result.error).toMatch(/PNG, SVG, WebP, JPEG or AVIF/)
+  })
+
+  it('refuses an SVG that will not render', async () => {
+    const result = await fetchRemoteLogo('https://example.com/bad.svg', {
+      fetchImpl: vi.fn(async () =>
+        respond(Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"><rect')),
+      ),
+    })
+    expect(result.ok).toBe(false)
+    expect(result.ok === false && result.error).toMatch(/could not be drawn/i)
   })
 })

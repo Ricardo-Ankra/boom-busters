@@ -1,6 +1,9 @@
 import { lookup } from 'node:dns/promises'
 import { isIP } from 'node:net'
 
+import { LOGO_MAX_BYTES, LOGO_RASTER_MAX_EDGE } from '@boom-busters/schemas'
+import type { LogoStoredMime } from '@boom-busters/schemas'
+
 /**
  * Fetching an image the producer found on the web, for the cast (decision
  * 253 (k)).
@@ -308,18 +311,14 @@ async function readCapped(response: Response, maxBytes: number): Promise<Buffer 
   return Buffer.concat(chunks)
 }
 
-/**
- * Fetch an image the producer linked to, following redirects by hand so that
- * every hop is checked against the address rules rather than only the first.
- */
-export async function fetchRemoteImage(
-  rawUrl: string,
-  options: RemoteImageOptions = {},
-): Promise<RemoteImageResult> {
-  const fetchImpl = options.fetchImpl ?? fetch
-  const maxBytes = options.maxBytes ?? MAX_REMOTE_IMAGE_BYTES
-  const minEdge = options.minEdge ?? MIN_REMOTE_IMAGE_EDGE
+type FetchedBytes = { ok: true; bytes: Buffer; resolvedUrl: string } | { ok: false; error: string }
 
+/** The address checks, the redirect walk, the status handling and the capped read. */
+async function fetchImageBytes(
+  rawUrl: string,
+  fetchImpl: typeof fetch,
+  maxBytes: number,
+): Promise<FetchedBytes> {
   let url: URL
   try {
     url = new URL(rawUrl.trim())
@@ -386,6 +385,25 @@ export async function fetchRemoteImage(
   }
   if (fetched.length === 0) return { ok: false, error: 'That link returned an empty file.' }
 
+  return { ok: true, bytes: fetched, resolvedUrl: url.toString() }
+}
+
+/**
+ * Fetch an image the producer linked to, following redirects by hand so that
+ * every hop is checked against the address rules rather than only the first.
+ */
+export async function fetchRemoteImage(
+  rawUrl: string,
+  options: RemoteImageOptions = {},
+): Promise<RemoteImageResult> {
+  const fetchImpl = options.fetchImpl ?? fetch
+  const maxBytes = options.maxBytes ?? MAX_REMOTE_IMAGE_BYTES
+  const minEdge = options.minEdge ?? MIN_REMOTE_IMAGE_EDGE
+
+  const got = await fetchImageBytes(rawUrl, fetchImpl, maxBytes)
+  if (!got.ok) return got
+  const fetched = got.bytes
+
   const sniffed = sniffImageMime(fetched)
   if (!sniffed) {
     // Overwhelmingly this is a page URL rather than the image on it.
@@ -418,6 +436,117 @@ export async function fetchRemoteImage(
 
   return {
     ok: true,
-    image: { bytes, mimeType, width: size.width, height: size.height, resolvedUrl: url.toString() },
+    image: {
+      bytes,
+      mimeType,
+      width: size.width,
+      height: size.height,
+      resolvedUrl: got.resolvedUrl,
+    },
+  }
+}
+
+/**
+ * SVG is text, so it has no magic bytes: the file starts, after an optional
+ * BOM, whitespace and an XML prologue, with an `<svg` tag. An HTML page that
+ * happens to contain an SVG starts with a doctype or `<html`, and is refused.
+ */
+export function isSvgText(bytes: Buffer): boolean {
+  const head = bytes
+    .subarray(0, 512)
+    .toString('utf8')
+    .replace(/^\uFEFF/, '')
+    .trimStart()
+  const afterPrologue = head.startsWith('<?xml')
+    ? head.slice(head.indexOf('?>') + 2).trimStart()
+    : head
+  const afterComments = afterPrologue.replace(/^(<!--[\s\S]*?-->\s*)*/, '')
+  return /^<svg[\s>]/i.test(afterComments)
+}
+
+export interface RemoteLogo {
+  bytes: Buffer
+  mimeType: LogoStoredMime
+  width: number
+  height: number
+  resolvedUrl: string
+}
+
+export type RemoteLogoResult = { ok: true; logo: RemoteLogo } | { ok: false; error: string }
+
+/**
+ * Rasterise a vector or AVIF mark to PNG at the logo edge (decision 268).
+ * PNG rather than JPEG because a mark's transparency is the point of it; a
+ * vector is drawn AT the edge since upscaling it loses nothing. Null when the
+ * file cannot be rendered.
+ */
+async function rasteriseLogo(
+  bytes: Buffer,
+  vector: boolean,
+): Promise<{ bytes: Buffer; width: number; height: number } | null> {
+  try {
+    const { default: sharp } = await import('sharp')
+    // A high density makes librsvg render the vector at a size the resize
+    // then brings down, so edges are anti-aliased at the final size.
+    const image = vector ? sharp(bytes, { density: 384 }) : sharp(bytes).rotate()
+    const { data, info } = await image
+      .resize({
+        width: LOGO_RASTER_MAX_EDGE,
+        height: LOGO_RASTER_MAX_EDGE,
+        fit: 'inside',
+        withoutEnlargement: !vector,
+      })
+      .png()
+      .toBuffer({ resolveWithObject: true })
+    return { bytes: data, width: info.width, height: info.height }
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Fetch a logo the owner linked to. Marks differ from photographs in three
+ * ways: SVG is accepted (and drawn to PNG), AVIF becomes PNG rather than
+ * JPEG, and there is no thumbnail floor, because a 64 px favicon-sized mark
+ * is still the mark.
+ */
+export async function fetchRemoteLogo(
+  rawUrl: string,
+  options: { fetchImpl?: typeof fetch } = {},
+): Promise<RemoteLogoResult> {
+  const got = await fetchImageBytes(rawUrl, options.fetchImpl ?? fetch, LOGO_MAX_BYTES)
+  if (!got.ok) return got
+  const { bytes, resolvedUrl } = got
+
+  if (isSvgText(bytes)) {
+    const drawn = await rasteriseLogo(bytes, true)
+    if (!drawn)
+      return {
+        ok: false,
+        error: 'That SVG could not be drawn. Export it as a PNG and paste that address.',
+      }
+    return { ok: true, logo: { ...drawn, mimeType: 'image/png', resolvedUrl } }
+  }
+
+  const sniffed = sniffImageMime(bytes)
+  if (!sniffed) {
+    return {
+      ok: false,
+      error:
+        'That link is not a PNG, SVG, WebP, JPEG or AVIF image. Right-click the mark itself and ' +
+        'copy its image address, not the page address.',
+    }
+  }
+  if (sniffed === 'image/avif') {
+    const drawn = await rasteriseLogo(bytes, false)
+    if (!drawn) return { ok: false, error: 'That image file is damaged and could not be read.' }
+    return { ok: true, logo: { ...drawn, mimeType: 'image/png', resolvedUrl } }
+  }
+
+  const size = imageDimensions(bytes, sniffed)
+  if (!size) return { ok: false, error: 'That image file is damaged and could not be read.' }
+  return {
+    ok: true,
+    logo: { bytes, mimeType: sniffed, width: size.width, height: size.height, resolvedUrl },
   }
 }
