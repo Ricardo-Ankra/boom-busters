@@ -5203,3 +5203,29 @@ Stability AI"]` where two read `["Emad Mostaque"]`. Equality saw a
     its six refusals, the runner seeding sets and leaving every route
     null after a plan. e2e: the Set card
     takes a new room and a slot takes a new model.
+
+49. **A reused book never seeded its rooms, and the plate price was a
+    constant** (decision 265; 2026-09-21, owner: "I re-ran the Visuals stage,
+    and no Sets were created" and "the default Model ... should be whatever
+    is set in the Settings").
+
+    Set seeding lived in `draftDirectorsBook` only, and a re-run of the
+    stage goes through `loadOrDraftDirectorsBook`, which returns the stored
+    book untouched so an owner's edits survive. The live project's book
+    names three locations; after the re-run it held zero sets. The reuse
+    path now seeds cast and sets as well. Both seeders skip names that exist
+    and names the owner dismissed, so a re-run with nothing new is free.
+
+    Every routing decision already read Settings: the board's planned
+    default, the estimate and generation all derive from
+    `modelRouting.stills`, which on the live install is Gemini 2.5 for both
+    routes. What did not was the Set card's Generate a plate label, a
+    constant $0.14 copied from the cast card's pattern, which named the
+    schema default's price whatever Settings said. It now quotes the routed
+    stills model's price, computed on the page. The schema default for a
+    fresh install with no settings row stays gemini-3.1-flash-image; an
+    existing install is never moved by it.
+
+    _Tests._ direction.test.ts: a stored book with two locations seeds both
+    on reuse and adds nothing on a second reuse. set-card.test.tsx: the
+    label quotes the price it is given. Full app suite 77 files, 775.
