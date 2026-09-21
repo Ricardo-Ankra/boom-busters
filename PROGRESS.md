@@ -5229,3 +5229,52 @@ Stability AI"]` where two read `["Emad Mostaque"]`. Equality saw a
     _Tests._ direction.test.ts: a stored book with two locations seeds both
     on reuse and adds nothing on a second reuse. set-card.test.tsx: the
     label quotes the price it is given. Full app suite 77 files, 775.
+
+50. **AVIF is accepted at every image door and stored as JPEG**
+    (decision 266; 2026-09-21, owner: "please can you also support avif for
+    image uploads, whether its manual or through pasting an image address").
+
+    No image model reads AVIF: Gemini takes PNG, JPEG, WebP, HEIC and HEIF,
+    Anthropic takes PNG, JPEG, GIF and WebP. A stored AVIF would have looked
+    healthy in the console and failed at the moment a still was generated,
+    which is the moment money is spent. So AVIF is converted at the door and
+    the union of stored formats stays the three every model reads:
+    `CAST_PHOTO_MIME`, `ImageReference`, `MsgImage` and every provider
+    adapter are untouched, and no migration was needed.
+
+    The two doors convert in different places because the bytes are in
+    different places. A picked file goes browser to R2 on a presigned PUT
+    (decision 205) and the server never sees it, so the new
+    `lib/client-image.ts` converts it before the hash: what is
+    fingerprinted, uploaded and recorded is the JPEG. A pasted address is
+    fetched by the server, so `lib/remote-image.ts` converts it there with
+    `sharp`, imported inside the AVIF branch only so that nothing else
+    loads the native module. `sharp` is a new explicit dependency of
+    apps/web; it was already in the lockfile under Next 16 and is named in
+    `serverExternalPackages` so Next leaves the platform binary alone.
+
+    Both sides cap the longest edge at 3072, because a 15 MB AVIF holds far
+    more pixels than a 15 MB JPEG and only a conversion re-encodes. Both
+    take a format argument and can write PNG instead, for the uploaded logos
+    the motion-graphics work will need. The thumbnail floor now measures the
+    converted file, which is the one the model is given. `readImageSize`,
+    byte-identical in both cards, moved into the new module beside its
+    conversion sibling.
+
+    _Tests._ remote-image.test.ts: a real AVIF encoded in the test sniffs by
+    major brand and by a compatible one, comes back as true JPEG bytes at
+    its true size, is held to the same thumbnail floor, is capped at 3072
+    when huge, and is refused when damaged. client-image.test.ts: the
+    browser decode and encode sit behind a codec seam, and the rest is
+    exercised for real, including the rename, the PNG option, and both
+    failure paths. cast-card.test.tsx: proved red first, the card uploads
+    the converted file rather than the AVIF. Full suite 9 of 9 workspaces,
+    apps/web 78 files, e2e 114.
+
+    _Known, not fixed here._ `newId` uses `ulid()`, not the monotonic
+    factory, so two ids minted in the same millisecond sort arbitrarily.
+    `listCastMembers` orders by `(createdAt, id)` and its comment claims
+    ULIDs are monotonic, which is only true of the monotonic factory. It
+    shows up as an intermittent reference-order failure in
+    visual-assets.test.ts and, in production, as the weighted first
+    reference slot going to either of two people seeded together.
