@@ -45,6 +45,17 @@ async function requireOwner(): Promise<void> {
 const HEX_64 = /^[0-9a-f]{64}$/
 const MAX_TITLE = 80
 
+/**
+ * `insertLogo` upserts on `contentHash` alone, whose unique index ignores
+ * `kind`: bytes already stored as another asset kind would otherwise be
+ * renamed in place and never appear in `listLogos`.
+ */
+const NOT_A_MARK: ActionResult = {
+  ok: false,
+  error:
+    'Those exact bytes are already stored as something other than a mark. Upload a different file.',
+}
+
 function cleanTitle(title: string): string | null {
   const trimmed = title.trim().replace(/\s+/g, ' ')
   return trimmed.length === 0 || trimmed.length > MAX_TITLE ? null : trimmed
@@ -107,9 +118,12 @@ export async function finaliseLogoAction(input: {
   if (!HEX_64.test(input.contentHash)) {
     return { ok: false, error: 'The file could not be fingerprinted. Try choosing it again.' }
   }
-  // Only keys this flow could have issued: a content-hash logo key.
-  const expectedPrefix = logoKey({ contentHash: input.contentHash, ext: 'png' }).replace(/png$/, '')
-  if (!input.key.startsWith(expectedPrefix) || !/\.(png|webp|jpg)$/.test(input.key)) {
+  // Only keys this flow could have issued: exactly one of the three legal
+  // extensions on the content hash, never merely a key that starts the same way.
+  const legal = (['png', 'webp', 'jpg'] as const).map((ext) =>
+    logoKey({ contentHash: input.contentHash, ext }),
+  )
+  if (!legal.includes(input.key)) {
     return { ok: false, error: 'That upload does not match its fingerprint. Start again.' }
   }
   if (!storageConfigured()) {
@@ -122,13 +136,14 @@ export async function finaliseLogoAction(input: {
     return { ok: false, error: 'That mark is over the 4 MB limit.' }
   }
 
-  await insertLogo(db, {
+  const row = await insertLogo(db, {
     r2Key: input.key,
     contentHash: input.contentHash,
     title,
     width: Math.max(1, Math.round(input.width)),
     height: Math.max(1, Math.round(input.height)),
   })
+  if (row.kind !== 'logo') return NOT_A_MARK
   refresh()
   return { ok: true }
 }
@@ -154,7 +169,15 @@ export async function addLogoFromUrlAction(input: {
   const contentHash = createHash('sha256').update(bytes).digest('hex')
   const key = logoKey({ contentHash, ext: logoExtension(mimeType) })
   await putObject(key, bytes, mimeType)
-  await insertLogo(db, { r2Key: key, contentHash, title, width, height, sourceUrl: resolvedUrl })
+  const row = await insertLogo(db, {
+    r2Key: key,
+    contentHash,
+    title,
+    width,
+    height,
+    sourceUrl: resolvedUrl,
+  })
+  if (row.kind !== 'logo') return NOT_A_MARK
   refresh()
   return { ok: true }
 }

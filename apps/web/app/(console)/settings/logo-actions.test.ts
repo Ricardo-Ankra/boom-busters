@@ -2,9 +2,9 @@
 
 import { createHash } from 'node:crypto'
 import {
+  assets,
   getSettings,
   listLogos,
-  removeLogo,
   requireTestDatabase,
   seed,
   updateSettings,
@@ -65,7 +65,11 @@ describeDb('logo actions', () => {
     storage.deleted = []
     storage.put = []
     await seed(db)
-    for (const logo of await listLogos(db)) await removeLogo(db, logo.id)
+    // `seed` does not touch `assets`; this whole suite owns every row in it
+    // (logos it inserts through the actions under test, and the odd
+    // non-logo row a "wrong asset kind" test plants), so clear the table
+    // wholesale rather than leaving other kinds to leak between runs.
+    await db.delete(assets)
     await updateSettings(db, {
       brandKit: {
         look: {
@@ -143,6 +147,21 @@ describeDb('logo actions', () => {
     expect(unnamed.error).toMatch(/name/i)
   })
 
+  it('refuses a key that merely starts with the fingerprint prefix', async () => {
+    // The check is equality against the three legal keys, not a prefix
+    // test: a key with the right hash but an extra path segment must not
+    // slip through as if it were the object this flow itself presigned.
+    const sneaky = await finaliseLogoAction({
+      key: `boom-busters/logos/${HASH}.x/anything.png`,
+      contentHash: HASH,
+      title: 'X',
+      width: 1,
+      height: 1,
+    })
+    expect(sneaky.ok).toBe(false)
+    expect(sneaky.error).toMatch(/fingerprint/i)
+  })
+
   it('adds a mark by address: fetches once, stores the bytes, keeps the address as provenance', async () => {
     const bytes = Buffer.from('png-bytes')
     remote.fetchRemoteLogo.mockResolvedValue({
@@ -200,6 +219,57 @@ describeDb('logo actions', () => {
     expect(await setChannelMarkAction(null)).toEqual({ ok: true })
     expect(await removeLogoAction(logo!.id)).toEqual({ ok: true })
     expect(storage.deleted).toEqual([logo!.r2Key])
+    expect(await listLogos(db)).toEqual([])
+  })
+
+  it('refuses to rename bytes already stored as another asset kind, on finalise and on add-from-address', async () => {
+    // insertLogo upserts on contentHash alone, which ignores kind: bytes
+    // already stored as an `image` asset would otherwise be silently
+    // renamed into the logo library and never listed there.
+    await db.insert(assets).values({
+      kind: 'image',
+      r2Key: `boom-busters/stock/${HASH}.png`,
+      contentHash: HASH,
+      licence: 'stock',
+      title: 'A stock still',
+    })
+
+    const finalised = await finaliseLogoAction({
+      key: `boom-busters/logos/${HASH}.png`,
+      contentHash: HASH,
+      title: 'Stability AI',
+      width: 1200,
+      height: 400,
+    })
+    expect(finalised.ok).toBe(false)
+    expect(finalised.error).toMatch(/already stored as something other than a mark/i)
+    expect(await listLogos(db)).toEqual([])
+
+    const urlBytes = Buffer.from('bytes already stored under another asset kind')
+    const urlHash = createHash('sha256').update(urlBytes).digest('hex')
+    remote.fetchRemoteLogo.mockResolvedValue({
+      ok: true,
+      logo: {
+        bytes: urlBytes,
+        mimeType: 'image/png',
+        width: 300,
+        height: 100,
+        resolvedUrl: 'https://cdn.example/mark.png',
+      },
+    })
+    await db.insert(assets).values({
+      kind: 'image',
+      r2Key: `boom-busters/stock/${urlHash}.png`,
+      contentHash: urlHash,
+      licence: 'stock',
+      title: 'A stock still',
+    })
+    const viaUrl = await addLogoFromUrlAction({
+      url: 'https://cdn.example/mark.png',
+      title: 'Wirecard AG',
+    })
+    expect(viaUrl.ok).toBe(false)
+    expect(viaUrl.error).toMatch(/already stored as something other than a mark/i)
     expect(await listLogos(db)).toEqual([])
   })
 
