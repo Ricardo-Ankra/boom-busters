@@ -169,6 +169,7 @@ const stockSlot: SlotView = {
   route: null,
   derivedRoute: { provider: 'google', model: 'gemini-3-pro-image' },
   logoUrls: {},
+  references: [],
 }
 
 const chartSlot: SlotView = {
@@ -211,6 +212,7 @@ const chartSlot: SlotView = {
   route: null,
   derivedRoute: { provider: 'google', model: 'gemini-3-pro-image' },
   logoUrls: {},
+  references: [],
 }
 
 const SLOT_D = '01J000000000000000000000AD'
@@ -254,6 +256,7 @@ const headlineSlot: SlotView = {
   route: null,
   derivedRoute: { provider: 'google', model: 'gemini-3-pro-image' },
   logoUrls: {},
+  references: [],
 }
 
 const SLOT_E = '01J000000000000000000000AE'
@@ -305,6 +308,7 @@ const graphicSlot: SlotView = {
   route: null,
   derivedRoute: { provider: 'google', model: 'gemini-3-pro-image' },
   logoUrls: {},
+  references: [],
 }
 
 /**
@@ -340,6 +344,7 @@ const brokenSlot: SlotView = {
   route: null,
   derivedRoute: { provider: 'google', model: 'gemini-3-pro-image' },
   logoUrls: {},
+  references: [],
 }
 
 function model(slots: SlotView[], overrides: Partial<VisualsReviewModel> = {}): VisualsReviewModel {
@@ -1463,5 +1468,50 @@ describe('reusing a shot (decision 261)', () => {
         'No other stock, AI image or real-footage slot in this film has a shot to offer yet.',
       ),
     ).toBeInTheDocument()
+  })
+})
+
+describe('VisualBoard: reference chips', () => {
+  const withReferences = (references: SlotView['references']): SlotView => ({
+    ...stockSlot,
+    references,
+  })
+
+  it('names each reference a brief calls on, and marks an unresolved one', () => {
+    render(
+      <VisualBoard
+        projectId={PROJECT}
+        model={model([
+          withReferences([
+            { kind: 'person', name: 'Markus Braun', resolved: true },
+            { kind: 'set', name: 'Aschheim headquarters', resolved: false },
+          ]),
+        ])}
+        colors={COLORS}
+        brand={BRAND}
+      />,
+    )
+
+    expect(screen.getByText(/photograph · Markus Braun/)).toBeInTheDocument()
+    // The actionable half: named, but nothing backs it, so the shot is plain.
+    const missing = screen.getByText(/no plate · Aschheim headquarters/)
+    expect(missing).toBeInTheDocument()
+    expect(missing).toHaveAttribute(
+      'title',
+      'Aschheim headquarters: no plate is stored, so this shot is generated without one',
+    )
+  })
+
+  it('renders no reference row for a brief that names nothing', () => {
+    render(
+      <VisualBoard
+        projectId={PROJECT}
+        model={model([withReferences([])])}
+        colors={COLORS}
+        brand={BRAND}
+      />,
+    )
+
+    expect(screen.queryByLabelText('References this brief uses')).not.toBeInTheDocument()
   })
 })

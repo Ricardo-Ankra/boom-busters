@@ -35,7 +35,12 @@ import { ConfirmButton } from '@/components/confirm-button'
 import { Label, Select } from '@/components/ui/input'
 import { useToast } from '@/components/ui/toast'
 import { readImageSize, toUploadableImage, toUploadableLogo } from '@/lib/client-image'
-import type { ArticleClaimOption, SlotView, VisualsReviewModel } from '@/lib/visuals-review'
+import type {
+  ArticleClaimOption,
+  SlotReference,
+  SlotView,
+  VisualsReviewModel,
+} from '@/lib/visuals-review'
 import { CLOSE_REUSE_MS, describeGap, timecode } from '@/lib/visuals-reuse'
 import { createLogoUploadAction, finaliseLogoAction } from '@/app/(console)/settings/logo-actions'
 import {
@@ -534,6 +539,36 @@ function TypeBadge({ type }: { type: string }) {
   return <Badge shape="tag">{slotTypeLabel(type)}</Badge>
 }
 
+/**
+ * One reference a brief calls on: the name, and whether anything backs it.
+ *
+ * An unresolved chip is the actionable half. It means the brief named
+ * something the library cannot supply, so the shot is generated plain — the
+ * producer's fix is to upload the photograph or correct the name, and
+ * neither is possible if the screen never says which.
+ */
+function ReferenceChip({ reference }: { reference: SlotReference }) {
+  const noun =
+    reference.kind === 'person' ? 'photograph' : reference.kind === 'set' ? 'plate' : 'mark'
+  const title = reference.resolved
+    ? `${reference.name}: the stored ${noun} is sent with this shot`
+    : `${reference.name}: no ${noun} is stored, so this shot is generated without one`
+  return (
+    <span
+      title={title}
+      className={
+        'rounded-full border px-2 py-0.5 text-[11px] ' +
+        (reference.resolved
+          ? 'border-[var(--color-border-strong)] text-[var(--color-text-secondary)]'
+          : 'border-[var(--color-warning)] text-[var(--color-warning)]')
+      }
+    >
+      {reference.resolved ? '' : 'no '}
+      {noun} · {reference.name}
+    </span>
+  )
+}
+
 /** What one re-plan of every chapter costs, the Director's Book estimate's twin. */
 const REPLAN_ESTIMATE = '≈$0.15'
 
@@ -939,6 +974,22 @@ function SlotCard({
       <CardContent className="flex flex-col gap-3">
         {brief ? (
           <p className="text-[13px] text-[var(--color-text-primary)]">{brief.description}</p>
+        ) : null}
+
+        {/*
+          What this brief actually calls on from the reference libraries. A
+          brief that names nobody is generated with no photograph at all, and
+          until this row existed that was indistinguishable on screen from a
+          brief that names someone — the one thing the producer most needs to
+          see before pressing Fetch, since it decides whether the money buys
+          a likeness or a stranger.
+        */}
+        {slot.references.length > 0 ? (
+          <div className="flex flex-wrap gap-1" aria-label="References this brief uses">
+            {slot.references.map((reference) => (
+              <ReferenceChip key={`${reference.kind}-${reference.name}`} reference={reference} />
+            ))}
+          </div>
         ) : null}
 
         {linked && slot.candidates.length === 0 ? (

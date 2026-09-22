@@ -22,8 +22,10 @@ import {
   DirectorsBookSchema,
   normaliseArticleUrl,
   latestTakes,
+  nameMatches,
   castWarnings,
   planWarnings,
+  referenceWarnings,
   ShotBriefSchema,
   SlotCandidateSchema,
   SlotRefusalSchema,
@@ -34,7 +36,9 @@ import {
 } from '@boom-busters/schemas'
 import type {
   ArticleMetadata,
+  CastMember,
   DirectorsBook,
+  ProjectSet,
   ShotBrief,
   ShotSlotStatus,
   SlotCandidate,
@@ -59,6 +63,30 @@ import { reuseView, sharedShotWarnings, type ReusableRow, type ReuseSource } fro
  * chart — that is the spec's chart rule generalised: broken data must look
  * broken.
  */
+
+/**
+ * One call a brief makes on a reference library, and whether it lands
+ * (decisions 253, 264 and 268 Plan B).
+ *
+ * The board rendered none of this before: a still's `depicts` appeared only
+ * inside the policy-refusal block and its `set` appeared nowhere at all, so
+ * a film generated entirely without its photographs looked exactly like one
+ * generated with them. Since `generateStillCandidates` never even reads the
+ * cast or sets tables unless these fields are filled, a brief that omits
+ * them is the difference between a likeness and a stranger, and it was
+ * invisible.
+ *
+ * `resolved` is the same rule the generator applies, not a looser one: a
+ * name the library has never seen and a name it holds without a photograph
+ * both condition nothing, so both read as unresolved here.
+ */
+export interface SlotReference {
+  kind: 'person' | 'set' | 'logo'
+  /** The name exactly as the brief wrote it, role suffix and all. */
+  name: string
+  /** Whether a stored photograph, plate or mark actually backs it. */
+  resolved: boolean
+}
 
 export interface SlotView {
   id: string
@@ -117,6 +145,8 @@ export interface SlotView {
    * configured, or when nothing on the board cites a mark yet.
    */
   logoUrls: Record<string, string>
+  /** What this brief calls on from the reference libraries, and what lands. */
+  references: SlotReference[]
 }
 
 export interface ChapterSlots {
@@ -296,6 +326,55 @@ async function articleClaimOptions(db: Database, projectId: string): Promise<Art
   })
 }
 
+/**
+ * What one brief calls on from the reference libraries, and what lands.
+ *
+ * The resolution rule is deliberately the generator's own (`depictedFrom`
+ * and `setFrom` in `lib/visual-assets.ts`), not a looser one: a name the
+ * library never held and a name it holds with no photograph both condition
+ * nothing, so the card must not show either as a hit. The join is
+ * `nameMatches`, so a planner that wrote "Markus Braun, chief executive"
+ * still reads as naming Markus Braun — the same allowance decision 262 put
+ * in the generator, which an exact-string check here would quietly undo.
+ */
+function slotReferences(
+  brief: ShotBrief,
+  cast: readonly CastMember[],
+  sets: readonly ProjectSet[],
+): SlotReference[] {
+  if (brief.type === 'graphic') {
+    return brief.scene.elements.flatMap((element) =>
+      element.kind === 'logo'
+        ? [{ kind: 'logo' as const, name: element.entity, resolved: element.assetId !== undefined }]
+        : [],
+    )
+  }
+  if (brief.type !== 'still' && brief.type !== 'hero') return []
+
+  const people: SlotReference[] = (brief.depicts ?? [])
+    .filter((entry) => entry.trim().length > 0)
+    .map((entry) => ({
+      kind: 'person' as const,
+      name: entry,
+      resolved: cast.some((member) => nameMatches(entry, member.name) && member.photos.length > 0),
+    }))
+
+  const named = brief.set?.trim()
+  const set: SlotReference[] = named
+    ? [
+        {
+          kind: 'set' as const,
+          name: named,
+          resolved: sets.some(
+            (candidate) => nameMatches(named, candidate.name) && candidate.plates.length > 0,
+          ),
+        },
+      ]
+    : []
+
+  return [...people, ...set]
+}
+
 export async function visualsReviewModel(
   db: Database,
   projectId: string,
@@ -452,6 +531,7 @@ export async function visualsReviewModel(
         ? routeForBrief(parsed.data, cast, sets, settings.modelRouting)
         : settings.modelRouting.stills,
       logoUrls: graphicLogoUrls,
+      references: parsed.success ? slotReferences(parsed.data, cast, sets) : [],
     }
   })
 
@@ -546,6 +626,15 @@ export async function visualsReviewModel(
       ...castWarnings(
         direction,
         cast.map((member) => member.name),
+      ),
+      // The silent half of the same story: references the producer uploaded
+      // that no brief calls on, so the photographs are never sent at all.
+      ...referenceWarnings(
+        slots.flatMap((slot) =>
+          slot.brief ? [{ brief: slot.brief, chapter: `chapter ${slot.chapterIndex + 1}` }] : [],
+        ),
+        cast.filter((member) => member.photos.length > 0).map((member) => member.name),
+        sets.filter((set) => set.plates.length > 0).map((set) => set.name),
       ),
       ...sharedShotWarnings(reusable),
     ],
