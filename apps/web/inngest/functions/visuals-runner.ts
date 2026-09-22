@@ -15,6 +15,7 @@ import {
   shotSlotStatuses,
   slotNeedsResolution,
   listCastMembers,
+  listLogos,
 } from '@boom-busters/db'
 import type { NewShotSlot } from '@boom-busters/db'
 import { BANNED_PROMPT_WORDS, stillStyleAnchors } from '@boom-busters/providers'
@@ -116,6 +117,9 @@ export const visualsRunner = inngest.createFunction(
       // Loaded once for the whole run: the shot-list prompt lists the film's
       // rooms, and the craft notes count how often each one is used.
       const sets = await listProjectSets(db, projectId)
+      // The logo library (decision 268, Plan B): titles name the marks in the
+      // prompt, ids resolve a graphic's "logo" the moment the plan is stored.
+      const logos = await listLogos(db)
 
       await setProjectStage(db, projectId, { stage: 'visuals', stageStatus: 'running' })
 
@@ -141,6 +145,7 @@ export const visualsRunner = inngest.createFunction(
         // The film's rooms: named and described for the shot-list prompt,
         // and counted by the craft notes below (decision 264).
         sets: sets.map(({ name, look }) => ({ name, look })),
+        logos: logos.map((row) => ({ id: row.id, title: row.title ?? '' })),
       }
     })
 
@@ -192,6 +197,7 @@ export const visualsRunner = inngest.createFunction(
               direction: direction.book,
               photographed: setup.photographed,
               sets: setup.sets,
+              logos: setup.logos,
             })
             return { ok: true, ...result }
           } catch (error) {

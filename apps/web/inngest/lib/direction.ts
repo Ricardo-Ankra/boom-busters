@@ -26,7 +26,7 @@ import type {
   ScriptClaim,
 } from '@boom-busters/providers'
 import { claimCarriesArticle, DirectorsBookSchema, ValidationError } from '@boom-busters/schemas'
-import type { DirectorsBook } from '@boom-busters/schemas'
+import type { DirectorsBook, LogoIndex } from '@boom-busters/schemas'
 import { NonRetriableError } from 'inngest'
 import { z } from 'zod'
 import { db } from '@/lib/db'
@@ -220,6 +220,12 @@ export async function planChapterSlots(input: {
   photographed?: readonly string[]
   /** The project's sets (decision 264), threaded exactly like `photographed`. */
   sets?: readonly { name: string; look: string }[]
+  /**
+   * The logo library (decision 268, Plan B): titles name the marks in the
+   * prompt and the mock; ids resolve a graphic's "logo" to its asset. Gathered
+   * by the caller — this function reads no table of its own.
+   */
+  logos?: readonly LogoIndex[]
 }): Promise<{ rows: NewShotSlot[]; rejected: number }> {
   const paragraphs = promptParagraphs(input.paragraphs, input.chapter.id)
   if (paragraphs.length === 0) return { rows: [], rejected: 0 }
@@ -233,6 +239,8 @@ export async function planChapterSlots(input: {
     slots = mockShotList({
       paragraphs,
       claimCount: input.claims.length,
+      claimTexts: input.claims.map((claim) => claim.text),
+      logoTitles: input.logos?.map((logo) => logo.title),
       newsClaimRefs: input.claims
         .map((claim, at) => (claimCarriesArticle(claim) ? at + 1 : 0))
         .filter((ref) => ref > 0),
@@ -250,6 +258,7 @@ export async function planChapterSlots(input: {
         ? { photographed: input.photographed }
         : {}),
       ...(input.sets && input.sets.length > 0 ? { sets: input.sets } : {}),
+      logos: input.logos?.map((logo) => logo.title),
     })
     const parsed = await planWithBudgetEscalation(request, { projectId: input.projectId })
     slots = parsed.slots
@@ -261,6 +270,7 @@ export async function planChapterSlots(input: {
     planned: slots,
     paragraphs: input.paragraphs,
     claims: input.claims,
+    logos: input.logos,
   })
   return { rows: conversion.rows, rejected: dropped + conversion.rejected.length }
 }

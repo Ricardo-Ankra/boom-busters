@@ -1,7 +1,13 @@
 import { narrationUnits } from '@boom-busters/providers'
 import type { ShotParagraph } from '@boom-busters/providers'
 import { latestTakes, plannedBriefRejection, resolvePlannedBrief } from '@boom-busters/schemas'
-import type { PlannedSlot, PlanningClaim, VoiceTakeStatus, WordTiming } from '@boom-busters/schemas'
+import type {
+  LogoIndex,
+  PlannedSlot,
+  PlanningClaim,
+  VoiceTakeStatus,
+  WordTiming,
+} from '@boom-busters/schemas'
 import { anchorSlots, MIN_SHOT_MS, snapToScript } from '@boom-busters/timeline'
 import type { AnchorWord } from '@boom-busters/timeline'
 import type { NewShotSlot } from '@boom-busters/db'
@@ -230,6 +236,8 @@ export function plannedToRows(input: {
   claims: readonly PlanningClaim[]
   /** Slot index offset — indexes are unique per chapter, so the caller counts. */
   startIndex?: number
+  /** The logo library (decision 268, Plan B): a graphic's "logo" resolves against these. */
+  logos?: readonly LogoIndex[]
 }): PlannedConversion {
   const spans = new Map(
     input.paragraphs
@@ -257,12 +265,12 @@ export function plannedToRows(input: {
       continue
     }
 
-    const brief = resolvePlannedBrief(slot.brief, input.claims)
+    const brief = resolvePlannedBrief(slot.brief, input.claims, input.logos ?? [])
     if (!brief) {
       rejected.push({
         paragraphIndex: slot.paragraphIndex,
         reason:
-          plannedBriefRejection(slot.brief, input.claims) ??
+          plannedBriefRejection(slot.brief, input.claims, input.logos ?? []) ??
           'the slot cited a claim it may not cite',
       })
       continue

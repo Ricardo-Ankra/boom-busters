@@ -37,6 +37,16 @@ const PARAGRAPHS: ShotParagraph[] = [
 
 const brandKit = DEFAULT_SETTINGS.brandKit
 
+function baseRequest() {
+  return {
+    caseTitle: 'Wirecard',
+    chapterTitle: 'The Missing Billions',
+    paragraphs: PARAGRAPHS,
+    claims: CLAIMS,
+    styleAnchors: stillStyleAnchors(brandKit),
+  }
+}
+
 describe('buildShotListRequest', () => {
   const request = buildShotListRequest({
     caseTitle: 'Wirecard',
@@ -152,6 +162,28 @@ describe('the headline shot (decision 257)', () => {
     expect(mixed.slots).toHaveLength(1)
     expect(mixed.malformed).toHaveLength(1)
     expect(mixed.malformed[0]?.reason).toContain('sourceRef')
+  })
+})
+
+describe('the graphic shot (decision 268, Plan B)', () => {
+  it('describes the graphic shape, its rules, and lists the marks the library holds', () => {
+    const request = buildShotListRequest({
+      ...baseRequest(),
+      logos: ['Stability AI', 'Wirecard AG'],
+    })
+    const system = request.system
+    expect(system).toContain('"type": "graphic"')
+    expect(system).toMatch(/never a chart with fewer points/i)
+    expect(system).toMatch(/six elements at most/i)
+    expect(system).toMatch(/bottom two rows/i)
+    const prefix = request.messages[0]!.content
+    expect(prefix).toContain('Logos (marks the producer holds')
+    expect(prefix).toContain('- Stability AI')
+  })
+
+  it('says nothing about logos when the library is empty', () => {
+    const request = buildShotListRequest(baseRequest())
+    expect(request.messages[0]?.content).not.toContain('Logos')
   })
 })
 
@@ -355,6 +387,35 @@ describe('mockShotList', () => {
     expect(() => ShotListOutputSchema.parse(output)).not.toThrow()
     const card = output.slots.find((slot) => slot.brief.type === 'headline')
     expect(card?.brief.type === 'headline' && card.brief.sourceRef).toBe(2)
+  })
+
+  it('the mock plans one graphic citing the first claim, with a mark when the library has one', () => {
+    const out = mockShotList({
+      paragraphs: PARAGRAPHS,
+      claimCount: 2,
+      claimTexts: ['The company raised $4 billion.', 'x'],
+      logoTitles: ['Wirecard AG'],
+    })
+    const graphic = out.slots.find((slot) => slot.brief.type === 'graphic')
+    expect(graphic).toBeDefined()
+    if (!graphic || graphic.brief.type !== 'graphic') return
+    const figure = graphic.brief.scene.elements.find((element) => element.kind === 'figure')
+    expect(figure).toMatchObject({ claimRef: 1, value: '$4bn' })
+    expect(graphic.brief.scene.elements.find((element) => element.kind === 'logo')).toMatchObject({
+      entity: 'Wirecard AG',
+    })
+
+    const bare = mockShotList({
+      paragraphs: PARAGRAPHS,
+      claimCount: 1,
+      claimTexts: ['Some 94 percent left.'],
+    })
+    const bareGraphic = bare.slots.find((slot) => slot.brief.type === 'graphic')
+    expect(
+      bareGraphic && bareGraphic.brief.type === 'graphic'
+        ? bareGraphic.brief.scene.elements.some((e) => e.kind === 'logo')
+        : true,
+    ).toBe(false)
   })
 })
 

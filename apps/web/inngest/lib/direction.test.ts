@@ -335,3 +335,75 @@ describe('planChapterSlots against a live model', () => {
     expect(callLlm).toHaveBeenCalledTimes(2)
   })
 })
+
+describe('planChapterSlots plans a graphic and threads the logo library (decision 268, Plan B)', () => {
+  const PARAGRAPHS: TimedParagraph[] = [
+    {
+      chapterId: 'ch-1',
+      index: 0,
+      text: 'The company raised four billion dollars in one round.',
+      startMs: 0,
+      durationMs: 9000,
+      words: [],
+    },
+  ]
+  const CLAIMS = [
+    {
+      id: 'claim-1',
+      text: 'The company raised $4 billion.',
+      sourceUrl: null,
+      confidence: 'sourced',
+    },
+    { id: 'claim-2', text: 'x', sourceUrl: null, confidence: 'sourced' },
+  ]
+
+  beforeEach(() => {
+    vi.stubEnv('MOCK_PROVIDERS', '1')
+  })
+
+  afterEach(() => {
+    vi.unstubAllEnvs()
+  })
+
+  it("resolves the mock graphic's logo to the library asset it names, citing the first claim", async () => {
+    const result = await planChapterSlots({
+      projectId: FIXTURE_PROJECT_ID,
+      caseTitle: 'Wirecard',
+      chapter: { id: 'ch-1', title: 'The audit', number: 1 },
+      paragraphs: PARAGRAPHS,
+      claims: CLAIMS,
+      styleAnchors: 'a',
+      direction: null,
+      logos: [{ id: 'logo-1', title: 'Wirecard AG' }],
+    })
+
+    const graphic = result.rows.find((row) => row.type === 'graphic')
+    expect(graphic).toBeDefined()
+    const brief = graphic?.brief as {
+      type: string
+      scene: { elements: { kind: string; entity?: string; assetId?: string; claimRef?: string }[] }
+    }
+    const figure = brief.scene.elements.find((element) => element.kind === 'figure')
+    expect(figure).toMatchObject({ claimRef: 'claim-1' })
+    const logo = brief.scene.elements.find((element) => element.kind === 'logo')
+    expect(logo).toMatchObject({ entity: 'Wirecard AG', assetId: 'logo-1' })
+  })
+
+  it('stores the graphic with no logo element when the library holds no marks', async () => {
+    const result = await planChapterSlots({
+      projectId: FIXTURE_PROJECT_ID,
+      caseTitle: 'Wirecard',
+      chapter: { id: 'ch-1', title: 'The audit', number: 1 },
+      paragraphs: PARAGRAPHS,
+      claims: CLAIMS,
+      styleAnchors: 'a',
+      direction: null,
+      logos: [],
+    })
+
+    const graphic = result.rows.find((row) => row.type === 'graphic')
+    expect(graphic).toBeDefined()
+    const brief = graphic?.brief as { type: string; scene: { elements: { kind: string }[] } }
+    expect(brief.scene.elements.some((element) => element.kind === 'logo')).toBe(false)
+  })
+})
