@@ -95,7 +95,11 @@ export function tokenColor(name: GraphicColor, brand: BrandKitTokens): string {
   }
 }
 
-/** The largest size at or under `basePx` at which `text` fits `boxWidth` by the estimate. */
+/**
+ * The largest size at or under `basePx` at which `text` fits `boxWidth` by the estimate.
+ * Never returns below `MIN_FONT_PX`: an extreme label can overflow its box rather than
+ * shrink past legibility, because text under 12px reads as a smudge on a phone.
+ */
 export function fitFontPx(text: string, boxWidth: number, basePx: number): number {
   const glyphs = Math.max(1, text.length)
   const fitted = Math.floor(boxWidth / (glyphs * AVERAGE_GLYPH_EM))
