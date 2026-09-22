@@ -505,9 +505,9 @@ describe('slotPlan', () => {
       // positions in one scene. The scene schema allows only one logo per
       // normalised entity string, so the two elements are given distinct
       // entity text (as two real slots for the one company would read on a
-      // planned brief) while resolving to the SAME library asset — the case
-      // that would collide if the output were ever keyed by asset id instead
-      // of by element id.
+      // planned brief) while resolving to the SAME library asset. This is
+      // the case that would collide if the output were ever keyed by asset
+      // id instead of by element id.
       const scene = {
         elements: [
           {
