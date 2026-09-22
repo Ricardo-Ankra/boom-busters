@@ -5358,3 +5358,22 @@ Stability AI"]` where two read `["Emad Mostaque"]`. Equality saw a
     cannot. Snapshot: `WatermarkLogo`, new golden only. e2e: seeded marks,
     channel mark chosen and cleared across a reload, rename round trip. Full
     suite 9 of 9 workspaces, apps/web 80 files, typecheck 10 of 10, e2e 117.
+
+    _Polish (2026-09-22)._ Decision 268's parked finding, closed:
+    `insertLogo`'s upsert now updates a conflicting row only when it is
+    already a logo (`setWhere`), returning null otherwise, so a content-hash
+    collision with an asset of another kind is refused rather than silently
+    renamed and resized; `finaliseLogoAction` and `addLogoFromUrlAction` check
+    for null instead of inspecting the row's kind after the write. The mark
+    tile in Settings now sits on the brand background (spec 6.3), passed down
+    as `settings.brandKit.colors.background`, not the console's own ground.
+    The corner watermark falls back to the typographic wordmark when its image
+    fails to load, through `Img`'s `onError`, making good on the component's
+    own comment. A picked AVIF mark is now rasterised at the 2048 px logo edge
+    like every other path into the library, not the wider 3072 px pasted-image
+    cap. Also done: one settings test file instead of two; one import in
+    `remote-image.ts`; the oversize-delete branch and several refusal paths
+    now have tests; a single `logoById` read replaces two `listLogos` scans on
+    remove and on choosing the channel mark; both insert paths clamp width and
+    height alike; and the `Watermark` file comment now sits on the function it
+    describes.
