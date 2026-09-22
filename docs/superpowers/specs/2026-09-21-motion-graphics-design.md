@@ -189,7 +189,7 @@ export function reflowPortrait(scene: GraphicScene): GraphicScene  // elements w
 
 - The safe area is the frame minus the caption band (`height * 0.08` landscape, `0.16` portrait, as `HeadlineCard`) and a margin of `36 * frameScale`.
 - A cell is `safe.w / 12` by `safe.h / 12`. Boxes are cells; gutters are `8 * frameScale`.
-- Text and figure sizes start from the type role (`typeStyle`) and shrink with `fitText` from `@remotion/layout-utils` (new dependency in the compositions package, per the vendored Remotion skill's `measuring-text`) until the string fits its box width. The fitted size is returned in `fontPx` so the SVG preview and the component draw the same glyph size.
+- Text and figure sizes start from the type role (`typeStyle`) and shrink with `fitText` from `@remotion/layout-utils` (new dependency in the compositions package, per the vendored Remotion skill's `measuring-text`) until the string fits its box width. The fitted size is returned in `fontPx` so the SVG preview and the component draw the same glyph size. *(Amended while planning Plan B: text is fitted with a pure estimator in the layout module, not measured with `@remotion/layout-utils`, so the board's browser and the render's Chromium compute the same size.)*
 - Reading order for portrait re-flow: by `row`, then `col`.
 
 ### 5.2 `GraphicCard`

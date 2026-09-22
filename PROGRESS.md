@@ -5377,3 +5377,115 @@ Stability AI"]` where two read `["Emad Mostaque"]`. Equality saw a
     remove and on choosing the channel mark; both insert paths clamp width and
     height alike; and the `Watermark` file comment now sits on the function it
     describes.
+
+53. **The graphic slot: a scene the planner composes**
+    (decision 268, Plan B; 2026-09-22).
+
+    A graphic is composed, not picked from a catalogue of templates.
+    `packages/schemas/src/graphics.ts` fixes the vocabulary: at most six
+    elements, from `text`, `figure`, `logo`, `shape` and `bars`, placed on
+    a 12 by 12 grid, coloured only by the NAMES of Brand Kit tokens (never
+    a hex value), with type sized by a role (heading, title, body,
+    numbers, captions) rather than a chosen pixel size. The rules live in
+    the schema rather than in a template, and they have teeth: every
+    `figure` and every `bars` item carries a `claimRef`, and
+    `figureCitesClaim` checks the digit groups the shown value carries
+    against the cited claim's own text (thousands separators stripped, any
+    surrounding word or symbol such as "bn", "%" or "billion" a rendering
+    choice and not compared), so a figure cannot state a number the
+    dossier does not support. A `logo` element names its entity exactly as
+    the dossier writes it and carries no styling of its own; nothing in
+    the scene is a raw colour or a raw font size.
+
+    One pure layout module, `packages/compositions/src/lib/graphic.ts`,
+    computes every box and font size a graphic uses, and both the board's
+    SVG preview and the Remotion `GraphicCard` call it, so the graphic the
+    owner approves is the graphic that renders. The design document's
+    section 5.1 had specified `fitText` from `@remotion/layout-utils`,
+    which measures text on a canvas; the board runs in the owner's browser
+    and the render runs in headless Chromium, and the two carry different
+    fonts, so a measurement taken in one would not match a measurement
+    taken in the other, and the preview would drift from the render.
+    `fitFontPx` fits with a pure estimator instead, a conservative average
+    glyph width of 0.56 em, which returns the same number wherever it runs
+    and needed no new dependency; the trade is a label a few pixels
+    tighter than a true measurement would give it. The estimate never
+    returns below 12 pixels: past that point a long label overflows its
+    box rather than shrink further, because type under 12 pixels is a
+    smudge on a phone screen. Both are deliberate trades, recorded here so
+    neither reads as an oversight later.
+
+    Portrait re-flow (`reflowPortrait`) ranks its invariants rather than
+    honouring both at once. Auto-flowed elements must never collide with
+    each other, because that silently drops content off the card, and
+    that outranks the milder preference of starting the flow below
+    whatever the author pinned: when the rows left beneath the pins cannot
+    seat every flowed element, the flow claims the whole grid instead and
+    may land on top of a pin. An overlapped pin is visible and the author
+    can move it; two elements sharing a row is content that vanished
+    without a trace, which is the failure this ranking exists to rule out.
+
+    Resolution is `resolvePlannedBrief`
+    (`packages/schemas/src/visuals.ts`), the same function a chart or a
+    headline brief already goes through: the claim NUMBERS the model
+    wrote become claim ids, checked against the claim list and, for a
+    `figure` or a `bars` item, against the cited claim's own text. A
+    `logo` element's entity name is joined to the asset library through
+    `logoForEntity`, the cast's tolerant `nameMatches` run in both
+    directions so a stored title carrying a role or a suffix still
+    matches a bare query, and a query carrying one still matches a bare
+    title. A mark the library does not hold is not a refusal: the element
+    is stored as written, the slot resolves to `placeholder`, and the
+    board's card offers an `Add logo for <entity>` button rather than an
+    error. Nothing is fetched and nothing is spent either way: resolved
+    or placeholder, `resolveSlotBrief` prices a graphic at $0.
+
+    The planner drafts a graphic the same call it drafts everything else:
+    the shot-list prompt (`packages/providers/src/prompts/shotlist.ts`)
+    writes the vocabulary out in full for the model, the element shapes,
+    the 12 by 12 cell, the token colour names, and the rule for reaching
+    for a graphic instead of a chart (one or two cited figures, a mark, or
+    a relationship between named things, never a value moving through
+    time). The other two model-drafted paths, re-typing a slot to
+    `graphic` and asking "Draft a different brief" on a slot that already
+    is one, both go through the same structured drafting request a chart
+    or map redraft takes, rather than the free-form idea path a stock or
+    still redraft takes, because a graphic is data; that keeps the
+    claim-number check in the one place resolution already enforces it.
+    Migration 0027 is the only schema change the database needed: one new
+    `shot_type` enum value, `graphic`, ahead of `hero`.
+
+    _Not done._ A placeholder graphic still counts toward the board's
+    "Fetch visuals" action, because `slotNeedsResolution` reads status and
+    brief hash only and has never special-cased a type; fetching buys a
+    waiting graphic nothing, since only an upload resolves it. That is not
+    a bug for `slotNeedsResolution` to fix by excluding graphics: the
+    approval gate (`visualsApprovalBlockedReason`, `visualsCoverage`)
+    reads `slot.status` directly rather than the fetch count, so a
+    placeholder graphic already forces the same explicit "approve with N
+    placeholders" wording a placeholder photograph does. The wart is
+    narrower: the fetch button is the wrong affordance for one slot type,
+    a board question, not a resolution bug. Rendered video does not carry
+    `GraphicCard` yet either: a web deploy ships the board's preview only,
+    and the render gets new or changed compositions only once the owner's
+    `deploy:remotion` script re-uploads the Remotion site.
+
+    _Tests._ Schema: the vocabulary's own rules (six elements at most, a
+    `count` entrance reserved to figures alone, unique ids, one logo per
+    entity, the grid refinement), `figureCitesClaim` against separators, scale
+    words and a claim that does not carry the number, and
+    `resolvePlannedBrief` mapping claim numbers to ids and entity names to
+    library assets, including a logo left unresolved rather than refused.
+    Database: a `graphic` row round-trips through the real `shot_type`
+    enum. Compositions: `fitFontPx`'s fit and its floor,
+    `reflowPortrait`'s pin and collision invariants under a starved grid,
+    and `GraphicCard`'s two goldens (wide and tall) against a composed
+    scene with a counting figure, a pulse and an underline. Web: the
+    board's preview reading the same layout module the card does, down to
+    the role's size scale, the claim chips, the missing-mark uploader,
+    `attachGraphicLogosAction` re-matching a whole scene on one upload,
+    and `resolveSlotBrief` pricing a graphic at $0. e2e: a resolved
+    graphic citing a seeded mark and a claim, and a placeholder graphic
+    asking for one that does not exist. Full suite 9 of 9 workspaces,
+    apps/web 80 files, typecheck 10 of 10, e2e 118 (last measured; not
+    re-run here).
