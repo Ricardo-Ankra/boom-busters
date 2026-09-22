@@ -461,6 +461,86 @@ describe('slotPlan', () => {
       expect(missing.slots).toEqual([])
       expect(missing.skipped[0]?.reason).toBe('a logo for "Stability AI" has not been uploaded')
     })
+
+    it('keys each logo by its own element id, so two different marks do not collide', () => {
+      const LOGO_A = '01HQ00000000000000000000M1'
+      const LOGO_B = '01HQ00000000000000000000M2'
+      const scene = {
+        elements: [
+          {
+            kind: 'logo',
+            id: 'l1',
+            cell: { col: 0, row: 0, colSpan: 6, rowSpan: 3 },
+            entity: 'Stability AI',
+            assetId: LOGO_A,
+            enter: { kind: 'fade', atMs: 0 },
+          },
+          {
+            kind: 'logo',
+            id: 'l2',
+            cell: { col: 6, row: 0, colSpan: 6, rowSpan: 3 },
+            entity: 'OpenAI',
+            assetId: LOGO_B,
+            enter: { kind: 'fade', atMs: 0 },
+          },
+        ],
+      }
+
+      const plan = slotPlan({
+        slots: [graphicRow({ scene })],
+        assetsById: new Map(),
+        logos: new Map([
+          [LOGO_A, { r2Key: 'boom-busters/logos/a.png', width: 1200, height: 400 }],
+          [LOGO_B, { r2Key: 'boom-busters/logos/b.png', width: 800, height: 800 }],
+        ]),
+      })
+      const logos = plan.slots[0]?.graphic?.logos
+      expect(logos?.['l1']?.r2Key).toBe('boom-busters/logos/a.png')
+      expect(logos?.['l2']?.r2Key).toBe('boom-busters/logos/b.png')
+      expect(logos?.['l1']?.r2Key).not.toBe(logos?.['l2']?.r2Key)
+    })
+
+    it('keys each logo by its own element id even when two elements share one asset id, so neither overwrites the other', () => {
+      // A before/after layout can place the same uploaded mark at two
+      // positions in one scene. The scene schema allows only one logo per
+      // normalised entity string, so the two elements are given distinct
+      // entity text (as two real slots for the one company would read on a
+      // planned brief) while resolving to the SAME library asset — the case
+      // that would collide if the output were ever keyed by asset id instead
+      // of by element id.
+      const scene = {
+        elements: [
+          {
+            kind: 'logo',
+            id: 'l1',
+            cell: { col: 0, row: 0, colSpan: 6, rowSpan: 3 },
+            entity: 'Stability AI',
+            assetId: LOGO_ID,
+            enter: { kind: 'fade', atMs: 0 },
+          },
+          {
+            kind: 'logo',
+            id: 'l2',
+            cell: { col: 6, row: 0, colSpan: 6, rowSpan: 3 },
+            entity: 'Stability AI again',
+            assetId: LOGO_ID,
+            enter: { kind: 'fade', atMs: 0 },
+          },
+        ],
+      }
+
+      const plan = slotPlan({
+        slots: [graphicRow({ scene })],
+        assetsById: new Map(),
+        logos: new Map([
+          [LOGO_ID, { r2Key: 'boom-busters/logos/abc.png', width: 1200, height: 400 }],
+        ]),
+      })
+      const logos = plan.slots[0]?.graphic?.logos
+      expect(Object.keys(logos ?? {})).toEqual(['l1', 'l2'])
+      expect(logos?.['l1']?.r2Key).toBe('boom-busters/logos/abc.png')
+      expect(logos?.['l2']?.r2Key).toBe('boom-busters/logos/abc.png')
+    })
   })
 })
 

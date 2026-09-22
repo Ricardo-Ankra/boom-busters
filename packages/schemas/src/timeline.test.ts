@@ -236,6 +236,49 @@ describe('TimelineSchema', () => {
     })
     expect(parsed.logos['l1']?.width).toBe(1200)
   })
+
+  it('does not require a graphic to cite a claim: a logo beside a heading cites nothing, correctly', () => {
+    // Only a figure or a bars item can cite a claim, enforced element by
+    // element in GraphicElementSchema; a scene of neither is a legitimate
+    // graphic and must compile end to end rather than crash the whole
+    // timeline on an empty claimIds array (decision 268).
+    const timeline = JSON.parse(JSON.stringify(fixtureTimeline())) as Timeline
+    timeline.slots.push({
+      type: 'graphic',
+      startMs: 14_000,
+      durationMs: 4000,
+      transition: 'cut',
+      motion: { kind: 'static' },
+      payload: {
+        kind: 'graphic',
+        scene: {
+          elements: [
+            {
+              kind: 'logo',
+              id: 'l1',
+              cell: { col: 0, row: 0, colSpan: 4, rowSpan: 4 },
+              entity: 'Stability AI',
+              assetId: '01HQ00000000000000000000M1',
+              enter: { kind: 'fade', atMs: 0 },
+            },
+            {
+              kind: 'text',
+              id: 't1',
+              cell: { col: 4, row: 0, colSpan: 8, rowSpan: 4 },
+              content: 'Funding round',
+              role: 'heading',
+              color: 'textPrimary',
+              align: 'start',
+              enter: { kind: 'fade', atMs: 0 },
+            },
+          ],
+        },
+        logos: { l1: { r2Key: 'boom-busters/logos/abc.png', width: 1200, height: 400 } },
+        claimIds: [],
+      },
+    })
+    expect(TimelineSchema.safeParse(timeline).success).toBe(true)
+  })
 })
 
 describe('timelineDurationMs', () => {

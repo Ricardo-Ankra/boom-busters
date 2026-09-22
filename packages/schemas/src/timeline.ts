@@ -230,7 +230,7 @@ export const GraphicPayloadSchema = z.object({
       height: z.number().int().positive(),
     }),
   ),
-  claimIds: z.array(UlidSchema).min(1),
+  claimIds: z.array(UlidSchema),
 })
 export type GraphicPayload = z.infer<typeof GraphicPayloadSchema>
 
