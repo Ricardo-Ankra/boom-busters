@@ -662,6 +662,54 @@ describe('a graphic slot (decision 268, Plan B)', () => {
     expect(screen.getByRole('button', { name: 'Add logo for Stability AI' })).toBeInTheDocument()
   })
 
+  it('offers Add logo again for a mark that was matched then deleted from the library', () => {
+    // The stored assetId is real, but the library no longer has it (so it is
+    // not a key in logoUrls either): the slot must be repairable exactly
+    // like one that never matched, not silently treated as fine because a
+    // now-dangling id is on record.
+    const danglingSlot: SlotView = {
+      ...graphicSlot,
+      brief: {
+        type: 'graphic',
+        coversText: graphicSlot.brief!.coversText,
+        description: 'A counting figure beside the mark that backs it.',
+        motion: { kind: 'static' },
+        transition: 'cut',
+        scene: {
+          elements: [
+            {
+              kind: 'figure',
+              id: 'f1',
+              cell: { col: 0, row: 0, colSpan: 7, rowSpan: 4 },
+              value: '$4bn',
+              label: 'valuation',
+              claimRef: CLAIM,
+              color: 'accent',
+              enter: { kind: 'count', atMs: 300 },
+            },
+            {
+              kind: 'logo',
+              id: 'l1',
+              cell: { col: 8, row: 0, colSpan: 4, rowSpan: 4 },
+              entity: 'Stability AI',
+              enter: { kind: 'rise', atMs: 200 },
+              assetId: '01HQ00000000000000000000M9',
+            },
+          ],
+        },
+      },
+    }
+    render(
+      <VisualBoard
+        projectId={PROJECT}
+        model={model([danglingSlot])}
+        colors={COLORS}
+        brand={BRAND}
+      />,
+    )
+    expect(screen.getByRole('button', { name: 'Add logo for Stability AI' })).toBeInTheDocument()
+  })
+
   it('uploads a mark for a missing logo, then re-resolves the graphic against the library', async () => {
     render(
       <VisualBoard

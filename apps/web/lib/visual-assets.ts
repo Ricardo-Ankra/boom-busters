@@ -6,6 +6,7 @@ import {
   getSettings,
   listCastMembers,
   listProjectSets,
+  logoById,
   upsertAssetByHash,
   visualCredentials,
 } from '@boom-busters/db'
@@ -808,11 +809,20 @@ export async function resolveSlotBrief(input: {
 
     case 'graphic': {
       // Nothing is fetched and nothing is spent: the scene is the payload. A
-      // logo the library does not hold yet is the one thing that can be
-      // missing, and the card asks for the upload rather than a redraft.
-      const owed = brief.scene.elements.some(
-        (element) => element.kind === 'logo' && element.assetId === undefined,
-      )
+      // logo the library does not hold, whether never matched or matched
+      // then deleted since, is the one thing that can be missing, and the
+      // card asks for the upload rather than a redraft. A stored `assetId`
+      // is not proof by itself: the mark it names can have been removed
+      // from the library after this brief was written, so a hit still
+      // needs the row to actually be there.
+      let owed = false
+      for (const element of brief.scene.elements) {
+        if (element.kind !== 'logo') continue
+        if (element.assetId === undefined || (await logoById(db, element.assetId)) === null) {
+          owed = true
+          break
+        }
+      }
       return { candidates: [], status: owed ? 'placeholder' : 'resolved' }
     }
 

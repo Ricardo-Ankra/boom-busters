@@ -5,6 +5,7 @@ import {
   deleteCastMember,
   deleteProjectSet,
   insertCastMember,
+  insertLogo,
   insertProjectSet,
   listCastMembers,
   listProjectSets,
@@ -455,6 +456,13 @@ describeDb('generateStillCandidates with the cast', () => {
   })
 
   it('a graphic resolves at no cost when every logo has a mark, and waits as a placeholder otherwise', async () => {
+    const mark = await insertLogo(db, {
+      r2Key: `boom-busters/logos/${FIXTURE_PROJECT_ID}.png`,
+      contentHash: `logo-${FIXTURE_PROJECT_ID}`,
+      title: 'Stability AI',
+      width: 400,
+      height: 200,
+    })
     const brief = (assetId?: string): GraphicBrief => ({
       type: 'graphic',
       coversText: 'x',
@@ -478,7 +486,7 @@ describeDb('generateStillCandidates with the cast', () => {
     expect(
       await resolveSlotBrief({
         projectId: FIXTURE_PROJECT_ID,
-        brief: brief('01HQ00000000000000000000M1'),
+        brief: brief(mark!.id),
         route: null,
       }),
     ).toEqual({ candidates: [], status: 'resolved' })
@@ -486,6 +494,38 @@ describeDb('generateStillCandidates with the cast', () => {
       await resolveSlotBrief({ projectId: FIXTURE_PROJECT_ID, brief: brief(), route: null }),
     ).toEqual({ candidates: [], status: 'placeholder' })
     expect(generate).not.toHaveBeenCalled()
+  })
+
+  it('a graphic whose matched mark was since deleted returns to placeholder, not resolved', async () => {
+    // A stored assetId is not proof the mark is still in the library: it can
+    // have been removed after this brief was written. Resolution must catch
+    // this the same way it catches a mark that was never matched, rather
+    // than trusting a stale id and reporting the slot ready when the render
+    // will have nothing to draw for it.
+    const brief: GraphicBrief = {
+      type: 'graphic',
+      coversText: 'x',
+      description: 'y',
+      motion: { kind: 'static' },
+      transition: 'cut',
+      shotSize: 'graphic',
+      scene: {
+        elements: [
+          {
+            kind: 'logo',
+            id: 'l1',
+            cell: { col: 0, row: 0, colSpan: 4, rowSpan: 2 },
+            entity: 'Stability AI',
+            enter: { kind: 'fade', atMs: 0 },
+            assetId: '01HQ00000000000000000000M9',
+          },
+        ],
+      },
+    }
+    expect(await resolveSlotBrief({ projectId: FIXTURE_PROJECT_ID, brief, route: null })).toEqual({
+      candidates: [],
+      status: 'placeholder',
+    })
   })
 
   describe('a still that names a set', () => {

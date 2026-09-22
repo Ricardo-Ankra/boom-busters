@@ -381,9 +381,14 @@ function GraphicSlot({
   brand: BrandKitStored
 }) {
   const claimIds = graphicClaimIds(brief.scene)
+  // An `assetId` alone is not proof the mark is still there: the library row
+  // it names can have been deleted since this brief was resolved. The board
+  // offers the same repair either way, keyed off whether the preview can
+  // actually draw it, not off whether the brief once thought it could.
   const missingLogos = brief.scene.elements.filter(
     (element): element is Extract<GraphicElement, { kind: 'logo' }> =>
-      element.kind === 'logo' && element.assetId === undefined,
+      element.kind === 'logo' &&
+      (element.assetId === undefined || slot.logoUrls[element.assetId] === undefined),
   )
 
   return (
