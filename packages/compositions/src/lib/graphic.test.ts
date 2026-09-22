@@ -7,11 +7,14 @@ import {
   countedValue,
   enterProgress,
   fitFontPx,
+  graphicDrift,
   graphicLayout,
   reflowPortrait,
   roleBasePx,
   ruleThicknessPx,
   safeArea,
+  separateOverlaps,
+  staggeredEnterMs,
   tokenColor,
 } from './graphic'
 import type { Box } from './graphic'
@@ -408,5 +411,137 @@ describe('enterProgress and countedValue', () => {
     // doc comment), previously untested here.
     expect(countedValue('$4.5bn', 0)).toBe('$0.0bn')
     expect(countedValue('$4.5bn', 1)).toBe('$4.5bn')
+  })
+})
+
+describe('separateOverlaps: landscape collisions', () => {
+  const text = (id: string, cell: GraphicCell): GraphicScene['elements'][number] => ({
+    kind: 'text',
+    id,
+    cell,
+    content: id,
+    role: 'body',
+    color: 'textPrimary',
+    align: 'start',
+    enter: { kind: 'fade', atMs: 0 },
+  })
+
+  it('leaves a scene whose elements already sit clear of one another untouched', () => {
+    const clear: GraphicScene = {
+      elements: [
+        text('a', { col: 0, row: 0, colSpan: 6, rowSpan: 2 }),
+        text('b', { col: 0, row: 3, colSpan: 6, rowSpan: 2 }),
+      ],
+    }
+    expect(separateOverlaps(clear)).toEqual(clear)
+  })
+
+  it('slides a colliding element down to the first clear row, keeping its column', () => {
+    const clash: GraphicScene = {
+      elements: [
+        text('a', { col: 2, row: 4, colSpan: 6, rowSpan: 3 }),
+        text('b', { col: 2, row: 5, colSpan: 6, rowSpan: 2 }),
+      ],
+    }
+    const [first, second] = separateOverlaps(clash).elements
+    expect(first!.cell).toEqual({ col: 2, row: 4, colSpan: 6, rowSpan: 3 })
+    // Row 0 is the first place it fits without touching rows 4-6.
+    expect(second!.cell).toEqual({ col: 2, row: 0, colSpan: 6, rowSpan: 2 })
+  })
+
+  it('leaves elements in different columns alone, however their rows overlap', () => {
+    const side: GraphicScene = {
+      elements: [
+        text('a', { col: 0, row: 0, colSpan: 5, rowSpan: 6 }),
+        text('b', { col: 6, row: 0, colSpan: 5, rowSpan: 6 }),
+      ],
+    }
+    expect(separateOverlaps(side)).toEqual(side)
+  })
+
+  // A panel behind a figure is the commonest composed card there is; moving
+  // anything off it would break the design the planner asked for.
+  it('never moves a shape, and never lets one push another element away', () => {
+    const panelled: GraphicScene = {
+      elements: [
+        {
+          kind: 'shape',
+          id: 'panel',
+          cell: { col: 0, row: 0, colSpan: 12, rowSpan: 6 },
+          form: 'rect',
+          color: 'surface',
+          opacity: 0.4,
+          enter: { kind: 'fade', atMs: 0 },
+        },
+        text('a', { col: 1, row: 1, colSpan: 6, rowSpan: 2 }),
+      ],
+    }
+    expect(separateOverlaps(panelled)).toEqual(panelled)
+  })
+
+  it('keeps the planned cell when nothing on the grid is clear, rather than losing it', () => {
+    const full: GraphicScene = {
+      elements: [
+        text('a', { col: 0, row: 0, colSpan: 12, rowSpan: 12 }),
+        text('b', { col: 0, row: 3, colSpan: 12, rowSpan: 4 }),
+      ],
+    }
+    const [, second] = separateOverlaps(full).elements
+    expect(second!.cell).toEqual({ col: 0, row: 3, colSpan: 12, rowSpan: 4 })
+  })
+
+  it('is what landscape layout runs, so overlapping cells get different boxes', () => {
+    const clash: GraphicScene = {
+      elements: [
+        text('a', { col: 0, row: 4, colSpan: 6, rowSpan: 3 }),
+        text('b', { col: 0, row: 5, colSpan: 6, rowSpan: 2 }),
+      ],
+    }
+    const [a, b] = graphicLayout(clash, WIDE, brand)
+    expect(a!.y).not.toBe(b!.y)
+  })
+})
+
+describe('staggeredEnterMs', () => {
+  const at = (id: string, atMs: number): GraphicScene['elements'][number] => ({
+    kind: 'text',
+    id,
+    cell: { col: 0, row: 0, colSpan: 4, rowSpan: 1 },
+    content: id,
+    role: 'body',
+    color: 'textPrimary',
+    align: 'start',
+    enter: { kind: 'fade', atMs },
+  })
+
+  it('spreads entrances in scene order when nothing in the scene asks for a time', () => {
+    const times = staggeredEnterMs({ elements: [at('a', 0), at('b', 0), at('c', 0)] })
+    expect([times.get('a'), times.get('b'), times.get('c')]).toEqual([0, 180, 360])
+  })
+
+  // The planner timed the card; every offset is then a choice, zeroes included.
+  it('leaves every offset exactly as written once any element carries a time', () => {
+    const times = staggeredEnterMs({ elements: [at('a', 0), at('b', 900)] })
+    expect([times.get('a'), times.get('b')]).toEqual([0, 900])
+  })
+})
+
+describe('graphicDrift', () => {
+  it('starts at rest and lifts by the full amount at the end of the slot', () => {
+    expect(graphicDrift(0, 180)).toBe(1)
+    expect(graphicDrift(179, 180)).toBeCloseTo(1.012)
+  })
+
+  it('never goes backwards across the slot', () => {
+    let last = graphicDrift(0, 180)
+    for (let frame = 1; frame < 180; frame += 1) {
+      const next = graphicDrift(frame, 180)
+      expect(next).toBeGreaterThanOrEqual(last)
+      last = next
+    }
+  })
+
+  it('is a no-op on a degenerate one-frame slot', () => {
+    expect(graphicDrift(0, 1)).toBe(1)
   })
 })

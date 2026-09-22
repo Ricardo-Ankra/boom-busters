@@ -267,6 +267,67 @@ export function reflowPortrait(scene: GraphicScene): GraphicScene {
   return { elements }
 }
 
+/** Whether two grid rectangles share any cell. */
+function cellsIntersect(a: GraphicCell, b: GraphicCell): boolean {
+  return (
+    a.col < b.col + b.colSpan &&
+    b.col < a.col + a.colSpan &&
+    a.row < b.row + b.rowSpan &&
+    b.row < a.row + a.rowSpan
+  )
+}
+
+/**
+ * Landscape: elements the planner placed on top of one another, pulled apart.
+ *
+ * Nothing used to do this. `reflowPortrait` runs only when the frame is taller than it
+ * is wide, so on 16:9 — every film this app renders — the planner's cells were used
+ * exactly as written, and two text elements given the same rows drew over each other in
+ * the finished video. The scene rules cannot catch it either: they check ids, counts and
+ * one logo per entity, and say nothing about geometry. So the first thing that ever
+ * noticed a collision was a human watching the render.
+ *
+ * Shapes are the deliberate exception, in both directions: a `rect` or `disc` behind a
+ * figure and a `rule` under a heading are backgrounds, drawn to be overlapped. They
+ * neither block another element nor move themselves, so a card built on a panel keeps
+ * its panel.
+ *
+ * Everything else is placed in scene order, first claim winning, and a colliding element
+ * slides DOWN to the first row where its whole cell is clear and still on the grid.
+ * Down rather than anywhere: it keeps the planner's column and width, which carry the
+ * composition, and it keeps reading order, which carries the meaning. An element that
+ * fits nowhere keeps the cell it was given — an overlap a human can see and fix beats an
+ * element silently dropped, which is the failure this whole function exists to avoid.
+ *
+ * A scene whose elements already sit clear of one another is returned unchanged, so this
+ * is a no-op for every well-formed card and cannot move a golden on its own.
+ */
+export function separateOverlaps(scene: GraphicScene): GraphicScene {
+  const taken: GraphicCell[] = []
+  const elements = scene.elements.map((element) => {
+    if (element.kind === 'shape') return element
+
+    const planned = element.cell
+    if (!taken.some((cell) => cellsIntersect(planned, cell))) {
+      taken.push(planned)
+      return element
+    }
+
+    const maxRow = GRAPHIC_GRID - planned.rowSpan
+    for (let row = 0; row <= maxRow; row += 1) {
+      const candidate = { ...planned, row }
+      if (!taken.some((cell) => cellsIntersect(candidate, cell))) {
+        taken.push(candidate)
+        return { ...element, cell: candidate }
+      }
+    }
+    // Nowhere clear at this size: keep what was planned rather than lose the element.
+    taken.push(planned)
+    return element
+  })
+  return { elements }
+}
+
 /** Every element's box, in scene order for landscape and reading order for portrait. */
 export function graphicLayout(
   scene: GraphicScene,
@@ -274,7 +335,7 @@ export function graphicLayout(
   _brand: BrandKitTokens,
 ): ElementBox[] {
   const portrait = frame.height > frame.width
-  const laid = portrait ? reflowPortrait(scene) : scene
+  const laid = portrait ? reflowPortrait(scene) : separateOverlaps(scene)
   const safe = safeArea(frame)
   const scale = frameScale(frame.width, frame.height)
   return laid.elements.map((element) => {
@@ -308,6 +369,53 @@ export function graphicLayout(
     }
     return { id: element.id, ...box }
   })
+}
+
+/** The gap between auto-staggered entrances, and the slow lift across the whole shot. */
+const STAGGER_MS = 180
+const DRIFT = 0.012
+
+/**
+ * When each element enters, by id.
+ *
+ * `enter` is optional in the planned brief and defaults to `{ kind: 'fade', atMs: 0 }`,
+ * so the ordinary case — a planner that wrote no entrances at all — gave every element
+ * the same offset of zero. Six things fading up in perfect unison is one cross-fade, not
+ * a motion graphic, and it is most of why composed graphics read as static.
+ *
+ * So: when NOTHING in the scene asks for a time, the elements enter in scene order, one
+ * short gap apart. The moment any element carries a non-zero `atMs` the planner has
+ * timed the card on purpose and every offset is left exactly as written — including the
+ * zeroes, which are then a choice rather than a default.
+ *
+ * The ambiguity is real and unavoidable: a scene deliberately timed to open all at once
+ * is indistinguishable from one that never mentioned timing, because the schema fills
+ * both in the same way. This resolves it toward movement, which is what a card on screen
+ * for six seconds needs, and any planner that wants simultaneity can still have it by
+ * timing one element off zero.
+ */
+export function staggeredEnterMs(scene: GraphicScene): Map<string, number> {
+  const timed = scene.elements.some((element) => element.enter.atMs > 0)
+  return new Map(
+    scene.elements.map((element, index) => [
+      element.id,
+      timed ? element.enter.atMs : index * STAGGER_MS,
+    ]),
+  )
+}
+
+/**
+ * The slow scale a graphic drifts through across the whole slot, so the card is never a
+ * dead still — the same device `HeadlineCard` already carries, and for the same reason.
+ *
+ * It needs the slot's length, which is exactly what `GraphicCard` was never given:
+ * `ChartReveal` and `AnimatedMap` both take `durationInFrames` and spread their motion
+ * over it, while the graphic card knew only `useCurrentFrame()` and so could do nothing
+ * but a 600 ms entrance followed by five frozen seconds.
+ */
+export function graphicDrift(frameIndex: number, durationInFrames: number): number {
+  if (durationInFrames <= 1) return 1
+  return 1 + DRIFT * easeInOut(Math.min(1, Math.max(0, frameIndex / (durationInFrames - 1))))
 }
 
 /** Eased 0..1 from `atMs` over the entrance's length, at this frame. */

@@ -162,7 +162,7 @@ function SlotView({ slot, brand }: { slot: TimelineSlot; brand: BrandKitTokens }
       ) : slot.payload.kind === 'headline' ? (
         <HeadlineCard payload={slot.payload} brand={brand} />
       ) : slot.payload.kind === 'graphic' ? (
-        <GraphicCard payload={slot.payload} brand={brand} />
+        <GraphicCard payload={slot.payload} brand={brand} durationInFrames={durationInFrames} />
       ) : (
         <AnimatedMap payload={slot.payload} brand={brand} durationInFrames={durationInFrames} />
       )}
