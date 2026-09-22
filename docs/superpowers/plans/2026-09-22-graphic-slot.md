@@ -447,7 +447,7 @@ const CLAIMS = [
   { id: '01HQ00000000000000000000A1', text: 'The company raised $4 billion in 2022.' },
   { id: '01HQ00000000000000000000A2', text: 'Some 94 percent of deposits left.' },
 ]
-const LOGOS = [{ id: '01HQ00000000000000000000L1', title: 'Stability AI' }]
+const LOGOS = [{ id: '01HQ00000000000000000000M1', title: 'Stability AI' }]
 
 const plannedGraphic = (elements: unknown[]) => ({
   type: 'graphic' as const,
@@ -1266,7 +1266,7 @@ const GRAPHIC_SCENE: GraphicPayload = {
     elements: [
       { kind: 'text', id: 't1', cell: { col: 0, row: 0, colSpan: 7, rowSpan: 2 }, content: 'Raised in a single round', role: 'title', color: 'textSecondary', align: 'start', enter: { kind: 'fade', atMs: 0 } },
       { kind: 'figure', id: 'f1', cell: { col: 0, row: 2, colSpan: 7, rowSpan: 4 }, value: '$4bn', label: 'valuation, 2022', claimRef: '01HQ00000000000000000000AA', color: 'accent', enter: { kind: 'count', atMs: 300 }, emphasis: 'underline' },
-      { kind: 'logo', id: 'l1', cell: { col: 8, row: 1, colSpan: 4, rowSpan: 4 }, entity: 'Stability AI', assetId: '01HQ00000000000000000000L1', enter: { kind: 'rise', atMs: 500 } },
+      { kind: 'logo', id: 'l1', cell: { col: 8, row: 1, colSpan: 4, rowSpan: 4 }, entity: 'Stability AI', assetId: '01HQ00000000000000000000M1', enter: { kind: 'rise', atMs: 500 } },
       { kind: 'shape', id: 's1', cell: { col: 0, row: 7, colSpan: 12, rowSpan: 1 }, form: 'rule', color: 'textSecondary', opacity: 0.4, enter: { kind: 'wipe', atMs: 700 } },
       { kind: 'bars', id: 'b1', cell: { col: 0, row: 8, colSpan: 12, rowSpan: 2 }, color: 'collapse', highlightIndex: 1, enter: { kind: 'fade', atMs: 900 }, items: [
         { label: 'raised', value: 4, display: '$4bn', claimRef: '01HQ00000000000000000000AA' },
@@ -1341,7 +1341,7 @@ it('resolves a graphic\'s logo keys, and drops the slot when one will not resolv
     type: 'graphic', startMs: 0, durationMs: 4000, transition: 'cut', motion: { kind: 'static' },
     payload: {
       kind: 'graphic',
-      scene: { elements: [{ kind: 'logo', id: 'l1', cell: { col: 0, row: 0, colSpan: 4, rowSpan: 2 }, entity: 'Stability AI', assetId: '01HQ00000000000000000000L1', enter: { kind: 'fade', atMs: 0 } }] },
+      scene: { elements: [{ kind: 'logo', id: 'l1', cell: { col: 0, row: 0, colSpan: 4, rowSpan: 2 }, entity: 'Stability AI', assetId: '01HQ00000000000000000000M1', enter: { kind: 'fade', atMs: 0 } }] },
       logos: { l1: { r2Key: 'boom-busters/logos/abc.png', width: 1200, height: 400 } },
       claimIds: ['01HQ00000000000000000000A1'],
     },
@@ -1440,7 +1440,7 @@ it('a graphic resolves at no cost when every logo has a mark, and waits as a pla
     type: 'graphic', coversText: 'x', description: 'y', motion: { kind: 'static' }, transition: 'cut', shotSize: 'graphic',
     scene: { elements: [{ kind: 'logo', id: 'l1', cell: { col: 0, row: 0, colSpan: 4, rowSpan: 2 }, entity: 'Stability AI', enter: { kind: 'fade', atMs: 0 }, ...(assetId ? { assetId } : {}) }] },
   })
-  expect(await resolveSlotBrief({ projectId: FIXTURE_PROJECT_ID, brief: brief('01HQ00000000000000000000L1'), route: null })).toEqual({ candidates: [], status: 'resolved' })
+  expect(await resolveSlotBrief({ projectId: FIXTURE_PROJECT_ID, brief: brief('01HQ00000000000000000000M1'), route: null })).toEqual({ candidates: [], status: 'resolved' })
   expect(await resolveSlotBrief({ projectId: FIXTURE_PROJECT_ID, brief: brief(), route: null })).toEqual({ candidates: [], status: 'placeholder' })
   expect(generate).not.toHaveBeenCalled()
 })
