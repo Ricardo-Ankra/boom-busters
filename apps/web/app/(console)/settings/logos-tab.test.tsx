@@ -83,6 +83,12 @@ describe('LogosTab', () => {
     expect(within(list).getByText('No preview in mock storage')).toBeInTheDocument()
   })
 
+  it('shows the tile on the brand ground when one is given, the console ground otherwise', () => {
+    render(<LogosTab logos={LOGOS} channelMarkKey={null} brandBackground="#101820" />)
+    const tile = screen.getByRole('img', { name: 'Stability AI' }).parentElement
+    expect(tile).toHaveStyle({ backgroundColor: '#101820' })
+  })
+
   it('marks the channel mark and offers the others as candidates', async () => {
     render(<LogosTab logos={LOGOS} channelMarkKey="boom-busters/logos/aaa.png" />)
     expect(screen.getByText('Channel mark')).toBeInTheDocument()

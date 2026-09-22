@@ -163,7 +163,11 @@ export function SettingsForm({
       </TabsContent>
 
       <TabsContent value="logos">
-        <LogosTab logos={logos} channelMarkKey={channelMarkKey} />
+        <LogosTab
+          logos={logos}
+          channelMarkKey={channelMarkKey}
+          brandBackground={settings.brandKit.colors.background}
+        />
       </TabsContent>
 
       <TabsContent value="publishing">
