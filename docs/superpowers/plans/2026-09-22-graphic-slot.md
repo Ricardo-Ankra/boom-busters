@@ -1435,7 +1435,7 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 
 **Interfaces:**
 - Consumes: `logoById` from `@boom-busters/db`; `GraphicBrief`.
-- Produces: `resolveSlotBrief` returns `{ candidates: [], status: 'resolved' }` when every `logo` element has an `assetId`, else `placeholder`. `AssemblySlotRow.type` admits `'graphic'`; `planSlots` input gains `logos?: ReadonlyMap<string, { r2Key: string; width: number; height: number }>` keyed by asset id; a graphic whose logo element lacks an asset, or whose asset is not in the map, is skipped with `` `a logo for "${entity}" has not been uploaded` ``; otherwise the compile slot carries `graphic: { scene, logos (by element id), claimIds }`. `assembly-runner` loads every cited logo asset with `logoById` into that map before `planSlots`.
+- Produces: `resolveSlotBrief` returns `{ candidates: [], status: 'resolved' }` when every `logo` element has an `assetId`, else `placeholder`. `AssemblySlotRow.type` admits `'graphic'`; `slotPlan` input gains `logos?: ReadonlyMap<string, { r2Key: string; width: number; height: number }>` keyed by asset id; a graphic whose logo element lacks an asset, or whose asset is not in the map, is skipped with `` `a logo for "${entity}" has not been uploaded` ``; otherwise the compile slot carries `graphic: { scene, logos (by element id), claimIds }`. `assembly-runner` loads every cited logo asset with `logoById` into that map before `slotPlan`.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -1462,10 +1462,10 @@ it('compiles a graphic with its logo bytes, and skips one whose mark is missing,
     { kind: 'logo', id: 'l1', cell: { col: 6, row: 0, colSpan: 6, rowSpan: 3 }, entity: 'Stability AI', assetId: LOGO_ID, enter: { kind: 'fade', atMs: 0 } },
   ] }
   const row = graphicRow({ scene })
-  const plan = planSlots({ ...baseInput(), slots: [row], logos: new Map([[LOGO_ID, { r2Key: 'boom-busters/logos/abc.png', width: 1200, height: 400 }]]) })
+  const plan = slotPlan({ ...baseInput(), slots: [row], logos: new Map([[LOGO_ID, { r2Key: 'boom-busters/logos/abc.png', width: 1200, height: 400 }]]) })
   expect(plan.slots[0]).toMatchObject({ type: 'graphic', graphic: { logos: { l1: { r2Key: 'boom-busters/logos/abc.png' } }, claimIds: [CLAIM_A] } })
 
-  const missing = planSlots({ ...baseInput(), slots: [graphicRow({ scene: { elements: [{ ...scene.elements[1], assetId: undefined }] } })], logos: new Map() })
+  const missing = slotPlan({ ...baseInput(), slots: [graphicRow({ scene: { elements: [{ ...scene.elements[1], assetId: undefined }] } })], logos: new Map() })
   expect(missing.slots).toEqual([])
   expect(missing.skipped[0]?.reason).toBe('a logo for "Stability AI" has not been uploaded')
 })
@@ -1489,7 +1489,7 @@ From `apps/web`: `npx vitest run lib/visual-assets.test.ts` then `npx vitest run
     }
 ```
 
-`assembly.ts`: `AssemblySlotRow.type` and the `planSlots` input gain `graphic` and `logos?: ReadonlyMap<string, { r2Key: string; width: number; height: number }>`; after the headline branch:
+`assembly.ts`: `AssemblySlotRow.type` and the `slotPlan` input gain `graphic` and `logos?: ReadonlyMap<string, { r2Key: string; width: number; height: number }>`; after the headline branch:
 
 ```ts
     if (brief.type === 'graphic') {
@@ -1532,7 +1532,7 @@ From `apps/web`: `npx vitest run lib/visual-assets.test.ts` then `npx vitest run
       }
 ```
 
-and pass `logos` into `planSlots`. Fit the variable names to the file's own (it loops `rows` for headlines already).
+and pass `logos` into `slotPlan`. Fit the variable names to the file's own (it loops `rows` for headlines already).
 
 - [ ] **Step 4: Run to verify they pass**
 
