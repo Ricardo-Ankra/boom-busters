@@ -519,7 +519,7 @@ const SLOT_TYPE_LABELS: Record<string, string> = {
   chart: 'chart',
   map: 'map',
   headline: 'news headline',
-  graphic: 'Graphic',
+  graphic: 'graphic',
   hero: 'AI video',
 }
 

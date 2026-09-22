@@ -19,7 +19,6 @@ import {
   articleSourceLabel,
   CANDIDATES_SHOWN,
   claimCarriesArticle,
-  DEFAULT_SETTINGS,
   DirectorsBookSchema,
   normaliseArticleUrl,
   latestTakes,
@@ -35,7 +34,6 @@ import {
 } from '@boom-busters/schemas'
 import type {
   ArticleMetadata,
-  BrandKitStored,
   DirectorsBook,
   ShotBrief,
   ShotSlotStatus,
@@ -188,12 +186,6 @@ export interface VisualsReviewModel {
    * than offering a button that can only fail.
    */
   articleClaims: ArticleClaimOption[]
-  /**
-   * The resolved Brand Kit (decision 268, Plan B): a graphic slot's preview
-   * draws its scene from this, the same tokens the render compiles with, so
-   * the board never guesses a palette the film would not use.
-   */
-  brandKit: BrandKitStored
 }
 
 /**
@@ -216,7 +208,6 @@ export function emptyVisualsModel(): VisualsReviewModel {
     direction: null,
     warnings: [],
     articleClaims: [],
-    brandKit: DEFAULT_SETTINGS.brandKit,
   }
 }
 
@@ -559,6 +550,5 @@ export async function visualsReviewModel(
       ...sharedShotWarnings(reusable),
     ],
     articleClaims,
-    brandKit: settings.brandKit,
   }
 }

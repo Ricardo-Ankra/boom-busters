@@ -543,9 +543,6 @@ export function HeadlinePreview({
 // Graphic
 // ---------------------------------------------------------------------------
 
-/** The same error card the chart rule uses, for a graphic brief that failed to parse. */
-export const GraphicErrorCard = ChartErrorCard
-
 const GRAPHIC_WIDTH = 480
 const GRAPHIC_HEIGHT = 270
 const GRAPHIC_FRAME = { width: GRAPHIC_WIDTH, height: GRAPHIC_HEIGHT }

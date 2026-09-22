@@ -373,7 +373,6 @@ function model(slots: SlotView[], overrides: Partial<VisualsReviewModel> = {}): 
     direction: null,
     warnings: [],
     articleClaims: ARTICLE_CLAIMS,
-    brandKit: BRAND,
     ...overrides,
   }
 }
@@ -648,7 +647,7 @@ describe('VisualBoard', () => {
 })
 
 describe('a graphic slot (decision 268, Plan B)', () => {
-  it('shows the Graphic badge, its claim chips, and an Add logo button for a missing mark', () => {
+  it('shows the graphic badge, its claim chips, and an Add logo button for a missing mark', () => {
     render(
       <VisualBoard
         projectId={PROJECT}
@@ -658,7 +657,7 @@ describe('a graphic slot (decision 268, Plan B)', () => {
       />,
     )
     // The type badge speaks decision 214's names, same as every other type.
-    expect(screen.getAllByText('Graphic').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('graphic').length).toBeGreaterThan(0)
     expect(screen.getByTitle(CLAIM)).toHaveTextContent('claim 1')
     expect(screen.getByRole('button', { name: 'Add logo for Stability AI' })).toBeInTheDocument()
   })
@@ -691,12 +690,12 @@ describe('a graphic slot (decision 268, Plan B)', () => {
     )
   })
 
-  it('offers Graphic in the format picker, and drafts it like chart and map', async () => {
+  it('offers graphic in the format picker, and drafts it like chart and map', async () => {
     render(
       <VisualBoard projectId={PROJECT} model={model([stockSlot])} colors={COLORS} brand={BRAND} />,
     )
 
-    await userEvent.click(screen.getByRole('button', { name: 'Graphic' }))
+    await userEvent.click(screen.getByRole('button', { name: 'graphic' }))
 
     expect(retypeSlotAction).toHaveBeenCalledWith(PROJECT, SLOT_A, 'graphic')
     expect(toast).toHaveBeenCalledWith(
