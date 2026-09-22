@@ -2,9 +2,12 @@ import { AbsoluteFill, Img, useCurrentFrame, useVideoConfig } from 'remotion'
 import type { CSSProperties } from 'react'
 import type { BrandKitTokens, GraphicElement, GraphicPayload } from '@boom-busters/schemas'
 import {
+  barLengthPx,
+  barsGeometry,
   countedValue,
   enterProgress,
   graphicLayout,
+  ruleThicknessPx,
   tokenColor,
   type ElementBox,
 } from '../lib/graphic'
@@ -13,7 +16,8 @@ import { frameScale, typeStyle, withAlpha } from './brand'
 
 /**
  * A composed graphic (decision 268, Plan B). Every box and font size comes
- * from `graphicLayout`, the module the board's preview also draws from, so
+ * from `graphicLayout`, and the bars and rule shapes take their remaining
+ * geometry (row height, bar length, line thickness) from the same module, so
  * what was approved is what renders. Each element enters at its own offset;
  * a figure may count up; an emphasis is a single pulse or the headline
  * card's highlighter sweep. Logos are drawn as they are: contained, never
@@ -172,7 +176,7 @@ export function GraphicCard({
                   key={element.id}
                   style={{
                     ...base,
-                    height: Math.max(2, 3 * scale),
+                    height: ruleThicknessPx({ width, height }),
                     top: box.y + box.h / 2,
                     backgroundColor: colour,
                   }}
@@ -193,8 +197,7 @@ export function GraphicCard({
           case 'bars': {
             const max = Math.max(...element.items.map((item) => Math.abs(item.value)), 1)
             const grow = enterProgress(frame, fps, element.enter.atMs, BAR_GROW_MS)
-            const rowH = box.h / element.items.length
-            const labelPx = Math.max(12, Math.min(28 * scale, rowH * 0.32))
+            const { rowH, labelPx } = barsGeometry(box, element.items.length, { width, height })
             return (
               <div key={element.id} style={base}>
                 {element.items.map((item, index) => {
@@ -203,7 +206,7 @@ export function GraphicCard({
                   const colour = lit
                     ? tokenColor(element.color, brand)
                     : withAlpha(colors.textSecondary, 0.5)
-                  const barW = (Math.abs(item.value) / max) * box.w * 0.62 * grow
+                  const barW = barLengthPx(box.w, Math.abs(item.value) / max, grow)
                   return (
                     <div
                       key={item.label}

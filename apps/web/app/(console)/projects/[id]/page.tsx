@@ -455,6 +455,7 @@ export default async function ProjectPage({
             chartSeries: settings.brandKit.colors.chartSeries,
             collapse: settings.brandKit.colors.semantic.collapse,
           }}
+          brand={settings.brandKit}
         />
       ) : showVoice ? (
         <VoiceReview projectId={project.id} model={voice} />

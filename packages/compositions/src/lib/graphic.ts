@@ -43,6 +43,12 @@ export const GRAPHIC_GUTTER_PX = 8
 export const AVERAGE_GLYPH_EM = 0.56
 const MIN_FONT_PX = 12
 const ENTER_MS = 600
+/** A bar's drawn length, as a fraction of its element's box width, at full grow. */
+export const BAR_LENGTH_FRACTION = 0.62
+const BAR_LABEL_MAX_PX = 28
+const BAR_LABEL_HEIGHT_FRACTION = 0.32
+const RULE_THICKNESS_PX = 3
+const RULE_MIN_THICKNESS_PX = 2
 
 /** The frame minus the caption band and the margin: where elements may sit. */
 export function safeArea(frame: GraphicFrame): Box {
@@ -102,6 +108,41 @@ export function fitFontPx(text: string, boxWidth: number, basePx: number): numbe
   const glyphs = Math.max(1, text.length)
   const fitted = Math.floor(boxWidth / (glyphs * AVERAGE_GLYPH_EM))
   return Math.max(MIN_FONT_PX, Math.min(basePx, fitted))
+}
+
+export interface BarsGeometry {
+  /** Height of one item's row inside the `bars` element's own box. */
+  rowH: number
+  /** The row's label and value font size, fitted the way text and figures are. */
+  labelPx: number
+}
+
+/**
+ * `bars`: one row per item, its label sized to the row height and capped by
+ * the frame scale like every other role size here. `GraphicCard` and the
+ * board's preview both call this for the row and label geometry, rather than
+ * deriving it separately (decision 268, Plan B). Bars are the element most
+ * likely to carry the numbers a card is built around, so a preview that fit
+ * them on its own could drift from the render.
+ */
+export function barsGeometry(box: Box, itemCount: number, frame: GraphicFrame): BarsGeometry {
+  const scale = frameScale(frame.width, frame.height)
+  const rowH = box.h / Math.max(1, itemCount)
+  const labelPx = Math.max(
+    MIN_FONT_PX,
+    Math.min(BAR_LABEL_MAX_PX * scale, rowH * BAR_LABEL_HEIGHT_FRACTION),
+  )
+  return { rowH, labelPx }
+}
+
+/** A bar's drawn length: its value's share of the row's max, times the box width, times the entrance grow. */
+export function barLengthPx(boxWidth: number, proportion: number, grow = 1): number {
+  return boxWidth * BAR_LENGTH_FRACTION * proportion * grow
+}
+
+/** The `rule` shape's thickness, scaled with the frame like everything else here. */
+export function ruleThicknessPx(frame: GraphicFrame): number {
+  return Math.max(RULE_MIN_THICKNESS_PX, RULE_THICKNESS_PX * frameScale(frame.width, frame.height))
 }
 
 function cellBox(cell: GraphicCell, safe: Box, scale: number): Box {
@@ -200,6 +241,13 @@ export function graphicLayout(
         id: element.id,
         ...box,
         fontPx: fitFontPx(element.value, box.w, roleBasePx('numbers') * scale),
+      }
+    }
+    if (element.kind === 'bars') {
+      return {
+        id: element.id,
+        ...box,
+        fontPx: barsGeometry(box, element.items.length, frame).labelPx,
       }
     }
     return { id: element.id, ...box }

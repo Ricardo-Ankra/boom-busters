@@ -8,6 +8,7 @@ import {
   listProjectSets,
   listShotSlots,
   listVoiceTakes,
+  logoById,
   scriptableClaims,
   slotNeedsResolution,
 } from '@boom-busters/db'
@@ -18,6 +19,7 @@ import {
   articleSourceLabel,
   CANDIDATES_SHOWN,
   claimCarriesArticle,
+  DEFAULT_SETTINGS,
   DirectorsBookSchema,
   normaliseArticleUrl,
   latestTakes,
@@ -33,6 +35,7 @@ import {
 } from '@boom-busters/schemas'
 import type {
   ArticleMetadata,
+  BrandKitStored,
   DirectorsBook,
   ShotBrief,
   ShotSlotStatus,
@@ -43,6 +46,7 @@ import type {
   VisualsCoverage,
 } from '@boom-busters/schemas'
 import { anchoredTimes, timedParagraphs } from '@/inngest/lib/shot-list'
+import { presignGet, storageConfigured } from './storage'
 import { routeForBrief, stillsEstimateUsd } from './visual-assets'
 import { reuseView, sharedShotWarnings, type ReusableRow, type ReuseSource } from './visuals-reuse'
 
@@ -109,6 +113,12 @@ export interface SlotView {
    * where the board renders no select for it.
    */
   derivedRoute: StillRoute
+  /**
+   * Presigned GET per graphic logo asset id, board-wide (decision 268, Plan
+   * B), the same shared shape as `photoUrls`: empty when storage is not
+   * configured, or when nothing on the board cites a mark yet.
+   */
+  logoUrls: Record<string, string>
 }
 
 export interface ChapterSlots {
@@ -178,6 +188,12 @@ export interface VisualsReviewModel {
    * than offering a button that can only fail.
    */
   articleClaims: ArticleClaimOption[]
+  /**
+   * The resolved Brand Kit (decision 268, Plan B): a graphic slot's preview
+   * draws its scene from this, the same tokens the render compiles with, so
+   * the board never guesses a palette the film would not use.
+   */
+  brandKit: BrandKitStored
 }
 
 /**
@@ -200,6 +216,7 @@ export function emptyVisualsModel(): VisualsReviewModel {
     direction: null,
     warnings: [],
     articleClaims: [],
+    brandKit: DEFAULT_SETTINGS.brandKit,
   }
 }
 
@@ -363,6 +380,31 @@ export async function visualsReviewModel(
     getSettings(db),
   ])
 
+  /**
+   * Every graphic logo's presigned URL, board-wide, the same shared-object
+   * shape `page.tsx` builds `photoUrls` in (decision 268, Plan B): read here
+   * rather than there, because only this function has already parsed every
+   * brief to find which asset ids a scene cites. Mock storage (no R2) leaves
+   * this empty, same as `photoUrls`, so a matched mark falls back to the
+   * preview's "upload" box rather than a broken `<image>`.
+   */
+  const graphicLogoUrls: Record<string, string> = {}
+  if (storageConfigured()) {
+    const assetIds = new Set(
+      briefs.flatMap((parsed) =>
+        parsed.success && parsed.data.type === 'graphic'
+          ? parsed.data.scene.elements.flatMap((element) =>
+              element.kind === 'logo' && element.assetId !== undefined ? [element.assetId] : [],
+            )
+          : [],
+      ),
+    )
+    for (const assetId of assetIds) {
+      const logo = await logoById(db, assetId)
+      if (logo) graphicLogoUrls[assetId] = await presignGet(logo.r2Key)
+    }
+  }
+
   const slots: SlotView[] = rows.map((row, at) => {
     const parsed = briefs[at]!
     const candidates = parseCandidates(row.candidates)
@@ -418,6 +460,7 @@ export async function visualsReviewModel(
       derivedRoute: parsed.success
         ? routeForBrief(parsed.data, cast, sets, settings.modelRouting)
         : settings.modelRouting.stills,
+      logoUrls: graphicLogoUrls,
     }
   })
 
@@ -516,5 +559,6 @@ export async function visualsReviewModel(
       ...sharedShotWarnings(reusable),
     ],
     articleClaims,
+    brandKit: settings.brandKit,
   }
 }

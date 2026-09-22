@@ -14,20 +14,34 @@ import {
 import { useRouter } from 'next/navigation'
 import * as React from 'react'
 import { imageGenModel, LIVE_IMAGE_GEN_ADAPTERS } from '@boom-busters/providers'
-import { REUSABLE_SLOT_TYPES, SHOT_SLOT_TYPES, STILL_PROVIDERS } from '@boom-busters/schemas'
-import type { ShotBrief, SlotCandidate, StillProvider } from '@boom-busters/schemas'
+import {
+  LOGO_ACCEPT,
+  REUSABLE_SLOT_TYPES,
+  SHOT_SLOT_TYPES,
+  STILL_PROVIDERS,
+} from '@boom-busters/schemas'
+import type {
+  BrandKitStored,
+  GraphicElement,
+  GraphicScene,
+  ShotBrief,
+  SlotCandidate,
+  StillProvider,
+} from '@boom-busters/schemas'
 import { Badge, type BadgeTone } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ConfirmButton } from '@/components/confirm-button'
 import { Label, Select } from '@/components/ui/input'
 import { useToast } from '@/components/ui/toast'
-import { toUploadableImage } from '@/lib/client-image'
+import { readImageSize, toUploadableImage, toUploadableLogo } from '@/lib/client-image'
 import type { ArticleClaimOption, SlotView, VisualsReviewModel } from '@/lib/visuals-review'
 import { CLOSE_REUSE_MS, describeGap, timecode } from '@/lib/visuals-reuse'
+import { createLogoUploadAction, finaliseLogoAction } from '@/app/(console)/settings/logo-actions'
 import {
   addSlotImageFromUrlAction,
   approvePlanAction,
+  attachGraphicLogosAction,
   chooseCandidateAction,
   createOwnUploadAction,
   dismissRetypeAction,
@@ -50,6 +64,7 @@ import { DirectionCard } from './direction-card'
 import {
   ChartErrorCard,
   ChartPreview,
+  GraphicPreview,
   HeadlinePreview,
   MapPreview,
   type BrandChartColors,
@@ -329,6 +344,164 @@ function HeadlineForm({
   )
 }
 
+/** Every claim id a graphic's figure and bars items cite, in scene order, each once. */
+function graphicClaimIds(scene: GraphicScene): string[] {
+  const seen = new Set<string>()
+  const ids: string[] = []
+  for (const element of scene.elements) {
+    const refs = element.kind === 'figure' ? [element.claimRef] : []
+    const barRefs = element.kind === 'bars' ? element.items.map((item) => item.claimRef) : []
+    for (const ref of [...refs, ...barRefs]) {
+      if (seen.has(ref)) continue
+      seen.add(ref)
+      ids.push(ref)
+    }
+  }
+  return ids
+}
+
+/**
+ * The graphic card (decision 268, Plan B): the same preview the board shows
+ * beside a headline card, the claim chips over what the scene cites, and one
+ * `Add logo for <entity>` button per mark the library does not yet hold.
+ * Resolution, flipping the slot to resolved once every mark is found, is
+ * `attachGraphicLogosAction`'s job (Task 9); this card only calls it.
+ */
+function GraphicSlot({
+  slot,
+  brief,
+  projectId,
+  act,
+  brand,
+}: {
+  slot: SlotView
+  brief: Extract<ShotBrief, { type: 'graphic' }>
+  projectId: string
+  act: (slotId: string, run: () => Promise<ActionResult>, success: string) => Promise<ActionResult>
+  brand: BrandKitStored
+}) {
+  const claimIds = graphicClaimIds(brief.scene)
+  const missingLogos = brief.scene.elements.filter(
+    (element): element is Extract<GraphicElement, { kind: 'logo' }> =>
+      element.kind === 'logo' && element.assetId === undefined,
+  )
+
+  return (
+    <div className="flex flex-col gap-2">
+      <GraphicPreview brief={brief} brand={brand} logoUrls={slot.logoUrls} />
+      {claimIds.length > 0 ? (
+        <div className="flex flex-wrap gap-1" aria-label="Source claims">
+          {claimIds.map((claimId, index) => (
+            <span
+              key={claimId}
+              title={claimId}
+              className="rounded-full border border-[var(--color-border-strong)] px-2 py-0.5 font-mono text-[11px] text-[var(--color-text-secondary)]"
+            >
+              claim {index + 1}
+            </span>
+          ))}
+        </div>
+      ) : null}
+      {missingLogos.length > 0 ? (
+        <div className="flex flex-wrap gap-2">
+          {missingLogos.map((element) => (
+            <GraphicLogoUploader
+              key={element.id}
+              entity={element.entity}
+              projectId={projectId}
+              slotId={slot.id}
+              act={act}
+            />
+          ))}
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
+/**
+ * The inline uploader for a mark the library does not yet hold (decision
+ * 268, Plan B, Task 9's follow-on): the presigned two-step shape every own
+ * upload here takes, then `attachGraphicLogosAction` re-runs the library
+ * match over the whole scene, so a second missing mark on the same graphic
+ * is still asked for rather than silently dropped.
+ */
+function GraphicLogoUploader({
+  entity,
+  projectId,
+  slotId,
+  act,
+}: {
+  entity: string
+  projectId: string
+  slotId: string
+  act: (slotId: string, run: () => Promise<ActionResult>, success: string) => Promise<ActionResult>
+}) {
+  const inputRef = React.useRef<HTMLInputElement | null>(null)
+
+  const upload = async (picked: File): Promise<ActionResult> => {
+    const ready = await toUploadableLogo(picked)
+    if (!ready.ok) return ready
+    const file = ready.file
+
+    const bytes = new Uint8Array(await file.arrayBuffer())
+    const digest = await crypto.subtle.digest('SHA-256', bytes)
+    const contentHash = Array.from(new Uint8Array(digest))
+      .map((byte) => byte.toString(16).padStart(2, '0'))
+      .join('')
+
+    const created = await createLogoUploadAction({
+      fileType: file.type,
+      fileSize: file.size,
+      contentHash,
+    })
+    if (!created.ok || !created.url || !created.key) return created
+
+    const put = await fetch(created.url, {
+      method: 'PUT',
+      body: file,
+      headers: { 'Content-Type': file.type },
+    })
+    if (!put.ok) {
+      return { ok: false, error: `Storage refused the upload (${put.status}). Try again.` }
+    }
+
+    const size = await readImageSize(file)
+    const finalised = await finaliseLogoAction({
+      key: created.key,
+      contentHash,
+      title: entity,
+      width: size.width,
+      height: size.height,
+    })
+    if (!finalised.ok) return finalised
+
+    return attachGraphicLogosAction(projectId, slotId)
+  }
+
+  return (
+    <>
+      <Button variant="outline" onClick={() => inputRef.current?.click()}>
+        <ImagePlus aria-hidden />
+        {`Add logo for ${entity}`}
+      </Button>
+      <input
+        ref={inputRef}
+        type="file"
+        accept={LOGO_ACCEPT}
+        className="hidden"
+        aria-label={`Choose a logo file for ${entity}`}
+        onChange={(event) => {
+          const file = event.target.files?.[0]
+          event.target.value = ''
+          if (!file) return
+          void act(slotId, () => upload(file), 'Mark added; the graphic has it now')
+        }}
+      />
+    </>
+  )
+}
+
 function StatusChip({ status }: { status: string }) {
   return <Badge tone={STATUS_TONE[status] ?? 'muted'}>{status}</Badge>
 }
@@ -346,6 +519,7 @@ const SLOT_TYPE_LABELS: Record<string, string> = {
   chart: 'chart',
   map: 'map',
   headline: 'news headline',
+  graphic: 'Graphic',
   hero: 'AI video',
 }
 
@@ -362,10 +536,12 @@ export function VisualBoard({
   projectId,
   model,
   colors,
+  brand,
 }: {
   projectId: string
   model: VisualsReviewModel
   colors: BrandChartColors
+  brand: BrandKitStored
 }) {
   const router = useRouter()
   const { toast } = useToast()
@@ -680,6 +856,7 @@ export function VisualBoard({
               slot={slot}
               projectId={projectId}
               colors={colors}
+              brand={brand}
               busy={busySlot === slot.id}
               act={act}
               phase={model.phase}
@@ -701,6 +878,7 @@ function SlotCard({
   slot,
   projectId,
   colors,
+  brand,
   busy,
   act,
   phase,
@@ -710,6 +888,7 @@ function SlotCard({
   slot: SlotView
   projectId: string
   colors: BrandChartColors
+  brand: BrandKitStored
   busy: boolean
   act: (slotId: string, run: () => Promise<ActionResult>, success: string) => Promise<ActionResult>
   phase: VisualsReviewModel['phase']
@@ -794,6 +973,8 @@ function SlotCard({
           <MapPreview brief={brief} colors={colors} />
         ) : brief?.type === 'headline' ? (
           <HeadlineSlot slot={slot} brief={brief} projectId={projectId} act={act} colors={colors} />
+        ) : brief?.type === 'graphic' ? (
+          <GraphicSlot slot={slot} brief={brief} projectId={projectId} act={act} brand={brand} />
         ) : brief?.type === 'hero' ? (
           <p className="rounded-[8px] border border-[var(--color-border)] p-3 text-[13px] text-[var(--color-text-muted)]">
             AI video (hero) is switched off until post-monetisation. This slot stays a placeholder;
@@ -1197,7 +1378,7 @@ function TypePicker({
                 void act(
                   slot.id,
                   () => retypeSlotAction(projectId, slot.id, type),
-                  type === 'chart' || type === 'map'
+                  type === 'chart' || type === 'map' || type === 'graphic'
                     ? `Drafting the ${type} — this card updates when it lands`
                     : `Re-typed to ${slotTypeLabel(type)}`,
                 )

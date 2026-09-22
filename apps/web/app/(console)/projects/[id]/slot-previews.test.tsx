@@ -1,7 +1,8 @@
 import { render, screen } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
-import type { ChartBrief, MapBrief } from '@boom-busters/schemas'
-import { ChartPreview, MapPreview } from './slot-previews'
+import { DEFAULT_SETTINGS } from '@boom-busters/schemas'
+import type { ChartBrief, GraphicBrief, MapBrief } from '@boom-busters/schemas'
+import { ChartPreview, GraphicPreview, MapPreview } from './slot-previews'
 import type { BrandChartColors } from './slot-previews'
 
 const COLORS: BrandChartColors = {
@@ -133,5 +134,76 @@ describe('a chart with two measures (decision 259)', () => {
     // The long one is cut to the gutter it has, with the ellipsis saying so
     // rather than the SVG edge silently swallowing the rest.
     expect(screen.getByText(/^Operat.*…$/)).toBeInTheDocument()
+  })
+})
+
+const LOGO_ID = '01HQ00000000000000000000M1'
+
+const graphicBrief: GraphicBrief = {
+  type: 'graphic',
+  coversText: 'It raised four billion dollars in a single round.',
+  description: 'A counting figure beside the mark that backs it.',
+  motion: { kind: 'static' },
+  transition: 'cut',
+  scene: {
+    elements: [
+      {
+        kind: 'text',
+        id: 't1',
+        cell: { col: 0, row: 0, colSpan: 7, rowSpan: 2 },
+        content: 'Raised in a single round',
+        role: 'title',
+        color: 'textSecondary',
+        align: 'start',
+        enter: { kind: 'fade', atMs: 0 },
+      },
+      {
+        kind: 'figure',
+        id: 'f1',
+        cell: { col: 0, row: 2, colSpan: 7, rowSpan: 4 },
+        value: '$4bn',
+        label: 'valuation',
+        claimRef: CLAIM,
+        color: 'accent',
+        enter: { kind: 'count', atMs: 300 },
+      },
+      {
+        kind: 'logo',
+        id: 'l1',
+        cell: { col: 8, row: 1, colSpan: 4, rowSpan: 4 },
+        entity: 'Stability AI',
+        enter: { kind: 'rise', atMs: 200 },
+      },
+    ],
+  },
+}
+
+const withAsset: GraphicBrief = {
+  ...graphicBrief,
+  scene: {
+    elements: graphicBrief.scene.elements.map((element) =>
+      element.kind === 'logo' ? { ...element, assetId: LOGO_ID } : element,
+    ),
+  },
+}
+
+describe('GraphicPreview', () => {
+  it('draws the resting frame from the shared layout, and a dashed box where a mark is missing', () => {
+    render(<GraphicPreview brief={graphicBrief} brand={DEFAULT_SETTINGS.brandKit} logoUrls={{}} />)
+    const svg = screen.getByRole('img', { name: /graphic: It raised four billion/ })
+    expect(svg).toBeInTheDocument()
+    expect(screen.getByText('$4bn')).toBeInTheDocument()
+    expect(screen.getByText('logo: Stability AI (upload)')).toBeInTheDocument()
+  })
+
+  it('draws the mark when the library holds it', () => {
+    render(
+      <GraphicPreview
+        brief={withAsset}
+        brand={DEFAULT_SETTINGS.brandKit}
+        logoUrls={{ [LOGO_ID]: 'https://r2.example/abc.png' }}
+      />,
+    )
+    expect(document.querySelector('image')?.getAttribute('href')).toBe('https://r2.example/abc.png')
   })
 })

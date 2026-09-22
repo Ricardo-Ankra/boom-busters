@@ -2,15 +2,19 @@ import { describe, expect, it } from 'vitest'
 import { DEFAULT_SETTINGS, GRAPHIC_COLORS, resolveBrandKit } from '@boom-busters/schemas'
 import type { GraphicCell, GraphicScene } from '@boom-busters/schemas'
 import {
+  barLengthPx,
+  barsGeometry,
   countedValue,
   enterProgress,
   fitFontPx,
   graphicLayout,
   reflowPortrait,
   roleBasePx,
+  ruleThicknessPx,
   safeArea,
   tokenColor,
 } from './graphic'
+import type { Box } from './graphic'
 
 const brand = resolveBrandKit(DEFAULT_SETTINGS)
 const WIDE = { width: 1920, height: 1080 }
@@ -129,6 +133,36 @@ describe('graphicLayout', () => {
     const safe = safeArea(TALL)
     expect(box!.x).toBeCloseTo(safe.x + (safe.w / 12) * 4 + 4, 5)
   })
+
+  it('fits a bars element a label size too, closing the gap where bars carried no fontPx', () => {
+    // Task 5's review: GraphicCard used to derive the bars label size itself,
+    // which was harmless only because nothing else drew bars. Now the board's
+    // preview does too, so both must read the SAME number off the box
+    // `graphicLayout` already computed, not refit it independently.
+    const withBars: GraphicScene = {
+      elements: [
+        {
+          kind: 'bars',
+          id: 'b',
+          cell: { col: 0, row: 0, colSpan: 12, rowSpan: 4 },
+          color: 'collapse',
+          enter: { kind: 'fade', atMs: 0 },
+          items: [
+            { label: 'raised', value: 4, display: '$4bn', claimRef: '01HQ00000000000000000000A1' },
+            {
+              label: 'burned',
+              value: 3.9,
+              display: '$3.9bn',
+              claimRef: '01HQ00000000000000000000A2',
+            },
+          ],
+        },
+      ],
+    }
+    const [box] = graphicLayout(withBars, WIDE, brand)
+    expect(box!.fontPx).toBeDefined()
+    expect(box!.fontPx).toBe(barsGeometry(box!, 2, WIDE).labelPx)
+  })
 })
 
 describe('reflowPortrait', () => {
@@ -243,6 +277,45 @@ describe('fitFontPx', () => {
     // 48 glyphs in a 300px box would fit only at 11px, so the floor wins and
     // the label overflows. Text below 12px reads as a smudge on a phone.
     expect(fitFontPx('A very long label that will not fit at full size', 300, 72)).toBe(12)
+  })
+})
+
+describe('barsGeometry, barLengthPx and ruleThicknessPx', () => {
+  it('splits the box into even rows and fits the label to the row', () => {
+    const box: Box = { x: 0, y: 0, w: 400, h: 200 }
+    const { rowH, labelPx } = barsGeometry(box, 4, WIDE)
+    expect(rowH).toBe(50)
+    // 50 * 0.32 = 16, comfortably between the 12px floor and the 28px cap.
+    expect(labelPx).toBe(16)
+  })
+
+  it('floors the label at the legibility minimum for a cramped row', () => {
+    const box: Box = { x: 0, y: 0, w: 400, h: 20 }
+    expect(barsGeometry(box, 4, WIDE).labelPx).toBe(12)
+  })
+
+  it('caps the label at the frame-scaled maximum for a tall row', () => {
+    const box: Box = { x: 0, y: 0, w: 400, h: 400 }
+    expect(barsGeometry(box, 2, WIDE).labelPx).toBe(28)
+  })
+
+  it('scales the cap down on a smaller frame, same as every other role size', () => {
+    const box: Box = { x: 0, y: 0, w: 400, h: 400 }
+    // frameScale is 1 at 1080p in EITHER orientation (WIDE and TALL both
+    // qualify), so a frame scaled below that is needed to see the cap move:
+    // half of 1080 on the short side halves the 28px cap to 14.
+    expect(barsGeometry(box, 2, { width: 960, height: 540 }).labelPx).toBe(14)
+  })
+
+  it('draws a bar as its value share of the box width, times the entrance grow', () => {
+    expect(barLengthPx(100, 0.5)).toBe(31)
+    expect(barLengthPx(100, 1, 0)).toBe(0)
+    expect(barLengthPx(100, 1, 1)).toBe(62)
+  })
+
+  it('thickens the rule with the frame scale, floored at 2px', () => {
+    expect(ruleThicknessPx(WIDE)).toBe(3)
+    expect(ruleThicknessPx({ width: 200, height: 100 })).toBe(2)
   })
 })
 

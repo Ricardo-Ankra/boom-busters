@@ -11,7 +11,16 @@ import {
   hasSecondScale,
 } from '@boom-busters/compositions/chart'
 import { fitBounds, graticule, landPaths, projector } from '@boom-busters/compositions/geo'
-import type { ChartBrief, MapBrief } from '@boom-busters/schemas'
+import {
+  barLengthPx,
+  barsGeometry,
+  graphicLayout,
+  roleBasePx,
+  ruleThicknessPx,
+  tokenColor,
+} from '@boom-busters/compositions/graphic'
+import { DEFAULT_SETTINGS, resolveBrandKit } from '@boom-busters/schemas'
+import type { BrandKitStored, ChartBrief, GraphicBrief, MapBrief } from '@boom-busters/schemas'
 
 /**
  * Live chart and map previews (build spec section 11.3): rendered with the
@@ -527,5 +536,243 @@ export function HeadlinePreview({
         </span>
       </div>
     </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Graphic
+// ---------------------------------------------------------------------------
+
+/** The same error card the chart rule uses, for a graphic brief that failed to parse. */
+export const GraphicErrorCard = ChartErrorCard
+
+const GRAPHIC_WIDTH = 480
+const GRAPHIC_HEIGHT = 270
+const GRAPHIC_FRAME = { width: GRAPHIC_WIDTH, height: GRAPHIC_HEIGHT }
+
+/**
+ * The graphic preview (decision 268, Plan B): the resting frame, drawn from
+ * the SAME geometry the render uses, `graphicLayout` and its sibling helpers
+ * in `@boom-busters/compositions/graphic`, never recomputed here.
+ * What the owner approves on the board has to be what the film shows, and
+ * bars are the element most likely to carry the numbers a card is built
+ * around, so their row height, bar length and label size are read off the
+ * shared module too, not refitted independently.
+ *
+ * A logo the library does not yet hold draws as a dashed box naming the
+ * entity: the gap is the board's to notice and close, not something to hide
+ * behind a broken `<image>`.
+ */
+export function GraphicPreview({
+  brief,
+  brand,
+  logoUrls,
+}: {
+  brief: GraphicBrief
+  brand: BrandKitStored
+  logoUrls: Readonly<Record<string, string>>
+}) {
+  // The layout wants the resolved shape; `voice` is unused by a still preview.
+  const brandTokens = resolveBrandKit({ ...DEFAULT_SETTINGS, brandKit: brand })
+  const boxes = graphicLayout(brief.scene, GRAPHIC_FRAME, brandTokens)
+  const byId = new Map(boxes.map((box) => [box.id, box]))
+  const { colors, typography } = brandTokens
+  const fontFamily = (role: keyof typeof typography) => `"${typography[role].family}", sans-serif`
+
+  return (
+    <svg
+      viewBox={`0 0 ${GRAPHIC_WIDTH} ${GRAPHIC_HEIGHT}`}
+      role="img"
+      aria-label={`graphic: ${brief.coversText}`}
+      className="w-full rounded-[8px]"
+    >
+      <rect x={0} y={0} width={GRAPHIC_WIDTH} height={GRAPHIC_HEIGHT} fill={colors.background} />
+      {brief.scene.elements.map((element) => {
+        const box = byId.get(element.id)
+        if (!box) return null
+
+        switch (element.kind) {
+          case 'text': {
+            const x =
+              element.align === 'center'
+                ? box.x + box.w / 2
+                : element.align === 'end'
+                  ? box.x + box.w
+                  : box.x
+            return (
+              <text
+                key={element.id}
+                x={x}
+                y={box.y + box.h / 2}
+                fontSize={box.fontPx ?? roleBasePx(element.role)}
+                fontFamily={fontFamily(element.role)}
+                fill={tokenColor(element.color, brandTokens)}
+                textAnchor={
+                  element.align === 'center' ? 'middle' : element.align === 'end' ? 'end' : 'start'
+                }
+                dominantBaseline="middle"
+              >
+                {element.content}
+              </text>
+            )
+          }
+          case 'figure':
+            return (
+              <g key={element.id}>
+                <text
+                  x={box.x}
+                  y={box.y + box.h / 2}
+                  fontSize={box.fontPx ?? roleBasePx('numbers')}
+                  fontFamily={fontFamily('numbers')}
+                  fill={tokenColor(element.color, brandTokens)}
+                  dominantBaseline="middle"
+                >
+                  {element.value}
+                </text>
+                {element.label ? (
+                  <text
+                    x={box.x}
+                    y={box.y + box.h / 2 + (box.fontPx ?? roleBasePx('numbers')) / 2 + 12}
+                    fontSize={roleBasePx('captions') / 2}
+                    fontFamily={fontFamily('captions')}
+                    fill={colors.textSecondary}
+                  >
+                    {element.label}
+                  </text>
+                ) : null}
+              </g>
+            )
+          case 'logo': {
+            const url = element.assetId ? logoUrls[element.assetId] : undefined
+            if (url) {
+              return (
+                <image
+                  key={element.id}
+                  href={url}
+                  x={box.x}
+                  y={box.y}
+                  width={box.w}
+                  height={box.h}
+                  preserveAspectRatio="xMidYMid meet"
+                />
+              )
+            }
+            return (
+              <g key={element.id}>
+                <rect
+                  x={box.x}
+                  y={box.y}
+                  width={box.w}
+                  height={box.h}
+                  rx={4}
+                  fill="none"
+                  stroke={colors.textSecondary}
+                  strokeDasharray="4 3"
+                />
+                <text
+                  x={box.x + box.w / 2}
+                  y={box.y + box.h / 2}
+                  fontSize={11}
+                  fontFamily={fontFamily('captions')}
+                  fill={colors.textSecondary}
+                  textAnchor="middle"
+                  dominantBaseline="middle"
+                >
+                  {`logo: ${element.entity} (upload)`}
+                </text>
+              </g>
+            )
+          }
+          case 'shape': {
+            const colour = tokenColor(element.color, brandTokens)
+            if (element.form === 'rule') {
+              const thickness = ruleThicknessPx(GRAPHIC_FRAME)
+              return (
+                <rect
+                  key={element.id}
+                  x={box.x}
+                  y={box.y + box.h / 2 - thickness / 2}
+                  width={box.w}
+                  height={thickness}
+                  fill={colour}
+                  fillOpacity={element.opacity}
+                />
+              )
+            }
+            if (element.form === 'disc') {
+              return (
+                <circle
+                  key={element.id}
+                  cx={box.x + box.w / 2}
+                  cy={box.y + box.h / 2}
+                  r={Math.min(box.w, box.h) / 2}
+                  fill={colour}
+                  fillOpacity={element.opacity}
+                />
+              )
+            }
+            return (
+              <rect
+                key={element.id}
+                x={box.x}
+                y={box.y}
+                width={box.w}
+                height={box.h}
+                fill={colour}
+                fillOpacity={element.opacity}
+              />
+            )
+          }
+          case 'bars': {
+            const max = Math.max(...element.items.map((item) => Math.abs(item.value)), 1)
+            const { rowH, labelPx } = barsGeometry(box, element.items.length, GRAPHIC_FRAME)
+            const labelWidth = box.w * 0.2
+            return (
+              <g key={element.id}>
+                {element.items.map((item, index) => {
+                  const lit =
+                    element.highlightIndex === undefined || element.highlightIndex === index
+                  const barW = barLengthPx(box.w, Math.abs(item.value) / max)
+                  const rowY = box.y + rowH * index
+                  return (
+                    <g key={item.label}>
+                      <text
+                        x={box.x + labelWidth}
+                        y={rowY + rowH / 2}
+                        fontSize={labelPx}
+                        fontFamily={fontFamily('captions')}
+                        fill={colors.textSecondary}
+                        textAnchor="end"
+                        dominantBaseline="middle"
+                      >
+                        {item.label}
+                      </text>
+                      <rect
+                        x={box.x + labelWidth + 8}
+                        y={rowY + rowH * 0.25}
+                        width={barW}
+                        height={rowH * 0.5}
+                        fill={lit ? tokenColor(element.color, brandTokens) : colors.textSecondary}
+                        fillOpacity={lit ? 1 : 0.5}
+                      />
+                      <text
+                        x={box.x + labelWidth + 8 + barW + 8}
+                        y={rowY + rowH / 2}
+                        fontSize={labelPx * 1.2}
+                        fontFamily={fontFamily('numbers')}
+                        fill={colors.textPrimary}
+                        dominantBaseline="middle"
+                      >
+                        {item.display}
+                      </text>
+                    </g>
+                  )
+                })}
+              </g>
+            )
+          }
+        }
+      })}
+    </svg>
   )
 }
