@@ -1774,7 +1774,7 @@ it('draws the mark when the library holds it', () => {
 })
 ```
 
-`visual-board.test.tsx`: a graphic slot renders `Graphic` as its badge, the claim chips (`claim 1`), and, when a logo element lacks an asset, a button `Add logo for Stability AI`; clicking it and choosing a PNG calls `createLogoUploadAction`, `finaliseLogoAction` with `title: 'Stability AI'`, then `attachGraphicLogosAction` (mock all three plus `@/lib/client-image`). The format picker offers `Graphic` and its click toasts `Drafting the graphic`.
+`visual-board.test.tsx`: a graphic slot renders `graphic` as its badge, the claim chips (`claim 1`), and, when a logo element lacks an asset, a button `Add logo for Stability AI`; clicking it and choosing a PNG calls `createLogoUploadAction`, `finaliseLogoAction` with `title: 'Stability AI'`, then `attachGraphicLogosAction` (mock all three plus `@/lib/client-image`). The format picker offers `Graphic` and its click toasts `Drafting the graphic`.
 
 - [ ] **Step 2: Run to verify they fail**
 
@@ -1784,7 +1784,7 @@ From `apps/web`: `npx vitest run "app/(console)/projects/[id]/slot-previews.test
 
 `GraphicPreview`: `const brandTokens = resolveBrandKit({ ...DEFAULT_SETTINGS, brandKit: brand })` (the layout wants the resolved shape; `voice` is unused); `const boxes = graphicLayout(brief.scene, { width: 480, height: 270 }, brandTokens)`; render `<svg viewBox="0 0 480 270" role="img" aria-label={`graphic: ${brief.coversText}`}>`, a `<rect>` of `colors.background`, then per element: text and figure as `<text>` with `fontSize={box.fontPx}` and `fontFamily` from the role's `family`, `fill` from `tokenColor`; shape as `<rect>`/`<circle>`; bars as proportional `<rect>`s with `<text>` displays; logo as `<image href preserveAspectRatio="xMidYMid meet">` when `logoUrls[assetId]` exists, else a dashed `<rect>` with `<text>` `logo: ${entity} (upload)`. Reuse `ChartErrorCard`'s markup for `GraphicErrorCard` (or export a shared `DrawnCardError` and alias both).
 
-`visual-board.tsx`: `GraphicSlot` beside `HeadlineSlot`; the type-specific middle gains `brief?.type === 'graphic' ? <GraphicSlot .../>`; the drafting toast condition gains `graphic`; the board's `slotTypeLabel` gains `Graphic`. The inline uploader is a small `GraphicLogoUploader({ entity, projectId, slotId, act })` in the same file: a hidden `<input type="file" accept={LOGO_ACCEPT} aria-label={`Choose a logo file for ${entity}`}>` and the `Add logo for ${entity}` button; on change: `toUploadableLogo` then hash, `createLogoUploadAction`, `fetch` PUT, `readImageSize`, `finaliseLogoAction({ key, contentHash, title: entity, width, height })`, then `attachGraphicLogosAction(projectId, slotId)`, all inside `act(slot.id, ..., 'Mark added; the graphic has it now')`.
+`visual-board.tsx`: `GraphicSlot` beside `HeadlineSlot`; the type-specific middle gains `brief?.type === 'graphic' ? <GraphicSlot .../>`; the drafting toast condition gains `graphic`; the board's `slotTypeLabel` gains `graphic`, lowercase like every sibling label. The inline uploader is a small `GraphicLogoUploader({ entity, projectId, slotId, act })` in the same file: a hidden `<input type="file" accept={LOGO_ACCEPT} aria-label={`Choose a logo file for ${entity}`}>` and the `Add logo for ${entity}` button; on change: `toUploadableLogo` then hash, `createLogoUploadAction`, `fetch` PUT, `readImageSize`, `finaliseLogoAction({ key, contentHash, title: entity, width, height })`, then `attachGraphicLogosAction(projectId, slotId)`, all inside `act(slot.id, ..., 'Mark added; the graphic has it now')`.
 
 `visuals-review.ts`: while building `SlotView`s, collect every graphic logo `assetId`, load them with `logoById`, presign when storage is configured (like `photoUrls`), and set `slot.logoUrls`. `page.tsx` passes `brand={settings.brandKit}`.
 
@@ -1818,7 +1818,7 @@ test('a graphic card previews from the shared layout, chips its claims, and asks
   const resolved = page.locator('[id^="slot-"]').filter({ hasText: 'raised four billion' })
   await expect(resolved.getByRole('img', { name: /^graphic:/ })).toBeVisible()
   await expect(resolved.getByText('claim 1')).toBeVisible()
-  await expect(resolved.getByText('Graphic', { exact: true })).toBeVisible()
+  await expect(resolved.getByText('graphic', { exact: true })).toBeVisible()
 
   const waiting = page.locator('[id^="slot-"]').filter({ hasText: 'Acme Capital' })
   await expect(waiting.getByRole('button', { name: 'Add logo for Acme Capital (E2E)' })).toBeVisible()
