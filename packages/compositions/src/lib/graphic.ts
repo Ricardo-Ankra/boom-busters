@@ -7,7 +7,7 @@ import type {
   GraphicScene,
   GraphicTypeRole,
 } from '@boom-busters/schemas'
-import { frameScale } from '../components/brand'
+import { frameScale, typeStyle } from '../components/brand'
 import { captionSafeArea } from './captions'
 import { easeInOut } from './motion'
 
@@ -97,6 +97,21 @@ export function tokenColor(name: GraphicColor, brand: BrandKitTokens): string {
     default:
       return colors[name]
   }
+}
+
+/**
+ * The size a role actually renders at: the fitted size from the layout, scaled
+ * by the brand's setting for that role. The Remotion card reaches this through
+ * `typeStyle`; the board's SVG preview has no CSS helper and would otherwise
+ * compute its own, so both read it from here and cannot disagree.
+ */
+export function roleFontPx(role: GraphicTypeRole, basePx: number, brand: BrandKitTokens): number {
+  return Number(typeStyle(brand.typography[role], basePx, 1).fontSize)
+}
+
+/** The base size of the caption under a figure, before the role's own scale. */
+export function figureLabelBasePx(frame: GraphicFrame): number {
+  return roleBasePx('captions') * frameScale(frame.width, frame.height)
 }
 
 /**

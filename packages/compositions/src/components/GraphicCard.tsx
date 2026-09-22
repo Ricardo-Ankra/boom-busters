@@ -6,6 +6,7 @@ import {
   barsGeometry,
   countedValue,
   enterProgress,
+  figureLabelBasePx,
   graphicLayout,
   ruleThicknessPx,
   tokenColor,
@@ -142,7 +143,7 @@ export function GraphicCard({
                 {element.label ? (
                   <span
                     style={{
-                      ...typeStyle(typography.captions, 24 * scale, 1),
+                      ...typeStyle(typography.captions, figureLabelBasePx({ width, height }), 1),
                       color: colors.textSecondary,
                       marginTop: 6 * scale,
                     }}

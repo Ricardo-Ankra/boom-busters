@@ -14,8 +14,10 @@ import { fitBounds, graticule, landPaths, projector } from '@boom-busters/compos
 import {
   barLengthPx,
   barsGeometry,
+  figureLabelBasePx,
   graphicLayout,
   roleBasePx,
+  roleFontPx,
   ruleThicknessPx,
   tokenColor,
 } from '@boom-busters/compositions/graphic'
@@ -601,7 +603,11 @@ export function GraphicPreview({
                 key={element.id}
                 x={x}
                 y={box.y + box.h / 2}
-                fontSize={box.fontPx ?? roleBasePx(element.role)}
+                fontSize={roleFontPx(
+                  element.role,
+                  box.fontPx ?? roleBasePx(element.role),
+                  brandTokens,
+                )}
                 fontFamily={fontFamily(element.role)}
                 fill={tokenColor(element.color, brandTokens)}
                 textAnchor={
@@ -619,7 +625,7 @@ export function GraphicPreview({
                 <text
                   x={box.x}
                   y={box.y + box.h / 2}
-                  fontSize={box.fontPx ?? roleBasePx('numbers')}
+                  fontSize={roleFontPx('numbers', box.fontPx ?? roleBasePx('numbers'), brandTokens)}
                   fontFamily={fontFamily('numbers')}
                   fill={tokenColor(element.color, brandTokens)}
                   dominantBaseline="middle"
@@ -630,7 +636,7 @@ export function GraphicPreview({
                   <text
                     x={box.x}
                     y={box.y + box.h / 2 + (box.fontPx ?? roleBasePx('numbers')) / 2 + 12}
-                    fontSize={roleBasePx('captions') / 2}
+                    fontSize={roleFontPx('captions', figureLabelBasePx(GRAPHIC_FRAME), brandTokens)}
                     fontFamily={fontFamily('captions')}
                     fill={colors.textSecondary}
                   >
@@ -736,7 +742,7 @@ export function GraphicPreview({
                       <text
                         x={box.x + labelWidth}
                         y={rowY + rowH / 2}
-                        fontSize={labelPx}
+                        fontSize={roleFontPx('captions', labelPx, brandTokens)}
                         fontFamily={fontFamily('captions')}
                         fill={colors.textSecondary}
                         textAnchor="end"
@@ -755,7 +761,7 @@ export function GraphicPreview({
                       <text
                         x={box.x + labelWidth + 8 + barW + 8}
                         y={rowY + rowH / 2}
-                        fontSize={labelPx * 1.2}
+                        fontSize={roleFontPx('numbers', labelPx * 1.2, brandTokens)}
                         fontFamily={fontFamily('numbers')}
                         fill={colors.textPrimary}
                         dominantBaseline="middle"

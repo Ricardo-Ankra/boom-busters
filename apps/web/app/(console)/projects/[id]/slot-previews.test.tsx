@@ -1,6 +1,12 @@
 import { render, screen } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
-import { DEFAULT_SETTINGS } from '@boom-busters/schemas'
+import {
+  barsGeometry,
+  figureLabelBasePx,
+  graphicLayout,
+  roleFontPx,
+} from '@boom-busters/compositions/graphic'
+import { DEFAULT_SETTINGS, resolveBrandKit } from '@boom-busters/schemas'
 import type { ChartBrief, GraphicBrief, MapBrief } from '@boom-busters/schemas'
 import { ChartPreview, GraphicPreview, MapPreview } from './slot-previews'
 import type { BrandChartColors } from './slot-previews'
@@ -187,6 +193,32 @@ const withAsset: GraphicBrief = {
   },
 }
 
+/** The preview's own resting frame (`GRAPHIC_WIDTH`/`GRAPHIC_HEIGHT` in `slot-previews.tsx`). */
+const GRAPHIC_FRAME = { width: 480, height: 270 }
+
+const barsBrief: GraphicBrief = {
+  type: 'graphic',
+  coversText: 'It raised more than it burned.',
+  description: 'Two bars compared.',
+  motion: { kind: 'static' },
+  transition: 'cut',
+  scene: {
+    elements: [
+      {
+        kind: 'bars',
+        id: 'b1',
+        cell: { col: 0, row: 0, colSpan: 12, rowSpan: 4 },
+        color: 'collapse',
+        enter: { kind: 'fade', atMs: 0 },
+        items: [
+          { label: 'raised', value: 4, display: '$4bn', claimRef: CLAIM },
+          { label: 'burned', value: 3.9, display: '$3.9bn', claimRef: CLAIM },
+        ],
+      },
+    ],
+  },
+}
+
 describe('GraphicPreview', () => {
   it('draws the resting frame from the shared layout, and a dashed box where a mark is missing', () => {
     render(<GraphicPreview brief={graphicBrief} brand={DEFAULT_SETTINGS.brandKit} logoUrls={{}} />)
@@ -205,5 +237,76 @@ describe('GraphicPreview', () => {
       />,
     )
     expect(document.querySelector('image')?.getAttribute('href')).toBe('https://r2.example/abc.png')
+  })
+
+  // A title, a heading or a caption drawn at its raw fitted size, with no
+  // role scale applied, is wrong for every role whose brand scale is not 1,
+  // and would still pass a test that only checks the text is present. These
+  // assert the actual rendered number against the one shared function that
+  // computes it, `roleFontPx`, so drift between the card and the preview
+  // shows up here rather than only on screen.
+  it('sizes a title through the role scale, not the raw fitted size from the layout', () => {
+    render(<GraphicPreview brief={graphicBrief} brand={DEFAULT_SETTINGS.brandKit} logoUrls={{}} />)
+    const brand = resolveBrandKit(DEFAULT_SETTINGS)
+    const boxes = graphicLayout(graphicBrief.scene, GRAPHIC_FRAME, brand)
+    const titleBox = boxes.find((box) => box.id === 't1')!
+
+    const title = screen.getByText('Raised in a single round')
+    expect(title).toHaveAttribute('font-size', String(roleFontPx('title', titleBox.fontPx!, brand)))
+  })
+
+  it("sizes the figure's caption through the same shared helper the card uses", () => {
+    render(<GraphicPreview brief={graphicBrief} brand={DEFAULT_SETTINGS.brandKit} logoUrls={{}} />)
+    const brand = resolveBrandKit(DEFAULT_SETTINGS)
+
+    const label = screen.getByText('valuation')
+    expect(label).toHaveAttribute(
+      'font-size',
+      String(roleFontPx('captions', figureLabelBasePx(GRAPHIC_FRAME), brand)),
+    )
+  })
+
+  // `numbers` is 1 in DEFAULT_SETTINGS (the report's own explanation for why
+  // an unscaled figure value looked right and hid the bug there), so asserting
+  // against it alone cannot tell a wired-in `roleFontPx` call apart from the
+  // raw value it wraps. A brand kit whose `numbers` role actually scales
+  // makes the same two sites (the bars value, and the figure's own value
+  // below) fail if the preview ever stops reading the scale.
+  const scaledBrand = {
+    ...DEFAULT_SETTINGS.brandKit,
+    typography: {
+      ...DEFAULT_SETTINGS.brandKit.typography,
+      numbers: { ...DEFAULT_SETTINGS.brandKit.typography.numbers, sizeScale: 1.3 },
+    },
+  }
+
+  it('sizes a bars row label and its value through the role scale too', () => {
+    render(<GraphicPreview brief={barsBrief} brand={scaledBrand} logoUrls={{}} />)
+    const brand = resolveBrandKit({ ...DEFAULT_SETTINGS, brandKit: scaledBrand })
+    const boxes = graphicLayout(barsBrief.scene, GRAPHIC_FRAME, brand)
+    const barsBox = boxes.find((box) => box.id === 'b1')!
+    const { labelPx } = barsGeometry(barsBox, 2, GRAPHIC_FRAME)
+
+    const label = screen.getByText('raised')
+    expect(label).toHaveAttribute('font-size', String(roleFontPx('captions', labelPx, brand)))
+
+    const value = screen.getByText('$4bn')
+    const expectedValuePx = roleFontPx('numbers', labelPx * 1.2, brand)
+    expect(value).toHaveAttribute('font-size', String(expectedValuePx))
+    // The 1.3 scale must move the number off the raw, unscaled one: proof
+    // this cannot pass by the same coincidence `numbers: 1` allows.
+    expect(expectedValuePx).not.toBe(Math.round(labelPx * 1.2))
+  })
+
+  it("sizes the figure's own value through the numbers role scale, not just its label", () => {
+    render(<GraphicPreview brief={graphicBrief} brand={scaledBrand} logoUrls={{}} />)
+    const brand = resolveBrandKit({ ...DEFAULT_SETTINGS, brandKit: scaledBrand })
+    const boxes = graphicLayout(graphicBrief.scene, GRAPHIC_FRAME, brand)
+    const figureBox = boxes.find((box) => box.id === 'f1')!
+
+    const value = screen.getByText('$4bn')
+    const expectedValuePx = roleFontPx('numbers', figureBox.fontPx!, brand)
+    expect(value).toHaveAttribute('font-size', String(expectedValuePx))
+    expect(expectedValuePx).not.toBe(figureBox.fontPx)
   })
 })
