@@ -322,6 +322,18 @@ describeDb('logo actions', () => {
     })
   })
 
+  it('rejects when no session is signed in', async () => {
+    authMock.auth.mockResolvedValueOnce(null)
+    await expect(renameLogoAction({ id: 'anything', title: 'X' })).rejects.toThrow('Not signed in')
+  })
+
+  it('refuses an id that is not a ulid, on rename, remove and choosing the channel mark', async () => {
+    const notAUlid = { ok: false, error: 'Unknown mark.' }
+    expect(await renameLogoAction({ id: 'not-a-ulid', title: 'X' })).toEqual(notAUlid)
+    expect(await removeLogoAction('not-a-ulid')).toEqual(notAUlid)
+    expect(await setChannelMarkAction('not-a-ulid')).toEqual(notAUlid)
+  })
+
   it('says where the bytes would go when storage is not configured', async () => {
     storage.configured = false
     const created = await createLogoUploadAction({

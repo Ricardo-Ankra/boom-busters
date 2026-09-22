@@ -120,7 +120,10 @@ describe('LogosTab', () => {
     )
     expect(fetchMock).toHaveBeenCalledWith(
       'https://r2.example/put',
-      expect.objectContaining({ method: 'PUT' }),
+      expect.objectContaining({
+        method: 'PUT',
+        headers: { 'Content-Type': 'image/png' },
+      }),
     )
     expect(actions.finaliseLogoAction).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -131,6 +134,29 @@ describe('LogosTab', () => {
       }),
     )
     expect(refresh).toHaveBeenCalled()
+  })
+
+  it('names the status in the error toast when storage refuses the PUT, and does not finalise', async () => {
+    fetchMock.mockResolvedValue({ ok: false, status: 403 })
+    render(<LogosTab logos={[]} channelMarkKey={null} />)
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement
+
+    await userEvent.type(screen.getByLabelText('Name'), 'Stability AI')
+    await userEvent.upload(
+      input,
+      new File([new Uint8Array([1, 2, 3])], 'stability.png', { type: 'image/png' }),
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'Add to library' }))
+
+    await waitFor(() =>
+      expect(toast).toHaveBeenCalledWith(
+        expect.objectContaining({
+          description: expect.stringContaining('403'),
+          variant: 'error',
+        }),
+      ),
+    )
+    expect(actions.finaliseLogoAction).not.toHaveBeenCalled()
   })
 
   it('does not finalise, and reports the error, when the upload could not be prepared', async () => {
