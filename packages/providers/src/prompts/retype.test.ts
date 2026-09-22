@@ -82,6 +82,19 @@ describe('buildRetypeRequest', () => {
     // The claim list is the cacheable prefix, same as every visuals prompt.
     expect(request.cacheablePrefixMessages).toBe(1)
   })
+
+  it('names the graphic shape and its rule, and lists the held marks', () => {
+    const request = buildRetypeRequest({
+      caseTitle: 'Wirecard',
+      brief: still,
+      targetType: 'graphic',
+      claims,
+      logos: ['Wirecard AG'],
+    })
+    expect(request.system).toContain('"type": "graphic"')
+    expect(request.system).toContain('never a chart with fewer points')
+    expect(request.messages[0]?.content).toContain('Wirecard AG')
+  })
 })
 
 describe('parseRetypedBrief', () => {
@@ -192,5 +205,30 @@ describe('mockRetypedBrief', () => {
   it('produces a valid map carrying the slot identity across', () => {
     const brief = mockRetypedBrief({ brief: still, targetType: 'map', claimIds: [] })
     expect(ShotBriefSchema.parse(brief)).toMatchObject({ type: 'map', route: true })
+  })
+
+  it('produces a valid graphic whose figure cites the claim and whose logo names a held mark', () => {
+    const brief = mockRetypedBrief({
+      brief: still,
+      targetType: 'graphic',
+      claimIds: [CLAIM_A],
+      claimTexts: ['raised $4 billion'],
+      logoTitles: ['Wirecard AG'],
+    })
+    expect(ShotBriefSchema.parse(brief)).toMatchObject({ type: 'graphic' })
+    const elements = brief.type === 'graphic' ? brief.scene.elements : []
+    expect(elements.find((element) => element.kind === 'figure')).toMatchObject({
+      claimRef: CLAIM_A,
+      value: '$4bn',
+    })
+    expect(elements.find((element) => element.kind === 'logo')).toMatchObject({
+      entity: 'Wirecard AG',
+    })
+  })
+
+  it('refuses a mock graphic when the project has no claims, matching the live rule', () => {
+    expect(() => mockRetypedBrief({ brief: still, targetType: 'graphic', claimIds: [] })).toThrow(
+      ValidationError,
+    )
   })
 })

@@ -8,6 +8,7 @@ import {
   getSettings,
   getShotSlot,
   linkSlotReuse,
+  listLogos,
   listSlotDependants,
   scriptableClaims,
   setArticleSourceManual,
@@ -28,6 +29,7 @@ import {
   DirectorsBookSchema,
   emphasisFits,
   HERO_SLOTS_ENABLED,
+  logoForEntity,
   normaliseArticleUrl,
   REUSABLE_SLOT_TYPES,
   ShotBriefSchema,
@@ -594,6 +596,54 @@ export async function dismissRetypeAction(
   await setSlotRetype(db, slotId, null)
   refresh(projectId)
   return { ok: true }
+}
+
+/**
+ * A graphic waiting on a mark, re-joined to the library after an upload
+ * (decision 268, Plan B). No model runs: the scene names its entities and
+ * the library either holds them now or still does not.
+ */
+export async function attachGraphicLogosAction(
+  projectId: string,
+  slotId: string,
+): Promise<ActionResult> {
+  await requireOwner()
+  const invalid = badIds(projectId, slotId)
+  if (invalid) return invalid
+
+  const slot = await getShotSlot(db, slotId)
+  if (!slot || slot.projectId !== projectId)
+    return { ok: false, error: 'This slot no longer exists.' }
+  const parsed = ShotBriefSchema.safeParse(slot.brief)
+  if (!parsed.success || parsed.data.type !== 'graphic') {
+    return { ok: false, error: 'This slot is not a graphic.' }
+  }
+
+  const logos = (await listLogos(db)).map((row) => ({ id: row.id, title: row.title ?? '' }))
+  let missing: string | null = null
+  const elements = parsed.data.scene.elements.map((element) => {
+    if (element.kind !== 'logo') return element
+    const logo = logoForEntity(element.entity, logos)
+    if (!logo) {
+      missing ??= element.entity
+      return element
+    }
+    return { ...element, assetId: logo.id }
+  })
+  const brief = { ...parsed.data, scene: { elements } }
+
+  await updateSlotBrief(db, slotId, brief)
+  await setSlotResolution(
+    db,
+    slotId,
+    missing === null
+      ? { status: 'resolved', candidates: [], answered: { brief, route: null } }
+      : { status: 'placeholder', candidates: [] },
+  )
+  refresh(projectId)
+  return missing === null
+    ? { ok: true }
+    : { ok: false, error: `A mark for "${missing}" is still missing.` }
 }
 
 function cleanPatch(patch: z.infer<typeof BriefPatchSchema>): Record<string, string> {

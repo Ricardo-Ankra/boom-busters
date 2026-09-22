@@ -1,6 +1,7 @@
 import {
   getProject,
   getShotSlot,
+  listLogos,
   scriptableClaims,
   setSlotResolution,
   setSlotRetype,
@@ -46,10 +47,11 @@ import { budgetGateData, markSideJobFailed, type GateContext } from '../lib/gate
  *
  * - stock, real footage and AI image briefs are ideas, so `buildRebriefRequest`
  *   asks for another one under the same Director's Book craft rules.
- * - chart and map briefs are data, so they go back through the re-type drafting
- *   path with the target set to the type they already have. That is not a
- *   shortcut: it is how the claim-number validation stays exactly where it is,
- *   and a redrawn chart still cannot cite numbers the dossier does not hold.
+ * - chart, map and graphic briefs are data, so they go back through the
+ *   re-type drafting path with the target set to the type they already have.
+ *   That is not a shortcut: it is how the claim-number validation stays
+ *   exactly where it is, and neither a redrawn chart nor a redrawn graphic's
+ *   figure can cite numbers the dossier does not hold (decision 268, Plan B).
  *
  * A headline card never comes here at all. Every string on it is read from the
  * article, so there is no idea to have again; changing which article it quotes
@@ -115,26 +117,29 @@ export const slotRebriefer = inngest.createFunction(
        * button on these, so a request for one is a stale tab, and a throw
        * would leave the card drafting something that is never coming.
        */
-      if (brief.type === 'headline' || brief.type === 'hero' || brief.type === 'graphic') {
+      if (brief.type === 'headline' || brief.type === 'hero') {
         const reason =
           brief.type === 'headline'
             ? 'Every word on a headline card is read from the article, so there is no brief to draft. Change which article it quotes instead.'
-            : brief.type === 'hero'
-              ? 'An AI-video slot cannot be re-briefed.'
-              : 'A graphic cannot be re-briefed yet.'
+            : 'An AI-video slot cannot be re-briefed.'
         await setSlotRetype(db, slotId, { state: 'rebrief-refused', reason })
         return { ok: false as const, refused: reason }
       }
 
       let next: ShotBrief
       try {
-        if (brief.type === 'chart' || brief.type === 'map') {
+        if (brief.type === 'chart' || brief.type === 'map' || brief.type === 'graphic') {
           const claims = await scriptableClaims(db, projectId)
+          // The logo library's index (decision 268, Plan B): a redrafted
+          // graphic may name a mark the producer already holds.
+          const logos = (await listLogos(db)).map((row) => ({ id: row.id, title: row.title ?? '' }))
           next = mockProvidersEnabled()
             ? mockRetypedBrief({
                 brief,
                 targetType: brief.type,
                 claimIds: claims.map((claim) => claim.id),
+                claimTexts: claims.map((claim) => claim.text),
+                logoTitles: logos.map((logo) => logo.title),
                 ...(guidance === undefined ? {} : { guidance }),
               })
             : parseRetypedBrief(
@@ -150,12 +155,13 @@ export const slotRebriefer = inngest.createFunction(
                         sourceUrl: claim.sourceUrl,
                         confidence: claim.confidence,
                       })),
+                      logos: logos.map((logo) => logo.title),
                       ...(guidance === undefined ? {} : { guidance }),
                     }),
                     { projectId },
                   )
                 ).text,
-                { targetType: brief.type, claims },
+                { targetType: brief.type, claims, logos },
               )
         } else {
           const book = DirectorsBookSchema.safeParse(project.direction)

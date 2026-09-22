@@ -2,6 +2,7 @@ import {
   getProject,
   getSettings,
   getShotSlot,
+  listLogos,
   retypeShotSlot,
   scriptableClaims,
   setSlotResolution,
@@ -114,7 +115,7 @@ export const slotRetyper = inngest.createFunction(
 
       // Structured targets get a model draft — validated, refusable.
       if (!next) {
-        if (targetType !== 'chart' && targetType !== 'map') {
+        if (targetType !== 'chart' && targetType !== 'map' && targetType !== 'graphic') {
           /**
            * A headline card quotes a claim the OWNER picks, and the board
            * writes that brief itself (decision 257) — no request for one
@@ -132,12 +133,21 @@ export const slotRetyper = inngest.createFunction(
         }
         const claims = await scriptableClaims(db, projectId)
         const claimIds = claims.map((claim) => claim.id)
+        // The logo library's index (decision 268, Plan B): a graphic drafted
+        // here may name a mark the producer already holds.
+        const logos = (await listLogos(db)).map((row) => ({ id: row.id, title: row.title ?? '' }))
 
         try {
           if (mockProvidersEnabled()) {
             // The mock refuses the same way the real path does — a chart
             // citing no claims — so it must sit under the same catch.
-            next = mockRetypedBrief({ brief, targetType, claimIds })
+            next = mockRetypedBrief({
+              brief,
+              targetType,
+              claimIds,
+              claimTexts: claims.map((claim) => claim.text),
+              logoTitles: logos.map((logo) => logo.title),
+            })
           } else {
             const project = await getProject(db, projectId)
             next = parseRetypedBrief(
@@ -153,11 +163,12 @@ export const slotRetyper = inngest.createFunction(
                       sourceUrl: claim.sourceUrl,
                       confidence: claim.confidence,
                     })),
+                    logos: logos.map((logo) => logo.title),
                   }),
                   { projectId },
                 )
               ).text,
-              { targetType, claims },
+              { targetType, claims, logos },
             )
           }
         } catch (error) {

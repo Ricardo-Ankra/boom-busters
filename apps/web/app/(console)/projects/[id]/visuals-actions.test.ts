@@ -1,6 +1,7 @@
 // @vitest-environment node
 
 import {
+  assets,
   createScriptVersion,
   FIXTURE_PROJECT_ID,
   getShotSlot,
@@ -23,6 +24,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/lib/db'
 import { visualsReviewModel } from '@/lib/visuals-review'
 import {
+  attachGraphicLogosAction,
   finaliseOwnUploadAction,
   refetchSlotAction,
   retypeToHeadlineAction,
@@ -419,5 +421,98 @@ describeDb('the model select on a shot (decision 264)', () => {
       }),
     ).toMatchObject({ ok: false, error: expect.stringContaining('another film') })
     expect((await getShotSlot(db, ids.still))?.route).toBeNull()
+  })
+})
+
+const graphicBrief = (entity: string): ShotBrief => ({
+  type: 'graphic',
+  coversText: 'Four.',
+  description: 'a graphic',
+  motion: { kind: 'static' },
+  transition: 'cut',
+  scene: {
+    elements: [
+      {
+        kind: 'logo',
+        id: 'l1',
+        cell: { col: 0, row: 0, colSpan: 4, rowSpan: 4 },
+        enter: { kind: 'fade', atMs: 0 },
+        entity,
+      },
+    ],
+  },
+})
+
+describeDb('attaching an uploaded mark to a waiting graphic (decision 268, Plan B)', () => {
+  let chapterId: string
+
+  beforeEach(async () => {
+    vi.clearAllMocks()
+    await seed(db)
+    await db.delete(shotSlots)
+    const script = await createScriptVersion(db, FIXTURE_PROJECT_ID)
+    const chapter = await saveChapter(db, {
+      scriptId: script.id,
+      index: 0,
+      title: 'The audit',
+      contentMd: 'Four.',
+      estRuntimeSec: 6,
+    })
+    chapterId = chapter.id
+  })
+
+  /** A graphic slot whose one logo element names `entity` and carries no asset yet. */
+  async function seedGraphicSlot(entity: string): Promise<string> {
+    await replaceShotList(db, FIXTURE_PROJECT_ID, [
+      {
+        chapterId,
+        index: 0,
+        type: 'graphic',
+        brief: graphicBrief(entity),
+        startMs: 0,
+        durationMs: 6000,
+      },
+    ])
+    const [slot] = await listShotSlots(db, FIXTURE_PROJECT_ID)
+    await setSlotResolution(db, slot!.id, { status: 'placeholder', candidates: [] })
+    return slot!.id
+  }
+
+  it('resolves once a matching mark is in the library, writing back its asset id', async () => {
+    const slotId = await seedGraphicSlot('Wirecard AG')
+    await db
+      .insert(assets)
+      .values({
+        id: '01HQ00000000000000000000M1',
+        kind: 'logo',
+        r2Key: 'boom-busters/logos/wirecard.png',
+        contentHash: 'fixture-logo-wirecard-ag',
+        licence: 'Uploaded by owner',
+        title: 'Wirecard AG',
+        width: 200,
+        height: 200,
+      })
+      .onConflictDoNothing()
+
+    expect(await attachGraphicLogosAction(FIXTURE_PROJECT_ID, slotId)).toEqual({ ok: true })
+
+    const row = (await getShotSlot(db, slotId))!
+    expect(row.status).toBe('resolved')
+    const brief = row.brief as unknown as { scene: { elements: { assetId?: string }[] } }
+    expect(brief.scene.elements[0]?.assetId).toBe('01HQ00000000000000000000M1')
+  })
+
+  it('stays a placeholder without a match, naming the mark that is missing', async () => {
+    const slotId = await seedGraphicSlot('Globex Corporation')
+
+    expect(await attachGraphicLogosAction(FIXTURE_PROJECT_ID, slotId)).toEqual({
+      ok: false,
+      error: 'A mark for "Globex Corporation" is still missing.',
+    })
+
+    const row = (await getShotSlot(db, slotId))!
+    expect(row.status).toBe('placeholder')
+    const brief = row.brief as unknown as { scene: { elements: { assetId?: string }[] } }
+    expect(brief.scene.elements[0]?.assetId).toBeUndefined()
   })
 })
