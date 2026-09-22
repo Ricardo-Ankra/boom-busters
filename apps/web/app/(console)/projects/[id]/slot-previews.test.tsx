@@ -2,6 +2,7 @@ import { render, screen } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 import {
   barsGeometry,
+  emphasisWashColor,
   figureLabelBasePx,
   graphicLayout,
   roleFontPx,
@@ -162,6 +163,7 @@ const graphicBrief: GraphicBrief = {
         color: 'textSecondary',
         align: 'start',
         enter: { kind: 'fade', atMs: 0 },
+        emphasis: 'underline',
       },
       {
         kind: 'figure',
@@ -179,6 +181,15 @@ const graphicBrief: GraphicBrief = {
         cell: { col: 8, row: 1, colSpan: 4, rowSpan: 4 },
         entity: 'Stability AI',
         enter: { kind: 'rise', atMs: 200 },
+      },
+      {
+        kind: 'shape',
+        id: 's1',
+        cell: { col: 0, row: 6, colSpan: 2, rowSpan: 2 },
+        form: 'disc',
+        color: 'textSecondary',
+        opacity: 1,
+        enter: { kind: 'fade', atMs: 0 },
       },
     ],
   },
@@ -308,5 +319,35 @@ describe('GraphicPreview', () => {
     const expectedValuePx = roleFontPx('numbers', figureBox.fontPx!, brand)
     expect(value).toHaveAttribute('font-size', String(expectedValuePx))
     expect(expectedValuePx).not.toBe(figureBox.fontPx)
+  })
+
+  it('draws an accent wash behind emphasised text, the same colour the card sweeps in to', () => {
+    render(<GraphicPreview brief={graphicBrief} brand={DEFAULT_SETTINGS.brandKit} logoUrls={{}} />)
+    const brand = resolveBrandKit(DEFAULT_SETTINGS)
+    // t1 carries `emphasis: 'underline'`: GraphicCard draws a permanent
+    // accent wash behind it at rest, so the preview must too, not nothing.
+    const title = screen.getByText('Raised in a single round')
+    const wash = title.previousElementSibling
+    expect(wash?.tagName).toBe('rect')
+    expect(wash).toHaveAttribute('fill', emphasisWashColor(brand))
+  })
+
+  it('draws a disc as an ellipse fitted to its box, matching the card rather than a geometric circle', () => {
+    const { container } = render(
+      <GraphicPreview brief={graphicBrief} brand={DEFAULT_SETTINGS.brandKit} logoUrls={{}} />,
+    )
+    const brand = resolveBrandKit(DEFAULT_SETTINGS)
+    const boxes = graphicLayout(graphicBrief.scene, GRAPHIC_FRAME, brand)
+    const discBox = boxes.find((box) => box.id === 's1')!
+    // The card's borderRadius: '50%' on a non-square box is an ellipse, not
+    // a circle (GraphicCard.tsx draws it on the raw box, never a square
+    // crop), so this box must genuinely differ in width and height for the
+    // assertion below to mean anything.
+    expect(discBox.w).not.toBeCloseTo(discBox.h, 0)
+    expect(container.querySelector('circle')).toBeNull()
+    const ellipse = container.querySelector('ellipse')
+    expect(ellipse).not.toBeNull()
+    expect(ellipse).toHaveAttribute('rx', String(discBox.w / 2))
+    expect(ellipse).toHaveAttribute('ry', String(discBox.h / 2))
   })
 })

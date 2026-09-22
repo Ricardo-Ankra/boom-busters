@@ -3,10 +3,12 @@ import type { CSSProperties } from 'react'
 import type { BrandKitTokens, GraphicElement, GraphicPayload } from '@boom-busters/schemas'
 import {
   barLengthPx,
+  barsGapPx,
   barsGeometry,
   countedValue,
   enterProgress,
   figureLabelBasePx,
+  figureLabelGapPx,
   graphicLayout,
   ruleThicknessPx,
   tokenColor,
@@ -145,7 +147,7 @@ export function GraphicCard({
                     style={{
                       ...typeStyle(typography.captions, figureLabelBasePx({ width, height }), 1),
                       color: colors.textSecondary,
-                      marginTop: 6 * scale,
+                      marginTop: figureLabelGapPx({ width, height }),
                     }}
                   >
                     {element.label}
@@ -218,7 +220,7 @@ export function GraphicCard({
                         width: box.w,
                         display: 'flex',
                         alignItems: 'center',
-                        gap: 12 * scale,
+                        gap: barsGapPx({ width, height }),
                       }}
                     >
                       <span

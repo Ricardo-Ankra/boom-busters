@@ -278,6 +278,59 @@ describe('fitFontPx', () => {
     // the label overflows. Text below 12px reads as a smudge on a phone.
     expect(fitFontPx('A very long label that will not fit at full size', 300, 72)).toBe(12)
   })
+
+  it('takes a scaled floor as a fourth argument, defaulting to the unscaled one', () => {
+    // Task 4's existing calls (three arguments) keep the unscaled floor.
+    const long = 'A very long label that will not fit at full size'
+    expect(fitFontPx(long, 300, 72)).toBe(12)
+    // The same box and text, scaled down a quarter (a caller with a
+    // frame-scaled floor, ChartReveal.tsx's own
+    // fitFigureSize(figures, base, 20 * scale) shape), floors at a quarter too.
+    expect(fitFontPx(long, 75, 18, 3)).toBe(3)
+  })
+})
+
+describe('the legibility floor scales with the frame (decision 268, Plan B)', () => {
+  // Task 5's review: MIN_FONT_PX was the one size in this module never
+  // multiplied by frameScale. At the board's 480 by 270 preview (scale
+  // 0.25) the floor decided body, captions and every bars label, so the
+  // owner approved a graphic with no visible type hierarchy and a
+  // different one shipped. A cell too narrow for its content at ANY scale
+  // isolates the floor itself, not the fit-to-width path above it.
+  const floored: GraphicScene = {
+    elements: [
+      {
+        kind: 'text',
+        id: 't',
+        cell: { col: 0, row: 0, colSpan: 1, rowSpan: 1 },
+        content: 'A label many times longer than one grid cell could ever fit',
+        role: 'body',
+        color: 'textPrimary',
+        align: 'start',
+        enter: { kind: 'fade', atMs: 0 },
+      },
+    ],
+  }
+
+  it('keeps a small frame proportional to 1080p rather than flattening to one size', () => {
+    const wideFontPx = graphicLayout(floored, WIDE, brand)[0]!.fontPx!
+    const smallFontPx = graphicLayout(floored, { width: 480, height: 270 }, brand)[0]!.fontPx!
+    // At 1080p frameScale is 1, so this is the render's own unscaled floor.
+    expect(wideFontPx).toBe(12)
+    // frameScale(480, 270) is 0.25: the same floor, scaled, is 3, not the
+    // unscaled 12 that would make body, captions and bars labels collapse
+    // to roughly the same size on the small preview.
+    expect(smallFontPx).toBeCloseTo(3, 5)
+    expect(smallFontPx / wideFontPx).toBeCloseTo(0.25, 5)
+  })
+
+  it('scales a bars label floor the same way, not just text and figures', () => {
+    const box: Box = { x: 0, y: 0, w: 400, h: 4 }
+    const wideLabelPx = barsGeometry(box, 4, WIDE).labelPx
+    const smallLabelPx = barsGeometry(box, 4, { width: 480, height: 270 }).labelPx
+    expect(wideLabelPx).toBe(12)
+    expect(smallLabelPx).toBeCloseTo(3, 5)
+  })
 })
 
 describe('barsGeometry, barLengthPx and ruleThicknessPx', () => {

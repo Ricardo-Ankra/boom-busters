@@ -12,9 +12,13 @@ import {
 } from '@boom-busters/compositions/chart'
 import { fitBounds, graticule, landPaths, projector } from '@boom-busters/compositions/geo'
 import {
+  AVERAGE_GLYPH_EM,
   barLengthPx,
+  barsGapPx,
   barsGeometry,
+  emphasisWashColor,
   figureLabelBasePx,
+  figureLabelGapPx,
   graphicLayout,
   roleBasePx,
   roleFontPx,
@@ -592,40 +596,95 @@ export function GraphicPreview({
 
         switch (element.kind) {
           case 'text': {
+            const fontPx = roleFontPx(
+              element.role,
+              box.fontPx ?? roleBasePx(element.role),
+              brandTokens,
+            )
             const x =
               element.align === 'center'
                 ? box.x + box.w / 2
                 : element.align === 'end'
                   ? box.x + box.w
                   : box.x
-            return (
-              <text
-                key={element.id}
-                x={x}
-                y={box.y + box.h / 2}
-                fontSize={roleFontPx(
-                  element.role,
-                  box.fontPx ?? roleBasePx(element.role),
-                  brandTokens,
-                )}
-                fontFamily={fontFamily(element.role)}
-                fill={tokenColor(element.color, brandTokens)}
-                textAnchor={
-                  element.align === 'center' ? 'middle' : element.align === 'end' ? 'end' : 'start'
-                }
-                dominantBaseline="middle"
-              >
-                {element.content}
-              </text>
-            )
-          }
-          case 'figure':
+            const y = box.y + box.h / 2
+            // No measured width: the same estimate `fitFontPx` fits sizes BY, used
+            // in reverse, so the wash under an `underline` emphasis is no more
+            // invented than the size the text itself draws at.
+            const textWidth = Math.min(box.w, element.content.length * AVERAGE_GLYPH_EM * fontPx)
+            const washX =
+              element.align === 'center'
+                ? x - textWidth / 2
+                : element.align === 'end'
+                  ? x - textWidth
+                  : x
             return (
               <g key={element.id}>
+                {element.emphasis === 'underline' ? (
+                  <rect
+                    x={washX}
+                    y={y + fontPx * 0.08}
+                    width={textWidth}
+                    height={fontPx * 0.42}
+                    fill={emphasisWashColor(brandTokens)}
+                  />
+                ) : null}
+                <text
+                  x={x}
+                  y={y}
+                  fontSize={fontPx}
+                  fontFamily={fontFamily(element.role)}
+                  fill={tokenColor(element.color, brandTokens)}
+                  textAnchor={
+                    element.align === 'center'
+                      ? 'middle'
+                      : element.align === 'end'
+                        ? 'end'
+                        : 'start'
+                  }
+                  dominantBaseline="middle"
+                >
+                  {element.content}
+                </text>
+              </g>
+            )
+          }
+          case 'figure': {
+            const valueFontPx = roleFontPx(
+              'numbers',
+              box.fontPx ?? roleBasePx('numbers'),
+              brandTokens,
+            )
+            const labelFontPx = element.label
+              ? roleFontPx('captions', figureLabelBasePx(GRAPHIC_FRAME), brandTokens)
+              : 0
+            const gap = element.label ? figureLabelGapPx(GRAPHIC_FRAME) : 0
+            // The card stacks the value and its caption as one flex column,
+            // centred as a pair, so the value sits ABOVE the box's centre
+            // line, not on it, once a label is there to share the space.
+            const columnH = valueFontPx + gap + labelFontPx
+            const columnTop = box.y + (box.h - columnH) / 2
+            const valueY = columnTop + valueFontPx / 2
+            const labelY = columnTop + valueFontPx + gap + labelFontPx / 2
+            const valueWidth = Math.min(
+              box.w,
+              element.value.length * AVERAGE_GLYPH_EM * valueFontPx,
+            )
+            return (
+              <g key={element.id}>
+                {element.emphasis === 'underline' ? (
+                  <rect
+                    x={box.x}
+                    y={valueY + valueFontPx * 0.08}
+                    width={valueWidth}
+                    height={valueFontPx * 0.42}
+                    fill={emphasisWashColor(brandTokens)}
+                  />
+                ) : null}
                 <text
                   x={box.x}
-                  y={box.y + box.h / 2}
-                  fontSize={roleFontPx('numbers', box.fontPx ?? roleBasePx('numbers'), brandTokens)}
+                  y={valueY}
+                  fontSize={valueFontPx}
                   fontFamily={fontFamily('numbers')}
                   fill={tokenColor(element.color, brandTokens)}
                   dominantBaseline="middle"
@@ -635,16 +694,18 @@ export function GraphicPreview({
                 {element.label ? (
                   <text
                     x={box.x}
-                    y={box.y + box.h / 2 + (box.fontPx ?? roleBasePx('numbers')) / 2 + 12}
-                    fontSize={roleFontPx('captions', figureLabelBasePx(GRAPHIC_FRAME), brandTokens)}
+                    y={labelY}
+                    fontSize={labelFontPx}
                     fontFamily={fontFamily('captions')}
                     fill={colors.textSecondary}
+                    dominantBaseline="middle"
                   >
                     {element.label}
                   </text>
                 ) : null}
               </g>
             )
+          }
           case 'logo': {
             const url = element.assetId ? logoUrls[element.assetId] : undefined
             if (url) {
@@ -703,12 +764,16 @@ export function GraphicPreview({
               )
             }
             if (element.form === 'disc') {
+              // The card's `borderRadius: '50%'` on the box is an ellipse on a
+              // non-square cell, not a circle: the preview matches the card
+              // (the artefact that ships), not a geometric disc.
               return (
-                <circle
+                <ellipse
                   key={element.id}
                   cx={box.x + box.w / 2}
                   cy={box.y + box.h / 2}
-                  r={Math.min(box.w, box.h) / 2}
+                  rx={box.w / 2}
+                  ry={box.h / 2}
                   fill={colour}
                   fillOpacity={element.opacity}
                 />
@@ -729,6 +794,7 @@ export function GraphicPreview({
           case 'bars': {
             const max = Math.max(...element.items.map((item) => Math.abs(item.value)), 1)
             const { rowH, labelPx } = barsGeometry(box, element.items.length, GRAPHIC_FRAME)
+            const gap = barsGapPx(GRAPHIC_FRAME)
             const labelWidth = box.w * 0.2
             return (
               <g key={element.id}>
@@ -751,7 +817,7 @@ export function GraphicPreview({
                         {item.label}
                       </text>
                       <rect
-                        x={box.x + labelWidth + 8}
+                        x={box.x + labelWidth + gap}
                         y={rowY + rowH * 0.25}
                         width={barW}
                         height={rowH * 0.5}
@@ -759,7 +825,7 @@ export function GraphicPreview({
                         fillOpacity={lit ? 1 : 0.5}
                       />
                       <text
-                        x={box.x + labelWidth + 8 + barW + 8}
+                        x={box.x + labelWidth + gap + barW + gap}
                         y={rowY + rowH / 2}
                         fontSize={roleFontPx('numbers', labelPx * 1.2, brandTokens)}
                         fontFamily={fontFamily('numbers')}

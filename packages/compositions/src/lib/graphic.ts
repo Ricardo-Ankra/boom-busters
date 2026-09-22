@@ -7,7 +7,7 @@ import type {
   GraphicScene,
   GraphicTypeRole,
 } from '@boom-busters/schemas'
-import { frameScale, typeStyle } from '../components/brand'
+import { frameScale, typeStyle, withAlpha } from '../components/brand'
 import { captionSafeArea } from './captions'
 import { easeInOut } from './motion'
 
@@ -37,18 +37,28 @@ export interface ElementBox extends Box {
   fontPx?: number
 }
 
-export const GRAPHIC_MARGIN_PX = 36
-export const GRAPHIC_GUTTER_PX = 8
-/** A conservative average glyph width, in em, for the fit estimate. */
+const GRAPHIC_MARGIN_PX = 36
+const GRAPHIC_GUTTER_PX = 8
+/**
+ * A conservative average glyph width, in em, for the fit estimate: `fitFontPx`'s own
+ * estimate of how wide text draws, and the board preview's only way to approximate
+ * the same width for an `underline` emphasis wash without measuring text it cannot
+ * measure the same way the render's Chromium would.
+ */
 export const AVERAGE_GLYPH_EM = 0.56
 const MIN_FONT_PX = 12
 const ENTER_MS = 600
-/** A bar's drawn length, as a fraction of its element's box width, at full grow. */
-export const BAR_LENGTH_FRACTION = 0.62
+const BAR_LENGTH_FRACTION = 0.62
 const BAR_LABEL_MAX_PX = 28
 const BAR_LABEL_HEIGHT_FRACTION = 0.32
 const RULE_THICKNESS_PX = 3
 const RULE_MIN_THICKNESS_PX = 2
+/** The gap `GraphicCard` gives a bars row's flex children, scaled with the frame. */
+const BARS_GAP_PX = 12
+/** The gap `GraphicCard` gives a figure's caption below its value, scaled with the frame. */
+const FIGURE_LABEL_GAP_PX = 6
+/** The alpha `markerSweep` (`lib/motion.ts`) sweeps an `underline` emphasis in to, at rest. */
+const EMPHASIS_ALPHA = 0.55
 
 /** The frame minus the caption band and the margin: where elements may sit. */
 export function safeArea(frame: GraphicFrame): Box {
@@ -114,15 +124,44 @@ export function figureLabelBasePx(frame: GraphicFrame): number {
   return roleBasePx('captions') * frameScale(frame.width, frame.height)
 }
 
+/** The gap between a bars row's label, its bar and its value, scaled with the frame. */
+export function barsGapPx(frame: GraphicFrame): number {
+  return BARS_GAP_PX * frameScale(frame.width, frame.height)
+}
+
+/** The gap between a figure's value and its caption below it, scaled with the frame. */
+export function figureLabelGapPx(frame: GraphicFrame): number {
+  return FIGURE_LABEL_GAP_PX * frameScale(frame.width, frame.height)
+}
+
+/**
+ * The accent wash an `underline` emphasis draws behind its text once fully revealed:
+ * the same colour and alpha `markerSweep` (`lib/motion.ts`) sweeps in to, at rest. The
+ * board's preview shows the resting frame, so it reads this colour directly rather
+ * than reproducing the sweep's animation.
+ */
+export function emphasisWashColor(brand: BrandKitTokens): string {
+  return withAlpha(brand.colors.accent, EMPHASIS_ALPHA)
+}
+
 /**
  * The largest size at or under `basePx` at which `text` fits `boxWidth` by the estimate.
- * Never returns below `MIN_FONT_PX`: an extreme label can overflow its box rather than
- * shrink past legibility, because text under 12px reads as a smudge on a phone.
+ * Never returns below `minPx` (default `MIN_FONT_PX`, unscaled, for Task 4's existing
+ * callers and tests): an extreme label can overflow its box rather than shrink past
+ * legibility. `graphicLayout` passes a frame-scaled floor, the same shape
+ * `ChartReveal.tsx` passes `fitFigureSize` (`20 * scale`, not a bare `20`): a 1080p
+ * legibility floor applied unscaled at a quarter that size is not a floor, it is the
+ * size everything shrinks TO.
  */
-export function fitFontPx(text: string, boxWidth: number, basePx: number): number {
+export function fitFontPx(
+  text: string,
+  boxWidth: number,
+  basePx: number,
+  minPx: number = MIN_FONT_PX,
+): number {
   const glyphs = Math.max(1, text.length)
   const fitted = Math.floor(boxWidth / (glyphs * AVERAGE_GLYPH_EM))
-  return Math.max(MIN_FONT_PX, Math.min(basePx, fitted))
+  return Math.max(minPx, Math.min(basePx, fitted))
 }
 
 export interface BarsGeometry {
@@ -144,7 +183,7 @@ export function barsGeometry(box: Box, itemCount: number, frame: GraphicFrame): 
   const scale = frameScale(frame.width, frame.height)
   const rowH = box.h / Math.max(1, itemCount)
   const labelPx = Math.max(
-    MIN_FONT_PX,
+    MIN_FONT_PX * scale,
     Math.min(BAR_LABEL_MAX_PX * scale, rowH * BAR_LABEL_HEIGHT_FRACTION),
   )
   return { rowH, labelPx }
@@ -248,14 +287,19 @@ export function graphicLayout(
       return {
         id: element.id,
         ...box,
-        fontPx: fitFontPx(element.content, box.w, roleBasePx(element.role) * scale),
+        fontPx: fitFontPx(
+          element.content,
+          box.w,
+          roleBasePx(element.role) * scale,
+          MIN_FONT_PX * scale,
+        ),
       }
     }
     if (element.kind === 'figure') {
       return {
         id: element.id,
         ...box,
-        fontPx: fitFontPx(element.value, box.w, roleBasePx('numbers') * scale),
+        fontPx: fitFontPx(element.value, box.w, roleBasePx('numbers') * scale, MIN_FONT_PX * scale),
       }
     }
     if (element.kind === 'bars') {
