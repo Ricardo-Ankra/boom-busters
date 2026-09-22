@@ -4,6 +4,7 @@ import {
   DirectorsBookSchema,
   motifPattern,
   planWarnings,
+  referenceWarnings,
   renderDirectorsBook,
 } from './direction'
 import type { ShotBrief } from './visuals'
@@ -285,5 +286,75 @@ describe('planWarnings counts sets', () => {
 
   it('says nothing when no slot names a set', () => {
     expect(planWarnings([slot('chapter 1')], [], [], ['The boardroom'])).toEqual([])
+  })
+})
+
+describe('referenceWarnings: held references nothing names', () => {
+  const depicting = (depicts: string[], set?: string): ShotBrief => ({
+    type: 'still',
+    coversText: 'x',
+    description: 'x',
+    motion: { kind: 'static' },
+    transition: 'cut',
+    prompt: 'x',
+    shotSize: 'wide',
+    depicts,
+    ...(set ? { set } : {}),
+  })
+
+  it('says so once when no picture brief names any reference', () => {
+    const warnings = referenceWarnings(
+      [{ brief: still('wide', 'a') }, { brief: still('close', 'b') }],
+      ['Markus Braun'],
+      ['Aschheim headquarters'],
+    )
+    expect(warnings[0]).toBe(
+      'none of the 2 picture briefs names a reference, so every one is generated without ' +
+        'your 1 photographed cast member or 1 photographed set',
+    )
+    expect(warnings).toContain('no brief depicts Markus Braun, so their photographs are never sent')
+    expect(warnings).toContain(
+      'no brief names the set "Aschheim headquarters", so its plates are never sent',
+    )
+  })
+
+  it('drops the headline once anything is used, and names only what is not', () => {
+    const warnings = referenceWarnings(
+      [{ brief: depicting(['Markus Braun']) }],
+      ['Markus Braun', 'Jan Marsalek'],
+      [],
+    )
+    expect(warnings).toEqual(['no brief depicts Jan Marsalek, so their photographs are never sent'])
+  })
+
+  // The join that decision 262 exists for: the planner writes the role after
+  // the name, and an exact-string check would call a used reference unused.
+  it('counts a role-suffixed depicts entry as naming the person', () => {
+    expect(
+      referenceWarnings(
+        [{ brief: depicting(['Markus Braun, chief executive']) }],
+        ['Markus Braun'],
+        [],
+      ),
+    ).toEqual([])
+  })
+
+  it('counts a named set as used', () => {
+    expect(
+      referenceWarnings(
+        [{ brief: depicting([], 'Aschheim headquarters') }],
+        [],
+        ['Aschheim headquarters'],
+      ),
+    ).toEqual([])
+  })
+
+  it('is silent when the producer holds no references at all', () => {
+    expect(referenceWarnings([{ brief: still('wide', 'a') }], [], [])).toEqual([])
+  })
+
+  // A chapter of charts and maps names nobody and is not a miss.
+  it('is silent when there are no picture briefs to name anything', () => {
+    expect(referenceWarnings([], ['Markus Braun'], [])).toEqual([])
   })
 })

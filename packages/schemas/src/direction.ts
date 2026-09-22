@@ -292,3 +292,79 @@ export function castWarnings(
       (name) => `the book has no principal for ${name}; redraft the direction or add them by hand`,
     )
 }
+
+/**
+ * References the producer holds that no brief calls on (the silent half of
+ * decision 253 and 264).
+ *
+ * The whole reference system hangs on two optional fields the planner has to
+ * volunteer: a still's `depicts` and its `set`. When they are absent
+ * `generateStillCandidates` never even reads the cast or sets tables, so an
+ * uploaded photograph conditions nothing and the still is generated plain.
+ * Every existing note points the other way — `planWarnings` warns when a set
+ * is named too OFTEN, `castWarnings` when the book forgot a person — and a
+ * film whose briefs name nothing at all drew no note of any kind. That is the
+ * one case where the producer has paid for photographs and the run quietly
+ * ignores them, which is exactly the case worth saying out loud.
+ *
+ * A note, never a rejection: a chapter of maps and charts legitimately names
+ * nobody, and only the producer can tell that from a planner that forgot.
+ */
+export function referenceWarnings(
+  slots: readonly WarnableSlot[],
+  /** Cast members holding at least one photograph, by exact name. */
+  photographed: readonly string[],
+  /** Sets holding at least one plate, by exact name. */
+  platedSets: readonly string[],
+): string[] {
+  const pictures = slots.filter((slot) => slot.brief.type === 'still' || slot.brief.type === 'hero')
+  if (pictures.length === 0) return []
+  if (photographed.length === 0 && platedSets.length === 0) return []
+
+  const warnings: string[] = []
+
+  const namesPerson = (name: string) =>
+    pictures.some(
+      (slot) =>
+        (slot.brief.type === 'still' || slot.brief.type === 'hero') &&
+        (slot.brief.depicts ?? []).some((entry) => nameMatches(entry, name)),
+    )
+  const namesSet = (name: string) =>
+    pictures.some((slot) => {
+      const named = slotSet(slot.brief)
+      return named !== null && nameMatches(named, name)
+    })
+
+  const usedPeople = photographed.filter(namesPerson).length
+  const usedSets = platedSets.filter(namesSet).length
+
+  // The headline first, and only when NOTHING is used: one line that explains
+  // a whole board of plain stills, before the per-reference notes below.
+  if (usedPeople === 0 && usedSets === 0) {
+    const held = [
+      photographed.length > 0
+        ? `${photographed.length} photographed cast member${photographed.length === 1 ? '' : 's'}`
+        : null,
+      platedSets.length > 0
+        ? `${platedSets.length} photographed set${platedSets.length === 1 ? '' : 's'}`
+        : null,
+    ].filter((part): part is string => part !== null)
+    warnings.push(
+      `none of the ${pictures.length} picture briefs names a reference, so every one is ` +
+        `generated without your ${held.join(' or ')}`,
+    )
+  }
+
+  for (const name of photographed) {
+    if (!namesPerson(name)) {
+      warnings.push(`no brief depicts ${name}, so their photographs are never sent`)
+    }
+  }
+  for (const name of platedSets) {
+    if (!namesSet(name)) {
+      warnings.push(`no brief names the set "${name}", so its plates are never sent`)
+    }
+  }
+
+  return warnings
+}
