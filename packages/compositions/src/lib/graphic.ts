@@ -7,6 +7,7 @@ import type {
   GraphicScene,
   GraphicTypeRole,
 } from '@boom-busters/schemas'
+import { frameScale } from '../components/brand'
 import { captionSafeArea } from './captions'
 import { easeInOut } from './motion'
 
@@ -43,21 +44,14 @@ export const AVERAGE_GLYPH_EM = 0.56
 const MIN_FONT_PX = 12
 const ENTER_MS = 600
 
-// Same arithmetic as `frameScale` in `../components/brand.ts`. Duplicated on purpose:
-// nothing in `lib/` imports from `components/` elsewhere in this package, and inverting
-// that layering for one line is worse than the duplication. If one changes, check the
-// other.
-function scaleOf(frame: GraphicFrame): number {
-  return Math.min(frame.width, frame.height) / 1080
-}
-
 /** The frame minus the caption band and the margin: where elements may sit. */
 export function safeArea(frame: GraphicFrame): Box {
-  const margin = Math.round(GRAPHIC_MARGIN_PX * scaleOf(frame))
+  const margin = Math.round(GRAPHIC_MARGIN_PX * frameScale(frame.width, frame.height))
   const captions = captionSafeArea(frame.width, frame.height)
   // The caption block's top: its bottom edge less roughly two lines of caption.
   const captionTop =
-    frame.height * captions.bottomFraction - 140 * captions.fontScale * scaleOf(frame)
+    frame.height * captions.bottomFraction -
+    140 * captions.fontScale * frameScale(frame.width, frame.height)
   return {
     x: margin,
     y: margin,
@@ -190,7 +184,7 @@ export function graphicLayout(
   const portrait = frame.height > frame.width
   const laid = portrait ? reflowPortrait(scene) : scene
   const safe = safeArea(frame)
-  const scale = scaleOf(frame)
+  const scale = frameScale(frame.width, frame.height)
   return laid.elements.map((element) => {
     const cell = portrait ? (element.portraitCell ?? element.cell) : element.cell
     const box = cellBox(cell, safe, scale)

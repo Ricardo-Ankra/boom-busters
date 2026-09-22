@@ -123,6 +123,7 @@ export function GraphicCard({
                   display: 'flex',
                   flexDirection: 'column',
                   justifyContent: 'center',
+                  alignItems: 'flex-start',
                 }}
               >
                 <span
