@@ -9,7 +9,7 @@ import type {
 } from '@boom-busters/schemas'
 import { frameScale, typeStyle, withAlpha } from '../components/brand'
 import { captionSafeArea } from './captions'
-import { easeInOut } from './motion'
+import { MARKER_ALPHA, easeInOut } from './motion'
 
 /**
  * Graphic geometry, pure and unit-tested (decision 268, Plan B). The board's
@@ -57,9 +57,6 @@ const RULE_MIN_THICKNESS_PX = 2
 const BARS_GAP_PX = 12
 /** The gap `GraphicCard` gives a figure's caption below its value, scaled with the frame. */
 const FIGURE_LABEL_GAP_PX = 6
-/** The alpha `markerSweep` (`lib/motion.ts`) sweeps an `underline` emphasis in to, at rest. */
-const EMPHASIS_ALPHA = 0.55
-
 /** The frame minus the caption band and the margin: where elements may sit. */
 export function safeArea(frame: GraphicFrame): Box {
   const margin = Math.round(GRAPHIC_MARGIN_PX * frameScale(frame.width, frame.height))
@@ -141,7 +138,7 @@ export function figureLabelGapPx(frame: GraphicFrame): number {
  * than reproducing the sweep's animation.
  */
 export function emphasisWashColor(brand: BrandKitTokens): string {
-  return withAlpha(brand.colors.accent, EMPHASIS_ALPHA)
+  return withAlpha(brand.colors.accent, MARKER_ALPHA)
 }
 
 /**

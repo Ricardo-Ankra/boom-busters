@@ -119,10 +119,16 @@ export function transitionOpacity(
   return Math.min(1, Math.max(0, tMs / dissolveMs))
 }
 
+/**
+ * The highlighter's wash opacity. The graphic layout reads this too, so the
+ * board's underline and the render's marker cannot drift apart.
+ */
+export const MARKER_ALPHA = 0.55
+
 /** The highlighter: an accent wash under the bottom third of the glyphs, swept to `sweep`. */
 export function markerSweep(accent: string, sweep: number): CSSProperties {
   return {
-    backgroundImage: `linear-gradient(transparent 58%, ${withAlpha(accent, 0.55)} 58%)`,
+    backgroundImage: `linear-gradient(transparent 58%, ${withAlpha(accent, MARKER_ALPHA)} 58%)`,
     backgroundSize: `${Math.min(1, Math.max(0, sweep)) * 100}% 100%`,
     backgroundRepeat: 'no-repeat',
     paddingInline: '0.04em',
