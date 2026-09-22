@@ -22,6 +22,23 @@ export async function listLogos(db: Database): Promise<AssetRow[]> {
     .orderBy(asc(assets.title), asc(assets.createdAt))
 }
 
+/** A single mark by id, for a caller that already knows which one it wants. */
+export async function logoById(db: Database, id: string): Promise<AssetRow | null> {
+  const [row] = await db
+    .select()
+    .from(assets)
+    .where(and(eq(assets.id, id), eq(assets.kind, 'logo')))
+    .limit(1)
+  return row ?? null
+}
+
+/**
+ * Upsert a mark by content hash. Returns the stored row, or `null` when the
+ * hash collides with an asset stored under another kind: the unique index
+ * is on `content_hash` alone, so without a conditional update the statement
+ * would rename and resize a row that is not a logo. Null means the bytes
+ * already belong to another kind of asset; nothing was touched.
+ */
 export async function insertLogo(
   db: Database,
   input: {
@@ -34,7 +51,7 @@ export async function insertLogo(
     /** Where the owner found it, when pasted from an address. Provenance only. */
     sourceUrl?: string | null
   },
-): Promise<AssetRow> {
+): Promise<AssetRow | null> {
   const title = input.title.trim()
   const [row] = await db
     .insert(assets)
@@ -51,7 +68,9 @@ export async function insertLogo(
     .onConflictDoUpdate({
       target: assets.contentHash,
       // The bytes already exist under their hash key; a re-upload is the
-      // owner renaming the mark, so the name wins. The key stays.
+      // owner renaming the mark, so the name wins. The key stays. Only when
+      // the conflicting row is itself a logo: `setWhere` keeps a collision
+      // with another asset kind from being renamed and resized in place.
       set: {
         title,
         width: input.width,
@@ -59,11 +78,11 @@ export async function insertLogo(
         sourceUrl: input.sourceUrl ?? null,
         updatedAt: new Date(),
       },
+      setWhere: eq(assets.kind, 'logo'),
     })
     .returning()
 
-  if (!row) throw new Error('The logo could not be stored')
-  return row
+  return row ?? null
 }
 
 export async function renameLogo(

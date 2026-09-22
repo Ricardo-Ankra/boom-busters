@@ -60,9 +60,12 @@ async function fingerprint(file: File): Promise<string> {
 export function LogosTab({
   logos,
   channelMarkKey,
+  brandBackground,
 }: {
   logos: LogoView[]
   channelMarkKey: string | null
+  /** Spec 6.3: a mark is shown on the brand ground, not the console's own. */
+  brandBackground?: string
 }) {
   const router = useRouter()
   const { toast } = useToast()
@@ -261,6 +264,7 @@ export function LogosTab({
                   isChannelMark={logo.r2Key === channelMarkKey}
                   busy={busy}
                   run={run}
+                  brandBackground={brandBackground}
                 />
               ))}
             </ul>
@@ -276,11 +280,13 @@ function LogoRow({
   isChannelMark,
   busy,
   run,
+  brandBackground,
 }: {
   logo: LogoView
   isChannelMark: boolean
   busy: boolean
   run: (work: () => Promise<{ ok: boolean; error?: string }>, success: string) => Promise<boolean>
+  brandBackground?: string
 }) {
   const [name, setName] = React.useState(logo.title)
   const inputId = `logo-name-${logo.id}`
@@ -292,7 +298,7 @@ function LogoRow({
     >
       <div
         className="grid h-28 place-items-center rounded-[8px]"
-        style={{ backgroundColor: 'var(--color-background)' }}
+        style={{ backgroundColor: brandBackground ?? 'var(--color-background)' }}
       >
         {logo.url ? (
           <img src={logo.url} alt={logo.title} className="max-h-24 max-w-[90%] object-contain" />

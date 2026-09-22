@@ -27,7 +27,9 @@ import {
  */
 
 const authMock = vi.hoisted(() => ({
-  auth: vi.fn(async () => ({ user: { email: 'owner@example.com' } })),
+  auth: vi.fn(async (): Promise<{ user: { email: string } } | null> => ({
+    user: { email: 'owner@example.com' },
+  })),
 }))
 vi.mock('@/auth', () => authMock)
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }))
@@ -36,6 +38,7 @@ const storage = vi.hoisted(() => ({
   configured: true,
   deleted: [] as string[],
   put: [] as string[],
+  headSize: 120_000,
 }))
 vi.mock('@/lib/storage', () => ({
   storageConfigured: () => storage.configured,
@@ -46,7 +49,7 @@ vi.mock('@/lib/storage', () => ({
     storage.put.push(key)
     return { key }
   },
-  headObject: async () => ({ size: 120_000, contentType: 'image/png' }),
+  headObject: async () => ({ size: storage.headSize, contentType: 'image/png' }),
   deleteObject: async (key: string) => {
     storage.deleted.push(key)
   },
@@ -64,6 +67,7 @@ describeDb('logo actions', () => {
     storage.configured = true
     storage.deleted = []
     storage.put = []
+    storage.headSize = 120_000
     await seed(db)
     // `seed` does not touch `assets`; this whole suite owns every row in it
     // (logos it inserts through the actions under test, and the odd
@@ -128,6 +132,20 @@ describeDb('logo actions', () => {
     })
   })
 
+  it('refuses an oversize object once it is in storage, and deletes it', async () => {
+    storage.headSize = 5 * 1024 * 1024
+    const result = await finaliseLogoAction({
+      key: `boom-busters/logos/${HASH}.png`,
+      contentHash: HASH,
+      title: 'Stability AI',
+      width: 1200,
+      height: 400,
+    })
+    expect(result.error).toMatch(/4 MB/)
+    expect(storage.deleted).toEqual([`boom-busters/logos/${HASH}.png`])
+    expect(await listLogos(db)).toEqual([])
+  })
+
   it('refuses a finalise for a key this flow could not have issued, and an empty name', async () => {
     const wrongKey = await finaliseLogoAction({
       key: 'boom-busters/music/x.mp3',
@@ -189,6 +207,27 @@ describeDb('logo actions', () => {
     })
   })
 
+  it('clamps a fetched mark to a whole pixel, the same as a finalised upload', async () => {
+    const bytes = Buffer.from('fractional-dims')
+    remote.fetchRemoteLogo.mockResolvedValue({
+      ok: true,
+      logo: {
+        bytes,
+        mimeType: 'image/png',
+        width: 300.6,
+        height: 0.4,
+        resolvedUrl: 'https://cdn.example/mark.png',
+      },
+    })
+    const result = await addLogoFromUrlAction({
+      url: 'https://cdn.example/mark.png',
+      title: 'Wirecard AG',
+    })
+    expect(result).toEqual({ ok: true })
+    const [logo] = await listLogos(db)
+    expect(logo).toMatchObject({ width: 301, height: 1 })
+  })
+
   it('passes the fetcher refusal through in its own words', async () => {
     remote.fetchRemoteLogo.mockResolvedValue({ ok: false, error: 'That SVG could not be drawn.' })
     const result = await addLogoFromUrlAction({ url: 'https://cdn.example/bad.svg', title: 'X' })
@@ -244,6 +283,12 @@ describeDb('logo actions', () => {
     expect(finalised.ok).toBe(false)
     expect(finalised.error).toMatch(/already stored as something other than a mark/i)
     expect(await listLogos(db)).toEqual([])
+    const stillRow = (await db.select().from(assets)).find((row) => row.contentHash === HASH)
+    expect(stillRow).toMatchObject({
+      kind: 'image',
+      title: 'A stock still',
+      r2Key: `boom-busters/stock/${HASH}.png`,
+    })
 
     const urlBytes = Buffer.from('bytes already stored under another asset kind')
     const urlHash = createHash('sha256').update(urlBytes).digest('hex')
@@ -271,6 +316,24 @@ describeDb('logo actions', () => {
     expect(viaUrl.ok).toBe(false)
     expect(viaUrl.error).toMatch(/already stored as something other than a mark/i)
     expect(await listLogos(db)).toEqual([])
+    const urlStillRow = (await db.select().from(assets)).find((row) => row.contentHash === urlHash)
+    expect(urlStillRow).toMatchObject({
+      kind: 'image',
+      title: 'A stock still',
+      r2Key: `boom-busters/stock/${urlHash}.png`,
+    })
+  })
+
+  it('rejects when no session is signed in', async () => {
+    authMock.auth.mockResolvedValueOnce(null)
+    await expect(renameLogoAction({ id: 'anything', title: 'X' })).rejects.toThrow('Not signed in')
+  })
+
+  it('refuses an id that is not a ulid, on rename, remove and choosing the channel mark', async () => {
+    const notAUlid = { ok: false, error: 'Unknown mark.' }
+    expect(await renameLogoAction({ id: 'not-a-ulid', title: 'X' })).toEqual(notAUlid)
+    expect(await removeLogoAction('not-a-ulid')).toEqual(notAUlid)
+    expect(await setChannelMarkAction('not-a-ulid')).toEqual(notAUlid)
   })
 
   it('says where the bytes would go when storage is not configured', async () => {

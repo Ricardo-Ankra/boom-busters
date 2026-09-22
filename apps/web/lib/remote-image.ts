@@ -1,8 +1,7 @@
 import { lookup } from 'node:dns/promises'
 import { isIP } from 'node:net'
 
-import { LOGO_MAX_BYTES, LOGO_RASTER_MAX_EDGE } from '@boom-busters/schemas'
-import type { LogoStoredMime } from '@boom-busters/schemas'
+import { LOGO_MAX_BYTES, LOGO_RASTER_MAX_EDGE, type LogoStoredMime } from '@boom-busters/schemas'
 
 /**
  * Fetching an image the producer found on the web, for the cast (decision
