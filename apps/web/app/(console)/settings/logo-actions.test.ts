@@ -27,7 +27,9 @@ import {
  */
 
 const authMock = vi.hoisted(() => ({
-  auth: vi.fn(async () => ({ user: { email: 'owner@example.com' } })),
+  auth: vi.fn(async (): Promise<{ user: { email: string } } | null> => ({
+    user: { email: 'owner@example.com' },
+  })),
 }))
 vi.mock('@/auth', () => authMock)
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }))
