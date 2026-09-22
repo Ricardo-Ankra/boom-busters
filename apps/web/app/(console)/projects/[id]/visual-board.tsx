@@ -548,8 +548,7 @@ function TypeBadge({ type }: { type: string }) {
  * neither is possible if the screen never says which.
  */
 function ReferenceChip({ reference }: { reference: SlotReference }) {
-  const noun =
-    reference.kind === 'person' ? 'photograph' : reference.kind === 'set' ? 'plate' : 'mark'
+  const noun = reference.kind === 'person' ? 'photograph' : 'plate'
   const title = reference.resolved
     ? `${reference.name}: the stored ${noun} is sent with this shot`
     : `${reference.name}: no ${noun} is stored, so this shot is generated without one`

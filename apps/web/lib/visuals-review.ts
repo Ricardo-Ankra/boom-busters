@@ -65,8 +65,8 @@ import { reuseView, sharedShotWarnings, type ReusableRow, type ReuseSource } fro
  */
 
 /**
- * One call a brief makes on a reference library, and whether it lands
- * (decisions 253, 264 and 268 Plan B).
+ * One call a still or hero brief makes on a reference library, and whether it
+ * lands (decisions 253 and 264).
  *
  * The board rendered none of this before: a still's `depicts` appeared only
  * inside the policy-refusal block and its `set` appeared nowhere at all, so
@@ -81,10 +81,10 @@ import { reuseView, sharedShotWarnings, type ReusableRow, type ReuseSource } fro
  * both condition nothing, so both read as unresolved here.
  */
 export interface SlotReference {
-  kind: 'person' | 'set' | 'logo'
+  kind: 'person' | 'set'
   /** The name exactly as the brief wrote it, role suffix and all. */
   name: string
-  /** Whether a stored photograph, plate or mark actually backs it. */
+  /** Whether a stored photograph or plate actually backs it. */
   resolved: boolean
 }
 
@@ -342,13 +342,12 @@ function slotReferences(
   cast: readonly CastMember[],
   sets: readonly ProjectSet[],
 ): SlotReference[] {
-  if (brief.type === 'graphic') {
-    return brief.scene.elements.flatMap((element) =>
-      element.kind === 'logo'
-        ? [{ kind: 'logo' as const, name: element.entity, resolved: element.assetId !== undefined }]
-        : [],
-    )
-  }
+  // Graphics are deliberately absent. A graphic's logos are already on its
+  // own card, as an upload button per unmatched mark, and that button judges
+  // "matched" more strictly than an `assetId` can: the library row an id
+  // names may have been deleted since, so the board keys off whether the
+  // preview can actually draw the mark. A chip resolved on the id alone would
+  // sit beside that button contradicting it.
   if (brief.type !== 'still' && brief.type !== 'hero') return []
 
   const people: SlotReference[] = (brief.depicts ?? [])
