@@ -1,4 +1,4 @@
-import { and, asc, eq, isNull } from 'drizzle-orm'
+import { and, asc, eq, isNull, sql } from 'drizzle-orm'
 import { CastMemberSchema, MAX_CAST_PHOTOS, ValidationError } from '@boom-busters/schemas'
 import type { CastMember, CastPhoto, Principal } from '@boom-busters/schemas'
 import type { Database } from './client'
@@ -80,13 +80,22 @@ export async function insertCastMember(
     })
   }
   if (same) {
-    const now = new Date()
     // A fresh `createdAt`: re-adding is adding, and the list is ordered
     // oldest first, so a reused row must not carry the place the book first
-    // gave it (decision 267).
+    // gave it (decision 267). It comes from `now()`, the DATABASE clock, the
+    // same one the insert path's `defaultNow()` uses. A `new Date()` here
+    // reads the Node clock instead, and the two drift: when Node runs behind
+    // Postgres the revived row sorts before rows inserted before it and leads
+    // the references sent to the image model, which is the bug this prevents.
     const [revived] = await db
       .update(castMembers)
-      .set({ role, dismissedAt: null, photos: [], createdAt: now, updatedAt: now })
+      .set({
+        role,
+        dismissedAt: null,
+        photos: [],
+        createdAt: sql`now()`,
+        updatedAt: sql`now()`,
+      })
       .where(eq(castMembers.id, same.id))
       .returning()
     return toMember(revived!)

@@ -80,13 +80,22 @@ export async function insertProjectSet(
     })
   }
   if (same) {
-    const now = new Date()
     // A fresh `createdAt`: re-adding is adding, and the list is ordered
     // oldest first, so a reused row must not carry the place the book first
-    // gave it (decision 267).
+    // gave it (decision 267). It comes from `now()`, the DATABASE clock, the
+    // same one the insert path's `defaultNow()` uses. A `new Date()` here
+    // reads the Node clock instead, and the two drift: when Node runs behind
+    // Postgres the revived row sorts before rows inserted before it and lands
+    // back in its old place, which is the bug this line exists to prevent.
     const [revived] = await db
       .update(projectSets)
-      .set({ look, dismissedAt: null, plates: [], createdAt: now, updatedAt: now })
+      .set({
+        look,
+        dismissedAt: null,
+        plates: [],
+        createdAt: sql`now()`,
+        updatedAt: sql`now()`,
+      })
       .where(eq(projectSets.id, same.id))
       .returning()
     return toSet(revived!)
