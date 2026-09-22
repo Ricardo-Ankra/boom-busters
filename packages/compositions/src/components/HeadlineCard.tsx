@@ -2,8 +2,8 @@ import { AbsoluteFill, useCurrentFrame, useVideoConfig } from 'remotion'
 import type { CSSProperties } from 'react'
 import type { BrandKitTokens, HeadlinePayload } from '@boom-busters/schemas'
 import { formatPublished, splitHeadline } from '../lib/headline'
-import { easeInOut } from '../lib/motion'
-import { frameScale, typeStyle, withAlpha } from './brand'
+import { easeInOut, markerSweep } from '../lib/motion'
+import { frameScale, typeStyle } from './brand'
 
 /**
  * A cited news headline, as a clipping (decision 257).
@@ -38,16 +38,6 @@ const DRIFT = 0.012
 function progress(frame: number, fps: number, delayMs: number, ms: number): number {
   const tMs = (frame / fps) * 1000 - delayMs
   return easeInOut(Math.min(1, Math.max(0, tMs / ms)))
-}
-
-/** The highlighter: an accent wash under the bottom third of the glyphs. */
-function marker(accent: string, sweep: number): CSSProperties {
-  return {
-    backgroundImage: `linear-gradient(transparent 58%, ${withAlpha(accent, 0.55)} 58%)`,
-    backgroundSize: `${sweep * 100}% 100%`,
-    backgroundRepeat: 'no-repeat',
-    paddingInline: '0.04em',
-  }
 }
 
 export function HeadlineCard({
@@ -146,7 +136,7 @@ export function HeadlineCard({
           >
             {parts.before}
             {parts.hit === '' ? null : (
-              <span style={marker(colors.accent, sweep)}>{parts.hit}</span>
+              <span style={markerSweep(colors.accent, sweep)}>{parts.hit}</span>
             )}
             {parts.after}
           </div>

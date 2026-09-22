@@ -1,4 +1,6 @@
+import type { CSSProperties } from 'react'
 import type { MediaRef } from '@boom-busters/schemas'
+import { withAlpha } from '../components/brand'
 
 /** Smoothstep — gentle in and out, no library, no surprises. */
 export function easeInOut(t: number): number {
@@ -115,4 +117,14 @@ export function transitionOpacity(
 ): number {
   if (transition === 'cut') return 1
   return Math.min(1, Math.max(0, tMs / dissolveMs))
+}
+
+/** The highlighter: an accent wash under the bottom third of the glyphs, swept to `sweep`. */
+export function markerSweep(accent: string, sweep: number): CSSProperties {
+  return {
+    backgroundImage: `linear-gradient(transparent 58%, ${withAlpha(accent, 0.55)} 58%)`,
+    backgroundSize: `${Math.min(1, Math.max(0, sweep)) * 100}% 100%`,
+    backgroundRepeat: 'no-repeat',
+    paddingInline: '0.04em',
+  }
 }

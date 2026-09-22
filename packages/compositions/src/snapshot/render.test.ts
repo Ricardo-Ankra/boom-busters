@@ -47,6 +47,10 @@ const CASES: SnapshotCase[] = [
   // finished its sweep (decision 257).
   { id: 'HeadlineCardWide', frame: 60, maxDiffRatio: 0.06 },
   { id: 'HeadlineCardTall', frame: 60, maxDiffRatio: 0.06 },
+  // A composed graphic (decision 268, Plan B): frame 45 is 1.5 s in, every
+  // element has entered and the figure has finished counting.
+  { id: 'GraphicCardWide', frame: 45, maxDiffRatio: 0.06 },
+  { id: 'GraphicCardTall', frame: 45, maxDiffRatio: 0.06 },
   { id: 'LowerThirdBar', frame: 60, maxDiffRatio: 0.06 },
   { id: 'ChapterCardFull', frame: 40, maxDiffRatio: 0.06 },
   { id: 'KaraokeCaptionsWide', frame: 20, maxDiffRatio: 0.06 },
