@@ -130,6 +130,8 @@ export default async function globalSetup(): Promise<void> {
     insertMusicBed,
     listMusicBeds,
     insertLogo,
+    listLogos,
+    removeLogo,
     FIXTURE_CASE_ID,
     FIXTURE_PROJECT_ID,
     articleSources,
@@ -726,24 +728,80 @@ export default async function globalSetup(): Promise<void> {
       await setRunStatus(connection.db, boardRunId, 'awaiting_gate')
     }
 
+    // Marks leak the same way renders, timelines and article sources do
+    // above, and nothing had cleared them until now: `visuals-actions.test.ts`
+    // (packages/db writes through the same TEST_DATABASE_URL) inserts a bare
+    // "Wirecard AG" logo and never removes it, so a local run of that suite
+    // before this one leaves a third mark behind. That is exactly what
+    // turned up seeding this task's graphic slots. Every E2E-owned mark's
+    // title ends "(E2E)" (every constant above does too); anything else here
+    // is a stray from outside this suite.
+    for (const stray of (await listLogos(connection.db)).filter(
+      (logo) => !logo.title?.endsWith('(E2E)'),
+    )) {
+      await removeLogo(connection.db, stray.id)
+    }
+
+    // Two marks (decision 268), on mock:// keys like the beds below: the tab
+    // lists them, the watermark never draws them (mock storage has no bytes).
+    // No length guard: `insertLogo` upserts on `contentHash`, so re-running
+    // this every setup restores both titles even after a spec renamed one
+    // and failed to revert it, the same guarantee `insertMusicBed` gets from
+    // its own guard only by luck of the beds never being renamed. Seeded
+    // here, ahead of the PLAN checkpoint below, so its graphic slot can read
+    // the Wirecard mark's real id back with `findLogoByName` (Task 11).
+    for (const [index, title] of [
+      [1, 'Stability AI (E2E)'],
+      [2, 'Wirecard AG (E2E)'],
+    ] as const) {
+      await insertLogo(connection.db, {
+        r2Key: `mock://logos/e2e-mark-${index}`,
+        contentHash: `e2e-logo-${index}`,
+        title,
+        width: 1200,
+        height: 400,
+      })
+    }
+
     /**
      * 6b. A project parked at the PLAN checkpoint (staged-visuals design):
      * the shot list written, NOTHING fetched, `visuals_phase='plan'` — the
      * state the runner leaves after shot-list generation. One still (the
      * paid kind, so the Fetch button carries a price) and one stock slot.
+     *
+     * Task 11 adds two graphic slots (decision 268, Plan B) to the same
+     * board. A graphic is never owed a fetch: the scene is the payload, so
+     * both are seeded already resolved (`setSlotResolution`, below) rather
+     * than left `unresolved` like the still and the stock slot. One cites
+     * the mark seeded above as `Wirecard AG (E2E)` and lands `resolved`; the
+     * other names `Acme Capital (E2E)`, which the library does not hold, and
+     * lands `placeholder`, the state that proves the board's
+     * `Add logo for …` button and its dashed upload box.
      */
     {
-      const { replaceShotList, setVisualsPhase } = await import('@boom-busters/db')
+      const { replaceShotList, setVisualsPhase, setSlotResolution, listShotSlots, findLogoByName } =
+        await import('@boom-busters/db')
 
       const plan = await createProjectFromCase(connection.db, {
         caseId: FIXTURE_CASE_ID,
         title: VISUAL_PLAN_TITLE,
       })
-      await saveDossier(connection.db, {
+      const planDossier = await saveDossier(connection.db, {
         projectId: plan.id,
         contentMd: '# The research this plan was made from.',
-        claims: [],
+        // The one claim the graphic's figure cites (decision 268, Plan B):
+        // `figureCitesClaim` compares digit groups only, so the bare "4"
+        // here is what the $4bn figure below is checked against.
+        claims: [
+          {
+            text: 'Wirecard raised $4 billion from investors before the fraud came to light.',
+            sourceType: 'other',
+            confidence: 'sourced',
+          },
+        ],
       })
+      const fundingClaimId = planDossier.claims[0]!.id
+      const wirecardLogo = await findLogoByName(connection.db, 'Wirecard AG (E2E)')
       const planScript = await createScriptVersion(connection.db, plan.id)
       const planChapter = await saveChapter(connection.db, {
         scriptId: planScript.id,
@@ -786,7 +844,98 @@ export default async function globalSetup(): Promise<void> {
           startMs: 6000,
           durationMs: 6000,
         },
+        {
+          // Resolved (decision 268, Plan B): the Wirecard mark is already in
+          // the library, so this scene carries its assetId from the moment
+          // it is seeded. That is the shape a real upload leaves behind, not
+          // the `unresolved` a freshly planned slot starts at.
+          chapterId: planChapter.id,
+          index: 2,
+          type: 'graphic',
+          brief: {
+            type: 'graphic',
+            motion: { kind: 'static' as const },
+            transition: 'cut' as const,
+            coversText: 'It raised four billion dollars.',
+            description: 'The raise, in one figure, beside the mark that backs it.',
+            scene: {
+              elements: [
+                {
+                  kind: 'text',
+                  id: 't1',
+                  cell: { col: 0, row: 0, colSpan: 12, rowSpan: 3 },
+                  enter: { kind: 'fade', atMs: 0 },
+                  content: 'Wirecard AG',
+                  role: 'heading',
+                  color: 'textPrimary',
+                  align: 'start',
+                },
+                {
+                  kind: 'figure',
+                  id: 'f1',
+                  cell: { col: 0, row: 3, colSpan: 7, rowSpan: 6 },
+                  enter: { kind: 'count', atMs: 300 },
+                  value: '$4bn',
+                  label: 'raised',
+                  color: 'accent',
+                  claimRef: fundingClaimId,
+                },
+                {
+                  kind: 'logo',
+                  id: 'l1',
+                  cell: { col: 8, row: 3, colSpan: 4, rowSpan: 6 },
+                  enter: { kind: 'rise', atMs: 200 },
+                  entity: 'Wirecard AG (E2E)',
+                  assetId: wirecardLogo!.id,
+                },
+              ],
+            },
+          },
+          startMs: 12000,
+          durationMs: 6000,
+        },
+        {
+          // Placeholder (decision 268, Plan B): Acme Capital has no mark in
+          // the library, so the scene names the entity and carries no
+          // assetId. That is the state that proves the board's upload prompt.
+          chapterId: planChapter.id,
+          index: 3,
+          type: 'graphic',
+          brief: {
+            type: 'graphic',
+            motion: { kind: 'static' as const },
+            transition: 'cut' as const,
+            coversText: 'Acme Capital led the round.',
+            description: 'The lead investor, named but not yet in the library.',
+            scene: {
+              elements: [
+                {
+                  kind: 'logo',
+                  id: 'l1',
+                  cell: { col: 0, row: 0, colSpan: 12, rowSpan: 12 },
+                  enter: { kind: 'fade', atMs: 0 },
+                  entity: 'Acme Capital (E2E)',
+                },
+              ],
+            },
+          },
+          startMs: 18000,
+          durationMs: 6000,
+        },
       ])
+
+      const planSlots = await listShotSlots(connection.db, plan.id)
+      const resolvedGraphic = planSlots.find((slot) => slot.index === 2)!
+      const placeholderGraphic = planSlots.find((slot) => slot.index === 3)!
+      await setSlotResolution(connection.db, resolvedGraphic.id, {
+        status: 'resolved',
+        candidates: [],
+        answered: { brief: resolvedGraphic.brief, route: resolvedGraphic.route },
+      })
+      await setSlotResolution(connection.db, placeholderGraphic.id, {
+        status: 'placeholder',
+        candidates: [],
+      })
 
       // Decision 264: one set with one plate, so the Set card starts
       // collapsed (every set has a plate) and the "sets" test opens it with
@@ -826,7 +975,7 @@ export default async function globalSetup(): Promise<void> {
       await recordRunEvent(connection.db, {
         runId: planRunId,
         kind: 'gate.opened',
-        message: 'Shot plan ready · 2 slots · 1 still to generate · nothing fetched yet',
+        message: 'Shot plan ready · 4 slots · 1 still to generate · nothing fetched yet',
         data: { gate: 'visuals' },
       })
       await setRunStatus(connection.db, planRunId, 'awaiting_gate')
@@ -869,25 +1018,6 @@ export default async function globalSetup(): Promise<void> {
           moodTags: ['tension'],
         })
       }
-    }
-
-    // Two marks (decision 268), on mock:// keys like the beds: the tab
-    // lists them, the watermark never draws them (mock storage has no bytes).
-    // No length guard: `insertLogo` upserts on `contentHash`, so re-running
-    // this every setup restores both titles even after a spec renamed one
-    // and failed to revert it, the same guarantee `insertMusicBed` above
-    // gets from its own guard only by luck of the beds never being renamed.
-    for (const [index, title] of [
-      [1, 'Stability AI (E2E)'],
-      [2, 'Wirecard AG (E2E)'],
-    ] as const) {
-      await insertLogo(connection.db, {
-        r2Key: `mock://logos/e2e-mark-${index}`,
-        contentHash: `e2e-logo-${index}`,
-        title,
-        width: 1200,
-        height: 400,
-      })
     }
 
     /**

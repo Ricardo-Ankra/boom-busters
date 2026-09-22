@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test'
 import { VISUAL_PLAN_TITLE } from '../global-setup'
-import { signIn } from './fixtures'
+import { expectHitTargets, signIn } from './fixtures'
 
 /**
  * The PLAN checkpoint (staged-visuals design, closed out in M8.7): the
@@ -35,8 +35,17 @@ test.describe('the shot plan checkpoint', () => {
     // the shipped default, gemini-3.1-flash-image, at two variants a slot
     // (decision 264). A settings row left behind by a unit-test run must
     // not decide this number.
+    //
+    // 3, not 2 (Task 11): the seeded plan carries two graphic slots beside
+    // the still and the stock (decision 268, Plan B). A graphic is never
+    // owed a fetch, so the resolved one never counts, but a placeholder
+    // one still reads as "not resolved" the same way an untouched still or
+    // stock does, so it counts here despite Fetch visuals having nothing to
+    // spend on it; the real repair is the card's own "Add logo for …"
+    // button. The price is still exactly the still's alone: a graphic and a
+    // stock both fetch for free.
     await expect(
-      page.getByRole('button', { name: 'Fetch visuals · 2 slots · est. $0.14' }),
+      page.getByRole('button', { name: 'Fetch visuals · 3 slots · est. $0.14' }),
     ).toBeVisible()
     await expect(page.getByText('planned').first()).toBeVisible()
     // The plan bar owns approval; the generic gate bar would speak an event
@@ -117,14 +126,18 @@ test.describe('reusing a shot (decision 261)', () => {
     await picker.getByRole('button', { name: 'Use whatever this slot chooses' }).click()
 
     await expect(still.getByText('Reused from ch 1 · 0:06')).toBeVisible()
-    await expect(page.getByRole('button', { name: /Fetch visuals · 1 slot/ })).toBeVisible()
+    // 2, not 1 (Task 11): the still drops off the bill, leaving the stock
+    // and the seeded placeholder graphic (decision 268, Plan B). Free, but
+    // still not resolved, so it still counts. See the plan-checkpoint test
+    // above for why a placeholder graphic counts here at all.
+    await expect(page.getByRole('button', { name: /Fetch visuals · 2 slots/ })).toBeVisible()
     // The fetch-shaped buttons left the card; the words are still editable.
     await expect(still.getByRole('button', { name: /Fetch this slot/ })).toHaveCount(0)
     await expect(still.getByRole('button', { name: 'Edit brief', exact: true })).toBeVisible()
 
     await still.getByRole('button', { name: 'Choose its own shot' }).click()
     await expect(still.getByText(/Reused from/)).toHaveCount(0)
-    await expect(page.getByRole('button', { name: /Fetch visuals · 2 slots/ })).toBeVisible()
+    await expect(page.getByRole('button', { name: /Fetch visuals · 3 slots/ })).toBeVisible()
   })
 })
 
@@ -158,9 +171,53 @@ test.describe('sets (decision 264)', () => {
 })
 
 /**
+ * The graphic card on the PLAN checkpoint (decision 268, Plan B; Task 11):
+ * seeded already resolved or placeholder (a graphic is never owed a fetch),
+ * so both read their true state on the very first screen a human sees.
+ *
+ * Placed ahead of "per-slot model routing" below on purpose: that test
+ * permanently re-routes the still to the pricier Gemini 3 Pro Image and
+ * never puts it back, so a graphic test placed after it would price the
+ * board at whatever that test last left the still on, not the seeded $0.14.
+ */
+test.describe('a graphic slot (decision 268, Plan B)', () => {
+  test('a graphic card previews from the shared layout, chips its claims, and asks for a missing mark', async ({
+    page,
+  }) => {
+    const resolved = page.locator('[id^="slot-"]').filter({ hasText: 'raised four billion' })
+    await expect(resolved.getByRole('img', { name: /^graphic:/ })).toBeVisible()
+    await expect(resolved.getByText('claim 1')).toBeVisible()
+    // .first(): the card carries "graphic" twice while the format picker is
+    // open, in the type badge and in the picker's own disabled "graphic"
+    // button (decision 214's "the badge the accessibility tree can actually
+    // read"). Either one proves the type; the badge lands first in the DOM.
+    await expect(resolved.getByText('graphic', { exact: true }).first()).toBeVisible()
+
+    const waiting = page.locator('[id^="slot-"]').filter({ hasText: 'Acme Capital' })
+    await expect(
+      waiting.getByRole('button', { name: 'Add logo for Acme Capital (E2E)' }),
+    ).toBeVisible()
+    await expect(waiting.getByText('logo: Acme Capital (E2E) (upload)')).toBeVisible()
+    // The PRICE is unchanged at $0.14 (the still is the only paid slot):
+    // "a graphic costs nothing to fetch" is true of the money. It is not
+    // true of the slot count: the resolved graphic never counts (nothing is
+    // owed), but the placeholder one still reads as "not resolved" the same
+    // way an untouched still or stock does, so Fetch visuals still offers to
+    // touch it, even though the only real fix is the upload button above.
+    // See the plan-checkpoint test in this file for the same count.
+    await expect(
+      page.getByRole('button', { name: 'Fetch visuals · 3 slots · est. $0.14' }),
+    ).toBeVisible()
+    await expectHitTargets(page)
+  })
+})
+
+/**
  * The per-slot model select (decision 264): scoped to the still card's own
  * brief editor, the same "Edit brief" button the plan-phase edit test above
- * uses, since the plan screen never offers "Save & re-fetch".
+ * uses, since the plan screen never offers "Save & re-fetch". Runs last in
+ * the file: it re-routes the still permanently, which the graphic test
+ * above depends on not having happened yet.
  */
 test.describe('per-slot model routing (decision 264)', () => {
   test('a slot can be pointed at a different model', async ({ page }) => {
