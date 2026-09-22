@@ -88,6 +88,29 @@ suite('shot slots', () => {
     rejectionCriteria: [],
   }
 
+  const graphicBrief: ShotBrief = {
+    type: 'graphic',
+    coversText: 'It raised four billion dollars.',
+    description: 'A single heading on the left of the grid.',
+    motion: { kind: 'static' },
+    transition: 'cut',
+    shotSize: 'graphic',
+    scene: {
+      elements: [
+        {
+          kind: 'text',
+          id: 't1',
+          cell: { col: 0, row: 0, colSpan: 6, rowSpan: 3 },
+          enter: { kind: 'fade', atMs: 0 },
+          content: 'Raised',
+          role: 'heading',
+          color: 'textPrimary',
+          align: 'start',
+        },
+      ],
+    },
+  }
+
   function slots() {
     return [
       {
@@ -155,6 +178,28 @@ suite('shot slots', () => {
     const board = await listShotSlots(db, projectId)
     expect(board).toHaveLength(1)
     expect(board[0]?.type).toBe('still')
+  })
+
+  it('round-trips a graphic slot, scene and all (decision 268)', async () => {
+    await replaceShotList(db, projectId, [
+      {
+        chapterId: chapterA,
+        index: 0,
+        type: 'graphic' as const,
+        brief: graphicBrief,
+        startMs: 0,
+        durationMs: 5000,
+      },
+    ])
+
+    const board = await listShotSlots(db, projectId)
+    expect(board).toHaveLength(1)
+    expect(board[0]?.type).toBe('graphic')
+    expect(board[0]?.brief).toEqual(graphicBrief)
+
+    const stored = await getShotSlot(db, board[0]!.id)
+    expect(stored?.type).toBe('graphic')
+    expect(stored?.brief).toEqual(graphicBrief)
   })
 
   it('stores a resolution: candidates, status, and the chosen flag', async () => {

@@ -1,0 +1,1 @@
+ALTER TYPE "public"."shot_type" ADD VALUE 'graphic' BEFORE 'hero';
