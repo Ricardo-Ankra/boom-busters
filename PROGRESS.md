@@ -4254,116 +4254,116 @@ Recorded whenever the spec left something open and an implementation was chosen.
 
 ### M3
 
-23. **The adapters own the model list and the price table.** Spec §6 puts both
-    on each `LLMProvider`, so `packages/cost` now derives `LLM_PRICES` from
-    `LLM_MODELS` instead of keeping the hand-written copy M1 shipped. Two
-    tables drift, and the one the guard happened to read would decide whether
-    a cap held. A test asserts the numbers are identical by construction.
-    **The figures themselves are still provisional** — carried over from M2 and
-    accepted as-is by the human (2026-08-11) rather than verified against the
-    vendors' current price lists.
+23.  **The adapters own the model list and the price table.** Spec §6 puts both
+     on each `LLMProvider`, so `packages/cost` now derives `LLM_PRICES` from
+     `LLM_MODELS` instead of keeping the hand-written copy M1 shipped. Two
+     tables drift, and the one the guard happened to read would decide whether
+     a cap held. A test asserts the numbers are identical by construction.
+     **The figures themselves are still provisional** — carried over from M2 and
+     accepted as-is by the human (2026-08-11) rather than verified against the
+     vendors' current price lists.
 
-24. **Model ids moved from short names to wire ids**, and `normaliseSettings`
-    rewrites `opus`/`sonnet`/`haiku` on read. `SettingsSchema` accepts any
-    non-empty string as a model, so an M1-era settings row parses cleanly and
-    would only fail later, at the router's pre-flight, as "anthropic does not
-    offer opus" — halfway into a run and nowhere near the cause.
+24.  **Model ids moved from short names to wire ids**, and `normaliseSettings`
+     rewrites `opus`/`sonnet`/`haiku` on read. `SettingsSchema` accepts any
+     non-empty string as a model, so an M1-era settings row parses cleanly and
+     would only fail later, at the router's pre-flight, as "anthropic does not
+     offer opus" — halfway into a run and nowhere near the cause.
 
-25. **Prompt builders and response parsers live in `packages/providers`.** They
-    are logic, and spec §3 keeps logic in packages rather than in
-    `apps/web/lib`. `providers` still imports nothing from `db`: the router
-    takes decrypted credentials as an argument and reports downgrades through a
-    callback, so the "adapters are pure" rule survives.
+25.  **Prompt builders and response parsers live in `packages/providers`.** They
+     are logic, and spec §3 keeps logic in packages rather than in
+     `apps/web/lib`. `providers` still imports nothing from `db`: the router
+     takes decrypted credentials as an argument and reports downgrades through a
+     callback, so the "adapters are pure" rule survives.
 
-26. **`parseJsonCompletion` extracts JSON but never repairs it.** Fences and
-    prose around the object are stripped, because that is presentation. A
-    trailing comma is not: malformed JSON means the generation went wrong, and
-    patching the syntax yields a dossier with half a claim in it. The runner
-    retries instead.
+26.  **`parseJsonCompletion` extracts JSON but never repairs it.** Fences and
+     prose around the object are stripped, because that is presentation. A
+     trailing comma is not: malformed JSON means the generation went wrong, and
+     patching the syntax yields a dossier with half a claim in it. The runner
+     retries instead.
 
-27. **Change requests are a separate Inngest function, not a second wait.**
-    `dossier-runner` waits only on `gate/dossier.approved`; `dossier-reviser`
-    triggers on `gate/dossier.changes_requested`, re-researches and re-opens the
-    gate while the main run stays parked. Racing two `waitForEvent` steps
-    leaves the losing wait of every round outstanding in the run plan, and
-    cannot be tested — `@inngest/test` cannot drive a run past a
-    `waitForEvent` at all (see decision 20). `cancel-reconciler` proved this
-    shape in M2.
+27.  **Change requests are a separate Inngest function, not a second wait.**
+     `dossier-runner` waits only on `gate/dossier.approved`; `dossier-reviser`
+     triggers on `gate/dossier.changes_requested`, re-researches and re-opens the
+     gate while the main run stays parked. Racing two `waitForEvent` steps
+     leaves the losing wait of every round outstanding in the run plan, and
+     cannot be tested — `@inngest/test` cannot drive a run past a
+     `waitForEvent` at all (see decision 20). `cancel-reconciler` proved this
+     shape in M2.
 
-28. **Nothing crosses a step boundary except plain JSON.** Inngest serialises
-    step return values, so a `BudgetExceededError` arrives as a shapeless
-    object that `instanceof` will not recognise — it would have been re-thrown
-    as an unknown error and retried four times. Budget gates travel as the same
-    plain record the Needs-you card renders from.
+28.  **Nothing crosses a step boundary except plain JSON.** Inngest serialises
+     step return values, so a `BudgetExceededError` arrives as a shapeless
+     object that `instanceof` will not recognise — it would have been re-thrown
+     as an unknown error and retried four times. Budget gates travel as the same
+     plain record the Needs-you card renders from.
 
-29. **The dossier approval blocker is enforced in the server action.** A
-    disabled button is a hint; `approveGate` refuses outright while any claim
-    is unsourced and unquarantined, so a stale tab or a replayed post cannot
-    walk an unchecked assertion into a script. The predicate lives in
-    `lib/claim-review.ts` and is read by the screen, the gate bar and the
-    action alike.
+29.  **The dossier approval blocker is enforced in the server action.** A
+     disabled button is a hint; `approveGate` refuses outright while any claim
+     is unsourced and unquarantined, so a stale tab or a replayed post cannot
+     walk an unchecked assertion into a script. The predicate lives in
+     `lib/claim-review.ts` and is read by the screen, the gate bar and the
+     action alike.
 
-30. **Sentence splitting and hashing live in `packages/schemas`.** Three places
-    must agree on what a sentence is: the self-check that warns against one,
-    the `claim_ref` that pins a claim to one, and the Studio gutter that draws a
-    marker beside one. The hash normalises whitespace, case and punctuation, so
-    fixing a typo does not orphan every claim reference in the chapter — only a
-    real rewording breaks the link, which is exactly when the claim should be
-    re-checked.
+30.  **Sentence splitting and hashing live in `packages/schemas`.** Three places
+     must agree on what a sentence is: the self-check that warns against one,
+     the `claim_ref` that pins a claim to one, and the Studio gutter that draws a
+     marker beside one. The hash normalises whitespace, case and punctuation, so
+     fixing a typo does not orphan every claim reference in the chapter — only a
+     real rewording breaks the link, which is exactly when the claim should be
+     re-checked.
 
-31. **Chapters are drafted sequentially, not fanned out.** Each is fed the tail
-    of the previous one. Parallel chapters read like separate essays about the
-    same company, each re-introducing the principals. Each chapter is still its
-    own step, so a failure in chapter six does not re-charge one to five.
+31.  **Chapters are drafted sequentially, not fanned out.** Each is fed the tail
+     of the previous one. Parallel chapters read like separate essays about the
+     same company, each re-introducing the principals. Each chapter is still its
+     own step, so a failure in chapter six does not re-charge one to five.
 
-32. **Warnings are a `jsonb` column on `chapters`, not a table.** A warning has
-    no identity beyond the sentence it points at and is replaced wholesale on
-    every re-check. Migration `0003`.
+32.  **Warnings are a `jsonb` column on `chapters`, not a table.** A warning has
+     no identity beyond the sentence it points at and is replaced wholesale on
+     every re-check. Migration `0003`.
 
-33. **The Studio editor is TipTap over a paragraph-only document.** Narration
-    has no other structure — the drafting prompt forbids headings, bullets and
-    stage directions because the text is read aloud exactly as written — so the
-    markdown round trip is lossless without a parser inventing structure. Warned
-    sentences are a ProseMirror _decoration_, never a wrapper node: what reaches
-    the voice stage must be exactly what the human saw.
+33.  **The Studio editor is TipTap over a paragraph-only document.** Narration
+     has no other structure — the drafting prompt forbids headings, bullets and
+     stage directions because the text is read aloud exactly as written — so the
+     markdown round trip is lossless without a parser inventing structure. Warned
+     sentences are a ProseMirror _decoration_, never a wrapper node: what reaches
+     the voice stage must be exactly what the human saw.
 
-34. **Regenerate returns a proposal and never writes.** The human accepts or
-    rejects each hunk and only that decision is saved. Nothing is accepted by
-    default, and applying zero hunks returns the original byte for byte — the
-    property that makes "Reject all" safe. The diff is by sentence, matching the
-    unit warnings and claims already use.
+34.  **Regenerate returns a proposal and never writes.** The human accepts or
+     rejects each hunk and only that decision is saved. Nothing is accepted by
+     default, and applying zero hunks returns the original byte for byte — the
+     property that makes "Reject all" safe. The diff is by sentence, matching the
+     unit warnings and claims already use.
 
-35. **The seed resets fixture claims rather than skipping them.**
-    `onConflictDoNothing` left a claim quarantined by a previous E2E run, so the
-    fixture's whole point — one unverified claim blocking the dossier gate —
-    quietly stopped being true on the second run. `deleteCasesExcept` likewise
-    clears rows the suite created, because repeatability is the value of having
-    a fixture at all.
+35.  **The seed resets fixture claims rather than skipping them.**
+     `onConflictDoNothing` left a claim quarantined by a previous E2E run, so the
+     fixture's whole point — one unverified claim blocking the dossier gate —
+     quietly stopped being true on the second run. `deleteCasesExcept` likewise
+     clears rows the suite created, because repeatability is the value of having
+     a fixture at all.
 
-36. **`pnpm db:migrate:test`.** A Neon branch is a point-in-time clone, not a
-    follower, so migrations must be applied to it too. The obvious
-    `DATABASE_URL=… pnpm db:migrate` trips the same-database guard by leaving a
-    stale `DATABASE_URL_UNPOOLED` pointing at production — the guard is right,
-    so the script exists instead.
+36.  **`pnpm db:migrate:test`.** A Neon branch is a point-in-time clone, not a
+     follower, so migrations must be applied to it too. The obvious
+     `DATABASE_URL=… pnpm db:migrate` trips the same-database guard by leaving a
+     stale `DATABASE_URL_UNPOOLED` pointing at production — the guard is right,
+     so the script exists instead.
 
-37. **Cast references: real faces in generated stills** (2026-09-15, owner
-    request after the first Stability AI stills: "it's important that any
-    person or character we show actually looks like the person"; spec
-    `docs/superpowers/specs/2026-09-15-cast-references-design.md`, plan
-    `docs/superpowers/plans/2026-09-15-cast-references.md`).
-    _Why._ A text prompt cannot reproduce a face the image model never
-    memorised, and neither stills route was ever shown a photograph; the
-    prompt also quoted the guardrail ("never in handcuffs"), which image
-    models read as suggestion. The owner chose a per-project cast over a
-    channel-wide library, both image routes with Gemini first, and identity
-    strings written by a vision model.
-    _What._ (a) `cast_members` (migration 0022): name, role, identity
-    string, guardrail, up to four photos in R2 under
-    `boom-busters/cast/<projectId>/`; unique name per project; gone with the
-    project. (b) The Cast card on the project page from the script stage
-    onward, in every phase: add a person, four photo tiles with a view
-    label, presigned PUT uploads (the decision 213 shape), Save, Describe
-    from photos (≈$0.02), Remove. (c) `Msg.images` on LLM messages, emitted
+37.  **Cast references: real faces in generated stills** (2026-09-15, owner
+     request after the first Stability AI stills: "it's important that any
+     person or character we show actually looks like the person"; spec
+     `docs/superpowers/specs/2026-09-15-cast-references-design.md`, plan
+     `docs/superpowers/plans/2026-09-15-cast-references.md`).
+     _Why._ A text prompt cannot reproduce a face the image model never
+     memorised, and neither stills route was ever shown a photograph; the
+     prompt also quoted the guardrail ("never in handcuffs"), which image
+     models read as suggestion. The owner chose a per-project cast over a
+     channel-wide library, both image routes with Gemini first, and identity
+     strings written by a vision model.
+     _What._ (a) `cast_members` (migration 0022): name, role, identity
+     string, guardrail, up to four photos in R2 under
+     `boom-busters/cast/<projectId>/`; unique name per project; gone with the
+     project. (b) The Cast card on the project page from the script stage
+     onward, in every phase: add a person, four photo tiles with a view
+     label, presigned PUT uploads (the decision 213 shape), Save, Describe
+     from photos (≈$0.02), Remove. (c) `Msg.images` on LLM messages, emitted
     by all three adapters ahead of the text; `cast-identity.ts` writes the
     identity string and a default guardrail from the photos on the
     `direction` task, once per person on the first photo. (d) The book is
@@ -4496,996 +4496,1072 @@ Recorded whenever the spec left something open and an implementation was chosen.
     _Addendum (o), 2026-09-16, owner: "I need that cost estimate for shots to
     be accurate otherwise what is the point"._ Fair. "Fetch visuals · est.
     $X" was slot count times one flat per-slot price, and (n) had made that
-    price the dearer of the two routes, so a film of mostly plain stills was
-    quoted as though every frame carried a likeness. The estimate is now
-    computed brief by brief (`stillsEstimateUsd`): every brief is already
-    written when the plan checkpoint is on screen, so which route a slot
-    takes, and how many reference photographs travel with it, are known
-    facts. On fal it also prices the reference endpoint rather than the
-    routed model, and Kontext's single-versus-multi tier by the number of
-    photographs that will actually be sent. A test pins the thing that
-    matters: the number quoted for a brief equals the amount the ledger then
-    reserves when that brief is generated. `depictedFrom` is now the one pure
-    rule for whom a still shows, shared by the generator and the estimate,
-    because the drift between them is what produced a useless number in the
-    first place; `castMembersNamed` went with it, being a second way to ask
-    the same question and now unused. `stillSlotEstimateUsd` survives for the
-    teaser studio alone, which generates a beat at a time before any brief
-    exists and so can only be quoted conservatively; its comment says as much.
-    _Addendum (p), 2026-09-17, owner reading a generated prompt: "only include
-    descriptions for non-named characters ... those descriptions are not
-    necessary and may confuse the image generation"._ The prompt read "Emad
-    Mostaque, founder and former CEO of Stability AI, the person in the
-    reference photo. Emad Mostaque, founder and former CEO of Stability AI,
-    male in his 40s, short dark hair, closely cropped beard, medium build,
-    ..." The model had followed its instruction exactly, and the instruction
-    was wrong: the still rule said to name the person, add the reference-photo
-    clause, AND paste the identity string. The House Visual Bible had said
-    both things too, telling the planner to append "the full name and identity
-    string of any person shown" in one section while forbidding facial
-    descriptors that contradict a photograph in another. The planner also had
-    no way to tell who was photographed, since the book's principals record an
-    identity string whether a photograph exists or not. Fixed on both counts.
-    `buildShotListRequest` takes `photographed`, the exact names the cast holds
-    photographs of, listed in the cacheable prefix with the note that their
-    Identity line is planning context and must never reach a prompt. The still
-    rule now splits people into three kinds that never mix: a photographed
-    person gets name, role and the reference-photo clause and NO physical
-    description at all, since the photograph is the likeness and prose only
-    argues with it, while clothing, posture, place and light stay the
-    planner's to direct; a named person with no photograph still gets the
-    identity string, being all that stands between the image and a stand-in;
-    an unnamed extra gets role, age range, build and clothing and no name.
-    The bible's contradiction is resolved the same way, with the offending
-    prompt quoted in it as the worked example of the mistake. `photographed`
-    is carried by `loadDirectionInputs` and by both runners' own setup steps.
-    _Addendum (q), 2026-09-17, owner: "put the Re-plan shot list button next
-    to the Fetch visuals button in the Shot Plan card."_ Moved. Re-planning
-    acts on the plan, not on the book, and the producer decides a plan reads
-    wrong while reading the plan. The two spends now sit in one row, so the
-    choice they present is the real one: fetch this plan, or plan again. The
-    Direction card keeps Save and Redraft, which do act on the book, and its
-    now-unused `slotsFetched` prop went with the button, the consequence line
-    that named the discarded slots having moved too.
+     price the dearer of the two routes, so a film of mostly plain stills was
+     quoted as though every frame carried a likeness. The estimate is now
+     computed brief by brief (`stillsEstimateUsd`): every brief is already
+     written when the plan checkpoint is on screen, so which route a slot
+     takes, and how many reference photographs travel with it, are known
+     facts. On fal it also prices the reference endpoint rather than the
+     routed model, and Kontext's single-versus-multi tier by the number of
+     photographs that will actually be sent. A test pins the thing that
+     matters: the number quoted for a brief equals the amount the ledger then
+     reserves when that brief is generated. `depictedFrom` is now the one pure
+     rule for whom a still shows, shared by the generator and the estimate,
+     because the drift between them is what produced a useless number in the
+     first place; `castMembersNamed` went with it, being a second way to ask
+     the same question and now unused. `stillSlotEstimateUsd` survives for the
+     teaser studio alone, which generates a beat at a time before any brief
+     exists and so can only be quoted conservatively; its comment says as much.
+     _Addendum (p), 2026-09-17, owner reading a generated prompt: "only include
+     descriptions for non-named characters ... those descriptions are not
+     necessary and may confuse the image generation"._ The prompt read "Emad
+     Mostaque, founder and former CEO of Stability AI, the person in the
+     reference photo. Emad Mostaque, founder and former CEO of Stability AI,
+     male in his 40s, short dark hair, closely cropped beard, medium build,
+     ..." The model had followed its instruction exactly, and the instruction
+     was wrong: the still rule said to name the person, add the reference-photo
+     clause, AND paste the identity string. The House Visual Bible had said
+     both things too, telling the planner to append "the full name and identity
+     string of any person shown" in one section while forbidding facial
+     descriptors that contradict a photograph in another. The planner also had
+     no way to tell who was photographed, since the book's principals record an
+     identity string whether a photograph exists or not. Fixed on both counts.
+     `buildShotListRequest` takes `photographed`, the exact names the cast holds
+     photographs of, listed in the cacheable prefix with the note that their
+     Identity line is planning context and must never reach a prompt. The still
+     rule now splits people into three kinds that never mix: a photographed
+     person gets name, role and the reference-photo clause and NO physical
+     description at all, since the photograph is the likeness and prose only
+     argues with it, while clothing, posture, place and light stay the
+     planner's to direct; a named person with no photograph still gets the
+     identity string, being all that stands between the image and a stand-in;
+     an unnamed extra gets role, age range, build and clothing and no name.
+     The bible's contradiction is resolved the same way, with the offending
+     prompt quoted in it as the worked example of the mistake. `photographed`
+     is carried by `loadDirectionInputs` and by both runners' own setup steps.
+     _Addendum (q), 2026-09-17, owner: "put the Re-plan shot list button next
+     to the Fetch visuals button in the Shot Plan card."_ Moved. Re-planning
+     acts on the plan, not on the book, and the producer decides a plan reads
+     wrong while reading the plan. The two spends now sit in one row, so the
+     choice they present is the real one: fetch this plan, or plan again. The
+     Direction card keeps Save and Redraft, which do act on the book, and its
+     now-unused `slotsFetched` prop went with the button, the consequence line
+     that named the discarded slots having moved too.
 
-    _Addendum (r), 2026-09-17, owner: "for uploading footage for a shot,
-    particularly for the Real footage category, I should be able to add an
-    image via URL, same way we did for the cast."_ Added.
-    `addSlotImageFromUrlAction` fetches the address server-side through the
-    same `lib/remote-image.ts` the Cast card uses, with its magic-byte format
-    check, header-read dimensions, per-hop redirect checks and refusal of
-    private and link-local addresses, and stores the bytes under the same
-    uploads key a browser upload would have used. Two deliberate limits.
-    Images only: video is legal on an archival slot by file, but pulling
-    200 MB through the server is precisely the byte handling decision 213
-    removed, and the presigned path already exists for it. And the fetched
-    image is still put past `uploadRules`, so an address cannot place an
-    image where a file of the same type could not go. The fetcher took two
-    options (`maxBytes`, `minEdge`) so a slot can use its own 8 MB image
-    ceiling rather than the cast's 15 MB. Everything from the asset row
-    onwards is now one shared `attachOwnFile`, because the file route and the
-    address route differ only in how the bytes arrive, and two copies of the
-    candidate-and-resolution logic would drift. The resolved address is kept
-    as the candidate's `sourceUrl`, so the board shows where footage came
-    from.
+     _Addendum (r), 2026-09-17, owner: "for uploading footage for a shot,
+     particularly for the Real footage category, I should be able to add an
+     image via URL, same way we did for the cast."_ Added.
+     `addSlotImageFromUrlAction` fetches the address server-side through the
+     same `lib/remote-image.ts` the Cast card uses, with its magic-byte format
+     check, header-read dimensions, per-hop redirect checks and refusal of
+     private and link-local addresses, and stores the bytes under the same
+     uploads key a browser upload would have used. Two deliberate limits.
+     Images only: video is legal on an archival slot by file, but pulling
+     200 MB through the server is precisely the byte handling decision 213
+     removed, and the presigned path already exists for it. And the fetched
+     image is still put past `uploadRules`, so an address cannot place an
+     image where a file of the same type could not go. The fetcher took two
+     options (`maxBytes`, `minEdge`) so a slot can use its own 8 MB image
+     ceiling rather than the cast's 15 MB. Everything from the asset row
+     onwards is now one shared `attachOwnFile`, because the file route and the
+     address route differ only in how the bytes arrive, and two copies of the
+     candidate-and-resolution logic would drift. The resolved address is kept
+     as the candidate's `sourceUrl`, so the board shows where footage came
+     from.
 
-38. **Every bar says its own number** (decision 254; 2026-09-17, owner watching
-    a preview: "instead of having USD Millions / 4.0K, because it currently
-    overlays on top of the title text, we should just have the figures sit on
-    top or under each bar, like $1 Billion, $4 Billion. Because those are the
-    numbers we are trying to show and it's not clear. This should be a rule
-    across all bar charts we do"). The chart on screen was asking the viewer
-    to read "4.0k" against a "USD Millions" caption in the corner and do the
-    multiplication, while the caption itself sat over the third line of the
-    takeaway. Both problems were the same problem: the number the chart came
-    to show was not written anywhere.
+38.  **Every bar says its own number** (decision 254; 2026-09-17, owner watching
+     a preview: "instead of having USD Millions / 4.0K, because it currently
+     overlays on top of the title text, we should just have the figures sit on
+     top or under each bar, like $1 Billion, $4 Billion. Because those are the
+     numbers we are trying to show and it's not clear. This should be a rule
+     across all bar charts we do"). The chart on screen was asking the viewer
+     to read "4.0k" against a "USD Millions" caption in the corner and do the
+     multiplication, while the caption itself sat over the third line of the
+     takeaway. Both problems were the same problem: the number the chart came
+     to show was not written anywhere.
 
-    `formatFigure(value, unit)` in `packages/compositions/src/lib/chart.ts`
-    is the one rule. The unit is prose from the planner ("USD Millions",
-    "€bn", "%", "GBP"), so it is parsed for a currency and a scale, and the
-    SCALE IS FOLDED INTO THE NUMBER: 4000 in "USD Millions" is four billion
-    dollars, and "$4 Billion" is what the screen says. Below a million the
-    figure stays itself, grouped and trimmed ("£4,000", "€1.28"); a unit that
-    is neither currency nor scale rides along while it is short enough to sit
-    under a bar ("4,000 jobs"), and is dropped when it is not. It replaces
-    `niceNumber`, which existed twice, identically, in the render and the
-    board.
+     `formatFigure(value, unit)` in `packages/compositions/src/lib/chart.ts`
+     is the one rule. The unit is prose from the planner ("USD Millions",
+     "€bn", "%", "GBP"), so it is parsed for a currency and a scale, and the
+     SCALE IS FOLDED INTO THE NUMBER: 4000 in "USD Millions" is four billion
+     dollars, and "$4 Billion" is what the screen says. Below a million the
+     figure stays itself, grouped and trimmed ("£4,000", "€1.28"); a unit that
+     is neither currency nor scale rides along while it is short enough to sit
+     under a bar ("4,000 jobs"), and is dropped when it is not. It replaces
+     `niceNumber`, which existed twice, identically, in the render and the
+     board.
 
-    `barFigures` puts one figure on every bar for grouped bars and
-    waterfalls, and one per column for a stack, reading the column's TOTAL.
-    Each sits at the END of its bar, above when the bar grew upward and under
-    when it fell. That is what a waterfall needs to be read at all: a falling
-    segment's level is at its bottom edge, so that is where its figure goes.
-    Line and area charts get none: a line has no bar to sit a figure on, and
-    labelling every point is noise. They keep their two extremes, now written
-    the same way.
+     `barFigures` puts one figure on every bar for grouped bars and
+     waterfalls, and one per column for a stack, reading the column's TOTAL.
+     Each sits at the END of its bar, above when the bar grew upward and under
+     when it fell. That is what a waterfall needs to be read at all: a falling
+     segment's level is at its bottom edge, so that is where its figure goes.
+     Line and area charts get none: a line has no bar to sit a figure on, and
+     labelling every point is noise. They keep their two extremes, now written
+     the same way.
 
-    Consequences worth stating. Bar charts no longer draw y-axis numbers or a
-    corner unit at all, so the left gutter decision 215 widened for them is
-    gone (150px → 40 at 1080p, 52 → 12 on the board) and the top pad grew
-    instead (30 → 72) to seat the figures above the tallest bar. One type
-    size serves every figure on a chart (`fitFigureSize` takes the largest
-    that fits the tightest slot, floor 20px), because a chart whose numbers
-    change size between bars looks broken. And the board preview now calls
-    `chartLayout` instead of recomputing the same geometry by hand, which is
-    what the lib's doc comment had claimed since M6: the board is where the
-    human approves the chart, so it has to be the chart. New
-    `ChartRevealBar` fixture and golden; the waterfall, line, master and
-    Short goldens moved with the change.
+     Consequences worth stating. Bar charts no longer draw y-axis numbers or a
+     corner unit at all, so the left gutter decision 215 widened for them is
+     gone (150px → 40 at 1080p, 52 → 12 on the board) and the top pad grew
+     instead (30 → 72) to seat the figures above the tallest bar. One type
+     size serves every figure on a chart (`fitFigureSize` takes the largest
+     that fits the tightest slot, floor 20px), because a chart whose numbers
+     change size between bars looks broken. And the board preview now calls
+     `chartLayout` instead of recomputing the same geometry by hand, which is
+     what the lib's doc comment had claimed since M6: the board is where the
+     human approves the chart, so it has to be the chart. New
+     `ChartRevealBar` fixture and golden; the waterfall, line, master and
+     Short goldens moved with the change.
 
-39. **A shot sits on the words it covers** (decision 255; 2026-09-17, owner
-    watching the cut: "there is something off with the timing for showing the
-    image with Prem Akkaraju. For the first few seconds it is still showing
-    the previous image, so the image is not updating on the beat of when the
-    narration says Prem. This likely happens in other parts as well"). It did
-    happen elsewhere, everywhere, by construction.
+39.  **A shot sits on the words it covers** (decision 255; 2026-09-17, owner
+     watching the cut: "there is something off with the timing for showing the
+     image with Prem Akkaraju. For the first few seconds it is still showing
+     the previous image, so the image is not updating on the beat of when the
+     narration says Prem. This likely happens in other parts as well"). It did
+     happen elsewhere, everywhere, by construction.
 
-    The shot list is planned before a word of it has been timed. The model
-    says how many seconds it wants per slot, and `plannedToRows` lays a
-    paragraph's slots end to end from the paragraph's start, so those guessed
-    seconds ARE the timing. A slot that asks two seconds more than its
-    sentence takes pushes every slot behind it two seconds late, and since the
-    seam pass holds the outgoing shot until the next one starts (decision
-    215), what the viewer sees is the previous image still on screen while the
-    narration has moved on. The drift resets at each paragraph boundary,
-    because the cursor restarts there, which is why it shows on a paragraph's
-    second and third shots and never its first.
+     The shot list is planned before a word of it has been timed. The model
+     says how many seconds it wants per slot, and `plannedToRows` lays a
+     paragraph's slots end to end from the paragraph's start, so those guessed
+     seconds ARE the timing. A slot that asks two seconds more than its
+     sentence takes pushes every slot behind it two seconds late, and since the
+     seam pass holds the outgoing shot until the next one starts (decision
+     215), what the viewer sees is the previous image still on screen while the
+     narration has moved on. The drift resets at each paragraph boundary,
+     because the cursor restarts there, which is why it shows on a paragraph's
+     second and third shots and never its first.
 
-    By assembly the narration is timed word by word (snap-to-script), and
-    every brief already quotes the sentences it plays under: the shot-list
-    prompt asks for `coversText` "EXACTLY as written". So `anchorSlots`
-    (`packages/timeline/src/anchor.ts`) moves each slot's start to the first
-    word of its own quote, and the compiler runs it before any shifting,
-    while slots, captions and paragraph spans still share one gapless clock.
-    The search is bounded to the slot's OWN paragraph (paragraph spans are
-    measured take durations, the one thing the planner gets exactly right), so
-    a repeated sentence cannot move a shot into another paragraph, and a
-    monotonic floor stops a repeat pulling a later shot backwards. The whole
-    quote is tried first, then its opening three words, which survives a model
-    that trimmed a clause or fixed a typo on the way past. A slot whose quote
-    is not found keeps its planned start, so nothing is worse than before.
+     By assembly the narration is timed word by word (snap-to-script), and
+     every brief already quotes the sentences it plays under: the shot-list
+     prompt asks for `coversText` "EXACTLY as written". So `anchorSlots`
+     (`packages/timeline/src/anchor.ts`) moves each slot's start to the first
+     word of its own quote, and the compiler runs it before any shifting,
+     while slots, captions and paragraph spans still share one gapless clock.
+     The search is bounded to the slot's OWN paragraph (paragraph spans are
+     measured take durations, the one thing the planner gets exactly right), so
+     a repeated sentence cannot move a shot into another paragraph, and a
+     monotonic floor stops a repeat pulling a later shot backwards. The whole
+     quote is tried first, then its opening three words, which survives a model
+     that trimmed a clause or fixed a typo on the way past. A slot whose quote
+     is not found keeps its planned start, so nothing is worse than before.
 
-    The seam pass now settles ends as well as gaps: a shot lasts exactly as
-    long as its narration does, ending where the next shot's words begin,
-    floored at `MIN_SHOT_MS` (1s) for the degenerate case of two slots quoting
-    one sentence. Planned durations therefore survive only on the film's last
-    shot.
+     The seam pass now settles ends as well as gaps: a shot lasts exactly as
+     long as its narration does, ending where the next shot's words begin,
+     floored at `MIN_SHOT_MS` (1s) for the degenerate case of two slots quoting
+     one sentence. Planned durations therefore survive only on the film's last
+     shot.
 
-    The fix is in the COMPILER, not the planner, so it reaches every project
-    already planned without a re-plan (no cost, no re-fetch, no lost
-    selections): re-running the preview build is enough.
+     The fix is in the COMPILER, not the planner, so it reaches every project
+     already planned without a re-plan (no cost, no re-fetch, no lost
+     selections): re-running the preview build is enough.
 
-    _Addendum (a), 2026-09-17, owner: make the board agree too._ It now does,
-    at both ends. `TimedParagraph` carries the paragraph's script words on the
-    project clock (snapped to the current take exactly as assembly snaps them,
-    empty when a take has no stored timings), so `plannedToRows` anchors the
-    rows it writes and the board's own `visualsReviewModel` anchors what it
-    displays. One function does it in all three places, `anchoredTimes` over
-    `anchorSlots`, and ends are scoped to the paragraph so that anchoring one
-    chapter at planning and the whole film on the board give the same answer.
-    Recomputing on the board rather than trusting the row is the same choice
-    the scrubber's clock already made: a project planned before this rule, or
-    re-voiced since, shows the times the render will cut to instead of the
-    times the planner guessed. The cost is about 90 KB of words crossing the
-    visuals runner's setup step for a 15-minute film, well inside Inngest's
-    step output limit.
+     _Addendum (a), 2026-09-17, owner: make the board agree too._ It now does,
+     at both ends. `TimedParagraph` carries the paragraph's script words on the
+     project clock (snapped to the current take exactly as assembly snaps them,
+     empty when a take has no stored timings), so `plannedToRows` anchors the
+     rows it writes and the board's own `visualsReviewModel` anchors what it
+     displays. One function does it in all three places, `anchoredTimes` over
+     `anchorSlots`, and ends are scoped to the paragraph so that anchoring one
+     chapter at planning and the whole film on the board give the same answer.
+     Recomputing on the board rather than trusting the row is the same choice
+     the scrubber's clock already made: a project planned before this rule, or
+     re-voiced since, shows the times the render will cut to instead of the
+     times the planner guessed. The cost is about 90 KB of words crossing the
+     visuals runner's setup step for a 15-minute film, well inside Inngest's
+     step output limit.
 
-40. **The music bed loops without a seam** (decision 256; 2026-09-17, owner
-    watching the end of the cut: "we can hear the fade out of the background
-    track, the delay, and then the start of the music loop again before the
-    video ends, which sounds bad because you can hear that change. Is there a
-    way we can blend the loop nicely so there isn't an obvious start and end
-    as it loops"). A library track is written to end: it fades out and leaves
-    a tail of silence. `<Audio loop>` restarts the file at that end, so the
-    written ending became a seam in the middle of the film, the most obviously
-    machine-made sound in the cut.
+40.  **The music bed loops without a seam** (decision 256; 2026-09-17, owner
+     watching the end of the cut: "we can hear the fade out of the background
+     track, the delay, and then the start of the music loop again before the
+     video ends, which sounds bad because you can hear that change. Is there a
+     way we can blend the loop nicely so there isn't an obvious start and end
+     as it loops"). A library track is written to end: it fades out and leaves
+     a tail of silence. `<Audio loop>` restarts the file at that end, so the
+     written ending became a seam in the middle of the film, the most obviously
+     machine-made sound in the cut.
 
-    The bed is now laid down as overlapping copies. Each copy stops a
-    crossfade short of the file's end, which is where the fade-out lives, and
-    the next starts a crossfade before that, so the two overlap for five
-    seconds: the outgoing follows cos, the incoming sin. That pair is the one
-    that holds a constant loudness for uncorrelated signals, and a track's
-    tail against its own intro is as uncorrelated as it gets, where a straight
-    linear crossfade dips in the middle. The film's last 2.5 seconds take the
-    bed down the same curve, so the music follows the picture out instead of
-    stopping mid-chord on the final frame. The maths is pure and unit-tested
-    in `packages/compositions/src/lib/music-loop.ts`; the component reads the
-    numbers out.
+     The bed is now laid down as overlapping copies. Each copy stops a
+     crossfade short of the file's end, which is where the fade-out lives, and
+     the next starts a crossfade before that, so the two overlap for five
+     seconds: the outgoing follows cos, the incoming sin. That pair is the one
+     that holds a constant loudness for uncorrelated signals, and a track's
+     tail against its own intro is as uncorrelated as it gets, where a straight
+     linear crossfade dips in the middle. The film's last 2.5 seconds take the
+     bed down the same curve, so the music follows the picture out instead of
+     stopping mid-chord on the final frame. The maths is pure and unit-tested
+     in `packages/compositions/src/lib/music-loop.ts`; the component reads the
+     numbers out.
 
-    Overlapping copies need the track's LENGTH, and nothing server-side can
-    read one out of an MP3. So the browser measures it, where the file and a
-    decoder both are: at upload from the file itself, and for beds already in
-    the library, from the `<audio>` element the music tab already renders for
-    each one, posted back through `recordMusicBedDurationAction`. The write
-    only ever fills a blank (`setMusicBedDuration` has `isNull` in its where
-    clause), which is safe because a bed's bytes are content-addressed. The
-    length then travels with the key into the timeline (`MusicTrack.durationMs`,
-    set by both the compiler and `swapMusicBed`), so the renderer is
-    synchronous and every frame of a render sees the same soundtrack. A bed
-    with no measured length still plays: it falls back to the plain loop,
-    because an audible seam beats silence.
+     Overlapping copies need the track's LENGTH, and nothing server-side can
+     read one out of an MP3. So the browser measures it, where the file and a
+     decoder both are: at upload from the file itself, and for beds already in
+     the library, from the `<audio>` element the music tab already renders for
+     each one, posted back through `recordMusicBedDurationAction`. The write
+     only ever fills a blank (`setMusicBedDuration` has `isNull` in its where
+     clause), which is safe because a bed's bytes are content-addressed. The
+     length then travels with the key into the timeline (`MusicTrack.durationMs`,
+     set by both the compiler and `swapMusicBed`), so the renderer is
+     synchronous and every frame of a render sees the same soundtrack. A bed
+     with no measured length still plays: it falls back to the plain loop,
+     because an audible seam beats silence.
 
-    Two notes. The preview screen's gain line is drawn from the ducking curve
-    alone, so it shows neither the crossfades nor the outro fade; the curve is
-    still the whole truth about ducking, which is what the line is for. And an
-    existing timeline carries no length until it is recompiled, so a project
-    planned before this needs the library page opened once (which measures the
-    bed) and its preview rebuilt.
+     Two notes. The preview screen's gain line is drawn from the ducking curve
+     alone, so it shows neither the crossfades nor the outro fade; the curve is
+     still the whole truth about ducking, which is what the line is for. And an
+     existing timeline carries no length until it is recompiled, so a project
+     planned before this needs the library page opened once (which measures the
+     bed) and its preview rebuilt.
 
-41. **A headline shot quotes a real article, and cannot invent one**
-    (decision 257; 2026-09-17, owner: "I want to create a new format for shots
-    which is a Headline or Article where we use remotion to create what looks
-    like a snapshot of the headline of a news article. The Headline, Author,
-    and News outlet should match the real news article, as well as the publish
-    date, just the format looks the same for consistency across brand"). The
-    film quotes reporting constantly and had no way to show it: a sentence
-    leaning on what a paper found played over a stock shot of an office, the
-    weakest frame in the vocabulary.
+41.  **A headline shot quotes a real article, and cannot invent one**
+     (decision 257; 2026-09-17, owner: "I want to create a new format for shots
+     which is a Headline or Article where we use remotion to create what looks
+     like a snapshot of the headline of a news article. The Headline, Author,
+     and News outlet should match the real news article, as well as the publish
+     date, just the format looks the same for consistency across brand"). The
+     film quotes reporting constantly and had no way to show it: a sentence
+     leaning on what a paper found played over a stock shot of an office, the
+     weakest frame in the vocabulary.
 
-    A seventh slot type, `headline`, draws the approved clipping: warm paper
-    on the dark grade, the masthead over a double rule, the headline in Source
-    Serif 4, a highlighter under the phrase the narration is on, and the
-    byline, date and source address along the foot. It is the most dangerous
-    card in the set, because it looks like evidence, so the whole design
-    answers one question: where does every string on it come from.
+     A seventh slot type, `headline`, draws the approved clipping: warm paper
+     on the dark grade, the masthead over a double rule, the headline in Source
+     Serif 4, a highlighter under the phrase the narration is on, and the
+     byline, date and source address along the foot. It is the most dangerous
+     card in the set, because it looks like evidence, so the whole design
+     answers one question: where does every string on it come from.
 
-    **The model writes none of it.** The shot-list prompt emits
-    `{"type": "headline", "sourceRef": <claim number>}` and nothing else about
-    the article, the same way a chart cites `dataRefs`. `resolvePlannedBrief`
-    maps the number to a claim id and refuses any claim that is not
-    `major_outlet` with a surviving URL, so a card citing a court filing or an
-    unsourced claim is dropped at plan time with its reason on the board. The
-    claim list marks the eligible ones NEWS ARTICLE so the model can aim, and
-    the rule is enforced in the runner regardless, because a prompt rule with
-    no enforcement is a suggestion. One card a chapter: it is bright, and it
-    works by being rare.
+     **The model writes none of it.** The shot-list prompt emits
+     `{"type": "headline", "sourceRef": <claim number>}` and nothing else about
+     the article, the same way a chart cites `dataRefs`. `resolvePlannedBrief`
+     maps the number to a claim id and refuses any claim that is not
+     `major_outlet` with a surviving URL, so a card citing a court filing or an
+     unsourced claim is dropped at plan time with its reason on the board. The
+     claim list marks the eligible ones NEWS ARTICLE so the model can aim, and
+     the rule is enforced in the runner regardless, because a prompt rule with
+     no enforcement is a suggestion. One card a chapter: it is bright, and it
+     works by being rare.
 
-    **The app reads the article itself.** Resolution fetches the claim's URL
-    once and takes the publisher's own declared metadata: JSON-LD first, then
-    Open Graph, then the meta tags, then the `<title>` with the masthead
-    trimmed off. JSON-LD wins because it is the publisher's structured record
-    of the piece and `og:title` is its sharing copy, and they disagree ("$1.9
+     **The app reads the article itself.** Resolution fetches the claim's URL
+     once and takes the publisher's own declared metadata: JSON-LD first, then
+     Open Graph, then the meta tags, then the `<title>` with the masthead
+     trimmed off. JSON-LD wins because it is the publisher's structured record
+     of the piece and `og:title` is its sharing copy, and they disagree ("$1.9
     billion" against "$1.9bn"). `dateModified` is never promoted to the
-    publication date, which is the single most tempting mistake here: it sits
-    beside `datePublished` in nearly every block and would put 2024 on screen
-    for a piece written in 2019. Each field records where it came from, and
-    the board shows that, so an outlet guessed from the hostname never reads
-    as a fact.
+     publication date, which is the single most tempting mistake here: it sits
+     beside `datePublished` in nearly every block and would put 2024 on screen
+     for a piece written in 2019. Each field records where it came from, and
+     the board shows that, so an outlet guessed from the hostname never reads
+     as a fact.
 
-    The fetch is deliberately dull: honest user agent, no cookies, no browser
-    spoofing, eight seconds, five redirect hops, the body abandoned at
-    `</head>` or 512 KB. Because the URL originates from the research model it
-    is the one piece of attacker-adjacent input in the feature, so every hop
-    is checked against `assertSafeArticleUrl`, which refuses non-web schemes,
-    odd ports, raw addresses and any hostname resolving into a private range.
-    A page that will not answer gets one attempt at a Wayback snapshot, which
-    is keyless and is the difference between working and not for decade-old
-    reporting.
+     The fetch is deliberately dull: honest user agent, no cookies, no browser
+     spoofing, eight seconds, five redirect hops, the body abandoned at
+     `</head>` or 512 KB. Because the URL originates from the research model it
+     is the one piece of attacker-adjacent input in the feature, so every hop
+     is checked against `assertSafeArticleUrl`, which refuses non-web schemes,
+     odd ports, raw addresses and any hostname resolving into a private range.
+     A page that will not answer gets one attempt at a Wayback snapshot, which
+     is keyless and is the difference between working and not for decade-old
+     reporting.
 
-    **What it cannot read, you type.** Paywalls, consent walls and dead links
-    all land on a stored record with its reason, a placeholder slot and a card
-    that says "Open it and fill these in" rather than showing an error: for a
-    paywalled piece that is the normal path, not a repair. A record the owner
-    has corrected is `manual` and no later fetch overwrites it.
+     **What it cannot read, you type.** Paywalls, consent walls and dead links
+     all land on a stored record with its reason, a placeholder slot and a card
+     that says "Open it and fill these in" rather than showing an error: for a
+     paywalled piece that is the normal path, not a repair. A record the owner
+     has corrected is `manual` and no later fetch overwrites it.
 
-    Records live in `article_sources`, keyed by normalised URL rather than by
-    slot, for two reasons: the no-waste guard hashes the brief, so resolution
-    writing into it would re-fetch forever, and one article backs several
-    claims, several shots and several films. Assembly then embeds the five
-    strings in the timeline payload, like a chart's series, because a render
-    six months later must not depend on the page still being online.
+     Records live in `article_sources`, keyed by normalised URL rather than by
+     slot, for two reasons: the no-waste guard hashes the brief, so resolution
+     writing into it would re-fetch forever, and one article backs several
+     claims, several shots and several films. Assembly then embeds the five
+     strings in the timeline payload, like a chart's series, because a render
+     six months later must not depend on the page still being online.
 
-    Three legal choices are encoded rather than documented. The outlet's name
-    is set in our own type and there is no logo field at all, because a
-    masthead is an artistic work and a trade mark while a name is a citation.
-    Every card is identical whatever ran the story, which is what separates a
-    quotation from an imitation of somebody's page. And the marker phrase must
-    occur in the headline word for word or it is dropped, because a highlight
-    over words the publication did not print is the same kind of error as a
-    wrong byline, only smaller.
+     Three legal choices are encoded rather than documented. The outlet's name
+     is set in our own type and there is no logo field at all, because a
+     masthead is an artistic work and a trade mark while a name is a citation.
+     Every card is identical whatever ran the story, which is what separates a
+     quotation from an imitation of somebody's page. And the marker phrase must
+     occur in the headline word for word or it is dropped, because a highlight
+     over words the publication did not print is the same kind of error as a
+     wrong byline, only smaller.
 
-    **Amended 2026-09-18** (owner: "When I click on headline, and it redrafts,
-    the message that appears is 'Claude is drafting the map locations' so is it
-    linking correctly"). Adding a seventh slot type put a Headline button on
-    every card automatically, and nothing was behind it. `convertBrief` had no
-    case for it, so the board read that null the way it reads a chart's: it
-    stamped the slot `drafting` and sent the retyper an event. The card then
-    announced the draft through a two-way ternary that called everything which
-    was not a chart a map, and seconds later the retyper refused the target and
-    the card reverted with a generic failure.
+     **Amended 2026-09-18** (owner: "When I click on headline, and it redrafts,
+     the message that appears is 'Claude is drafting the map locations' so is it
+     linking correctly"). Adding a seventh slot type put a Headline button on
+     every card automatically, and nothing was behind it. `convertBrief` had no
+     case for it, so the board read that null the way it reads a chart's: it
+     stamped the slot `drafting` and sent the retyper an event. The card then
+     announced the draft through a two-way ternary that called everything which
+     was not a chart a map, and seconds later the retyper refused the target and
+     the card reverted with a generic failure.
 
-    The fix is not a noun. A headline card is unlike a chart or a map: the
-    model may write no part of it, so there is nothing to draft and no call to
-    pay for. The only open question is which article, and the owner is standing
-    right there. The picker now opens a chooser of this project's
-    news-sourced claims, and picking one writes the brief inside the click, the
-    way still becomes stock. `convertBrief` takes the claim as an argument and
-    still returns null without one, so the conversion cannot be made by
-    accident from anywhere. An empty list says so rather than offering a button
-    that can only fail. And the drafting sentence is now a lookup with a
-    fallback that names the format, so an eighth slot type cannot inherit the
-    map's wording the way the seventh did.
+     The fix is not a noun. A headline card is unlike a chart or a map: the
+     model may write no part of it, so there is nothing to draft and no call to
+     pay for. The only open question is which article, and the owner is standing
+     right there. The picker now opens a chooser of this project's
+     news-sourced claims, and picking one writes the brief inside the click, the
+     way still becomes stock. `convertBrief` takes the claim as an argument and
+     still returns null without one, so the conversion cannot be made by
+     accident from anywhere. An empty list says so rather than offering a button
+     that can only fail. And the drafting sentence is now a lookup with a
+     fallback that names the format, so an eighth slot type cannot inherit the
+     map's wording the way the seventh did.
 
-    The same chooser closes a gap the original decision shipped with: which
-    article a card quotes was set once, by the shot list, with no way to
-    change it. A headline slot's own format button now stays live where every
-    other current-format button is disabled, because on that slot it does not
-    change the format, it changes the article. The row the card already quotes
-    is marked rather than offered. `convertBrief` had to learn the same
-    distinction: a card moved to a different article is a real change even
-    though its type has not moved, so it no longer takes the same-type short
-    circuit. What survives the move is how the card is drawn; the highlight
-    does not, because it names words the previous headline printed.
+     The same chooser closes a gap the original decision shipped with: which
+     article a card quotes was set once, by the shot list, with no way to
+     change it. A headline slot's own format button now stays live where every
+     other current-format button is disabled, because on that slot it does not
+     change the format, it changes the article. The row the card already quotes
+     is marked rather than offered. `convertBrief` had to learn the same
+     distinction: a card moved to a different article is a real change even
+     though its type has not moved, so it no longer takes the same-type short
+     circuit. What survives the move is how the card is drawn; the highlight
+     does not, because it names words the previous headline printed.
 
-42. **A shot can be asked for a different idea** (decision 258; 2026-09-18,
-    owner: "I can't re-generate a new visual brief for a shot. So if I don't
-    like it at all, I can't ask to create a new one and provide some guidance
-    of what I am thinking"). The board had two ways to change a brief and
-    nothing in between: retype the words yourself, or re-plan every slot in
-    every chapter. Rejecting one idea meant either writing the replacement by
-    hand or throwing away the whole board to get a second opinion on one shot.
+42.  **A shot can be asked for a different idea** (decision 258; 2026-09-18,
+     owner: "I can't re-generate a new visual brief for a shot. So if I don't
+     like it at all, I can't ask to create a new one and provide some guidance
+     of what I am thinking"). The board had two ways to change a brief and
+     nothing in between: retype the words yourself, or re-plan every slot in
+     every chapter. Rejecting one idea meant either writing the replacement by
+     hand or throwing away the whole board to get a second opinion on one shot.
 
-    "Draft a different brief" sits beside Edit brief and opens a box for what
-    the owner is picturing. The steer is optional, because "I do not like this
-    one, give me another" is a complete instruction and demanding a reason for
-    it would turn a small button into a form. It is also one-off, and the form
-    says so: a later re-plan drafts the slot again from the Director's Book,
-    exactly as it already overwrites hand-edits.
+     "Draft a different brief" sits beside Edit brief and opens a box for what
+     the owner is picturing. The steer is optional, because "I do not like this
+     one, give me another" is a complete instruction and demanding a reason for
+     it would turn a small button into a form. It is also one-off, and the form
+     says so: a later re-plan drafts the slot again from the Director's Book,
+     exactly as it already overwrites hand-edits.
 
-    The format is deliberately not in question. A re-type changes what KIND of
-    shot this is and has its own button; this changes the idea inside the kind
-    already chosen, which is what keeps the anti-slop rules where they are. Two
-    prompt paths sit behind the one button, because two kinds of brief exist.
-    Stock, real footage and AI image briefs are ideas, so a new prompt asks for
-    another one under the same craft rules the redirect already follows. Chart
-    and map briefs are data, so they go back through the re-type drafting path
-    with the target set to the type they already have: not a shortcut, but how
-    a redrawn chart still cannot cite numbers the dossier does not hold.
+     The format is deliberately not in question. A re-type changes what KIND of
+     shot this is and has its own button; this changes the idea inside the kind
+     already chosen, which is what keeps the anti-slop rules where they are. Two
+     prompt paths sit behind the one button, because two kinds of brief exist.
+     Stock, real footage and AI image briefs are ideas, so a new prompt asks for
+     another one under the same craft rules the redirect already follows. Chart
+     and map briefs are data, so they go back through the re-type drafting path
+     with the target set to the type they already have: not a shortcut, but how
+     a redrawn chart still cannot cite numbers the dossier does not hold.
 
-    A headline card is never offered the button at all. Every word on it is
-    read from the article, so there is no idea to have again, and changing
-    which article it quotes is the chooser's job (decision 257).
+     A headline card is never offered the button at all. Every word on it is
+     read from the article, so there is no idea to have again, and changing
+     which article it quotes is the chooser's job (decision 257).
 
-    The work runs in a `slot-rebriefer` function behind the cost guard, the
-    third instance of the pattern the retyper and redirector established, and
-    a refusal comes back in the model's own words on the card rather than as a
-    failed stage. The pending state shares the `retype` column, which now means
-    "a model is rewriting this slot's brief" whichever button asked: one slot
-    may only have one such job at a time, and sharing the state is what lets
-    each button disable while the other one's work is in flight.
+     The work runs in a `slot-rebriefer` function behind the cost guard, the
+     third instance of the pattern the retyper and redirector established, and
+     a refusal comes back in the model's own words on the card rather than as a
+     failed stage. The pending state shares the `retype` column, which now means
+     "a model is rewriting this slot's brief" whichever button asked: one slot
+     may only have one such job at a time, and sharing the state is what lets
+     each button disable while the other one's work is in flight.
 
-43. **A chart is the kind its data is, and may carry two measures**
-    (decision 259; 2026-09-18, owner: "it feels like there isn't any ability to
-    generate different chart types. Its fixed to bar charts, because I asked it
-    to create a chart like this 'Valuation vs Profitability line charts showing
-    the valuation increasing overtime, but the profitability growing negatively
-    exponentially' and it just generated the same bar chart").
+43.  **A chart is the kind its data is, and may carry two measures**
+     (decision 259; 2026-09-18, owner: "it feels like there isn't any ability to
+     generate different chart types. Its fixed to bar charts, because I asked it
+     to create a chart like this 'Valuation vs Profitability line charts showing
+     the valuation increasing overtime, but the profitability growing negatively
+     exponentially' and it just generated the same bar chart").
 
-    Three separate things were wrong, and the first was not what it looked
-    like. The five chart kinds were already supported end to end: schema,
-    prompt, board preview and render all branch on all of them, and the preview
-    and the render share one geometry module. Nothing was fixed to bars.
+     Three separate things were wrong, and the first was not what it looked
+     like. The five chart kinds were already supported end to end: schema,
+     prompt, board preview and render all branch on all of them, and the preview
+     and the render share one geometry module. Nothing was fixed to bars.
 
-    What actually happened is that no model ever saw the request. On a chart
-    slot "Edit brief" can only change `description`, which is not what draws the
-    chart, and "Regenerate" re-fetches candidates, of which a chart has none.
-    The sequence saved a sentence into a field nobody reads and redrew the
-    identical chart. Decision 258's button is the one that reaches a model, and
-    it had shipped minutes earlier.
+     What actually happened is that no model ever saw the request. On a chart
+     slot "Edit brief" can only change `description`, which is not what draws the
+     chart, and "Regenerate" re-fetches candidates, of which a chart has none.
+     The sequence saved a sentence into a field nobody reads and redrew the
+     identical chart. Decision 258's button is the one that reaches a model, and
+     it had shipped minutes earlier.
 
-    **Nothing told the model how to choose.** The prompts listed five kinds and
-    never said which was for what, and the Director's Book craft notes mention
-    charts three times without naming a kind. A model with no rule falls back on
-    its habit, and its habit is bars. Both prompts now carry the rule: a value
-    through time is a line, a filled line when the size of it is the point, a
-    comparison across things is a bar, parts of a whole are stacked, a bridge
-    between totals is a waterfall, and never a bar because it is the safe
-    choice.
+     **Nothing told the model how to choose.** The prompts listed five kinds and
+     never said which was for what, and the Director's Book craft notes mention
+     charts three times without naming a kind. A model with no rule falls back on
+     its habit, and its habit is bars. Both prompts now carry the rule: a value
+     through time is a line, a filled line when the size of it is the point, a
+     comparison across things is a bar, parts of a whole are stacked, a bridge
+     between totals is a waterfall, and never a bar because it is the safe
+     choice.
 
-    **And the chart asked for could not be drawn at all.** `chartLayout` pooled
-    every series into one y scale and took one unit from the first series, so a
-    valuation in billions against a margin in percent put the margin flat along
-    the floor, labelled in dollars. Series now carry an optional
-    `axis: 'left' | 'right'`, the layout builds a scale per side, and every
-    drawing path asks which scale a series belongs to. When the model omits the
-    field but the units differ, the split is inferred rather than drawn
-    misleadingly: a forgotten field must not produce a chart that lies. Stacks
-    and waterfalls never split, because adding two units together means nothing.
+     **And the chart asked for could not be drawn at all.** `chartLayout` pooled
+     every series into one y scale and took one unit from the first series, so a
+     valuation in billions against a margin in percent put the margin flat along
+     the floor, labelled in dollars. Series now carry an optional
+     `axis: 'left' | 'right'`, the layout builds a scale per side, and every
+     drawing path asks which scale a series belongs to. When the model omits the
+     field but the units differ, the split is inferred rather than drawn
+     misleadingly: a forgotten field must not produce a chart that lies. Stacks
+     and waterfalls never split, because adding two units together means nothing.
 
-    Rebasing both series to an index of 100 was the other way to do this, and
-    was rejected: every figure on screen comes from a claim verbatim, and an
-    index puts computed numbers on screen that appear in no claim.
+     Rebasing both series to an index of 100 was the other way to do this, and
+     was rejected: every figure on screen comes from a claim verbatim, and an
+     index puts computed numbers on screen that appear in no claim.
 
-    The golden caught what code review would not have. With two scales the
-    axis extremes land beside the WRONG line: the valuation's top sits exactly
-    where the margin begins. Each axis now names its series and takes that
-    series' colour, and the name is cut to the gutter it has, because the SVG
-    edge was silently swallowing "Operating margin" down to "Operating".
+     The golden caught what code review would not have. With two scales the
+     axis extremes land beside the WRONG line: the valuation's top sits exactly
+     where the margin begins. Each axis now names its series and takes that
+     series' colour, and the name is cut to the gutter it has, because the SVG
+     edge was silently swallowing "Operating margin" down to "Operating".
 
-44. **A frame shows what its sentence says; motifs are a detail, not the
-    subject** (decision 260; 2026-09-18, owner: "the Director's Book is
-    sticking too strongly with the motifs and elements ... what would have
-    been better is to have looked at the narration text and created a shot
-    that actually captures what the narrator just said").
+44.  **A frame shows what its sentence says; motifs are a detail, not the
+     subject** (decision 260; 2026-09-18, owner: "the Director's Book is
+     sticking too strongly with the motifs and elements ... what would have
+     been better is to have looked at the narration text and created a shot
+     that actually captures what the narrator just said").
 
-    The cause was in the fixed bible, not the per-film book. "What a still
-    prompt must contain" required three physical facts in every prompt, the
-    third being "one motif from the director's book", so every AI still was
-    required to carry a motif: a chapter with twelve stills got twelve empty
-    chairs. The chapter rule ("each chapter shows at least one") was a floor
-    with no ceiling, and the per-still rule made the floor irrelevant. Three
-    things compounded it: nothing tied the picture to the sentence
-    (`coversText` had to quote it, nothing had to show it); the book prompt
-    asked for three motifs with no guidance on choosing them, so the model
-    restated the house look; and the redirect fallback named "the empty
-    chair" as its first example.
+     The cause was in the fixed bible, not the per-film book. "What a still
+     prompt must contain" required three physical facts in every prompt, the
+     third being "one motif from the director's book", so every AI still was
+     required to carry a motif: a chapter with twelve stills got twelve empty
+     chairs. The chapter rule ("each chapter shows at least one") was a floor
+     with no ceiling, and the per-still rule made the floor irrelevant. Three
+     things compounded it: nothing tied the picture to the sentence
+     (`coversText` had to quote it, nothing had to show it); the book prompt
+     asked for three motifs with no guidance on choosing them, so the model
+     restated the house look; and the redirect fallback named "the empty
+     chair" as its first example.
 
-    Five changes, all prompt craft, no model call added. The bible's shot
-    grammar opens with "the sentence decides the frame" (a viewer with the
-    sound off should be able to guess the sentence); motifs keep the floor
-    and gain a ceiling (each at most once per chapter, never adjacent, never
-    the subject unless the sentence is about it); the third physical fact is
-    a detail drawn from the sentence, with a motif allowed to stand in once
-    per chapter. The shot-list prompt carries the same rule first in its
-    planning rules, in numbers. The book prompt says motifs are this story's
-    own objects from the claims, never the house furniture. A chapter's
-    dominant family renders as "leans towards", so it is not read as the only
-    family. And `planWarnings` counts motifs per chapter by head noun (the
-    last word, plural stripped: "server racks" matches "rack"), warning when
-    one appears in more than one picture brief of a chapter or in adjacent
-    slots. A note, never a rejection: the match is a heuristic. The markdown
-    bible is now re-embedded by
-    `pnpm --filter @boom-busters/providers embed:craft` rather than by hand.
+     Five changes, all prompt craft, no model call added. The bible's shot
+     grammar opens with "the sentence decides the frame" (a viewer with the
+     sound off should be able to guess the sentence); motifs keep the floor
+     and gain a ceiling (each at most once per chapter, never adjacent, never
+     the subject unless the sentence is about it); the third physical fact is
+     a detail drawn from the sentence, with a motif allowed to stand in once
+     per chapter. The shot-list prompt carries the same rule first in its
+     planning rules, in numbers. The book prompt says motifs are this story's
+     own objects from the claims, never the house furniture. A chapter's
+     dominant family renders as "leans towards", so it is not read as the only
+     family. And `planWarnings` counts motifs per chapter by head noun (the
+     last word, plural stripped: "server racks" matches "rack"), warning when
+     one appears in more than one picture brief of a chapter or in adjacent
+     slots. A note, never a rejection: the match is a heuristic. The markdown
+     bible is now re-embedded by
+     `pnpm --filter @boom-busters/providers embed:craft` rather than by hand.
 
-45. **A slot may show another slot's shot** (decision 261; 2026-09-18, owner:
-    "there may also be instances where some shots can be re-used ... from a
-    cost and efficiency perspective it's not a bad idea, as long as the shot
-    fits the narrative and the context and is done so sparingly"; spec
-    `docs/superpowers/specs/2026-09-18-sentence-first-briefs-and-shot-reuse-design.md`).
+45.  **A slot may show another slot's shot** (decision 261; 2026-09-18, owner:
+     "there may also be instances where some shots can be re-used ... from a
+     cost and efficiency perspective it's not a bad idea, as long as the shot
+     fits the narrative and the context and is done so sparingly"; spec
+     `docs/superpowers/specs/2026-09-18-sentence-first-briefs-and-shot-reuse-design.md`).
 
-    _Who decides._ The owner, on the board, in either phase. Chapters are
-    planned by separate calls that cannot see each other, so a model cannot
-    spot a cross-chapter repeat at plan time, and "sparingly, when it fits"
-    is a taste judgment. A model-proposed pass is a possible later decision
-    on the same link.
+     _Who decides._ The owner, on the board, in either phase. Chapters are
+     planned by separate calls that cannot see each other, so a model cannot
+     spot a cross-chapter repeat at plan time, and "sparingly, when it fits"
+     is a taste judgment. A model-proposed pass is a possible later decision
+     on the same link.
 
-    _The mechanism_ (approach A of three). `shot_slots.reuse_of_slot_id`
-    (migration 0025) records the link. Before Fetch the link stands alone:
-    `slotNeedsResolution` never owes a linked slot a fetch, so no still is
-    generated for it, and a new runner step `copy-reused-shots` after the
-    fan-out copies each source's chosen candidate into its dependants,
-    repeating the pass while a fill makes another possible so the write is
-    right whatever order rows arrive in (status resolved, the target's own
-    brief hash, the source's asset id; a source with nothing chosen leaves
-    a placeholder). On the board the action copies at once. Every
-    downstream reader keeps reading `candidates` as it did: assembly,
-    ingestion, the gate, shorts and the teaser. The copy carries
-    `reusedFrom: { slotId, depicts }` and drops the source's score (judged
-    against another brief); `syntheticLikenesses` reads
-    `reusedFrom.depicts`, so a likeness reused into a stock slot still sets
-    the altered-content label. A live link (every reader follows the
-    column) was rejected as five readers and a gate rule for re-planned
-    sources; a copy with no column was rejected because before Fetch there
-    is nothing to copy, and the saving before Fetch was the point.
+     _The mechanism_ (approach A of three). `shot_slots.reuse_of_slot_id`
+     (migration 0025) records the link. Before Fetch the link stands alone:
+     `slotNeedsResolution` never owes a linked slot a fetch, so no still is
+     generated for it, and a new runner step `copy-reused-shots` after the
+     fan-out copies each source's chosen candidate into its dependants,
+     repeating the pass while a fill makes another possible so the write is
+     right whatever order rows arrive in (status resolved, the target's own
+     brief hash, the source's asset id; a source with nothing chosen leaves
+     a placeholder). On the board the action copies at once. Every
+     downstream reader keeps reading `candidates` as it did: assembly,
+     ingestion, the gate, shorts and the teaser. The copy carries
+     `reusedFrom: { slotId, depicts }` and drops the source's score (judged
+     against another brief); `syntheticLikenesses` reads
+     `reusedFrom.depicts`, so a likeness reused into a stock slot still sets
+     the altered-content label. A live link (every reader follows the
+     column) was rejected as five readers and a gate rule for re-planned
+     sources; a copy with no column was rejected because before Fetch there
+     is nothing to copy, and the saving before Fetch was the point.
 
-    _Rules._ Only stock, still and archival slots reuse or are reused; no
-    self-reuse; no chains (a pick that is itself a dependant re-points to
-    the original, and a slot other slots show cannot itself be linked);
-    same project only. Every rule lives in the server action, and every
-    fetch-shaped action (Regenerate, Fetch this slot, Draft a different
-    brief, Redirect, Upload, re-type) refuses a linked slot in words; a
-    brief edit saves and never fetches for one, and `updateSlotBrief` keeps
-    a linked slot's status. The refetcher skips a linked slot for an event
-    already in flight.
+     _Rules._ Only stock, still and archival slots reuse or are reused; no
+     self-reuse; no chains (a pick that is itself a dependant re-points to
+     the original, and a slot other slots show cannot itself be linked);
+     same project only. Every rule lives in the server action, and every
+     fetch-shaped action (Regenerate, Fetch this slot, Draft a different
+     brief, Redirect, Upload, re-type) refuses a linked slot in words; a
+     brief edit saves and never fetches for one, and `updateSlotBrief` keeps
+     a linked slot's status. The refetcher skips a linked slot for an event
+     already in flight.
 
-    _The board._ "Use an existing shot" on picture cards opens a panel of
-    the film's other originals grouped by chapter: the covered sentence,
-    "ch 2 · 3:10", the gap ("3 min 20 s earlier"), one "Use this" per
-    candidate the app holds bytes for (the chosen one, the paid-for still
-    variant nobody chose, uploads), and before Fetch one "Use whatever this
-    slot chooses". Under a minute apart is a note, not a block, and the
-    review model repeats it as "the same shot plays at 3:10 and 3:40". A
-    linked card shows the copy with the chip "Reused from ch 2 · 3:10",
-    keeps Edit brief, hides everything that would fetch, and offers "Choose
-    its own shot". A source card says "Also used at 7:42". The model
-    carries `reuse` per slot; the per-slot `reusedBy` count the spec named
-    was dropped as unread, since the card derives "Also used at" from the
-    slots it already holds.
+     _The board._ "Use an existing shot" on picture cards opens a panel of
+     the film's other originals grouped by chapter: the covered sentence,
+     "ch 2 · 3:10", the gap ("3 min 20 s earlier"), one "Use this" per
+     candidate the app holds bytes for (the chosen one, the paid-for still
+     variant nobody chose, uploads), and before Fetch one "Use whatever this
+     slot chooses". Under a minute apart is a note, not a block, and the
+     review model repeats it as "the same shot plays at 3:10 and 3:40". A
+     linked card shows the copy with the chip "Reused from ch 2 · 3:10",
+     keeps Edit brief, hides everything that would fetch, and offers "Choose
+     its own shot". A source card says "Also used at 7:42". The model
+     carries `reuse` per slot; the per-slot `reusedBy` count the spec named
+     was dropped as unread, since the card derives "Also used at" from the
+     slots it already holds.
 
-    _Tests._ Pure: the guard, the schema, `reuseView` and the spacing note.
-    DB: link with and without a candidate, copy on resolve, unlink, the
-    brief edit. Runner: the copy step is one line over `copyReusedShots`,
-    which the db suite proves, because the test harness cannot drive a run
-    past `step.waitForEvent`; the refetcher's skip is proved by driving the
-    refetcher, which has no wait in front of it. Actions: chains, types,
-    other films, the refusals. Board: the picker and the linked card.
-    E2E: the round trip on the seeded plan project (link, the bill drops to
-    one slot, unlink), and the picker on the seeded board's placeholder,
-    cancelled, because a board copy cannot be put back into the exact
-    seeded state from the UI.
+     _Tests._ Pure: the guard, the schema, `reuseView` and the spacing note.
+     DB: link with and without a candidate, copy on resolve, unlink, the
+     brief edit. Runner: the copy step is one line over `copyReusedShots`,
+     which the db suite proves, because the test harness cannot drive a run
+     past `step.waitForEvent`; the refetcher's skip is proved by driving the
+     refetcher, which has no wait in front of it. Actions: chains, types,
+     other films, the refusals. Board: the picker and the linked card.
+     E2E: the round trip on the seeded plan project (link, the bill drops to
+     one slot, unlink), and the picker on the seeded board's placeholder,
+     cancelled, because a board copy cannot be put back into the exact
+     seeded state from the UI.
 
-46. **A cast name with a role after it was a stranger** (decision 262;
-    2026-09-19, owner: "the shots whose briefs specifically mention a
-    character in the Cast ... it's just routing to flux and not to Gemini who
-    currently is assigned to do the cast AI image generation").
+46.  **A cast name with a role after it was a stranger** (decision 262;
+     2026-09-19, owner: "the shots whose briefs specifically mention a
+     character in the Cast ... it's just routing to flux and not to Gemini who
+     currently is assigned to do the cast AI image generation").
 
-    The join between a brief and the cast is the exact full name, and
-    `depictedFrom` implemented it as exact string equality. The shot-list
-    prompt, however, told the planner to "name them by full name and role"
-    in the prompt and then "list them in depicts" in the same breath, and on
-    the Stability AI plan the model carried the role into the list: six of
-    the eight cast stills read `["Emad Mostaque, founder and former CEO of
+     The join between a brief and the cast is the exact full name, and
+     `depictedFrom` implemented it as exact string equality. The shot-list
+     prompt, however, told the planner to "name them by full name and role"
+     in the prompt and then "list them in depicts" in the same breath, and on
+     the Stability AI plan the model carried the role into the list: six of
+     the eight cast stills read `["Emad Mostaque, founder and former CEO of
 Stability AI"]` where two read `["Emad Mostaque"]`. Equality saw a
-    stranger, so `members` came back empty, `routeFor` took the plain
-    route, and those six went to `fal-ai/flux-2` at $0.04 with no reference
-    photograph attached, while the two bare-name slots went to
-    `gemini-2.5-flash-image` with the photographs. The cost ledger shows
-    both, minutes apart, on the same film: `refs: null` beside
-    `refs: ["Emad Mostaque"]`.
+     stranger, so `members` came back empty, `routeFor` took the plain
+     route, and those six went to `fal-ai/flux-2` at $0.04 with no reference
+     photograph attached, while the two bare-name slots went to
+     `gemini-2.5-flash-image` with the photographs. The cost ledger shows
+     both, minutes apart, on the same film: `refs: null` beside
+     `refs: ["Emad Mostaque"]`.
 
-    The fix is one join, in schemas beside the cast itself:
-    `depictsName(entry, name)` matches when the entry IS the name or begins
-    with the name and goes on with a separator (a comma, a bracket, a colon,
-    a dash), all case- and whitespace-insensitive, and `depictedMembers`
-    applies it across the cast in cast order. "An aide to Emad Mostaque",
-    "Emad Mostaque's assistant" and "Emad Mostaque Junior" are not him.
-    Routing, the estimate, the photographs sent and the altered-content
-    label now all go through it, which is what stops the estimate and the
-    ledger disagreeing again.
+     The fix is one join, in schemas beside the cast itself:
+     `depictsName(entry, name)` matches when the entry IS the name or begins
+     with the name and goes on with a separator (a comma, a bracket, a colon,
+     a dash), all case- and whitespace-insensitive, and `depictedMembers`
+     applies it across the cast in cast order. "An aide to Emad Mostaque",
+     "Emad Mostaque's assistant" and "Emad Mostaque Junior" are not him.
+     Routing, the estimate, the photographs sent and the altered-content
+     label now all go through it, which is what stops the estimate and the
+     ledger disagreeing again.
 
-    Tightening the prompt alone was rejected as the whole fix: the same
-    instruction has been followed loosely twice now (the identity-string
-    duplication of decision 253 was the first), and a planner's near-miss
-    should not silently change which generator is billed. The prompt is
-    tightened as well ("by name alone, never with the role after it", in the
-    slot shape, the person rules and the bible's pre-flight), so new plans
-    write the clean form and old plans still route correctly.
+     Tightening the prompt alone was rejected as the whole fix: the same
+     instruction has been followed loosely twice now (the identity-string
+     duplication of decision 253 was the first), and a planner's near-miss
+     should not silently change which generator is billed. The prompt is
+     tightened as well ("by name alone, never with the role after it", in the
+     slot shape, the person rules and the bible's pre-flight), so new plans
+     write the clean form and old plans still route correctly.
 
-    _Not done._ Slots already generated keep their flux images; the brief
-    has not changed, so a re-fetch skips them on the resolved-brief hash.
-    Regenerate is the board button for that, per slot, and it is the owner's
-    to spend.
+     _Not done._ Slots already generated keep their flux images; the brief
+     has not changed, so a re-fetch skips them on the resolved-brief hash.
+     Regenerate is the board button for that, per slot, and it is the owner's
+     to spend.
 
-    _Tests._ Schemas: the matcher against the bare name, the role forms, and
-    the four near-misses. Web (DB-backed): a role-suffixed `depicts` routes
-    to the likeness model and carries one reference, and prices at the
-    likeness rate. Publish: two spellings of one person are one name on the
-    label. Prompts: the shot list and the bible ask for the name alone.
+     _Tests._ Schemas: the matcher against the bare name, the role forms, and
+     the four near-misses. Web (DB-backed): a role-suffixed `depicts` routes
+     to the likeness model and carries one reference, and prices at the
+     likeness rate. Publish: two spellings of one person are one name on the
+     label. Prompts: the shot list and the bible ask for the name alone.
 
-47. **The style anchors argued with the bible, in every prompt** (decision
-    263; 2026-09-19, owner: "in our Directors bible I think we should allow
-    logos to be included, especially for a documentary channel on companies
-    as logos are identifiable").
+47.  **The style anchors argued with the bible, in every prompt** (decision
+     263; 2026-09-19, owner: "in our Directors bible I think we should allow
+     logos to be included, especially for a documentary channel on companies
+     as logos are identifiable").
 
-    `stillStyleAnchors` ended with "cinematic, sombre, photographic realism;
-    no text, no logos, no watermarks", and the shot-list prompt tells the
-    planner to paste the anchors verbatim into every still prompt. On the
-    live Stability AI plan that string sat in all 48 of them. Two things were
-    wrong with it.
+     `stillStyleAnchors` ended with "cinematic, sombre, photographic realism;
+     no text, no logos, no watermarks", and the shot-list prompt tells the
+     planner to paste the anchors verbatim into every still prompt. On the
+     live Stability AI plan that string sat in all 48 of them. Two things were
+     wrong with it.
 
-    **The logo ban fought the genre.** A film about a company is about an
-    identifiable company, and the sign above the door, the badge on a laptop
-    lid and the lanyard on the desk are what make a frame look like it is
-    about that company rather than about an office. Worse, the bible's own
-    rule two sections down says image models read negation as suggestion, and
-    that "never in handcuffs" in a prompt invites handcuffs. The ban printed
-    the word "logos" into every prompt it was meant to keep logos out of.
-    There was already a precedent for exactly this removal: the anchors once
-    carried "no identifiable real faces", and that came out under decision
-    252 because it fought every likeness the bible asked for. A test locks
-    that removal in, and this decision adds its twin.
+     **The logo ban fought the genre.** A film about a company is about an
+     identifiable company, and the sign above the door, the badge on a laptop
+     lid and the lanyard on the desk are what make a frame look like it is
+     about that company rather than about an office. Worse, the bible's own
+     rule two sections down says image models read negation as suggestion, and
+     that "never in handcuffs" in a prompt invites handcuffs. The ban printed
+     the word "logos" into every prompt it was meant to keep logos out of.
+     There was already a precedent for exactly this removal: the anchors once
+     carried "no identifiable real faces", and that came out under decision
+     252 because it fought every likeness the bible asked for. A test locks
+     that removal in, and this decision adds its twin.
 
-    **"cinematic" is on the banned list.** `BANNED_PROMPT_WORDS` bans it, and
-    `planWarnings` scans every still prompt for banned words, so all 48
-    stills raised a craft warning against a word this function had supplied.
-    The warning was correct and the prompt was the app's own.
+     **"cinematic" is on the banned list.** `BANNED_PROMPT_WORDS` bans it, and
+     `planWarnings` scans every still prompt for banned words, so all 48
+     stills raised a craft warning against a word this function had supplied.
+     The warning was correct and the prompt was the app's own.
 
-    The anchors now carry positive direction only: grain, the graded palette,
-    sombre, photographic realism. The bible decides marks per shot. It allows
-    a real company's own marks in frame, refuses a mark the frame must render
-    as legible letters (a generated wordmark is a wrong one, and a wrong one
-    reads as a forgery), and keeps titles, captions and lower thirds with the
-    compositor. A slot that genuinely needs an exclusion still has its own
-    negative prompt, which is the per-shot instrument the blanket string was
-    standing in for.
+     The anchors now carry positive direction only: grain, the graded palette,
+     sombre, photographic realism. The bible decides marks per shot. It allows
+     a real company's own marks in frame, refuses a mark the frame must render
+     as legible letters (a generated wordmark is a wrong one, and a wrong one
+     reads as a forgery), and keeps titles, captions and lower thirds with the
+     compositor. A slot that genuinely needs an exclusion still has its own
+     negative prompt, which is the per-shot instrument the blanket string was
+     standing in for.
 
-    The headline card is untouched and stays untouched. Its outlet name is set
-    in the house serif with no logo field, and that decision (257) is about
-    reproducing a publisher's page, not about showing a company's mark in a
-    film about that company. Generated logos remain out; the owner's plan is
-    to upload real logo files and composite them, which is the asset library
-    the motion-graphics work will carry.
+     The headline card is untouched and stays untouched. Its outlet name is set
+     in the house serif with no logo field, and that decision (257) is about
+     reproducing a publisher's page, not about showing a company's mark in a
+     film about that company. Generated logos remain out; the owner's plan is
+     to upload real logo files and composite them, which is the asset library
+     the motion-graphics work will carry.
 
-    _Tests._ The anchors forbid no logos, the twin of the faces assertion; the
-    anchors contain no word from `BANNED_PROMPT_WORDS`; the bible carries the
-    new rule in all three of its parts.
+     _Tests._ The anchors forbid no logos, the twin of the faces assertion; the
+     anchors contain no word from `BANNED_PROMPT_WORDS`; the bible carries the
+     new rule in all three of its parts.
 
-48. **A room is the cast's twin, and a shot says which model it spends on**
-    (decision 264; 2026-09-19 to 2026-09-21, owner: "we upload a few
-    examples of an Office set and the same office set can be used with the
-    characters in the image generation ... like any documentary or movie,
-    the person's office doesn't change" and "when we edit a brief, we should
-    have a drop down to actually change the model ... when the shot list is
-    created a model gets picked based on the brief but we can change it").
+48.  **A room is the cast's twin, and a shot says which model it spends on**
+     (decision 264; 2026-09-19 to 2026-09-21, owner: "we upload a few
+     examples of an Office set and the same office set can be used with the
+     characters in the image generation ... like any documentary or movie,
+     the person's office doesn't change" and "when we edit a brief, we should
+     have a drop down to actually change the model ... when the shot list is
+     created a model gets picked based on the brief but we can change it").
 
-    The Cast (decision 253) gave a film's people a face the image model
-    could hold. Its rooms had nothing: the Director's Book already named
-    them as `locations`, but a boardroom was re-invented on every still, and
-    an Apple laptop on one desk was a generic one on the next. Sets are the
-    cast's twin, down to the module shape: a `project_sets` table beside
-    `cast_members`, a Set card beside the Cast card, `set-actions.ts`
-    mirroring `cast-actions.ts`, and `setForBrief` joining a brief's new
-    `set` field to the library through the same tolerant `nameMatches` the
-    cast join uses. The book seeds a set for each location when it is
-    drafted, once; the producer's removals stick. Up to four plates per set,
-    uploaded or generated from the set's own look and chosen by the owner,
-    establishing view first.
+     The Cast (decision 253) gave a film's people a face the image model
+     could hold. Its rooms had nothing: the Director's Book already named
+     them as `locations`, but a boardroom was re-invented on every still, and
+     an Apple laptop on one desk was a generic one on the next. Sets are the
+     cast's twin, down to the module shape: a `project_sets` table beside
+     `cast_members`, a Set card beside the Cast card, `set-actions.ts`
+     mirroring `cast-actions.ts`, and `setForBrief` joining a brief's new
+     `set` field to the library through the same tolerant `nameMatches` the
+     cast join uses. The book seeds a set for each location when it is
+     drafted, once; the producer's removals stick. Up to four plates per set,
+     uploaded or generated from the set's own look and chosen by the owner,
+     establishing view first.
 
-    **Two reference pools, with the limits each model documents.** Google
-    budgets character references and object references separately and the
-    numbers differ by model: gemini-3.1-flash-image takes 4 and 10,
-    gemini-3-pro-image 5 and 6, and gemini-2.5-flash-image is undocumented,
-    so it keeps the old conservative 3 and 0. Every `ImageReference` now
-    carries a `kind`, every adapter exposes `referenceLimits(model)`, and
-    the Gemini adapter refuses a request that exceeds either pool rather
-    than letting the endpoint fail it. Above the model's limits sits the
-    app's own policy: at most three character photographs and two set
-    plates in one still, spent people first (one front view each, then one
-    establishing plate, then further angles, then one more plate), because
-    a wrong face is worse than a wrong room. The prompt names only the
-    people whose photographs actually travel, so a tighter model can never
-    be told about a face it was not shown.
+     **Two reference pools, with the limits each model documents.** Google
+     budgets character references and object references separately and the
+     numbers differ by model: gemini-3.1-flash-image takes 4 and 10,
+     gemini-3-pro-image 5 and 6, and gemini-2.5-flash-image is undocumented,
+     so it keeps the old conservative 3 and 0. Every `ImageReference` now
+     carries a `kind`, every adapter exposes `referenceLimits(model)`, and
+     the Gemini adapter refuses a request that exceeds either pool rather
+     than letting the endpoint fail it. Above the model's limits sits the
+     app's own policy: at most three character photographs and two set
+     plates in one still, spent people first (one front view each, then one
+     establishing plate, then further angles, then one more plate), because
+     a wrong face is worse than a wrong room. The prompt names only the
+     people whose photographs actually travel, so a tighter model can never
+     be told about a face it was not shown.
 
-    **The route is chosen by rule and stored on the slot.** `routeForBrief`
-    sends a still that shows a photographed person or a photographed set to
-    the reference-capable route (`stillsLikeness`, else `stills`) and
-    everything else to `stills`. Nothing is written at plan time: the brief
-    editor's `Image model` select shows the rule's choice as the Planned
-    default, and only an owner's change is stored on the slot, where it
-    wins in generation and in the estimate. The stored route is part of the
-    fingerprint the fetch pass compares, so changing the model makes the
-    slot owe work again and nothing regenerates on its own: the toast says
-    so in words. A re-plan replaces the slot rows and the board warns that
-    model choices go with them. A stored model an adapter later retires
-    falls back to the rule rather than breaking the page. The first cut
-    stamped a derived route on every planned slot; the whole-branch review
-    showed that made the Settings default inert for any existing plan, and
-    the stamp came out. The default stills model moves from
-    gemini-2.5-flash-image to gemini-3.1-flash-image, the one that takes
-    both kinds of reference; a project configured before this keeps what it
-    has. At two variants a slot, flux-2 is $0.04, 2.5 flash $0.08, 3.1
-    flash $0.14 and 3 pro $0.30; a 48-still film all on 3.1 flash is $6.72
+     **The route is chosen by rule and stored on the slot.** `routeForBrief`
+     sends a still that shows a photographed person or a photographed set to
+     the reference-capable route (`stillsLikeness`, else `stills`) and
+     everything else to `stills`. Nothing is written at plan time: the brief
+     editor's `Image model` select shows the rule's choice as the Planned
+     default, and only an owner's change is stored on the slot, where it
+     wins in generation and in the estimate. The stored route is part of the
+     fingerprint the fetch pass compares, so changing the model makes the
+     slot owe work again and nothing regenerates on its own: the toast says
+     so in words. A re-plan replaces the slot rows and the board warns that
+     model choices go with them. A stored model an adapter later retires
+     falls back to the rule rather than breaking the page. The first cut
+     stamped a derived route on every planned slot; the whole-branch review
+     showed that made the Settings default inert for any existing plan, and
+     the stamp came out. The default stills model moves from
+     gemini-2.5-flash-image to gemini-3.1-flash-image, the one that takes
+     both kinds of reference; a project configured before this keeps what it
+     has. At two variants a slot, flux-2 is $0.04, 2.5 flash $0.08, 3.1
+     flash $0.14 and 3 pro $0.30; a 48-still film all on 3.1 flash is $6.72
     against $2.24 today.
 
-    **Two leaks closed on the way.** Deriving the resolution stamp inside
-    `setSlotResolution` from the row, instead of trusting each caller to
-    pass it, exposed two paths that never stamped: the single-slot
-    refetcher left a shot it had just paid for marked as owed, so the next
-    Fetch bought it again, and stock ingestion wiped the runner's stamp so
-    every ingested stock slot was re-fetched on the following pass. Both
-    stamp correctly now. The first cut re-read the row to derive the stamp
-    and accepted a race; the whole-branch review showed a route changed
-    mid-fetch would then stamp a correct-looking picture against a model
-    that never ran. So a resolved outcome now carries the brief and route
-    the candidates answered, as a required argument, and the stamp is
-    computed from that snapshot in the one place that writes it. Forgetting
-    is a type error, which is the property the first cut was reaching for.
+     **Two leaks closed on the way.** Deriving the resolution stamp inside
+     `setSlotResolution` from the row, instead of trusting each caller to
+     pass it, exposed two paths that never stamped: the single-slot
+     refetcher left a shot it had just paid for marked as owed, so the next
+     Fetch bought it again, and stock ingestion wiped the runner's stamp so
+     every ingested stock slot was re-fetched on the following pass. Both
+     stamp correctly now. The first cut re-read the row to derive the stamp
+     and accepted a race; the whole-branch review showed a route changed
+     mid-fetch would then stamp a correct-looking picture against a model
+     that never ran. So a resolved outcome now carries the brief and route
+     the candidates answered, as a required argument, and the stamp is
+     computed from that snapshot in the one place that writes it. Forgetting
+     is a type error, which is the property the first cut was reaching for.
 
-    **Plan warnings know about rooms.** A set carrying more than half a
-    chapter's picture briefs, the same set on adjacent slots, and a set the
-    film does not hold each get one note, in the words the plan screen
-    already uses for motifs and unphotographed names. The shot-list prompt
-    lists the film's sets with their look, and the bible's new line says
-    what a set is for: "the photographs are the room", name one when the
-    sentence is in it, and never describe the room again.
+     **Plan warnings know about rooms.** A set carrying more than half a
+     chapter's picture briefs, the same set on adjacent slots, and a set the
+     film does not hold each get one note, in the words the plan screen
+     already uses for motifs and unphotographed names. The shot-list prompt
+     lists the film's sets with their look, and the bible's new line says
+     what a set is for: "the photographs are the room", name one when the
+     sentence is in it, and never describe the room again.
 
-    _Not done._ The owner's live project is still routed at fal for plain
-    stills and Gemini 2.5 for likeness; that is one change in Settings. Its
-    existing plan names no sets until it is re-planned or the briefs are
-    edited by hand. No paid generation was run in development; the one
-    spike that would prove the plates change a real Gemini frame (about
-    $0.21) waits for the owner's go-ahead. The Generate a plate label quotes
+     _Not done._ The owner's live project is still routed at fal for plain
+     stills and Gemini 2.5 for likeness; that is one change in Settings. Its
+     existing plan names no sets until it is re-planned or the briefs are
+     edited by hand. No paid generation was run in development; the one
+     spike that would prove the plates change a real Gemini frame (about
+     $0.21) waits for the owner's go-ahead. The Generate a plate label quotes
     the default model's price ($0.14) as a constant, the way the cast card's
-    Describe button does, so it is off for an owner who routes stills at
-    fal; the ledger charges the true amount.
+     Describe button does, so it is off for an owner who routes stills at
+     fal; the ledger charges the true amount.
 
-    _Tests._ Final run on the branch head: schemas 316, db 256, providers 484, apps/web 774 across 77 files, e2e 114; typecheck 10 of 10, lint and prettier clean, no dash on any added line. Schemas: set and plate shapes, the
-    establishing-first order, the tolerant join, the three set warnings and
-    the exact-half boundary. DB: the set library round trips, seeding
-    idempotence, the byte-identical no-route hash, a route change making a
-    slot owe work. Providers: the limits table, refusal when either pool
-    overflows and acceptance at the limit, the prompt's sets block and its
-    byte-identical no-sets path, the bible phrases. Web: plates ride beside
-    faces in the request sent, the spend order, a name only with a photo
-    behind it, the route by rule, a stored route winning in generation and
-    in the estimate, every set action against the database including the
-    chosen plate copied from storage, the Set card, the model select and
-    its six refusals, the runner seeding sets and leaving every route
-    null after a plan. e2e: the Set card
-    takes a new room and a slot takes a new model.
+     _Tests._ Final run on the branch head: schemas 316, db 256, providers 484, apps/web 774 across 77 files, e2e 114; typecheck 10 of 10, lint and prettier clean, no dash on any added line. Schemas: set and plate shapes, the
+     establishing-first order, the tolerant join, the three set warnings and
+     the exact-half boundary. DB: the set library round trips, seeding
+     idempotence, the byte-identical no-route hash, a route change making a
+     slot owe work. Providers: the limits table, refusal when either pool
+     overflows and acceptance at the limit, the prompt's sets block and its
+     byte-identical no-sets path, the bible phrases. Web: plates ride beside
+     faces in the request sent, the spend order, a name only with a photo
+     behind it, the route by rule, a stored route winning in generation and
+     in the estimate, every set action against the database including the
+     chosen plate copied from storage, the Set card, the model select and
+     its six refusals, the runner seeding sets and leaving every route
+     null after a plan. e2e: the Set card
+     takes a new room and a slot takes a new model.
 
-49. **A reused book never seeded its rooms, and the plate price was a
-    constant** (decision 265; 2026-09-21, owner: "I re-ran the Visuals stage,
-    and no Sets were created" and "the default Model ... should be whatever
-    is set in the Settings").
+49.  **A reused book never seeded its rooms, and the plate price was a
+     constant** (decision 265; 2026-09-21, owner: "I re-ran the Visuals stage,
+     and no Sets were created" and "the default Model ... should be whatever
+     is set in the Settings").
 
-    Set seeding lived in `draftDirectorsBook` only, and a re-run of the
-    stage goes through `loadOrDraftDirectorsBook`, which returns the stored
-    book untouched so an owner's edits survive. The live project's book
-    names three locations; after the re-run it held zero sets. The reuse
-    path now seeds cast and sets as well. Both seeders skip names that exist
-    and names the owner dismissed, so a re-run with nothing new is free.
+     Set seeding lived in `draftDirectorsBook` only, and a re-run of the
+     stage goes through `loadOrDraftDirectorsBook`, which returns the stored
+     book untouched so an owner's edits survive. The live project's book
+     names three locations; after the re-run it held zero sets. The reuse
+     path now seeds cast and sets as well. Both seeders skip names that exist
+     and names the owner dismissed, so a re-run with nothing new is free.
 
-    Every routing decision already read Settings: the board's planned
-    default, the estimate and generation all derive from
-    `modelRouting.stills`, which on the live install is Gemini 2.5 for both
-    routes. What did not was the Set card's Generate a plate label, a
-    constant $0.14 copied from the cast card's pattern, which named the
-    schema default's price whatever Settings said. It now quotes the routed
-    stills model's price, computed on the page. The schema default for a
-    fresh install with no settings row stays gemini-3.1-flash-image; an
-    existing install is never moved by it.
+     Every routing decision already read Settings: the board's planned
+     default, the estimate and generation all derive from
+     `modelRouting.stills`, which on the live install is Gemini 2.5 for both
+     routes. What did not was the Set card's Generate a plate label, a
+     constant $0.14 copied from the cast card's pattern, which named the
+     schema default's price whatever Settings said. It now quotes the routed
+     stills model's price, computed on the page. The schema default for a
+     fresh install with no settings row stays gemini-3.1-flash-image; an
+     existing install is never moved by it.
 
-    _Tests._ direction.test.ts: a stored book with two locations seeds both
-    on reuse and adds nothing on a second reuse. set-card.test.tsx: the
-    label quotes the price it is given. Full app suite 77 files, 775.
+     _Tests._ direction.test.ts: a stored book with two locations seeds both
+     on reuse and adds nothing on a second reuse. set-card.test.tsx: the
+     label quotes the price it is given. Full app suite 77 files, 775.
 
-50. **AVIF is accepted at every image door and stored as JPEG**
-    (decision 266; 2026-09-21, owner: "please can you also support avif for
-    image uploads, whether its manual or through pasting an image address").
+50.  **AVIF is accepted at every image door and stored as JPEG**
+     (decision 266; 2026-09-21, owner: "please can you also support avif for
+     image uploads, whether its manual or through pasting an image address").
 
-    No image model reads AVIF: Gemini takes PNG, JPEG, WebP, HEIC and HEIF,
-    Anthropic takes PNG, JPEG, GIF and WebP. A stored AVIF would have looked
-    healthy in the console and failed at the moment a still was generated,
-    which is the moment money is spent. So AVIF is converted at the door and
-    the union of stored formats stays the three every model reads:
-    `CAST_PHOTO_MIME`, `ImageReference`, `MsgImage` and every provider
-    adapter are untouched, and no migration was needed.
+     No image model reads AVIF: Gemini takes PNG, JPEG, WebP, HEIC and HEIF,
+     Anthropic takes PNG, JPEG, GIF and WebP. A stored AVIF would have looked
+     healthy in the console and failed at the moment a still was generated,
+     which is the moment money is spent. So AVIF is converted at the door and
+     the union of stored formats stays the three every model reads:
+     `CAST_PHOTO_MIME`, `ImageReference`, `MsgImage` and every provider
+     adapter are untouched, and no migration was needed.
 
-    The two doors convert in different places because the bytes are in
-    different places. A picked file goes browser to R2 on a presigned PUT
-    (decision 205) and the server never sees it, so the new
-    `lib/client-image.ts` converts it before the hash: what is
-    fingerprinted, uploaded and recorded is the JPEG. A pasted address is
-    fetched by the server, so `lib/remote-image.ts` converts it there with
-    `sharp`, imported inside the AVIF branch only so that nothing else
-    loads the native module. `sharp` is a new explicit dependency of
-    apps/web; it was already in the lockfile under Next 16 and is named in
-    `serverExternalPackages` so Next leaves the platform binary alone.
+     The two doors convert in different places because the bytes are in
+     different places. A picked file goes browser to R2 on a presigned PUT
+     (decision 205) and the server never sees it, so the new
+     `lib/client-image.ts` converts it before the hash: what is
+     fingerprinted, uploaded and recorded is the JPEG. A pasted address is
+     fetched by the server, so `lib/remote-image.ts` converts it there with
+     `sharp`, imported inside the AVIF branch only so that nothing else
+     loads the native module. `sharp` is a new explicit dependency of
+     apps/web; it was already in the lockfile under Next 16 and is named in
+     `serverExternalPackages` so Next leaves the platform binary alone.
 
-    Both sides cap the longest edge at 3072, because a 15 MB AVIF holds far
-    more pixels than a 15 MB JPEG and only a conversion re-encodes. Both
-    take a format argument and can write PNG instead, for the uploaded logos
-    the motion-graphics work will need. The thumbnail floor now measures the
-    converted file, which is the one the model is given. `readImageSize`,
-    byte-identical in both cards, moved into the new module beside its
-    conversion sibling.
+     Both sides cap the longest edge at 3072, because a 15 MB AVIF holds far
+     more pixels than a 15 MB JPEG and only a conversion re-encodes. Both
+     take a format argument and can write PNG instead, for the uploaded logos
+     the motion-graphics work will need. The thumbnail floor now measures the
+     converted file, which is the one the model is given. `readImageSize`,
+     byte-identical in both cards, moved into the new module beside its
+     conversion sibling.
 
-    _Tests._ remote-image.test.ts: a real AVIF encoded in the test sniffs by
-    major brand and by a compatible one, comes back as true JPEG bytes at
-    its true size, is held to the same thumbnail floor, is capped at 3072
-    when huge, and is refused when damaged. client-image.test.ts: the
-    browser decode and encode sit behind a codec seam, and the rest is
-    exercised for real, including the rename, the PNG option, and both
-    failure paths. cast-card.test.tsx: proved red first, the card uploads
-    the converted file rather than the AVIF. Full suite 9 of 9 workspaces,
-    apps/web 78 files, e2e 114.
+     _Tests._ remote-image.test.ts: a real AVIF encoded in the test sniffs by
+     major brand and by a compatible one, comes back as true JPEG bytes at
+     its true size, is held to the same thumbnail floor, is capped at 3072
+     when huge, and is refused when damaged. client-image.test.ts: the
+     browser decode and encode sit behind a codec seam, and the rest is
+     exercised for real, including the rename, the PNG option, and both
+     failure paths. cast-card.test.tsx: proved red first, the card uploads
+     the converted file rather than the AVIF. Full suite 9 of 9 workspaces,
+     apps/web 78 files, e2e 114.
 
-    _Noticed here, fixed in 51._ An intermittent reference-order failure in
-    visual-assets.test.ts. The first diagnosis, that `newId` was not
-    monotonic, was a real defect but not this one.
+     _Noticed here, fixed in 51._ An intermittent reference-order failure in
+     visual-assets.test.ts. The first diagnosis, that `newId` was not
+     monotonic, was a real defect but not this one.
 
-51. **A re-added person came back in their old place, and `newId` was not
-    monotonic** (decision 267; 2026-09-21, found while finishing 50).
+51.  **A re-added person came back in their old place, and `newId` was not
+     monotonic** (decision 267; 2026-09-21, found while finishing 50).
 
-    `visual-assets.test.ts` failed intermittently on the order of the
-    reference photographs sent to the image model: Prem before Emad, when
-    the test inserts Emad first. Run alone it failed, run with its file it
-    passed, which is the shape of a test reading state the shared test
-    database was left in rather than state it set.
+     `visual-assets.test.ts` failed intermittently on the order of the
+     reference photographs sent to the image model: Prem before Emad, when
+     the test inserts Emad first. Run alone it failed, run with its file it
+     passed, which is the shape of a test reading state the shared test
+     database was left in rather than state it set.
 
-    _The cause._ Dismissing is a soft delete, and `insertCastMember`
-    revives a dismissed row rather than refusing the name. The revival kept
-    the row's original `createdAt`, and `listCastMembers` orders by
-    `(createdAt, id)`. So a person re-added after being dismissed came back
-    wherever the Director's Book first put them, weeks of edits ago. The
-    test's `beforeEach` dismisses the fixture's cast, so every later insert
-    was a revival carrying the seed's order. `insertProjectSet` had the
-    same shape. Both now stamp `createdAt` afresh: re-adding is adding.
-    The order this decides is not cosmetic. It is the order the references
-    reach the image model in, and the first one carries the most weight.
+     _The cause._ Dismissing is a soft delete, and `insertCastMember`
+     revives a dismissed row rather than refusing the name. The revival kept
+     the row's original `createdAt`, and `listCastMembers` orders by
+     `(createdAt, id)`. So a person re-added after being dismissed came back
+     wherever the Director's Book first put them, weeks of edits ago. The
+     test's `beforeEach` dismisses the fixture's cast, so every later insert
+     was a revival carrying the seed's order. `insertProjectSet` had the
+     same shape. Both now stamp `createdAt` afresh: re-adding is adding.
+     The order this decides is not cosmetic. It is the order the references
+     reach the image model in, and the first one carries the most weight.
 
-    _And a second, real defect found on the way._ `newId` called `ulid()`,
-    whose random half is fresh every call, so two ids minted in the same
-    millisecond sorted by coin flip. Rows created in one loop, which is how
-    the book seeds its principals and its locations, share a `created_at`
-    to the millisecond and are tie-broken on the id. It now uses
-    `monotonicFactory()`. The comments in `listCastMembers` and
-    `listProjectSets` asserting that ULIDs are monotonic were, until this
-    change, simply false; they now name the reason. This was the first
-    diagnosis of the failure above and it was wrong: the fix is kept because
-    the defect is real, not because it fixed that test.
+     _And a second, real defect found on the way._ `newId` called `ulid()`,
+     whose random half is fresh every call, so two ids minted in the same
+     millisecond sorted by coin flip. Rows created in one loop, which is how
+     the book seeds its principals and its locations, share a `created_at`
+     to the millisecond and are tie-broken on the id. It now uses
+     `monotonicFactory()`. The comments in `listCastMembers` and
+     `listProjectSets` asserting that ULIDs are monotonic were, until this
+     change, simply false; they now name the reason. This was the first
+     diagnosis of the failure above and it was wrong: the fix is kept because
+     the defect is real, not because it fixed that test.
 
-    _Tests._ ids.test.ts: 500 ids minted in a tight loop already sort in
-    creation order, which was red on `ulid()`. Its predecessor compared two
-    identical sorts and could not fail; it is gone. cast.integration and
-    sets.integration: a revived person, and a revived room, sort after the
-    one added while they were away. Both red first. Full suite 9 of 9
-    workspaces, typecheck 10 of 10, e2e 114.
+     _Tests._ ids.test.ts: 500 ids minted in a tight loop already sort in
+     creation order, which was red on `ulid()`. Its predecessor compared two
+     identical sorts and could not fail; it is gone. cast.integration and
+     sets.integration: a revived person, and a revived room, sort after the
+     one added while they were away. Both red first. Full suite 9 of 9
+     workspaces, typecheck 10 of 10, e2e 114.
 
-52. **The logo library, and the watermark draws the channel mark**
-    (decision 268, Plan A; 2026-09-21, owner: "logos shouldn't be generated,
-    they should be uploaded and then composited").
+52.  **The logo library, and the watermark draws the channel mark**
+     (decision 268, Plan A; 2026-09-21, owner: "logos shouldn't be generated,
+     they should be uploaded and then composited").
 
-    Marks are `assets` rows of kind `logo`, the enum value that has existed
-    since M1 with nothing writing it, channel-wide and deduped by content hash
-    like music, titled with the entity's name as the dossier writes it. That
-    name is the join: `logoForEntity` matches a graphic's "logo" element to
-    the library with the cast's tolerant `nameMatches`, ready for Plan B.
+     Marks are `assets` rows of kind `logo`, the enum value that has existed
+     since M1 with nothing writing it, channel-wide and deduped by content hash
+     like music, titled with the entity's name as the dossier writes it. That
+     name is the join: `logoForEntity` matches a graphic's "logo" element to
+     the library with the cast's tolerant `nameMatches`, ready for Plan B.
 
-    Stored marks are always raster. SVG and AVIF are drawn to PNG at the door
-    (the browser's canvas for a picked file, sharp for a pasted address, 2048
-    px on the long edge, transparency kept), so the render's Chromium never
-    executes anything an upload contained. The spec had named an SVG
-    sanitiser; rasterising is smaller and closes the hole completely, and the
-    spec was amended to say so.
+     Stored marks are always raster. SVG and AVIF are drawn to PNG at the door
+     (the browser's canvas for a picked file, sharp for a pasted address, 2048
+     px on the long edge, transparency kept), so the render's Chromium never
+     executes anything an upload contained. The spec had named an SVG
+     sanitiser; rasterising is smaller and closes the hole completely, and the
+     spec was amended to say so.
 
-    `brand.look.logoR2Key`, empty since M6, is now set from the Logos tab;
-    both materialisers resolve it to `look.logoUrl`, which exists only in the
-    resolved brand form, and `Watermark`, now its own component, draws the
-    mark at 1.6 caption heights and 0.6 alpha with the typographic wordmark as
-    the fallback.
+     `brand.look.logoR2Key`, empty since M6, is now set from the Logos tab;
+     both materialisers resolve it to `look.logoUrl`, which exists only in the
+     resolved brand form, and `Watermark`, now its own component, draws the
+     mark at 1.6 caption heights and 0.6 alpha with the typographic wordmark as
+     the fallback.
 
-    Finishing this entry: `e2e/playwright.config.ts` now blanks the four
-    `R2_*` variables in the web-server env, mirroring the broker guard,
-    because a developer machine's `.env.local` held real R2 credentials and
-    "Add from address" reached the network during the suite; the e2e suite
-    therefore never exercises configured storage, which the action and
-    component tests cover. A final review also widened `logoForEntity` to
-    check both directions, so a stored title carrying a role or suffix is
-    found too, not only a query written that way.
+     Finishing this entry: `e2e/playwright.config.ts` now blanks the four
+     `R2_*` variables in the web-server env, mirroring the broker guard,
+     because a developer machine's `.env.local` held real R2 credentials and
+     "Add from address" reached the network during the suite; the e2e suite
+     therefore never exercises configured storage, which the action and
+     component tests cover. A final review also widened `logoForEntity` to
+     check both directions, so a stored title carrying a role or suffix is
+     found too, not only a query written that way.
 
-    _Tests._ Schema: stored formats, the picker's accept string, the entity
-    matcher including the contained-name refusal, the resolved-only URL.
-    Database: dedupe on re-upload as a rename, the name join, never a bed.
-    Browser: SVG and AVIF to PNG through the codec and rasteriser seams.
-    Server: a pasted SVG comes back as PNG bytes with alpha at 2048 px; the 4
-    MB cap; no thumbnail floor for a mark. Actions: the presign refuses SVG
-    and AVIF by design; finalise checks the key shape; add by address hashes
-    the fetched bytes; the channel mark cannot be removed while chosen. Tab:
-    the whole browser-to-R2 path, the JPEG warning, rename, confirm-remove.
-    Materialisers: both resolve the mark; the preview drops nothing for one it
-    cannot. Snapshot: `WatermarkLogo`, new golden only. e2e: seeded marks,
-    channel mark chosen and cleared across a reload, rename round trip. Full
-    suite 9 of 9 workspaces, apps/web 80 files, typecheck 10 of 10, e2e 117.
+     _Tests._ Schema: stored formats, the picker's accept string, the entity
+     matcher including the contained-name refusal, the resolved-only URL.
+     Database: dedupe on re-upload as a rename, the name join, never a bed.
+     Browser: SVG and AVIF to PNG through the codec and rasteriser seams.
+     Server: a pasted SVG comes back as PNG bytes with alpha at 2048 px; the 4
+     MB cap; no thumbnail floor for a mark. Actions: the presign refuses SVG
+     and AVIF by design; finalise checks the key shape; add by address hashes
+     the fetched bytes; the channel mark cannot be removed while chosen. Tab:
+     the whole browser-to-R2 path, the JPEG warning, rename, confirm-remove.
+     Materialisers: both resolve the mark; the preview drops nothing for one it
+     cannot. Snapshot: `WatermarkLogo`, new golden only. e2e: seeded marks,
+     channel mark chosen and cleared across a reload, rename round trip. Full
+     suite 9 of 9 workspaces, apps/web 80 files, typecheck 10 of 10, e2e 117.
 
-    _Polish (2026-09-22)._ Decision 268's parked finding, closed:
-    `insertLogo`'s upsert now updates a conflicting row only when it is
-    already a logo (`setWhere`), returning null otherwise, so a content-hash
-    collision with an asset of another kind is refused rather than silently
-    renamed and resized; `finaliseLogoAction` and `addLogoFromUrlAction` check
-    for null instead of inspecting the row's kind after the write. The mark
-    tile in Settings now sits on the brand background (spec 6.3), passed down
-    as `settings.brandKit.colors.background`, not the console's own ground.
-    The corner watermark falls back to the typographic wordmark when its image
-    fails to load, through `Img`'s `onError`, making good on the component's
-    own comment. A picked AVIF mark is now rasterised at the 2048 px logo edge
-    like every other path into the library, not the wider 3072 px pasted-image
-    cap. Also done: one settings test file instead of two; one import in
-    `remote-image.ts`; the oversize-delete branch and several refusal paths
-    now have tests; a single `logoById` read replaces two `listLogos` scans on
-    remove and on choosing the channel mark; both insert paths clamp width and
-    height alike; and the `Watermark` file comment now sits on the function it
-    describes.
+     _Polish (2026-09-22)._ Decision 268's parked finding, closed:
+     `insertLogo`'s upsert now updates a conflicting row only when it is
+     already a logo (`setWhere`), returning null otherwise, so a content-hash
+     collision with an asset of another kind is refused rather than silently
+     renamed and resized; `finaliseLogoAction` and `addLogoFromUrlAction` check
+     for null instead of inspecting the row's kind after the write. The mark
+     tile in Settings now sits on the brand background (spec 6.3), passed down
+     as `settings.brandKit.colors.background`, not the console's own ground.
+     The corner watermark falls back to the typographic wordmark when its image
+     fails to load, through `Img`'s `onError`, making good on the component's
+     own comment. A picked AVIF mark is now rasterised at the 2048 px logo edge
+     like every other path into the library, not the wider 3072 px pasted-image
+     cap. Also done: one settings test file instead of two; one import in
+     `remote-image.ts`; the oversize-delete branch and several refusal paths
+     now have tests; a single `logoById` read replaces two `listLogos` scans on
+     remove and on choosing the channel mark; both insert paths clamp width and
+     height alike; and the `Watermark` file comment now sits on the function it
+     describes.
 
-53. **The graphic slot: a scene the planner composes**
-    (decision 268, Plan B; 2026-09-22).
+53.  **The graphic slot: a scene the planner composes**
+     (decision 268, Plan B; 2026-09-22).
 
-    A graphic is composed, not picked from a catalogue of templates.
-    `packages/schemas/src/graphics.ts` fixes the vocabulary: at most six
-    elements, from `text`, `figure`, `logo`, `shape` and `bars`, placed on
-    a 12 by 12 grid, coloured only by the NAMES of Brand Kit tokens (never
-    a hex value), with type sized by a role (heading, title, body,
-    numbers, captions) rather than a chosen pixel size. The rules live in
-    the schema rather than in a template, and they have teeth: every
-    `figure` and every `bars` item carries a `claimRef`, and
-    `figureCitesClaim` checks the digit groups the shown value carries
-    against the cited claim's own text (thousands separators stripped, any
-    surrounding word or symbol such as "bn", "%" or "billion" a rendering
-    choice and not compared), so a figure cannot state a number the
-    dossier does not support. A `logo` element names its entity exactly as
-    the dossier writes it and carries no styling of its own; nothing in
-    the scene is a raw colour or a raw font size.
+     A graphic is composed, not picked from a catalogue of templates.
+     `packages/schemas/src/graphics.ts` fixes the vocabulary: at most six
+     elements, from `text`, `figure`, `logo`, `shape` and `bars`, placed on
+     a 12 by 12 grid, coloured only by the NAMES of Brand Kit tokens (never
+     a hex value), with type sized by a role (heading, title, body,
+     numbers, captions) rather than a chosen pixel size. The rules live in
+     the schema rather than in a template, and they have teeth: every
+     `figure` and every `bars` item carries a `claimRef`, and
+     `figureCitesClaim` checks the digit groups the shown value carries
+     against the cited claim's own text (thousands separators stripped, any
+     surrounding word or symbol such as "bn", "%" or "billion" a rendering
+     choice and not compared), so a figure cannot state a number the
+     dossier does not support. A `logo` element names its entity exactly as
+     the dossier writes it and carries no styling of its own; nothing in
+     the scene is a raw colour or a raw font size.
 
-    One pure layout module, `packages/compositions/src/lib/graphic.ts`,
-    computes every box and font size a graphic uses, and both the board's
-    SVG preview and the Remotion `GraphicCard` call it, so the graphic the
-    owner approves is the graphic that renders. The design document's
-    section 5.1 had specified `fitText` from `@remotion/layout-utils`,
-    which measures text on a canvas; the board runs in the owner's browser
-    and the render runs in headless Chromium, and the two carry different
-    fonts, so a measurement taken in one would not match a measurement
-    taken in the other, and the preview would drift from the render.
-    `fitFontPx` fits with a pure estimator instead, a conservative average
-    glyph width of 0.56 em, which returns the same number wherever it runs
-    and needed no new dependency; the trade is a label a few pixels
-    tighter than a true measurement would give it. The estimate never
-    returns below 12 pixels: past that point a long label overflows its
-    box rather than shrink further, because type under 12 pixels is a
-    smudge on a phone screen. Both are deliberate trades, recorded here so
-    neither reads as an oversight later.
+     One pure layout module, `packages/compositions/src/lib/graphic.ts`,
+     computes every box and font size a graphic uses, and both the board's
+     SVG preview and the Remotion `GraphicCard` call it, so the graphic the
+     owner approves is the graphic that renders. The design document's
+     section 5.1 had specified `fitText` from `@remotion/layout-utils`,
+     which measures text on a canvas; the board runs in the owner's browser
+     and the render runs in headless Chromium, and the two carry different
+     fonts, so a measurement taken in one would not match a measurement
+     taken in the other, and the preview would drift from the render.
+     `fitFontPx` fits with a pure estimator instead, a conservative average
+     glyph width of 0.56 em, which returns the same number wherever it runs
+     and needed no new dependency; the trade is a label a few pixels
+     tighter than a true measurement would give it. The estimate never
+     returns below 12 pixels: past that point a long label overflows its
+     box rather than shrink further, because type under 12 pixels is a
+     smudge on a phone screen. Both are deliberate trades, recorded here so
+     neither reads as an oversight later.
 
-    Portrait re-flow (`reflowPortrait`) ranks its invariants rather than
-    honouring both at once. Auto-flowed elements must never collide with
-    each other, because that silently drops content off the card, and
-    that outranks the milder preference of starting the flow below
-    whatever the author pinned: when the rows left beneath the pins cannot
-    seat every flowed element, the flow claims the whole grid instead and
-    may land on top of a pin. An overlapped pin is visible and the author
-    can move it; two elements sharing a row is content that vanished
-    without a trace, which is the failure this ranking exists to rule out.
+     Portrait re-flow (`reflowPortrait`) ranks its invariants rather than
+     honouring both at once. Auto-flowed elements must never collide with
+     each other, because that silently drops content off the card, and
+     that outranks the milder preference of starting the flow below
+     whatever the author pinned: when the rows left beneath the pins cannot
+     seat every flowed element, the flow claims the whole grid instead and
+     may land on top of a pin. An overlapped pin is visible and the author
+     can move it; two elements sharing a row is content that vanished
+     without a trace, which is the failure this ranking exists to rule out.
 
-    Resolution is `resolvePlannedBrief`
-    (`packages/schemas/src/visuals.ts`), the same function a chart or a
-    headline brief already goes through: the claim NUMBERS the model
-    wrote become claim ids, checked against the claim list and, for a
-    `figure` or a `bars` item, against the cited claim's own text. A
-    `logo` element's entity name is joined to the asset library through
-    `logoForEntity`, the cast's tolerant `nameMatches` run in both
-    directions so a stored title carrying a role or a suffix still
-    matches a bare query, and a query carrying one still matches a bare
-    title. A mark the library does not hold is not a refusal: the element
-    is stored as written, the slot resolves to `placeholder`, and the
-    board's card offers an `Add logo for <entity>` button rather than an
-    error. Nothing is fetched and nothing is spent either way: resolved
-    or placeholder, `resolveSlotBrief` prices a graphic at $0.
+     Resolution is `resolvePlannedBrief`
+     (`packages/schemas/src/visuals.ts`), the same function a chart or a
+     headline brief already goes through: the claim NUMBERS the model
+     wrote become claim ids, checked against the claim list and, for a
+     `figure` or a `bars` item, against the cited claim's own text. A
+     `logo` element's entity name is joined to the asset library through
+     `logoForEntity`, the cast's tolerant `nameMatches` run in both
+     directions so a stored title carrying a role or a suffix still
+     matches a bare query, and a query carrying one still matches a bare
+     title. A mark the library does not hold is not a refusal: the element
+     is stored as written, the slot resolves to `placeholder`, and the
+     board's card offers an `Add logo for <entity>` button rather than an
+     error. Nothing is fetched and nothing is spent either way: resolved
+     or placeholder, `resolveSlotBrief` prices a graphic at $0.
 
-    The planner drafts a graphic the same call it drafts everything else:
-    the shot-list prompt (`packages/providers/src/prompts/shotlist.ts`)
-    writes the vocabulary out in full for the model, the element shapes,
-    the 12 by 12 cell, the token colour names, and the rule for reaching
-    for a graphic instead of a chart (one or two cited figures, a mark, or
-    a relationship between named things, never a value moving through
-    time). The other two model-drafted paths, re-typing a slot to
-    `graphic` and asking "Draft a different brief" on a slot that already
-    is one, both go through the same structured drafting request a chart
-    or map redraft takes, rather than the free-form idea path a stock or
-    still redraft takes, because a graphic is data; that keeps the
-    claim-number check in the one place resolution already enforces it.
-    Migration 0027 is the only schema change the database needed: one new
-    `shot_type` enum value, `graphic`, ahead of `hero`.
+     The planner drafts a graphic the same call it drafts everything else:
+     the shot-list prompt (`packages/providers/src/prompts/shotlist.ts`)
+     writes the vocabulary out in full for the model, the element shapes,
+     the 12 by 12 cell, the token colour names, and the rule for reaching
+     for a graphic instead of a chart (one or two cited figures, a mark, or
+     a relationship between named things, never a value moving through
+     time). The other two model-drafted paths, re-typing a slot to
+     `graphic` and asking "Draft a different brief" on a slot that already
+     is one, both go through the same structured drafting request a chart
+     or map redraft takes, rather than the free-form idea path a stock or
+     still redraft takes, because a graphic is data; that keeps the
+     claim-number check in the one place resolution already enforces it.
+     Migration 0027 is the only schema change the database needed: one new
+     `shot_type` enum value, `graphic`, ahead of `hero`.
 
-    _Not done._ A placeholder graphic still counts toward the board's
-    "Fetch visuals" action, because `slotNeedsResolution` reads status and
-    brief hash only and has never special-cased a type; fetching buys a
-    waiting graphic nothing, since only an upload resolves it. That is not
-    a bug for `slotNeedsResolution` to fix by excluding graphics: the
-    approval gate (`visualsApprovalBlockedReason`, `visualsCoverage`)
-    reads `slot.status` directly rather than the fetch count, so a
-    placeholder graphic already forces the same explicit "approve with N
-    placeholders" wording a placeholder photograph does. The wart is
-    narrower: the fetch button is the wrong affordance for one slot type,
-    a board question, not a resolution bug. Rendered video does not carry
-    `GraphicCard` yet either: a web deploy ships the board's preview only,
-    and the render gets new or changed compositions only once the owner's
-    `deploy:remotion` script re-uploads the Remotion site.
+     _Not done._ A placeholder graphic still counts toward the board's
+     "Fetch visuals" action, because `slotNeedsResolution` reads status and
+     brief hash only and has never special-cased a type; fetching buys a
+     waiting graphic nothing, since only an upload resolves it. That is not
+     a bug for `slotNeedsResolution` to fix by excluding graphics: the
+     approval gate (`visualsApprovalBlockedReason`, `visualsCoverage`)
+     reads `slot.status` directly rather than the fetch count, so a
+     placeholder graphic already forces the same explicit "approve with N
+     placeholders" wording a placeholder photograph does. The wart is
+     narrower: the fetch button is the wrong affordance for one slot type,
+     a board question, not a resolution bug. Rendered video does not carry
+     `GraphicCard` yet either: a web deploy ships the board's preview only,
+     and the render gets new or changed compositions only once the owner's
+     `deploy:remotion` script re-uploads the Remotion site.
 
-    _Tests._ Schema: the vocabulary's own rules (six elements at most, a
-    `count` entrance reserved to figures alone, unique ids, one logo per
-    entity, the grid refinement), `figureCitesClaim` against separators, scale
-    words and a claim that does not carry the number, and
-    `resolvePlannedBrief` mapping claim numbers to ids and entity names to
-    library assets, including a logo left unresolved rather than refused.
-    Database: a `graphic` row round-trips through the real `shot_type`
-    enum. Compositions: `fitFontPx`'s fit and its floor,
-    `reflowPortrait`'s pin and collision invariants under a starved grid,
-    and `GraphicCard`'s two goldens (wide and tall) against a composed
-    scene with a counting figure, a pulse and an underline. Web: the
-    board's preview reading the same layout module the card does, down to
-    the role's size scale, the claim chips, the missing-mark uploader,
-    `attachGraphicLogosAction` re-matching a whole scene on one upload,
-    and `resolveSlotBrief` pricing a graphic at $0. e2e: a resolved
-    graphic citing a seeded mark and a claim, and a placeholder graphic
-    asking for one that does not exist. Full suite 9 of 9 workspaces,
-    apps/web 80 files, typecheck 10 of 10, e2e 118 (last measured; not
-    re-run here).
+     _Tests._ Schema: the vocabulary's own rules (six elements at most, a
+     `count` entrance reserved to figures alone, unique ids, one logo per
+     entity, the grid refinement), `figureCitesClaim` against separators, scale
+     words and a claim that does not carry the number, and
+     `resolvePlannedBrief` mapping claim numbers to ids and entity names to
+     library assets, including a logo left unresolved rather than refused.
+     Database: a `graphic` row round-trips through the real `shot_type`
+     enum. Compositions: `fitFontPx`'s fit and its floor,
+     `reflowPortrait`'s pin and collision invariants under a starved grid,
+     and `GraphicCard`'s two goldens (wide and tall) against a composed
+     scene with a counting figure, a pulse and an underline. Web: the
+     board's preview reading the same layout module the card does, down to
+     the role's size scale, the claim chips, the missing-mark uploader,
+     `attachGraphicLogosAction` re-matching a whole scene on one upload,
+     and `resolveSlotBrief` pricing a graphic at $0. e2e: a resolved
+     graphic citing a seeded mark and a claim, and a placeholder graphic
+     asking for one that does not exist. Full suite 9 of 9 workspaces,
+     apps/web 80 files, typecheck 10 of 10, e2e 118 (last measured; not
+     re-run here).
+
+54.  **References the plan never names, and graphics that never move**
+     (2026-09-22, owner report: "I have added references, but it doesn't
+     seem like they are being used to generate any of the shots... It's
+     hard from the briefs to actually identify which briefs are calling on
+     them... The motion graphics are also very bare, and mostly still, with
+     some even having overlapping text").
+
+    Two unrelated faults, both of them silence rather than breakage.
+
+    _The references._ The cast and sets systems are wired end to end and
+    were almost never invoked, because the whole chain hangs on two
+    OPTIONAL fields the shot-list model has to volunteer — a still's
+    `depicts` and its `set`. `generateStillCandidates` reads
+    `listCastMembers` only when `depicts` is non-empty and
+    `listProjectSets` only when `set` is set, so a brief that names
+    neither never opens the tables at all, and the photographs the
+    producer uploaded condition nothing. Nothing inferred the reference
+    from the prompt text, nothing warned, and the board rendered neither
+    field: `depicts` appeared only inside the policy-refusal block and
+    `set` appeared nowhere, so a shot about to buy a likeness looked
+    exactly like one about to buy a stranger. Every existing note pointed
+    the other way — `planWarnings` warns when a set is named too OFTEN,
+    `castWarnings` when the book forgot a person. Now `referenceWarnings`
+    covers the silent direction, and every slot card carries a chip per
+    call with whether anything backs it, resolved by the generator's own
+    rule so the card cannot promise a photograph the run will not send.
+    Deliberately NOT done: filling `depicts` or `set` in by inference. The
+    producer keeps the call; the screen just stops hiding it.
+
+    _The graphics._ Three causes, compounding. `GraphicCard` was the only
+    card never handed `durationInFrames` — `ChartReveal` and `AnimatedMap`
+    both take it, and `HeadlineCard` carries a drift with the comment "so
+    the card is never a dead still" — so its whole animation budget was a
+    600 ms entrance and then five frozen seconds. `enter` is optional and
+    defaults to `{ fade, atMs: 0 }`, so the ordinary planner output gave
+    every element the same offset and six things faded up in unison, which
+    is one cross-fade. And `reflowPortrait` runs only when the frame is
+    taller than it is wide, so on 16:9 the planner's cells were used
+    exactly as written and two elements on the same rows drew over each
+    other, with no scene rule and no test able to see it. Fixed as
+    `graphicDrift` across the slot, `staggeredEnterMs` when nothing in the
+    scene asks for a time (any explicit offset and every offset is left
+    alone), and `separateOverlaps` sliding a collision down to the first
+    clear row, keeping column and reading order, shapes exempt both ways
+    because a panel behind a figure is drawn to be overlapped.
+
+    _The fourth preview-versus-render divergence._ Text wrapped in the
+    render and could not wrap in the board, because the card lays out HTML
+    divs and the preview draws SVG `<text>`. `fitFontPx` fits by width and
+    stops at a legibility floor, so a long string wrapped to three lines
+    and spilled over its neighbour in the video while the board showed one
+    clean line. Both now clip to the cell. This is the third time this
+    feature has let the approved picture and the shipped one disagree, and
+    the third time no test caught it: the goldens only prove the render
+    did not move, and nothing compares the two renderers to each other.
+
+    _Open._ The bible asks every still prompt for "an environmental
+    pressure (rain on the window, a flickering tube)" while the set rule
+    says "Do not describe the room itself; the photographs are the room".
+    For a shot that names a set those pull opposite ways. Left as-is: it
+    is a prompt change with a spend attached to validating it, and the
+    owner chose the visibility route first.
+
+    _Tests._ Schemas: `referenceWarnings` at zero usage, at partial usage,
+    against a role-suffixed `depicts` entry (decision 262's join), and
+    silent both when nothing is held and when there are no picture briefs.
+    Compositions: `separateOverlaps` as a no-op on a clear scene, sliding
+    a collision, ignoring elements in other columns, never moving a shape
+    nor letting one push anything, and keeping the planned cell when the
+    grid has no room; `staggeredEnterMs` spreading and deferring;
+    `graphicDrift` monotonic and a no-op on a one-frame slot. Web: the
+    chip row naming a resolved and an unresolved reference with its title,
+    and absent for a brief that names nothing. Goldens pass unchanged and
+    were not regenerated — the fixture times its own entrances and passes
+    no duration, so neither new behaviour moves it.
