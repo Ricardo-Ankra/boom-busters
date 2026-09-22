@@ -1556,7 +1556,7 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 - Modify: `packages/providers/src/prompts/shotlist.test.ts`
 - Modify: `apps/web/inngest/lib/direction.ts:205-262` (`planChapterSlots` input `logos?: readonly LogoIndex[]`, threaded to `mockShotList`, `buildShotListRequest` and `plannedToRows`)
 - Modify: `apps/web/inngest/lib/direction.test.ts`
-- Modify: `packages/schemas/src/visuals.ts` `plannedToRows` (input `logos?: readonly LogoIndex[]`, passed to `resolvePlannedBrief` and `plannedBriefRejection`)
+- Modify: `apps/web/inngest/lib/shot-list.ts` `plannedToRows` (input `logos?: readonly LogoIndex[]`, passed to `resolvePlannedBrief` and `plannedBriefRejection`)
 
 **Interfaces:**
 - Produces: the prompt's `graphic` shape and rules; the `Logos` list in the cacheable prefix; the mock emits one graphic when `claimCount > 0` (a `figure` citing claim 1 whose value is the first digit group of that claim's text, a `text` label, and a `logo` for the first logo title, or none when the library is empty); `planChapterSlots` gathers nothing itself (the caller passes `logos`), and the runner that calls it passes `await listLogos(db)` mapped to `{ id, title }`.
@@ -1645,7 +1645,7 @@ and in the planning rules:
 
 `mockShotList` input gains `claimTexts?: readonly string[]` and `logoTitles?: readonly string[]`; after the map slot, when `first && input.claimCount > 0`, push a graphic slot on `first.index`, `seconds: 6`, brief `{ type: 'graphic', coversText, description: '[mock] The figure, large, with the mark beside it.', shotSize: 'graphic', motion: { kind: 'static' }, transition: 'cut', scene: { elements: [text t1 (role title, textSecondary, cell 0,0,7,2, content '[mock] Raised in one round'), figure f1 (cell 0,2,7,4, value from claim 1, claimRef 1, color accent, enter count 300), ...(logoTitles[0] ? [logo l1 (cell 8,1,4,4, entity: logoTitles[0])] : [])] } }`.
 
-`plannedToRows` in `visuals.ts` gains `logos?: readonly LogoIndex[]` and passes `input.logos ?? []` to both resolution functions. `planChapterSlots` gains `logos?: readonly LogoIndex[]`, passes `logoTitles: input.logos?.map((l) => l.title)` and `claimTexts: input.claims.map((c) => c.text)` to the mock, `logos: input.logos?.map((l) => l.title)` to the request, and `logos: input.logos` to `plannedToRows`. Find the caller of `planChapterSlots` (grep in `apps/web/inngest`) and pass `logos: (await listLogos(db)).map((row) => ({ id: row.id, title: row.title ?? '' }))`.
+`plannedToRows` in `apps/web/inngest/lib/shot-list.ts` gains `logos?: readonly LogoIndex[]` and passes `input.logos ?? []` to both resolution functions. `planChapterSlots` gains `logos?: readonly LogoIndex[]`, passes `logoTitles: input.logos?.map((l) => l.title)` and `claimTexts: input.claims.map((c) => c.text)` to the mock, `logos: input.logos?.map((l) => l.title)` to the request, and `logos: input.logos` to `plannedToRows`. Find the caller of `planChapterSlots` (grep in `apps/web/inngest`) and pass `logos: (await listLogos(db)).map((row) => ({ id: row.id, title: row.title ?? '' }))`.
 
 - [ ] **Step 4: Run to verify they pass**
 
