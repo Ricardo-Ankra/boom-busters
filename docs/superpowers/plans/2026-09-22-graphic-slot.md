@@ -803,11 +803,18 @@ describe('reflowPortrait', () => {
 describe('fitFontPx', () => {
   it('never exceeds the role size and shrinks a long label to its box', () => {
     expect(fitFontPx('Hi', 2000, 72)).toBe(72)
-    const fitted = fitFontPx('A very long label that will not fit at full size', 300, 72)
+    const label = 'A label that must shrink'
+    const fitted = fitFontPx(label, 300, 72)
     expect(fitted).toBeLessThan(72)
-    expect(fitted).toBeGreaterThanOrEqual(12)
+    expect(fitted).toBeGreaterThan(12)
     // The estimate: glyphs at 0.56 em must fit the width.
-    expect('A very long label that will not fit at full size'.length * 0.56 * fitted).toBeLessThanOrEqual(300)
+    expect(label.length * 0.56 * fitted).toBeLessThanOrEqual(300)
+  })
+
+  it('stops at the legibility floor rather than shrinking out of sight', () => {
+    // 48 glyphs in a 300px box would fit only at 11px, so the floor wins and
+    // the label overflows. Text below 12px reads as a smudge on a phone.
+    expect(fitFontPx('A very long label that will not fit at full size', 300, 72)).toBe(12)
   })
 })
 
