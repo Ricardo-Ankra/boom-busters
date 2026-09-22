@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { DEFAULT_SETTINGS, resolveBrandKit } from '@boom-busters/schemas'
+import { DEFAULT_SETTINGS, GRAPHIC_COLORS, resolveBrandKit } from '@boom-busters/schemas'
 import type { GraphicScene } from '@boom-busters/schemas'
 import {
   countedValue,
@@ -54,10 +54,14 @@ describe('safeArea', () => {
     expect(wide.x).toBe(36)
     expect(wide.y).toBe(36)
     expect(wide.w).toBe(1920 - 72)
-    // Landscape captions end at 88% of the height.
-    expect(wide.y + wide.h).toBeLessThanOrEqual(1080 * 0.88)
+    // Landscape captions end at 88% of the height. The bound is strict, not merely
+    // touching the fraction boundary, so a version missing the caption band's own
+    // buffer (which lands exactly on 1080 * 0.88) would fail here.
+    expect(wide.y + wide.h).toBeLessThan(1080 * 0.88)
+    expect(wide.y + wide.h).toBeLessThan(1080)
     const tall = safeArea(TALL)
-    expect(tall.y + tall.h).toBeLessThanOrEqual(1920 * 0.72)
+    expect(tall.y + tall.h).toBeLessThan(1920 * 0.72)
+    expect(tall.y + tall.h).toBeLessThan(1920)
   })
 })
 
@@ -82,10 +86,19 @@ describe('graphicLayout', () => {
       expect(box.x).toBeCloseTo(safe.x + 4, 5)
       expect(box.w).toBeCloseTo(safe.w - 8, 5)
     }
+    // The array itself stays in scene order (t, f, l); only the vertical placement
+    // follows reading order, so look up by id rather than by array position.
+    expect(boxes.map((box) => box.id)).toEqual(['t', 'f', 'l'])
+    const byId = Object.fromEntries(boxes.map((box) => [box.id, box]))
     // Reading order is row then column: t (row 0) and l (row 0, col 8) before f (row 2).
-    expect(boxes.map((box) => box.id)).toEqual(['t', 'l', 'f'])
-    expect(boxes[0]!.y).toBeLessThan(boxes[1]!.y)
-    expect(boxes[1]!.y).toBeLessThan(boxes[2]!.y)
+    expect(byId.t!.y).toBeLessThan(byId.l!.y)
+    expect(byId.l!.y).toBeLessThan(byId.f!.y)
+  })
+
+  it('keeps scene order in the returned array regardless of orientation', () => {
+    const landscapeIds = graphicLayout(scene, WIDE, brand).map((box) => box.id)
+    const portraitIds = graphicLayout(scene, TALL, brand).map((box) => box.id)
+    expect(portraitIds).toEqual(landscapeIds)
   })
 
   it('honours a portrait cell when one is given', () => {
@@ -101,7 +114,7 @@ describe('graphicLayout', () => {
 })
 
 describe('reflowPortrait', () => {
-  it('stacks rows and never runs off the grid', () => {
+  it('shrinks proportionally under overflow so rows never overlap and never run off the grid', () => {
     const tall = reflowPortrait({
       elements: Array.from({ length: 6 }, (_, i) => ({
         kind: 'shape' as const,
@@ -113,10 +126,52 @@ describe('reflowPortrait', () => {
         enter: { kind: 'fade' as const, atMs: 0 },
       })),
     })
-    for (const element of tall.elements) {
-      const cell = element.portraitCell!
-      expect(cell.row + cell.rowSpan).toBeLessThanOrEqual(12)
+    const bands = tall.elements.map((element) => element.portraitCell!)
+    for (const band of bands) {
+      expect(band.row).toBeGreaterThanOrEqual(0)
+      expect(band.row + band.rowSpan).toBeLessThanOrEqual(12)
     }
+    // Pairwise disjoint: no two placed row ranges may intersect. This is the half of
+    // the invariant that a mere `row + rowSpan <= 12` check misses, and missing it is
+    // exactly how two of six elements used to land on the same row and vanish.
+    for (let i = 0; i < bands.length; i += 1) {
+      for (let j = i + 1; j < bands.length; j += 1) {
+        const a = bands[i]!
+        const b = bands[j]!
+        const disjoint = a.row + a.rowSpan <= b.row || b.row + b.rowSpan <= a.row
+        expect(disjoint).toBe(true)
+      }
+    }
+  })
+
+  it('starts the flow below a pinned cell and never overlaps it', () => {
+    const withPin: GraphicScene = {
+      elements: [
+        {
+          kind: 'shape',
+          id: 'pinned',
+          cell: { col: 0, row: 0, colSpan: 12, rowSpan: 6 },
+          portraitCell: { col: 0, row: 0, colSpan: 12, rowSpan: 6 },
+          form: 'rect',
+          color: 'surface',
+          opacity: 1,
+          enter: { kind: 'fade', atMs: 0 },
+        },
+        {
+          kind: 'shape',
+          id: 'flowed',
+          cell: { col: 0, row: 0, colSpan: 12, rowSpan: 2 },
+          form: 'rect',
+          color: 'surface',
+          opacity: 1,
+          enter: { kind: 'fade', atMs: 0 },
+        },
+      ],
+    }
+    const result = reflowPortrait(withPin)
+    const pinned = result.elements.find((element) => element.id === 'pinned')!.portraitCell!
+    const flowed = result.elements.find((element) => element.id === 'flowed')!.portraitCell!
+    expect(flowed.row).toBeGreaterThanOrEqual(pinned.row + pinned.rowSpan)
   })
 })
 
@@ -145,6 +200,15 @@ describe('tokenColor and roleBasePx', () => {
     expect(tokenColor('series1', brand)).toBe(brand.colors.chartSeries[1])
     expect(roleBasePx('numbers')).toBe(96)
   })
+
+  it('resolves every one of the twelve token names to a non-empty colour', () => {
+    expect(GRAPHIC_COLORS).toHaveLength(12)
+    for (const name of GRAPHIC_COLORS) {
+      const color = tokenColor(name, brand)
+      expect(typeof color).toBe('string')
+      expect(color.length).toBeGreaterThan(0)
+    }
+  })
 })
 
 describe('enterProgress and countedValue', () => {
@@ -161,5 +225,9 @@ describe('enterProgress and countedValue', () => {
     expect(countedValue('1,200 staff', 1)).toBe('1,200 staff')
     expect(countedValue('1,200 staff', 0.5)).toMatch(/^\d{1,3},?\d* staff$/)
     expect(countedValue('94%', 0.5)).toBe('47%')
+    // The decimal case the schema itself names as canonical (figureDigitGroups' own
+    // doc comment), previously untested here.
+    expect(countedValue('$4.5bn', 0)).toBe('$0.0bn')
+    expect(countedValue('$4.5bn', 1)).toBe('$4.5bn')
   })
 })
