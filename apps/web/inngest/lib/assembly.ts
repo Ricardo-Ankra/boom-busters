@@ -155,7 +155,7 @@ export function evenlySpacedWords(text: string, durationMs: number): WordTiming[
  */
 export interface AssemblySlotRow {
   id: string
-  type: 'stock' | 'archival' | 'still' | 'chart' | 'map' | 'headline' | 'hero'
+  type: 'stock' | 'archival' | 'still' | 'chart' | 'map' | 'headline' | 'graphic' | 'hero'
   status: 'unresolved' | 'resolved' | 'placeholder'
   brief: Record<string, unknown>
   candidates: Record<string, unknown>[]
@@ -209,6 +209,13 @@ export function slotPlan(input: {
    * corrected since.
    */
   articles?: ReadonlyMap<string, ArticleMetadata>
+  /**
+   * The bytes behind every logo a graphic might cite, by ASSET id (decision
+   * 268). A graphic's own scene keys its logos by ELEMENT id; this is the
+   * join the graphic branch reads from before it can key its output the
+   * same way the compositions and the compiler expect.
+   */
+  logos?: ReadonlyMap<string, { r2Key: string; width: number; height: number }>
 }): SlotPlan {
   const slots: CompileSlot[] = []
   const skipped: SlotPlan['skipped'] = []
@@ -298,6 +305,42 @@ export function slotPlan(input: {
           claimId: brief.sourceClaimId,
         },
       })
+      continue
+    }
+
+    if (brief.type === 'graphic') {
+      // The scene keys its logos by ELEMENT id; `input.logos` (loaded once by
+      // the runner, decision 268) keys the bytes by ASSET id. This is the
+      // join. A logo element with no asset id, or one the map does not hold
+      // (never uploaded, or uploaded after this row was planned), skips the
+      // whole slot rather than rendering a hole where a mark should be.
+      const logos: Record<string, { r2Key: string; width: number; height: number }> = {}
+      let missing: string | null = null
+      for (const element of brief.scene.elements) {
+        if (element.kind !== 'logo') continue
+        const asset = element.assetId ? input.logos?.get(element.assetId) : undefined
+        if (!asset) {
+          missing = element.entity
+          break
+        }
+        logos[element.id] = asset
+      }
+      if (missing !== null) {
+        skipped.push({ slotId: row.id, reason: `a logo for "${missing}" has not been uploaded` })
+        continue
+      }
+      const claimIds = [
+        ...new Set(
+          brief.scene.elements.flatMap((element) =>
+            element.kind === 'figure'
+              ? [element.claimRef]
+              : element.kind === 'bars'
+                ? element.items.map((item) => item.claimRef)
+                : [],
+          ),
+        ),
+      ]
+      slots.push({ ...base, type: 'graphic', graphic: { scene: brief.scene, logos, claimIds } })
       continue
     }
 

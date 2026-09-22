@@ -16,7 +16,13 @@ import {
 } from '@boom-busters/db'
 import { LIVE_IMAGE_GEN_ADAPTERS, mockImageGen } from '@boom-busters/providers'
 import { STILL_GENERATIONS } from '@boom-busters/schemas'
-import type { CastMember, ModelRouting, ProjectSet, StillBrief } from '@boom-busters/schemas'
+import type {
+  CastMember,
+  GraphicBrief,
+  ModelRouting,
+  ProjectSet,
+  StillBrief,
+} from '@boom-busters/schemas'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { listLedger } from '@boom-busters/cost'
 import { db } from '@/lib/db'
@@ -446,6 +452,40 @@ describeDb('generateStillCandidates with the cast', () => {
     generate.mockClear()
     await generateStillCandidates({ ...still, depicts: ['Nobody Known'] }, FIXTURE_PROJECT_ID)
     expect(generate.mock.calls[0]?.[0]?.references).toBeUndefined()
+  })
+
+  it('a graphic resolves at no cost when every logo has a mark, and waits as a placeholder otherwise', async () => {
+    const brief = (assetId?: string): GraphicBrief => ({
+      type: 'graphic',
+      coversText: 'x',
+      description: 'y',
+      motion: { kind: 'static' },
+      transition: 'cut',
+      shotSize: 'graphic',
+      scene: {
+        elements: [
+          {
+            kind: 'logo',
+            id: 'l1',
+            cell: { col: 0, row: 0, colSpan: 4, rowSpan: 2 },
+            entity: 'Stability AI',
+            enter: { kind: 'fade', atMs: 0 },
+            ...(assetId ? { assetId } : {}),
+          },
+        ],
+      },
+    })
+    expect(
+      await resolveSlotBrief({
+        projectId: FIXTURE_PROJECT_ID,
+        brief: brief('01HQ00000000000000000000M1'),
+        route: null,
+      }),
+    ).toEqual({ candidates: [], status: 'resolved' })
+    expect(
+      await resolveSlotBrief({ projectId: FIXTURE_PROJECT_ID, brief: brief(), route: null }),
+    ).toEqual({ candidates: [], status: 'placeholder' })
+    expect(generate).not.toHaveBeenCalled()
   })
 
   describe('a still that names a set', () => {

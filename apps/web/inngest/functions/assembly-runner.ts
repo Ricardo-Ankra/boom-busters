@@ -7,6 +7,7 @@ import {
   listMusicBeds,
   listShotSlots,
   listVoiceTakes,
+  logoById,
   setProjectStage,
   setTimelineKey,
 } from '@boom-busters/db'
@@ -270,11 +271,26 @@ export const assemblyRunner = inngest.createFunction(
         if (article) articles.set(brief.data.sourceClaimId, article)
       }
 
+      // The marks every graphic draws, read once by asset id (decision 268).
+      const logos = new Map<string, { r2Key: string; width: number; height: number }>()
+      for (const row of slotsWithBytes) {
+        const brief = ShotBriefSchema.safeParse(row.brief)
+        if (!brief.success || brief.data.type !== 'graphic') continue
+        for (const element of brief.data.scene.elements) {
+          if (element.kind !== 'logo' || !element.assetId || logos.has(element.assetId)) continue
+          const asset = await logoById(db, element.assetId)
+          if (asset?.width && asset.height) {
+            logos.set(asset.id, { r2Key: asset.r2Key, width: asset.width, height: asset.height })
+          }
+        }
+      }
+
       const plan = slotPlan({
         slots: slotsWithBytes,
         assetsById: new Map(setup.assets),
         unusable,
         articles,
+        logos,
       })
 
       try {

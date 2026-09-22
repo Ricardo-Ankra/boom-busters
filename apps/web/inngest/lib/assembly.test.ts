@@ -392,6 +392,76 @@ describe('slotPlan', () => {
       chart: { chartKind: 'line', takeaway: 'Up and to the right, then not.' },
     })
   })
+
+  describe('graphic slots (decision 268, Plan B)', () => {
+    const CLAIM_A = '01HQ00000000000000000000A2'
+    const LOGO_ID = '01HQ00000000000000000000M1'
+
+    function graphicBrief(scene: unknown) {
+      return {
+        type: 'graphic',
+        coversText: 'covers',
+        description: 'desc',
+        motion: { kind: 'static' },
+        transition: 'cut',
+        scene,
+      }
+    }
+
+    function graphicRow(overrides: { scene: unknown }) {
+      return slotRow({
+        type: 'graphic',
+        brief: graphicBrief(overrides.scene) as unknown as Record<string, unknown>,
+        candidates: [],
+      })
+    }
+
+    it('compiles a graphic with its logo bytes, and skips one whose mark is missing, in words', () => {
+      const scene = {
+        elements: [
+          {
+            kind: 'figure',
+            id: 'f1',
+            cell: { col: 0, row: 0, colSpan: 6, rowSpan: 3 },
+            value: '$4bn',
+            claimRef: CLAIM_A,
+            color: 'accent',
+            enter: { kind: 'count', atMs: 0 },
+          },
+          {
+            kind: 'logo',
+            id: 'l1',
+            cell: { col: 6, row: 0, colSpan: 6, rowSpan: 3 },
+            entity: 'Stability AI',
+            assetId: LOGO_ID,
+            enter: { kind: 'fade', atMs: 0 },
+          },
+        ],
+      }
+
+      const plan = slotPlan({
+        slots: [graphicRow({ scene })],
+        assetsById: new Map(),
+        logos: new Map([
+          [LOGO_ID, { r2Key: 'boom-busters/logos/abc.png', width: 1200, height: 400 }],
+        ]),
+      })
+      expect(plan.slots[0]).toMatchObject({
+        type: 'graphic',
+        graphic: { logos: { l1: { r2Key: 'boom-busters/logos/abc.png' } }, claimIds: [CLAIM_A] },
+      })
+
+      const missing = slotPlan({
+        slots: [
+          graphicRow({ scene: { elements: [{ ...scene.elements[1], assetId: undefined }] } }),
+        ],
+        assetsById: new Map(),
+        logos: new Map(),
+      })
+      expect(missing.slots).toEqual([])
+      expect(missing.skipped[0]?.reason).toBe('a logo for "Stability AI" has not been uploaded')
+    })
+  })
 })
 
 describe('pickMusicBed', () => {

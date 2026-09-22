@@ -806,6 +806,16 @@ export async function resolveSlotBrief(input: {
         : { candidates: [], status: 'placeholder' }
     }
 
+    case 'graphic': {
+      // Nothing is fetched and nothing is spent: the scene is the payload. A
+      // logo the library does not hold yet is the one thing that can be
+      // missing, and the card asks for the upload rather than a redraft.
+      const owed = brief.scene.elements.some(
+        (element) => element.kind === 'logo' && element.assetId === undefined,
+      )
+      return { candidates: [], status: owed ? 'placeholder' : 'resolved' }
+    }
+
     case 'hero':
       return { candidates: [], status: 'placeholder' }
 
