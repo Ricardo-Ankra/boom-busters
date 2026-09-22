@@ -115,11 +115,13 @@ export const slotRebriefer = inngest.createFunction(
        * button on these, so a request for one is a stale tab, and a throw
        * would leave the card drafting something that is never coming.
        */
-      if (brief.type === 'headline' || brief.type === 'hero') {
+      if (brief.type === 'headline' || brief.type === 'hero' || brief.type === 'graphic') {
         const reason =
           brief.type === 'headline'
             ? 'Every word on a headline card is read from the article, so there is no brief to draft. Change which article it quotes instead.'
-            : 'An AI-video slot cannot be re-briefed.'
+            : brief.type === 'hero'
+              ? 'An AI-video slot cannot be re-briefed.'
+              : 'A graphic cannot be re-briefed yet.'
         await setSlotRetype(db, slotId, { state: 'rebrief-refused', reason })
         return { ok: false as const, refused: reason }
       }

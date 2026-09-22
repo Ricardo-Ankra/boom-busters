@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import {
   ChartBriefSchema,
+  GraphicBriefSchema,
   HeadlineBriefSchema,
   HERO_SLOTS_ENABLED,
   PlannedBriefSchema,
   REUSABLE_SLOT_TYPES,
+  SHOT_SLOT_TYPES,
   ShotBriefSchema,
   SlotCandidateSchema,
   SlotDraftStateSchema,
@@ -295,6 +297,112 @@ describe('resolvePlannedBrief', () => {
     it('says nothing about a brief it accepts', () => {
       expect(plannedBriefRejection(headline, news)).toBeNull()
     })
+  })
+})
+
+const CLAIMS = [
+  { id: '01HQ00000000000000000000A1', text: 'The company raised $4 billion in 2022.' },
+  { id: '01HQ00000000000000000000A2', text: 'Some 94 percent of deposits left.' },
+]
+// The brief's fixture id ended "...L1"; Crockford base32 (UlidSchema) excludes
+// the letter L, so that string cannot validate as an assetId. Corrected here.
+const LOGOS = [{ id: '01HQ00000000000000000000M1', title: 'Stability AI' }]
+
+const plannedGraphic = (elements: unknown[]) => ({
+  type: 'graphic' as const,
+  coversText: 'It raised four billion dollars.',
+  description: 'A big number with the mark beside it.',
+  motion: { kind: 'static' as const },
+  transition: 'cut' as const,
+  shotSize: 'graphic' as const,
+  scene: { elements },
+})
+const cell = { col: 0, row: 0, colSpan: 6, rowSpan: 3 }
+
+describe('graphic briefs (decision 268, Plan B)', () => {
+  it('is a slot type before hero', () => {
+    expect(SHOT_SLOT_TYPES.indexOf('graphic')).toBe(SHOT_SLOT_TYPES.indexOf('hero') - 1)
+  })
+
+  it('resolves claim numbers to ids and entities to library assets', () => {
+    const resolved = resolvePlannedBrief(
+      plannedGraphic([
+        { kind: 'figure', id: 'f1', cell, value: '$4bn', claimRef: 1, color: 'accent' },
+        {
+          kind: 'logo',
+          id: 'l1',
+          cell: { ...cell, col: 6 },
+          entity: 'Stability AI, the image company',
+        },
+      ]) as never,
+      CLAIMS,
+      LOGOS,
+    )
+    expect(resolved?.type).toBe('graphic')
+    if (resolved?.type !== 'graphic') return
+    expect(resolved.scene.elements[0]).toMatchObject({ claimRef: CLAIMS[0]!.id })
+    expect(resolved.scene.elements[1]).toMatchObject({
+      entity: 'Stability AI, the image company',
+      assetId: LOGOS[0]!.id,
+    })
+    expect(GraphicBriefSchema.safeParse(resolved).success).toBe(true)
+  })
+
+  it('leaves a logo without a mark unresolved rather than refusing the brief', () => {
+    const resolved = resolvePlannedBrief(
+      plannedGraphic([{ kind: 'logo', id: 'l1', cell, entity: 'Acme Capital' }]) as never,
+      CLAIMS,
+      LOGOS,
+    )
+    expect(resolved?.type).toBe('graphic')
+    if (resolved?.type !== 'graphic') return
+    expect(resolved.scene.elements[0]).toEqual(
+      expect.not.objectContaining({ assetId: expect.anything() }),
+    )
+  })
+
+  it('refuses a claim number outside the list, and a figure the claim does not carry, in words', () => {
+    const outside = plannedGraphic([
+      { kind: 'figure', id: 'f1', cell, value: '$4bn', claimRef: 9, color: 'accent' },
+    ]) as never
+    expect(resolvePlannedBrief(outside, CLAIMS, LOGOS)).toBeNull()
+    expect(plannedBriefRejection(outside, CLAIMS, LOGOS)).toMatch(/outside the claim list/)
+
+    const wrong = plannedGraphic([
+      { kind: 'figure', id: 'f1', cell, value: '$4.5bn', claimRef: 1, color: 'accent' },
+    ]) as never
+    expect(resolvePlannedBrief(wrong, CLAIMS, LOGOS)).toBeNull()
+    expect(plannedBriefRejection(wrong, CLAIMS, LOGOS)).toMatch(/\$4\.5bn.*claim 1/)
+  })
+
+  it('checks every bar the same way', () => {
+    const bars = plannedGraphic([
+      {
+        kind: 'bars',
+        id: 'b1',
+        cell: { col: 0, row: 0, colSpan: 12, rowSpan: 4 },
+        color: 'accent',
+        items: [
+          { label: 'raised', value: 4, display: '$4bn', claimRef: 1 },
+          { label: 'left', value: 94, display: '94%', claimRef: 2 },
+        ],
+      },
+    ]) as never
+    const resolved = resolvePlannedBrief(bars, CLAIMS, LOGOS)
+    expect(resolved?.type).toBe('graphic')
+    const off = plannedGraphic([
+      {
+        kind: 'bars',
+        id: 'b1',
+        cell: { col: 0, row: 0, colSpan: 12, rowSpan: 4 },
+        color: 'accent',
+        items: [
+          { label: 'raised', value: 4, display: '$4bn', claimRef: 1 },
+          { label: 'left', value: 95, display: '95%', claimRef: 2 },
+        ],
+      },
+    ]) as never
+    expect(resolvePlannedBrief(off, CLAIMS, LOGOS)).toBeNull()
   })
 })
 

@@ -3,8 +3,11 @@ import { DEFAULT_SETTINGS, resolveBrandKit } from './settings'
 import {
   canonicalTimelineIssues,
   gainAt,
+  GraphicPayloadSchema,
+  SLOT_PAYLOAD_KINDS,
   TIMELINE_VERSION,
   timelineDurationMs,
+  TIMELINE_SLOT_TYPES,
   TimelineSchema,
   TimelineSlotSchema,
 } from './timeline'
@@ -209,6 +212,29 @@ describe('TimelineSchema', () => {
     const raw = JSON.parse(JSON.stringify(chart)) as { payload: { dataRefs: string[] } }
     raw.payload.dataRefs = []
     expect(TimelineSlotSchema.safeParse(raw).success).toBe(false)
+  })
+
+  it('a graphic slot carries a graphic payload and nothing else', () => {
+    expect(TIMELINE_SLOT_TYPES).toContain('graphic')
+    expect(SLOT_PAYLOAD_KINDS.graphic).toEqual(['graphic'])
+    const parsed = GraphicPayloadSchema.parse({
+      kind: 'graphic',
+      scene: {
+        elements: [
+          {
+            kind: 'text',
+            id: 't',
+            cell: { col: 0, row: 0, colSpan: 4, rowSpan: 2 },
+            content: 'Hello',
+            role: 'heading',
+            color: 'textPrimary',
+          },
+        ],
+      },
+      logos: { l1: { r2Key: 'boom-busters/logos/abc.png', width: 1200, height: 400 } },
+      claimIds: ['01HQ00000000000000000000A1'],
+    })
+    expect(parsed.logos['l1']?.width).toBe(1200)
   })
 })
 

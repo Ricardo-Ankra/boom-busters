@@ -1,5 +1,7 @@
 import { z } from 'zod'
+import { GraphicSceneSchema, PlannedGraphicSceneSchema, figureCitesClaim } from './graphics'
 import { UlidSchema } from './ids'
+import { logoForEntity, type LogoIndex } from './logos'
 
 /**
  * The visuals stage's shared vocabulary (build spec sections 5 and 7.4;
@@ -35,6 +37,7 @@ export const SHOT_SLOT_TYPES = [
   'chart',
   'map',
   'headline',
+  'graphic',
   'hero',
 ] as const
 export const ShotSlotTypeSchema = z.enum(SHOT_SLOT_TYPES)
@@ -248,6 +251,17 @@ export const HeadlineBriefSchema = z.object({
 })
 export type HeadlineBrief = z.infer<typeof HeadlineBriefSchema>
 
+/**
+ * A composed graphic (decision 268, Plan B): the brief IS the scene, as a
+ * chart's brief is its series. Nothing is fetched; the timeline embeds it.
+ */
+export const GraphicBriefSchema = z.object({
+  type: z.literal('graphic'),
+  ...briefCommon,
+  scene: GraphicSceneSchema,
+})
+export type GraphicBrief = z.infer<typeof GraphicBriefSchema>
+
 export const HeroBriefSchema = z.object({
   type: z.literal('hero'),
   ...briefCommon,
@@ -269,6 +283,7 @@ export const ShotBriefSchema = z.discriminatedUnion('type', [
   ChartBriefSchema,
   MapBriefSchema,
   HeadlineBriefSchema,
+  GraphicBriefSchema,
   HeroBriefSchema,
 ])
 export type ShotBrief = z.infer<typeof ShotBriefSchema>
@@ -586,6 +601,12 @@ export const PlannedHeadlineBriefSchema = HeadlineBriefSchema.omit({
 })
 export type PlannedHeadlineBrief = z.infer<typeof PlannedHeadlineBriefSchema>
 
+/** The wire shape of a graphic brief: claim numbers and entity names, no ids. */
+export const PlannedGraphicBriefSchema = GraphicBriefSchema.omit({ scene: true }).extend({
+  scene: PlannedGraphicSceneSchema,
+})
+export type PlannedGraphicBrief = z.infer<typeof PlannedGraphicBriefSchema>
+
 export const PlannedBriefSchema = z.discriminatedUnion('type', [
   StockBriefSchema,
   PlannedArchivalBriefSchema,
@@ -593,6 +614,7 @@ export const PlannedBriefSchema = z.discriminatedUnion('type', [
   PlannedChartBriefSchema,
   MapBriefSchema,
   PlannedHeadlineBriefSchema,
+  PlannedGraphicBriefSchema,
   HeroBriefSchema,
 ])
 export type PlannedBrief = z.infer<typeof PlannedBriefSchema>
@@ -638,6 +660,8 @@ export interface PlanningClaim {
   id: string
   sourceType?: string
   sourceUrl?: string | null
+  /** the claim's wording; a graphic's figures are checked against it */
+  text?: string
 }
 
 /**
@@ -652,6 +676,39 @@ export function claimCarriesArticle(claim: PlanningClaim | undefined): boolean {
 }
 
 /**
+ * Whether a graphic's figures and bars cite claims that exist and carry the
+ * digits shown, in the words `plannedBriefRejection` reports back. Shared by
+ * `resolvePlannedBrief` and `plannedBriefRejection` so the two can never
+ * disagree about which graphic passes.
+ */
+function graphicCitationIssue(
+  brief: PlannedGraphicBrief,
+  claims: readonly PlanningClaim[],
+): string | null {
+  const claimIds = claims.map((claim) => claim.id)
+  for (const element of brief.scene.elements) {
+    if (element.kind === 'figure') {
+      if (!mapClaimRefs([element.claimRef], claimIds)) {
+        return 'graphic cited a claim number outside the claim list'
+      }
+      if (!figureCitesClaim(element.value, claims[element.claimRef - 1]?.text ?? '')) {
+        return `graphic showed a number the cited claim does not contain: ${element.value} against claim ${element.claimRef}`
+      }
+    } else if (element.kind === 'bars') {
+      for (const item of element.items) {
+        if (!mapClaimRefs([item.claimRef], claimIds)) {
+          return 'graphic cited a claim number outside the claim list'
+        }
+        if (!figureCitesClaim(item.display, claims[item.claimRef - 1]?.text ?? '')) {
+          return `graphic showed a number the cited claim does not contain: ${item.display} against claim ${item.claimRef}`
+        }
+      }
+    }
+  }
+  return null
+}
+
+/**
  * A planned brief made storable: charts and headlines get real claim IDs,
  * everything else passes through untouched. `null` means the slot cited a
  * claim it may not cite — the caller decides whether that is a placeholder or
@@ -660,6 +717,7 @@ export function claimCarriesArticle(claim: PlanningClaim | undefined): boolean {
 export function resolvePlannedBrief(
   brief: PlannedBrief,
   claims: readonly PlanningClaim[],
+  logos: readonly LogoIndex[] = [],
 ): ShotBrief | null {
   if (brief.type === 'chart') {
     const mapped = mapClaimRefs(
@@ -684,6 +742,33 @@ export function resolvePlannedBrief(
     }
   }
 
+  if (brief.type === 'graphic') {
+    if (graphicCitationIssue(brief, claims) !== null) return null
+    const claimIds = claims.map((claim) => claim.id)
+    const elements = []
+    for (const element of brief.scene.elements) {
+      if (element.kind === 'figure') {
+        const mapped = mapClaimRefs([element.claimRef], claimIds)!
+        elements.push({ ...element, claimRef: mapped[0]! })
+      } else if (element.kind === 'bars') {
+        const items = []
+        for (const item of element.items) {
+          const mapped = mapClaimRefs([item.claimRef], claimIds)!
+          items.push({ ...item, claimRef: mapped[0]! })
+        }
+        elements.push({ ...element, items })
+      } else if (element.kind === 'logo') {
+        // A missing mark is not a refusal: the fix is an upload, not a redraft,
+        // so the slot is stored and resolves to a placeholder that asks for it.
+        const logo = logoForEntity(element.entity, logos)
+        elements.push(logo ? { ...element, assetId: logo.id } : element)
+      } else {
+        elements.push(element)
+      }
+    }
+    return { ...brief, scene: { elements } } as ShotBrief
+  }
+
   return brief
 }
 
@@ -694,6 +779,7 @@ export function resolvePlannedBrief(
 export function plannedBriefRejection(
   brief: PlannedBrief,
   claims: readonly PlanningClaim[],
+  logos: readonly LogoIndex[] = [],
 ): string | null {
   if (brief.type === 'chart') {
     return mapClaimRefs(
@@ -711,6 +797,14 @@ export function plannedBriefRejection(
       return 'headline cited a claim that is not a news report'
     }
     if (!claim.sourceUrl) return 'headline cited a news claim with no source URL to read'
+  }
+
+  if (brief.type === 'graphic') {
+    // A missing mark is not a rejection (see the `logo` branch's comment in
+    // `resolvePlannedBrief`), so this never inspects `logos`; it stays a
+    // parameter so a caller can pass the same three arguments to both functions.
+    void logos
+    return graphicCitationIssue(brief, claims)
   }
 
   return null

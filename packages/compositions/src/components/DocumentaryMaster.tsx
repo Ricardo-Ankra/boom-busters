@@ -160,6 +160,10 @@ function SlotView({ slot, brand }: { slot: TimelineSlot; brand: BrandKitTokens }
         <ChartReveal payload={slot.payload} brand={brand} durationInFrames={durationInFrames} />
       ) : slot.payload.kind === 'headline' ? (
         <HeadlineCard payload={slot.payload} brand={brand} />
+      ) : slot.payload.kind === 'graphic' ? (
+        // No graphic renderer yet (decision 268, Plan B lands it in a later
+        // task); a blank brand-coloured frame keeps this exhaustive and inert.
+        <AbsoluteFill style={{ backgroundColor: brand.colors.background }} />
       ) : (
         <AnimatedMap payload={slot.payload} brand={brand} durationInFrames={durationInFrames} />
       )}

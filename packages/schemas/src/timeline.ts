@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { GraphicSceneSchema } from './graphics'
 import { UlidSchema } from './ids'
 import { BrandKitTokensSchema } from './settings'
 import { ChartKindSchema, ChartSeriesSchema, MapLocationSchema, TransitionSchema } from './visuals'
@@ -213,12 +214,33 @@ export const HeadlinePayloadSchema = z.object({
 })
 export type HeadlinePayload = z.infer<typeof HeadlinePayloadSchema>
 
+/**
+ * A composed graphic, embedded whole (decision 268, Plan B): the scene, the
+ * logo bytes it draws keyed by element id, and every claim it cites for the
+ * audit trail. Like a chart's series, a render never depends on anything
+ * outside the timeline but the logo objects, which ride the still path.
+ */
+export const GraphicPayloadSchema = z.object({
+  kind: z.literal('graphic'),
+  scene: GraphicSceneSchema,
+  logos: z.record(
+    z.string(),
+    MediaRefSchema.extend({
+      width: z.number().int().positive(),
+      height: z.number().int().positive(),
+    }),
+  ),
+  claimIds: z.array(UlidSchema).min(1),
+})
+export type GraphicPayload = z.infer<typeof GraphicPayloadSchema>
+
 export const SlotPayloadSchema = z.discriminatedUnion('kind', [
   ImagePayloadSchema,
   VideoPayloadSchema,
   ChartPayloadSchema,
   MapPayloadSchema,
   HeadlinePayloadSchema,
+  GraphicPayloadSchema,
 ])
 export type SlotPayload = z.infer<typeof SlotPayloadSchema>
 
@@ -230,6 +252,7 @@ export const TIMELINE_SLOT_TYPES = [
   'chart',
   'map',
   'headline',
+  'graphic',
 ] as const
 export type TimelineSlotType = (typeof TIMELINE_SLOT_TYPES)[number]
 
@@ -242,6 +265,7 @@ export const SLOT_PAYLOAD_KINDS: Record<TimelineSlotType, readonly SlotPayload['
   chart: ['chart'],
   map: ['map'],
   headline: ['headline'],
+  graphic: ['graphic'],
 }
 
 export const TimelineSlotSchema = z
