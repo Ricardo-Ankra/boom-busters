@@ -368,6 +368,43 @@ describe('resolveMotion', () => {
     })
   })
 
+  it('compiles a graphic to a payload embedding its scene, logos and claims', () => {
+    const slot: CompileSlot = {
+      type: 'graphic',
+      startMs: 0,
+      durationMs: 6000,
+      transition: 'cut',
+      motion: { kind: 'kenburns', direction: 'in', speed: 'slow' },
+      coversText: 'It raised four billion dollars.',
+      graphic: {
+        scene: {
+          elements: [
+            {
+              kind: 'text',
+              id: 't',
+              cell: { col: 0, row: 0, colSpan: 6, rowSpan: 2 },
+              content: 'Raised',
+              role: 'heading',
+              color: 'textPrimary',
+              align: 'start',
+              enter: { kind: 'fade', atMs: 0 },
+            },
+          ],
+        },
+        logos: { l1: { r2Key: 'boom-busters/logos/abc.png', width: 1200, height: 400 } },
+        claimIds: ['01HQ00000000000000000000A1'],
+      },
+    }
+    const timeline = compileTimeline({ ...goldenInput(), slots: [slot] })
+    const compiled = timeline.slots[0]!
+    expect(compiled.type).toBe('graphic')
+    expect(compiled.payload).toMatchObject({
+      kind: 'graphic',
+      claimIds: ['01HQ00000000000000000000A1'],
+    })
+    expect(compiled.motion).toEqual({ kind: 'static' })
+  })
+
   it('lets a draw-on chart reveal own the slot motion', () => {
     const chart: CompileSlot = {
       ...still,

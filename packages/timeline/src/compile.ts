@@ -8,6 +8,7 @@ import type {
   BrandKitTokens,
   Caption,
   ChartBrief,
+  GraphicScene,
   HeadlinePayload,
   MapBrief,
   MotionSpec,
@@ -45,7 +46,7 @@ export interface CompileParagraph {
 
 /** What the board resolved a visual slot to, ready to render. */
 export interface CompileSlot {
-  type: 'stock' | 'archival' | 'still' | 'upload' | 'chart' | 'map' | 'headline'
+  type: 'stock' | 'archival' | 'still' | 'upload' | 'chart' | 'map' | 'headline' | 'graphic'
   startMs: number
   durationMs: number
   /**
@@ -77,6 +78,15 @@ export interface CompileSlot {
    * must not depend on the page still being online.
    */
   headline?: Omit<HeadlinePayload, 'kind'>
+  /**
+   * A composed graphic, embedded whole with the logo keys it draws
+   * (decision 268, Plan B).
+   */
+  graphic?: {
+    scene: GraphicScene
+    logos: Record<string, { r2Key: string; width: number; height: number }>
+    claimIds: string[]
+  }
 }
 
 export interface CompileInput {
@@ -107,6 +117,7 @@ export const KENBURNS_INTENSITY = { slow: 0.06, medium: 0.1, fast: 0.16 } as con
 export function resolveMotion(motion: MotionSpec, slot: CompileSlot): TimelineMotion {
   if (slot.chart) return { kind: slot.chart.reveal === 'draw-on' ? 'draw-on' : 'static' }
   if (slot.map) return { kind: 'static' } // AnimatedMap animates internally.
+  if (slot.graphic) return { kind: 'static' }
   switch (motion.kind) {
     case 'static':
       return { kind: 'static' }
@@ -250,6 +261,9 @@ export function compileTimeline(input: CompileInput): Timeline {
     }
     if (slot.headline) {
       return { ...base, payload: { kind: 'headline' as const, ...slot.headline } }
+    }
+    if (slot.graphic) {
+      return { ...base, payload: { kind: 'graphic' as const, ...slot.graphic } }
     }
     if (!slot.media) {
       throw new ValidationError(

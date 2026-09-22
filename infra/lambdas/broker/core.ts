@@ -175,6 +175,12 @@ export async function materialiseTimeline(
         src.url = src.externalUrl
       }
     }
+    if (slot.payload.kind === 'graphic') {
+      for (const ref of Object.values(slot.payload.logos)) {
+        if (ref.r2Key !== undefined) ref.url = await presign(ref.r2Key)
+        else if (ref.externalUrl !== undefined) ref.url = ref.externalUrl
+      }
+    }
   }
   return copy
 }

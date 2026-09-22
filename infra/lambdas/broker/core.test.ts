@@ -519,6 +519,48 @@ describe('materialiseTimeline', () => {
     expect(copy.brand.look.logoUrl).toBe('https://signed/boom-busters/logos/abc.png')
     expect(original.brand.look.logoUrl).toBeUndefined()
   })
+
+  it("presigns a graphic's logo keys, and leaves the original untouched", async () => {
+    const original = canonicalTimeline()
+    original.slots.push({
+      type: 'graphic',
+      startMs: 8000,
+      durationMs: 4000,
+      transition: 'cut',
+      motion: { kind: 'static' },
+      payload: {
+        kind: 'graphic',
+        scene: {
+          elements: [
+            {
+              kind: 'logo',
+              id: 'l1',
+              cell: { col: 0, row: 0, colSpan: 4, rowSpan: 2 },
+              entity: 'Stability AI',
+              assetId: '01HQ00000000000000000000M1',
+              enter: { kind: 'fade', atMs: 0 },
+            },
+          ],
+        },
+        logos: { l1: { r2Key: 'boom-busters/logos/abc.png', width: 1200, height: 400 } },
+        claimIds: ['01HQ00000000000000000000A1'],
+      },
+    })
+    const copy = await materialiseTimeline(original, (key) =>
+      Promise.resolve(`https://signed/${key}`),
+    )
+    const graphic = copy.slots.find((slot) => slot.payload.kind === 'graphic')
+    expect(
+      graphic && graphic.payload.kind === 'graphic' ? graphic.payload.logos['l1']?.url : null,
+    ).toBe('https://signed/boom-busters/logos/abc.png')
+
+    const originalGraphic = original.slots.find((slot) => slot.payload.kind === 'graphic')
+    expect(
+      originalGraphic && originalGraphic.payload.kind === 'graphic'
+        ? originalGraphic.payload.logos['l1']?.url
+        : undefined,
+    ).toBeUndefined()
+  })
 })
 
 describe('estimateRenderCostUsd', () => {

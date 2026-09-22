@@ -92,6 +92,27 @@ export async function materialiseForPreview(
       slots.push(slot)
       continue
     }
+    if (slot.payload.kind === 'graphic') {
+      // The scene is data; only its logos are bytes. One that will not resolve
+      // drops the slot, as a still would: a card with a hole is not a preview.
+      const logos: typeof slot.payload.logos = {}
+      let complete = true
+      for (const [id, ref] of Object.entries(slot.payload.logos)) {
+        const url =
+          ref.r2Key !== undefined ? await resolveKey(ref.r2Key, deps) : (ref.externalUrl ?? null)
+        if (url === null) {
+          complete = false
+          break
+        }
+        logos[id] = { ...ref, url }
+      }
+      if (!complete) {
+        dropped.slots += 1
+        continue
+      }
+      slots.push({ ...slot, payload: { ...slot.payload, logos } })
+      continue
+    }
     const src = slot.payload.src
     const url =
       src.r2Key !== undefined ? await resolveKey(src.r2Key, deps) : (src.externalUrl ?? null)

@@ -130,6 +130,46 @@ describe('materialiseForPreview', () => {
     expect(result.dropped).toEqual({ narration: 1, slots: 1, music: true })
   })
 
+  it("resolves a graphic's logo keys, and drops the slot when one will not resolve", async () => {
+    const timeline = structuredClone(canonical())
+    timeline.slots.push({
+      type: 'graphic',
+      startMs: 0,
+      durationMs: 4000,
+      transition: 'cut',
+      motion: { kind: 'static' },
+      payload: {
+        kind: 'graphic',
+        scene: {
+          elements: [
+            {
+              kind: 'logo',
+              id: 'l1',
+              cell: { col: 0, row: 0, colSpan: 4, rowSpan: 2 },
+              entity: 'Stability AI',
+              assetId: '01HQ00000000000000000000M1',
+              enter: { kind: 'fade', atMs: 0 },
+            },
+          ],
+        },
+        logos: { l1: { r2Key: 'boom-busters/logos/abc.png', width: 1200, height: 400 } },
+        claimIds: ['01HQ00000000000000000000A1'],
+      },
+    })
+    const resolved = await materialiseForPreview(timeline, {
+      origin: ORIGIN,
+      presign: (key) => Promise.resolve(`https://r2.example.com/${key}`),
+    })
+    const graphic = resolved.timeline.slots.find((slot) => slot.payload.kind === 'graphic')
+    expect(
+      graphic && graphic.payload.kind === 'graphic' ? graphic.payload.logos['l1']?.url : null,
+    ).toBe('https://r2.example.com/boom-busters/logos/abc.png')
+
+    const dropped = await materialiseForPreview(timeline, { origin: ORIGIN, presign: null })
+    expect(dropped.timeline.slots.some((slot) => slot.payload.kind === 'graphic')).toBe(false)
+    expect(dropped.dropped.slots).toBeGreaterThanOrEqual(1)
+  })
+
   it('never mutates the canonical timeline', async () => {
     const original = canonical()
     const before = JSON.stringify(original)
