@@ -1,7 +1,15 @@
 import { eq, sql as dsql } from 'drizzle-orm'
 import { afterAll, beforeEach, describe, expect, it } from 'vitest'
 import { createDb } from './client'
-import { findLogoByName, insertLogo, listLogos, logoByR2Key, removeLogo, renameLogo } from './logos'
+import {
+  findLogoByName,
+  insertLogo,
+  listLogos,
+  logoById,
+  logoByR2Key,
+  removeLogo,
+  renameLogo,
+} from './logos'
 import { assets } from './schema'
 import { requireTestDatabase } from './test-database'
 
@@ -81,6 +89,24 @@ suite('the logo library', () => {
     expect((await findLogoByName(db, 'stability ai, the image company'))?.id).toBe(row!.id)
     expect(await findLogoByName(db, 'AI')).toBeNull()
     expect((await logoByR2Key(db, STABILITY.r2Key))?.id).toBe(row!.id)
+  })
+
+  it('finds a mark by id, and refuses a music bed with the same id shape', async () => {
+    const row = await insertLogo(db, STABILITY)
+    expect((await logoById(db, row!.id))?.title).toBe('Stability AI')
+    expect(await logoById(db, '01ARZ3NDEKTSV4RRFFQ69G5FAV')).toBeNull()
+
+    const [bed] = await db
+      .insert(assets)
+      .values({
+        kind: 'music',
+        r2Key: 'boom-busters/music/x.mp3',
+        contentHash: 'music-x',
+        licence: 'yt-audio-library',
+        title: 'A bed',
+      })
+      .returning()
+    expect(await logoById(db, bed!.id)).toBeNull()
   })
 
   it('never lists a music bed as a logo', async () => {

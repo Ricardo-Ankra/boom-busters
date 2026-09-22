@@ -22,6 +22,16 @@ export async function listLogos(db: Database): Promise<AssetRow[]> {
     .orderBy(asc(assets.title), asc(assets.createdAt))
 }
 
+/** A single mark by id, for a caller that already knows which one it wants. */
+export async function logoById(db: Database, id: string): Promise<AssetRow | null> {
+  const [row] = await db
+    .select()
+    .from(assets)
+    .where(and(eq(assets.id, id), eq(assets.kind, 'logo')))
+    .limit(1)
+  return row ?? null
+}
+
 /**
  * Upsert a mark by content hash. Returns the stored row, or `null` when the
  * hash collides with an asset stored under another kind: the unique index

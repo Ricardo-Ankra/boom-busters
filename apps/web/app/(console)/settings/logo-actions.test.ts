@@ -36,6 +36,7 @@ const storage = vi.hoisted(() => ({
   configured: true,
   deleted: [] as string[],
   put: [] as string[],
+  headSize: 120_000,
 }))
 vi.mock('@/lib/storage', () => ({
   storageConfigured: () => storage.configured,
@@ -46,7 +47,7 @@ vi.mock('@/lib/storage', () => ({
     storage.put.push(key)
     return { key }
   },
-  headObject: async () => ({ size: 120_000, contentType: 'image/png' }),
+  headObject: async () => ({ size: storage.headSize, contentType: 'image/png' }),
   deleteObject: async (key: string) => {
     storage.deleted.push(key)
   },
@@ -64,6 +65,7 @@ describeDb('logo actions', () => {
     storage.configured = true
     storage.deleted = []
     storage.put = []
+    storage.headSize = 120_000
     await seed(db)
     // `seed` does not touch `assets`; this whole suite owns every row in it
     // (logos it inserts through the actions under test, and the odd
@@ -128,6 +130,20 @@ describeDb('logo actions', () => {
     })
   })
 
+  it('refuses an oversize object once it is in storage, and deletes it', async () => {
+    storage.headSize = 5 * 1024 * 1024
+    const result = await finaliseLogoAction({
+      key: `boom-busters/logos/${HASH}.png`,
+      contentHash: HASH,
+      title: 'Stability AI',
+      width: 1200,
+      height: 400,
+    })
+    expect(result.error).toMatch(/4 MB/)
+    expect(storage.deleted).toEqual([`boom-busters/logos/${HASH}.png`])
+    expect(await listLogos(db)).toEqual([])
+  })
+
   it('refuses a finalise for a key this flow could not have issued, and an empty name', async () => {
     const wrongKey = await finaliseLogoAction({
       key: 'boom-busters/music/x.mp3',
@@ -187,6 +203,27 @@ describeDb('logo actions', () => {
       sourceUrl: 'https://cdn.example/mark.png',
       width: 300,
     })
+  })
+
+  it('clamps a fetched mark to a whole pixel, the same as a finalised upload', async () => {
+    const bytes = Buffer.from('fractional-dims')
+    remote.fetchRemoteLogo.mockResolvedValue({
+      ok: true,
+      logo: {
+        bytes,
+        mimeType: 'image/png',
+        width: 300.6,
+        height: 0.4,
+        resolvedUrl: 'https://cdn.example/mark.png',
+      },
+    })
+    const result = await addLogoFromUrlAction({
+      url: 'https://cdn.example/mark.png',
+      title: 'Wirecard AG',
+    })
+    expect(result).toEqual({ ok: true })
+    const [logo] = await listLogos(db)
+    expect(logo).toMatchObject({ width: 301, height: 1 })
   })
 
   it('passes the fetcher refusal through in its own words', async () => {

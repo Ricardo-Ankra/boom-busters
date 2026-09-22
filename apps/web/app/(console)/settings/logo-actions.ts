@@ -12,7 +12,7 @@ import { createHash } from 'node:crypto'
 import {
   getSettings,
   insertLogo,
-  listLogos,
+  logoById,
   removeLogo,
   renameLogo,
   updateSettings,
@@ -64,6 +64,11 @@ function cleanTitle(title: string): string | null {
 function refresh(): void {
   revalidatePath('/settings')
   revalidatePath('/')
+}
+
+/** A stored dimension is a whole number of at least one pixel. */
+function clampDimension(value: number): number {
+  return Math.max(1, Math.round(value))
 }
 
 /**
@@ -140,8 +145,8 @@ export async function finaliseLogoAction(input: {
     r2Key: input.key,
     contentHash: input.contentHash,
     title,
-    width: Math.max(1, Math.round(input.width)),
-    height: Math.max(1, Math.round(input.height)),
+    width: clampDimension(input.width),
+    height: clampDimension(input.height),
   })
   if (!row) return NOT_A_MARK
   refresh()
@@ -173,8 +178,8 @@ export async function addLogoFromUrlAction(input: {
     r2Key: key,
     contentHash,
     title,
-    width,
-    height,
+    width: clampDimension(width),
+    height: clampDimension(height),
     sourceUrl: resolvedUrl,
   })
   if (!row) return NOT_A_MARK
@@ -203,7 +208,7 @@ export async function removeLogoAction(id: string): Promise<ActionResult> {
   if (!UlidSchema.safeParse(id).success) return { ok: false, error: 'Unknown mark.' }
 
   const settings = await getSettings(db)
-  const logo = (await listLogos(db)).find((row) => row.id === id)
+  const logo = await logoById(db, id)
   if (!logo) return { ok: false, error: 'That mark is already gone.' }
   if (settings.brandKit.look.logoR2Key === logo.r2Key) {
     return {
@@ -231,7 +236,7 @@ export async function setChannelMarkAction(id: string | null): Promise<ActionRes
   let logoR2Key: string | null = null
   if (id !== null) {
     if (!UlidSchema.safeParse(id).success) return { ok: false, error: 'Unknown mark.' }
-    const logo = (await listLogos(db)).find((row) => row.id === id)
+    const logo = await logoById(db, id)
     if (!logo) return { ok: false, error: 'That mark is already gone.' }
     logoR2Key = logo.r2Key
   }
