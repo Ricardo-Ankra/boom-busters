@@ -619,7 +619,16 @@ export function GraphicPreview({
                   ? x - textWidth
                   : x
             return (
-              <g key={element.id}>
+              // Clipped to its own cell, because the render is. `fitFontPx` stops
+              // shrinking at a legibility floor, so a long enough string still
+              // outgrows its box; the card and this preview must then cut it off at
+              // the same place, or the board shows a line the video does not.
+              <g key={element.id} clipPath={`url(#clip-${element.id})`}>
+                <defs>
+                  <clipPath id={`clip-${element.id}`}>
+                    <rect x={box.x} y={box.y} width={box.w} height={box.h} />
+                  </clipPath>
+                </defs>
                 {element.emphasis === 'underline' ? (
                   <rect
                     x={washX}
