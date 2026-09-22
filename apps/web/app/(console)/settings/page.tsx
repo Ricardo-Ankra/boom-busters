@@ -1,13 +1,22 @@
-import { getSettings, listCredentials, listMusicBeds } from '@boom-busters/db'
+import { getSettings, listCredentials, listLogos, listMusicBeds } from '@boom-busters/db'
 import { hasEnvGroup } from '@boom-busters/schemas'
 import { db } from '@/lib/db'
 import { mockProvidersEnabled } from '@boom-busters/providers'
+import { presignGet, storageConfigured } from '@/lib/storage'
 import { SettingsForm } from './settings-form'
 
 export const dynamic = 'force-dynamic'
 export const metadata = { title: 'Settings · Boom-Busters' }
 
-const TABS = ['models', 'brand-kit', 'voice', 'music', 'publishing', 'connections'] as const
+const TABS = [
+  'models',
+  'brand-kit',
+  'voice',
+  'music',
+  'logos',
+  'publishing',
+  'connections',
+] as const
 type SettingsTab = (typeof TABS)[number]
 
 export default async function SettingsPage({
@@ -15,12 +24,27 @@ export default async function SettingsPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>
 }) {
-  const [settings, credentials, beds, params] = await Promise.all([
+  const [settings, credentials, beds, logos, params] = await Promise.all([
     getSettings(db),
     listCredentials(db),
     listMusicBeds(db),
+    listLogos(db),
     searchParams,
   ])
+
+  const logoViews = await Promise.all(
+    logos.map(async (logo) => ({
+      id: logo.id,
+      title: logo.title ?? 'Unnamed mark',
+      r2Key: logo.r2Key,
+      width: logo.width,
+      height: logo.height,
+      url:
+        storageConfigured() && !logo.r2Key.startsWith('mock://')
+          ? await presignGet(logo.r2Key)
+          : null,
+    })),
+  )
 
   // Every checklist and cross-link in the app addresses a tab as `?tab=`;
   // until this was honoured, all of them landed on Models.
@@ -54,6 +78,8 @@ export default async function SettingsPage({
           attributionText: bed.attributionText,
           durationMs: bed.durationMs,
         }))}
+        logos={logoViews}
+        channelMarkKey={settings.brandKit.look.logoR2Key}
       />
     </div>
   )

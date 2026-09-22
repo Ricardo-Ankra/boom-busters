@@ -509,6 +509,16 @@ describe('materialiseTimeline', () => {
     if (video.kind === 'video') expect(video.src.url).toBe(video.src.externalUrl)
     expect(original.narration[0]!.url).toBeUndefined()
   })
+
+  it('presigns the channel mark into brand.look.logoUrl', async () => {
+    const original = canonicalTimeline()
+    original.brand.look.logoR2Key = 'boom-busters/logos/abc.png'
+    const copy = await materialiseTimeline(original, (key) =>
+      Promise.resolve(`https://signed/${key}`),
+    )
+    expect(copy.brand.look.logoUrl).toBe('https://signed/boom-busters/logos/abc.png')
+    expect(original.brand.look.logoUrl).toBeUndefined()
+  })
 })
 
 describe('estimateRenderCostUsd', () => {

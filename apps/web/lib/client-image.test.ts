@@ -2,7 +2,14 @@
 
 import { describe, expect, it, vi } from 'vitest'
 
-import { fittedSize, readImageSize, toUploadableImage, type ImageCodec } from './client-image'
+import {
+  fittedSize,
+  readImageSize,
+  toUploadableImage,
+  toUploadableLogo,
+  type ImageCodec,
+  type SvgRasteriser,
+} from './client-image'
 
 /**
  * The browser's decode and encode are the one thing jsdom cannot do, so they
@@ -132,5 +139,85 @@ describe('readImageSize', () => {
   it('reports zero where the environment cannot decode images', async () => {
     // jsdom has no createImageBitmap; the server rounds a zero up to one.
     expect(await readImageSize(file('x.png', 'image/png'))).toEqual({ width: 0, height: 0 })
+  })
+})
+
+describe('toUploadableLogo', () => {
+  const rasterise: SvgRasteriser = async (_file, maxEdge) => ({
+    blob: new Blob([new Uint8Array(16)], { type: 'image/png' }),
+    width: maxEdge,
+    height: Math.round(maxEdge / 3),
+  })
+
+  it('hands back a PNG, WebP or JPEG mark unchanged', async () => {
+    for (const type of ['image/png', 'image/webp', 'image/jpeg']) {
+      const original = file('mark', type)
+      const result = await toUploadableLogo(original, { rasterise })
+      expect(result.ok && result.file).toBe(original)
+    }
+  })
+
+  it('rasterises an SVG to a PNG at the logo edge, renamed to match', async () => {
+    const result = await toUploadableLogo(file('stability.svg', 'image/svg+xml'), { rasterise })
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.file.type).toBe('image/png')
+    expect(result.file.name).toBe('stability.png')
+  })
+
+  it('treats a file the browser will not type, with an .svg name, as an SVG', async () => {
+    const result = await toUploadableLogo(file('mark.svg', ''), { rasterise })
+    expect(result.ok && result.file.type).toBe('image/png')
+  })
+
+  it('converts an AVIF mark to PNG, never JPEG, so transparency survives', async () => {
+    const codec = codecFor(800, 300)
+    const result = await toUploadableLogo(file('mark.avif', 'image/avif'), { codec, rasterise })
+    expect(result.ok && result.file.type).toBe('image/png')
+    expect(codec.encode).toHaveBeenCalledWith(
+      expect.anything(),
+      800,
+      300,
+      'image/png',
+      expect.any(Number),
+    )
+  })
+
+  it('says what to do when the SVG will not draw', async () => {
+    const result = await toUploadableLogo(file('broken.svg', 'image/svg+xml'), {
+      rasterise: async () => null,
+    })
+    expect(result.ok).toBe(false)
+    expect(result.ok === false && result.error).toMatch(/could not draw that SVG/i)
+  })
+
+  it('treats a file the browser will not type, with a raster extension, as that raster type', async () => {
+    const png = await toUploadableLogo(file('mark.png', ''), { rasterise })
+    expect(png.ok && png.file.type).toBe('image/png')
+    expect(png.ok && png.file.name).toBe('mark.png')
+
+    const jpg = await toUploadableLogo(file('mark.jpg', ''), { rasterise })
+    expect(jpg.ok && jpg.file.type).toBe('image/jpeg')
+
+    const jpeg = await toUploadableLogo(file('mark.jpeg', ''), { rasterise })
+    expect(jpeg.ok && jpeg.file.type).toBe('image/jpeg')
+
+    const webp = await toUploadableLogo(file('mark.webp', ''), { rasterise })
+    expect(webp.ok && webp.file.type).toBe('image/webp')
+  })
+
+  it('refuses a format none of the doors take, naming the format in the error', async () => {
+    const gif = await toUploadableLogo(file('mark.gif', 'image/gif'), { rasterise })
+    expect(gif.ok).toBe(false)
+    expect(gif.ok === false && gif.error).toBe(
+      'That is a GIF. A mark must be a PNG, WebP, JPEG, SVG or AVIF.',
+    )
+
+    // Untyped and unrecognised: named from the extension instead.
+    const untyped = await toUploadableLogo(file('mark.bmp', ''), { rasterise })
+    expect(untyped.ok).toBe(false)
+    expect(untyped.ok === false && untyped.error).toBe(
+      'That is a BMP. A mark must be a PNG, WebP, JPEG, SVG or AVIF.',
+    )
   })
 })

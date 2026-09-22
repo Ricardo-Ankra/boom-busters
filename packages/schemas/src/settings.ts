@@ -362,9 +362,15 @@ export const BrandKitStoredSchema = z.object({
 })
 export type BrandKitStored = z.infer<typeof BrandKitStoredSchema>
 
-/** Resolved form: what a timeline snapshots at compile time (section 8.2). */
+/**
+ * Resolved form: what a timeline snapshots at compile time (section 8.2).
+ * `look.logoUrl` exists ONLY here, written by the materialisers from
+ * `logoR2Key` (decision 268): the canonical timeline and the settings row
+ * carry the key alone, because a presigned URL expires.
+ */
 export const BrandKitTokensSchema = BrandKitStoredSchema.extend({
   voice: VoiceConfigSchema,
+  look: BrandLookSchema.extend({ logoUrl: z.string().min(1).optional() }),
 })
 export type BrandKitTokens = z.infer<typeof BrandKitTokensSchema>
 

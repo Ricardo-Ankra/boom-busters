@@ -72,6 +72,14 @@ export async function materialiseForPreview(
     }
   }
 
+  // The channel mark (decision 268). Not a slot, so an unresolvable one is
+  // not "dropped": the watermark falls back to the wordmark on its own.
+  const markKey = timeline.brand.look.logoR2Key
+  if (markKey) {
+    const url = await resolveKey(markKey, deps)
+    if (url !== null) timeline.brand.look.logoUrl = url
+  }
+
   const slots: Timeline['slots'] = []
   for (const slot of timeline.slots) {
     // Drawn cards carry their own content: a chart's series, a map's

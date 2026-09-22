@@ -30,6 +30,15 @@ vi.mock('./actions', () => ({
   verifyProviderKey: vi.fn(),
 }))
 
+vi.mock('./logo-actions', () => ({
+  createLogoUploadAction: vi.fn(),
+  finaliseLogoAction: vi.fn(),
+  addLogoFromUrlAction: vi.fn(),
+  renameLogoAction: vi.fn(),
+  removeLogoAction: vi.fn(),
+  setChannelMarkAction: vi.fn(),
+}))
+
 vi.mock('./voice-actions', () => ({
   listAuditionVoices: () => listAuditionVoices(),
   cachedAuditions: (...args: unknown[]) => cachedAuditions(...args),

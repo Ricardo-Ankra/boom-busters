@@ -1,5 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { castPhotoKey, getObjectBytes, presignGet, storageConfigured, takeStorage } from './storage'
+import {
+  castPhotoKey,
+  getObjectBytes,
+  logoKey,
+  presignGet,
+  storageConfigured,
+  takeStorage,
+} from './storage'
 
 /**
  * The four combinations of "is there a bucket" and "is the provider real".
@@ -116,5 +123,11 @@ describe('cast photos (decision 253)', () => {
     await expect(getObjectBytes('boom-busters/cast/p1/abc.jpg')).rejects.toThrow(
       /Storage is not configured/,
     )
+  })
+})
+
+describe('logo marks (decision 268)', () => {
+  it('names a mark by its hash under the logos prefix', () => {
+    expect(logoKey({ contentHash: 'abc', ext: 'png' })).toBe('boom-busters/logos/abc.png')
   })
 })

@@ -192,6 +192,15 @@ export function musicKey(input: { contentHash: string; ext: string }): string {
 }
 
 /**
+ * Where a logo mark lives (decision 268). Content-hash keyed and channel-wide
+ * like music: the same mark uploaded for two films is one object, owned by
+ * neither.
+ */
+export function logoKey(input: { contentHash: string; ext: 'png' | 'webp' | 'jpg' }): string {
+  return `${R2_PREFIX}/logos/${input.contentHash}.${input.ext}`
+}
+
+/**
  * Where ingested stock/archival bytes live. Content-hash keyed and
  * channel-wide like music: the same Pexels clip chosen in two projects is
  * one object, owned by neither.
