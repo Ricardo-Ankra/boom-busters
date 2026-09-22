@@ -490,11 +490,15 @@ export function mockShotList(input: {
   // it too. The figure's digits truly come from the cited claim's text
   // (decision 268, Plan B): `figureCitesClaim` checks this for real on the
   // live path, and a mock that invented its own digits would let a graphic
-  // that fails that check ship untested.
-  if (first && input.claimCount > 0) {
-    const claimText = input.claimTexts?.[0] ?? ''
-    const digits = figureDigitGroups(claimText)[0] ?? '0'
-    const value = claimText.toLowerCase().includes('billion') ? `$${digits}bn` : digits
+  // that fails that check ship untested. A claim with no digits gets no
+  // graphic, because a figure that cites nothing would be rejected and
+  // silently dropped.
+  const graphicClaimText = input.claimTexts?.[0] ?? ''
+  const graphicDigits = figureDigitGroups(graphicClaimText)[0]
+  if (first && input.claimCount > 0 && graphicDigits !== undefined) {
+    const value = graphicClaimText.toLowerCase().includes('billion')
+      ? `$${graphicDigits}bn`
+      : graphicDigits
     const logoTitle = input.logoTitles?.[0]
 
     slots.push({

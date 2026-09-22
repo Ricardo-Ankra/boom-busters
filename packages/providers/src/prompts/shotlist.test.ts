@@ -417,6 +417,33 @@ describe('mockShotList', () => {
         : true,
     ).toBe(false)
   })
+
+  it('plans a graphic only when the first claim carries a digit to cite', () => {
+    const withDigits = mockShotList({
+      paragraphs: PARAGRAPHS,
+      claimCount: 1,
+      claimTexts: ['The company raised $4 billion.'],
+    })
+    expect(withDigits.slots.some((slot) => slot.brief.type === 'graphic')).toBe(true)
+
+    // No digit anywhere in the cited claim: a figure would cite nothing, so
+    // `resolvePlannedBrief` would reject it and drop it without a trace. The
+    // mock must not invent a digit to dodge that, so it plans no graphic at
+    // all, and the rest of the plan (both stock slots, the chart, the map)
+    // is exactly as it would otherwise be.
+    const withoutDigits = mockShotList({
+      paragraphs: PARAGRAPHS,
+      claimCount: 1,
+      claimTexts: ['The auditors resigned without warning.'],
+    })
+    expect(withoutDigits.slots.some((slot) => slot.brief.type === 'graphic')).toBe(false)
+    expect(withoutDigits.slots.map((slot) => slot.brief.type)).toEqual([
+      'stock',
+      'stock',
+      'chart',
+      'map',
+    ])
+  })
 })
 
 describe('buildShotListRequest with direction (decision 252)', () => {

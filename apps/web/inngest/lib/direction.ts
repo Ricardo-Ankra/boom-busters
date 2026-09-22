@@ -223,7 +223,7 @@ export async function planChapterSlots(input: {
   /**
    * The logo library (decision 268, Plan B): titles name the marks in the
    * prompt and the mock; ids resolve a graphic's "logo" to its asset. Gathered
-   * by the caller — this function reads no table of its own.
+   * by the caller, since this function reads no table of its own.
    */
   logos?: readonly LogoIndex[]
 }): Promise<{ rows: NewShotSlot[]; rejected: number }> {
