@@ -445,8 +445,23 @@ describe('separateOverlaps: landscape collisions', () => {
     }
     const [first, second] = separateOverlaps(clash).elements
     expect(first!.cell).toEqual({ col: 2, row: 4, colSpan: 6, rowSpan: 3 })
-    // Row 0 is the first place it fits without touching rows 4-6.
-    expect(second!.cell).toEqual({ col: 2, row: 0, colSpan: 6, rowSpan: 2 })
+    // Row 7 is the first clear row BELOW the one it asked for. Going up to
+    // row 0 would also be clear, and would put it above the element it
+    // collided with, which reverses the card's reading order.
+    expect(second!.cell).toEqual({ col: 2, row: 7, colSpan: 6, rowSpan: 2 })
+  })
+
+  it('goes up only when nothing below the planned row is clear', () => {
+    const bottomHeavy: GraphicScene = {
+      elements: [
+        text('a', { col: 0, row: 6, colSpan: 6, rowSpan: 6 }),
+        text('b', { col: 0, row: 8, colSpan: 6, rowSpan: 3 }),
+      ],
+    }
+    const [, second] = separateOverlaps(bottomHeavy).elements
+    // Rows 8 and 9 collide and there is no room below, so it takes the
+    // nearest clear row above rather than staying on top of its neighbour.
+    expect(second!.cell).toEqual({ col: 0, row: 3, colSpan: 6, rowSpan: 3 })
   })
 
   it('leaves elements in different columns alone, however their rows overlap', () => {

@@ -313,8 +313,19 @@ export function separateOverlaps(scene: GraphicScene): GraphicScene {
       return element
     }
 
+    // Downward from where it was asked to sit, and only then upward. Down
+    // first is what keeps reading order: a figure that collided with the
+    // heading above it must not be answered by putting it above the heading.
     const maxRow = GRAPHIC_GRID - planned.rowSpan
-    for (let row = 0; row <= maxRow; row += 1) {
+    const below = Array.from(
+      { length: Math.max(0, maxRow - planned.row + 1) },
+      (_, i) => planned.row + i,
+    )
+    const above = Array.from(
+      { length: Math.min(planned.row, maxRow + 1) },
+      (_, i) => planned.row - 1 - i,
+    )
+    for (const row of [...below, ...above]) {
       const candidate = { ...planned, row }
       if (!taken.some((cell) => cellsIntersect(candidate, cell))) {
         taken.push(candidate)
