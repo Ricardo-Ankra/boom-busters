@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { DEFAULT_SETTINGS, GRAPHIC_COLORS, resolveBrandKit } from '@boom-busters/schemas'
-import type { GraphicScene } from '@boom-busters/schemas'
+import type { GraphicCell, GraphicScene } from '@boom-busters/schemas'
 import {
   countedValue,
   enterProgress,
@@ -46,6 +46,24 @@ const scene: GraphicScene = {
       enter: { kind: 'rise', atMs: 200 },
     },
   ],
+}
+
+function pairwiseDisjointRows(cells: readonly GraphicCell[]): boolean {
+  return cells.every((a, i) =>
+    cells.slice(i + 1).every((b) => a.row + a.rowSpan <= b.row || b.row + b.rowSpan <= a.row),
+  )
+}
+
+function shapeElement(id: string, row: number, rowSpan: number): GraphicScene['elements'][number] {
+  return {
+    kind: 'shape',
+    id,
+    cell: { col: 0, row, colSpan: 12, rowSpan },
+    form: 'rect',
+    color: 'surface',
+    opacity: 1,
+    enter: { kind: 'fade', atMs: 0 },
+  }
 }
 
 describe('safeArea', () => {
@@ -114,34 +132,69 @@ describe('graphicLayout', () => {
 })
 
 describe('reflowPortrait', () => {
-  it('shrinks proportionally under overflow so rows never overlap and never run off the grid', () => {
-    const tall = reflowPortrait({
-      elements: Array.from({ length: 6 }, (_, i) => ({
-        kind: 'shape' as const,
-        id: `s${i}`,
-        cell: { col: 0, row: i, colSpan: 12, rowSpan: 3 },
-        form: 'rect' as const,
-        color: 'surface' as const,
-        opacity: 1,
-        enter: { kind: 'fade' as const, atMs: 0 },
-      })),
+  it('keeps rows and spans unchanged when the flow already fits (case 1)', () => {
+    const result = reflowPortrait({
+      elements: [shapeElement('s0', 0, 3), shapeElement('s1', 1, 3), shapeElement('s2', 2, 3)],
     })
-    const bands = tall.elements.map((element) => element.portraitCell!)
+    const bands = result.elements.map((element) => element.portraitCell!)
+    expect(bands.map((cell) => [cell.row, cell.rowSpan])).toEqual([
+      [0, 3],
+      [3, 3],
+      [6, 3],
+    ])
+  })
+
+  it('compresses the tail under overflow, keeping earlier elements at their wanted size (case 2)', () => {
+    const result = reflowPortrait({
+      elements: Array.from({ length: 6 }, (_, i) => shapeElement(`s${i}`, i, 3)),
+    })
+    const bands = result.elements.map((element) => element.portraitCell!)
+    // Six elements wanting 3 rows each cannot all have it on a 12-row grid. The first
+    // three keep their full size, since the top of a scene usually carries the heading
+    // and the figure; the tail compresses to one row each rather than every element
+    // shrinking equally, and the total still tiles the grid exactly.
+    expect(bands.map((cell) => [cell.row, cell.rowSpan])).toEqual([
+      [0, 3],
+      [3, 3],
+      [6, 3],
+      [9, 1],
+      [10, 1],
+      [11, 1],
+    ])
     for (const band of bands) {
-      expect(band.row).toBeGreaterThanOrEqual(0)
       expect(band.row + band.rowSpan).toBeLessThanOrEqual(12)
     }
-    // Pairwise disjoint: no two placed row ranges may intersect. This is the half of
-    // the invariant that a mere `row + rowSpan <= 12` check misses, and missing it is
-    // exactly how two of six elements used to land on the same row and vanish.
-    for (let i = 0; i < bands.length; i += 1) {
-      for (let j = i + 1; j < bands.length; j += 1) {
-        const a = bands[i]!
-        const b = bands[j]!
-        const disjoint = a.row + a.rowSpan <= b.row || b.row + b.rowSpan <= a.row
-        expect(disjoint).toBe(true)
-      }
+    expect(pairwiseDisjointRows(bands)).toBe(true)
+  })
+
+  it('falls back to the whole grid when the room below a pin cannot seat every flowed element (case 3)', () => {
+    const result = reflowPortrait({
+      elements: [
+        {
+          ...shapeElement('pinned', 0, 10),
+          portraitCell: { col: 0, row: 0, colSpan: 12, rowSpan: 10 },
+        },
+        ...Array.from({ length: 5 }, (_, i) => shapeElement(`p${i}`, i, 1)),
+      ],
+    })
+    const flowed = result.elements
+      .filter((element) => element.id !== 'pinned')
+      .map((element) => element.portraitCell!)
+    // Two rows are left below the pin and five elements need one row each, so the
+    // ranking in the doc comment applies: the flow takes the whole grid instead of
+    // squeezing below the pin, and every flowed element gets a row of its own even
+    // though that means overlapping the pin, which is the author's own placement.
+    expect(flowed.map((cell) => [cell.row, cell.rowSpan])).toEqual([
+      [0, 1],
+      [1, 1],
+      [2, 1],
+      [3, 1],
+      [4, 1],
+    ])
+    for (const band of flowed) {
+      expect(band.row + band.rowSpan).toBeLessThanOrEqual(12)
     }
+    expect(pairwiseDisjointRows(flowed)).toBe(true)
   })
 
   it('starts the flow below a pinned cell and never overlaps it', () => {

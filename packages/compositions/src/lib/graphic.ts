@@ -129,11 +129,17 @@ function readingOrder(a: GraphicElement, b: GraphicElement): number {
 /**
  * Portrait: an element with its own `portraitCell` keeps it, exactly as given, since a
  * pin is the author's business and may overlap whatever it likes. Every other element
- * is stacked full-width, in reading order, starting below the lowest edge any pin
- * reaches, each keeping its row span while the stack still fits. When it does not,
- * every auto-flowed span shrinks in proportion to the room left rather than clamping
- * each start in turn, which is what let elements pile onto the same row before: with at
- * most six elements and twelve rows, the stack always fits once nothing is pinned.
+ * is stacked full-width, in reading order, each one reserving a row for every element
+ * still to come, so the stack can never run out mid-flow and never needs a clamp.
+ *
+ * Invariant 1, that auto-flowed elements never collide with one another, outranks
+ * invariant 3: the flow starts below the pins when the rows left there can seat every
+ * flowed element, and takes the whole grid when they cannot. An element overlapping a
+ * pin the author placed on purpose is recoverable and visible; two auto-flowed elements
+ * overlapping each other is content silently vanishing, which is what this function
+ * exists to prevent. With at most six elements and twelve rows, the whole-grid fallback
+ * always has room to give every element at least one row.
+ *
  * Reading order decides which row an element gets, never the order of the returned
  * array, so `elements` always comes back in scene order and paint order cannot flip
  * between orientations.
@@ -146,29 +152,28 @@ export function reflowPortrait(scene: GraphicScene): GraphicScene {
         : bottom,
     0,
   )
-  const available = Math.max(0, GRAPHIC_GRID - pinnedBottom)
 
-  const toFlow = scene.elements
+  const flowing = scene.elements
     .map((element, index) => ({ element, index }))
     .filter((entry) => !entry.element.portraitCell)
     .sort((a, b) => readingOrder(a.element, b.element))
 
-  const spans = toFlow.map((entry) => Math.min(entry.element.cell.rowSpan, GRAPHIC_GRID))
-  const wanted = spans.reduce((sum, span) => sum + span, 0)
-  const shrink = wanted > available
+  const top = GRAPHIC_GRID - pinnedBottom >= flowing.length ? pinnedBottom : 0
+  let remaining = GRAPHIC_GRID - top
+  let left = flowing.length
+  let cursor = top
 
   const cellByIndex = new Map<number, GraphicCell>()
-  let cursor = pinnedBottom
-  toFlow.forEach((entry, i) => {
-    const rowSpan = shrink ? Math.max(1, Math.floor((spans[i]! * available) / wanted)) : spans[i]!
-    // A very large pin can still starve the flow of room even after shrinking to one
-    // row each; never let a cell claim a row outside the grid, since that is not a
-    // valid GraphicCell. In that unsatisfiable corner this can overlap the pin, which
-    // is the lesser failure next to handing a renderer an out-of-grid cell.
-    const row = Math.min(cursor, GRAPHIC_GRID - rowSpan)
-    cellByIndex.set(entry.index, { col: 0, row, colSpan: GRAPHIC_GRID, rowSpan })
+  for (const entry of flowing) {
+    const want = Math.min(entry.element.cell.rowSpan, GRAPHIC_GRID)
+    // Reserve one row for every element still to be placed, so the running total can
+    // never exceed what is left and this never needs a clamp.
+    const rowSpan = Math.max(1, Math.min(want, remaining - (left - 1)))
+    cellByIndex.set(entry.index, { col: 0, row: cursor, colSpan: GRAPHIC_GRID, rowSpan })
     cursor += rowSpan
-  })
+    remaining -= rowSpan
+    left -= 1
+  }
 
   const elements = scene.elements.map((element, index) =>
     element.portraitCell ? element : { ...element, portraitCell: cellByIndex.get(index)! },
