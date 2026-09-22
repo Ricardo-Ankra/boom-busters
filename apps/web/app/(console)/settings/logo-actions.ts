@@ -143,7 +143,7 @@ export async function finaliseLogoAction(input: {
     width: Math.max(1, Math.round(input.width)),
     height: Math.max(1, Math.round(input.height)),
   })
-  if (row.kind !== 'logo') return NOT_A_MARK
+  if (!row) return NOT_A_MARK
   refresh()
   return { ok: true }
 }
@@ -177,7 +177,7 @@ export async function addLogoFromUrlAction(input: {
     height,
     sourceUrl: resolvedUrl,
   })
-  if (row.kind !== 'logo') return NOT_A_MARK
+  if (!row) return NOT_A_MARK
   refresh()
   return { ok: true }
 }

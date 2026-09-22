@@ -244,6 +244,12 @@ describeDb('logo actions', () => {
     expect(finalised.ok).toBe(false)
     expect(finalised.error).toMatch(/already stored as something other than a mark/i)
     expect(await listLogos(db)).toEqual([])
+    const stillRow = (await db.select().from(assets)).find((row) => row.contentHash === HASH)
+    expect(stillRow).toMatchObject({
+      kind: 'image',
+      title: 'A stock still',
+      r2Key: `boom-busters/stock/${HASH}.png`,
+    })
 
     const urlBytes = Buffer.from('bytes already stored under another asset kind')
     const urlHash = createHash('sha256').update(urlBytes).digest('hex')
@@ -271,6 +277,12 @@ describeDb('logo actions', () => {
     expect(viaUrl.ok).toBe(false)
     expect(viaUrl.error).toMatch(/already stored as something other than a mark/i)
     expect(await listLogos(db)).toEqual([])
+    const urlStillRow = (await db.select().from(assets)).find((row) => row.contentHash === urlHash)
+    expect(urlStillRow).toMatchObject({
+      kind: 'image',
+      title: 'A stock still',
+      r2Key: `boom-busters/stock/${urlHash}.png`,
+    })
   })
 
   it('says where the bytes would go when storage is not configured', async () => {

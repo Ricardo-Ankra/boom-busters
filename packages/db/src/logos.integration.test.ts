@@ -1,4 +1,4 @@
-import { sql as dsql } from 'drizzle-orm'
+import { eq, sql as dsql } from 'drizzle-orm'
 import { afterAll, beforeEach, describe, expect, it } from 'vitest'
 import { createDb } from './client'
 import { findLogoByName, insertLogo, listLogos, logoByR2Key, removeLogo, renameLogo } from './logos'
@@ -60,27 +60,27 @@ suite('the logo library', () => {
       sourceUrl: 'https://x.example/logo.png',
     })
 
-    expect(second.id).toBe(first.id)
-    expect(second.title).toBe('Stability AI Ltd')
-    expect(second.sourceUrl).toBe('https://x.example/logo.png')
+    expect(second?.id).toBe(first?.id)
+    expect(second?.title).toBe('Stability AI Ltd')
+    expect(second?.sourceUrl).toBe('https://x.example/logo.png')
     expect(await listLogos(db)).toHaveLength(1)
   })
 
   it('renames and removes, returning the row so the bytes can follow', async () => {
     const row = await insertLogo(db, STABILITY)
-    expect((await renameLogo(db, row.id, '  Stability  '))?.title).toBe('Stability')
+    expect((await renameLogo(db, row!.id, '  Stability  '))?.title).toBe('Stability')
 
-    const removed = await removeLogo(db, row.id)
+    const removed = await removeLogo(db, row!.id)
     expect(removed?.r2Key).toBe(STABILITY.r2Key)
     expect(await listLogos(db)).toEqual([])
-    expect(await removeLogo(db, row.id)).toBeUndefined()
+    expect(await removeLogo(db, row!.id)).toBeUndefined()
   })
 
   it('finds a mark by the name the planner wrote, tolerantly, and by its key', async () => {
     const row = await insertLogo(db, STABILITY)
-    expect((await findLogoByName(db, 'stability ai, the image company'))?.id).toBe(row.id)
+    expect((await findLogoByName(db, 'stability ai, the image company'))?.id).toBe(row!.id)
     expect(await findLogoByName(db, 'AI')).toBeNull()
-    expect((await logoByR2Key(db, STABILITY.r2Key))?.id).toBe(row.id)
+    expect((await logoByR2Key(db, STABILITY.r2Key))?.id).toBe(row!.id)
   })
 
   it('never lists a music bed as a logo', async () => {
@@ -93,5 +93,38 @@ suite('the logo library', () => {
     })
     expect(await listLogos(db)).toEqual([])
     expect(await findLogoByName(db, 'A bed')).toBeNull()
+  })
+
+  it('refuses to upsert over a row that is not a logo, and leaves it untouched', async () => {
+    const [image] = await db
+      .insert(assets)
+      .values({
+        kind: 'image',
+        r2Key: 'boom-busters/stock/still.png',
+        contentHash: 'shared-hash',
+        licence: 'stock',
+        title: 'A stock still',
+        width: 800,
+        height: 600,
+        sourceUrl: 'https://stock.example/still.png',
+      })
+      .returning()
+
+    const result = await insertLogo(db, {
+      r2Key: 'boom-busters/logos/renamed.png',
+      contentHash: 'shared-hash',
+      title: 'Stability AI',
+      width: 1200,
+      height: 400,
+    })
+
+    expect(result).toBeNull()
+    const [row] = await db.select().from(assets).where(eq(assets.id, image!.id))
+    expect(row).toMatchObject({
+      title: 'A stock still',
+      width: 800,
+      height: 600,
+      sourceUrl: 'https://stock.example/still.png',
+    })
   })
 })
