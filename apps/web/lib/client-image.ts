@@ -122,12 +122,13 @@ function renamed(name: string, format: ConvertedFormat): string {
  */
 export async function toUploadableImage<T extends DecodedImage>(
   file: File,
-  options: { codec?: ImageCodec<T>; format?: ConvertedFormat } = {},
+  options: { codec?: ImageCodec<T>; format?: ConvertedFormat; maxEdge?: number } = {},
 ): Promise<UploadableImage> {
   if (!isAvif(file)) return { ok: true, file }
 
   const codec = (options.codec ?? browserCodec) as ImageCodec<T>
   const format = options.format ?? 'image/jpeg'
+  const maxEdge = options.maxEdge ?? MAX_CONVERTED_IMAGE_EDGE
 
   let decoded: T
   try {
@@ -143,7 +144,7 @@ export async function toUploadableImage<T extends DecodedImage>(
 
   let blob: Blob | null
   try {
-    const size = fittedSize(decoded.width, decoded.height, MAX_CONVERTED_IMAGE_EDGE)
+    const size = fittedSize(decoded.width, decoded.height, maxEdge)
     blob = await codec.encode(decoded, size.width, size.height, format, CONVERTED_JPEG_QUALITY)
   } finally {
     decoded.close()
@@ -268,6 +269,7 @@ export async function toUploadableLogo<T extends DecodedImage>(
     return toUploadableImage(file, {
       ...(options.codec ? { codec: options.codec } : {}),
       format: 'image/png',
+      maxEdge: LOGO_RASTER_MAX_EDGE,
     })
   }
   for (const raster of RASTER_TYPES) {

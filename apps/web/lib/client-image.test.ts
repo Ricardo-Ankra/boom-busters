@@ -183,6 +183,12 @@ describe('toUploadableLogo', () => {
     )
   })
 
+  it('caps a huge AVIF mark at the logo edge, not the wider pasted-image cap', async () => {
+    const codec = codecFor(4400, 2200)
+    await toUploadableLogo(file('wide.avif', 'image/avif'), { codec, rasterise })
+    expect(codec.encode).toHaveBeenCalledWith(expect.anything(), 2048, 1024, 'image/png', 0.92)
+  })
+
   it('says what to do when the SVG will not draw', async () => {
     const result = await toUploadableLogo(file('broken.svg', 'image/svg+xml'), {
       rasterise: async () => null,
