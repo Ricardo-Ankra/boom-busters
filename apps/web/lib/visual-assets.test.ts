@@ -661,6 +661,44 @@ References attached: 1 photograph of Emad Mostaque.`
       )
       expect(generate.mock.calls[0]?.[0].references ?? []).toHaveLength(0)
     })
+
+    /**
+     * The regression decision 270 exists for. Every other test in this block
+     * runs on gemini-3.1-flash-image, which Google documents as taking ten
+     * objects, so none of them could see that gemini-2.5-flash-image declared
+     * zero and silently dropped the plate. A project routed at 2.5 got no
+     * plate AND a prompt that never named the room, and nothing failed.
+     */
+    it('carries the plate on gemini-2.5-flash-image too, which once dropped it', async () => {
+      await updateSettings(db, {
+        modelRouting: {
+          stills: { provider: 'google', model: 'gemini-2.5-flash-image' },
+          stillsLikeness: null,
+        },
+      })
+      const room = await insertProjectSet(db, {
+        projectId: FIXTURE_PROJECT_ID,
+        name: 'Venture Capital Boardroom',
+        look: 'A long polished table.',
+      })
+      await setSetPlates(db, room.id, [plate('plate-1', 'establishing')])
+
+      await generateStillCandidates(
+        { ...still, depicts: [], set: 'Venture Capital Boardroom' },
+        FIXTURE_PROJECT_ID,
+      )
+
+      // Mock mode omits the model from the request, so the ledger names it. The
+      // plate count below is still the real 2.5 budget: limits come from the
+      // LIVE adapter in every mode.
+      expect(await lastLedgerModel()).toBe('gemini-2.5-flash-image')
+      const request = generate.mock.calls[0]?.[0]
+      expect((request?.references ?? []).filter((r) => r.kind === 'object')).toHaveLength(1)
+      // And the room reaches the model in words as well as pixels.
+      expect(request?.prompt).toContain(
+        'References attached: 1 photograph of Venture Capital Boardroom.',
+      )
+    })
   })
 })
 
