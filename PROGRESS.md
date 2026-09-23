@@ -5610,3 +5610,143 @@ different should be the model not what we give it").
 
     _Tests._ 2.5 reports the policy budget, equals fal's answer, carries two
     plates through a real call, and refuses a third by name.
+
+271. **Contextual briefs: people and place first, and a lint that acts**
+(2026-09-23, owner report: "the prompt is trying to be too symbolic, or is
+actually showing some irrelevant to the narration ... It recognises that
+there are all these issues, but does nothing about it").
+
+    Measured on the live Stability AI plan (read-only): 55 of 62 picture
+    briefs mention a server, rack or blade, and 21 describe an empty,
+    unpeopled scene; only 7 of 53 stills name a person, against 26 of 53 that
+    name a set. Six causes, all upstream of the lint. The Director's Book
+    converges on one symbol: the same server sits in the visual thesis, the
+    anchor object, a motif, and three of seven key images. The era lock is
+    pasted verbatim into every still prompt, so all 53 prompts ask for
+    period servers whatever their subject. The house look defaults to empty
+    rooms and "never the face", working against the cast photographs the
+    producer uploaded. An abstract sentence goes straight to a book symbol,
+    with nothing telling the model to stage it through the people and place
+    it concerns instead. A motif floor forces at least one motif into every
+    chapter. And the lint itself is advisory and overcounts: `motifPattern`
+    matches a motif's head noun inside the pasted era-lock text as readily as
+    inside the sentence, so "10 of 10 picture briefs" meant every still
+    rather than a real repeat, and a number that wrong cannot drive a repair.
+
+    _The prompt changes._ Three prompts move together. The bible
+    (`direction-craft.md`, re-embedded through `embed:craft`) replaces "Rooms
+    after the people have left" and "never the face" with staging the
+    people, in the rooms where it happened, lit by the scene's own sources;
+    replaces the abstraction fallback with staging a sentence's people and
+    place first, reaching for the book only when a sentence names neither;
+    drops the motif floor, letting a motif stand only where the sentence has
+    room for it; and stops copying the era lock's object list into a prompt,
+    keeping it a constraint on what a frame may contain rather than a list to
+    paste. The Director's Book prompt (`prompts/direction.ts`) keeps the
+    anchor object out of the motif list, forces the three motifs to share no
+    head noun with each other or the anchor, and has each chapter's key image
+    lead with that chapter's own people and place. The shot-list prompt
+    (`prompts/shotlist.ts`) carries the same rules into planning: a sentence
+    naming a photographed cast member, or a held set's place, is shown there.
+
+    _The graded findings._ `craftFindings`
+    (`packages/schemas/src/direction.ts`) is a pure function returning one
+    finding per problem per slot - `size-run`, `motif-repeat`, `set-run`,
+    `ignored-person`, `ignored-set` - each graded `auto` or `manual`. The
+    grade follows what the fix would cost. A photographed cast member named
+    in a still or hero's sentence but left off `depicts` is `auto`: the fix
+    only adds a name to a list the photograph already backs. An
+    unphotographed member named the same way is `manual`, because the fix
+    would draw a real face from a text description alone, which tends to
+    read as a stranger and draws model refusals (decision 253). Anyone named
+    against a stock brief is `manual` too, because the fix turns a free slot
+    into a paid, generated still - a spending decision, not a lint's to make
+    alone. `ignored-set` follows the same split: an unheld or wrongly-set
+    still or hero is `auto`, the same miss on a stock brief is `manual`.
+    `planWarnings` keeps its own strings and signature and shares its
+    predicates with `craftFindings` (`motifPattern`, an era-lock-aware
+    `motifText`, `slotSet`, `setKeyNoun`, `containsPhrase`) rather than being
+    rewritten over it, so the plan screen and the repair pass cannot disagree
+    about what is wrong.
+
+    _Banned words are removed, not reported._ `stripBannedWords` strips a
+    banned word or phrase from a still or hero prompt as a whole word,
+    ignoring case, then tidies the punctuation and spacing the removal
+    leaves behind. It runs at three points: inside `planChapterSlots`, over
+    every planned slot's brief, which covers the plan and the re-plan alike;
+    on every accepted repair reply, automatic and Fix-button both; and in
+    `generateStillCandidates`, the last line before the image model, so a
+    brief stored or hand-edited before this change is still cleaned at the
+    point it would do harm. A `banned-word` finding can therefore only
+    describe a brief stored before this change and never fetched since, and
+    it stays a `planWarnings` note rather than something a repair spends on.
+
+    _Automatic repair and the Fix button._ After each chapter is planned,
+    `planChapterSlots` computes `craftFindings` over that chapter alone and,
+    if any finding is `auto`, makes one further repair call naming each
+    flagged slot and its findings, answered as `{"briefs": [...]}` rather
+    than slots so a reply can only ever replace a brief. `coversText`,
+    `paragraphIndex` and `seconds` are forced back to the original's
+    regardless of what the model returns; a replacement whose brief type
+    differs from the original's is dropped; and any repair failure keeps the
+    unrepaired, still-valid plan. That type guard is what makes the
+    automatic pass safe to run unasked: a stock slot can never come back a
+    still without the producer's consent. The plan screen's "Fix these N
+    slots · ≈$X" button is that consent: it computes findings over the whole
+    film, the same as the board shows, and repairs chapter by chapter on
+    both `auto` and `manual` findings, so it may turn a stock slot into a
+    still - and it says how many before it is pressed, since that also
+    raises the Fetch estimate. Mock mode makes no repair call in either
+    path: `callLlm` has no mock shot-list path, and the mock plan (one stock
+    slot per paragraph, alternating sizes, no motif) produces no `auto`
+    finding to act on.
+
+    _The seven Rulings this plan's header recorded, refining the spec:_
+    `repair` is `'auto' | 'manual'` only, and no `'none'` finding is ever
+    emitted, since `planWarnings` already carries those notes. `planWarnings`
+    keeps its own strings and predicates rather than being rewritten over
+    `craftFindings`. A repair answers with briefs, never slots, and
+    `coversText` is forced back to the original's. Banned words are stripped
+    by `withoutBannedWords` inside `planChapterSlots`, on every repair
+    output, and in `generateStillCandidates` - not inside `plannedToRows`,
+    which the Fix button's path does not pass through. A set run is not a
+    finding when the slot's own sentence puts it in that set, in both
+    `craftFindings` and `planWarnings`, so the two rules cannot ping-pong
+    against each other. The Fix button computes findings over the whole film
+    and repairs chapter by chapter, while the automatic pass computes per
+    chapter because a chapter is all it ever has in hand. And mock mode
+    makes no repair call in either path. One rule sits outside the numbered
+    seven but binds both paths the same way: automatic repair never changes
+    a slot's type; only the Fix button may turn stock into a still.
+
+    _Not done._ No deterministic lint runs on the Director's Book itself;
+    the three prompt changes are the only guard against convergence on one
+    symbol, and a book-level check is left for a later decision if the
+    prompt alone does not hold it. Existing films are not touched
+    automatically: the Stability AI film changes only after the owner
+    presses Redraft direction, then Re-plan.
+
+    _Tests._ Task 1: the bible stages people in place, drops the motif
+    floor, and stays byte-identical to its markdown (495 of 495,
+    packages/providers). Task 2: the Director's Book and shot-list prompts
+    carry the new rules, every asserted phrase whole on one line (501 of
+    501, packages/providers). Task 3: `stripBannedWords` against words,
+    phrases, case and punctuation, wired into `generateStillCandidates` (14
+    provider tests, 35 web tests). Task 4: `planWarnings` ignores a motif
+    noun inside pasted era-lock text and drops a set-run finding when the
+    sentence itself places the slot there (352 of 352, packages/schemas).
+    Task 5: `craftFindings` grades every kind by the section 5 table,
+    including the photographed, unphotographed and stock split, a chart
+    breaking a run of photographs, and the generic-room-word fallback (374
+    of 374, packages/schemas). Task 6: `buildShotRepairRequest` and
+    `parseShotRepair` reuse the chapter's own system prompt and keep the
+    original brief for a missing or malformed reply, ignoring extras (514 of
+    514, packages/providers). Task 7: `planChapterSlots` makes no repair
+    call for a clean chapter or one with only manual findings, and exactly
+    one for a chapter with an auto finding (19 of 19, apps/web, DB-backed).
+    Task 8: the visuals-replanner's `repair` op includes manual findings,
+    may turn a stock slot into a still, and touches only flagged slots (7 of
+    7, apps/web, DB-backed). Task 9: the plan screen's warnings gain the
+    ignored-person and ignored-set lines, and the Fix button appears only
+    when something is flagged, names the chapter count and the still count,
+    and calls `repairPlanAction` (52 of 52, apps/web).

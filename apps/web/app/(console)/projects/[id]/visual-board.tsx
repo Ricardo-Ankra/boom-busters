@@ -55,6 +55,7 @@ import {
   redirectSceneAction,
   refetchArticleAction,
   refetchSlotAction,
+  repairPlanAction,
   reuseSlotShotAction,
   saveHeadlineAction,
   replanShotsAction,
@@ -571,6 +572,15 @@ function ReferenceChip({ reference }: { reference: SlotReference }) {
 /** What one re-plan of every chapter costs, the Director's Book estimate's twin. */
 const REPLAN_ESTIMATE = '≈$0.15'
 
+/**
+ * What one chapter's repair call costs (decision 271). It answers only the
+ * flagged briefs under rules the chapter was already planned with, so it costs
+ * less than planning the chapter did: the re-plan's ≈$0.15 across a typical
+ * seven chapters is ≈$0.02 each, rounded up here because every estimate in
+ * this app errs against the budget.
+ */
+const REPAIR_ESTIMATE_PER_CHAPTER_USD = 0.03
+
 export function VisualBoard({
   projectId,
   model,
@@ -734,6 +744,38 @@ export function VisualBoard({
                     )
                   }
                 />
+                {/* Beside the notes it acts on (decision 271): fix only what
+                    the craft check flagged, rather than plan everything again. */}
+                {model.repair.slots > 0 ? (
+                  <ConfirmButton
+                    variant="outline"
+                    confirmVariant="primary"
+                    label={
+                      `Fix these ${model.repair.slots} slot${model.repair.slots === 1 ? '' : 's'} · ≈$` +
+                      (REPAIR_ESTIMATE_PER_CHAPTER_USD * model.repair.chapters).toFixed(2) +
+                      (model.repair.becomeStills > 0
+                        ? ` · ${model.repair.becomeStills} ${
+                            model.repair.becomeStills === 1 ? 'becomes a still' : 'become stills'
+                          }`
+                        : '')
+                    }
+                    confirmLabel="Fix now"
+                    consequence={
+                      `Rewrites only the flagged briefs, one call per chapter ` +
+                      `(${model.repair.chapters}). Slots already fetched for them are fetched again.` +
+                      (model.repair.becomeStills > 0
+                        ? ` ${model.repair.becomeStills} ${
+                            model.repair.becomeStills === 1
+                              ? 'becomes a generated still'
+                              : 'become generated stills'
+                          }, which adds to the Fetch estimate.`
+                        : '')
+                    }
+                    onConfirm={() =>
+                      act('repair', () => repairPlanAction(projectId), 'Fixing the flagged slots')
+                    }
+                  />
+                ) : null}
                 {/* Beside the spend it competes with (decision 252, amended):
                     the producer decides the plan reads wrong while looking at
                     the plan, not while looking at the book above it. */}

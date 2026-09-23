@@ -20,6 +20,7 @@ const dismissRetypeAction = vi.fn()
 const saveDirectionAction = vi.fn()
 const redraftDirectionAction = vi.fn()
 const replanShotsAction = vi.fn()
+const repairPlanAction = vi.fn()
 const redirectSceneAction = vi.fn()
 const saveHeadlineAction = vi.fn()
 const refetchArticleAction = vi.fn()
@@ -43,6 +44,7 @@ vi.mock('./visuals-actions', () => ({
   saveDirectionAction: (...args: unknown[]) => saveDirectionAction(...args),
   redraftDirectionAction: (...args: unknown[]) => redraftDirectionAction(...args),
   replanShotsAction: (...args: unknown[]) => replanShotsAction(...args),
+  repairPlanAction: (...args: unknown[]) => repairPlanAction(...args),
   redirectSceneAction: (...args: unknown[]) => redirectSceneAction(...args),
   saveHeadlineAction: (...args: unknown[]) => saveHeadlineAction(...args),
   refetchArticleAction: (...args: unknown[]) => refetchArticleAction(...args),
@@ -82,6 +84,7 @@ beforeEach(() => {
   refetchSlotAction.mockResolvedValue({ ok: true })
   editBriefAction.mockResolvedValue({ ok: true })
   approvePlanAction.mockResolvedValue({ ok: true })
+  repairPlanAction.mockResolvedValue({ ok: true })
   retypeSlotAction.mockResolvedValue({ ok: true })
   retypeToHeadlineAction.mockResolvedValue({ ok: true })
   rebriefSlotAction.mockResolvedValue({ ok: true })
@@ -377,6 +380,7 @@ function model(slots: SlotView[], overrides: Partial<VisualsReviewModel> = {}): 
     fetchEstimateUsd: 0,
     direction: null,
     warnings: [],
+    repair: { slots: 0, becomeStills: 0, chapters: 0 },
     articleClaims: ARTICLE_CLAIMS,
     ...overrides,
   }
@@ -822,6 +826,32 @@ describe('the plan phase (staged-visuals design)', () => {
 
     await userEvent.click(screen.getByRole('button', { name: /^Re-plan now$/ }))
     expect(replanShotsAction).toHaveBeenCalledWith(PROJECT)
+  })
+
+  it('offers Fix these N slots behind a confirm, naming how many become stills', async () => {
+    render(
+      <VisualBoard
+        projectId={PROJECT}
+        model={{ ...planModel(), repair: { slots: 3, becomeStills: 1, chapters: 2 } }}
+        colors={COLORS}
+        brand={BRAND}
+      />,
+    )
+
+    await userEvent.click(
+      screen.getByRole('button', { name: /Fix these 3 slots · ≈\$0\.06 · 1 becomes a still/ }),
+    )
+    expect(repairPlanAction).not.toHaveBeenCalled()
+    expect(screen.getByText(/one call per chapter \(2\)/)).toBeInTheDocument()
+    expect(screen.getByText(/1 becomes a generated still/)).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: /^Fix now$/ }))
+    expect(repairPlanAction).toHaveBeenCalledWith(PROJECT)
+  })
+
+  it('shows no Fix button when nothing is flagged', () => {
+    render(<VisualBoard projectId={PROJECT} model={planModel()} colors={COLORS} brand={BRAND} />)
+    expect(screen.queryByRole('button', { name: /Fix these/ })).not.toBeInTheDocument()
   })
 
   it('re-types a slot through the format picker — the suggestion is not a lock', async () => {

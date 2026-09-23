@@ -19,13 +19,16 @@ import {
   articleSourceLabel,
   CANDIDATES_SHOWN,
   claimCarriesArticle,
+  craftFindings,
   DirectorsBookSchema,
+  findingContext,
   normaliseArticleUrl,
   latestTakes,
   nameMatches,
   castWarnings,
   planWarnings,
   referenceWarnings,
+  repairSummary,
   ShotBriefSchema,
   SlotCandidateSchema,
   SlotRefusalSchema,
@@ -39,6 +42,7 @@ import type {
   CastMember,
   DirectorsBook,
   ProjectSet,
+  RepairSummary,
   ShotBrief,
   ShotSlotStatus,
   SlotCandidate,
@@ -211,6 +215,12 @@ export interface VisualsReviewModel {
   /** Craft notes from `planWarnings`, in screen order. */
   warnings: string[]
   /**
+   * What the Fix button would do (decision 271): the slots with an auto or
+   * manual finding, how many of them are stock slots the fix makes into
+   * generated stills, and how many chapters that spends a call on.
+   */
+  repair: RepairSummary
+  /**
    * The articles a slot may be re-typed to quote (decision 257). Empty means
    * this project's dossier has no news claim, and the picker says so rather
    * than offering a button that can only fail.
@@ -237,6 +247,7 @@ export function emptyVisualsModel(): VisualsReviewModel {
     fetchEstimateUsd: 0,
     direction: null,
     warnings: [],
+    repair: { slots: 0, becomeStills: 0, chapters: 0 },
     articleClaims: [],
   }
 }
@@ -596,6 +607,20 @@ export async function visualsReviewModel(
     return parsed.success ? parsed.data : null
   })()
 
+  // One craft check over the whole film (decision 271), the same one the Fix
+  // button runs, so the count on the button is the set of slots it rewrites.
+  const findingSlots = slots.flatMap((slot) =>
+    slot.brief ? [{ brief: slot.brief, chapter: `chapter ${slot.chapterIndex + 1}` }] : [],
+  )
+  const findings = craftFindings(
+    findingSlots,
+    findingContext({
+      direction,
+      cast: cast.map((member) => ({ name: member.name, photographed: member.photos.length > 0 })),
+      sets,
+    }),
+  )
+
   return {
     chapters,
     coverage,
@@ -623,6 +648,11 @@ export async function visualsReviewModel(
         sets.map((set) => set.name),
         direction?.eraLocks.map((lock) => lock.rules) ?? [],
       ),
+      // The people and rooms a sentence names but its shot leaves out, which
+      // planWarnings has no words for (decision 271).
+      ...findings
+        .filter((finding) => finding.kind === 'ignored-person' || finding.kind === 'ignored-set')
+        .map((finding) => `${finding.message} (slot ${finding.slotIndex})`),
       ...castWarnings(
         direction,
         cast.map((member) => member.name),
@@ -638,6 +668,7 @@ export async function visualsReviewModel(
       ),
       ...sharedShotWarnings(reusable),
     ],
+    repair: repairSummary(findingSlots, findings),
     articleClaims,
   }
 }
