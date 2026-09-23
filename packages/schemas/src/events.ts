@@ -117,11 +117,13 @@ export const VisualsRetypeRequestedSchema = z.object({
  * Re-apply direction during the plan checkpoint (decision 252): `direction`
  * redrafts the Director's Book, `shots` regenerates every chapter's slots
  * from the stored book. Handled by the visuals-replanner while the runner
- * stays parked on `visuals/plan.approved`.
+ * stays parked on `visuals/plan.approved`. `repair` rewrites only the briefs
+ * the craft check flags, auto and manual findings both, for the Fix button
+ * (decision 271).
  */
 export const VisualsReplanRequestedSchema = z.object({
   ...projectRef,
-  op: z.enum(['direction', 'shots']),
+  op: z.enum(['direction', 'shots', 'repair']),
 })
 
 /**

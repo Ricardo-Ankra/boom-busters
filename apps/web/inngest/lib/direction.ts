@@ -3,10 +3,12 @@ import {
   getProject,
   getSettings,
   listCastMembers,
+  retypeShotSlot,
   scriptableClaims,
   seedCastFromPrincipals,
   seedSetsFromLocations,
   setProjectDirection,
+  updateSlotBrief,
 } from '@boom-busters/db'
 import type { NewShotSlot } from '@boom-busters/db'
 import {
@@ -34,9 +36,16 @@ import {
   DirectorsBookSchema,
   findingContext,
   repairTargets,
+  resolvePlannedBrief,
   ValidationError,
 } from '@boom-busters/schemas'
-import type { DirectorsBook, FindingContext, LogoIndex, PlannedSlot } from '@boom-busters/schemas'
+import type {
+  DirectorsBook,
+  FindingContext,
+  LogoIndex,
+  PlannedSlot,
+  ShotBrief,
+} from '@boom-busters/schemas'
 import { NonRetriableError } from 'inngest'
 import { z } from 'zod'
 import { db } from '@/lib/db'
@@ -371,4 +380,50 @@ export async function planChapterSlots(input: {
     logos: input.logos,
   })
   return { rows: conversion.rows, rejected: dropped + conversion.rejected.length }
+}
+
+/**
+ * The Fix button's rewrite of stored briefs (decision 271): one call for one
+ * chapter's flagged slots, `auto` and `manual` findings both, because pressing
+ * the button is the producer's consent to what the automatic pass would not
+ * spend on alone. A stock brief may come back as a still; nothing else may
+ * change type. Each accepted replacement is stored with `updateSlotBrief`, or
+ * with `retypeShotSlot` when stock became a still (the type column and the
+ * brief move together, and the old candidates clear), so a slot pre-fetched
+ * for its old brief owes a fetch for its new one. Returns how many briefs
+ * were rewritten.
+ *
+ * Unlike the automatic pass this throws: the producer asked for the fix and
+ * must hear when it did not happen. Mock mode makes no call and rewrites
+ * nothing.
+ */
+export async function rewriteStoredBriefs(input: {
+  projectId: string
+  request: ReturnType<typeof buildShotListRequest>
+  targets: readonly { id: string; brief: ShotBrief; problems: readonly string[] }[]
+  claims: readonly ScriptClaim[]
+  logos: readonly LogoIndex[]
+}): Promise<number> {
+  if (input.targets.length === 0 || mockProvidersEnabled()) return 0
+  const originals = input.targets.map((target) => target.brief)
+  const answer = await callLlm(
+    buildShotRepairRequest(
+      input.request,
+      input.targets.map((target) => ({ brief: target.brief, problems: target.problems })),
+      { allowStockToStill: true },
+    ),
+    { projectId: input.projectId },
+  )
+  const replacements = parseShotRepair(answer.text, originals, { allowStockToStill: true })
+  let written = 0
+  for (const [at, target] of input.targets.entries()) {
+    const planned = replacements[at]
+    if (!planned) continue
+    const stored = resolvePlannedBrief(withoutBannedWords(planned), input.claims, input.logos)
+    if (!stored) continue
+    if (stored.type === target.brief.type) await updateSlotBrief(db, target.id, stored)
+    else await retypeShotSlot(db, target.id, stored.type, stored)
+    written += 1
+  }
+  return written
 }

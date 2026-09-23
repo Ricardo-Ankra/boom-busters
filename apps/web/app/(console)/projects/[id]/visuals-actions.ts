@@ -1188,7 +1188,18 @@ export async function replanShotsAction(projectId: string): Promise<ActionResult
   return sendReplan(projectId, 'shots')
 }
 
-async function sendReplan(projectId: string, op: 'direction' | 'shots'): Promise<ActionResult> {
+/**
+ * Rewrite only the briefs the craft check flags (decision 271). Pre-fetched
+ * slots among them are fetched again; every other slot is left alone.
+ */
+export async function repairPlanAction(projectId: string): Promise<ActionResult> {
+  return sendReplan(projectId, 'repair')
+}
+
+async function sendReplan(
+  projectId: string,
+  op: 'direction' | 'shots' | 'repair',
+): Promise<ActionResult> {
   await requireOwner()
   const invalid = badIds(projectId)
   if (invalid) return invalid

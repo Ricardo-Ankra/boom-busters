@@ -3,6 +3,7 @@ import {
   getSettings,
   latestScriptParagraphSources,
   listProjectSets,
+  listShotSlots,
   listVoiceTakes,
   replaceShotList,
   scriptableClaims,
@@ -14,17 +15,26 @@ import { BANNED_PROMPT_WORDS, stillStyleAnchors } from '@boom-busters/providers'
 import type { ScriptClaim } from '@boom-busters/providers'
 import {
   BudgetExceededError,
+  craftFindings,
   DirectorsBookSchema,
+  findingContext,
   parseEventData,
   planWarnings,
+  repairTargets,
   serialiseError,
+  ShotBriefSchema,
 } from '@boom-busters/schemas'
 import { NonRetriableError } from 'inngest'
 import { db } from '@/lib/db'
 import { notify } from '@/lib/notify'
 import { inngest } from '../client'
 import { events } from '../events'
-import { draftDirectorsBook, planChapterSlots } from '../lib/direction'
+import {
+  chapterShotListRequest,
+  draftDirectorsBook,
+  planChapterSlots,
+  rewriteStoredBriefs,
+} from '../lib/direction'
 import { budgetGateData, markSideJobFailed, type GateContext } from '../lib/gates'
 import { timedParagraphs } from '../lib/shot-list'
 
@@ -143,12 +153,100 @@ export const visualsReplanner = inngest.createFunction(
         photographed: cast
           .filter((member) => member.photos.length > 0)
           .map((member) => member.name),
+        // Every member, photographed or not (decision 271): the Fix button
+        // weighs an unphotographed person as a manual finding.
+        cast: cast.map((member) => ({ name: member.name, photographed: member.photos.length > 0 })),
         // The film's rooms: named and described for the shot-list prompt,
         // and counted by the craft notes below (decision 264).
         sets: sets.map(({ name, look }) => ({ name, look })),
         logos: logos.map((row) => ({ id: row.id, title: row.title ?? '' })),
       }
     })
+
+    // -----------------------------------------------------------------------
+    // Fix the flagged slots, and nothing else (decision 271)
+    // -----------------------------------------------------------------------
+
+    if (op === 'repair') {
+      const stored = await step.run('load-slots', async () =>
+        (await listShotSlots(db, projectId)).map((row) => ({
+          id: row.id,
+          chapterId: row.chapterId,
+          brief: row.brief,
+        })),
+      )
+
+      // Findings over the whole film, exactly as the board computes them, so
+      // the button fixes the slots the screen counted.
+      const labels = new Map(
+        setup.chapters.map((chapter, index) => [chapter.id, `chapter ${index + 1}`]),
+      )
+      const briefs = stored.flatMap((row) => {
+        const parsed = ShotBriefSchema.safeParse(row.brief)
+        return parsed.success ? [{ id: row.id, chapterId: row.chapterId, brief: parsed.data }] : []
+      })
+      const findings = craftFindings(
+        briefs.map((row) => ({ brief: row.brief, chapter: labels.get(row.chapterId) })),
+        findingContext({ direction: setup.direction, cast: setup.cast, sets: setup.sets }),
+      )
+      const targets = repairTargets(findings, ['auto', 'manual'])
+
+      let rewritten = 0
+      for (const [index, chapter] of setup.chapters.entries()) {
+        const mine = targets.filter((target) => briefs[target.slotIndex]!.chapterId === chapter.id)
+        if (mine.length === 0) continue
+        const fixed = await step.run(`repair-${index}`, async () => {
+          const request = chapterShotListRequest({
+            caseTitle: setup.caseTitle,
+            chapter: { id: chapter.id, title: chapter.title, number: index + 1 },
+            paragraphs: setup.paragraphs,
+            claims: setup.claims,
+            styleAnchors: setup.styleAnchors,
+            direction: setup.direction,
+            photographed: setup.photographed,
+            sets: setup.sets,
+            logos: setup.logos,
+          })
+          if (!request) return { ok: true as const, written: 0 }
+          try {
+            const written = await rewriteStoredBriefs({
+              projectId,
+              request,
+              targets: mine.map((target) => ({
+                id: briefs[target.slotIndex]!.id,
+                brief: briefs[target.slotIndex]!.brief,
+                problems: target.findings.map((finding) => finding.message),
+              })),
+              claims: setup.claims,
+              logos: setup.logos,
+            })
+            return { ok: true as const, written }
+          } catch (error) {
+            if (error instanceof BudgetExceededError) {
+              return { ok: false as const, gate: budgetGateData(error) }
+            }
+            throw error
+          }
+        })
+        if (!fixed.ok) {
+          await step.run(`repair-${index}-over-budget`, () =>
+            markSideJobFailed(ctx, 'The fix stopped', fixed.gate),
+          )
+          return { projectId, op, outcome: 'over-budget' as const }
+        }
+        rewritten += fixed.written
+      }
+
+      await step.run('repair-notify', () =>
+        notify({
+          kind: 'heads-up',
+          title: 'Flagged slots fixed',
+          body: `${rewritten} brief${rewritten === 1 ? '' : 's'} rewritten.`,
+          href: `/projects/${projectId}`,
+        }),
+      )
+      return { projectId, op, outcome: 'repaired' as const, rewritten }
+    }
 
     const rows: NewShotSlot[] = []
     let rejected = 0
