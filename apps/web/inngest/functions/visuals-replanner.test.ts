@@ -6,6 +6,7 @@ import {
   FIXTURE_PROJECT_ID,
   getProject,
   insertCastMember,
+  listCastMembers,
   listShotSlots,
   replaceShotList,
   requireTestDatabase,
@@ -163,6 +164,13 @@ describeDb('visuals-replanner op repair (decision 271)', () => {
       contentMd: SENTENCE,
       estRuntimeSec: 30,
     })
+    // Another suite can leave a cast row behind for this project (its own
+    // afterEach clears state that belongs to the next test's beforeEach
+    // instead), and the name is unique per project, so `insertCastMember`
+    // below would throw on a leftover "Emad Mostaque".
+    for (const existing of await listCastMembers(db, FIXTURE_PROJECT_ID)) {
+      await deleteCastMember(db, existing.id)
+    }
     const member = await insertCastMember(db, {
       projectId: FIXTURE_PROJECT_ID,
       name: 'Emad Mostaque',
