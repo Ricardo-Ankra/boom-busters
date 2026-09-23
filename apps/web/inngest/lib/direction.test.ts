@@ -407,3 +407,113 @@ describe('planChapterSlots plans a graphic and threads the logo library (decisio
     expect(brief.scene.elements.some((element) => element.kind === 'logo')).toBe(false)
   })
 })
+
+describe('planChapterSlots repairs a chapter once, on auto findings only (decision 271)', () => {
+  const SENTENCE = 'Mostaque told the investors the money was there.'
+  const PARAGRAPHS: TimedParagraph[] = [
+    { chapterId: 'ch-1', index: 0, text: SENTENCE, startMs: 0, durationMs: 9000, words: [] },
+  ]
+  const still = (extra: Record<string, unknown> = {}) => ({
+    type: 'still',
+    coversText: SENTENCE,
+    description: 'A server rack in the dark.',
+    shotSize: 'close',
+    prompt: 'A server rack in the dark, 50mm lens.',
+    motion: { kind: 'static' },
+    transition: 'cut',
+    ...extra,
+  })
+  const stock = {
+    type: 'stock',
+    coversText: SENTENCE,
+    description: 'An office.',
+    shotSize: 'wide',
+    query: 'office',
+    rejectionCriteria: [],
+    motion: { kind: 'static' },
+    transition: 'cut',
+  }
+  const plan = (brief: Record<string, unknown>) =>
+    JSON.stringify({ slots: [{ paragraphIndex: 0, seconds: 9, brief }] })
+  const planInput = {
+    projectId: FIXTURE_PROJECT_ID,
+    caseTitle: 'Stability AI',
+    chapter: { id: 'ch-1', title: 'The exit', number: 1 },
+    paragraphs: PARAGRAPHS,
+    claims: [],
+    styleAnchors: 'a',
+    direction: null,
+    photographed: ['Emad Mostaque'],
+  }
+
+  beforeEach(() => {
+    vi.stubEnv('MOCK_PROVIDERS', '')
+    callLlm.mockReset()
+  })
+
+  afterEach(() => {
+    vi.unstubAllEnvs()
+  })
+
+  it('makes no repair call for a clean chapter', async () => {
+    callLlm.mockResolvedValueOnce({ text: plan(still({ depicts: ['Emad Mostaque'] })) })
+    await planChapterSlots(planInput)
+    expect(callLlm).toHaveBeenCalledTimes(1)
+  })
+
+  it('repairs a still that leaves out the photographed person its sentence names', async () => {
+    callLlm.mockResolvedValueOnce({ text: plan(still()) }).mockResolvedValueOnce({
+      text: JSON.stringify({
+        briefs: [
+          still({
+            prompt: 'Emad Mostaque at the boardroom table, 35mm lens.',
+            depicts: ['Emad Mostaque'],
+          }),
+        ],
+      }),
+    })
+
+    const result = await planChapterSlots(planInput)
+
+    expect(callLlm).toHaveBeenCalledTimes(2)
+    const ask = callLlm.mock.calls[1]?.[0]?.messages?.at(-1)?.content ?? ''
+    expect(ask).toContain('Emad Mostaque is named here and photographed')
+    expect(result.rows[0]?.brief).toMatchObject({ depicts: ['Emad Mostaque'] })
+  })
+
+  it('leaves a stock slot naming the person to the producer: no automatic call', async () => {
+    callLlm.mockResolvedValueOnce({ text: plan(stock) })
+    await planChapterSlots(planInput)
+    expect(callLlm).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps the original when the repair changes the slot type', async () => {
+    callLlm
+      .mockResolvedValueOnce({ text: plan(still()) })
+      .mockResolvedValueOnce({ text: JSON.stringify({ briefs: [stock] }) })
+    const result = await planChapterSlots(planInput)
+    expect(result.rows[0]?.type).toBe('still')
+    expect(result.rows[0]?.brief).not.toHaveProperty('depicts')
+  })
+
+  // The catch is unconditional by design: a budget refusal, a malformed answer
+  // and a network error all keep the plan as planned.
+  it('keeps the plan as planned when the repair call fails', async () => {
+    callLlm
+      .mockResolvedValueOnce({ text: plan(still()) })
+      .mockRejectedValueOnce(new Error('over budget'))
+    const result = await planChapterSlots(planInput)
+    expect(result.rows).toHaveLength(1)
+    expect(result.rows[0]?.brief).toMatchObject({ prompt: 'A server rack in the dark, 50mm lens.' })
+  })
+
+  it('stores no banned word', async () => {
+    callLlm.mockResolvedValueOnce({
+      text: plan(
+        still({ prompt: 'A cinematic boardroom, 35mm lens.', depicts: ['Emad Mostaque'] }),
+      ),
+    })
+    const result = await planChapterSlots(planInput)
+    expect(result.rows[0]?.brief).toMatchObject({ prompt: 'A boardroom, 35mm lens.' })
+  })
+})
