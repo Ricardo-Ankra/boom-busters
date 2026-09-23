@@ -2,6 +2,7 @@ import {
   figureDigitGroups,
   HERO_SLOTS_ENABLED,
   PlannedSlotSchema,
+  PlannedBriefSchema,
   renderDirectorsBook,
   STILL_GENERATIONS,
   ValidationError,
@@ -9,6 +10,7 @@ import {
 import type {
   BrandKitStored,
   DirectorsBook,
+  PlannedBrief,
   PlannedSlot,
   ShotListOutput,
 } from '@boom-busters/schemas'
@@ -397,6 +399,88 @@ export function parseShotList(text: string): ShotListParse {
   }
 
   return { slots, malformed }
+}
+
+// ---------------------------------------------------------------------------
+// Repair (decision 271)
+// ---------------------------------------------------------------------------
+
+export interface ShotRepairTarget {
+  /** The brief as it stands, in planned or stored form. */
+  brief: unknown
+  /** What is wrong with it, in the words the plan screen uses. */
+  problems: readonly string[]
+}
+
+/**
+ * One corrective call for the briefs a chapter's craft check flagged.
+ *
+ * Built on the chapter's own shot-list request: the system prompt and the
+ * cacheable prefix (the claim list and the book) are carried unchanged, so the
+ * repair is asked under exactly the rules the plan was, and the automatic pass
+ * that follows a plan is served that prefix from cache. The answer is briefs,
+ * never slots, so a repair can change what a slot shows and never when.
+ */
+export function buildShotRepairRequest(
+  base: LLMTaskRequest,
+  targets: readonly ShotRepairTarget[],
+  options: { allowStockToStill: boolean },
+): LLMTaskRequest {
+  const listing = targets
+    .map(
+      (target, at) =>
+        `Brief ${at + 1}:\n${JSON.stringify(target.brief)}\nProblems:\n` +
+        target.problems.map((problem) => `- ${problem}`).join('\n'),
+    )
+    .join('\n\n')
+  const typeRule = options.allowStockToStill
+    ? 'Keep each brief\'s "type", except that a "stock" brief whose problem names a person or a set may become a "still".'
+    : 'Keep each brief\'s "type" exactly as it is.'
+  return {
+    ...base,
+    messages: [
+      ...base.messages,
+      {
+        role: 'user',
+        content:
+          'Some briefs in your plan for this chapter break the rules above. Rewrite ONLY ' +
+          `these ${targets.length}, fixing every problem listed for each, and keep each ` +
+          `brief's "coversText" exactly as it is.\n\n${listing}\n\n${typeRule}\n\n` +
+          `Return JSON: {"briefs": [...]} holding exactly ${targets.length} brief ` +
+          `object${targets.length === 1 ? '' : 's'}, one per brief above, in the same order.`,
+      },
+    ],
+    maxTokens: outputBudget(Math.max(SHOT_LIST_FLOOR_TOKENS, targets.length * TOKENS_PER_SLOT)),
+  }
+}
+
+const ShotRepairEnvelopeSchema = z.object({ briefs: z.array(z.unknown()) })
+
+/**
+ * The replacements, one per original, in order. `null` keeps the original:
+ * a reply that is missing, malformed, or changes a type the caller did not
+ * allow. A repair can make a brief better and can never make one vanish or
+ * land on the wrong slot. `coversText` is always the original's, because the
+ * board anchors a slot to its sentence by it.
+ *
+ * Throws on an answer that is not JSON at all; the caller decides whether
+ * that keeps the plan (the automatic pass) or reports a failure (the button).
+ */
+export function parseShotRepair(
+  text: string,
+  originals: readonly { type: string; coversText: string }[],
+  options: { allowStockToStill: boolean },
+): (PlannedBrief | null)[] {
+  const envelope = parseJsonCompletion(text, ShotRepairEnvelopeSchema, 'shot repair')
+  return originals.map((original, at) => {
+    const parsed = PlannedBriefSchema.safeParse(envelope.briefs[at])
+    if (!parsed.success) return null
+    const next = parsed.data.type
+    const allowed =
+      next === original.type ||
+      (options.allowStockToStill && original.type === 'stock' && next === 'still')
+    return allowed ? { ...parsed.data, coversText: original.coversText } : null
+  })
 }
 
 // ---------------------------------------------------------------------------

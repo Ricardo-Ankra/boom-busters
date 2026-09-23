@@ -2,8 +2,10 @@ import { DEFAULT_SETTINGS, ShotListOutputSchema } from '@boom-busters/schemas'
 import { describe, expect, it } from 'vitest'
 import {
   buildShotListRequest,
+  buildShotRepairRequest,
   mockShotList,
   parseShotList,
+  parseShotRepair,
   SHOT_LIST_FLOOR_TOKENS,
   stillStyleAnchors,
 } from './shotlist'
@@ -707,5 +709,93 @@ describe('the planning rules stage the sentence (decision 271)', () => {
       'The era lock is a constraint on what may appear, not a list to paste.',
     )
     expect(request.system).toContain('There is no minimum')
+  })
+})
+
+describe('buildShotRepairRequest and parseShotRepair (decision 271)', () => {
+  const base = buildShotListRequest({
+    caseTitle: 'Stability AI',
+    chapterTitle: 'The exit',
+    paragraphs: [{ index: 0, text: 'Mostaque told the investors.', seconds: 9 }],
+    claims: [],
+    styleAnchors: 'a',
+  })
+  const still = {
+    type: 'still',
+    coversText: 'Mostaque told the investors.',
+    description: 'A server rack.',
+    shotSize: 'close',
+    motion: { kind: 'static' },
+    transition: 'cut',
+    prompt: 'A server rack in the dark.',
+  }
+  const stock = {
+    type: 'stock',
+    coversText: 'Mostaque told the investors.',
+    description: 'An office.',
+    shotSize: 'wide',
+    motion: { kind: 'static' },
+    transition: 'cut',
+    query: 'office',
+    rejectionCriteria: [],
+  }
+
+  it("asks under the chapter's own rules and prefix, adding one message", () => {
+    const repair = buildShotRepairRequest(
+      base,
+      [{ brief: still, problems: ['Emad Mostaque is named here and photographed'] }],
+      { allowStockToStill: false },
+    )
+    expect(repair.system).toBe(base.system)
+    expect(repair.cacheablePrefixMessages).toBe(base.cacheablePrefixMessages)
+    expect(repair.messages.slice(0, base.messages.length)).toEqual(base.messages)
+    expect(repair.messages).toHaveLength(base.messages.length + 1)
+    const ask = repair.messages.at(-1)?.content ?? ''
+    expect(ask).toContain('Emad Mostaque is named here and photographed')
+    expect(ask).toContain('"briefs"')
+    expect(ask).toContain('Keep each brief\'s "type" exactly as it is.')
+  })
+
+  it('lets the Fix button turn stock into a still, and says so', () => {
+    const repair = buildShotRepairRequest(base, [{ brief: stock, problems: ['p'] }], {
+      allowStockToStill: true,
+    })
+    expect(repair.messages.at(-1)?.content).toContain('may become a "still"')
+  })
+
+  it('returns the replacements in order, with the original sentence forced back', () => {
+    const reply = JSON.stringify({
+      briefs: [{ ...still, coversText: 'rewritten', prompt: 'Emad Mostaque at the table.' }],
+    })
+    expect(parseShotRepair(reply, [still], { allowStockToStill: false })[0]).toMatchObject({
+      type: 'still',
+      prompt: 'Emad Mostaque at the table.',
+      coversText: 'Mostaque told the investors.',
+    })
+  })
+
+  it('refuses a type change unless stock-to-still was allowed', () => {
+    const reply = JSON.stringify({ briefs: [still] })
+    expect(parseShotRepair(reply, [stock], { allowStockToStill: false })).toEqual([null])
+    expect(parseShotRepair(reply, [stock], { allowStockToStill: true })[0]).toMatchObject({
+      type: 'still',
+    })
+    // Only stock may change, and only into a still.
+    const toStock = JSON.stringify({ briefs: [stock] })
+    expect(parseShotRepair(toStock, [still], { allowStockToStill: true })).toEqual([null])
+  })
+
+  it('keeps the original where a reply is missing or malformed, and ignores extras', () => {
+    const short = JSON.stringify({ briefs: [{ type: 'still' }] })
+    expect(parseShotRepair(short, [still, still], { allowStockToStill: false })).toEqual([
+      null,
+      null,
+    ])
+    const extra = JSON.stringify({ briefs: [still, still, still] })
+    expect(parseShotRepair(extra, [still], { allowStockToStill: false })).toHaveLength(1)
+  })
+
+  it('throws on an answer that is not JSON, for the caller to handle', () => {
+    expect(() => parseShotRepair('no json here', [still], { allowStockToStill: false })).toThrow()
   })
 })
