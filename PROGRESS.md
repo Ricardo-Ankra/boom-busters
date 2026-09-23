@@ -5565,3 +5565,48 @@ Stability AI"]` where two read `["Emad Mostaque"]`. Equality saw a
     and absent for a brief that names nothing. Goldens pass unchanged and
     were not regenerated — the fixture times its own entrances and passes
     no duration, so neither new behaviour moves it.
+
+270. **An undocumented model gets the app's policy, never a zero**
+(2026-09-23, owner question: "Why is gemini 2.5 declaring objects as 0?
+... why cant gemini 2.5 and 3.1 have the same declarations? The only
+different should be the model not what we give it").
+
+    Decision 264 gave each image model two reference pools, characters and
+    objects, from Google's published table. Google publishes one for the
+    Gemini 3 models and none for `gemini-2.5-flash-image`, and the missing
+    row was written as `{ characters: 3, objects: 0 }` to preserve the
+    budget from before set plates existed.
+
+    That zero was wrong on every count. It was not a capability: the API
+    takes one flat list of `inlineData` parts, and "character" and "object"
+    are this app's own bookkeeping, so there is no object channel a model
+    could decline. It therefore refused nothing and disabled a feature
+    instead, and silently — `referenceBudgets` clamped the pool to nothing,
+    `referencePlates` returned none, `setName` resolved to null, and a still
+    routed at 2.5 was generated with no plate AND a prompt that never named
+    the room. Every project on 2.5 had inert sets and no way to see it. And
+    the stated reason, that guessing a limit upward spends money to discover
+    it, was false: `pricePerImage` bills the image GENERATED, so what a call
+    carries in does not change what it costs.
+
+    The adapter beside it had already answered the same question correctly.
+    fal publishes no per-model figures either, and `falImageGen.
+    referenceLimits` returns the app's own caps unconditionally. So two
+    adapters facing one question — what to allow when the provider documents
+    nothing — answered it as policy in one file and as zero in the other,
+    with nothing to justify the difference.
+
+    Now both answer policy. `UNDOCUMENTED_LIMITS` is one constant serving the
+    2.5 row and the lookup's fallback, so a future undocumented model cannot
+    lose its plates the way this one did, and a test holds it equal to fal's
+    answer. The Gemini 3 rows keep Google's real figures: those models do
+    differ, and 4/10 against 5/6 is a difference worth respecting. What is
+    not respected any more is silence read as a refusal.
+
+    _Not done._ Nothing verifies 2.5 against five inline images in anger;
+    Google documents no ceiling, so the app's own 3 and 2 is the only number
+    with reasoning behind it, and the failure mode if it is too generous is
+    a weaker composition rather than an error or a charge.
+
+    _Tests._ 2.5 reports the policy budget, equals fal's answer, carries two
+    plates through a real call, and refuses a third by name.

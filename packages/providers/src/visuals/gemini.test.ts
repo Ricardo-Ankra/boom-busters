@@ -1,5 +1,6 @@
 import { ContentPolicyError, ValidationError } from '@boom-busters/schemas'
 import { describe, expect, it, vi } from 'vitest'
+import { falImageGen } from './fal'
 import { geminiImageGen } from './gemini'
 
 /**
@@ -183,11 +184,22 @@ describe('referenceLimits', () => {
     })
   })
 
-  it('keeps the old conservative budget for the model Google does not document', () => {
+  // An undocumented model gets the app's own policy, never a zero. A zero
+  // refused nothing (every reference is a flat inline part, so there is no
+  // object channel to close) and instead silently dropped every set plate.
+  it("gives the model Google does not document the app's own policy budget", () => {
     expect(geminiImageGen.referenceLimits('gemini-2.5-flash-image')).toEqual({
       characters: 3,
-      objects: 0,
+      objects: 2,
     })
+  })
+
+  // The same answer fal gives for the same question, so a project's sets do
+  // not depend on which generator it happens to be routed at.
+  it('matches fal, which publishes no per-model figures either', () => {
+    expect(geminiImageGen.referenceLimits('gemini-2.5-flash-image')).toEqual(
+      falImageGen.referenceLimits(),
+    )
   })
 
   it('defaults to the first model when none is named', () => {
@@ -221,15 +233,34 @@ describe('refusing more references than the model takes', () => {
     expect(fetchImpl).not.toHaveBeenCalled()
   })
 
-  it('refuses a set plate on the model that takes none', async () => {
-    const fetchImpl = vi.fn()
+  // 2.5 used to refuse every plate, which is what made a set silently inert on
+  // it. It now takes the app's policy budget, so the refusal starts one past it.
+  it('carries a set plate on the undocumented model, and refuses a third', async () => {
+    const ok = vi.fn(fetchRecording([], IMAGE_REPLY))
+    await geminiImageGen.generate(
+      {
+        prompt: 'x',
+        count: 1,
+        model: 'gemini-2.5-flash-image',
+        references: [ref('object', 1), ref('object', 2)],
+      },
+      { apiKey: 'k', fetchImpl: ok },
+    )
+    expect(ok).toHaveBeenCalled()
+
+    const tooMany = vi.fn()
     await expect(
       geminiImageGen.generate(
-        { prompt: 'x', count: 1, model: 'gemini-2.5-flash-image', references: [ref('object', 1)] },
-        { apiKey: 'k', fetchImpl },
+        {
+          prompt: 'x',
+          count: 1,
+          model: 'gemini-2.5-flash-image',
+          references: [1, 2, 3].map((n) => ref('object', n)),
+        },
+        { apiKey: 'k', fetchImpl: tooMany },
       ),
-    ).rejects.toThrow(/takes no set plates/)
-    expect(fetchImpl).not.toHaveBeenCalled()
+    ).rejects.toThrow(/at most 2 set plates/)
+    expect(tooMany).not.toHaveBeenCalled()
   })
 
   it('accepts people and plates together inside both budgets', async () => {

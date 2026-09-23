@@ -57,13 +57,38 @@ const endpoint = (model: string) =>
 const ASPECT_RATIO = '16:9'
 
 /**
- * What each model takes, from Google's own documentation, read 2026-09-19.
- * The 2.5 row is not documented; it keeps exactly the budget this adapter
- * enforced before the two pools existed, because guessing a limit upward
- * spends money to discover it.
+ * What a Gemini model with no published reference table is allowed to carry:
+ * the app's own policy caps, mirroring `falImageGen.referenceLimits`. Kept as
+ * one constant so the table row and the lookup fallback cannot drift apart.
+ */
+const UNDOCUMENTED_LIMITS: ReferenceLimits = { characters: 3, objects: 2 }
+
+/**
+ * What each model takes. The Gemini 3 rows are Google's own published figures
+ * (documentation read 2026-09-19, re-checked 2026-09-23); they differ because
+ * the models genuinely differ, and they are worth respecting.
+ *
+ * There is no such table for 2.5, and the row below is NOT a reading of one.
+ * It is this adapter's fallback, which is the app's own policy cap — the same
+ * answer `falImageGen.referenceLimits` gives, for the same reason: fal
+ * publishes no per-model figures either.
+ *
+ * It used to be `objects: 0`, preserving the budget from before set plates
+ * existed. That was wrong twice over. The API has no object channel to be
+ * zero — every reference travels as an `inlineData` part in one flat list, and
+ * "character" and "object" are this app's own bookkeeping — so a zero refused
+ * nothing and disabled a feature instead: `referenceBudgets` clamped the pool
+ * to nothing, `referencePlates` returned none, the set resolved to null, and a
+ * still routed here was generated with no plate AND a prompt that never named
+ * the room. Silently, on every shot, for every project on 2.5. And the reason
+ * given for the caution — that guessing upward spends money — was simply
+ * false: `pricePerImage` bills the image GENERATED, so what a call carries in
+ * changes nothing about what it costs.
+ *
+ * Undocumented now means "the app decides", never "the feature is off".
  */
 const REFERENCE_LIMITS: Record<string, ReferenceLimits> = {
-  'gemini-2.5-flash-image': { characters: 3, objects: 0 },
+  'gemini-2.5-flash-image': UNDOCUMENTED_LIMITS,
   'gemini-3.1-flash-image': { characters: 4, objects: 10 },
   'gemini-3-pro-image': { characters: 5, objects: 6 },
 }
@@ -200,7 +225,7 @@ export const geminiImageGen: ImageGenProvider = {
 
   referenceLimits(modelId?: string): ReferenceLimits {
     const model = imageGenModel(geminiImageGen, modelId)
-    return REFERENCE_LIMITS[model.id] ?? { characters: 3, objects: 0 }
+    return REFERENCE_LIMITS[model.id] ?? UNDOCUMENTED_LIMITS
   },
 
   /**
