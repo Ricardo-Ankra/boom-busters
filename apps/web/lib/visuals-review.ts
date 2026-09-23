@@ -640,9 +640,7 @@ export async function visualsReviewModel(
     // (decision 253).
     warnings: [
       ...planWarnings(
-        slots.flatMap((slot) =>
-          slot.brief ? [{ brief: slot.brief, chapter: `chapter ${slot.chapterIndex + 1}` }] : [],
-        ),
+        findingSlots,
         BANNED_PROMPT_WORDS,
         direction?.motifs ?? [],
         sets.map((set) => set.name),
@@ -660,9 +658,7 @@ export async function visualsReviewModel(
       // The silent half of the same story: references the producer uploaded
       // that no brief calls on, so the photographs are never sent at all.
       ...referenceWarnings(
-        slots.flatMap((slot) =>
-          slot.brief ? [{ brief: slot.brief, chapter: `chapter ${slot.chapterIndex + 1}` }] : [],
-        ),
+        findingSlots,
         cast.filter((member) => member.photos.length > 0).map((member) => member.name),
         sets.filter((set) => set.plates.length > 0).map((set) => set.name),
       ),
