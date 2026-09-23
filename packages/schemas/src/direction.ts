@@ -467,3 +467,264 @@ export function referenceWarnings(
 
   return warnings
 }
+
+// ---------------------------------------------------------------------------
+// Graded findings (decision 271)
+// ---------------------------------------------------------------------------
+
+export type CraftFindingKind =
+  'size-run' | 'motif-repeat' | 'set-run' | 'ignored-person' | 'ignored-set'
+
+/**
+ * Who may spend on fixing a finding. `auto`: the automatic repair after each
+ * chapter is planned, and the Fix button. `manual`: only the Fix button,
+ * because the fix is real but not clearly better unasked (it turns a free
+ * slot into a paid still, or puts a real person on screen from a description
+ * alone).
+ */
+export type RepairLevel = 'auto' | 'manual'
+
+export interface CraftFinding {
+  kind: CraftFindingKind
+  /** Index into the slots passed in. */
+  slotIndex: number
+  /** What the producer reads, and what the repair call is told. */
+  message: string
+  repair: RepairLevel
+}
+
+export interface FindingContext {
+  motifs: readonly string[]
+  /** The book's era-lock `rules` strings, taken out before a motif is looked for. */
+  eraLocks: readonly string[]
+  /** Every cast member; `photographed` means at least one photograph is held. */
+  cast: readonly { name: string; photographed: boolean }[]
+  /** Every set the film holds, by name. */
+  sets: readonly string[]
+}
+
+const PICTURE_TYPES = new Set(['still', 'hero', 'stock', 'archival'])
+const LIKENESS_TYPES = new Set(['still', 'hero'])
+
+/**
+ * What a craft check needs to know about the film, read from the book, the
+ * cast and the sets. One function so the automatic pass, the board and the
+ * Fix button cannot read different motifs or era locks.
+ */
+export function findingContext(input: {
+  direction: Pick<DirectorsBook, 'motifs' | 'eraLocks'> | null
+  cast: readonly { name: string; photographed: boolean }[]
+  sets: readonly { name: string }[]
+}): FindingContext {
+  return {
+    motifs: input.direction?.motifs ?? [],
+    eraLocks: input.direction?.eraLocks.map((lock) => lock.rules) ?? [],
+    cast: input.cast,
+    sets: input.sets.map((set) => set.name),
+  }
+}
+
+/**
+ * The problems in a plan a repair can act on, one finding per problem per
+ * slot, graded by who may spend on fixing it. It shares its predicates with
+ * `planWarnings` (`motifPattern`, `motifText`, `slotSet`, `sentencePlacesIn`),
+ * so the plan screen and the repair agree about what is wrong.
+ *
+ * Only picture briefs are ever flagged. A chart, map, headline or graphic
+ * carries claim references that are validated elsewhere, and a repair has no
+ * business rewriting them.
+ */
+export function craftFindings(
+  slots: readonly FindingSlot[],
+  context: FindingContext,
+): CraftFinding[] {
+  const findings: CraftFinding[] = []
+
+  // Size runs: the slot that makes a third in a row. The count restarts after
+  // it, because repairing that slot is what breaks the run.
+  let run = 1
+  for (let index = 1; index < slots.length; index += 1) {
+    const brief = slots[index]!.brief
+    const size = brief.shotSize
+    run = size !== undefined && size === slots[index - 1]!.brief.shotSize ? run + 1 : 1
+    if (run === 3) {
+      run = 0
+      if (PICTURE_TYPES.has(brief.type)) {
+        findings.push({
+          kind: 'size-run',
+          slotIndex: index,
+          repair: 'auto',
+          message: `this is the third "${size}" shot in a row; use a different shot size`,
+        })
+      }
+    }
+  }
+
+  // Motifs: every use after the first in a chapter, and the second of two
+  // adjacent uses wherever they fall. Era-lock text is taken out first.
+  const texts = slots.map((slot) => motifText(slot.brief, context.eraLocks))
+  for (const motif of context.motifs) {
+    const pattern = motifPattern(motif)
+    if (!pattern) continue
+    const usedIn = new Set<string>()
+    let previous = -2
+    for (const [index, slot] of slots.entries()) {
+      const text = texts[index]
+      if (text === null || text === undefined || !pattern.test(text)) continue
+      const chapter = slot.chapter ?? ''
+      const adjacent = previous === index - 1
+      if (usedIn.has(chapter) || adjacent) {
+        findings.push({
+          kind: 'motif-repeat',
+          slotIndex: index,
+          repair: 'auto',
+          message:
+            `the motif "${motif}" is already used ` +
+            `${adjacent ? 'in the slot before' : 'earlier in this chapter'}; ` +
+            'show what the sentence says instead',
+        })
+      }
+      usedIn.add(chapter)
+      previous = index
+    }
+  }
+
+  // Set runs: two adjacent shots in one room, unless the sentence puts this
+  // one there (the ignored-set rule below would ask for exactly that room).
+  for (let index = 1; index < slots.length; index += 1) {
+    const brief = slots[index]!.brief
+    const here = slotSet(brief)
+    if (here && here === slotSet(slots[index - 1]!.brief) && !sentencePlacesIn(brief, here)) {
+      findings.push({
+        kind: 'set-run',
+        slotIndex: index,
+        repair: 'auto',
+        message:
+          `the shot before is also in "${here}" and this sentence does not put us there; ` +
+          'set it where its sentence is, or in no set',
+      })
+    }
+  }
+
+  // People and rooms the sentence names but the shot leaves out.
+  for (const [index, { brief }] of slots.entries()) {
+    const likeness = LIKENESS_TYPES.has(brief.type)
+    if (!likeness && brief.type !== 'stock') continue
+
+    for (const member of context.cast) {
+      const surname = member.name.trim().split(/\s+/).pop()
+      if (surname === undefined || !containsPhrase(brief.coversText, surname)) continue
+      const shown =
+        likeness && (brief.depicts ?? []).some((entry) => nameMatches(entry, member.name))
+      if (shown) continue
+      findings.push(
+        !likeness
+          ? {
+              kind: 'ignored-person',
+              slotIndex: index,
+              repair: 'manual',
+              message:
+                `${member.name} is named here but the shot is stock; ` +
+                `fixing makes it a generated still of ${member.name}`,
+            }
+          : member.photographed
+            ? {
+                kind: 'ignored-person',
+                slotIndex: index,
+                repair: 'auto',
+                message:
+                  `${member.name} is named here and photographed, but the shot does not ` +
+                  `show ${member.name}; show ${member.name} and list the name in "depicts"`,
+              }
+            : {
+                kind: 'ignored-person',
+                slotIndex: index,
+                repair: 'manual',
+                message:
+                  `${member.name} is named here but not shown; fixing puts ${member.name} ` +
+                  'on screen from a description, with no photograph',
+              },
+      )
+    }
+
+    for (const name of context.sets) {
+      if (!sentencePlacesIn(brief, name)) continue
+      const named = slotSet(brief)
+      if (likeness && named !== null && nameMatches(named, name)) continue
+      findings.push(
+        likeness
+          ? {
+              kind: 'ignored-set',
+              slotIndex: index,
+              repair: 'auto',
+              message:
+                `the sentence is in ${name}, but the shot ` +
+                `${named === null ? 'names no set' : `is set in "${named}"`}; set it in "${name}"`,
+            }
+          : {
+              kind: 'ignored-set',
+              slotIndex: index,
+              repair: 'manual',
+              message:
+                `the sentence is in ${name} but the shot is stock; ` +
+                `fixing makes it a generated still set in "${name}"`,
+            },
+      )
+    }
+  }
+
+  return findings.sort((a, b) => a.slotIndex - b.slotIndex)
+}
+
+export interface RepairTarget {
+  slotIndex: number
+  findings: CraftFinding[]
+}
+
+/**
+ * The slots a repair rewrites: each once, carrying every finding of the given
+ * levels, in slot order. Once per slot matters: the repair answers one brief
+ * per target, in order, so a slot sent twice would put one answer on the
+ * wrong slot.
+ */
+export function repairTargets(
+  findings: readonly CraftFinding[],
+  levels: readonly RepairLevel[],
+): RepairTarget[] {
+  const bySlot = new Map<number, CraftFinding[]>()
+  for (const finding of findings) {
+    if (!levels.includes(finding.repair)) continue
+    bySlot.set(finding.slotIndex, [...(bySlot.get(finding.slotIndex) ?? []), finding])
+  }
+  return [...bySlot.entries()]
+    .sort(([a], [b]) => a - b)
+    .map(([slotIndex, group]) => ({ slotIndex, findings: group }))
+}
+
+export interface RepairSummary {
+  /** Distinct slots the Fix button would rewrite. */
+  slots: number
+  /** How many of them are stock slots whose fix makes them a generated, paid still. */
+  becomeStills: number
+  /** Distinct chapters among them: the button spends one call per chapter. */
+  chapters: number
+}
+
+/** What the Fix button would do, for its label and its confirm step. */
+export function repairSummary(
+  slots: readonly FindingSlot[],
+  findings: readonly CraftFinding[],
+): RepairSummary {
+  const targets = repairTargets(findings, ['auto', 'manual'])
+  return {
+    slots: targets.length,
+    becomeStills: targets.filter(
+      (target) =>
+        slots[target.slotIndex]?.brief.type === 'stock' &&
+        target.findings.some(
+          (finding) => finding.kind === 'ignored-person' || finding.kind === 'ignored-set',
+        ),
+    ).length,
+    chapters: new Set(targets.map((target) => slots[target.slotIndex]?.chapter ?? '')).size,
+  }
+}

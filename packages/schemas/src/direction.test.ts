@@ -2,13 +2,18 @@ import { describe, expect, it } from 'vitest'
 import {
   castWarnings,
   containsPhrase,
+  craftFindings,
   DirectorsBookSchema,
+  findingContext,
   motifPattern,
   planWarnings,
   referenceWarnings,
   renderDirectorsBook,
+  repairSummary,
+  repairTargets,
   setKeyNoun,
 } from './direction'
+import type { FindingBrief, FindingContext, FindingSlot } from './direction'
 import type { ShotBrief } from './visuals'
 
 const book = {
@@ -427,5 +432,254 @@ describe('planWarnings reads past the era lock, and lets a sentence justify its 
     expect(planWarnings(unjustified, [], [], ['Venture Capital Boardroom'])).toContainEqual(
       expect.stringContaining('fills two adjacent slots'),
     )
+  })
+})
+
+const at = (
+  brief: Partial<FindingBrief> & { type: string },
+  chapter = 'chapter 1',
+): FindingSlot => ({ chapter, brief: { coversText: 'x', description: 'x', ...brief } })
+
+const ctx = (over: Partial<FindingContext> = {}): FindingContext => ({
+  motifs: [],
+  eraLocks: [],
+  cast: [],
+  sets: [],
+  ...over,
+})
+
+describe('craftFindings (decision 271)', () => {
+  it('flags the third shot of one size in a row, then counts again from there', () => {
+    const slots = Array.from({ length: 6 }, () => at({ type: 'still', shotSize: 'wide' }))
+    expect(craftFindings(slots, ctx()).map((f) => [f.kind, f.slotIndex, f.repair])).toEqual([
+      ['size-run', 2, 'auto'],
+      ['size-run', 5, 'auto'],
+    ])
+  })
+
+  it('never flags a chart, whose brief carries claim references', () => {
+    const charts = Array.from({ length: 3 }, () =>
+      at({ type: 'chart', shotSize: 'graphic', coversText: 'Mostaque inside the boardroom.' }),
+    )
+    expect(
+      craftFindings(
+        charts,
+        ctx({
+          cast: [{ name: 'Emad Mostaque', photographed: true }],
+          sets: ['Venture Capital Boardroom'],
+        }),
+      ),
+    ).toEqual([])
+  })
+
+  it('flags a motif after its first use in a chapter, and an adjacent repeat across chapters', () => {
+    const motifs = ['server racks']
+    const hit = (chapter: string) =>
+      at({ type: 'still', shotSize: 'wide', prompt: 'rows of racks' }, chapter)
+    const miss = (chapter: string) =>
+      at({ type: 'still', shotSize: 'close', prompt: 'a desk' }, chapter)
+    const indexes = (slots: FindingSlot[]) =>
+      craftFindings(slots, ctx({ motifs })).map((f) => f.slotIndex)
+    expect(indexes([hit('chapter 1'), miss('chapter 1'), hit('chapter 1')])).toEqual([2])
+    expect(indexes([hit('chapter 1'), hit('chapter 2')])).toEqual([1])
+    expect(indexes([hit('chapter 1'), miss('chapter 2'), hit('chapter 2')])).toEqual([])
+  })
+
+  it('does not count a motif noun that is only inside the pasted era lock', () => {
+    const eraLocks = ['flat-panel LCD monitors, rack-mounted blade servers']
+    const motifs = ['a glowing blue server blade in a darkened rack']
+    const pasted = (shotSize: string) =>
+      at({
+        type: 'still',
+        shotSize,
+        prompt: 'A desk at dusk. 2019 to 2024: flat-panel LCD monitors, rack-mounted blade servers',
+      })
+    const slots = [pasted('wide'), pasted('close')]
+    expect(craftFindings(slots, ctx({ motifs, eraLocks }))).toEqual([])
+    // Without the era lock to take out, the old overcount comes back.
+    expect(craftFindings(slots, ctx({ motifs })).map((f) => f.kind)).toEqual(['motif-repeat'])
+  })
+
+  it('flags a set run only when the sentence does not put the shot there', () => {
+    const sets = ['Venture Capital Boardroom']
+    const inRoom = (coversText: string, shotSize: string) =>
+      at({ type: 'still', shotSize, coversText, set: 'Venture Capital Boardroom' })
+    expect(
+      craftFindings(
+        [inRoom('Inside the boardroom.', 'wide'), inRoom('The money was gone.', 'close')],
+        ctx({ sets }),
+      ).map((f) => [f.kind, f.slotIndex]),
+    ).toEqual([['set-run', 1]])
+    expect(
+      craftFindings(
+        [
+          inRoom('Inside the boardroom.', 'wide'),
+          inRoom('Back in the boardroom, they argued.', 'close'),
+        ],
+        ctx({ sets }),
+      ),
+    ).toEqual([])
+  })
+
+  describe('ignored-person, graded by what the fix would cost', () => {
+    const cast = [
+      { name: 'Emad Mostaque', photographed: true },
+      { name: 'Sean Parker', photographed: false },
+    ]
+    const one = (brief: Partial<FindingBrief> & { type: string }) =>
+      craftFindings([at({ shotSize: 'wide', ...brief })], ctx({ cast }))
+
+    it('is auto for a photographed member left off a still', () => {
+      expect(one({ type: 'still', coversText: 'Mostaque told the investors.' })).toEqual([
+        {
+          kind: 'ignored-person',
+          slotIndex: 0,
+          repair: 'auto',
+          message:
+            'Emad Mostaque is named here and photographed, but the shot does not show ' +
+            'Emad Mostaque; show Emad Mostaque and list the name in "depicts"',
+        },
+      ])
+    })
+
+    it('is manual for an unphotographed member, saying the likeness would come from a description', () => {
+      const [finding] = one({ type: 'still', coversText: "Parker's money arrived." })
+      expect(finding).toMatchObject({ repair: 'manual' })
+      expect(finding?.message).toContain('from a description, with no photograph')
+    })
+
+    it('is manual for anyone on a stock slot, saying it would become a generated still', () => {
+      expect(one({ type: 'stock', coversText: 'Mostaque told the investors.' })).toEqual([
+        {
+          kind: 'ignored-person',
+          slotIndex: 0,
+          repair: 'manual',
+          message:
+            'Emad Mostaque is named here but the shot is stock; fixing makes it a ' +
+            'generated still of Emad Mostaque',
+        },
+      ])
+    })
+
+    it('never flags archival, which the producer sources by hand', () => {
+      expect(one({ type: 'archival', coversText: 'Mostaque told the investors.' })).toEqual([])
+    })
+
+    it('is silent when depicts names the member, role suffix and all', () => {
+      expect(
+        one({
+          type: 'still',
+          coversText: 'Mostaque told the investors.',
+          depicts: ['Emad Mostaque, founder'],
+        }),
+      ).toEqual([])
+    })
+
+    it('matches the surname as a whole word only', () => {
+      expect(one({ type: 'still', coversText: 'They met on Parkerton Road.' })).toEqual([])
+    })
+
+    it('names people and never refers back with a pronoun', () => {
+      const messages = [
+        ...one({ type: 'still', coversText: 'Mostaque and Parker met.' }),
+        ...one({ type: 'stock', coversText: 'Mostaque and Parker met.' }),
+      ].map((f) => f.message)
+      expect(messages).toHaveLength(4)
+      for (const message of messages) expect(message).not.toMatch(/\b(he|him|his|she|her|hers)\b/i)
+    })
+  })
+
+  describe('ignored-set', () => {
+    const sets = ['Venture Capital Boardroom', 'Cloud Computing Data Center']
+    const one = (brief: Partial<FindingBrief> & { type: string }) =>
+      craftFindings([at({ shotSize: 'wide', ...brief })], ctx({ sets }))
+
+    // The owner's own example (decision 271).
+    it('is auto for a still set in the wrong room', () => {
+      expect(
+        one({
+          type: 'still',
+          coversText:
+            'Reporting at the time pointed to financial pressure on the business and ' +
+            'disagreements inside the boardroom over where it was headed.',
+          prompt: 'A high-end, aluminum-chassis rack-mounted AI server unit',
+          set: 'Cloud Computing Data Center',
+        }),
+      ).toEqual([
+        {
+          kind: 'ignored-set',
+          slotIndex: 0,
+          repair: 'auto',
+          message:
+            'the sentence is in Venture Capital Boardroom, but the shot is set in ' +
+            '"Cloud Computing Data Center"; set it in "Venture Capital Boardroom"',
+        },
+      ])
+    })
+
+    it('is silent for a still already in that room', () => {
+      expect(
+        one({
+          type: 'still',
+          coversText: 'Inside the boardroom.',
+          set: 'Venture Capital Boardroom',
+        }),
+      ).toEqual([])
+    })
+
+    it('is manual on stock', () => {
+      expect(one({ type: 'stock', coversText: 'Inside the boardroom.' })).toMatchObject([
+        { kind: 'ignored-set', repair: 'manual' },
+      ])
+    })
+
+    it('reads a generic last word together with the word before it', () => {
+      expect(one({ type: 'still', coversText: 'The data center ran hot.' })).toMatchObject([
+        { kind: 'ignored-set', message: expect.stringContaining('names no set') },
+      ])
+      expect(one({ type: 'still', coversText: 'At the center of it all was one man.' })).toEqual([])
+    })
+  })
+})
+
+describe('repairTargets, repairSummary and findingContext', () => {
+  const cast = [{ name: 'Emad Mostaque', photographed: true }]
+  const slots = [
+    at({ type: 'still', shotSize: 'wide' }),
+    at({ type: 'still', shotSize: 'wide' }),
+    // A third wide still AND a photographed name left out: two auto findings on one slot.
+    at({ type: 'still', shotSize: 'wide', coversText: 'Mostaque spoke.' }),
+    at({ type: 'stock', shotSize: 'close', coversText: 'Mostaque spoke.' }, 'chapter 2'),
+  ]
+  const findings = craftFindings(slots, ctx({ cast }))
+
+  it('sends a slot once, carrying every finding it has', () => {
+    const targets = repairTargets(findings, ['auto'])
+    expect(targets.map((t) => t.slotIndex)).toEqual([2])
+    expect(targets[0]?.findings.map((f) => f.kind).sort()).toEqual(['ignored-person', 'size-run'])
+  })
+
+  it('includes manual findings only when asked', () => {
+    expect(repairTargets(findings, ['auto', 'manual']).map((t) => t.slotIndex)).toEqual([2, 3])
+  })
+
+  it('counts slots, stills-to-be and chapters for the button', () => {
+    expect(repairSummary(slots, findings)).toEqual({ slots: 2, becomeStills: 1, chapters: 2 })
+  })
+
+  it('reads motifs and era-lock rules from the book', () => {
+    expect(
+      findingContext({
+        direction: { motifs: ['m'], eraLocks: [{ span: 's', rules: 'r' }] },
+        cast: [],
+        sets: [{ name: 'Lobby' }],
+      }),
+    ).toEqual({ motifs: ['m'], eraLocks: ['r'], cast: [], sets: ['Lobby'] })
+    expect(findingContext({ direction: null, cast: [], sets: [] })).toEqual({
+      motifs: [],
+      eraLocks: [],
+      cast: [],
+      sets: [],
+    })
   })
 })
