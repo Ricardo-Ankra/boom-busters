@@ -632,6 +632,20 @@ describe('buildShotListRequest with direction (decision 252)', () => {
       expect(withSets.system).toContain('the photographs are the room')
     })
 
+    // The prompt is what the image model reads; `set` only decides which
+    // photographs travel. A prompt that never says the room's name leaves the
+    // attached plates with no noun to attach to, which is how a shot ends up
+    // following the prose and ignoring the reference.
+    it('asks for the room to be named in the prompt, not only in the field', () => {
+      expect(withSets.system).toContain('Name the room in the prompt as well')
+    })
+
+    it('keeps light and weather with the planner and the fabric with the plates', () => {
+      // Asserted on the half that sits whole on one line of the source; the
+      // sentence wraps, and `toContain` reads the wrap.
+      expect(withSets.system).toContain('its walls, furniture and layout are not.')
+    })
+
     it('says nothing about sets when the film has none', () => {
       expect(request.messages[0]?.content).not.toContain('Sets')
       expect(request.system).not.toContain('"set"')

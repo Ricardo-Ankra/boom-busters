@@ -79,11 +79,24 @@ export function referenceBudgets(limits: ReferenceLimits): {
   }
 }
 
-/** The clause the planner is asked to write; prepended if it forgot. */
-const REFERENCE_CLAUSE = 'the person in the reference photo'
-
-/** Names the set's plate the same way, since the adapter sends flat inline images. */
-const SET_REFERENCE_CLAUSE = 'the room in the reference photograph'
+/**
+ * The declaration that closes a prompt carrying references, and the marker that
+ * stops it being written twice.
+ *
+ * The adapters send flat inline images with no labels, so the prompt is the only
+ * thing that can say what each photograph IS. It used to say so as a fragment
+ * glued to the front ("Emad Mostaque, the person in the reference photo, at a
+ * podium..."), which named the references but never ranked them, and the models
+ * followed the sentence and invented the face anyway (owner report, 2026-09-22).
+ * It now closes the prompt instead, counts what actually travelled, and says
+ * outright that the images outrank the words.
+ *
+ * Built from the photographs that ACTUALLY went, never from what the brief asked
+ * for. A set with no plates, or a model whose object budget is zero, attaches
+ * nothing, and a prompt promising references the call never carried would be
+ * lying to the model about its own input.
+ */
+const REFERENCE_MARKER = 'References attached:'
 
 /**
  * How the reference slots are spent across the people in the frame.
@@ -275,10 +288,25 @@ async function referenceMaterials(
 ): Promise<{
   names: string[]
   setName: string | null
+  /**
+   * What the prompt's closing declaration counts: one entry per person with the
+   * number of their photographs that actually travelled, and the set with its
+   * plate count. Derived from the same `photos` and `plates` the request is
+   * built from, so the sentence and the payload cannot disagree.
+   */
+  people: { name: string; photos: number }[]
+  setPlates: number
   references: ImageReference[]
   referenceUrls: string[]
 }> {
-  const none = { names: [], setName: null, references: [], referenceUrls: [] }
+  const none = {
+    names: [],
+    setName: null,
+    people: [] as { name: string; photos: number }[],
+    setPlates: 0,
+    references: [],
+    referenceUrls: [],
+  }
   const photos = spreadReferences(members, budgets.characters)
   const plates = set ? referencePlates(set, budgets.objects) : []
   if (photos.length === 0 && plates.length === 0) return none
@@ -290,11 +318,18 @@ async function referenceMaterials(
   const names = [...new Set(photos.map(({ member }) => member.name))]
   const setName = plates.length > 0 && set ? set.name : null
   const plateName = setName ?? ''
+  const people = names.map((name) => ({
+    name,
+    photos: photos.filter(({ member }) => member.name === name).length,
+  }))
+  const setPlates = plates.length
 
   if (mocked) {
     return {
       names,
       setName,
+      people,
+      setPlates,
       references: [
         ...photos.map(({ member, photo }) => ({
           name: member.name,
@@ -336,7 +371,7 @@ async function referenceMaterials(
           data: Buffer.from(object.bytes).toString('base64'),
         })
       }
-      return { names, setName, references, referenceUrls: [] }
+      return { names, setName, people, setPlates, references, referenceUrls: [] }
     }
     const referenceUrls: string[] = []
     for (const { photo } of photos) referenceUrls.push(await presignGet(photo.r2Key))
@@ -344,6 +379,8 @@ async function referenceMaterials(
     return {
       names,
       setName,
+      people,
+      setPlates,
       references: [
         ...photos.map(({ member, photo }) => ({
           name: member.name,
@@ -364,31 +401,52 @@ async function referenceMaterials(
   }
 }
 
+/** "2 photographs", "1 photograph" — the inventory counts what really travelled. */
+function photographCount(count: number): string {
+  return count === 1 ? '1 photograph' : `${count} photographs`
+}
+
+/** "a, b and c" — an English list, so the declaration reads as a sentence. */
+function andList(parts: readonly string[]): string {
+  if (parts.length <= 1) return parts[0] ?? ''
+  return `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}`
+}
+
 /**
- * "Emad Mostaque, the person in the reference photo, in Venture Capital
- * Boardroom, the room in the reference photograph." The adapter sends flat
- * inline images, so the prompt is the only thing that can label which is
- * which. Either clause is skipped when the planner already wrote it.
+ * The prompt, closed with a declaration of what is attached and what it outranks.
+ *
+ * Three things it deliberately does. It COUNTS, because "2 photographs of Markus
+ * Braun" tells the model how much evidence it holds where a bare name does not.
+ * It RANKS, because the fault being fixed is a model that read the prose and
+ * invented a face the photographs already showed it. And it names every person
+ * rather than referring back to them, because a pronoun here would be a guess
+ * about a real person this app has no business making.
+ *
+ * Skipped when the prompt already carries the marker, so a re-generation of an
+ * already-decorated prompt cannot stack two declarations.
  */
 function withReferenceClause(
   prompt: string,
-  names: readonly string[],
-  setName: string | null,
+  people: readonly { name: string; photos: number }[],
+  set: { name: string; plates: number } | null,
 ): string {
-  const needsPeopleClause = names.length > 0 && !prompt.includes(REFERENCE_CLAUSE)
-  const needsRoomClause = setName !== null && !prompt.includes(SET_REFERENCE_CLAUSE)
-  if (!needsPeopleClause && !needsRoomClause) return prompt
+  if (people.length === 0 && set === null) return prompt
+  if (prompt.includes(REFERENCE_MARKER)) return prompt
 
-  const people = names.join(' and ')
-  const peoplePart = needsPeopleClause
-    ? names.length === 1
-      ? `${people}, ${REFERENCE_CLAUSE}`
-      : `${people}, the people in the reference photos`
-    : null
-  const roomPart = needsRoomClause ? `in ${setName}, ${SET_REFERENCE_CLAUSE}` : null
+  const inventory = andList([
+    ...people.map((person) => `${photographCount(person.photos)} of ${person.name}`),
+    ...(set ? [`${photographCount(set.plates)} of ${set.name}`] : []),
+  ])
+  const authority = andList([
+    ...people.map((person) => `the likeness of ${person.name}`),
+    ...(set ? ['the room'] : []),
+  ])
 
-  const clause = [peoplePart, roomPart].filter((part): part is string => part !== null).join(', ')
-  return `${clause}. ${prompt}`
+  return (
+    `${prompt.trimEnd()}\n\n${REFERENCE_MARKER} ${inventory}. ` +
+    `The photographs are authoritative for ${authority}; match them exactly. ` +
+    `The text above describes only what happens in them.`
+  )
 }
 
 /**
@@ -607,7 +665,11 @@ export async function generateStillCandidates(
     referenceBudgets(live.referenceLimits(route.model)),
     mocked,
   )
-  const prompt = withReferenceClause(brief.prompt, cast.names, cast.setName)
+  const prompt = withReferenceClause(
+    brief.prompt,
+    cast.people,
+    cast.setName === null ? null : { name: cast.setName, plates: cast.setPlates },
+  )
 
   /**
    * The endpoint that will actually be billed. A still depicting cast members

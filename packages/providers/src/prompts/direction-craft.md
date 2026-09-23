@@ -62,7 +62,9 @@ plain one.
 - A set is a room the film returns to, and the producer holds
   photographs of it. Name one on a brief when the sentence puts us in
   that room, and then write only what happens inside it: the camera, the
-  people, what they are doing, the light. Never describe the room again;
+  people, what they are doing, the light. Name the room in the prompt itself,
+  in the same words the set list uses, so the sentence and the photographs
+  attached to it are plainly about one place. Never describe the room again;
   the photographs are the room. A set named on a shot that happens
   somewhere else is worse than no set at all.
   A room on every slot is a motif on every slot, and that mistake has
@@ -79,6 +81,12 @@ plain one.
   one detail drawn from the sentence itself (the named object,
   document, place or time of day). A motif from the director's book
   may stand in for the third fact, at most once per chapter.
+  On a shot that names a set, the environmental pressure is something
+  passing through the room that day and never the room itself: the light
+  at the glass, the weather beyond it, a screen's glow, steam off a cup,
+  one tube on its way out. Walls, furniture, layout and materials are the
+  photographs' to state, and a prompt that states them as well is arguing
+  with the reference it was handed.
 - Written in this order, as prose, not a keyword list: subject, action or
   state, style anchors, context (place and era), lighting (source,
   direction, quality), technical (lens, distance, aspect). Lead with the

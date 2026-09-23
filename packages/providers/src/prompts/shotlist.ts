@@ -296,8 +296,11 @@ ${
   photographs of each. When the sentence puts us in one,
   name it in "set" by name alone and write the shot that happens
   inside it: what the camera sees, who is there, what they are doing,
-  the light. Do not describe the room itself; the photographs are the room,
-  and a written description only argues with them. A sentence that happens
+  the light. Name the room in the prompt as well, in the same words the
+  list above uses, so the sentence and the photographs attached to it are
+  plainly about one place. Do not describe the room itself; the photographs
+  are the room, and a written description only argues with them. Its light
+  and weather are still yours; its walls, furniture and layout are not. A sentence that happens
   somewhere else names no set: a room on every slot is the same mistake as
   a motif on every slot.
 `

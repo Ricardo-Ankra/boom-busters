@@ -141,8 +141,9 @@ describeDb('generateStillCandidates with the cast', () => {
         data: expect.any(String),
       },
     ])
-    expect(request?.prompt.startsWith('Emad Mostaque, the person in the reference photo.')).toBe(
-      true,
+    expect(request?.prompt).toContain(
+      'References attached: 1 photograph of Emad Mostaque. The photographs are ' +
+        'authoritative for the likeness of Emad Mostaque; match them exactly.',
     )
     expect(candidates[0]?.references).toEqual(['Emad Mostaque'])
   })
@@ -231,9 +232,7 @@ describeDb('generateStillCandidates with the cast', () => {
 
       const request = generate.mock.calls[0]?.[0]
       expect(request?.references?.map((reference) => reference.name)).toEqual(['Emad Mostaque'])
-      expect(request?.prompt.startsWith('Emad Mostaque, the person in the reference photo.')).toBe(
-        true,
-      )
+      expect(request?.prompt).toContain('References attached: 1 photograph of Emad Mostaque.')
       expect(request?.prompt).not.toContain('Prem Akkaraju')
       expect(candidates[0]?.references).toEqual(['Emad Mostaque'])
     } finally {
@@ -438,7 +437,10 @@ describeDb('generateStillCandidates with the cast', () => {
         view: 'other',
       },
     ])
-    const prompt = 'Emad Mostaque, the person in the reference photo, at a podium.'
+    // Already decorated: the declaration is written once, never stacked.
+    const prompt = `Emad Mostaque at a podium.
+
+References attached: 1 photograph of Emad Mostaque.`
     await generateStillCandidates({ ...still, prompt }, FIXTURE_PROJECT_ID)
     expect(generate.mock.calls[0]?.[0]?.prompt).toBe(prompt)
   })
@@ -562,6 +564,36 @@ describeDb('generateStillCandidates with the cast', () => {
       expect(sent.filter((r) => r.kind === 'object')).toHaveLength(1)
     })
 
+    it('counts people and room in one declaration, and says the photographs win', async () => {
+      const member = await insertCastMember(db, {
+        projectId: FIXTURE_PROJECT_ID,
+        name: 'Emad Mostaque',
+        role: 'x',
+      })
+      await setCastPhotos(db, member.id, [photo('a', 'front'), photo('b', 'profile')])
+      const room = await insertProjectSet(db, {
+        projectId: FIXTURE_PROJECT_ID,
+        name: 'Venture Capital Boardroom',
+        look: 'A long polished table.',
+      })
+      await setSetPlates(db, room.id, [plate('plate-1', 'establishing')])
+
+      await generateStillCandidates(
+        { ...still, depicts: ['Emad Mostaque'], set: 'Venture Capital Boardroom' },
+        FIXTURE_PROJECT_ID,
+      )
+
+      const prompt = generate.mock.calls[0]?.[0].prompt ?? ''
+      expect(prompt).toContain(
+        'References attached: 2 photographs of Emad Mostaque and 1 photograph of ' +
+          'Venture Capital Boardroom. The photographs are authoritative for the likeness ' +
+          'of Emad Mostaque and the room; match them exactly. The text above describes ' +
+          'only what happens in them.',
+      )
+      // The brief's own words stay first; the declaration closes the prompt.
+      expect(prompt.startsWith(still.prompt)).toBe(true)
+    })
+
     it('names the room in the prompt, so the model knows which image is which', async () => {
       const room = await insertProjectSet(db, {
         projectId: FIXTURE_PROJECT_ID,
@@ -575,7 +607,8 @@ describeDb('generateStillCandidates with the cast', () => {
         FIXTURE_PROJECT_ID,
       )
       expect(generate.mock.calls[0]?.[0].prompt).toContain(
-        'Venture Capital Boardroom, the room in the reference photograph',
+        'References attached: 1 photograph of Venture Capital Boardroom. The photographs ' +
+          'are authoritative for the room; match them exactly.',
       )
     })
 
