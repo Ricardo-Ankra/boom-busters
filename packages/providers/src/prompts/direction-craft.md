@@ -9,14 +9,17 @@ plain one.
 ## The house look
 
 - Register: the Netflix money documentary. Dark, patient, photographic
-  realism. Rooms after the people have left. Documents, hands, screens,
-  glass, reflections, corridors, car parks at night, empty trading floors.
+  realism. The people, in the rooms where it happened: principals at the
+  table, in the corridor, at the podium, re-created with a reconstruction's
+  restraint. Empty rooms, documents and objects are punctuation between
+  them, not the film.
 - Restraint over spectacle. The story is the drama; the picture holds still
   and lets it land. One idea per frame.
-- Light carries the mood, never the face. Practical sources the viewer can
-  see: a desk lamp, a monitor, a window at dusk, sodium street light,
-  fluorescent tubes. Name the source, its direction and its quality in
-  every prompt.
+- Light carries the mood. Faces are allowed, and where the cast is
+  photographed they are wanted, lit by the scene's own sources. Practical
+  sources the viewer can see: a desk lamp, a monitor, a window at dusk,
+  sodium street light, fluorescent tubes. Name the source, its direction and
+  its quality in every prompt.
 - Grade and grain come from the Brand Kit anchors appended to every still
   prompt. Do not restate a grade in your own words; use the anchors.
 - Era is a lock, not a flavour. Period-correct objects are named
@@ -29,9 +32,15 @@ plain one.
   before anything else and show what it names: the place, the object, the
   event, the document, the person doing what the sentence says they did.
   A viewer with the sound off should be able to guess the sentence from
-  the frame. Only when a sentence names nothing photographable (an
-  abstraction, a judgment, a number with no scene around it) reach for
-  the director's book: the chapter's key image, a location, a motif.
+  the frame. A sentence that names a person or a place shows that person
+  or that place.
+- An abstract sentence is staged, not symbolised. Pressure, doubt, a
+  disagreement, a judgment: show the people it concerns, in the place it
+  happened. "Financial pressure on the business and disagreements inside
+  the boardroom" is the principals at the boardroom table, mid-argument,
+  never an object standing in for them. Only a sentence with no person and
+  no place in it reaches for the director's book, and then for the
+  chapter's location first and a motif last.
 - Shot sizes, and what each is for:
   wide (a place and the scale of what happened there),
   medium (a person in a situation, or a room's purpose),
@@ -53,12 +62,12 @@ plain one.
   matters more than the speed before it.
 - Every chapter builds to one image, named in the director's book. Plan
   the chapter so that image lands on the chapter's turn.
-- Motifs recur, and recur sparingly. The director's book names three;
-  each chapter shows at least one of them, in a new place, and
+- Motifs are optional punctuation. The director's book names three; use
+  one only where its sentence has room for it, and
   each motif at most once per chapter. Never in two adjacent slots,
   and never as the subject of the frame unless the sentence is about
-  it. A motif that does not fit the sentence stays out; the floor is
-  one motif per chapter, not one per still.
+  it. A chapter with no motif in it is a chapter whose sentences were all
+  about something; that is the goal, not a gap.
 - A set is a room the film returns to, and the producer holds
   photographs of it. Name one on a brief when the sentence puts us in
   that room, and then write only what happens inside it: the camera, the
@@ -79,8 +88,7 @@ plain one.
   human trace (a coat on a chair, a half-drunk coffee, a hand on a
   document, a figure at a doorway), and
   one detail drawn from the sentence itself (the named object,
-  document, place or time of day). A motif from the director's book
-  may stand in for the third fact, at most once per chapter.
+  document, place or time of day).
   On a shot that names a set, the environmental pressure is something
   passing through the room that day and never the room itself: the light
   at the glass, the weather beyond it, a screen's glow, steam off a cup,
@@ -94,11 +102,14 @@ plain one.
 - Name the lens: 24mm for a wide that breathes, 35mm for a documentary
   medium, 50mm for a close human scale, 85mm for a portrait, 100mm macro
   for texture.
-- Append the director's book invariants verbatim: the era lock for the
-  moment and the palette line. Add the full name and role of any person
-  shown, and their identity string ONLY when no photograph of them exists;
-  where one does, the photograph is the likeness and the identity string
-  stays out of the prompt.
+- Append the director's book palette line verbatim. The era lock is a
+  constraint, not a list to paste: every period object in the frame comes
+  from it, and the prompt names only the objects actually in the frame.
+  Never copy the era lock's list into a prompt; the image model reads a
+  list of objects as a list of things to show. Add the full name and role
+  of any person shown, and their identity string ONLY when no photograph
+  of them exists; where one does, the photograph is the likeness and the
+  identity string stays out of the prompt.
 - Banned words, because they render nothing: cinematic, stunning,
   dramatic lighting, high quality, masterpiece, epic, beautiful, moody,
   professional. Banned too: an emotion named without a body. Not "a
@@ -213,9 +224,12 @@ plain one.
 
 - Every paragraph is covered and its slots add up to its narration.
 - No three adjacent slots share a shot size.
-- Every chapter shows at least one motif, no motif more than once, and
-  builds to its key image. Every frame shows what its sentence says.
-- Every era lock is obeyed in every prompt it touches.
+- No motif more than once in a chapter, and none where its sentence has
+  no room for it. Every chapter builds to its key image. Every frame shows
+  what its sentence says; a sentence that names a person or a place shows
+  that person or that place.
+- Every era lock is obeyed in every prompt it touches, and its list is
+  never pasted into one.
 - No banned word appears in any prompt.
 - Every prompt showing a real person names them in full and lists them in
   "depicts" by name alone, no role after it. It carries their identity

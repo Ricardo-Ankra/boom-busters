@@ -55,4 +55,17 @@ describe('DIRECTION_CRAFT', () => {
     expect(DIRECTION_CRAFT).toContain('the photographs are the room')
     expect(DIRECTION_CRAFT).toContain('A room on every slot is a motif on every slot')
   })
+
+  it('stages people in place rather than symbols, and drops the motif floor (decision 271)', () => {
+    expect(DIRECTION_CRAFT).toContain('The people, in the rooms where it happened')
+    expect(DIRECTION_CRAFT).not.toContain('Rooms after the people have left')
+    expect(DIRECTION_CRAFT).not.toContain('never the face')
+    expect(DIRECTION_CRAFT).toContain('An abstract sentence is staged, not symbolised.')
+    expect(DIRECTION_CRAFT).toContain('the principals at the boardroom table')
+    expect(DIRECTION_CRAFT).not.toContain('each chapter shows at least one of them')
+    expect(DIRECTION_CRAFT).not.toContain('Every chapter shows at least one motif')
+    expect(DIRECTION_CRAFT).not.toContain('may stand in for the third fact')
+    expect(DIRECTION_CRAFT).toContain("Never copy the era lock's list into a prompt")
+    expect(DIRECTION_CRAFT).not.toContain("Append the director's book invariants verbatim")
+  })
 })
