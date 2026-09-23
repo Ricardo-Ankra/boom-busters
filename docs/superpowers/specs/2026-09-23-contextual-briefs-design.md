@@ -142,8 +142,8 @@ type CraftFindingKind =
   | 'size-run'        // third of three adjacent slots at one size
   | 'motif-repeat'    // a motif's second or later use in a chapter, or adjacent use
   | 'set-run'         // a set named on two adjacent slots
-  | 'ignored-person'  // the sentence names a photographed cast member the brief omits
-  | 'ignored-set'     // the sentence is in a held set the brief does not name
+  | 'ignored-person'  // the sentence names a cast member the shot does not show
+  | 'ignored-set'     // the sentence is in a held set the shot is not in
   | 'banned-word'
   | 'unknown-set'
 
@@ -151,9 +151,20 @@ interface CraftFinding {
   kind: CraftFindingKind
   slotIndex: number   // index into the slots passed in
   message: string     // what the producer reads, and what the repair call is told
-  repairable: boolean
+  repair: 'auto' | 'manual' | 'none'
 }
 ```
+
+`repair` separates what the machine may spend on from what only the producer
+may. **auto** findings are fixed by the automatic repair (section 7) and by
+the button (section 8). **manual** findings are shown, and fixed only when
+the producer presses the button. **none** findings are notes.
+
+The line is precision against cost. Automatic repair spends without asking,
+so it acts only where the problem is unambiguous and the fix is clearly an
+improvement. A finding whose fix would turn a free slot into a paid still, or
+put a real person on screen from a text description alone, is real but not
+clearly better, so it is the producer's call.
 
 `planWarnings` keeps its signature and its strings, and is re-expressed over
 `craftFindings`, so the plan screen and the repair pass cannot disagree about
@@ -168,26 +179,53 @@ Rules that change:
 - **The motif threshold follows the new ceiling.** A motif used more than
   once in a chapter is a finding on every use after the first; two adjacent
   uses are a finding on the second.
-- **`ignored-person` (new).** A still or hero brief whose `coversText`
-  contains, as a whole word and ignoring case, the last word of a
-  photographed cast member's name, and whose `depicts` does not name that
-  member (by `nameMatches`). Stock and archival slots are not flagged: a
-  likeness needs a still, and flagging stock would push the plan towards
-  paid stills.
-- **`ignored-set` (new).** A still or hero brief whose `coversText`
-  contains a held set's key noun and whose `set` names a different set or
-  none. The key noun is the set name's last word, unless that word is
-  generic (`center`, `centre`, `room`, `office`, `building`, `floor`,
-  `space`, `area`), in which case it is the last two words. "the boardroom"
-  matches "Venture Capital Boardroom"; "the data center" matches "Cloud
-  Computing Data Center"; "at the center of it" does not.
-- **Repairable** means: kind is `size-run`, `motif-repeat`, `set-run`,
-  `ignored-person` or `ignored-set`, AND the slot's brief is still, hero,
-  stock or archival. `banned-word` is never repairable (section 6 removes
-  it); `unknown-set` stays a note.
+- **`ignored-person` (new).** A still, hero or stock brief whose
+  `coversText` contains, as a whole word and ignoring case, the last word of
+  a cast member's name, and which does not show that member: for a still or
+  hero, `depicts` does not name them (by `nameMatches`); a stock brief can
+  never show them. Archival is never flagged, since the producer sources it
+  by hand. The repair level depends on what the fix would cost:
+
+  | the member | the slot | repair | what the fix changes |
+  |---|---|---|---|
+  | photographed | still or hero | auto | adds them to `depicts`; the photograph travels |
+  | not photographed | still or hero | manual | a likeness from the identity string alone |
+  | any | stock | manual | the slot becomes a generated, paid still |
+
+  Only the first row is unambiguous. There the producer's photograph was
+  available and went unused, which is the waste this decision exists to
+  stop. In the second, the model has no photograph, and a real face drawn
+  from a text description tends to come out as a stranger and to draw
+  refusals (decision 253). In the third, the fix is a retype from free to
+  paid. Both are real misses, so both are shown, but spending on them is
+  the producer's decision.
+- **`ignored-set` (new).** A still, hero or stock brief whose `coversText`
+  contains a held set's key noun and which is not in that set: for a still
+  or hero, `set` names a different set or none; a stock brief can never
+  carry a set's plates. The key noun is the set name's last word, unless
+  that word is generic (`center`, `centre`, `room`, `office`, `building`,
+  `floor`, `space`, `area`), in which case it is the last two words. "the
+  boardroom" matches "Venture Capital Boardroom"; "the data center" matches
+  "Cloud Computing Data Center"; "at the center of it" does not. **auto** on
+  a still or hero, **manual** on stock, for the same reason as the person
+  rule's third row.
+- **A manual finding's message says what fixing it changes**, so the
+  producer weighs it before pressing anything: "Mostaque is named here but
+  the shot is stock; fixing makes it a generated still", "Sean Parker is
+  named here; fixing puts Sean Parker on screen from a description, with no
+  photograph". Messages name people and never refer back to them with a
+  pronoun, for the reason the reference declaration does not: a pronoun
+  would be a guess about a real person.
+- **Repair levels for the rest.** `size-run`, `motif-repeat` and `set-run`
+  are **auto** on a still, hero, stock or archival brief. Every kind is
+  **none** on a chart, map, headline or graphic brief, whose briefs carry
+  claim references validated elsewhere. `banned-word` is always **none**,
+  since section 6 removes the word itself, and `unknown-set` stays a note.
 
 Inputs: slots in screen order (brief plus chapter label), banned words,
-motifs, era-lock rule strings, photographed cast names, held set names. The
+motifs, era-lock rule strings, the cast as `{ name, photographed }` (every
+member, since the person rule reaches unphotographed members too), held set
+names. The
 brief input is the narrow shape the rules read (type, shotSize, coversText,
 description, prompt, query, depicts, set), so it accepts both planned and
 stored briefs.
@@ -214,23 +252,29 @@ this change and never fetched since; it is reported and never repaired.
 ## 7. Automatic repair, once per chapter
 
 In `planChapterSlots` (`apps/web/inngest/lib/direction.ts`), after the
-chapter is parsed (a `banned-word` finding is never repairable, so it never
+chapter is parsed (a `banned-word` finding is always **none**, so it never
 reaches the repair call; section 6 removes the word on the way to storage):
 
 1. Compute `craftFindings` over this chapter's slots.
-2. If none is repairable, continue exactly as today. A clean chapter costs
-   nothing extra.
-3. Otherwise make ONE repair call: the chapter's own shot-list request
+2. If none is **auto**, continue exactly as today. A clean chapter costs
+   nothing extra, and a chapter whose only findings are **manual** is left
+   for the producer: the automatic pass never spends on them.
+3. Otherwise make ONE repair call covering the **auto** findings only: the
+   chapter's own shot-list request
    (identical system prompt and cacheable prefix, so the claim list and the
    book are a cache hit) plus one further user message listing each
-   repairable slot by index with its current brief and its findings, and
+   slot with an **auto** finding by index, with its current brief and those findings, and
    asking for `{"slots": [...]}` holding exactly one replacement per listed
    index, in that order, each keeping its `paragraphIndex` and `seconds`.
    Its answer budget is sized to the number of replacements, with the
    existing floor.
 4. Each replacement is parsed with `PlannedSlotSchema`. A replacement that
-   fails to parse, or whose brief type is not a picture type, is dropped and
-   the original kept. `paragraphIndex` and `seconds` are forced back to the
+   fails to parse, or whose brief type differs from the original's, is
+   dropped and the original kept. Keeping the type is what makes the
+   automatic pass safe to run unasked: a motif repeat on a stock slot must
+   not come back as a still, because that turns a free slot into a paid one,
+   which is the producer's call (section 8, where a stock brief may become a
+   still and nothing else may change type). `paragraphIndex` and `seconds` are forced back to the
    original's whatever the model returned, so repair can never move the
    timeline.
 5. Findings are recomputed. What survives is what the plan screen shows.
@@ -242,21 +286,31 @@ malformed answer or any other repair error keeps the unrepaired plan, which
 is a valid plan; the chapter's own `BudgetExceededError` from the first call
 behaves exactly as today. Mock mode skips the repair call: `callLlm` has no
 mock path for the shot list, the mock plan (one stock slot per paragraph,
-alternating sizes, no motif) produces no repairable finding, and the web
+alternating sizes, no motif) produces no **auto** finding, and the web
 tests exercise the repair with a stubbed model call instead.
 
 ## 8. The "Fix these" button
 
 The plan screen's warnings panel shows **Fix these N slots · ≈$X** when any
-stored slot has a repairable finding, N being the number of distinct
-repairable slots. It sends `visuals/replan.requested` with a new op,
+stored slot has an **auto** or **manual** finding, N being the number of
+distinct such slots. The button acts on both levels: pressing it is the
+producer's consent to the spending the automatic pass would not do alone.
+
+When any of those slots is a stock slot whose fix makes it a generated
+still, the button says so beside the estimate ("3 become generated stills"),
+because that changes the fetch bill as well as the planning call. The plan
+screen's existing Fetch estimate already prices every still, so it rises on
+its own once the fix lands. It sends `visuals/replan.requested` with a new op,
 `repair`, handled by the visuals-replanner under the same contract as
 `direction` and `shots`: only at the plan checkpoint, the parked runner
 untouched, failure reported as a side-job message.
 
 The `repair` op loads the plan inputs the `shots` op already loads, reads
 the stored slots, computes findings per chapter, runs the section 7 repair
-call once per chapter that has any, and writes each accepted replacement
+call once per chapter that has any **auto** or **manual** finding (the only
+difference from section 7 is that manual findings are included, and a
+replacement may change a stock brief into a still), and writes each accepted
+replacement
 with `updateSlotBrief`, which drops the slot back to `unresolved` and clears
 any refusal, so a slot pre-fetched during plan review is re-fetched for its
 new brief rather than keeping candidates bought for the old one. Slots with
@@ -272,28 +326,40 @@ generated until Fetch.
 
 ## 10. Cost
 
-- Auto-repair: at most one extra shot-list call per chapter with a
-  repairable finding, prompt prefix cached. Worst case a seven-chapter film
+- Auto-repair: at most one extra shot-list call per chapter with an
+  **auto** finding, prompt prefix cached. Worst case a seven-chapter film
   adds seven calls; a clean plan adds none.
-- The button: the same, per affected chapter, spent only when pressed.
+- The button: the same, per affected chapter, spent only when pressed. A
+  manual fix that turns a stock slot into a still also adds that still's
+  generation to the Fetch bill; the button names how many before it is
+  pressed.
+- Automatic repair never changes a slot's type, so it can never add a paid
+  still to the fetch.
 - Banned-word stripping: free.
 
 ## 11. Testing
 
 - **schemas:** `craftFindings` ignores a motif noun inside era-lock text;
-  flags every motif use after the first and an adjacent repeat; flags
-  `ignored-person` on a surname in the sentence, not for a stock slot, not
-  when `depicts` names the member with a role suffix; flags `ignored-set`
-  on a key noun, with the generic-word fallback and the "at the center of
-  it" negative; marks chart slots unrepairable; `planWarnings` strings
+  flags every motif use after the first and an adjacent repeat; grades
+  `ignored-person` by the section 5 table (auto for a photographed member on
+  a still, manual for an unphotographed member on a still, manual for anyone
+  on stock), never flags archival, and stays silent when `depicts` names the
+  member with a role suffix; grades `ignored-set` auto on a still and manual
+  on stock, with the generic-word fallback and the "at the center of it"
+  negative; grades chart slots none; manual messages say what the fix
+  changes and name people without a pronoun; `planWarnings` strings
   unchanged for a plan with no era lock.
 - **providers:** `stripBannedWords` on single words, phrases, case,
   punctuation and word boundaries ("unprofessional" survives); the repair
   request reuses the chapter's system prompt and prefix and lists each
   finding; the bible stays byte-identical to its markdown; the shot-list and
   book prompts carry the new rules.
-- **web:** `planChapterSlots` makes no repair call for a clean chapter and
-  exactly one for a chapter with findings; splices replacements while
+- **web:** `planChapterSlots` makes no repair call for a clean chapter or
+  one whose only findings are manual, and exactly one for a chapter with an
+  auto finding, which lists the auto findings and none of the manual ones;
+  the replanner's `repair` op includes manual findings and may turn a stock
+  slot into a still; the button counts both levels and names how many slots
+  become generated stills; splices replacements while
   forcing `paragraphIndex` and `seconds`; keeps the original for an
   unparseable replacement; keeps the unrepaired plan when the repair call
   exceeds the budget; stores no banned word; the replanner's `repair` op
