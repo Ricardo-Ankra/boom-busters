@@ -2,7 +2,12 @@ import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
-import { BANNED_PROMPT_WORDS, DIRECTION_CRAFT } from './direction-craft'
+import {
+  BANNED_PROMPT_WORDS,
+  DIRECTION_CRAFT,
+  stripBannedWords,
+  withoutBannedWords,
+} from './direction-craft'
 
 describe('DIRECTION_CRAFT', () => {
   it('is byte-identical to direction-craft.md, the human-editable source', () => {
@@ -67,5 +72,54 @@ describe('DIRECTION_CRAFT', () => {
     expect(DIRECTION_CRAFT).not.toContain('may stand in for the third fact')
     expect(DIRECTION_CRAFT).toContain("Never copy the era lock's list into a prompt")
     expect(DIRECTION_CRAFT).not.toContain("Append the director's book invariants verbatim")
+  })
+})
+
+describe('stripBannedWords (decision 271)', () => {
+  it('removes a banned word and the comma it leaves behind', () => {
+    expect(stripBannedWords('a stunning, cold room')).toBe('a cold room')
+    expect(stripBannedWords('a cold, stunning room')).toBe('a cold room')
+    expect(stripBannedWords('cold, stunning, quiet room')).toBe('cold, quiet room')
+  })
+
+  it('removes phrases, ignoring case', () => {
+    expect(stripBannedWords('Dramatic Lighting over a desk, 50mm lens')).toBe(
+      'over a desk, 50mm lens',
+    )
+  })
+
+  it('leaves words that only contain a banned one', () => {
+    expect(stripBannedWords('an unprofessional, moodily lit hall')).toBe(
+      'an unprofessional, moodily lit hall',
+    )
+  })
+
+  it('tidies the space a removal leaves before punctuation', () => {
+    expect(stripBannedWords('the room, cinematic.')).toBe('the room.')
+  })
+
+  it('returns clean text unchanged', () => {
+    expect(stripBannedWords('A boardroom at dusk, 35mm lens.')).toBe(
+      'A boardroom at dusk, 35mm lens.',
+    )
+  })
+})
+
+describe('withoutBannedWords', () => {
+  it('cleans a still prompt and leaves its description alone', () => {
+    expect(
+      withoutBannedWords({
+        type: 'still',
+        prompt: 'A cinematic boardroom',
+        description: 'A cinematic moment',
+      }),
+    ).toEqual({ type: 'still', prompt: 'A boardroom', description: 'A cinematic moment' })
+  })
+
+  it('returns the same object when there is nothing to clean or no prompt', () => {
+    const stock = { type: 'stock', query: 'cinematic office' }
+    expect(withoutBannedWords(stock)).toBe(stock)
+    const clean = { type: 'still', prompt: 'A boardroom' }
+    expect(withoutBannedWords(clean)).toBe(clean)
   })
 })

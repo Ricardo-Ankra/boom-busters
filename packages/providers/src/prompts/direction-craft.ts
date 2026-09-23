@@ -266,3 +266,53 @@ export const BANNED_PROMPT_WORDS = [
   'moody',
   'professional',
 ] as const
+
+/**
+ * A prompt with every banned word removed (decision 271).
+ *
+ * The bible bans these because they render nothing, and a plan note used to
+ * be the only consequence of one appearing: it named the word and left it in
+ * the prompt the image model read. Removing it is free and certain, so a
+ * banned word is now something that cannot reach the model rather than
+ * something the producer is told about.
+ *
+ * Whole words only, ignoring case, so "unprofessional" and "moodily" survive.
+ * The comma a removal orphans goes with it: "a stunning, cold room" becomes
+ * "a cold room", and "cold, stunning, quiet" keeps one comma.
+ */
+export function stripBannedWords(
+  text: string,
+  banned: readonly string[] = BANNED_PROMPT_WORDS,
+): string {
+  let out = text
+  for (const word of banned) {
+    const phrase = word
+      .trim()
+      .split(/\s+/)
+      .map((part) => part.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+      .join('\\s+')
+    if (phrase.length === 0) continue
+    out = out.replace(
+      new RegExp(`(\\s*,\\s*)?\\b${phrase}\\b(\\s*,)?`, 'gi'),
+      (_match: string, before: string | undefined, after: string | undefined) =>
+        before !== undefined && after !== undefined ? ', ' : ' ',
+    )
+  }
+  return out
+    .replace(/[ \t]{2,}/g, ' ')
+    .replace(/\s+([,.;:!?])/g, '$1')
+    .trim()
+}
+
+/**
+ * A still or hero brief with its prompt cleaned (decision 271); any other
+ * brief, and a clean one, comes back as the same object. The description is
+ * for people and is left as written.
+ */
+export function withoutBannedWords<T extends { type: string }>(brief: T): T {
+  if (brief.type !== 'still' && brief.type !== 'hero') return brief
+  const prompt = (brief as { prompt?: unknown }).prompt
+  if (typeof prompt !== 'string') return brief
+  const cleaned = stripBannedWords(prompt)
+  return cleaned === prompt ? brief : { ...brief, prompt: cleaned }
+}

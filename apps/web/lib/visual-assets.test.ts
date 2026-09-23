@@ -457,6 +457,16 @@ References attached: 1 photograph of Emad Mostaque.`
     expect(generate.mock.calls[0]?.[0]?.references).toBeUndefined()
   })
 
+  // A brief stored before decision 271, or edited in by hand, still carries a
+  // banned word; it is removed at the last point before the image model.
+  it('strips a banned word from a stored prompt before generating', async () => {
+    await generateStillCandidates(
+      { ...still, prompt: 'A cinematic boardroom at dusk.' },
+      FIXTURE_PROJECT_ID,
+    )
+    expect(generate.mock.calls[0]?.[0]?.prompt).toBe('A boardroom at dusk.')
+  })
+
   it('a graphic resolves at no cost when every logo has a mark, and waits as a placeholder otherwise', async () => {
     const mark = await insertLogo(db, {
       r2Key: `boom-busters/logos/${FIXTURE_PROJECT_ID}.png`,

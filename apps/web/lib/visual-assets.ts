@@ -42,6 +42,7 @@ import {
   mockScores,
   parseScores,
   stockAdapter,
+  stripBannedWords,
 } from '@boom-busters/providers'
 import type { ImageReference, ReferenceLimits, StockQuery } from '@boom-busters/providers'
 import { articleForClaim } from '@/lib/article-source'
@@ -666,7 +667,7 @@ export async function generateStillCandidates(
     mocked,
   )
   const prompt = withReferenceClause(
-    brief.prompt,
+    stripBannedWords(brief.prompt),
     cast.people,
     cast.setName === null ? null : { name: cast.setName, plates: cast.setPlates },
   )
