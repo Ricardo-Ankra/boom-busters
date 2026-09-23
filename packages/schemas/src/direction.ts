@@ -110,6 +110,28 @@ export interface WarnableSlot {
 }
 
 /**
+ * The fields of a brief the craft rules read (decision 271). Narrow on
+ * purpose, so the same rules run over a planned brief straight from the
+ * model and a stored brief from the database.
+ */
+export interface FindingBrief {
+  type: string
+  shotSize?: string | undefined
+  coversText: string
+  description?: string | undefined
+  prompt?: string | undefined
+  query?: string | undefined
+  depicts?: readonly string[] | undefined
+  set?: string | undefined
+}
+
+export interface FindingSlot {
+  brief: FindingBrief
+  /** The chapter this slot belongs to, as a note says it ("chapter 3"). */
+  chapter?: string | undefined
+}
+
+/**
  * The head noun of a motif as a whole-word pattern that also takes the
  * plural (decision 260): "server racks" matches "rack" and "racks",
  * "reflections in dark glass" matches "glass" and "glasses". English noun
@@ -126,24 +148,93 @@ export function motifPattern(motif: string): RegExp | null {
   return new RegExp(`\\b${stem.replace(/[-']/g, '\\$&')}(?:s|es)?\\b`, 'i')
 }
 
-/** The words of a brief a motif could hide in. Charts, maps and headlines have none. */
-function motifText(brief: ShotBrief): string | null {
-  switch (brief.type) {
-    case 'still':
-    case 'hero':
-      return `${brief.description} ${brief.prompt}`
-    case 'stock':
-    case 'archival':
-      return `${brief.description} ${brief.query}`
-    default:
-      return null
-  }
+function escapeRegExp(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
 
-/** The set a warnable slot names, or null. Only picture briefs can name one. */
-function slotSet(brief: WarnableSlot['brief']): string | null {
+/**
+ * Whether `text` contains `phrase` as whole words, ignoring case and the
+ * width of the whitespace between them (decision 271). "Parker" is not in
+ * "Parkerton"; "data center" is in "the data  center".
+ */
+export function containsPhrase(text: string, phrase: string): boolean {
+  const parts = phrase
+    .trim()
+    .split(/\s+/)
+    .filter((part) => part.length > 0)
+  if (parts.length === 0) return false
+  return new RegExp(`\\b${parts.map(escapeRegExp).join('\\s+')}\\b`, 'i').test(text)
+}
+
+/** Set-name words too general to identify one room on their own. */
+const GENERIC_SET_WORDS = new Set([
+  'center',
+  'centre',
+  'room',
+  'office',
+  'building',
+  'floor',
+  'space',
+  'area',
+])
+
+/**
+ * The words a sentence would use for a set (decision 271): the name's last
+ * word, or its last two when the last is too general to mean one room.
+ * "Venture Capital Boardroom" is "boardroom"; "Cloud Computing Data Center" is
+ * "data center", so "at the center of it" does not put a shot in the data
+ * centre.
+ */
+export function setKeyNoun(name: string): string | null {
+  const words = name.toLowerCase().match(/[a-z0-9][a-z0-9'-]*/g) ?? []
+  const last = words[words.length - 1]
+  if (last === undefined) return null
+  const before = words[words.length - 2]
+  return GENERIC_SET_WORDS.has(last) && before !== undefined ? `${before} ${last}` : last
+}
+
+/**
+ * A brief's words with the book's era-lock lists taken out (decision 271).
+ * The bible used to have every prompt paste the era lock verbatim, and an era
+ * lock is a list of objects, so a motif noun inside it ("rack" in
+ * "rack-mounted blade servers") counted as the motif in every still of the
+ * film.
+ */
+function withoutEraLocks(text: string, eraLocks: readonly string[]): string {
+  let out = text
+  for (const rules of eraLocks) {
+    const trimmed = rules.trim()
+    if (trimmed.length > 0) out = out.replace(new RegExp(escapeRegExp(trimmed), 'gi'), ' ')
+  }
+  return out
+}
+
+/** The words of a brief a motif could hide in. Charts, maps and headlines have none. */
+function motifText(brief: FindingBrief, eraLocks: readonly string[] = []): string | null {
+  const words =
+    brief.type === 'still' || brief.type === 'hero'
+      ? `${brief.description ?? ''} ${brief.prompt ?? ''}`
+      : brief.type === 'stock' || brief.type === 'archival'
+        ? `${brief.description ?? ''} ${brief.query ?? ''}`
+        : null
+  return words === null ? null : withoutEraLocks(words, eraLocks)
+}
+
+/** The set a slot names, or null. Only picture briefs can name one. */
+function slotSet(brief: FindingBrief): string | null {
   if (brief.type !== 'still' && brief.type !== 'hero') return null
   return brief.set?.trim() || null
+}
+
+/**
+ * Whether a slot's own sentence puts it in this set (decision 271). A room
+ * the sentence names is the right room however often it recurs, so this is
+ * what separates a justified run of shots in one set from the "room on every
+ * slot" mistake.
+ */
+function sentencePlacesIn(brief: FindingBrief, set: string): boolean {
+  const key = setKeyNoun(set)
+  return key !== null && containsPhrase(brief.coversText, key)
 }
 
 /**
@@ -158,6 +249,8 @@ export function planWarnings(
   bannedWords: readonly string[],
   motifs: readonly string[] = [],
   setNames: readonly string[] = [],
+  /** The book's era-lock `rules` strings, taken out before a motif is looked for (decision 271). */
+  eraLocks: readonly string[] = [],
 ): string[] {
   const warnings: string[] = []
 
@@ -187,7 +280,7 @@ export function planWarnings(
   // Motifs (decision 260): the floor is one per chapter and so is the
   // ceiling, so a motif in two picture briefs of one chapter is a note, and
   // so is the same motif in two slots that play back to back.
-  const texts = slots.map((slot) => motifText(slot.brief))
+  const texts = slots.map((slot) => motifText(slot.brief, eraLocks))
   const groups = new Map<string, string[]>()
   for (const [index, slot] of slots.entries()) {
     const text = texts[index]
@@ -254,7 +347,13 @@ export function planWarnings(
   for (const [index, slot] of slots.entries()) {
     const here = slotSet(slot.brief)
     const next = slots[index + 1] ? slotSet(slots[index + 1]!.brief) : null
-    if (here && next && here === next && !adjacent.has(here)) {
+    if (
+      here &&
+      next &&
+      here === next &&
+      !sentencePlacesIn(slots[index + 1]!.brief, next) &&
+      !adjacent.has(here)
+    ) {
       adjacent.add(here)
       warnings.push(`the set "${here}" fills two adjacent slots (from slot ${index})`)
     }

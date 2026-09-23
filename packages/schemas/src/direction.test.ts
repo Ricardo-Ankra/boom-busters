@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import {
   castWarnings,
+  containsPhrase,
   DirectorsBookSchema,
   motifPattern,
   planWarnings,
   referenceWarnings,
   renderDirectorsBook,
+  setKeyNoun,
 } from './direction'
 import type { ShotBrief } from './visuals'
 
@@ -356,5 +358,74 @@ describe('referenceWarnings: held references nothing names', () => {
   // A chapter of charts and maps names nobody and is not a miss.
   it('is silent when there are no picture briefs to name anything', () => {
     expect(referenceWarnings([], ['Markus Braun'], [])).toEqual([])
+  })
+})
+
+describe('containsPhrase and setKeyNoun (decision 271)', () => {
+  it('matches whole words, ignoring case and spacing', () => {
+    expect(containsPhrase("Parker's money arrived.", 'Parker')).toBe(true)
+    expect(containsPhrase('They met on Parkerton Road.', 'Parker')).toBe(false)
+    expect(containsPhrase('The Data  Center ran hot.', 'data center')).toBe(true)
+    expect(containsPhrase('anything', '   ')).toBe(false)
+  })
+
+  it('reads a set by its last word, or its last two when the last is generic', () => {
+    expect(setKeyNoun('Venture Capital Boardroom')).toBe('boardroom')
+    expect(setKeyNoun('Cloud Computing Data Center')).toBe('data center')
+    expect(setKeyNoun('Lobby')).toBe('lobby')
+    expect(setKeyNoun('Office')).toBe('office')
+    expect(setKeyNoun('')).toBeNull()
+  })
+})
+
+describe('planWarnings reads past the era lock, and lets a sentence justify its room (decision 271)', () => {
+  const pasted = (shotSize: 'wide' | 'close'): ShotBrief => ({
+    ...still(
+      shotSize,
+      'A desk at dusk. 2019 to 2024: flat-panel LCD monitors, rack-mounted blade servers',
+    ),
+  })
+  const motifs = ['a glowing blue server blade in a darkened rack']
+  const eraLocks = ['flat-panel LCD monitors, rack-mounted blade servers']
+
+  // The Stability AI plan: every still pasted the era lock, and the era lock
+  // says "rack-mounted", so the motif noun "rack" was found in all of them.
+  it('does not count a motif noun that is only inside the pasted era lock', () => {
+    const slots = [{ brief: pasted('wide') }, { brief: pasted('close') }]
+    expect(planWarnings(slots, [], motifs, [], eraLocks)).toEqual([])
+    expect(planWarnings(slots, [], motifs)).toEqual([
+      expect.stringContaining(
+        'motif "a glowing blue server blade in a darkened rack" appears in 2 of 2',
+      ),
+      expect.stringContaining('appears in two adjacent slots'),
+    ])
+  })
+
+  const inRoom = (coversText: string, shotSize: 'wide' | 'close'): ShotBrief => ({
+    type: 'still',
+    coversText,
+    description: 'x',
+    motion: { kind: 'static' },
+    transition: 'cut',
+    prompt: 'x',
+    shotSize,
+    set: 'Venture Capital Boardroom',
+  })
+
+  it('does not call two adjacent shots in one room a run when the sentence is set there', () => {
+    const justified = [
+      { brief: inRoom('Inside the boardroom.', 'wide') },
+      { brief: inRoom('Back in the boardroom, they argued.', 'close') },
+    ]
+    expect(planWarnings(justified, [], [], ['Venture Capital Boardroom'])).not.toContainEqual(
+      expect.stringContaining('fills two adjacent slots'),
+    )
+    const unjustified = [
+      { brief: inRoom('Inside the boardroom.', 'wide') },
+      { brief: inRoom('The money was gone.', 'close') },
+    ]
+    expect(planWarnings(unjustified, [], [], ['Venture Capital Boardroom'])).toContainEqual(
+      expect.stringContaining('fills two adjacent slots'),
+    )
   })
 })

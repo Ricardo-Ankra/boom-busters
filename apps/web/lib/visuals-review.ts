@@ -621,6 +621,7 @@ export async function visualsReviewModel(
         BANNED_PROMPT_WORDS,
         direction?.motifs ?? [],
         sets.map((set) => set.name),
+        direction?.eraLocks.map((lock) => lock.rules) ?? [],
       ),
       ...castWarnings(
         direction,

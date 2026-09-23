@@ -208,6 +208,7 @@ export const visualsReplanner = inngest.createFunction(
         BANNED_PROMPT_WORDS,
         setup.direction?.motifs ?? [],
         setup.sets.map((set) => set.name),
+        setup.direction?.eraLocks.map((lock) => lock.rules) ?? [],
       )
       await notify({
         kind: 'heads-up',

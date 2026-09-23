@@ -254,6 +254,7 @@ export const visualsRunner = inngest.createFunction(
       BANNED_PROMPT_WORDS,
       direction.book.motifs,
       setup.sets.map((set) => set.name),
+      direction.book.eraLocks.map((lock) => lock.rules),
     )
     await step.run('open-plan-park', () =>
       openReviewGate(ctx, {
