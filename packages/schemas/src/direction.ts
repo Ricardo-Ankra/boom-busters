@@ -540,23 +540,29 @@ export function craftFindings(
 ): CraftFinding[] {
   const findings: CraftFinding[] = []
 
-  // Size runs: the slot that makes a third in a row. The count restarts after
-  // it, because repairing that slot is what breaks the run.
-  let run = 1
-  for (let index = 1; index < slots.length; index += 1) {
-    const brief = slots[index]!.brief
-    const size = brief.shotSize
-    run = size !== undefined && size === slots[index - 1]!.brief.shotSize ? run + 1 : 1
+  // Size runs: the photograph that makes a third in a row at one size. A
+  // chart, map, headline or graphic is the "graphic" family and breaks a run
+  // of photographs rather than joining one, and so does a slot with no size.
+  // The count restarts after a flagged slot, because repairing it breaks the
+  // run there.
+  let run = 0
+  let runSize: string | undefined
+  for (const [index, { brief }] of slots.entries()) {
+    if (!PICTURE_TYPES.has(brief.type) || brief.shotSize === undefined) {
+      run = 0
+      runSize = undefined
+      continue
+    }
+    run = brief.shotSize === runSize ? run + 1 : 1
+    runSize = brief.shotSize
     if (run === 3) {
       run = 0
-      if (PICTURE_TYPES.has(brief.type)) {
-        findings.push({
-          kind: 'size-run',
-          slotIndex: index,
-          repair: 'auto',
-          message: `this is the third "${size}" shot in a row; use a different shot size`,
-        })
-      }
+      findings.push({
+        kind: 'size-run',
+        slotIndex: index,
+        repair: 'auto',
+        message: `this is the third "${brief.shotSize}" shot in a row; use a different shot size`,
+      })
     }
   }
 

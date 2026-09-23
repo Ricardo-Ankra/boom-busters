@@ -457,6 +457,22 @@ describe('craftFindings (decision 271)', () => {
     ])
   })
 
+  it('lets a chart break a run of photographs, whatever size it is tagged', () => {
+    const slots = [
+      at({ type: 'still', shotSize: 'wide' }),
+      at({ type: 'chart', shotSize: 'wide' }),
+      at({ type: 'still', shotSize: 'wide' }),
+      at({ type: 'still', shotSize: 'wide' }),
+    ]
+    expect(craftFindings(slots, ctx())).toEqual([])
+  })
+
+  it('flags the third photograph of a run that starts after a chart', () => {
+    const wide = (type: string) => at({ type, shotSize: 'wide' })
+    const slots = ['still', 'still', 'chart', 'still', 'still', 'still'].map(wide)
+    expect(craftFindings(slots, ctx()).map((f) => f.slotIndex)).toEqual([5])
+  })
+
   it('never flags a chart, whose brief carries claim references', () => {
     const charts = Array.from({ length: 3 }, () =>
       at({ type: 'chart', shotSize: 'graphic', coversText: 'Mostaque inside the boardroom.' }),
