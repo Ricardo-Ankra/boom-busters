@@ -164,3 +164,27 @@ describe('mockDirectorsBook', () => {
     expect(a.principals[0]?.depiction).toBe('anonymous')
   })
 })
+
+describe('the book cannot converge on one symbol (decision 271)', () => {
+  const request = buildDirectorsBookRequest({
+    caseTitle: 'Stability AI',
+    chapters: [{ title: 'The exit', paragraphs: ['He is gone.'] }],
+    claims: [],
+    styleAnchors: 'a',
+  })
+
+  it('keeps the anchor object out of the motifs, and the motifs apart', () => {
+    expect(request.system).toContain('The anchor object is one object the film returns to')
+    expect(request.system).toContain('sharing no head noun with each other or with the')
+  })
+
+  it('puts people in the thesis and in the key images', () => {
+    expect(request.system).toContain('including its people')
+    expect(request.system).toContain('describes how the film looks with its people in it')
+    expect(request.system).toContain('led by the people and place the claims name for it')
+  })
+
+  it('keeps an era lock off the subject of a frame', () => {
+    expect(request.system).toContain('Era locks constrain what a frame may contain')
+  })
+})

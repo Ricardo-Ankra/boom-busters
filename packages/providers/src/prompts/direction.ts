@@ -36,7 +36,7 @@ export interface DirectionChapterInput {
 
 const BOOK_SHAPE = `Return JSON of this exact shape:
 {
-  "visualThesis": string (one or two sentences: what this film looks like and why),
+  "visualThesis": string (one or two sentences: what this film looks like, including its people, and why),
   "eraLocks": [{"span": "1995 to 2008", "rules": "period-correct objects, named"}],
   "palette": {"accent": "#hex", "temperature": "cold"|"neutral"|"warm", "note": string},
   "motifs": [string, string, string] (exactly three recurring visual motifs),
@@ -116,12 +116,24 @@ Rules for the book:
   photographs, a figure sourced to a filing that does not exist, an invented
   crime. It is not a list of settings the principals may not appear in.
 - Era locks name objects, not adjectives.
+- Era locks constrain what a frame may contain; they are never the subject
+  of a frame.
 - Motifs are this story's own: an object, a place detail or a recurring
   situation the claims establish (the product itself, the lobby of the named
   building, a specific document type, a specific vehicle), each able to sit
   in the background of a frame whose subject is something else. They are
   never the house look's own furniture (empty chairs, screens, glass,
   corridors), which every film already has. A motif that could belong to any corporate collapse is chosen again.
+- The anchor object is one object the film returns to; it is never one of
+  the motifs, and it is never the story's subject. The three motifs are
+  three different objects, sharing no head noun with each other or with the
+  anchor object. A film whose anchor, motifs and key images all show one
+  thing has one image, not a book.
+- The visual thesis describes how the film looks with its people in it. It
+  never prescribes empty rooms, or one object, as what the film is made of.
+- A chapter's key image is one photographable moment at the chapter's turn,
+  led by the people and place the claims name for it. It is not a list of
+  motifs, and it carries at most one.
 - The palette sits inside the Brand Kit grade: "${input.styleAnchors}".
 - One chapter entry per chapter, numbered as given, in order.
 - Every person listed under "Cast, already photographed" is a principal with

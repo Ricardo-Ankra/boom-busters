@@ -678,3 +678,34 @@ describe('the sentence decides the frame (decision 260)', () => {
     expect(request.system).toContain('needs no motif at all')
   })
 })
+
+describe('the planning rules stage the sentence (decision 271)', () => {
+  const request = buildShotListRequest({
+    caseTitle: 'Stability AI',
+    chapterTitle: 'The exit',
+    paragraphs: [{ index: 0, text: 'He is gone.', seconds: 9 }],
+    claims: [],
+    styleAnchors: 'a',
+  })
+
+  it('stages an abstract sentence through its people and place, never a symbol', () => {
+    expect(request.system).toContain('Stage an abstract sentence, never symbolise it.')
+    expect(request.system).toContain(
+      'it is not a server, a chair or a document standing in for them',
+    )
+    expect(request.system).not.toContain(
+      'the sentence names nothing photographable do you reach for the book',
+    )
+  })
+
+  it('shows the person a sentence names', () => {
+    expect(request.system).toContain('A sentence that names a person shows that person')
+  })
+
+  it('treats the era lock as a constraint, and sets no motif minimum', () => {
+    expect(request.system).toContain(
+      'The era lock is a constraint on what may appear, not a list to paste.',
+    )
+    expect(request.system).toContain('There is no minimum')
+  })
+})

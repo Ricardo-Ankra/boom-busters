@@ -241,13 +241,20 @@ ${slotShapes(sets.length > 0)}
 Planning rules:
 - The sentence decides the frame. Read "coversText" before anything else and
   show what it says: the place it names, the object it mentions, the thing
-  that happened, the person doing what the sentence says they did. Only when
-  the sentence names nothing photographable do you reach for the book: the
-  chapter's key image, a location, a motif.
+  that happened, the person doing what the sentence says they did.
+  A sentence that names a person shows that person, listed in "depicts".
+- Stage an abstract sentence, never symbolise it. "Financial pressure and
+  disagreements inside the boardroom" is the principals at the boardroom
+  table; it is not a server, a chair or a document standing in for them.
+  Only a sentence with no person and no place in it reaches for the book,
+  and then for the chapter's location first and a motif last.
+- The era lock is a constraint on what may appear, not a list to paste.
+  Name only the period objects actually in your frame.
 - Motifs are seasoning, not the meal. Use each motif at most once across the chapter,
   never in consecutive slots, and never as the subject of a frame unless the
   sentence is about it. A still whose sentence gives you a concrete subject
   needs no motif at all.
+  There is no minimum: a chapter with no motif in it is fine.
 - Cover every paragraph. A slot runs 4-15 seconds ("seconds" is always a
   positive number); a paragraph's slots should add up to roughly its narration
   length.
