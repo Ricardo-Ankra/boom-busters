@@ -282,7 +282,8 @@ Planning rules:
   slot is manual work for a human.
 - "still" is an AI-GENERATED image. Write the prompt as the bible's "What a
   still prompt must contain" says: prose, subject first, three physical
-  facts, lens and light named, then the book's era lock and palette, then
+  facts, lens and light named, then the book's palette line (the era lock
+  only limits which period objects you name; never paste its list), then
   these Brand Kit anchors verbatim: "${input.styleAnchors}".
   People come in three kinds and they never mix:
   (a) A name in "Photographed" above. Name them by full name and role, add
@@ -456,29 +457,48 @@ export function buildShotRepairRequest(
 
 const ShotRepairEnvelopeSchema = z.object({ briefs: z.array(z.unknown()) })
 
+/** A sentence with its ends trimmed and every run of whitespace made one space. */
+function normaliseSentence(text: string): string {
+  return text.trim().replace(/\s+/g, ' ')
+}
+
 /**
  * The replacements, one per original, in order. `null` keeps the original:
- * a reply that is missing, malformed, or changes a type the caller did not
- * allow. A repair can make a brief better and can never make one vanish or
- * land on the wrong slot. `coversText` is always the original's, because the
- * board anchors a slot to its sentence by it.
+ * a reply that is missing, malformed, changes a type the caller did not
+ * allow, or answers a different sentence than the brief it sits against. A
+ * repair can make a brief better and can never make one vanish or land on the
+ * wrong slot: a model that skips a brief shifts every later answer up one,
+ * and the sentence is how that shift shows, so a reply whose `coversText`
+ * differs from the original's (beyond whitespace) is refused rather than
+ * overwritten. An accepted reply carries the original `coversText` exactly,
+ * because the board anchors a slot to its sentence by it.
+ *
+ * Stock may become a still only when the call allows it AND the original is
+ * cleared for it (`mayBecomeStill`, from the schemas predicate of that name),
+ * so the job never retypes more slots than the button disclosed.
  *
  * Throws on an answer that is not JSON at all; the caller decides whether
  * that keeps the plan (the automatic pass) or reports a failure (the button).
  */
 export function parseShotRepair(
   text: string,
-  originals: readonly { type: string; coversText: string }[],
+  originals: readonly { type: string; coversText: string; mayBecomeStill?: boolean }[],
   options: { allowStockToStill: boolean },
 ): (PlannedBrief | null)[] {
   const envelope = parseJsonCompletion(text, ShotRepairEnvelopeSchema, 'shot repair')
   return originals.map((original, at) => {
     const parsed = PlannedBriefSchema.safeParse(envelope.briefs[at])
     if (!parsed.success) return null
+    if (normaliseSentence(parsed.data.coversText) !== normaliseSentence(original.coversText)) {
+      return null
+    }
     const next = parsed.data.type
     const allowed =
       next === original.type ||
-      (options.allowStockToStill && original.type === 'stock' && next === 'still')
+      (options.allowStockToStill &&
+        original.type === 'stock' &&
+        next === 'still' &&
+        original.mayBecomeStill === true)
     return allowed ? { ...parsed.data, coversText: original.coversText } : null
   })
 }

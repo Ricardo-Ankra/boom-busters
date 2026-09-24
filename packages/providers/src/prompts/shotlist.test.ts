@@ -710,6 +710,11 @@ describe('the planning rules stage the sentence (decision 271)', () => {
     )
     expect(request.system).toContain('There is no minimum')
   })
+
+  it('no longer asks a still prompt to carry the era lock', () => {
+    expect(request.system).not.toContain("then the book's era lock and palette")
+    expect(request.system).toContain('never paste its list')
+  })
 })
 
 describe('buildShotRepairRequest and parseShotRepair (decision 271)', () => {
@@ -764,20 +769,46 @@ describe('buildShotRepairRequest and parseShotRepair (decision 271)', () => {
   })
 
   it('returns the replacements in order, with the original sentence forced back', () => {
-    const reply = JSON.stringify({
+    const rewritten = JSON.stringify({
       briefs: [{ ...still, coversText: 'rewritten', prompt: 'Emad Mostaque at the table.' }],
     })
-    expect(parseShotRepair(reply, [still], { allowStockToStill: false })[0]).toMatchObject({
+    expect(parseShotRepair(rewritten, [still], { allowStockToStill: false })).toEqual([null])
+    const respaced = JSON.stringify({
+      briefs: [
+        {
+          ...still,
+          coversText: 'Mostaque  told the investors.  ',
+          prompt: 'Emad Mostaque at the table.',
+        },
+      ],
+    })
+    expect(parseShotRepair(respaced, [still], { allowStockToStill: false })[0]).toMatchObject({
       type: 'still',
       prompt: 'Emad Mostaque at the table.',
       coversText: 'Mostaque told the investors.',
     })
   })
 
+  it('refuses a reply that has shifted onto the wrong brief', () => {
+    const second = { ...still, coversText: 'The money was gone.' }
+    // The model skipped brief 1: its first answer is brief 2's.
+    const reply = JSON.stringify({ briefs: [second] })
+    expect(parseShotRepair(reply, [still, second], { allowStockToStill: false })).toEqual([
+      null,
+      null,
+    ])
+  })
+
+  it('refuses stock to still for a slot not cleared to become one, even when the call allows it', () => {
+    const reply = JSON.stringify({ briefs: [still] })
+    expect(parseShotRepair(reply, [stock], { allowStockToStill: true })).toEqual([null])
+  })
+
   it('refuses a type change unless stock-to-still was allowed', () => {
     const reply = JSON.stringify({ briefs: [still] })
-    expect(parseShotRepair(reply, [stock], { allowStockToStill: false })).toEqual([null])
-    expect(parseShotRepair(reply, [stock], { allowStockToStill: true })[0]).toMatchObject({
+    const cleared = { ...stock, mayBecomeStill: true }
+    expect(parseShotRepair(reply, [cleared], { allowStockToStill: false })).toEqual([null])
+    expect(parseShotRepair(reply, [cleared], { allowStockToStill: true })[0]).toMatchObject({
       type: 'still',
     })
     // Only stock may change, and only into a still.
