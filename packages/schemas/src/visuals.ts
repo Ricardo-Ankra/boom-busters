@@ -2,6 +2,7 @@ import { z } from 'zod'
 import { GraphicSceneSchema, PlannedGraphicSceneSchema, figureCitesClaim } from './graphics'
 import { UlidSchema } from './ids'
 import { logoForEntity, type LogoIndex } from './logos'
+import { SetPlateDirectionSchema } from './sets'
 
 /**
  * The visuals stage's shared vocabulary (build spec sections 5 and 7.4;
@@ -135,6 +136,17 @@ export const ArchivalBriefSchema = z.object({
 })
 export type ArchivalBrief = z.infer<typeof ArchivalBriefSchema>
 
+/**
+ * Where the camera stands in a set (decision 275). Written by the planner for
+ * every still that names a set, and overridable per slot on the board.
+ */
+export const SetCameraSchema = z.object({
+  facing: SetPlateDirectionSchema,
+  position: z.string().trim().min(3).max(120),
+  lens: z.string().trim().min(1).max(40).optional(),
+})
+export type SetCamera = z.infer<typeof SetCameraSchema>
+
 export const StillBriefSchema = z.object({
   type: z.literal('still'),
   ...briefCommon,
@@ -150,6 +162,11 @@ export const StillBriefSchema = z.object({
    * still and is noted on the plan screen.
    */
   set: z.string().min(1).optional(),
+  /**
+   * Where the camera stands in `set` (decision 275). A malformed camera is
+   * dropped, never fatal: a brief that plans without one still plans.
+   */
+  camera: SetCameraSchema.optional().catch(undefined),
 })
 export type StillBrief = z.infer<typeof StillBriefSchema>
 

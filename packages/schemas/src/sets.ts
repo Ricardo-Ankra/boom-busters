@@ -17,38 +17,66 @@ import { CastPhotoMimeSchema, nameMatches } from './cast'
  */
 
 /**
- * Which way a GENERATED plate looks at the room (decision 273). A set with
- * one plate gives every still of it one viewpoint to copy, so a plate can be
- * generated from another angle, conditioned on the plates the set already
- * holds. Only the first plate is generated from the look alone, so only
- * `establishing` is offered before a set has one.
+ * Which way a plate's camera faces (decision 275). A set's first image
+ * defines north: whatever it looks at is the north wall, and the others
+ * follow clockwise seen from above. Directions, not angle names, because a
+ * planner can place a camera by a direction and cannot by "reverse".
  */
-export const SET_PLATE_ANGLES = ['establishing', 'reverse', 'side', 'detail'] as const
-export const SetPlateAngleSchema = z.enum(SET_PLATE_ANGLES)
-export type SetPlateAngle = z.infer<typeof SetPlateAngleSchema>
+export const SET_PLATE_DIRECTIONS = ['north', 'east', 'south', 'west'] as const
+export const SetPlateDirectionSchema = z.enum(SET_PLATE_DIRECTIONS)
+export type SetPlateDirection = z.infer<typeof SetPlateDirectionSchema>
+
+export const OPPOSITE_DIRECTION: Record<SetPlateDirection, SetPlateDirection> = {
+  north: 'south',
+  east: 'west',
+  south: 'north',
+  west: 'east',
+}
+
+/** The two directions either side, clockwise first. */
+const ADJACENT_DIRECTIONS: Record<
+  SetPlateDirection,
+  readonly [SetPlateDirection, SetPlateDirection]
+> = {
+  north: ['east', 'west'],
+  east: ['south', 'north'],
+  south: ['west', 'east'],
+  west: ['north', 'south'],
+}
+
+/** What "Generate a view" may ask for: a direction, or a close detail. */
+export const SET_VIEW_REQUESTS = [...SET_PLATE_DIRECTIONS, 'detail'] as const
+export const SetViewRequestSchema = z.enum(SET_VIEW_REQUESTS)
+export type SetViewRequest = z.infer<typeof SetViewRequestSchema>
 
 /**
- * Which way a plate looks at the room: a generated plate records the angle it
- * was generated from, so every angle is a view (decision 274). `other` is an
- * uploaded plate after a set's first, whose viewpoint nobody stated, and
- * every plate recorded before the angles existed.
+ * A plate's view: a direction, a close detail, or `other` for an upload whose
+ * direction nobody stated. Plates stored under decisions 273 and 274's names
+ * are read forward here, so nothing in the database is migrated.
  */
-export const SET_PLATE_VIEWS = [...SET_PLATE_ANGLES, 'other'] as const
-export const SetPlateViewSchema = z.enum(SET_PLATE_VIEWS)
+export const SET_PLATE_VIEWS = [...SET_PLATE_DIRECTIONS, 'detail', 'other'] as const
+const LEGACY_PLATE_VIEWS: Record<string, (typeof SET_PLATE_VIEWS)[number]> = {
+  establishing: 'north',
+  reverse: 'south',
+  side: 'east',
+}
+export const SetPlateViewSchema = z.preprocess(
+  (value) =>
+    typeof value === 'string' && value in LEGACY_PLATE_VIEWS ? LEGACY_PLATE_VIEWS[value] : value,
+  z.enum(SET_PLATE_VIEWS),
+)
 export type SetPlateView = z.infer<typeof SetPlateViewSchema>
 
 /**
- * The view an uploaded plate is recorded as (decision 274). The producer is
- * no longer asked: the view never reached a prompt, and its one effect, which
- * plates travel, is better decided by `referencePlates`. A set's first plate
- * is the room seen whole; anything after it is another angle.
+ * The view an uploaded plate is recorded as (decisions 274, 275): a set's
+ * first plate defines north; anything after it is `other` until someone says.
  */
 export function uploadedPlateView(set: Pick<ProjectSet, 'plates'>): SetPlateView {
-  return set.plates.length === 0 ? 'establishing' : 'other'
+  return set.plates.length === 0 ? 'north' : 'other'
 }
 
-/** Two or three angles pin a room; beyond four the model averages a different one. */
-export const MAX_SET_PLATES = 4
+/** Four directions and two details (decision 275). At most two travel with a still. */
+export const MAX_SET_PLATES = 6
 
 export const SetPlateSchema = z.object({
   /** boom-busters/sets/<projectId>/<contentHash>.<ext> */
@@ -86,30 +114,20 @@ export type ProjectSet = z.infer<typeof ProjectSetSchema>
  * shows materials and little of the space.
  */
 const VIEW_RANK: Record<SetPlateView, number> = {
-  establishing: 0,
-  reverse: 1,
-  side: 2,
-  other: 3,
-  detail: 4,
+  north: 0,
+  south: 1,
+  east: 2,
+  west: 3,
+  other: 4,
+  detail: 5,
 }
 
-/**
- * The plates sent with a still, at most `limit` (decision 274). Only two
- * travel of the four a set may hold, so they are chosen to be two different
- * viewpoints: the best view of each kind first, in `VIEW_RANK` order, and
- * only then a second plate of a kind already sent. Two views of one room
- * teach the model the room; two copies of one view teach it a picture.
- * Upload order breaks ties.
- */
-export function referencePlates(set: Pick<ProjectSet, 'plates'>, limit = 1): SetPlate[] {
-  const ranked = set.plates
-    .map((plate, at) => ({ plate, at }))
-    .sort((a, b) => VIEW_RANK[a.plate.view] - VIEW_RANK[b.plate.view] || a.at - b.at)
-    .map(({ plate }) => plate)
+/** The best plate of each view first, in `order`, then second plates of a view already taken. */
+function distinctFirst(plates: readonly SetPlate[], limit: number): SetPlate[] {
   const seen = new Set<SetPlateView>()
   const distinct: SetPlate[] = []
   const repeats: SetPlate[] = []
-  for (const plate of ranked) {
+  for (const plate of plates) {
     if (seen.has(plate.view)) repeats.push(plate)
     else {
       seen.add(plate.view)
@@ -117,6 +135,38 @@ export function referencePlates(set: Pick<ProjectSet, 'plates'>, limit = 1): Set
     }
   }
   return [...distinct, ...repeats].slice(0, Math.max(0, limit))
+}
+
+/**
+ * The plates sent with a still that has no camera, at most `limit`
+ * (decision 274, directions from 275): two different viewpoints before a
+ * second copy of one. Upload order breaks ties.
+ */
+export function referencePlates(set: Pick<ProjectSet, 'plates'>, limit = 1): SetPlate[] {
+  const ranked = set.plates
+    .map((plate, at) => ({ plate, at }))
+    .sort((a, b) => VIEW_RANK[a.plate.view] - VIEW_RANK[b.plate.view] || a.at - b.at)
+    .map(({ plate }) => plate)
+  return distinctFirst(ranked, limit)
+}
+
+/**
+ * The plates sent with a still whose camera faces `facing` (decision 275):
+ * the plate facing the same way, then the adjacent directions, then details,
+ * then undirected uploads. Never the opposite direction's plate, which shows
+ * what is behind the camera, unless it is all the set holds: a set with one
+ * plate sends it whatever the camera faces, and the inventory carries the rest.
+ */
+export function platesForCamera(
+  set: Pick<ProjectSet, 'plates'>,
+  facing: SetPlateDirection | undefined,
+  limit: number,
+): SetPlate[] {
+  if (facing === undefined) return referencePlates(set, limit)
+  const order: SetPlateView[] = [facing, ...ADJACENT_DIRECTIONS[facing], 'detail', 'other']
+  const ordered = order.flatMap((view) => set.plates.filter((plate) => plate.view === view))
+  const chosen = distinctFirst(ordered, limit)
+  return chosen.length > 0 ? chosen : referencePlates(set, limit)
 }
 
 /**

@@ -128,7 +128,7 @@ export async function updateProjectSet(
   return toSet(row)
 }
 
-/** Replace the plate list. At most four; the schema and this check agree. */
+/** Replace the plate list. At most six; the schema and this check agree. */
 export async function setSetPlates(
   db: Database,
   id: string,

@@ -3,8 +3,8 @@
 import { Maximize2 } from 'lucide-react'
 import * as React from 'react'
 import { useRouter } from 'next/navigation'
-import { MAX_SET_PLATES, SET_PLATE_ANGLES } from '@boom-busters/schemas'
-import type { ProjectSet, SetPlateAngle, SetPlateView, SlotCandidate } from '@boom-busters/schemas'
+import { MAX_SET_PLATES, SET_VIEW_REQUESTS } from '@boom-busters/schemas'
+import type { ProjectSet, SetPlateView, SetViewRequest, SlotCandidate } from '@boom-busters/schemas'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input, Label, Select } from '@/components/ui/input'
@@ -45,25 +45,27 @@ import {
  * the same strip, the same full-size Preview, the same click to choose.
  */
 
-/** What each generated angle is called on the card (decision 273). */
-const ANGLE_LABELS: Record<SetPlateAngle, string> = {
-  establishing: 'Establishing, from the entrance',
-  reverse: 'Reverse, from the far end',
-  side: 'Side, across the room',
+/** What each generated view is called on the card (decision 275). */
+const VIEW_REQUEST_LABELS: Record<SetViewRequest, string> = {
+  north: "North, the first plate's view",
+  east: 'East',
+  south: 'South, the reverse',
+  west: 'West',
   detail: 'Detail, close on the furniture',
 }
 
-/** A generated batch and the angle it was asked for, which decides the view a chosen plate records. */
+/** A generated batch and the view asked for each candidate, which decides the view a chosen plate records. */
 interface CandidateBatch {
-  angle: SetPlateAngle
   list: SlotCandidate[]
+  views: SetPlateView[]
 }
 
-/** The caption under each plate: the angle it shows, or "Other" when nobody said. */
+/** The caption under each plate: the direction it shows, or "Other" when nobody said. */
 const VIEW_LABELS: Record<SetPlateView, string> = {
-  establishing: 'Establishing',
-  reverse: 'Reverse',
-  side: 'Side',
+  north: 'North',
+  east: 'East',
+  south: 'South',
+  west: 'West',
   detail: 'Detail',
   other: 'Other',
 }
@@ -76,11 +78,11 @@ export interface SetCardProps {
   /** What Generate a plate will spend on the routed stills model, in USD. */
   plateEstimateUsd: number
   /**
-   * What another angle of each plated set will spend, by set id. It carries
+   * What another view of each plated set will spend, by set id. It carries
    * the set's plates, so it may take the reference route, which on fal costs
    * more than the plain one. Falls back to `plateEstimateUsd`.
    */
-  angleEstimatesUsd?: Readonly<Record<string, number>>
+  viewEstimatesUsd?: Readonly<Record<string, number>>
 }
 
 /** `run` results a wider shape than `ActionResult` can carry, such as the candidates a generate call returns. */
@@ -97,7 +99,7 @@ export function SetCard({
   sets,
   plateUrls,
   plateEstimateUsd,
-  angleEstimatesUsd = {},
+  viewEstimatesUsd = {},
 }: SetCardProps) {
   const router = useRouter()
   const { toast } = useToast()
@@ -192,7 +194,7 @@ export function SetCard({
                 plateUrls={plateUrls}
                 plateEstimateUsd={
                   set.plates.length > 0
-                    ? (angleEstimatesUsd[set.id] ?? plateEstimateUsd)
+                    ? (viewEstimatesUsd[set.id] ?? plateEstimateUsd)
                     : plateEstimateUsd
                 }
                 busy={busy}
@@ -274,9 +276,9 @@ function SetRow({
 }) {
   const [name, setName] = React.useState(set.name)
   const [look, setLook] = React.useState(set.look)
-  // The first plate is always the establishing view; after that the default
-  // is the view a set with one plate most lacks.
-  const [angle, setAngle] = React.useState<SetPlateAngle>('reverse')
+  // The first plate is always the north view; after that the default is the
+  // view a set with one plate most lacks.
+  const [view, setView] = React.useState<SetViewRequest>('south')
   const plated = set.plates.length > 0
   const candidates = batch?.list ?? null
   const [plateUrl, setPlateUrl] = React.useState('')
@@ -289,7 +291,7 @@ function SetRow({
   const isAdded = (candidate: SlotCandidate): boolean =>
     added.has(candidate.id) ||
     set.plates.some((plate) => candidate.r2Key?.endsWith(`/${plate.contentHash}.png`) === true)
-  const choose = (candidate: SlotCandidate) =>
+  const choose = (candidate: SlotCandidate, index: number) =>
     act(
       `${set.id}:choose`,
       () =>
@@ -299,7 +301,7 @@ function SetRow({
           sourceUrl: candidate.sourceUrl,
           width: candidate.width ?? 0,
           height: candidate.height ?? 0,
-          ...(batch ? { view: batch.angle } : {}),
+          ...(batch?.views[index] ? { view: batch.views[index] } : {}),
         }),
       'Plate added',
       () => onAdded(candidate.id),
@@ -494,7 +496,7 @@ function SetRow({
             {room ? null : (
               <span className="text-[var(--color-warning)]">
                 {' '}
-                {set.name} holds four plates; remove one to add another.
+                {set.name} holds {MAX_SET_PLATES} plates; remove one to add another.
               </span>
             )}
           </p>
@@ -513,7 +515,7 @@ function SetRow({
                   role="listitem"
                   aria-label={done ? `Plate ${index + 1} added` : `Choose plate ${index + 1}`}
                   disabled={done || !room || rowBusy}
-                  onClick={() => void choose(candidate)}
+                  onClick={() => void choose(candidate, index)}
                   title={candidate.summary}
                   className={`relative flex h-[104px] w-[168px] flex-col overflow-hidden rounded-[8px] border-2 text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-accent)] ${
                     done
@@ -570,7 +572,7 @@ function SetRow({
               chooseLabel="Add as a plate"
               chosenLabel="Added as a plate"
               chooseDisabled={!room}
-              onChoose={(candidate) => void choose(candidate)}
+              onChoose={(candidate) => void choose(candidate, candidates.indexOf(candidate))}
               busy={rowBusy}
             />
           ) : null}
@@ -595,19 +597,19 @@ function SetRow({
           Save
         </Button>
         {room ? (
-          // Shown before the first plate too, greyed out, so the angles are
+          // Shown before the first plate too, greyed out, so the views are
           // visible from the start and the reason they are not yet offered is
           // on screen rather than discovered (decision 274).
           <Select
-            aria-label={`Angle of the next generated plate of ${set.name}`}
-            aria-describedby={plated ? undefined : `set-${set.id}-angle-hint`}
-            value={plated ? angle : 'establishing'}
+            aria-label={`View of the next generated plate of ${set.name}`}
+            aria-describedby={plated ? undefined : `set-${set.id}-view-hint`}
+            value={plated ? view : 'north'}
             disabled={!plated}
-            onChange={(event) => setAngle(event.target.value as SetPlateAngle)}
+            onChange={(event) => setView(event.target.value as SetViewRequest)}
           >
-            {SET_PLATE_ANGLES.map((option) => (
+            {SET_VIEW_REQUESTS.map((option) => (
               <option key={option} value={option}>
-                {ANGLE_LABELS[option]}
+                {VIEW_REQUEST_LABELS[option]}
               </option>
             ))}
           </Select>
@@ -617,16 +619,19 @@ function SetRow({
             variant="outline"
             disabled={rowBusy}
             onClick={() => {
-              const asked: SetPlateAngle = plated ? angle : 'establishing'
+              const asked: SetViewRequest = plated ? view : 'north'
               void act(
                 `${set.id}:generate`,
                 () => generateSetPlateAction(set.id, asked),
                 'Candidates ready',
-                (result) => onBatch({ angle: asked, list: result.candidates ?? [] }),
+                (result) => {
+                  const list = result.candidates ?? []
+                  onBatch({ list, views: list.map(() => asked) })
+                },
               )
             }}
           >
-            {`${plated ? 'Generate another angle' : 'Generate a plate'} · ≈$${plateEstimateUsd.toFixed(2)}`}
+            {`${plated ? 'Generate a view' : 'Generate a plate'} · ≈$${plateEstimateUsd.toFixed(2)}`}
           </Button>
         ) : null}
         <ConfirmButton
@@ -639,8 +644,8 @@ function SetRow({
         />
       </div>
       {room && !plated ? (
-        <p id={`set-${set.id}-angle-hint`} className="text-[12px] text-[var(--color-text-muted)]">
-          Add a plate first, then generate other angles from it.
+        <p id={`set-${set.id}-view-hint`} className="text-[12px] text-[var(--color-text-muted)]">
+          Add a plate first, then build the set from it.
         </p>
       ) : null}
     </section>

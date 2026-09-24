@@ -21,13 +21,13 @@ import {
   castPhotoExtension,
   CastPhotoMimeSchema,
   MAX_SET_PLATES,
-  SetPlateAngleSchema,
   SetPlateViewSchema,
+  SetViewRequestSchema,
   UlidSchema,
   uploadedPlateView,
   ValidationError,
 } from '@boom-busters/schemas'
-import type { SetPlate, SetPlateAngle, SetPlateView, SlotCandidate } from '@boom-busters/schemas'
+import type { SetPlate, SetPlateView, SetViewRequest, SlotCandidate } from '@boom-busters/schemas'
 import { createHash } from 'node:crypto'
 import { revalidatePath } from 'next/cache'
 import { auth } from '@/auth'
@@ -159,7 +159,7 @@ export async function createSetPlateUploadAction(input: {
   const set = await getProjectSet(db, input.setId)
   if (!set) return { ok: false, error: 'This set no longer exists.' }
   if (set.plates.length >= MAX_SET_PLATES) {
-    return { ok: false, error: 'A set keeps at most four plates; remove one first.' }
+    return { ok: false, error: `A set keeps at most ${MAX_SET_PLATES} plates; remove one first.` }
   }
   const mime = CastPhotoMimeSchema.safeParse(input.mimeType)
   if (!mime.success) {
@@ -217,7 +217,7 @@ export async function finaliseSetPlateAction(input: {
     return { ok: true }
   }
   if (set.plates.length >= MAX_SET_PLATES) {
-    return { ok: false, error: 'A set keeps at most four plates; remove one first.' }
+    return { ok: false, error: `A set keeps at most ${MAX_SET_PLATES} plates; remove one first.` }
   }
   if (!storageConfigured()) {
     return { ok: false, error: 'Photo uploads need R2 configured; there is nowhere to store them.' }
@@ -276,7 +276,7 @@ export async function addSetPlateFromUrlAction(input: {
   const view = SetPlateViewSchema.safeParse(input.view ?? uploadedPlateView(set))
   if (!view.success) return { ok: false, error: 'That photo could not be recorded.' }
   if (set.plates.length >= MAX_SET_PLATES) {
-    return { ok: false, error: 'A set keeps at most four plates; remove one first.' }
+    return { ok: false, error: `A set keeps at most ${MAX_SET_PLATES} plates; remove one first.` }
   }
   if (!storageConfigured()) {
     return { ok: false, error: 'Photo uploads need R2 configured; there is nowhere to store them.' }
@@ -345,38 +345,38 @@ export async function removeSetPlateAction(input: {
 }
 
 /**
- * Generate candidate plates (decision 264, amended 273). The first plate of a
- * set comes from its `look` alone, because a room's own plates cannot
- * condition their own first generation. Once it holds one, `angle` asks for
- * another view of the same room, and the plates it holds travel with the
+ * Generate candidate plates (decision 264, amended 273, 275). The first plate
+ * of a set comes from its `look` alone, because a room's own plates cannot
+ * condition their own first generation. Once it holds one, `view` asks for
+ * another direction of the same room, and the plates it holds travel with the
  * request (`setPlateBrief`). Returns the candidates; nothing is stored until
  * `chooseSetPlateAction` picks one.
  */
 export async function generateSetPlateAction(
   setId: string,
-  angle: SetPlateAngle = 'establishing',
+  view: SetViewRequest = 'north',
 ): Promise<ActionResult & { candidates?: SlotCandidate[] }> {
   await requireOwner()
   const invalid = badIds(setId)
   if (invalid) return invalid
-  const parsedAngle = SetPlateAngleSchema.safeParse(angle)
-  if (!parsedAngle.success) return { ok: false, error: 'Unknown angle.' }
+  const parsedView = SetViewRequestSchema.safeParse(view)
+  if (!parsedView.success) return { ok: false, error: 'Unknown view.' }
   const set = await getProjectSet(db, setId)
   if (!set) return { ok: false, error: 'This set no longer exists.' }
-  if (set.plates.length === 0 && parsedAngle.data !== 'establishing') {
+  if (set.plates.length === 0 && parsedView.data !== 'north') {
     return {
       ok: false,
-      error: 'Another angle needs a plate to work from. Add or generate the first one.',
+      error: 'Another view needs a plate to work from. Add or generate the first one.',
     }
   }
   // Refused before the generator is called, not after: a full set has
   // nowhere to put the image the money would have bought.
   if (set.plates.length >= MAX_SET_PLATES) {
-    return { ok: false, error: 'A set keeps at most four plates; remove one first.' }
+    return { ok: false, error: `A set keeps at most ${MAX_SET_PLATES} plates; remove one first.` }
   }
 
   const settings = await getSettings(db)
-  const brief = setPlateBrief(set, parsedAngle.data, stillStyleAnchors(settings.brandKit))
+  const brief = setPlateBrief(set, parsedView.data, stillStyleAnchors(settings.brandKit))
   try {
     const candidates = await generateStillCandidates(brief, set.projectId)
     return { ok: true, candidates }
@@ -393,7 +393,7 @@ export async function generateSetPlateAction(
  * `sourceUrl` is a self-contained `data:` thumbnail decoded in place. Either
  * way the bytes are copied under `setPlateKey`, and the plate is recorded as
  * `origin: 'generated'`, since a generated plate is the film's own invention,
- * with the angle it was generated from as its view (decision 274), or
+ * with the view it was generated from as its view (decisions 274, 275), or
  * `uploadedPlateView` when none is given.
  */
 export async function chooseSetPlateAction(input: {
@@ -412,7 +412,7 @@ export async function chooseSetPlateAction(input: {
   const view = SetPlateViewSchema.safeParse(input.view ?? uploadedPlateView(set))
   if (!view.success) return { ok: false, error: 'That candidate could not be recorded.' }
   if (set.plates.length >= MAX_SET_PLATES) {
-    return { ok: false, error: 'A set keeps at most four plates; remove one first.' }
+    return { ok: false, error: `A set keeps at most ${MAX_SET_PLATES} plates; remove one first.` }
   }
   if (
     !Number.isInteger(input.width) ||

@@ -3,6 +3,7 @@ import {
   MAX_SET_PLATES,
   ProjectSetSchema,
   SetPlateSchema,
+  platesForCamera,
   referencePlates,
   setForBrief,
   uploadedPlateView,
@@ -26,7 +27,7 @@ const set = {
   projectId: 'p1',
   name: 'Venture Capital Boardroom',
   look: 'A high-end austere meeting room with a long polished table.',
-  plates: [plate('detail'), plate('establishing')],
+  plates: [plate('detail'), plate('north')],
 }
 
 describe('set schemas', () => {
@@ -34,10 +35,10 @@ describe('set schemas', () => {
     expect(ProjectSetSchema.parse(set).plates).toHaveLength(2)
   })
 
-  it('caps the plates at four', () => {
-    const many = { ...set, plates: [1, 2, 3, 4, 5].map((n) => plate('other', `h${n}`)) }
-    expect(ProjectSetSchema.safeParse(many).success).toBe(false)
-    expect(MAX_SET_PLATES).toBe(4)
+  it('caps the plates at six', () => {
+    const seven = { ...set, plates: [1, 2, 3, 4, 5, 6, 7].map((n) => plate('other', `h${n}`)) }
+    expect(ProjectSetSchema.safeParse(seven).success).toBe(false)
+    expect(MAX_SET_PLATES).toBe(6)
   })
 
   it('refuses a plate type the image models do not take', () => {
@@ -58,35 +59,82 @@ describe('set schemas', () => {
   })
 })
 
+describe('plate views', () => {
+  it('reads the decision 273/274 names as compass directions', () => {
+    expect(SetPlateSchema.parse({ ...plate('north'), view: 'establishing' }).view).toBe('north')
+    expect(SetPlateSchema.parse({ ...plate('north'), view: 'reverse' }).view).toBe('south')
+    expect(SetPlateSchema.parse({ ...plate('north'), view: 'side' }).view).toBe('east')
+    expect(SetPlateSchema.safeParse({ ...plate('north'), view: 'sideways' }).success).toBe(false)
+  })
+
+  it('holds six plates: four directions and two details', () => {
+    expect(MAX_SET_PLATES).toBe(6)
+    const seven = { ...set, plates: [1, 2, 3, 4, 5, 6, 7].map((n) => plate('other', `h${n}`)) }
+    expect(ProjectSetSchema.safeParse(seven).success).toBe(false)
+  })
+})
+
 describe('referencePlates', () => {
-  it('sends the establishing view first and honours the limit', () => {
-    expect(referencePlates(set, 2).map((p) => p.view)).toEqual(['establishing', 'detail'])
-    expect(referencePlates(set, 1).map((p) => p.view)).toEqual(['establishing'])
+  it('sends north first and honours the limit', () => {
+    expect(referencePlates(set, 2).map((p) => p.view)).toEqual(['north', 'detail'])
+    expect(referencePlates(set, 1).map((p) => p.view)).toEqual(['north'])
     expect(referencePlates(set, 0)).toEqual([])
   })
 
-  // Decision 274: only two travel, so they should be two viewpoints.
-  it('prefers a second angle over a detail, whatever the upload order', () => {
-    const plates = [plate('establishing'), plate('detail'), plate('reverse')]
-    expect(referencePlates({ plates }, 2).map((p) => p.view)).toEqual(['establishing', 'reverse'])
+  it('prefers a second direction over a detail, whatever the upload order', () => {
+    const plates = [plate('north'), plate('detail'), plate('south')]
+    expect(referencePlates({ plates }, 2).map((p) => p.view)).toEqual(['north', 'south'])
+  })
+})
+
+describe('platesForCamera', () => {
+  const full = [plate('north'), plate('east'), plate('south'), plate('west'), plate('detail')]
+
+  it('sends the facing plate, then an adjacent one, never the opposite', () => {
+    expect(platesForCamera({ plates: full }, 'north', 2).map((p) => p.view)).toEqual([
+      'north',
+      'east',
+    ])
+    expect(platesForCamera({ plates: full }, 'south', 2).map((p) => p.view)).toEqual([
+      'south',
+      'west',
+    ])
+    expect(platesForCamera({ plates: full }, 'east', 3).map((p) => p.view)).toEqual([
+      'east',
+      'south',
+      'north',
+    ])
   })
 
-  it('sends a different view before a second copy of one already sent', () => {
-    const plates = [plate('establishing', 'e1'), plate('establishing', 'e2'), plate('side', 's1')]
-    expect(referencePlates({ plates }, 2).map((p) => p.contentHash)).toEqual(['e1', 's1'])
-    expect(referencePlates({ plates }, 3).map((p) => p.contentHash)).toEqual(['e1', 's1', 'e2'])
+  it('uses an adjacent plate when the facing one is missing', () => {
+    const plates = [plate('north'), plate('west')]
+    expect(platesForCamera({ plates }, 'south', 2).map((p) => p.view)).toEqual(['west'])
   })
 
-  it('keeps upload order among plates whose view nobody stated', () => {
+  it('sends the only plate a set has, even facing away from it', () => {
+    expect(platesForCamera({ plates: [plate('north')] }, 'south', 2).map((p) => p.view)).toEqual([
+      'north',
+    ])
+  })
+
+  // Review Focus 1: uploads from before this decision are `other`.
+  it('sends plates whose direction nobody stated', () => {
     const plates = [plate('other', 'o1'), plate('other', 'o2')]
-    expect(referencePlates({ plates }, 2).map((p) => p.contentHash)).toEqual(['o1', 'o2'])
+    expect(platesForCamera({ plates }, 'east', 2).map((p) => p.contentHash)).toEqual(['o1', 'o2'])
+  })
+
+  it('falls back to referencePlates with no camera', () => {
+    expect(platesForCamera({ plates: full }, undefined, 2).map((p) => p.view)).toEqual([
+      'north',
+      'south',
+    ])
   })
 })
 
 describe('uploadedPlateView', () => {
-  it("records a set's first upload as the establishing view and later ones as other", () => {
-    expect(uploadedPlateView({ plates: [] })).toBe('establishing')
-    expect(uploadedPlateView({ plates: [plate('establishing')] })).toBe('other')
+  it("records a set's first upload as north and later ones as other", () => {
+    expect(uploadedPlateView({ plates: [] })).toBe('north')
+    expect(uploadedPlateView({ plates: [plate('north')] })).toBe('other')
   })
 })
 

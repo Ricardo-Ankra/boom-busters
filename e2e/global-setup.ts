@@ -953,7 +953,7 @@ export default async function globalSetup(): Promise<void> {
           mimeType: 'image/jpeg',
           width: 1600,
           height: 900,
-          view: 'establishing',
+          view: 'north',
           origin: 'uploaded',
         },
       ])

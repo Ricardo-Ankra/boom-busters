@@ -116,15 +116,12 @@ export default async function ProjectPage({
   // Sets (decision 264) are the cast's twin for rooms, shown beside it.
   const sets = showCast ? await listProjectSets(db, project.id) : []
   const plateEstimate = showCast ? await plateEstimateUsd() : 0
-  // Another angle carries the set's plates, so it is priced as the still it
+  // Another view carries the set's plates, so it is priced as the still it
   // is, on whichever route a still of that set would take (decision 273).
-  const angleEstimates: Record<string, number> = {}
+  const viewEstimates: Record<string, number> = {}
   for (const set of sets) {
     if (set.plates.length > 0) {
-      angleEstimates[set.id] = await stillsEstimateUsd(
-        [setPlateBrief(set, 'reverse', '')],
-        project.id,
-      )
+      viewEstimates[set.id] = await stillsEstimateUsd([setPlateBrief(set, 'south', '')], project.id)
     }
   }
   const setPlateUrls: Record<string, string> = {}
@@ -421,7 +418,7 @@ export default async function ProjectPage({
           sets={sets}
           plateUrls={setPlateUrls}
           plateEstimateUsd={plateEstimate}
-          angleEstimatesUsd={angleEstimates}
+          viewEstimatesUsd={viewEstimates}
         />
       ) : null}
 

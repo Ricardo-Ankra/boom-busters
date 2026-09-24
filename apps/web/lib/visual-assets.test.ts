@@ -66,7 +66,7 @@ function photo(hash: string, view: 'front' | 'profile' | 'three-quarter' | 'full
   }
 }
 
-function plate(hash: string, view: 'establishing' | 'detail' | 'other') {
+function plate(hash: string, view: 'north' | 'detail' | 'other') {
   return {
     r2Key: `boom-busters/sets/${FIXTURE_PROJECT_ID}/${hash}.jpg`,
     contentHash: hash,
@@ -568,7 +568,7 @@ References attached: 1 photograph of Emad Mostaque.`
         name: 'Venture Capital Boardroom',
         look: 'A long polished table.',
       })
-      await setSetPlates(db, room.id, [plate('plate-1', 'establishing')])
+      await setSetPlates(db, room.id, [plate('plate-1', 'north')])
 
       await generateStillCandidates(
         { ...still, set: 'Venture Capital Boardroom' },
@@ -592,7 +592,7 @@ References attached: 1 photograph of Emad Mostaque.`
         name: 'Venture Capital Boardroom',
         look: 'A long polished table.',
       })
-      await setSetPlates(db, room.id, [plate('plate-1', 'establishing')])
+      await setSetPlates(db, room.id, [plate('plate-1', 'north')])
 
       await generateStillCandidates(
         { ...still, depicts: ['Emad Mostaque'], set: 'Venture Capital Boardroom' },
@@ -621,7 +621,7 @@ References attached: 1 photograph of Emad Mostaque.`
         name: 'Venture Capital Boardroom',
         look: 'A long polished table.',
       })
-      await setSetPlates(db, room.id, [plate('plate-1', 'establishing')])
+      await setSetPlates(db, room.id, [plate('plate-1', 'north')])
 
       await generateStillCandidates(
         { ...still, depicts: [], set: 'Venture Capital Boardroom' },
@@ -653,7 +653,7 @@ References attached: 1 photograph of Emad Mostaque.`
         name: 'Venture Capital Boardroom',
         look: 'A long polished table.',
       })
-      await setSetPlates(db, room.id, [plate('plate-1', 'establishing')])
+      await setSetPlates(db, room.id, [plate('plate-1', 'north')])
 
       await generateStillCandidates(
         {
@@ -708,7 +708,7 @@ References attached: 1 photograph of Emad Mostaque.`
         name: 'Venture Capital Boardroom',
         look: 'A long polished table.',
       })
-      await setSetPlates(db, room.id, [plate('plate-1', 'establishing')])
+      await setSetPlates(db, room.id, [plate('plate-1', 'north')])
 
       await generateStillCandidates(
         { ...still, depicts: [], set: 'Venture Capital Boardroom' },

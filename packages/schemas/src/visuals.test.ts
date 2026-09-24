@@ -612,3 +612,27 @@ describe('a still brief may name a set', () => {
     expect(StillBriefSchema.safeParse({ ...base, set: '' }).success).toBe(false)
   })
 })
+
+describe('StillBriefSchema camera (decision 275)', () => {
+  const still = {
+    type: 'still',
+    coversText: 'The board met.',
+    description: 'The board at the table.',
+    shotSize: 'wide',
+    motion: { kind: 'static' },
+    transition: 'cut',
+    prompt: 'The board at the table.',
+    set: 'The boardroom',
+  }
+
+  it('keeps a well-formed camera', () => {
+    const camera = { facing: 'south', position: 'the north windows, seated height', lens: '35mm' }
+    expect(StillBriefSchema.parse({ ...still, camera }).camera).toEqual(camera)
+  })
+
+  it('drops a malformed camera and keeps the brief', () => {
+    const parsed = StillBriefSchema.parse({ ...still, camera: { facing: 'up', position: '' } })
+    expect(parsed.camera).toBeUndefined()
+    expect(parsed.prompt).toBe(still.prompt)
+  })
+})

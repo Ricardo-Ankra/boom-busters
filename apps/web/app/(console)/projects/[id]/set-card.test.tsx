@@ -38,7 +38,7 @@ const tradingFloor: ProjectSet = {
       mimeType: 'image/jpeg',
       width: 1600,
       height: 1200,
-      view: 'establishing',
+      view: 'north',
       origin: 'uploaded',
     },
   ],
@@ -56,7 +56,7 @@ const boardroom: ProjectSet = {
       mimeType: 'image/jpeg',
       width: 1600,
       height: 1200,
-      view: 'establishing',
+      view: 'north',
       origin: 'uploaded',
     },
     {
@@ -136,9 +136,7 @@ describe('SetCard', () => {
     )
     await userEvent.click(screen.getByRole('button', { name: 'Edit sets' }))
     // The label quotes the routed stills model's price, not a constant.
-    expect(
-      screen.getByRole('button', { name: 'Generate another angle · ≈$0.08' }),
-    ).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Generate a view · ≈$0.08' })).toBeInTheDocument()
     const row = screen.getByRole('region', { name: 'The trading floor' })
     const look = within(row).getByLabelText('Look')
     await userEvent.clear(look)
@@ -240,16 +238,16 @@ describe('SetCard', () => {
       sourceUrl: 'https://img.example/cand-1.png',
       width: 1024,
       height: 768,
-      // The set already holds a plate, so the default is the reverse angle,
-      // recorded under its own name (decision 274).
-      view: 'reverse',
+      // The set already holds a plate, so the default is the south view,
+      // recorded under its own name (decision 275).
+      view: 'south',
     })
   })
 
-  it('offers no way to add a plate to a set that already holds four', async () => {
+  it('offers no way to add a plate to a set that already holds six', async () => {
     const full: ProjectSet = {
       ...tradingFloor,
-      plates: (['e', 'f', 'g', 'h'] as const).map((hash) => ({
+      plates: (['e', 'f', 'g', 'h', 'i', 'j'] as const).map((hash) => ({
         r2Key: `boom-busters/sets/p/${hash}.jpg`,
         contentHash: hash,
         mimeType: 'image/jpeg' as const,
@@ -345,7 +343,7 @@ describe('SetCard', () => {
       sourceUrl: `generated://google/${'b'.repeat(12)}`,
       width: 1344,
       height: 768,
-      view: 'reverse',
+      view: 'south',
     })
     expect(await within(dialog).findByRole('button', { name: 'Added as a plate' })).toBeDisabled()
   })
@@ -378,7 +376,7 @@ describe('SetCard', () => {
           mimeType: 'image/png',
           width: 1344,
           height: 768,
-          view: 'establishing',
+          view: 'north',
           origin: 'generated',
         },
       ],
@@ -415,9 +413,9 @@ describe('SetCard', () => {
     expect(screen.queryByRole('listitem', { name: 'Choose plate 1' })).not.toBeInTheDocument()
   })
 
-  // Decision 273: one plate gave every still of a set one viewpoint to copy.
-  describe('angles', () => {
-    it('generates the first plate of an empty set as the establishing view, the angles greyed out', async () => {
+  // Decision 273, amended 275: one plate gave every still of a set one viewpoint to copy.
+  describe('views', () => {
+    it('generates the first plate of an empty set as the north view, the views greyed out', async () => {
       const empty: ProjectSet = { ...boardroom, id: '01J0000000000000000000000D', plates: [] }
       actions.generateSetPlateAction.mockResolvedValue({ ok: true, candidates: [] })
       render(
@@ -426,21 +424,19 @@ describe('SetCard', () => {
           sets={[empty]}
           plateUrls={{}}
           plateEstimateUsd={0.08}
-          angleEstimatesUsd={{ [empty.id]: 0.2 }}
+          viewEstimatesUsd={{ [empty.id]: 0.2 }}
         />,
       )
-      // Decision 274: the angles are visible from the start, with the reason
+      // Decision 274: the views are visible from the start, with the reason
       // they are not offered yet.
-      const picker = screen.getByRole('combobox', { name: /Angle of the next/ })
+      const picker = screen.getByRole('combobox', { name: /View of the next/ })
       expect(picker).toBeDisabled()
-      expect(picker).toHaveAccessibleDescription(
-        'Add a plate first, then generate other angles from it.',
-      )
+      expect(picker).toHaveAccessibleDescription('Add a plate first, then build the set from it.')
       await userEvent.click(screen.getByRole('button', { name: 'Generate a plate · ≈$0.08' }))
-      expect(actions.generateSetPlateAction).toHaveBeenCalledWith(empty.id, 'establishing')
+      expect(actions.generateSetPlateAction).toHaveBeenCalledWith(empty.id, 'north')
     })
 
-    it('offers another angle of a plated set, priced as a referenced still', async () => {
+    it('offers another view of a plated set, priced as a referenced still', async () => {
       actions.generateSetPlateAction.mockResolvedValue({ ok: true, candidates: [] })
       render(
         <SetCard
@@ -448,16 +444,16 @@ describe('SetCard', () => {
           sets={[tradingFloor]}
           plateUrls={{}}
           plateEstimateUsd={0.08}
-          angleEstimatesUsd={{ [TRADING_FLOOR]: 0.12 }}
+          viewEstimatesUsd={{ [TRADING_FLOOR]: 0.12 }}
         />,
       )
       await userEvent.click(screen.getByRole('button', { name: 'Edit sets' }))
       const picker = screen.getByRole('combobox', {
-        name: 'Angle of the next generated plate of The trading floor',
+        name: 'View of the next generated plate of The trading floor',
       })
-      expect(picker).toHaveValue('reverse')
+      expect(picker).toHaveValue('south')
       await userEvent.selectOptions(picker, 'detail')
-      await userEvent.click(screen.getByRole('button', { name: 'Generate another angle · ≈$0.12' }))
+      await userEvent.click(screen.getByRole('button', { name: 'Generate a view · ≈$0.12' }))
       expect(actions.generateSetPlateAction).toHaveBeenCalledWith(TRADING_FLOOR, 'detail')
     })
 
@@ -476,10 +472,10 @@ describe('SetCard', () => {
       )
       await userEvent.click(screen.getByRole('button', { name: 'Edit sets' }))
       await userEvent.selectOptions(
-        screen.getByRole('combobox', { name: /Angle of the next generated plate/ }),
+        screen.getByRole('combobox', { name: /View of the next generated plate/ }),
         'detail',
       )
-      await userEvent.click(screen.getByRole('button', { name: /^Generate another angle/ }))
+      await userEvent.click(screen.getByRole('button', { name: /^Generate a view/ }))
       await userEvent.click(await screen.findByRole('listitem', { name: 'Choose plate 1' }))
       expect(actions.chooseSetPlateAction).toHaveBeenCalledWith(
         expect.objectContaining({ setId: TRADING_FLOOR, view: 'detail' }),
@@ -506,18 +502,18 @@ describe('SetCard', () => {
     })
   })
 
-  it('captions a generated angle with its own name', async () => {
+  it('captions a generated view with its own name', async () => {
     const angled: ProjectSet = {
       ...tradingFloor,
       plates: [
         ...tradingFloor.plates,
-        { ...tradingFloor.plates[0]!, contentHash: 'rev', view: 'reverse', origin: 'generated' },
+        { ...tradingFloor.plates[0]!, contentHash: 'rev', view: 'south', origin: 'generated' },
       ],
     }
     render(<SetCard projectId={PROJECT} sets={[angled]} plateUrls={{}} plateEstimateUsd={0.08} />)
     await userEvent.click(screen.getByRole('button', { name: 'Edit sets' }))
     expect(
-      screen.getByRole('button', { name: 'Remove reverse plate of The trading floor' }),
+      screen.getByRole('button', { name: 'Remove south plate of The trading floor' }),
     ).toBeInTheDocument()
   })
 })

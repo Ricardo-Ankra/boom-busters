@@ -139,9 +139,9 @@ describeDb('set actions (mock mode)', () => {
     expect(set).toMatchObject({ name: 'The boardroom', look: 'warm brass light' })
   })
 
-  // Decision 274: the card no longer asks; the first upload is the room seen
-  // whole and anything after it another angle.
-  it('records an upload with no view as establishing first, then other', async () => {
+  // Decision 274, directions from 275: the card no longer asks; the first
+  // upload is the room seen whole and anything after it another view.
+  it('records an upload with no view as north first, then other', async () => {
     const id = await addTradingFloor()
     for (const hash of [HASH_A, HASH_B]) {
       expect(
@@ -155,7 +155,7 @@ describeDb('set actions (mock mode)', () => {
       ).toEqual({ ok: true })
     }
     const [set] = await listProjectSets(db, FIXTURE_PROJECT_ID)
-    expect(set?.plates.map((plate) => plate.view)).toEqual(['establishing', 'other'])
+    expect(set?.plates.map((plate) => plate.view)).toEqual(['north', 'other'])
   })
 
   it('records an address with no view the same way', async () => {
@@ -164,7 +164,7 @@ describeDb('set actions (mock mode)', () => {
       await addSetPlateFromUrlAction({ setId: id, url: 'https://example.com/trading-floor.jpg' }),
     ).toEqual({ ok: true })
     const [set] = await listProjectSets(db, FIXTURE_PROJECT_ID)
-    expect(set?.plates[0]?.view).toBe('establishing')
+    expect(set?.plates[0]?.view).toBe('north')
   })
 
   it('removing a set deletes its plate objects and hides it', async () => {
@@ -175,16 +175,16 @@ describeDb('set actions (mock mode)', () => {
       contentHash: HASH_A,
       width: 10,
       height: 10,
-      view: 'establishing',
+      view: 'north',
     })
     expect(await removeSetAction(id)).toEqual({ ok: true })
     expect(storage.deleted).toContain(`boom-busters/sets/${FIXTURE_PROJECT_ID}/${HASH_A}.jpg`)
     expect(await listProjectSets(db, FIXTURE_PROJECT_ID)).toEqual([])
   })
 
-  it('an upload is refused past four plates', async () => {
+  it('an upload is refused past six plates', async () => {
     const id = await addTradingFloor()
-    for (const letter of ['1', '2', '3', '4']) {
+    for (const letter of ['1', '2', '3', '4', '5', '6']) {
       const done = await finaliseSetPlateAction({
         setId: id,
         mimeType: 'image/png',
@@ -195,14 +195,14 @@ describeDb('set actions (mock mode)', () => {
       })
       expect(done.ok).toBe(true)
     }
-    const fifth = await createSetPlateUploadAction({
+    const seventh = await createSetPlateUploadAction({
       setId: id,
       mimeType: 'image/png',
       fileSize: 10,
-      contentHash: '5'.repeat(64),
+      contentHash: '7'.repeat(64),
     })
-    expect(fifth.ok).toBe(false)
-    expect(fifth.error).toMatch(/at most four plates/)
+    expect(seventh.ok).toBe(false)
+    expect(seventh.error).toMatch(/at most 6 plates/)
   })
 
   it('an upload is refused for a MIME type the image models do not take', async () => {
@@ -237,14 +237,14 @@ describeDb('set actions (mock mode)', () => {
       contentHash: HASH_A,
       width: 1200,
       height: 1600,
-      view: 'establishing',
+      view: 'north',
     })
     expect(done).toEqual({ ok: true })
     const [set] = await listProjectSets(db, FIXTURE_PROJECT_ID)
     expect(set?.plates).toHaveLength(1)
     expect(set?.plates[0]).toMatchObject({
       origin: 'uploaded',
-      view: 'establishing',
+      view: 'north',
       width: 1200,
       height: 1600,
     })
@@ -269,7 +269,7 @@ describeDb('set actions (mock mode)', () => {
       await addSetPlateFromUrlAction({
         setId: id,
         url: 'https://example.com/trading-floor.jpg',
-        view: 'establishing',
+        view: 'north',
       }),
     ).toEqual({ ok: true })
 
@@ -277,7 +277,7 @@ describeDb('set actions (mock mode)', () => {
     expect(set?.plates).toHaveLength(1)
     expect(set?.plates[0]).toMatchObject({
       origin: 'uploaded',
-      view: 'establishing',
+      view: 'north',
       width: 1200,
       height: 1600,
       mimeType: 'image/jpeg',
@@ -294,7 +294,7 @@ describeDb('set actions (mock mode)', () => {
       contentHash: HASH_A,
       width: 10,
       height: 10,
-      view: 'establishing',
+      view: 'north',
     })
     expect(await removeSetPlateAction({ setId: id, contentHash: HASH_A })).toEqual({ ok: true })
     expect(storage.deleted).toContain(`boom-busters/sets/${FIXTURE_PROJECT_ID}/${HASH_A}.jpg`)
@@ -314,9 +314,9 @@ describeDb('set actions (mock mode)', () => {
     }
   })
 
-  it('refuses to generate for a set that already holds four plates, before spending', async () => {
+  it('refuses to generate for a set that already holds six plates, before spending', async () => {
     const id = await addTradingFloor()
-    for (const letter of ['1', '2', '3', '4']) {
+    for (const letter of ['1', '2', '3', '4', '5', '6']) {
       expect(
         await finaliseSetPlateAction({
           setId: id,
@@ -333,26 +333,28 @@ describeDb('set actions (mock mode)', () => {
     const result = await generateSetPlateAction(id)
     expect(result).toEqual({
       ok: false,
-      error: 'A set keeps at most four plates; remove one first.',
+      error: 'A set keeps at most 6 plates; remove one first.',
     })
     expect(generate).not.toHaveBeenCalled()
   })
 
-  it('generates the first plate from the look alone, as an empty establishing view', async () => {
+  it('generates the first plate from the look alone, as an empty north view', async () => {
     const id = await addTradingFloor()
     generate.mockClear()
     await generateSetPlateAction(id)
     const request = generate.mock.calls[0]?.[0]
     expect(request?.prompt).toContain(
-      'The trading floor, empty of people: a wide establishing photograph of the whole room',
+      'The trading floor, empty of people: a wide establishing photograph of the whole room, ' +
+        'taken from its entrance at eye level',
     )
     expect(request?.negativePrompt).toBe('people, figures')
     // Nothing to condition on yet.
     expect(request?.references ?? []).toEqual([])
   })
 
-  // Decision 273: a set with one plate gave every still one viewpoint to copy.
-  it('generates another angle conditioned on the plates the set holds', async () => {
+  // Decision 273, directions from 275: a set with one plate gave every still
+  // one viewpoint to copy.
+  it('generates another view conditioned on the plates the set holds', async () => {
     const id = await addTradingFloor()
     expect(
       await finaliseSetPlateAction({
@@ -361,31 +363,31 @@ describeDb('set actions (mock mode)', () => {
         contentHash: HASH_A,
         width: 10,
         height: 10,
-        view: 'establishing',
+        view: 'north',
       }),
     ).toEqual({ ok: true })
     generate.mockClear()
 
-    const result = await generateSetPlateAction(id, 'reverse')
+    const result = await generateSetPlateAction(id, 'south')
     expect(result.ok).toBe(true)
     const request = generate.mock.calls[0]?.[0]
     expect((request?.references ?? []).map((reference) => reference.kind)).toEqual(['object'])
-    expect(request?.prompt).toContain('photographed from its opposite end')
+    expect(request?.prompt).toContain('a wide photograph of the whole room facing south')
     // The closing declaration asks for a new photograph, not the plate's framing.
     expect(request?.prompt).toContain('never reproduce or edit the framing of its photographs')
   })
 
-  it('refuses another angle before the set has a plate, before spending', async () => {
+  it('refuses another view before the set has a plate, before spending', async () => {
     const id = await addTradingFloor()
     generate.mockClear()
-    expect(await generateSetPlateAction(id, 'side')).toEqual({
+    expect(await generateSetPlateAction(id, 'east')).toEqual({
       ok: false,
-      error: 'Another angle needs a plate to work from. Add or generate the first one.',
+      error: 'Another view needs a plate to work from. Add or generate the first one.',
     })
     expect(generate).not.toHaveBeenCalled()
   })
 
-  it('records a chosen plate under the view its angle was generated for', async () => {
+  it('records a chosen plate under the view it was generated for', async () => {
     const id = await addTradingFloor()
     const generated = await generateSetPlateAction(id)
     const candidate = generated.candidates![0]!
@@ -424,7 +426,7 @@ describeDb('set actions (mock mode)', () => {
     expect(set?.plates).toHaveLength(1)
     expect(set?.plates[0]).toMatchObject({
       origin: 'generated',
-      view: 'establishing',
+      view: 'north',
       width: candidate!.width,
       height: candidate!.height,
       mimeType: 'image/png',
@@ -471,7 +473,7 @@ describeDb('set actions (mock mode)', () => {
     expect(set?.plates[0]).toMatchObject({
       r2Key: `boom-busters/sets/${FIXTURE_PROJECT_ID}/${expectedHash}.png`,
       origin: 'generated',
-      view: 'establishing',
+      view: 'north',
       width: 1344,
       height: 768,
       mimeType: 'image/png',
