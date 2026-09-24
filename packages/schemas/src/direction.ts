@@ -123,6 +123,8 @@ export interface FindingBrief {
   query?: string | undefined
   depicts?: readonly string[] | undefined
   set?: string | undefined
+  /** Where the camera stands in `set` (decision 275). */
+  camera?: { facing: string; position: string } | undefined
 }
 
 export interface FindingSlot {
@@ -517,7 +519,7 @@ export function referenceWarnings(
 // ---------------------------------------------------------------------------
 
 export type CraftFindingKind =
-  'size-run' | 'motif-repeat' | 'set-run' | 'ignored-person' | 'ignored-set'
+  'size-run' | 'motif-repeat' | 'set-run' | 'ignored-person' | 'ignored-set' | 'shared-camera'
 
 /**
  * Who may spend on fixing a finding. `auto`: the automatic repair after each
@@ -693,6 +695,26 @@ export function craftFindings(
           'set it where its sentence is, or in no set',
       })
     }
+  }
+
+  // Shared cameras (decision 275): two stills in one room from the same place
+  // facing the same way are the same picture twice. The later one moves.
+  const cameras = new Map<string, number>()
+  for (const [index, { brief, linked }] of slots.entries()) {
+    const set = slotSet(brief)
+    if (!set || !brief.camera) continue
+    const position = brief.camera.position.trim().toLowerCase()
+    const key = `${set}|${brief.camera.facing}|${position}`
+    if (cameras.has(key) && !linked) {
+      findings.push({
+        kind: 'shared-camera',
+        slotIndex: index,
+        repair: 'auto',
+        message: `an earlier still in "${set}" already stands at "${position}" facing ${brief.camera.facing}; move the camera`,
+      })
+      continue
+    }
+    if (!cameras.has(key)) cameras.set(key, index)
   }
 
   // People and rooms the sentence names but the shot leaves out.

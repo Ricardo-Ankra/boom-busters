@@ -762,6 +762,48 @@ describe('craftFindings (decision 271)', () => {
       ).toEqual([3])
     })
   })
+
+  describe('shared camera (decision 275)', () => {
+    const brief = (position: string, facing = 'north') => ({
+      type: 'still',
+      coversText: 'They met.',
+      set: 'The boardroom',
+      camera: { facing, position },
+    })
+    const context = { motifs: [], eraLocks: [], cast: [], sets: ['The boardroom'] }
+
+    it('flags the second still in a set with the same facing and position', () => {
+      const findings = craftFindings(
+        [
+          { brief: brief('The South doorway ') },
+          { brief: brief('the south doorway') },
+          { brief: brief('the window') },
+        ],
+        context,
+      ).filter((finding) => finding.kind === 'shared-camera')
+      expect(findings).toEqual([
+        {
+          kind: 'shared-camera',
+          slotIndex: 1,
+          repair: 'auto',
+          message:
+            'an earlier still in "The boardroom" already stands at "the south doorway" facing north; move the camera',
+        },
+      ])
+    })
+
+    it('does not flag a different facing from the same place, or a linked slot', () => {
+      const findings = craftFindings(
+        [
+          { brief: brief('the doorway') },
+          { brief: brief('the doorway', 'east') },
+          { brief: brief('the doorway'), linked: true },
+        ],
+        context,
+      ).filter((finding) => finding.kind === 'shared-camera')
+      expect(findings).toEqual([])
+    })
+  })
 })
 
 describe('repairTargets, repairSummary and findingContext', () => {
