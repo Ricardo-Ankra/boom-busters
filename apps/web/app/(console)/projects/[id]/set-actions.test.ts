@@ -310,6 +310,71 @@ describeDb('set actions (mock mode)', () => {
     expect(generate).not.toHaveBeenCalled()
   })
 
+  it('generates the first plate from the look alone, as an empty establishing view', async () => {
+    const id = await addTradingFloor()
+    generate.mockClear()
+    await generateSetPlateAction(id)
+    const request = generate.mock.calls[0]?.[0]
+    expect(request?.prompt).toContain(
+      'The trading floor, empty of people: a wide establishing photograph of the whole room',
+    )
+    expect(request?.negativePrompt).toBe('people, figures')
+    // Nothing to condition on yet.
+    expect(request?.references ?? []).toEqual([])
+  })
+
+  // Decision 273: a set with one plate gave every still one viewpoint to copy.
+  it('generates another angle conditioned on the plates the set holds', async () => {
+    const id = await addTradingFloor()
+    expect(
+      await finaliseSetPlateAction({
+        setId: id,
+        mimeType: 'image/png',
+        contentHash: HASH_A,
+        width: 10,
+        height: 10,
+        view: 'establishing',
+      }),
+    ).toEqual({ ok: true })
+    generate.mockClear()
+
+    const result = await generateSetPlateAction(id, 'reverse')
+    expect(result.ok).toBe(true)
+    const request = generate.mock.calls[0]?.[0]
+    expect((request?.references ?? []).map((reference) => reference.kind)).toEqual(['object'])
+    expect(request?.prompt).toContain('photographed from its opposite end')
+    // The closing declaration asks for a new photograph, not the plate's framing.
+    expect(request?.prompt).toContain('never reproduce or edit the framing of its photographs')
+  })
+
+  it('refuses another angle before the set has a plate, before spending', async () => {
+    const id = await addTradingFloor()
+    generate.mockClear()
+    expect(await generateSetPlateAction(id, 'side')).toEqual({
+      ok: false,
+      error: 'Another angle needs a plate to work from. Add or generate the first one.',
+    })
+    expect(generate).not.toHaveBeenCalled()
+  })
+
+  it('records a chosen plate under the view its angle was generated for', async () => {
+    const id = await addTradingFloor()
+    const generated = await generateSetPlateAction(id)
+    const candidate = generated.candidates![0]!
+    expect(
+      await chooseSetPlateAction({
+        setId: id,
+        r2Key: candidate.r2Key ?? null,
+        sourceUrl: candidate.sourceUrl,
+        width: candidate.width!,
+        height: candidate.height!,
+        view: 'other',
+      }),
+    ).toEqual({ ok: true })
+    const [set] = await listProjectSets(db, FIXTURE_PROJECT_ID)
+    expect(set?.plates[0]?.view).toBe('other')
+  })
+
   it('choosing a generated plate stores it with origin "generated"', async () => {
     const id = await addTradingFloor()
     const generated = await generateSetPlateAction(id)

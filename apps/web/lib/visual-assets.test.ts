@@ -142,9 +142,15 @@ describeDb('generateStillCandidates with the cast', () => {
       },
     ])
     expect(request?.prompt).toContain(
-      'References attached: 1 photograph of Emad Mostaque. The photographs are ' +
-        'authoritative for the likeness of Emad Mostaque; match them exactly.',
+      'References attached: 1 photograph of Emad Mostaque. The photographs of Emad ' +
+        'Mostaque are for likeness only: match the face exactly, while clothing, pose ' +
+        'and expression follow the text above. Emad Mostaque is photographed in the ' +
+        'scene, never pasted onto it: at true scale, seated in a chair or standing on ' +
+        "the floor, lit by the scene's own light, and behind anything standing nearer " +
+        'the camera.',
     )
+    // With no set there is no room to recompose.
+    expect(request?.prompt).not.toContain('camera position')
     expect(candidates[0]?.references).toEqual(['Emad Mostaque'])
   })
 
@@ -596,10 +602,15 @@ References attached: 1 photograph of Emad Mostaque.`
       const prompt = generate.mock.calls[0]?.[0].prompt ?? ''
       expect(prompt).toContain(
         'References attached: 2 photographs of Emad Mostaque and 1 photograph of ' +
-          'Venture Capital Boardroom. The photographs are authoritative for the likeness ' +
-          'of Emad Mostaque and the room; match them exactly. The text above describes ' +
-          'only what happens in them.',
+          'Venture Capital Boardroom. The photographs of Emad Mostaque are for likeness only',
       )
+      expect(prompt).toContain('Emad Mostaque is photographed in the scene, never pasted onto it')
+      expect(prompt).toContain(
+        "The photographs of Venture Capital Boardroom are for the room's design only",
+      )
+      // Decision 273: the old wording made the model edit the plate.
+      expect(prompt).not.toContain('match them exactly')
+      expect(prompt).not.toContain('describes only what happens in them')
       // The brief's own words stay first; the declaration closes the prompt.
       expect(prompt.startsWith(still.prompt)).toBe(true)
     })
@@ -616,10 +627,16 @@ References attached: 1 photograph of Emad Mostaque.`
         { ...still, depicts: [], set: 'Venture Capital Boardroom' },
         FIXTURE_PROJECT_ID,
       )
-      expect(generate.mock.calls[0]?.[0].prompt).toContain(
+      const prompt = generate.mock.calls[0]?.[0].prompt ?? ''
+      expect(prompt).toContain(
         'References attached: 1 photograph of Venture Capital Boardroom. The photographs ' +
-          'are authoritative for the room; match them exactly.',
+          "of Venture Capital Boardroom are for the room's design only: its architecture, " +
+          'materials, furniture and light. This is a new photograph taken inside that room ' +
+          'from the camera position the text above describes; never reproduce or edit the ' +
+          'framing of its photographs.',
       )
+      // No person, so no staging sentence.
+      expect(prompt).not.toContain('pasted onto it')
     })
 
     it('spends people before plates when the budget is tight', async () => {

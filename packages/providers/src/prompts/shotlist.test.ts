@@ -523,7 +523,22 @@ describe('buildShotListRequest with direction (decision 252)', () => {
     it('still describes an unnamed extra by role, age range and build', () => {
       expect(withPhotos.system).toContain('Anyone unnamed')
       expect(withPhotos.system).toContain('role, age range, build and clothing')
-      expect(withPhotos.system).toContain('resembling nobody in particular')
+    })
+
+    // Decision 273: extras had their faces turned away or shadowed, which the
+    // owner read as blurred. Investors and employees get ordinary faces.
+    it('gives extras a visible, realistic face that resembles no real person', () => {
+      expect(withPhotos.system).toContain(
+        'visible and in focus, resembling no real or public person.',
+      )
+      expect(withPhotos.system).toContain('Never blur, hide or turn a face away as a device.')
+      expect(withPhotos.system).not.toContain('face turned away or in shadow')
+    })
+
+    // Decision 273: a likeness pasted onto a plate rose through the table.
+    it('stages a photographed person physically in the scene', () => {
+      expect(withPhotos.system).toContain('Stage them physically in the scene')
+      expect(withPhotos.system).toContain('at true scale')
     })
 
     it('says nothing about photographs when the cast has none', () => {
@@ -631,7 +646,17 @@ describe('buildShotListRequest with direction (decision 252)', () => {
 
     it('asks for the set by name alone and forbids re-describing the room', () => {
       expect(withSets.system).toContain('name it in "set" by name alone')
-      expect(withSets.system).toContain('the photographs are the room')
+      expect(withSets.system).toContain('Do not describe its walls, furniture, layout or materials')
+    })
+
+    // Decision 273: every still of a set kept the plate's exact framing.
+    it('asks each still of a set for its own camera position', () => {
+      expect(withSets.system).toContain("The photographs give the room's design, not the picture.")
+      expect(withSets.system).toContain('where the camera stands in the room')
+      expect(withSets.system).toContain(
+        'Two stills of the same room never share a camera position.',
+      )
+      expect(withSets.system).not.toContain('the photographs are the room')
     })
 
     // The prompt is what the image model reads; `set` only decides which
@@ -645,7 +670,7 @@ describe('buildShotListRequest with direction (decision 252)', () => {
     it('keeps light and weather with the planner and the fabric with the plates', () => {
       // Asserted on the half that sits whole on one line of the source; the
       // sentence wraps, and `toContain` reads the wrap.
-      expect(withSets.system).toContain('its walls, furniture and layout are not.')
+      expect(withSets.system).toContain('them. Its light and weather are still yours.')
     })
 
     it('says nothing about sets when the film has none', () => {

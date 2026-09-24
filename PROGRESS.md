@@ -5825,3 +5825,63 @@ functionality, like the shots").
     `thumbUrl` shows through its asset, Preview and add, the rest survive an
     add, a held plate is recognised, Hide keeps them and Clear removes
     them); `pnpm test` 9 of 9 tasks, apps/web 877 of 877.
+
+273. **References say what they are for: new camera positions, people in the room, faces on extras**
+(2026-09-24, owner report with three boardroom stills: "the scene is being
+used consistently which is good. But how the characters are integrated into
+the scene now is terrible, and clearly fake, because Emad is coming through
+the middle of the table ... The sets are also fixed to the same perspective
+as the reference"; and, asked what "refrain from generating ... blurred
+faces" meant: "for human extras and anonymous characters, we shouldn't blur
+their faces (e.g., Investors, Employees, etc.)").
+
+    Cause: the sentence decision 269 closed every referenced prompt with.
+    "The photographs are authoritative for the likeness of X and the room;
+    match them exactly. The text above describes only what happens in them"
+    reads as an edit instruction: keep the plate, put the person in it. So
+    every still of a set kept the plate's framing, and the person was pasted
+    onto it at the wrong scale. Three things made it worse. The shot-list
+    rule forbade describing the room, so no brief ever named a camera
+    position. The images reached Gemini as one unlabelled list. And a set
+    usually had one plate, so there was one viewpoint to copy.
+
+    What changed:
+    - `withReferenceClause` gives each kind of photograph one job. A
+      person's are "for likeness only: match the face exactly, while
+      clothing, pose and expression follow the text above", and the person
+      "is photographed in the scene, never pasted onto it: at true scale,
+      seated in a chair or standing on the floor, lit by the scene's own
+      light, and behind anything standing nearer the camera". A room's are
+      "for the room's design only", and "This is a new photograph taken
+      inside that room from the camera position the text above describes;
+      never reproduce or edit the framing of its photographs."
+    - The Gemini adapter puts a label before each image (`referenceLabel`):
+      likeness only for a person, the place's design and never its framing
+      for a plate.
+    - The shot-list prompt and the House Visual Bible ask every still of a
+      set for its own camera position (head of the table, low across it from
+      the window side, through the glass from the corridor, over a
+      shoulder), and two stills of one room never share one. Walls,
+      furniture and materials stay with the photographs. People are staged
+      physically in the scene.
+    - Extras and anonymous figures get natural, realistic faces, visible
+      and in focus, resembling no real or public person; never blurred,
+      hidden or turned away as a device. This reverses the "face turned
+      away or in shadow" rule.
+    - A set with a plate can generate another angle (reverse, side, detail,
+      or establishing again), conditioned on the plates it holds through
+      `setPlateBrief`, and the chosen plate records the matching view
+      (`plateAngleView`). The first plate is still generated from the look
+      alone, now as an empty establishing view with "people, figures" as the
+      negative prompt. Another angle is priced as the referenced still it
+      is, per set, on the page.
+
+    Untouched: stock scoring still rejects identifiable faces, a licensing
+    rule about real strangers, not a look. Plans already drafted keep their
+    old briefs until re-planned; the reference sentence and the labels apply
+    to every generation from now on.
+
+    Verified: the new wording, labels, staging and face rules, angle
+    generation and view recording are each pinned by tests (providers 523,
+    schemas 384, the set actions and visual-assets DB suites 57, the Set
+    card 18); `pnpm test` 9 of 9 tasks, apps/web 884 of 884.

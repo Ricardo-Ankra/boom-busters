@@ -414,14 +414,23 @@ function andList(parts: readonly string[]): string {
 }
 
 /**
- * The prompt, closed with a declaration of what is attached and what it outranks.
+ * The prompt, closed with a declaration of what is attached and what each
+ * photograph is FOR.
  *
- * Three things it deliberately does. It COUNTS, because "2 photographs of Markus
- * Braun" tells the model how much evidence it holds where a bare name does not.
- * It RANKS, because the fault being fixed is a model that read the prose and
- * invented a face the photographs already showed it. And it names every person
- * rather than referring back to them, because a pronoun here would be a guess
- * about a real person this app has no business making.
+ * It COUNTS, because "2 photographs of Markus Braun" tells the model how much
+ * evidence it holds where a bare name does not. It names every person rather
+ * than referring back to them, because a pronoun here would be a guess about
+ * a real person this app has no business making.
+ *
+ * It gives each kind of photograph one job (decision 273). The first version
+ * said the photographs were "authoritative for the likeness and the room;
+ * match them exactly", and that "the text describes only what happens in
+ * them". The model read it as an edit: every still of a set kept the plate's
+ * exact framing, and the person was pasted onto it at the wrong scale, rising
+ * through the boardroom table. So a person's photographs are for the face,
+ * a room's are for its design, the picture itself is a new one from the
+ * camera position the brief names, and a person stands in it rather than on
+ * it.
  *
  * Skipped when the prompt already carries the marker, so a re-generation of an
  * already-decorated prompt cannot stack two declarations.
@@ -438,16 +447,28 @@ function withReferenceClause(
     ...people.map((person) => `${photographCount(person.photos)} of ${person.name}`),
     ...(set ? [`${photographCount(set.plates)} of ${set.name}`] : []),
   ])
-  const authority = andList([
-    ...people.map((person) => `the likeness of ${person.name}`),
-    ...(set ? ['the room'] : []),
-  ])
+  const sentences = [`${REFERENCE_MARKER} ${inventory}.`]
+  if (people.length > 0) {
+    const names = andList(people.map((person) => person.name))
+    sentences.push(
+      `The photographs of ${names} are for likeness only: match ` +
+        `${people.length === 1 ? 'the face' : 'each face'} exactly, while clothing, pose ` +
+        `and expression follow the text above.`,
+      `${people.length === 1 ? names : 'Each person'} is photographed in the scene, never ` +
+        `pasted onto it: at true scale, seated in a chair or standing on the floor, lit by ` +
+        `the scene's own light, and behind anything standing nearer the camera.`,
+    )
+  }
+  if (set) {
+    sentences.push(
+      `The photographs of ${set.name} are for the room's design only: its architecture, ` +
+        `materials, furniture and light.`,
+      `This is a new photograph taken inside that room from the camera position the text ` +
+        `above describes; never reproduce or edit the framing of its photographs.`,
+    )
+  }
 
-  return (
-    `${prompt.trimEnd()}\n\n${REFERENCE_MARKER} ${inventory}. ` +
-    `The photographs are authoritative for ${authority}; match them exactly. ` +
-    `The text above describes only what happens in them.`
-  )
+  return `${prompt.trimEnd()}\n\n${sentences.join(' ')}`
 }
 
 /**

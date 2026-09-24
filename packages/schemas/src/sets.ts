@@ -20,6 +20,24 @@ export const SET_PLATE_VIEWS = ['establishing', 'detail', 'other'] as const
 export const SetPlateViewSchema = z.enum(SET_PLATE_VIEWS)
 export type SetPlateView = z.infer<typeof SetPlateViewSchema>
 
+/**
+ * Which way a GENERATED plate looks at the room (decision 273). A set with
+ * one plate gives every still of it one viewpoint to copy, so a plate can be
+ * generated from another angle, conditioned on the plates the set already
+ * holds. Only the first plate is generated from the look alone, so only
+ * `establishing` is offered before a set has one.
+ */
+export const SET_PLATE_ANGLES = ['establishing', 'reverse', 'side', 'detail'] as const
+export const SetPlateAngleSchema = z.enum(SET_PLATE_ANGLES)
+export type SetPlateAngle = z.infer<typeof SetPlateAngleSchema>
+
+/** The view a plate generated from `angle` is recorded as. */
+export function plateAngleView(angle: SetPlateAngle): SetPlateView {
+  if (angle === 'establishing') return 'establishing'
+  if (angle === 'detail') return 'detail'
+  return 'other'
+}
+
 /** Two or three angles pin a room; beyond four the model averages a different one. */
 export const MAX_SET_PLATES = 4
 

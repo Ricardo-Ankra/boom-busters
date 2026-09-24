@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  plateAngleView,
   MAX_SET_PLATES,
   ProjectSetSchema,
   SetPlateSchema,
@@ -79,5 +80,14 @@ describe('setForBrief', () => {
     expect(setForBrief('   ', [boardroom])).toBeNull()
     expect(setForBrief('A car park', [boardroom])).toBeNull()
     expect(setForBrief('outside the Venture Capital Boardroom', [boardroom])).toBeNull()
+  })
+})
+
+describe('plateAngleView', () => {
+  it('records each generated angle as the view the card and the reference order know', () => {
+    expect(plateAngleView('establishing')).toBe('establishing')
+    expect(plateAngleView('detail')).toBe('detail')
+    expect(plateAngleView('reverse')).toBe('other')
+    expect(plateAngleView('side')).toBe('other')
   })
 })

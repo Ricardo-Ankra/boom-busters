@@ -3,8 +3,8 @@
 import { Maximize2 } from 'lucide-react'
 import * as React from 'react'
 import { useRouter } from 'next/navigation'
-import { MAX_SET_PLATES, SET_PLATE_VIEWS } from '@boom-busters/schemas'
-import type { ProjectSet, SetPlateView, SlotCandidate } from '@boom-busters/schemas'
+import { MAX_SET_PLATES, plateAngleView, SET_PLATE_VIEWS } from '@boom-busters/schemas'
+import type { ProjectSet, SetPlateAngle, SetPlateView, SlotCandidate } from '@boom-busters/schemas'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input, Label, Select } from '@/components/ui/input'
@@ -45,6 +45,20 @@ import {
  * the same strip, the same full-size Preview, the same click to choose.
  */
 
+/** What each generated angle is called on the card (decision 273). */
+const ANGLE_LABELS: Record<SetPlateAngle, string> = {
+  establishing: 'Establishing, from the entrance',
+  reverse: 'Reverse, from the far end',
+  side: 'Side, across the room',
+  detail: 'Detail, close on the furniture',
+}
+
+/** A generated batch and the angle it was asked for, which decides the view a chosen plate records. */
+interface CandidateBatch {
+  angle: SetPlateAngle
+  list: SlotCandidate[]
+}
+
 const VIEW_LABELS: Record<SetPlateView, string> = {
   establishing: 'Establishing',
   detail: 'Detail',
@@ -58,6 +72,12 @@ export interface SetCardProps {
   plateUrls: Readonly<Record<string, string>>
   /** What Generate a plate will spend on the routed stills model, in USD. */
   plateEstimateUsd: number
+  /**
+   * What another angle of each plated set will spend, by set id. It carries
+   * the set's plates, so it may take the reference route, which on fal costs
+   * more than the plain one. Falls back to `plateEstimateUsd`.
+   */
+  angleEstimatesUsd?: Readonly<Record<string, number>>
 }
 
 /** `run` results a wider shape than `ActionResult` can carry, such as the candidates a generate call returns. */
@@ -69,7 +89,13 @@ type Act = (
   onOk?: (result: ActResult) => void,
 ) => Promise<void>
 
-export function SetCard({ projectId, sets, plateUrls, plateEstimateUsd }: SetCardProps) {
+export function SetCard({
+  projectId,
+  sets,
+  plateUrls,
+  plateEstimateUsd,
+  angleEstimatesUsd = {},
+}: SetCardProps) {
   const router = useRouter()
   const { toast } = useToast()
   const [busy, setBusy] = React.useState<string | null>(null)
@@ -79,7 +105,7 @@ export function SetCard({ projectId, sets, plateUrls, plateEstimateUsd }: SetCar
   const unplated = sets.filter((set) => set.plates.length === 0).length
   // Held here, not in each row, so hiding the sets does not throw away
   // candidates that were paid for. Keyed by set id.
-  const [candidates, setCandidates] = React.useState<Record<string, SlotCandidate[]>>({})
+  const [candidates, setCandidates] = React.useState<Record<string, CandidateBatch>>({})
   // Candidates already added as plates this session. A live candidate is
   // also recognised by its storage key (see `isAdded`); a mock one is not.
   const [added, setAdded] = React.useState<ReadonlySet<string>>(new Set())
@@ -161,15 +187,19 @@ export function SetCard({ projectId, sets, plateUrls, plateEstimateUsd }: SetCar
                 key={set.id}
                 set={set}
                 plateUrls={plateUrls}
-                plateEstimateUsd={plateEstimateUsd}
+                plateEstimateUsd={
+                  set.plates.length > 0
+                    ? (angleEstimatesUsd[set.id] ?? plateEstimateUsd)
+                    : plateEstimateUsd
+                }
                 busy={busy}
                 act={act}
-                candidates={candidates[set.id] ?? null}
-                onCandidates={(list) =>
+                batch={candidates[set.id] ?? null}
+                onBatch={(batch) =>
                   setCandidates((current) => {
                     const next = { ...current }
-                    if (list === null) delete next[set.id]
-                    else next[set.id] = list
+                    if (batch === null) delete next[set.id]
+                    else next[set.id] = batch
                     return next
                   })
                 }
@@ -224,8 +254,8 @@ function SetRow({
   plateEstimateUsd,
   busy,
   act,
-  candidates,
-  onCandidates,
+  batch,
+  onBatch,
   added,
   onAdded,
 }: {
@@ -234,14 +264,19 @@ function SetRow({
   plateEstimateUsd: number
   busy: string | null
   act: Act
-  candidates: SlotCandidate[] | null
-  onCandidates: (list: SlotCandidate[] | null) => void
+  batch: CandidateBatch | null
+  onBatch: (batch: CandidateBatch | null) => void
   added: ReadonlySet<string>
   onAdded: (candidateId: string) => void
 }) {
   const [name, setName] = React.useState(set.name)
   const [look, setLook] = React.useState(set.look)
   const [view, setView] = React.useState<SetPlateView>('establishing')
+  // The first plate is always the establishing view; after that the default
+  // is the view a set with one plate most lacks.
+  const [angle, setAngle] = React.useState<SetPlateAngle>('reverse')
+  const plated = set.plates.length > 0
+  const candidates = batch?.list ?? null
   const [plateUrl, setPlateUrl] = React.useState('')
   // Which candidate the Preview shows, or null when it is closed.
   const [previewIndex, setPreviewIndex] = React.useState<number | null>(null)
@@ -262,6 +297,7 @@ function SetRow({
           sourceUrl: candidate.sourceUrl,
           width: candidate.width ?? 0,
           height: candidate.height ?? 0,
+          view: plateAngleView(batch?.angle ?? 'establishing'),
         }),
       'Plate added',
       () => onAdded(candidate.id),
@@ -527,7 +563,7 @@ function SetRow({
               variant="ghost"
               onClick={() => {
                 setPreviewIndex(null)
-                onCandidates(null)
+                onBatch(null)
               }}
             >
               Clear candidates
@@ -569,20 +605,34 @@ function SetRow({
         >
           Save
         </Button>
+        {room && plated ? (
+          <Select
+            aria-label={`Angle of the next generated plate of ${set.name}`}
+            value={angle}
+            onChange={(event) => setAngle(event.target.value as SetPlateAngle)}
+          >
+            {(Object.keys(ANGLE_LABELS) as SetPlateAngle[]).map((option) => (
+              <option key={option} value={option}>
+                {ANGLE_LABELS[option]}
+              </option>
+            ))}
+          </Select>
+        ) : null}
         {room ? (
           <Button
             variant="outline"
             disabled={rowBusy}
-            onClick={() =>
-              act(
+            onClick={() => {
+              const asked: SetPlateAngle = plated ? angle : 'establishing'
+              void act(
                 `${set.id}:generate`,
-                () => generateSetPlateAction(set.id),
+                () => generateSetPlateAction(set.id, asked),
                 'Candidates ready',
-                (result) => onCandidates(result.candidates ?? []),
+                (result) => onBatch({ angle: asked, list: result.candidates ?? [] }),
               )
-            }
+            }}
           >
-            Generate a plate · ≈${plateEstimateUsd.toFixed(2)}
+            {`${plated ? 'Generate another angle' : 'Generate a plate'} · ≈$${plateEstimateUsd.toFixed(2)}`}
           </Button>
         ) : null}
         <ConfirmButton

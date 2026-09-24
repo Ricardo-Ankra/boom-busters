@@ -6,6 +6,7 @@ import type {
   ImageGenProvider,
   ImageGenRequest,
   ImageGenResult,
+  ImageReference,
   ReferenceLimits,
   StockCallOptions,
 } from './types'
@@ -93,6 +94,26 @@ const REFERENCE_LIMITS: Record<string, ReferenceLimits> = {
   'gemini-3-pro-image': { characters: 5, objects: 6 },
 }
 
+/**
+ * The line sent immediately before each reference image, saying what it is
+ * FOR (decision 273). Unlabelled, the images arrived as one flat list and
+ * the model treated a room's photograph as the picture to edit: every still
+ * of a set kept the plate's exact framing, and the person was pasted onto
+ * it at the wrong scale. A face is for likeness; a place is for its design,
+ * never its framing.
+ */
+export function referenceLabel(
+  reference: Pick<ImageReference, 'name' | 'kind'>,
+  position: number,
+  total: number,
+): string {
+  const role =
+    reference.kind === 'character'
+      ? 'use it for the likeness only; pose, clothing and framing come from the text'
+      : "use it for the place's design only (architecture, materials, furniture, light), never its framing or camera position"
+  return `Reference image ${position} of ${total}: ${reference.name}. ${role[0]!.toUpperCase()}${role.slice(1)}.`
+}
+
 const WIDTH = 1344
 const HEIGHT = 768
 
@@ -164,6 +185,7 @@ export const geminiImageGen: ImageGenProvider = {
       : request.prompt
 
     const fetchImpl = options.fetchImpl ?? fetch
+    const ordered = [...characters, ...objects]
 
     const one = async (): Promise<{ url: string; width: number; height: number }> => {
       let response: Response
@@ -177,13 +199,17 @@ export const geminiImageGen: ImageGenProvider = {
           body: JSON.stringify({
             // Characters first, then objects, then the words about them
             // (decision 253, amended 264): the model reads the faces, then
-            // the room, then what to do with them.
+            // the room, then what to do with them. Each image is preceded by
+            // a line saying what it is for (decision 273).
             contents: [
               {
                 parts: [
-                  ...[...characters, ...objects].map((reference) => ({
-                    inlineData: { mimeType: reference.mimeType, data: reference.data ?? '' },
-                  })),
+                  ...ordered.flatMap((reference, at) => [
+                    { text: referenceLabel(reference, at + 1, ordered.length) },
+                    {
+                      inlineData: { mimeType: reference.mimeType, data: reference.data ?? '' },
+                    },
+                  ]),
                   { text: prompt },
                 ],
               },

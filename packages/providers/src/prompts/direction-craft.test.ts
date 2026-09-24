@@ -57,8 +57,26 @@ describe('DIRECTION_CRAFT', () => {
     // The fallback no longer canonises one picture.
     expect(DIRECTION_CRAFT).not.toContain('(the empty chair,')
     expect(DIRECTION_CRAFT).toContain('A set is a room the film returns to')
-    expect(DIRECTION_CRAFT).toContain('the photographs are the room')
+    expect(DIRECTION_CRAFT).toContain("the photographs give the room's design")
     expect(DIRECTION_CRAFT).toContain('A room on every slot is a motif on every slot')
+  })
+
+  it('moves the camera around a set, and puts people in it rather than on it (decision 273)', () => {
+    expect(DIRECTION_CRAFT).toContain(
+      'They never give the picture: every still in a set is a new photograph from its own camera position.',
+    )
+    expect(DIRECTION_CRAFT).toContain('Two stills of the same room never share a camera position.')
+    expect(DIRECTION_CRAFT).toContain('A person is photographed in the room, never pasted onto it')
+  })
+
+  it('gives anonymous figures and extras realistic, visible faces (decision 273)', () => {
+    expect(DIRECTION_CRAFT).toContain(
+      'clothing, with natural, realistic faces, visible and in focus.',
+    )
+    expect(DIRECTION_CRAFT).toContain(
+      'A face is never blurred, smeared, hidden or turned away as a device.',
+    )
+    expect(DIRECTION_CRAFT).not.toContain('face turned away or in shadow')
   })
 
   it('stages people in place rather than symbols, and drops the motif floor (decision 271)', () => {

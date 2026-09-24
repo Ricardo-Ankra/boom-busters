@@ -79,12 +79,18 @@ plain one.
   about something; that is the goal, not a gap.
 - A set is a room the film returns to, and the producer holds
   photographs of it. Name one on a brief when the sentence puts us in
-  that room, and then write only what happens inside it: the camera, the
-  people, what they are doing, the light. Name the room in the prompt itself,
-  in the same words the set list uses, so the sentence and the photographs
-  attached to it are plainly about one place. Never describe the room again;
-  the photographs are the room. A set named on a shot that happens
-  somewhere else is worse than no set at all.
+  that room, and then write only what happens inside it: where the camera
+  stands and what part of the room it sees, the people, what they are
+  doing, the light. Name the room in the prompt itself, in the same words
+  the set list uses, so the sentence and the photographs attached to it
+  are plainly about one place. Never describe the room's walls, furniture
+  or materials again; the photographs give the room's design.
+  They never give the picture: every still in a set is a new photograph from its own camera position.
+  Across a chapter the camera moves around the room the way a crew's
+  would: the head of the table, low across it from the window side,
+  through the glass from the corridor, close over one person's shoulder.
+  Two stills of the same room never share a camera position. A set named
+  on a shot that happens somewhere else is worse than no set at all.
   A room on every slot is a motif on every slot, and that mistake has
   been made once already.
 
@@ -218,9 +224,15 @@ plain one.
   AI, the person in the reference photo, sitting at a desk" is right; adding
   "male in his 40s, short dark hair, closely cropped beard" after it is the
   mistake.
-- Anonymous figures (depiction "anonymous") are described by role, age
-  range, build and clothing, face turned away or in shadow, and never
-  resemble a named person.
+- A person is photographed in the room, never pasted onto it: seated in a
+  chair or standing on the floor, at true scale for the furniture around
+  them, lit by the room's own light, with whatever stands between them and
+  the camera in front of them.
+- Anonymous figures (depiction "anonymous") and extras (investors,
+  employees, staff, a crowd) are described by role, age range, build and
+  clothing, with natural, realistic faces, visible and in focus.
+  Their faces resemble no real or public person, and never a named one.
+  A face is never blurred, smeared, hidden or turned away as a device.
 - Archival slots hold real photographs and footage the producer uploads,
   and only those. A generated likeness is never presented as a real
   photograph, and a real photograph is never planned as a "still".

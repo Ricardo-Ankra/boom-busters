@@ -21,16 +21,18 @@ import {
   castPhotoExtension,
   CastPhotoMimeSchema,
   MAX_SET_PLATES,
+  SetPlateAngleSchema,
   SetPlateViewSchema,
   UlidSchema,
   ValidationError,
 } from '@boom-busters/schemas'
-import type { SetPlate, SetPlateView, SlotCandidate, StillBrief } from '@boom-busters/schemas'
+import type { SetPlate, SetPlateAngle, SetPlateView, SlotCandidate } from '@boom-busters/schemas'
 import { createHash } from 'node:crypto'
 import { revalidatePath } from 'next/cache'
 import { auth } from '@/auth'
 import { db } from '@/lib/db'
 import { fetchRemoteImage } from '@/lib/remote-image'
+import { setPlateBrief } from '@/lib/set-plates'
 import {
   deleteObject,
   getObjectBytes,
@@ -341,19 +343,30 @@ export async function removeSetPlateAction(input: {
 }
 
 /**
- * Generate a candidate plate from the set's `look` alone (decision 264): no
- * cast, no set conditioning, because a room's own reference plates cannot
- * condition their own first generation. Returns the candidates; nothing is
- * stored until `chooseSetPlateAction` picks one.
+ * Generate candidate plates (decision 264, amended 273). The first plate of a
+ * set comes from its `look` alone, because a room's own plates cannot
+ * condition their own first generation. Once it holds one, `angle` asks for
+ * another view of the same room, and the plates it holds travel with the
+ * request (`setPlateBrief`). Returns the candidates; nothing is stored until
+ * `chooseSetPlateAction` picks one.
  */
 export async function generateSetPlateAction(
   setId: string,
+  angle: SetPlateAngle = 'establishing',
 ): Promise<ActionResult & { candidates?: SlotCandidate[] }> {
   await requireOwner()
   const invalid = badIds(setId)
   if (invalid) return invalid
+  const parsedAngle = SetPlateAngleSchema.safeParse(angle)
+  if (!parsedAngle.success) return { ok: false, error: 'Unknown angle.' }
   const set = await getProjectSet(db, setId)
   if (!set) return { ok: false, error: 'This set no longer exists.' }
+  if (set.plates.length === 0 && parsedAngle.data !== 'establishing') {
+    return {
+      ok: false,
+      error: 'Another angle needs a plate to work from. Add or generate the first one.',
+    }
+  }
   // Refused before the generator is called, not after: a full set has
   // nowhere to put the image the money would have bought.
   if (set.plates.length >= MAX_SET_PLATES) {
@@ -361,15 +374,7 @@ export async function generateSetPlateAction(
   }
 
   const settings = await getSettings(db)
-  const brief: StillBrief = {
-    type: 'still',
-    coversText: set.name,
-    description: set.look,
-    shotSize: 'wide',
-    motion: { kind: 'static' },
-    transition: 'cut',
-    prompt: `${set.look} ${stillStyleAnchors(settings.brandKit)}`,
-  }
+  const brief = setPlateBrief(set, parsedAngle.data, stillStyleAnchors(settings.brandKit))
   try {
     const candidates = await generateStillCandidates(brief, set.projectId)
     return { ok: true, candidates }
@@ -385,9 +390,9 @@ export async function generateSetPlateAction(
  * `getObjectBytes` exactly as a Gemini reference is), and a mock candidate's
  * `sourceUrl` is a self-contained `data:` thumbnail decoded in place. Either
  * way the bytes are copied under `setPlateKey`, and the plate is recorded as
- * `origin: 'generated'`, `view: 'establishing'`, since a generated plate is
- * the film's own invention, and always the establishing view of the room it
- * just invented.
+ * `origin: 'generated'`, since a generated plate is the film's own invention,
+ * with the view its angle was generated for (`plateAngleView`), establishing
+ * when none is given.
  */
 export async function chooseSetPlateAction(input: {
   setId: string
@@ -395,10 +400,13 @@ export async function chooseSetPlateAction(input: {
   sourceUrl: string
   width: number
   height: number
+  view?: SetPlateView
 }): Promise<ActionResult> {
   await requireOwner()
   const invalid = badIds(input.setId)
   if (invalid) return invalid
+  const view = SetPlateViewSchema.safeParse(input.view ?? 'establishing')
+  if (!view.success) return { ok: false, error: 'That candidate could not be recorded.' }
   const set = await getProjectSet(db, input.setId)
   if (!set) return { ok: false, error: 'This set no longer exists.' }
   if (set.plates.length >= MAX_SET_PLATES) {
@@ -460,7 +468,7 @@ export async function chooseSetPlateAction(input: {
     mimeType: 'image/png',
     width: input.width,
     height: input.height,
-    view: 'establishing',
+    view: view.data,
     origin: 'generated',
   }
   try {

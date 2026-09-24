@@ -136,7 +136,9 @@ describe('SetCard', () => {
     )
     await userEvent.click(screen.getByRole('button', { name: 'Edit sets' }))
     // The label quotes the routed stills model's price, not a constant.
-    expect(screen.getByRole('button', { name: 'Generate a plate · ≈$0.08' })).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: 'Generate another angle · ≈$0.08' }),
+    ).toBeInTheDocument()
     const row = screen.getByRole('region', { name: 'The trading floor' })
     const look = within(row).getByLabelText('Look')
     await userEvent.clear(look)
@@ -201,7 +203,7 @@ describe('SetCard', () => {
       <SetCard projectId={PROJECT} sets={[tradingFloor]} plateUrls={{}} plateEstimateUsd={0.08} />,
     )
     await userEvent.click(screen.getByRole('button', { name: 'Edit sets' }))
-    await userEvent.click(screen.getByRole('button', { name: /Generate a plate/ }))
+    await userEvent.click(screen.getByRole('button', { name: /^Generate/ }))
 
     expect(await screen.findByRole('listitem', { name: 'Choose plate 1' })).toBeInTheDocument()
     expect(screen.getByRole('listitem', { name: 'Choose plate 2' })).toBeInTheDocument()
@@ -229,7 +231,7 @@ describe('SetCard', () => {
       <SetCard projectId={PROJECT} sets={[tradingFloor]} plateUrls={{}} plateEstimateUsd={0.08} />,
     )
     await userEvent.click(screen.getByRole('button', { name: 'Edit sets' }))
-    await userEvent.click(screen.getByRole('button', { name: /Generate a plate/ }))
+    await userEvent.click(screen.getByRole('button', { name: /^Generate/ }))
     await userEvent.click(await screen.findByRole('listitem', { name: 'Choose plate 1' }))
 
     expect(actions.chooseSetPlateAction).toHaveBeenCalledWith({
@@ -238,6 +240,8 @@ describe('SetCard', () => {
       sourceUrl: 'https://img.example/cand-1.png',
       width: 1024,
       height: 768,
+      // The set already holds a plate, so the default is the reverse angle.
+      view: 'other',
     })
   })
 
@@ -258,7 +262,7 @@ describe('SetCard', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Edit sets' }))
     const row = screen.getByRole('region', { name: 'The trading floor' })
     expect(within(row).queryByRole('button', { name: 'Add plate' })).not.toBeInTheDocument()
-    expect(within(row).queryByRole('button', { name: /Generate a plate/ })).not.toBeInTheDocument()
+    expect(within(row).queryByRole('button', { name: /^Generate/ })).not.toBeInTheDocument()
   })
 
   it('the card is collapsed when every set has a plate', () => {
@@ -303,7 +307,7 @@ describe('SetCard', () => {
       <SetCard projectId={PROJECT} sets={[tradingFloor]} plateUrls={{}} plateEstimateUsd={0.08} />,
     )
     await userEvent.click(screen.getByRole('button', { name: 'Edit sets' }))
-    await userEvent.click(screen.getByRole('button', { name: /Generate a plate/ }))
+    await userEvent.click(screen.getByRole('button', { name: /^Generate/ }))
 
     const first = await screen.findByRole('listitem', { name: 'Choose plate 1' })
     expect(within(first).getByRole('img')).toHaveAttribute('src', '/api/assets/asset-1/file')
@@ -320,7 +324,7 @@ describe('SetCard', () => {
       <SetCard projectId={PROJECT} sets={[tradingFloor]} plateUrls={{}} plateEstimateUsd={0.08} />,
     )
     await userEvent.click(screen.getByRole('button', { name: 'Edit sets' }))
-    await userEvent.click(screen.getByRole('button', { name: /Generate a plate/ }))
+    await userEvent.click(screen.getByRole('button', { name: /^Generate/ }))
     await userEvent.click(await screen.findByRole('button', { name: 'Preview' }))
 
     const dialog = screen.getByRole('dialog', {
@@ -340,6 +344,7 @@ describe('SetCard', () => {
       sourceUrl: `generated://google/${'b'.repeat(12)}`,
       width: 1344,
       height: 768,
+      view: 'other',
     })
     expect(await within(dialog).findByRole('button', { name: 'Added as a plate' })).toBeDisabled()
   })
@@ -353,7 +358,7 @@ describe('SetCard', () => {
       <SetCard projectId={PROJECT} sets={[tradingFloor]} plateUrls={{}} plateEstimateUsd={0.08} />,
     )
     await userEvent.click(screen.getByRole('button', { name: 'Edit sets' }))
-    await userEvent.click(screen.getByRole('button', { name: /Generate a plate/ }))
+    await userEvent.click(screen.getByRole('button', { name: /^Generate/ }))
     await userEvent.click(await screen.findByRole('listitem', { name: 'Choose plate 1' }))
 
     expect(await screen.findByRole('listitem', { name: 'Plate 1 added' })).toBeDisabled()
@@ -383,7 +388,7 @@ describe('SetCard', () => {
     })
     render(<SetCard projectId={PROJECT} sets={[plated]} plateUrls={{}} plateEstimateUsd={0.08} />)
     await userEvent.click(screen.getByRole('button', { name: 'Edit sets' }))
-    await userEvent.click(screen.getByRole('button', { name: /Generate a plate/ }))
+    await userEvent.click(screen.getByRole('button', { name: /^Generate/ }))
 
     expect(await screen.findByRole('listitem', { name: 'Plate 1 added' })).toBeDisabled()
     expect(screen.getByRole('listitem', { name: 'Choose plate 2' })).toBeEnabled()
@@ -398,7 +403,7 @@ describe('SetCard', () => {
       <SetCard projectId={PROJECT} sets={[tradingFloor]} plateUrls={{}} plateEstimateUsd={0.08} />,
     )
     await userEvent.click(screen.getByRole('button', { name: 'Edit sets' }))
-    await userEvent.click(screen.getByRole('button', { name: /Generate a plate/ }))
+    await userEvent.click(screen.getByRole('button', { name: /^Generate/ }))
     await screen.findByRole('listitem', { name: 'Choose plate 1' })
 
     await userEvent.click(screen.getByRole('button', { name: 'Hide sets' }))
@@ -407,5 +412,71 @@ describe('SetCard', () => {
 
     await userEvent.click(screen.getByRole('button', { name: 'Clear candidates' }))
     expect(screen.queryByRole('listitem', { name: 'Choose plate 1' })).not.toBeInTheDocument()
+  })
+
+  // Decision 273: one plate gave every still of a set one viewpoint to copy.
+  describe('angles', () => {
+    it('generates the first plate of an empty set as the establishing view, with no angle picker', async () => {
+      const empty: ProjectSet = { ...boardroom, id: '01J0000000000000000000000D', plates: [] }
+      actions.generateSetPlateAction.mockResolvedValue({ ok: true, candidates: [] })
+      render(
+        <SetCard
+          projectId={PROJECT}
+          sets={[empty]}
+          plateUrls={{}}
+          plateEstimateUsd={0.08}
+          angleEstimatesUsd={{ [empty.id]: 0.2 }}
+        />,
+      )
+      expect(screen.queryByRole('combobox', { name: /Angle of the next/ })).not.toBeInTheDocument()
+      await userEvent.click(screen.getByRole('button', { name: 'Generate a plate · ≈$0.08' }))
+      expect(actions.generateSetPlateAction).toHaveBeenCalledWith(empty.id, 'establishing')
+    })
+
+    it('offers another angle of a plated set, priced as a referenced still', async () => {
+      actions.generateSetPlateAction.mockResolvedValue({ ok: true, candidates: [] })
+      render(
+        <SetCard
+          projectId={PROJECT}
+          sets={[tradingFloor]}
+          plateUrls={{}}
+          plateEstimateUsd={0.08}
+          angleEstimatesUsd={{ [TRADING_FLOOR]: 0.12 }}
+        />,
+      )
+      await userEvent.click(screen.getByRole('button', { name: 'Edit sets' }))
+      const picker = screen.getByRole('combobox', {
+        name: 'Angle of the next generated plate of The trading floor',
+      })
+      expect(picker).toHaveValue('reverse')
+      await userEvent.selectOptions(picker, 'detail')
+      await userEvent.click(screen.getByRole('button', { name: 'Generate another angle · ≈$0.12' }))
+      expect(actions.generateSetPlateAction).toHaveBeenCalledWith(TRADING_FLOOR, 'detail')
+    })
+
+    it('records a chosen detail candidate as a detail plate', async () => {
+      actions.generateSetPlateAction.mockResolvedValue({
+        ok: true,
+        candidates: [liveCandidate(1, 'a'.repeat(64))],
+      })
+      render(
+        <SetCard
+          projectId={PROJECT}
+          sets={[tradingFloor]}
+          plateUrls={{}}
+          plateEstimateUsd={0.08}
+        />,
+      )
+      await userEvent.click(screen.getByRole('button', { name: 'Edit sets' }))
+      await userEvent.selectOptions(
+        screen.getByRole('combobox', { name: /Angle of the next generated plate/ }),
+        'detail',
+      )
+      await userEvent.click(screen.getByRole('button', { name: /^Generate another angle/ }))
+      await userEvent.click(await screen.findByRole('listitem', { name: 'Choose plate 1' }))
+      expect(actions.chooseSetPlateAction).toHaveBeenCalledWith(
+        expect.objectContaining({ setId: TRADING_FLOOR, view: 'detail' }),
+      )
+    })
   })
 })

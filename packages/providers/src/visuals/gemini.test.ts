@@ -100,7 +100,7 @@ describe('geminiImageGen', () => {
     expect(body.generationConfig.imageConfig.aspectRatio).toBe('16:9')
   })
 
-  it('sends reference photos as inline parts ahead of the prompt (decision 253)', async () => {
+  it('sends each reference photo after a line naming its role, ahead of the prompt (decisions 253, 273)', async () => {
     const calls: { url: string; body: unknown }[] = []
     await geminiImageGen.generate(
       {
@@ -114,10 +114,45 @@ describe('geminiImageGen', () => {
     )
     const parts = (calls[0]?.body as { contents: { parts: Record<string, unknown>[] }[] })
       .contents[0]!.parts
-    expect(parts[0]).toEqual({ inlineData: { mimeType: 'image/jpeg', data: 'QUJD' } })
-    expect(parts[1]).toEqual({
+    expect(parts[0]).toEqual({
+      text:
+        'Reference image 1 of 1: Emad Mostaque. Use it for the likeness only; ' +
+        'pose, clothing and framing come from the text.',
+    })
+    expect(parts[1]).toEqual({ inlineData: { mimeType: 'image/jpeg', data: 'QUJD' } })
+    expect(parts[2]).toEqual({
       text: 'Emad Mostaque, the person in the reference photo, at a desk',
     })
+  })
+
+  it("labels a set plate as the place's design, never its framing (decision 273)", async () => {
+    const calls: { url: string; body: unknown }[] = []
+    await geminiImageGen.generate(
+      {
+        prompt: 'x',
+        count: 1,
+        model: 'gemini-3.1-flash-image',
+        references: [
+          { name: 'The boardroom', kind: 'object', mimeType: 'image/png', data: 'UExU' },
+          { name: 'Emad Mostaque', kind: 'character', mimeType: 'image/jpeg', data: 'QUJD' },
+        ],
+      },
+      { apiKey: 'key', fetchImpl: fetchRecording(calls, IMAGE_REPLY) },
+    )
+    const parts = (calls[0]?.body as { contents: { parts: Record<string, unknown>[] }[] })
+      .contents[0]!.parts
+    // People first whatever order they arrived in, each image after its label.
+    expect(parts[0]).toEqual({
+      text:
+        'Reference image 1 of 2: Emad Mostaque. Use it for the likeness only; ' +
+        'pose, clothing and framing come from the text.',
+    })
+    expect(parts[2]).toEqual({
+      text:
+        "Reference image 2 of 2: The boardroom. Use it for the place's design only " +
+        '(architecture, materials, furniture, light), never its framing or camera position.',
+    })
+    expect(parts[3]).toEqual({ inlineData: { mimeType: 'image/png', data: 'UExU' } })
   })
 
   it('refuses more than three references before spending anything', async () => {
@@ -275,6 +310,7 @@ describe('refusing more references than the model takes', () => {
       { apiKey: 'k', fetchImpl },
     )
     const body = JSON.parse(String(fetchImpl.mock.calls[0]![1]?.body))
-    expect(body.contents[0].parts).toHaveLength(4)
+    // Three labelled images and the prompt.
+    expect(body.contents[0].parts).toHaveLength(7)
   })
 })

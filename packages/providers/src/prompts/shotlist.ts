@@ -291,26 +291,39 @@ Planning rules:
       of them whatever: no age, build, height, hair, beard, glasses, skin or
       face. The photograph is the likeness and any written description fights
       it. Clothing, posture, place, light and what they are doing are still
-      yours to direct. List them in "depicts" by name alone, never with the
-      role after it: the name is how the photographs are found.
+      yours to direct. Stage them physically in the scene: seated in a chair
+      or standing on the floor, at true scale, with any furniture between
+      them and the camera in front of them. List them in "depicts" by name
+      alone, never with the role after it: the name is how the photographs
+      are found.
   (b) A named person NOT in that list. Name them by full name and role, then
       their identity string from the book as one sentence — with no
       photograph it is the only thing standing between the image and a
       stand-in. List them in "depicts" by name alone.
-  (c) Anyone unnamed: staff, an aide, a driver, a crowd. No name and no
-      identity string. Describe them by role, age range, build and clothing,
-      face turned away or in shadow, resembling nobody in particular.
+  (c) Anyone unnamed: investors, employees, staff, an aide, a driver, a
+      crowd. No name and no identity string. Describe them by
+      role, age range, build and clothing, with a natural, realistic face,
+      visible and in focus, resembling no real or public person.
+      Never blur, hide or turn a face away as a device.
 ${
   sets.length > 0
     ? `  Sets are the rooms this film returns to, and the producer holds
   photographs of each. When the sentence puts us in one,
   name it in "set" by name alone and write the shot that happens
-  inside it: what the camera sees, who is there, what they are doing,
-  the light. Name the room in the prompt as well, in the same words the
-  list above uses, so the sentence and the photographs attached to it are
-  plainly about one place. Do not describe the room itself; the photographs
-  are the room, and a written description only argues with them. Its light
-  and weather are still yours; its walls, furniture and layout are not. A sentence that happens
+  inside it: where the camera stands in the room and what part of it we
+  see, who is there, what they are doing, the light.
+  Name the room in the prompt as well, in the same words the list above
+  uses, so the sentence and the photographs attached to it are plainly
+  about one place.
+  The photographs give the room's design, not the picture.
+  Every still in a set is a new photograph from its own camera position,
+  never the photographs' framing: "from the head of the table", "low across
+  the table from the window side", "through the glass wall from the
+  corridor", "close over one investor's shoulder".
+  Two stills of the same room never share a camera position.
+  Do not describe its walls, furniture, layout or materials; the
+  photographs state those, and a written description only argues with
+  them. Its light and weather are still yours. A sentence that happens
   somewhere else names no set: a room on every slot is the same mistake as
   a motif on every slot.
 `
