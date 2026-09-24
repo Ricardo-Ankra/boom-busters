@@ -1,5 +1,6 @@
+import { DEFAULT_SETTINGS } from '@boom-busters/schemas'
 import { describe, expect, it } from 'vitest'
-import { parseLiveSetArgs } from './live-set-args'
+import { defaultInventoryModel, parseLiveSetArgs } from './live-set-args'
 
 describe('parseLiveSetArgs', () => {
   it('parses the required flags and defaults the rest', () => {
@@ -10,6 +11,8 @@ describe('parseLiveSetArgs', () => {
       layout: undefined,
       out: undefined,
       shot: undefined,
+      anchors: undefined,
+      inventoryModel: 'gemini-3.5-flash-lite',
       cap: 1,
     })
   })
@@ -31,6 +34,10 @@ describe('parseLiveSetArgs', () => {
         'shot.json',
         '--cap',
         '0.5',
+        '--anchors',
+        'heavy film grain; cold blue grade',
+        '--inventory-model',
+        'gemini-3.5-flash',
       ]),
     ).toEqual({
       image: 'a.png',
@@ -39,6 +46,8 @@ describe('parseLiveSetArgs', () => {
       layout: 'layout.txt',
       out: 'out-dir',
       shot: 'shot.json',
+      anchors: 'heavy film grain; cold blue grade',
+      inventoryModel: 'gemini-3.5-flash',
       cap: 0.5,
     })
   })
@@ -53,7 +62,35 @@ describe('parseLiveSetArgs', () => {
       layout: undefined,
       out: undefined,
       shot: undefined,
+      anchors: undefined,
+      inventoryModel: 'gemini-3.5-flash-lite',
       cap: 0.5,
+    })
+  })
+
+  describe('--inventory-model', () => {
+    it("defaults to the production shotlist model when it is Google's", () => {
+      const routing = DEFAULT_SETTINGS.modelRouting
+      expect(
+        defaultInventoryModel({
+          ...routing,
+          shotlist: { provider: 'google', model: 'gemini-3.5-flash' },
+        }),
+      ).toBe('gemini-3.5-flash')
+    })
+
+    it('falls back to gemini-3.5-flash-lite when the shotlist route is not Google', () => {
+      // The settings default routes the shot list at Anthropic.
+      expect(DEFAULT_SETTINGS.modelRouting.shotlist.provider).not.toBe('google')
+      expect(defaultInventoryModel(DEFAULT_SETTINGS.modelRouting)).toBe('gemini-3.5-flash-lite')
+    })
+
+    it('refuses an empty --inventory-model or --anchors rather than sending nothing', () => {
+      const base = ['--image', 'a.png', '--name', 'R']
+      expect(() => parseLiveSetArgs([...base, '--inventory-model', ''])).toThrow(
+        /--inventory-model/,
+      )
+      expect(() => parseLiveSetArgs([...base, '--anchors='])).toThrow(/--anchors/)
     })
   })
 

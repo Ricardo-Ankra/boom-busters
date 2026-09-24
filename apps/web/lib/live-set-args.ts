@@ -8,6 +8,9 @@
  * `still-prompt.ts` and `set-layout-prompt.ts`.
  */
 
+import { DEFAULT_SETTINGS } from '@boom-busters/schemas'
+import type { ModelRouting } from '@boom-busters/schemas'
+
 export interface LiveSetArgs {
   image: string
   name: string
@@ -15,7 +18,34 @@ export interface LiveSetArgs {
   layout?: string
   out?: string
   shot?: string
+  /** The Brand Kit anchors; unset means the default Brand Kit's, as the app's default. */
+  anchors?: string
+  /** The inventory-draft model (a Google id). */
+  inventoryModel: string
   cap: number
+}
+
+/** The inventory model when the production shotlist route is not a Google one. */
+const FALLBACK_INVENTORY_MODEL = 'gemini-3.5-flash-lite'
+
+/**
+ * The app drafts the inventory on the `shotlist` route. The harness runs on a
+ * Google key only, so it follows that route when it is Google's and falls back
+ * otherwise. It reads the settings DEFAULT: the owner's production route lives
+ * in the database, which the harness never touches.
+ */
+export function defaultInventoryModel(
+  routing: Pick<ModelRouting, 'shotlist'> = DEFAULT_SETTINGS.modelRouting,
+): string {
+  return routing.shotlist.provider === 'google' ? routing.shotlist.model : FALLBACK_INVENTORY_MODEL
+}
+
+/** A flag that, when given, must carry a value: an empty one would send nothing. */
+function optionalText(raw: Record<string, string>, key: string): string | undefined {
+  if (!(key in raw)) return undefined
+  const value = raw[key]!.trim()
+  if (value === '') throw new Error(`--${key} needs a value.`)
+  return value
 }
 
 /**
@@ -80,6 +110,8 @@ export function parseLiveSetArgs(argv: readonly string[]): LiveSetArgs {
     layout: raw.layout,
     out: raw.out,
     shot: raw.shot,
+    anchors: optionalText(raw, 'anchors'),
+    inventoryModel: optionalText(raw, 'inventory-model') ?? defaultInventoryModel(),
     cap: parseCap(raw.cap),
   }
 }

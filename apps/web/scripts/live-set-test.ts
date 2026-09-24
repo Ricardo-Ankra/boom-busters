@@ -12,7 +12,12 @@ import {
   stripBannedWords,
 } from '@boom-busters/providers'
 import type { ImageReference } from '@boom-busters/providers'
-import { DEFAULT_SETTINGS, platesForCamera, SetCameraSchema } from '@boom-busters/schemas'
+import {
+  DEFAULT_SETTINGS,
+  platesForCamera,
+  SetCameraSchema,
+  STILL_GENERATIONS,
+} from '@boom-busters/schemas'
 import type { SetCamera, SetPlate, SetPlateDirection, SetPlateView } from '@boom-busters/schemas'
 import sharp from 'sharp'
 import { z } from 'zod'
@@ -36,11 +41,16 @@ import { withReferenceClause } from '@/lib/still-prompt'
  * app's cost ledger — `run.json` in the output folder is the record.
  */
 
-const INVENTORY_MODEL = 'gemini-3.5-flash-lite'
 const SHEET_MODEL = 'gemini-3-pro-image'
 const SHOT_MODEL = 'gemini-3.1-flash-image'
-/** Recorded when the adapter's own pricing helper cannot be used for some reason. */
-const INVENTORY_FALLBACK_ESTIMATE_USD = 0.01
+/**
+ * Reserved for the inventory draft before it runs, and recorded when the
+ * adapter's own pricing helper cannot price it. A vision call on a Pro model
+ * with thinking can pass a cent, so the reserve is generous.
+ */
+const INVENTORY_RESERVE_USD = 0.03
+/** The harness makes one image per shot to stay under its cap; the app makes this many. */
+const HARNESS_IMAGES_PER_SHOT = 1
 
 const IMAGE_MIME_BY_EXT: Record<string, 'image/jpeg' | 'image/png' | 'image/webp'> = {
   '.jpg': 'image/jpeg',
@@ -94,6 +104,13 @@ async function main(): Promise<void> {
     console.error(error instanceof Error ? error.message : String(error))
     process.exit(1)
   }
+  // An unknown model would fail only after the key is read; refuse it first.
+  if (!findModel(google, args.inventoryModel)) {
+    console.error(
+      `--inventory-model "${args.inventoryModel}" is not a Google model this app knows. Nothing was spent.`,
+    )
+    process.exit(1)
+  }
 
   // Step 1 — never touch a file or make a call before this gate.
   const apiKey = process.env.GEMINI_API_KEY
@@ -107,6 +124,7 @@ async function main(): Promise<void> {
   mkdirSync(outDir, { recursive: true })
 
   const budget = new LiveBudget(args.cap)
+  const styleAnchors = args.anchors ?? stillStyleAnchors(DEFAULT_SETTINGS.brandKit)
   const prompts: { inventory?: string; sheet?: string; shot?: string } = {}
   const record: {
     name: string
@@ -115,12 +133,30 @@ async function main(): Promise<void> {
     createdAt: string
     inventory?: { source: 'file' | 'generated'; path?: string; text: string; model?: string }
     shot?: { prompt: string; camera: SetCamera; platesUsed: SetPlateView[] }
+    fidelity: {
+      anchors: string
+      anchorsSource: 'flag' | 'default Brand Kit'
+      inventoryModel: string
+      imagesPerShot: number
+      appImagesPerShot: number
+      note: string
+    }
     error?: string
   } = {
     name: args.name,
     look: args.look,
     image: args.image,
     createdAt: new Date().toISOString(),
+    // Where this run differs from what the app would do, so a reviewer reads
+    // the output for what it is.
+    fidelity: {
+      anchors: styleAnchors,
+      anchorsSource: args.anchors === undefined ? 'default Brand Kit' : 'flag',
+      inventoryModel: args.inventoryModel,
+      imagesPerShot: HARNESS_IMAGES_PER_SHOT,
+      appImagesPerShot: STILL_GENERATIONS,
+      note: `The harness makes ${HARNESS_IMAGES_PER_SHOT} image per shot; the app makes ${STILL_GENERATIONS}.`,
+    },
   }
 
   const writeRunJson = (): void => {
@@ -176,16 +212,18 @@ async function main(): Promise<void> {
       layout = layoutFromFile
       record.inventory = { source: 'file', path: args.layout, text: layout }
     } else {
-      budget.reserve('inventory', INVENTORY_FALLBACK_ESTIMATE_USD)
+      budget.reserve('inventory', INVENTORY_RESERVE_USD)
       const request = layoutDraftRequest({
         name: args.name,
         look: args.look,
         image: { mimeType: imageMime, data: imageBase64 },
       })
-      const result = await google.complete(request, { apiKey, model: INVENTORY_MODEL })
-      layout = result.text.trim().slice(0, 1500)
-      const model = findModel(google, INVENTORY_MODEL)
-      const actualUsd = model ? priceOf(model, result.usage) : INVENTORY_FALLBACK_ESTIMATE_USD
+      const result = await google.complete(request, { apiKey, model: args.inventoryModel })
+      // A reply cut off at its budget is a failed draft, as in the app: it
+      // stops below as an empty inventory.
+      layout = result.truncated ? '' : result.text.trim().slice(0, 1500)
+      const model = findModel(google, args.inventoryModel)
+      const actualUsd = model ? priceOf(model, result.usage) : INVENTORY_RESERVE_USD
       budget.record('inventory', actualUsd)
       prompts.inventory = request.messages[0]?.content
       record.inventory = { source: 'generated', text: layout, model: result.model }
@@ -199,7 +237,6 @@ async function main(): Promise<void> {
     }
 
     // Step 4 — the contact sheet.
-    const styleAnchors = stillStyleAnchors(DEFAULT_SETTINGS.brandKit)
     const sheetPrompt = buildSetSheetPrompt({
       name: args.name,
       layout,
@@ -308,11 +345,11 @@ async function main(): Promise<void> {
       }
     })
 
-    budget.reserve('shot', imageGenPrice(geminiImageGen, 1, SHOT_MODEL, '1K'))
+    budget.reserve('shot', imageGenPrice(geminiImageGen, HARNESS_IMAGES_PER_SHOT, SHOT_MODEL, '1K'))
     const shotResult = await geminiImageGen.generate(
       {
         prompt: shotPrompt,
-        count: 1,
+        count: HARNESS_IMAGES_PER_SHOT,
         model: SHOT_MODEL,
         size: '1K',
         references: shotReferences,
