@@ -99,8 +99,22 @@ describe('parseLiveSetArgs', () => {
 
   it('refuses a missing --image', () => {
     expect(() => parseLiveSetArgs(['--name', 'R'])).toThrow(
-      '--image is required (a jpeg, png or webp file), or pass --generate-first with --look.',
+      '--image is required (a jpeg, png or webp file), or pass --generate-first with --look, or --from-run <folder>.',
     )
+  })
+
+  describe('--from-run', () => {
+    it('takes the place of --image, reusing a previous run', () => {
+      const args = parseLiveSetArgs(['--from-run', 'runs/one', '--name', 'R'])
+      expect(args.fromRun).toBe('runs/one')
+      expect(args.image).toBeUndefined()
+    })
+
+    it('refuses to be combined with --image or --generate-first', () => {
+      expect(() =>
+        parseLiveSetArgs(['--from-run', 'runs/one', '--image', 'a.png', '--name', 'R']),
+      ).toThrow('Pass one of --image, --from-run, not several.')
+    })
   })
 
   describe('--generate-first', () => {
@@ -120,7 +134,7 @@ describe('parseLiveSetArgs', () => {
     it('refuses --generate-first with --image, which would spend on a plate it then ignores', () => {
       expect(() =>
         parseLiveSetArgs(['--generate-first', '--image', 'a.png', '--name', 'R', '--look', 'L']),
-      ).toThrow('Pass --image or --generate-first, not both.')
+      ).toThrow('Pass one of --image, --generate-first, not several.')
     })
   })
 

@@ -49,13 +49,34 @@ export function buildSetSheetPrompt(input: {
   look: string
   styleAnchors: string
 }): string {
-  const room = input.layout.trim() !== '' ? input.layout.trim() : input.look.trim()
+  // Each panel names the wall it looks at (live run 1, 2026-09-24): with
+  // directions alone the east panel repeated the north wall. A wall said in
+  // its panel is not said again in the room line.
+  const layout = parseLayout(input.layout)
+  const labelled = [layout.north, layout.east, layout.south, layout.west].some(
+    (line) => line !== undefined,
+  )
+  const looking = (direction: 'north' | 'east' | 'south' | 'west', lead: string): string => {
+    const line = layout[direction]
+    return line === undefined ? '' : `, ${lead} the ${direction} wall: ${line}`
+  }
+  const room = labelled
+    ? [
+        layout.centre !== undefined ? `Centre: ${layout.centre}.` : '',
+        layout.light !== undefined ? `Light: ${layout.light}.` : '',
+        layout.rest,
+      ]
+        .filter((part) => part !== '')
+        .join(' ')
+    : (input.layout.trim() !== '' ? input.layout.trim() : input.look.trim()).replace(/\r?\n/g, ' ')
   return [
     `A 2x2 contact sheet of four photographs of one room, ${input.name}, separated by thin white borders of equal width, each panel 16:9.`,
     'All four show the same room at the same moment in the same light, each taken at eye level with a 35mm lens from the middle of the opposite wall, with no people in the room.',
-    'Top left: facing north, the view in reference image 1.',
-    'Top right: facing east. Bottom left: facing south. Bottom right: facing west.',
-    `The room: ${room.replace(/\r?\n/g, ' ')}`,
+    `Top left: facing north, the view in reference image 1${looking('north', 'looking at')}.`,
+    `Top right: facing east${looking('east', 'looking straight at')}.`,
+    `Bottom left: facing south${looking('south', 'looking straight at')}.`,
+    `Bottom right: facing west${looking('west', 'looking straight at')}.`,
+    ...(room !== '' ? [`The room: ${room}`] : []),
     HOUSE_PHOTOGRAPH,
     input.styleAnchors,
   ].join('\n')

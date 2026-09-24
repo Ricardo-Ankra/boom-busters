@@ -342,6 +342,9 @@ ${
   Choose the facing from what the sentence needs in frame, using the
   inventory: the windows are north, so a shot that must show the windows
   faces north. Vary facing and position across a chapter's shots of one room.
+  Name only details that are in frame for that facing: a window, screen or door
+  the prompt mentions sits on the wall the camera faces or at its edges,
+  never on the wall behind the camera, or the image model turns to show it.
   Do not describe its walls, furniture, layout or materials; the
   photographs state those, and a written description only argues with
   them. Its light and weather are still yours. A sentence that happens

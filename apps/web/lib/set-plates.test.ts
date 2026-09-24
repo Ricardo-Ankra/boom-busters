@@ -89,13 +89,44 @@ describe('buildSetSheetPrompt', () => {
     expect(prompt).toContain(
       'A 2x2 contact sheet of four photographs of one room, The boardroom, separated by thin white borders of equal width, each panel 16:9.',
     )
-    expect(prompt).toContain('Top left: facing north, the view in reference image 1.')
     expect(prompt).toContain(
-      'Top right: facing east. Bottom left: facing south. Bottom right: facing west.',
+      'Top left: facing north, the view in reference image 1, looking at the north wall: windows.',
     )
-    expect(prompt).toContain('The room: North wall: windows')
+    expect(prompt).toContain('Top right: facing east.')
+    expect(prompt).toContain('Bottom left: facing south.')
+    expect(prompt).toContain('Bottom right: facing west.')
     expect(prompt).not.toContain('A long table')
     expect(prompt.endsWith('fine grain')).toBe(true)
+  })
+
+  // Live run 1 (2026-09-24): with directions alone, the east panel repeated
+  // the screen wall. Each panel now names the wall it looks at.
+  it('tells each panel which wall it looks at, from the inventory', () => {
+    const prompt = buildSetSheetPrompt({
+      name: 'R',
+      layout: [
+        'North wall: a black screen wall.',
+        'East wall: shelves and a door.',
+        'South wall: white cabinets.',
+        'West wall: tall windows.',
+        'Centre: a glass table.',
+        'Light: overcast daylight.',
+      ].join('\n'),
+      look: 'L',
+      styleAnchors: 'a',
+    })
+    expect(prompt).toContain(
+      'Top right: facing east, looking straight at the east wall: shelves and a door.',
+    )
+    expect(prompt).toContain(
+      'Bottom left: facing south, looking straight at the south wall: white cabinets.',
+    )
+    expect(prompt).toContain(
+      'Bottom right: facing west, looking straight at the west wall: tall windows.',
+    )
+    // Each wall is said once, in its panel; the room line keeps the rest.
+    expect(prompt).toContain('The room: Centre: a glass table. Light: overcast daylight.')
+    expect(prompt.match(/tall windows/g)).toHaveLength(1)
   })
 
   it('falls back to the look when there is no inventory', () => {

@@ -694,6 +694,15 @@ describe('buildShotListRequest with direction (decision 252)', () => {
       )
     })
 
+    // Live run 2 (2026-09-24): a prompt that said "rain beads on the window
+    // behind them" turned a south-facing camera to the window wall.
+    it('keeps the details a set prompt names inside the frame of its camera', () => {
+      expect(withSets.system).toContain('Name only details that are in frame for that facing')
+      expect(withSets.system).toContain(
+        'never on the wall behind the camera, or the image model turns to show it.',
+      )
+    })
+
     it('parses a still with a camera, and one with a broken camera without it', () => {
       const text = JSON.stringify({
         slots: [

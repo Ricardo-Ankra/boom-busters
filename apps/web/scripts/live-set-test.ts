@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import {
   findModel,
@@ -23,6 +23,7 @@ import sharp from 'sharp'
 import { z } from 'zod'
 import { buildSetSheetPrompt, describeCamera, setPlateBrief } from '@/lib/set-plates'
 import { splitContactSheet } from '@/lib/contact-sheet'
+import type { SheetPanel } from '@/lib/contact-sheet'
 import { BudgetExceeded, LiveBudget } from '@/lib/live-budget'
 import { parseLiveSetArgs } from '@/lib/live-set-args'
 import type { LiveSetArgs } from '@/lib/live-set-args'
@@ -203,7 +204,22 @@ async function main(): Promise<void> {
     // (the same brief, on the stills model at 1K), inside the cap.
     let imageMime: 'image/jpeg' | 'image/png' | 'image/webp'
     let imageBytes: Buffer
-    if (args.generateFirst) {
+    // --from-run: the previous run's first plate, inventory and panels.
+    const previous = args.fromRun
+      ? (JSON.parse(readFileSync(path.join(args.fromRun, 'run.json'), 'utf8')) as {
+          image?: string
+          inventory?: { text?: string }
+        })
+      : null
+    if (args.fromRun && previous) {
+      const generated = path.join(args.fromRun, 'first-plate.png')
+      const firstPath = existsSync(generated) ? generated : previous.image
+      if (!firstPath || !existsSync(firstPath)) {
+        throw new Error(`${args.fromRun}: no first plate to reuse.`)
+      }
+      imageMime = existsSync(generated) ? 'image/png' : mimeTypeFor(firstPath)
+      imageBytes = readFileSync(firstPath)
+    } else if (args.generateFirst) {
       const brief = setPlateBrief(
         { name: args.name, look: args.look, plates: [] },
         'north',
@@ -243,7 +259,14 @@ async function main(): Promise<void> {
 
     // Step 3 — the inventory.
     let layout: string
-    if (layoutFromFile !== null) {
+    if (previous) {
+      layout = previous.inventory?.text?.trim() ?? ''
+      record.inventory = {
+        source: 'file',
+        path: path.join(args.fromRun!, 'run.json'),
+        text: layout,
+      }
+    } else if (layoutFromFile !== null) {
       layout = layoutFromFile
       record.inventory = { source: 'file', path: args.layout, text: layout }
     } else {
@@ -271,44 +294,58 @@ async function main(): Promise<void> {
       stopEarly('The inventory came back empty (the reply may have been cut off); see run.json.', 4)
     }
 
-    // Step 4 — the contact sheet.
-    const sheetPrompt = buildSetSheetPrompt({
-      name: args.name,
-      layout,
-      look: args.look,
-      styleAnchors,
-    })
-    prompts.sheet = sheetPrompt
+    // Step 4 — the contact sheet, or the previous run's panels.
+    let panels: SheetPanel[]
+    if (args.fromRun) {
+      panels = []
+      for (const direction of ['north', 'east', 'south', 'west'] as const) {
+        const file = path.join(args.fromRun, `panel-${direction}.png`)
+        if (!existsSync(file))
+          throw new Error(`${args.fromRun}: panel-${direction}.png is missing.`)
+        const bytes = readFileSync(file)
+        const meta = await sharp(bytes).metadata()
+        panels.push({ direction, bytes, width: meta.width ?? 0, height: meta.height ?? 0 })
+      }
+    } else {
+      const sheetPrompt = buildSetSheetPrompt({
+        name: args.name,
+        layout,
+        look: args.look,
+        styleAnchors,
+      })
+      prompts.sheet = sheetPrompt
 
-    budget.reserve('sheet', imageGenPrice(geminiImageGen, 1, SHEET_MODEL, '4K'))
-    const sheetResult = await geminiImageGen.generate(
-      {
-        prompt: sheetPrompt,
-        count: 1,
-        model: SHEET_MODEL,
-        size: '4K',
-        references: [
-          {
-            name: args.name,
-            kind: 'object',
-            facing: 'north',
-            mimeType: imageMime,
-            data: imageBase64,
-          },
-        ],
-      },
-      { apiKey },
-    )
-    budget.record('sheet', sheetResult.estimatedCostUsd)
+      budget.reserve('sheet', imageGenPrice(geminiImageGen, 1, SHEET_MODEL, '4K'))
+      const sheetResult = await geminiImageGen.generate(
+        {
+          prompt: sheetPrompt,
+          count: 1,
+          model: SHEET_MODEL,
+          size: '4K',
+          references: [
+            {
+              name: args.name,
+              kind: 'object',
+              facing: 'north',
+              mimeType: imageMime,
+              data: imageBase64,
+            },
+          ],
+        },
+        { apiKey },
+      )
+      budget.record('sheet', sheetResult.estimatedCostUsd)
 
-    const sheetImage = sheetResult.images[0]
-    if (!sheetImage) throw new Error('Gemini returned no sheet image.')
-    const sheetBytes = decodeDataUrl(sheetImage.url)
-    writeFileSync(path.join(outDir, 'sheet.png'), sheetBytes)
+      const sheetImage = sheetResult.images[0]
+      if (!sheetImage) throw new Error('Gemini returned no sheet image.')
+      const sheetBytes = decodeDataUrl(sheetImage.url)
+      writeFileSync(path.join(outDir, 'sheet.png'), sheetBytes)
 
-    const panels = await splitContactSheet(sheetBytes)
-    if (!panels) {
-      stopEarly('The sheet came back without clear borders; see sheet.png.', 2)
+      const split = await splitContactSheet(sheetBytes)
+      if (!split) {
+        stopEarly('The sheet came back without clear borders; see sheet.png.', 2)
+      }
+      panels = split
     }
     for (const panel of panels) {
       writeFileSync(path.join(outDir, `panel-${panel.direction}.png`), panel.bytes)

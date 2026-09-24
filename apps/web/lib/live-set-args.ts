@@ -26,6 +26,12 @@ export interface LiveSetArgs {
   cap: number
   /** Generate the first plate from `look`, as the app's "Generate a plate" does, inside the cap. */
   generateFirst: boolean
+  /**
+   * A previous run's folder: its first plate, inventory and panels are reused,
+   * so only the shot is paid for. For iterating on a shot without rebuilding
+   * the set each time.
+   */
+  fromRun?: string
 }
 
 /** The inventory model when the production shotlist route is not a Google one. */
@@ -104,10 +110,16 @@ function parseCap(raw: string | undefined): number {
 export function parseLiveSetArgs(argv: readonly string[]): LiveSetArgs {
   const raw = readRawFlags(argv)
   const generateFirst = 'generate-first' in raw
-  if (generateFirst && raw.image) throw new Error('Pass --image or --generate-first, not both.')
-  if (!generateFirst && !raw.image) {
+  const fromRun = optionalText(raw, 'from-run')
+  const sources = [
+    raw.image ? '--image' : '',
+    generateFirst ? '--generate-first' : '',
+    fromRun ? '--from-run' : '',
+  ].filter((flag) => flag !== '')
+  if (sources.length > 1) throw new Error(`Pass one of ${sources.join(', ')}, not several.`)
+  if (sources.length === 0) {
     throw new Error(
-      '--image is required (a jpeg, png or webp file), or pass --generate-first with --look.',
+      '--image is required (a jpeg, png or webp file), or pass --generate-first with --look, or --from-run <folder>.',
     )
   }
   if (!raw.name) throw new Error('--name is required (the set name).')
@@ -126,5 +138,6 @@ export function parseLiveSetArgs(argv: readonly string[]): LiveSetArgs {
     inventoryModel: optionalText(raw, 'inventory-model') ?? defaultInventoryModel(),
     cap: parseCap(raw.cap),
     generateFirst,
+    ...(fromRun ? { fromRun } : {}),
   }
 }
