@@ -27,6 +27,25 @@ import { buildSetSheetPrompt } from '@/lib/set-plates'
 export const UNSPLIT_SHEET =
   'The sheet came back without clear borders, so it was not split; build the set again.'
 
+/**
+ * An unsplit sheet still cost the owner $0.24, so it is kept where it can be
+ * looked at and its key is logged. Best effort: a storage failure is logged
+ * too and never changes the refusal the owner sees.
+ */
+async function keepUnsplitSheet(
+  projectId: string,
+  sheet: Buffer,
+  contentType: string,
+): Promise<void> {
+  const contentHash = createHash('sha256').update(sheet).digest('hex')
+  try {
+    const { key } = await putObject(stillKey({ projectId, contentHash }), sheet, contentType)
+    console.error(`The set sheet could not be split; it is stored unsplit at ${key}`)
+  } catch (error) {
+    console.error('The set sheet could not be split, and storing it failed:', error)
+  }
+}
+
 export async function buildSetSheet(
   set: ProjectSet,
 ): Promise<{ candidates: SlotCandidate[]; views: SetPlateDirection[] }> {
@@ -47,6 +66,7 @@ export async function buildSetSheet(
   const mocked = mockProvidersEnabled()
 
   let sheet: Buffer
+  let sheetType = 'image/png'
   if (mocked) {
     sheet = await mockContactSheet()
   } else {
@@ -105,10 +125,14 @@ export async function buildSetSheet(
     )
     const url = result.images[0]!.url
     sheet = Buffer.from(url.slice(url.indexOf(',') + 1), 'base64')
+    sheetType = /^data:([^;,]+)/.exec(url)?.[1] ?? sheetType
   }
 
   const panels = await splitContactSheet(sheet)
-  if (!panels) throw new ValidationError(UNSPLIT_SHEET)
+  if (!panels) {
+    await keepUnsplitSheet(set.projectId, sheet, sheetType)
+    throw new ValidationError(UNSPLIT_SHEET)
+  }
 
   const label = imageGenModel(LIVE_IMAGE_GEN_ADAPTERS.google, route.model).label
   const candidates = await Promise.all(

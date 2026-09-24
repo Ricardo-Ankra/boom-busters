@@ -59,13 +59,19 @@ vi.mock('@boom-busters/db', async (importOriginal) => {
 const storage = vi.hoisted(() => ({
   configured: true,
   deleted: [] as string[],
+  puts: [] as { key: string; contentType: string }[],
+  failPut: false,
 }))
 vi.mock('@/lib/storage', () => ({
   storageConfigured: () => storage.configured,
   setPlateKey: (input: { projectId: string; contentHash: string; ext: string }) =>
     `boom-busters/sets/${input.projectId}/${input.contentHash}.${input.ext}`,
   presignPut: async (key: string) => `https://r2.example/${key}?signed`,
-  putObject: async (key: string) => ({ key }),
+  putObject: async (key: string, _bytes: unknown, contentType: string) => {
+    if (storage.failPut) throw new Error('R2 is down')
+    storage.puts.push({ key, contentType })
+    return { key }
+  },
   headObject: async () => ({ size: 120_000, contentType: 'image/jpeg' }),
   deleteObject: async (key: string) => {
     storage.deleted.push(key)
@@ -105,6 +111,8 @@ describeDb('set actions (mock mode)', () => {
     vi.stubEnv('MOCK_PROVIDERS', '1')
     storage.configured = true
     storage.deleted = []
+    storage.puts = []
+    storage.failPut = false
     remote.fetchRemoteImage.mockResolvedValue({
       ok: true,
       image: {
@@ -717,7 +725,38 @@ describeDb('set actions (mock mode)', () => {
       height: 10,
     })
     vi.mocked(splitContactSheet).mockResolvedValueOnce(null)
-    expect(await buildSetSheetAction(id)).toEqual({ ok: false, error: UNSPLIT_SHEET })
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      expect(await buildSetSheetAction(id)).toEqual({ ok: false, error: UNSPLIT_SHEET })
+      // The owner paid for that sheet: it is kept, unsplit, where it can be
+      // inspected, and its key is logged.
+      const sheetPut = storage.puts.find((put) =>
+        put.key.startsWith(`boom-busters/stills/${FIXTURE_PROJECT_ID}/`),
+      )
+      expect(sheetPut).toMatchObject({ contentType: 'image/png' })
+      expect(logged.mock.calls.flat().join(' ')).toContain(sheetPut!.key)
+    } finally {
+      logged.mockRestore()
+    }
+  })
+
+  it('still refuses an unsplit sheet with the same message when keeping it fails', async () => {
+    const id = await addTradingFloor()
+    await finaliseSetPlateAction({
+      setId: id,
+      mimeType: 'image/jpeg',
+      contentHash: HASH_A,
+      width: 10,
+      height: 10,
+    })
+    vi.mocked(splitContactSheet).mockResolvedValueOnce(null)
+    storage.failPut = true
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      expect(await buildSetSheetAction(id)).toEqual({ ok: false, error: UNSPLIT_SHEET })
+    } finally {
+      logged.mockRestore()
+    }
   })
 
   it('refuses to build a set with no plate', async () => {
