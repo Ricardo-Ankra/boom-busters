@@ -733,11 +733,23 @@ describe('buildShotListRequest with direction (decision 252)', () => {
     // Decision 273: every still of a set kept the plate's exact framing.
     it('asks each still of a set for its own camera position', () => {
       expect(withSets.system).toContain("The photographs give the room's design, not the picture.")
-      expect(withSets.system).toContain('where the camera stands in the room')
       expect(withSets.system).toContain(
         'Two stills of the same room never share a camera position.',
       )
       expect(withSets.system).not.toContain('the photographs are the room')
+    })
+
+    // Decision 275 final review: a board override changes only "camera", so a
+    // camera also written into the prose left a regenerated prompt with two.
+    it('keeps the camera out of the prose of a still that names a set', () => {
+      expect(withSets.system).toContain(
+        'Where the camera stands and which way it faces live in "camera" alone;',
+      )
+      expect(withSets.system).toContain('who is there, what they are doing and the light.')
+      expect(withSets.system).not.toContain('where the camera stands in the room')
+      expect(withSets.system).not.toContain('from the head of the table')
+      expect(withSets.system).not.toContain('close over one investor')
+      expect(withSets.system).not.toContain("never the photographs' framing")
     })
 
     // The prompt is what the image model reads; `set` only decides which

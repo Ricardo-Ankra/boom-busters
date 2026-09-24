@@ -323,17 +323,15 @@ ${
   sets.length > 0
     ? `  Sets are the rooms this film returns to, and the producer holds
   photographs of each. When the sentence puts us in one,
-  name it in "set" by name alone and write the shot that happens
-  inside it: where the camera stands in the room and what part of it we
-  see, who is there, what they are doing, the light.
+  name it in "set" by name alone, and write in the prompt what happens
+  inside it: who is there, what they are doing and the light.
   Name the room in the prompt as well, in the same words the list above
   uses, so the sentence and the photographs attached to it are plainly
   about one place.
   The photographs give the room's design, not the picture.
-  Every still in a set is a new photograph from its own camera position,
-  never the photographs' framing: "from the head of the table", "low across
-  the table from the window side", "through the glass wall from the
-  corridor", "close over one investor's shoulder".
+  Where the camera stands and which way it faces live in "camera" alone;
+  the prompt never places the camera, because the producer can move it on
+  the board, and that changes only "camera".
   Two stills of the same room never share a camera position.
   Every still that names a set carries "camera". "facing" is the wall the
   camera looks at, by the inventory's compass; "position" is where it stands
