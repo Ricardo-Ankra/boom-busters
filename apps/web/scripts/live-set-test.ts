@@ -19,8 +19,10 @@ import { z } from 'zod'
 import { buildSetSheetPrompt, describeCamera } from '@/lib/set-plates'
 import { splitContactSheet } from '@/lib/contact-sheet'
 import { BudgetExceeded, LiveBudget } from '@/lib/live-budget'
+import { parseLiveSetArgs } from '@/lib/live-set-args'
+import type { LiveSetArgs } from '@/lib/live-set-args'
 import { layoutDraftRequest } from '@/lib/set-layout-prompt'
-import { withReferenceClause } from '@/lib/still-prompt'
+import { withCameraLens, withReferenceClause } from '@/lib/still-prompt'
 
 /**
  * The live set-to-shot harness (decision 275, Task 13): runs the real
@@ -63,39 +65,6 @@ const ShotFileSchema = z.object({
   camera: SetCameraSchema,
 })
 
-interface Args {
-  image: string
-  name: string
-  look: string
-  layout?: string
-  out?: string
-  shot?: string
-  cap: number
-}
-
-function parseArgs(argv: readonly string[]): Args {
-  const raw: Record<string, string> = {}
-  for (let at = 0; at < argv.length; at += 1) {
-    const token = argv[at]
-    if (!token?.startsWith('--')) continue
-    const key = token.slice(2)
-    const value = argv[at + 1]
-    raw[key] = value !== undefined && !value.startsWith('--') ? value : ''
-    if (raw[key] !== '') at += 1
-  }
-  if (!raw.image) throw new Error('--image is required (a jpeg, png or webp file).')
-  if (!raw.name) throw new Error('--name is required (the set name).')
-  return {
-    image: raw.image,
-    name: raw.name,
-    look: raw.look ?? '',
-    layout: raw.layout,
-    out: raw.out,
-    shot: raw.shot,
-    cap: raw.cap ? Number(raw.cap) : 1,
-  }
-}
-
 function mimeTypeFor(imagePath: string): 'image/jpeg' | 'image/png' | 'image/webp' {
   const ext = path.extname(imagePath).toLowerCase()
   const mime = IMAGE_MIME_BY_EXT[ext]
@@ -116,7 +85,15 @@ function runStamp(): string {
 }
 
 async function main(): Promise<void> {
-  const args = parseArgs(process.argv.slice(2))
+  // Argument parsing (and its `--cap` rules) is pure and file/network-free —
+  // done before anything else touches a file, an env var or the network.
+  let args: LiveSetArgs
+  try {
+    args = parseLiveSetArgs(process.argv.slice(2))
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : String(error))
+    process.exit(1)
+  }
 
   // Step 1 — never touch a file or make a call before this gate.
   const apiKey = process.env.GEMINI_API_KEY
@@ -136,7 +113,7 @@ async function main(): Promise<void> {
     look: string
     image: string
     createdAt: string
-    inventory?: { source: 'file' | 'generated'; path?: string; text: string }
+    inventory?: { source: 'file' | 'generated'; path?: string; text: string; model?: string }
     shot?: { prompt: string; camera: SetCamera; platesUsed: SetPlateView[] }
     error?: string
   } = {
@@ -161,6 +138,20 @@ async function main(): Promise<void> {
     )
   }
 
+  /**
+   * Writes `run.json` with `message` recorded as why the run stopped, then
+   * exits. A real `function` declaration, not a `const` arrow: only a named
+   * function's `never` return type narrows the caller's control flow (e.g.
+   * `panels` after `if (!panels) stopEarly(...)`), which a `const`-bound
+   * arrow of the same type does not.
+   */
+  function stopEarly(message: string, code: number): never {
+    record.error = message
+    writeRunJson()
+    console.error(message)
+    process.exit(code)
+  }
+
   try {
     // Step 2 — the set's first plate, facing north.
     const imageMime = mimeTypeFor(args.image)
@@ -171,10 +162,18 @@ async function main(): Promise<void> {
       throw new Error(`${args.image}: could not read its dimensions.`)
     }
 
+    // Read and validate --layout and --shot here, alongside --image, and
+    // before any paid call (controller ruling: a bad shot.json must never
+    // cost the $0.24 sheet, let alone the inventory call before it).
+    const layoutFromFile = args.layout ? readFileSync(args.layout, 'utf8').trim() : null
+    const shotInput = args.shot
+      ? ShotFileSchema.parse(JSON.parse(readFileSync(args.shot, 'utf8')))
+      : DEFAULT_SHOT
+
     // Step 3 — the inventory.
     let layout: string
-    if (args.layout) {
-      layout = readFileSync(args.layout, 'utf8').trim()
+    if (layoutFromFile !== null) {
+      layout = layoutFromFile
       record.inventory = { source: 'file', path: args.layout, text: layout }
     } else {
       budget.reserve('inventory', INVENTORY_FALLBACK_ESTIMATE_USD)
@@ -189,7 +188,14 @@ async function main(): Promise<void> {
       const actualUsd = model ? priceOf(model, result.usage) : INVENTORY_FALLBACK_ESTIMATE_USD
       budget.record('inventory', actualUsd)
       prompts.inventory = request.messages[0]?.content
-      record.inventory = { source: 'generated', text: layout }
+      record.inventory = { source: 'generated', text: layout, model: result.model }
+    }
+
+    // Ruling: an empty draft (e.g. a reply cut off) stops the run before the
+    // $0.24 sheet, rather than sending Gemini a room description with
+    // nothing in it.
+    if (layout.trim() === '') {
+      stopEarly('The inventory came back empty (the reply may have been cut off); see run.json.', 4)
     }
 
     // Step 4 — the contact sheet.
@@ -230,10 +236,7 @@ async function main(): Promise<void> {
 
     const panels = await splitContactSheet(sheetBytes)
     if (!panels) {
-      record.error = 'The sheet came back without clear borders; see sheet.png.'
-      writeRunJson()
-      console.error('The sheet came back without clear borders; see sheet.png.')
-      process.exit(2)
+      stopEarly('The sheet came back without clear borders; see sheet.png.', 2)
     }
     for (const panel of panels) {
       writeFileSync(path.join(outDir, `panel-${panel.direction}.png`), panel.bytes)
@@ -276,13 +279,16 @@ async function main(): Promise<void> {
     }
     const set = { plates: setPlates }
 
-    // Step 6 — the shot.
-    const shotInput = args.shot
-      ? ShotFileSchema.parse(JSON.parse(readFileSync(args.shot, 'utf8')))
-      : DEFAULT_SHOT
+    // Step 6 — the shot (prompt and camera already read and validated above).
     const chosen = platesForCamera(set, shotInput.camera.facing, 2)
+    const rawShotPrompt = stripBannedWords(
+      `${shotInput.prompt} ${HOUSE_PHOTOGRAPH} ${styleAnchors}`,
+    )
+    // Ruling R3: the camera's own lens overrides the house photograph line's
+    // default 35mm, in place — the harness previously skipped this swap.
+    const lensedShotPrompt = withCameraLens(rawShotPrompt, shotInput.camera.lens)
     const shotPrompt = withReferenceClause(
-      stripBannedWords(`${shotInput.prompt} ${HOUSE_PHOTOGRAPH} ${styleAnchors}`),
+      lensedShotPrompt,
       [],
       { name: args.name, plates: chosen.length },
       describeCamera(shotInput.camera, layout),
@@ -329,10 +335,9 @@ async function main(): Promise<void> {
     console.log(`Total spent: $${budget.spentUsd.toFixed(4)}`)
   } catch (error) {
     if (error instanceof BudgetExceeded) {
-      writeRunJson()
-      console.error(error.message)
-      process.exit(3)
+      stopEarly(error.message, 3)
     }
+    record.error = error instanceof Error ? error.message : String(error)
     writeRunJson()
     throw error
   }

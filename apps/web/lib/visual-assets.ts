@@ -36,7 +36,6 @@ import type {
 } from '@boom-busters/schemas'
 import {
   buildScoringRequest,
-  HOUSE_PHOTOGRAPH,
   imageGenAdapter,
   imageGenModel,
   imageGenPrice,
@@ -53,7 +52,7 @@ import { db } from '@/lib/db'
 import { env } from '@/lib/env'
 import { callLlm } from '@/lib/llm'
 import { describeCamera } from '@/lib/set-plates'
-import { withReferenceClause } from '@/lib/still-prompt'
+import { withCameraLens, withReferenceClause } from '@/lib/still-prompt'
 import { getObjectBytes, presignGet, putObject, stillKey, storageConfigured } from '@/lib/storage'
 
 /**
@@ -627,13 +626,7 @@ export async function generateStillCandidates(
   const strippedPrompt = stripBannedWords(brief.prompt)
   // Spec 7.1 (ruling R3): a camera's own lens overrides the house photograph
   // line's default 35mm, in place, never as a second lens instruction.
-  const lensedPrompt =
-    brief.camera?.lens && strippedPrompt.includes(HOUSE_PHOTOGRAPH)
-      ? strippedPrompt.replace(
-          HOUSE_PHOTOGRAPH,
-          HOUSE_PHOTOGRAPH.replace('35mm', brief.camera.lens),
-        )
-      : strippedPrompt
+  const lensedPrompt = withCameraLens(strippedPrompt, brief.camera?.lens)
   const prompt = withReferenceClause(
     lensedPrompt,
     cast.people,

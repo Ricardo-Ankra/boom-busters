@@ -1,3 +1,5 @@
+import { HOUSE_PHOTOGRAPH } from '@boom-busters/providers'
+
 /**
  * The still prompt's reference declaration (decision 253, 264, 273, 275).
  *
@@ -5,8 +7,26 @@
  * transitive: the live set harness (decision 275, Task 13) builds a still
  * prompt from outside the app and must not drag `visual-assets.ts`'s module-
  * load imports (the database client) along with it. `visual-assets.ts` keeps
- * importing this back, so app behaviour is unchanged.
+ * importing this back, so app behaviour is unchanged. `@boom-busters/providers`
+ * is safe here — it depends only on `@boom-busters/schemas`, `node-html-parser`
+ * and `zod`, none of which touch a database, storage or env, directly or
+ * transitively.
  */
+
+/**
+ * A camera's own lens overrides the house photograph line's default 35mm, in
+ * place, never as a second lens instruction (spec 7.1, controller ruling R3).
+ * `generateStillCandidates` and the live set harness (Task 13) both build a
+ * shot prompt this way, so the swap lives once, here, rather than twice.
+ *
+ * A no-op when the prompt does not carry the house line at all (nothing to
+ * swap into) or the camera names no lens (the house line's own default
+ * stands).
+ */
+export function withCameraLens(prompt: string, lens: string | undefined): string {
+  if (!lens || !prompt.includes(HOUSE_PHOTOGRAPH)) return prompt
+  return prompt.replace(HOUSE_PHOTOGRAPH, HOUSE_PHOTOGRAPH.replace('35mm', lens))
+}
 
 /**
  * The declaration that closes a prompt carrying references, and the marker that

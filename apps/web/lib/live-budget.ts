@@ -9,14 +9,26 @@ export class BudgetExceeded extends Error {}
 export class LiveBudget {
   private readonly items: { label: string; usd: number; settled: boolean }[] = []
 
-  constructor(private readonly capUsd: number) {}
+  /**
+   * Defence in depth (controller ruling, fix round 1): the CLI's own
+   * argument parser (`live-set-args.ts`) already refuses a non-finite,
+   * non-positive or over-$1 `--cap` before this ever runs, but the budget
+   * itself must not silently accept a cap that would defeat its own
+   * `reserve` check — `next > capUsd + 1e-9` is always false against `NaN`
+   * or `Infinity`, which is exactly how an unvalidated cap disabled the cap.
+   */
+  constructor(private readonly capUsd: number) {
+    if (!Number.isFinite(capUsd) || capUsd <= 0) {
+      throw new Error(`LiveBudget cap must be a finite number greater than 0 (got ${capUsd}).`)
+    }
+  }
 
   get spentUsd(): number {
     return this.items.reduce((total, item) => total + item.usd, 0)
   }
 
-  get entries(): { label: string; usd: number }[] {
-    return this.items.map(({ label, usd }) => ({ label, usd }))
+  get entries(): { label: string; usd: number; settled: boolean }[] {
+    return this.items.map(({ label, usd, settled }) => ({ label, usd, settled }))
   }
 
   reserve(label: string, estimateUsd: number): void {
