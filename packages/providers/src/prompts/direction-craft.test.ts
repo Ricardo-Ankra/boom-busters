@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest'
 import {
   BANNED_PROMPT_WORDS,
   DIRECTION_CRAFT,
+  HOUSE_PHOTOGRAPH,
   stripBannedWords,
   withoutBannedWords,
 } from './direction-craft'
@@ -41,6 +42,30 @@ describe('DIRECTION_CRAFT', () => {
 
   it('never asks the renderer for a pan it cannot do', () => {
     expect(DIRECTION_CRAFT).toContain('Never plan a pan')
+  })
+
+  it('states the house photograph line in the bible, word for word (decision 275)', () => {
+    expect(DIRECTION_CRAFT).toContain(HOUSE_PHOTOGRAPH)
+    expect(HOUSE_PHOTOGRAPH).toBe(
+      'An available-light documentary photograph, 35mm, eye level, slight grain, mixed colour temperature from window daylight and warm practicals, real materials with wear: scuffed edges, cable runs, a coffee ring, papers out of line.',
+    )
+  })
+
+  it('bans the words that pull a prompt towards a render (decision 275)', () => {
+    for (const word of [
+      'ultra-detailed',
+      '8k',
+      '4k',
+      '3d render',
+      'cgi',
+      'octane',
+      'unreal engine',
+      'hyperrealistic',
+      'photorealistic',
+    ]) {
+      expect(BANNED_PROMPT_WORDS).toContain(word)
+    }
+    expect(stripBannedWords('A photorealistic, 8K boardroom')).toBe('A boardroom')
   })
 
   it('carries no dashes the house style forbids', () => {

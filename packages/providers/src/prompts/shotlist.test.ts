@@ -11,7 +11,7 @@ import {
 } from './shotlist'
 import type { ShotParagraph } from './shotlist'
 import { mockDirectorsBook } from './direction'
-import { BANNED_PROMPT_WORDS } from './direction-craft'
+import { BANNED_PROMPT_WORDS, HOUSE_PHOTOGRAPH } from './direction-craft'
 import type { ScriptClaim } from './script'
 import { MAX_OUTPUT_TOKENS, outputBudget } from '../llm/types'
 
@@ -551,6 +551,12 @@ describe('buildShotListRequest with direction (decision 252)', () => {
     expect(request.system).toContain('"shotSize"')
     expect(request.system).toContain('"depicts"')
     expect(request.system).toContain('Never "pan"')
+  })
+
+  it('puts the house photograph line into every still prompt (decision 275)', () => {
+    expect(request.system).toContain(
+      `then the house photograph line verbatim: "${HOUSE_PHOTOGRAPH}"`,
+    )
   })
 
   it('asks for the name alone in depicts: the role stays in the prompt', () => {

@@ -1,5 +1,19 @@
+import { HOUSE_PHOTOGRAPH } from '@boom-busters/providers'
 import { describe, expect, it } from 'vitest'
-import { buildSetSheetPrompt } from './set-plates'
+import { buildSetSheetPrompt, setPlateBrief } from './set-plates'
+
+describe('setPlateBrief', () => {
+  it('asks for a photograph, then the Brand Kit anchors', () => {
+    const brief = setPlateBrief(
+      { name: 'R', look: 'A long table', plates: [] },
+      'north',
+      'fine grain',
+    )
+    expect(brief.prompt).toBe(
+      `R, empty of people: a wide establishing photograph of the whole room, taken from its entrance at eye level. A long table ${HOUSE_PHOTOGRAPH} fine grain`,
+    )
+  })
+})
 
 describe('buildSetSheetPrompt', () => {
   it('states the grid, each panel’s direction, then the room', () => {
@@ -25,5 +39,10 @@ describe('buildSetSheetPrompt', () => {
     expect(
       buildSetSheetPrompt({ name: 'R', layout: '', look: 'A long table', styleAnchors: 'a' }),
     ).toContain('The room: A long table')
+  })
+
+  it('asks for photographs before the anchors', () => {
+    const prompt = buildSetSheetPrompt({ name: 'R', layout: '', look: 'L', styleAnchors: 'a' })
+    expect(prompt.endsWith(`${HOUSE_PHOTOGRAPH}\na`)).toBe(true)
   })
 })

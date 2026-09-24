@@ -16,7 +16,7 @@ import type {
 } from '@boom-busters/schemas'
 import { z } from 'zod'
 import { claimList, type ScriptClaim } from './script'
-import { DIRECTION_CRAFT } from './direction-craft'
+import { DIRECTION_CRAFT, HOUSE_PHOTOGRAPH } from './direction-craft'
 import { formatIssues, parseJsonCompletion } from './json'
 import { outputBudget } from '../llm/types'
 import type { LLMTaskRequest } from '../llm/types'
@@ -283,7 +283,7 @@ Planning rules:
 - "still" is an AI-GENERATED image. Write the prompt as the bible's "What a
   still prompt must contain" says: prose, subject first, three physical
   facts, lens and light named, then the book's palette line (the era lock
-  only limits which period objects you name; never paste its list), then
+  only limits which period objects you name; never paste its list), then the house photograph line verbatim: "${HOUSE_PHOTOGRAPH}", then
   these Brand Kit anchors verbatim: "${input.styleAnchors}".
   People come in three kinds and they never mix:
   (a) A name in "Photographed" above. Name them by full name and role, add

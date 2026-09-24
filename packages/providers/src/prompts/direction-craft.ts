@@ -117,6 +117,9 @@ plain one.
 - Name the lens: 24mm for a wide that breathes, 35mm for a documentary
   medium, 50mm for a close human scale, 85mm for a portrait, 100mm macro
   for texture.
+- Every photograph is written as a photograph, in the house line, before the Brand Kit anchors:
+  An available-light documentary photograph, 35mm, eye level, slight grain, mixed colour temperature from window daylight and warm practicals, real materials with wear: scuffed edges, cable runs, a coffee ring, papers out of line.
+  A lens the camera names replaces the 35mm.
 - Append the director's book palette line verbatim. The era lock is a
   constraint, not a list to paste: every period object in the frame comes
   from it, and the prompt names only the objects actually in the frame.
@@ -127,7 +130,7 @@ plain one.
   identity string stays out of the prompt.
 - Banned words, because they render nothing: cinematic, stunning,
   dramatic lighting, high quality, masterpiece, epic, beautiful, moody,
-  professional. Banned too: an emotion named without a body. Not "a
+  professional, ultra-detailed, 8k, 4k, 3d render, cgi, octane, unreal engine, hyperrealistic, photorealistic. Banned too: an emotion named without a body. Not "a
   worried executive"; "an executive, jaw set, both hands flat on the
   desk".
 - The negative prompt names things, not categories: "no smartphone, no
@@ -277,7 +280,25 @@ export const BANNED_PROMPT_WORDS = [
   'beautiful',
   'moody',
   'professional',
+  'ultra-detailed',
+  '8k',
+  '4k',
+  '3d render',
+  'cgi',
+  'octane',
+  'unreal engine',
+  'hyperrealistic',
+  'photorealistic',
 ] as const
+
+/**
+ * The house photograph line (decision 275): what makes a generated still read
+ * as a photograph and not a render. Light with a direction, real materials
+ * with wear, grain. Stated once here and in the bible, and sent on every
+ * plate, sheet and still prompt before the Brand Kit anchors.
+ */
+export const HOUSE_PHOTOGRAPH =
+  'An available-light documentary photograph, 35mm, eye level, slight grain, mixed colour temperature from window daylight and warm practicals, real materials with wear: scuffed edges, cable runs, a coffee ring, papers out of line.'
 
 /**
  * A prompt with every banned word removed (decision 271).

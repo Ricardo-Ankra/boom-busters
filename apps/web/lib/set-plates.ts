@@ -1,3 +1,4 @@
+import { HOUSE_PHOTOGRAPH } from '@boom-busters/providers'
 import { OPPOSITE_DIRECTION } from '@boom-busters/schemas'
 import type { ProjectSet, SetViewRequest, StillBrief } from '@boom-busters/schemas'
 
@@ -48,6 +49,7 @@ export function buildSetSheetPrompt(input: {
     'Top left: facing north, the view in reference image 1.',
     'Top right: facing east. Bottom left: facing south. Bottom right: facing west.',
     `The room: ${room.replace(/\r?\n/g, ' ')}`,
+    HOUSE_PHOTOGRAPH,
     input.styleAnchors,
   ].join('\n')
 }
@@ -79,7 +81,7 @@ export function setPlateBrief(
     ...(referenced ? { set: set.name } : {}),
     ...(camera ? { camera } : {}),
     // A plate is the room, not a scene in it: people belong to the stills.
-    prompt: `${set.name}, empty of people: ${framing}. ${set.look} ${styleAnchors}`,
+    prompt: `${set.name}, empty of people: ${framing}. ${set.look} ${HOUSE_PHOTOGRAPH} ${styleAnchors}`,
     negativePrompt: 'people, figures',
   }
 }
