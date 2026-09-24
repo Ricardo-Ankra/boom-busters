@@ -2,8 +2,10 @@ import { describe, expect, it } from 'vitest'
 import {
   BrandKitStoredSchema,
   BrandKitTokensSchema,
+  DEFAULT_SET_SHEET_ROUTE,
   DEFAULT_SETTINGS,
   LLM_TASKS,
+  ModelRoutingSchema,
   SettingsPatchSchema,
   SettingsSchema,
   effectiveCeilingUsd,
@@ -223,6 +225,17 @@ describe('canonicalModelId', () => {
       provider: 'google',
       model: 'gemini-3.1-flash-image',
     })
+  })
+})
+
+describe('the setSheet route (decision 275)', () => {
+  it('routes set sheets to Gemini 3 Pro Image by default, and fills it for an older row', () => {
+    expect(DEFAULT_SETTINGS.modelRouting.setSheet).toEqual({
+      provider: 'google',
+      model: 'gemini-3-pro-image',
+    })
+    const { setSheet: _dropped, ...older } = DEFAULT_SETTINGS.modelRouting
+    expect(ModelRoutingSchema.parse(older).setSheet).toEqual(DEFAULT_SET_SHEET_ROUTE)
   })
 })
 

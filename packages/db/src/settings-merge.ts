@@ -86,6 +86,10 @@ function canonicaliseRouting(routing: ModelRouting): ModelRouting {
       model: canonicalStillModelId(migrated.stillsLikeness.model),
     }
   }
+  migrated.setSheet = {
+    ...migrated.setSheet,
+    model: canonicalStillModelId(migrated.setSheet.model),
+  }
   return migrated
 }
 

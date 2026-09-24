@@ -100,6 +100,17 @@ describe('normaliseSettings', () => {
     expect(normaliseSettings(stored).modelRouting.stills.model).toBe('gemini-3-pro-image')
   })
 
+  it('folds a retired set-sheet model id forward', () => {
+    const stored = {
+      ...DEFAULT_SETTINGS,
+      modelRouting: {
+        ...DEFAULT_SETTINGS.modelRouting,
+        setSheet: { provider: 'google', model: 'gemini-3-pro-image-preview' },
+      },
+    }
+    expect(normaliseSettings(stored).modelRouting.setSheet.model).toBe('gemini-3-pro-image')
+  })
+
   it('gives a pre-decision-208 row the default stills route', () => {
     // The live settings row was written before `modelRouting.stills` existed.
     // It must come forward as routed-at-Gemini, not refuse to parse.

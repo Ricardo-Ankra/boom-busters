@@ -129,6 +129,16 @@ export function canonicalStillModelId(model: string): string {
   return LEGACY_STILL_MODEL_IDS[model] ?? model
 }
 
+/**
+ * Where "Build the set" draws its contact sheet (decision 275): one 4K image
+ * of a room from four sides. Gemini 3 Pro Image by default, because the
+ * consistency of four views in one pass is the whole point of it.
+ */
+export const DEFAULT_SET_SHEET_ROUTE: StillRoute = {
+  provider: 'google',
+  model: 'gemini-3-pro-image',
+}
+
 export const ModelRoutingSchema = z.object({
   research: ModelRefSchema,
   scripting: ModelRefSchema,
@@ -152,6 +162,8 @@ export const ModelRoutingSchema = z.object({
    * all — a name the cast has never seen is a plain still.
    */
   stillsLikeness: StillRouteSchema.nullable(),
+  /** The contact-sheet generator (decision 275); a row stored before it reads the default. */
+  setSheet: StillRouteSchema.default(DEFAULT_SET_SHEET_ROUTE),
 })
 export type ModelRouting = z.infer<typeof ModelRoutingSchema>
 
@@ -546,6 +558,7 @@ export const DEFAULT_SETTINGS: Settings = {
     // No split by default: one route generates everything until the producer
     // asks for two, so nothing changes under anyone who never opens this.
     stillsLikeness: null,
+    setSheet: DEFAULT_SET_SHEET_ROUTE,
   },
   fallbackChain: [],
   tts: {

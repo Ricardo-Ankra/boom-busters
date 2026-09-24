@@ -380,6 +380,31 @@ function ModelsTab({ settings, saving, commit }: TabProps) {
           photograph of. Their photos go to this generator; every other still goes to the row above.
           Leave it on &quot;same as above&quot; to generate everything one way.
         </p>
+
+        {/* The set-sheet generator (decision 275): Google models only, because
+            the four-view contact sheet and its 4K output are Gemini features. */}
+        <div className="grid items-center gap-2 sm:grid-cols-[1fr_auto]">
+          <Label htmlFor="route-set-sheet-model">Set sheets (Build the set)</Label>
+          <Select
+            id="route-set-sheet-model"
+            aria-label="Set sheets model"
+            value={settings.modelRouting.setSheet.model}
+            disabled={saving}
+            onChange={(event) => {
+              const route = { provider: 'google' as const, model: event.target.value }
+              const next = structuredClone(settings)
+              next.modelRouting.setSheet = route
+              void commit({ modelRouting: { setSheet: route } }, next)
+            }}
+            className="sm:w-48"
+          >
+            {LIVE_IMAGE_GEN_ADAPTERS.google.models.map((model) => (
+              <option key={model.id} value={model.id}>
+                {model.label}
+              </option>
+            ))}
+          </Select>
+        </div>
       </CardContent>
     </Card>
   )
