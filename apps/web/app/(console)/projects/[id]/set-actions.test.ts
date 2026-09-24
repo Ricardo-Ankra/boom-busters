@@ -9,6 +9,7 @@ import {
   listProjectSets,
   requireTestDatabase,
   seed,
+  updateProjectSet,
   updateSettings,
 } from '@boom-busters/db'
 import { mockImageGen } from '@boom-busters/providers'
@@ -39,6 +40,17 @@ const authMock = vi.hoisted(() => ({
 }))
 vi.mock('@/auth', () => authMock)
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }))
+
+// Real by default (this suite hits the test database throughout); wrapped
+// only so one test can make the draft's own write fail without touching any
+// other call to `updateProjectSet`, including `updateSetAction`'s own.
+vi.mock('@boom-busters/db', async (importOriginal) => {
+  const actual = (await importOriginal()) as Record<string, unknown>
+  return {
+    ...actual,
+    updateProjectSet: vi.fn(actual.updateProjectSet as typeof updateProjectSet),
+  }
+})
 
 const storage = vi.hoisted(() => ({
   configured: true,
@@ -584,6 +596,26 @@ describeDb('set actions (mock mode)', () => {
     })
     ;[set] = await listProjectSets(db, FIXTURE_PROJECT_ID)
     expect(set?.layout).toBe('North wall: my own words')
+  })
+
+  // Review finding: the draft runs after the plate is already saved, so its
+  // own write must never turn a successful save into a reported failure, and
+  // must never leave the caller thinking the plate needs to be sent again.
+  it('still saves the plate, and reports success, when the draft cannot be stored', async () => {
+    const id = await addTradingFloor()
+    vi.mocked(updateProjectSet).mockRejectedValueOnce(new Error('boom'))
+    const result = await finaliseSetPlateAction({
+      setId: id,
+      mimeType: 'image/jpeg',
+      contentHash: HASH_A,
+      width: 10,
+      height: 10,
+    })
+    expect(result).toEqual({ ok: true })
+    const [set] = await listProjectSets(db, FIXTURE_PROJECT_ID)
+    expect(set?.plates).toHaveLength(1)
+    // The write that would have recorded the draft is exactly what failed.
+    expect(set?.layout).toBe('')
   })
 
   it('redrafts the inventory on request, replacing the owner’s edits', async () => {

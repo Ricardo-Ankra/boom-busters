@@ -103,18 +103,27 @@ function failure(error: unknown, fallback: string): ActionResult {
  * Draft the inventory when a set's first plate lands, unless the owner has
  * already written one (decision 275). Failure leaves the field empty; the
  * card says so and offers Redraft.
+ *
+ * Best-effort by construction (spec 4.2): this runs after the plate is
+ * already saved, so nothing in here may throw back into the caller. A
+ * failure here — the draft call, the re-check read, or the write — is
+ * caught and logged, and the plate save still reports success.
  */
 async function draftLayoutIfFirst(before: ProjectSet, plate: SetPlate): Promise<void> {
   if (before.plates.length > 0 || before.layout.trim() !== '') return
-  const layout = await draftSetLayout({
-    projectId: before.projectId,
-    name: before.name,
-    look: before.look,
-    plate,
-  })
-  if (layout === null) return
-  const current = await getProjectSet(db, before.id)
-  if (current && current.layout.trim() === '') await updateProjectSet(db, before.id, { layout })
+  try {
+    const layout = await draftSetLayout({
+      projectId: before.projectId,
+      name: before.name,
+      look: before.look,
+      plate,
+    })
+    if (layout === null) return
+    const current = await getProjectSet(db, before.id)
+    if (current && current.layout.trim() === '') await updateProjectSet(db, before.id, { layout })
+  } catch (error) {
+    console.error('[sets] inventory draft failed', error)
+  }
 }
 
 export async function addSetAction(
