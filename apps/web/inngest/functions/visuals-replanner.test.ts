@@ -3,10 +3,13 @@
 import {
   createScriptVersion,
   deleteCastMember,
+  deleteProjectSet,
   FIXTURE_PROJECT_ID,
   getProject,
   insertCastMember,
+  insertProjectSet,
   listCastMembers,
+  listProjectSets,
   listShotSlots,
   replaceShotList,
   requireTestDatabase,
@@ -17,6 +20,7 @@ import {
   setVisualsPhase,
   shotSlots,
   truncateRunMirror,
+  updateProjectSet,
   updateSlotBrief,
 } from '@boom-busters/db'
 import { mockDirectorsBook } from '@boom-busters/providers'
@@ -103,6 +107,72 @@ describeDb('visuals-replanner (mock mode)', () => {
     expect((await getProject(db, FIXTURE_PROJECT_ID))?.direction).toMatchObject({
       visualThesis: 'owner edit',
     })
+  })
+
+  /**
+   * Guards the re-plan side of the production chain (decision 275): op
+   * 'shots' loads the project's sets in `load-plan-inputs`
+   * (`sets.map(({ name, look, layout }) => ...)` around line 165 of
+   * `visuals-replanner.ts`) and carries them through `planChapterSlots` into
+   * `chapterShotListRequest`. Only a live-model call actually builds and
+   * sends that request; mock mode (the rest of this block) never calls
+   * `buildShotListRequest` at all, so it cannot catch a hop that quietly
+   * drops `layout` back to `{ name, look }`.
+   */
+  it("threads a set's room inventory into the live re-plan shot-list request (decision 275)", async () => {
+    vi.stubEnv('MOCK_PROVIDERS', '')
+    // A leftover "Boardroom" from an earlier run (project sets are not
+    // truncated in `beforeEach`) would fail the insert below with a
+    // duplicate-name error.
+    for (const existing of await listProjectSets(db, FIXTURE_PROJECT_ID)) {
+      if (existing.name === 'Boardroom') await deleteProjectSet(db, existing.id)
+    }
+    const set = await insertProjectSet(db, {
+      projectId: FIXTURE_PROJECT_ID,
+      name: 'Boardroom',
+      look: 'dark wood panelling, one window',
+    })
+    await updateProjectSet(db, set.id, { layout: 'North wall: three tall windows.' })
+
+    try {
+      callLlm.mockReset()
+      callLlm.mockResolvedValue({
+        text: JSON.stringify({
+          slots: [
+            {
+              paragraphIndex: 0,
+              seconds: 6,
+              brief: {
+                type: 'stock',
+                coversText: 'By June, the auditors could not find the money.',
+                description: 'An empty audit office at dusk.',
+                shotSize: 'wide',
+                motion: { kind: 'static' },
+                transition: 'cut',
+                query: 'empty office dusk',
+                rejectionCriteria: [],
+              },
+            },
+          ],
+        }),
+      })
+
+      const { result } = await engine.execute({ events: replanEvent('shots') })
+      expect(result).toMatchObject({ outcome: 'replanned' })
+
+      const shotListCall = callLlm.mock.calls.find(
+        ([request]) => (request as { task?: string }).task === 'shotlist',
+      )
+      const prefix =
+        (shotListCall?.[0] as { messages?: { content?: string }[] } | undefined)?.messages?.[0]
+          ?.content ?? ''
+      expect(prefix).toContain('- Boardroom: dark wood panelling, one window')
+      expect(prefix).toContain('  North wall: three tall windows.')
+    } finally {
+      for (const existing of await listProjectSets(db, FIXTURE_PROJECT_ID)) {
+        if (existing.name === 'Boardroom') await deleteProjectSet(db, existing.id)
+      }
+    }
   })
 
   it('op direction replaces the book and leaves the slots alone', async () => {
