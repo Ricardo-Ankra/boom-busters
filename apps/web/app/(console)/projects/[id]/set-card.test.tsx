@@ -203,8 +203,8 @@ describe('SetCard', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Edit sets' }))
     await userEvent.click(screen.getByRole('button', { name: /Generate a plate/ }))
 
-    expect(await screen.findByRole('button', { name: 'Choose plate 1' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Choose plate 2' })).toBeInTheDocument()
+    expect(await screen.findByRole('listitem', { name: 'Choose plate 1' })).toBeInTheDocument()
+    expect(screen.getByRole('listitem', { name: 'Choose plate 2' })).toBeInTheDocument()
     expect(actions.chooseSetPlateAction).not.toHaveBeenCalled()
   })
 
@@ -230,7 +230,7 @@ describe('SetCard', () => {
     )
     await userEvent.click(screen.getByRole('button', { name: 'Edit sets' }))
     await userEvent.click(screen.getByRole('button', { name: /Generate a plate/ }))
-    await userEvent.click(await screen.findByRole('button', { name: 'Choose plate 1' }))
+    await userEvent.click(await screen.findByRole('listitem', { name: 'Choose plate 1' }))
 
     expect(actions.chooseSetPlateAction).toHaveBeenCalledWith({
       setId: TRADING_FLOOR,
@@ -272,5 +272,140 @@ describe('SetCard', () => {
     )
     expect(screen.queryByRole('region', { name: 'The trading floor' })).not.toBeInTheDocument()
     expect(screen.getByRole('list', { name: 'Set list' })).toBeInTheDocument()
+  })
+
+  /**
+   * What `generateStillCandidates` returns for a live generation: bytes in
+   * R2 behind an asset row, and no `thumbUrl`. The card once read `thumbUrl`
+   * alone, so every live candidate rendered as an empty tile.
+   */
+  function liveCandidate(n: number, hash: string) {
+    return {
+      id: `google-${hash.slice(0, 12)}`,
+      provider: 'google' as const,
+      kind: 'image' as const,
+      sourceUrl: `generated://google/${hash.slice(0, 12)}`,
+      r2Key: `boom-busters/stills/${PROJECT}/${hash}.png`,
+      assetId: `asset-${n}`,
+      width: 1344,
+      height: 768,
+      licence: 'Generated (Gemini 2.5 Flash Image)',
+      summary: `Generated from: candidate ${n}`,
+    }
+  }
+
+  it('shows a live candidate through its asset, which has no thumbUrl', async () => {
+    actions.generateSetPlateAction.mockResolvedValue({
+      ok: true,
+      candidates: [liveCandidate(1, 'a'.repeat(64)), liveCandidate(2, 'b'.repeat(64))],
+    })
+    render(
+      <SetCard projectId={PROJECT} sets={[tradingFloor]} plateUrls={{}} plateEstimateUsd={0.08} />,
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'Edit sets' }))
+    await userEvent.click(screen.getByRole('button', { name: /Generate a plate/ }))
+
+    const first = await screen.findByRole('listitem', { name: 'Choose plate 1' })
+    expect(within(first).getByRole('img')).toHaveAttribute('src', '/api/assets/asset-1/file')
+    const second = screen.getByRole('listitem', { name: 'Choose plate 2' })
+    expect(within(second).getByRole('img')).toHaveAttribute('src', '/api/assets/asset-2/file')
+  })
+
+  it('Preview opens the candidates full size and can add the one on screen', async () => {
+    actions.generateSetPlateAction.mockResolvedValue({
+      ok: true,
+      candidates: [liveCandidate(1, 'a'.repeat(64)), liveCandidate(2, 'b'.repeat(64))],
+    })
+    render(
+      <SetCard projectId={PROJECT} sets={[tradingFloor]} plateUrls={{}} plateEstimateUsd={0.08} />,
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'Edit sets' }))
+    await userEvent.click(screen.getByRole('button', { name: /Generate a plate/ }))
+    await userEvent.click(await screen.findByRole('button', { name: 'Preview' }))
+
+    const dialog = screen.getByRole('dialog', {
+      name: 'Preview: The trading floor candidate plates',
+    })
+    expect(within(dialog).getByText(/candidate 1 of 2/)).toBeInTheDocument()
+    expect(within(dialog).getByRole('img')).toHaveAttribute('src', '/api/assets/asset-1/file')
+    expect(within(dialog).getByRole('button', { name: 'Previous' })).toBeDisabled()
+
+    await userEvent.click(within(dialog).getByRole('button', { name: /Next/ }))
+    expect(within(dialog).getByText(/candidate 2 of 2/)).toBeInTheDocument()
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Add as a plate' }))
+
+    expect(actions.chooseSetPlateAction).toHaveBeenCalledWith({
+      setId: TRADING_FLOOR,
+      r2Key: `boom-busters/stills/${PROJECT}/${'b'.repeat(64)}.png`,
+      sourceUrl: `generated://google/${'b'.repeat(12)}`,
+      width: 1344,
+      height: 768,
+    })
+    expect(await within(dialog).findByRole('button', { name: 'Added as a plate' })).toBeDisabled()
+  })
+
+  it('keeps the other candidates after one is added, marking the added one', async () => {
+    actions.generateSetPlateAction.mockResolvedValue({
+      ok: true,
+      candidates: [liveCandidate(1, 'a'.repeat(64)), liveCandidate(2, 'b'.repeat(64))],
+    })
+    render(
+      <SetCard projectId={PROJECT} sets={[tradingFloor]} plateUrls={{}} plateEstimateUsd={0.08} />,
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'Edit sets' }))
+    await userEvent.click(screen.getByRole('button', { name: /Generate a plate/ }))
+    await userEvent.click(await screen.findByRole('listitem', { name: 'Choose plate 1' }))
+
+    expect(await screen.findByRole('listitem', { name: 'Plate 1 added' })).toBeDisabled()
+    expect(screen.getByRole('listitem', { name: 'Choose plate 2' })).toBeEnabled()
+  })
+
+  it('recognises a candidate already held as a plate by its storage key', async () => {
+    const hash = 'c'.repeat(64)
+    const plated: ProjectSet = {
+      ...tradingFloor,
+      plates: [
+        ...tradingFloor.plates,
+        {
+          r2Key: `boom-busters/sets/${PROJECT}/${hash}.png`,
+          contentHash: hash,
+          mimeType: 'image/png',
+          width: 1344,
+          height: 768,
+          view: 'establishing',
+          origin: 'generated',
+        },
+      ],
+    }
+    actions.generateSetPlateAction.mockResolvedValue({
+      ok: true,
+      candidates: [liveCandidate(1, hash), liveCandidate(2, 'd'.repeat(64))],
+    })
+    render(<SetCard projectId={PROJECT} sets={[plated]} plateUrls={{}} plateEstimateUsd={0.08} />)
+    await userEvent.click(screen.getByRole('button', { name: 'Edit sets' }))
+    await userEvent.click(screen.getByRole('button', { name: /Generate a plate/ }))
+
+    expect(await screen.findByRole('listitem', { name: 'Plate 1 added' })).toBeDisabled()
+    expect(screen.getByRole('listitem', { name: 'Choose plate 2' })).toBeEnabled()
+  })
+
+  it('hiding the sets keeps the candidates that were paid for', async () => {
+    actions.generateSetPlateAction.mockResolvedValue({
+      ok: true,
+      candidates: [liveCandidate(1, 'a'.repeat(64))],
+    })
+    render(
+      <SetCard projectId={PROJECT} sets={[tradingFloor]} plateUrls={{}} plateEstimateUsd={0.08} />,
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'Edit sets' }))
+    await userEvent.click(screen.getByRole('button', { name: /Generate a plate/ }))
+    await screen.findByRole('listitem', { name: 'Choose plate 1' })
+
+    await userEvent.click(screen.getByRole('button', { name: 'Hide sets' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Edit sets' }))
+    expect(screen.getByRole('listitem', { name: 'Choose plate 1' })).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Clear candidates' }))
+    expect(screen.queryByRole('listitem', { name: 'Choose plate 1' })).not.toBeInTheDocument()
   })
 })

@@ -5791,3 +5791,37 @@ there are all these issues, but does nothing about it").
     of 383, packages/providers 517 of 517, and 114 of 114 across the web
     direction, replanner, visual-board and visual-assets files), then
     `pnpm test` at 9 of 9 tasks, apps/web 872 of 872.
+
+272. **Generated plate candidates show and choose like a slot's**
+(2026-09-24, owner report: "When using the generate plate button. The
+candidates don't reveal and don't have the same preview, and select
+functionality, like the shots").
+
+    The Set card drew each candidate from `thumbUrl`, which only a mock
+    generation carries. A live generation from `generateStillCandidates`
+    keeps its bytes in R2 behind an asset row and has no `thumbUrl`, so every
+    live candidate rendered as an empty square. The card's tests passed
+    because every fixture had a `thumbUrl`. The board had always resolved the
+    picture through `/api/assets/<id>/file`.
+
+    The thumbnail and full-size helpers and the lightbox moved out of
+    `visual-board.tsx` into `components/candidate-media.tsx`, and both
+    screens now use them, so the two cannot drift again. The board's
+    lightbox is a thin wrapper and renders what it did before. The Set card
+    now shows the board's 168 by 104 strip, a Preview button that opens the
+    same full-size lightbox with Previous and Next, and "Add as a plate"
+    inside it. Adding one no longer clears the rest, since a set carries up
+    to four plates; an added candidate is marked "Added" (recognised by its
+    storage key, which ends in the plate's content hash, or by this
+    session's choice for a mock). The candidates are held by the card, not
+    the row, so Hide sets no longer throws away generations that were paid
+    for, and "Clear candidates" dismisses them.
+
+    Still open: candidates live in the browser only. A page reload loses
+    them, although their stills and asset rows stay in R2 and the DB.
+    Keeping them across reloads would need a column on `project_sets`.
+
+    Verified: `set-card.test.tsx` gains five tests (a live candidate with no
+    `thumbUrl` shows through its asset, Preview and add, the rest survive an
+    add, a held plate is recognised, Hide keeps them and Clear removes
+    them); `pnpm test` 9 of 9 tasks, apps/web 877 of 877.

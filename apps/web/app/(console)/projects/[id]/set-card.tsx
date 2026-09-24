@@ -1,5 +1,6 @@
 'use client'
 
+import { Maximize2 } from 'lucide-react'
 import * as React from 'react'
 import { useRouter } from 'next/navigation'
 import { MAX_SET_PLATES, SET_PLATE_VIEWS } from '@boom-busters/schemas'
@@ -9,6 +10,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input, Label, Select } from '@/components/ui/input'
 import { useToast } from '@/components/ui/toast'
 import { ConfirmButton } from '@/components/confirm-button'
+import { CandidateLightbox, candidateThumb } from '@/components/candidate-media'
 import { readImageSize, toUploadableImage } from '@/lib/client-image'
 import {
   addSetAction,
@@ -38,7 +40,9 @@ import {
  * Plates go browser -> R2 on a presigned PUT, the same "Upload own" shape as
  * the cast's photos, and can also arrive by web address or by generation:
  * `generateSetPlateAction` returns candidates from the look alone and stores
- * nothing until `chooseSetPlateAction` picks one.
+ * nothing until `chooseSetPlateAction` picks one. The candidates are shown
+ * the way the visual board shows a slot's (`components/candidate-media`):
+ * the same strip, the same full-size Preview, the same click to choose.
  */
 
 const VIEW_LABELS: Record<SetPlateView, string> = {
@@ -73,6 +77,12 @@ export function SetCard({ projectId, sets, plateUrls, plateEstimateUsd }: SetCar
     sets.length === 0 || sets.some((set) => set.plates.length === 0),
   )
   const unplated = sets.filter((set) => set.plates.length === 0).length
+  // Held here, not in each row, so hiding the sets does not throw away
+  // candidates that were paid for. Keyed by set id.
+  const [candidates, setCandidates] = React.useState<Record<string, SlotCandidate[]>>({})
+  // Candidates already added as plates this session. A live candidate is
+  // also recognised by its storage key (see `isAdded`); a mock one is not.
+  const [added, setAdded] = React.useState<ReadonlySet<string>>(new Set())
 
   const act: Act = React.useCallback(
     async (key, run, success, onOk) => {
@@ -154,6 +164,17 @@ export function SetCard({ projectId, sets, plateUrls, plateEstimateUsd }: SetCar
                 plateEstimateUsd={plateEstimateUsd}
                 busy={busy}
                 act={act}
+                candidates={candidates[set.id] ?? null}
+                onCandidates={(list) =>
+                  setCandidates((current) => {
+                    const next = { ...current }
+                    if (list === null) delete next[set.id]
+                    else next[set.id] = list
+                    return next
+                  })
+                }
+                added={added}
+                onAdded={(id) => setAdded((current) => new Set(current).add(id))}
               />
             ))}
             <AddSet projectId={projectId} busy={busy} act={act} />
@@ -203,22 +224,48 @@ function SetRow({
   plateEstimateUsd,
   busy,
   act,
+  candidates,
+  onCandidates,
+  added,
+  onAdded,
 }: {
   set: ProjectSet
   plateUrls: Readonly<Record<string, string>>
   plateEstimateUsd: number
   busy: string | null
   act: Act
+  candidates: SlotCandidate[] | null
+  onCandidates: (list: SlotCandidate[] | null) => void
+  added: ReadonlySet<string>
+  onAdded: (candidateId: string) => void
 }) {
   const [name, setName] = React.useState(set.name)
   const [look, setLook] = React.useState(set.look)
   const [view, setView] = React.useState<SetPlateView>('establishing')
   const [plateUrl, setPlateUrl] = React.useState('')
-  const [candidates, setCandidates] = React.useState<SlotCandidate[] | null>(null)
+  // Which candidate the Preview shows, or null when it is closed.
+  const [previewIndex, setPreviewIndex] = React.useState<number | null>(null)
   const inputRef = React.useRef<HTMLInputElement | null>(null)
   const rowBusy = busy !== null && busy.startsWith(set.id)
   /** Whether another plate would fit: the one condition every way in shares. */
   const room = set.plates.length < MAX_SET_PLATES
+  const isAdded = (candidate: SlotCandidate): boolean =>
+    added.has(candidate.id) ||
+    set.plates.some((plate) => candidate.r2Key?.endsWith(`/${plate.contentHash}.png`) === true)
+  const choose = (candidate: SlotCandidate) =>
+    act(
+      `${set.id}:choose`,
+      () =>
+        chooseSetPlateAction({
+          setId: set.id,
+          r2Key: candidate.r2Key ?? null,
+          sourceUrl: candidate.sourceUrl,
+          width: candidate.width ?? 0,
+          height: candidate.height ?? 0,
+        }),
+      'Plate added',
+      () => onAdded(candidate.id),
+    )
 
   const upload = async (picked: File): Promise<ActionResult> => {
     // An AVIF becomes a JPEG before anything else happens, so the hash, the
@@ -414,40 +461,95 @@ function SetRow({
         </p>
       </div>
 
-      {candidates !== null && room ? (
-        <ul aria-label={`${set.name} candidate plates`} className="flex flex-wrap gap-3">
-          {candidates.map((candidate, index) => (
-            <li key={candidate.id} className="w-28">
-              <Button
-                variant="outline"
-                className="h-28 w-28 p-0"
-                disabled={rowBusy}
-                aria-label={`Choose plate ${index + 1}`}
-                onClick={() =>
-                  act(
-                    `${set.id}:choose`,
-                    () =>
-                      chooseSetPlateAction({
-                        setId: set.id,
-                        r2Key: candidate.r2Key ?? null,
-                        sourceUrl: candidate.sourceUrl,
-                        width: candidate.width ?? 0,
-                        height: candidate.height ?? 0,
-                      }),
-                    'Plate added',
-                    () => setCandidates(null),
-                  )
-                }
-              >
-                <img
-                  src={candidate.thumbUrl}
-                  alt=""
-                  className="h-full w-full rounded-md object-cover"
-                />
-              </Button>
-            </li>
-          ))}
-        </ul>
+      {candidates !== null && candidates.length > 0 ? (
+        <div className="space-y-2">
+          <p className="text-[12px] text-[var(--color-text-muted)]">
+            Generated from the look. Click one to add it as a plate, or Preview them full size
+            first.
+            {room ? null : (
+              <span className="text-[var(--color-warning)]">
+                {' '}
+                {set.name} holds four plates; remove one to add another.
+              </span>
+            )}
+          </p>
+          <div
+            className="flex flex-wrap gap-2"
+            role="list"
+            aria-label={`${set.name} candidate plates`}
+          >
+            {candidates.map((candidate, index) => {
+              const thumb = candidateThumb(candidate)
+              const done = isAdded(candidate)
+              return (
+                <button
+                  key={candidate.id}
+                  type="button"
+                  role="listitem"
+                  aria-label={done ? `Plate ${index + 1} added` : `Choose plate ${index + 1}`}
+                  disabled={done || !room || rowBusy}
+                  onClick={() => void choose(candidate)}
+                  title={candidate.summary}
+                  className={`relative flex h-[104px] w-[168px] flex-col overflow-hidden rounded-[8px] border-2 text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-accent)] ${
+                    done
+                      ? 'border-[var(--color-accent)]'
+                      : 'border-[var(--color-border)] hover:border-[var(--color-border-strong)]'
+                  }`}
+                >
+                  {thumb ? (
+                    // Plain <img> on purpose: data: and presigned sources,
+                    // which next/image can neither optimise nor allowlist.
+                    <img
+                      src={thumb}
+                      alt={candidate.summary ?? candidate.id}
+                      className="h-full w-full object-cover"
+                    />
+                  ) : (
+                    <span className="flex h-full w-full items-center justify-center bg-[var(--color-background)] p-2 text-center text-[11px] text-[var(--color-text-muted)]">
+                      {candidate.summary ?? candidate.id}
+                    </span>
+                  )}
+                  {done ? (
+                    <span className="absolute right-1 bottom-1 rounded-[4px] bg-[var(--color-accent)] px-1.5 py-0.5 text-[10px] font-semibold text-white">
+                      Added
+                    </span>
+                  ) : null}
+                </button>
+              )
+            })}
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" onClick={() => setPreviewIndex(0)}>
+              <Maximize2 aria-hidden />
+              Preview
+            </Button>
+            <Button
+              variant="ghost"
+              onClick={() => {
+                setPreviewIndex(null)
+                onCandidates(null)
+              }}
+            >
+              Clear candidates
+            </Button>
+          </div>
+          {previewIndex !== null ? (
+            <CandidateLightbox
+              label={`Preview: ${set.name} candidate plates`}
+              caption={set.name}
+              candidates={candidates}
+              index={Math.min(previewIndex, candidates.length - 1)}
+              onIndexChange={setPreviewIndex}
+              onClose={() => setPreviewIndex(null)}
+              isChosen={isAdded}
+              chooseLabel="Add as a plate"
+              chosenLabel="Added as a plate"
+              chooseDisabled={!room}
+              onChoose={(candidate) => void choose(candidate)}
+              busy={rowBusy}
+            />
+          ) : null}
+        </div>
       ) : null}
 
       <div className="flex flex-wrap gap-2">
@@ -476,7 +578,7 @@ function SetRow({
                 `${set.id}:generate`,
                 () => generateSetPlateAction(set.id),
                 'Candidates ready',
-                (result) => setCandidates(result.candidates ?? []),
+                (result) => onCandidates(result.candidates ?? []),
               )
             }
           >

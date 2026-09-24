@@ -1,16 +1,6 @@
 'use client'
 
-import {
-  ChevronLeft,
-  ChevronRight,
-  ImagePlus,
-  Maximize2,
-  Pause,
-  Play,
-  RefreshCw,
-  Search,
-  X,
-} from 'lucide-react'
+import { ImagePlus, Maximize2, Pause, Play, RefreshCw, Search } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import * as React from 'react'
 import { imageGenModel, LIVE_IMAGE_GEN_ADAPTERS } from '@boom-busters/providers'
@@ -29,6 +19,7 @@ import type {
   StillProvider,
 } from '@boom-busters/schemas'
 import { Badge, type BadgeTone } from '@/components/ui/badge'
+import { CandidateLightbox, candidateThumb } from '@/components/candidate-media'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ConfirmButton } from '@/components/confirm-button'
@@ -87,29 +78,6 @@ import {
  * gapless concatenated audio is an M6 alignment product; here each paragraph
  * take plays in sequence, which is the same audio at the same moments.)
  */
-
-function candidateThumb(candidate: SlotCandidate): string | undefined {
-  if (candidate.thumbUrl) return candidate.thumbUrl
-  if (candidate.assetId) return `/api/assets/${candidate.assetId}/file`
-  if (candidate.sourceUrl.startsWith('data:') || candidate.sourceUrl.startsWith('http')) {
-    return candidate.sourceUrl
-  }
-  return undefined
-}
-
-/**
- * The best URL for the ENLARGED view, which is not the thumbnail's order:
- * bytes we hold (stills, uploads) beat the provider's full-size URL, and the
- * small thumb is the last resort rather than the first. Mock candidates'
- * `mock://` sources fall through to their data: thumbs.
- */
-function candidateFull(candidate: SlotCandidate): string | undefined {
-  if (candidate.assetId) return `/api/assets/${candidate.assetId}/file`
-  if (candidate.sourceUrl.startsWith('data:') || candidate.sourceUrl.startsWith('http')) {
-    return candidate.sourceUrl
-  }
-  return candidate.thumbUrl
-}
 
 const STATUS_TONE: Record<string, BadgeTone> = {
   resolved: 'success',
@@ -1574,130 +1542,22 @@ function MediaLightbox({
   act: (slotId: string, run: () => Promise<ActionResult>, success: string) => Promise<ActionResult>
   busy: boolean
 }) {
-  const closeRef = React.useRef<HTMLButtonElement | null>(null)
-  const candidate = slot.candidates[index]
-
-  // Escape closes — on top of the visible Close button, never instead of it.
-  React.useEffect(() => {
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onClose()
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [onClose])
-
-  React.useEffect(() => {
-    closeRef.current?.focus()
-  }, [])
-
-  if (!candidate) return null
-  const full = candidateFull(candidate)
-  const chosen = candidate.chosen === true
-
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-label={`Preview: ${slot.brief?.coversText ?? slot.id}`}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4"
-      onClick={(event) => {
-        // The backdrop, not anything inside the panel.
-        if (event.target === event.currentTarget) onClose()
-      }}
-    >
-      <div className="flex max-h-[92vh] w-full max-w-[960px] flex-col gap-3 rounded-[8px] border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
-        <div className="flex items-start justify-between gap-2">
-          <div className="min-w-0">
-            <p className="text-[13px] text-[var(--color-text-secondary)]">
-              “{slot.brief?.coversText}”
-            </p>
-            <p className="font-mono text-[11px] text-[var(--color-text-muted)]">
-              {candidate.kind}
-              {candidate.score !== undefined ? ` · score ${Math.round(candidate.score)}` : ''}
-              {` · candidate ${index + 1} of ${slot.candidates.length}`}
-            </p>
-          </div>
-          <Button ref={closeRef} variant="ghost" onClick={onClose}>
-            <X aria-hidden />
-            Close
-          </Button>
-        </div>
-
-        <div className="flex min-h-0 flex-1 items-center justify-center rounded-[8px] bg-[var(--color-background)]">
-          {full && candidate.kind === 'video' ? (
-            // Muted + looped: this is a framing check, and the narration is
-            // the scrubber's job. Provider CDN URLs are fine here — the
-            // board's preview is exactly what they are for.
-            <video
-              src={full}
-              controls
-              autoPlay
-              muted
-              loop
-              playsInline
-              className="max-h-[60vh] max-w-full rounded-[8px]"
-              aria-label={candidate.summary ?? candidate.id}
-            />
-          ) : full ? (
-            // Plain <img> on purpose: provider-CDN and data: sources, which
-            // next/image can neither optimise nor allowlist.
-            <img
-              src={full}
-              alt={candidate.summary ?? candidate.id}
-              className="max-h-[60vh] max-w-full rounded-[8px] object-contain"
-            />
-          ) : (
-            <p className="p-8 text-[13px] text-[var(--color-text-muted)]">
-              This candidate has no previewable media URL.
-            </p>
-          )}
-        </div>
-
-        <p className="text-[11px] text-[var(--color-text-muted)]">
-          {candidate.licence}
-          {candidate.attributionText ? ` · ${candidate.attributionText}` : ''}
-          {candidate.references && candidate.references.length > 0
-            ? ` · reference: ${candidate.references.join(', ')}`
-            : ''}
-          {candidate.summary ? ` · ${candidate.summary}` : ''}
-        </p>
-
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              disabled={index === 0}
-              onClick={() => onIndexChange(index - 1)}
-            >
-              <ChevronLeft aria-hidden />
-              Previous
-            </Button>
-            <Button
-              variant="outline"
-              disabled={index >= slot.candidates.length - 1}
-              onClick={() => onIndexChange(index + 1)}
-            >
-              Next
-              <ChevronRight aria-hidden />
-            </Button>
-          </div>
-          <Button
-            variant="primary"
-            disabled={chosen}
-            busy={busy}
-            onClick={() =>
-              act(
-                slot.id,
-                () => chooseCandidateAction(projectId, slot.id, candidate.id),
-                'Selected',
-              )
-            }
-          >
-            {chosen ? 'Selected for this slot' : 'Use this candidate'}
-          </Button>
-        </div>
-      </div>
-    </div>
+    <CandidateLightbox
+      label={`Preview: ${slot.brief?.coversText ?? slot.id}`}
+      caption={`“${slot.brief?.coversText ?? ''}”`}
+      candidates={slot.candidates}
+      index={index}
+      onIndexChange={onIndexChange}
+      onClose={onClose}
+      isChosen={(candidate) => candidate.chosen === true}
+      chooseLabel="Use this candidate"
+      chosenLabel="Selected for this slot"
+      onChoose={(candidate) =>
+        void act(slot.id, () => chooseCandidateAction(projectId, slot.id, candidate.id), 'Selected')
+      }
+      busy={busy}
+    />
   )
 }
 
