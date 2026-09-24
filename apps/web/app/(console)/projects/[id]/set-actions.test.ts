@@ -12,7 +12,7 @@ import {
   updateProjectSet,
   updateSettings,
 } from '@boom-busters/db'
-import { mockImageGen } from '@boom-busters/providers'
+import { HOUSE_PHOTOGRAPH, mockImageGen } from '@boom-busters/providers'
 import { DEFAULT_SET_SHEET_ROUTE } from '@boom-busters/schemas'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/lib/db'
@@ -403,8 +403,17 @@ describeDb('set actions (mock mode)', () => {
     const request = generate.mock.calls[0]?.[0]
     expect((request?.references ?? []).map((reference) => reference.kind)).toEqual(['object'])
     expect(request?.prompt).toContain('a wide photograph of the whole room facing south')
-    // The closing declaration asks for a new photograph, not the plate's framing.
-    expect(request?.prompt).toContain('never reproduce or edit the framing of its photographs')
+    // Task 10 (decision 275): a compass view's camera stands at the middle of
+    // the opposite wall, at eye level, 24mm — describeCamera's own sentence,
+    // which REPLACES decision 273's "never reproduce or edit the framing"
+    // line (that line only fires when a still carries no camera).
+    expect(request?.prompt).toContain(
+      'The camera stands at the middle of the north wall, at eye level, facing south, 24mm.',
+    )
+    // Ruling R3: the camera's own lens overrides the house photograph line's
+    // default 35mm, in place.
+    expect(request?.prompt).toContain(HOUSE_PHOTOGRAPH.replace('35mm', '24mm'))
+    expect(request?.prompt).not.toContain('never reproduce or edit the framing')
   })
 
   it('refuses another view before the set has a plate, before spending', async () => {
