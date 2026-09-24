@@ -14,6 +14,7 @@ import {
 import { mockImageGen } from '@boom-busters/providers'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/lib/db'
+import { MOCK_LAYOUT } from '@/lib/set-layout'
 import {
   addSetAction,
   addSetPlateFromUrlAction,
@@ -21,6 +22,7 @@ import {
   createSetPlateUploadAction,
   finaliseSetPlateAction,
   generateSetPlateAction,
+  redraftSetLayoutAction,
   removeSetAction,
   removeSetPlateAction,
   updateSetAction,
@@ -558,5 +560,52 @@ describeDb('set actions (mock mode)', () => {
     })
     expect(result.ok).toBe(false)
     expect(result.error).toMatch(/R2 configured/)
+  })
+
+  it('drafts the room inventory when the first plate lands, and never overwrites it', async () => {
+    const id = await addTradingFloor()
+    await finaliseSetPlateAction({
+      setId: id,
+      mimeType: 'image/jpeg',
+      contentHash: HASH_A,
+      width: 10,
+      height: 10,
+    })
+    let [set] = await listProjectSets(db, FIXTURE_PROJECT_ID)
+    expect(set?.layout).toBe(MOCK_LAYOUT)
+
+    await updateSetAction(id, { layout: 'North wall: my own words' })
+    await finaliseSetPlateAction({
+      setId: id,
+      mimeType: 'image/jpeg',
+      contentHash: HASH_B,
+      width: 10,
+      height: 10,
+    })
+    ;[set] = await listProjectSets(db, FIXTURE_PROJECT_ID)
+    expect(set?.layout).toBe('North wall: my own words')
+  })
+
+  it('redrafts the inventory on request, replacing the owner’s edits', async () => {
+    const id = await addTradingFloor()
+    await finaliseSetPlateAction({
+      setId: id,
+      mimeType: 'image/jpeg',
+      contentHash: HASH_A,
+      width: 10,
+      height: 10,
+    })
+    await updateSetAction(id, { layout: 'North wall: my own words' })
+    expect(await redraftSetLayoutAction(id)).toEqual({ ok: true, layout: MOCK_LAYOUT })
+    const [set] = await listProjectSets(db, FIXTURE_PROJECT_ID)
+    expect(set?.layout).toBe(MOCK_LAYOUT)
+  })
+
+  it('refuses to redraft a set with no plate', async () => {
+    const id = await addTradingFloor()
+    expect(await redraftSetLayoutAction(id)).toEqual({
+      ok: false,
+      error: 'Add a plate first; the inventory is drafted from it.',
+    })
   })
 })

@@ -14,6 +14,7 @@ const actions = vi.hoisted(() => ({
   removeSetPlateAction: vi.fn(),
   generateSetPlateAction: vi.fn(),
   chooseSetPlateAction: vi.fn(),
+  redraftSetLayoutAction: vi.fn(),
 }))
 vi.mock('./set-actions', () => actions)
 
@@ -114,7 +115,7 @@ describe('SetCard', () => {
         plateEstimateUsd={0.08}
       />,
     )
-    expect(screen.getByRole('status')).toHaveTextContent('1 set still needs a plate.')
+    expect(screen.getByText('1 set still needs a plate.')).toBeInTheDocument()
     expect(screen.queryByRole('list', { name: 'Set list' })).not.toBeInTheDocument()
     expect(screen.getByRole('region', { name: 'The trading floor' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Hide sets' })).toBeInTheDocument()
@@ -159,6 +160,19 @@ describe('SetCard', () => {
     expect(actions.updateSetAction).toHaveBeenCalledWith(TRADING_FLOOR, {
       layout: 'North wall: windows',
     })
+  })
+
+  it('redrafts the inventory only after a confirm', async () => {
+    actions.redraftSetLayoutAction.mockResolvedValue({ ok: true, layout: 'North wall: drafted' })
+    render(
+      <SetCard projectId={PROJECT} sets={[tradingFloor]} plateUrls={{}} plateEstimateUsd={0.08} />,
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'Edit sets' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Redraft from plate' }))
+    expect(actions.redraftSetLayoutAction).not.toHaveBeenCalled()
+    await userEvent.click(screen.getByRole('button', { name: 'Replace the inventory' }))
+    expect(actions.redraftSetLayoutAction).toHaveBeenCalledWith(TRADING_FLOOR)
+    expect(screen.getByLabelText('Room inventory')).toHaveValue('North wall: drafted')
   })
 
   it('offers AVIF at the plate picker, which converts before it uploads', async () => {

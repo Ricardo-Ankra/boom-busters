@@ -19,6 +19,7 @@ import {
   createSetPlateUploadAction,
   finaliseSetPlateAction,
   generateSetPlateAction,
+  redraftSetLayoutAction,
   removeSetAction,
   removeSetPlateAction,
   updateSetAction,
@@ -86,7 +87,7 @@ export interface SetCardProps {
 }
 
 /** `run` results a wider shape than `ActionResult` can carry, such as the candidates a generate call returns. */
-type ActResult = ActionResult & { candidates?: SlotCandidate[] }
+type ActResult = ActionResult & { candidates?: SlotCandidate[]; layout?: string }
 type Act = (
   key: string,
   run: () => Promise<ActResult>,
@@ -394,6 +395,28 @@ function SetRow({
           One line per wall, then Centre and Light. It travels with every shot in this room, so
           walls no plate shows stay the same.
         </p>
+        {set.plates.length > 0 && set.layout.trim() === '' ? (
+          <p className="text-[12px] text-[var(--color-warning)]" role="status">
+            The inventory could not be drafted; write it, or press Redraft from plate.
+          </p>
+        ) : null}
+        {set.plates.length > 0 ? (
+          <ConfirmButton
+            variant="outline"
+            busy={rowBusy}
+            label="Redraft from plate"
+            confirmLabel="Replace the inventory"
+            consequence="It is drafted again from the first plate, and your edits to it are lost."
+            onConfirm={() =>
+              act(
+                `${set.id}:layout`,
+                () => redraftSetLayoutAction(set.id),
+                'Inventory redrafted',
+                (result) => setLayout(result.layout ?? layout),
+              )
+            }
+          />
+        ) : null}
       </div>
 
       <div className="space-y-2">

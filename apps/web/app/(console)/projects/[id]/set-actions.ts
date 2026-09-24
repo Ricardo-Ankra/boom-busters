@@ -21,18 +21,26 @@ import {
   castPhotoExtension,
   CastPhotoMimeSchema,
   MAX_SET_PLATES,
+  platesForCamera,
   SetPlateViewSchema,
   SetViewRequestSchema,
   UlidSchema,
   uploadedPlateView,
   ValidationError,
 } from '@boom-busters/schemas'
-import type { SetPlate, SetPlateView, SetViewRequest, SlotCandidate } from '@boom-busters/schemas'
+import type {
+  ProjectSet,
+  SetPlate,
+  SetPlateView,
+  SetViewRequest,
+  SlotCandidate,
+} from '@boom-busters/schemas'
 import { createHash } from 'node:crypto'
 import { revalidatePath } from 'next/cache'
 import { auth } from '@/auth'
 import { db } from '@/lib/db'
 import { fetchRemoteImage } from '@/lib/remote-image'
+import { draftSetLayout } from '@/lib/set-layout'
 import { setPlateBrief } from '@/lib/set-plates'
 import {
   deleteObject,
@@ -89,6 +97,24 @@ function failure(error: unknown, fallback: string): ActionResult {
     return { ok: false, error: 'A set with that name already exists.' }
   }
   return { ok: false, error: fallback }
+}
+
+/**
+ * Draft the inventory when a set's first plate lands, unless the owner has
+ * already written one (decision 275). Failure leaves the field empty; the
+ * card says so and offers Redraft.
+ */
+async function draftLayoutIfFirst(before: ProjectSet, plate: SetPlate): Promise<void> {
+  if (before.plates.length > 0 || before.layout.trim() !== '') return
+  const layout = await draftSetLayout({
+    projectId: before.projectId,
+    name: before.name,
+    look: before.look,
+    plate,
+  })
+  if (layout === null) return
+  const current = await getProjectSet(db, before.id)
+  if (current && current.layout.trim() === '') await updateProjectSet(db, before.id, { layout })
 }
 
 export async function addSetAction(
@@ -247,6 +273,7 @@ export async function finaliseSetPlateAction(input: {
   }
   try {
     await setSetPlates(db, set.id, [...set.plates, plate])
+    await draftLayoutIfFirst(set, plate)
     refresh(set.projectId)
     return { ok: true }
   } catch (error) {
@@ -316,6 +343,7 @@ export async function addSetPlateFromUrlAction(input: {
   }
   try {
     await setSetPlates(db, set.id, [...set.plates, plate])
+    await draftLayoutIfFirst(set, plate)
     refresh(set.projectId)
     return { ok: true }
   } catch (error) {
@@ -475,9 +503,41 @@ export async function chooseSetPlateAction(input: {
   }
   try {
     await setSetPlates(db, set.id, [...set.plates, plate])
+    await draftLayoutIfFirst(set, plate)
     refresh(set.projectId)
     return { ok: true }
   } catch (error) {
     return failure(error, 'The plate could not be recorded.')
   }
+}
+
+/**
+ * Redraft the inventory from the first (north) plate on request, replacing
+ * whatever the owner has written (decision 275).
+ */
+export async function redraftSetLayoutAction(
+  setId: string,
+): Promise<ActionResult & { layout?: string }> {
+  await requireOwner()
+  const invalid = badIds(setId)
+  if (invalid) return invalid
+  const set = await getProjectSet(db, setId)
+  if (!set) return { ok: false, error: 'This set no longer exists.' }
+  const [plate] = platesForCamera(set, 'north', 1)
+  if (!plate) return { ok: false, error: 'Add a plate first; the inventory is drafted from it.' }
+  const layout = await draftSetLayout({
+    projectId: set.projectId,
+    name: set.name,
+    look: set.look,
+    plate,
+  })
+  if (layout === null) {
+    return {
+      ok: false,
+      error: 'The inventory could not be drafted. Try again, or write it by hand.',
+    }
+  }
+  await updateProjectSet(db, set.id, { layout })
+  refresh(set.projectId)
+  return { ok: true, layout }
 }
