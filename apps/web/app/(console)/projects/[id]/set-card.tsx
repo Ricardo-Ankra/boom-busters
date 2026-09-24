@@ -3,7 +3,7 @@
 import { Maximize2 } from 'lucide-react'
 import * as React from 'react'
 import { useRouter } from 'next/navigation'
-import { MAX_SET_PLATES, plateAngleView, SET_PLATE_VIEWS } from '@boom-busters/schemas'
+import { MAX_SET_PLATES, SET_PLATE_ANGLES } from '@boom-busters/schemas'
 import type { ProjectSet, SetPlateAngle, SetPlateView, SlotCandidate } from '@boom-busters/schemas'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -59,8 +59,11 @@ interface CandidateBatch {
   list: SlotCandidate[]
 }
 
+/** The caption under each plate: the angle it shows, or "Other" when nobody said. */
 const VIEW_LABELS: Record<SetPlateView, string> = {
   establishing: 'Establishing',
+  reverse: 'Reverse',
+  side: 'Side',
   detail: 'Detail',
   other: 'Other',
 }
@@ -271,7 +274,6 @@ function SetRow({
 }) {
   const [name, setName] = React.useState(set.name)
   const [look, setLook] = React.useState(set.look)
-  const [view, setView] = React.useState<SetPlateView>('establishing')
   // The first plate is always the establishing view; after that the default
   // is the view a set with one plate most lacks.
   const [angle, setAngle] = React.useState<SetPlateAngle>('reverse')
@@ -297,7 +299,7 @@ function SetRow({
           sourceUrl: candidate.sourceUrl,
           width: candidate.width ?? 0,
           height: candidate.height ?? 0,
-          view: plateAngleView(batch?.angle ?? 'establishing'),
+          ...(batch ? { view: batch.angle } : {}),
         }),
       'Plate added',
       () => onAdded(candidate.id),
@@ -341,7 +343,6 @@ function SetRow({
       contentHash,
       width: size.width,
       height: size.height,
-      view,
     })
   }
 
@@ -431,17 +432,6 @@ function SetRow({
               >
                 Add plate
               </Button>
-              <Select
-                aria-label={`View of the next plate of ${set.name}`}
-                value={view}
-                onChange={(event) => setView(event.target.value as SetPlateView)}
-              >
-                {SET_PLATE_VIEWS.map((option) => (
-                  <option key={option} value={option}>
-                    {VIEW_LABELS[option]}
-                  </option>
-                ))}
-              </Select>
               <input
                 ref={inputRef}
                 type="file"
@@ -479,7 +469,6 @@ function SetRow({
                     const result = await addSetPlateFromUrlAction({
                       setId: set.id,
                       url: plateUrl,
-                      view,
                     })
                     if (result.ok) setPlateUrl('')
                     return result
@@ -605,13 +594,18 @@ function SetRow({
         >
           Save
         </Button>
-        {room && plated ? (
+        {room ? (
+          // Shown before the first plate too, greyed out, so the angles are
+          // visible from the start and the reason they are not yet offered is
+          // on screen rather than discovered (decision 274).
           <Select
             aria-label={`Angle of the next generated plate of ${set.name}`}
-            value={angle}
+            aria-describedby={plated ? undefined : `set-${set.id}-angle-hint`}
+            value={plated ? angle : 'establishing'}
+            disabled={!plated}
             onChange={(event) => setAngle(event.target.value as SetPlateAngle)}
           >
-            {(Object.keys(ANGLE_LABELS) as SetPlateAngle[]).map((option) => (
+            {SET_PLATE_ANGLES.map((option) => (
               <option key={option} value={option}>
                 {ANGLE_LABELS[option]}
               </option>
@@ -644,6 +638,11 @@ function SetRow({
           onConfirm={() => act(`${set.id}:remove`, () => removeSetAction(set.id), 'Set removed')}
         />
       </div>
+      {room && !plated ? (
+        <p id={`set-${set.id}-angle-hint`} className="text-[12px] text-[var(--color-text-muted)]">
+          Add a plate first, then generate other angles from it.
+        </p>
+      ) : null}
     </section>
   )
 }

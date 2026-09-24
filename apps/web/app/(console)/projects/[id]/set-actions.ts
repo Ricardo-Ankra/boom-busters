@@ -24,6 +24,7 @@ import {
   SetPlateAngleSchema,
   SetPlateViewSchema,
   UlidSchema,
+  uploadedPlateView,
   ValidationError,
 } from '@boom-busters/schemas'
 import type { SetPlate, SetPlateAngle, SetPlateView, SlotCandidate } from '@boom-busters/schemas'
@@ -187,7 +188,8 @@ export async function createSetPlateUploadAction(input: {
 
 /**
  * Step two: the browser uploaded the bytes and read the dimensions; the
- * server checks the object landed and records the plate.
+ * server checks the object landed and records the plate. The card no longer
+ * asks for a view (decision 274); without one it is `uploadedPlateView`.
  */
 export async function finaliseSetPlateAction(input: {
   setId: string
@@ -195,7 +197,7 @@ export async function finaliseSetPlateAction(input: {
   contentHash: string
   width: number
   height: number
-  view: SetPlateView
+  view?: SetPlateView
   sourceUrl?: string
 }): Promise<ActionResult> {
   await requireOwner()
@@ -205,7 +207,7 @@ export async function finaliseSetPlateAction(input: {
   const set = await getProjectSet(db, input.setId)
   if (!set) return { ok: false, error: 'This set no longer exists.' }
   const mime = CastPhotoMimeSchema.safeParse(input.mimeType)
-  const view = SetPlateViewSchema.safeParse(input.view)
+  const view = SetPlateViewSchema.safeParse(input.view ?? uploadedPlateView(set))
   if (!mime.success || !view.success)
     return { ok: false, error: 'That photo could not be recorded.' }
   if (!/^[0-9a-f]{64}$/.test(input.contentHash)) {
@@ -263,7 +265,7 @@ export async function finaliseSetPlateAction(input: {
 export async function addSetPlateFromUrlAction(input: {
   setId: string
   url: string
-  view: SetPlateView
+  view?: SetPlateView
 }): Promise<ActionResult> {
   await requireOwner()
   const invalid = badIds(input.setId)
@@ -271,7 +273,7 @@ export async function addSetPlateFromUrlAction(input: {
 
   const set = await getProjectSet(db, input.setId)
   if (!set) return { ok: false, error: 'This set no longer exists.' }
-  const view = SetPlateViewSchema.safeParse(input.view)
+  const view = SetPlateViewSchema.safeParse(input.view ?? uploadedPlateView(set))
   if (!view.success) return { ok: false, error: 'That photo could not be recorded.' }
   if (set.plates.length >= MAX_SET_PLATES) {
     return { ok: false, error: 'A set keeps at most four plates; remove one first.' }
@@ -391,8 +393,8 @@ export async function generateSetPlateAction(
  * `sourceUrl` is a self-contained `data:` thumbnail decoded in place. Either
  * way the bytes are copied under `setPlateKey`, and the plate is recorded as
  * `origin: 'generated'`, since a generated plate is the film's own invention,
- * with the view its angle was generated for (`plateAngleView`), establishing
- * when none is given.
+ * with the angle it was generated from as its view (decision 274), or
+ * `uploadedPlateView` when none is given.
  */
 export async function chooseSetPlateAction(input: {
   setId: string
@@ -405,10 +407,10 @@ export async function chooseSetPlateAction(input: {
   await requireOwner()
   const invalid = badIds(input.setId)
   if (invalid) return invalid
-  const view = SetPlateViewSchema.safeParse(input.view ?? 'establishing')
-  if (!view.success) return { ok: false, error: 'That candidate could not be recorded.' }
   const set = await getProjectSet(db, input.setId)
   if (!set) return { ok: false, error: 'This set no longer exists.' }
+  const view = SetPlateViewSchema.safeParse(input.view ?? uploadedPlateView(set))
+  if (!view.success) return { ok: false, error: 'That candidate could not be recorded.' }
   if (set.plates.length >= MAX_SET_PLATES) {
     return { ok: false, error: 'A set keeps at most four plates; remove one first.' }
   }

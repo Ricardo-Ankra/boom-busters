@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import {
-  plateAngleView,
   MAX_SET_PLATES,
   ProjectSetSchema,
   SetPlateSchema,
   referencePlates,
   setForBrief,
+  uploadedPlateView,
 } from './sets'
 import type { SetPlate } from './sets'
 
@@ -64,6 +64,30 @@ describe('referencePlates', () => {
     expect(referencePlates(set, 1).map((p) => p.view)).toEqual(['establishing'])
     expect(referencePlates(set, 0)).toEqual([])
   })
+
+  // Decision 274: only two travel, so they should be two viewpoints.
+  it('prefers a second angle over a detail, whatever the upload order', () => {
+    const plates = [plate('establishing'), plate('detail'), plate('reverse')]
+    expect(referencePlates({ plates }, 2).map((p) => p.view)).toEqual(['establishing', 'reverse'])
+  })
+
+  it('sends a different view before a second copy of one already sent', () => {
+    const plates = [plate('establishing', 'e1'), plate('establishing', 'e2'), plate('side', 's1')]
+    expect(referencePlates({ plates }, 2).map((p) => p.contentHash)).toEqual(['e1', 's1'])
+    expect(referencePlates({ plates }, 3).map((p) => p.contentHash)).toEqual(['e1', 's1', 'e2'])
+  })
+
+  it('keeps upload order among plates whose view nobody stated', () => {
+    const plates = [plate('other', 'o1'), plate('other', 'o2')]
+    expect(referencePlates({ plates }, 2).map((p) => p.contentHash)).toEqual(['o1', 'o2'])
+  })
+})
+
+describe('uploadedPlateView', () => {
+  it("records a set's first upload as the establishing view and later ones as other", () => {
+    expect(uploadedPlateView({ plates: [] })).toBe('establishing')
+    expect(uploadedPlateView({ plates: [plate('establishing')] })).toBe('other')
+  })
 })
 
 describe('setForBrief', () => {
@@ -80,14 +104,5 @@ describe('setForBrief', () => {
     expect(setForBrief('   ', [boardroom])).toBeNull()
     expect(setForBrief('A car park', [boardroom])).toBeNull()
     expect(setForBrief('outside the Venture Capital Boardroom', [boardroom])).toBeNull()
-  })
-})
-
-describe('plateAngleView', () => {
-  it('records each generated angle as the view the card and the reference order know', () => {
-    expect(plateAngleView('establishing')).toBe('establishing')
-    expect(plateAngleView('detail')).toBe('detail')
-    expect(plateAngleView('reverse')).toBe('other')
-    expect(plateAngleView('side')).toBe('other')
   })
 })

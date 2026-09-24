@@ -139,6 +139,34 @@ describeDb('set actions (mock mode)', () => {
     expect(set).toMatchObject({ name: 'The boardroom', look: 'warm brass light' })
   })
 
+  // Decision 274: the card no longer asks; the first upload is the room seen
+  // whole and anything after it another angle.
+  it('records an upload with no view as establishing first, then other', async () => {
+    const id = await addTradingFloor()
+    for (const hash of [HASH_A, HASH_B]) {
+      expect(
+        await finaliseSetPlateAction({
+          setId: id,
+          mimeType: 'image/jpeg',
+          contentHash: hash,
+          width: 10,
+          height: 10,
+        }),
+      ).toEqual({ ok: true })
+    }
+    const [set] = await listProjectSets(db, FIXTURE_PROJECT_ID)
+    expect(set?.plates.map((plate) => plate.view)).toEqual(['establishing', 'other'])
+  })
+
+  it('records an address with no view the same way', async () => {
+    const id = await addTradingFloor()
+    expect(
+      await addSetPlateFromUrlAction({ setId: id, url: 'https://example.com/trading-floor.jpg' }),
+    ).toEqual({ ok: true })
+    const [set] = await listProjectSets(db, FIXTURE_PROJECT_ID)
+    expect(set?.plates[0]?.view).toBe('establishing')
+  })
+
   it('removing a set deletes its plate objects and hides it', async () => {
     const id = await addTradingFloor()
     await finaliseSetPlateAction({

@@ -240,8 +240,9 @@ describe('SetCard', () => {
       sourceUrl: 'https://img.example/cand-1.png',
       width: 1024,
       height: 768,
-      // The set already holds a plate, so the default is the reverse angle.
-      view: 'other',
+      // The set already holds a plate, so the default is the reverse angle,
+      // recorded under its own name (decision 274).
+      view: 'reverse',
     })
   })
 
@@ -344,7 +345,7 @@ describe('SetCard', () => {
       sourceUrl: `generated://google/${'b'.repeat(12)}`,
       width: 1344,
       height: 768,
-      view: 'other',
+      view: 'reverse',
     })
     expect(await within(dialog).findByRole('button', { name: 'Added as a plate' })).toBeDisabled()
   })
@@ -416,7 +417,7 @@ describe('SetCard', () => {
 
   // Decision 273: one plate gave every still of a set one viewpoint to copy.
   describe('angles', () => {
-    it('generates the first plate of an empty set as the establishing view, with no angle picker', async () => {
+    it('generates the first plate of an empty set as the establishing view, the angles greyed out', async () => {
       const empty: ProjectSet = { ...boardroom, id: '01J0000000000000000000000D', plates: [] }
       actions.generateSetPlateAction.mockResolvedValue({ ok: true, candidates: [] })
       render(
@@ -428,7 +429,13 @@ describe('SetCard', () => {
           angleEstimatesUsd={{ [empty.id]: 0.2 }}
         />,
       )
-      expect(screen.queryByRole('combobox', { name: /Angle of the next/ })).not.toBeInTheDocument()
+      // Decision 274: the angles are visible from the start, with the reason
+      // they are not offered yet.
+      const picker = screen.getByRole('combobox', { name: /Angle of the next/ })
+      expect(picker).toBeDisabled()
+      expect(picker).toHaveAccessibleDescription(
+        'Add a plate first, then generate other angles from it.',
+      )
       await userEvent.click(screen.getByRole('button', { name: 'Generate a plate · ≈$0.08' }))
       expect(actions.generateSetPlateAction).toHaveBeenCalledWith(empty.id, 'establishing')
     })
@@ -478,5 +485,39 @@ describe('SetCard', () => {
         expect.objectContaining({ setId: TRADING_FLOOR, view: 'detail' }),
       )
     })
+  })
+
+  // Decision 274: the upload's view picker only ever decided which plates
+  // travel, and `referencePlates` now decides that from the views themselves.
+  it('asks no view for an upload or an address; the server records it', async () => {
+    render(
+      <SetCard projectId={PROJECT} sets={[tradingFloor]} plateUrls={{}} plateEstimateUsd={0.08} />,
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'Edit sets' }))
+    expect(
+      screen.queryByRole('combobox', { name: /View of the next plate/ }),
+    ).not.toBeInTheDocument()
+
+    await userEvent.type(screen.getByLabelText('Or paste an image address'), 'https://e.x/r.jpg')
+    await userEvent.click(screen.getByRole('button', { name: 'Add from address' }))
+    expect(actions.addSetPlateFromUrlAction).toHaveBeenCalledWith({
+      setId: TRADING_FLOOR,
+      url: 'https://e.x/r.jpg',
+    })
+  })
+
+  it('captions a generated angle with its own name', async () => {
+    const angled: ProjectSet = {
+      ...tradingFloor,
+      plates: [
+        ...tradingFloor.plates,
+        { ...tradingFloor.plates[0]!, contentHash: 'rev', view: 'reverse', origin: 'generated' },
+      ],
+    }
+    render(<SetCard projectId={PROJECT} sets={[angled]} plateUrls={{}} plateEstimateUsd={0.08} />)
+    await userEvent.click(screen.getByRole('button', { name: 'Edit sets' }))
+    expect(
+      screen.getByRole('button', { name: 'Remove reverse plate of The trading floor' }),
+    ).toBeInTheDocument()
   })
 })

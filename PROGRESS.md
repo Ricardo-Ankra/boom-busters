@@ -5885,3 +5885,38 @@ their faces (e.g., Investors, Employees, etc.)").
     generation and view recording are each pinned by tests (providers 523,
     schemas 384, the set actions and visual-assets DB suites 57, the Set
     card 18); `pnpm test` 9 of 9 tasks, apps/web 884 of 884.
+
+274. **A plate's view is its angle, and the two that travel are two viewpoints**
+(2026-09-24, owner question on the upload's view picker: "the dropdown of
+Establishing, Detail, and Other is not serving any purpose then?").
+
+    It served almost none. A set plate's view never reached a prompt or the
+    image model. It did two things: captioned the thumbnail, and, because
+    `referencePlates` sent establishing plates first, decided which two of
+    up to four plates travel with a still. Detail and Other were treated
+    identically. With decision 273's angles that rule chose badly: an
+    establishing view, a detail and a reverse sent the detail whenever it
+    was uploaded first, where two viewpoints teach the model the room.
+
+    What changed:
+    - `SET_PLATE_VIEWS` is now the angles plus `other`: establishing,
+      reverse, side, detail, other. A generated plate records the angle it
+      came from under its own name, so `plateAngleView` is gone. Stored
+      plates stay valid; no migration.
+    - The upload's view picker is removed. An upload or an address with no
+      view is recorded by `uploadedPlateView`: establishing for a set's
+      first plate, other after it. The actions still accept an explicit view.
+    - `referencePlates` ranks establishing, reverse, side, other, detail,
+      sends the best plate of each distinct view first, and only then a
+      second plate of a view already sent. Upload order breaks ties.
+    - The angle picker is shown from the start, greyed out before a set has
+      a plate, with "Add a plate first, then generate other angles from it."
+      as its description.
+
+    Verified: `referencePlates` and `uploadedPlateView` in packages/schemas
+    (387 of 387); the actions record an upload and an address with no view
+    as establishing then other; the card asks no view, captions a reverse
+    plate by name, records a chosen reverse candidate as `reverse`, and
+    shows the angles disabled with the hint before the first plate (set
+    card, set actions and visual-assets files 79 of 79); `pnpm test` 9 of 9
+    tasks, apps/web 888 of 888.

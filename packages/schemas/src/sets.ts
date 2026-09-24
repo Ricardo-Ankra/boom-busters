@@ -16,10 +16,6 @@ import { CastPhotoMimeSchema, nameMatches } from './cast'
  * "principals" seed the cast.
  */
 
-export const SET_PLATE_VIEWS = ['establishing', 'detail', 'other'] as const
-export const SetPlateViewSchema = z.enum(SET_PLATE_VIEWS)
-export type SetPlateView = z.infer<typeof SetPlateViewSchema>
-
 /**
  * Which way a GENERATED plate looks at the room (decision 273). A set with
  * one plate gives every still of it one viewpoint to copy, so a plate can be
@@ -31,11 +27,24 @@ export const SET_PLATE_ANGLES = ['establishing', 'reverse', 'side', 'detail'] as
 export const SetPlateAngleSchema = z.enum(SET_PLATE_ANGLES)
 export type SetPlateAngle = z.infer<typeof SetPlateAngleSchema>
 
-/** The view a plate generated from `angle` is recorded as. */
-export function plateAngleView(angle: SetPlateAngle): SetPlateView {
-  if (angle === 'establishing') return 'establishing'
-  if (angle === 'detail') return 'detail'
-  return 'other'
+/**
+ * Which way a plate looks at the room: a generated plate records the angle it
+ * was generated from, so every angle is a view (decision 274). `other` is an
+ * uploaded plate after a set's first, whose viewpoint nobody stated, and
+ * every plate recorded before the angles existed.
+ */
+export const SET_PLATE_VIEWS = [...SET_PLATE_ANGLES, 'other'] as const
+export const SetPlateViewSchema = z.enum(SET_PLATE_VIEWS)
+export type SetPlateView = z.infer<typeof SetPlateViewSchema>
+
+/**
+ * The view an uploaded plate is recorded as (decision 274). The producer is
+ * no longer asked: the view never reached a prompt, and its one effect, which
+ * plates travel, is better decided by `referencePlates`. A set's first plate
+ * is the room seen whole; anything after it is another angle.
+ */
+export function uploadedPlateView(set: Pick<ProjectSet, 'plates'>): SetPlateView {
+  return set.plates.length === 0 ? 'establishing' : 'other'
 }
 
 /** Two or three angles pin a room; beyond four the model averages a different one. */
@@ -71,11 +80,43 @@ export const ProjectSetSchema = z.object({
 })
 export type ProjectSet = z.infer<typeof ProjectSetSchema>
 
-/** The order plates are sent: an establishing view first, then upload order. */
+/**
+ * How much each view teaches a model about a room it must photograph anew,
+ * lowest first. The whole room, then its far side, then across it; a detail
+ * shows materials and little of the space.
+ */
+const VIEW_RANK: Record<SetPlateView, number> = {
+  establishing: 0,
+  reverse: 1,
+  side: 2,
+  other: 3,
+  detail: 4,
+}
+
+/**
+ * The plates sent with a still, at most `limit` (decision 274). Only two
+ * travel of the four a set may hold, so they are chosen to be two different
+ * viewpoints: the best view of each kind first, in `VIEW_RANK` order, and
+ * only then a second plate of a kind already sent. Two views of one room
+ * teach the model the room; two copies of one view teach it a picture.
+ * Upload order breaks ties.
+ */
 export function referencePlates(set: Pick<ProjectSet, 'plates'>, limit = 1): SetPlate[] {
-  const establishing = set.plates.filter((plate) => plate.view === 'establishing')
-  const rest = set.plates.filter((plate) => plate.view !== 'establishing')
-  return [...establishing, ...rest].slice(0, Math.max(0, limit))
+  const ranked = set.plates
+    .map((plate, at) => ({ plate, at }))
+    .sort((a, b) => VIEW_RANK[a.plate.view] - VIEW_RANK[b.plate.view] || a.at - b.at)
+    .map(({ plate }) => plate)
+  const seen = new Set<SetPlateView>()
+  const distinct: SetPlate[] = []
+  const repeats: SetPlate[] = []
+  for (const plate of ranked) {
+    if (seen.has(plate.view)) repeats.push(plate)
+    else {
+      seen.add(plate.view)
+      distinct.push(plate)
+    }
+  }
+  return [...distinct, ...repeats].slice(0, Math.max(0, limit))
 }
 
 /**
