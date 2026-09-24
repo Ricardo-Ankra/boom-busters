@@ -129,8 +129,11 @@ const REFERENCE_LIMITS: Record<string, ReferenceLimits> = {
  * FOR (decision 273). Unlabelled, the images arrived as one flat list and
  * the model treated a room's photograph as the picture to edit: every still
  * of a set kept the plate's exact framing, and the person was pasted onto
- * it at the wrong scale. A face is for likeness; a place is for its design,
- * never its framing.
+ * it at the wrong scale. A face is for likeness; a place is for its
+ * furniture, materials and light (decision 275). A plate's label no longer
+ * says "never its framing": the contact sheet asks for the north plate's view,
+ * and every still prompt already says the photograph is new from the camera
+ * it names, so the negative wording only contradicted the sheet.
  */
 export function referenceLabel(
   reference: Pick<ImageReference, 'name' | 'kind' | 'facing'>,
@@ -140,7 +143,7 @@ export function referenceLabel(
   const role =
     reference.kind === 'character'
       ? 'use it for the likeness only; pose, clothing and framing come from the text'
-      : "use it for the place's design only (architecture, materials, furniture, light), never its framing or camera position"
+      : "use it for the room's furniture, materials and light"
   const facing =
     reference.facing === undefined
       ? ''

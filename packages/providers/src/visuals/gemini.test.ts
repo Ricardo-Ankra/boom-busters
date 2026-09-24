@@ -126,7 +126,7 @@ describe('geminiImageGen', () => {
     })
   })
 
-  it("labels a set plate as the place's design, never its framing (decision 273)", async () => {
+  it("labels a set plate for the room's furniture, materials and light (decisions 273, 275)", async () => {
     const calls: { url: string; body: unknown }[] = []
     await geminiImageGen.generate(
       {
@@ -149,9 +149,7 @@ describe('geminiImageGen', () => {
         'pose, clothing and framing come from the text.',
     })
     expect(parts[2]).toEqual({
-      text:
-        "Reference image 2 of 2: The boardroom. Use it for the place's design only " +
-        '(architecture, materials, furniture, light), never its framing or camera position.',
+      text: "Reference image 2 of 2: The boardroom. Use it for the room's furniture, materials and light.",
     })
     expect(parts[3]).toEqual({ inlineData: { mimeType: 'image/png', data: 'UExU' } })
   })
@@ -366,8 +364,10 @@ describe('Gemini 3 options (decision 275)', () => {
 
   it('names the direction a set plate faces in its label', () => {
     expect(referenceLabel({ name: 'The boardroom', kind: 'object', facing: 'south' }, 2, 3)).toBe(
-      "Reference image 2 of 3: The boardroom, facing south. Use it for the place's design only " +
-        '(architecture, materials, furniture, light), never its framing or camera position.',
+      "Reference image 2 of 3: The boardroom, facing south. Use it for the room's furniture, materials and light.",
+    )
+    expect(referenceLabel({ name: 'The boardroom', kind: 'object', facing: 'detail' }, 3, 3)).toBe(
+      "Reference image 3 of 3: The boardroom, a close detail. Use it for the room's furniture, materials and light.",
     )
   })
 
