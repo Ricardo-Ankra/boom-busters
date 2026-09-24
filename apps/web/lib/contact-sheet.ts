@@ -13,9 +13,17 @@ import type { SetPlateDirection } from '@boom-busters/schemas'
 export interface SheetPanel {
   direction: SetPlateDirection
   bytes: Buffer
+  /** The panel as stored, after the resize below. */
   width: number
   height: number
 }
+
+/**
+ * A panel's long side, at most. A 4K sheet's panels came out about 2.7K wide
+ * (one grainy panel was 10.5 MB as PNG), and two travel inline as base64 with
+ * every still in the set. Still PNG, so the stored key and mime type stay true.
+ */
+const PANEL_LONG_SIDE = 1600
 
 /** Mean luminance at or above this, across a whole row or column, is border. */
 const WHITE = 235
@@ -104,15 +112,19 @@ export async function splitContactSheet(input: Buffer): Promise<SheetPanel[] | n
   if (boxes.some((box) => box.width < 16 || box.height < 16)) return null
 
   return Promise.all(
-    boxes.map(async (box) => ({
-      direction: box.direction,
-      width: box.width,
-      height: box.height,
-      bytes: await sharp(input)
+    boxes.map(async (box) => {
+      const { data: bytes, info: panel } = await sharp(input)
         .extract({ left: box.left, top: box.top, width: box.width, height: box.height })
+        .resize({
+          width: PANEL_LONG_SIDE,
+          height: PANEL_LONG_SIDE,
+          fit: 'inside',
+          withoutEnlargement: true,
+        })
         .png()
-        .toBuffer(),
-    })),
+        .toBuffer({ resolveWithObject: true })
+      return { direction: box.direction, width: panel.width, height: panel.height, bytes }
+    }),
   )
 }
 

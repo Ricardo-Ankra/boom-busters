@@ -50,6 +50,36 @@ describe('splitContactSheet', () => {
     expect(south[0]).toBe(130)
   })
 
+  // A 4K sheet's panels were about 2.7K wide as PNG (one grainy panel measured
+  // 10.5 MB), and two travel inline with every still in the set.
+  it('shrinks each panel to at most 1600 px on its long side, keeping its shape', async () => {
+    for (const size of [
+      { width: 3200, height: 1800 },
+      { width: 4000, height: 2250 },
+    ]) {
+      const panels = await splitContactSheet(await sheet({ ...size, gutter: 16 }))
+      expect(panels).toHaveLength(4)
+      for (const panel of panels ?? []) {
+        const meta = await sharp(panel.bytes).metadata()
+        expect(meta.format).toBe('png')
+        expect(meta.width).toBe(panel.width)
+        expect(meta.height).toBe(panel.height)
+        expect(Math.max(panel.width, panel.height)).toBeLessThanOrEqual(1600)
+      }
+    }
+    const big = await splitContactSheet(await sheet({ width: 4000, height: 2250, gutter: 16 }))
+    // Cut at 1992 x 1117, so resized to 1600 wide at the same aspect.
+    expect(big![0]!.width).toBe(1600)
+    expect(big![0]!.height).toBe(Math.round((1117 * 1600) / 1992))
+  })
+
+  it('never enlarges a small panel', async () => {
+    const panels = await splitContactSheet(await sheet({}))
+    const meta = await sharp(panels![0]!.bytes).metadata()
+    expect(meta.width).toBe(396)
+    expect(meta.height).toBe(221)
+  })
+
   it('trims a white outer border', async () => {
     const panels = await splitContactSheet(await sheet({ border: 12 }))
     expect(panels).toHaveLength(4)
