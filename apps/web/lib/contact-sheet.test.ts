@@ -107,39 +107,41 @@ describe('splitContactSheet', () => {
     expect(await splitContactSheet(allWhite)).toBeNull()
   })
 
-  // Fix 2: a white band at the search window boundary is not a valid gutter
-  it('refuses a 2x2 sheet with gutter at search window boundary', async () => {
-    // Real 2x2 sheet: four grey panels with white gutters. Vertical gutter near middle (normal),
-    // horizontal gutter starting exactly at the search window lower bound (180 = floor(450*0.4)).
-    // Old code finds both bands and splits; fixed code rejects the horizontal band because
-    // it starts at the window edge, not bounded by content within the window.
-    const pw = 396 // Panel width: top-left and top-right
-    const ph = 180 // Panel height: top row
-    const ph2 = 263 // Panel height: bottom row (450 - 187 = 263)
+  // Fix round 3: a horizontal white gutter that begins exactly at the search
+  // window's lower bound is not a bounded band. This sheet has a genuine,
+  // fully-bounded vertical gutter (columns 392..399, inside the window
+  // [320, 480]) so `down` passes on both old and new code; the horizontal
+  // gutter (rows 180..187) starts exactly at floor(450 * 0.4) = 180, the
+  // window's own lower bound. Without the `best.start > from && best.end <
+  // to` guard, `band()` still returns that run as `across` (a real band, no
+  // different from any other), every panel clears the 16px minimum, and the
+  // sheet is split into four; with the guard, `across` is refused because
+  // its run starts at the edge of the search window rather than inside it,
+  // and splitContactSheet returns null.
+  it('refuses a horizontal gutter that begins at the edge of the search window', async () => {
     const tile = (shade: number, w: number, h: number) =>
       sharp({
         create: { width: w, height: h, channels: 3, background: { r: shade, g: shade, b: shade } },
       })
         .png()
         .toBuffer()
-    const panels = await Promise.all([
-      tile(90, pw, ph),
-      tile(90, 404, ph), // 404 = 800 - 396
-      tile(90, pw, ph2),
-      tile(90, 404, ph2),
+    const tiles = await Promise.all([
+      tile(90, 392, 180), // north: left panels width 392, top panels height 180
+      tile(110, 400, 180), // east: right panels width 400
+      tile(130, 392, 262), // south: bottom panels height 262 (rows 188..449)
+      tile(150, 400, 262), // west
     ])
-    expect(
-      await splitContactSheet(
-        await sharp({ create: { width: 800, height: 450, channels: 3, background: '#ffffff' } })
-          .composite([
-            { input: panels[0]!, left: 0, top: 0 }, // top-left
-            { input: panels[1]!, left: 396, top: 0 }, // top-right
-            { input: panels[2]!, left: 0, top: 187 }, // bottom-left (gutter rows 180-187)
-            { input: panels[3]!, left: 396, top: 187 }, // bottom-right
-          ])
-          .png()
-          .toBuffer(),
-      ),
-    ).toBeNull()
+    const boundary = await sharp({
+      create: { width: 800, height: 450, channels: 3, background: '#ffffff' },
+    })
+      .composite([
+        { input: tiles[0]!, left: 0, top: 0 },
+        { input: tiles[1]!, left: 400, top: 0 },
+        { input: tiles[2]!, left: 0, top: 188 },
+        { input: tiles[3]!, left: 400, top: 188 },
+      ])
+      .png()
+      .toBuffer()
+    expect(await splitContactSheet(boundary)).toBeNull()
   })
 })
