@@ -20,6 +20,7 @@ function toSet(row: ProjectSetRow): ProjectSet {
     projectId: row.projectId,
     name: row.name,
     look: row.look,
+    layout: row.layout,
     plates: row.plates,
   })
 }
@@ -110,7 +111,7 @@ export async function insertProjectSet(
 export async function updateProjectSet(
   db: Database,
   id: string,
-  patch: Partial<Pick<ProjectSet, 'name' | 'look'>>,
+  patch: Partial<Pick<ProjectSet, 'name' | 'look' | 'layout'>>,
 ): Promise<ProjectSet> {
   const values: Partial<typeof projectSets.$inferInsert> = {}
   if (patch.name !== undefined) {
@@ -119,6 +120,15 @@ export async function updateProjectSet(
     values.name = name
   }
   if (patch.look !== undefined) values.look = patch.look.trim()
+  if (patch.layout !== undefined) {
+    const layout = patch.layout.trim()
+    if (layout.length > 1500) {
+      throw new ValidationError('The room inventory is at most 1,500 characters.', {
+        field: 'layout',
+      })
+    }
+    values.layout = layout
+  }
   const [row] = await db
     .update(projectSets)
     .set({ ...values, updatedAt: new Date() })

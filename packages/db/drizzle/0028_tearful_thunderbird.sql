@@ -1,0 +1,1 @@
+ALTER TABLE "project_sets" ADD COLUMN "layout" text DEFAULT '' NOT NULL;

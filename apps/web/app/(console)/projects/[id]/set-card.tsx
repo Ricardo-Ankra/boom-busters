@@ -276,6 +276,10 @@ function SetRow({
 }) {
   const [name, setName] = React.useState(set.name)
   const [look, setLook] = React.useState(set.look)
+  const [layout, setLayout] = React.useState(set.layout)
+  // The server drafts the inventory after the first plate lands (Task 3), so
+  // a changed stored value replaces the field.
+  React.useEffect(() => setLayout(set.layout), [set.layout])
   // The first plate is always the north view; after that the default is the
   // view a set with one plate most lacks.
   const [view, setView] = React.useState<SetViewRequest>('south')
@@ -371,6 +375,25 @@ function SetRow({
           onChange={(event) => setLook(event.target.value)}
           className="w-full rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] p-2 text-[13px]"
         />
+      </div>
+
+      <div className="space-y-1">
+        <Label htmlFor={`set-${set.id}-layout`}>Room inventory</Label>
+        <textarea
+          id={`set-${set.id}-layout`}
+          rows={6}
+          maxLength={1500}
+          value={layout}
+          onChange={(event) => setLayout(event.target.value)}
+          placeholder={
+            'North wall: …\nEast wall: …\nSouth wall: …\nWest wall: …\nCentre: …\nLight: …'
+          }
+          className="w-full rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] p-2 font-mono text-[12px]"
+        />
+        <p className="text-[12px] text-[var(--color-text-muted)]">
+          One line per wall, then Centre and Light. It travels with every shot in this room, so
+          walls no plate shows stay the same.
+        </p>
       </div>
 
       <div className="space-y-2">
@@ -584,9 +607,10 @@ function SetRow({
           variant="primary"
           disabled={rowBusy}
           onClick={() => {
-            const patch: { name?: string; look?: string } = {}
+            const patch: { name?: string; look?: string; layout?: string } = {}
             if (name !== set.name) patch.name = name
             if (look !== set.look) patch.look = look
+            if (layout !== set.layout) patch.layout = layout
             void act(
               `${set.id}:save`,
               () => updateSetAction(set.id, patch),

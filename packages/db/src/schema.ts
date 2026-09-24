@@ -694,6 +694,12 @@ export const projectSets = pgTable(
     name: text('name').notNull(),
     /** The book's look line, editable. Used to generate a plate, and nowhere else. */
     look: text('look').notNull().default(''),
+    /**
+     * The room inventory (decision 275): one line per wall, then Centre and
+     * Light. Drafted from the first plate, corrected by the owner, and sent
+     * with every shot in this room so walls no plate shows stay consistent.
+     */
+    layout: text('layout').notNull().default(''),
     plates: jsonb('plates')
       .notNull()
       .default(sql`'[]'::jsonb`)

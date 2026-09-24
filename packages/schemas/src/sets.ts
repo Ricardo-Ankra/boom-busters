@@ -104,9 +104,72 @@ export const ProjectSetSchema = z.object({
   name: z.string().trim().min(1).max(120),
   /** The book's look line, editable. Used to generate a plate and nothing else. */
   look: z.string().max(600),
+  /** The room inventory (decision 275): one line per wall, then Centre and Light. */
+  layout: z.string().max(1500).default(''),
   plates: z.array(SetPlateSchema).max(MAX_SET_PLATES),
 })
 export type ProjectSet = z.infer<typeof ProjectSetSchema>
+
+/**
+ * A set's room inventory, read line by line (decision 275). Six labels are
+ * known: the four walls, the centre, the light. Anything else is kept whole
+ * as `rest`, so an owner who writes prose loses nothing.
+ */
+export interface RoomLayout {
+  north?: string
+  east?: string
+  south?: string
+  west?: string
+  centre?: string
+  light?: string
+  rest: string
+}
+
+const LAYOUT_LINE =
+  /^\s*(north|east|south|west|centre|center|light)(?:\s+wall)?\s*:\s*(.+?)\s*\.?\s*$/i
+
+export function parseLayout(text: string): RoomLayout {
+  const layout: RoomLayout = { rest: '' }
+  const rest: string[] = []
+  for (const line of text.split(/\r?\n/)) {
+    if (line.trim() === '') continue
+    const match = LAYOUT_LINE.exec(line)
+    if (!match) {
+      rest.push(line.trim())
+      continue
+    }
+    const label = match[1]!.toLowerCase()
+    const key = (label === 'center' ? 'centre' : label) as Exclude<keyof RoomLayout, 'rest'>
+    layout[key] = match[2]!
+  }
+  layout.rest = rest.join(' ')
+  return layout
+}
+
+export interface LayoutView {
+  inFrame?: string
+  edges: string[]
+  behind?: string
+  centre?: string
+  light?: string
+  rest: string
+}
+
+/** What a camera facing `facing` sees of the room, and what is behind it. */
+export function layoutView(layout: RoomLayout, facing: SetPlateDirection): LayoutView {
+  const view: LayoutView = {
+    edges: ADJACENT_DIRECTIONS[facing]
+      .map((direction) => layout[direction])
+      .filter((line): line is string => line !== undefined),
+    rest: layout.rest,
+  }
+  if (layout[facing] !== undefined) view.inFrame = layout[facing]
+  const behind = layout[OPPOSITE_DIRECTION[facing]]
+  if (behind !== undefined) view.behind = behind
+  if (layout.centre !== undefined) view.centre = layout.centre
+  if (layout.light !== undefined) view.light = layout.light
+  return view
+}
 
 /**
  * How much each view teaches a model about a room it must photograph anew,

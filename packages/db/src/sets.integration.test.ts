@@ -164,6 +164,16 @@ suite('project sets', () => {
     )
   })
 
+  it('stores and trims a room inventory, and refuses one over 1,500 characters', async () => {
+    const set = await insertProjectSet(db, { projectId, name: 'Inventory room' })
+    expect(set.layout).toBe('')
+    const updated = await updateProjectSet(db, set.id, { layout: '  North wall: windows  ' })
+    expect(updated.layout).toBe('North wall: windows')
+    await expect(updateProjectSet(db, set.id, { layout: 'x'.repeat(1501) })).rejects.toThrow(
+      /at most 1,500/,
+    )
+  })
+
   it("seedSetsFromLocations inserts the book's locations and skips one already held", async () => {
     await insertProjectSet(db, { projectId, name: 'The boardroom', look: 'already here' })
     const locations = [

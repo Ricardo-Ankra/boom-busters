@@ -31,6 +31,7 @@ const tradingFloor: ProjectSet = {
   projectId: PROJECT,
   name: 'The trading floor',
   look: 'Glass walls, dual monitors, city view at dusk',
+  layout: '',
   plates: [
     {
       r2Key: 'boom-busters/sets/p/bbb.jpg',
@@ -49,6 +50,7 @@ const boardroom: ProjectSet = {
   projectId: PROJECT,
   name: 'The boardroom',
   look: 'Long table, dark wood, skyline behind',
+  layout: '',
   plates: [
     {
       r2Key: 'boom-busters/sets/p/ccc.jpg',
@@ -144,6 +146,18 @@ describe('SetCard', () => {
     await userEvent.click(within(row).getByRole('button', { name: 'Save' }))
     expect(actions.updateSetAction).toHaveBeenCalledWith(TRADING_FLOOR, {
       look: 'Rebuilt after the crash: cracked screens, empty desks',
+    })
+  })
+
+  it('saves an edited room inventory with the rest of the set', async () => {
+    render(
+      <SetCard projectId={PROJECT} sets={[tradingFloor]} plateUrls={{}} plateEstimateUsd={0.08} />,
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'Edit sets' }))
+    await userEvent.type(screen.getByLabelText('Room inventory'), 'North wall: windows')
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }))
+    expect(actions.updateSetAction).toHaveBeenCalledWith(TRADING_FLOOR, {
+      layout: 'North wall: windows',
     })
   })
 

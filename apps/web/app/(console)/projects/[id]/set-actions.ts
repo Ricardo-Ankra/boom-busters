@@ -111,7 +111,7 @@ export async function addSetAction(
 
 export async function updateSetAction(
   setId: string,
-  patch: { name?: string; look?: string },
+  patch: { name?: string; look?: string; layout?: string },
 ): Promise<ActionResult> {
   await requireOwner()
   const invalid = badIds(setId)

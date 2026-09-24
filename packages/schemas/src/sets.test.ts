@@ -3,6 +3,8 @@ import {
   MAX_SET_PLATES,
   ProjectSetSchema,
   SetPlateSchema,
+  layoutView,
+  parseLayout,
   platesForCamera,
   referencePlates,
   setForBrief,
@@ -152,5 +154,53 @@ describe('setForBrief', () => {
     expect(setForBrief('   ', [boardroom])).toBeNull()
     expect(setForBrief('A car park', [boardroom])).toBeNull()
     expect(setForBrief('outside the Venture Capital Boardroom', [boardroom])).toBeNull()
+  })
+})
+
+describe('parseLayout', () => {
+  const text = [
+    'North wall: three tall windows, overcast city view.',
+    'east: walnut credenza, door at the south end',
+    'South Wall: glass wall onto the corridor.',
+    'West wall: bare concrete, a dark screen.',
+    'Center: ten-seat walnut table, black mesh chairs.',
+    'Light: overcast daylight from the north windows.',
+  ].join('\n')
+
+  it('reads each labelled line, whatever its case, and drops the full stop', () => {
+    expect(parseLayout(text)).toEqual({
+      north: 'three tall windows, overcast city view',
+      east: 'walnut credenza, door at the south end',
+      south: 'glass wall onto the corridor',
+      west: 'bare concrete, a dark screen',
+      centre: 'ten-seat walnut table, black mesh chairs',
+      light: 'overcast daylight from the north windows',
+      rest: '',
+    })
+  })
+
+  // Review Focus 2: an owner may write prose with no labels.
+  it('keeps unlabelled text whole as the rest', () => {
+    expect(parseLayout('A long table.\nWindows behind it.')).toEqual({
+      rest: 'A long table. Windows behind it.',
+    })
+  })
+})
+
+describe('layoutView', () => {
+  it('puts the facing wall in frame, its neighbours at the edges and the opposite behind', () => {
+    const view = layoutView(
+      parseLayout(
+        'North wall: windows\nEast wall: credenza\nSouth wall: glass\nWest wall: concrete',
+      ),
+      'south',
+    )
+    // Facing south, the adjacent walls are west then east.
+    expect(view).toEqual({
+      inFrame: 'glass',
+      edges: ['concrete', 'credenza'],
+      behind: 'windows',
+      rest: '',
+    })
   })
 })
