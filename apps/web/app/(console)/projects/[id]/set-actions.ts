@@ -42,6 +42,7 @@ import { db } from '@/lib/db'
 import { fetchRemoteImage } from '@/lib/remote-image'
 import { draftSetLayout } from '@/lib/set-layout'
 import { setPlateBrief } from '@/lib/set-plates'
+import { buildSetSheet } from '@/lib/set-sheet'
 import {
   deleteObject,
   getObjectBytes,
@@ -517,6 +518,37 @@ export async function chooseSetPlateAction(input: {
     return { ok: true }
   } catch (error) {
     return failure(error, 'The plate could not be recorded.')
+  }
+}
+
+/**
+ * Build the set (decision 275): four views of the room from one sheet. The
+ * owner keeps the views they like; each becomes a plate facing its direction.
+ */
+export async function buildSetSheetAction(
+  setId: string,
+): Promise<ActionResult & { candidates?: SlotCandidate[]; views?: SetPlateView[] }> {
+  await requireOwner()
+  const invalid = badIds(setId)
+  if (invalid) return invalid
+  const set = await getProjectSet(db, setId)
+  if (!set) return { ok: false, error: 'This set no longer exists.' }
+  if (set.plates.length === 0) {
+    return { ok: false, error: 'Add a plate first, then build the set from it.' }
+  }
+  const free = MAX_SET_PLATES - set.plates.length
+  if (free < 3) {
+    const remove = 3 - free
+    return {
+      ok: false,
+      error: `Building the set adds three views. Remove ${remove} plate${remove === 1 ? '' : 's'} first.`,
+    }
+  }
+  try {
+    const built = await buildSetSheet(set)
+    return { ok: true, candidates: built.candidates, views: built.views }
+  } catch (error) {
+    return failure(error, 'The set could not be built.')
   }
 }
 

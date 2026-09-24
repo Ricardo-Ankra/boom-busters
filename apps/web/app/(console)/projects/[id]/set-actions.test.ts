@@ -19,6 +19,7 @@ import { MOCK_LAYOUT } from '@/lib/set-layout'
 import {
   addSetAction,
   addSetPlateFromUrlAction,
+  buildSetSheetAction,
   chooseSetPlateAction,
   createSetPlateUploadAction,
   finaliseSetPlateAction,
@@ -638,6 +639,49 @@ describeDb('set actions (mock mode)', () => {
     expect(await redraftSetLayoutAction(id)).toEqual({
       ok: false,
       error: 'Add a plate first; the inventory is drafted from it.',
+    })
+  })
+
+  it('builds the set: one sheet, four candidates tagged by direction', async () => {
+    const id = await addTradingFloor()
+    await finaliseSetPlateAction({
+      setId: id,
+      mimeType: 'image/jpeg',
+      contentHash: HASH_A,
+      width: 10,
+      height: 10,
+    })
+    const result = await buildSetSheetAction(id)
+    expect(result.ok).toBe(true)
+    expect(result.views).toEqual(['north', 'east', 'south', 'west'])
+    expect(result.candidates).toHaveLength(4)
+    for (const candidate of result.candidates ?? []) {
+      expect(candidate.sourceUrl.startsWith('data:image/png;base64,')).toBe(true)
+    }
+  })
+
+  it('refuses to build a set with no plate', async () => {
+    const id = await addTradingFloor()
+    expect(await buildSetSheetAction(id)).toEqual({
+      ok: false,
+      error: 'Add a plate first, then build the set from it.',
+    })
+  })
+
+  it('refuses to build a set with fewer than three plates free', async () => {
+    const id = await addTradingFloor()
+    for (const letter of ['1', '2', '3', '4']) {
+      await finaliseSetPlateAction({
+        setId: id,
+        mimeType: 'image/png',
+        contentHash: letter.repeat(64),
+        width: 10,
+        height: 10,
+      })
+    }
+    expect(await buildSetSheetAction(id)).toEqual({
+      ok: false,
+      error: 'Building the set adds three views. Remove 1 plate first.',
     })
   })
 })

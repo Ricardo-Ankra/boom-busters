@@ -29,6 +29,29 @@ const VIEW_FRAMING: Record<SetViewRequest, string> = {
     "a close photograph of one part of the room, its furniture, surfaces and materials at arm's length",
 }
 
+/**
+ * The contact sheet's prompt (decision 275): the grid first, then each
+ * panel's direction, then the room. Four panels labelled by direction cannot
+ * all copy the reference, and one pass resolves the whole room, so the walls
+ * the reference never showed agree with each other.
+ */
+export function buildSetSheetPrompt(input: {
+  name: string
+  layout: string
+  look: string
+  styleAnchors: string
+}): string {
+  const room = input.layout.trim() !== '' ? input.layout.trim() : input.look.trim()
+  return [
+    `A 2x2 contact sheet of four photographs of one room, ${input.name}, separated by thin white borders of equal width, each panel 16:9.`,
+    'All four show the same room at the same moment in the same light, each taken at eye level with a 35mm lens from the middle of the opposite wall, with no people in the room.',
+    'Top left: facing north, the view in reference image 1.',
+    'Top right: facing east. Bottom left: facing south. Bottom right: facing west.',
+    `The room: ${room.replace(/\r?\n/g, ' ')}`,
+    input.styleAnchors,
+  ].join('\n')
+}
+
 export function setPlateBrief(
   set: Pick<ProjectSet, 'name' | 'look' | 'plates'>,
   view: SetViewRequest,

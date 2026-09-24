@@ -15,6 +15,7 @@ const actions = vi.hoisted(() => ({
   generateSetPlateAction: vi.fn(),
   chooseSetPlateAction: vi.fn(),
   redraftSetLayoutAction: vi.fn(),
+  buildSetSheetAction: vi.fn(),
 }))
 vi.mock('./set-actions', () => actions)
 
@@ -528,6 +529,43 @@ describe('SetCard', () => {
       setId: TRADING_FLOOR,
       url: 'https://e.x/r.jpg',
     })
+  })
+
+  it('builds the set and offers four views, each added under its direction', async () => {
+    actions.buildSetSheetAction.mockResolvedValue({
+      ok: true,
+      candidates: [1, 2, 3, 4].map((n) => liveCandidate(n, String(n).repeat(64))),
+      views: ['north', 'east', 'south', 'west'],
+    })
+    render(
+      <SetCard
+        projectId={PROJECT}
+        sets={[tradingFloor]}
+        plateUrls={{}}
+        plateEstimateUsd={0.08}
+        sheetEstimateUsd={0.24}
+      />,
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'Edit sets' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Build the set · ≈$0.24' }))
+    await userEvent.click(await screen.findByRole('listitem', { name: 'Choose plate 3' }))
+    expect(actions.chooseSetPlateAction).toHaveBeenCalledWith(
+      expect.objectContaining({ setId: TRADING_FLOOR, view: 'south' }),
+    )
+  })
+
+  it('offers no Build the set before the first plate', () => {
+    const empty: ProjectSet = { ...boardroom, id: '01J0000000000000000000000D', plates: [] }
+    render(
+      <SetCard
+        projectId={PROJECT}
+        sets={[empty]}
+        plateUrls={{}}
+        plateEstimateUsd={0.08}
+        sheetEstimateUsd={0.24}
+      />,
+    )
+    expect(screen.queryByRole('button', { name: /Build the set/ })).not.toBeInTheDocument()
   })
 
   it('captions a generated view with its own name', async () => {

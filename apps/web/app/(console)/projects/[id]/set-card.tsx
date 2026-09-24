@@ -15,6 +15,7 @@ import { readImageSize, toUploadableImage } from '@/lib/client-image'
 import {
   addSetAction,
   addSetPlateFromUrlAction,
+  buildSetSheetAction,
   chooseSetPlateAction,
   createSetPlateUploadAction,
   finaliseSetPlateAction,
@@ -84,10 +85,16 @@ export interface SetCardProps {
    * more than the plain one. Falls back to `plateEstimateUsd`.
    */
   viewEstimatesUsd?: Readonly<Record<string, number>>
+  /** What "Build the set" will spend on the routed set-sheet model, in USD (decision 275). */
+  sheetEstimateUsd?: number
 }
 
 /** `run` results a wider shape than `ActionResult` can carry, such as the candidates a generate call returns. */
-type ActResult = ActionResult & { candidates?: SlotCandidate[]; layout?: string }
+type ActResult = ActionResult & {
+  candidates?: SlotCandidate[]
+  layout?: string
+  views?: SetPlateView[]
+}
 type Act = (
   key: string,
   run: () => Promise<ActResult>,
@@ -101,6 +108,7 @@ export function SetCard({
   plateUrls,
   plateEstimateUsd,
   viewEstimatesUsd = {},
+  sheetEstimateUsd,
 }: SetCardProps) {
   const router = useRouter()
   const { toast } = useToast()
@@ -198,6 +206,7 @@ export function SetCard({
                     ? (viewEstimatesUsd[set.id] ?? plateEstimateUsd)
                     : plateEstimateUsd
                 }
+                sheetEstimateUsd={sheetEstimateUsd}
                 busy={busy}
                 act={act}
                 batch={candidates[set.id] ?? null}
@@ -258,6 +267,7 @@ function SetRow({
   set,
   plateUrls,
   plateEstimateUsd,
+  sheetEstimateUsd,
   busy,
   act,
   batch,
@@ -268,6 +278,7 @@ function SetRow({
   set: ProjectSet
   plateUrls: Readonly<Record<string, string>>
   plateEstimateUsd: number
+  sheetEstimateUsd?: number
   busy: string | null
   act: Act
   batch: CandidateBatch | null
@@ -537,8 +548,7 @@ function SetRow({
       {candidates !== null && candidates.length > 0 ? (
         <div className="space-y-2">
           <p className="text-[12px] text-[var(--color-text-muted)]">
-            Generated from the look. Click one to add it as a plate, or Preview them full size
-            first.
+            Click one to add it as a plate, or Preview them full size first.
             {room ? null : (
               <span className="text-[var(--color-warning)]">
                 {' '}
@@ -582,6 +592,11 @@ function SetRow({
                       {candidate.summary ?? candidate.id}
                     </span>
                   )}
+                  {batch?.views[index] ? (
+                    <span className="absolute bottom-1 left-1 rounded-[4px] bg-black/60 px-1.5 py-0.5 text-[10px] font-semibold text-white">
+                      {VIEW_LABELS[batch.views[index]!]}
+                    </span>
+                  ) : null}
                   {done ? (
                     <span className="absolute right-1 bottom-1 rounded-[4px] bg-[var(--color-accent)] px-1.5 py-0.5 text-[10px] font-semibold text-white">
                       Added
@@ -679,6 +694,22 @@ function SetRow({
             }}
           >
             {`${plated ? 'Generate a view' : 'Generate a plate'} · ≈$${plateEstimateUsd.toFixed(2)}`}
+          </Button>
+        ) : null}
+        {room && plated && MAX_SET_PLATES - set.plates.length >= 3 ? (
+          <Button
+            variant="outline"
+            disabled={rowBusy}
+            onClick={() =>
+              void act(
+                `${set.id}:sheet`,
+                () => buildSetSheetAction(set.id),
+                'Four views ready',
+                (result) => onBatch({ list: result.candidates ?? [], views: result.views ?? [] }),
+              )
+            }
+          >
+            {`Build the set · ≈$${(sheetEstimateUsd ?? 0).toFixed(2)}`}
           </Button>
         ) : null}
         <ConfirmButton

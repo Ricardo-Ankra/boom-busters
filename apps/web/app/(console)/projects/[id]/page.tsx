@@ -42,7 +42,7 @@ import { VisualBoard } from './visual-board'
 import { VoiceReview } from './voice-review'
 import { CastCard } from './cast-card'
 import { SetCard } from './set-card'
-import { plateEstimateUsd, stillsEstimateUsd } from '@/lib/visual-assets'
+import { plateEstimateUsd, setSheetEstimateUsd, stillsEstimateUsd } from '@/lib/visual-assets'
 import { setPlateBrief } from '@/lib/set-plates'
 import { StageBanner } from './stage-banner'
 import {
@@ -116,6 +116,7 @@ export default async function ProjectPage({
   // Sets (decision 264) are the cast's twin for rooms, shown beside it.
   const sets = showCast ? await listProjectSets(db, project.id) : []
   const plateEstimate = showCast ? await plateEstimateUsd() : 0
+  const sheetEstimate = showCast ? await setSheetEstimateUsd() : 0
   // Another view carries the set's plates, so it is priced as the still it
   // is, on whichever route a still of that set would take (decision 273).
   const viewEstimates: Record<string, number> = {}
@@ -419,6 +420,7 @@ export default async function ProjectPage({
           plateUrls={setPlateUrls}
           plateEstimateUsd={plateEstimate}
           viewEstimatesUsd={viewEstimates}
+          sheetEstimateUsd={sheetEstimate}
         />
       ) : null}
 

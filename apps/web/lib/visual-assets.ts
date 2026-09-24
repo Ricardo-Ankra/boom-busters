@@ -555,6 +555,12 @@ export async function plateEstimateUsd(): Promise<number> {
   )
 }
 
+/** What "Build the set" will spend: one 4K image on the set-sheet route (decision 275). */
+export async function setSheetEstimateUsd(): Promise<number> {
+  const route = (await getSettings(db)).modelRouting.setSheet
+  return round4(imageGenPrice(LIVE_IMAGE_GEN_ADAPTERS[route.provider], 1, route.model, '4K'))
+}
+
 export async function stillSlotEstimateUsd(): Promise<number> {
   const routing = (await getSettings(db)).modelRouting
   const routes = [routing.stills, ...(routing.stillsLikeness ? [routing.stillsLikeness] : [])]
