@@ -1,4 +1,4 @@
-import { ValidationError } from '@boom-busters/schemas'
+import { MAX_SET_PLATES, ValidationError } from '@boom-busters/schemas'
 import type { SetPlate } from '@boom-busters/schemas'
 import { eq } from 'drizzle-orm'
 import { afterAll, beforeEach, describe, expect, it } from 'vitest'
@@ -19,7 +19,7 @@ import { requireTestDatabase } from './test-database'
 
 /**
  * The set table (decision 264) against the test container: one name per
- * project, four plates at most, gone with the project.
+ * project, MAX_SET_PLATES plates at most (decision 275), gone with the project.
  */
 const url = requireTestDatabase()
 const suite = url ? describe : describe.skip
@@ -123,11 +123,14 @@ suite('project sets', () => {
     await expect(insertProjectSet(db, { projectId, name: '  ' })).rejects.toThrow(ValidationError)
   })
 
-  it('keeps at most four plates', async () => {
+  it(`keeps at most ${MAX_SET_PLATES} plates`, async () => {
     const set = await insertProjectSet(db, { projectId, name: 'The trading floor' })
-    const four = ['a', 'b', 'c', 'd'].map((h) => plate(h))
-    expect((await setSetPlates(db, set.id, four)).plates).toHaveLength(4)
-    await expect(setSetPlates(db, set.id, [...four, plate('e')])).rejects.toThrow(ValidationError)
+    const hashes = 'abcdefghijklmnopqrstuvwxyz'.slice(0, MAX_SET_PLATES).split('')
+    const full = hashes.map((h) => plate(h))
+    expect((await setSetPlates(db, set.id, full)).plates).toHaveLength(MAX_SET_PLATES)
+    await expect(setSetPlates(db, set.id, [...full, plate('over')])).rejects.toThrow(
+      `A set keeps at most ${MAX_SET_PLATES} plates; remove one first.`,
+    )
   })
 
   it('updating a set that was dismissed throws', async () => {
