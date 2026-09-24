@@ -21,7 +21,11 @@ export const MOCK_LAYOUT = [
   'Light: [mock] overcast daylight from the north windows.',
 ].join('\n')
 
-/** The drafted inventory, or null when the call or the storage read fails. */
+/**
+ * The drafted inventory, or null when the call or the storage read fails, or
+ * the reply was cut off at its budget: half an inventory would travel with
+ * every shot in the room as if it were the whole room.
+ */
 export async function draftSetLayout(input: {
   projectId: string
   name: string
@@ -42,6 +46,10 @@ export async function draftSetLayout(input: {
       }),
       { projectId: input.projectId },
     )
+    if (result.truncated) {
+      console.error('[sets] inventory draft was cut off at its token budget')
+      return null
+    }
     const text = result.text.trim().slice(0, 1500)
     return text === '' ? null : text
   } catch (error) {

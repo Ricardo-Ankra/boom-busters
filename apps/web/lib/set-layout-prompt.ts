@@ -1,3 +1,4 @@
+import { outputBudget } from '@boom-busters/providers'
 import type { LLMTaskRequest } from '@boom-busters/providers'
 
 /**
@@ -37,6 +38,7 @@ export function layoutDraftRequest(input: {
     task: 'shotlist',
     system: SYSTEM,
     messages: [{ role: 'user', content: request(input.name, input.look), images: [input.image] }],
-    maxTokens: 600,
+    // Six short lines, plus the house thinking headroom.
+    maxTokens: outputBudget(600),
   }
 }
