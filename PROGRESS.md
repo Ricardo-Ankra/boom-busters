@@ -5920,3 +5920,126 @@ Establishing, Detail, and Other is not serving any purpose then?").
     shows the angles disabled with the hint before the first plate (set
     card, set actions and visual-assets files 79 of 79); `pnpm test` 9 of 9
     tasks, apps/web 888 of 888.
+
+275. **Set building from one image, and shots from any camera**
+(2026-09-24, owner report: "When choosing the different angles, more or
+less the same image is being generated. The angles, perspective are not
+changing. Furthermore, the depictions don't seem realistic. What I want to
+be able to do is upload an image or generate an image. Then from that
+image, we generate different perspectives of the first image to build the
+set ... even the Shot itself should be able to change the angle, the
+camera angles, and perspectives ... the references angles should just
+help the image generator build a more accurate and consistent scene ...
+the desk, the chair, the laptop should remain consistent").
+
+    Research found four causes. Editing models keep the input's framing:
+    they learn from before-and-after pairs that share geometry, and favour
+    preserving the image over a camera instruction; SpatialEdit and
+    CameraEditor both measure Nano Banana, GPT-Image-1, Seedream 4.0 and
+    similar editors as conservative about viewpoint. A reverse shot needs
+    the wall behind the original camera, information one plate never
+    holds. The owner's stills ran on gemini-2.5-flash-image, which Google
+    lists as Legacy and which does no reasoning, while the Gemini 3 image
+    models reason before drawing. And the reference sentence from decision
+    269 reads as an edit instruction ("never reproduce or edit the
+    framing"), so a still copied the plate it was given rather than taking
+    its own camera position; the pass toward realism therefore lands on a
+    rendered look wherever a still leans on a reference.
+
+    What changed, task by task:
+    - Task 1: plates face a compass direction (north, east, south, west,
+      detail, other) instead of an angle name, and StillBriefSchema gains
+      an optional camera (facing, position, lens).
+    - Task 2: a set's room inventory is written as layout text, one line
+      per wall, and layoutView/parseLayout turn it into the in-frame,
+      edge, centre and behind lines a camera sentence needs.
+    - Task 3: the inventory is drafted once from the first plate and never
+      overwritten by a later one; Redraft asks again on demand.
+    - Task 4: the Gemini adapter takes a size and high reasoning per call,
+      priced per size (3.1 Flash, 3 Pro, 2.5 Flash), with direction labels
+      on referenced images.
+    - Task 5: set sheets get their own model route (`modelRouting.setSheet`),
+      Gemini 3 Pro Image by default, shown on the Models tab.
+    - Task 6: `splitContactSheet` finds the sheet's gutters by luminance and
+      cuts four panels, or refuses with null when it cannot find clean
+      borders, rather than guessing.
+    - Task 7: Build the set turns one contact sheet into four candidate
+      views with directions attached; a sheet that will not split returns
+      one candidate, never the whole grid (the plan's amendment to spec
+      5.3: an unsplittable sheet is a refusal, not something offered as a
+      plate, since a 2x2 grid chosen as a plate would teach every later
+      still of the room to draw a grid).
+    - Task 8: `HOUSE_PHOTOGRAPH`, the documentary-photograph line, lands on
+      every plate, sheet and still prompt; `BANNED_PROMPT_WORDS` gains
+      ultra-detailed, 8k, 4k, 3d render, cgi, octane, unreal engine,
+      hyperrealistic and photorealistic, while the plan keeps plain render
+      and rendered allowed as ordinary verbs (the amendment to spec 7.2).
+    - Task 9: the shot-list planner places a camera on every still that
+      names a set, reading the room inventory from the cacheable prefix.
+      Ruling R1 resolved a conflicting test: the system prompt's
+      `slotShapes` text keeps `camera` optional (`"camera"?: ...`),
+      matching the `"set"?:` convention beside it, so the test was
+      mistyped and not the spec. Ruling R2 kept the bible's existing line
+      ("A room on every slot is a motif on every slot...") directly after
+      the rewritten set bullet, since the task's replacement text covered
+      only the bullet.
+    - Task 10: `platesForCamera` sends the plates nearest a shot's camera
+      (the same direction, then an adjacent one, never the opposite wall)
+      and `withReferenceClause` writes what the camera sees. This is where
+      Ruling R3 landed: spec 7.1 says a camera's lens replaces the house
+      line's 35mm, which no earlier task implemented; Task 10 built it
+      inline in the still-prompt path.
+    - Task 11: a linked slot's camera, and an unlinked slot sharing a
+      camera with another, are both covered by the plan check.
+    - Task 12: the board gets a Camera row (four direction buttons,
+      Position, Lens, Save camera) on a set shot's card; a same-task fix
+      resyncs the row when the stored camera changes underneath it (a
+      re-plan), so Save can no longer overwrite the planner's camera with
+      a stale row.
+    - Task 13: the live set harness (`pnpm --filter @boom-busters/web
+      live:set`), added to the plan at the owner's request ("I want you to
+      be able to do single set tests, with permission to use costs to test
+      a set ... just ensure that spend doesn't exceed $1 per test. Then it
+      must ask for my approval"), runs inventory, the 4K contact sheet, the
+      split and one still against real Gemini, and writes every image,
+      prompt and cost to a run folder. Review found the harness's own
+      `--cap` flag unvalidated (NaN or Infinity would disable the budget)
+      and its shot prompt skipping the R3 lens swap; the fix makes
+      `LiveBudget` refuse a non-finite, non-positive or above-$1 cap ("A
+      cap above $1 needs the owner's approval first."), and extracts the
+      R3 swap into `withCameraLens` in `apps/web/lib/still-prompt.ts`,
+      shared by `generateStillCandidates` and the harness, so the
+      harness's prompt can never drift from the app's.
+    - Task 14 (this entry): full verification and this record.
+
+    Two regressions surfaced between tasks, each fixed by the task that
+    hit it rather than by returning to the task that caused it: Task 1
+    never ran the db package, so its compass-direction change left the
+    four-plate integration test asserting the old cap; Task 2's fix made
+    it track `MAX_SET_PLATES`. Task 10 gave `setPlateBrief`'s compass views
+    a camera, correctly replacing the "never reproduce or edit the
+    framing" sentence with the camera one, but Task 10 never ran
+    set-actions.test; Task 13's fix updated the stale assertion to check
+    for the camera sentence and the absence of the framing line.
+
+    The owner's $1 cap is enforced by `LiveBudget`: every call's estimate
+    is reserved before it is made, and a call that would take the run past
+    the cap is refused before it spends. A typical harness run costs about
+    $0.32.
+
+    Unverified, left for the owner's live run: how much reasoning on high
+    helps camera placement, and how cleanly Gemini 3 Pro draws uniform
+    gutters at 4K (the splitter refuses rather than guesses, so the cost
+    of a miss is one redo).
+
+    What the owner does next: switch Settings → Models → Stills to Gemini
+    3.1 Flash Image; put a Google AI Studio key in .env.local as
+    GEMINI_API_KEY for the live harness; run the harness on the boardroom
+    at most $1 per run, review the images, and improve the prompts from
+    what comes back. After merge, Build the set on the boardroom costs
+    about $0.24, and regenerating a still about $0.13.
+
+    Verified: `pnpm format:check`, `pnpm lint` and `pnpm typecheck` clean
+    across all 10 packages; `pnpm test` 9 of 9 tasks, 2,531 tests passed
+    (infra 52, db 268, timeline 119, cost 28, compositions 144, web 954,
+    providers 536, schemas 400, ui-tokens 30).
