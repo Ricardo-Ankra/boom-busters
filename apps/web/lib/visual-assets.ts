@@ -14,8 +14,8 @@ import {
   applyScores,
   articleIsRenderable,
   depictedMembers,
+  platesForCamera,
   referencePhotos,
-  referencePlates,
   setForBrief,
   STILL_GENERATIONS,
   ValidationError,
@@ -25,6 +25,8 @@ import type {
   CastPhoto,
   ModelRouting,
   ProjectSet,
+  SetPlateDirection,
+  SetPlateView,
   ShotBrief,
   ShotSlotStatus,
   SlotCandidate,
@@ -34,6 +36,7 @@ import type {
 } from '@boom-busters/schemas'
 import {
   buildScoringRequest,
+  HOUSE_PHOTOGRAPH,
   imageGenAdapter,
   imageGenModel,
   imageGenPrice,
@@ -49,6 +52,7 @@ import { articleForClaim } from '@/lib/article-source'
 import { db } from '@/lib/db'
 import { env } from '@/lib/env'
 import { callLlm } from '@/lib/llm'
+import { describeCamera } from '@/lib/set-plates'
 import { getObjectBytes, presignGet, putObject, stillKey, storageConfigured } from '@/lib/storage'
 
 /**
@@ -227,11 +231,11 @@ async function stillBriefPriceUsd(
   const budgets = referenceBudgets(live.referenceLimits(route.model))
   const set = setFrom(brief, sets)
   const characterCount = spreadReferences(members, budgets.characters).length
-  const plateCount = set ? referencePlates(set, budgets.objects).length : 0
+  const plateCount = set ? platesForCamera(set, brief.camera?.facing, budgets.objects).length : 0
   const billed = live.referenceRoute?.(route.model, characterCount + plateCount) ?? null
   return billed
     ? billed.pricePerImage * STILL_GENERATIONS
-    : imageGenPrice(live, STILL_GENERATIONS, route.model)
+    : imageGenPrice(live, STILL_GENERATIONS, route.model, '1K')
 }
 
 /**
@@ -280,12 +284,18 @@ export async function stillsEstimateUsd(
  * and two object slots at most, and never more than the model allows. People
  * are spent first, because a wrong face is worse than a wrong room.
  */
+/** `ImageReference.facing` excludes 'other' (an unlabelled upload); every other view names itself. */
+function plateFacing(view: SetPlateView): Pick<ImageReference, 'facing'> | Record<string, never> {
+  return view === 'other' ? {} : { facing: view }
+}
+
 async function referenceMaterials(
   members: readonly CastMember[],
   set: ProjectSet | null,
   provider: 'google' | 'fal',
   budgets: { characters: number; objects: number },
   mocked: boolean,
+  facing?: SetPlateDirection,
 ): Promise<{
   names: string[]
   setName: string | null
@@ -309,7 +319,7 @@ async function referenceMaterials(
     referenceUrls: [],
   }
   const photos = spreadReferences(members, budgets.characters)
-  const plates = set ? referencePlates(set, budgets.objects) : []
+  const plates = set ? platesForCamera(set, facing, budgets.objects) : []
   if (photos.length === 0 && plates.length === 0) return none
 
   // Named from the photographs that actually travel, not from the cast the
@@ -343,6 +353,7 @@ async function referenceMaterials(
           kind: 'object' as const,
           mimeType: plate.mimeType,
           data: 'bW9jaw==',
+          ...plateFacing(plate.view),
         })),
       ],
       referenceUrls: [
@@ -370,6 +381,7 @@ async function referenceMaterials(
           kind: 'object',
           mimeType: plate.mimeType,
           data: Buffer.from(object.bytes).toString('base64'),
+          ...plateFacing(plate.view),
         })
       }
       return { names, setName, people, setPlates, references, referenceUrls: [] }
@@ -392,6 +404,7 @@ async function referenceMaterials(
           name: plateName,
           kind: 'object' as const,
           mimeType: plate.mimeType,
+          ...plateFacing(plate.view),
         })),
       ],
       referenceUrls,
@@ -439,9 +452,12 @@ function withReferenceClause(
   prompt: string,
   people: readonly { name: string; photos: number }[],
   set: { name: string; plates: number } | null,
+  camera: string | null,
 ): string {
-  if (people.length === 0 && set === null) return prompt
   if (prompt.includes(REFERENCE_MARKER)) return prompt
+  if (people.length === 0 && set === null) {
+    return camera !== null ? `${prompt.trimEnd()}\n\n${camera}` : prompt
+  }
 
   const inventory = andList([
     ...people.map((person) => `${photographCount(person.photos)} of ${person.name}`),
@@ -459,13 +475,21 @@ function withReferenceClause(
         `the scene's own light, and behind anything standing nearer the camera.`,
     )
   }
+  if (camera !== null) sentences.push(camera)
   if (set) {
     sentences.push(
-      `The photographs of ${set.name} are for the room's design only: its architecture, ` +
-        `materials, furniture and light.`,
-      `This is a new photograph taken inside that room from the camera position the text ` +
-        `above describes; never reproduce or edit the framing of its photographs.`,
+      camera !== null
+        ? `The photographs of ${set.name} show this room's furniture, materials and light; ` +
+            `this photograph is a new one from the camera above.`
+        : `The photographs of ${set.name} are for the room's design only: its architecture, ` +
+            `materials, furniture and light.`,
     )
+    if (camera === null) {
+      sentences.push(
+        `This is a new photograph taken inside that room from the camera position the text ` +
+          `above describes; never reproduce or edit the framing of its photographs.`,
+      )
+    }
   }
 
   return `${prompt.trimEnd()}\n\n${sentences.join(' ')}`
@@ -653,6 +677,10 @@ export async function generateStillCandidates(
   const projectSets = brief.set ? await listProjectSets(db, projectId) : []
   const members = depictedFrom(brief, projectCast)
   const set = setFrom(brief, projectSets)
+  // The camera reaches the prompt whether or not the set has a plate yet: the
+  // inventory alone still says what the camera sees (decision 275).
+  const namedSet = brief.set ? setForBrief(brief.set, projectSets) : null
+  const cameraText = brief.camera ? describeCamera(brief.camera, namedSet?.layout ?? '') : null
   const routing = (await getSettings(db)).modelRouting
   const derived = routeForBrief(brief, projectCast, projectSets, routing)
   const route = stored && adapterOffers(stored) ? stored : derived
@@ -692,11 +720,23 @@ export async function generateStillCandidates(
     provider,
     referenceBudgets(live.referenceLimits(route.model)),
     mocked,
+    brief.camera?.facing,
   )
+  const strippedPrompt = stripBannedWords(brief.prompt)
+  // Spec 7.1 (ruling R3): a camera's own lens overrides the house photograph
+  // line's default 35mm, in place, never as a second lens instruction.
+  const lensedPrompt =
+    brief.camera?.lens && strippedPrompt.includes(HOUSE_PHOTOGRAPH)
+      ? strippedPrompt.replace(
+          HOUSE_PHOTOGRAPH,
+          HOUSE_PHOTOGRAPH.replace('35mm', brief.camera.lens),
+        )
+      : strippedPrompt
   const prompt = withReferenceClause(
-    stripBannedWords(brief.prompt),
+    lensedPrompt,
     cast.people,
     cast.setName === null ? null : { name: cast.setName, plates: cast.setPlates },
+    cameraText,
   )
 
   /**
@@ -719,7 +759,7 @@ export async function generateStillCandidates(
       // estimate button, so plan and ledger never quote different numbers.
       estimateUsd: billed
         ? billed.pricePerImage * STILL_GENERATIONS
-        : imageGenPrice(live, STILL_GENERATIONS, route.model),
+        : imageGenPrice(live, STILL_GENERATIONS, route.model, '1K'),
       meta: {
         model: billed ? billed.id : route.model,
         prompt: prompt.slice(0, 200),
@@ -736,6 +776,7 @@ export async function generateStillCandidates(
           prompt,
           ...(brief.negativePrompt ? { negativePrompt: brief.negativePrompt } : {}),
           count: STILL_GENERATIONS,
+          size: '1K',
           ...(mocked ? {} : { model: route.model }),
           ...(cast.references.length > 0 ? { references: cast.references } : {}),
           ...(cast.referenceUrls.length > 0 ? { referenceUrls: cast.referenceUrls } : {}),

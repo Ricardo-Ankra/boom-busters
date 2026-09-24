@@ -1,6 +1,6 @@
 import { HOUSE_PHOTOGRAPH } from '@boom-busters/providers'
-import { OPPOSITE_DIRECTION } from '@boom-busters/schemas'
-import type { ProjectSet, SetViewRequest, StillBrief } from '@boom-busters/schemas'
+import { layoutView, OPPOSITE_DIRECTION, parseLayout } from '@boom-busters/schemas'
+import type { ProjectSet, SetCamera, SetViewRequest, StillBrief } from '@boom-busters/schemas'
 
 /**
  * The brief a generated set plate is drawn from (decision 264, amended 273,
@@ -84,4 +84,23 @@ export function setPlateBrief(
     prompt: `${set.name}, empty of people: ${framing}. ${set.look} ${HOUSE_PHOTOGRAPH} ${styleAnchors}`,
     negativePrompt: 'people, figures',
   }
+}
+
+/**
+ * The camera sentence and what it sees (decision 275): where the camera
+ * stands, then the inventory lines for the wall in frame, the walls at the
+ * edges, the centre and the light, and the wall behind it. Stated positively,
+ * so the model is given the new picture to make rather than an old one to avoid.
+ */
+export function describeCamera(camera: SetCamera, layout: string): string {
+  const lens = camera.lens ? `, ${camera.lens}` : ''
+  const sentences = [`The camera stands at ${camera.position}, facing ${camera.facing}${lens}.`]
+  const view = layoutView(parseLayout(layout), camera.facing)
+  if (view.inFrame) sentences.push(`In frame: ${view.inFrame}.`)
+  if (view.edges.length > 0) sentences.push(`At the edges: ${view.edges.join('; ')}.`)
+  if (view.centre) sentences.push(`Centre: ${view.centre}.`)
+  if (view.light) sentences.push(`Light: ${view.light}.`)
+  if (view.behind) sentences.push(`Behind the camera, out of frame: ${view.behind}.`)
+  if (view.rest) sentences.push(`The room: ${view.rest.replace(/\.$/, '')}.`)
+  return sentences.join(' ')
 }

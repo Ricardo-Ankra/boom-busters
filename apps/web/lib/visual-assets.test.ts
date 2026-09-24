@@ -13,9 +13,10 @@ import {
   seed,
   setCastPhotos,
   setSetPlates,
+  updateProjectSet,
   updateSettings,
 } from '@boom-busters/db'
-import { LIVE_IMAGE_GEN_ADAPTERS, mockImageGen } from '@boom-busters/providers'
+import { HOUSE_PHOTOGRAPH, LIVE_IMAGE_GEN_ADAPTERS, mockImageGen } from '@boom-busters/providers'
 import { STILL_GENERATIONS } from '@boom-busters/schemas'
 import type {
   CastMember,
@@ -66,7 +67,7 @@ function photo(hash: string, view: 'front' | 'profile' | 'three-quarter' | 'full
   }
 }
 
-function plate(hash: string, view: 'north' | 'detail' | 'other') {
+function plate(hash: string, view: 'north' | 'east' | 'south' | 'west' | 'detail' | 'other') {
   return {
     r2Key: `boom-busters/sets/${FIXTURE_PROJECT_ID}/${hash}.jpg`,
     contentHash: hash,
@@ -725,6 +726,131 @@ References attached: 1 photograph of Emad Mostaque.`
       expect(request?.prompt).toContain(
         'References attached: 1 photograph of Venture Capital Boardroom.',
       )
+    })
+  })
+
+  describe('the camera (decision 275)', () => {
+    it('sends the plates nearest the camera, each labelled by direction', async () => {
+      const room = await insertProjectSet(db, {
+        projectId: FIXTURE_PROJECT_ID,
+        name: 'Venture Capital Boardroom',
+        look: 'A long table.',
+      })
+      await setSetPlates(db, room.id, [
+        plate('p-n', 'north'),
+        plate('p-e', 'east'),
+        plate('p-s', 'south'),
+      ])
+      await generateStillCandidates(
+        {
+          ...still,
+          set: 'Venture Capital Boardroom',
+          camera: { facing: 'south', position: 'the north windows' },
+        },
+        FIXTURE_PROJECT_ID,
+      )
+      const request = generate.mock.calls[0]?.[0]
+      expect(request?.references?.map((reference) => reference.facing)).toEqual(['south', 'east'])
+      expect(request?.size).toBe('1K')
+    })
+
+    it('closes the prompt with the camera and what it sees', async () => {
+      const room = await insertProjectSet(db, {
+        projectId: FIXTURE_PROJECT_ID,
+        name: 'Venture Capital Boardroom',
+        look: 'A long table.',
+      })
+      await updateProjectSet(db, room.id, { layout: 'North wall: windows\nSouth wall: glass' })
+      await setSetPlates(db, room.id, [plate('p-n', 'north')])
+      await generateStillCandidates(
+        {
+          ...still,
+          set: 'Venture Capital Boardroom',
+          camera: { facing: 'north', position: 'the south doorway' },
+        },
+        FIXTURE_PROJECT_ID,
+      )
+      const prompt = generate.mock.calls[0]?.[0].prompt ?? ''
+      expect(prompt).toContain(
+        'The camera stands at the south doorway, facing north. In frame: windows.',
+      )
+      expect(prompt).toContain('Behind the camera, out of frame: glass.')
+      expect(prompt).toContain(
+        "The photographs of Venture Capital Boardroom show this room's furniture, materials and light; this photograph is a new one from the camera above.",
+      )
+      expect(prompt).not.toContain('never reproduce or edit the framing')
+    })
+
+    // Review Focus 3: no plate yet, but the camera and inventory still count.
+    it('sends the camera and inventory for a set with no plate', async () => {
+      const room = await insertProjectSet(db, {
+        projectId: FIXTURE_PROJECT_ID,
+        name: 'Venture Capital Boardroom',
+        look: 'A long table.',
+      })
+      await updateProjectSet(db, room.id, { layout: 'East wall: credenza' })
+      await generateStillCandidates(
+        {
+          ...still,
+          set: 'Venture Capital Boardroom',
+          camera: { facing: 'east', position: 'the window' },
+        },
+        FIXTURE_PROJECT_ID,
+      )
+      const request = generate.mock.calls[0]?.[0]
+      expect(request?.references ?? []).toEqual([])
+      expect(request?.prompt).toContain(
+        'The camera stands at the window, facing east. In frame: credenza.',
+      )
+    })
+
+    it('keeps the decision 273 ending for a set shot with no camera', async () => {
+      const room = await insertProjectSet(db, {
+        projectId: FIXTURE_PROJECT_ID,
+        name: 'Venture Capital Boardroom',
+        look: 'A long table.',
+      })
+      await setSetPlates(db, room.id, [plate('p-n', 'north')])
+      await generateStillCandidates(
+        { ...still, set: 'Venture Capital Boardroom' },
+        FIXTURE_PROJECT_ID,
+      )
+      expect(generate.mock.calls[0]?.[0].prompt).toContain(
+        'never reproduce or edit the framing of its photographs',
+      )
+    })
+
+    // Controller ruling R3 (spec 7.1): the camera's own lens overrides the
+    // house photograph line's default, in place, never as a second sentence.
+    it('lets the camera lens override the house photograph line', async () => {
+      await generateStillCandidates(
+        {
+          ...still,
+          set: undefined,
+          depicts: [],
+          prompt: `A boardroom at dusk. ${HOUSE_PHOTOGRAPH}`,
+          camera: { facing: 'north', position: 'the doorway', lens: '85mm' },
+        },
+        FIXTURE_PROJECT_ID,
+      )
+      const prompt = generate.mock.calls[0]?.[0]?.prompt ?? ''
+      expect(prompt).toContain(HOUSE_PHOTOGRAPH.replace('35mm', '85mm'))
+      expect(prompt).not.toContain('35mm')
+    })
+
+    it('keeps the house photograph line’s 35mm when the camera names no lens', async () => {
+      await generateStillCandidates(
+        {
+          ...still,
+          set: undefined,
+          depicts: [],
+          prompt: `A boardroom at dusk. ${HOUSE_PHOTOGRAPH}`,
+          camera: { facing: 'north', position: 'the doorway' },
+        },
+        FIXTURE_PROJECT_ID,
+      )
+      const prompt = generate.mock.calls[0]?.[0]?.prompt ?? ''
+      expect(prompt).toContain(HOUSE_PHOTOGRAPH)
     })
   })
 })
