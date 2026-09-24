@@ -59,7 +59,9 @@
 | `apps/web/app/(console)/projects/[id]/visuals-actions.ts` | `editBriefAction` accepts `camera` | 12 |
 | `apps/web/app/(console)/settings/settings-form.tsx` | Set sheets route row | 5 |
 | `apps/web/inngest/lib/direction.ts` | Pass `layout` into the shot-list request | 9 |
-| `PROGRESS.md` | Decision 275 | 13 |
+| `apps/web/lib/still-prompt.ts`, `apps/web/lib/set-layout-prompt.ts` | Pure prompt builders moved out of database-bound modules | 13 |
+| `apps/web/lib/live-budget.ts`, `apps/web/scripts/live-set-test.ts` | The live set harness and its $1 cap | 13 |
+| `PROGRESS.md` | Decision 275 | 14 |
 
 ---
 
@@ -2666,7 +2668,161 @@ git commit -m "feat(board): a Camera row places a set shot's camera before regen
 
 ---
 
-### Task 13: Record decision 275 and verify the branch
+### Task 13: The live set harness, capped at $1 a run
+
+The owner's instruction, 2026-09-24: "I want you to be able to do single set tests, with permission to use costs to test a set, and then test how it translates to a shot, then you can review the images generated from the sets and then output of the shot and then review and improve ... just ensure that spend doesn't exceed $1 per test. Then it must ask for my approval."
+
+A command-line harness that runs the real set-to-shot path against Gemini outside the app, writes every image and prompt to a folder for review, and refuses any call that would take the run past $1. It is never part of `pnpm test` or `pnpm e2e` (it needs a real key and spends money); only its budget guard and argument parsing are unit-tested.
+
+**Files:**
+- Create: `apps/web/lib/still-prompt.ts` (moved, pure: `withReferenceClause` and its helpers)
+- Create: `apps/web/lib/set-layout-prompt.ts` (moved, pure: the inventory draft request)
+- Modify: `apps/web/lib/visual-assets.ts`, `apps/web/lib/set-layout.ts` (import the moved code)
+- Create: `apps/web/lib/live-budget.ts`
+- Create: `apps/web/scripts/live-set-test.ts`
+- Modify: `apps/web/package.json` (script `live:set`)
+- Test: `apps/web/lib/live-budget.test.ts`
+
+**Interfaces:**
+- Consumes: `buildSetSheetPrompt`, `setPlateBrief`, `describeCamera` (Tasks 7, 1, 10); `splitContactSheet` (Task 6); `geminiImageGen` with `size` and `facing` (Task 4); `platesForCamera`, `parseLayout` (Tasks 1, 2); `HOUSE_PHOTOGRAPH`, `stillStyleAnchors` (Task 8).
+- Produces: `withReferenceClause(prompt, people, set, camera)` exported from `apps/web/lib/still-prompt.ts` (unchanged behaviour); `layoutDraftRequest(input: { name: string; look: string; image: { mimeType; data } }): LLMTaskRequest` from `apps/web/lib/set-layout-prompt.ts`; `class LiveBudget { constructor(capUsd: number); reserve(label: string, estimateUsd: number): void; record(label: string, actualUsd: number): void; get spentUsd(): number; get entries(): { label: string; usd: number }[] }` and `class BudgetExceeded extends Error`.
+
+- [ ] **Step 1: Move the pure prompt code out of database-bound modules.** The harness must not import `visual-assets.ts` or `set-layout.ts`, which import the database client at module load. Move `withReferenceClause`, `REFERENCE_MARKER`, `photographCount` and `andList` from `visual-assets.ts` into `apps/web/lib/still-prompt.ts` unchanged (export `withReferenceClause` and `REFERENCE_MARKER`), and import them back into `visual-assets.ts`. Move `SYSTEM` and `request()` from `set-layout.ts` into `apps/web/lib/set-layout-prompt.ts` as:
+
+```ts
+export function layoutDraftRequest(input: {
+  name: string
+  look: string
+  image: { mimeType: 'image/jpeg' | 'image/png' | 'image/webp'; data: string }
+}): LLMTaskRequest {
+  return {
+    task: 'shotlist',
+    system: SYSTEM,
+    messages: [{ role: 'user', content: request(input.name, input.look), images: [input.image] }],
+    maxTokens: 600,
+  }
+}
+```
+
+and have `draftSetLayout` call `callLlm(layoutDraftRequest({...}), { projectId })`. Run `cd apps/web && npx vitest run visual-assets.test set-actions.test` (Bash `timeout` 600000). Expected: PASS with no test changes (pure move).
+
+- [ ] **Step 2: Failing budget tests** in `apps/web/lib/live-budget.test.ts`:
+
+```ts
+import { describe, expect, it } from 'vitest'
+import { BudgetExceeded, LiveBudget } from './live-budget'
+
+describe('LiveBudget', () => {
+  it('lets calls through while the estimate fits, and records what they cost', () => {
+    const budget = new LiveBudget(1)
+    budget.reserve('sheet', 0.24)
+    budget.record('sheet', 0.24)
+    budget.reserve('shot', 0.07)
+    budget.record('shot', 0.07)
+    expect(budget.spentUsd).toBeCloseTo(0.31)
+    expect(budget.entries).toEqual([
+      { label: 'sheet', usd: 0.24 },
+      { label: 'shot', usd: 0.07 },
+    ])
+  })
+
+  it('refuses the call that would pass the cap, before it is made', () => {
+    const budget = new LiveBudget(1)
+    budget.reserve('a', 0.9)
+    budget.record('a', 0.9)
+    expect(() => budget.reserve('b', 0.24)).toThrow(BudgetExceeded)
+    expect(() => budget.reserve('b', 0.24)).toThrow(
+      'b would take this run to $1.14, past its $1.00 cap. Ask the owner before spending more.',
+    )
+    expect(budget.spentUsd).toBeCloseTo(0.9)
+  })
+
+  it('counts an unrecorded reservation, so two quick calls cannot both slip under', () => {
+    const budget = new LiveBudget(0.5)
+    budget.reserve('a', 0.3)
+    expect(() => budget.reserve('b', 0.3)).toThrow(BudgetExceeded)
+  })
+})
+```
+
+- [ ] **Step 3: Implement `apps/web/lib/live-budget.ts`:**
+
+```ts
+/**
+ * The spend cap on a live harness run (decision 275; the owner's rule: at
+ * most $1 per test, and ask before more). Every paid call reserves its
+ * estimate first and is refused if the run would pass the cap; `record`
+ * replaces the reservation with what the call actually cost.
+ */
+export class BudgetExceeded extends Error {}
+
+export class LiveBudget {
+  private readonly items: { label: string; usd: number; settled: boolean }[] = []
+
+  constructor(private readonly capUsd: number) {}
+
+  get spentUsd(): number {
+    return this.items.reduce((total, item) => total + item.usd, 0)
+  }
+
+  get entries(): { label: string; usd: number }[] {
+    return this.items.map(({ label, usd }) => ({ label, usd }))
+  }
+
+  reserve(label: string, estimateUsd: number): void {
+    const next = this.spentUsd + estimateUsd
+    if (next > this.capUsd + 1e-9) {
+      throw new BudgetExceeded(
+        `${label} would take this run to $${next.toFixed(2)}, past its $${this.capUsd.toFixed(2)} cap. ` +
+          'Ask the owner before spending more.',
+      )
+    }
+    this.items.push({ label, usd: estimateUsd, settled: false })
+  }
+
+  record(label: string, actualUsd: number): void {
+    const item = this.items.find((entry) => entry.label === label && !entry.settled)
+    if (item) {
+      item.usd = actualUsd
+      item.settled = true
+    } else {
+      this.items.push({ label, usd: actualUsd, settled: true })
+    }
+  }
+}
+```
+
+Run: `cd apps/web && npx vitest run live-budget`. Expected: PASS.
+
+- [ ] **Step 4: The harness `apps/web/scripts/live-set-test.ts`.** Run as `pnpm --filter @boom-busters/web live:set -- --image <path> --name "<set name>" [--look "<look>"] [--layout <file>] [--out <dir>] [--shot <file.json>] [--cap 1]`. Add to `apps/web/package.json` scripts: `"live:set": "tsx --env-file=../../.env.local scripts/live-set-test.ts"` (use `node --env-file` with `tsx/esm` if the installed tsx does not accept `--env-file`).
+
+Behaviour, in order; every paid call goes through `budget.reserve(label, estimate)` before it is made and `budget.record(label, actual)` after:
+1. Read `GEMINI_API_KEY` from the environment. If it is missing, print `Set GEMINI_API_KEY in .env.local (a Google AI Studio key). Nothing was spent.` and exit 1. Never print the key or any part of it.
+2. Read `--image` (jpeg, png or webp) as the set's first plate, facing north.
+3. The inventory: `--layout` file contents if given; otherwise one call to `google.complete(layoutDraftRequest({ name, look, image }), { apiKey, model: 'gemini-3.5-flash-lite' })`, reserved at $0.01, recorded at `result`'s token cost (use the adapter's own pricing helper if one is exported; else record $0.01).
+4. The sheet: `buildSetSheetPrompt({ name, layout, look, styleAnchors: stillStyleAnchors(DEFAULT_SETTINGS.brandKit) })`, generated with `geminiImageGen.generate({ prompt, count: 1, model: 'gemini-3-pro-image', size: '4K', references: [{ name, kind: 'object', facing: 'north', mimeType, data }] }, { apiKey })`, reserved at `imageGenPrice(geminiImageGen, 1, 'gemini-3-pro-image', '4K')`, recorded at `estimatedCostUsd`. Save `sheet.png`. Split with `splitContactSheet`; if it returns null, write `run.json` and exit 2 with `The sheet came back without clear borders; see sheet.png.`. Save `panel-north.png` … `panel-west.png`.
+5. The plates the shot may use: the original image as `north`, and the east, south and west panels.
+6. The shot: from `--shot` (JSON: `{ "prompt": string, "camera": { "facing", "position", "lens"? } }`) or the default `{ prompt: 'Two investors in dark suits argue across the table, one leaning forward with both hands flat on the wood, the other sitting back with arms folded.', camera: { facing: 'south', position: 'the north windows, seated eye height', lens: '35mm' } }`. Choose plates with `platesForCamera(set, camera.facing, 2)`; build the prompt as generation does: `withReferenceClause(stripBannedWords(prompt + ' ' + HOUSE_PHOTOGRAPH + ' ' + anchors), [], { name, plates: chosen.length }, describeCamera(camera, layout))`; generate one image on `gemini-3.1-flash-image` at `'1K'` with the chosen plates as `object` references carrying their `facing`, reserved at `imageGenPrice(geminiImageGen, 1, 'gemini-3.1-flash-image', '1K')`. Save `shot.png`.
+7. Write `run.json` to the output folder: every prompt sent, the inventory, which plates travelled with the shot, each call's label and cost, and the total. Print the folder path and the total spent.
+8. On `BudgetExceeded`, write `run.json` with what was spent so far, print the error's message, and exit 3.
+
+The default output folder is `live-set-runs/<ISO timestamp>` under the repo root; add `live-set-runs/` to `.gitignore`. The harness writes nothing to any database and does not record to the app's cost ledger; `run.json` is the record.
+
+- [ ] **Step 5: Verify without spending.** Run `pnpm --filter @boom-busters/web live:set -- --image x.png --name R` with `GEMINI_API_KEY` unset in a subshell (`env -u GEMINI_API_KEY pnpm ...`). Expected: the "Set GEMINI_API_KEY" line, exit 1, no network call. Run `pnpm typecheck` and `pnpm lint`.
+
+- [ ] **Step 6: Commit**
+
+```bash
+pnpm format:check
+git add apps/web .gitignore
+git commit -m "feat(sets): a live set-to-shot harness for reviewing real output, capped at \$1 a run (decision 275)"
+```
+
+The live runs themselves happen after the whole branch is reviewed, by the controller, with the owner's key in `.env.local`, each capped at $1.
+
+---
+
+### Task 14: Record decision 275 and verify the branch
 
 **Files:**
 - Modify: `PROGRESS.md`

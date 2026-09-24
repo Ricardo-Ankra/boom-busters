@@ -389,6 +389,23 @@ All mocked; nothing spends.
   through `editBriefAction`.
 - Settings: `setSheet` route default and fold-forward; the Models tab row.
 
+## 12a. The live set harness (added 2026-09-24 at the owner's request)
+
+"I want you to be able to do single set tests, with permission to use costs to
+test a set, and then test how it translates to a shot ... just ensure that
+spend doesn't exceed $1 per test. Then it must ask for my approval."
+
+A command-line harness, `pnpm --filter @boom-busters/web live:set`, runs the
+real path against Gemini outside the app: inventory draft, the 4K contact
+sheet, the split, and one still in the set from a given camera. It writes
+every image, prompt and cost to a run folder for review. A budget guard
+reserves each call's estimate before it is made and refuses any call that
+would take the run past $1 (a `--cap` below $1 is allowed, above is not
+without the owner). A typical run costs about $0.32. It needs
+`GEMINI_API_KEY` in `.env.local`, never prints it, touches no database, and is
+never part of `pnpm test` or `pnpm e2e`. The review-and-improve loop runs it
+after the branch is reviewed.
+
 ## 13. What the owner verifies
 
 One real run on the boardroom: Build the set (about $0.24), keep the panels,
