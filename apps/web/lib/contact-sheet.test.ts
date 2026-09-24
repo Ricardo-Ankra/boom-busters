@@ -107,26 +107,39 @@ describe('splitContactSheet', () => {
     expect(await splitContactSheet(allWhite)).toBeNull()
   })
 
-  // Fix 2: a white band that touches the edge of the search window is not a valid gutter
-  it('refuses a white band that touches the search window edge', async () => {
-    // White band from 40% to 60% of height (inside the search window), with grey above and below.
-    // This makes the band span exactly [from, to] of the height search window [180, 270].
-    const touchesEdge = await sharp({
-      create: { width: 800, height: 450, channels: 3, background: { r: 90, g: 90, b: 90 } },
-    })
-      .composite([
-        {
-          input: await sharp({
-            create: { width: 800, height: 90, channels: 3, background: '#ffffff' },
-          })
-            .png()
-            .toBuffer(),
-          left: 0,
-          top: 180,
-        },
-      ])
-      .png()
-      .toBuffer()
-    expect(await splitContactSheet(touchesEdge)).toBeNull()
+  // Fix 2: a white band at the search window boundary is not a valid gutter
+  it('refuses a 2x2 sheet with gutter at search window boundary', async () => {
+    // Real 2x2 sheet: four grey panels with white gutters. Vertical gutter near middle (normal),
+    // horizontal gutter starting exactly at the search window lower bound (180 = floor(450*0.4)).
+    // Old code finds both bands and splits; fixed code rejects the horizontal band because
+    // it starts at the window edge, not bounded by content within the window.
+    const pw = 396 // Panel width: top-left and top-right
+    const ph = 180 // Panel height: top row
+    const ph2 = 263 // Panel height: bottom row (450 - 187 = 263)
+    const tile = (shade: number, w: number, h: number) =>
+      sharp({
+        create: { width: w, height: h, channels: 3, background: { r: shade, g: shade, b: shade } },
+      })
+        .png()
+        .toBuffer()
+    const panels = await Promise.all([
+      tile(90, pw, ph),
+      tile(90, 404, ph), // 404 = 800 - 396
+      tile(90, pw, ph2),
+      tile(90, 404, ph2),
+    ])
+    expect(
+      await splitContactSheet(
+        await sharp({ create: { width: 800, height: 450, channels: 3, background: '#ffffff' } })
+          .composite([
+            { input: panels[0]!, left: 0, top: 0 }, // top-left
+            { input: panels[1]!, left: 396, top: 0 }, // top-right
+            { input: panels[2]!, left: 0, top: 187 }, // bottom-left (gutter rows 180-187)
+            { input: panels[3]!, left: 396, top: 187 }, // bottom-right
+          ])
+          .png()
+          .toBuffer(),
+      ),
+    ).toBeNull()
   })
 })
