@@ -6096,3 +6096,9 @@ the desk, the chair, the laptop should remain consistent").
     - M7: this record corrected (the five causes, decision 273 not 269,
       the refusal in Task 7, Task 11), and the spec updated at 4.2, 5.2,
       5.3, 6.4, 7.1 and the harness section.
+
+    Verified after the fix wave: `pnpm format:check`, `pnpm lint` and
+    `pnpm typecheck` (10 of 10 tasks) clean; `pnpm test` 9 of 9 tasks,
+    2,543 tests passed (infra 52, db 269, timeline 119, cost 28,
+    compositions 144, web 961, providers 539, schemas 401, ui-tokens 30);
+    `pnpm e2e` 118 passed in mock-provider mode.
