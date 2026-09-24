@@ -764,10 +764,10 @@ describe('craftFindings (decision 271)', () => {
   })
 
   describe('shared camera (decision 275)', () => {
-    const brief = (position: string, facing = 'north') => ({
+    const brief = (position: string, facing = 'north', set = 'The boardroom') => ({
       type: 'still',
-      coversText: 'They met.',
-      set: 'The boardroom',
+      coversText: `They met at ${position.trim()}.`,
+      set,
       camera: { facing, position },
     })
     const context = { motifs: [], eraLocks: [], cast: [], sets: ['The boardroom'] }
@@ -776,7 +776,8 @@ describe('craftFindings (decision 271)', () => {
       const findings = craftFindings(
         [
           { brief: brief('The South doorway ') },
-          { brief: brief('the south doorway') },
+          // The set's name in another case is the same room.
+          { brief: brief('the south doorway', 'north', 'the Boardroom') },
           { brief: brief('the window') },
         ],
         context,
@@ -787,7 +788,7 @@ describe('craftFindings (decision 271)', () => {
           slotIndex: 1,
           repair: 'auto',
           message:
-            'an earlier still in "The boardroom" already stands at "the south doorway" facing north; move the camera',
+            'the still covering "They met at The South doorway." in "the Boardroom" already stands at "the south doorway" facing north; move the camera',
         },
       ])
     })

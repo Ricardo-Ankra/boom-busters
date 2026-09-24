@@ -698,19 +698,22 @@ export function craftFindings(
   }
 
   // Shared cameras (decision 275): two stills in one room from the same place
-  // facing the same way are the same picture twice. The later one moves.
+  // facing the same way are the same picture twice. The later one moves. The
+  // room is keyed without case, as the set list matches it; the message names
+  // the earlier still by its sentence, since the planner has no slot numbers.
   const cameras = new Map<string, number>()
   for (const [index, { brief, linked }] of slots.entries()) {
     const set = slotSet(brief)
     if (!set || !brief.camera) continue
     const position = brief.camera.position.trim().toLowerCase()
-    const key = `${set}|${brief.camera.facing}|${position}`
-    if (cameras.has(key) && !linked) {
+    const key = `${set.toLowerCase()}|${brief.camera.facing}|${position}`
+    const earlier = cameras.get(key)
+    if (earlier !== undefined && !linked) {
       findings.push({
         kind: 'shared-camera',
         slotIndex: index,
         repair: 'auto',
-        message: `an earlier still in "${set}" already stands at "${position}" facing ${brief.camera.facing}; move the camera`,
+        message: `the still covering "${slots[earlier]!.brief.coversText}" in "${set}" already stands at "${position}" facing ${brief.camera.facing}; move the camera`,
       })
       continue
     }
