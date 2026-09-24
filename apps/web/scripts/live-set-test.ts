@@ -16,12 +16,13 @@ import {
   DEFAULT_SETTINGS,
   platesForCamera,
   SetCameraSchema,
+  ShotSizeSchema,
   STILL_GENERATIONS,
 } from '@boom-busters/schemas'
 import type { SetCamera, SetPlate, SetPlateDirection, SetPlateView } from '@boom-busters/schemas'
 import sharp from 'sharp'
 import { z } from 'zod'
-import { buildSetSheetPrompt, describeCamera, setPlateBrief } from '@/lib/set-plates'
+import { buildSetSheetPrompt, describeCamera, framingLead, setPlateBrief } from '@/lib/set-plates'
 import { splitContactSheet } from '@/lib/contact-sheet'
 import type { SheetPanel } from '@/lib/contact-sheet'
 import { BudgetExceeded, LiveBudget } from '@/lib/live-budget'
@@ -74,6 +75,8 @@ const DEFAULT_SHOT = {
 const ShotFileSchema = z.object({
   prompt: z.string().min(1),
   camera: SetCameraSchema,
+  /** The brief's shot size, which decides how much of the room the camera sentence shows. */
+  shotSize: ShotSizeSchema.optional(),
 })
 
 function mimeTypeFor(imagePath: string): 'image/jpeg' | 'image/png' | 'image/webp' {
@@ -393,10 +396,16 @@ async function main(): Promise<void> {
     // The house line names no lens: the camera's reaches the model once, in
     // the camera sentence, exactly as in the app.
     const shotPrompt = withReferenceClause(
-      stripBannedWords(`${shotInput.prompt} ${HOUSE_PHOTOGRAPH} ${styleAnchors}`),
+      stripBannedWords(
+        `${framingLead(shotInput.camera, 'shotSize' in shotInput ? shotInput.shotSize : undefined)}${shotInput.prompt} ${HOUSE_PHOTOGRAPH} ${styleAnchors}`,
+      ),
       [],
       { name: args.name, plates: chosen.length },
-      describeCamera(shotInput.camera, layout),
+      describeCamera(
+        shotInput.camera,
+        layout,
+        'shotSize' in shotInput ? shotInput.shotSize : undefined,
+      ),
     )
     prompts.shot = shotPrompt
     record.shot = {

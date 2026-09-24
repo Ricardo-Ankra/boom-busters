@@ -51,7 +51,7 @@ import { articleForClaim } from '@/lib/article-source'
 import { db } from '@/lib/db'
 import { env } from '@/lib/env'
 import { callLlm } from '@/lib/llm'
-import { describeCamera } from '@/lib/set-plates'
+import { describeCamera, framingLead } from '@/lib/set-plates'
 import { withReferenceClause } from '@/lib/still-prompt'
 import { getObjectBytes, presignGet, putObject, stillKey, storageConfigured } from '@/lib/storage'
 
@@ -581,7 +581,9 @@ export async function generateStillCandidates(
   // The camera reaches the prompt whether or not the set has a plate yet: the
   // inventory alone still says what the camera sees (decision 275).
   const namedSet = brief.set ? setForBrief(brief.set, projectSets) : null
-  const cameraText = brief.camera ? describeCamera(brief.camera, namedSet?.layout ?? '') : null
+  const cameraText = brief.camera
+    ? describeCamera(brief.camera, namedSet?.layout ?? '', brief.shotSize)
+    : null
   const routing = (await getSettings(db)).modelRouting
   const derived = routeForBrief(brief, projectCast, projectSets, routing)
   const route = stored && adapterOffers(stored) ? stored : derived
@@ -626,7 +628,9 @@ export async function generateStillCandidates(
   // The house line names no lens (decision 275 final review): a set shot's
   // lens reaches the model once, in the camera sentence.
   const prompt = withReferenceClause(
-    stripBannedWords(brief.prompt),
+    stripBannedWords(
+      brief.camera ? `${framingLead(brief.camera, brief.shotSize)}${brief.prompt}` : brief.prompt,
+    ),
     cast.people,
     cast.setName === null ? null : { name: cast.setName, plates: cast.setPlates },
     cameraText,

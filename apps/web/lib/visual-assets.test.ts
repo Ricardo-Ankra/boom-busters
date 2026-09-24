@@ -771,6 +771,7 @@ References attached: 1 photograph of Emad Mostaque.`
         {
           ...still,
           set: 'Venture Capital Boardroom',
+          shotSize: 'wide',
           camera: { facing: 'north', position: 'the south doorway' },
         },
         FIXTURE_PROJECT_ID,
@@ -798,6 +799,7 @@ References attached: 1 photograph of Emad Mostaque.`
         {
           ...still,
           set: 'Venture Capital Boardroom',
+          shotSize: 'wide',
           camera: { facing: 'east', position: 'the window' },
         },
         FIXTURE_PROJECT_ID,

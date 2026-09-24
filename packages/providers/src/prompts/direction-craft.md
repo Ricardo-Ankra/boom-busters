@@ -109,7 +109,7 @@ plain one.
   to the floor, overhead. On a shot in a set both go in the camera, never
   in the prompt.
 - Every photograph is written as a photograph, in the house line, before the Brand Kit anchors:
-  An available-light documentary photograph, slight grain, mixed colour temperature from window daylight and warm practicals, real materials with wear: scuffed edges, cable runs, a coffee ring, papers out of line.
+  An available-light documentary photograph, slight grain, mixed colour temperature from window daylight and warm practicals, real materials with wear: scuffed edges, cable runs, a coffee ring, papers out of line; people caught candid and mid-moment, never posing or acting for the camera.
   The house line names no lens and no height; every shot states its own.
 - Append the director's book palette line verbatim. The era lock is a
   constraint, not a list to paste: every period object in the frame comes

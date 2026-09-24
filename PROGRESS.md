@@ -6102,3 +6102,55 @@ the desk, the chair, the laptop should remain consistent").
     2,543 tests passed (infra 52, db 269, timeline 119, cost 28,
     compositions 144, web 961, providers 539, schemas 401, ui-tokens 30);
     `pnpm e2e` 118 passed in mock-provider mode.
+
+    The two follow-ups the owner asked for after the fix wave (2026-09-25):
+    - The settings patch no longer carries defaults in any section
+      (`patchSection`): Zod 4 applied every field's default inside
+      `.partial()`, so saving voice stability wiped the phoneme hints,
+      saving the hints reset stability, and choosing a voice reset both.
+      This bug predates decision 275 (13 August); it is the same repair the
+      final review made for the set-sheet route.
+    - Commit 77f8b6c's message regained its blank line before the
+      co-author trailer (history rewritten on the unpushed branch; no file
+      changed).
+
+    Live runs (owner instruction: "Run the live test to test the still
+    outputs. Then from the findings take the feedback and continue to
+    improve until satisfied with high quality output"; $1 cap per run, in
+    code). Eight runs on the Stability AI Boardroom from its Look line, the
+    first plate generated with the harness's new `--generate-first`,
+    $1.11 in all, no run above $0.39.
+    - Run 1 ($0.38): the sheet split cleanly at 4K on Gemini 3 Pro, which
+      settles the spec's open question, and gave four consistent views.
+      But the inventory drafter called the window wall north in a diagonal
+      first plate, so the east panel repeated the screen wall and the shot
+      showed windows on both sides. Fixed: the drafter's compass is fixed
+      to the frame (far wall straight ahead is north, the left wall west,
+      the right east, behind the camera south, each wall described once),
+      and each sheet panel names the wall it looks at from the inventory.
+    - Run 2 ($0.31): four genuinely different walls (screen, shelving,
+      door, windows), consistent across panels. The shot faced the window
+      wall because the prompt said "rain beads on the window behind them";
+      the set rule now keeps the details a prompt names on the walls in
+      frame for its camera. The harness gained `--from-run`, so later shot
+      iterations reused this set at $0.07 each.
+    - Run 3: correct geometry facing south (plain wall ahead, shelves at
+      the left edge, windows at the right), people in the room, but
+      theatrical acting. The house line now asks for people caught candid
+      and mid-moment, never posing or acting for the camera.
+    - Run 4: facing west, the frosted windows ahead and the north wall's
+      LAB 1 door and screen at the edge, three analysts working candidly
+      with natural visible faces: the best wide result.
+    - Runs 5 to 8: an 85mm close shot came back wide because the camera
+      sentence listed the whole inventory. `describeCamera` now scales with
+      the brief's shot size (a close shot gets only the wall behind, soft,
+      and the light; a medium shot the wall behind; without a shot size a
+      lens of 70mm or longer reads as close), and `framingLead` opens the
+      prompt with the framing, since at the end it lost to a wide opening
+      sentence. Run 8: the subject large in frame, the room soft behind.
+    Not covered by the harness: a cast likeness travelling with a set (it
+    sends no people references), the app's "Generate a view" path, and
+    planner-written prose (the shots were written by hand to the planner's
+    rules). Verified after the runs: format, lint and typecheck clean;
+    web 975, providers 540, schemas 405, db 271 and every other package
+    green.

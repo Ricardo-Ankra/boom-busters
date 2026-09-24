@@ -1,6 +1,12 @@
 import { HOUSE_PHOTOGRAPH } from '@boom-busters/providers'
 import { layoutView, OPPOSITE_DIRECTION, parseLayout } from '@boom-busters/schemas'
-import type { ProjectSet, SetCamera, SetViewRequest, StillBrief } from '@boom-busters/schemas'
+import type {
+  ProjectSet,
+  SetCamera,
+  SetViewRequest,
+  ShotSize,
+  StillBrief,
+} from '@boom-busters/schemas'
 
 /**
  * The brief a generated set plate is drawn from (decision 264, amended 273,
@@ -120,10 +126,52 @@ export function setPlateBrief(
  * edges, the centre and the light, and the wall behind it. Stated positively,
  * so the model is given the new picture to make rather than an old one to avoid.
  */
-export function describeCamera(camera: SetCamera, layout: string): string {
+/**
+ * How much of the room a shot shows (live run 5, 2026-09-24): an 85mm close
+ * shot given the whole inventory (the wall ahead, both edges, the table)
+ * came back as a wide view of the room with the subject small. A brief's
+ * shot size decides; without one, a lens of 70mm or longer reads as close.
+ */
+type Framing = 'wide' | 'medium' | 'close'
+
+function framingOf(shotSize: ShotSize | undefined, lens: string | undefined): Framing {
+  if (shotSize === 'close' || shotSize === 'macro') return 'close'
+  if (shotSize === 'medium') return 'medium'
+  if (shotSize !== undefined) return 'wide'
+  const mm = Number(/(\d+)\s?mm/.exec(lens ?? '')?.[1])
+  return Number.isFinite(mm) && mm >= 70 ? 'close' : 'wide'
+}
+
+/**
+ * The framing, said first (live run 6, 2026-09-24): stated at the end of the
+ * prompt, "a close shot" lost to a wide opening sentence and a wide reference
+ * plate. A still with a camera now opens with how tight it is; a wide shot
+ * needs no lead.
+ */
+export function framingLead(camera: SetCamera, shotSize?: ShotSize): string {
+  const framing = framingOf(shotSize, camera.lens)
+  if (framing === 'close') {
+    return 'A close shot, the subject filling most of the frame, the room behind soft and out of focus: '
+  }
+  if (framing === 'medium') return 'A medium shot, the subject from the waist up: '
+  return ''
+}
+
+export function describeCamera(camera: SetCamera, layout: string, shotSize?: ShotSize): string {
   const lens = camera.lens ? `, ${camera.lens}` : ''
   const sentences = [`The camera stands at ${camera.position}, facing ${camera.facing}${lens}.`]
   const view = layoutView(parseLayout(layout), camera.facing)
+  const framing = framingOf(shotSize, camera.lens)
+  if (framing === 'close') {
+    if (view.inFrame) sentences.push(`Behind, soft and out of focus: ${view.inFrame}.`)
+    if (view.light) sentences.push(`Light: ${view.light}.`)
+    return sentences.join(' ')
+  }
+  if (framing === 'medium') {
+    if (view.inFrame) sentences.push(`Behind: ${view.inFrame}.`)
+    if (view.light) sentences.push(`Light: ${view.light}.`)
+    return sentences.join(' ')
+  }
   if (view.inFrame) sentences.push(`In frame: ${view.inFrame}.`)
   if (view.edges.length > 0) sentences.push(`At the edges: ${view.edges.join('; ')}.`)
   if (view.centre) sentences.push(`Centre: ${view.centre}.`)

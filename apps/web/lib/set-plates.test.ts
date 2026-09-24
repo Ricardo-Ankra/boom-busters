@@ -1,6 +1,6 @@
 import { HOUSE_PHOTOGRAPH } from '@boom-busters/providers'
 import { describe, expect, it } from 'vitest'
-import { buildSetSheetPrompt, describeCamera, setPlateBrief } from './set-plates'
+import { buildSetSheetPrompt, describeCamera, framingLead, setPlateBrief } from './set-plates'
 
 describe('setPlateBrief', () => {
   it('asks for a photograph, then the Brand Kit anchors', () => {
@@ -75,6 +75,52 @@ describe('describeCamera', () => {
     expect(describeCamera({ facing: 'east', position: 'the window' }, 'A long table.')).toBe(
       'The camera stands at the window, facing east. The room: A long table.',
     )
+  })
+})
+
+describe('describeCamera framing (live run 5)', () => {
+  const layout = [
+    'North wall: a black screen wall.',
+    'East wall: shelves.',
+    'South wall: a door.',
+    'West wall: windows.',
+    'Centre: a glass table.',
+    'Light: overcast daylight.',
+  ].join('\n')
+  const camera = { facing: 'north' as const, position: 'halfway down the table', lens: '85mm' }
+
+  it('gives a close shot only the wall behind the subject, soft, and the light', () => {
+    expect(describeCamera(camera, layout, 'close')).toBe(
+      'The camera stands at halfway down the table, facing north, 85mm. ' +
+        'Behind, soft and out of focus: a black screen wall. Light: overcast daylight.',
+    )
+  })
+
+  // Live run 6: said at the end, "a close shot" lost to a wide opening.
+  it('leads a close or medium prompt with its framing, and a wide one with nothing', () => {
+    expect(framingLead(camera, 'close')).toBe(
+      'A close shot, the subject filling most of the frame, the room behind soft and out of focus: ',
+    )
+    expect(framingLead(camera, 'medium')).toBe('A medium shot, the subject from the waist up: ')
+    expect(framingLead(camera, 'wide')).toBe('')
+    expect(framingLead(camera)).toContain('A close shot')
+  })
+
+  it('gives a medium shot the wall behind and the light, no edges', () => {
+    const text = describeCamera({ ...camera, lens: '50mm' }, layout, 'medium')
+    expect(text).toContain('Behind: a black screen wall.')
+    expect(text).not.toContain('At the edges')
+  })
+
+  it('reads a long lens as close when the brief gives no shot size', () => {
+    expect(describeCamera(camera, layout)).toContain('Behind, soft and out of focus')
+    expect(describeCamera({ ...camera, lens: '35mm' }, layout)).toContain('At the edges:')
+  })
+
+  it('keeps the whole inventory for a wide shot', () => {
+    const text = describeCamera({ ...camera, lens: '85mm' }, layout, 'wide')
+    expect(text).toContain('At the edges: shelves; windows.')
+    expect(text).toContain('Behind the camera, out of frame: a door.')
   })
 })
 
