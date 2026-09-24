@@ -1,0 +1,344 @@
+#!/usr/bin/env node
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import path from 'node:path'
+import {
+  findModel,
+  geminiImageGen,
+  google,
+  HOUSE_PHOTOGRAPH,
+  imageGenPrice,
+  priceOf,
+  stillStyleAnchors,
+  stripBannedWords,
+} from '@boom-busters/providers'
+import type { ImageReference } from '@boom-busters/providers'
+import { DEFAULT_SETTINGS, platesForCamera, SetCameraSchema } from '@boom-busters/schemas'
+import type { SetCamera, SetPlate, SetPlateDirection, SetPlateView } from '@boom-busters/schemas'
+import sharp from 'sharp'
+import { z } from 'zod'
+import { buildSetSheetPrompt, describeCamera } from '@/lib/set-plates'
+import { splitContactSheet } from '@/lib/contact-sheet'
+import { BudgetExceeded, LiveBudget } from '@/lib/live-budget'
+import { layoutDraftRequest } from '@/lib/set-layout-prompt'
+import { withReferenceClause } from '@/lib/still-prompt'
+
+/**
+ * The live set-to-shot harness (decision 275, Task 13): runs the real
+ * set-to-shot path against Gemini outside the app — inventory draft, 4K
+ * contact sheet, split, one still from a chosen camera — writing every
+ * image, prompt and cost to a run folder for the controller to review, and
+ * refusing any call that would take the run past its cap (default $1).
+ *
+ * Never part of `pnpm test` or `pnpm e2e`: it needs a real key and spends
+ * money. It writes nothing to any database and does not record to the
+ * app's cost ledger — `run.json` in the output folder is the record.
+ */
+
+const INVENTORY_MODEL = 'gemini-3.5-flash-lite'
+const SHEET_MODEL = 'gemini-3-pro-image'
+const SHOT_MODEL = 'gemini-3.1-flash-image'
+/** Recorded when the adapter's own pricing helper cannot be used for some reason. */
+const INVENTORY_FALLBACK_ESTIMATE_USD = 0.01
+
+const IMAGE_MIME_BY_EXT: Record<string, 'image/jpeg' | 'image/png' | 'image/webp'> = {
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.png': 'image/png',
+  '.webp': 'image/webp',
+}
+
+const DEFAULT_SHOT = {
+  prompt:
+    'Two investors in dark suits argue across the table, one leaning forward with both hands ' +
+    'flat on the wood, the other sitting back with arms folded.',
+  camera: {
+    facing: 'south',
+    position: 'the north windows, seated eye height',
+    lens: '35mm',
+  },
+} satisfies { prompt: string; camera: SetCamera }
+
+const ShotFileSchema = z.object({
+  prompt: z.string().min(1),
+  camera: SetCameraSchema,
+})
+
+interface Args {
+  image: string
+  name: string
+  look: string
+  layout?: string
+  out?: string
+  shot?: string
+  cap: number
+}
+
+function parseArgs(argv: readonly string[]): Args {
+  const raw: Record<string, string> = {}
+  for (let at = 0; at < argv.length; at += 1) {
+    const token = argv[at]
+    if (!token?.startsWith('--')) continue
+    const key = token.slice(2)
+    const value = argv[at + 1]
+    raw[key] = value !== undefined && !value.startsWith('--') ? value : ''
+    if (raw[key] !== '') at += 1
+  }
+  if (!raw.image) throw new Error('--image is required (a jpeg, png or webp file).')
+  if (!raw.name) throw new Error('--name is required (the set name).')
+  return {
+    image: raw.image,
+    name: raw.name,
+    look: raw.look ?? '',
+    layout: raw.layout,
+    out: raw.out,
+    shot: raw.shot,
+    cap: raw.cap ? Number(raw.cap) : 1,
+  }
+}
+
+function mimeTypeFor(imagePath: string): 'image/jpeg' | 'image/png' | 'image/webp' {
+  const ext = path.extname(imagePath).toLowerCase()
+  const mime = IMAGE_MIME_BY_EXT[ext]
+  if (!mime) {
+    throw new Error(`${imagePath}: not a jpeg, png or webp file (extension "${ext}").`)
+  }
+  return mime
+}
+
+/** Decodes a Gemini `data:` URL into raw bytes. */
+function decodeDataUrl(url: string): Buffer {
+  return Buffer.from(url.slice(url.indexOf(',') + 1), 'base64')
+}
+
+/** A folder-safe stamp: colons break directory names on Windows. */
+function runStamp(): string {
+  return new Date().toISOString().replace(/[:.]/g, '-')
+}
+
+async function main(): Promise<void> {
+  const args = parseArgs(process.argv.slice(2))
+
+  // Step 1 — never touch a file or make a call before this gate.
+  const apiKey = process.env.GEMINI_API_KEY
+  if (!apiKey) {
+    console.error('Set GEMINI_API_KEY in .env.local (a Google AI Studio key). Nothing was spent.')
+    process.exit(1)
+  }
+
+  const repoRoot = path.resolve(import.meta.dirname, '..', '..', '..')
+  const outDir = args.out ?? path.join(repoRoot, 'live-set-runs', runStamp())
+  mkdirSync(outDir, { recursive: true })
+
+  const budget = new LiveBudget(args.cap)
+  const prompts: { inventory?: string; sheet?: string; shot?: string } = {}
+  const record: {
+    name: string
+    look: string
+    image: string
+    createdAt: string
+    inventory?: { source: 'file' | 'generated'; path?: string; text: string }
+    shot?: { prompt: string; camera: SetCamera; platesUsed: SetPlateView[] }
+    error?: string
+  } = {
+    name: args.name,
+    look: args.look,
+    image: args.image,
+    createdAt: new Date().toISOString(),
+  }
+
+  const writeRunJson = (): void => {
+    writeFileSync(
+      path.join(outDir, 'run.json'),
+      JSON.stringify(
+        {
+          ...record,
+          prompts,
+          budget: { capUsd: args.cap, entries: budget.entries, totalUsd: budget.spentUsd },
+        },
+        null,
+        2,
+      ),
+    )
+  }
+
+  try {
+    // Step 2 — the set's first plate, facing north.
+    const imageMime = mimeTypeFor(args.image)
+    const imageBytes = readFileSync(args.image)
+    const imageBase64 = imageBytes.toString('base64')
+    const imageMeta = await sharp(imageBytes).metadata()
+    if (!imageMeta.width || !imageMeta.height) {
+      throw new Error(`${args.image}: could not read its dimensions.`)
+    }
+
+    // Step 3 — the inventory.
+    let layout: string
+    if (args.layout) {
+      layout = readFileSync(args.layout, 'utf8').trim()
+      record.inventory = { source: 'file', path: args.layout, text: layout }
+    } else {
+      budget.reserve('inventory', INVENTORY_FALLBACK_ESTIMATE_USD)
+      const request = layoutDraftRequest({
+        name: args.name,
+        look: args.look,
+        image: { mimeType: imageMime, data: imageBase64 },
+      })
+      const result = await google.complete(request, { apiKey, model: INVENTORY_MODEL })
+      layout = result.text.trim().slice(0, 1500)
+      const model = findModel(google, INVENTORY_MODEL)
+      const actualUsd = model ? priceOf(model, result.usage) : INVENTORY_FALLBACK_ESTIMATE_USD
+      budget.record('inventory', actualUsd)
+      prompts.inventory = request.messages[0]?.content
+      record.inventory = { source: 'generated', text: layout }
+    }
+
+    // Step 4 — the contact sheet.
+    const styleAnchors = stillStyleAnchors(DEFAULT_SETTINGS.brandKit)
+    const sheetPrompt = buildSetSheetPrompt({
+      name: args.name,
+      layout,
+      look: args.look,
+      styleAnchors,
+    })
+    prompts.sheet = sheetPrompt
+
+    budget.reserve('sheet', imageGenPrice(geminiImageGen, 1, SHEET_MODEL, '4K'))
+    const sheetResult = await geminiImageGen.generate(
+      {
+        prompt: sheetPrompt,
+        count: 1,
+        model: SHEET_MODEL,
+        size: '4K',
+        references: [
+          {
+            name: args.name,
+            kind: 'object',
+            facing: 'north',
+            mimeType: imageMime,
+            data: imageBase64,
+          },
+        ],
+      },
+      { apiKey },
+    )
+    budget.record('sheet', sheetResult.estimatedCostUsd)
+
+    const sheetImage = sheetResult.images[0]
+    if (!sheetImage) throw new Error('Gemini returned no sheet image.')
+    const sheetBytes = decodeDataUrl(sheetImage.url)
+    writeFileSync(path.join(outDir, 'sheet.png'), sheetBytes)
+
+    const panels = await splitContactSheet(sheetBytes)
+    if (!panels) {
+      record.error = 'The sheet came back without clear borders; see sheet.png.'
+      writeRunJson()
+      console.error('The sheet came back without clear borders; see sheet.png.')
+      process.exit(2)
+    }
+    for (const panel of panels) {
+      writeFileSync(path.join(outDir, `panel-${panel.direction}.png`), panel.bytes)
+    }
+
+    // Step 5 — the plates the shot may use: the original image as north, and
+    // the east, south and west panels.
+    const plateBytes = new Map<
+      string,
+      { mimeType: 'image/jpeg' | 'image/png' | 'image/webp'; data: string }
+    >()
+    plateBytes.set('local/north', { mimeType: imageMime, data: imageBase64 })
+    const setPlates: SetPlate[] = [
+      {
+        r2Key: 'local/north',
+        contentHash: 'local-north',
+        mimeType: imageMime,
+        width: imageMeta.width,
+        height: imageMeta.height,
+        view: 'north',
+        origin: 'uploaded',
+      },
+    ]
+    const sidePanels = panels.filter(
+      (panel): panel is typeof panel & { direction: Exclude<SetPlateDirection, 'north'> } =>
+        panel.direction !== 'north',
+    )
+    for (const panel of sidePanels) {
+      const key = `local/${panel.direction}`
+      plateBytes.set(key, { mimeType: 'image/png', data: panel.bytes.toString('base64') })
+      setPlates.push({
+        r2Key: key,
+        contentHash: `local-${panel.direction}`,
+        mimeType: 'image/png',
+        width: panel.width,
+        height: panel.height,
+        view: panel.direction,
+        origin: 'generated',
+      })
+    }
+    const set = { plates: setPlates }
+
+    // Step 6 — the shot.
+    const shotInput = args.shot
+      ? ShotFileSchema.parse(JSON.parse(readFileSync(args.shot, 'utf8')))
+      : DEFAULT_SHOT
+    const chosen = platesForCamera(set, shotInput.camera.facing, 2)
+    const shotPrompt = withReferenceClause(
+      stripBannedWords(`${shotInput.prompt} ${HOUSE_PHOTOGRAPH} ${styleAnchors}`),
+      [],
+      { name: args.name, plates: chosen.length },
+      describeCamera(shotInput.camera, layout),
+    )
+    prompts.shot = shotPrompt
+    record.shot = {
+      prompt: shotInput.prompt,
+      camera: shotInput.camera,
+      platesUsed: chosen.map((plate) => plate.view),
+    }
+
+    const shotReferences: ImageReference[] = chosen.map((plate) => {
+      const bytes = plateBytes.get(plate.r2Key)
+      if (!bytes) throw new Error(`No bytes held locally for plate "${plate.r2Key}".`)
+      return {
+        name: args.name,
+        kind: 'object',
+        mimeType: bytes.mimeType,
+        data: bytes.data,
+        facing: plate.view as ImageReference['facing'],
+      }
+    })
+
+    budget.reserve('shot', imageGenPrice(geminiImageGen, 1, SHOT_MODEL, '1K'))
+    const shotResult = await geminiImageGen.generate(
+      {
+        prompt: shotPrompt,
+        count: 1,
+        model: SHOT_MODEL,
+        size: '1K',
+        references: shotReferences,
+      },
+      { apiKey },
+    )
+    budget.record('shot', shotResult.estimatedCostUsd)
+
+    const shotImage = shotResult.images[0]
+    if (!shotImage) throw new Error('Gemini returned no shot image.')
+    writeFileSync(path.join(outDir, 'shot.png'), decodeDataUrl(shotImage.url))
+
+    // Step 7.
+    writeRunJson()
+    console.log(outDir)
+    console.log(`Total spent: $${budget.spentUsd.toFixed(4)}`)
+  } catch (error) {
+    if (error instanceof BudgetExceeded) {
+      writeRunJson()
+      console.error(error.message)
+      process.exit(3)
+    }
+    writeRunJson()
+    throw error
+  }
+}
+
+main().catch((error) => {
+  console.error(error instanceof Error ? error.stack : error)
+  process.exit(1)
+})

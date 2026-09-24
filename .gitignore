@@ -44,6 +44,10 @@ apps/web/.local-renders/
 # Subagent-driven development scratch (ledgers, briefs, review packages)
 .superpowers/
 
+# Live set harness output (decision 275, Task 13): images, prompts and costs
+# from a real run against Gemini, never committed.
+live-set-runs/
+
 # Claude Code discovers the vendored agent skills through symlinks the
 # `skills` CLI creates; this git cannot store symlinks, so re-run
 # `npx skills add remotion-dev/skills` after a fresh clone.

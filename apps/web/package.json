@@ -8,7 +8,8 @@
     "build": "node ../../scripts/deploy-migrate.mjs && next build",
     "start": "next start",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "live:set": "tsx --env-file=../../.env.local scripts/live-set-test.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1108.0",
