@@ -509,7 +509,9 @@ export type Settings = z.infer<typeof SettingsSchema>
 
 /** Deep-partial patch accepted by the settings update action. */
 export const SettingsPatchSchema = z.object({
-  modelRouting: ModelRoutingSchema.partial().optional(),
+  // Without setSheet's default: Zod 4 still applies a default inside
+  // .partial(), so every unrelated routing save would reset the sheet route.
+  modelRouting: ModelRoutingSchema.extend({ setSheet: StillRouteSchema }).partial().optional(),
   fallbackChain: FallbackChainSchema.optional(),
   // The bare shape: a partial of a preprocessed schema is not a thing, and a
   // patch never needs the old-provider coercion — it can only say 'elevenlabs'.

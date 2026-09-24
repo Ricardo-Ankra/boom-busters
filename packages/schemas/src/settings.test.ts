@@ -237,6 +237,16 @@ describe('the setSheet route (decision 275)', () => {
     const { setSheet: _dropped, ...older } = DEFAULT_SETTINGS.modelRouting
     expect(ModelRoutingSchema.parse(older).setSheet).toEqual(DEFAULT_SET_SHEET_ROUTE)
   })
+
+  it('leaves setSheet out of a patch that saves another route', () => {
+    // A default inside .partial() still fires in Zod 4, so a patch built on
+    // the defaulted schema would carry the default and overwrite the owner's
+    // choice on every unrelated save.
+    const patch = SettingsPatchSchema.parse({
+      modelRouting: { stills: { provider: 'google', model: 'gemini-3.1-flash-image' } },
+    })
+    expect(patch.modelRouting).not.toHaveProperty('setSheet')
+  })
 })
 
 describe('effectiveCeilingUsd', () => {

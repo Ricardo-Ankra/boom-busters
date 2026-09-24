@@ -1,4 +1,4 @@
-import { DEFAULT_SETTINGS } from '@boom-busters/schemas'
+import { DEFAULT_SETTINGS, SettingsPatchSchema } from '@boom-busters/schemas'
 import { describe, expect, it } from 'vitest'
 import { mergeSettings, normaliseSettings } from './settings-merge'
 
@@ -36,6 +36,21 @@ describe('mergeSettings', () => {
 
     expect(next.modelRouting.scripting).toEqual({ provider: 'google', model: 'gemini-3-pro' })
     expect(next.modelRouting.research).toEqual(DEFAULT_SETTINGS.modelRouting.research)
+  })
+
+  it('keeps a chosen set-sheet route when another route is saved (decision 275)', () => {
+    const current = mergeSettings(DEFAULT_SETTINGS, {
+      modelRouting: { setSheet: { provider: 'google', model: 'gemini-3.1-flash-image' } },
+    })
+    // Parsed exactly as the settings action parses a save.
+    const patch = SettingsPatchSchema.parse({
+      modelRouting: { stills: { provider: 'google', model: 'gemini-3-pro-image' } },
+    })
+
+    const next = mergeSettings(current, patch)
+
+    expect(next.modelRouting.stills.model).toBe('gemini-3-pro-image')
+    expect(next.modelRouting.setSheet.model).toBe('gemini-3.1-flash-image')
   })
 
   it('replaces arrays wholesale instead of concatenating', () => {
