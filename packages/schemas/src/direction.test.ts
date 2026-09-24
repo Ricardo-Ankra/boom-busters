@@ -5,6 +5,7 @@ import {
   craftFindings,
   DirectorsBookSchema,
   findingContext,
+  mayBecomeStill,
   motifPattern,
   planWarnings,
   referenceWarnings,
@@ -120,6 +121,13 @@ describe('planWarnings', () => {
   it('is silent on a varied, clean plan', () => {
     expect(
       planWarnings([{ brief: still('wide', 'a') }, { brief: still('close', 'b') }], banned),
+    ).toEqual([])
+  })
+
+  it('lets a chart break the three-adjacent-sizes note too', () => {
+    const chart: ShotBrief = { ...still('wide', 'x'), type: 'chart' } as unknown as ShotBrief
+    expect(
+      planWarnings([{ brief: still('wide', 'a') }, { brief: chart }, { brief: still('wide', 'b') }], []),
     ).toEqual([])
   })
 })
@@ -595,6 +603,24 @@ describe('craftFindings (decision 271)', () => {
       expect(one({ type: 'still', coversText: 'They met on Parkerton Road.' })).toEqual([])
     })
 
+    it('matches a surname only as the cast spells it, so a common word is not a person', () => {
+      const cast = [{ name: 'Kenneth Lay', photographed: true }]
+      const still = (coversText: string) =>
+        craftFindings([at({ type: 'still', shotSize: 'wide', coversText })], ctx({ cast }))
+      expect(still('The problem lay in the accounts.')).toEqual([])
+      expect(still('Lay told the board nothing.')).toHaveLength(1)
+    })
+
+    it('reads the surname before a suffix', () => {
+      const cast = [{ name: 'Martin Luther King Jr.', photographed: true }]
+      expect(
+        craftFindings(
+          [at({ type: 'still', shotSize: 'wide', coversText: 'King spoke first.' })],
+          ctx({ cast }),
+        ),
+      ).toHaveLength(1)
+    })
+
     it('names people and never refers back with a pronoun', () => {
       const messages = [
         ...one({ type: 'still', coversText: 'Mostaque and Parker met.' }),
@@ -655,6 +681,83 @@ describe('craftFindings (decision 271)', () => {
       ])
       expect(one({ type: 'still', coversText: 'At the center of it all was one man.' })).toEqual([])
     })
+
+    it('passes a still already in one of two rooms that share a word', () => {
+      const shared = ['Stability AI Boardroom', 'Coatue Boardroom']
+      expect(
+        craftFindings(
+          [
+            at({
+              type: 'still',
+              shotSize: 'wide',
+              coversText: 'Inside the boardroom.',
+              set: 'Coatue Boardroom',
+            }),
+          ],
+          ctx({ sets: shared }),
+        ),
+      ).toEqual([])
+      expect(
+        craftFindings(
+          [at({ type: 'still', shotSize: 'wide', coversText: 'Inside the boardroom.' })],
+          ctx({ sets: shared }),
+        ),
+      ).toMatchObject([
+        { kind: 'ignored-set', message: expect.stringContaining('or Coatue Boardroom') },
+      ])
+    })
+
+    it('raises one finding naming every room the sentence could mean', () => {
+      const shared = ['Stability AI Boardroom', 'Coatue Boardroom']
+      expect(
+        craftFindings(
+          [at({ type: 'still', shotSize: 'wide', coversText: 'Inside the boardroom.' })],
+          ctx({ sets: shared }),
+        ).map((f) => [f.repair, f.message]),
+      ).toEqual([
+        [
+          'auto',
+          'the sentence is in Stability AI Boardroom or Coatue Boardroom, but the shot names no set; set it in one of them',
+        ],
+      ])
+      expect(
+        craftFindings(
+          [at({ type: 'stock', shotSize: 'wide', coversText: 'Inside the boardroom.' })],
+          ctx({ sets: shared }),
+        ).map((f) => [f.repair, f.message]),
+      ).toEqual([
+        [
+          'manual',
+          'the sentence is in Stability AI Boardroom or Coatue Boardroom but the shot is stock; fixing makes it a generated still set in one of them',
+        ],
+      ])
+    })
+  })
+
+  describe('reuse-linked slots', () => {
+    it('raises nothing on a slot that reuses another shot', () => {
+      const cast = [{ name: 'Emad Mostaque', photographed: true }]
+      const slots: FindingSlot[] = [
+        {
+          chapter: 'chapter 1',
+          linked: true,
+          brief: { type: 'still', shotSize: 'wide', coversText: 'Mostaque spoke.' },
+        },
+      ]
+      expect(craftFindings(slots, ctx({ cast }))).toEqual([])
+    })
+
+    it('still counts a linked slot in a size run, and flags the next slot it can repair', () => {
+      const wide = (linked: boolean): FindingSlot => ({
+        ...at({ type: 'still', shotSize: 'wide' }),
+        linked,
+      })
+      expect(
+        craftFindings([wide(false), wide(false), wide(true), wide(false)], ctx()).map(
+          (f) => f.slotIndex,
+        ),
+      ).toEqual([3])
+    })
   })
 })
 
@@ -681,6 +784,37 @@ describe('repairTargets, repairSummary and findingContext', () => {
 
   it('counts slots, stills-to-be and chapters for the button', () => {
     expect(repairSummary(slots, findings)).toEqual({ slots: 2, becomeStills: 1, chapters: 2 })
+  })
+
+  it('clears only a stock slot with a person or set finding to become a still', () => {
+    const person = [{ kind: 'ignored-person' as const }]
+    const set = [{ kind: 'ignored-set' as const }]
+    const size = [{ kind: 'size-run' as const }]
+    expect(mayBecomeStill({ type: 'stock' }, person)).toBe(true)
+    expect(mayBecomeStill({ type: 'stock' }, set)).toBe(true)
+    expect(mayBecomeStill({ type: 'stock' }, size)).toBe(false)
+    expect(mayBecomeStill({ type: 'still' }, person)).toBe(false)
+  })
+
+  it('leaves out a cast member the book shows only by archival footage', () => {
+    expect(
+      findingContext({
+        direction: {
+          motifs: [],
+          eraLocks: [],
+          principals: [
+            { name: 'Emad Mostaque', depiction: 'archival-only' },
+            { name: 'Sean Parker', depiction: 'likeness' },
+          ],
+        },
+        cast: [
+          { name: 'Emad Mostaque', photographed: true },
+          { name: 'Sean Parker', photographed: true },
+          { name: 'Prem Akkaraju', photographed: false },
+        ],
+        sets: [],
+      }).cast.map((member) => member.name),
+    ).toEqual(['Sean Parker', 'Prem Akkaraju'])
   })
 
   it('reads motifs and era-lock rules from the book', () => {

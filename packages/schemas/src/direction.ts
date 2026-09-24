@@ -129,6 +129,14 @@ export interface FindingSlot {
   brief: FindingBrief
   /** The chapter this slot belongs to, as a note says it ("chapter 3"). */
   chapter?: string | undefined
+  /**
+   * The slot shows another slot's picture (a reuse link). It carries no
+   * finding: its picture is another slot's, so rewriting its words changes
+   * nothing on screen, and retyping it would break the rule every retype
+   * action enforces (`linkedSlotRefusal`). It still counts toward size runs
+   * and set runs, because its picture is on screen.
+   */
+  linked?: boolean | undefined
 }
 
 /**
@@ -153,17 +161,38 @@ function escapeRegExp(text: string): string {
 }
 
 /**
- * Whether `text` contains `phrase` as whole words, ignoring case and the
- * width of the whitespace between them (decision 271). "Parker" is not in
- * "Parkerton"; "data center" is in "the data  center".
+ * Whether `text` contains `phrase` as whole words, ignoring the width of the
+ * whitespace between them and, unless asked otherwise, case (decision 271).
+ * "Parker" is not in "Parkerton"; "data center" is in "the data  center".
  */
-export function containsPhrase(text: string, phrase: string): boolean {
+export function containsPhrase(
+  text: string,
+  phrase: string,
+  options: { caseSensitive?: boolean } = {},
+): boolean {
   const parts = phrase
     .trim()
     .split(/\s+/)
     .filter((part) => part.length > 0)
   if (parts.length === 0) return false
-  return new RegExp(`\\b${parts.map(escapeRegExp).join('\\s+')}\\b`, 'i').test(text)
+  return new RegExp(
+    `\\b${parts.map(escapeRegExp).join('\\s+')}\\b`,
+    options.caseSensitive ? '' : 'i',
+  ).test(text)
+}
+
+/** Name suffixes a surname sits in front of, as whole case-sensitive tokens. */
+const NAME_SUFFIXES = new Set(['Jr.', 'Jr', 'Sr.', 'Sr', 'II', 'III', 'IV'])
+
+/**
+ * The word a sentence would use for a cast member: the last token of the
+ * name, skipping a trailing suffix, so "Martin Luther King Jr." is "King".
+ */
+function surnameOf(name: string): string | undefined {
+  const tokens = name.trim().split(/\s+/)
+  while (tokens.length > 1 && NAME_SUFFIXES.has(tokens[tokens.length - 1]!)) tokens.pop()
+  const last = tokens[tokens.length - 1]
+  return last === undefined || last.length === 0 ? undefined : last
 }
 
 /** Set-name words too general to identify one room on their own. */
@@ -237,6 +266,20 @@ function sentencePlacesIn(brief: FindingBrief, set: string): boolean {
   return key !== null && containsPhrase(brief.coversText, key)
 }
 
+/** Briefs that are photographs of a kind, and so have a shot size a run can share. */
+const PICTURE_TYPES = new Set(['still', 'hero', 'stock', 'archival'])
+
+/**
+ * The size a brief brings to a same-size run, or undefined when it breaks
+ * one. A chart, map, headline or graphic is the "graphic" family and breaks a
+ * run of photographs rather than joining one, whatever size it is tagged, and
+ * so does a picture with no size. One rule for the plan-screen note and the
+ * craft finding, so the two never disagree about a run.
+ */
+function runSize(brief: { type: string; shotSize?: string | undefined }): string | undefined {
+  return PICTURE_TYPES.has(brief.type) ? brief.shotSize : undefined
+}
+
 /**
  * Craft misses the model let through, in words for the plan summary. Never a
  * rejection: a same-size run is a note for the owner, not a broken slot.
@@ -254,11 +297,12 @@ export function planWarnings(
 ): string[] {
   const warnings: string[] = []
 
-  let run = 1
-  for (let index = 1; index < slots.length; index += 1) {
-    const size = slots[index]!.brief.shotSize
-    const previous = slots[index - 1]!.brief.shotSize
-    run = size !== undefined && size === previous ? run + 1 : 1
+  let run = 0
+  let previous: string | undefined
+  for (const [index, slot] of slots.entries()) {
+    const size = runSize(slot.brief)
+    run = size !== undefined && size === previous ? run + 1 : size === undefined ? 0 : 1
+    previous = size
     if (run === 3) {
       warnings.push(`three adjacent slots share the size "${size}" (from slot ${index - 1})`)
     }
@@ -503,25 +547,62 @@ export interface FindingContext {
   sets: readonly string[]
 }
 
-const PICTURE_TYPES = new Set(['still', 'hero', 'stock', 'archival'])
 const LIKENESS_TYPES = new Set(['still', 'hero'])
 
 /**
  * What a craft check needs to know about the film, read from the book, the
  * cast and the sets. One function so the automatic pass, the board and the
  * Fix button cannot read different motifs or era locks.
+ *
+ * A cast member the book depicts other than by likeness (archival-only or
+ * anonymous) is left out of the cast the checks read. "Archival-only" is the
+ * producer's legal call, and a finding that asks the repair to show that
+ * person argues against it. A member with no principal entry is kept.
  */
 export function findingContext(input: {
-  direction: Pick<DirectorsBook, 'motifs' | 'eraLocks'> | null
+  direction:
+    | (Pick<DirectorsBook, 'motifs' | 'eraLocks'> & {
+        principals?: readonly { name: string; depiction: string }[]
+      })
+    | null
   cast: readonly { name: string; photographed: boolean }[]
   sets: readonly { name: string }[]
 }): FindingContext {
+  const principals = input.direction?.principals ?? []
   return {
     motifs: input.direction?.motifs ?? [],
     eraLocks: input.direction?.eraLocks.map((lock) => lock.rules) ?? [],
-    cast: input.cast,
+    cast: input.cast.filter(
+      (member) =>
+        !principals.some(
+          (principal) =>
+            principal.depiction !== 'likeness' && nameMatches(principal.name, member.name),
+        ),
+    ),
     sets: input.sets.map((set) => set.name),
   }
+}
+
+/**
+ * Whether a repair may turn this slot into a generated still: a stock slot
+ * whose sentence names a person or a set it cannot show. One predicate, so
+ * the button's "N become stills" and the job's permission are the same rule.
+ */
+export function mayBecomeStill(
+  brief: Pick<FindingBrief, 'type'>,
+  findings: readonly Pick<CraftFinding, 'kind'>[],
+): boolean {
+  return (
+    brief.type === 'stock' &&
+    findings.some((finding) => finding.kind === 'ignored-person' || finding.kind === 'ignored-set')
+  )
+}
+
+/** "A", "A or B", "A, B or C". */
+function orList(names: readonly string[]): string {
+  return names.length <= 1
+    ? (names[0] ?? '')
+    : `${names.slice(0, -1).join(', ')} or ${names[names.length - 1]!}`
 }
 
 /**
@@ -540,28 +621,30 @@ export function craftFindings(
 ): CraftFinding[] {
   const findings: CraftFinding[] = []
 
-  // Size runs: the photograph that makes a third in a row at one size. A
-  // chart, map, headline or graphic is the "graphic" family and breaks a run
-  // of photographs rather than joining one, and so does a slot with no size.
-  // The count restarts after a flagged slot, because repairing it breaks the
-  // run there.
+  // Size runs: the photograph that makes a third in a row at one size, by
+  // `runSize`, the rule the plan-screen note uses. The count restarts after a
+  // flagged slot, because repairing it breaks the run there. A linked slot
+  // cannot be repaired, so a run that reaches three on one is carried on and
+  // the next slot of that size, which can be, is flagged instead.
   let run = 0
-  let runSize: string | undefined
-  for (const [index, { brief }] of slots.entries()) {
-    if (!PICTURE_TYPES.has(brief.type) || brief.shotSize === undefined) {
+  let size: string | undefined
+  for (const [index, { brief, linked }] of slots.entries()) {
+    const here = runSize(brief)
+    if (here === undefined) {
       run = 0
-      runSize = undefined
+      size = undefined
       continue
     }
-    run = brief.shotSize === runSize ? run + 1 : 1
-    runSize = brief.shotSize
-    if (run === 3) {
+    run = here === size ? run + 1 : 1
+    size = here
+    if (run >= 3 && !linked) {
+      const nth = ['third', 'fourth', 'fifth'][run - 3] ?? `${run}th`
       run = 0
       findings.push({
         kind: 'size-run',
         slotIndex: index,
         repair: 'auto',
-        message: `this is the third "${brief.shotSize}" shot in a row; use a different shot size`,
+        message: `this is the ${nth} "${here}" shot in a row; use a different shot size`,
       })
     }
   }
@@ -618,8 +701,17 @@ export function craftFindings(
     if (!likeness && brief.type !== 'stock') continue
 
     for (const member of context.cast) {
-      const surname = member.name.trim().split(/\s+/).pop()
-      if (surname === undefined || !containsPhrase(brief.coversText, surname)) continue
+      // The surname matches WITH case, as the cast spells it. Surnames such
+      // as Jobs, Lay, Gates, Cook and Page are ordinary lower-case words in a
+      // money documentary, and automatic repair acts only where the problem
+      // is unambiguous. Set key nouns stay case-insensitive.
+      const surname = surnameOf(member.name)
+      if (
+        surname === undefined ||
+        !containsPhrase(brief.coversText, surname, { caseSensitive: true })
+      ) {
+        continue
+      }
       const shown =
         likeness && (brief.depicts ?? []).some((entry) => nameMatches(entry, member.name))
       if (shown) continue
@@ -653,33 +745,46 @@ export function craftFindings(
       )
     }
 
-    for (const name of context.sets) {
-      if (!sentencePlacesIn(brief, name)) continue
+    // Every held set the sentence could mean: two rooms can share a key noun
+    // ("Stability AI Boardroom", "Coatue Boardroom"), and a shot in either
+    // is in the sentence's room. One finding per slot, naming them all.
+    const placed = context.sets.filter((name) => sentencePlacesIn(brief, name))
+    if (placed.length > 0) {
       const named = slotSet(brief)
-      if (likeness && named !== null && nameMatches(named, name)) continue
-      findings.push(
-        likeness
-          ? {
-              kind: 'ignored-set',
-              slotIndex: index,
-              repair: 'auto',
-              message:
-                `the sentence is in ${name}, but the shot ` +
-                `${named === null ? 'names no set' : `is set in "${named}"`}; set it in "${name}"`,
-            }
-          : {
-              kind: 'ignored-set',
-              slotIndex: index,
-              repair: 'manual',
-              message:
-                `the sentence is in ${name} but the shot is stock; ` +
-                `fixing makes it a generated still set in "${name}"`,
-            },
-      )
+      const inOne =
+        likeness && named !== null && placed.some((name) => nameMatches(named, name))
+      if (!inOne) {
+        const only = placed.length === 1 ? placed[0]! : null
+        const where = orList(placed)
+        const target = only === null ? 'one of them' : `"${only}"`
+        findings.push(
+          likeness
+            ? {
+                kind: 'ignored-set',
+                slotIndex: index,
+                repair: 'auto',
+                message:
+                  `the sentence is in ${where}, but the shot ` +
+                  `${named === null ? 'names no set' : `is set in "${named}"`}; set it in ${target}`,
+              }
+            : {
+                kind: 'ignored-set',
+                slotIndex: index,
+                repair: 'manual',
+                message:
+                  `the sentence is in ${where} but the shot is stock; ` +
+                  `fixing makes it a generated still set in ${target}`,
+              },
+        )
+      }
     }
   }
 
-  return findings.sort((a, b) => a.slotIndex - b.slotIndex)
+  // A linked slot carries no finding (see `FindingSlot.linked`); it has been
+  // counted above for the runs its picture takes part in.
+  return findings
+    .filter((finding) => slots[finding.slotIndex]?.linked !== true)
+    .sort((a, b) => a.slotIndex - b.slotIndex)
 }
 
 export interface RepairTarget {
@@ -724,13 +829,10 @@ export function repairSummary(
   const targets = repairTargets(findings, ['auto', 'manual'])
   return {
     slots: targets.length,
-    becomeStills: targets.filter(
-      (target) =>
-        slots[target.slotIndex]?.brief.type === 'stock' &&
-        target.findings.some(
-          (finding) => finding.kind === 'ignored-person' || finding.kind === 'ignored-set',
-        ),
-    ).length,
+    becomeStills: targets.filter((target) => {
+      const slot = slots[target.slotIndex]
+      return slot !== undefined && mayBecomeStill(slot.brief, target.findings)
+    }).length,
     chapters: new Set(targets.map((target) => slots[target.slotIndex]?.chapter ?? '')).size,
   }
 }
