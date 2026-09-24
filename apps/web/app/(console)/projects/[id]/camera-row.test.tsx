@@ -34,4 +34,57 @@ describe('CameraRow', () => {
     expect(screen.getByText('No camera yet; set one, or re-plan.')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Save camera' })).toBeDisabled()
   })
+
+  // Review Focus (fix round 1): SlotCard is keyed by slot.id, which does not
+  // change when a re-plan writes a fresh camera onto the same slot — so the
+  // row must resync its own fields from a new `camera` prop rather than only
+  // reading it on mount.
+  it('resyncs facing, position and lens when the stored camera changes under it', () => {
+    const { rerender } = render(
+      <CameraRow
+        slotId="s1"
+        projectId="p1"
+        camera={{ facing: 'north', position: 'the south doorway', lens: '35mm' }}
+        busy={false}
+        act={vi.fn()}
+      />,
+    )
+    expect(screen.getByRole('button', { name: 'North' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByLabelText('Position')).toHaveValue('the south doorway')
+    expect(screen.getByLabelText('Lens')).toHaveValue('35mm')
+
+    rerender(
+      <CameraRow
+        slotId="s1"
+        projectId="p1"
+        camera={{ facing: 'west', position: 'the corridor glass', lens: '50mm' }}
+        busy={false}
+        act={vi.fn()}
+      />,
+    )
+    expect(screen.getByRole('button', { name: 'West' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('button', { name: 'North' })).toHaveAttribute('aria-pressed', 'false')
+    expect(screen.getByLabelText('Position')).toHaveValue('the corridor glass')
+    expect(screen.getByLabelText('Lens')).toHaveValue('50mm')
+  })
+
+  it('drops the "no camera yet" note once a re-plan gives the slot a camera', () => {
+    const { rerender } = render(
+      <CameraRow slotId="s1" projectId="p1" camera={undefined} busy={false} act={vi.fn()} />,
+    )
+    expect(screen.getByText('No camera yet; set one, or re-plan.')).toBeInTheDocument()
+
+    rerender(
+      <CameraRow
+        slotId="s1"
+        projectId="p1"
+        camera={{ facing: 'east', position: 'the window seat' }}
+        busy={false}
+        act={vi.fn()}
+      />,
+    )
+    expect(screen.queryByText('No camera yet; set one, or re-plan.')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'East' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByLabelText('Position')).toHaveValue('the window seat')
+  })
 })

@@ -40,6 +40,19 @@ export function CameraRow({
   const [lens, setLens] = React.useState(camera?.lens ?? '')
   const ready = position.trim().length >= 3
 
+  // SlotCard is keyed by slot.id, which does not change when the server
+  // writes a fresh camera onto the same slot (a re-plan, or another tab's
+  // save) — so state cannot init-from-prop-on-mount alone, or the row keeps
+  // showing stale (or "no camera yet") after the brief has moved on.
+  // Watching the camera's own fields, not its object identity, which is a
+  // new reference on every render regardless of whether the stored camera
+  // actually changed.
+  React.useEffect(() => {
+    setFacing(camera?.facing ?? 'north')
+    setPosition(camera?.position ?? '')
+    setLens(camera?.lens ?? '')
+  }, [camera?.facing, camera?.position, camera?.lens])
+
   return (
     <div className="flex flex-col gap-2 rounded-[8px] border border-[var(--color-border)] p-3">
       <div className="flex items-center justify-between">
