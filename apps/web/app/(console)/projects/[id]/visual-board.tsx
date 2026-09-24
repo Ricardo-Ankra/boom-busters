@@ -57,6 +57,7 @@ import {
   unlinkSlotReuseAction,
   type ActionResult,
 } from './visuals-actions'
+import { CameraRow } from './camera-row'
 import { DirectionCard } from './direction-card'
 import {
   ChartErrorCard,
@@ -1116,6 +1117,18 @@ function SlotCard({
             act={act}
             busy={busy}
             articleClaims={articleClaims}
+          />
+        ) : null}
+
+        {/* A still in a named set carries a camera (decision 275): where it
+            stands decides which plates ride along with the prompt. */}
+        {!linked && brief?.type === 'still' && brief.set && !slot.briefError ? (
+          <CameraRow
+            slotId={slot.id}
+            projectId={projectId}
+            camera={brief.camera}
+            busy={busy}
+            act={act}
           />
         ) : null}
 

@@ -25,6 +25,7 @@ import { db } from '@/lib/db'
 import { visualsReviewModel } from '@/lib/visuals-review'
 import {
   attachGraphicLogosAction,
+  editBriefAction,
   finaliseOwnUploadAction,
   refetchSlotAction,
   retypeToHeadlineAction,
@@ -421,6 +422,97 @@ describeDb('the model select on a shot (decision 264)', () => {
       }),
     ).toMatchObject({ ok: false, error: expect.stringContaining('another film') })
     expect((await getShotSlot(db, ids.still))?.route).toBeNull()
+  })
+})
+
+const stillInSet = (coversText: string, prompt: string, setName: string): ShotBrief => ({
+  type: 'still',
+  coversText,
+  description: 'a boardroom, empty',
+  motion: { kind: 'static' },
+  transition: 'cut',
+  prompt,
+  set: setName,
+})
+
+describeDb('placing a camera on a set shot (decision 275)', () => {
+  let ids: { inSet: string; noSet: string; linked: string }
+
+  beforeEach(async () => {
+    vi.clearAllMocks()
+    await seed(db)
+    await db.delete(shotSlots)
+    const script = await createScriptVersion(db, FIXTURE_PROJECT_ID)
+    const chapter = await saveChapter(db, {
+      scriptId: script.id,
+      index: 0,
+      title: 'The audit',
+      contentMd: 'One.\n\nTwo.\n\nThree.',
+      estRuntimeSec: 18,
+    })
+    const rows: NewShotSlot[] = [
+      {
+        chapterId: chapter.id,
+        index: 0,
+        type: 'still',
+        brief: stillInSet('One.', 'a boardroom, empty', 'The boardroom'),
+        startMs: 0,
+        durationMs: 6000,
+      },
+      {
+        chapterId: chapter.id,
+        index: 1,
+        type: 'still',
+        brief: still('Two.', 'a plain still, no set'),
+        startMs: 6000,
+        durationMs: 6000,
+      },
+      {
+        chapterId: chapter.id,
+        index: 2,
+        type: 'still',
+        brief: stillInSet('Three.', 'the same boardroom, another angle', 'The boardroom'),
+        startMs: 12000,
+        durationMs: 6000,
+      },
+    ]
+    await replaceShotList(db, FIXTURE_PROJECT_ID, rows)
+    const slots = await listShotSlots(db, FIXTURE_PROJECT_ID)
+    ids = { inSet: slots[0]!.id, noSet: slots[1]!.id, linked: slots[2]!.id }
+  })
+
+  it('saves a camera on a still in a set, which then owes work (decision 275)', async () => {
+    const result = await editBriefAction(FIXTURE_PROJECT_ID, ids.inSet, {
+      camera: { facing: 'west', position: 'the corridor glass', lens: '50mm' },
+    })
+    expect(result.ok).toBe(true)
+    const stored = await getShotSlot(db, ids.inSet)
+    expect((stored?.brief as { camera?: unknown }).camera).toEqual({
+      facing: 'west',
+      position: 'the corridor glass',
+      lens: '50mm',
+    })
+    expect(slotNeedsResolution(stored!)).toBe(true)
+  })
+
+  it('refuses a camera on a slot that names no set', async () => {
+    expect(
+      await editBriefAction(FIXTURE_PROJECT_ID, ids.noSet, {
+        camera: { facing: 'west', position: 'x y z' },
+      }),
+    ).toEqual({
+      ok: false,
+      error: 'Only a still in a set has a camera to place.',
+    })
+  })
+
+  // Review Focus 5.
+  it('refuses a camera on a linked slot', async () => {
+    await linkSlotReuse(db, ids.linked, ids.inSet)
+    const result = await editBriefAction(FIXTURE_PROJECT_ID, ids.linked, {
+      camera: { facing: 'west', position: 'x y z' },
+    })
+    expect(result.ok).toBe(false)
   })
 })
 

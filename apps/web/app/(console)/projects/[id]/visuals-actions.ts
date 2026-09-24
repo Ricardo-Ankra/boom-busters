@@ -32,6 +32,7 @@ import {
   logoForEntity,
   normaliseArticleUrl,
   REUSABLE_SLOT_TYPES,
+  SetCameraSchema,
   ShotBriefSchema,
   ShotSlotTypeSchema,
   SlotCandidateSchema,
@@ -216,6 +217,7 @@ const BriefPatchSchema = z.object({
   prompt: z.string().min(1).optional(),
   negativePrompt: z.string().optional(),
   mustShow: z.string().min(1).optional(),
+  camera: SetCameraSchema.optional(),
 })
 
 export async function editBriefAction(
@@ -236,6 +238,16 @@ export async function editBriefAction(
   const current = ShotBriefSchema.safeParse(slot.brief)
   if (!current.success) {
     return { ok: false, error: 'This brief is broken and cannot be edited — regenerate the board.' }
+  }
+
+  // A camera only ever places a still in a named set (decision 275); every
+  // other brief, and a still with no set, has nowhere for it to stand.
+  if (parsedPatch.data.camera !== undefined) {
+    if (current.data.type !== 'still' || !current.data.set) {
+      return { ok: false, error: 'Only a still in a set has a camera to place.' }
+    }
+    const linked = await linkedSlotRefusal(slot)
+    if (linked) return linked
   }
 
   // Merge only the fields this type actually has; then the WHOLE brief must
