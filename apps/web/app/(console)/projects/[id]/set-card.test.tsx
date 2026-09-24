@@ -163,6 +163,24 @@ describe('SetCard', () => {
     })
   })
 
+  // A set plated before decision 275 was never drafted, so the note says only
+  // that there is no inventory, not that a draft failed.
+  it('notes a plated set with no inventory, neutrally', async () => {
+    render(
+      <SetCard
+        projectId={PROJECT}
+        sets={[tradingFloor, { ...boardroom, layout: 'North wall: windows' }]}
+        plateUrls={{}}
+        plateEstimateUsd={0.08}
+      />,
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'Edit sets' }))
+    expect(
+      screen.getAllByText('No inventory yet; write it, or press Redraft from plate.'),
+    ).toHaveLength(1)
+    expect(screen.queryByText(/could not be drafted/)).toBeNull()
+  })
+
   it('redrafts the inventory only after a confirm', async () => {
     actions.redraftSetLayoutAction.mockResolvedValue({ ok: true, layout: 'North wall: drafted' })
     render(

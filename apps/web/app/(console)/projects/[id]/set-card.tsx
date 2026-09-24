@@ -407,8 +407,8 @@ function SetRow({
           walls no plate shows stay the same.
         </p>
         {set.plates.length > 0 && set.layout.trim() === '' ? (
-          <p className="text-[12px] text-[var(--color-warning)]" role="status">
-            The inventory could not be drafted; write it, or press Redraft from plate.
+          <p className="text-[12px] text-[var(--color-text-muted)]" role="status">
+            No inventory yet; write it, or press Redraft from plate.
           </p>
         ) : null}
         {set.plates.length > 0 ? (

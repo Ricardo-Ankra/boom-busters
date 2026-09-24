@@ -116,8 +116,9 @@ Light: overcast daylight from the north windows, warm ceiling pendants.
   walls plausibly and consistently with the Look line. It runs on the
   existing `shotlist` LLM route (a picture-planning call, well under a cent);
   every LLM adapter already accepts images. It never overwrites a non-empty
-  inventory. A failed draft leaves the field empty with the note "The
-  inventory could not be drafted; write it, or press Redraft from plate."
+  inventory. A plated set with an empty field (a failed draft, or a set
+  plated before this decision, which was never drafted) shows the neutral
+  note "No inventory yet; write it, or press Redraft from plate."
 - **Redraft from plate** (a button beside the field, same call) replaces the
   field after a confirm, since it discards the owner's edits.
 - `parseLayout(text)` in `packages/schemas` returns the labelled lines it
