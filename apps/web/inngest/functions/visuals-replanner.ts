@@ -18,6 +18,7 @@ import {
   craftFindings,
   DirectorsBookSchema,
   findingContext,
+  mayBecomeStill,
   parseEventData,
   planWarnings,
   repairTargets,
@@ -71,9 +72,11 @@ export const visualsReplanner = inngest.createFunction(
       const projectId = event.data.event.data['projectId']
       if (typeof projectId !== 'string') return
       // Words, not a stage failure: the plan park stays open (decision 234).
+      // The Fix button's job names itself, so a failed fix does not read as a
+      // failed re-plan.
       await markSideJobFailed(
         { inngestRunId: '', functionId: FUNCTION_ID, projectId },
-        'The re-plan failed',
+        event.data.event.data['op'] === 'repair' ? 'The fix failed' : 'The re-plan failed',
         serialiseError(event.data.error),
       )
     },
@@ -173,6 +176,7 @@ export const visualsReplanner = inngest.createFunction(
           id: row.id,
           chapterId: row.chapterId,
           brief: row.brief,
+          reuseOfSlotId: row.reuseOfSlotId,
         })),
       )
 
@@ -183,10 +187,23 @@ export const visualsReplanner = inngest.createFunction(
       )
       const briefs = stored.flatMap((row) => {
         const parsed = ShotBriefSchema.safeParse(row.brief)
-        return parsed.success ? [{ id: row.id, chapterId: row.chapterId, brief: parsed.data }] : []
+        return parsed.success
+          ? [
+              {
+                id: row.id,
+                chapterId: row.chapterId,
+                brief: parsed.data,
+                linked: row.reuseOfSlotId !== null,
+              },
+            ]
+          : []
       })
       const findings = craftFindings(
-        briefs.map((row) => ({ brief: row.brief, chapter: labels.get(row.chapterId) })),
+        briefs.map((row) => ({
+          brief: row.brief,
+          chapter: labels.get(row.chapterId),
+          linked: row.linked,
+        })),
         findingContext({ direction: setup.direction, cast: setup.cast, sets: setup.sets }),
       )
       const targets = repairTargets(findings, ['auto', 'manual'])
@@ -216,6 +233,7 @@ export const visualsReplanner = inngest.createFunction(
                 id: briefs[target.slotIndex]!.id,
                 brief: briefs[target.slotIndex]!.brief,
                 problems: target.findings.map((finding) => finding.message),
+                mayBecomeStill: mayBecomeStill(briefs[target.slotIndex]!.brief, target.findings),
               })),
               claims: setup.claims,
               logos: setup.logos,
@@ -241,7 +259,10 @@ export const visualsReplanner = inngest.createFunction(
         notify({
           kind: 'heads-up',
           title: 'Flagged slots fixed',
-          body: `${rewritten} brief${rewritten === 1 ? '' : 's'} rewritten.`,
+          body:
+            rewritten > 0
+              ? `${rewritten} brief${rewritten === 1 ? '' : 's'} rewritten.`
+              : 'No flagged brief was rewritten: nothing the check flagged could be repaired.',
           href: `/projects/${projectId}`,
         }),
       )

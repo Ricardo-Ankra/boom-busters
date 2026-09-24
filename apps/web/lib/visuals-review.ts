@@ -609,8 +609,18 @@ export async function visualsReviewModel(
 
   // One craft check over the whole film (decision 271), the same one the Fix
   // button runs, so the count on the button is the set of slots it rewrites.
+  // A reuse-linked slot is marked so it carries no finding: its picture is
+  // another slot's.
   const findingSlots = slots.flatMap((slot) =>
-    slot.brief ? [{ brief: slot.brief, chapter: `chapter ${slot.chapterIndex + 1}` }] : [],
+    slot.brief
+      ? [
+          {
+            brief: slot.brief,
+            chapter: `chapter ${slot.chapterIndex + 1}`,
+            linked: slot.reuse !== null,
+          },
+        ]
+      : [],
   )
   const findings = craftFindings(
     findingSlots,

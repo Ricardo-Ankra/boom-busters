@@ -20,6 +20,7 @@ import {
   updateSlotBrief,
 } from '@boom-busters/db'
 import { mockDirectorsBook } from '@boom-busters/providers'
+import type { ShotBrief } from '@boom-busters/schemas'
 import { InngestTestEngine } from '@inngest/test'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/lib/db'
@@ -262,6 +263,45 @@ describeDb('visuals-replanner op repair (decision 271)', () => {
       (slot) => slot.id === stockId,
     )
     expect(stockNow?.type).toBe('still')
+  })
+
+  it('keeps a stock slot stock when its only finding is not a person or a set, even if answered with a still', async () => {
+    // Three wide pictures in a row: the stock slot is the third, so its one
+    // finding is a size run, which never clears it to become a paid still.
+    const chapterId = (await listShotSlots(db, FIXTURE_PROJECT_ID))[0]!.chapterId
+    const wideStill = { ...still, shotSize: 'wide' as const, depicts: ['Emad Mostaque'] }
+    const ledger = {
+      ...still,
+      shotSize: 'wide' as const,
+      coversText: 'The money was there.',
+      description: 'A ledger.',
+      prompt: 'A ledger open on a desk.',
+    }
+    const row = (index: number, brief: ShotBrief) => ({
+      chapterId,
+      index,
+      type: brief.type,
+      brief,
+      startMs: index * 5000,
+      durationMs: 5000,
+    })
+    await replaceShotList(db, FIXTURE_PROJECT_ID, [
+      row(0, wideStill),
+      row(1, ledger),
+      row(2, stock),
+    ])
+    callLlm.mockResolvedValueOnce({
+      text: JSON.stringify({
+        briefs: [{ ...still, shotSize: 'close', coversText: stock.coversText }],
+      }),
+    })
+
+    const { result } = await engine.execute({ events: replanEvent('repair') })
+
+    expect(callLlm).toHaveBeenCalledTimes(1)
+    expect(result).toMatchObject({ outcome: 'repaired', rewritten: 0 })
+    const stockNow = (await listShotSlots(db, FIXTURE_PROJECT_ID)).find((slot) => slot.index === 2)
+    expect(stockNow?.type).toBe('stock')
   })
 
   it('refuses outside the plan checkpoint', async () => {

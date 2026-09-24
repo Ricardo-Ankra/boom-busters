@@ -386,8 +386,9 @@ export async function planChapterSlots(input: {
  * The Fix button's rewrite of stored briefs (decision 271): one call for one
  * chapter's flagged slots, `auto` and `manual` findings both, because pressing
  * the button is the producer's consent to what the automatic pass would not
- * spend on alone. A stock brief may come back as a still; nothing else may
- * change type. Each accepted replacement is stored with `updateSlotBrief`, or
+ * spend on alone. A stock brief may come back as a still only when its target
+ * is cleared for it (`mayBecomeStill`, the rule behind the button's "N become
+ * stills"); nothing else may change type. Each accepted replacement is stored with `updateSlotBrief`, or
  * with `retypeShotSlot` when stock became a still (the type column and the
  * brief move together, and the old candidates clear), so a slot pre-fetched
  * for its old brief owes a fetch for its new one. Returns how many briefs
@@ -400,12 +401,22 @@ export async function planChapterSlots(input: {
 export async function rewriteStoredBriefs(input: {
   projectId: string
   request: ReturnType<typeof buildShotListRequest>
-  targets: readonly { id: string; brief: ShotBrief; problems: readonly string[] }[]
+  targets: readonly {
+    id: string
+    brief: ShotBrief
+    problems: readonly string[]
+    /** Whether this stock slot may come back as a generated still. */
+    mayBecomeStill: boolean
+  }[]
   claims: readonly ScriptClaim[]
   logos: readonly LogoIndex[]
 }): Promise<number> {
   if (input.targets.length === 0 || mockProvidersEnabled()) return 0
-  const originals = input.targets.map((target) => target.brief)
+  const originals = input.targets.map((target) => ({
+    type: target.brief.type,
+    coversText: target.brief.coversText,
+    mayBecomeStill: target.mayBecomeStill,
+  }))
   const answer = await callLlm(
     buildShotRepairRequest(
       input.request,
