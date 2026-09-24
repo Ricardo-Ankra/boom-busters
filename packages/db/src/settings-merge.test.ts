@@ -53,6 +53,25 @@ describe('mergeSettings', () => {
     expect(next.modelRouting.setSheet.model).toBe('gemini-3.1-flash-image')
   })
 
+  it('keeps the phoneme hints when only voice stability is saved', () => {
+    const hints = [{ term: 'Mostaque', hint: 'mos-TAHK' }]
+    const current = mergeSettings(DEFAULT_SETTINGS, {
+      tts: { voiceId: 'v1', stability: 'natural', phonemeHints: hints },
+    })
+    // Parsed exactly as the settings action parses a save.
+    const next = mergeSettings(current, SettingsPatchSchema.parse({ tts: { stability: 'robust' } }))
+
+    expect(next.tts.stability).toBe('robust')
+    expect(next.tts.phonemeHints).toEqual(hints)
+    expect(next.tts.voiceId).toBe('v1')
+  })
+
+  it('keeps stability when only the phoneme hints are saved', () => {
+    const current = mergeSettings(DEFAULT_SETTINGS, { tts: { voiceId: 'v1', stability: 'robust' } })
+    const next = mergeSettings(current, SettingsPatchSchema.parse({ tts: { phonemeHints: [] } }))
+    expect(next.tts.stability).toBe('robust')
+  })
+
   it('replaces arrays wholesale instead of concatenating', () => {
     const next = mergeSettings(DEFAULT_SETTINGS, { fallbackChain: ['google'] })
     expect(next.fallbackChain).toEqual(['google'])

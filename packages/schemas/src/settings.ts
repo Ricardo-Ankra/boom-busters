@@ -507,20 +507,45 @@ export const SettingsSchema = z.object({
 })
 export type Settings = z.infer<typeof SettingsSchema>
 
+type WithoutDefault<T> = T extends z.ZodDefault<infer Inner> ? Inner : T
+
+/**
+ * A section of the settings patch: every field optional and none defaulted.
+ *
+ * Zod 4 still applies a field's default inside `.partial()`, so a patch built
+ * on a defaulted shape came back holding the default of every field the save
+ * did not send, and `mergeSettings` then wrote those defaults over what the
+ * owner had stored. Saving voice stability wiped the phoneme hints, saving the
+ * hints reset stability, and saving any model route reset the set-sheet route
+ * (decision 275, final review). Unwrapping each default keeps an absent key
+ * absent, so a merge touches only what was sent. Nested objects are replaced
+ * whole on merge, so only the top level of each section needs this.
+ */
+function patchSection<Shape extends z.ZodRawShape>(
+  schema: z.ZodObject<Shape>,
+): z.ZodOptional<z.ZodObject<{ [K in keyof Shape]: z.ZodOptional<WithoutDefault<Shape[K]>> }>> {
+  const shape: Record<string, z.ZodType> = {}
+  for (const [key, field] of Object.entries(schema.shape)) {
+    shape[key] =
+      field instanceof z.ZodDefault ? (field.unwrap() as z.ZodType) : (field as z.ZodType)
+  }
+  return z.object(shape).partial().optional() as unknown as z.ZodOptional<
+    z.ZodObject<{ [K in keyof Shape]: z.ZodOptional<WithoutDefault<Shape[K]>> }>
+  >
+}
+
 /** Deep-partial patch accepted by the settings update action. */
 export const SettingsPatchSchema = z.object({
-  // Without setSheet's default: Zod 4 still applies a default inside
-  // .partial(), so every unrelated routing save would reset the sheet route.
-  modelRouting: ModelRoutingSchema.extend({ setSheet: StillRouteSchema }).partial().optional(),
+  modelRouting: patchSection(ModelRoutingSchema),
   fallbackChain: FallbackChainSchema.optional(),
   // The bare shape: a partial of a preprocessed schema is not a thing, and a
   // patch never needs the old-provider coercion — it can only say 'elevenlabs'.
-  tts: VoiceConfigShape.partial().optional(),
+  tts: patchSection(VoiceConfigShape),
   budgets: BudgetsPatchSchema.optional(),
-  render: RenderSettingsSchema.partial().optional(),
-  publish: PublishSettingsSchema.partial().optional(),
-  brandKit: BrandKitStoredSchema.partial().optional(),
-  features: FeatureFlagsSchema.partial().optional(),
+  render: patchSection(RenderSettingsSchema),
+  publish: patchSection(PublishSettingsSchema),
+  brandKit: patchSection(BrandKitStoredSchema),
+  features: patchSection(FeatureFlagsSchema),
 })
 export type SettingsPatch = z.infer<typeof SettingsPatchSchema>
 

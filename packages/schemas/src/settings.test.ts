@@ -249,6 +249,37 @@ describe('the setSheet route (decision 275)', () => {
   })
 })
 
+describe('SettingsPatchSchema carries no defaults', () => {
+  // Zod 4 applies a field's default inside .partial(): a patch built on the
+  // defaulted shapes came back holding every other field's default, and the
+  // merge then overwrote the owner's stored values with them.
+  it('saves voice stability without touching the phoneme hints or provider', () => {
+    const patch = SettingsPatchSchema.parse({ tts: { stability: 'robust' } })
+    expect(patch.tts).toEqual({ stability: 'robust' })
+  })
+
+  it('saves phoneme hints without resetting stability', () => {
+    const patch = SettingsPatchSchema.parse({ tts: { phonemeHints: [] } })
+    expect(patch.tts).toEqual({ phonemeHints: [] })
+  })
+
+  it('saves one render, publish or feature field alone', () => {
+    const patch = SettingsPatchSchema.parse({
+      render: { concurrency: 3 },
+      publish: { dailyUploadBudget: 2 },
+      features: {},
+    })
+    expect(patch.render).toEqual({ concurrency: 3 })
+    expect(patch.publish).toEqual({ dailyUploadBudget: 2 })
+    expect(patch.features).toEqual({})
+  })
+
+  it('still validates the fields it carries', () => {
+    expect(SettingsPatchSchema.safeParse({ tts: { stability: 'shouty' } }).success).toBe(false)
+    expect(SettingsPatchSchema.safeParse({ render: { concurrency: 99 } }).success).toBe(false)
+  })
+})
+
 describe('effectiveCeilingUsd', () => {
   const march = new Date('2026-03-15T00:00:00.000Z')
 
