@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto'
 import sharp from 'sharp'
 import { getSettings, upsertAssetByHash, visualCredentials } from '@boom-busters/db'
-import { platesForCamera, ValidationError } from '@boom-busters/schemas'
+import { ValidationError } from '@boom-busters/schemas'
 import type { ProjectSet, SetPlateDirection, SlotCandidate } from '@boom-busters/schemas'
 import {
   imageGenAdapter,
@@ -57,7 +57,11 @@ export async function buildSetSheet(
         { field: 'modelRouting.setSheet' },
       )
     }
-    const [plate] = platesForCamera(set, 'north', 1)
+    // Reference image 1 (decision 275, spec 5.1): the set's own north plate
+    // when it has one, else whichever plate it holds first — never a plate
+    // `platesForCamera` picked for its adjacency to a direction that is not
+    // the one the prompt is about to claim it shows.
+    const plate = set.plates.find((candidate) => candidate.view === 'north') ?? set.plates[0]
     if (!plate) throw new ValidationError('Add a plate first, then build the set from it.')
     const object = await getObjectBytes(plate.r2Key)
     const live = LIVE_IMAGE_GEN_ADAPTERS.google
@@ -86,7 +90,9 @@ export async function buildSetSheet(
               {
                 name: set.name,
                 kind: 'object',
-                facing: 'north',
+                // The plate's own view, never a hard-coded 'north': `facing`
+                // takes no 'other', so an undirected plate sends none.
+                ...(plate.view === 'other' ? {} : { facing: plate.view }),
                 mimeType: plate.mimeType,
                 data: Buffer.from(object.bytes).toString('base64'),
               },

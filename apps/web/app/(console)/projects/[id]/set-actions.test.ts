@@ -13,9 +13,12 @@ import {
   updateSettings,
 } from '@boom-busters/db'
 import { mockImageGen } from '@boom-busters/providers'
+import { DEFAULT_SET_SHEET_ROUTE } from '@boom-busters/schemas'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/lib/db'
+import { splitContactSheet } from '@/lib/contact-sheet'
 import { MOCK_LAYOUT } from '@/lib/set-layout'
+import { UNSPLIT_SHEET } from '@/lib/set-sheet'
 import {
   addSetAction,
   addSetPlateFromUrlAction,
@@ -77,6 +80,18 @@ vi.mock('@/lib/storage', () => ({
 // here it only has to hand the action some bytes.
 const remote = vi.hoisted(() => ({ fetchRemoteImage: vi.fn() }))
 vi.mock('@/lib/remote-image', () => remote)
+
+// Real by default, exactly like `updateProjectSet` above, so the mock sheet
+// splits normally; one test overrides `splitContactSheet` with
+// `mockResolvedValueOnce(null)` to prove the "came back without clear
+// borders" refusal, without touching how any other test's sheet is cut.
+vi.mock('@/lib/contact-sheet', async (importOriginal) => {
+  const actual = (await importOriginal()) as Record<string, unknown>
+  return {
+    ...actual,
+    splitContactSheet: vi.fn(actual.splitContactSheet as typeof splitContactSheet),
+  }
+})
 
 const describeDb = requireTestDatabase() ? describe : describe.skip
 
@@ -658,6 +673,41 @@ describeDb('set actions (mock mode)', () => {
     for (const candidate of result.candidates ?? []) {
       expect(candidate.sourceUrl.startsWith('data:image/png;base64,')).toBe(true)
     }
+  })
+
+  it('refuses to build the set when the set-sheet route is not Google', async () => {
+    const id = await addTradingFloor()
+    await finaliseSetPlateAction({
+      setId: id,
+      mimeType: 'image/jpeg',
+      contentHash: HASH_A,
+      width: 10,
+      height: 10,
+    })
+    await updateSettings(db, {
+      modelRouting: { setSheet: { provider: 'fal', model: 'fal-ai/flux/dev' } },
+    })
+    try {
+      expect(await buildSetSheetAction(id)).toEqual({
+        ok: false,
+        error: 'Set sheets need a Google image model; change Settings → Models → Set sheets.',
+      })
+    } finally {
+      await updateSettings(db, { modelRouting: { setSheet: DEFAULT_SET_SHEET_ROUTE } })
+    }
+  })
+
+  it('refuses to build the set when the sheet cannot be split', async () => {
+    const id = await addTradingFloor()
+    await finaliseSetPlateAction({
+      setId: id,
+      mimeType: 'image/jpeg',
+      contentHash: HASH_A,
+      width: 10,
+      height: 10,
+    })
+    vi.mocked(splitContactSheet).mockResolvedValueOnce(null)
+    expect(await buildSetSheetAction(id)).toEqual({ ok: false, error: UNSPLIT_SHEET })
   })
 
   it('refuses to build a set with no plate', async () => {

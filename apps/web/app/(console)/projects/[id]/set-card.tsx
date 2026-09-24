@@ -696,7 +696,7 @@ function SetRow({
             {`${plated ? 'Generate a view' : 'Generate a plate'} · ≈$${plateEstimateUsd.toFixed(2)}`}
           </Button>
         ) : null}
-        {room && plated && MAX_SET_PLATES - set.plates.length >= 3 ? (
+        {plated ? (
           <Button
             variant="outline"
             disabled={rowBusy}

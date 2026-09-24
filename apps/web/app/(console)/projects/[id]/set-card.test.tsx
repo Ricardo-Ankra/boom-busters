@@ -554,6 +554,47 @@ describe('SetCard', () => {
     )
   })
 
+  it('offers Build the set on a full set, and shows the server’s refusal as a toast', async () => {
+    const nearlyFull: ProjectSet = {
+      ...tradingFloor,
+      plates: [
+        ...tradingFloor.plates,
+        ...(['e', 'f', 'g'] as const).map((hash) => ({
+          r2Key: `boom-busters/sets/p/${hash}.jpg`,
+          contentHash: hash,
+          mimeType: 'image/jpeg' as const,
+          width: 1600,
+          height: 1200,
+          view: 'other' as const,
+          origin: 'uploaded' as const,
+        })),
+      ],
+    }
+    actions.buildSetSheetAction.mockResolvedValue({
+      ok: false,
+      error: 'Building the set adds three views. Remove 1 plate first.',
+    })
+    render(
+      <SetCard
+        projectId={PROJECT}
+        sets={[nearlyFull]}
+        plateUrls={{}}
+        plateEstimateUsd={0.08}
+        sheetEstimateUsd={0.24}
+      />,
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'Edit sets' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Build the set · ≈$0.24' }))
+    expect(actions.buildSetSheetAction).toHaveBeenCalledWith(TRADING_FLOOR)
+    await waitFor(() =>
+      expect(toast).toHaveBeenCalledWith({
+        title: 'That did not work',
+        description: 'Building the set adds three views. Remove 1 plate first.',
+        variant: 'error',
+      }),
+    )
+  })
+
   it('offers no Build the set before the first plate', () => {
     const empty: ProjectSet = { ...boardroom, id: '01J0000000000000000000000D', plates: [] }
     render(
