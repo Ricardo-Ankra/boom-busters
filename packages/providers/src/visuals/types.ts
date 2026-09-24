@@ -68,6 +68,9 @@ export interface StockProvider {
 // Image generation
 // ---------------------------------------------------------------------------
 
+/** Output size for models that take one (decision 275). */
+export type ImageSize = '1K' | '2K' | '4K'
+
 /**
  * A reference photograph of a real person the still must resemble (decision
  * 253). Base64 bytes for adapters that take images inline (Gemini); fal's
@@ -85,6 +88,8 @@ export interface ImageReference {
    * character, a room or a prop it must reproduce is an object.
    */
   kind: 'character' | 'object'
+  /** For a set plate: the direction it faces, named in the image's label (decision 275). */
+  facing?: 'north' | 'east' | 'south' | 'west' | 'detail'
 }
 
 export interface ImageGenRequest {
@@ -102,6 +107,8 @@ export interface ImageGenRequest {
    * adapter does not list is refused before any money is spent.
    */
   model?: string
+  /** Honoured by the Gemini 3 models; ignored elsewhere. */
+  size?: ImageSize
 }
 
 export interface GeneratedImage {
@@ -137,6 +144,8 @@ export interface ImageGenModel {
   readonly label: string
   /** USD per generated image. Owned here, like every provider price. */
   readonly pricePerImage: number
+  /** USD per generated image, by output size, for models whose price varies with it (decision 275). */
+  readonly pricesBySize?: Partial<Record<ImageSize, number>>
 }
 
 /** What one call may carry, per model (decision 264). */
@@ -197,7 +206,13 @@ export function imageGenModel(provider: ImageGenProvider, modelId?: string): Ima
   return model
 }
 
-/** USD for a generation call, from the adapter's own per-model price. */
-export function imageGenPrice(provider: ImageGenProvider, count: number, modelId?: string): number {
-  return imageGenModel(provider, modelId).pricePerImage * count
+/** USD for a generation call, from the adapter's own price for that model and size. */
+export function imageGenPrice(
+  provider: ImageGenProvider,
+  count: number,
+  modelId?: string,
+  size?: ImageSize,
+): number {
+  const model = imageGenModel(provider, modelId)
+  return ((size ? model.pricesBySize?.[size] : undefined) ?? model.pricePerImage) * count
 }

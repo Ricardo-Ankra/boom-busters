@@ -1,12 +1,13 @@
 import { ContentPolicyError, ValidationError } from '@boom-busters/schemas'
 import { z } from 'zod'
 import { mapNetworkError, throwForResponse } from '../llm/http'
-import { imageGenModel } from './types'
+import { imageGenModel, imageGenPrice } from './types'
 import type {
   ImageGenProvider,
   ImageGenRequest,
   ImageGenResult,
   ImageReference,
+  ImageSize,
   ReferenceLimits,
   StockCallOptions,
 } from './types'
@@ -36,6 +37,10 @@ import type {
  * 3.1 Flash: ~$0.067 for a 1K image. Pro ("Nano Banana Pro"): a 1K/2K image
  * is ~$0.134 of output tokens.
  *
+ * Per size, from Google's pricing page (2026-09-24): 3.1 Flash $0.067 at 1K,
+ * $0.101 at 2K, $0.151 at 4K; 3 Pro $0.134 at 1K or 2K, $0.24 at 4K; each
+ * rounded up.
+ *
  * The Imagen models were briefly offered here (decision 209) and are gone
  * (decision 211): the key's own `ListModels` serves NO `imagen-*` model —
  * every image model on this API is Gemini-family via `generateContent`, and
@@ -47,8 +52,18 @@ import type {
  */
 const MODELS = [
   { id: 'gemini-2.5-flash-image', label: 'Gemini 2.5 Flash Image', pricePerImage: 0.04 },
-  { id: 'gemini-3.1-flash-image', label: 'Gemini 3.1 Flash Image', pricePerImage: 0.07 },
-  { id: 'gemini-3-pro-image', label: 'Gemini 3 Pro Image', pricePerImage: 0.15 },
+  {
+    id: 'gemini-3.1-flash-image',
+    label: 'Gemini 3.1 Flash Image',
+    pricePerImage: 0.07,
+    pricesBySize: { '1K': 0.07, '2K': 0.11, '4K': 0.16 },
+  },
+  {
+    id: 'gemini-3-pro-image',
+    label: 'Gemini 3 Pro Image',
+    pricePerImage: 0.15,
+    pricesBySize: { '1K': 0.15, '2K': 0.15, '4K': 0.24 },
+  },
 ] as const
 
 const endpoint = (model: string) =>
@@ -56,6 +71,21 @@ const endpoint = (model: string) =>
 
 /** The 16:9 preset renders 1344×768, same class as fal's, scaled at compile. */
 const ASPECT_RATIO = '16:9'
+
+/** Models that take `imageConfig.imageSize`; 2.5 Flash has one size and would be refused. */
+const SIZED_MODELS = new Set(['gemini-3.1-flash-image', 'gemini-3-pro-image'])
+/**
+ * Models that take `thinkingConfig`. The API errors when it is set on a model
+ * without thinking, and 3 Pro always reasons without being asked (decision 275).
+ */
+const THINKING_MODELS = new Set(['gemini-3.1-flash-image'])
+
+/** Pixel size reported for each output size at 16:9; the bytes are what they are. */
+const DIMENSIONS: Record<ImageSize, { width: number; height: number }> = {
+  '1K': { width: 1344, height: 768 },
+  '2K': { width: 2688, height: 1536 },
+  '4K': { width: 5376, height: 3072 },
+}
 
 /**
  * What a Gemini model with no published reference table is allowed to carry:
@@ -103,7 +133,7 @@ const REFERENCE_LIMITS: Record<string, ReferenceLimits> = {
  * never its framing.
  */
 export function referenceLabel(
-  reference: Pick<ImageReference, 'name' | 'kind'>,
+  reference: Pick<ImageReference, 'name' | 'kind' | 'facing'>,
   position: number,
   total: number,
 ): string {
@@ -111,11 +141,14 @@ export function referenceLabel(
     reference.kind === 'character'
       ? 'use it for the likeness only; pose, clothing and framing come from the text'
       : "use it for the place's design only (architecture, materials, furniture, light), never its framing or camera position"
-  return `Reference image ${position} of ${total}: ${reference.name}. ${role[0]!.toUpperCase()}${role.slice(1)}.`
+  const facing =
+    reference.facing === undefined
+      ? ''
+      : reference.facing === 'detail'
+        ? ', a close detail'
+        : `, facing ${reference.facing}`
+  return `Reference image ${position} of ${total}: ${reference.name}${facing}. ${role[0]!.toUpperCase()}${role.slice(1)}.`
 }
-
-const WIDTH = 1344
-const HEIGHT = 768
 
 const ResponseSchema = z.object({
   // Optional, not min(1): a blocked prompt comes back with no candidates at
@@ -129,6 +162,7 @@ const ResponseSchema = z.object({
             parts: z.array(
               z.object({
                 inlineData: z.object({ mimeType: z.string(), data: z.string().min(1) }).optional(),
+                thought: z.boolean().optional(),
               }),
             ),
           })
@@ -214,7 +248,15 @@ export const geminiImageGen: ImageGenProvider = {
                 ],
               },
             ],
-            generationConfig: { imageConfig: { aspectRatio: ASPECT_RATIO } },
+            generationConfig: {
+              imageConfig: {
+                aspectRatio: ASPECT_RATIO,
+                ...(request.size && SIZED_MODELS.has(model.id) ? { imageSize: request.size } : {}),
+              },
+              ...(THINKING_MODELS.has(model.id)
+                ? { thinkingConfig: { thinkingLevel: 'HIGH' } }
+                : {}),
+            },
           }),
           ...(options.signal ? { signal: options.signal } : {}),
         })
@@ -226,7 +268,8 @@ export const geminiImageGen: ImageGenProvider = {
       const parsed = ResponseSchema.parse(await response.json())
       const image = (parsed.candidates ?? [])
         .flatMap((candidate) => candidate.content?.parts ?? [])
-        .find((part) => part.inlineData)?.inlineData
+        .filter((part) => part.inlineData && part.thought !== true)
+        .at(-1)?.inlineData
       if (!image) {
         // A 200 with no image part is the model answering in prose, or a
         // blocked prompt: a policy refusal either way, and a human's problem
@@ -238,15 +281,18 @@ export const geminiImageGen: ImageGenProvider = {
         throw new ContentPolicyError('google', `${reason} (model ${model.id})`)
       }
 
+      const size = request.size && SIZED_MODELS.has(model.id) ? request.size : '1K'
       return {
         url: `data:${image.mimeType};base64,${image.data}`,
-        width: WIDTH,
-        height: HEIGHT,
+        ...DIMENSIONS[size],
       }
     }
 
     const images = await Promise.all(Array.from({ length: request.count }, one))
-    return { images, estimatedCostUsd: model.pricePerImage * images.length }
+    return {
+      images,
+      estimatedCostUsd: imageGenPrice(geminiImageGen, images.length, model.id, request.size),
+    }
   },
 
   referenceLimits(modelId?: string): ReferenceLimits {

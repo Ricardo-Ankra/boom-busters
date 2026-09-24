@@ -1,7 +1,8 @@
 import { ContentPolicyError, ValidationError } from '@boom-busters/schemas'
 import { describe, expect, it, vi } from 'vitest'
 import { falImageGen } from './fal'
-import { geminiImageGen } from './gemini'
+import { geminiImageGen, referenceLabel } from './gemini'
+import { imageGenPrice } from './types'
 
 /**
  * Against a recorded response shape, like every adapter test: the JSON is
@@ -312,5 +313,81 @@ describe('refusing more references than the model takes', () => {
     const body = JSON.parse(String(fetchImpl.mock.calls[0]![1]?.body))
     // Three labelled images and the prompt.
     expect(body.contents[0].parts).toHaveLength(7)
+  })
+})
+
+describe('Gemini 3 options (decision 275)', () => {
+  const bodyOf = (calls: { body: unknown }[]) =>
+    calls[0]!.body as { generationConfig: Record<string, unknown> }
+
+  it('asks 3.1 Flash for the size and for high reasoning', async () => {
+    const calls: { url: string; body: unknown }[] = []
+    await geminiImageGen.generate(
+      { prompt: 'x', count: 1, model: 'gemini-3.1-flash-image', size: '1K' },
+      { apiKey: 'k', fetchImpl: fetchRecording(calls, IMAGE_REPLY) },
+    )
+    expect(bodyOf(calls).generationConfig).toEqual({
+      imageConfig: { aspectRatio: '16:9', imageSize: '1K' },
+      thinkingConfig: { thinkingLevel: 'HIGH' },
+    })
+  })
+
+  it('asks 3 Pro for the size and never for reasoning, which it rejects', async () => {
+    const calls: { url: string; body: unknown }[] = []
+    await geminiImageGen.generate(
+      { prompt: 'x', count: 1, model: 'gemini-3-pro-image', size: '4K' },
+      { apiKey: 'k', fetchImpl: fetchRecording(calls, IMAGE_REPLY) },
+    )
+    expect(bodyOf(calls).generationConfig).toEqual({
+      imageConfig: { aspectRatio: '16:9', imageSize: '4K' },
+    })
+  })
+
+  it('sends 2.5 Flash neither, since it takes neither', async () => {
+    const calls: { url: string; body: unknown }[] = []
+    await geminiImageGen.generate(
+      { prompt: 'x', count: 1, model: 'gemini-2.5-flash-image', size: '1K' },
+      { apiKey: 'k', fetchImpl: fetchRecording(calls, IMAGE_REPLY) },
+    )
+    expect(bodyOf(calls).generationConfig).toEqual({ imageConfig: { aspectRatio: '16:9' } })
+  })
+
+  it('prices each size from the published rates, rounded up', async () => {
+    expect(imageGenPrice(geminiImageGen, 1, 'gemini-3.1-flash-image', '1K')).toBeCloseTo(0.07)
+    expect(imageGenPrice(geminiImageGen, 1, 'gemini-3.1-flash-image', '4K')).toBeCloseTo(0.16)
+    expect(imageGenPrice(geminiImageGen, 1, 'gemini-3-pro-image', '4K')).toBeCloseTo(0.24)
+    expect(imageGenPrice(geminiImageGen, 2, 'gemini-2.5-flash-image', '4K')).toBeCloseTo(0.08)
+    const result = await geminiImageGen.generate(
+      { prompt: 'x', count: 1, model: 'gemini-3-pro-image', size: '4K' },
+      { apiKey: 'k', fetchImpl: fetchRecording([], IMAGE_REPLY) },
+    )
+    expect(result.estimatedCostUsd).toBeCloseTo(0.24)
+  })
+
+  it('names the direction a set plate faces in its label', () => {
+    expect(referenceLabel({ name: 'The boardroom', kind: 'object', facing: 'south' }, 2, 3)).toBe(
+      "Reference image 2 of 3: The boardroom, facing south. Use it for the place's design only " +
+        '(architecture, materials, furniture, light), never its framing or camera position.',
+    )
+  })
+
+  it('takes the answer image and skips a thought image', async () => {
+    const reply = {
+      candidates: [
+        {
+          content: {
+            parts: [
+              { thought: true, inlineData: { mimeType: 'image/png', data: 'VEhPVUdIVA==' } },
+              { inlineData: { mimeType: 'image/png', data: 'QU5TV0VS' } },
+            ],
+          },
+        },
+      ],
+    }
+    const result = await geminiImageGen.generate(
+      { prompt: 'x', count: 1, model: 'gemini-3.1-flash-image' },
+      { apiKey: 'k', fetchImpl: fetchRecording([], reply) },
+    )
+    expect(result.images[0]!.url).toBe('data:image/png;base64,QU5TV0VS')
   })
 })
