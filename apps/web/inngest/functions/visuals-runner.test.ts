@@ -3,10 +3,13 @@
 import {
   createScriptVersion,
   deleteCastMember,
+  deleteProjectSet,
   FIXTURE_PROJECT_ID,
   getProject,
   insertCastMember,
+  insertProjectSet,
   listCastMembers,
+  listProjectSets,
   listShotSlots,
   requireTestDatabase,
   saveChapter,
@@ -15,6 +18,7 @@ import {
   setProjectDirection,
   shotSlots,
   truncateRunMirror,
+  updateProjectSet,
   updateSettings,
 } from '@boom-busters/db'
 import { mockDirectorsBook } from '@boom-busters/providers'
@@ -128,6 +132,64 @@ describeDb('visuals-runner (mock mode)', () => {
       return Promise.resolve({ text: JSON.stringify(plan) })
     })
   }
+
+  /**
+   * Guards the whole production chain (decision 275): a set's room inventory
+   * is loaded in `load-narration` (`sets.map(({ name, look, layout }) =>
+   * ...)`), carried through `planChapterSlots` into
+   * `chapterShotListRequest`, and only shows up in the live model's prompt
+   * if every hop in that chain keeps `layout` rather than quietly dropping
+   * it back to `{ name, look }`. Live-model mode, like the routing tests
+   * above, because mock mode never calls `buildShotListRequest` at all.
+   */
+  it("threads a set's room inventory into the live shot-list request (decision 275)", async () => {
+    vi.stubEnv('MOCK_PROVIDERS', '')
+    // A leftover "Boardroom" from an earlier run of this suite (project sets
+    // are not truncated in `beforeEach`, unlike the script and cast) would
+    // otherwise fail the insert below with a duplicate-name error.
+    for (const existing of await listProjectSets(db, FIXTURE_PROJECT_ID)) {
+      if (existing.name === 'Boardroom') await deleteProjectSet(db, existing.id)
+    }
+    const set = await insertProjectSet(db, {
+      projectId: FIXTURE_PROJECT_ID,
+      name: 'Boardroom',
+      look: 'dark wood panelling, one window',
+    })
+    await updateProjectSet(db, set.id, { layout: 'North wall: three tall windows.' })
+
+    const book = mockDirectorsBook({ caseTitle: 'Wirecard', chapterCount: 1, cast: [] })
+    stubDirectionAndShotList(book, {
+      slots: [
+        {
+          paragraphIndex: 0,
+          seconds: 6,
+          brief: {
+            type: 'stock',
+            coversText: 'By June, the auditors could not find the money.',
+            description: 'An empty audit office at dusk.',
+            shotSize: 'wide',
+            motion: { kind: 'static' },
+            transition: 'cut',
+            query: 'empty office dusk',
+            rejectionCriteria: [],
+          },
+        },
+      ],
+    })
+
+    await engine.executeStep('open-plan-park', {
+      events: [{ name: 'gate/voice.approved', data: { projectId: FIXTURE_PROJECT_ID } }],
+    })
+
+    const shotListCall = callLlm.mock.calls.find(
+      ([request]) => (request as { task?: string }).task === 'shotlist',
+    )
+    const prefix =
+      (shotListCall?.[0] as { messages?: { content?: string }[] } | undefined)?.messages?.[0]
+        ?.content ?? ''
+    expect(prefix).toContain('- Boardroom: dark wood panelling, one window')
+    expect(prefix).toContain('  North wall: three tall windows.')
+  })
 
   it('derives the likeness route for a still of a photographed person, storing none', async () => {
     vi.stubEnv('MOCK_PROVIDERS', '')
