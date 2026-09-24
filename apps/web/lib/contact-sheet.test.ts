@@ -96,4 +96,37 @@ describe('splitContactSheet', () => {
   it('splits its own mock sheet', async () => {
     expect(await splitContactSheet(await mockContactSheet())).toHaveLength(4)
   })
+
+  // Fix 1: all-white image must return null, not crop to nothing
+  it('refuses an all-white image', async () => {
+    const allWhite = await sharp({
+      create: { width: 800, height: 450, channels: 3, background: { r: 255, g: 255, b: 255 } },
+    })
+      .png()
+      .toBuffer()
+    expect(await splitContactSheet(allWhite)).toBeNull()
+  })
+
+  // Fix 2: a white band that touches the edge of the search window is not a valid gutter
+  it('refuses a white band that touches the search window edge', async () => {
+    // White band from 40% to 60% of height (inside the search window), with grey above and below.
+    // This makes the band span exactly [from, to] of the height search window [180, 270].
+    const touchesEdge = await sharp({
+      create: { width: 800, height: 450, channels: 3, background: { r: 90, g: 90, b: 90 } },
+    })
+      .composite([
+        {
+          input: await sharp({
+            create: { width: 800, height: 90, channels: 3, background: '#ffffff' },
+          })
+            .png()
+            .toBuffer(),
+          left: 0,
+          top: 180,
+        },
+      ])
+      .png()
+      .toBuffer()
+    expect(await splitContactSheet(touchesEdge)).toBeNull()
+  })
 })

@@ -38,7 +38,9 @@ function band(
       start = -1
     }
   }
-  return best && best.end - best.start >= MIN_GUTTER ? best : null
+  return best && best.end - best.start >= MIN_GUTTER && best.start > from && best.end < to
+    ? best
+    : null
 }
 
 /** First index from the start (or the end) that is not white: the outer border's edge. */
