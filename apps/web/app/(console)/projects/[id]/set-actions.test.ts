@@ -410,9 +410,10 @@ describeDb('set actions (mock mode)', () => {
     expect(request?.prompt).toContain(
       'The camera stands at the middle of the north wall, at eye level, facing south, 24mm.',
     )
-    // Ruling R3: the camera's own lens overrides the house photograph line's
-    // default 35mm, in place.
-    expect(request?.prompt).toContain(HOUSE_PHOTOGRAPH.replace('35mm', '24mm'))
+    // The house line carries no lens (decision 275 final review), so the
+    // camera's is the only one, and the house line travels once, whole.
+    expect(request?.prompt.split(HOUSE_PHOTOGRAPH)).toHaveLength(2)
+    expect(request?.prompt.match(/\d+mm/g)).toEqual(['24mm'])
     expect(request?.prompt).not.toContain('never reproduce or edit the framing')
   })
 

@@ -114,10 +114,12 @@ plain one.
   subject; the first third of the prompt gets the most attention.
 - Name the lens: 24mm for a wide that breathes, 35mm for a documentary
   medium, 50mm for a close human scale, 85mm for a portrait, 100mm macro
-  for texture.
+  for texture. Name the camera's height as well: eye level, seated, low
+  to the floor, overhead. On a shot in a set both go in the camera, never
+  in the prompt.
 - Every photograph is written as a photograph, in the house line, before the Brand Kit anchors:
-  An available-light documentary photograph, 35mm, eye level, slight grain, mixed colour temperature from window daylight and warm practicals, real materials with wear: scuffed edges, cable runs, a coffee ring, papers out of line.
-  A lens the camera names replaces the 35mm.
+  An available-light documentary photograph, slight grain, mixed colour temperature from window daylight and warm practicals, real materials with wear: scuffed edges, cable runs, a coffee ring, papers out of line.
+  The house line names no lens and no height; every shot states its own.
 - Append the director's book palette line verbatim. The era lock is a
   constraint, not a list to paste: every period object in the frame comes
   from it, and the prompt names only the objects actually in the frame.
@@ -294,9 +296,14 @@ export const BANNED_PROMPT_WORDS = [
  * as a photograph and not a render. Light with a direction, real materials
  * with wear, grain. Stated once here and in the bible, and sent on every
  * plate, sheet and still prompt before the Brand Kit anchors.
+ *
+ * It names no lens and no height: it rides on every shot, and a fixed
+ * "35mm, eye level" put a second lens beside the camera's own and "eye
+ * level" on low, aerial and macro shots. Each shot states its own, in the
+ * prompt, or in a set shot's camera.
  */
 export const HOUSE_PHOTOGRAPH =
-  'An available-light documentary photograph, 35mm, eye level, slight grain, mixed colour temperature from window daylight and warm practicals, real materials with wear: scuffed edges, cable runs, a coffee ring, papers out of line.'
+  'An available-light documentary photograph, slight grain, mixed colour temperature from window daylight and warm practicals, real materials with wear: scuffed edges, cable runs, a coffee ring, papers out of line.'
 
 /**
  * A prompt with every banned word removed (decision 271).

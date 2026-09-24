@@ -19,7 +19,7 @@ import type { ProjectSet, SetCamera, SetViewRequest, StillBrief } from '@boom-bu
 
 /** The first plate: the room seen whole, before any direction exists. */
 const FIRST_PLATE_FRAMING =
-  'a wide establishing photograph of the whole room, taken from its entrance at eye level'
+  'a wide establishing photograph of the whole room, taken from its entrance at eye level with a 24mm lens'
 
 const VIEW_FRAMING: Record<SetViewRequest, string> = {
   north: 'a wide photograph of the whole room facing north',
@@ -27,8 +27,15 @@ const VIEW_FRAMING: Record<SetViewRequest, string> = {
   south: 'a wide photograph of the whole room facing south',
   west: 'a wide photograph of the whole room facing west',
   detail:
-    "a close photograph of one part of the room, its furniture, surfaces and materials at arm's length",
+    "a close photograph of one part of the room, its furniture, surfaces and materials at arm's length with a 50mm lens",
 }
+
+/*
+ * Every plate names its own lens (decision 275 final review): the house line
+ * carries none. The first plate and a detail say it in the framing above; a
+ * compass view of a plated set says it in its camera sentence (24mm), which
+ * `generateStillCandidates` appends through `describeCamera`.
+ */
 
 /**
  * The contact sheet's prompt (decision 275): the grid first, then each

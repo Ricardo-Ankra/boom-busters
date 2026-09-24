@@ -52,7 +52,7 @@ import { db } from '@/lib/db'
 import { env } from '@/lib/env'
 import { callLlm } from '@/lib/llm'
 import { describeCamera } from '@/lib/set-plates'
-import { withCameraLens, withReferenceClause } from '@/lib/still-prompt'
+import { withReferenceClause } from '@/lib/still-prompt'
 import { getObjectBytes, presignGet, putObject, stillKey, storageConfigured } from '@/lib/storage'
 
 /**
@@ -623,12 +623,10 @@ export async function generateStillCandidates(
     mocked,
     brief.camera?.facing,
   )
-  const strippedPrompt = stripBannedWords(brief.prompt)
-  // Spec 7.1 (ruling R3): a camera's own lens overrides the house photograph
-  // line's default 35mm, in place, never as a second lens instruction.
-  const lensedPrompt = withCameraLens(strippedPrompt, brief.camera?.lens)
+  // The house line names no lens (decision 275 final review): a set shot's
+  // lens reaches the model once, in the camera sentence.
   const prompt = withReferenceClause(
-    lensedPrompt,
+    stripBannedWords(brief.prompt),
     cast.people,
     cast.setName === null ? null : { name: cast.setName, plates: cast.setPlates },
     cameraText,

@@ -563,6 +563,10 @@ describe('buildShotListRequest with direction (decision 252)', () => {
     expect(request.system).toContain('Never "pan"')
   })
 
+  it('asks each still for its own lens and camera height (decision 275)', () => {
+    expect(request.system).toContain('lens, camera height and light named')
+  })
+
   it('puts the house photograph line into every still prompt (decision 275)', () => {
     expect(request.system).toContain(
       `then the house photograph line verbatim: "${HOUSE_PHOTOGRAPH}"`,
@@ -682,6 +686,9 @@ describe('buildShotListRequest with direction (decision 252)', () => {
         '"camera"?: {"facing": "north"|"east"|"south"|"west", "position", "lens"?}',
       )
       expect(withSets.system).toContain('Every still that names a set carries "camera".')
+      // The lens and height of a set shot go in "camera", not the prose.
+      expect(withSets.system).toContain('its lens and camera height go in "camera" instead')
+      expect(withSets.system).not.toContain('"lens" when it matters')
       expect(withSets.system).toContain(
         'Two stills of the same room never share a camera position.',
       )

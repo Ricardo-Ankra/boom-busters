@@ -10,8 +10,21 @@ describe('setPlateBrief', () => {
       'fine grain',
     )
     expect(brief.prompt).toBe(
-      `R, empty of people: a wide establishing photograph of the whole room, taken from its entrance at eye level. A long table ${HOUSE_PHOTOGRAPH} fine grain`,
+      `R, empty of people: a wide establishing photograph of the whole room, taken from its entrance at eye level with a 24mm lens. A long table ${HOUSE_PHOTOGRAPH} fine grain`,
     )
+  })
+
+  // The house line carries no lens (decision 275), so each plate names its own.
+  it('names one lens on every plate that carries no camera', () => {
+    const plated = { name: 'R', look: 'L', plates: [{ view: 'north' }] } as unknown as Parameters<
+      typeof setPlateBrief
+    >[0]
+    const first = setPlateBrief({ name: 'R', look: 'L', plates: [] }, 'north', 'a').prompt
+    const detail = setPlateBrief(plated, 'detail', 'a').prompt
+    expect(first.match(/\d+mm/g)).toEqual(['24mm'])
+    expect(detail.match(/\d+mm/g)).toEqual(['50mm'])
+    // A compass view's lens is the camera's, stated in the camera sentence.
+    expect(setPlateBrief(plated, 'south', 'a').prompt).not.toMatch(/\d+mm/)
   })
 
   it('shoots a compass view of a plated set from the opposite wall', () => {
@@ -94,5 +107,11 @@ describe('buildSetSheetPrompt', () => {
   it('asks for photographs before the anchors', () => {
     const prompt = buildSetSheetPrompt({ name: 'R', layout: '', look: 'L', styleAnchors: 'a' })
     expect(prompt.endsWith(`${HOUSE_PHOTOGRAPH}\na`)).toBe(true)
+  })
+
+  it('names one lens and one height, its own', () => {
+    const prompt = buildSetSheetPrompt({ name: 'R', layout: '', look: 'L', styleAnchors: 'a' })
+    expect(prompt.match(/\d+mm/g)).toEqual(['35mm'])
+    expect(prompt.match(/eye level/g)).toHaveLength(1)
   })
 })

@@ -22,7 +22,7 @@ import { BudgetExceeded, LiveBudget } from '@/lib/live-budget'
 import { parseLiveSetArgs } from '@/lib/live-set-args'
 import type { LiveSetArgs } from '@/lib/live-set-args'
 import { layoutDraftRequest } from '@/lib/set-layout-prompt'
-import { withCameraLens, withReferenceClause } from '@/lib/still-prompt'
+import { withReferenceClause } from '@/lib/still-prompt'
 
 /**
  * The live set-to-shot harness (decision 275, Task 13): runs the real
@@ -281,14 +281,10 @@ async function main(): Promise<void> {
 
     // Step 6 — the shot (prompt and camera already read and validated above).
     const chosen = platesForCamera(set, shotInput.camera.facing, 2)
-    const rawShotPrompt = stripBannedWords(
-      `${shotInput.prompt} ${HOUSE_PHOTOGRAPH} ${styleAnchors}`,
-    )
-    // Ruling R3: the camera's own lens overrides the house photograph line's
-    // default 35mm, in place — the harness previously skipped this swap.
-    const lensedShotPrompt = withCameraLens(rawShotPrompt, shotInput.camera.lens)
+    // The house line names no lens: the camera's reaches the model once, in
+    // the camera sentence, exactly as in the app.
     const shotPrompt = withReferenceClause(
-      lensedShotPrompt,
+      stripBannedWords(`${shotInput.prompt} ${HOUSE_PHOTOGRAPH} ${styleAnchors}`),
       [],
       { name: args.name, plates: chosen.length },
       describeCamera(shotInput.camera, layout),

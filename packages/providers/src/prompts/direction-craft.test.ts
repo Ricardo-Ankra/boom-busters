@@ -47,8 +47,19 @@ describe('DIRECTION_CRAFT', () => {
   it('states the house photograph line in the bible, word for word (decision 275)', () => {
     expect(DIRECTION_CRAFT).toContain(HOUSE_PHOTOGRAPH)
     expect(HOUSE_PHOTOGRAPH).toBe(
-      'An available-light documentary photograph, 35mm, eye level, slight grain, mixed colour temperature from window daylight and warm practicals, real materials with wear: scuffed edges, cable runs, a coffee ring, papers out of line.',
+      'An available-light documentary photograph, slight grain, mixed colour temperature from window daylight and warm practicals, real materials with wear: scuffed edges, cable runs, a coffee ring, papers out of line.',
     )
+  })
+
+  // Final review: a lens and a height in the house line put two lenses on most
+  // stills and "eye level" on low, aerial and macro shots.
+  it('leaves the lens and height to each shot, not the house line (decision 275)', () => {
+    expect(HOUSE_PHOTOGRAPH).not.toMatch(/\d+\s?mm/)
+    expect(HOUSE_PHOTOGRAPH).not.toContain('eye level')
+    expect(DIRECTION_CRAFT).toContain(
+      'The house line names no lens and no height; every shot states its own.',
+    )
+    expect(DIRECTION_CRAFT).not.toContain('A lens the camera names replaces the 35mm.')
   })
 
   it('bans the words that pull a prompt towards a render (decision 275)', () => {

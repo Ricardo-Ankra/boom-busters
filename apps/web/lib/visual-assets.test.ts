@@ -16,8 +16,13 @@ import {
   updateProjectSet,
   updateSettings,
 } from '@boom-busters/db'
-import { HOUSE_PHOTOGRAPH, LIVE_IMAGE_GEN_ADAPTERS, mockImageGen } from '@boom-busters/providers'
-import { STILL_GENERATIONS } from '@boom-busters/schemas'
+import {
+  HOUSE_PHOTOGRAPH,
+  LIVE_IMAGE_GEN_ADAPTERS,
+  mockImageGen,
+  stillStyleAnchors,
+} from '@boom-busters/providers'
+import { DEFAULT_SETTINGS, STILL_GENERATIONS } from '@boom-busters/schemas'
 import type {
   CastMember,
   GraphicBrief,
@@ -820,37 +825,50 @@ References attached: 1 photograph of Emad Mostaque.`
       )
     })
 
-    // Controller ruling R3 (spec 7.1): the camera's own lens overrides the
-    // house photograph line's default, in place, never as a second sentence.
-    it('lets the camera lens override the house photograph line', async () => {
-      await generateStillCandidates(
-        {
-          ...still,
-          set: undefined,
-          depicts: [],
-          prompt: `A boardroom at dusk. ${HOUSE_PHOTOGRAPH}`,
-          camera: { facing: 'north', position: 'the doorway', lens: '85mm' },
-        },
-        FIXTURE_PROJECT_ID,
-      )
-      const prompt = generate.mock.calls[0]?.[0]?.prompt ?? ''
-      expect(prompt).toContain(HOUSE_PHOTOGRAPH.replace('35mm', '85mm'))
-      expect(prompt).not.toContain('35mm')
-    })
+    // Final review (decision 275): the house line once carried "35mm, eye
+    // level", so a camera with its own lens sent two. The whole prompt, as the
+    // model reads it, now names one lens (the camera's) and one camera.
+    it('sends one lens and one camera sentence for a person in a plated set', async () => {
+      const emad = await insertCastMember(db, {
+        projectId: FIXTURE_PROJECT_ID,
+        name: 'Emad Mostaque',
+        role: 'Founder',
+      })
+      await setCastPhotos(db, emad.id, [photo('front-1', 'front')])
+      const room = await insertProjectSet(db, {
+        projectId: FIXTURE_PROJECT_ID,
+        name: 'Venture Capital Boardroom',
+        look: 'A long table.',
+      })
+      await updateProjectSet(db, room.id, {
+        layout: 'North wall: three tall windows\nSouth wall: glass onto the corridor',
+      })
+      await setSetPlates(db, room.id, [plate('p-n', 'north'), plate('p-s', 'south')])
+      const anchors = stillStyleAnchors(DEFAULT_SETTINGS.brandKit)
 
-    it('keeps the house photograph line’s 35mm when the camera names no lens', async () => {
       await generateStillCandidates(
         {
           ...still,
-          set: undefined,
-          depicts: [],
-          prompt: `A boardroom at dusk. ${HOUSE_PHOTOGRAPH}`,
-          camera: { facing: 'north', position: 'the doorway' },
+          set: 'Venture Capital Boardroom',
+          prompt:
+            'Emad Mostaque, founder of Stability AI, the person in the reference photo, seated ' +
+            `at the far end of the table in Venture Capital Boardroom, grey dusk at the glass. ${HOUSE_PHOTOGRAPH} ${anchors}`,
+          camera: { facing: 'north', position: 'the south doorway, seated height', lens: '85mm' },
         },
         FIXTURE_PROJECT_ID,
       )
-      const prompt = generate.mock.calls[0]?.[0]?.prompt ?? ''
-      expect(prompt).toContain(HOUSE_PHOTOGRAPH)
+
+      const request = generate.mock.calls[0]?.[0]
+      const prompt = request?.prompt ?? ''
+      expect(request?.references?.map((reference) => reference.kind)).toContain('character')
+      expect(request?.references?.map((reference) => reference.kind)).toContain('object')
+      expect(prompt.match(/\d+\s?mm/g)).toEqual(['85mm'])
+      expect(prompt.match(/The camera stands at/g)).toHaveLength(1)
+      expect(prompt.split(HOUSE_PHOTOGRAPH)).toHaveLength(2)
+      expect(prompt).toContain(anchors)
+      expect(prompt).toContain(
+        'The camera stands at the south doorway, seated height, facing north, 85mm.',
+      )
     })
   })
 })

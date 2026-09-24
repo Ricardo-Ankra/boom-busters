@@ -296,7 +296,9 @@ Planning rules:
   slot is manual work for a human.
 - "still" is an AI-GENERATED image. Write the prompt as the bible's "What a
   still prompt must contain" says: prose, subject first, three physical
-  facts, lens and light named, then the book's palette line (the era lock
+  facts, lens, camera height and light named (a still that names a set
+  is the exception: its lens and camera height go in "camera" instead),
+  then the book's palette line (the era lock
   only limits which period objects you name; never paste its list), then the house photograph line verbatim: "${HOUSE_PHOTOGRAPH}", then
   these Brand Kit anchors verbatim: "${input.styleAnchors}".
   People come in three kinds and they never mix:
@@ -336,7 +338,7 @@ ${
   Every still that names a set carries "camera". "facing" is the wall the
   camera looks at, by the inventory's compass; "position" is where it stands
   and how high ("the south doorway, seated eye height", "low across the table
-  from the window side"); "lens" when it matters ("85mm, shallow focus").
+  from the window side"); "lens" is the lens ("35mm", "85mm, shallow focus").
   Choose the facing from what the sentence needs in frame, using the
   inventory: the windows are north, so a shot that must show the windows
   faces north. Vary facing and position across a chapter's shots of one room.
