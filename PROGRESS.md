@@ -5726,7 +5726,44 @@ there are all these issues, but does nothing about it").
     automatically: the Stability AI film changes only after the owner
     presses Redraft direction, then Re-plan.
 
-    _Tests._ Task 1: the bible stages people in place, drops the motif
+    _After the whole-branch review._ The shot-list prompt's step-by-step
+    still template still asked for "the book's era lock and palette", which
+    undid cause #2 in the one instruction the model follows line by line; it
+    now asks for the palette line and says the era lock only limits which
+    period objects are named, never to be pasted. Stock-to-still is now
+    permitted per slot rather than per call: `parseShotRepair` retypes a stock
+    slot only when its target is cleared by `mayBecomeStill` (a stock slot
+    with an `ignored-person` or `ignored-set` finding), the same predicate
+    behind the button's "N become stills", so the job cannot retype more
+    slots than the button disclosed. Surnames match with case, a deliberate
+    deviation from spec section 5's "ignoring case": Jobs, Lay, Gates, Cook
+    and Page are ordinary words in a money documentary, and automatic repair
+    acts only where the problem is unambiguous; a trailing Jr., Sr., II, III
+    or IV is skipped to find the surname. A cast member the book shows other
+    than by likeness is left out of the person rule by `findingContext`,
+    because "archival-only" is the producer's legal call and a finding asking
+    the repair to show that person argues against it. A reuse-linked slot
+    carries no finding, since its picture is another slot's and a retype
+    would break `linkedSlotRefusal`; it still counts toward runs, and a size
+    run that reaches three on a linked slot keeps counting, so the next slot
+    that can be repaired is the one flagged. A repair reply whose
+    `coversText` does not match its slot's (beyond whitespace) is refused
+    rather than forced back, so a model that skips a brief cannot shift every
+    later answer onto the wrong slot. A still already in any of the rooms its
+    sentence names passes the set rule, and a sentence naming several rooms
+    raises one finding that names them all. The plan screen's
+    three-adjacent-sizes note and the `size-run` finding now share one rule
+    (`runSize`), so a chart breaks both. The Fix job's failure reads "The
+    fix failed", and a Fix that rewrote nothing says why.
+
+    _Still open_, parked for the owner: the repair shares the planning
+    Inngest step, so time it on the first live Re-plan and split it out if a
+    chapter nears the step limit; Fix stays pressable while its job runs and
+    shares Re-plan's cancel key; mid-job races with plan approval and brief
+    edits are unhandled; repair spend carries no ledger marker of its own;
+    and there is no per-slot "leave as is".
+
+    _Tests._ Package totals are as they stood at each task. Task 1: the bible stages people in place, drops the motif
     floor, and stays byte-identical to its markdown (495 of 495,
     packages/providers). Task 2: the Director's Book and shot-list prompts
     carry the new rules, every asserted phrase whole on one line (501 of
@@ -5746,7 +5783,11 @@ there are all these issues, but does nothing about it").
     one for a chapter with an auto finding (19 of 19, apps/web, DB-backed).
     Task 8: the visuals-replanner's `repair` op includes manual findings,
     may turn a stock slot into a still, and touches only flagged slots (7 of
-    7, apps/web, DB-backed). Task 9: the plan screen's warnings gain the
-    ignored-person and ignored-set lines, and the Fix button appears only
-    when something is flagged, names the chapter count and the still count,
-    and calls `repairPlanAction` (52 of 52, apps/web).
+    7 then, 8 of 8 after the review, apps/web, DB-backed). Task 9: the plan
+    screen's warnings gain the ignored-person and ignored-set lines, and the
+    Fix button appears only when something is flagged, names the chapter
+    count and the still count, and calls `repairPlanAction` (52 of 52,
+    apps/web). The final fix wave: each item test-first (packages/schemas 383
+    of 383, packages/providers 517 of 517, and 114 of 114 across the web
+    direction, replanner, visual-board and visual-assets files), then
+    `pnpm test` at 9 of 9 tasks, apps/web 872 of 872.
