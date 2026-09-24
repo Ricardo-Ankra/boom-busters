@@ -64,6 +64,12 @@ describe('routing the set sheet generator (decision 275)', () => {
 
     const select = screen.getByRole('combobox', { name: 'Set sheets model' })
     expect(select).toHaveValue('gemini-3-pro-image')
+    // Only the Gemini 3 models: 2.5 Flash has one small output size, and a
+    // sheet is cut into four plates.
+    expect(Array.from(select.querySelectorAll('option')).map((option) => option.value)).toEqual([
+      'gemini-3.1-flash-image',
+      'gemini-3-pro-image',
+    ])
 
     await userEvent.selectOptions(select, 'gemini-3.1-flash-image')
 

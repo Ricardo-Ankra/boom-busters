@@ -382,7 +382,10 @@ function ModelsTab({ settings, saving, commit }: TabProps) {
         </p>
 
         {/* The set-sheet generator (decision 275): Google models only, because
-            the four-view contact sheet and its 4K output are Gemini features. */}
+            the four-view contact sheet and its 4K output are Gemini features,
+            and only those that make a 4K image (the Gemini 3 models): a sheet
+            is cut into four plates. A stored choice outside that stays listed
+            so the select never shows a model it is not using. */}
         <div className="grid items-center gap-2 sm:grid-cols-[1fr_auto]">
           <Label htmlFor="route-set-sheet-model">Set sheets (Build the set)</Label>
           <Select
@@ -398,11 +401,17 @@ function ModelsTab({ settings, saving, commit }: TabProps) {
             }}
             className="sm:w-48"
           >
-            {LIVE_IMAGE_GEN_ADAPTERS.google.models.map((model) => (
-              <option key={model.id} value={model.id}>
-                {model.label}
-              </option>
-            ))}
+            {LIVE_IMAGE_GEN_ADAPTERS.google.models
+              .filter(
+                (model) =>
+                  model.pricesBySize?.['4K'] !== undefined ||
+                  model.id === settings.modelRouting.setSheet.model,
+              )
+              .map((model) => (
+                <option key={model.id} value={model.id}>
+                  {model.label}
+                </option>
+              ))}
           </Select>
         </div>
       </CardContent>
