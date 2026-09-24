@@ -20,11 +20,15 @@ describe('layoutDraftRequest', () => {
   })
 
   it('describes each wall once, never as a copy of another', () => {
-    expect(content).toContain('Describe each wall as its own surface; never as matching another wall.')
+    expect(content).toContain(
+      'Describe each wall as its own surface; never as matching another wall.',
+    )
   })
 
   it('still asks for the six labelled lines and the look', () => {
-    expect(content).toContain('"North wall:", "East wall:", "South wall:", "West wall:", "Centre:", "Light:"')
+    expect(content).toContain(
+      '"North wall:", "East wall:", "South wall:", "West wall:", "Centre:", "Light:"',
+    )
     expect(content).toContain("The room's look: A long table.")
   })
 })
