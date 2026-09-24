@@ -132,8 +132,9 @@ Light: overcast daylight from the north windows, warm ceiling pendants.
 A new button on the Set card, **Build the set · ≈$0.24**, shown once a set has
 at least one plate. `buildSetSheetAction(setId)`:
 
-1. Refuses if the set has no plate, or if keeping four new plates would not
-   fit (the owner is told how many to remove).
+1. Refuses if the set has no plate, or if fewer than three plates are free
+   (east, south and west need room; the north panel may replace the
+   original), telling the owner how many to remove.
 2. Generates ONE image on the `setSheet` route (section 8.2) at 16:9, 4K, with
    the set's north plate (or first plate) as reference image 1 and the prompt
    in 5.2.
@@ -177,9 +178,11 @@ furniture, materials and light." (the adapter's `referenceLabel`, section 6.4).
   mean luminance is at least 235. Trims a matching outer border if present.
 - Crops the four rectangles inside the bands and returns them as PNG with
   their direction.
-- If either band is not found, returns `null`. The action then offers the
-  whole sheet as a single candidate labelled "This sheet could not be split;
-  build the set again," and never crops on a guess.
+- If either band is not found, returns `null`. The action then answers "The
+  sheet came back without clear borders, so it was not split; build the set
+  again." and never crops on a guess. (Amended while planning: the whole
+  sheet is not offered as a candidate, because a 2x2 grid chosen as a plate
+  would teach every later still of the room a grid.)
 
 ### 5.4 One view at a time
 
@@ -295,9 +298,10 @@ camera's lens is given, the lens in the line yields to it.
 
 ### 7.2 Banned words
 
-`BANNED_PROMPT_WORDS` gains `ultra-detailed`, `8k`, `4k`, `render`,
-`rendered`, `octane`, `unreal engine`, `hyperrealistic` and `photorealistic`
-(which averages towards a waxy look on Gemini). They are stripped before the
+`BANNED_PROMPT_WORDS` gains `ultra-detailed`, `8k`, `4k`, `3d render`,
+`cgi`, `octane`, `unreal engine`, `hyperrealistic` and `photorealistic`
+(which averages towards a waxy look on Gemini). Plain `render` and
+`rendered` stay allowed: they are ordinary verbs in a documentary prompt. They are stripped before the
 image model by the existing `stripBannedWords`. `cinematic` is already there.
 
 ## 8. Models and settings
@@ -338,8 +342,8 @@ price for the route and size, as now. Every paid call runs inside `withCost`.
 
 ## 10. Failure behaviour
 
-- Sheet cannot be split: the whole sheet is one candidate with the message in
-  5.3; nothing is cropped on a guess.
+- Sheet cannot be split: the action answers with the message in 5.3; the
+  spend is on the ledger and nothing is cropped on a guess.
 - Refusal or provider error: shown as the Set card shows any failed generation
   today ("That did not work" with the provider's words).
 - Inventory draft fails: field left empty with the note in 4.2; Build the set
