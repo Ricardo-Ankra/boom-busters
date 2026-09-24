@@ -127,7 +127,10 @@ describe('planWarnings', () => {
   it('lets a chart break the three-adjacent-sizes note too', () => {
     const chart: ShotBrief = { ...still('wide', 'x'), type: 'chart' } as unknown as ShotBrief
     expect(
-      planWarnings([{ brief: still('wide', 'a') }, { brief: chart }, { brief: still('wide', 'b') }], []),
+      planWarnings(
+        [{ brief: still('wide', 'a') }, { brief: chart }, { brief: still('wide', 'b') }],
+        [],
+      ),
     ).toEqual([])
   })
 })

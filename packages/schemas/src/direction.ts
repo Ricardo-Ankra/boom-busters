@@ -751,8 +751,7 @@ export function craftFindings(
     const placed = context.sets.filter((name) => sentencePlacesIn(brief, name))
     if (placed.length > 0) {
       const named = slotSet(brief)
-      const inOne =
-        likeness && named !== null && placed.some((name) => nameMatches(named, name))
+      const inOne = likeness && named !== null && placed.some((name) => nameMatches(named, name))
       if (!inOne) {
         const only = placed.length === 1 ? placed[0]! : null
         const where = orList(placed)
