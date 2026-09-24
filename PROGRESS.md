@@ -5932,19 +5932,21 @@ camera angles, and perspectives ... the references angles should just
 help the image generator build a more accurate and consistent scene ...
 the desk, the chair, the laptop should remain consistent").
 
-    Research found four causes. Editing models keep the input's framing:
-    they learn from before-and-after pairs that share geometry, and favour
-    preserving the image over a camera instruction; SpatialEdit and
+    Research found five causes (spec section 1). Editing models keep the
+    input's framing: they learn from before-and-after pairs that share
+    geometry, and favour preserving the image over a camera instruction;
+    SpatialEdit and
     CameraEditor both measure Nano Banana, GPT-Image-1, Seedream 4.0 and
     similar editors as conservative about viewpoint. A reverse shot needs
     the wall behind the original camera, information one plate never
     holds. The owner's stills ran on gemini-2.5-flash-image, which Google
     lists as Legacy and which does no reasoning, while the Gemini 3 image
-    models reason before drawing. And the reference sentence from decision
-    269 reads as an edit instruction ("never reproduce or edit the
-    framing"), so a still copied the plate it was given rather than taking
-    its own camera position; the pass toward realism therefore lands on a
-    rendered look wherever a still leans on a reference.
+    models reason before drawing. The prompt ending from decision 273
+    reads as an edit instruction ("never reproduce or edit the framing"),
+    so a still copied the plate it was given rather than taking its own
+    camera position. And plates carried no photographic language, so a
+    plate that looked rendered passed that look to every shot that carried
+    it.
 
     What changed, task by task:
     - Task 1: plates face a compass direction (north, east, south, west,
@@ -5964,11 +5966,11 @@ the desk, the chair, the laptop should remain consistent").
       cuts four panels, or refuses with null when it cannot find clean
       borders, rather than guessing.
     - Task 7: Build the set turns one contact sheet into four candidate
-      views with directions attached; a sheet that will not split returns
-      one candidate, never the whole grid (the plan's amendment to spec
-      5.3: an unsplittable sheet is a refusal, not something offered as a
-      plate, since a 2x2 grid chosen as a plate would teach every later
-      still of the room to draw a grid).
+      views with directions attached; a sheet that will not split is
+      refused with "The sheet came back without clear borders, so it was
+      not split; build the set again." and offers no candidate at all (the
+      plan's amendment to spec 5.3: a 2x2 grid chosen as a plate would
+      teach every later still of the room to draw a grid).
     - Task 8: `HOUSE_PHOTOGRAPH`, the documentary-photograph line, lands on
       every plate, sheet and still prompt; `BANNED_PROMPT_WORDS` gains
       ultra-detailed, 8k, 4k, 3d render, cgi, octane, unreal engine,
@@ -5989,8 +5991,10 @@ the desk, the chair, the laptop should remain consistent").
       Ruling R3 landed: spec 7.1 says a camera's lens replaces the house
       line's 35mm, which no earlier task implemented; Task 10 built it
       inline in the still-prompt path.
-    - Task 11: a linked slot's camera, and an unlinked slot sharing a
-      camera with another, are both covered by the plan check.
+    - Task 11: the plan check gains a `shared-camera` finding, graded
+      auto: an unlinked still in the same set as an earlier one, with the
+      same facing and the same position (trimmed, lower-cased), is flagged
+      so the later one moves; a linked slot is never flagged.
     - Task 12: the board gets a Camera row (four direction buttons,
       Position, Lens, Save camera) on a set shot's card; a same-task fix
       resyncs the row when the stored camera changes underneath it (a
@@ -6040,6 +6044,55 @@ the desk, the chair, the laptop should remain consistent").
     about $0.24, and regenerating a still about $0.13.
 
     Verified: `pnpm format:check`, `pnpm lint` and `pnpm typecheck` clean
-    across all 10 packages; `pnpm test` 9 of 9 tasks, 2,531 tests passed
-    (infra 52, db 268, timeline 119, cost 28, compositions 144, web 954,
-    providers 536, schemas 400, ui-tokens 30).
+    across the 10 workspace packages (typecheck runs 10 tasks: the 9 with
+    unit suites plus e2e); `pnpm test` 9 of 9 tasks (e2e has no unit
+    suite), 2,531 tests passed (infra 52, db 268, timeline 119, cost 28,
+    compositions 144, web 954, providers 536, schemas 400, ui-tokens 30).
+
+    Rollback: once plates are saved under compass names, rolling back to a
+    pre-275 deploy breaks project pages with sets; roll forward instead.
+
+    Final fix wave (whole-branch review, "ready with fixes"):
+    - F1: a routing save no longer resets `setSheet` to its default. Zod 4
+      applies a default inside `.partial()`, so `SettingsPatchSchema` now
+      builds `modelRouting` from a copy of the routing schema whose
+      `setSheet` has no default.
+    - F2: a plate's image label reads "Use it for the room's furniture,
+      materials and light." in place of "never its framing or camera
+      position", which contradicted the sheet prompt.
+    - F3: the planner's set rule no longer asks for the camera in prose;
+      the prompt of a set still describes the people, what they do and the
+      light, and the camera lives in `camera` alone, so a board override
+      cannot leave a regenerated prompt with two cameras.
+    - F4: `HOUSE_PHOTOGRAPH` drops "35mm, eye level". Each shot states its
+      own lens and height (the prompt outside a set, `camera` inside one;
+      the sheet, first plate and detail plate prompts name theirs), so
+      `withCameraLens` and the bible's "A lens the camera names replaces
+      the 35mm." are gone. Decision made: the first plate now says "with a
+      24mm lens" and a detail plate "with a 50mm lens", since the house
+      line no longer supplies one. A mock-mode test checks a whole still
+      prompt (a photographed person in a plated set, a camera with a lens)
+      names one lens and one "The camera stands at" sentence.
+    - F5: sheet panels are shrunk to at most 1600 px on the long side,
+      still PNG, with the stored size reported.
+    - M1: an unsplit sheet is stored in R2 under `stillKey` and its key
+      logged; the refusal is unchanged even when storing fails.
+    - M2: the Set card's note reads "No inventory yet; write it, or press
+      Redraft from plate." in muted text (sets plated before 275 were never
+      drafted, so "could not be drafted" was wrong for them).
+    - M3: the inventory draft asks for `outputBudget(600)`, and a reply cut
+      off at its budget is a failed draft (null), in the app and the
+      harness.
+    - M4: Settings → Models → Set sheets lists only the models that make a
+      4K image (the Gemini 3 models); a stored choice outside that stays
+      listed so the select never misreports it.
+    - M5: the shared-camera finding keys the set name without case and
+      names the earlier still by its sentence.
+    - M6: the harness takes `--anchors` and `--inventory-model` (default:
+      the settings default shotlist model if Google's, else
+      gemini-3.5-flash-lite, reserving $0.03), and `run.json` records the
+      anchors, the inventory model, and one image per shot against the
+      app's two.
+    - M7: this record corrected (the five causes, decision 273 not 269,
+      the refusal in Task 7, Task 11), and the spec updated at 4.2, 5.2,
+      5.3, 6.4, 7.1 and the harness section.

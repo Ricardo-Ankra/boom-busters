@@ -166,8 +166,9 @@ The room: <inventory, or the Look line when the inventory is empty>.
 <house photograph line, section 7.1> <Brand Kit anchors>
 ```
 
-Reference image 1 is labelled "<set name> facing north. Use it for the room's
-furniture, materials and light." (the adapter's `referenceLabel`, section 6.4).
+Reference image 1 is labelled "Reference image 1 of 1: <set name>, facing
+north. Use it for the room's furniture, materials and light." (the adapter's
+`referenceLabel`, section 6.4).
 
 ### 5.3 Cropping
 
@@ -177,13 +178,19 @@ furniture, materials and light." (the adapter's `referenceLabel`, section 6.4).
 - Reads the image as greyscale; looks for a horizontal and a vertical band of
   at least 4 pixels, each in the middle 40 to 60 per cent of the image, whose
   mean luminance is at least 235. Trims a matching outer border if present.
-- Crops the four rectangles inside the bands and returns them as PNG with
-  their direction.
+- Crops the four rectangles inside the bands, shrinks each so its long side
+  is at most 1600 px (keeping its shape, never enlarging), and returns them
+  as PNG with their direction and their stored width and height. (Final
+  review: a 4K sheet's panels were about 2.7K wide, one grainy panel 10.5 MB,
+  and two travel inline with every still in the set.)
 - If either band is not found, returns `null`. The action then answers "The
   sheet came back without clear borders, so it was not split; build the set
   again." and never crops on a guess. (Amended while planning: the whole
   sheet is not offered as a candidate, because a 2x2 grid chosen as a plate
-  would teach every later still of the room a grid.)
+  would teach every later still of the room a grid.) The unsplit sheet is
+  still stored in R2 under `stillKey` and its key logged with
+  `console.error`, so the $0.24 it cost can be inspected; a storage failure
+  is logged too and never changes the message.
 
 ### 5.4 One view at a time
 
@@ -257,9 +264,13 @@ this photograph is a new one from the camera above.
 ### 6.4 Image labels
 
 The Gemini adapter's `referenceLabel` (decision 273) gains the direction for a
-plate: "Reference image 2 of 3: The boardroom facing north. Use it for the
-room's furniture, materials and light." `ImageReference` gains an optional
-`facing`. fal has no per-image text; its prompt ending already names the
+plate: "Reference image 2 of 3: The boardroom, facing north. Use it for the
+room's furniture, materials and light." (", a close detail" for a detail
+plate; nothing for an undirected one). The words "never its framing or camera
+position" go: they contradicted the sheet prompt, which asks for the north
+plate's view, and every still prompt already says its photograph is new from
+the camera it names. A person's label is unchanged. `ImageReference` gains an
+optional `facing`. fal has no per-image text; its prompt ending already names the
 plates in order.
 
 ### 6.5 The board override
@@ -288,14 +299,22 @@ findings, and the repair prompt names the slots that share a camera.
 One constant, `HOUSE_PHOTOGRAPH`, in `packages/providers/src/prompts/direction-craft.ts`
 (with its source in `direction-craft.md`, embedded as today):
 
-> An available-light documentary photograph, 35mm, eye level, slight grain,
-> mixed colour temperature from window daylight and warm practicals, real
-> materials with wear: scuffed edges, cable runs, a coffee ring, papers out
-> of line.
+> An available-light documentary photograph, slight grain, mixed colour
+> temperature from window daylight and warm practicals, real materials with
+> wear: scuffed edges, cable runs, a coffee ring, papers out of line.
 
 It goes on the plate prompt (`setPlateBrief`), the sheet prompt, and the still
-template in the shot-list prompt, before the Brand Kit anchors. When a
-camera's lens is given, the lens in the line yields to it.
+template in the shot-list prompt, before the Brand Kit anchors.
+
+It names no lens and no height (amended in the final review: the first
+version carried "35mm, eye level", which put a second lens beside a camera's
+own on most stills and "eye level" on low, aerial and macro shots). Each shot
+states its own: the planner names the lens and height in the prompt of a
+still outside a set, and in `camera` for a still in a set (the prompt of a
+set still never places the camera, since a board override changes only the
+field). The sheet prompt says "taken at eye level with a 35mm lens"; the first
+plate is taken "at eye level with a 24mm lens", a detail plate "with a 50mm
+lens", and a compass view carries a 24mm camera. There is no lens swap.
 
 ### 7.2 Banned words
 
@@ -402,7 +421,12 @@ sheet, the split, and one still in the set from a given camera. It writes
 every image, prompt and cost to a run folder for review. A budget guard
 reserves each call's estimate before it is made and refuses any call that
 would take the run past $1 (a `--cap` below $1 is allowed, above is not
-without the owner). A typical run costs about $0.32. It needs
+without the owner). A typical run costs about $0.32. `--anchors "<text>"`
+replaces the default Brand Kit's anchors, and `--inventory-model <id>` the
+inventory model (default: the settings default `shotlist` model when it is a
+Google one, else `gemini-3.5-flash-lite`; $0.03 is reserved for the draft).
+`run.json` records the anchors, the inventory model and that the harness
+makes one image per shot where the app makes two. It needs
 `GEMINI_API_KEY` in `.env.local`, never prints it, touches no database, and is
 never part of `pnpm test` or `pnpm e2e`. The review-and-improve loop runs it
 after the branch is reviewed.
