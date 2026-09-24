@@ -159,9 +159,10 @@ export const visualsReplanner = inngest.createFunction(
         // Every member, photographed or not (decision 271): the Fix button
         // weighs an unphotographed person as a manual finding.
         cast: cast.map((member) => ({ name: member.name, photographed: member.photos.length > 0 })),
-        // The film's rooms: named and described for the shot-list prompt,
-        // and counted by the craft notes below (decision 264).
-        sets: sets.map(({ name, look }) => ({ name, look })),
+        // The film's rooms: named, described and inventoried for the
+        // shot-list prompt (decision 275), and counted by the craft notes
+        // below (decision 264).
+        sets: sets.map(({ name, look, layout }) => ({ name, look, layout })),
         logos: logos.map((row) => ({ id: row.id, title: row.title ?? '' })),
       }
     })

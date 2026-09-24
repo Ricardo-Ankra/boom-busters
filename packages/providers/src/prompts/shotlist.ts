@@ -110,7 +110,10 @@ Every brief carries "shotSize": "wide"|"medium"|"close"|"macro"|"aerial"|"graphi
 - {"type": "still", "coversText", "description", "shotSize", "motion", "transition",
    "prompt", "negativePrompt"?, "depicts"?: [each real person shown by likeness, by
    full name alone: "Jane Doe", never "Jane Doe, chief executive"]${
-     hasSets ? ',\n   "set"?: the exact name of one set listed above, alone' : ''
+     hasSets
+       ? ',\n   "set"?: the exact name of one set listed above, alone' +
+         ',\n   "camera"?: {"facing": "north"|"east"|"south"|"west", "position", "lens"?}'
+       : ''
    }}
 - {"type": "hero", "coversText", "description", "shotSize", "motion", "transition",
    "prompt", "cameraMovement", "loop": boolean, "depicts"?} (only when hero is enabled)
@@ -184,7 +187,7 @@ export function buildShotListRequest(input: {
    * photographs attached, so the room is the same room every time. Absent
    * on a project with no sets, and then no rule about them is sent.
    */
-  sets?: readonly { name: string; look: string }[]
+  sets?: readonly { name: string; look: string; layout?: string }[]
   /**
    * Titles of the marks the logo library holds (decision 268, Plan B). A
    * graphic's "logo" may name anyone; naming one from this list means the
@@ -215,7 +218,18 @@ export function buildShotListRequest(input: {
     (sets.length > 0
       ? `\n\nSets (the rooms this film returns to; the producer holds reference ` +
         `photographs of each, so naming one puts the shot in that exact room):\n` +
-        sets.map((set) => `- ${set.name}: ${set.look}`).join('\n')
+        sets
+          .map((set) => {
+            const inventory = (set.layout ?? '').trim()
+            return inventory
+              ? `- ${set.name}: ${set.look}\n${inventory
+                  .split(/\r?\n/)
+                  .filter((line) => line.trim() !== '')
+                  .map((line) => `  ${line.trim()}`)
+                  .join('\n')}`
+              : `- ${set.name}: ${set.look}`
+          })
+          .join('\n')
       : '') +
     (logos.length > 0
       ? `\n\nLogos (marks the producer holds; a graphic's "logo" names one exactly):\n` +
@@ -321,6 +335,13 @@ ${
   the table from the window side", "through the glass wall from the
   corridor", "close over one investor's shoulder".
   Two stills of the same room never share a camera position.
+  Every still that names a set carries "camera". "facing" is the wall the
+  camera looks at, by the inventory's compass; "position" is where it stands
+  and how high ("the south doorway, seated eye height", "low across the table
+  from the window side"); "lens" when it matters ("85mm, shallow focus").
+  Choose the facing from what the sentence needs in frame, using the
+  inventory: the windows are north, so a shot that must show the windows
+  faces north. Vary facing and position across a chapter's shots of one room.
   Do not describe its walls, furniture, layout or materials; the
   photographs state those, and a written description only argues with
   them. Its light and weather are still yours. A sentence that happens

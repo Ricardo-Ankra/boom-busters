@@ -39,6 +39,16 @@ const PARAGRAPHS: ShotParagraph[] = [
 
 const brandKit = DEFAULT_SETTINGS.brandKit
 
+const STILL_BRIEF = {
+  type: 'still' as const,
+  coversText: 'By June, the auditors could not find the money.',
+  description: 'An empty audit room.',
+  shotSize: 'wide' as const,
+  motion: { kind: 'static' as const },
+  transition: 'cut' as const,
+  prompt: 'An empty audit room at dusk, one lamp on.',
+}
+
 function baseRequest() {
   return {
     caseTitle: 'Wirecard',
@@ -642,6 +652,71 @@ describe('buildShotListRequest with direction (decision 252)', () => {
       styleAnchors: stillStyleAnchors(brandKit),
       direction,
       sets: [{ name: 'Venture Capital Boardroom', look: 'A long polished table, a glass wall.' }],
+    })
+
+    const withLayout = buildShotListRequest({
+      caseTitle: 'Stability AI',
+      chapterTitle: 'The Missing Billions',
+      chapterNumber: 2,
+      paragraphs: PARAGRAPHS,
+      claims: CLAIMS,
+      styleAnchors: stillStyleAnchors(brandKit),
+      direction,
+      sets: [
+        {
+          name: 'Venture Capital Boardroom',
+          look: 'A long polished table, a glass wall.',
+          layout: 'North wall: three tall windows.',
+        },
+      ],
+    })
+
+    it('lists each set with its room inventory in the cacheable prefix (decision 275)', () => {
+      const prefix = withLayout.messages[0]?.content ?? ''
+      expect(prefix).toContain('- Venture Capital Boardroom: A long polished table, a glass wall.')
+      expect(prefix).toContain('  North wall: three tall windows.')
+    })
+
+    it('asks every still in a set for a camera, placed physically', () => {
+      expect(withSets.system).toContain(
+        '"camera"?: {"facing": "north"|"east"|"south"|"west", "position", "lens"?}',
+      )
+      expect(withSets.system).toContain('Every still that names a set carries "camera".')
+      expect(withSets.system).toContain(
+        'Two stills of the same room never share a camera position.',
+      )
+    })
+
+    it('parses a still with a camera, and one with a broken camera without it', () => {
+      const text = JSON.stringify({
+        slots: [
+          {
+            paragraphIndex: 0,
+            seconds: 4,
+            brief: {
+              ...STILL_BRIEF,
+              set: 'Venture Capital Boardroom',
+              camera: { facing: 'south', position: 'the north windows, seated height' },
+            },
+          },
+          {
+            paragraphIndex: 0,
+            seconds: 4,
+            brief: {
+              ...STILL_BRIEF,
+              set: 'Venture Capital Boardroom',
+              camera: { facing: 'sideways' },
+            },
+          },
+        ],
+      })
+      const parsed = parseShotList(text)
+      expect(parsed.slots).toHaveLength(2)
+      expect((parsed.slots[0]!.brief as { camera?: unknown }).camera).toEqual({
+        facing: 'south',
+        position: 'the north windows, seated height',
+      })
+      expect((parsed.slots[1]!.brief as { camera?: unknown }).camera).toBeUndefined()
     })
 
     it('lists the sets and their look in the cacheable prefix', () => {

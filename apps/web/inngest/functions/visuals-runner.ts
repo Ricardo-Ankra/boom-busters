@@ -142,9 +142,10 @@ export const visualsRunner = inngest.createFunction(
         photographed: cast
           .filter((member) => member.photos.length > 0)
           .map((member) => member.name),
-        // The film's rooms: named and described for the shot-list prompt,
-        // and counted by the craft notes below (decision 264).
-        sets: sets.map(({ name, look }) => ({ name, look })),
+        // The film's rooms: named, described and inventoried for the
+        // shot-list prompt (decision 275), and counted by the craft notes
+        // below (decision 264).
+        sets: sets.map(({ name, look, layout }) => ({ name, look, layout })),
         logos: logos.map((row) => ({ id: row.id, title: row.title ?? '' })),
       }
     })

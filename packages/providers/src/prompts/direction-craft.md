@@ -69,17 +69,15 @@ plain one.
   it. A chapter with no motif in it is a chapter whose sentences were all
   about something; that is the goal, not a gap.
 - A set is a room the film returns to, and the producer holds
-  photographs of it. Name one on a brief when the sentence puts us in
-  that room, and then write only what happens inside it: where the camera
-  stands and what part of the room it sees, the people, what they are
-  doing, the light. Name the room in the prompt itself, in the same words
-  the set list uses, so the sentence and the photographs attached to it
-  are plainly about one place. Never describe the room's walls, furniture
-  or materials again; the photographs give the room's design.
-  They never give the picture: every still in a set is a new photograph from its own camera position.
-  Across a chapter the camera moves around the room the way a crew's
-  would: the head of the table, low across it from the window side,
-  through the glass from the corridor, close over one person's shoulder.
+  photographs of it and a room inventory, one line per wall.
+  The plates and the room inventory are the room; the camera is the brief's.
+  Name the set on a brief when the sentence puts us in that room, and write
+  what happens inside it: the people, what they are doing, the light. Name
+  the room in the prompt itself, in the same words the set list uses. Never
+  describe its walls, furniture or materials again; the inventory states them.
+  Every still in a set is a new photograph from its own camera.
+  Place it by where it stands, how high, which way it faces and the lens, never by an angle name.
+  Across a chapter the camera moves around the room the way a crew's would.
   Two stills of the same room never share a camera position. A set named
   on a shot that happens somewhere else is worse than no set at all.
   A room on every slot is a motif on every slot, and that mistake has

@@ -231,7 +231,7 @@ export function chapterShotListRequest(input: {
   styleAnchors: string
   direction: DirectorsBook | null
   photographed?: readonly string[]
-  sets?: readonly { name: string; look: string }[]
+  sets?: readonly { name: string; look: string; layout?: string }[]
   logos?: readonly LogoIndex[]
 }): ReturnType<typeof buildShotListRequest> | null {
   const paragraphs = promptParagraphs(input.paragraphs, input.chapter.id)
@@ -247,7 +247,15 @@ export function chapterShotListRequest(input: {
     ...(input.photographed && input.photographed.length > 0
       ? { photographed: input.photographed }
       : {}),
-    ...(input.sets && input.sets.length > 0 ? { sets: input.sets } : {}),
+    ...(input.sets && input.sets.length > 0
+      ? {
+          sets: input.sets.map((set) => ({
+            name: set.name,
+            look: set.look,
+            layout: set.layout,
+          })),
+        }
+      : {}),
     logos: input.logos?.map((logo) => logo.title),
   })
 }
@@ -326,7 +334,7 @@ export async function planChapterSlots(input: {
   /** Cast members with a reference photograph (decision 253, amended). */
   photographed?: readonly string[]
   /** The project's sets (decision 264), threaded exactly like `photographed`. */
-  sets?: readonly { name: string; look: string }[]
+  sets?: readonly { name: string; look: string; layout?: string }[]
   /**
    * The logo library (decision 268, Plan B): titles name the marks in the
    * prompt and the mock; ids resolve a graphic's "logo" to its asset. Gathered
@@ -367,7 +375,11 @@ export async function planChapterSlots(input: {
         // Only a photographed member can carry an auto finding, and this pass
         // acts on nothing else, so the photographed names are all it needs.
         cast: (input.photographed ?? []).map((name) => ({ name, photographed: true })),
-        sets: input.sets ?? [],
+        sets: (input.sets ?? []).map((set) => ({
+          name: set.name,
+          look: set.look,
+          layout: set.layout,
+        })),
       }),
     })
   }

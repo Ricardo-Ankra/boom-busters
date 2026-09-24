@@ -82,16 +82,25 @@ describe('DIRECTION_CRAFT', () => {
     // The fallback no longer canonises one picture.
     expect(DIRECTION_CRAFT).not.toContain('(the empty chair,')
     expect(DIRECTION_CRAFT).toContain('A set is a room the film returns to')
-    expect(DIRECTION_CRAFT).toContain("the photographs give the room's design")
+    expect(DIRECTION_CRAFT).toContain('the inventory states them')
     expect(DIRECTION_CRAFT).toContain('A room on every slot is a motif on every slot')
   })
 
   it('moves the camera around a set, and puts people in it rather than on it (decision 273)', () => {
     expect(DIRECTION_CRAFT).toContain(
-      'They never give the picture: every still in a set is a new photograph from its own camera position.',
+      'Every still in a set is a new photograph from its own camera.',
     )
     expect(DIRECTION_CRAFT).toContain('Two stills of the same room never share a camera position.')
     expect(DIRECTION_CRAFT).toContain('A person is photographed in the room, never pasted onto it')
+  })
+
+  it("places a set shot's camera physically, from the brief (decision 275)", () => {
+    expect(DIRECTION_CRAFT).toContain(
+      "The plates and the room inventory are the room; the camera is the brief's.",
+    )
+    expect(DIRECTION_CRAFT).toContain(
+      'Place it by where it stands, how high, which way it faces and the lens, never by an angle name.',
+    )
   })
 
   it('gives anonymous figures and extras realistic, visible faces (decision 273)', () => {
