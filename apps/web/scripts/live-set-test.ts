@@ -21,7 +21,7 @@ import {
 import type { SetCamera, SetPlate, SetPlateDirection, SetPlateView } from '@boom-busters/schemas'
 import sharp from 'sharp'
 import { z } from 'zod'
-import { buildSetSheetPrompt, describeCamera } from '@/lib/set-plates'
+import { buildSetSheetPrompt, describeCamera, setPlateBrief } from '@/lib/set-plates'
 import { splitContactSheet } from '@/lib/contact-sheet'
 import { BudgetExceeded, LiveBudget } from '@/lib/live-budget'
 import { parseLiveSetArgs } from '@/lib/live-set-args'
@@ -125,12 +125,13 @@ async function main(): Promise<void> {
 
   const budget = new LiveBudget(args.cap)
   const styleAnchors = args.anchors ?? stillStyleAnchors(DEFAULT_SETTINGS.brandKit)
-  const prompts: { inventory?: string; sheet?: string; shot?: string } = {}
+  const prompts: { firstPlate?: string; inventory?: string; sheet?: string; shot?: string } = {}
   const record: {
     name: string
     look: string
     image: string
     createdAt: string
+    firstPlate?: { prompt: string; model: string }
     inventory?: { source: 'file' | 'generated'; path?: string; text: string; model?: string }
     shot?: { prompt: string; camera: SetCamera; platesUsed: SetPlateView[] }
     fidelity: {
@@ -145,7 +146,7 @@ async function main(): Promise<void> {
   } = {
     name: args.name,
     look: args.look,
-    image: args.image,
+    image: args.image ?? 'first-plate.png (generated)',
     createdAt: new Date().toISOString(),
     // Where this run differs from what the app would do, so a reviewer reads
     // the output for what it is.
@@ -189,22 +190,56 @@ async function main(): Promise<void> {
   }
 
   try {
-    // Step 2 — the set's first plate, facing north.
-    const imageMime = mimeTypeFor(args.image)
-    const imageBytes = readFileSync(args.image)
-    const imageBase64 = imageBytes.toString('base64')
-    const imageMeta = await sharp(imageBytes).metadata()
-    if (!imageMeta.width || !imageMeta.height) {
-      throw new Error(`${args.image}: could not read its dimensions.`)
-    }
-
-    // Read and validate --layout and --shot here, alongside --image, and
-    // before any paid call (controller ruling: a bad shot.json must never
-    // cost the $0.24 sheet, let alone the inventory call before it).
+    // Read and validate --layout and --shot before any paid call (controller
+    // ruling: a bad shot.json must never cost the $0.24 sheet, let alone the
+    // calls before it).
     const layoutFromFile = args.layout ? readFileSync(args.layout, 'utf8').trim() : null
     const shotInput = args.shot
       ? ShotFileSchema.parse(JSON.parse(readFileSync(args.shot, 'utf8')))
       : DEFAULT_SHOT
+
+    // Step 2 — the set's first plate, facing north: the given image, or one
+    // drawn from the look exactly as the app's "Generate a plate" draws it
+    // (the same brief, on the stills model at 1K), inside the cap.
+    let imageMime: 'image/jpeg' | 'image/png' | 'image/webp'
+    let imageBytes: Buffer
+    if (args.generateFirst) {
+      const brief = setPlateBrief(
+        { name: args.name, look: args.look, plates: [] },
+        'north',
+        styleAnchors,
+      )
+      const firstPrompt = stripBannedWords(brief.prompt)
+      prompts.firstPlate = firstPrompt
+      record.firstPlate = { prompt: firstPrompt, model: SHOT_MODEL }
+      budget.reserve('first-plate', imageGenPrice(geminiImageGen, 1, SHOT_MODEL, '1K'))
+      const firstResult = await geminiImageGen.generate(
+        {
+          prompt: firstPrompt,
+          ...(brief.negativePrompt ? { negativePrompt: brief.negativePrompt } : {}),
+          count: 1,
+          model: SHOT_MODEL,
+          size: '1K',
+        },
+        { apiKey },
+      )
+      budget.record('first-plate', firstResult.estimatedCostUsd)
+      const firstImage = firstResult.images[0]
+      if (!firstImage) throw new Error('Gemini returned no first plate.')
+      imageBytes = decodeDataUrl(firstImage.url)
+      const declared = firstImage.url.slice('data:'.length, firstImage.url.indexOf(';'))
+      imageMime = declared === 'image/jpeg' || declared === 'image/webp' ? declared : 'image/png'
+      writeFileSync(path.join(outDir, 'first-plate.png'), imageBytes)
+    } else {
+      const imagePath = args.image!
+      imageMime = mimeTypeFor(imagePath)
+      imageBytes = readFileSync(imagePath)
+    }
+    const imageBase64 = imageBytes.toString('base64')
+    const imageMeta = await sharp(imageBytes).metadata()
+    if (!imageMeta.width || !imageMeta.height) {
+      throw new Error('The first plate: could not read its dimensions.')
+    }
 
     // Step 3 — the inventory.
     let layout: string

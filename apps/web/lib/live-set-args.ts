@@ -12,7 +12,8 @@ import { DEFAULT_SETTINGS } from '@boom-busters/schemas'
 import type { ModelRouting } from '@boom-busters/schemas'
 
 export interface LiveSetArgs {
-  image: string
+  /** The set's first plate; absent when `generateFirst` draws it from the look. */
+  image?: string
   name: string
   look: string
   layout?: string
@@ -23,6 +24,8 @@ export interface LiveSetArgs {
   /** The inventory-draft model (a Google id). */
   inventoryModel: string
   cap: number
+  /** Generate the first plate from `look`, as the app's "Generate a plate" does, inside the cap. */
+  generateFirst: boolean
 }
 
 /** The inventory model when the production shotlist route is not a Google one. */
@@ -100,11 +103,20 @@ function parseCap(raw: string | undefined): number {
 
 export function parseLiveSetArgs(argv: readonly string[]): LiveSetArgs {
   const raw = readRawFlags(argv)
-  if (!raw.image) throw new Error('--image is required (a jpeg, png or webp file).')
+  const generateFirst = 'generate-first' in raw
+  if (generateFirst && raw.image) throw new Error('Pass --image or --generate-first, not both.')
+  if (!generateFirst && !raw.image) {
+    throw new Error(
+      '--image is required (a jpeg, png or webp file), or pass --generate-first with --look.',
+    )
+  }
   if (!raw.name) throw new Error('--name is required (the set name).')
+  if (generateFirst && !raw.look?.trim()) {
+    throw new Error('--generate-first needs --look: the first plate is drawn from the look alone.')
+  }
 
   return {
-    image: raw.image,
+    ...(raw.image ? { image: raw.image } : {}),
     name: raw.name,
     look: raw.look ?? '',
     layout: raw.layout,
@@ -113,5 +125,6 @@ export function parseLiveSetArgs(argv: readonly string[]): LiveSetArgs {
     anchors: optionalText(raw, 'anchors'),
     inventoryModel: optionalText(raw, 'inventory-model') ?? defaultInventoryModel(),
     cap: parseCap(raw.cap),
+    generateFirst,
   }
 }

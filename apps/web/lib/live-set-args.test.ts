@@ -14,6 +14,7 @@ describe('parseLiveSetArgs', () => {
       anchors: undefined,
       inventoryModel: 'gemini-3.5-flash-lite',
       cap: 1,
+      generateFirst: false,
     })
   })
 
@@ -49,6 +50,7 @@ describe('parseLiveSetArgs', () => {
       anchors: 'heavy film grain; cold blue grade',
       inventoryModel: 'gemini-3.5-flash',
       cap: 0.5,
+      generateFirst: false,
     })
   })
 
@@ -65,6 +67,7 @@ describe('parseLiveSetArgs', () => {
       anchors: undefined,
       inventoryModel: 'gemini-3.5-flash-lite',
       cap: 0.5,
+      generateFirst: false,
     })
   })
 
@@ -96,8 +99,29 @@ describe('parseLiveSetArgs', () => {
 
   it('refuses a missing --image', () => {
     expect(() => parseLiveSetArgs(['--name', 'R'])).toThrow(
-      '--image is required (a jpeg, png or webp file).',
+      '--image is required (a jpeg, png or webp file), or pass --generate-first with --look.',
     )
+  })
+
+  describe('--generate-first', () => {
+    it('takes the place of --image when a look is given', () => {
+      const args = parseLiveSetArgs(['--generate-first', '--name', 'R', '--look', 'A long table'])
+      expect(args.generateFirst).toBe(true)
+      expect(args.image).toBeUndefined()
+      expect(args.look).toBe('A long table')
+    })
+
+    it('needs a look to generate from', () => {
+      expect(() => parseLiveSetArgs(['--generate-first', '--name', 'R'])).toThrow(
+        '--generate-first needs --look: the first plate is drawn from the look alone.',
+      )
+    })
+
+    it('refuses --generate-first with --image, which would spend on a plate it then ignores', () => {
+      expect(() =>
+        parseLiveSetArgs(['--generate-first', '--image', 'a.png', '--name', 'R', '--look', 'L']),
+      ).toThrow('Pass --image or --generate-first, not both.')
+    })
   })
 
   it('refuses a missing --name', () => {
