@@ -7,7 +7,6 @@ import {
   findingContext,
   mayBecomeStill,
   motifPattern,
-  planWarnings,
   referenceWarnings,
   renderDirectorsBook,
   repairSummary,
@@ -96,134 +95,6 @@ const still = (shotSize: 'wide' | 'close', prompt: string): ShotBrief => ({
   shotSize,
 })
 
-describe('planWarnings', () => {
-  const banned = ['cinematic', 'stunning']
-
-  it('flags three adjacent slots at one size', () => {
-    const warnings = planWarnings(
-      [still('wide', 'a'), still('wide', 'b'), still('wide', 'c')].map((brief) => ({ brief })),
-      banned,
-    )
-    expect(warnings).toEqual([
-      expect.stringContaining('three adjacent slots share the size "wide"'),
-    ])
-  })
-
-  it('flags a banned word in a still prompt, once per word', () => {
-    const warnings = planWarnings(
-      [{ brief: still('close', 'A cinematic, stunning, cinematic corridor') }],
-      banned,
-    )
-    expect(warnings).toHaveLength(2)
-    expect(warnings[0]).toContain('"cinematic"')
-  })
-
-  it('is silent on a varied, clean plan', () => {
-    expect(
-      planWarnings([{ brief: still('wide', 'a') }, { brief: still('close', 'b') }], banned),
-    ).toEqual([])
-  })
-
-  it('lets a chart break the three-adjacent-sizes note too', () => {
-    const chart: ShotBrief = { ...still('wide', 'x'), type: 'chart' } as unknown as ShotBrief
-    expect(
-      planWarnings(
-        [{ brief: still('wide', 'a') }, { brief: chart }, { brief: still('wide', 'b') }],
-        [],
-      ),
-    ).toEqual([])
-  })
-})
-
-describe('planWarnings: motifs (decision 260)', () => {
-  const motifs = ['reflections in dark glass', 'empty chairs', 'server racks']
-  const stock = (description: string): ShotBrief => ({
-    type: 'stock',
-    coversText: 'x',
-    description,
-    motion: { kind: 'static' },
-    transition: 'cut',
-    query: 'q',
-    rejectionCriteria: [],
-  })
-  const chart: ShotBrief = {
-    type: 'chart',
-    coversText: 'x',
-    description: 'a server rack chart',
-    motion: { kind: 'static' },
-    transition: 'cut',
-    chartKind: 'bar',
-    series: [
-      {
-        label: 'a',
-        unit: 'USD',
-        points: [
-          { x: '2019', y: 1 },
-          { x: '2020', y: 2 },
-        ],
-      },
-    ],
-    dataRefs: ['01HQ00000000000000000000AA'],
-    takeaway: 't',
-    reveal: 'none',
-  }
-
-  it('counts a motif in more than one picture brief of a chapter, by its head noun, and flags neighbours', () => {
-    const warnings = planWarnings(
-      [
-        { brief: still('wide', 'A server rack humming in the dark'), chapter: 'chapter 3' },
-        { brief: stock('Rows of server racks'), chapter: 'chapter 3' },
-        { brief: still('close', 'A ledger on a desk'), chapter: 'chapter 3' },
-      ],
-      [],
-      motifs,
-    )
-    expect(warnings).toEqual([
-      'motif "server racks" appears in 2 of 3 picture briefs in chapter 3',
-      'motif "server racks" appears in two adjacent slots (from slot 0)',
-    ])
-  })
-
-  it('is silent when each motif appears once per chapter, however many chapters', () => {
-    expect(
-      planWarnings(
-        [
-          { brief: still('wide', 'an empty chair'), chapter: 'chapter 1' },
-          { brief: still('close', 'a ledger'), chapter: 'chapter 1' },
-          { brief: still('wide', 'an empty chair at the head of the table'), chapter: 'chapter 2' },
-        ],
-        [],
-        motifs,
-      ),
-    ).toEqual([])
-  })
-
-  it('matches the head noun and its plural, never the modifier, and skips data briefs', () => {
-    expect(
-      planWarnings(
-        [
-          { brief: stock('Deserted office, empty desks'), chapter: 'c' },
-          { brief: stock('More empty desks'), chapter: 'c' },
-          { brief: chart, chapter: 'c' },
-          { brief: chart, chapter: 'c' },
-        ],
-        [],
-        motifs,
-      ),
-    ).toEqual([])
-    expect(motifPattern('reflections in dark glass')?.test('her glasses on the desk')).toBe(true)
-    expect(motifPattern('server racks')?.test('a rack of servers')).toBe(true)
-    expect(motifPattern('[mock] empty chairs')?.test('empty desks')).toBe(false)
-    expect(motifPattern('')).toBeNull()
-  })
-
-  it('changes nothing for a caller that passes no motifs', () => {
-    expect(
-      planWarnings([{ brief: still('wide', 'a') }, { brief: still('close', 'b') }], []),
-    ).toEqual([])
-  })
-})
-
 describe('castWarnings', () => {
   it('names each cast member the book left out, case-insensitively, and nothing else', () => {
     expect(castWarnings(book, ['markus braun', 'Jan Marsalek'])).toEqual([
@@ -231,79 +102,6 @@ describe('castWarnings', () => {
     ])
     expect(castWarnings(null, ['Jan Marsalek'])).toEqual([])
     expect(castWarnings(book, [])).toEqual([])
-  })
-})
-
-describe('planWarnings counts sets', () => {
-  const slot = (chapter: string, set?: string) => ({
-    brief: {
-      type: 'still' as const,
-      coversText: 'x',
-      description: 'x',
-      motion: { kind: 'static' as const },
-      transition: 'cut' as const,
-      prompt: 'a room',
-      ...(set ? { set } : {}),
-    },
-    chapter,
-  })
-
-  it('notes a set carrying more than half a chapter of picture briefs', () => {
-    const slots = [
-      slot('chapter 1', 'Venture Capital Boardroom'),
-      slot('chapter 1', 'Venture Capital Boardroom'),
-      slot('chapter 1', 'Venture Capital Boardroom'),
-      slot('chapter 1'),
-    ]
-    const warnings = planWarnings(slots, [], [], ['Venture Capital Boardroom'])
-    expect(warnings.some((w) => w.includes('3 of 4 picture briefs in chapter 1'))).toBe(true)
-  })
-
-  it('notes a set in two adjacent slots', () => {
-    const slots = [
-      slot('chapter 1', 'Venture Capital Boardroom'),
-      slot('chapter 1', 'Venture Capital Boardroom'),
-    ]
-    const warnings = planWarnings(slots, [], [], ['Venture Capital Boardroom'])
-    expect(warnings.some((w) => w.includes('two adjacent slots'))).toBe(true)
-  })
-
-  it('says nothing at exactly half a chapter, which is not a majority', () => {
-    const slots = [
-      slot('chapter 1', 'Venture Capital Boardroom'),
-      slot('chapter 1'),
-      slot('chapter 1', 'Venture Capital Boardroom'),
-      slot('chapter 1'),
-    ]
-    const warnings = planWarnings(slots, [], [], ['Venture Capital Boardroom'])
-    expect(warnings.some((w) => w.includes('picture briefs in chapter 1'))).toBe(false)
-  })
-
-  it('notes one run of a set once, not once per adjacent pair', () => {
-    const slots = [
-      slot('chapter 1', 'Venture Capital Boardroom'),
-      slot('chapter 1', 'Venture Capital Boardroom'),
-      slot('chapter 1', 'Venture Capital Boardroom'),
-      slot('chapter 1'),
-    ]
-    const warnings = planWarnings(slots, [], [], ['Venture Capital Boardroom'])
-    expect(warnings.filter((w) => w.includes('two adjacent slots'))).toHaveLength(1)
-  })
-
-  it('notes a set the project does not hold, because it conditions nothing', () => {
-    const warnings = planWarnings([slot('chapter 1', 'A car park')], [], [], ['The boardroom'])
-    expect(warnings.some((w) => w.includes('no set named "A car park"'))).toBe(true)
-  })
-
-  it('notes an unknown set even when the project holds no sets at all', () => {
-    // The loudest case of a brief conditioning nothing, and the one the plan
-    // screen most needs to say out loud.
-    const warnings = planWarnings([slot('chapter 1', 'A car park')], [], [], [])
-    expect(warnings.some((w) => w.includes('no set named "A car park"'))).toBe(true)
-  })
-
-  it('says nothing when no slot names a set', () => {
-    expect(planWarnings([slot('chapter 1')], [], [], ['The boardroom'])).toEqual([])
   })
 })
 
@@ -394,58 +192,6 @@ describe('containsPhrase and setKeyNoun (decision 271)', () => {
   })
 })
 
-describe('planWarnings reads past the era lock, and lets a sentence justify its room (decision 271)', () => {
-  const pasted = (shotSize: 'wide' | 'close'): ShotBrief => ({
-    ...still(
-      shotSize,
-      'A desk at dusk. 2019 to 2024: flat-panel LCD monitors, rack-mounted blade servers',
-    ),
-  })
-  const motifs = ['a glowing blue server blade in a darkened rack']
-  const eraLocks = ['flat-panel LCD monitors, rack-mounted blade servers']
-
-  // The Stability AI plan: every still pasted the era lock, and the era lock
-  // says "rack-mounted", so the motif noun "rack" was found in all of them.
-  it('does not count a motif noun that is only inside the pasted era lock', () => {
-    const slots = [{ brief: pasted('wide') }, { brief: pasted('close') }]
-    expect(planWarnings(slots, [], motifs, [], eraLocks)).toEqual([])
-    expect(planWarnings(slots, [], motifs)).toEqual([
-      expect.stringContaining(
-        'motif "a glowing blue server blade in a darkened rack" appears in 2 of 2',
-      ),
-      expect.stringContaining('appears in two adjacent slots'),
-    ])
-  })
-
-  const inRoom = (coversText: string, shotSize: 'wide' | 'close'): ShotBrief => ({
-    type: 'still',
-    coversText,
-    description: 'x',
-    motion: { kind: 'static' },
-    transition: 'cut',
-    prompt: 'x',
-    shotSize,
-    set: 'Venture Capital Boardroom',
-  })
-
-  it('does not call two adjacent shots in one room a run when the sentence is set there', () => {
-    const justified = [
-      { brief: inRoom('Inside the boardroom.', 'wide') },
-      { brief: inRoom('Back in the boardroom, they argued.', 'close') },
-    ]
-    expect(planWarnings(justified, [], [], ['Venture Capital Boardroom'])).not.toContainEqual(
-      expect.stringContaining('fills two adjacent slots'),
-    )
-    const unjustified = [
-      { brief: inRoom('Inside the boardroom.', 'wide') },
-      { brief: inRoom('The money was gone.', 'close') },
-    ]
-    expect(planWarnings(unjustified, [], [], ['Venture Capital Boardroom'])).toContainEqual(
-      expect.stringContaining('fills two adjacent slots'),
-    )
-  })
-})
-
 const at = (
   brief: Partial<FindingBrief> & { type: string },
   chapter = 'chapter 1',
@@ -456,7 +202,76 @@ const ctx = (over: Partial<FindingContext> = {}): FindingContext => ({
   eraLocks: [],
   cast: [],
   sets: [],
+  bannedWords: [],
   ...over,
+})
+
+describe('motifPattern', () => {
+  it('matches the head noun and its plural, never the modifier', () => {
+    expect(motifPattern('reflections in dark glass')?.test('her glasses on the desk')).toBe(true)
+    expect(motifPattern('server racks')?.test('a rack of servers')).toBe(true)
+    expect(motifPattern('[mock] empty chairs')?.test('empty desks')).toBe(false)
+    expect(motifPattern('')).toBeNull()
+  })
+})
+
+// Decision 277: the notes the plan screen used to raise on its own are
+// findings now, so the Fix button acts on every one of them.
+describe('craftFindings: the notes Fix could not act on', () => {
+  const room = (coversText: string, chapter = 'chapter 1', set = 'Venture Capital Boardroom') =>
+    at({ type: 'still', coversText, prompt: 'a room', set }, chapter)
+  const plain = (chapter = 'chapter 1') => at({ type: 'still', prompt: 'a street' }, chapter)
+  const sets = ['Venture Capital Boardroom']
+
+  it('flags the latest shots that keep a set above half a chapter, only as many as needed', () => {
+    const slots = [
+      room('The money moved.'),
+      plain(),
+      room('Nobody asked.'),
+      plain(),
+      room('It kept going.'),
+    ]
+    const found = craftFindings(slots, ctx({ sets })).filter((f) => f.kind === 'set-heavy')
+    expect(found.map((f) => [f.slotIndex, f.repair])).toEqual([[4, 'auto']])
+    expect(found[0]!.message).toContain('carries 3 of 5 picture briefs in chapter 1')
+  })
+
+  it('says nothing at exactly half a chapter, which is not a majority', () => {
+    const slots = [room('a'), plain(), room('b'), plain()]
+    expect(craftFindings(slots, ctx({ sets })).some((f) => f.kind === 'set-heavy')).toBe(false)
+  })
+
+  it('never flags a shot whose own sentence puts it in the room', () => {
+    const slots = [
+      room('Inside the boardroom.'),
+      room('The boardroom went quiet.'),
+      room('Back in the boardroom, they voted.'),
+      plain(),
+    ]
+    expect(craftFindings(slots, ctx({ sets })).some((f) => f.kind === 'set-heavy')).toBe(false)
+  })
+
+  it('flags a set the film does not hold, naming the ones it does', () => {
+    const found = craftFindings([room('x', 'chapter 1', 'A car park')], ctx({ sets }))
+    expect(found.map((f) => [f.kind, f.repair])).toEqual([['unknown-set', 'auto']])
+    expect(found[0]!.message).toContain('"Venture Capital Boardroom"')
+  })
+
+  it('flags a set even when the film holds no sets at all', () => {
+    const found = craftFindings([room('x', 'chapter 1', 'A car park')], ctx())
+    expect(found[0]).toMatchObject({ kind: 'unknown-set' })
+    expect(found[0]!.message).toContain('the film has no sets')
+  })
+
+  it('flags each still whose prompt carries a banned word, naming every word once', () => {
+    const slots = [
+      at({ type: 'still', prompt: 'A cinematic, stunning, cinematic corridor' }),
+      at({ type: 'still', prompt: 'A plain corridor' }),
+    ]
+    const found = craftFindings(slots, ctx({ bannedWords: ['cinematic', 'stunning'] }))
+    expect(found.map((f) => [f.kind, f.slotIndex])).toEqual([['banned-word', 0]])
+    expect(found[0]!.message).toContain('"cinematic" or "stunning"')
+  })
 })
 
 describe('craftFindings (decision 271)', () => {
@@ -870,12 +685,13 @@ describe('repairTargets, repairSummary and findingContext', () => {
         cast: [],
         sets: [{ name: 'Lobby' }],
       }),
-    ).toEqual({ motifs: ['m'], eraLocks: ['r'], cast: [], sets: ['Lobby'] })
+    ).toEqual({ motifs: ['m'], eraLocks: ['r'], cast: [], sets: ['Lobby'], bannedWords: [] })
     expect(findingContext({ direction: null, cast: [], sets: [] })).toEqual({
       motifs: [],
       eraLocks: [],
       cast: [],
       sets: [],
+      bannedWords: [],
     })
   })
 })

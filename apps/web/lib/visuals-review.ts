@@ -26,7 +26,6 @@ import {
   latestTakes,
   nameMatches,
   castWarnings,
-  planWarnings,
   referenceWarnings,
   repairSummary,
   ShotBriefSchema,
@@ -212,8 +211,18 @@ export interface VisualsReviewModel {
   fetchEstimateUsd: number
   /** The Director's Book (decision 252), null before the visuals stage drafts one. */
   direction: DirectorsBook | null
-  /** Craft notes from `planWarnings`, in screen order. */
+  /**
+   * The per-slot craft notes, one per finding, in screen order (decision
+   * 277): every one is something the Fix button acts on, by the same rule.
+   */
   warnings: string[]
+  /**
+   * Notes no rewrite of a brief can clear (decision 277): a cast member the
+   * book forgot, references nothing names, shots shared between slots. They
+   * sit apart from the craft notes so the Fix button is never expected to
+   * clear them.
+   */
+  decisions: string[]
   /**
    * What the Fix button would do (decision 271): the slots with an auto or
    * manual finding, how many of them are stock slots the fix makes into
@@ -247,6 +256,7 @@ export function emptyVisualsModel(): VisualsReviewModel {
     fetchEstimateUsd: 0,
     direction: null,
     warnings: [],
+    decisions: [],
     repair: { slots: 0, becomeStills: 0, chapters: 0 },
     articleClaims: [],
   }
@@ -628,6 +638,7 @@ export async function visualsReviewModel(
       direction,
       cast: cast.map((member) => ({ name: member.name, photographed: member.photos.length > 0 })),
       sets,
+      bannedWords: BANNED_PROMPT_WORDS,
     }),
   )
 
@@ -645,22 +656,12 @@ export async function visualsReviewModel(
     stillsToFetch,
     fetchEstimateUsd,
     direction,
-    // Craft notes (decision 252), in screen order; never a blocker. Motif
-    // counts per chapter (decision 260), plus any cast member the book forgot
-    // (decision 253).
-    warnings: [
-      ...planWarnings(
-        findingSlots,
-        BANNED_PROMPT_WORDS,
-        direction?.motifs ?? [],
-        sets.map((set) => set.name),
-        direction?.eraLocks.map((lock) => lock.rules) ?? [],
-      ),
-      // The people and rooms a sentence names but its shot leaves out, which
-      // planWarnings has no words for (decision 271).
-      ...findings
-        .filter((finding) => finding.kind === 'ignored-person' || finding.kind === 'ignored-set')
-        .map((finding) => `${finding.message} (slot ${finding.slotIndex})`),
+    // Craft notes (decisions 252, 277), in screen order; never a blocker. One
+    // per finding, so the list and the Fix button's count are the same set.
+    warnings: findings.map((finding) => `${finding.message} (slot ${finding.slotIndex})`),
+    // What no rewrite of a brief can clear: a cast member the book forgot
+    // (decision 253), references nothing names, shots shared between slots.
+    decisions: [
       ...castWarnings(
         direction,
         cast.map((member) => member.name),

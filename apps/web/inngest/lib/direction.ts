@@ -21,7 +21,9 @@ import {
   mockShotList,
   parseDirectorsBook,
   parseShotList,
+  BANNED_PROMPT_WORDS,
   parseShotRepair,
+  parseShotRepairAnswers,
   stillStyleAnchors,
   withoutBannedWords,
 } from '@boom-busters/providers'
@@ -37,9 +39,11 @@ import {
   findingContext,
   repairTargets,
   resolvePlannedBrief,
+  ShotBriefSchema,
   ValidationError,
 } from '@boom-busters/schemas'
 import type {
+  CraftFinding,
   DirectorsBook,
   FindingContext,
   LogoIndex,
@@ -51,6 +55,57 @@ import { z } from 'zod'
 import { db } from '@/lib/db'
 import { callLlm } from '@/lib/llm'
 import { plannedToRows, promptParagraphs, type TimedParagraph } from './shot-list'
+
+/**
+ * The craft findings over a whole film, stored or just planned (decision 277).
+ * The plan screen lists these as its per-slot notes, and the plan summaries
+ * and the Fix button read them here, so none of them can count differently.
+ * `slots[finding.slotIndex].row` is the index into `rows` a finding is about.
+ */
+export function planFindings(input: {
+  rows: readonly { brief: unknown; chapterId: string; reuseOfSlotId?: string | null }[]
+  chapters: readonly { id: string }[]
+  direction: DirectorsBook | null
+  cast: readonly { name: string; photographed: boolean }[]
+  sets: readonly { name: string }[]
+}): {
+  findings: CraftFinding[]
+  slots: { row: number; brief: ShotBrief; chapterId: string }[]
+} {
+  const labels = new Map(
+    input.chapters.map((chapter, index) => [chapter.id, `chapter ${index + 1}`]),
+  )
+  const slots = input.rows.flatMap((row, index) => {
+    const parsed = ShotBriefSchema.safeParse(row.brief)
+    return parsed.success
+      ? [
+          {
+            row: index,
+            brief: parsed.data,
+            chapterId: row.chapterId,
+            linked: row.reuseOfSlotId != null,
+          },
+        ]
+      : []
+  })
+  const findings = craftFindings(
+    slots.map((slot) => ({
+      brief: slot.brief,
+      chapter: labels.get(slot.chapterId),
+      linked: slot.linked,
+    })),
+    findingContext({
+      direction: input.direction,
+      cast: input.cast,
+      sets: input.sets,
+      bannedWords: BANNED_PROMPT_WORDS,
+    }),
+  )
+  return {
+    findings,
+    slots: slots.map(({ row, brief, chapterId }) => ({ row, brief, chapterId })),
+  }
+}
 
 /**
  * The Director's Book and per-chapter planning, shared by the visuals-runner
@@ -380,6 +435,7 @@ export async function planChapterSlots(input: {
           look: set.look,
           layout: set.layout,
         })),
+        bannedWords: BANNED_PROMPT_WORDS,
       }),
     })
   }
@@ -403,8 +459,9 @@ export async function planChapterSlots(input: {
  * stills"); nothing else may change type. Each accepted replacement is stored with `updateSlotBrief`, or
  * with `retypeShotSlot` when stock became a still (the type column and the
  * brief move together, and the old candidates clear), so a slot pre-fetched
- * for its old brief owes a fetch for its new one. Returns how many briefs
- * were rewritten.
+ * for its old brief owes a fetch for its new one. Returns the slots it
+ * rewrote and, for each one it kept, why (decision 277), so the Fix button
+ * can say per slot what happened.
  *
  * Unlike the automatic pass this throws: the producer asked for the fix and
  * must hear when it did not happen. Mock mode makes no call and rewrites
@@ -422,8 +479,8 @@ export async function rewriteStoredBriefs(input: {
   }[]
   claims: readonly ScriptClaim[]
   logos: readonly LogoIndex[]
-}): Promise<number> {
-  if (input.targets.length === 0 || mockProvidersEnabled()) return 0
+}): Promise<{ rewritten: string[]; kept: { id: string; reason: string }[] }> {
+  if (input.targets.length === 0 || mockProvidersEnabled()) return { rewritten: [], kept: [] }
   const originals = input.targets.map((target) => ({
     type: target.brief.type,
     coversText: target.brief.coversText,
@@ -437,16 +494,23 @@ export async function rewriteStoredBriefs(input: {
     ),
     { projectId: input.projectId },
   )
-  const replacements = parseShotRepair(answer.text, originals, { allowStockToStill: true })
-  let written = 0
+  const answers = parseShotRepairAnswers(answer.text, originals, { allowStockToStill: true })
+  const rewritten: string[] = []
+  const kept: { id: string; reason: string }[] = []
   for (const [at, target] of input.targets.entries()) {
-    const planned = replacements[at]
-    if (!planned) continue
-    const stored = resolvePlannedBrief(withoutBannedWords(planned), input.claims, input.logos)
-    if (!stored) continue
+    const planned = answers[at]
+    if (!planned || 'kept' in planned) {
+      kept.push({ id: target.id, reason: planned?.kept ?? 'no answer came back for it' })
+      continue
+    }
+    const stored = resolvePlannedBrief(withoutBannedWords(planned.brief), input.claims, input.logos)
+    if (!stored) {
+      kept.push({ id: target.id, reason: 'the answer cited figures the dossier does not hold' })
+      continue
+    }
     if (stored.type === target.brief.type) await updateSlotBrief(db, target.id, stored)
     else await retypeShotSlot(db, target.id, stored.type, stored)
-    written += 1
+    rewritten.push(target.id)
   }
-  return written
+  return { rewritten, kept }
 }

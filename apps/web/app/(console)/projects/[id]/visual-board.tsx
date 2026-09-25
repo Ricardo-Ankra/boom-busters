@@ -685,6 +685,23 @@ export function VisualBoard({
                   ))}
                 </ul>
               ) : null}
+              {/* Apart from the craft notes (decision 277): the Fix button
+                  cannot clear these, so they are not counted against it. */}
+              {model.decisions.length > 0 ? (
+                <div className="flex flex-col gap-1">
+                  <p className="text-[12px] font-semibold text-[var(--color-text-secondary)]">
+                    For you to decide
+                  </p>
+                  <ul
+                    className="list-disc pl-5 text-[12px] text-[var(--color-text-secondary)]"
+                    aria-label="For you to decide"
+                  >
+                    {model.decisions.map((note) => (
+                      <li key={note}>{note}</li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
               <div className="flex flex-wrap items-center gap-2">
                 <ConfirmButton
                   variant="primary"
@@ -1423,6 +1440,7 @@ function TypePicker({
   const drafting = job?.state === 'drafting' || job?.state === 'rebriefing'
   const refused = job?.state === 'refused' ? job : null
   const rebriefRefused = job?.state === 'rebrief-refused' ? job : null
+  const fixNote = job?.state === 'fix-note' ? job : null
   const [choosing, setChoosing] = React.useState(false)
 
   return (
@@ -1518,6 +1536,24 @@ function TypePicker({
           <p className="min-w-0 flex-1 text-[13px] text-[var(--color-warning)]">
             No new brief: {rebriefRefused.reason} The slot keeps the one it has.
           </p>
+          <Button
+            variant="outline"
+            busy={busy}
+            onClick={() => act(slot.id, () => dismissRetypeAction(projectId, slot.id), 'Dismissed')}
+          >
+            Dismiss
+          </Button>
+        </div>
+      ) : null}
+
+      {/* What the Fix button did here, when it did not simply clear the
+          slot (decision 277). */}
+      {fixNote ? (
+        <div
+          role="status"
+          className="flex flex-wrap items-center gap-2 rounded-[8px] border border-[var(--color-warning)] p-2"
+        >
+          <p className="min-w-0 flex-1 text-[13px] text-[var(--color-warning)]">{fixNote.note}</p>
           <Button
             variant="outline"
             busy={busy}

@@ -28,6 +28,7 @@ import type { ShotBrief } from '@boom-busters/schemas'
 import { InngestTestEngine } from '@inngest/test'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/lib/db'
+import { notify } from '@/lib/notify'
 import { forgetRunRows } from '../middleware/run-mirror'
 import { visualsReplanner } from './visuals-replanner'
 
@@ -315,6 +316,31 @@ describeDb('visuals-replanner op repair (decision 271)', () => {
     expect(slots.find((slot) => slot.id === stockId)?.brief).toMatchObject({
       description: 'An empty office.',
     })
+    // Cleared, so its card carries no Fix note (decision 277).
+    expect(slots.find((slot) => slot.id === stillId)?.retype).toBeNull()
+  })
+
+  // Decision 277: a rewrite that leaves the finding in place says so on the card.
+  it('notes a rewritten slot that is still flagged, naming what is left', async () => {
+    callLlm.mockResolvedValueOnce({
+      text: JSON.stringify({ briefs: [{ ...still, prompt: 'A different server rack.' }] }),
+    })
+
+    const { result } = await engine.execute({ events: replanEvent('repair') })
+
+    expect(result).toMatchObject({ outcome: 'repaired', rewritten: 1 })
+    const stillNow = (await listShotSlots(db, FIXTURE_PROJECT_ID)).find(
+      (slot) => slot.id === stillId,
+    )
+    expect(stillNow?.retype).toMatchObject({ state: 'fix-note' })
+    expect((stillNow?.retype as { note: string }).note).toMatch(
+      /^Fix rewrote this brief, but it is still flagged: Emad Mostaque is named here/,
+    )
+    expect(vi.mocked(notify)).toHaveBeenCalledWith(
+      expect.objectContaining({
+        body: '0 fixed, 1 rewritten but still flagged. Each card says why.',
+      }),
+    )
   })
 
   it('may turn a stock slot naming the person into a still, since the producer pressed the button', async () => {
@@ -372,6 +398,11 @@ describeDb('visuals-replanner op repair (decision 271)', () => {
     expect(result).toMatchObject({ outcome: 'repaired', rewritten: 0 })
     const stockNow = (await listShotSlots(db, FIXTURE_PROJECT_ID)).find((slot) => slot.index === 2)
     expect(stockNow?.type).toBe('stock')
+    // Kept, and the card says why (decision 277).
+    expect(stockNow?.retype).toEqual({
+      state: 'fix-note',
+      note: 'Fix kept this brief: the answer changed its format.',
+    })
   })
 
   it('refuses outside the plan checkpoint', async () => {

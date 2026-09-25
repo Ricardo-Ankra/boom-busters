@@ -6203,3 +6203,26 @@ green.
      and a still's redraft now carries all of them; the slot-rebriefer reads
      the photographed cast and the sets with `rebriefReferences`. Stock and
      archival redrafts are unchanged.
+     The same day, owner: "When fixing the shot plan using the fix button,
+     nothing really got fixed; most of the errors stayed." The run itself
+     completed (seven chapter calls, $0.29), but the plan screen's notes and
+     the button never used one rule: `planWarnings` raised set dominance,
+     unknown sets and banned words that no finding existed for, so no fix
+     could clear them, and the ignored-set finding pushed more shots into a
+     room the dominance note said was overused. `planWarnings` is gone. Its
+     per-slot checks are findings now (`set-heavy`, which flags only the
+     latest shots whose sentence does not put us in the room and only as
+     many as take it back to half the chapter; `unknown-set`; `banned-word`),
+     the plan screen lists exactly the findings, and the notes no rewrite can
+     clear (a principal the book forgot, references nothing names, shared
+     shots) sit apart under "For you to decide". The plan summaries count the
+     same findings through `planFindings`. A Fix now reports per slot: a slot
+     it cleared carries nothing; one it kept says why (`parseShotRepairAnswers`
+     names the reason) and one it rewrote but is still flagged names what is
+     left, as a `fix-note` on the card; the heads-up says "N fixed, N
+     rewritten but still flagged, N kept". The repair parser also reads a
+     brief wrapped as a planned slot and compares sentences with quotes and
+     dashes folded, two ways an answer could be dropped silently before.
+     Whether the owner's run lost answers that way is not known: reading the
+     production rows was not permitted, and the per-slot notes will show it
+     on the next Fix.

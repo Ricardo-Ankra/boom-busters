@@ -545,6 +545,12 @@ export const SlotDraftStateSchema = z.union([
    */
   z.object({ state: z.literal('rebriefing') }),
   z.object({ state: z.literal('rebrief-refused'), reason: z.string().min(1) }),
+  /**
+   * What the Fix button did to this slot when it did not simply clear it
+   * (decision 277): the brief it kept and why, or the notes still on it after
+   * the rewrite. Shown on the card until dismissed or the next Fix.
+   */
+  z.object({ state: z.literal('fix-note'), note: z.string().min(1) }),
 ])
 export type SlotDraftState = z.infer<typeof SlotDraftStateSchema>
 

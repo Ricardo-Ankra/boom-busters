@@ -511,10 +511,32 @@ export function buildShotRepairRequest(
 
 const ShotRepairEnvelopeSchema = z.object({ briefs: z.array(z.unknown()) })
 
-/** A sentence with its ends trimmed and every run of whitespace made one space. */
+/**
+ * A sentence as two copies of it are compared: ends trimmed, whitespace runs
+ * made one space, and typography folded (decision 277). A model echoing a
+ * sentence often turns curly quotes straight, a dash into a hyphen or an
+ * ellipsis into three dots, and a repair refused for that alone was kept
+ * silently. The accepted reply still carries the original, exactly.
+ */
 function normaliseSentence(text: string): string {
-  return text.trim().replace(/\s+/g, ' ')
+  return text
+    .normalize('NFKC')
+    .replace(/[\u2018\u2019\u201a\u201b\u2032]/g, "'")
+    .replace(/[\u201c\u201d\u201e\u201f\u2033]/g, '"')
+    .replace(/[\u2010-\u2015\u2212]/g, '-')
+    .replace(/\s*-\s*/g, '-')
+    .trim()
+    .replace(/\s+/g, ' ')
 }
+
+/** Why a repair answer was not used; each is said to the producer as written. */
+export type ShotRepairKept =
+  | 'no answer came back for it'
+  | 'the answer was not a valid brief'
+  | 'the answer changed the sentence it covers'
+  | 'the answer changed its format'
+
+export type ShotRepairAnswer = { brief: PlannedBrief } | { kept: ShotRepairKept }
 
 /**
  * The replacements, one per original, in order. `null` keeps the original:
@@ -539,12 +561,37 @@ export function parseShotRepair(
   originals: readonly { type: string; coversText: string; mayBecomeStill?: boolean }[],
   options: { allowStockToStill: boolean },
 ): (PlannedBrief | null)[] {
+  return parseShotRepairAnswers(text, originals, options).map((answer) =>
+    'brief' in answer ? answer.brief : null,
+  )
+}
+
+/**
+ * `parseShotRepair` with the reason each refused answer was kept (decision
+ * 277), so the Fix button can say per slot what happened instead of leaving
+ * the producer to find the same notes still on screen.
+ *
+ * An answer shaped as a planned slot (`{"paragraphIndex", "seconds",
+ * "brief": {...}}`), which the planning prompt this request extends asks for,
+ * is read for its brief.
+ */
+export function parseShotRepairAnswers(
+  text: string,
+  originals: readonly { type: string; coversText: string; mayBecomeStill?: boolean }[],
+  options: { allowStockToStill: boolean },
+): ShotRepairAnswer[] {
   const envelope = parseJsonCompletion(text, ShotRepairEnvelopeSchema, 'shot repair')
-  return originals.map((original, at) => {
-    const parsed = PlannedBriefSchema.safeParse(envelope.briefs[at])
-    if (!parsed.success) return null
+  return originals.map((original, at): ShotRepairAnswer => {
+    const raw = envelope.briefs[at]
+    if (raw === undefined || raw === null) return { kept: 'no answer came back for it' }
+    const candidate =
+      typeof raw === 'object' && !('type' in raw) && 'brief' in raw
+        ? (raw as { brief: unknown }).brief
+        : raw
+    const parsed = PlannedBriefSchema.safeParse(candidate)
+    if (!parsed.success) return { kept: 'the answer was not a valid brief' }
     if (normaliseSentence(parsed.data.coversText) !== normaliseSentence(original.coversText)) {
-      return null
+      return { kept: 'the answer changed the sentence it covers' }
     }
     const next = parsed.data.type
     const allowed =
@@ -553,7 +600,9 @@ export function parseShotRepair(
         original.type === 'stock' &&
         next === 'still' &&
         original.mayBecomeStill === true)
-    return allowed ? { ...parsed.data, coversText: original.coversText } : null
+    return allowed
+      ? { brief: { ...parsed.data, coversText: original.coversText } }
+      : { kept: 'the answer changed its format' }
   })
 }
 

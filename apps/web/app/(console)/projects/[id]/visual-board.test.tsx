@@ -380,6 +380,7 @@ function model(slots: SlotView[], overrides: Partial<VisualsReviewModel> = {}): 
     fetchEstimateUsd: 0,
     direction: null,
     warnings: [],
+    decisions: [],
     repair: { slots: 0, becomeStills: 0, chapters: 0 },
     articleClaims: ARTICLE_CLAIMS,
     ...overrides,
@@ -1080,6 +1081,49 @@ describe('the plan phase (staged-visuals design)', () => {
     expect(alert).toHaveTextContent(/keeps the one it has/)
     await userEvent.click(within(alert).getByRole('button', { name: 'Dismiss' }))
     expect(dismissRetypeAction).toHaveBeenCalledWith(PROJECT, SLOT_A)
+  })
+
+  // Decision 277: a Fix that did not clear a slot says why on its card.
+  it('shows what the Fix did to a slot it did not clear, until it is dismissed', async () => {
+    const noted: SlotView = {
+      ...stockSlot,
+      retype: { state: 'fix-note', note: 'Fix kept this brief: the answer changed its format.' },
+    }
+    render(<VisualBoard projectId={PROJECT} model={model([noted])} colors={COLORS} brand={BRAND} />)
+
+    const note = screen.getByText('Fix kept this brief: the answer changed its format.')
+    const box = note.closest('div')!
+    await userEvent.click(within(box).getByRole('button', { name: 'Dismiss' }))
+    expect(dismissRetypeAction).toHaveBeenCalledWith(PROJECT, SLOT_A)
+    // The note holds no button: it is a report, not a model at work.
+    const picker = screen.getByRole('group', { name: 'Slot format' })
+    expect(
+      within(picker)
+        .getAllByRole('button')
+        .some((button) => !button.hasAttribute('disabled')),
+    ).toBe(true)
+  })
+
+  it('lists what Fix cannot clear apart from the craft notes', () => {
+    render(
+      <VisualBoard
+        projectId={PROJECT}
+        model={model([plannedStock], {
+          phase: 'plan',
+          toFetch: 1,
+          stillsToFetch: 0,
+          warnings: ['this is the third "wide" shot in a row; use a different shot size (slot 2)'],
+          decisions: ['no brief depicts Sean Parker, so their photographs are never sent'],
+        })}
+        colors={COLORS}
+        brand={BRAND}
+      />,
+    )
+
+    expect(screen.getByRole('list', { name: 'Craft notes' })).toHaveTextContent(/third "wide"/)
+    const decide = screen.getByRole('list', { name: 'For you to decide' })
+    expect(decide).toHaveTextContent(/Sean Parker/)
+    expect(decide).not.toHaveTextContent(/third "wide"/)
   })
 
   it('names the format it is drafting, whatever the format is', () => {

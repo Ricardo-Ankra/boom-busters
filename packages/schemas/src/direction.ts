@@ -275,149 +275,10 @@ const PICTURE_TYPES = new Set(['still', 'hero', 'stock', 'archival'])
  * The size a brief brings to a same-size run, or undefined when it breaks
  * one. A chart, map, headline or graphic is the "graphic" family and breaks a
  * run of photographs rather than joining one, whatever size it is tagged, and
- * so does a picture with no size. One rule for the plan-screen note and the
- * craft finding, so the two never disagree about a run.
+ * so does a picture with no size.
  */
 function runSize(brief: { type: string; shotSize?: string | undefined }): string | undefined {
   return PICTURE_TYPES.has(brief.type) ? brief.shotSize : undefined
-}
-
-/**
- * Craft misses the model let through, in words for the plan summary. Never a
- * rejection: a same-size run is a note for the owner, not a broken slot.
- * Slots arrive in screen order. The banned list is passed in because this
- * package must not import the providers package that owns the bible; the
- * motifs are passed in because they are the film's, from its book.
- */
-export function planWarnings(
-  slots: readonly WarnableSlot[],
-  bannedWords: readonly string[],
-  motifs: readonly string[] = [],
-  setNames: readonly string[] = [],
-  /** The book's era-lock `rules` strings, taken out before a motif is looked for (decision 271). */
-  eraLocks: readonly string[] = [],
-): string[] {
-  const warnings: string[] = []
-
-  let run = 0
-  let previous: string | undefined
-  for (const [index, slot] of slots.entries()) {
-    const size = runSize(slot.brief)
-    run = size !== undefined && size === previous ? run + 1 : size === undefined ? 0 : 1
-    previous = size
-    if (run === 3) {
-      warnings.push(`three adjacent slots share the size "${size}" (from slot ${index - 1})`)
-    }
-  }
-
-  const seen = new Set<string>()
-  for (const [index, slot] of slots.entries()) {
-    const brief = slot.brief
-    if (brief.type !== 'still' && brief.type !== 'hero') continue
-    const prompt = brief.prompt.toLowerCase()
-    for (const word of bannedWords) {
-      if (!seen.has(word) && prompt.includes(word.toLowerCase())) {
-        seen.add(word)
-        warnings.push(`a prompt uses the banned word "${word}" (slot ${index})`)
-      }
-    }
-  }
-
-  // Motifs (decision 260): the floor is one per chapter and so is the
-  // ceiling, so a motif in two picture briefs of one chapter is a note, and
-  // so is the same motif in two slots that play back to back.
-  const texts = slots.map((slot) => motifText(slot.brief, eraLocks))
-  const groups = new Map<string, string[]>()
-  for (const [index, slot] of slots.entries()) {
-    const text = texts[index]
-    if (text === null || text === undefined) continue
-    const key = slot.chapter ?? ''
-    groups.set(key, [...(groups.get(key) ?? []), text])
-  }
-  for (const motif of motifs) {
-    const pattern = motifPattern(motif)
-    if (!pattern) continue
-    for (const [chapter, group] of groups) {
-      const hits = group.filter((text) => pattern.test(text)).length
-      if (hits > 1) {
-        warnings.push(
-          `motif "${motif}" appears in ${hits} of ${group.length} picture briefs` +
-            (chapter === '' ? '' : ` in ${chapter}`),
-        )
-      }
-    }
-    for (let index = 1; index < texts.length; index += 1) {
-      const previous = texts[index - 1]
-      const current = texts[index]
-      if (
-        previous !== null &&
-        previous !== undefined &&
-        current !== null &&
-        current !== undefined &&
-        pattern.test(previous) &&
-        pattern.test(current)
-      ) {
-        warnings.push(`motif "${motif}" appears in two adjacent slots (from slot ${index - 1})`)
-        break
-      }
-    }
-  }
-
-  // Sets carry decision 260's risk in a new place: a room named on every
-  // brief is the new empty chair. Counted per chapter, like a motif, and
-  // never a rejection.
-  const byChapter = new Map<string, { total: number; sets: Map<string, number> }>()
-  for (const slot of slots) {
-    const chapter = slot.chapter ?? 'the film'
-    const entry = byChapter.get(chapter) ?? { total: 0, sets: new Map() }
-    if (slot.brief.type === 'still' || slot.brief.type === 'hero') {
-      entry.total += 1
-      const named = slotSet(slot.brief)
-      if (named) entry.sets.set(named, (entry.sets.get(named) ?? 0) + 1)
-    }
-    byChapter.set(chapter, entry)
-  }
-  for (const [chapter, entry] of byChapter) {
-    for (const [name, count] of entry.sets) {
-      if (entry.total > 1 && count * 2 > entry.total) {
-        warnings.push(
-          `the set "${name}" carries ${count} of ${entry.total} picture briefs in ${chapter}`,
-        )
-      }
-    }
-  }
-
-  // One note per set, like the motif walk above: a run of four slots in one
-  // room is one problem to fix, and three lines about it reads as three.
-  const adjacent = new Set<string>()
-  for (const [index, slot] of slots.entries()) {
-    const here = slotSet(slot.brief)
-    const next = slots[index + 1] ? slotSet(slots[index + 1]!.brief) : null
-    if (
-      here &&
-      next &&
-      here === next &&
-      !sentencePlacesIn(slots[index + 1]!.brief, next) &&
-      !adjacent.has(here)
-    ) {
-      adjacent.add(here)
-      warnings.push(`the set "${here}" fills two adjacent slots (from slot ${index})`)
-    }
-  }
-
-  // A set nothing holds conditions nothing, exactly like a depicts name with
-  // no photograph, and is worth saying before the money is spent. A project
-  // with no sets at all is the loudest case of it, not an exemption.
-  const unknown = new Set<string>()
-  for (const slot of slots) {
-    const named = slotSet(slot.brief)
-    if (named && !setNames.some((name) => nameMatches(named, name))) unknown.add(named)
-  }
-  for (const name of unknown) {
-    warnings.push(`the film has no set named "${name}", so that shot is generated plain`)
-  }
-
-  return warnings
 }
 
 /**
@@ -446,8 +307,8 @@ export function castWarnings(
  * volunteer: a still's `depicts` and its `set`. When they are absent
  * `generateStillCandidates` never even reads the cast or sets tables, so an
  * uploaded photograph conditions nothing and the still is generated plain.
- * Every existing note points the other way — `planWarnings` warns when a set
- * is named too OFTEN, `castWarnings` when the book forgot a person — and a
+ * Every existing note points the other way — the set-heavy finding fires when a
+ * set is named too OFTEN, `castWarnings` when the book forgot a person — and a
  * film whose briefs name nothing at all drew no note of any kind. That is the
  * one case where the producer has paid for photographs and the run quietly
  * ignores them, which is exactly the case worth saying out loud.
@@ -519,7 +380,15 @@ export function referenceWarnings(
 // ---------------------------------------------------------------------------
 
 export type CraftFindingKind =
-  'size-run' | 'motif-repeat' | 'set-run' | 'ignored-person' | 'ignored-set' | 'shared-camera'
+  | 'size-run'
+  | 'motif-repeat'
+  | 'set-run'
+  | 'set-heavy'
+  | 'unknown-set'
+  | 'banned-word'
+  | 'ignored-person'
+  | 'ignored-set'
+  | 'shared-camera'
 
 /**
  * Who may spend on fixing a finding. `auto`: the automatic repair after each
@@ -547,6 +416,11 @@ export interface FindingContext {
   cast: readonly { name: string; photographed: boolean }[]
   /** Every set the film holds, by name. */
   sets: readonly string[]
+  /**
+   * Words a still prompt must not carry (the bible's list, passed in because
+   * this package must not import the providers package that owns it).
+   */
+  bannedWords?: readonly string[]
 }
 
 const LIKENESS_TYPES = new Set(['still', 'hero'])
@@ -569,6 +443,7 @@ export function findingContext(input: {
     | null
   cast: readonly { name: string; photographed: boolean }[]
   sets: readonly { name: string }[]
+  bannedWords?: readonly string[]
 }): FindingContext {
   const principals = input.direction?.principals ?? []
   return {
@@ -582,6 +457,7 @@ export function findingContext(input: {
         ),
     ),
     sets: input.sets.map((set) => set.name),
+    bannedWords: input.bannedWords ?? [],
   }
 }
 
@@ -609,9 +485,9 @@ function orList(names: readonly string[]): string {
 
 /**
  * The problems in a plan a repair can act on, one finding per problem per
- * slot, graded by who may spend on fixing it. It shares its predicates with
- * `planWarnings` (`motifPattern`, `motifText`, `slotSet`, `sentencePlacesIn`),
- * so the plan screen and the repair agree about what is wrong.
+ * slot, graded by who may spend on fixing it. The plan screen lists these
+ * findings as its per-slot notes (decision 277), so every such note is one the
+ * Fix button acts on, by the same rule.
  *
  * Only picture briefs are ever flagged. A chart, map, headline or graphic
  * carries claim references that are validated elsewhere, and a repair has no
@@ -695,6 +571,79 @@ export function craftFindings(
           'set it where its sentence is, or in no set',
       })
     }
+  }
+
+  // Sets that carry most of a chapter (decision 277, the note of decision
+  // 264 made fixable): a room on every slot is the new empty chair. Only the
+  // shots whose own sentence does not put us there are flagged, the latest
+  // first, and only as many as take the room back to half the chapter's
+  // picture briefs; a room the sentence names is right however often.
+  const byChapter = new Map<string, number[]>()
+  for (const [index, { brief, chapter }] of slots.entries()) {
+    if (brief.type !== 'still' && brief.type !== 'hero') continue
+    const key = chapter ?? ''
+    byChapter.set(key, [...(byChapter.get(key) ?? []), index])
+  }
+  for (const [chapter, pictures] of byChapter) {
+    const counts = new Map<string, number[]>()
+    for (const index of pictures) {
+      const named = slotSet(slots[index]!.brief)
+      if (named) counts.set(named, [...(counts.get(named) ?? []), index])
+    }
+    for (const [name, inRoom] of counts) {
+      if (pictures.length < 2 || inRoom.length * 2 <= pictures.length) continue
+      const excess = inRoom.length - Math.floor(pictures.length / 2)
+      const movable = inRoom.filter(
+        (index) => !slots[index]!.linked && !sentencePlacesIn(slots[index]!.brief, name),
+      )
+      for (const index of movable.slice(-excess)) {
+        // The set run already asks this slot for the same move.
+        if (findings.some((f) => f.kind === 'set-run' && f.slotIndex === index)) continue
+        findings.push({
+          kind: 'set-heavy',
+          slotIndex: index,
+          repair: 'auto',
+          message:
+            `"${name}" carries ${inRoom.length} of ${pictures.length} picture briefs` +
+            `${chapter === '' ? '' : ` in ${chapter}`} and this sentence does not put us there; ` +
+            'set it where its sentence is, or in no set',
+        })
+      }
+    }
+  }
+
+  // A set the film does not hold conditions nothing: the shot is generated
+  // plain, so the name is a promise the plates never keep.
+  for (const [index, { brief }] of slots.entries()) {
+    const named = slotSet(brief)
+    if (!named || context.sets.some((name) => nameMatches(named, name))) continue
+    findings.push({
+      kind: 'unknown-set',
+      slotIndex: index,
+      repair: 'auto',
+      message:
+        context.sets.length === 0
+          ? `the film has no sets, so "${named}" conditions nothing; drop "set"`
+          : `the film has no set named "${named}"; name one of its sets (${orList(
+              context.sets.map((name) => `"${name}"`),
+            )}) or none`,
+    })
+  }
+
+  // Banned words in a still's prompt, one finding per slot naming each word.
+  for (const [index, { brief }] of slots.entries()) {
+    if (brief.type !== 'still' && brief.type !== 'hero') continue
+    const prompt = (brief.prompt ?? '').toLowerCase()
+    const words = (context.bannedWords ?? []).filter((word) => prompt.includes(word.toLowerCase()))
+    if (words.length === 0) continue
+    findings.push({
+      kind: 'banned-word',
+      slotIndex: index,
+      repair: 'auto',
+      message: `the prompt uses the banned word${words.length === 1 ? '' : 's'} ${orList(
+        words.map((word) => `"${word}"`),
+      )}; say it another way`,
+    })
   }
 
   // Shared cameras (decision 275): two stills in one room from the same place

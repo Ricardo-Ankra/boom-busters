@@ -6,6 +6,7 @@ import {
   mockShotList,
   parseShotList,
   parseShotRepair,
+  parseShotRepairAnswers,
   SHOT_LIST_FLOOR_TOKENS,
   stillStyleAnchors,
 } from './shotlist'
@@ -900,6 +901,53 @@ describe('buildShotRepairRequest and parseShotRepair (decision 271)', () => {
       allowStockToStill: true,
     })
     expect(repair.messages.at(-1)?.content).toContain('may become a "still"')
+  })
+
+  // Decision 277: a Fix that kept a brief said nothing about why.
+  it('says why each refused answer was kept', () => {
+    const originals = [still, still, still, stock]
+    const answer = JSON.stringify({
+      briefs: [
+        { ...still, coversText: 'Something else entirely.' },
+        { type: 'still' },
+        { ...stock, coversText: still.coversText },
+      ],
+    })
+    expect(
+      parseShotRepairAnswers(answer, originals, { allowStockToStill: false }).map((a) =>
+        'kept' in a ? a.kept : 'used',
+      ),
+    ).toEqual([
+      'the answer changed the sentence it covers',
+      'the answer was not a valid brief',
+      'the answer changed its format',
+      'no answer came back for it',
+    ])
+  })
+
+  it('reads a brief wrapped as a planned slot', () => {
+    const answer = JSON.stringify({
+      briefs: [{ paragraphIndex: 0, seconds: 9, brief: { ...still, prompt: 'New.' } }],
+    })
+    expect(parseShotRepair(answer, [still], { allowStockToStill: false })[0]).toMatchObject({
+      prompt: 'New.',
+    })
+  })
+
+  it('treats straightened quotes and dashes as the same sentence, and keeps the original', () => {
+    const curly = {
+      ...still,
+      coversText: '“It’s over” — Mostaque told the investors.',
+    }
+    const answer = JSON.stringify({
+      briefs: [
+        { ...curly, coversText: '"It\'s over" - Mostaque told the investors.', prompt: 'New.' },
+      ],
+    })
+    expect(parseShotRepair(answer, [curly], { allowStockToStill: false })[0]).toMatchObject({
+      prompt: 'New.',
+      coversText: curly.coversText,
+    })
   })
 
   it('returns the replacements in order, with the original sentence forced back', () => {

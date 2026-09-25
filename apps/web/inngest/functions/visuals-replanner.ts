@@ -7,23 +7,21 @@ import {
   listVoiceTakes,
   replaceShotList,
   scriptableClaims,
+  setSlotRetype,
   listCastMembers,
   listLogos,
 } from '@boom-busters/db'
 import type { NewShotSlot } from '@boom-busters/db'
-import { BANNED_PROMPT_WORDS, stillStyleAnchors } from '@boom-busters/providers'
+import { stillStyleAnchors } from '@boom-busters/providers'
 import type { ScriptClaim } from '@boom-busters/providers'
 import {
   BudgetExceededError,
-  craftFindings,
   DirectorsBookSchema,
-  findingContext,
   mayBecomeStill,
   parseEventData,
-  planWarnings,
   repairTargets,
   serialiseError,
-  ShotBriefSchema,
+  SlotDraftStateSchema,
 } from '@boom-busters/schemas'
 import { NonRetriableError } from 'inngest'
 import { db } from '@/lib/db'
@@ -34,6 +32,7 @@ import {
   chapterShotListRequest,
   draftDirectorsBook,
   planChapterSlots,
+  planFindings,
   rewriteStoredBriefs,
 } from '../lib/direction'
 import { budgetGateData, markSideJobFailed, type GateContext } from '../lib/gates'
@@ -172,44 +171,29 @@ export const visualsReplanner = inngest.createFunction(
     // -----------------------------------------------------------------------
 
     if (op === 'repair') {
-      const stored = await step.run('load-slots', async () =>
+      const loadSlots = async () =>
         (await listShotSlots(db, projectId)).map((row) => ({
           id: row.id,
           chapterId: row.chapterId,
           brief: row.brief,
           reuseOfSlotId: row.reuseOfSlotId,
-        })),
-      )
+          retype: row.retype,
+        }))
+      const stored = await step.run('load-slots', loadSlots)
 
       // Findings over the whole film, exactly as the board computes them, so
       // the button fixes the slots the screen counted.
-      const labels = new Map(
-        setup.chapters.map((chapter, index) => [chapter.id, `chapter ${index + 1}`]),
-      )
-      const briefs = stored.flatMap((row) => {
-        const parsed = ShotBriefSchema.safeParse(row.brief)
-        return parsed.success
-          ? [
-              {
-                id: row.id,
-                chapterId: row.chapterId,
-                brief: parsed.data,
-                linked: row.reuseOfSlotId !== null,
-              },
-            ]
-          : []
-      })
-      const findings = craftFindings(
-        briefs.map((row) => ({
-          brief: row.brief,
-          chapter: labels.get(row.chapterId),
-          linked: row.linked,
-        })),
-        findingContext({ direction: setup.direction, cast: setup.cast, sets: setup.sets }),
-      )
+      const context = {
+        chapters: setup.chapters,
+        direction: setup.direction,
+        cast: setup.cast,
+        sets: setup.sets,
+      }
+      const { findings, slots: briefs } = planFindings({ rows: stored, ...context })
       const targets = repairTargets(findings, ['auto', 'manual'])
 
-      let rewritten = 0
+      const rewrittenIds: string[] = []
+      const kept: { id: string; reason: string }[] = []
       for (const [index, chapter] of setup.chapters.entries()) {
         const mine = targets.filter((target) => briefs[target.slotIndex]!.chapterId === chapter.id)
         if (mine.length === 0) continue
@@ -225,13 +209,13 @@ export const visualsReplanner = inngest.createFunction(
             sets: setup.sets,
             logos: setup.logos,
           })
-          if (!request) return { ok: true as const, written: 0 }
+          if (!request) return { ok: true as const, rewritten: [], kept: [] }
           try {
-            const written = await rewriteStoredBriefs({
+            const outcome = await rewriteStoredBriefs({
               projectId,
               request,
               targets: mine.map((target) => ({
-                id: briefs[target.slotIndex]!.id,
+                id: stored[briefs[target.slotIndex]!.row]!.id,
                 brief: briefs[target.slotIndex]!.brief,
                 problems: target.findings.map((finding) => finding.message),
                 mayBecomeStill: mayBecomeStill(briefs[target.slotIndex]!.brief, target.findings),
@@ -239,7 +223,7 @@ export const visualsReplanner = inngest.createFunction(
               claims: setup.claims,
               logos: setup.logos,
             })
-            return { ok: true as const, written }
+            return { ok: true as const, ...outcome }
           } catch (error) {
             if (error instanceof BudgetExceededError) {
               return { ok: false as const, gate: budgetGateData(error) }
@@ -253,17 +237,63 @@ export const visualsReplanner = inngest.createFunction(
           )
           return { projectId, op, outcome: 'over-budget' as const }
         }
-        rewritten += fixed.written
+        rewrittenIds.push(...fixed.rewritten)
+        kept.push(...fixed.kept)
       }
+      const rewritten = rewrittenIds.length
+
+      // Per slot, what the Fix did (decision 277): a slot it cleared carries
+      // no note; one it kept says why; one it rewrote that is still flagged
+      // says what is left. The same findings as the board, re-read after the
+      // rewrite, so the card and the notes agree.
+      const report = await step.run('repair-report', async () => {
+        const after = await loadSlots()
+        const now = planFindings({ rows: after, ...context })
+        const left = new Map<string, string[]>()
+        for (const finding of now.findings) {
+          const id = after[now.slots[finding.slotIndex]!.row]!.id
+          left.set(id, [...(left.get(id) ?? []), finding.message])
+        }
+        const reasons = new Map(kept.map((entry) => [entry.id, entry.reason]))
+        let cleared = 0
+        let flagged = 0
+        for (const row of after) {
+          const reason = reasons.get(row.id)
+          if (reason === undefined && !rewrittenIds.includes(row.id)) continue
+          // A model already rewriting this brief owns the card's state.
+          const current = SlotDraftStateSchema.safeParse(row.retype)
+          if (current.success && ['drafting', 'rebriefing'].includes(current.data.state)) continue
+          const remaining = left.get(row.id) ?? []
+          const note =
+            reason !== undefined
+              ? `Fix kept this brief: ${reason}.`
+              : remaining.length > 0
+                ? `Fix rewrote this brief, but it is still flagged: ${remaining.join('; ')}.`
+                : null
+          if (note === null) cleared += 1
+          else if (reason === undefined) flagged += 1
+          if (note !== null) await setSlotRetype(db, row.id, { state: 'fix-note', note })
+          else if (current.success && current.data.state === 'fix-note') {
+            await setSlotRetype(db, row.id, null)
+          }
+        }
+        return { cleared, flagged, kept: kept.length }
+      })
 
       await step.run('repair-notify', () =>
         notify({
           kind: 'heads-up',
           title: 'Flagged slots fixed',
           body:
-            rewritten > 0
-              ? `${rewritten} brief${rewritten === 1 ? '' : 's'} rewritten.`
-              : 'No flagged brief was rewritten: nothing the check flagged could be repaired.',
+            rewritten + report.kept === 0
+              ? 'No flagged brief was rewritten: nothing the check flagged could be repaired.'
+              : [
+                  `${report.cleared} fixed`,
+                  report.flagged > 0 ? `${report.flagged} rewritten but still flagged` : null,
+                  report.kept > 0 ? `${report.kept} kept` : null,
+                ]
+                  .filter((part): part is string => part !== null)
+                  .join(', ') + (report.flagged + report.kept > 0 ? '. Each card says why.' : '.'),
           href: `/projects/${projectId}`,
         }),
       )
@@ -320,16 +350,14 @@ export const visualsReplanner = inngest.createFunction(
       // wherever it is needed rather than frozen onto a row here.
       await replaceShotList(db, projectId, rows)
 
-      const chapterLabel = new Map(
-        setup.chapters.map((chapter, index) => [chapter.id, `chapter ${index + 1}`]),
-      )
-      const warnings = planWarnings(
-        rows.map((row) => ({ brief: row.brief, chapter: chapterLabel.get(row.chapterId) })),
-        BANNED_PROMPT_WORDS,
-        setup.direction?.motifs ?? [],
-        setup.sets.map((set) => set.name),
-        setup.direction?.eraLocks.map((lock) => lock.rules) ?? [],
-      )
+      // The same findings the plan screen lists (decision 277).
+      const warnings = planFindings({
+        rows,
+        chapters: setup.chapters,
+        direction: setup.direction,
+        cast: setup.cast,
+        sets: setup.sets,
+      }).findings
       await notify({
         kind: 'heads-up',
         title: 'Shot plan re-planned',

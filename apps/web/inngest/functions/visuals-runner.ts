@@ -18,13 +18,12 @@ import {
   listLogos,
 } from '@boom-busters/db'
 import type { NewShotSlot } from '@boom-busters/db'
-import { BANNED_PROMPT_WORDS, stillStyleAnchors } from '@boom-busters/providers'
+import { stillStyleAnchors } from '@boom-busters/providers'
 import type { ScriptClaim } from '@boom-busters/providers'
 import {
   BudgetExceededError,
   ContentPolicyError,
   parseEventData,
-  planWarnings,
   serialiseError,
   ShotBriefSchema,
   StillRouteSchema,
@@ -35,7 +34,7 @@ import { db } from '@/lib/db'
 import { requireVisualKeys, resolveSlotBrief } from '@/lib/visual-assets'
 import { inngest } from '../client'
 import { events } from '../events'
-import { loadOrDraftDirectorsBook, planChapterSlots } from '../lib/direction'
+import { loadOrDraftDirectorsBook, planChapterSlots, planFindings } from '../lib/direction'
 import {
   budgetGateData,
   closeReviewGate,
@@ -142,6 +141,9 @@ export const visualsRunner = inngest.createFunction(
         photographed: cast
           .filter((member) => member.photos.length > 0)
           .map((member) => member.name),
+        // Every member, photographed or not: the craft findings read them
+        // (decisions 271, 277).
+        cast: cast.map((member) => ({ name: member.name, photographed: member.photos.length > 0 })),
         // The film's rooms: named, described and inventoried for the
         // shot-list prompt (decision 275), and counted by the craft notes
         // below (decision 264).
@@ -247,16 +249,13 @@ export const visualsRunner = inngest.createFunction(
     const stillCount = allRows.filter((row) => row.type === 'still').length
     // Craft misses the model let through (decision 252): notes for the plan
     // screen, never rejections. The motif count is per chapter (decision 260).
-    const chapterLabel = new Map(
-      setup.chapters.map((chapter, index) => [chapter.id, `chapter ${index + 1}`]),
-    )
-    const warnings = planWarnings(
-      allRows.map((row) => ({ brief: row.brief, chapter: chapterLabel.get(row.chapterId) })),
-      BANNED_PROMPT_WORDS,
-      direction.book.motifs,
-      setup.sets.map((set) => set.name),
-      direction.book.eraLocks.map((lock) => lock.rules),
-    )
+    const warnings = planFindings({
+      rows: allRows,
+      chapters: setup.chapters,
+      direction: direction.book,
+      cast: setup.cast,
+      sets: setup.sets,
+    }).findings
     await step.run('open-plan-park', () =>
       openReviewGate(ctx, {
         stage: 'visuals',
