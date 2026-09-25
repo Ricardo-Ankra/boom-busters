@@ -6156,41 +6156,36 @@ the desk, the chair, the laptop should remain consistent").
     green.
 
 276. **A cast likeness inside a built set** (2026-09-25, owner: "test cast
-    likeness inside a set"). The live harness now takes a `cast` list in its
-    shot file (names and photograph paths) and spends the photographs with
-    the app's own rule, which moved to `@boom-busters/schemas` as
-    `spreadReferencePhotos` with `MAX_CHARACTER_REFERENCES` and
-    `MAX_SET_REFERENCES`, so the harness and the app cannot drift. The test
-    face was a fictional founder drawn for the purpose (two photographs,
-    different light, clothes and angle); no real person's photographs and no
-    production storage were used. Ten live runs on the boardroom set from
-    run 2, $0.84 in all including the two portraits.
-    - Runs 9 to 11: the likeness held at every size, the man seated or
-      standing at true scale behind the table and lit by the room, so the
-      "pasted through the table" failure did not recur. Three faults: two
-      of three shots were mirrored (windows on the wrong side), the close
-      shot dropped his glasses, and in two shots an extra came out as a
-      second copy of him (the same beard and glasses on a stranger).
-    - Cause of the mirroring: nothing in the prompt said left from right.
-      `layoutView` returned the side walls as an unordered pair ("At the
-      edges: A; B") and close and medium shots named no side at all. It now
-      returns `left` and `right` (clockwise is the camera's right); wide
-      shots say "Frame left" and "Frame right", medium shots "To the
-      camera's left/right", and every light line places its compass words
-      in the frame ("west (to the camera's left)").
-    - Close shots orient by light alone: naming the window wall's contents
-      pulled it in behind the subject (run 13).
-    - The likeness clause names hair, facial hair and glasses, and says
-      everyone else in the frame is a different person, unlike the cast
-      member in face, hair and age.
-    - Runs 12 to 14 after the fixes: the room the right way round facing
-      south and west, glasses kept, no copies among the extras. The close
-      shot facing north kept the screen wall behind him in three of five
-      runs across the session. With the sheet's straight-on north panel as
-      the north plate instead of the diagonal first plate (harness flag
-      `--north-from-sheet`), two of two held it. Too few runs to change the
-      app on; Build the set still keeps only the east, south and west
-      panels. Recorded as the next thing to try if close shots facing north
-      drift in the app.
-    Verified: format, lint and typecheck clean; web 977 and schemas 408
-    green.
+likeness inside a set"). The live harness now takes a `cast` list in its
+shot file (names and photograph paths) and spends the photographs with
+the app's own rule, which moved to `@boom-busters/schemas` as
+`spreadReferencePhotos` with `MAX_CHARACTER_REFERENCES` and
+`MAX_SET_REFERENCES`, so the harness and the app cannot drift. The test
+face was a fictional founder drawn for the purpose (two photographs,
+different light, clothes and angle); no real person's photographs and no
+production storage were used. Ten live runs on the boardroom set from
+run 2, $0.84 in all including the two portraits. - Runs 9 to 11: the likeness held at every size, the man seated or
+standing at true scale behind the table and lit by the room, so the
+"pasted through the table" failure did not recur. Three faults: two
+of three shots were mirrored (windows on the wrong side), the close
+shot dropped his glasses, and in two shots an extra came out as a
+second copy of him (the same beard and glasses on a stranger). - Cause of the mirroring: nothing in the prompt said left from right.
+`layoutView` returned the side walls as an unordered pair ("At the
+edges: A; B") and close and medium shots named no side at all. It now
+returns `left` and `right` (clockwise is the camera's right); wide
+shots say "Frame left" and "Frame right", medium shots "To the
+camera's left/right", and every light line places its compass words
+in the frame ("west (to the camera's left)"). - Close shots orient by light alone: naming the window wall's contents
+pulled it in behind the subject (run 13). - The likeness clause names hair, facial hair and glasses, and says
+everyone else in the frame is a different person, unlike the cast
+member in face, hair and age. - Runs 12 to 14 after the fixes: the room the right way round facing
+south and west, glasses kept, no copies among the extras. The close
+shot facing north kept the screen wall behind him in three of five
+runs across the session. With the sheet's straight-on north panel as
+the north plate instead of the diagonal first plate (harness flag
+`--north-from-sheet`), two of two held it. Too few runs to change the
+app on; Build the set still keeps only the east, south and west
+panels. Recorded as the next thing to try if close shots facing north
+drift in the app.
+Verified: format, lint and typecheck clean; web 977 and schemas 408
+green.
