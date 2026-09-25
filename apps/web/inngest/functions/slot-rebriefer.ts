@@ -1,7 +1,9 @@
 import {
   getProject,
   getShotSlot,
+  listCastMembers,
   listLogos,
+  listProjectSets,
   scriptableClaims,
   setSlotResolution,
   setSlotRetype,
@@ -62,6 +64,26 @@ import { budgetGateData, markSideJobFailed, type GateContext } from '../lib/gate
  */
 
 const FUNCTION_ID = 'slot-rebriefer'
+
+/**
+ * Who the producer has photographed and the film's sets, as the planner reads
+ * them (decision 276). A still's redraft needs both: a steer that names a
+ * person or a room can only become "depicts" and "set" when the model knows
+ * the exact names, and a set's plates travel only when "set" names it.
+ */
+export async function rebriefReferences(projectId: string): Promise<{
+  photographed: string[]
+  sets: { name: string; look: string; layout: string }[]
+}> {
+  const [cast, sets] = await Promise.all([
+    listCastMembers(db, projectId),
+    listProjectSets(db, projectId),
+  ])
+  return {
+    photographed: cast.filter((member) => member.photos.length > 0).map((member) => member.name),
+    sets: sets.map(({ name, look, layout }) => ({ name, look, layout })),
+  }
+}
 
 export const slotRebriefer = inngest.createFunction(
   {
@@ -165,6 +187,10 @@ export const slotRebriefer = inngest.createFunction(
               )
         } else {
           const book = DirectorsBookSchema.safeParse(project.direction)
+          const references =
+            brief.type === 'still' && !mockProvidersEnabled()
+              ? await rebriefReferences(projectId)
+              : { photographed: [], sets: [] }
           next = mockProvidersEnabled()
             ? mockRebriefedBrief(brief, guidance)
             : parseRebriefedBrief(
@@ -175,6 +201,7 @@ export const slotRebriefer = inngest.createFunction(
                       brief,
                       ...(guidance === undefined ? {} : { guidance }),
                       direction: book.success ? book.data : null,
+                      ...references,
                     }),
                     { projectId },
                   )

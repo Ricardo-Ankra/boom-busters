@@ -6189,3 +6189,17 @@ panels. Recorded as the next thing to try if close shots facing north
 drift in the app.
 Verified: format, lint and typecheck clean; web 977 and schemas 408
 green.
+
+277. **"Draft a different brief" knows the cast and the sets** (2026-09-25,
+     owner: a still of Emad Mostaque alone, redrafted with the steer "Emad
+     Mostaque in the Stability AI Boardroom", came back without the room, so
+     only his photographs travelled). Cause: the redraft prompt's still shape
+     had no "depicts", "set" or "camera", told the model not to name a real
+     person, and never listed the project's photographed cast or its sets,
+     so the exact set name that `setForBrief` joins on was unknowable. The
+     planner's people rules, set rules and its Photographed and Sets lists
+     moved out of the shot-list prompt into `PEOPLE_RULES`, `SET_RULES` and
+     `referencesPrefix` (the planner's prompt is byte-for-byte unchanged),
+     and a still's redraft now carries all of them; the slot-rebriefer reads
+     the photographed cast and the sets with `rebriefReferences`. Stock and
+     archival redrafts are unchanged.

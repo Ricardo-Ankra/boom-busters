@@ -3,7 +3,12 @@
 import {
   claims,
   createScriptVersion,
+  deleteCastMember,
+  deleteProjectSet,
   FIXTURE_PROJECT_ID,
+  insertCastMember,
+  insertProjectSet,
+  setCastPhotos,
   getShotSlot,
   listShotSlots,
   replaceShotList,
@@ -20,7 +25,7 @@ import { InngestTestEngine } from '@inngest/test'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/lib/db'
 import { forgetRunRows } from '../middleware/run-mirror'
-import { slotRebriefer } from './slot-rebriefer'
+import { rebriefReferences, slotRebriefer } from './slot-rebriefer'
 
 /**
  * The slot-rebriefer against the real database, in mock-provider mode
@@ -65,6 +70,52 @@ function rebriefEvent(
     },
   ]
 }
+
+// Decision 276: a still's redraft is told who is photographed and which rooms
+// the film holds, so a steer naming them becomes "depicts" and "set".
+describeDb('rebriefReferences', () => {
+  it('reads the photographed cast and every set, with its look and inventory', async () => {
+    const emad = await insertCastMember(db, {
+      projectId: FIXTURE_PROJECT_ID,
+      name: 'Rebrief Photographed',
+      role: 'Founder',
+    })
+    await setCastPhotos(db, emad.id, [
+      {
+        r2Key: 'boom-busters/cast/p/h.jpg',
+        contentHash: 'h',
+        mimeType: 'image/jpeg',
+        width: 800,
+        height: 1000,
+        view: 'front',
+      },
+    ])
+    const bare = await insertCastMember(db, {
+      projectId: FIXTURE_PROJECT_ID,
+      name: 'Rebrief Unphotographed',
+      role: 'Investor',
+    })
+    const room = await insertProjectSet(db, {
+      projectId: FIXTURE_PROJECT_ID,
+      name: 'Rebrief Boardroom',
+      look: 'a long glass table',
+    })
+    try {
+      const references = await rebriefReferences(FIXTURE_PROJECT_ID)
+      expect(references.photographed).toContain('Rebrief Photographed')
+      expect(references.photographed).not.toContain('Rebrief Unphotographed')
+      expect(references.sets).toContainEqual({
+        name: 'Rebrief Boardroom',
+        look: 'a long glass table',
+        layout: '',
+      })
+    } finally {
+      await deleteCastMember(db, emad.id)
+      await deleteCastMember(db, bare.id)
+      await deleteProjectSet(db, room.id)
+    }
+  })
+})
 
 describeDb('slot-rebriefer (mock mode)', () => {
   let engine: InngestTestEngine

@@ -96,6 +96,94 @@ export function stillStyleAnchors(brandKit: BrandKitStored): string {
   )
 }
 
+/**
+ * Who the producer has photographed and which rooms the film holds, as the
+ * planner and "Draft a different brief" both read them (decisions 253, 264,
+ * 276). One source, so a redraft can put a person in a set exactly as the
+ * plan does.
+ */
+export function referencesPrefix(
+  photographed: readonly string[],
+  sets: readonly { name: string; look: string; layout?: string }[],
+): string {
+  return (
+    (photographed.length > 0
+      ? `\n\nPhotographed (the producer holds reference photographs of these people; ` +
+        `their "Identity" line above is planning context for you and must never ` +
+        `be written into a prompt):\n${photographed.map((name) => `- ${name}`).join('\n')}`
+      : '') +
+    (sets.length > 0
+      ? `\n\nSets (the rooms this film returns to; the producer holds reference ` +
+        `photographs of each, so naming one puts the shot in that exact room):\n` +
+        sets
+          .map((set) => {
+            const inventory = (set.layout ?? '').trim()
+            return inventory
+              ? `- ${set.name}: ${set.look}\n${inventory
+                  .split(/\r?\n/)
+                  .filter((line) => line.trim() !== '')
+                  .map((line) => `  ${line.trim()}`)
+                  .join('\n')}`
+              : `- ${set.name}: ${set.look}`
+          })
+          .join('\n')
+      : '')
+  )
+}
+
+/** The three kinds of people a still may show, and how each is written (decision 253). */
+export const PEOPLE_RULES = `  People come in three kinds and they never mix:
+  (a) A name in "Photographed" above. Name them by full name and role, add
+      "the person in the reference photo", and write NO physical description
+      of them whatever: no age, build, height, hair, beard, glasses, skin or
+      face. The photograph is the likeness and any written description fights
+      it. Clothing, posture, place, light and what they are doing are still
+      yours to direct. Stage them physically in the scene: seated in a chair
+      or standing on the floor, at true scale, with any furniture between
+      them and the camera in front of them. List them in "depicts" by name
+      alone, never with the role after it: the name is how the photographs
+      are found.
+  (b) A named person NOT in that list. Name them by full name and role, then
+      their identity string from the book as one sentence — with no
+      photograph it is the only thing standing between the image and a
+      stand-in. List them in "depicts" by name alone.
+  (c) Anyone unnamed: investors, employees, staff, an aide, a driver, a
+      crowd. No name and no identity string. Describe them by
+      role, age range, build and clothing, with a natural, realistic face,
+      visible and in focus, resembling no real or public person.
+      Never blur, hide or turn a face away as a device.
+`
+
+/** How a still is put in one of the film's sets (decisions 264, 275). Sent only when sets exist. */
+export const SET_RULES = `  Sets are the rooms this film returns to, and the producer holds
+  photographs of each. When the sentence puts us in one,
+  name it in "set" by name alone, and write in the prompt what happens
+  inside it: who is there, what they are doing and the light.
+  Name the room in the prompt as well, in the same words the list above
+  uses, so the sentence and the photographs attached to it are plainly
+  about one place.
+  The photographs give the room's design, not the picture.
+  Where the camera stands and which way it faces live in "camera" alone;
+  the prompt never places the camera, because the producer can move it on
+  the board, and that changes only "camera".
+  Two stills of the same room never share a camera position.
+  Every still that names a set carries "camera". "facing" is the wall the
+  camera looks at, by the inventory's compass; "position" is where it stands
+  and how high ("the south doorway, seated eye height", "low across the table
+  from the window side"); "lens" is the lens ("35mm", "85mm, shallow focus").
+  Choose the facing from what the sentence needs in frame, using the
+  inventory: the windows are north, so a shot that must show the windows
+  faces north. Vary facing and position across a chapter's shots of one room.
+  Name only details that are in frame for that facing: a window, screen or door
+  the prompt mentions sits on the wall the camera faces or at its edges,
+  never on the wall behind the camera, or the image model turns to show it.
+  Do not describe its walls, furniture, layout or materials; the
+  photographs state those, and a written description only argues with
+  them. Its light and weather are still yours. A sentence that happens
+  somewhere else names no set: a room on every slot is the same mistake as
+  a motif on every slot.
+`
+
 function slotShapes(hasSets: boolean): string {
   return `Every slot: {"paragraphIndex": number, "seconds": number, "brief": {...}}
 
@@ -210,27 +298,7 @@ export function buildShotListRequest(input: {
   const prefix =
     `Case: ${input.caseTitle}\n\nClaims:\n${claimList(input.claims)}` +
     (input.direction ? `\n\nDirector's book:\n${renderDirectorsBook(input.direction)}` : '') +
-    (photographed.length > 0
-      ? `\n\nPhotographed (the producer holds reference photographs of these people; ` +
-        `their "Identity" line above is planning context for you and must never ` +
-        `be written into a prompt):\n${photographed.map((name) => `- ${name}`).join('\n')}`
-      : '') +
-    (sets.length > 0
-      ? `\n\nSets (the rooms this film returns to; the producer holds reference ` +
-        `photographs of each, so naming one puts the shot in that exact room):\n` +
-        sets
-          .map((set) => {
-            const inventory = (set.layout ?? '').trim()
-            return inventory
-              ? `- ${set.name}: ${set.look}\n${inventory
-                  .split(/\r?\n/)
-                  .filter((line) => line.trim() !== '')
-                  .map((line) => `  ${line.trim()}`)
-                  .join('\n')}`
-              : `- ${set.name}: ${set.look}`
-          })
-          .join('\n')
-      : '') +
+    referencesPrefix(photographed, sets) +
     (logos.length > 0
       ? `\n\nLogos (marks the producer holds; a graphic's "logo" names one exactly):\n` +
         logos.map((title) => `- ${title}`).join('\n')
@@ -301,58 +369,7 @@ Planning rules:
   then the book's palette line (the era lock
   only limits which period objects you name; never paste its list), then the house photograph line verbatim: "${HOUSE_PHOTOGRAPH}", then
   these Brand Kit anchors verbatim: "${input.styleAnchors}".
-  People come in three kinds and they never mix:
-  (a) A name in "Photographed" above. Name them by full name and role, add
-      "the person in the reference photo", and write NO physical description
-      of them whatever: no age, build, height, hair, beard, glasses, skin or
-      face. The photograph is the likeness and any written description fights
-      it. Clothing, posture, place, light and what they are doing are still
-      yours to direct. Stage them physically in the scene: seated in a chair
-      or standing on the floor, at true scale, with any furniture between
-      them and the camera in front of them. List them in "depicts" by name
-      alone, never with the role after it: the name is how the photographs
-      are found.
-  (b) A named person NOT in that list. Name them by full name and role, then
-      their identity string from the book as one sentence — with no
-      photograph it is the only thing standing between the image and a
-      stand-in. List them in "depicts" by name alone.
-  (c) Anyone unnamed: investors, employees, staff, an aide, a driver, a
-      crowd. No name and no identity string. Describe them by
-      role, age range, build and clothing, with a natural, realistic face,
-      visible and in focus, resembling no real or public person.
-      Never blur, hide or turn a face away as a device.
-${
-  sets.length > 0
-    ? `  Sets are the rooms this film returns to, and the producer holds
-  photographs of each. When the sentence puts us in one,
-  name it in "set" by name alone, and write in the prompt what happens
-  inside it: who is there, what they are doing and the light.
-  Name the room in the prompt as well, in the same words the list above
-  uses, so the sentence and the photographs attached to it are plainly
-  about one place.
-  The photographs give the room's design, not the picture.
-  Where the camera stands and which way it faces live in "camera" alone;
-  the prompt never places the camera, because the producer can move it on
-  the board, and that changes only "camera".
-  Two stills of the same room never share a camera position.
-  Every still that names a set carries "camera". "facing" is the wall the
-  camera looks at, by the inventory's compass; "position" is where it stands
-  and how high ("the south doorway, seated eye height", "low across the table
-  from the window side"); "lens" is the lens ("35mm", "85mm, shallow focus").
-  Choose the facing from what the sentence needs in frame, using the
-  inventory: the windows are north, so a shot that must show the windows
-  faces north. Vary facing and position across a chapter's shots of one room.
-  Name only details that are in frame for that facing: a window, screen or door
-  the prompt mentions sits on the wall the camera faces or at its edges,
-  never on the wall behind the camera, or the image model turns to show it.
-  Do not describe its walls, furniture, layout or materials; the
-  photographs state those, and a written description only argues with
-  them. Its light and weather are still yours. A sentence that happens
-  somewhere else names no set: a room on every slot is the same mistake as
-  a motif on every slot.
-`
-    : ''
-}  Never quote the guardrail:
+${PEOPLE_RULES}${sets.length > 0 ? SET_RULES : ''}  Never quote the guardrail:
   it decides what you plan, not what the image model reads, and a model
   reads "never in handcuffs" as a request for handcuffs. Put its concrete
   nouns in "negativePrompt" instead.

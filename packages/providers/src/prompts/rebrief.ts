@@ -3,6 +3,7 @@ import type { DirectorsBook, ShotBrief } from '@boom-busters/schemas'
 import { z } from 'zod'
 import { DIRECTION_CRAFT } from './direction-craft'
 import { formatIssues, parseJsonCompletion } from './json'
+import { PEOPLE_RULES, referencesPrefix, SET_RULES } from './shotlist'
 import { outputBudget } from '../llm/types'
 import type { LLMTaskRequest } from '../llm/types'
 
@@ -33,9 +34,18 @@ export interface RebriefInput {
   /** What the producer is picturing. Absent means "just give me another". */
   guidance?: string
   direction: DirectorsBook | null
+  /**
+   * Cast members the producer has photographed, and the film's sets with their
+   * inventories (decision 276). Only a still reads them. Without them a steer
+   * such as "Emad Mostaque in the Stability AI Boardroom" could not become the
+   * brief's "depicts" and "set": the redraft never knew the room was a set,
+   * so its plates were never sent.
+   */
+  photographed?: readonly string[]
+  sets?: readonly { name: string; look: string; layout?: string }[]
 }
 
-const TARGET_SHAPE: Record<RebriefableBrief['type'], string> = {
+const TARGET_SHAPE: Record<Exclude<RebriefableBrief['type'], 'still'>, string> = {
   stock: `{"type": "stock", "coversText", "description", "motion", "transition",
    "query": string, "rejectionCriteria": [string]}
 
@@ -46,20 +56,47 @@ things that would make a result wrong for this beat.`,
 
 This is guidance for a human searching archives by hand, so "mustShow" has to
 be specific enough that they know a correct result when they see one.`,
-  still: `{"type": "still", "coversText", "description", "shotSize", "motion",
-   "transition", "prompt": string, "negativePrompt"?: string}
+}
 
-"prompt" is the full text-to-image prompt. Do not name or describe a real,
-identifiable person in it.`,
+/**
+ * A still's shape and its people and set rules, the planner's own (decision
+ * 276): a redraft may put a photographed person in one of the film's sets
+ * exactly as the plan does.
+ */
+function stillShape(hasSets: boolean): string {
+  const setFields = hasSets
+    ? `,
+   "set"?: the exact name of one set listed in the first message, alone,
+   "camera"?: {"facing": "north"|"east"|"south"|"west", "position", "lens"?}`
+    : ''
+  const kept = hasSets ? '"depicts", "set" and "camera"' : '"depicts"'
+  const steered = hasSets
+    ? 'the person in "depicts", the room in "set" with a "camera"'
+    : 'the person in "depicts"'
+  return `{"type": "still", "coversText", "description", "shotSize", "motion",
+   "transition", "prompt": string, "negativePrompt"?: string,
+   "depicts"?: [each real person shown by likeness, by full name alone]${setFields}}
+
+"prompt" is the full text-to-image prompt.
+
+Keep ${kept} from the current brief while the new idea still shows those
+people${hasSets ? ' in that room' : ''}. When the producer's steer names a person or a room from
+the lists in the first message, the new brief shows them: ${steered}.
+
+${PEOPLE_RULES}${hasSets ? SET_RULES : ''}`
 }
 
 export function buildRebriefRequest(input: RebriefInput): LLMTaskRequest {
+  const still = input.brief.type === 'still'
+  const photographed = still ? (input.photographed ?? []).filter((name) => name.trim() !== '') : []
+  const sets = still ? (input.sets ?? []).filter((set) => set.name.trim() !== '') : []
   const messages: LLMTaskRequest['messages'] = [
     {
       role: 'user',
       content:
         `Case: ${input.caseTitle}` +
-        (input.direction ? `\n\nDirector's book:\n${renderDirectorsBook(input.direction)}` : ''),
+        (input.direction ? `\n\nDirector's book:\n${renderDirectorsBook(input.direction)}` : '') +
+        referencesPrefix(photographed, sets),
     },
     { role: 'user', content: `The current brief:\n${JSON.stringify(input.brief, null, 2)}` },
   ]
@@ -89,7 +126,7 @@ follow it, and keep every craft rule that does not conflict with it.
 ${DIRECTION_CRAFT}
 
 The target shape:
-${TARGET_SHAPE[input.brief.type]}
+${input.brief.type === 'still' ? stillShape(sets.length > 0) : TARGET_SHAPE[input.brief.type]}
 
 "motion" is {"kind": "static"} or {"kind": "kenburns", "direction": "in"|"out",
 "speed": "slow"|"medium"|"fast"} or {"kind": "pan", "path": string}.

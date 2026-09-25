@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest'
 import { mockDirectorsBook } from './direction'
 import { buildRebriefRequest, mockRebriefedBrief, parseRebriefedBrief } from './rebrief'
 import { buildRetypeRequest } from './retype'
+import { PEOPLE_RULES } from './shotlist'
 
 const stock: ShotBrief = {
   type: 'stock',
@@ -46,6 +47,97 @@ describe('buildRebriefRequest', () => {
     const bare = buildRebriefRequest({ caseTitle: 'Wirecard', brief: stock, direction: null })
     expect(bare.system).toContain('DIFFERENT')
     expect(bare.messages.some((message) => message.content.includes('producer'))).toBe(false)
+  })
+})
+
+// Decision 276: "Emad Mostaque in the Stability AI Boardroom" as a steer came
+// back with no "set", because the redraft neither asked for one nor knew the
+// room was a set, so the room's plates never travelled.
+describe('buildRebriefRequest for a still', () => {
+  const still: ShotBrief = {
+    type: 'still',
+    coversText: 'Emad Mostaque faced the board alone.',
+    description: 'Mostaque at a desk.',
+    shotSize: 'medium',
+    motion: { kind: 'static' },
+    transition: 'cut',
+    prompt: 'Emad Mostaque, founder, the person in the reference photo, at a desk.',
+    depicts: ['Emad Mostaque'],
+  }
+  const references = {
+    photographed: ['Emad Mostaque'],
+    sets: [
+      {
+        name: 'Stability AI Boardroom',
+        look: 'a long glass table',
+        layout: 'North wall: a screen',
+      },
+    ],
+  }
+  const request = buildRebriefRequest({
+    caseTitle: 'Stability AI',
+    brief: still,
+    guidance: 'Emad Mostaque in the Stability AI Boardroom',
+    direction: null,
+    ...references,
+  })
+
+  it('lists the photographed cast and the sets with their inventories', () => {
+    const prefix = request.messages[0]!.content
+    expect(prefix).toContain('Photographed')
+    expect(prefix).toContain('- Emad Mostaque')
+    expect(prefix).toContain('- Stability AI Boardroom: a long glass table')
+    expect(prefix).toContain('North wall: a screen')
+  })
+
+  it("asks for depicts, set and camera under the planner's people and set rules", () => {
+    expect(request.system).toContain('"depicts"?:')
+    expect(request.system).toContain('"set"?: the exact name of one set')
+    expect(request.system).toContain('"camera"?:')
+    expect(request.system).toContain(PEOPLE_RULES)
+    expect(request.system).toContain('Sets are the rooms this film returns to')
+    expect(request.system).not.toContain('Do not name or describe a real')
+  })
+
+  it('offers no set when the film holds none', () => {
+    const plain = buildRebriefRequest({
+      caseTitle: 'Stability AI',
+      brief: still,
+      direction: null,
+      photographed: ['Emad Mostaque'],
+    })
+    expect(plain.system).toContain('"depicts"?:')
+    expect(plain.system).not.toContain('"set"?:')
+    expect(plain.system).not.toContain('Sets are the rooms')
+  })
+
+  it('keeps the cast and sets out of a stock redraft', () => {
+    const stockRequest = buildRebriefRequest({
+      caseTitle: 'Wirecard',
+      brief: stock,
+      direction: null,
+      ...references,
+    })
+    expect(stockRequest.messages[0]!.content).not.toContain('Photographed')
+    expect(stockRequest.system).not.toContain('"set"?:')
+  })
+
+  it('keeps the set and camera a new idea names', () => {
+    const answer = JSON.stringify({
+      brief: {
+        ...still,
+        prompt:
+          'Emad Mostaque, founder, the person in the reference photo, in the Stability AI Boardroom.',
+        set: 'Stability AI Boardroom',
+        camera: { facing: 'north', position: 'the south doorway, standing height', lens: '35mm' },
+      },
+    })
+    const parsed = parseRebriefedBrief(answer, still as Parameters<typeof parseRebriefedBrief>[1])
+    expect(parsed).toMatchObject({
+      set: 'Stability AI Boardroom',
+      depicts: ['Emad Mostaque'],
+      camera: { facing: 'north' },
+    })
   })
 })
 
