@@ -57,6 +57,46 @@ export function referencePhotos(member: Pick<CastMember, 'photos'>, limit = 1): 
   return [...front, ...rest].slice(0, Math.max(0, limit))
 }
 
+/**
+ * What one still carries of the people in it, as the app's own policy
+ * (decision 264). The routed model's own limits sit above this and are asked
+ * for separately. People come before the set's plates when both cannot fit,
+ * because a wrong face is worse than a wrong room.
+ */
+export const MAX_CHARACTER_REFERENCES = 3
+
+/**
+ * How the reference slots are spent across the people in the frame.
+ *
+ * Everyone depicted gets a photograph first, because a face that is never
+ * shown cannot be matched at all. Whatever is left goes round-robin to
+ * further angles of those same people, front view first. One person in the
+ * frame is the common case, and three views of them pin a likeness far
+ * better than one — which is what the Cast card has been asking for all
+ * along, and what every angle past the first was never used for.
+ *
+ * The extra angles are only ever spent on photographs the producer actually
+ * uploaded, so a cast of single front views behaves exactly as before.
+ * Pure, so the live set harness spends the slots exactly as the app does.
+ */
+export function spreadReferencePhotos<M extends Pick<CastMember, 'photos'>>(
+  members: readonly M[],
+  budget: number,
+): { member: M; photo: CastPhoto }[] {
+  const queues = members.map((member) =>
+    referencePhotos(member, budget).map((photo) => ({ member, photo })),
+  )
+  const chosen: { member: M; photo: CastPhoto }[] = []
+  for (let round = 0; round < budget; round += 1) {
+    for (const queue of queues) {
+      if (chosen.length >= budget) return chosen
+      const next = queue[round]
+      if (next) chosen.push(next)
+    }
+  }
+  return chosen
+}
+
 /** The extension a stored photo takes from its MIME type. */
 export function castPhotoExtension(mimeType: CastPhotoMime): 'jpg' | 'png' | 'webp' {
   return mimeType === 'image/jpeg' ? 'jpg' : mimeType === 'image/png' ? 'png' : 'webp'

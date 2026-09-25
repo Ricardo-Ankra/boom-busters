@@ -13,13 +13,24 @@ import {
 } from '@boom-busters/providers'
 import type { ImageReference } from '@boom-busters/providers'
 import {
+  CastPhotoViewSchema,
   DEFAULT_SETTINGS,
+  MAX_CAST_PHOTOS,
+  MAX_CHARACTER_REFERENCES,
+  MAX_SET_REFERENCES,
   platesForCamera,
   SetCameraSchema,
   ShotSizeSchema,
+  spreadReferencePhotos,
   STILL_GENERATIONS,
 } from '@boom-busters/schemas'
-import type { SetCamera, SetPlate, SetPlateDirection, SetPlateView } from '@boom-busters/schemas'
+import type {
+  CastPhoto,
+  SetCamera,
+  SetPlate,
+  SetPlateDirection,
+  SetPlateView,
+} from '@boom-busters/schemas'
 import sharp from 'sharp'
 import { z } from 'zod'
 import { buildSetSheetPrompt, describeCamera, framingLead, setPlateBrief } from '@/lib/set-plates'
@@ -61,7 +72,31 @@ const IMAGE_MIME_BY_EXT: Record<string, 'image/jpeg' | 'image/png' | 'image/webp
   '.webp': 'image/webp',
 }
 
-const DEFAULT_SHOT = {
+const ShotFileSchema = z.object({
+  prompt: z.string().min(1),
+  camera: SetCameraSchema,
+  /** The brief's shot size, which decides how much of the room the camera sentence shows. */
+  shotSize: ShotSizeSchema.optional(),
+  /**
+   * The cast in the shot and their likeness photographs, paths relative to
+   * the shot file. The prompt names them as the app's planner would; their
+   * photographs are spent exactly as the app spends them.
+   */
+  cast: z
+    .array(
+      z.object({
+        name: z.string().min(1),
+        photos: z
+          .array(z.object({ path: z.string().min(1), view: CastPhotoViewSchema.default('front') }))
+          .min(1)
+          .max(MAX_CAST_PHOTOS),
+      }),
+    )
+    .optional(),
+})
+type ShotFile = z.infer<typeof ShotFileSchema>
+
+const DEFAULT_SHOT: ShotFile = {
   prompt:
     'Two investors in dark suits argue across the table, one leaning forward with both hands ' +
     'flat on the wood, the other sitting back with arms folded.',
@@ -70,14 +105,7 @@ const DEFAULT_SHOT = {
     position: 'the north windows, seated eye height',
     lens: '35mm',
   },
-} satisfies { prompt: string; camera: SetCamera }
-
-const ShotFileSchema = z.object({
-  prompt: z.string().min(1),
-  camera: SetCameraSchema,
-  /** The brief's shot size, which decides how much of the room the camera sentence shows. */
-  shotSize: ShotSizeSchema.optional(),
-})
+}
 
 function mimeTypeFor(imagePath: string): 'image/jpeg' | 'image/png' | 'image/webp' {
   const ext = path.extname(imagePath).toLowerCase()
@@ -137,7 +165,12 @@ async function main(): Promise<void> {
     createdAt: string
     firstPlate?: { prompt: string; model: string }
     inventory?: { source: 'file' | 'generated'; path?: string; text: string; model?: string }
-    shot?: { prompt: string; camera: SetCamera; platesUsed: SetPlateView[] }
+    shot?: {
+      prompt: string
+      camera: SetCamera
+      platesUsed: SetPlateView[]
+      cast: { name: string; photos: number }[]
+    }
     fidelity: {
       anchors: string
       anchorsSource: 'flag' | 'default Brand Kit'
@@ -198,9 +231,34 @@ async function main(): Promise<void> {
     // ruling: a bad shot.json must never cost the $0.24 sheet, let alone the
     // calls before it).
     const layoutFromFile = args.layout ? readFileSync(args.layout, 'utf8').trim() : null
-    const shotInput = args.shot
+    const shotInput: ShotFile = args.shot
       ? ShotFileSchema.parse(JSON.parse(readFileSync(args.shot, 'utf8')))
       : DEFAULT_SHOT
+    // The cast's photographs are read now too, so a missing file costs nothing.
+    const castBytes = new Map<string, { mimeType: CastPhoto['mimeType']; data: string }>()
+    const castMembers: { name: string; photos: CastPhoto[] }[] = []
+    const shotDir = args.shot ? path.dirname(args.shot) : process.cwd()
+    for (const member of shotInput.cast ?? []) {
+      const photos: CastPhoto[] = []
+      for (const [index, entry] of member.photos.entries()) {
+        const file = path.resolve(shotDir, entry.path)
+        const bytes = readFileSync(file)
+        const meta = await sharp(bytes).metadata()
+        if (!meta.width || !meta.height) throw new Error(`${file}: could not read its dimensions.`)
+        const key = `local/cast/${member.name}/${index}`
+        const mimeType = mimeTypeFor(file)
+        castBytes.set(key, { mimeType, data: bytes.toString('base64') })
+        photos.push({
+          r2Key: key,
+          contentHash: key,
+          mimeType,
+          width: meta.width,
+          height: meta.height,
+          view: entry.view,
+        })
+      }
+      castMembers.push({ name: member.name, photos })
+    }
 
     // Step 2 — the set's first plate, facing north: the given image, or one
     // drawn from the look exactly as the app's "Generate a plate" draws it
@@ -360,16 +418,25 @@ async function main(): Promise<void> {
       string,
       { mimeType: 'image/jpeg' | 'image/png' | 'image/webp'; data: string }
     >()
-    plateBytes.set('local/north', { mimeType: imageMime, data: imageBase64 })
+    const sheetNorth = args.northFromSheet
+      ? panels.find((panel) => panel.direction === 'north')
+      : undefined
+    if (args.northFromSheet && !sheetNorth) throw new Error('No north panel to use.')
+    plateBytes.set(
+      'local/north',
+      sheetNorth
+        ? { mimeType: 'image/png', data: sheetNorth.bytes.toString('base64') }
+        : { mimeType: imageMime, data: imageBase64 },
+    )
     const setPlates: SetPlate[] = [
       {
         r2Key: 'local/north',
         contentHash: 'local-north',
-        mimeType: imageMime,
-        width: imageMeta.width,
-        height: imageMeta.height,
+        mimeType: sheetNorth ? 'image/png' : imageMime,
+        width: sheetNorth?.width ?? imageMeta.width,
+        height: sheetNorth?.height ?? imageMeta.height,
         view: 'north',
-        origin: 'uploaded',
+        origin: sheetNorth ? 'generated' : 'uploaded',
       },
     ]
     const sidePanels = panels.filter(
@@ -392,29 +459,37 @@ async function main(): Promise<void> {
     const set = { plates: setPlates }
 
     // Step 6 — the shot (prompt and camera already read and validated above).
-    const chosen = platesForCamera(set, shotInput.camera.facing, 2)
+    const chosen = platesForCamera(set, shotInput.camera.facing, MAX_SET_REFERENCES)
+    const castPhotos = spreadReferencePhotos(castMembers, MAX_CHARACTER_REFERENCES)
+    const people = [...new Set(castPhotos.map(({ member }) => member.name))].map((name) => ({
+      name,
+      photos: castPhotos.filter(({ member }) => member.name === name).length,
+    }))
     // The house line names no lens: the camera's reaches the model once, in
     // the camera sentence, exactly as in the app.
     const shotPrompt = withReferenceClause(
       stripBannedWords(
-        `${framingLead(shotInput.camera, 'shotSize' in shotInput ? shotInput.shotSize : undefined)}${shotInput.prompt} ${HOUSE_PHOTOGRAPH} ${styleAnchors}`,
+        `${framingLead(shotInput.camera, shotInput.shotSize)}${shotInput.prompt} ${HOUSE_PHOTOGRAPH} ${styleAnchors}`,
       ),
-      [],
+      people,
       { name: args.name, plates: chosen.length },
-      describeCamera(
-        shotInput.camera,
-        layout,
-        'shotSize' in shotInput ? shotInput.shotSize : undefined,
-      ),
+      describeCamera(shotInput.camera, layout, shotInput.shotSize),
     )
     prompts.shot = shotPrompt
     record.shot = {
       prompt: shotInput.prompt,
       camera: shotInput.camera,
       platesUsed: chosen.map((plate) => plate.view),
+      cast: people,
     }
 
-    const shotReferences: ImageReference[] = chosen.map((plate) => {
+    // People first, then the room, as the app sends them.
+    const castReferences: ImageReference[] = castPhotos.map(({ member, photo }) => {
+      const bytes = castBytes.get(photo.r2Key)
+      if (!bytes) throw new Error(`No bytes held locally for photo "${photo.r2Key}".`)
+      return { name: member.name, kind: 'character', mimeType: bytes.mimeType, data: bytes.data }
+    })
+    const plateReferences: ImageReference[] = chosen.map((plate) => {
       const bytes = plateBytes.get(plate.r2Key)
       if (!bytes) throw new Error(`No bytes held locally for plate "${plate.r2Key}".`)
       return {
@@ -433,7 +508,7 @@ async function main(): Promise<void> {
         count: HARNESS_IMAGES_PER_SHOT,
         model: SHOT_MODEL,
         size: '1K',
-        references: shotReferences,
+        references: [...castReferences, ...plateReferences],
       },
       { apiKey },
     )

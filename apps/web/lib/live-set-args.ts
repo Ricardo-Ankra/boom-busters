@@ -32,6 +32,12 @@ export interface LiveSetArgs {
    * the set each time.
    */
   fromRun?: string
+  /**
+   * Use the sheet's straight-on north panel as the north plate instead of the
+   * first plate, to test whether a shot facing north holds its back wall
+   * better with a reference that looks the way the camera does.
+   */
+  northFromSheet: boolean
 }
 
 /** The inventory model when the production shotlist route is not a Google one. */
@@ -139,5 +145,6 @@ export function parseLiveSetArgs(argv: readonly string[]): LiveSetArgs {
     cap: parseCap(raw.cap),
     generateFirst,
     ...(fromRun ? { fromRun } : {}),
+    northFromSheet: 'north-from-sheet' in raw,
   }
 }

@@ -15,14 +15,15 @@ import {
   articleIsRenderable,
   depictedMembers,
   platesForCamera,
-  referencePhotos,
+  MAX_CHARACTER_REFERENCES,
+  MAX_SET_REFERENCES,
   setForBrief,
+  spreadReferencePhotos,
   STILL_GENERATIONS,
   ValidationError,
 } from '@boom-busters/schemas'
 import type {
   CastMember,
-  CastPhoto,
   ModelRouting,
   ProjectSet,
   SetPlateDirection,
@@ -56,23 +57,11 @@ import { withReferenceClause } from '@/lib/still-prompt'
 import { getObjectBytes, presignGet, putObject, stillKey, storageConfigured } from '@/lib/storage'
 
 /**
- * What one still carries, as the app's own policy (decision 264). The routed
- * model's own limits sit above this and are asked for separately; these are
- * what a still can usefully hold.
- *
- * Character slots are spent on the people in the frame first and then on
- * further angles of them (decision 253, amended). Object slots hold the
- * named set's plates. People come first when both cannot fit, because a
- * wrong face is worse than a wrong room.
- */
-export const MAX_CHARACTER_REFERENCES = 3
-export const MAX_SET_REFERENCES = 2
-
-/**
- * What one still may actually carry: the app's policy above, never more than
- * the routed model allows. One function because the price estimate and the
- * generator have to spend the same budget, and two copies of this sum once
- * quoted a number no run would spend.
+ * What one still may actually carry: the app's policy (`MAX_CHARACTER_REFERENCES`,
+ * `MAX_SET_REFERENCES`, decision 264), never more than the routed model
+ * allows. One function because the price estimate and the generator have to
+ * spend the same budget, and two copies of this sum once quoted a number no
+ * run would spend.
  */
 export function referenceBudgets(limits: ReferenceLimits): {
   characters: number
@@ -82,37 +71,6 @@ export function referenceBudgets(limits: ReferenceLimits): {
     characters: Math.min(MAX_CHARACTER_REFERENCES, limits.characters),
     objects: Math.min(MAX_SET_REFERENCES, limits.objects),
   }
-}
-
-/**
- * How the reference slots are spent across the people in the frame.
- *
- * Everyone depicted gets a photograph first, because a face that is never
- * shown cannot be matched at all. Whatever is left goes round-robin to
- * further angles of those same people, front view first. One person in the
- * frame is the common case, and three views of them pin a likeness far
- * better than one — which is what the Cast card has been asking for all
- * along, and what every angle past the first was never used for.
- *
- * The extra angles are only ever spent on photographs the producer actually
- * uploaded, so a cast of single front views behaves exactly as before.
- */
-function spreadReferences(
-  members: readonly CastMember[],
-  budget: number,
-): { member: CastMember; photo: CastPhoto }[] {
-  const queues = members.map((member) =>
-    referencePhotos(member, budget).map((photo) => ({ member, photo })),
-  )
-  const chosen: { member: CastMember; photo: CastPhoto }[] = []
-  for (let round = 0; round < budget; round += 1) {
-    for (const queue of queues) {
-      if (chosen.length >= budget) return chosen
-      const next = queue[round]
-      if (next) chosen.push(next)
-    }
-  }
-  return chosen
 }
 
 /**
@@ -211,7 +169,7 @@ async function stillBriefPriceUsd(
   const live = LIVE_IMAGE_GEN_ADAPTERS[route.provider]
   const budgets = referenceBudgets(live.referenceLimits(route.model))
   const set = setFrom(brief, sets)
-  const characterCount = spreadReferences(members, budgets.characters).length
+  const characterCount = spreadReferencePhotos(members, budgets.characters).length
   const plateCount = set ? platesForCamera(set, brief.camera?.facing, budgets.objects).length : 0
   const billed = live.referenceRoute?.(route.model, characterCount + plateCount) ?? null
   return billed
@@ -299,7 +257,7 @@ async function referenceMaterials(
     references: [],
     referenceUrls: [],
   }
-  const photos = spreadReferences(members, budgets.characters)
+  const photos = spreadReferencePhotos(members, budgets.characters)
   const plates = set ? platesForCamera(set, facing, budgets.objects) : []
   if (photos.length === 0 && plates.length === 0) return none
 

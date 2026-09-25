@@ -7,6 +7,7 @@ import {
   MAX_CAST_PHOTOS,
   nameMatches,
   referencePhotos,
+  spreadReferencePhotos,
 } from './cast'
 import type { CastPhoto } from './cast'
 
@@ -57,6 +58,29 @@ describe('referencePhotos', () => {
     expect(referencePhotos(member, 1).map((p) => p.view)).toEqual(['front'])
     expect(referencePhotos(member, 3).map((p) => p.view)).toEqual(['front', 'three-quarter'])
     expect(referencePhotos({ photos: [] }, 2)).toEqual([])
+  })
+})
+
+describe('spreadReferencePhotos', () => {
+  const ada = {
+    name: 'Ada',
+    photos: [photo('profile', 'a2'), photo('front', 'a1'), photo('full', 'a3')],
+  }
+  const ben = { name: 'Ben', photos: [photo('three-quarter', 'b1')] }
+
+  it('gives everyone a first photograph before anyone gets a second', () => {
+    const chosen = spreadReferencePhotos([ada, ben], 3)
+    expect(chosen.map(({ member, photo: p }) => `${member.name}:${p.contentHash}`)).toEqual([
+      'Ada:a1',
+      'Ben:b1',
+      'Ada:a2',
+    ])
+  })
+
+  it('spends spare slots only on photographs that exist', () => {
+    expect(spreadReferencePhotos([ben], 3)).toHaveLength(1)
+    expect(spreadReferencePhotos([], 3)).toEqual([])
+    expect(spreadReferencePhotos([ada], 0)).toEqual([])
   })
 })
 

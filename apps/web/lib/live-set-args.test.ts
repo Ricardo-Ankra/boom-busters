@@ -15,6 +15,7 @@ describe('parseLiveSetArgs', () => {
       inventoryModel: 'gemini-3.5-flash-lite',
       cap: 1,
       generateFirst: false,
+      northFromSheet: false,
     })
   })
 
@@ -51,6 +52,7 @@ describe('parseLiveSetArgs', () => {
       inventoryModel: 'gemini-3.5-flash',
       cap: 0.5,
       generateFirst: false,
+      northFromSheet: false,
     })
   })
 
@@ -68,6 +70,7 @@ describe('parseLiveSetArgs', () => {
       inventoryModel: 'gemini-3.5-flash-lite',
       cap: 0.5,
       generateFirst: false,
+      northFromSheet: false,
     })
   })
 
@@ -101,6 +104,16 @@ describe('parseLiveSetArgs', () => {
     expect(() => parseLiveSetArgs(['--name', 'R'])).toThrow(
       '--image is required (a jpeg, png or webp file), or pass --generate-first with --look, or --from-run <folder>.',
     )
+  })
+
+  describe('--north-from-sheet', () => {
+    it('is off unless passed', () => {
+      expect(parseLiveSetArgs(['--from-run', 'runs/one', '--name', 'R']).northFromSheet).toBe(false)
+      expect(
+        parseLiveSetArgs(['--from-run', 'runs/one', '--name', 'R', '--north-from-sheet'])
+          .northFromSheet,
+      ).toBe(true)
+    })
   })
 
   describe('--from-run', () => {
