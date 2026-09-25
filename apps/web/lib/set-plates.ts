@@ -3,6 +3,7 @@ import { layoutView, OPPOSITE_DIRECTION, parseLayout } from '@boom-busters/schem
 import type {
   ProjectSet,
   SetCamera,
+  SetPlateDirection,
   SetViewRequest,
   ShotSize,
   StillBrief,
@@ -157,25 +158,74 @@ export function framingLead(camera: SetCamera, shotSize?: ShotSize): string {
   return ''
 }
 
+/** Where each compass direction falls for a camera facing one way. */
+const FRAME_SIDE: Record<SetPlateDirection, Record<SetPlateDirection, string>> = {
+  north: {
+    north: 'ahead',
+    east: "to the camera's right",
+    south: 'behind the camera',
+    west: "to the camera's left",
+  },
+  east: {
+    east: 'ahead',
+    south: "to the camera's right",
+    west: 'behind the camera',
+    north: "to the camera's left",
+  },
+  south: {
+    south: 'ahead',
+    west: "to the camera's right",
+    north: 'behind the camera',
+    east: "to the camera's left",
+  },
+  west: {
+    west: 'ahead',
+    north: "to the camera's right",
+    east: 'behind the camera',
+    south: "to the camera's left",
+  },
+}
+
+/**
+ * The light line with each compass word placed in the frame (live run 13,
+ * 2026-09-25): "daylight from the west windows" means nothing to a model that
+ * does not know where west is, and naming the window wall itself pulled it in
+ * behind a close subject.
+ */
+function orientLight(light: string, facing: SetPlateDirection): string {
+  return light.replace(
+    /\b(north|east|south|west)\b/gi,
+    (word) => `${word} (${FRAME_SIDE[facing][word.toLowerCase() as SetPlateDirection]})`,
+  )
+}
+
 export function describeCamera(camera: SetCamera, layout: string, shotSize?: ShotSize): string {
   const lens = camera.lens ? `, ${camera.lens}` : ''
   const sentences = [`The camera stands at ${camera.position}, facing ${camera.facing}${lens}.`]
   const view = layoutView(parseLayout(layout), camera.facing)
   const framing = framingOf(shotSize, camera.lens)
+  const light = view.light ? `Light: ${orientLight(view.light, camera.facing)}.` : null
+  // A close shot orients by its light alone: naming a side wall's contents
+  // pulled that wall in behind the subject (live run 13).
   if (framing === 'close') {
     if (view.inFrame) sentences.push(`Behind, soft and out of focus: ${view.inFrame}.`)
-    if (view.light) sentences.push(`Light: ${view.light}.`)
+    if (light) sentences.push(light)
     return sentences.join(' ')
   }
+  // Which wall stands on which side (live run 10): without it the room came
+  // back mirrored, its windows on the wrong side.
   if (framing === 'medium') {
     if (view.inFrame) sentences.push(`Behind: ${view.inFrame}.`)
-    if (view.light) sentences.push(`Light: ${view.light}.`)
+    if (view.left) sentences.push(`To the camera's left: ${view.left}.`)
+    if (view.right) sentences.push(`To the camera's right: ${view.right}.`)
+    if (light) sentences.push(light)
     return sentences.join(' ')
   }
   if (view.inFrame) sentences.push(`In frame: ${view.inFrame}.`)
-  if (view.edges.length > 0) sentences.push(`At the edges: ${view.edges.join('; ')}.`)
+  if (view.left) sentences.push(`Frame left: ${view.left}.`)
+  if (view.right) sentences.push(`Frame right: ${view.right}.`)
   if (view.centre) sentences.push(`Centre: ${view.centre}.`)
-  if (view.light) sentences.push(`Light: ${view.light}.`)
+  if (light) sentences.push(light)
   if (view.behind) sentences.push(`Behind the camera, out of frame: ${view.behind}.`)
   if (view.rest) sentences.push(`The room: ${view.rest.replace(/\.$/, '')}.`)
   return sentences.join(' ')

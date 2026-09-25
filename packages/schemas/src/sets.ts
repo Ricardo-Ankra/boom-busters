@@ -78,6 +78,9 @@ export function uploadedPlateView(set: Pick<ProjectSet, 'plates'>): SetPlateView
 /** Four directions and two details (decision 275). At most two travel with a still. */
 export const MAX_SET_PLATES = 6
 
+/** The plates one still carries (decision 264): the wall it faces and one beside it. */
+export const MAX_SET_REFERENCES = 2
+
 export const SetPlateSchema = z.object({
   /** boom-busters/sets/<projectId>/<contentHash>.<ext> */
   r2Key: z.string().min(1),
@@ -148,7 +151,13 @@ export function parseLayout(text: string): RoomLayout {
 
 export interface LayoutView {
   inFrame?: string
-  edges: string[]
+  /**
+   * The side walls by the side of the frame they stand on (live run 10,
+   * 2026-09-25): an unordered pair let the model mirror the room, windows on
+   * the wrong side, because nothing said which wall was which side.
+   */
+  left?: string
+  right?: string
   behind?: string
   centre?: string
   light?: string
@@ -157,13 +166,12 @@ export interface LayoutView {
 
 /** What a camera facing `facing` sees of the room, and what is behind it. */
 export function layoutView(layout: RoomLayout, facing: SetPlateDirection): LayoutView {
-  const view: LayoutView = {
-    edges: ADJACENT_DIRECTIONS[facing]
-      .map((direction) => layout[direction])
-      .filter((line): line is string => line !== undefined),
-    rest: layout.rest,
-  }
+  const view: LayoutView = { rest: layout.rest }
   if (layout[facing] !== undefined) view.inFrame = layout[facing]
+  // Clockwise is to the camera's right.
+  const [rightOf, leftOf] = ADJACENT_DIRECTIONS[facing]
+  if (layout[leftOf] !== undefined) view.left = layout[leftOf]
+  if (layout[rightOf] !== undefined) view.right = layout[rightOf]
   const behind = layout[OPPOSITE_DIRECTION[facing]]
   if (behind !== undefined) view.behind = behind
   if (layout.centre !== undefined) view.centre = layout.centre

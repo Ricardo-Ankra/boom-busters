@@ -188,19 +188,30 @@ describe('parseLayout', () => {
 })
 
 describe('layoutView', () => {
-  it('puts the facing wall in frame, its neighbours at the edges and the opposite behind', () => {
+  it('puts the facing wall in frame, its neighbours at their sides and the opposite behind', () => {
     const view = layoutView(
       parseLayout(
         'North wall: windows\nEast wall: credenza\nSouth wall: glass\nWest wall: concrete',
       ),
       'south',
     )
-    // Facing south, the adjacent walls are west then east.
+    // Facing south, east is on the camera's left and west on its right.
     expect(view).toEqual({
       inFrame: 'glass',
-      edges: ['concrete', 'credenza'],
+      left: 'credenza',
+      right: 'concrete',
       behind: 'windows',
       rest: '',
     })
+  })
+
+  // Live run 10: an unordered pair let the model mirror the room.
+  it('names the wall on each side of the frame for every facing', () => {
+    const layout = parseLayout('North wall: N\nEast wall: E\nSouth wall: S\nWest wall: W')
+    const sides = (['north', 'east', 'south', 'west'] as const).map((facing) => {
+      const view = layoutView(layout, facing)
+      return `${facing}: ${view.left} ${view.right}`
+    })
+    expect(sides).toEqual(['north: W E', 'east: N S', 'south: E W', 'west: S N'])
   })
 })

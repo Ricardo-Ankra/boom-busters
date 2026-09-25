@@ -82,9 +82,15 @@ export function withReferenceClause(
   if (people.length > 0) {
     const names = andList(people.map((person) => person.name))
     sentences.push(
+      // Glasses and hair named (live run 10): "the face" alone let a close
+      // shot drop the glasses every photograph showed.
       `The photographs of ${names} are for likeness only: match ` +
-        `${people.length === 1 ? 'the face' : 'each face'} exactly, while clothing, pose ` +
-        `and expression follow the text above.`,
+        `${people.length === 1 ? 'the face' : 'each face'} exactly, with its hair, facial hair ` +
+        `and glasses, while clothing, pose and expression follow the text above.`,
+      // Live runs 9 and 11: an extra came out as a second copy of the cast
+      // member, the same beard and glasses on a stranger.
+      `Everyone else in the frame is a different person, unlike ` +
+        `${people.length === 1 ? names : 'any of them'} in face, hair and age.`,
       `${people.length === 1 ? names : 'Each person'} is photographed in the scene, never ` +
         `pasted onto it: at true scale, seated in a chair or standing on the floor, lit by ` +
         `the scene's own light, and behind anything standing nearer the camera.`,

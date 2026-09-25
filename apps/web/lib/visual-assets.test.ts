@@ -149,8 +149,10 @@ describeDb('generateStillCandidates with the cast', () => {
     ])
     expect(request?.prompt).toContain(
       'References attached: 1 photograph of Emad Mostaque. The photographs of Emad ' +
-        'Mostaque are for likeness only: match the face exactly, while clothing, pose ' +
-        'and expression follow the text above. Emad Mostaque is photographed in the ' +
+        'Mostaque are for likeness only: match the face exactly, with its hair, facial ' +
+        'hair and glasses, while clothing, pose and expression follow the text above. ' +
+        'Everyone else in the frame is a different person, unlike Emad Mostaque in face, ' +
+        'hair and age. Emad Mostaque is photographed in the ' +
         'scene, never pasted onto it: at true scale, seated in a chair or standing on ' +
         "the floor, lit by the scene's own light, and behind anything standing nearer " +
         'the camera.',

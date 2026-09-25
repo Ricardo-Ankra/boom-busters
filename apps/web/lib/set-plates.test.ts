@@ -51,7 +51,7 @@ describe('describeCamera', () => {
     'Light: overcast daylight from the north.',
   ].join('\n')
 
-  it('places the camera, then what is in frame, at the edges and behind it', () => {
+  it('places the camera, then what is in frame, on each side and behind it', () => {
     expect(
       describeCamera(
         { facing: 'north', position: 'the south doorway, seated eye height', lens: '35mm' },
@@ -59,8 +59,8 @@ describe('describeCamera', () => {
       ),
     ).toBe(
       'The camera stands at the south doorway, seated eye height, facing north, 35mm. ' +
-        'In frame: three tall windows. At the edges: walnut credenza; bare concrete. ' +
-        'Centre: ten-seat walnut table. Light: overcast daylight from the north. ' +
+        'In frame: three tall windows. Frame left: bare concrete. Frame right: walnut credenza. ' +
+        'Centre: ten-seat walnut table. Light: overcast daylight from the north (ahead). ' +
         'Behind the camera, out of frame: glass wall onto the corridor.',
     )
   })
@@ -106,20 +106,36 @@ describe('describeCamera framing (live run 5)', () => {
     expect(framingLead(camera)).toContain('A close shot')
   })
 
-  it('gives a medium shot the wall behind and the light, no edges', () => {
+  // Live run 13: naming the window wall pulled it in behind a close subject.
+  it('orients a close shot by its light, never by naming the side walls', () => {
+    const lit = layout.replace(
+      'Light: overcast daylight.',
+      'Light: daylight from the west windows.',
+    )
+    const text = describeCamera(camera, lit, 'close')
+    expect(text).toContain("Light: daylight from the west (to the camera's left) windows.")
+    expect(text).not.toContain('shelves')
+    expect(describeCamera({ ...camera, facing: 'south' }, lit, 'close')).toContain(
+      "west (to the camera's right)",
+    )
+  })
+
+  it('gives a medium shot the wall behind, its sides and the light, not the whole room', () => {
     const text = describeCamera({ ...camera, lens: '50mm' }, layout, 'medium')
     expect(text).toContain('Behind: a black screen wall.')
-    expect(text).not.toContain('At the edges')
+    expect(text).toContain("To the camera's left: windows. To the camera's right: shelves.")
+    expect(text).not.toContain('Centre:')
+    expect(text).not.toContain('Behind the camera')
   })
 
   it('reads a long lens as close when the brief gives no shot size', () => {
     expect(describeCamera(camera, layout)).toContain('Behind, soft and out of focus')
-    expect(describeCamera({ ...camera, lens: '35mm' }, layout)).toContain('At the edges:')
+    expect(describeCamera({ ...camera, lens: '35mm' }, layout)).toContain('Frame left:')
   })
 
   it('keeps the whole inventory for a wide shot', () => {
     const text = describeCamera({ ...camera, lens: '85mm' }, layout, 'wide')
-    expect(text).toContain('At the edges: shelves; windows.')
+    expect(text).toContain('Frame left: windows. Frame right: shelves.')
     expect(text).toContain('Behind the camera, out of frame: a door.')
   })
 })
