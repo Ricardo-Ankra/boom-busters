@@ -5,6 +5,7 @@ import {
   getArticleSource,
   getClaim,
   getProject,
+  getProjectSet,
   getSettings,
   getShotSlot,
   linkSlotReuse,
@@ -40,7 +41,13 @@ import {
   UlidSchema,
 } from '@boom-busters/schemas'
 import type { ShotSlotRow } from '@boom-busters/db'
-import type { HeadlineBrief, ShotBrief, SlotCandidate, StillRoute } from '@boom-busters/schemas'
+import type {
+  HeadlineBrief,
+  SetPlateView,
+  ShotBrief,
+  SlotCandidate,
+  StillRoute,
+} from '@boom-busters/schemas'
 import { createHash } from 'node:crypto'
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
@@ -52,6 +59,7 @@ import { db } from '@/lib/db'
 import { fetchRemoteImage } from '@/lib/remote-image'
 import {
   deleteObject,
+  getObjectBytes,
   headObject,
   presignPut,
   putObject,
@@ -1058,11 +1066,13 @@ async function attachOwnFile(input: {
   dims: { width?: number; height?: number; durationMs?: number }
   /** Where a pasted image came from; absent for a file off the producer's disk. */
   sourceUrl?: string
+  /** Defaults to the producer's own upload; a generated set plate says so. */
+  licence?: string
 }): Promise<ActionResult> {
   const asset = await upsertAssetByHash(db, {
     kind: input.kind,
     r2Key: input.key,
-    licence: 'Uploaded by owner',
+    licence: input.licence ?? 'Uploaded by owner',
     contentHash: input.contentHash,
     ...input.dims,
   })
@@ -1157,6 +1167,93 @@ export async function addSlotImageFromUrlAction(input: {
     summary: new URL(resolvedUrl).pathname.split('/').pop() || resolvedUrl,
     dims: { width, height },
     sourceUrl: resolvedUrl,
+  })
+}
+
+/** How a plate's view reads in the summary under a chosen shot. */
+const PLATE_VIEW_WORDS: Record<SetPlateView, string> = {
+  north: 'north wall',
+  east: 'east wall',
+  south: 'south wall',
+  west: 'west wall',
+  detail: 'detail',
+  other: 'photo',
+}
+
+/**
+ * A set's photo as this slot's shot (decision 278): the plates the producer
+ * holds of a room are offered beside the film's other shots in "Use an
+ * existing shot". The bytes are copied to the slot's own upload key, because
+ * removing a set deletes its plates and the slot must keep its picture.
+ *
+ * A real-footage slot takes only a plate the producer uploaded: a generated
+ * plate is the film's own invention, not footage of the real place.
+ */
+export async function showSetPhotoAction(input: {
+  projectId: string
+  slotId: string
+  setId: string
+  contentHash: string
+}): Promise<ActionResult> {
+  await requireOwner()
+
+  const invalid = badIds(input.projectId, input.slotId, input.setId)
+  if (invalid) return invalid
+
+  const slot = await getShotSlot(db, input.slotId)
+  if (!slot) return { ok: false, error: 'This slot no longer exists.' }
+  const linked = await linkedSlotRefusal(slot)
+  if (linked) return linked
+
+  const set = await getProjectSet(db, input.setId)
+  if (!set || set.projectId !== input.projectId) {
+    return { ok: false, error: 'This set no longer exists.' }
+  }
+  const plate = set.plates.find((entry) => entry.contentHash === input.contentHash)
+  if (!plate) return { ok: false, error: 'That photo is no longer in the set.' }
+  if (
+    (slot.brief as { type?: string } | null)?.type === 'archival' &&
+    plate.origin !== 'uploaded'
+  ) {
+    return {
+      ok: false,
+      error: 'A real-footage slot takes only a photo you uploaded; this one was generated.',
+    }
+  }
+
+  const rules = uploadRules(slot.brief, plate.mimeType)
+  if ('error' in rules) return { ok: false, error: rules.error }
+  if (!storageConfigured()) {
+    return {
+      ok: false,
+      error: 'Set photos need R2 configured — there is nowhere to read them from.',
+    }
+  }
+
+  let bytes: Buffer
+  try {
+    bytes = Buffer.from((await getObjectBytes(plate.r2Key)).bytes)
+  } catch {
+    return { ok: false, error: 'That photo could not be read from storage. Try again.' }
+  }
+  const contentHash = createHash('sha256').update(bytes).digest('hex')
+  const key = `${R2_PREFIX}/uploads/${input.projectId}/${contentHash}.${rules.extension}`
+  try {
+    await putObject(key, bytes, plate.mimeType)
+  } catch {
+    return { ok: false, error: 'That photo could not be saved to storage. Try again.' }
+  }
+
+  return attachOwnFile({
+    projectId: input.projectId,
+    slot,
+    key,
+    contentHash,
+    kind: 'image',
+    summary: `${set.name}, ${PLATE_VIEW_WORDS[plate.view]}`,
+    dims: { width: plate.width, height: plate.height },
+    sourceUrl: `set://${set.id}/${plate.contentHash}`,
+    licence: plate.origin === 'uploaded' ? 'Uploaded by owner' : 'Generated set plate',
   })
 }
 

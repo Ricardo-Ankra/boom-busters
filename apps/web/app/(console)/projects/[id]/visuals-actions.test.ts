@@ -3,8 +3,10 @@
 import {
   assets,
   createScriptVersion,
+  deleteProjectSet,
   FIXTURE_PROJECT_ID,
   getShotSlot,
+  insertProjectSet,
   linkSlotReuse,
   listShotSlots,
   replaceShotList,
@@ -12,6 +14,7 @@ import {
   saveChapter,
   seed,
   setSlotResolution,
+  setSetPlates,
   setSlotRoute,
   setVisualsPhase,
   shotSlots,
@@ -20,7 +23,7 @@ import {
 } from '@boom-busters/db'
 import type { NewShotSlot } from '@boom-busters/db'
 import type { ShotBrief, SlotCandidate } from '@boom-busters/schemas'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/lib/db'
 import { visualsReviewModel } from '@/lib/visuals-review'
 import {
@@ -31,6 +34,7 @@ import {
   retypeToHeadlineAction,
   reuseSlotShotAction,
   setSlotRouteAction,
+  showSetPhotoAction,
   unlinkSlotReuseAction,
 } from './visuals-actions'
 
@@ -46,12 +50,18 @@ const inngest = vi.hoisted(() => ({ send: vi.fn() }))
 vi.mock('@/inngest/client', () => ({
   inngest: { send: (...args: unknown[]) => inngest.send(...args) },
 }))
+const storage = vi.hoisted(() => ({
+  configured: false,
+  getObjectBytes: vi.fn(),
+  putObject: vi.fn(),
+}))
 vi.mock('@/lib/storage', () => ({
-  storageConfigured: () => false,
+  storageConfigured: () => storage.configured,
   deleteObject: vi.fn(),
+  getObjectBytes: (...args: unknown[]) => storage.getObjectBytes(...args),
   headObject: vi.fn(),
   presignPut: vi.fn(),
-  putObject: vi.fn(),
+  putObject: (...args: unknown[]) => storage.putObject(...args),
   R2_PREFIX: 'boom-busters',
 }))
 vi.mock('@/lib/remote-image', () => ({ fetchRemoteImage: vi.fn() }))
@@ -606,5 +616,140 @@ describeDb('attaching an uploaded mark to a waiting graphic (decision 268, Plan 
     expect(row.status).toBe('placeholder')
     const brief = row.brief as unknown as { scene: { elements: { assetId?: string }[] } }
     expect(brief.scene.elements[0]?.assetId).toBeUndefined()
+  })
+})
+
+// Decision 278: a set's photo can be a slot's shot, copied so it outlives the set.
+describeDb('showing a set photo in a slot (decision 278)', () => {
+  let slotId = ''
+  let archivalId = ''
+  let setId = ''
+  const plate = (contentHash: string, origin: 'uploaded' | 'generated') => ({
+    r2Key: `boom-busters/sets/${FIXTURE_PROJECT_ID}/${contentHash}.jpg`,
+    contentHash,
+    mimeType: 'image/jpeg' as const,
+    width: 1600,
+    height: 900,
+    view: contentHash === 'north' ? ('north' as const) : ('east' as const),
+    origin,
+  })
+
+  beforeEach(async () => {
+    vi.clearAllMocks()
+    storage.configured = true
+    storage.getObjectBytes.mockResolvedValue({
+      bytes: new Uint8Array([1, 2, 3]),
+      contentType: 'image/jpeg',
+    })
+    storage.putObject.mockResolvedValue(undefined)
+    await seed(db)
+    await db.delete(shotSlots)
+    const script = await createScriptVersion(db, FIXTURE_PROJECT_ID)
+    const chapter = await saveChapter(db, {
+      scriptId: script.id,
+      index: 0,
+      title: 'The board',
+      contentMd: 'One.\n\nTwo.',
+      estRuntimeSec: 20,
+    })
+    const archival: ShotBrief = {
+      type: 'archival',
+      coversText: 'Two.',
+      description: 'The real room.',
+      motion: { kind: 'static' },
+      transition: 'cut',
+      query: 'q',
+      mustShow: 'the room',
+    }
+    await replaceShotList(db, FIXTURE_PROJECT_ID, [
+      {
+        chapterId: chapter.id,
+        index: 0,
+        type: 'stock',
+        brief: stock('One.', 'a room'),
+        startMs: 0,
+        durationMs: 6000,
+      },
+      {
+        chapterId: chapter.id,
+        index: 1,
+        type: 'archival',
+        brief: archival,
+        startMs: 6000,
+        durationMs: 6000,
+      },
+    ])
+    const slots = await listShotSlots(db, FIXTURE_PROJECT_ID)
+    slotId = slots[0]!.id
+    archivalId = slots[1]!.id
+    const set = await insertProjectSet(db, {
+      projectId: FIXTURE_PROJECT_ID,
+      name: 'Photo Test Boardroom',
+      look: 'glass',
+    })
+    setId = set.id
+    await setSetPlates(db, set.id, [plate('north', 'uploaded'), plate('east', 'generated')])
+  })
+
+  afterEach(async () => {
+    storage.configured = false
+    await deleteProjectSet(db, setId)
+  })
+
+  it('copies the photo to the slot and makes it the chosen shot', async () => {
+    const result = await showSetPhotoAction({
+      projectId: FIXTURE_PROJECT_ID,
+      slotId,
+      setId,
+      contentHash: 'east',
+    })
+    expect(result).toEqual({ ok: true })
+    const key = storage.putObject.mock.calls[0]?.[0] as string
+    expect(key).toMatch(
+      new RegExp(`^boom-busters/uploads/${FIXTURE_PROJECT_ID}/[0-9a-f]{64}\\.jpg$`),
+    )
+    const row = await getShotSlot(db, slotId)
+    const chosen = (row!.candidates as SlotCandidate[]).find((candidate) => candidate.chosen)
+    expect(chosen).toMatchObject({
+      r2Key: key,
+      summary: 'Photo Test Boardroom, east wall',
+      licence: 'Generated set plate',
+      sourceUrl: `set://${setId}/east`,
+    })
+    expect(row!.status).toBe('resolved')
+  })
+
+  it('refuses a generated photo on a real-footage slot, and takes an uploaded one', async () => {
+    expect(
+      await showSetPhotoAction({
+        projectId: FIXTURE_PROJECT_ID,
+        slotId: archivalId,
+        setId,
+        contentHash: 'east',
+      }),
+    ).toEqual({
+      ok: false,
+      error: 'A real-footage slot takes only a photo you uploaded; this one was generated.',
+    })
+    expect(
+      await showSetPhotoAction({
+        projectId: FIXTURE_PROJECT_ID,
+        slotId: archivalId,
+        setId,
+        contentHash: 'north',
+      }),
+    ).toEqual({ ok: true })
+  })
+
+  it('says so when the photo has left the set', async () => {
+    expect(
+      await showSetPhotoAction({
+        projectId: FIXTURE_PROJECT_ID,
+        slotId,
+        setId,
+        contentHash: 'gone',
+      }),
+    ).toEqual({ ok: false, error: 'That photo is no longer in the set.' })
+    expect(storage.putObject).not.toHaveBeenCalled()
   })
 })

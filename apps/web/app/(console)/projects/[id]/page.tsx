@@ -39,6 +39,7 @@ import { PublishScreen } from './publish-screen'
 import { ScriptStudio } from './script-studio'
 import { ShortsScreen } from './shorts-screen'
 import { VisualBoard } from './visual-board'
+import type { SetPhotoGroup } from './visual-board'
 import { VoiceReview } from './voice-review'
 import { CastCard } from './cast-card'
 import { SetCard } from './set-card'
@@ -131,6 +132,19 @@ export default async function ProjectPage({
       for (const plate of set.plates)
         setPlateUrls[plate.contentHash] = await presignGet(plate.r2Key)
   }
+  // The same photos, offered to a slot in "Use an existing shot" (decision 278).
+  const setPhotos: SetPhotoGroup[] = sets
+    .filter((set) => set.plates.length > 0)
+    .map((set) => ({
+      id: set.id,
+      name: set.name,
+      plates: set.plates.map((plate) => ({
+        contentHash: plate.contentHash,
+        view: plate.view,
+        origin: plate.origin,
+        ...(setPlateUrls[plate.contentHash] ? { url: setPlateUrls[plate.contentHash]! } : {}),
+      })),
+    }))
 
   const [
     activity,
@@ -459,6 +473,7 @@ export default async function ProjectPage({
         <VisualBoard
           projectId={project.id}
           model={visuals}
+          setPhotos={setPhotos}
           colors={{
             accent: settings.brandKit.colors.accent,
             surface: settings.brandKit.colors.surface,

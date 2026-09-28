@@ -26,6 +26,7 @@ const saveHeadlineAction = vi.fn()
 const refetchArticleAction = vi.fn()
 const reuseSlotShotAction = vi.fn()
 const unlinkSlotReuseAction = vi.fn()
+const showSetPhotoAction = vi.fn()
 const setSlotRouteAction = vi.fn()
 const attachGraphicLogosAction = vi.fn()
 
@@ -50,6 +51,7 @@ vi.mock('./visuals-actions', () => ({
   refetchArticleAction: (...args: unknown[]) => refetchArticleAction(...args),
   reuseSlotShotAction: (...args: unknown[]) => reuseSlotShotAction(...args),
   unlinkSlotReuseAction: (...args: unknown[]) => unlinkSlotReuseAction(...args),
+  showSetPhotoAction: (...args: unknown[]) => showSetPhotoAction(...args),
   setSlotRouteAction: (...args: unknown[]) => setSlotRouteAction(...args),
   attachGraphicLogosAction: (...args: unknown[]) => attachGraphicLogosAction(...args),
 }))
@@ -1542,6 +1544,95 @@ describe('reusing a shot (decision 261)', () => {
         'No other stock, AI image or real-footage slot in this film has a shot to offer yet.',
       ),
     ).toBeInTheDocument()
+  })
+})
+
+// Decision 278: the photos of the film's sets sit beside its other shots.
+describe('VisualBoard: set photos in "Use an existing shot"', () => {
+  const SET = '01J000000000000000000000S1'
+  const boardroom = {
+    id: SET,
+    name: 'Stability AI Boardroom',
+    plates: [
+      {
+        contentHash: 'n1',
+        view: 'north' as const,
+        origin: 'uploaded' as const,
+        url: 'https://r2/n1.jpg',
+      },
+      {
+        contentHash: 'e1',
+        view: 'east' as const,
+        origin: 'generated' as const,
+        url: 'https://r2/e1.png',
+      },
+    ],
+  }
+
+  it('offers each set photo, and uses the one picked', async () => {
+    const user = userEvent.setup()
+    showSetPhotoAction.mockResolvedValue({ ok: true })
+    render(
+      <VisualBoard
+        projectId={PROJECT}
+        model={model([stockSlot])}
+        colors={COLORS}
+        brand={BRAND}
+        setPhotos={[boardroom]}
+      />,
+    )
+    const card = document.getElementById(`slot-${SLOT_A}`)!
+    await user.click(within(card).getByRole('button', { name: 'Use an existing shot' }))
+    const photos = within(card).getByRole('group', { name: 'Photos of Stability AI Boardroom' })
+    expect(within(photos).getByAltText('Stability AI Boardroom, North wall')).toBeInTheDocument()
+    expect(within(photos).getByText('East wall · generated')).toBeInTheDocument()
+    // With a set photo on offer, the picker does not say there is nothing.
+    expect(within(card).queryByText(/has a shot to offer yet/)).toBeNull()
+
+    await user.click(
+      within(photos).getByRole('button', {
+        name: 'Use the east wall photo of Stability AI Boardroom',
+      }),
+    )
+    await waitFor(() =>
+      expect(showSetPhotoAction).toHaveBeenCalledWith({
+        projectId: PROJECT,
+        slotId: SLOT_A,
+        setId: SET,
+        contentHash: 'e1',
+      }),
+    )
+  })
+
+  it('offers a real-footage slot only the photos the producer uploaded', async () => {
+    const user = userEvent.setup()
+    const archivalSlot: SlotView = {
+      ...stockSlot,
+      type: 'archival',
+      brief: {
+        type: 'archival',
+        coversText: 'The boardroom in 2023.',
+        description: 'The real room.',
+        motion: { kind: 'static' },
+        transition: 'cut',
+        query: 'Stability AI office',
+        mustShow: 'the boardroom',
+      },
+    }
+    render(
+      <VisualBoard
+        projectId={PROJECT}
+        model={model([archivalSlot])}
+        colors={COLORS}
+        brand={BRAND}
+        setPhotos={[boardroom]}
+      />,
+    )
+    const card = document.getElementById(`slot-${SLOT_A}`)!
+    await user.click(within(card).getByRole('button', { name: 'Use an existing shot' }))
+    const photos = within(card).getByRole('group', { name: 'Photos of Stability AI Boardroom' })
+    expect(within(photos).getAllByRole('button', { name: /Use the/ })).toHaveLength(1)
+    expect(within(photos).queryByText(/generated/)).toBeNull()
   })
 })
 

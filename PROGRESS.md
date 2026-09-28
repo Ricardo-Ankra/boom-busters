@@ -6226,3 +6226,17 @@ green.
      Whether the owner's run lost answers that way is not known: reading the
      production rows was not permitted, and the per-slot notes will show it
      on the next Fix.
+
+278. **A set's photos in "Use an existing shot"** (2026-09-28, owner: "when
+     we want to use an existing slot, we should also be able to access the
+     photos from the sets as well"). The picker now lists every set that
+     holds plates, each photo with its wall and whether it was generated,
+     beside the film's other shots. "Use this photo" (`showSetPhotoAction`)
+     copies the plate's bytes to the slot's own upload key and makes it the
+     chosen shot through the same `attachOwnFile` an upload uses, so the
+     slot keeps its picture if the set or plate is later removed. Rulings: a
+     real-footage (archival) slot is offered and accepts only plates the
+     producer uploaded, since a generated plate is not footage of the real
+     place; a generated plate's asset is licensed "Generated set plate", an
+     uploaded one "Uploaded by owner"; the candidate's source reads
+     `set://<set id>/<plate hash>` as provenance.

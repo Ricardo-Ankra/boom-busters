@@ -14,6 +14,7 @@ import type {
   BrandKitStored,
   GraphicElement,
   GraphicScene,
+  SetPlateView,
   ShotBrief,
   SlotCandidate,
   StillProvider,
@@ -54,6 +55,7 @@ import {
   rebriefSlotAction,
   retypeToHeadlineAction,
   setSlotRouteAction,
+  showSetPhotoAction,
   unlinkSlotReuseAction,
   type ActionResult,
 } from './visuals-actions'
@@ -550,16 +552,34 @@ const REPLAN_ESTIMATE = '≈$0.15'
  */
 const REPAIR_ESTIMATE_PER_CHAPTER_USD = 0.03
 
+/**
+ * A set's photos as "Use an existing shot" offers them (decision 278): the
+ * plates the producer holds of a room, each with the address its thumbnail
+ * loads from (absent without storage).
+ */
+export interface SetPhotoGroup {
+  id: string
+  name: string
+  plates: {
+    contentHash: string
+    view: SetPlateView
+    origin: 'uploaded' | 'generated'
+    url?: string
+  }[]
+}
+
 export function VisualBoard({
   projectId,
   model,
   colors,
   brand,
+  setPhotos = [],
 }: {
   projectId: string
   model: VisualsReviewModel
   colors: BrandChartColors
   brand: BrandKitStored
+  setPhotos?: readonly SetPhotoGroup[]
 }) {
   const router = useRouter()
   const { toast } = useToast()
@@ -929,6 +949,7 @@ export function VisualBoard({
               phase={model.phase}
               articleClaims={model.articleClaims}
               sources={allSlots}
+              setPhotos={setPhotos}
             />
           ))}
         </section>
@@ -951,6 +972,7 @@ function SlotCard({
   phase,
   articleClaims,
   sources,
+  setPhotos,
 }: {
   slot: SlotView
   projectId: string
@@ -961,6 +983,7 @@ function SlotCard({
   phase: VisualsReviewModel['phase']
   articleClaims: ArticleClaimOption[]
   sources: SlotView[]
+  setPhotos: readonly SetPhotoGroup[]
 }) {
   const [editing, setEditing] = React.useState(false)
   const [rebriefing, setRebriefing] = React.useState(false)
@@ -1293,6 +1316,7 @@ function SlotCard({
           <ReusePicker
             slot={slot}
             sources={sources}
+            setPhotos={setPhotos}
             phase={phase}
             projectId={projectId}
             act={act}
@@ -1802,9 +1826,20 @@ function lendable(source: SlotView): SlotCandidate[] {
  * lend is not offered: no copy step runs there, so a link to it would never
  * be filled. Dependants are not offered either; the original is.
  */
+/** A plate's caption in the picker. */
+const PLATE_VIEW_LABELS: Record<SetPlateView, string> = {
+  north: 'North wall',
+  east: 'East wall',
+  south: 'South wall',
+  west: 'West wall',
+  detail: 'Detail',
+  other: 'Photo',
+}
+
 function ReusePicker({
   slot,
   sources,
+  setPhotos,
   phase,
   projectId,
   act,
@@ -1812,6 +1847,7 @@ function ReusePicker({
 }: {
   slot: SlotView
   sources: SlotView[]
+  setPhotos: readonly SetPhotoGroup[]
   phase: VisualsReviewModel['phase']
   projectId: string
   act: (slotId: string, run: () => Promise<ActionResult>, success: string) => Promise<ActionResult>
@@ -1825,6 +1861,25 @@ function ReusePicker({
       source.reuse === null &&
       (planning || lendable(source).length > 0),
   )
+
+  // A real-footage slot takes only a photo the producer uploaded (decision
+  // 278): a generated plate is not footage of the real place.
+  const archival = slot.brief?.type === 'archival'
+  const rooms = setPhotos
+    .map((set) => ({
+      ...set,
+      plates: set.plates.filter((plate) => !archival || plate.origin === 'uploaded'),
+    }))
+    .filter((set) => set.plates.length > 0)
+
+  const showPhoto = (set: SetPhotoGroup, contentHash: string) =>
+    void act(
+      slot.id,
+      () => showSetPhotoAction({ projectId, slotId: slot.id, setId: set.id, contentHash }),
+      `Now showing a photo of ${set.name}`,
+    ).then((result) => {
+      if (result.ok) onDone()
+    })
 
   const use = (source: SlotView, candidateId: string | undefined) =>
     void act(
@@ -1853,11 +1908,11 @@ function ReusePicker({
             } fetched for this slot.`
           : ''}
       </p>
-      {offered.length === 0 ? (
+      {offered.length === 0 && rooms.length === 0 ? (
         <p className="text-[13px] text-[var(--color-text-secondary)]">
           No other stock, AI image or real-footage slot in this film has a shot to offer yet.
         </p>
-      ) : (
+      ) : offered.length === 0 ? null : (
         <ul className="flex flex-col gap-2">
           {offered.map((source) => {
             const pictures = lendable(source)
@@ -1922,6 +1977,47 @@ function ReusePicker({
           })}
         </ul>
       )}
+      {rooms.length > 0 ? (
+        <div className="flex flex-col gap-2">
+          <p className="text-[12px] font-semibold text-[var(--color-text-secondary)]">
+            Photos of the film&apos;s sets
+          </p>
+          {rooms.map((set) => (
+            <div
+              key={set.id}
+              role="group"
+              aria-label={`Photos of ${set.name}`}
+              className="flex flex-col gap-2 rounded-[8px] border border-[var(--color-border)] p-2"
+            >
+              <p className="text-[13px] text-[var(--color-text-primary)]">{set.name}</p>
+              <ul className="flex flex-wrap gap-2">
+                {set.plates.map((plate) => (
+                  <li key={plate.contentHash} className="flex flex-col items-start gap-1">
+                    {plate.url ? (
+                      <img
+                        src={plate.url}
+                        alt={`${set.name}, ${PLATE_VIEW_LABELS[plate.view]}`}
+                        className="h-16 w-28 rounded-[6px] object-cover"
+                      />
+                    ) : null}
+                    <span className="text-[11px] text-[var(--color-text-muted)]">
+                      {PLATE_VIEW_LABELS[plate.view]}
+                      {plate.origin === 'generated' ? ' · generated' : ''}
+                    </span>
+                    <Button
+                      variant="outline"
+                      aria-label={`Use the ${PLATE_VIEW_LABELS[plate.view].toLowerCase()} photo of ${set.name}`}
+                      onClick={() => showPhoto(set, plate.contentHash)}
+                    >
+                      Use this photo
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
+        </div>
+      ) : null}
       <div>
         <Button type="button" variant="ghost" onClick={onDone}>
           Cancel
