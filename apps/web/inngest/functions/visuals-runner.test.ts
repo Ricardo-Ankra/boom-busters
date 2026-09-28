@@ -16,6 +16,7 @@ import {
   seed,
   setCastPhotos,
   setProjectDirection,
+  setProjectStage,
   shotSlots,
   truncateRunMirror,
   updateProjectSet,
@@ -292,6 +293,29 @@ describeDb('visuals-runner (mock mode)', () => {
     const slots = await listShotSlots(db, FIXTURE_PROJECT_ID)
     expect(slots.length).toBeGreaterThan(0)
     expect(slots.every((slot) => slot.route === null)).toBe(true)
+  })
+
+  // Decision 279: "Fetch visuals" after the planning run failed starts a run
+  // at the fetch pass, so the plan, its choices and uploads are kept.
+  it('starts at the fetch pass on a resume, keeping every planned slot', async () => {
+    await engine.executeStep('open-plan-park', {
+      events: [{ name: 'gate/voice.approved', data: { projectId: FIXTURE_PROJECT_ID } }],
+    })
+    const planned = await listShotSlots(db, FIXTURE_PROJECT_ID)
+    await setProjectStage(db, FIXTURE_PROJECT_ID, { stage: 'visuals', stageStatus: 'failed' })
+
+    const resume = new InngestTestEngine({ function: visualsRunner })
+    const { error } = await resume.executeStep('open-gate', {
+      events: [{ name: 'visuals/fetch.resume', data: { projectId: FIXTURE_PROJECT_ID } }],
+    })
+
+    expect(error).toBeUndefined()
+    const after = await listShotSlots(db, FIXTURE_PROJECT_ID)
+    expect(after.map((slot) => slot.id)).toEqual(planned.map((slot) => slot.id))
+    expect(after.some((slot) => slot.status === 'resolved')).toBe(true)
+    const project = await getProject(db, FIXTURE_PROJECT_ID)
+    expect(project?.visualsPhase).toBe('board')
+    expect(project?.stageStatus).toBe('awaiting_review')
   })
 
   // The copy-reused-shots step (decision 261) has no engine test: the run

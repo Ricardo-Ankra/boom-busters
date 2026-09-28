@@ -14,6 +14,7 @@ import {
   saveChapter,
   seed,
   setSlotResolution,
+  setProjectStage,
   setSetPlates,
   setSlotRoute,
   setVisualsPhase,
@@ -27,6 +28,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/lib/db'
 import { visualsReviewModel } from '@/lib/visuals-review'
 import {
+  approvePlanAction,
   attachGraphicLogosAction,
   editBriefAction,
   finaliseOwnUploadAction,
@@ -751,5 +753,34 @@ describeDb('showing a set photo in a slot (decision 278)', () => {
       }),
     ).toEqual({ ok: false, error: 'That photo is no longer in the set.' })
     expect(storage.putObject).not.toHaveBeenCalled()
+  })
+})
+
+// Decision 279: with no run parked on the plan, the approval would wake
+// nothing, so Fetch visuals starts a run at the fetch pass instead.
+describeDb('Fetch visuals with or without a parked run (decision 279)', () => {
+  beforeEach(async () => {
+    vi.clearAllMocks()
+    inngest.send.mockResolvedValue(undefined)
+    await seed(db)
+    await setVisualsPhase(db, FIXTURE_PROJECT_ID, 'plan')
+  })
+
+  it('wakes the run parked on the plan', async () => {
+    await setProjectStage(db, FIXTURE_PROJECT_ID, {
+      stage: 'visuals',
+      stageStatus: 'awaiting_review',
+    })
+    expect(await approvePlanAction(FIXTURE_PROJECT_ID)).toEqual({ ok: true })
+    expect(inngest.send.mock.calls[0]?.[0]).toMatchObject({ name: 'visuals/plan.approved' })
+  })
+
+  it('resumes at the fetch pass when the planning run failed', async () => {
+    await setProjectStage(db, FIXTURE_PROJECT_ID, { stage: 'visuals', stageStatus: 'failed' })
+    expect(await approvePlanAction(FIXTURE_PROJECT_ID)).toEqual({ ok: true })
+    expect(inngest.send.mock.calls[0]?.[0]).toMatchObject({
+      name: 'visuals/fetch.resume',
+      data: { projectId: FIXTURE_PROJECT_ID },
+    })
   })
 })

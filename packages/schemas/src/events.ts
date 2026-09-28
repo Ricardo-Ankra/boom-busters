@@ -102,6 +102,16 @@ export const VisualsPlanApprovedSchema = z.object({
 })
 
 /**
+ * "Fetch visuals" when no run is parked on the plan (decision 279): the run
+ * that planned it failed, and re-running the stage would plan again over the
+ * producer's work. The visuals-runner takes this as its second trigger and
+ * starts at the fetch pass.
+ */
+export const VisualsFetchResumedSchema = z.object({
+  ...projectRef,
+})
+
+/**
  * Change one slot's type (still → stock, still → map, …). Handled by the
  * slot-retyper: mechanical when the target's fields derive from the shared
  * description, one small model call when the target needs structured data
@@ -334,6 +344,7 @@ export const EVENT_SCHEMAS = {
   'voice/retake.requested': VoiceRetakeRequestedSchema,
   'visuals/refetch.requested': VisualsRefetchRequestedSchema,
   'visuals/plan.approved': VisualsPlanApprovedSchema,
+  'visuals/fetch.resume': VisualsFetchResumedSchema,
   'visuals/retype.requested': VisualsRetypeRequestedSchema,
   'visuals/replan.requested': VisualsReplanRequestedSchema,
   'visuals/redirect.requested': VisualsRedirectRequestedSchema,

@@ -6240,3 +6240,25 @@ green.
      place; a generated plate's asset is licensed "Generated set plate", an
      uploaded one "Uploaded by owner"; the candidate's source reads
      `set://<set id>/<plate hash>` as provenance.
+
+279. **Fetch visuals after a failed run, and why the stage failed**
+     (2026-09-28, owner: the visuals stage failed, Fetch visuals did nothing
+     once some visuals existed, and 13 slots read as having no visual though
+     every shot showed one). Cause, from the production run mirror (read
+     only): the visuals-runner parked on the plan since 25 September woke
+     on Fetch visuals and replayed with the step results it saved back then.
+     Decision 277 had added `cast` to the runner's setup step and read it
+     outside a step to count the plan's craft notes, so the replay hit
+     `setup.cast.filter` on a setup that has no cast and failed with
+     "Cannot read properties of undefined (reading 'filter')". With that run
+     dead, every later Fetch visuals sent an approval nothing waited for. The
+     13 were the slots only the fetch pass resolves: 4 headlines, 5 graphics
+     and 2 maps (the board draws them from their briefs) and 2 stills whose
+     briefs changed after their image was made. Fixes: the craft count runs
+     inside the `open-plan-park` step, so a replay never recomputes it, and
+     `planFindings` treats a missing cast as none. Fetch visuals now sends
+     `visuals/fetch.resume` when the stage is not awaiting review (no run
+     parked on the plan); the runner takes it as a second trigger and starts
+     at the fetch pass, so the plan, the producer's choices and uploads are
+     kept. Re-running the stage was not an option: it plans again and
+     replaces every slot.

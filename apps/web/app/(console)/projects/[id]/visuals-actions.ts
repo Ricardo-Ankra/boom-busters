@@ -337,6 +337,10 @@ export async function setSlotRouteAction(
  * "Fetch visuals" — the plan checkpoint's one primary button. Wakes the
  * visuals-runner parked on `visuals/plan.approved`; the runner fetches only
  * the slots the no-waste guard says are owed.
+ *
+ * With no run parked (decision 279) the approval would wake nothing: the run
+ * that planned this failed, so the stage is not awaiting review. Then a new
+ * run starts at the fetch pass instead, and the plan is not planned again.
  */
 export async function approvePlanAction(projectId: string): Promise<ActionResult> {
   await requireOwner()
@@ -350,7 +354,11 @@ export async function approvePlanAction(projectId: string): Promise<ActionResult
   }
 
   try {
-    await inngest.send(events.visualsPlanApproved.create({ projectId }))
+    await inngest.send(
+      project.stageStatus === 'awaiting_review'
+        ? events.visualsPlanApproved.create({ projectId })
+        : events.visualsFetchResumed.create({ projectId }),
+    )
   } catch (error) {
     console.error('[visuals] could not send plan approval', error)
     return {

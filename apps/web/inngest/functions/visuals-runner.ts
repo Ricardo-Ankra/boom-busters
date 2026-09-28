@@ -92,198 +92,212 @@ export const visualsRunner = inngest.createFunction(
         serialiseError(event.data.error),
       )
     },
-    triggers: [events.voiceApproved],
+    triggers: [events.voiceApproved, events.visualsFetchResumed],
   },
   async ({ event, step, runId }) => {
-    const { projectId } = parseEventData('gate/voice.approved', event.data)
+    // "Fetch visuals" with no run parked on the plan (decision 279): the run
+    // that planned it is gone, so this one starts at the fetch pass and the
+    // producer's plan, choices and uploads are left exactly as they are.
+    const resuming = event.name === 'visuals/fetch.resume'
+    const { projectId } = resuming
+      ? parseEventData('visuals/fetch.resume', event.data)
+      : parseEventData('gate/voice.approved', event.data)
     const ctx: GateContext = { inngestRunId: runId, functionId: FUNCTION_ID, projectId }
-
-    const setup = await step.run('load-narration', async () => {
-      const project = await getProject(db, projectId)
-      if (!project) throw new NonRetriableError(`Project ${projectId} no longer exists`)
-
-      const sources = await latestScriptParagraphSources(db, projectId)
-      if (sources.chapters.length === 0) {
-        throw new NonRetriableError(
-          'There is no script to plan visuals for. Approve a script and voice first.',
-        )
-      }
-
-      const takes = await listVoiceTakes(db, projectId)
-      const claims = await scriptableClaims(db, projectId)
-      const settings = await getSettings(db)
-      const cast = await listCastMembers(db, projectId)
-      // Loaded once for the whole run: the shot-list prompt lists the film's
-      // rooms, and the craft notes count how often each one is used.
-      const sets = await listProjectSets(db, projectId)
-      // The logo library (decision 268, Plan B): titles name the marks in the
-      // prompt, ids resolve a graphic's "logo" the moment the plan is stored.
-      const logos = await listLogos(db)
-
-      await setProjectStage(db, projectId, { stage: 'visuals', stageStatus: 'running' })
-
-      return {
-        caseTitle: project.title,
-        chapters: sources.chapters.map((chapter) => ({ id: chapter.id, title: chapter.title })),
-        paragraphs: timedParagraphs({ chapters: sources.chapters, takes }),
-        claims: claims.map((claim) => ({
-          id: claim.id,
-          text: claim.text,
-          sourceUrl: claim.sourceUrl,
-          confidence: claim.confidence,
-          // Which claims a headline card may cite (decision 257).
-          sourceType: claim.sourceType,
-        })) satisfies ScriptClaim[],
-        styleAnchors: stillStyleAnchors(settings.brandKit),
-        // Who the producer has photographed (decision 253, amended). Their
-        // prompts name them and carry no physical description, because the
-        // photograph is the likeness.
-        photographed: cast
-          .filter((member) => member.photos.length > 0)
-          .map((member) => member.name),
-        // Every member, photographed or not: the craft findings read them
-        // (decisions 271, 277).
-        cast: cast.map((member) => ({ name: member.name, photographed: member.photos.length > 0 })),
-        // The film's rooms: named, described and inventoried for the
-        // shot-list prompt (decision 275), and counted by the craft notes
-        // below (decision 264).
-        sets: sets.map(({ name, look, layout }) => ({ name, look, layout })),
-        logos: logos.map((row) => ({ id: row.id, title: row.title ?? '' })),
-      }
-    })
-
-    // The order of `setup.claims` IS the claim numbering every chapter's
-    // prompt uses, and the numbering `plannedToRows` maps back to ids. One
-    // list, carried whole, so they cannot disagree.
-
-    // -----------------------------------------------------------------------
-    // The Director's Book (decision 252): once per film, reused when stored
-    // -----------------------------------------------------------------------
-
-    const direction = await step.run('directors-book', async () => {
-      try {
-        return { ok: true as const, book: await loadOrDraftDirectorsBook(projectId) }
-      } catch (error) {
-        if (error instanceof BudgetExceededError) {
-          return { ok: false as const, gate: budgetGateData(error) }
-        }
-        throw error
-      }
-    })
-    if (!direction.ok) {
-      await step.run('direction-over-budget', () => markStageFailed(ctx, direction.gate))
-      return { projectId, outcome: 'over-budget' as const }
-    }
-
-    // -----------------------------------------------------------------------
-    // Shot-list generation, chapter by chapter, against the book
-    // -----------------------------------------------------------------------
-
-    const allRows: NewShotSlot[] = []
     let rejectedSlots = 0
 
-    for (const [index, chapter] of setup.chapters.entries()) {
-      const planned = await step.run(
-        `shot-list-${index}`,
-        async (): Promise<
-          | { ok: true; rows: NewShotSlot[]; rejected: number }
-          | { ok: false; gate: Record<string, unknown> }
-        > => {
-          try {
-            const result = await planChapterSlots({
-              projectId,
-              caseTitle: setup.caseTitle,
-              chapter: { id: chapter.id, title: chapter.title, number: index + 1 },
-              paragraphs: setup.paragraphs,
-              claims: setup.claims,
-              styleAnchors: setup.styleAnchors,
-              direction: direction.book,
-              photographed: setup.photographed,
-              sets: setup.sets,
-              logos: setup.logos,
-            })
-            return { ok: true, ...result }
-          } catch (error) {
-            if (error instanceof BudgetExceededError) {
-              return { ok: false, gate: budgetGateData(error) }
-            }
-            throw error
-          }
-        },
-      )
+    if (!resuming) {
+      const setup = await step.run('load-narration', async () => {
+        const project = await getProject(db, projectId)
+        if (!project) throw new NonRetriableError(`Project ${projectId} no longer exists`)
 
-      if (!planned.ok) {
-        await step.run(`shot-list-${index}-over-budget`, () => markStageFailed(ctx, planned.gate))
+        const sources = await latestScriptParagraphSources(db, projectId)
+        if (sources.chapters.length === 0) {
+          throw new NonRetriableError(
+            'There is no script to plan visuals for. Approve a script and voice first.',
+          )
+        }
+
+        const takes = await listVoiceTakes(db, projectId)
+        const claims = await scriptableClaims(db, projectId)
+        const settings = await getSettings(db)
+        const cast = await listCastMembers(db, projectId)
+        // Loaded once for the whole run: the shot-list prompt lists the film's
+        // rooms, and the craft notes count how often each one is used.
+        const sets = await listProjectSets(db, projectId)
+        // The logo library (decision 268, Plan B): titles name the marks in the
+        // prompt, ids resolve a graphic's "logo" the moment the plan is stored.
+        const logos = await listLogos(db)
+
+        await setProjectStage(db, projectId, { stage: 'visuals', stageStatus: 'running' })
+
+        return {
+          caseTitle: project.title,
+          chapters: sources.chapters.map((chapter) => ({ id: chapter.id, title: chapter.title })),
+          paragraphs: timedParagraphs({ chapters: sources.chapters, takes }),
+          claims: claims.map((claim) => ({
+            id: claim.id,
+            text: claim.text,
+            sourceUrl: claim.sourceUrl,
+            confidence: claim.confidence,
+            // Which claims a headline card may cite (decision 257).
+            sourceType: claim.sourceType,
+          })) satisfies ScriptClaim[],
+          styleAnchors: stillStyleAnchors(settings.brandKit),
+          // Who the producer has photographed (decision 253, amended). Their
+          // prompts name them and carry no physical description, because the
+          // photograph is the likeness.
+          photographed: cast
+            .filter((member) => member.photos.length > 0)
+            .map((member) => member.name),
+          // Every member, photographed or not: the craft findings read them
+          // (decisions 271, 277).
+          cast: cast.map((member) => ({
+            name: member.name,
+            photographed: member.photos.length > 0,
+          })),
+          // The film's rooms: named, described and inventoried for the
+          // shot-list prompt (decision 275), and counted by the craft notes
+          // below (decision 264).
+          sets: sets.map(({ name, look, layout }) => ({ name, look, layout })),
+          logos: logos.map((row) => ({ id: row.id, title: row.title ?? '' })),
+        }
+      })
+
+      // The order of `setup.claims` IS the claim numbering every chapter's
+      // prompt uses, and the numbering `plannedToRows` maps back to ids. One
+      // list, carried whole, so they cannot disagree.
+
+      // -----------------------------------------------------------------------
+      // The Director's Book (decision 252): once per film, reused when stored
+      // -----------------------------------------------------------------------
+
+      const direction = await step.run('directors-book', async () => {
+        try {
+          return { ok: true as const, book: await loadOrDraftDirectorsBook(projectId) }
+        } catch (error) {
+          if (error instanceof BudgetExceededError) {
+            return { ok: false as const, gate: budgetGateData(error) }
+          }
+          throw error
+        }
+      })
+      if (!direction.ok) {
+        await step.run('direction-over-budget', () => markStageFailed(ctx, direction.gate))
         return { projectId, outcome: 'over-budget' as const }
       }
 
-      allRows.push(...planned.rows)
-      rejectedSlots += planned.rejected
-    }
+      // -----------------------------------------------------------------------
+      // Shot-list generation, chapter by chapter, against the book
+      // -----------------------------------------------------------------------
 
-    if (allRows.length === 0) {
-      await step.run('empty-plan', () =>
-        markStageFailed(ctx, {
-          message:
-            'The shot-list model produced no usable slots. Re-run the visuals stage; if it ' +
-            'happens again, the script may be too short to plan against.',
-        }),
-      )
-      return { projectId, outcome: 'failed' as const }
-    }
+      const allRows: NewShotSlot[] = []
 
-    // -----------------------------------------------------------------------
-    // Save the board and park on the PLAN — nothing fetched, nothing spent
-    // -----------------------------------------------------------------------
+      for (const [index, chapter] of setup.chapters.entries()) {
+        const planned = await step.run(
+          `shot-list-${index}`,
+          async (): Promise<
+            | { ok: true; rows: NewShotSlot[]; rejected: number }
+            | { ok: false; gate: Record<string, unknown> }
+          > => {
+            try {
+              const result = await planChapterSlots({
+                projectId,
+                caseTitle: setup.caseTitle,
+                chapter: { id: chapter.id, title: chapter.title, number: index + 1 },
+                paragraphs: setup.paragraphs,
+                claims: setup.claims,
+                styleAnchors: setup.styleAnchors,
+                direction: direction.book,
+                photographed: setup.photographed,
+                sets: setup.sets,
+                logos: setup.logos,
+              })
+              return { ok: true, ...result }
+            } catch (error) {
+              if (error instanceof BudgetExceededError) {
+                return { ok: false, gate: budgetGateData(error) }
+              }
+              throw error
+            }
+          },
+        )
 
-    // No route is stored here (decision 264): `shot_slots.route` holds the
-    // owner's explicit choice and nothing else, so a derived route stamped
-    // on every planned slot would freeze the Settings default the moment a
-    // plan existed. The rule is re-derived wherever it is needed, by the
-    // board, the estimate and generation, and shown as the planned default.
-    await step.run('save-shot-list', async () => {
-      await replaceShotList(db, projectId, allRows)
-      await setVisualsPhase(db, projectId, 'plan')
-    })
+        if (!planned.ok) {
+          await step.run(`shot-list-${index}-over-budget`, () => markStageFailed(ctx, planned.gate))
+          return { projectId, outcome: 'over-budget' as const }
+        }
 
-    const stillCount = allRows.filter((row) => row.type === 'still').length
-    // Craft misses the model let through (decision 252): notes for the plan
-    // screen, never rejections. The motif count is per chapter (decision 260).
-    const warnings = planFindings({
-      rows: allRows,
-      chapters: setup.chapters,
-      direction: direction.book,
-      cast: setup.cast,
-      sets: setup.sets,
-    }).findings
-    await step.run('open-plan-park', () =>
-      openReviewGate(ctx, {
-        stage: 'visuals',
-        projectStage: 'visuals',
-        summary:
-          `Shot plan ready · ${allRows.length} slots` +
-          (stillCount > 0 ? ` · ${stillCount} stills to generate` : '') +
-          (rejectedSlots > 0
-            ? ` · ${rejectedSlots} planned slots dropped — malformed or citing unknown claims`
-            : '') +
-          (warnings.length > 0
-            ? ` · ${warnings.length} craft note${warnings.length === 1 ? '' : 's'}`
-            : '') +
-          ' · nothing fetched yet — review the plan, then fetch',
-      }),
-    )
+        allRows.push(...planned.rows)
+        rejectedSlots += planned.rejected
+      }
 
-    const planApproval = await step.waitForEvent('await-plan-approval', {
-      event: 'visuals/plan.approved',
-      timeout: '30d',
-      if: 'async.data.projectId == event.data.projectId',
-    })
+      if (allRows.length === 0) {
+        await step.run('empty-plan', () =>
+          markStageFailed(ctx, {
+            message:
+              'The shot-list model produced no usable slots. Re-run the visuals stage; if it ' +
+              'happens again, the script may be too short to plan against.',
+          }),
+        )
+        return { projectId, outcome: 'failed' as const }
+      }
 
-    if (!planApproval) {
-      await step.run('plan-timed-out', () =>
-        markStageFailed(ctx, { message: 'The shot plan went 30 days without a decision.' }),
-      )
-      return { projectId, outcome: 'plan-timeout' as const }
+      // -----------------------------------------------------------------------
+      // Save the board and park on the PLAN — nothing fetched, nothing spent
+      // -----------------------------------------------------------------------
+
+      // No route is stored here (decision 264): `shot_slots.route` holds the
+      // owner's explicit choice and nothing else, so a derived route stamped
+      // on every planned slot would freeze the Settings default the moment a
+      // plan existed. The rule is re-derived wherever it is needed, by the
+      // board, the estimate and generation, and shown as the planned default.
+      await step.run('save-shot-list', async () => {
+        await replaceShotList(db, projectId, allRows)
+        await setVisualsPhase(db, projectId, 'plan')
+      })
+
+      const stillCount = allRows.filter((row) => row.type === 'still').length
+      await step.run('open-plan-park', () => {
+        // Craft misses the model let through (decisions 252, 277): notes for
+        // the plan screen, never rejections. Counted INSIDE the step (decision
+        // 279): a run parked for days replays with the step results it saved
+        // back then, and outside a step this read `setup.cast`, which an older
+        // run's saved setup does not have, and crashed the fetch.
+        const warnings = planFindings({
+          rows: allRows,
+          chapters: setup.chapters,
+          direction: direction.book,
+          cast: setup.cast,
+          sets: setup.sets,
+        }).findings
+        return openReviewGate(ctx, {
+          stage: 'visuals',
+          projectStage: 'visuals',
+          summary:
+            `Shot plan ready · ${allRows.length} slots` +
+            (stillCount > 0 ? ` · ${stillCount} stills to generate` : '') +
+            (rejectedSlots > 0
+              ? ` · ${rejectedSlots} planned slots dropped — malformed or citing unknown claims`
+              : '') +
+            (warnings.length > 0
+              ? ` · ${warnings.length} craft note${warnings.length === 1 ? '' : 's'}`
+              : '') +
+            ' · nothing fetched yet — review the plan, then fetch',
+        })
+      })
+
+      const planApproval = await step.waitForEvent('await-plan-approval', {
+        event: 'visuals/plan.approved',
+        timeout: '30d',
+        if: 'async.data.projectId == event.data.projectId',
+      })
+
+      if (!planApproval) {
+        await step.run('plan-timed-out', () =>
+          markStageFailed(ctx, { message: 'The shot plan went 30 days without a decision.' }),
+        )
+        return { projectId, outcome: 'plan-timeout' as const }
+      }
     }
 
     // -----------------------------------------------------------------------

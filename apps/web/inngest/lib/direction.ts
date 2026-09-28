@@ -66,7 +66,12 @@ export function planFindings(input: {
   rows: readonly { brief: unknown; chapterId: string; reuseOfSlotId?: string | null }[]
   chapters: readonly { id: string }[]
   direction: DirectorsBook | null
-  cast: readonly { name: string; photographed: boolean }[]
+  /**
+   * Optional because a run parked for days replays the setup it saved then,
+   * and a setup saved before decision 277 carries no cast list (decision
+   * 279). Missing, no person is looked for; the rest of the check still runs.
+   */
+  cast?: readonly { name: string; photographed: boolean }[]
   sets: readonly { name: string }[]
 }): {
   findings: CraftFinding[]
@@ -96,7 +101,7 @@ export function planFindings(input: {
     })),
     findingContext({
       direction: input.direction,
-      cast: input.cast,
+      cast: input.cast ?? [],
       sets: input.sets,
       bannedWords: BANNED_PROMPT_WORDS,
     }),

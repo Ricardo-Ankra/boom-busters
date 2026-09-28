@@ -13,6 +13,7 @@ import {
   ShortsRenderRequestedSchema,
   TeaserRebuildRequestedSchema,
   TeaserShotsRequestedSchema,
+  VisualsFetchResumedSchema,
   VisualsPlanApprovedSchema,
   VisualsRebriefRequestedSchema,
   VisualsRedirectRequestedSchema,
@@ -83,6 +84,9 @@ export const events = {
   }),
   visualsPlanApproved: eventType('visuals/plan.approved', {
     schema: VisualsPlanApprovedSchema,
+  }),
+  visualsFetchResumed: eventType('visuals/fetch.resume', {
+    schema: VisualsFetchResumedSchema,
   }),
   visualsRetypeRequested: eventType('visuals/retype.requested', {
     schema: VisualsRetypeRequestedSchema,

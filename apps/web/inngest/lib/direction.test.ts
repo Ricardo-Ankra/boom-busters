@@ -25,6 +25,7 @@ import {
   loadDirectionInputs,
   loadOrDraftDirectorsBook,
   planChapterSlots,
+  planFindings,
 } from './direction'
 import type { TimedParagraph } from './shot-list'
 
@@ -515,5 +516,30 @@ describe('planChapterSlots repairs a chapter once, on auto findings only (decisi
     })
     const result = await planChapterSlots(planInput)
     expect(result.rows[0]?.brief).toMatchObject({ prompt: 'A boardroom, 35mm lens.' })
+  })
+})
+
+// Decision 279: a visuals run parked for days replays the setup it saved then.
+// One saved before decision 277 has no cast list, and reading it crashed the
+// fetch the producer asked for.
+describe('planFindings on a setup saved before it carried the cast', () => {
+  it('still checks the plan, looking for no person', () => {
+    const wide = {
+      type: 'still',
+      coversText: 'x',
+      description: 'x',
+      shotSize: 'wide',
+      motion: { kind: 'static' },
+      transition: 'cut',
+      prompt: 'a room',
+    }
+    const rows = [0, 1, 2].map(() => ({ brief: wide, chapterId: 'c1' }))
+    const { findings } = planFindings({
+      rows,
+      chapters: [{ id: 'c1' }],
+      direction: null,
+      sets: [],
+    })
+    expect(findings.map((finding) => finding.kind)).toEqual(['size-run'])
   })
 })
