@@ -6318,3 +6318,17 @@ green.
      broker's `error` and first issues in its message, and a 4xx refusal
      other than 409 (the concurrency cap) and 429 is a `NonRetriableError`,
      since the same timeline to the same broker cannot pass on a retry.
+
+283. **Graphic headings clipped mid-word against each other** (2026-09-29,
+     owner: "Funding rais" beside "Reported valuat" on a two-figure card).
+     `graphicLayout` fitted text at the role's unscaled size, and
+     `typeStyle` then multiplied it by the brand kit's `sizeScale` (heading
+     1.4), so every heading drew 40 per cent wider than the box it was
+     fitted to and the render clipped it. `fitFontPx` now fits the DRAWN
+     size: per-family glyph advances (JetBrains Mono at its true 0.6 em,
+     not 0.56), capitals, heavy weights and letter spacing, a cap on the
+     box height as well as its width (a figure's caption takes its share),
+     and a legibility floor measured at the drawn size. The board's SVG
+     preview now draws text in the role's weight, tracking and case, so it
+     shows what the card shows, and sizes its underline wash with the same
+     `estimatedTextWidth`. Needs `deploy:remotion` for rendered video.

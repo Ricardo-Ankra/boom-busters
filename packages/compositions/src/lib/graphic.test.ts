@@ -6,11 +6,14 @@ import {
   barsGeometry,
   countedValue,
   enterProgress,
+  estimatedTextWidth,
   fitFontPx,
+  glyphAdvanceEm,
   graphicDrift,
   graphicLayout,
   reflowPortrait,
   roleBasePx,
+  roleFontPx,
   ruleThicknessPx,
   safeArea,
   separateOverlaps,
@@ -558,5 +561,119 @@ describe('graphicDrift', () => {
 
   it('is a no-op on a degenerate one-frame slot', () => {
     expect(graphicDrift(0, 1)).toBe(1)
+  })
+})
+
+// Decision 283: the fit is made at the size the brand kit DRAWS text at.
+describe('text is fitted at its drawn size', () => {
+  // The production card: two headings side by side, the brand kit's heading
+  // scaled 1.4. Fitted unscaled, both drew 40 per cent wider than their boxes
+  // and clipped mid-word against each other ("Funding rais", "Reported valuat").
+  const brandKit = resolveBrandKit(DEFAULT_SETTINGS)
+  const scaled = {
+    ...brandKit,
+    typography: {
+      ...brandKit.typography,
+      heading: {
+        family: 'Inter',
+        weight: 700,
+        sizeScale: 1.4,
+        letterSpacing: 0,
+        transform: 'none' as const,
+      },
+    },
+  }
+  const heading = (id: string, col: number, colSpan: number, content: string) => ({
+    kind: 'text' as const,
+    id,
+    cell: { col, row: 3, colSpan, rowSpan: 2 },
+    content,
+    role: 'heading' as const,
+    color: 'textSecondary' as const,
+    align: 'start' as const,
+    enter: { kind: 'fade' as const, atMs: 0 },
+  })
+  const figure = (id: string, col: number, colSpan: number, value: string) => ({
+    kind: 'figure' as const,
+    id,
+    cell: { col, row: 5, colSpan, rowSpan: 3 },
+    value,
+    claimRef: '01HQ00000000000000000000A1',
+    color: 'textPrimary' as const,
+    enter: { kind: 'rise' as const, atMs: 500 },
+  })
+  const card: GraphicScene = {
+    elements: [
+      heading('raise-title', 2, 4, 'Funding raised'),
+      figure('raise-fig', 2, 4, '$101m'),
+      heading('val-title', 6, 5, 'Reported valuation'),
+      figure('val-fig', 6, 5, '$1bn'),
+    ],
+  }
+
+  it('keeps each heading inside its own box once the brand scale is applied', () => {
+    const boxes = graphicLayout(card, WIDE, scaled)
+    for (const id of ['raise-title', 'val-title']) {
+      const box = boxes.find((candidate) => candidate.id === id)!
+      const element = card.elements.find((candidate) => candidate.id === id)!
+      const drawn = roleFontPx('heading', box.fontPx!, scaled)
+      const content = element.kind === 'text' ? element.content : ''
+      expect(estimatedTextWidth(content, drawn, scaled.typography.heading)).toBeLessThanOrEqual(
+        box.w,
+      )
+    }
+  })
+
+  it('draws a short heading at its full scaled size, not smaller', () => {
+    const roomy = {
+      ...heading('t', 0, 12, 'Raised'),
+      cell: { col: 0, row: 0, colSpan: 12, rowSpan: 4 },
+    }
+    const [box] = graphicLayout({ elements: [roomy] }, WIDE, scaled)
+    expect(roleFontPx('heading', box!.fontPx!, scaled)).toBe(
+      Math.round(roleBasePx('heading') * 1.4),
+    )
+  })
+
+  it('reads a monospaced figure at its true 0.6 em advance', () => {
+    const long = figure('f', 0, 3, '$1,234,567,890')
+    const [box] = graphicLayout({ elements: [long] }, WIDE, brandKit)
+    const drawn = roleFontPx('numbers', box!.fontPx!, brandKit)
+    expect(brandKit.typography.numbers.family).toBe('JetBrains Mono')
+    expect(long.value.length * 0.6 * drawn).toBeLessThanOrEqual(box!.w)
+  })
+
+  it('narrows for capitals and tracking the brand kit asks for', () => {
+    const plain = brandKit.typography.heading
+    const loud = { ...plain, transform: 'uppercase' as const, letterSpacing: 0.08 }
+    expect(glyphAdvanceEm(loud)).toBeGreaterThan(glyphAdvanceEm(plain) + 0.08)
+    const plainPx = fitFontPx('Reported valuation', 600, 72, 12, { type: plain })
+    const loudPx = fitFontPx('Reported valuation', 600, 72, 12, { type: loud })
+    expect(loudPx).toBeLessThan(plainPx)
+  })
+
+  it('keeps a scaled heading inside its box height too', () => {
+    const tall = {
+      ...scaled,
+      typography: { ...scaled.typography, heading: { ...scaled.typography.heading, sizeScale: 3 } },
+    }
+    const [box] = graphicLayout(
+      {
+        elements: [
+          { ...heading('t', 0, 12, 'Hi'), cell: { col: 0, row: 0, colSpan: 12, rowSpan: 1 } },
+        ],
+      },
+      WIDE,
+      tall,
+    )
+    expect(roleFontPx('heading', box!.fontPx!, tall) * 1.25).toBeLessThanOrEqual(box!.h + 1)
+  })
+
+  it('holds the legibility floor at the drawn size, whatever the scale', () => {
+    const tiny = { ...brandKit.typography.body, sizeScale: 2 }
+    const px = fitFontPx('A label many times longer than its box could ever hold', 60, 32, 12, {
+      type: tiny,
+    })
+    expect(px * tiny.sizeScale).toBe(12)
   })
 })

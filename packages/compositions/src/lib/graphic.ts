@@ -6,6 +6,7 @@ import type {
   GraphicElement,
   GraphicScene,
   GraphicTypeRole,
+  TypeRole,
 } from '@boom-busters/schemas'
 import { frameScale, typeStyle, withAlpha } from '../components/brand'
 import { captionSafeArea } from './captions'
@@ -46,6 +47,25 @@ const GRAPHIC_GUTTER_PX = 8
  * measure the same way the render's Chromium would.
  */
 export const AVERAGE_GLYPH_EM = 0.56
+/**
+ * The same estimate per bundled family (decision 283). Inter's mixed-case bold
+ * measures about 0.5 em a glyph on a rendered card, so 0.56 leaves slack;
+ * JetBrains Mono is monospaced at exactly 0.6, which the 0.56 default
+ * under-read for every figure. A family missing here falls back to the default.
+ */
+const FAMILY_GLYPH_EM: Readonly<Record<string, number>> = {
+  Inter: 0.56,
+  Archivo: 0.58,
+  'Source Serif 4': 0.54,
+  'JetBrains Mono': 0.6,
+}
+const MONOSPACED_FAMILIES = new Set(['JetBrains Mono'])
+/** Capitals in a proportional face run wider than mixed case. */
+const UPPERCASE_GLYPH_EM = 0.7
+/** Extra width a heavy weight (800 and up) adds to every glyph. */
+const HEAVY_WEIGHT_EM = 0.03
+/** The line box CSS gives a single line at `line-height: normal`, in em. */
+const LINE_HEIGHT_EM = 1.25
 const MIN_FONT_PX = 12
 const ENTER_MS = 600
 const BAR_LENGTH_FRACTION = 0.62
@@ -155,10 +175,44 @@ export function fitFontPx(
   boxWidth: number,
   basePx: number,
   minPx: number = MIN_FONT_PX,
+  fit: { type?: TypeRole; boxHeight?: number } = {},
 ): number {
   const glyphs = Math.max(1, text.length)
-  const fitted = Math.floor(boxWidth / (glyphs * AVERAGE_GLYPH_EM))
-  return Math.max(minPx, Math.min(basePx, fitted))
+  if (fit.type === undefined && fit.boxHeight === undefined) {
+    const fitted = Math.floor(boxWidth / (glyphs * AVERAGE_GLYPH_EM))
+    return Math.max(minPx, Math.min(basePx, fitted))
+  }
+  // Fitted at the size the text DRAWS at (decision 283). `typeStyle` multiplies
+  // the returned size by the role's `sizeScale`, so fitting the unscaled size
+  // let a heading scaled 1.4 by the brand kit draw 40 per cent wider than the
+  // box it was fitted to: "Funding raised" and "Reported valuation", side by
+  // side, each clipped mid-word against the other.
+  const sizeScale = fit.type?.sizeScale ?? 1
+  const perGlyph = fit.type ? glyphAdvanceEm(fit.type) : AVERAGE_GLYPH_EM
+  const byWidth = Math.floor(boxWidth / (glyphs * perGlyph))
+  const byHeight =
+    fit.boxHeight === undefined ? Infinity : Math.floor(fit.boxHeight / LINE_HEIGHT_EM)
+  const drawn = Math.min(basePx * sizeScale, byWidth, byHeight)
+  // The floor is a floor on what is read, so it too is a drawn size.
+  return Math.max(minPx, drawn) / sizeScale
+}
+
+/** The estimated advance of one glyph, in em, for a role's family, weight, case and tracking. */
+export function glyphAdvanceEm(type: TypeRole): number {
+  const mono = MONOSPACED_FAMILIES.has(type.family)
+  const face = FAMILY_GLYPH_EM[type.family] ?? AVERAGE_GLYPH_EM
+  const cased = !mono && type.transform === 'uppercase' ? Math.max(face, UPPERCASE_GLYPH_EM) : face
+  const weight = !mono && type.weight >= 800 ? HEAVY_WEIGHT_EM : 0
+  return cased + weight + type.letterSpacing
+}
+
+/**
+ * How wide `text` draws at `drawnPx` in a role's type, by the same estimate
+ * `fitFontPx` fits by, so the board's `underline` wash is no more invented
+ * than the size the text itself draws at.
+ */
+export function estimatedTextWidth(text: string, drawnPx: number, type: TypeRole): number {
+  return text.length * glyphAdvanceEm(type) * drawnPx
 }
 
 export interface BarsGeometry {
@@ -343,7 +397,7 @@ export function separateOverlaps(scene: GraphicScene): GraphicScene {
 export function graphicLayout(
   scene: GraphicScene,
   frame: GraphicFrame,
-  _brand: BrandKitTokens,
+  brand: BrandKitTokens,
 ): ElementBox[] {
   const portrait = frame.height > frame.width
   const laid = portrait ? reflowPortrait(scene) : separateOverlaps(scene)
@@ -361,14 +415,29 @@ export function graphicLayout(
           box.w,
           roleBasePx(element.role) * scale,
           MIN_FONT_PX * scale,
+          { type: brand.typography[element.role], boxHeight: box.h },
         ),
       }
     }
     if (element.kind === 'figure') {
+      // The caption stacks under the value, so the value gets what it leaves.
+      const labelH = element.label
+        ? roleFontPx('captions', figureLabelBasePx(frame), brand) * LINE_HEIGHT_EM +
+          figureLabelGapPx(frame)
+        : 0
       return {
         id: element.id,
         ...box,
-        fontPx: fitFontPx(element.value, box.w, roleBasePx('numbers') * scale, MIN_FONT_PX * scale),
+        fontPx: fitFontPx(
+          element.value,
+          box.w,
+          roleBasePx('numbers') * scale,
+          MIN_FONT_PX * scale,
+          {
+            type: brand.typography.numbers,
+            boxHeight: Math.max(1, box.h - labelH),
+          },
+        ),
       }
     }
     if (element.kind === 'bars') {

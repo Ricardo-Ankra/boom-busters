@@ -12,11 +12,11 @@ import {
 } from '@boom-busters/compositions/chart'
 import { fitBounds, graticule, landPaths, projector } from '@boom-busters/compositions/geo'
 import {
-  AVERAGE_GLYPH_EM,
   barLengthPx,
   barsGapPx,
   barsGeometry,
   emphasisWashColor,
+  estimatedTextWidth,
   figureLabelBasePx,
   figureLabelGapPx,
   graphicLayout,
@@ -580,7 +580,15 @@ export function GraphicPreview({
   const boxes = graphicLayout(brief.scene, GRAPHIC_FRAME, brandTokens)
   const byId = new Map(boxes.map((box) => [box.id, box]))
   const { colors, typography } = brandTokens
-  const fontFamily = (role: keyof typeof typography) => `"${typography[role].family}", sans-serif`
+  // The whole type role, not only its family (decision 283): the card draws in
+  // the role's weight, tracking and case, and a preview in regular-weight mixed
+  // case drew narrower than the render, so it could not show text that clipped.
+  const typeAttrs = (role: keyof typeof typography) => ({
+    fontFamily: `"${typography[role].family}", sans-serif`,
+    fontWeight: typography[role].weight,
+    letterSpacing: `${typography[role].letterSpacing}em`,
+    style: { textTransform: typography[role].transform },
+  })
 
   return (
     <svg
@@ -611,7 +619,10 @@ export function GraphicPreview({
             // No measured width: the same estimate `fitFontPx` fits sizes BY, used
             // in reverse, so the wash under an `underline` emphasis is no more
             // invented than the size the text itself draws at.
-            const textWidth = Math.min(box.w, element.content.length * AVERAGE_GLYPH_EM * fontPx)
+            const textWidth = Math.min(
+              box.w,
+              estimatedTextWidth(element.content, fontPx, typography[element.role]),
+            )
             const washX =
               element.align === 'center'
                 ? x - textWidth / 2
@@ -642,7 +653,7 @@ export function GraphicPreview({
                   x={x}
                   y={y}
                   fontSize={fontPx}
-                  fontFamily={fontFamily(element.role)}
+                  {...typeAttrs(element.role)}
                   fill={tokenColor(element.color, brandTokens)}
                   textAnchor={
                     element.align === 'center'
@@ -677,7 +688,7 @@ export function GraphicPreview({
             const labelY = columnTop + valueFontPx + gap + labelFontPx / 2
             const valueWidth = Math.min(
               box.w,
-              element.value.length * AVERAGE_GLYPH_EM * valueFontPx,
+              estimatedTextWidth(element.value, valueFontPx, typography.numbers),
             )
             return (
               <g key={element.id}>
@@ -694,7 +705,7 @@ export function GraphicPreview({
                   x={box.x}
                   y={valueY}
                   fontSize={valueFontPx}
-                  fontFamily={fontFamily('numbers')}
+                  {...typeAttrs('numbers')}
                   fill={tokenColor(element.color, brandTokens)}
                   dominantBaseline="middle"
                 >
@@ -705,7 +716,7 @@ export function GraphicPreview({
                     x={box.x}
                     y={labelY}
                     fontSize={labelFontPx}
-                    fontFamily={fontFamily('captions')}
+                    {...typeAttrs('captions')}
                     fill={colors.textSecondary}
                     dominantBaseline="middle"
                   >
@@ -746,7 +757,7 @@ export function GraphicPreview({
                   x={box.x + box.w / 2}
                   y={box.y + box.h / 2}
                   fontSize={11}
-                  fontFamily={fontFamily('captions')}
+                  {...typeAttrs('captions')}
                   fill={colors.textSecondary}
                   textAnchor="middle"
                   dominantBaseline="middle"
@@ -818,7 +829,7 @@ export function GraphicPreview({
                         x={box.x + labelWidth}
                         y={rowY + rowH / 2}
                         fontSize={roleFontPx('captions', labelPx, brandTokens)}
-                        fontFamily={fontFamily('captions')}
+                        {...typeAttrs('captions')}
                         fill={colors.textSecondary}
                         textAnchor="end"
                         dominantBaseline="middle"
@@ -837,7 +848,7 @@ export function GraphicPreview({
                         x={box.x + labelWidth + gap + barW + gap}
                         y={rowY + rowH / 2}
                         fontSize={roleFontPx('numbers', labelPx * 1.2, brandTokens)}
-                        fontFamily={fontFamily('numbers')}
+                        {...typeAttrs('numbers')}
                         fill={colors.textPrimary}
                         dominantBaseline="middle"
                       >
