@@ -135,6 +135,7 @@ export default async function globalSetup(): Promise<void> {
     FIXTURE_CASE_ID,
     FIXTURE_PROJECT_ID,
     articleSources,
+    socialPosts,
     publishRecords,
     renders,
     timelines,
@@ -168,6 +169,11 @@ export default async function globalSetup(): Promise<void> {
     // into becomes `manual`, which the next run's seed is then forbidden to
     // overwrite (decision 257). Truncating is what makes the seed the truth.
     await connection.db.delete(articleSources)
+    // A post record leaks the same way and for the same reason (decision
+    // 284): a field this suite types by hand becomes `manual`, which the
+    // seed below is then forbidden to overwrite, and the next run's post
+    // card would start already fixed.
+    await connection.db.delete(socialPosts)
     // publish_records is polymorphic — no FK, so nothing cascades it away.
     // The publish-runner unit tests stamp uploadStartedAt rows that would
     // otherwise count against this suite's daily-budget line.
@@ -457,9 +463,28 @@ export default async function globalSetup(): Promise<void> {
         listShotSlots,
         setSlotResolution,
         recordArticleSource,
+        recordSocialPost,
         scriptableClaims,
         updateSlotBrief,
       } = await import('@boom-busters/db')
+      const { normalisePostUrl } = await import('@boom-busters/schemas')
+
+      // A post card (decision 284) for an invented X account: read, but
+      // without a date, which is the card's own common real case (the
+      // headline card's missing byline, told again for a post). Its text
+      // is long enough that the card must offer an excerpt too, so the
+      // board test below exercises both repairs before it is ready.
+      const socialPostUrl = 'https://x.com/danaokafor/status/1700000000000000001'
+      const socialPostKey = normalisePostUrl(socialPostUrl)
+      if (socialPostKey === null) throw new Error('the seeded post address will not normalise')
+      const socialPostText = [
+        "1. The board was told for six years running that the reserve account held the full balance, right up until the week the auditors first asked to see the bank's own confirmation letter.",
+        'This has been six months of asking simple questions and being handed answers that get more complicated every single time I ask them again.',
+        'The escrow figure printed in the July filing does not match a single bank statement anyone inside this company has actually been shown, not one, not ever, not once.',
+        'Staff kept getting paid on time every single month without fail, which tells you rather a lot about where the remaining money actually went first.',
+        'None of this needed to happen at all. One honest phone call eighteen months ago would have fixed the whole matter quietly.',
+        'I am done pretending this was ever about a paperwork error. Reading the numbers properly is not optional. More on this soon.',
+      ].join('\n\n')
 
       const board = await createProjectFromCase(connection.db, {
         caseId: FIXTURE_CASE_ID,
@@ -468,17 +493,39 @@ export default async function globalSetup(): Promise<void> {
       await saveDossier(connection.db, {
         projectId: board.id,
         contentMd: '# The research the board below was planned from.',
-        // One news-sourced claim, so the board can carry a headline card
-        // (decision 257). Its article is seeded as a page that would not
-        // answer, which is the path the card has to get right.
         claims: [
+          // One news-sourced claim, so the board can carry a headline card
+          // (decision 257). Its article is seeded as a page that would not
+          // answer, which is the path the card has to get right.
           {
             text: 'A newspaper reported that the escrow accounts had never existed.',
             sourceUrl: HEADLINE_ARTICLE_URL,
             sourceType: 'major_outlet',
             confidence: 'sourced',
           },
+          // One claim sourced to a real X post (decision 284), whatever its
+          // own sourceType: claimCarriesPost reads the address, not the
+          // label.
+          {
+            text: 'An account claiming to be a former director said on X that the escrow account never held the full balance.',
+            sourceUrl: socialPostUrl,
+            sourceType: 'other',
+            confidence: 'sourced',
+          },
         ],
+      })
+      await recordSocialPost(connection.db, {
+        url: socialPostKey,
+        platform: 'x',
+        postId: '1700000000000000001',
+        handle: 'danaokafor',
+        authorName: 'Dana Okafor',
+        text: socialPostText,
+        postedAt: null,
+        endedWithMediaLink: false,
+        provenance: { authorName: 'oembed', handle: 'oembed', text: 'oembed' },
+        status: 'fetched',
+        failureReason: null,
       })
       const boardScript = await createScriptVersion(connection.db, board.id)
       const boardChapter = await saveChapter(connection.db, {
@@ -621,6 +668,21 @@ export default async function globalSetup(): Promise<void> {
           startMs: 12000,
           durationMs: 6000,
         },
+        {
+          chapterId: boardChapter.id,
+          index: 5,
+          type: 'social',
+          brief: {
+            type: 'social',
+            ...common,
+            coversText: narratedText[2]!,
+            description: 'The post everyone screenshotted that morning.',
+            sourceClaimId: '',
+            postUrl: '',
+          },
+          startMs: 24000,
+          durationMs: 6000,
+        },
       ])
 
       const slots = await listShotSlots(connection.db, board.id)
@@ -702,6 +764,32 @@ export default async function globalSetup(): Promise<void> {
           provenance: { outlet: 'og', headline: 'jsonld', publishedAt: 'jsonld' },
           status: 'fetched',
           failureReason: null,
+        })
+      }
+
+      /**
+       * The post card (decision 284), pointed at the X-sourced claim, its
+       * post read but without a date (Read again fills it by hand, the same
+       * common real case the headline card's missing byline already
+       * covers). Deliberately RESOLVED, for the same reason as the headline
+       * card above: whether this card still has something to fix does not
+       * change the gate's placeholder count.
+       */
+      const socialClaim = boardClaims.find(
+        (claim) => normalisePostUrl(claim.sourceUrl ?? '') === socialPostKey,
+      )
+      const socialSlot = slots.find((slot) => slot.type === 'social')
+      if (socialClaim && socialSlot) {
+        await updateSlotBrief(connection.db, socialSlot.id, {
+          ...(socialSlot.brief as Record<string, unknown>),
+          sourceClaimId: socialClaim.id,
+          postUrl: socialPostKey,
+        } as never)
+        const rewritten = await getShotSlot(connection.db, socialSlot.id)
+        await setSlotResolution(connection.db, socialSlot.id, {
+          candidates: [],
+          status: 'resolved',
+          answered: { brief: rewritten?.brief, route: rewritten?.route },
         })
       }
 

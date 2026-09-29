@@ -6332,3 +6332,74 @@ green.
      preview now draws text in the role's weight, tracking and case, so it
      shows what the card shows, and sizes its underline wash with the same
      `estimatedTextWidth`. Needs `deploy:remotion` for rendered video.
+
+284. **Social post shots: a real X post on screen** (2026-09-29, owner:
+     "I want to have an option where I can share a Social Media post like a
+     tweet/Facebook post etc. How can I nicely format this into the screen
+     so the sizing is right."). An eighth shot type, `social`, shows one
+     real X post as a card, in 16:9 and 9:16, legible at any length the
+     card accepts and never clipped. The shot-list model cites a claim
+     NUMBER whose source is an X post, exactly as a headline cites a news
+     claim (`claimCarriesPost`); `resolvePlannedBrief` maps it to the claim
+     and copies the post's address onto the brief. Resolution reads the
+     post once through X's public reader
+     (`GET https://publish.x.com/oembed`, no key) into a global
+     `social_posts` table, shared across claims, shots and films, and a
+     stored field the owner corrects by hand is never overwritten by a
+     later read. One pure layout module
+     (`packages/compositions/src/lib/social.ts`) picks the card width and
+     text size from the brand's own type roles; one pure React component
+     (`SocialPostCard`) draws the
+     card (avatar, name, handle, date, the text with its mentions and
+     links in the accent colour, an optional attached image, the source
+     line), and the Remotion wrapper animates it while the board draws the
+     identical component at rest, so the approved card and the rendered
+     card cannot disagree (the failure decisions 268 and 283 both had to
+     fix after the fact). The avatar is an upload, else the photo of the
+     cast member whose stored X handle matches the post's, else initials.
+     Assembly embeds every string and the two image references in the
+     timeline payload, so a render months later does not depend on the
+     post still existing or the record not having been corrected since.
+
+     Five rulings recorded on the design before the build (spec:
+     `docs/superpowers/specs/2026-09-29-social-post-shots-design.md`; plan:
+     `docs/superpowers/plans/2026-09-29-social-post-shots.md`):
+     - The post is keyed by its numeric post id
+       (`https://x.com/i/status/<id>`), not by the handle in its address:
+       a handle can be renamed and its case varies, so keying on it could
+       give one post two rows. The handle lives in its own column, and the
+       card's printed source is built from the stored record.
+     - A post "needs an excerpt" is judged against the frame the film's
+       timeline actually renders at, the master, 1920 by 1080, since
+       `ShortVertical` draws no slot cards today; the tall layout is still
+       built and golden-tested for portrait timelines against the same
+       rule.
+     - A 280-character post of ordinary words lands at 40 px in 16:9, not
+       the 42 to 48 the spec estimated working through the numbers by eye;
+       the test pins 37 to 48 px rather than the tighter guess.
+     - The card sets explicit drawn pixel sizes from its own ladder and
+       takes only family, weight, tracking and case from the brand's
+       roles, never `sizeScale` on top: decision 283's clipped-graphics
+       lesson applied by construction rather than by a second fix.
+     - "Cannot be approved" works the way a headline card already does: an
+       unready social slot resolves to `placeholder`, the board says which
+       of the four fields or which length rule it is still missing, and
+       assembly skips the slot with that reason rather than rendering a
+       card nothing has finished checking.
+
+     A sixth ruling came out of the database task: a failed re-read
+     ("Read again" when X is down, or the post was since deleted) must not
+     overwrite a row that already holds fields: it leaves the stored row
+     completely untouched and hands the reason back to the owner. Only a
+     first read of a URL with no row yet stores the failure. Recording a
+     failed, all-null reading over a correctly-read post would otherwise
+     wipe it on a transient outage; the cost of the ruling being wrong is
+     only that a stale post keeps showing after a genuine deletion, which
+     the owner sees the reason for and can retype.
+
+     Rendering a film with a social slot needs both
+     `deploy:remotion` (the Remotion site) and
+     `deploy:stacks boom-busters-broker` (the broker Lambda's bundled
+     timeline schema), the same pair decision 282 found missing for
+     headline and graphic slots, so a social render fails fast with the
+     reason rather than retrying against the old broker.

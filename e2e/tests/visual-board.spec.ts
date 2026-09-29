@@ -221,7 +221,9 @@ test.describe('a headline card', () => {
     // A marker over words the publication did not print is refused, not
     // quietly dropped: the owner typed it and deserves to know.
     await page.getByLabel('Highlight this phrase').fill('two billion')
-    await page.getByRole('button', { name: 'Save' }).click()
+    // Exact: a post card's own "Save highlight" and "Save excerpt" buttons
+    // are always on the page too, and both contain "Save" as a substring.
+    await page.getByRole('button', { name: 'Save', exact: true }).click()
     // `.first()`: the toast body and its aria-live announcer both say it.
     await expect(
       page.getByText(/has to appear in the headline, word for word/).first(),
@@ -229,7 +231,7 @@ test.describe('a headline card', () => {
 
     await page.getByLabel('Byline').fill('Elena Marsh')
     await page.getByLabel('Highlight this phrase').fill('$1.9 billion')
-    await page.getByRole('button', { name: 'Save' }).click()
+    await page.getByRole('button', { name: 'Save', exact: true }).click()
 
     const card = page.getByLabel('Headline card preview')
     await expect(card.getByText('By Elena Marsh')).toBeVisible()
@@ -274,5 +276,76 @@ test.describe('reusing a shot on the board (decision 261)', () => {
       .filter({ has: page.getByRole('img', { name: /line chart/ }) })
     await expect(chart).toHaveCount(1)
     await expect(chart.getByRole('button', { name: 'Use an existing shot' })).toHaveCount(0)
+  })
+})
+
+/**
+ * A post card (decision 284). The seeded post was read from a claim sourced
+ * to an X post, and came back with a name, a handle and the text, but no
+ * date, the post card's own version of the headline card's missing byline
+ * above. Its text also runs long, so the card needs an excerpt as well as
+ * the date before it can draw.
+ *
+ * Neither save waits on its own toast, for the reason the module doc gives
+ * for the whole file: each one also hands a re-fetch event to Inngest, which
+ * this suite does not run, so the action itself comes back refused ("Could
+ * not reach Inngest...") even though the write behind it, done before that
+ * event is sent, already landed. What is under test is that write: the
+ * card re-reads it without a reload (the same proof the headline card's own
+ * correction test above relies on).
+ *
+ * Choosing the excerpt writes the brief itself (the excerpt is part of it,
+ * unlike the date, which lives on the post record), and writing a brief always
+ * marks its slot `unresolved` for a fresh pass to judge, the same pass
+ * Inngest would run after a real "Read again". So the card ends this test
+ * ready to draw, and the gate correctly still will not approve past it
+ * without that pass, which is the board's own answer, not a stale one.
+ */
+test.describe('a post card', () => {
+  test('needs a date, offers a pre-filled excerpt, and clears both to become ready', async ({
+    page,
+  }) => {
+    const card = page.locator('[id^="slot-"]').filter({ hasText: 'Dana Okafor' })
+    await expect(card).toHaveCount(1)
+
+    // Read, but the four fields a card needs are checked together, and the
+    // missing one is named before the length is even judged.
+    await expect(card.getByText(/Missing: the date/)).toBeVisible()
+    await expect(card.getByLabel('Post card preview')).toHaveCount(0)
+
+    await card.getByRole('button', { name: 'Edit details' }).click()
+    await card.getByLabel('Posted (YYYY-MM-DD)').fill('2023-03-14')
+    // Exact: this same card also carries "Save highlight" and "Save
+    // excerpt", both a substring match away.
+    await card.getByRole('button', { name: 'Save', exact: true }).click()
+    await expect(
+      card.getByLabel('Where each field came from').getByText(/date . typed by you/),
+    ).toBeVisible()
+
+    // Every field is there now, so the card judges the length and asks for
+    // an excerpt instead.
+    await expect(
+      card.getByText('This post is too long to show in full. Choose the part to show.'),
+    ).toBeVisible()
+
+    // The excerpt field is pre-filled with the card's own suggestion
+    // (suggestExcerpt); choosing it as it stands is the owner's excerpt.
+    // The textbox role, not getByLabel: the excerpt form itself is also
+    // labelled "The excerpt", which "Excerpt" matches as a substring too.
+    const excerptField = card.getByRole('textbox', { name: 'Excerpt' })
+    await expect(excerptField).not.toHaveValue('')
+    await card.getByRole('button', { name: 'Save excerpt' }).click()
+
+    // Nothing left for the card to ask for, and it now draws the render's
+    // own component rather than the plain-text fallback.
+    await expect(card.getByLabel('What this card still needs')).toHaveCount(0)
+    await expect(card.getByLabel('Post card preview')).toBeVisible()
+
+    // The excerpt just written put this slot back to "unresolved": a fresh
+    // pass has to judge it, same as a real "Read again" would trigger, so
+    // the gate correctly still refuses, in its own words, rather than
+    // approving a brief nothing has re-checked.
+    await expect(page.getByRole('button', { name: 'Approve with 1 placeholder' })).toBeDisabled()
+    await expect(page.getByText(/1 slot is still unresolved/)).toBeVisible()
   })
 })
