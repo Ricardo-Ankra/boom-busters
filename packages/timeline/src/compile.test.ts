@@ -1,7 +1,12 @@
 import { readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { DEFAULT_SETTINGS, resolveBrandKit, timelineDurationMs } from '@boom-busters/schemas'
+import {
+  canonicalTimelineIssues,
+  DEFAULT_SETTINGS,
+  resolveBrandKit,
+  timelineDurationMs,
+} from '@boom-busters/schemas'
 import { describe, expect, it } from 'vitest'
 import {
   CHAPTER_CARD_MS,
@@ -403,6 +408,48 @@ describe('resolveMotion', () => {
       claimIds: ['01HQ00000000000000000000A1'],
     })
     expect(compiled.motion).toEqual({ kind: 'static' })
+  })
+
+  it('compiles a social post to a payload that parses, with its own static motion', () => {
+    const timeline = compileTimeline({
+      ...goldenInput(),
+      slots: [
+        {
+          type: 'social',
+          startMs: 0,
+          durationMs: 6000,
+          transition: 'cut',
+          motion: { kind: 'kenburns', direction: 'in', speed: 'medium' },
+          social: {
+            platform: 'x',
+            authorName: 'Emad',
+            handle: 'EMostaque',
+            text: 'As my notifications are RIP some notes',
+            cutBefore: false,
+            cutAfter: true,
+            postedAt: '2024-03-23',
+            initials: 'E',
+            avatar: { r2Key: 'boom-busters/cast/p1/avatar.png' },
+            media: { r2Key: 'boom-busters/social/p1/media.png' },
+            sourceLabel: 'x.com/EMostaque/status/1771400218170519741',
+            sourceUrl: 'https://x.com/EMostaque/status/1771400218170519741',
+            claimId: CLAIM,
+          },
+        },
+      ],
+    })
+
+    const slot = timeline.slots[0]
+    expect(slot?.type).toBe('social')
+    expect(slot?.motion).toEqual({ kind: 'static' })
+    expect(slot?.payload).toMatchObject({
+      kind: 'social',
+      handle: 'EMostaque',
+      avatar: { r2Key: 'boom-busters/cast/p1/avatar.png' },
+      media: { r2Key: 'boom-busters/social/p1/media.png' },
+      claimId: CLAIM,
+    })
+    expect(canonicalTimelineIssues(timeline)).toEqual([])
   })
 
   it('lets a draw-on chart reveal own the slot motion', () => {

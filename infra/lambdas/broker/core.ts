@@ -181,6 +181,17 @@ export async function materialiseTimeline(
         else if (ref.externalUrl !== undefined) ref.url = ref.externalUrl
       }
     }
+    if (slot.payload.kind === 'social') {
+      const { avatar, media } = slot.payload
+      if (avatar) {
+        if (avatar.r2Key !== undefined) avatar.url = await presign(avatar.r2Key)
+        else if (avatar.externalUrl !== undefined) avatar.url = avatar.externalUrl
+      }
+      if (media) {
+        if (media.r2Key !== undefined) media.url = await presign(media.r2Key)
+        else if (media.externalUrl !== undefined) media.url = media.externalUrl
+      }
+    }
   }
   return copy
 }

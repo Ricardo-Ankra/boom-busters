@@ -170,6 +170,85 @@ describe('materialiseForPreview', () => {
     expect(dropped.dropped.slots).toBeGreaterThanOrEqual(1)
   })
 
+  it("presigns a social post's avatar and media, and leaves an externalUrl as it is", async () => {
+    const timeline = structuredClone(canonical())
+    timeline.slots.push({
+      type: 'social',
+      startMs: 0,
+      durationMs: 6000,
+      transition: 'cut',
+      motion: { kind: 'static' },
+      payload: {
+        kind: 'social',
+        platform: 'x',
+        authorName: 'Emad',
+        handle: 'EMostaque',
+        text: 'As my notifications are RIP some notes',
+        cutBefore: false,
+        cutAfter: true,
+        postedAt: '2024-03-23',
+        initials: 'E',
+        avatar: { r2Key: 'boom-busters/cast/p1/avatar.png' },
+        media: { externalUrl: 'https://cdn.example.com/attached.png' },
+        sourceLabel: 'x.com/EMostaque/status/1',
+        sourceUrl: 'https://x.com/EMostaque/status/1',
+        claimId: '01HQ00000000000000000000A1',
+      },
+    })
+
+    const resolved = await materialiseForPreview(timeline, {
+      origin: ORIGIN,
+      presign: (key) => Promise.resolve(`https://r2.example.com/${key}`),
+    })
+    const social = resolved.timeline.slots.find((slot) => slot.payload.kind === 'social')
+    expect(social && social.payload.kind === 'social' ? social.payload.avatar?.url : null).toBe(
+      'https://r2.example.com/boom-busters/cast/p1/avatar.png',
+    )
+    expect(social && social.payload.kind === 'social' ? social.payload.media?.url : null).toBe(
+      'https://cdn.example.com/attached.png',
+    )
+    expect(resolved.dropped).toEqual({ narration: 0, slots: 0, music: false })
+  })
+
+  it('drops only the avatar it cannot resolve, keeping the card on its words', async () => {
+    // Only the external-URL stock slot from `canonical()`; its "still" slot
+    // carries a real r2Key that would itself drop with no presign, muddying
+    // the count this test is about.
+    const timeline = canonical({ slots: [canonical().slots[0]!] })
+    timeline.slots.push({
+      type: 'social',
+      startMs: 0,
+      durationMs: 6000,
+      transition: 'cut',
+      motion: { kind: 'static' },
+      payload: {
+        kind: 'social',
+        platform: 'x',
+        authorName: 'Emad',
+        handle: 'EMostaque',
+        text: 'As my notifications are RIP some notes',
+        cutBefore: false,
+        cutAfter: true,
+        postedAt: '2024-03-23',
+        initials: 'E',
+        avatar: { r2Key: 'boom-busters/cast/p1/avatar.png' },
+        sourceLabel: 'x.com/EMostaque/status/1',
+        sourceUrl: 'https://x.com/EMostaque/status/1',
+        claimId: '01HQ00000000000000000000A1',
+      },
+    })
+
+    // R2 not configured: the avatar cannot resolve, but the post's own words
+    // still preview fine on initials.
+    const resolved = await materialiseForPreview(timeline, { origin: ORIGIN, presign: null })
+    const social = resolved.timeline.slots.find((slot) => slot.payload.kind === 'social')
+    expect(social).toBeDefined()
+    expect(social && social.payload.kind === 'social' ? social.payload.avatar : 'missing').toBe(
+      undefined,
+    )
+    expect(resolved.dropped).toEqual({ narration: 0, slots: 0, music: false })
+  })
+
   it('never mutates the canonical timeline', async () => {
     const original = canonical()
     const before = JSON.stringify(original)

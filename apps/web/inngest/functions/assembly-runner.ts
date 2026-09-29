@@ -2,8 +2,10 @@ import {
   getAsset,
   getProject,
   getSettings,
+  getSocialPosts,
   insertTimeline,
   latestScriptParagraphSources,
+  listCastMembers,
   listMusicBeds,
   listShotSlots,
   listVoiceTakes,
@@ -13,6 +15,7 @@ import {
 } from '@boom-busters/db'
 import type { AssetRow } from '@boom-busters/db'
 import { mockProvidersEnabled } from '@boom-busters/providers'
+import { referencePhotos } from '@boom-busters/schemas'
 import {
   newId,
   parseEventData,
@@ -23,8 +26,8 @@ import {
   TranscribeResultSchema,
   ValidationError,
 } from '@boom-busters/schemas'
-import type { ArticleMetadata, WordTiming } from '@boom-busters/schemas'
-import { compileTimeline } from '@boom-busters/timeline'
+import type { ArticleMetadata, SocialPostRecord, WordTiming } from '@boom-busters/schemas'
+import { compileTimeline, MASTER_HEIGHT, MASTER_WIDTH } from '@boom-busters/timeline'
 import { NonRetriableError } from 'inngest'
 import { articleForClaim } from '@/lib/article-source'
 import { db } from '@/lib/db'
@@ -285,12 +288,54 @@ export const assemblyRunner = inngest.createFunction(
         }
       }
 
+      // Everything a social slot needs (decision 284): the posts it quotes by
+      // address, the owner's uploaded avatar/media by asset id, and the cast
+      // photo standing in for an avatar nobody uploaded, by lower-case handle.
+      const socialPostUrls = new Set<string>()
+      const socialAssetIds = new Set<string>()
+      for (const row of slotsWithBytes) {
+        const brief = ShotBriefSchema.safeParse(row.brief)
+        if (!brief.success || brief.data.type !== 'social') continue
+        socialPostUrls.add(brief.data.postUrl)
+        if (brief.data.avatarAssetId) socialAssetIds.add(brief.data.avatarAssetId)
+        if (brief.data.mediaAssetId) socialAssetIds.add(brief.data.mediaAssetId)
+      }
+
+      const socialPosts = new Map<string, SocialPostRecord>()
+      if (socialPostUrls.size > 0) {
+        for (const post of await getSocialPosts(db, [...socialPostUrls])) {
+          socialPosts.set(post.url, post)
+        }
+      }
+
+      const socialImages = new Map<string, { r2Key: string }>()
+      for (const assetId of socialAssetIds) {
+        const asset = await getAsset(db, assetId)
+        if (asset) socialImages.set(assetId, { r2Key: asset.r2Key })
+      }
+
+      const castAvatars = new Map<string, { r2Key: string }>()
+      if (socialPostUrls.size > 0) {
+        for (const member of await listCastMembers(db, projectId)) {
+          if (!member.xHandle) continue
+          const photo = referencePhotos(member, 1)[0]
+          if (photo) castAvatars.set(member.xHandle, { r2Key: photo.r2Key })
+        }
+      }
+
       const plan = slotPlan({
         slots: slotsWithBytes,
         assetsById: new Map(setup.assets),
         unusable,
         articles,
         logos,
+        social: {
+          posts: socialPosts,
+          images: socialImages,
+          castAvatars,
+          brand: setup.brand,
+          frame: { width: MASTER_WIDTH, height: MASTER_HEIGHT },
+        },
       })
 
       try {

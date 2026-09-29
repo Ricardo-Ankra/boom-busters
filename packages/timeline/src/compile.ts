@@ -13,6 +13,7 @@ import type {
   MapBrief,
   MotionSpec,
   NarrationSegment,
+  SocialPayload,
   Timeline,
   TimelineMotion,
   TimelineSlot,
@@ -46,7 +47,8 @@ export interface CompileParagraph {
 
 /** What the board resolved a visual slot to, ready to render. */
 export interface CompileSlot {
-  type: 'stock' | 'archival' | 'still' | 'upload' | 'chart' | 'map' | 'headline' | 'graphic'
+  type:
+    'stock' | 'archival' | 'still' | 'upload' | 'chart' | 'map' | 'headline' | 'graphic' | 'social'
   startMs: number
   durationMs: number
   /**
@@ -87,6 +89,12 @@ export interface CompileSlot {
     logos: Record<string, { r2Key: string; width: number; height: number }>
     claimIds: string[]
   }
+  /**
+   * A real X post, embedded whole with its avatar and attached image already
+   * resolved to storage keys (decision 284). Mirrors the headline card: the
+   * card shows nothing a render six months from now could lose.
+   */
+  social?: Omit<SocialPayload, 'kind'>
 }
 
 export interface CompileInput {
@@ -118,6 +126,7 @@ export function resolveMotion(motion: MotionSpec, slot: CompileSlot): TimelineMo
   if (slot.chart) return { kind: slot.chart.reveal === 'draw-on' ? 'draw-on' : 'static' }
   if (slot.map) return { kind: 'static' } // AnimatedMap animates internally.
   if (slot.graphic) return { kind: 'static' }
+  if (slot.social) return { kind: 'static' } // SocialPostCard animates its own settle, sweep and drift.
   switch (motion.kind) {
     case 'static':
       return { kind: 'static' }
@@ -264,6 +273,9 @@ export function compileTimeline(input: CompileInput): Timeline {
     }
     if (slot.graphic) {
       return { ...base, payload: { kind: 'graphic' as const, ...slot.graphic } }
+    }
+    if (slot.social) {
+      return { ...base, payload: { kind: 'social' as const, ...slot.social } }
     }
     if (!slot.media) {
       throw new ValidationError(

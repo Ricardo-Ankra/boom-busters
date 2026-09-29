@@ -561,6 +561,50 @@ describe('materialiseTimeline', () => {
         : undefined,
     ).toBeUndefined()
   })
+
+  it("presigns a social post's avatar and media, leaves an externalUrl as it is, and never mutates the original", async () => {
+    const original = canonicalTimeline()
+    original.slots.push({
+      type: 'social',
+      startMs: 8000,
+      durationMs: 6000,
+      transition: 'cut',
+      motion: { kind: 'static' },
+      payload: {
+        kind: 'social',
+        platform: 'x',
+        authorName: 'Emad',
+        handle: 'EMostaque',
+        text: 'As my notifications are RIP some notes',
+        cutBefore: false,
+        cutAfter: true,
+        postedAt: '2024-03-23',
+        initials: 'E',
+        avatar: { r2Key: 'boom-busters/cast/p1/avatar.png' },
+        media: { externalUrl: 'https://cdn.example.com/attached.png' },
+        sourceLabel: 'x.com/EMostaque/status/1',
+        sourceUrl: 'https://x.com/EMostaque/status/1',
+        claimId: '01HQ00000000000000000000A1',
+      },
+    })
+    const copy = await materialiseTimeline(original, (key) =>
+      Promise.resolve(`https://signed/${key}`),
+    )
+    const social = copy.slots.find((slot) => slot.payload.kind === 'social')
+    expect(social && social.payload.kind === 'social' ? social.payload.avatar?.url : null).toBe(
+      'https://signed/boom-busters/cast/p1/avatar.png',
+    )
+    expect(social && social.payload.kind === 'social' ? social.payload.media?.url : null).toBe(
+      'https://cdn.example.com/attached.png',
+    )
+
+    const originalSocial = original.slots.find((slot) => slot.payload.kind === 'social')
+    expect(
+      originalSocial && originalSocial.payload.kind === 'social'
+        ? originalSocial.payload.avatar?.url
+        : undefined,
+    ).toBeUndefined()
+  })
 })
 
 describe('estimateRenderCostUsd', () => {

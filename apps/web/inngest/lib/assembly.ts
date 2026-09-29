@@ -1,3 +1,4 @@
+import { buildSocialPayload, socialSlotIssues } from '@boom-busters/compositions/social'
 import {
   articleIsRenderable,
   articleSourceLabel,
@@ -6,7 +7,13 @@ import {
   ShotBriefSchema,
   splitParagraphs,
 } from '@boom-busters/schemas'
-import type { ArticleMetadata, Caption, WordTiming } from '@boom-busters/schemas'
+import type {
+  ArticleMetadata,
+  BrandKitTokens,
+  Caption,
+  SocialPostRecord,
+  WordTiming,
+} from '@boom-busters/schemas'
 import type { VoiceTakeRow } from '@boom-busters/db'
 import { offsetCaptions, snapToScript } from '@boom-busters/timeline'
 import type { CompileParagraph, CompileSlot, SnapGap } from '@boom-busters/timeline'
@@ -217,6 +224,19 @@ export function slotPlan(input: {
    * same way the compositions and the compiler expect.
    */
   logos?: ReadonlyMap<string, { r2Key: string; width: number; height: number }>
+  /**
+   * Everything a social slot needs to compile (decision 284), read once by
+   * the runner beside the articles and logos above. Absent when a caller has
+   * not wired the social card's assembly path up yet, and then every social
+   * brief skips with the placeholder reason it always had.
+   */
+  social?: {
+    posts: ReadonlyMap<string, SocialPostRecord>
+    images: ReadonlyMap<string, { r2Key: string }>
+    castAvatars: ReadonlyMap<string, { r2Key: string }>
+    brand: BrandKitTokens
+    frame: { width: number; height: number }
+  }
 }): SlotPlan {
   const slots: CompileSlot[] = []
   const skipped: SlotPlan['skipped'] = []
@@ -351,10 +371,54 @@ export function slotPlan(input: {
     }
 
     if (brief.type === 'social') {
-      // Assembly for the social card lands in a later task; until then it is
-      // a skip with a reason, the same inert choice hero takes while its
-      // adapter does not exist yet, never a throw.
-      skipped.push({ slotId: row.id, reason: 'social card assembly is not built yet' })
+      const social = input.social
+      if (!social) {
+        // No caller has wired the social inputs up yet, the same inert skip
+        // hero takes while its adapter does not exist, never a throw.
+        skipped.push({ slotId: row.id, reason: 'social card assembly is not built yet' })
+        continue
+      }
+
+      const post = social.posts.get(brief.postUrl) ?? null
+      // The avatar order (spec section 8.4): an uploaded picture first, else
+      // the cast member whose x_handle matches the post's handle, else none,
+      // and then the card falls back to initials. Never matched by name.
+      const avatar =
+        (brief.avatarAssetId ? social.images.get(brief.avatarAssetId) : undefined) ??
+        (post?.handle ? social.castAvatars.get(post.handle.toLowerCase()) : undefined)
+      const media = brief.mediaAssetId ? social.images.get(brief.mediaAssetId) : undefined
+
+      const payload = post
+        ? buildSocialPayload({
+            post,
+            ...(brief.excerpt !== undefined ? { excerpt: brief.excerpt } : {}),
+            ...(brief.emphasis !== undefined ? { emphasis: brief.emphasis } : {}),
+            ...(avatar ? { avatar } : {}),
+            ...(media ? { media } : {}),
+            claimId: brief.sourceClaimId,
+            frame: social.frame,
+            brand: social.brand,
+          })
+        : null
+
+      if (!payload) {
+        const issues = socialSlotIssues({
+          post,
+          ...(brief.excerpt !== undefined ? { excerpt: brief.excerpt } : {}),
+          ...(brief.emphasis !== undefined ? { emphasis: brief.emphasis } : {}),
+          hasMedia: media !== undefined,
+          frame: social.frame,
+          brand: social.brand,
+        })
+        skipped.push({
+          slotId: row.id,
+          reason: issues[0] ?? 'social card assembly is not built yet',
+        })
+        continue
+      }
+
+      const { kind: _kind, ...socialPayload } = payload
+      slots.push({ ...base, type: 'social', social: socialPayload })
       continue
     }
 

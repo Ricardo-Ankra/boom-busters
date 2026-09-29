@@ -84,15 +84,44 @@ export async function materialiseForPreview(
   for (const slot of timeline.slots) {
     // Drawn cards carry their own content: a chart's series, a map's
     // coordinates, a headline's five strings. There are no bytes to resolve.
-    // A social payload's avatar/media resolve from Task 9 onward; until then
-    // it passes through untouched, same as these (decision 284).
     if (
       slot.payload.kind === 'chart' ||
       slot.payload.kind === 'map' ||
-      slot.payload.kind === 'headline' ||
-      slot.payload.kind === 'social'
+      slot.payload.kind === 'headline'
     ) {
       slots.push(slot)
+      continue
+    }
+    if (slot.payload.kind === 'social') {
+      // Avatar and attached image are both optional decorations (decision
+      // 284): the card still reads fine on initials with no image, so an
+      // unresolvable one is dropped on its own rather than sinking the whole
+      // slot, unlike a graphic's logos, which the scene cannot draw without.
+      const { avatar, media, ...rest } = slot.payload
+      const avatarUrl =
+        avatar === undefined
+          ? null
+          : avatar.r2Key !== undefined
+            ? await resolveKey(avatar.r2Key, deps)
+            : (avatar.externalUrl ?? null)
+      const mediaUrl =
+        media === undefined
+          ? null
+          : media.r2Key !== undefined
+            ? await resolveKey(media.r2Key, deps)
+            : (media.externalUrl ?? null)
+      slots.push({
+        ...slot,
+        payload: {
+          ...rest,
+          ...(avatar !== undefined && avatarUrl !== null
+            ? { avatar: { ...avatar, url: avatarUrl } }
+            : {}),
+          ...(media !== undefined && mediaUrl !== null
+            ? { media: { ...media, url: mediaUrl } }
+            : {}),
+        },
+      })
       continue
     }
     if (slot.payload.kind === 'graphic') {

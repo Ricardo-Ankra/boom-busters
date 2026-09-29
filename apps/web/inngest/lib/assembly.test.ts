@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { VoiceTakeRow } from '@boom-busters/db'
+import { SOCIAL_EXCERPT_NOT_VERBATIM } from '@boom-busters/compositions/social'
+import { DEFAULT_SETTINGS, resolveBrandKit } from '@boom-busters/schemas'
 import {
   assembleCaptions,
   evenlySpacedWords,
@@ -540,6 +542,197 @@ describe('slotPlan', () => {
       expect(Object.keys(logos ?? {})).toEqual(['l1', 'l2'])
       expect(logos?.['l1']?.r2Key).toBe('boom-busters/logos/abc.png')
       expect(logos?.['l2']?.r2Key).toBe('boom-busters/logos/abc.png')
+    })
+  })
+
+  describe('social slots (decision 284)', () => {
+    const CLAIM_S = '01HQ00000000000000000000S1'
+    const AVATAR_ASSET = '01HQ00000000000000000000AV'
+    const MEDIA_ASSET = '01HQ00000000000000000000MD'
+    const POST_URL = 'https://x.com/i/status/1771400218170519741'
+    const BRAND = resolveBrandKit(DEFAULT_SETTINGS)
+    const FRAME = { width: 1920, height: 1080 }
+
+    function socialBrief(overrides: Record<string, unknown> = {}) {
+      return {
+        type: 'social',
+        coversText: 'covers',
+        description: 'desc',
+        motion: { kind: 'static' },
+        transition: 'cut',
+        sourceClaimId: CLAIM_S,
+        postUrl: POST_URL,
+        ...overrides,
+      }
+    }
+
+    function post(overrides: Record<string, unknown> = {}) {
+      return {
+        url: POST_URL,
+        platform: 'x' as const,
+        postId: '1771400218170519741',
+        handle: 'EMostaque',
+        authorName: 'Emad',
+        text: 'As my notifications are RIP some notes',
+        postedAt: '2024-03-23',
+        endedWithMediaLink: false,
+        provenance: {},
+        status: 'fetched' as const,
+        failureReason: null,
+        ...overrides,
+      }
+    }
+
+    function socialRow(overrides: Partial<AssemblySlotRow> = {}) {
+      return slotRow({
+        type: 'social',
+        brief: socialBrief() as unknown as Record<string, unknown>,
+        candidates: [],
+        ...overrides,
+      })
+    }
+
+    it('compiles a ready post to a payload, avatar and media absent when nothing resolves them', () => {
+      const plan = slotPlan({
+        slots: [socialRow()],
+        assetsById: new Map(),
+        social: {
+          posts: new Map([[POST_URL, post()]]),
+          images: new Map(),
+          castAvatars: new Map(),
+          brand: BRAND,
+          frame: FRAME,
+        },
+      })
+      expect(plan.skipped).toEqual([])
+      expect(plan.slots[0]).toMatchObject({
+        type: 'social',
+        social: {
+          platform: 'x',
+          handle: 'EMostaque',
+          text: 'As my notifications are RIP some notes',
+          claimId: CLAIM_S,
+        },
+      })
+      expect(plan.slots[0]?.social?.avatar).toBeUndefined()
+      expect(plan.slots[0]?.social?.media).toBeUndefined()
+    })
+
+    it('prefers the uploaded avatar over the cast photo', () => {
+      const plan = slotPlan({
+        slots: [
+          socialRow({
+            brief: socialBrief({ avatarAssetId: AVATAR_ASSET }) as unknown as Record<
+              string,
+              unknown
+            >,
+          }),
+        ],
+        assetsById: new Map(),
+        social: {
+          posts: new Map([[POST_URL, post()]]),
+          images: new Map([[AVATAR_ASSET, { r2Key: 'boom-busters/uploads/avatar.png' }]]),
+          castAvatars: new Map([['emostaque', { r2Key: 'boom-busters/cast/p1/photo.png' }]]),
+          brand: BRAND,
+          frame: FRAME,
+        },
+      })
+      expect(plan.slots[0]?.social?.avatar).toEqual({ r2Key: 'boom-busters/uploads/avatar.png' })
+    })
+
+    it('falls back to the cast photo by lower-cased handle when nothing was uploaded', () => {
+      const plan = slotPlan({
+        slots: [socialRow()],
+        assetsById: new Map(),
+        social: {
+          posts: new Map([[POST_URL, post()]]),
+          images: new Map(),
+          castAvatars: new Map([['emostaque', { r2Key: 'boom-busters/cast/p1/photo.png' }]]),
+          brand: BRAND,
+          frame: FRAME,
+        },
+      })
+      expect(plan.slots[0]?.social?.avatar).toEqual({ r2Key: 'boom-busters/cast/p1/photo.png' })
+    })
+
+    it('leaves the avatar out when neither an upload nor a cast handle match', () => {
+      const plan = slotPlan({
+        slots: [socialRow()],
+        assetsById: new Map(),
+        social: {
+          posts: new Map([[POST_URL, post()]]),
+          images: new Map(),
+          castAvatars: new Map([['someoneelse', { r2Key: 'boom-busters/cast/p1/photo.png' }]]),
+          brand: BRAND,
+          frame: FRAME,
+        },
+      })
+      expect(plan.slots[0]?.social?.avatar).toBeUndefined()
+    })
+
+    it('carries the attached image by asset id', () => {
+      const plan = slotPlan({
+        slots: [
+          socialRow({
+            brief: socialBrief({ mediaAssetId: MEDIA_ASSET }) as unknown as Record<string, unknown>,
+          }),
+        ],
+        assetsById: new Map(),
+        social: {
+          posts: new Map([[POST_URL, post()]]),
+          images: new Map([[MEDIA_ASSET, { r2Key: 'boom-busters/uploads/media.png' }]]),
+          castAvatars: new Map(),
+          brand: BRAND,
+          frame: FRAME,
+        },
+      })
+      expect(plan.slots[0]?.social?.media).toEqual({ r2Key: 'boom-busters/uploads/media.png' })
+    })
+
+    it('skips a slot whose post is missing its date, in the missing-fields sentence', () => {
+      const plan = slotPlan({
+        slots: [socialRow()],
+        assetsById: new Map(),
+        social: {
+          posts: new Map([[POST_URL, post({ postedAt: null })]]),
+          images: new Map(),
+          castAvatars: new Map(),
+          brand: BRAND,
+          frame: FRAME,
+        },
+      })
+      expect(plan.slots).toEqual([])
+      expect(plan.skipped[0]?.reason).toBe(
+        'A post card needs the name, the handle, the text and the date. Missing: the date.',
+      )
+    })
+
+    it('skips with the placeholder reason when the runner has no social input at all', () => {
+      const plan = slotPlan({ slots: [socialRow()], assetsById: new Map() })
+      expect(plan.slots).toEqual([])
+      expect(plan.skipped[0]?.reason).toBe('social card assembly is not built yet')
+    })
+
+    it('skips a post whose excerpt no longer sits word for word in the text (Review Focus 5)', () => {
+      const plan = slotPlan({
+        slots: [
+          socialRow({
+            brief: socialBrief({
+              excerpt: 'a phrase that is no longer in the post',
+            }) as unknown as Record<string, unknown>,
+          }),
+        ],
+        assetsById: new Map(),
+        social: {
+          posts: new Map([[POST_URL, post()]]),
+          images: new Map(),
+          castAvatars: new Map(),
+          brand: BRAND,
+          frame: FRAME,
+        },
+      })
+      expect(plan.slots).toEqual([])
+      expect(plan.skipped[0]?.reason).toBe(SOCIAL_EXCERPT_NOT_VERBATIM)
     })
   })
 })
