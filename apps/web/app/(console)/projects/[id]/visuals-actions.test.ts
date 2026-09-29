@@ -1147,7 +1147,7 @@ describeDb('editing a social post card (decision 284)', () => {
     )
   })
 
-  it('resolves the slot once a re-read succeeds', async () => {
+  it('re-fetches through the board’s own resolve path on a successful re-read', async () => {
     socialSource.refetchPost.mockResolvedValueOnce({
       url: POST_URL,
       platform: 'x',
@@ -1163,14 +1163,49 @@ describeDb('editing a social post card (decision 284)', () => {
     })
 
     expect(await refetchSocialPostAction(FIXTURE_PROJECT_ID, slotId)).toEqual({ ok: true })
-    expect((await getShotSlot(db, slotId))?.status).toBe('resolved')
+    expect(inngest.send.mock.calls[0]?.[0]).toMatchObject({
+      name: 'visuals/refetch.requested',
+      data: { projectId: FIXTURE_PROJECT_ID, slotId, note: 'Post re-read' },
+    })
   })
 
-  it('removes the avatar image without touching anything else on the brief', async () => {
+  // The old bug: `postIsRenderable` only checks for missing fields, so a
+  // "Read again" on a post too long for the card, with no excerpt, used to
+  // stamp the slot resolved on the strength of those fields alone. The fix
+  // hands readiness entirely to the board's own resolve path instead, so no
+  // status is written here at all.
+  it('does not mark a too-long, excerpt-less post resolved on the strength of its fields alone', async () => {
+    const tooLong = 'A long word. '.repeat(200).trim()
+    socialSource.refetchPost.mockResolvedValueOnce({
+      url: POST_URL,
+      platform: 'x',
+      postId: '1740000000000000001',
+      handle: 'EMostaque',
+      authorName: 'Emad Mostaque',
+      text: tooLong,
+      postedAt: '2024-01-01',
+      endedWithMediaLink: false,
+      provenance: { authorName: 'oembed', handle: 'oembed', text: 'oembed', postedAt: 'oembed' },
+      status: 'fetched',
+      failureReason: null,
+    })
+
+    expect(await refetchSocialPostAction(FIXTURE_PROJECT_ID, slotId)).toEqual({ ok: true })
+    expect((await getShotSlot(db, slotId))?.status).not.toBe('resolved')
+  })
+
+  it('removes the avatar image without touching anything else on the brief, re-resolving both the upload and the removal', async () => {
     await finaliseUpload(slotId, 'social-avatar')
     expect(
       ((await getShotSlot(db, slotId))!.brief as { avatarAssetId?: string }).avatarAssetId,
     ).toBeDefined()
+    // The uploaded image changes the room left for the post's text, so the
+    // slot is judged again rather than left at whatever it said before.
+    expect(inngest.send.mock.calls[0]?.[0]).toMatchObject({
+      name: 'visuals/refetch.requested',
+      data: { projectId: FIXTURE_PROJECT_ID, slotId, note: 'Post image uploaded' },
+    })
+    inngest.send.mockClear()
 
     expect(await removeSocialImageAction(FIXTURE_PROJECT_ID, slotId, 'avatar')).toEqual({
       ok: true,
@@ -1178,6 +1213,11 @@ describeDb('editing a social post card (decision 284)', () => {
     const row = (await getShotSlot(db, slotId))!
     expect((row.brief as { avatarAssetId?: string }).avatarAssetId).toBeUndefined()
     expect((row.brief as { postUrl: string }).postUrl).toBe(POST_URL)
+    // Removing it is the same kind of change, the other way.
+    expect(inngest.send.mock.calls[0]?.[0]).toMatchObject({
+      name: 'visuals/refetch.requested',
+      data: { projectId: FIXTURE_PROJECT_ID, slotId, note: 'Post image removed' },
+    })
   })
 
   async function finaliseUpload(

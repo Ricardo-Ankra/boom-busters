@@ -45,7 +45,6 @@ import {
   normalisePostUrl,
   NOT_A_POST_ERROR,
   phraseIn,
-  postIsRenderable,
   REUSABLE_SLOT_TYPES,
   SetCameraSchema,
   ShotBriefSchema,
@@ -1135,9 +1134,8 @@ export async function refetchSocialPostAction(
   const source = await socialSource(slotId)
   if ('error' in source) return { ok: false, error: source.error }
 
-  let record: Awaited<ReturnType<typeof refetchPost>>
   try {
-    record = await refetchPost(source.url)
+    await refetchPost(source.url)
   } catch (error) {
     return {
       ok: false,
@@ -1145,18 +1143,17 @@ export async function refetchSocialPostAction(
     }
   }
 
-  await setSlotResolution(
-    db,
-    slotId,
-    postIsRenderable(record)
-      ? {
-          candidates: [],
-          status: 'resolved',
-          answered: { brief: source.slot.brief, route: source.slot.route },
-        }
-      : { candidates: [], status: 'placeholder' },
-  )
-
+  // Whether the post's fields exist is not the whole readiness question: an
+  // excerpt or highlight this newly read text no longer supports has to
+  // refuse too. That is the one rule `resolveSlotBrief` already applies, on
+  // the board's own re-resolve path, reading the row `refetchPost` just
+  // wrote rather than reaching X again.
+  const project = await getProject(db, projectId)
+  if (project?.visualsPhase === 'board') {
+    const sent = await sendRefetch(projectId, slotId, 'Post re-read')
+    refresh(projectId)
+    return sent
+  }
   refresh(projectId)
   return { ok: true }
 }
@@ -1253,6 +1250,16 @@ export async function removeSocialImageAction(
   else delete brief.mediaAssetId
 
   await updateSlotBrief(db, slotId, brief)
+
+  // Removing the attached image changes the room left for text, which can
+  // move a card between ready and "too long" either way, so the slot is
+  // judged again rather than left at whatever its old status said.
+  const project = await getProject(db, projectId)
+  if (project?.visualsPhase === 'board') {
+    const sent = await sendRefetch(projectId, slotId, 'Post image removed')
+    refresh(projectId)
+    return sent
+  }
   refresh(projectId)
   return { ok: true }
 }
@@ -1527,6 +1534,16 @@ export async function finaliseOwnUploadAction(input: {
     if (input.purpose === 'social-avatar') brief.avatarAssetId = asset.id
     else brief.mediaAssetId = asset.id
     await updateSlotBrief(db, input.slotId, brief)
+
+    // An attached image changes the room left for the post's text, so the
+    // slot is judged again rather than left resolved on the strength of the
+    // upload alone.
+    const project = await getProject(db, input.projectId)
+    if (project?.visualsPhase === 'board') {
+      const sent = await sendRefetch(input.projectId, input.slotId, 'Post image uploaded')
+      refresh(input.projectId)
+      return sent
+    }
     refresh(input.projectId)
     return { ok: true }
   }
