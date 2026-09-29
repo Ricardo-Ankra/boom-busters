@@ -6,6 +6,7 @@ import * as React from 'react'
 import { imageGenModel, LIVE_IMAGE_GEN_ADAPTERS } from '@boom-busters/providers'
 import {
   LOGO_ACCEPT,
+  missingArticleFields,
   REUSABLE_SLOT_TYPES,
   SHOT_SLOT_TYPES,
   STILL_PROVIDERS,
@@ -133,6 +134,9 @@ function HeadlineSlot({
   }
 
   const provenance = article.provenance as Record<string, string>
+  // What the card still needs, said whenever it cannot show (decision 280),
+  // not only when the headline itself is missing.
+  const missing = missingArticleFields(article)
 
   return (
     <div className="flex flex-col gap-2">
@@ -143,11 +147,13 @@ function HeadlineSlot({
         colors={colors}
       />
 
-      {article.headline === null ? (
+      {missing.length > 0 ? (
         <p className="text-[13px] text-[var(--color-warning)]">
-          {article.failureReason ?? 'The article did not say.'} Open it and fill these in.
+          {article.failureReason ?? 'The article did not say.'} This card stays a placeholder until
+          it has {missing.join(', ')}. Open it and fill these in.
         </p>
-      ) : (
+      ) : null}
+      {article.headline === null ? null : (
         <ul className="flex flex-wrap gap-1" aria-label="Where each field came from">
           {(['outlet', 'headline', 'author', 'publishedAt'] as const).map((field) =>
             provenance[field] === undefined ? null : (
@@ -164,7 +170,7 @@ function HeadlineSlot({
 
       <div className="flex flex-wrap gap-2">
         <Button type="button" variant="outline" onClick={() => setEditing((open) => !open)}>
-          {editing ? 'Close' : article.headline === null ? 'Fill these in' : 'Correct the details'}
+          {editing ? 'Close' : missing.length > 0 ? 'Fill these in' : 'Correct the details'}
         </Button>
         <Button
           type="button"

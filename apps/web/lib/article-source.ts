@@ -2,7 +2,12 @@ import 'server-only'
 
 import { getArticleSource, getClaim, recordArticleSource } from '@boom-busters/db'
 import type { ArticleSourceRow } from '@boom-busters/db'
-import { ArticleMetadataSchema, normaliseArticleUrl } from '@boom-busters/schemas'
+import {
+  ArticleMetadataSchema,
+  FRONT_PAGE_REASON,
+  isFrontPage,
+  normaliseArticleUrl,
+} from '@boom-busters/schemas'
 import type { ArticleMetadata } from '@boom-busters/schemas'
 import { articleProvider } from '@boom-busters/providers'
 import { db } from '@/lib/db'
@@ -37,6 +42,9 @@ export function articleFromRow(row: ArticleSourceRow): ArticleMetadata {
 
 /** Read the page and store what it said, or store why it would not say. */
 async function fetchAndStore(url: string): Promise<ArticleMetadata> {
+  // A front page has no headline to read (decision 280): its title is the
+  // site's tagline, which a card would quote as if an outlet had published it.
+  if (isFrontPage(url)) return storeFailure(url, FRONT_PAGE_REASON)
   try {
     const found = await articleProvider().fetchMetadata(url)
     return articleFromRow(
@@ -54,20 +62,24 @@ async function fetchAndStore(url: string): Promise<ArticleMetadata> {
     )
   } catch (error) {
     const reason = error instanceof Error ? error.message : 'The article could not be read'
-    return articleFromRow(
-      await recordArticleSource(db, {
-        url,
-        outlet: null,
-        headline: null,
-        author: null,
-        publishedAt: null,
-        description: null,
-        provenance: {},
-        status: 'failed',
-        failureReason: reason.slice(0, 400),
-      }),
-    )
+    return storeFailure(url, reason)
   }
+}
+
+async function storeFailure(url: string, reason: string): Promise<ArticleMetadata> {
+  return articleFromRow(
+    await recordArticleSource(db, {
+      url,
+      outlet: null,
+      headline: null,
+      author: null,
+      publishedAt: null,
+      description: null,
+      provenance: {},
+      status: 'failed',
+      failureReason: reason.slice(0, 400),
+    }),
+  )
 }
 
 /**
@@ -86,7 +98,11 @@ export async function articleForClaim(claimId: string): Promise<ArticleMetadata 
   // A failed row is retried: a paywall is permanent, but a timeout is not, and
   // the difference is not worth storing. Re-fetching one page when a slot is
   // resolved again is cheap, and "Re-fetch" on the board is the same path.
-  if (stored && stored.status !== 'failed') return articleFromRow(stored)
+  // A front page read before decision 280 kept its tagline as a headline; it
+  // is answered again now, as the failure it always was.
+  if (stored && stored.status !== 'failed' && !(stored.status === 'fetched' && isFrontPage(url))) {
+    return articleFromRow(stored)
+  }
 
   return await fetchAndStore(url)
 }

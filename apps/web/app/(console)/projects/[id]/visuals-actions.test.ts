@@ -35,6 +35,7 @@ import {
   refetchSlotAction,
   retypeToHeadlineAction,
   reuseSlotShotAction,
+  saveHeadlineAction,
   setSlotRouteAction,
   showSetPhotoAction,
   unlinkSlotReuseAction,
@@ -781,6 +782,30 @@ describeDb('Fetch visuals with or without a parked run (decision 279)', () => {
     expect(inngest.send.mock.calls[0]?.[0]).toMatchObject({
       name: 'visuals/fetch.resume',
       data: { projectId: FIXTURE_PROJECT_ID },
+    })
+  })
+})
+
+// Decision 280: "Headline saved" on a card that stays a placeholder read as
+// the card being stuck for no reason, so an incomplete card is refused.
+describe('saving a headline card without its date', () => {
+  it('names what is missing and saves nothing', async () => {
+    const result = await saveHeadlineAction(
+      '01J0000000000000000000000A',
+      '01J000000000000000000000AA',
+      {
+        outlet: 'Semafor',
+        headline: 'Stability AI is running out of cash',
+        author: '',
+        publishedAt: '',
+        description: '',
+        emphasis: '',
+        showDeck: false,
+      },
+    )
+    expect(result).toEqual({
+      ok: false,
+      error: 'A headline card needs the publication, the headline and the date. Missing: the date.',
     })
   })
 })

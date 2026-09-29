@@ -31,6 +31,7 @@ import {
   emphasisFits,
   HERO_SLOTS_ENABLED,
   logoForEntity,
+  missingArticleFields,
   normaliseArticleUrl,
   REUSABLE_SLOT_TYPES,
   SetCameraSchema,
@@ -740,6 +741,19 @@ export async function saveHeadlineAction(
 
   if (fields.publishedAt !== '' && !/^\d{4}-\d{2}-\d{2}$/.test(fields.publishedAt)) {
     return { ok: false, error: 'The publication date must be written as YYYY-MM-DD.' }
+  }
+  // A card missing any of these stays a placeholder (decision 280): saving it
+  // with "Headline saved" left the producer looking at a card that never came.
+  const missing = missingArticleFields({
+    outlet: fields.outlet.trim() === '' ? null : fields.outlet,
+    headline: fields.headline.trim() === '' ? null : fields.headline,
+    publishedAt: fields.publishedAt === '' ? null : fields.publishedAt,
+  })
+  if (missing.length > 0) {
+    return {
+      ok: false,
+      error: `A headline card needs the publication, the headline and the date. Missing: ${missing.join(', ')}.`,
+    }
   }
   // The marker draws under words the card is showing, so a phrase that is not
   // in the headline is refused rather than silently dropped: the owner typed

@@ -113,6 +113,39 @@ describe('articleForClaim', () => {
   })
 })
 
+// Decision 280: a claim sourced to a site's front page has no headline to read.
+describe('a front page as a source', () => {
+  const FRONT = 'https://semafor.com'
+
+  it('is stored as a failure saying why, without opening the page', async () => {
+    dbHelpers.getClaim.mockResolvedValue({ id: 'claim-1', sourceUrl: 'https://www.semafor.com' })
+    const article = await articleForClaim('claim-1')
+    expect(provider.fetchMetadata).not.toHaveBeenCalled()
+    expect(article).toMatchObject({ status: 'failed', headline: null, publishedAt: null })
+    expect(article?.failureReason).toMatch(/front page, not an article/)
+  })
+
+  it('answers again a front page read before, whose tagline passed as a headline', async () => {
+    dbHelpers.getClaim.mockResolvedValue({ id: 'claim-1', sourceUrl: 'https://www.semafor.com' })
+    stored.rows.set(
+      FRONT,
+      row({ url: FRONT, headline: 'Semafor - An intelligent news platform', publishedAt: null }),
+    )
+    const article = await articleForClaim('claim-1')
+    expect(article?.headline).toBeNull()
+    expect(article?.status).toBe('failed')
+  })
+
+  it('keeps what the owner typed for a front page', async () => {
+    dbHelpers.getClaim.mockResolvedValue({ id: 'claim-1', sourceUrl: 'https://www.semafor.com' })
+    stored.rows.set(
+      FRONT,
+      row({ url: FRONT, status: 'manual', headline: 'Stability AI is running out of cash' }),
+    )
+    expect((await articleForClaim('claim-1'))?.headline).toBe('Stability AI is running out of cash')
+  })
+})
+
 describe('refetchArticle', () => {
   it('reads the page again', async () => {
     stored.rows.set(URL_KEY, row({ status: 'failed', headline: null }))

@@ -211,5 +211,39 @@ export function emphasisFits(headline: string, emphasis: string): boolean {
  * to invent a name. Outlet, headline and date are the claim the card makes.
  */
 export function articleIsRenderable(meta: ArticleMetadata): boolean {
-  return meta.outlet !== null && meta.headline !== null && meta.publishedAt !== null
+  return missingArticleFields(meta).length === 0
 }
+
+/**
+ * What a headline card still needs before it can show, in the words the
+ * card uses (decision 280): a placeholder that says why is one the producer
+ * can fix, and one that does not reads as a card stuck for no reason.
+ */
+export function missingArticleFields(
+  meta: Pick<ArticleMetadata, 'outlet' | 'headline' | 'publishedAt'>,
+): string[] {
+  return [
+    meta.outlet === null ? 'the publication' : null,
+    meta.headline === null ? 'the headline' : null,
+    meta.publishedAt === null ? 'the date' : null,
+  ].filter((field): field is string => field !== null)
+}
+
+/**
+ * Whether an address is a site's front page rather than an article (decision
+ * 280). A dossier claim sourced to "https://www.semafor.com" has no headline
+ * or date to read, and the page's own title ("Semafor - An intelligent,
+ * transparent global news platform...") is not a headline anyone published.
+ */
+export function isFrontPage(url: string): boolean {
+  try {
+    const parsed = new URL(url)
+    return (parsed.pathname === '' || parsed.pathname === '/') && parsed.search === ''
+  } catch {
+    return false
+  }
+}
+
+/** Why a front page is not read, said where the card asks for the facts. */
+export const FRONT_PAGE_REASON =
+  "This source is the site's front page, not an article, so it has no headline or date to read."

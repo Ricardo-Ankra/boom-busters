@@ -6262,3 +6262,23 @@ green.
      at the fetch pass, so the plan, the producer's choices and uploads are
      kept. Re-running the stage was not an option: it plans again and
      replaces every slot.
+
+280. **A headline card says what it lacks, and a front page is no article**
+     (2026-09-29, owner: the news headline at 9:02 stays a placeholder
+     whatever they do). Its claim is sourced to `https://www.semafor.com`, a
+     front page, so the fetch stored the site's tagline as the "headline"
+     and no date. `articleIsRenderable` needs outlet, headline and date, so
+     the card could never render, yet the card only warned when the headline
+     was missing, and Re-fetch and Fetch visuals read the same page again.
+     Fixes: `isFrontPage` stops a front page being read at all (stored as a
+     failure with the reason, and an older stored front page is answered
+     again the same way, unless the owner typed it); the card names what it
+     still needs (`missingArticleFields`) whenever it cannot show; and
+     saving the card without the publication, headline or date is refused
+     with what is missing, instead of "Headline saved" on a card that stays
+     a placeholder. Found on the way, not changed: article records are keyed
+     by URL, and this dossier's claims cite outlets' front pages, so every
+     claim from one outlet shares one record (three Bloomberg headline slots
+     show one headline, and the Reuters record holds a Getty statement).
+     Giving each claim its article's own address on the dossier screen
+     separates them.

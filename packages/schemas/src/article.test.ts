@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest'
 import {
   ArticleMetadataSchema,
   articleIsRenderable,
+  isFrontPage,
+  missingArticleFields,
   articleSourceLabel,
   emphasisFits,
   normaliseArticleUrl,
@@ -119,6 +121,27 @@ describe('emphasisFits', () => {
   it('refuses a paraphrase', () => {
     expect(emphasisFits('Auditors cannot find the money', 'could not find')).toBe(false)
     expect(emphasisFits('Auditors cannot find the money', '   ')).toBe(false)
+  })
+})
+
+// Decision 280: a placeholder says what it lacks, and a front page is no article.
+describe('missingArticleFields and isFrontPage', () => {
+  it('names each field a card still needs, in the words the card uses', () => {
+    expect(missingArticleFields(RECORD)).toEqual([])
+    expect(missingArticleFields({ ...RECORD, publishedAt: null })).toEqual(['the date'])
+    expect(missingArticleFields({ outlet: null, headline: null, publishedAt: null })).toEqual([
+      'the publication',
+      'the headline',
+      'the date',
+    ])
+  })
+
+  it('tells a front page from an article', () => {
+    expect(isFrontPage('https://semafor.com')).toBe(true)
+    expect(isFrontPage('https://semafor.com/')).toBe(true)
+    expect(isFrontPage('https://semafor.com/article/10/2023/stability-ai-cash')).toBe(false)
+    expect(isFrontPage('https://example.com/?p=123')).toBe(false)
+    expect(isFrontPage('not a url')).toBe(false)
   })
 })
 

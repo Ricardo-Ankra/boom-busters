@@ -1350,6 +1350,20 @@ describe('the headline card (decision 257)', () => {
     expect(screen.getByRole('button', { name: 'Fill these in' })).toBeTruthy()
   })
 
+  // Decision 280: a card with a headline but no date said nothing at all.
+  it('says what a placeholder card still needs, even when it has a headline', () => {
+    const undated: SlotView = {
+      ...headlineSlot,
+      status: 'placeholder',
+      article: { ...headlineSlot.article!, publishedAt: null },
+    }
+    render(
+      <VisualBoard projectId={PROJECT} model={model([undated])} colors={COLORS} brand={BRAND} />,
+    )
+    expect(screen.getByText(/stays a placeholder until it has the date/)).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Fill these in' })).toBeTruthy()
+  })
+
   it('saves a correction, the marker phrase and the standfirst together', async () => {
     const user = userEvent.setup()
     render(
