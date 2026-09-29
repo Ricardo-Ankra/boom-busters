@@ -3,14 +3,17 @@
 import { ImagePlus, Maximize2, Pause, Play, RefreshCw, Search } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import * as React from 'react'
+import { SOCIAL_EXCERPT_TOO_LONG, SOCIAL_TOO_LONG } from '@boom-busters/compositions/social'
 import { imageGenModel, LIVE_IMAGE_GEN_ADAPTERS } from '@boom-busters/providers'
 import {
   isFrontPage,
   LOGO_ACCEPT,
   missingArticleFields,
+  postPublicUrl,
   REUSABLE_SLOT_TYPES,
   SHOT_SLOT_TYPES,
   STILL_PROVIDERS,
+  suggestEmphasis,
 } from '@boom-busters/schemas'
 import type {
   BrandKitStored,
@@ -31,6 +34,7 @@ import { useToast } from '@/components/ui/toast'
 import { readImageSize, toUploadableImage, toUploadableLogo } from '@/lib/client-image'
 import type {
   ArticleClaimOption,
+  PostClaimOption,
   SlotReference,
   SlotView,
   VisualsReviewModel,
@@ -49,14 +53,21 @@ import {
   redirectSceneAction,
   refetchArticleAction,
   refetchSlotAction,
+  refetchSocialPostAction,
+  linkCastHandleAction,
+  removeSocialImageAction,
   repairPlanAction,
   reuseSlotShotAction,
   saveHeadlineAction,
+  saveSocialCardAction,
+  saveSocialPostAction,
   setHeadlineArticleAction,
+  setSocialPostAction,
   replanShotsAction,
   retypeSlotAction,
   rebriefSlotAction,
   retypeToHeadlineAction,
+  retypeToSocialAction,
   setSlotRouteAction,
   showSetPhotoAction,
   unlinkSlotReuseAction,
@@ -72,6 +83,7 @@ import {
   MapPreview,
   type BrandChartColors,
 } from './slot-previews'
+import { SocialPreview } from './social-preview'
 
 /**
  * The visual board (build spec section 11.3): a filmstrip synced to an audio
@@ -377,6 +389,650 @@ function HeadlineForm({
   )
 }
 
+/** A cast member as the post card's "one of the cast?" question offers them. */
+export interface CastOption {
+  id: string
+  name: string
+}
+
+/** The four fields a post card shows, in the card's words. */
+const POST_FIELD_LABELS = [
+  ['authorName', 'name'],
+  ['handle', 'handle'],
+  ['text', 'text'],
+  ['postedAt', 'date'],
+] as const
+
+/** Where one post field came from, so a typed correction never reads as X's own. */
+function postFieldSource(
+  post: NonNullable<NonNullable<SlotView['social']>['post']>,
+  field: (typeof POST_FIELD_LABELS)[number][0],
+): string {
+  if (post[field] === null) return 'missing'
+  const provenance = post.provenance[field]
+  if (provenance === 'manual') return 'typed by you'
+  if (provenance === 'oembed') return 'from X'
+  // Only the handle can be known with no reader answer: the address carried it.
+  return 'from the address'
+}
+
+const SOCIAL_FIELD_CLASS =
+  'rounded-[8px] border border-[var(--color-border-strong)] bg-[var(--color-background)] p-2 text-[13px] text-[var(--color-text-primary)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-accent)]'
+const SOCIAL_LABEL_CLASS = 'flex flex-col gap-1 text-[12px] text-[var(--color-text-secondary)]'
+
+/**
+ * The post card (decision 284, spec section 9): the render's own card at
+ * rest, where each of its four fields came from, and every correction as a
+ * labelled button on the card it affects.
+ *
+ * A post X would not give up is not an error here, it is the start of the
+ * manual path, so the card opens the address form (and the details form, for
+ * a failed read) by itself and says what it lacks in the resolution's words.
+ */
+function SocialSlot({
+  slot,
+  brief,
+  projectId,
+  act,
+  busy,
+  brand,
+  castMembers,
+}: {
+  slot: SlotView
+  brief: Extract<ShotBrief, { type: 'social' }>
+  projectId: string
+  act: (slotId: string, run: () => Promise<ActionResult>, success: string) => Promise<ActionResult>
+  busy: boolean
+  brand: BrandKitStored
+  castMembers: readonly CastOption[]
+}) {
+  const social = slot.social
+  const post = social?.post ?? null
+  // No readable post: the address is the first thing the card needs.
+  const unreadable = post === null || post.status === 'failed'
+  const [addressing, setAddressing] = React.useState(unreadable)
+  const [address, setAddress] = React.useState(unreadable ? '' : brief.postUrl)
+  // A failed read opens the details too (spec section 13): typing them is the way on.
+  const [editing, setEditing] = React.useState(post?.status === 'failed')
+
+  if (!social) {
+    return (
+      <p className="rounded-[8px] border border-[var(--color-border)] p-3 text-[13px] text-[var(--color-text-muted)]">
+        This post card has nothing to show yet. Fetch the slot to read the post.
+      </p>
+    )
+  }
+
+  const shown = brief.excerpt ?? post?.text ?? null
+  const attached = social.mediaUrl !== null || brief.mediaAssetId !== undefined
+  const offerExcerpt =
+    social.suggestedExcerpt !== null ||
+    brief.excerpt !== undefined ||
+    social.issues.includes(SOCIAL_TOO_LONG) ||
+    social.issues.includes(SOCIAL_EXCERPT_TOO_LONG)
+
+  return (
+    <div className="flex flex-col gap-2">
+      {social.payload ? <SocialPreview payload={social.payload} brand={brand} /> : null}
+
+      {post?.status === 'failed' && post.failureReason ? (
+        <p className="text-[13px] text-[var(--color-warning)]">
+          {post.failureReason} Paste the address of another post, or type what this one says.
+        </p>
+      ) : null}
+
+      {social.issues.length > 0 ? (
+        <ul
+          className="list-disc pl-5 text-[13px] text-[var(--color-warning)]"
+          aria-label="What this card still needs"
+        >
+          {social.issues.map((issue) => (
+            <li key={issue}>{issue}</li>
+          ))}
+        </ul>
+      ) : null}
+
+      {/* With no preview to read them from, the words as stored. */}
+      {!social.payload && post && (post.authorName || post.text) ? (
+        <blockquote
+          aria-label="The post as read"
+          className="flex flex-col gap-1 rounded-[8px] border border-[var(--color-border)] p-3 text-[13px] text-[var(--color-text-primary)]"
+        >
+          <span className="text-[12px] text-[var(--color-text-secondary)]">
+            {[post.authorName, post.handle ? `@${post.handle}` : null, post.postedAt]
+              .filter((part): part is string => part !== null)
+              .join(' · ')}
+          </span>
+          {post.text ? <span className="line-clamp-6 whitespace-pre-line">{post.text}</span> : null}
+        </blockquote>
+      ) : null}
+
+      {post ? (
+        <ul className="flex flex-wrap gap-1" aria-label="Where each field came from">
+          {POST_FIELD_LABELS.map(([field, label]) => (
+            <li
+              key={field}
+              className="rounded-full border border-[var(--color-border-strong)] px-2 py-0.5 text-[11px] text-[var(--color-text-secondary)]"
+            >
+              {label} · {postFieldSource(post, field)}
+            </li>
+          ))}
+        </ul>
+      ) : null}
+
+      <div className="flex flex-wrap gap-2">
+        <Button
+          type="button"
+          variant="outline"
+          aria-expanded={editing}
+          onClick={() => setEditing((open) => !open)}
+        >
+          {editing ? 'Close' : 'Edit details'}
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          aria-expanded={addressing}
+          onClick={() => setAddressing((open) => !open)}
+        >
+          {addressing ? 'Close' : "Set the post's address"}
+        </Button>
+        <Button
+          type="button"
+          variant="ghost"
+          busy={busy}
+          onClick={() =>
+            void act(slot.id, () => refetchSocialPostAction(projectId, slot.id), 'Post read again')
+          }
+        >
+          Read again
+        </Button>
+        {/* A link, but one of our controls: same 40px target as the buttons. */}
+        <a
+          href={post ? postPublicUrl(post) : brief.postUrl}
+          target="_blank"
+          rel="noreferrer noopener"
+          className="inline-flex min-h-10 items-center px-2 font-mono text-[11px] text-[var(--color-accent-text)] underline"
+        >
+          Open the post
+        </a>
+      </div>
+
+      {addressing ? (
+        <form
+          aria-label="The post's address"
+          className="flex flex-col gap-2 rounded-[8px] border border-[var(--color-border)] p-3"
+          onSubmit={(event) => {
+            event.preventDefault()
+            void act(
+              slot.id,
+              () => setSocialPostAction(projectId, slot.id, address),
+              'Post address saved',
+            ).then((result) => {
+              if (result.ok) setAddressing(false)
+            })
+          }}
+        >
+          <label className={SOCIAL_LABEL_CLASS}>
+            The address of the post this card shows. The claim keeps its own source.
+            <input
+              type="url"
+              value={address}
+              onChange={(event) => setAddress(event.target.value)}
+              placeholder="https://x.com/handle/status/1234567890123456789"
+              className={`${SOCIAL_FIELD_CLASS} font-mono text-[12px]`}
+            />
+          </label>
+          <div className="flex gap-2">
+            <Button type="submit" variant="primary" disabled={address.trim() === ''}>
+              Use this post
+            </Button>
+          </div>
+        </form>
+      ) : null}
+
+      {editing ? (
+        <SocialDetailsForm
+          slot={slot}
+          post={post}
+          projectId={projectId}
+          act={act}
+          onDone={() => setEditing(false)}
+        />
+      ) : null}
+
+      {shown !== null ? (
+        <SocialHighlightForm
+          key={`highlight-${brief.emphasis ?? ''}-${shown}`}
+          slot={slot}
+          initial={brief.emphasis ?? suggestEmphasis(shown) ?? ''}
+          projectId={projectId}
+          act={act}
+          busy={busy}
+        />
+      ) : null}
+
+      {offerExcerpt && post?.text ? (
+        <SocialExcerptForm
+          key={`excerpt-${brief.excerpt ?? ''}-${social.suggestedExcerpt ?? ''}`}
+          slot={slot}
+          initial={brief.excerpt ?? social.suggestedExcerpt ?? ''}
+          chosen={brief.excerpt !== undefined}
+          projectId={projectId}
+          act={act}
+          busy={busy}
+        />
+      ) : null}
+
+      <div
+        role="group"
+        aria-label="Profile picture"
+        className="flex flex-wrap items-center gap-2 rounded-[8px] border border-[var(--color-border)] p-2"
+      >
+        {social.avatar.url ? (
+          // Plain <img> on purpose: a short-lived presigned URL next/image cannot allowlist.
+          <img src={social.avatar.url} alt="" className="size-10 rounded-full object-cover" />
+        ) : null}
+        <p className="min-w-0 flex-1 text-[13px] text-[var(--color-text-secondary)]">
+          {social.avatar.source === 'upload'
+            ? 'Profile picture: uploaded by you.'
+            : social.avatar.source === 'cast'
+              ? `Profile picture: the cast photo of ${social.avatar.castName ?? 'a cast member'}.`
+              : social.avatar.castName !== null
+                ? `Profile picture: initials. ${social.avatar.castName} is linked to this account but has no photo yet; add one on the Cast card.`
+                : 'Profile picture: initials, until you upload one or link the account to a cast member.'}
+        </p>
+        <SocialImageButton
+          projectId={projectId}
+          slotId={slot.id}
+          act={act}
+          purpose="social-avatar"
+          label="Upload profile picture"
+          inputLabel="Choose a profile picture for this post"
+          success="Profile picture uploaded"
+        />
+        {social.avatar.source === 'upload' ? (
+          <Button
+            type="button"
+            variant="ghost"
+            busy={busy}
+            onClick={() =>
+              void act(
+                slot.id,
+                () => removeSocialImageAction(projectId, slot.id, 'avatar'),
+                'Profile picture removed',
+              )
+            }
+          >
+            Remove profile picture
+          </Button>
+        ) : null}
+        {social.avatar.source !== 'cast' &&
+        social.avatar.castName === null &&
+        post?.handle &&
+        castMembers.length > 0 ? (
+          <CastHandleLink
+            projectId={projectId}
+            slotId={slot.id}
+            handle={post.handle}
+            castMembers={castMembers}
+            act={act}
+            busy={busy}
+          />
+        ) : null}
+      </div>
+
+      <div
+        role="group"
+        aria-label="Attached image"
+        className="flex flex-wrap items-center gap-2 rounded-[8px] border border-[var(--color-border)] p-2"
+      >
+        {social.mediaUrl ? (
+          <img
+            src={social.mediaUrl}
+            alt="The image attached to this post"
+            className="h-16 w-auto rounded-[6px] object-cover"
+          />
+        ) : null}
+        {post?.endedWithMediaLink && !attached ? (
+          <p className="min-w-0 flex-1 text-[13px] text-[var(--color-warning)]">
+            This post ended with a link, usually its image. Upload it to show it under the text.
+          </p>
+        ) : null}
+        <SocialImageButton
+          projectId={projectId}
+          slotId={slot.id}
+          act={act}
+          purpose="social-image"
+          label="Upload the post's image"
+          inputLabel="Choose the post's image"
+          success="Image attached"
+        />
+        {attached ? (
+          <Button
+            type="button"
+            variant="ghost"
+            busy={busy}
+            onClick={() =>
+              void act(
+                slot.id,
+                () => removeSocialImageAction(projectId, slot.id, 'media'),
+                'Image removed',
+              )
+            }
+          >
+            Remove
+          </Button>
+        ) : null}
+      </div>
+    </div>
+  )
+}
+
+/** "Edit details": the post record's four fields, shared by every slot that shows this post. */
+function SocialDetailsForm({
+  slot,
+  post,
+  projectId,
+  act,
+  onDone,
+}: {
+  slot: SlotView
+  post: NonNullable<SlotView['social']>['post']
+  projectId: string
+  act: (slotId: string, run: () => Promise<ActionResult>, success: string) => Promise<ActionResult>
+  onDone: () => void
+}) {
+  const [authorName, setAuthorName] = React.useState(post?.authorName ?? '')
+  const [handle, setHandle] = React.useState(post?.handle ?? '')
+  const [text, setText] = React.useState(post?.text ?? '')
+  const [postedAt, setPostedAt] = React.useState(post?.postedAt ?? '')
+
+  return (
+    <form
+      aria-label="The post's details"
+      className="flex flex-col gap-2 rounded-[8px] border border-[var(--color-border)] p-3"
+      onSubmit={(event) => {
+        event.preventDefault()
+        void act(
+          slot.id,
+          () => saveSocialPostAction(projectId, slot.id, { authorName, handle, text, postedAt }),
+          'Post details saved',
+        ).then((result) => {
+          if (result.ok) onDone()
+        })
+      }}
+    >
+      <p className="text-[12px] text-[var(--color-text-muted)]">
+        Every slot that shows this post uses these details. A field you type is kept when the post
+        is read again.
+      </p>
+      <div className="grid grid-cols-2 gap-2">
+        <label className={SOCIAL_LABEL_CLASS}>
+          Name
+          <input
+            value={authorName}
+            onChange={(event) => setAuthorName(event.target.value)}
+            className={SOCIAL_FIELD_CLASS}
+          />
+        </label>
+        <label className={SOCIAL_LABEL_CLASS}>
+          Handle
+          <input
+            value={handle}
+            onChange={(event) => setHandle(event.target.value)}
+            placeholder="without the @"
+            className={`${SOCIAL_FIELD_CLASS} font-mono`}
+          />
+        </label>
+      </div>
+      <label className={SOCIAL_LABEL_CLASS}>
+        Posted (YYYY-MM-DD)
+        <input
+          value={postedAt}
+          onChange={(event) => setPostedAt(event.target.value)}
+          placeholder="2024-03-23"
+          className={`${SOCIAL_FIELD_CLASS} font-mono`}
+        />
+      </label>
+      <label className={SOCIAL_LABEL_CLASS}>
+        Text, word for word as posted
+        <textarea
+          value={text}
+          onChange={(event) => setText(event.target.value)}
+          rows={4}
+          className={SOCIAL_FIELD_CLASS}
+        />
+      </label>
+      <div className="flex gap-2">
+        <Button type="submit" variant="primary">
+          Save
+        </Button>
+        <Button type="button" variant="ghost" onClick={onDone}>
+          Cancel
+        </Button>
+      </div>
+    </form>
+  )
+}
+
+/** The phrase the marker sweeps under: pre-filled with the first figure, refused unless word for word. */
+function SocialHighlightForm({
+  slot,
+  initial,
+  projectId,
+  act,
+  busy,
+}: {
+  slot: SlotView
+  initial: string
+  projectId: string
+  act: (slotId: string, run: () => Promise<ActionResult>, success: string) => Promise<ActionResult>
+  busy: boolean
+}) {
+  const [emphasis, setEmphasis] = React.useState(initial)
+  return (
+    <form
+      aria-label="The highlight"
+      className="flex flex-wrap items-end gap-2"
+      onSubmit={(event) => {
+        event.preventDefault()
+        const value = emphasis.trim()
+        void act(
+          slot.id,
+          () => saveSocialCardAction(projectId, slot.id, { emphasis: value === '' ? null : value }),
+          value === '' ? 'Highlight cleared' : 'Highlight saved',
+        )
+      }}
+    >
+      <label className={`${SOCIAL_LABEL_CLASS} min-w-[200px] flex-1`}>
+        Highlight
+        <input
+          value={emphasis}
+          onChange={(event) => setEmphasis(event.target.value)}
+          placeholder="words from the post, or leave empty"
+          className={SOCIAL_FIELD_CLASS}
+        />
+      </label>
+      <Button type="submit" variant="outline" busy={busy}>
+        Save highlight
+      </Button>
+    </form>
+  )
+}
+
+/** The part of a long post the card shows (spec 5.5): a continuous stretch, word for word. */
+function SocialExcerptForm({
+  slot,
+  initial,
+  chosen,
+  projectId,
+  act,
+  busy,
+}: {
+  slot: SlotView
+  initial: string
+  chosen: boolean
+  projectId: string
+  act: (slotId: string, run: () => Promise<ActionResult>, success: string) => Promise<ActionResult>
+  busy: boolean
+}) {
+  const [excerpt, setExcerpt] = React.useState(initial)
+  return (
+    <form
+      aria-label="The excerpt"
+      className="flex flex-col gap-2 rounded-[8px] border border-[var(--color-border)] p-3"
+      onSubmit={(event) => {
+        event.preventDefault()
+        const value = excerpt.trim()
+        void act(
+          slot.id,
+          () => saveSocialCardAction(projectId, slot.id, { excerpt: value === '' ? null : value }),
+          'Excerpt saved',
+        )
+      }}
+    >
+      <label className={SOCIAL_LABEL_CLASS}>
+        Excerpt
+        <textarea
+          value={excerpt}
+          onChange={(event) => setExcerpt(event.target.value)}
+          rows={4}
+          className={SOCIAL_FIELD_CLASS}
+        />
+      </label>
+      <p className="text-[12px] text-[var(--color-text-muted)]">
+        Copy one continuous stretch of the post, word for word. The card marks each cut end with an
+        ellipsis.
+      </p>
+      <div className="flex flex-wrap gap-2">
+        <Button type="submit" variant="outline" busy={busy} disabled={excerpt.trim() === ''}>
+          Save excerpt
+        </Button>
+        {chosen ? (
+          <Button
+            type="button"
+            variant="ghost"
+            busy={busy}
+            onClick={() =>
+              void act(
+                slot.id,
+                () => saveSocialCardAction(projectId, slot.id, { excerpt: null }),
+                'Showing the whole post',
+              )
+            }
+          >
+            Show the whole post
+          </Button>
+        ) : null}
+      </div>
+    </form>
+  )
+}
+
+/** "Is @handle one of the cast?": saves the handle on the member chosen, never matched by name. */
+function CastHandleLink({
+  projectId,
+  slotId,
+  handle,
+  castMembers,
+  act,
+  busy,
+}: {
+  projectId: string
+  slotId: string
+  handle: string
+  castMembers: readonly CastOption[]
+  act: (slotId: string, run: () => Promise<ActionResult>, success: string) => Promise<ActionResult>
+  busy: boolean
+}) {
+  const [memberId, setMemberId] = React.useState('')
+  const chosen = castMembers.find((member) => member.id === memberId)
+  return (
+    <div className="flex w-full flex-wrap items-center gap-2">
+      <span className="text-[13px] text-[var(--color-text-secondary)]">
+        Is @{handle} one of the cast?
+      </span>
+      <Select
+        aria-label="Cast member"
+        className="w-auto min-w-[180px]"
+        value={memberId}
+        onChange={(event) => setMemberId(event.target.value)}
+      >
+        <option value="">Choose a cast member</option>
+        {castMembers.map((member) => (
+          <option key={member.id} value={member.id}>
+            {member.name}
+          </option>
+        ))}
+      </Select>
+      <Button
+        type="button"
+        variant="outline"
+        busy={busy}
+        disabled={!chosen}
+        onClick={() =>
+          chosen
+            ? void act(
+                slotId,
+                () => linkCastHandleAction(projectId, chosen.id, handle),
+                `@${handle} linked to ${chosen.name}`,
+              )
+            : undefined
+        }
+      >
+        Link
+      </Button>
+    </div>
+  )
+}
+
+/** A social card's avatar or attached image: the same presigned pair as Upload own, with its purpose. */
+function SocialImageButton({
+  projectId,
+  slotId,
+  act,
+  purpose,
+  label,
+  inputLabel,
+  success,
+}: {
+  projectId: string
+  slotId: string
+  act: (slotId: string, run: () => Promise<ActionResult>, success: string) => Promise<ActionResult>
+  purpose: 'social-avatar' | 'social-image'
+  label: string
+  inputLabel: string
+  success: string
+}) {
+  const inputRef = React.useRef<HTMLInputElement | null>(null)
+  return (
+    <>
+      <Button type="button" variant="outline" onClick={() => inputRef.current?.click()}>
+        <ImagePlus aria-hidden />
+        {label}
+      </Button>
+      <input
+        ref={inputRef}
+        type="file"
+        accept="image/png,image/jpeg,image/webp,image/avif,.avif"
+        className="hidden"
+        aria-label={inputLabel}
+        onChange={(event) => {
+          const file = event.target.files?.[0]
+          event.target.value = ''
+          if (!file) return
+          void act(
+            slotId,
+            () => uploadOwnFile({ projectId, slotId, picked: file, purpose }),
+            success,
+          )
+        }}
+      />
+    </>
+  )
+}
+
 /** Every claim id a graphic's figure and bars items cite, in scene order, each once. */
 function graphicClaimIds(scene: GraphicScene): string[] {
   const seen = new Set<string>()
@@ -558,6 +1214,7 @@ const SLOT_TYPE_LABELS: Record<string, string> = {
   map: 'map',
   headline: 'news headline',
   graphic: 'graphic',
+  social: 'Post on X',
   hero: 'AI video',
 }
 
@@ -630,12 +1287,15 @@ export function VisualBoard({
   colors,
   brand,
   setPhotos = [],
+  castMembers = [],
 }: {
   projectId: string
   model: VisualsReviewModel
   colors: BrandChartColors
   brand: BrandKitStored
   setPhotos?: readonly SetPhotoGroup[]
+  /** The project's cast, for a post card's "one of the cast?" question (decision 284). */
+  castMembers?: readonly CastOption[]
 }) {
   const router = useRouter()
   const { toast } = useToast()
@@ -1004,8 +1664,10 @@ export function VisualBoard({
               act={act}
               phase={model.phase}
               articleClaims={model.articleClaims}
+              postClaims={model.postClaims}
               sources={allSlots}
               setPhotos={setPhotos}
+              castMembers={castMembers}
             />
           ))}
         </section>
@@ -1027,8 +1689,10 @@ function SlotCard({
   act,
   phase,
   articleClaims,
+  postClaims,
   sources,
   setPhotos,
+  castMembers,
 }: {
   slot: SlotView
   projectId: string
@@ -1038,8 +1702,10 @@ function SlotCard({
   act: (slotId: string, run: () => Promise<ActionResult>, success: string) => Promise<ActionResult>
   phase: VisualsReviewModel['phase']
   articleClaims: ArticleClaimOption[]
+  postClaims: PostClaimOption[]
   sources: SlotView[]
   setPhotos: readonly SetPhotoGroup[]
+  castMembers: readonly CastOption[]
 }) {
   const [editing, setEditing] = React.useState(false)
   const [rebriefing, setRebriefing] = React.useState(false)
@@ -1137,6 +1803,16 @@ function SlotCard({
           <HeadlineSlot slot={slot} brief={brief} projectId={projectId} act={act} colors={colors} />
         ) : brief?.type === 'graphic' ? (
           <GraphicSlot slot={slot} brief={brief} projectId={projectId} act={act} brand={brand} />
+        ) : brief?.type === 'social' ? (
+          <SocialSlot
+            slot={slot}
+            brief={brief}
+            projectId={projectId}
+            act={act}
+            busy={busy}
+            brand={brand}
+            castMembers={castMembers}
+          />
         ) : brief?.type === 'hero' ? (
           <p className="rounded-[8px] border border-[var(--color-border)] p-3 text-[13px] text-[var(--color-text-muted)]">
             AI video (hero) is switched off until post-monetisation. This slot stays a placeholder;
@@ -1187,10 +1863,12 @@ function SlotCard({
           </div>
         ) : null}
 
+        {/* A post card says what it lacks itself, in resolution's words. */}
         {slot.status === 'placeholder' &&
         !slot.refusal &&
         brief?.type !== 'hero' &&
-        brief?.type !== 'archival' ? (
+        brief?.type !== 'archival' &&
+        brief?.type !== 'social' ? (
           <p className="text-[13px] text-[var(--color-warning)]">
             Nothing usable was found for this slot. Edit the brief and re-fetch, or upload your own
             image — approving the board with this still a placeholder must say so explicitly.
@@ -1213,6 +1891,7 @@ function SlotCard({
             act={act}
             busy={busy}
             articleClaims={articleClaims}
+            postClaims={postClaims}
           />
         ) : null}
 
@@ -1288,8 +1967,9 @@ function SlotCard({
                 {/* Editing the words yourself and re-planning the whole film
                     were the only two ways to change an idea (decision 258).
                     A headline card is never offered one: every word on it is
-                    read from the article, so there is no idea to have again. */}
-                {!linked && brief.type !== 'headline' ? (
+                    read from the article, so there is no idea to have again.
+                    A post card neither, for the same reason (decision 284). */}
+                {!linked && brief.type !== 'headline' && brief.type !== 'social' ? (
                   <Button
                     variant="outline"
                     busy={busy && rebriefing}
@@ -1491,12 +2171,88 @@ function ArticleChooser({
 }
 
 /**
+ * Which post a post card shows (decision 284), the article chooser's twin.
+ *
+ * Every word on the card is read from the post, so the only decision is
+ * which one, and it is the owner's: the list is this project's claims whose
+ * source is an X post address, and picking one writes the brief on the spot.
+ */
+function PostChooser({
+  slot,
+  projectId,
+  act,
+  busy,
+  postClaims,
+  onDone,
+}: {
+  slot: SlotView
+  projectId: string
+  act: (slotId: string, run: () => Promise<ActionResult>, success: string) => Promise<ActionResult>
+  busy: boolean
+  postClaims: PostClaimOption[]
+  onDone: () => void
+}) {
+  const showing = slot.brief?.type === 'social' ? slot.brief.sourceClaimId : null
+
+  return (
+    <div
+      role="group"
+      aria-label="Which post this card shows"
+      className="flex flex-col gap-2 rounded-[8px] border border-[var(--color-border-strong)] p-2"
+    >
+      {postClaims.length === 0 ? (
+        <p className="text-[13px] text-[var(--color-text-secondary)]">
+          A post card shows a real post on X, and no claim in this project’s dossier cites one yet.
+          Source a claim to the post’s own address on the dossier screen, then come back.
+        </p>
+      ) : (
+        <>
+          <p className="text-[12px] text-[var(--color-text-secondary)]">
+            {showing === null
+              ? 'Pick the post. Every word on the card is read from it: the name, the handle, the text and the date.'
+              : 'Pick a different post. The card is redrawn from that one, and the highlight and excerpt chosen for this post are dropped.'}
+          </p>
+          {postClaims.map((claim) => (
+            <div key={claim.id} className="flex flex-wrap items-center gap-2">
+              <span className="min-w-0 flex-1 text-[13px] text-[var(--color-text-primary)]">
+                {claim.label}
+              </span>
+              {claim.id === showing ? (
+                <Badge shape="tag">shown now</Badge>
+              ) : (
+                <Button
+                  type="button"
+                  variant="outline"
+                  busy={busy}
+                  onClick={() =>
+                    void act(
+                      slot.id,
+                      () => retypeToSocialAction(projectId, slot.id, claim.id),
+                      'Now a post card',
+                    ).then((result) => {
+                      if (result.ok) onDone()
+                    })
+                  }
+                >
+                  Show this post
+                </Button>
+              )}
+            </div>
+          ))}
+        </>
+      )}
+    </div>
+  )
+}
+
+/**
  * The format picker: one labelled button per slot type, the current one
  * pressed. Re-typing to a text-driven type converts inside the click — the
  * badge changes on the refresh the button itself triggers. Chart and map
  * need a model draft, so the card says `drafting` until it lands (or shows
  * the model's refusal, dismissably). Headline asks instead of converting: it
  * opens the chooser, because only the owner may say which article is quoted.
+ * Post on X asks the same way, for which post (decision 284).
  * Hero stays off the picker while its flag is down — a button that always
  * errors is not a button.
  */
@@ -1506,12 +2262,14 @@ function TypePicker({
   act,
   busy,
   articleClaims,
+  postClaims,
 }: {
   slot: SlotView
   projectId: string
   act: (slotId: string, run: () => Promise<ActionResult>, success: string) => Promise<ActionResult>
   busy: boolean
   articleClaims: ArticleClaimOption[]
+  postClaims: PostClaimOption[]
 }) {
   const types = SHOT_SLOT_TYPES.filter((type) => type !== 'hero' || slot.type === 'hero')
   const job = slot.retype
@@ -1521,7 +2279,9 @@ function TypePicker({
   const refused = job?.state === 'refused' ? job : null
   const rebriefRefused = job?.state === 'rebrief-refused' ? job : null
   const fixNote = job?.state === 'fix-note' ? job : null
-  const [choosing, setChoosing] = React.useState(false)
+  // Which chooser is open: the article a headline quotes, or the post a
+  // post card shows. One at a time; opening either closes the other.
+  const [choosing, setChoosing] = React.useState<'headline' | 'social' | null>(null)
 
   return (
     <div className="flex flex-col gap-2">
@@ -1529,28 +2289,30 @@ function TypePicker({
         <span className="text-[11px] text-[var(--color-text-muted)]">Format</span>
         {types.map((type) => {
           const current = type === slot.type
-          // Headline is the one format that cannot be chosen by pressing a
-          // button: the card quotes an article, and which one is the owner's
-          // to say (decision 257). So this button opens the chooser below.
-          const asks = type === 'headline'
+          // Headline and Post on X are the formats that cannot be chosen by
+          // pressing a button: the card quotes an article or shows a post, and
+          // which one is the owner's to say (decisions 257 and 284). So these
+          // buttons open a chooser below.
+          const asks = type === 'headline' || type === 'social'
           return (
             <Button
               key={type}
               variant={current ? 'selected' : 'ghost'}
               aria-pressed={current}
-              {...(asks ? { 'aria-expanded': choosing } : {})}
+              {...(asks ? { 'aria-expanded': choosing === type } : {})}
               /* The one exception to "the current format is disabled": on a
                  headline slot this button is not how you change the format,
-                 it is how you change WHICH article the card quotes. */
+                 it is how you change WHICH article the card quotes, and on
+                 a post card, WHICH post it shows. */
               disabled={(current && !asks) || busy || drafting}
               onClick={() => {
                 if (asks) {
-                  setChoosing((open) => !open)
+                  setChoosing((open) => (open === type ? null : type))
                   return
                 }
                 // Any other format answers the question the chooser was
                 // asking, so it goes away with the answer.
-                setChoosing(false)
+                setChoosing(null)
                 void act(
                   slot.id,
                   () => retypeSlotAction(projectId, slot.id, type),
@@ -1566,14 +2328,25 @@ function TypePicker({
         })}
       </div>
 
-      {choosing ? (
+      {choosing === 'headline' ? (
         <ArticleChooser
           slot={slot}
           projectId={projectId}
           act={act}
           busy={busy}
           articleClaims={articleClaims}
-          onDone={() => setChoosing(false)}
+          onDone={() => setChoosing(null)}
+        />
+      ) : null}
+
+      {choosing === 'social' ? (
+        <PostChooser
+          slot={slot}
+          projectId={projectId}
+          act={act}
+          busy={busy}
+          postClaims={postClaims}
+          onDone={() => setChoosing(null)}
         />
       ) : null}
 
@@ -2290,6 +3063,74 @@ function readVideoMetadata(
 }
 
 /**
+ * One file, browser to R2 and then recorded (decision 213): presign, PUT,
+ * finalise. Shared by Upload own and the post card's two image buttons
+ * (decision 284), which differ only in `purpose`: what the finalised upload
+ * becomes on the server. Absent `purpose` is the slot's own shot, sent
+ * exactly as before.
+ */
+async function uploadOwnFile(input: {
+  projectId: string
+  slotId: string
+  picked: File
+  purpose?: 'social-avatar' | 'social-image'
+}): Promise<ActionResult> {
+  const { projectId, slotId, purpose } = input
+  // An AVIF becomes a JPEG first; video passes straight through untouched
+  // (decision 266). The size check below then measures what is uploaded.
+  const ready = await toUploadableImage(input.picked)
+  if (!ready.ok) return ready
+  const file = ready.file
+
+  const video = file.type.startsWith('video/')
+  const maxBytes = video ? UPLOAD_OWN_VIDEO_MAX_BYTES : UPLOAD_OWN_IMAGE_MAX_BYTES
+  if (file.size > maxBytes) {
+    return {
+      ok: false,
+      error: `That file is over the ${Math.round(maxBytes / 1024 / 1024)} MB limit.`,
+    }
+  }
+
+  // The Uint8Array view matters: digest() rejects an ArrayBuffer from
+  // another realm (jsdom in tests), and a fresh view is always local.
+  const bytes = new Uint8Array(await file.arrayBuffer())
+  const digest = await crypto.subtle.digest('SHA-256', bytes)
+  const contentHash = Array.from(new Uint8Array(digest))
+    .map((byte) => byte.toString(16).padStart(2, '0'))
+    .join('')
+
+  const created = await createOwnUploadAction({
+    projectId,
+    slotId,
+    fileType: file.type,
+    fileSize: file.size,
+    contentHash,
+    ...(purpose ? { purpose } : {}),
+  })
+  if (!created.ok || !created.url) return created
+
+  const put = await fetch(created.url, {
+    method: 'PUT',
+    body: file,
+    headers: { 'Content-Type': file.type },
+  })
+  if (!put.ok) {
+    return { ok: false, error: `Storage refused the upload (${put.status}). Try again.` }
+  }
+
+  const metadata = video ? await readVideoMetadata(file) : undefined
+  return finaliseOwnUploadAction({
+    projectId,
+    slotId,
+    fileType: file.type,
+    fileName: file.name,
+    contentHash,
+    ...(metadata ?? {}),
+    ...(purpose ? { purpose } : {}),
+  })
+}
+
+/**
  * Browser → R2 directly (decision 213, the decision-205 shape): Vercel
  * refuses request bodies over about 4.5 MB at its edge, so the file can
  * never travel through a server action. Presign, PUT, then finalise —
@@ -2313,58 +3154,8 @@ function UploadOwnButton({
   const inputRef = React.useRef<HTMLInputElement | null>(null)
   const [url, setUrl] = React.useState('')
 
-  const upload = async (picked: File): Promise<ActionResult> => {
-    // An AVIF becomes a JPEG first; video passes straight through untouched
-    // (decision 266). The size check below then measures what is uploaded.
-    const ready = await toUploadableImage(picked)
-    if (!ready.ok) return ready
-    const file = ready.file
-
-    const video = file.type.startsWith('video/')
-    const maxBytes = video ? UPLOAD_OWN_VIDEO_MAX_BYTES : UPLOAD_OWN_IMAGE_MAX_BYTES
-    if (file.size > maxBytes) {
-      return {
-        ok: false,
-        error: `That file is over the ${Math.round(maxBytes / 1024 / 1024)} MB limit.`,
-      }
-    }
-
-    // The Uint8Array view matters: digest() rejects an ArrayBuffer from
-    // another realm (jsdom in tests), and a fresh view is always local.
-    const bytes = new Uint8Array(await file.arrayBuffer())
-    const digest = await crypto.subtle.digest('SHA-256', bytes)
-    const contentHash = Array.from(new Uint8Array(digest))
-      .map((byte) => byte.toString(16).padStart(2, '0'))
-      .join('')
-
-    const created = await createOwnUploadAction({
-      projectId,
-      slotId,
-      fileType: file.type,
-      fileSize: file.size,
-      contentHash,
-    })
-    if (!created.ok || !created.url) return created
-
-    const put = await fetch(created.url, {
-      method: 'PUT',
-      body: file,
-      headers: { 'Content-Type': file.type },
-    })
-    if (!put.ok) {
-      return { ok: false, error: `Storage refused the upload (${put.status}). Try again.` }
-    }
-
-    const metadata = video ? await readVideoMetadata(file) : undefined
-    return finaliseOwnUploadAction({
-      projectId,
-      slotId,
-      fileType: file.type,
-      fileName: file.name,
-      contentHash,
-      ...(metadata ?? {}),
-    })
-  }
+  const upload = (picked: File): Promise<ActionResult> =>
+    uploadOwnFile({ projectId, slotId, picked })
 
   return (
     <>

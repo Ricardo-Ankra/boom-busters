@@ -1,0 +1,197 @@
+// @vitest-environment node
+
+import { describe, expect, it } from 'vitest'
+import { SOCIAL_TOO_LONG } from '@boom-busters/compositions/social'
+import { DEFAULT_SETTINGS, excerptPlacement, resolveBrandKit } from '@boom-busters/schemas'
+import type { CastMember, SocialBrief, SocialPostRecord } from '@boom-busters/schemas'
+import { socialSlotView } from './visuals-review'
+
+/**
+ * What the board shows for a social slot (decision 284, spec 8.4 and 9),
+ * computed from rows already loaded: no database, no storage, no X.
+ */
+
+const brand = resolveBrandKit(DEFAULT_SETTINGS)
+const PROJECT = '01J0000000000000000000000A'
+const CLAIM = '01HQ00000000000000000000S1'
+const AVATAR_ASSET = '01HQ00000000000000000000V1'
+const MEDIA_ASSET = '01HQ00000000000000000000M1'
+
+const brief: SocialBrief = {
+  type: 'social',
+  coversText: 'He said it himself, in public.',
+  description: 'The post, on screen.',
+  motion: { kind: 'static' },
+  transition: 'cut',
+  sourceClaimId: CLAIM,
+  postUrl: 'https://x.com/i/status/1734567890123456789',
+}
+
+/** Invented account: a fixture must never carry a real one. */
+const post: SocialPostRecord = {
+  url: 'https://x.com/i/status/1734567890123456789',
+  platform: 'x',
+  postId: '1734567890123456789',
+  handle: 'DanaOkafor',
+  authorName: 'Dana Okafor',
+  text: 'The audit is finished and the $1.9 billion is not there.',
+  postedAt: '2023-03-14',
+  endedWithMediaLink: false,
+  provenance: { authorName: 'oembed', handle: 'oembed', text: 'oembed', postedAt: 'oembed' },
+  status: 'fetched',
+  failureReason: null,
+}
+
+function member(overrides: Partial<CastMember>): CastMember {
+  return {
+    id: '01HQ00000000000000000000C1',
+    projectId: PROJECT,
+    name: 'Dana Okafor',
+    role: 'Auditor',
+    identityString: '',
+    guardrail: '',
+    xHandle: 'danaokafor',
+    photos: [
+      {
+        r2Key: 'boom-busters/cast/p/front.jpg',
+        contentHash: 'a'.repeat(64),
+        mimeType: 'image/jpeg',
+        width: 800,
+        height: 800,
+        view: 'front',
+      },
+    ],
+    ...overrides,
+  }
+}
+
+const SENTENCE =
+  'The auditors asked three banks to confirm the escrow balances and none of them could. '
+const LONG_PARAGRAPH = SENTENCE.repeat(4).trim()
+/** Five paragraphs of about 350 characters: far past what one card holds. */
+const LONG_TEXT = Array.from({ length: 5 }, () => LONG_PARAGRAPH).join('\n')
+
+const base = {
+  brief,
+  post,
+  cast: [] as CastMember[],
+  images: new Map<string, string>(),
+  urls: new Map<string, string>(),
+  brand,
+}
+
+describe('socialSlotView', () => {
+  it('carries its post and, when nothing is missing, a payload for the preview', () => {
+    const view = socialSlotView(base)
+
+    expect(view.post).toEqual(post)
+    expect(view.issues).toEqual([])
+    expect(view.payload).toMatchObject({
+      kind: 'social',
+      authorName: 'Dana Okafor',
+      handle: 'DanaOkafor',
+      text: post.text,
+      initials: 'DO',
+      claimId: CLAIM,
+    })
+  })
+
+  it('names what is missing and draws no payload while it is', () => {
+    const view = socialSlotView({ ...base, post: { ...post, postedAt: null } })
+
+    expect(view.issues).toEqual([
+      'A post card needs the name, the handle, the text and the date. Missing: the date.',
+    ])
+    expect(view.payload).toBeNull()
+  })
+
+  it('takes the uploaded profile picture first', () => {
+    const view = socialSlotView({
+      ...base,
+      brief: { ...brief, avatarAssetId: AVATAR_ASSET },
+      cast: [member({})],
+      images: new Map([[AVATAR_ASSET, 'boom-busters/uploads/p/avatar.png']]),
+      urls: new Map([
+        ['boom-busters/uploads/p/avatar.png', 'https://r2.example/avatar.png'],
+        ['boom-busters/cast/p/front.jpg', 'https://r2.example/front.jpg'],
+      ]),
+    })
+
+    expect(view.avatar).toEqual({
+      source: 'upload',
+      url: 'https://r2.example/avatar.png',
+      castName: null,
+    })
+    expect(view.payload?.avatar).toMatchObject({ url: 'https://r2.example/avatar.png' })
+  })
+
+  it('falls back to the cast member whose handle matches, whatever its case', () => {
+    const view = socialSlotView({
+      ...base,
+      cast: [
+        member({ id: '01HQ00000000000000000000C0', name: 'Someone Else', xHandle: null }),
+        member({}),
+      ],
+      urls: new Map([['boom-busters/cast/p/front.jpg', 'https://r2.example/front.jpg']]),
+    })
+
+    expect(view.avatar).toEqual({
+      source: 'cast',
+      url: 'https://r2.example/front.jpg',
+      castName: 'Dana Okafor',
+    })
+  })
+
+  it('never matches a cast member by name, and draws initials when nothing matches', () => {
+    const view = socialSlotView({ ...base, cast: [member({ xHandle: 'someoneelse' })] })
+
+    expect(view.avatar).toEqual({ source: 'initials', url: null, castName: null })
+    expect(view.payload?.avatar).toBeUndefined()
+  })
+
+  it('carries the attached image address', () => {
+    const view = socialSlotView({
+      ...base,
+      brief: { ...brief, mediaAssetId: MEDIA_ASSET },
+      images: new Map([[MEDIA_ASSET, 'boom-busters/uploads/p/media.png']]),
+      urls: new Map([['boom-busters/uploads/p/media.png', 'https://r2.example/media.png']]),
+    })
+
+    expect(view.mediaUrl).toBe('https://r2.example/media.png')
+    expect(view.payload?.media).toMatchObject({ url: 'https://r2.example/media.png' })
+  })
+
+  it('suggests no excerpt for a post that fits', () => {
+    expect(socialSlotView(base).suggestedExcerpt).toBeNull()
+  })
+
+  it('suggests a word-for-word excerpt when the post is too long and none is chosen', () => {
+    const view = socialSlotView({ ...base, post: { ...post, text: LONG_TEXT } })
+
+    expect(view.issues).toEqual([SOCIAL_TOO_LONG])
+    expect(view.suggestedExcerpt).not.toBeNull()
+    expect(excerptPlacement(LONG_TEXT, view.suggestedExcerpt!)).not.toBeNull()
+    expect(view.suggestedExcerpt!.length).toBeLessThan(LONG_TEXT.length)
+  })
+
+  it('suggests nothing once an excerpt is chosen', () => {
+    const view = socialSlotView({
+      ...base,
+      post: { ...post, text: LONG_TEXT },
+      brief: { ...brief, excerpt: LONG_PARAGRAPH },
+    })
+
+    expect(view.issues).toEqual([])
+    expect(view.suggestedExcerpt).toBeNull()
+    expect(view.payload).toMatchObject({ text: LONG_PARAGRAPH, cutAfter: true })
+  })
+
+  it('has no post, and says so, when nothing has been read', () => {
+    const view = socialSlotView({ ...base, post: null })
+
+    expect(view.post).toBeNull()
+    expect(view.issues).toHaveLength(1)
+    expect(view.payload).toBeNull()
+    expect(view.suggestedExcerpt).toBeNull()
+  })
+})

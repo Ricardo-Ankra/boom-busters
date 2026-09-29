@@ -1,8 +1,17 @@
 import {
+  buildSocialPayload,
+  needsExcerpt,
+  socialDisplayText,
+  socialSlotIssues,
+  suggestExcerpt,
+} from '@boom-busters/compositions/social'
+import {
   getArticleSources,
+  getAsset,
   getClaims,
   getProject,
   getSettings,
+  getSocialPosts,
   latestScriptParagraphSources,
   listCastMembers,
   listProjectSets,
@@ -26,7 +35,13 @@ import {
   latestTakes,
   nameMatches,
   castWarnings,
+  claimCarriesPost,
+  excerptPlacement,
+  normalisePostUrl,
+  parsePostUrl,
+  referencePhotos,
   referenceWarnings,
+  resolveBrandKit,
   repairSummary,
   ShotBriefSchema,
   SlotCandidateSchema,
@@ -38,6 +53,7 @@ import {
 } from '@boom-busters/schemas'
 import type {
   ArticleMetadata,
+  BrandKitTokens,
   CastMember,
   DirectorsBook,
   ProjectSet,
@@ -47,6 +63,9 @@ import type {
   SlotCandidate,
   SlotRefusal,
   SlotDraftState,
+  SocialBrief,
+  SocialPayload,
+  SocialPostRecord,
   StillRoute,
   VisualsCoverage,
 } from '@boom-busters/schemas'
@@ -150,6 +169,46 @@ export interface SlotView {
   logoUrls: Record<string, string>
   /** What this brief calls on from the reference libraries, and what lands. */
   references: SlotReference[]
+  /**
+   * The post a social slot shows and everything the board needs to judge
+   * and correct it (decision 284). Null on every other type.
+   */
+  social: SocialSlotView | null
+}
+
+/**
+ * A social slot as the board shows it (decision 284, spec section 9).
+ *
+ * Judged by `socialSlotIssues` at the master frame with the settings' brand,
+ * exactly as resolution judges it, so the board never calls a card ready that
+ * resolution would leave a placeholder, or the other way round.
+ */
+export interface SocialSlotView {
+  /** The stored record for the brief's address, or null when none has been read yet. */
+  post: SocialPostRecord | null
+  /**
+   * Where the card's picture comes from, in the order of spec 8.4: the
+   * owner's upload, else the photo of the cast member whose X handle is the
+   * post's, else initials. `url` is the presigned preview (null without
+   * storage). `castName` names the linked cast member when there is one, even
+   * a member with no photo yet, whose card still draws initials.
+   */
+  avatar: { source: 'upload' | 'cast' | 'initials'; url: string | null; castName: string | null }
+  /** The attached image's presigned preview, or null when none is attached (or no storage). */
+  mediaUrl: string | null
+  /** Why the card cannot show yet, in the board's words; empty when it can. */
+  issues: string[]
+  /** Pre-filled when the post is too long and no excerpt is chosen. */
+  suggestedExcerpt: string | null
+  /** For the preview: null while `issues` is non-empty. */
+  payload: SocialPayload | null
+}
+
+/** A claim a slot may be re-typed to show as a post card (decision 284). */
+export interface PostClaimOption {
+  id: string
+  /** The account and the claim's own text, so two posts can be told apart in a list. */
+  label: string
 }
 
 export interface ChapterSlots {
@@ -235,6 +294,12 @@ export interface VisualsReviewModel {
    * than offering a button that can only fail.
    */
   articleClaims: ArticleClaimOption[]
+  /**
+   * The claims a slot may be re-typed to show as a post card (decision 284):
+   * those whose source is an X post address. Empty means none, and the
+   * picker says so.
+   */
+  postClaims: PostClaimOption[]
 }
 
 /**
@@ -259,6 +324,7 @@ export function emptyVisualsModel(): VisualsReviewModel {
     decisions: [],
     repair: { slots: 0, becomeStills: 0, chapters: 0 },
     articleClaims: [],
+    postClaims: [],
   }
 }
 
@@ -322,10 +388,11 @@ async function articlesForClaims(
  * read when the slot resolves, so the label falls back to the address, which
  * is enough to tell two sources apart in a list.
  */
-async function articleClaimOptions(db: Database, projectId: string): Promise<ArticleClaimOption[]> {
-  const eligible = (await scriptableClaims(db, projectId)).filter((claim) =>
-    claimCarriesArticle(claim),
-  )
+async function articleClaimOptions(
+  db: Database,
+  claims: readonly ScriptableClaim[],
+): Promise<ArticleClaimOption[]> {
+  const eligible = claims.filter((claim) => claimCarriesArticle(claim))
   if (eligible.length === 0) return []
 
   const urlByClaim = new Map<string, string>()
@@ -345,6 +412,131 @@ async function articleClaimOptions(db: Database, projectId: string): Promise<Art
       { id: claim.id, text: claim.text, label: outletByUrl.get(url) ?? articleSourceLabel(url) },
     ]
   })
+}
+
+type ScriptableClaim = Awaited<ReturnType<typeof scriptableClaims>>[number]
+
+/**
+ * The claims the format picker may offer as a post card's post (decision
+ * 284): `claimCarriesPost`, the planner's own gate. Pure over claims already
+ * loaded; nothing here reads X, so the label is the account from the address
+ * (when it carries one) and the claim's own words.
+ */
+function postClaimOptions(claims: readonly ScriptableClaim[]): PostClaimOption[] {
+  return claims.flatMap((claim) => {
+    if (!claimCarriesPost(claim)) return []
+    const handle = parsePostUrl(claim.sourceUrl as string)?.handle ?? null
+    return [{ id: claim.id, label: `${handle ? `@${handle}` : 'A post on X'}: ${claim.text}` }]
+  })
+}
+
+/** The frame a social card is judged at on the board: resolution's master frame (ruling 2). */
+const SOCIAL_BOARD_FRAME = { width: 1920, height: 1080 }
+
+/**
+ * What the board shows for one social slot (decision 284), from rows already
+ * loaded: the stored post, the project's cast, the uploaded images by asset
+ * id (to their storage keys) and the presigned previews by storage key.
+ *
+ * The avatar follows spec 8.4 and the assembly's own order: an upload whose
+ * asset still exists, else the photo of the cast member whose `xHandle` is
+ * the post's handle (compared lower case, never by name), else initials.
+ *
+ * The excerpt suggestion's fit test is the layout rule itself, not the full
+ * issue list: `needsExcerpt` over the candidate as the card prints it, with
+ * its ellipses. The highlight only steers where the suggestion is anchored;
+ * it does not veto a candidate, so a stale highlight cannot leave the owner
+ * with no suggestion at all.
+ */
+export function socialSlotView(input: {
+  brief: SocialBrief
+  post: SocialPostRecord | null
+  cast: readonly CastMember[]
+  /** Uploaded image asset id to its storage key, for the assets that still exist. */
+  images: ReadonlyMap<string, string>
+  /** Presigned preview by storage key; empty without storage. */
+  urls: ReadonlyMap<string, string>
+  brand: BrandKitTokens
+}): SocialSlotView {
+  const { brief, post, brand } = input
+  const frame = SOCIAL_BOARD_FRAME
+  const refFor = (r2Key: string | undefined) => {
+    if (r2Key === undefined) return undefined
+    const url = input.urls.get(r2Key)
+    return url === undefined ? undefined : { r2Key, url }
+  }
+
+  const uploadKey =
+    brief.avatarAssetId !== undefined ? input.images.get(brief.avatarAssetId) : undefined
+  const handle = post?.handle?.toLowerCase() ?? null
+  const linked =
+    handle === null
+      ? undefined
+      : input.cast.find((member) => member.xHandle?.toLowerCase() === handle)
+  const castPhoto = linked ? referencePhotos(linked, 1)[0] : undefined
+
+  const avatarRef =
+    uploadKey !== undefined ? refFor(uploadKey) : castPhoto ? refFor(castPhoto.r2Key) : undefined
+  const avatar: SocialSlotView['avatar'] =
+    uploadKey !== undefined
+      ? { source: 'upload', url: avatarRef?.url ?? null, castName: null }
+      : linked && castPhoto
+        ? { source: 'cast', url: avatarRef?.url ?? null, castName: linked.name }
+        : { source: 'initials', url: null, castName: linked?.name ?? null }
+
+  const mediaKey =
+    brief.mediaAssetId !== undefined ? input.images.get(brief.mediaAssetId) : undefined
+  const hasMedia = mediaKey !== undefined
+  const mediaRef = refFor(mediaKey)
+
+  const issues = socialSlotIssues({
+    post,
+    ...(brief.excerpt !== undefined ? { excerpt: brief.excerpt } : {}),
+    ...(brief.emphasis !== undefined ? { emphasis: brief.emphasis } : {}),
+    hasMedia,
+    frame,
+    brand,
+  })
+
+  const text = post?.text ?? null
+  const suggestedExcerpt =
+    text !== null && brief.excerpt === undefined && needsExcerpt(text, hasMedia, brand, frame)
+      ? suggestExcerpt(text, brief.emphasis, (candidate) => {
+          const cuts = excerptPlacement(text, candidate)
+          return (
+            cuts !== null &&
+            !needsExcerpt(
+              socialDisplayText(candidate, cuts.cutBefore, cuts.cutAfter),
+              hasMedia,
+              brand,
+              frame,
+            )
+          )
+        })
+      : null
+
+  const payload =
+    post !== null && issues.length === 0
+      ? buildSocialPayload({
+          post,
+          ...(brief.excerpt !== undefined ? { excerpt: brief.excerpt } : {}),
+          ...(brief.emphasis !== undefined ? { emphasis: brief.emphasis } : {}),
+          ...(avatarRef ? { avatar: avatarRef } : {}),
+          ...(mediaRef ? { media: mediaRef } : {}),
+          claimId: brief.sourceClaimId,
+          frame,
+          brand,
+        })
+      : null
+
+  return {
+    post,
+    avatar,
+    mediaUrl: mediaRef?.url ?? null,
+    issues,
+    suggestedExcerpt,
+    payload,
+  }
 }
 
 /**
@@ -400,13 +592,15 @@ export async function visualsReviewModel(
   projectId: string,
   options: { phase?: 'plan' | 'board' | null } = {},
 ): Promise<VisualsReviewModel> {
-  const [rows, sources, takes, project, articleClaims] = await Promise.all([
+  const [rows, sources, takes, project, claims] = await Promise.all([
     listShotSlots(db, projectId),
     latestScriptParagraphSources(db, projectId),
     listVoiceTakes(db, projectId),
     getProject(db, projectId),
-    articleClaimOptions(db, projectId),
+    scriptableClaims(db, projectId),
   ])
+  const articleClaims = await articleClaimOptions(db, claims)
+  const postClaims = postClaimOptions(claims)
 
   /**
    * The scrubber's clock is the same clock the runner stamped the slots with:
@@ -495,6 +689,44 @@ export async function visualsReviewModel(
     }
   }
 
+  /**
+   * Everything a social slot's card needs (decision 284), read once for the
+   * whole board: the stored posts by address, the uploaded images by asset
+   * id, and presigned previews of those and of the linked cast photos.
+   * Read-only, like the articles above: a page load never opens a socket to
+   * X. Reading is resolution's and Read again's job.
+   */
+  const socialBriefs = briefs.flatMap((parsed) =>
+    parsed.success && parsed.data.type === 'social' ? [parsed.data] : [],
+  )
+  const postUrlOf = (brief: SocialBrief) => normalisePostUrl(brief.postUrl) ?? brief.postUrl
+  const socialPosts = new Map<string, SocialPostRecord>()
+  const socialImages = new Map<string, string>()
+  const socialUrls = new Map<string, string>()
+  if (socialBriefs.length > 0) {
+    for (const post of await getSocialPosts(db, [...new Set(socialBriefs.map(postUrlOf))])) {
+      socialPosts.set(post.url, post)
+    }
+    const assetIds = new Set(
+      socialBriefs.flatMap((brief) =>
+        [brief.avatarAssetId, brief.mediaAssetId].filter((id): id is string => id !== undefined),
+      ),
+    )
+    for (const assetId of assetIds) {
+      const asset = await getAsset(db, assetId)
+      if (asset) socialImages.set(assetId, asset.r2Key)
+    }
+    if (storageConfigured()) {
+      const keys = new Set(socialImages.values())
+      for (const member of cast) {
+        const photo = member.xHandle ? referencePhotos(member, 1)[0] : undefined
+        if (photo) keys.add(photo.r2Key)
+      }
+      for (const key of keys) socialUrls.set(key, await presignGet(key))
+    }
+  }
+  const socialBrand = resolveBrandKit(settings)
+
   const slots: SlotView[] = rows.map((row, at) => {
     const parsed = briefs[at]!
     const candidates = parseCandidates(row.candidates)
@@ -552,6 +784,17 @@ export async function visualsReviewModel(
         : settings.modelRouting.stills,
       logoUrls: graphicLogoUrls,
       references: parsed.success ? slotReferences(parsed.data, cast, sets) : [],
+      social:
+        parsed.success && parsed.data.type === 'social'
+          ? socialSlotView({
+              brief: parsed.data,
+              post: socialPosts.get(postUrlOf(parsed.data)) ?? null,
+              cast,
+              images: socialImages,
+              urls: socialUrls,
+              brand: socialBrand,
+            })
+          : null,
     }
   })
 
@@ -677,5 +920,6 @@ export async function visualsReviewModel(
     ],
     repair: repairSummary(findingSlots, findings),
     articleClaims,
+    postClaims,
   }
 }

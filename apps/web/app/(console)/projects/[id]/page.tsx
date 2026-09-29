@@ -474,6 +474,10 @@ export default async function ProjectPage({
           projectId={project.id}
           model={visuals}
           setPhotos={setPhotos}
+          // For a post card's "one of the cast?" question (decision 284): names
+          // only, the cast already loaded above. The posts, their pictures and
+          // the linked cast photos are read and presigned by the visuals model.
+          castMembers={cast.map((member) => ({ id: member.id, name: member.name }))}
           colors={{
             accent: settings.brandKit.colors.accent,
             surface: settings.brandKit.colors.surface,

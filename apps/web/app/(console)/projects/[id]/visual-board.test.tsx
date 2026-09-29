@@ -1,6 +1,8 @@
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { SOCIAL_TOO_LONG } from '@boom-busters/compositions/social'
+import { X_POST_MISSING } from '@boom-busters/providers'
 import { DEFAULT_SETTINGS } from '@boom-busters/schemas'
 import type { SlotView, VisualsReviewModel } from '@/lib/visuals-review'
 import { VisualBoard } from './visual-board'
@@ -33,6 +35,10 @@ const attachGraphicLogosAction = vi.fn()
 const setSocialPostAction = vi.fn()
 const saveSocialPostAction = vi.fn()
 const saveSocialCardAction = vi.fn()
+const refetchSocialPostAction = vi.fn()
+const linkCastHandleAction = vi.fn()
+const removeSocialImageAction = vi.fn()
+const retypeToSocialAction = vi.fn()
 
 vi.mock('./visuals-actions', () => ({
   chooseCandidateAction: (...args: unknown[]) => chooseCandidateAction(...args),
@@ -62,6 +68,17 @@ vi.mock('./visuals-actions', () => ({
   setSocialPostAction: (...args: unknown[]) => setSocialPostAction(...args),
   saveSocialPostAction: (...args: unknown[]) => saveSocialPostAction(...args),
   saveSocialCardAction: (...args: unknown[]) => saveSocialCardAction(...args),
+  refetchSocialPostAction: (...args: unknown[]) => refetchSocialPostAction(...args),
+  linkCastHandleAction: (...args: unknown[]) => linkCastHandleAction(...args),
+  removeSocialImageAction: (...args: unknown[]) => removeSocialImageAction(...args),
+  retypeToSocialAction: (...args: unknown[]) => retypeToSocialAction(...args),
+}))
+
+/** The shared card is the compositions suite's to test; here it only has to be handed its payload. */
+vi.mock('./social-preview', () => ({
+  SocialPreview: ({ payload }: { payload: { text: string } }) => (
+    <div data-testid="social-preview">{payload.text}</div>
+  ),
 }))
 
 const createLogoUploadAction = vi.fn()
@@ -108,6 +125,10 @@ beforeEach(() => {
   setSocialPostAction.mockResolvedValue({ ok: true })
   saveSocialPostAction.mockResolvedValue({ ok: true })
   saveSocialCardAction.mockResolvedValue({ ok: true })
+  refetchSocialPostAction.mockResolvedValue({ ok: true })
+  linkCastHandleAction.mockResolvedValue({ ok: true })
+  removeSocialImageAction.mockResolvedValue({ ok: true })
+  retypeToSocialAction.mockResolvedValue({ ok: true })
   createLogoUploadAction.mockResolvedValue({ ok: true, url: 'https://r2.example/put', key: 'k' })
   finaliseLogoAction.mockResolvedValue({ ok: true })
   vi.stubGlobal(
@@ -186,6 +207,7 @@ const stockSlot: SlotView = {
   derivedRoute: { provider: 'google', model: 'gemini-3-pro-image' },
   logoUrls: {},
   references: [],
+  social: null,
 }
 
 const chartSlot: SlotView = {
@@ -229,6 +251,7 @@ const chartSlot: SlotView = {
   derivedRoute: { provider: 'google', model: 'gemini-3-pro-image' },
   logoUrls: {},
   references: [],
+  social: null,
 }
 
 const SLOT_D = '01J000000000000000000000AD'
@@ -273,6 +296,7 @@ const headlineSlot: SlotView = {
   derivedRoute: { provider: 'google', model: 'gemini-3-pro-image' },
   logoUrls: {},
   references: [],
+  social: null,
 }
 
 const SLOT_E = '01J000000000000000000000AE'
@@ -325,6 +349,7 @@ const graphicSlot: SlotView = {
   derivedRoute: { provider: 'google', model: 'gemini-3-pro-image' },
   logoUrls: {},
   references: [],
+  social: null,
 }
 
 /**
@@ -339,6 +364,10 @@ const ARTICLE_CLAIMS = [
     label: 'ledgerwire.example/2023/03/…',
   },
 ]
+
+/** The claims a post card may show (decision 284). Invented account. */
+const POST_CLAIM = '01HQ00000000000000000000S1'
+const POST_CLAIMS = [{ id: POST_CLAIM, label: '@DanaOkafor: The audit found nothing.' }]
 
 const brokenSlot: SlotView = {
   id: SLOT_C,
@@ -361,6 +390,7 @@ const brokenSlot: SlotView = {
   derivedRoute: { provider: 'google', model: 'gemini-3-pro-image' },
   logoUrls: {},
   references: [],
+  social: null,
 }
 
 function model(slots: SlotView[], overrides: Partial<VisualsReviewModel> = {}): VisualsReviewModel {
@@ -396,6 +426,7 @@ function model(slots: SlotView[], overrides: Partial<VisualsReviewModel> = {}): 
     decisions: [],
     repair: { slots: 0, becomeStills: 0, chapters: 0 },
     articleClaims: ARTICLE_CLAIMS,
+    postClaims: POST_CLAIMS,
     ...overrides,
   }
 }
@@ -1738,5 +1769,336 @@ describe('VisualBoard: reference chips', () => {
     )
 
     expect(screen.queryByLabelText('References this brief uses')).not.toBeInTheDocument()
+  })
+})
+
+const SLOT_F = '01J000000000000000000000AF'
+const CAST_MEMBER = '01HQ00000000000000000000C1'
+
+/** Invented account and words: a fixture must never carry a real one. */
+const fetchedPost = {
+  url: 'https://x.com/i/status/1734567890123456789',
+  platform: 'x' as const,
+  postId: '1734567890123456789',
+  handle: 'DanaOkafor',
+  authorName: 'Dana Okafor',
+  text: 'The audit is finished and the $1.9 billion is not there.',
+  postedAt: '2023-03-14',
+  endedWithMediaLink: false,
+  provenance: {
+    authorName: 'oembed' as const,
+    handle: 'oembed' as const,
+    text: 'oembed' as const,
+    postedAt: 'manual' as const,
+  },
+  status: 'fetched' as const,
+  failureReason: null,
+}
+
+const socialSlot: SlotView = {
+  id: SLOT_F,
+  type: 'social',
+  status: 'resolved',
+  chapterIndex: 0,
+  chapterTitle: 'The audit',
+  startMs: 33000,
+  durationMs: 6000,
+  brief: {
+    type: 'social',
+    coversText: 'She said it herself, in public.',
+    description: 'The post, on screen.',
+    motion: { kind: 'static' },
+    transition: 'cut',
+    sourceClaimId: POST_CLAIM,
+    postUrl: 'https://x.com/i/status/1734567890123456789',
+  },
+  briefError: undefined,
+  candidates: [],
+  extraCandidates: 0,
+  needsFetch: false,
+  retype: null,
+  refusal: null,
+  article: null,
+  reuse: null,
+  route: null,
+  derivedRoute: { provider: 'google', model: 'gemini-3-pro-image' },
+  logoUrls: {},
+  references: [],
+  social: {
+    post: fetchedPost,
+    avatar: { source: 'initials', url: null, castName: null },
+    mediaUrl: null,
+    issues: [],
+    suggestedExcerpt: null,
+    payload: {
+      kind: 'social',
+      platform: 'x',
+      authorName: 'Dana Okafor',
+      handle: 'DanaOkafor',
+      text: 'The audit is finished and the $1.9 billion is not there.',
+      cutBefore: false,
+      cutAfter: false,
+      postedAt: '2023-03-14',
+      initials: 'DO',
+      sourceLabel: 'x.com/DanaOkafor/status/1734567890123456789',
+      sourceUrl: 'https://x.com/DanaOkafor/status/1734567890123456789',
+      claimId: POST_CLAIM,
+    },
+  },
+}
+
+function socialWith(social: Partial<NonNullable<SlotView['social']>>): SlotView {
+  return { ...socialSlot, status: 'placeholder', social: { ...socialSlot.social!, ...social } }
+}
+
+describe('the post card (decision 284)', () => {
+  it('draws the shared card and says where each field came from', () => {
+    render(
+      <VisualBoard projectId={PROJECT} model={model([socialSlot])} colors={COLORS} brand={BRAND} />,
+    )
+
+    expect(screen.getAllByText('Post on X').length).toBeGreaterThan(0)
+    expect(screen.getByTestId('social-preview')).toHaveTextContent('$1.9 billion is not there')
+
+    const fields = screen.getByLabelText('Where each field came from')
+    expect(within(fields).getByText(/name . from X/)).toBeInTheDocument()
+    expect(within(fields).getByText(/handle . from X/)).toBeInTheDocument()
+    expect(within(fields).getByText(/text . from X/)).toBeInTheDocument()
+    expect(within(fields).getByText(/date . typed by you/)).toBeInTheDocument()
+
+    expect(screen.getByRole('button', { name: 'Edit details' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: "Set the post's address" })).toBeInTheDocument()
+    // Nothing is missing, so the address form stays shut until asked for.
+    expect(screen.queryByRole('form', { name: "The post's address" })).not.toBeInTheDocument()
+  })
+
+  it('shows why a post could not be read, with the address form already open', async () => {
+    const user = userEvent.setup()
+    const failed = socialWith({
+      post: {
+        ...fetchedPost,
+        authorName: null,
+        text: null,
+        postedAt: null,
+        provenance: {},
+        status: 'failed',
+        failureReason: X_POST_MISSING,
+      },
+      issues: [
+        'A post card needs the name, the handle, the text and the date. Missing: the name, the text, the date.',
+      ],
+      payload: null,
+    })
+    render(
+      <VisualBoard projectId={PROJECT} model={model([failed])} colors={COLORS} brand={BRAND} />,
+    )
+
+    expect(screen.getByText(X_POST_MISSING, { exact: false })).toBeInTheDocument()
+    expect(screen.getByText(/Missing: the name, the text, the date/)).toBeInTheDocument()
+    expect(screen.queryByTestId('social-preview')).not.toBeInTheDocument()
+
+    const form = screen.getByRole('form', { name: "The post's address" })
+    await user.type(within(form).getByRole('textbox'), 'https://x.com/DanaOkafor')
+    await user.click(within(form).getByRole('button', { name: 'Use this post' }))
+    await waitFor(() =>
+      expect(setSocialPostAction).toHaveBeenCalledWith(PROJECT, SLOT_F, 'https://x.com/DanaOkafor'),
+    )
+  })
+
+  it('reads the post again on request', async () => {
+    render(
+      <VisualBoard projectId={PROJECT} model={model([socialSlot])} colors={COLORS} brand={BRAND} />,
+    )
+
+    await userEvent.click(screen.getByRole('button', { name: 'Read again' }))
+    await waitFor(() => expect(refetchSocialPostAction).toHaveBeenCalledWith(PROJECT, SLOT_F))
+  })
+
+  it('saves corrected details to the post', async () => {
+    const user = userEvent.setup()
+    render(
+      <VisualBoard projectId={PROJECT} model={model([socialSlot])} colors={COLORS} brand={BRAND} />,
+    )
+
+    await user.click(screen.getByRole('button', { name: 'Edit details' }))
+    const form = screen.getByRole('form', { name: "The post's details" })
+    const name = within(form).getByLabelText('Name')
+    await user.clear(name)
+    await user.type(name, 'Dana K. Okafor')
+    await user.click(within(form).getByRole('button', { name: 'Save' }))
+
+    await waitFor(() =>
+      expect(saveSocialPostAction).toHaveBeenCalledWith(PROJECT, SLOT_F, {
+        authorName: 'Dana K. Okafor',
+        handle: 'DanaOkafor',
+        text: fetchedPost.text,
+        postedAt: '2023-03-14',
+      }),
+    )
+  })
+
+  it('pre-fills the highlight with the first figure, and saves it', async () => {
+    const user = userEvent.setup()
+    render(
+      <VisualBoard projectId={PROJECT} model={model([socialSlot])} colors={COLORS} brand={BRAND} />,
+    )
+
+    const highlight = screen.getByLabelText('Highlight')
+    expect(highlight).toHaveValue('$1.9 billion')
+    await user.click(screen.getByRole('button', { name: 'Save highlight' }))
+    await waitFor(() =>
+      expect(saveSocialCardAction).toHaveBeenCalledWith(PROJECT, SLOT_F, {
+        emphasis: '$1.9 billion',
+      }),
+    )
+  })
+
+  it('offers no excerpt for a post that fits', () => {
+    render(
+      <VisualBoard projectId={PROJECT} model={model([socialSlot])} colors={COLORS} brand={BRAND} />,
+    )
+
+    expect(screen.queryByLabelText('Excerpt')).not.toBeInTheDocument()
+  })
+
+  it('pre-fills the excerpt with the suggestion when the post is too long', async () => {
+    const user = userEvent.setup()
+    const suggestion = 'The audit is finished.'
+    const long = socialWith({
+      issues: [SOCIAL_TOO_LONG],
+      suggestedExcerpt: suggestion,
+      payload: null,
+    })
+    render(<VisualBoard projectId={PROJECT} model={model([long])} colors={COLORS} brand={BRAND} />)
+
+    expect(screen.getByText(SOCIAL_TOO_LONG)).toBeInTheDocument()
+    expect(screen.getByLabelText('Excerpt')).toHaveValue(suggestion)
+    await user.click(screen.getByRole('button', { name: 'Save excerpt' }))
+    await waitFor(() =>
+      expect(saveSocialCardAction).toHaveBeenCalledWith(PROJECT, SLOT_F, { excerpt: suggestion }),
+    )
+  })
+
+  it('asks whether the handle is one of the cast, and links the member chosen', async () => {
+    const user = userEvent.setup()
+    render(
+      <VisualBoard
+        projectId={PROJECT}
+        model={model([socialSlot])}
+        colors={COLORS}
+        brand={BRAND}
+        castMembers={[
+          { id: '01HQ00000000000000000000C0', name: 'Someone Else' },
+          { id: CAST_MEMBER, name: 'Dana Okafor' },
+        ]}
+      />,
+    )
+
+    expect(screen.getByText('Is @DanaOkafor one of the cast?')).toBeInTheDocument()
+    await user.selectOptions(screen.getByLabelText('Cast member'), CAST_MEMBER)
+    await user.click(screen.getByRole('button', { name: 'Link' }))
+    await waitFor(() =>
+      expect(linkCastHandleAction).toHaveBeenCalledWith(PROJECT, CAST_MEMBER, 'DanaOkafor'),
+    )
+  })
+
+  it('does not ask about the cast when the picture already comes from it', () => {
+    const fromCast = socialWith({
+      avatar: { source: 'cast', url: null, castName: 'Dana Okafor' },
+    })
+    render(
+      <VisualBoard
+        projectId={PROJECT}
+        model={model([fromCast])}
+        colors={COLORS}
+        brand={BRAND}
+        castMembers={[{ id: CAST_MEMBER, name: 'Dana Okafor' }]}
+      />,
+    )
+
+    expect(screen.getByText(/cast photo of Dana Okafor/)).toBeInTheDocument()
+    expect(screen.queryByText(/one of the cast\?/)).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Upload profile picture' })).toBeInTheDocument()
+  })
+
+  it('says a post ended with a link, and offers the image upload', () => {
+    const linked = socialWith({ post: { ...fetchedPost, endedWithMediaLink: true } })
+    render(
+      <VisualBoard projectId={PROJECT} model={model([linked])} colors={COLORS} brand={BRAND} />,
+    )
+
+    expect(
+      screen.getByText(
+        'This post ended with a link, usually its image. Upload it to show it under the text.',
+      ),
+    ).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: "Upload the post's image" })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Remove' })).not.toBeInTheDocument()
+  })
+
+  it('removes an attached image', async () => {
+    const withImage = socialWith({ mediaUrl: 'https://r2.example/media.png' })
+    render(
+      <VisualBoard projectId={PROJECT} model={model([withImage])} colors={COLORS} brand={BRAND} />,
+    )
+
+    await userEvent.click(screen.getByRole('button', { name: 'Remove' }))
+    await waitFor(() =>
+      expect(removeSocialImageAction).toHaveBeenCalledWith(PROJECT, SLOT_F, 'media'),
+    )
+  })
+
+  it('uploads a profile picture through the presigned pair, marked as an avatar', async () => {
+    createOwnUploadAction.mockResolvedValue({ ok: true, url: 'https://r2.example/put', key: 'k' })
+    finaliseOwnUploadAction.mockResolvedValue({ ok: true })
+    render(
+      <VisualBoard projectId={PROJECT} model={model([socialSlot])} colors={COLORS} brand={BRAND} />,
+    )
+
+    const file = new File([new Uint8Array([1, 2, 3])], 'dana.png', { type: 'image/png' })
+    await userEvent.upload(screen.getByLabelText('Choose a profile picture for this post'), file)
+
+    await waitFor(() => expect(finaliseOwnUploadAction).toHaveBeenCalled())
+    expect(createOwnUploadAction).toHaveBeenCalledWith(
+      expect.objectContaining({ projectId: PROJECT, slotId: SLOT_F, purpose: 'social-avatar' }),
+    )
+    expect(finaliseOwnUploadAction).toHaveBeenCalledWith(
+      expect.objectContaining({ projectId: PROJECT, slotId: SLOT_F, purpose: 'social-avatar' }),
+    )
+  })
+
+  it('asks which post a card would show, and re-types on the pick', async () => {
+    render(
+      <VisualBoard projectId={PROJECT} model={model([stockSlot])} colors={COLORS} brand={BRAND} />,
+    )
+
+    const picker = screen.getByRole('group', { name: 'Slot format' })
+    const button = within(picker).getByRole('button', { name: 'Post on X' })
+    await userEvent.click(button)
+    expect(retypeSlotAction).not.toHaveBeenCalled()
+    expect(button).toHaveAttribute('aria-expanded', 'true')
+
+    const chooser = screen.getByRole('group', { name: 'Which post this card shows' })
+    expect(within(chooser).getByText(/@DanaOkafor: The audit found nothing/)).toBeInTheDocument()
+    await userEvent.click(within(chooser).getByRole('button', { name: 'Show this post' }))
+    await waitFor(() =>
+      expect(retypeToSocialAction).toHaveBeenCalledWith(PROJECT, SLOT_A, POST_CLAIM),
+    )
+  })
+
+  it('says so when no claim cites a post, instead of offering nothing', async () => {
+    render(
+      <VisualBoard
+        projectId={PROJECT}
+        model={model([stockSlot], { postClaims: [] })}
+        colors={COLORS}
+        brand={BRAND}
+      />,
+    )
+
+    await userEvent.click(screen.getByRole('button', { name: 'Post on X' }))
+    const chooser = screen.getByRole('group', { name: 'Which post this card shows' })
+    expect(within(chooser).getByText(/no claim in this project/)).toBeInTheDocument()
+    expect(within(chooser).queryByRole('button')).not.toBeInTheDocument()
   })
 })
