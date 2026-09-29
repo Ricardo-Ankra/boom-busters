@@ -27,12 +27,15 @@ function toMember(row: CastMemberRow): CastMember {
     role: row.role,
     identityString: row.identityString,
     guardrail: row.guardrail,
+    xHandle: row.xHandle,
     photos: row.photos,
   })
 }
 
 const active = (projectId: string) =>
   and(eq(castMembers.projectId, projectId), isNull(castMembers.dismissedAt))
+
+const X_HANDLE_RE = /^[a-z0-9_]{1,15}$/
 
 export async function listCastMembers(db: Database, projectId: string): Promise<CastMember[]> {
   const rows = await db
@@ -166,6 +169,46 @@ export async function dismissCastMember(db: Database, id: string): Promise<void>
 /** Hard delete, for tests and for tearing a project's cast down completely. */
 export async function deleteCastMember(db: Database, id: string): Promise<void> {
   await db.delete(castMembers).where(eq(castMembers.id, id))
+}
+
+/**
+ * The X handle this person posts under (decision 284). Stored lower case
+ * without a leading `@`, whatever case or form the owner typed it in, so the
+ * social card's avatar lookup (`castMemberByXHandle`) is a plain equality
+ * check. `null` clears it.
+ */
+export async function setCastXHandle(
+  db: Database,
+  castMemberId: string,
+  handle: string | null,
+): Promise<void> {
+  const value = handle === null ? null : handle.trim().replace(/^@/, '').toLowerCase()
+  if (value !== null && !X_HANDLE_RE.test(value)) {
+    throw new ValidationError('That is not a valid X handle.', { field: 'xHandle' })
+  }
+  await db
+    .update(castMembers)
+    .set({ xHandle: value, updatedAt: new Date() })
+    .where(eq(castMembers.id, castMemberId))
+}
+
+/**
+ * The cast member this handle belongs to, if any (decision 284, spec section
+ * 8.4's avatar rule). Case-insensitive, scoped to one project, and never
+ * matches a dismissed member.
+ */
+export async function castMemberByXHandle(
+  db: Database,
+  projectId: string,
+  handle: string,
+): Promise<CastMember | null> {
+  const value = handle.trim().replace(/^@/, '').toLowerCase()
+  const [row] = await db
+    .select()
+    .from(castMembers)
+    .where(and(active(projectId), sql`lower(${castMembers.xHandle}) = ${value}`))
+    .limit(1)
+  return row ? toMember(row) : null
 }
 
 /**

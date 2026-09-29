@@ -137,6 +137,13 @@ export const shotTypeEnum = pgEnum('shot_type', [
 export const articleStatusEnum = pgEnum('article_status', ['fetched', 'manual', 'failed'])
 export const shotStatusEnum = pgEnum('shot_status', ['unresolved', 'resolved', 'placeholder'])
 
+/**
+ * How a social post row was obtained (decision 284), the `social_posts`
+ * twin of `article_status`: `fetched` from X's public reader, `manual` typed
+ * or corrected by the owner, `failed` a post the reader could not read.
+ */
+export const socialPostStatusEnum = pgEnum('social_post_status', ['fetched', 'manual', 'failed'])
+
 export const assetKindEnum = pgEnum('asset_kind', ['image', 'video', 'music', 'logo'])
 
 export const renderKindEnum = pgEnum('render_kind', ['master', 'short', 'draft'])
@@ -658,6 +665,13 @@ export const castMembers = pgTable(
     role: text('role').notNull(),
     identityString: text('identity_string').notNull().default(''),
     guardrail: text('guardrail').notNull().default(''),
+    /**
+     * The X handle this person posts under (decision 284), stored lower case
+     * without the `@` and compared case-insensitively. Feeds the social
+     * card's avatar: a stored photo of the cast member whose handle matches
+     * the post's is used before the initials fallback (spec section 8.4).
+     */
+    xHandle: text('x_handle'),
     photos: jsonb('photos')
       .notNull()
       .default(sql`'[]'::jsonb`)
@@ -1110,6 +1124,48 @@ export const articleSources = pgTable('article_sources', {
   updatedAt: updatedAt(),
 })
 
+/**
+ * A real X post shown on screen as a card (decision 284), `articleSources`'s
+ * twin for a social citation.
+ *
+ * Keyed by the post's normalised address rather than by project or slot,
+ * because one post can back several claims, shots and films, and its words
+ * do not change after posting. The row is the cache AND the audit trail for
+ * what a social card put on screen.
+ *
+ * `provenance` records, per field, whether the value came from X's public
+ * reader (`'oembed'`) or the owner (`'manual'`). Unlike `articleSources`,
+ * whose fetch skips the whole row once it is manual, here the correction is
+ * per field: `recordSocialPost` (packages/db/src/social-posts.ts) keeps
+ * whichever fields the owner corrected and takes the reader's value for the
+ * rest, so a post the owner has not touched at all still benefits from a
+ * later, better read.
+ */
+export const socialPosts = pgTable('social_posts', {
+  /** `https://x.com/i/status/<id>`: the primary key. */
+  url: text('url').primaryKey(),
+  platform: text('platform').notNull().default('x'),
+  postId: text('post_id').notNull(),
+  /** As X shows it, case kept, no `@`. */
+  handle: text('handle'),
+  authorName: text('author_name'),
+  /** Verbatim. Never truncated: an excerpt is a separate, visible choice. */
+  text: text('text'),
+  /** Day precision, as text: the card shows a date, never a time or a zone. */
+  postedAt: text('posted_at'),
+  /** A trailing t.co/pic.twitter.com link was stripped from the text. */
+  endedWithMediaLink: boolean('ended_with_media_link').notNull().default(false),
+  provenance: jsonb('provenance')
+    .notNull()
+    .default(sql`'{}'::jsonb`)
+    .$type<Record<string, string>>(),
+  status: socialPostStatusEnum('status').notNull().default('failed'),
+  failureReason: text('failure_reason'),
+  fetchedAt: timestamp('fetched_at', { withTimezone: true }).notNull().defaultNow(),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+})
+
 // ---------------------------------------------------------------------------
 // Inferred row types
 // ---------------------------------------------------------------------------
@@ -1141,6 +1197,8 @@ export type RunEventRow = typeof runEvents.$inferSelect
 export type AnalyticsSnapshotRow = typeof analyticsSnapshots.$inferSelect
 export type ArticleSourceRow = typeof articleSources.$inferSelect
 export type NewArticleSource = typeof articleSources.$inferInsert
+export type SocialPostRow = typeof socialPosts.$inferSelect
+export type NewSocialPost = typeof socialPosts.$inferInsert
 export type ProjectStage = (typeof projectStageEnum.enumValues)[number]
 export type StageStatus = (typeof stageStatusEnum.enumValues)[number]
 export type RunStatus = (typeof runStatusEnum.enumValues)[number]

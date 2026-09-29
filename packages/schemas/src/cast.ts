@@ -46,6 +46,12 @@ export const CastMemberSchema = z.object({
   /** Written from the photos by a vision call, then edited by hand. Empty until then. */
   identityString: z.string().max(600),
   guardrail: z.string().max(600),
+  /** Lower case, no `@` (decision 284). Optional so existing fixtures keep compiling. */
+  xHandle: z
+    .string()
+    .regex(/^[a-z0-9_]{1,15}$/)
+    .nullable()
+    .optional(),
   photos: z.array(CastPhotoSchema).max(MAX_CAST_PHOTOS),
 })
 export type CastMember = z.infer<typeof CastMemberSchema>

@@ -3,6 +3,7 @@ import type { CastPhoto } from '@boom-busters/schemas'
 import { afterAll, beforeEach, describe, expect, it } from 'vitest'
 import { createCase, truncateCases } from './cases'
 import {
+  castMemberByXHandle,
   deleteCastMember,
   dismissCastMember,
   getCastMember,
@@ -10,6 +11,7 @@ import {
   listCastMembers,
   seedCastFromPrincipals,
   setCastPhotos,
+  setCastXHandle,
   updateCastMember,
 } from './cast'
 import { createDb } from './client'
@@ -176,6 +178,29 @@ suite('cast members', () => {
     await expect(setCastPhotos(db, member.id, [...four, photo('e')])).rejects.toThrow(
       ValidationError,
     )
+  })
+
+  it('stores an X handle lower case without the @, and clears it with null', async () => {
+    const member = await insertCastMember(db, { projectId, name: 'Emad Mostaque', role: 'Founder' })
+    await setCastXHandle(db, member.id, '@EMostaque')
+    expect((await getCastMember(db, member.id))?.xHandle).toBe('emostaque')
+
+    await setCastXHandle(db, member.id, null)
+    expect((await getCastMember(db, member.id))?.xHandle).toBeNull()
+  })
+
+  it('finds a cast member by handle, case-insensitively, within one project only', async () => {
+    const member = await insertCastMember(db, { projectId, name: 'Emad Mostaque', role: 'Founder' })
+    await setCastXHandle(db, member.id, '@EMostaque')
+
+    const found = await castMemberByXHandle(db, projectId, 'EMostaque')
+    expect(found?.id).toBe(member.id)
+
+    const otherKase = await createCase(db, { title: 'Another film', category: 'collapse' })
+    const otherProjectId = (
+      await createProjectFromCase(db, { caseId: otherKase.id, title: 'Another film' })
+    ).id
+    expect(await castMemberByXHandle(db, otherProjectId, 'EMostaque')).toBeNull()
   })
 
   it('deletes a member, and the project deletion cascades the rest', async () => {
