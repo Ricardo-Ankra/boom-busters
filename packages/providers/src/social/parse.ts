@@ -69,12 +69,18 @@ function parseDate(text: string): string | null {
   return `${year}-${String(monthIndex + 1).padStart(2, '0')}-${day.padStart(2, '0')}`
 }
 
-/** `author_url`'s last path segment, the address the spec says wins on a disagreement. */
+const HANDLE_RE = /^[A-Za-z0-9_]{1,15}$/
+
+/**
+ * `author_url`'s last path segment, the address the spec says wins on a
+ * disagreement, but only when it is shaped like a handle X could issue.
+ * Anything else is null, and the byline's own handle stands.
+ */
 function handleFromAuthorUrl(authorUrl: unknown): string | null {
   if (typeof authorUrl !== 'string') return null
   try {
     const segment = new URL(authorUrl).pathname.split('/').filter(Boolean).pop()
-    return segment === undefined || segment === '' ? null : segment
+    return segment !== undefined && HANDLE_RE.test(segment) ? segment : null
   } catch {
     return null
   }

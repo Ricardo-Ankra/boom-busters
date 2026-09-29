@@ -65,6 +65,19 @@ describe('parseXOembed', () => {
     expect(post.postedAt).toBe('2023-08-11')
   })
 
+  it('falls back to the byline handle when author_url ends in something that is not a handle', () => {
+    for (const authorUrl of [
+      'https://x.com/a-handle-far-too-long-for-x',
+      'https://x.com/profile.php',
+      'https://x.com/%40jack',
+      'https://x.com/',
+    ]) {
+      const post = parseXOembed({ ...OEMBED_JACK, author_url: authorUrl })
+      // The byline's own "(@jack)", never a segment X could not have issued.
+      expect(post.handle, authorUrl).toBe('jack')
+    }
+  })
+
   it('gives every field null, never throwing, for shapes it does not recognise', () => {
     expect(parseXOembed(null)).toEqual({
       authorName: null,

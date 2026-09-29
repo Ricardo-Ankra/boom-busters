@@ -1,7 +1,13 @@
 import { describe, expect, it, vi } from 'vitest'
 import { socialProvider } from './index'
-import { liveSocialProvider, X_OEMBED_ENDPOINT, X_POST_MISSING, X_UNREACHABLE } from './fetch'
-import { OEMBED_JACK } from './fixtures'
+import {
+  liveSocialProvider,
+  X_OEMBED_ENDPOINT,
+  X_POST_MISSING,
+  X_UNREACHABLE,
+  X_UNREADABLE,
+} from './fetch'
+import { OEMBED_JACK, OEMBED_MEDIA_ONLY } from './fixtures'
 
 const POST_URL = 'https://x.com/jack/status/20'
 
@@ -59,6 +65,21 @@ describe('the social fetch', () => {
     const call = vi.fn(() => Promise.resolve(status(500)))
     await expect(read(call as unknown as typeof fetch)).rejects.toThrow(X_UNREACHABLE)
     expect(call).toHaveBeenCalledTimes(2)
+  })
+
+  it('refuses a 200 it cannot read a name or any words from, without retrying', async () => {
+    for (const body of [{}, { html: '<div>no blockquote here</div>' }, { html: 42 }]) {
+      const call = vi.fn(() => Promise.resolve(jsonResponse(body)))
+      await expect(read(call as unknown as typeof fetch)).rejects.toThrow(X_UNREADABLE)
+      expect(call).toHaveBeenCalledTimes(1)
+    }
+  })
+
+  it('still reads a media-only post, which has a name but no words', async () => {
+    const call = vi.fn(() => Promise.resolve(jsonResponse(OEMBED_MEDIA_ONLY)))
+    const post = await read(call as unknown as typeof fetch)
+    expect(post.text).toBeNull()
+    expect(post.authorName).not.toBeNull()
   })
 
   it('refuses a body that is not JSON', async () => {

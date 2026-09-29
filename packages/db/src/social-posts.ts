@@ -53,8 +53,9 @@ export async function getSocialPosts(
 /**
  * Store what a fetch found (or that it failed). For each of the four
  * owner-correctable fields, a field whose stored provenance is `'manual'`
- * is kept exactly as it is; every other field, and the row's own status and
- * failure reason, take the reader's value.
+ * is kept exactly as it is, and so is a stored value the reader came back
+ * null for (a blank read never wipes a field); every other field, and the
+ * row's own status and failure reason, take the reader's value.
  */
 export async function recordSocialPost(
   db: Database,
@@ -67,6 +68,12 @@ export async function recordSocialPost(
   ): { value: SocialPostRecord[K]; provenance?: string } => {
     if (existing && existing.provenance[key] === 'manual') {
       return { value: existing[key], provenance: 'manual' }
+    }
+    // A reader that came back blank for a field this row already holds has
+    // not told us the field is gone, only that it could not see it: the
+    // stored value, and where it came from, stand.
+    if (existing && record[key] === null && existing[key] !== null) {
+      return { value: existing[key], provenance: existing.provenance[key] }
     }
     return { value: record[key], provenance: record.provenance[key] }
   }

@@ -110,6 +110,47 @@ suite('the social post store', () => {
     expect(written.provenance['postedAt']).toBe('oembed')
   })
 
+  it('never replaces a stored field with a blank the reader came back with', async () => {
+    await recordSocialPost(db, FETCHED)
+
+    const written = await recordSocialPost(db, {
+      ...FETCHED,
+      authorName: null,
+      text: null,
+      postedAt: '2024-01-01',
+      provenance: { handle: 'oembed', postedAt: 'oembed' },
+    })
+
+    expect(written.authorName).toBe(FETCHED.authorName)
+    expect(written.provenance['authorName']).toBe('oembed')
+    expect(written.text).toBe(FETCHED.text)
+    expect(written.provenance['text']).toBe('oembed')
+    // What the reader did answer still lands.
+    expect(written.postedAt).toBe('2024-01-01')
+  })
+
+  it('creates the row from the address when the owner types a post nobody has read', async () => {
+    const row = await setSocialPostManual(db, URL_A, {
+      authorName: 'Emad Mostaque',
+      text: 'Typed before any read.',
+    })
+
+    expect(row).toMatchObject({
+      url: URL_A,
+      platform: 'x',
+      postId: '1900000000000000001',
+      authorName: 'Emad Mostaque',
+      text: 'Typed before any read.',
+      handle: null,
+      postedAt: null,
+      status: 'manual',
+      failureReason: null,
+      endedWithMediaLink: false,
+      provenance: { authorName: 'manual', text: 'manual' },
+    })
+    expect(await getSocialPost(db, URL_A)).toEqual(row)
+  })
+
   it('marks the fields the owner wrote, and clears the failure', async () => {
     await recordSocialPost(db, FAILED)
     const row = await setSocialPostManual(db, URL_B, { authorName: 'A Name Typed By Hand' })

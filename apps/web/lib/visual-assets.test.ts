@@ -13,6 +13,7 @@ import {
   requireTestDatabase,
   seed,
   setCastPhotos,
+  socialPosts,
   setSetPlates,
   updateProjectSet,
   updateSettings,
@@ -557,6 +558,12 @@ References attached: 1 photograph of Emad Mostaque.`
   })
 
   describe('a social slot resolves by reading its stored post', () => {
+    // A blank read never wipes a stored field (decision 284), so each case
+    // starts from no row rather than writing over whatever the last one left.
+    beforeEach(async () => {
+      await db.delete(socialPosts)
+    })
+
     const socialBrief = (overrides: Partial<SocialBrief> = {}): SocialBrief => ({
       type: 'social',
       coversText: 'x',
