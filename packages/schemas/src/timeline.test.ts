@@ -148,6 +148,40 @@ describe('TimelineSchema', () => {
     ).toBe(false)
   })
 
+  it('accepts a social slot and refuses one on another type (decision 284)', () => {
+    const payload = {
+      kind: 'social',
+      platform: 'x',
+      authorName: 'Alex Rivera',
+      handle: '@alexrivera',
+      text: 'The audit found nothing. That is the headline.',
+      cutBefore: false,
+      cutAfter: true,
+      postedAt: '2023-03-15',
+      initials: 'AR',
+      sourceLabel: 'x.com/alexrivera/status/1234567890',
+      sourceUrl: 'https://x.com/alexrivera/status/1234567890',
+      claimId: CLAIM,
+    }
+    const slot = {
+      type: 'social' as const,
+      startMs: 0,
+      durationMs: 5000,
+      transition: 'cut' as const,
+      motion: { kind: 'static' as const },
+      payload,
+    }
+    expect(TimelineSlotSchema.parse(slot).payload.kind).toBe('social')
+    expect(TimelineSlotSchema.safeParse({ ...slot, type: 'still' }).success).toBe(false)
+    // A timestamp where a date belongs would print a time on screen.
+    expect(
+      TimelineSlotSchema.safeParse({
+        ...slot,
+        payload: { ...payload, postedAt: '2023-03-15T06:02:11Z' },
+      }).success,
+    ).toBe(false)
+  })
+
   it('rejects a slot whose payload contradicts its type', () => {
     const result = TimelineSlotSchema.safeParse({
       type: 'chart',
@@ -320,5 +354,36 @@ describe('canonicalTimelineIssues', () => {
     const issues = canonicalTimelineIssues(TimelineSchema.parse(leaked))
     expect(issues).toContain('narration.0.url')
     if (leaked.music) expect(issues).toContain('music.url')
+  })
+
+  it('names a materialised avatar URL on a social payload', () => {
+    const timeline = JSON.parse(JSON.stringify(fixtureTimeline())) as Timeline
+    timeline.slots.push({
+      type: 'social',
+      startMs: 14_000,
+      durationMs: 5000,
+      transition: 'cut',
+      motion: { kind: 'static' },
+      payload: {
+        kind: 'social',
+        platform: 'x',
+        authorName: 'Alex Rivera',
+        handle: '@alexrivera',
+        text: 'The audit found nothing.',
+        cutBefore: false,
+        cutAfter: false,
+        postedAt: '2023-03-15',
+        initials: 'AR',
+        avatar: {
+          r2Key: 'boom-busters/social/avatar.png',
+          url: 'https://r2.example.com/presigned?sig=abc',
+        },
+        sourceLabel: 'x.com/alexrivera/status/1234567890',
+        sourceUrl: 'https://x.com/alexrivera/status/1234567890',
+        claimId: CLAIM,
+      },
+    })
+    const parsed = TimelineSchema.parse(timeline)
+    expect(canonicalTimelineIssues(parsed)).toContain('slots.2.payload.avatar.url')
   })
 })

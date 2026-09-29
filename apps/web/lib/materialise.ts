@@ -84,10 +84,13 @@ export async function materialiseForPreview(
   for (const slot of timeline.slots) {
     // Drawn cards carry their own content: a chart's series, a map's
     // coordinates, a headline's five strings. There are no bytes to resolve.
+    // A social payload's avatar/media resolve from Task 9 onward; until then
+    // it passes through untouched, same as these (decision 284).
     if (
       slot.payload.kind === 'chart' ||
       slot.payload.kind === 'map' ||
-      slot.payload.kind === 'headline'
+      slot.payload.kind === 'headline' ||
+      slot.payload.kind === 'social'
     ) {
       slots.push(slot)
       continue

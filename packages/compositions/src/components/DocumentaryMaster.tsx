@@ -139,6 +139,9 @@ function SlotView({ slot, brand }: { slot: TimelineSlot; brand: BrandKitTokens }
   const durationInFrames = msToFrames(slot.durationMs, fps)
   const opacity = transitionOpacity(slot.transition, (frame / fps) * 1000)
 
+  // A social slot draws nothing here: Task 5 adds the card that reads a
+  // SocialPayload; until then this is the inert choice, not a crash
+  // (decision 284).
   return (
     <AbsoluteFill style={{ opacity }}>
       {slot.payload.kind === 'image' ? (
@@ -163,7 +166,7 @@ function SlotView({ slot, brand }: { slot: TimelineSlot; brand: BrandKitTokens }
         <HeadlineCard payload={slot.payload} brand={brand} />
       ) : slot.payload.kind === 'graphic' ? (
         <GraphicCard payload={slot.payload} brand={brand} durationInFrames={durationInFrames} />
-      ) : (
+      ) : slot.payload.kind === 'social' ? null : (
         <AnimatedMap payload={slot.payload} brand={brand} durationInFrames={durationInFrames} />
       )}
     </AbsoluteFill>

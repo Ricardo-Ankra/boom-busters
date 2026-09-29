@@ -215,6 +215,33 @@ export const HeadlinePayloadSchema = z.object({
 export type HeadlinePayload = z.infer<typeof HeadlinePayloadSchema>
 
 /**
+ * A real X post, embedded whole as a card (decision 284). Same reasoning as
+ * a headline: every string and reference the card needs is here, so a
+ * render six months from now does not depend on the post still being live,
+ * or on the stored record not having changed since. `claimId` and
+ * `sourceUrl` are the audit trail back to what the frame quotes.
+ */
+export const SocialPayloadSchema = z.object({
+  kind: z.literal('social'),
+  platform: z.literal('x'),
+  authorName: z.string().min(1),
+  handle: z.string().min(1),
+  /** The text as shown: the excerpt when there is one, no ellipses (the card adds them). */
+  text: z.string().min(1),
+  cutBefore: z.boolean(),
+  cutAfter: z.boolean(),
+  postedAt: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'must be a YYYY-MM-DD date'),
+  emphasis: z.string().min(1).optional(),
+  avatar: MediaRefSchema.optional(),
+  initials: z.string().min(1).max(3),
+  media: MediaRefSchema.optional(),
+  sourceLabel: z.string().min(1),
+  sourceUrl: z.string().min(1),
+  claimId: UlidSchema,
+})
+export type SocialPayload = z.infer<typeof SocialPayloadSchema>
+
+/**
  * A composed graphic, embedded whole (decision 268, Plan B): the scene, the
  * logo bytes it draws keyed by element id, and every claim it cites for the
  * audit trail. Like a chart's series, a render never depends on anything
@@ -241,6 +268,7 @@ export const SlotPayloadSchema = z.discriminatedUnion('kind', [
   MapPayloadSchema,
   HeadlinePayloadSchema,
   GraphicPayloadSchema,
+  SocialPayloadSchema,
 ])
 export type SlotPayload = z.infer<typeof SlotPayloadSchema>
 
@@ -253,6 +281,7 @@ export const TIMELINE_SLOT_TYPES = [
   'map',
   'headline',
   'graphic',
+  'social',
 ] as const
 export type TimelineSlotType = (typeof TIMELINE_SLOT_TYPES)[number]
 
@@ -266,6 +295,7 @@ export const SLOT_PAYLOAD_KINDS: Record<TimelineSlotType, readonly SlotPayload['
   map: ['map'],
   headline: ['headline'],
   graphic: ['graphic'],
+  social: ['social'],
 }
 
 export const TimelineSlotSchema = z
@@ -395,6 +425,14 @@ export function canonicalTimelineIssues(timeline: Timeline): string[] {
       }
       if (slot.payload.src.previewUrl !== undefined) {
         issues.push(`slots.${index}.payload.src.previewUrl`)
+      }
+    }
+    if (slot.payload.kind === 'social') {
+      if (slot.payload.avatar?.url !== undefined) {
+        issues.push(`slots.${index}.payload.avatar.url`)
+      }
+      if (slot.payload.media?.url !== undefined) {
+        issues.push(`slots.${index}.payload.media.url`)
       }
     }
   })
