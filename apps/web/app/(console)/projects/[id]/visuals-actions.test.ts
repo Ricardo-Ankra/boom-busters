@@ -36,6 +36,7 @@ import {
   retypeToHeadlineAction,
   reuseSlotShotAction,
   saveHeadlineAction,
+  setHeadlineArticleAction,
   setSlotRouteAction,
   showSetPhotoAction,
   unlinkSlotReuseAction,
@@ -806,6 +807,26 @@ describe('saving a headline card without its date', () => {
     expect(result).toEqual({
       ok: false,
       error: 'A headline card needs the publication, the headline and the date. Missing: the date.',
+    })
+  })
+})
+
+// Decision 280: a card is pointed at an article, never at a front page.
+describe("setting a headline card's article address", () => {
+  const PROJECT = '01J0000000000000000000000A'
+  const SLOT = '01J000000000000000000000AA'
+
+  it('refuses a front page, saying what to paste instead', async () => {
+    expect(await setHeadlineArticleAction(PROJECT, SLOT, 'https://www.semafor.com/')).toEqual({
+      ok: false,
+      error: "That is the site's front page. Paste the address of the article itself.",
+    })
+  })
+
+  it('refuses something that is not a web address', async () => {
+    expect(await setHeadlineArticleAction(PROJECT, SLOT, 'Semafor, October 2023')).toEqual({
+      ok: false,
+      error: 'That is not a web address.',
     })
   })
 })

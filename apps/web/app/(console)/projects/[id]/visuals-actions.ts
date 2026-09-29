@@ -13,6 +13,7 @@ import {
   listSlotDependants,
   scriptableClaims,
   setArticleSourceManual,
+  setClaimSourceUrl,
   retypeShotSlot,
   setProjectDirection,
   setSlotResolution,
@@ -30,6 +31,7 @@ import {
   DirectorsBookSchema,
   emphasisFits,
   HERO_SLOTS_ENABLED,
+  isFrontPage,
   logoForEntity,
   missingArticleFields,
   normaliseArticleUrl,
@@ -55,7 +57,7 @@ import { z } from 'zod'
 import { auth } from '@/auth'
 import { events } from '@/inngest/events'
 import { inngest } from '@/inngest/client'
-import { articleFromRow, refetchArticle } from '@/lib/article-source'
+import { articleForClaim, articleFromRow, refetchArticle } from '@/lib/article-source'
 import { db } from '@/lib/db'
 import { fetchRemoteImage } from '@/lib/remote-image'
 import {
@@ -799,6 +801,56 @@ export async function saveHeadlineAction(
           status: 'resolved',
           answered: { brief: written?.brief ?? brief, route: written?.route ?? null },
         }
+      : { candidates: [], status: 'placeholder' },
+  )
+
+  refresh(projectId)
+  return { ok: true }
+}
+
+/**
+ * The article's own address, for a card whose claim named only the outlet's
+ * front page (decision 280). It becomes the claim's source, so the dossier
+ * cites the article too, this card gets a record of its own instead of the
+ * one every claim from that outlet shared, and "Open the article" opens it.
+ * The article is read at once; what it will not say is typed in as usual.
+ */
+export async function setHeadlineArticleAction(
+  projectId: string,
+  slotId: string,
+  rawUrl: string,
+): Promise<ActionResult> {
+  await requireOwner()
+  const invalid = badIds(projectId, slotId)
+  if (invalid) return invalid
+
+  const address = rawUrl.trim()
+  const url = normaliseArticleUrl(address)
+  if (url === null) return { ok: false, error: 'That is not a web address.' }
+  if (isFrontPage(url)) {
+    return {
+      ok: false,
+      error: "That is the site's front page. Paste the address of the article itself.",
+    }
+  }
+
+  const slot = await getShotSlot(db, slotId)
+  if (!slot) return { ok: false, error: 'This slot no longer exists.' }
+  const parsed = ShotBriefSchema.safeParse(slot.brief)
+  if (!parsed.success || parsed.data.type !== 'headline') {
+    return { ok: false, error: 'This is not a headline slot.' }
+  }
+  const claimId = parsed.data.sourceClaimId
+  if (!(await setClaimSourceUrl(db, claimId, address))) {
+    return { ok: false, error: 'The claim this card cites no longer exists.' }
+  }
+
+  const article = await articleForClaim(claimId)
+  await setSlotResolution(
+    db,
+    slotId,
+    article && articleIsRenderable(article)
+      ? { candidates: [], status: 'resolved', answered: { brief: slot.brief, route: slot.route } }
       : { candidates: [], status: 'placeholder' },
   )
 

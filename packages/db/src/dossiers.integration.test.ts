@@ -10,6 +10,7 @@ import {
   saveDossier,
   scriptableClaims,
   setClaimQuarantined,
+  setClaimSourceUrl,
   verifyClaim,
 } from './dossiers'
 import { createProjectFromCase } from './projects'
@@ -133,6 +134,18 @@ suite('dossiers and claims', () => {
       await saveDossier(db, { projectId, contentMd: '#', claims })
 
       expect(await scriptableClaims(db, projectId)).toHaveLength(2)
+    })
+  })
+
+  // Decision 280: the headline card points a claim at its article.
+  it('points a claim at its article, keeping its type and confidence', async () => {
+    const saved = await saveDossier(db, { projectId, contentMd: '#', claims })
+    const claim = saved.claims[0]!
+    const updated = await setClaimSourceUrl(db, claim.id, 'https://example.com/2023/10/the-article')
+    expect(updated).toMatchObject({
+      sourceUrl: 'https://example.com/2023/10/the-article',
+      sourceType: claim.sourceType,
+      confidence: claim.confidence,
     })
   })
 

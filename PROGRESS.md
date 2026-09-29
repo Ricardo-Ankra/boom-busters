@@ -6282,3 +6282,21 @@ green.
      show one headline, and the Reuters record holds a Getty statement).
      Giving each claim its article's own address on the dossier screen
      separates them.
+
+281. **A headline card is pointed at its article** (2026-09-29, owner: fix
+     the shared records too; "if I want to open or see the article it just
+     takes me to the home page"). The dossier may attribute a claim to an
+     outlet's front page when the exact article is not known (a deliberate
+     rule of the dossier prompt, so the model never invents an article
+     URL), and article records are keyed by address, so every claim from
+     one outlet shared one record and "Open the article" opened the front
+     page. The card now has "Set the article's address" (open by itself
+     while the source is a front page): `setHeadlineArticleAction` refuses a
+     front page or a non-address, points the claim at the article with
+     `setClaimSourceUrl` (type and confidence kept, so the dossier cites the
+     article too), reads it, and resolves the card when outlet, headline and
+     date are there. The link says "Open the site's front page" until then.
+     `claimCarriesArticle` no longer accepts a front page, so the planner and
+     the article chooser stop building headline cards on one. The owner's
+     typed Bloomberg date (2023-03-23 for a March 2024 exit) is data, not
+     code, and is corrected by giving that card its article and its details.

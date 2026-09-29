@@ -167,6 +167,25 @@ export async function verifyClaim(
   return row
 }
 
+/**
+ * Point a claim at the exact article it came from (decision 280), leaving its
+ * type and confidence as they are. The headline card sets it when the dossier
+ * could only name the outlet's front page.
+ */
+export async function setClaimSourceUrl(
+  db: Database,
+  claimId: string,
+  sourceUrl: string,
+): Promise<ClaimRow | undefined> {
+  const [row] = await db
+    .update(claims)
+    .set({ sourceUrl, updatedAt: new Date() })
+    .where(eq(claims.id, claimId))
+    .returning()
+
+  return row
+}
+
 export async function updateClaimText(
   db: Database,
   claimId: string,

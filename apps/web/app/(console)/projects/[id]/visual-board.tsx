@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import * as React from 'react'
 import { imageGenModel, LIVE_IMAGE_GEN_ADAPTERS } from '@boom-busters/providers'
 import {
+  isFrontPage,
   LOGO_ACCEPT,
   missingArticleFields,
   REUSABLE_SLOT_TYPES,
@@ -51,6 +52,7 @@ import {
   repairPlanAction,
   reuseSlotShotAction,
   saveHeadlineAction,
+  setHeadlineArticleAction,
   replanShotsAction,
   retypeSlotAction,
   rebriefSlotAction,
@@ -123,6 +125,11 @@ function HeadlineSlot({
 }) {
   const article = slot.article
   const [editing, setEditing] = React.useState(false)
+  // A front page is no article (decision 280): the address form opens by
+  // itself there, because the card cannot be right until it has one.
+  const frontPage = article ? isFrontPage(article.url) : false
+  const [addressing, setAddressing] = React.useState(frontPage)
+  const [address, setAddress] = React.useState(frontPage ? '' : (article?.url ?? ''))
 
   if (!article) {
     return (
@@ -174,6 +181,14 @@ function HeadlineSlot({
         </Button>
         <Button
           type="button"
+          variant="outline"
+          aria-expanded={addressing}
+          onClick={() => setAddressing((open) => !open)}
+        >
+          {addressing ? 'Close' : "Set the article's address"}
+        </Button>
+        <Button
+          type="button"
           variant="ghost"
           onClick={() =>
             void act(slot.id, () => refetchArticleAction(projectId, slot.id), 'Article read again')
@@ -188,9 +203,44 @@ function HeadlineSlot({
           rel="noreferrer noopener"
           className="inline-flex min-h-10 items-center px-2 font-mono text-[11px] text-[var(--color-accent-text)] underline"
         >
-          Open the article
+          {frontPage ? "Open the site's front page" : 'Open the article'}
         </a>
       </div>
+
+      {addressing ? (
+        <form
+          aria-label="The article's address"
+          className="flex flex-col gap-2 rounded-[8px] border border-[var(--color-border)] p-3"
+          onSubmit={(event) => {
+            event.preventDefault()
+            void act(
+              slot.id,
+              () => setHeadlineArticleAction(projectId, slot.id, address),
+              'Article address saved and read',
+            ).then((result) => {
+              if (result.ok) setAddressing(false)
+            })
+          }}
+        >
+          <label className="flex flex-col gap-1 text-[12px] text-[var(--color-text-secondary)]">
+            {frontPage
+              ? "The claim behind this card names only the site's front page. Paste the address of the article it quotes; the claim will cite it too."
+              : 'The address of the article this card quotes. The claim behind it will cite it too.'}
+            <input
+              type="url"
+              value={address}
+              onChange={(event) => setAddress(event.target.value)}
+              placeholder="https://www.example.com/2023/10/article-title"
+              className="rounded-[8px] border border-[var(--color-border-strong)] bg-[var(--color-background)] p-2 font-mono text-[12px] text-[var(--color-text-primary)]"
+            />
+          </label>
+          <div className="flex gap-2">
+            <Button type="submit" variant="primary" disabled={address.trim() === ''}>
+              Use this article
+            </Button>
+          </div>
+        </form>
+      ) : null}
 
       {editing ? (
         <HeadlineForm

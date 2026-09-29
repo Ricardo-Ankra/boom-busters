@@ -23,6 +23,7 @@ const replanShotsAction = vi.fn()
 const repairPlanAction = vi.fn()
 const redirectSceneAction = vi.fn()
 const saveHeadlineAction = vi.fn()
+const setHeadlineArticleAction = vi.fn()
 const refetchArticleAction = vi.fn()
 const reuseSlotShotAction = vi.fn()
 const unlinkSlotReuseAction = vi.fn()
@@ -48,6 +49,7 @@ vi.mock('./visuals-actions', () => ({
   repairPlanAction: (...args: unknown[]) => repairPlanAction(...args),
   redirectSceneAction: (...args: unknown[]) => redirectSceneAction(...args),
   saveHeadlineAction: (...args: unknown[]) => saveHeadlineAction(...args),
+  setHeadlineArticleAction: (...args: unknown[]) => setHeadlineArticleAction(...args),
   refetchArticleAction: (...args: unknown[]) => refetchArticleAction(...args),
   reuseSlotShotAction: (...args: unknown[]) => reuseSlotShotAction(...args),
   unlinkSlotReuseAction: (...args: unknown[]) => unlinkSlotReuseAction(...args),
@@ -1348,6 +1350,41 @@ describe('the headline card (decision 257)', () => {
     expect(screen.getByText(/The publisher returned 403/)).toBeTruthy()
     expect(screen.getByText(/Open it and fill these in/)).toBeTruthy()
     expect(screen.getByRole('button', { name: 'Fill these in' })).toBeTruthy()
+  })
+
+  // Decision 280: a card whose claim names only a front page asks for the article.
+  it("asks for the article's address when the source is a front page", async () => {
+    const user = userEvent.setup()
+    setHeadlineArticleAction.mockResolvedValue({ ok: true })
+    const front: SlotView = {
+      ...headlineSlot,
+      status: 'placeholder',
+      article: {
+        ...headlineSlot.article!,
+        url: 'https://semafor.com',
+        headline: null,
+        publishedAt: null,
+        status: 'failed',
+        failureReason:
+          "This source is the site's front page, not an article, so it has no headline or date to read.",
+      },
+    }
+    render(<VisualBoard projectId={PROJECT} model={model([front])} colors={COLORS} brand={BRAND} />)
+
+    expect(screen.getByRole('link', { name: "Open the site's front page" })).toBeTruthy()
+    const form = screen.getByRole('form', { name: "The article's address" })
+    await user.type(
+      within(form).getByRole('textbox'),
+      'https://www.semafor.com/article/10/2023/stability-ai-cash',
+    )
+    await user.click(within(form).getByRole('button', { name: 'Use this article' }))
+    await waitFor(() =>
+      expect(setHeadlineArticleAction).toHaveBeenCalledWith(
+        PROJECT,
+        headlineSlot.id,
+        'https://www.semafor.com/article/10/2023/stability-ai-cash',
+      ),
+    )
   })
 
   // Decision 280: a card with a headline but no date said nothing at all.

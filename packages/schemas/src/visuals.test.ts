@@ -11,6 +11,7 @@ import {
   SlotCandidateSchema,
   SlotDraftStateSchema,
   StillBriefSchema,
+  claimCarriesArticle,
   convertBrief,
   mapClaimRefs,
   plannedBriefRejection,
@@ -634,5 +635,30 @@ describe('StillBriefSchema camera (decision 275)', () => {
     const parsed = StillBriefSchema.parse({ ...still, camera: { facing: 'up', position: '' } })
     expect(parsed.camera).toBeUndefined()
     expect(parsed.prompt).toBe(still.prompt)
+  })
+})
+
+// Decision 280: a front page is no article to quote.
+describe('claimCarriesArticle', () => {
+  const ID = '01HQ00000000000000000000AA'
+  const outlet = (sourceUrl: string | null) => ({ id: ID, sourceType: 'major_outlet', sourceUrl })
+
+  it("takes an outlet's article, and a topic page, but never a front page", () => {
+    expect(claimCarriesArticle(outlet('https://www.semafor.com/article/10/2023/cash'))).toBe(true)
+    expect(claimCarriesArticle(outlet('https://www.ft.com/wirecard'))).toBe(true)
+    expect(claimCarriesArticle(outlet('https://www.semafor.com'))).toBe(false)
+    expect(claimCarriesArticle(outlet('https://www.reuters.com/'))).toBe(false)
+  })
+
+  it('still refuses what it always refused', () => {
+    expect(
+      claimCarriesArticle({
+        id: ID,
+        sourceType: 'court',
+        sourceUrl: 'https://court.example/ruling',
+      }),
+    ).toBe(false)
+    expect(claimCarriesArticle(outlet(null))).toBe(false)
+    expect(claimCarriesArticle(undefined)).toBe(false)
   })
 })

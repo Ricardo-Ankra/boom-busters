@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { isFrontPage, normaliseArticleUrl } from './article'
 import { GraphicSceneSchema, PlannedGraphicSceneSchema, figureCitesClaim } from './graphics'
 import { UlidSchema } from './ids'
 import { logoForEntity, type LogoIndex } from './logos'
@@ -692,10 +693,17 @@ export interface PlanningClaim {
  * an address the app can read. Anything else (a court filing, a regulator's
  * notice, a claim whose URL did not survive validation) has no article behind
  * it to quote, so the card would have nothing true to show.
+ *
+ * A site's front page is no article either (decision 280): the dossier may
+ * attribute a claim to "https://www.semafor.com" when the exact article is
+ * not known, and a card built on it quoted the site's tagline, linked to the
+ * front page, and shared one record with every other claim from that outlet.
  */
 export function claimCarriesArticle(claim: PlanningClaim | undefined): boolean {
   if (!claim || claim.sourceType !== 'major_outlet') return false
-  return typeof claim.sourceUrl === 'string' && claim.sourceUrl.trim() !== ''
+  if (typeof claim.sourceUrl !== 'string' || claim.sourceUrl.trim() === '') return false
+  const url = normaliseArticleUrl(claim.sourceUrl)
+  return url !== null && !isFrontPage(url)
 }
 
 /**
