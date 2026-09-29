@@ -19,8 +19,12 @@ import type { UrlGuardOptions } from './safe-url'
  * routinely several megabytes of everything else.
  */
 
-/** Honest, and the same shape the Wikimedia adapter uses. */
-const USER_AGENT = 'boom-busters/1.0 (single-user production console)'
+/**
+ * Honest, and the same shape the Wikimedia adapter uses. Exported because the
+ * social reader (decision 284) sends the same identity to X's oEmbed
+ * endpoint rather than inventing a second one.
+ */
+export const USER_AGENT = 'boom-busters/1.0 (single-user production console)'
 
 const TIMEOUT_MS = 8_000
 const RETRY_AFTER_MS = 1_000
