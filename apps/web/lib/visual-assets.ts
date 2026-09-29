@@ -17,11 +17,13 @@ import {
   platesForCamera,
   MAX_CHARACTER_REFERENCES,
   MAX_SET_REFERENCES,
+  resolveBrandKit,
   setForBrief,
   spreadReferencePhotos,
   STILL_GENERATIONS,
   ValidationError,
 } from '@boom-busters/schemas'
+import { socialSlotIssues } from '@boom-busters/compositions/social'
 import type {
   CastMember,
   ModelRouting,
@@ -50,6 +52,7 @@ import {
 import type { ImageReference, ReferenceLimits, StockQuery } from '@boom-busters/providers'
 import { articleForClaim } from '@/lib/article-source'
 import { db } from '@/lib/db'
+import { postForUrl } from '@/lib/social-source'
 import { env } from '@/lib/env'
 import { callLlm } from '@/lib/llm'
 import { describeCamera, framingLead } from '@/lib/set-plates'
@@ -373,6 +376,14 @@ async function referenceMaterials(
 
 /** Fetched per stock provider, before scoring narrows to the shown 4. */
 export const STOCK_FETCH_COUNT = 6
+
+/**
+ * The frame a social slot is resolved against (ruling 2, decision 284):
+ * always the master 1920x1080 landscape, whatever the export's own aspect
+ * ratio ends up being. A social card's fit is decided once, at resolution
+ * time, not reworked per format.
+ */
+const SOCIAL_MASTER_FRAME = { width: 1920, height: 1080 }
 
 /**
  * Fail before the shot list is even generated when a slot type the plan will
@@ -815,11 +826,25 @@ export async function resolveSlotBrief(input: {
     case 'hero':
       return { candidates: [], status: 'placeholder' }
 
-    case 'social':
-      // Resolution (fetching the post, checking it is renderable) is task 8.
-      // Until then a social slot is a placeholder, like a hero slot before
-      // its adapter exists: never an unresolvable throw.
-      return { candidates: [], status: 'placeholder' }
+    case 'social': {
+      // Nothing is downloaded and no key is required: what a social card
+      // needs is the post's own words, read once through `postForUrl` and
+      // checked against the same layout rule the render and the board share
+      // (decision 284). A post the reader will not give up, one too long for
+      // the card with no excerpt chosen, or an excerpt that does not fit is
+      // a placeholder, never an unresolvable throw.
+      const post = await postForUrl(brief.postUrl)
+      const brand = resolveBrandKit(await getSettings(db))
+      const issues = socialSlotIssues({
+        post,
+        ...(brief.excerpt !== undefined ? { excerpt: brief.excerpt } : {}),
+        ...(brief.emphasis !== undefined ? { emphasis: brief.emphasis } : {}),
+        hasMedia: brief.mediaAssetId !== undefined,
+        frame: SOCIAL_MASTER_FRAME,
+        brand,
+      })
+      return { candidates: [], status: issues.length === 0 ? 'resolved' : 'placeholder' }
+    }
 
     case 'still': {
       const candidates = await generateStillCandidates(brief, projectId, route)

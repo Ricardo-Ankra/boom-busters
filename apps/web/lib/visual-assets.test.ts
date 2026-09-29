@@ -9,6 +9,7 @@ import {
   insertProjectSet,
   listCastMembers,
   listProjectSets,
+  recordSocialPost,
   requireTestDatabase,
   seed,
   setCastPhotos,
@@ -22,12 +23,13 @@ import {
   mockImageGen,
   stillStyleAnchors,
 } from '@boom-busters/providers'
-import { DEFAULT_SETTINGS, STILL_GENERATIONS } from '@boom-busters/schemas'
+import { DEFAULT_SETTINGS, newId, STILL_GENERATIONS } from '@boom-busters/schemas'
 import type {
   CastMember,
   GraphicBrief,
   ModelRouting,
   ProjectSet,
+  SocialBrief,
   StillBrief,
 } from '@boom-busters/schemas'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -551,6 +553,111 @@ References attached: 1 photograph of Emad Mostaque.`
     expect(await resolveSlotBrief({ projectId: FIXTURE_PROJECT_ID, brief, route: null })).toEqual({
       candidates: [],
       status: 'placeholder',
+    })
+  })
+
+  describe('a social slot resolves by reading its stored post', () => {
+    const socialBrief = (overrides: Partial<SocialBrief> = {}): SocialBrief => ({
+      type: 'social',
+      coversText: 'x',
+      description: 'y',
+      motion: { kind: 'static' },
+      transition: 'cut',
+      sourceClaimId: newId(),
+      postUrl: 'https://x.com/i/status/1234567890123456789',
+      ...overrides,
+    })
+
+    it('is a placeholder for a post the reader could not read', async () => {
+      await recordSocialPost(db, {
+        url: 'https://x.com/i/status/1234567890123456789',
+        platform: 'x',
+        postId: '1234567890123456789',
+        handle: 'emad_mostaque',
+        authorName: null,
+        text: null,
+        postedAt: null,
+        endedWithMediaLink: false,
+        provenance: {},
+        status: 'failed',
+        failureReason: 'X says this post does not exist or is not public.',
+      })
+      expect(
+        await resolveSlotBrief({
+          projectId: FIXTURE_PROJECT_ID,
+          brief: socialBrief(),
+          route: null,
+        }),
+      ).toEqual({ candidates: [], status: 'placeholder' })
+    })
+
+    it('is a placeholder for a post too long to show in full with no excerpt chosen', async () => {
+      await recordSocialPost(db, {
+        url: 'https://x.com/i/status/1234567890123456789',
+        platform: 'x',
+        postId: '1234567890123456789',
+        handle: 'emad_mostaque',
+        authorName: 'Emad Mostaque',
+        text: 'A long thread about the future of open models. '.repeat(200),
+        postedAt: '2024-01-01',
+        endedWithMediaLink: false,
+        provenance: {},
+        status: 'fetched',
+        failureReason: null,
+      })
+      expect(
+        await resolveSlotBrief({
+          projectId: FIXTURE_PROJECT_ID,
+          brief: socialBrief(),
+          route: null,
+        }),
+      ).toEqual({ candidates: [], status: 'placeholder' })
+    })
+
+    it('is a placeholder for an excerpt that is not copied word for word from the post', async () => {
+      await recordSocialPost(db, {
+        url: 'https://x.com/i/status/1234567890123456789',
+        platform: 'x',
+        postId: '1234567890123456789',
+        handle: 'emad_mostaque',
+        authorName: 'Emad Mostaque',
+        text: 'Stepping down as CEO of Stability AI.',
+        postedAt: '2024-01-01',
+        endedWithMediaLink: false,
+        provenance: {},
+        status: 'fetched',
+        failureReason: null,
+      })
+      expect(
+        await resolveSlotBrief({
+          projectId: FIXTURE_PROJECT_ID,
+          brief: socialBrief({ excerpt: 'I am not stepping down' }),
+          route: null,
+        }),
+      ).toEqual({ candidates: [], status: 'placeholder' })
+    })
+
+    it('is resolved for a complete short post', async () => {
+      await recordSocialPost(db, {
+        url: 'https://x.com/i/status/1234567890123456789',
+        platform: 'x',
+        postId: '1234567890123456789',
+        handle: 'emad_mostaque',
+        authorName: 'Emad Mostaque',
+        text: 'Stepping down as CEO of Stability AI.',
+        postedAt: '2024-01-01',
+        endedWithMediaLink: false,
+        provenance: {},
+        status: 'fetched',
+        failureReason: null,
+      })
+      expect(
+        await resolveSlotBrief({
+          projectId: FIXTURE_PROJECT_ID,
+          brief: socialBrief(),
+          route: null,
+        }),
+      ).toEqual({ candidates: [], status: 'resolved' })
     })
   })
 
