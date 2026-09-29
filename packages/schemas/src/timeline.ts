@@ -431,8 +431,14 @@ export function canonicalTimelineIssues(timeline: Timeline): string[] {
       if (slot.payload.avatar?.url !== undefined) {
         issues.push(`slots.${index}.payload.avatar.url`)
       }
+      if (slot.payload.avatar?.previewUrl !== undefined) {
+        issues.push(`slots.${index}.payload.avatar.previewUrl`)
+      }
       if (slot.payload.media?.url !== undefined) {
         issues.push(`slots.${index}.payload.media.url`)
+      }
+      if (slot.payload.media?.previewUrl !== undefined) {
+        issues.push(`slots.${index}.payload.media.previewUrl`)
       }
     }
   })

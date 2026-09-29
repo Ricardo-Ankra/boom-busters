@@ -386,4 +386,38 @@ describe('canonicalTimelineIssues', () => {
     const parsed = TimelineSchema.parse(timeline)
     expect(canonicalTimelineIssues(parsed)).toContain('slots.2.payload.avatar.url')
   })
+
+  it('names a materialised media previewUrl on a social payload, with no url set', () => {
+    const timeline = JSON.parse(JSON.stringify(fixtureTimeline())) as Timeline
+    timeline.slots.push({
+      type: 'social',
+      startMs: 14_000,
+      durationMs: 5000,
+      transition: 'cut',
+      motion: { kind: 'static' },
+      payload: {
+        kind: 'social',
+        platform: 'x',
+        authorName: 'Alex Rivera',
+        handle: '@alexrivera',
+        text: 'The audit found nothing.',
+        cutBefore: false,
+        cutAfter: false,
+        postedAt: '2023-03-15',
+        initials: 'AR',
+        media: {
+          r2Key: 'boom-busters/social/media.png',
+          previewR2Key: 'boom-busters/social/media-preview.png',
+          previewUrl: 'https://r2.example.com/presigned?sig=def',
+        },
+        sourceLabel: 'x.com/alexrivera/status/1234567890',
+        sourceUrl: 'https://x.com/alexrivera/status/1234567890',
+        claimId: CLAIM,
+      },
+    })
+    const parsed = TimelineSchema.parse(timeline)
+    const issues = canonicalTimelineIssues(parsed)
+    expect(issues).toContain('slots.2.payload.media.previewUrl')
+    expect(issues).not.toContain('slots.2.payload.media.url')
+  })
 })
