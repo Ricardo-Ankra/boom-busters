@@ -9,7 +9,7 @@ import {
   socialLayout,
   type SocialProgress,
 } from '../lib/social'
-import { frameScale } from './brand'
+import { frameScale, withAlpha } from './brand'
 
 /**
  * A real X post, embedded whole (decision 284, spec 5.2/5.6/6).
@@ -115,7 +115,8 @@ export function SocialPostCard({
                 flexShrink: 0,
                 borderRadius: '50%',
                 overflow: 'hidden',
-                backgroundColor: colors.accent,
+                // Spec 8.4: accent letters on an accent-tinted disc.
+                backgroundColor: withAlpha(colors.accent, 0.18),
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
@@ -130,7 +131,7 @@ export function SocialPostCard({
                 <span
                   style={{
                     ...typeCss(typography.heading, layout.avatarPx * 0.36),
-                    color: colors.background,
+                    color: colors.accent,
                   }}
                 >
                   {payload.initials}

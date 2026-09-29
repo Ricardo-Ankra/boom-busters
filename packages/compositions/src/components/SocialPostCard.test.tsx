@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { DEFAULT_SETTINGS, resolveBrandKit } from '@boom-busters/schemas'
 import type { SocialPayload } from '@boom-busters/schemas'
 import { RESTING_SOCIAL_PROGRESS } from '../lib/social'
+import { withAlpha } from './brand'
 import { SocialPostCard } from './SocialPostCard'
 
 /**
@@ -53,6 +54,12 @@ describe('SocialPostCard', () => {
     const markup = render(BASE_PAYLOAD)
     expect(markup).toContain('DO')
     expect(markup).not.toContain('<img')
+  })
+
+  it('draws the initials in the accent colour on an accent-tinted disc (spec 8.4)', () => {
+    const markup = render(BASE_PAYLOAD)
+    expect(markup).toContain(`background-color:${withAlpha(brand.colors.accent, 0.18)}`)
+    expect(markup).toMatch(new RegExp(`color:${brand.colors.accent}[^"]*">DO</span>`))
   })
 
   it('draws an image when there is an avatar', () => {
