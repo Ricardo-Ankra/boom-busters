@@ -30,6 +30,9 @@ const unlinkSlotReuseAction = vi.fn()
 const showSetPhotoAction = vi.fn()
 const setSlotRouteAction = vi.fn()
 const attachGraphicLogosAction = vi.fn()
+const setSocialPostAction = vi.fn()
+const saveSocialPostAction = vi.fn()
+const saveSocialCardAction = vi.fn()
 
 vi.mock('./visuals-actions', () => ({
   chooseCandidateAction: (...args: unknown[]) => chooseCandidateAction(...args),
@@ -56,6 +59,9 @@ vi.mock('./visuals-actions', () => ({
   showSetPhotoAction: (...args: unknown[]) => showSetPhotoAction(...args),
   setSlotRouteAction: (...args: unknown[]) => setSlotRouteAction(...args),
   attachGraphicLogosAction: (...args: unknown[]) => attachGraphicLogosAction(...args),
+  setSocialPostAction: (...args: unknown[]) => setSocialPostAction(...args),
+  saveSocialPostAction: (...args: unknown[]) => saveSocialPostAction(...args),
+  saveSocialCardAction: (...args: unknown[]) => saveSocialCardAction(...args),
 }))
 
 const createLogoUploadAction = vi.fn()
@@ -99,6 +105,9 @@ beforeEach(() => {
   unlinkSlotReuseAction.mockResolvedValue({ ok: true })
   setSlotRouteAction.mockResolvedValue({ ok: true })
   attachGraphicLogosAction.mockResolvedValue({ ok: true })
+  setSocialPostAction.mockResolvedValue({ ok: true })
+  saveSocialPostAction.mockResolvedValue({ ok: true })
+  saveSocialCardAction.mockResolvedValue({ ok: true })
   createLogoUploadAction.mockResolvedValue({ ok: true, url: 'https://r2.example/put', key: 'k' })
   finaliseLogoAction.mockResolvedValue({ ok: true })
   vi.stubGlobal(

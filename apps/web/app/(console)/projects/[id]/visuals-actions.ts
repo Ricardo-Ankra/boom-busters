@@ -3,17 +3,21 @@
 import {
   chooseSlotCandidate,
   getArticleSource,
+  getCastMember,
   getClaim,
   getProject,
   getProjectSet,
   getSettings,
   getShotSlot,
+  getSocialPost,
   linkSlotReuse,
   listLogos,
   listSlotDependants,
   scriptableClaims,
   setArticleSourceManual,
+  setCastXHandle,
   setClaimSourceUrl,
+  setSocialPostManual,
   retypeShotSlot,
   setProjectDirection,
   setSlotResolution,
@@ -27,14 +31,21 @@ import { imageGenModel, LIVE_IMAGE_GEN_ADAPTERS, stillStyleAnchors } from '@boom
 import {
   articleIsRenderable,
   claimCarriesArticle,
+  claimCarriesPost,
   convertBrief,
   DirectorsBookSchema,
   emphasisFits,
+  excerptPlacement,
   HERO_SLOTS_ENABLED,
   isFrontPage,
   logoForEntity,
   missingArticleFields,
+  missingPostFields,
   normaliseArticleUrl,
+  normalisePostUrl,
+  NOT_A_POST_ERROR,
+  phraseIn,
+  postIsRenderable,
   REUSABLE_SLOT_TYPES,
   SetCameraSchema,
   ShotBriefSchema,
@@ -43,12 +54,18 @@ import {
   StillRouteSchema,
   UlidSchema,
 } from '@boom-busters/schemas'
+import {
+  SOCIAL_EXCERPT_NOT_VERBATIM,
+  SOCIAL_HIGHLIGHT_OUTSIDE,
+  SOCIAL_MISSING_PREFIX,
+} from '@boom-busters/compositions/social'
 import type { ShotSlotRow } from '@boom-busters/db'
 import type {
   HeadlineBrief,
   SetPlateView,
   ShotBrief,
   SlotCandidate,
+  SocialBrief,
   StillRoute,
 } from '@boom-busters/schemas'
 import { createHash } from 'node:crypto'
@@ -60,6 +77,7 @@ import { inngest } from '@/inngest/client'
 import { articleForClaim, articleFromRow, refetchArticle } from '@/lib/article-source'
 import { db } from '@/lib/db'
 import { fetchRemoteImage } from '@/lib/remote-image'
+import { refetchPost } from '@/lib/social-source'
 import {
   deleteObject,
   getObjectBytes,
@@ -539,6 +557,66 @@ export async function retypeToHeadlineAction(
   return { ok: true }
 }
 
+/**
+ * Re-type a slot into a post card quoting the X post the owner picked
+ * (decision 284, mirroring decision 257's headline conversion exactly).
+ *
+ * The mechanical/model-assisted split is the same as `retypeSlotAction`: which
+ * post is a decision, so it is never left to the retyper, and everything past
+ * that is as mechanical as still to stock.
+ */
+export async function retypeToSocialAction(
+  projectId: string,
+  slotId: string,
+  claimId: string,
+): Promise<ActionResult> {
+  await requireOwner()
+  const invalid = badIds(projectId, slotId, claimId)
+  if (invalid) return invalid
+
+  const slot = await getShotSlot(db, slotId)
+  if (!slot) return { ok: false, error: 'This slot no longer exists.' }
+  const linked = await linkedSlotRefusal(slot)
+  if (linked) return linked
+
+  const current = ShotBriefSchema.safeParse(slot.brief)
+  if (!current.success) {
+    return {
+      ok: false,
+      error: 'This brief is broken and cannot be re-typed; regenerate the board.',
+    }
+  }
+
+  // Already quoting it: the board marks that row rather than offering it.
+  if (current.data.type === 'social' && current.data.sourceClaimId === claimId) {
+    return { ok: true }
+  }
+
+  const claim = (await scriptableClaims(db, projectId)).find((row) => row.id === claimId)
+  if (!claimCarriesPost(claim)) {
+    return {
+      ok: false,
+      error: 'That claim has no X post behind it, so a card cannot show it.',
+    }
+  }
+
+  const brief = convertBrief(current.data, 'social', {
+    socialClaim: { id: claimId, sourceUrl: claim!.sourceUrl as string },
+  })
+  if (!brief) return { ok: false, error: 'This slot cannot become a post card.' }
+
+  await retypeShotSlot(db, slotId, 'social', brief)
+
+  const project = await getProject(db, projectId)
+  if (project?.visualsPhase === 'board') {
+    const sent = await sendRefetch(projectId, slotId, 'Re-typed to a post card')
+    refresh(projectId)
+    return sent
+  }
+  refresh(projectId)
+  return { ok: true }
+}
+
 /** What the owner may type into the steer, repeated server-side. */
 const GuidanceSchema = z.string().trim().max(600).optional()
 
@@ -900,6 +978,306 @@ export async function refetchArticleAction(
     : { ok: true }
 }
 
+// ---------------------------------------------------------------------------
+// The social post card (decision 284)
+// ---------------------------------------------------------------------------
+
+/** The post a social slot quotes, and its address, as `headlineSource` does for an article. */
+async function socialSource(
+  slotId: string,
+): Promise<
+  { brief: SocialBrief; url: string; slot: { brief: unknown; route: unknown } } | { error: string }
+> {
+  const slot = await getShotSlot(db, slotId)
+  if (!slot) return { error: 'This slot no longer exists.' }
+
+  const parsed = ShotBriefSchema.safeParse(slot.brief)
+  if (!parsed.success || parsed.data.type !== 'social') {
+    return { error: 'This is not a post slot.' }
+  }
+  return {
+    brief: parsed.data,
+    url: parsed.data.postUrl,
+    slot: { brief: slot.brief, route: slot.route },
+  }
+}
+
+/**
+ * "Set the post's address" (spec section 9). Refuses anything that is not a
+ * post address before any row is read, exactly as `setHeadlineArticleAction`
+ * refuses a front page. A new address is a real change even when the words
+ * on screen have not loaded yet, so the old excerpt and highlight (chosen
+ * against the OLD post's text) are cleared rather than carried over.
+ */
+export async function setSocialPostAction(
+  projectId: string,
+  slotId: string,
+  rawUrl: string,
+): Promise<ActionResult> {
+  await requireOwner()
+  const invalid = badIds(projectId, slotId)
+  if (invalid) return invalid
+
+  const url = normalisePostUrl(rawUrl)
+  if (url === null) return { ok: false, error: NOT_A_POST_ERROR }
+
+  const slot = await getShotSlot(db, slotId)
+  if (!slot) return { ok: false, error: 'This slot no longer exists.' }
+  const linked = await linkedSlotRefusal(slot)
+  if (linked) return linked
+
+  const current = ShotBriefSchema.safeParse(slot.brief)
+  if (!current.success || current.data.type !== 'social') {
+    return { ok: false, error: 'This is not a post slot.' }
+  }
+
+  const brief: SocialBrief = { ...current.data, postUrl: url }
+  delete brief.excerpt
+  delete brief.emphasis
+  await updateSlotBrief(db, slotId, brief)
+
+  const project = await getProject(db, projectId)
+  if (project?.visualsPhase === 'board') {
+    const sent = await sendRefetch(projectId, slotId, 'Post address changed')
+    refresh(projectId)
+    return sent
+  }
+  refresh(projectId)
+  return { ok: true }
+}
+
+/** What the owner may type when editing a post's fields by hand. */
+const SocialEditSchema = z.object({
+  authorName: z.string().trim().max(120).optional(),
+  handle: z.string().trim().max(20).optional(),
+  /** Kept verbatim: never trimmed, never collapsed. */
+  text: z.string().max(25000).optional(),
+  /** Loosely bounded so a wrongly formatted date still reaches the format check below. */
+  postedAt: z.string().trim().max(60).optional(),
+})
+
+/**
+ * "Edit details" (spec section 9). Edits the post RECORD, not the slot: the
+ * same record every other slot quoting this post shares (decision 284, the
+ * article store's per-field sticky rule). An empty string clears a field.
+ */
+export async function saveSocialPostAction(
+  projectId: string,
+  slotId: string,
+  fields: { authorName?: string; handle?: string; text?: string; postedAt?: string },
+): Promise<ActionResult> {
+  await requireOwner()
+  const invalid = badIds(projectId, slotId)
+  if (invalid) return invalid
+
+  const parsed = SocialEditSchema.safeParse(fields)
+  if (!parsed.success) return { ok: false, error: 'That edit is not valid.' }
+  const data = parsed.data
+
+  if (
+    data.postedAt !== undefined &&
+    data.postedAt !== '' &&
+    !/^\d{4}-\d{2}-\d{2}$/.test(data.postedAt)
+  ) {
+    return { ok: false, error: 'Use a date like 2024-03-23.' }
+  }
+
+  let handle: string | null | undefined
+  if (data.handle !== undefined) {
+    if (data.handle === '') {
+      handle = null
+    } else {
+      const stripped = data.handle.replace(/^@/, '')
+      if (!/^[A-Za-z0-9_]{1,15}$/.test(stripped)) {
+        return { ok: false, error: 'That is not an X handle.' }
+      }
+      handle = stripped
+    }
+  }
+
+  const source = await socialSource(slotId)
+  if ('error' in source) return { ok: false, error: source.error }
+
+  const blank = (value: string): string | null => (value === '' ? null : value)
+
+  await setSocialPostManual(db, source.url, {
+    ...(data.authorName !== undefined ? { authorName: blank(data.authorName) } : {}),
+    ...(handle !== undefined ? { handle } : {}),
+    ...(data.text !== undefined ? { text: blank(data.text) } : {}),
+    ...(data.postedAt !== undefined ? { postedAt: blank(data.postedAt) } : {}),
+  })
+
+  const project = await getProject(db, projectId)
+  if (project?.visualsPhase === 'board') {
+    const sent = await sendRefetch(projectId, slotId, 'Post details edited')
+    refresh(projectId)
+    return sent
+  }
+  refresh(projectId)
+  return { ok: true }
+}
+
+/**
+ * "Read again". `refetchPost` throws the reader's own reason when a re-read
+ * of an EXISTING post refuses, leaving the stored row untouched; this is
+ * that reason, handed back in the owner's words rather than a 500.
+ */
+export async function refetchSocialPostAction(
+  projectId: string,
+  slotId: string,
+): Promise<ActionResult> {
+  await requireOwner()
+  const invalid = badIds(projectId, slotId)
+  if (invalid) return invalid
+
+  const source = await socialSource(slotId)
+  if ('error' in source) return { ok: false, error: source.error }
+
+  let record: Awaited<ReturnType<typeof refetchPost>>
+  try {
+    record = await refetchPost(source.url)
+  } catch (error) {
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : 'The post could not be read.',
+    }
+  }
+
+  await setSlotResolution(
+    db,
+    slotId,
+    postIsRenderable(record)
+      ? {
+          candidates: [],
+          status: 'resolved',
+          answered: { brief: source.slot.brief, route: source.slot.route },
+        }
+      : { candidates: [], status: 'placeholder' },
+  )
+
+  refresh(projectId)
+  return { ok: true }
+}
+
+/**
+ * The excerpt and highlight (spec section 9): each is validated against the
+ * post's own stored text, never accepted as an unvalidated string. Null clears
+ * a field. With no text to check against yet, this refuses in the same words
+ * a missing field does on the board, rather than saving something nothing has
+ * verified.
+ */
+export async function saveSocialCardAction(
+  projectId: string,
+  slotId: string,
+  card: { emphasis?: string | null; excerpt?: string | null },
+): Promise<ActionResult> {
+  await requireOwner()
+  const invalid = badIds(projectId, slotId)
+  if (invalid) return invalid
+
+  const source = await socialSource(slotId)
+  if ('error' in source) return { ok: false, error: source.error }
+
+  const post = await getSocialPost(db, source.url)
+  if (!post || post.text === null) {
+    const missing = missingPostFields(
+      post ?? { authorName: null, handle: null, text: null, postedAt: null },
+    )
+    return { ok: false, error: `${SOCIAL_MISSING_PREFIX}${missing.join(', ')}.` }
+  }
+  const text = post.text
+
+  let excerpt: string | undefined
+  if (card.excerpt === null) {
+    excerpt = undefined
+  } else if (card.excerpt !== undefined) {
+    if (excerptPlacement(text, card.excerpt) === null) {
+      return { ok: false, error: SOCIAL_EXCERPT_NOT_VERBATIM }
+    }
+    excerpt = card.excerpt
+  } else {
+    excerpt = source.brief.excerpt
+  }
+
+  if (card.emphasis !== undefined && card.emphasis !== null) {
+    if (!phraseIn(excerpt ?? text, card.emphasis)) {
+      return { ok: false, error: SOCIAL_HIGHLIGHT_OUTSIDE }
+    }
+  }
+
+  const brief: SocialBrief = { ...source.brief }
+  if (card.excerpt === null) delete brief.excerpt
+  else if (card.excerpt !== undefined) brief.excerpt = card.excerpt
+  if (card.emphasis === null) delete brief.emphasis
+  else if (card.emphasis !== undefined) brief.emphasis = card.emphasis
+
+  await updateSlotBrief(db, slotId, brief)
+
+  const project = await getProject(db, projectId)
+  if (project?.visualsPhase === 'board') {
+    const sent = await sendRefetch(projectId, slotId, 'Post card edited')
+    refresh(projectId)
+    return sent
+  }
+  refresh(projectId)
+  return { ok: true }
+}
+
+/** "Remove": drops the avatar or the attached image, keeping everything else. */
+export async function removeSocialImageAction(
+  projectId: string,
+  slotId: string,
+  which: 'avatar' | 'media',
+): Promise<ActionResult> {
+  await requireOwner()
+  const invalid = badIds(projectId, slotId)
+  if (invalid) return invalid
+
+  const source = await socialSource(slotId)
+  if ('error' in source) return { ok: false, error: source.error }
+
+  const brief: SocialBrief = { ...source.brief }
+  if (which === 'avatar') delete brief.avatarAssetId
+  else delete brief.mediaAssetId
+
+  await updateSlotBrief(db, slotId, brief)
+  refresh(projectId)
+  return { ok: true }
+}
+
+/**
+ * "Is @EMostaque one of the cast?" (spec section 9). Saves the handle on a
+ * cast member this project already has, after confirming the member is
+ * actually this project's rather than trusting an id from the client.
+ */
+export async function linkCastHandleAction(
+  projectId: string,
+  castMemberId: string,
+  handle: string,
+): Promise<ActionResult> {
+  await requireOwner()
+  const invalid = badIds(projectId, castMemberId)
+  if (invalid) return invalid
+
+  const member = await getCastMember(db, castMemberId)
+  if (!member) return { ok: false, error: 'This cast member no longer exists.' }
+  if (member.projectId !== projectId) {
+    return { ok: false, error: 'This cast member belongs to another film.' }
+  }
+
+  try {
+    await setCastXHandle(db, castMemberId, handle)
+  } catch (error) {
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : 'That is not a valid X handle.',
+    }
+  }
+
+  refresh(projectId)
+  return { ok: true }
+}
+
 export async function refetchSlotAction(
   projectId: string,
   slotId: string,
@@ -1014,6 +1392,8 @@ export async function createOwnUploadAction(input: {
   fileType: string
   fileSize: number
   contentHash: string
+  /** What the finalised upload becomes: the slot's own shot, or a social card's avatar or attached image. */
+  purpose?: 'shot' | 'social-avatar' | 'social-image'
 }): Promise<ActionResult & { url?: string; key?: string }> {
   await requireOwner()
 
@@ -1065,6 +1445,8 @@ export async function finaliseOwnUploadAction(input: {
   durationMs?: number
   width?: number
   height?: number
+  /** What this upload becomes: the slot's own shot, or a social card's avatar or attached image. */
+  purpose?: 'shot' | 'social-avatar' | 'social-image'
 }): Promise<ActionResult> {
   await requireOwner()
 
@@ -1112,6 +1494,31 @@ export async function finaliseOwnUploadAction(input: {
       ? { durationMs: Math.round(input.durationMs) }
       : {}),
   }
+
+  // A social card's avatar or attached image is not the slot's shot: it
+  // never joins the candidate strip, it just fills a field on the brief
+  // (decision 284). Everything up to here (byte verification) is shared;
+  // past this point the two purposes diverge completely.
+  if (input.purpose === 'social-avatar' || input.purpose === 'social-image') {
+    const parsed = ShotBriefSchema.safeParse(slot.brief)
+    if (!parsed.success || parsed.data.type !== 'social') {
+      return { ok: false, error: 'This is not a post slot.' }
+    }
+    const asset = await upsertAssetByHash(db, {
+      kind: 'image',
+      r2Key: key,
+      licence: 'Uploaded by owner',
+      contentHash,
+      ...dims,
+    })
+    const brief: SocialBrief = { ...parsed.data }
+    if (input.purpose === 'social-avatar') brief.avatarAssetId = asset.id
+    else brief.mediaAssetId = asset.id
+    await updateSlotBrief(db, input.slotId, brief)
+    refresh(input.projectId)
+    return { ok: true }
+  }
+
   return attachOwnFile({
     projectId: input.projectId,
     slot,

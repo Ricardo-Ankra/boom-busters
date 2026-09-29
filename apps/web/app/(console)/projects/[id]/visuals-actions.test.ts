@@ -2,12 +2,18 @@
 
 import {
   assets,
+  claims,
   createScriptVersion,
+  deleteCastMember,
   deleteProjectSet,
+  FIXTURE_DOSSIER_ID,
   FIXTURE_PROJECT_ID,
   getShotSlot,
+  getSocialPost,
+  insertCastMember,
   insertProjectSet,
   linkSlotReuse,
+  listCastMembers,
   listShotSlots,
   replaceShotList,
   requireTestDatabase,
@@ -17,27 +23,43 @@ import {
   setProjectStage,
   setSetPlates,
   setSlotRoute,
+  setSocialPostManual,
   setVisualsPhase,
   shotSlots,
   slotNeedsResolution,
+  socialPosts,
   updateSettings,
 } from '@boom-busters/db'
 import type { NewShotSlot } from '@boom-busters/db'
+import {
+  SOCIAL_EXCERPT_NOT_VERBATIM,
+  SOCIAL_HIGHLIGHT_OUTSIDE,
+  SOCIAL_MISSING_PREFIX,
+} from '@boom-busters/compositions/social'
+import { fixtureId, NOT_A_POST_ERROR } from '@boom-busters/schemas'
 import type { ShotBrief, SlotCandidate } from '@boom-busters/schemas'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/lib/db'
+import { headObject } from '@/lib/storage'
 import { visualsReviewModel } from '@/lib/visuals-review'
 import {
   approvePlanAction,
   attachGraphicLogosAction,
   editBriefAction,
   finaliseOwnUploadAction,
+  linkCastHandleAction,
   refetchSlotAction,
+  refetchSocialPostAction,
+  removeSocialImageAction,
   retypeToHeadlineAction,
+  retypeToSocialAction,
   reuseSlotShotAction,
   saveHeadlineAction,
+  saveSocialCardAction,
+  saveSocialPostAction,
   setHeadlineArticleAction,
   setSlotRouteAction,
+  setSocialPostAction,
   showSetPhotoAction,
   unlinkSlotReuseAction,
 } from './visuals-actions'
@@ -69,6 +91,10 @@ vi.mock('@/lib/storage', () => ({
   R2_PREFIX: 'boom-busters',
 }))
 vi.mock('@/lib/remote-image', () => ({ fetchRemoteImage: vi.fn() }))
+const socialSource = vi.hoisted(() => ({ refetchPost: vi.fn() }))
+vi.mock('@/lib/social-source', () => ({
+  refetchPost: (...args: unknown[]) => socialSource.refetchPost(...args),
+}))
 
 const describeDb = requireTestDatabase() ? describe : describe.skip
 
@@ -827,6 +853,425 @@ describe("setting a headline card's article address", () => {
     expect(await setHeadlineArticleAction(PROJECT, SLOT, 'Semafor, October 2023')).toEqual({
       ok: false,
       error: 'That is not a web address.',
+    })
+  })
+})
+
+// ---------------------------------------------------------------------------
+// The social post card (decision 284)
+// ---------------------------------------------------------------------------
+
+// The address rule refuses before any row is read, exactly like the
+// headline card's front-page refusal above.
+describe("setting a social post's address", () => {
+  const PROJECT = '01J0000000000000000000000A'
+  const SLOT = '01J000000000000000000000AA'
+
+  it('refuses a profile address', async () => {
+    expect(await setSocialPostAction(PROJECT, SLOT, 'https://x.com/EMostaque')).toEqual({
+      ok: false,
+      error: NOT_A_POST_ERROR,
+    })
+  })
+
+  it('refuses plain words', async () => {
+    expect(await setSocialPostAction(PROJECT, SLOT, 'Emad announced it on X')).toEqual({
+      ok: false,
+      error: NOT_A_POST_ERROR,
+    })
+  })
+})
+
+describe('saving a social post by hand', () => {
+  const PROJECT = '01J0000000000000000000000A'
+  const SLOT = '01J000000000000000000000AA'
+
+  it('refuses a date that is not YYYY-MM-DD', async () => {
+    expect(await saveSocialPostAction(PROJECT, SLOT, { postedAt: '23 March 2024' })).toEqual({
+      ok: false,
+      error: 'Use a date like 2024-03-23.',
+    })
+  })
+
+  it('refuses something that is not an X handle', async () => {
+    expect(await saveSocialPostAction(PROJECT, SLOT, { handle: '@not a handle' })).toEqual({
+      ok: false,
+      error: 'That is not an X handle.',
+    })
+  })
+})
+
+describe('bad ids on the social board actions', () => {
+  it('refuses removeSocialImageAction', async () => {
+    expect(await removeSocialImageAction('not-an-id', 'not-an-id', 'avatar')).toEqual({
+      ok: false,
+      error: 'Unknown id',
+    })
+  })
+
+  it('refuses linkCastHandleAction', async () => {
+    expect(await linkCastHandleAction('not-an-id', 'not-an-id', 'emostaque')).toEqual({
+      ok: false,
+      error: 'Unknown id',
+    })
+  })
+})
+
+const social = (coversText: string, postUrl: string): ShotBrief => ({
+  type: 'social',
+  coversText,
+  description: 'a post card',
+  motion: { kind: 'static' },
+  transition: 'cut',
+  sourceClaimId: fixtureId('CLAIM', 30),
+  postUrl,
+})
+
+describeDb('editing a social post card (decision 284)', () => {
+  const POST_URL = 'https://x.com/i/status/1740000000000000001'
+  let slotId: string
+  let stockId: string
+
+  beforeEach(async () => {
+    vi.clearAllMocks()
+    inngest.send.mockResolvedValue(undefined)
+    storage.configured = false
+    await seed(db)
+    await db.delete(shotSlots)
+    await db.delete(socialPosts)
+    const script = await createScriptVersion(db, FIXTURE_PROJECT_ID)
+    const chapter = await saveChapter(db, {
+      scriptId: script.id,
+      index: 0,
+      title: 'The post',
+      contentMd: 'One.\n\nTwo.',
+      estRuntimeSec: 12,
+    })
+    await replaceShotList(db, FIXTURE_PROJECT_ID, [
+      {
+        chapterId: chapter.id,
+        index: 0,
+        type: 'social',
+        brief: social('One.', POST_URL),
+        startMs: 0,
+        durationMs: 6000,
+      },
+      {
+        chapterId: chapter.id,
+        index: 1,
+        type: 'stock',
+        brief: stock('Two.', 'a newsroom'),
+        startMs: 6000,
+        durationMs: 6000,
+      },
+    ])
+    const slots = await listShotSlots(db, FIXTURE_PROJECT_ID)
+    slotId = slots[0]!.id
+    stockId = slots[1]!.id
+    await setVisualsPhase(db, FIXTURE_PROJECT_ID, 'board')
+  })
+
+  it('writes the new address and clears the old excerpt and highlight, then re-fetches', async () => {
+    await setSocialPostManual(db, POST_URL, {
+      authorName: 'Emad Mostaque',
+      handle: 'EMostaque',
+      text: 'As my notifications are RIP some notes: I decided to step down to fix this.',
+      postedAt: '2024-01-01',
+    })
+    expect(
+      await saveSocialCardAction(FIXTURE_PROJECT_ID, slotId, {
+        excerpt: 'I decided to step down to fix this.',
+      }),
+    ).toEqual({ ok: true })
+    inngest.send.mockClear()
+
+    const other = 'https://x.com/AnotherHandle/status/9990000000000000009'
+    expect(await setSocialPostAction(FIXTURE_PROJECT_ID, slotId, other)).toEqual({ ok: true })
+
+    const row = (await getShotSlot(db, slotId))!
+    const brief = row.brief as unknown as { postUrl: string; excerpt?: string; emphasis?: string }
+    expect(brief.postUrl).toBe('https://x.com/i/status/9990000000000000009')
+    expect(brief.excerpt).toBeUndefined()
+    expect(brief.emphasis).toBeUndefined()
+    expect(inngest.send.mock.calls[0]?.[0]).toMatchObject({
+      name: 'visuals/refetch.requested',
+      data: { projectId: FIXTURE_PROJECT_ID, slotId, note: 'Post address changed' },
+    })
+  })
+
+  it('saves the owner’s own correction to the post record and re-fetches', async () => {
+    expect(
+      await saveSocialPostAction(FIXTURE_PROJECT_ID, slotId, {
+        authorName: 'Emad Mostaque',
+        handle: '@EMostaque',
+        text: 'The corrected words.',
+        postedAt: '2024-03-23',
+      }),
+    ).toEqual({ ok: true })
+
+    const record = await getSocialPost(db, POST_URL)
+    expect(record).toMatchObject({
+      authorName: 'Emad Mostaque',
+      handle: 'EMostaque',
+      text: 'The corrected words.',
+      postedAt: '2024-03-23',
+      status: 'manual',
+    })
+    expect(inngest.send.mock.calls[0]?.[0]).toMatchObject({
+      name: 'visuals/refetch.requested',
+      data: { note: 'Post details edited' },
+    })
+  })
+
+  it('refuses excerpt and highlight edits with no post text yet, in the missing-fields wording', async () => {
+    expect(await saveSocialCardAction(FIXTURE_PROJECT_ID, slotId, { excerpt: 'anything' })).toEqual(
+      {
+        ok: false,
+        error: `${SOCIAL_MISSING_PREFIX}the name, the handle, the text, the date.`,
+      },
+    )
+  })
+
+  it('refuses an excerpt that is not word for word, and a highlight outside it', async () => {
+    await setSocialPostManual(db, POST_URL, {
+      authorName: 'Emad Mostaque',
+      handle: 'EMostaque',
+      text: 'As my notifications are RIP some notes: I decided to step down to fix this.',
+      postedAt: '2024-01-01',
+    })
+
+    expect(
+      await saveSocialCardAction(FIXTURE_PROJECT_ID, slotId, {
+        excerpt: 'I resigned from the company today',
+      }),
+    ).toEqual({ ok: false, error: SOCIAL_EXCERPT_NOT_VERBATIM })
+
+    expect(
+      await saveSocialCardAction(FIXTURE_PROJECT_ID, slotId, {
+        excerpt: 'I decided to step down to fix this.',
+        emphasis: 'RIP some notes',
+      }),
+    ).toEqual({ ok: false, error: SOCIAL_HIGHLIGHT_OUTSIDE })
+  })
+
+  it('saves a verbatim excerpt and a highlight found inside it', async () => {
+    await setSocialPostManual(db, POST_URL, {
+      authorName: 'Emad Mostaque',
+      handle: 'EMostaque',
+      text: 'As my notifications are RIP some notes: I decided to step down to fix this.',
+      postedAt: '2024-01-01',
+    })
+
+    expect(
+      await saveSocialCardAction(FIXTURE_PROJECT_ID, slotId, {
+        excerpt: 'I decided to step down to fix this.',
+        emphasis: 'step down',
+      }),
+    ).toEqual({ ok: true })
+
+    const row = (await getShotSlot(db, slotId))!
+    const brief = row.brief as unknown as { excerpt?: string; emphasis?: string }
+    expect(brief.excerpt).toBe('I decided to step down to fix this.')
+    expect(brief.emphasis).toBe('step down')
+  })
+
+  it('surfaces the reason a re-read refuses, leaving the stored post untouched', async () => {
+    await setSocialPostManual(db, POST_URL, {
+      authorName: 'Emad Mostaque',
+      handle: 'EMostaque',
+      text: 'Original words nobody has corrected away.',
+      postedAt: '2024-01-01',
+    })
+    socialSource.refetchPost.mockRejectedValueOnce(
+      new Error('X says this post does not exist or is not public.'),
+    )
+
+    expect(await refetchSocialPostAction(FIXTURE_PROJECT_ID, slotId)).toEqual({
+      ok: false,
+      error: 'X says this post does not exist or is not public.',
+    })
+    expect((await getSocialPost(db, POST_URL))?.text).toBe(
+      'Original words nobody has corrected away.',
+    )
+  })
+
+  it('resolves the slot once a re-read succeeds', async () => {
+    socialSource.refetchPost.mockResolvedValueOnce({
+      url: POST_URL,
+      platform: 'x',
+      postId: '1740000000000000001',
+      handle: 'EMostaque',
+      authorName: 'Emad Mostaque',
+      text: 'Freshly read words.',
+      postedAt: '2024-01-01',
+      endedWithMediaLink: false,
+      provenance: { authorName: 'oembed', handle: 'oembed', text: 'oembed', postedAt: 'oembed' },
+      status: 'fetched',
+      failureReason: null,
+    })
+
+    expect(await refetchSocialPostAction(FIXTURE_PROJECT_ID, slotId)).toEqual({ ok: true })
+    expect((await getShotSlot(db, slotId))?.status).toBe('resolved')
+  })
+
+  it('removes the avatar image without touching anything else on the brief', async () => {
+    await finaliseUpload(slotId, 'social-avatar')
+    expect(
+      ((await getShotSlot(db, slotId))!.brief as { avatarAssetId?: string }).avatarAssetId,
+    ).toBeDefined()
+
+    expect(await removeSocialImageAction(FIXTURE_PROJECT_ID, slotId, 'avatar')).toEqual({
+      ok: true,
+    })
+    const row = (await getShotSlot(db, slotId))!
+    expect((row.brief as { avatarAssetId?: string }).avatarAssetId).toBeUndefined()
+    expect((row.brief as { postUrl: string }).postUrl).toBe(POST_URL)
+  })
+
+  async function finaliseUpload(
+    id: string,
+    purpose: 'social-avatar' | 'social-image',
+  ): Promise<void> {
+    storage.configured = true
+    vi.mocked(headObject).mockResolvedValue({ size: 12_345, contentType: 'image/png' })
+    const result = await finaliseOwnUploadAction({
+      projectId: FIXTURE_PROJECT_ID,
+      slotId: id,
+      fileType: 'image/png',
+      fileName: 'avatar.png',
+      contentHash: 'c'.repeat(64),
+      purpose,
+    })
+    expect(result).toEqual({ ok: true })
+  }
+
+  it('writes the uploaded avatar and attached image onto the brief, never the candidate strip', async () => {
+    await finaliseUpload(slotId, 'social-avatar')
+    const withAvatar = (await getShotSlot(db, slotId))!
+    expect((withAvatar.brief as { avatarAssetId?: string }).avatarAssetId).toBeDefined()
+    expect(withAvatar.candidates).toEqual([])
+
+    await finaliseUpload(slotId, 'social-image')
+    const withMedia = (await getShotSlot(db, slotId))!
+    expect((withMedia.brief as { mediaAssetId?: string }).mediaAssetId).toBeDefined()
+    expect(withMedia.candidates).toEqual([])
+  })
+
+  it('refuses a social-purpose upload on a slot that is not a post card', async () => {
+    storage.configured = true
+    vi.mocked(headObject).mockResolvedValue({ size: 12_345, contentType: 'image/png' })
+    expect(
+      await finaliseOwnUploadAction({
+        projectId: FIXTURE_PROJECT_ID,
+        slotId: stockId,
+        fileType: 'image/png',
+        fileName: 'avatar.png',
+        contentHash: 'd'.repeat(64),
+        purpose: 'social-avatar',
+      }),
+    ).toEqual({ ok: false, error: 'This is not a post slot.' })
+  })
+})
+
+describeDb('re-typing to a social post card (decision 284)', () => {
+  let stockId: string
+  const POST_CLAIM_ID = fixtureId('CLAIM', 40)
+
+  beforeEach(async () => {
+    vi.clearAllMocks()
+    inngest.send.mockResolvedValue(undefined)
+    await seed(db)
+    await db.delete(shotSlots)
+    await db
+      .insert(claims)
+      .values({
+        id: POST_CLAIM_ID,
+        dossierId: FIXTURE_DOSSIER_ID,
+        text: 'Emad Mostaque announced his resignation on X.',
+        sourceUrl: 'https://x.com/EMostaque/status/1740000000000000002',
+        sourceType: 'other',
+        confidence: 'sourced',
+      })
+      .onConflictDoNothing()
+    const script = await createScriptVersion(db, FIXTURE_PROJECT_ID)
+    const chapter = await saveChapter(db, {
+      scriptId: script.id,
+      index: 0,
+      title: 'The resignation',
+      contentMd: 'One.',
+      estRuntimeSec: 6,
+    })
+    await replaceShotList(db, FIXTURE_PROJECT_ID, [
+      {
+        chapterId: chapter.id,
+        index: 0,
+        type: 'stock',
+        brief: stock('One.', 'a phone screen'),
+        startMs: 0,
+        durationMs: 6000,
+      },
+    ])
+    const slots = await listShotSlots(db, FIXTURE_PROJECT_ID)
+    stockId = slots[0]!.id
+    await setVisualsPhase(db, FIXTURE_PROJECT_ID, 'board')
+  })
+
+  it('refuses a claim with no X post behind it', async () => {
+    // fixtureId('CLAIM', 2) is the Wirecard FT article claim seed() writes.
+    expect(await retypeToSocialAction(FIXTURE_PROJECT_ID, stockId, fixtureId('CLAIM', 2))).toEqual({
+      ok: false,
+      error: 'That claim has no X post behind it, so a card cannot show it.',
+    })
+  })
+
+  it('converts the slot and re-fetches the post', async () => {
+    expect(await retypeToSocialAction(FIXTURE_PROJECT_ID, stockId, POST_CLAIM_ID)).toEqual({
+      ok: true,
+    })
+    const row = (await getShotSlot(db, stockId))!
+    expect(row.type).toBe('social')
+    const brief = row.brief as unknown as { sourceClaimId: string; postUrl: string }
+    expect(brief.sourceClaimId).toBe(POST_CLAIM_ID)
+    expect(brief.postUrl).toBe('https://x.com/i/status/1740000000000000002')
+    expect(inngest.send.mock.calls[0]?.[0]).toMatchObject({ name: 'visuals/refetch.requested' })
+  })
+})
+
+describeDb("linking a cast member's X handle (decision 284)", () => {
+  let memberId: string
+
+  beforeEach(async () => {
+    vi.clearAllMocks()
+    await seed(db)
+    for (const member of await listCastMembers(db, FIXTURE_PROJECT_ID)) {
+      await deleteCastMember(db, member.id)
+    }
+    const member = await insertCastMember(db, {
+      projectId: FIXTURE_PROJECT_ID,
+      name: 'Emad Mostaque',
+      role: 'Founder',
+    })
+    memberId = member.id
+  })
+
+  it('saves the handle on a member of this project', async () => {
+    expect(await linkCastHandleAction(FIXTURE_PROJECT_ID, memberId, '@EMostaque')).toEqual({
+      ok: true,
+    })
+    const [row] = await listCastMembers(db, FIXTURE_PROJECT_ID)
+    expect(row?.xHandle).toBe('emostaque')
+  })
+
+  it('refuses a member from another project', async () => {
+    expect(await linkCastHandleAction('01J0000000000000000000000Z', memberId, 'EMostaque')).toEqual(
+      { ok: false, error: 'This cast member belongs to another film.' },
+    )
+  })
+
+  it('refuses something that is not an X handle', async () => {
+    expect(await linkCastHandleAction(FIXTURE_PROJECT_ID, memberId, 'not a handle')).toEqual({
+      ok: false,
+      error: 'That is not a valid X handle.',
     })
   })
 })
