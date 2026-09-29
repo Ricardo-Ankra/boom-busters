@@ -175,6 +175,28 @@ describe('excerptPlacement', () => {
     const messy = 'As my  notifications are RIP\nsome notes about the company'
     expect(excerptPlacement(messy, 'RIP some notes')).toEqual({ cutBefore: true, cutAfter: true })
   })
+
+  it('refuses an excerpt that starts in the middle of a word', () => {
+    expect(excerptPlacement('I will never resign', 'ever resign')).toBeNull()
+  })
+
+  it('refuses an excerpt that ends in the middle of a word', () => {
+    expect(excerptPlacement('I will never resign today', 'I will never res')).toBeNull()
+  })
+
+  it('accepts an excerpt that ends just before a comma', () => {
+    expect(excerptPlacement('I will never resign, not today.', 'I will never resign')).toEqual({
+      cutBefore: false,
+      cutAfter: true,
+    })
+  })
+
+  it('takes a later whole-word occurrence when the first is inside a word', () => {
+    expect(excerptPlacement('forever and ever', 'ever')).toEqual({
+      cutBefore: true,
+      cutAfter: false,
+    })
+  })
 })
 
 describe('phraseIn', () => {

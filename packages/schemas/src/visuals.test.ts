@@ -672,6 +672,38 @@ describe('convertBrief — re-typing a slot (staged-visuals design)', () => {
     expect(ShotBriefSchema.parse(social)).toBeTruthy()
   })
 
+  it('repoints a social card to another claim’s post, dropping what it chose against the old one', () => {
+    const social = ShotBriefSchema.parse({
+      type: 'social',
+      ...common,
+      sourceClaimId: CLAIM_A,
+      postUrl: 'https://x.com/i/status/1234567890123456789',
+      excerpt: 'the old post’s words',
+      emphasis: 'old post',
+      avatarAssetId: CLAIM_A,
+      mediaAssetId: CLAIM_A,
+    })
+    const other = { id: CLAIM_B, sourceUrl: 'https://x.com/Someone/status/9876543210987654321' }
+
+    const moved = convertBrief(social, 'social', { socialClaim: other })
+    // The type has not moved but the card has, so the same-type short circuit
+    // must not hand back the old brief still showing the old post.
+    expect(moved).not.toBe(social)
+    expect(moved).toMatchObject({
+      type: 'social',
+      sourceClaimId: CLAIM_B,
+      postUrl: 'https://x.com/i/status/9876543210987654321',
+    })
+    expect(moved).not.toHaveProperty('excerpt')
+    expect(moved).not.toHaveProperty('emphasis')
+    expect(moved).not.toHaveProperty('avatarAssetId')
+    expect(moved).not.toHaveProperty('mediaAssetId')
+    expect(ShotBriefSchema.parse(moved)).toBeTruthy()
+
+    // With no post to move to, it is still the same brief, untouched.
+    expect(convertBrief(social, 'social')).toBe(social)
+  })
+
   it('converts a social brief to a text type through the description', () => {
     const social = ShotBriefSchema.parse({
       type: 'social',

@@ -196,22 +196,39 @@ export function phraseIn(text: string, phrase: string): boolean {
   return collapse(text).includes(collapsedPhrase)
 }
 
+const WORD_CHARACTER = /[\p{L}\p{N}]/u
+
 /**
  * Where a word-for-word excerpt sits in the text, whitespace collapsed.
- * Null when the excerpt is not in the text.
+ * Null when the excerpt is not in the text, or only in it cut through a
+ * word: "ever resign" is inside "I will never resign" as letters, but a card
+ * showing it would put words in the author's mouth. So the excerpt must
+ * start at the text's start or after whitespace, and end at the text's end
+ * or before anything that is not a letter or digit (a trailing comma or full
+ * stop is fine). The highlight keeps `phraseIn`'s plain substring test.
  */
 export function excerptPlacement(
   text: string,
   excerpt: string,
 ): { cutBefore: boolean; cutAfter: boolean } | null {
-  if (!phraseIn(text, excerpt)) return null
   const collapsedText = collapse(text)
   const phrase = collapse(excerpt)
-  const at = collapsedText.indexOf(phrase)
-  return {
-    cutBefore: at > 0,
-    cutAfter: at + phrase.length < collapsedText.length,
+  if (phrase === '') return null
+  for (
+    let at = collapsedText.indexOf(phrase);
+    at !== -1;
+    at = collapsedText.indexOf(phrase, at + 1)
+  ) {
+    const end = at + phrase.length
+    const before = collapsedText[at - 1]
+    const after = collapsedText[end]
+    const startsOnWord = before === undefined || /\s/.test(before)
+    const endsOnWord = after === undefined || !WORD_CHARACTER.test(after)
+    if (startsOnWord && endsOnWord) {
+      return { cutBefore: at > 0, cutAfter: end < collapsedText.length }
+    }
   }
+  return null
 }
 
 export const NOT_A_POST_ERROR =
