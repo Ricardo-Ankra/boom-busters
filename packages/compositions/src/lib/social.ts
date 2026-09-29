@@ -15,7 +15,8 @@ import {
   postPublicUrl,
 } from '@boom-busters/schemas'
 import { frameScale } from '../components/brand'
-import { glyphAdvanceEm, safeArea, type GraphicFrame } from './graphic'
+import { glyphAdvanceEm, graphicDrift, safeArea, type GraphicFrame } from './graphic'
+import { easeInOut } from './motion'
 
 /**
  * The social post card's geometry (decision 284), pure and unit-tested. The
@@ -114,6 +115,44 @@ export function estimateLines(text: string, px: number, widthPx: number, type: T
 /** The words as the card prints them, with an ellipsis at each cut. */
 export function socialDisplayText(text: string, cutBefore: boolean, cutAfter: boolean): string {
   return `${cutBefore ? '… ' : ''}${text}${cutAfter ? ' …' : ''}`
+}
+
+export interface SocialProgress {
+  /** 0 to 1 across the card's own entrance. */
+  settle: number
+  /** 0 to 1 across the emphasis marker's sweep. */
+  sweep: number
+  /** The graphic card's slow lift, so a post is never a dead still either. */
+  drift: number
+}
+
+/** The board's resting card: settled, swept and undrifted, exactly what `graphicDrift` gives past its slot. */
+export const RESTING_SOCIAL_PROGRESS: SocialProgress = { settle: 1, sweep: 1, drift: 1 }
+
+const SETTLE_MS = 420
+const SWEEP_DELAY_MS = 700
+const SWEEP_MS = 520
+
+function motionProgress(frame: number, fps: number, delayMs: number, ms: number): number {
+  const tMs = (frame / fps) * 1000 - delayMs
+  return easeInOut(Math.min(1, Math.max(0, tMs / ms)))
+}
+
+/**
+ * The card's motion at `frame` (decision 284): the headline card's own
+ * settle-then-sweep entrance, plus the graphic card's slow drift spread
+ * across the whole slot.
+ */
+export function socialProgress(
+  frame: number,
+  fps: number,
+  durationInFrames: number,
+): SocialProgress {
+  return {
+    settle: motionProgress(frame, fps, 0, SETTLE_MS),
+    sweep: motionProgress(frame, fps, SWEEP_DELAY_MS, SWEEP_MS),
+    drift: graphicDrift(frame, durationInFrames),
+  }
 }
 
 export function socialLayout(input: {

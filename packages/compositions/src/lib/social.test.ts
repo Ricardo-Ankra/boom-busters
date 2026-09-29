@@ -9,7 +9,7 @@ import {
   resolveBrandKit,
 } from '@boom-busters/schemas'
 import type { SocialPostRecord } from '@boom-busters/schemas'
-import { safeArea } from './graphic'
+import { graphicDrift, safeArea } from './graphic'
 import {
   SOCIAL_EXCERPT_NOT_VERBATIM,
   SOCIAL_EXCERPT_TOO_LONG,
@@ -22,6 +22,7 @@ import {
   postSegments,
   socialDisplayText,
   socialLayout,
+  socialProgress,
   socialSlotIssues,
   suggestExcerpt,
   wordWidthPx,
@@ -116,6 +117,28 @@ describe('socialLayout', () => {
     expect(layout.band.top).toBeGreaterThanOrEqual(1920 * 0.1)
     const safe = safeArea(TALL)
     expect(layout.band.top + layout.band.height).toBe(safe.y + safe.h)
+  })
+})
+
+describe('socialProgress', () => {
+  it('starts unsettled, with no sweep', () => {
+    const progress = socialProgress(0, 30, 180)
+    expect(progress.settle).toBe(0)
+    expect(progress.sweep).toBe(0)
+  })
+
+  it('is settled with a partial sweep a second in', () => {
+    const progress = socialProgress(30, 30, 180)
+    expect(progress.settle).toBe(1)
+    expect(progress.sweep).toBeGreaterThan(0)
+    expect(progress.sweep).toBeLessThan(1)
+  })
+
+  it('is fully settled and swept by the last frame, drifting like a graphic card', () => {
+    const progress = socialProgress(179, 30, 180)
+    expect(progress.settle).toBe(1)
+    expect(progress.sweep).toBe(1)
+    expect(progress.drift).toBe(graphicDrift(179, 180))
   })
 })
 

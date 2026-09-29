@@ -1,6 +1,11 @@
 import { Composition } from 'remotion'
 import { gainAt, timelineDurationMs } from '@boom-busters/schemas'
-import type { BrandKitTokens, GraphicPayload, HeadlinePayload } from '@boom-busters/schemas'
+import type {
+  BrandKitTokens,
+  GraphicPayload,
+  HeadlinePayload,
+  SocialPayload,
+} from '@boom-busters/schemas'
 import { AnimatedMap } from './components/AnimatedMap'
 import { ChapterCard } from './components/ChapterCard'
 import { ChartReveal } from './components/ChartReveal'
@@ -14,6 +19,7 @@ import { KenBurnsImage } from './components/KenBurnsImage'
 import { LowerThird } from './components/LowerThird'
 import { MusicBed } from './components/MusicBed'
 import { ShortVertical } from './components/ShortVertical'
+import { SocialPost } from './components/SocialPost'
 import { StockClip } from './components/StockClip'
 import { WatermarkFixture } from './components/Watermark'
 import {
@@ -144,6 +150,29 @@ const HEADLINE_CARD: HeadlinePayload = {
   sourceLabel: 'financialrecord.example/2023/03/14',
   sourceUrl: 'https://financialrecord.example/2023/03/14',
   claimId: '01HQ00000000000000000000AA',
+}
+
+/**
+ * A real X post, embedded whole (decision 284). Dana Okafor is an invented
+ * account, not a real person: the same reasoning as the headline card's
+ * invented byline. A fabricated quotation attached to a real handle would
+ * be a false statement about a real person. No avatar, so the initials
+ * disc draws; no media, so the card is text and source line only.
+ */
+const SOCIAL_POST: SocialPayload = {
+  kind: 'social',
+  platform: 'x',
+  authorName: 'Dana Okafor',
+  handle: 'danaokafor',
+  text: "Auditors at @KPMG confirmed today that the missing $1.9 billion was never actually held in the company's escrow accounts, despite years of assurances given to investors, regulators and journalists across three continents this year.",
+  cutBefore: false,
+  cutAfter: false,
+  postedAt: '2023-03-14',
+  emphasis: '$1.9 billion',
+  initials: 'DO',
+  sourceLabel: 'x.com/danaokafor/status/1734567890123456789',
+  sourceUrl: 'https://x.com/danaokafor/status/1734567890123456789',
+  claimId: '01HQ00000000000000000000S1',
 }
 
 /**
@@ -367,6 +396,22 @@ export function Root() {
         durationInFrames={240}
         {...TALL}
         defaultProps={{ payload: HEADLINE_CARD, brand: FIXTURE_BRAND }}
+      />
+
+      <Composition
+        id="SocialPostWide"
+        component={SocialPost}
+        durationInFrames={240}
+        {...WIDE}
+        defaultProps={{ payload: SOCIAL_POST, brand: FIXTURE_BRAND, durationInFrames: 240 }}
+      />
+
+      <Composition
+        id="SocialPostTall"
+        component={SocialPost}
+        durationInFrames={240}
+        {...TALL}
+        defaultProps={{ payload: SOCIAL_POST, brand: FIXTURE_BRAND, durationInFrames: 240 }}
       />
 
       <Composition

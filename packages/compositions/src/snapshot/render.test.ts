@@ -51,6 +51,10 @@ const CASES: SnapshotCase[] = [
   // element has entered and the figure has finished counting.
   { id: 'GraphicCardWide', frame: 45, maxDiffRatio: 0.06 },
   { id: 'GraphicCardTall', frame: 45, maxDiffRatio: 0.06 },
+  // Frame 45 is 1.5 s in: the card has settled and the highlight's sweep has
+  // finished (decision 284).
+  { id: 'SocialPostWide', frame: 45, maxDiffRatio: 0.06 },
+  { id: 'SocialPostTall', frame: 45, maxDiffRatio: 0.06 },
   { id: 'LowerThirdBar', frame: 60, maxDiffRatio: 0.06 },
   { id: 'ChapterCardFull', frame: 40, maxDiffRatio: 0.06 },
   { id: 'KaraokeCaptionsWide', frame: 20, maxDiffRatio: 0.06 },
