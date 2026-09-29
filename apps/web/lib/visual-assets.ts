@@ -815,6 +815,12 @@ export async function resolveSlotBrief(input: {
     case 'hero':
       return { candidates: [], status: 'placeholder' }
 
+    case 'social':
+      // Resolution (fetching the post, checking it is renderable) is task 8.
+      // Until then a social slot is a placeholder, like a hero slot before
+      // its adapter exists: never an unresolvable throw.
+      return { candidates: [], status: 'placeholder' }
+
     case 'still': {
       const candidates = await generateStillCandidates(brief, projectId, route)
       return withChoice(candidates)

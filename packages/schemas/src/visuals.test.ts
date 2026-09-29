@@ -10,6 +10,7 @@ import {
   ShotBriefSchema,
   SlotCandidateSchema,
   SlotDraftStateSchema,
+  SocialBriefSchema,
   StillBriefSchema,
   claimCarriesArticle,
   convertBrief,
@@ -299,6 +300,59 @@ describe('resolvePlannedBrief', () => {
       expect(plannedBriefRejection(headline, news)).toBeNull()
     })
   })
+
+  describe('social briefs (decision 284)', () => {
+    const posts = [
+      { id: CLAIM_A, sourceType: 'major_outlet', sourceUrl: 'https://news.example/story' },
+      {
+        id: CLAIM_B,
+        sourceType: 'major_outlet',
+        sourceUrl: 'https://x.com/nytimes/status/1234567890123456789',
+      },
+      { id: CLAIM_C, sourceType: 'major_outlet', sourceUrl: null },
+    ]
+    const social = { type: 'social' as const, ...common, sourceRef: 2 }
+
+    it('is a slot type before hero', () => {
+      expect(SHOT_SLOT_TYPES.indexOf('social')).toBe(SHOT_SLOT_TYPES.indexOf('hero') - 1)
+    })
+
+    it('swaps the claim number for the id it cites and normalises the post address', () => {
+      const resolved = resolvePlannedBrief(social, posts)
+      expect(resolved).not.toBeNull()
+      if (resolved?.type === 'social') {
+        expect(resolved.sourceClaimId).toBe(CLAIM_B)
+        expect(resolved.postUrl).toBe('https://x.com/i/status/1234567890123456789')
+      }
+      // Nothing the model wrote about the claim number survives.
+      expect(resolved && 'sourceRef' in resolved).toBe(false)
+    })
+
+    it('refuses a claim number outside the list', () => {
+      expect(resolvePlannedBrief({ ...social, sourceRef: 9 }, posts)).toBeNull()
+      expect(plannedBriefRejection({ ...social, sourceRef: 9 }, posts)).toBe(
+        'social cited a claim number outside the claim list',
+      )
+    })
+
+    it('refuses an article claim with no post behind it', () => {
+      expect(resolvePlannedBrief({ ...social, sourceRef: 1 }, posts)).toBeNull()
+      expect(plannedBriefRejection({ ...social, sourceRef: 1 }, posts)).toBe(
+        'claim 1 has no X post behind it',
+      )
+    })
+
+    it('refuses a claim with no source URL at all', () => {
+      expect(resolvePlannedBrief({ ...social, sourceRef: 3 }, posts)).toBeNull()
+      expect(plannedBriefRejection({ ...social, sourceRef: 3 }, posts)).toBe(
+        'claim 3 has no X post behind it',
+      )
+    })
+
+    it('says nothing about a brief it accepts', () => {
+      expect(plannedBriefRejection(social, posts)).toBeNull()
+    })
+  })
 })
 
 const CLAIMS = [
@@ -321,8 +375,9 @@ const plannedGraphic = (elements: unknown[]) => ({
 const cell = { col: 0, row: 0, colSpan: 6, rowSpan: 3 }
 
 describe('graphic briefs (decision 268, Plan B)', () => {
-  it('is a slot type before hero', () => {
-    expect(SHOT_SLOT_TYPES.indexOf('graphic')).toBe(SHOT_SLOT_TYPES.indexOf('hero') - 1)
+  it('is a slot type before social and hero', () => {
+    expect(SHOT_SLOT_TYPES.indexOf('graphic')).toBeLessThan(SHOT_SLOT_TYPES.indexOf('social'))
+    expect(SHOT_SLOT_TYPES.indexOf('social')).toBeLessThan(SHOT_SLOT_TYPES.indexOf('hero'))
   })
 
   it('resolves claim numbers to ids and entities to library assets', () => {
@@ -442,6 +497,24 @@ describe('HeadlineBriefSchema', () => {
         'headline',
       ),
     ).toBeNull()
+  })
+})
+
+describe('SocialBriefSchema', () => {
+  it('needs a post address', () => {
+    const brief = {
+      type: 'social' as const,
+      ...common,
+      sourceClaimId: CLAIM_A,
+      postUrl: 'https://x.com/i/status/1234567890123456789',
+    }
+    expect(SocialBriefSchema.parse(brief).postUrl).toBe(
+      'https://x.com/i/status/1234567890123456789',
+    )
+
+    const { postUrl, ...withoutPostUrl } = brief
+    expect(postUrl).toBeTruthy()
+    expect(SocialBriefSchema.safeParse(withoutPostUrl).success).toBe(false)
   })
 })
 
@@ -582,6 +655,34 @@ describe('convertBrief — re-typing a slot (staged-visuals design)', () => {
 
     // With no claim to move to, it is still the same brief, untouched.
     expect(convertBrief(headline, 'headline')).toBe(headline)
+  })
+
+  it('converts INTO a social card only once the post has been picked', () => {
+    expect(convertBrief(still, 'social')).toBeNull()
+
+    const socialClaim = { id: CLAIM_A, sourceUrl: 'https://x.com/i/status/1234567890123456789' }
+    const social = convertBrief(still, 'social', { socialClaim })
+    expect(social).toMatchObject({
+      type: 'social',
+      sourceClaimId: CLAIM_A,
+      postUrl: 'https://x.com/i/status/1234567890123456789',
+      coversText: common.coversText,
+      description: common.description,
+    })
+    expect(ShotBriefSchema.parse(social)).toBeTruthy()
+  })
+
+  it('converts a social brief to a text type through the description', () => {
+    const social = ShotBriefSchema.parse({
+      type: 'social',
+      ...common,
+      sourceClaimId: CLAIM_A,
+      postUrl: 'https://x.com/i/status/1234567890123456789',
+    })
+    expect(convertBrief(social, 'stock')).toMatchObject({
+      type: 'stock',
+      query: common.description,
+    })
   })
 })
 

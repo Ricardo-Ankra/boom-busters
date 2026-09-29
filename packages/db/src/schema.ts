@@ -126,6 +126,7 @@ export const shotTypeEnum = pgEnum('shot_type', [
   'map',
   'headline',
   'graphic',
+  'social',
   'hero',
 ])
 

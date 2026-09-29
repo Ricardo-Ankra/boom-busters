@@ -4,6 +4,7 @@ import { GraphicSceneSchema, PlannedGraphicSceneSchema, figureCitesClaim } from 
 import { UlidSchema } from './ids'
 import { logoForEntity, type LogoIndex } from './logos'
 import { SetPlateDirectionSchema } from './sets'
+import { claimCarriesPost, normalisePostUrl } from './social'
 
 /**
  * The visuals stage's shared vocabulary (build spec sections 5 and 7.4;
@@ -40,6 +41,7 @@ export const SHOT_SLOT_TYPES = [
   'map',
   'headline',
   'graphic',
+  'social',
   'hero',
 ] as const
 export const ShotSlotTypeSchema = z.enum(SHOT_SLOT_TYPES)
@@ -280,6 +282,30 @@ export const GraphicBriefSchema = z.object({
 })
 export type GraphicBrief = z.infer<typeof GraphicBriefSchema>
 
+/**
+ * A real X post shown on screen as a card (decision 284). The brief carries
+ * no words of its own: `postUrl` names the post, and the app reads the
+ * author, handle, text and date from that post's own stored record. This is
+ * the same rule the headline card lives under, and for the same reason: a
+ * fabricated quotation attached to a real account is a false statement about
+ * a real person.
+ */
+export const SocialBriefSchema = z.object({
+  type: z.literal('social'),
+  ...briefCommon,
+  /** The claim this card cites. Its `sourceUrl` is the post that gets read. */
+  sourceClaimId: UlidSchema,
+  /** `normalisePostUrl` form. Filled from the claim; the owner may point it elsewhere. */
+  postUrl: z.string().min(1),
+  /** The phrase the marker draws under, word for word from the post's text. */
+  emphasis: z.string().trim().min(1).max(120).optional(),
+  /** A shortened quote of the post's text, chosen by the owner. */
+  excerpt: z.string().trim().min(1).max(2000).optional(),
+  avatarAssetId: UlidSchema.optional(),
+  mediaAssetId: UlidSchema.optional(),
+})
+export type SocialBrief = z.infer<typeof SocialBriefSchema>
+
 export const HeroBriefSchema = z.object({
   type: z.literal('hero'),
   ...briefCommon,
@@ -302,6 +328,7 @@ export const ShotBriefSchema = z.discriminatedUnion('type', [
   MapBriefSchema,
   HeadlineBriefSchema,
   GraphicBriefSchema,
+  SocialBriefSchema,
   HeroBriefSchema,
 ])
 export type ShotBrief = z.infer<typeof ShotBriefSchema>
@@ -457,14 +484,20 @@ export const STILL_GENERATIONS = 2
 export function convertBrief(
   brief: ShotBrief,
   targetType: ShotSlotType,
-  options: { stillStyleAnchors?: string; headlineClaimId?: string } = {},
+  options: {
+    stillStyleAnchors?: string
+    headlineClaimId?: string
+    socialClaim?: { id: string; sourceUrl: string }
+  } = {},
 ): ShotBrief | null {
   /**
-   * A headline card moved to a DIFFERENT article is a real change even though
-   * its type has not moved, so it must not take the short circuit below. Every
-   * other same-type conversion is genuinely a no-op.
+   * A headline or social card moved to a DIFFERENT article or post is a real
+   * change even though its type has not moved, so it must not take the short
+   * circuit below. Every other same-type conversion is genuinely a no-op.
    */
-  const repointing = targetType === 'headline' && options.headlineClaimId !== undefined
+  const repointing =
+    (targetType === 'headline' && options.headlineClaimId !== undefined) ||
+    (targetType === 'social' && options.socialClaim !== undefined)
   if (targetType === brief.type && !repointing) return brief
 
   const common = {
@@ -512,6 +545,20 @@ export function convertBrief(
           ? { showDeck: brief.showDeck }
           : {}),
       }
+    }
+    case 'social': {
+      /**
+       * A social card quotes ONE post, and nothing in the old brief says
+       * which. No model may choose it either (decision 284, mirroring 257):
+       * every string on the card comes from that post's own stored record.
+       * So this conversion is mechanical ONCE the owner (or the claim) has
+       * picked a post, and null until then.
+       */
+      const claim = options.socialClaim
+      if (claim === undefined) return null
+      const postUrl = normalisePostUrl(claim.sourceUrl)
+      if (postUrl === null) return null
+      return { type: 'social', ...common, sourceClaimId: claim.id, postUrl }
     }
     default:
       return null
@@ -631,6 +678,22 @@ export const PlannedGraphicBriefSchema = GraphicBriefSchema.omit({ scene: true }
 })
 export type PlannedGraphicBrief = z.infer<typeof PlannedGraphicBriefSchema>
 
+/**
+ * The wire shape of a social brief: a claim NUMBER instead of a claim id, and
+ * none of the fields only known once the post has been read.
+ */
+export const PlannedSocialBriefSchema = SocialBriefSchema.omit({
+  sourceClaimId: true,
+  postUrl: true,
+  emphasis: true,
+  excerpt: true,
+  avatarAssetId: true,
+  mediaAssetId: true,
+}).extend({
+  sourceRef: z.number().int().min(1),
+})
+export type PlannedSocialBrief = z.infer<typeof PlannedSocialBriefSchema>
+
 export const PlannedBriefSchema = z.discriminatedUnion('type', [
   StockBriefSchema,
   PlannedArchivalBriefSchema,
@@ -639,6 +702,7 @@ export const PlannedBriefSchema = z.discriminatedUnion('type', [
   MapBriefSchema,
   PlannedHeadlineBriefSchema,
   PlannedGraphicBriefSchema,
+  PlannedSocialBriefSchema,
   HeroBriefSchema,
 ])
 export type PlannedBrief = z.infer<typeof PlannedBriefSchema>
@@ -773,6 +837,23 @@ export function resolvePlannedBrief(
     }
   }
 
+  if (brief.type === 'social') {
+    const claim = claims[brief.sourceRef - 1]
+    if (!claim || !claimCarriesPost(claim)) return null
+    const postUrl = normalisePostUrl(claim.sourceUrl ?? '')
+    if (postUrl === null) return null
+    return {
+      type: 'social',
+      coversText: brief.coversText,
+      description: brief.description,
+      motion: brief.motion,
+      transition: brief.transition,
+      ...(brief.shotSize !== undefined ? { shotSize: brief.shotSize } : {}),
+      sourceClaimId: claim.id,
+      postUrl,
+    }
+  }
+
   if (brief.type === 'graphic') {
     if (graphicCitationIssue(brief, claims) !== null) return null
     const claimIds = claims.map((claim) => claim.id)
@@ -828,6 +909,12 @@ export function plannedBriefRejection(
       return 'headline cited a claim that is not a news report'
     }
     if (!claim.sourceUrl) return 'headline cited a news claim with no source URL to read'
+  }
+
+  if (brief.type === 'social') {
+    const claim = claims[brief.sourceRef - 1]
+    if (!claim) return 'social cited a claim number outside the claim list'
+    if (!claimCarriesPost(claim)) return `claim ${brief.sourceRef} has no X post behind it`
   }
 
   if (brief.type === 'graphic') {

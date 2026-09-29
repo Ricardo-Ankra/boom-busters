@@ -55,9 +55,9 @@ import { budgetGateData, markSideJobFailed, type GateContext } from '../lib/gate
  *   exactly where it is, and neither a redrawn chart nor a redrawn graphic's
  *   figure can cite numbers the dossier does not hold (decision 268, Plan B).
  *
- * A headline card never comes here at all. Every string on it is read from the
- * article, so there is no idea to have again; changing which article it quotes
- * is the chooser's job (decision 257).
+ * A headline or social card never comes here at all. Every string on either is
+ * read from the article or the post, so there is no idea to have again;
+ * changing which one it quotes is the chooser's job (decisions 257 and 284).
  *
  * A separate function, like the slot-retyper and the slot-redirector: the main
  * run stays parked throughout.
@@ -139,11 +139,13 @@ export const slotRebriefer = inngest.createFunction(
        * button on these, so a request for one is a stale tab, and a throw
        * would leave the card drafting something that is never coming.
        */
-      if (brief.type === 'headline' || brief.type === 'hero') {
+      if (brief.type === 'headline' || brief.type === 'social' || brief.type === 'hero') {
         const reason =
           brief.type === 'headline'
             ? 'Every word on a headline card is read from the article, so there is no brief to draft. Change which article it quotes instead.'
-            : 'An AI-video slot cannot be re-briefed.'
+            : brief.type === 'social'
+              ? 'Every word on a social card is read from the post, so there is no brief to draft. Change which post it quotes instead.'
+              : 'An AI-video slot cannot be re-briefed.'
         await setSlotRetype(db, slotId, { state: 'rebrief-refused', reason })
         return { ok: false as const, refused: reason }
       }

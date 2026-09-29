@@ -155,7 +155,8 @@ export function evenlySpacedWords(text: string, durationMs: number): WordTiming[
  */
 export interface AssemblySlotRow {
   id: string
-  type: 'stock' | 'archival' | 'still' | 'chart' | 'map' | 'headline' | 'graphic' | 'hero'
+  type:
+    'stock' | 'archival' | 'still' | 'chart' | 'map' | 'headline' | 'graphic' | 'social' | 'hero'
   status: 'unresolved' | 'resolved' | 'placeholder'
   brief: Record<string, unknown>
   candidates: Record<string, unknown>[]
@@ -346,6 +347,14 @@ export function slotPlan(input: {
 
     if (brief.type === 'hero') {
       skipped.push({ slotId: row.id, reason: 'hero slots are feature-flagged off' })
+      continue
+    }
+
+    if (brief.type === 'social') {
+      // Assembly for the social card lands in a later task; until then it is
+      // a skip with a reason, the same inert choice hero takes while its
+      // adapter does not exist yet, never a throw.
+      skipped.push({ slotId: row.id, reason: 'social card assembly is not built yet' })
       continue
     }
 
