@@ -6300,3 +6300,21 @@ green.
      the article chooser stop building headline cards on one. The owner's
      typed Bloomberg date (2023-03-23 for a March 2024 exit) is data, not
      code, and is corrected by giving that card its article and its details.
+
+282. **Renders refused with "broker answered 422"** (2026-09-29, owner: the
+     master render retried "invoke-broker" with 422 for POST /renders). The
+     live broker Lambda was last deployed on 2026-08-28 (release 53c0290):
+     its bundled `TimelineSchema` knows stock, archival, still, upload,
+     chart and map slots, and timeline v17 carries 5 headline slots
+     (decision 257, 2026-09-17) and 5 graphic slots (decision 268,
+     2026-09-22), so the broker answered 422 "timeline does not validate".
+     The same timeline passes the current schema and the canonical check
+     (verified locally from the stored v17). The broker code that
+     materialises graphics and headlines has been in the repo since
+     2026-09-22 and was never deployed; the Remotion site needs the headline
+     and graphic compositions too. Fix: redeploy the Remotion site and the
+     broker stack (the owner runs the script; production deploys are
+     refused from Claude's shell). App side: `brokerFetch` now carries the
+     broker's `error` and first issues in its message, and a 4xx refusal
+     other than 409 (the concurrency cap) and 429 is a `NonRetriableError`,
+     since the same timeline to the same broker cannot pass on a retry.

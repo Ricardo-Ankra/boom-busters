@@ -7,6 +7,7 @@ import {
   RenderRequestSchema,
   requireEnv,
 } from '@boom-busters/schemas'
+import { NonRetriableError } from 'inngest'
 import type {
   CancelAccepted,
   MediaJob,
@@ -59,9 +60,50 @@ async function brokerFetch(
     ...(init.body !== undefined ? { body: JSON.stringify(init.body) } : {}),
   })
   if (!response.ok) {
-    throw new Error(`broker answered ${response.status} for ${init.method} ${path}`)
+    const detail = await brokerErrorDetail(response)
+    const message =
+      `broker answered ${response.status} for ${init.method} ${path}` +
+      (detail ? `: ${detail}` : '')
+    // A refusal of the request itself (decision 282) does not change between
+    // retries: the same timeline goes to the same broker, and four more
+    // attempts only hid the reason. A conflict (409, the concurrency cap), a
+    // rate limit and a server error are worth another try.
+    if (response.status >= 400 && response.status < 500 && ![409, 429].includes(response.status)) {
+      throw new NonRetriableError(message)
+    }
+    throw new Error(message)
   }
   return response.json() as Promise<unknown>
+}
+
+/**
+ * What the broker said when it refused (decision 282): its `error` and the
+ * first few `issues` (for a timeline, the paths that did not validate). The
+ * status alone ("422") told nobody which slot was wrong.
+ */
+async function brokerErrorDetail(response: Response): Promise<string> {
+  let text: string
+  try {
+    text = await response.text()
+  } catch {
+    return ''
+  }
+  try {
+    const body = JSON.parse(text) as { error?: unknown; issues?: unknown }
+    const error = typeof body.error === 'string' ? body.error : ''
+    const issues = Array.isArray(body.issues)
+      ? body.issues
+          .slice(0, 5)
+          .map((issue) => String(issue))
+          .join('; ')
+      : ''
+    return [error, issues]
+      .filter((part) => part !== '')
+      .join(': ')
+      .slice(0, 600)
+  } catch {
+    return text.trim().slice(0, 300)
+  }
 }
 
 /**
