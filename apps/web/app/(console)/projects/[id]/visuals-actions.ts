@@ -982,6 +982,8 @@ export async function refetchArticleAction(
 // The social post card (decision 284)
 // ---------------------------------------------------------------------------
 
+const NOT_A_SOCIAL_SLOT_ERROR = 'This is not a post slot.'
+
 /** The post a social slot quotes, and its address, as `headlineSource` does for an article. */
 async function socialSource(
   slotId: string,
@@ -993,7 +995,7 @@ async function socialSource(
 
   const parsed = ShotBriefSchema.safeParse(slot.brief)
   if (!parsed.success || parsed.data.type !== 'social') {
-    return { error: 'This is not a post slot.' }
+    return { error: NOT_A_SOCIAL_SLOT_ERROR }
   }
   return {
     brief: parsed.data,
@@ -1028,7 +1030,7 @@ export async function setSocialPostAction(
 
   const current = ShotBriefSchema.safeParse(slot.brief)
   if (!current.success || current.data.type !== 'social') {
-    return { ok: false, error: 'This is not a post slot.' }
+    return { ok: false, error: NOT_A_SOCIAL_SLOT_ERROR }
   }
 
   const brief: SocialBrief = { ...current.data, postUrl: url }
@@ -1187,22 +1189,32 @@ export async function saveSocialCardAction(
   }
   const text = post.text
 
-  let excerpt: string | undefined
-  if (card.excerpt === null) {
-    excerpt = undefined
-  } else if (card.excerpt !== undefined) {
+  // Validate the MERGED result, not just the patch: a patch touching only
+  // one field still leaves the other at its stored value, and that stored
+  // value has to hold up against whichever text ends up on screen. Setting
+  // the excerpt alone, with the old highlight left untouched, is exactly the
+  // case that slips through if each field is checked against the patch it
+  // arrived in rather than the result the save actually produces.
+  const finalExcerpt =
+    card.excerpt === null
+      ? undefined
+      : card.excerpt !== undefined
+        ? card.excerpt
+        : source.brief.excerpt
+  if (card.excerpt !== undefined && card.excerpt !== null) {
     if (excerptPlacement(text, card.excerpt) === null) {
       return { ok: false, error: SOCIAL_EXCERPT_NOT_VERBATIM }
     }
-    excerpt = card.excerpt
-  } else {
-    excerpt = source.brief.excerpt
   }
 
-  if (card.emphasis !== undefined && card.emphasis !== null) {
-    if (!phraseIn(excerpt ?? text, card.emphasis)) {
-      return { ok: false, error: SOCIAL_HIGHLIGHT_OUTSIDE }
-    }
+  const finalEmphasis =
+    card.emphasis === null
+      ? undefined
+      : card.emphasis !== undefined
+        ? card.emphasis
+        : source.brief.emphasis
+  if (finalEmphasis !== undefined && !phraseIn(finalExcerpt ?? text, finalEmphasis)) {
+    return { ok: false, error: SOCIAL_HIGHLIGHT_OUTSIDE }
   }
 
   const brief: SocialBrief = { ...source.brief }
@@ -1502,7 +1514,7 @@ export async function finaliseOwnUploadAction(input: {
   if (input.purpose === 'social-avatar' || input.purpose === 'social-image') {
     const parsed = ShotBriefSchema.safeParse(slot.brief)
     if (!parsed.success || parsed.data.type !== 'social') {
-      return { ok: false, error: 'This is not a post slot.' }
+      return { ok: false, error: NOT_A_SOCIAL_SLOT_ERROR }
     }
     const asset = await upsertAssetByHash(db, {
       kind: 'image',

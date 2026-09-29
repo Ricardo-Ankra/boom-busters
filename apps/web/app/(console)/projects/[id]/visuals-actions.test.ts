@@ -1075,6 +1075,58 @@ describeDb('editing a social post card (decision 284)', () => {
     expect(brief.emphasis).toBe('step down')
   })
 
+  it('refuses a patch that would leave the stored highlight outside the new excerpt, and writes nothing', async () => {
+    const text =
+      'As my notifications are RIP some notes: I decided to step down. My shares were worth $101m at the peak.'
+    await setSocialPostManual(db, POST_URL, {
+      authorName: 'Emad Mostaque',
+      handle: 'EMostaque',
+      text,
+      postedAt: '2024-01-01',
+    })
+    expect(await saveSocialCardAction(FIXTURE_PROJECT_ID, slotId, { emphasis: '$101m' })).toEqual({
+      ok: true,
+    })
+
+    // Touches only the excerpt; the stored highlight is left in place by the
+    // patch, but it does not survive inside this excerpt.
+    const excerptWithoutFigure = 'As my notifications are RIP some notes: I decided to step down.'
+    expect(
+      await saveSocialCardAction(FIXTURE_PROJECT_ID, slotId, { excerpt: excerptWithoutFigure }),
+    ).toEqual({ ok: false, error: SOCIAL_HIGHLIGHT_OUTSIDE })
+
+    const row = (await getShotSlot(db, slotId))!
+    const brief = row.brief as unknown as { excerpt?: string; emphasis?: string }
+    expect(brief.excerpt).toBeUndefined()
+    expect(brief.emphasis).toBe('$101m')
+  })
+
+  it('clears the excerpt while a stored highlight still fits the full text', async () => {
+    const text =
+      'As my notifications are RIP some notes: I decided to step down. My shares were worth $101m at the peak.'
+    await setSocialPostManual(db, POST_URL, {
+      authorName: 'Emad Mostaque',
+      handle: 'EMostaque',
+      text,
+      postedAt: '2024-01-01',
+    })
+    expect(
+      await saveSocialCardAction(FIXTURE_PROJECT_ID, slotId, {
+        excerpt: 'As my notifications are RIP some notes: I decided to step down.',
+        emphasis: 'RIP some notes',
+      }),
+    ).toEqual({ ok: true })
+
+    expect(await saveSocialCardAction(FIXTURE_PROJECT_ID, slotId, { excerpt: null })).toEqual({
+      ok: true,
+    })
+
+    const row = (await getShotSlot(db, slotId))!
+    const brief = row.brief as unknown as { excerpt?: string; emphasis?: string }
+    expect(brief.excerpt).toBeUndefined()
+    expect(brief.emphasis).toBe('RIP some notes')
+  })
+
   it('surfaces the reason a re-read refuses, leaving the stored post untouched', async () => {
     await setSocialPostManual(db, POST_URL, {
       authorName: 'Emad Mostaque',
