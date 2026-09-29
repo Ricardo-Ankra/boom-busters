@@ -1,6 +1,7 @@
 import {
   buildSocialPayload,
-  needsExcerpt,
+  needsExcerptIn,
+  SOCIAL_FRAMES,
   socialDisplayText,
   socialSlotIssues,
   suggestExcerpt,
@@ -179,7 +180,8 @@ export interface SlotView {
 /**
  * A social slot as the board shows it (decision 284, spec section 9).
  *
- * Judged by `socialSlotIssues` at the master frame with the settings' brand,
+ * Judged by `socialSlotIssues` in every frame the card is drawn in
+ * (`SOCIAL_FRAMES`: the master and the Short) with the settings' brand,
  * exactly as resolution judges it, so the board never calls a card ready that
  * resolution would leave a placeholder, or the other way round.
  */
@@ -193,7 +195,13 @@ export interface SocialSlotView {
    * storage). `castName` names the linked cast member when there is one, even
    * a member with no photo yet, whose card still draws initials.
    */
-  avatar: { source: 'upload' | 'cast' | 'initials'; url: string | null; castName: string | null }
+  avatar: {
+    source: 'upload' | 'cast' | 'initials'
+    url: string | null
+    castName: string | null
+    /** The linked cast member's id, for the board's Unlink button; null when none is linked. */
+    castId: string | null
+  }
   /** The attached image's presigned preview, or null when none is attached (or no storage). */
   mediaUrl: string | null
   /** Why the card cannot show yet, in the board's words; empty when it can. */
@@ -430,9 +438,6 @@ function postClaimOptions(claims: readonly ScriptableClaim[]): PostClaimOption[]
   })
 }
 
-/** The frame a social card is judged at on the board: resolution's master frame (ruling 2). */
-const SOCIAL_BOARD_FRAME = { width: 1920, height: 1080 }
-
 /**
  * What the board shows for one social slot (decision 284), from rows already
  * loaded: the stored post, the project's cast, the uploaded images by asset
@@ -443,8 +448,8 @@ const SOCIAL_BOARD_FRAME = { width: 1920, height: 1080 }
  * the post's handle (compared lower case, never by name), else initials.
  *
  * The excerpt suggestion's fit test is the layout rule itself, not the full
- * issue list: `needsExcerpt` over the candidate as the card prints it, with
- * its ellipses. The highlight only steers where the suggestion is anchored;
+ * issue list: `needsExcerptIn` over the candidate as the card prints it, with
+ * its ellipses, in the same frames readiness uses. The highlight only steers where the suggestion is anchored;
  * it does not veto a candidate, so a stale highlight cannot leave the owner
  * with no suggestion at all.
  */
@@ -459,7 +464,8 @@ export function socialSlotView(input: {
   brand: BrandKitTokens
 }): SocialSlotView {
   const { brief, post, brand } = input
-  const frame = SOCIAL_BOARD_FRAME
+  // Every frame the card is drawn in, as resolution judges it (ruling 2).
+  const frames = SOCIAL_FRAMES
   const refFor = (r2Key: string | undefined) => {
     if (r2Key === undefined) return undefined
     const url = input.urls.get(r2Key)
@@ -479,10 +485,15 @@ export function socialSlotView(input: {
     uploadKey !== undefined ? refFor(uploadKey) : castPhoto ? refFor(castPhoto.r2Key) : undefined
   const avatar: SocialSlotView['avatar'] =
     uploadKey !== undefined
-      ? { source: 'upload', url: avatarRef?.url ?? null, castName: null }
+      ? { source: 'upload', url: avatarRef?.url ?? null, castName: null, castId: null }
       : linked && castPhoto
-        ? { source: 'cast', url: avatarRef?.url ?? null, castName: linked.name }
-        : { source: 'initials', url: null, castName: linked?.name ?? null }
+        ? { source: 'cast', url: avatarRef?.url ?? null, castName: linked.name, castId: linked.id }
+        : {
+            source: 'initials',
+            url: null,
+            castName: linked?.name ?? null,
+            castId: linked?.id ?? null,
+          }
 
   const mediaKey =
     brief.mediaAssetId !== undefined ? input.images.get(brief.mediaAssetId) : undefined
@@ -494,22 +505,22 @@ export function socialSlotView(input: {
     ...(brief.excerpt !== undefined ? { excerpt: brief.excerpt } : {}),
     ...(brief.emphasis !== undefined ? { emphasis: brief.emphasis } : {}),
     hasMedia,
-    frame,
+    frames,
     brand,
   })
 
   const text = post?.text ?? null
   const suggestedExcerpt =
-    text !== null && brief.excerpt === undefined && needsExcerpt(text, hasMedia, brand, frame)
+    text !== null && brief.excerpt === undefined && needsExcerptIn(text, hasMedia, brand, frames)
       ? suggestExcerpt(text, brief.emphasis, (candidate) => {
           const cuts = excerptPlacement(text, candidate)
           return (
             cuts !== null &&
-            !needsExcerpt(
+            !needsExcerptIn(
               socialDisplayText(candidate, cuts.cutBefore, cuts.cutAfter),
               hasMedia,
               brand,
-              frame,
+              frames,
             )
           )
         })
@@ -524,7 +535,7 @@ export function socialSlotView(input: {
           ...(avatarRef ? { avatar: avatarRef } : {}),
           ...(mediaRef ? { media: mediaRef } : {}),
           claimId: brief.sourceClaimId,
-          frame,
+          frames,
           brand,
         })
       : null

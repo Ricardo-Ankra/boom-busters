@@ -324,13 +324,38 @@ export const SOCIAL_EXCERPT_TOO_LONG = 'Still too long for the card.'
 export const SOCIAL_HIGHLIGHT_OUTSIDE =
   'The highlight must be words from the part of the post on screen.'
 
+/**
+ * Every frame a social card is drawn in, and so every frame its fit is
+ * judged in (decision 284, spec 5.5): the 1920x1080 master, and the
+ * 1080x1920 Shorts frame, because ShortVertical renders DocumentaryMaster
+ * over the master's own slot payloads. A post that fits one and not the
+ * other would clip in the other, so readiness asks both.
+ */
+export const SOCIAL_FRAMES = [
+  { width: 1920, height: 1080 },
+  { width: 1080, height: 1920 },
+] as const satisfies readonly GraphicFrame[]
+
+export type { GraphicFrame }
+
+/** True when the display text needs an excerpt in ANY of the frames. */
+export function needsExcerptIn(
+  text: string,
+  hasMedia: boolean,
+  brand: BrandKitTokens,
+  frames: readonly GraphicFrame[],
+): boolean {
+  return frames.some((frame) => needsExcerpt(text, hasMedia, brand, frame))
+}
+
 /** Why this slot cannot show yet, in the board's words; empty when it can. The one rule resolution, the board and assembly share. */
 export function socialSlotIssues(input: {
   post: SocialPostRecord | null
   excerpt?: string
   emphasis?: string
   hasMedia: boolean
-  frame: GraphicFrame
+  /** Every frame the card is drawn in: `SOCIAL_FRAMES` everywhere but a test. */
+  frames: readonly GraphicFrame[]
   brand: BrandKitTokens
 }): string[] {
   const { post } = input
@@ -349,7 +374,7 @@ export function socialSlotIssues(input: {
     cuts = placement
   }
   const display = socialDisplayText(shown, cuts.cutBefore, cuts.cutAfter)
-  if (needsExcerpt(display, input.hasMedia, input.brand, input.frame)) {
+  if (needsExcerptIn(display, input.hasMedia, input.brand, input.frames)) {
     issues.push(input.excerpt === undefined ? SOCIAL_TOO_LONG : SOCIAL_EXCERPT_TOO_LONG)
   }
   if (input.emphasis !== undefined && !phraseIn(shown, input.emphasis))
@@ -365,7 +390,7 @@ export function buildSocialPayload(input: {
   avatar?: MediaRef
   media?: MediaRef
   claimId: string
-  frame: GraphicFrame
+  frames: readonly GraphicFrame[]
   brand: BrandKitTokens
 }): SocialPayload | null {
   const issues = socialSlotIssues({ ...input, hasMedia: input.media !== undefined })

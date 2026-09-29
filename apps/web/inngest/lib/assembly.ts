@@ -1,4 +1,5 @@
 import { buildSocialPayload, socialSlotIssues } from '@boom-busters/compositions/social'
+import type { GraphicFrame } from '@boom-busters/compositions/social'
 import {
   articleIsRenderable,
   articleSourceLabel,
@@ -235,7 +236,8 @@ export function slotPlan(input: {
     images: ReadonlyMap<string, { r2Key: string }>
     castAvatars: ReadonlyMap<string, { r2Key: string }>
     brand: BrandKitTokens
-    frame: { width: number; height: number }
+    /** Every frame the card is drawn in (`SOCIAL_FRAMES`): a post that clips in any is skipped. */
+    frames: readonly GraphicFrame[]
   }
 }): SlotPlan {
   const slots: CompileSlot[] = []
@@ -396,7 +398,7 @@ export function slotPlan(input: {
             ...(avatar ? { avatar } : {}),
             ...(media ? { media } : {}),
             claimId: brief.sourceClaimId,
-            frame: social.frame,
+            frames: social.frames,
             brand: social.brand,
           })
         : null
@@ -407,7 +409,7 @@ export function slotPlan(input: {
           ...(brief.excerpt !== undefined ? { excerpt: brief.excerpt } : {}),
           ...(brief.emphasis !== undefined ? { emphasis: brief.emphasis } : {}),
           hasMedia: media !== undefined,
-          frame: social.frame,
+          frames: social.frames,
           brand: social.brand,
         })
         skipped.push({

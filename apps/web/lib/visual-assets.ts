@@ -3,6 +3,7 @@ import 'server-only'
 import { createHash } from 'node:crypto'
 import { round4, withCost } from '@boom-busters/cost'
 import {
+  getAsset,
   getSettings,
   listCastMembers,
   listProjectSets,
@@ -23,7 +24,7 @@ import {
   STILL_GENERATIONS,
   ValidationError,
 } from '@boom-busters/schemas'
-import { socialSlotIssues } from '@boom-busters/compositions/social'
+import { SOCIAL_FRAMES, socialSlotIssues } from '@boom-busters/compositions/social'
 import type {
   CastMember,
   ModelRouting,
@@ -376,14 +377,6 @@ async function referenceMaterials(
 
 /** Fetched per stock provider, before scoring narrows to the shown 4. */
 export const STOCK_FETCH_COUNT = 6
-
-/**
- * The frame a social slot is resolved against (ruling 2, decision 284):
- * always the master 1920x1080 landscape, whatever the export's own aspect
- * ratio ends up being. A social card's fit is decided once, at resolution
- * time, not reworked per format.
- */
-const SOCIAL_MASTER_FRAME = { width: 1920, height: 1080 }
 
 /**
  * Fail before the shot list is even generated when a slot type the plan will
@@ -835,12 +828,16 @@ export async function resolveSlotBrief(input: {
       // a placeholder, never an unresolvable throw.
       const post = await postForUrl(brief.postUrl)
       const brand = resolveBrandKit(await getSettings(db))
+      // An attached image takes room from the text only when its asset row
+      // still exists, the rule the board and the assembly already apply.
+      const hasMedia =
+        brief.mediaAssetId !== undefined && (await getAsset(db, brief.mediaAssetId)) !== undefined
       const issues = socialSlotIssues({
         post,
         ...(brief.excerpt !== undefined ? { excerpt: brief.excerpt } : {}),
         ...(brief.emphasis !== undefined ? { emphasis: brief.emphasis } : {}),
-        hasMedia: brief.mediaAssetId !== undefined,
-        frame: SOCIAL_MASTER_FRAME,
+        hasMedia,
+        frames: SOCIAL_FRAMES,
         brand,
       })
       return { candidates: [], status: issues.length === 0 ? 'resolved' : 'placeholder' }

@@ -17,6 +17,7 @@ import {
   setSetPlates,
   updateProjectSet,
   updateSettings,
+  upsertAssetByHash,
 } from '@boom-busters/db'
 import {
   HOUSE_PHOTOGRAPH,
@@ -639,6 +640,63 @@ References attached: 1 photograph of Emad Mostaque.`
         await resolveSlotBrief({
           projectId: FIXTURE_PROJECT_ID,
           brief: socialBrief({ excerpt: 'I am not stepping down' }),
+          route: null,
+        }),
+      ).toEqual({ candidates: [], status: 'placeholder' })
+    })
+
+    // Nine lines of about 46 characters fit the landscape card and not the
+    // Shorts card, which draws the same slot at 1080x1920 (decision 284).
+    const LINE_46 = 'Our auditors could not find the missing money.'
+    const lines = (count: number) => Array.from({ length: count }, () => LINE_46).join('\n')
+    const recordText = (text: string) =>
+      recordSocialPost(db, {
+        url: 'https://x.com/i/status/1234567890123456789',
+        platform: 'x',
+        postId: '1234567890123456789',
+        handle: 'emad_mostaque',
+        authorName: 'Emad Mostaque',
+        text,
+        postedAt: '2024-01-01',
+        endedWithMediaLink: false,
+        provenance: {},
+        status: 'fetched',
+        failureReason: null,
+      })
+
+    it('is a placeholder for a post that fits 16:9 but not 9:16', async () => {
+      await recordText(lines(9))
+      expect(
+        await resolveSlotBrief({
+          projectId: FIXTURE_PROJECT_ID,
+          brief: socialBrief(),
+          route: null,
+        }),
+      ).toEqual({ candidates: [], status: 'placeholder' })
+    })
+
+    it('judges the room for an attached image only when that image still exists', async () => {
+      // Three lines fit either card on their own, but not the Shorts card
+      // with an image under them.
+      await recordText(lines(3))
+      expect(
+        await resolveSlotBrief({
+          projectId: FIXTURE_PROJECT_ID,
+          brief: socialBrief({ mediaAssetId: newId() }),
+          route: null,
+        }),
+      ).toEqual({ candidates: [], status: 'resolved' })
+
+      const image = await upsertAssetByHash(db, {
+        kind: 'image',
+        r2Key: 'boom-busters/uploads/social-image.png',
+        licence: 'Uploaded by owner',
+        contentHash: 'e'.repeat(64),
+      })
+      expect(
+        await resolveSlotBrief({
+          projectId: FIXTURE_PROJECT_ID,
+          brief: socialBrief({ mediaAssetId: image.id }),
           route: null,
         }),
       ).toEqual({ candidates: [], status: 'placeholder' })

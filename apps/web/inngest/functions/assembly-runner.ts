@@ -27,7 +27,8 @@ import {
   ValidationError,
 } from '@boom-busters/schemas'
 import type { ArticleMetadata, SocialPostRecord, WordTiming } from '@boom-busters/schemas'
-import { compileTimeline, MASTER_HEIGHT, MASTER_WIDTH } from '@boom-busters/timeline'
+import { SOCIAL_FRAMES } from '@boom-busters/compositions/social'
+import { compileTimeline } from '@boom-busters/timeline'
 import { NonRetriableError } from 'inngest'
 import { articleForClaim } from '@/lib/article-source'
 import { db } from '@/lib/db'
@@ -334,7 +335,8 @@ export const assemblyRunner = inngest.createFunction(
           images: socialImages,
           castAvatars,
           brand: setup.brand,
-          frame: { width: MASTER_WIDTH, height: MASTER_HEIGHT },
+          // Both frames the card is drawn in: the master and the Short.
+          frames: SOCIAL_FRAMES,
         },
       })
 

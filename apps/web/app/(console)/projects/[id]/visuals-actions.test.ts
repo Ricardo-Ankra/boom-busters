@@ -51,6 +51,7 @@ import {
   refetchSlotAction,
   refetchSocialPostAction,
   removeSocialImageAction,
+  retypeSlotAction,
   retypeToHeadlineAction,
   retypeToSocialAction,
   reuseSlotShotAction,
@@ -61,6 +62,7 @@ import {
   setSlotRouteAction,
   setSocialPostAction,
   showSetPhotoAction,
+  unlinkCastHandleAction,
   unlinkSlotReuseAction,
 } from './visuals-actions'
 
@@ -899,6 +901,30 @@ describe('saving a social post by hand', () => {
       error: 'That is not an X handle.',
     })
   })
+
+  it('refuses a date the calendar does not have, in the same words', async () => {
+    for (const postedAt of ['2024-13-45', '2023-02-30', '2024-00-10']) {
+      expect(await saveSocialPostAction(PROJECT, SLOT, { postedAt }), postedAt).toEqual({
+        ok: false,
+        error: 'Use a date like 2024-03-23.',
+      })
+    }
+  })
+
+  it('refuses a name longer than X allows', async () => {
+    expect(await saveSocialPostAction(PROJECT, SLOT, { authorName: 'N'.repeat(51) })).toEqual({
+      ok: false,
+      error: 'A name on X can be at most 50 characters.',
+    })
+  })
+})
+
+describe('re-typing to a bare social card', () => {
+  it('refuses early, since which post to show is the owner’s choice', async () => {
+    expect(
+      await retypeSlotAction('01J0000000000000000000000A', '01J000000000000000000000AA', 'social'),
+    ).toEqual({ ok: false, error: "Choose which claim's post to show." })
+  })
 })
 
 describe('bad ids on the social board actions', () => {
@@ -911,6 +937,13 @@ describe('bad ids on the social board actions', () => {
 
   it('refuses linkCastHandleAction', async () => {
     expect(await linkCastHandleAction('not-an-id', 'not-an-id', 'emostaque')).toEqual({
+      ok: false,
+      error: 'Unknown id',
+    })
+  })
+
+  it('refuses unlinkCastHandleAction', async () => {
+    expect(await unlinkCastHandleAction('not-an-id', 'not-an-id', 'not-an-id')).toEqual({
       ok: false,
       error: 'Unknown id',
     })
@@ -1073,6 +1106,109 @@ describeDb('editing a social post card (decision 284)', () => {
     const brief = row.brief as unknown as { excerpt?: string; emphasis?: string }
     expect(brief.excerpt).toBe('I decided to step down to fix this.')
     expect(brief.emphasis).toBe('step down')
+  })
+
+  it('refuses a highlight longer than a brief may hold, in plain words, and writes nothing', async () => {
+    const phrase = 'word '.repeat(24) + 'end.'
+    expect(phrase.length).toBe(124)
+    const highlight = phrase.slice(0, 121)
+    await setSocialPostManual(db, POST_URL, {
+      authorName: 'Emad Mostaque',
+      handle: 'EMostaque',
+      text: `Before it: ${phrase} After it.`,
+      postedAt: '2024-01-01',
+    })
+
+    expect(await saveSocialCardAction(FIXTURE_PROJECT_ID, slotId, { emphasis: highlight })).toEqual(
+      { ok: false, error: 'A highlight can be at most 120 characters.' },
+    )
+    // The slot is still readable, so nothing short of a re-plan is needed.
+    const row = (await getShotSlot(db, slotId))!
+    expect((row.brief as { emphasis?: string }).emphasis).toBeUndefined()
+    expect(inngest.send).not.toHaveBeenCalled()
+  })
+
+  it('refuses an excerpt longer than a brief may hold, in plain words', async () => {
+    const text = 'All of these words are the post. '.repeat(70).trim()
+    expect(text.length).toBeGreaterThan(2000)
+    await setSocialPostManual(db, POST_URL, {
+      authorName: 'Emad Mostaque',
+      handle: 'EMostaque',
+      text,
+      postedAt: '2024-01-01',
+    })
+
+    expect(await saveSocialCardAction(FIXTURE_PROJECT_ID, slotId, { excerpt: text })).toEqual({
+      ok: false,
+      error: 'An excerpt can be at most 2,000 characters.',
+    })
+    const row = (await getShotSlot(db, slotId))!
+    expect((row.brief as { excerpt?: string }).excerpt).toBeUndefined()
+  })
+
+  it('drops both pictures when the address moves to another account’s post', async () => {
+    await setSocialPostManual(db, POST_URL, { handle: 'EMostaque' })
+    await finaliseUpload(slotId, 'social-avatar')
+    await finaliseUpload(slotId, 'social-image')
+    inngest.send.mockClear()
+
+    const other = 'https://x.com/AnotherHandle/status/9990000000000000009'
+    expect(await setSocialPostAction(FIXTURE_PROJECT_ID, slotId, other)).toEqual({ ok: true })
+
+    const brief = (await getShotSlot(db, slotId))!.brief as {
+      avatarAssetId?: string
+      mediaAssetId?: string
+    }
+    expect(brief.mediaAssetId).toBeUndefined()
+    expect(brief.avatarAssetId).toBeUndefined()
+  })
+
+  it('keeps the profile picture, but not the image, for another post by the same account', async () => {
+    await setSocialPostManual(db, POST_URL, { handle: 'EMostaque' })
+    await finaliseUpload(slotId, 'social-avatar')
+    await finaliseUpload(slotId, 'social-image')
+    const avatarAssetId = ((await getShotSlot(db, slotId))!.brief as { avatarAssetId?: string })
+      .avatarAssetId
+    expect(avatarAssetId).toBeDefined()
+
+    // The same account, typed in a different case.
+    const sameAccount = 'https://x.com/emostaque/status/9990000000000000010'
+    expect(await setSocialPostAction(FIXTURE_PROJECT_ID, slotId, sameAccount)).toEqual({
+      ok: true,
+    })
+
+    const brief = (await getShotSlot(db, slotId))!.brief as {
+      avatarAssetId?: string
+      mediaAssetId?: string
+    }
+    expect(brief.mediaAssetId).toBeUndefined()
+    expect(brief.avatarAssetId).toBe(avatarAssetId)
+  })
+
+  it('unlinks a cast member’s handle and judges the slot again', async () => {
+    for (const existing of await listCastMembers(db, FIXTURE_PROJECT_ID)) {
+      await deleteCastMember(db, existing.id)
+    }
+    const member = await insertCastMember(db, {
+      projectId: FIXTURE_PROJECT_ID,
+      name: 'Emad Mostaque',
+      role: 'Founder',
+    })
+    expect(await linkCastHandleAction(FIXTURE_PROJECT_ID, member.id, 'EMostaque')).toEqual({
+      ok: true,
+    })
+    inngest.send.mockClear()
+
+    expect(await unlinkCastHandleAction(FIXTURE_PROJECT_ID, member.id, slotId)).toEqual({
+      ok: true,
+    })
+    const row = (await listCastMembers(db, FIXTURE_PROJECT_ID)).find(({ id }) => id === member.id)
+    expect(row?.xHandle).toBeNull()
+    expect(inngest.send.mock.calls[0]?.[0]).toMatchObject({
+      name: 'visuals/refetch.requested',
+      data: { projectId: FIXTURE_PROJECT_ID, slotId, note: 'Cast link removed' },
+    })
+    await deleteCastMember(db, member.id)
   })
 
   it('refuses a patch that would leave the stored highlight outside the new excerpt, and writes nothing', async () => {
@@ -1364,6 +1500,37 @@ describeDb("linking a cast member's X handle (decision 284)", () => {
     expect(await linkCastHandleAction(FIXTURE_PROJECT_ID, memberId, 'not a handle')).toEqual({
       ok: false,
       error: 'That is not a valid X handle.',
+    })
+  })
+
+  describe('unlinking', () => {
+    const SLOT = '01J000000000000000000000AA'
+
+    beforeEach(async () => {
+      await linkCastHandleAction(FIXTURE_PROJECT_ID, memberId, 'EMostaque')
+    })
+
+    it('clears the handle on a member of this project', async () => {
+      expect(await unlinkCastHandleAction(FIXTURE_PROJECT_ID, memberId, SLOT)).toEqual({
+        ok: true,
+      })
+      const [row] = await listCastMembers(db, FIXTURE_PROJECT_ID)
+      expect(row?.xHandle).toBeNull()
+    })
+
+    it('refuses a member from another project, leaving the link alone', async () => {
+      expect(await unlinkCastHandleAction('01J0000000000000000000000Z', memberId, SLOT)).toEqual({
+        ok: false,
+        error: 'This cast member belongs to another film.',
+      })
+      const [row] = await listCastMembers(db, FIXTURE_PROJECT_ID)
+      expect(row?.xHandle).toBe('emostaque')
+    })
+
+    it('refuses a member that no longer exists', async () => {
+      expect(
+        await unlinkCastHandleAction(FIXTURE_PROJECT_ID, '01J0000000000000000000000Y', SLOT),
+      ).toEqual({ ok: false, error: 'This cast member no longer exists.' })
     })
   })
 })

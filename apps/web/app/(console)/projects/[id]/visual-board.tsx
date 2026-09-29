@@ -55,6 +55,7 @@ import {
   refetchSlotAction,
   refetchSocialPostAction,
   linkCastHandleAction,
+  unlinkCastHandleAction,
   removeSocialImageAction,
   repairPlanAction,
   reuseSlotShotAction,
@@ -527,7 +528,7 @@ function SocialSlot({
           aria-expanded={editing}
           onClick={() => setEditing((open) => !open)}
         >
-          {editing ? 'Close' : 'Edit details'}
+          {editing ? 'Close details' : 'Edit details'}
         </Button>
         <Button
           type="button"
@@ -535,7 +536,7 @@ function SocialSlot({
           aria-expanded={addressing}
           onClick={() => setAddressing((open) => !open)}
         >
-          {addressing ? 'Close' : "Set the post's address"}
+          {addressing ? 'Close address' : "Set the post's address"}
         </Button>
         <Button
           type="button"
@@ -642,6 +643,24 @@ function SocialSlot({
                 ? `Profile picture: initials. ${social.avatar.castName} is linked to this account but has no photo yet; add one on the Cast card.`
                 : 'Profile picture: initials, until you upload one or link the account to a cast member.'}
         </p>
+        {social.avatar.source !== 'upload' && social.avatar.castId !== null ? (
+          <Button
+            type="button"
+            variant="ghost"
+            busy={busy}
+            onClick={() => {
+              const castId = social.avatar.castId
+              if (castId === null) return
+              void act(
+                slot.id,
+                () => unlinkCastHandleAction(projectId, castId, slot.id),
+                `${social.avatar.castName ?? 'The cast member'} unlinked from this account`,
+              )
+            }}
+          >
+            Unlink
+          </Button>
+        ) : null}
         <SocialImageButton
           projectId={projectId}
           slotId={slot.id}
@@ -773,6 +792,7 @@ function SocialDetailsForm({
           <input
             value={authorName}
             onChange={(event) => setAuthorName(event.target.value)}
+            maxLength={50}
             className={SOCIAL_FIELD_CLASS}
           />
         </label>
@@ -850,6 +870,7 @@ function SocialHighlightForm({
         <input
           value={emphasis}
           onChange={(event) => setEmphasis(event.target.value)}
+          maxLength={120}
           placeholder="words from the post, or leave empty"
           className={SOCIAL_FIELD_CLASS}
         />
@@ -897,6 +918,7 @@ function SocialExcerptForm({
         <textarea
           value={excerpt}
           onChange={(event) => setExcerpt(event.target.value)}
+          maxLength={2000}
           rows={4}
           className={SOCIAL_FIELD_CLASS}
         />

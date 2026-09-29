@@ -6369,11 +6369,16 @@ green.
        a handle can be renamed and its case varies, so keying on it could
        give one post two rows. The handle lives in its own column, and the
        card's printed source is built from the stored record.
-     - A post "needs an excerpt" is judged against the frame the film's
-       timeline actually renders at, the master, 1920 by 1080, since
-       `ShortVertical` draws no slot cards today; the tall layout is still
-       built and golden-tested for portrait timelines against the same
-       rule.
+     - A post "needs an excerpt" is judged in BOTH orientations the card is
+       drawn in, 1920 by 1080 and 1080 by 1920 (`SOCIAL_FRAMES` in
+       `packages/compositions/src/lib/social.ts`), and is too long when
+       either frame needs one. This replaced a first ruling that judged
+       the master alone on the belief that `ShortVertical` draws no slot
+       cards: it does, because it renders `DocumentaryMaster` over the
+       master's own slot payloads, so a post that fit 16:9 (nine lines of
+       about 46 characters, or three plus an image) clipped on the Short.
+       Resolution, the board, its excerpt suggestion and assembly all read
+       the one constant.
      - A 280-character post of ordinary words lands at 40 px in 16:9, not
        the 42 to 48 the spec estimated working through the numbers by eye;
        the test pins 37 to 48 px rather than the tighter guess.
@@ -6396,6 +6401,20 @@ green.
      wipe it on a transient outage; the cost of the ruling being wrong is
      only that a stale post keeps showing after a genuine deletion, which
      the owner sees the reason for and can retype.
+
+     The whole-branch review added four more. A 200 from X that yields
+     neither a name nor any words is a refusal (`X_UNREADABLE`), so it is
+     stored as failed on a first read and leaves the row untouched on a
+     re-read; and independently, `recordSocialPost` never replaces a
+     stored field with a null from the reader. An excerpt must start and
+     end on word boundaries ("ever resign" is not an excerpt of "I will
+     never resign"), while the highlight keeps its plain substring test so
+     it can sit inside a run like "$101m". Every action that writes a
+     social brief checks the merged brief against `SocialBriefSchema`
+     first, since one over-long field would fail the whole row's parse and
+     strand the slot until a re-plan. And "Unlink" takes the slot id as
+     well as the cast member's, because re-judging the card the owner is
+     looking at needs to know which card that is.
 
      Rendering a film with a social slot needs both
      `deploy:remotion` (the Remotion site) and

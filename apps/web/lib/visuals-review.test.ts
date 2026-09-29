@@ -1,7 +1,12 @@
 // @vitest-environment node
 
 import { describe, expect, it } from 'vitest'
-import { SOCIAL_TOO_LONG } from '@boom-busters/compositions/social'
+import {
+  needsExcerptIn,
+  SOCIAL_FRAMES,
+  SOCIAL_TOO_LONG,
+  socialDisplayText,
+} from '@boom-busters/compositions/social'
 import { DEFAULT_SETTINGS, excerptPlacement, resolveBrandKit } from '@boom-busters/schemas'
 import type { CastMember, SocialBrief, SocialPostRecord } from '@boom-busters/schemas'
 import { socialSlotView } from './visuals-review'
@@ -121,6 +126,7 @@ describe('socialSlotView', () => {
       source: 'upload',
       url: 'https://r2.example/avatar.png',
       castName: null,
+      castId: null,
     })
     expect(view.payload?.avatar).toMatchObject({ url: 'https://r2.example/avatar.png' })
   })
@@ -139,13 +145,14 @@ describe('socialSlotView', () => {
       source: 'cast',
       url: 'https://r2.example/front.jpg',
       castName: 'Dana Okafor',
+      castId: '01HQ00000000000000000000C1',
     })
   })
 
   it('never matches a cast member by name, and draws initials when nothing matches', () => {
     const view = socialSlotView({ ...base, cast: [member({ xHandle: 'someoneelse' })] })
 
-    expect(view.avatar).toEqual({ source: 'initials', url: null, castName: null })
+    expect(view.avatar).toEqual({ source: 'initials', url: null, castName: null, castId: null })
     expect(view.payload?.avatar).toBeUndefined()
   })
 
@@ -184,6 +191,39 @@ describe('socialSlotView', () => {
     expect(view.issues).toEqual([])
     expect(view.suggestedExcerpt).toBeNull()
     expect(view.payload).toMatchObject({ text: LONG_PARAGRAPH, cutAfter: true })
+  })
+
+  it('names the linked member even when they have no photo, so the link can be undone', () => {
+    const view = socialSlotView({ ...base, cast: [member({ photos: [] })] })
+
+    expect(view.avatar).toEqual({
+      source: 'initials',
+      url: null,
+      castName: 'Dana Okafor',
+      castId: '01HQ00000000000000000000C1',
+    })
+  })
+
+  // Nine lines of about 46 characters: room on the landscape card, none on
+  // the Shorts card that draws the same slot at 1080x1920.
+  it('calls a post too long when it fits 16:9 but not 9:16, and suggests a cut that fits both', () => {
+    const line = 'Our auditors could not find the missing money.'
+    const text = Array.from({ length: 9 }, () => line).join('\n')
+    const view = socialSlotView({ ...base, post: { ...post, text } })
+
+    expect(view.issues).toEqual([SOCIAL_TOO_LONG])
+    expect(view.payload).toBeNull()
+    const suggested = view.suggestedExcerpt
+    expect(suggested).not.toBeNull()
+    const cuts = excerptPlacement(text, suggested!)!
+    expect(
+      needsExcerptIn(
+        socialDisplayText(suggested!, cuts.cutBefore, cuts.cutAfter),
+        false,
+        brand,
+        SOCIAL_FRAMES,
+      ),
+    ).toBe(false)
   })
 
   it('has no post, and says so, when nothing has been read', () => {

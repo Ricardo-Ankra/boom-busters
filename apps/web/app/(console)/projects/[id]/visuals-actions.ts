@@ -44,12 +44,14 @@ import {
   normaliseArticleUrl,
   normalisePostUrl,
   NOT_A_POST_ERROR,
+  parsePostUrl,
   phraseIn,
   REUSABLE_SLOT_TYPES,
   SetCameraSchema,
   ShotBriefSchema,
   ShotSlotTypeSchema,
   SlotCandidateSchema,
+  SocialBriefSchema,
   StillRouteSchema,
   UlidSchema,
 } from '@boom-busters/schemas'
@@ -431,6 +433,11 @@ export async function retypeSlotAction(
      * no model call will ever clear.
      */
     return { ok: false, error: 'Pick which article this card quotes.' }
+  }
+  if (parsedType.data === 'social') {
+    // The same rule for a post card (decision 284): which post is the owner's
+    // choice, made through `retypeToSocialAction`, never a model's.
+    return { ok: false, error: "Choose which claim's post to show." }
   }
 
   const slot = await getShotSlot(db, slotId)
@@ -1004,11 +1011,33 @@ async function socialSource(
 }
 
 /**
+ * The merged social brief, checked against its own schema before any write,
+ * or the refusal in the owner's words. A field the schema cannot read makes
+ * `ShotBriefSchema` fail on the whole row, and then nothing short of a
+ * re-plan brings the slot back, so no action may store one.
+ */
+function checkedSocialBrief(brief: SocialBrief): { brief: SocialBrief } | { error: string } {
+  const parsed = SocialBriefSchema.safeParse(brief)
+  if (parsed.success) return { brief: parsed.data }
+  const issue = parsed.error.issues[0]
+  const field = issue?.path[0]
+  if (issue?.code === 'too_big' && field === 'emphasis') {
+    return { error: 'A highlight can be at most 120 characters.' }
+  }
+  if (issue?.code === 'too_big' && field === 'excerpt') {
+    return { error: 'An excerpt can be at most 2,000 characters.' }
+  }
+  return { error: 'That change would leave this post card unreadable, so it was not saved.' }
+}
+
+/**
  * "Set the post's address" (spec section 9). Refuses anything that is not a
  * post address before any row is read, exactly as `setHeadlineArticleAction`
  * refuses a front page. A new address is a real change even when the words
  * on screen have not loaded yet, so the old excerpt and highlight (chosen
- * against the OLD post's text) are cleared rather than carried over.
+ * against the OLD post's text) are cleared rather than carried over, and so
+ * is the old post's attached image (and its profile picture, unless the new
+ * post is by the same account).
  */
 export async function setSocialPostAction(
   projectId: string,
@@ -1035,7 +1064,27 @@ export async function setSocialPostAction(
   const brief: SocialBrief = { ...current.data, postUrl: url }
   delete brief.excerpt
   delete brief.emphasis
-  await updateSlotBrief(db, slotId, brief)
+
+  // Another post's pictures do not travel with the address. The attached
+  // image belongs to the old post alone; the profile picture belongs to the
+  // account, so it stays only when the new post is by the same account
+  // (compared case-insensitively, since X does), and a handle nobody knows
+  // yet on either side counts as a different account.
+  const oldUrl = normalisePostUrl(current.data.postUrl) ?? current.data.postUrl
+  if (url !== oldUrl) {
+    delete brief.mediaAssetId
+    const oldHandle = (await getSocialPost(db, oldUrl))?.handle ?? null
+    const newHandle = parsePostUrl(rawUrl)?.handle ?? (await getSocialPost(db, url))?.handle ?? null
+    const sameAccount =
+      oldHandle !== null &&
+      newHandle !== null &&
+      oldHandle.toLowerCase() === newHandle.toLowerCase()
+    if (!sameAccount) delete brief.avatarAssetId
+  }
+
+  const checked = checkedSocialBrief(brief)
+  if ('error' in checked) return { ok: false, error: checked.error }
+  await updateSlotBrief(db, slotId, checked.brief)
 
   const project = await getProject(db, projectId)
   if (project?.visualsPhase === 'board') {
@@ -1045,6 +1094,20 @@ export async function setSocialPostAction(
   }
   refresh(projectId)
   return { ok: true }
+}
+
+/** X's own limit on a display name. Not exported: a 'use server' module may only export async functions. */
+const MAX_X_NAME_LENGTH = 50
+
+/** `YYYY-MM-DD` naming a day the calendar has: no month 13, no 30 February. */
+function isCalendarDate(value: string): boolean {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value)
+  if (!match) return false
+  const [year, month, day] = [Number(match[1]), Number(match[2]), Number(match[3])]
+  const date = new Date(Date.UTC(year, month - 1, day))
+  return (
+    date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day
+  )
 }
 
 /** What the owner may type when editing a post's fields by hand. */
@@ -1075,12 +1138,11 @@ export async function saveSocialPostAction(
   if (!parsed.success) return { ok: false, error: 'That edit is not valid.' }
   const data = parsed.data
 
-  if (
-    data.postedAt !== undefined &&
-    data.postedAt !== '' &&
-    !/^\d{4}-\d{2}-\d{2}$/.test(data.postedAt)
-  ) {
+  if (data.postedAt !== undefined && data.postedAt !== '' && !isCalendarDate(data.postedAt)) {
     return { ok: false, error: 'Use a date like 2024-03-23.' }
+  }
+  if (data.authorName !== undefined && data.authorName.length > MAX_X_NAME_LENGTH) {
+    return { ok: false, error: `A name on X can be at most ${MAX_X_NAME_LENGTH} characters.` }
   }
 
   let handle: string | null | undefined
@@ -1220,7 +1282,9 @@ export async function saveSocialCardAction(
   if (card.emphasis === null) delete brief.emphasis
   else if (card.emphasis !== undefined) brief.emphasis = card.emphasis
 
-  await updateSlotBrief(db, slotId, brief)
+  const checked = checkedSocialBrief(brief)
+  if ('error' in checked) return { ok: false, error: checked.error }
+  await updateSlotBrief(db, slotId, checked.brief)
 
   const project = await getProject(db, projectId)
   if (project?.visualsPhase === 'board') {
@@ -1249,7 +1313,9 @@ export async function removeSocialImageAction(
   if (which === 'avatar') delete brief.avatarAssetId
   else delete brief.mediaAssetId
 
-  await updateSlotBrief(db, slotId, brief)
+  const checked = checkedSocialBrief(brief)
+  if ('error' in checked) return { ok: false, error: checked.error }
+  await updateSlotBrief(db, slotId, checked.brief)
 
   // Removing the attached image changes the room left for text, which can
   // move a card between ready and "too long" either way, so the slot is
@@ -1293,6 +1359,41 @@ export async function linkCastHandleAction(
     }
   }
 
+  refresh(projectId)
+  return { ok: true }
+}
+
+/**
+ * "Unlink" (decision 284): undoes a wrong "one of the cast?" answer. Clears
+ * the handle on a member this project actually has, then judges the post
+ * card the owner pressed it on again, as every other change to the card
+ * does. `slotId` is that card: the member id alone does not say which slot
+ * the owner is looking at.
+ */
+export async function unlinkCastHandleAction(
+  projectId: string,
+  castMemberId: string,
+  slotId: string,
+): Promise<ActionResult> {
+  await requireOwner()
+  const invalid = badIds(projectId, castMemberId, slotId)
+  if (invalid) return invalid
+
+  const member = await getCastMember(db, castMemberId)
+  if (!member) return { ok: false, error: 'This cast member no longer exists.' }
+  if (member.projectId !== projectId) {
+    return { ok: false, error: 'This cast member belongs to another film.' }
+  }
+
+  await setCastXHandle(db, castMemberId, null)
+
+  const slot = await getShotSlot(db, slotId)
+  const project = await getProject(db, projectId)
+  if (slot && slot.projectId === projectId && project?.visualsPhase === 'board') {
+    const sent = await sendRefetch(projectId, slotId, 'Cast link removed')
+    refresh(projectId)
+    return sent
+  }
   refresh(projectId)
   return { ok: true }
 }
@@ -1533,7 +1634,9 @@ export async function finaliseOwnUploadAction(input: {
     const brief: SocialBrief = { ...parsed.data }
     if (input.purpose === 'social-avatar') brief.avatarAssetId = asset.id
     else brief.mediaAssetId = asset.id
-    await updateSlotBrief(db, input.slotId, brief)
+    const checked = checkedSocialBrief(brief)
+    if ('error' in checked) return { ok: false, error: checked.error }
+    await updateSlotBrief(db, input.slotId, checked.brief)
 
     // An attached image changes the room left for the post's text, so the
     // slot is judged again rather than left resolved on the strength of the

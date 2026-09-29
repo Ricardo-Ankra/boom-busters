@@ -12,6 +12,7 @@ import type { SocialPostRecord } from '@boom-busters/schemas'
 import { graphicDrift, safeArea } from './graphic'
 import {
   SOCIAL_EXCERPT_NOT_VERBATIM,
+  SOCIAL_FRAMES,
   SOCIAL_EXCERPT_TOO_LONG,
   SOCIAL_HIGHLIGHT_OUTSIDE,
   SOCIAL_MISSING_PREFIX,
@@ -236,16 +237,68 @@ describe('suggestExcerpt', () => {
   })
 })
 
+// Nine short lines, each about 46 characters: the landscape card has room for
+// them, the portrait card (wider in words but far taller per line) does not.
+const LINE_46 = 'Our auditors could not find the missing money.'
+const NINE_LINES = Array.from({ length: 9 }, () => LINE_46).join('\n')
+const THREE_LINES = Array.from({ length: 3 }, () => LINE_46).join('\n')
+
+describe('SOCIAL_FRAMES', () => {
+  it('is the master and the Shorts frame, the two a social card is drawn in', () => {
+    expect(SOCIAL_FRAMES).toEqual([WIDE, TALL])
+  })
+
+  it('has fixtures that fit the landscape card but not the portrait one', () => {
+    expect(needsExcerpt(NINE_LINES, false, brand, WIDE)).toBe(false)
+    expect(needsExcerpt(NINE_LINES, false, brand, TALL)).toBe(true)
+    expect(needsExcerpt(THREE_LINES, true, brand, WIDE)).toBe(false)
+    expect(needsExcerpt(THREE_LINES, true, brand, TALL)).toBe(true)
+  })
+})
+
 describe('socialSlotIssues', () => {
+  it('calls a post too long when it fits 16:9 but not 9:16', () => {
+    expect(
+      socialSlotIssues({
+        post: { ...READY, text: NINE_LINES },
+        hasMedia: false,
+        frames: SOCIAL_FRAMES,
+        brand,
+      }),
+    ).toEqual([SOCIAL_TOO_LONG])
+    // Judged in the landscape frame alone it would have passed.
+    expect(
+      socialSlotIssues({
+        post: { ...READY, text: NINE_LINES },
+        hasMedia: false,
+        frames: [WIDE],
+        brand,
+      }),
+    ).toEqual([])
+  })
+
+  it('calls three lines and an attached image too long for the Shorts card', () => {
+    expect(
+      socialSlotIssues({
+        post: { ...READY, text: THREE_LINES },
+        hasMedia: true,
+        frames: SOCIAL_FRAMES,
+        brand,
+      }),
+    ).toEqual([SOCIAL_TOO_LONG])
+  })
+
   it('returns no issues for a complete short post', () => {
-    expect(socialSlotIssues({ post: READY, hasMedia: false, frame: WIDE, brand })).toEqual([])
+    expect(
+      socialSlotIssues({ post: READY, hasMedia: false, frames: SOCIAL_FRAMES, brand }),
+    ).toEqual([])
   })
 
   it('names the missing field for a record lacking its date', () => {
     const issues = socialSlotIssues({
       post: { ...READY, postedAt: null },
       hasMedia: false,
-      frame: WIDE,
+      frames: SOCIAL_FRAMES,
       brand,
     })
     expect(issues).toEqual([`${SOCIAL_MISSING_PREFIX}the date.`])
@@ -255,7 +308,7 @@ describe('socialSlotIssues', () => {
     const issues = socialSlotIssues({
       post: { ...READY, text: null, endedWithMediaLink: true },
       hasMedia: false,
-      frame: WIDE,
+      frames: SOCIAL_FRAMES,
       brand,
     })
     expect(issues).toEqual([POST_MEDIA_ONLY_REASON])
@@ -265,7 +318,7 @@ describe('socialSlotIssues', () => {
     const issues = socialSlotIssues({
       post: { ...READY, text: LONG_1000 },
       hasMedia: false,
-      frame: WIDE,
+      frames: SOCIAL_FRAMES,
       brand,
     })
     expect(issues).toEqual([SOCIAL_TOO_LONG])
@@ -276,7 +329,7 @@ describe('socialSlotIssues', () => {
       post: READY,
       excerpt: 'not the actual words',
       hasMedia: false,
-      frame: WIDE,
+      frames: SOCIAL_FRAMES,
       brand,
     })
     expect(issues).toEqual([SOCIAL_EXCERPT_NOT_VERBATIM])
@@ -288,7 +341,7 @@ describe('socialSlotIssues', () => {
       excerpt: 'Short post',
       emphasis: 'text here',
       hasMedia: false,
-      frame: WIDE,
+      frames: SOCIAL_FRAMES,
       brand,
     })
     expect(issues).toEqual([SOCIAL_HIGHLIGHT_OUTSIDE])
@@ -299,7 +352,7 @@ describe('socialSlotIssues', () => {
       post: { ...READY, text: LONG_1000 },
       excerpt: LONG_1000,
       hasMedia: false,
-      frame: WIDE,
+      frames: SOCIAL_FRAMES,
       brand,
     })
     expect(SOCIAL_EXCERPT_TOO_LONG).toBe('Still too long for the card.')
@@ -313,14 +366,30 @@ describe('buildSocialPayload', () => {
       buildSocialPayload({
         post: { ...READY, postedAt: null },
         claimId: CLAIM_ID,
-        frame: WIDE,
+        frames: SOCIAL_FRAMES,
+        brand,
+      }),
+    ).toBeNull()
+  })
+
+  it('returns null for a post that fits 16:9 but not 9:16', () => {
+    expect(
+      buildSocialPayload({
+        post: { ...READY, text: NINE_LINES },
+        claimId: CLAIM_ID,
+        frames: SOCIAL_FRAMES,
         brand,
       }),
     ).toBeNull()
   })
 
   it('builds a payload that parses, with sourceLabel and initials from the post', () => {
-    const payload = buildSocialPayload({ post: READY, claimId: CLAIM_ID, frame: WIDE, brand })
+    const payload = buildSocialPayload({
+      post: READY,
+      claimId: CLAIM_ID,
+      frames: SOCIAL_FRAMES,
+      brand,
+    })
     expect(payload).not.toBeNull()
     const parsed = SocialPayloadSchema.parse(payload)
     expect(parsed.sourceLabel).toBe(articleSourceLabel(postPublicUrl(READY)))

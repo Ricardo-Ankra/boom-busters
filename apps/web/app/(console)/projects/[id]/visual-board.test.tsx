@@ -37,6 +37,7 @@ const saveSocialPostAction = vi.fn()
 const saveSocialCardAction = vi.fn()
 const refetchSocialPostAction = vi.fn()
 const linkCastHandleAction = vi.fn()
+const unlinkCastHandleAction = vi.fn()
 const removeSocialImageAction = vi.fn()
 const retypeToSocialAction = vi.fn()
 
@@ -70,6 +71,7 @@ vi.mock('./visuals-actions', () => ({
   saveSocialCardAction: (...args: unknown[]) => saveSocialCardAction(...args),
   refetchSocialPostAction: (...args: unknown[]) => refetchSocialPostAction(...args),
   linkCastHandleAction: (...args: unknown[]) => linkCastHandleAction(...args),
+  unlinkCastHandleAction: (...args: unknown[]) => unlinkCastHandleAction(...args),
   removeSocialImageAction: (...args: unknown[]) => removeSocialImageAction(...args),
   retypeToSocialAction: (...args: unknown[]) => retypeToSocialAction(...args),
 }))
@@ -127,6 +129,7 @@ beforeEach(() => {
   saveSocialCardAction.mockResolvedValue({ ok: true })
   refetchSocialPostAction.mockResolvedValue({ ok: true })
   linkCastHandleAction.mockResolvedValue({ ok: true })
+  unlinkCastHandleAction.mockResolvedValue({ ok: true })
   removeSocialImageAction.mockResolvedValue({ ok: true })
   retypeToSocialAction.mockResolvedValue({ ok: true })
   createLogoUploadAction.mockResolvedValue({ ok: true, url: 'https://r2.example/put', key: 'k' })
@@ -1826,7 +1829,7 @@ const socialSlot: SlotView = {
   references: [],
   social: {
     post: fetchedPost,
-    avatar: { source: 'initials', url: null, castName: null },
+    avatar: { source: 'initials', url: null, castName: null, castId: null },
     mediaUrl: null,
     issues: [],
     suggestedExcerpt: null,
@@ -2004,7 +2007,7 @@ describe('the post card (decision 284)', () => {
 
   it('does not ask about the cast when the picture already comes from it', () => {
     const fromCast = socialWith({
-      avatar: { source: 'cast', url: null, castName: 'Dana Okafor' },
+      avatar: { source: 'cast', url: null, castName: 'Dana Okafor', castId: CAST_MEMBER },
     })
     render(
       <VisualBoard
@@ -2019,6 +2022,75 @@ describe('the post card (decision 284)', () => {
     expect(screen.getByText(/cast photo of Dana Okafor/)).toBeInTheDocument()
     expect(screen.queryByText(/one of the cast\?/)).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Upload profile picture' })).toBeInTheDocument()
+  })
+
+  it('undoes a wrong cast link with a visible Unlink button', async () => {
+    const fromCast = socialWith({
+      avatar: { source: 'cast', url: null, castName: 'Dana Okafor', castId: CAST_MEMBER },
+    })
+    render(
+      <VisualBoard
+        projectId={PROJECT}
+        model={model([fromCast])}
+        colors={COLORS}
+        brand={BRAND}
+        castMembers={[{ id: CAST_MEMBER, name: 'Dana Okafor' }]}
+      />,
+    )
+
+    await userEvent.click(screen.getByRole('button', { name: 'Unlink' }))
+    await waitFor(() =>
+      expect(unlinkCastHandleAction).toHaveBeenCalledWith(PROJECT, CAST_MEMBER, SLOT_F),
+    )
+  })
+
+  it('offers Unlink for a linked member with no photo yet, and not when nothing is linked', () => {
+    const linkedNoPhoto = socialWith({
+      avatar: { source: 'initials', url: null, castName: 'Dana Okafor', castId: CAST_MEMBER },
+    })
+    const { unmount } = render(
+      <VisualBoard
+        projectId={PROJECT}
+        model={model([linkedNoPhoto])}
+        colors={COLORS}
+        brand={BRAND}
+      />,
+    )
+    expect(screen.getByRole('button', { name: 'Unlink' })).toBeInTheDocument()
+    unmount()
+
+    render(
+      <VisualBoard projectId={PROJECT} model={model([socialSlot])} colors={COLORS} brand={BRAND} />,
+    )
+    expect(screen.queryByRole('button', { name: 'Unlink' })).not.toBeInTheDocument()
+  })
+
+  it('names what each Close button closes', async () => {
+    const user = userEvent.setup()
+    render(
+      <VisualBoard projectId={PROJECT} model={model([socialSlot])} colors={COLORS} brand={BRAND} />,
+    )
+
+    await user.click(screen.getByRole('button', { name: 'Edit details' }))
+    await user.click(screen.getByRole('button', { name: "Set the post's address" }))
+    expect(screen.getByRole('button', { name: 'Close details' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Close address' })).toBeInTheDocument()
+  })
+
+  it('caps the name, highlight and excerpt at what the post card can store', async () => {
+    const user = userEvent.setup()
+    const long = socialWith({
+      issues: [SOCIAL_TOO_LONG],
+      suggestedExcerpt: 'The audit is finished.',
+      payload: null,
+    })
+    render(<VisualBoard projectId={PROJECT} model={model([long])} colors={COLORS} brand={BRAND} />)
+
+    expect(screen.getByLabelText('Highlight')).toHaveAttribute('maxLength', '120')
+    expect(screen.getByLabelText('Excerpt')).toHaveAttribute('maxLength', '2000')
+    await user.click(screen.getByRole('button', { name: 'Edit details' }))
+    const form = screen.getByRole('form', { name: "The post's details" })
+    expect(within(form).getByLabelText('Name')).toHaveAttribute('maxLength', '50')
   })
 
   it('says a post ended with a link, and offers the image upload', () => {

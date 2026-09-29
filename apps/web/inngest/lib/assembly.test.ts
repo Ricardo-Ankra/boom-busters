@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import type { VoiceTakeRow } from '@boom-busters/db'
-import { SOCIAL_EXCERPT_NOT_VERBATIM } from '@boom-busters/compositions/social'
+import {
+  SOCIAL_EXCERPT_NOT_VERBATIM,
+  SOCIAL_FRAMES,
+  SOCIAL_TOO_LONG,
+} from '@boom-busters/compositions/social'
 import { DEFAULT_SETTINGS, resolveBrandKit } from '@boom-busters/schemas'
 import {
   assembleCaptions,
@@ -551,7 +555,6 @@ describe('slotPlan', () => {
     const MEDIA_ASSET = '01HQ00000000000000000000MD'
     const POST_URL = 'https://x.com/i/status/1771400218170519741'
     const BRAND = resolveBrandKit(DEFAULT_SETTINGS)
-    const FRAME = { width: 1920, height: 1080 }
 
     function socialBrief(overrides: Record<string, unknown> = {}) {
       return {
@@ -601,7 +604,7 @@ describe('slotPlan', () => {
           images: new Map(),
           castAvatars: new Map(),
           brand: BRAND,
-          frame: FRAME,
+          frames: SOCIAL_FRAMES,
         },
       })
       expect(plan.skipped).toEqual([])
@@ -634,7 +637,7 @@ describe('slotPlan', () => {
           images: new Map([[AVATAR_ASSET, { r2Key: 'boom-busters/uploads/avatar.png' }]]),
           castAvatars: new Map([['emostaque', { r2Key: 'boom-busters/cast/p1/photo.png' }]]),
           brand: BRAND,
-          frame: FRAME,
+          frames: SOCIAL_FRAMES,
         },
       })
       expect(plan.slots[0]?.social?.avatar).toEqual({ r2Key: 'boom-busters/uploads/avatar.png' })
@@ -649,7 +652,7 @@ describe('slotPlan', () => {
           images: new Map(),
           castAvatars: new Map([['emostaque', { r2Key: 'boom-busters/cast/p1/photo.png' }]]),
           brand: BRAND,
-          frame: FRAME,
+          frames: SOCIAL_FRAMES,
         },
       })
       expect(plan.slots[0]?.social?.avatar).toEqual({ r2Key: 'boom-busters/cast/p1/photo.png' })
@@ -664,7 +667,7 @@ describe('slotPlan', () => {
           images: new Map(),
           castAvatars: new Map([['someoneelse', { r2Key: 'boom-busters/cast/p1/photo.png' }]]),
           brand: BRAND,
-          frame: FRAME,
+          frames: SOCIAL_FRAMES,
         },
       })
       expect(plan.slots[0]?.social?.avatar).toBeUndefined()
@@ -683,7 +686,7 @@ describe('slotPlan', () => {
           images: new Map([[MEDIA_ASSET, { r2Key: 'boom-busters/uploads/media.png' }]]),
           castAvatars: new Map(),
           brand: BRAND,
-          frame: FRAME,
+          frames: SOCIAL_FRAMES,
         },
       })
       expect(plan.slots[0]?.social?.media).toEqual({ r2Key: 'boom-busters/uploads/media.png' })
@@ -698,7 +701,7 @@ describe('slotPlan', () => {
           images: new Map(),
           castAvatars: new Map(),
           brand: BRAND,
-          frame: FRAME,
+          frames: SOCIAL_FRAMES,
         },
       })
       expect(plan.slots).toEqual([])
@@ -728,11 +731,30 @@ describe('slotPlan', () => {
           images: new Map(),
           castAvatars: new Map(),
           brand: BRAND,
-          frame: FRAME,
+          frames: SOCIAL_FRAMES,
         },
       })
       expect(plan.slots).toEqual([])
       expect(plan.skipped[0]?.reason).toBe(SOCIAL_EXCERPT_NOT_VERBATIM)
+    })
+
+    it('skips a post that fits the landscape card but would clip on the Short', () => {
+      const line = 'Our auditors could not find the missing money.'
+      const plan = slotPlan({
+        slots: [socialRow()],
+        assetsById: new Map(),
+        social: {
+          posts: new Map([
+            [POST_URL, post({ text: Array.from({ length: 9 }, () => line).join('\n') })],
+          ]),
+          images: new Map(),
+          castAvatars: new Map(),
+          brand: BRAND,
+          frames: SOCIAL_FRAMES,
+        },
+      })
+      expect(plan.slots).toEqual([])
+      expect(plan.skipped[0]?.reason).toBe(SOCIAL_TOO_LONG)
     })
   })
 })
