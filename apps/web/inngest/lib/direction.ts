@@ -34,6 +34,7 @@ import type {
 } from '@boom-busters/providers'
 import {
   claimCarriesArticle,
+  claimCarriesPost,
   craftFindings,
   DirectorsBookSchema,
   findingContext,
@@ -418,6 +419,9 @@ export async function planChapterSlots(input: {
       logoTitles: input.logos?.map((logo) => logo.title),
       newsClaimRefs: input.claims
         .map((claim, at) => (claimCarriesArticle(claim) ? at + 1 : 0))
+        .filter((ref) => ref > 0),
+      socialClaimRefs: input.claims
+        .map((claim, at) => (claimCarriesPost(claim) ? at + 1 : 0))
         .filter((ref) => ref > 0),
     }).slots
   } else {

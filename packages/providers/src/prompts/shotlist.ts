@@ -231,6 +231,8 @@ other's unit, which is a chart that lies.
    "route": boolean}
 - {"type": "headline", "coversText", "description", "motion", "transition",
    "sourceRef": claim number}
+- {"type": "social", "coversText", "description", "motion", "transition",
+   "sourceRef": claim number}
 - {"type": "graphic", "coversText", "description", "motion", "transition",
    "scene": {"elements": [element, ...]}} where each element is one of:
    {"kind": "text", "id", "cell", "content" (max 120 chars), "role": "heading"|"title"|"body"|"numbers"|"captions",
@@ -384,6 +386,9 @@ ${PEOPLE_RULES}${sets.length > 0 ? SET_RULES : ''}  Never quote the guardrail:
   article itself, so inventing them is impossible rather than discouraged.
   AT MOST ONE headline shot per chapter, and never two in a row: it is a
   bright card in a dark film and it works by being rare.
+- "social" puts a REAL post from X on screen as a card. Use a social shot where the narration quotes or refers to a post on X that a claim cites.
+  Cite the claim NUMBER marked X POST in the list above; any other claim has no post behind it.
+  Never write the post's words, the account's name, its handle or the date: the app reads them from the post.
 - A "graphic" is for a beat that is one or two cited figures, a company's or a person's
   mark, or a relationship between named things (a before and after, a comparison of two or
   three amounts, three dated moments). It is never a chart with fewer points: a value moving
@@ -628,6 +633,12 @@ export function mockShotList(input: {
    * would make the offline board disagree with the live one.
    */
   newsClaimRefs?: readonly number[]
+  /**
+   * 1-based positions of claims an X post shot may cite (decision 284). Same
+   * reasoning as `newsClaimRefs`: the mock cannot judge which claim carries a
+   * post, so the caller decides and the mock only shapes the slot.
+   */
+  socialClaimRefs?: readonly number[]
   /** The claim list's text, in prompt order, so the mock graphic's figure truly cites claim 1. */
   claimTexts?: readonly string[]
   /** Titles the logo library holds (decision 268, Plan B); the mock names the first one. */
@@ -651,7 +662,7 @@ export function mockShotList(input: {
     },
   }))
 
-  const [first, second] = input.paragraphs
+  const [first, second, third] = input.paragraphs
 
   if (first && input.claimCount > 0) {
     slots.push({
@@ -780,6 +791,26 @@ export function mockShotList(input: {
         motion: { kind: 'static' },
         transition: 'cut',
         sourceRef: input.newsClaimRefs[0] as number,
+      },
+    })
+  }
+
+  // A social card in mock mode, so the board and the e2e run have one to
+  // show. Mirrors the real rule: it cites a claim marked X POST, and nothing
+  // else. Planned on the third paragraph, one paragraph past the headline
+  // card, so a chapter with both never fights over the same paragraph.
+  if (third && input.socialClaimRefs && input.socialClaimRefs.length > 0) {
+    slots.push({
+      paragraphIndex: third.index,
+      seconds: 7,
+      brief: {
+        type: 'social',
+        coversText: third.text.slice(0, 120) || '[mock] empty paragraph',
+        description: '[mock] The post the narration quotes.',
+        shotSize: 'graphic',
+        motion: { kind: 'static' },
+        transition: 'cut',
+        sourceRef: input.socialClaimRefs[0] as number,
       },
     })
   }

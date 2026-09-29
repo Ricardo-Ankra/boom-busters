@@ -497,4 +497,30 @@ describe('claimList', () => {
     ])
     expect(list).not.toContain('NEWS ARTICLE')
   })
+
+  it('marks a claim sourced to an X post, with brackets rather than a dash (decision 284)', () => {
+    const list = claimList([
+      {
+        ...base,
+        id: '01ABCDEFGHJKMNPQRSTVWXYZ04',
+        sourceUrl: 'https://x.com/a/status/1',
+      },
+    ])
+    expect(list).toContain('(X POST)')
+    // The marker is bracketed, never the em dash the other markers use.
+    // Built from a code point so this source file carries no dash itself.
+    expect(list).not.toContain(String.fromCharCode(0x2014) + ' X POST')
+  })
+
+  it('does not mark an article claim as an X post', () => {
+    const list = claimList([
+      {
+        ...base,
+        id: '01ABCDEFGHJKMNPQRSTVWXYZ05',
+        sourceType: 'major_outlet',
+        sourceUrl: 'https://news.example/story',
+      },
+    ])
+    expect(list).not.toContain('X POST')
+  })
 })

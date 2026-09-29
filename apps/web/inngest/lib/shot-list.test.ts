@@ -229,6 +229,63 @@ describe('plannedToRows', () => {
     })
   })
 
+  describe('social slots (decision 284)', () => {
+    const POSTS = [
+      { id: CLAIM_A, sourceType: 'court', sourceUrl: 'https://courts.example/judgment' },
+      { id: CLAIM_B, sourceUrl: 'https://x.com/a/status/1' },
+    ]
+    const social = (paragraphIndex: number, sourceRef: number): PlannedSlot => ({
+      paragraphIndex,
+      seconds: 7,
+      brief: {
+        type: 'social',
+        coversText: 'First paragraph.',
+        description: 'The post the narration quotes.',
+        motion: { kind: 'static' },
+        transition: 'cut',
+        sourceRef,
+      },
+    })
+
+    it('stores the normalised post address', () => {
+      const { rows, rejected } = plannedToRows({
+        chapterId: 'ch-a',
+        planned: [social(0, 2)],
+        paragraphs,
+        claims: POSTS,
+      })
+      expect(rejected).toEqual([])
+      const brief = rows[0]?.brief
+      expect(rows[0]?.type).toBe('social')
+      if (brief?.type === 'social') {
+        expect(brief.sourceClaimId).toBe(CLAIM_B)
+        expect(brief.postUrl).toBe('https://x.com/i/status/1')
+      }
+    })
+
+    it('refuses a claim with no X post behind it, and says so', () => {
+      const { rows, rejected } = plannedToRows({
+        chapterId: 'ch-a',
+        planned: [social(0, 1)],
+        paragraphs,
+        claims: POSTS,
+      })
+      expect(rows).toEqual([])
+      expect(rejected[0]?.reason).toBe('claim 1 has no X post behind it')
+    })
+
+    it('has no per-chapter cap, unlike the headline card', () => {
+      const { rows, rejected } = plannedToRows({
+        chapterId: 'ch-a',
+        planned: [social(0, 2), social(1, 2), social(1, 2)],
+        paragraphs,
+        claims: POSTS,
+      })
+      expect(rows.filter((row) => row.type === 'social')).toHaveLength(3)
+      expect(rejected).toEqual([])
+    })
+  })
+
   it('continues chapter-wide slot indexes from startIndex', () => {
     const { rows } = plannedToRows({
       chapterId: 'ch-b',

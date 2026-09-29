@@ -178,6 +178,92 @@ describe('the headline shot (decision 257)', () => {
   })
 })
 
+describe('the social shot (decision 284)', () => {
+  const request = buildShotListRequest({
+    caseTitle: 'Wirecard',
+    chapterTitle: 'The Missing Billions',
+    paragraphs: PARAGRAPHS,
+    claims: CLAIMS,
+    styleAnchors: stillStyleAnchors(brandKit),
+  })
+
+  it('offers the shape, which carries a claim number and nothing else', () => {
+    expect(request.system).toContain('"type": "social"')
+    expect(request.system).toContain('"sourceRef": claim number')
+  })
+
+  it('states the three rules verbatim', () => {
+    expect(request.system).toContain(
+      'Use a social shot where the narration quotes or refers to a post on X that a claim cites.',
+    )
+    expect(request.system).toContain(
+      'Cite the claim NUMBER marked X POST in the list above; any other claim has no post behind it.',
+    )
+    expect(request.system).toContain(
+      "Never write the post's words, the account's name, its handle or the date: the app reads them from the post.",
+    )
+  })
+
+  it('parses a social slot and drops one with no claim number', () => {
+    const good = parseShotList(
+      JSON.stringify({
+        slots: [
+          {
+            paragraphIndex: 0,
+            seconds: 7,
+            brief: {
+              type: 'social',
+              coversText: 'By June, the auditors could not find the money.',
+              description: 'The post the narration quotes.',
+              motion: { kind: 'static' },
+              transition: 'cut',
+              sourceRef: 2,
+            },
+          },
+        ],
+      }),
+    )
+    expect(good.slots).toHaveLength(1)
+    expect(good.malformed).toHaveLength(0)
+
+    // A slot with no claim number is dropped and named, and the rest of the
+    // chapter's plan survives it: the whole chapter is never worth one slot.
+    const mixed = parseShotList(
+      JSON.stringify({
+        slots: [
+          {
+            paragraphIndex: 0,
+            seconds: 7,
+            brief: {
+              type: 'social',
+              coversText: 'By June, the auditors could not find the money.',
+              description: 'The post the narration quotes.',
+              motion: { kind: 'static' },
+              transition: 'cut',
+            },
+          },
+          {
+            paragraphIndex: 1,
+            seconds: 6,
+            brief: {
+              type: 'stock',
+              coversText: 'The trail led from Munich to Manila.',
+              description: 'Empty office at dusk.',
+              motion: { kind: 'static' },
+              transition: 'cut',
+              query: 'empty office dusk',
+              rejectionCriteria: [],
+            },
+          },
+        ],
+      }),
+    )
+    expect(mixed.slots).toHaveLength(1)
+    expect(mixed.malformed).toHaveLength(1)
+    expect(mixed.malformed[0]?.reason).toContain('sourceRef')
+  })
+})
+
 describe('the graphic shot (decision 268, Plan B)', () => {
   it('describes the graphic shape, its rules, and lists the marks the library holds', () => {
     const request = buildShotListRequest({
@@ -400,6 +486,30 @@ describe('mockShotList', () => {
     expect(() => ShotListOutputSchema.parse(output)).not.toThrow()
     const card = output.slots.find((slot) => slot.brief.type === 'headline')
     expect(card?.brief.type === 'headline' && card.brief.sourceRef).toBe(2)
+  })
+
+  it('emits a social card, on the third paragraph, only when socialClaimRefs is given (decision 284)', () => {
+    const paragraphsWithThird: ShotParagraph[] = [
+      ...PARAGRAPHS,
+      { index: 2, text: 'EY refused to sign the accounts.', seconds: 6 },
+    ]
+
+    const without = mockShotList({ paragraphs: paragraphsWithThird, claimCount: 2 })
+    expect(without.slots.every((slot) => slot.brief.type !== 'social')).toBe(true)
+
+    const output = mockShotList({
+      paragraphs: paragraphsWithThird,
+      claimCount: 2,
+      socialClaimRefs: [2],
+    })
+    expect(() => ShotListOutputSchema.parse(output)).not.toThrow()
+    const card = output.slots.find((slot) => slot.brief.type === 'social')
+    expect(card?.paragraphIndex).toBe(2)
+    expect(card?.brief.type === 'social' && card.brief.sourceRef).toBe(2)
+
+    // No third paragraph means no social card: there is nowhere to put it.
+    const noThird = mockShotList({ paragraphs: PARAGRAPHS, claimCount: 2, socialClaimRefs: [2] })
+    expect(noThird.slots.every((slot) => slot.brief.type !== 'social')).toBe(true)
   })
 
   it('the mock plans one graphic citing the first claim, with a mark when the library has one', () => {

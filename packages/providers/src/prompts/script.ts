@@ -4,6 +4,7 @@ import {
   ShortsCandidatesSchema,
   TeaserScriptSchema,
   claimCarriesArticle,
+  claimCarriesPost,
   countWords,
   splitSentences,
 } from '@boom-busters/schemas'
@@ -54,7 +55,8 @@ export function claimList(claims: readonly ScriptClaim[]): string {
         `[${index + 1}] (id: ${claim.id}) ${claim.text}` +
         `${claim.adjudicated ? ' — ADJUDICATED' : ' — NOT adjudicated'}` +
         `${claim.confidence === 'unverified' ? ' — UNVERIFIED' : ''}` +
-        `${claimCarriesArticle(claim) ? ' — NEWS ARTICLE' : ''}`,
+        `${claimCarriesArticle(claim) ? ' — NEWS ARTICLE' : ''}` +
+        `${claimCarriesPost(claim) ? ' (X POST)' : ''}`,
     )
     .join('\n')
 }
