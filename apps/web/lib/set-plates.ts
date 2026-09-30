@@ -1,4 +1,5 @@
 import { layoutView, OPPOSITE_DIRECTION, parseLayout } from '@boom-busters/schemas'
+import { stripBannedWords } from '@boom-busters/providers'
 import { PLATE_PHOTOGRAPH_LINE } from './photograph-lines'
 import type {
   ProjectSet,
@@ -72,16 +73,22 @@ export function buildSetSheetPrompt(input: { name: string; layout: string; look:
         .filter((part) => part !== '')
         .join(' ')
     : (input.layout.trim() !== '' ? input.layout.trim() : input.look.trim()).replace(/\r?\n/g, ' ')
-  return [
-    `A 2x2 contact sheet of four photographs of one room, ${input.name}, separated by thin white borders of equal width, each panel 16:9.`,
-    'All four show the same room at the same moment in the same light, each taken at eye level with a 35mm lens from the middle of the opposite wall, with no people in the room.',
-    `Top left: facing north, the view in reference image 1${looking('north', 'looking at')}.`,
-    `Top right: facing east${looking('east', 'looking straight at')}.`,
-    `Bottom left: facing south${looking('south', 'looking straight at')}.`,
-    `Bottom right: facing west${looking('west', 'looking straight at')}.`,
-    ...(room !== '' ? [`The room: ${room}`] : []),
-    PLATE_PHOTOGRAPH_LINE,
-  ].join('\n')
+  // stripBannedWords (spec 7.4): name, layout and look are user-authored
+  // text, the same class of input every other still prompt runs through the
+  // assembler for. Run here, once, so the app (set-sheet.ts) and the live
+  // set-to-shot harness never diverge on what actually gets sent.
+  return stripBannedWords(
+    [
+      `A 2x2 contact sheet of four photographs of one room, ${input.name}, separated by thin white borders of equal width, each panel 16:9.`,
+      'All four show the same room at the same moment in the same light, each taken at eye level with a 35mm lens from the middle of the opposite wall, with no people in the room.',
+      `Top left: facing north, the view in reference image 1${looking('north', 'looking at')}.`,
+      `Top right: facing east${looking('east', 'looking straight at')}.`,
+      `Bottom left: facing south${looking('south', 'looking straight at')}.`,
+      `Bottom right: facing west${looking('west', 'looking straight at')}.`,
+      ...(room !== '' ? [`The room: ${room}`] : []),
+      PLATE_PHOTOGRAPH_LINE,
+    ].join('\n'),
+  )
 }
 
 export function setPlateBrief(
@@ -113,7 +120,10 @@ export function setPlateBrief(
     // A plate is the room, not a scene in it: people belong to the stills.
     // The assembler adds the photograph line and strips anchors before this
     // ever reaches a model (decision 285); this brief carries the scene alone.
-    prompt: `${set.name}, empty of people: ${framing}. ${set.look}`.trim(),
+    // The look draws the first plate only (spec 5.2, 7.3): once a camera
+    // stands in for it, `describeCamera` already says what the room holds,
+    // and the look repeated furniture the camera sentence never put in frame.
+    prompt: `${set.name}, empty of people: ${framing}.${camera ? '' : ` ${set.look}`}`.trim(),
     negativePrompt: 'people, figures',
   }
 }

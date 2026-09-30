@@ -35,6 +35,25 @@ describe('setPlateBrief', () => {
     expect(setPlateBrief(plated, 'detail').camera).toBeUndefined()
     expect(setPlateBrief({ name: 'R', look: 'L', plates: [] }, 'north').camera).toBeUndefined()
   })
+
+  // Final review: a later-view plate's prompt still carried the look beside
+  // its camera sentence (spec 5.2, 7.3 say the look draws the first plate
+  // only). A detail view carries no camera, so the look still draws it.
+  it('drops the look once a camera sentence stands in for it', () => {
+    const plated = {
+      name: 'R',
+      look: 'Cold blue light, rows of monitors.',
+      plates: [{ view: 'north' }],
+    } as unknown as Parameters<typeof setPlateBrief>[0]
+    const compass = setPlateBrief(plated, 'south')
+    expect(compass.prompt).toBe(
+      'R, empty of people: a wide photograph of the whole room facing south.',
+    )
+    expect(compass.prompt).not.toContain('Cold blue light')
+
+    const detail = setPlateBrief(plated, 'detail')
+    expect(detail.prompt).toContain('Cold blue light')
+  })
 })
 
 describe('describeCamera', () => {
@@ -249,5 +268,17 @@ describe('buildSetSheetPrompt', () => {
     const prompt = buildSetSheetPrompt({ name: 'R', layout: '', look: 'L' })
     expect(prompt.match(/\d+mm/g)).toEqual(['35mm'])
     expect(prompt.match(/eye level/g)).toHaveLength(1)
+  })
+
+  // Item 5, final review: this used to be the caller's job (set-sheet.ts
+  // wrapped the return value), which let the live-set-test harness — a
+  // direct caller — send a banned word straight through.
+  it('strips a banned word from the look, like every other still prompt', () => {
+    const prompt = buildSetSheetPrompt({
+      name: 'R',
+      layout: '',
+      look: 'A stunning, cinematic boardroom.',
+    })
+    expect(prompt).not.toMatch(/stunning|cinematic/i)
   })
 })

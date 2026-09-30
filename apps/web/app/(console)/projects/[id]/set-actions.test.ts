@@ -429,6 +429,9 @@ describeDb('set actions (mock mode)', () => {
     expect(request?.prompt).not.toMatch(/film grain/)
     expect(request?.prompt.match(/\d+mm/g)).toEqual(['35mm'])
     expect(request?.prompt).not.toContain('never reproduce or edit the framing')
+    // Final review: the look drew the first plate only (spec 5.2, 7.3); a
+    // later view's camera sentence stands in for it instead.
+    expect(request?.prompt).not.toContain('cold blue light')
   })
 
   it('refuses another view before the set has a plate, before spending', async () => {
