@@ -34,6 +34,7 @@ import type {
   ShotBrief,
   SlotCandidate,
   StillProvider,
+  VisualsJobOp,
 } from '@boom-busters/schemas'
 import { Badge, type BadgeTone } from '@/components/ui/badge'
 import { CandidateLightbox, candidateThumb } from '@/components/candidate-media'
@@ -46,8 +47,10 @@ import { readImageSize, toUploadableImage, toUploadableLogo } from '@/lib/client
 import type {
   ArticleClaimOption,
   PostClaimOption,
+  SlotJobView,
   SlotReference,
   SlotView,
+  VisualsJobView,
   VisualsReviewModel,
 } from '@/lib/visuals-review'
 import { CLOSE_REUSE_MS, describeGap, timecode } from '@/lib/visuals-reuse'
@@ -143,6 +146,67 @@ const useSlotLock = (): SlotLock => React.useContext(SlotLockContext)
 
 /** The plan card's own keys: while any is in flight, none of them is offered. */
 const PLAN_KEYS = ['plan', 'repair', 'replan', 'direction-save', 'direction-redraft'] as const
+
+/** How old a job stamp may be before the board stops trusting it (decision 286). */
+const JOB_STALE_MS = 10 * 60_000
+
+/**
+ * The server's clock, carried forward here (decision 286): the model's
+ * `renderedAt` plus the time that has passed in this browser since it arrived.
+ * A browser clock that is hours out cannot lock a fresh card or unlock a live
+ * one, and the first render matches the server's. Ticks every 15 s, only
+ * while there is a stamp to age.
+ */
+function useServerNow(renderedAt: string, ticking: boolean): number {
+  const base = Date.parse(renderedAt)
+  const [now, setNow] = React.useState(base)
+  React.useEffect(() => {
+    const arrived = Date.now()
+    setNow(base)
+    if (!ticking) return
+    const timer = window.setInterval(() => setNow(base + (Date.now() - arrived)), 15_000)
+    return () => window.clearInterval(timer)
+  }, [base, ticking])
+  return now
+}
+
+const jobAgeMs = (startedAt: string, now: number) => Math.max(0, now - Date.parse(startedAt))
+const jobIsLive = (startedAt: string, now: number) => jobAgeMs(startedAt, now) < JOB_STALE_MS
+
+/** The amber line a stale stamp gets, on a card or on the plan card. */
+function staleJobWords(startedAt: string, now: number): string {
+  const minutes = Math.floor(jobAgeMs(startedAt, now) / 60_000)
+  return `This has been running for ${minutes} minutes, longer than it should. It may have stopped. You can try again.`
+}
+
+/** Which plan-card control spins for a plan-level job (the decision 285 press names). */
+const PLAN_JOB_PRESS: Record<VisualsJobOp, string> = {
+  fetch: 'plan',
+  repair: 'repair',
+  shots: 'replan',
+  direction: 'direction-redraft',
+}
+
+const PLAN_JOB_WORDS: Record<VisualsJobOp, { doing: string; then: string }> = {
+  shots: { doing: 'Re-planning the shot list', then: ' The plan below is replaced when it lands.' },
+  repair: { doing: 'Fixing the flagged slots', then: ' The flagged cards change when it lands.' },
+  direction: {
+    doing: 'Redrafting the direction',
+    then: ' The book above is replaced when it lands.',
+  },
+  fetch: { doing: 'Sending the fetch', then: '' },
+}
+
+/** What a card says while its own job runs. */
+function slotJobWords(job: SlotJobView, now: number, planning: boolean): string {
+  const age = timecode(jobAgeMs(job.startedAt, now))
+  if (job.kind === 'redirect') {
+    return `Redirecting the scene without the likeness, started ${age} ago.`
+  }
+  return planning
+    ? `Fetching this slot, started ${age} ago. The card updates when it lands.`
+    : `Regenerating, started ${age} ago. The new candidates replace these when they land.`
+}
 
 const STATUS_TONE: Record<string, BadgeTone> = {
   resolved: 'success',
@@ -1504,10 +1568,25 @@ export function VisualBoard({
     [router, toast],
   )
 
-  const planBusy = PLAN_KEYS.some((key) => locks.has(key))
-  const slotLock = (slotId: string): SlotLock => {
-    const lock = locks.get(slotId)
-    return { busy: lock !== undefined, pressed: lock?.pressed ?? null }
+  // Background jobs (decision 286): a stamp younger than the limit locks what
+  // it affects just as a press in flight does, and names the control to spin.
+  const stamped = model.job !== null || model.fetching || allSlots.some((slot) => slot.job !== null)
+  const now = useServerNow(model.renderedAt, stamped)
+  const boardJob: VisualsJobView | null =
+    model.job && jobIsLive(model.job.startedAt, now) ? model.job : null
+  const boardLocked = model.fetching || boardJob !== null
+  const boardPress = model.fetching ? 'plan' : boardJob ? PLAN_JOB_PRESS[boardJob.op] : null
+  const planPressed = (key: string) => locks.has(key) || boardPress === key
+
+  const planBusy = PLAN_KEYS.some((key) => locks.has(key)) || boardLocked
+  const slotLock = (slot: SlotView): SlotLock => {
+    const lock = locks.get(slot.id)
+    const job = slot.job && jobIsLive(slot.job.startedAt, now) ? slot.job : null
+    const jobPress = job ? (job.kind === 'refetch' ? 'regenerate' : 'redirect') : null
+    return {
+      busy: lock !== undefined || job !== null || boardLocked,
+      pressed: lock?.pressed ?? jobPress,
+    }
   }
 
   // Which chapters are folded. Remembered per project in this browser only:
@@ -1602,9 +1681,9 @@ export function VisualBoard({
             direction={model.direction}
             busy={planBusy}
             pressed={
-              locks.has('direction-save')
+              planPressed('direction-save')
                 ? 'direction-save'
-                : locks.has('direction-redraft')
+                : planPressed('direction-redraft')
                   ? 'direction-redraft'
                   : null
             }
@@ -1615,11 +1694,28 @@ export function VisualBoard({
               <CardTitle className="text-[14px]">Shot plan</CardTitle>
             </CardHeader>
             <CardContent className="flex flex-col gap-3">
-              <p className="text-[13px] text-[var(--color-text-secondary)]">
-                Nothing has been fetched or generated yet. Edit any brief, change a slot&apos;s
-                format, or fetch a single slot to try it; when the plan reads right, fetch the lot.
-                Slots already fetched for their current brief are never bought twice.
-              </p>
+              {model.fetching ? (
+                <p className="text-[13px] text-[var(--color-text-primary)]" role="status">
+                  Fetching visuals: {model.toFetch} slot{model.toFetch === 1 ? '' : 's'} still to
+                  land.
+                </p>
+              ) : model.job && !boardJob ? (
+                <p className="text-[13px] text-[var(--color-warning)]" role="status">
+                  {staleJobWords(model.job.startedAt, now)}
+                </p>
+              ) : boardJob ? (
+                <p className="text-[13px] text-[var(--color-text-primary)]" role="status">
+                  {PLAN_JOB_WORDS[boardJob.op].doing}, started{' '}
+                  {timecode(jobAgeMs(boardJob.startedAt, now))} ago.
+                  {PLAN_JOB_WORDS[boardJob.op].then}
+                </p>
+              ) : (
+                <p className="text-[13px] text-[var(--color-text-secondary)]">
+                  Nothing has been fetched or generated yet. Edit any brief, change a slot&apos;s
+                  format, or fetch a single slot to try it; when the plan reads right, fetch the
+                  lot. Slots already fetched for their current brief are never bought twice.
+                </p>
+              )}
               {model.warnings.length > 0 ? (
                 <ul
                   className="list-disc pl-5 text-[12px] text-[var(--color-warning)]"
@@ -1654,7 +1750,7 @@ export function VisualBoard({
                 <ConfirmButton
                   variant="primary"
                   confirmVariant="primary"
-                  busy={locks.has('plan')}
+                  busy={planPressed('plan')}
                   disabled={planBusy}
                   label={
                     <>
@@ -1686,7 +1782,7 @@ export function VisualBoard({
                   <ConfirmButton
                     variant="outline"
                     confirmVariant="primary"
-                    busy={locks.has('repair')}
+                    busy={planPressed('repair')}
                     disabled={planBusy}
                     label={
                       `Fix these ${model.repair.slots} slot${model.repair.slots === 1 ? '' : 's'} · ≈$` +
@@ -1720,7 +1816,7 @@ export function VisualBoard({
                 <ConfirmButton
                   variant="outline"
                   confirmVariant="primary"
-                  busy={locks.has('replan')}
+                  busy={planPressed('replan')}
                   disabled={planBusy}
                   label={`Re-plan shot list · ${REPLAN_ESTIMATE}`}
                   confirmLabel="Re-plan now"
@@ -1898,13 +1994,15 @@ export function VisualBoard({
           chapter={chapter}
           phase={model.phase}
           slotNotes={model.slotNotes}
+          now={now}
           collapsed={collapsed.has(chapter.chapterIndex)}
           onToggle={() => toggleChapter(chapter.chapterIndex)}
         >
           {chapter.slots.map((slot) => (
-            <SlotLockContext.Provider key={slot.id} value={slotLock(slot.id)}>
+            <SlotLockContext.Provider key={slot.id} value={slotLock(slot)}>
               <SlotCard
                 slot={slot}
+                now={now}
                 projectId={projectId}
                 colors={colors}
                 brand={brand}
@@ -1934,20 +2032,24 @@ function chapterTally(
   slots: readonly SlotView[],
   phase: VisualsReviewModel['phase'],
   slotNotes: Record<string, string[]>,
+  now: number,
 ): { text: string; warn: boolean }[] {
   const count = (test: (slot: SlotView) => boolean) => slots.filter(test).length
   const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`
   const planning = phase === 'plan'
-  const drafting = count(
-    (slot) => slot.retype?.state === 'drafting' || slot.retype?.state === 'rebriefing',
+  const liveJob = (slot: SlotView) => slot.job !== null && jobIsLive(slot.job.startedAt, now)
+  const inProgress = count(
+    (slot) =>
+      slot.retype?.state === 'drafting' || slot.retype?.state === 'rebriefing' || liveJob(slot),
   )
-  // Everything the card itself asks the producer to act on.
+  // Everything the card itself asks the producer to act on, a stuck job included.
   const toLookAt = count(
     (slot) =>
       slot.refusal !== null ||
       slot.retype?.state === 'refused' ||
       slot.retype?.state === 'rebrief-refused' ||
-      slot.retype?.state === 'fix-note',
+      slot.retype?.state === 'fix-note' ||
+      (slot.job !== null && !liveJob(slot)),
   )
   const notes = slots.reduce((total, slot) => total + (slotNotes[slot.id]?.length ?? 0), 0)
   const ready = count((slot) => slot.status === 'resolved')
@@ -1968,7 +2070,7 @@ function chapterTally(
     )
   }
   parts.push(
-    { n: drafting, text: `${drafting} drafting`, warn: false },
+    { n: inProgress, text: `${inProgress} in progress`, warn: false },
     { n: toLookAt, text: `${toLookAt} to look at`, warn: true },
   )
   return parts.filter((part) => part.n > 0).map(({ text, warn }) => ({ text, warn }))
@@ -1986,6 +2088,7 @@ function ChapterSection({
   chapter,
   phase,
   slotNotes,
+  now,
   collapsed,
   onToggle,
   children,
@@ -1993,12 +2096,13 @@ function ChapterSection({
   chapter: VisualsReviewModel['chapters'][number]
   phase: VisualsReviewModel['phase']
   slotNotes: Record<string, string[]>
+  now: number
   collapsed: boolean
   onToggle: () => void
   children: React.ReactNode
 }) {
   const bodyId = `chapter-${chapter.chapterIndex}-shots`
-  const tally = chapterTally(chapter.slots, phase, slotNotes)
+  const tally = chapterTally(chapter.slots, phase, slotNotes, now)
   return (
     <section className="flex flex-col gap-3">
       <h2 className="text-[15px] font-semibold">
@@ -2058,6 +2162,7 @@ function ChapterSection({
 
 function SlotCard({
   slot,
+  now,
   projectId,
   colors,
   brand,
@@ -2071,6 +2176,8 @@ function SlotCard({
   castMembers,
 }: {
   slot: SlotView
+  /** The server's clock, carried forward (decision 286). */
+  now: number
   projectId: string
   colors: BrandChartColors
   brand: BrandKitStored
@@ -2122,6 +2229,23 @@ function SlotCard({
       </CardHeader>
 
       <CardContent className="flex flex-col gap-3">
+        {/* A background job on this card (decision 286): what it is and how
+            long it has run, and once it is past the limit, that it may have
+            stopped and the card is free again. */}
+        {slot.job ? (
+          <p
+            role="status"
+            className={
+              jobIsLive(slot.job.startedAt, now)
+                ? 'text-[13px] text-[var(--color-text-primary)]'
+                : 'text-[13px] text-[var(--color-warning)]'
+            }
+          >
+            {jobIsLive(slot.job.startedAt, now)
+              ? slotJobWords(slot.job, now, planning)
+              : staleJobWords(slot.job.startedAt, now)}
+          </p>
+        ) : null}
         {brief ? (
           <p className="text-[13px] text-[var(--color-text-primary)]">{brief.description}</p>
         ) : null}

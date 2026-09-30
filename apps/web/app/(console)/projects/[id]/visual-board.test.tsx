@@ -1,6 +1,6 @@
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { SOCIAL_TOO_LONG } from '@boom-busters/compositions/social'
 import { X_POST_MISSING } from '@boom-busters/providers'
 import { DEFAULT_SETTINGS } from '@boom-busters/schemas'
@@ -2576,7 +2576,7 @@ describe('folding chapters', () => {
     )
 
     const header = screen.getByRole('button', { name: /^Chapter 1 — The audit/ })
-    expect(header).toHaveTextContent('1 drafting')
+    expect(header).toHaveTextContent('1 in progress')
     expect(header).toHaveTextContent('1 to look at')
   })
 })
@@ -2623,5 +2623,172 @@ describe('craft notes on the card (decision 277)', () => {
       />,
     )
     expect(screen.queryByRole('list', { name: 'Craft notes on this shot' })).toBeNull()
+  })
+})
+
+describe('background jobs on the board (decision 286)', () => {
+  /** An ISO time `ms` before the model was rendered. */
+  const ago = (ms: number) => new Date(Date.parse(RENDERED_AT) - ms).toISOString()
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('locks a card while its regenerate runs, keeps the button spinning, and says for how long', () => {
+    const running: SlotView = { ...stockSlot, job: { kind: 'refetch', startedAt: ago(42_000) } }
+    render(
+      <VisualBoard projectId={PROJECT} model={model([running])} colors={COLORS} brand={BRAND} />,
+    )
+
+    const regenerate = screen.getByRole('button', { name: 'Regenerate' })
+    expect(regenerate).toHaveAttribute('aria-busy', 'true')
+    expect(screen.getByRole('button', { name: 'Upload own' })).toBeDisabled()
+    for (const candidate of within(screen.getByRole('list', { name: 'Candidates' })).getAllByRole(
+      'button',
+    )) {
+      expect(candidate).toBeDisabled()
+    }
+    expect(
+      screen.getByText(
+        `Regenerating, started ${timecode(42_000)} ago. The new candidates replace these when they land.`,
+      ),
+    ).toBeInTheDocument()
+  })
+
+  it('lets go of a stamp older than 10 minutes and says it may have stopped', () => {
+    const stuck: SlotView = { ...stockSlot, job: { kind: 'refetch', startedAt: ago(11 * 60_000) } }
+    render(<VisualBoard projectId={PROJECT} model={model([stuck])} colors={COLORS} brand={BRAND} />)
+
+    expect(screen.getByRole('button', { name: 'Regenerate' })).toBeEnabled()
+    expect(
+      screen.getByText(
+        'This has been running for 11 minutes, longer than it should. It may have stopped. You can try again.',
+      ),
+    ).toBeInTheDocument()
+  })
+
+  it('unlocks on its own once the clock passes the limit', () => {
+    vi.useFakeTimers()
+    const nearly: SlotView = {
+      ...stockSlot,
+      job: { kind: 'refetch', startedAt: ago(10 * 60_000 - 5_000) },
+    }
+    render(
+      <VisualBoard projectId={PROJECT} model={model([nearly])} colors={COLORS} brand={BRAND} />,
+    )
+    expect(screen.getByRole('button', { name: 'Regenerate' })).toBeDisabled()
+
+    act(() => {
+      vi.advanceTimersByTime(15_000)
+    })
+    expect(screen.getByRole('button', { name: 'Regenerate' })).toBeEnabled()
+  })
+
+  it('judges age by the server’s clock, so a wrong browser clock changes nothing', () => {
+    vi.useFakeTimers()
+    // The laptop thinks it is three months later than the server does.
+    vi.setSystemTime(new Date('2027-01-01T00:00:00.000Z'))
+    const fresh: SlotView = { ...stockSlot, job: { kind: 'refetch', startedAt: ago(60_000) } }
+    render(<VisualBoard projectId={PROJECT} model={model([fresh])} colors={COLORS} brand={BRAND} />)
+    act(() => {
+      vi.advanceTimersByTime(15_000)
+    })
+    expect(screen.getByRole('button', { name: 'Regenerate' })).toBeDisabled()
+  })
+
+  it('says a redirect is running in its own words', () => {
+    const redirecting: SlotView = {
+      ...stockSlot,
+      job: { kind: 'redirect', startedAt: ago(5_000) },
+    }
+    render(
+      <VisualBoard
+        projectId={PROJECT}
+        model={model([redirecting])}
+        colors={COLORS}
+        brand={BRAND}
+      />,
+    )
+    expect(
+      screen.getByText(
+        `Redirecting the scene without the likeness, started ${timecode(5_000)} ago.`,
+      ),
+    ).toBeInTheDocument()
+  })
+
+  it('locks the whole board while the shot list is re-planned', () => {
+    const planned: SlotView = {
+      ...stockSlot,
+      status: 'unresolved',
+      candidates: [],
+      needsFetch: true,
+    }
+    render(
+      <VisualBoard
+        projectId={PROJECT}
+        model={model([planned, { ...planned, id: SLOT_B }], {
+          phase: 'plan',
+          job: { op: 'shots', startedAt: ago(65_000) },
+        })}
+        colors={COLORS}
+        brand={BRAND}
+      />,
+    )
+
+    expect(
+      screen.getByText(
+        `Re-planning the shot list, started ${timecode(65_000)} ago. The plan below is replaced when it lands.`,
+      ),
+    ).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Re-plan shot list/ })).toHaveAttribute(
+      'aria-busy',
+      'true',
+    )
+    expect(screen.getByRole('button', { name: /Fetch visuals/ })).toBeDisabled()
+    for (const fetch of screen.getAllByRole('button', { name: 'Fetch this slot' })) {
+      expect(fetch).toBeDisabled()
+    }
+  })
+
+  it('says how many slots are still to land while Fetch visuals runs, and offers no second fetch', () => {
+    const planned: SlotView = {
+      ...stockSlot,
+      status: 'unresolved',
+      candidates: [],
+      needsFetch: true,
+    }
+    render(
+      <VisualBoard
+        projectId={PROJECT}
+        model={model([planned, { ...planned, id: SLOT_B }], { phase: 'plan', fetching: true })}
+        colors={COLORS}
+        brand={BRAND}
+      />,
+    )
+
+    expect(screen.getByText('Fetching visuals: 2 slots still to land.')).toBeInTheDocument()
+    expect(screen.queryByText(/Nothing has been fetched or generated yet/)).not.toBeInTheDocument()
+    const fetch = screen.getByRole('button', { name: /Fetch visuals/ })
+    expect(fetch).toBeDisabled()
+    expect(fetch).toHaveAttribute('aria-busy', 'true')
+  })
+
+  it('counts running jobs as in progress and stuck ones as to look at on the chapter', () => {
+    const running: SlotView = { ...stockSlot, job: { kind: 'refetch', startedAt: ago(1_000) } }
+    const stuck: SlotView = {
+      ...chartSlot,
+      job: { kind: 'refetch', startedAt: ago(20 * 60_000) },
+    }
+    render(
+      <VisualBoard
+        projectId={PROJECT}
+        model={model([running, stuck])}
+        colors={COLORS}
+        brand={BRAND}
+      />,
+    )
+    const header = screen.getByRole('button', { name: /^Chapter 1/ })
+    expect(header).toHaveTextContent('1 in progress')
+    expect(header).toHaveTextContent('1 to look at')
   })
 })
