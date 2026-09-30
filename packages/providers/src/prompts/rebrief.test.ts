@@ -135,6 +135,12 @@ describe('buildRebriefRequest for a still', () => {
       'a sentence that names a person shows that person and lists them in "depicts"',
     )
     expect(normalised).toContain('names it in "set"')
+    // "first" means before PEOPLE_RULES, which this same shape carries too.
+    const fieldRuleAt = request.system.indexOf('Read "coversText" before anything else')
+    const peopleRulesAt = request.system.indexOf('People come in three kinds and they never mix')
+    expect(fieldRuleAt).toBeGreaterThan(-1)
+    expect(peopleRulesAt).toBeGreaterThan(-1)
+    expect(fieldRuleAt).toBeLessThan(peopleRulesAt)
   })
 
   it('keeps the set and camera a new idea names', () => {

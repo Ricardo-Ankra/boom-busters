@@ -145,15 +145,12 @@ export const SET_RULES = `  Sets: when the sentence puts us in one of the rooms 
  * sentence rather than a paraphrase of it.
  */
 export function fieldRule(hasSets: boolean): string {
-  return hasSets
-    ? `- Read "coversText" before anything else and let it fill the fields: a sentence
-  that names a person shows that person and lists them in "depicts"; a sentence
-  that puts us in one of the rooms listed above names it in "set"; an abstract
-  sentence is staged with the people it concerns, never an object standing in
-  for them.
-`
-    : `- Read "coversText" before anything else and let it fill the fields: a sentence
-  that names a person shows that person and lists them in "depicts"; an abstract
+  const setClause = hasSets
+    ? `a sentence
+  that puts us in one of the rooms listed above names it in "set"; `
+    : ''
+  return `- Read "coversText" before anything else and let it fill the fields: a sentence
+  that names a person shows that person and lists them in "depicts"; ${setClause}an abstract
   sentence is staged with the people it concerns, never an object standing in
   for them.
 `
