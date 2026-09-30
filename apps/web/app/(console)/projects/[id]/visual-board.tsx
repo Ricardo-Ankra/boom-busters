@@ -2967,7 +2967,9 @@ function BriefEditor({
     brief && (brief.type === 'stock' || brief.type === 'archival') ? brief.query : '',
   )
   const [mustShow, setMustShow] = React.useState(brief?.type === 'archival' ? brief.mustShow : '')
-  const [prompt, setPrompt] = React.useState(brief?.type === 'still' ? brief.prompt : '')
+  const [prompt, setPrompt] = React.useState(
+    brief?.type === 'still' ? (slot.scene ?? brief.prompt) : '',
+  )
   if (!brief) return null
 
   const field =
@@ -3027,15 +3029,25 @@ function BriefEditor({
         </label>
       ) : null}
       {brief.type === 'still' ? (
-        <label className="flex flex-col gap-1 text-[12px] text-[var(--color-text-secondary)]">
-          Generation prompt
-          <textarea
-            value={prompt}
-            onChange={(event) => setPrompt(event.target.value)}
-            rows={3}
-            className={field}
-          />
-        </label>
+        <>
+          <label className="flex flex-col gap-1 text-[12px] text-[var(--color-text-secondary)]">
+            Scene
+            <textarea
+              value={prompt}
+              onChange={(event) => setPrompt(event.target.value)}
+              rows={3}
+              className={field}
+            />
+          </label>
+          {slot.promptSent ? (
+            <details className="text-[12px] text-[var(--color-text-secondary)]">
+              <summary className="cursor-pointer">Prompt sent to the model</summary>
+              <pre className="mt-1 text-[12px] whitespace-pre-wrap text-[var(--color-text-muted)]">
+                {slot.promptSent}
+              </pre>
+            </details>
+          ) : null}
+        </>
       ) : null}
       {brief.type === 'still' || brief.type === 'hero' ? (
         <ModelRouteSelect slot={slot} projectId={projectId} act={act} />

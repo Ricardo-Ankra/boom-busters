@@ -4,6 +4,7 @@ import {
   FIXTURE_PROJECT_ID,
   deleteCastMember,
   deleteProjectSet,
+  getSettings,
   insertCastMember,
   insertLogo,
   insertProjectSet,
@@ -44,6 +45,7 @@ import {
   referenceBudgets,
   resolveSlotBrief,
   routeForBrief,
+  stillPromptFor,
   stillsEstimateUsd,
 } from './visual-assets'
 
@@ -166,6 +168,29 @@ describeDb('generateStillCandidates with the cast', () => {
     // With no set there is no room to recompose.
     expect(request?.prompt).not.toContain('camera position')
     expect(candidates[0]?.references).toEqual(['Emad Mostaque'])
+  })
+
+  /**
+   * The board's "Prompt sent to the model" disclosure (decision 285): built
+   * from the same pure helpers generation uses, over the same cast and set
+   * lists, so the preview and the call cannot disagree while storage works
+   * (mock mode here always "loads" every photograph the plan asks for).
+   */
+  it('previews exactly the prompt generation sends (decision 285)', async () => {
+    const emad = await insertCastMember(db, {
+      projectId: FIXTURE_PROJECT_ID,
+      name: 'Emad Mostaque',
+      role: 'Founder',
+    })
+    await setCastPhotos(db, emad.id, [photo('front-1', 'front')])
+
+    const cast = await listCastMembers(db, FIXTURE_PROJECT_ID)
+    const sets = await listProjectSets(db, FIXTURE_PROJECT_ID)
+    const routing = (await getSettings(db)).modelRouting
+    const preview = stillPromptFor(still, cast, sets, routing, null)
+
+    await generateStillCandidates(still, FIXTURE_PROJECT_ID)
+    expect(generate.mock.calls[0]?.[0]?.prompt).toBe(preview)
   })
 
   it('sends every angle of one person, front view first, up to the limit', async () => {

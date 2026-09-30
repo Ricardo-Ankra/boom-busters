@@ -139,6 +139,36 @@ export async function stillsEstimateUsd(
 }
 
 /**
+ * The prompt a still would be sent with now (decision 285), for the board's
+ * "Prompt sent to the model". Built by the same pieces generation uses, from
+ * lists already loaded, so the preview and the call cannot disagree.
+ */
+export function stillPromptFor(
+  brief: StillBrief,
+  cast: readonly CastMember[],
+  sets: readonly ProjectSet[],
+  routing: ModelRouting,
+  stored: StillRoute | null,
+): string {
+  const derived = routeForBrief(brief, cast, sets, routing)
+  const route = stored && adapterOffers(stored) ? stored : derived
+  const plan = planStillReferences(
+    depictedFrom(brief, cast),
+    setFrom(brief, sets),
+    referenceBudgets(LIVE_IMAGE_GEN_ADAPTERS[route.provider].referenceLimits(route.model)),
+    brief.camera?.facing,
+  )
+  return assembleStillPrompt({
+    scene: brief.prompt,
+    ...(brief.shotSize ? { shotSize: brief.shotSize } : {}),
+    ...(brief.camera ? { camera: brief.camera } : {}),
+    layout: setForBrief(brief.set, sets)?.layout ?? '',
+    people: plan.people,
+    set: plan.setName === null ? null : { name: plan.setName, plates: plan.plates.length },
+  })
+}
+
+/**
  * Those members' photographs and the named set's plates, in the shape the
  * routed generator wants (decision 253, amended 264): Gemini takes bytes
  * inline, fal takes URLs. Storage that cannot be read (no bucket in a dev
