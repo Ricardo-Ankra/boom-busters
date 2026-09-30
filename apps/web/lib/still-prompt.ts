@@ -11,6 +11,111 @@
  * transitively.
  */
 
+import { stripBannedWords } from '@boom-busters/providers'
+import type { ReferenceLimits } from '@boom-busters/providers'
+import {
+  depictedMembers,
+  MAX_CHARACTER_REFERENCES,
+  MAX_SET_REFERENCES,
+  platesForCamera,
+  setForBrief,
+  spreadReferencePhotos,
+} from '@boom-busters/schemas'
+import type {
+  CastMember,
+  CastPhoto,
+  ModelRouting,
+  ProjectSet,
+  SetCamera,
+  SetPlate,
+  SetPlateDirection,
+  ShotBrief,
+  ShotSize,
+  StillBrief,
+  StillRoute,
+} from '@boom-busters/schemas'
+import { describeCamera, framingLead } from './set-plates'
+
+/**
+ * What one still may actually carry: the app's policy (`MAX_CHARACTER_REFERENCES`,
+ * `MAX_SET_REFERENCES`, decision 264), never more than the routed model
+ * allows. One function because the price estimate and the generator have to
+ * spend the same budget, and two copies of this sum once quoted a number no
+ * run would spend.
+ */
+export function referenceBudgets(limits: ReferenceLimits): {
+  characters: number
+  objects: number
+} {
+  return {
+    characters: Math.min(MAX_CHARACTER_REFERENCES, limits.characters),
+    objects: Math.min(MAX_SET_REFERENCES, limits.objects),
+  }
+}
+
+/**
+ * The people this still can actually show a likeness of: the cast members it
+ * depicts who have a photograph.
+ *
+ * This is THE rule, and it is pure so that the generator and the price
+ * estimate cannot answer it differently. They did once: the estimate assumed
+ * the dearer route for every still and quoted a number no run would ever
+ * spend (decision 253, amended). It also has to be settled before the route
+ * is chosen, because whether a still needs a likeness is what decides which
+ * generator it goes to.
+ *
+ * A name the cast has never seen, or one with no photograph yet, is not a
+ * likeness the app can produce, so such a still is routed, priced and
+ * generated as a plain one.
+ *
+ * Which entry names which member is `depictedMembers` (decision 262). The
+ * planner is asked for the name alone and has written "Emad Mostaque,
+ * founder and former CEO of Stability AI"; an exact-string join here sent
+ * every such still to the plain route, and the estimate agreed with it.
+ */
+export function depictedFrom(brief: StillBrief, cast: readonly CastMember[]): CastMember[] {
+  return depictedMembers(brief.depicts, cast)
+    .filter((member) => member.photos.length > 0)
+    .slice(0, MAX_CHARACTER_REFERENCES)
+}
+
+/**
+ * The set this still is shot in, if the project holds it and it has a plate,
+ * as a synchronous rule that mirrors `depictedFrom`. A named set nobody has
+ * photographed conditions nothing, exactly like a `depicts` name with no
+ * photograph, so it is treated as no set at all and the plan screen says so.
+ *
+ * Sync, and taking the project's sets rather than a project id, for the same
+ * reason `depictedFrom` does: the estimate and the generator must read it
+ * from a list already loaded, not query it once per brief (a 48-still film
+ * must not fire 48 identical set queries to show one price).
+ */
+export function setFrom(brief: StillBrief, sets: readonly ProjectSet[]): ProjectSet | null {
+  const found = setForBrief(brief.set, sets)
+  return found && found.plates.length > 0 ? found : null
+}
+
+/**
+ * Where a still goes, before the owner has said otherwise (decision 264).
+ *
+ * A still that carries any reference needs the reference-capable route, and
+ * that is what `stillsLikeness` is; the setting keeps its name because a
+ * likeness is still the reason it exists. A null split means there is one
+ * route and this changes nothing.
+ */
+export function routeForBrief(
+  brief: ShotBrief,
+  cast: readonly CastMember[],
+  sets: readonly ProjectSet[],
+  routing: ModelRouting,
+): StillRoute {
+  if (brief.type !== 'still' && brief.type !== 'hero') return routing.stills
+  const people = depictedMembers(brief.depicts, cast).filter((m) => m.photos.length > 0)
+  const set = setForBrief(brief.set, sets)
+  const conditioned = people.length > 0 || (set !== null && set.plates.length > 0)
+  return conditioned && routing.stillsLikeness ? routing.stillsLikeness : routing.stills
+}
+
 /**
  * The declaration that closes a prompt carrying references, and the marker that
  * stops it being written twice.
@@ -114,4 +219,65 @@ export function withReferenceClause(
   }
 
   return `${prompt.trimEnd()}\n\n${sentences.join(' ')}`
+}
+
+/** What one still carries: the photographs and plates that actually travel, and the counts the prompt names. */
+export interface StillReferencePlan {
+  photos: { member: CastMember; photo: CastPhoto }[]
+  plates: SetPlate[]
+  people: { name: string; photos: number }[]
+  setName: string | null
+}
+
+/**
+ * The references a still spends (decision 264): people first, because a
+ * wrong face is worse than a wrong room, then the plates nearest the camera.
+ * Pure, so the generator, the estimate, the board preview and the live
+ * harness count exactly the same photographs.
+ */
+export function planStillReferences(
+  members: readonly CastMember[],
+  set: ProjectSet | null,
+  budgets: { characters: number; objects: number },
+  facing?: SetPlateDirection,
+): StillReferencePlan {
+  const photos = spreadReferencePhotos(members, budgets.characters)
+  const plates = set ? platesForCamera(set, facing, budgets.objects) : []
+  const names = [...new Set(photos.map(({ member }) => member.name))]
+  return {
+    photos,
+    plates,
+    people: names.map((name) => ({
+      name,
+      photos: photos.filter(({ member }) => member.name === name).length,
+    })),
+    setName: plates.length > 0 && set ? set.name : null,
+  }
+}
+
+export type StillKind = 'still' | 'plate' | 'teaser'
+
+export interface StillPromptInput {
+  /** The brief's stored prompt. */
+  scene: string
+  shotSize?: ShotSize
+  camera?: SetCamera
+  /** The named set's inventory, or '' when the brief names none. */
+  layout: string
+  people: readonly { name: string; photos: number }[]
+  set: { name: string; plates: number } | null
+  kind?: StillKind
+}
+
+/** The one place a still's prompt is put together (decision 285). */
+export function assembleStillPrompt(input: StillPromptInput): string {
+  const body = input.camera
+    ? `${framingLead(input.camera, input.shotSize)}${input.scene}`
+    : input.scene
+  return withReferenceClause(
+    stripBannedWords(body),
+    input.people,
+    input.set,
+    input.camera ? describeCamera(input.camera, input.layout, input.shotSize) : null,
+  )
 }
