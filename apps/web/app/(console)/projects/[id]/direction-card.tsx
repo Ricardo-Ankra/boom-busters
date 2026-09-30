@@ -138,16 +138,27 @@ export function DirectionCard({
   projectId,
   direction,
   busy = false,
+  pressed = null,
   act,
 }: {
   projectId: string
   direction: DirectorsBook | null
-  /** Slots already resolved during plan review; a re-plan discards them. */
+  /** Any plan-card action in flight: both buttons stand down until it lands. */
   busy?: boolean
+  /** Which of the two is in flight (`direction-save` or `direction-redraft`), so only it spins. */
+  pressed?: string | null
   act: Act
 }) {
   const [form, setForm] = React.useState<DirectionForm | null>(direction ? toForm(direction) : null)
-  React.useEffect(() => setForm(direction ? toForm(direction) : null), [direction])
+  // Keyed on the book's content, not its identity. Every router.refresh()
+  // hands this card a new object for the same book, and the plan checkpoint
+  // refreshes on its own while the run is parked (LiveRefresh), so an
+  // identity dependency wiped whatever the owner was typing each time a
+  // slot fetch landed. CameraRow learned the same lesson.
+  const stored = direction ? JSON.stringify(direction) : null
+  React.useEffect(() => {
+    setForm(stored ? toForm(JSON.parse(stored) as DirectorsBook) : null)
+  }, [stored])
 
   const field = (key: keyof DirectionForm) => (value: string) =>
     setForm((current) => (current ? { ...current, [key]: value } : current))
@@ -213,7 +224,8 @@ export function DirectionCard({
             <div className="flex flex-wrap items-center gap-2">
               <Button
                 variant="primary"
-                busy={busy}
+                busy={pressed === 'direction-save'}
+                disabled={busy}
                 onClick={() =>
                   act(
                     'direction-save',
@@ -227,7 +239,8 @@ export function DirectionCard({
               <ConfirmButton
                 variant="outline"
                 confirmVariant="primary"
-                busy={busy}
+                busy={pressed === 'direction-redraft'}
+                disabled={busy}
                 label={`Redraft direction · ${REDRAFT_ESTIMATE}`}
                 confirmLabel="Redraft now"
                 consequence="One model call rewrites the whole book. Your edits to the book are replaced."
@@ -251,7 +264,8 @@ export function DirectionCard({
               <ConfirmButton
                 variant="primary"
                 confirmVariant="primary"
-                busy={busy}
+                busy={pressed === 'direction-redraft'}
+                disabled={busy}
                 label={`Redraft direction · ${REDRAFT_ESTIMATE}`}
                 confirmLabel="Draft now"
                 consequence="One model call writes the Director's Book from the approved script."

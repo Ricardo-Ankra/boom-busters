@@ -73,7 +73,13 @@ import type {
 import { anchoredTimes, timedParagraphs } from '@/inngest/lib/shot-list'
 import { presignGet, storageConfigured } from './storage'
 import { routeForBrief, stillsEstimateUsd } from './visual-assets'
-import { reuseView, sharedShotWarnings, type ReusableRow, type ReuseSource } from './visuals-reuse'
+import {
+  reuseView,
+  sharedShotWarnings,
+  timecode,
+  type ReusableRow,
+  type ReuseSource,
+} from './visuals-reuse'
 
 /**
  * What the visual board shows, and what the visuals gate refuses on — one
@@ -283,6 +289,8 @@ export interface VisualsReviewModel {
    * 277): every one is something the Fix button acts on, by the same rule.
    */
   warnings: string[]
+  /** The same craft notes by slot id, so each card can say its own. */
+  slotNotes: Record<string, string[]>
   /**
    * Notes no rewrite of a brief can clear (decision 277): a cast member the
    * book forgot, references nothing names, shots shared between slots. They
@@ -329,6 +337,7 @@ export function emptyVisualsModel(): VisualsReviewModel {
     fetchEstimateUsd: 0,
     direction: null,
     warnings: [],
+    slotNotes: {},
     decisions: [],
     repair: { slots: 0, becomeStills: 0, chapters: 0 },
     articleClaims: [],
@@ -895,6 +904,17 @@ export async function visualsReviewModel(
       bannedWords: BANNED_PROMPT_WORDS,
     }),
   )
+  // `slotIndex` counts the briefed slots from zero, which no card shows, so
+  // "(slot 0)" could not be found on screen. Each note is said where the
+  // card says it (chapter and timecode) and handed to that card as well.
+  const briefed = slots.filter((slot) => slot.brief !== null)
+  const slotNotes: Record<string, string[]> = {}
+  const warnings = findings.map((finding) => {
+    const slot = briefed[finding.slotIndex]
+    if (!slot) return finding.message
+    ;(slotNotes[slot.id] ??= []).push(finding.message)
+    return `${finding.message} (ch ${slot.chapterIndex + 1} · ${timecode(slot.startMs)})`
+  })
 
   return {
     chapters,
@@ -912,7 +932,8 @@ export async function visualsReviewModel(
     direction,
     // Craft notes (decisions 252, 277), in screen order; never a blocker. One
     // per finding, so the list and the Fix button's count are the same set.
-    warnings: findings.map((finding) => `${finding.message} (slot ${finding.slotIndex})`),
+    warnings,
+    slotNotes,
     // What no rewrite of a brief can clear: a cast member the book forgot
     // (decision 253), references nothing names, shots shared between slots.
     decisions: [

@@ -78,6 +78,51 @@ describe('DirectionCard', () => {
     expect(replanShotsAction).not.toHaveBeenCalled()
   })
 
+  it('keeps what the owner is typing when a refresh hands back the same book', async () => {
+    // The plan checkpoint refreshes itself while the run is parked, and every
+    // refresh is a new object for an unchanged book.
+    const { rerender } = render(<DirectionCard projectId={PROJECT} direction={book} act={act} />)
+    const thesis = screen.getByLabelText('Visual thesis')
+    await userEvent.clear(thesis)
+    await userEvent.type(thesis, 'Half a thought')
+
+    rerender(
+      <DirectionCard
+        projectId={PROJECT}
+        direction={JSON.parse(JSON.stringify(book)) as typeof book}
+        act={act}
+      />,
+    )
+    expect(screen.getByLabelText('Visual thesis')).toHaveValue('Half a thought')
+
+    // A book that really changed (a redraft landed) does replace the form.
+    rerender(
+      <DirectionCard
+        projectId={PROJECT}
+        direction={{ ...book, visualThesis: 'The redrafted thesis.' }}
+        act={act}
+      />,
+    )
+    expect(screen.getByLabelText('Visual thesis')).toHaveValue('The redrafted thesis.')
+  })
+
+  it('spins only the pressed button and holds the other while a plan action runs', () => {
+    render(
+      <DirectionCard
+        projectId={PROJECT}
+        direction={book}
+        busy
+        pressed="direction-save"
+        act={act}
+      />,
+    )
+    const save = screen.getByRole('button', { name: 'Save direction' })
+    expect(save).toHaveAttribute('aria-busy', 'true')
+    const redraft = screen.getByRole('button', { name: /Redraft direction/ })
+    expect(redraft).toBeDisabled()
+    expect(redraft).not.toHaveAttribute('aria-busy')
+  })
+
   it('with no book yet, offers only the redraft', () => {
     render(<DirectionCard projectId={PROJECT} direction={null} act={act} />)
     expect(screen.getByText(/No direction has been written for this film yet/)).toBeVisible()

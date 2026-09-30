@@ -5,6 +5,7 @@ import { SOCIAL_TOO_LONG } from '@boom-busters/compositions/social'
 import { X_POST_MISSING } from '@boom-busters/providers'
 import { DEFAULT_SETTINGS } from '@boom-busters/schemas'
 import type { SlotView, VisualsReviewModel } from '@/lib/visuals-review'
+import { timecode } from '@/lib/visuals-reuse'
 import { VisualBoard } from './visual-board'
 import type { BrandChartColors } from './slot-previews'
 
@@ -426,6 +427,7 @@ function model(slots: SlotView[], overrides: Partial<VisualsReviewModel> = {}): 
     fetchEstimateUsd: 0,
     direction: null,
     warnings: [],
+    slotNotes: {},
     decisions: [],
     repair: { slots: 0, becomeStills: 0, chapters: 0 },
     articleClaims: ARTICLE_CLAIMS,
@@ -461,7 +463,9 @@ describe('VisualBoard', () => {
     expect(screen.getByText('+3 more fetched')).toBeInTheDocument()
 
     const strip = screen.getByRole('list', { name: 'Candidates' })
-    const alternatives = within(strip).getAllByRole('listitem')
+    // Each list item holds a real button, so the thumbs read as pressable.
+    expect(within(strip).getAllByRole('listitem')).toHaveLength(2)
+    const alternatives = within(strip).getAllByRole('button')
     await userEvent.click(alternatives[1]!)
 
     expect(chooseCandidateAction).toHaveBeenCalledWith(PROJECT, SLOT_A, 'b2')
@@ -1142,13 +1146,16 @@ describe('the plan phase (staged-visuals design)', () => {
     const box = note.closest('div')!
     await userEvent.click(within(box).getByRole('button', { name: 'Dismiss' }))
     expect(dismissRetypeAction).toHaveBeenCalledWith(PROJECT, SLOT_A)
-    // The note holds no button: it is a report, not a model at work.
+    // The note holds no button: it is a report, not a model at work. The
+    // Dismiss press itself holds the card until its refresh lands, then lets go.
     const picker = screen.getByRole('group', { name: 'Slot format' })
-    expect(
-      within(picker)
-        .getAllByRole('button')
-        .some((button) => !button.hasAttribute('disabled')),
-    ).toBe(true)
+    await waitFor(() =>
+      expect(
+        within(picker)
+          .getAllByRole('button')
+          .some((button) => !button.hasAttribute('disabled')),
+      ).toBe(true),
+    )
   })
 
   it('lists what Fix cannot clear apart from the craft notes', () => {
@@ -2172,5 +2179,438 @@ describe('the post card (decision 284)', () => {
     const chooser = screen.getByRole('group', { name: 'Which post this card shows' })
     expect(within(chooser).getByText(/no claim in this project/)).toBeInTheDocument()
     expect(within(chooser).queryByRole('button')).not.toBeInTheDocument()
+  })
+})
+
+/** A server action the test answers when it chooses to, so the in-flight state can be read. */
+function deferred<T = { ok: boolean; error?: string }>() {
+  let resolve!: (value: T) => void
+  const promise = new Promise<T>((settle) => {
+    resolve = settle
+  })
+  return { promise, resolve }
+}
+
+/** One slot's card, found by the id the filmstrip scrolls to. */
+const card = (slotId: string) => within(document.getElementById(`slot-${slotId}`)!)
+
+describe('button state on the board (decision 240)', () => {
+  it('spins the pressed button and holds the rest of the card until it lands', async () => {
+    const pending = deferred()
+    refetchSlotAction.mockReturnValueOnce(pending.promise)
+    render(
+      <VisualBoard projectId={PROJECT} model={model([stockSlot])} colors={COLORS} brand={BRAND} />,
+    )
+
+    const regenerate = screen.getByRole('button', { name: 'Regenerate' })
+    await userEvent.click(regenerate)
+
+    expect(regenerate).toHaveAttribute('aria-busy', 'true')
+    expect(regenerate).toBeDisabled()
+    // The siblings stand down without spinning, so the eye finds the one pressed.
+    const upload = screen.getByRole('button', { name: 'Upload own' })
+    expect(upload).toBeDisabled()
+    expect(upload).not.toHaveAttribute('aria-busy')
+    const strip = screen.getByRole('list', { name: 'Candidates' })
+    for (const candidate of within(strip).getAllByRole('button')) {
+      expect(candidate).toBeDisabled()
+    }
+    // Opening the editor is not an action, so it stays offered.
+    expect(screen.getByRole('button', { name: 'Edit brief & re-fetch' })).toBeEnabled()
+
+    pending.resolve({ ok: true })
+    await waitFor(() => expect(regenerate).toBeEnabled())
+    expect(regenerate).not.toHaveAttribute('aria-busy')
+    expect(upload).toBeEnabled()
+    expect(refresh).toHaveBeenCalledOnce()
+  })
+
+  it('fires a double click once', async () => {
+    const pending = deferred()
+    refetchSlotAction.mockReturnValueOnce(pending.promise)
+    render(
+      <VisualBoard projectId={PROJECT} model={model([stockSlot])} colors={COLORS} brand={BRAND} />,
+    )
+
+    await userEvent.dblClick(screen.getByRole('button', { name: 'Regenerate' })).catch(() => {
+      // The second click lands on a disabled control, which is the point.
+    })
+    expect(refetchSlotAction).toHaveBeenCalledOnce()
+    pending.resolve({ ok: true })
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Regenerate' })).toBeEnabled())
+  })
+
+  it('keeps each card’s lock its own when two are in flight', async () => {
+    const second: SlotView = { ...stockSlot, id: SLOT_B, startMs: 8000 }
+    const first = deferred()
+    const other = deferred()
+    refetchSlotAction.mockImplementation((_project: string, slotId: string) =>
+      slotId === SLOT_A ? first.promise : other.promise,
+    )
+    render(
+      <VisualBoard
+        projectId={PROJECT}
+        model={model([stockSlot, second])}
+        colors={COLORS}
+        brand={BRAND}
+      />,
+    )
+
+    await userEvent.click(card(SLOT_A).getByRole('button', { name: 'Regenerate' }))
+    await userEvent.click(card(SLOT_B).getByRole('button', { name: 'Regenerate' }))
+    first.resolve({ ok: true })
+
+    await waitFor(() =>
+      expect(card(SLOT_A).getByRole('button', { name: 'Regenerate' })).toBeEnabled(),
+    )
+    // With one `busySlot`, A finishing unlocked B while B was still sending.
+    expect(card(SLOT_B).getByRole('button', { name: 'Regenerate' })).toHaveAttribute(
+      'aria-busy',
+      'true',
+    )
+    other.resolve({ ok: true })
+    await waitFor(() =>
+      expect(card(SLOT_B).getByRole('button', { name: 'Regenerate' })).toBeEnabled(),
+    )
+  })
+
+  it('lets go at once and says why when the server refuses', async () => {
+    refetchSlotAction.mockResolvedValueOnce({ ok: false, error: 'This slot no longer exists.' })
+    render(
+      <VisualBoard projectId={PROJECT} model={model([stockSlot])} colors={COLORS} brand={BRAND} />,
+    )
+
+    await userEvent.click(screen.getByRole('button', { name: 'Regenerate' }))
+
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Regenerate' })).toBeEnabled())
+    expect(toast).toHaveBeenCalledWith(
+      expect.objectContaining({ description: 'This slot no longer exists.', variant: 'error' }),
+    )
+    expect(refresh).not.toHaveBeenCalled()
+  })
+
+  it('says the request never arrived when the call itself fails, and lets go', async () => {
+    refetchSlotAction.mockRejectedValueOnce(new Error('network down'))
+    render(
+      <VisualBoard projectId={PROJECT} model={model([stockSlot])} colors={COLORS} brand={BRAND} />,
+    )
+
+    await userEvent.click(screen.getByRole('button', { name: 'Regenerate' }))
+
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Regenerate' })).toBeEnabled())
+    expect(toast).toHaveBeenCalledWith(
+      expect.objectContaining({ description: expect.stringMatching(/never reached the server/) }),
+    )
+  })
+
+  it('spins the brief editor’s Save and holds the card’s other actions while it saves', async () => {
+    const pending = deferred()
+    editBriefAction.mockReturnValueOnce(pending.promise)
+    render(
+      <VisualBoard projectId={PROJECT} model={model([stockSlot])} colors={COLORS} brand={BRAND} />,
+    )
+
+    await userEvent.click(screen.getByRole('button', { name: 'Edit brief & re-fetch' }))
+    const save = screen.getByRole('button', { name: 'Save & re-fetch' })
+    await userEvent.click(save)
+
+    expect(save).toHaveAttribute('aria-busy', 'true')
+    expect(screen.getByRole('button', { name: 'Regenerate' })).toBeDisabled()
+    // Before, the spinner landed on the "Close brief editor" toggle instead.
+    expect(screen.getByRole('button', { name: 'Close brief editor' })).not.toHaveAttribute(
+      'aria-busy',
+    )
+
+    pending.resolve({ ok: true })
+    await waitFor(() =>
+      expect(screen.queryByRole('button', { name: 'Save & re-fetch' })).not.toBeInTheDocument(),
+    )
+  })
+
+  it('keeps Upload own busy through the whole presign, upload and finalise', async () => {
+    const created = deferred<{ ok: boolean; url?: string }>()
+    createOwnUploadAction.mockReturnValueOnce(created.promise)
+    finaliseOwnUploadAction.mockResolvedValue({ ok: true })
+    render(
+      <VisualBoard projectId={PROJECT} model={model([stockSlot])} colors={COLORS} brand={BRAND} />,
+    )
+
+    await userEvent.upload(
+      screen.getByLabelText('Upload your own image for this slot'),
+      new File(['pixels'], 'shot.png', { type: 'image/png' }),
+    )
+
+    const upload = screen.getByRole('button', { name: 'Upload own' })
+    await waitFor(() => expect(upload).toHaveAttribute('aria-busy', 'true'))
+    expect(screen.getByRole('button', { name: 'Regenerate' })).toBeDisabled()
+
+    created.resolve({ ok: true, url: 'https://r2.example/put' })
+    await waitFor(() => expect(finaliseOwnUploadAction).toHaveBeenCalled())
+    await waitFor(() => expect(upload).not.toHaveAttribute('aria-busy'))
+    expect(toast).toHaveBeenCalledWith({ title: 'Uploaded and selected' })
+  })
+
+  it('spins only the post card control pressed, where every one used to spin together', async () => {
+    const pending = deferred()
+    refetchSocialPostAction.mockReturnValueOnce(pending.promise)
+    render(
+      <VisualBoard projectId={PROJECT} model={model([socialSlot])} colors={COLORS} brand={BRAND} />,
+    )
+
+    await userEvent.click(screen.getByRole('button', { name: 'Read again' }))
+
+    expect(screen.getByRole('button', { name: 'Read again' })).toHaveAttribute('aria-busy', 'true')
+    const highlight = screen.getByRole('button', { name: 'Save highlight' })
+    expect(highlight).toBeDisabled()
+    expect(highlight).not.toHaveAttribute('aria-busy')
+    expect(screen.getByRole('button', { name: "Upload the post's image" })).toBeDisabled()
+
+    pending.resolve({ ok: true })
+    await waitFor(() => expect(highlight).toBeEnabled())
+  })
+
+  it('holds a headline card’s Re-fetch and its format picker while the article is read', async () => {
+    const pending = deferred()
+    refetchArticleAction.mockReturnValueOnce(pending.promise)
+    render(
+      <VisualBoard
+        projectId={PROJECT}
+        model={model([headlineSlot])}
+        colors={COLORS}
+        brand={BRAND}
+      />,
+    )
+
+    await userEvent.click(screen.getByRole('button', { name: 'Re-fetch' }))
+
+    expect(screen.getByRole('button', { name: 'Re-fetch' })).toHaveAttribute('aria-busy', 'true')
+    const picker = screen.getByRole('group', { name: 'Slot format' })
+    for (const format of within(picker).getAllByRole('button')) expect(format).toBeDisabled()
+
+    pending.resolve({ ok: true })
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Re-fetch' })).toBeEnabled())
+  })
+
+  it('holds every plan-card spend while one of them is being sent', async () => {
+    const pending = deferred()
+    approvePlanAction.mockReturnValueOnce(pending.promise)
+    const planned: SlotView = {
+      ...stockSlot,
+      status: 'unresolved',
+      candidates: [],
+      needsFetch: true,
+    }
+    render(
+      <VisualBoard
+        projectId={PROJECT}
+        model={model([planned], {
+          phase: 'plan',
+          repair: { slots: 1, becomeStills: 0, chapters: 1 },
+        })}
+        colors={COLORS}
+        brand={BRAND}
+      />,
+    )
+
+    await userEvent.click(screen.getByRole('button', { name: /Fetch visuals/ }))
+    await userEvent.click(screen.getByRole('button', { name: /^Fetch now$/ }))
+
+    expect(screen.getByRole('button', { name: /^Fetch now$/ })).toHaveAttribute('aria-busy', 'true')
+    // A re-plan sent beside a fetch would discard the slots the fetch is buying.
+    expect(screen.getByRole('button', { name: /Re-plan shot list/ })).toBeDisabled()
+    expect(screen.getByRole('button', { name: /Fix these 1 slot/ })).toBeDisabled()
+    expect(screen.getByRole('button', { name: /Redraft direction/ })).toBeDisabled()
+
+    pending.resolve({ ok: true })
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /Re-plan shot list/ })).toBeEnabled(),
+    )
+  })
+
+  it('makes every filmstrip thumb a button inside its list item', () => {
+    render(
+      <VisualBoard
+        projectId={PROJECT}
+        model={model([stockSlot, chartSlot])}
+        colors={COLORS}
+        brand={BRAND}
+      />,
+    )
+
+    const filmstrip = screen.getByRole('list', { name: 'Filmstrip' })
+    expect(within(filmstrip).getAllByRole('listitem')).toHaveLength(2)
+    expect(within(filmstrip).getAllByRole('button', { name: /^Jump to/ })).toHaveLength(2)
+  })
+})
+
+describe('folding chapters', () => {
+  beforeEach(() => {
+    window.localStorage.clear()
+  })
+
+  const threeSlots = () => model([stockSlot, chartSlot, brokenSlot])
+  const chapterTwo = () => screen.getByRole('button', { name: /^Chapter 2 — The collapse/ })
+
+  it('folds a chapter from its header, and the header still says what it holds', async () => {
+    render(<VisualBoard projectId={PROJECT} model={threeSlots()} colors={COLORS} brand={BRAND} />)
+
+    expect(chapterTwo()).toHaveAttribute('aria-expanded', 'true')
+    expect(chapterTwo()).toHaveTextContent('1 shot')
+    expect(chapterTwo()).toHaveTextContent('1 placeholder')
+
+    await userEvent.click(chapterTwo())
+
+    expect(chapterTwo()).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.getByText(/no longer matches its schema/)).not.toBeVisible()
+    // Folded, it still names the problem inside it.
+    expect(chapterTwo()).toHaveTextContent('1 placeholder')
+    // The other chapter is untouched.
+    expect(screen.getByText(/“By June, the auditors could not find the money.”/)).toBeVisible()
+
+    await userEvent.click(chapterTwo())
+    expect(screen.getByText(/no longer matches its schema/)).toBeVisible()
+  })
+
+  it('folds and opens every chapter at once, offering only the one that changes something', async () => {
+    render(<VisualBoard projectId={PROJECT} model={threeSlots()} colors={COLORS} brand={BRAND} />)
+
+    const expand = screen.getByRole('button', { name: 'Expand all chapters' })
+    const collapse = screen.getByRole('button', { name: 'Collapse all chapters' })
+    expect(expand).toBeDisabled()
+
+    await userEvent.click(collapse)
+    expect(collapse).toBeDisabled()
+    expect(screen.getByRole('button', { name: /^Chapter 1 — The audit/ })).toHaveAttribute(
+      'aria-expanded',
+      'false',
+    )
+    expect(chapterTwo()).toHaveAttribute('aria-expanded', 'false')
+
+    await userEvent.click(expand)
+    expect(chapterTwo()).toHaveAttribute('aria-expanded', 'true')
+    expect(expand).toBeDisabled()
+  })
+
+  it('offers no fold-all row for a one-chapter film', () => {
+    render(
+      <VisualBoard projectId={PROJECT} model={model([stockSlot])} colors={COLORS} brand={BRAND} />,
+    )
+    expect(screen.queryByRole('button', { name: 'Collapse all chapters' })).not.toBeInTheDocument()
+  })
+
+  it('remembers the fold for this project in this browser', async () => {
+    const { unmount } = render(
+      <VisualBoard projectId={PROJECT} model={threeSlots()} colors={COLORS} brand={BRAND} />,
+    )
+    await userEvent.click(chapterTwo())
+    unmount()
+
+    render(<VisualBoard projectId={PROJECT} model={threeSlots()} colors={COLORS} brand={BRAND} />)
+    await waitFor(() => expect(chapterTwo()).toHaveAttribute('aria-expanded', 'false'))
+  })
+
+  it('opens a folded chapter when the filmstrip jumps into it', async () => {
+    const scrollIntoView = vi.fn()
+    Element.prototype.scrollIntoView = scrollIntoView
+    vi.stubGlobal('requestAnimationFrame', (run: FrameRequestCallback) => {
+      run(0)
+      return 0
+    })
+    render(<VisualBoard projectId={PROJECT} model={threeSlots()} colors={COLORS} brand={BRAND} />)
+    await userEvent.click(chapterTwo())
+
+    const filmstrip = screen.getByRole('list', { name: 'Filmstrip' })
+    await userEvent.click(
+      within(filmstrip).getByRole('button', {
+        name: `Jump to chart slot at ${timecode(brokenSlot.startMs)}`,
+      }),
+    )
+
+    expect(chapterTwo()).toHaveAttribute('aria-expanded', 'true')
+    expect(screen.getByText(/no longer matches its schema/)).toBeVisible()
+    expect(scrollIntoView).toHaveBeenCalledWith({ block: 'center' })
+  })
+
+  it('keeps a half-typed brief when its chapter folds', async () => {
+    render(<VisualBoard projectId={PROJECT} model={threeSlots()} colors={COLORS} brand={BRAND} />)
+    const chapterOne = screen.getByRole('button', { name: /^Chapter 1 — The audit/ })
+
+    await userEvent.click(card(SLOT_A).getByRole('button', { name: 'Edit brief & re-fetch' }))
+    const description = card(SLOT_A).getByLabelText('Visual description')
+    await userEvent.clear(description)
+    await userEvent.type(description, 'A half-typed idea')
+
+    await userEvent.click(chapterOne)
+    await userEvent.click(chapterOne)
+
+    expect(card(SLOT_A).getByLabelText('Visual description')).toHaveValue('A half-typed idea')
+  })
+
+  it('counts a chapter’s drafting and refused cards on its header', () => {
+    const drafting: SlotView = {
+      ...stockSlot,
+      retype: { state: 'drafting', target: 'chart' },
+    }
+    const refused: SlotView = {
+      ...chartSlot,
+      retype: { state: 'refused', target: 'map', reason: 'No places in the text.' },
+    }
+    render(
+      <VisualBoard
+        projectId={PROJECT}
+        model={model([drafting, refused])}
+        colors={COLORS}
+        brand={BRAND}
+      />,
+    )
+
+    const header = screen.getByRole('button', { name: /^Chapter 1 — The audit/ })
+    expect(header).toHaveTextContent('1 drafting')
+    expect(header).toHaveTextContent('1 to look at')
+  })
+})
+
+describe('craft notes on the card (decision 277)', () => {
+  const note = 'this is the third "wide" shot in a row; use a different shot size'
+
+  it('puts a note on the card it is about and counts it on the chapter', () => {
+    const planned: SlotView = {
+      ...stockSlot,
+      status: 'unresolved',
+      candidates: [],
+      needsFetch: true,
+    }
+    render(
+      <VisualBoard
+        projectId={PROJECT}
+        model={model([planned, { ...chartSlot, status: 'unresolved' }], {
+          phase: 'plan',
+          warnings: [`${note} (ch 1 · ${timecode(0)})`],
+          slotNotes: { [SLOT_A]: [note] },
+        })}
+        colors={COLORS}
+        brand={BRAND}
+      />,
+    )
+
+    expect(card(SLOT_A).getByRole('list', { name: 'Craft notes on this shot' })).toHaveTextContent(
+      note,
+    )
+    expect(card(SLOT_B).queryByRole('list', { name: 'Craft notes on this shot' })).toBeNull()
+    expect(screen.getByRole('button', { name: /^Chapter 1 — The audit/ })).toHaveTextContent(
+      '1 craft note',
+    )
+  })
+
+  it('keeps notes off the cards once the board is fetched', () => {
+    render(
+      <VisualBoard
+        projectId={PROJECT}
+        model={model([stockSlot], { slotNotes: { [SLOT_A]: [note] } })}
+        colors={COLORS}
+        brand={BRAND}
+      />,
+    )
+    expect(screen.queryByRole('list', { name: 'Craft notes on this shot' })).toBeNull()
   })
 })

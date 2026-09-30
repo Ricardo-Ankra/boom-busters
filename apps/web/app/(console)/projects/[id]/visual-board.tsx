@@ -1,6 +1,17 @@
 'use client'
 
-import { ImagePlus, Maximize2, Pause, Play, RefreshCw, Search } from 'lucide-react'
+import {
+  ChevronDown,
+  ChevronsDownUp,
+  ChevronsUpDown,
+  ImagePlus,
+  Loader2,
+  Maximize2,
+  Pause,
+  Play,
+  RefreshCw,
+  Search,
+} from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import * as React from 'react'
 import { SOCIAL_EXCERPT_TOO_LONG, SOCIAL_TOO_LONG } from '@boom-busters/compositions/social'
@@ -98,6 +109,41 @@ import { SocialPreview } from './social-preview'
  * take plays in sequence, which is the same audio at the same moments.)
  */
 
+/**
+ * The board's one runner (decision 240, brought to the board). `key` is what
+ * it locks: a slot id, or one of the plan card's actions. `press` names the
+ * control that spins while the rest of what `key` locks stands disabled.
+ */
+type Act = (
+  key: string,
+  run: () => Promise<ActionResult>,
+  success: string,
+  press?: string,
+) => Promise<ActionResult>
+
+/**
+ * One slot's lock, from the press until the refreshed card is on screen:
+ * `busy` holds every action on the card, `pressed` names the one that spins.
+ * A context rather than a prop because it reaches a dozen nested controls,
+ * and a control that forgot the prop was exactly how the board came to have
+ * buttons that took a second click mid-save.
+ */
+interface SlotLock {
+  busy: boolean
+  pressed: string | null
+}
+const SlotLockContext = React.createContext<SlotLock>({ busy: false, pressed: null })
+
+/** A key's entry on the board: the pressed control, and whether only the refresh is left. */
+interface Lock {
+  pressed: string | null
+  settling: boolean
+}
+const useSlotLock = (): SlotLock => React.useContext(SlotLockContext)
+
+/** The plan card's own keys: while any is in flight, none of them is offered. */
+const PLAN_KEYS = ['plan', 'repair', 'replan', 'direction-save', 'direction-redraft'] as const
+
 const STATUS_TONE: Record<string, BadgeTone> = {
   resolved: 'success',
   placeholder: 'warning',
@@ -133,10 +179,11 @@ function HeadlineSlot({
   slot: SlotView
   brief: Extract<ShotBrief, { type: 'headline' }>
   projectId: string
-  act: (slotId: string, run: () => Promise<ActionResult>, success: string) => Promise<ActionResult>
+  act: Act
   colors: BrandChartColors
 }) {
   const article = slot.article
+  const { busy, pressed } = useSlotLock()
   const [editing, setEditing] = React.useState(false)
   // A front page is no article (decision 280): the address form opens by
   // itself there, because the card cannot be right until it has one.
@@ -203,8 +250,15 @@ function HeadlineSlot({
         <Button
           type="button"
           variant="ghost"
+          busy={pressed === 'refetch-article'}
+          disabled={busy}
           onClick={() =>
-            void act(slot.id, () => refetchArticleAction(projectId, slot.id), 'Article read again')
+            void act(
+              slot.id,
+              () => refetchArticleAction(projectId, slot.id),
+              'Article read again',
+              'refetch-article',
+            )
           }
         >
           Re-fetch
@@ -230,6 +284,7 @@ function HeadlineSlot({
               slot.id,
               () => setHeadlineArticleAction(projectId, slot.id, address),
               'Article address saved and read',
+              'article-address',
             ).then((result) => {
               if (result.ok) setAddressing(false)
             })
@@ -248,7 +303,12 @@ function HeadlineSlot({
             />
           </label>
           <div className="flex gap-2">
-            <Button type="submit" variant="primary" disabled={address.trim() === ''}>
+            <Button
+              type="submit"
+              variant="primary"
+              busy={pressed === 'article-address'}
+              disabled={busy || address.trim() === ''}
+            >
               Use this article
             </Button>
           </div>
@@ -281,9 +341,10 @@ function HeadlineForm({
   brief: Extract<ShotBrief, { type: 'headline' }>
   article: NonNullable<SlotView['article']>
   projectId: string
-  act: (slotId: string, run: () => Promise<ActionResult>, success: string) => Promise<ActionResult>
+  act: Act
   onDone: () => void
 }) {
+  const { busy, pressed } = useSlotLock()
   const [outlet, setOutlet] = React.useState(article.outlet ?? '')
   const [headline, setHeadline] = React.useState(article.headline ?? '')
   const [author, setAuthor] = React.useState(article.author ?? '')
@@ -314,6 +375,7 @@ function HeadlineForm({
               showDeck,
             }),
           'Headline saved',
+          'headline',
         ).then((result) => {
           if (result.ok) onDone()
         })
@@ -379,7 +441,7 @@ function HeadlineForm({
         />
       </label>
       <div className="flex gap-2">
-        <Button type="submit" variant="primary">
+        <Button type="submit" variant="primary" busy={pressed === 'headline'} disabled={busy}>
           Save
         </Button>
         <Button type="button" variant="ghost" onClick={onDone}>
@@ -435,18 +497,17 @@ function SocialSlot({
   brief,
   projectId,
   act,
-  busy,
   brand,
   castMembers,
 }: {
   slot: SlotView
   brief: Extract<ShotBrief, { type: 'social' }>
   projectId: string
-  act: (slotId: string, run: () => Promise<ActionResult>, success: string) => Promise<ActionResult>
-  busy: boolean
+  act: Act
   brand: BrandKitStored
   castMembers: readonly CastOption[]
 }) {
+  const { busy, pressed } = useSlotLock()
   const social = slot.social
   const post = social?.post ?? null
   // No readable post: the address is the first thing the card needs.
@@ -541,9 +602,15 @@ function SocialSlot({
         <Button
           type="button"
           variant="ghost"
-          busy={busy}
+          busy={pressed === 'read-post'}
+          disabled={busy}
           onClick={() =>
-            void act(slot.id, () => refetchSocialPostAction(projectId, slot.id), 'Post read again')
+            void act(
+              slot.id,
+              () => refetchSocialPostAction(projectId, slot.id),
+              'Post read again',
+              'read-post',
+            )
           }
         >
           Read again
@@ -569,6 +636,7 @@ function SocialSlot({
               slot.id,
               () => setSocialPostAction(projectId, slot.id, address),
               'Post address saved',
+              'post-address',
             ).then((result) => {
               if (result.ok) setAddressing(false)
             })
@@ -585,7 +653,12 @@ function SocialSlot({
             />
           </label>
           <div className="flex gap-2">
-            <Button type="submit" variant="primary" disabled={address.trim() === ''}>
+            <Button
+              type="submit"
+              variant="primary"
+              busy={pressed === 'post-address'}
+              disabled={busy || address.trim() === ''}
+            >
               Use this post
             </Button>
           </div>
@@ -609,7 +682,6 @@ function SocialSlot({
           initial={brief.emphasis ?? suggestEmphasis(shown) ?? ''}
           projectId={projectId}
           act={act}
-          busy={busy}
         />
       ) : null}
 
@@ -621,7 +693,6 @@ function SocialSlot({
           chosen={brief.excerpt !== undefined}
           projectId={projectId}
           act={act}
-          busy={busy}
         />
       ) : null}
 
@@ -647,7 +718,8 @@ function SocialSlot({
           <Button
             type="button"
             variant="ghost"
-            busy={busy}
+            busy={pressed === 'unlink-cast'}
+            disabled={busy}
             onClick={() => {
               const castId = social.avatar.castId
               if (castId === null) return
@@ -655,6 +727,7 @@ function SocialSlot({
                 slot.id,
                 () => unlinkCastHandleAction(projectId, castId, slot.id),
                 `${social.avatar.castName ?? 'The cast member'} unlinked from this account`,
+                'unlink-cast',
               )
             }}
           >
@@ -674,12 +747,14 @@ function SocialSlot({
           <Button
             type="button"
             variant="ghost"
-            busy={busy}
+            busy={pressed === 'remove-avatar'}
+            disabled={busy}
             onClick={() =>
               void act(
                 slot.id,
                 () => removeSocialImageAction(projectId, slot.id, 'avatar'),
                 'Profile picture removed',
+                'remove-avatar',
               )
             }
           >
@@ -696,7 +771,6 @@ function SocialSlot({
             handle={post.handle}
             castMembers={castMembers}
             act={act}
-            busy={busy}
           />
         ) : null}
       </div>
@@ -731,12 +805,14 @@ function SocialSlot({
           <Button
             type="button"
             variant="ghost"
-            busy={busy}
+            busy={pressed === 'remove-media'}
+            disabled={busy}
             onClick={() =>
               void act(
                 slot.id,
                 () => removeSocialImageAction(projectId, slot.id, 'media'),
                 'Image removed',
+                'remove-media',
               )
             }
           >
@@ -759,9 +835,10 @@ function SocialDetailsForm({
   slot: SlotView
   post: NonNullable<SlotView['social']>['post']
   projectId: string
-  act: (slotId: string, run: () => Promise<ActionResult>, success: string) => Promise<ActionResult>
+  act: Act
   onDone: () => void
 }) {
+  const { busy, pressed } = useSlotLock()
   const [authorName, setAuthorName] = React.useState(post?.authorName ?? '')
   const [handle, setHandle] = React.useState(post?.handle ?? '')
   const [text, setText] = React.useState(post?.text ?? '')
@@ -777,6 +854,7 @@ function SocialDetailsForm({
           slot.id,
           () => saveSocialPostAction(projectId, slot.id, { authorName, handle, text, postedAt }),
           'Post details saved',
+          'post-details',
         ).then((result) => {
           if (result.ok) onDone()
         })
@@ -825,7 +903,7 @@ function SocialDetailsForm({
         />
       </label>
       <div className="flex gap-2">
-        <Button type="submit" variant="primary">
+        <Button type="submit" variant="primary" busy={pressed === 'post-details'} disabled={busy}>
           Save
         </Button>
         <Button type="button" variant="ghost" onClick={onDone}>
@@ -842,14 +920,13 @@ function SocialHighlightForm({
   initial,
   projectId,
   act,
-  busy,
 }: {
   slot: SlotView
   initial: string
   projectId: string
-  act: (slotId: string, run: () => Promise<ActionResult>, success: string) => Promise<ActionResult>
-  busy: boolean
+  act: Act
 }) {
+  const { busy, pressed } = useSlotLock()
   const [emphasis, setEmphasis] = React.useState(initial)
   return (
     <form
@@ -862,6 +939,7 @@ function SocialHighlightForm({
           slot.id,
           () => saveSocialCardAction(projectId, slot.id, { emphasis: value === '' ? null : value }),
           value === '' ? 'Highlight cleared' : 'Highlight saved',
+          'highlight',
         )
       }}
     >
@@ -875,7 +953,7 @@ function SocialHighlightForm({
           className={SOCIAL_FIELD_CLASS}
         />
       </label>
-      <Button type="submit" variant="outline" busy={busy}>
+      <Button type="submit" variant="outline" busy={pressed === 'highlight'} disabled={busy}>
         Save highlight
       </Button>
     </form>
@@ -889,15 +967,14 @@ function SocialExcerptForm({
   chosen,
   projectId,
   act,
-  busy,
 }: {
   slot: SlotView
   initial: string
   chosen: boolean
   projectId: string
-  act: (slotId: string, run: () => Promise<ActionResult>, success: string) => Promise<ActionResult>
-  busy: boolean
+  act: Act
 }) {
+  const { busy, pressed } = useSlotLock()
   const [excerpt, setExcerpt] = React.useState(initial)
   return (
     <form
@@ -910,6 +987,7 @@ function SocialExcerptForm({
           slot.id,
           () => saveSocialCardAction(projectId, slot.id, { excerpt: value === '' ? null : value }),
           'Excerpt saved',
+          'excerpt',
         )
       }}
     >
@@ -928,19 +1006,26 @@ function SocialExcerptForm({
         ellipsis.
       </p>
       <div className="flex flex-wrap gap-2">
-        <Button type="submit" variant="outline" busy={busy} disabled={excerpt.trim() === ''}>
+        <Button
+          type="submit"
+          variant="outline"
+          busy={pressed === 'excerpt'}
+          disabled={busy || excerpt.trim() === ''}
+        >
           Save excerpt
         </Button>
         {chosen ? (
           <Button
             type="button"
             variant="ghost"
-            busy={busy}
+            busy={pressed === 'whole-post'}
+            disabled={busy}
             onClick={() =>
               void act(
                 slot.id,
                 () => saveSocialCardAction(projectId, slot.id, { excerpt: null }),
                 'Showing the whole post',
+                'whole-post',
               )
             }
           >
@@ -959,15 +1044,14 @@ function CastHandleLink({
   handle,
   castMembers,
   act,
-  busy,
 }: {
   projectId: string
   slotId: string
   handle: string
   castMembers: readonly CastOption[]
-  act: (slotId: string, run: () => Promise<ActionResult>, success: string) => Promise<ActionResult>
-  busy: boolean
+  act: Act
 }) {
+  const { busy, pressed } = useSlotLock()
   const [memberId, setMemberId] = React.useState('')
   const chosen = castMembers.find((member) => member.id === memberId)
   return (
@@ -991,14 +1075,15 @@ function CastHandleLink({
       <Button
         type="button"
         variant="outline"
-        busy={busy}
-        disabled={!chosen}
+        busy={pressed === 'link-cast'}
+        disabled={busy || !chosen}
         onClick={() =>
           chosen
             ? void act(
                 slotId,
                 () => linkCastHandleAction(projectId, chosen.id, handle),
                 `@${handle} linked to ${chosen.name}`,
+                'link-cast',
               )
             : undefined
         }
@@ -1021,16 +1106,23 @@ function SocialImageButton({
 }: {
   projectId: string
   slotId: string
-  act: (slotId: string, run: () => Promise<ActionResult>, success: string) => Promise<ActionResult>
+  act: Act
   purpose: 'social-avatar' | 'social-image'
   label: string
   inputLabel: string
   success: string
 }) {
   const inputRef = React.useRef<HTMLInputElement | null>(null)
+  const { busy, pressed } = useSlotLock()
   return (
     <>
-      <Button type="button" variant="outline" onClick={() => inputRef.current?.click()}>
+      <Button
+        type="button"
+        variant="outline"
+        busy={pressed === purpose}
+        disabled={busy}
+        onClick={() => inputRef.current?.click()}
+      >
         <ImagePlus aria-hidden />
         {label}
       </Button>
@@ -1048,6 +1140,7 @@ function SocialImageButton({
             slotId,
             () => uploadOwnFile({ projectId, slotId, picked: file, purpose }),
             success,
+            purpose,
           )
         }}
       />
@@ -1088,7 +1181,7 @@ function GraphicSlot({
   slot: SlotView
   brief: Extract<ShotBrief, { type: 'graphic' }>
   projectId: string
-  act: (slotId: string, run: () => Promise<ActionResult>, success: string) => Promise<ActionResult>
+  act: Act
   brand: BrandKitStored
 }) {
   const claimIds = graphicClaimIds(brief.scene)
@@ -1151,7 +1244,7 @@ function GraphicLogoUploader({
   entity: string
   projectId: string
   slotId: string
-  act: (slotId: string, run: () => Promise<ActionResult>, success: string) => Promise<ActionResult>
+  act: Act
 }) {
   const inputRef = React.useRef<HTMLInputElement | null>(null)
 
@@ -1195,9 +1288,15 @@ function GraphicLogoUploader({
     return attachGraphicLogosAction(projectId, slotId)
   }
 
+  const { busy, pressed } = useSlotLock()
   return (
     <>
-      <Button variant="outline" onClick={() => inputRef.current?.click()}>
+      <Button
+        variant="outline"
+        busy={pressed === `logo:${entity}`}
+        disabled={busy}
+        onClick={() => inputRef.current?.click()}
+      >
         <ImagePlus aria-hidden />
         {`Add logo for ${entity}`}
       </Button>
@@ -1211,7 +1310,12 @@ function GraphicLogoUploader({
           const file = event.target.files?.[0]
           event.target.value = ''
           if (!file) return
-          void act(slotId, () => upload(file), 'Mark added; the graphic has it now')
+          void act(
+            slotId,
+            () => upload(file),
+            'Mark added; the graphic has it now',
+            `logo:${entity}`,
+          )
         }}
       />
     </>
@@ -1325,8 +1429,30 @@ export function VisualBoard({
   const [playing, setPlaying] = React.useState(false)
   const [segmentIndex, setSegmentIndex] = React.useState(0)
   const [positionMs, setPositionMs] = React.useState(0)
-  const [busySlot, setBusySlot] = React.useState<string | null>(null)
+  /**
+   * Every key with an action in flight, and the control that pressed it.
+   * A map, not the single `busySlot` it replaces: with one slot of state, a
+   * press on card B overwrote card A's lock, and A finishing then unlocked B
+   * while B was still saving.
+   */
+  const [locks, setLocks] = React.useState<ReadonlyMap<string, Lock>>(() => new Map())
+  // A ref, not state: a double-click fires both handlers in one tick,
+  // before any re-render could show the first press.
+  const running = React.useRef(new Set<string>())
+  // The refresh runs in a transition so a lock spans it (decision 240): the
+  // button stays busy until the refreshed card is on screen, not merely
+  // until the server replied.
+  const [refreshing, startTransition] = React.useTransition()
   const pendingSeekSec = React.useRef(0)
+
+  // A settled action lets go of its lock once no refresh is still landing.
+  React.useEffect(() => {
+    if (refreshing) return
+    setLocks((current) => {
+      if (![...current.values()].some((lock) => lock.settling)) return current
+      return new Map([...current].filter(([, lock]) => !lock.settling))
+    })
+  }, [refreshing, locks])
 
   const playable = model.segments.some((segment) => segment.takeId !== null)
   const allSlots = model.chapters.flatMap((chapter) => chapter.slots)
@@ -1336,18 +1462,21 @@ export function VisualBoard({
    * refused save must leave the form open with what the owner typed in it,
    * which is not possible if the caller cannot tell success from failure.
    */
-  const act = React.useCallback(
-    async (
-      slotId: string,
-      run: () => Promise<ActionResult>,
-      success: string,
-    ): Promise<ActionResult> => {
-      setBusySlot(slotId)
+  const act = React.useCallback<Act>(
+    async (key, run, success, press) => {
+      if (running.current.has(key)) {
+        return { ok: false, error: 'That is already in progress.' }
+      }
+      running.current.add(key)
+      const pressed = press ?? null
+      setLocks((current) => new Map(current).set(key, { pressed, settling: false }))
+      let ok = false
       try {
         const result = await run()
+        ok = result.ok
         if (result.ok) {
           toast({ title: success })
-          router.refresh()
+          startTransition(() => router.refresh())
         } else {
           toast({ title: 'That did not work', description: result.error, variant: 'error' })
         }
@@ -1363,11 +1492,56 @@ export function VisualBoard({
         })
         return { ok: false, error: 'The request never reached the server.' }
       } finally {
-        setBusySlot(null)
+        running.current.delete(key)
+        setLocks((current) => {
+          const next = new Map(current)
+          if (ok) next.set(key, { pressed, settling: true })
+          else next.delete(key)
+          return next
+        })
       }
     },
     [router, toast],
   )
+
+  const planBusy = PLAN_KEYS.some((key) => locks.has(key))
+  const slotLock = (slotId: string): SlotLock => {
+    const lock = locks.get(slotId)
+    return { busy: lock !== undefined, pressed: lock?.pressed ?? null }
+  }
+
+  // Which chapters are folded. Remembered per project in this browser only:
+  // it is a reading convenience, and a board that opens folded somewhere else
+  // would hide work the producer expects to see.
+  const [collapsed, setCollapsed] = React.useState<ReadonlySet<number>>(() => new Set())
+  const collapsedKey = `boom-busters:visual-board:collapsed:${projectId}`
+  React.useEffect(() => {
+    try {
+      const stored = window.localStorage.getItem(collapsedKey)
+      const parsed: unknown = stored ? JSON.parse(stored) : null
+      if (Array.isArray(parsed)) {
+        setCollapsed(new Set(parsed.filter((entry): entry is number => Number.isInteger(entry))))
+      }
+    } catch {
+      // Blocked or corrupt storage: every chapter open, which is the default.
+    }
+  }, [collapsedKey])
+  const foldChapters = React.useCallback(
+    (next: ReadonlySet<number>) => {
+      setCollapsed(next)
+      try {
+        window.localStorage.setItem(collapsedKey, JSON.stringify([...next]))
+      } catch {
+        // Not remembered, but still folded for this visit.
+      }
+    },
+    [collapsedKey],
+  )
+  const toggleChapter = (chapterIndex: number) => {
+    const next = new Set(collapsed)
+    if (!next.delete(chapterIndex)) next.add(chapterIndex)
+    foldChapters(next)
+  }
 
   const loadSegment = React.useCallback(
     (index: number, offsetMs: number, andPlay: boolean) => {
@@ -1401,13 +1575,19 @@ export function VisualBoard({
     [loadSegment, model.segments],
   )
 
-  const jumpToSlot = React.useCallback(
-    (slot: SlotView) => {
-      seekToMs(slot.startMs, playing)
-      document.getElementById(`slot-${slot.id}`)?.scrollIntoView({ block: 'center' })
-    },
-    [playing, seekToMs],
-  )
+  const jumpToSlot = (slot: SlotView) => {
+    seekToMs(slot.startMs, playing)
+    // A folded chapter opens for the jump: its card has no box to scroll to
+    // while hidden, so the scroll waits a frame for the open chapter to paint.
+    if (collapsed.has(slot.chapterIndex)) {
+      const next = new Set(collapsed)
+      next.delete(slot.chapterIndex)
+      foldChapters(next)
+    }
+    window.requestAnimationFrame(() =>
+      document.getElementById(`slot-${slot.id}`)?.scrollIntoView({ block: 'center' }),
+    )
+  }
 
   return (
     <div className="flex flex-col gap-4">
@@ -1420,7 +1600,14 @@ export function VisualBoard({
           <DirectionCard
             projectId={projectId}
             direction={model.direction}
-            busy={busySlot !== null && busySlot.startsWith('direction-')}
+            busy={planBusy}
+            pressed={
+              locks.has('direction-save')
+                ? 'direction-save'
+                : locks.has('direction-redraft')
+                  ? 'direction-redraft'
+                  : null
+            }
             act={act}
           />
           <Card>
@@ -1461,9 +1648,14 @@ export function VisualBoard({
                 </div>
               ) : null}
               <div className="flex flex-wrap items-center gap-2">
+                {/* One lock over the three (decision 240): a fetch sent while a
+                    re-plan is being sent would buy slots the re-plan is
+                    about to discard. */}
                 <ConfirmButton
                   variant="primary"
                   confirmVariant="primary"
+                  busy={locks.has('plan')}
+                  disabled={planBusy}
                   label={
                     <>
                       Fetch visuals · {model.toFetch} slot{model.toFetch === 1 ? '' : 's'} · est. $
@@ -1494,6 +1686,8 @@ export function VisualBoard({
                   <ConfirmButton
                     variant="outline"
                     confirmVariant="primary"
+                    busy={locks.has('repair')}
+                    disabled={planBusy}
                     label={
                       `Fix these ${model.repair.slots} slot${model.repair.slots === 1 ? '' : 's'} · ≈$` +
                       (REPAIR_ESTIMATE_PER_CHAPTER_USD * model.repair.chapters).toFixed(2) +
@@ -1526,6 +1720,8 @@ export function VisualBoard({
                 <ConfirmButton
                   variant="outline"
                   confirmVariant="primary"
+                  busy={locks.has('replan')}
+                  disabled={planBusy}
                   label={`Re-plan shot list · ${REPLAN_ESTIMATE}`}
                   confirmLabel="Re-plan now"
                   consequence={
@@ -1617,26 +1813,29 @@ export function VisualBoard({
             {allSlots.map((slot) => {
               const chosen = slot.candidates.find((candidate) => candidate.chosen)
               const thumb = chosen ? candidateThumb(chosen) : undefined
+              // The list item wraps the button rather than being it: a
+              // `role` on a <button> replaces its role, so every thumb used
+              // to be announced as a list item nobody could tell was pressable.
               return (
-                <button
-                  key={slot.id}
-                  type="button"
-                  role="listitem"
-                  onClick={() => jumpToSlot(slot)}
-                  className="flex h-[64px] w-[96px] shrink-0 flex-col items-center justify-center gap-1 overflow-hidden rounded-[6px] border border-[var(--color-border)] bg-[var(--color-background)] text-[10px] text-[var(--color-text-secondary)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-accent)]"
-                  aria-label={`Jump to ${slotTypeLabel(slot.type)} slot at ${timecode(slot.startMs)}`}
-                >
-                  {thumb ? (
-                    // Plain <img> on purpose: provider-CDN and data: thumbnails,
-                    // which next/image can neither optimise nor allowlist.
-                    <img src={thumb} alt="" className="h-full w-full object-cover" />
-                  ) : (
-                    <>
-                      <span className="font-mono uppercase">{slotTypeLabel(slot.type)}</span>
-                      <span className="font-mono">{timecode(slot.startMs)}</span>
-                    </>
-                  )}
-                </button>
+                <div key={slot.id} role="listitem" className="shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => jumpToSlot(slot)}
+                    className="flex h-[64px] w-[96px] flex-col items-center justify-center gap-1 overflow-hidden rounded-[6px] border border-[var(--color-border)] bg-[var(--color-background)] text-[10px] text-[var(--color-text-secondary)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-accent)]"
+                    aria-label={`Jump to ${slotTypeLabel(slot.type)} slot at ${timecode(slot.startMs)}`}
+                  >
+                    {thumb ? (
+                      // Plain <img> on purpose: provider-CDN and data: thumbnails,
+                      // which next/image can neither optimise nor allowlist.
+                      <img src={thumb} alt="" className="h-full w-full object-cover" />
+                    ) : (
+                      <>
+                        <span className="font-mono uppercase">{slotTypeLabel(slot.type)}</span>
+                        <span className="font-mono">{timecode(slot.startMs)}</span>
+                      </>
+                    )}
+                  </button>
+                </div>
               )
             })}
           </div>
@@ -1670,31 +1869,186 @@ export function VisualBoard({
       {/* ------------------------------------------------------------------ */}
       {/* Slot cards, by chapter                                              */}
       {/* ------------------------------------------------------------------ */}
+      {model.chapters.length > 1 ? (
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <Button
+            variant="ghost"
+            disabled={model.chapters.every((chapter) => !collapsed.has(chapter.chapterIndex))}
+            onClick={() => foldChapters(new Set())}
+          >
+            <ChevronsUpDown aria-hidden />
+            Expand all chapters
+          </Button>
+          <Button
+            variant="ghost"
+            disabled={model.chapters.every((chapter) => collapsed.has(chapter.chapterIndex))}
+            onClick={() =>
+              foldChapters(new Set(model.chapters.map((chapter) => chapter.chapterIndex)))
+            }
+          >
+            <ChevronsDownUp aria-hidden />
+            Collapse all chapters
+          </Button>
+        </div>
+      ) : null}
+
       {model.chapters.map((chapter) => (
-        <section key={chapter.chapterIndex} className="flex flex-col gap-3">
-          <h2 className="text-[15px] font-semibold">
-            Chapter {chapter.chapterIndex + 1} — {chapter.chapterTitle}
-          </h2>
+        <ChapterSection
+          key={chapter.chapterIndex}
+          chapter={chapter}
+          phase={model.phase}
+          slotNotes={model.slotNotes}
+          collapsed={collapsed.has(chapter.chapterIndex)}
+          onToggle={() => toggleChapter(chapter.chapterIndex)}
+        >
           {chapter.slots.map((slot) => (
-            <SlotCard
-              key={slot.id}
-              slot={slot}
-              projectId={projectId}
-              colors={colors}
-              brand={brand}
-              busy={busySlot === slot.id}
-              act={act}
-              phase={model.phase}
-              articleClaims={model.articleClaims}
-              postClaims={model.postClaims}
-              sources={allSlots}
-              setPhotos={setPhotos}
-              castMembers={castMembers}
-            />
+            <SlotLockContext.Provider key={slot.id} value={slotLock(slot.id)}>
+              <SlotCard
+                slot={slot}
+                projectId={projectId}
+                colors={colors}
+                brand={brand}
+                act={act}
+                phase={model.phase}
+                notes={model.slotNotes[slot.id] ?? []}
+                articleClaims={model.articleClaims}
+                postClaims={model.postClaims}
+                sources={allSlots}
+                setPhotos={setPhotos}
+                castMembers={castMembers}
+              />
+            </SlotLockContext.Provider>
           ))}
-        </section>
+        </ChapterSection>
       ))}
     </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// One chapter
+// ---------------------------------------------------------------------------
+
+/** What a chapter holds, counted the way its cards say it, zeroes left out. */
+function chapterTally(
+  slots: readonly SlotView[],
+  phase: VisualsReviewModel['phase'],
+  slotNotes: Record<string, string[]>,
+): { text: string; warn: boolean }[] {
+  const count = (test: (slot: SlotView) => boolean) => slots.filter(test).length
+  const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`
+  const planning = phase === 'plan'
+  const drafting = count(
+    (slot) => slot.retype?.state === 'drafting' || slot.retype?.state === 'rebriefing',
+  )
+  // Everything the card itself asks the producer to act on.
+  const toLookAt = count(
+    (slot) =>
+      slot.refusal !== null ||
+      slot.retype?.state === 'refused' ||
+      slot.retype?.state === 'rebrief-refused' ||
+      slot.retype?.state === 'fix-note',
+  )
+  const notes = slots.reduce((total, slot) => total + (slotNotes[slot.id]?.length ?? 0), 0)
+  const ready = count((slot) => slot.status === 'resolved')
+  const placeholders = count((slot) => slot.status === 'placeholder')
+  const fetching = count((slot) => slot.status === 'unresolved')
+
+  const parts: { n: number; text: string; warn: boolean }[] = [
+    { n: slots.length, text: plural(slots.length, 'shot', 'shots'), warn: false },
+  ]
+  // Before Fetch every slot is simply planned; what matters is the craft check.
+  if (planning) {
+    parts.push({ n: notes, text: plural(notes, 'craft note', 'craft notes'), warn: true })
+  } else {
+    parts.push(
+      { n: ready, text: `${ready} ready`, warn: false },
+      { n: placeholders, text: plural(placeholders, 'placeholder', 'placeholders'), warn: true },
+      { n: fetching, text: `${fetching} being fetched`, warn: false },
+    )
+  }
+  parts.push(
+    { n: drafting, text: `${drafting} drafting`, warn: false },
+    { n: toLookAt, text: `${toLookAt} to look at`, warn: true },
+  )
+  return parts.filter((part) => part.n > 0).map(({ text, warn }) => ({ text, warn }))
+}
+
+/**
+ * A chapter of the board, foldable so a long film is not one long scroll.
+ * The header is the fold button (the accordion shape: a button inside the
+ * heading) and it carries the chapter's tally, so a folded chapter still
+ * says what in it needs the producer. Folding hides the cards rather than
+ * unmounting them: a brief half-typed in a folded chapter is still there
+ * when it opens.
+ */
+function ChapterSection({
+  chapter,
+  phase,
+  slotNotes,
+  collapsed,
+  onToggle,
+  children,
+}: {
+  chapter: VisualsReviewModel['chapters'][number]
+  phase: VisualsReviewModel['phase']
+  slotNotes: Record<string, string[]>
+  collapsed: boolean
+  onToggle: () => void
+  children: React.ReactNode
+}) {
+  const bodyId = `chapter-${chapter.chapterIndex}-shots`
+  const tally = chapterTally(chapter.slots, phase, slotNotes)
+  return (
+    <section className="flex flex-col gap-3">
+      <h2 className="text-[15px] font-semibold">
+        <button
+          type="button"
+          aria-expanded={!collapsed}
+          aria-controls={bodyId}
+          onClick={onToggle}
+          className="flex min-h-10 w-full items-start gap-3 rounded-[8px] px-2 py-2 text-left transition-colors duration-150 hover:bg-[var(--color-surface-raised)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-accent)]"
+        >
+          <ChevronDown
+            aria-hidden
+            className={`mt-[3px] size-4 shrink-0 text-[var(--color-text-secondary)] transition-transform duration-150 motion-reduce:transition-none ${
+              collapsed ? '-rotate-90' : ''
+            }`}
+          />
+          {/* Title and tally share one column, so on a phone the tally wraps
+              under the title rather than back under the chevron. */}
+          <span className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-1">
+            <span>
+              Chapter {chapter.chapterIndex + 1} — {chapter.chapterTitle}
+            </span>
+            {/* The commas are for a screen reader: side-by-side spans carry no
+              text between them, so the name ran "The collapse1 shot1 placeholder". */}
+            <span className="sr-only">: </span>
+            <span className="flex flex-wrap gap-x-2 text-[12px] font-normal text-[var(--color-text-secondary)]">
+              {tally.map((part, index) => (
+                <span
+                  key={part.text}
+                  className={part.warn ? 'text-[var(--color-warning)]' : undefined}
+                >
+                  {index > 0 ? (
+                    <>
+                      <span className="sr-only">, </span>
+                      <span aria-hidden className="mr-2 text-[var(--color-text-muted)]">
+                        ·
+                      </span>
+                    </>
+                  ) : null}
+                  {part.text}
+                </span>
+              ))}
+            </span>
+          </span>
+        </button>
+      </h2>
+      <div id={bodyId} hidden={collapsed} className={collapsed ? 'hidden' : 'flex flex-col gap-3'}>
+        {children}
+      </div>
+    </section>
   )
 }
 
@@ -1707,9 +2061,9 @@ function SlotCard({
   projectId,
   colors,
   brand,
-  busy,
   act,
   phase,
+  notes,
   articleClaims,
   postClaims,
   sources,
@@ -1720,9 +2074,10 @@ function SlotCard({
   projectId: string
   colors: BrandChartColors
   brand: BrandKitStored
-  busy: boolean
-  act: (slotId: string, run: () => Promise<ActionResult>, success: string) => Promise<ActionResult>
+  act: Act
   phase: VisualsReviewModel['phase']
+  /** This slot's craft notes (decision 277), the ones the plan card lists by chapter and time. */
+  notes: readonly string[]
   articleClaims: ArticleClaimOption[]
   postClaims: PostClaimOption[]
   sources: SlotView[]
@@ -1736,6 +2091,7 @@ function SlotCard({
   // the current choice, since "how does the selected media actually look at
   // size" is the question the button answers.
   const [previewIndex, setPreviewIndex] = React.useState<number | null>(null)
+  const { busy, pressed } = useSlotLock()
   const brief = slot.brief
   const planning = phase === 'plan'
   const linked = slot.reuse
@@ -1768,6 +2124,20 @@ function SlotCard({
       <CardContent className="flex flex-col gap-3">
         {brief ? (
           <p className="text-[13px] text-[var(--color-text-primary)]">{brief.description}</p>
+        ) : null}
+
+        {/* On the card as well as in the plan card's list: with chapters
+            folded, a note listed only at the top named a shot nobody could
+            see. */}
+        {planning && notes.length > 0 ? (
+          <ul
+            className="list-disc pl-5 text-[12px] text-[var(--color-warning)]"
+            aria-label="Craft notes on this shot"
+          >
+            {notes.map((note, index) => (
+              <li key={`${index}-${note}`}>{note}</li>
+            ))}
+          </ul>
         ) : null}
 
         {/*
@@ -1831,7 +2201,6 @@ function SlotCard({
             brief={brief}
             projectId={projectId}
             act={act}
-            busy={busy}
             brand={brand}
             castMembers={castMembers}
           />
@@ -1869,12 +2238,14 @@ function SlotCard({
             <div className="flex flex-wrap gap-2">
               <Button
                 variant="primary"
-                busy={busy}
+                busy={pressed === 'redirect'}
+                disabled={busy}
                 onClick={() =>
                   act(
                     slot.id,
                     () => redirectSceneAction(projectId, slot.id),
                     'Redirecting the scene',
+                    'redirect',
                   )
                 }
               >
@@ -1911,7 +2282,6 @@ function SlotCard({
             slot={slot}
             projectId={projectId}
             act={act}
-            busy={busy}
             articleClaims={articleClaims}
             postClaims={postClaims}
           />
@@ -1925,6 +2295,7 @@ function SlotCard({
             projectId={projectId}
             camera={brief.camera}
             busy={busy}
+            pressed={pressed}
             act={act}
           />
         ) : null}
@@ -1950,7 +2321,7 @@ function SlotCard({
               <>
                 <Button
                   variant="outline"
-                  busy={busy && editing}
+                  aria-expanded={editing}
                   onClick={() => setEditing((value) => !value)}
                 >
                   <Search aria-hidden />
@@ -1974,12 +2345,14 @@ function SlotCard({
                 {linked ? (
                   <Button
                     variant="outline"
-                    busy={busy}
+                    busy={pressed === 'unlink-reuse'}
+                    disabled={busy}
                     onClick={() =>
                       act(
                         slot.id,
                         () => unlinkSlotReuseAction(projectId, slot.id),
                         'This slot will fetch its own shot again',
+                        'unlink-reuse',
                       )
                     }
                   >
@@ -1994,7 +2367,6 @@ function SlotCard({
                 {!linked && brief.type !== 'headline' && brief.type !== 'social' ? (
                   <Button
                     variant="outline"
-                    busy={busy && rebriefing}
                     disabled={slot.retype?.state === 'rebriefing'}
                     aria-expanded={rebriefing}
                     onClick={() => setRebriefing((value) => !value)}
@@ -2008,7 +2380,8 @@ function SlotCard({
                 {!linked && brief.type !== 'archival' ? (
                   <Button
                     variant="outline"
-                    busy={busy && !editing}
+                    busy={pressed === 'regenerate'}
+                    disabled={busy}
                     onClick={() =>
                       act(
                         slot.id,
@@ -2021,6 +2394,7 @@ function SlotCard({
                         planning
                           ? 'Fetching this slot — the card updates when candidates land'
                           : 'Re-fetching — the row updates when new candidates land',
+                        'regenerate',
                       )
                     }
                   >
@@ -2090,7 +2464,6 @@ function SlotCard({
             onIndexChange={setPreviewIndex}
             onClose={() => setPreviewIndex(null)}
             act={act}
-            busy={busy}
           />
         ) : null}
       </CardContent>
@@ -2125,17 +2498,16 @@ function ArticleChooser({
   slot,
   projectId,
   act,
-  busy,
   articleClaims,
   onDone,
 }: {
   slot: SlotView
   projectId: string
-  act: (slotId: string, run: () => Promise<ActionResult>, success: string) => Promise<ActionResult>
-  busy: boolean
+  act: Act
   articleClaims: ArticleClaimOption[]
   onDone: () => void
 }) {
+  const { busy, pressed } = useSlotLock()
   // What this card quotes today, when it is already a headline: that row is
   // marked and cannot be re-picked, and every other row moves the card.
   const quoting = slot.brief?.type === 'headline' ? slot.brief.sourceClaimId : null
@@ -2170,12 +2542,14 @@ function ArticleChooser({
                 <Button
                   type="button"
                   variant="outline"
-                  busy={busy}
+                  busy={pressed === `quote:${claim.id}`}
+                  disabled={busy}
                   onClick={() =>
                     void act(
                       slot.id,
                       () => retypeToHeadlineAction(projectId, slot.id, claim.id),
                       `Now quoting ${claim.label}`,
+                      `quote:${claim.id}`,
                     ).then((result) => {
                       if (result.ok) onDone()
                     })
@@ -2203,17 +2577,16 @@ function PostChooser({
   slot,
   projectId,
   act,
-  busy,
   postClaims,
   onDone,
 }: {
   slot: SlotView
   projectId: string
-  act: (slotId: string, run: () => Promise<ActionResult>, success: string) => Promise<ActionResult>
-  busy: boolean
+  act: Act
   postClaims: PostClaimOption[]
   onDone: () => void
 }) {
+  const { busy, pressed } = useSlotLock()
   const showing = slot.brief?.type === 'social' ? slot.brief.sourceClaimId : null
 
   return (
@@ -2245,12 +2618,14 @@ function PostChooser({
                 <Button
                   type="button"
                   variant="outline"
-                  busy={busy}
+                  busy={pressed === `post:${claim.id}`}
+                  disabled={busy}
                   onClick={() =>
                     void act(
                       slot.id,
                       () => retypeToSocialAction(projectId, slot.id, claim.id),
                       'Now a post card',
+                      `post:${claim.id}`,
                     ).then((result) => {
                       if (result.ok) onDone()
                     })
@@ -2282,17 +2657,16 @@ function TypePicker({
   slot,
   projectId,
   act,
-  busy,
   articleClaims,
   postClaims,
 }: {
   slot: SlotView
   projectId: string
-  act: (slotId: string, run: () => Promise<ActionResult>, success: string) => Promise<ActionResult>
-  busy: boolean
+  act: Act
   articleClaims: ArticleClaimOption[]
   postClaims: PostClaimOption[]
 }) {
+  const { busy, pressed } = useSlotLock()
   const types = SHOT_SLOT_TYPES.filter((type) => type !== 'hero' || slot.type === 'hero')
   const job = slot.retype
   // Either kind of model job holds every button: a second request racing the
@@ -2327,6 +2701,7 @@ function TypePicker({
                  it is how you change WHICH article the card quotes, and on
                  a post card, WHICH post it shows. */
               disabled={(current && !asks) || busy || drafting}
+              busy={pressed === `type:${type}`}
               onClick={() => {
                 if (asks) {
                   setChoosing((open) => (open === type ? null : type))
@@ -2341,6 +2716,7 @@ function TypePicker({
                   type === 'chart' || type === 'map' || type === 'graphic'
                     ? `Drafting the ${type} — this card updates when it lands`
                     : `Re-typed to ${slotTypeLabel(type)}`,
+                  `type:${type}`,
                 )
               }}
             >
@@ -2355,7 +2731,6 @@ function TypePicker({
           slot={slot}
           projectId={projectId}
           act={act}
-          busy={busy}
           articleClaims={articleClaims}
           onDone={() => setChoosing(null)}
         />
@@ -2366,7 +2741,6 @@ function TypePicker({
           slot={slot}
           projectId={projectId}
           act={act}
-          busy={busy}
           postClaims={postClaims}
           onDone={() => setChoosing(null)}
         />
@@ -2395,8 +2769,11 @@ function TypePicker({
           </p>
           <Button
             variant="outline"
-            busy={busy}
-            onClick={() => act(slot.id, () => dismissRetypeAction(projectId, slot.id), 'Dismissed')}
+            busy={pressed === 'dismiss'}
+            disabled={busy}
+            onClick={() =>
+              act(slot.id, () => dismissRetypeAction(projectId, slot.id), 'Dismissed', 'dismiss')
+            }
           >
             Dismiss
           </Button>
@@ -2413,8 +2790,11 @@ function TypePicker({
           </p>
           <Button
             variant="outline"
-            busy={busy}
-            onClick={() => act(slot.id, () => dismissRetypeAction(projectId, slot.id), 'Dismissed')}
+            busy={pressed === 'dismiss'}
+            disabled={busy}
+            onClick={() =>
+              act(slot.id, () => dismissRetypeAction(projectId, slot.id), 'Dismissed', 'dismiss')
+            }
           >
             Dismiss
           </Button>
@@ -2431,8 +2811,11 @@ function TypePicker({
           <p className="min-w-0 flex-1 text-[13px] text-[var(--color-warning)]">{fixNote.note}</p>
           <Button
             variant="outline"
-            busy={busy}
-            onClick={() => act(slot.id, () => dismissRetypeAction(projectId, slot.id), 'Dismissed')}
+            busy={pressed === 'dismiss'}
+            disabled={busy}
+            onClick={() =>
+              act(slot.id, () => dismissRetypeAction(projectId, slot.id), 'Dismissed', 'dismiss')
+            }
           >
             Dismiss
           </Button>
@@ -2456,16 +2839,15 @@ function MediaLightbox({
   onIndexChange,
   onClose,
   act,
-  busy,
 }: {
   slot: SlotView
   projectId: string
   index: number
   onIndexChange: (index: number) => void
   onClose: () => void
-  act: (slotId: string, run: () => Promise<ActionResult>, success: string) => Promise<ActionResult>
-  busy: boolean
+  act: Act
 }) {
+  const { busy, pressed } = useSlotLock()
   return (
     <CandidateLightbox
       label={`Preview: ${slot.brief?.coversText ?? slot.id}`}
@@ -2478,22 +2860,21 @@ function MediaLightbox({
       chooseLabel="Use this candidate"
       chosenLabel="Selected for this slot"
       onChoose={(candidate) =>
-        void act(slot.id, () => chooseCandidateAction(projectId, slot.id, candidate.id), 'Selected')
+        void act(
+          slot.id,
+          () => chooseCandidateAction(projectId, slot.id, candidate.id),
+          'Selected',
+          `choose:${candidate.id}`,
+        )
       }
-      busy={busy}
+      busy={pressed?.startsWith('choose:') ?? false}
+      chooseDisabled={busy}
     />
   )
 }
 
-function CandidateStrip({
-  slot,
-  projectId,
-  act,
-}: {
-  slot: SlotView
-  projectId: string
-  act: (slotId: string, run: () => Promise<ActionResult>, success: string) => Promise<ActionResult>
-}) {
+function CandidateStrip({ slot, projectId, act }: { slot: SlotView; projectId: string; act: Act }) {
+  const { busy, pressed } = useSlotLock()
   if (slot.candidates.length === 0) return null
 
   return (
@@ -2502,56 +2883,67 @@ function CandidateStrip({
         {slot.candidates.map((candidate) => {
           const thumb = candidateThumb(candidate)
           const chosen = candidate.chosen === true
+          const choosing = pressed === `choose:${candidate.id}`
           return (
-            <button
-              key={candidate.id}
-              type="button"
-              role="listitem"
-              disabled={chosen}
-              onClick={() =>
-                act(
-                  slot.id,
-                  () => chooseCandidateAction(projectId, slot.id, candidate.id),
-                  'Selected',
-                )
-              }
-              title={[
-                candidate.summary,
-                candidate.score !== undefined
-                  ? `score ${Math.round(candidate.score)}: ${candidate.scoreReason ?? ''}`
-                  : null,
-              ]
-                .filter(Boolean)
-                .join(' — ')}
-              className={`relative flex h-[104px] w-[168px] flex-col overflow-hidden rounded-[8px] border-2 text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-accent)] ${
-                chosen
-                  ? 'border-[var(--color-accent)]'
-                  : 'border-[var(--color-border)] hover:border-[var(--color-border-strong)]'
-              }`}
-            >
-              {thumb ? (
-                // Plain <img> on purpose: provider-CDN and data: thumbnails,
-                // which next/image can neither optimise nor allowlist.
-                <img
-                  src={thumb}
-                  alt={candidate.summary ?? candidate.id}
-                  className="h-full w-full object-cover"
-                />
-              ) : (
-                <span className="flex h-full w-full items-center justify-center bg-[var(--color-background)] p-2 text-center text-[11px] text-[var(--color-text-muted)]">
-                  {candidate.summary ?? candidate.id}
+            // The list item wraps the button: a `role` on the <button> itself
+            // replaced its role, and the thumbs stopped reading as pressable.
+            <div key={candidate.id} role="listitem">
+              <button
+                type="button"
+                disabled={chosen || busy}
+                aria-busy={choosing || undefined}
+                onClick={() =>
+                  act(
+                    slot.id,
+                    () => chooseCandidateAction(projectId, slot.id, candidate.id),
+                    'Selected',
+                    `choose:${candidate.id}`,
+                  )
+                }
+                title={[
+                  candidate.summary,
+                  candidate.score !== undefined
+                    ? `score ${Math.round(candidate.score)}: ${candidate.scoreReason ?? ''}`
+                    : null,
+                ]
+                  .filter(Boolean)
+                  .join(' — ')}
+                className={`relative flex h-[104px] w-[168px] flex-col overflow-hidden rounded-[8px] border-2 text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-accent)] ${
+                  chosen
+                    ? 'border-[var(--color-accent)]'
+                    : 'border-[var(--color-border)] enabled:hover:border-[var(--color-border-strong)]'
+                } ${busy && !chosen && !choosing ? 'opacity-60' : ''}`}
+              >
+                {thumb ? (
+                  // Plain <img> on purpose: provider-CDN and data: thumbnails,
+                  // which next/image can neither optimise nor allowlist.
+                  <img
+                    src={thumb}
+                    alt={candidate.summary ?? candidate.id}
+                    className="h-full w-full object-cover"
+                  />
+                ) : (
+                  <span className="flex h-full w-full items-center justify-center bg-[var(--color-background)] p-2 text-center text-[11px] text-[var(--color-text-muted)]">
+                    {candidate.summary ?? candidate.id}
+                  </span>
+                )}
+                <span className="absolute top-1 left-1 rounded-[4px] bg-black/60 px-1 font-mono text-[10px] text-white uppercase">
+                  {candidate.kind}
+                  {candidate.score !== undefined ? ` · ${Math.round(candidate.score)}` : ''}
                 </span>
-              )}
-              <span className="absolute top-1 left-1 rounded-[4px] bg-black/60 px-1 font-mono text-[10px] text-white uppercase">
-                {candidate.kind}
-                {candidate.score !== undefined ? ` · ${Math.round(candidate.score)}` : ''}
-              </span>
-              {chosen ? (
-                <span className="absolute right-1 bottom-1 rounded-[4px] bg-[var(--color-accent)] px-1.5 py-0.5 text-[10px] font-semibold text-white">
-                  Selected
-                </span>
-              ) : null}
-            </button>
+                {chosen ? (
+                  <span className="absolute right-1 bottom-1 rounded-[4px] bg-[var(--color-accent)] px-1.5 py-0.5 text-[10px] font-semibold text-white">
+                    Selected
+                  </span>
+                ) : null}
+                {/* Where the press landed, until the refreshed strip marks it. */}
+                {choosing ? (
+                  <span className="absolute inset-0 flex items-center justify-center bg-black/50">
+                    <Loader2 aria-hidden className="size-5 animate-spin text-white" />
+                  </span>
+                ) : null}
+              </button>
+            </div>
           )
         })}
         {slot.extraCandidates > 0 ? (
@@ -2613,9 +3005,10 @@ function RebriefForm({
 }: {
   slot: SlotView
   projectId: string
-  act: (slotId: string, run: () => Promise<ActionResult>, success: string) => Promise<ActionResult>
+  act: Act
   onDone: () => void
 }) {
+  const { busy, pressed } = useSlotLock()
   const [guidance, setGuidance] = React.useState('')
 
   return (
@@ -2627,6 +3020,7 @@ function RebriefForm({
           slot.id,
           () => rebriefSlotAction(projectId, slot.id, guidance),
           'Drafting a new brief — this card updates when it lands',
+          'rebrief',
         ).then((result) => {
           if (result.ok) onDone()
         })
@@ -2648,7 +3042,7 @@ function RebriefForm({
         the shot list later will draft this slot again from the Director&rsquo;s Book.
       </p>
       <div className="flex flex-wrap gap-2">
-        <Button type="submit" variant="primary">
+        <Button type="submit" variant="primary" busy={pressed === 'rebrief'} disabled={busy}>
           Draft it
         </Button>
         <Button type="button" variant="ghost" onClick={onDone}>
@@ -2701,9 +3095,10 @@ function ReusePicker({
   setPhotos: readonly SetPhotoGroup[]
   phase: VisualsReviewModel['phase']
   projectId: string
-  act: (slotId: string, run: () => Promise<ActionResult>, success: string) => Promise<ActionResult>
+  act: Act
   onDone: () => void
 }) {
+  const { busy, pressed } = useSlotLock()
   const planning = phase === 'plan'
   const offered = sources.filter(
     (source) =>
@@ -2723,15 +3118,19 @@ function ReusePicker({
     }))
     .filter((set) => set.plates.length > 0)
 
+  const photoPress = (set: SetPhotoGroup, contentHash: string) => `photo:${set.id}:${contentHash}`
   const showPhoto = (set: SetPhotoGroup, contentHash: string) =>
     void act(
       slot.id,
       () => showSetPhotoAction({ projectId, slotId: slot.id, setId: set.id, contentHash }),
       `Now showing a photo of ${set.name}`,
+      photoPress(set, contentHash),
     ).then((result) => {
       if (result.ok) onDone()
     })
 
+  const reusePress = (source: SlotView, candidateId: string | undefined) =>
+    `reuse:${source.id}:${candidateId ?? ''}`
   const use = (source: SlotView, candidateId: string | undefined) =>
     void act(
       slot.id,
@@ -2739,6 +3138,7 @@ function ReusePicker({
       planning
         ? 'Linked. Fetch visuals will copy the shot when it lands'
         : `Now showing the shot from ${timecode(source.startMs)}`,
+      reusePress(source, candidateId),
     ).then((result) => {
       if (result.ok) onDone()
     })
@@ -2798,7 +3198,12 @@ function ReusePicker({
                 ) : null}
                 {pictures.length === 0 ? (
                   <div>
-                    <Button variant="outline" onClick={() => use(source, undefined)}>
+                    <Button
+                      variant="outline"
+                      busy={pressed === reusePress(source, undefined)}
+                      disabled={busy}
+                      onClick={() => use(source, undefined)}
+                    >
                       Use whatever this slot chooses
                     </Button>
                   </div>
@@ -2815,7 +3220,12 @@ function ReusePicker({
                               className="h-16 w-28 rounded-[6px] object-cover"
                             />
                           ) : null}
-                          <Button variant="outline" onClick={() => use(source, candidate.id)}>
+                          <Button
+                            variant="outline"
+                            busy={pressed === reusePress(source, candidate.id)}
+                            disabled={busy}
+                            onClick={() => use(source, candidate.id)}
+                          >
                             {candidate.chosen ? 'Use this' : 'Use this variant'}
                           </Button>
                         </li>
@@ -2858,6 +3268,8 @@ function ReusePicker({
                     <Button
                       variant="outline"
                       aria-label={`Use the ${PLATE_VIEW_LABELS[plate.view].toLowerCase()} photo of ${set.name}`}
+                      busy={pressed === photoPress(set, plate.contentHash)}
+                      disabled={busy}
                       onClick={() => showPhoto(set, plate.contentHash)}
                     >
                       Use this photo
@@ -2904,8 +3316,9 @@ function ModelRouteSelect({
 }: {
   slot: SlotView
   projectId: string
-  act: (slotId: string, run: () => Promise<ActionResult>, success: string) => Promise<ActionResult>
+  act: Act
 }) {
+  const { busy } = useSlotLock()
   const id = `route-${slot.id}`
   const value = slot.route ? `${slot.route.provider}:${slot.route.model}` : ''
   const defaultLabel = stillModelLabel(slot.derivedRoute.provider, slot.derivedRoute.model)
@@ -2916,6 +3329,10 @@ function ModelRouteSelect({
       <Select
         id={id}
         value={value}
+        // Held while the choice saves: a second pick racing the first could
+        // land first and leave the select showing the model that lost.
+        disabled={busy}
+        aria-busy={busy || undefined}
         onChange={(event) => {
           const raw = event.target.value
           const route =
@@ -2929,6 +3346,7 @@ function ModelRouteSelect({
             slot.id,
             () => setSlotRouteAction(projectId, slot.id, route),
             'Model changed; re-fetch this shot to buy it',
+            'route',
           )
         }}
       >
@@ -2956,11 +3374,12 @@ function BriefEditor({
 }: {
   slot: SlotView
   projectId: string
-  act: (slotId: string, run: () => Promise<ActionResult>, success: string) => Promise<ActionResult>
+  act: Act
   onDone: () => void
   /** Plan phase: an edit just saves — nothing is fetched until "Fetch visuals". */
   planning: boolean
 }) {
+  const { busy, pressed } = useSlotLock()
   const brief = slot.brief
   const [description, setDescription] = React.useState(brief?.description ?? '')
   const [query, setQuery] = React.useState(
@@ -2990,6 +3409,7 @@ function BriefEditor({
           planning || brief.type === 'archival'
             ? 'Brief saved'
             : 'Brief saved — re-fetching against it now',
+          'brief',
         ).then((result) => {
           if (result.ok) onDone()
         })
@@ -3041,7 +3461,7 @@ function BriefEditor({
         <ModelRouteSelect slot={slot} projectId={projectId} act={act} />
       ) : null}
       <div className="flex gap-2">
-        <Button type="submit" variant="primary">
+        <Button type="submit" variant="primary" busy={pressed === 'brief'} disabled={busy}>
           {planning || brief.type === 'archival'
             ? 'Save'
             : `Save & re-fetch${brief.type === 'still' ? ' · ≈$0.08' : ''}`}
@@ -3170,18 +3590,27 @@ function UploadOwnButton({
 }: {
   projectId: string
   slotId: string
-  act: (slotId: string, run: () => Promise<ActionResult>, success: string) => Promise<ActionResult>
+  act: Act
   archival: boolean
 }) {
   const inputRef = React.useRef<HTMLInputElement | null>(null)
   const [url, setUrl] = React.useState('')
+  const { busy, pressed } = useSlotLock()
 
   const upload = (picked: File): Promise<ActionResult> =>
     uploadOwnFile({ projectId, slotId, picked })
 
   return (
     <>
-      <Button variant="outline" onClick={() => inputRef.current?.click()}>
+      {/* Busy for the whole presign, PUT and finalise: a 200 MB clip takes
+          a while, and a button that looked idle through it invited a second
+          upload of the same file. */}
+      <Button
+        variant="outline"
+        busy={pressed === 'upload'}
+        disabled={busy}
+        onClick={() => inputRef.current?.click()}
+      >
         <ImagePlus aria-hidden />
         {archival ? 'Upload footage' : 'Upload own'}
       </Button>
@@ -3202,7 +3631,8 @@ function UploadOwnButton({
       />
       <Button
         variant="outline"
-        disabled={url.trim() === ''}
+        busy={pressed === 'address'}
+        disabled={busy || url.trim() === ''}
         onClick={() =>
           void act(
             slotId,
@@ -3212,6 +3642,7 @@ function UploadOwnButton({
               return result
             },
             'Added and selected',
+            'address',
           )
         }
       >
@@ -3235,7 +3666,7 @@ function UploadOwnButton({
           const file = event.target.files?.[0]
           event.target.value = ''
           if (!file) return
-          void act(slotId, () => upload(file), 'Uploaded and selected')
+          void act(slotId, () => upload(file), 'Uploaded and selected', 'upload')
         }}
       />
     </>
