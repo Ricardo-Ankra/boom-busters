@@ -14,7 +14,7 @@ import {
 } from '@boom-busters/db'
 import type { ProjectStage } from '@boom-busters/db'
 import { emptyVoiceModel, voiceReviewModel } from '@/lib/voice-review'
-import { emptyVisualsModel, visualsReviewModel } from '@/lib/visuals-review'
+import { emptyVisualsModel, jobsNeedPolling, visualsReviewModel } from '@/lib/visuals-review'
 import { emptyPreviewModel, previewModel } from '@/lib/preview-review'
 import { emptyShortsModel, shortsModel } from '@/lib/shorts-review'
 import { emptyPublishModel, publishModel } from '@/lib/publish-review'
@@ -168,7 +168,7 @@ export default async function ProjectPage({
     projectDeletionSummary(db, id),
     wants('voice') ? voiceReviewModel(db, id) : Promise.resolve(emptyVoiceModel()),
     wants('visuals')
-      ? visualsReviewModel(db, id, { phase: project.visualsPhase })
+      ? visualsReviewModel(db, id, { phase: project.visualsPhase, liveRun })
       : Promise.resolve(emptyVisualsModel()),
     getSettings(db),
     // The preview model also loads while the project SITS at assembly but
@@ -302,8 +302,11 @@ export default async function ProjectPage({
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          {/* Also while a board job is in flight (decision 286): one sent from a
+              plan screen with no run parked has no live run to poll on, before
+              Inngest starts it or after it lands. */}
           <LiveRefresh
-            active={moving}
+            active={moving || jobsNeedPolling(visuals)}
             pulseUrl={`/api/pulse?project=${project.id}`}
             initialPulse={pulse}
           />

@@ -8,6 +8,7 @@ import { afterAll, beforeEach, describe, expect, it } from 'vitest'
 import { createCase, truncateCases } from './cases'
 import { createDb } from './client'
 import {
+  backdateProject,
   createProjectFromCase,
   getProject,
   releaseVisualsJob,
@@ -660,6 +661,24 @@ suite('shot slots', () => {
 
       expect(await releaseSlotJob(db, slotId, second.jobId)).toBe(true)
       expect((await getShotSlot(db, slotId))!.pendingJob).toBeNull()
+    })
+
+    it('moves the project’s pulse when a slot stamp comes and goes', async () => {
+      // The page polls `projects.updated_at`, not the slot rows: without this a
+      // job that lands leaves the card saying it is still running.
+      const [slotId] = await twoSlots()
+      const long = new Date('2026-01-01T00:00:00.000Z')
+      const own = slotJob()
+
+      await backdateProject(db, projectId, long)
+      await setSlotJob(db, slotId, own)
+      expect((await getProject(db, projectId))!.updatedAt.getTime()).toBeGreaterThan(long.getTime())
+
+      await backdateProject(db, projectId, long)
+      expect(await releaseSlotJob(db, slotId, newId())).toBe(false)
+      expect((await getProject(db, projectId))!.updatedAt.getTime()).toBe(long.getTime())
+      expect(await releaseSlotJob(db, slotId, own.jobId)).toBe(true)
+      expect((await getProject(db, projectId))!.updatedAt.getTime()).toBeGreaterThan(long.getTime())
     })
 
     it('releases a project stamp by its job id, or by its op for the runner', async () => {

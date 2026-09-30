@@ -18,6 +18,7 @@ import { SOCIAL_EXCERPT_TOO_LONG, SOCIAL_TOO_LONG } from '@boom-busters/composit
 import { imageGenModel, LIVE_IMAGE_GEN_ADAPTERS } from '@boom-busters/providers'
 import {
   isFrontPage,
+  JOB_STALE_MS,
   LOGO_ACCEPT,
   missingArticleFields,
   postPublicUrl,
@@ -146,9 +147,6 @@ const useSlotLock = (): SlotLock => React.useContext(SlotLockContext)
 
 /** The plan card's own keys: while any is in flight, none of them is offered. */
 const PLAN_KEYS = ['plan', 'repair', 'replan', 'direction-save', 'direction-redraft'] as const
-
-/** How old a job stamp may be before the board stops trusting it (decision 286). */
-const JOB_STALE_MS = 10 * 60_000
 
 /**
  * The server's clock, carried forward here (decision 286): the model's

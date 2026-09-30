@@ -6,6 +6,7 @@ import {
   createScriptVersion,
   deleteCastMember,
   deleteProjectSet,
+  ensureRun,
   FIXTURE_DOSSIER_ID,
   FIXTURE_PROJECT_ID,
   getProject,
@@ -29,6 +30,7 @@ import {
   shotSlots,
   slotNeedsResolution,
   socialPosts,
+  truncateRunMirror,
   updateSettings,
   updateSlotBrief,
 } from '@boom-busters/db'
@@ -1546,6 +1548,7 @@ describeDb('job stamps (decision 286)', () => {
     vi.clearAllMocks()
     inngest.send.mockResolvedValue(undefined)
     await seed(db)
+    await truncateRunMirror(db)
     await db.delete(shotSlots)
     const script = await createScriptVersion(db, FIXTURE_PROJECT_ID)
     const chapter = await saveChapter(db, {
@@ -1631,11 +1634,25 @@ describeDb('job stamps (decision 286)', () => {
 
   it('refuses a second Fetch while the first is running, rather than cancelling it', async () => {
     await setProjectStage(db, FIXTURE_PROJECT_ID, { stage: 'visuals', stageStatus: 'running' })
+    await ensureRun(db, {
+      inngestRunId: 'run-fetching',
+      functionName: 'visuals-runner',
+      projectId: FIXTURE_PROJECT_ID,
+      stage: 'visuals',
+    })
     const result = await approvePlanAction(FIXTURE_PROJECT_ID)
     expect(result).toEqual({
       ok: false,
       error: 'The fetch is already running. The board updates as the shots land.',
     })
     expect(inngest.send).not.toHaveBeenCalled()
+  })
+
+  it('resumes a stranded fetch: the stage says running and no run is behind it', async () => {
+    // The runner died without its onFailure. Refusing here would leave only
+    // a paid re-plan as the way out (decision 279's resume is free).
+    await setProjectStage(db, FIXTURE_PROJECT_ID, { stage: 'visuals', stageStatus: 'running' })
+    expect(await approvePlanAction(FIXTURE_PROJECT_ID)).toEqual({ ok: true })
+    expect(inngest.send.mock.calls[0]?.[0]).toMatchObject({ name: 'visuals/fetch.resume' })
   })
 })

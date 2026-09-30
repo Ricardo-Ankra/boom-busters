@@ -32,6 +32,7 @@ import {
   craftFindings,
   DirectorsBookSchema,
   findingContext,
+  JOB_STALE_MS,
   normaliseArticleUrl,
   latestTakes,
   nameMatches,
@@ -149,12 +150,43 @@ export function visualsJobView(raw: unknown): VisualsJobView | null {
  * plan phase for the whole fetch pass, and the stage reads `running` from the
  * moment it closes the gate, so no stamp is needed; a stopped or failed fetch
  * leaves the stage `cancelled` or `failed`, which is not fetching.
+ *
+ * `running` counts only with a live run behind it, `isMoving`'s rule: a
+ * runner that died without its `onFailure` leaves the column saying running,
+ * and reading that as a fetch would lock the board for good and refuse the
+ * one free way out, Fetch visuals resuming at the fetch pass (decision 279).
+ * And only while the project is at the visuals stage: a voice re-run leaves
+ * the plan phase in the row, and its run is not a fetch.
  */
 export function isFetching(
   phase: 'plan' | 'board' | null,
-  stageStatus: string | undefined,
+  project: { stage: string; stageStatus: string } | undefined,
+  liveRun: boolean,
 ): boolean {
-  return phase === 'plan' && (stageStatus === 'running' || stageStatus === 'queued')
+  if (phase !== 'plan' || project?.stage !== 'visuals') return false
+  return project.stageStatus === 'queued' || (project.stageStatus === 'running' && liveRun)
+}
+
+/**
+ * Whether the page should keep polling for this board (decision 286). A job
+ * sent from a plan screen with no run parked on it has no live run until
+ * Inngest starts it, and none after it ends, so the run mirror alone never
+ * wakes the page and the card would go on saying the job is running. Judged
+ * on the server's clock; it decides polling, never locking.
+ */
+export function jobsNeedPolling(model: {
+  renderedAt: string
+  job: VisualsJobView | null
+  fetching: boolean
+  chapters: readonly { slots: readonly { job: SlotJobView | null }[] }[]
+}): boolean {
+  const now = Date.parse(model.renderedAt)
+  const live = (startedAt: string) => now - Date.parse(startedAt) < JOB_STALE_MS
+  if (model.fetching) return true
+  if (model.job && live(model.job.startedAt)) return true
+  return model.chapters.some((chapter) =>
+    chapter.slots.some((slot) => slot.job !== null && live(slot.job.startedAt)),
+  )
 }
 
 export interface SlotView {
@@ -664,7 +696,12 @@ function slotReferences(
 export async function visualsReviewModel(
   db: Database,
   projectId: string,
-  options: { phase?: 'plan' | 'board' | null } = {},
+  /**
+   * `liveRun` is the run mirror's answer (the page already has it). Left out,
+   * nothing reads as fetching: a missing answer can unlock the board but
+   * never lock it (decision 286).
+   */
+  options: { phase?: 'plan' | 'board' | null; liveRun?: boolean } = {},
 ): Promise<VisualsReviewModel> {
   const [rows, sources, takes, project, claims] = await Promise.all([
     listShotSlots(db, projectId),
@@ -982,7 +1019,7 @@ export async function visualsReviewModel(
     totalMs: segments.reduce((total, segment) => total + segment.durationMs, 0),
     phase: options.phase ?? null,
     job: visualsJobView(project?.visualsJob),
-    fetching: isFetching(options.phase ?? null, project?.stageStatus),
+    fetching: isFetching(options.phase ?? null, project, options.liveRun ?? false),
     renderedAt: new Date().toISOString(),
     toFetch: toFetch.length,
     stillsToFetch,

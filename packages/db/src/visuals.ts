@@ -312,10 +312,21 @@ export async function setSlotRetype(
  * the job is running; it writes null back if the send fails.
  */
 export async function setSlotJob(db: Database, slotId: string, job: SlotJob | null): Promise<void> {
-  await db
+  const [row] = await db
     .update(shotSlots)
     .set({ pendingJob: job as unknown as Record<string, unknown> | null, updatedAt: sql`now()` })
     .where(eq(shotSlots.id, slotId))
+    .returning({ projectId: shotSlots.projectId })
+  if (row) await touchProject(db, row.projectId)
+}
+
+/**
+ * Move the project's pulse. The page polls `projects.updated_at` and the run
+ * mirror, never the slot rows, so a slot stamp that came or went would
+ * otherwise leave an open board saying the old thing (decision 286).
+ */
+async function touchProject(db: Database, projectId: string): Promise<void> {
+  await db.update(projects).set({ updatedAt: new Date() }).where(eq(projects.id, projectId))
 }
 
 /**
@@ -332,8 +343,10 @@ export async function releaseSlotJob(
     .update(shotSlots)
     .set({ pendingJob: null, updatedAt: sql`now()` })
     .where(and(eq(shotSlots.id, slotId), sql`${shotSlots.pendingJob}->>'jobId' = ${jobId}`))
-    .returning({ id: shotSlots.id })
-  return cleared.length > 0
+    .returning({ projectId: shotSlots.projectId })
+  const [row] = cleared
+  if (row) await touchProject(db, row.projectId)
+  return row !== undefined
 }
 
 /**

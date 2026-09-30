@@ -640,6 +640,12 @@ export const VisualsJobSchema = z.object({
 export type VisualsJob = z.infer<typeof VisualsJobSchema>
 export type VisualsJobOp = VisualsJob['op']
 
+/**
+ * How old a job stamp may be before the board stops trusting it (decision
+ * 286): past this it no longer locks, and the card says it may have stopped.
+ */
+export const JOB_STALE_MS = 10 * 60_000
+
 // ---------------------------------------------------------------------------
 // The shot-list model's output
 // ---------------------------------------------------------------------------

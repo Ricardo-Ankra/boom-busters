@@ -10,6 +10,7 @@ import {
   getSettings,
   getShotSlot,
   getSocialPost,
+  hasLiveRun,
   linkSlotReuse,
   listLogos,
   listSlotDependants,
@@ -93,6 +94,7 @@ import {
   R2_PREFIX,
   storageConfigured,
 } from '@/lib/storage'
+import { isFetching } from '@/lib/visuals-review'
 import { timecode } from '@/lib/visuals-reuse'
 
 /**
@@ -382,7 +384,9 @@ export async function approvePlanAction(projectId: string): Promise<ActionResult
   // The plan phase lasts the whole fetch pass (the runner moves to `board`
   // only when every slot has landed), and a second Fetch here would send
   // `fetch.resume`, whose singleton cancels the fetch in flight (decision 286).
-  if (project.stageStatus === 'running' || project.stageStatus === 'queued') {
+  // The board's own rule, so the two never disagree: a stage that says
+  // running with no run behind it is stranded, and resuming is its way out.
+  if (isFetching(project.visualsPhase, project, await hasLiveRun(db, projectId))) {
     return {
       ok: false,
       error: 'The fetch is already running. The board updates as the shots land.',
