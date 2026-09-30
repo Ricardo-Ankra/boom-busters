@@ -308,6 +308,12 @@ export interface VisualsReviewModel {
    * picker says so.
    */
   postClaims: PostClaimOption[]
+  /**
+   * Every claim a pasted post may support (decision 284, amended 2026-09-30):
+   * the post's address lives on the brief, so the claim is only the audit
+   * trail and its own citation is never rewritten to point at the post.
+   */
+  supportClaims: PostClaimOption[]
 }
 
 /**
@@ -333,6 +339,7 @@ export function emptyVisualsModel(): VisualsReviewModel {
     repair: { slots: 0, becomeStills: 0, chapters: 0 },
     articleClaims: [],
     postClaims: [],
+    supportClaims: [],
   }
 }
 
@@ -436,6 +443,23 @@ function postClaimOptions(claims: readonly ScriptableClaim[]): PostClaimOption[]
     const handle = parsePostUrl(claim.sourceUrl as string)?.handle ?? null
     return [{ id: claim.id, label: `${handle ? `@${handle}` : 'A post on X'}: ${claim.text}` }]
   })
+}
+
+/** How much of a claim's text a select option can carry and stay readable. */
+const SUPPORT_LABEL_MAX = 110
+
+/**
+ * Every claim a pasted post may be filed under, labelled with the claim's own
+ * words: the owner is choosing what the post is evidence for, not a source.
+ */
+function supportClaimOptions(claims: readonly ScriptableClaim[]): PostClaimOption[] {
+  return claims.map((claim) => ({
+    id: claim.id,
+    label:
+      claim.text.length > SUPPORT_LABEL_MAX
+        ? `${claim.text.slice(0, SUPPORT_LABEL_MAX - 1).trimEnd()}…`
+        : claim.text,
+  }))
 }
 
 /**
@@ -612,6 +636,7 @@ export async function visualsReviewModel(
   ])
   const articleClaims = await articleClaimOptions(db, claims)
   const postClaims = postClaimOptions(claims)
+  const supportClaims = supportClaimOptions(claims)
 
   /**
    * The scrubber's clock is the same clock the runner stamped the slots with:
@@ -932,5 +957,6 @@ export async function visualsReviewModel(
     repair: repairSummary(findingSlots, findings),
     articleClaims,
     postClaims,
+    supportClaims,
   }
 }

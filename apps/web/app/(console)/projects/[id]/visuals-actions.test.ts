@@ -18,6 +18,7 @@ import {
   replaceShotList,
   requireTestDatabase,
   saveChapter,
+  scriptableClaims,
   seed,
   setSlotResolution,
   setProjectStage,
@@ -1462,6 +1463,71 @@ describeDb('re-typing to a social post card (decision 284)', () => {
     expect(brief.sourceClaimId).toBe(POST_CLAIM_ID)
     expect(brief.postUrl).toBe('https://x.com/i/status/1740000000000000002')
     expect(inngest.send.mock.calls[0]?.[0]).toMatchObject({ name: 'visuals/refetch.requested' })
+  })
+
+  // Amended 2026-09-30: a pasted post may be filed under any claim, and the
+  // claim keeps the source it was verified against.
+  it('shows a pasted post under a claim sourced to an article, leaving that source alone', async () => {
+    const articleClaim = fixtureId('CLAIM', 2)
+    const before = (await scriptableClaims(db, FIXTURE_PROJECT_ID)).find(
+      (row) => row.id === articleClaim,
+    )!
+    expect(
+      await retypeToSocialAction(
+        FIXTURE_PROJECT_ID,
+        stockId,
+        articleClaim,
+        'https://twitter.com/EMostaque/status/1771400218170519741?s=20',
+      ),
+    ).toEqual({ ok: true })
+
+    const row = (await getShotSlot(db, stockId))!
+    expect(row.type).toBe('social')
+    const brief = row.brief as unknown as { sourceClaimId: string; postUrl: string }
+    expect(brief.sourceClaimId).toBe(articleClaim)
+    expect(brief.postUrl).toBe('https://x.com/i/status/1771400218170519741')
+
+    const after = (await scriptableClaims(db, FIXTURE_PROJECT_ID)).find(
+      (row) => row.id === articleClaim,
+    )!
+    expect(after.sourceUrl).toBe(before.sourceUrl)
+  })
+
+  it('refuses a pasted address that is not a post, before touching the slot', async () => {
+    expect(
+      await retypeToSocialAction(
+        FIXTURE_PROJECT_ID,
+        stockId,
+        fixtureId('CLAIM', 2),
+        'https://x.com/EMostaque',
+      ),
+    ).toEqual({ ok: false, error: NOT_A_POST_ERROR })
+    expect((await getShotSlot(db, stockId))!.type).toBe('stock')
+  })
+
+  it('refuses a claim that is not in this project', async () => {
+    expect(
+      await retypeToSocialAction(
+        FIXTURE_PROJECT_ID,
+        stockId,
+        fixtureId('CLAIM', 99),
+        'https://x.com/EMostaque/status/1771400218170519741',
+      ),
+    ).toEqual({ ok: false, error: 'That claim is no longer in this project’s dossier.' })
+  })
+
+  it('moves a card to a different pasted post under the same claim', async () => {
+    await retypeToSocialAction(FIXTURE_PROJECT_ID, stockId, POST_CLAIM_ID)
+    expect(
+      await retypeToSocialAction(
+        FIXTURE_PROJECT_ID,
+        stockId,
+        POST_CLAIM_ID,
+        'https://x.com/jack/status/20',
+      ),
+    ).toEqual({ ok: true })
+    const brief = (await getShotSlot(db, stockId))!.brief as unknown as { postUrl: string }
+    expect(brief.postUrl).toBe('https://x.com/i/status/20')
   })
 })
 
