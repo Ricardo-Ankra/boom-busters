@@ -158,7 +158,16 @@ const LEGACY_HOUSE_LINE =
   /An available-light documentary photograph,[^.;]*?real materials with wear: scuffed edges, cable runs, a coffee ring, papers out of line(?:; people caught candid and mid-moment, never posing or acting for the camera)?\./g
 const LEGACY_ANCHORS =
   /(?:[a-z]+ film grain|clean, no grain); muted documentary colour grade anchored on #[0-9a-f]{3,8} and #[0-9a-f]{3,8} against #[0-9a-f]{3,8}; sombre, photographic realism\.?/gi
-const LEGACY_PALETTE = /accent [^,;.]{1,40}, (?:cold|neutral|warm);/gi
+// A hex accent never occurs in prose, so it strips unconditionally. A named
+// one ("accent muted gold, cold;") reads exactly like prose that happens to
+// mention an accent wall or an accent colour, so it strips only when the
+// legacy anchors clause follows it directly — the shape it was actually
+// pasted in, never on its own (re-review probes: "The room's accent wall is
+// bold, cold; a draught crept under the door.", "He picked an accent
+// colour, warm; she disagreed.").
+const LEGACY_PALETTE_HEX = /accent #[0-9a-f]{3,8}, (?:cold|neutral|warm);/gi
+const LEGACY_PALETTE_NAMED =
+  /accent [^,;.#]{1,40}, (?:cold|neutral|warm);(?=\s*(?:[a-z]+ film grain|clean, no grain); muted documentary colour grade)/gi
 const LEGACY_TEASER_CLAUSE =
   'Vertical 9:16 frame: subject in the centre third, headroom above for the hook text, nothing important in the bottom quarter where captions sit.'
 
@@ -174,8 +183,11 @@ export function sceneOf(prompt: string): string {
   return (
     own
       .replace(LEGACY_HOUSE_LINE, ' ')
+      // The named-palette lookahead needs the anchors clause still in
+      // place, so the palette strips run before the anchors strip.
+      .replace(LEGACY_PALETTE_HEX, ' ')
+      .replace(LEGACY_PALETTE_NAMED, ' ')
       .replace(LEGACY_ANCHORS, ' ')
-      .replace(LEGACY_PALETTE, ' ')
       .split(LEGACY_TEASER_CLAUSE)
       .join(' ')
       .replace(/[ \t]{2,}/g, ' ')

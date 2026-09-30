@@ -85,8 +85,22 @@ describe('sceneOf (decision 285)', () => {
     ).toBe('An available-light documentary photograph, dusk. Emad at the table, hands clasped.')
   })
 
-  it('strips a palette line with a named, non-hex accent', () => {
-    expect(sceneOf('A desk. accent muted gold, cold; more.')).toBe('A desk. more.')
+  // A named accent reads exactly like prose that mentions an accent wall or
+  // an accent colour, so it only strips in the shape it was actually pasted
+  // in: immediately before the legacy anchors clause.
+  it('strips a named, non-hex accent only when the anchors clause follows it', () => {
+    const anchors =
+      'subtle film grain; muted documentary colour grade anchored on #111 and #222 against #333; sombre, photographic realism'
+    expect(sceneOf(`A desk. accent muted gold, cold; ${anchors} more.`)).toBe('A desk. more.')
+  })
+
+  // Re-reviewer's probes: prose that merely mentions an accent must survive,
+  // because it never leads into the legacy anchors clause.
+  it('leaves plain prose that merely mentions an accent alone', () => {
+    const wall = "The room's accent wall is bold, cold; a draught crept under the door."
+    const colour = 'He picked an accent colour, warm; she disagreed.'
+    expect(sceneOf(wall)).toBe(wall)
+    expect(sceneOf(colour)).toBe(colour)
   })
 
   it('leaves an ellipsis and an abbreviation’s punctuation alone', () => {
