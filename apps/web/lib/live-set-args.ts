@@ -56,7 +56,7 @@ export function defaultInventoryModel(
 }
 
 /** A flag that, when given, must carry a value: an empty one would send nothing. */
-function optionalText(raw: Record<string, string>, key: string): string | undefined {
+export function optionalText(raw: Record<string, string>, key: string): string | undefined {
   if (!(key in raw)) return undefined
   const value = raw[key]!.trim()
   if (value === '') throw new Error(`--${key} needs a value.`)
@@ -79,7 +79,7 @@ function splitToken(token: string): { key: string; inlineValue: string | undefin
     : { key: body.slice(0, at), inlineValue: body.slice(at + 1) }
 }
 
-function readRawFlags(argv: readonly string[]): Record<string, string> {
+export function readRawFlags(argv: readonly string[]): Record<string, string> {
   const raw: Record<string, string> = {}
   for (let at = 0; at < argv.length; at += 1) {
     const token = argv[at]
@@ -103,7 +103,7 @@ function readRawFlags(argv: readonly string[]): Record<string, string> {
  * a `NaN` comparison is always false, and `Infinity` accepts everything — so
  * both are refused here, before the harness reads a single byte.
  */
-function parseCap(raw: string | undefined): number {
+export function parseCap(raw: string | undefined): number {
   if (raw === undefined || raw.trim() === '') return 1
   const cap = Number(raw)
   if (!Number.isFinite(cap) || cap <= 0) {
