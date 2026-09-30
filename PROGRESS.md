@@ -6465,3 +6465,30 @@ green.
      untouched and offers the same spend again. Fixing it needs an
      in-flight state on the slot or project row, written by the action and
      cleared by the job, which is a schema change for the owner to approve.
+286. **The board says a background job is running until it lands**
+     (2026-09-30, owner, after decision 285: proper feedback on edits).
+     Regenerate, Fetch this slot, Save & re-fetch, Redirect, Re-plan, Fix,
+     Redraft and Fetch visuals each sent an event and returned, and nothing
+     stored said the job was running, so the card went back to offering the
+     same paid action while it worked; a second press cancelled the first
+     run (every one is a `cancel` singleton). Worst was Fetch visuals: the
+     plan phase lasts the whole fetch pass, so the plan screen kept offering
+     Fetch, and a second press sent `fetch.resume` and cancelled the fetch
+     in flight. Now the action stamps the row before it sends
+     (`shot_slots.pending_job`, `projects.visuals_job`, each with a
+     `jobId`), and the job releases only its own stamp, once, in a
+     `release-job` step after its body returns (so none of the re-planner's
+     eight exits can forget it), and again in `onFailure`. Stop clears every
+     stamp on the project, and the stuck `drafting`/`rebriefing` re-types
+     it used to leave behind. Fetch visuals hands over at the gate close:
+     the runner clears the `fetch` stamp by op inside `load-plan` (not by
+     job id, which would mean reading a new field from a parked wait, the
+     decision 279 crash), and from there "plan phase, stage running" is the
+     signal; `approvePlanAction` also refuses a second Fetch while it runs.
+     The board locks the card (or, for plan jobs, the whole board), keeps
+     the pressed button spinning, and says what is running and for how
+     long; past 10 minutes a stamp stops locking and the card says it may
+     have stopped. Age is measured on the server's clock (`renderedAt` plus
+     time elapsed in the browser), so a wrong laptop clock changes nothing.
+     Ships with `db:migrate` before the Vercel deploy, then
+     `PUT /api/inngest`; no broker or Remotion redeploy.
