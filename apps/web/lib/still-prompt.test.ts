@@ -1,7 +1,14 @@
 import { describe, expect, it } from 'vitest'
 import type { CastMember, ProjectSet } from '@boom-busters/schemas'
 import { PHOTOGRAPH_LINE, PLATE_PHOTOGRAPH_LINE, TEASER_COMPOSITION } from './photograph-lines'
-import { assembleStillPrompt, planStillReferences, REFERENCE_MARKER, sceneOf } from './still-prompt'
+import { framingLead } from './set-plates'
+import {
+  assembleStillPrompt,
+  planStillReferences,
+  REFERENCE_MARKER,
+  referenceSentences,
+  sceneOf,
+} from './still-prompt'
 
 const photo = (key: string) => ({
   r2Key: key,
@@ -225,11 +232,21 @@ describe('assembleStillPrompt (decision 285)', () => {
     expect(prompt).not.toContain('9:16')
   })
 
-  it('keeps every fixed line free of named props', () => {
-    for (const line of [PHOTOGRAPH_LINE, PLATE_PHOTOGRAPH_LINE, TEASER_COMPOSITION]) {
-      expect(line).not.toMatch(
-        /coffee|cup|mug|cable|paper|laptop|monitor|dust|rain|grain|\d+\s?mm/i,
-      )
-    }
+  // The rule this guards: no named prop, no lens, no grain, anywhere the
+  // assembler writes for itself rather than quoting the planner. Extended
+  // (final review) to the framing lead with no camera and the reference
+  // sentences, which say "photographed" but must name no prop either.
+  it('keeps every fixed line, framing lead and reference sentence free of named props', () => {
+    const forbidden = /coffee|cup|mug|cable|paper|laptop|monitor|dust|rain|grain|\d+\s?mm/i
+    const lines = [
+      PHOTOGRAPH_LINE,
+      PLATE_PHOTOGRAPH_LINE,
+      TEASER_COMPOSITION,
+      framingLead(undefined, 'close'),
+      framingLead(undefined, 'medium'),
+      ...referenceSentences([{ name: 'X', photos: 1 }], { name: 'Room', plates: 1 }, true),
+      ...referenceSentences([{ name: 'X', photos: 1 }], { name: 'Room', plates: 1 }, false),
+    ]
+    for (const line of lines) expect(line).not.toMatch(forbidden)
   })
 })
