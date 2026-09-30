@@ -20,9 +20,11 @@ import {
   setSocialPostManual,
   retypeShotSlot,
   setProjectDirection,
+  setSlotJob,
   setSlotResolution,
   setSlotRetype,
   setSlotRoute,
+  setVisualsJob,
   unlinkSlotReuse,
   updateSlotBrief,
   upsertAssetByHash,
@@ -41,6 +43,7 @@ import {
   logoForEntity,
   missingArticleFields,
   missingPostFields,
+  newId,
   normaliseArticleUrl,
   normalisePostUrl,
   NOT_A_POST_ERROR,
@@ -66,8 +69,10 @@ import type {
   SetPlateView,
   ShotBrief,
   SlotCandidate,
+  SlotJob,
   SocialBrief,
   StillRoute,
+  VisualsJob,
 } from '@boom-busters/schemas'
 import { createHash } from 'node:crypto'
 import { revalidatePath } from 'next/cache'
@@ -374,7 +379,18 @@ export async function approvePlanAction(projectId: string): Promise<ActionResult
   if (project.visualsPhase !== 'plan') {
     return { ok: false, error: 'The plan checkpoint is not open on this project.' }
   }
+  // The plan phase lasts the whole fetch pass (the runner moves to `board`
+  // only when every slot has landed), and a second Fetch here would send
+  // `fetch.resume`, whose singleton cancels the fetch in flight (decision 286).
+  if (project.stageStatus === 'running' || project.stageStatus === 'queued') {
+    return {
+      ok: false,
+      error: 'The fetch is already running. The board updates as the shots land.',
+    }
+  }
 
+  const job: VisualsJob = { op: 'fetch', jobId: newId(), startedAt: new Date().toISOString() }
+  await setVisualsJob(db, projectId, job)
   try {
     await inngest.send(
       project.stageStatus === 'awaiting_review'
@@ -383,6 +399,7 @@ export async function approvePlanAction(projectId: string): Promise<ActionResult
     )
   } catch (error) {
     console.error('[visuals] could not send plan approval', error)
+    await setVisualsJob(db, projectId, null)
     return {
       ok: false,
       error:
@@ -1429,11 +1446,18 @@ export async function refetchSlotAction(
 }
 
 async function sendRefetch(projectId: string, slotId: string, note: string): Promise<ActionResult> {
+  // Stamped first (decision 286), so the refresh this action triggers already
+  // says the fetch is running, and the card does not offer it again.
+  const job: SlotJob = { kind: 'refetch', jobId: newId(), startedAt: new Date().toISOString() }
+  await setSlotJob(db, slotId, job)
   try {
-    await inngest.send(events.visualsRefetchRequested.create({ projectId, slotId, note }))
+    await inngest.send(
+      events.visualsRefetchRequested.create({ projectId, slotId, note, jobId: job.jobId }),
+    )
     return { ok: true }
   } catch (error) {
     console.error('[visuals] could not send refetch', error)
+    await setSlotJob(db, slotId, null)
     return {
       ok: false,
       error:
@@ -1932,10 +1956,13 @@ async function sendReplan(
     return { ok: false, error: 'The plan checkpoint is not open on this project.' }
   }
 
+  const job: VisualsJob = { op, jobId: newId(), startedAt: new Date().toISOString() }
+  await setVisualsJob(db, projectId, job)
   try {
-    await inngest.send(events.visualsReplanRequested.create({ projectId, op }))
+    await inngest.send(events.visualsReplanRequested.create({ projectId, op, jobId: job.jobId }))
   } catch (error) {
     console.error('[visuals] could not send replan', error)
+    await setVisualsJob(db, projectId, null)
     return {
       ok: false,
       error:
@@ -1968,10 +1995,15 @@ export async function redirectSceneAction(
     return { ok: false, error: 'Only an AI image slot can be redirected.' }
   }
 
+  const job: SlotJob = { kind: 'redirect', jobId: newId(), startedAt: new Date().toISOString() }
+  await setSlotJob(db, slotId, job)
   try {
-    await inngest.send(events.visualsRedirectRequested.create({ projectId, slotId }))
+    await inngest.send(
+      events.visualsRedirectRequested.create({ projectId, slotId, jobId: job.jobId }),
+    )
   } catch (error) {
     console.error('[visuals] could not send redirect', error)
+    await setSlotJob(db, slotId, null)
     return {
       ok: false,
       error:

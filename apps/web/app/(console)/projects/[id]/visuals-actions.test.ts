@@ -8,6 +8,7 @@ import {
   deleteProjectSet,
   FIXTURE_DOSSIER_ID,
   FIXTURE_PROJECT_ID,
+  getProject,
   getShotSlot,
   getSocialPost,
   insertCastMember,
@@ -29,6 +30,7 @@ import {
   slotNeedsResolution,
   socialPosts,
   updateSettings,
+  updateSlotBrief,
 } from '@boom-busters/db'
 import type { NewShotSlot } from '@boom-busters/db'
 import {
@@ -49,8 +51,10 @@ import {
   finaliseOwnUploadAction,
   linkCastHandleAction,
   refetchSlotAction,
+  redirectSceneAction,
   refetchSocialPostAction,
   removeSocialImageAction,
+  replanShotsAction,
   retypeSlotAction,
   retypeToHeadlineAction,
   retypeToSocialAction,
@@ -1532,5 +1536,106 @@ describeDb("linking a cast member's X handle (decision 284)", () => {
         await unlinkCastHandleAction(FIXTURE_PROJECT_ID, '01J0000000000000000000000Y', SLOT),
       ).toEqual({ ok: false, error: 'This cast member no longer exists.' })
     })
+  })
+})
+
+describeDb('job stamps (decision 286)', () => {
+  let slotId = ''
+
+  beforeEach(async () => {
+    vi.clearAllMocks()
+    inngest.send.mockResolvedValue(undefined)
+    await seed(db)
+    await db.delete(shotSlots)
+    const script = await createScriptVersion(db, FIXTURE_PROJECT_ID)
+    const chapter = await saveChapter(db, {
+      scriptId: script.id,
+      index: 0,
+      title: 'The audit',
+      contentMd: 'One.',
+      estRuntimeSec: 30,
+    })
+    await replaceShotList(db, FIXTURE_PROJECT_ID, [
+      {
+        chapterId: chapter.id,
+        index: 0,
+        type: 'stock',
+        brief: stock('One.', 'the lobby'),
+        startMs: 0,
+        durationMs: 6000,
+      },
+    ])
+    slotId = (await listShotSlots(db, FIXTURE_PROJECT_ID))[0]!.id
+    await setVisualsPhase(db, FIXTURE_PROJECT_ID, 'plan')
+    await setProjectStage(db, FIXTURE_PROJECT_ID, {
+      stage: 'visuals',
+      stageStatus: 'awaiting_review',
+    })
+  })
+
+  /** The one event the action sent, and its data. */
+  const sent = () => (inngest.send.mock.calls.at(-1)![0] as { data: Record<string, unknown> }).data
+
+  it('stamps a refetch before it sends, with the id the event carries', async () => {
+    expect(await refetchSlotAction(FIXTURE_PROJECT_ID, slotId, 'Regenerate')).toEqual({
+      ok: true,
+    })
+    const stamp = (await getShotSlot(db, slotId))!.pendingJob as { kind: string; jobId: string }
+    expect(stamp.kind).toBe('refetch')
+    expect(sent()['jobId']).toBe(stamp.jobId)
+  })
+
+  it('takes the stamp back when the event cannot be sent', async () => {
+    inngest.send.mockRejectedValueOnce(new Error('Inngest is down'))
+    const result = await refetchSlotAction(FIXTURE_PROJECT_ID, slotId, 'Regenerate')
+    expect(result.ok).toBe(false)
+    expect((await getShotSlot(db, slotId))!.pendingJob).toBeNull()
+  })
+
+  it('stamps a redirect on the slot', async () => {
+    // The action checks the brief's type, which is all a redirect needs.
+    await updateSlotBrief(db, slotId, {
+      type: 'still',
+      coversText: 'One.',
+      description: 'the lobby',
+      motion: { kind: 'static' },
+      transition: 'cut',
+      prompt: 'An empty lobby at dusk.',
+    })
+    expect(await redirectSceneAction(FIXTURE_PROJECT_ID, slotId)).toEqual({ ok: true })
+    const stamp = (await getShotSlot(db, slotId))!.pendingJob as { kind: string; jobId: string }
+    expect(stamp.kind).toBe('redirect')
+    expect(sent()['jobId']).toBe(stamp.jobId)
+  })
+
+  it('stamps a re-plan on the project under the op the event names', async () => {
+    expect(await replanShotsAction(FIXTURE_PROJECT_ID)).toEqual({ ok: true })
+    const stamp = (await getProject(db, FIXTURE_PROJECT_ID))!.visualsJob as {
+      op: string
+      jobId: string
+    }
+    expect(stamp.op).toBe('shots')
+    expect(sent()).toMatchObject({ op: 'shots', jobId: stamp.jobId })
+  })
+
+  it('stamps Fetch visuals, and takes it back when the send fails', async () => {
+    expect(await approvePlanAction(FIXTURE_PROJECT_ID)).toEqual({ ok: true })
+    expect((await getProject(db, FIXTURE_PROJECT_ID))!.visualsJob).toMatchObject({
+      op: 'fetch',
+    })
+
+    inngest.send.mockRejectedValueOnce(new Error('Inngest is down'))
+    expect((await approvePlanAction(FIXTURE_PROJECT_ID)).ok).toBe(false)
+    expect((await getProject(db, FIXTURE_PROJECT_ID))!.visualsJob).toBeNull()
+  })
+
+  it('refuses a second Fetch while the first is running, rather than cancelling it', async () => {
+    await setProjectStage(db, FIXTURE_PROJECT_ID, { stage: 'visuals', stageStatus: 'running' })
+    const result = await approvePlanAction(FIXTURE_PROJECT_ID)
+    expect(result).toEqual({
+      ok: false,
+      error: 'The fetch is already running. The board updates as the shots land.',
+    })
+    expect(inngest.send).not.toHaveBeenCalled()
   })
 })
