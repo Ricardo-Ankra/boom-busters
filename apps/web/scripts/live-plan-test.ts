@@ -46,6 +46,10 @@ import {
  * checked before the first query; R2 is only read; nothing is recorded in the
  * cost ledger. `run.json` in the output folder is the record. Every paid call
  * reserves its estimate first under the owner's $1 cap.
+ *
+ * `run.json` also carries `briefs` (what the planner produced, so a later run
+ * can `--briefs-from` it) and `entries` (the budget's own reserve/settle
+ * ledger, for the controller to audit); Task 10 reads both.
  */
 
 const FALLBACK_STILL_MODEL = 'gemini-3.1-flash-image'
@@ -89,9 +93,15 @@ async function main(): Promise<void> {
   let briefs: StillBrief[] = []
   let plannerModel = args.plannerModel ?? ''
   let skipped = 0
+  /** Set only when the whole run failed outside a single still's own try/catch. */
+  let runError: string | undefined
 
   const writeRun = (): void => {
-    const record: PlanRunRecord & { briefs: StillBrief[]; entries: unknown } = {
+    const record: PlanRunRecord & {
+      briefs: StillBrief[]
+      entries: unknown
+      error?: string
+    } = {
       label: args.label,
       project: args.project,
       chapter: args.chapter,
@@ -102,6 +112,7 @@ async function main(): Promise<void> {
       budget: { capUsd: args.cap, totalUsd: budget.spentUsd },
       briefs,
       entries: budget.entries,
+      ...(runError ? { error: runError } : {}),
     }
     writeFileSync(path.join(outDir, 'run.json'), JSON.stringify(record, null, 2))
   }
@@ -150,9 +161,18 @@ async function main(): Promise<void> {
         async (request: LLMTaskRequest, purpose) => {
           const label = `planner-${purpose}-${(call += 1)}`
           budget.reserve(label, PLANNER_RESERVE_USD)
-          const result = await google.complete(request, { apiKey, model: plannerModel })
-          budget.record(label, priceOf(model, result.usage))
-          return { text: result.text }
+          try {
+            const result = await google.complete(request, { apiKey, model: plannerModel })
+            budget.record(label, priceOf(model, result.usage))
+            return { text: result.text }
+          } catch (error) {
+            // The reservation above must not sit unsettled if the call itself
+            // failed (an API error, a bad key, a rate limit): the budget's
+            // entries are read by the controller as what this run actually
+            // spent, and an unsettled reserve would overstate it forever.
+            budget.record(label, 0)
+            throw error
+          }
         },
         {
           caseTitle: project.title,
@@ -206,25 +226,29 @@ async function main(): Promise<void> {
         skipped = briefs.length - index
         break
       }
-      const references: ImageReference[] = []
-      for (const { member, photo } of plan.photos) {
-        references.push({
-          name: member.name,
-          kind: 'character',
-          mimeType: photo.mimeType,
-          data: await bytesOf(photo.r2Key),
-        })
-      }
-      for (const plate of plan.plates) {
-        references.push({
-          name: plan.setName ?? '',
-          kind: 'object',
-          mimeType: plate.mimeType,
-          data: await bytesOf(plate.r2Key),
-          ...(plate.view === 'other' ? {} : { facing: plate.view }),
-        })
-      }
       try {
+        // The reference fetch lives inside this try (fix round 1): an R2
+        // read failing here is exactly as much this still's problem as
+        // `generate` refusing, and must not abort every still after it with
+        // that still's reservation left unsettled and `run.json` stale.
+        const references: ImageReference[] = []
+        for (const { member, photo } of plan.photos) {
+          references.push({
+            name: member.name,
+            kind: 'character',
+            mimeType: photo.mimeType,
+            data: await bytesOf(photo.r2Key),
+          })
+        }
+        for (const plate of plan.plates) {
+          references.push({
+            name: plan.setName ?? '',
+            kind: 'object',
+            mimeType: plate.mimeType,
+            data: await bytesOf(plate.r2Key),
+            ...(plate.view === 'other' ? {} : { facing: plate.view }),
+          })
+        }
         const result = await geminiImageGen.generate(
           {
             prompt,
@@ -256,6 +280,15 @@ async function main(): Promise<void> {
     writeRun()
     console.log(outDir)
     console.log(`Total spent: $${budget.spentUsd.toFixed(4)}`)
+  } catch (error) {
+    // Anything that escapes the per-still try/catches above (the project
+    // load, the planner call, a bad --briefs-from file) must still leave a
+    // readable `run.json` behind: a run that spent something and then threw
+    // is not a run with nothing to show for it (fix round 1). `BudgetExceeded`
+    // keeps its own message unchanged.
+    runError = error instanceof Error ? error.message : String(error)
+    writeRun()
+    throw error
   } finally {
     await sql.end()
   }
