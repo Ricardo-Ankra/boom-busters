@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest'
 import { mockDirectorsBook } from './direction'
 import { buildRebriefRequest, mockRebriefedBrief, parseRebriefedBrief } from './rebrief'
 import { buildRetypeRequest } from './retype'
-import { PEOPLE_RULES } from './shotlist'
+import { PEOPLE_RULES, SCENE_ONLY_PROMPT } from './shotlist'
 
 const stock: ShotBrief = {
   type: 'stock',
@@ -104,6 +104,14 @@ describe('buildRebriefRequest for a still', () => {
       'Sets: when the sentence puts us in one of the rooms listed above',
     )
     expect(request.system).not.toContain('Do not name or describe a real')
+  })
+
+  // Final review: the rebrief called the stored prompt "the full
+  // text-to-image prompt", contradicting the planner and the bible — the
+  // prompt is the scene alone, the same sentence `fieldRule` shares.
+  it('calls "prompt" the scene alone, the same sentence the planner uses', () => {
+    expect(request.system).not.toContain('full text-to-image prompt')
+    expect(request.system).toContain(SCENE_ONLY_PROMPT)
   })
 
   it('offers no set when the film holds none', () => {

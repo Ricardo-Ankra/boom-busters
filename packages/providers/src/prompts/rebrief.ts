@@ -3,7 +3,7 @@ import type { DirectorsBook, ShotBrief } from '@boom-busters/schemas'
 import { z } from 'zod'
 import { DIRECTION_CRAFT } from './direction-craft'
 import { formatIssues, parseJsonCompletion } from './json'
-import { fieldRule, PEOPLE_RULES, referencesPrefix, SET_RULES } from './shotlist'
+import { fieldRule, PEOPLE_RULES, referencesPrefix, SCENE_ONLY_PROMPT, SET_RULES } from './shotlist'
 import { outputBudget } from '../llm/types'
 import type { LLMTaskRequest } from '../llm/types'
 
@@ -77,7 +77,7 @@ function stillShape(hasSets: boolean): string {
    "transition", "prompt": string, "negativePrompt"?: string,
    "depicts"?: [each real person shown by likeness, by full name alone]${setFields}}
 
-"prompt" is the full text-to-image prompt.
+${SCENE_ONLY_PROMPT}
 
 Keep ${kept} from the current brief while the new idea still shows those
 people${hasSets ? ' in that room' : ''}. When the producer's steer names a person or a room from

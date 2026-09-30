@@ -156,6 +156,17 @@ export function fieldRule(hasSets: boolean): string {
 `
 }
 
+/**
+ * What "prompt" holds on a still brief, shared with a rebrief (decision 285
+ * final review): the planner's own text said this once and the rebrief said
+ * something else ("the full text-to-image prompt"), which told a redraft to
+ * write the framing, the room and the house line the assembler already adds
+ * — the wrong owner for wrong reasons, on the second call alone.
+ */
+export const SCENE_ONLY_PROMPT =
+  '"prompt" is the scene alone: code adds the framing, the room, the references ' +
+  'and the house photograph line; write none of them, and no palette, grade, grain or colour code.'
+
 function slotShapes(hasSets: boolean): string {
   return `Every slot: {"paragraphIndex": number, "seconds": number, "brief": {...}}
 
@@ -320,12 +331,10 @@ ${fieldRule(sets.length > 0)}- Cover every paragraph. A slot runs 4-15 seconds (
   where to look and what to search for, "mustShow" is the test the upload
   must pass. Plan one only where authenticity is the point; every archival
   slot is manual work for a human.
-- "still" is an AI-GENERATED image. "prompt" is the scene alone, written as the
+- "still" is an AI-GENERATED image. ${SCENE_ONLY_PROMPT} Write it as the
   bible's "What a still prompt must contain" says: prose, subject first, the
   detail the sentence names, the light of the moment, then lens and camera height
   (a still that names a set is the exception: its lens and camera height go in "camera" instead).
-  Code adds the framing, the room, the references and the house photograph
-  line; write none of them, and no palette, grade, grain or colour code.
 ${PEOPLE_RULES}${sets.length > 0 ? SET_RULES : ''}  Never quote the guardrail:
   it decides what you plan, not what the image model reads, and a model
   reads "never in handcuffs" as a request for handcuffs. Put its concrete
