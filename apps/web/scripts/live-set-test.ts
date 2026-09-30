@@ -5,7 +5,6 @@ import {
   findModel,
   geminiImageGen,
   google,
-  HOUSE_PHOTOGRAPH,
   imageGenPrice,
   priceOf,
   stillStyleAnchors,
@@ -33,14 +32,14 @@ import type {
 } from '@boom-busters/schemas'
 import sharp from 'sharp'
 import { z } from 'zod'
-import { buildSetSheetPrompt, describeCamera, framingLead, setPlateBrief } from '@/lib/set-plates'
+import { buildSetSheetPrompt, setPlateBrief } from '@/lib/set-plates'
 import { splitContactSheet } from '@/lib/contact-sheet'
 import type { SheetPanel } from '@/lib/contact-sheet'
 import { BudgetExceeded, LiveBudget } from '@/lib/live-budget'
 import { parseLiveSetArgs } from '@/lib/live-set-args'
 import type { LiveSetArgs } from '@/lib/live-set-args'
 import { layoutDraftRequest } from '@/lib/set-layout-prompt'
-import { withReferenceClause } from '@/lib/still-prompt'
+import { assembleStillPrompt } from '@/lib/still-prompt'
 
 /**
  * The live set-to-shot harness (decision 275, Task 13): runs the real
@@ -465,16 +464,17 @@ async function main(): Promise<void> {
       name,
       photos: castPhotos.filter(({ member }) => member.name === name).length,
     }))
-    // The house line names no lens: the camera's reaches the model once, in
-    // the camera sentence, exactly as in the app.
-    const shotPrompt = withReferenceClause(
-      stripBannedWords(
-        `${framingLead(shotInput.camera, shotInput.shotSize)}${shotInput.prompt} ${HOUSE_PHOTOGRAPH} ${styleAnchors}`,
-      ),
+    // Assembled by the one function the app itself uses (decision 285): the
+    // harness must send exactly the prompt a real run would, not its own
+    // approximation of it.
+    const shotPrompt = assembleStillPrompt({
+      scene: shotInput.prompt,
+      ...(shotInput.shotSize ? { shotSize: shotInput.shotSize } : {}),
+      camera: shotInput.camera,
+      layout,
       people,
-      { name: args.name, plates: chosen.length },
-      describeCamera(shotInput.camera, layout, shotInput.shotSize),
-    )
+      set: { name: args.name, plates: chosen.length },
+    })
     prompts.shot = shotPrompt
     record.shot = {
       prompt: shotInput.prompt,

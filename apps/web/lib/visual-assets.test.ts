@@ -37,6 +37,8 @@ import type {
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { listLedger } from '@boom-busters/cost'
 import { db } from '@/lib/db'
+import { PHOTOGRAPH_LINE } from './photograph-lines'
+import { assembleStillPrompt, REFERENCE_MARKER } from './still-prompt'
 import {
   generateStillCandidates,
   referenceBudgets,
@@ -460,14 +462,24 @@ describeDb('generateStillCandidates with the cast', () => {
 
 References attached: 1 photograph of Emad Mostaque.`
     await generateStillCandidates({ ...still, prompt }, FIXTURE_PROJECT_ID)
-    expect(generate.mock.calls[0]?.[0]?.prompt).toBe(prompt)
+    const sent = generate.mock.calls[0]?.[0]?.prompt ?? ''
+    expect(sent.match(/References attached:/g)).toHaveLength(1)
+    expect(sent).toContain('Emad Mostaque at a podium.')
   })
 
   it('generates from text alone for a stranger or a member without photos', async () => {
     await insertCastMember(db, { projectId: FIXTURE_PROJECT_ID, name: 'Emad Mostaque', role: 'x' })
     const candidates = await generateStillCandidates(still, FIXTURE_PROJECT_ID)
     expect(generate.mock.calls[0]?.[0]?.references).toBeUndefined()
-    expect(generate.mock.calls[0]?.[0]?.prompt).toBe(still.prompt)
+    expect(generate.mock.calls[0]?.[0]?.prompt).toBe(
+      assembleStillPrompt({
+        scene: still.prompt,
+        layout: '',
+        people: [],
+        set: null,
+        ...(still.shotSize ? { shotSize: still.shotSize } : {}),
+      }),
+    )
     expect(candidates[0]?.references).toBeUndefined()
 
     generate.mockClear()
@@ -482,7 +494,9 @@ References attached: 1 photograph of Emad Mostaque.`
       { ...still, prompt: 'A cinematic boardroom at dusk.' },
       FIXTURE_PROJECT_ID,
     )
-    expect(generate.mock.calls[0]?.[0]?.prompt).toBe('A boardroom at dusk.')
+    const sent = generate.mock.calls[0]?.[0]?.prompt ?? ''
+    expect(sent).toContain('A boardroom at dusk.')
+    expect(sent).not.toContain('cinematic')
   })
 
   it('a graphic resolves at no cost when every logo has a mark, and waits as a placeholder otherwise', async () => {
@@ -786,13 +800,16 @@ References attached: 1 photograph of Emad Mostaque.`
       )
       expect(prompt).toContain('Emad Mostaque is photographed in the scene, never pasted onto it')
       expect(prompt).toContain(
-        "The photographs of Venture Capital Boardroom are for the room's design only",
+        "The photographs of Venture Capital Boardroom show this room's furniture, materials and light",
       )
       // Decision 273: the old wording made the model edit the plate.
       expect(prompt).not.toContain('match them exactly')
       expect(prompt).not.toContain('describes only what happens in them')
-      // The brief's own words stay first; the declaration closes the prompt.
-      expect(prompt.startsWith(still.prompt)).toBe(true)
+      // Decision 285: positive either way, never an edit instruction.
+      expect(prompt).not.toContain('never reproduce or edit the framing')
+      // The brief's own words stay before the declaration, which closes the prompt.
+      expect(prompt.indexOf(still.prompt)).toBeGreaterThanOrEqual(0)
+      expect(prompt.indexOf(still.prompt)).toBeLessThan(prompt.indexOf(REFERENCE_MARKER))
     })
 
     it('names the room in the prompt, so the model knows which image is which', async () => {
@@ -810,11 +827,10 @@ References attached: 1 photograph of Emad Mostaque.`
       const prompt = generate.mock.calls[0]?.[0].prompt ?? ''
       expect(prompt).toContain(
         'References attached: 1 photograph of Venture Capital Boardroom. The photographs ' +
-          "of Venture Capital Boardroom are for the room's design only: its architecture, " +
-          'materials, furniture and light. This is a new photograph taken inside that room ' +
-          'from the camera position the text above describes; never reproduce or edit the ' +
-          'framing of its photographs.',
+          "of Venture Capital Boardroom show this room's furniture, materials and light; " +
+          'this photograph is a new one taken inside it.',
       )
+      expect(prompt).not.toContain('never reproduce or edit the framing')
       // No person, so no staging sentence.
       expect(prompt).not.toContain('pasted onto it')
     })
@@ -956,7 +972,7 @@ References attached: 1 photograph of Emad Mostaque.`
       )
       expect(prompt).toContain('Behind the camera, out of frame: glass.')
       expect(prompt).toContain(
-        "The photographs of Venture Capital Boardroom show this room's furniture, materials and light; this photograph is a new one from the camera above.",
+        "The photographs of Venture Capital Boardroom show this room's furniture, materials and light; this photograph is a new one from the camera described above.",
       )
       expect(prompt).not.toContain('never reproduce or edit the framing')
     })
@@ -985,7 +1001,9 @@ References attached: 1 photograph of Emad Mostaque.`
       )
     })
 
-    it('keeps the decision 273 ending for a set shot with no camera', async () => {
+    // Decision 285: the decision 273 ending read as an edit instruction, so
+    // the room sentence is the same whether or not a camera reaches it.
+    it('says a new photograph without the edit wording for a set shot with no camera', async () => {
       const room = await insertProjectSet(db, {
         projectId: FIXTURE_PROJECT_ID,
         name: 'Venture Capital Boardroom',
@@ -996,9 +1014,12 @@ References attached: 1 photograph of Emad Mostaque.`
         { ...still, set: 'Venture Capital Boardroom' },
         FIXTURE_PROJECT_ID,
       )
-      expect(generate.mock.calls[0]?.[0].prompt).toContain(
-        'never reproduce or edit the framing of its photographs',
+      const prompt = generate.mock.calls[0]?.[0].prompt ?? ''
+      expect(prompt).toContain(
+        "The photographs of Venture Capital Boardroom show this room's furniture, materials " +
+          'and light; this photograph is a new one taken inside it.',
       )
+      expect(prompt).not.toContain('never reproduce or edit the framing')
     })
 
     // Final review (decision 275): the house line once carried "35mm, eye
@@ -1040,8 +1061,11 @@ References attached: 1 photograph of Emad Mostaque.`
       expect(request?.references?.map((reference) => reference.kind)).toContain('object')
       expect(prompt.match(/\d+\s?mm/g)).toEqual(['85mm'])
       expect(prompt.match(/The camera stands at/g)).toHaveLength(1)
-      expect(prompt.split(HOUSE_PHOTOGRAPH)).toHaveLength(2)
-      expect(prompt).toContain(anchors)
+      // Decision 285: the legacy paste is stripped, not doubled; the
+      // assembler's own line closes the prompt instead.
+      expect(prompt).not.toContain(HOUSE_PHOTOGRAPH)
+      expect(prompt).not.toContain(anchors)
+      expect(prompt.endsWith(PHOTOGRAPH_LINE)).toBe(true)
       expect(prompt).toContain(
         'The camera stands at the south doorway, seated height, facing north, 85mm.',
       )

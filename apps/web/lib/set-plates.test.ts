@@ -99,11 +99,13 @@ describe('describeCamera framing (live run 5)', () => {
   // Live run 6: said at the end, "a close shot" lost to a wide opening.
   it('leads a close or medium prompt with its framing, and a wide one with nothing', () => {
     expect(framingLead(camera, 'close')).toBe(
-      'A close shot, the subject filling most of the frame, the room behind soft and out of focus: ',
+      'A close shot: the subject fills most of the frame, the background soft and out of focus.',
     )
-    expect(framingLead(camera, 'medium')).toBe('A medium shot, the subject from the waist up: ')
+    expect(framingLead(camera, 'medium')).toBe('A medium shot: the subject from the waist up.')
     expect(framingLead(camera, 'wide')).toBe('')
     expect(framingLead(camera)).toContain('A close shot')
+    expect(framingLead(undefined, 'close')).toContain('A close shot')
+    expect(framingLead(undefined)).toBe('')
   })
 
   // Live run 13: naming the window wall pulled it in behind a close subject.

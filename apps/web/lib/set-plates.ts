@@ -147,14 +147,15 @@ function framingOf(shotSize: ShotSize | undefined, lens: string | undefined): Fr
  * The framing, said first (live run 6, 2026-09-24): stated at the end of the
  * prompt, "a close shot" lost to a wide opening sentence and a wide reference
  * plate. A still with a camera now opens with how tight it is; a wide shot
- * needs no lead.
+ * needs no lead. Every still gets it now, with or without a set (decision
+ * 285); it is a sentence of its own because the camera sentence follows it.
  */
-export function framingLead(camera: SetCamera, shotSize?: ShotSize): string {
-  const framing = framingOf(shotSize, camera.lens)
+export function framingLead(camera: SetCamera | undefined, shotSize?: ShotSize): string {
+  const framing = framingOf(shotSize, camera?.lens)
   if (framing === 'close') {
-    return 'A close shot, the subject filling most of the frame, the room behind soft and out of focus: '
+    return 'A close shot: the subject fills most of the frame, the background soft and out of focus.'
   }
-  if (framing === 'medium') return 'A medium shot, the subject from the waist up: '
+  if (framing === 'medium') return 'A medium shot: the subject from the waist up.'
   return ''
 }
 

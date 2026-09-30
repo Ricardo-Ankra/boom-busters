@@ -1,5 +1,6 @@
 /**
- * The still prompt's reference declaration (decision 253, 264, 273, 275).
+ * The one place an AI image prompt is assembled, and the still prompt's
+ * reference declaration (decision 253, 264, 273, 275, 285).
  *
  * Its own module, pure, with no database, storage or env import, direct or
  * transitive: the live set harness (decision 275, Task 13) builds a still
@@ -13,6 +14,7 @@
 
 import { stripBannedWords } from '@boom-busters/providers'
 import type { ReferenceLimits } from '@boom-busters/providers'
+import { PHOTOGRAPH_LINE, PLATE_PHOTOGRAPH_LINE, TEASER_COMPOSITION } from './photograph-lines'
 import {
   depictedMembers,
   MAX_CHARACTER_REFERENCES,
@@ -146,39 +148,51 @@ export function andList(parts: readonly string[]): string {
   return `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}`
 }
 
-/**
- * The prompt, closed with a declaration of what is attached and what each
- * photograph is FOR.
- *
- * It COUNTS, because "2 photographs of Markus Braun" tells the model how much
- * evidence it holds where a bare name does not. It names every person rather
- * than referring back to them, because a pronoun here would be a guess about
- * a real person this app has no business making.
- *
- * It gives each kind of photograph one job (decision 273). The first version
- * said the photographs were "authoritative for the likeness and the room;
- * match them exactly", and that "the text describes only what happens in
- * them". The model read it as an edit: every still of a set kept the plate's
- * exact framing, and the person was pasted onto it at the wrong scale, rising
- * through the boardroom table. So a person's photographs are for the face,
- * a room's are for its design, the picture itself is a new one from the
- * camera position the brief names, and a person stands in it rather than on
- * it.
- *
- * Skipped when the prompt already carries the marker, so a re-generation of an
- * already-decorated prompt cannot stack two declarations.
+/*
+ * What the planner used to paste into every prompt (decisions 252 to 275),
+ * matched by shape rather than by today's Brand Kit values, because a kit
+ * edited since planning would otherwise leave its old anchors behind.
  */
-export function withReferenceClause(
-  prompt: string,
+const LEGACY_HOUSE_LINE =
+  /An available-light documentary photograph,[^;]*?real materials with wear: scuffed edges, cable runs, a coffee ring, papers out of line(?:; people caught candid and mid-moment, never posing or acting for the camera)?\./g
+const LEGACY_ANCHORS =
+  /(?:[a-z]+ film grain|clean, no grain); muted documentary colour grade anchored on #[0-9a-f]{3,8} and #[0-9a-f]{3,8} against #[0-9a-f]{3,8}; sombre, photographic realism\.?/gi
+const LEGACY_PALETTE = /accent #[0-9a-f]{3,8}, (?:cold|neutral|warm);/gi
+const LEGACY_TEASER_CLAUSE =
+  'Vertical 9:16 frame: subject in the centre third, headroom above for the hook text, nothing important in the bottom quarter where captions sit.'
+
+/**
+ * The planner's own words in a stored prompt (decision 285): the scene, with
+ * every line code now adds taken back out. Stored briefs are never rewritten,
+ * so no brief hash moves and no resolved slot is bought again; the strip
+ * happens each time a prompt is read. Idempotent.
+ */
+export function sceneOf(prompt: string): string {
+  const marker = prompt.indexOf(REFERENCE_MARKER)
+  const own = marker === -1 ? prompt : prompt.slice(0, marker)
+  return own
+    .replace(LEGACY_HOUSE_LINE, ' ')
+    .replace(LEGACY_ANCHORS, ' ')
+    .replace(LEGACY_PALETTE, ' ')
+    .split(LEGACY_TEASER_CLAUSE)
+    .join(' ')
+    .replace(/[ \t]{2,}/g, ' ')
+    .replace(/\s+([,.;:])/g, '$1')
+    .replace(/([.;,])(?:\s*[.;,])+/g, '$1')
+    .trim()
+}
+
+/**
+ * What each attached photograph is for (decisions 253, 264, 273, 276): the
+ * sentences that used to close the prompt, now one segment of it. Counted
+ * from what actually travels.
+ */
+export function referenceSentences(
   people: readonly { name: string; photos: number }[],
   set: { name: string; plates: number } | null,
-  camera: string | null,
-): string {
-  if (prompt.includes(REFERENCE_MARKER)) return prompt
-  if (people.length === 0 && set === null) {
-    return camera !== null ? `${prompt.trimEnd()}\n\n${camera}` : prompt
-  }
-
+  hasCamera: boolean,
+): string[] {
+  if (people.length === 0 && set === null) return []
   const inventory = andList([
     ...people.map((person) => `${photographCount(person.photos)} of ${person.name}`),
     ...(set ? [`${photographCount(set.plates)} of ${set.name}`] : []),
@@ -201,24 +215,15 @@ export function withReferenceClause(
         `the scene's own light, and behind anything standing nearer the camera.`,
     )
   }
-  if (camera !== null) sentences.push(camera)
   if (set) {
+    // Positive either way (decision 285): "never reproduce or edit the
+    // framing" read as an edit instruction, the fault decision 275 found.
     sentences.push(
-      camera !== null
-        ? `The photographs of ${set.name} show this room's furniture, materials and light; ` +
-            `this photograph is a new one from the camera above.`
-        : `The photographs of ${set.name} are for the room's design only: its architecture, ` +
-            `materials, furniture and light.`,
+      `The photographs of ${set.name} show this room's furniture, materials and light; this ` +
+        `photograph is a new one ${hasCamera ? 'from the camera described above' : 'taken inside it'}.`,
     )
-    if (camera === null) {
-      sentences.push(
-        `This is a new photograph taken inside that room from the camera position the text ` +
-          `above describes; never reproduce or edit the framing of its photographs.`,
-      )
-    }
   }
-
-  return `${prompt.trimEnd()}\n\n${sentences.join(' ')}`
+  return sentences
 }
 
 /** What one still carries: the photographs and plates that actually travel, and the counts the prompt names. */
@@ -269,15 +274,26 @@ export interface StillPromptInput {
   kind?: StillKind
 }
 
-/** The one place a still's prompt is put together (decision 285). */
+/**
+ * The one place an image prompt is put together (decision 285). Order:
+ * framing, the camera and the room it sees, the scene, what the photographs
+ * are for, the photograph line. The opening of a prompt wins (decision 275's
+ * live runs), so the geometry comes before the scene rather than after it.
+ * The avoid list is the adapter's, which knows whether its model has a real
+ * negative field.
+ */
 export function assembleStillPrompt(input: StillPromptInput): string {
-  const body = input.camera
-    ? `${framingLead(input.camera, input.shotSize)}${input.scene}`
-    : input.scene
-  return withReferenceClause(
-    stripBannedWords(body),
-    input.people,
-    input.set,
-    input.camera ? describeCamera(input.camera, input.layout, input.shotSize) : null,
-  )
+  const kind = input.kind ?? 'still'
+  const camera = input.camera ? describeCamera(input.camera, input.layout, input.shotSize) : null
+  const references = referenceSentences(input.people, input.set, camera !== null)
+  return [
+    kind === 'plate' ? '' : framingLead(input.camera, input.shotSize),
+    camera ?? '',
+    stripBannedWords(sceneOf(input.scene)),
+    kind === 'teaser' ? TEASER_COMPOSITION : '',
+    references.join(' '),
+    kind === 'plate' ? PLATE_PHOTOGRAPH_LINE : PHOTOGRAPH_LINE,
+  ]
+    .filter((part) => part.trim() !== '')
+    .join('\n\n')
 }

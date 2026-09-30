@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { CastMember, ProjectSet } from '@boom-busters/schemas'
-import { describeCamera, framingLead } from './set-plates'
-import { assembleStillPrompt, planStillReferences, withReferenceClause } from './still-prompt'
+import { PHOTOGRAPH_LINE, PLATE_PHOTOGRAPH_LINE, TEASER_COMPOSITION } from './photograph-lines'
+import { assembleStillPrompt, planStillReferences, REFERENCE_MARKER, sceneOf } from './still-prompt'
 
 const photo = (key: string) => ({
   r2Key: key,
@@ -46,36 +46,154 @@ describe('planStillReferences', () => {
   })
 })
 
-describe('assembleStillPrompt (decision 285, Task 1: today behaviour)', () => {
-  it('matches the pre-refactor composition exactly', () => {
-    const camera = { facing: 'south' as const, position: 'the north windows, seated', lens: '35mm' }
-    const scene = 'Emad Mostaque seated at the long table, hands clasped.'
-    const expected = withReferenceClause(
-      `${framingLead(camera, 'medium')}${scene}`,
-      [{ name: 'Emad Mostaque', photos: 2 }],
-      { name: 'The Stability AI Boardroom', plates: 2 },
-      describeCamera(camera, boardroom.layout, 'medium'),
+const LEGACY_HOUSE =
+  'An available-light documentary photograph, slight grain, mixed colour temperature from window daylight and warm practicals, real materials with wear: scuffed edges, cable runs, a coffee ring, papers out of line; people caught candid and mid-moment, never posing or acting for the camera.'
+const LEGACY_ANCHORS =
+  'subtle film grain; muted documentary colour grade anchored on #0f1115 and #ef4444 against #0a0a0b; sombre, photographic realism'
+
+describe('sceneOf (decision 285)', () => {
+  it('strips the house line and anchors the planner pasted', () => {
+    expect(sceneOf(`Emad at the table, hands clasped. ${LEGACY_HOUSE} ${LEGACY_ANCHORS}`)).toBe(
+      'Emad at the table, hands clasped.',
     )
-    expect(
-      assembleStillPrompt({
-        scene,
-        shotSize: 'medium',
-        camera,
-        layout: boardroom.layout,
-        people: [{ name: 'Emad Mostaque', photos: 2 }],
-        set: { name: 'The Stability AI Boardroom', plates: 2 },
-      }),
-    ).toBe(expected)
   })
 
-  it('strips banned words from the scene, as generation always has', () => {
+  it('strips the palette prefix and keeps the planner words after the anchors', () => {
     expect(
-      assembleStillPrompt({
-        scene: 'A cinematic boardroom at dusk.',
-        layout: '',
-        people: [],
-        set: null,
-      }),
-    ).toBe('A boardroom at dusk.')
+      sceneOf(
+        `A laptop on a desk. ${LEGACY_HOUSE} accent #ef4444, cold; ${LEGACY_ANCHORS}. Eye level, 35mm lens.`,
+      ),
+    ).toBe('A laptop on a desk. Eye level, 35mm lens.')
+  })
+
+  it('strips the older house line that still named a lens', () => {
+    const older =
+      'An available-light documentary photograph, 35mm, eye level, slight grain, mixed colour temperature from window daylight and warm practicals, real materials with wear: scuffed edges, cable runs, a coffee ring, papers out of line.'
+    expect(sceneOf(`A door. ${older}`)).toBe('A door.')
+  })
+
+  it('strips a clean-grain anchors line and the old teaser clause', () => {
+    const anchors =
+      'clean, no grain; muted documentary colour grade anchored on #111 and #222 against #333; sombre, photographic realism'
+    const teaser =
+      'Vertical 9:16 frame: subject in the centre third, headroom above for the hook text, nothing important in the bottom quarter where captions sit.'
+    expect(sceneOf(`A podium. ${teaser} ${anchors}`)).toBe('A podium.')
+  })
+
+  it('cuts an old reference declaration an owner pasted back in', () => {
+    expect(sceneOf(`Emad at a podium.\n\n${REFERENCE_MARKER} 2 photographs of Emad.`)).toBe(
+      'Emad at a podium.',
+    )
+  })
+
+  it('leaves a clean scene as it is, and is idempotent', () => {
+    const clean = 'Four directors at a long table, dusk light from the windows.'
+    expect(sceneOf(clean)).toBe(clean)
+    const once = sceneOf(`A desk. ${LEGACY_HOUSE}`)
+    expect(sceneOf(once)).toBe(once)
+  })
+})
+
+describe('assembleStillPrompt (decision 285)', () => {
+  const camera = { facing: 'south' as const, position: 'the north windows, seated', lens: '35mm' }
+  const base = {
+    scene: `Emad Mostaque seated at the long table, hands clasped. ${LEGACY_HOUSE} ${LEGACY_ANCHORS}`,
+    shotSize: 'medium' as const,
+    camera,
+    layout: boardroom.layout,
+    people: [{ name: 'Emad Mostaque', photos: 2 }],
+    set: { name: 'The Stability AI Boardroom', plates: 2 },
+  }
+
+  it('puts framing, camera, scene, references and the photograph line in that order', () => {
+    const prompt = assembleStillPrompt(base)
+    const at = (text: string) => prompt.indexOf(text)
+    expect(at('A medium shot')).toBe(0)
+    expect(at('The camera stands at')).toBeGreaterThan(at('A medium shot'))
+    expect(at('Emad Mostaque seated')).toBeGreaterThan(at('The camera stands at'))
+    expect(at(REFERENCE_MARKER)).toBeGreaterThan(at('Emad Mostaque seated'))
+    expect(prompt.endsWith(PHOTOGRAPH_LINE)).toBe(true)
+  })
+
+  it('names one lens, one camera, and no grain, hex code or listed prop', () => {
+    const prompt = assembleStillPrompt(base)
+    expect(prompt.match(/\d+\s?mm/g)).toEqual(['35mm'])
+    expect(prompt.match(/The camera stands at/g)).toHaveLength(1)
+    expect(prompt).not.toMatch(/grain|#[0-9a-f]{3,8}|coffee|cable runs/i)
+  })
+
+  it('frames a still with no camera from its shot size', () => {
+    const prompt = assembleStillPrompt({
+      scene: 'An invoice on a desk.',
+      shotSize: 'close',
+      layout: '',
+      people: [],
+      set: null,
+    })
+    expect(prompt.startsWith('A close shot:')).toBe(true)
+  })
+
+  it('gives a wide or unsized still no framing lead', () => {
+    const prompt = assembleStillPrompt({
+      scene: 'A data centre aisle.',
+      layout: '',
+      people: [],
+      set: null,
+    })
+    expect(prompt.startsWith('A data centre aisle.')).toBe(true)
+  })
+
+  it('sends the camera for a set with an inventory but no plates, and promises no photographs', () => {
+    const prompt = assembleStillPrompt({ ...base, people: [], set: null })
+    expect(prompt).toContain('The camera stands at')
+    expect(prompt).not.toContain(REFERENCE_MARKER)
+  })
+
+  it('says a set photograph is new without the edit wording, with or without a camera', () => {
+    const withCamera = assembleStillPrompt(base)
+    const without = assembleStillPrompt({ ...base, camera: undefined })
+    for (const prompt of [withCamera, without]) {
+      expect(prompt).toContain("show this room's furniture, materials and light")
+      expect(prompt).not.toContain('never reproduce or edit the framing')
+    }
+  })
+
+  it('builds a plate with no framing lead, no people clause and the plate line', () => {
+    const prompt = assembleStillPrompt({
+      scene:
+        'The Stability AI Boardroom, empty of people: a wide photograph of the whole room facing east. A stark room.',
+      camera: {
+        facing: 'east',
+        position: 'the middle of the west wall, at eye level',
+        lens: '35mm',
+      },
+      layout: boardroom.layout,
+      people: [],
+      set: { name: 'The Stability AI Boardroom', plates: 1 },
+      kind: 'plate',
+    })
+    expect(prompt.startsWith('The camera stands at')).toBe(true)
+    expect(prompt.endsWith(PLATE_PHOTOGRAPH_LINE)).toBe(true)
+    expect(prompt).not.toContain('candid')
+  })
+
+  it('adds the teaser composition to a teaser', () => {
+    const prompt = assembleStillPrompt({
+      scene: 'Emad at a podium.',
+      layout: '',
+      people: [],
+      set: null,
+      kind: 'teaser',
+    })
+    expect(prompt).toContain(TEASER_COMPOSITION)
+    expect(prompt).not.toContain('9:16')
+  })
+
+  it('keeps every fixed line free of named props', () => {
+    for (const line of [PHOTOGRAPH_LINE, PLATE_PHOTOGRAPH_LINE, TEASER_COMPOSITION]) {
+      expect(line).not.toMatch(
+        /coffee|cup|mug|cable|paper|laptop|monitor|dust|rain|grain|\d+\s?mm/i,
+      )
+    }
   })
 })
