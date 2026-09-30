@@ -134,8 +134,15 @@ function NarrationAudio({ src }: { src: string }) {
   return <WebCodecsAudio src={src} />
 }
 
-/** One slot, dispatched by payload kind, with its dissolve-in if any. */
-function SlotView({ slot, brand }: { slot: TimelineSlot; brand: BrandKitTokens }) {
+/**
+ * One slot, dispatched by payload kind, with its dissolve-in if any.
+ *
+ * Exported for its own render test (decision 285 final review, spec §10):
+ * the grade filter has no render-level check otherwise, and mounting the
+ * whole master to get at it means a webpack bundle and headless Chrome for
+ * what is really one inline style.
+ */
+export function SlotView({ slot, brand }: { slot: TimelineSlot; brand: BrandKitTokens }) {
   const frame = useCurrentFrame()
   const { fps } = useVideoConfig()
   const durationInFrames = msToFrames(slot.durationMs, fps)
