@@ -1004,7 +1004,7 @@ References attached: 1 photograph of Emad Mostaque.`
       expect(prompt).toContain(
         'The camera stands at the south doorway, facing north. In frame: windows.',
       )
-      expect(prompt).toContain('Behind the camera, out of frame: glass.')
+      expect(prompt).not.toContain('Behind the camera')
       expect(prompt).toContain(
         "The photographs of Venture Capital Boardroom show this room's furniture, materials and light; this photograph is a new one from the camera described above.",
       )

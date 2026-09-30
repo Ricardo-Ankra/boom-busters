@@ -92,8 +92,11 @@ export function referencesPrefix(
         sets
           .map((set) => {
             const inventory = (set.layout ?? '').trim()
+            // One description per room (decision 285): the inventory once it
+            // exists; the look only before. Naming both let a still's prompt
+            // repeat furniture the inventory never counted.
             return inventory
-              ? `- ${set.name}: ${set.look}\n${inventory
+              ? `- ${set.name}\n${inventory
                   .split(/\r?\n/)
                   .filter((line) => line.trim() !== '')
                   .map((line) => `  ${line.trim()}`)

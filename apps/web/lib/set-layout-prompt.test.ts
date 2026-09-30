@@ -31,4 +31,13 @@ describe('layoutDraftRequest', () => {
     )
     expect(content).toContain("The room's look: A long table.")
   })
+
+  // Decision 285: the extra desk in a still came from furniture the inventory
+  // never counted, so the planner and the image model both treated a room's
+  // one desk as license to add more.
+  it('asks for the number of each piece of furniture, and "the only" where there is one (decision 285)', () => {
+    const request = layoutDraftRequest({ name: 'Office', look: '', image })
+    expect(request.messages[0]?.content).toContain('Give the number of each piece of furniture')
+    expect(request.messages[0]?.content).toContain('"the only"')
+  })
 })

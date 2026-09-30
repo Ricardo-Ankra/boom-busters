@@ -23,14 +23,14 @@ describe('setPlateBrief', () => {
     expect(setPlateBrief(plated, 'south').prompt).not.toMatch(/\d+mm/)
   })
 
-  it('shoots a compass view of a plated set from the opposite wall', () => {
+  it('shoots a compass view of a plated set from the opposite wall, at 35mm like the contact sheet (decision 285)', () => {
     const plated = { name: 'R', look: 'L', plates: [{ view: 'north' }] } as unknown as Parameters<
       typeof setPlateBrief
     >[0]
     expect(setPlateBrief(plated, 'south').camera).toEqual({
       facing: 'south',
       position: 'the middle of the north wall, at eye level',
-      lens: '24mm',
+      lens: '35mm',
     })
     expect(setPlateBrief(plated, 'detail').camera).toBeUndefined()
     expect(setPlateBrief({ name: 'R', look: 'L', plates: [] }, 'north').camera).toBeUndefined()
@@ -47,7 +47,7 @@ describe('describeCamera', () => {
     'Light: overcast daylight from the north.',
   ].join('\n')
 
-  it('places the camera, then what is in frame, on each side and behind it', () => {
+  it('places the camera, then what is in frame, on each side, never the wall behind it (decision 285)', () => {
     expect(
       describeCamera(
         { facing: 'north', position: 'the south doorway, seated eye height', lens: '35mm' },
@@ -56,8 +56,7 @@ describe('describeCamera', () => {
     ).toBe(
       'The camera stands at the south doorway, seated eye height, facing north, 35mm. ' +
         'In frame: three tall windows. Frame left: bare concrete. Frame right: walnut credenza. ' +
-        'Centre: ten-seat walnut table. Light: overcast daylight from the north (ahead). ' +
-        'Behind the camera, out of frame: glass wall onto the corridor.',
+        "Centre: ten-seat walnut table. The room's own light: overcast daylight from the north (ahead).",
     )
   })
 
@@ -71,6 +70,45 @@ describe('describeCamera', () => {
     expect(describeCamera({ facing: 'east', position: 'the window' }, 'A long table.')).toBe(
       'The camera stands at the window, facing east. The room: A long table.',
     )
+  })
+})
+
+describe('describeCamera (decision 285)', () => {
+  const layout =
+    'North wall: glass windows.\nEast wall: acoustic panels.\nSouth wall: oak double door.\n' +
+    "West wall: frosted glass.\nCentre: the room's only table, ten chairs.\n" +
+    'Light: LED panels, daylight from the north.'
+
+  it('names nothing behind the camera on a wide shot (decision 285)', () => {
+    const text = describeCamera(
+      { facing: 'north', position: 'the south doorway', lens: '24mm' },
+      layout,
+      'wide',
+    )
+    expect(text).not.toContain('Behind the camera')
+    expect(text).not.toContain('oak double door')
+    expect(text).not.toContain('The room:')
+    expect(text).toContain("The room's own light: LED panels, daylight from the north (ahead).")
+  })
+
+  it('keeps an unlabelled inventory on a wide shot, since it is all there is', () => {
+    const text = describeCamera(
+      { facing: 'north', position: 'the door' },
+      'A long room with one desk.',
+      'wide',
+    )
+    expect(text).toContain('The room: A long room with one desk.')
+  })
+
+  it('says ahead, beyond the subject, on a medium shot', () => {
+    const text = describeCamera({ facing: 'north', position: 'seated' }, layout, 'medium')
+    expect(text).toContain('Ahead, beyond the subject: glass windows.')
+    expect(text).not.toMatch(/(^|\. )Behind:/)
+  })
+
+  it('shoots a compass view at 35mm, like the contact sheet', () => {
+    const brief = setPlateBrief({ name: 'B', look: '', plates: [{} as never] }, 'east')
+    expect(brief.camera?.lens).toBe('35mm')
   })
 })
 
@@ -88,7 +126,7 @@ describe('describeCamera framing (live run 5)', () => {
   it('gives a close shot only the wall behind the subject, soft, and the light', () => {
     expect(describeCamera(camera, layout, 'close')).toBe(
       'The camera stands at halfway down the table, facing north, 85mm. ' +
-        'Behind, soft and out of focus: a black screen wall. Light: overcast daylight.',
+        "Behind, soft and out of focus: a black screen wall. The room's own light: overcast daylight.",
     )
   })
 
@@ -111,19 +149,22 @@ describe('describeCamera framing (live run 5)', () => {
       'Light: daylight from the west windows.',
     )
     const text = describeCamera(camera, lit, 'close')
-    expect(text).toContain("Light: daylight from the west (to the camera's left) windows.")
+    expect(text).toContain(
+      "The room's own light: daylight from the west (to the camera's left) windows.",
+    )
     expect(text).not.toContain('shelves')
     expect(describeCamera({ ...camera, facing: 'south' }, lit, 'close')).toContain(
       "west (to the camera's right)",
     )
   })
 
-  it('gives a medium shot the wall behind, its sides and the light, not the whole room', () => {
+  it('gives a medium shot what is ahead of the subject, its sides and the light, not the whole room (decision 285)', () => {
     const text = describeCamera({ ...camera, lens: '50mm' }, layout, 'medium')
-    expect(text).toContain('Behind: a black screen wall.')
+    expect(text).toContain('Ahead, beyond the subject: a black screen wall.')
     expect(text).toContain("To the camera's left: windows. To the camera's right: shelves.")
     expect(text).not.toContain('Centre:')
     expect(text).not.toContain('Behind the camera')
+    expect(text).not.toMatch(/(^|\. )Behind:/)
   })
 
   it('reads a long lens as close when the brief gives no shot size', () => {
@@ -131,10 +172,11 @@ describe('describeCamera framing (live run 5)', () => {
     expect(describeCamera({ ...camera, lens: '35mm' }, layout)).toContain('Frame left:')
   })
 
-  it('keeps the whole inventory for a wide shot', () => {
+  it('keeps left, right and centre for a wide shot, but never what is behind the camera (decision 285)', () => {
     const text = describeCamera({ ...camera, lens: '85mm' }, layout, 'wide')
     expect(text).toContain('Frame left: windows. Frame right: shelves.')
-    expect(text).toContain('Behind the camera, out of frame: a door.')
+    expect(text).not.toContain('Behind the camera')
+    expect(text).not.toContain('a door')
   })
 })
 

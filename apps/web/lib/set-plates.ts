@@ -40,8 +40,9 @@ const VIEW_FRAMING: Record<SetViewRequest, string> = {
 /*
  * Every plate names its own lens (decision 275 final review): the house line
  * carries none. The first plate and a detail say it in the framing above; a
- * compass view of a plated set says it in its camera sentence (24mm), which
- * `generateStillCandidates` appends through `describeCamera`.
+ * compass view of a plated set says it in its camera sentence (35mm, decision
+ * 285, as the contact sheet's panels are), which `generateStillCandidates`
+ * appends through `describeCamera`.
  */
 
 /**
@@ -96,7 +97,8 @@ export function setPlateBrief(
       ? {
           facing: view,
           position: `the middle of the ${OPPOSITE_DIRECTION[view]} wall, at eye level`,
-          lens: '24mm',
+          // 35mm, as the contact sheet's panels are (decision 285).
+          lens: '35mm',
         }
       : undefined
   return {
@@ -117,10 +119,13 @@ export function setPlateBrief(
 }
 
 /**
- * The camera sentence and what it sees (decision 275): where the camera
- * stands, then the inventory lines for the wall in frame, the walls at the
- * edges, the centre and the light, and the wall behind it. Stated positively,
- * so the model is given the new picture to make rather than an old one to avoid.
+ * The camera sentence and what it sees (decision 275, amended 285): where
+ * the camera stands, then the inventory lines for the wall in frame, the
+ * walls at the edges, the centre and the light. Stated positively, so the
+ * model is given the new picture to make rather than an old one to avoid.
+ * The wall behind the camera, and the rest of the room's own inventory, are
+ * never named (decision 285): a named thing is drawn, and naming what the
+ * lens cannot see is how an extra desk got into a still.
  */
 /**
  * How much of the room a shot shows (live run 5, 2026-09-24): an 85mm close
@@ -200,7 +205,9 @@ export function describeCamera(camera: SetCamera, layout: string, shotSize?: Sho
   const sentences = [`The camera stands at ${camera.position}, facing ${camera.facing}${lens}.`]
   const view = layoutView(parseLayout(layout), camera.facing)
   const framing = framingOf(shotSize, camera.lens)
-  const light = view.light ? `Light: ${orientLight(view.light, camera.facing)}.` : null
+  const light = view.light
+    ? `The room's own light: ${orientLight(view.light, camera.facing)}.`
+    : null
   // A close shot orients by its light alone: naming a side wall's contents
   // pulled that wall in behind the subject (live run 13).
   if (framing === 'close') {
@@ -211,7 +218,7 @@ export function describeCamera(camera: SetCamera, layout: string, shotSize?: Sho
   // Which wall stands on which side (live run 10): without it the room came
   // back mirrored, its windows on the wrong side.
   if (framing === 'medium') {
-    if (view.inFrame) sentences.push(`Behind: ${view.inFrame}.`)
+    if (view.inFrame) sentences.push(`Ahead, beyond the subject: ${view.inFrame}.`)
     if (view.left) sentences.push(`To the camera's left: ${view.left}.`)
     if (view.right) sentences.push(`To the camera's right: ${view.right}.`)
     if (light) sentences.push(light)
@@ -222,7 +229,11 @@ export function describeCamera(camera: SetCamera, layout: string, shotSize?: Sho
   if (view.right) sentences.push(`Frame right: ${view.right}.`)
   if (view.centre) sentences.push(`Centre: ${view.centre}.`)
   if (light) sentences.push(light)
-  if (view.behind) sentences.push(`Behind the camera, out of frame: ${view.behind}.`)
-  if (view.rest) sentences.push(`The room: ${view.rest.replace(/\.$/, '')}.`)
+  // The wall behind the camera and the room's other lines are never named
+  // (decision 285): a named thing is drawn, and the extra desk came from
+  // naming furniture the lens could not see. An inventory with no wall
+  // labels is kept, since it is all the room text there is.
+  const labelled = view.inFrame ?? view.left ?? view.right ?? view.centre ?? view.light
+  if (!labelled && view.rest) sentences.push(`The room: ${view.rest.replace(/\.$/, '')}.`)
   return sentences.join(' ')
 }

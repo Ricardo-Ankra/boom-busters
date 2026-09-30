@@ -7,6 +7,7 @@ import {
   parseShotList,
   parseShotRepair,
   parseShotRepairAnswers,
+  referencesPrefix,
   SHOT_LIST_FLOOR_TOKENS,
 } from './shotlist'
 import type { ShotParagraph } from './shotlist'
@@ -735,10 +736,22 @@ describe('buildShotListRequest with direction (decision 252)', () => {
       ],
     })
 
-    it('lists each set with its room inventory in the cacheable prefix (decision 275)', () => {
+    it('puts a set by its inventory alone in the cacheable prefix, not its look, once it has one (decision 285)', () => {
       const prefix = withLayout.messages[0]?.content ?? ''
-      expect(prefix).toContain('- Venture Capital Boardroom: A long polished table, a glass wall.')
-      expect(prefix).toContain('  North wall: three tall windows.')
+      expect(prefix).toContain('- Venture Capital Boardroom\n  North wall: three tall windows.')
+      expect(prefix).not.toContain('A long polished table, a glass wall.')
+    })
+
+    it('shows a set by its inventory alone once it has one (decision 285)', () => {
+      const text = referencesPrefix(
+        [],
+        [{ name: 'B', look: 'Endless racks.', layout: 'North wall: a door.' }],
+      )
+      expect(text).toContain('- B\n  North wall: a door.')
+      expect(text).not.toContain('Endless racks.')
+      expect(referencesPrefix([], [{ name: 'C', look: 'A glass box.', layout: '' }])).toContain(
+        '- C: A glass box.',
+      )
     })
 
     it('asks every still in a set for a camera, placed physically', () => {

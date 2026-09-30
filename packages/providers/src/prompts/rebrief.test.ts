@@ -87,12 +87,12 @@ describe('buildRebriefRequest for a still', () => {
     ...references,
   })
 
-  it('lists the photographed cast and the sets with their inventories', () => {
+  it('lists the photographed cast and the sets by their inventories alone (decision 285)', () => {
     const prefix = request.messages[0]!.content
     expect(prefix).toContain('Photographed')
     expect(prefix).toContain('- Emad Mostaque')
-    expect(prefix).toContain('- Stability AI Boardroom: a long glass table')
-    expect(prefix).toContain('North wall: a screen')
+    expect(prefix).toContain('- Stability AI Boardroom\n  North wall: a screen')
+    expect(prefix).not.toContain('a long glass table')
   })
 
   it("asks for depicts, set and camera under the planner's people and set rules", () => {

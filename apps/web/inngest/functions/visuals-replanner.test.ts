@@ -167,8 +167,8 @@ describeDb('visuals-replanner (mock mode)', () => {
       const prefix =
         (shotListCall?.[0] as { messages?: { content?: string }[] } | undefined)?.messages?.[0]
           ?.content ?? ''
-      expect(prefix).toContain('- Boardroom: dark wood panelling, one window')
-      expect(prefix).toContain('  North wall: three tall windows.')
+      expect(prefix).toContain('- Boardroom\n  North wall: three tall windows.')
+      expect(prefix).not.toContain('dark wood panelling, one window')
     } finally {
       for (const existing of await listProjectSets(db, FIXTURE_PROJECT_ID)) {
         if (existing.name === 'Boardroom') await deleteProjectSet(db, existing.id)
