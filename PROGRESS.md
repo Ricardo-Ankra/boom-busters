@@ -6422,3 +6422,46 @@ green.
      timeline schema), the same pair decision 282 found missing for
      headline and graphic slots, so a social render fails fast with the
      reason rather than retrying against the old broker.
+
+285. **The visual board gets decision 240, folding chapters, and notes on
+     their cards** (2026-09-30, owner: "make sure we're displaying
+     everything, and that the user is getting proper feedback on the
+     edits", a button state test, and "collapse and expand the different
+     chapters so that we don't have to scroll through all the shots").
+     An audit of the board found it was never wired to decision 240. One
+     `busySlot` string locked the whole board, so a press on card B
+     overwrote card A's lock, and A finishing unlocked B mid-save. About
+     half the board's action buttons took no busy state at all (Upload own
+     through a 200 MB upload, Save & re-fetch, Draft it, every Use this in
+     the shot picker, the headline card's three), and the post card spun
+     every one of its buttons at once. Under all of it, `Button` computed
+     `disabled ?? busy`, so any caller passing `disabled={!ready}` switched
+     the busy lock off: a spinning Save camera or Save excerpt still took
+     clicks. Now `Button` is `disabled || busy`; the board's `act` keeps a
+     map of keys (slot ids and the plan card's five actions), guards
+     double-fire with a ref, and runs the refresh in a transition so a lock
+     spans the round trip; a press name spins only the control pressed
+     while the card's other actions stand down (a `SlotLock` context, not
+     a prop, so a nested control cannot forget it). Fetch visuals, Fix,
+     Re-plan and both Direction buttons share one lock.
+     `DirectionCard` reset its form on every refresh, because it watched
+     the book's object identity and the plan checkpoint refreshes itself
+     while parked: unsaved typing vanished whenever a slot fetch landed.
+     It now watches the book's content, CameraRow's lesson.
+     Chapters fold from their header (a button inside the heading), which
+     carries the chapter's tally (shots, ready, placeholders, being
+     fetched, drafting, to look at; craft notes before Fetch), so a folded
+     chapter still names what in it needs the producer. Folding hides the
+     cards rather than unmounting them, so a half-typed brief survives; the
+     fold is remembered per project in this browser only; a filmstrip jump
+     into a folded chapter opens it. Craft notes used to end "(slot 0)", a
+     zero-based count over briefed slots that no card shows; they now read
+     "(ch 2 · 1:14)" and each also sits on its own card. Filmstrip and
+     candidate thumbs were `<button role="listitem">`, which replaced the
+     button role; the list item now wraps the button.
+     Not done, and the largest gap left: Regenerate, Redirect, Re-plan,
+     Fix and Fetch visuals send an event and return, and nothing stored
+     says the job is running, so once the toast fades the card looks
+     untouched and offers the same spend again. Fixing it needs an
+     in-flight state on the slot or project row, written by the action and
+     cleared by the job, which is a schema change for the owner to approve.
