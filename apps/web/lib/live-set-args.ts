@@ -19,8 +19,6 @@ export interface LiveSetArgs {
   layout?: string
   out?: string
   shot?: string
-  /** The Brand Kit anchors; unset means the default Brand Kit's, as the app's default. */
-  anchors?: string
   /** The inventory-draft model (a Google id). */
   inventoryModel: string
   cap: number
@@ -140,7 +138,6 @@ export function parseLiveSetArgs(argv: readonly string[]): LiveSetArgs {
     layout: raw.layout,
     out: raw.out,
     shot: raw.shot,
-    anchors: optionalText(raw, 'anchors'),
     inventoryModel: optionalText(raw, 'inventory-model') ?? defaultInventoryModel(),
     cap: parseCap(raw.cap),
     generateFirst,

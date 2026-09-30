@@ -355,6 +355,27 @@ describe('falImageGen', () => {
     expect(result.estimatedCostUsd).toBeCloseTo(falImageGen.models[0]!.pricePerImage * 2)
   })
 
+  it('folds the avoid list into one clean sentence (decision 285)', async () => {
+    let sentPrompt = ''
+    await falImageGen.generate(
+      { prompt: 'A desk.', negativePrompt: 'no fax machine.', count: 1 },
+      {
+        apiKey: 'key',
+        fetchImpl: (async (_url: string | URL | Request, init?: RequestInit) => {
+          sentPrompt = (JSON.parse(String(init?.body)) as { prompt: string }).prompt
+          return new Response(
+            JSON.stringify({
+              images: [{ url: 'https://fal.media/files/a.png', width: 1344, height: 768 }],
+            }),
+            { status: 200 },
+          )
+        }) as typeof fetch,
+      },
+    )
+
+    expect(sentPrompt).toBe('A desk. Avoid: no fax machine.')
+  })
+
   it('runs the routed FLUX variant at its own endpoint and price (decision 208)', async () => {
     let calledUrl = ''
     const result = await falImageGen.generate(

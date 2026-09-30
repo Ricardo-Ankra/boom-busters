@@ -58,6 +58,7 @@ import {
   routeForBrief,
   setFrom,
 } from '@/lib/still-prompt'
+import type { StillKind } from '@/lib/still-prompt'
 import { getObjectBytes, presignGet, putObject, stillKey, storageConfigured } from '@/lib/storage'
 
 export { referenceBudgets, routeForBrief } from '@/lib/still-prompt'
@@ -432,6 +433,7 @@ export async function generateStillCandidates(
   brief: StillBrief,
   projectId: string,
   stored?: StillRoute | null,
+  kind: StillKind = 'still',
 ): Promise<SlotCandidate[]> {
   const mocked = mockProvidersEnabled()
   const keys = mocked ? {} : await visualCredentials(db, env.SECRETS_ENCRYPTION_KEY)
@@ -506,6 +508,7 @@ export async function generateStillCandidates(
     layout: namedSet?.layout ?? '',
     people: cast.people,
     set: cast.setName === null ? null : { name: cast.setName, plates: cast.setPlates },
+    kind,
   })
 
   /**

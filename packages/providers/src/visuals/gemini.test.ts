@@ -101,6 +101,17 @@ describe('geminiImageGen', () => {
     expect(body.generationConfig.imageConfig.aspectRatio).toBe('16:9')
   })
 
+  it('folds the avoid list into one clean sentence (decision 285)', async () => {
+    const calls: { url: string; body: unknown }[] = []
+    await geminiImageGen.generate(
+      { prompt: 'A desk.', negativePrompt: 'no fax machine.', count: 1 },
+      { apiKey: 'key', fetchImpl: fetchRecording(calls, IMAGE_REPLY) },
+    )
+
+    const body = calls[0]?.body as { contents: { parts: { text: string }[] }[] }
+    expect(body.contents[0]?.parts[0]?.text).toBe('A desk. Avoid: no fax machine.')
+  })
+
   it('sends each reference photo after a line naming its role, ahead of the prompt (decisions 253, 273)', async () => {
     const calls: { url: string; body: unknown }[] = []
     await geminiImageGen.generate(

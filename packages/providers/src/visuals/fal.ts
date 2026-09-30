@@ -157,9 +157,12 @@ export const falImageGen: ImageGenProvider = {
 
     // FLUX has no negative-prompt field, so the brief's negative prompt is
     // folded in as an "Avoid:" clause. Imagen has the real field.
+    // One clean sentence (decision 285): a prompt or list ending in a full
+    // stop used to leave "..", the join the fold added on top of it.
+    const trimmed = (text: string) => text.trim().replace(/[\s.]+$/, '')
     const prompt =
       request.negativePrompt && !imagen
-        ? `${request.prompt}. Avoid: ${request.negativePrompt}.`
+        ? `${trimmed(request.prompt)}. Avoid: ${trimmed(request.negativePrompt)}.`
         : request.prompt
 
     const referenceUrls = request.referenceUrls ?? []

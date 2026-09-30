@@ -1,6 +1,5 @@
 import {
   getProject,
-  getSettings,
   getShotSlot,
   listLogos,
   retypeShotSlot,
@@ -13,7 +12,6 @@ import {
   mockProvidersEnabled,
   mockRetypedBrief,
   parseRetypedBrief,
-  stillStyleAnchors,
 } from '@boom-busters/providers'
 import {
   BudgetExceededError,
@@ -106,12 +104,8 @@ export const slotRetyper = inngest.createFunction(
         return { changed: false as const }
       }
 
-      const settings = await getSettings(db)
-
       // Mechanical when the target's fields derive from the description.
-      let next: ShotBrief | null = convertBrief(brief, targetType, {
-        stillStyleAnchors: stillStyleAnchors(settings.brandKit),
-      })
+      let next: ShotBrief | null = convertBrief(brief, targetType)
 
       // Structured targets get a model draft — validated, refusable.
       if (!next) {

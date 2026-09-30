@@ -17,7 +17,7 @@ import { DEFAULT_SET_SHEET_ROUTE } from '@boom-busters/schemas'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/lib/db'
 import { splitContactSheet } from '@/lib/contact-sheet'
-import { PHOTOGRAPH_LINE } from '@/lib/photograph-lines'
+import { PLATE_PHOTOGRAPH_LINE } from '@/lib/photograph-lines'
 import { MOCK_LAYOUT } from '@/lib/set-layout'
 import { UNSPLIT_SHEET } from '@/lib/set-sheet'
 import {
@@ -424,7 +424,7 @@ describeDb('set actions (mock mode)', () => {
     // pasted house line and anchors and closes the prompt with its own
     // photograph line instead (the plate line arrives in Task 6, once this
     // path passes `kind: 'plate'`).
-    expect(request?.prompt.endsWith(PHOTOGRAPH_LINE)).toBe(true)
+    expect(request?.prompt.endsWith(PLATE_PHOTOGRAPH_LINE)).toBe(true)
     expect(request?.prompt).not.toMatch(/film grain/)
     expect(request?.prompt.match(/\d+mm/g)).toEqual(['24mm'])
     expect(request?.prompt).not.toContain('never reproduce or edit the framing')

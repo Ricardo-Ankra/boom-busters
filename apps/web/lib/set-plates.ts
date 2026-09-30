@@ -1,5 +1,5 @@
-import { HOUSE_PHOTOGRAPH } from '@boom-busters/providers'
 import { layoutView, OPPOSITE_DIRECTION, parseLayout } from '@boom-busters/schemas'
+import { PLATE_PHOTOGRAPH_LINE } from './photograph-lines'
 import type {
   ProjectSet,
   SetCamera,
@@ -50,12 +50,7 @@ const VIEW_FRAMING: Record<SetViewRequest, string> = {
  * all copy the reference, and one pass resolves the whole room, so the walls
  * the reference never showed agree with each other.
  */
-export function buildSetSheetPrompt(input: {
-  name: string
-  layout: string
-  look: string
-  styleAnchors: string
-}): string {
+export function buildSetSheetPrompt(input: { name: string; layout: string; look: string }): string {
   // Each panel names the wall it looks at (live run 1, 2026-09-24): with
   // directions alone the east panel repeated the north wall. A wall said in
   // its panel is not said again in the room line.
@@ -84,15 +79,13 @@ export function buildSetSheetPrompt(input: {
     `Bottom left: facing south${looking('south', 'looking straight at')}.`,
     `Bottom right: facing west${looking('west', 'looking straight at')}.`,
     ...(room !== '' ? [`The room: ${room}`] : []),
-    HOUSE_PHOTOGRAPH,
-    input.styleAnchors,
+    PLATE_PHOTOGRAPH_LINE,
   ].join('\n')
 }
 
 export function setPlateBrief(
   set: Pick<ProjectSet, 'name' | 'look' | 'plates'>,
   view: SetViewRequest,
-  styleAnchors: string,
 ): StillBrief {
   const referenced = set.plates.length > 0
   const framing = referenced ? VIEW_FRAMING[view] : FIRST_PLATE_FRAMING
@@ -116,7 +109,9 @@ export function setPlateBrief(
     ...(referenced ? { set: set.name } : {}),
     ...(camera ? { camera } : {}),
     // A plate is the room, not a scene in it: people belong to the stills.
-    prompt: `${set.name}, empty of people: ${framing}. ${set.look} ${HOUSE_PHOTOGRAPH} ${styleAnchors}`,
+    // The assembler adds the photograph line and strips anchors before this
+    // ever reaches a model (decision 285); this brief carries the scene alone.
+    prompt: `${set.name}, empty of people: ${framing}. ${set.look}`.trim(),
     negativePrompt: 'people, figures',
   }
 }

@@ -485,7 +485,6 @@ export function convertBrief(
   brief: ShotBrief,
   targetType: ShotSlotType,
   options: {
-    stillStyleAnchors?: string
     headlineClaimId?: string
     socialClaim?: { id: string; sourceUrl: string }
   } = {},
@@ -512,14 +511,9 @@ export function convertBrief(
       return { type: 'stock', ...common, query: brief.description, rejectionCriteria: [] }
     case 'archival':
       return { type: 'archival', ...common, query: brief.description, mustShow: brief.description }
-    case 'still': {
-      const anchors = options.stillStyleAnchors?.trim()
-      return {
-        type: 'still',
-        ...common,
-        prompt: anchors ? `${brief.description}. ${anchors}` : brief.description,
-      }
-    }
+    case 'still':
+      // The description is the scene; the assembler adds everything else (decision 285).
+      return { type: 'still', ...common, prompt: brief.description }
     case 'headline': {
       /**
        * A headline card quotes ONE claim, and nothing in the old brief says

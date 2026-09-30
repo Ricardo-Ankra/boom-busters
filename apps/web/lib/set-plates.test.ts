@@ -1,16 +1,12 @@
-import { HOUSE_PHOTOGRAPH } from '@boom-busters/providers'
 import { describe, expect, it } from 'vitest'
+import { PLATE_PHOTOGRAPH_LINE } from './photograph-lines'
 import { buildSetSheetPrompt, describeCamera, framingLead, setPlateBrief } from './set-plates'
 
 describe('setPlateBrief', () => {
-  it('asks for a photograph, then the Brand Kit anchors', () => {
-    const brief = setPlateBrief(
-      { name: 'R', look: 'A long table', plates: [] },
-      'north',
-      'fine grain',
-    )
+  it('draws a plate from the room alone, with no house line or anchors (decision 285)', () => {
+    const brief = setPlateBrief({ name: 'Boardroom', look: 'A stark room.', plates: [] }, 'north')
     expect(brief.prompt).toBe(
-      `R, empty of people: a wide establishing photograph of the whole room, taken from its entrance at eye level with a 24mm lens. A long table ${HOUSE_PHOTOGRAPH} fine grain`,
+      'Boardroom, empty of people: a wide establishing photograph of the whole room, taken from its entrance at eye level with a 24mm lens. A stark room.',
     )
   })
 
@@ -19,25 +15,25 @@ describe('setPlateBrief', () => {
     const plated = { name: 'R', look: 'L', plates: [{ view: 'north' }] } as unknown as Parameters<
       typeof setPlateBrief
     >[0]
-    const first = setPlateBrief({ name: 'R', look: 'L', plates: [] }, 'north', 'a').prompt
-    const detail = setPlateBrief(plated, 'detail', 'a').prompt
+    const first = setPlateBrief({ name: 'R', look: 'L', plates: [] }, 'north').prompt
+    const detail = setPlateBrief(plated, 'detail').prompt
     expect(first.match(/\d+mm/g)).toEqual(['24mm'])
     expect(detail.match(/\d+mm/g)).toEqual(['50mm'])
     // A compass view's lens is the camera's, stated in the camera sentence.
-    expect(setPlateBrief(plated, 'south', 'a').prompt).not.toMatch(/\d+mm/)
+    expect(setPlateBrief(plated, 'south').prompt).not.toMatch(/\d+mm/)
   })
 
   it('shoots a compass view of a plated set from the opposite wall', () => {
     const plated = { name: 'R', look: 'L', plates: [{ view: 'north' }] } as unknown as Parameters<
       typeof setPlateBrief
     >[0]
-    expect(setPlateBrief(plated, 'south', 'a').camera).toEqual({
+    expect(setPlateBrief(plated, 'south').camera).toEqual({
       facing: 'south',
       position: 'the middle of the north wall, at eye level',
       lens: '24mm',
     })
-    expect(setPlateBrief(plated, 'detail', 'a').camera).toBeUndefined()
-    expect(setPlateBrief({ name: 'R', look: 'L', plates: [] }, 'north', 'a').camera).toBeUndefined()
+    expect(setPlateBrief(plated, 'detail').camera).toBeUndefined()
+    expect(setPlateBrief({ name: 'R', look: 'L', plates: [] }, 'north').camera).toBeUndefined()
   })
 })
 
@@ -148,7 +144,6 @@ describe('buildSetSheetPrompt', () => {
       name: 'The boardroom',
       layout: 'North wall: windows',
       look: 'A long table',
-      styleAnchors: 'fine grain',
     })
     expect(prompt).toContain(
       'A 2x2 contact sheet of four photographs of one room, The boardroom, separated by thin white borders of equal width, each panel 16:9.',
@@ -160,7 +155,7 @@ describe('buildSetSheetPrompt', () => {
     expect(prompt).toContain('Bottom left: facing south.')
     expect(prompt).toContain('Bottom right: facing west.')
     expect(prompt).not.toContain('A long table')
-    expect(prompt.endsWith('fine grain')).toBe(true)
+    expect(prompt.endsWith(PLATE_PHOTOGRAPH_LINE)).toBe(true)
   })
 
   // Live run 1 (2026-09-24): with directions alone, the east panel repeated
@@ -177,7 +172,6 @@ describe('buildSetSheetPrompt', () => {
         'Light: overcast daylight.',
       ].join('\n'),
       look: 'L',
-      styleAnchors: 'a',
     })
     expect(prompt).toContain(
       'Top right: facing east, looking straight at the east wall: shelves and a door.',
@@ -194,18 +188,23 @@ describe('buildSetSheetPrompt', () => {
   })
 
   it('falls back to the look when there is no inventory', () => {
-    expect(
-      buildSetSheetPrompt({ name: 'R', layout: '', look: 'A long table', styleAnchors: 'a' }),
-    ).toContain('The room: A long table')
+    expect(buildSetSheetPrompt({ name: 'R', layout: '', look: 'A long table' })).toContain(
+      'The room: A long table',
+    )
   })
 
-  it('asks for photographs before the anchors', () => {
-    const prompt = buildSetSheetPrompt({ name: 'R', layout: '', look: 'L', styleAnchors: 'a' })
-    expect(prompt.endsWith(`${HOUSE_PHOTOGRAPH}\na`)).toBe(true)
+  it('ends the sheet with the plate photograph line and no anchors', () => {
+    const prompt = buildSetSheetPrompt({
+      name: 'Boardroom',
+      layout: 'North wall: glass.',
+      look: '',
+    })
+    expect(prompt.endsWith(PLATE_PHOTOGRAPH_LINE)).toBe(true)
+    expect(prompt).not.toMatch(/film grain|candid/)
   })
 
   it('names one lens and one height, its own', () => {
-    const prompt = buildSetSheetPrompt({ name: 'R', layout: '', look: 'L', styleAnchors: 'a' })
+    const prompt = buildSetSheetPrompt({ name: 'R', layout: '', look: 'L' })
     expect(prompt.match(/\d+mm/g)).toEqual(['35mm'])
     expect(prompt.match(/eye level/g)).toHaveLength(1)
   })

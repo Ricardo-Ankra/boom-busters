@@ -7,13 +7,11 @@ import {
   google,
   imageGenPrice,
   priceOf,
-  stillStyleAnchors,
   stripBannedWords,
 } from '@boom-busters/providers'
 import type { ImageReference } from '@boom-busters/providers'
 import {
   CastPhotoViewSchema,
-  DEFAULT_SETTINGS,
   MAX_CAST_PHOTOS,
   MAX_CHARACTER_REFERENCES,
   MAX_SET_REFERENCES,
@@ -155,7 +153,6 @@ async function main(): Promise<void> {
   mkdirSync(outDir, { recursive: true })
 
   const budget = new LiveBudget(args.cap)
-  const styleAnchors = args.anchors ?? stillStyleAnchors(DEFAULT_SETTINGS.brandKit)
   const prompts: { firstPlate?: string; inventory?: string; sheet?: string; shot?: string } = {}
   const record: {
     name: string
@@ -171,8 +168,6 @@ async function main(): Promise<void> {
       cast: { name: string; photos: number }[]
     }
     fidelity: {
-      anchors: string
-      anchorsSource: 'flag' | 'default Brand Kit'
       inventoryModel: string
       imagesPerShot: number
       appImagesPerShot: number
@@ -187,8 +182,6 @@ async function main(): Promise<void> {
     // Where this run differs from what the app would do, so a reviewer reads
     // the output for what it is.
     fidelity: {
-      anchors: styleAnchors,
-      anchorsSource: args.anchors === undefined ? 'default Brand Kit' : 'flag',
       inventoryModel: args.inventoryModel,
       imagesPerShot: HARNESS_IMAGES_PER_SHOT,
       appImagesPerShot: STILL_GENERATIONS,
@@ -280,11 +273,7 @@ async function main(): Promise<void> {
       imageMime = existsSync(generated) ? 'image/png' : mimeTypeFor(firstPath)
       imageBytes = readFileSync(firstPath)
     } else if (args.generateFirst) {
-      const brief = setPlateBrief(
-        { name: args.name, look: args.look, plates: [] },
-        'north',
-        styleAnchors,
-      )
+      const brief = setPlateBrief({ name: args.name, look: args.look, plates: [] }, 'north')
       const firstPrompt = stripBannedWords(brief.prompt)
       prompts.firstPlate = firstPrompt
       record.firstPlate = { prompt: firstPrompt, model: SHOT_MODEL }
@@ -367,12 +356,7 @@ async function main(): Promise<void> {
         panels.push({ direction, bytes, width: meta.width ?? 0, height: meta.height ?? 0 })
       }
     } else {
-      const sheetPrompt = buildSetSheetPrompt({
-        name: args.name,
-        layout,
-        look: args.look,
-        styleAnchors,
-      })
+      const sheetPrompt = buildSetSheetPrompt({ name: args.name, layout, look: args.look })
       prompts.sheet = sheetPrompt
 
       budget.reserve('sheet', imageGenPrice(geminiImageGen, 1, SHEET_MODEL, '4K'))

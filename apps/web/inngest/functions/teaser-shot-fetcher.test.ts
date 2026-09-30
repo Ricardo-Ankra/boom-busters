@@ -18,7 +18,7 @@ import { TEASER_CHAPTER_ID } from '@boom-busters/timeline'
 import { InngestTestEngine } from '@inngest/test'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/lib/db'
-import { PHOTOGRAPH_LINE } from '@/lib/photograph-lines'
+import { TEASER_COMPOSITION } from '@/lib/photograph-lines'
 import { mockTeaserShotKey } from '@/lib/teaser-fetch'
 import { forgetRunRows } from '../middleware/run-mirror'
 import { teaserShotFetcher } from './teaser-shot-fetcher'
@@ -167,14 +167,13 @@ describeDb('teaser-shot-fetcher', () => {
     expect(beat.candidates).toHaveLength(2)
     // The candidate summary is only a 120-char slice of the prompt, so the
     // full prompt is asserted on the request the mock adapter actually
-    // received. Decision 285: the assembler strips the pasted 9:16 clause
-    // and anchors this route still sends (`teaserStillPrompt`, decision 252)
-    // and closes the prompt with its own photograph line instead (the
-    // teaser composition line arrives in Task 6, once this path passes
-    // `kind: 'teaser'`).
+    // received. Decision 285: this route now goes through the assembler,
+    // which carries the beat's own words, the teaser's own composition line
+    // (never the legacy 9:16 clause or Brand Kit anchors this route used to
+    // paste), and closes with its own photograph line.
     expect(beat.candidates[0]?.summary).toContain('a ledger page dissolving into static')
     const sent = generate.mock.calls[0]?.[0]?.prompt ?? ''
-    expect(sent.endsWith(PHOTOGRAPH_LINE)).toBe(true)
+    expect(sent).toContain(TEASER_COMPOSITION)
     expect(sent).not.toContain('Vertical 9:16 frame')
     expect(sent).not.toMatch(/film grain/)
     // Beat 0 was never touched.

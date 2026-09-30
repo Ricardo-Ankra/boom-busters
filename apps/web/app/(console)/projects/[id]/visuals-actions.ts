@@ -7,7 +7,6 @@ import {
   getClaim,
   getProject,
   getProjectSet,
-  getSettings,
   getShotSlot,
   getSocialPost,
   linkSlotReuse,
@@ -27,7 +26,7 @@ import {
   updateSlotBrief,
   upsertAssetByHash,
 } from '@boom-busters/db'
-import { imageGenModel, LIVE_IMAGE_GEN_ADAPTERS, stillStyleAnchors } from '@boom-busters/providers'
+import { imageGenModel, LIVE_IMAGE_GEN_ADAPTERS } from '@boom-busters/providers'
 import {
   articleIsRenderable,
   claimCarriesArticle,
@@ -454,10 +453,7 @@ export async function retypeSlotAction(
     }
   }
 
-  const settings = await getSettings(db)
-  const mechanical = convertBrief(current.data, parsedType.data, {
-    stillStyleAnchors: stillStyleAnchors(settings.brandKit),
-  })
+  const mechanical = convertBrief(current.data, parsedType.data)
 
   if (mechanical) {
     await retypeShotSlot(db, slotId, parsedType.data, mechanical)

@@ -11,7 +11,6 @@ describe('parseLiveSetArgs', () => {
       layout: undefined,
       out: undefined,
       shot: undefined,
-      anchors: undefined,
       inventoryModel: 'gemini-3.5-flash-lite',
       cap: 1,
       generateFirst: false,
@@ -36,8 +35,6 @@ describe('parseLiveSetArgs', () => {
         'shot.json',
         '--cap',
         '0.5',
-        '--anchors',
-        'heavy film grain; cold blue grade',
         '--inventory-model',
         'gemini-3.5-flash',
       ]),
@@ -48,7 +45,6 @@ describe('parseLiveSetArgs', () => {
       layout: 'layout.txt',
       out: 'out-dir',
       shot: 'shot.json',
-      anchors: 'heavy film grain; cold blue grade',
       inventoryModel: 'gemini-3.5-flash',
       cap: 0.5,
       generateFirst: false,
@@ -66,7 +62,6 @@ describe('parseLiveSetArgs', () => {
       layout: undefined,
       out: undefined,
       shot: undefined,
-      anchors: undefined,
       inventoryModel: 'gemini-3.5-flash-lite',
       cap: 0.5,
       generateFirst: false,
@@ -91,12 +86,11 @@ describe('parseLiveSetArgs', () => {
       expect(defaultInventoryModel(DEFAULT_SETTINGS.modelRouting)).toBe('gemini-3.5-flash-lite')
     })
 
-    it('refuses an empty --inventory-model or --anchors rather than sending nothing', () => {
+    it('refuses an empty --inventory-model rather than sending nothing', () => {
       const base = ['--image', 'a.png', '--name', 'R']
       expect(() => parseLiveSetArgs([...base, '--inventory-model', ''])).toThrow(
         /--inventory-model/,
       )
-      expect(() => parseLiveSetArgs([...base, '--anchors='])).toThrow(/--anchors/)
     })
   })
 
