@@ -284,6 +284,11 @@ export const projects = pgTable(
      * the plan screen are written here and survive a re-run of the stage.
      */
     direction: jsonb('direction').$type<Record<string, unknown>>(),
+    /**
+     * A plan-level visuals job in flight (decision 286), `VisualsJobSchema` in
+     * schemas: a re-plan, a fix, a redraft, or a fetch not yet picked up.
+     */
+    visualsJob: jsonb('visuals_job').$type<Record<string, unknown>>(),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
@@ -613,6 +618,12 @@ export const shotSlots = pgTable(
      * shows it with the two ways out (redirect the scene, upload a real image).
      */
     refusal: jsonb('refusal').$type<Record<string, unknown>>(),
+    /**
+     * A background job running on this slot (decision 286), `SlotJobSchema`
+     * in schemas: stamped by the action before it sends the event, released
+     * by the job that answers it (matched on `jobId`), cleared by Stop.
+     */
+    pendingJob: jsonb('pending_job').$type<Record<string, unknown>>(),
     /**
      * The slot whose shot this one shows instead of fetching its own
      * (decision 261). Set by the board's "Use an existing shot"; the copy

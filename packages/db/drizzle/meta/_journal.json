@@ -218,6 +218,13 @@
       "when": 1790701755678,
       "tag": "0030_secret_bedlam",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1790793263724,
+      "tag": "0031_abnormal_susan_delgado",
+      "breakpoints": true
     }
   ]
 }

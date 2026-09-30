@@ -1,16 +1,17 @@
 import { createHash } from 'node:crypto'
-import { asc, eq, sql } from 'drizzle-orm'
+import { and, asc, eq, inArray, isNotNull, sql } from 'drizzle-orm'
 import type {
   ShotBrief,
   ShotSlotStatus,
   ShotSlotType,
   SlotCandidate,
+  SlotJob,
   SlotRefusal,
   SlotDraftState,
   StillRoute,
 } from '@boom-busters/schemas'
 import type { Database } from './client'
-import { assets, chapters, shotSlots } from './schema'
+import { assets, chapters, projects, shotSlots } from './schema'
 import type { AssetRow, ShotSlotRow } from './schema'
 
 /**
@@ -303,6 +304,63 @@ export async function setSlotRetype(
       updatedAt: sql`now()`,
     })
     .where(eq(shotSlots.id, slotId))
+}
+
+/**
+ * Stamp or clear a slot's background job (decision 286). The action writes it
+ * before it sends the event, so the refresh the button triggers already says
+ * the job is running; it writes null back if the send fails.
+ */
+export async function setSlotJob(db: Database, slotId: string, job: SlotJob | null): Promise<void> {
+  await db
+    .update(shotSlots)
+    .set({ pendingJob: job as unknown as Record<string, unknown> | null, updatedAt: sql`now()` })
+    .where(eq(shotSlots.id, slotId))
+}
+
+/**
+ * The job's own release: clears the stamp only while it is still this job's,
+ * so a run that finishes after a newer press leaves the newer stamp alone.
+ * Returns whether it cleared anything.
+ */
+export async function releaseSlotJob(
+  db: Database,
+  slotId: string,
+  jobId: string,
+): Promise<boolean> {
+  const cleared = await db
+    .update(shotSlots)
+    .set({ pendingJob: null, updatedAt: sql`now()` })
+    .where(and(eq(shotSlots.id, slotId), sql`${shotSlots.pendingJob}->>'jobId' = ${jobId}`))
+    .returning({ id: shotSlots.id })
+  return cleared.length > 0
+}
+
+/**
+ * Stop's sweep (decision 286). `project/cancelled` cancels the side jobs
+ * without running their `onFailure`, so nothing else would clear what they
+ * stamped: every slot job, the project's plan job, and a re-type or re-brief
+ * still marked in flight. A refused re-type, a re-brief refusal and a Fix
+ * note are answers, not jobs, and stay.
+ */
+export async function clearProjectJobs(db: Database, projectId: string): Promise<void> {
+  await db
+    .update(shotSlots)
+    .set({ pendingJob: null, updatedAt: sql`now()` })
+    .where(and(eq(shotSlots.projectId, projectId), isNotNull(shotSlots.pendingJob)))
+  await db
+    .update(shotSlots)
+    .set({ retype: null, updatedAt: sql`now()` })
+    .where(
+      and(
+        eq(shotSlots.projectId, projectId),
+        inArray(sql`${shotSlots.retype}->>'state'`, ['drafting', 'rebriefing']),
+      ),
+    )
+  await db
+    .update(projects)
+    .set({ visualsJob: null, updatedAt: new Date() })
+    .where(eq(projects.id, projectId))
 }
 
 /**

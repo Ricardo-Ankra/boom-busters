@@ -1,5 +1,5 @@
-import { desc, eq, notInArray, sql } from 'drizzle-orm'
-import type { DirectorsBook } from '@boom-busters/schemas'
+import { and, desc, eq, notInArray, sql } from 'drizzle-orm'
+import type { DirectorsBook, VisualsJob, VisualsJobOp } from '@boom-busters/schemas'
 import type { Database } from './client'
 import { cases, dossiers, projects, scripts } from './schema'
 import type { ProjectRow, ProjectStage, StageStatus } from './schema'
@@ -66,6 +66,8 @@ export interface ProjectSummary {
   visualsPhase: 'plan' | 'board' | null
   /** The Director's Book as stored (decision 252); parse with `DirectorsBookSchema`. */
   direction: Record<string, unknown> | null
+  /** The plan-level job in flight (decision 286); parse with `VisualsJobSchema`. */
+  visualsJob: Record<string, unknown> | null
 }
 
 const summaryColumns = {
@@ -81,6 +83,7 @@ const summaryColumns = {
   cancelledAt: projects.cancelledAt,
   visualsPhase: projects.visualsPhase,
   direction: projects.direction,
+  visualsJob: projects.visualsJob,
   createdAt: projects.createdAt,
   updatedAt: projects.updatedAt,
   dossierVersion: dossiers.version,
@@ -222,6 +225,44 @@ export async function setProjectDirection(
     .update(projects)
     .set({ direction: book as unknown as Record<string, unknown> | null, updatedAt: new Date() })
     .where(eq(projects.id, id))
+}
+
+/**
+ * Stamp or clear the project's plan-level visuals job (decision 286). Written
+ * by the action before it sends the event. `updatedAt` moves, so the page's
+ * pulse sees the stamp come and go.
+ */
+export async function setVisualsJob(
+  db: Database,
+  id: string,
+  job: VisualsJob | null,
+): Promise<void> {
+  await db
+    .update(projects)
+    .set({ visualsJob: job as unknown as Record<string, unknown> | null, updatedAt: new Date() })
+    .where(eq(projects.id, id))
+}
+
+/**
+ * Clear the plan-level stamp if it still matches: by `jobId` for the job that
+ * owns it, or by `op` for the runner, which learns of a fetch through a parked
+ * wait and so never sees its job id. Returns whether it cleared anything.
+ */
+export async function releaseVisualsJob(
+  db: Database,
+  id: string,
+  match: { jobId: string } | { op: VisualsJobOp },
+): Promise<boolean> {
+  const matches =
+    'jobId' in match
+      ? sql`${projects.visualsJob}->>'jobId' = ${match.jobId}`
+      : sql`${projects.visualsJob}->>'op' = ${match.op}`
+  const cleared = await db
+    .update(projects)
+    .set({ visualsJob: null, updatedAt: new Date() })
+    .where(and(eq(projects.id, id), matches))
+    .returning({ id: projects.id })
+  return cleared.length > 0
 }
 
 /**

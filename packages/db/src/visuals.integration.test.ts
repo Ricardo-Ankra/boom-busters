@@ -1,20 +1,34 @@
-import type { DirectorsBook, ShotBrief, SlotCandidate } from '@boom-busters/schemas'
+import {
+  newId,
+  type DirectorsBook,
+  type ShotBrief,
+  type SlotCandidate,
+} from '@boom-busters/schemas'
 import { afterAll, beforeEach, describe, expect, it } from 'vitest'
 import { createCase, truncateCases } from './cases'
 import { createDb } from './client'
-import { createProjectFromCase, getProject, setProjectDirection } from './projects'
+import {
+  createProjectFromCase,
+  getProject,
+  releaseVisualsJob,
+  setProjectDirection,
+  setVisualsJob,
+} from './projects'
 import { createScriptVersion, saveChapter } from './scripts'
 import { requireTestDatabase } from './test-database'
 import {
   chooseSlotCandidate,
+  clearProjectJobs,
   copyReusedShots,
   getAsset,
   getShotSlot,
   linkSlotReuse,
   listShotSlots,
   listSlotDependants,
+  releaseSlotJob,
   replaceShotList,
   retypeShotSlot,
+  setSlotJob,
   setSlotRefusal,
   setSlotResolution,
   setSlotRetype,
@@ -603,6 +617,84 @@ suite('shot slots', () => {
       expect(shotBriefHash(brief)).not.toBe(
         shotBriefHash(brief, { provider: 'google', model: 'gemini-3-pro-image' }),
       )
+    })
+  })
+
+  describe('job stamps (decision 286)', () => {
+    const startedAt = () => new Date().toISOString()
+    const slotJob = () => ({ kind: 'refetch' as const, jobId: newId(), startedAt: startedAt() })
+
+    async function twoSlots(): Promise<[string, string]> {
+      await replaceShotList(db, projectId, [
+        {
+          chapterId: chapterA,
+          index: 0,
+          type: 'stock',
+          brief: stockBrief,
+          startMs: 0,
+          durationMs: 6000,
+        },
+        {
+          chapterId: chapterA,
+          index: 1,
+          type: 'stock',
+          brief: stockBrief,
+          startMs: 6000,
+          durationMs: 6000,
+        },
+      ])
+      const [a, b] = await listShotSlots(db, projectId)
+      return [a!.id, b!.id]
+    }
+
+    it('releases a slot stamp only for the job that owns it', async () => {
+      const [slotId] = await twoSlots()
+      const first = slotJob()
+      const second = slotJob()
+      await setSlotJob(db, slotId, first)
+      await setSlotJob(db, slotId, second)
+
+      // The first job finishing late must not unlock the second press.
+      expect(await releaseSlotJob(db, slotId, first.jobId)).toBe(false)
+      expect((await getShotSlot(db, slotId))!.pendingJob).toEqual(second)
+
+      expect(await releaseSlotJob(db, slotId, second.jobId)).toBe(true)
+      expect((await getShotSlot(db, slotId))!.pendingJob).toBeNull()
+    })
+
+    it('releases a project stamp by its job id, or by its op for the runner', async () => {
+      const fetch = { op: 'fetch' as const, jobId: newId(), startedAt: startedAt() }
+      await setVisualsJob(db, projectId, fetch)
+      expect(await releaseVisualsJob(db, projectId, { op: 'shots' })).toBe(false)
+      expect(await releaseVisualsJob(db, projectId, { op: 'fetch' })).toBe(true)
+      expect((await getProject(db, projectId))!.visualsJob).toBeNull()
+
+      const shots = { op: 'shots' as const, jobId: newId(), startedAt: startedAt() }
+      await setVisualsJob(db, projectId, shots)
+      expect(await releaseVisualsJob(db, projectId, { jobId: newId() })).toBe(false)
+      expect((await getProject(db, projectId))!.visualsJob).toEqual(shots)
+      expect(await releaseVisualsJob(db, projectId, { jobId: shots.jobId })).toBe(true)
+    })
+
+    it('clears every stamp on the project for Stop, and only the in-flight retypes', async () => {
+      const [a, b] = await twoSlots()
+      await setSlotJob(db, a, slotJob())
+      await setSlotRetype(db, a, { state: 'drafting', target: 'chart' })
+      await setSlotRetype(db, b, {
+        state: 'refused',
+        target: 'map',
+        reason: 'No places in the text.',
+      })
+      await setVisualsJob(db, projectId, { op: 'repair', jobId: newId(), startedAt: startedAt() })
+
+      await clearProjectJobs(db, projectId)
+
+      const slotA = (await getShotSlot(db, a))!
+      expect(slotA.pendingJob).toBeNull()
+      expect(slotA.retype).toBeNull()
+      // A refusal is an answer, not a job: it stays until dismissed.
+      expect((await getShotSlot(db, b))!.retype).toMatchObject({ state: 'refused' })
+      expect((await getProject(db, projectId))!.visualsJob).toBeNull()
     })
   })
 })
