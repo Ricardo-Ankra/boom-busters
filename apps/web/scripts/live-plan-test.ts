@@ -8,6 +8,7 @@ import {
   getSettings,
   latestScriptParagraphSources,
   listCastMembers,
+  listLogos,
   listProjectSets,
   listVoiceTakes,
   scriptableClaims,
@@ -46,7 +47,13 @@ import {
  */
 
 const FALLBACK_STILL_MODEL = 'gemini-3.1-flash-image'
-const PLANNER_RESERVE_USD = 0.12
+/**
+ * The reserve's floor (decision 285 final review): a flat $0.12 undercounted
+ * a retry at double maxTokens and could let the run overshoot its cap before
+ * the settle caught up. `priceOf` on the request's own size and budget is the
+ * real estimate; this is only what a reserve never drops below.
+ */
+const MIN_PLANNER_RESERVE_USD = 0.05
 
 async function main(): Promise<void> {
   const args = parseLivePlanArgs(process.argv.slice(2))
@@ -116,6 +123,9 @@ async function main(): Promise<void> {
     const settings = await getSettings(db)
     const cast = await listCastMembers(db, args.project)
     const sets = await listProjectSets(db, args.project)
+    // The runner sends the logo library too (visuals-runner.ts); without it
+    // the harness's planner request is missing a field the real one carries.
+    const logos = await listLogos(db)
     const book = DirectorsBookSchema.safeParse(project.direction)
 
     if (args.briefsFrom) {
@@ -153,7 +163,14 @@ async function main(): Promise<void> {
       const planned = await planChapterWith(
         async (request: LLMTaskRequest, purpose) => {
           const label = `planner-${purpose}-${(call += 1)}`
-          budget.reserve(label, PLANNER_RESERVE_USD)
+          // Sized from the request itself, so a retry at double maxTokens
+          // reserves its own larger share rather than the same flat guess.
+          const promptChars = request.messages.reduce((sum, m) => sum + m.content.length, 0)
+          const estimate = priceOf(model, {
+            inputTokens: Math.ceil(promptChars / 4),
+            outputTokens: request.maxTokens,
+          })
+          budget.reserve(label, Math.max(MIN_PLANNER_RESERVE_USD, estimate))
           try {
             const result = await google.complete(request, { apiKey, model: plannerModel })
             budget.record(label, priceOf(model, result.usage))
@@ -175,6 +192,7 @@ async function main(): Promise<void> {
           direction: book.success ? book.data : null,
           photographed: cast.filter((m) => m.photos.length > 0).map((m) => m.name),
           sets: sets.map(({ name, look, layout }) => ({ name, look, layout })),
+          logos: logos.map((row) => ({ id: row.id, title: row.title ?? '' })),
         },
       )
       briefs = (planned?.slots ?? [])
