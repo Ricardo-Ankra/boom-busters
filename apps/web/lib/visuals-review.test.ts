@@ -7,9 +7,9 @@ import {
   SOCIAL_TOO_LONG,
   socialDisplayText,
 } from '@boom-busters/compositions/social'
-import { DEFAULT_SETTINGS, excerptPlacement, resolveBrandKit } from '@boom-busters/schemas'
+import { DEFAULT_SETTINGS, excerptPlacement, newId, resolveBrandKit } from '@boom-busters/schemas'
 import type { CastMember, SocialBrief, SocialPostRecord } from '@boom-busters/schemas'
-import { socialSlotView } from './visuals-review'
+import { isFetching, slotJobView, socialSlotView, visualsJobView } from './visuals-review'
 
 /**
  * What the board shows for a social slot (decision 284, spec 8.4 and 9),
@@ -233,5 +233,37 @@ describe('socialSlotView', () => {
     expect(view.issues).toHaveLength(1)
     expect(view.payload).toBeNull()
     expect(view.suggestedExcerpt).toBeNull()
+  })
+})
+
+describe('job stamps as the board reads them (decision 286)', () => {
+  const startedAt = '2026-09-30T10:00:00.000Z'
+  const jobId = newId()
+
+  it('passes a slot stamp through without its job id, and reads anything else as no job', () => {
+    expect(slotJobView({ kind: 'refetch', jobId, startedAt })).toEqual({
+      kind: 'refetch',
+      startedAt,
+    })
+    expect(slotJobView(null)).toBeNull()
+    // A stamp that fails its schema must never lock a card.
+    expect(slotJobView({ kind: 'refetch', startedAt })).toBeNull()
+    expect(slotJobView({ kind: 'teleport', jobId, startedAt })).toBeNull()
+  })
+
+  it('passes a project stamp through the same way', () => {
+    expect(visualsJobView({ op: 'shots', jobId, startedAt })).toEqual({ op: 'shots', startedAt })
+    expect(visualsJobView({ op: 'replan', jobId, startedAt })).toBeNull()
+  })
+
+  it('reads a fetch as running only at the plan phase with a live stage', () => {
+    expect(isFetching('plan', 'running')).toBe(true)
+    expect(isFetching('plan', 'queued')).toBe(true)
+    expect(isFetching('plan', 'awaiting_review')).toBe(false)
+    // Stop in the middle of a fetch leaves the stage cancelled, not running.
+    expect(isFetching('plan', 'cancelled')).toBe(false)
+    expect(isFetching('plan', 'failed')).toBe(false)
+    expect(isFetching('board', 'running')).toBe(false)
+    expect(isFetching(null, 'running')).toBe(false)
   })
 })

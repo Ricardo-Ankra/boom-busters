@@ -46,11 +46,13 @@ import {
   repairSummary,
   ShotBriefSchema,
   SlotCandidateSchema,
+  SlotJobSchema,
   SlotRefusalSchema,
   SlotDraftStateSchema,
   StillRouteSchema,
   visualsApprovalBlockedReason,
   visualsCoverage,
+  VisualsJobSchema,
 } from '@boom-busters/schemas'
 import type {
   ArticleMetadata,
@@ -62,6 +64,7 @@ import type {
   ShotBrief,
   ShotSlotStatus,
   SlotCandidate,
+  SlotJob,
   SlotRefusal,
   SlotDraftState,
   SocialBrief,
@@ -69,6 +72,7 @@ import type {
   SocialPostRecord,
   StillRoute,
   VisualsCoverage,
+  VisualsJobOp,
 } from '@boom-busters/schemas'
 import { anchoredTimes, timedParagraphs } from '@/inngest/lib/shot-list'
 import { presignGet, storageConfigured } from './storage'
@@ -117,6 +121,42 @@ export interface SlotReference {
   resolved: boolean
 }
 
+/** A background job on one slot, as the board shows it (decision 286). */
+export interface SlotJobView {
+  kind: SlotJob['kind']
+  startedAt: string
+}
+
+/** A plan-level job, as the board shows it (decision 286). */
+export interface VisualsJobView {
+  op: VisualsJobOp
+  startedAt: string
+}
+
+/** A stored slot stamp, or null; one that fails its schema is no job. */
+export function slotJobView(raw: unknown): SlotJobView | null {
+  const parsed = SlotJobSchema.safeParse(raw)
+  return parsed.success ? { kind: parsed.data.kind, startedAt: parsed.data.startedAt } : null
+}
+
+export function visualsJobView(raw: unknown): VisualsJobView | null {
+  const parsed = VisualsJobSchema.safeParse(raw)
+  return parsed.success ? { op: parsed.data.op, startedAt: parsed.data.startedAt } : null
+}
+
+/**
+ * Whether Fetch visuals is under way (decision 286). The runner keeps the
+ * plan phase for the whole fetch pass, and the stage reads `running` from the
+ * moment it closes the gate, so no stamp is needed; a stopped or failed fetch
+ * leaves the stage `cancelled` or `failed`, which is not fetching.
+ */
+export function isFetching(
+  phase: 'plan' | 'board' | null,
+  stageStatus: string | undefined,
+): boolean {
+  return phase === 'plan' && (stageStatus === 'running' || stageStatus === 'queued')
+}
+
 export interface SlotView {
   id: string
   type: string
@@ -145,6 +185,8 @@ export interface SlotView {
   retype: SlotDraftState | null
   /** An image model declined this slot's prompt (decision 252). */
   refusal: SlotRefusal | null
+  /** A background job running on this slot (decision 286), or null. */
+  job: SlotJobView | null
   /**
    * The cited article, for headline slots (decision 257). Null on every other
    * type, and on a headline slot whose claim no longer has a readable source.
@@ -276,6 +318,15 @@ export interface VisualsReviewModel {
    * candidate strips, null means the stage has not run.
    */
   phase: 'plan' | 'board' | null
+  /** A plan-level job in flight (decision 286), or null. */
+  job: VisualsJobView | null
+  /** Fetch visuals is under way (decision 286): see `isFetching`. */
+  fetching: boolean
+  /**
+   * The server's clock when this model was built (ISO). The board measures a
+   * stamp's age from it, not from the browser's clock (decision 286).
+   */
+  renderedAt: string
   /** How many slots the next fetch pass will actually touch. */
   toFetch: number
   /** The paid subset of `toFetch` — generated stills. */
@@ -332,6 +383,9 @@ export function emptyVisualsModel(): VisualsReviewModel {
     segments: [],
     totalMs: 0,
     phase: null,
+    job: null,
+    fetching: false,
+    renderedAt: new Date().toISOString(),
     toFetch: 0,
     stillsToFetch: 0,
     fetchEstimateUsd: 0,
@@ -784,6 +838,7 @@ export async function visualsReviewModel(
         const state = SlotRefusalSchema.safeParse(row.refusal)
         return state.success ? state.data : null
       })(),
+      job: slotJobView(row.pendingJob),
       reuse: reuseView(reusable[at]!, reusable),
       route: ((): StillRoute | null => {
         const stored = StillRouteSchema.nullable().safeParse(row.route)
@@ -926,6 +981,9 @@ export async function visualsReviewModel(
     segments,
     totalMs: segments.reduce((total, segment) => total + segment.durationMs, 0),
     phase: options.phase ?? null,
+    job: visualsJobView(project?.visualsJob),
+    fetching: isFetching(options.phase ?? null, project?.stageStatus),
+    renderedAt: new Date().toISOString(),
     toFetch: toFetch.length,
     stillsToFetch,
     fetchEstimateUsd,

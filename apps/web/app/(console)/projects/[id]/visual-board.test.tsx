@@ -153,6 +153,8 @@ const COLORS: BrandChartColors = {
 const BRAND = DEFAULT_SETTINGS.brandKit
 
 const PROJECT = '01J0000000000000000000000A'
+/** The server's clock in every model these tests build (decision 286). */
+const RENDERED_AT = '2026-09-30T10:00:00.000Z'
 const SLOT_A = '01J000000000000000000000AA'
 const SLOT_B = '01J000000000000000000000AB'
 const SLOT_C = '01J000000000000000000000AC'
@@ -205,6 +207,7 @@ const stockSlot: SlotView = {
   needsFetch: false,
   retype: null,
   refusal: null,
+  job: null,
   article: null,
   reuse: null,
   route: null,
@@ -249,6 +252,7 @@ const chartSlot: SlotView = {
   needsFetch: false,
   retype: null,
   refusal: null,
+  job: null,
   article: null,
   reuse: null,
   route: null,
@@ -284,6 +288,7 @@ const headlineSlot: SlotView = {
   needsFetch: false,
   retype: null,
   refusal: null,
+  job: null,
   article: {
     url: 'https://financialrecord.example/2023/03/14/auditors',
     outlet: 'The Financial Record',
@@ -347,6 +352,7 @@ const graphicSlot: SlotView = {
   needsFetch: false,
   retype: null,
   refusal: null,
+  job: null,
   article: null,
   reuse: null,
   route: null,
@@ -388,6 +394,7 @@ const brokenSlot: SlotView = {
   needsFetch: true,
   retype: null,
   refusal: null,
+  job: null,
   article: null,
   reuse: null,
   route: null,
@@ -422,6 +429,9 @@ function model(slots: SlotView[], overrides: Partial<VisualsReviewModel> = {}): 
     segments: [{ takeId: null, startMs: 0, durationMs: 18000 }],
     totalMs: 18000,
     phase: 'board',
+    job: null,
+    fetching: false,
+    renderedAt: RENDERED_AT,
     toFetch: slots.filter((slot) => slot.needsFetch).length,
     stillsToFetch: slots.filter((slot) => slot.needsFetch && slot.type === 'still').length,
     fetchEstimateUsd: 0,
@@ -1828,6 +1838,7 @@ const socialSlot: SlotView = {
   needsFetch: false,
   retype: null,
   refusal: null,
+  job: null,
   article: null,
   reuse: null,
   route: null,
