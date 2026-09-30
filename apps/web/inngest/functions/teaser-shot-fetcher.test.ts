@@ -12,11 +12,13 @@ import {
   updateSettings,
   updateShort,
 } from '@boom-busters/db'
+import { mockImageGen } from '@boom-busters/providers'
 import type { SlotCandidate, TeaserFetchesRecord } from '@boom-busters/schemas'
 import { TEASER_CHAPTER_ID } from '@boom-busters/timeline'
 import { InngestTestEngine } from '@inngest/test'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/lib/db'
+import { PHOTOGRAPH_LINE } from '@/lib/photograph-lines'
 import { mockTeaserShotKey } from '@/lib/teaser-fetch'
 import { forgetRunRows } from '../middleware/run-mirror'
 import { teaserShotFetcher } from './teaser-shot-fetcher'
@@ -106,6 +108,7 @@ async function insertTeaser(fetches?: TeaserFetchesRecord) {
 
 describeDb('teaser-shot-fetcher', () => {
   let engine: InngestTestEngine
+  const generate = vi.spyOn(mockImageGen, 'generate')
 
   beforeEach(async () => {
     engine = new InngestTestEngine({ function: teaserShotFetcher })
@@ -162,10 +165,18 @@ describeDb('teaser-shot-fetcher', () => {
     const beat = stored.beats[1]!
     expect(beat.state).toBeNull()
     expect(beat.candidates).toHaveLength(2)
-    // The generator saw the beat's words plus the 9:16 framing clause
-    // (decision 252); the mock records the prompt it was given.
+    // The candidate summary is only a 120-char slice of the prompt, so the
+    // full prompt is asserted on the request the mock adapter actually
+    // received. Decision 285: the assembler strips the pasted 9:16 clause
+    // and anchors this route still sends (`teaserStillPrompt`, decision 252)
+    // and closes the prompt with its own photograph line instead (the
+    // teaser composition line arrives in Task 6, once this path passes
+    // `kind: 'teaser'`).
     expect(beat.candidates[0]?.summary).toContain('a ledger page dissolving into static')
-    expect(beat.candidates[0]?.summary).toContain('Vertical 9:16 frame')
+    const sent = generate.mock.calls[0]?.[0]?.prompt ?? ''
+    expect(sent.endsWith(PHOTOGRAPH_LINE)).toBe(true)
+    expect(sent).not.toContain('Vertical 9:16 frame')
+    expect(sent).not.toMatch(/film grain/)
     // Beat 0 was never touched.
     expect(stored.beats[0]).toBeNull()
   })
