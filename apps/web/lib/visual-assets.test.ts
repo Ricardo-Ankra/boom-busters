@@ -20,13 +20,8 @@ import {
   updateSettings,
   upsertAssetByHash,
 } from '@boom-busters/db'
-import {
-  HOUSE_PHOTOGRAPH,
-  LIVE_IMAGE_GEN_ADAPTERS,
-  mockImageGen,
-  stillStyleAnchors,
-} from '@boom-busters/providers'
-import { DEFAULT_SETTINGS, newId, STILL_GENERATIONS } from '@boom-busters/schemas'
+import { LIVE_IMAGE_GEN_ADAPTERS, mockImageGen } from '@boom-busters/providers'
+import { newId, STILL_GENERATIONS } from '@boom-busters/schemas'
 import type {
   CastMember,
   GraphicBrief,
@@ -40,6 +35,19 @@ import { listLedger } from '@boom-busters/cost'
 import { db } from '@/lib/db'
 import { PHOTOGRAPH_LINE } from './photograph-lines'
 import { assembleStillPrompt, REFERENCE_MARKER } from './still-prompt'
+
+/**
+ * Legacy fixture text (decision 285): before the assembler owned the house
+ * photograph line and the Brand Kit anchors, a still prompt carried both
+ * itself. Neither `HOUSE_PHOTOGRAPH` nor `stillStyleAnchors` is exported by
+ * the providers package any more (Task 8), so this test copies their old
+ * output literally, to prove the assembler still strips a brief written the
+ * old way.
+ */
+const LEGACY_HOUSE_PHOTOGRAPH =
+  'An available-light documentary photograph, slight grain, mixed colour temperature from window daylight and warm practicals, real materials with wear: scuffed edges, cable runs, a coffee ring, papers out of line; people caught candid and mid-moment, never posing or acting for the camera.'
+const LEGACY_STYLE_ANCHORS =
+  'subtle film grain; muted documentary colour grade anchored on #0f1115 and #f5a524 against #0a0a0b; sombre, photographic realism'
 import {
   generateStillCandidates,
   referenceBudgets,
@@ -1067,7 +1075,7 @@ References attached: 1 photograph of Emad Mostaque.`
         layout: 'North wall: three tall windows\nSouth wall: glass onto the corridor',
       })
       await setSetPlates(db, room.id, [plate('p-n', 'north'), plate('p-s', 'south')])
-      const anchors = stillStyleAnchors(DEFAULT_SETTINGS.brandKit)
+      const anchors = LEGACY_STYLE_ANCHORS
 
       await generateStillCandidates(
         {
@@ -1075,7 +1083,7 @@ References attached: 1 photograph of Emad Mostaque.`
           set: 'Venture Capital Boardroom',
           prompt:
             'Emad Mostaque, founder of Stability AI, the person in the reference photo, seated ' +
-            `at the far end of the table in Venture Capital Boardroom, grey dusk at the glass. ${HOUSE_PHOTOGRAPH} ${anchors}`,
+            `at the far end of the table in Venture Capital Boardroom, grey dusk at the glass. ${LEGACY_HOUSE_PHOTOGRAPH} ${anchors}`,
           camera: { facing: 'north', position: 'the south doorway, seated height', lens: '85mm' },
         },
         FIXTURE_PROJECT_ID,
@@ -1089,7 +1097,7 @@ References attached: 1 photograph of Emad Mostaque.`
       expect(prompt.match(/The camera stands at/g)).toHaveLength(1)
       // Decision 285: the legacy paste is stripped, not doubled; the
       // assembler's own line closes the prompt instead.
-      expect(prompt).not.toContain(HOUSE_PHOTOGRAPH)
+      expect(prompt).not.toContain(LEGACY_HOUSE_PHOTOGRAPH)
       expect(prompt).not.toContain(anchors)
       expect(prompt.endsWith(PHOTOGRAPH_LINE)).toBe(true)
       expect(prompt).not.toMatch(/film grain|#[0-9a-f]{6}/)

@@ -12,14 +12,7 @@ import {
   listVoiceTakes,
   scriptableClaims,
 } from '@boom-busters/db'
-import {
-  findModel,
-  geminiImageGen,
-  google,
-  imageGenPrice,
-  priceOf,
-  stillStyleAnchors,
-} from '@boom-busters/providers'
+import { findModel, geminiImageGen, google, imageGenPrice, priceOf } from '@boom-busters/providers'
 import type { ImageReference, LLMTaskRequest, ScriptClaim } from '@boom-busters/providers'
 import { DirectorsBookSchema, setForBrief, StillBriefSchema } from '@boom-busters/schemas'
 import type { StillBrief } from '@boom-busters/schemas'
@@ -179,7 +172,6 @@ async function main(): Promise<void> {
           chapter: { id: chapter.id, title: chapter.title, number: args.chapter + 1 },
           paragraphs: timedParagraphs({ chapters: sources.chapters, takes }),
           claims,
-          styleAnchors: stillStyleAnchors(settings.brandKit),
           direction: book.success ? book.data : null,
           photographed: cast.filter((m) => m.photos.length > 0).map((m) => m.name),
           sets: sets.map(({ name, look, layout }) => ({ name, look, layout })),

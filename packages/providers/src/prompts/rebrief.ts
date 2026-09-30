@@ -95,7 +95,9 @@ export function buildRebriefRequest(input: RebriefInput): LLMTaskRequest {
       role: 'user',
       content:
         `Case: ${input.caseTitle}` +
-        (input.direction ? `\n\nDirector's book:\n${renderDirectorsBook(input.direction)}` : '') +
+        (input.direction
+          ? `\n\nDirector's book:\n${renderDirectorsBook(input.direction, { sets: sets.map((set) => set.name) })}`
+          : '') +
         referencesPrefix(photographed, sets),
     },
     { role: 'user', content: `The current brief:\n${JSON.stringify(input.brief, null, 2)}` },
@@ -129,7 +131,7 @@ The target shape:
 ${input.brief.type === 'still' ? stillShape(sets.length > 0) : TARGET_SHAPE[input.brief.type]}
 
 "motion" is {"kind": "static"} or {"kind": "kenburns", "direction": "in"|"out",
-"speed": "slow"|"medium"|"fast"} or {"kind": "pan", "path": string}.
+"speed": "slow"|"medium"|"fast"}. Never "pan": the renderer cannot do one.
 "transition" is "cut" or "dissolve".
 
 Return JSON: {"brief": {...}} — or {"error": "one sentence why"} if this beat

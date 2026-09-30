@@ -18,7 +18,6 @@ const input = {
   chapter,
   paragraphs: paragraphs as never,
   claims: [],
-  styleAnchors: '',
   direction: null,
 }
 const oneStill = JSON.stringify({

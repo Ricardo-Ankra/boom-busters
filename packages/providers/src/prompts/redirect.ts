@@ -25,8 +25,8 @@ export function buildRedirectRequest(input: {
     system: `You are re-planning ONE still of a documentary. The image model refused the
 current prompt. Rewrite the brief for the same story beat without the person:
 the podium after the speech, the door they walked through, the desk as they left it, or
-an anonymous figure described by role, build and clothing with the face turned
-away. Keep "coversText" EXACTLY as given; keep "motion", "transition" and
+an anonymous figure described by role, age range, build and clothing, with a
+natural face, visible and resembling no real person. Keep "coversText" EXACTLY as given; keep "motion", "transition" and
 "shotSize"; rewrite "description" and "prompt"; omit "depicts" entirely.
 
 ${DIRECTION_CRAFT}

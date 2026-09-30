@@ -1,4 +1,4 @@
-import { DEFAULT_SETTINGS, ShotListOutputSchema } from '@boom-busters/schemas'
+import { ShotListOutputSchema } from '@boom-busters/schemas'
 import { describe, expect, it } from 'vitest'
 import {
   buildShotListRequest,
@@ -8,11 +8,9 @@ import {
   parseShotRepair,
   parseShotRepairAnswers,
   SHOT_LIST_FLOOR_TOKENS,
-  stillStyleAnchors,
 } from './shotlist'
 import type { ShotParagraph } from './shotlist'
 import { mockDirectorsBook } from './direction'
-import { BANNED_PROMPT_WORDS, HOUSE_PHOTOGRAPH } from './direction-craft'
 import type { ScriptClaim } from './script'
 import { MAX_OUTPUT_TOKENS, outputBudget } from '../llm/types'
 
@@ -38,8 +36,6 @@ const PARAGRAPHS: ShotParagraph[] = [
   { index: 1, text: 'The trail led from Munich to Manila.', seconds: 8.2 },
 ]
 
-const brandKit = DEFAULT_SETTINGS.brandKit
-
 const STILL_BRIEF = {
   type: 'still' as const,
   coversText: 'By June, the auditors could not find the money.',
@@ -56,7 +52,6 @@ function baseRequest() {
     chapterTitle: 'The Missing Billions',
     paragraphs: PARAGRAPHS,
     claims: CLAIMS,
-    styleAnchors: stillStyleAnchors(brandKit),
   }
 }
 
@@ -66,7 +61,6 @@ describe('buildShotListRequest', () => {
     chapterTitle: 'The Missing Billions',
     paragraphs: PARAGRAPHS,
     claims: CLAIMS,
-    styleAnchors: stillStyleAnchors(brandKit),
   })
 
   it('routes to the shotlist task', () => {
@@ -89,10 +83,6 @@ describe('buildShotListRequest', () => {
     expect(request.system).toMatch(/"still" is an AI-GENERATED image/)
   })
 
-  it('threads the Brand Kit style anchors into the system prompt', () => {
-    expect(request.system).toContain('subtle film grain')
-  })
-
   it('forbids hero slots while the flag is off', () => {
     expect(request.system).toContain('Never emit type "hero"')
   })
@@ -104,7 +94,6 @@ describe('the headline shot (decision 257)', () => {
     chapterTitle: 'The Missing Billions',
     paragraphs: PARAGRAPHS,
     claims: CLAIMS,
-    styleAnchors: stillStyleAnchors(brandKit),
   })
 
   it('offers the shape, which carries a claim number and nothing else', () => {
@@ -184,7 +173,6 @@ describe('the social shot (decision 284)', () => {
     chapterTitle: 'The Missing Billions',
     paragraphs: PARAGRAPHS,
     claims: CLAIMS,
-    styleAnchors: stillStyleAnchors(brandKit),
   })
 
   it('offers the shape, which carries a claim number and nothing else', () => {
@@ -283,46 +271,6 @@ describe('the graphic shot (decision 268, Plan B)', () => {
   it('says nothing about logos when the library is empty', () => {
     const request = buildShotListRequest(baseRequest())
     expect(request.messages[0]?.content).not.toContain('Logos')
-  })
-})
-
-describe('stillStyleAnchors', () => {
-  it('reads grain and palette from the Brand Kit', () => {
-    const anchors = stillStyleAnchors(brandKit)
-    expect(anchors).toContain('film grain')
-    expect(anchors).toContain(brandKit.colors.primary)
-  })
-
-  it('does not forbid faces: the bible decides who is shown, by likeness', () => {
-    expect(stillStyleAnchors(brandKit)).not.toMatch(/faces/)
-  })
-
-  /**
-   * The same move as the face ban, for the same reason (decision 263). A
-   * documentary about a company shows that company's marks, and the anchors
-   * rode on every prompt telling the model not to. The bible decides.
-   */
-  it('does not forbid logos: a film about a company shows its marks', () => {
-    expect(stillStyleAnchors(brandKit)).not.toMatch(/logos/)
-  })
-
-  /**
-   * The anchors are pasted into every still prompt verbatim, and `planWarnings`
-   * scans those prompts for banned words. "cinematic" sat in both, so all 48
-   * stills of a live plan warned about a string the app itself wrote.
-   */
-  it('uses no word the bible bans from prompts', () => {
-    const anchors = stillStyleAnchors(brandKit).toLowerCase()
-    for (const word of BANNED_PROMPT_WORDS) expect(anchors).not.toContain(word)
-  })
-
-  it('says "no grain" rather than "none film grain"', () => {
-    const clean = {
-      ...brandKit,
-      look: { ...brandKit.look, grainPreset: 'none' as const },
-    }
-    expect(stillStyleAnchors(clean)).toContain('no grain')
-    expect(stillStyleAnchors(clean)).not.toContain('none film grain')
   })
 })
 
@@ -577,7 +525,6 @@ describe('buildShotListRequest with direction (decision 252)', () => {
     chapterNumber: 2,
     paragraphs: PARAGRAPHS,
     claims: CLAIMS,
-    styleAnchors: stillStyleAnchors(brandKit),
     direction,
   })
 
@@ -595,10 +542,10 @@ describe('buildShotListRequest with direction (decision 252)', () => {
     expect(request.messages[1]?.content).toContain('This is chapter 2 of the book')
   })
 
-  it('keeps the guardrail out of the image prompt and points at the reference photo', () => {
+  it('keeps the guardrail out of the image prompt; code owns the reference photo (decision 285)', () => {
     expect(request.system).not.toContain('quote their guardrail line in the prompt')
     expect(request.system).toContain('never pasted into the image')
-    expect(request.system).toContain('the person in the reference')
+    expect(request.system).toContain('the code tells the model which photograph is theirs.')
     expect(request.system).toContain('it decides what you plan, not what the image model reads')
   })
 
@@ -617,7 +564,6 @@ describe('buildShotListRequest with direction (decision 252)', () => {
       chapterNumber: 2,
       paragraphs: PARAGRAPHS,
       claims: CLAIMS,
-      styleAnchors: stillStyleAnchors(brandKit),
       direction,
       photographed: ['Emad Mostaque'],
     })
@@ -638,10 +584,11 @@ describe('buildShotListRequest with direction (decision 252)', () => {
 
     it('keeps the identity string for a named person who has no photograph', () => {
       expect(withPhotos.system).toContain('A named person NOT in that list')
-      expect(withPhotos.system).toContain('the only thing standing between the image and a')
+      expect(withPhotos.system).toContain('it already begins with their full name and role')
     })
 
-    it('still describes an unnamed extra by role, age range and build', () => {
+    // Decision 285: how an unnamed extra is written is the bible's alone now.
+    it('still describes an unnamed extra, from the bible', () => {
       expect(withPhotos.system).toContain('Anyone unnamed')
       expect(withPhotos.system).toContain('role, age range, build and clothing')
     })
@@ -649,16 +596,20 @@ describe('buildShotListRequest with direction (decision 252)', () => {
     // Decision 273: extras had their faces turned away or shadowed, which the
     // owner read as blurred. Investors and employees get ordinary faces.
     it('gives extras a visible, realistic face that resembles no real person', () => {
+      expect(withPhotos.system).toContain('visible and in focus.')
+      expect(withPhotos.system).toContain('Their faces resemble no real or public person')
       expect(withPhotos.system).toContain(
-        'visible and in focus, resembling no real or public person.',
+        'A face is never blurred, smeared, hidden or turned away as a device.',
       )
-      expect(withPhotos.system).toContain('Never blur, hide or turn a face away as a device.')
       expect(withPhotos.system).not.toContain('face turned away or in shadow')
     })
 
     // Decision 273: a likeness pasted onto a plate rose through the table.
-    it('stages a photographed person physically in the scene', () => {
-      expect(withPhotos.system).toContain('Stage them physically in the scene')
+    // Decision 285: how they are staged is the bible's alone, not the planner's.
+    it('stages a photographed person physically in the scene, from the bible', () => {
+      expect(withPhotos.system).toContain(
+        'A person is photographed in the room, never pasted onto it',
+      )
       expect(withPhotos.system).toContain('at true scale')
     })
 
@@ -675,13 +626,15 @@ describe('buildShotListRequest with direction (decision 252)', () => {
   })
 
   it('asks each still for its own lens and camera height (decision 275)', () => {
-    expect(request.system).toContain('lens, camera height and light named')
+    expect(request.system).toContain('the light of the moment, then lens and camera')
   })
 
-  it('puts the house photograph line into every still prompt (decision 275)', () => {
-    expect(request.system).toContain(
-      `then the house photograph line verbatim: "${HOUSE_PHOTOGRAPH}"`,
-    )
+  it('asks for the scene alone, and no pasted lines (decision 285)', () => {
+    expect(request.system).toContain('"prompt" is the scene alone')
+    expect(request.system).not.toContain('verbatim: "')
+    // The bible names the house photograph line as code's; what must be gone is
+    // any instruction to paste it, or the anchors themselves.
+    expect(request.system).not.toMatch(/film grain|line verbatim|anchors verbatim/)
   })
 
   it('asks for the name alone in depicts: the role stays in the prompt', () => {
@@ -708,7 +661,6 @@ describe('buildShotListRequest with direction (decision 252)', () => {
       chapterTitle: 'x',
       paragraphs: longChapter,
       claims: CLAIMS,
-      styleAnchors: 'a',
       direction,
     })
     expect(long.maxTokens).toBeGreaterThan(request.maxTokens)
@@ -722,7 +674,6 @@ describe('buildShotListRequest with direction (decision 252)', () => {
       chapterTitle: 'x',
       paragraphs: PARAGRAPHS,
       claims: CLAIMS,
-      styleAnchors: 'a',
     })
     expect(bare.messages[0]?.content).not.toContain('Motifs:')
     expect(bare.messages[1]?.content).not.toContain('of the book')
@@ -764,7 +715,6 @@ describe('buildShotListRequest with direction (decision 252)', () => {
       chapterNumber: 2,
       paragraphs: PARAGRAPHS,
       claims: CLAIMS,
-      styleAnchors: stillStyleAnchors(brandKit),
       direction,
       sets: [{ name: 'Venture Capital Boardroom', look: 'A long polished table, a glass wall.' }],
     })
@@ -775,7 +725,6 @@ describe('buildShotListRequest with direction (decision 252)', () => {
       chapterNumber: 2,
       paragraphs: PARAGRAPHS,
       claims: CLAIMS,
-      styleAnchors: stillStyleAnchors(brandKit),
       direction,
       sets: [
         {
@@ -796,7 +745,7 @@ describe('buildShotListRequest with direction (decision 252)', () => {
       expect(withSets.system).toContain(
         '"camera"?: {"facing": "north"|"east"|"south"|"west", "position", "lens"?}',
       )
-      expect(withSets.system).toContain('Every still that names a set carries "camera".')
+      expect(withSets.system).toContain('give\n  the still a "camera"')
       // The lens and height of a set shot go in "camera", not the prose.
       expect(withSets.system).toContain('its lens and camera height go in "camera" instead')
       expect(withSets.system).not.toContain('"lens" when it matters')
@@ -806,11 +755,12 @@ describe('buildShotListRequest with direction (decision 252)', () => {
     })
 
     // Live run 2 (2026-09-24): a prompt that said "rain beads on the window
-    // behind them" turned a south-facing camera to the window wall.
+    // behind them" turned a south-facing camera to the window wall. Decision
+    // 285: this rule now lives once, in the bible.
     it('keeps the details a set prompt names inside the frame of its camera', () => {
-      expect(withSets.system).toContain('Name only details that are in frame for that facing')
       expect(withSets.system).toContain(
-        'never on the wall behind the camera, or the image model turns to show it.',
+        "Name only details on the walls in frame for the camera's facing, " +
+          'never on the wall behind it, or the image model turns to show it.',
       )
     })
 
@@ -853,13 +803,22 @@ describe('buildShotListRequest with direction (decision 252)', () => {
     })
 
     it('asks for the set by name alone and forbids re-describing the room', () => {
-      expect(withSets.system).toContain('name it in "set" by name alone')
-      expect(withSets.system).toContain('Do not describe its walls, furniture, layout or materials')
+      expect(withSets.system).toContain(
+        'in "set" by name alone, name it in the prompt in the same words',
+      )
+      // The bible states the same rule once (decision 285): the planner is
+      // never asked to restate the room's walls, furniture or materials.
+      expect(withSets.system).toContain(
+        'describe its walls, furniture or materials again; the inventory states them.',
+      )
     })
 
     // Decision 273: every still of a set kept the plate's exact framing.
+    // Decision 285: the room-versus-camera split now lives once, in the bible.
     it('asks each still of a set for its own camera position', () => {
-      expect(withSets.system).toContain("The photographs give the room's design, not the picture.")
+      expect(withSets.system).toContain(
+        "The plates and the room inventory are the room; the camera is the brief's.",
+      )
       expect(withSets.system).toContain(
         'Two stills of the same room never share a camera position.',
       )
@@ -870,9 +829,8 @@ describe('buildShotListRequest with direction (decision 252)', () => {
     // camera also written into the prose left a regenerated prompt with two.
     it('keeps the camera out of the prose of a still that names a set', () => {
       expect(withSets.system).toContain(
-        'Where the camera stands and which way it faces live in "camera" alone;',
+        'The prompt never places the camera and never describes the room',
       )
-      expect(withSets.system).toContain('who is there, what they are doing and the light.')
       expect(withSets.system).not.toContain('where the camera stands in the room')
       expect(withSets.system).not.toContain('from the head of the table')
       expect(withSets.system).not.toContain('close over one investor')
@@ -884,13 +842,7 @@ describe('buildShotListRequest with direction (decision 252)', () => {
     // attached plates with no noun to attach to, which is how a shot ends up
     // following the prose and ignoring the reference.
     it('asks for the room to be named in the prompt, not only in the field', () => {
-      expect(withSets.system).toContain('Name the room in the prompt as well')
-    })
-
-    it('keeps light and weather with the planner and the fabric with the plates', () => {
-      // Asserted on the half that sits whole on one line of the source; the
-      // sentence wraps, and `toContain` reads the wrap.
-      expect(withSets.system).toContain('them. Its light and weather are still yours.')
+      expect(withSets.system).toContain('name it in the prompt in the same words')
     })
 
     it('says nothing about sets when the film has none', () => {
@@ -900,65 +852,36 @@ describe('buildShotListRequest with direction (decision 252)', () => {
   })
 })
 
-describe('the sentence decides the frame (decision 260)', () => {
+describe('the sentence, staging and era-lock rules live once, in the bible (decision 285)', () => {
   const request = buildShotListRequest({
     caseTitle: 'Wirecard',
     chapterTitle: 'The Missing Billions',
     chapterNumber: 2,
     paragraphs: PARAGRAPHS,
     claims: CLAIMS,
-    styleAnchors: stillStyleAnchors(brandKit),
     direction: mockDirectorsBook({ caseTitle: 'Wirecard', chapterCount: 2 }),
   })
 
-  it('puts the sentence rule first among the planning rules', () => {
+  // The bible already states these (decision 260, 271); a planner rule that
+  // paraphrased them was a second place the same rule could drift from.
+  it('does not repeat the sentence, staging, era-lock or motif rules in the planning rules', () => {
     const rules = request.system.slice(request.system.indexOf('Planning rules:'))
-    const sentence = rules.indexOf('The sentence decides the frame')
-    const cover = rules.indexOf('Cover every paragraph')
-    expect(sentence).toBeGreaterThan(-1)
-    expect(sentence).toBeLessThan(cover)
+    expect(rules).not.toContain('The sentence decides the frame')
+    expect(rules).not.toContain('Stage an abstract sentence')
+    expect(rules).not.toContain('The era lock is a constraint on what may appear')
+    expect(rules).not.toContain('each motif at most once across the chapter')
   })
 
-  it('caps each motif at once per chapter, never adjacent, never the subject', () => {
-    expect(request.system).toContain('each motif at most once across the chapter')
-    expect(request.system).toContain('never in consecutive slots')
-    expect(request.system).toContain('needs no motif at all')
-  })
-})
-
-describe('the planning rules stage the sentence (decision 271)', () => {
-  const request = buildShotListRequest({
-    caseTitle: 'Stability AI',
-    chapterTitle: 'The exit',
-    paragraphs: [{ index: 0, text: 'He is gone.', seconds: 9 }],
-    claims: [],
-    styleAnchors: 'a',
+  it('still reaches the model once, through the bible', () => {
+    expect(request.system).toContain('The sentence decides the frame')
+    expect(request.system).toContain('An abstract sentence is staged, not symbolised.')
+    expect(request.system).toContain('The era lock is a constraint, not a list to paste')
+    expect(request.system).toContain('each motif at most once per chapter')
   })
 
-  it('stages an abstract sentence through its people and place, never a symbol', () => {
-    expect(request.system).toContain('Stage an abstract sentence, never symbolise it.')
-    expect(request.system).toContain(
-      'it is not a server, a chair or a document standing in for them',
-    )
-    expect(request.system).not.toContain(
-      'the sentence names nothing photographable do you reach for the book',
-    )
-  })
-
-  it('shows the person a sentence names', () => {
-    expect(request.system).toContain('A sentence that names a person shows that person')
-  })
-
-  it('treats the era lock as a constraint, and sets no motif minimum', () => {
-    expect(request.system).toContain(
-      'The era lock is a constraint on what may appear, not a list to paste.',
-    )
-    expect(request.system).toContain('There is no minimum')
-  })
-
-  it('no longer asks a still prompt to carry the era lock', () => {
-    expect(request.system).not.toContain("then the book's era lock and palette")
-    expect(request.system).toContain('never paste its list')
+  it('drops the colour grade a description used to carry: the compositor grades now', () => {
+    expect(request.system).toContain('era, mood and lighting in "description"')
+    expect(request.system).not.toContain('colour grade in "description"')
   })
 })
 
@@ -968,7 +891,6 @@ describe('buildShotRepairRequest and parseShotRepair (decision 271)', () => {
     chapterTitle: 'The exit',
     paragraphs: [{ index: 0, text: 'Mostaque told the investors.', seconds: 9 }],
     claims: [],
-    styleAnchors: 'a',
   })
   const still = {
     type: 'still',

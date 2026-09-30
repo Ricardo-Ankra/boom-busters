@@ -29,8 +29,9 @@ plain one.
   sources the viewer can see: a desk lamp, a monitor, a window at dusk,
   sodium street light, fluorescent tubes. Name the source, its direction and
   its quality in every prompt.
-- Grade and grain come from the Brand Kit anchors appended to every still
-  prompt. Do not restate a grade in your own words; use the anchors.
+- Grade and grain are the compositor's: the whole film is graded at render.
+  A prompt never names a grade, grain, film stock or colour code.
+  The book's palette temperature reaches the picture through the light you choose.
 - Era is a lock, not a flavour. Period-correct objects are named
   specifically: CRT monitors, a fax machine, a flip phone, paper ledgers.
   Never write "old fashioned"; write the object.
@@ -84,6 +85,7 @@ plain one.
   what happens inside it: the people, what they are doing, the light. Name
   the room in the prompt itself, in the same words the set list uses. Never
   describe its walls, furniture or materials again; the inventory states them.
+  Name only details on the walls in frame for the camera's facing, never on the wall behind it, or the image model turns to show it.
   Every still in a set is a new photograph from its own camera.
   Place it by where it stands, how high, which way it faces and the lens, never by an angle name.
   Across a chapter the camera moves around the room the way a crew's would.
@@ -95,47 +97,45 @@ plain one.
 ## What a still prompt must contain
 
 - One photographable moment. Not a montage, not a concept, not "the fall
-  of a company". A room, a time of day, a light source, an object.
-- Three physical facts in every prompt: an environmental pressure
-  (rain on the window, a flickering tube, dust in a beam of light), a
-  human trace (a coat on a chair, a half-drunk coffee, a hand on a
-  document, a figure at a doorway), and
-  one detail drawn from the sentence itself (the named object,
-  document, place or time of day).
-  On a shot that names a set, the environmental pressure is something
-  passing through the room that day and never the room itself: the light
-  at the glass, the weather beyond it, a screen's glow, steam off a cup,
-  one tube on its way out. Walls, furniture, layout and materials are the
-  photographs' to state, and a prompt that states them as well is arguing
-  with the reference it was handed.
+  of a company". A room, a time of day, a light source, what is happening.
+- The frame holds what the sentence needs, and a set holds what its room
+  holds. Nothing is added to make a frame look lived in: the house
+  photograph already asks for real use and wear.
+- A sign of use belongs only where it carries the beat. Write it as the
+  condition of the moment, taken from the sentence or from what the people
+  are doing: the table at the end of a long meeting, a desk mid-work, a
+  corridor after everyone has left. Never a stock prop.
+- No prop or atmospheric device appears twice in a chapter: a drink, dust in a beam, rain on glass, a standby light, a coat on a chair.
+- Say which way things face. Every screen, seat and person in the frame faces someone or something the prompt names:
+  the monitor faces her, its light on her face; his back to the camera;
+  the chair turned from the desk. Say how many where the count matters: the room's one desk, two chairs, three people at the table.
 - Written in this order, as prose, not a keyword list: subject, action or
-  state, style anchors, context (place and era), lighting (source,
-  direction, quality), technical (lens, distance, aspect). Lead with the
-  subject; the first third of the prompt gets the most attention.
+  state, the detail the sentence names, the light of the moment (source,
+  direction, quality), then lens and camera height. Lead with the subject;
+  the first third of the prompt gets the most attention.
+- In a set, the light you write is what the moment adds: the time of day,
+  the weather at the glass, a lamp switched on. The room's own fixtures
+  come with the room.
 - Name the lens: 24mm for a wide that breathes, 35mm for a documentary
   medium, 50mm for a close human scale, 85mm for a portrait, 100mm macro
   for texture. Name the camera's height as well: eye level, seated, low
   to the floor, overhead. On a shot in a set both go in the camera, never
   in the prompt.
-- Every photograph is written as a photograph, in the house line, before the Brand Kit anchors:
-  An available-light documentary photograph, slight grain, mixed colour temperature from window daylight and warm practicals, real materials with wear: scuffed edges, cable runs, a coffee ring, papers out of line; people caught candid and mid-moment, never posing or acting for the camera.
-  The house line names no lens and no height; every shot states its own.
-- Append the director's book palette line verbatim. The era lock is a
-  constraint, not a list to paste: every period object in the frame comes
-  from it, and the prompt names only the objects actually in the frame.
-  Never copy the era lock's list into a prompt; the image model reads a
-  list of objects as a list of things to show. Add the full name and role
-  of any person shown, and their identity string ONLY when no photograph
-  of them exists; where one does, the photograph is the likeness and the
-  identity string stays out of the prompt.
+- The era lock is a constraint, not a list to paste: every period object
+  in the frame comes from it, and the prompt names only the objects
+  actually in the frame. Never copy the era lock's list into a prompt; the
+  image model reads a list of objects as a list of things to show.
+- Add the full name and role of any person shown, and their identity
+  string ONLY when no photograph of them exists; where one does, the
+  photograph is the likeness and the identity string stays out of the
+  prompt.
 - Banned words, because they render nothing: cinematic, stunning,
   dramatic lighting, high quality, masterpiece, epic, beautiful, moody,
   professional, ultra-detailed, 8k, 4k, 3d render, cgi, octane, unreal engine, hyperrealistic, photorealistic. Banned too: an emotion named without a body. Not "a
   worried executive"; "an executive, jaw set, both hands flat on the
   desk".
-- The negative prompt names things, not categories: "no smartphone, no
-  flat screen, no LED strip" for a 1990s office, never "no modern
-  objects".
+- The negative prompt names at most five concrete things that would be wrong in this frame for this film's era and story.
+  Never a category, and never something the scene itself shows: a frame with a laptop never avoids screens.
 - A real company's own marks belong in frame when the film is about that
   company: the sign above the door, the badge on a laptop lid, the lanyard
   on the desk. Name the company and let the shot hold what is really
@@ -145,6 +145,14 @@ plain one.
   document can be dense with type, but the sentence it carries is never
   the point of the frame. Titles, captions and lower thirds are
   set by the compositor, never by the image model.
+
+## What code adds
+
+The producer's code writes these into every image prompt, so a prompt
+never does: the framing for the shot size, the camera and the room in
+view for a shot in a set, what each reference photograph is for, and the
+house photograph line. Never write a photograph line, a grade, a palette
+line or a Brand Kit anchor into a prompt.
 
 ## Motion the renderer can do
 
@@ -185,12 +193,12 @@ plain one.
   depiction for every principal; the producer alone downgrades someone to
   "archival-only", never the model. "anonymous" is for people the claims
   do not name: staff, customers, unnamed investors.
-- A prompt that shows a real person names them first, by full name and
-  role ("Emad Mostaque, founder of Stability AI"), then gives the identity
-  string: a photographic description of that person as press photographs
-  of the period show them (age, hair, beard, glasses, build, dress), so the
-  image model can match the real face. Never a generic "a man in his 40s"
-  standing in for a named person.
+- A prompt that shows a real person gives the identity string, which
+  begins with their full name and role ("Emad Mostaque, founder of
+  Stability AI"): a photographic description of that person as press
+  photographs of the period show them (age, hair, beard, glasses, build,
+  dress), so the image model can match the real face. Never a generic "a
+  man in his 40s" standing in for a named person.
 - Re-created scenes are allowed and expected: a principal at a desk with
   papers, in a boardroom, in a corridor, at a podium, in a car, in an
   interview, reading a phone. The film says on screen and in its
@@ -218,22 +226,14 @@ plain one.
   the negative prompt ("no gavel, no handcuffs, no cash"); its sentences
   are never quoted.
 - When the cast holds photographs of a person, the still is generated from
-  them: the prompt names the person and says "the person in the reference
-  photo", and the photos travel with the request. The prompt varies
-  clothing, place, light and posture freely. It carries NO physical
-  description of them at all: no age, build, height, hair, beard, glasses,
-  skin or face. The photograph settles every one of those, and a written
-  description can only argue with it. "Emad Mostaque, founder of Stability
-  AI, the person in the reference photo, sitting at a desk" is right; adding
-  "male in his 40s, short dark hair, closely cropped beard" after it is the
-  mistake.
+  them: the prompt names the person by full name and role, and the photos travel with the request; the code tells the model which photograph is theirs.
+  The prompt varies clothing, place, light and posture freely. It carries NO physical description of them at all: no age, build, height, hair, beard, glasses, skin or face. The photograph settles every one of those, and a written description can only argue with it. "Emad Mostaque, founder of Stability AI, sitting at a desk" is right; adding "male in his 40s, short dark hair, closely cropped beard" after it is the mistake.
 - A person is photographed in the room, never pasted onto it: seated in a
   chair or standing on the floor, at true scale for the furniture around
   them, lit by the room's own light, with whatever stands between them and
   the camera in front of them.
 - Anonymous figures (depiction "anonymous") and extras (investors,
-  employees, staff, a crowd) are described by role, age range, build and
-  clothing, with natural, realistic faces, visible and in focus.
+  employees, staff, a crowd) are described by role, age range, build and clothing, with natural, realistic faces, visible and in focus.
   Their faces resemble no real or public person, and never a named one.
   A face is never blurred, smeared, hidden or turned away as a device.
 - Archival slots hold real photographs and footage the producer uploads,
@@ -290,20 +290,6 @@ export const BANNED_PROMPT_WORDS = [
   'hyperrealistic',
   'photorealistic',
 ] as const
-
-/**
- * The house photograph line (decision 275): what makes a generated still read
- * as a photograph and not a render. Light with a direction, real materials
- * with wear, grain. Stated once here and in the bible, and sent on every
- * plate, sheet and still prompt before the Brand Kit anchors.
- *
- * It names no lens and no height: it rides on every shot, and a fixed
- * "35mm, eye level" put a second lens beside the camera's own and "eye
- * level" on low, aerial and macro shots. Each shot states its own, in the
- * prompt, or in a set shot's camera.
- */
-export const HOUSE_PHOTOGRAPH =
-  'An available-light documentary photograph, slight grain, mixed colour temperature from window daylight and warm practicals, real materials with wear: scuffed edges, cable runs, a coffee ring, papers out of line; people caught candid and mid-moment, never posing or acting for the camera.'
 
 /**
  * A prompt with every banned word removed (decision 271).

@@ -1,7 +1,6 @@
 import {
   getLatestScript,
   getProject,
-  getSettings,
   listCastMembers,
   retypeShotSlot,
   scriptableClaims,
@@ -20,7 +19,6 @@ import {
   mockShotList,
   parseDirectorsBook,
   parseShotRepairAnswers,
-  stillStyleAnchors,
   withoutBannedWords,
 } from '@boom-busters/providers'
 import type {
@@ -148,7 +146,6 @@ export async function loadDirectionInputs(projectId: string): Promise<{
   centralQuestion: string | undefined
   chapters: DirectionChapterInput[]
   claims: ScriptClaim[]
-  styleAnchors: string
   /** The project's cast (decision 253): each becomes a likeness principal. */
   cast: DirectionCastInput[]
   /**
@@ -183,7 +180,6 @@ export async function loadDirectionInputs(projectId: string): Promise<{
     // Which claims a headline card may cite (decision 257).
     sourceType: claim.sourceType,
   }))
-  const settings = await getSettings(db)
   const members = await listCastMembers(db, projectId)
   const cast = members.map((member) => ({
     name: member.name,
@@ -199,7 +195,6 @@ export async function loadDirectionInputs(projectId: string): Promise<{
     // (An outline with no chapters array still yields its central question.)
     chapters,
     claims,
-    styleAnchors: stillStyleAnchors(settings.brandKit),
     cast,
     photographed,
   }
@@ -265,7 +260,6 @@ export async function planChapterSlots(input: {
    * cites, and its source types decide which claims may back a headline card.
    */
   claims: readonly ScriptClaim[]
-  styleAnchors: string
   direction: DirectorsBook | null
   /** Cast members with a reference photograph (decision 253, amended). */
   photographed?: readonly string[]

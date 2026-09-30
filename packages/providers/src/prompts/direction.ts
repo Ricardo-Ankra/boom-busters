@@ -56,8 +56,6 @@ export function buildDirectorsBookRequest(input: {
   centralQuestion?: string | undefined
   chapters: readonly DirectionChapterInput[]
   claims: readonly ScriptClaim[]
-  /** From `stillStyleAnchors`: the Brand Kit grade the palette must sit inside. */
-  styleAnchors: string
   /** The project's cast, if any; each becomes a likeness principal with the exact name. */
   cast?: readonly DirectionCastInput[]
 }): LLMTaskRequest {
@@ -134,7 +132,9 @@ Rules for the book:
 - A chapter's key image is one photographable moment at the chapter's turn,
   led by the people and place the claims name for it. It is not a list of
   motifs, and it carries at most one.
-- The palette sits inside the Brand Kit grade: "${input.styleAnchors}".
+- The palette's temperature is the film's light: cold, neutral or warm. The
+  note says in words where the accent belongs in the story; never a hex
+  code, grain or grade.
 - One chapter entry per chapter, numbered as given, in order.
 - Every person listed under "Cast, already photographed" is a principal with
   that exact name, depiction "likeness", and the identity string copied

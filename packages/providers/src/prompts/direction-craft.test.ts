@@ -5,7 +5,6 @@ import { describe, expect, it } from 'vitest'
 import {
   BANNED_PROMPT_WORDS,
   DIRECTION_CRAFT,
-  HOUSE_PHOTOGRAPH,
   stripBannedWords,
   withoutBannedWords,
 } from './direction-craft'
@@ -35,7 +34,7 @@ describe('DIRECTION_CRAFT', () => {
     expect(DIRECTION_CRAFT).toContain('a generated wordmark is a wrong one')
     expect(DIRECTION_CRAFT).toContain('set by the compositor, never by the image model')
     expect(DIRECTION_CRAFT).toContain('by name alone, no role after it')
-    expect(DIRECTION_CRAFT).toContain('the person in the reference')
+    expect(DIRECTION_CRAFT).toContain('the code tells the model which photograph is')
     expect(DIRECTION_CRAFT).toContain('no caricature')
     for (const word of BANNED_PROMPT_WORDS) expect(DIRECTION_CRAFT).toContain(word)
   })
@@ -44,22 +43,30 @@ describe('DIRECTION_CRAFT', () => {
     expect(DIRECTION_CRAFT).toContain('Never plan a pan')
   })
 
-  it('states the house photograph line in the bible, word for word (decision 275)', () => {
-    expect(DIRECTION_CRAFT).toContain(HOUSE_PHOTOGRAPH)
-    expect(HOUSE_PHOTOGRAPH).toBe(
-      'An available-light documentary photograph, slight grain, mixed colour temperature from window daylight and warm practicals, real materials with wear: scuffed edges, cable runs, a coffee ring, papers out of line; people caught candid and mid-moment, never posing or acting for the camera.',
-    )
+  it('lists no props and pastes no house line (decision 285)', () => {
+    expect(DIRECTION_CRAFT).not.toContain('a coffee ring')
+    expect(DIRECTION_CRAFT).not.toContain('a half-drunk coffee')
+    expect(DIRECTION_CRAFT).not.toContain('steam off a cup')
+    expect(DIRECTION_CRAFT).not.toContain('Brand Kit anchors')
+    expect(DIRECTION_CRAFT).not.toContain('no flat screen')
   })
 
-  // Final review: a lens and a height in the house line put two lenses on most
-  // stills and "eye level" on low, aerial and macro shots.
-  it('leaves the lens and height to each shot, not the house line (decision 275)', () => {
-    expect(HOUSE_PHOTOGRAPH).not.toMatch(/\d+\s?mm/)
-    expect(HOUSE_PHOTOGRAPH).not.toContain('eye level')
+  it('gives the grade to the compositor and states what code adds', () => {
     expect(DIRECTION_CRAFT).toContain(
-      'The house line names no lens and no height; every shot states its own.',
+      'A prompt never names a grade, grain, film stock or colour code.',
     )
-    expect(DIRECTION_CRAFT).not.toContain('A lens the camera names replaces the 35mm.')
+    expect(DIRECTION_CRAFT).toContain('## What code adds')
+  })
+
+  it('asks for facings and counts', () => {
+    expect(DIRECTION_CRAFT).toContain(
+      'Every screen, seat and person in the frame faces someone or something the prompt names',
+    )
+    expect(DIRECTION_CRAFT).toContain("the room's one desk")
+  })
+
+  it('limits the avoid list to this frame', () => {
+    expect(DIRECTION_CRAFT).toContain('a frame with a laptop never avoids screens')
   })
 
   it('bans the words that pull a prompt towards a render (decision 275)', () => {
@@ -87,7 +94,7 @@ describe('DIRECTION_CRAFT', () => {
     expect(DIRECTION_CRAFT).toContain('The sentence decides the frame')
     expect(DIRECTION_CRAFT).toContain('sound off')
     expect(DIRECTION_CRAFT).toContain('each motif at most once per chapter')
-    expect(DIRECTION_CRAFT).toContain('one detail drawn from the sentence itself')
+    expect(DIRECTION_CRAFT).toContain('the detail the sentence names')
     // The clause that put a motif into every still is gone.
     expect(DIRECTION_CRAFT).not.toContain('and one motif from the director')
     // The fallback no longer canonises one picture.

@@ -48,6 +48,11 @@ describe('buildRebriefRequest', () => {
     expect(bare.system).toContain('DIFFERENT')
     expect(bare.messages.some((message) => message.content.includes('producer'))).toBe(false)
   })
+
+  it('offers no "pan": the renderer cannot do one', () => {
+    expect(request.system).not.toContain('{"kind": "pan"')
+    expect(request.system).toContain('Never "pan"')
+  })
 })
 
 // Decision 276: "Emad Mostaque in the Stability AI Boardroom" as a steer came
@@ -95,7 +100,9 @@ describe('buildRebriefRequest for a still', () => {
     expect(request.system).toContain('"set"?: the exact name of one set')
     expect(request.system).toContain('"camera"?:')
     expect(request.system).toContain(PEOPLE_RULES)
-    expect(request.system).toContain('Sets are the rooms this film returns to')
+    expect(request.system).toContain(
+      'Sets: when the sentence puts us in one of the rooms listed above',
+    )
     expect(request.system).not.toContain('Do not name or describe a real')
   })
 
@@ -108,7 +115,7 @@ describe('buildRebriefRequest for a still', () => {
     })
     expect(plain.system).toContain('"depicts"?:')
     expect(plain.system).not.toContain('"set"?:')
-    expect(plain.system).not.toContain('Sets are the rooms')
+    expect(plain.system).not.toContain('Sets:')
   })
 
   it('keeps the cast and sets out of a stock redraft', () => {

@@ -33,6 +33,11 @@ describe('buildRedirectRequest', () => {
     expect(request.system).toContain('# Direction craft')
   })
 
+  it('describes an anonymous figure with a visible, natural face, never turned away', () => {
+    expect(request.system).not.toContain('face turned away')
+    expect(request.system).toContain('visible')
+  })
+
   it('shows the refusal and the current brief, with the book in the prefix', () => {
     expect(request.cacheablePrefixMessages).toBe(1)
     expect(request.messages[0]?.content).toContain("Director's book:")

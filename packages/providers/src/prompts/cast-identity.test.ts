@@ -31,6 +31,13 @@ describe('buildCastIdentityRequest', () => {
     expect(request.system).toContain(DEFAULT_GUARDRAIL)
   })
 
+  it('bans the full word list the bible bans, not a shorter copy of it', () => {
+    // A word only the full list carries (decision 285): the banned words are
+    // stated once, in direction-craft.ts, and this prompt reads them from
+    // there instead of keeping its own shorter copy to drift out of step.
+    expect(request.system).toContain('photorealistic')
+  })
+
   it('refuses to describe nobody: photographs are the point', () => {
     expect(() => buildCastIdentityRequest({ name: 'x', role: 'y', photos: [] })).toThrow(
       ValidationError,

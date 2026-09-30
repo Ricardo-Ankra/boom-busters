@@ -33,7 +33,6 @@ export interface PlanChapterInput {
   chapter: { id: string; title: string; number: number }
   paragraphs: readonly TimedParagraph[]
   claims: readonly ScriptClaim[]
-  styleAnchors: string
   direction: DirectorsBook | null
   photographed?: readonly string[]
   sets?: readonly { name: string; look: string; layout?: string }[]
@@ -54,7 +53,6 @@ export function chapterShotListRequest(input: PlanChapterInput): LLMTaskRequest 
     chapterNumber: input.chapter.number,
     paragraphs,
     claims: input.claims,
-    styleAnchors: input.styleAnchors,
     ...(input.direction ? { direction: input.direction } : {}),
     ...(input.photographed && input.photographed.length > 0
       ? { photographed: input.photographed }
