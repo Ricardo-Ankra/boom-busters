@@ -49,10 +49,10 @@ export interface ShotParagraph {
  *
  * The flat 8,000 the prompt shipped with was enough while a brief was a
  * query and a sentence. Under the Director's Book (decision 252) every brief
- * carries a shot size, and a still prompt carries the scene, an identity
- * string and a guardrail line, so a slot runs 300 to 400 tokens and a
- * six-minute chapter no longer fits: the first live run cut off mid-JSON,
- * three retries at full price.
+ * carries a shot size, and a still prompt carries the scene and an identity
+ * string, so a slot runs 300 to 400 tokens and a six-minute chapter no
+ * longer fits: the first live run cut off mid-JSON, three retries at full
+ * price.
  *
  * Slots are at least 4 s, so narration seconds / 5 is a generous count of how
  * many the model could plan; 400 tokens each is the long end of a still.

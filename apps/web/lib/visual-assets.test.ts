@@ -35,6 +35,14 @@ import { listLedger } from '@boom-busters/cost'
 import { db } from '@/lib/db'
 import { PHOTOGRAPH_LINE } from './photograph-lines'
 import { assembleStillPrompt, REFERENCE_MARKER } from './still-prompt'
+import {
+  generateStillCandidates,
+  referenceBudgets,
+  resolveSlotBrief,
+  routeForBrief,
+  stillPromptFor,
+  stillsEstimateUsd,
+} from './visual-assets'
 
 /**
  * Legacy fixture text (decision 285): before the assembler owned the house
@@ -48,14 +56,6 @@ const LEGACY_HOUSE_PHOTOGRAPH =
   'An available-light documentary photograph, slight grain, mixed colour temperature from window daylight and warm practicals, real materials with wear: scuffed edges, cable runs, a coffee ring, papers out of line; people caught candid and mid-moment, never posing or acting for the camera.'
 const LEGACY_STYLE_ANCHORS =
   'subtle film grain; muted documentary colour grade anchored on #0f1115 and #f5a524 against #0a0a0b; sombre, photographic realism'
-import {
-  generateStillCandidates,
-  referenceBudgets,
-  resolveSlotBrief,
-  routeForBrief,
-  stillPromptFor,
-  stillsEstimateUsd,
-} from './visual-assets'
 
 /**
  * Still generation with the cast (decision 253), in mock-provider mode

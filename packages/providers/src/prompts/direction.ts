@@ -133,8 +133,8 @@ Rules for the book:
   led by the people and place the claims name for it. It is not a list of
   motifs, and it carries at most one.
 - The palette's temperature is the film's light: cold, neutral or warm. The
-  note says in words where the accent belongs in the story; never a hex
-  code, grain or grade.
+  note says in words where the accent belongs in the story, and never
+  carries a hex code, grain or grade.
 - One chapter entry per chapter, numbered as given, in order.
 - Every person listed under "Cast, already photographed" is a principal with
   that exact name, depiction "likeness", and the identity string copied

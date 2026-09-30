@@ -161,14 +161,14 @@ line or a Brand Kit anchor into a prompt.
 
 - FLUX family (dev, schnell, pro, FLUX.2, Krea): prose in the order above;
   no negative prompt exists, so write what must be there and fold the
-  avoid list into a final sentence ("Avoid: ..."); hex colours beside
-  colour names; lighting has the largest effect on quality.
+  avoid list into a final sentence ("Avoid: ..."); lighting has the
+  largest effect on quality.
 - Imagen 3: subject, then context, then style; lens and proximity words
   ("close-up", "35mm", "wide angle"); keep under 480 tokens; person
-  generation is enabled: name the person, then the identity string, then
-  posture and clothing.
-- Gemini image models: same prose as FLUX, same anchors; there is no
-  negative field, so the avoid list is folded in.
+  generation is enabled: a person is written as the People section says,
+  then posture and clothing.
+- Gemini image models: same prose as FLUX; there is no negative field, so
+  the avoid list is folded in.
 - Hero video (Veo 3.1 or Kling, when the flag is on), in this shape:
   format and style; the subject with its identity string; place, era,
   time of day, weather; ONE primary action with an end state ("the

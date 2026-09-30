@@ -745,7 +745,7 @@ describe('buildShotListRequest with direction (decision 252)', () => {
       expect(withSets.system).toContain(
         '"camera"?: {"facing": "north"|"east"|"south"|"west", "position", "lens"?}',
       )
-      expect(withSets.system).toContain('give\n  the still a "camera"')
+      expect(withSets.system).toContain('the still a "camera"')
       // The lens and height of a set shot go in "camera", not the prose.
       expect(withSets.system).toContain('its lens and camera height go in "camera" instead')
       expect(withSets.system).not.toContain('"lens" when it matters')
@@ -841,6 +841,12 @@ describe('buildShotListRequest with direction (decision 252)', () => {
     // photographs travel. A prompt that never says the room's name leaves the
     // attached plates with no noun to attach to, which is how a shot ends up
     // following the prose and ignoring the reference.
+    //
+    // Review round 1: SET_RULES used to spell out what to write happening in
+    // the room ("who is there, what they are doing and the light"), which
+    // duplicated the still bullet's general "prompt is the scene alone" rule
+    // and was dropped for it (decision 285). What SET_RULES still carries is
+    // that the room itself is named in the prompt, in the sentence's words.
     it('asks for the room to be named in the prompt, not only in the field', () => {
       expect(withSets.system).toContain('name it in the prompt in the same words')
     })

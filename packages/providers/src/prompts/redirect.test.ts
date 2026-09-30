@@ -35,7 +35,10 @@ describe('buildRedirectRequest', () => {
 
   it('describes an anonymous figure with a visible, natural face, never turned away', () => {
     expect(request.system).not.toContain('face turned away')
-    expect(request.system).toContain('visible')
+    // Asserted on the prompt's own words: the bible's own "visible and in
+    // focus" would make `toContain('visible')` pass for the wrong reason.
+    const own = request.system.slice(0, request.system.indexOf('# Direction craft'))
+    expect(own).toContain('natural face, visible and resembling no real person')
   })
 
   it('shows the refusal and the current brief, with the book in the prefix', () => {

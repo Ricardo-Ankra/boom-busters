@@ -69,6 +69,29 @@ describe('DIRECTION_CRAFT', () => {
     expect(DIRECTION_CRAFT).toContain('a frame with a laptop never avoids screens')
   })
 
+  // Review round 1, Important #1: the per-model recipes still told the
+  // planner to paste a hex code, to reuse the (now-deleted) Brand Kit
+  // anchors, or to write a physical description for a photographed person —
+  // each one a live instruction that contradicted the rules above it.
+  it('does not let the per-model recipes contradict the rules above them (decision 285)', () => {
+    expect(DIRECTION_CRAFT).not.toContain('hex colours')
+    expect(DIRECTION_CRAFT).not.toContain('same anchors')
+    expect(DIRECTION_CRAFT).not.toContain('name the person, then the identity string')
+  })
+
+  // Review round 1, Important #2: these rules survive decision 285 (they are
+  // never restated in the planner's own Planning rules), and each phrase sits
+  // whole on one line of the markdown, so a re-wrap would fail this test
+  // before it fails a live plan.
+  it('states these surviving rules whole, on one line each', () => {
+    expect(DIRECTION_CRAFT).toContain('Never in two adjacent slots')
+    expect(DIRECTION_CRAFT).toContain('that is the goal, not a gap')
+    expect(DIRECTION_CRAFT).toContain('never an object standing in for them')
+    expect(DIRECTION_CRAFT).toContain('A sentence that names a person or a place shows that person')
+    expect(DIRECTION_CRAFT).toContain('In a set, the light you write is what the moment adds')
+    expect(DIRECTION_CRAFT).toContain('No prop or atmospheric device appears twice in a chapter')
+  })
+
   it('bans the words that pull a prompt towards a render (decision 275)', () => {
     for (const word of [
       'ultra-detailed',
