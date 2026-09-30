@@ -12,17 +12,13 @@ import {
 } from '@boom-busters/db'
 import type { NewShotSlot } from '@boom-busters/db'
 import {
+  BANNED_PROMPT_WORDS,
   buildDirectorsBookRequest,
-  buildShotListRequest,
   buildShotRepairRequest,
-  MAX_OUTPUT_TOKENS,
   mockDirectorsBook,
   mockProvidersEnabled,
   mockShotList,
   parseDirectorsBook,
-  parseShotList,
-  BANNED_PROMPT_WORDS,
-  parseShotRepair,
   parseShotRepairAnswers,
   stillStyleAnchors,
   withoutBannedWords,
@@ -30,6 +26,7 @@ import {
 import type {
   DirectionCastInput,
   DirectionChapterInput,
+  LLMTaskRequest,
   ScriptClaim,
 } from '@boom-busters/providers'
 import {
@@ -38,15 +35,12 @@ import {
   craftFindings,
   DirectorsBookSchema,
   findingContext,
-  repairTargets,
   resolvePlannedBrief,
   ShotBriefSchema,
-  ValidationError,
 } from '@boom-busters/schemas'
 import type {
   CraftFinding,
   DirectorsBook,
-  FindingContext,
   LogoIndex,
   PlannedSlot,
   ShotBrief,
@@ -55,7 +49,10 @@ import { NonRetriableError } from 'inngest'
 import { z } from 'zod'
 import { db } from '@/lib/db'
 import { callLlm } from '@/lib/llm'
+import { planChapterWith } from '@/lib/plan-chapter'
 import { plannedToRows, promptParagraphs, type TimedParagraph } from './shot-list'
+
+export { chapterShotListRequest } from '@/lib/plan-chapter'
 
 /**
  * The craft findings over a whole film, stored or just planned (decision 277).
@@ -254,128 +251,6 @@ export async function loadOrDraftDirectorsBook(projectId: string): Promise<Direc
 }
 
 /**
- * Call the shot-list model, and if the answer was cut off at max_tokens, call
- * once more with double the budget before giving up.
- *
- * A truncated JSON answer is the one failure an Inngest retry cannot help
- * with: the same request at the same budget is cut off at the same place,
- * so the four blind retries the runner allows were four identical paid
- * failures (first live run under the Director's Book, 2026-09-15). The retry
- * that can succeed is a bigger one, and one doubling is the whole ladder: a
- * budget that fails twice is a chapter that needs splitting, not more room.
- * Every other error passes straight through to the runner's handling.
- */
-async function planWithBudgetEscalation(
-  request: ReturnType<typeof buildShotListRequest>,
-  options: { projectId: string },
-): Promise<ReturnType<typeof parseShotList>> {
-  try {
-    return parseShotList((await callLlm(request, options)).text)
-  } catch (error) {
-    const cutOff = error instanceof ValidationError && error.field === 'maxTokens'
-    if (!cutOff || request.maxTokens >= MAX_OUTPUT_TOKENS) throw error
-    const bigger = { ...request, maxTokens: Math.min(MAX_OUTPUT_TOKENS, request.maxTokens * 2) }
-    return parseShotList((await callLlm(bigger, options)).text)
-  }
-}
-
-/**
- * The shot-list request for one chapter, or null when the chapter has no
- * narration to plan. Shared by planning and by the Fix button (decision 271),
- * so a repair is asked under exactly the rules and context the plan was.
- */
-export function chapterShotListRequest(input: {
-  caseTitle: string
-  chapter: { id: string; title: string; number: number }
-  paragraphs: readonly TimedParagraph[]
-  claims: readonly ScriptClaim[]
-  styleAnchors: string
-  direction: DirectorsBook | null
-  photographed?: readonly string[]
-  sets?: readonly { name: string; look: string; layout?: string }[]
-  logos?: readonly LogoIndex[]
-}): ReturnType<typeof buildShotListRequest> | null {
-  const paragraphs = promptParagraphs(input.paragraphs, input.chapter.id)
-  if (paragraphs.length === 0) return null
-  return buildShotListRequest({
-    caseTitle: input.caseTitle,
-    chapterTitle: input.chapter.title,
-    chapterNumber: input.chapter.number,
-    paragraphs,
-    claims: input.claims,
-    styleAnchors: input.styleAnchors,
-    ...(input.direction ? { direction: input.direction } : {}),
-    ...(input.photographed && input.photographed.length > 0
-      ? { photographed: input.photographed }
-      : {}),
-    ...(input.sets && input.sets.length > 0
-      ? {
-          sets: input.sets.map((set) => ({
-            name: set.name,
-            look: set.look,
-            layout: set.layout,
-          })),
-        }
-      : {}),
-    logos: input.logos?.map((logo) => logo.title),
-  })
-}
-
-/**
- * One automatic repair of a freshly planned chapter (decision 271).
- *
- * Only `auto` findings are sent, so a clean chapter, or one whose only
- * findings are the producer's to weigh, costs nothing. `parseShotRepair`
- * refuses any change of type here, so this can never turn a free slot into a
- * paid one unasked. Any failure, budget included, keeps the plan exactly as
- * planned: an unrepaired plan is still a valid plan, and the Fix button can
- * repair it later.
- */
-async function repairPlannedChapter(input: {
-  projectId: string
-  request: ReturnType<typeof buildShotListRequest>
-  slots: PlannedSlot[]
-  chapterNumber: number
-  context: FindingContext
-}): Promise<PlannedSlot[]> {
-  const findings = craftFindings(
-    input.slots.map((slot) => ({ brief: slot.brief, chapter: `chapter ${input.chapterNumber}` })),
-    input.context,
-  )
-  const targets = repairTargets(findings, ['auto'])
-  if (targets.length === 0) return input.slots
-  const originals = targets.map((target) => input.slots[target.slotIndex]!.brief)
-  try {
-    const answer = await callLlm(
-      buildShotRepairRequest(
-        input.request,
-        targets.map((target, at) => ({
-          brief: originals[at],
-          problems: target.findings.map((finding) => finding.message),
-        })),
-        { allowStockToStill: false },
-      ),
-      { projectId: input.projectId },
-    )
-    const replacements = parseShotRepair(answer.text, originals, { allowStockToStill: false })
-    const repaired = [...input.slots]
-    targets.forEach((target, at) => {
-      const brief = replacements[at]
-      if (brief) {
-        repaired[target.slotIndex] = {
-          ...repaired[target.slotIndex]!,
-          brief: withoutBannedWords(brief),
-        }
-      }
-    })
-    return repaired
-  } catch (error) {
-    console.warn('[visuals] chapter repair skipped; the plan is kept as planned', error)
-    return input.slots
-  }
-}
-
-/**
  * One chapter's slots, planned and converted to rows. Throws
  * `BudgetExceededError` through; the caller decides whether that parks the
  * stage or fails the side job.
@@ -425,28 +300,13 @@ export async function planChapterSlots(input: {
         .filter((ref) => ref > 0),
     }).slots
   } else {
-    const request = chapterShotListRequest(input)
-    if (!request) return { rows: [], rejected: 0 }
-    const parsed = await planWithBudgetEscalation(request, { projectId: input.projectId })
-    dropped = parsed.malformed.length
-    slots = await repairPlannedChapter({
-      projectId: input.projectId,
-      request,
-      slots: parsed.slots.map((slot) => ({ ...slot, brief: withoutBannedWords(slot.brief) })),
-      chapterNumber: input.chapter.number,
-      context: findingContext({
-        direction: input.direction,
-        // Only a photographed member can carry an auto finding, and this pass
-        // acts on nothing else, so the photographed names are all it needs.
-        cast: (input.photographed ?? []).map((name) => ({ name, photographed: true })),
-        sets: (input.sets ?? []).map((set) => ({
-          name: set.name,
-          look: set.look,
-          layout: set.layout,
-        })),
-        bannedWords: BANNED_PROMPT_WORDS,
-      }),
-    })
+    const planned = await planChapterWith(
+      (request) => callLlm(request, { projectId: input.projectId }),
+      input,
+    )
+    if (!planned) return { rows: [], rejected: 0 }
+    dropped = planned.malformed
+    slots = planned.slots
   }
 
   const conversion = plannedToRows({
@@ -478,7 +338,7 @@ export async function planChapterSlots(input: {
  */
 export async function rewriteStoredBriefs(input: {
   projectId: string
-  request: ReturnType<typeof buildShotListRequest>
+  request: LLMTaskRequest
   targets: readonly {
     id: string
     brief: ShotBrief

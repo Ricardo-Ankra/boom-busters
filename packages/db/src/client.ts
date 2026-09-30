@@ -8,7 +8,7 @@ export type Database = ReturnType<typeof createDb>['db']
  * Creates a connection. Prefer `getDb()` in the app — this exists so tests and
  * scripts can open (and close) their own throwaway connection.
  */
-export function createDb(connectionString: string, options?: { max?: number }) {
+export function createDb(connectionString: string, options?: { max?: number; readOnly?: boolean }) {
   const sql = postgres(connectionString, {
     max: options?.max ?? 5,
     // Serverless functions get one short-lived connection per invocation;
@@ -35,6 +35,14 @@ export function createDb(connectionString: string, options?: { max?: number }) {
      * unnamed statements, which are still parameterised and still safe.
      */
     prepare: false,
+    /**
+     * A session that cannot write (decision 285): the live harness reads a
+     * production project and must never change it. Sent as a startup
+     * parameter, so it needs a direct connection (Neon's unpooled URL);
+     * PgBouncer in transaction mode may drop it, which is why the harness
+     * checks the setting before its first real query.
+     */
+    ...(options?.readOnly ? { connection: { default_transaction_read_only: true } } : {}),
   })
   return { sql, db: drizzle(sql, { schema }) }
 }
