@@ -1,14 +1,7 @@
 #!/usr/bin/env node
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
-import {
-  findModel,
-  geminiImageGen,
-  google,
-  imageGenPrice,
-  priceOf,
-  stripBannedWords,
-} from '@boom-busters/providers'
+import { findModel, geminiImageGen, google, imageGenPrice, priceOf } from '@boom-busters/providers'
 import type { ImageReference } from '@boom-busters/providers'
 import {
   CastPhotoViewSchema,
@@ -274,7 +267,16 @@ async function main(): Promise<void> {
       imageBytes = readFileSync(firstPath)
     } else if (args.generateFirst) {
       const brief = setPlateBrief({ name: args.name, look: args.look, plates: [] }, 'north')
-      const firstPrompt = stripBannedWords(brief.prompt)
+      // The same call `generateStillCandidates(brief, projectId, undefined,
+      // 'plate')` makes for a first plate (decision 285): the harness must
+      // not drift from what the app actually sends.
+      const firstPrompt = assembleStillPrompt({
+        scene: brief.prompt,
+        layout: '',
+        people: [],
+        set: null,
+        kind: 'plate',
+      })
       prompts.firstPlate = firstPrompt
       record.firstPlate = { prompt: firstPrompt, model: SHOT_MODEL }
       budget.reserve('first-plate', imageGenPrice(geminiImageGen, 1, SHOT_MODEL, '1K'))
