@@ -17,13 +17,14 @@ import {
   setCastPhotos,
   setProjectDirection,
   setProjectStage,
+  setVisualsJob,
   shotSlots,
   truncateRunMirror,
   updateProjectSet,
   updateSettings,
 } from '@boom-busters/db'
 import { mockDirectorsBook } from '@boom-busters/providers'
-import { DirectorsBookSchema } from '@boom-busters/schemas'
+import { DirectorsBookSchema, newId } from '@boom-busters/schemas'
 import { InngestTestEngine } from '@inngest/test'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/lib/db'
@@ -316,6 +317,25 @@ describeDb('visuals-runner (mock mode)', () => {
     const project = await getProject(db, FIXTURE_PROJECT_ID)
     expect(project?.visualsPhase).toBe('board')
     expect(project?.stageStatus).toBe('awaiting_review')
+  })
+
+  it('hands the fetch stamp over when it closes the gate (decision 286)', async () => {
+    await engine.executeStep('open-plan-park', {
+      events: [{ name: 'gate/voice.approved', data: { projectId: FIXTURE_PROJECT_ID } }],
+    })
+    await setProjectStage(db, FIXTURE_PROJECT_ID, { stage: 'visuals', stageStatus: 'failed' })
+    await setVisualsJob(db, FIXTURE_PROJECT_ID, {
+      op: 'fetch',
+      jobId: newId(),
+      startedAt: new Date().toISOString(),
+    })
+
+    const resume = new InngestTestEngine({ function: visualsRunner })
+    await resume.executeStep('load-plan', {
+      events: [{ name: 'visuals/fetch.resume', data: { projectId: FIXTURE_PROJECT_ID } }],
+    })
+
+    expect((await getProject(db, FIXTURE_PROJECT_ID))!.visualsJob).toBeNull()
   })
 
   // The copy-reused-shots step (decision 261) has no engine test: the run

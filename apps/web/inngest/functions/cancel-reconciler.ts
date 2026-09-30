@@ -1,4 +1,4 @@
-import { cancelRunsForProject, markProjectCancelled } from '@boom-busters/db'
+import { cancelRunsForProject, clearProjectJobs, markProjectCancelled } from '@boom-busters/db'
 import { db } from '@/lib/db'
 import { notify } from '@/lib/notify'
 import { inngest } from '../client'
@@ -45,6 +45,9 @@ export const cancelReconciler = inngest.createFunction(
 
     const closed = await step.run('release', async () => {
       await markProjectCancelled(db, projectId)
+      // `project/cancelled` cancels the side jobs without their `onFailure`,
+      // so nothing else would clear what they stamped (decision 286).
+      await clearProjectJobs(db, projectId)
 
       // This function is itself a run against the same project, so it has to
       // exclude its own mirror row or it cancels itself.
