@@ -165,8 +165,13 @@ that has not executed).
 
 - `SlotView.job: { kind, startedAt } | null`, from `pending_job`.
 - `VisualsReviewModel.job: { op, startedAt } | null`, from `visuals_job`.
-- `VisualsReviewModel.fetching: boolean`: `phase === 'plan'` and the
-  project's `stageStatus` is `running` or `queued`.
+- `VisualsReviewModel.fetching: boolean`: `phase === 'plan'`, the project
+  is at the `visuals` stage, and its `stageStatus` is `queued`, or
+  `running` with a live run in the mirror. (Amended after the branch
+  review: a runner that died without `onFailure` leaves `running` behind,
+  and reading that as a fetch locked the board for good and refused Fetch
+  visuals, decision 279's free way out. `approvePlanAction` refuses by the
+  same rule.)
 - `VisualsReviewModel.renderedAt: string`, the server's `now` (ISO) when the
   model was built, for the board's clock (section 8).
 
@@ -217,10 +222,13 @@ try again."
 **Chapter tallies:** "drafting" becomes "in progress" and also counts live
 refetch and redirect stamps; a stale stamp counts under "to look at".
 
-When the job lands, the page refreshes as it does today (`LiveRefresh`
-already polls while the run is live, and the run mirror moves the pulse), the
-stamp is gone and the card unlocks. No toast: the new candidates are the
-feedback.
+When the job lands, the page refreshes, the stamp is gone and the card
+unlocks. No toast: the new candidates are the feedback. (Amended after the
+branch review: `LiveRefresh` polled only while a run was live, and on a plan
+screen with no run parked the render after the press sees no run yet, so
+nothing ever woke the page. It now also polls while the model holds a stamp
+younger than the limit, and a slot stamp moves `projects.updated_at` when
+it is written or released, since the pulse does not read slot rows.)
 
 ## 9. Testing
 

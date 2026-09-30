@@ -6485,6 +6485,12 @@ green.
      job id, which would mean reading a new field from a parked wait, the
      decision 279 crash), and from there "plan phase, stage running" is the
      signal; `approvePlanAction` also refuses a second Fetch while it runs.
+     "Running" counts only with a live run in the mirror, and only at the
+     visuals stage, so a runner that died without `onFailure` does not lock
+     the board and Fetch visuals still resumes it (decision 279). The page
+     polls while any stamp is young, because a job sent from a plan screen
+     with no parked run has no live run to poll on, and a slot stamp moves
+     `projects.updated_at` so the pulse sees it land.
      The board locks the card (or, for plan jobs, the whole board), keeps
      the pressed button spinning, and says what is running and for how
      long; past 10 minutes a stamp stops locking and the card says it may
