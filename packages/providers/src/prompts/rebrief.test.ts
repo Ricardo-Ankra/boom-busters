@@ -129,6 +129,14 @@ describe('buildRebriefRequest for a still', () => {
     expect(stockRequest.system).not.toContain('"set"?:')
   })
 
+  it('states the field rule first, with the set clause (decision 285 follow-up, task 10a)', () => {
+    const normalised = request.system.replace(/\s+/g, ' ')
+    expect(normalised).toContain(
+      'a sentence that names a person shows that person and lists them in "depicts"',
+    )
+    expect(normalised).toContain('names it in "set"')
+  })
+
   it('keeps the set and camera a new idea names', () => {
     const answer = JSON.stringify({
       brief: {

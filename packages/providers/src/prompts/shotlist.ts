@@ -135,6 +135,30 @@ export const SET_RULES = `  Sets: when the sentence puts us in one of the rooms 
   bible's set rules say why. A sentence that happens somewhere else names no set.
 `
 
+/**
+ * The planner's own first rule (decision 285 follow-up, task 10a): read
+ * "coversText" and let it fill the fields. Decision 285 dropped this bullet
+ * because the bible states it too, but the live plan harness followed it less
+ * once only the bible said so — a chapter planned fewer sets and no cast
+ * member it had shown before. The fields are the planner's own job (spec
+ * 6.1), so it comes back here, and "Draft a different brief" shares this same
+ * sentence rather than a paraphrase of it.
+ */
+export function fieldRule(hasSets: boolean): string {
+  return hasSets
+    ? `- Read "coversText" before anything else and let it fill the fields: a sentence
+  that names a person shows that person and lists them in "depicts"; a sentence
+  that puts us in one of the rooms listed above names it in "set"; an abstract
+  sentence is staged with the people it concerns, never an object standing in
+  for them.
+`
+    : `- Read "coversText" before anything else and let it fill the fields: a sentence
+  that names a person shows that person and lists them in "depicts"; an abstract
+  sentence is staged with the people it concerns, never an object standing in
+  for them.
+`
+}
+
 function slotShapes(hasSets: boolean): string {
   return `Every slot: {"paragraphIndex": number, "seconds": number, "brief": {...}}
 
@@ -276,7 +300,7 @@ Return JSON: {"slots": [...]}
 ${slotShapes(sets.length > 0)}
 
 Planning rules:
-- Cover every paragraph. A slot runs 4-15 seconds ("seconds" is always a
+${fieldRule(sets.length > 0)}- Cover every paragraph. A slot runs 4-15 seconds ("seconds" is always a
   positive number); a paragraph's slots should add up to roughly its narration
   length.
 - Each brief is a full creative direction, not a keyword: subject, composition,

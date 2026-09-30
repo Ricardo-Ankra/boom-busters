@@ -904,6 +904,49 @@ describe('the sentence, staging and era-lock rules live once, in the bible (deci
   })
 })
 
+describe("restoring the planner's own field rule (decision 285 follow-up, task 10a)", () => {
+  // The live plan harness planned fewer sets and no cast member once the
+  // bible alone stated this; the fields are the planner's own job (spec
+  // 6.1), so this bullet comes back as the first planning rule.
+  const direction = mockDirectorsBook({ caseTitle: 'Wirecard', chapterCount: 2 })
+
+  it('states the field rule first, with the set clause, when the film has sets', () => {
+    const withSets = buildShotListRequest({
+      caseTitle: 'Stability AI',
+      chapterTitle: 'The Missing Billions',
+      chapterNumber: 2,
+      paragraphs: PARAGRAPHS,
+      claims: CLAIMS,
+      direction,
+      sets: [{ name: 'Venture Capital Boardroom', look: 'A long polished table, a glass wall.' }],
+    })
+    const rules = withSets.system.slice(withSets.system.indexOf('Planning rules:'))
+    const normalised = rules.replace(/\s+/g, ' ')
+    expect(normalised.indexOf('Read "coversText" before anything else')).toBeGreaterThan(-1)
+    expect(normalised.indexOf('Read "coversText" before anything else')).toBeLessThan(
+      normalised.indexOf('Cover every paragraph'),
+    )
+    expect(normalised).toContain(
+      'a sentence that names a person shows that person and lists them in "depicts"',
+    )
+    expect(normalised).toContain('names it in "set"')
+  })
+
+  it('drops the set clause when the film has no sets', () => {
+    const noSets = buildShotListRequest({
+      caseTitle: 'Wirecard',
+      chapterTitle: 'The Missing Billions',
+      paragraphs: PARAGRAPHS,
+      claims: CLAIMS,
+    })
+    const normalised = noSets.system.replace(/\s+/g, ' ')
+    expect(normalised).toContain(
+      'a sentence that names a person shows that person and lists them in "depicts"',
+    )
+    expect(normalised).not.toContain('names it in "set"')
+  })
+})
+
 describe('buildShotRepairRequest and parseShotRepair (decision 271)', () => {
   const base = buildShotListRequest({
     caseTitle: 'Stability AI',

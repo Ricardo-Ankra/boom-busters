@@ -3,7 +3,7 @@ import type { DirectorsBook, ShotBrief } from '@boom-busters/schemas'
 import { z } from 'zod'
 import { DIRECTION_CRAFT } from './direction-craft'
 import { formatIssues, parseJsonCompletion } from './json'
-import { PEOPLE_RULES, referencesPrefix, SET_RULES } from './shotlist'
+import { fieldRule, PEOPLE_RULES, referencesPrefix, SET_RULES } from './shotlist'
 import { outputBudget } from '../llm/types'
 import type { LLMTaskRequest } from '../llm/types'
 
@@ -83,7 +83,7 @@ Keep ${kept} from the current brief while the new idea still shows those
 people${hasSets ? ' in that room' : ''}. When the producer's steer names a person or a room from
 the lists in the first message, the new brief shows them: ${steered}.
 
-${PEOPLE_RULES}${hasSets ? SET_RULES : ''}`
+${fieldRule(hasSets)}${PEOPLE_RULES}${hasSets ? SET_RULES : ''}`
 }
 
 export function buildRebriefRequest(input: RebriefInput): LLMTaskRequest {
