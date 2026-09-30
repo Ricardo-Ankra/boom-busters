@@ -81,28 +81,35 @@ One migration adds two nullable `jsonb` columns.
 `projects.visuals_job`, a `VisualsJob`:
 
 ```ts
-{ op: 'replan' | 'repair' | 'direction' | 'fetch', jobId: string, startedAt: string }
+{ op: 'shots' | 'repair' | 'direction' | 'fetch', jobId: string, startedAt: string }
 ```
+
+The first three are the `op` names `visuals/replan.requested` already uses
+(`shots` is Re-plan shot list), so the stamp and the event never need
+translating.
 
 Both are Zod schemas in `packages/schemas` (beside `SlotDraftStateSchema`),
 parsed with `safeParse` on read; a row that fails to parse reads as no job.
 `jobId` is a fresh `newId()` (the monotonic ULID factory) per press.
 
-The events that start these jobs gain an optional `jobId`:
-`visuals/refetch.requested`, `visuals/redirect.requested`,
-`visuals/replan.requested`, `visuals/plan.approved` and
-`visuals/fetch.resume`. Optional so an event already queued when this ships
-still parses; a job with no `jobId` releases nothing (the stamp's 10-minute
-limit covers it).
+The events that start the three side jobs gain an optional `jobId`:
+`visuals/refetch.requested`, `visuals/redirect.requested` and
+`visuals/replan.requested`. Optional so an event already queued when this
+ships still parses; a job with no `jobId` releases nothing (the stamp's
+10-minute limit covers it). The plan approval events carry none: the runner
+clears the `fetch` stamp by its op (section 6), because the approval reaches
+it through a parked `waitForEvent`, and reading a new field from that
+outside a step is how decision 279's parked runs crashed.
 
 `packages/db` gains four helpers:
 
 - `setSlotJob(db, slotId, job)` and `setVisualsJob(db, projectId, job)`,
   which write unconditionally (the action's stamp).
 - `releaseSlotJob(db, slotId, jobId)` and
-  `releaseVisualsJob(db, projectId, jobId)`: one `UPDATE ... WHERE` the stored
-  `jobId` equals the one given, so a job that finishes late never clears a
-  newer press's stamp.
+  `releaseVisualsJob(db, projectId, match)`, where `match` is `{ jobId }` or
+  `{ op }`: one `UPDATE ... WHERE` the stored stamp matches, so a job that
+  finishes late never clears a newer press's stamp. `{ op: 'fetch' }` is the
+  runner's.
 - `clearProjectJobs(db, projectId)`: every slot's `pending_job`, the project's
   `visuals_job`, and any slot `retype` in `drafting` or `rebriefing`, set to
   null. For Stop.
@@ -117,7 +124,7 @@ throws, the action writes null back before returning its error.
 |---|---|
 | `sendRefetch` (all 12 callers: Regenerate, Fetch this slot, Save & re-fetch, cast link and unlink, format changes, …) | slot `refetch` |
 | `redirectSceneAction` | slot `redirect` |
-| `sendReplan` for `replanShotsAction`, `repairPlanAction`, `redraftDirectionAction` | project `replan`, `repair`, `direction` |
+| `sendReplan` for `replanShotsAction`, `repairPlanAction`, `redraftDirectionAction` | project `shots`, `repair`, `direction` |
 | `approvePlanAction` | project `fetch` |
 
 ## 6. Who clears a stamp
@@ -140,9 +147,11 @@ runs only after every step of the body has completed.
 `clearProjectJobs`. This also clears the stuck `drafting` and `rebriefing`
 stamps of section 1.
 
-**Fetch visuals hands over.** The runner calls `releaseVisualsJob` inside the
-existing `load-plan` step, right after `closeReviewGate` sets the stage to
-`running`. From there the board reads "phase `plan` and stage `running` or
+**Fetch visuals hands over.** The runner calls
+`releaseVisualsJob(db, projectId, { op: 'fetch' })` inside the existing
+`load-plan` step, right after `closeReviewGate` sets the stage to `running`.
+Matching by op is safe here: the board is locked for the whole fetch, so no
+newer fetch stamp can exist. From there the board reads "phase `plan` and stage `running` or
 `queued`" as fetching, which needs no stamp and never goes stale: if the
 runner fails, `onFailure` marks the stage failed. The runner's `onFailure`
 also releases the stamp, for a failure before `load-plan`. Runs parked on the
@@ -158,6 +167,8 @@ that has not executed).
 - `VisualsReviewModel.job: { op, startedAt } | null`, from `visuals_job`.
 - `VisualsReviewModel.fetching: boolean`: `phase === 'plan'` and the
   project's `stageStatus` is `running` or `queued`.
+- `VisualsReviewModel.renderedAt: string`, the server's `now` (ISO) when the
+  model was built, for the board's clock (section 8).
 
 Staleness is not decided here. A job that dies sends nothing that would
 refresh the page, so a card rendered at minute 3 would still be locked at
@@ -165,8 +176,14 @@ minute 30 if the server had judged it.
 
 ## 8. The board
 
-A `useNow(15_000)` clock in `VisualBoard` re-renders every 15 seconds while
-any stamp is on screen, and not otherwise. `JOB_STALE_MS = 10 * 60_000`.
+A clock in `VisualBoard` re-renders every 15 seconds while any stamp is on
+screen, and not otherwise. `JOB_STALE_MS = 10 * 60_000`. The clock reads the
+server's time, not the browser's: the model carries `renderedAt` (the
+server's `now` when it built the model), and the board's `now` is
+`renderedAt` plus the time elapsed in the browser since that model arrived.
+So a browser clock that is wrong by an hour cannot lock a fresh card or
+unlock a live one, and the first client render matches the server's (no
+hydration mismatch on "started 0:42 ago").
 
 **A slot with a live stamp** (younger than the limit):
 
