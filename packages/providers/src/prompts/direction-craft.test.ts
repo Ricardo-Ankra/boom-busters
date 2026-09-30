@@ -90,6 +90,12 @@ describe('DIRECTION_CRAFT', () => {
     expect(DIRECTION_CRAFT).toContain('A sentence that names a person or a place shows that person')
     expect(DIRECTION_CRAFT).toContain('In a set, the light you write is what the moment adds')
     expect(DIRECTION_CRAFT).toContain('No prop or atmospheric device appears twice in a chapter')
+    // Review round 2: this one had no assertion at all (the shotlist.test.ts
+    // check re-commented for review round 1 asks for the room's NAME, which
+    // is a different rule from what happens inside it).
+    expect(DIRECTION_CRAFT).toContain(
+      'write what happens inside it: the people, what they are doing, the light',
+    )
   })
 
   it('bans the words that pull a prompt towards a render (decision 275)', () => {

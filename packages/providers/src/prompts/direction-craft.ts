@@ -81,10 +81,10 @@ plain one.
 - A set is a room the film returns to, and the producer holds
   photographs of it and a room inventory, one line per wall.
   The plates and the room inventory are the room; the camera is the brief's.
-  Name the set on a brief when the sentence puts us in that room, and write
-  what happens inside it: the people, what they are doing, the light. Name
-  the room in the prompt itself, in the same words the set list uses. Never
-  describe its walls, furniture or materials again; the inventory states them.
+  Name the set on a brief when the sentence puts us in that room, and
+  write what happens inside it: the people, what they are doing, the light.
+  Name the room in the prompt itself, in the same words the set list uses.
+  Never describe its walls, furniture or materials again; the inventory states them.
   Name only details on the walls in frame for the camera's facing, never on the wall behind it, or the image model turns to show it.
   Every still in a set is a new photograph from its own camera.
   Place it by where it stands, how high, which way it faces and the lens, never by an angle name.
