@@ -6422,3 +6422,167 @@ green.
      timeline schema), the same pair decision 282 found missing for
      headline and graphic slots, so a social render fails fast with the
      reason rather than retrying against the old broker.
+
+285. **Still prompts with one owner per fact** (2026-09-29 to 2026-09-30,
+     owner: "coffee cups with the coffee ring stains on the desk ...
+     sometimes there is an extra random desk, or the computer screens are
+     facing the wrong direction ... we must just make sure that the
+     different bibles, and shots are not working against each other ... we
+     aren't just creating steps to fix the other steps' mistakes."). All 46
+     still briefs of the Stability AI film were read read-only from
+     production and every source of text reaching the image model was
+     traced in code. `HOUSE_PHOTOGRAPH` sat verbatim on 44 of 46 prompts, so
+     "a coffee ring, cable runs, papers out of line" was asked for 44 times;
+     the planner added its own coffee to 10 more, and repeated dust in 14
+     stills, a "thin-bezel developer laptop" in 9, rain in 9, and a red
+     standby light in 4 (the film's accent colour, handed to the model as a
+     hex code). The book's palette line, which the planner is told to paste
+     verbatim, was present in only 3 of 46. Six negative prompts still asked
+     a 2024 film for "no flat screen", copied wholesale from the bible's
+     1990s example. Colour temperature was stated four separate ways and
+     grain three, and nobody assembled the prompt: the planner LLM was
+     trusted to paste three fixed lines, and every other route, rebrief,
+     redirect, retype and owner edits, dropped them or paraphrased them,
+     while the live harness appended them in code, so what had been tuned
+     was not what the app actually sent.
+
+     The rule adopted: one owner per fact, and code assembles it. The
+     planner now writes only the scene; `assembleStillPrompt`
+     (`apps/web/lib/still-prompt.ts`) adds the framing lead, the camera and
+     the room in view, the scene itself, what each reference photograph is
+     for, and a photograph line naming qualities only. Grade and grain
+     belong to the compositor alone, never to a prompt.
+
+     What changed, task by task:
+     - Task 1: moved `referenceBudgets`, `depictedFrom`, `setFrom` and
+       `routeForBrief` into the new pure `apps/web/lib/still-prompt.ts`, and
+       added `planStillReferences` and `assembleStillPrompt`, matching
+       today's behaviour exactly before any rule changed.
+     - Task 2: pulled chapter planning into `apps/web/lib/plan-chapter.ts`
+       (`planChapterWith`, an injected `CompleteFn`) and gave `createDb` a
+       `readOnly` session; Neon's proxy drops a bare startup parameter, so
+       it is sent as `connection: { options: '-c
+default_transaction_read_only=on' }`, and the live harness refuses
+       to run unless the session reports on.
+     - Task 3: the live plan harness (`apps/web/scripts/live-plan-test.ts`,
+       `pnpm --filter @boom-busters/web live:plan`) and its comparison page
+       (`live:compare`), read-only throughout, each paid call reserved
+       against a cap before it spends.
+     - Task 4: the compositor grade (`GRADE_FILTER` in
+       `DocumentaryMaster.tsx`); `gradePreset` is optional, so a timeline
+       compiled earlier still renders ungraded, and `resolveBrandKit` gives
+       every new compile `muted`; the Brand Kit tab gained a Photographic
+       look card with Grade and Grain.
+     - Task 5: `assembleStillPrompt` took ownership of the whole prompt in
+       a fixed order (framing, camera, scene, references, photograph
+       line); `sceneOf` strips a legacy house line, Brand Kit anchors, a
+       pasted palette line or an old reference clause out of a stored
+       prompt, idempotently, without rewriting the stored brief or moving
+       its hash.
+     - Task 6: every other route, plates, the contact sheet, the teaser
+       studio, retype to still and owner edits, now goes through the
+       assembler too, and loses its Brand Kit anchors.
+     - Task 7: the board's brief editor now edits only a Scene field, and
+       shows a read-only "Prompt sent to the model" disclosure
+       (`stillPromptFor` in `visual-assets.ts`; the new
+       `SlotView.scene`/`.promptSent` fields).
+     - Task 8: the House Visual Bible was rewritten: no example props,
+       grade and grain left entirely to the compositor, facings and counts
+       in place of an open inventory, a five-noun avoid list, a new "What
+       code adds" section, and per-model recipes that no longer ask for
+       hex colours or Brand Kit anchors.
+     - Task 9: the camera sentence (`describeCamera` in `set-plates.ts`)
+       names only what the lens sees, never the wall behind the camera;
+       set inventories count furniture instead of leaving it open-ended;
+       compass plates now shoot at 35mm, matching the contact sheet's own
+       panels.
+     - Task 10a: restored the planner's own field rule (`fieldRule` in
+       `shotlist.ts`) naming people and sets in "depicts" and "set", after
+       the owner's after run lost cast and sets it should have kept.
+
+     Three amendments to the spec, recorded during the plan's own
+     self-review: the avoid list stays in the adapters, since only they
+     know whether their model has a real negative field (Task 6 fixed a
+     doubled full stop there); `gradePreset` stayed optional with
+     `resolveBrandKit` supplying the default, so an old timeline keeps
+     rendering ungraded; and the Brand Kit tab gained Grain alongside
+     Grade, having had neither before.
+
+     The live runs, all against chapter 4 of the Stability AI film (chapter
+     5 planned only 3 stills and no set shots, so the plan's own fallback
+     applied), each under its own $1 cap, $2.42 spent across five runs:
+     - before: 6 stills, 5 in sets; every prompt carried coffee, cable
+       runs, papers, grain and hex codes; 105 to 364 words.
+     - after: 8 stills, only 3 in sets and no cast; prompts 68 to 241 words
+       and free of all of that.
+     - after with the before briefs: coffee stayed in 3, because the old
+       planner had written it into those scenes; the strip keeps the
+       planner's own words by design, so it is the bible change that stops
+       coffee, not the assembler.
+     - after 10a's field rule: 7 stills, 5 in sets again; no cast, because
+       no sentence in the chapter names a principal.
+
+     The owner's fault tallies from the compare pages: to be recorded when
+     the owner has ticked the pages.
+
+     What the runs found: the boardroom plate in production shows a coffee
+     mug with ring stains, cable runs and loose papers, the old house line
+     baked into the set's own reference photographs, so shots in that room
+     keep drawing cups until its plates are regenerated. Likely true of the
+     other sets built before this decision too.
+
+     Rulings made during execution:
+     - Plan line numbers were approximate, since the social-posts branch
+       merged after the plan was written; implementers located code by
+       content instead (cost if wrong: an implementer edits the wrong
+       hunk, caught by tests and review).
+     - `stillPromptFor`'s own parallel reference plan, beside
+       `generateStillCandidates`'s load-dependent one, was accepted as the
+       plan states rather than treated as a DRY defect, since generation
+       counts only photographs that actually loaded and a preview cannot
+       load bytes (cost if wrong: a reviewer flags duplication, but both
+       call the same pure helpers, so drift stays small).
+     - Task 5's house-line strip, written to stop at the first semicolon,
+       was widened to stop at the first full stop or semicolon too, since
+       the spec requires `sceneOf` to keep every word the planner wrote
+       (cost if wrong: none found; neither house-line variant has a full
+       stop before "real materials").
+     - Cheap review minors rode in the same fix round as an Important
+       finding rather than being deferred, in Tasks 5 and 8 (cost if
+       wrong: a slightly larger fix diff to re-review).
+     - Task 6 kept an identical one-line `trimmed()` helper duplicated in
+       `gemini.ts` and `fal.ts` rather than extracting it mid-branch (cost
+       if wrong: the two copies drift, a low risk given it is one regex).
+     - Task 8 rewrote the per-model recipes although the plan never listed
+       them, since the spec requires each rule stated once and the grade
+       rule binds the whole bible (cost if wrong: none; the old recipe
+       lines otherwise told the planner to add hex colours).
+     - The live harness's own first-plate path was routed through
+       `assembleStillPrompt` before review, since the spec requires the
+       harness never to drift from the app (cost if wrong: none).
+     - One commit alone left two web tests red; accepted without
+       rewriting history, since the branch is local and unpushed and the
+       very next commit restored green (cost if wrong: a bisect landing on
+       that one commit sees two red tests).
+     - Those two tests were then updated to the new assembled output
+       rather than left for Task 6, since CI must stay green on every
+       commit and the failures were this task's own doing (cost if wrong:
+       Task 6 edits the same two expectations again).
+     - The one e2e failure in the full run, amid Turbopack panics, was
+       ruled a dev-server flake rather than the branch's doing, since the
+       same spec alone passed 4 of 4 on a second run (cost if wrong: a
+       render regression reaches the final review, which re-checks it).
+
+     Verification: format, lint and typecheck clean at every commit;
+     `pnpm test` green in all 9 packages (web 1140, providers 573, schemas
+     442, db 284, compositions 196, timeline 123, infra 53, ui-tokens 30,
+     cost 28); `pnpm e2e` 118 passed and 1 failed amid Turbopack panics,
+     and that one spec alone passed 4 of 4 on a second run.
+
+     Rollout, in order: `deploy:remotion`; `deploy:stacks
+boom-busters-broker`; merge and deploy to Vercel, then `PUT
+/api/inngest`; confirm Settings, Brand Kit, Photographic look reads
+     Muted; rebuild the sets' plates (each set's first plate, then Build
+     the set, owner-approved spend), starting with the boardroom and the
+     executive office; redraft the executive office inventory so its desk
+     and credenza are counted and told apart.
