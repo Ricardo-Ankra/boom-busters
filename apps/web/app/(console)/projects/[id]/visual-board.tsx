@@ -2009,6 +2009,7 @@ export function VisualBoard({
                 notes={model.slotNotes[slot.id] ?? []}
                 articleClaims={model.articleClaims}
                 postClaims={model.postClaims}
+                supportClaims={model.supportClaims}
                 sources={allSlots}
                 setPhotos={setPhotos}
                 castMembers={castMembers}
@@ -2169,6 +2170,7 @@ function SlotCard({
   notes,
   articleClaims,
   postClaims,
+  supportClaims,
   sources,
   setPhotos,
   castMembers,
@@ -2185,6 +2187,7 @@ function SlotCard({
   notes: readonly string[]
   articleClaims: ArticleClaimOption[]
   postClaims: PostClaimOption[]
+  supportClaims: PostClaimOption[]
   sources: SlotView[]
   setPhotos: readonly SetPhotoGroup[]
   castMembers: readonly CastOption[]
@@ -2406,6 +2409,7 @@ function SlotCard({
             act={act}
             articleClaims={articleClaims}
             postClaims={postClaims}
+            supportClaims={supportClaims}
           />
         ) : null}
 
@@ -2692,23 +2696,29 @@ function ArticleChooser({
  * Which post a post card shows (decision 284), the article chooser's twin.
  *
  * Every word on the card is read from the post, so the only decision is
- * which one, and it is the owner's: the list is this project's claims whose
- * source is an X post address, and picking one writes the brief on the spot.
+ * which one, and it is the owner's. Two ways in: a claim already sourced to a
+ * post, picked from the list; or any post, pasted, filed under whichever
+ * claim it supports (amended 2026-09-30). The pasted address lives on the
+ * brief, so the claim keeps the source it was verified against.
  */
 function PostChooser({
   slot,
   projectId,
   act,
   postClaims,
+  supportClaims,
   onDone,
 }: {
   slot: SlotView
   projectId: string
   act: Act
   postClaims: PostClaimOption[]
+  supportClaims: PostClaimOption[]
   onDone: () => void
 }) {
   const { busy, pressed } = useSlotLock()
+  const [address, setAddress] = React.useState('')
+  const [claimId, setClaimId] = React.useState('')
   const showing = slot.brief?.type === 'social' ? slot.brief.sourceClaimId : null
 
   return (
@@ -2719,8 +2729,8 @@ function PostChooser({
     >
       {postClaims.length === 0 ? (
         <p className="text-[13px] text-[var(--color-text-secondary)]">
-          A post card shows a real post on X, and no claim in this project’s dossier cites one yet.
-          Source a claim to the post’s own address on the dossier screen, then come back.
+          No claim in this project’s dossier is sourced to a post on X yet. Paste the post’s address
+          below and choose the claim it supports.
         </p>
       ) : (
         <>
@@ -2760,6 +2770,62 @@ function PostChooser({
           ))}
         </>
       )}
+
+      {supportClaims.length === 0 ? (
+        <p className="text-[13px] text-[var(--color-text-secondary)]">
+          This project’s dossier has no claims to file a post under yet.
+        </p>
+      ) : (
+        <form
+          aria-label="Paste a post"
+          className="flex flex-col gap-2 rounded-[8px] border border-[var(--color-border)] p-3"
+          onSubmit={(event) => {
+            event.preventDefault()
+            void act(
+              slot.id,
+              () => retypeToSocialAction(projectId, slot.id, claimId, address),
+              'Now a post card',
+              'paste-post',
+            ).then((result) => {
+              if (result.ok) onDone()
+            })
+          }}
+        >
+          <label className={SOCIAL_LABEL_CLASS}>
+            {postClaims.length === 0
+              ? 'The post’s address'
+              : 'Or paste the address of another post'}
+            <input
+              type="url"
+              value={address}
+              onChange={(event) => setAddress(event.target.value)}
+              placeholder="https://x.com/handle/status/1234567890123456789"
+              className={`${SOCIAL_FIELD_CLASS} font-mono text-[12px]`}
+            />
+          </label>
+          <label className={SOCIAL_LABEL_CLASS}>
+            The claim this post supports. Its own source stays as it is.
+            <Select value={claimId} onChange={(event) => setClaimId(event.target.value)}>
+              <option value="">Choose a claim</option>
+              {supportClaims.map((claim) => (
+                <option key={claim.id} value={claim.id}>
+                  {claim.label}
+                </option>
+              ))}
+            </Select>
+          </label>
+          <div className="flex gap-2">
+            <Button
+              type="submit"
+              variant="primary"
+              busy={pressed === 'paste-post'}
+              disabled={busy || address.trim() === '' || claimId === ''}
+            >
+              Use this post
+            </Button>
+          </div>
+        </form>
+      )}
     </div>
   )
 }
@@ -2781,12 +2847,14 @@ function TypePicker({
   act,
   articleClaims,
   postClaims,
+  supportClaims,
 }: {
   slot: SlotView
   projectId: string
   act: Act
   articleClaims: ArticleClaimOption[]
   postClaims: PostClaimOption[]
+  supportClaims: PostClaimOption[]
 }) {
   const { busy, pressed } = useSlotLock()
   const types = SHOT_SLOT_TYPES.filter((type) => type !== 'hero' || slot.type === 'hero')
@@ -2864,6 +2932,7 @@ function TypePicker({
           projectId={projectId}
           act={act}
           postClaims={postClaims}
+          supportClaims={supportClaims}
           onDone={() => setChoosing(null)}
         />
       ) : null}

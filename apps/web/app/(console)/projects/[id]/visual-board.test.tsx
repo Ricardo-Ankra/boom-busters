@@ -378,6 +378,11 @@ const ARTICLE_CLAIMS = [
 /** The claims a post card may show (decision 284). Invented account. */
 const POST_CLAIM = '01HQ00000000000000000000S1'
 const POST_CLAIMS = [{ id: POST_CLAIM, label: '@DanaOkafor: The audit found nothing.' }]
+const ARTICLE_ONLY_CLAIM = '01HQ00000000000000000000S2'
+const SUPPORT_CLAIMS = [
+  { id: POST_CLAIM, label: 'The audit found nothing.' },
+  { id: ARTICLE_ONLY_CLAIM, label: 'The chief executive resigned on 23 March 2024.' },
+]
 
 const brokenSlot: SlotView = {
   id: SLOT_C,
@@ -442,6 +447,7 @@ function model(slots: SlotView[], overrides: Partial<VisualsReviewModel> = {}): 
     repair: { slots: 0, becomeStills: 0, chapters: 0 },
     articleClaims: ARTICLE_CLAIMS,
     postClaims: POST_CLAIMS,
+    supportClaims: SUPPORT_CLAIMS,
     ...overrides,
   }
 }
@@ -2176,7 +2182,8 @@ describe('the post card (decision 284)', () => {
     )
   })
 
-  it('says so when no claim cites a post, instead of offering nothing', async () => {
+  // Amended 2026-09-30: a post no claim is sourced to used to be a dead end.
+  it('takes a pasted post filed under any claim when no claim cites one', async () => {
     render(
       <VisualBoard
         projectId={PROJECT}
@@ -2188,7 +2195,55 @@ describe('the post card (decision 284)', () => {
 
     await userEvent.click(screen.getByRole('button', { name: 'Post on X' }))
     const chooser = screen.getByRole('group', { name: 'Which post this card shows' })
-    expect(within(chooser).getByText(/no claim in this project/)).toBeInTheDocument()
+    expect(within(chooser).getByText(/is sourced to a post on X yet/)).toBeInTheDocument()
+
+    const form = within(chooser).getByRole('form', { name: 'Paste a post' })
+    const use = within(form).getByRole('button', { name: 'Use this post' })
+    expect(use).toBeDisabled()
+
+    await userEvent.type(
+      within(form).getByRole('textbox'),
+      'https://x.com/EMostaque/status/1771400218170519741',
+    )
+    expect(use).toBeDisabled()
+    await userEvent.selectOptions(within(form).getByRole('combobox'), ARTICLE_ONLY_CLAIM)
+    await userEvent.click(use)
+
+    await waitFor(() =>
+      expect(retypeToSocialAction).toHaveBeenCalledWith(
+        PROJECT,
+        SLOT_A,
+        ARTICLE_ONLY_CLAIM,
+        'https://x.com/EMostaque/status/1771400218170519741',
+      ),
+    )
+  })
+
+  it('still offers the paste form beside the claims that cite a post', async () => {
+    render(
+      <VisualBoard projectId={PROJECT} model={model([stockSlot])} colors={COLORS} brand={BRAND} />,
+    )
+
+    await userEvent.click(screen.getByRole('button', { name: 'Post on X' }))
+    const chooser = screen.getByRole('group', { name: 'Which post this card shows' })
+    expect(within(chooser).getByRole('button', { name: 'Show this post' })).toBeInTheDocument()
+    const form = within(chooser).getByRole('form', { name: 'Paste a post' })
+    expect(within(form).getByText(/Or paste the address of another post/)).toBeInTheDocument()
+  })
+
+  it('says so when the dossier has no claims to file a post under', async () => {
+    render(
+      <VisualBoard
+        projectId={PROJECT}
+        model={model([stockSlot], { postClaims: [], supportClaims: [] })}
+        colors={COLORS}
+        brand={BRAND}
+      />,
+    )
+
+    await userEvent.click(screen.getByRole('button', { name: 'Post on X' }))
+    const chooser = screen.getByRole('group', { name: 'Which post this card shows' })
+    expect(within(chooser).getByText(/no claims to file a post under/)).toBeInTheDocument()
     expect(within(chooser).queryByRole('button')).not.toBeInTheDocument()
   })
 })

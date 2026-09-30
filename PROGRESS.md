@@ -6423,6 +6423,15 @@ green.
      headline and graphic slots, so a social render fails fast with the
      reason rather than retrying against the old broker.
 
+     _Amended 2026-09-30 (owner: "no claim in this project's dossier cites
+     one yet"):_ the "Post on X" chooser also takes a pasted post filed
+     under any claim. `retypeToSocialAction` gains an optional address; with
+     one, the claim is only the audit trail and its own citation is never
+     rewritten, which spec 8.2 asked for and the chooser had contradicted by
+     offering only claims already sourced to a post. A verified claim's
+     source cannot be edited on the dossier screen, so the old path was a
+     dead end for most films. The planner's gate is unchanged.
+
 285. **The visual board gets decision 240, folding chapters, and notes on
      their cards** (2026-09-30, owner: "make sure we're displaying
      everything, and that the user is getting proper feedback on the
