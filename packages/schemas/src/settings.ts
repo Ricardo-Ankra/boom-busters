@@ -350,10 +350,21 @@ export const BrandColorsSchema = z.object({
   semantic: z.object({ collapse: HexColor, recovery: HexColor }),
 })
 
+/**
+ * The compositor's colour grade on photographic slots (decision 285). Image
+ * prompts carry no grade, grain or colour code; the film is graded once, here.
+ * Optional in the schema on purpose: a timeline compiled before grades
+ * existed has none and renders exactly as it did, while `resolveBrandKit`
+ * gives every new compile the house default.
+ */
+export const GRADE_PRESETS = ['none', 'muted', 'strong'] as const
+export type GradePreset = (typeof GRADE_PRESETS)[number]
+
 export const BrandLookSchema = z.object({
   logoR2Key: z.string().nullable().default(null),
   watermarkPlacement: z.enum(['none', 'tl', 'tr', 'bl', 'br']).default('br'),
   grainPreset: z.enum(['none', 'subtle', 'film', 'heavy']).default('subtle'),
+  gradePreset: z.enum(GRADE_PRESETS).optional(),
   lowerThirdVariant: z.enum(['bar', 'stack', 'minimal']).default('bar'),
   chapterCardVariant: z.enum(['full', 'corner', 'minimal']).default('full'),
 })
@@ -631,6 +642,7 @@ export const DEFAULT_SETTINGS: Settings = {
       logoR2Key: null,
       watermarkPlacement: 'br',
       grainPreset: 'subtle',
+      gradePreset: 'muted',
       lowerThirdVariant: 'bar',
       chapterCardVariant: 'full',
     },
@@ -649,5 +661,9 @@ export const DEFAULT_SETTINGS: Settings = {
  * voice projected in from `settings.tts` (see `VoiceConfigSchema`).
  */
 export function resolveBrandKit(settings: Settings): BrandKitTokens {
-  return { ...settings.brandKit, voice: settings.tts }
+  return {
+    ...settings.brandKit,
+    look: { ...settings.brandKit.look, gradePreset: settings.brandKit.look.gradePreset ?? 'muted' },
+    voice: settings.tts,
+  }
 }

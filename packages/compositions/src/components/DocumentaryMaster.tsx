@@ -1,4 +1,5 @@
 import { Audio as WebCodecsAudio } from '@remotion/media'
+import type { ReactNode } from 'react'
 import {
   AbsoluteFill,
   Audio,
@@ -7,7 +8,7 @@ import {
   useCurrentFrame,
   useVideoConfig,
 } from 'remotion'
-import type { BrandKitTokens, Timeline, TimelineSlot } from '@boom-busters/schemas'
+import type { BrandKitTokens, GradePreset, Timeline, TimelineSlot } from '@boom-busters/schemas'
 import { mediaCrossOrigin } from '../lib/cross-origin'
 import { mediaEngine } from '../lib/media-engine'
 import { loadBrandFonts } from '../fonts/load'
@@ -140,24 +141,32 @@ function SlotView({ slot, brand }: { slot: TimelineSlot; brand: BrandKitTokens }
   const durationInFrames = msToFrames(slot.durationMs, fps)
   const opacity = transitionOpacity(slot.transition, (frame / fps) * 1000)
 
+  const grade = GRADE_FILTER[brand.look.gradePreset ?? 'none']
+  const graded = (child: ReactNode) =>
+    grade ? <AbsoluteFill style={{ filter: grade }}>{child}</AbsoluteFill> : child
+
   return (
     <AbsoluteFill style={{ opacity }}>
       {slot.payload.kind === 'image' ? (
-        <KenBurnsImage
-          src={mediaUrl(slot.payload.src)}
-          motion={slot.motion}
-          durationInFrames={durationInFrames}
-        />
+        graded(
+          <KenBurnsImage
+            src={mediaUrl(slot.payload.src)}
+            motion={slot.motion}
+            durationInFrames={durationInFrames}
+          />,
+        )
       ) : slot.payload.kind === 'video' ? (
-        <StockClip
-          src={mediaUrl(slot.payload.src)}
-          {...(previewMediaUrl(slot.payload.src) !== undefined
-            ? { previewSrc: previewMediaUrl(slot.payload.src) }
-            : {})}
-          {...(slot.payload.trimStartMs !== undefined
-            ? { trimStartMs: slot.payload.trimStartMs }
-            : {})}
-        />
+        graded(
+          <StockClip
+            src={mediaUrl(slot.payload.src)}
+            {...(previewMediaUrl(slot.payload.src) !== undefined
+              ? { previewSrc: previewMediaUrl(slot.payload.src) }
+              : {})}
+            {...(slot.payload.trimStartMs !== undefined
+              ? { trimStartMs: slot.payload.trimStartMs }
+              : {})}
+          />,
+        )
       ) : slot.payload.kind === 'chart' ? (
         <ChartReveal payload={slot.payload} brand={brand} durationInFrames={durationInFrames} />
       ) : slot.payload.kind === 'headline' ? (
@@ -171,6 +180,18 @@ function SlotView({ slot, brand }: { slot: TimelineSlot; brand: BrandKitTokens }
       )}
     </AbsoluteFill>
   )
+}
+
+/**
+ * The film's grade (decision 285): one CSS filter over photographic slots,
+ * stills, stock and archival alike, so generated and real pictures sit in
+ * one look. Charts, cards, graphics and maps are drawn in brand colours and
+ * are never filtered. Values set by eye in the player and a render.
+ */
+export const GRADE_FILTER: Record<GradePreset, string | undefined> = {
+  none: undefined,
+  muted: 'saturate(0.82) contrast(1.06) brightness(0.97)',
+  strong: 'saturate(0.68) contrast(1.12) brightness(0.94)',
 }
 
 const GRAIN_OPACITY: Record<BrandKitTokens['look']['grainPreset'], number> = {

@@ -5,6 +5,7 @@ import {
   LLM_TASKS,
   PROVIDERS,
   STILL_PROVIDERS,
+  type GradePreset,
   type LlmProvider,
   type LlmTask,
   type Provider,
@@ -428,6 +429,15 @@ function BrandKitTab({ settings, saving, commit }: TabProps) {
     void commit({ brandKit: { ...next.brandKit } }, next)
   }
 
+  const setLook = <K extends 'gradePreset' | 'grainPreset'>(
+    key: K,
+    value: Settings['brandKit']['look'][K],
+  ) => {
+    const next = structuredClone(settings)
+    next.brandKit.look[key] = value
+    void commit({ brandKit: { ...next.brandKit } }, next)
+  }
+
   return (
     <div className="flex flex-col gap-3">
       <Card>
@@ -457,6 +467,52 @@ function BrandKitTab({ settings, saving, commit }: TabProps) {
               </div>
             </div>
           ))}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Photographic look</CardTitle>
+          <CardDescription>
+            Applied to every photograph in the film at render: stills, stock and archival. Image
+            prompts carry no grade or grain, so this is the one place the film&apos;s look is set.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="grid gap-3 sm:grid-cols-2">
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="look-grade">Grade</Label>
+            <Select
+              id="look-grade"
+              aria-label="Grade"
+              value={settings.brandKit.look.gradePreset ?? 'muted'}
+              disabled={saving}
+              onChange={(event) => setLook('gradePreset', event.target.value as GradePreset)}
+            >
+              <option value="none">None</option>
+              <option value="muted">Muted</option>
+              <option value="strong">Strong</option>
+            </Select>
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="look-grain">Grain</Label>
+            <Select
+              id="look-grain"
+              aria-label="Grain"
+              value={settings.brandKit.look.grainPreset}
+              disabled={saving}
+              onChange={(event) =>
+                setLook(
+                  'grainPreset',
+                  event.target.value as Settings['brandKit']['look']['grainPreset'],
+                )
+              }
+            >
+              <option value="none">None</option>
+              <option value="subtle">Subtle</option>
+              <option value="film">Film</option>
+              <option value="heavy">Heavy</option>
+            </Select>
+          </div>
         </CardContent>
       </Card>
 

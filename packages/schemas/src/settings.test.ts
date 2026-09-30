@@ -14,6 +14,28 @@ import {
   resolveBrandKit,
 } from './settings'
 
+describe('gradePreset (decision 285)', () => {
+  it('is absent from an old timeline brand, which means ungraded', () => {
+    const brand = BrandKitTokensSchema.parse({
+      ...resolveBrandKit(DEFAULT_SETTINGS),
+      look: { ...DEFAULT_SETTINGS.brandKit.look, gradePreset: undefined },
+    })
+    expect(brand.look.gradePreset).toBeUndefined()
+  })
+
+  it('resolves to muted for settings that never chose one', () => {
+    const settings = structuredClone(DEFAULT_SETTINGS)
+    delete (settings.brandKit.look as { gradePreset?: string }).gradePreset
+    expect(resolveBrandKit(settings).look.gradePreset).toBe('muted')
+  })
+
+  it('keeps a chosen grade', () => {
+    const settings = structuredClone(DEFAULT_SETTINGS)
+    settings.brandKit.look.gradePreset = 'strong'
+    expect(resolveBrandKit(settings).look.gradePreset).toBe('strong')
+  })
+})
+
 describe('SettingsSchema', () => {
   it('accepts the shipped defaults', () => {
     expect(SettingsSchema.parse(DEFAULT_SETTINGS)).toEqual(DEFAULT_SETTINGS)
