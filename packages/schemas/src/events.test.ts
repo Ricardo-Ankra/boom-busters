@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest'
-import { fixtureId } from './ids'
-import { EVENT_NAMES, EVENT_SCHEMAS, GATE_STAGES, parseEventData } from './events'
+import { fixtureId, newId } from './ids'
+import {
+  EVENT_NAMES,
+  EVENT_SCHEMAS,
+  GATE_STAGES,
+  parseEventData,
+  VisualsRedirectRequestedSchema,
+  VisualsRefetchRequestedSchema,
+  VisualsReplanRequestedSchema,
+} from './events'
 
 const projectId = fixtureId('project', 1)
 const caseId = fixtureId('case', 1)
@@ -172,5 +180,28 @@ describe('payload validation', () => {
     expect(parseEventData('demo/pipeline.requested', { projectId, forceBudgetGate: true })).toEqual(
       { projectId, forceBudgetGate: true },
     )
+  })
+})
+
+describe('job ids on the side-job events (decision 286)', () => {
+  const slotId = newId()
+
+  it('carries a job id when the action sends one, and parses an older event without', () => {
+    const jobId = newId()
+    expect(
+      VisualsRefetchRequestedSchema.parse({ projectId, slotId, note: 'Regenerate', jobId }).jobId,
+    ).toBe(jobId)
+    expect(
+      VisualsRefetchRequestedSchema.parse({ projectId, slotId, note: 'Regenerate' }).jobId,
+    ).toBeUndefined()
+    expect(VisualsRedirectRequestedSchema.parse({ projectId, slotId, jobId }).jobId).toBe(jobId)
+    expect(VisualsReplanRequestedSchema.parse({ projectId, op: 'shots', jobId }).jobId).toBe(jobId)
+    expect(VisualsReplanRequestedSchema.parse({ projectId, op: 'repair' }).jobId).toBeUndefined()
+  })
+
+  it('refuses a job id that is not an id', () => {
+    expect(
+      VisualsRedirectRequestedSchema.safeParse({ projectId, slotId, jobId: 'not-an-id' }).success,
+    ).toBe(false)
   })
 })

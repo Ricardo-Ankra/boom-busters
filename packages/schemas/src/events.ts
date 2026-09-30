@@ -88,6 +88,11 @@ export const VisualsRefetchRequestedSchema = z.object({
    * call with no stated cause is unauditable.
    */
   note: z.string().min(1),
+  /**
+   * The stamp this job releases when it lands (decision 286). Optional: an
+   * event queued before job ids existed still parses, and releases nothing.
+   */
+  jobId: UlidSchema.optional(),
 })
 
 /**
@@ -134,6 +139,11 @@ export const VisualsRetypeRequestedSchema = z.object({
 export const VisualsReplanRequestedSchema = z.object({
   ...projectRef,
   op: z.enum(['direction', 'shots', 'repair']),
+  /**
+   * The stamp this job releases when it lands (decision 286). Optional: an
+   * event queued before job ids existed still parses, and releases nothing.
+   */
+  jobId: UlidSchema.optional(),
 })
 
 /**
@@ -158,6 +168,11 @@ export const VisualsRebriefRequestedSchema = z.object({
 export const VisualsRedirectRequestedSchema = z.object({
   ...projectRef,
   slotId: UlidSchema,
+  /**
+   * The stamp this job releases when it lands (decision 286). Optional: an
+   * event queued before job ids existed still parses, and releases nothing.
+   */
+  jobId: UlidSchema.optional(),
 })
 
 /**
