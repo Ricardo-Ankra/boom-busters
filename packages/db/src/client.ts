@@ -37,12 +37,18 @@ export function createDb(connectionString: string, options?: { max?: number; rea
     prepare: false,
     /**
      * A session that cannot write (decision 285): the live harness reads a
-     * production project and must never change it. Sent as a startup
-     * parameter, so it needs a direct connection (Neon's unpooled URL);
-     * PgBouncer in transaction mode may drop it, which is why the harness
-     * checks the setting before its first real query.
+     * production project and must never change it. Sent as `options` rather
+     * than as its own startup parameter, because Neon's proxy silently drops
+     * an arbitrary startup parameter (confirmed against Neon: the bare
+     * `default_transaction_read_only` parameter left the session writable,
+     * `-c default_transaction_read_only=on` in `options` did not) but honours
+     * `options`, which every connection the pool opens gets, reconnects
+     * included. The harness still checks the setting before its first real
+     * query, since this is Postgres' guarantee to trust, not this option's.
      */
-    ...(options?.readOnly ? { connection: { default_transaction_read_only: true } } : {}),
+    ...(options?.readOnly
+      ? { connection: { options: '-c default_transaction_read_only=on' } }
+      : {}),
   })
   return { sql, db: drizzle(sql, { schema }) }
 }
