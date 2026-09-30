@@ -9,7 +9,6 @@ import {
   imageGenPrice,
   LIVE_IMAGE_GEN_ADAPTERS,
   mockProvidersEnabled,
-  stripBannedWords,
 } from '@boom-busters/providers'
 import { withCost } from '@boom-busters/cost'
 import { db } from '@/lib/db'
@@ -57,12 +56,10 @@ export async function buildSetSheet(
       { field: 'modelRouting.setSheet' },
     )
   }
-  // stripBannedWords (spec 7.4): the set sheet's prompt is user-authored
-  // text (name, layout, look), the same class of input every other still
-  // prompt runs through the assembler for.
-  const prompt = stripBannedWords(
-    buildSetSheetPrompt({ name: set.name, layout: set.layout, look: set.look }),
-  )
+  // buildSetSheetPrompt runs the prompt through stripBannedWords itself now
+  // (decision 285 final review), so the harness that calls it directly gets
+  // the same text this action sends.
+  const prompt = buildSetSheetPrompt({ name: set.name, layout: set.layout, look: set.look })
   const mocked = mockProvidersEnabled()
 
   let sheet: Buffer
