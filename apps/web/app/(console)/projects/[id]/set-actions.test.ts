@@ -413,9 +413,9 @@ describeDb('set actions (mock mode)', () => {
     expect((request?.references ?? []).map((reference) => reference.kind)).toEqual(['object'])
     expect(request?.prompt).toContain('a wide photograph of the whole room facing south')
     // Task 10 (decision 275): a compass view's camera stands at the middle of
-    // the opposite wall, at eye level, 24mm — describeCamera's own sentence,
-    // which REPLACES decision 273's "never reproduce or edit the framing"
-    // line (that line only fires when a still carries no camera).
+    // the opposite wall, at eye level, 24mm — describeCamera's own sentence.
+    // Decision 273's "never reproduce or edit the framing" line is gone
+    // outright now (decision 285): it never fires, camera or not.
     expect(request?.prompt).toContain(
       'The camera stands at the middle of the north wall, at eye level, facing south, 24mm.',
     )

@@ -6,10 +6,11 @@
  * transitive: the live set harness (decision 275, Task 13) builds a still
  * prompt from outside the app and must not drag `visual-assets.ts`'s module-
  * load imports (the database client) along with it. `visual-assets.ts` keeps
- * importing this back, so app behaviour is unchanged. `@boom-busters/providers`
- * is safe here — it depends only on `@boom-busters/schemas`, `node-html-parser`
- * and `zod`, none of which touch a database, storage or env, directly or
- * transitively.
+ * importing this back; it now assembles the whole prompt (decision 285),
+ * rather than decorating one the caller had already put together.
+ * `@boom-busters/providers` is safe here — it depends only on
+ * `@boom-busters/schemas`, `node-html-parser` and `zod`, none of which touch
+ * a database, storage or env, directly or transitively.
  */
 
 import { stripBannedWords } from '@boom-busters/providers'
@@ -154,10 +155,10 @@ export function andList(parts: readonly string[]): string {
  * edited since planning would otherwise leave its old anchors behind.
  */
 const LEGACY_HOUSE_LINE =
-  /An available-light documentary photograph,[^;]*?real materials with wear: scuffed edges, cable runs, a coffee ring, papers out of line(?:; people caught candid and mid-moment, never posing or acting for the camera)?\./g
+  /An available-light documentary photograph,[^.;]*?real materials with wear: scuffed edges, cable runs, a coffee ring, papers out of line(?:; people caught candid and mid-moment, never posing or acting for the camera)?\./g
 const LEGACY_ANCHORS =
   /(?:[a-z]+ film grain|clean, no grain); muted documentary colour grade anchored on #[0-9a-f]{3,8} and #[0-9a-f]{3,8} against #[0-9a-f]{3,8}; sombre, photographic realism\.?/gi
-const LEGACY_PALETTE = /accent #[0-9a-f]{3,8}, (?:cold|neutral|warm);/gi
+const LEGACY_PALETTE = /accent [^,;.]{1,40}, (?:cold|neutral|warm);/gi
 const LEGACY_TEASER_CLAUSE =
   'Vertical 9:16 frame: subject in the centre third, headroom above for the hook text, nothing important in the bottom quarter where captions sit.'
 
@@ -170,16 +171,21 @@ const LEGACY_TEASER_CLAUSE =
 export function sceneOf(prompt: string): string {
   const marker = prompt.indexOf(REFERENCE_MARKER)
   const own = marker === -1 ? prompt : prompt.slice(0, marker)
-  return own
-    .replace(LEGACY_HOUSE_LINE, ' ')
-    .replace(LEGACY_ANCHORS, ' ')
-    .replace(LEGACY_PALETTE, ' ')
-    .split(LEGACY_TEASER_CLAUSE)
-    .join(' ')
-    .replace(/[ \t]{2,}/g, ' ')
-    .replace(/\s+([,.;:])/g, '$1')
-    .replace(/([.;,])(?:\s*[.;,])+/g, '$1')
-    .trim()
+  return (
+    own
+      .replace(LEGACY_HOUSE_LINE, ' ')
+      .replace(LEGACY_ANCHORS, ' ')
+      .replace(LEGACY_PALETTE, ' ')
+      .split(LEGACY_TEASER_CLAUSE)
+      .join(' ')
+      .replace(/[ \t]{2,}/g, ' ')
+      // Only a run a strip leaves behind, punctuation separated by whitespace,
+      // collapses: "e.g., a ledger" and "He waits... then signs." have no
+      // whitespace between their marks and must survive untouched.
+      .replace(/([.;,])(?:\s+[.;,])+/g, '$1')
+      .replace(/\s+([,.;:])/g, '$1')
+      .trim()
+  )
 }
 
 /**

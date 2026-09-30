@@ -807,7 +807,8 @@ References attached: 1 photograph of Emad Mostaque.`
       expect(prompt).not.toContain('describes only what happens in them')
       // Decision 285: positive either way, never an edit instruction.
       expect(prompt).not.toContain('never reproduce or edit the framing')
-      // The brief's own words stay before the declaration, which closes the prompt.
+      // The brief's own words stay before the declaration; the photograph
+      // line closes the prompt now, not the declaration.
       expect(prompt.indexOf(still.prompt)).toBeGreaterThanOrEqual(0)
       expect(prompt.indexOf(still.prompt)).toBeLessThan(prompt.indexOf(REFERENCE_MARKER))
     })
@@ -1066,6 +1067,7 @@ References attached: 1 photograph of Emad Mostaque.`
       expect(prompt).not.toContain(HOUSE_PHOTOGRAPH)
       expect(prompt).not.toContain(anchors)
       expect(prompt.endsWith(PHOTOGRAPH_LINE)).toBe(true)
+      expect(prompt).not.toMatch(/film grain|#[0-9a-f]{6}/)
       expect(prompt).toContain(
         'The camera stands at the south doorway, seated height, facing north, 85mm.',
       )

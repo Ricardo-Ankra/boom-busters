@@ -72,6 +72,28 @@ describe('sceneOf (decision 285)', () => {
     expect(sceneOf(`A door. ${older}`)).toBe('A door.')
   })
 
+  // Reviewer's probe: an unbounded gap let the house-line match start at
+  // prose the planner wrote and run across full stops to the pasted line's
+  // tail, losing the whole scene. Neither house-line variant has a full
+  // stop before "real materials with wear", so the gap is bounded to one
+  // sentence instead.
+  it('stops the house-line gap at one sentence, so planner prose before it survives', () => {
+    expect(
+      sceneOf(
+        `An available-light documentary photograph, dusk. Emad at the table, hands clasped. ${LEGACY_HOUSE}`,
+      ),
+    ).toBe('An available-light documentary photograph, dusk. Emad at the table, hands clasped.')
+  })
+
+  it('strips a palette line with a named, non-hex accent', () => {
+    expect(sceneOf('A desk. accent muted gold, cold; more.')).toBe('A desk. more.')
+  })
+
+  it('leaves an ellipsis and an abbreviation’s punctuation alone', () => {
+    expect(sceneOf('He waits... then signs.')).toBe('He waits... then signs.')
+    expect(sceneOf('e.g., a ledger')).toBe('e.g., a ledger')
+  })
+
   it('strips a clean-grain anchors line and the old teaser clause', () => {
     const anchors =
       'clean, no grain; muted documentary colour grade anchored on #111 and #222 against #333; sombre, photographic realism'
