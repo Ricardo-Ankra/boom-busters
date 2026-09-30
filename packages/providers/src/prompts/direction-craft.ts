@@ -107,7 +107,7 @@ plain one.
   corridor after everyone has left. Never a stock prop.
 - No prop or atmospheric device appears twice in a chapter: a drink, dust in a beam, rain on glass, a standby light, a coat on a chair.
 - Say which way things face. Every screen, seat and person in the frame faces someone or something the prompt names:
-  the monitor faces her, its light on her face; his back to the camera;
+  the monitor faces her, its light on her face; she faces the window, her profile to the camera;
   the chair turned from the desk. Say how many where the count matters: the room's one desk, two chairs, three people at the table.
 - Written in this order, as prose, not a keyword list: subject, action or
   state, the detail the sentence names, the light of the moment (source,

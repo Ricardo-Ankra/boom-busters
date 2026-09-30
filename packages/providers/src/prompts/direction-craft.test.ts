@@ -39,6 +39,12 @@ describe('DIRECTION_CRAFT', () => {
     for (const word of BANNED_PROMPT_WORDS) expect(DIRECTION_CRAFT).toContain(word)
   })
 
+  // Final review: the facing-things example contradicted the People section's
+  // "never turned away as a device" a few lines down.
+  it('never gives a face-hiding example in its own facing rule', () => {
+    expect(DIRECTION_CRAFT).not.toContain('back to the camera')
+  })
+
   it('never asks the renderer for a pan it cannot do', () => {
     expect(DIRECTION_CRAFT).toContain('Never plan a pan')
   })
