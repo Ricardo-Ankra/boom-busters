@@ -26,7 +26,7 @@ beforeEach(() => {
 })
 afterEach(() => vi.unstubAllEnvs())
 
-describe('refreshModelCatalogue (decision 287)', () => {
+describe('refreshModelCatalogue (decision 288)', () => {
   it('refreshes every provider from fixtures in mock mode, with no key and no network', async () => {
     vi.stubEnv('MOCK_PROVIDERS', '1')
     const results = await refreshModelCatalogue()

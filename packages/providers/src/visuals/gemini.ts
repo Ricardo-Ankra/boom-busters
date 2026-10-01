@@ -127,7 +127,7 @@ const REFERENCE_LIMITS: Record<string, ReferenceLimits> = {
 }
 
 /**
- * The catalogued id whose flags a model takes (decision 287): itself when
+ * The catalogued id whose flags a model takes (decision 288): itself when
  * the catalogue holds it, else its family's representative, else itself (no
  * size, no thinking, the app's own reference caps). A live
  * `gemini-9-flash-image` is sent what 3.1 Flash is sent.

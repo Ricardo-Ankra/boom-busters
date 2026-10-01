@@ -92,7 +92,7 @@ export function SettingsForm({
   musicBeds?: MusicBedView[]
   logos?: LogoView[]
   channelMarkKey?: string | null
-  /** Live lists merged with the catalogue, built on the server (decision 287). */
+  /** Live lists merged with the catalogue, built on the server (decision 288). */
   modelOptions: ModelOptions
 }) {
   const [settings, setSettings] = React.useState(initialSettings)

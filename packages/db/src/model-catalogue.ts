@@ -2,7 +2,7 @@ import { and, asc, eq, notInArray } from 'drizzle-orm'
 import type { Database } from './client'
 import { modelCatalogue, modelCatalogueRefresh } from './schema'
 
-/** One model as the cache stores it (decision 287). */
+/** One model as the cache stores it (decision 288). */
 export interface CatalogueModelInput {
   modelId: string
   kind: 'llm' | 'image'

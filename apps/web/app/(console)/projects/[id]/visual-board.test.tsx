@@ -1384,7 +1384,7 @@ describe('the model select on a shot (decision 264)', () => {
     expect(screen.queryByLabelText('Image model')).toBeNull()
   })
 
-  it('offers a live model the server listed (decision 287)', async () => {
+  it('offers a live model the server listed (decision 288)', async () => {
     const live = {
       ...model([stillSlot]),
       stillModelOptions: [

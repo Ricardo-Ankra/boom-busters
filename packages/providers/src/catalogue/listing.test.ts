@@ -17,7 +17,7 @@ function serve(table: Record<string, unknown | ((url: string) => unknown)>, stat
   return { fetchImpl, urls }
 }
 
-describe('listProviderModels (decision 287)', () => {
+describe('listProviderModels (decision 288)', () => {
   it('pages Anthropic by last_id and keeps the token limits', async () => {
     const { fetchImpl, urls } = serve({
       'https://api.anthropic.com/v1/models': (url: string) =>

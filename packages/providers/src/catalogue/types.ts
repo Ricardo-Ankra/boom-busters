@@ -1,7 +1,7 @@
 import type { FalDialect } from '../visuals/types'
 
 /**
- * What a provider's own list endpoint says it serves (decision 287).
+ * What a provider's own list endpoint says it serves (decision 288).
  *
  * Google is one provider here although it has two kinds of model, because
  * one key and one `GET /v1beta/models` serve both its LLMs and its image

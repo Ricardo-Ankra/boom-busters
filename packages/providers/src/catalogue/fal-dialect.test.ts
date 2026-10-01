@@ -20,7 +20,7 @@ function openapi(properties: string[], via: 'ref' | 'name' = 'ref') {
   }
 }
 
-describe('falDialect (decision 287)', () => {
+describe('falDialect (decision 288)', () => {
   it('reads flux, aspect and aspect-negative from the input schema', () => {
     expect(falDialect(openapi(['prompt', 'num_images', 'image_size']))).toBe('flux')
     expect(falDialect(openapi(['prompt', 'num_images', 'aspect_ratio']))).toBe('aspect')

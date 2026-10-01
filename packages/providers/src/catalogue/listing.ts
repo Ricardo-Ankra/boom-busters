@@ -20,7 +20,7 @@ const LISTERS: Record<
 }
 
 /**
- * What a provider serves now (decision 287), minus ids the legacy maps fold
+ * What a provider serves now (decision 288), minus ids the legacy maps fold
  * forward: those are known to be dead or renamed (`gemini-2.5-pro` is listed
  * and then refused), and offering them would undo the fold.
  *

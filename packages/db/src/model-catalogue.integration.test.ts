@@ -11,7 +11,7 @@ import {
 import { modelCatalogue, modelCatalogueRefresh } from './schema'
 import { requireTestDatabase } from './test-database'
 
-/** The live model cache (decision 287) against a real database. */
+/** The live model cache (decision 288) against a real database. */
 
 const url = requireTestDatabase()
 const suite = url ? describe : describe.skip

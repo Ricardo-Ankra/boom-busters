@@ -29,7 +29,7 @@ function options(overrides: Partial<Parameters<typeof buildModelOptions>[0]> = {
   })
 }
 
-describe('buildModelOptions (decision 287)', () => {
+describe('buildModelOptions (decision 288)', () => {
   it('lists the catalogue first, then live-only models with their labels', () => {
     const anthropic = options().llm.anthropic
     expect(anthropic[0]).toMatchObject({ id: 'claude-opus-5', status: 'catalogue' })

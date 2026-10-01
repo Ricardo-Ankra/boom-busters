@@ -3,7 +3,7 @@ import { LLM_MODELS } from '../llm/registry'
 import { GEMINI_IMAGE_MODELS } from '../visuals/gemini'
 import { FAMILY_REPRESENTATIVES, geminiImageFamily, llmFamily } from './families'
 
-describe('llmFamily (decision 287)', () => {
+describe('llmFamily (decision 288)', () => {
   it.each([
     ['anthropic', 'claude-opus-5-5', 'opus'],
     ['anthropic', 'claude-sonnet-5-5', 'sonnet'],

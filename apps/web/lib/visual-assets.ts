@@ -426,7 +426,7 @@ export async function stillSlotEstimateUsd(): Promise<number> {
 
 /**
  * A button's price on one route, or 0 when the route's adapter does not
- * offer its model (decision 287). These prices are read on every project
+ * offer its model (decision 288). These prices are read on every project
  * page and the board, and `imageGenPrice` throws on an unknown model, so a
  * route nothing can price must cost a wrong number on a button rather than
  * the whole page. Spending on it is still refused: `generateStillCandidates`

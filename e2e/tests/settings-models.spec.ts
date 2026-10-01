@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test'
 import { expectHitTargets, resetResearchModel, signIn } from './fixtures'
 
 /**
- * Settings → Models with live lists (decision 287), in mock-provider mode:
+ * Settings → Models with live lists (decision 288), in mock-provider mode:
  * Refresh fills the dropdowns from fixtures, a family model is labelled
  * estimated, and a model with no family is priced and routed in one save
  * that survives a reload. Puts the route back at the end, so the suite

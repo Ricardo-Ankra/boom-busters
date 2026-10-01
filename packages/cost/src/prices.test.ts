@@ -93,7 +93,7 @@ describe('every provider is guarded', () => {
   })
 })
 
-describe('llmPrice with live models (decision 287)', () => {
+describe('llmPrice with live models (decision 288)', () => {
   it('prices a live family member at its family', () => {
     expect(llmPrice('anthropic', 'claude-opus-5-5')).toEqual({ inputPerMTok: 5, outputPerMTok: 25 })
   })

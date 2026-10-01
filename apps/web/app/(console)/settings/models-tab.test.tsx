@@ -111,7 +111,7 @@ describe('routing the set sheet generator (decision 275)', () => {
   })
 })
 
-describe('live model lists (decision 287)', () => {
+describe('live model lists (decision 288)', () => {
   it('offers a live family model, labelled estimated, and says what it is priced as', async () => {
     renderModelsTab()
     const select = screen.getByRole('combobox', { name: 'Research (dossiers) model' })
@@ -271,7 +271,7 @@ describe('live model lists (decision 287)', () => {
   })
 })
 
-describe('live image models (decision 287)', () => {
+describe('live image models (decision 288)', () => {
   it('offers a live Gemini image model for stills, estimated at its family', async () => {
     renderModelsTab()
     const select = screen.getByRole('combobox', { name: 'Still images model' })
@@ -394,7 +394,7 @@ describe('live image models (decision 287)', () => {
   })
 })
 
-describe('pricing image models (decision 287)', () => {
+describe('pricing image models (decision 288)', () => {
   /** A live Google image model with no family and no price. */
   const unpriced = {
     id: 'imagen-mock',

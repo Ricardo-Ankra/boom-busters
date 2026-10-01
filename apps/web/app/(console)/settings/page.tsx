@@ -34,7 +34,7 @@ export default async function SettingsPage({
   ])
 
   // The dropdowns' options: the cached live lists merged with the catalogue
-  // and priced with the owner's overrides (decision 287). Needs the settings,
+  // and priced with the owner's overrides (decision 288). Needs the settings,
   // so it runs after the batch above.
   const modelOptions = await loadModelOptions(settings)
 

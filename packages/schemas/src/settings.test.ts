@@ -342,7 +342,7 @@ describe('effectiveCeilingUsd', () => {
   })
 })
 
-describe('modelPrices (decision 287)', () => {
+describe('modelPrices (decision 288)', () => {
   it('defaults to no overrides on a row stored before it existed', () => {
     const older: Record<string, unknown> = { ...DEFAULT_SETTINGS }
     delete older['modelPrices']

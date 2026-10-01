@@ -4,7 +4,7 @@ import { GEMINI_IMAGE_MODELS } from '../visuals/gemini'
 import type { CatalogueProvider, ListedModel } from './types'
 
 /**
- * The lists `MOCK_PROVIDERS=1` refreshes from (decision 287): every
+ * The lists `MOCK_PROVIDERS=1` refreshes from (decision 288): every
  * catalogued model, plus live-only ones that exercise each label without a
  * network: a family match, a family-less model, a live Gemini image model,
  * and a priced fal endpoint.

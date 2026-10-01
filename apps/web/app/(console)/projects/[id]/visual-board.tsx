@@ -3513,7 +3513,7 @@ function ModelRouteSelect({
   slot: SlotView
   projectId: string
   act: Act
-  /** Every model either provider offers, live lists included (decision 287). */
+  /** Every model either provider offers, live lists included (decision 288). */
   options: readonly StillModelOption[]
 }) {
   const { busy } = useSlotLock()

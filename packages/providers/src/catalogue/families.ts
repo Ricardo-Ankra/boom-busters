@@ -1,7 +1,7 @@
 import type { LlmProvider } from '@boom-busters/schemas'
 
 /**
- * Which priced model a live-only id stands in for (decision 287).
+ * Which priced model a live-only id stands in for (decision 288).
  *
  * List endpoints return no prices, and an unpriced model would walk through
  * every budget cap. A new id that plainly belongs to a known line is charged

@@ -19,7 +19,7 @@ const falListed = (over: Partial<ListedModel>): ListedModel => ({
   ...over,
 })
 
-describe('resolveLlmModel (decision 287)', () => {
+describe('resolveLlmModel (decision 288)', () => {
   it('prices a catalogued model from the catalogue', () => {
     const resolved = resolveLlmModel('anthropic', 'claude-opus-5', EMPTY_MODEL_PRICES)
     expect(resolved?.source).toBe('catalogue')

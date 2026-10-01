@@ -27,7 +27,7 @@ import { useToast } from '@/components/ui/toast'
 import { refreshModelListsAction } from './model-actions'
 
 /**
- * Settings → Models (decision 287). Every row, LLM and image alike, offers
+ * Settings → Models (decision 288). Every row, LLM and image alike, offers
  * its provider's live list merged with the catalogue, every option labelled
  * with how it is priced, and an inline price form for the models the
  * catalogue cannot price.

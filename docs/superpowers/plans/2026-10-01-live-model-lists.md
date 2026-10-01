@@ -8,7 +8,7 @@
 
 **Tech Stack:** TypeScript (strict, `noUncheckedIndexedAccess`), Zod 4, Drizzle ORM on Postgres, Next.js App Router (server components and server actions), Vitest with Testing Library, Playwright in mock-provider mode, pnpm workspaces with turbo.
 
-**Spec:** `docs/superpowers/specs/2026-10-01-live-model-lists-design.md` (decision 287). Read it before starting any task.
+**Spec:** `docs/superpowers/specs/2026-10-01-live-model-lists-design.md` (decision 288). Read it before starting any task.
 
 ## Global Constraints
 
@@ -87,7 +87,7 @@ In `packages/providers/src/visuals/types.ts`, above `export interface ImageGenMo
 
 ```ts
 /**
- * The request shape a fal text-to-image endpoint speaks (decision 287).
+ * The request shape a fal text-to-image endpoint speaks (decision 288).
  * `flux` takes `image_size`; `aspect` takes `aspect_ratio`; `aspect-negative`
  * also has a real `negative_prompt` field. Read from the endpoint's own
  * OpenAPI input schema when it is listed live.
@@ -111,7 +111,7 @@ Create `packages/providers/src/catalogue/types.ts`:
 import type { FalDialect } from '../visuals/types'
 
 /**
- * What a provider's own list endpoint says it serves (decision 287).
+ * What a provider's own list endpoint says it serves (decision 288).
  *
  * Google is one provider here although it has two kinds of model, because
  * one key and one `GET /v1beta/models` serve both its LLMs and its image
@@ -151,7 +151,7 @@ import { LLM_MODELS } from '../llm/registry'
 import { GEMINI_IMAGE_MODELS } from '../visuals/gemini'
 import { FAMILY_REPRESENTATIVES, geminiImageFamily, llmFamily } from './families'
 
-describe('llmFamily (decision 287)', () => {
+describe('llmFamily (decision 288)', () => {
   it.each([
     ['anthropic', 'claude-opus-5-5', 'opus'],
     ['anthropic', 'claude-sonnet-5-5', 'sonnet'],
@@ -218,7 +218,7 @@ Create `packages/providers/src/catalogue/families.ts`:
 import type { LlmProvider } from '@boom-busters/schemas'
 
 /**
- * Which priced model a live-only id stands in for (decision 287).
+ * Which priced model a live-only id stands in for (decision 288).
  *
  * List endpoints return no prices, and an unpriced model would walk through
  * every budget cap. A new id that plainly belongs to a known line is charged
@@ -354,7 +354,7 @@ Expected: PASS. The `GEMINI_IMAGE_MODELS` rename touches `gemini.test.ts` only i
 ```bash
 pnpm format:check
 git add packages/providers/src/catalogue packages/providers/src/index.ts packages/providers/src/visuals/types.ts packages/providers/src/visuals/gemini.ts
-git commit -m "feat(catalogue): model families and their priced representatives (decision 287)"
+git commit -m "feat(catalogue): model families and their priced representatives (decision 288)"
 ```
 
 ---
@@ -374,7 +374,7 @@ git commit -m "feat(catalogue): model families and their priced representatives 
 Append to `packages/schemas/src/settings.test.ts` (match the file's existing imports; add the new names to them):
 
 ```ts
-describe('modelPrices (decision 287)', () => {
+describe('modelPrices (decision 288)', () => {
   it('defaults to no overrides on a row stored before it existed', () => {
     const older: Record<string, unknown> = { ...DEFAULT_SETTINGS }
     delete older['modelPrices']
@@ -404,7 +404,7 @@ describe('modelPrices (decision 287)', () => {
 Append to `packages/db/src/settings-merge.test.ts`:
 
 ```ts
-describe('merging modelPrices (decision 287)', () => {
+describe('merging modelPrices (decision 288)', () => {
   it('replaces the whole price map when a patch carries one, and keeps it otherwise', () => {
     const priced = mergeSettings(DEFAULT_SETTINGS, {
       modelPrices: {
@@ -431,7 +431,7 @@ In `packages/schemas/src/settings.ts`, after the `DEFAULT_SET_SHEET_ROUTE` block
 
 ```ts
 // ---------------------------------------------------------------------------
-// Model prices (decision 287)
+// Model prices (decision 288)
 // ---------------------------------------------------------------------------
 
 /**
@@ -527,7 +527,7 @@ Expected: PASS. The db suite needs Docker Desktop and the test database; if it i
 pnpm format:check
 git add packages/schemas packages/db/src/settings-merge.ts packages/db/src/settings-merge.test.ts
 git add -u
-git commit -m "feat(settings): the owner's model prices, by provider and id (decision 287)"
+git commit -m "feat(settings): the owner's model prices, by provider and id (decision 288)"
 ```
 
 ---
@@ -550,7 +550,7 @@ git commit -m "feat(settings): the owner's model prices, by provider and id (dec
 Append to `packages/providers/src/visuals/gemini.test.ts`, reusing its existing helpers for a captured `fetchImpl` and a one-image response (read the top of the file first; the names below assume a helper that records request bodies, adapt to the file's own):
 
 ```ts
-describe('a live Gemini image model the catalogue does not hold (decision 287)', () => {
+describe('a live Gemini image model the catalogue does not hold (decision 288)', () => {
   const live = (id: string) =>
     createGeminiImageGen([
       ...GEMINI_IMAGE_MODELS,
@@ -613,7 +613,7 @@ function captureImageCalls() {
 Append to `packages/providers/src/visuals/adapters.test.ts` (same note on helpers):
 
 ```ts
-describe('fal dialects (decision 287)', () => {
+describe('fal dialects (decision 288)', () => {
   function captureFal() {
     const calls: { url: string; body: Record<string, unknown> }[] = []
     const fetchImpl = (async (url: string, init?: RequestInit) => {
@@ -682,7 +682,7 @@ In `packages/providers/src/visuals/gemini.ts`:
 
 ```ts
 /**
- * The catalogued id whose flags a model takes (decision 287): itself when
+ * The catalogued id whose flags a model takes (decision 288): itself when
  * the catalogue holds it, else its family's representative, else itself (no
  * size, no thinking, the app's own reference caps). A live
  * `gemini-9-flash-image` is sent what 3.1 Flash is sent.
@@ -844,7 +844,7 @@ export function mockImageGenWith(models: readonly ImageGenModel[]): ImageGenProv
 In `packages/providers/src/visuals/registry.ts`, add (importing the factories and `mockImageGenWith`, and the `ImageGenModel` type):
 
 ```ts
-/** A live adapter over the given model list (decision 287). */
+/** A live adapter over the given model list (decision 288). */
 export function liveImageGenWith(
   provider: ImageGenProviderId,
   models: readonly ImageGenModel[],
@@ -879,7 +879,7 @@ Expected: PASS.
 ```bash
 pnpm format:check
 git add packages/providers/src/visuals
-git commit -m "refactor(visuals): image adapters over a model list, fal dialects explicit (decision 287)"
+git commit -m "refactor(visuals): image adapters over a model list, fal dialects explicit (decision 288)"
 ```
 
 ---
@@ -925,7 +925,7 @@ const falListed = (over: Partial<ListedModel>): ListedModel => ({
   ...over,
 })
 
-describe('resolveLlmModel (decision 287)', () => {
+describe('resolveLlmModel (decision 288)', () => {
   it('prices a catalogued model from the catalogue', () => {
     const resolved = resolveLlmModel('anthropic', 'claude-opus-5', EMPTY_MODEL_PRICES)
     expect(resolved?.source).toBe('catalogue')
@@ -1039,7 +1039,7 @@ import { geminiImageFamily, llmFamily } from './families'
 import type { ListedModel, PriceSource } from './types'
 
 /**
- * Any model id to a price and a tier, from settings alone (decision 287).
+ * Any model id to a price and a tier, from settings alone (decision 288).
  *
  * The order is the owner's override, the hand-written catalogue, fal's own
  * published price, then the family. `undefined` means unpriced, which every
@@ -1219,7 +1219,7 @@ Expected: PASS.
 ```bash
 pnpm format:check
 git add packages/providers/src/catalogue
-git commit -m "feat(catalogue): resolve any model id to a price from settings alone (decision 287)"
+git commit -m "feat(catalogue): resolve any model id to a price from settings alone (decision 288)"
 ```
 
 ---
@@ -1242,7 +1242,7 @@ git commit -m "feat(catalogue): resolve any model id to a price from settings al
 Append to `packages/providers/src/llm/router.test.ts`:
 
 ```ts
-describe('an injected resolver (decision 287)', () => {
+describe('an injected resolver (decision 288)', () => {
   const live = {
     id: 'mock-live-9',
     label: 'mock-live-9',
@@ -1298,7 +1298,7 @@ In `packages/providers/src/llm/types.ts`, replace `nextTierDown` with:
 ```ts
 /**
  * The next catalogued model below a tier, or `undefined` at the bottom. Takes
- * a tier rather than an id so a live model (decision 287), which no adapter
+ * a tier rather than an id so a live model (decision 288), which no adapter
  * lists, can step down from the tier its family gave it.
  */
 export function nextTierBelow(provider: LLMProvider, tier: number): KnownModel | undefined {
@@ -1327,7 +1327,7 @@ In `packages/providers/src/llm/router.ts`:
 
 ```ts
   /**
-   * Price and tier for a model id (decision 287). The web app passes one
+   * Price and tier for a model id (decision 288). The web app passes one
    * that knows the owner's prices and live families; left out, only the
    * adapter's own list is known, which is what every test and mock run
    * relies on.
@@ -1390,7 +1390,7 @@ import { EMPTY_MODEL_PRICES, ValidationError } from '@boom-busters/schemas'
 import { describe, expect, it } from 'vitest'
 import { estimateLlmUsd, llmPrice } from './prices'
 
-describe('llmPrice with live models (decision 287)', () => {
+describe('llmPrice with live models (decision 288)', () => {
   it('prices a live family member at its family', () => {
     expect(llmPrice('anthropic', 'claude-opus-5-5')).toEqual({ inputPerMTok: 5, outputPerMTok: 25 })
   })
@@ -1479,7 +1479,7 @@ Expected: PASS. A web test that mocks `getSettings` with a literal lacking `mode
 ```bash
 pnpm format:check
 git add packages/providers/src/llm packages/cost apps/web/lib/llm.ts
-git commit -m "feat(router): pre-flight and the cost guard price live models (decision 287)"
+git commit -m "feat(router): pre-flight and the cost guard price live models (decision 288)"
 ```
 
 ---
@@ -1522,7 +1522,7 @@ function openapi(properties: string[], via: 'ref' | 'name' = 'ref') {
   }
 }
 
-describe('falDialect (decision 287)', () => {
+describe('falDialect (decision 288)', () => {
   it('reads flux, aspect and aspect-negative from the input schema', () => {
     expect(falDialect(openapi(['prompt', 'num_images', 'image_size']))).toBe('flux')
     expect(falDialect(openapi(['prompt', 'num_images', 'aspect_ratio']))).toBe('aspect')
@@ -1567,7 +1567,7 @@ function serve(table: Record<string, unknown | ((url: string) => unknown)>, stat
   return { fetchImpl, urls }
 }
 
-describe('listProviderModels (decision 287)', () => {
+describe('listProviderModels (decision 288)', () => {
   it('pages Anthropic by last_id and keeps the token limits', async () => {
     const { fetchImpl, urls } = serve({
       'https://api.anthropic.com/v1/models': (url: string) =>
@@ -1943,7 +1943,7 @@ function inputSchema(openapi: unknown): Json | null {
   return named ? (named[1] as Json) : null
 }
 
-/** Which request shape an endpoint speaks, or null if this app cannot send it one (decision 287). */
+/** Which request shape an endpoint speaks, or null if this app cannot send it one (decision 288). */
 export function falDialect(openapi: unknown): FalDialect | null {
   const schema = inputSchema(openapi)
   const properties = schema && isRecord(schema['properties']) ? schema['properties'] : null
@@ -2054,7 +2054,7 @@ const LISTERS: Record<
 }
 
 /**
- * What a provider serves now (decision 287), minus ids the legacy maps fold
+ * What a provider serves now (decision 288), minus ids the legacy maps fold
  * forward: those are known to be dead or renamed (`gemini-2.5-pro` is listed
  * and then refused), and offering them would undo the fold.
  *
@@ -2086,7 +2086,7 @@ import { GEMINI_IMAGE_MODELS } from '../visuals/gemini'
 import type { CatalogueProvider, ListedModel } from './types'
 
 /**
- * The lists `MOCK_PROVIDERS=1` refreshes from (decision 287): every
+ * The lists `MOCK_PROVIDERS=1` refreshes from (decision 288): every
  * catalogued model, plus live-only ones that exercise each label without a
  * network: a family match, a family-less model, a live Gemini image model,
  * and a priced fal endpoint.
@@ -2171,7 +2171,7 @@ Expected: PASS.
 ```bash
 pnpm format:check
 git add packages/providers/src/catalogue
-git commit -m "feat(catalogue): list what Anthropic, OpenAI, Google and fal serve now (decision 287)"
+git commit -m "feat(catalogue): list what Anthropic, OpenAI, Google and fal serve now (decision 288)"
 ```
 
 ---
@@ -2208,7 +2208,7 @@ import {
 import { modelCatalogue, modelCatalogueRefresh } from './schema'
 import { requireTestDatabase } from './test-database'
 
-/** The live model cache (decision 287) against a real database. */
+/** The live model cache (decision 288) against a real database. */
 
 const url = requireTestDatabase()
 const suite = url ? describe : describe.skip
@@ -2278,7 +2278,7 @@ In `packages/db/src/schema.ts`, after `providerCredentials`, add:
 
 ```ts
 /**
- * What each provider's list endpoint last said it serves (decision 287).
+ * What each provider's list endpoint last said it serves (decision 288).
  * A cache, rebuilt per provider on each successful refresh; the Models tab
  * and the image adapters read it, and nothing else depends on it being
  * fresh. Prices the owner sets live in `settings.modelPrices`, not here.
@@ -2339,7 +2339,7 @@ import { asc, eq, notInArray, and } from 'drizzle-orm'
 import type { Database } from './client'
 import { modelCatalogue, modelCatalogueRefresh } from './schema'
 
-/** One model as the cache stores it (decision 287). */
+/** One model as the cache stores it (decision 288). */
 export interface CatalogueModelInput {
   modelId: string
   kind: 'llm' | 'image'
@@ -2480,7 +2480,7 @@ Expected: PASS.
 ```bash
 pnpm format:check
 git add packages/db
-git commit -m "feat(db): the live model cache, kept on a failed refresh (decision 287)"
+git commit -m "feat(db): the live model cache, kept on a failed refresh (decision 288)"
 ```
 
 ---
@@ -2581,7 +2581,7 @@ function options(overrides: Partial<Parameters<typeof buildModelOptions>[0]> = {
   })
 }
 
-describe('buildModelOptions (decision 287)', () => {
+describe('buildModelOptions (decision 288)', () => {
   it('lists the catalogue first, then live-only models with their labels', () => {
     const anthropic = options().llm.anthropic
     expect(anthropic[0]).toMatchObject({ id: 'claude-opus-5', status: 'catalogue' })
@@ -2926,7 +2926,7 @@ Expected: PASS.
 ```bash
 pnpm format:check
 git add packages/providers/src/catalogue
-git commit -m "feat(catalogue): merge live lists into labelled dropdown options (decision 287)"
+git commit -m "feat(catalogue): merge live lists into labelled dropdown options (decision 288)"
 ```
 
 ---
@@ -2985,7 +2985,7 @@ beforeEach(() => {
 })
 afterEach(() => vi.unstubAllEnvs())
 
-describe('refreshModelCatalogue (decision 287)', () => {
+describe('refreshModelCatalogue (decision 288)', () => {
   it('refreshes every provider from fixtures in mock mode, with no key and no network', async () => {
     vi.stubEnv('MOCK_PROVIDERS', '1')
     const results = await refreshModelCatalogue()
@@ -3089,7 +3089,7 @@ import { db } from '@/lib/db'
 import { env } from '@/lib/env'
 
 /**
- * The live model lists, server side (decision 287): refreshing the cache,
+ * The live model lists, server side (decision 288): refreshing the cache,
  * the Models tab's options, and image adapters that know the live models.
  */
 
@@ -3249,7 +3249,7 @@ import { auth } from '@/auth'
 import { refreshModelCatalogue, type RefreshOutcome } from '@/lib/model-catalogue'
 
 /**
- * Settings → Models → Refresh model lists (decision 287). Re-checks the
+ * Settings → Models → Refresh model lists (decision 288). Re-checks the
  * session: a server action is a POST endpoint of its own. A failing
  * provider is reported, never thrown, so one bad key cannot hide the rest.
  */
@@ -3282,7 +3282,7 @@ Expected: PASS.
 ```bash
 pnpm format:check
 git add apps/web/lib/model-catalogue.ts apps/web/lib/model-catalogue.test.ts "apps/web/app/(console)/settings/model-actions.ts"
-git commit -m "feat(web): refresh the model cache and build image adapters over it (decision 287)"
+git commit -m "feat(web): refresh the model cache and build image adapters over it (decision 288)"
 ```
 
 ---
@@ -3306,7 +3306,7 @@ git commit -m "feat(web): refresh the model cache and build image adapters over 
 `apps/web/lib/visual-assets.test.ts` runs against the real test database in mock-provider mode (no db mock). Import `replaceCatalogue` from `@boom-busters/db` and `stillSlotEstimateUsd` from `./visual-assets`, then append inside the existing `describeDb('the route stored on a slot wins', ...)` block:
 
 ```ts
-  it('prices a still routed at a live fal model from the cache (decision 287)', async () => {
+  it('prices a still routed at a live fal model from the cache (decision 288)', async () => {
     await replaceCatalogue(
       db,
       'fal',
@@ -3349,7 +3349,7 @@ const STILL_OPTIONS = [
 and `stillModelOptions: STILL_OPTIONS` in what `model()` returns (accept an override). Then append inside `describe('the model select on a shot (decision 264)', ...)`:
 
 ```ts
-  it('offers a live model the server listed (decision 287)', async () => {
+  it('offers a live model the server listed (decision 288)', async () => {
     const live = { ...model([stillSlot]), stillModelOptions: [...STILL_OPTIONS, { provider: 'fal' as const, id: 'fal-ai/mock-flux', label: 'Mock FLUX' }] }
     render(<VisualBoard projectId={PROJECT} model={live} colors={COLORS} brand={BRAND} />)
     await userEvent.click(screen.getByRole('button', { name: /Edit brief/ }))
@@ -3452,7 +3452,7 @@ Expected: PASS, including the two new cases.
 ```bash
 pnpm format:check
 git add -u apps/web
-git commit -m "feat(visuals): stills price, check and generate on live models; the board's select lists them (decision 287)"
+git commit -m "feat(visuals): stills price, check and generate on live models; the board's select lists them (decision 288)"
 ```
 
 ---
@@ -3518,7 +3518,7 @@ In `beforeEach`, add `refreshModelListsAction.mockResolvedValue({ ok: true, resu
 Append to `models-tab.test.tsx` (its `renderModelsTab` gains `options = modelOptions()` and `settings = structuredClone(DEFAULT_SETTINGS)` parameters, passed through):
 
 ```ts
-describe('live model lists (decision 287)', () => {
+describe('live model lists (decision 288)', () => {
   it('offers a live family model, labelled estimated, and says what it is priced as', async () => {
     renderModelsTab()
     const select = screen.getByRole('combobox', { name: 'Research (dossiers) model' })
@@ -3918,7 +3918,7 @@ Expected: PASS.
 ```bash
 pnpm format:check
 git add "apps/web/app/(console)/settings"
-git commit -m "feat(settings): live model options, prices and refresh on the Models tab (decision 287)"
+git commit -m "feat(settings): live model options, prices and refresh on the Models tab (decision 288)"
 ```
 
 ---
@@ -3937,7 +3937,7 @@ git commit -m "feat(settings): live model options, prices and refresh on the Mod
 Append to `models-tab.test.tsx`:
 
 ```ts
-describe('live image models (decision 287)', () => {
+describe('live image models (decision 288)', () => {
   it('offers a live Gemini image model for stills, estimated at its family', async () => {
     renderModelsTab()
     const select = screen.getByRole('combobox', { name: 'Still images model' })
@@ -4008,7 +4008,7 @@ Expected: PASS.
 ```bash
 pnpm format:check
 git add "apps/web/app/(console)/settings"
-git commit -m "feat(settings): live image models for stills, the likeness split and set sheets (decision 287)"
+git commit -m "feat(settings): live image models for stills, the likeness split and set sheets (decision 288)"
 ```
 
 ---
@@ -4028,7 +4028,7 @@ import { expect, test } from '@playwright/test'
 import { expectHitTargets, signIn } from './fixtures'
 
 /**
- * Settings → Models with live lists (decision 287), in mock-provider mode:
+ * Settings → Models with live lists (decision 288), in mock-provider mode:
  * Refresh fills the dropdowns from fixtures, a family model is labelled
  * estimated, and a model with no family is priced and routed in one save
  * that survives a reload. Puts the route and the price back at the end, so
@@ -4083,9 +4083,9 @@ Expected: PASS.
 Run (Bash `timeout` 600000): `pnpm e2e`
 Expected: PASS. The visual board specs exercise the board's Image model select through the new view-model options.
 
-- [ ] **Step 4: Record decision 287 in PROGRESS.md**
+- [ ] **Step 4: Record decision 288 in PROGRESS.md**
 
-Read the last decision entry in `PROGRESS.md` (decision 286 or 285) and add decision 287 after it in the same format. Cover, in the house voice:
+Read the last decision entry in `PROGRESS.md` (decision 286 or 285) and add decision 288 after it in the same format. Cover, in the house voice:
 
 - the owner's ask (2026-10-01): live model lists in every dropdown, Opus 5.5 not selectable;
 - what shipped: the catalogue module, the cache tables (migration 0032), family pricing with the named representatives, owner price overrides in `settings.modelPrices`, the router's injected resolver, the image adapter factories and fal dialects, the Models tab's labels, status lines and Refresh button, and the board's select;
@@ -4102,5 +4102,5 @@ Expected: PASS. `pnpm test` runs every package at concurrency 1, including the d
 
 ```bash
 git add e2e/tests/settings-models.spec.ts PROGRESS.md
-git commit -m "test(e2e): live model lists on the Models tab; decision 287 in PROGRESS"
+git commit -m "test(e2e): live model lists on the Models tab; decision 288 in PROGRESS"
 ```

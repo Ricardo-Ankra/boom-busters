@@ -5,7 +5,7 @@ import { auth } from '@/auth'
 import { refreshModelCatalogue, type RefreshOutcome } from '@/lib/model-catalogue'
 
 /**
- * Settings → Models → Refresh model lists (decision 287). Re-checks the
+ * Settings → Models → Refresh model lists (decision 288). Re-checks the
  * session: a server action is a POST endpoint of its own. A failing
  * provider is reported, never thrown, so one bad key cannot hide the rest.
  */

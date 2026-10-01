@@ -403,7 +403,7 @@ describe('Gemini 3 options (decision 275)', () => {
   })
 })
 
-describe('a live Gemini image model the catalogue does not hold (decision 287)', () => {
+describe('a live Gemini image model the catalogue does not hold (decision 288)', () => {
   const live = (id: string) =>
     createGeminiImageGen([
       ...GEMINI_IMAGE_MODELS,

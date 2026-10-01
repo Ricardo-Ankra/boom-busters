@@ -20,7 +20,7 @@ import { geminiImageFamily, llmFamily } from './families'
 import type { ListedModel, PriceSource } from './types'
 
 /**
- * Any model id to a price and a tier, from settings alone (decision 287).
+ * Any model id to a price and a tier, from settings alone (decision 288).
  *
  * The order is the owner's override, the hand-written catalogue, fal's own
  * published price, then the family. `undefined` means unpriced, which every

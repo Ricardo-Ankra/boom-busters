@@ -259,7 +259,7 @@ describeDb('generateStillCandidates with the cast', () => {
     // No shipped model has a character limit under the app's own cap of
     // three, so this is a guard on the rule rather than on a live model: a
     // face the model is not shown must not be named as one it was. The
-    // limits are read off the catalogue built per call (decision 287), so
+    // limits are read off the catalogue built per call (decision 288), so
     // the tight adapter goes into that catalogue.
     const real = modelCatalogue.stillCatalogue
     const tight = vi
@@ -1230,7 +1230,7 @@ describeDb('the route stored on a slot wins', () => {
     ).toBeCloseTo(0.15 * STILL_GENERATIONS)
   })
 
-  it('prices a still routed at a live fal model from the cache (decision 287)', async () => {
+  it('prices a still routed at a live fal model from the cache (decision 288)', async () => {
     await replaceCatalogue(
       db,
       'fal',
@@ -1260,7 +1260,7 @@ describeDb('the route stored on a slot wins', () => {
   })
 })
 
-describeDb('a live-only route the cache no longer holds (decision 287)', () => {
+describeDb('a live-only route the cache no longer holds (decision 288)', () => {
   beforeEach(async () => {
     vi.stubEnv('MOCK_PROVIDERS', '1')
     await seed(db)

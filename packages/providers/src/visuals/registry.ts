@@ -58,7 +58,7 @@ export function imageGenAdapter(
   return mockProvidersEnabled(env) ? mockImageGen : LIVE_IMAGE_GEN_ADAPTERS[provider]
 }
 
-/** A live adapter over the given model list (decision 287). */
+/** A live adapter over the given model list (decision 288). */
 export function liveImageGenWith(
   provider: ImageGenProviderId,
   models: readonly ImageGenModel[],

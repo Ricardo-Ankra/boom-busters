@@ -134,7 +134,7 @@ export function findModel(provider: LLMProvider, modelId: string): KnownModel | 
 
 /**
  * The next catalogued model below a tier, or `undefined` at the bottom. Takes
- * a tier rather than an id so a live model (decision 287), which no adapter
+ * a tier rather than an id so a live model (decision 288), which no adapter
  * lists, can step down from the tier its family gave it.
  */
 export function nextTierBelow(provider: LLMProvider, tier: number): KnownModel | undefined {

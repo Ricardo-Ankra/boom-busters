@@ -107,7 +107,7 @@ const FLUX2_MODELS = new Set(['fal-ai/flux-2', 'fal-ai/flux-2-dev'])
 /** Which wire dialect an endpoint speaks for its image inputs. */
 type ReferenceDialect = 'flux2-edit' | 'kontext'
 
-// Named `wireDialect`, not `dialect`: `ImageGenModel.dialect` (decision 287)
+// Named `wireDialect`, not `dialect`: `ImageGenModel.dialect` (decision 288)
 // names the fal text-to-image request shape, a different axis from this
 // reference-routing dialect, and the two must not collide on one key.
 type ReferenceRoute = ImageGenModel & { wireDialect: ReferenceDialect }

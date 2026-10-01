@@ -54,7 +54,7 @@ export interface RouterConfig {
   /** Injected by tests to make jittered backoff deterministic. */
   randomImpl?: () => number
   /**
-   * Price and tier for a model id (decision 287). The web app passes one
+   * Price and tier for a model id (decision 288). The web app passes one
    * that knows the owner's prices and live families; left out, only the
    * adapter's own list is known, which is what every test and mock run
    * relies on.

@@ -138,7 +138,7 @@ export interface ImageGenResult {
 export type ImageGenProviderId = 'fal' | 'google'
 
 /**
- * The request shape a fal text-to-image endpoint speaks (decision 287).
+ * The request shape a fal text-to-image endpoint speaks (decision 288).
  * `flux` takes `image_size`; `aspect` takes `aspect_ratio`; `aspect-negative`
  * also has a real `negative_prompt` field. Read from the endpoint's own
  * OpenAPI input schema when it is listed live.

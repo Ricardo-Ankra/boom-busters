@@ -247,7 +247,7 @@ describe('route', () => {
   })
 })
 
-describe('an injected resolver (decision 287)', () => {
+describe('an injected resolver (decision 288)', () => {
   const live = {
     id: 'mock-live-9',
     label: 'mock-live-9',

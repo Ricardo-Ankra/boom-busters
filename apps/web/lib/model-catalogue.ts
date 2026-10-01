@@ -34,7 +34,7 @@ import { db } from '@/lib/db'
 import { env } from '@/lib/env'
 
 /**
- * The live model lists, server side (decision 287): refreshing the cache,
+ * The live model lists, server side (decision 288): refreshing the cache,
  * the Models tab's options, and image adapters that know the live models.
  */
 

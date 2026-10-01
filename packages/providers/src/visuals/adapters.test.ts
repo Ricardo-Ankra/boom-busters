@@ -628,7 +628,7 @@ describe('falImageGen', () => {
   })
 })
 
-describe('fal dialects (decision 287)', () => {
+describe('fal dialects (decision 288)', () => {
   function captureFal() {
     const calls: { url: string; body: Record<string, unknown> }[] = []
     const fetchImpl = (async (url: string, init?: RequestInit) => {

@@ -1,4 +1,4 @@
-# Live model lists: every model dropdown asks the provider (decision 287)
+# Live model lists: every model dropdown asks the provider (decision 288)
 
 Status: design approved in conversation 2026-10-01, section by section; this
 document is for the owner's review before an implementation plan is written.

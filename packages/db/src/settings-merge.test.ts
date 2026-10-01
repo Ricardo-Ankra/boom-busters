@@ -91,7 +91,7 @@ describe('mergeSettings', () => {
   })
 })
 
-describe('merging modelPrices (decision 287)', () => {
+describe('merging modelPrices (decision 288)', () => {
   it('replaces the whole price map when a patch carries one, and keeps it otherwise', () => {
     const priced = mergeSettings(DEFAULT_SETTINGS, {
       modelPrices: {

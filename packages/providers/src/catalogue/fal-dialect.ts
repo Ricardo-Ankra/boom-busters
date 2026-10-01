@@ -37,7 +37,7 @@ function inputSchema(openapi: unknown): Json | null {
   return named ? (named[1] as Json) : null
 }
 
-/** Which request shape an endpoint speaks, or null if this app cannot send it one (decision 287). */
+/** Which request shape an endpoint speaks, or null if this app cannot send it one (decision 288). */
 export function falDialect(openapi: unknown): FalDialect | null {
   const schema = inputSchema(openapi)
   const properties = schema && isRecord(schema['properties']) ? schema['properties'] : null

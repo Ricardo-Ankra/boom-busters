@@ -233,7 +233,7 @@ export const providerCredentials = pgTable(
 )
 
 /**
- * What each provider's list endpoint last said it serves (decision 287).
+ * What each provider's list endpoint last said it serves (decision 288).
  * A cache, rebuilt per provider on each successful refresh; the Models tab
  * and the image adapters read it, and nothing else depends on it being
  * fresh. Prices the owner sets live in `settings.modelPrices`, not here.

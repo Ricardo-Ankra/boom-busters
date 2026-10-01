@@ -12,7 +12,7 @@ import type { CatalogueProvider, ListedModel, PriceSource } from './types'
 
 /**
  * The live lists and the hand-written catalogue, merged into what each
- * Settings → Models dropdown shows (decision 287).
+ * Settings → Models dropdown shows (decision 288).
  *
  * The catalogue always comes first, in its own order; live-only models
  * follow, non-previews before previews, alphabetically within each group.
