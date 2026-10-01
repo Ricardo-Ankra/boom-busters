@@ -2,9 +2,10 @@ import 'server-only'
 
 import { estimateLlmUsd, withCost } from '@boom-busters/cost'
 import { getSettings, llmCredentials, recordRunEvent } from '@boom-busters/db'
-import { llmAdapters, route } from '@boom-busters/providers'
+import { findModel, llmAdapters, resolveLlmModel, route } from '@boom-busters/providers'
 import type { Downgrade, LLMTaskRequest, RoutedResult } from '@boom-busters/providers'
 import { canonicalModelId } from '@boom-busters/schemas'
+import type { LlmProvider } from '@boom-busters/schemas'
 import { db } from '@/lib/db'
 import { env } from '@/lib/env'
 
@@ -65,6 +66,13 @@ export async function callLlm(
     })
   }
 
+  const adapters = llmAdapters()
+  // The owner's prices and live families first; the adapter's own list
+  // second, which is what mock mode's `mock-*` ids resolve through.
+  const resolveModel = (provider: LlmProvider, modelId: string) =>
+    resolveLlmModel(provider, modelId, settings.modelPrices)?.model ??
+    findModel(adapters[provider], modelId)
+
   return withCost(
     db,
     {
@@ -79,6 +87,7 @@ export async function callLlm(
         model: canonicalModelId(choice.provider, choice.model),
         inputTokens: promptTokens(request),
         outputTokens: options.estimateOutputTokens ?? request.maxTokens,
+        prices: settings.modelPrices,
       }),
       meta: { task: request.task, model: choice.model },
     },
@@ -87,9 +96,10 @@ export async function callLlm(
         {
           routing: settings.modelRouting,
           fallbackChain: settings.fallbackChain,
-          adapters: llmAdapters(),
+          adapters,
           credentials,
           onDowngrade,
+          resolveModel,
         },
         request,
         options.signal ? { signal: options.signal } : {},

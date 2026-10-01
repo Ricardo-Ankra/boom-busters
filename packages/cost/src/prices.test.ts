@@ -1,5 +1,5 @@
 import { LLM_MODELS } from '@boom-busters/providers'
-import { TTS_PROVIDERS, ValidationError } from '@boom-busters/schemas'
+import { EMPTY_MODEL_PRICES, TTS_PROVIDERS, ValidationError } from '@boom-busters/schemas'
 import { describe, expect, it } from 'vitest'
 import { LLM_PRICES, TTS_PRICES, estimateLlmUsd, estimateTtsUsd, llmPrice } from './prices'
 
@@ -90,5 +90,31 @@ describe('every provider is guarded', () => {
     for (const provider of TTS_PROVIDERS) {
       expect(estimateTtsUsd({ provider, characters: 1000 })).toBeGreaterThan(0)
     }
+  })
+})
+
+describe('llmPrice with live models (decision 287)', () => {
+  it('prices a live family member at its family', () => {
+    expect(llmPrice('anthropic', 'claude-opus-5-5')).toEqual({ inputPerMTok: 5, outputPerMTok: 25 })
+  })
+
+  it('prefers the owner’s price', () => {
+    const prices = {
+      ...EMPTY_MODEL_PRICES,
+      llm: { 'anthropic:claude-opus-5-5': { inputPerMTok: 4, outputPerMTok: 20 } },
+    }
+    expect(
+      estimateLlmUsd({
+        provider: 'anthropic',
+        model: 'claude-opus-5-5',
+        inputTokens: 1_000_000,
+        outputTokens: 1_000_000,
+        prices,
+      }),
+    ).toBe(24)
+  })
+
+  it('still refuses an unpriced model rather than estimating $0', () => {
+    expect(() => llmPrice('anthropic', 'claude-fable-5-1')).toThrow(ValidationError)
   })
 })
