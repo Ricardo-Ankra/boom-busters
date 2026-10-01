@@ -10,11 +10,13 @@ import {
   requireTestDatabase,
   saveChapter,
   seed,
+  setSlotJob,
   setSlotResolution,
   shotSlots,
   truncateRunMirror,
 } from '@boom-busters/db'
 import type { NewShotSlot } from '@boom-busters/db'
+import { newId } from '@boom-busters/schemas'
 import type { ShotBrief, SlotCandidate } from '@boom-busters/schemas'
 import { InngestTestEngine } from '@inngest/test'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -136,5 +138,62 @@ describeDb('slot-refetcher (mock mode)', () => {
       ],
     })
     expect(result).toMatchObject({ outcome: 'refetched', status: 'resolved' })
+  })
+
+  const refetch = (
+    slotId: string,
+    jobId?: string,
+  ): { events: [{ name: string; data: Record<string, unknown> }] } => ({
+    events: [
+      {
+        name: 'visuals/refetch.requested',
+        data: {
+          projectId: FIXTURE_PROJECT_ID,
+          slotId,
+          note: 'Regenerate',
+          ...(jobId ? { jobId } : {}),
+        },
+      },
+    ],
+  })
+  const stamp = () => ({
+    kind: 'refetch' as const,
+    jobId: newId(),
+    startedAt: new Date().toISOString(),
+  })
+
+  it('releases its own stamp when it lands (decision 286)', async () => {
+    const own = stamp()
+    await setSlotJob(db, source, own)
+    await new InngestTestEngine({ function: slotRefetcher }).execute(refetch(source, own.jobId))
+    expect((await getShotSlot(db, source))!.pendingJob).toBeNull()
+  })
+
+  it('leaves a newer press’s stamp when it lands late', async () => {
+    const late = stamp()
+    const newer = stamp()
+    await setSlotJob(db, source, newer)
+    await new InngestTestEngine({ function: slotRefetcher }).execute(refetch(source, late.jobId))
+    expect((await getShotSlot(db, source))!.pendingJob).toEqual(newer)
+  })
+
+  it('releases on the linked-slot skip too, the early return', async () => {
+    const own = stamp()
+    await setSlotJob(db, dependant, own)
+    const { result } = await new InngestTestEngine({ function: slotRefetcher }).execute(
+      refetch(dependant, own.jobId),
+    )
+    expect(result).toMatchObject({ status: 'skipped' })
+    expect((await getShotSlot(db, dependant))!.pendingJob).toBeNull()
+  })
+
+  it('runs an event sent before job ids existed and releases nothing', async () => {
+    const other = stamp()
+    await setSlotJob(db, source, other)
+    const { result } = await new InngestTestEngine({ function: slotRefetcher }).execute(
+      refetch(source),
+    )
+    expect(result).toMatchObject({ outcome: 'refetched' })
+    expect((await getShotSlot(db, source))!.pendingJob).toEqual(other)
   })
 })

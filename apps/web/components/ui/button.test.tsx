@@ -46,6 +46,24 @@ describe('Button', () => {
     expect(onClick).not.toHaveBeenCalled()
   })
 
+  it('stays locked while busy even when the caller says it is enabled', async () => {
+    // The common shape: `disabled={!ready}` beside `busy`. With `disabled ?? busy`
+    // a ready form's false won, and the spinning button took a second click.
+    const onClick = vi.fn()
+    render(
+      <Button busy disabled={false} onClick={onClick}>
+        Save camera
+      </Button>,
+    )
+
+    const button = screen.getByRole('button', { name: 'Save camera' })
+    expect(button).toBeDisabled()
+    await userEvent.click(button).catch(() => {
+      // userEvent refuses to click a disabled control; that is the assertion.
+    })
+    expect(onClick).not.toHaveBeenCalled()
+  })
+
   it('fires when idle', async () => {
     const onClick = vi.fn()
     render(<Button onClick={onClick}>Approve</Button>)

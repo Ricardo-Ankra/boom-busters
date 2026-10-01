@@ -1,4 +1,4 @@
-import { getShotSlot, setSlotRefusal, setSlotResolution } from '@boom-busters/db'
+import { getShotSlot, releaseSlotJob, setSlotRefusal, setSlotResolution } from '@boom-busters/db'
 import {
   BudgetExceededError,
   ContentPolicyError,
@@ -13,6 +13,7 @@ import { requireVisualKeys, resolveSlotBrief } from '@/lib/visual-assets'
 import { inngest } from '../client'
 import { events } from '../events'
 import { budgetGateData, markSideJobFailed, type GateContext } from '../lib/gates'
+import { releaseFailedSlotJob } from '../lib/jobs'
 
 /**
  * slot-refetcher (build spec section 11.3, Visual board).
@@ -46,6 +47,7 @@ export const slotRefetcher = inngest.createFunction(
       },
     ],
     onFailure: async ({ event }) => {
+      await releaseFailedSlotJob(event.data.event.data)
       const projectId = event.data.event.data['projectId']
       if (typeof projectId !== 'string') return
       // A re-fetch runs while the visuals gate is parked open. Its failure
@@ -60,65 +62,74 @@ export const slotRefetcher = inngest.createFunction(
     triggers: [events.visualsRefetchRequested],
   },
   async ({ event, step, runId }) => {
-    const { projectId, slotId } = parseEventData('visuals/refetch.requested', event.data)
+    const { projectId, slotId, jobId } = parseEventData('visuals/refetch.requested', event.data)
     const ctx: GateContext = { inngestRunId: runId, functionId: FUNCTION_ID, projectId }
 
-    const outcome = await step.run('refetch-slot', async () => {
-      const slot = await getShotSlot(db, slotId)
-      if (!slot) throw new NonRetriableError(`Shot slot ${slotId} no longer exists`)
+    const result = await (async () => {
+      const outcome = await step.run('refetch-slot', async () => {
+        const slot = await getShotSlot(db, slotId)
+        if (!slot) throw new NonRetriableError(`Shot slot ${slotId} no longer exists`)
 
-      // A linked slot shows another slot's shot (decision 261); a fetch for
-      // it would overwrite the copy. The action refuses first; this catches
-      // an event already in flight when the link was made.
-      if (slot.reuseOfSlotId) {
-        return { status: 'skipped' as const, candidates: 0, reused: slot.reuseOfSlotId }
-      }
-
-      // Re-parsed rather than trusted: the brief was validated on write, but
-      // this is the boundary where jsonb becomes typed again.
-      const brief = ShotBriefSchema.parse(slot.brief)
-      await requireVisualKeys(new Set([brief.type]))
-
-      const route = StillRouteSchema.nullable().safeParse(slot.route)
-      try {
-        const resolution = await resolveSlotBrief({
-          projectId,
-          brief,
-          route: route.success ? route.data : null,
-        })
-        await setSlotResolution(
-          db,
-          slotId,
-          resolution.status === 'resolved'
-            ? { ...resolution, answered: { brief: slot.brief, route: slot.route } }
-            : resolution,
-        )
-        return { status: resolution.status, candidates: resolution.candidates.length }
-      } catch (error) {
-        if (error instanceof BudgetExceededError) {
-          return { overBudget: budgetGateData(error) }
+        // A linked slot shows another slot's shot (decision 261); a fetch for
+        // it would overwrite the copy. The action refuses first; this catches
+        // an event already in flight when the link was made.
+        if (slot.reuseOfSlotId) {
+          return { status: 'skipped' as const, candidates: 0, reused: slot.reuseOfSlotId }
         }
-        if (error instanceof ContentPolicyError) {
-          // The image model declined the prompt (decision 252): a placeholder
-          // with the refusal on the row, so the card offers the two ways out.
-          await setSlotResolution(db, slotId, { candidates: [], status: 'placeholder' })
-          await setSlotRefusal(db, slotId, {
-            reason: error.message,
-            at: new Date().toISOString(),
+
+        // Re-parsed rather than trusted: the brief was validated on write, but
+        // this is the boundary where jsonb becomes typed again.
+        const brief = ShotBriefSchema.parse(slot.brief)
+        await requireVisualKeys(new Set([brief.type]))
+
+        const route = StillRouteSchema.nullable().safeParse(slot.route)
+        try {
+          const resolution = await resolveSlotBrief({
+            projectId,
+            brief,
+            route: route.success ? route.data : null,
           })
-          return { status: 'placeholder' as const, candidates: 0, refused: error.message }
+          await setSlotResolution(
+            db,
+            slotId,
+            resolution.status === 'resolved'
+              ? { ...resolution, answered: { brief: slot.brief, route: slot.route } }
+              : resolution,
+          )
+          return { status: resolution.status, candidates: resolution.candidates.length }
+        } catch (error) {
+          if (error instanceof BudgetExceededError) {
+            return { overBudget: budgetGateData(error) }
+          }
+          if (error instanceof ContentPolicyError) {
+            // The image model declined the prompt (decision 252): a placeholder
+            // with the refusal on the row, so the card offers the two ways out.
+            await setSlotResolution(db, slotId, { candidates: [], status: 'placeholder' })
+            await setSlotRefusal(db, slotId, {
+              reason: error.message,
+              at: new Date().toISOString(),
+            })
+            return { status: 'placeholder' as const, candidates: 0, refused: error.message }
+          }
+          throw error
         }
-        throw error
+      })
+
+      if ('overBudget' in outcome && outcome.overBudget) {
+        await step.run('refetch-over-budget', () =>
+          markSideJobFailed(ctx, 'The slot re-fetch stopped', outcome.overBudget),
+        )
+        return { projectId, slotId, outcome: 'over-budget' as const }
       }
-    })
 
-    if ('overBudget' in outcome && outcome.overBudget) {
-      await step.run('refetch-over-budget', () =>
-        markSideJobFailed(ctx, 'The slot re-fetch stopped', outcome.overBudget),
-      )
-      return { projectId, slotId, outcome: 'over-budget' as const }
-    }
+      return { projectId, slotId, outcome: 'refetched' as const, ...outcome }
+    })()
 
-    return { projectId, slotId, outcome: 'refetched' as const, ...outcome }
+    // Once, after every step of the body has landed (decision 286), whichever
+    // way the body returned: the card stops saying the fetch is running. Plain
+    // sequential code, not a finally around the steps, which would run each
+    // time Inngest re-enters the function between steps.
+    if (jobId) await step.run('release-job', () => releaseSlotJob(db, slotId, jobId))
+    return result
   },
 )

@@ -607,6 +607,39 @@ export const SlotRefusalSchema = z.object({
 })
 export type SlotRefusal = z.infer<typeof SlotRefusalSchema>
 
+/**
+ * A background job running on one slot (decision 286): stamped by the server
+ * action before it sends the event, released by the job that answers it, and
+ * cleared by Stop. `jobId` lets a job clear only its own stamp, so one that
+ * finishes late never unlocks a newer press.
+ */
+export const SlotJobSchema = z.object({
+  kind: z.enum(['refetch', 'redirect']),
+  jobId: UlidSchema,
+  startedAt: z.iso.datetime(),
+})
+export type SlotJob = z.infer<typeof SlotJobSchema>
+
+/**
+ * The plan-level jobs (decision 286). The first three are the `op` names
+ * `visuals/replan.requested` already carries (`shots` is Re-plan shot list);
+ * `fetch` is Fetch visuals between the press and the runner closing the gate.
+ */
+export const VISUALS_JOB_OPS = ['shots', 'repair', 'direction', 'fetch'] as const
+export const VisualsJobSchema = z.object({
+  op: z.enum(VISUALS_JOB_OPS),
+  jobId: UlidSchema,
+  startedAt: z.iso.datetime(),
+})
+export type VisualsJob = z.infer<typeof VisualsJobSchema>
+export type VisualsJobOp = VisualsJob['op']
+
+/**
+ * How old a job stamp may be before the board stops trusting it (decision
+ * 286): past this it no longer locks, and the card says it may have stopped.
+ */
+export const JOB_STALE_MS = 10 * 60_000
+
 // ---------------------------------------------------------------------------
 // The shot-list model's output
 // ---------------------------------------------------------------------------

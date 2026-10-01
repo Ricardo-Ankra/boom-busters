@@ -9,6 +9,7 @@ import {
   getProjectSet,
   getShotSlot,
   getSocialPost,
+  hasLiveRun,
   linkSlotReuse,
   listLogos,
   listSlotDependants,
@@ -19,9 +20,11 @@ import {
   setSocialPostManual,
   retypeShotSlot,
   setProjectDirection,
+  setSlotJob,
   setSlotResolution,
   setSlotRetype,
   setSlotRoute,
+  setVisualsJob,
   unlinkSlotReuse,
   updateSlotBrief,
   upsertAssetByHash,
@@ -40,6 +43,7 @@ import {
   logoForEntity,
   missingArticleFields,
   missingPostFields,
+  newId,
   normaliseArticleUrl,
   normalisePostUrl,
   NOT_A_POST_ERROR,
@@ -65,8 +69,10 @@ import type {
   SetPlateView,
   ShotBrief,
   SlotCandidate,
+  SlotJob,
   SocialBrief,
   StillRoute,
+  VisualsJob,
 } from '@boom-busters/schemas'
 import { createHash } from 'node:crypto'
 import { revalidatePath } from 'next/cache'
@@ -87,6 +93,7 @@ import {
   R2_PREFIX,
   storageConfigured,
 } from '@/lib/storage'
+import { isFetching } from '@/lib/visuals-review'
 import { timecode } from '@/lib/visuals-reuse'
 
 /**
@@ -373,7 +380,20 @@ export async function approvePlanAction(projectId: string): Promise<ActionResult
   if (project.visualsPhase !== 'plan') {
     return { ok: false, error: 'The plan checkpoint is not open on this project.' }
   }
+  // The plan phase lasts the whole fetch pass (the runner moves to `board`
+  // only when every slot has landed), and a second Fetch here would send
+  // `fetch.resume`, whose singleton cancels the fetch in flight (decision 286).
+  // The board's own rule, so the two never disagree: a stage that says
+  // running with no run behind it is stranded, and resuming is its way out.
+  if (isFetching(project.visualsPhase, project, await hasLiveRun(db, projectId))) {
+    return {
+      ok: false,
+      error: 'The fetch is already running. The board updates as the shots land.',
+    }
+  }
 
+  const job: VisualsJob = { op: 'fetch', jobId: newId(), startedAt: new Date().toISOString() }
+  await setVisualsJob(db, projectId, job)
   try {
     await inngest.send(
       project.stageStatus === 'awaiting_review'
@@ -382,6 +402,7 @@ export async function approvePlanAction(projectId: string): Promise<ActionResult
     )
   } catch (error) {
     console.error('[visuals] could not send plan approval', error)
+    await setVisualsJob(db, projectId, null)
     return {
       ok: false,
       error:
@@ -566,11 +587,18 @@ export async function retypeToHeadlineAction(
  * The mechanical/model-assisted split is the same as `retypeSlotAction`: which
  * post is a decision, so it is never left to the retyper, and everything past
  * that is as mechanical as still to stock.
+ *
+ * With `rawPostUrl` (amended 2026-09-30), the owner has pasted the post and
+ * named the claim it supports, which may be any claim in the dossier. The
+ * address goes on the brief and the claim's own citation is left alone: a
+ * claim sourced to the article that reported a post stays sourced to it.
+ * Without it, the claim must itself be sourced to a post, as the planner's are.
  */
 export async function retypeToSocialAction(
   projectId: string,
   slotId: string,
   claimId: string,
+  rawPostUrl?: string,
 ): Promise<ActionResult> {
   await requireOwner()
   const invalid = badIds(projectId, slotId, claimId)
@@ -589,21 +617,33 @@ export async function retypeToSocialAction(
     }
   }
 
-  // Already quoting it: the board marks that row rather than offering it.
-  if (current.data.type === 'social' && current.data.sourceClaimId === claimId) {
-    return { ok: true }
-  }
+  const pasted = rawPostUrl === undefined ? undefined : normalisePostUrl(rawPostUrl)
+  if (pasted === null) return { ok: false, error: NOT_A_POST_ERROR }
 
   const claim = (await scriptableClaims(db, projectId)).find((row) => row.id === claimId)
-  if (!claimCarriesPost(claim)) {
+  if (!claim) {
+    return { ok: false, error: 'That claim is no longer in this project’s dossier.' }
+  }
+  if (pasted === undefined && !claimCarriesPost(claim)) {
     return {
       ok: false,
       error: 'That claim has no X post behind it, so a card cannot show it.',
     }
   }
+  const postUrl = pasted ?? (normalisePostUrl(claim.sourceUrl as string) as string)
+
+  // Already showing it: the board marks that row rather than offering it, and
+  // rewriting the brief would drop the highlight and excerpt for nothing.
+  if (
+    current.data.type === 'social' &&
+    current.data.sourceClaimId === claimId &&
+    current.data.postUrl === postUrl
+  ) {
+    return { ok: true }
+  }
 
   const brief = convertBrief(current.data, 'social', {
-    socialClaim: { id: claimId, sourceUrl: claim!.sourceUrl as string },
+    socialClaim: { id: claimId, sourceUrl: postUrl },
   })
   if (!brief) return { ok: false, error: 'This slot cannot become a post card.' }
 
@@ -1425,11 +1465,18 @@ export async function refetchSlotAction(
 }
 
 async function sendRefetch(projectId: string, slotId: string, note: string): Promise<ActionResult> {
+  // Stamped first (decision 286), so the refresh this action triggers already
+  // says the fetch is running, and the card does not offer it again.
+  const job: SlotJob = { kind: 'refetch', jobId: newId(), startedAt: new Date().toISOString() }
+  await setSlotJob(db, slotId, job)
   try {
-    await inngest.send(events.visualsRefetchRequested.create({ projectId, slotId, note }))
+    await inngest.send(
+      events.visualsRefetchRequested.create({ projectId, slotId, note, jobId: job.jobId }),
+    )
     return { ok: true }
   } catch (error) {
     console.error('[visuals] could not send refetch', error)
+    await setSlotJob(db, slotId, null)
     return {
       ok: false,
       error:
@@ -1928,10 +1975,13 @@ async function sendReplan(
     return { ok: false, error: 'The plan checkpoint is not open on this project.' }
   }
 
+  const job: VisualsJob = { op, jobId: newId(), startedAt: new Date().toISOString() }
+  await setVisualsJob(db, projectId, job)
   try {
-    await inngest.send(events.visualsReplanRequested.create({ projectId, op }))
+    await inngest.send(events.visualsReplanRequested.create({ projectId, op, jobId: job.jobId }))
   } catch (error) {
     console.error('[visuals] could not send replan', error)
+    await setVisualsJob(db, projectId, null)
     return {
       ok: false,
       error:
@@ -1964,10 +2014,15 @@ export async function redirectSceneAction(
     return { ok: false, error: 'Only an AI image slot can be redirected.' }
   }
 
+  const job: SlotJob = { kind: 'redirect', jobId: newId(), startedAt: new Date().toISOString() }
+  await setSlotJob(db, slotId, job)
   try {
-    await inngest.send(events.visualsRedirectRequested.create({ projectId, slotId }))
+    await inngest.send(
+      events.visualsRedirectRequested.create({ projectId, slotId, jobId: job.jobId }),
+    )
   } catch (error) {
     console.error('[visuals] could not send redirect', error)
+    await setSlotJob(db, slotId, null)
     return {
       ok: false,
       error:

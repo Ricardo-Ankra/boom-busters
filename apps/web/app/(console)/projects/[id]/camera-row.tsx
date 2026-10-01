@@ -27,13 +27,22 @@ export function CameraRow({
   projectId,
   camera,
   busy,
+  pressed = null,
   act,
 }: {
   slotId: string
   projectId: string
   camera: SetCamera | undefined
+  /** The slot's lock: any action on this card holds Save camera too. */
   busy: boolean
-  act: (slotId: string, run: () => Promise<ActionResult>, success: string) => Promise<ActionResult>
+  /** Which control on the card is in flight; only `camera` spins this row's button. */
+  pressed?: string | null
+  act: (
+    slotId: string,
+    run: () => Promise<ActionResult>,
+    success: string,
+    press?: string,
+  ) => Promise<ActionResult>
 }) {
   const [facing, setFacing] = React.useState<SetPlateDirection>(camera?.facing ?? 'north')
   const [position, setPosition] = React.useState(camera?.position ?? '')
@@ -100,8 +109,8 @@ export function CameraRow({
       <div>
         <Button
           variant="outline"
-          disabled={!ready}
-          busy={busy}
+          disabled={!ready || busy}
+          busy={pressed === 'camera'}
           onClick={() =>
             void act(
               slotId,
@@ -114,6 +123,7 @@ export function CameraRow({
                   },
                 }),
               'Camera saved',
+              'camera',
             )
           }
         >

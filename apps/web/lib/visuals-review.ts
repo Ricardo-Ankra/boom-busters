@@ -32,6 +32,7 @@ import {
   craftFindings,
   DirectorsBookSchema,
   findingContext,
+  JOB_STALE_MS,
   normaliseArticleUrl,
   latestTakes,
   nameMatches,
@@ -46,11 +47,13 @@ import {
   repairSummary,
   ShotBriefSchema,
   SlotCandidateSchema,
+  SlotJobSchema,
   SlotRefusalSchema,
   SlotDraftStateSchema,
   StillRouteSchema,
   visualsApprovalBlockedReason,
   visualsCoverage,
+  VisualsJobSchema,
 } from '@boom-busters/schemas'
 import type {
   ArticleMetadata,
@@ -62,6 +65,7 @@ import type {
   ShotBrief,
   ShotSlotStatus,
   SlotCandidate,
+  SlotJob,
   SlotRefusal,
   SlotDraftState,
   SocialBrief,
@@ -69,12 +73,19 @@ import type {
   SocialPostRecord,
   StillRoute,
   VisualsCoverage,
+  VisualsJobOp,
 } from '@boom-busters/schemas'
 import { anchoredTimes, timedParagraphs } from '@/inngest/lib/shot-list'
 import { presignGet, storageConfigured } from './storage'
 import { sceneOf } from './still-prompt'
 import { routeForBrief, stillPromptFor, stillsEstimateUsd } from './visual-assets'
-import { reuseView, sharedShotWarnings, type ReusableRow, type ReuseSource } from './visuals-reuse'
+import {
+  reuseView,
+  sharedShotWarnings,
+  timecode,
+  type ReusableRow,
+  type ReuseSource,
+} from './visuals-reuse'
 
 /**
  * What the visual board shows, and what the visuals gate refuses on — one
@@ -112,6 +123,73 @@ export interface SlotReference {
   resolved: boolean
 }
 
+/** A background job on one slot, as the board shows it (decision 286). */
+export interface SlotJobView {
+  kind: SlotJob['kind']
+  startedAt: string
+}
+
+/** A plan-level job, as the board shows it (decision 286). */
+export interface VisualsJobView {
+  op: VisualsJobOp
+  startedAt: string
+}
+
+/** A stored slot stamp, or null; one that fails its schema is no job. */
+export function slotJobView(raw: unknown): SlotJobView | null {
+  const parsed = SlotJobSchema.safeParse(raw)
+  return parsed.success ? { kind: parsed.data.kind, startedAt: parsed.data.startedAt } : null
+}
+
+export function visualsJobView(raw: unknown): VisualsJobView | null {
+  const parsed = VisualsJobSchema.safeParse(raw)
+  return parsed.success ? { op: parsed.data.op, startedAt: parsed.data.startedAt } : null
+}
+
+/**
+ * Whether Fetch visuals is under way (decision 286). The runner keeps the
+ * plan phase for the whole fetch pass, and the stage reads `running` from the
+ * moment it closes the gate, so no stamp is needed; a stopped or failed fetch
+ * leaves the stage `cancelled` or `failed`, which is not fetching.
+ *
+ * `running` counts only with a live run behind it, `isMoving`'s rule: a
+ * runner that died without its `onFailure` leaves the column saying running,
+ * and reading that as a fetch would lock the board for good and refuse the
+ * one free way out, Fetch visuals resuming at the fetch pass (decision 279).
+ * And only while the project is at the visuals stage: a voice re-run leaves
+ * the plan phase in the row, and its run is not a fetch.
+ */
+export function isFetching(
+  phase: 'plan' | 'board' | null,
+  project: { stage: string; stageStatus: string } | undefined,
+  liveRun: boolean,
+): boolean {
+  if (phase !== 'plan' || project?.stage !== 'visuals') return false
+  return project.stageStatus === 'queued' || (project.stageStatus === 'running' && liveRun)
+}
+
+/**
+ * Whether the page should keep polling for this board (decision 286). A job
+ * sent from a plan screen with no run parked on it has no live run until
+ * Inngest starts it, and none after it ends, so the run mirror alone never
+ * wakes the page and the card would go on saying the job is running. Judged
+ * on the server's clock; it decides polling, never locking.
+ */
+export function jobsNeedPolling(model: {
+  renderedAt: string
+  job: VisualsJobView | null
+  fetching: boolean
+  chapters: readonly { slots: readonly { job: SlotJobView | null }[] }[]
+}): boolean {
+  const now = Date.parse(model.renderedAt)
+  const live = (startedAt: string) => now - Date.parse(startedAt) < JOB_STALE_MS
+  if (model.fetching) return true
+  if (model.job && live(model.job.startedAt)) return true
+  return model.chapters.some((chapter) =>
+    chapter.slots.some((slot) => slot.job !== null && live(slot.job.startedAt)),
+  )
+}
+
 export interface SlotView {
   id: string
   type: string
@@ -144,6 +222,8 @@ export interface SlotView {
   retype: SlotDraftState | null
   /** An image model declined this slot's prompt (decision 252). */
   refusal: SlotRefusal | null
+  /** A background job running on this slot (decision 286), or null. */
+  job: SlotJobView | null
   /**
    * The cited article, for headline slots (decision 257). Null on every other
    * type, and on a headline slot whose claim no longer has a readable source.
@@ -275,6 +355,15 @@ export interface VisualsReviewModel {
    * candidate strips, null means the stage has not run.
    */
   phase: 'plan' | 'board' | null
+  /** A plan-level job in flight (decision 286), or null. */
+  job: VisualsJobView | null
+  /** Fetch visuals is under way (decision 286): see `isFetching`. */
+  fetching: boolean
+  /**
+   * The server's clock when this model was built (ISO). The board measures a
+   * stamp's age from it, not from the browser's clock (decision 286).
+   */
+  renderedAt: string
   /** How many slots the next fetch pass will actually touch. */
   toFetch: number
   /** The paid subset of `toFetch` — generated stills. */
@@ -288,6 +377,8 @@ export interface VisualsReviewModel {
    * 277): every one is something the Fix button acts on, by the same rule.
    */
   warnings: string[]
+  /** The same craft notes by slot id, so each card can say its own. */
+  slotNotes: Record<string, string[]>
   /**
    * Notes no rewrite of a brief can clear (decision 277): a cast member the
    * book forgot, references nothing names, shots shared between slots. They
@@ -313,6 +404,12 @@ export interface VisualsReviewModel {
    * picker says so.
    */
   postClaims: PostClaimOption[]
+  /**
+   * Every claim a pasted post may support (decision 284, amended 2026-09-30):
+   * the post's address lives on the brief, so the claim is only the audit
+   * trail and its own citation is never rewritten to point at the post.
+   */
+  supportClaims: PostClaimOption[]
 }
 
 /**
@@ -329,15 +426,20 @@ export function emptyVisualsModel(): VisualsReviewModel {
     segments: [],
     totalMs: 0,
     phase: null,
+    job: null,
+    fetching: false,
+    renderedAt: new Date().toISOString(),
     toFetch: 0,
     stillsToFetch: 0,
     fetchEstimateUsd: 0,
     direction: null,
     warnings: [],
+    slotNotes: {},
     decisions: [],
     repair: { slots: 0, becomeStills: 0, chapters: 0 },
     articleClaims: [],
     postClaims: [],
+    supportClaims: [],
   }
 }
 
@@ -441,6 +543,23 @@ function postClaimOptions(claims: readonly ScriptableClaim[]): PostClaimOption[]
     const handle = parsePostUrl(claim.sourceUrl as string)?.handle ?? null
     return [{ id: claim.id, label: `${handle ? `@${handle}` : 'A post on X'}: ${claim.text}` }]
   })
+}
+
+/** How much of a claim's text a select option can carry and stay readable. */
+const SUPPORT_LABEL_MAX = 110
+
+/**
+ * Every claim a pasted post may be filed under, labelled with the claim's own
+ * words: the owner is choosing what the post is evidence for, not a source.
+ */
+function supportClaimOptions(claims: readonly ScriptableClaim[]): PostClaimOption[] {
+  return claims.map((claim) => ({
+    id: claim.id,
+    label:
+      claim.text.length > SUPPORT_LABEL_MAX
+        ? `${claim.text.slice(0, SUPPORT_LABEL_MAX - 1).trimEnd()}…`
+        : claim.text,
+  }))
 }
 
 /**
@@ -606,7 +725,12 @@ function slotReferences(
 export async function visualsReviewModel(
   db: Database,
   projectId: string,
-  options: { phase?: 'plan' | 'board' | null } = {},
+  /**
+   * `liveRun` is the run mirror's answer (the page already has it). Left out,
+   * nothing reads as fetching: a missing answer can unlock the board but
+   * never lock it (decision 286).
+   */
+  options: { phase?: 'plan' | 'board' | null; liveRun?: boolean } = {},
 ): Promise<VisualsReviewModel> {
   const [rows, sources, takes, project, claims] = await Promise.all([
     listShotSlots(db, projectId),
@@ -617,6 +741,7 @@ export async function visualsReviewModel(
   ])
   const articleClaims = await articleClaimOptions(db, claims)
   const postClaims = postClaimOptions(claims)
+  const supportClaims = supportClaimOptions(claims)
 
   /**
    * The scrubber's clock is the same clock the runner stamped the slots with:
@@ -799,6 +924,7 @@ export async function visualsReviewModel(
         const state = SlotRefusalSchema.safeParse(row.refusal)
         return state.success ? state.data : null
       })(),
+      job: slotJobView(row.pendingJob),
       reuse: reuseView(reusable[at]!, reusable),
       route: storedRoute,
       // `routeForBrief` already falls back to `settings.modelRouting.stills`
@@ -909,6 +1035,17 @@ export async function visualsReviewModel(
       bannedWords: BANNED_PROMPT_WORDS,
     }),
   )
+  // `slotIndex` counts the briefed slots from zero, which no card shows, so
+  // "(slot 0)" could not be found on screen. Each note is said where the
+  // card says it (chapter and timecode) and handed to that card as well.
+  const briefed = slots.filter((slot) => slot.brief !== null)
+  const slotNotes: Record<string, string[]> = {}
+  const warnings = findings.map((finding) => {
+    const slot = briefed[finding.slotIndex]
+    if (!slot) return finding.message
+    ;(slotNotes[slot.id] ??= []).push(finding.message)
+    return `${finding.message} (ch ${slot.chapterIndex + 1} · ${timecode(slot.startMs)})`
+  })
 
   return {
     chapters,
@@ -920,13 +1057,17 @@ export async function visualsReviewModel(
     segments,
     totalMs: segments.reduce((total, segment) => total + segment.durationMs, 0),
     phase: options.phase ?? null,
+    job: visualsJobView(project?.visualsJob),
+    fetching: isFetching(options.phase ?? null, project, options.liveRun ?? false),
+    renderedAt: new Date().toISOString(),
     toFetch: toFetch.length,
     stillsToFetch,
     fetchEstimateUsd,
     direction,
     // Craft notes (decisions 252, 277), in screen order; never a blocker. One
     // per finding, so the list and the Fix button's count are the same set.
-    warnings: findings.map((finding) => `${finding.message} (slot ${finding.slotIndex})`),
+    warnings,
+    slotNotes,
     // What no rewrite of a brief can clear: a cast member the book forgot
     // (decision 253), references nothing names, shots shared between slots.
     decisions: [
@@ -946,5 +1087,6 @@ export async function visualsReviewModel(
     repair: repairSummary(findingSlots, findings),
     articleClaims,
     postClaims,
+    supportClaims,
   }
 }

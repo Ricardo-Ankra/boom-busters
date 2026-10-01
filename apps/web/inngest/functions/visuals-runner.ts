@@ -5,6 +5,7 @@ import {
   listProjectSets,
   listShotSlots,
   listVoiceTakes,
+  releaseVisualsJob,
   replaceShotList,
   scriptableClaims,
   setProjectStage,
@@ -85,6 +86,9 @@ export const visualsRunner = inngest.createFunction(
     onFailure: async ({ event }) => {
       const projectId = event.data.event.data['projectId']
       if (typeof projectId !== 'string') return
+      // A fetch that died before `load-plan` must not leave "Sending the
+      // fetch" on the plan card (decision 286).
+      await releaseVisualsJob(db, projectId, { op: 'fetch' }).catch(() => undefined)
       await markStageFailed(
         { inngestRunId: '', functionId: FUNCTION_ID, projectId },
         serialiseError(event.data.error),
@@ -305,6 +309,13 @@ export const visualsRunner = inngest.createFunction(
         nextStage: 'visuals',
         message: 'Shot plan approved — fetching the visuals',
       })
+      // The fetch has been picked up (decision 286): from here "phase plan,
+      // stage running" is what tells the board a fetch is under way, so the
+      // stamp Fetch visuals wrote goes. By op, not job id: the approval came
+      // through a parked wait, and reading a new field from it outside a step
+      // is how decision 279's parked runs crashed. Inside this step, so a run
+      // parked before this shipped picks it up when it resumes.
+      await releaseVisualsJob(db, projectId, { op: 'fetch' })
 
       // Re-read, never reuse the generation-time rows: the whole point of
       // the park is that the briefs changed while the run slept.

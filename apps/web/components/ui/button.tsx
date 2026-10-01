@@ -71,7 +71,10 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(function 
     <Comp
       ref={ref}
       className={cn(buttonVariants({ variant, size }), className)}
-      disabled={disabled ?? busy}
+      // `||`, not `??`: a caller's own `disabled={!ready}` is false most of
+      // the time, and with `??` that false switched the busy lock off, so a
+      // spinning button still took clicks.
+      disabled={disabled || busy}
       aria-busy={busy || undefined}
       {...props}
     >

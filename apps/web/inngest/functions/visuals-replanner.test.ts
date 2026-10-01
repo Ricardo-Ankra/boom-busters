@@ -17,6 +17,7 @@ import {
   seed,
   setCastPhotos,
   setProjectDirection,
+  setVisualsJob,
   setVisualsPhase,
   shotSlots,
   truncateRunMirror,
@@ -24,6 +25,7 @@ import {
   updateSlotBrief,
 } from '@boom-busters/db'
 import { mockDirectorsBook } from '@boom-busters/providers'
+import { newId } from '@boom-busters/schemas'
 import type { ShotBrief } from '@boom-busters/schemas'
 import { InngestTestEngine } from '@inngest/test'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -47,8 +49,14 @@ const describeDb = requireTestDatabase() ? describe : describe.skip
 
 function replanEvent(
   op: 'direction' | 'shots' | 'repair',
+  jobId?: string,
 ): [{ name: string; data: Record<string, unknown> }] {
-  return [{ name: 'visuals/replan.requested', data: { projectId: FIXTURE_PROJECT_ID, op } }]
+  return [
+    {
+      name: 'visuals/replan.requested',
+      data: { projectId: FIXTURE_PROJECT_ID, op, ...(jobId ? { jobId } : {}) },
+    },
+  ]
 }
 
 describeDb('visuals-replanner (mock mode)', () => {
@@ -191,6 +199,30 @@ describeDb('visuals-replanner (mock mode)', () => {
     const { result } = await engine.execute({ events: replanEvent('shots') })
     expect(result).toMatchObject({ outcome: 'not-in-plan' })
     expect((await listShotSlots(db, FIXTURE_PROJECT_ID))[0]?.brief['description']).toBe('old plan')
+  })
+
+  it('releases its own stamp when the re-plan lands (decision 286)', async () => {
+    const jobId = newId()
+    await setVisualsJob(db, FIXTURE_PROJECT_ID, {
+      op: 'shots',
+      jobId,
+      startedAt: new Date().toISOString(),
+    })
+    await engine.execute({ events: replanEvent('shots', jobId) })
+    expect((await getProject(db, FIXTURE_PROJECT_ID))!.visualsJob).toBeNull()
+  })
+
+  it('releases it on the early return outside the plan checkpoint too', async () => {
+    const jobId = newId()
+    await setVisualsJob(db, FIXTURE_PROJECT_ID, {
+      op: 'shots',
+      jobId,
+      startedAt: new Date().toISOString(),
+    })
+    await setVisualsPhase(db, FIXTURE_PROJECT_ID, 'board')
+    const { result } = await engine.execute({ events: replanEvent('shots', jobId) })
+    expect(result).toMatchObject({ outcome: 'not-in-plan' })
+    expect((await getProject(db, FIXTURE_PROJECT_ID))!.visualsJob).toBeNull()
   })
 })
 

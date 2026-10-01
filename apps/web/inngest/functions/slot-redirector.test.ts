@@ -9,11 +9,13 @@ import {
   requireTestDatabase,
   saveChapter,
   seed,
+  setSlotJob,
   setSlotRefusal,
   setVisualsPhase,
   shotSlots,
   truncateRunMirror,
 } from '@boom-busters/db'
+import { newId } from '@boom-busters/schemas'
 import type { ShotBrief } from '@boom-busters/schemas'
 import { InngestTestEngine } from '@inngest/test'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -101,5 +103,20 @@ describeDb('slot-redirector (mock mode)', () => {
     expect(String(slot?.brief['description'])).toContain('[mock]')
     // Plan phase: nothing fetched.
     expect(slot?.candidates).toEqual([])
+  })
+
+  it('releases its own stamp when the redirect lands (decision 286)', async () => {
+    const jobId = newId()
+    await setSlotJob(db, slotId, { kind: 'redirect', jobId, startedAt: new Date().toISOString() })
+    const { result } = await engine.execute({
+      events: [
+        {
+          name: 'visuals/redirect.requested',
+          data: { projectId: FIXTURE_PROJECT_ID, slotId, jobId },
+        },
+      ],
+    })
+    expect(result).toMatchObject({ outcome: 'redirected' })
+    expect((await getShotSlot(db, slotId))!.pendingJob).toBeNull()
   })
 })

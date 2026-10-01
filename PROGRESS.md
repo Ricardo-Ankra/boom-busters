@@ -6423,6 +6423,93 @@ green.
      headline and graphic slots, so a social render fails fast with the
      reason rather than retrying against the old broker.
 
+     _Amended 2026-09-30 (owner: "no claim in this project's dossier cites
+     one yet"):_ the "Post on X" chooser also takes a pasted post filed
+     under any claim. `retypeToSocialAction` gains an optional address; with
+     one, the claim is only the audit trail and its own citation is never
+     rewritten, which spec 8.2 asked for and the chooser had contradicted by
+     offering only claims already sourced to a post. A verified claim's
+     source cannot be edited on the dossier screen, so the old path was a
+     dead end for most films. The planner's gate is unchanged.
+
+285. **The visual board gets decision 240, folding chapters, and notes on
+     their cards** (2026-09-30, owner: "make sure we're displaying
+     everything, and that the user is getting proper feedback on the
+     edits", a button state test, and "collapse and expand the different
+     chapters so that we don't have to scroll through all the shots").
+     An audit of the board found it was never wired to decision 240. One
+     `busySlot` string locked the whole board, so a press on card B
+     overwrote card A's lock, and A finishing unlocked B mid-save. About
+     half the board's action buttons took no busy state at all (Upload own
+     through a 200 MB upload, Save & re-fetch, Draft it, every Use this in
+     the shot picker, the headline card's three), and the post card spun
+     every one of its buttons at once. Under all of it, `Button` computed
+     `disabled ?? busy`, so any caller passing `disabled={!ready}` switched
+     the busy lock off: a spinning Save camera or Save excerpt still took
+     clicks. Now `Button` is `disabled || busy`; the board's `act` keeps a
+     map of keys (slot ids and the plan card's five actions), guards
+     double-fire with a ref, and runs the refresh in a transition so a lock
+     spans the round trip; a press name spins only the control pressed
+     while the card's other actions stand down (a `SlotLock` context, not
+     a prop, so a nested control cannot forget it). Fetch visuals, Fix,
+     Re-plan and both Direction buttons share one lock.
+     `DirectionCard` reset its form on every refresh, because it watched
+     the book's object identity and the plan checkpoint refreshes itself
+     while parked: unsaved typing vanished whenever a slot fetch landed.
+     It now watches the book's content, CameraRow's lesson.
+     Chapters fold from their header (a button inside the heading), which
+     carries the chapter's tally (shots, ready, placeholders, being
+     fetched, drafting, to look at; craft notes before Fetch), so a folded
+     chapter still names what in it needs the producer. Folding hides the
+     cards rather than unmounting them, so a half-typed brief survives; the
+     fold is remembered per project in this browser only; a filmstrip jump
+     into a folded chapter opens it. Craft notes used to end "(slot 0)", a
+     zero-based count over briefed slots that no card shows; they now read
+     "(ch 2 · 1:14)" and each also sits on its own card. Filmstrip and
+     candidate thumbs were `<button role="listitem">`, which replaced the
+     button role; the list item now wraps the button.
+     Not done, and the largest gap left: Regenerate, Redirect, Re-plan,
+     Fix and Fetch visuals send an event and return, and nothing stored
+     says the job is running, so once the toast fades the card looks
+     untouched and offers the same spend again. Fixing it needs an
+     in-flight state on the slot or project row, written by the action and
+     cleared by the job, which is a schema change for the owner to approve.
+286. **The board says a background job is running until it lands**
+     (2026-09-30, owner, after decision 285: proper feedback on edits).
+     Regenerate, Fetch this slot, Save & re-fetch, Redirect, Re-plan, Fix,
+     Redraft and Fetch visuals each sent an event and returned, and nothing
+     stored said the job was running, so the card went back to offering the
+     same paid action while it worked; a second press cancelled the first
+     run (every one is a `cancel` singleton). Worst was Fetch visuals: the
+     plan phase lasts the whole fetch pass, so the plan screen kept offering
+     Fetch, and a second press sent `fetch.resume` and cancelled the fetch
+     in flight. Now the action stamps the row before it sends
+     (`shot_slots.pending_job`, `projects.visuals_job`, each with a
+     `jobId`), and the job releases only its own stamp, once, in a
+     `release-job` step after its body returns (so none of the re-planner's
+     eight exits can forget it), and again in `onFailure`. Stop clears every
+     stamp on the project, and the stuck `drafting`/`rebriefing` re-types
+     it used to leave behind. Fetch visuals hands over at the gate close:
+     the runner clears the `fetch` stamp by op inside `load-plan` (not by
+     job id, which would mean reading a new field from a parked wait, the
+     decision 279 crash), and from there "plan phase, stage running" is the
+     signal; `approvePlanAction` also refuses a second Fetch while it runs.
+     "Running" counts only with a live run in the mirror, and only at the
+     visuals stage, so a runner that died without `onFailure` does not lock
+     the board and Fetch visuals still resumes it (decision 279). The page
+     polls while any stamp is young, because a job sent from a plan screen
+     with no parked run has no live run to poll on, and a slot stamp moves
+     `projects.updated_at` so the pulse sees it land.
+     The board locks the card (or, for plan jobs, the whole board), keeps
+     the pressed button spinning, and says what is running and for how
+     long; past 10 minutes a stamp stops locking and the card says it may
+     have stopped. Age is measured on the server's clock (`renderedAt` plus
+     time elapsed in the browser), so a wrong laptop clock changes nothing.
+     The production build applies migration 0031 itself
+     (`scripts/deploy-migrate.mjs`); after the deploy, `PUT /api/inngest`;
+     no broker or Remotion redeploy. Test databases need
+     `pnpm db:migrate:test`.
+
 287. **Still prompts with one owner per fact** (2026-09-29 to 2026-09-30,
      owner: "coffee cups with the coffee ring stains on the desk ...
      sometimes there is an extra random desk, or the computer screens are

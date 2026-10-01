@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { newId } from './ids'
 import {
   ChartBriefSchema,
   GraphicBriefSchema,
@@ -10,8 +11,10 @@ import {
   ShotBriefSchema,
   SlotCandidateSchema,
   SlotDraftStateSchema,
+  SlotJobSchema,
   SocialBriefSchema,
   StillBriefSchema,
+  VisualsJobSchema,
   claimCarriesArticle,
   convertBrief,
   mapClaimRefs,
@@ -791,5 +794,28 @@ describe('claimCarriesArticle', () => {
     ).toBe(false)
     expect(claimCarriesArticle(outlet(null))).toBe(false)
     expect(claimCarriesArticle(undefined)).toBe(false)
+  })
+})
+
+describe('job stamps (decision 286)', () => {
+  const startedAt = '2026-09-30T10:00:00.000Z'
+
+  it('takes a refetch or redirect stamp on a slot, and nothing else', () => {
+    const jobId = newId()
+    expect(SlotJobSchema.safeParse({ kind: 'refetch', jobId, startedAt }).success).toBe(true)
+    expect(SlotJobSchema.safeParse({ kind: 'redirect', jobId, startedAt }).success).toBe(true)
+    expect(SlotJobSchema.safeParse({ kind: 'retype', jobId, startedAt }).success).toBe(false)
+    expect(
+      SlotJobSchema.safeParse({ kind: 'refetch', jobId, startedAt: 'yesterday' }).success,
+    ).toBe(false)
+  })
+
+  it('names the project ops the re-plan event already uses, plus fetch', () => {
+    for (const op of ['shots', 'repair', 'direction', 'fetch']) {
+      expect(VisualsJobSchema.safeParse({ op, jobId: newId(), startedAt }).success).toBe(true)
+    }
+    expect(VisualsJobSchema.safeParse({ op: 'replan', jobId: newId(), startedAt }).success).toBe(
+      false,
+    )
   })
 })

@@ -7,9 +7,21 @@ import {
   SOCIAL_TOO_LONG,
   socialDisplayText,
 } from '@boom-busters/compositions/social'
-import { DEFAULT_SETTINGS, excerptPlacement, resolveBrandKit } from '@boom-busters/schemas'
+import {
+  DEFAULT_SETTINGS,
+  excerptPlacement,
+  JOB_STALE_MS,
+  newId,
+  resolveBrandKit,
+} from '@boom-busters/schemas'
 import type { CastMember, SocialBrief, SocialPostRecord } from '@boom-busters/schemas'
-import { socialSlotView } from './visuals-review'
+import {
+  isFetching,
+  jobsNeedPolling,
+  slotJobView,
+  socialSlotView,
+  visualsJobView,
+} from './visuals-review'
 
 /**
  * What the board shows for a social slot (decision 284, spec 8.4 and 9),
@@ -233,5 +245,85 @@ describe('socialSlotView', () => {
     expect(view.issues).toHaveLength(1)
     expect(view.payload).toBeNull()
     expect(view.suggestedExcerpt).toBeNull()
+  })
+})
+
+describe('job stamps as the board reads them (decision 286)', () => {
+  const startedAt = '2026-09-30T10:00:00.000Z'
+  const jobId = newId()
+
+  it('passes a slot stamp through without its job id, and reads anything else as no job', () => {
+    expect(slotJobView({ kind: 'refetch', jobId, startedAt })).toEqual({
+      kind: 'refetch',
+      startedAt,
+    })
+    expect(slotJobView(null)).toBeNull()
+    // A stamp that fails its schema must never lock a card.
+    expect(slotJobView({ kind: 'refetch', startedAt })).toBeNull()
+    expect(slotJobView({ kind: 'teleport', jobId, startedAt })).toBeNull()
+  })
+
+  it('passes a project stamp through the same way', () => {
+    expect(visualsJobView({ op: 'shots', jobId, startedAt })).toEqual({ op: 'shots', startedAt })
+    expect(visualsJobView({ op: 'replan', jobId, startedAt })).toBeNull()
+  })
+
+  it('reads a fetch as running only at the plan phase with a live stage', () => {
+    const at = (stageStatus: string, stage = 'visuals') => ({ stage, stageStatus })
+    expect(isFetching('plan', at('running'), true)).toBe(true)
+    expect(isFetching('plan', at('queued'), false)).toBe(true)
+    expect(isFetching('plan', at('awaiting_review'), true)).toBe(false)
+    // Stop in the middle of a fetch leaves the stage cancelled, not running.
+    expect(isFetching('plan', at('cancelled'), false)).toBe(false)
+    expect(isFetching('plan', at('failed'), false)).toBe(false)
+    expect(isFetching('board', at('running'), true)).toBe(false)
+    expect(isFetching(null, at('running'), true)).toBe(false)
+    expect(isFetching('plan', undefined, true)).toBe(false)
+  })
+
+  it('does not read a stranded running stage as a fetch, so Fetch visuals can resume it', () => {
+    // The runner died without its onFailure: the column says running and no
+    // run is behind it. Decision 279's resume is the way out, not a lock.
+    expect(isFetching('plan', { stage: 'visuals', stageStatus: 'running' }, false)).toBe(false)
+  })
+
+  it('does not read another stage’s run as a fetch', () => {
+    // Voice re-run while a visuals plan sits in the row: the phase is still plan.
+    expect(isFetching('plan', { stage: 'voice', stageStatus: 'running' }, true)).toBe(false)
+  })
+})
+
+describe('jobsNeedPolling (decision 286)', () => {
+  const renderedAt = '2026-09-30T10:00:00.000Z'
+  const ago = (ms: number) => new Date(Date.parse(renderedAt) - ms).toISOString()
+  const slot = (job: { kind: 'refetch' | 'redirect'; startedAt: string } | null) => ({ job })
+  const model = (overrides: Partial<Parameters<typeof jobsNeedPolling>[0]> = {}) => ({
+    renderedAt,
+    job: null,
+    fetching: false,
+    chapters: [{ slots: [slot(null)] }],
+    ...overrides,
+  })
+
+  it('polls while a slot or plan job younger than the limit is on the board', () => {
+    expect(jobsNeedPolling(model())).toBe(false)
+    expect(
+      jobsNeedPolling(
+        model({ chapters: [{ slots: [slot({ kind: 'refetch', startedAt: ago(60_000) })] }] }),
+      ),
+    ).toBe(true)
+    expect(jobsNeedPolling(model({ job: { op: 'repair', startedAt: ago(60_000) } }))).toBe(true)
+    expect(jobsNeedPolling(model({ fetching: true }))).toBe(true)
+  })
+
+  it('stops polling for stamps past the limit, which nothing will release', () => {
+    expect(
+      jobsNeedPolling(
+        model({
+          job: { op: 'shots', startedAt: ago(JOB_STALE_MS + 1) },
+          chapters: [{ slots: [slot({ kind: 'redirect', startedAt: ago(JOB_STALE_MS + 1) })] }],
+        }),
+      ),
+    ).toBe(false)
   })
 })

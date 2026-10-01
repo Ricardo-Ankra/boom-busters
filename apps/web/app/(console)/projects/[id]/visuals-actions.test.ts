@@ -6,8 +6,10 @@ import {
   createScriptVersion,
   deleteCastMember,
   deleteProjectSet,
+  ensureRun,
   FIXTURE_DOSSIER_ID,
   FIXTURE_PROJECT_ID,
+  getProject,
   getShotSlot,
   getSocialPost,
   insertCastMember,
@@ -18,6 +20,7 @@ import {
   replaceShotList,
   requireTestDatabase,
   saveChapter,
+  scriptableClaims,
   seed,
   setSlotResolution,
   setProjectStage,
@@ -28,7 +31,9 @@ import {
   shotSlots,
   slotNeedsResolution,
   socialPosts,
+  truncateRunMirror,
   updateSettings,
+  updateSlotBrief,
 } from '@boom-busters/db'
 import type { NewShotSlot } from '@boom-busters/db'
 import {
@@ -49,8 +54,10 @@ import {
   finaliseOwnUploadAction,
   linkCastHandleAction,
   refetchSlotAction,
+  redirectSceneAction,
   refetchSocialPostAction,
   removeSocialImageAction,
+  replanShotsAction,
   retypeSlotAction,
   retypeToHeadlineAction,
   retypeToSocialAction,
@@ -1463,6 +1470,71 @@ describeDb('re-typing to a social post card (decision 284)', () => {
     expect(brief.postUrl).toBe('https://x.com/i/status/1740000000000000002')
     expect(inngest.send.mock.calls[0]?.[0]).toMatchObject({ name: 'visuals/refetch.requested' })
   })
+
+  // Amended 2026-09-30: a pasted post may be filed under any claim, and the
+  // claim keeps the source it was verified against.
+  it('shows a pasted post under a claim sourced to an article, leaving that source alone', async () => {
+    const articleClaim = fixtureId('CLAIM', 2)
+    const before = (await scriptableClaims(db, FIXTURE_PROJECT_ID)).find(
+      (row) => row.id === articleClaim,
+    )!
+    expect(
+      await retypeToSocialAction(
+        FIXTURE_PROJECT_ID,
+        stockId,
+        articleClaim,
+        'https://twitter.com/EMostaque/status/1771400218170519741?s=20',
+      ),
+    ).toEqual({ ok: true })
+
+    const row = (await getShotSlot(db, stockId))!
+    expect(row.type).toBe('social')
+    const brief = row.brief as unknown as { sourceClaimId: string; postUrl: string }
+    expect(brief.sourceClaimId).toBe(articleClaim)
+    expect(brief.postUrl).toBe('https://x.com/i/status/1771400218170519741')
+
+    const after = (await scriptableClaims(db, FIXTURE_PROJECT_ID)).find(
+      (row) => row.id === articleClaim,
+    )!
+    expect(after.sourceUrl).toBe(before.sourceUrl)
+  })
+
+  it('refuses a pasted address that is not a post, before touching the slot', async () => {
+    expect(
+      await retypeToSocialAction(
+        FIXTURE_PROJECT_ID,
+        stockId,
+        fixtureId('CLAIM', 2),
+        'https://x.com/EMostaque',
+      ),
+    ).toEqual({ ok: false, error: NOT_A_POST_ERROR })
+    expect((await getShotSlot(db, stockId))!.type).toBe('stock')
+  })
+
+  it('refuses a claim that is not in this project', async () => {
+    expect(
+      await retypeToSocialAction(
+        FIXTURE_PROJECT_ID,
+        stockId,
+        fixtureId('CLAIM', 99),
+        'https://x.com/EMostaque/status/1771400218170519741',
+      ),
+    ).toEqual({ ok: false, error: 'That claim is no longer in this project’s dossier.' })
+  })
+
+  it('moves a card to a different pasted post under the same claim', async () => {
+    await retypeToSocialAction(FIXTURE_PROJECT_ID, stockId, POST_CLAIM_ID)
+    expect(
+      await retypeToSocialAction(
+        FIXTURE_PROJECT_ID,
+        stockId,
+        POST_CLAIM_ID,
+        'https://x.com/jack/status/20',
+      ),
+    ).toEqual({ ok: true })
+    const brief = (await getShotSlot(db, stockId))!.brief as unknown as { postUrl: string }
+    expect(brief.postUrl).toBe('https://x.com/i/status/20')
+  })
 })
 
 describeDb("linking a cast member's X handle (decision 284)", () => {
@@ -1532,5 +1604,121 @@ describeDb("linking a cast member's X handle (decision 284)", () => {
         await unlinkCastHandleAction(FIXTURE_PROJECT_ID, '01J0000000000000000000000Y', SLOT),
       ).toEqual({ ok: false, error: 'This cast member no longer exists.' })
     })
+  })
+})
+
+describeDb('job stamps (decision 286)', () => {
+  let slotId = ''
+
+  beforeEach(async () => {
+    vi.clearAllMocks()
+    inngest.send.mockResolvedValue(undefined)
+    await seed(db)
+    await truncateRunMirror(db)
+    await db.delete(shotSlots)
+    const script = await createScriptVersion(db, FIXTURE_PROJECT_ID)
+    const chapter = await saveChapter(db, {
+      scriptId: script.id,
+      index: 0,
+      title: 'The audit',
+      contentMd: 'One.',
+      estRuntimeSec: 30,
+    })
+    await replaceShotList(db, FIXTURE_PROJECT_ID, [
+      {
+        chapterId: chapter.id,
+        index: 0,
+        type: 'stock',
+        brief: stock('One.', 'the lobby'),
+        startMs: 0,
+        durationMs: 6000,
+      },
+    ])
+    slotId = (await listShotSlots(db, FIXTURE_PROJECT_ID))[0]!.id
+    await setVisualsPhase(db, FIXTURE_PROJECT_ID, 'plan')
+    await setProjectStage(db, FIXTURE_PROJECT_ID, {
+      stage: 'visuals',
+      stageStatus: 'awaiting_review',
+    })
+  })
+
+  /** The one event the action sent, and its data. */
+  const sent = () => (inngest.send.mock.calls.at(-1)![0] as { data: Record<string, unknown> }).data
+
+  it('stamps a refetch before it sends, with the id the event carries', async () => {
+    expect(await refetchSlotAction(FIXTURE_PROJECT_ID, slotId, 'Regenerate')).toEqual({
+      ok: true,
+    })
+    const stamp = (await getShotSlot(db, slotId))!.pendingJob as { kind: string; jobId: string }
+    expect(stamp.kind).toBe('refetch')
+    expect(sent()['jobId']).toBe(stamp.jobId)
+  })
+
+  it('takes the stamp back when the event cannot be sent', async () => {
+    inngest.send.mockRejectedValueOnce(new Error('Inngest is down'))
+    const result = await refetchSlotAction(FIXTURE_PROJECT_ID, slotId, 'Regenerate')
+    expect(result.ok).toBe(false)
+    expect((await getShotSlot(db, slotId))!.pendingJob).toBeNull()
+  })
+
+  it('stamps a redirect on the slot', async () => {
+    // The action checks the brief's type, which is all a redirect needs.
+    await updateSlotBrief(db, slotId, {
+      type: 'still',
+      coversText: 'One.',
+      description: 'the lobby',
+      motion: { kind: 'static' },
+      transition: 'cut',
+      prompt: 'An empty lobby at dusk.',
+    })
+    expect(await redirectSceneAction(FIXTURE_PROJECT_ID, slotId)).toEqual({ ok: true })
+    const stamp = (await getShotSlot(db, slotId))!.pendingJob as { kind: string; jobId: string }
+    expect(stamp.kind).toBe('redirect')
+    expect(sent()['jobId']).toBe(stamp.jobId)
+  })
+
+  it('stamps a re-plan on the project under the op the event names', async () => {
+    expect(await replanShotsAction(FIXTURE_PROJECT_ID)).toEqual({ ok: true })
+    const stamp = (await getProject(db, FIXTURE_PROJECT_ID))!.visualsJob as {
+      op: string
+      jobId: string
+    }
+    expect(stamp.op).toBe('shots')
+    expect(sent()).toMatchObject({ op: 'shots', jobId: stamp.jobId })
+  })
+
+  it('stamps Fetch visuals, and takes it back when the send fails', async () => {
+    expect(await approvePlanAction(FIXTURE_PROJECT_ID)).toEqual({ ok: true })
+    expect((await getProject(db, FIXTURE_PROJECT_ID))!.visualsJob).toMatchObject({
+      op: 'fetch',
+    })
+
+    inngest.send.mockRejectedValueOnce(new Error('Inngest is down'))
+    expect((await approvePlanAction(FIXTURE_PROJECT_ID)).ok).toBe(false)
+    expect((await getProject(db, FIXTURE_PROJECT_ID))!.visualsJob).toBeNull()
+  })
+
+  it('refuses a second Fetch while the first is running, rather than cancelling it', async () => {
+    await setProjectStage(db, FIXTURE_PROJECT_ID, { stage: 'visuals', stageStatus: 'running' })
+    await ensureRun(db, {
+      inngestRunId: 'run-fetching',
+      functionName: 'visuals-runner',
+      projectId: FIXTURE_PROJECT_ID,
+      stage: 'visuals',
+    })
+    const result = await approvePlanAction(FIXTURE_PROJECT_ID)
+    expect(result).toEqual({
+      ok: false,
+      error: 'The fetch is already running. The board updates as the shots land.',
+    })
+    expect(inngest.send).not.toHaveBeenCalled()
+  })
+
+  it('resumes a stranded fetch: the stage says running and no run is behind it', async () => {
+    // The runner died without its onFailure. Refusing here would leave only
+    // a paid re-plan as the way out (decision 279's resume is free).
+    await setProjectStage(db, FIXTURE_PROJECT_ID, { stage: 'visuals', stageStatus: 'running' })
+    expect(await approvePlanAction(FIXTURE_PROJECT_ID)).toEqual({ ok: true })
+    expect(inngest.send.mock.calls[0]?.[0]).toMatchObject({ name: 'visuals/fetch.resume' })
   })
 })
