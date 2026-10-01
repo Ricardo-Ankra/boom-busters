@@ -333,8 +333,11 @@ Each option carries one label:
   price**;
 - **no longer offered**: catalogued or saved, but absent from the provider's
   last successful list; still selectable, with a warning line;
-- **needs a price**: matches no family; disabled until **Set price** is
-  used;
+- **needs a price**: matches no family. Choosing it saves nothing; it opens
+  the price form ("<model> needs a price before it can run."), and **Save
+  price and use** saves the price and the route together. Clearing the price
+  of a model with no family or catalogue row is refused while a route uses
+  it;
 - **not compatible** (fal only): disabled, with the reason.
 
 Google previews sit in their own group at the bottom of the Google options,
