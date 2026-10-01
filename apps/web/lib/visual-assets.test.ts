@@ -36,9 +36,11 @@ import { db } from '@/lib/db'
 import * as modelCatalogue from '@/lib/model-catalogue'
 import {
   generateStillCandidates,
+  plateEstimateUsd,
   referenceBudgets,
   resolveSlotBrief,
   routeForBrief,
+  setSheetEstimateUsd,
   stillSlotEstimateUsd,
   stillsEstimateUsd,
 } from './visual-assets'
@@ -1190,5 +1192,51 @@ describeDb('the route stored on a slot wins', () => {
     expect(await stillSlotEstimateUsd()).toBeCloseTo(0.02 * STILL_GENERATIONS)
     await generateStillCandidates({ ...still, depicts: [] }, FIXTURE_PROJECT_ID)
     expect(await lastLedgerModel()).toBe('fal-ai/mock-flux')
+  })
+})
+
+describeDb('a live-only route the cache no longer holds (decision 287)', () => {
+  beforeEach(async () => {
+    vi.stubEnv('MOCK_PROVIDERS', '1')
+    await seed(db)
+    await updateSettings(db, { budgets: { monthlyCeilingUsd: 100 } })
+    // A refresh that stopped returning every live-only Google model.
+    await replaceCatalogue(db, 'google', [], new Date())
+  })
+
+  afterEach(async () => {
+    vi.unstubAllEnvs()
+    await updateSettings(db, { modelRouting: DEFAULT_SETTINGS.modelRouting })
+  })
+
+  it('still prices a Gemini model its family resolves from settings alone', async () => {
+    const route = { provider: 'google' as const, model: 'gemini-9-flash-image' }
+    await updateSettings(db, {
+      modelRouting: { stills: route, stillsLikeness: route, setSheet: route },
+    })
+    // Gemini 3.1 Flash Image's price: $0.07 per image, $0.16 at 4K.
+    expect(await stillSlotEstimateUsd()).toBeCloseTo(0.07 * STILL_GENERATIONS)
+    expect(await plateEstimateUsd()).toBeCloseTo(0.07 * STILL_GENERATIONS)
+    expect(await setSheetEstimateUsd()).toBeCloseTo(0.16)
+    expect(await stillsEstimateUsd([{ ...still, depicts: [] }], FIXTURE_PROJECT_ID)).toBeCloseTo(
+      0.07 * STILL_GENERATIONS,
+    )
+    // And a run still tries it (spec section 9).
+    await generateStillCandidates({ ...still, depicts: [] }, FIXTURE_PROJECT_ID)
+    expect(await lastLedgerModel()).toBe('gemini-9-flash-image')
+  })
+
+  it('prices a route nothing resolves at $0 rather than taking the page down, and refuses to spend on it', async () => {
+    const route = { provider: 'google' as const, model: 'gemini-unknown-image' }
+    await updateSettings(db, {
+      modelRouting: { stills: route, stillsLikeness: null, setSheet: route },
+    })
+    expect(await stillSlotEstimateUsd()).toBe(0)
+    expect(await plateEstimateUsd()).toBe(0)
+    expect(await setSheetEstimateUsd()).toBe(0)
+    expect(await stillsEstimateUsd([{ ...still, depicts: [] }], FIXTURE_PROJECT_ID)).toBe(0)
+    await expect(
+      generateStillCandidates({ ...still, depicts: [] }, FIXTURE_PROJECT_ID),
+    ).rejects.toThrow(/does not offer the image model "gemini-unknown-image"/)
   })
 })

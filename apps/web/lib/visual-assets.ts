@@ -52,6 +52,7 @@ import {
 import type {
   ImageGenProvider,
   ImageReference,
+  ImageSize,
   ReferenceLimits,
   StockQuery,
 } from '@boom-busters/providers'
@@ -179,6 +180,9 @@ async function stillBriefPriceUsd(
   const members = depictedFrom(brief, cast)
   const derived = routeForBrief(brief, cast, sets, routing)
   const route = stored && adapterOffers(stored, catalogue) ? stored : derived
+  // A route nothing prices is a wrong button price, not a dead page; the
+  // fetch itself still refuses it.
+  if (!adapterOffers(route, catalogue)) return 0
   const live = catalogue[route.provider]
   const budgets = referenceBudgets(live.referenceLimits(route.model))
   const set = setFrom(brief, sets)
@@ -451,16 +455,14 @@ export async function requireVisualKeys(types: ReadonlySet<ShotBrief['type']>): 
 export async function plateEstimateUsd(): Promise<number> {
   const settings = await getSettings(db)
   const catalogue = await stillCatalogue(settings)
-  const route = settings.modelRouting.stills
-  return round4(imageGenPrice(catalogue[route.provider], STILL_GENERATIONS, route.model))
+  return round4(routePriceUsd(catalogue, settings.modelRouting.stills, STILL_GENERATIONS))
 }
 
 /** What "Build the set" will spend: one 4K image on the set-sheet route (decision 275). */
 export async function setSheetEstimateUsd(): Promise<number> {
   const settings = await getSettings(db)
   const catalogue = await stillCatalogue(settings)
-  const route = settings.modelRouting.setSheet
-  return round4(imageGenPrice(catalogue[route.provider], 1, route.model, '4K'))
+  return round4(routePriceUsd(catalogue, settings.modelRouting.setSheet, 1, '4K'))
 }
 
 export async function stillSlotEstimateUsd(): Promise<number> {
@@ -468,11 +470,25 @@ export async function stillSlotEstimateUsd(): Promise<number> {
   const catalogue = await stillCatalogue(settings)
   const routing = settings.modelRouting
   const routes = [routing.stills, ...(routing.stillsLikeness ? [routing.stillsLikeness] : [])]
-  return Math.max(
-    ...routes.map((route) =>
-      imageGenPrice(catalogue[route.provider], STILL_GENERATIONS, route.model),
-    ),
-  )
+  return Math.max(...routes.map((route) => routePriceUsd(catalogue, route, STILL_GENERATIONS)))
+}
+
+/**
+ * A button's price on one route, or 0 when the route's adapter does not
+ * offer its model (decision 287). These prices are read on every project
+ * page and the board, and `imageGenPrice` throws on an unknown model, so a
+ * route nothing can price must cost a wrong number on a button rather than
+ * the whole page. Spending on it is still refused: `generateStillCandidates`
+ * reads the model unguarded.
+ */
+function routePriceUsd(
+  catalogue: Record<StillProvider, ImageGenProvider>,
+  route: StillRoute,
+  count: number,
+  size?: ImageSize,
+): number {
+  if (!adapterOffers(route, catalogue)) return 0
+  return imageGenPrice(catalogue[route.provider], count, route.model, size)
 }
 
 // ---------------------------------------------------------------------------

@@ -6565,6 +6565,10 @@ green.
      set-sheet price form requires the 4K price specifically, because a
      sheet is always rendered at 4K and a missing size would otherwise be
      charged at the per-image default.
+     From the whole-branch review: live-only image routes are kept on the
+     adapter list from settings, so one a refresh stops returning still
+     prices and runs; the family rules exclude Opus and Sonnet 4 and 4.1
+     and gpt-5-pro, which cost far more than their line's representative.
      Not done (spec section 12): per-model output caps read from the live
      list; a "try this model" button that proves a listed model actually
      answers; a voice model dropdown fed by ElevenLabs; refreshing

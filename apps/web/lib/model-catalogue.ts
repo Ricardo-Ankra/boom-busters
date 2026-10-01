@@ -18,10 +18,12 @@ import {
   liveImageGenWith,
   mockListedModels,
   mockProvidersEnabled,
+  resolveImageModel,
 } from '@boom-busters/providers'
 import type {
   CatalogueProvider,
   FalDialect,
+  ImageGenModel,
   ImageGenProvider,
   ListedModel,
   ModelOptions,
@@ -144,10 +146,36 @@ export async function loadModelOptions(settings: Settings): Promise<ModelOptions
 }
 
 /**
+ * The effective list plus every image route Settings names on this
+ * provider that settings alone can price (its family, or the owner's
+ * price). A live-only model a later refresh stops returning leaves the
+ * cache, and without this it would leave the adapter too, so every price
+ * read on the project page would throw on it. Spec section 9: a saved model
+ * the provider stops listing is labelled, not removed, and a run still
+ * tries it. A fal id cannot resolve without its cached dialect, so fal
+ * gains nothing here.
+ */
+function withRoutedModels(
+  provider: StillProvider,
+  models: ImageGenModel[],
+  settings: Settings,
+): ImageGenModel[] {
+  const routing = settings.modelRouting
+  for (const route of [routing.stills, routing.stillsLikeness, routing.setSheet]) {
+    if (!route || route.provider !== provider) continue
+    if (models.some((model) => model.id === route.model)) continue
+    const resolved = resolveImageModel(provider, route.model, settings.modelPrices)?.model
+    if (resolved && !models.some((model) => model.id === resolved.id)) models.push(resolved)
+  }
+  return models
+}
+
+/**
  * Live image adapters over each provider's effective list (catalogue
- * repriced by the owner, plus choosable cached models). Prices, limits,
- * labels and reference routes read from these, so a still routed at a live
- * model is priced and checked like any other.
+ * repriced by the owner, plus choosable cached models, plus the routed
+ * models settings can price). Prices, limits, labels and reference routes
+ * read from these, so a still routed at a live model is priced and checked
+ * like any other.
  */
 export async function stillCatalogue(
   settings: Settings,
@@ -156,7 +184,14 @@ export async function stillCatalogue(
   return Object.fromEntries(
     STILL_PROVIDERS.map((provider) => [
       provider,
-      liveImageGenWith(provider, effectiveImageModels(provider, settings.modelPrices, listed)),
+      liveImageGenWith(
+        provider,
+        withRoutedModels(
+          provider,
+          effectiveImageModels(provider, settings.modelPrices, listed),
+          settings,
+        ),
+      ),
     ]),
   ) as Record<StillProvider, ImageGenProvider>
 }
