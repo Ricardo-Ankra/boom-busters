@@ -104,6 +104,33 @@ const imagePrice = (model: ImageGenModel): OptionPrice => ({
   ...(model.pricesBySize ? { pricesBySize: model.pricesBySize } : {}),
 })
 
+const DATED = /-\d{8}$/
+
+/**
+ * Whether a live id is a catalogued id under another name: the same id, its
+ * `-YYYYMMDD` snapshot, or, for a catalogued snapshot, its undated alias.
+ * Anthropic may list only one of the two, and a catalogued default must not
+ * read as no longer offered because the list chose the other spelling.
+ */
+function sameModel(catalogued: string, live: string): boolean {
+  if (catalogued === live) return true
+  if (DATED.test(live) && live.replace(DATED, '') === catalogued) return true
+  return DATED.test(catalogued) && catalogued.replace(DATED, '') === live
+}
+
+const listedAs = (catalogued: string, liveIds: readonly string[]) =>
+  liveIds.some((live) => sameModel(catalogued, live))
+
+/**
+ * A catalogued model's status. The owner's price wins over "retired": the
+ * tab must keep showing that price with its Edit and Clear buttons, and a
+ * run still tries the model (spec section 9).
+ */
+function catalogueStatus(source: PriceSource, listed: boolean): OptionStatus {
+  if (source === 'override') return 'override'
+  return listed ? statusFor(source) : 'retired'
+}
+
 /** Live-only options after the catalogue: non-previews first, then by label. */
 const byPreviewThenLabel = (a: ModelOption, b: ModelOption) =>
   Number(a.preview) - Number(b.preview) || a.label.localeCompare(b.label)
@@ -115,17 +142,16 @@ function llmOptions(
   prices: ModelPrices | undefined,
 ): ModelOption[] {
   const rows = listed.filter((m) => m.provider === provider && m.kind === 'llm')
-  const liveIds = new Set(rows.map((m) => m.id))
+  const liveIds = rows.map((m) => m.id)
   const catalogue = LLM_MODELS[provider]
-  const known = new Set(catalogue.map((m) => m.id))
+  const knownIds = catalogue.map((m) => m.id)
 
   const fromCatalogue = catalogue.map((model): ModelOption => {
     const resolved = resolveLlmModel(provider, model.id, prices)!
-    const retired = hasLive && !liveIds.has(model.id)
     return {
       id: model.id,
       label: model.label,
-      status: retired ? 'retired' : statusFor(resolved.source),
+      status: catalogueStatus(resolved.source, !hasLive || listedAs(model.id, liveIds)),
       preview: false,
       selectable: true,
       price: llmPrice(resolved.model),
@@ -137,7 +163,7 @@ function llmOptions(
   })
 
   const liveOnly = rows
-    .filter((row) => !known.has(row.id))
+    .filter((row) => !knownIds.some((id) => sameModel(id, row.id)))
     .map((row): ModelOption => {
       const resolved = resolveLlmModel(provider, row.id, prices)
       const family = llmFamily(provider, row.id)
@@ -174,16 +200,16 @@ function imageOptions(
   prices: ModelPrices | undefined,
 ): ModelOption[] {
   const rows = listed.filter((m) => m.provider === provider && m.kind === 'image')
-  const liveIds = new Set(rows.map((m) => m.id))
+  const liveIds = rows.map((m) => m.id)
   const catalogue = IMAGE_CATALOGUES[provider]
-  const known = new Set(catalogue.map((m) => m.id))
+  const knownIds = catalogue.map((m) => m.id)
 
   const fromCatalogue = catalogue.map((model): ModelOption => {
     const resolved = resolveImageModel(provider, model.id, prices)!
     return {
       id: model.id,
       label: model.label,
-      status: hasLive && !liveIds.has(model.id) ? 'retired' : statusFor(resolved.source),
+      status: catalogueStatus(resolved.source, !hasLive || listedAs(model.id, liveIds)),
       preview: false,
       selectable: true,
       price: imagePrice(resolved.model),
@@ -195,7 +221,7 @@ function imageOptions(
   })
 
   const liveOnly = rows
-    .filter((row) => !known.has(row.id))
+    .filter((row) => !knownIds.some((id) => sameModel(id, row.id)))
     .map((row): ModelOption => {
       if (provider === 'fal' && row.dialect === null) {
         return {

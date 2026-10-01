@@ -81,6 +81,54 @@ describe('buildModelOptions (decision 287)', () => {
     ).toBe('catalogue')
   })
 
+  it('counts a dated snapshot of a catalogued alias as listed, and does not list it twice', () => {
+    const listed = mockListedModels('anthropic').map((m) =>
+      m.id === 'claude-opus-5' ? { ...m, id: 'claude-opus-5-20260401' } : m,
+    )
+    const anthropic = options({ listed }).llm.anthropic
+    expect(anthropic.find((o) => o.id === 'claude-opus-5')?.status).toBe('catalogue')
+    expect(anthropic.some((o) => o.id === 'claude-opus-5-20260401')).toBe(false)
+  })
+
+  it('counts the undated alias of a catalogued snapshot as listed, and does not list it twice', () => {
+    const listed = mockListedModels('anthropic').map((m) =>
+      m.id === 'claude-haiku-4-5-20251001' ? { ...m, id: 'claude-haiku-4-5' } : m,
+    )
+    const anthropic = options({ listed }).llm.anthropic
+    expect(anthropic.find((o) => o.id === 'claude-haiku-4-5-20251001')?.status).toBe('catalogue')
+    expect(anthropic.some((o) => o.id === 'claude-haiku-4-5')).toBe(false)
+  })
+
+  it('counts a dated snapshot of a catalogued image model as listed', () => {
+    const listed = mockListedModels('google').map((m) =>
+      m.id === 'gemini-3-pro-image' ? { ...m, id: 'gemini-3-pro-image-20260401' } : m,
+    )
+    const google = options({ listed }).image.google
+    expect(google.find((o) => o.id === 'gemini-3-pro-image')?.status).toBe('catalogue')
+    expect(google.some((o) => o.id === 'gemini-3-pro-image-20260401')).toBe(false)
+  })
+
+  it('keeps the owner’s price on a catalogued model the live list no longer holds', () => {
+    const prices = {
+      ...EMPTY_MODEL_PRICES,
+      llm: { 'anthropic:claude-sonnet-5': { inputPerMTok: 2, outputPerMTok: 10 } },
+      image: { 'google:gemini-3-pro-image': { pricePerImage: 0.1 } },
+    }
+    const listed = [
+      ...mockListedModels('anthropic').filter((m) => m.id !== 'claude-sonnet-5'),
+      ...mockListedModels('google').filter((m) => m.id !== 'gemini-3-pro-image'),
+    ]
+    const built = options({ listed, prices })
+    expect(built.llm.anthropic.find((o) => o.id === 'claude-sonnet-5')).toMatchObject({
+      status: 'override',
+      price: { inputPerMTok: 2, outputPerMTok: 10 },
+    })
+    expect(built.image.google.find((o) => o.id === 'gemini-3-pro-image')).toMatchObject({
+      status: 'override',
+      price: { pricePerImage: 0.1 },
+    })
+  })
+
   it('splits Google into LLM and image options and groups previews last', () => {
     const listed = [
       ...mockListedModels('google'),
