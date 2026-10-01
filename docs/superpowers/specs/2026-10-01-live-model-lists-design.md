@@ -32,8 +32,9 @@ selectable.
 Goals:
 
 - Every existing model dropdown (the seven LLM routes, stills, the likeness
-  split, the set sheet) offers what the provider serves
-  now, without a code change when a model is released.
+  split, the set sheet, and the visual board's per-slot Image model select)
+  offers what the provider serves now, without a code change when a model is
+  released.
 - Every model a run can use still has a price before the call is made, so
   the cost caps keep their teeth.
 - A provider whose list call fails never empties its dropdown.
@@ -63,10 +64,15 @@ Non-goals:
 
 ## 4. Listing
 
-A new optional method on the LLM and image adapters:
+Listing lives in a new module, `packages/providers/src/catalogue/`, as one
+function per provider rather than a method on each adapter. The adapters'
+job is the call that spends money; listing is a separate, free concern, and
+keeping it out of `LLMProvider` and `ImageGenProvider` leaves the mock
+adapters and every existing adapter test untouched. Google is listed once,
+because one key and one endpoint serve both its LLMs and its image models.
 
 ```ts
-listModels(apiKey: string, fetchImpl?: typeof fetch): Promise<ListedModel[]>
+listProviderModels(provider: CatalogueProvider, apiKey: string, options?: { fetchImpl?: typeof fetch; signal?: AbortSignal }): Promise<ListedModel[]>
 
 interface ListedModel {
   id: string
@@ -102,8 +108,11 @@ Per provider:
   the Gemini LLMs and the Gemini image models, so Google is listed once and
   split by kind.
 - **fal.** `GET https://api.fal.ai/v1/models?category=text-to-image&status=active&expand=openapi-3.0`,
-  following `cursor`, then `GET https://api.fal.ai/v1/models/pricing` for the
-  ids returned. Auth header `Authorization: Key <key>`. Each endpoint's
+  following `next_cursor` while `has_more`, then `GET https://api.fal.ai/v1/models/pricing?endpoint_id=…`
+  in batches of 50. A price is used only when its `unit` is `image` and its
+  `currency` is `USD`; anything else (FLUX.2 bills per megapixel) leaves
+  `pricePerImage` null, so the model needs a price set by hand. Auth header
+  `Authorization: Key <key>`. Each endpoint's
   dialect is read from its OpenAPI input schema (section 7.2); an endpoint
   whose schema fits no dialect is kept with `dialect: null` and shown as not
   compatible.
@@ -113,17 +122,21 @@ dropped from every live list. They are ids already known to be dead or
 renamed (the `gemini-2.5-pro` case: listed by `GET /models`, refused by
 `generateContent`), and offering them would undo the fold.
 
-`MOCK_PROVIDERS` mode: every `listModels` returns a fixed fixture that holds
-each catalogued model plus one live-only model per provider
-(`claude-opus-mock-9`, `gpt-5-mock`, `gemini-9-flash`, `gemini-9-flash-image`,
-`fal-ai/mock-flux`), so the e2e suite can exercise the estimated path without
-a network.
+`MOCK_PROVIDERS` mode: every provider's list is a fixed fixture holding each
+catalogued model plus live-only models (`claude-opus-mock-9`, a family match;
+`claude-mock-unpriced`, no family; `gpt-5-mock`; `gemini-9-flash`;
+`gemini-9-flash-image`; `fal-ai/mock-flux`, priced by the fixture), so the
+e2e suite can exercise every label without a network. Mock mode refreshes
+all four providers whether or not a key is stored, as every other mock path
+ignores keys.
 
 ## 5. Data
 
 Migration 0032 adds two tables.
 
 ```ts
+// Both tables carry the house `id`, `createdAt` and `updatedAt` columns as
+// well; the natural key is a unique constraint, as on provider_credentials.
 export const modelCatalogue = pgTable('model_catalogue', {
   provider: text('provider').notNull(),          // 'anthropic' | 'openai' | 'google' | 'fal'
   modelId: text('model_id').notNull(),
@@ -180,19 +193,19 @@ fills the default for rows stored before it existed.
 A new module, `packages/providers/src/catalogue/families.ts`, maps an id to
 a family by pattern, per provider and kind:
 
-| Provider | Kind | Pattern | Family |
-|---|---|---|---|
-| anthropic | llm | `^claude-opus-` | opus |
-| anthropic | llm | `^claude-sonnet-` | sonnet |
-| anthropic | llm | `^claude-haiku-` | haiku |
-| openai | llm | `^gpt-5` containing `-mini` | gpt-5-mini |
-| openai | llm | `^gpt-5` with no `-mini` or `-nano` | gpt-5 |
-| google | llm | contains `-flash-lite` | flash-lite |
-| google | llm | contains `-flash` | flash |
-| google | llm | contains `-pro` | pro |
-| google | image | contains `-pro-image` | pro-image |
-| google | image | contains `-flash-image` | flash-image |
-| fal | image | dialect is not null | none; fal publishes real prices |
+| Provider | Kind | Pattern | Family | Representative |
+|---|---|---|---|---|
+| anthropic | llm | `^claude-opus-` | opus | `claude-opus-5` |
+| anthropic | llm | `^claude-sonnet-` | sonnet | `claude-sonnet-5` |
+| anthropic | llm | `^claude-haiku-` | haiku | `claude-haiku-4-5-20251001` |
+| openai | llm | `^gpt-5` containing `-mini` | gpt-5-mini | `gpt-5-mini` |
+| openai | llm | `^gpt-5` with no `-mini` or `-nano` | gpt-5 | `gpt-5` |
+| google | llm | contains `-flash-lite` | flash-lite | `gemini-3.5-flash-lite` |
+| google | llm | contains `-flash` | flash | `gemini-3.6-flash` |
+| google | llm | contains `-pro` | pro | `gemini-pro-latest` |
+| google | image | contains `-pro-image` | pro-image | `gemini-3-pro-image` |
+| google | image | contains `-flash-image` | flash-image | `gemini-3.1-flash-image` |
+| fal | image | none | none | fal publishes real prices (section 4) |
 
 Patterns are tried top to bottom; the first match wins. Anything that
 matches no row has no family. That is deliberate for ids like
@@ -200,23 +213,32 @@ matches no row has no family. That is deliberate for ids like
 would underprice it by half, so it must be priced by hand.
 
 A family's price, tier and (for Gemini images) request flags are those of
-the first catalogued model in that family, the catalogue being ordered best
-first. Tier matters to the fallback path: a live `claude-opus-5-5` inherits
+its representative, a catalogued model named in the table. The table names
+it rather than taking the first catalogued match, because the image
+catalogue is ordered default first, not best first: the first flash image
+model listed is 2.5 Flash, which is unsized, takes no `thinkingConfig` and
+costs $0.04. A test pins every representative to a catalogued id, so
+retiring one from the catalogue fails the suite rather than a run. Tier matters to the fallback path: a live `claude-opus-5-5` inherits
 the Opus tier, so `nextTierDown` steps from it to `claude-sonnet-5` exactly
 as it does from `claude-opus-5`. Fallback targets therefore stay catalogued
 models.
 
-### 6.2 `resolveModel`
+### 6.2 `resolveLlmModel` and `resolveImageModel`
 
 ```ts
-resolveModel(provider, kind, modelId, prices: Settings['modelPrices']):
-  | { ok: true; price: ...; tier: number; source: 'override' | 'catalogue' | 'family' | 'provider'; label: string }
-  | { ok: false; reason: 'unpriced' }
+type PriceSource = 'catalogue' | 'override' | 'provider' | 'family'
+resolveLlmModel(provider, modelId, prices: ModelPrices):
+  { model: KnownModel; source: PriceSource } | undefined
+resolveImageModel(provider, modelId, prices: ModelPrices, cached?: ListedModel):
+  { model: StillModel; source: PriceSource } | undefined
 ```
 
-Order: the owner's override; the hand-written catalogue; for fal, the
-cached provider price; the family. `canonicalModelId` is applied first, as
-it is today.
+`undefined` is "unpriced". Price order: the owner's override; the
+hand-written catalogue; for fal, the cached provider price; the family.
+`canonicalModelId` is applied first, as it is today. A model priced only by
+an override, with no catalogue row and no family, takes tier -1, so a
+failure on it steps down to the provider's top catalogued model rather than
+skipping it.
 
 It needs only the settings row and, for fal, the cache. Runs never call a
 provider's list endpoint, so a list outage cannot stop a render.
@@ -257,10 +279,17 @@ one.
 The fal adapter today picks a dialect with `isImagen(model)`. Dialects
 become explicit:
 
-- `flux`: input schema has `prompt`, `num_images` and `image_size`.
-- `aspect`: input schema has `prompt`, `num_images` and `aspect_ratio`;
-  `negative_prompt` is sent as itself when the schema has it, folded into
-  the prompt otherwise.
+- `flux`: input schema has `prompt`, `num_images` and `image_size`; the
+  negative prompt is folded into the prompt as an "Avoid:" clause.
+- `aspect`: input schema has `prompt`, `num_images` and `aspect_ratio`, and
+  no `negative_prompt`; folded the same way.
+- `aspect-negative`: as `aspect`, with a real `negative_prompt` field, which
+  the brief's negative prompt travels in as itself. `fal-ai/imagen3` is this
+  dialect.
+
+The input schema is the one the endpoint's POST `requestBody` references in
+the OpenAPI document, or failing that the first `components.schemas` entry
+whose name ends in `Input`.
 
 An endpoint without `num_images` (FLUX.2 pro and FLUX1.1 ultra today) fits
 neither, because the N-variants call needs it; it is listed as "not
@@ -268,11 +297,28 @@ compatible: one image per request" and cannot be chosen.
 
 At run time the adapter reads a fal model's dialect from the hand-written
 list when the model is in it, from its cached `model_catalogue` row
-otherwise, and refuses a model with neither. Reference routing (Kontext versus FLUX.2 edit) is unchanged: an
-unknown text-to-image endpoint routes its references to Kontext, as
-everything outside FLUX.2 does now.
+otherwise, and refuses a model with neither. Reference routing (Kontext
+versus FLUX.2 edit) is unchanged: an unknown text-to-image endpoint routes
+its references to Kontext, as everything outside FLUX.2 does now.
+
+### 7.3 How the call sites see live models
+
+About a dozen web call sites read `LIVE_IMAGE_GEN_ADAPTERS[provider]` for a
+model's price, limits, label or reference route. Rather than rewrite each,
+the Gemini and fal adapters become factories over their model list
+(`createGeminiImageGen(models)`, `createFalImageGen(models)`), and the
+existing `geminiImageGen` and `falImageGen` are those factories over the
+hand-written lists. A server helper builds each provider's effective list
+(catalogue models repriced by any override, plus every choosable cached
+model) and hands back adapters over it. Each call site swaps one lookup for
+the helper and keeps its logic.
 
 ## 8. The Models tab
+
+The visual board's per-slot **Image model** select (decision 264) takes the
+same choosable still options, passed in the board's view model instead of
+read from the adapters in the client. `setSlotRouteAction` validates a pick
+with `resolveImageModel`.
 
 `settings/page.tsx` loads the cache and refresh rows beside the settings and
 passes merged options to `SettingsForm`. The form stops importing the
