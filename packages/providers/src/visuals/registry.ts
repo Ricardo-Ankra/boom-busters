@@ -1,10 +1,16 @@
 import { mockProvidersEnabled } from '../llm/registry'
-import { falImageGen } from './fal'
-import { geminiImageGen } from './gemini'
-import { createMockStock, mockImageGen } from './mock'
+import { createFalImageGen, falImageGen } from './fal'
+import { createGeminiImageGen, geminiImageGen } from './gemini'
+import { createMockStock, mockImageGen, mockImageGenWith } from './mock'
 import { pexelsStock } from './pexels'
 import { pixabayStock } from './pixabay'
-import type { ImageGenProvider, ImageGenProviderId, StockProvider, StockProviderId } from './types'
+import type {
+  ImageGenModel,
+  ImageGenProvider,
+  ImageGenProviderId,
+  StockProvider,
+  StockProviderId,
+} from './types'
 import { wikimediaStock } from './wikimedia'
 
 /**
@@ -50,4 +56,21 @@ export function imageGenAdapter(
   env: Record<string, string | undefined> = process.env,
 ): ImageGenProvider {
   return mockProvidersEnabled(env) ? mockImageGen : LIVE_IMAGE_GEN_ADAPTERS[provider]
+}
+
+/** A live adapter over the given model list (decision 287). */
+export function liveImageGenWith(
+  provider: ImageGenProviderId,
+  models: readonly ImageGenModel[],
+): ImageGenProvider {
+  return provider === 'google' ? createGeminiImageGen(models) : createFalImageGen(models)
+}
+
+/** `imageGenAdapter` over a given model list: the mock in mock mode, else live. */
+export function imageGenAdapterWith(
+  provider: ImageGenProviderId,
+  models: readonly ImageGenModel[],
+  env: Record<string, string | undefined> = process.env,
+): ImageGenProvider {
+  return mockProvidersEnabled(env) ? mockImageGenWith(models) : liveImageGenWith(provider, models)
 }

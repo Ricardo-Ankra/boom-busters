@@ -1,6 +1,6 @@
 import { RateLimitError, TransientProviderError, ValidationError } from '@boom-busters/schemas'
 import { describe, expect, it } from 'vitest'
-import { FAL_REFERENCE_MODELS, falImageGen } from './fal'
+import { FAL_MODELS, FAL_REFERENCE_MODELS, createFalImageGen, falImageGen } from './fal'
 import { pexelsStock } from './pexels'
 import { pixabayStock } from './pixabay'
 import { wikimediaStock } from './wikimedia'
@@ -604,5 +604,59 @@ describe('falImageGen', () => {
     await expect(
       falImageGen.verifyKey('bad', { fetchImpl: fetchFailing(401) }),
     ).rejects.toBeInstanceOf(ValidationError)
+  })
+})
+
+describe('fal dialects (decision 287)', () => {
+  function captureFal() {
+    const calls: { url: string; body: Record<string, unknown> }[] = []
+    const fetchImpl = (async (url: string, init?: RequestInit) => {
+      calls.push({ url, body: JSON.parse(String(init?.body)) as Record<string, unknown> })
+      return new Response(JSON.stringify({ images: [{ url: 'https://fal.media/x.png' }] }), {
+        status: 200,
+      })
+    }) as typeof fetch
+    return { calls, fetchImpl }
+  }
+
+  it('speaks aspect to a live aspect endpoint, folding the negative prompt in', async () => {
+    const { calls, fetchImpl } = captureFal()
+    const adapter = createFalImageGen([
+      ...FAL_MODELS,
+      { id: 'fal-ai/new-model', label: 'New', pricePerImage: 0.05, dialect: 'aspect' },
+    ])
+    await adapter.generate(
+      { prompt: 'a vault', negativePrompt: 'text', count: 2, model: 'fal-ai/new-model' },
+      { apiKey: 'k', fetchImpl },
+    )
+    expect(calls[0]!.url).toBe('https://fal.run/fal-ai/new-model')
+    expect(calls[0]!.body).toEqual({
+      prompt: 'a vault. Avoid: text.',
+      aspect_ratio: '16:9',
+      num_images: 2,
+    })
+  })
+
+  it('keeps Imagen 3 on its real negative prompt field', async () => {
+    const { calls, fetchImpl } = captureFal()
+    await falImageGen.generate(
+      { prompt: 'a vault', negativePrompt: 'text', count: 1, model: 'fal-ai/imagen3' },
+      { apiKey: 'k', fetchImpl },
+    )
+    expect(calls[0]!.body).toEqual({
+      prompt: 'a vault',
+      negative_prompt: 'text',
+      aspect_ratio: '16:9',
+      num_images: 1,
+    })
+  })
+
+  it('keeps FLUX on image_size', async () => {
+    const { calls, fetchImpl } = captureFal()
+    await falImageGen.generate(
+      { prompt: 'a vault', count: 1, model: 'fal-ai/flux/dev' },
+      { apiKey: 'k', fetchImpl },
+    )
+    expect(calls[0]!.body.image_size).toBe('landscape_16_9')
   })
 })

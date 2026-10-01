@@ -2,6 +2,7 @@ import { z } from 'zod'
 import { mapNetworkError, throwForResponse } from '../llm/http'
 import { imageGenModel } from './types'
 import type {
+  FalDialect,
   ImageGenModel,
   ImageGenProvider,
   ImageGenRequest,
@@ -48,16 +49,14 @@ import type {
  * and a REAL `negative_prompt` field, so for it the brief's negative prompt
  * travels as itself rather than folded into an "Avoid:" clause.
  */
-const MODELS = [
-  { id: 'fal-ai/flux/dev', label: 'FLUX.1 dev', pricePerImage: 0.03 },
-  { id: 'fal-ai/flux/schnell', label: 'FLUX.1 schnell', pricePerImage: 0.01 },
-  { id: 'fal-ai/flux-pro/v1.1', label: 'FLUX1.1 pro', pricePerImage: 0.04 },
-  { id: 'fal-ai/flux-2', label: 'FLUX.2 dev', pricePerImage: 0.02 },
-  { id: 'fal-ai/flux/krea', label: 'FLUX.1 Krea dev', pricePerImage: 0.03 },
-  { id: 'fal-ai/imagen3', label: 'Imagen 3', pricePerImage: 0.05 },
-] as const
-
-const isImagen = (model: string) => model === 'fal-ai/imagen3'
+export const FAL_MODELS: readonly ImageGenModel[] = [
+  { id: 'fal-ai/flux/dev', label: 'FLUX.1 dev', pricePerImage: 0.03, dialect: 'flux' },
+  { id: 'fal-ai/flux/schnell', label: 'FLUX.1 schnell', pricePerImage: 0.01, dialect: 'flux' },
+  { id: 'fal-ai/flux-pro/v1.1', label: 'FLUX1.1 pro', pricePerImage: 0.04, dialect: 'flux' },
+  { id: 'fal-ai/flux-2', label: 'FLUX.2 dev', pricePerImage: 0.02, dialect: 'flux' },
+  { id: 'fal-ai/flux/krea', label: 'FLUX.1 Krea dev', pricePerImage: 0.03, dialect: 'flux' },
+  { id: 'fal-ai/imagen3', label: 'Imagen 3', pricePerImage: 0.05, dialect: 'aspect-negative' },
+]
 
 /**
  * Identity-conditioned generation (decision 253, amended 2026-09-16).
@@ -145,129 +144,138 @@ const ResponseSchema = z.object({
 /** The render is 1920×1080; fal's preset generates 1344×768, scaled at compile. */
 const IMAGE_SIZE = 'landscape_16_9'
 
-export const falImageGen: ImageGenProvider = {
-  id: 'fal',
-  label: 'FLUX via fal.ai',
-  models: MODELS,
+export function createFalImageGen(models: readonly ImageGenModel[] = FAL_MODELS): ImageGenProvider {
+  const adapter: ImageGenProvider = {
+    id: 'fal',
+    label: 'FLUX via fal.ai',
+    models,
 
-  async generate(request: ImageGenRequest, options: StockCallOptions): Promise<ImageGenResult> {
-    const apiKey = options.apiKey
-    if (!apiKey) throw new Error('fal requires an API key')
+    async generate(request: ImageGenRequest, options: StockCallOptions): Promise<ImageGenResult> {
+      const apiKey = options.apiKey
+      if (!apiKey) throw new Error('fal requires an API key')
 
-    // Resolved (and refused, on an unknown id) before any call is made.
-    const model = imageGenModel(falImageGen, request.model)
-    const imagen = isImagen(model.id)
+      // Resolved (and refused, on an unknown id) before any call is made.
+      const model = imageGenModel(adapter, request.model)
+      const dialect: FalDialect = model.dialect ?? 'flux'
+      const realNegative = dialect === 'aspect-negative'
 
-    // FLUX has no negative-prompt field, so the brief's negative prompt is
-    // folded in as an "Avoid:" clause. Imagen has the real field.
-    const prompt =
-      request.negativePrompt && !imagen
-        ? `${request.prompt}. Avoid: ${request.negativePrompt}.`
-        : request.prompt
+      // Only aspect-negative has a real negative-prompt field; every other
+      // dialect gets it folded in as an "Avoid:" clause.
+      const prompt =
+        request.negativePrompt && !realNegative
+          ? `${request.prompt}. Avoid: ${request.negativePrompt}.`
+          : request.prompt
 
-    const referenceUrls = request.referenceUrls ?? []
-    const conditioned = resolveReferenceRoute(model.id, referenceUrls.length)
+      const referenceUrls = request.referenceUrls ?? []
+      const conditioned = resolveReferenceRoute(model.id, referenceUrls.length)
 
-    const body = conditioned
-      ? conditioned.wireDialect === 'flux2-edit'
-        ? {
-            prompt,
-            // One field for one reference or several, unlike Kontext.
-            image_urls: referenceUrls,
-            image_size: IMAGE_SIZE,
-            num_images: request.count,
-            enable_safety_checker: true,
-          }
-        : {
-            prompt,
-            ...(referenceUrls.length === 1
-              ? { image_url: referenceUrls[0] }
-              : { image_urls: referenceUrls }),
-            aspect_ratio: '16:9',
-            num_images: request.count,
-            safety_tolerance: '2',
-          }
-      : imagen
-        ? {
-            prompt,
-            ...(request.negativePrompt ? { negative_prompt: request.negativePrompt } : {}),
-            aspect_ratio: '16:9',
-            num_images: request.count,
-          }
-        : {
-            prompt,
-            image_size: IMAGE_SIZE,
-            num_images: request.count,
-            enable_safety_checker: true,
-          }
+      const body = conditioned
+        ? conditioned.wireDialect === 'flux2-edit'
+          ? {
+              prompt,
+              // One field for one reference or several, unlike Kontext.
+              image_urls: referenceUrls,
+              image_size: IMAGE_SIZE,
+              num_images: request.count,
+              enable_safety_checker: true,
+            }
+          : {
+              prompt,
+              ...(referenceUrls.length === 1
+                ? { image_url: referenceUrls[0] }
+                : { image_urls: referenceUrls }),
+              aspect_ratio: '16:9',
+              num_images: request.count,
+              safety_tolerance: '2',
+            }
+        : dialect === 'flux'
+          ? {
+              prompt,
+              image_size: IMAGE_SIZE,
+              num_images: request.count,
+              enable_safety_checker: true,
+            }
+          : {
+              prompt,
+              ...(realNegative && request.negativePrompt
+                ? { negative_prompt: request.negativePrompt }
+                : {}),
+              aspect_ratio: '16:9',
+              num_images: request.count,
+            }
 
-    const fetchImpl = options.fetchImpl ?? fetch
-    let response: Response
-    try {
-      response = await fetchImpl(endpoint(conditioned ? conditioned.id : model.id), {
-        method: 'POST',
-        headers: {
-          Authorization: `Key ${apiKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(body),
-        ...(options.signal ? { signal: options.signal } : {}),
-      })
-    } catch (cause) {
-      throw mapNetworkError('fal', cause)
-    }
-    if (!response.ok) await throwForResponse('fal', response)
+      const fetchImpl = options.fetchImpl ?? fetch
+      let response: Response
+      try {
+        response = await fetchImpl(endpoint(conditioned ? conditioned.id : model.id), {
+          method: 'POST',
+          headers: {
+            Authorization: `Key ${apiKey}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(body),
+          ...(options.signal ? { signal: options.signal } : {}),
+        })
+      } catch (cause) {
+        throw mapNetworkError('fal', cause)
+      }
+      if (!response.ok) await throwForResponse('fal', response)
 
-    const parsed = ResponseSchema.parse(await response.json())
+      const parsed = ResponseSchema.parse(await response.json())
 
-    return {
-      images: parsed.images.map((image) => ({
-        url: image.url,
-        width: image.width ?? (imagen ? IMAGEN_WIDTH : 1344),
-        height: image.height ?? (imagen ? IMAGEN_HEIGHT : 768),
-      })),
-      estimatedCostUsd:
-        (conditioned ? conditioned.pricePerImage : model.pricePerImage) * parsed.images.length,
-    }
-  },
+      const aspectSized = dialect !== 'flux'
+      return {
+        images: parsed.images.map((image) => ({
+          url: image.url,
+          width: image.width ?? (aspectSized ? IMAGEN_WIDTH : 1344),
+          height: image.height ?? (aspectSized ? IMAGEN_HEIGHT : 768),
+        })),
+        estimatedCostUsd:
+          (conditioned ? conditioned.pricePerImage : model.pricePerImage) * parsed.images.length,
+      }
+    },
 
-  /**
-   * fal caps nothing; its reference endpoint simply costs more per image
-   * above one (see `resolveReferenceRoute`). These are the app's own limits,
-   * chosen for what a still can usefully carry rather than what the endpoint
-   * will accept.
-   */
-  referenceLimits(): ReferenceLimits {
-    return { characters: 3, objects: 2 }
-  },
+    /**
+     * fal caps nothing; its reference endpoint simply costs more per image
+     * above one (see `resolveReferenceRoute`). These are the app's own limits,
+     * chosen for what a still can usefully carry rather than what the endpoint
+     * will accept.
+     */
+    referenceLimits(): ReferenceLimits {
+      return { characters: 3, objects: 2 }
+    },
 
-  /** The same routing the call uses, so the estimate names the endpoint billed. */
-  referenceRoute(modelId, referenceCount) {
-    const route = resolveReferenceRoute(imageGenModel(falImageGen, modelId).id, referenceCount)
-    return route ? { id: route.id, label: route.label, pricePerImage: route.pricePerImage } : null
-  },
+    /** The same routing the call uses, so the estimate names the endpoint billed. */
+    referenceRoute(modelId, referenceCount) {
+      const route = resolveReferenceRoute(imageGenModel(adapter, modelId).id, referenceCount)
+      return route ? { id: route.id, label: route.label, pricePerImage: route.pricePerImage } : null
+    },
 
-  /**
-   * fal has no free "who am I" endpoint, so this leans on the run endpoint's
-   * auth check: a GET is the wrong method, and fal validates the key BEFORE
-   * the method — an invalid key answers 401, a valid one answers 405. Only
-   * auth failures are treated as failures; everything else proves the key
-   * was accepted without buying an image.
-   */
-  async verifyKey(apiKey, options = {}) {
-    const fetchImpl = options.fetchImpl ?? fetch
-    let response: Response
-    try {
-      response = await fetchImpl(endpoint(MODELS[0].id), {
-        method: 'GET',
-        headers: { Authorization: `Key ${apiKey}` },
-        ...(options.signal ? { signal: options.signal } : {}),
-      })
-    } catch (cause) {
-      throw mapNetworkError('fal', cause)
-    }
-    if (response.status === 401 || response.status === 403) {
-      await throwForResponse('fal', response)
-    }
-  },
+    /**
+     * fal has no free "who am I" endpoint, so this leans on the run endpoint's
+     * auth check: a GET is the wrong method, and fal validates the key BEFORE
+     * the method — an invalid key answers 401, a valid one answers 405. Only
+     * auth failures are treated as failures; everything else proves the key
+     * was accepted without buying an image.
+     */
+    async verifyKey(apiKey, options = {}) {
+      const fetchImpl = options.fetchImpl ?? fetch
+      let response: Response
+      try {
+        response = await fetchImpl(endpoint(FAL_MODELS[0]!.id), {
+          method: 'GET',
+          headers: { Authorization: `Key ${apiKey}` },
+          ...(options.signal ? { signal: options.signal } : {}),
+        })
+      } catch (cause) {
+        throw mapNetworkError('fal', cause)
+      }
+      if (response.status === 401 || response.status === 403) {
+        await throwForResponse('fal', response)
+      }
+    },
+  }
+  return adapter
 }
+
+export const falImageGen = createFalImageGen()
