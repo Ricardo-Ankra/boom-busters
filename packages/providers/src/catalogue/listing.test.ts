@@ -215,6 +215,18 @@ describe('listProviderModels (decision 287)', () => {
       /anthropic returned a model list this app could not read/,
     )
   })
+
+  it('reports a 200 that is not JSON as the same readable error, keeping the cause', async () => {
+    const fetchImpl = (async () => new Response('not json', { status: 200 })) as typeof fetch
+    const failure = await listProviderModels('anthropic', 'k', { fetchImpl }).catch(
+      (error: unknown) => error,
+    )
+    expect(failure).toBeInstanceOf(Error)
+    expect((failure as Error).message).toBe(
+      'anthropic returned a model list this app could not read',
+    )
+    expect((failure as Error).cause).toBeInstanceOf(SyntaxError)
+  })
 })
 
 describe('mockListedModels', () => {

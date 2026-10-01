@@ -1,6 +1,6 @@
 import { canonicalModelId, canonicalStillModelId } from '@boom-busters/schemas'
 import { ZodError } from 'zod'
-import type { ListOptions } from './http'
+import { unreadableList, type ListOptions } from './http'
 import { listAnthropicModels } from './list-anthropic'
 import { listFalModels } from './list-fal'
 import { listGoogleModels } from './list-google'
@@ -36,9 +36,7 @@ export async function listProviderModels(
   try {
     listed = await LISTERS[provider](apiKey, options)
   } catch (cause) {
-    if (cause instanceof ZodError) {
-      throw new Error(`${provider} returned a model list this app could not read`, { cause })
-    }
+    if (cause instanceof ZodError) throw unreadableList(provider, cause)
     throw cause
   }
   const current = listed.filter((model) =>
