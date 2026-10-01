@@ -310,6 +310,48 @@ describe('live image models (decision 287)', () => {
     settings.modelRouting.stills = { provider: 'fal', model: 'fal-ai/flux/dev' }
     renderModelsTab(options, settings)
     expect(screen.getByRole('option', { name: 'One at a time (not compatible)' })).toBeDisabled()
+    expect(
+      screen.getByText(
+        'One at a time is not offered: Makes one image per request, or takes an input this app cannot send.',
+      ),
+    ).toBeInTheDocument()
+  })
+
+  it('shows each image option with its price per image', () => {
+    renderModelsTab()
+    const stills = screen.getByRole('combobox', { name: 'Still images model' })
+    const texts = Array.from(stills.querySelectorAll('option')).map((o) => o.textContent)
+    expect(texts).toContain('Gemini 3.1 Flash Image ($0.07/image)')
+    expect(texts).toContain('Gemini 9 Flash Image (mock) ($0.07/image) (estimated)')
+  })
+
+  it('requires a 4K price when pricing a set sheet model', async () => {
+    const settings = structuredClone(DEFAULT_SETTINGS)
+    settings.modelRouting.setSheet = { provider: 'google', model: 'gemini-9-flash-image' }
+    renderModelsTab(modelOptions(), settings)
+
+    await userEvent.click(screen.getByRole('button', { name: 'Set price' }))
+    const fourK = screen.getByLabelText('4K price per image ($)')
+    await userEvent.clear(fourK)
+    await userEvent.click(screen.getByRole('button', { name: 'Save price' }))
+    expect(saveSettings).not.toHaveBeenCalled()
+    expect(
+      screen.getByText('Enter a price above zero, using a full stop for decimals.'),
+    ).toBeInTheDocument()
+
+    await userEvent.type(fourK, '0.3')
+    await userEvent.click(screen.getByRole('button', { name: 'Save price' }))
+    expect(saveSettings).toHaveBeenCalledWith({
+      modelPrices: {
+        llm: {},
+        image: {
+          'google:gemini-9-flash-image': {
+            pricePerImage: 0.07,
+            pricesBySize: { '1K': 0.07, '2K': 0.11, '4K': 0.3 },
+          },
+        },
+      },
+    })
   })
 })
 

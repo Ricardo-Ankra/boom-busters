@@ -97,6 +97,13 @@ const IMAGE_SIZES = ['1K', '2K', '4K'] as const
 
 const money = (value: number) => `$${Number(value.toFixed(4))}`
 
+/** "$0.07/image", "$0.10/image", "$0.035/image": cents always shown, no more than four places. */
+const perImage = (value: number) => {
+  const exact = String(Number(value.toFixed(4)))
+  const places = exact.split('.')[1]?.length ?? 0
+  return `$${places > 2 ? exact : value.toFixed(2)}/image`
+}
+
 function describePrice(price: OptionPrice): string {
   return price.kind === 'llm'
     ? `${money(price.inputPerMTok)} in, ${money(price.outputPerMTok)} out per million tokens`
@@ -254,13 +261,16 @@ function LlmPriceForm({
 
 /**
  * A price per image, and for a Google model its optional price at each
- * output size: Gemini bills a 4K image more than a 1K one, and set sheets
- * are always made at 4K.
+ * output size: Gemini bills a 4K image more than a 1K one. Set sheets are
+ * always made at 4K, and a missing size is charged at the price per image,
+ * so the set-sheet row requires the 4K price: without it every sheet would
+ * reserve about half what it costs.
  */
 function ImagePriceForm({
   title,
   initial,
   sizes,
+  require4K,
   saveLabel,
   onSave,
   onCancel,
@@ -268,6 +278,7 @@ function ImagePriceForm({
   title: string
   initial: OptionPrice | null
   sizes: boolean
+  require4K: boolean
   saveLabel: string
   onSave: (price: ImagePrice) => void
   onCancel: () => void
@@ -292,7 +303,11 @@ function ImagePriceForm({
         let valid = pricePerImage !== null
         if (sizes) {
           for (const size of IMAGE_SIZES) {
-            if (bySize[size].trim() === '') continue
+            const required = require4K && size === '4K'
+            if (bySize[size].trim() === '') {
+              if (required) valid = false
+              continue
+            }
             const value = parsePrice(bySize[size])
             if (value === null) valid = false
             else pricesBySize[size] = value
@@ -322,7 +337,11 @@ function ImagePriceForm({
         {sizes
           ? IMAGE_SIZES.map((size) => (
               <div key={size} className="flex flex-col gap-1.5">
-                <Label htmlFor={`${id}-${size}`}>{size} price per image ($, optional)</Label>
+                <Label htmlFor={`${id}-${size}`}>
+                  {require4K && size === '4K'
+                    ? `${size} price per image ($)`
+                    : `${size} price per image ($, optional)`}
+                </Label>
                 <Input
                   id={`${id}-${size}`}
                   inputMode="decimal"
@@ -483,7 +502,10 @@ export function ModelsTab({
    */
   const waitingFor = (key: RouteKey) => (pending?.key === key ? pending : null)
 
-  const optionLabel = (option: ModelOption) => `${option.label}${SUFFIX[option.status]}`
+  // An image option carries its price per image, as the still rows always
+  // have; an LLM's two token prices are too long for an option.
+  const optionLabel = (option: ModelOption) =>
+    `${option.label}${option.price?.kind === 'image' ? ` (${perImage(option.price.pricePerImage)})` : ''}${SUFFIX[option.status]}`
   const renderOption = (option: ModelOption) => (
     <option key={option.id} value={option.id} disabled={!option.selectable}>
       {optionLabel(option)}
@@ -509,9 +531,14 @@ export function ModelsTab({
     )
   }
 
-  /** The lines under a row: how its model is priced, and the price forms. */
+  /**
+   * The lines under a row: why any listed option cannot be picked, how its
+   * model is priced, and the price forms. A disabled option can never be
+   * selected, so its reason has to sit here rather than follow a choice.
+   */
   const renderNotes = (
     key: RouteKey,
+    list: ModelOption[],
     provider: AnyProvider,
     model: string,
     selected: ModelOption | undefined,
@@ -539,6 +566,7 @@ export function ModelsTab({
           title={title}
           initial={initial}
           sizes={provider === 'google'}
+          require4K={key === 'setSheet'}
           saveLabel={saveLabel}
           onSave={(price) => savePrice(key, provider, model, { kind: 'image', price }, alsoRoute)}
           onCancel={onCancel}
@@ -547,6 +575,14 @@ export function ModelsTab({
 
     return (
       <>
+        {list
+          .filter((o) => o.status === 'incompatible' && o.reason)
+          .map((o) => (
+            <p key={o.id} className="text-[12px] text-[var(--color-text-muted)]">
+              {o.label} is not offered: {o.reason}
+            </p>
+          ))}
+
         {!waiting && selected?.status === 'estimated' && selected.price ? (
           <div className="flex flex-wrap items-center gap-2">
             <p className="text-[12px] text-[var(--color-text-muted)]">
@@ -750,7 +786,14 @@ export function ModelsTab({
                 </Select>
               </div>
 
-              {renderNotes(task, row.provider, row.model, selected, waiting !== null)}
+              {renderNotes(
+                task,
+                providerOptions,
+                row.provider,
+                row.model,
+                selected,
+                waiting !== null,
+              )}
             </div>
           )
         })}
@@ -793,6 +836,7 @@ export function ModelsTab({
 
           {renderNotes(
             'stills',
+            stillOptions,
             stills.provider,
             stills.model,
             stillSelected,
@@ -853,6 +897,7 @@ export function ModelsTab({
           {likeness
             ? renderNotes(
                 'stillsLikeness',
+                likenessOptions,
                 likeness.provider,
                 likeness.model,
                 likenessSelected,
@@ -884,7 +929,14 @@ export function ModelsTab({
             </Select>
           </div>
 
-          {renderNotes('setSheet', 'google', sheetModel, sheetSelected, sheetWaiting !== null)}
+          {renderNotes(
+            'setSheet',
+            sheetOptions,
+            'google',
+            sheetModel,
+            sheetSelected,
+            sheetWaiting !== null,
+          )}
         </div>
       </CardContent>
     </Card>
