@@ -26,21 +26,41 @@ interface FamilyRule extends Family {
   matches: (id: string) => boolean
 }
 
+/**
+ * Claude 4 and 4.1 ids: `claude-opus-4`, `claude-opus-4-1`, and their dated
+ * snapshots (`claude-opus-4-20250514`, `claude-opus-4-1-20250805`). Opus 4
+ * and 4.1 cost three times Opus 5, so they are kept out of every Claude
+ * family and priced by hand; 4.5 and later keep theirs. An eight digit
+ * segment straight after the 4 is a snapshot date, so the minor version is 0.
+ */
+const CLAUDE_FOUR = /^claude-[a-z]+-4(?:-(\d+))?(?:-|$)/
+
+function belowClaudeFourFive(id: string): boolean {
+  const match = CLAUDE_FOUR.exec(id)
+  if (!match) return false
+  const minor = match[1]
+  if (minor === undefined || minor.length === 8) return true
+  return Number(minor) < 5
+}
+
+const claudeLine = (line: string) => (id: string) =>
+  id.startsWith(`claude-${line}-`) && !belowClaudeFourFive(id)
+
 const LLM_FAMILIES: Record<LlmProvider, readonly FamilyRule[]> = {
   anthropic: [
     {
       family: 'opus',
-      matches: (id) => id.startsWith('claude-opus-'),
+      matches: claudeLine('opus'),
       representative: 'claude-opus-5',
     },
     {
       family: 'sonnet',
-      matches: (id) => id.startsWith('claude-sonnet-'),
+      matches: claudeLine('sonnet'),
       representative: 'claude-sonnet-5',
     },
     {
       family: 'haiku',
-      matches: (id) => id.startsWith('claude-haiku-'),
+      matches: claudeLine('haiku'),
       representative: 'claude-haiku-4-5-20251001',
     },
   ],
@@ -52,7 +72,12 @@ const LLM_FAMILIES: Record<LlmProvider, readonly FamilyRule[]> = {
     },
     {
       family: 'gpt-5',
-      matches: (id) => id.startsWith('gpt-5') && !id.includes('-mini') && !id.includes('-nano'),
+      // gpt-5-pro costs $15/$120, far above gpt-5: priced by hand.
+      matches: (id) =>
+        id.startsWith('gpt-5') &&
+        !id.includes('-mini') &&
+        !id.includes('-nano') &&
+        !id.includes('-pro'),
       representative: 'gpt-5',
     },
   ],

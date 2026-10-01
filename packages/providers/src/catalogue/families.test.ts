@@ -13,6 +13,11 @@ describe('llmFamily (decision 287)', () => {
     ['google', 'gemini-9-flash-lite', 'flash-lite'],
     ['google', 'gemini-9-flash', 'flash'],
     ['google', 'gemini-9-pro', 'pro'],
+    ['anthropic', 'claude-opus-4-5', 'opus'],
+    ['anthropic', 'claude-opus-4-5-20251101', 'opus'],
+    ['anthropic', 'claude-opus-5-5', 'opus'],
+    ['anthropic', 'claude-sonnet-4-5', 'sonnet'],
+    ['anthropic', 'claude-haiku-4-5', 'haiku'],
   ] as const)('%s %s is %s', (provider, id, family) => {
     expect(llmFamily(provider, id)?.family).toBe(family)
   })
@@ -23,6 +28,18 @@ describe('llmFamily (decision 287)', () => {
     ['openai', 'gpt-5-nano'],
     ['openai', 'o4-mini'],
     ['google', 'nonsense'],
+    // Opus 4 and 4.1 cost $15/$75 against Opus 5's $5/$25; Sonnet and Haiku
+    // below 4.5 are held to the same line rather than guessed.
+    ['anthropic', 'claude-opus-4-1-20250805'],
+    ['anthropic', 'claude-opus-4-1'],
+    ['anthropic', 'claude-opus-4-20250514'],
+    ['anthropic', 'claude-opus-4'],
+    ['anthropic', 'claude-sonnet-4-20250514'],
+    ['anthropic', 'claude-sonnet-4-1'],
+    ['anthropic', 'claude-haiku-4-20250514'],
+    // $15/$120 against gpt-5's price.
+    ['openai', 'gpt-5-pro'],
+    ['openai', 'gpt-5-pro-2025-10-06'],
   ] as const)('%s %s has no family, so it must be priced by hand', (provider, id) => {
     expect(llmFamily(provider, id)).toBeUndefined()
   })
