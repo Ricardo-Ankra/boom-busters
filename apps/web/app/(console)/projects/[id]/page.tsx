@@ -123,7 +123,7 @@ export default async function ProjectPage({
   const viewEstimates: Record<string, number> = {}
   for (const set of sets) {
     if (set.plates.length > 0) {
-      viewEstimates[set.id] = await stillsEstimateUsd([setPlateBrief(set, 'south', '')], project.id)
+      viewEstimates[set.id] = await stillsEstimateUsd([setPlateBrief(set, 'south')], project.id)
     }
   }
   const setPlateUrls: Record<string, string> = {}

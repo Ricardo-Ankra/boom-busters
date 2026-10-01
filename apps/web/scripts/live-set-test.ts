@@ -1,20 +1,10 @@
 #!/usr/bin/env node
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
-import {
-  findModel,
-  geminiImageGen,
-  google,
-  HOUSE_PHOTOGRAPH,
-  imageGenPrice,
-  priceOf,
-  stillStyleAnchors,
-  stripBannedWords,
-} from '@boom-busters/providers'
+import { findModel, geminiImageGen, google, imageGenPrice, priceOf } from '@boom-busters/providers'
 import type { ImageReference } from '@boom-busters/providers'
 import {
   CastPhotoViewSchema,
-  DEFAULT_SETTINGS,
   MAX_CAST_PHOTOS,
   MAX_CHARACTER_REFERENCES,
   MAX_SET_REFERENCES,
@@ -33,14 +23,14 @@ import type {
 } from '@boom-busters/schemas'
 import sharp from 'sharp'
 import { z } from 'zod'
-import { buildSetSheetPrompt, describeCamera, framingLead, setPlateBrief } from '@/lib/set-plates'
+import { buildSetSheetPrompt, setPlateBrief } from '@/lib/set-plates'
 import { splitContactSheet } from '@/lib/contact-sheet'
 import type { SheetPanel } from '@/lib/contact-sheet'
 import { BudgetExceeded, LiveBudget } from '@/lib/live-budget'
 import { parseLiveSetArgs } from '@/lib/live-set-args'
 import type { LiveSetArgs } from '@/lib/live-set-args'
 import { layoutDraftRequest } from '@/lib/set-layout-prompt'
-import { withReferenceClause } from '@/lib/still-prompt'
+import { assembleStillPrompt } from '@/lib/still-prompt'
 
 /**
  * The live set-to-shot harness (decision 275, Task 13): runs the real
@@ -156,7 +146,6 @@ async function main(): Promise<void> {
   mkdirSync(outDir, { recursive: true })
 
   const budget = new LiveBudget(args.cap)
-  const styleAnchors = args.anchors ?? stillStyleAnchors(DEFAULT_SETTINGS.brandKit)
   const prompts: { firstPlate?: string; inventory?: string; sheet?: string; shot?: string } = {}
   const record: {
     name: string
@@ -172,8 +161,6 @@ async function main(): Promise<void> {
       cast: { name: string; photos: number }[]
     }
     fidelity: {
-      anchors: string
-      anchorsSource: 'flag' | 'default Brand Kit'
       inventoryModel: string
       imagesPerShot: number
       appImagesPerShot: number
@@ -188,8 +175,6 @@ async function main(): Promise<void> {
     // Where this run differs from what the app would do, so a reviewer reads
     // the output for what it is.
     fidelity: {
-      anchors: styleAnchors,
-      anchorsSource: args.anchors === undefined ? 'default Brand Kit' : 'flag',
       inventoryModel: args.inventoryModel,
       imagesPerShot: HARNESS_IMAGES_PER_SHOT,
       appImagesPerShot: STILL_GENERATIONS,
@@ -281,12 +266,17 @@ async function main(): Promise<void> {
       imageMime = existsSync(generated) ? 'image/png' : mimeTypeFor(firstPath)
       imageBytes = readFileSync(firstPath)
     } else if (args.generateFirst) {
-      const brief = setPlateBrief(
-        { name: args.name, look: args.look, plates: [] },
-        'north',
-        styleAnchors,
-      )
-      const firstPrompt = stripBannedWords(brief.prompt)
+      const brief = setPlateBrief({ name: args.name, look: args.look, plates: [] }, 'north')
+      // The same call `generateStillCandidates(brief, projectId, undefined,
+      // 'plate')` makes for a first plate (decision 287): the harness must
+      // not drift from what the app actually sends.
+      const firstPrompt = assembleStillPrompt({
+        scene: brief.prompt,
+        layout: '',
+        people: [],
+        set: null,
+        kind: 'plate',
+      })
       prompts.firstPlate = firstPrompt
       record.firstPlate = { prompt: firstPrompt, model: SHOT_MODEL }
       budget.reserve('first-plate', imageGenPrice(geminiImageGen, 1, SHOT_MODEL, '1K'))
@@ -368,12 +358,7 @@ async function main(): Promise<void> {
         panels.push({ direction, bytes, width: meta.width ?? 0, height: meta.height ?? 0 })
       }
     } else {
-      const sheetPrompt = buildSetSheetPrompt({
-        name: args.name,
-        layout,
-        look: args.look,
-        styleAnchors,
-      })
+      const sheetPrompt = buildSetSheetPrompt({ name: args.name, layout, look: args.look })
       prompts.sheet = sheetPrompt
 
       budget.reserve('sheet', imageGenPrice(geminiImageGen, 1, SHEET_MODEL, '4K'))
@@ -465,16 +450,17 @@ async function main(): Promise<void> {
       name,
       photos: castPhotos.filter(({ member }) => member.name === name).length,
     }))
-    // The house line names no lens: the camera's reaches the model once, in
-    // the camera sentence, exactly as in the app.
-    const shotPrompt = withReferenceClause(
-      stripBannedWords(
-        `${framingLead(shotInput.camera, shotInput.shotSize)}${shotInput.prompt} ${HOUSE_PHOTOGRAPH} ${styleAnchors}`,
-      ),
+    // Assembled by the one function the app itself uses (decision 287): the
+    // harness must send exactly the prompt a real run would, not its own
+    // approximation of it.
+    const shotPrompt = assembleStillPrompt({
+      scene: shotInput.prompt,
+      ...(shotInput.shotSize ? { shotSize: shotInput.shotSize } : {}),
+      camera: shotInput.camera,
+      layout,
       people,
-      { name: args.name, plates: chosen.length },
-      describeCamera(shotInput.camera, layout, shotInput.shotSize),
-    )
+      set: { name: args.name, plates: chosen.length },
+    })
     prompts.shot = shotPrompt
     record.shot = {
       prompt: shotInput.prompt,

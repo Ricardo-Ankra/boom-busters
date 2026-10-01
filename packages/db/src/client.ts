@@ -8,7 +8,7 @@ export type Database = ReturnType<typeof createDb>['db']
  * Creates a connection. Prefer `getDb()` in the app — this exists so tests and
  * scripts can open (and close) their own throwaway connection.
  */
-export function createDb(connectionString: string, options?: { max?: number }) {
+export function createDb(connectionString: string, options?: { max?: number; readOnly?: boolean }) {
   const sql = postgres(connectionString, {
     max: options?.max ?? 5,
     // Serverless functions get one short-lived connection per invocation;
@@ -35,6 +35,20 @@ export function createDb(connectionString: string, options?: { max?: number }) {
      * unnamed statements, which are still parameterised and still safe.
      */
     prepare: false,
+    /**
+     * A session that cannot write (decision 287): the live harness reads a
+     * production project and must never change it. Sent as `options` rather
+     * than as its own startup parameter, because Neon's proxy silently drops
+     * an arbitrary startup parameter (confirmed against Neon: the bare
+     * `default_transaction_read_only` parameter left the session writable,
+     * `-c default_transaction_read_only=on` in `options` did not) but honours
+     * `options`, which every connection the pool opens gets, reconnects
+     * included. The harness still checks the setting before its first real
+     * query, since this is Postgres' guarantee to trust, not this option's.
+     */
+    ...(options?.readOnly
+      ? { connection: { options: '-c default_transaction_read_only=on' } }
+      : {}),
   })
   return { sql, db: drizzle(sql, { schema }) }
 }

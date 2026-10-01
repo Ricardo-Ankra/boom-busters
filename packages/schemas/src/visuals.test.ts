@@ -597,13 +597,11 @@ describe('convertBrief — re-typing a slot (staged-visuals design)', () => {
     expect(ShotBriefSchema.parse(converted)).toBeTruthy()
   })
 
-  it('appends the style anchors when converting INTO a still', () => {
+  it('carries the description alone into a still; the assembler adds the rest (decision 287)', () => {
     const stock = convertBrief(still, 'stock')!
-    const back = convertBrief(stock, 'still', { stillStyleAnchors: 'Muted palette, 35mm grain' })
+    const back = convertBrief(stock, 'still')
     expect(back).toMatchObject({ type: 'still' })
-    expect((back as { prompt: string }).prompt).toBe(
-      `${common.description}. Muted palette, 35mm grain`,
-    )
+    expect((back as { prompt: string }).prompt).toBe(common.description)
     expect(ShotBriefSchema.parse(back)).toBeTruthy()
   })
 

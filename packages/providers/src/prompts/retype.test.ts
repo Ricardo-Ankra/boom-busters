@@ -95,6 +95,17 @@ describe('buildRetypeRequest', () => {
     expect(request.system).toContain('never a chart with fewer points')
     expect(request.messages[0]?.content).toContain('Wirecard AG')
   })
+
+  it('offers no "pan": the renderer cannot do one', () => {
+    const request = buildRetypeRequest({
+      caseTitle: 'Wirecard',
+      brief: still,
+      targetType: 'chart',
+      claims,
+    })
+    expect(request.system).not.toContain('{"kind": "pan"')
+    expect(request.system).toContain('Never "pan"')
+  })
 })
 
 describe('parseRetypedBrief', () => {

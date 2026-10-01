@@ -4,6 +4,7 @@ import {
   FIXTURE_PROJECT_ID,
   deleteCastMember,
   deleteProjectSet,
+  getSettings,
   insertCastMember,
   insertLogo,
   insertProjectSet,
@@ -20,7 +21,7 @@ import {
   updateSettings,
   upsertAssetByHash,
 } from '@boom-busters/db'
-import { HOUSE_PHOTOGRAPH, mockImageGen, stillStyleAnchors } from '@boom-busters/providers'
+import { mockImageGen } from '@boom-busters/providers'
 import { DEFAULT_SETTINGS, newId, STILL_GENERATIONS } from '@boom-busters/schemas'
 import type {
   CastMember,
@@ -34,6 +35,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { listLedger } from '@boom-busters/cost'
 import { db } from '@/lib/db'
 import * as modelCatalogue from '@/lib/model-catalogue'
+import { PHOTOGRAPH_LINE } from './photograph-lines'
+import { assembleStillPrompt, REFERENCE_MARKER } from './still-prompt'
 import {
   generateStillCandidates,
   plateEstimateUsd,
@@ -41,9 +44,23 @@ import {
   resolveSlotBrief,
   routeForBrief,
   setSheetEstimateUsd,
+  stillPromptFor,
   stillSlotEstimateUsd,
   stillsEstimateUsd,
 } from './visual-assets'
+
+/**
+ * Legacy fixture text (decision 287): before the assembler owned the house
+ * photograph line and the Brand Kit anchors, a still prompt carried both
+ * itself. Neither `HOUSE_PHOTOGRAPH` nor `stillStyleAnchors` is exported by
+ * the providers package any more (Task 8), so this test copies their old
+ * output literally, to prove the assembler still strips a brief written the
+ * old way.
+ */
+const LEGACY_HOUSE_PHOTOGRAPH =
+  'An available-light documentary photograph, slight grain, mixed colour temperature from window daylight and warm practicals, real materials with wear: scuffed edges, cable runs, a coffee ring, papers out of line; people caught candid and mid-moment, never posing or acting for the camera.'
+const LEGACY_STYLE_ANCHORS =
+  'subtle film grain; muted documentary colour grade anchored on #0f1115 and #f5a524 against #0a0a0b; sombre, photographic realism'
 
 /**
  * Still generation with the cast (decision 253), in mock-provider mode
@@ -164,6 +181,30 @@ describeDb('generateStillCandidates with the cast', () => {
     // With no set there is no room to recompose.
     expect(request?.prompt).not.toContain('camera position')
     expect(candidates[0]?.references).toEqual(['Emad Mostaque'])
+  })
+
+  /**
+   * The board's "Prompt sent to the model" disclosure (decision 287): built
+   * from the same pure helpers generation uses, over the same cast and set
+   * lists, so the preview and the call cannot disagree while storage works
+   * (mock mode here always "loads" every photograph the plan asks for).
+   */
+  it('previews exactly the prompt generation sends (decision 287)', async () => {
+    const emad = await insertCastMember(db, {
+      projectId: FIXTURE_PROJECT_ID,
+      name: 'Emad Mostaque',
+      role: 'Founder',
+    })
+    await setCastPhotos(db, emad.id, [photo('front-1', 'front')])
+
+    const cast = await listCastMembers(db, FIXTURE_PROJECT_ID)
+    const sets = await listProjectSets(db, FIXTURE_PROJECT_ID)
+    const settings = await getSettings(db)
+    const catalogue = await modelCatalogue.stillCatalogue(settings)
+    const preview = stillPromptFor(still, cast, sets, settings.modelRouting, null, catalogue)
+
+    await generateStillCandidates(still, FIXTURE_PROJECT_ID)
+    expect(generate.mock.calls[0]?.[0]?.prompt).toBe(preview)
   })
 
   it('sends every angle of one person, front view first, up to the limit', async () => {
@@ -470,14 +511,24 @@ describeDb('generateStillCandidates with the cast', () => {
 
 References attached: 1 photograph of Emad Mostaque.`
     await generateStillCandidates({ ...still, prompt }, FIXTURE_PROJECT_ID)
-    expect(generate.mock.calls[0]?.[0]?.prompt).toBe(prompt)
+    const sent = generate.mock.calls[0]?.[0]?.prompt ?? ''
+    expect(sent.match(/References attached:/g)).toHaveLength(1)
+    expect(sent).toContain('Emad Mostaque at a podium.')
   })
 
   it('generates from text alone for a stranger or a member without photos', async () => {
     await insertCastMember(db, { projectId: FIXTURE_PROJECT_ID, name: 'Emad Mostaque', role: 'x' })
     const candidates = await generateStillCandidates(still, FIXTURE_PROJECT_ID)
     expect(generate.mock.calls[0]?.[0]?.references).toBeUndefined()
-    expect(generate.mock.calls[0]?.[0]?.prompt).toBe(still.prompt)
+    expect(generate.mock.calls[0]?.[0]?.prompt).toBe(
+      assembleStillPrompt({
+        scene: still.prompt,
+        layout: '',
+        people: [],
+        set: null,
+        ...(still.shotSize ? { shotSize: still.shotSize } : {}),
+      }),
+    )
     expect(candidates[0]?.references).toBeUndefined()
 
     generate.mockClear()
@@ -492,7 +543,9 @@ References attached: 1 photograph of Emad Mostaque.`
       { ...still, prompt: 'A cinematic boardroom at dusk.' },
       FIXTURE_PROJECT_ID,
     )
-    expect(generate.mock.calls[0]?.[0]?.prompt).toBe('A boardroom at dusk.')
+    const sent = generate.mock.calls[0]?.[0]?.prompt ?? ''
+    expect(sent).toContain('A boardroom at dusk.')
+    expect(sent).not.toContain('cinematic')
   })
 
   it('a graphic resolves at no cost when every logo has a mark, and waits as a placeholder otherwise', async () => {
@@ -796,13 +849,17 @@ References attached: 1 photograph of Emad Mostaque.`
       )
       expect(prompt).toContain('Emad Mostaque is photographed in the scene, never pasted onto it')
       expect(prompt).toContain(
-        "The photographs of Venture Capital Boardroom are for the room's design only",
+        "The photographs of Venture Capital Boardroom show this room's furniture, materials and light",
       )
       // Decision 273: the old wording made the model edit the plate.
       expect(prompt).not.toContain('match them exactly')
       expect(prompt).not.toContain('describes only what happens in them')
-      // The brief's own words stay first; the declaration closes the prompt.
-      expect(prompt.startsWith(still.prompt)).toBe(true)
+      // Decision 287: positive either way, never an edit instruction.
+      expect(prompt).not.toContain('never reproduce or edit the framing')
+      // The brief's own words stay before the declaration; the photograph
+      // line closes the prompt now, not the declaration.
+      expect(prompt.indexOf(still.prompt)).toBeGreaterThanOrEqual(0)
+      expect(prompt.indexOf(still.prompt)).toBeLessThan(prompt.indexOf(REFERENCE_MARKER))
     })
 
     it('names the room in the prompt, so the model knows which image is which', async () => {
@@ -820,11 +877,10 @@ References attached: 1 photograph of Emad Mostaque.`
       const prompt = generate.mock.calls[0]?.[0].prompt ?? ''
       expect(prompt).toContain(
         'References attached: 1 photograph of Venture Capital Boardroom. The photographs ' +
-          "of Venture Capital Boardroom are for the room's design only: its architecture, " +
-          'materials, furniture and light. This is a new photograph taken inside that room ' +
-          'from the camera position the text above describes; never reproduce or edit the ' +
-          'framing of its photographs.',
+          "of Venture Capital Boardroom show this room's furniture, materials and light; " +
+          'this photograph is a new one taken inside it.',
       )
+      expect(prompt).not.toContain('never reproduce or edit the framing')
       // No person, so no staging sentence.
       expect(prompt).not.toContain('pasted onto it')
     })
@@ -964,9 +1020,9 @@ References attached: 1 photograph of Emad Mostaque.`
       expect(prompt).toContain(
         'The camera stands at the south doorway, facing north. In frame: windows.',
       )
-      expect(prompt).toContain('Behind the camera, out of frame: glass.')
+      expect(prompt).not.toContain('Behind the camera')
       expect(prompt).toContain(
-        "The photographs of Venture Capital Boardroom show this room's furniture, materials and light; this photograph is a new one from the camera above.",
+        "The photographs of Venture Capital Boardroom show this room's furniture, materials and light; this photograph is a new one from the camera described above.",
       )
       expect(prompt).not.toContain('never reproduce or edit the framing')
     })
@@ -995,7 +1051,9 @@ References attached: 1 photograph of Emad Mostaque.`
       )
     })
 
-    it('keeps the decision 273 ending for a set shot with no camera', async () => {
+    // Decision 287: the decision 273 ending read as an edit instruction, so
+    // the room sentence is the same whether or not a camera reaches it.
+    it('says a new photograph without the edit wording for a set shot with no camera', async () => {
       const room = await insertProjectSet(db, {
         projectId: FIXTURE_PROJECT_ID,
         name: 'Venture Capital Boardroom',
@@ -1006,9 +1064,12 @@ References attached: 1 photograph of Emad Mostaque.`
         { ...still, set: 'Venture Capital Boardroom' },
         FIXTURE_PROJECT_ID,
       )
-      expect(generate.mock.calls[0]?.[0].prompt).toContain(
-        'never reproduce or edit the framing of its photographs',
+      const prompt = generate.mock.calls[0]?.[0].prompt ?? ''
+      expect(prompt).toContain(
+        "The photographs of Venture Capital Boardroom show this room's furniture, materials " +
+          'and light; this photograph is a new one taken inside it.',
       )
+      expect(prompt).not.toContain('never reproduce or edit the framing')
     })
 
     // Final review (decision 275): the house line once carried "35mm, eye
@@ -1030,7 +1091,7 @@ References attached: 1 photograph of Emad Mostaque.`
         layout: 'North wall: three tall windows\nSouth wall: glass onto the corridor',
       })
       await setSetPlates(db, room.id, [plate('p-n', 'north'), plate('p-s', 'south')])
-      const anchors = stillStyleAnchors(DEFAULT_SETTINGS.brandKit)
+      const anchors = LEGACY_STYLE_ANCHORS
 
       await generateStillCandidates(
         {
@@ -1038,7 +1099,7 @@ References attached: 1 photograph of Emad Mostaque.`
           set: 'Venture Capital Boardroom',
           prompt:
             'Emad Mostaque, founder of Stability AI, the person in the reference photo, seated ' +
-            `at the far end of the table in Venture Capital Boardroom, grey dusk at the glass. ${HOUSE_PHOTOGRAPH} ${anchors}`,
+            `at the far end of the table in Venture Capital Boardroom, grey dusk at the glass. ${LEGACY_HOUSE_PHOTOGRAPH} ${anchors}`,
           camera: { facing: 'north', position: 'the south doorway, seated height', lens: '85mm' },
         },
         FIXTURE_PROJECT_ID,
@@ -1050,8 +1111,12 @@ References attached: 1 photograph of Emad Mostaque.`
       expect(request?.references?.map((reference) => reference.kind)).toContain('object')
       expect(prompt.match(/\d+\s?mm/g)).toEqual(['85mm'])
       expect(prompt.match(/The camera stands at/g)).toHaveLength(1)
-      expect(prompt.split(HOUSE_PHOTOGRAPH)).toHaveLength(2)
-      expect(prompt).toContain(anchors)
+      // Decision 287: the legacy paste is stripped, not doubled; the
+      // assembler's own line closes the prompt instead.
+      expect(prompt).not.toContain(LEGACY_HOUSE_PHOTOGRAPH)
+      expect(prompt).not.toContain(anchors)
+      expect(prompt.endsWith(PHOTOGRAPH_LINE)).toBe(true)
+      expect(prompt).not.toMatch(/film grain|#[0-9a-f]{6}/)
       expect(prompt).toContain(
         'The camera stands at the south doorway, seated height, facing north, 85mm.',
       )

@@ -1,4 +1,4 @@
-import { getSettings, getShort, updateShort } from '@boom-busters/db'
+import { getShort, updateShort } from '@boom-busters/db'
 import {
   BudgetExceededError,
   parseEventData,
@@ -8,7 +8,7 @@ import {
   ValidationError,
 } from '@boom-busters/schemas'
 import type { SlotCandidate, TeaserFetchesRecord, TeaserFetchState } from '@boom-busters/schemas'
-import { mockProvidersEnabled, stillStyleAnchors, teaserStillPrompt } from '@boom-busters/providers'
+import { mockProvidersEnabled } from '@boom-busters/providers'
 import { NonRetriableError } from 'inngest'
 import { db } from '@/lib/db'
 import { notify } from '@/lib/notify'
@@ -158,21 +158,22 @@ export const teaserShotFetcher = inngest.createFunction(
     // -------------------------------------------------------------------
     if (data.op === 'still') {
       const outcome = await step.run('generate-still', async () => {
-        // The beat's words carry the idea; the house anchors and the 9:16
-        // framing clause carry the look (decision 252). Appended once, so an
-        // edited prompt that already has them is not doubled.
-        const anchors = stillStyleAnchors((await getSettings(db)).brandKit)
+        // The beat's own words carry the idea; the assembler adds the
+        // teaser's composition line and closes the prompt (decision 287) —
+        // no house anchors reach this route any more.
         try {
           const made = await generateStillCandidates(
             {
               type: 'still',
               coversText: beat.text,
               description: data.prompt,
-              prompt: teaserStillPrompt(data.prompt, anchors),
+              prompt: data.prompt,
               motion: { kind: 'static' },
               transition: 'cut',
             },
             projectId,
+            undefined,
+            'teaser',
           )
           return { ok: true as const, made }
         } catch (error) {

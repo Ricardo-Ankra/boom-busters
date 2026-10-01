@@ -3,7 +3,7 @@ import type { DirectorsBook, ShotBrief } from '@boom-busters/schemas'
 import { z } from 'zod'
 import { DIRECTION_CRAFT } from './direction-craft'
 import { formatIssues, parseJsonCompletion } from './json'
-import { PEOPLE_RULES, referencesPrefix, SET_RULES } from './shotlist'
+import { fieldRule, PEOPLE_RULES, referencesPrefix, SCENE_ONLY_PROMPT, SET_RULES } from './shotlist'
 import { outputBudget } from '../llm/types'
 import type { LLMTaskRequest } from '../llm/types'
 
@@ -77,13 +77,13 @@ function stillShape(hasSets: boolean): string {
    "transition", "prompt": string, "negativePrompt"?: string,
    "depicts"?: [each real person shown by likeness, by full name alone]${setFields}}
 
-"prompt" is the full text-to-image prompt.
+${SCENE_ONLY_PROMPT}
 
 Keep ${kept} from the current brief while the new idea still shows those
 people${hasSets ? ' in that room' : ''}. When the producer's steer names a person or a room from
 the lists in the first message, the new brief shows them: ${steered}.
 
-${PEOPLE_RULES}${hasSets ? SET_RULES : ''}`
+${fieldRule(hasSets)}${PEOPLE_RULES}${hasSets ? SET_RULES : ''}`
 }
 
 export function buildRebriefRequest(input: RebriefInput): LLMTaskRequest {
@@ -95,7 +95,9 @@ export function buildRebriefRequest(input: RebriefInput): LLMTaskRequest {
       role: 'user',
       content:
         `Case: ${input.caseTitle}` +
-        (input.direction ? `\n\nDirector's book:\n${renderDirectorsBook(input.direction)}` : '') +
+        (input.direction
+          ? `\n\nDirector's book:\n${renderDirectorsBook(input.direction, { sets: sets.map((set) => set.name) })}`
+          : '') +
         referencesPrefix(photographed, sets),
     },
     { role: 'user', content: `The current brief:\n${JSON.stringify(input.brief, null, 2)}` },
@@ -129,7 +131,7 @@ The target shape:
 ${input.brief.type === 'still' ? stillShape(sets.length > 0) : TARGET_SHAPE[input.brief.type]}
 
 "motion" is {"kind": "static"} or {"kind": "kenburns", "direction": "in"|"out",
-"speed": "slow"|"medium"|"fast"} or {"kind": "pan", "path": string}.
+"speed": "slow"|"medium"|"fast"}. Never "pan": the renderer cannot do one.
 "transition" is "cut" or "dissolve".
 
 Return JSON: {"brief": {...}} — or {"error": "one sentence why"} if this beat

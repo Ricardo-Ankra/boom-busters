@@ -233,8 +233,11 @@ export function createGeminiImageGen(
         )
       }
 
+      // One clean sentence (decision 287): a prompt or list ending in a full
+      // stop used to leave "..", the join the fold added on top of it.
+      const trimmed = (text: string) => text.trim().replace(/[\s.]+$/, '')
       const prompt = request.negativePrompt
-        ? `${request.prompt}. Avoid: ${request.negativePrompt}.`
+        ? `${trimmed(request.prompt)}. Avoid: ${trimmed(request.negativePrompt)}.`
         : request.prompt
 
       const fetchImpl = options.fetchImpl ?? fetch

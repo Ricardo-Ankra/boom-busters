@@ -3,12 +3,7 @@ import sharp from 'sharp'
 import { getSettings, upsertAssetByHash, visualCredentials } from '@boom-busters/db'
 import { ValidationError } from '@boom-busters/schemas'
 import type { ProjectSet, SetPlateDirection, SlotCandidate } from '@boom-busters/schemas'
-import {
-  imageGenModel,
-  imageGenPrice,
-  mockProvidersEnabled,
-  stillStyleAnchors,
-} from '@boom-busters/providers'
+import { imageGenModel, imageGenPrice, mockProvidersEnabled } from '@boom-busters/providers'
 import { withCost } from '@boom-busters/cost'
 import { db } from '@/lib/db'
 import { env } from '@/lib/env'
@@ -58,12 +53,10 @@ export async function buildSetSheet(
   }
   const catalogue = await stillCatalogue(settings)
   const live = catalogue.google
-  const prompt = buildSetSheetPrompt({
-    name: set.name,
-    layout: set.layout,
-    look: set.look,
-    styleAnchors: stillStyleAnchors(settings.brandKit),
-  })
+  // buildSetSheetPrompt runs the prompt through stripBannedWords itself now
+  // (decision 287 final review), so the harness that calls it directly gets
+  // the same text this action sends.
+  const prompt = buildSetSheetPrompt({ name: set.name, layout: set.layout, look: set.look })
   const mocked = mockProvidersEnabled()
 
   let sheet: Buffer

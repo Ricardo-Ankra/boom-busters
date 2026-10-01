@@ -183,6 +183,8 @@ const stockSlot: SlotView = {
     rejectionCriteria: [],
   },
   briefError: undefined,
+  scene: null,
+  promptSent: null,
   candidates: [
     {
       id: 'a1',
@@ -252,6 +254,8 @@ const chartSlot: SlotView = {
     reveal: 'draw-on',
   },
   briefError: undefined,
+  scene: null,
+  promptSent: null,
   candidates: [],
   extraCandidates: 0,
   needsFetch: false,
@@ -288,6 +292,8 @@ const headlineSlot: SlotView = {
     emphasis: '$1.9 billion',
   },
   briefError: undefined,
+  scene: null,
+  promptSent: null,
   candidates: [],
   extraCandidates: 0,
   needsFetch: false,
@@ -352,6 +358,8 @@ const graphicSlot: SlotView = {
     },
   },
   briefError: undefined,
+  scene: null,
+  promptSent: null,
   candidates: [],
   extraCandidates: 0,
   needsFetch: false,
@@ -399,6 +407,8 @@ const brokenSlot: SlotView = {
   durationMs: 4000,
   brief: null,
   briefError: 'This brief no longer matches its schema and cannot be rendered or re-fetched as is.',
+  scene: null,
+  promptSent: null,
   candidates: [],
   extraCandidates: 0,
   needsFetch: true,
@@ -1390,6 +1400,71 @@ describe('the model select on a shot (decision 264)', () => {
   })
 })
 
+describe('the board edits the scene and shows the prompt sent (decision 287)', () => {
+  const promptSentSlot: SlotView = {
+    ...stockSlot,
+    id: SLOT_B,
+    type: 'still',
+    brief: {
+      type: 'still',
+      coversText: 'The trading floor, 1995.',
+      description: 'CRT monitors, cigarette smoke.',
+      motion: { kind: 'static' },
+      transition: 'cut',
+      // A stored prompt still carrying the legacy house line: `scene` is what
+      // it reads with that stripped back out.
+      prompt:
+        'A desk. An available-light documentary photograph, warm film grain; muted ' +
+        'documentary colour grade anchored on #111111 and #eeeeee against #222222; ' +
+        'sombre, photographic realism.',
+    },
+    candidates: [],
+    extraCandidates: 0,
+    route: null,
+    derivedRoute: { provider: 'google', model: 'gemini-3-pro-image' },
+    scene: 'A desk.',
+    promptSent:
+      'A desk.\n\nAn available-light documentary photograph: light from the scene’s own ' +
+      'sources, surfaces showing ordinary daily use, people caught candid and mid-moment, ' +
+      'never posing or acting for the camera.',
+  }
+
+  it('edits the scene and shows the prompt sent, read-only', async () => {
+    render(
+      <VisualBoard
+        projectId={PROJECT}
+        model={model([promptSentSlot])}
+        colors={COLORS}
+        brand={BRAND}
+      />,
+    )
+    await userEvent.click(screen.getByRole('button', { name: /Edit brief/ }))
+
+    expect(screen.getByLabelText('Scene')).toHaveValue('A desk.')
+    expect(screen.queryByLabelText('Generation prompt')).toBeNull()
+
+    await userEvent.click(screen.getByText('Prompt sent to the model'))
+    expect(screen.getByText(/An available-light documentary photograph:/)).toBeVisible()
+
+    await userEvent.click(screen.getByRole('button', { name: /Save/ }))
+    expect(editBriefAction).toHaveBeenCalledWith(
+      PROJECT,
+      SLOT_B,
+      expect.objectContaining({ prompt: 'A desk.' }),
+    )
+  })
+
+  it('has nothing to disclose when the slot carries no prompt preview yet', async () => {
+    const noPreview: SlotView = { ...promptSentSlot, promptSent: null }
+    render(
+      <VisualBoard projectId={PROJECT} model={model([noPreview])} colors={COLORS} brand={BRAND} />,
+    )
+    await userEvent.click(screen.getByRole('button', { name: /Edit brief/ }))
+
+    expect(screen.queryByText('Prompt sent to the model')).toBeNull()
+  })
+})
+
 describe('the headline card (decision 257)', () => {
   it('shows what the article said, and where each field came from', () => {
     render(
@@ -1860,6 +1935,8 @@ const socialSlot: SlotView = {
     postUrl: 'https://x.com/i/status/1734567890123456789',
   },
   briefError: undefined,
+  scene: null,
+  promptSent: null,
   candidates: [],
   extraCandidates: 0,
   needsFetch: false,

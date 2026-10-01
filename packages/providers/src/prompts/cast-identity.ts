@@ -1,5 +1,6 @@
 import { ValidationError } from '@boom-busters/schemas'
 import { z } from 'zod'
+import { BANNED_PROMPT_WORDS } from './direction-craft'
 import { formatIssues, parseJsonCompletion } from './json'
 import { outputBudget } from '../llm/types'
 import type { LLMTaskRequest, MsgImage } from '../llm/types'
@@ -50,8 +51,7 @@ Rules:
 - Only what is visible. No character, mood, health, nationality or ethnicity
   beyond what the photographs plainly show; no guesses about anything the
   frame does not contain.
-- No banned words: cinematic, stunning, dramatic lighting, high quality,
-  masterpiece, epic, beautiful, moody, professional.
+- No banned words: ${BANNED_PROMPT_WORDS.join(', ')}.
 - "guardrail" is one line listing only defamation and mockery exclusions for
   this person. Start from: "${DEFAULT_GUARDRAIL}". Add nothing that keeps
   them away from ordinary settings such as desks, documents, boardrooms or

@@ -83,6 +83,19 @@ describe('renderDirectorsBook', () => {
       'Chapter 1: leans towards environment shots;',
     )
   })
+
+  it('renders the palette as light and skips locations that are sets (decision 287)', () => {
+    const withSet = {
+      ...book,
+      locations: [...book.locations, { name: 'The Stability AI Boardroom', look: 'x' }],
+    }
+    const text = renderDirectorsBook(DirectorsBookSchema.parse(withSet), {
+      sets: ['The Stability AI Boardroom'],
+    })
+    expect(text).toContain("Light: this film's light runs cold.")
+    expect(text).not.toMatch(/#[0-9a-f]{6}/i)
+    expect(text).not.toContain('- The Stability AI Boardroom:')
+  })
 })
 
 const still = (shotSize: 'wide' | 'close', prompt: string): ShotBrief => ({

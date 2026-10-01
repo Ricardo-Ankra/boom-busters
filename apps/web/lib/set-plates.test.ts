@@ -1,16 +1,12 @@
-import { HOUSE_PHOTOGRAPH } from '@boom-busters/providers'
 import { describe, expect, it } from 'vitest'
+import { PLATE_PHOTOGRAPH_LINE } from './photograph-lines'
 import { buildSetSheetPrompt, describeCamera, framingLead, setPlateBrief } from './set-plates'
 
 describe('setPlateBrief', () => {
-  it('asks for a photograph, then the Brand Kit anchors', () => {
-    const brief = setPlateBrief(
-      { name: 'R', look: 'A long table', plates: [] },
-      'north',
-      'fine grain',
-    )
+  it('draws a plate from the room alone, with no house line or anchors (decision 287)', () => {
+    const brief = setPlateBrief({ name: 'Boardroom', look: 'A stark room.', plates: [] }, 'north')
     expect(brief.prompt).toBe(
-      `R, empty of people: a wide establishing photograph of the whole room, taken from its entrance at eye level with a 24mm lens. A long table ${HOUSE_PHOTOGRAPH} fine grain`,
+      'Boardroom, empty of people: a wide establishing photograph of the whole room, taken from its entrance at eye level with a 24mm lens. A stark room.',
     )
   })
 
@@ -19,25 +15,44 @@ describe('setPlateBrief', () => {
     const plated = { name: 'R', look: 'L', plates: [{ view: 'north' }] } as unknown as Parameters<
       typeof setPlateBrief
     >[0]
-    const first = setPlateBrief({ name: 'R', look: 'L', plates: [] }, 'north', 'a').prompt
-    const detail = setPlateBrief(plated, 'detail', 'a').prompt
+    const first = setPlateBrief({ name: 'R', look: 'L', plates: [] }, 'north').prompt
+    const detail = setPlateBrief(plated, 'detail').prompt
     expect(first.match(/\d+mm/g)).toEqual(['24mm'])
     expect(detail.match(/\d+mm/g)).toEqual(['50mm'])
     // A compass view's lens is the camera's, stated in the camera sentence.
-    expect(setPlateBrief(plated, 'south', 'a').prompt).not.toMatch(/\d+mm/)
+    expect(setPlateBrief(plated, 'south').prompt).not.toMatch(/\d+mm/)
   })
 
-  it('shoots a compass view of a plated set from the opposite wall', () => {
+  it('shoots a compass view of a plated set from the opposite wall, at 35mm like the contact sheet (decision 287)', () => {
     const plated = { name: 'R', look: 'L', plates: [{ view: 'north' }] } as unknown as Parameters<
       typeof setPlateBrief
     >[0]
-    expect(setPlateBrief(plated, 'south', 'a').camera).toEqual({
+    expect(setPlateBrief(plated, 'south').camera).toEqual({
       facing: 'south',
       position: 'the middle of the north wall, at eye level',
-      lens: '24mm',
+      lens: '35mm',
     })
-    expect(setPlateBrief(plated, 'detail', 'a').camera).toBeUndefined()
-    expect(setPlateBrief({ name: 'R', look: 'L', plates: [] }, 'north', 'a').camera).toBeUndefined()
+    expect(setPlateBrief(plated, 'detail').camera).toBeUndefined()
+    expect(setPlateBrief({ name: 'R', look: 'L', plates: [] }, 'north').camera).toBeUndefined()
+  })
+
+  // Final review: a later-view plate's prompt still carried the look beside
+  // its camera sentence (spec 5.2, 7.3 say the look draws the first plate
+  // only). A detail view carries no camera, so the look still draws it.
+  it('drops the look once a camera sentence stands in for it', () => {
+    const plated = {
+      name: 'R',
+      look: 'Cold blue light, rows of monitors.',
+      plates: [{ view: 'north' }],
+    } as unknown as Parameters<typeof setPlateBrief>[0]
+    const compass = setPlateBrief(plated, 'south')
+    expect(compass.prompt).toBe(
+      'R, empty of people: a wide photograph of the whole room facing south.',
+    )
+    expect(compass.prompt).not.toContain('Cold blue light')
+
+    const detail = setPlateBrief(plated, 'detail')
+    expect(detail.prompt).toContain('Cold blue light')
   })
 })
 
@@ -51,7 +66,7 @@ describe('describeCamera', () => {
     'Light: overcast daylight from the north.',
   ].join('\n')
 
-  it('places the camera, then what is in frame, on each side and behind it', () => {
+  it('places the camera, then what is in frame, on each side, never the wall behind it (decision 287)', () => {
     expect(
       describeCamera(
         { facing: 'north', position: 'the south doorway, seated eye height', lens: '35mm' },
@@ -60,8 +75,7 @@ describe('describeCamera', () => {
     ).toBe(
       'The camera stands at the south doorway, seated eye height, facing north, 35mm. ' +
         'In frame: three tall windows. Frame left: bare concrete. Frame right: walnut credenza. ' +
-        'Centre: ten-seat walnut table. Light: overcast daylight from the north (ahead). ' +
-        'Behind the camera, out of frame: glass wall onto the corridor.',
+        "Centre: ten-seat walnut table. The room's own light: overcast daylight from the north (ahead).",
     )
   })
 
@@ -75,6 +89,45 @@ describe('describeCamera', () => {
     expect(describeCamera({ facing: 'east', position: 'the window' }, 'A long table.')).toBe(
       'The camera stands at the window, facing east. The room: A long table.',
     )
+  })
+})
+
+describe('describeCamera (decision 287)', () => {
+  const layout =
+    'North wall: glass windows.\nEast wall: acoustic panels.\nSouth wall: oak double door.\n' +
+    "West wall: frosted glass.\nCentre: the room's only table, ten chairs.\n" +
+    'Light: LED panels, daylight from the north.'
+
+  it('names nothing behind the camera on a wide shot (decision 287)', () => {
+    const text = describeCamera(
+      { facing: 'north', position: 'the south doorway', lens: '24mm' },
+      layout,
+      'wide',
+    )
+    expect(text).not.toContain('Behind the camera')
+    expect(text).not.toContain('oak double door')
+    expect(text).not.toContain('The room:')
+    expect(text).toContain("The room's own light: LED panels, daylight from the north (ahead).")
+  })
+
+  it('keeps an unlabelled inventory on a wide shot, since it is all there is', () => {
+    const text = describeCamera(
+      { facing: 'north', position: 'the door' },
+      'A long room with one desk.',
+      'wide',
+    )
+    expect(text).toContain('The room: A long room with one desk.')
+  })
+
+  it('says ahead, beyond the subject, on a medium shot', () => {
+    const text = describeCamera({ facing: 'north', position: 'seated' }, layout, 'medium')
+    expect(text).toContain('Ahead, beyond the subject: glass windows.')
+    expect(text).not.toMatch(/(^|\. )Behind:/)
+  })
+
+  it('shoots a compass view at 35mm, like the contact sheet', () => {
+    const brief = setPlateBrief({ name: 'B', look: '', plates: [{} as never] }, 'east')
+    expect(brief.camera?.lens).toBe('35mm')
   })
 })
 
@@ -92,18 +145,20 @@ describe('describeCamera framing (live run 5)', () => {
   it('gives a close shot only the wall behind the subject, soft, and the light', () => {
     expect(describeCamera(camera, layout, 'close')).toBe(
       'The camera stands at halfway down the table, facing north, 85mm. ' +
-        'Behind, soft and out of focus: a black screen wall. Light: overcast daylight.',
+        "Behind, soft and out of focus: a black screen wall. The room's own light: overcast daylight.",
     )
   })
 
   // Live run 6: said at the end, "a close shot" lost to a wide opening.
   it('leads a close or medium prompt with its framing, and a wide one with nothing', () => {
     expect(framingLead(camera, 'close')).toBe(
-      'A close shot, the subject filling most of the frame, the room behind soft and out of focus: ',
+      'A close shot: the subject fills most of the frame, the background soft and out of focus.',
     )
-    expect(framingLead(camera, 'medium')).toBe('A medium shot, the subject from the waist up: ')
+    expect(framingLead(camera, 'medium')).toBe('A medium shot: the subject from the waist up.')
     expect(framingLead(camera, 'wide')).toBe('')
     expect(framingLead(camera)).toContain('A close shot')
+    expect(framingLead(undefined, 'close')).toContain('A close shot')
+    expect(framingLead(undefined)).toBe('')
   })
 
   // Live run 13: naming the window wall pulled it in behind a close subject.
@@ -113,19 +168,22 @@ describe('describeCamera framing (live run 5)', () => {
       'Light: daylight from the west windows.',
     )
     const text = describeCamera(camera, lit, 'close')
-    expect(text).toContain("Light: daylight from the west (to the camera's left) windows.")
+    expect(text).toContain(
+      "The room's own light: daylight from the west (to the camera's left) windows.",
+    )
     expect(text).not.toContain('shelves')
     expect(describeCamera({ ...camera, facing: 'south' }, lit, 'close')).toContain(
       "west (to the camera's right)",
     )
   })
 
-  it('gives a medium shot the wall behind, its sides and the light, not the whole room', () => {
+  it('gives a medium shot what is ahead of the subject, its sides and the light, not the whole room (decision 287)', () => {
     const text = describeCamera({ ...camera, lens: '50mm' }, layout, 'medium')
-    expect(text).toContain('Behind: a black screen wall.')
+    expect(text).toContain('Ahead, beyond the subject: a black screen wall.')
     expect(text).toContain("To the camera's left: windows. To the camera's right: shelves.")
     expect(text).not.toContain('Centre:')
     expect(text).not.toContain('Behind the camera')
+    expect(text).not.toMatch(/(^|\. )Behind:/)
   })
 
   it('reads a long lens as close when the brief gives no shot size', () => {
@@ -133,10 +191,11 @@ describe('describeCamera framing (live run 5)', () => {
     expect(describeCamera({ ...camera, lens: '35mm' }, layout)).toContain('Frame left:')
   })
 
-  it('keeps the whole inventory for a wide shot', () => {
+  it('keeps left, right and centre for a wide shot, but never what is behind the camera (decision 287)', () => {
     const text = describeCamera({ ...camera, lens: '85mm' }, layout, 'wide')
     expect(text).toContain('Frame left: windows. Frame right: shelves.')
-    expect(text).toContain('Behind the camera, out of frame: a door.')
+    expect(text).not.toContain('Behind the camera')
+    expect(text).not.toContain('a door')
   })
 })
 
@@ -146,7 +205,6 @@ describe('buildSetSheetPrompt', () => {
       name: 'The boardroom',
       layout: 'North wall: windows',
       look: 'A long table',
-      styleAnchors: 'fine grain',
     })
     expect(prompt).toContain(
       'A 2x2 contact sheet of four photographs of one room, The boardroom, separated by thin white borders of equal width, each panel 16:9.',
@@ -158,7 +216,7 @@ describe('buildSetSheetPrompt', () => {
     expect(prompt).toContain('Bottom left: facing south.')
     expect(prompt).toContain('Bottom right: facing west.')
     expect(prompt).not.toContain('A long table')
-    expect(prompt.endsWith('fine grain')).toBe(true)
+    expect(prompt.endsWith(PLATE_PHOTOGRAPH_LINE)).toBe(true)
   })
 
   // Live run 1 (2026-09-24): with directions alone, the east panel repeated
@@ -175,7 +233,6 @@ describe('buildSetSheetPrompt', () => {
         'Light: overcast daylight.',
       ].join('\n'),
       look: 'L',
-      styleAnchors: 'a',
     })
     expect(prompt).toContain(
       'Top right: facing east, looking straight at the east wall: shelves and a door.',
@@ -192,19 +249,36 @@ describe('buildSetSheetPrompt', () => {
   })
 
   it('falls back to the look when there is no inventory', () => {
-    expect(
-      buildSetSheetPrompt({ name: 'R', layout: '', look: 'A long table', styleAnchors: 'a' }),
-    ).toContain('The room: A long table')
+    expect(buildSetSheetPrompt({ name: 'R', layout: '', look: 'A long table' })).toContain(
+      'The room: A long table',
+    )
   })
 
-  it('asks for photographs before the anchors', () => {
-    const prompt = buildSetSheetPrompt({ name: 'R', layout: '', look: 'L', styleAnchors: 'a' })
-    expect(prompt.endsWith(`${HOUSE_PHOTOGRAPH}\na`)).toBe(true)
+  it('ends the sheet with the plate photograph line and no anchors', () => {
+    const prompt = buildSetSheetPrompt({
+      name: 'Boardroom',
+      layout: 'North wall: glass.',
+      look: '',
+    })
+    expect(prompt.endsWith(PLATE_PHOTOGRAPH_LINE)).toBe(true)
+    expect(prompt).not.toMatch(/film grain|candid/)
   })
 
   it('names one lens and one height, its own', () => {
-    const prompt = buildSetSheetPrompt({ name: 'R', layout: '', look: 'L', styleAnchors: 'a' })
+    const prompt = buildSetSheetPrompt({ name: 'R', layout: '', look: 'L' })
     expect(prompt.match(/\d+mm/g)).toEqual(['35mm'])
     expect(prompt.match(/eye level/g)).toHaveLength(1)
+  })
+
+  // Item 5, final review: this used to be the caller's job (set-sheet.ts
+  // wrapped the return value), which let the live-set-test harness — a
+  // direct caller — send a banned word straight through.
+  it('strips a banned word from the look, like every other still prompt', () => {
+    const prompt = buildSetSheetPrompt({
+      name: 'R',
+      layout: '',
+      look: 'A stunning, cinematic boardroom.',
+    })
+    expect(prompt).not.toMatch(/stunning|cinematic/i)
   })
 })

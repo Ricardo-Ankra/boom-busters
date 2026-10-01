@@ -30,7 +30,7 @@ import {
   updateSlotBrief,
   upsertAssetByHash,
 } from '@boom-busters/db'
-import { imageGenModel, stillStyleAnchors } from '@boom-busters/providers'
+import { imageGenModel } from '@boom-busters/providers'
 import {
   articleIsRenderable,
   claimCarriesArticle,
@@ -477,10 +477,7 @@ export async function retypeSlotAction(
     }
   }
 
-  const settings = await getSettings(db)
-  const mechanical = convertBrief(current.data, parsedType.data, {
-    stillStyleAnchors: stillStyleAnchors(settings.brandKit),
-  })
+  const mechanical = convertBrief(current.data, parsedType.data)
 
   if (mechanical) {
     await retypeShotSlot(db, slotId, parsedType.data, mechanical)

@@ -185,7 +185,6 @@ describeDb('direction helpers (mock mode)', () => {
     expect(inputs.centralQuestion).toBe('Where was the money?')
     expect(inputs.chapters[0]?.withhold).toBe('The trustee')
     expect(inputs.chapters[0]?.paragraphs).toEqual(['First paragraph.', 'Second paragraph.'])
-    expect(inputs.styleAnchors).toContain('grain')
   })
 
   it('reusing a stored book still seeds its locations as sets (decision 265)', async () => {
@@ -290,7 +289,6 @@ describe('planChapterSlots against a live model', () => {
       chapter: { id: 'ch-1', title: 'The audit', number: 1 },
       paragraphs: PARAGRAPHS,
       claims: [],
-      styleAnchors: 'a',
       direction: null,
     })
 
@@ -310,7 +308,6 @@ describe('planChapterSlots against a live model', () => {
       chapter: { id: 'ch-1', title: 'The audit', number: 1 },
       paragraphs: PARAGRAPHS,
       claims: [],
-      styleAnchors: 'a',
       direction: null,
       sets: [{ name: 'Boardroom', look: 'dark wood panelling, one window' }],
     })
@@ -329,7 +326,6 @@ describe('planChapterSlots against a live model', () => {
         chapter: { id: 'ch-1', title: 'The audit', number: 1 },
         paragraphs: PARAGRAPHS,
         claims: [],
-        styleAnchors: 'a',
         direction: null,
       }),
     ).rejects.toThrow(/cut off mid-answer/)
@@ -373,7 +369,6 @@ describe('planChapterSlots plans a graphic and threads the logo library (decisio
       chapter: { id: 'ch-1', title: 'The audit', number: 1 },
       paragraphs: PARAGRAPHS,
       claims: CLAIMS,
-      styleAnchors: 'a',
       direction: null,
       logos: [{ id: 'logo-1', title: 'Wirecard AG' }],
     })
@@ -397,7 +392,6 @@ describe('planChapterSlots plans a graphic and threads the logo library (decisio
       chapter: { id: 'ch-1', title: 'The audit', number: 1 },
       paragraphs: PARAGRAPHS,
       claims: CLAIMS,
-      styleAnchors: 'a',
       direction: null,
       logos: [],
     })
@@ -442,7 +436,6 @@ describe('planChapterSlots repairs a chapter once, on auto findings only (decisi
     chapter: { id: 'ch-1', title: 'The exit', number: 1 },
     paragraphs: PARAGRAPHS,
     claims: [],
-    styleAnchors: 'a',
     direction: null,
     photographed: ['Emad Mostaque'],
   }

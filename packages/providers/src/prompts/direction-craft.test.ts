@@ -5,7 +5,6 @@ import { describe, expect, it } from 'vitest'
 import {
   BANNED_PROMPT_WORDS,
   DIRECTION_CRAFT,
-  HOUSE_PHOTOGRAPH,
   stripBannedWords,
   withoutBannedWords,
 } from './direction-craft'
@@ -35,31 +34,74 @@ describe('DIRECTION_CRAFT', () => {
     expect(DIRECTION_CRAFT).toContain('a generated wordmark is a wrong one')
     expect(DIRECTION_CRAFT).toContain('set by the compositor, never by the image model')
     expect(DIRECTION_CRAFT).toContain('by name alone, no role after it')
-    expect(DIRECTION_CRAFT).toContain('the person in the reference')
+    expect(DIRECTION_CRAFT).toContain('the code tells the model which photograph is')
     expect(DIRECTION_CRAFT).toContain('no caricature')
     for (const word of BANNED_PROMPT_WORDS) expect(DIRECTION_CRAFT).toContain(word)
+  })
+
+  // Final review: the facing-things example contradicted the People section's
+  // "never turned away as a device" a few lines down.
+  it('never gives a face-hiding example in its own facing rule', () => {
+    expect(DIRECTION_CRAFT).not.toContain('back to the camera')
   })
 
   it('never asks the renderer for a pan it cannot do', () => {
     expect(DIRECTION_CRAFT).toContain('Never plan a pan')
   })
 
-  it('states the house photograph line in the bible, word for word (decision 275)', () => {
-    expect(DIRECTION_CRAFT).toContain(HOUSE_PHOTOGRAPH)
-    expect(HOUSE_PHOTOGRAPH).toBe(
-      'An available-light documentary photograph, slight grain, mixed colour temperature from window daylight and warm practicals, real materials with wear: scuffed edges, cable runs, a coffee ring, papers out of line; people caught candid and mid-moment, never posing or acting for the camera.',
-    )
+  it('lists no props and pastes no house line (decision 287)', () => {
+    expect(DIRECTION_CRAFT).not.toContain('a coffee ring')
+    expect(DIRECTION_CRAFT).not.toContain('a half-drunk coffee')
+    expect(DIRECTION_CRAFT).not.toContain('steam off a cup')
+    expect(DIRECTION_CRAFT).not.toContain('Brand Kit anchors')
+    expect(DIRECTION_CRAFT).not.toContain('no flat screen')
   })
 
-  // Final review: a lens and a height in the house line put two lenses on most
-  // stills and "eye level" on low, aerial and macro shots.
-  it('leaves the lens and height to each shot, not the house line (decision 275)', () => {
-    expect(HOUSE_PHOTOGRAPH).not.toMatch(/\d+\s?mm/)
-    expect(HOUSE_PHOTOGRAPH).not.toContain('eye level')
+  it('gives the grade to the compositor and states what code adds', () => {
     expect(DIRECTION_CRAFT).toContain(
-      'The house line names no lens and no height; every shot states its own.',
+      'A prompt never names a grade, grain, film stock or colour code.',
     )
-    expect(DIRECTION_CRAFT).not.toContain('A lens the camera names replaces the 35mm.')
+    expect(DIRECTION_CRAFT).toContain('## What code adds')
+  })
+
+  it('asks for facings and counts', () => {
+    expect(DIRECTION_CRAFT).toContain(
+      'Every screen, seat and person in the frame faces someone or something the prompt names',
+    )
+    expect(DIRECTION_CRAFT).toContain("the room's one desk")
+  })
+
+  it('limits the avoid list to this frame', () => {
+    expect(DIRECTION_CRAFT).toContain('a frame with a laptop never avoids screens')
+  })
+
+  // Review round 1, Important #1: the per-model recipes still told the
+  // planner to paste a hex code, to reuse the (now-deleted) Brand Kit
+  // anchors, or to write a physical description for a photographed person —
+  // each one a live instruction that contradicted the rules above it.
+  it('does not let the per-model recipes contradict the rules above them (decision 287)', () => {
+    expect(DIRECTION_CRAFT).not.toContain('hex colours')
+    expect(DIRECTION_CRAFT).not.toContain('same anchors')
+    expect(DIRECTION_CRAFT).not.toContain('name the person, then the identity string')
+  })
+
+  // Review round 1, Important #2: these rules survive decision 287 (they are
+  // never restated in the planner's own Planning rules), and each phrase sits
+  // whole on one line of the markdown, so a re-wrap would fail this test
+  // before it fails a live plan.
+  it('states these surviving rules whole, on one line each', () => {
+    expect(DIRECTION_CRAFT).toContain('Never in two adjacent slots')
+    expect(DIRECTION_CRAFT).toContain('that is the goal, not a gap')
+    expect(DIRECTION_CRAFT).toContain('never an object standing in for them')
+    expect(DIRECTION_CRAFT).toContain('A sentence that names a person or a place shows that person')
+    expect(DIRECTION_CRAFT).toContain('In a set, the light you write is what the moment adds')
+    expect(DIRECTION_CRAFT).toContain('No prop or atmospheric device appears twice in a chapter')
+    // Review round 2: this one had no assertion at all (the shotlist.test.ts
+    // check re-commented for review round 1 asks for the room's NAME, which
+    // is a different rule from what happens inside it).
+    expect(DIRECTION_CRAFT).toContain(
+      'write what happens inside it: the people, what they are doing, the light',
+    )
   })
 
   it('bans the words that pull a prompt towards a render (decision 275)', () => {
@@ -87,7 +129,7 @@ describe('DIRECTION_CRAFT', () => {
     expect(DIRECTION_CRAFT).toContain('The sentence decides the frame')
     expect(DIRECTION_CRAFT).toContain('sound off')
     expect(DIRECTION_CRAFT).toContain('each motif at most once per chapter')
-    expect(DIRECTION_CRAFT).toContain('one detail drawn from the sentence itself')
+    expect(DIRECTION_CRAFT).toContain('the detail the sentence names')
     // The clause that put a motif into every still is gone.
     expect(DIRECTION_CRAFT).not.toContain('and one motif from the director')
     // The fallback no longer canonises one picture.

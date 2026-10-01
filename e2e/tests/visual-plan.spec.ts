@@ -66,6 +66,13 @@ test.describe('the shot plan checkpoint', () => {
     await expect(card.getByRole('button', { name: 'Save', exact: true })).toBeVisible()
     await expect(card.getByRole('button', { name: /Save & re-fetch/ })).toHaveCount(0)
 
+    // The board edits the scene and shows the prompt sent, read-only
+    // (decision 287): a still's brief carries a "Scene" field, and the
+    // full assembled prompt sits behind a disclosure beside it.
+    await expect(card.getByLabel('Scene')).toBeVisible()
+    await card.getByText('Prompt sent to the model').click()
+    await expect(card.getByText(/An available-light documentary photograph:/)).toBeVisible()
+
     const description = card.getByLabel('Visual description')
     await description.fill('A boardroom nobody sits in any more, dust on the table.')
     await card.getByRole('button', { name: 'Save', exact: true }).click()

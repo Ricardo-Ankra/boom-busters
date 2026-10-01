@@ -8,7 +8,6 @@ import {
   ValidationError,
 } from '@boom-busters/schemas'
 import type {
-  BrandKitStored,
   DirectorsBook,
   PlannedBrief,
   PlannedSlot,
@@ -16,7 +15,7 @@ import type {
 } from '@boom-busters/schemas'
 import { z } from 'zod'
 import { claimList, type ScriptClaim } from './script'
-import { DIRECTION_CRAFT, HOUSE_PHOTOGRAPH } from './direction-craft'
+import { DIRECTION_CRAFT } from './direction-craft'
 import { formatIssues, parseJsonCompletion } from './json'
 import { outputBudget } from '../llm/types'
 import type { LLMTaskRequest } from '../llm/types'
@@ -50,10 +49,10 @@ export interface ShotParagraph {
  *
  * The flat 8,000 the prompt shipped with was enough while a brief was a
  * query and a sentence. Under the Director's Book (decision 252) every brief
- * carries a shot size, and a still prompt carries three physical facts, the
- * era lock, palette, identity string, the Brand Kit anchors and a guardrail
- * line, so a slot runs 300 to 400 tokens and a six-minute chapter no longer
- * fits: the first live run cut off mid-JSON, three retries at full price.
+ * carries a shot size, and a still prompt carries the scene and an identity
+ * string, so a slot runs 300 to 400 tokens and a six-minute chapter no
+ * longer fits: the first live run cut off mid-JSON, three retries at full
+ * price.
  *
  * Slots are at least 4 s, so narration seconds / 5 is a generous count of how
  * many the model could plan; 400 tokens each is the long end of a still.
@@ -69,31 +68,6 @@ export function shotListAnswerTokens(paragraphs: readonly ShotParagraph[]): numb
   const narrationSeconds = paragraphs.reduce((sum, paragraph) => sum + paragraph.seconds, 0)
   const slots = Math.ceil(narrationSeconds / SECONDS_PER_PLANNED_SLOT)
   return Math.max(SHOT_LIST_FLOOR_TOKENS, slots * TOKENS_PER_SLOT)
-}
-
-/**
- * Brand Kit → the style anchors every still prompt must carry, so generated
- * frames sit in the channel's look rather than each inventing their own.
- * Composed from the tokens that read as photography direction: grain and the
- * palette's dominant colours.
- */
-export function stillStyleAnchors(brandKit: BrandKitStored): string {
-  const { grainPreset } = brandKit.look
-  const { primary, accent, background } = brandKit.colors
-  const grain = grainPreset === 'none' ? 'clean, no grain' : `${grainPreset} film grain`
-
-  // Positive direction only. Two bans have been taken out of this string for
-  // the same reason: it rides on every prompt, so a blanket "no identifiable
-  // real faces" fought every likeness the bible asked for (decision 252), and
-  // "no text, no logos, no watermarks" fought every company mark a film about
-  // a company needs (decision 263). The bible decides both, per shot, and a
-  // slot that truly needs an exclusion has its own negative prompt. "cinematic"
-  // went with them: it is on the bible's banned list, so every still the
-  // planner wrote warned about a word this function had supplied.
-  return (
-    `${grain}; muted documentary colour grade anchored on ${primary} and ${accent} ` +
-    `against ${background}; sombre, photographic realism`
-  )
 }
 
 /**
@@ -118,8 +92,11 @@ export function referencesPrefix(
         sets
           .map((set) => {
             const inventory = (set.layout ?? '').trim()
+            // One description per room (decision 287): the inventory once it
+            // exists; the look only before. Naming both let a still's prompt
+            // repeat furniture the inventory never counted.
             return inventory
-              ? `- ${set.name}: ${set.look}\n${inventory
+              ? `- ${set.name}\n${inventory
                   .split(/\r?\n/)
                   .filter((line) => line.trim() !== '')
                   .map((line) => `  ${line.trim()}`)
@@ -133,56 +110,62 @@ export function referencesPrefix(
 
 /** The three kinds of people a still may show, and how each is written (decision 253). */
 export const PEOPLE_RULES = `  People come in three kinds and they never mix:
-  (a) A name in "Photographed" above. Name them by full name and role, add
-      "the person in the reference photo", and write NO physical description
-      of them whatever: no age, build, height, hair, beard, glasses, skin or
-      face. The photograph is the likeness and any written description fights
-      it. Clothing, posture, place, light and what they are doing are still
-      yours to direct. Stage them physically in the scene: seated in a chair
-      or standing on the floor, at true scale, with any furniture between
-      them and the camera in front of them. List them in "depicts" by name
-      alone, never with the role after it: the name is how the photographs
-      are found.
-  (b) A named person NOT in that list. Name them by full name and role, then
-      their identity string from the book as one sentence — with no
-      photograph it is the only thing standing between the image and a
-      stand-in. List them in "depicts" by name alone.
+  (a) A name in "Photographed" above. Name them by full name and role and
+      write NO physical description of them whatever: no age, build, height,
+      hair, beard, glasses, skin or face. The photograph is the likeness.
+      Clothing, posture, place, light and what they are doing are yours.
+      List them in "depicts" by name alone, never with the role after it.
+  (b) A named person NOT in that list. Write their identity string from the
+      book as one sentence; it already begins with their full name and role.
+      List them in "depicts" by name alone.
   (c) Anyone unnamed: investors, employees, staff, an aide, a driver, a
-      crowd. No name and no identity string. Describe them by
-      role, age range, build and clothing, with a natural, realistic face,
-      visible and in focus, resembling no real or public person.
-      Never blur, hide or turn a face away as a device.
+      crowd. No name and no identity string; the bible's People section says
+      how they are written.
 `
 
 /** How a still is put in one of the film's sets (decisions 264, 275). Sent only when sets exist. */
-export const SET_RULES = `  Sets are the rooms this film returns to, and the producer holds
-  photographs of each. When the sentence puts us in one,
-  name it in "set" by name alone, and write in the prompt what happens
-  inside it: who is there, what they are doing and the light.
-  Name the room in the prompt as well, in the same words the list above
-  uses, so the sentence and the photographs attached to it are plainly
-  about one place.
-  The photographs give the room's design, not the picture.
-  Where the camera stands and which way it faces live in "camera" alone;
-  the prompt never places the camera, because the producer can move it on
-  the board, and that changes only "camera".
-  Two stills of the same room never share a camera position.
-  Every still that names a set carries "camera". "facing" is the wall the
-  camera looks at, by the inventory's compass; "position" is where it stands
-  and how high ("the south doorway, seated eye height", "low across the table
-  from the window side"); "lens" is the lens ("35mm", "85mm, shallow focus").
-  Choose the facing from what the sentence needs in frame, using the
-  inventory: the windows are north, so a shot that must show the windows
-  faces north. Vary facing and position across a chapter's shots of one room.
-  Name only details that are in frame for that facing: a window, screen or door
-  the prompt mentions sits on the wall the camera faces or at its edges,
-  never on the wall behind the camera, or the image model turns to show it.
-  Do not describe its walls, furniture, layout or materials; the
-  photographs state those, and a written description only argues with
-  them. Its light and weather are still yours. A sentence that happens
-  somewhere else names no set: a room on every slot is the same mistake as
-  a motif on every slot.
+export const SET_RULES = `  Sets: when the sentence puts us in one of the rooms listed above, name it
+  in "set" by name alone, name it in the prompt in the same words, and give
+  the still a "camera". "facing" is the wall the camera looks at, by the
+  inventory's compass; "position" is where it stands and how high ("the south
+  doorway, seated eye height"); "lens" is the lens ("35mm", "85mm, shallow
+  focus"). Choose the facing from what the sentence needs in frame, using the
+  inventory, and vary facing and position across a chapter's shots of one
+  room. The prompt never places the camera and never describes the room; the
+  bible's set rules say why. A sentence that happens somewhere else names no set.
 `
+
+/**
+ * The planner's own first rule (decision 287 follow-up, task 10a): read
+ * "coversText" and let it fill the fields. Decision 287 dropped this bullet
+ * because the bible states it too, but the live plan harness followed it less
+ * once only the bible said so — a chapter planned fewer sets and no cast
+ * member it had shown before. The fields are the planner's own job (spec
+ * 6.1), so it comes back here, and "Draft a different brief" shares this same
+ * sentence rather than a paraphrase of it.
+ */
+export function fieldRule(hasSets: boolean): string {
+  const setClause = hasSets
+    ? `a sentence
+  that puts us in one of the rooms listed above names it in "set"; `
+    : ''
+  return `- Read "coversText" before anything else and let it fill the fields: a sentence
+  that names a person shows that person and lists them in "depicts"; ${setClause}an abstract
+  sentence is staged with the people it concerns, never an object standing in
+  for them.
+`
+}
+
+/**
+ * What "prompt" holds on a still brief, shared with a rebrief (decision 287
+ * final review): the planner's own text said this once and the rebrief said
+ * something else ("the full text-to-image prompt"), which told a redraft to
+ * write the framing, the room and the house line the assembler already adds
+ * — the wrong owner for wrong reasons, on the second call alone.
+ */
+export const SCENE_ONLY_PROMPT =
+  '"prompt" is the scene alone: code adds the framing, the room, the references ' +
+  'and the house photograph line; write none of them, and no palette, grade, grain or colour code.'
 
 function slotShapes(hasSets: boolean): string {
   return `Every slot: {"paragraphIndex": number, "seconds": number, "brief": {...}}
@@ -260,8 +243,6 @@ export function buildShotListRequest(input: {
   chapterNumber?: number
   paragraphs: readonly ShotParagraph[]
   claims: readonly ScriptClaim[]
-  /** From `stillStyleAnchors` — appended verbatim to every still prompt. */
-  styleAnchors: string
   /** The per-film Director's Book (decision 252). Absent on projects planned before it. */
   direction?: DirectorsBook
   /**
@@ -299,7 +280,9 @@ export function buildShotListRequest(input: {
   const logos = (input.logos ?? []).filter((title) => title.trim().length > 0)
   const prefix =
     `Case: ${input.caseTitle}\n\nClaims:\n${claimList(input.claims)}` +
-    (input.direction ? `\n\nDirector's book:\n${renderDirectorsBook(input.direction)}` : '') +
+    (input.direction
+      ? `\n\nDirector's book:\n${renderDirectorsBook(input.direction, { sets: sets.map((set) => set.name) })}`
+      : '') +
     referencesPrefix(photographed, sets) +
     (logos.length > 0
       ? `\n\nLogos (marks the producer holds; a graphic's "logo" names one exactly):\n` +
@@ -325,27 +308,11 @@ Return JSON: {"slots": [...]}
 ${slotShapes(sets.length > 0)}
 
 Planning rules:
-- The sentence decides the frame. Read "coversText" before anything else and
-  show what it says: the place it names, the object it mentions, the thing
-  that happened, the person doing what the sentence says they did.
-  A sentence that names a person shows that person, listed in "depicts".
-- Stage an abstract sentence, never symbolise it. "Financial pressure and
-  disagreements inside the boardroom" is the principals at the boardroom
-  table; it is not a server, a chair or a document standing in for them.
-  Only a sentence with no person and no place in it reaches for the book,
-  and then for the chapter's location first and a motif last.
-- The era lock is a constraint on what may appear, not a list to paste.
-  Name only the period objects actually in your frame.
-- Motifs are seasoning, not the meal. Use each motif at most once across the chapter,
-  never in consecutive slots, and never as the subject of a frame unless the
-  sentence is about it. A still whose sentence gives you a concrete subject
-  needs no motif at all.
-  There is no minimum: a chapter with no motif in it is fine.
-- Cover every paragraph. A slot runs 4-15 seconds ("seconds" is always a
+${fieldRule(sets.length > 0)}- Cover every paragraph. A slot runs 4-15 seconds ("seconds" is always a
   positive number); a paragraph's slots should add up to roughly its narration
   length.
 - Each brief is a full creative direction, not a keyword: subject, composition,
-  era, mood, lighting and colour grade in "description". "coversText" quotes
+  era, mood and lighting in "description". "coversText" quotes
   the sentence(s) the slot plays under, EXACTLY as written.
 - Prefer "chart" wherever the narration cites numbers and "map" wherever it
   moves between places — these carry the story better than another stock shot.
@@ -364,13 +331,10 @@ Planning rules:
   where to look and what to search for, "mustShow" is the test the upload
   must pass. Plan one only where authenticity is the point; every archival
   slot is manual work for a human.
-- "still" is an AI-GENERATED image. Write the prompt as the bible's "What a
-  still prompt must contain" says: prose, subject first, three physical
-  facts, lens, camera height and light named (a still that names a set
-  is the exception: its lens and camera height go in "camera" instead),
-  then the book's palette line (the era lock
-  only limits which period objects you name; never paste its list), then the house photograph line verbatim: "${HOUSE_PHOTOGRAPH}", then
-  these Brand Kit anchors verbatim: "${input.styleAnchors}".
+- "still" is an AI-GENERATED image. ${SCENE_ONLY_PROMPT} Write it as the
+  bible's "What a still prompt must contain" says: prose, subject first, the
+  detail the sentence names, the light of the moment, then lens and camera height
+  (a still that names a set is the exception: its lens and camera height go in "camera" instead).
 ${PEOPLE_RULES}${sets.length > 0 ? SET_RULES : ''}  Never quote the guardrail:
   it decides what you plan, not what the image model reads, and a model
   reads "never in handcuffs" as a request for handcuffs. Put its concrete

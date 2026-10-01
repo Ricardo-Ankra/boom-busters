@@ -66,6 +66,7 @@
       "logoR2Key": null,
       "watermarkPlacement": "br",
       "grainPreset": "subtle",
+      "gradePreset": "muted",
       "lowerThirdVariant": "bar",
       "chapterCardVariant": "full"
     },

@@ -12,11 +12,12 @@ import {
   updateProjectSet,
   updateSettings,
 } from '@boom-busters/db'
-import { HOUSE_PHOTOGRAPH, mockImageGen } from '@boom-busters/providers'
+import { mockImageGen } from '@boom-busters/providers'
 import { DEFAULT_SET_SHEET_ROUTE } from '@boom-busters/schemas'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/lib/db'
 import { splitContactSheet } from '@/lib/contact-sheet'
+import { PLATE_PHOTOGRAPH_LINE } from '@/lib/photograph-lines'
 import { MOCK_LAYOUT } from '@/lib/set-layout'
 import { UNSPLIT_SHEET } from '@/lib/set-sheet'
 import {
@@ -411,18 +412,26 @@ describeDb('set actions (mock mode)', () => {
     const request = generate.mock.calls[0]?.[0]
     expect((request?.references ?? []).map((reference) => reference.kind)).toEqual(['object'])
     expect(request?.prompt).toContain('a wide photograph of the whole room facing south')
-    // Task 10 (decision 275): a compass view's camera stands at the middle of
-    // the opposite wall, at eye level, 24mm — describeCamera's own sentence,
-    // which REPLACES decision 273's "never reproduce or edit the framing"
-    // line (that line only fires when a still carries no camera).
+    // Task 10 (decision 275, lens 35mm from decision 287): a compass view's
+    // camera stands at the middle of the opposite wall, at eye level, 35mm,
+    // like the contact sheet's panels — describeCamera's own sentence.
+    // Decision 273's "never reproduce or edit the framing" line is gone
+    // outright now (decision 287): it never fires, camera or not.
     expect(request?.prompt).toContain(
-      'The camera stands at the middle of the north wall, at eye level, facing south, 24mm.',
+      'The camera stands at the middle of the north wall, at eye level, facing south, 35mm.',
     )
     // The house line carries no lens (decision 275 final review), so the
-    // camera's is the only one, and the house line travels once, whole.
-    expect(request?.prompt.split(HOUSE_PHOTOGRAPH)).toHaveLength(2)
-    expect(request?.prompt.match(/\d+mm/g)).toEqual(['24mm'])
+    // camera's is the only one. Decision 287: the assembler strips the
+    // pasted house line and anchors and closes the prompt with its own
+    // photograph line instead (the plate line arrives in Task 6, once this
+    // path passes `kind: 'plate'`).
+    expect(request?.prompt.endsWith(PLATE_PHOTOGRAPH_LINE)).toBe(true)
+    expect(request?.prompt).not.toMatch(/film grain/)
+    expect(request?.prompt.match(/\d+mm/g)).toEqual(['35mm'])
     expect(request?.prompt).not.toContain('never reproduce or edit the framing')
+    // Final review: the look drew the first plate only (spec 5.2, 7.3); a
+    // later view's camera sentence stands in for it instead.
+    expect(request?.prompt).not.toContain('cold blue light')
   })
 
   it('refuses another view before the set has a plate, before spending', async () => {

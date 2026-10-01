@@ -11,12 +11,10 @@ import {
   dismissProjectSet,
   getProject,
   getProjectSet,
-  getSettings,
   insertProjectSet,
   setSetPlates,
   updateProjectSet,
 } from '@boom-busters/db'
-import { stillStyleAnchors } from '@boom-busters/providers'
 import {
   castPhotoExtension,
   CastPhotoMimeSchema,
@@ -413,10 +411,9 @@ export async function generateSetPlateAction(
     return { ok: false, error: `A set keeps at most ${MAX_SET_PLATES} plates; remove one first.` }
   }
 
-  const settings = await getSettings(db)
-  const brief = setPlateBrief(set, parsedView.data, stillStyleAnchors(settings.brandKit))
+  const brief = setPlateBrief(set, parsedView.data)
   try {
-    const candidates = await generateStillCandidates(brief, set.projectId)
+    const candidates = await generateStillCandidates(brief, set.projectId, undefined, 'plate')
     return { ok: true, candidates }
   } catch (error) {
     return failure(error, 'The plate could not be generated.')

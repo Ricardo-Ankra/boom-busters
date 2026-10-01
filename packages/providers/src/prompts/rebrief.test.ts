@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest'
 import { mockDirectorsBook } from './direction'
 import { buildRebriefRequest, mockRebriefedBrief, parseRebriefedBrief } from './rebrief'
 import { buildRetypeRequest } from './retype'
-import { PEOPLE_RULES } from './shotlist'
+import { PEOPLE_RULES, SCENE_ONLY_PROMPT } from './shotlist'
 
 const stock: ShotBrief = {
   type: 'stock',
@@ -48,6 +48,11 @@ describe('buildRebriefRequest', () => {
     expect(bare.system).toContain('DIFFERENT')
     expect(bare.messages.some((message) => message.content.includes('producer'))).toBe(false)
   })
+
+  it('offers no "pan": the renderer cannot do one', () => {
+    expect(request.system).not.toContain('{"kind": "pan"')
+    expect(request.system).toContain('Never "pan"')
+  })
 })
 
 // Decision 276: "Emad Mostaque in the Stability AI Boardroom" as a steer came
@@ -82,12 +87,12 @@ describe('buildRebriefRequest for a still', () => {
     ...references,
   })
 
-  it('lists the photographed cast and the sets with their inventories', () => {
+  it('lists the photographed cast and the sets by their inventories alone (decision 287)', () => {
     const prefix = request.messages[0]!.content
     expect(prefix).toContain('Photographed')
     expect(prefix).toContain('- Emad Mostaque')
-    expect(prefix).toContain('- Stability AI Boardroom: a long glass table')
-    expect(prefix).toContain('North wall: a screen')
+    expect(prefix).toContain('- Stability AI Boardroom\n  North wall: a screen')
+    expect(prefix).not.toContain('a long glass table')
   })
 
   it("asks for depicts, set and camera under the planner's people and set rules", () => {
@@ -95,8 +100,18 @@ describe('buildRebriefRequest for a still', () => {
     expect(request.system).toContain('"set"?: the exact name of one set')
     expect(request.system).toContain('"camera"?:')
     expect(request.system).toContain(PEOPLE_RULES)
-    expect(request.system).toContain('Sets are the rooms this film returns to')
+    expect(request.system).toContain(
+      'Sets: when the sentence puts us in one of the rooms listed above',
+    )
     expect(request.system).not.toContain('Do not name or describe a real')
+  })
+
+  // Final review: the rebrief called the stored prompt "the full
+  // text-to-image prompt", contradicting the planner and the bible — the
+  // prompt is the scene alone, the same sentence `fieldRule` shares.
+  it('calls "prompt" the scene alone, the same sentence the planner uses', () => {
+    expect(request.system).not.toContain('full text-to-image prompt')
+    expect(request.system).toContain(SCENE_ONLY_PROMPT)
   })
 
   it('offers no set when the film holds none', () => {
@@ -108,7 +123,7 @@ describe('buildRebriefRequest for a still', () => {
     })
     expect(plain.system).toContain('"depicts"?:')
     expect(plain.system).not.toContain('"set"?:')
-    expect(plain.system).not.toContain('Sets are the rooms')
+    expect(plain.system).not.toContain('Sets:')
   })
 
   it('keeps the cast and sets out of a stock redraft', () => {
@@ -120,6 +135,20 @@ describe('buildRebriefRequest for a still', () => {
     })
     expect(stockRequest.messages[0]!.content).not.toContain('Photographed')
     expect(stockRequest.system).not.toContain('"set"?:')
+  })
+
+  it('states the field rule first, with the set clause (decision 287 follow-up, task 10a)', () => {
+    const normalised = request.system.replace(/\s+/g, ' ')
+    expect(normalised).toContain(
+      'a sentence that names a person shows that person and lists them in "depicts"',
+    )
+    expect(normalised).toContain('names it in "set"')
+    // "first" means before PEOPLE_RULES, which this same shape carries too.
+    const fieldRuleAt = request.system.indexOf('Read "coversText" before anything else')
+    const peopleRulesAt = request.system.indexOf('People come in three kinds and they never mix')
+    expect(fieldRuleAt).toBeGreaterThan(-1)
+    expect(peopleRulesAt).toBeGreaterThan(-1)
+    expect(fieldRuleAt).toBeLessThan(peopleRulesAt)
   })
 
   it('keeps the set and camera a new idea names', () => {

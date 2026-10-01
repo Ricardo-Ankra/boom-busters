@@ -1,6 +1,5 @@
 import {
   getProject,
-  getSettings,
   latestScriptParagraphSources,
   listProjectSets,
   listShotSlots,
@@ -13,7 +12,6 @@ import {
   listLogos,
 } from '@boom-busters/db'
 import type { NewShotSlot } from '@boom-busters/db'
-import { stillStyleAnchors } from '@boom-busters/providers'
 import type { ScriptClaim } from '@boom-busters/providers'
 import {
   BudgetExceededError,
@@ -132,7 +130,6 @@ export const visualsReplanner = inngest.createFunction(
         const sources = await latestScriptParagraphSources(db, projectId)
         const takes = await listVoiceTakes(db, projectId)
         const claims = await scriptableClaims(db, projectId)
-        const settings = await getSettings(db)
         const cast = await listCastMembers(db, projectId)
         // Loaded once for the whole re-plan: the shot-list prompt lists the
         // film's rooms, and the craft notes count how often each is used.
@@ -152,7 +149,6 @@ export const visualsReplanner = inngest.createFunction(
             // Which claims a headline card may cite (decision 257).
             sourceType: claim.sourceType,
           })) satisfies ScriptClaim[],
-          styleAnchors: stillStyleAnchors(settings.brandKit),
           // Who the producer has photographed (decision 253, amended). Their
           // prompts name them and carry no physical description, because the
           // photograph is the likeness.
@@ -212,7 +208,6 @@ export const visualsReplanner = inngest.createFunction(
               chapter: { id: chapter.id, title: chapter.title, number: index + 1 },
               paragraphs: setup.paragraphs,
               claims: setup.claims,
-              styleAnchors: setup.styleAnchors,
               direction: setup.direction,
               photographed: setup.photographed,
               sets: setup.sets,
@@ -321,7 +316,6 @@ export const visualsReplanner = inngest.createFunction(
               chapter: { id: chapter.id, title: chapter.title, number: index + 1 },
               paragraphs: setup.paragraphs,
               claims: setup.claims,
-              styleAnchors: setup.styleAnchors,
               direction: setup.direction,
               photographed: setup.photographed,
               sets: setup.sets,

@@ -135,7 +135,7 @@ The target shape:
 ${target}
 
 "motion" is {"kind": "static"} or {"kind": "kenburns", "direction": "in"|"out",
-"speed": "slow"|"medium"|"fast"} or {"kind": "pan", "path": string}.
+"speed": "slow"|"medium"|"fast"}. Never "pan": the renderer cannot do one.
 "transition" is "cut" or "dissolve".`,
     messages: [
       {

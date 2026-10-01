@@ -64,12 +64,25 @@ export const DirectorsBookSchema = z.object({
 })
 export type DirectorsBook = z.infer<typeof DirectorsBookSchema>
 
-/** The book as prose sections, for the shot-list prompt's cacheable prefix. */
-export function renderDirectorsBook(book: DirectorsBook): string {
+/**
+ * The book as prose sections, for the shot-list prompt's cacheable prefix.
+ *
+ * `sets`: the film's set names (decision 287), so a location that is also a
+ * set is not listed twice: the set rules and its inventory already carry it,
+ * and a prompt reading its look a second time under "Locations" argued with
+ * the plates it was handed.
+ */
+export function renderDirectorsBook(
+  book: DirectorsBook,
+  options?: { sets?: readonly string[] },
+): string {
+  const setNames = new Set((options?.sets ?? []).map((name) => name.trim().toLowerCase()))
   const lines: string[] = [
     `Visual thesis: ${book.visualThesis}`,
     `Era locks: ${book.eraLocks.map((lock) => `${lock.span}: ${lock.rules}`).join(' | ')}`,
-    `Palette: accent ${book.palette.accent}, ${book.palette.temperature}; ${book.palette.note}`,
+    // Light, not colour (decision 287): the compositor grades; hex codes in
+    // a prompt became red props.
+    `Light: this film's light runs ${book.palette.temperature}.`,
     `Motifs: ${book.motifs.join('; ')}`,
     `Anchor object: ${book.anchorObject}`,
   ]
@@ -83,9 +96,10 @@ export function renderDirectorsBook(book: DirectorsBook): string {
       )
     }
   }
-  if (book.locations.length > 0) {
+  const places = book.locations.filter((place) => !setNames.has(place.name.trim().toLowerCase()))
+  if (places.length > 0) {
     lines.push('Locations:')
-    for (const place of book.locations) lines.push(`- ${place.name}: ${place.look}`)
+    for (const place of places) lines.push(`- ${place.name}: ${place.look}`)
   }
   lines.push('Chapters:')
   for (const chapter of book.chapters) {

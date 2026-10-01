@@ -161,9 +161,12 @@ export function createFalImageGen(models: readonly ImageGenModel[] = FAL_MODELS)
 
       // Only aspect-negative has a real negative-prompt field; every other
       // dialect gets it folded in as an "Avoid:" clause.
+      // One clean sentence (decision 287): a prompt or list ending in a full
+      // stop used to leave "..", the join the fold added on top of it.
+      const trimmed = (text: string) => text.trim().replace(/[\s.]+$/, '')
       const prompt =
         request.negativePrompt && !realNegative
-          ? `${request.prompt}. Avoid: ${request.negativePrompt}.`
+          ? `${trimmed(request.prompt)}. Avoid: ${trimmed(request.negativePrompt)}.`
           : request.prompt
 
       const referenceUrls = request.referenceUrls ?? []

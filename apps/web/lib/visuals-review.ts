@@ -79,7 +79,8 @@ import { anchoredTimes, timedParagraphs } from '@/inngest/lib/shot-list'
 import { stillCatalogue, stillModelOptions } from './model-catalogue'
 import type { StillModelOption } from './model-catalogue'
 import { presignGet, storageConfigured } from './storage'
-import { routeForBrief, stillsEstimateUsd } from './visual-assets'
+import { sceneOf } from './still-prompt'
+import { routeForBrief, stillPromptFor, stillsEstimateUsd } from './visual-assets'
 import {
   reuseView,
   sharedShotWarnings,
@@ -202,6 +203,10 @@ export interface SlotView {
   /** `null` when the stored brief failed its schema — see `briefError`. */
   brief: ShotBrief | null
   briefError: string | undefined
+  /** A still's scene: its prompt with the lines code adds taken out (decision 287). */
+  scene: string | null
+  /** The full prompt the still would be sent with now, for the card's disclosure. */
+  promptSent: string | null
   /** Top candidates, scored order, chosen first among equals. */
   candidates: SlotCandidate[]
   /** How many more were fetched than the strip shows. */
@@ -879,6 +884,21 @@ export async function visualsReviewModel(
         Number(b.chosen ?? false) - Number(a.chosen ?? false) || (b.score ?? -1) - (a.score ?? -1),
     )
 
+    // Hoisted so `route` and `promptSent` (decision 287) read the same
+    // stored route: a model the provider has retired is no longer an option
+    // the select can show, so the slot falls back to the derived route,
+    // which is what it will actually generate — and price and preview — on
+    // (decision 264).
+    const storedRoute = ((): StillRoute | null => {
+      const stored = StillRouteSchema.nullable().safeParse(row.route)
+      if (!stored.success || stored.data === null) return null
+      // Offered by the live lists too (decision 288), not only the hand-written ones.
+      const offered = catalogue[stored.data.provider].models.some(
+        (model) => model.id === stored.data!.model,
+      )
+      return offered ? stored.data : null
+    })()
+
     return {
       id: row.id,
       type: row.type,
@@ -891,6 +911,11 @@ export async function visualsReviewModel(
       briefError: parsed.success
         ? undefined
         : 'This brief no longer matches its schema and cannot be rendered or re-fetched as is.',
+      scene: parsed.success && parsed.data.type === 'still' ? sceneOf(parsed.data.prompt) : null,
+      promptSent:
+        parsed.success && parsed.data.type === 'still'
+          ? stillPromptFor(parsed.data, cast, sets, settings.modelRouting, storedRoute, catalogue)
+          : null,
       candidates: ordered.slice(0, CANDIDATES_SHOWN),
       extraCandidates: Math.max(0, ordered.length - CANDIDATES_SHOWN),
       needsFetch: slotNeedsResolution(row),
@@ -908,17 +933,7 @@ export async function visualsReviewModel(
       })(),
       job: slotJobView(row.pendingJob),
       reuse: reuseView(reusable[at]!, reusable),
-      route: ((): StillRoute | null => {
-        const stored = StillRouteSchema.nullable().safeParse(row.route)
-        if (!stored.success || stored.data === null) return null
-        // A model the provider has retired is no longer an option the select
-        // can show, so the slot reads as being on the planned default, which
-        // is what it will actually generate on (decision 264).
-        const offered = catalogue[stored.data.provider].models.some(
-          (model) => model.id === stored.data!.model,
-        )
-        return offered ? stored.data : null
-      })(),
+      route: storedRoute,
       // `routeForBrief` already falls back to `settings.modelRouting.stills`
       // for every type but still and hero, so a brief that failed to parse
       // gets the same fallback rather than a special case here.

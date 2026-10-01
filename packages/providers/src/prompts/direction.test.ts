@@ -30,7 +30,6 @@ describe('buildDirectorsBookRequest', () => {
     centralQuestion: 'How did two billion euros never exist?',
     chapters: CHAPTERS,
     claims: CLAIMS,
-    styleAnchors: 'subtle film grain; muted grade',
   })
 
   it('routes to the direction task', () => {
@@ -73,8 +72,9 @@ describe('buildDirectorsBookRequest', () => {
     expect(request.system).toContain('a job title and a jacket')
   })
 
-  it('threads the Brand Kit anchors in as the palette boundary', () => {
-    expect(request.system).toContain('subtle film grain; muted grade')
+  it("gives the palette temperature as the film's light, never a grade or hex code", () => {
+    expect(request.system).toContain("The palette's temperature is the film's light")
+    expect(request.system).not.toContain('Brand Kit grade')
   })
 
   it('gives a longer film a bigger answer budget: one chapter entry per chapter', () => {
@@ -85,7 +85,6 @@ describe('buildDirectorsBookRequest', () => {
         paragraphs: ['Words.'],
       })),
       claims: CLAIMS,
-      styleAnchors: 'a',
     })
     expect(eight.maxTokens).toBeGreaterThan(request.maxTokens)
   })
@@ -103,7 +102,6 @@ describe('buildDirectorsBookRequest with a cast (decision 253)', () => {
     caseTitle: 'Stability AI',
     chapters: CHAPTERS,
     claims: CLAIMS,
-    styleAnchors: 'a',
     cast,
   })
 
@@ -119,7 +117,6 @@ describe('buildDirectorsBookRequest with a cast (decision 253)', () => {
       caseTitle: 'x',
       chapters: CHAPTERS,
       claims: CLAIMS,
-      styleAnchors: 'a',
     })
     expect(bare.messages[1]?.content).not.toContain('Cast, already photographed')
   })
@@ -170,7 +167,6 @@ describe('the book cannot converge on one symbol (decision 271)', () => {
     caseTitle: 'Stability AI',
     chapters: [{ title: 'The exit', paragraphs: ['He is gone.'] }],
     claims: [],
-    styleAnchors: 'a',
   })
 
   it('keeps the anchor object out of the motifs, and the motifs apart', () => {

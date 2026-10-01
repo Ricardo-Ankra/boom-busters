@@ -1,5 +1,6 @@
-import { HOUSE_PHOTOGRAPH } from '@boom-busters/providers'
 import { layoutView, OPPOSITE_DIRECTION, parseLayout } from '@boom-busters/schemas'
+import { stripBannedWords } from '@boom-busters/providers'
+import { PLATE_PHOTOGRAPH_LINE } from './photograph-lines'
 import type {
   ProjectSet,
   SetCamera,
@@ -40,8 +41,9 @@ const VIEW_FRAMING: Record<SetViewRequest, string> = {
 /*
  * Every plate names its own lens (decision 275 final review): the house line
  * carries none. The first plate and a detail say it in the framing above; a
- * compass view of a plated set says it in its camera sentence (24mm), which
- * `generateStillCandidates` appends through `describeCamera`.
+ * compass view of a plated set says it in its camera sentence (35mm, decision
+ * 287, as the contact sheet's panels are), which `generateStillCandidates`
+ * appends through `describeCamera`.
  */
 
 /**
@@ -50,12 +52,7 @@ const VIEW_FRAMING: Record<SetViewRequest, string> = {
  * all copy the reference, and one pass resolves the whole room, so the walls
  * the reference never showed agree with each other.
  */
-export function buildSetSheetPrompt(input: {
-  name: string
-  layout: string
-  look: string
-  styleAnchors: string
-}): string {
+export function buildSetSheetPrompt(input: { name: string; layout: string; look: string }): string {
   // Each panel names the wall it looks at (live run 1, 2026-09-24): with
   // directions alone the east panel repeated the north wall. A wall said in
   // its panel is not said again in the room line.
@@ -76,23 +73,27 @@ export function buildSetSheetPrompt(input: {
         .filter((part) => part !== '')
         .join(' ')
     : (input.layout.trim() !== '' ? input.layout.trim() : input.look.trim()).replace(/\r?\n/g, ' ')
-  return [
-    `A 2x2 contact sheet of four photographs of one room, ${input.name}, separated by thin white borders of equal width, each panel 16:9.`,
-    'All four show the same room at the same moment in the same light, each taken at eye level with a 35mm lens from the middle of the opposite wall, with no people in the room.',
-    `Top left: facing north, the view in reference image 1${looking('north', 'looking at')}.`,
-    `Top right: facing east${looking('east', 'looking straight at')}.`,
-    `Bottom left: facing south${looking('south', 'looking straight at')}.`,
-    `Bottom right: facing west${looking('west', 'looking straight at')}.`,
-    ...(room !== '' ? [`The room: ${room}`] : []),
-    HOUSE_PHOTOGRAPH,
-    input.styleAnchors,
-  ].join('\n')
+  // stripBannedWords (spec 7.4): name, layout and look are user-authored
+  // text, the same class of input every other still prompt runs through the
+  // assembler for. Run here, once, so the app (set-sheet.ts) and the live
+  // set-to-shot harness never diverge on what actually gets sent.
+  return stripBannedWords(
+    [
+      `A 2x2 contact sheet of four photographs of one room, ${input.name}, separated by thin white borders of equal width, each panel 16:9.`,
+      'All four show the same room at the same moment in the same light, each taken at eye level with a 35mm lens from the middle of the opposite wall, with no people in the room.',
+      `Top left: facing north, the view in reference image 1${looking('north', 'looking at')}.`,
+      `Top right: facing east${looking('east', 'looking straight at')}.`,
+      `Bottom left: facing south${looking('south', 'looking straight at')}.`,
+      `Bottom right: facing west${looking('west', 'looking straight at')}.`,
+      ...(room !== '' ? [`The room: ${room}`] : []),
+      PLATE_PHOTOGRAPH_LINE,
+    ].join('\n'),
+  )
 }
 
 export function setPlateBrief(
   set: Pick<ProjectSet, 'name' | 'look' | 'plates'>,
   view: SetViewRequest,
-  styleAnchors: string,
 ): StillBrief {
   const referenced = set.plates.length > 0
   const framing = referenced ? VIEW_FRAMING[view] : FIRST_PLATE_FRAMING
@@ -103,7 +104,8 @@ export function setPlateBrief(
       ? {
           facing: view,
           position: `the middle of the ${OPPOSITE_DIRECTION[view]} wall, at eye level`,
-          lens: '24mm',
+          // 35mm, as the contact sheet's panels are (decision 287).
+          lens: '35mm',
         }
       : undefined
   return {
@@ -116,16 +118,24 @@ export function setPlateBrief(
     ...(referenced ? { set: set.name } : {}),
     ...(camera ? { camera } : {}),
     // A plate is the room, not a scene in it: people belong to the stills.
-    prompt: `${set.name}, empty of people: ${framing}. ${set.look} ${HOUSE_PHOTOGRAPH} ${styleAnchors}`,
+    // The assembler adds the photograph line and strips anchors before this
+    // ever reaches a model (decision 287); this brief carries the scene alone.
+    // The look draws the first plate only (spec 5.2, 7.3): once a camera
+    // stands in for it, `describeCamera` already says what the room holds,
+    // and the look repeated furniture the camera sentence never put in frame.
+    prompt: `${set.name}, empty of people: ${framing}.${camera ? '' : ` ${set.look}`}`.trim(),
     negativePrompt: 'people, figures',
   }
 }
 
 /**
- * The camera sentence and what it sees (decision 275): where the camera
- * stands, then the inventory lines for the wall in frame, the walls at the
- * edges, the centre and the light, and the wall behind it. Stated positively,
- * so the model is given the new picture to make rather than an old one to avoid.
+ * The camera sentence and what it sees (decision 275, amended 287): where
+ * the camera stands, then the inventory lines for the wall in frame, the
+ * walls at the edges, the centre and the light. Stated positively, so the
+ * model is given the new picture to make rather than an old one to avoid.
+ * The wall behind the camera, and the rest of the room's own inventory, are
+ * never named (decision 287): a named thing is drawn, and naming what the
+ * lens cannot see is how an extra desk got into a still.
  */
 /**
  * How much of the room a shot shows (live run 5, 2026-09-24): an 85mm close
@@ -147,14 +157,15 @@ function framingOf(shotSize: ShotSize | undefined, lens: string | undefined): Fr
  * The framing, said first (live run 6, 2026-09-24): stated at the end of the
  * prompt, "a close shot" lost to a wide opening sentence and a wide reference
  * plate. A still with a camera now opens with how tight it is; a wide shot
- * needs no lead.
+ * needs no lead. Every still gets it now, with or without a set (decision
+ * 287); it is a sentence of its own because the camera sentence follows it.
  */
-export function framingLead(camera: SetCamera, shotSize?: ShotSize): string {
-  const framing = framingOf(shotSize, camera.lens)
+export function framingLead(camera: SetCamera | undefined, shotSize?: ShotSize): string {
+  const framing = framingOf(shotSize, camera?.lens)
   if (framing === 'close') {
-    return 'A close shot, the subject filling most of the frame, the room behind soft and out of focus: '
+    return 'A close shot: the subject fills most of the frame, the background soft and out of focus.'
   }
-  if (framing === 'medium') return 'A medium shot, the subject from the waist up: '
+  if (framing === 'medium') return 'A medium shot: the subject from the waist up.'
   return ''
 }
 
@@ -204,7 +215,9 @@ export function describeCamera(camera: SetCamera, layout: string, shotSize?: Sho
   const sentences = [`The camera stands at ${camera.position}, facing ${camera.facing}${lens}.`]
   const view = layoutView(parseLayout(layout), camera.facing)
   const framing = framingOf(shotSize, camera.lens)
-  const light = view.light ? `Light: ${orientLight(view.light, camera.facing)}.` : null
+  const light = view.light
+    ? `The room's own light: ${orientLight(view.light, camera.facing)}.`
+    : null
   // A close shot orients by its light alone: naming a side wall's contents
   // pulled that wall in behind the subject (live run 13).
   if (framing === 'close') {
@@ -215,7 +228,7 @@ export function describeCamera(camera: SetCamera, layout: string, shotSize?: Sho
   // Which wall stands on which side (live run 10): without it the room came
   // back mirrored, its windows on the wrong side.
   if (framing === 'medium') {
-    if (view.inFrame) sentences.push(`Behind: ${view.inFrame}.`)
+    if (view.inFrame) sentences.push(`Ahead, beyond the subject: ${view.inFrame}.`)
     if (view.left) sentences.push(`To the camera's left: ${view.left}.`)
     if (view.right) sentences.push(`To the camera's right: ${view.right}.`)
     if (light) sentences.push(light)
@@ -226,7 +239,11 @@ export function describeCamera(camera: SetCamera, layout: string, shotSize?: Sho
   if (view.right) sentences.push(`Frame right: ${view.right}.`)
   if (view.centre) sentences.push(`Centre: ${view.centre}.`)
   if (light) sentences.push(light)
-  if (view.behind) sentences.push(`Behind the camera, out of frame: ${view.behind}.`)
-  if (view.rest) sentences.push(`The room: ${view.rest.replace(/\.$/, '')}.`)
+  // The wall behind the camera and the room's other lines are never named
+  // (decision 287): a named thing is drawn, and the extra desk came from
+  // naming furniture the lens could not see. An inventory with no wall
+  // labels is kept, since it is all the room text there is.
+  const labelled = view.inFrame ?? view.left ?? view.right ?? view.centre ?? view.light
+  if (!labelled && view.rest) sentences.push(`The room: ${view.rest.replace(/\.$/, '')}.`)
   return sentences.join(' ')
 }

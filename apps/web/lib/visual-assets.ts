@@ -14,13 +14,8 @@ import {
 import {
   applyScores,
   articleIsRenderable,
-  depictedMembers,
-  platesForCamera,
-  MAX_CHARACTER_REFERENCES,
-  MAX_SET_REFERENCES,
   resolveBrandKit,
   setForBrief,
-  spreadReferencePhotos,
   STILL_GENERATIONS,
   ValidationError,
 } from '@boom-busters/schemas'
@@ -47,7 +42,6 @@ import {
   mockScores,
   parseScores,
   stockAdapter,
-  stripBannedWords,
 } from '@boom-busters/providers'
 import type {
   ImageGenProvider,
@@ -62,89 +56,18 @@ import { postForUrl } from '@/lib/social-source'
 import { env } from '@/lib/env'
 import { callLlm } from '@/lib/llm'
 import { stillCatalogue, stillGenerator } from '@/lib/model-catalogue'
-import { describeCamera, framingLead } from '@/lib/set-plates'
-import { withReferenceClause } from '@/lib/still-prompt'
+import {
+  assembleStillPrompt,
+  depictedFrom,
+  planStillReferences,
+  referenceBudgets,
+  routeForBrief,
+  setFrom,
+} from '@/lib/still-prompt'
+import type { StillKind } from '@/lib/still-prompt'
 import { getObjectBytes, presignGet, putObject, stillKey, storageConfigured } from '@/lib/storage'
 
-/**
- * What one still may actually carry: the app's policy (`MAX_CHARACTER_REFERENCES`,
- * `MAX_SET_REFERENCES`, decision 264), never more than the routed model
- * allows. One function because the price estimate and the generator have to
- * spend the same budget, and two copies of this sum once quoted a number no
- * run would spend.
- */
-export function referenceBudgets(limits: ReferenceLimits): {
-  characters: number
-  objects: number
-} {
-  return {
-    characters: Math.min(MAX_CHARACTER_REFERENCES, limits.characters),
-    objects: Math.min(MAX_SET_REFERENCES, limits.objects),
-  }
-}
-
-/**
- * The people this still can actually show a likeness of: the cast members it
- * depicts who have a photograph.
- *
- * This is THE rule, and it is pure so that the generator and the price
- * estimate cannot answer it differently. They did once: the estimate assumed
- * the dearer route for every still and quoted a number no run would ever
- * spend (decision 253, amended). It also has to be settled before the route
- * is chosen, because whether a still needs a likeness is what decides which
- * generator it goes to.
- *
- * A name the cast has never seen, or one with no photograph yet, is not a
- * likeness the app can produce, so such a still is routed, priced and
- * generated as a plain one.
- *
- * Which entry names which member is `depictedMembers` (decision 262). The
- * planner is asked for the name alone and has written "Emad Mostaque,
- * founder and former CEO of Stability AI"; an exact-string join here sent
- * every such still to the plain route, and the estimate agreed with it.
- */
-function depictedFrom(brief: StillBrief, cast: readonly CastMember[]): CastMember[] {
-  return depictedMembers(brief.depicts, cast)
-    .filter((member) => member.photos.length > 0)
-    .slice(0, MAX_CHARACTER_REFERENCES)
-}
-
-/**
- * The set this still is shot in, if the project holds it and it has a plate,
- * as a synchronous rule that mirrors `depictedFrom`. A named set nobody has
- * photographed conditions nothing, exactly like a `depicts` name with no
- * photograph, so it is treated as no set at all and the plan screen says so.
- *
- * Sync, and taking the project's sets rather than a project id, for the same
- * reason `depictedFrom` does: the estimate and the generator must read it
- * from a list already loaded, not query it once per brief (a 48-still film
- * must not fire 48 identical set queries to show one price).
- */
-function setFrom(brief: StillBrief, sets: readonly ProjectSet[]): ProjectSet | null {
-  const found = setForBrief(brief.set, sets)
-  return found && found.plates.length > 0 ? found : null
-}
-
-/**
- * Where a still goes, before the owner has said otherwise (decision 264).
- *
- * A still that carries any reference needs the reference-capable route, and
- * that is what `stillsLikeness` is; the setting keeps its name because a
- * likeness is still the reason it exists. A null split means there is one
- * route and this changes nothing.
- */
-export function routeForBrief(
-  brief: ShotBrief,
-  cast: readonly CastMember[],
-  sets: readonly ProjectSet[],
-  routing: ModelRouting,
-): StillRoute {
-  if (brief.type !== 'still' && brief.type !== 'hero') return routing.stills
-  const people = depictedMembers(brief.depicts, cast).filter((m) => m.photos.length > 0)
-  const set = setForBrief(brief.set, sets)
-  const conditioned = people.length > 0 || (set !== null && set.plates.length > 0)
-  return conditioned && routing.stillsLikeness ? routing.stillsLikeness : routing.stills
-}
+export { referenceBudgets, routeForBrief } from '@/lib/still-prompt'
 
 /**
  * Whether the route's own adapter still lists its model (decision 264). A
@@ -186,9 +109,8 @@ async function stillBriefPriceUsd(
   const live = catalogue[route.provider]
   const budgets = referenceBudgets(live.referenceLimits(route.model))
   const set = setFrom(brief, sets)
-  const characterCount = spreadReferencePhotos(members, budgets.characters).length
-  const plateCount = set ? platesForCamera(set, brief.camera?.facing, budgets.objects).length : 0
-  const billed = live.referenceRoute?.(route.model, characterCount + plateCount) ?? null
+  const plan = planStillReferences(members, set, budgets, brief.camera?.facing)
+  const billed = live.referenceRoute?.(route.model, plan.photos.length + plan.plates.length) ?? null
   return billed
     ? billed.pricePerImage * STILL_GENERATIONS
     : imageGenPrice(live, STILL_GENERATIONS, route.model, '1K')
@@ -231,6 +153,43 @@ export async function stillsEstimateUsd(
     ),
   )
   return round4(prices.reduce((total, price) => total + price, 0))
+}
+
+/**
+ * The prompt a still would be sent with now (decision 287), for the board's
+ * "Prompt sent to the model". Built by the same pieces generation uses, from
+ * lists already loaded, so the preview and the call cannot disagree.
+ */
+export function stillPromptFor(
+  brief: StillBrief,
+  cast: readonly CastMember[],
+  sets: readonly ProjectSet[],
+  routing: ModelRouting,
+  stored: StillRoute | null,
+  catalogue: Record<StillProvider, ImageGenProvider>,
+): string {
+  const derived = routeForBrief(brief, cast, sets, routing)
+  const route = stored && adapterOffers(stored, catalogue) ? stored : derived
+  const live = catalogue[route.provider]
+  // A route no list holds any more (decision 288) previews on the provider's
+  // default model's limits; the fetch itself refuses the route.
+  const limits: ReferenceLimits = adapterOffers(route, catalogue)
+    ? live.referenceLimits(route.model)
+    : live.referenceLimits()
+  const plan = planStillReferences(
+    depictedFrom(brief, cast),
+    setFrom(brief, sets),
+    referenceBudgets(limits),
+    brief.camera?.facing,
+  )
+  return assembleStillPrompt({
+    scene: brief.prompt,
+    ...(brief.shotSize ? { shotSize: brief.shotSize } : {}),
+    ...(brief.camera ? { camera: brief.camera } : {}),
+    layout: setForBrief(brief.set, sets)?.layout ?? '',
+    people: plan.people,
+    set: plan.setName === null ? null : { name: plan.setName, plates: plan.plates.length },
+  })
 }
 
 /**
@@ -278,21 +237,13 @@ async function referenceMaterials(
     references: [],
     referenceUrls: [],
   }
-  const photos = spreadReferencePhotos(members, budgets.characters)
-  const plates = set ? platesForCamera(set, facing, budgets.objects) : []
+  const plan = planStillReferences(members, set, budgets, facing)
+  const { photos, plates } = plan
   if (photos.length === 0 && plates.length === 0) return none
-
-  // Named from the photographs that actually travel, not from the cast the
-  // brief depicts: a model with a tighter character limit than the app's own
-  // cap would otherwise be told about a face it was never shown. The first
-  // round of the spread walks the cast in order, so the names keep it.
-  const names = [...new Set(photos.map(({ member }) => member.name))]
-  const setName = plates.length > 0 && set ? set.name : null
+  const names = plan.people.map((person) => person.name)
+  const setName = plan.setName
   const plateName = setName ?? ''
-  const people = names.map((name) => ({
-    name,
-    photos: photos.filter(({ member }) => member.name === name).length,
-  }))
+  const people = plan.people
   const setPlates = plates.length
 
   if (mocked) {
@@ -552,6 +503,7 @@ export async function generateStillCandidates(
   brief: StillBrief,
   projectId: string,
   stored?: StillRoute | null,
+  kind: StillKind = 'still',
 ): Promise<SlotCandidate[]> {
   const mocked = mockProvidersEnabled()
   const keys = mocked ? {} : await visualCredentials(db, env.SECRETS_ENCRYPTION_KEY)
@@ -576,9 +528,6 @@ export async function generateStillCandidates(
   // The camera reaches the prompt whether or not the set has a plate yet: the
   // inventory alone still says what the camera sees (decision 275).
   const namedSet = brief.set ? setForBrief(brief.set, projectSets) : null
-  const cameraText = brief.camera
-    ? describeCamera(brief.camera, namedSet?.layout ?? '', brief.shotSize)
-    : null
   const settings = await getSettings(db)
   const routing = settings.modelRouting
   const catalogue = await stillCatalogue(settings)
@@ -624,14 +573,15 @@ export async function generateStillCandidates(
   )
   // The house line names no lens (decision 275 final review): a set shot's
   // lens reaches the model once, in the camera sentence.
-  const prompt = withReferenceClause(
-    stripBannedWords(
-      brief.camera ? `${framingLead(brief.camera, brief.shotSize)}${brief.prompt}` : brief.prompt,
-    ),
-    cast.people,
-    cast.setName === null ? null : { name: cast.setName, plates: cast.setPlates },
-    cameraText,
-  )
+  const prompt = assembleStillPrompt({
+    scene: brief.prompt,
+    ...(brief.shotSize ? { shotSize: brief.shotSize } : {}),
+    ...(brief.camera ? { camera: brief.camera } : {}),
+    layout: namedSet?.layout ?? '',
+    people: cast.people,
+    set: cast.setName === null ? null : { name: cast.setName, plates: cast.setPlates },
+    kind,
+  })
 
   /**
    * The endpoint that will actually be billed. A still depicting cast members

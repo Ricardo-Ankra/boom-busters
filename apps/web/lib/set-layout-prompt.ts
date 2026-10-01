@@ -33,7 +33,10 @@ function request(name: string, look: string): string {
     'West is the wall along the left side of the frame, east is the wall along the right side, ' +
     'and south is the wall behind the camera, which the photograph cannot show. ' +
     'Describe fixed things only: architecture, furniture, fittings, materials, light sources; ' +
-    'no people. Describe the walls the photograph shows as they are, and invent the rest ' +
+    'no people. ' +
+    'Give the number of each piece of furniture, and write "the only" where there is one ' +
+    '(for example "the room\'s only desk, two guest chairs"). ' +
+    'Describe the walls the photograph shows as they are, and invent the rest ' +
     'plausibly and consistently with it. ' +
     'Describe each wall as its own surface; never as matching another wall. ' +
     'At most 25 words per line. Reply with the six lines only.'

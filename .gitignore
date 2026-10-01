@@ -48,6 +48,10 @@ apps/web/.local-renders/
 # from a real run against Gemini, never committed.
 live-set-runs/
 
+# Live plan harness output (decision 287, Task 3): a chapter planned and
+# imaged against production, read-only; never committed.
+live-plan-runs/
+
 # Claude Code discovers the vendored agent skills through symlinks the
 # `skills` CLI creates; this git cannot store symlinks, so re-run
 # `npx skills add remotion-dev/skills` after a fresh clone.

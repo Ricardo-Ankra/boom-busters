@@ -105,7 +105,7 @@ export const ProjectSetSchema = z.object({
   projectId: z.string().min(1),
   /** Exact name: the join key a still brief's "set" names. */
   name: z.string().trim().min(1).max(120),
-  /** The book's look line, editable. Used to generate a plate and nothing else. */
+  /** The book's look line, editable. Draws the first plate, and stands in for the inventory until one is drafted. */
   look: z.string().max(600),
   /** The room inventory (decision 275): one line per wall, then Centre and Light. */
   layout: z.string().max(1500).default(''),
