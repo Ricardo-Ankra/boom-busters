@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { mapNetworkError, throwForResponse } from '../llm/http'
 import { imageGenModel, imageGenPrice } from './types'
 import type {
+  ImageGenModel,
   ImageGenProvider,
   ImageGenRequest,
   ImageGenResult,
@@ -50,7 +51,7 @@ import type {
  * image is served too but is absent here until it has a price worth
  * trusting — an unpriced model would walk through every budget cap.
  */
-const MODELS = [
+export const GEMINI_IMAGE_MODELS: readonly ImageGenModel[] = [
   { id: 'gemini-2.5-flash-image', label: 'Gemini 2.5 Flash Image', pricePerImage: 0.04 },
   {
     id: 'gemini-3.1-flash-image',
@@ -64,7 +65,7 @@ const MODELS = [
     pricePerImage: 0.15,
     pricesBySize: { '1K': 0.15, '2K': 0.15, '4K': 0.24 },
   },
-] as const
+]
 
 const endpoint = (model: string) =>
   `https://generativelanguage.googleapis.com/v1beta/models/${model}`
@@ -179,7 +180,7 @@ const ResponseSchema = z.object({
 export const geminiImageGen: ImageGenProvider = {
   id: 'google',
   label: 'Gemini via Google',
-  models: MODELS,
+  models: GEMINI_IMAGE_MODELS,
 
   async generate(request: ImageGenRequest, options: StockCallOptions): Promise<ImageGenResult> {
     const apiKey = options.apiKey
@@ -311,7 +312,7 @@ export const geminiImageGen: ImageGenProvider = {
     const fetchImpl = options.fetchImpl ?? fetch
     let response: Response
     try {
-      response = await fetchImpl(endpoint(MODELS[0].id), {
+      response = await fetchImpl(endpoint(GEMINI_IMAGE_MODELS[0]!.id), {
         method: 'GET',
         headers: { 'x-goog-api-key': apiKey },
         ...(options.signal ? { signal: options.signal } : {}),

@@ -108,7 +108,10 @@ const FLUX2_MODELS = new Set(['fal-ai/flux-2', 'fal-ai/flux-2-dev'])
 /** Which wire dialect an endpoint speaks for its image inputs. */
 type ReferenceDialect = 'flux2-edit' | 'kontext'
 
-type ReferenceRoute = ImageGenModel & { dialect: ReferenceDialect }
+// Named `wireDialect`, not `dialect`: `ImageGenModel.dialect` (decision 287)
+// names the fal text-to-image request shape, a different axis from this
+// reference-routing dialect, and the two must not collide on one key.
+type ReferenceRoute = ImageGenModel & { wireDialect: ReferenceDialect }
 
 /**
  * The endpoint that carries this model's references, or null when there are
@@ -117,10 +120,10 @@ type ReferenceRoute = ImageGenModel & { dialect: ReferenceDialect }
  */
 function resolveReferenceRoute(modelId: string, refs: number): ReferenceRoute | null {
   if (refs === 0) return null
-  if (FLUX2_MODELS.has(modelId)) return { ...FLUX2_EDIT, dialect: 'flux2-edit' }
+  if (FLUX2_MODELS.has(modelId)) return { ...FLUX2_EDIT, wireDialect: 'flux2-edit' }
   return refs === 1
-    ? { ...KONTEXT_SINGLE, dialect: 'kontext' }
-    : { ...KONTEXT_MULTI, dialect: 'kontext' }
+    ? { ...KONTEXT_SINGLE, wireDialect: 'kontext' }
+    : { ...KONTEXT_MULTI, wireDialect: 'kontext' }
 }
 
 /** Imagen's 16:9 renders 1408×768 — same class as FLUX's, scaled at compile. */
@@ -166,7 +169,7 @@ export const falImageGen: ImageGenProvider = {
     const conditioned = resolveReferenceRoute(model.id, referenceUrls.length)
 
     const body = conditioned
-      ? conditioned.dialect === 'flux2-edit'
+      ? conditioned.wireDialect === 'flux2-edit'
         ? {
             prompt,
             // One field for one reference or several, unlike Kontext.
