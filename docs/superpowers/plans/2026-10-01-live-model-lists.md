@@ -1704,7 +1704,6 @@ describe('mockListedModels', () => {
 })
 ```
 
-The fal-pricing-failure case is written in a roundabout way; simplify it if you like, as long as it serves a good search response and a 503 for `/pricing` and expects a rejection.
 
 - [ ] **Step 3: Run them to see them fail**
 
