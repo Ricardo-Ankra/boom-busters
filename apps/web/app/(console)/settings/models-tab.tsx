@@ -350,8 +350,11 @@ export function ModelsTab({
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
+        {/* The times below are local: the server renders them in UTC and the
+            browser in the owner's zone, so their text is expected to differ
+            on hydration (the calendar-week.tsx convention). */}
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <p className="text-[12px] text-[var(--color-text-muted)]">
+          <p className="text-[12px] text-[var(--color-text-muted)]" suppressHydrationWarning>
             {options.lastAttemptAt
               ? `Model lists last checked ${when(options.lastAttemptAt)}.`
               : 'Model lists not checked yet.'}
@@ -371,7 +374,9 @@ export function ModelsTab({
           className="flex flex-col gap-0.5 text-[12px] text-[var(--color-text-muted)]"
         >
           {STATUS_PROVIDERS.map((provider) => (
-            <li key={provider}>{statusLine(provider, options)}</li>
+            <li key={provider} suppressHydrationWarning>
+              {statusLine(provider, options)}
+            </li>
           ))}
         </ul>
 
@@ -475,6 +480,27 @@ export function ModelsTab({
                 </div>
               ) : null}
 
+              {/* A route saved on an unpriced model (saved before its price
+                  was cleared, or stored by hand) is refused by every run, and
+                  re-picking the same option fires no change: so the fix sits
+                  here, beside the row. The route is already saved, so this
+                  saves the price alone. */}
+              {!waiting && selected?.status === 'needs-price' ? (
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="text-[12px] text-[var(--color-danger)]">
+                    {selected.label} needs a price before it can run.
+                  </p>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    disabled={saving}
+                    onClick={() => setEditing(task)}
+                  >
+                    Set price
+                  </Button>
+                </div>
+              ) : null}
+
               {!waiting && selected?.status === 'retired' ? (
                 <p className="text-[12px] text-[var(--color-warning)]">
                   {PROVIDER_NAMES[provider]} no longer lists this model. Runs still try it, and fall
@@ -485,7 +511,9 @@ export function ModelsTab({
               {!waiting &&
               editing === task &&
               selected &&
-              (selected.status === 'estimated' || selected.status === 'override') ? (
+              (selected.status === 'estimated' ||
+                selected.status === 'override' ||
+                selected.status === 'needs-price') ? (
                 <LlmPriceForm
                   key={`${provider}:${model}`}
                   title={`Your price for ${selected.label}.`}

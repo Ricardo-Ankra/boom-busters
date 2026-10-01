@@ -166,6 +166,28 @@ describe('live model lists (decision 287)', () => {
     ).toBeInTheDocument()
   })
 
+  it('offers a price for a saved route already on an unpriced model, and saves only the price', async () => {
+    const settings = structuredClone(DEFAULT_SETTINGS)
+    settings.modelRouting.research = { provider: 'anthropic', model: 'claude-mock-unpriced' }
+    renderModelsTab(modelOptions(), settings)
+
+    expect(
+      screen.getByText('Claude Mock Unpriced needs a price before it can run.'),
+    ).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Set price' }))
+    await userEvent.type(screen.getByLabelText('Input, $ per million tokens'), '7')
+    await userEvent.type(screen.getByLabelText('Output, $ per million tokens'), '30')
+    await userEvent.click(screen.getByRole('button', { name: 'Save price' }))
+
+    expect(saveSettings).toHaveBeenCalledTimes(1)
+    expect(saveSettings).toHaveBeenCalledWith({
+      modelPrices: {
+        llm: { 'anthropic:claude-mock-unpriced': { inputPerMTok: 7, outputPerMTok: 30 } },
+        image: {},
+      },
+    })
+  })
+
   it('refuses to clear the price of a model a route still needs it for', async () => {
     const prices = {
       llm: { 'anthropic:claude-mock-unpriced': { inputPerMTok: 7, outputPerMTok: 30 } },
