@@ -5,11 +5,13 @@ import {
   DEFAULT_SET_SHEET_ROUTE,
   DEFAULT_SETTINGS,
   LLM_TASKS,
+  ModelPricesSchema,
   ModelRoutingSchema,
   SettingsPatchSchema,
   SettingsSchema,
   effectiveCeilingUsd,
   canonicalModelId,
+  modelPriceKey,
   monthKey,
   resolveBrandKit,
 } from './settings'
@@ -315,6 +317,32 @@ describe('effectiveCeilingUsd', () => {
     })
     expect(parsed.budgets.monthlyCeilingUsd).toBe(100)
     expect('killSwitch' in parsed.budgets).toBe(false)
+  })
+})
+
+describe('modelPrices (decision 287)', () => {
+  it('defaults to no overrides on a row stored before it existed', () => {
+    const older: Record<string, unknown> = { ...DEFAULT_SETTINGS }
+    delete older['modelPrices']
+    expect(SettingsSchema.parse(older).modelPrices).toEqual({ llm: {}, image: {} })
+  })
+
+  it('refuses a price that is not above zero', () => {
+    const bad = { llm: { 'anthropic:claude-fable-5-1': { inputPerMTok: 0, outputPerMTok: 50 } } }
+    expect(ModelPricesSchema.safeParse(bad).success).toBe(false)
+  })
+
+  it('accepts an image price by size', () => {
+    const good = {
+      image: { 'google:gemini-9-pro-image': { pricePerImage: 0.2, pricesBySize: { '4K': 0.3 } } },
+    }
+    expect(ModelPricesSchema.parse(good).image['google:gemini-9-pro-image']?.pricesBySize).toEqual({
+      '4K': 0.3,
+    })
+  })
+
+  it('keys a price by provider and id', () => {
+    expect(modelPriceKey('anthropic', 'claude-fable-5-1')).toBe('anthropic:claude-fable-5-1')
   })
 })
 
