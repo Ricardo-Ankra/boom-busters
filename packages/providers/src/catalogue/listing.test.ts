@@ -206,6 +206,15 @@ describe('listProviderModels (decision 287)', () => {
     )
     await expect(listProviderModels('anthropic', 'bad', { fetchImpl })).rejects.toThrow()
   })
+
+  it('reports a malformed 200 body as a readable error, not a raw ZodError', async () => {
+    const { fetchImpl } = serve({
+      'https://api.anthropic.com/v1/models': { unexpected: true },
+    })
+    await expect(listProviderModels('anthropic', 'k', { fetchImpl })).rejects.toThrow(
+      /anthropic returned a model list this app could not read/,
+    )
+  })
 })
 
 describe('mockListedModels', () => {

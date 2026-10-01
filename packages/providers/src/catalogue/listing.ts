@@ -1,4 +1,5 @@
 import { canonicalModelId, canonicalStillModelId } from '@boom-busters/schemas'
+import { ZodError } from 'zod'
 import type { ListOptions } from './http'
 import { listAnthropicModels } from './list-anthropic'
 import { listFalModels } from './list-fal'
@@ -31,7 +32,15 @@ export async function listProviderModels(
   apiKey: string,
   options: ListOptions = {},
 ): Promise<ListedModel[]> {
-  const listed = await LISTERS[provider](apiKey, options)
+  let listed: ListedModel[]
+  try {
+    listed = await LISTERS[provider](apiKey, options)
+  } catch (cause) {
+    if (cause instanceof ZodError) {
+      throw new Error(`${provider} returned a model list this app could not read`, { cause })
+    }
+    throw cause
+  }
   const current = listed.filter((model) =>
     model.kind === 'image'
       ? canonicalStillModelId(model.id) === model.id
