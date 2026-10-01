@@ -1,6 +1,7 @@
 import { getSettings, listCredentials, listLogos, listMusicBeds } from '@boom-busters/db'
 import { hasEnvGroup } from '@boom-busters/schemas'
 import { db } from '@/lib/db'
+import { loadModelOptions } from '@/lib/model-catalogue'
 import { mockProvidersEnabled } from '@boom-busters/providers'
 import { presignGet, storageConfigured } from '@/lib/storage'
 import { SettingsForm } from './settings-form'
@@ -31,6 +32,11 @@ export default async function SettingsPage({
     listLogos(db),
     searchParams,
   ])
+
+  // The dropdowns' options: the cached live lists merged with the catalogue
+  // and priced with the owner's overrides (decision 287). Needs the settings,
+  // so it runs after the batch above.
+  const modelOptions = await loadModelOptions(settings)
 
   const logoViews = await Promise.all(
     logos.map(async (logo) => ({
@@ -80,6 +86,7 @@ export default async function SettingsPage({
         }))}
         logos={logoViews}
         channelMarkKey={settings.brandKit.look.logoR2Key}
+        modelOptions={modelOptions}
       />
     </div>
   )
