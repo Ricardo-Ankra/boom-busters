@@ -42,7 +42,7 @@ const VIEW_FRAMING: Record<SetViewRequest, string> = {
  * Every plate names its own lens (decision 275 final review): the house line
  * carries none. The first plate and a detail say it in the framing above; a
  * compass view of a plated set says it in its camera sentence (35mm, decision
- * 285, as the contact sheet's panels are), which `generateStillCandidates`
+ * 287, as the contact sheet's panels are), which `generateStillCandidates`
  * appends through `describeCamera`.
  */
 
@@ -104,7 +104,7 @@ export function setPlateBrief(
       ? {
           facing: view,
           position: `the middle of the ${OPPOSITE_DIRECTION[view]} wall, at eye level`,
-          // 35mm, as the contact sheet's panels are (decision 285).
+          // 35mm, as the contact sheet's panels are (decision 287).
           lens: '35mm',
         }
       : undefined
@@ -119,7 +119,7 @@ export function setPlateBrief(
     ...(camera ? { camera } : {}),
     // A plate is the room, not a scene in it: people belong to the stills.
     // The assembler adds the photograph line and strips anchors before this
-    // ever reaches a model (decision 285); this brief carries the scene alone.
+    // ever reaches a model (decision 287); this brief carries the scene alone.
     // The look draws the first plate only (spec 5.2, 7.3): once a camera
     // stands in for it, `describeCamera` already says what the room holds,
     // and the look repeated furniture the camera sentence never put in frame.
@@ -129,12 +129,12 @@ export function setPlateBrief(
 }
 
 /**
- * The camera sentence and what it sees (decision 275, amended 285): where
+ * The camera sentence and what it sees (decision 275, amended 287): where
  * the camera stands, then the inventory lines for the wall in frame, the
  * walls at the edges, the centre and the light. Stated positively, so the
  * model is given the new picture to make rather than an old one to avoid.
  * The wall behind the camera, and the rest of the room's own inventory, are
- * never named (decision 285): a named thing is drawn, and naming what the
+ * never named (decision 287): a named thing is drawn, and naming what the
  * lens cannot see is how an extra desk got into a still.
  */
 /**
@@ -158,7 +158,7 @@ function framingOf(shotSize: ShotSize | undefined, lens: string | undefined): Fr
  * prompt, "a close shot" lost to a wide opening sentence and a wide reference
  * plate. A still with a camera now opens with how tight it is; a wide shot
  * needs no lead. Every still gets it now, with or without a set (decision
- * 285); it is a sentence of its own because the camera sentence follows it.
+ * 287); it is a sentence of its own because the camera sentence follows it.
  */
 export function framingLead(camera: SetCamera | undefined, shotSize?: ShotSize): string {
   const framing = framingOf(shotSize, camera?.lens)
@@ -240,7 +240,7 @@ export function describeCamera(camera: SetCamera, layout: string, shotSize?: Sho
   if (view.centre) sentences.push(`Centre: ${view.centre}.`)
   if (light) sentences.push(light)
   // The wall behind the camera and the room's other lines are never named
-  // (decision 285): a named thing is drawn, and the extra desk came from
+  // (decision 287): a named thing is drawn, and the extra desk came from
   // naming furniture the lens could not see. An inventory with no wall
   // labels is kept, since it is all the room text there is.
   const labelled = view.inFrame ?? view.left ?? view.right ?? view.centre ?? view.light

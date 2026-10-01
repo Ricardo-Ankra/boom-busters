@@ -19,7 +19,7 @@ import { promptParagraphs, type TimedParagraph } from '@/inngest/lib/shot-list'
 
 /**
  * One chapter's shot list, planned through whatever completes a request
- * (decision 285). The app passes its ledgered `callLlm`; the live harness
+ * (decision 287). The app passes its ledgered `callLlm`; the live harness
  * passes a Google call held under its own spend cap. Both then plan under
  * exactly the same request, retry and repair rules.
  */

@@ -48,7 +48,7 @@ apps/web/.local-renders/
 # from a real run against Gemini, never committed.
 live-set-runs/
 
-# Live plan harness output (decision 285, Task 3): a chapter planned and
+# Live plan harness output (decision 287, Task 3): a chapter planned and
 # imaged against production, read-only; never committed.
 live-plan-runs/
 

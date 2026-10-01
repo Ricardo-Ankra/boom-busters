@@ -1356,7 +1356,7 @@ describe('the model select on a shot (decision 264)', () => {
   })
 })
 
-describe('the board edits the scene and shows the prompt sent (decision 285)', () => {
+describe('the board edits the scene and shows the prompt sent (decision 287)', () => {
   const promptSentSlot: SlotView = {
     ...stockSlot,
     id: SLOT_B,

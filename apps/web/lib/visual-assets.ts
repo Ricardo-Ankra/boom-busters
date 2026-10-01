@@ -139,7 +139,7 @@ export async function stillsEstimateUsd(
 }
 
 /**
- * The prompt a still would be sent with now (decision 285), for the board's
+ * The prompt a still would be sent with now (decision 287), for the board's
  * "Prompt sent to the model". Built by the same pieces generation uses, from
  * lists already loaded, so the preview and the call cannot disagree.
  */

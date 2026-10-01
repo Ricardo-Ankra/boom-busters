@@ -58,7 +58,7 @@ const LEGACY_HOUSE =
 const LEGACY_ANCHORS =
   'subtle film grain; muted documentary colour grade anchored on #0f1115 and #ef4444 against #0a0a0b; sombre, photographic realism'
 
-describe('sceneOf (decision 285)', () => {
+describe('sceneOf (decision 287)', () => {
   it('strips the house line and anchors the planner pasted', () => {
     expect(sceneOf(`Emad at the table, hands clasped. ${LEGACY_HOUSE} ${LEGACY_ANCHORS}`)).toBe(
       'Emad at the table, hands clasped.',
@@ -137,7 +137,7 @@ describe('sceneOf (decision 285)', () => {
   })
 })
 
-describe('assembleStillPrompt (decision 285)', () => {
+describe('assembleStillPrompt (decision 287)', () => {
   const camera = { facing: 'south' as const, position: 'the north windows, seated', lens: '35mm' }
   const base = {
     scene: `Emad Mostaque seated at the long table, hands clasped. ${LEGACY_HOUSE} ${LEGACY_ANCHORS}`,

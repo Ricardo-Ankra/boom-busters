@@ -594,7 +594,7 @@ describe('convertBrief — re-typing a slot (staged-visuals design)', () => {
     expect(ShotBriefSchema.parse(converted)).toBeTruthy()
   })
 
-  it('carries the description alone into a still; the assembler adds the rest (decision 285)', () => {
+  it('carries the description alone into a still; the assembler adds the rest (decision 287)', () => {
     const stock = convertBrief(still, 'stock')!
     const back = convertBrief(stock, 'still')
     expect(back).toMatchObject({ type: 'still' })

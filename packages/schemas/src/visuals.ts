@@ -512,7 +512,7 @@ export function convertBrief(
     case 'archival':
       return { type: 'archival', ...common, query: brief.description, mustShow: brief.description }
     case 'still':
-      // The description is the scene; the assembler adds everything else (decision 285).
+      // The description is the scene; the assembler adds everything else (decision 287).
       return { type: 'still', ...common, prompt: brief.description }
     case 'headline': {
       /**

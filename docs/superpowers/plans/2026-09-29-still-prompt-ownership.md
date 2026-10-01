@@ -8,7 +8,7 @@
 
 **Tech Stack:** TypeScript, pnpm monorepo, Next.js app (`apps/web`), Inngest, Remotion (`packages/compositions`), Zod schemas (`packages/schemas`), Drizzle/postgres.js (`packages/db`), Vitest, Playwright, Gemini image models.
 
-**Spec:** `docs/superpowers/specs/2026-09-29-still-prompt-ownership-design.md` (decision 285). Read it before starting any task.
+**Spec:** `docs/superpowers/specs/2026-09-29-still-prompt-ownership-design.md` (decision 287). Read it before starting any task.
 
 ## Global Constraints
 
@@ -112,7 +112,7 @@ describe('planStillReferences', () => {
   })
 })
 
-describe('assembleStillPrompt (decision 285, Task 1: today behaviour)', () => {
+describe('assembleStillPrompt (decision 287, Task 1: today behaviour)', () => {
   it('matches the pre-refactor composition exactly', () => {
     const camera = { facing: 'south' as const, position: 'the north windows, seated', lens: '35mm' }
     const scene = 'Emad Mostaque seated at the long table, hands clasped.'
@@ -231,7 +231,7 @@ export interface StillPromptInput {
   kind?: StillKind
 }
 
-/** The one place a still's prompt is put together (decision 285). */
+/** The one place a still's prompt is put together (decision 287). */
 export function assembleStillPrompt(input: StillPromptInput): string {
   const body = input.camera
     ? `${framingLead(input.camera, input.shotSize)}${input.scene}`
@@ -296,7 +296,7 @@ Expected: PASS, every existing visual-assets test unchanged and green (Docker De
 ```bash
 pnpm typecheck && pnpm lint && pnpm format:check
 git add apps/web/lib/still-prompt.ts apps/web/lib/still-prompt.test.ts apps/web/lib/visual-assets.ts
-git commit -m "refactor(web): one pure module plans a still's references and prompt (decision 285)"
+git commit -m "refactor(web): one pure module plans a still's references and prompt (decision 287)"
 ```
 
 ---
@@ -424,7 +424,7 @@ import { promptParagraphs, type TimedParagraph } from '@/inngest/lib/shot-list'
 
 /**
  * One chapter's shot list, planned through whatever completes a request
- * (decision 285). The app passes its ledgered `callLlm`; the live harness
+ * (decision 287). The app passes its ledgered `callLlm`; the live harness
  * passes a Google call held under its own spend cap. Both then plan under
  * exactly the same request, retry and repair rules.
  */
@@ -520,7 +520,7 @@ import { afterAll, describe, expect, it } from 'vitest'
 import { createDb } from './client'
 
 const url = process.env.TEST_DATABASE_URL
-describe.skipIf(!url)('createDb readOnly (decision 285)', () => {
+describe.skipIf(!url)('createDb readOnly (decision 287)', () => {
   const { sql } = createDb(url!, { max: 1, readOnly: true })
   afterAll(() => sql.end())
 
@@ -546,7 +546,7 @@ export function createDb(connectionString: string, options?: { max?: number; rea
     // ...existing options unchanged...
     prepare: false,
     /**
-     * A session that cannot write (decision 285): the live harness reads a
+     * A session that cannot write (decision 287): the live harness reads a
      * production project and must never change it. Sent as a startup
      * parameter, so it needs a direct connection (Neon's unpooled URL);
      * PgBouncer in transaction mode may drop it, which is why the harness
@@ -570,7 +570,7 @@ Expected: PASS. Then the whole web suite once: `pnpm --filter @boom-busters/web 
 ```bash
 pnpm typecheck && pnpm lint && pnpm format:check
 git add apps/web/lib/plan-chapter.ts apps/web/lib/plan-chapter.test.ts apps/web/inngest/lib/direction.ts packages/db/src/client.ts packages/db/src/client.integration.test.ts
-git commit -m "refactor(web): the chapter planner takes its completion; db gains a read-only session (decision 285)"
+git commit -m "refactor(web): the chapter planner takes its completion; db gains a read-only session (decision 287)"
 ```
 
 ---
@@ -650,7 +650,7 @@ Expected: FAIL, module not found.
 
 ```ts
 /**
- * The live plan harness's arguments (decision 285). Pure, like
+ * The live plan harness's arguments (decision 287). Pure, like
  * `live-set-args.ts`, whose cap rules it shares: a cap above $1 is the
  * owner's decision, never a flag.
  */
@@ -751,7 +751,7 @@ Expected: FAIL, module not found.
 import path from 'node:path'
 
 /**
- * The before and after page (decision 285, spec 10.1): each run's stills in
+ * The before and after page (decision 287, spec 10.1): each run's stills in
  * a column, each with its sentence, its prompt and the five faults to tick.
  * The tally at the top counts ticks per still for each column, which is the
  * number the owner reports. Static HTML beside the after run; nothing is
@@ -902,7 +902,7 @@ import {
 } from '@/lib/still-prompt'
 
 /**
- * The live plan harness (decision 285, spec 10.1): the real planner on one
+ * The live plan harness (decision 287, spec 10.1): the real planner on one
  * production chapter, then one image per still through the app's own prompt
  * assembly, so a prompt change is measured on what the app actually writes.
  *
@@ -1166,7 +1166,7 @@ Expected: `--project is required (the project id).` and exit 1.
 ```bash
 pnpm lint && pnpm format:check
 git add apps/web/lib/live-set-args.ts apps/web/lib/live-plan-args.ts apps/web/lib/live-plan-args.test.ts apps/web/lib/live-compare.ts apps/web/lib/live-compare.test.ts apps/web/scripts/live-plan-test.ts apps/web/scripts/live-compare.ts apps/web/package.json .gitignore
-git commit -m "feat(web): live plan harness and before-and-after page (decision 285)"
+git commit -m "feat(web): live plan harness and before-and-after page (decision 287)"
 ```
 
 - [ ] **Step 9: The before run (paid; ask the owner first)**
@@ -1201,7 +1201,7 @@ Must be deployed before prompts stop carrying the anchors (Tasks 5 and 6), so no
 Add to `packages/schemas/src/settings.test.ts`:
 
 ```ts
-describe('gradePreset (decision 285)', () => {
+describe('gradePreset (decision 287)', () => {
   it('is absent from an old timeline brand, which means ungraded', () => {
     const brand = BrandKitTokensSchema.parse({ ...resolveBrandKit(DEFAULT_SETTINGS), look: { ...DEFAULT_SETTINGS.brandKit.look, gradePreset: undefined } })
     expect(brand.look.gradePreset).toBeUndefined()
@@ -1229,7 +1229,7 @@ In `packages/schemas/src/settings.ts`:
 
 ```ts
 /**
- * The compositor's colour grade on photographic slots (decision 285). Image
+ * The compositor's colour grade on photographic slots (decision 287). Image
  * prompts carry no grade, grain or colour code; the film is graded once, here.
  * Optional in the schema on purpose: a timeline compiled before grades
  * existed has none and renders exactly as it did, while `resolveBrandKit`
@@ -1270,7 +1270,7 @@ Create or extend `packages/compositions/src/components/DocumentaryMaster.test.ts
 import { describe, expect, it } from 'vitest'
 import { GRADE_FILTER } from './DocumentaryMaster'
 
-describe('GRADE_FILTER (decision 285)', () => {
+describe('GRADE_FILTER (decision 287)', () => {
   it('leaves an ungraded film alone', () => {
     expect(GRADE_FILTER.none).toBeUndefined()
   })
@@ -1291,7 +1291,7 @@ In `DocumentaryMaster.tsx`, beside `GRAIN_OPACITY`:
 
 ```tsx
 /**
- * The film's grade (decision 285): one CSS filter over photographic slots,
+ * The film's grade (decision 287): one CSS filter over photographic slots,
  * stills, stock and archival alike, so generated and real pictures sit in
  * one look. Charts, cards, graphics and maps are drawn in brand colours and
  * are never filtered. Values set by eye in the player and a render.
@@ -1403,7 +1403,7 @@ Import `GradePreset` and `Settings` types as the file's other schema imports do.
 ```bash
 pnpm typecheck && pnpm lint && pnpm format:check
 git add packages/schemas/src/settings.ts packages/schemas/src/settings.test.ts packages/compositions/src/components/DocumentaryMaster.tsx packages/compositions/src/components/DocumentaryMaster.test.tsx "apps/web/app/(console)/settings/settings-form.tsx" "apps/web/app/(console)/settings/brand-look.test.tsx"
-git commit -m "feat: the compositor grades photographs; Brand Kit gains Grade and Grain (decision 285)"
+git commit -m "feat: the compositor grades photographs; Brand Kit gains Grade and Grain (decision 287)"
 ```
 
 Rollout note for Task 10 (not now): `deploy:remotion` and `deploy:stacks boom-busters-broker` must go out before or with the Vercel deploy of this branch.
@@ -1435,7 +1435,7 @@ Rollout note for Task 10 (not now): `deploy:remotion` and `deploy:stacks boom-bu
 
 ```ts
 /**
- * The fixed words code adds to image prompts (decision 285). They name
+ * The fixed words code adds to image prompts (decision 287). They name
  * qualities, never objects: the house line that named "a coffee ring, cable
  * runs, papers out of line" put a coffee ring in 44 of 46 stills of one film.
  * No lens, no height, no grain, no grade: each shot states its own lens, and
@@ -1466,7 +1466,7 @@ const LEGACY_HOUSE =
 const LEGACY_ANCHORS =
   'subtle film grain; muted documentary colour grade anchored on #0f1115 and #ef4444 against #0a0a0b; sombre, photographic realism'
 
-describe('sceneOf (decision 285)', () => {
+describe('sceneOf (decision 287)', () => {
   it('strips the house line and anchors the planner pasted', () => {
     expect(sceneOf(`Emad at the table, hands clasped. ${LEGACY_HOUSE} ${LEGACY_ANCHORS}`)).toBe(
       'Emad at the table, hands clasped.',
@@ -1503,7 +1503,7 @@ describe('sceneOf (decision 285)', () => {
   })
 })
 
-describe('assembleStillPrompt (decision 285)', () => {
+describe('assembleStillPrompt (decision 287)', () => {
   const camera = { facing: 'south' as const, position: 'the north windows, seated', lens: '35mm' }
   const base = {
     scene: `Emad Mostaque seated at the long table, hands clasped. ${LEGACY_HOUSE} ${LEGACY_ANCHORS}`,
@@ -1615,7 +1615,7 @@ export function framingLead(camera: SetCamera | undefined, shotSize?: ShotSize):
 }
 ```
 
-Keep the doc comment above it and add one line: "Every still gets it now, with or without a set (decision 285); it is a sentence of its own because the camera sentence follows it."
+Keep the doc comment above it and add one line: "Every still gets it now, with or without a set (decision 287); it is a sentence of its own because the camera sentence follows it."
 
 - [ ] **Step 4: Rewrite the assembler**
 
@@ -1638,7 +1638,7 @@ const LEGACY_TEASER_CLAUSE =
   'Vertical 9:16 frame: subject in the centre third, headroom above for the hook text, nothing important in the bottom quarter where captions sit.'
 
 /**
- * The planner's own words in a stored prompt (decision 285): the scene, with
+ * The planner's own words in a stored prompt (decision 287): the scene, with
  * every line code now adds taken back out. Stored briefs are never rewritten,
  * so no brief hash moves and no resolved slot is bought again; the strip
  * happens each time a prompt is read. Idempotent.
@@ -1688,7 +1688,7 @@ export function referenceSentences(
     )
   }
   if (set) {
-    // Positive either way (decision 285): "never reproduce or edit the
+    // Positive either way (decision 287): "never reproduce or edit the
     // framing" read as an edit instruction, the fault decision 275 found.
     sentences.push(
       `The photographs of ${set.name} show this room's furniture, materials and light; this ` +
@@ -1699,7 +1699,7 @@ export function referenceSentences(
 }
 
 /**
- * The one place an image prompt is put together (decision 285). Order:
+ * The one place an image prompt is put together (decision 287). Order:
  * framing, the camera and the room it sees, the scene, what the photographs
  * are for, the photograph line. The opening of a prompt wins (decision 275's
  * live runs), so the geometry comes before the scene rather than after it.
@@ -1723,7 +1723,7 @@ export function assembleStillPrompt(input: StillPromptInput): string {
 }
 ```
 
-Update the module's top doc comment to say it now assembles the whole prompt (decision 285) and that it stays free of database, storage and env imports.
+Update the module's top doc comment to say it now assembles the whole prompt (decision 287) and that it stays free of database, storage and env imports.
 
 - [ ] **Step 5: Run and fix the generation tests**
 
@@ -1744,7 +1744,7 @@ Re-run until PASS.
 ```bash
 pnpm typecheck && pnpm lint && pnpm format:check
 git add apps/web/lib/photograph-lines.ts apps/web/lib/still-prompt.ts apps/web/lib/still-prompt.test.ts apps/web/lib/set-plates.ts apps/web/lib/set-plates.test.ts apps/web/lib/visual-assets.test.ts
-git commit -m "feat(web): one assembler owns every still prompt, in a fixed order (decision 285)"
+git commit -m "feat(web): one assembler owns every still prompt, in a fixed order (decision 287)"
 ```
 
 ---
@@ -1776,7 +1776,7 @@ Plates, the contact sheet, the teaser, retype to still and the adapters' avoid c
 `set-plates.test.ts`, add:
 
 ```ts
-it('draws a plate from the room alone, with no house line or anchors (decision 285)', () => {
+it('draws a plate from the room alone, with no house line or anchors (decision 287)', () => {
   const brief = setPlateBrief({ name: 'Boardroom', look: 'A stark room.', plates: [] }, 'north')
   expect(brief.prompt).toBe(
     'Boardroom, empty of people: a wide establishing photograph of the whole room, taken from its entrance at eye level with a 24mm lens. A stark room.',
@@ -1795,7 +1795,7 @@ it('ends the sheet with the plate photograph line and no anchors', () => {
 `gemini.test.ts` and `fal.test.ts` (FLUX branch), add:
 
 ```ts
-it('folds the avoid list into one clean sentence (decision 285)', async () => {
+it('folds the avoid list into one clean sentence (decision 287)', async () => {
   // call generate with prompt 'A desk.' and negativePrompt 'no fax machine.' using the file's existing fetch mock
   expect(sentPrompt).toBe('A desk. Avoid: no fax machine.')
 })
@@ -1821,7 +1821,7 @@ using each file's existing way of capturing the request body. Run the four files
 
 ```ts
     case 'still':
-      // The description is the scene; the assembler adds everything else (decision 285).
+      // The description is the scene; the assembler adds everything else (decision 287).
       return { type: 'still', ...common, prompt: brief.description }
 ```
 
@@ -1830,7 +1830,7 @@ Remove `stillStyleAnchors` from `convertBrief`'s options type and from both call
 `gemini.ts:220-222` and `fal.ts:160-163`:
 
 ```ts
-    // One clean sentence (decision 285): a prompt or list ending in a full
+    // One clean sentence (decision 287): a prompt or list ending in a full
     // stop used to leave "..", the join the fold added on top of it.
     const trimmed = (text: string) => text.trim().replace(/[\s.]+$/, '')
     const prompt = request.negativePrompt
@@ -1856,7 +1856,7 @@ Expected: PASS. Fix expectations that pinned the anchors in plate or sheet promp
 ```bash
 pnpm typecheck && pnpm lint && pnpm format:check
 git add -A apps/web packages/providers packages/schemas
-git commit -m "feat: plates, sheets, teasers and retypes use the assembler; anchors leave image prompts (decision 285)"
+git commit -m "feat: plates, sheets, teasers and retypes use the assembler; anchors leave image prompts (decision 287)"
 ```
 
 ---
@@ -1880,7 +1880,7 @@ git commit -m "feat: plates, sheets, teasers and retypes use the assembler; anch
 In `visual-assets.test.ts`, using the file's existing still, cast and set fixtures:
 
 ```ts
-it('previews exactly the prompt generation sends (decision 285)', async () => {
+it('previews exactly the prompt generation sends (decision 287)', async () => {
   const cast = await listCastMembers(db, FIXTURE_PROJECT_ID)
   const sets = await listProjectSets(db, FIXTURE_PROJECT_ID)
   const routing = (await getSettings(db)).modelRouting
@@ -1898,7 +1898,7 @@ In `visual-assets.ts`:
 
 ```ts
 /**
- * The prompt a still would be sent with now (decision 285), for the board's
+ * The prompt a still would be sent with now (decision 287), for the board's
  * "Prompt sent to the model". Built by the same pieces generation uses, from
  * lists already loaded, so the preview and the call cannot disagree.
  */
@@ -1935,7 +1935,7 @@ Generation counts people and plates from the photographs that actually loaded, s
 In `visuals-review.ts` `SlotView`:
 
 ```ts
-  /** A still's scene: its prompt with the lines code adds taken out (decision 285). */
+  /** A still's scene: its prompt with the lines code adds taken out (decision 287). */
   scene: string | null
   /** The full prompt the still would be sent with now, for the card's disclosure. */
   promptSent: string | null
@@ -1958,7 +1958,7 @@ where `storedRoute` is the value the existing `route:` IIFE computes; hoist that
 In the board's BriefEditor test (create `visual-board.brief-editor.test.tsx` following the file that already renders `VisualBoard` or `BriefEditor`):
 
 ```tsx
-it('edits the scene and shows the prompt sent, read-only (decision 285)', async () => {
+it('edits the scene and shows the prompt sent, read-only (decision 287)', async () => {
   // render the editor for a still slot with brief.prompt = 'A desk. <legacy house line>',
   // scene = 'A desk.', promptSent = 'A desk.\n\nAn available-light documentary photograph: ...'
   expect(screen.getByLabelText('Scene')).toHaveValue('A desk.')
@@ -2021,7 +2021,7 @@ Expected: PASS.
 ```bash
 pnpm typecheck && pnpm lint && pnpm format:check
 git add apps/web e2e
-git commit -m "feat(web): the board edits a still's scene and shows the prompt sent (decision 285)"
+git commit -m "feat(web): the board edits a still's scene and shows the prompt sent (decision 287)"
 ```
 
 ---
@@ -2047,7 +2047,7 @@ git commit -m "feat(web): the board edits a still's scene and shows the prompt s
 `direction-craft.test.ts`, replace the house-line tests (48-61) with:
 
 ```ts
-it('lists no props and pastes no house line (decision 285)', () => {
+it('lists no props and pastes no house line (decision 287)', () => {
   expect(DIRECTION_CRAFT).not.toContain('a coffee ring')
   expect(DIRECTION_CRAFT).not.toContain('a half-drunk coffee')
   expect(DIRECTION_CRAFT).not.toContain('steam off a cup')
@@ -2073,7 +2073,7 @@ it('limits the avoid list to this frame', () => {
 `shotlist.test.ts:681-684`, replace with:
 
 ```ts
-it('asks for the scene alone, and no pasted lines (decision 285)', () => {
+it('asks for the scene alone, and no pasted lines (decision 287)', () => {
   const request = buildShotListRequest({ /* the file's existing minimal input, without styleAnchors */ })
   expect(request.system).toContain('"prompt" is the scene alone')
   expect(request.system).not.toContain('verbatim: "')
@@ -2086,7 +2086,7 @@ it('asks for the scene alone, and no pasted lines (decision 285)', () => {
 `packages/schemas` direction test:
 
 ```ts
-it('renders the palette as light and skips locations that are sets (decision 285)', () => {
+it('renders the palette as light and skips locations that are sets (decision 287)', () => {
   const text = renderDirectorsBook(book, { sets: ['The Stability AI Boardroom'] })
   expect(text).toContain("Light: this film's light runs cold.")
   expect(text).not.toMatch(/#[0-9a-f]{6}/i)
@@ -2240,7 +2240,7 @@ export function renderDirectorsBook(book: DirectorsBook, options?: { sets?: read
   const lines: string[] = [
     `Visual thesis: ${book.visualThesis}`,
     `Era locks: ${book.eraLocks.map((lock) => `${lock.span}: ${lock.rules}`).join(' | ')}`,
-    // Light, not colour (decision 285): the compositor grades; hex codes in
+    // Light, not colour (decision 287): the compositor grades; hex codes in
     // a prompt became red props.
     `Light: this film's light runs ${book.palette.temperature}.`,
     `Motifs: ${book.motifs.join('; ')}`,
@@ -2283,7 +2283,7 @@ Expected: PASS. A bible phrase that fails to match is almost always a line wrap;
 ```bash
 pnpm typecheck && pnpm lint && pnpm format:check
 git add -A packages/providers packages/schemas apps/web
-git commit -m "feat(providers): the bible and planner rules state each rule once; prompts carry the scene alone (decision 285)"
+git commit -m "feat(providers): the bible and planner rules state each rule once; prompts carry the scene alone (decision 287)"
 ```
 
 ---
@@ -2309,7 +2309,7 @@ const layout =
   'North wall: glass windows.\nEast wall: acoustic panels.\nSouth wall: oak double door.\n' +
   'West wall: frosted glass.\nCentre: the room\'s only table, ten chairs.\nLight: LED panels, daylight from the north.'
 
-it('names nothing behind the camera on a wide shot (decision 285)', () => {
+it('names nothing behind the camera on a wide shot (decision 287)', () => {
   const text = describeCamera({ facing: 'north', position: 'the south doorway', lens: '24mm' }, layout, 'wide')
   expect(text).not.toContain('Behind the camera')
   expect(text).not.toContain('oak double door')
@@ -2342,7 +2342,7 @@ Delete or rewrite the old expectations at lines 64 and 139 that asserted `Behind
 import { describe, expect, it } from 'vitest'
 import { layoutDraftRequest } from './set-layout-prompt'
 
-it('asks for counts, and "the only" where there is one (decision 285)', () => {
+it('asks for counts, and "the only" where there is one (decision 287)', () => {
   const request = layoutDraftRequest({ name: 'Office', look: '', image: { mimeType: 'image/png', data: '' } })
   expect(request.messages[0]?.content).toContain('Give the number of each piece of furniture')
   expect(request.messages[0]?.content).toContain('"the only"')
@@ -2352,7 +2352,7 @@ it('asks for counts, and "the only" where there is one (decision 285)', () => {
 `shotlist.test.ts` references-prefix test:
 
 ```ts
-it('shows a set by its inventory alone once it has one (decision 285)', () => {
+it('shows a set by its inventory alone once it has one (decision 287)', () => {
   const text = referencesPrefix([], [{ name: 'B', look: 'Endless racks.', layout: 'North wall: a door.' }])
   expect(text).toContain('- B\n  North wall: a door.')
   expect(text).not.toContain('Endless racks.')
@@ -2393,7 +2393,7 @@ export function describeCamera(camera: SetCamera, layout: string, shotSize?: Sho
   if (view.centre) sentences.push(`Centre: ${view.centre}.`)
   if (light) sentences.push(light)
   // The wall behind the camera and the room's other lines are never named
-  // (decision 285): a named thing is drawn, and the extra desk came from
+  // (decision 287): a named thing is drawn, and the extra desk came from
   // naming furniture the lens could not see. An inventory with no wall
   // labels is kept, since it is all the room text there is.
   const labelled = view.inFrame ?? view.left ?? view.right ?? view.centre ?? view.light
@@ -2404,7 +2404,7 @@ export function describeCamera(camera: SetCamera, layout: string, shotSize?: Sho
 
 Update the doc comment above it to match (it no longer "names the wall behind it").
 
-`setPlateBrief` camera: `lens: '35mm'`, with the comment "35mm, as the contact sheet's panels are (decision 285)". Update the `VIEW_FRAMING` comment block at 40-45 to say 35mm.
+`setPlateBrief` camera: `lens: '35mm'`, with the comment "35mm, as the contact sheet's panels are (decision 287)". Update the `VIEW_FRAMING` comment block at 40-45 to say 35mm.
 
 `set-layout-prompt.ts`, after `'no people. '`, insert:
 
@@ -2425,7 +2425,7 @@ Update the doc comment above it to match (it no longer "names the wall behind it
               : `- ${set.name}: ${set.look}`
 ```
 
-with a comment: "One description per room (decision 285): the inventory once it exists; the look only before."
+with a comment: "One description per room (decision 287): the inventory once it exists; the look only before."
 
 `schemas/src/sets.ts:103-113`: the `look` comment becomes `/** The book's look line, editable. Draws the first plate, and stands in for the inventory until one is drafted. */`.
 
@@ -2443,7 +2443,7 @@ Expected: PASS.
 ```bash
 pnpm typecheck && pnpm lint && pnpm format:check
 git add -A apps/web packages/providers packages/schemas
-git commit -m "feat(web): the camera sentence names only what the lens sees; inventories count furniture (decision 285)"
+git commit -m "feat(web): the camera sentence names only what the lens sees; inventories count furniture (decision 287)"
 ```
 
 ---
@@ -2451,7 +2451,7 @@ git commit -m "feat(web): the camera sentence names only what the lens sees; inv
 ### Task 10: Full verification, the after run, the record, the rollout
 
 **Files:**
-- Modify: `PROGRESS.md` (decision 285 entry)
+- Modify: `PROGRESS.md` (decision 287 entry)
 - Modify: memory files under `C:\Users\ricar\.claude\projects\c--Users-ricar-OneDrive-Desktop-Boom---Busters-boom-busters\memory\` (update `image-prompts-lead-with-framing.md` with what the after run shows)
 
 - [ ] **Step 1: Full verification**
@@ -2491,13 +2491,13 @@ Each follow-up change gets its own test and commit.
 
 - [ ] **Step 4: PROGRESS entry**
 
-Add decision 285 to `PROGRESS.md` in the house format of decisions 275 to 284: the owner's report quoted, the evidence (44 of 46, 3 of 46, 6 stills, dust 14, rain 9), the causes, what changed task by task, the before and after tallies, the four settled questions, the verification counts, and the rollout below. Run `pnpm format:check` after, since Prettier reflows PROGRESS.
+Add decision 287 to `PROGRESS.md` in the house format of decisions 275 to 284: the owner's report quoted, the evidence (44 of 46, 3 of 46, 6 stills, dust 14, rain 9), the causes, what changed task by task, the before and after tallies, the four settled questions, the verification counts, and the rollout below. Run `pnpm format:check` after, since Prettier reflows PROGRESS.
 
 - [ ] **Step 5: Commit and hand over the rollout**
 
 ```bash
 git add PROGRESS.md
-git commit -m "docs: record decision 285, still prompts with one owner per fact"
+git commit -m "docs: record decision 287, still prompts with one owner per fact"
 ```
 
 Rollout, in this order (the owner runs the deploy scripts, following the Lambda redeploy memory; write any wrapper script into the scratchpad and hand it over):

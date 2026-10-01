@@ -159,7 +159,7 @@ export const teaserShotFetcher = inngest.createFunction(
     if (data.op === 'still') {
       const outcome = await step.run('generate-still', async () => {
         // The beat's own words carry the idea; the assembler adds the
-        // teaser's composition line and closes the prompt (decision 285) —
+        // teaser's composition line and closes the prompt (decision 287) —
         // no house anchors reach this route any more.
         try {
           const made = await generateStillCandidates(

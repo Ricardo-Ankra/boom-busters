@@ -4,7 +4,7 @@ import type { TimelineSlot } from '@boom-busters/schemas'
 import { FIXTURE_BRAND } from '../fixtures/timeline'
 import { GRADE_FILTER, SlotView } from './DocumentaryMaster'
 
-describe('GRADE_FILTER (decision 285)', () => {
+describe('GRADE_FILTER (decision 287)', () => {
   it('leaves an ungraded film alone', () => {
     expect(GRADE_FILTER.none).toBeUndefined()
   })
@@ -83,7 +83,7 @@ const CHART_SLOT: TimelineSlot = {
   },
 }
 
-describe('SlotView grade wrapper (spec §10, decision 285 final review)', () => {
+describe('SlotView grade wrapper (spec §10, decision 287 final review)', () => {
   // `resolveBrandKit` already defaults an unset preset to 'muted', so the
   // fixture brand is graded as it stands.
   const gradedBrand = FIXTURE_BRAND

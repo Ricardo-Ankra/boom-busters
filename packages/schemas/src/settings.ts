@@ -351,7 +351,7 @@ export const BrandColorsSchema = z.object({
 })
 
 /**
- * The compositor's colour grade on photographic slots (decision 285). Image
+ * The compositor's colour grade on photographic slots (decision 287). Image
  * prompts carry no grade, grain or colour code; the film is graded once, here.
  * Optional in the schema on purpose: a timeline compiled before grades
  * existed has none and renders exactly as it did, while `resolveBrandKit`

@@ -268,7 +268,7 @@ async function main(): Promise<void> {
     } else if (args.generateFirst) {
       const brief = setPlateBrief({ name: args.name, look: args.look, plates: [] }, 'north')
       // The same call `generateStillCandidates(brief, projectId, undefined,
-      // 'plate')` makes for a first plate (decision 285): the harness must
+      // 'plate')` makes for a first plate (decision 287): the harness must
       // not drift from what the app actually sends.
       const firstPrompt = assembleStillPrompt({
         scene: brief.prompt,
@@ -450,7 +450,7 @@ async function main(): Promise<void> {
       name,
       photos: castPhotos.filter(({ member }) => member.name === name).length,
     }))
-    // Assembled by the one function the app itself uses (decision 285): the
+    // Assembled by the one function the app itself uses (decision 287): the
     // harness must send exactly the prompt a real run would, not its own
     // approximation of it.
     const shotPrompt = assembleStillPrompt({

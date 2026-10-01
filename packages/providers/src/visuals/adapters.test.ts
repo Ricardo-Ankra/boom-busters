@@ -355,7 +355,7 @@ describe('falImageGen', () => {
     expect(result.estimatedCostUsd).toBeCloseTo(falImageGen.models[0]!.pricePerImage * 2)
   })
 
-  it('folds the avoid list into one clean sentence (decision 285)', async () => {
+  it('folds the avoid list into one clean sentence (decision 287)', async () => {
     let sentPrompt = ''
     await falImageGen.generate(
       { prompt: 'A desk.', negativePrompt: 'no fax machine.', count: 1 },

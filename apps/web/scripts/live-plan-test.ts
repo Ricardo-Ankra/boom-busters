@@ -32,7 +32,7 @@ import {
 } from '@/lib/still-prompt'
 
 /**
- * The live plan harness (decision 285, spec 10.1): the real planner on one
+ * The live plan harness (decision 287, spec 10.1): the real planner on one
  * production chapter, then one image per still through the app's own prompt
  * assembly, so a prompt change is measured on what the app actually writes.
  *
@@ -48,7 +48,7 @@ import {
 
 const FALLBACK_STILL_MODEL = 'gemini-3.1-flash-image'
 /**
- * The reserve's floor (decision 285 final review): a flat $0.12 undercounted
+ * The reserve's floor (decision 287 final review): a flat $0.12 undercounted
  * a retry at double maxTokens and could let the run overshoot its cap before
  * the settle caught up. `priceOf` on the request's own size and budget is the
  * real estimate; this is only what a reserve never drops below.

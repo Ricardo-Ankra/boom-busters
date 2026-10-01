@@ -543,7 +543,7 @@ describe('buildShotListRequest with direction (decision 252)', () => {
     expect(request.messages[1]?.content).toContain('This is chapter 2 of the book')
   })
 
-  it('keeps the guardrail out of the image prompt; code owns the reference photo (decision 285)', () => {
+  it('keeps the guardrail out of the image prompt; code owns the reference photo (decision 287)', () => {
     expect(request.system).not.toContain('quote their guardrail line in the prompt')
     expect(request.system).toContain('never pasted into the image')
     expect(request.system).toContain('the code tells the model which photograph is theirs.')
@@ -588,7 +588,7 @@ describe('buildShotListRequest with direction (decision 252)', () => {
       expect(withPhotos.system).toContain('it already begins with their full name and role')
     })
 
-    // Decision 285: how an unnamed extra is written is the bible's alone now.
+    // Decision 287: how an unnamed extra is written is the bible's alone now.
     it('still describes an unnamed extra, from the bible', () => {
       expect(withPhotos.system).toContain('Anyone unnamed')
       expect(withPhotos.system).toContain('role, age range, build and clothing')
@@ -606,7 +606,7 @@ describe('buildShotListRequest with direction (decision 252)', () => {
     })
 
     // Decision 273: a likeness pasted onto a plate rose through the table.
-    // Decision 285: how they are staged is the bible's alone, not the planner's.
+    // Decision 287: how they are staged is the bible's alone, not the planner's.
     it('stages a photographed person physically in the scene, from the bible', () => {
       expect(withPhotos.system).toContain(
         'A person is photographed in the room, never pasted onto it',
@@ -630,7 +630,7 @@ describe('buildShotListRequest with direction (decision 252)', () => {
     expect(request.system).toContain('the light of the moment, then lens and camera')
   })
 
-  it('asks for the scene alone, and no pasted lines (decision 285)', () => {
+  it('asks for the scene alone, and no pasted lines (decision 287)', () => {
     expect(request.system).toContain('"prompt" is the scene alone')
     expect(request.system).not.toContain('verbatim: "')
     // The bible names the house photograph line as code's; what must be gone is
@@ -736,13 +736,13 @@ describe('buildShotListRequest with direction (decision 252)', () => {
       ],
     })
 
-    it('puts a set by its inventory alone in the cacheable prefix, not its look, once it has one (decision 285)', () => {
+    it('puts a set by its inventory alone in the cacheable prefix, not its look, once it has one (decision 287)', () => {
       const prefix = withLayout.messages[0]?.content ?? ''
       expect(prefix).toContain('- Venture Capital Boardroom\n  North wall: three tall windows.')
       expect(prefix).not.toContain('A long polished table, a glass wall.')
     })
 
-    it('shows a set by its inventory alone once it has one (decision 285)', () => {
+    it('shows a set by its inventory alone once it has one (decision 287)', () => {
       const text = referencesPrefix(
         [],
         [{ name: 'B', look: 'Endless racks.', layout: 'North wall: a door.' }],
@@ -769,7 +769,7 @@ describe('buildShotListRequest with direction (decision 252)', () => {
 
     // Live run 2 (2026-09-24): a prompt that said "rain beads on the window
     // behind them" turned a south-facing camera to the window wall. Decision
-    // 285: this rule now lives once, in the bible.
+    // 287: this rule now lives once, in the bible.
     it('keeps the details a set prompt names inside the frame of its camera', () => {
       expect(withSets.system).toContain(
         "Name only details on the walls in frame for the camera's facing, " +
@@ -819,7 +819,7 @@ describe('buildShotListRequest with direction (decision 252)', () => {
       expect(withSets.system).toContain(
         'in "set" by name alone, name it in the prompt in the same words',
       )
-      // The bible states the same rule once (decision 285): the planner is
+      // The bible states the same rule once (decision 287): the planner is
       // never asked to restate the room's walls, furniture or materials.
       expect(withSets.system).toContain(
         'describe its walls, furniture or materials again; the inventory states them.',
@@ -827,7 +827,7 @@ describe('buildShotListRequest with direction (decision 252)', () => {
     })
 
     // Decision 273: every still of a set kept the plate's exact framing.
-    // Decision 285: the room-versus-camera split now lives once, in the bible.
+    // Decision 287: the room-versus-camera split now lives once, in the bible.
     it('asks each still of a set for its own camera position', () => {
       expect(withSets.system).toContain(
         "The plates and the room inventory are the room; the camera is the brief's.",
@@ -858,7 +858,7 @@ describe('buildShotListRequest with direction (decision 252)', () => {
     // Review round 1: SET_RULES used to spell out what to write happening in
     // the room ("who is there, what they are doing and the light"), which
     // duplicated the still bullet's general "prompt is the scene alone" rule
-    // and was dropped for it (decision 285). What SET_RULES still carries is
+    // and was dropped for it (decision 287). What SET_RULES still carries is
     // that the room itself is named in the prompt, in the sentence's words.
     it('asks for the room to be named in the prompt, not only in the field', () => {
       expect(withSets.system).toContain('name it in the prompt in the same words')
@@ -871,7 +871,7 @@ describe('buildShotListRequest with direction (decision 252)', () => {
   })
 })
 
-describe('the sentence, staging and era-lock rules live once, in the bible (decision 285)', () => {
+describe('the sentence, staging and era-lock rules live once, in the bible (decision 287)', () => {
   const request = buildShotListRequest({
     caseTitle: 'Wirecard',
     chapterTitle: 'The Missing Billions',
@@ -904,7 +904,7 @@ describe('the sentence, staging and era-lock rules live once, in the bible (deci
   })
 })
 
-describe("restoring the planner's own field rule (decision 285 follow-up, task 10a)", () => {
+describe("restoring the planner's own field rule (decision 287 follow-up, task 10a)", () => {
   // The live plan harness planned fewer sets and no cast member once the
   // bible alone stated this; the fields are the planner's own job (spec
   // 6.1), so this bullet comes back as the first planning rule.

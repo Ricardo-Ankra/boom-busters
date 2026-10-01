@@ -123,7 +123,7 @@ export interface SlotView {
   /** `null` when the stored brief failed its schema — see `briefError`. */
   brief: ShotBrief | null
   briefError: string | undefined
-  /** A still's scene: its prompt with the lines code adds taken out (decision 285). */
+  /** A still's scene: its prompt with the lines code adds taken out (decision 287). */
   scene: string | null
   /** The full prompt the still would be sent with now, for the card's disclosure. */
   promptSent: string | null
@@ -753,7 +753,7 @@ export async function visualsReviewModel(
         Number(b.chosen ?? false) - Number(a.chosen ?? false) || (b.score ?? -1) - (a.score ?? -1),
     )
 
-    // Hoisted so `route` and `promptSent` (decision 285) read the same
+    // Hoisted so `route` and `promptSent` (decision 287) read the same
     // stored route: a model the provider has retired is no longer an option
     // the select can show, so the slot falls back to the derived route,
     // which is what it will actually generate — and price and preview — on

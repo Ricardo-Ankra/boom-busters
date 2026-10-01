@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { SettingsForm } from './settings-form'
 
 /**
- * The Photographic look card on the Brand Kit tab (decision 285): image
+ * The Photographic look card on the Brand Kit tab (decision 287): image
  * prompts carry no grade or grain, so Grade and Grain are set here, once, for
  * the compositor. Rendered through `SettingsForm` the way `models-tab.test.tsx`
  * and `voice-tab.test.tsx` do, with every other tab's actions module stubbed
@@ -55,7 +55,7 @@ async function openBrandKitTab(): Promise<void> {
   await userEvent.click(screen.getByRole('tab', { name: 'Brand Kit' }))
 }
 
-describe('the Photographic look card (decision 285)', () => {
+describe('the Photographic look card (decision 287)', () => {
   it('offers grain and grade on the Brand Kit tab, and saves a choice', async () => {
     const user = userEvent.setup()
     await openBrandKitTab()

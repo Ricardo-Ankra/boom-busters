@@ -14,7 +14,7 @@ import {
   resolveBrandKit,
 } from './settings'
 
-describe('gradePreset (decision 285)', () => {
+describe('gradePreset (decision 287)', () => {
   it('is absent from an old timeline brand, which means ungraded', () => {
     const brand = BrandKitTokensSchema.parse({
       ...resolveBrandKit(DEFAULT_SETTINGS),

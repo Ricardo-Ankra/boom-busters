@@ -49,7 +49,7 @@ describe('DIRECTION_CRAFT', () => {
     expect(DIRECTION_CRAFT).toContain('Never plan a pan')
   })
 
-  it('lists no props and pastes no house line (decision 285)', () => {
+  it('lists no props and pastes no house line (decision 287)', () => {
     expect(DIRECTION_CRAFT).not.toContain('a coffee ring')
     expect(DIRECTION_CRAFT).not.toContain('a half-drunk coffee')
     expect(DIRECTION_CRAFT).not.toContain('steam off a cup')
@@ -79,13 +79,13 @@ describe('DIRECTION_CRAFT', () => {
   // planner to paste a hex code, to reuse the (now-deleted) Brand Kit
   // anchors, or to write a physical description for a photographed person —
   // each one a live instruction that contradicted the rules above it.
-  it('does not let the per-model recipes contradict the rules above them (decision 285)', () => {
+  it('does not let the per-model recipes contradict the rules above them (decision 287)', () => {
     expect(DIRECTION_CRAFT).not.toContain('hex colours')
     expect(DIRECTION_CRAFT).not.toContain('same anchors')
     expect(DIRECTION_CRAFT).not.toContain('name the person, then the identity string')
   })
 
-  // Review round 1, Important #2: these rules survive decision 285 (they are
+  // Review round 1, Important #2: these rules survive decision 287 (they are
   // never restated in the planner's own Planning rules), and each phrase sits
   // whole on one line of the markdown, so a re-wrap would fail this test
   // before it fails a live plan.

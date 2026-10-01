@@ -412,16 +412,16 @@ describeDb('set actions (mock mode)', () => {
     const request = generate.mock.calls[0]?.[0]
     expect((request?.references ?? []).map((reference) => reference.kind)).toEqual(['object'])
     expect(request?.prompt).toContain('a wide photograph of the whole room facing south')
-    // Task 10 (decision 275, lens 35mm from decision 285): a compass view's
+    // Task 10 (decision 275, lens 35mm from decision 287): a compass view's
     // camera stands at the middle of the opposite wall, at eye level, 35mm,
     // like the contact sheet's panels — describeCamera's own sentence.
     // Decision 273's "never reproduce or edit the framing" line is gone
-    // outright now (decision 285): it never fires, camera or not.
+    // outright now (decision 287): it never fires, camera or not.
     expect(request?.prompt).toContain(
       'The camera stands at the middle of the north wall, at eye level, facing south, 35mm.',
     )
     // The house line carries no lens (decision 275 final review), so the
-    // camera's is the only one. Decision 285: the assembler strips the
+    // camera's is the only one. Decision 287: the assembler strips the
     // pasted house line and anchors and closes the prompt with its own
     // photograph line instead (the plate line arrives in Task 6, once this
     // path passes `kind: 'plate'`).

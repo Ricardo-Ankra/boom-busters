@@ -1,4 +1,4 @@
-# Still prompts with one owner per fact (decision 285)
+# Still prompts with one owner per fact (decision 287)
 
 Status: design approved in conversation 2026-09-29, section by section; this
 document is for the owner's review before an implementation plan is written.

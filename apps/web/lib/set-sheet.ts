@@ -57,7 +57,7 @@ export async function buildSetSheet(
     )
   }
   // buildSetSheetPrompt runs the prompt through stripBannedWords itself now
-  // (decision 285 final review), so the harness that calls it directly gets
+  // (decision 287 final review), so the harness that calls it directly gets
   // the same text this action sends.
   const prompt = buildSetSheetPrompt({ name: set.name, layout: set.layout, look: set.look })
   const mocked = mockProvidersEnabled()

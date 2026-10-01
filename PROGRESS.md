@@ -6423,7 +6423,7 @@ green.
      headline and graphic slots, so a social render fails fast with the
      reason rather than retrying against the old broker.
 
-285. **Still prompts with one owner per fact** (2026-09-29 to 2026-09-30,
+287. **Still prompts with one owner per fact** (2026-09-29 to 2026-09-30,
      owner: "coffee cups with the coffee ring stains on the desk ...
      sometimes there is an extra random desk, or the computer screens are
      facing the wrong direction ... we must just make sure that the

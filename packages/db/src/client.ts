@@ -36,7 +36,7 @@ export function createDb(connectionString: string, options?: { max?: number; rea
      */
     prepare: false,
     /**
-     * A session that cannot write (decision 285): the live harness reads a
+     * A session that cannot write (decision 287): the live harness reads a
      * production project and must never change it. Sent as `options` rather
      * than as its own startup parameter, because Neon's proxy silently drops
      * an arbitrary startup parameter (confirmed against Neon: the bare

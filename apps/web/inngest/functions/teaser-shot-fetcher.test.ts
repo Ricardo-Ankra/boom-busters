@@ -167,7 +167,7 @@ describeDb('teaser-shot-fetcher', () => {
     expect(beat.candidates).toHaveLength(2)
     // The candidate summary is only a 120-char slice of the prompt, so the
     // full prompt is asserted on the request the mock adapter actually
-    // received. Decision 285: this route now goes through the assembler,
+    // received. Decision 287: this route now goes through the assembler,
     // which carries the beat's own words, the teaser's own composition line
     // (never the legacy 9:16 clause or Brand Kit anchors this route used to
     // paste), and closes with its own photograph line.

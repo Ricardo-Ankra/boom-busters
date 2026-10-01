@@ -1,5 +1,5 @@
 /**
- * The fixed words code adds to image prompts (decision 285). They name
+ * The fixed words code adds to image prompts (decision 287). They name
  * qualities, never objects: the house line that named "a coffee ring, cable
  * runs, papers out of line" put a coffee ring in 44 of 46 stills of one film.
  * No lens, no height, no grain, no grade: each shot states its own lens, and

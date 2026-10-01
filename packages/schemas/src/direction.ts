@@ -67,7 +67,7 @@ export type DirectorsBook = z.infer<typeof DirectorsBookSchema>
 /**
  * The book as prose sections, for the shot-list prompt's cacheable prefix.
  *
- * `sets`: the film's set names (decision 285), so a location that is also a
+ * `sets`: the film's set names (decision 287), so a location that is also a
  * set is not listed twice: the set rules and its inventory already carry it,
  * and a prompt reading its look a second time under "Locations" argued with
  * the plates it was handed.
@@ -80,7 +80,7 @@ export function renderDirectorsBook(
   const lines: string[] = [
     `Visual thesis: ${book.visualThesis}`,
     `Era locks: ${book.eraLocks.map((lock) => `${lock.span}: ${lock.rules}`).join(' | ')}`,
-    // Light, not colour (decision 285): the compositor grades; hex codes in
+    // Light, not colour (decision 287): the compositor grades; hex codes in
     // a prompt became red props.
     `Light: this film's light runs ${book.palette.temperature}.`,
     `Motifs: ${book.motifs.join('; ')}`,

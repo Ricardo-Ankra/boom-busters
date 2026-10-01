@@ -67,7 +67,7 @@ test.describe('the shot plan checkpoint', () => {
     await expect(card.getByRole('button', { name: /Save & re-fetch/ })).toHaveCount(0)
 
     // The board edits the scene and shows the prompt sent, read-only
-    // (decision 285): a still's brief carries a "Scene" field, and the
+    // (decision 287): a still's brief carries a "Scene" field, and the
     // full assembled prompt sits behind a disclosure beside it.
     await expect(card.getByLabel('Scene')).toBeVisible()
     await card.getByText('Prompt sent to the model').click()

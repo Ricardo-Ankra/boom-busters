@@ -1,5 +1,5 @@
 /**
- * The live plan harness's arguments (decision 285). Pure, like
+ * The live plan harness's arguments (decision 287). Pure, like
  * `live-set-args.ts`, whose cap rules it shares: a cap above $1 is the
  * owner's decision, never a flag.
  */

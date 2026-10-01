@@ -3,7 +3,7 @@ import { PLATE_PHOTOGRAPH_LINE } from './photograph-lines'
 import { buildSetSheetPrompt, describeCamera, framingLead, setPlateBrief } from './set-plates'
 
 describe('setPlateBrief', () => {
-  it('draws a plate from the room alone, with no house line or anchors (decision 285)', () => {
+  it('draws a plate from the room alone, with no house line or anchors (decision 287)', () => {
     const brief = setPlateBrief({ name: 'Boardroom', look: 'A stark room.', plates: [] }, 'north')
     expect(brief.prompt).toBe(
       'Boardroom, empty of people: a wide establishing photograph of the whole room, taken from its entrance at eye level with a 24mm lens. A stark room.',
@@ -23,7 +23,7 @@ describe('setPlateBrief', () => {
     expect(setPlateBrief(plated, 'south').prompt).not.toMatch(/\d+mm/)
   })
 
-  it('shoots a compass view of a plated set from the opposite wall, at 35mm like the contact sheet (decision 285)', () => {
+  it('shoots a compass view of a plated set from the opposite wall, at 35mm like the contact sheet (decision 287)', () => {
     const plated = { name: 'R', look: 'L', plates: [{ view: 'north' }] } as unknown as Parameters<
       typeof setPlateBrief
     >[0]
@@ -66,7 +66,7 @@ describe('describeCamera', () => {
     'Light: overcast daylight from the north.',
   ].join('\n')
 
-  it('places the camera, then what is in frame, on each side, never the wall behind it (decision 285)', () => {
+  it('places the camera, then what is in frame, on each side, never the wall behind it (decision 287)', () => {
     expect(
       describeCamera(
         { facing: 'north', position: 'the south doorway, seated eye height', lens: '35mm' },
@@ -92,13 +92,13 @@ describe('describeCamera', () => {
   })
 })
 
-describe('describeCamera (decision 285)', () => {
+describe('describeCamera (decision 287)', () => {
   const layout =
     'North wall: glass windows.\nEast wall: acoustic panels.\nSouth wall: oak double door.\n' +
     "West wall: frosted glass.\nCentre: the room's only table, ten chairs.\n" +
     'Light: LED panels, daylight from the north.'
 
-  it('names nothing behind the camera on a wide shot (decision 285)', () => {
+  it('names nothing behind the camera on a wide shot (decision 287)', () => {
     const text = describeCamera(
       { facing: 'north', position: 'the south doorway', lens: '24mm' },
       layout,
@@ -177,7 +177,7 @@ describe('describeCamera framing (live run 5)', () => {
     )
   })
 
-  it('gives a medium shot what is ahead of the subject, its sides and the light, not the whole room (decision 285)', () => {
+  it('gives a medium shot what is ahead of the subject, its sides and the light, not the whole room (decision 287)', () => {
     const text = describeCamera({ ...camera, lens: '50mm' }, layout, 'medium')
     expect(text).toContain('Ahead, beyond the subject: a black screen wall.')
     expect(text).toContain("To the camera's left: windows. To the camera's right: shelves.")
@@ -191,7 +191,7 @@ describe('describeCamera framing (live run 5)', () => {
     expect(describeCamera({ ...camera, lens: '35mm' }, layout)).toContain('Frame left:')
   })
 
-  it('keeps left, right and centre for a wide shot, but never what is behind the camera (decision 285)', () => {
+  it('keeps left, right and centre for a wide shot, but never what is behind the camera (decision 287)', () => {
     const text = describeCamera({ ...camera, lens: '85mm' }, layout, 'wide')
     expect(text).toContain('Frame left: windows. Frame right: shelves.')
     expect(text).not.toContain('Behind the camera')

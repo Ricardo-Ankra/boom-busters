@@ -1,7 +1,7 @@
 import path from 'node:path'
 
 /**
- * The before and after page (decision 285, spec 10.1): each run's stills in
+ * The before and after page (decision 287, spec 10.1): each run's stills in
  * a column, each with its sentence, its prompt and the five faults to tick.
  * The tally at the top counts ticks per still for each column, which is the
  * number the owner reports. Static HTML beside the after run; nothing is

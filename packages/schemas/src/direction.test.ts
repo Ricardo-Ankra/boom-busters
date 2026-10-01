@@ -84,7 +84,7 @@ describe('renderDirectorsBook', () => {
     )
   })
 
-  it('renders the palette as light and skips locations that are sets (decision 285)', () => {
+  it('renders the palette as light and skips locations that are sets (decision 287)', () => {
     const withSet = {
       ...book,
       locations: [...book.locations, { name: 'The Stability AI Boardroom', look: 'x' }],

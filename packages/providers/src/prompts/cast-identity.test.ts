@@ -32,7 +32,7 @@ describe('buildCastIdentityRequest', () => {
   })
 
   it('bans the full word list the bible bans, not a shorter copy of it', () => {
-    // A word only the full list carries (decision 285): the banned words are
+    // A word only the full list carries (decision 287): the banned words are
     // stated once, in direction-craft.ts, and this prompt reads them from
     // there instead of keeping its own shorter copy to drift out of step.
     expect(request.system).toContain('photorealistic')

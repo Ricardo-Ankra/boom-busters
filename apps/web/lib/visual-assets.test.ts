@@ -45,7 +45,7 @@ import {
 } from './visual-assets'
 
 /**
- * Legacy fixture text (decision 285): before the assembler owned the house
+ * Legacy fixture text (decision 287): before the assembler owned the house
  * photograph line and the Brand Kit anchors, a still prompt carried both
  * itself. Neither `HOUSE_PHOTOGRAPH` nor `stillStyleAnchors` is exported by
  * the providers package any more (Task 8), so this test copies their old
@@ -179,12 +179,12 @@ describeDb('generateStillCandidates with the cast', () => {
   })
 
   /**
-   * The board's "Prompt sent to the model" disclosure (decision 285): built
+   * The board's "Prompt sent to the model" disclosure (decision 287): built
    * from the same pure helpers generation uses, over the same cast and set
    * lists, so the preview and the call cannot disagree while storage works
    * (mock mode here always "loads" every photograph the plan asks for).
    */
-  it('previews exactly the prompt generation sends (decision 285)', async () => {
+  it('previews exactly the prompt generation sends (decision 287)', async () => {
     const emad = await insertCastMember(db, {
       projectId: FIXTURE_PROJECT_ID,
       name: 'Emad Mostaque',
@@ -838,7 +838,7 @@ References attached: 1 photograph of Emad Mostaque.`
       // Decision 273: the old wording made the model edit the plate.
       expect(prompt).not.toContain('match them exactly')
       expect(prompt).not.toContain('describes only what happens in them')
-      // Decision 285: positive either way, never an edit instruction.
+      // Decision 287: positive either way, never an edit instruction.
       expect(prompt).not.toContain('never reproduce or edit the framing')
       // The brief's own words stay before the declaration; the photograph
       // line closes the prompt now, not the declaration.
@@ -1035,7 +1035,7 @@ References attached: 1 photograph of Emad Mostaque.`
       )
     })
 
-    // Decision 285: the decision 273 ending read as an edit instruction, so
+    // Decision 287: the decision 273 ending read as an edit instruction, so
     // the room sentence is the same whether or not a camera reaches it.
     it('says a new photograph without the edit wording for a set shot with no camera', async () => {
       const room = await insertProjectSet(db, {
@@ -1095,7 +1095,7 @@ References attached: 1 photograph of Emad Mostaque.`
       expect(request?.references?.map((reference) => reference.kind)).toContain('object')
       expect(prompt.match(/\d+\s?mm/g)).toEqual(['85mm'])
       expect(prompt.match(/The camera stands at/g)).toHaveLength(1)
-      // Decision 285: the legacy paste is stripped, not doubled; the
+      // Decision 287: the legacy paste is stripped, not doubled; the
       // assembler's own line closes the prompt instead.
       expect(prompt).not.toContain(LEGACY_HOUSE_PHOTOGRAPH)
       expect(prompt).not.toContain(anchors)

@@ -92,7 +92,7 @@ export function referencesPrefix(
         sets
           .map((set) => {
             const inventory = (set.layout ?? '').trim()
-            // One description per room (decision 285): the inventory once it
+            // One description per room (decision 287): the inventory once it
             // exists; the look only before. Naming both let a still's prompt
             // repeat furniture the inventory never counted.
             return inventory
@@ -136,8 +136,8 @@ export const SET_RULES = `  Sets: when the sentence puts us in one of the rooms 
 `
 
 /**
- * The planner's own first rule (decision 285 follow-up, task 10a): read
- * "coversText" and let it fill the fields. Decision 285 dropped this bullet
+ * The planner's own first rule (decision 287 follow-up, task 10a): read
+ * "coversText" and let it fill the fields. Decision 287 dropped this bullet
  * because the bible states it too, but the live plan harness followed it less
  * once only the bible said so — a chapter planned fewer sets and no cast
  * member it had shown before. The fields are the planner's own job (spec
@@ -157,7 +157,7 @@ export function fieldRule(hasSets: boolean): string {
 }
 
 /**
- * What "prompt" holds on a still brief, shared with a rebrief (decision 285
+ * What "prompt" holds on a still brief, shared with a rebrief (decision 287
  * final review): the planner's own text said this once and the rebrief said
  * something else ("the full text-to-image prompt"), which told a redraft to
  * write the framing, the room and the house line the assembler already adds

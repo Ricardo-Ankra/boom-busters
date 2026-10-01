@@ -137,7 +137,7 @@ function NarrationAudio({ src }: { src: string }) {
 /**
  * One slot, dispatched by payload kind, with its dissolve-in if any.
  *
- * Exported for its own render test (decision 285 final review, spec §10):
+ * Exported for its own render test (decision 287 final review, spec §10):
  * the grade filter has no render-level check otherwise, and mounting the
  * whole master to get at it means a webpack bundle and headless Chrome for
  * what is really one inline style.
@@ -190,7 +190,7 @@ export function SlotView({ slot, brand }: { slot: TimelineSlot; brand: BrandKitT
 }
 
 /**
- * The film's grade (decision 285): one CSS filter over photographic slots,
+ * The film's grade (decision 287): one CSS filter over photographic slots,
  * stills, stock and archival alike, so generated and real pictures sit in
  * one look. Charts, cards, graphics and maps are drawn in brand colours and
  * are never filtered. Values set by eye in the player and a render.

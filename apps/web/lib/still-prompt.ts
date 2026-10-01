@@ -1,12 +1,12 @@
 /**
  * The one place an AI image prompt is assembled, and the still prompt's
- * reference declaration (decision 253, 264, 273, 275, 285).
+ * reference declaration (decision 253, 264, 273, 275, 287).
  *
  * Its own module, pure, with no database, storage or env import, direct or
  * transitive: the live set harness (decision 275, Task 13) builds a still
  * prompt from outside the app and must not drag `visual-assets.ts`'s module-
  * load imports (the database client) along with it. `visual-assets.ts` keeps
- * importing this back; it now assembles the whole prompt (decision 285),
+ * importing this back; it now assembles the whole prompt (decision 287),
  * rather than decorating one the caller had already put together.
  * `@boom-busters/providers` is safe here — it depends only on
  * `@boom-busters/schemas`, `node-html-parser` and `zod`, none of which touch
@@ -172,7 +172,7 @@ const LEGACY_TEASER_CLAUSE =
   'Vertical 9:16 frame: subject in the centre third, headroom above for the hook text, nothing important in the bottom quarter where captions sit.'
 
 /**
- * The planner's own words in a stored prompt (decision 285): the scene, with
+ * The planner's own words in a stored prompt (decision 287): the scene, with
  * every line code now adds taken back out. Stored briefs are never rewritten,
  * so no brief hash moves and no resolved slot is bought again; the strip
  * happens each time a prompt is read. Idempotent.
@@ -234,7 +234,7 @@ export function referenceSentences(
     )
   }
   if (set) {
-    // Positive either way (decision 285): "never reproduce or edit the
+    // Positive either way (decision 287): "never reproduce or edit the
     // framing" read as an edit instruction, the fault decision 275 found.
     sentences.push(
       `The photographs of ${set.name} show this room's furniture, materials and light; this ` +
@@ -293,7 +293,7 @@ export interface StillPromptInput {
 }
 
 /**
- * The one place an image prompt is put together (decision 285). Order:
+ * The one place an image prompt is put together (decision 287). Order:
  * framing, the camera and the room it sees, the scene, what the photographs
  * are for, the photograph line. The opening of a prompt wins (decision 275's
  * live runs), so the geometry comes before the scene rather than after it.
