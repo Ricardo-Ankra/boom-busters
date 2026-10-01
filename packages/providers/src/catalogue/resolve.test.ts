@@ -98,4 +98,20 @@ describe('effectiveImageModels', () => {
     expect(models.map((m) => m.id)).not.toContain('fal-ai/one-at-a-time')
     expect(models.filter((m) => m.id === 'fal-ai/flux/dev')).toHaveLength(1)
   })
+
+  it('folds a live row carrying a legacy alias onto its catalogued id, adding nothing', () => {
+    const row: ListedModel = {
+      provider: 'google',
+      id: 'gemini-3-pro-image-preview',
+      label: 'Gemini 3 Pro Image (preview)',
+      kind: 'image',
+      preview: true,
+      contextTokens: null,
+      maxOutputTokens: null,
+      dialect: null,
+      pricePerImage: null,
+    }
+    const models = effectiveImageModels('google', EMPTY_MODEL_PRICES, [row])
+    expect(models.filter((m) => m.id === 'gemini-3-pro-image')).toHaveLength(1)
+  })
 })

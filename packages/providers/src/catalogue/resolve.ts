@@ -181,11 +181,15 @@ export function effectiveImageModels(
     (model) => resolveImageModel(provider, model.id, prices)?.model ?? model,
   )
   for (const row of listed) {
-    if (row.kind !== 'image' || row.provider !== provider || known.has(row.id)) continue
+    if (row.kind !== 'image' || row.provider !== provider) continue
+    // A live row can carry a legacy alias of a catalogued id (fold forward by
+    // `canonicalStillModelId`), so dedup on the canonical id, not the row's
+    // own — otherwise the catalogue entry is pushed a second time.
+    if (known.has(canonicalStillModelId(row.id))) continue
     const resolved = resolveImageModel(provider, row.id, prices, row)
     if (resolved) {
       models.push(resolved.model)
-      known.add(row.id)
+      known.add(resolved.model.id)
     }
   }
   return models
