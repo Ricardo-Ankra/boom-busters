@@ -6505,5 +6505,7 @@ green.
      long; past 10 minutes a stamp stops locking and the card says it may
      have stopped. Age is measured on the server's clock (`renderedAt` plus
      time elapsed in the browser), so a wrong laptop clock changes nothing.
-     Ships with `db:migrate` before the Vercel deploy, then
-     `PUT /api/inngest`; no broker or Remotion redeploy.
+     The production build applies migration 0031 itself
+     (`scripts/deploy-migrate.mjs`); after the deploy, `PUT /api/inngest`;
+     no broker or Remotion redeploy. Test databases need
+     `pnpm db:migrate:test`.

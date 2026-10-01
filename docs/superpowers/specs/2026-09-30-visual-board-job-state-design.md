@@ -263,8 +263,9 @@ it is written or released, since the pulse does not read slot rows.)
 5. Review model.
 6. Board.
 
-Shipping needs `db:migrate` against Neon before the Vercel deploy that reads
-the columns, then the usual `PUT /api/inngest`. No broker or Remotion
+The production build applies the migration before `next build`
+(`scripts/deploy-migrate.mjs`), so the columns reach Neon with the deploy
+that reads them; then the usual `PUT /api/inngest`. No broker or Remotion
 redeploy: the render timeline does not change.
 
 ## 11. Failure behaviour
