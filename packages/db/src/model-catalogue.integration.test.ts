@@ -91,4 +91,17 @@ suite('the model cache', () => {
     ])
     expect((await listCatalogueRefresh(db))[0]?.lastError).toBeNull()
   })
+
+  it('survives two concurrent refreshes that list the same models in opposite orders', async () => {
+    const at = new Date('2026-10-01T13:00:00Z')
+    await Promise.all([
+      replaceCatalogue(db, 'openai', [model('gpt-5'), model('gpt-5.5')], at),
+      replaceCatalogue(db, 'openai', [model('gpt-5.5'), model('gpt-5')], at),
+    ])
+    expect((await listCatalogueModels(db)).map((row) => row.modelId).sort()).toEqual([
+      'gpt-5',
+      'gpt-5.5',
+    ])
+    expect((await listCatalogueRefresh(db))[0]?.lastError).toBeNull()
+  })
 })

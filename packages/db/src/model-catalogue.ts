@@ -70,7 +70,13 @@ export async function replaceCatalogue(
   at: Date,
 ): Promise<void> {
   await db.transaction(async (tx) => {
-    for (const model of models) {
+    // Sorted copy, never the caller's array order: two concurrent refreshes of
+    // the same provider may list their models in a different relative order,
+    // and taking row locks in that order lets the transactions deadlock
+    // (40P01). Sorting by modelId makes every transaction acquire locks in
+    // the same, fixed order.
+    const sorted = [...models].sort((a, b) => a.modelId.localeCompare(b.modelId))
+    for (const model of sorted) {
       const values = {
         kind: model.kind,
         label: model.label,
