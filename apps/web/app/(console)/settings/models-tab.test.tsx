@@ -100,6 +100,7 @@ describe('routing the set sheet generator (decision 275)', () => {
     expect(Array.from(select.querySelectorAll('option')).map((option) => option.value)).toEqual([
       'gemini-3.1-flash-image',
       'gemini-3-pro-image',
+      'gemini-9-flash-image',
     ])
 
     await userEvent.selectOptions(select, 'gemini-3.1-flash-image')
@@ -267,5 +268,143 @@ describe('live model lists (decision 287)', () => {
     expect(
       screen.getAllByRole('option', { name: 'Claude Opus Mock 9 (estimated)' }).length,
     ).toBeGreaterThan(0)
+  })
+})
+
+describe('live image models (decision 287)', () => {
+  it('offers a live Gemini image model for stills, estimated at its family', async () => {
+    renderModelsTab()
+    const select = screen.getByRole('combobox', { name: 'Still images model' })
+    await userEvent.selectOptions(select, 'gemini-9-flash-image')
+    expect(saveSettings).toHaveBeenCalledWith({
+      modelRouting: { stills: { provider: 'google', model: 'gemini-9-flash-image' } },
+    })
+    expect(
+      await screen.findByText(/Estimated at Gemini 3.1 Flash Image's price: \$0.07 per image\./),
+    ).toBeInTheDocument()
+  })
+
+  it('offers a live 4K-capable Gemini model for set sheets', () => {
+    renderModelsTab()
+    const sheet = screen.getByRole('combobox', { name: 'Set sheets model' })
+    expect(Array.from(sheet.querySelectorAll('option')).map((o) => o.value)).toContain(
+      'gemini-9-flash-image',
+    )
+  })
+
+  it('shows a fal endpoint it cannot send as disabled, with the reason', async () => {
+    const options = modelOptions()
+    options.image.fal.push({
+      id: 'fal-ai/one-at-a-time',
+      label: 'One at a time',
+      status: 'incompatible',
+      preview: false,
+      selectable: false,
+      price: null,
+      pricedAs: null,
+      reason: 'Makes one image per request, or takes an input this app cannot send.',
+      catalogued: false,
+      fallsBackTo: null,
+    })
+    const settings = structuredClone(DEFAULT_SETTINGS)
+    settings.modelRouting.stills = { provider: 'fal', model: 'fal-ai/flux/dev' }
+    renderModelsTab(options, settings)
+    expect(screen.getByRole('option', { name: 'One at a time (not compatible)' })).toBeDisabled()
+  })
+})
+
+describe('pricing image models (decision 287)', () => {
+  /** A live Google image model with no family and no price. */
+  const unpriced = {
+    id: 'imagen-mock',
+    label: 'Imagen Mock',
+    status: 'needs-price' as const,
+    preview: false,
+    selectable: true,
+    price: null,
+    pricedAs: null,
+    reason: null,
+    catalogued: false,
+    fallsBackTo: null,
+  }
+
+  it('asks for a per-image price before routing stills to an unpriced model, then saves both', async () => {
+    const options = modelOptions()
+    options.image.google.push(unpriced)
+    renderModelsTab(options)
+    await userEvent.selectOptions(
+      screen.getByRole('combobox', { name: 'Still images model' }),
+      'imagen-mock',
+    )
+    expect(saveSettings).not.toHaveBeenCalled()
+    expect(screen.getByText('Imagen Mock needs a price before it can run.')).toBeInTheDocument()
+
+    await userEvent.type(screen.getByLabelText('Price per image ($)'), '0.05')
+    await userEvent.type(screen.getByLabelText('4K price per image ($, optional)'), '0.2')
+    await userEvent.click(screen.getByRole('button', { name: 'Save price and use' }))
+
+    expect(saveSettings).toHaveBeenCalledWith({
+      modelRouting: { stills: { provider: 'google', model: 'imagen-mock' } },
+      modelPrices: {
+        llm: {},
+        image: { 'google:imagen-mock': { pricePerImage: 0.05, pricesBySize: { '4K': 0.2 } } },
+      },
+    })
+  })
+
+  it('refuses a bad per-image price and saves nothing', async () => {
+    const options = modelOptions()
+    options.image.google.push(unpriced)
+    renderModelsTab(options)
+    await userEvent.selectOptions(
+      screen.getByRole('combobox', { name: 'Still images model' }),
+      'imagen-mock',
+    )
+    await userEvent.type(screen.getByLabelText('Price per image ($)'), '0,05')
+    await userEvent.click(screen.getByRole('button', { name: 'Save price and use' }))
+    expect(saveSettings).not.toHaveBeenCalled()
+    expect(
+      screen.getByText('Enter a price above zero, using a full stop for decimals.'),
+    ).toBeInTheDocument()
+  })
+
+  it('asks only for a per-image price on a fal model', async () => {
+    const options = modelOptions()
+    options.image.fal.push({ ...unpriced, id: 'fal-ai/unpriced', label: 'Unpriced fal' })
+    const settings = structuredClone(DEFAULT_SETTINGS)
+    settings.modelRouting.stills = { provider: 'fal', model: 'fal-ai/unpriced' }
+    renderModelsTab(options, settings)
+
+    expect(screen.getByText('Unpriced fal needs a price before it can run.')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Set price' }))
+    expect(screen.queryByLabelText('4K price per image ($, optional)')).not.toBeInTheDocument()
+    await userEvent.type(screen.getByLabelText('Price per image ($)'), '0.03')
+    await userEvent.click(screen.getByRole('button', { name: 'Save price' }))
+
+    expect(saveSettings).toHaveBeenCalledTimes(1)
+    expect(saveSettings).toHaveBeenCalledWith({
+      modelPrices: { llm: {}, image: { 'fal:fal-ai/unpriced': { pricePerImage: 0.03 } } },
+    })
+  })
+
+  it('refuses to clear the price of an image model the cast stills still need it for', async () => {
+    const prices = { llm: {}, image: { 'google:imagen-mock': { pricePerImage: 0.05 } } }
+    const options = modelOptions(prices)
+    options.image.google.push({
+      ...unpriced,
+      status: 'override',
+      price: { kind: 'image', pricePerImage: 0.05 },
+    })
+    const settings = structuredClone(DEFAULT_SETTINGS)
+    settings.modelRouting.stillsLikeness = { provider: 'google', model: 'imagen-mock' }
+    settings.modelPrices = prices
+    renderModelsTab(options, settings)
+
+    expect(screen.getByText('Your price: $0.05 per image.')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Clear price' }))
+    expect(saveSettings).not.toHaveBeenCalled()
+    expect(
+      screen.getByText('Stills showing the cast uses this model. Pick another model first.'),
+    ).toBeInTheDocument()
   })
 })

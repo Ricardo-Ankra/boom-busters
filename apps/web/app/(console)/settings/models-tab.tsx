@@ -1,7 +1,6 @@
 'use client'
 
 import {
-  LIVE_IMAGE_GEN_ADAPTERS,
   isStale,
   type ModelOption,
   type ModelOptions,
@@ -28,11 +27,10 @@ import { useToast } from '@/components/ui/toast'
 import { refreshModelListsAction } from './model-actions'
 
 /**
- * Settings → Models (decision 287). The LLM rows offer each provider's live
- * list merged with the catalogue, every option labelled with how it is
- * priced, and an inline price form for the models the catalogue cannot
- * price. The image rows below still read the adapters; Task 12 moves them
- * onto the same options.
+ * Settings → Models (decision 287). Every row, LLM and image alike, offers
+ * its provider's live list merged with the catalogue, every option labelled
+ * with how it is priced, and an inline price form for the models the
+ * catalogue cannot price.
  */
 
 const TASK_LABELS: Record<LlmTask, string> = {
@@ -44,6 +42,28 @@ const TASK_LABELS: Record<LlmTask, string> = {
   digest: 'Weekly digest',
   direction: 'Visual direction',
 }
+
+/** The image routes, which are priced per image rather than per token. */
+const IMAGE_ROUTES = ['stills', 'stillsLikeness', 'setSheet'] as const
+type ImageRoute = (typeof IMAGE_ROUTES)[number]
+type RouteKey = LlmTask | ImageRoute
+type PriceKind = 'llm' | 'image'
+type AnyProvider = LlmProvider | StillProvider
+
+const ROUTE_LABELS: Record<RouteKey, string> = {
+  ...TASK_LABELS,
+  stills: 'Still images (visuals)',
+  stillsLikeness: 'Stills showing the cast',
+  setSheet: 'Set sheets (Build the set)',
+}
+
+const kindOf = (key: RouteKey): PriceKind =>
+  (IMAGE_ROUTES as readonly RouteKey[]).includes(key) ? 'image' : 'llm'
+
+type LlmPrice = ModelPrices['llm'][string]
+type ImagePrice = ModelPrices['image'][string]
+/** A price to store, tagged with the table it belongs in. */
+type PriceEntry = { kind: 'llm'; price: LlmPrice } | { kind: 'image'; price: ImagePrice }
 
 const PROVIDER_NAMES = {
   anthropic: 'Anthropic',
@@ -64,7 +84,16 @@ const SUFFIX: Record<ModelOption['status'], string> = {
   incompatible: ' (not compatible)',
 }
 
+/** The statuses whose price the owner can set from the row. */
+const PRICEABLE: ReadonlySet<ModelOption['status']> = new Set([
+  'estimated',
+  'override',
+  'needs-price',
+])
+
 const PREVIEW_GROUP = 'Preview: Google can withdraw these without notice'
+
+const IMAGE_SIZES = ['1K', '2K', '4K'] as const
 
 const money = (value: number) => `$${Number(value.toFixed(4))}`
 
@@ -87,6 +116,32 @@ function parsePrice(raw: string): number | null {
   return value > 0 ? value : null
 }
 
+/** A copy of one price table with `key` set to `value`, or removed when it is null. */
+function withEntry<T>(table: Record<string, T>, key: string, value: T | null): Record<string, T> {
+  const copy = { ...table }
+  if (value) copy[key] = value
+  else delete copy[key]
+  return copy
+}
+
+/** The routing patch that points `key` at a model; set sheets are Google's alone. */
+function routePatch(
+  key: RouteKey,
+  provider: AnyProvider,
+  model: string,
+): NonNullable<SettingsPatch['modelRouting']> {
+  switch (key) {
+    case 'setSheet':
+      return { setSheet: { provider: 'google', model } }
+    case 'stills':
+      return { stills: { provider: provider as StillProvider, model } }
+    case 'stillsLikeness':
+      return { stillsLikeness: { provider: provider as StillProvider, model } }
+    default:
+      return { [key]: { provider: provider as LlmProvider, model } }
+  }
+}
+
 function statusLine(provider: (typeof STATUS_PROVIDERS)[number], options: ModelOptions): string {
   const name = PROVIDER_NAMES[provider]
   const status = options.status[provider]
@@ -107,6 +162,19 @@ function statusLine(provider: (typeof STATUS_PROVIDERS)[number], options: ModelO
   }
 }
 
+function FormButtons({ saveLabel, onCancel }: { saveLabel: string; onCancel: () => void }) {
+  return (
+    <div className="flex gap-2">
+      <Button type="submit" variant="primary">
+        {saveLabel}
+      </Button>
+      <Button type="button" onClick={onCancel}>
+        Cancel
+      </Button>
+    </div>
+  )
+}
+
 function LlmPriceForm({
   title,
   initial,
@@ -117,11 +185,7 @@ function LlmPriceForm({
   title: string
   initial: OptionPrice | null
   saveLabel: string
-  onSave: (price: {
-    inputPerMTok: number
-    outputPerMTok: number
-    cachedInputPerMTok?: number
-  }) => void
+  onSave: (price: LlmPrice) => void
   onCancel: () => void
 }) {
   const seed = initial?.kind === 'llm' ? initial : null
@@ -183,14 +247,96 @@ function LlmPriceForm({
         </div>
       </div>
       {error ? <p className="text-[12px] text-[var(--color-danger)]">{error}</p> : null}
-      <div className="flex gap-2">
-        <Button type="submit" variant="primary">
-          {saveLabel}
-        </Button>
-        <Button type="button" onClick={onCancel}>
-          Cancel
-        </Button>
+      <FormButtons saveLabel={saveLabel} onCancel={onCancel} />
+    </form>
+  )
+}
+
+/**
+ * A price per image, and for a Google model its optional price at each
+ * output size: Gemini bills a 4K image more than a 1K one, and set sheets
+ * are always made at 4K.
+ */
+function ImagePriceForm({
+  title,
+  initial,
+  sizes,
+  saveLabel,
+  onSave,
+  onCancel,
+}: {
+  title: string
+  initial: OptionPrice | null
+  sizes: boolean
+  saveLabel: string
+  onSave: (price: ImagePrice) => void
+  onCancel: () => void
+}) {
+  const seed = initial?.kind === 'image' ? initial : null
+  const [perImage, setPerImage] = React.useState(seed ? String(seed.pricePerImage) : '')
+  const [bySize, setBySize] = React.useState<Record<(typeof IMAGE_SIZES)[number], string>>(() => ({
+    '1K': seed?.pricesBySize?.['1K'] ? String(seed.pricesBySize['1K']) : '',
+    '2K': seed?.pricesBySize?.['2K'] ? String(seed.pricesBySize['2K']) : '',
+    '4K': seed?.pricesBySize?.['4K'] ? String(seed.pricesBySize['4K']) : '',
+  }))
+  const [error, setError] = React.useState<string | null>(null)
+  const id = React.useId()
+
+  return (
+    <form
+      className="flex flex-col gap-2 rounded-md border border-[var(--color-border)] p-3"
+      onSubmit={(event) => {
+        event.preventDefault()
+        const pricePerImage = parsePrice(perImage)
+        const pricesBySize: NonNullable<ImagePrice['pricesBySize']> = {}
+        let valid = pricePerImage !== null
+        if (sizes) {
+          for (const size of IMAGE_SIZES) {
+            if (bySize[size].trim() === '') continue
+            const value = parsePrice(bySize[size])
+            if (value === null) valid = false
+            else pricesBySize[size] = value
+          }
+        }
+        if (!valid || pricePerImage === null) {
+          setError(PRICE_ERROR)
+          return
+        }
+        onSave({
+          pricePerImage,
+          ...(Object.keys(pricesBySize).length > 0 ? { pricesBySize } : {}),
+        })
+      }}
+    >
+      <p className="text-[13px]">{title}</p>
+      <div className="grid gap-2 sm:grid-cols-4">
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor={`${id}-each`}>Price per image ($)</Label>
+          <Input
+            id={`${id}-each`}
+            inputMode="decimal"
+            value={perImage}
+            onChange={(event) => setPerImage(event.target.value)}
+          />
+        </div>
+        {sizes
+          ? IMAGE_SIZES.map((size) => (
+              <div key={size} className="flex flex-col gap-1.5">
+                <Label htmlFor={`${id}-${size}`}>{size} price per image ($, optional)</Label>
+                <Input
+                  id={`${id}-${size}`}
+                  inputMode="decimal"
+                  value={bySize[size]}
+                  onChange={(event) =>
+                    setBySize((current) => ({ ...current, [size]: event.target.value }))
+                  }
+                />
+              </div>
+            ))
+          : null}
       </div>
+      {error ? <p className="text-[12px] text-[var(--color-danger)]">{error}</p> : null}
+      <FormButtons saveLabel={saveLabel} onCancel={onCancel} />
     </form>
   )
 }
@@ -211,13 +357,13 @@ export function ModelsTab({
   const [refreshing, setRefreshing] = React.useState(false)
   /** A route waiting on a price before it can be saved. */
   const [pending, setPending] = React.useState<{
-    task: LlmTask
-    provider: LlmProvider
+    key: RouteKey
+    provider: AnyProvider
     model: string
   } | null>(null)
   /** Which route's price form is open, for Set price and Edit price. */
-  const [editing, setEditing] = React.useState<LlmTask | null>(null)
-  const [refusal, setRefusal] = React.useState<{ task: LlmTask; message: string } | null>(null)
+  const [editing, setEditing] = React.useState<RouteKey | null>(null)
+  const [refusal, setRefusal] = React.useState<{ key: RouteKey; message: string } | null>(null)
 
   const refresh = React.useCallback(async () => {
     setRefreshing(true)
@@ -246,92 +392,96 @@ export function ModelsTab({
     if (options.canRefresh && isStale(options.lastAttemptAt, Date.now())) void refresh()
   }, [options.canRefresh, options.lastAttemptAt, refresh])
 
-  const withPrice = (key: string, price: ModelPrices['llm'][string] | null): ModelPrices => {
-    const llm = { ...settings.modelPrices.llm }
-    if (price) llm[key] = price
-    else delete llm[key]
-    return { ...settings.modelPrices, llm }
+  const optionsFor = (kind: PriceKind, provider: AnyProvider): ModelOption[] =>
+    (kind === 'llm'
+      ? options.llm[provider as LlmProvider]
+      : options.image[provider as StillProvider]) ?? []
+
+  const withPrice = (key: string, entry: PriceEntry | { kind: PriceKind; price: null }) => {
+    const prices = settings.modelPrices
+    return entry.kind === 'llm'
+      ? { ...prices, llm: withEntry(prices.llm, key, entry.price) }
+      : { ...prices, image: withEntry(prices.image, key, entry.price) }
   }
 
-  const setRoute = (task: LlmTask, provider: LlmProvider, model: string) => {
+  const setRoute = (key: RouteKey, provider: AnyProvider, model: string) => {
+    const modelRouting = routePatch(key, provider, model)
     const next = structuredClone(settings)
-    next.modelRouting[task] = { provider, model }
-    void commit({ modelRouting: { [task]: { provider, model } } }, next)
+    Object.assign(next.modelRouting, modelRouting)
+    void commit({ modelRouting }, next)
   }
 
-  const choose = (task: LlmTask, provider: LlmProvider, model: string) => {
+  const choose = (key: RouteKey, provider: AnyProvider, model: string) => {
     setRefusal(null)
     setEditing(null)
-    const option = options.llm[provider].find((o) => o.id === model)
+    const option = optionsFor(kindOf(key), provider).find((o) => o.id === model)
     // An unpriced model is never routed on its own: a run on it would be
     // refused at pre-flight, so the route and its price are saved together.
     if (option?.status === 'needs-price') {
-      setPending({ task, provider, model })
+      setPending({ key, provider, model })
       return
     }
     setPending(null)
-    setRoute(task, provider, model)
+    setRoute(key, provider, model)
   }
 
   const savePrice = (
-    task: LlmTask,
-    provider: LlmProvider,
+    key: RouteKey,
+    provider: AnyProvider,
     model: string,
-    price: ModelPrices['llm'][string],
+    entry: PriceEntry,
     alsoRoute: boolean,
   ) => {
-    const modelPrices = withPrice(modelPriceKey(provider, model), price)
+    const modelPrices = withPrice(modelPriceKey(provider, model), entry)
+    const modelRouting = alsoRoute ? routePatch(key, provider, model) : null
     const next = structuredClone(settings)
     next.modelPrices = modelPrices
-    if (alsoRoute) next.modelRouting[task] = { provider, model }
-    void commit(
-      alsoRoute ? { modelRouting: { [task]: { provider, model } }, modelPrices } : { modelPrices },
-      next,
-    )
+    if (modelRouting) Object.assign(next.modelRouting, modelRouting)
+    void commit(modelRouting ? { modelRouting, modelPrices } : { modelPrices }, next)
     setPending(null)
     setEditing(null)
   }
 
-  const clearPrice = (task: LlmTask, provider: LlmProvider, model: string) => {
-    const option = options.llm[provider].find((o) => o.id === model)
-    // A model with nothing to fall back to (no catalogue row, no family) is
-    // unpriced without the override, so clearing it under a route would
-    // leave a route every run refuses.
-    const users = LLM_TASKS.filter(
-      (t) =>
-        settings.modelRouting[t].provider === provider && settings.modelRouting[t].model === model,
-    )
+  const clearPrice = (key: RouteKey, provider: AnyProvider, model: string) => {
+    const kind = kindOf(key)
+    const option = optionsFor(kind, provider).find((o) => o.id === model)
+    // A model with nothing to fall back to (no catalogue row, no family, no
+    // published fal price) is unpriced without the override, so clearing it
+    // under a route would leave a route every run refuses.
+    const users = (kind === 'llm' ? LLM_TASKS : IMAGE_ROUTES).filter((k) => {
+      const route = settings.modelRouting[k]
+      return route?.provider === provider && route.model === model
+    })
     if (option?.fallsBackTo === null && users.length > 0) {
       setRefusal({
-        task,
-        message: `${TASK_LABELS[users[0]!]} uses this model. Pick another model first.`,
+        key,
+        message: `${ROUTE_LABELS[users[0]!]} uses this model. Pick another model first.`,
       })
       return
     }
     setRefusal(null)
     setEditing(null)
     const next = structuredClone(settings)
-    next.modelPrices = withPrice(modelPriceKey(provider, model), null)
+    next.modelPrices = withPrice(modelPriceKey(provider, model), { kind, price: null })
     void commit({ modelPrices: next.modelPrices }, next)
   }
 
-  const setStillRoute = (provider: StillProvider, model: string) => {
+  /** Turns the likeness split off: one route generates every still again. */
+  const sameAsAbove = () => {
+    setPending(null)
+    setEditing(null)
+    setRefusal(null)
     const next = structuredClone(settings)
-    next.modelRouting.stills = { provider, model }
-    void commit({ modelRouting: { stills: { provider, model } } }, next)
+    next.modelRouting.stillsLikeness = null
+    void commit({ modelRouting: { stillsLikeness: null } }, next)
   }
 
-  /** Null turns the split off: one route generates every still again. */
-  const setLikenessRoute = (route: { provider: StillProvider; model: string } | null) => {
-    const next = structuredClone(settings)
-    next.modelRouting.stillsLikeness = route
-    void commit({ modelRouting: { stillsLikeness: route } }, next)
-  }
-
-  const stills = settings.modelRouting.stills
-  const stillModels = LIVE_IMAGE_GEN_ADAPTERS[stills.provider].models
-  const likeness = settings.modelRouting.stillsLikeness
-  const likenessModels = LIVE_IMAGE_GEN_ADAPTERS[likeness?.provider ?? stills.provider].models
+  /**
+   * The route a row shows: while a price is pending, the model waiting on
+   * it, not the route still saved. A pending route only ever holds a
+   * provider of its own row's kind, which is what the casts below rely on.
+   */
+  const waitingFor = (key: RouteKey) => (pending?.key === key ? pending : null)
 
   const optionLabel = (option: ModelOption) => `${option.label}${SUFFIX[option.status]}`
   const renderOption = (option: ModelOption) => (
@@ -339,6 +489,178 @@ export function ModelsTab({
       {optionLabel(option)}
     </option>
   )
+
+  /** A model select's options: regular, then previews grouped, then the model if no list holds it. */
+  const renderChoices = (list: ModelOption[], model: string) => {
+    const previews = list.filter((o) => o.preview)
+    return (
+      <>
+        {list.filter((o) => !o.preview).map(renderOption)}
+        {previews.length > 0 ? (
+          <optgroup label={PREVIEW_GROUP}>{previews.map(renderOption)}</optgroup>
+        ) : null}
+        {/* A model no list holds is shown rather than silently swapped,
+            because it is what the run will actually be refused on at
+            pre-flight. */}
+        {list.some((o) => o.id === model) ? null : (
+          <option value={model}>{model} (unlisted)</option>
+        )}
+      </>
+    )
+  }
+
+  /** The lines under a row: how its model is priced, and the price forms. */
+  const renderNotes = (
+    key: RouteKey,
+    provider: AnyProvider,
+    model: string,
+    selected: ModelOption | undefined,
+    waiting: boolean,
+  ) => {
+    const priceForm = (
+      title: string,
+      initial: OptionPrice | null,
+      saveLabel: string,
+      alsoRoute: boolean,
+      onCancel: () => void,
+    ) =>
+      kindOf(key) === 'llm' ? (
+        <LlmPriceForm
+          key={`${provider}:${model}`}
+          title={title}
+          initial={initial}
+          saveLabel={saveLabel}
+          onSave={(price) => savePrice(key, provider, model, { kind: 'llm', price }, alsoRoute)}
+          onCancel={onCancel}
+        />
+      ) : (
+        <ImagePriceForm
+          key={`${provider}:${model}`}
+          title={title}
+          initial={initial}
+          sizes={provider === 'google'}
+          saveLabel={saveLabel}
+          onSave={(price) => savePrice(key, provider, model, { kind: 'image', price }, alsoRoute)}
+          onCancel={onCancel}
+        />
+      )
+
+    return (
+      <>
+        {!waiting && selected?.status === 'estimated' && selected.price ? (
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="text-[12px] text-[var(--color-text-muted)]">
+              Estimated at {selected.pricedAs}&apos;s price: {describePrice(selected.price)}.
+            </p>
+            <Button type="button" variant="ghost" disabled={saving} onClick={() => setEditing(key)}>
+              Set price
+            </Button>
+          </div>
+        ) : null}
+
+        {!waiting && selected?.status === 'override' && selected.price ? (
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="text-[12px] text-[var(--color-text-muted)]">
+              Your price: {describePrice(selected.price)}.
+            </p>
+            <Button type="button" variant="ghost" disabled={saving} onClick={() => setEditing(key)}>
+              Edit price
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              disabled={saving}
+              onClick={() => clearPrice(key, provider, model)}
+            >
+              Clear price
+            </Button>
+          </div>
+        ) : null}
+
+        {/* A route saved on an unpriced model (saved before its price was
+            cleared, or stored by hand) is refused by every run, and
+            re-picking the same option fires no change: so the fix sits here,
+            beside the row. The route is already saved, so this saves the
+            price alone. */}
+        {!waiting && selected?.status === 'needs-price' ? (
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="text-[12px] text-[var(--color-danger)]">
+              {selected.label} needs a price before it can run.
+            </p>
+            <Button type="button" variant="ghost" disabled={saving} onClick={() => setEditing(key)}>
+              Set price
+            </Button>
+          </div>
+        ) : null}
+
+        {!waiting && selected?.status === 'retired' ? (
+          <p className="text-[12px] text-[var(--color-warning)]">
+            {PROVIDER_NAMES[provider]} no longer lists this model. Runs still try it, and fall back
+            if it is refused.
+          </p>
+        ) : null}
+
+        {!waiting && editing === key && selected && PRICEABLE.has(selected.status)
+          ? priceForm(
+              `Your price for ${selected.label}.`,
+              selected.price,
+              'Save price',
+              false,
+              () => setEditing(null),
+            )
+          : null}
+
+        {waiting
+          ? priceForm(
+              `${selected?.label ?? model} needs a price before it can run.`,
+              selected?.price ?? null,
+              'Save price and use',
+              true,
+              () => setPending(null),
+            )
+          : null}
+
+        {refusal?.key === key ? (
+          <p className="text-[12px] text-[var(--color-danger)]">{refusal.message}</p>
+        ) : null}
+      </>
+    )
+  }
+
+  /** Switching provider starts at its first model that can run as it stands. */
+  const firstRunnable = (list: ModelOption[]) =>
+    list.find((o) => o.selectable && o.status !== 'needs-price')
+
+  const stillsWaiting = waitingFor('stills')
+  const stills = {
+    provider:
+      (stillsWaiting?.provider as StillProvider | undefined) ??
+      settings.modelRouting.stills.provider,
+    model: stillsWaiting?.model ?? settings.modelRouting.stills.model,
+  }
+  const stillOptions = options.image[stills.provider]
+  const stillSelected = stillOptions.find((o) => o.id === stills.model)
+
+  // Off (null) until a provider is picked, and its model select stays empty:
+  // the row above generates everything until then.
+  const likenessWaiting = waitingFor('stillsLikeness')
+  const likeness = likenessWaiting
+    ? { provider: likenessWaiting.provider as StillProvider, model: likenessWaiting.model }
+    : settings.modelRouting.stillsLikeness
+  const likenessOptions = likeness ? options.image[likeness.provider] : []
+  const likenessSelected = likenessOptions.find((o) => o.id === likeness?.model)
+
+  const sheetWaiting = waitingFor('setSheet')
+  const sheetModel = sheetWaiting?.model ?? settings.modelRouting.setSheet.model
+  // Only models that make a 4K image: a sheet is cut into four plates. The
+  // stored choice stays listed so the select never shows a model it is not
+  // using.
+  const sheetOptions = options.image.google.filter(
+    (o) =>
+      (o.price?.kind === 'image' && o.price.pricesBySize?.['4K'] !== undefined) ||
+      o.id === sheetModel,
+  )
+  const sheetSelected = sheetOptions.find((o) => o.id === sheetModel)
 
   return (
     <Card>
@@ -383,15 +705,13 @@ export function ModelsTab({
         {LLM_TASKS.map((task) => {
           const route = settings.modelRouting[task]
           const label = TASK_LABELS[task]
-          // While a price is pending, the select shows the model waiting on
-          // it, not the route still saved.
-          const waiting = pending?.task === task ? pending : null
-          const provider = waiting?.provider ?? route.provider
-          const model = waiting?.model ?? route.model
-          const providerOptions = options.llm[provider]
-          const selected = providerOptions.find((o) => o.id === model)
-          const regular = providerOptions.filter((o) => !o.preview)
-          const previews = providerOptions.filter((o) => o.preview)
+          const waiting = waitingFor(task)
+          const row = {
+            provider: (waiting?.provider as LlmProvider | undefined) ?? route.provider,
+            model: waiting?.model ?? route.model,
+          }
+          const providerOptions = options.llm[row.provider]
+          const selected = providerOptions.find((o) => o.id === row.model)
 
           return (
             <div key={task} className="flex flex-col gap-2">
@@ -401,16 +721,13 @@ export function ModelsTab({
                 <Select
                   id={`route-${task}-provider`}
                   aria-label={`${label} provider`}
-                  value={provider}
+                  value={row.provider}
                   disabled={saving}
                   onChange={(event) => {
                     const next = event.target.value as LlmProvider
-                    // Switching provider starts at its first model that can
-                    // run as it stands: the old id means nothing to the new
-                    // provider, and an unpriced one would only open a form.
-                    const first = options.llm[next].find(
-                      (o) => o.selectable && o.status !== 'needs-price',
-                    )
+                    // The old id means nothing to the new provider, and an
+                    // unpriced one would only open a form.
+                    const first = firstRunnable(options.llm[next])
                     if (first) choose(task, next, first.id)
                   }}
                   className="sm:w-40"
@@ -424,223 +741,124 @@ export function ModelsTab({
 
                 <Select
                   aria-label={`${label} model`}
-                  value={model}
+                  value={row.model}
                   disabled={saving}
-                  onChange={(event) => choose(task, provider, event.target.value)}
+                  onChange={(event) => choose(task, row.provider, event.target.value)}
                   className="sm:w-56"
                 >
-                  {regular.map(renderOption)}
-                  {previews.length > 0 ? (
-                    <optgroup label={PREVIEW_GROUP}>{previews.map(renderOption)}</optgroup>
-                  ) : null}
-                  {/* A model no list holds is shown rather than silently
-                      swapped, because it is what the run will actually be
-                      refused on at pre-flight. */}
-                  {selected ? null : <option value={model}>{model} (unlisted)</option>}
+                  {renderChoices(providerOptions, row.model)}
                 </Select>
               </div>
 
-              {!waiting && selected?.status === 'estimated' && selected.price ? (
-                <div className="flex flex-wrap items-center gap-2">
-                  <p className="text-[12px] text-[var(--color-text-muted)]">
-                    Estimated at {selected.pricedAs}&apos;s price: {describePrice(selected.price)}.
-                  </p>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    disabled={saving}
-                    onClick={() => setEditing(task)}
-                  >
-                    Set price
-                  </Button>
-                </div>
-              ) : null}
-
-              {!waiting && selected?.status === 'override' && selected.price ? (
-                <div className="flex flex-wrap items-center gap-2">
-                  <p className="text-[12px] text-[var(--color-text-muted)]">
-                    Your price: {describePrice(selected.price)}.
-                  </p>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    disabled={saving}
-                    onClick={() => setEditing(task)}
-                  >
-                    Edit price
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    disabled={saving}
-                    onClick={() => clearPrice(task, provider, model)}
-                  >
-                    Clear price
-                  </Button>
-                </div>
-              ) : null}
-
-              {/* A route saved on an unpriced model (saved before its price
-                  was cleared, or stored by hand) is refused by every run, and
-                  re-picking the same option fires no change: so the fix sits
-                  here, beside the row. The route is already saved, so this
-                  saves the price alone. */}
-              {!waiting && selected?.status === 'needs-price' ? (
-                <div className="flex flex-wrap items-center gap-2">
-                  <p className="text-[12px] text-[var(--color-danger)]">
-                    {selected.label} needs a price before it can run.
-                  </p>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    disabled={saving}
-                    onClick={() => setEditing(task)}
-                  >
-                    Set price
-                  </Button>
-                </div>
-              ) : null}
-
-              {!waiting && selected?.status === 'retired' ? (
-                <p className="text-[12px] text-[var(--color-warning)]">
-                  {PROVIDER_NAMES[provider]} no longer lists this model. Runs still try it, and fall
-                  back if it is refused.
-                </p>
-              ) : null}
-
-              {!waiting &&
-              editing === task &&
-              selected &&
-              (selected.status === 'estimated' ||
-                selected.status === 'override' ||
-                selected.status === 'needs-price') ? (
-                <LlmPriceForm
-                  key={`${provider}:${model}`}
-                  title={`Your price for ${selected.label}.`}
-                  initial={selected.price}
-                  saveLabel="Save price"
-                  onSave={(price) => savePrice(task, provider, model, price, false)}
-                  onCancel={() => setEditing(null)}
-                />
-              ) : null}
-
-              {waiting ? (
-                <LlmPriceForm
-                  key={`${provider}:${model}`}
-                  title={`${selected?.label ?? model} needs a price before it can run.`}
-                  initial={selected?.price ?? null}
-                  saveLabel="Save price and use"
-                  onSave={(price) => savePrice(task, provider, model, price, true)}
-                  onCancel={() => setPending(null)}
-                />
-              ) : null}
-
-              {refusal?.task === task ? (
-                <p className="text-[12px] text-[var(--color-danger)]">{refusal.message}</p>
-              ) : null}
+              {renderNotes(task, row.provider, row.model, selected, waiting !== null)}
             </div>
           )
         })}
 
-        {/* The still-image generator (decision 208) — not an LLM task, but
+        {/* The still-image generator (decision 208): not an LLM task, but
             routed where the human looks for every other model decision. */}
-        <div className="grid items-center gap-2 sm:grid-cols-[1fr_auto_auto]">
-          <Label htmlFor="route-stills-provider">Still images (visuals)</Label>
+        <div className="flex flex-col gap-2">
+          <div className="grid items-center gap-2 sm:grid-cols-[1fr_auto_auto]">
+            <Label htmlFor="route-stills-provider">{ROUTE_LABELS.stills}</Label>
 
-          <Select
-            id="route-stills-provider"
-            aria-label="Still images provider"
-            value={stills.provider}
-            disabled={saving}
-            onChange={(event) => {
-              const provider = event.target.value as StillProvider
-              // Switching provider starts at its default model: the old id
-              // means nothing to the new provider.
-              setStillRoute(provider, LIVE_IMAGE_GEN_ADAPTERS[provider].models[0]!.id)
-            }}
-            className="sm:w-40"
-          >
-            {STILL_PROVIDERS.map((provider) => (
-              <option key={provider} value={provider}>
-                {provider}
-              </option>
-            ))}
-          </Select>
+            <Select
+              id="route-stills-provider"
+              aria-label="Still images provider"
+              value={stills.provider}
+              disabled={saving}
+              onChange={(event) => {
+                const provider = event.target.value as StillProvider
+                const first = firstRunnable(options.image[provider])
+                if (first) choose('stills', provider, first.id)
+              }}
+              className="sm:w-40"
+            >
+              {STILL_PROVIDERS.map((provider) => (
+                <option key={provider} value={provider}>
+                  {provider}
+                </option>
+              ))}
+            </Select>
 
-          <Select
-            aria-label="Still images model"
-            value={stills.model}
-            disabled={saving}
-            onChange={(event) => setStillRoute(stills.provider, event.target.value)}
-            className="sm:w-48"
-          >
-            {stillModels.map((model) => (
-              <option key={model.id} value={model.id}>
-                {model.label} (${model.pricePerImage.toFixed(2)}/image)
-              </option>
-            ))}
-            {/* Same rule as the LLM rows: an unlisted id is shown, because it
-                is what generation will actually be refused on. */}
-            {stillModels.some((model) => model.id === stills.model) ? null : (
-              <option value={stills.model}>{stills.model} (unlisted)</option>
-            )}
-          </Select>
+            <Select
+              aria-label="Still images model"
+              value={stills.model}
+              disabled={saving}
+              onChange={(event) => choose('stills', stills.provider, event.target.value)}
+              className="sm:w-56"
+            >
+              {renderChoices(stillOptions, stills.model)}
+            </Select>
+          </div>
+
+          {renderNotes(
+            'stills',
+            stills.provider,
+            stills.model,
+            stillSelected,
+            stillsWaiting !== null,
+          )}
         </div>
 
         {/* Stills that show a photographed cast member may go somewhere else
             (decision 253, amended): holding a real face and inventing an
             empty boardroom are different jobs at different prices. Off by
             default, and the row above generates everything until it is on. */}
-        <div className="grid items-center gap-2 sm:grid-cols-[1fr_auto_auto]">
-          <Label htmlFor="route-likeness-provider">Stills showing the cast</Label>
+        <div className="flex flex-col gap-2">
+          <div className="grid items-center gap-2 sm:grid-cols-[1fr_auto_auto]">
+            <Label htmlFor="route-likeness-provider">{ROUTE_LABELS.stillsLikeness}</Label>
 
-          <Select
-            id="route-likeness-provider"
-            aria-label="Stills showing the cast provider"
-            value={likeness?.provider ?? 'same'}
-            disabled={saving}
-            onChange={(event) => {
-              const value = event.target.value
-              if (value === 'same') {
-                setLikenessRoute(null)
-                return
+            <Select
+              id="route-likeness-provider"
+              aria-label="Stills showing the cast provider"
+              value={likeness?.provider ?? 'same'}
+              disabled={saving}
+              onChange={(event) => {
+                const value = event.target.value
+                if (value === 'same') {
+                  sameAsAbove()
+                  return
+                }
+                const provider = value as StillProvider
+                const first = firstRunnable(options.image[provider])
+                if (first) choose('stillsLikeness', provider, first.id)
+              }}
+              className="sm:w-40"
+            >
+              <option value="same">same as above</option>
+              {STILL_PROVIDERS.map((provider) => (
+                <option key={provider} value={provider}>
+                  {provider}
+                </option>
+              ))}
+            </Select>
+
+            <Select
+              aria-label="Stills showing the cast model"
+              value={likeness?.model ?? ''}
+              disabled={saving || !likeness}
+              onChange={(event) =>
+                likeness && choose('stillsLikeness', likeness.provider, event.target.value)
               }
-              const provider = value as StillProvider
-              setLikenessRoute({
-                provider,
-                model: LIVE_IMAGE_GEN_ADAPTERS[provider].models[0]!.id,
-              })
-            }}
-            className="sm:w-40"
-          >
-            <option value="same">same as above</option>
-            {STILL_PROVIDERS.map((provider) => (
-              <option key={provider} value={provider}>
-                {provider}
-              </option>
-            ))}
-          </Select>
+              className="sm:w-56"
+            >
+              {likeness ? (
+                renderChoices(likenessOptions, likeness.model)
+              ) : (
+                <option value="">—</option>
+              )}
+            </Select>
+          </div>
 
-          <Select
-            aria-label="Stills showing the cast model"
-            value={likeness?.model ?? ''}
-            disabled={saving || !likeness}
-            onChange={(event) =>
-              likeness &&
-              setLikenessRoute({ provider: likeness.provider, model: event.target.value })
-            }
-            className="sm:w-48"
-          >
-            {likeness ? null : <option value="">—</option>}
-            {likenessModels.map((model) => (
-              <option key={model.id} value={model.id}>
-                {model.label} (${model.pricePerImage.toFixed(2)}/image)
-              </option>
-            ))}
-            {!likeness || likenessModels.some((model) => model.id === likeness.model) ? null : (
-              <option value={likeness.model}>{likeness.model} (unlisted)</option>
-            )}
-          </Select>
+          {likeness
+            ? renderNotes(
+                'stillsLikeness',
+                likeness.provider,
+                likeness.model,
+                likenessSelected,
+                likenessWaiting !== null,
+              )
+            : null}
         </div>
         <p className="text-[12px] text-[var(--color-text-muted)]">
           A still counts as showing the cast when it depicts someone the Cast card holds a
@@ -648,38 +866,25 @@ export function ModelsTab({
           Leave it on &quot;same as above&quot; to generate everything one way.
         </p>
 
-        {/* The set-sheet generator (decision 275): Google models only, because
-            the four-view contact sheet and its 4K output are Gemini features,
-            and only those that make a 4K image (the Gemini 3 models): a sheet
-            is cut into four plates. A stored choice outside that stays listed
-            so the select never shows a model it is not using. */}
-        <div className="grid items-center gap-2 sm:grid-cols-[1fr_auto]">
-          <Label htmlFor="route-set-sheet-model">Set sheets (Build the set)</Label>
-          <Select
-            id="route-set-sheet-model"
-            aria-label="Set sheets model"
-            value={settings.modelRouting.setSheet.model}
-            disabled={saving}
-            onChange={(event) => {
-              const route = { provider: 'google' as const, model: event.target.value }
-              const next = structuredClone(settings)
-              next.modelRouting.setSheet = route
-              void commit({ modelRouting: { setSheet: route } }, next)
-            }}
-            className="sm:w-48"
-          >
-            {LIVE_IMAGE_GEN_ADAPTERS.google.models
-              .filter(
-                (model) =>
-                  model.pricesBySize?.['4K'] !== undefined ||
-                  model.id === settings.modelRouting.setSheet.model,
-              )
-              .map((model) => (
-                <option key={model.id} value={model.id}>
-                  {model.label}
-                </option>
-              ))}
-          </Select>
+        {/* The set-sheet generator (decision 275): Google models only,
+            because the four-view contact sheet and its 4K output are Gemini
+            features. */}
+        <div className="flex flex-col gap-2">
+          <div className="grid items-center gap-2 sm:grid-cols-[1fr_auto]">
+            <Label htmlFor="route-set-sheet-model">{ROUTE_LABELS.setSheet}</Label>
+            <Select
+              id="route-set-sheet-model"
+              aria-label="Set sheets model"
+              value={sheetModel}
+              disabled={saving}
+              onChange={(event) => choose('setSheet', 'google', event.target.value)}
+              className="sm:w-56"
+            >
+              {renderChoices(sheetOptions, sheetModel)}
+            </Select>
+          </div>
+
+          {renderNotes('setSheet', 'google', sheetModel, sheetSelected, sheetWaiting !== null)}
         </div>
       </CardContent>
     </Card>
