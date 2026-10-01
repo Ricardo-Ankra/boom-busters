@@ -23,7 +23,7 @@ import {
   slotNeedsResolution,
 } from '@boom-busters/db'
 import type { Database } from '@boom-busters/db'
-import { BANNED_PROMPT_WORDS, LIVE_IMAGE_GEN_ADAPTERS } from '@boom-busters/providers'
+import { BANNED_PROMPT_WORDS } from '@boom-busters/providers'
 import {
   ArticleMetadataSchema,
   articleSourceLabel,
@@ -76,6 +76,8 @@ import type {
   VisualsJobOp,
 } from '@boom-busters/schemas'
 import { anchoredTimes, timedParagraphs } from '@/inngest/lib/shot-list'
+import { stillCatalogue, stillModelOptions } from './model-catalogue'
+import type { StillModelOption } from './model-catalogue'
 import { presignGet, storageConfigured } from './storage'
 import { sceneOf } from './still-prompt'
 import { routeForBrief, stillPromptFor, stillsEstimateUsd } from './visual-assets'
@@ -410,6 +412,8 @@ export interface VisualsReviewModel {
    * trail and its own citation is never rewritten to point at the post.
    */
   supportClaims: PostClaimOption[]
+  /** The per-slot Image model choices (decisions 264, 287). */
+  stillModelOptions: StillModelOption[]
 }
 
 /**
@@ -440,6 +444,7 @@ export function emptyVisualsModel(): VisualsReviewModel {
     articleClaims: [],
     postClaims: [],
     supportClaims: [],
+    stillModelOptions: [],
   }
 }
 
@@ -804,6 +809,7 @@ export async function visualsReviewModel(
     listProjectSets(db, projectId),
     getSettings(db),
   ])
+  const catalogue = await stillCatalogue(settings)
 
   /**
    * Every graphic logo's presigned URL, board-wide, the same shared-object
@@ -886,7 +892,8 @@ export async function visualsReviewModel(
     const storedRoute = ((): StillRoute | null => {
       const stored = StillRouteSchema.nullable().safeParse(row.route)
       if (!stored.success || stored.data === null) return null
-      const offered = LIVE_IMAGE_GEN_ADAPTERS[stored.data.provider].models.some(
+      // Offered by the live lists too (decision 288), not only the hand-written ones.
+      const offered = catalogue[stored.data.provider].models.some(
         (model) => model.id === stored.data!.model,
       )
       return offered ? stored.data : null
@@ -907,7 +914,7 @@ export async function visualsReviewModel(
       scene: parsed.success && parsed.data.type === 'still' ? sceneOf(parsed.data.prompt) : null,
       promptSent:
         parsed.success && parsed.data.type === 'still'
-          ? stillPromptFor(parsed.data, cast, sets, settings.modelRouting, storedRoute)
+          ? stillPromptFor(parsed.data, cast, sets, settings.modelRouting, storedRoute, catalogue)
           : null,
       candidates: ordered.slice(0, CANDIDATES_SHOWN),
       extraCandidates: Math.max(0, ordered.length - CANDIDATES_SHOWN),
@@ -1088,5 +1095,6 @@ export async function visualsReviewModel(
     articleClaims,
     postClaims,
     supportClaims,
+    stillModelOptions: stillModelOptions(catalogue),
   }
 }

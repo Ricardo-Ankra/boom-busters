@@ -91,6 +91,21 @@ describe('mergeSettings', () => {
   })
 })
 
+describe('merging modelPrices (decision 288)', () => {
+  it('replaces the whole price map when a patch carries one, and keeps it otherwise', () => {
+    const priced = mergeSettings(DEFAULT_SETTINGS, {
+      modelPrices: {
+        llm: { 'anthropic:claude-fable-5-1': { inputPerMTok: 10, outputPerMTok: 50 } },
+        image: {},
+      },
+    })
+    expect(priced.modelPrices.llm['anthropic:claude-fable-5-1']?.outputPerMTok).toBe(50)
+
+    const untouched = mergeSettings(priced, { budgets: { monthlyCeilingUsd: 120 } })
+    expect(untouched.modelPrices).toEqual(priced.modelPrices)
+  })
+})
+
 describe('normaliseSettings', () => {
   it('passes a complete row through unchanged', () => {
     expect(normaliseSettings(DEFAULT_SETTINGS)).toEqual(DEFAULT_SETTINGS)

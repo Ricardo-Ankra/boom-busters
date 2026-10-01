@@ -139,6 +139,50 @@ export const DEFAULT_SET_SHEET_ROUTE: StillRoute = {
   model: 'gemini-3-pro-image',
 }
 
+// ---------------------------------------------------------------------------
+// Model prices (decision 288)
+// ---------------------------------------------------------------------------
+
+/**
+ * The owner's own price for a model, by `provider:modelId`.
+ *
+ * List endpoints return no prices, so a model the code has never priced is
+ * charged at its family's rate, or cannot run at all. This is where the
+ * owner writes the real rate. It lives in settings, not the model cache,
+ * because it is a choice and must survive every refresh.
+ */
+export const LlmPriceOverrideSchema = z.object({
+  inputPerMTok: z.number().positive(),
+  outputPerMTok: z.number().positive(),
+  cachedInputPerMTok: z.number().positive().optional(),
+})
+export type LlmPriceOverride = z.infer<typeof LlmPriceOverrideSchema>
+
+export const ImagePriceOverrideSchema = z.object({
+  pricePerImage: z.number().positive(),
+  pricesBySize: z
+    .object({
+      '1K': z.number().positive(),
+      '2K': z.number().positive(),
+      '4K': z.number().positive(),
+    })
+    .partial()
+    .optional(),
+})
+export type ImagePriceOverride = z.infer<typeof ImagePriceOverrideSchema>
+
+export const ModelPricesSchema = z.object({
+  llm: z.record(z.string(), LlmPriceOverrideSchema).default({}),
+  image: z.record(z.string(), ImagePriceOverrideSchema).default({}),
+})
+export type ModelPrices = z.infer<typeof ModelPricesSchema>
+
+export const EMPTY_MODEL_PRICES: ModelPrices = { llm: {}, image: {} }
+
+export function modelPriceKey(provider: string, modelId: string): string {
+  return `${provider}:${modelId}`
+}
+
 export const ModelRoutingSchema = z.object({
   research: ModelRefSchema,
   scripting: ModelRefSchema,
@@ -509,6 +553,7 @@ export const FeatureFlagsSchema = z.object({
 export const SettingsSchema = z.object({
   modelRouting: ModelRoutingSchema,
   fallbackChain: FallbackChainSchema.default([]),
+  modelPrices: ModelPricesSchema.default({ llm: {}, image: {} }),
   tts: VoiceConfigSchema,
   budgets: BudgetsSchema,
   render: RenderSettingsSchema,
@@ -549,6 +594,8 @@ function patchSection<Shape extends z.ZodRawShape>(
 export const SettingsPatchSchema = z.object({
   modelRouting: patchSection(ModelRoutingSchema),
   fallbackChain: FallbackChainSchema.optional(),
+  // Replaced whole, like fallbackChain: the form always sends the full map.
+  modelPrices: ModelPricesSchema.optional(),
   // The bare shape: a partial of a preprocessed schema is not a thing, and a
   // patch never needs the old-provider coercion — it can only say 'elevenlabs'.
   tts: patchSection(VoiceConfigShape),
@@ -599,6 +646,7 @@ export const DEFAULT_SETTINGS: Settings = {
     setSheet: DEFAULT_SET_SHEET_ROUTE,
   },
   fallbackChain: [],
+  modelPrices: { llm: {}, image: {} },
   tts: {
     provider: 'elevenlabs',
     voiceId: '',

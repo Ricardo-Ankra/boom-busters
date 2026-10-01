@@ -15,7 +15,6 @@ import {
 import { useRouter } from 'next/navigation'
 import * as React from 'react'
 import { SOCIAL_EXCERPT_TOO_LONG, SOCIAL_TOO_LONG } from '@boom-busters/compositions/social'
-import { imageGenModel, LIVE_IMAGE_GEN_ADAPTERS } from '@boom-busters/providers'
 import {
   isFrontPage,
   JOB_STALE_MS,
@@ -45,6 +44,7 @@ import { ConfirmButton } from '@/components/confirm-button'
 import { Label, Select } from '@/components/ui/input'
 import { useToast } from '@/components/ui/toast'
 import { readImageSize, toUploadableImage, toUploadableLogo } from '@/lib/client-image'
+import type { StillModelOption } from '@/lib/model-catalogue'
 import type {
   ArticleClaimOption,
   PostClaimOption,
@@ -2010,6 +2010,7 @@ export function VisualBoard({
                 articleClaims={model.articleClaims}
                 postClaims={model.postClaims}
                 supportClaims={model.supportClaims}
+                stillModelOptions={model.stillModelOptions}
                 sources={allSlots}
                 setPhotos={setPhotos}
                 castMembers={castMembers}
@@ -2171,6 +2172,7 @@ function SlotCard({
   articleClaims,
   postClaims,
   supportClaims,
+  stillModelOptions,
   sources,
   setPhotos,
   castMembers,
@@ -2188,6 +2190,7 @@ function SlotCard({
   articleClaims: ArticleClaimOption[]
   postClaims: PostClaimOption[]
   supportClaims: PostClaimOption[]
+  stillModelOptions: readonly StillModelOption[]
   sources: SlotView[]
   setPhotos: readonly SetPhotoGroup[]
   castMembers: readonly CastOption[]
@@ -2556,6 +2559,7 @@ function SlotCard({
             slot={slot}
             projectId={projectId}
             act={act}
+            stillModelOptions={stillModelOptions}
             onDone={() => setEditing(false)}
             planning={planning || linked !== null}
           />
@@ -3484,13 +3488,13 @@ function ReusePicker({
 /** The two image providers as people write them, not as the code keys them. */
 const PROVIDER_LABELS: Record<StillProvider, string> = { google: 'Google', fal: 'fal.ai' }
 
-/** A model's label off its own adapter, or the stored id itself if the adapter no longer lists it. */
-function stillModelLabel(provider: StillProvider, model: string): string {
-  try {
-    return imageGenModel(LIVE_IMAGE_GEN_ADAPTERS[provider], model).label
-  } catch {
-    return model
-  }
+/** A model's label from the board's options, or the stored id itself if no list holds it. */
+function stillModelLabel(
+  options: readonly StillModelOption[],
+  provider: StillProvider,
+  model: string,
+): string {
+  return options.find((o) => o.provider === provider && o.id === model)?.label ?? model
 }
 
 /**
@@ -3504,15 +3508,18 @@ function ModelRouteSelect({
   slot,
   projectId,
   act,
+  options,
 }: {
   slot: SlotView
   projectId: string
   act: Act
+  /** Every model either provider offers, live lists included (decision 288). */
+  options: readonly StillModelOption[]
 }) {
   const { busy } = useSlotLock()
   const id = `route-${slot.id}`
   const value = slot.route ? `${slot.route.provider}:${slot.route.model}` : ''
-  const defaultLabel = stillModelLabel(slot.derivedRoute.provider, slot.derivedRoute.model)
+  const defaultLabel = stillModelLabel(options, slot.derivedRoute.provider, slot.derivedRoute.model)
 
   return (
     <div className="flex flex-col gap-1 text-[12px] text-[var(--color-text-secondary)]">
@@ -3544,11 +3551,13 @@ function ModelRouteSelect({
         <option value="">{`Planned default (${defaultLabel})`}</option>
         {STILL_PROVIDERS.map((provider) => (
           <optgroup key={provider} label={PROVIDER_LABELS[provider]}>
-            {LIVE_IMAGE_GEN_ADAPTERS[provider].models.map((candidate) => (
-              <option key={`${provider}:${candidate.id}`} value={`${provider}:${candidate.id}`}>
-                {candidate.label}
-              </option>
-            ))}
+            {options
+              .filter((option) => option.provider === provider)
+              .map((candidate) => (
+                <option key={`${provider}:${candidate.id}`} value={`${provider}:${candidate.id}`}>
+                  {candidate.label}
+                </option>
+              ))}
           </optgroup>
         ))}
       </Select>
@@ -3560,12 +3569,14 @@ function BriefEditor({
   slot,
   projectId,
   act,
+  stillModelOptions,
   onDone,
   planning,
 }: {
   slot: SlotView
   projectId: string
   act: Act
+  stillModelOptions: readonly StillModelOption[]
   onDone: () => void
   /** Plan phase: an edit just saves — nothing is fetched until "Fetch visuals". */
   planning: boolean
@@ -3661,7 +3672,7 @@ function BriefEditor({
         </>
       ) : null}
       {brief.type === 'still' || brief.type === 'hero' ? (
-        <ModelRouteSelect slot={slot} projectId={projectId} act={act} />
+        <ModelRouteSelect slot={slot} projectId={projectId} act={act} options={stillModelOptions} />
       ) : null}
       <div className="flex gap-2">
         <Button type="submit" variant="primary" busy={pressed === 'brief'} disabled={busy}>

@@ -246,3 +246,52 @@ describe('route', () => {
     expect(adapter.calls.map((c) => c.model)).toEqual(['mock-large', 'mock-small'])
   })
 })
+
+describe('an injected resolver (decision 288)', () => {
+  const live = {
+    id: 'mock-live-9',
+    label: 'mock-live-9',
+    tier: 0,
+    inputPerMTok: 7,
+    outputPerMTok: 30,
+    supportsBatch: false,
+  }
+  const resolveModel = (_provider: string, modelId: string) =>
+    modelId === 'mock-live-9' ? live : undefined
+
+  const liveRouting = {
+    ...routing,
+    research: { provider: 'anthropic' as const, model: 'mock-live-9' },
+  }
+
+  it('passes pre-flight for a model only the resolver knows, and settles at its price', async () => {
+    const adapter = createMockLLM()
+    const result = await route(
+      config({ routing: liveRouting, adapters: { anthropic: adapter }, resolveModel }),
+      request,
+    )
+    expect(adapter.calls[0]!.model).toBe('mock-live-9')
+    const expected =
+      (result.usage.inputTokens / 1_000_000) * 7 + (result.usage.outputTokens / 1_000_000) * 30
+    expect(result.costUsd).toBeCloseTo(Math.round(expected * 10_000) / 10_000, 4)
+  })
+
+  it('steps down from a resolved model by its tier', () => {
+    const path = fallbackPath(config({ routing: liveRouting, resolveModel }), 'research')
+    expect(path.map((choice) => choice.model)).toEqual(['mock-live-9', 'mock-medium'])
+  })
+
+  it('refuses an id the resolver cannot price, before any call, naming Settings', () => {
+    const adapter = createMockLLM()
+    const unpriced = { ...routing, research: { provider: 'anthropic' as const, model: 'mystery' } }
+    expect(() =>
+      preflight(
+        config({ routing: unpriced, adapters: { anthropic: adapter }, resolveModel }),
+        'research',
+      ),
+    ).toThrow(
+      /has no price, so the budget guard cannot estimate this call\. Set one in Settings → Models/,
+    )
+    expect(adapter.calls).toHaveLength(0)
+  })
+})

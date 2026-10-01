@@ -46,6 +46,7 @@ export function mergeSettings(current: Settings, patch: SettingsPatch): Settings
     ...current,
     // Arrays are replaced wholesale, not concatenated.
     fallbackChain: patch.fallbackChain ?? current.fallbackChain,
+    modelPrices: patch.modelPrices ?? current.modelPrices,
     modelRouting: { ...current.modelRouting, ...patch.modelRouting },
     tts: { ...current.tts, ...patch.tts },
     budgets: mergeBudgets(current.budgets, patch.budgets),

@@ -1,19 +1,13 @@
 'use client'
 
 import {
-  LLM_PROVIDERS,
-  LLM_TASKS,
   PROVIDERS,
-  STILL_PROVIDERS,
   type GradePreset,
-  type LlmProvider,
-  type LlmTask,
   type Provider,
   type Settings,
   type SettingsPatch,
-  type StillProvider,
 } from '@boom-busters/schemas'
-import { LIVE_IMAGE_GEN_ADAPTERS, LLM_MODELS, knownModel, topModel } from '@boom-busters/providers'
+import type { ModelOptions } from '@boom-busters/providers'
 import type { MaskedCredential } from '@boom-busters/db'
 import dynamic from 'next/dynamic'
 import * as React from 'react'
@@ -22,6 +16,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input, Label, Select } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { ModelsTab } from './models-tab'
 import { VoiceTab } from './voice-tab'
 import { MusicTab, type MusicBedView } from './music-tab'
 import { LogosTab, type LogoView } from './logos-tab'
@@ -43,16 +38,6 @@ const BrandSpecimenPanel = dynamic(
     ),
   },
 )
-
-const TASK_LABELS: Record<LlmTask, string> = {
-  research: 'Research (dossiers)',
-  scripting: 'Script drafting',
-  editing: 'Editing and self-checks',
-  shotlist: 'Shot lists',
-  metadata: 'Titles and descriptions',
-  digest: 'Weekly digest',
-  direction: 'Visual direction',
-}
 
 const CREDENTIAL_PROVIDERS: Provider[] = [...PROVIDERS]
 
@@ -94,6 +79,7 @@ export function SettingsForm({
   musicBeds = [],
   logos = [],
   channelMarkKey = null,
+  modelOptions,
 }: {
   initialSettings: Settings
   credentials: MaskedCredential[]
@@ -106,6 +92,8 @@ export function SettingsForm({
   musicBeds?: MusicBedView[]
   logos?: LogoView[]
   channelMarkKey?: string | null
+  /** Live lists merged with the catalogue, built on the server (decision 288). */
+  modelOptions: ModelOptions
 }) {
   const [settings, setSettings] = React.useState(initialSettings)
   const [saving, setSaving] = React.useState(false)
@@ -148,7 +136,7 @@ export function SettingsForm({
       </TabsList>
 
       <TabsContent value="models">
-        <ModelsTab settings={settings} saving={saving} commit={commit} />
+        <ModelsTab settings={settings} saving={saving} commit={commit} options={modelOptions} />
       </TabsContent>
 
       <TabsContent value="brand-kit">
@@ -190,234 +178,6 @@ interface TabProps {
   settings: Settings
   saving: boolean
   commit: (patch: SettingsPatch, optimistic: Settings) => Promise<void>
-}
-
-function ModelsTab({ settings, saving, commit }: TabProps) {
-  const setRoute = (task: LlmTask, provider: LlmProvider, model: string) => {
-    const next = structuredClone(settings)
-    next.modelRouting[task] = { provider, model }
-    void commit({ modelRouting: { [task]: { provider, model } } }, next)
-  }
-
-  const setStillRoute = (provider: StillProvider, model: string) => {
-    const next = structuredClone(settings)
-    next.modelRouting.stills = { provider, model }
-    void commit({ modelRouting: { stills: { provider, model } } }, next)
-  }
-
-  /** Null turns the split off: one route generates every still again. */
-  const setLikenessRoute = (route: { provider: StillProvider; model: string } | null) => {
-    const next = structuredClone(settings)
-    next.modelRouting.stillsLikeness = route
-    void commit({ modelRouting: { stillsLikeness: route } }, next)
-  }
-
-  const stills = settings.modelRouting.stills
-  const stillModels = LIVE_IMAGE_GEN_ADAPTERS[stills.provider].models
-  const likeness = settings.modelRouting.stillsLikeness
-  const likenessModels = LIVE_IMAGE_GEN_ADAPTERS[likeness?.provider ?? stills.provider].models
-
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Model routing</CardTitle>
-        <CardDescription>
-          Which model runs each task. Changing one never redeploys anything — routing is resolved
-          from these settings at call time.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-3">
-        {LLM_TASKS.map((task) => {
-          const route = settings.modelRouting[task]
-          return (
-            <div key={task} className="grid items-center gap-2 sm:grid-cols-[1fr_auto_auto]">
-              <Label htmlFor={`route-${task}-provider`}>{TASK_LABELS[task]}</Label>
-
-              <Select
-                id={`route-${task}-provider`}
-                aria-label={`${TASK_LABELS[task]} provider`}
-                value={route.provider}
-                disabled={saving}
-                onChange={(event) => {
-                  const provider = event.target.value as LlmProvider
-                  // Switching provider keeps the tier, not the model id: the
-                  // old id means nothing to the new provider.
-                  setRoute(task, provider, topModel(provider).id)
-                }}
-                className="sm:w-40"
-              >
-                {LLM_PROVIDERS.map((provider) => (
-                  <option key={provider} value={provider}>
-                    {provider}
-                  </option>
-                ))}
-              </Select>
-
-              <Select
-                aria-label={`${TASK_LABELS[task]} model`}
-                value={route.model}
-                disabled={saving}
-                onChange={(event) => setRoute(task, route.provider, event.target.value)}
-                className="sm:w-48"
-              >
-                {LLM_MODELS[route.provider].map((model) => (
-                  <option key={model.id} value={model.id}>
-                    {model.label}
-                  </option>
-                ))}
-                {/* A model the adapters do not list is shown rather than
-                    silently swapped, because it is what the run will actually
-                    be refused on at pre-flight. */}
-                {knownModel(route.provider, route.model) ? null : (
-                  <option value={route.model}>{route.model} (unlisted)</option>
-                )}
-              </Select>
-            </div>
-          )
-        })}
-
-        {/* The still-image generator (decision 208) — not an LLM task, but
-            routed where the human looks for every other model decision. */}
-        <div className="grid items-center gap-2 sm:grid-cols-[1fr_auto_auto]">
-          <Label htmlFor="route-stills-provider">Still images (visuals)</Label>
-
-          <Select
-            id="route-stills-provider"
-            aria-label="Still images provider"
-            value={stills.provider}
-            disabled={saving}
-            onChange={(event) => {
-              const provider = event.target.value as StillProvider
-              // Switching provider starts at its default model: the old id
-              // means nothing to the new provider.
-              setStillRoute(provider, LIVE_IMAGE_GEN_ADAPTERS[provider].models[0]!.id)
-            }}
-            className="sm:w-40"
-          >
-            {STILL_PROVIDERS.map((provider) => (
-              <option key={provider} value={provider}>
-                {provider}
-              </option>
-            ))}
-          </Select>
-
-          <Select
-            aria-label="Still images model"
-            value={stills.model}
-            disabled={saving}
-            onChange={(event) => setStillRoute(stills.provider, event.target.value)}
-            className="sm:w-48"
-          >
-            {stillModels.map((model) => (
-              <option key={model.id} value={model.id}>
-                {model.label} (${model.pricePerImage.toFixed(2)}/image)
-              </option>
-            ))}
-            {/* Same rule as the LLM rows: an unlisted id is shown, because it
-                is what generation will actually be refused on. */}
-            {stillModels.some((model) => model.id === stills.model) ? null : (
-              <option value={stills.model}>{stills.model} (unlisted)</option>
-            )}
-          </Select>
-        </div>
-
-        {/* Stills that show a photographed cast member may go somewhere else
-            (decision 253, amended): holding a real face and inventing an
-            empty boardroom are different jobs at different prices. Off by
-            default, and the row above generates everything until it is on. */}
-        <div className="grid items-center gap-2 sm:grid-cols-[1fr_auto_auto]">
-          <Label htmlFor="route-likeness-provider">Stills showing the cast</Label>
-
-          <Select
-            id="route-likeness-provider"
-            aria-label="Stills showing the cast provider"
-            value={likeness?.provider ?? 'same'}
-            disabled={saving}
-            onChange={(event) => {
-              const value = event.target.value
-              if (value === 'same') {
-                setLikenessRoute(null)
-                return
-              }
-              const provider = value as StillProvider
-              setLikenessRoute({
-                provider,
-                model: LIVE_IMAGE_GEN_ADAPTERS[provider].models[0]!.id,
-              })
-            }}
-            className="sm:w-40"
-          >
-            <option value="same">same as above</option>
-            {STILL_PROVIDERS.map((provider) => (
-              <option key={provider} value={provider}>
-                {provider}
-              </option>
-            ))}
-          </Select>
-
-          <Select
-            aria-label="Stills showing the cast model"
-            value={likeness?.model ?? ''}
-            disabled={saving || !likeness}
-            onChange={(event) =>
-              likeness &&
-              setLikenessRoute({ provider: likeness.provider, model: event.target.value })
-            }
-            className="sm:w-48"
-          >
-            {likeness ? null : <option value="">—</option>}
-            {likenessModels.map((model) => (
-              <option key={model.id} value={model.id}>
-                {model.label} (${model.pricePerImage.toFixed(2)}/image)
-              </option>
-            ))}
-            {!likeness || likenessModels.some((model) => model.id === likeness.model) ? null : (
-              <option value={likeness.model}>{likeness.model} (unlisted)</option>
-            )}
-          </Select>
-        </div>
-        <p className="text-[12px] text-[var(--color-text-muted)]">
-          A still counts as showing the cast when it depicts someone the Cast card holds a
-          photograph of. Their photos go to this generator; every other still goes to the row above.
-          Leave it on &quot;same as above&quot; to generate everything one way.
-        </p>
-
-        {/* The set-sheet generator (decision 275): Google models only, because
-            the four-view contact sheet and its 4K output are Gemini features,
-            and only those that make a 4K image (the Gemini 3 models): a sheet
-            is cut into four plates. A stored choice outside that stays listed
-            so the select never shows a model it is not using. */}
-        <div className="grid items-center gap-2 sm:grid-cols-[1fr_auto]">
-          <Label htmlFor="route-set-sheet-model">Set sheets (Build the set)</Label>
-          <Select
-            id="route-set-sheet-model"
-            aria-label="Set sheets model"
-            value={settings.modelRouting.setSheet.model}
-            disabled={saving}
-            onChange={(event) => {
-              const route = { provider: 'google' as const, model: event.target.value }
-              const next = structuredClone(settings)
-              next.modelRouting.setSheet = route
-              void commit({ modelRouting: { setSheet: route } }, next)
-            }}
-            className="sm:w-48"
-          >
-            {LIVE_IMAGE_GEN_ADAPTERS.google.models
-              .filter(
-                (model) =>
-                  model.pricesBySize?.['4K'] !== undefined ||
-                  model.id === settings.modelRouting.setSheet.model,
-              )
-              .map((model) => (
-                <option key={model.id} value={model.id}>
-                  {model.label}
-                </option>
-              ))}
-          </Select>
-        </div>
-      </CardContent>
-    </Card>
-  )
 }
 
 function BrandKitTab({ settings, saving, commit }: TabProps) {

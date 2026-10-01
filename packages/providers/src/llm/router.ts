@@ -1,7 +1,7 @@
 import { RateLimitError, ValidationError, isRetriable } from '@boom-busters/schemas'
 import type { LlmProvider, LlmTask, ModelRouting } from '@boom-busters/schemas'
-import { findModel, nextTierDown, priceOf } from './types'
-import type { LLMProvider, LLMResult, LLMTaskRequest } from './types'
+import { findModel, nextTierBelow, priceOf } from './types'
+import type { KnownModel, LLMProvider, LLMResult, LLMTaskRequest } from './types'
 
 /**
  * The model router (build spec section 6).
@@ -53,6 +53,13 @@ export interface RouterConfig {
   sleepImpl?: (ms: number) => Promise<void>
   /** Injected by tests to make jittered backoff deterministic. */
   randomImpl?: () => number
+  /**
+   * Price and tier for a model id (decision 288). The web app passes one
+   * that knows the owner's prices and live families; left out, only the
+   * adapter's own list is known, which is what every test and mock run
+   * relies on.
+   */
+  resolveModel?: (provider: LlmProvider, modelId: string) => KnownModel | undefined
 }
 
 export interface RoutedResult extends LLMResult {
@@ -69,6 +76,15 @@ const BASE_BACKOFF_MS = 500
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+function modelFor(
+  config: RouterConfig,
+  adapter: LLMProvider,
+  provider: LlmProvider,
+  modelId: string,
+): KnownModel | undefined {
+  return config.resolveModel ? config.resolveModel(provider, modelId) : findModel(adapter, modelId)
 }
 
 /**
@@ -106,10 +122,10 @@ export function preflight(
     )
   }
 
-  if (!findModel(adapter, choice.model)) {
+  if (!modelFor(config, adapter, choice.provider, choice.model)) {
     throw new ValidationError(
-      `${choice.provider} does not offer "${choice.model}", so its price is unknown and the ` +
-        'budget guard cannot estimate this call. Pick a listed model in Settings → Models.',
+      `${choice.provider} model "${choice.model}" has no price, so the budget guard cannot ` +
+        'estimate this call. Set one in Settings → Models.',
       { field: `modelRouting.${task}.model` },
     )
   }
@@ -129,7 +145,8 @@ export function fallbackPath(config: RouterConfig, task: LlmTask): ModelChoice[]
   const { adapter, choice } = preflight(config, task)
   const path: ModelChoice[] = [choice]
 
-  const down = nextTierDown(adapter, choice.model)
+  const current = modelFor(config, adapter, choice.provider, choice.model)!
+  const down = nextTierBelow(adapter, current.tier)
   if (down) path.push({ provider: choice.provider, model: down.id })
 
   for (const provider of config.fallbackChain ?? []) {
@@ -192,7 +209,9 @@ export async function route(
           model: choice.model,
           ...(options.signal ? { signal: options.signal } : {}),
         })
-        const model = findModel(adapter, choice.model)!
+        const model =
+          modelFor(config, adapter, choice.provider, choice.model) ??
+          findModel(adapter, choice.model)!
         return { ...result, downgrades, costUsd: priceOf(model, result.usage), requested }
       } catch (error) {
         lastError = error

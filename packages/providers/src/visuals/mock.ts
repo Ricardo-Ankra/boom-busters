@@ -1,6 +1,7 @@
 import type { SlotCandidate } from '@boom-busters/schemas'
 import { falImageGen } from './fal'
 import type {
+  ImageGenModel,
   ImageGenProvider,
   ImageGenRequest,
   ImageGenResult,
@@ -113,4 +114,9 @@ export const mockImageGen: ImageGenProvider = {
   async verifyKey() {
     // A mock key is always fine.
   },
+}
+
+/** The mock over a given model list: it ignores the model id, as `mockImageGen` does. */
+export function mockImageGenWith(models: readonly ImageGenModel[]): ImageGenProvider {
+  return { ...mockImageGen, models }
 }

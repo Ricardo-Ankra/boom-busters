@@ -137,6 +137,15 @@ export interface ImageGenResult {
  */
 export type ImageGenProviderId = 'fal' | 'google'
 
+/**
+ * The request shape a fal text-to-image endpoint speaks (decision 288).
+ * `flux` takes `image_size`; `aspect` takes `aspect_ratio`; `aspect-negative`
+ * also has a real `negative_prompt` field. Read from the endpoint's own
+ * OpenAPI input schema when it is listed live.
+ */
+export const FAL_DIALECTS = ['flux', 'aspect', 'aspect-negative'] as const
+export type FalDialect = (typeof FAL_DIALECTS)[number]
+
 /** One model an image adapter offers — id, label, and its own price. */
 export interface ImageGenModel {
   readonly id: string
@@ -146,6 +155,8 @@ export interface ImageGenModel {
   readonly pricePerImage: number
   /** USD per generated image, by output size, for models whose price varies with it (decision 275). */
   readonly pricesBySize?: Partial<Record<ImageSize, number>>
+  /** fal only: the request shape this endpoint speaks. Absent means `flux`. */
+  readonly dialect?: FalDialect
 }
 
 /** What one call may carry, per model (decision 264). */

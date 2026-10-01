@@ -1,6 +1,6 @@
-import { LLM_MODELS, TTS_PRICES_PER_KCHAR } from '@boom-busters/providers'
+import { LLM_MODELS, TTS_PRICES_PER_KCHAR, resolveLlmModel } from '@boom-busters/providers'
 import { ValidationError } from '@boom-busters/schemas'
-import type { LlmProvider, TtsProvider } from '@boom-busters/schemas'
+import type { LlmProvider, ModelPrices, TtsProvider } from '@boom-busters/schemas'
 
 /**
  * Price tables for the budget guard.
@@ -61,16 +61,16 @@ export const TTS_PRICES: Record<TtsProvider, number> = TTS_PRICES_PER_KCHAR
 // Estimates
 // ---------------------------------------------------------------------------
 
-export function llmPrice(provider: LlmProvider, model: string): LlmPrice {
-  const price = LLM_PRICES[provider][model]
-  if (!price) {
+export function llmPrice(provider: LlmProvider, model: string, prices?: ModelPrices): LlmPrice {
+  const resolved = resolveLlmModel(provider, model, prices)
+  if (!resolved) {
     throw new ValidationError(
-      `No price for ${provider}/${model}. Add it to packages/cost before routing a task at it — ` +
-        `an unpriced model would estimate $0 and walk straight through every budget cap.`,
+      `No price for ${provider}/${model}. Set one in Settings → Models before routing a task ` +
+        'at it: an unpriced model would estimate $0 and walk straight through every budget cap.',
       { field: 'modelRouting' },
     )
   }
-  return price
+  return { inputPerMTok: resolved.model.inputPerMTok, outputPerMTok: resolved.model.outputPerMTok }
 }
 
 export function estimateLlmUsd(args: {
@@ -78,8 +78,9 @@ export function estimateLlmUsd(args: {
   model: string
   inputTokens: number
   outputTokens: number
+  prices?: ModelPrices
 }): number {
-  const price = llmPrice(args.provider, args.model)
+  const price = llmPrice(args.provider, args.model, args.prices)
   return (
     (args.inputTokens / 1_000_000) * price.inputPerMTok +
     (args.outputTokens / 1_000_000) * price.outputPerMTok

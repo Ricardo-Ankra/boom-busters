@@ -1,4 +1,5 @@
-import { DEFAULT_SETTINGS } from '@boom-busters/schemas'
+import { buildModelOptions } from '@boom-busters/providers'
+import { DEFAULT_SETTINGS, EMPTY_MODEL_PRICES } from '@boom-busters/schemas'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -36,8 +37,30 @@ vi.mock('./voice-actions', () => ({
   checkPronunciation: vi.fn(),
 }))
 
+// The Models tab is the default tab, so it mounts first (decision 288): its
+// refresh action and the router it refreshes need stubbing too.
+vi.mock('./model-actions', () => ({ refreshModelListsAction: vi.fn() }))
+vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: vi.fn() }) }))
+
 const toast = vi.fn()
 vi.mock('@/components/ui/toast', () => ({ useToast: () => ({ toast }) }))
+
+/** A fresh list, so the Models tab never refreshes by itself during the test. */
+function modelOptions() {
+  const now = new Date().toISOString()
+  return buildModelOptions({
+    listed: [],
+    refresh: (['anthropic', 'openai', 'google', 'fal'] as const).map((provider) => ({
+      provider,
+      lastAttemptAt: now,
+      lastSuccessAt: now,
+      lastError: null,
+    })),
+    keys: { anthropic: true, openai: true, google: true, fal: true },
+    prices: EMPTY_MODEL_PRICES,
+    mock: false,
+  })
+}
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -50,6 +73,7 @@ async function openBrandKitTab(): Promise<void> {
       initialSettings={structuredClone(DEFAULT_SETTINGS)}
       credentials={[]}
       mockProviders
+      modelOptions={modelOptions()}
     />,
   )
   await userEvent.click(screen.getByRole('tab', { name: 'Brand Kit' }))

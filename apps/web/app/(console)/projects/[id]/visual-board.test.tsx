@@ -2,12 +2,17 @@ import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { SOCIAL_TOO_LONG } from '@boom-busters/compositions/social'
-import { X_POST_MISSING } from '@boom-busters/providers'
+import { FAL_MODELS, GEMINI_IMAGE_MODELS, X_POST_MISSING } from '@boom-busters/providers'
 import { DEFAULT_SETTINGS } from '@boom-busters/schemas'
 import type { SlotView, VisualsReviewModel } from '@/lib/visuals-review'
 import { timecode } from '@/lib/visuals-reuse'
 import { VisualBoard } from './visual-board'
 import type { BrandChartColors } from './slot-previews'
+
+const STILL_OPTIONS = [
+  ...GEMINI_IMAGE_MODELS.map((m) => ({ provider: 'google' as const, id: m.id, label: m.label })),
+  ...FAL_MODELS.map((m) => ({ provider: 'fal' as const, id: m.id, label: m.label })),
+]
 
 const chooseCandidateAction = vi.fn()
 const editBriefAction = vi.fn()
@@ -458,6 +463,7 @@ function model(slots: SlotView[], overrides: Partial<VisualsReviewModel> = {}): 
     articleClaims: ARTICLE_CLAIMS,
     postClaims: POST_CLAIMS,
     supportClaims: SUPPORT_CLAIMS,
+    stillModelOptions: STILL_OPTIONS,
     ...overrides,
   }
 }
@@ -1376,6 +1382,21 @@ describe('the model select on a shot (decision 264)', () => {
     await userEvent.click(screen.getByRole('button', { name: /Edit brief/ }))
 
     expect(screen.queryByLabelText('Image model')).toBeNull()
+  })
+
+  it('offers a live model the server listed (decision 288)', async () => {
+    const live = {
+      ...model([stillSlot]),
+      stillModelOptions: [
+        ...STILL_OPTIONS,
+        { provider: 'fal' as const, id: 'fal-ai/mock-flux', label: 'Mock FLUX' },
+      ],
+    }
+    render(<VisualBoard projectId={PROJECT} model={live} colors={COLORS} brand={BRAND} />)
+    await userEvent.click(screen.getByRole('button', { name: /Edit brief/ }))
+
+    const select = screen.getByLabelText('Image model') as HTMLSelectElement
+    expect(within(select).getByText('Mock FLUX')).toBeInTheDocument()
   })
 })
 

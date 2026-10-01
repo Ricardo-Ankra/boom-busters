@@ -1,7 +1,7 @@
 import { ContentPolicyError, ValidationError } from '@boom-busters/schemas'
 import { describe, expect, it, vi } from 'vitest'
 import { falImageGen } from './fal'
-import { geminiImageGen, referenceLabel } from './gemini'
+import { GEMINI_IMAGE_MODELS, createGeminiImageGen, geminiImageGen, referenceLabel } from './gemini'
 import { imageGenPrice } from './types'
 
 /**
@@ -400,5 +400,50 @@ describe('Gemini 3 options (decision 275)', () => {
       { apiKey: 'k', fetchImpl: fetchRecording([], reply) },
     )
     expect(result.images[0]!.url).toBe('data:image/png;base64,QU5TV0VS')
+  })
+})
+
+describe('a live Gemini image model the catalogue does not hold (decision 288)', () => {
+  const live = (id: string) =>
+    createGeminiImageGen([
+      ...GEMINI_IMAGE_MODELS,
+      { id, label: id, pricePerImage: 0.07, pricesBySize: { '1K': 0.07, '2K': 0.11, '4K': 0.16 } },
+    ])
+
+  it('sends a flash image model the 3.1 Flash flags: a size and thinking', async () => {
+    const calls: { url: string; body: unknown }[] = []
+    await live('gemini-9-flash-image').generate(
+      { prompt: 'a vault', count: 1, model: 'gemini-9-flash-image', size: '2K' },
+      { apiKey: 'k', fetchImpl: fetchRecording(calls, IMAGE_REPLY) },
+    )
+    const body = calls[0]?.body as {
+      generationConfig: { imageConfig: { imageSize?: string }; thinkingConfig?: unknown }
+    }
+    expect(body.generationConfig.imageConfig.imageSize).toBe('2K')
+    expect(body.generationConfig.thinkingConfig).toEqual({ thinkingLevel: 'HIGH' })
+  })
+
+  it('sends a pro image model a size and no thinking, and the 3 Pro reference limits', async () => {
+    const calls: { url: string; body: unknown }[] = []
+    const adapter = live('gemini-9-pro-image')
+    await adapter.generate(
+      { prompt: 'a vault', count: 1, model: 'gemini-9-pro-image', size: '4K' },
+      { apiKey: 'k', fetchImpl: fetchRecording(calls, IMAGE_REPLY) },
+    )
+    const body = calls[0]?.body as {
+      generationConfig: { imageConfig: { imageSize?: string }; thinkingConfig?: unknown }
+    }
+    expect(body.generationConfig.imageConfig.imageSize).toBe('4K')
+    expect(body.generationConfig.thinkingConfig).toBeUndefined()
+    expect(adapter.referenceLimits('gemini-9-pro-image')).toEqual({ characters: 5, objects: 6 })
+  })
+
+  it('still refuses an id the list it was built over does not hold', async () => {
+    await expect(
+      geminiImageGen.generate(
+        { prompt: 'x', count: 1, model: 'gemini-9-flash-image' },
+        { apiKey: 'k' },
+      ),
+    ).rejects.toThrow(/does not offer the image model "gemini-9-flash-image"/)
   })
 })

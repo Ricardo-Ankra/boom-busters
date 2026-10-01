@@ -3,16 +3,11 @@ import sharp from 'sharp'
 import { getSettings, upsertAssetByHash, visualCredentials } from '@boom-busters/db'
 import { ValidationError } from '@boom-busters/schemas'
 import type { ProjectSet, SetPlateDirection, SlotCandidate } from '@boom-busters/schemas'
-import {
-  imageGenAdapter,
-  imageGenModel,
-  imageGenPrice,
-  LIVE_IMAGE_GEN_ADAPTERS,
-  mockProvidersEnabled,
-} from '@boom-busters/providers'
+import { imageGenModel, imageGenPrice, mockProvidersEnabled } from '@boom-busters/providers'
 import { withCost } from '@boom-busters/cost'
 import { db } from '@/lib/db'
 import { env } from '@/lib/env'
+import { stillCatalogue, stillGenerator } from '@/lib/model-catalogue'
 import { getObjectBytes, putObject, stillKey } from '@/lib/storage'
 import { mockContactSheet, splitContactSheet } from '@/lib/contact-sheet'
 import { buildSetSheetPrompt } from '@/lib/set-plates'
@@ -56,6 +51,8 @@ export async function buildSetSheet(
       { field: 'modelRouting.setSheet' },
     )
   }
+  const catalogue = await stillCatalogue(settings)
+  const live = catalogue.google
   // buildSetSheetPrompt runs the prompt through stripBannedWords itself now
   // (decision 287 final review), so the harness that calls it directly gets
   // the same text this action sends.
@@ -81,7 +78,7 @@ export async function buildSetSheet(
     const plate = set.plates.find((candidate) => candidate.view === 'north') ?? set.plates[0]
     if (!plate) throw new ValidationError('Add a plate first, then build the set from it.')
     const object = await getObjectBytes(plate.r2Key)
-    const live = LIVE_IMAGE_GEN_ADAPTERS.google
+    const adapter = await stillGenerator('google', settings)
     const result = await withCost(
       db,
       {
@@ -97,7 +94,7 @@ export async function buildSetSheet(
         },
       },
       async () => {
-        const generated = await imageGenAdapter('google').generate(
+        const generated = await adapter.generate(
           {
             prompt,
             count: 1,
@@ -131,7 +128,7 @@ export async function buildSetSheet(
     throw new ValidationError(UNSPLIT_SHEET)
   }
 
-  const label = imageGenModel(LIVE_IMAGE_GEN_ADAPTERS.google, route.model).label
+  const label = imageGenModel(live, route.model).label
   const candidates = await Promise.all(
     panels.map(async (panel): Promise<SlotCandidate> => {
       const summary = `${set.name}, facing ${panel.direction}`

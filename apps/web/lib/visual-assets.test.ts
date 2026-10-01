@@ -11,6 +11,7 @@ import {
   listCastMembers,
   listProjectSets,
   recordSocialPost,
+  replaceCatalogue,
   requireTestDatabase,
   seed,
   setCastPhotos,
@@ -20,8 +21,8 @@ import {
   updateSettings,
   upsertAssetByHash,
 } from '@boom-busters/db'
-import { LIVE_IMAGE_GEN_ADAPTERS, mockImageGen } from '@boom-busters/providers'
-import { newId, STILL_GENERATIONS } from '@boom-busters/schemas'
+import { mockImageGen } from '@boom-busters/providers'
+import { DEFAULT_SETTINGS, newId, STILL_GENERATIONS } from '@boom-busters/schemas'
 import type {
   CastMember,
   GraphicBrief,
@@ -33,14 +34,18 @@ import type {
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { listLedger } from '@boom-busters/cost'
 import { db } from '@/lib/db'
+import * as modelCatalogue from '@/lib/model-catalogue'
 import { PHOTOGRAPH_LINE } from './photograph-lines'
 import { assembleStillPrompt, REFERENCE_MARKER } from './still-prompt'
 import {
   generateStillCandidates,
+  plateEstimateUsd,
   referenceBudgets,
   resolveSlotBrief,
   routeForBrief,
+  setSheetEstimateUsd,
   stillPromptFor,
+  stillSlotEstimateUsd,
   stillsEstimateUsd,
 } from './visual-assets'
 
@@ -194,8 +199,9 @@ describeDb('generateStillCandidates with the cast', () => {
 
     const cast = await listCastMembers(db, FIXTURE_PROJECT_ID)
     const sets = await listProjectSets(db, FIXTURE_PROJECT_ID)
-    const routing = (await getSettings(db)).modelRouting
-    const preview = stillPromptFor(still, cast, sets, routing, null)
+    const settings = await getSettings(db)
+    const catalogue = await modelCatalogue.stillCatalogue(settings)
+    const preview = stillPromptFor(still, cast, sets, settings.modelRouting, null, catalogue)
 
     await generateStillCandidates(still, FIXTURE_PROJECT_ID)
     expect(generate.mock.calls[0]?.[0]?.prompt).toBe(preview)
@@ -252,10 +258,20 @@ describeDb('generateStillCandidates with the cast', () => {
   it('names only the people whose photographs the routed model actually takes', async () => {
     // No shipped model has a character limit under the app's own cap of
     // three, so this is a guard on the rule rather than on a live model: a
-    // face the model is not shown must not be named as one it was.
+    // face the model is not shown must not be named as one it was. The
+    // limits are read off the catalogue built per call (decision 288), so
+    // the tight adapter goes into that catalogue.
+    const real = modelCatalogue.stillCatalogue
     const tight = vi
-      .spyOn(LIVE_IMAGE_GEN_ADAPTERS.google, 'referenceLimits')
-      .mockReturnValue({ characters: 1, objects: 0 })
+      .spyOn(modelCatalogue, 'stillCatalogue')
+      .mockImplementation(async (settings) => {
+        const catalogue = await real(settings)
+        vi.spyOn(catalogue.google, 'referenceLimits').mockReturnValue({
+          characters: 1,
+          objects: 0,
+        })
+        return catalogue
+      })
     try {
       // Own the route: settings persist in the shared test database, and the
       // spy is on the adapter this route resolves to.
@@ -1212,5 +1228,80 @@ describeDb('the route stored on a slot wins', () => {
     expect(
       await stillsEstimateUsd([{ ...still, depicts: [] }], FIXTURE_PROJECT_ID, [stored]),
     ).toBeCloseTo(0.15 * STILL_GENERATIONS)
+  })
+
+  it('prices a still routed at a live fal model from the cache (decision 288)', async () => {
+    await replaceCatalogue(
+      db,
+      'fal',
+      [
+        {
+          modelId: 'fal-ai/mock-flux',
+          kind: 'image',
+          label: 'Mock FLUX',
+          preview: false,
+          contextTokens: null,
+          maxOutputTokens: null,
+          dialect: 'flux',
+          pricePerImage: 0.02,
+        },
+      ],
+      new Date(),
+    )
+    await updateSettings(db, {
+      modelRouting: {
+        stills: { provider: 'fal', model: 'fal-ai/mock-flux' },
+        stillsLikeness: null,
+      },
+    })
+    expect(await stillSlotEstimateUsd()).toBeCloseTo(0.02 * STILL_GENERATIONS)
+    await generateStillCandidates({ ...still, depicts: [] }, FIXTURE_PROJECT_ID)
+    expect(await lastLedgerModel()).toBe('fal-ai/mock-flux')
+  })
+})
+
+describeDb('a live-only route the cache no longer holds (decision 288)', () => {
+  beforeEach(async () => {
+    vi.stubEnv('MOCK_PROVIDERS', '1')
+    await seed(db)
+    await updateSettings(db, { budgets: { monthlyCeilingUsd: 100 } })
+    // A refresh that stopped returning every live-only Google model.
+    await replaceCatalogue(db, 'google', [], new Date())
+  })
+
+  afterEach(async () => {
+    vi.unstubAllEnvs()
+    await updateSettings(db, { modelRouting: DEFAULT_SETTINGS.modelRouting })
+  })
+
+  it('still prices a Gemini model its family resolves from settings alone', async () => {
+    const route = { provider: 'google' as const, model: 'gemini-9-flash-image' }
+    await updateSettings(db, {
+      modelRouting: { stills: route, stillsLikeness: route, setSheet: route },
+    })
+    // Gemini 3.1 Flash Image's price: $0.07 per image, $0.16 at 4K.
+    expect(await stillSlotEstimateUsd()).toBeCloseTo(0.07 * STILL_GENERATIONS)
+    expect(await plateEstimateUsd()).toBeCloseTo(0.07 * STILL_GENERATIONS)
+    expect(await setSheetEstimateUsd()).toBeCloseTo(0.16)
+    expect(await stillsEstimateUsd([{ ...still, depicts: [] }], FIXTURE_PROJECT_ID)).toBeCloseTo(
+      0.07 * STILL_GENERATIONS,
+    )
+    // And a run still tries it (spec section 9).
+    await generateStillCandidates({ ...still, depicts: [] }, FIXTURE_PROJECT_ID)
+    expect(await lastLedgerModel()).toBe('gemini-9-flash-image')
+  })
+
+  it('prices a route nothing resolves at $0 rather than taking the page down, and refuses to spend on it', async () => {
+    const route = { provider: 'google' as const, model: 'gemini-unknown-image' }
+    await updateSettings(db, {
+      modelRouting: { stills: route, stillsLikeness: null, setSheet: route },
+    })
+    expect(await stillSlotEstimateUsd()).toBe(0)
+    expect(await plateEstimateUsd()).toBe(0)
+    expect(await setSheetEstimateUsd()).toBe(0)
+    expect(await stillsEstimateUsd([{ ...still, depicts: [] }], FIXTURE_PROJECT_ID)).toBe(0)
+    await expect(
+      generateStillCandidates({ ...still, depicts: [] }, FIXTURE_PROJECT_ID),
+    ).rejects.toThrow(/does not offer the image model "gemini-unknown-image"/)
   })
 })

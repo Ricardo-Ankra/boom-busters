@@ -225,6 +225,13 @@
       "when": 1790793263724,
       "tag": "0031_abnormal_susan_delgado",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1790866143749,
+      "tag": "0032_clumsy_maggott",
+      "breakpoints": true
     }
   ]
 }

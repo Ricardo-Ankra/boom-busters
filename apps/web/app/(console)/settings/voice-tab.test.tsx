@@ -1,4 +1,5 @@
-import { DEFAULT_SETTINGS } from '@boom-busters/schemas'
+import { buildModelOptions, mockListedModels } from '@boom-busters/providers'
+import { DEFAULT_SETTINGS, EMPTY_MODEL_PRICES } from '@boom-busters/schemas'
 import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -46,8 +47,33 @@ vi.mock('./voice-actions', () => ({
   checkPronunciation: vi.fn(),
 }))
 
+const refreshModelListsAction = vi.fn()
+vi.mock('./model-actions', () => ({
+  refreshModelListsAction: (...args: unknown[]) => refreshModelListsAction(...args),
+}))
+const routerRefresh = vi.fn()
+vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: routerRefresh }) }))
+
 const toast = vi.fn()
 vi.mock('@/components/ui/toast', () => ({ useToast: () => ({ toast }) }))
+
+const FRESH = new Date().toISOString()
+
+/** Every provider listed and freshly refreshed, so the Models tab never auto-refreshes. */
+function modelOptions(prices = EMPTY_MODEL_PRICES) {
+  return buildModelOptions({
+    listed: (['anthropic', 'openai', 'google', 'fal'] as const).flatMap(mockListedModels),
+    refresh: (['anthropic', 'openai', 'google', 'fal'] as const).map((provider) => ({
+      provider,
+      lastAttemptAt: FRESH,
+      lastSuccessAt: FRESH,
+      lastError: null,
+    })),
+    keys: { anthropic: true, openai: true, google: true, fal: true },
+    prices,
+    mock: false,
+  })
+}
 
 const ACHIRD = 'v-achird'
 const VINDEMIATRIX = 'v-vindemiatrix'
@@ -55,6 +81,7 @@ const VINDEMIATRIX = 'v-vindemiatrix'
 beforeEach(() => {
   vi.clearAllMocks()
   saveSettings.mockResolvedValue({ ok: true })
+  refreshModelListsAction.mockResolvedValue({ ok: true, results: [] })
   cachedAuditions.mockResolvedValue({})
   listAuditionVoices.mockResolvedValue([
     {
@@ -82,6 +109,7 @@ async function openVoiceTab(): Promise<void> {
       initialSettings={structuredClone(DEFAULT_SETTINGS)}
       credentials={[]}
       mockProviders
+      modelOptions={modelOptions()}
     />,
   )
   await userEvent.click(screen.getByRole('tab', { name: 'Voice' }))

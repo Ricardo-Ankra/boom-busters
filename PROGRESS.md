@@ -6673,3 +6673,77 @@ boom-busters-broker`; merge and deploy to Vercel, then `PUT
      the set, owner-approved spend), starting with the boardroom and the
      executive office; redraft the executive office inventory so its desk
      and credenza are counted and told apart.
+
+288. **Live model lists: every dropdown asks the provider, not a hand edit**
+     (2026-10-01, owner: "in terms of anthropic models, the drop downs I
+     want to be able to fetch the models in real time. So for example Opus
+     5.5 ... [is] out but I can't select [it]. This should apply to all the
+     model selections, there should be a call or query that fetches the
+     live options."). Every route (research, script, stills, the likeness
+     split, set sheets) read a hand-written array; a model a provider
+     shipped after the last edit could not be chosen until someone edited
+     code, which is how Opus 5.5 was out but unreachable.
+     What shipped: a catalogue module (`packages/providers/src/catalogue`)
+     that lists Anthropic, OpenAI, Google and fal's live models; a family
+     table that prices a new id it recognises off a named, catalogued
+     representative (a live `claude-opus-5-5` inherits `claude-opus-5`'s
+     price and tier; an id matching no family has none on purpose, since a
+     guess would underprice a line like `claude-fable-5-1`); and a resolver
+     (`resolveLlmModel`) the router takes as an injected argument rather
+     than importing, so `packages/providers` still never imports
+     `packages/db` (apps/web wires it in, `apps/web/lib/llm.ts`). The
+     catalogue is cached, not fetched per request: two tables (migration
+     0032, `model_catalogue` and `model_catalogue_refresh`), a Refresh
+     button, and a self-refresh once when a list is stale. Owner overrides
+     live in `settings.modelPrices` and are read before any family or
+     catalogue price. The image side gained adapter factories that read
+     the live list and fal's reference-route dialects; the Models tab's
+     selects, status lines and price forms read all of it, and the board's
+     Image model select reads the same options.
+     Decisions made where the spec left room: a model that needs a price
+     stays in the select rather than being disabled, and choosing it opens
+     the price form in place ("Save price and use" prices and routes in
+     one save), which is also how Set price reaches a model nothing can yet
+     route to. `fallsBackTo` on an option, not a blanket rule, is what
+     refuses clearing a price a route still needs. Listing and family
+     inference live in the catalogue module rather than on the adapters, so
+     an adapter never has to know where its own model id came from. fal's
+     private reference-route field was renamed `wireDialect`, because the
+     new `ImageGenModel.dialect` field collided with it. A provider
+     answering with a list this app cannot parse is reported as "<provider>
+     returned a model list this app could not read" rather than a raw parse
+     error. Catalogue upserts run in model-id order, never the list's own
+     order, so two concurrent refreshes of the same provider cannot
+     deadlock taking row locks in different orders. Recording a failed
+     refresh is itself wrapped, so a database write that throws there
+     cannot take the other providers' results down with it. A
+     family-priced option's line names the representative it is priced as
+     ("Estimated at Opus 5's price: $5 in, $25 out per million tokens"),
+     not just "estimated". Local times on the tab carry
+     `suppressHydrationWarning`, the repo's convention for a client and
+     server clock that cannot agree. A route already saved on a model that
+     has lost its price, or never had one, shows the same "needs a price
+     before it can run" line with a Set price button rather than a silent
+     fallback. Still options print their per-image price in the option
+     text, and a fal endpoint this app cannot send a request to shows
+     "<label> is not offered: <reason>" instead of disappearing. The
+     set-sheet price form requires the 4K price specifically, because a
+     sheet is always rendered at 4K and a missing size would otherwise be
+     charged at the per-image default.
+     From the whole-branch review: live-only image routes are kept on the
+     adapter list from settings, so one a refresh stops returning still
+     prices and runs; the family rules exclude Opus and Sonnet 4 and 4.1
+     and gpt-5-pro, which cost far more than their line's representative.
+     Not done (spec section 12): per-model output caps read from the live
+     list; a "try this model" button that proves a listed model actually
+     answers; a voice model dropdown fed by ElevenLabs; refreshing
+     catalogued fal prices from fal's own pricing endpoint (fal catalogue
+     prices stay hand-written; only an uncatalogued fal model is priced
+     live). Also deferred, and worth the owner's attention: `models-tab.tsx`
+     is 944 lines and should split into the tab and its price forms; the
+     price form's errors carry no screen-reader announcement.
+     Shipping: a Vercel deploy and migration 0032, which the build applies
+     itself; no broker or Remotion redeploy, since no timeline schema or
+     composition changed; then `PUT /api/inngest` after the deploy, as
+     after every Vercel deploy.
+     Numbered 288 at the merge: master took 287 first, for still prompts.

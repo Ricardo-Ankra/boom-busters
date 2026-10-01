@@ -30,26 +30,32 @@ import type {
   ShotSlotStatus,
   SlotCandidate,
   StillBrief,
+  StillProvider,
   StillRoute,
   StockBrief,
 } from '@boom-busters/schemas'
 import {
   buildScoringRequest,
-  imageGenAdapter,
   imageGenModel,
   imageGenPrice,
-  LIVE_IMAGE_GEN_ADAPTERS,
   mockProvidersEnabled,
   mockScores,
   parseScores,
   stockAdapter,
 } from '@boom-busters/providers'
-import type { ImageReference, StockQuery } from '@boom-busters/providers'
+import type {
+  ImageGenProvider,
+  ImageReference,
+  ImageSize,
+  ReferenceLimits,
+  StockQuery,
+} from '@boom-busters/providers'
 import { articleForClaim } from '@/lib/article-source'
 import { db } from '@/lib/db'
 import { postForUrl } from '@/lib/social-source'
 import { env } from '@/lib/env'
 import { callLlm } from '@/lib/llm'
+import { stillCatalogue, stillGenerator } from '@/lib/model-catalogue'
 import {
   assembleStillPrompt,
   depictedFrom,
@@ -70,8 +76,11 @@ export { referenceBudgets, routeForBrief } from '@/lib/still-prompt'
  * would take the whole project page down over one dead slot. The derived
  * route is the fallback, which is what the slot would have had anyway.
  */
-function adapterOffers(route: StillRoute): boolean {
-  return LIVE_IMAGE_GEN_ADAPTERS[route.provider].models.some((model) => model.id === route.model)
+function adapterOffers(
+  route: StillRoute,
+  catalogue: Record<StillProvider, ImageGenProvider>,
+): boolean {
+  return catalogue[route.provider].models.some((model) => model.id === route.model)
 }
 
 /**
@@ -89,11 +98,15 @@ async function stillBriefPriceUsd(
   sets: readonly ProjectSet[],
   routing: ModelRouting,
   stored: StillRoute | null | undefined,
+  catalogue: Record<StillProvider, ImageGenProvider>,
 ): Promise<number> {
   const members = depictedFrom(brief, cast)
   const derived = routeForBrief(brief, cast, sets, routing)
-  const route = stored && adapterOffers(stored) ? stored : derived
-  const live = LIVE_IMAGE_GEN_ADAPTERS[route.provider]
+  const route = stored && adapterOffers(stored, catalogue) ? stored : derived
+  // A route nothing prices is a wrong button price, not a dead page; the
+  // fetch itself still refuses it.
+  if (!adapterOffers(route, catalogue)) return 0
+  const live = catalogue[route.provider]
   const budgets = referenceBudgets(live.referenceLimits(route.model))
   const set = setFrom(brief, sets)
   const plan = planStillReferences(members, set, budgets, brief.camera?.facing)
@@ -129,11 +142,15 @@ export async function stillsEstimateUsd(
         entry.brief.type === 'still',
     )
   if (stills.length === 0) return 0
-  const routing = (await getSettings(db)).modelRouting
+  const settings = await getSettings(db)
+  const routing = settings.modelRouting
+  const catalogue = await stillCatalogue(settings)
   const cast = await listCastMembers(db, projectId)
   const sets = await listProjectSets(db, projectId)
   const prices = await Promise.all(
-    stills.map(({ brief, stored }) => stillBriefPriceUsd(brief, cast, sets, routing, stored)),
+    stills.map(({ brief, stored }) =>
+      stillBriefPriceUsd(brief, cast, sets, routing, stored, catalogue),
+    ),
   )
   return round4(prices.reduce((total, price) => total + price, 0))
 }
@@ -149,13 +166,20 @@ export function stillPromptFor(
   sets: readonly ProjectSet[],
   routing: ModelRouting,
   stored: StillRoute | null,
+  catalogue: Record<StillProvider, ImageGenProvider>,
 ): string {
   const derived = routeForBrief(brief, cast, sets, routing)
-  const route = stored && adapterOffers(stored) ? stored : derived
+  const route = stored && adapterOffers(stored, catalogue) ? stored : derived
+  const live = catalogue[route.provider]
+  // A route no list holds any more (decision 288) previews on the provider's
+  // default model's limits; the fetch itself refuses the route.
+  const limits: ReferenceLimits = adapterOffers(route, catalogue)
+    ? live.referenceLimits(route.model)
+    : live.referenceLimits()
   const plan = planStillReferences(
     depictedFrom(brief, cast),
     setFrom(brief, sets),
-    referenceBudgets(LIVE_IMAGE_GEN_ADAPTERS[route.provider].referenceLimits(route.model)),
+    referenceBudgets(limits),
     brief.camera?.facing,
   )
   return assembleStillPrompt({
@@ -380,26 +404,42 @@ export async function requireVisualKeys(types: ReadonlySet<ShotBrief['type']>): 
  * Generate a plate button, the way the Fetch button quotes its own price.
  */
 export async function plateEstimateUsd(): Promise<number> {
-  const route = (await getSettings(db)).modelRouting.stills
-  return round4(
-    imageGenPrice(LIVE_IMAGE_GEN_ADAPTERS[route.provider], STILL_GENERATIONS, route.model),
-  )
+  const settings = await getSettings(db)
+  const catalogue = await stillCatalogue(settings)
+  return round4(routePriceUsd(catalogue, settings.modelRouting.stills, STILL_GENERATIONS))
 }
 
 /** What "Build the set" will spend: one 4K image on the set-sheet route (decision 275). */
 export async function setSheetEstimateUsd(): Promise<number> {
-  const route = (await getSettings(db)).modelRouting.setSheet
-  return round4(imageGenPrice(LIVE_IMAGE_GEN_ADAPTERS[route.provider], 1, route.model, '4K'))
+  const settings = await getSettings(db)
+  const catalogue = await stillCatalogue(settings)
+  return round4(routePriceUsd(catalogue, settings.modelRouting.setSheet, 1, '4K'))
 }
 
 export async function stillSlotEstimateUsd(): Promise<number> {
-  const routing = (await getSettings(db)).modelRouting
+  const settings = await getSettings(db)
+  const catalogue = await stillCatalogue(settings)
+  const routing = settings.modelRouting
   const routes = [routing.stills, ...(routing.stillsLikeness ? [routing.stillsLikeness] : [])]
-  return Math.max(
-    ...routes.map((route) =>
-      imageGenPrice(LIVE_IMAGE_GEN_ADAPTERS[route.provider], STILL_GENERATIONS, route.model),
-    ),
-  )
+  return Math.max(...routes.map((route) => routePriceUsd(catalogue, route, STILL_GENERATIONS)))
+}
+
+/**
+ * A button's price on one route, or 0 when the route's adapter does not
+ * offer its model (decision 288). These prices are read on every project
+ * page and the board, and `imageGenPrice` throws on an unknown model, so a
+ * route nothing can price must cost a wrong number on a button rather than
+ * the whole page. Spending on it is still refused: `generateStillCandidates`
+ * reads the model unguarded.
+ */
+function routePriceUsd(
+  catalogue: Record<StillProvider, ImageGenProvider>,
+  route: StillRoute,
+  count: number,
+  size?: ImageSize,
+): number {
+  if (!adapterOffers(route, catalogue)) return 0
+  return imageGenPrice(catalogue[route.provider], count, route.model, size)
 }
 
 // ---------------------------------------------------------------------------
@@ -488,9 +528,11 @@ export async function generateStillCandidates(
   // The camera reaches the prompt whether or not the set has a plate yet: the
   // inventory alone still says what the camera sees (decision 275).
   const namedSet = brief.set ? setForBrief(brief.set, projectSets) : null
-  const routing = (await getSettings(db)).modelRouting
+  const settings = await getSettings(db)
+  const routing = settings.modelRouting
+  const catalogue = await stillCatalogue(settings)
   const derived = routeForBrief(brief, projectCast, projectSets, routing)
-  const route = stored && adapterOffers(stored) ? stored : derived
+  const route = stored && adapterOffers(stored, catalogue) ? stored : derived
   // By value, not by reference: a stored route equal to the plain one is the
   // plain one, and comparing object identity named the wrong setting in the
   // missing-key message every time.
@@ -502,7 +544,7 @@ export async function generateStillCandidates(
   // happens to exist. In mock mode the registry serves the mock whichever id
   // is asked for, and the mock ignores the model id.
   const provider = route.provider
-  const adapter = imageGenAdapter(provider)
+  const adapter = await stillGenerator(provider, settings)
   const apiKey = provider === 'google' ? keys.google : keys.fal
   if (!mocked && !apiKey) {
     const setting = likeness ? 'stills of the cast' : 'stills'
@@ -520,7 +562,7 @@ export async function generateStillCandidates(
   // photographs. Limits come from the LIVE adapter even in mock mode, the
   // same rule as the price estimate: budgets are configuration that outlives
   // a test run.
-  const live = LIVE_IMAGE_GEN_ADAPTERS[provider]
+  const live = catalogue[provider]
   const cast = await referenceMaterials(
     members,
     set,

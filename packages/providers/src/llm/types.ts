@@ -133,6 +133,15 @@ export function findModel(provider: LLMProvider, modelId: string): KnownModel | 
 }
 
 /**
+ * The next catalogued model below a tier, or `undefined` at the bottom. Takes
+ * a tier rather than an id so a live model (decision 288), which no adapter
+ * lists, can step down from the tier its family gave it.
+ */
+export function nextTierBelow(provider: LLMProvider, tier: number): KnownModel | undefined {
+  return provider.models.filter((m) => m.tier > tier).sort((a, b) => a.tier - b.tier)[0]
+}
+
+/**
  * The next model down within a provider, or `undefined` at the bottom.
  *
  * Ordering is by `tier` rather than by array position so that adding a model
@@ -141,9 +150,7 @@ export function findModel(provider: LLMProvider, modelId: string): KnownModel | 
  */
 export function nextTierDown(provider: LLMProvider, modelId: string): KnownModel | undefined {
   const current = findModel(provider, modelId)
-  if (!current) return undefined
-
-  return provider.models.filter((m) => m.tier > current.tier).sort((a, b) => a.tier - b.tier)[0]
+  return current ? nextTierBelow(provider, current.tier) : undefined
 }
 
 /** USD for a completed call, from the model's own price row. */

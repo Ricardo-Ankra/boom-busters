@@ -84,6 +84,43 @@ export async function openFixtureProject(page: Page): Promise<void> {
 }
 
 /**
+ * Puts the Research route and the price catalogue back the way a fresh seed
+ * leaves them, before the Models tab live-lists spec runs.
+ *
+ * Global setup resets `modelRouting.stills` on every run, but never touches
+ * `research` or `modelPrices.llm`: nothing else needed it to. The Models tab
+ * spec routes Research at `claude-mock-unpriced` and gives it a price so it
+ * can assert the "needs a price" flow, then restores the route through the
+ * UI at the end. The price override cannot be cleared the same way: that
+ * model has no family to fall back to, so the UI refuses to clear a price
+ * any route still needs, and clearing it is only ever offered for the model
+ * currently selected in a route, which means using it. A run interrupted
+ * before its own restore step, or a worktree sharing this database, leaves
+ * the override behind, and the next run of this spec finds the model already
+ * priced, so the "needs a price" message it asserts on never appears. Reset
+ * here rather than relying on the previous run's own cleanup.
+ */
+export async function resetResearchModel(): Promise<void> {
+  const { createDb, getSettings, updateSettings } = await import('@boom-busters/db')
+  const { e2eDatabaseUrl } = await import('../database')
+
+  const connection = createDb(e2eDatabaseUrl(), { max: 1 })
+  try {
+    const settings = await getSettings(connection.db)
+    const { 'anthropic:claude-mock-unpriced': _unused, ...llm } = settings.modelPrices.llm
+    await updateSettings(connection.db, {
+      modelRouting: {
+        ...settings.modelRouting,
+        research: { provider: 'anthropic', model: 'claude-opus-5' },
+      },
+      modelPrices: { ...settings.modelPrices, llm },
+    })
+  } finally {
+    await connection.sql.end({ timeout: 5 })
+  }
+}
+
+/**
  * Make the seeded queued project queued *now*.
  *
  * `projectControl` treats a project queued for more than three minutes as one

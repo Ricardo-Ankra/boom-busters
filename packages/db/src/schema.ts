@@ -232,6 +232,51 @@ export const providerCredentials = pgTable(
   (t) => [unique('provider_credentials_provider_key').on(t.provider)],
 )
 
+/**
+ * What each provider's list endpoint last said it serves (decision 288).
+ * A cache, rebuilt per provider on each successful refresh; the Models tab
+ * and the image adapters read it, and nothing else depends on it being
+ * fresh. Prices the owner sets live in `settings.modelPrices`, not here.
+ */
+export const modelCatalogue = pgTable(
+  'model_catalogue',
+  {
+    id: id(),
+    /** 'anthropic' | 'openai' | 'google' | 'fal' */
+    provider: text('provider').notNull(),
+    modelId: text('model_id').notNull(),
+    /** 'llm' | 'image' */
+    kind: text('kind').notNull(),
+    label: text('label').notNull(),
+    preview: boolean('preview').notNull().default(false),
+    contextTokens: integer('context_tokens'),
+    maxOutputTokens: integer('max_output_tokens'),
+    /** fal only: 'flux' | 'aspect' | 'aspect-negative', null when unsendable. */
+    dialect: text('dialect'),
+    /** fal only: its own USD price per image. */
+    pricePerImage: usd('price_per_image'),
+    fetchedAt: timestamp('fetched_at', { withTimezone: true }).notNull(),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [unique('model_catalogue_provider_model_key').on(t.provider, t.modelId)],
+)
+
+/** When each provider's list was last asked for, and how it went. */
+export const modelCatalogueRefresh = pgTable(
+  'model_catalogue_refresh',
+  {
+    id: id(),
+    provider: text('provider').notNull(),
+    lastAttemptAt: timestamp('last_attempt_at', { withTimezone: true }).notNull(),
+    lastSuccessAt: timestamp('last_success_at', { withTimezone: true }),
+    lastError: text('last_error'),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [unique('model_catalogue_refresh_provider_key').on(t.provider)],
+)
+
 // ---------------------------------------------------------------------------
 // Case library and projects
 // ---------------------------------------------------------------------------
