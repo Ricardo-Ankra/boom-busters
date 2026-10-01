@@ -969,7 +969,7 @@ describe('resolveImageModel', () => {
     expect(resolved).toMatchObject({ source: 'family', model: { pricesBySize: { '4K': 0.24 } } })
   })
 
-  it('uses fal's own published price and the cached dialect', () => {
+  it('uses fal’s own published price and the cached dialect', () => {
     const resolved = resolveImageModel('fal', 'fal-ai/new-model', EMPTY_MODEL_PRICES, falListed({}))
     expect(resolved).toMatchObject({
       source: 'provider',
@@ -1395,7 +1395,7 @@ describe('llmPrice with live models (decision 287)', () => {
     expect(llmPrice('anthropic', 'claude-opus-5-5')).toEqual({ inputPerMTok: 5, outputPerMTok: 25 })
   })
 
-  it('prefers the owner's price', () => {
+  it('prefers the owner’s price', () => {
     const prices = {
       ...EMPTY_MODEL_PRICES,
       llm: { 'anthropic:claude-opus-5-5': { inputPerMTok: 4, outputPerMTok: 20 } },
@@ -2236,7 +2236,7 @@ suite('the model cache', () => {
     await sql.end({ timeout: 5 })
   })
 
-  it('replaces a provider's rows on success and stamps the refresh', async () => {
+  it('replaces a provider’s rows on success and stamps the refresh', async () => {
     const first = new Date('2026-10-01T09:00:00Z')
     await replaceCatalogue(db, 'anthropic', [model('claude-opus-5'), model('claude-opus-5-5')], first)
     const second = new Date('2026-10-01T10:00:00Z')
@@ -2597,7 +2597,7 @@ describe('buildModelOptions (decision 287)', () => {
     })
   })
 
-  it('marks the owner's price, and says what would price the model without it', () => {
+  it('marks the owner’s price, and says what would price the model without it', () => {
     const prices = {
       ...EMPTY_MODEL_PRICES,
       llm: {
