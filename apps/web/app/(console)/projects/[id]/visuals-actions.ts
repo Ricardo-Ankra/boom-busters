@@ -30,7 +30,7 @@ import {
   updateSlotBrief,
   upsertAssetByHash,
 } from '@boom-busters/db'
-import { imageGenModel, LIVE_IMAGE_GEN_ADAPTERS, stillStyleAnchors } from '@boom-busters/providers'
+import { imageGenModel, stillStyleAnchors } from '@boom-busters/providers'
 import {
   articleIsRenderable,
   claimCarriesArticle,
@@ -83,6 +83,7 @@ import { events } from '@/inngest/events'
 import { inngest } from '@/inngest/client'
 import { articleForClaim, articleFromRow, refetchArticle } from '@/lib/article-source'
 import { db } from '@/lib/db'
+import { stillCatalogue } from '@/lib/model-catalogue'
 import { fetchRemoteImage } from '@/lib/remote-image'
 import { refetchPost } from '@/lib/social-source'
 import {
@@ -348,7 +349,8 @@ export async function setSlotRouteAction(
 
   if (parsedRoute) {
     try {
-      imageGenModel(LIVE_IMAGE_GEN_ADAPTERS[parsedRoute.provider], parsedRoute.model)
+      const catalogue = await stillCatalogue(await getSettings(db))
+      imageGenModel(catalogue[parsedRoute.provider], parsedRoute.model)
     } catch (error) {
       return {
         ok: false,

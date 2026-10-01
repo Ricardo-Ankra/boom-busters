@@ -23,7 +23,7 @@ import {
   slotNeedsResolution,
 } from '@boom-busters/db'
 import type { Database } from '@boom-busters/db'
-import { BANNED_PROMPT_WORDS, LIVE_IMAGE_GEN_ADAPTERS } from '@boom-busters/providers'
+import { BANNED_PROMPT_WORDS } from '@boom-busters/providers'
 import {
   ArticleMetadataSchema,
   articleSourceLabel,
@@ -76,6 +76,8 @@ import type {
   VisualsJobOp,
 } from '@boom-busters/schemas'
 import { anchoredTimes, timedParagraphs } from '@/inngest/lib/shot-list'
+import { stillCatalogue, stillModelOptions } from './model-catalogue'
+import type { StillModelOption } from './model-catalogue'
 import { presignGet, storageConfigured } from './storage'
 import { routeForBrief, stillsEstimateUsd } from './visual-assets'
 import {
@@ -405,6 +407,8 @@ export interface VisualsReviewModel {
    * trail and its own citation is never rewritten to point at the post.
    */
   supportClaims: PostClaimOption[]
+  /** The per-slot Image model choices (decisions 264, 287). */
+  stillModelOptions: StillModelOption[]
 }
 
 /**
@@ -435,6 +439,7 @@ export function emptyVisualsModel(): VisualsReviewModel {
     articleClaims: [],
     postClaims: [],
     supportClaims: [],
+    stillModelOptions: [],
   }
 }
 
@@ -799,6 +804,7 @@ export async function visualsReviewModel(
     listProjectSets(db, projectId),
     getSettings(db),
   ])
+  const catalogue = await stillCatalogue(settings)
 
   /**
    * Every graphic logo's presigned URL, board-wide, the same shared-object
@@ -908,7 +914,7 @@ export async function visualsReviewModel(
         // A model the provider has retired is no longer an option the select
         // can show, so the slot reads as being on the planned default, which
         // is what it will actually generate on (decision 264).
-        const offered = LIVE_IMAGE_GEN_ADAPTERS[stored.data.provider].models.some(
+        const offered = catalogue[stored.data.provider].models.some(
           (model) => model.id === stored.data!.model,
         )
         return offered ? stored.data : null
@@ -1074,5 +1080,6 @@ export async function visualsReviewModel(
     articleClaims,
     postClaims,
     supportClaims,
+    stillModelOptions: stillModelOptions(catalogue),
   }
 }

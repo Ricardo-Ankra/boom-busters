@@ -10,6 +10,7 @@ import {
   listCastMembers,
   listProjectSets,
   recordSocialPost,
+  replaceCatalogue,
   requireTestDatabase,
   seed,
   setCastPhotos,
@@ -19,12 +20,7 @@ import {
   updateSettings,
   upsertAssetByHash,
 } from '@boom-busters/db'
-import {
-  HOUSE_PHOTOGRAPH,
-  LIVE_IMAGE_GEN_ADAPTERS,
-  mockImageGen,
-  stillStyleAnchors,
-} from '@boom-busters/providers'
+import { HOUSE_PHOTOGRAPH, mockImageGen, stillStyleAnchors } from '@boom-busters/providers'
 import { DEFAULT_SETTINGS, newId, STILL_GENERATIONS } from '@boom-busters/schemas'
 import type {
   CastMember,
@@ -37,11 +33,13 @@ import type {
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { listLedger } from '@boom-busters/cost'
 import { db } from '@/lib/db'
+import * as modelCatalogue from '@/lib/model-catalogue'
 import {
   generateStillCandidates,
   referenceBudgets,
   resolveSlotBrief,
   routeForBrief,
+  stillSlotEstimateUsd,
   stillsEstimateUsd,
 } from './visual-assets'
 
@@ -217,10 +215,20 @@ describeDb('generateStillCandidates with the cast', () => {
   it('names only the people whose photographs the routed model actually takes', async () => {
     // No shipped model has a character limit under the app's own cap of
     // three, so this is a guard on the rule rather than on a live model: a
-    // face the model is not shown must not be named as one it was.
+    // face the model is not shown must not be named as one it was. The
+    // limits are read off the catalogue built per call (decision 287), so
+    // the tight adapter goes into that catalogue.
+    const real = modelCatalogue.stillCatalogue
     const tight = vi
-      .spyOn(LIVE_IMAGE_GEN_ADAPTERS.google, 'referenceLimits')
-      .mockReturnValue({ characters: 1, objects: 0 })
+      .spyOn(modelCatalogue, 'stillCatalogue')
+      .mockImplementation(async (settings) => {
+        const catalogue = await real(settings)
+        vi.spyOn(catalogue.google, 'referenceLimits').mockReturnValue({
+          characters: 1,
+          objects: 0,
+        })
+        return catalogue
+      })
     try {
       // Own the route: settings persist in the shared test database, and the
       // spy is on the adapter this route resolves to.
@@ -1153,5 +1161,34 @@ describeDb('the route stored on a slot wins', () => {
     expect(
       await stillsEstimateUsd([{ ...still, depicts: [] }], FIXTURE_PROJECT_ID, [stored]),
     ).toBeCloseTo(0.15 * STILL_GENERATIONS)
+  })
+
+  it('prices a still routed at a live fal model from the cache (decision 287)', async () => {
+    await replaceCatalogue(
+      db,
+      'fal',
+      [
+        {
+          modelId: 'fal-ai/mock-flux',
+          kind: 'image',
+          label: 'Mock FLUX',
+          preview: false,
+          contextTokens: null,
+          maxOutputTokens: null,
+          dialect: 'flux',
+          pricePerImage: 0.02,
+        },
+      ],
+      new Date(),
+    )
+    await updateSettings(db, {
+      modelRouting: {
+        stills: { provider: 'fal', model: 'fal-ai/mock-flux' },
+        stillsLikeness: null,
+      },
+    })
+    expect(await stillSlotEstimateUsd()).toBeCloseTo(0.02 * STILL_GENERATIONS)
+    await generateStillCandidates({ ...still, depicts: [] }, FIXTURE_PROJECT_ID)
+    expect(await lastLedgerModel()).toBe('fal-ai/mock-flux')
   })
 })
