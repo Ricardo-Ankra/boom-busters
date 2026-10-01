@@ -68,6 +68,22 @@ describe('refreshModelCatalogue (decision 287)', () => {
       expect.any(Date),
     )
   })
+
+  it('still reports the failure when recording it also fails', async () => {
+    vi.stubEnv('MOCK_PROVIDERS', '0')
+    db.llmCredentials.mockResolvedValueOnce({ anthropic: 'a' })
+    fetchSpy.mockImplementation(
+      async () => new Response('{"error":{"message":"bad key"}}', { status: 401 }),
+    )
+    db.recordCatalogueFailure.mockRejectedValueOnce(new Error('db is down'))
+
+    const results = await refreshModelCatalogue()
+
+    const anthropic = results.find((r) => r.provider === 'anthropic')
+    expect(anthropic?.ok).toBe(false)
+    expect(anthropic?.skipped).toBe(false)
+    expect(typeof anthropic?.error).toBe('string')
+  })
 })
 
 describe('stillCatalogue', () => {

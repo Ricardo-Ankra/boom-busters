@@ -107,7 +107,13 @@ export async function refreshModelCatalogue(): Promise<RefreshOutcome[]> {
         return { provider, ok: true, skipped: false, error: null }
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error)
-        await recordCatalogueFailure(db, provider, message, at)
+        // Recording the failure must not itself fail the refresh: a DB write
+        // that throws here must not take down the other providers' results.
+        try {
+          await recordCatalogueFailure(db, provider, message, at)
+        } catch {
+          // Deliberately swallowed — see above.
+        }
         return { provider, ok: false, skipped: false, error: message }
       }
     }),
