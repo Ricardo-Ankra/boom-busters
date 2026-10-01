@@ -315,6 +315,45 @@ describe('live image models (decision 287)', () => {
         'One at a time is not offered: Makes one image per request, or takes an input this app cannot send.',
       ),
     ).toBeInTheDocument()
+    // One endpoint keeps its own line; the summary is for many.
+    expect(screen.queryByText('Show them')).not.toBeInTheDocument()
+  })
+
+  it('sums up many fal endpoints it cannot send in one line, with the names behind Show them', () => {
+    const options = modelOptions()
+    for (const [id, label] of [
+      ['fal-ai/one-at-a-time', 'One at a time'],
+      ['fal-ai/needs-a-mask', 'Needs a mask'],
+      ['fal-ai/video-only', 'Video only'],
+    ] as const) {
+      options.image.fal.push({
+        id,
+        label,
+        status: 'incompatible',
+        preview: false,
+        selectable: false,
+        price: null,
+        pricedAs: null,
+        reason: 'Makes one image per request, or takes an input this app cannot send.',
+        catalogued: false,
+        fallsBackTo: null,
+      })
+    }
+    const settings = structuredClone(DEFAULT_SETTINGS)
+    settings.modelRouting.stills = { provider: 'fal', model: 'fal-ai/flux/dev' }
+    renderModelsTab(options, settings)
+    expect(
+      screen.getByText(
+        '3 fal.ai endpoints are listed but not compatible: they make one image per request, or take an input this app cannot send.',
+      ),
+    ).toBeInTheDocument()
+    expect(screen.queryByText(/is not offered:/)).not.toBeInTheDocument()
+    const summary = screen.getByText('Show them')
+    expect(summary.tagName).toBe('SUMMARY')
+    const names = Array.from(summary.closest('details')!.querySelectorAll('li')).map(
+      (li) => li.textContent,
+    )
+    expect(names).toEqual(['One at a time', 'Needs a mask', 'Video only'])
   })
 
   it('shows each image option with its price per image', () => {

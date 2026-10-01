@@ -573,15 +573,35 @@ export function ModelsTab({
         />
       )
 
+    // fal's active text-to-image list is long, so many incompatible
+    // endpoints are summed up in one line with their names folded away,
+    // rather than one line each under every fal row.
+    const incompatible = list.filter((o) => o.status === 'incompatible' && o.reason)
+    const incompatibleNote =
+      incompatible.length === 1 ? (
+        <p className="text-[12px] text-[var(--color-text-muted)]">
+          {incompatible[0]!.label} is not offered: {incompatible[0]!.reason}
+        </p>
+      ) : incompatible.length > 1 ? (
+        <div className="text-[12px] text-[var(--color-text-muted)]">
+          <p>
+            {incompatible.length} fal.ai endpoints are listed but not compatible: they make one
+            image per request, or take an input this app cannot send.
+          </p>
+          <details>
+            <summary className="cursor-pointer">Show them</summary>
+            <ul className="mt-1 list-disc pl-5">
+              {incompatible.map((o) => (
+                <li key={o.id}>{o.label}</li>
+              ))}
+            </ul>
+          </details>
+        </div>
+      ) : null
+
     return (
       <>
-        {list
-          .filter((o) => o.status === 'incompatible' && o.reason)
-          .map((o) => (
-            <p key={o.id} className="text-[12px] text-[var(--color-text-muted)]">
-              {o.label} is not offered: {o.reason}
-            </p>
-          ))}
+        {incompatibleNote}
 
         {!waiting && selected?.status === 'estimated' && selected.price ? (
           <div className="flex flex-wrap items-center gap-2">
