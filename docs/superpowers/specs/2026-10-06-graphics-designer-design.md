@@ -167,7 +167,8 @@ The cacheable prefix, the same for every graphic of a film:
 The per-slot part:
 
 - The chapter's title.
-- The narration the slot covers, with the sentence before and after.
+- The narration the slot covers, and the whole paragraph (or paragraphs) it
+  sits in, for context.
 - The slot's length in seconds.
 - The words spoken within the slot with their offsets from the slot's start,
   from the take's word timings (`voice_takes.timings`); where a take has none,
