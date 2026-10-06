@@ -38,7 +38,17 @@ import { env } from '@/lib/env'
  * the Models tab's options, and image adapters that know the live models.
  */
 
-const REFRESH_TIMEOUT_MS = 10_000
+/**
+ * How long each provider's list may take. fal's needs a search, a schema
+ * request per ten endpoints and its pricing (about 15 s for 203 endpoints,
+ * measured 2026-10-06); the others answer in one or two pages.
+ */
+export const REFRESH_TIMEOUT_MS: Record<CatalogueProvider, number> = {
+  anthropic: 10_000,
+  openai: 10_000,
+  google: 10_000,
+  fal: 45_000,
+}
 
 export interface RefreshOutcome {
   provider: CatalogueProvider
@@ -89,7 +99,7 @@ export async function refreshModelCatalogue(): Promise<RefreshOutcome[]> {
         const listed = mocked
           ? mockListedModels(provider)
           : await listProviderModels(provider, key!, {
-              signal: AbortSignal.timeout(REFRESH_TIMEOUT_MS),
+              signal: AbortSignal.timeout(REFRESH_TIMEOUT_MS[provider]),
             })
         await replaceCatalogue(
           db,
