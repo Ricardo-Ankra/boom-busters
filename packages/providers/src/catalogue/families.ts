@@ -46,6 +46,13 @@ function belowClaudeFourFive(id: string): boolean {
 const claudeLine = (line: string) => (id: string) =>
   id.startsWith(`claude-${line}-`) && !belowClaudeFourFive(id)
 
+/**
+ * Sonnet 4.5 and 4.6 cost $3/$15 against Sonnet 5's $2/$10 (Anthropic's price
+ * list, 2026-10-06), so the Sonnet family starts at 5: a 4.x Sonnet is priced
+ * from the catalogue or by hand, never guessed from Sonnet 5.
+ */
+const sonnetFiveOn = (id: string) => claudeLine('sonnet')(id) && !/^claude-sonnet-4(?:-|$)/.test(id)
+
 const LLM_FAMILIES: Record<LlmProvider, readonly FamilyRule[]> = {
   anthropic: [
     {
@@ -55,7 +62,7 @@ const LLM_FAMILIES: Record<LlmProvider, readonly FamilyRule[]> = {
     },
     {
       family: 'sonnet',
-      matches: claudeLine('sonnet'),
+      matches: sonnetFiveOn,
       representative: 'claude-sonnet-5',
     },
     {

@@ -95,18 +95,19 @@ describe('every provider is guarded', () => {
 
 describe('llmPrice with live models (decision 288)', () => {
   it('prices a live family member at its family', () => {
-    expect(llmPrice('anthropic', 'claude-opus-5-5')).toEqual({ inputPerMTok: 5, outputPerMTok: 25 })
+    // A hypothetical next Opus: Opus 5.5 is catalogued since 2026-10-06.
+    expect(llmPrice('anthropic', 'claude-opus-6')).toEqual({ inputPerMTok: 5, outputPerMTok: 25 })
   })
 
   it('prefers the owner’s price', () => {
     const prices = {
       ...EMPTY_MODEL_PRICES,
-      llm: { 'anthropic:claude-opus-5-5': { inputPerMTok: 4, outputPerMTok: 20 } },
+      llm: { 'anthropic:claude-opus-6': { inputPerMTok: 4, outputPerMTok: 20 } },
     }
     expect(
       estimateLlmUsd({
         provider: 'anthropic',
-        model: 'claude-opus-5-5',
+        model: 'claude-opus-6',
         inputTokens: 1_000_000,
         outputTokens: 1_000_000,
         prices,
@@ -115,6 +116,6 @@ describe('llmPrice with live models (decision 288)', () => {
   })
 
   it('still refuses an unpriced model rather than estimating $0', () => {
-    expect(() => llmPrice('anthropic', 'claude-fable-5-1')).toThrow(ValidationError)
+    expect(() => llmPrice('anthropic', 'claude-mythos-5-1')).toThrow(ValidationError)
   })
 })
