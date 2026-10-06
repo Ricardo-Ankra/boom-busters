@@ -1,4 +1,4 @@
-import { GRAPHIC_GRID } from '@boom-busters/schemas'
+import { GRAPHIC_ENTER_MS, GRAPHIC_GRID, graphicEnterTimes } from '@boom-busters/schemas'
 import type {
   BrandKitTokens,
   GraphicCell,
@@ -67,7 +67,7 @@ const HEAVY_WEIGHT_EM = 0.03
 /** The line box CSS gives a single line at `line-height: normal`, in em. */
 const LINE_HEIGHT_EM = 1.25
 const MIN_FONT_PX = 12
-const ENTER_MS = 600
+const ENTER_MS = GRAPHIC_ENTER_MS
 const BAR_LENGTH_FRACTION = 0.62
 const BAR_LABEL_MAX_PX = 28
 const BAR_LABEL_HEIGHT_FRACTION = 0.32
@@ -451,8 +451,7 @@ export function graphicLayout(
   })
 }
 
-/** The gap between auto-staggered entrances, and the slow lift across the whole shot. */
-const STAGGER_MS = 180
+/** The slow lift across the whole shot. */
 const DRIFT = 0.012
 
 /**
@@ -475,13 +474,7 @@ const DRIFT = 0.012
  * timing one element off zero.
  */
 export function staggeredEnterMs(scene: GraphicScene): Map<string, number> {
-  const timed = scene.elements.some((element) => element.enter.atMs > 0)
-  return new Map(
-    scene.elements.map((element, index) => [
-      element.id,
-      timed ? element.enter.atMs : index * STAGGER_MS,
-    ]),
-  )
+  return graphicEnterTimes(scene)
 }
 
 /**

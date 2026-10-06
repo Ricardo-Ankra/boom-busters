@@ -41,6 +41,7 @@ const TASK_LABELS: Record<LlmTask, string> = {
   metadata: 'Titles and descriptions',
   digest: 'Weekly digest',
   direction: 'Visual direction',
+  graphics: 'Motion graphics',
 }
 
 /** The image routes, which are priced per image rather than per token. */

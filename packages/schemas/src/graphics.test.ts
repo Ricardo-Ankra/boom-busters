@@ -6,6 +6,8 @@ import {
   PlannedGraphicSceneSchema,
   figureCitesClaim,
   figureDigitGroups,
+  graphicEnterTimes,
+  lateEntranceIssue,
 } from './graphics'
 
 const CLAIM = '01HQ00000000000000000000AA'
@@ -166,5 +168,35 @@ describe('figureCitesClaim', () => {
   it('exposes the digit groups it compares', () => {
     expect(figureDigitGroups('$4.5bn')).toEqual(['4.5'])
     expect(figureDigitGroups('1,200 staff, 3 sites')).toEqual(['1200', '3'])
+  })
+})
+
+describe('entrance timing (decision 289)', () => {
+  const el = (id: string, atMs: number) => ({ id, enter: { atMs } })
+
+  it('staggers unauthored entrances 180 ms apart', () => {
+    const times = graphicEnterTimes({ elements: [el('a', 0), el('b', 0), el('c', 0)] })
+    expect([...times.values()]).toEqual([0, 180, 360])
+  })
+
+  it('uses authored times as written once any element is timed', () => {
+    const times = graphicEnterTimes({ elements: [el('a', 0), el('b', 900)] })
+    expect([...times.values()]).toEqual([0, 900])
+  })
+
+  it('accepts entrances that finish inside the slot', () => {
+    expect(lateEntranceIssue({ elements: [el('a', 0), el('b', 2400)] }, 3000)).toBeNull()
+  })
+
+  it('names the first entrance that cannot finish before the slot ends', () => {
+    expect(lateEntranceIssue({ elements: [el('a', 0), el('b', 2500)] }, 3000)).toBe(
+      'element "b" enters at 2500 ms, but this 3.0 s slot needs every entrance to start by 2400 ms',
+    )
+  })
+
+  it('applies to staggered entrances too', () => {
+    const six = ['a', 'b', 'c', 'd', 'e', 'f'].map((id) => el(id, 0))
+    // Sixth element enters at 900 ms; a 1.4 s slot needs starts by 800 ms.
+    expect(lateEntranceIssue({ elements: six }, 1400)).toMatch(/^element "f" enters at 900 ms/)
   })
 })
