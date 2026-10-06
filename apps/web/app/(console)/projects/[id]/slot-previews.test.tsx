@@ -8,8 +8,9 @@ import {
   roleFontPx,
 } from '@boom-busters/compositions/graphic'
 import { DEFAULT_SETTINGS, resolveBrandKit } from '@boom-busters/schemas'
-import type { ChartBrief, GraphicBrief, MapBrief } from '@boom-busters/schemas'
+import type { ChartBrief, MapBrief } from '@boom-busters/schemas'
 import { ChartPreview, GraphicPreview, MapPreview } from './slot-previews'
+import type { DesignedGraphicBrief } from './slot-previews'
 import type { BrandChartColors } from './slot-previews'
 
 const COLORS: BrandChartColors = {
@@ -146,7 +147,7 @@ describe('a chart with two measures (decision 259)', () => {
 
 const LOGO_ID = '01HQ00000000000000000000M1'
 
-const graphicBrief: GraphicBrief = {
+const graphicBrief: DesignedGraphicBrief = {
   type: 'graphic',
   coversText: 'It raised four billion dollars in a single round.',
   description: 'A counting figure beside the mark that backs it.',
@@ -195,7 +196,7 @@ const graphicBrief: GraphicBrief = {
   },
 }
 
-const withAsset: GraphicBrief = {
+const withAsset: DesignedGraphicBrief = {
   ...graphicBrief,
   scene: {
     elements: graphicBrief.scene.elements.map((element) =>
@@ -207,7 +208,7 @@ const withAsset: GraphicBrief = {
 /** The preview's own resting frame (`GRAPHIC_WIDTH`/`GRAPHIC_HEIGHT` in `slot-previews.tsx`). */
 const GRAPHIC_FRAME = { width: 480, height: 270 }
 
-const barsBrief: GraphicBrief = {
+const barsBrief: DesignedGraphicBrief = {
   type: 'graphic',
   coversText: 'It raised more than it burned.',
   description: 'Two bars compared.',

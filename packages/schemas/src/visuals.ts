@@ -1,6 +1,13 @@
 import { z } from 'zod'
 import { isFrontPage, normaliseArticleUrl } from './article'
-import { GraphicSceneSchema, PlannedGraphicSceneSchema, figureCitesClaim } from './graphics'
+import {
+  GraphicSceneSchema,
+  PlannedGraphicSceneSchema,
+  figureCitesClaim,
+  type GraphicElement,
+  type GraphicScene,
+  type PlannedGraphicScene,
+} from './graphics'
 import { UlidSchema } from './ids'
 import { logoForEntity, type LogoIndex } from './logos'
 import { SetPlateDirectionSchema } from './sets'
@@ -274,11 +281,23 @@ export type HeadlineBrief = z.infer<typeof HeadlineBriefSchema>
 /**
  * A composed graphic (decision 268, Plan B): the brief IS the scene, as a
  * chart's brief is its series. Nothing is fetched; the timeline embeds it.
+ *
+ * Since decision 289 the shot list writes the intent and a designer of its
+ * own composes the scene, so a graphic can be stored before it is designed
+ * (no scene, no issue: being designed) or after the designer could not
+ * (no scene, `designIssue` says why). A graphic stored before 289 has a
+ * scene and no intent, and its description stands in for one.
  */
 export const GraphicBriefSchema = z.object({
   type: z.literal('graphic'),
   ...briefCommon,
-  scene: GraphicSceneSchema,
+  scene: GraphicSceneSchema.optional(),
+  /** What the graphic must get across, not how it looks. */
+  intent: z.string().trim().min(1).max(300).optional(),
+  /** The claims the beat rests on, as the shot list named them. */
+  intentClaimIds: z.array(UlidSchema).max(6).optional(),
+  /** Why the designer could not compose it. Meaningful only without a scene. */
+  designIssue: z.string().min(1).max(500).optional(),
 })
 export type GraphicBrief = z.infer<typeof GraphicBriefSchema>
 
@@ -700,7 +719,12 @@ export const PlannedHeadlineBriefSchema = HeadlineBriefSchema.omit({
 export type PlannedHeadlineBrief = z.infer<typeof PlannedHeadlineBriefSchema>
 
 /** The wire shape of a graphic brief: claim numbers and entity names, no ids. */
-export const PlannedGraphicBriefSchema = GraphicBriefSchema.omit({ scene: true }).extend({
+export const PlannedGraphicBriefSchema = GraphicBriefSchema.omit({
+  scene: true,
+  intent: true,
+  intentClaimIds: true,
+  designIssue: true,
+}).extend({
   scene: PlannedGraphicSceneSchema,
 })
 export type PlannedGraphicBrief = z.infer<typeof PlannedGraphicBriefSchema>
@@ -800,15 +824,15 @@ export function claimCarriesArticle(claim: PlanningClaim | undefined): boolean {
 /**
  * Whether a graphic's figures and bars cite claims that exist and carry the
  * digits shown, in the words `plannedBriefRejection` reports back. Shared by
- * `resolvePlannedBrief` and `plannedBriefRejection` so the two can never
- * disagree about which graphic passes.
+ * `resolvePlannedBrief`, `plannedBriefRejection` and `resolvePlannedScene`
+ * so they can never disagree about which graphic passes.
  */
-function graphicCitationIssue(
-  brief: PlannedGraphicBrief,
+function sceneCitationIssue(
+  scene: PlannedGraphicScene,
   claims: readonly PlanningClaim[],
 ): string | null {
   const claimIds = claims.map((claim) => claim.id)
-  for (const element of brief.scene.elements) {
+  for (const element of scene.elements) {
     if (element.kind === 'figure') {
       if (!mapClaimRefs([element.claimRef], claimIds)) {
         return 'graphic cited a claim number outside the claim list'
@@ -828,6 +852,95 @@ function graphicCitationIssue(
     }
   }
   return null
+}
+
+/**
+ * A designed scene made storable (decision 289): claim numbers become ids,
+ * logos are matched against the library. Refused, with the words the board
+ * and the designer's retry read, when a figure cites a claim that does not
+ * hold its digits.
+ */
+export function resolvePlannedScene(
+  scene: PlannedGraphicScene,
+  claims: readonly PlanningClaim[],
+  logos: readonly LogoIndex[] = [],
+): { scene: GraphicScene } | { issue: string } {
+  const issue = sceneCitationIssue(scene, claims)
+  if (issue !== null) return { issue }
+  const claimIds = claims.map((claim) => claim.id)
+  const elements: GraphicElement[] = []
+  for (const element of scene.elements) {
+    if (element.kind === 'figure') {
+      const mapped = mapClaimRefs([element.claimRef], claimIds)!
+      elements.push({ ...element, claimRef: mapped[0]! })
+    } else if (element.kind === 'bars') {
+      const items = []
+      for (const item of element.items) {
+        const mapped = mapClaimRefs([item.claimRef], claimIds)!
+        items.push({ ...item, claimRef: mapped[0]! })
+      }
+      elements.push({ ...element, items })
+    } else if (element.kind === 'logo') {
+      // A missing mark is not a refusal: the fix is an upload, not a redraft,
+      // so the slot is stored and resolves to a placeholder that asks for it.
+      const logo = logoForEntity(element.entity, logos)
+      elements.push(logo ? { ...element, assetId: logo.id } : element)
+    } else {
+      elements.push(element)
+    }
+  }
+  return { scene: { elements } }
+}
+
+/** Every claim a scene's figures and bars cite, in scene order, each once. */
+export function graphicSceneClaimIds(scene: GraphicScene): string[] {
+  const ids: string[] = []
+  for (const element of scene.elements) {
+    const cited =
+      element.kind === 'figure'
+        ? [element.claimRef]
+        : element.kind === 'bars'
+          ? element.items.map((item) => item.claimRef)
+          : []
+    for (const id of cited) if (!ids.includes(id)) ids.push(id)
+  }
+  return ids
+}
+
+/**
+ * A stored scene in the designer's wire shape, for a redesign: claim ids
+ * become numbers in `claimIds`' order and logos lose their asset ids. A
+ * claim no longer in the list becomes 0, which the prompt explains.
+ */
+export function toPlannedScene(
+  scene: GraphicScene,
+  claimIds: readonly string[],
+): PlannedGraphicScene {
+  const number = (id: string) => claimIds.indexOf(id) + 1
+  return {
+    elements: scene.elements.map((element) => {
+      if (element.kind === 'figure') return { ...element, claimRef: number(element.claimRef) }
+      if (element.kind === 'bars') {
+        return {
+          ...element,
+          items: element.items.map((item) => ({ ...item, claimRef: number(item.claimRef) })),
+        }
+      }
+      if (element.kind === 'logo') {
+        const { assetId: _assetId, ...rest } = element
+        return rest
+      }
+      return element
+    }),
+  } as PlannedGraphicScene
+}
+
+/** The intent a graphic is designed from: its own, or (stored before 289) its description. */
+export function graphicIntentOf(brief: GraphicBrief): { intent: string; claimIds: string[] } {
+  return {
+    intent: brief.intent ?? brief.description,
+    claimIds: brief.intentClaimIds ?? (brief.scene ? graphicSceneClaimIds(brief.scene) : []),
+  }
 }
 
 /**
@@ -882,30 +995,9 @@ export function resolvePlannedBrief(
   }
 
   if (brief.type === 'graphic') {
-    if (graphicCitationIssue(brief, claims) !== null) return null
-    const claimIds = claims.map((claim) => claim.id)
-    const elements = []
-    for (const element of brief.scene.elements) {
-      if (element.kind === 'figure') {
-        const mapped = mapClaimRefs([element.claimRef], claimIds)!
-        elements.push({ ...element, claimRef: mapped[0]! })
-      } else if (element.kind === 'bars') {
-        const items = []
-        for (const item of element.items) {
-          const mapped = mapClaimRefs([item.claimRef], claimIds)!
-          items.push({ ...item, claimRef: mapped[0]! })
-        }
-        elements.push({ ...element, items })
-      } else if (element.kind === 'logo') {
-        // A missing mark is not a refusal: the fix is an upload, not a redraft,
-        // so the slot is stored and resolves to a placeholder that asks for it.
-        const logo = logoForEntity(element.entity, logos)
-        elements.push(logo ? { ...element, assetId: logo.id } : element)
-      } else {
-        elements.push(element)
-      }
-    }
-    return { ...brief, scene: { elements } } as ShotBrief
+    const resolved = resolvePlannedScene(brief.scene, claims, logos)
+    if ('issue' in resolved) return null
+    return { ...brief, scene: resolved.scene }
   }
 
   return brief
@@ -949,7 +1041,7 @@ export function plannedBriefRejection(
     // `resolvePlannedBrief`), so this never inspects `logos`; it stays a
     // parameter so a caller can pass the same three arguments to both functions.
     void logos
-    return graphicCitationIssue(brief, claims)
+    return sceneCitationIssue(brief.scene, claims)
   }
 
   return null

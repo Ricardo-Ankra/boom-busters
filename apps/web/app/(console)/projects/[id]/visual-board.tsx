@@ -17,6 +17,7 @@ import * as React from 'react'
 import { SOCIAL_EXCERPT_TOO_LONG, SOCIAL_TOO_LONG } from '@boom-busters/compositions/social'
 import {
   isFrontPage,
+  graphicSceneClaimIds,
   JOB_STALE_MS,
   LOGO_ACCEPT,
   missingArticleFields,
@@ -29,7 +30,6 @@ import {
 import type {
   BrandKitStored,
   GraphicElement,
-  GraphicScene,
   SetPlateView,
   ShotBrief,
   SlotCandidate,
@@ -1210,22 +1210,6 @@ function SocialImageButton({
   )
 }
 
-/** Every claim id a graphic's figure and bars items cite, in scene order, each once. */
-function graphicClaimIds(scene: GraphicScene): string[] {
-  const seen = new Set<string>()
-  const ids: string[] = []
-  for (const element of scene.elements) {
-    const refs = element.kind === 'figure' ? [element.claimRef] : []
-    const barRefs = element.kind === 'bars' ? element.items.map((item) => item.claimRef) : []
-    for (const ref of [...refs, ...barRefs]) {
-      if (seen.has(ref)) continue
-      seen.add(ref)
-      ids.push(ref)
-    }
-  }
-  return ids
-}
-
 /**
  * The graphic card (decision 268, Plan B): the same preview the board shows
  * beside a headline card, the claim chips over what the scene cites, and one
@@ -1246,12 +1230,13 @@ function GraphicSlot({
   act: Act
   brand: BrandKitStored
 }) {
-  const claimIds = graphicClaimIds(brief.scene)
+  const scene = brief.scene
+  const claimIds = scene ? graphicSceneClaimIds(scene) : (brief.intentClaimIds ?? [])
   // An `assetId` alone is not proof the mark is still there: the library row
   // it names can have been deleted since this brief was resolved. The board
   // offers the same repair either way, keyed off whether the preview can
   // actually draw it, not off whether the brief once thought it could.
-  const missingLogos = brief.scene.elements.filter(
+  const missingLogos = (scene?.elements ?? []).filter(
     (element): element is Extract<GraphicElement, { kind: 'logo' }> =>
       element.kind === 'logo' &&
       (element.assetId === undefined || slot.logoUrls[element.assetId] === undefined),
@@ -1259,7 +1244,9 @@ function GraphicSlot({
 
   return (
     <div className="flex flex-col gap-2">
-      <GraphicPreview brief={brief} brand={brand} logoUrls={slot.logoUrls} />
+      {scene ? (
+        <GraphicPreview brief={{ ...brief, scene }} brand={brand} logoUrls={slot.logoUrls} />
+      ) : null}
       {claimIds.length > 0 ? (
         <div className="flex flex-wrap gap-1" aria-label="Source claims">
           {claimIds.map((claimId, index) => (

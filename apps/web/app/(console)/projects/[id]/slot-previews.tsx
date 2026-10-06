@@ -26,7 +26,16 @@ import {
   tokenColor,
 } from '@boom-busters/compositions/graphic'
 import { DEFAULT_SETTINGS, resolveBrandKit } from '@boom-busters/schemas'
-import type { BrandKitStored, ChartBrief, GraphicBrief, MapBrief } from '@boom-busters/schemas'
+import type {
+  BrandKitStored,
+  ChartBrief,
+  GraphicBrief,
+  GraphicScene,
+  MapBrief,
+} from '@boom-busters/schemas'
+
+/** A graphic the designer has composed: the only kind the preview can draw. */
+export type DesignedGraphicBrief = GraphicBrief & { scene: GraphicScene }
 
 /**
  * Live chart and map previews (build spec section 11.3): rendered with the
@@ -571,7 +580,7 @@ export function GraphicPreview({
   brand,
   logoUrls,
 }: {
-  brief: GraphicBrief
+  brief: DesignedGraphicBrief
   brand: BrandKitStored
   logoUrls: Readonly<Record<string, string>>
 }) {

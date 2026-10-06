@@ -337,9 +337,17 @@ export function slotPlan(input: {
       // join. A logo element with no asset id, or one the map does not hold
       // (never uploaded, or uploaded after this row was planned), skips the
       // whole slot rather than rendering a hole where a mark should be.
+      const scene = brief.scene
+      if (!scene) {
+        skipped.push({
+          slotId: row.id,
+          reason: `graphic "${brief.coversText}" has not been designed`,
+        })
+        continue
+      }
       const logos: Record<string, { r2Key: string; width: number; height: number }> = {}
       let missing: string | null = null
-      for (const element of brief.scene.elements) {
+      for (const element of scene.elements) {
         if (element.kind !== 'logo') continue
         const asset = element.assetId ? input.logos?.get(element.assetId) : undefined
         if (!asset) {
@@ -354,7 +362,7 @@ export function slotPlan(input: {
       }
       const claimIds = [
         ...new Set(
-          brief.scene.elements.flatMap((element) =>
+          scene.elements.flatMap((element) =>
             element.kind === 'figure'
               ? [element.claimRef]
               : element.kind === 'bars'
@@ -363,7 +371,7 @@ export function slotPlan(input: {
           ),
         ),
       ]
-      slots.push({ ...base, type: 'graphic', graphic: { scene: brief.scene, logos, claimIds } })
+      slots.push({ ...base, type: 'graphic', graphic: { scene, logos, claimIds } })
       continue
     }
 

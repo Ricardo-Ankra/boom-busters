@@ -832,7 +832,7 @@ export async function visualsReviewModel(
     const assetIds = new Set(
       briefs.flatMap((parsed) =>
         parsed.success && parsed.data.type === 'graphic'
-          ? parsed.data.scene.elements.flatMap((element) =>
+          ? (parsed.data.scene?.elements ?? []).flatMap((element) =>
               element.kind === 'logo' && element.assetId !== undefined ? [element.assetId] : [],
             )
           : [],

@@ -280,7 +280,7 @@ export const assemblyRunner = inngest.createFunction(
       for (const row of slotsWithBytes) {
         const brief = ShotBriefSchema.safeParse(row.brief)
         if (!brief.success || brief.data.type !== 'graphic') continue
-        for (const element of brief.data.scene.elements) {
+        for (const element of brief.data.scene?.elements ?? []) {
           if (element.kind !== 'logo' || !element.assetId || logos.has(element.assetId)) continue
           const asset = await logoById(db, element.assetId)
           if (asset?.width && asset.height) {

@@ -227,7 +227,7 @@ describe('mockRetypedBrief', () => {
       logoTitles: ['Wirecard AG'],
     })
     expect(ShotBriefSchema.parse(brief)).toMatchObject({ type: 'graphic' })
-    const elements = brief.type === 'graphic' ? brief.scene.elements : []
+    const elements = brief.type === 'graphic' ? (brief.scene?.elements ?? []) : []
     expect(elements.find((element) => element.kind === 'figure')).toMatchObject({
       claimRef: CLAIM_A,
       value: '$4bn',

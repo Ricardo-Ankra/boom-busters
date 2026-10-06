@@ -468,6 +468,30 @@ describe('slotPlan', () => {
       expect(missing.skipped[0]?.reason).toBe('a logo for "Stability AI" has not been uploaded')
     })
 
+    it('skips a graphic that has not been designed, in words (decision 289)', () => {
+      const plan = slotPlan({
+        slots: [
+          slotRow({
+            type: 'graphic',
+            brief: {
+              type: 'graphic',
+              coversText: 'covers',
+              description: 'desc',
+              motion: { kind: 'static' },
+              transition: 'cut',
+              intent: 'The figure is the story.',
+              intentClaimIds: [CLAIM_A],
+            } as unknown as Record<string, unknown>,
+            candidates: [],
+          }),
+        ],
+        assetsById: new Map(),
+        logos: new Map(),
+      })
+      expect(plan.slots).toEqual([])
+      expect(plan.skipped[0]?.reason).toBe('graphic "covers" has not been designed')
+    })
+
     it('keys each logo by its own element id, so two different marks do not collide', () => {
       const LOGO_A = '01HQ00000000000000000000M1'
       const LOGO_B = '01HQ00000000000000000000M2'

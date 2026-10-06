@@ -18,7 +18,11 @@ import {
   claimCarriesArticle,
   convertBrief,
   mapClaimRefs,
+  graphicIntentOf,
+  graphicSceneClaimIds,
   plannedBriefRejection,
+  resolvePlannedScene,
+  toPlannedScene,
   resolvePlannedBrief,
   visualsApprovalBlockedReason,
   visualsCoverage,
@@ -399,8 +403,8 @@ describe('graphic briefs (decision 268, Plan B)', () => {
     )
     expect(resolved?.type).toBe('graphic')
     if (resolved?.type !== 'graphic') return
-    expect(resolved.scene.elements[0]).toMatchObject({ claimRef: CLAIMS[0]!.id })
-    expect(resolved.scene.elements[1]).toMatchObject({
+    expect(resolved.scene?.elements[0]).toMatchObject({ claimRef: CLAIMS[0]!.id })
+    expect(resolved.scene?.elements[1]).toMatchObject({
       entity: 'Stability AI, the image company',
       assetId: LOGOS[0]!.id,
     })
@@ -415,7 +419,7 @@ describe('graphic briefs (decision 268, Plan B)', () => {
     )
     expect(resolved?.type).toBe('graphic')
     if (resolved?.type !== 'graphic') return
-    expect(resolved.scene.elements[0]).toEqual(
+    expect(resolved.scene?.elements[0]).toEqual(
       expect.not.objectContaining({ assetId: expect.anything() }),
     )
   })
@@ -817,5 +821,129 @@ describe('job stamps (decision 286)', () => {
     expect(VisualsJobSchema.safeParse({ op: 'replan', jobId: newId(), startedAt }).success).toBe(
       false,
     )
+  })
+})
+
+describe('an undesigned graphic (decision 289)', () => {
+  const graphicCommon = {
+    coversText: 'It raised four billion.',
+    description: 'The figure, large.',
+    motion: { kind: 'static' as const },
+    transition: 'cut' as const,
+  }
+  const SCENE_CELL = { col: 0, row: 0, colSpan: 6, rowSpan: 3 }
+  const STORED_SCENE = {
+    elements: [
+      {
+        kind: 'figure' as const,
+        id: 'f1',
+        cell: SCENE_CELL,
+        value: '$4bn',
+        claimRef: CLAIM_A,
+        color: 'accent' as const,
+        enter: { kind: 'fade' as const, atMs: 0 },
+      },
+    ],
+  }
+
+  it('parses with an intent and no scene', () => {
+    const parsed = ShotBriefSchema.parse({
+      type: 'graphic',
+      ...graphicCommon,
+      intent: 'Four billion in one round is the story.',
+      intentClaimIds: [CLAIM_A],
+    })
+    expect(parsed.type === 'graphic' && parsed.scene).toBeUndefined()
+  })
+
+  it('still parses a graphic stored before intents existed', () => {
+    const parsed = ShotBriefSchema.parse({
+      type: 'graphic',
+      ...graphicCommon,
+      scene: STORED_SCENE,
+    })
+    expect(parsed.type === 'graphic' && parsed.intent).toBeUndefined()
+  })
+
+  it('reads the description as the intent of a graphic stored before intents', () => {
+    const brief = GraphicBriefSchema.parse({
+      type: 'graphic',
+      ...graphicCommon,
+      scene: STORED_SCENE,
+    })
+    expect(graphicIntentOf(brief)).toEqual({
+      intent: 'The figure, large.',
+      claimIds: graphicSceneClaimIds(STORED_SCENE),
+    })
+  })
+
+  it('resolves a planned scene to claim ids, and refuses a number the claim lacks', () => {
+    const claims = [
+      { id: CLAIM_A, text: 'It raised 4 billion dollars.' },
+      { id: CLAIM_B, text: 'It employs 1,200 people.' },
+    ]
+    const ok = resolvePlannedScene(
+      {
+        elements: [
+          {
+            kind: 'figure',
+            id: 'f',
+            cell: SCENE_CELL,
+            value: '$4bn',
+            claimRef: 1,
+            color: 'accent',
+            enter: { kind: 'count', atMs: 0 },
+          },
+        ],
+      },
+      claims,
+    )
+    expect('scene' in ok && ok.scene.elements[0]).toMatchObject({ claimRef: CLAIM_A })
+    const bad = resolvePlannedScene(
+      {
+        elements: [
+          {
+            kind: 'figure',
+            id: 'f',
+            cell: SCENE_CELL,
+            value: '$5bn',
+            claimRef: 1,
+            color: 'accent',
+            enter: { kind: 'fade', atMs: 0 },
+          },
+        ],
+      },
+      claims,
+    )
+    expect(bad).toEqual({
+      issue: 'graphic showed a number the cited claim does not contain: $5bn against claim 1',
+    })
+  })
+
+  it('turns a stored scene back into claim numbers for a redesign', () => {
+    const planned = toPlannedScene(STORED_SCENE, [CLAIM_B, CLAIM_A])
+    // STORED_SCENE's figure cites CLAIM_A, which is number 2 in this list.
+    expect(planned.elements.find((e) => e.kind === 'figure')).toMatchObject({ claimRef: 2 })
+  })
+
+  it('numbers a claim that left the list as 0 and drops a logo asset id', () => {
+    const planned = toPlannedScene(
+      {
+        elements: [
+          ...STORED_SCENE.elements,
+          {
+            kind: 'logo',
+            id: 'l1',
+            cell: { ...SCENE_CELL, col: 6 },
+            entity: 'Stability AI',
+            assetId: '01HQ00000000000000000000M1',
+            enter: { kind: 'fade', atMs: 0 },
+          },
+        ],
+      },
+      [CLAIM_B],
+    )
+    expect(planned.elements[0]).toMatchObject({ claimRef: 0 })
+    expect(planned.elements[1]).not.toHaveProperty('assetId')
   })
 })
