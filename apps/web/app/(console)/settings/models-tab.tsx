@@ -374,8 +374,23 @@ export function ModelsTab({
 
     // fal's active text-to-image list is long, so many incompatible
     // endpoints are summed up in one line with their names folded away,
-    // rather than one line each under every fal row.
-    const incompatible = list.filter((o) => o.status === 'incompatible' && o.reason)
+    // rather than one line each under every fal row. A model kept only
+    // because a route holds it counts in that route's row alone, and the
+    // row's own model, when it is the incompatible one, gets its own line:
+    // its reason may not be the one the summary gives.
+    const ownIncompatible = selected?.status === 'incompatible' && selected.reason ? selected : null
+    const incompatible = list.filter(
+      (o) =>
+        o.status === 'incompatible' &&
+        o.reason &&
+        o !== ownIncompatible &&
+        (!o.routedOnly || o.id === model),
+    )
+    const ownNote = ownIncompatible ? (
+      <p className="text-[12px] text-[var(--color-warning)]">
+        {ownIncompatible.label} is not offered: {ownIncompatible.reason}
+      </p>
+    ) : null
     const incompatibleNote =
       incompatible.length === 1 ? (
         <p className="text-[12px] text-[var(--color-text-muted)]">
@@ -400,6 +415,7 @@ export function ModelsTab({
 
     return (
       <>
+        {ownNote}
         {incompatibleNote}
 
         {!waiting && selected?.status === 'estimated' && selected.price ? (

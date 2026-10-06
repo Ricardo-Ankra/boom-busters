@@ -243,6 +243,8 @@ export interface StillModelOption {
   provider: StillProvider
   id: string
   label: string
+  /** Kept only because a route holds it: offered to the slot routed at it, no other. */
+  routedOnly?: true
 }
 
 /** The board's per-slot Image model choices (decision 264), from the same lists. */
@@ -250,10 +252,11 @@ export function stillModelOptions(
   catalogue: Record<StillProvider, ImageGenProvider>,
 ): StillModelOption[] {
   return STILL_PROVIDERS.flatMap((provider) =>
-    catalogue[provider].models.map((model) => ({
-      provider,
-      id: model.id,
-      label: (model as StillListModel).routedOnly ? `${model.id} (no longer listed)` : model.label,
-    })),
+    catalogue[provider].models.map((model): StillModelOption => {
+      if (!(model as StillListModel).routedOnly) {
+        return { provider, id: model.id, label: model.label }
+      }
+      return { provider, id: model.id, label: `${model.id} (no longer listed)`, routedOnly: true }
+    }),
   )
 }

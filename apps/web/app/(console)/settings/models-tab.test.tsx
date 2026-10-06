@@ -582,4 +582,73 @@ describe('Models tab follow-ups (decision 288)', () => {
     expect(screen.queryByRole('option', { name: /\(unlisted\)/ })).toBeNull()
     expect(screen.getByText(/Anthropic no longer lists this model\./)).toBeInTheDocument()
   })
+
+  it('offers a model kept for one route in that row alone', () => {
+    const settings = structuredClone(DEFAULT_SETTINGS)
+    settings.modelRouting.research = { provider: 'anthropic', model: 'claude-opus-6' }
+    const options = modelOptions()
+    options.llm.anthropic.push({
+      id: 'claude-opus-6',
+      label: 'claude-opus-6',
+      status: 'retired',
+      preview: false,
+      selectable: true,
+      price: { kind: 'llm', inputPerMTok: 5, outputPerMTok: 25, cachedInputPerMTok: 0.5 },
+      pricedAs: 'Claude Opus 5',
+      reason: null,
+      catalogued: false,
+      fallsBackTo: null,
+      routedOnly: true,
+    })
+    renderModelsTab(options, settings)
+
+    const scripting = screen.getByRole('combobox', { name: 'Script drafting model' })
+    expect(scripting).toHaveValue('claude-sonnet-5')
+    expect(Array.from(scripting.querySelectorAll('option')).map((o) => o.value)).not.toContain(
+      'claude-opus-6',
+    )
+  })
+
+  it('gives a vanished fal route its own reason, apart from the summary of the rest', () => {
+    const settings = structuredClone(DEFAULT_SETTINGS)
+    settings.modelRouting.stills = { provider: 'fal', model: 'fal-ai/gone' }
+    const options = modelOptions()
+    const incompatible = (id: string, label: string, reason: string, routedOnly?: true) => ({
+      id,
+      label,
+      status: 'incompatible' as const,
+      preview: false,
+      selectable: false,
+      price: null,
+      pricedAs: null,
+      reason,
+      catalogued: false,
+      fallsBackTo: null,
+      ...(routedOnly ? { routedOnly } : {}),
+    })
+    const cannotSend = 'Makes one image per request, or takes an input this app cannot send.'
+    options.image.fal.push(
+      incompatible('fal-ai/one-at-a-time', 'One at a time', cannotSend),
+      incompatible('fal-ai/needs-a-mask', 'Needs a mask', cannotSend),
+      incompatible(
+        'fal-ai/gone',
+        'fal-ai/gone',
+        'fal no longer lists this endpoint, so this app cannot tell what request it takes.',
+        true,
+      ),
+    )
+    renderModelsTab(options, settings)
+
+    expect(
+      screen.getByText(
+        'fal-ai/gone is not offered: fal no longer lists this endpoint, so this app cannot tell what request it takes.',
+      ),
+    ).toBeInTheDocument()
+    // The summary counts the endpoints the list holds, not the route's own.
+    expect(
+      screen.getByText(
+        '2 fal.ai endpoints are listed but not compatible: they make one image per request, or take an input this app cannot send.',
+      ),
+    ).toBeInTheDocument()
+  })
 })

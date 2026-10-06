@@ -1398,6 +1398,56 @@ describe('the model select on a shot (decision 264)', () => {
     const select = screen.getByLabelText('Image model') as HTMLSelectElement
     expect(within(select).getByText('Mock FLUX')).toBeInTheDocument()
   })
+
+  describe('a model kept only because a route holds it', () => {
+    const dropped = {
+      provider: 'google' as const,
+      id: 'gemini-8-flash-image',
+      label: 'gemini-8-flash-image (no longer listed)',
+      routedOnly: true as const,
+    }
+    const withDropped = (slot: SlotView) => ({
+      ...model([slot]),
+      stillModelOptions: [...STILL_OPTIONS, dropped],
+    })
+
+    it('shows on the slot routed at it', async () => {
+      const routed: SlotView = {
+        ...stillSlot,
+        route: { provider: 'google', model: 'gemini-8-flash-image' },
+      }
+      render(
+        <VisualBoard
+          projectId={PROJECT}
+          model={withDropped(routed)}
+          colors={COLORS}
+          brand={BRAND}
+        />,
+      )
+      await userEvent.click(screen.getByRole('button', { name: /Edit brief/ }))
+
+      const select = screen.getByLabelText('Image model') as HTMLSelectElement
+      expect(select.value).toBe('google:gemini-8-flash-image')
+      expect(
+        within(select).getByText('gemini-8-flash-image (no longer listed)'),
+      ).toBeInTheDocument()
+    })
+
+    it('is not offered to any other slot', async () => {
+      render(
+        <VisualBoard
+          projectId={PROJECT}
+          model={withDropped(stillSlot)}
+          colors={COLORS}
+          brand={BRAND}
+        />,
+      )
+      await userEvent.click(screen.getByRole('button', { name: /Edit brief/ }))
+
+      const select = screen.getByLabelText('Image model') as HTMLSelectElement
+      expect(within(select).queryByText('gemini-8-flash-image (no longer listed)')).toBeNull()
+    })
+  })
 })
 
 describe('the board edits the scene and shows the prompt sent (decision 287)', () => {

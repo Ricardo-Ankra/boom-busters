@@ -3552,7 +3552,14 @@ function ModelRouteSelect({
         {STILL_PROVIDERS.map((provider) => (
           <optgroup key={provider} label={PROVIDER_LABELS[provider]}>
             {options
-              .filter((option) => option.provider === provider)
+              // A model no list offers any more stays choosable only on the
+              // slot already routed at it, so the select can show that route.
+              .filter(
+                (option) =>
+                  option.provider === provider &&
+                  (!option.routedOnly ||
+                    (slot.route?.provider === provider && slot.route.model === option.id)),
+              )
               .map((candidate) => (
                 <option key={`${provider}:${candidate.id}`} value={`${provider}:${candidate.id}`}>
                   {candidate.label}
