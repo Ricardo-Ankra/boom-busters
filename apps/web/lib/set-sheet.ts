@@ -78,7 +78,7 @@ export async function buildSetSheet(
     const plate = set.plates.find((candidate) => candidate.view === 'north') ?? set.plates[0]
     if (!plate) throw new ValidationError('Add a plate first, then build the set from it.')
     const object = await getObjectBytes(plate.r2Key)
-    const adapter = await stillGenerator('google', settings)
+    const adapter = stillGenerator('google', catalogue)
     const result = await withCost(
       db,
       {

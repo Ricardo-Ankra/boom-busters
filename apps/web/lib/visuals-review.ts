@@ -809,7 +809,15 @@ export async function visualsReviewModel(
     listProjectSets(db, projectId),
     getSettings(db),
   ])
-  const catalogue = await stillCatalogue(settings)
+  // Every slot's stored route too, so a slot on a model the lists have
+  // since dropped shows and prices as itself (decision 288 follow-up).
+  const catalogue = await stillCatalogue(
+    settings,
+    rows.map((row) => {
+      const stored = StillRouteSchema.nullable().safeParse(row.route)
+      return stored.success ? stored.data : null
+    }),
+  )
 
   /**
    * Every graphic logo's presigned URL, board-wide, the same shared-object

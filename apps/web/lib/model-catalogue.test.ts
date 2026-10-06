@@ -16,7 +16,13 @@ vi.mock('@/lib/db', () => ({ db: {} }))
 vi.mock('@/lib/env', () => ({ env: { SECRETS_ENCRYPTION_KEY: 'k' } }))
 vi.mock('server-only', () => ({}))
 
-import { loadModelOptions, refreshModelCatalogue, stillCatalogue } from './model-catalogue'
+import {
+  loadModelOptions,
+  refreshModelCatalogue,
+  stillCatalogue,
+  stillGenerator,
+  stillModelOptions,
+} from './model-catalogue'
 
 const fetchSpy = vi.spyOn(globalThis, 'fetch')
 
@@ -105,6 +111,31 @@ describe('stillCatalogue', () => {
     const catalogue = await stillCatalogue(DEFAULT_SETTINGS)
     expect(catalogue.fal.models.map((m) => m.id)).toContain('fal-ai/mock-flux')
     expect(catalogue.google.models.map((m) => m.id)).toContain('gemini-3-pro-image')
+  })
+})
+
+describe('stillCatalogue with per-slot routes (decision 288 follow-up)', () => {
+  it('keeps a slot route on a Gemini model the cache lost, labelled for the board', async () => {
+    db.listCatalogueModels.mockResolvedValueOnce([])
+    const route = { provider: 'google' as const, model: 'gemini-8-flash-image' }
+    const catalogue = await stillCatalogue(DEFAULT_SETTINGS, [route])
+
+    const model = catalogue.google.models.find((m) => m.id === 'gemini-8-flash-image')
+    // Priced by its family; the label stays the id, so a licence line names it exactly.
+    expect(model).toMatchObject({ label: 'gemini-8-flash-image', pricePerImage: 0.07 })
+    expect(stillModelOptions(catalogue)).toContainEqual({
+      provider: 'google',
+      id: 'gemini-8-flash-image',
+      label: 'gemini-8-flash-image (no longer listed)',
+    })
+  })
+
+  it('generates over the catalogue it is given, with no second read of the cache', async () => {
+    const catalogue = await stillCatalogue(DEFAULT_SETTINGS)
+    db.listCatalogueModels.mockClear()
+    const adapter = stillGenerator('google', catalogue)
+    expect(db.listCatalogueModels).not.toHaveBeenCalled()
+    expect(adapter.models.map((m) => m.id)).toEqual(catalogue.google.models.map((m) => m.id))
   })
 })
 

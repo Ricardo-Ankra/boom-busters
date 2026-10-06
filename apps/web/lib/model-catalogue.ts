@@ -29,7 +29,7 @@ import type {
   ModelOptions,
 } from '@boom-busters/providers'
 import { STILL_PROVIDERS } from '@boom-busters/schemas'
-import type { Settings, StillProvider } from '@boom-busters/schemas'
+import type { Settings, StillProvider, StillRoute } from '@boom-busters/schemas'
 import { db } from '@/lib/db'
 import { env } from '@/lib/env'
 
@@ -166,17 +166,27 @@ export async function loadModelOptions(settings: Settings): Promise<ModelOptions
  * tries it. A fal id cannot resolve without its cached dialect, so fal
  * gains nothing here.
  */
+/**
+ * A model on the list only because a route still holds it, after every list
+ * dropped it. Its label stays the bare id, so a licence line names exactly
+ * what made the frame; the board's select says it is no longer listed.
+ */
+type StillListModel = ImageGenModel & { readonly routedOnly?: true }
+
 function withRoutedModels(
   provider: StillProvider,
   models: ImageGenModel[],
-  settings: Settings,
+  routes: readonly (StillRoute | null | undefined)[],
+  prices: Settings['modelPrices'],
 ): ImageGenModel[] {
-  const routing = settings.modelRouting
-  for (const route of [routing.stills, routing.stillsLikeness, routing.setSheet]) {
+  for (const route of routes) {
     if (!route || route.provider !== provider) continue
     if (models.some((model) => model.id === route.model)) continue
-    const resolved = resolveImageModel(provider, route.model, settings.modelPrices)?.model
-    if (resolved && !models.some((model) => model.id === resolved.id)) models.push(resolved)
+    const resolved = resolveImageModel(provider, route.model, prices)?.model
+    if (resolved && !models.some((model) => model.id === resolved.id)) {
+      const kept: StillListModel = { ...resolved, routedOnly: true }
+      models.push(kept)
+    }
   }
   return models
 }
@@ -187,11 +197,20 @@ function withRoutedModels(
  * models settings can price). Prices, limits, labels and reference routes
  * read from these, so a still routed at a live model is priced and checked
  * like any other.
+ *
+ * `slotRoutes` are routes stored on slots (decision 264): a slot routed at a
+ * Gemini model every list has since dropped still generates on it, priced by
+ * its family, instead of falling back without a word (spec section 9). A
+ * fal endpoint cannot come back this way: its request shape left with its
+ * listing.
  */
 export async function stillCatalogue(
   settings: Settings,
+  slotRoutes: readonly (StillRoute | null | undefined)[] = [],
 ): Promise<Record<StillProvider, ImageGenProvider>> {
   const listed = (await listCatalogueModels(db)).map(toListed)
+  const routing = settings.modelRouting
+  const routes = [routing.stills, routing.stillsLikeness, routing.setSheet, ...slotRoutes]
   return Object.fromEntries(
     STILL_PROVIDERS.map((provider) => [
       provider,
@@ -200,19 +219,23 @@ export async function stillCatalogue(
         withRoutedModels(
           provider,
           effectiveImageModels(provider, settings.modelPrices, listed),
-          settings,
+          routes,
+          settings.modelPrices,
         ),
       ),
     ]),
   ) as Record<StillProvider, ImageGenProvider>
 }
 
-/** The adapter that will actually generate: the mock in mock mode, else live, over the same list. */
-export async function stillGenerator(
+/**
+ * The adapter that will actually generate: the mock in mock mode, else live,
+ * over the catalogue the caller already built, so a generation reads the
+ * cache once and spends on the same list it was priced from.
+ */
+export function stillGenerator(
   provider: StillProvider,
-  settings: Settings,
-): Promise<ImageGenProvider> {
-  const catalogue = await stillCatalogue(settings)
+  catalogue: Record<StillProvider, ImageGenProvider>,
+): ImageGenProvider {
   return imageGenAdapterWith(provider, catalogue[provider].models)
 }
 
@@ -227,6 +250,10 @@ export function stillModelOptions(
   catalogue: Record<StillProvider, ImageGenProvider>,
 ): StillModelOption[] {
   return STILL_PROVIDERS.flatMap((provider) =>
-    catalogue[provider].models.map((model) => ({ provider, id: model.id, label: model.label })),
+    catalogue[provider].models.map((model) => ({
+      provider,
+      id: model.id,
+      label: (model as StillListModel).routedOnly ? `${model.id} (no longer listed)` : model.label,
+    })),
   )
 }

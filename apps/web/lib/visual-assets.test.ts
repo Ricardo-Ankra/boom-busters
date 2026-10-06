@@ -1257,6 +1257,21 @@ describeDb('the route stored on a slot wins', () => {
     expect(await stillSlotEstimateUsd()).toBeCloseTo(0.02 * STILL_GENERATIONS)
     await generateStillCandidates({ ...still, depicts: [] }, FIXTURE_PROJECT_ID)
     expect(await lastLedgerModel()).toBe('fal-ai/mock-flux')
+    // The ledger reserves exactly what the button quoted (decision 288 follow-up).
+    const [entry] = await listLedger(db, { projectId: FIXTURE_PROJECT_ID, limit: 1 })
+    expect(Number(entry?.estimatedUsd)).toBeCloseTo(0.02 * STILL_GENERATIONS)
+  })
+
+  it('generates on a slot route whose Gemini model has left the cache (decision 288 follow-up)', async () => {
+    // Spec section 9: a saved model the provider stops listing is labelled,
+    // not removed, and a run still tries it. It used to fall back silently.
+    await replaceCatalogue(db, 'google', [], new Date())
+    await updateSettings(db, { modelRouting: DEFAULT_SETTINGS.modelRouting })
+    await generateStillCandidates({ ...still, depicts: [] }, FIXTURE_PROJECT_ID, {
+      provider: 'google',
+      model: 'gemini-8-flash-image',
+    })
+    expect(await lastLedgerModel()).toBe('gemini-8-flash-image')
   })
 })
 
