@@ -127,6 +127,7 @@ describe('stillCatalogue with per-slot routes (decision 288 follow-up)', () => {
       provider: 'google',
       id: 'gemini-8-flash-image',
       label: 'gemini-8-flash-image (no longer listed)',
+      routedOnly: true,
     })
   })
 
