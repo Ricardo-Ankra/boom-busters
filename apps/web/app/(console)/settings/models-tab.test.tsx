@@ -489,3 +489,97 @@ describe('pricing image models (decision 288)', () => {
     ).toBeInTheDocument()
   })
 })
+
+describe('Models tab follow-ups (decision 288)', () => {
+  it('names the price form and announces a refused price on the fields it covers', async () => {
+    renderModelsTab()
+    await userEvent.selectOptions(
+      screen.getByRole('combobox', { name: 'Research (dossiers) model' }),
+      'claude-mock-unpriced',
+    )
+    const form = screen.getByRole('form', {
+      name: 'Claude Mock Unpriced needs a price before it can run.',
+    })
+    expect(form).toBeInTheDocument()
+
+    await userEvent.type(screen.getByLabelText('Input, $ per million tokens'), 'abc')
+    await userEvent.type(screen.getByLabelText('Output, $ per million tokens'), '30')
+    await userEvent.click(screen.getByRole('button', { name: 'Save price and use' }))
+
+    const alert = screen.getByRole('alert')
+    expect(alert).toHaveTextContent('Enter a price above zero, using a full stop for decimals.')
+    const input = screen.getByLabelText('Input, $ per million tokens')
+    expect(input).toHaveAttribute('aria-invalid', 'true')
+    expect(input).toHaveAttribute('aria-describedby', alert.id)
+    expect(saveSettings).not.toHaveBeenCalled()
+  })
+
+  it('sets a price on an estimated model from its estimate, saving only the price', async () => {
+    const settings = structuredClone(DEFAULT_SETTINGS)
+    settings.modelRouting.research = { provider: 'anthropic', model: 'claude-opus-mock-9' }
+    renderModelsTab(modelOptions(), settings)
+
+    await userEvent.click(screen.getByRole('button', { name: 'Set price' }))
+    const input = screen.getByLabelText('Input, $ per million tokens')
+    // Prefilled with the family's price, Opus 5's.
+    expect(input).toHaveValue('5')
+    expect(screen.getByLabelText('Output, $ per million tokens')).toHaveValue('25')
+    await userEvent.clear(input)
+    await userEvent.type(input, '4')
+    await userEvent.click(screen.getByRole('button', { name: 'Save price' }))
+
+    expect(saveSettings).toHaveBeenCalledWith({
+      modelPrices: {
+        llm: {
+          'anthropic:claude-opus-mock-9': {
+            inputPerMTok: 4,
+            outputPerMTok: 25,
+            cachedInputPerMTok: 0.5,
+          },
+        },
+        image: {},
+      },
+    })
+  })
+
+  it('clears the owner’s price on a model its family can still price', async () => {
+    const prices = {
+      llm: { 'anthropic:claude-opus-mock-9': { inputPerMTok: 4, outputPerMTok: 20 } },
+      image: {},
+    }
+    const settings = structuredClone(DEFAULT_SETTINGS)
+    settings.modelRouting.research = { provider: 'anthropic', model: 'claude-opus-mock-9' }
+    settings.modelPrices = prices
+    renderModelsTab(modelOptions(prices), settings)
+
+    await userEvent.click(screen.getByRole('button', { name: 'Clear price' }))
+    expect(saveSettings).toHaveBeenCalledWith({ modelPrices: { llm: {}, image: {} } })
+  })
+
+  it('shows a saved route no list holds any more as itself, not as unlisted', () => {
+    const settings = structuredClone(DEFAULT_SETTINGS)
+    settings.modelRouting.research = { provider: 'anthropic', model: 'claude-opus-6' }
+    const options = buildModelOptions({
+      listed: (['anthropic', 'openai', 'google', 'fal'] as const).flatMap(mockListedModels),
+      refresh: (['anthropic', 'openai', 'google', 'fal'] as const).map((provider) => ({
+        provider,
+        lastAttemptAt: FRESH,
+        lastSuccessAt: FRESH,
+        lastError: null,
+      })),
+      keys: { anthropic: true, openai: true, google: true, fal: true },
+      prices: EMPTY_MODEL_PRICES,
+      mock: false,
+      routing: settings.modelRouting,
+    })
+    renderModelsTab(options, settings)
+
+    const select = screen.getByRole('combobox', { name: 'Research (dossiers) model' })
+    expect(select).toHaveValue('claude-opus-6')
+    expect(
+      screen.getByRole('option', { name: 'claude-opus-6 (no longer offered)' }),
+    ).toBeInTheDocument()
+    expect(screen.queryByRole('option', { name: /\(unlisted\)/ })).toBeNull()
+    expect(screen.getByText(/Anthropic no longer lists this model\./)).toBeInTheDocument()
+  })
+})

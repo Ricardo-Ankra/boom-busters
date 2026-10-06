@@ -151,6 +151,7 @@ export async function loadModelOptions(settings: Settings): Promise<ModelOptions
       CATALOGUE_PROVIDERS.map((p) => [p, Boolean((keys as Record<string, string>)[p])]),
     ) as Record<CatalogueProvider, boolean>,
     prices: settings.modelPrices,
+    routing: settings.modelRouting,
     mock: mocked,
   })
 }

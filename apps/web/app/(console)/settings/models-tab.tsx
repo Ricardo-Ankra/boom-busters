@@ -13,7 +13,6 @@ import {
   modelPriceKey,
   type LlmProvider,
   type LlmTask,
-  type ModelPrices,
   type Settings,
   type SettingsPatch,
   type StillProvider,
@@ -22,9 +21,10 @@ import { useRouter } from 'next/navigation'
 import * as React from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Input, Label, Select } from '@/components/ui/input'
+import { Label, Select } from '@/components/ui/input'
 import { useToast } from '@/components/ui/toast'
 import { refreshModelListsAction } from './model-actions'
+import { ImagePriceForm, LlmPriceForm, type ImagePrice, type LlmPrice } from './price-forms'
 
 /**
  * Settings → Models (decision 288). Every row, LLM and image alike, offers
@@ -60,8 +60,6 @@ const ROUTE_LABELS: Record<RouteKey, string> = {
 const kindOf = (key: RouteKey): PriceKind =>
   (IMAGE_ROUTES as readonly RouteKey[]).includes(key) ? 'image' : 'llm'
 
-type LlmPrice = ModelPrices['llm'][string]
-type ImagePrice = ModelPrices['image'][string]
 /** A price to store, tagged with the table it belongs in. */
 type PriceEntry = { kind: 'llm'; price: LlmPrice } | { kind: 'image'; price: ImagePrice }
 
@@ -93,8 +91,6 @@ const PRICEABLE: ReadonlySet<ModelOption['status']> = new Set([
 
 const PREVIEW_GROUP = 'Preview: Google can withdraw these without notice'
 
-const IMAGE_SIZES = ['1K', '2K', '4K'] as const
-
 const money = (value: number) => `$${Number(value.toFixed(4))}`
 
 /** "$0.07/image", "$0.10/image", "$0.035/image": cents always shown, no more than four places. */
@@ -113,15 +109,6 @@ function describePrice(price: OptionPrice): string {
 /** A stored ISO time in the owner's local clock, or a plain word when absent. */
 const when = (iso: string | null) =>
   iso ? new Date(iso).toLocaleString('en-ZA') : 'an unknown time'
-
-const PRICE_ERROR = 'Enter a price above zero, using a full stop for decimals.'
-
-/** A typed price, or null when it is not a positive number written with a full stop. */
-function parsePrice(raw: string): number | null {
-  if (!/^\d+(\.\d+)?$/.test(raw.trim())) return null
-  const value = Number(raw)
-  return value > 0 ? value : null
-}
 
 /** A copy of one price table with `key` set to `value`, or removed when it is null. */
 function withEntry<T>(table: Record<string, T>, key: string, value: T | null): Record<string, T> {
@@ -167,197 +154,6 @@ function statusLine(provider: (typeof STATUS_PROVIDERS)[number], options: ModelO
     case 'never':
       return `${name}: not refreshed yet. Showing the built-in list.`
   }
-}
-
-function FormButtons({ saveLabel, onCancel }: { saveLabel: string; onCancel: () => void }) {
-  return (
-    <div className="flex gap-2">
-      <Button type="submit" variant="primary">
-        {saveLabel}
-      </Button>
-      <Button type="button" onClick={onCancel}>
-        Cancel
-      </Button>
-    </div>
-  )
-}
-
-function LlmPriceForm({
-  title,
-  initial,
-  saveLabel,
-  onSave,
-  onCancel,
-}: {
-  title: string
-  initial: OptionPrice | null
-  saveLabel: string
-  onSave: (price: LlmPrice) => void
-  onCancel: () => void
-}) {
-  const seed = initial?.kind === 'llm' ? initial : null
-  const [input, setInput] = React.useState(seed ? String(seed.inputPerMTok) : '')
-  const [output, setOutput] = React.useState(seed ? String(seed.outputPerMTok) : '')
-  const [cached, setCached] = React.useState(
-    seed?.cachedInputPerMTok ? String(seed.cachedInputPerMTok) : '',
-  )
-  const [error, setError] = React.useState<string | null>(null)
-  const id = React.useId()
-
-  return (
-    <form
-      className="flex flex-col gap-2 rounded-md border border-[var(--color-border)] p-3"
-      onSubmit={(event) => {
-        event.preventDefault()
-        const inputPerMTok = parsePrice(input)
-        const outputPerMTok = parsePrice(output)
-        const cachedInputPerMTok = cached.trim() === '' ? undefined : parsePrice(cached)
-        if (inputPerMTok === null || outputPerMTok === null || cachedInputPerMTok === null) {
-          setError(PRICE_ERROR)
-          return
-        }
-        onSave({
-          inputPerMTok,
-          outputPerMTok,
-          ...(cachedInputPerMTok !== undefined ? { cachedInputPerMTok } : {}),
-        })
-      }}
-    >
-      <p className="text-[13px]">{title}</p>
-      <div className="grid gap-2 sm:grid-cols-3">
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor={`${id}-in`}>Input, $ per million tokens</Label>
-          <Input
-            id={`${id}-in`}
-            inputMode="decimal"
-            value={input}
-            onChange={(event) => setInput(event.target.value)}
-          />
-        </div>
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor={`${id}-out`}>Output, $ per million tokens</Label>
-          <Input
-            id={`${id}-out`}
-            inputMode="decimal"
-            value={output}
-            onChange={(event) => setOutput(event.target.value)}
-          />
-        </div>
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor={`${id}-cached`}>Cached input, $ per million tokens (optional)</Label>
-          <Input
-            id={`${id}-cached`}
-            inputMode="decimal"
-            value={cached}
-            onChange={(event) => setCached(event.target.value)}
-          />
-        </div>
-      </div>
-      {error ? <p className="text-[12px] text-[var(--color-danger)]">{error}</p> : null}
-      <FormButtons saveLabel={saveLabel} onCancel={onCancel} />
-    </form>
-  )
-}
-
-/**
- * A price per image, and for a Google model its optional price at each
- * output size: Gemini bills a 4K image more than a 1K one. Set sheets are
- * always made at 4K, and a missing size is charged at the price per image,
- * so the set-sheet row requires the 4K price: without it every sheet would
- * reserve about half what it costs.
- */
-function ImagePriceForm({
-  title,
-  initial,
-  sizes,
-  require4K,
-  saveLabel,
-  onSave,
-  onCancel,
-}: {
-  title: string
-  initial: OptionPrice | null
-  sizes: boolean
-  require4K: boolean
-  saveLabel: string
-  onSave: (price: ImagePrice) => void
-  onCancel: () => void
-}) {
-  const seed = initial?.kind === 'image' ? initial : null
-  const [perImage, setPerImage] = React.useState(seed ? String(seed.pricePerImage) : '')
-  const [bySize, setBySize] = React.useState<Record<(typeof IMAGE_SIZES)[number], string>>(() => ({
-    '1K': seed?.pricesBySize?.['1K'] ? String(seed.pricesBySize['1K']) : '',
-    '2K': seed?.pricesBySize?.['2K'] ? String(seed.pricesBySize['2K']) : '',
-    '4K': seed?.pricesBySize?.['4K'] ? String(seed.pricesBySize['4K']) : '',
-  }))
-  const [error, setError] = React.useState<string | null>(null)
-  const id = React.useId()
-
-  return (
-    <form
-      className="flex flex-col gap-2 rounded-md border border-[var(--color-border)] p-3"
-      onSubmit={(event) => {
-        event.preventDefault()
-        const pricePerImage = parsePrice(perImage)
-        const pricesBySize: NonNullable<ImagePrice['pricesBySize']> = {}
-        let valid = pricePerImage !== null
-        if (sizes) {
-          for (const size of IMAGE_SIZES) {
-            const required = require4K && size === '4K'
-            if (bySize[size].trim() === '') {
-              if (required) valid = false
-              continue
-            }
-            const value = parsePrice(bySize[size])
-            if (value === null) valid = false
-            else pricesBySize[size] = value
-          }
-        }
-        if (!valid || pricePerImage === null) {
-          setError(PRICE_ERROR)
-          return
-        }
-        onSave({
-          pricePerImage,
-          ...(Object.keys(pricesBySize).length > 0 ? { pricesBySize } : {}),
-        })
-      }}
-    >
-      <p className="text-[13px]">{title}</p>
-      <div className="grid gap-2 sm:grid-cols-4">
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor={`${id}-each`}>Price per image ($)</Label>
-          <Input
-            id={`${id}-each`}
-            inputMode="decimal"
-            value={perImage}
-            onChange={(event) => setPerImage(event.target.value)}
-          />
-        </div>
-        {sizes
-          ? IMAGE_SIZES.map((size) => (
-              <div key={size} className="flex flex-col gap-1.5">
-                <Label htmlFor={`${id}-${size}`}>
-                  {require4K && size === '4K'
-                    ? `${size} price per image ($)`
-                    : `${size} price per image ($, optional)`}
-                </Label>
-                <Input
-                  id={`${id}-${size}`}
-                  inputMode="decimal"
-                  value={bySize[size]}
-                  onChange={(event) =>
-                    setBySize((current) => ({ ...current, [size]: event.target.value }))
-                  }
-                />
-              </div>
-            ))
-          : null}
-      </div>
-      {error ? <p className="text-[12px] text-[var(--color-danger)]">{error}</p> : null}
-      <FormButtons saveLabel={saveLabel} onCancel={onCancel} />
-    </form>
-  )
 }
 
 export function ModelsTab({
@@ -513,7 +309,10 @@ export function ModelsTab({
   )
 
   /** A model select's options: regular, then previews grouped, then the model if no list holds it. */
-  const renderChoices = (list: ModelOption[], model: string) => {
+  const renderChoices = (all: ModelOption[], model: string) => {
+    // A model kept only because some route still holds it shows in that
+    // route's row alone.
+    const list = all.filter((o) => !o.routedOnly || o.id === model)
     const previews = list.filter((o) => o.preview)
     return (
       <>
@@ -521,9 +320,9 @@ export function ModelsTab({
         {previews.length > 0 ? (
           <optgroup label={PREVIEW_GROUP}>{previews.map(renderOption)}</optgroup>
         ) : null}
-        {/* A model no list holds is shown rather than silently swapped,
-            because it is what the run will actually be refused on at
-            pre-flight. */}
+        {/* The options already carry every saved route, labelled (decision
+            288 follow-up); this stays as a last guard so the select can never
+            silently show a different model from the one the route holds. */}
         {list.some((o) => o.id === model) ? null : (
           <option value={model}>{model} (unlisted)</option>
         )}
@@ -677,7 +476,9 @@ export function ModelsTab({
           : null}
 
         {refusal?.key === key ? (
-          <p className="text-[12px] text-[var(--color-danger)]">{refusal.message}</p>
+          <p role="alert" className="text-[12px] text-[var(--color-danger)]">
+            {refusal.message}
+          </p>
         ) : null}
       </>
     )

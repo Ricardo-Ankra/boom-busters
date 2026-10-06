@@ -1,5 +1,5 @@
-import { LLM_PROVIDERS, STILL_PROVIDERS } from '@boom-busters/schemas'
-import type { LlmProvider, ModelPrices, StillProvider } from '@boom-busters/schemas'
+import { LLM_PROVIDERS, LLM_TASKS, STILL_PROVIDERS } from '@boom-busters/schemas'
+import type { LlmProvider, ModelPrices, ModelRouting, StillProvider } from '@boom-busters/schemas'
 import { LLM_MODELS } from '../llm/registry'
 import { FAL_MODELS } from '../visuals/fal'
 import { GEMINI_IMAGE_MODELS } from '../visuals/gemini'
@@ -15,7 +15,10 @@ import type { CatalogueProvider, ListedModel, PriceSource } from './types'
  * Settings → Models dropdown shows (decision 288).
  *
  * The catalogue always comes first, in its own order; live-only models
- * follow, non-previews before previews, alphabetically within each group.
+ * follow, priced ones before those needing a price and unsendable ones last
+ * (fal lists about two hundred endpoints), non-previews before previews,
+ * alphabetically within each group. A saved route no list holds any more
+ * comes last, so the select always shows what the route really is.
  * `status` and `fallsBackTo` tell the UI what it can offer: a `needs-price`
  * model is shown but only selectable once the owner sets a price for it, and
  * `incompatible` never becomes selectable at all.
@@ -54,6 +57,11 @@ export interface ModelOption {
    * Clearing a price is refused when this is null and a route uses the model.
    */
   fallsBackTo: 'catalogue' | 'provider' | 'family' | null
+  /**
+   * Present only because a saved route holds a model no list does any more:
+   * shown in that route's own row, never offered to the others.
+   */
+  routedOnly?: boolean
 }
 
 export interface RefreshState {
@@ -131,15 +139,40 @@ function catalogueStatus(source: PriceSource, listed: boolean): OptionStatus {
   return listed ? statusFor(source) : 'retired'
 }
 
-/** Live-only options after the catalogue: non-previews first, then by label. */
-const byPreviewThenLabel = (a: ModelOption, b: ModelOption) =>
-  Number(a.preview) - Number(b.preview) || a.label.localeCompare(b.label)
+/** Priced first, then those needing a price, then the unsendable. */
+const STATUS_RANK: Record<OptionStatus, number> = {
+  catalogue: 0,
+  override: 0,
+  estimated: 0,
+  retired: 0,
+  'needs-price': 1,
+  incompatible: 2,
+}
+
+/** Live-only options after the catalogue. */
+const byPriceThenPreviewThenLabel = (a: ModelOption, b: ModelOption) =>
+  STATUS_RANK[a.status] - STATUS_RANK[b.status] ||
+  Number(a.preview) - Number(b.preview) ||
+  a.label.localeCompare(b.label)
+
+/** Each routed id a provider's options do not already hold, once. */
+function missingRoutes(
+  options: readonly ModelOption[],
+  routes: readonly ({ provider: string; model: string } | null)[],
+  provider: string,
+): string[] {
+  const ids = routes
+    .filter((route): route is { provider: string; model: string } => route?.provider === provider)
+    .map((route) => route.model)
+  return [...new Set(ids)].filter((id) => !options.some((option) => sameModel(option.id, id)))
+}
 
 function llmOptions(
   provider: LlmProvider,
   listed: readonly ListedModel[],
   hasLive: boolean,
   prices: ModelPrices | undefined,
+  routing: ModelRouting | undefined,
 ): ModelOption[] {
   const rows = listed.filter((m) => m.provider === provider && m.kind === 'llm')
   const liveIds = rows.map((m) => m.id)
@@ -183,9 +216,32 @@ function llmOptions(
         fallsBackTo: representative ? 'family' : null,
       }
     })
-    .sort(byPreviewThenLabel)
+    .sort(byPriceThenPreviewThenLabel)
 
-  return [...fromCatalogue, ...liveOnly]
+  const shown = [...fromCatalogue, ...liveOnly]
+  const routes = routing ? LLM_TASKS.map((task) => routing[task]) : []
+  const vanished = missingRoutes(shown, routes, provider).map((id): ModelOption => {
+    const resolved = resolveLlmModel(provider, id, prices)
+    const family = llmFamily(provider, id)
+    const representative = family
+      ? catalogue.find((m) => m.id === family.representative)
+      : undefined
+    return {
+      id,
+      label: id,
+      // A run still tries it, at the price settings give it (spec section 9).
+      status: resolved ? catalogueStatus(resolved.source, false) : 'needs-price',
+      preview: false,
+      selectable: true,
+      price: resolved ? llmPrice(resolved.model) : null,
+      pricedAs: resolved?.source === 'family' ? (representative?.label ?? null) : null,
+      reason: null,
+      catalogued: false,
+      fallsBackTo: representative ? 'family' : null,
+      routedOnly: true,
+    }
+  })
+  return [...shown, ...vanished]
 }
 
 const IMAGE_CATALOGUES: Record<StillProvider, readonly ImageGenModel[]> = {
@@ -198,6 +254,7 @@ function imageOptions(
   listed: readonly ListedModel[],
   hasLive: boolean,
   prices: ModelPrices | undefined,
+  routing: ModelRouting | undefined,
 ): ModelOption[] {
   const rows = listed.filter((m) => m.provider === provider && m.kind === 'image')
   const liveIds = rows.map((m) => m.id)
@@ -262,9 +319,48 @@ function imageOptions(
               : null,
       }
     })
-    .sort(byPreviewThenLabel)
+    .sort(byPriceThenPreviewThenLabel)
 
-  return [...fromCatalogue, ...liveOnly]
+  const shown = [...fromCatalogue, ...liveOnly]
+  const routes = routing ? [routing.stills, routing.stillsLikeness, routing.setSheet] : []
+  const vanished = missingRoutes(shown, routes, provider).map((id): ModelOption => {
+    if (provider === 'fal') {
+      // A fal endpoint's request shape comes from its listed schema; with
+      // the listing gone, nothing can be sent to it.
+      return {
+        id,
+        label: id,
+        status: 'incompatible',
+        preview: false,
+        selectable: false,
+        price: null,
+        pricedAs: null,
+        reason: 'fal no longer lists this endpoint, so this app cannot tell what request it takes.',
+        catalogued: false,
+        fallsBackTo: null,
+        routedOnly: true,
+      }
+    }
+    const resolved = resolveImageModel(provider, id, prices)
+    const family = geminiImageFamily(id)
+    const representative = family
+      ? catalogue.find((m) => m.id === family.representative)
+      : undefined
+    return {
+      id,
+      label: id,
+      status: resolved ? catalogueStatus(resolved.source, false) : 'needs-price',
+      preview: false,
+      selectable: true,
+      price: resolved ? imagePrice(resolved.model) : null,
+      pricedAs: resolved?.source === 'family' ? (representative?.label ?? null) : null,
+      reason: null,
+      catalogued: false,
+      fallsBackTo: representative ? 'family' : null,
+      routedOnly: true,
+    }
+  })
+  return [...shown, ...vanished]
 }
 
 function providerStatus(
@@ -290,16 +386,24 @@ export function buildModelOptions(input: {
   keys: Record<CatalogueProvider, boolean>
   prices: ModelPrices | undefined
   mock: boolean
+  /** Saved routes, so a model no list holds any more still shows as itself. */
+  routing?: ModelRouting
 }): ModelOptions {
   const hasLive = (provider: CatalogueProvider) =>
     input.refresh.some((r) => r.provider === provider && r.lastSuccessAt !== null)
   const keyed = (provider: CatalogueProvider) => input.mock || input.keys[provider]
 
   const llm = Object.fromEntries(
-    LLM_PROVIDERS.map((p) => [p, llmOptions(p, input.listed, hasLive(p), input.prices)]),
+    LLM_PROVIDERS.map((p) => [
+      p,
+      llmOptions(p, input.listed, hasLive(p), input.prices, input.routing),
+    ]),
   ) as Record<LlmProvider, ModelOption[]>
   const image = Object.fromEntries(
-    STILL_PROVIDERS.map((p) => [p, imageOptions(p, input.listed, hasLive(p), input.prices)]),
+    STILL_PROVIDERS.map((p) => [
+      p,
+      imageOptions(p, input.listed, hasLive(p), input.prices, input.routing),
+    ]),
   ) as Record<StillProvider, ModelOption[]>
   const status = Object.fromEntries(
     CATALOGUE_PROVIDERS.map((p) => [p, providerStatus(p, input.refresh, keyed(p))]),
