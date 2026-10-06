@@ -19,6 +19,17 @@ import type {
  * the budget guard reserve two to three times the real cost of every Opus
  * and Sonnet call, which is the wrong direction to be wrong in: a cap that
  * parks a run early is a cap that costs a day, not a dollar.
+ *
+ * Re-checked 2026-10-06 against the same table, for every id production's
+ * own `GET /v1/models` returned that day (decision 288 follow-up): Opus 5.5
+ * at 4 and 20 with cache reads at 0.20, Fable 5.1 and Fable 5 at 10 and 50
+ * (cache reads 0.25 and 1), Sonnet 5.5 at 2 and 10, Sonnet 4.6 and 4.5 at 3
+ * and 15. Opus 4.5 to 4.8 cost what Opus 5 costs, so their family prices them.
+ *
+ * Order matters twice: the first model of the top tier is the router's
+ * cross-provider fallback and the default when a route switches provider, so
+ * Opus 5 stays first; Verify spends one token on the LAST model, so Haiku
+ * stays last.
  */
 
 const API = 'https://api.anthropic.com/v1/messages'
@@ -35,12 +46,66 @@ export const ANTHROPIC_MODELS: readonly KnownModel[] = [
     supportsBatch: true,
   },
   {
+    id: 'claude-opus-5-5',
+    label: 'Opus 5.5',
+    tier: 0,
+    inputPerMTok: 4,
+    outputPerMTok: 20,
+    cachedInputPerMTok: 0.2,
+    supportsBatch: true,
+  },
+  {
+    id: 'claude-fable-5-1',
+    label: 'Fable 5.1',
+    tier: 0,
+    inputPerMTok: 10,
+    outputPerMTok: 50,
+    cachedInputPerMTok: 0.25,
+    supportsBatch: true,
+  },
+  {
+    id: 'claude-fable-5',
+    label: 'Fable 5',
+    tier: 0,
+    inputPerMTok: 10,
+    outputPerMTok: 50,
+    cachedInputPerMTok: 1,
+    supportsBatch: true,
+  },
+  {
     id: 'claude-sonnet-5',
     label: 'Sonnet 5',
     tier: 1,
     inputPerMTok: 2,
     outputPerMTok: 10,
     cachedInputPerMTok: 0.2,
+    supportsBatch: true,
+  },
+  {
+    id: 'claude-sonnet-5-5',
+    label: 'Sonnet 5.5',
+    tier: 1,
+    inputPerMTok: 2,
+    outputPerMTok: 10,
+    cachedInputPerMTok: 0.2,
+    supportsBatch: true,
+  },
+  {
+    id: 'claude-sonnet-4-6',
+    label: 'Sonnet 4.6',
+    tier: 1,
+    inputPerMTok: 3,
+    outputPerMTok: 15,
+    cachedInputPerMTok: 0.3,
+    supportsBatch: true,
+  },
+  {
+    id: 'claude-sonnet-4-5-20250929',
+    label: 'Sonnet 4.5',
+    tier: 1,
+    inputPerMTok: 3,
+    outputPerMTok: 15,
+    cachedInputPerMTok: 0.3,
     supportsBatch: true,
   },
   {

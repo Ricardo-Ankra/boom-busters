@@ -1,22 +1,23 @@
 import { LLM_MODELS } from '@boom-busters/providers'
 import { EMPTY_MODEL_PRICES, TTS_PROVIDERS, ValidationError } from '@boom-busters/schemas'
 import { describe, expect, it } from 'vitest'
-import { LLM_PRICES, TTS_PRICES, estimateLlmUsd, estimateTtsUsd, llmPrice } from './prices'
+import { TTS_PRICES, estimateLlmUsd, estimateTtsUsd, llmPrice } from './prices'
 
 describe('price table completeness', () => {
   it('covers every LLM provider Settings can route at', () => {
-    for (const provider of Object.keys(LLM_MODELS)) {
-      expect(Object.keys(LLM_PRICES[provider as keyof typeof LLM_PRICES]).length).toBeGreaterThan(0)
+    for (const models of Object.values(LLM_MODELS)) {
+      expect(models.length).toBeGreaterThan(0)
     }
   })
 
-  it('is the adapters own table, not a second copy of it', () => {
+  it('prices every catalogued model at the adapters own figures, not a second copy', () => {
     // The guard used to keep its own hand-written prices beside the adapters'.
     // Two tables drift, and the one the guard happened to read decided whether
-    // a cap held. This asserts they are the same numbers, by construction.
+    // a cap held. The guard now reads the adapters' table through the same
+    // resolver every run uses (decision 288).
     for (const [provider, models] of Object.entries(LLM_MODELS)) {
       for (const model of models) {
-        expect(LLM_PRICES[provider as keyof typeof LLM_PRICES][model.id]).toEqual({
+        expect(llmPrice(provider as keyof typeof LLM_MODELS, model.id)).toEqual({
           inputPerMTok: model.inputPerMTok,
           outputPerMTok: model.outputPerMTok,
         })
@@ -25,9 +26,10 @@ describe('price table completeness', () => {
   })
 
   it('charges more for output than input on every model', () => {
-    for (const models of Object.values(LLM_PRICES)) {
-      for (const [model, price] of Object.entries(models)) {
-        expect(price.outputPerMTok, model).toBeGreaterThan(price.inputPerMTok)
+    for (const [provider, models] of Object.entries(LLM_MODELS)) {
+      for (const model of models) {
+        const price = llmPrice(provider as keyof typeof LLM_MODELS, model.id)
+        expect(price.outputPerMTok, model.id).toBeGreaterThan(price.inputPerMTok)
       }
     }
   })
@@ -95,18 +97,19 @@ describe('every provider is guarded', () => {
 
 describe('llmPrice with live models (decision 288)', () => {
   it('prices a live family member at its family', () => {
-    expect(llmPrice('anthropic', 'claude-opus-5-5')).toEqual({ inputPerMTok: 5, outputPerMTok: 25 })
+    // A hypothetical next Opus: Opus 5.5 is catalogued since 2026-10-06.
+    expect(llmPrice('anthropic', 'claude-opus-6')).toEqual({ inputPerMTok: 5, outputPerMTok: 25 })
   })
 
   it('prefers the owner’s price', () => {
     const prices = {
       ...EMPTY_MODEL_PRICES,
-      llm: { 'anthropic:claude-opus-5-5': { inputPerMTok: 4, outputPerMTok: 20 } },
+      llm: { 'anthropic:claude-opus-6': { inputPerMTok: 4, outputPerMTok: 20 } },
     }
     expect(
       estimateLlmUsd({
         provider: 'anthropic',
-        model: 'claude-opus-5-5',
+        model: 'claude-opus-6',
         inputTokens: 1_000_000,
         outputTokens: 1_000_000,
         prices,
@@ -115,6 +118,6 @@ describe('llmPrice with live models (decision 288)', () => {
   })
 
   it('still refuses an unpriced model rather than estimating $0', () => {
-    expect(() => llmPrice('anthropic', 'claude-fable-5-1')).toThrow(ValidationError)
+    expect(() => llmPrice('anthropic', 'claude-mythos-5-1')).toThrow(ValidationError)
   })
 })

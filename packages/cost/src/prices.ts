@@ -1,15 +1,16 @@
-import { LLM_MODELS, TTS_PRICES_PER_KCHAR, resolveLlmModel } from '@boom-busters/providers'
+import { TTS_PRICES_PER_KCHAR, resolveLlmModel } from '@boom-busters/providers'
 import { ValidationError } from '@boom-busters/schemas'
 import type { LlmProvider, ModelPrices, TtsProvider } from '@boom-busters/schemas'
 
 /**
  * Price tables for the budget guard.
  *
- * LLM prices are no longer written here. Build spec section 6 puts the
- * per-model price table on each `LLMProvider` adapter, and M3 delivered it, so
- * this module now derives from `LLM_MODELS` rather than keeping a second copy.
- * Two hand-maintained tables would eventually disagree, and the one the guard
- * happened to read would decide whether a cap held.
+ * LLM prices are not written here. Build spec section 6 puts the per-model
+ * price table on each `LLMProvider` adapter, and since decision 288 every LLM
+ * price is read through `resolveLlmModel`: the owner's price, the adapter's
+ * catalogue, or the model's family. Two hand-maintained tables would
+ * eventually disagree, and the one the guard happened to read would decide
+ * whether a cap held.
  *
  * The adapters' figures are themselves PROVISIONAL — see the note in
  * `packages/providers/src/llm/anthropic.ts`. Confirm them against the vendors'
@@ -27,30 +28,10 @@ export interface LlmPrice {
   outputPerMTok: number
 }
 
-function pricesFromAdapters(): Record<LlmProvider, Record<string, LlmPrice>> {
-  const table = {} as Record<LlmProvider, Record<string, LlmPrice>>
-
-  for (const [provider, models] of Object.entries(LLM_MODELS) as [
-    LlmProvider,
-    (typeof LLM_MODELS)[LlmProvider],
-  ][]) {
-    table[provider] = Object.fromEntries(
-      models.map((model) => [
-        model.id,
-        { inputPerMTok: model.inputPerMTok, outputPerMTok: model.outputPerMTok },
-      ]),
-    )
-  }
-
-  return table
-}
-
-export const LLM_PRICES: Record<LlmProvider, Record<string, LlmPrice>> = pricesFromAdapters()
-
 /**
  * USD per 1,000 characters of synthesised narration.
  *
- * Derived from the TTS adapters for the same reason `LLM_PRICES` is: decision
+ * Derived from the TTS adapters for the same reason LLM prices are: decision
  * 23 puts the price table on the adapter that knows what it is buying, and two
  * hand-maintained tables would eventually disagree — with the one the guard
  * happened to read deciding whether a cap held. Also provisional.

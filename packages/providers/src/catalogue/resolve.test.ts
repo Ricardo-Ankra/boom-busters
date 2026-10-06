@@ -27,9 +27,10 @@ describe('resolveLlmModel (decision 288)', () => {
   })
 
   it('prices a live family member at its representative, at the same tier', () => {
-    const resolved = resolveLlmModel('anthropic', 'claude-opus-5-5', EMPTY_MODEL_PRICES)
+    // A hypothetical next Opus: Opus 5.5 is catalogued since 2026-10-06.
+    const resolved = resolveLlmModel('anthropic', 'claude-opus-6', EMPTY_MODEL_PRICES)
     expect(resolved?.source).toBe('family')
-    expect(resolved?.model).toMatchObject({ id: 'claude-opus-5-5', tier: 0, inputPerMTok: 5 })
+    expect(resolved?.model).toMatchObject({ id: 'claude-opus-6', tier: 0, inputPerMTok: 5 })
   })
 
   it('lets the owner override a catalogued price and keeps its tier', () => {
@@ -41,11 +42,12 @@ describe('resolveLlmModel (decision 288)', () => {
   })
 
   it('refuses a family-less model with no override, and takes tier -1 once priced', () => {
-    expect(resolveLlmModel('anthropic', 'claude-fable-5-1', EMPTY_MODEL_PRICES)).toBeUndefined()
+    // Mythos 5.1 has no family and no catalogue row (limited availability).
+    expect(resolveLlmModel('anthropic', 'claude-mythos-5-1', EMPTY_MODEL_PRICES)).toBeUndefined()
     const prices = priced({
-      llm: { 'anthropic:claude-fable-5-1': { inputPerMTok: 10, outputPerMTok: 50 } },
+      llm: { 'anthropic:claude-mythos-5-1': { inputPerMTok: 10, outputPerMTok: 50 } },
     })
-    expect(resolveLlmModel('anthropic', 'claude-fable-5-1', prices)?.model.tier).toBe(-1)
+    expect(resolveLlmModel('anthropic', 'claude-mythos-5-1', prices)?.model.tier).toBe(-1)
   })
 
   it('folds a legacy id forward before resolving', () => {

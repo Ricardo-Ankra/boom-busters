@@ -144,7 +144,7 @@ export async function stillsEstimateUsd(
   if (stills.length === 0) return 0
   const settings = await getSettings(db)
   const routing = settings.modelRouting
-  const catalogue = await stillCatalogue(settings)
+  const catalogue = await stillCatalogue(settings, routes ?? [])
   const cast = await listCastMembers(db, projectId)
   const sets = await listProjectSets(db, projectId)
   const prices = await Promise.all(
@@ -530,7 +530,7 @@ export async function generateStillCandidates(
   const namedSet = brief.set ? setForBrief(brief.set, projectSets) : null
   const settings = await getSettings(db)
   const routing = settings.modelRouting
-  const catalogue = await stillCatalogue(settings)
+  const catalogue = await stillCatalogue(settings, [stored])
   const derived = routeForBrief(brief, projectCast, projectSets, routing)
   const route = stored && adapterOffers(stored, catalogue) ? stored : derived
   // By value, not by reference: a stored route equal to the plain one is the
@@ -544,7 +544,7 @@ export async function generateStillCandidates(
   // happens to exist. In mock mode the registry serves the mock whichever id
   // is asked for, and the mock ignores the model id.
   const provider = route.provider
-  const adapter = await stillGenerator(provider, settings)
+  const adapter = stillGenerator(provider, catalogue)
   const apiKey = provider === 'google' ? keys.google : keys.fal
   if (!mocked && !apiKey) {
     const setting = likeness ? 'stills of the cast' : 'stills'

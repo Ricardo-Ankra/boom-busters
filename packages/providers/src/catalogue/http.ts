@@ -3,6 +3,8 @@ import { mapNetworkError, throwForResponse } from '../llm/http'
 export interface ListOptions {
   fetchImpl?: typeof fetch
   signal?: AbortSignal
+  /** Injected by tests so a rate-limit wait does not make the suite sleep. */
+  sleepImpl?: (ms: number) => Promise<void>
 }
 
 /** Every list endpoint pages; this caps a runaway cursor. */
@@ -39,6 +41,6 @@ export async function getJson(
     return (await response.json()) as unknown
   } catch (cause) {
     if (cause instanceof SyntaxError) throw unreadableList(provider, cause)
-    throw cause
+    throw mapNetworkError(provider, cause)
   }
 }

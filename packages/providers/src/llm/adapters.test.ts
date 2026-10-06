@@ -12,7 +12,7 @@ import { GEMINI_MAX_OUTPUT_TOKENS, GEMINI_THINKING_ALLOWANCE, google } from './g
 import { openai } from './openai'
 import { mapHttpFailure, parseRetryAfter } from './http'
 import { LLM_MODELS, knownModel, llmAdapters, topModel } from './registry'
-import { outputBudget } from './types'
+import { nextTierBelow, outputBudget } from './types'
 import type { LLMProvider, LLMTaskRequest } from './types'
 
 /**
@@ -451,10 +451,24 @@ describe('the adapter registry', () => {
     }
   })
 
-  it('has no duplicate tiers within a provider', () => {
+  /**
+   * A tier is a class, not a rank (decision 288 follow-up): Opus 5, Opus 5.5
+   * and both Fables share tier 0 and never fall back to one another. What the
+   * fallback path must never do is step to a dearer model on an overload, so
+   * that is the property pinned here, for every model in every catalogue.
+   */
+  it('never steps a failing model down to a dearer one', () => {
     for (const models of Object.values(LLM_MODELS)) {
-      const tiers = models.map((m) => m.tier)
-      expect(new Set(tiers).size).toBe(tiers.length)
+      for (const model of models) {
+        const down = nextTierBelow({ models } as LLMProvider, model.tier)
+        if (!down) continue
+        expect(down.inputPerMTok, `${model.id} -> ${down.id}`).toBeLessThanOrEqual(
+          model.inputPerMTok,
+        )
+        expect(down.outputPerMTok, `${model.id} -> ${down.id}`).toBeLessThanOrEqual(
+          model.outputPerMTok,
+        )
+      }
     }
   })
 

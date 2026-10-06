@@ -17,6 +17,7 @@ import {
   linkSlotReuse,
   listCastMembers,
   listShotSlots,
+  replaceCatalogue,
   replaceShotList,
   requireTestDatabase,
   saveChapter,
@@ -440,6 +441,31 @@ describeDb('the model select on a shot (decision 264)', () => {
       }),
     ).toMatchObject({ ok: false, error: expect.stringContaining('does not offer') })
     expect((await getShotSlot(db, ids.still))?.route).toBeNull()
+  })
+
+  it('accepts a live fal model the cache holds (decision 288 follow-up)', async () => {
+    await replaceCatalogue(
+      db,
+      'fal',
+      [
+        {
+          modelId: 'fal-ai/mock-flux',
+          kind: 'image',
+          label: 'Mock FLUX',
+          preview: false,
+          contextTokens: null,
+          maxOutputTokens: null,
+          dialect: 'flux',
+          pricePerImage: 0.02,
+        },
+      ],
+      new Date(),
+    )
+    const route = { provider: 'fal' as const, model: 'fal-ai/mock-flux' }
+    expect(await setSlotRouteAction(FIXTURE_PROJECT_ID, ids.still, route)).toMatchObject({
+      ok: true,
+    })
+    expect((await getShotSlot(db, ids.still))?.route).toEqual(route)
   })
 
   it('refuses a route on a slot that is not a still or hero', async () => {

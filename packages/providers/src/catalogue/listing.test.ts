@@ -17,6 +17,84 @@ function serve(table: Record<string, unknown | ((url: string) => unknown)>, stat
   return { fetchImpl, urls }
 }
 
+const FLUX = ['prompt', 'num_images', 'image_size']
+
+interface FakeFalEndpoint {
+  id: string
+  /** Input schema properties; the dialect is read from these. Null: fal has lost the schema. */
+  props: string[] | null
+  price: { unit_price: number; unit: string } | 'none'
+}
+
+/**
+ * fal as measured on 2026-10-06: plain search pages, schemas for named
+ * endpoints (at most ten per page), and pricing that answers a whole batch
+ * 404 when any endpoint in it has no price.
+ */
+function falServer(
+  endpoints: FakeFalEndpoint[],
+  options: {
+    throttleFirstSchemaCall?: boolean
+    /** The Retry-After the throttled call carries; two seconds by default. */
+    retryAfter?: string
+    /** fal has moved its schema route: every schema call is a plain 404. */
+    schemaRouteMoved?: boolean
+  } = {},
+) {
+  const urls: string[] = []
+  let throttled = false
+  const json = (body: unknown, status = 200, headers: Record<string, string> = {}) =>
+    new Response(JSON.stringify(body), { status, headers })
+  const fetchImpl = (async (input: string | URL) => {
+    const url = String(input)
+    urls.push(url)
+    const params = new URL(url).searchParams
+    const named = params.getAll('endpoint_id')
+    if (url.startsWith('https://api.fal.ai/v1/models/pricing')) {
+      const asked = endpoints.filter((e) => named.includes(e.id))
+      if (asked.some((e) => e.price === 'none')) {
+        return json({ error: { type: 'not_found', message: 'Endpoint(s) not found' } }, 404)
+      }
+      return json({
+        prices: asked.map((e) => ({ endpoint_id: e.id, currency: 'USD', ...(e.price as object) })),
+        has_more: false,
+      })
+    }
+    if (params.get('expand') === 'openapi-3.0') {
+      if (options.throttleFirstSchemaCall && !throttled) {
+        throttled = true
+        return json({ detail: 'slow down' }, 429, { 'retry-after': options.retryAfter ?? '2' })
+      }
+      if (options.schemaRouteMoved) return json({ detail: 'Not Found' }, 404)
+      const asked = endpoints.filter((e) => named.includes(e.id))
+      if (asked.some((e) => e.props === null)) {
+        return json({ error: { type: 'not_found', message: 'Endpoint(s) not found' } }, 404)
+      }
+      return json({
+        models: asked.slice(0, 10).map((e) => ({
+          endpoint_id: e.id,
+          openapi: {
+            components: {
+              schemas: {
+                XInput: { properties: Object.fromEntries((e.props ?? []).map((p) => [p, {}])) },
+              },
+            },
+          },
+        })),
+        has_more: false,
+      })
+    }
+    return json({
+      models: endpoints.map((e) => ({
+        endpoint_id: e.id,
+        metadata: { display_name: `${e.id} label` },
+      })),
+      has_more: false,
+    })
+  }) as typeof fetch
+  return { fetchImpl, urls }
+}
+
 describe('listProviderModels (decision 288)', () => {
   it('pages Anthropic by last_id and keeps the token limits', async () => {
     const { fetchImpl, urls } = serve({
@@ -119,54 +197,142 @@ describe('listProviderModels (decision 288)', () => {
     ])
   })
 
-  it('reads fal dialects and joins image prices, ignoring per-megapixel ones', async () => {
-    const schema = (props: string[]) => ({
-      components: {
-        schemas: { XInput: { properties: Object.fromEntries(props.map((p) => [p, {}])) } },
+  it('reads fal dialects from named-endpoint schemas and joins per-image prices', async () => {
+    const { fetchImpl, urls } = falServer([
+      { id: 'fal-ai/new-flux', props: FLUX, price: { unit_price: 0.02, unit: 'images' } },
+      { id: 'fal-ai/megapixel', props: FLUX, price: { unit_price: 0.012, unit: 'megapixels' } },
+      {
+        id: 'fal-ai/single',
+        props: ['prompt', 'image_size'],
+        price: { unit_price: 0.05, unit: 'images' },
       },
-    })
-    const { fetchImpl, urls } = serve({
-      'https://api.fal.ai/v1/models/pricing': {
-        prices: [
-          { endpoint_id: 'fal-ai/new-flux', unit_price: 0.02, unit: 'image', currency: 'USD' },
-          {
-            endpoint_id: 'fal-ai/megapixel',
-            unit_price: 0.012,
-            unit: 'megapixel',
-            currency: 'USD',
-          },
-        ],
-        has_more: false,
-      },
-      'https://api.fal.ai/v1/models': {
-        models: [
-          {
-            endpoint_id: 'fal-ai/new-flux',
-            metadata: { display_name: 'New FLUX' },
-            openapi: schema(['prompt', 'num_images', 'image_size']),
-          },
-          {
-            endpoint_id: 'fal-ai/megapixel',
-            metadata: { display_name: 'Megapixel' },
-            openapi: schema(['prompt', 'num_images', 'image_size']),
-          },
-          {
-            endpoint_id: 'fal-ai/single',
-            metadata: { display_name: 'Single' },
-            openapi: schema(['prompt', 'image_size']),
-          },
-        ],
-        has_more: false,
-      },
-    })
-    const models = await listProviderModels('fal', 'k', { fetchImpl })
-    expect(urls[0]).toContain('category=text-to-image')
-    expect(urls[0]).toContain('expand=openapi-3.0')
-    expect(models.map((m) => [m.id, m.dialect, m.pricePerImage])).toEqual([
-      ['fal-ai/new-flux', 'flux', 0.02],
-      ['fal-ai/megapixel', 'flux', null],
-      ['fal-ai/single', null, null],
     ])
+    const models = await listProviderModels('fal', 'k', { fetchImpl })
+
+    // The search walks plain pages of 100; schemas come per named endpoint,
+    // because expanding them caps a page at ten (23 s for 203 endpoints).
+    expect(urls[0]).toContain('category=text-to-image')
+    expect(urls[0]).not.toContain('expand=')
+    // Pricing is asked only for endpoints this app can send a request to.
+    const pricing = urls.filter((url) => url.includes('/pricing'))
+    expect(pricing.join(' ')).not.toContain('single')
+    expect(models.map((m) => [m.id, m.label, m.dialect, m.pricePerImage])).toEqual([
+      ['fal-ai/new-flux', 'fal-ai/new-flux label', 'flux', 0.02],
+      ['fal-ai/megapixel', 'fal-ai/megapixel label', 'flux', null],
+      ['fal-ai/single', 'fal-ai/single label', null, null],
+    ])
+  })
+
+  it('asks for schemas ten named endpoints at a time', async () => {
+    const endpoints = Array.from({ length: 23 }, (_, i) => ({
+      id: `fal-ai/model-${i}`,
+      props: FLUX,
+      price: { unit_price: 0.01, unit: 'images' },
+    }))
+    const { fetchImpl, urls } = falServer(endpoints)
+    const models = await listProviderModels('fal', 'k', { fetchImpl })
+
+    const schemaCalls = urls.filter((url) => url.includes('expand=openapi-3.0'))
+    expect(schemaCalls).toHaveLength(3)
+    for (const url of schemaCalls) {
+      expect(new URL(url).searchParams.getAll('endpoint_id').length).toBeLessThanOrEqual(10)
+    }
+    expect(models.filter((m) => m.dialect === 'flux')).toHaveLength(23)
+  })
+
+  it('splits a pricing batch fal answers 404 until the unpriced endpoint is found', async () => {
+    // fal answers a whole batch "Endpoint(s) not found" when any one endpoint
+    // in it has no price: one stale endpoint must not fail the refresh.
+    const { fetchImpl } = falServer([
+      { id: 'fal-ai/a', props: FLUX, price: { unit_price: 0.03, unit: 'images' } },
+      { id: 'fal-ai/stale', props: FLUX, price: 'none' },
+      { id: 'fal-ai/c', props: FLUX, price: { unit_price: 0.05, unit: 'images' } },
+    ])
+    const models = await listProviderModels('fal', 'k', { fetchImpl })
+    expect(models.map((m) => [m.id, m.pricePerImage])).toEqual([
+      ['fal-ai/a', 0.03],
+      ['fal-ai/stale', null],
+      ['fal-ai/c', 0.05],
+    ])
+  })
+
+  it('skips an endpoint whose schema fal cannot find, keeping the rest of its group', async () => {
+    // Seen live on 2026-10-06: a schema request naming one lost endpoint is
+    // answered 404 as a whole, which failed the whole fal refresh.
+    const { fetchImpl } = falServer([
+      { id: 'fal-ai/a', props: FLUX, price: { unit_price: 0.03, unit: 'images' } },
+      { id: 'fal-ai/lost', props: null, price: 'none' },
+      { id: 'fal-ai/c', props: FLUX, price: { unit_price: 0.05, unit: 'images' } },
+    ])
+    const models = await listProviderModels('fal', 'k', { fetchImpl })
+    expect(models.map((m) => [m.id, m.dialect, m.pricePerImage])).toEqual([
+      ['fal-ai/a', 'flux', 0.03],
+      ['fal-ai/lost', null, null],
+      ['fal-ai/c', 'flux', 0.05],
+    ])
+  })
+
+  it('waits out a 429 from fal and asks again', async () => {
+    const waits: number[] = []
+    const { fetchImpl } = falServer(
+      [{ id: 'fal-ai/a', props: FLUX, price: { unit_price: 0.03, unit: 'images' } }],
+      { throttleFirstSchemaCall: true },
+    )
+    const models = await listProviderModels('fal', 'k', {
+      fetchImpl,
+      sleepImpl: async (ms) => {
+        waits.push(ms)
+      },
+    })
+    expect(waits).toEqual([2000])
+    expect(models[0]?.dialect).toBe('flux')
+  })
+
+  it('waits at most five seconds on one 429, whatever fal asks for', async () => {
+    const waits: number[] = []
+    const { fetchImpl } = falServer(
+      [{ id: 'fal-ai/a', props: FLUX, price: { unit_price: 0.03, unit: 'images' } }],
+      { throttleFirstSchemaCall: true, retryAfter: '60' },
+    )
+    await listProviderModels('fal', 'k', {
+      fetchImpl,
+      sleepImpl: async (ms) => {
+        waits.push(ms)
+      },
+    })
+    expect(waits).toEqual([5000])
+  })
+
+  it('stops waiting out a 429 when the refresh is aborted', async () => {
+    const { fetchImpl } = falServer(
+      [{ id: 'fal-ai/a', props: FLUX, price: { unit_price: 0.03, unit: 'images' } }],
+      { throttleFirstSchemaCall: true, retryAfter: '60' },
+    )
+    const controller = new AbortController()
+    setTimeout(() => controller.abort(), 20)
+    const started = Date.now()
+    await expect(
+      listProviderModels('fal', 'k', { fetchImpl, signal: controller.signal }),
+    ).rejects.toThrow(/could not be reached/)
+    expect(Date.now() - started).toBeLessThan(2000)
+  })
+
+  it('fails the refresh on a 404 that is not fal’s "not found", rather than listing all unpriced', async () => {
+    const { fetchImpl } = falServer(
+      [{ id: 'fal-ai/a', props: FLUX, price: { unit_price: 0.03, unit: 'images' } }],
+      { schemaRouteMoved: true },
+    )
+    await expect(listProviderModels('fal', 'k', { fetchImpl })).rejects.toThrow(
+      /refused the request \(404\)/,
+    )
+  })
+
+  it('fails the refresh when fal can find no endpoint’s schema, keeping yesterday’s list', async () => {
+    const { fetchImpl } = falServer([
+      { id: 'fal-ai/a', props: null, price: 'none' },
+      { id: 'fal-ai/b', props: null, price: 'none' },
+    ])
+    await expect(listProviderModels('fal', 'k', { fetchImpl })).rejects.toThrow(/could not read/)
   })
 
   it('fails the whole fal refresh when its pricing call fails', async () => {

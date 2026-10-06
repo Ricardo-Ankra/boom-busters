@@ -1,8 +1,8 @@
-import { EMPTY_MODEL_PRICES } from '@boom-busters/schemas'
+import { DEFAULT_SETTINGS, EMPTY_MODEL_PRICES } from '@boom-busters/schemas'
 import { describe, expect, it } from 'vitest'
 import { mockListedModels } from './mock-listing'
 import { buildModelOptions, isStale } from './options'
-import type { CatalogueProvider } from './types'
+import type { CatalogueProvider, ListedModel } from './types'
 
 const allKeys = (value: boolean): Record<CatalogueProvider, boolean> => ({
   anthropic: value,
@@ -191,6 +191,91 @@ describe('buildModelOptions (decision 288)', () => {
   it('cannot refresh with no keys outside mock mode', () => {
     expect(options({ keys: allKeys(false) }).canRefresh).toBe(false)
     expect(options({ keys: allKeys(false), mock: true }).canRefresh).toBe(true)
+  })
+})
+
+describe('saved routes the lists no longer hold (decision 288 follow-up)', () => {
+  const routing = (overrides: Record<string, { provider: string; model: string } | null>) =>
+    ({ ...DEFAULT_SETTINGS.modelRouting, ...overrides }) as typeof DEFAULT_SETTINGS.modelRouting
+
+  it('keeps a routed model priced by its family, labelled no longer offered', () => {
+    const anthropic = options({
+      routing: routing({ research: { provider: 'anthropic', model: 'claude-opus-6' } }),
+    }).llm.anthropic
+    expect(anthropic.find((o) => o.id === 'claude-opus-6')).toMatchObject({
+      status: 'retired',
+      selectable: true,
+      price: { inputPerMTok: 5, outputPerMTok: 25 },
+      fallsBackTo: 'family',
+      // Shown in the row that routes to it, never offered to the others.
+      routedOnly: true,
+    })
+    expect(anthropic.filter((o) => o.routedOnly).map((o) => o.id)).toEqual(['claude-opus-6'])
+  })
+
+  it('keeps a routed model nothing can price, asking for a price', () => {
+    const anthropic = options({
+      routing: routing({ research: { provider: 'anthropic', model: 'claude-mythos-5-1' } }),
+    }).llm.anthropic
+    expect(anthropic.find((o) => o.id === 'claude-mythos-5-1')).toMatchObject({
+      status: 'needs-price',
+      price: null,
+    })
+  })
+
+  it('keeps a routed Gemini image model by its family, and lists it once', () => {
+    const google = options({
+      routing: routing({
+        stills: { provider: 'google', model: 'gemini-8-pro-image' },
+        setSheet: { provider: 'google', model: 'gemini-8-pro-image' },
+      }),
+    }).image.google
+    expect(google.filter((o) => o.id === 'gemini-8-pro-image')).toEqual([
+      expect.objectContaining({
+        status: 'retired',
+        price: expect.objectContaining({ pricePerImage: 0.15 }),
+      }),
+    ])
+  })
+
+  it('shows a fal endpoint fal no longer lists as not sendable, with the reason', () => {
+    const fal = options({
+      routing: routing({ stills: { provider: 'fal', model: 'fal-ai/gone' } }),
+    }).image.fal
+    expect(fal.find((o) => o.id === 'fal-ai/gone')).toMatchObject({
+      status: 'incompatible',
+      selectable: false,
+      reason: 'fal no longer lists this endpoint, so this app cannot tell what request it takes.',
+    })
+  })
+
+  it('adds nothing for a route the lists already hold', () => {
+    const plain = options()
+    const routed = options({ routing: DEFAULT_SETTINGS.modelRouting })
+    expect(routed.llm.anthropic.map((o) => o.id)).toEqual(plain.llm.anthropic.map((o) => o.id))
+    expect(routed.image.google.map((o) => o.id)).toEqual(plain.image.google.map((o) => o.id))
+  })
+})
+
+describe('order of a long list (decision 288 follow-up)', () => {
+  it('puts priced live models before ones needing a price, and unsendable ones last', () => {
+    const fal = (id: string, over: Partial<ListedModel>): ListedModel => ({
+      ...mockListedModels('fal')[0]!,
+      id,
+      label: id,
+      ...over,
+    })
+    const listed = [
+      fal('fal-ai/aa-unsendable', { dialect: null, pricePerImage: null }),
+      fal('fal-ai/bb-unpriced', { dialect: 'flux', pricePerImage: null }),
+      fal('fal-ai/cc-priced', { dialect: 'flux', pricePerImage: 0.02 }),
+    ]
+    const ids = options({ listed }).image.fal.map((o) => o.id)
+    expect(ids.slice(-3)).toEqual([
+      'fal-ai/cc-priced',
+      'fal-ai/bb-unpriced',
+      'fal-ai/aa-unsendable',
+    ])
   })
 })
 
