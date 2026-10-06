@@ -33,7 +33,13 @@ interface FakeFalEndpoint {
  */
 function falServer(
   endpoints: FakeFalEndpoint[],
-  options: { throttleFirstSchemaCall?: boolean } = {},
+  options: {
+    throttleFirstSchemaCall?: boolean
+    /** The Retry-After the throttled call carries; two seconds by default. */
+    retryAfter?: string
+    /** fal has moved its schema route: every schema call is a plain 404. */
+    schemaRouteMoved?: boolean
+  } = {},
 ) {
   const urls: string[] = []
   let throttled = false
@@ -57,8 +63,9 @@ function falServer(
     if (params.get('expand') === 'openapi-3.0') {
       if (options.throttleFirstSchemaCall && !throttled) {
         throttled = true
-        return json({ detail: 'slow down' }, 429, { 'retry-after': '2' })
+        return json({ detail: 'slow down' }, 429, { 'retry-after': options.retryAfter ?? '2' })
       }
+      if (options.schemaRouteMoved) return json({ detail: 'Not Found' }, 404)
       const asked = endpoints.filter((e) => named.includes(e.id))
       if (asked.some((e) => e.props === null)) {
         return json({ error: { type: 'not_found', message: 'Endpoint(s) not found' } }, 404)
@@ -279,6 +286,53 @@ describe('listProviderModels (decision 288)', () => {
     })
     expect(waits).toEqual([2000])
     expect(models[0]?.dialect).toBe('flux')
+  })
+
+  it('waits at most five seconds on one 429, whatever fal asks for', async () => {
+    const waits: number[] = []
+    const { fetchImpl } = falServer(
+      [{ id: 'fal-ai/a', props: FLUX, price: { unit_price: 0.03, unit: 'images' } }],
+      { throttleFirstSchemaCall: true, retryAfter: '60' },
+    )
+    await listProviderModels('fal', 'k', {
+      fetchImpl,
+      sleepImpl: async (ms) => {
+        waits.push(ms)
+      },
+    })
+    expect(waits).toEqual([5000])
+  })
+
+  it('stops waiting out a 429 when the refresh is aborted', async () => {
+    const { fetchImpl } = falServer(
+      [{ id: 'fal-ai/a', props: FLUX, price: { unit_price: 0.03, unit: 'images' } }],
+      { throttleFirstSchemaCall: true, retryAfter: '60' },
+    )
+    const controller = new AbortController()
+    setTimeout(() => controller.abort(), 20)
+    const started = Date.now()
+    await expect(
+      listProviderModels('fal', 'k', { fetchImpl, signal: controller.signal }),
+    ).rejects.toThrow(/could not be reached/)
+    expect(Date.now() - started).toBeLessThan(2000)
+  })
+
+  it('fails the refresh on a 404 that is not fal’s "not found", rather than listing all unpriced', async () => {
+    const { fetchImpl } = falServer(
+      [{ id: 'fal-ai/a', props: FLUX, price: { unit_price: 0.03, unit: 'images' } }],
+      { schemaRouteMoved: true },
+    )
+    await expect(listProviderModels('fal', 'k', { fetchImpl })).rejects.toThrow(
+      /refused the request \(404\)/,
+    )
+  })
+
+  it('fails the refresh when fal can find no endpoint’s schema, keeping yesterday’s list', async () => {
+    const { fetchImpl } = falServer([
+      { id: 'fal-ai/a', props: null, price: 'none' },
+      { id: 'fal-ai/b', props: null, price: 'none' },
+    ])
+    await expect(listProviderModels('fal', 'k', { fetchImpl })).rejects.toThrow(/could not read/)
   })
 
   it('fails the whole fal refresh when its pricing call fails', async () => {

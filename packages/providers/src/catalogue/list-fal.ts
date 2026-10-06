@@ -1,6 +1,6 @@
 import { RateLimitError } from '@boom-busters/schemas'
 import { z } from 'zod'
-import { mapNetworkError, throwForResponse } from '../llm/http'
+import { mapHttpFailure, mapNetworkError, throwForResponse } from '../llm/http'
 import { falDialect } from './fal-dialect'
 import { getJson, MAX_PAGES, unreadableList, type ListOptions } from './http'
 import type { ListedModel } from './types'
@@ -34,6 +34,14 @@ const PRICING_BATCH = 50
 /** fal's names for a price per generated image. */
 const PER_IMAGE_UNITS = new Set(['image', 'images'])
 const RETRIES_ON_429 = 3
+/**
+ * The longest one 429 is waited out. fal's budget is 45 s for the whole
+ * refresh, so a Retry-After of a minute is honoured as a few seconds and,
+ * if fal still refuses, the refresh fails and keeps yesterday's list.
+ */
+const MAX_WAIT_MS = 5_000
+/** fal's answer for a request naming an endpoint it does not know. */
+const NOT_FOUND = /not_found|endpoint\(s\) not found/i
 
 const SearchSchema = z.object({
   models: z.array(
@@ -58,17 +66,37 @@ const PricingSchema = z.object({
   ),
 })
 
-const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))
+/** A wait that ends early, rejecting, when the refresh is aborted. */
+function sleep(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(mapNetworkError('fal', signal.reason))
+      return
+    }
+    const timer = setTimeout(() => {
+      signal?.removeEventListener('abort', onAbort)
+      resolve()
+    }, ms)
+    const onAbort = () => {
+      clearTimeout(timer)
+      reject(mapNetworkError('fal', signal?.reason))
+    }
+    signal?.addEventListener('abort', onAbort, { once: true })
+  })
+}
 
-/** A request repeated past a 429, up to a few times, honouring Retry-After. */
+/**
+ * A request repeated past a 429, up to a few times, honouring Retry-After
+ * up to MAX_WAIT_MS.
+ */
 async function patiently<T>(options: ListOptions, request: () => Promise<T>): Promise<T> {
-  const wait = options.sleepImpl ?? sleep
+  const wait = options.sleepImpl ?? ((ms: number) => sleep(ms, options.signal))
   for (let attempt = 0; ; attempt += 1) {
     try {
       return await request()
     } catch (error) {
       if (!(error instanceof RateLimitError) || attempt >= RETRIES_ON_429) throw error
-      await wait(error.retryAfterMs ?? 1000 * 2 ** attempt)
+      await wait(Math.min(error.retryAfterMs ?? 1000 * 2 ** attempt, MAX_WAIT_MS))
     }
   }
 }
@@ -78,7 +106,9 @@ const named = (ids: readonly string[]) =>
 
 /**
  * One fal request. Null when fal answers 404 "Endpoint(s) not found", which
- * it does for a whole request naming any one endpoint it cannot find.
+ * it does for a whole request naming any one endpoint it cannot find. Any
+ * other 404 (a route fal has moved, say) fails the refresh like any other
+ * refusal: read as "not found", it would list every endpoint unpriced.
  */
 async function falGet(
   url: string,
@@ -96,12 +126,19 @@ async function falGet(
   } catch (cause) {
     throw mapNetworkError('fal', cause)
   }
-  if (response.status === 404) return null
+  if (response.status === 404) {
+    const body = await response.text().catch(() => '')
+    if (NOT_FOUND.test(body)) return null
+    throw mapHttpFailure('fal', { status: 404, message: body.slice(0, 500) })
+  }
   if (!response.ok) await throwForResponse('fal', response)
   try {
     return (await response.json()) as unknown
   } catch (cause) {
-    throw unreadableList('fal', cause)
+    // A body that is not JSON is an unreadable list; one cut off mid-read
+    // (an abort, a reset) is the network's fault.
+    if (cause instanceof SyntaxError) throw unreadableList('fal', cause)
+    throw mapNetworkError('fal', cause)
   }
 }
 
@@ -208,6 +245,15 @@ export async function listFalModels(apiKey: string, options: ListOptions): Promi
   // pricing failure other than "no price" still fails the whole refresh:
   // half a list is worse than yesterday's.
   const sendable = ids.filter((id) => dialects.get(id) !== null)
+  // fal listing endpoints and every one of them unsendable reads as fal
+  // having lost or moved its schemas, not as a list of nothing usable:
+  // failing keeps yesterday's list rather than replacing it with that.
+  if (found.length > 0 && sendable.length === 0) {
+    throw unreadableList(
+      'fal',
+      new Error(`none of ${found.length} endpoints came with a request schema this app can send`),
+    )
+  }
   const prices = await perImagePrices(sendable, headers, options)
 
   return found.map((model) => ({

@@ -41,6 +41,6 @@ export async function getJson(
     return (await response.json()) as unknown
   } catch (cause) {
     if (cause instanceof SyntaxError) throw unreadableList(provider, cause)
-    throw cause
+    throw mapNetworkError(provider, cause)
   }
 }
