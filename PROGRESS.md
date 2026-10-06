@@ -6784,3 +6784,10 @@ boom-busters-broker`; merge and deploy to Vercel, then `PUT
      and the board names it "<id> (no longer listed)"; generation reads the
      model cache once; the price forms moved to `price-forms.tsx`, named for
      screen readers, with refused prices announced; `LLM_PRICES` is gone.
+     From the review: only fal's own "Endpoint(s) not found" 404 counts as an
+     unknown endpoint, any other 404 fails the refresh, and so does a list
+     where no endpoint comes with a sendable schema, so a route fal moves
+     keeps yesterday's list; one 429 is waited out for at most 5 s and the
+     wait ends on abort; the board offers a route-only model to its own slot
+     alone. Left open: a refresh still holds a save for up to fal's 45 s, and
+     a refused price marks every field of its form invalid.
