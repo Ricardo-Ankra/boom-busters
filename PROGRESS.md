@@ -6732,8 +6732,10 @@ boom-busters-broker`; merge and deploy to Vercel, then `PUT
      charged at the per-image default.
      From the whole-branch review: live-only image routes are kept on the
      adapter list from settings, so one a refresh stops returning still
-     prices and runs; the family rules exclude Opus and Sonnet 4 and 4.1
-     and gpt-5-pro, which cost far more than their line's representative.
+     prices and runs; the family rules exclude every Claude 4 and 4.1 id
+     (Opus at three times Opus 5, Sonnet at one and a half times Sonnet 5,
+     and Haiku below 4.5 held to the same line) and gpt-5-pro, so none is
+     charged at a representative's price.
      Not done (spec section 12): per-model output caps read from the live
      list; a "try this model" button that proves a listed model actually
      answers; a voice model dropdown fed by ElevenLabs; refreshing
@@ -6747,3 +6749,38 @@ boom-busters-broker`; merge and deploy to Vercel, then `PUT
      composition changed; then `PUT /api/inngest` after the deploy, as
      after every Vercel deploy.
      Numbered 288 at the merge: master took 287 first, for still prompts.
+     Follow-up (2026-10-06, owner: "action 1 and 2, 4 and 5", with
+     Anthropic's price page). Production had run 288 since the 2026-10-01
+     push (`master` deploys itself), and the broker and Remotion site were
+     already current from decision 287. A read-only look at production found
+     the Anthropic and Google lists live and fal's refresh failing every time
+     ("could not be reached (The operation was aborted due to timeout)").
+     Measured against fal's live API: with schemas expanded its search
+     returns ten endpoints a page (203 endpoints, 21 pages, 23 s against a
+     10 s budget and a 20 page cap); its unit is "images", so no fal price
+     was ever read; a request naming any endpoint fal cannot find, a lost
+     schema or a missing price, is answered 404 as a whole; and parallel
+     requests draw 429s. The search now walks plain pages of 100, schemas
+     come ten named endpoints a request (three in flight), only sendable
+     endpoints are priced, a 404 request is halved until the unknown
+     endpoint stands alone and is skipped, a 429 is waited out, and fal gets
+     45 s. Live afterwards: 203 endpoints in 17.8 s, 29 priced per image,
+     124 sendable but priced in megapixels or other units (the owner prices
+     those), 50 not sendable; the list sorts priced first.
+     Claude prices, from the page that day: Sonnet 4.5 and 4.6 cost $3/$15
+     against Sonnet 5's $2/$10, so the Sonnet family starts at 5; the
+     catalogue now holds every id production's own list returned that its
+     family would misprice (Opus 5.5 $4/$20, Fable 5.1 and Fable 5 $10/$50,
+     Sonnet 5.5 $2/$10, Sonnet 4.6 and 4.5 $3/$15, each with its cache-read
+     price). A tier is now a class, not a rank: the "no duplicate tiers" rule
+     became "a failing model never steps down to a dearer one", with Opus 5
+     kept first and Haiku last. The owner's own Sonnet 5.5 price in
+     production ($5 in, $10 out, $0.20 cached) is left for the owner: the
+     published input price is $2.
+     Also: a saved route on a model no list holds any more shows as itself
+     ("no longer offered", or "needs a price", or for fal "not sendable"),
+     in its own row only; a slot routed at a Gemini model the lists dropped
+     generates on it at its family price instead of falling back silently,
+     and the board names it "<id> (no longer listed)"; generation reads the
+     model cache once; the price forms moved to `price-forms.tsx`, named for
+     screen readers, with refused prices announced; `LLM_PRICES` is gone.
