@@ -875,15 +875,59 @@ describe('the graphic card (decision 289)', () => {
     } as SlotView
     render(<VisualBoard projectId={PROJECT} model={model([slot])} colors={COLORS} brand={BRAND} />)
     expect(screen.getByText('Not designed: no claim holds $5bn')).toBeInTheDocument()
+    // Persistent state, not an event: nothing announces it on load.
+    expect(screen.queryByRole('alert')).toBeNull()
+    // The generic placeholder line would say the wrong thing here.
+    expect(slot.status).toBe('placeholder')
+    expect(screen.queryByText(/Nothing usable was found/)).toBeNull()
     expect(screen.getByRole('button', { name: 'Redesign graphic' })).toBeInTheDocument()
     expect(screen.queryByRole('img', { name: /^graphic:/ })).toBeNull()
   })
 
   it('says a graphic is being designed when it has neither scene nor issue', () => {
     const { scene: _scene, ...rest } = graphicSlot.brief as Record<string, unknown>
-    const slot = { ...graphicSlot, brief: { ...rest, intent: 'i' } } as SlotView
+    const slot = {
+      ...graphicSlot,
+      status: 'unresolved',
+      brief: { ...rest, intent: 'i' },
+    } as SlotView
     render(<VisualBoard projectId={PROJECT} model={model([slot])} colors={COLORS} brand={BRAND} />)
     expect(screen.getByText('Being designed. This card updates when it lands.')).toBeInTheDocument()
+    expect(screen.getByRole('status')).toHaveTextContent('Being designed.')
+    expect(screen.queryByText(/Being fetched/)).toBeNull()
+  })
+
+  it('says a graphic is being designed when it has neither scene nor issue, on a placeholder too', () => {
+    const { scene: _scene, ...rest } = graphicSlot.brief as Record<string, unknown>
+    const slot = { ...graphicSlot, brief: { ...rest, intent: 'i' } } as SlotView
+    render(<VisualBoard projectId={PROJECT} model={model([slot])} colors={COLORS} brand={BRAND} />)
+    expect(screen.queryByText(/Nothing usable was found/)).toBeNull()
+  })
+
+  it('lets the redesigning line announce alone while a redesign runs', () => {
+    const { scene: _scene, ...rest } = graphicSlot.brief as Record<string, unknown>
+    const slot = {
+      ...graphicSlot,
+      brief: { ...rest, intent: 'i' },
+      retype: { state: 'rebriefing' },
+    } as SlotView
+    render(<VisualBoard projectId={PROJECT} model={model([slot])} colors={COLORS} brand={BRAND} />)
+    expect(
+      screen.getByText('Claude is redesigning this graphic. This card updates when it lands.'),
+    ).toBeInTheDocument()
+    expect(screen.queryByText(/Being designed/)).toBeNull()
+  })
+
+  it('does not say the graphic keeps a design it never had', () => {
+    const { scene: _scene, ...rest } = graphicSlot.brief as Record<string, unknown>
+    const slot = {
+      ...graphicSlot,
+      brief: { ...rest, intent: 'i', designIssue: 'old issue' },
+      retype: { state: 'rebrief-refused', reason: 'no claim holds $5bn' },
+    } as SlotView
+    render(<VisualBoard projectId={PROJECT} model={model([slot])} colors={COLORS} brand={BRAND} />)
+    expect(screen.getByText('No new design: no claim holds $5bn')).toBeInTheDocument()
+    expect(screen.queryByText(/keeps the one it has/)).toBeNull()
   })
 
   it('offers Redesign graphic, with its own form', async () => {

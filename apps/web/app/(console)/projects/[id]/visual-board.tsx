@@ -1233,6 +1233,8 @@ function GraphicSlot({
 }) {
   const scene = brief.scene
   const { intent } = graphicIntentOf(brief)
+  // While a redesign runs, the format row's own line is the one that announces.
+  const redesigning = slot.retype?.state === 'rebriefing'
   const claimIds = scene ? graphicSceneClaimIds(scene) : (brief.intentClaimIds ?? [])
   // An `assetId` alone is not proof the mark is still there: the library row
   // it names can have been deleted since this brief was resolved. The board
@@ -1248,10 +1250,10 @@ function GraphicSlot({
     <div className="flex flex-col gap-2">
       {scene ? (
         <GraphicPreview brief={{ ...brief, scene }} brand={brand} logoUrls={slot.logoUrls} />
-      ) : brief.designIssue ? (
-        <p role="alert" className="text-[13px] text-[var(--color-warning)]">
-          Not designed: {brief.designIssue}
-        </p>
+      ) : redesigning ? null : brief.designIssue ? (
+        // Persistent state, not an event: no role, so a board of undesigned
+        // graphics does not announce assertively on load.
+        <p className="text-[13px] text-[var(--color-warning)]">Not designed: {brief.designIssue}</p>
       ) : (
         <p role="status" className="text-[13px] text-[var(--color-text-secondary)]">
           Being designed. This card updates when it lands.
@@ -2202,6 +2204,8 @@ function SlotCard({
   const [previewIndex, setPreviewIndex] = React.useState<number | null>(null)
   const { busy, pressed } = useSlotLock()
   const brief = slot.brief
+  // A graphic with no scene says so on its own card, not in the generic lines.
+  const undesignedGraphic = brief?.type === 'graphic' && brief.scene === undefined
   const planning = phase === 'plan'
   const linked = slot.reuse
   const lends = sources.filter((other) => other.reuse?.sourceSlotId === slot.id)
@@ -2382,19 +2386,21 @@ function SlotCard({
           </div>
         ) : null}
 
-        {/* A post card says what it lacks itself, in resolution's words. */}
+        {/* A post card says what it lacks itself, in resolution's words; so
+            does a graphic the designer has not composed (decision 289). */}
         {slot.status === 'placeholder' &&
         !slot.refusal &&
         brief?.type !== 'hero' &&
         brief?.type !== 'archival' &&
-        brief?.type !== 'social' ? (
+        brief?.type !== 'social' &&
+        !undesignedGraphic ? (
           <p className="text-[13px] text-[var(--color-warning)]">
             Nothing usable was found for this slot. Edit the brief and re-fetch, or upload your own
             image — approving the board with this still a placeholder must say so explicitly.
           </p>
         ) : null}
 
-        {slot.status === 'unresolved' && !planning ? (
+        {slot.status === 'unresolved' && !planning && !undesignedGraphic ? (
           <p className="text-[13px] text-[var(--color-text-muted)]" role="status">
             Being fetched — this row updates itself when candidates land.
           </p>
@@ -2873,6 +2879,8 @@ function TypePicker({
   const rebriefRefused = job?.state === 'rebrief-refused' ? job : null
   // A graphic is redesigned, not re-briefed: the card words it as a design.
   const graphic = slot.brief?.type === 'graphic'
+  // A refused redesign of a graphic that was never composed keeps nothing.
+  const graphicHasScene = slot.brief?.type === 'graphic' && slot.brief.scene !== undefined
   const fixNote = job?.state === 'fix-note' ? job : null
   // Which chooser is open: the article a headline quotes, or the post a
   // post card shows. One at a time; opening either closes the other.
@@ -2989,7 +2997,9 @@ function TypePicker({
         >
           <p className="min-w-0 flex-1 text-[13px] text-[var(--color-warning)]">
             {graphic
-              ? `No new design: ${rebriefRefused.reason} The graphic keeps the one it has.`
+              ? graphicHasScene
+                ? `No new design: ${rebriefRefused.reason} The graphic keeps the one it has.`
+                : `No new design: ${rebriefRefused.reason}`
               : `No new brief: ${rebriefRefused.reason} The slot keeps the one it has.`}
           </p>
           <Button
