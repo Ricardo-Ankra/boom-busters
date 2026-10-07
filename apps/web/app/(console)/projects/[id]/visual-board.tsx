@@ -12,6 +12,7 @@ import {
   RefreshCw,
   Search,
 } from 'lucide-react'
+import dynamic from 'next/dynamic'
 import { useRouter } from 'next/navigation'
 import * as React from 'react'
 import { SOCIAL_EXCERPT_TOO_LONG, SOCIAL_TOO_LONG } from '@boom-busters/compositions/social'
@@ -92,6 +93,7 @@ import {
 } from './visuals-actions'
 import { CameraRow } from './camera-row'
 import { DirectionCard } from './direction-card'
+import { GraphicPlaybackProvider } from './graphic-playback'
 import {
   ChartErrorCard,
   ChartPreview,
@@ -101,6 +103,17 @@ import {
   type BrandChartColors,
 } from './slot-previews'
 import { SocialPreview } from './social-preview'
+
+/**
+ * Loaded on demand (decision 289): the player carries @remotion/player and the
+ * composition library, which a board nobody presses Play on never needs.
+ * `ssr: false` because the Player draws frames. The playback context lives in
+ * `graphic-playback`, imported statically above, so it cannot drag them in.
+ */
+const GraphicPlayback = dynamic(
+  () => import('./graphic-player').then((module) => module.GraphicPlayback),
+  { ssr: false, loading: () => null },
+)
 
 /**
  * The visual board (build spec section 11.3): a filmstrip synced to an audio
@@ -1259,6 +1272,15 @@ function GraphicSlot({
           Being designed. This card updates when it lands.
         </p>
       )}
+      {scene ? (
+        <GraphicPlayback
+          slotId={slot.id}
+          scene={scene}
+          brand={brand}
+          logoUrls={slot.logoUrls}
+          durationMs={slot.durationMs}
+        />
+      ) : null}
       <p className="text-[12px] text-[var(--color-text-secondary)]">Intent: {intent}</p>
       {claimIds.length > 0 ? (
         <div className="flex flex-wrap gap-1" aria-label="Source claims">
@@ -1469,7 +1491,16 @@ export interface SetPhotoGroup {
   }[]
 }
 
-export function VisualBoard({
+/** One graphic plays at a time across the whole board (decision 289). */
+export function VisualBoard(props: React.ComponentProps<typeof VisualBoardContent>) {
+  return (
+    <GraphicPlaybackProvider>
+      <VisualBoardContent {...props} />
+    </GraphicPlaybackProvider>
+  )
+}
+
+function VisualBoardContent({
   projectId,
   model,
   colors,

@@ -89,6 +89,11 @@ vi.mock('./social-preview', () => ({
   ),
 }))
 
+/** The real player is graphic-player.test's; the board only has to mount it. */
+vi.mock('./graphic-player', () => ({
+  GraphicPlayback: () => <button type="button">Play graphic</button>,
+}))
+
 const createLogoUploadAction = vi.fn()
 const finaliseLogoAction = vi.fn()
 vi.mock('@/app/(console)/settings/logo-actions', () => ({
@@ -1003,6 +1008,26 @@ describe('the graphic card (decision 289)', () => {
       slot.id,
       expect.objectContaining({ intent: 'New intent.' }),
     )
+  })
+
+  it('offers Play graphic on a designed graphic, and not on an undesigned one', async () => {
+    const { unmount } = render(
+      <VisualBoard
+        projectId={PROJECT}
+        model={model([graphicSlot])}
+        colors={COLORS}
+        brand={BRAND}
+      />,
+    )
+    expect(await screen.findByRole('button', { name: 'Play graphic' })).toBeInTheDocument()
+    unmount()
+
+    const { scene: _scene, ...rest } = graphicSlot.brief as Record<string, unknown>
+    const undesigned = { ...graphicSlot, brief: { ...rest, intent: 'i' } } as SlotView
+    render(
+      <VisualBoard projectId={PROJECT} model={model([undesigned])} colors={COLORS} brand={BRAND} />,
+    )
+    expect(screen.queryByRole('button', { name: 'Play graphic' })).toBeNull()
   })
 
   it('keeps the other types on the old wording', () => {
