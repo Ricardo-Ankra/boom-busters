@@ -12,6 +12,7 @@ import {
   countedValue,
   enterProgress,
   estimatedTextWidth,
+  FIGURE_MAX_PX,
   fitFontPx,
   glyphAdvanceEm,
   graphicDrift,
@@ -24,6 +25,7 @@ import {
   separateOverlaps,
   staggeredEnterMs,
   tokenColor,
+  underlineBar,
 } from './graphic'
 import type { Box } from './graphic'
 
@@ -108,8 +110,51 @@ describe('graphicLayout', () => {
     expect(t!.w).toBeCloseTo(cellW * 6 - 8, 5)
     expect(l!.x).toBeCloseTo(safe.x + cellW * 8 + 4, 5)
     expect(t!.fontPx).toBeLessThanOrEqual(roleBasePx('heading'))
-    expect(f!.fontPx).toBeLessThanOrEqual(roleBasePx('numbers'))
+    expect(f!.fontPx).toBeLessThanOrEqual(FIGURE_MAX_PX)
     expect(l!.fontPx).toBeUndefined()
+  })
+
+  describe('a figure fills its box (R1)', () => {
+    const figure = (value: string, label?: string): GraphicScene => ({
+      elements: [
+        {
+          kind: 'figure',
+          id: 'big',
+          cell: { col: 0, row: 2, colSpan: 8, rowSpan: 4 },
+          value,
+          ...(label ? { label } : {}),
+          claimRef: '01HQ00000000000000000000A1',
+          color: 'accent',
+          enter: { kind: 'fade', atMs: 0 },
+        },
+      ],
+    })
+
+    it('draws a short value far above the old 96 cap, scaled with the frame', () => {
+      const frame = { width: 1280, height: 720 }
+      const [box] = graphicLayout(figure('$270M', 'Burned'), frame, brand)
+      const oldCap = roleBasePx('numbers') * (720 / 1080)
+      expect(box!.fontPx).toBeGreaterThan(oldCap * 1.5)
+      expect(FIGURE_MAX_PX).toBe(300)
+      expect(box!.fontPx).toBeLessThanOrEqual(FIGURE_MAX_PX * (720 / 1080))
+    })
+
+    it('still fits its box by width and by the height left after the caption', () => {
+      for (const frame of [WIDE, { width: 1280, height: 720 }]) {
+        for (const value of ['$270M', '$1bn', '1,250,000,000']) {
+          const [box] = graphicLayout(figure(value, 'Burned'), frame, brand)
+          const drawn = roleFontPx('numbers', box!.fontPx!, brand)
+          const width = estimatedTextWidth(value, drawn, brand.typography.numbers)
+          expect(width).toBeLessThanOrEqual(box!.w + 1)
+          expect(drawn * 1.25).toBeLessThanOrEqual(box!.h)
+        }
+      }
+    })
+
+    it('leaves text elements under their own role cap', () => {
+      const [box] = graphicLayout(scene, WIDE, brand)
+      expect(box!.fontPx).toBeLessThanOrEqual(roleBasePx('heading'))
+    })
   })
 
   it('re-flows elements without a portrait cell into one column on 9:16, in reading order', () => {
@@ -182,11 +227,43 @@ describe('reflowPortrait', () => {
       elements: [shapeElement('s0', 0, 3), shapeElement('s1', 1, 3), shapeElement('s2', 2, 3)],
     })
     const bands = result.elements.map((element) => element.portraitCell!)
+    // Nothing is pinned, so the nine used rows are centred in the twelve: three
+    // spare rows, one above and two below (it was [0, 3, 6] before the stack centred).
     expect(bands.map((cell) => [cell.row, cell.rowSpan])).toEqual([
-      [0, 3],
-      [3, 3],
-      [6, 3],
+      [1, 3],
+      [4, 3],
+      [7, 3],
     ])
+  })
+
+  it('centres an all-flowing stack in the grid, whatever its size', () => {
+    const rowsOf = (spans: number[]) =>
+      reflowPortrait({
+        elements: spans.map((span, i) => shapeElement(`s${i}`, i, span)),
+      }).elements.map((element) => [element.portraitCell!.row, element.portraitCell!.rowSpan])
+    expect(rowsOf([2])).toEqual([[5, 2]])
+    expect(rowsOf([2, 4])).toEqual([
+      [3, 2],
+      [5, 4],
+    ])
+    // A stack that already fills the grid stays where it was.
+    expect(rowsOf([6, 6])).toEqual([
+      [0, 6],
+      [6, 6],
+    ])
+  })
+
+  it('does not centre a flow that sits below a pin', () => {
+    const result = reflowPortrait({
+      elements: [
+        {
+          ...shapeElement('pinned', 0, 2),
+          portraitCell: { col: 0, row: 0, colSpan: 12, rowSpan: 2 },
+        },
+        shapeElement('flowed', 0, 2),
+      ],
+    })
+    expect(result.elements[1]!.portraitCell).toMatchObject({ row: 2, rowSpan: 2 })
   })
 
   it('compresses the tail under overflow, keeping earlier elements at their wanted size (case 2)', () => {
@@ -380,6 +457,29 @@ describe('barsGeometry, barLengthPx and ruleThicknessPx', () => {
   it('thickens the rule with the frame scale, floored at 2px', () => {
     expect(ruleThicknessPx(WIDE)).toBe(3)
     expect(ruleThicknessPx({ width: 200, height: 100 })).toBe(2)
+  })
+})
+
+describe('underlineBar (R2)', () => {
+  const frame = { width: 1920, height: 1080 }
+
+  it('is 0.06 of the font size thick, floored at 3 px scaled with the frame', () => {
+    expect(underlineBar(200, 500, 1, frame).thicknessPx).toBeCloseTo(12, 5)
+    expect(underlineBar(20, 100, 1, frame).thicknessPx).toBe(3)
+    expect(underlineBar(20, 100, 1, { width: 540, height: 960 }).thicknessPx).toBe(1.5)
+  })
+
+  it('starts 0.12 of the font size below the baseline, which sits 0.36 below the centre', () => {
+    expect(underlineBar(100, 300, 1, frame).topFromCentrePx).toBeCloseTo(48, 5)
+    expect(underlineBar(50, 300, 1, frame).topFromCentrePx).toBeCloseTo(24, 5)
+  })
+
+  it('sweeps from nothing to the text width, and clamps outside 0 to 1', () => {
+    expect(underlineBar(100, 300, 0, frame).widthPx).toBe(0)
+    expect(underlineBar(100, 300, 0.5, frame).widthPx).toBe(150)
+    expect(underlineBar(100, 300, 1, frame).widthPx).toBe(300)
+    expect(underlineBar(100, 300, 1.4, frame).widthPx).toBe(300)
+    expect(underlineBar(100, 300, -1, frame).widthPx).toBe(0)
   })
 })
 

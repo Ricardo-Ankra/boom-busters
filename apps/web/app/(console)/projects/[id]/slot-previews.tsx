@@ -15,7 +15,6 @@ import {
   barLengthPx,
   barsGapPx,
   barsGeometry,
-  emphasisWashColor,
   estimatedTextWidth,
   figureLabelBasePx,
   figureLabelGapPx,
@@ -24,6 +23,7 @@ import {
   roleFontPx,
   ruleThicknessPx,
   tokenColor,
+  underlineBar,
 } from '@boom-busters/compositions/graphic'
 import { DEFAULT_SETTINGS, resolveBrandKit } from '@boom-busters/schemas'
 import type {
@@ -626,13 +626,13 @@ export function GraphicPreview({
                   : box.x
             const y = box.y + box.h / 2
             // No measured width: the same estimate `fitFontPx` fits sizes BY, used
-            // in reverse, so the wash under an `underline` emphasis is no more
+            // in reverse, so the bar under an `underline` emphasis is no more
             // invented than the size the text itself draws at.
             const textWidth = Math.min(
               box.w,
               estimatedTextWidth(element.content, fontPx, typography[element.role]),
             )
-            const washX =
+            const barX =
               element.align === 'center'
                 ? x - textWidth / 2
                 : element.align === 'end'
@@ -649,15 +649,20 @@ export function GraphicPreview({
                     <rect x={box.x} y={box.y} width={box.w} height={box.h} />
                   </clipPath>
                 </defs>
-                {element.emphasis === 'underline' ? (
-                  <rect
-                    x={washX}
-                    y={y + fontPx * 0.08}
-                    width={textWidth}
-                    height={fontPx * 0.42}
-                    fill={emphasisWashColor(brandTokens)}
-                  />
-                ) : null}
+                {element.emphasis === 'underline'
+                  ? (() => {
+                      const bar = underlineBar(fontPx, textWidth, 1, GRAPHIC_FRAME)
+                      return (
+                        <rect
+                          x={barX}
+                          y={y + bar.topFromCentrePx}
+                          width={bar.widthPx}
+                          height={bar.thicknessPx}
+                          fill={colors.accent}
+                        />
+                      )
+                    })()
+                  : null}
                 <text
                   x={x}
                   y={y}
@@ -701,15 +706,20 @@ export function GraphicPreview({
             )
             return (
               <g key={element.id}>
-                {element.emphasis === 'underline' ? (
-                  <rect
-                    x={box.x}
-                    y={valueY + valueFontPx * 0.08}
-                    width={valueWidth}
-                    height={valueFontPx * 0.42}
-                    fill={emphasisWashColor(brandTokens)}
-                  />
-                ) : null}
+                {element.emphasis === 'underline'
+                  ? (() => {
+                      const bar = underlineBar(valueFontPx, valueWidth, 1, GRAPHIC_FRAME)
+                      return (
+                        <rect
+                          x={box.x}
+                          y={valueY + bar.topFromCentrePx}
+                          width={bar.widthPx}
+                          height={bar.thicknessPx}
+                          fill={colors.accent}
+                        />
+                      )
+                    })()
+                  : null}
                 <text
                   x={box.x}
                   y={valueY}

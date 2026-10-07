@@ -2,10 +2,10 @@ import { render, screen } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 import {
   barsGeometry,
-  emphasisWashColor,
   figureLabelBasePx,
   graphicLayout,
   roleFontPx,
+  underlineBar,
 } from '@boom-busters/compositions/graphic'
 import { DEFAULT_SETTINGS, resolveBrandKit } from '@boom-busters/schemas'
 import type { ChartBrief, MapBrief } from '@boom-busters/schemas'
@@ -322,15 +322,48 @@ describe('GraphicPreview', () => {
     expect(expectedValuePx).not.toBe(figureBox.fontPx)
   })
 
-  it('draws an accent wash behind emphasised text, the same colour the card sweeps in to', () => {
+  it('draws a solid accent bar under emphasised text, not a wash behind it', () => {
     render(<GraphicPreview brief={graphicBrief} brand={DEFAULT_SETTINGS.brandKit} logoUrls={{}} />)
     const brand = resolveBrandKit(DEFAULT_SETTINGS)
-    // t1 carries `emphasis: 'underline'`: GraphicCard draws a permanent
-    // accent wash behind it at rest, so the preview must too, not nothing.
+    const boxes = graphicLayout(graphicBrief.scene, GRAPHIC_FRAME, brand)
+    const box = boxes.find((entry) => entry.id === 't1')!
+    const fontPx = roleFontPx('title', box.fontPx!, brand)
+    // t1 carries `emphasis: 'underline'`.
     const title = screen.getByText('Raised in a single round')
-    const wash = title.previousElementSibling
-    expect(wash?.tagName).toBe('rect')
-    expect(wash).toHaveAttribute('fill', emphasisWashColor(brand))
+    const bar = title.previousElementSibling
+    expect(bar?.tagName).toBe('rect')
+    // The accent colour at full opacity, in the card's own geometry from `underlineBar`.
+    expect(bar).toHaveAttribute('fill', brand.colors.accent)
+    const expected = underlineBar(fontPx, Number(bar!.getAttribute('width')), 1, GRAPHIC_FRAME)
+    const centre = box.y + box.h / 2
+    expect(Number(bar!.getAttribute('y'))).toBeCloseTo(centre + expected.topFromCentrePx, 5)
+    expect(Number(bar!.getAttribute('height'))).toBeCloseTo(expected.thicknessPx, 5)
+    // Below the text's centre line by more than half its size: under the glyphs, not behind them.
+    expect(Number(bar!.getAttribute('y'))).toBeGreaterThan(centre + fontPx * 0.4)
+    expect(Number(bar!.getAttribute('width'))).toBeGreaterThan(0)
+  })
+
+  it('draws the same bar under an underlined figure value', () => {
+    const underlined: DesignedGraphicBrief = {
+      ...graphicBrief,
+      scene: {
+        elements: graphicBrief.scene.elements.map((element) =>
+          element.kind === 'figure' ? { ...element, emphasis: 'underline' as const } : element,
+        ),
+      },
+    }
+    render(<GraphicPreview brief={underlined} brand={DEFAULT_SETTINGS.brandKit} logoUrls={{}} />)
+    const brand = resolveBrandKit(DEFAULT_SETTINGS)
+    const value = screen.getByText('$4bn')
+    const bar = value.previousElementSibling
+    expect(bar?.tagName).toBe('rect')
+    expect(bar).toHaveAttribute('fill', brand.colors.accent)
+    const boxes = graphicLayout(underlined.scene, GRAPHIC_FRAME, brand)
+    const fontPx = roleFontPx('numbers', boxes.find((entry) => entry.id === 'f1')!.fontPx!, brand)
+    const expected = underlineBar(fontPx, Number(bar!.getAttribute('width')), 1, GRAPHIC_FRAME)
+    expect(Number(bar!.getAttribute('height'))).toBeCloseTo(expected.thicknessPx, 5)
+    // A figure with no emphasis draws no bar before its value.
+    expect(screen.queryAllByText('valuation')[0]?.previousElementSibling?.tagName).not.toBe('rect')
   })
 
   it('draws a disc as an ellipse fitted to its box, matching the card rather than a geometric circle', () => {
