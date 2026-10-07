@@ -168,6 +168,7 @@ const graphicBrief: DesignedGraphicBrief = {
       },
       {
         kind: 'figure',
+        align: 'start',
         id: 'f1',
         cell: { col: 0, row: 2, colSpan: 7, rowSpan: 4 },
         value: '$4bn',
@@ -364,6 +365,66 @@ describe('GraphicPreview', () => {
     expect(Number(bar!.getAttribute('height'))).toBeCloseTo(expected.thicknessPx, 5)
     // A figure with no emphasis draws no bar before its value.
     expect(screen.queryAllByText('valuation')[0]?.previousElementSibling?.tagName).not.toBe('rect')
+  })
+
+  it('draws a centred figure, its caption and its bar from the middle of the box', () => {
+    const centred: DesignedGraphicBrief = {
+      ...graphicBrief,
+      scene: {
+        elements: graphicBrief.scene.elements.map((element) =>
+          element.kind === 'figure'
+            ? { ...element, align: 'center' as const, emphasis: 'underline' as const }
+            : element,
+        ),
+      },
+    }
+    render(<GraphicPreview brief={centred} brand={DEFAULT_SETTINGS.brandKit} logoUrls={{}} />)
+    const brand = resolveBrandKit(DEFAULT_SETTINGS)
+    const box = graphicLayout(centred.scene, GRAPHIC_FRAME, brand).find(
+      (entry) => entry.id === 'f1',
+    )!
+    const middle = box.x + box.w / 2
+
+    const value = screen.getByText('$4bn')
+    expect(value).toHaveAttribute('text-anchor', 'middle')
+    expect(Number(value.getAttribute('x'))).toBeCloseTo(middle, 5)
+    const label = screen.getByText('valuation')
+    expect(label).toHaveAttribute('text-anchor', 'middle')
+    expect(Number(label.getAttribute('x'))).toBeCloseTo(middle, 5)
+
+    // The bar is centred on the same line as the value it underlines.
+    const bar = value.previousElementSibling!
+    const barCentre = Number(bar.getAttribute('x')) + Number(bar.getAttribute('width')) / 2
+    expect(barCentre).toBeCloseTo(middle, 5)
+  })
+
+  it('draws an end-aligned figure against the right of its box, and a default one at the left', () => {
+    const withAlign = (align: 'start' | 'end'): DesignedGraphicBrief => ({
+      ...graphicBrief,
+      scene: {
+        elements: graphicBrief.scene.elements.map((element) =>
+          element.kind === 'figure' ? { ...element, align } : element,
+        ),
+      },
+    })
+    const brand = resolveBrandKit(DEFAULT_SETTINGS)
+    const box = graphicLayout(graphicBrief.scene, GRAPHIC_FRAME, brand).find(
+      (entry) => entry.id === 'f1',
+    )!
+
+    const { unmount } = render(
+      <GraphicPreview brief={withAlign('start')} brand={DEFAULT_SETTINGS.brandKit} logoUrls={{}} />,
+    )
+    expect(screen.getByText('$4bn')).toHaveAttribute('text-anchor', 'start')
+    expect(Number(screen.getByText('$4bn').getAttribute('x'))).toBeCloseTo(box.x, 5)
+    unmount()
+
+    render(
+      <GraphicPreview brief={withAlign('end')} brand={DEFAULT_SETTINGS.brandKit} logoUrls={{}} />,
+    )
+    expect(screen.getByText('$4bn')).toHaveAttribute('text-anchor', 'end')
+    expect(Number(screen.getByText('$4bn').getAttribute('x'))).toBeCloseTo(box.x + box.w, 5)
+    expect(screen.getByText('valuation')).toHaveAttribute('text-anchor', 'end')
   })
 
   it('draws a disc as an ellipse fitted to its box, matching the card rather than a geometric circle', () => {

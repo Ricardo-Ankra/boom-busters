@@ -211,7 +211,15 @@ export function GraphicCard({
                     display: 'flex',
                     flexDirection: 'column',
                     justifyContent: 'center',
-                    alignItems: 'flex-start',
+                    // The value and its caption sit together by `align`; the value's span
+                    // shrinks to its text, so the underline bar hangs from where it sits.
+                    alignItems:
+                      element.align === 'center'
+                        ? 'center'
+                        : element.align === 'end'
+                          ? 'flex-end'
+                          : 'flex-start',
+                    textAlign: element.align,
                     overflow: 'hidden',
                     whiteSpace: 'nowrap',
                   }}

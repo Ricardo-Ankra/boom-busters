@@ -57,6 +57,22 @@ describe('GraphicSceneSchema', () => {
     expect(parsed.elements[3]).toMatchObject({ opacity: 1 })
   })
 
+  it('aligns a figure like a text: start by default, and centre or end when asked', () => {
+    const alignOf = (element: { kind: string; align?: string }) =>
+      element.kind === 'figure' ? element.align : null
+    const parsed = GraphicSceneSchema.parse({
+      elements: [figure('f1'), figure('f2', { align: 'center' }), figure('f3', { align: 'end' })],
+    })
+    expect(parsed.elements.map(alignOf)).toEqual(['start', 'center', 'end'])
+    expect(
+      GraphicSceneSchema.safeParse({ elements: [figure('f1', { align: 'middle' })] }).success,
+    ).toBe(false)
+    const planned = PlannedGraphicSceneSchema.parse({
+      elements: [figure('f1', { claimRef: 1 }), figure('f2', { claimRef: 1, align: 'center' })],
+    })
+    expect(planned.elements.map(alignOf)).toEqual(['start', 'center'])
+  })
+
   it('refuses a hex colour, a seventh element, a cell off the grid and an unknown role', () => {
     expect(
       GraphicSceneSchema.safeParse({ elements: [text('t1', { color: '#ff0000' })] }).success,

@@ -133,6 +133,8 @@ const figureFields = {
   value: z.string().min(1).max(24),
   label: z.string().min(1).max(60).optional(),
   color: GraphicColorSchema,
+  /** Where the value and its caption sit in the box; the caption follows the value. */
+  align: z.enum(['start', 'center', 'end']).default('start'),
 }
 
 const logoFields = {

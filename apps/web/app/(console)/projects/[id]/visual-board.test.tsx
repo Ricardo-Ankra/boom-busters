@@ -344,6 +344,7 @@ const graphicSlot: SlotView = {
       elements: [
         {
           kind: 'figure',
+          align: 'start',
           id: 'f1',
           cell: { col: 0, row: 0, colSpan: 7, rowSpan: 4 },
           value: '$4bn',
@@ -777,6 +778,7 @@ describe('a graphic slot (decision 268, Plan B)', () => {
           elements: [
             {
               kind: 'figure',
+              align: 'start',
               id: 'f1',
               cell: { col: 0, row: 0, colSpan: 7, rowSpan: 4 },
               value: '$4bn',

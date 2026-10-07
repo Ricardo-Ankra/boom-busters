@@ -704,6 +704,23 @@ export function GraphicPreview({
               box.w,
               estimatedTextWidth(element.value, valueFontPx, typography.numbers),
             )
+            // The card aligns the value and its caption by `align`, so both draw
+            // from the box's left, centre or right, and the bar sits under the
+            // value where the value actually is.
+            const anchorX =
+              element.align === 'center'
+                ? box.x + box.w / 2
+                : element.align === 'end'
+                  ? box.x + box.w
+                  : box.x
+            const anchor =
+              element.align === 'center' ? 'middle' : element.align === 'end' ? 'end' : 'start'
+            const barX =
+              element.align === 'center'
+                ? anchorX - valueWidth / 2
+                : element.align === 'end'
+                  ? anchorX - valueWidth
+                  : anchorX
             return (
               <g key={element.id}>
                 {element.emphasis === 'underline'
@@ -711,7 +728,7 @@ export function GraphicPreview({
                       const bar = underlineBar(valueFontPx, valueWidth, 1, GRAPHIC_FRAME)
                       return (
                         <rect
-                          x={box.x}
+                          x={barX}
                           y={valueY + bar.topFromCentrePx}
                           width={bar.widthPx}
                           height={bar.thicknessPx}
@@ -721,22 +738,24 @@ export function GraphicPreview({
                     })()
                   : null}
                 <text
-                  x={box.x}
+                  x={anchorX}
                   y={valueY}
                   fontSize={valueFontPx}
                   {...typeAttrs('numbers')}
                   fill={tokenColor(element.color, brandTokens)}
+                  textAnchor={anchor}
                   dominantBaseline="middle"
                 >
                   {element.value}
                 </text>
                 {element.label ? (
                   <text
-                    x={box.x}
+                    x={anchorX}
                     y={labelY}
                     fontSize={labelFontPx}
                     {...typeAttrs('captions')}
                     fill={colors.textSecondary}
+                    textAnchor={anchor}
                     dominantBaseline="middle"
                   >
                     {element.label}

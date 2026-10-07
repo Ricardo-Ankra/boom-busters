@@ -864,6 +864,7 @@ describe('an undesigned graphic (decision 289)', () => {
     elements: [
       {
         kind: 'figure' as const,
+        align: 'start' as const,
         id: 'f1',
         cell: SCENE_CELL,
         value: '$4bn',
@@ -915,6 +916,7 @@ describe('an undesigned graphic (decision 289)', () => {
         elements: [
           {
             kind: 'figure',
+            align: 'start',
             id: 'f',
             cell: SCENE_CELL,
             value: '$4bn',
@@ -932,6 +934,7 @@ describe('an undesigned graphic (decision 289)', () => {
         elements: [
           {
             kind: 'figure',
+            align: 'start',
             id: 'f',
             cell: SCENE_CELL,
             value: '$5bn',

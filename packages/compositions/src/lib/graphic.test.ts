@@ -47,6 +47,7 @@ const scene: GraphicScene = {
     },
     {
       kind: 'figure',
+      align: 'start',
       id: 'f',
       cell: { col: 0, row: 2, colSpan: 6, rowSpan: 3 },
       value: '$4bn',
@@ -119,6 +120,7 @@ describe('graphicLayout', () => {
       elements: [
         {
           kind: 'figure',
+          align: 'start',
           id: 'big',
           cell: { col: 0, row: 2, colSpan: 8, rowSpan: 4 },
           value,
@@ -705,6 +707,7 @@ describe('text is fitted at its drawn size', () => {
   })
   const figure = (id: string, col: number, colSpan: number, value: string) => ({
     kind: 'figure' as const,
+    align: 'start' as const,
     id,
     cell: { col, row: 5, colSpan, rowSpan: 3 },
     value,

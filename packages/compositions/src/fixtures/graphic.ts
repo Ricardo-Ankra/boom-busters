@@ -4,7 +4,8 @@ import { FIXTURE_IMAGE_SKYLINE } from './media'
 /**
  * A composed graphic (decision 268, Plan B): a title, a counting figure with
  * its underline sweep, a logo, a rule and a two-bar comparison, one of each
- * element kind the vocabulary offers.
+ * element kind the vocabulary offers. The title and the figure share a column and are
+ * both centred, so the golden also pins a figure aligned off its box's left edge.
  */
 export const GRAPHIC_SCENE: GraphicPayload = {
   kind: 'graphic',
@@ -17,11 +18,12 @@ export const GRAPHIC_SCENE: GraphicPayload = {
         content: 'Raised in a single round',
         role: 'title',
         color: 'textSecondary',
-        align: 'start',
+        align: 'center',
         enter: { kind: 'fade', atMs: 0 },
       },
       {
         kind: 'figure',
+        align: 'center',
         id: 'f1',
         cell: { col: 0, row: 2, colSpan: 7, rowSpan: 4 },
         value: '$4bn',
