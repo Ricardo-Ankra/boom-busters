@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   GRAPHIC_COLORS,
+  GRAPHIC_MAX_ENTER_MS,
   GraphicSceneSchema,
   MAX_GRAPHIC_ELEMENTS,
   PlannedGraphicSceneSchema,
@@ -193,6 +194,17 @@ describe('entrance timing (decision 289)', () => {
   it('staggers unauthored entrances 180 ms apart', () => {
     const times = graphicEnterTimes({ elements: [el('a', 0), el('b', 0), el('c', 0)] })
     expect([...times.values()]).toEqual([0, 180, 360])
+  })
+
+  it('parses an entrance up to the cap and refuses one past it', () => {
+    const at = (atMs: number) =>
+      GraphicSceneSchema.safeParse({
+        elements: [text('t1', { enter: { kind: 'fade', atMs } })],
+      })
+    expect(GRAPHIC_MAX_ENTER_MS).toBe(60_000)
+    expect(at(15000).success).toBe(true)
+    expect(at(GRAPHIC_MAX_ENTER_MS).success).toBe(true)
+    expect(at(60001).success).toBe(false)
   })
 
   it('uses authored times as written once any element is timed', () => {
