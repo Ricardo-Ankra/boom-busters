@@ -1236,8 +1236,9 @@ function GraphicSlot({
   const { intent } = graphicIntentOf(brief)
   // Play swaps the thumbnail for the player; it comes back on Close.
   const { playing } = useGraphicPlayback(slot.id)
-  // While a redesign runs, the format row's own line is the one that announces.
-  const redesigning = slot.retype?.state === 'rebriefing'
+  // While a redesign or a retype's design runs, the format row's own line is
+  // the one that announces.
+  const redesigning = slot.retype?.state === 'rebriefing' || slot.retype?.state === 'drafting'
   const claimIds = scene ? graphicSceneClaimIds(scene) : (brief.intentClaimIds ?? [])
   // An `assetId` alone is not proof the mark is still there: the library row
   // it names can have been deleted since this brief was resolved. The board
@@ -2523,7 +2524,11 @@ function SlotCard({
                 {!linked && brief.type !== 'headline' && brief.type !== 'social' ? (
                   <Button
                     variant="outline"
-                    disabled={slot.retype?.state === 'rebriefing'}
+                    // Either model job holds it, as it holds the format row: a
+                    // redesign racing a retype's design would write over it.
+                    disabled={
+                      slot.retype?.state === 'rebriefing' || slot.retype?.state === 'drafting'
+                    }
                     aria-expanded={rebriefing}
                     onClick={() => setRebriefing((value) => !value)}
                   >
@@ -2643,6 +2648,8 @@ function SlotCard({
 const DRAFTING_NOUN: Record<string, string> = {
   chart: 'chart series and claim refs',
   map: 'map locations',
+  // The intent and then the design: the marker holds through both (final review I4).
+  graphic: 'graphic',
 }
 const draftingNoun = (target: string): string =>
   DRAFTING_NOUN[target] ?? `${slotTypeLabel(target)} brief`

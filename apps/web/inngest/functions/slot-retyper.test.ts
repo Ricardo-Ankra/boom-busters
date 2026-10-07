@@ -8,6 +8,7 @@ import {
   listShotSlots,
   replaceShotList,
   requireTestDatabase,
+  retypeShotSlot,
   saveChapter,
   seed,
   setSlotRetype,
@@ -166,6 +167,45 @@ describeDb('slot-retyper (mock mode)', () => {
     expect(slot?.retype).toBeNull()
   })
 
+  it('holds the drafting marker while the graphic is designed, and clears it after (final review I4)', async () => {
+    const design = await import('@/lib/graphic-design')
+    const real = design.designGraphic
+    let during: unknown = 'not read'
+    const spy = vi.spyOn(design, 'designGraphic').mockImplementationOnce(async (...args) => {
+      during = (await getShotSlot(db, slotId))?.retype
+      return real(...args)
+    })
+    try {
+      const { result } = await engine.execute({ events: retypeEvent(slotId, 'graphic') })
+      expect(result).toMatchObject({ outcome: 'retyped', targetType: 'graphic' })
+      // The format picker and Redesign stay locked while the call is in flight.
+      expect(during).toEqual({ state: 'drafting', target: 'graphic' })
+      const slot = await getShotSlot(db, slotId)
+      expect(slot?.retype).toBeNull()
+      expect(slot?.brief).toHaveProperty('scene')
+    } finally {
+      spy.mockRestore()
+    }
+  })
+
+  it('does not write the design over a slot retyped away while it was designed (final review I4)', async () => {
+    const design = await import('@/lib/graphic-design')
+    const real = design.designGraphic
+    const spy = vi.spyOn(design, 'designGraphic').mockImplementationOnce(async (...args) => {
+      // A second retype lands while the first one's design call is in flight.
+      await retypeShotSlot(db, slotId, 'still', stillBrief)
+      return real(...args)
+    })
+    try {
+      await engine.execute({ events: retypeEvent(slotId, 'graphic') })
+      const slot = await getShotSlot(db, slotId)
+      expect(slot?.type).toBe('still')
+      expect(slot?.brief).toEqual(stillBrief)
+    } finally {
+      spy.mockRestore()
+    }
+  })
+
   it('keeps the reason on the brief when the designer refuses a retyped graphic', async () => {
     const design = await import('@/lib/graphic-design')
     const refuse = vi
@@ -205,6 +245,8 @@ describeDb('slot-retyper (mock mode)', () => {
       const brief = slot?.brief as { designIssue?: string }
       expect(brief.designIssue).toMatch(/\S/)
       expect(slot?.brief).not.toHaveProperty('scene')
+      // The drafting marker goes with the budget stop too (final review I4).
+      expect(slot?.retype).toBeNull()
     } finally {
       broke.mockRestore()
     }

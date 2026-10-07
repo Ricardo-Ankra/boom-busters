@@ -923,6 +923,25 @@ describe('the graphic card (decision 289)', () => {
     expect(screen.queryByText(/Being designed/)).toBeNull()
   })
 
+  it('locks the card while a retyped graphic is designed (final review I4)', () => {
+    const { scene: _scene, ...rest } = graphicSlot.brief as Record<string, unknown>
+    const slot = {
+      ...graphicSlot,
+      status: 'unresolved',
+      brief: { ...rest, intent: 'i' },
+      retype: { state: 'drafting', target: 'graphic' },
+    } as SlotView
+    render(<VisualBoard projectId={PROJECT} model={model([slot])} colors={COLORS} brand={BRAND} />)
+    // One line announces, the format row's own.
+    expect(screen.getByRole('status')).toHaveTextContent(
+      'Claude is drafting the graphic. This card updates when it lands.',
+    )
+    expect(screen.queryByText(/Being designed/)).toBeNull()
+    expect(screen.getByRole('button', { name: 'Redesign graphic' })).toBeDisabled()
+    const formats = within(screen.getByRole('group', { name: 'Slot format' }))
+    expect(formats.getByRole('button', { name: 'AI image' })).toBeDisabled()
+  })
+
   it('does not say the graphic keeps a design it never had', () => {
     const { scene: _scene, ...rest } = graphicSlot.brief as Record<string, unknown>
     const slot = {

@@ -205,6 +205,13 @@ export const slotRetyper = inngest.createFunction(
       }
 
       await retypeShotSlot(db, slotId, targetType, next)
+      // A graphic is not done until it is designed, in the next step: keep
+      // the card saying "drafting" until then, so the format picker and
+      // Redesign stay locked while the design call is in flight (final
+      // review I4). The design step clears it on every outcome.
+      if (targetType === 'graphic') {
+        await setSlotRetype(db, slotId, { state: 'drafting', target: 'graphic' })
+      }
       const project = await getProject(db, projectId)
       return { changed: true as const, resolveNow: project?.visualsPhase === 'board' }
     })
@@ -240,6 +247,22 @@ export const slotRetyper = inngest.createFunction(
           throw new NonRetriableError(`Shot slot ${slotId} is no longer a graphic`)
         }
         const brief = parsed.data
+        /**
+         * The design lands only on a slot that is still a graphic (final
+         * review I4). A second retype cancels this run, but a step already
+         * in flight still finishes; written blind, its graphic brief would
+         * sit on a slot of another type. Then the drafting marker goes, but
+         * only this run's: a newer retype's marker is that run's to clear.
+         */
+        const land = async (designed: Parameters<typeof withDesign>[1]) => {
+          const latest = await getShotSlot(db, slotId)
+          if (latest?.type !== 'graphic') return
+          await updateSlotBrief(db, slotId, withDesign(brief, designed))
+          const marker = latest.retype
+          if (marker?.['state'] === 'drafting' && marker['target'] === 'graphic') {
+            await setSlotRetype(db, slotId, null)
+          }
+        }
         try {
           const context = await loadGraphicContext(projectId, slot.chapterId)
           const result = await designGraphic(context, {
@@ -248,18 +271,14 @@ export const slotRetyper = inngest.createFunction(
             durationMs: slot.durationMs,
             brief,
           })
-          await updateSlotBrief(db, slotId, withDesign(brief, result))
+          await land(result)
           return { ok: true as const }
         } catch (error) {
           if (error instanceof BudgetExceededError) {
             const gate = budgetGateData(error)
             // The slot has an intent and no design; say why on the brief, or
             // the card reads "being designed" for good.
-            await updateSlotBrief(
-              db,
-              slotId,
-              withDesign(brief, { ok: false, issue: String(gate['message'] ?? 'Over budget') }),
-            )
+            await land({ ok: false, issue: String(gate['message'] ?? 'Over budget') })
             return { ok: false as const, gate }
           }
           throw error
