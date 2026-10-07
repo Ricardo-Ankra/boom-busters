@@ -370,26 +370,18 @@ const CLAIMS = [
 // the letter L, so that string cannot validate as an assetId. Corrected here.
 const LOGOS = [{ id: '01HQ00000000000000000000M1', title: 'Stability AI' }]
 
-const plannedGraphic = (elements: unknown[]) => ({
-  type: 'graphic' as const,
-  coversText: 'It raised four billion dollars.',
-  description: 'A big number with the mark beside it.',
-  motion: { kind: 'static' as const },
-  transition: 'cut' as const,
-  shotSize: 'graphic' as const,
-  scene: { elements },
-})
+const plannedScene = (elements: unknown[]) => ({ elements }) as never
 const cell = { col: 0, row: 0, colSpan: 6, rowSpan: 3 }
 
-describe('graphic briefs (decision 268, Plan B)', () => {
+describe('graphic scenes (decision 268, Plan B)', () => {
   it('is a slot type before social and hero', () => {
     expect(SHOT_SLOT_TYPES.indexOf('graphic')).toBeLessThan(SHOT_SLOT_TYPES.indexOf('social'))
     expect(SHOT_SLOT_TYPES.indexOf('social')).toBeLessThan(SHOT_SLOT_TYPES.indexOf('hero'))
   })
 
   it('resolves claim numbers to ids and entities to library assets', () => {
-    const resolved = resolvePlannedBrief(
-      plannedGraphic([
+    const resolved = resolvePlannedScene(
+      plannedScene([
         { kind: 'figure', id: 'f1', cell, value: '$4bn', claimRef: 1, color: 'accent' },
         {
           kind: 'logo',
@@ -397,75 +389,110 @@ describe('graphic briefs (decision 268, Plan B)', () => {
           cell: { ...cell, col: 6 },
           entity: 'Stability AI, the image company',
         },
-      ]) as never,
+      ]),
       CLAIMS,
       LOGOS,
     )
-    expect(resolved?.type).toBe('graphic')
-    if (resolved?.type !== 'graphic') return
-    expect(resolved.scene?.elements[0]).toMatchObject({ claimRef: CLAIMS[0]!.id })
-    expect(resolved.scene?.elements[1]).toMatchObject({
+    expect('scene' in resolved).toBe(true)
+    if (!('scene' in resolved)) return
+    expect(resolved.scene.elements[0]).toMatchObject({ claimRef: CLAIMS[0]!.id })
+    expect(resolved.scene.elements[1]).toMatchObject({
       entity: 'Stability AI, the image company',
       assetId: LOGOS[0]!.id,
     })
-    expect(GraphicBriefSchema.safeParse(resolved).success).toBe(true)
   })
 
-  it('leaves a logo without a mark unresolved rather than refusing the brief', () => {
-    const resolved = resolvePlannedBrief(
-      plannedGraphic([{ kind: 'logo', id: 'l1', cell, entity: 'Acme Capital' }]) as never,
+  it('leaves a logo without a mark unresolved rather than refusing the scene', () => {
+    const resolved = resolvePlannedScene(
+      plannedScene([{ kind: 'logo', id: 'l1', cell, entity: 'Acme Capital' }]),
       CLAIMS,
       LOGOS,
     )
-    expect(resolved?.type).toBe('graphic')
-    if (resolved?.type !== 'graphic') return
-    expect(resolved.scene?.elements[0]).toEqual(
+    expect('scene' in resolved).toBe(true)
+    if (!('scene' in resolved)) return
+    expect(resolved.scene.elements[0]).toEqual(
       expect.not.objectContaining({ assetId: expect.anything() }),
     )
   })
 
   it('refuses a claim number outside the list, and a figure the claim does not carry, in words', () => {
-    const outside = plannedGraphic([
+    const outside = plannedScene([
       { kind: 'figure', id: 'f1', cell, value: '$4bn', claimRef: 9, color: 'accent' },
-    ]) as never
-    expect(resolvePlannedBrief(outside, CLAIMS, LOGOS)).toBeNull()
-    expect(plannedBriefRejection(outside, CLAIMS, LOGOS)).toMatch(/outside the claim list/)
+    ])
+    expect(resolvePlannedScene(outside, CLAIMS, LOGOS)).toEqual({
+      issue: expect.stringMatching(/outside the claim list/),
+    })
 
-    const wrong = plannedGraphic([
+    const wrong = plannedScene([
       { kind: 'figure', id: 'f1', cell, value: '$4.5bn', claimRef: 1, color: 'accent' },
-    ]) as never
-    expect(resolvePlannedBrief(wrong, CLAIMS, LOGOS)).toBeNull()
-    expect(plannedBriefRejection(wrong, CLAIMS, LOGOS)).toMatch(/\$4\.5bn.*claim 1/)
+    ])
+    expect(resolvePlannedScene(wrong, CLAIMS, LOGOS)).toEqual({
+      issue: expect.stringMatching(/\$4\.5bn.*claim 1/),
+    })
   })
 
   it('checks every bar the same way', () => {
-    const bars = plannedGraphic([
-      {
-        kind: 'bars',
-        id: 'b1',
-        cell: { col: 0, row: 0, colSpan: 12, rowSpan: 4 },
-        color: 'accent',
-        items: [
-          { label: 'raised', value: 4, display: '$4bn', claimRef: 1 },
-          { label: 'left', value: 94, display: '94%', claimRef: 2 },
-        ],
-      },
-    ]) as never
-    const resolved = resolvePlannedBrief(bars, CLAIMS, LOGOS)
-    expect(resolved?.type).toBe('graphic')
-    const off = plannedGraphic([
-      {
-        kind: 'bars',
-        id: 'b1',
-        cell: { col: 0, row: 0, colSpan: 12, rowSpan: 4 },
-        color: 'accent',
-        items: [
-          { label: 'raised', value: 4, display: '$4bn', claimRef: 1 },
-          { label: 'left', value: 95, display: '95%', claimRef: 2 },
-        ],
-      },
-    ]) as never
-    expect(resolvePlannedBrief(off, CLAIMS, LOGOS)).toBeNull()
+    const bars = (secondDisplay: string, secondValue: number) =>
+      plannedScene([
+        {
+          kind: 'bars',
+          id: 'b1',
+          cell: { col: 0, row: 0, colSpan: 12, rowSpan: 4 },
+          color: 'accent',
+          items: [
+            { label: 'raised', value: 4, display: '$4bn', claimRef: 1 },
+            { label: 'left', value: secondValue, display: secondDisplay, claimRef: 2 },
+          ],
+        },
+      ])
+    expect('scene' in resolvePlannedScene(bars('94%', 94), CLAIMS, LOGOS)).toBe(true)
+    expect('issue' in resolvePlannedScene(bars('95%', 95), CLAIMS, LOGOS)).toBe(true)
+  })
+})
+
+describe('a planned graphic is an intent (decision 289)', () => {
+  const planned = {
+    type: 'graphic' as const,
+    coversText: 'It raised four billion.',
+    description: 'The figure.',
+    motion: { kind: 'static' as const },
+    transition: 'cut' as const,
+    intent: 'Four billion is the story.',
+    intentRefs: [1],
+  }
+
+  it('resolves to a graphic with intent claim ids and no scene', () => {
+    const stored = resolvePlannedBrief(planned, [{ id: CLAIM_A, text: '4 billion' }])
+    expect(stored).toEqual({
+      type: 'graphic',
+      coversText: planned.coversText,
+      description: planned.description,
+      motion: planned.motion,
+      transition: planned.transition,
+      intent: planned.intent,
+      intentClaimIds: [CLAIM_A],
+    })
+  })
+
+  it('accepts a graphic that rests on no claim', () => {
+    const bare = { ...planned, intentRefs: [] }
+    expect(resolvePlannedBrief(bare, [{ id: CLAIM_A }])).toMatchObject({ intentClaimIds: [] })
+    expect(plannedBriefRejection(bare, [{ id: CLAIM_A }])).toBeNull()
+  })
+
+  it('refuses a claim number outside the list, in words', () => {
+    const bad = { ...planned, intentRefs: [3] }
+    expect(resolvePlannedBrief(bad, [{ id: CLAIM_A }])).toBeNull()
+    expect(plannedBriefRejection(bad, [{ id: CLAIM_A }])).toBe(
+      'graphic named a claim number outside the claim list',
+    )
+  })
+
+  it('no longer accepts a scene from the planner', () => {
+    expect(
+      PlannedBriefSchema.safeParse({ ...planned, intent: undefined, scene: { elements: [] } })
+        .success,
+    ).toBe(false)
   })
 })
 

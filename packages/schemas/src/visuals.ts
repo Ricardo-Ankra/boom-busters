@@ -2,7 +2,6 @@ import { z } from 'zod'
 import { isFrontPage, normaliseArticleUrl } from './article'
 import {
   GraphicSceneSchema,
-  PlannedGraphicSceneSchema,
   figureCitesClaim,
   type GraphicElement,
   type GraphicScene,
@@ -718,14 +717,18 @@ export const PlannedHeadlineBriefSchema = HeadlineBriefSchema.omit({
 })
 export type PlannedHeadlineBrief = z.infer<typeof PlannedHeadlineBriefSchema>
 
-/** The wire shape of a graphic brief: claim numbers and entity names, no ids. */
+/**
+ * The wire shape of a graphic brief since decision 289: what it must get
+ * across and the claims it rests on. The designer composes the scene after.
+ */
 export const PlannedGraphicBriefSchema = GraphicBriefSchema.omit({
   scene: true,
   intent: true,
   intentClaimIds: true,
   designIssue: true,
 }).extend({
-  scene: PlannedGraphicSceneSchema,
+  intent: z.string().trim().min(1).max(300),
+  intentRefs: z.array(z.number().int().min(1)).max(6).default([]),
 })
 export type PlannedGraphicBrief = z.infer<typeof PlannedGraphicBriefSchema>
 
@@ -952,7 +955,8 @@ export function graphicIntentOf(brief: GraphicBrief): { intent: string; claimIds
 export function resolvePlannedBrief(
   brief: PlannedBrief,
   claims: readonly PlanningClaim[],
-  logos: readonly LogoIndex[] = [],
+  /** Unused since decision 289 (the designer matches marks); kept so callers pass the same arguments as to `plannedBriefRejection`. */
+  _logos: readonly LogoIndex[] = [],
 ): ShotBrief | null {
   if (brief.type === 'chart') {
     const mapped = mapClaimRefs(
@@ -995,9 +999,13 @@ export function resolvePlannedBrief(
   }
 
   if (brief.type === 'graphic') {
-    const resolved = resolvePlannedScene(brief.scene, claims, logos)
-    if ('issue' in resolved) return null
-    return { ...brief, scene: resolved.scene }
+    const mapped = mapClaimRefs(
+      brief.intentRefs,
+      claims.map((claim) => claim.id),
+    )
+    if (!mapped) return null
+    const { intentRefs: _refs, ...rest } = brief
+    return { ...rest, intentClaimIds: mapped }
   }
 
   return brief
@@ -1037,11 +1045,16 @@ export function plannedBriefRejection(
   }
 
   if (brief.type === 'graphic') {
-    // A missing mark is not a rejection (see the `logo` branch's comment in
-    // `resolvePlannedBrief`), so this never inspects `logos`; it stays a
-    // parameter so a caller can pass the same three arguments to both functions.
+    // The planner names no logos any more (the designer does), so `logos` stays
+    // a parameter only so a caller can pass the same three arguments to both
+    // functions.
     void logos
-    return sceneCitationIssue(brief.scene, claims)
+    return mapClaimRefs(
+      brief.intentRefs,
+      claims.map((claim) => claim.id),
+    )
+      ? null
+      : 'graphic named a claim number outside the claim list'
   }
 
   return null

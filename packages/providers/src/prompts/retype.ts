@@ -1,13 +1,9 @@
-import {
-  figureDigitGroups,
-  PlannedBriefSchema,
-  resolvePlannedBrief,
-  ValidationError,
-} from '@boom-busters/schemas'
+import { PlannedBriefSchema, resolvePlannedBrief, ValidationError } from '@boom-busters/schemas'
 import type { LogoIndex, PlanningClaim, ShotBrief, ShotSlotType } from '@boom-busters/schemas'
 import { z } from 'zod'
 import { claimList, type ScriptClaim } from './script'
 import { formatIssues, parseJsonCompletion } from './json'
+import { GRAPHIC_INTENT_RULES, GRAPHIC_INTENT_SHAPE } from './shotlist'
 import { outputBudget } from '../llm/types'
 import type { LLMTaskRequest } from '../llm/types'
 
@@ -39,9 +35,9 @@ export interface RetypeInput {
    */
   guidance?: string
   /**
-   * Titles of the marks the logo library holds (decision 268, Plan B), used
-   * only when the target is "graphic": the drafted brief's "logo" names one
-   * exactly so the render finds it without an upload first.
+   * Titles of the marks the logo library holds (decision 268, Plan B), listed
+   * only when the target is "graphic": the designer, working from the drafted
+   * intent, may show them.
    */
   logos?: readonly string[]
 }
@@ -86,30 +82,9 @@ slot's subject, do not make a chart — refuse instead.`
 Map rules: locations are the real places this slot's narration concerns,
 with real coordinates. "route" is true only when the story MOVES between
 them in order (money flows, HQ hops).`
-        : `{"type": "graphic", "coversText", "description", "motion", "transition",
-   "scene": {"elements": [element, ...]}} where each element is one of:
-   {"kind": "text", "id", "cell", "content" (max 120 chars), "role": "heading"|"title"|"body"|"numbers"|"captions",
-    "color", "align"?: "start"|"center"|"end", "enter"?, "emphasis"?}
-   {"kind": "figure", "id", "cell", "value" (exactly what is shown, e.g. "$4bn"), "label"?,
-    "claimRef": claim number, "color", "enter"?, "emphasis"?}
-   {"kind": "logo", "id", "cell", "entity": the company or person's exact name, "enter"?}
-   {"kind": "shape", "id", "cell", "form": "rect"|"rule"|"disc", "color", "opacity"?: 0.05-1}
-   {"kind": "bars", "id", "cell", "items": [{"label", "value": number, "display", "claimRef": claim number}] (2 to 5),
-    "color", "highlightIndex"?}
-   "cell" is {"col", "row", "colSpan", "rowSpan"} on a 12 by 12 grid; "color" is one of
-   primary, accent, background, surface, textPrimary, textSecondary, captionHighlight, collapse,
-   recovery, series0, series1, series2; "enter" is {"kind": "fade"|"rise"|"wipe"|"count", "atMs"}
-   ("count" only on a figure); "emphasis" is "pulse"|"underline".
+        : `${GRAPHIC_INTENT_SHAPE}
 
-A "graphic" is for a beat that is one or two cited figures, a company's or a person's
-mark, or a relationship between named things (a before and after, a comparison of two or
-three amounts, three dated moments). It is never a chart with fewer points: a value moving
-through time is a "chart". Every "figure" and every "bars" item cites the claim NUMBER its
-value comes from, and the digits shown must appear in that claim. Colours and type roles
-are the names listed; there is no other styling. Six elements at most; leave the
-bottom two rows clear for captions. A "logo" names the company or person exactly as
-listed under Logos; if no mark is listed for them, still name them and the producer
-will upload it.`
+${GRAPHIC_INTENT_RULES}`
 
   return {
     task: 'shotlist',
@@ -143,7 +118,7 @@ ${target}
         content:
           `Case: ${input.caseTitle}\n\nClaims:\n${claimList(input.claims)}` +
           (logos.length > 0
-            ? `\n\nLogos (marks the producer holds; a graphic's "logo" names one exactly):\n` +
+            ? `\n\nLogos (marks the producer holds; a graphic may show them):\n` +
               logos.map((title) => `- ${title}`).join('\n')
             : ''),
       },
@@ -218,9 +193,9 @@ export function mockRetypedBrief(input: {
    * whole point of that button is that the second answer is not the first.
    */
   guidance?: string
-  /** The claim list's text, in prompt order, so the mock graphic's figure truly cites claim 1. */
+  /** The claim list's text, in prompt order; accepted for callers, unused since decision 289. */
   claimTexts?: readonly string[]
-  /** Titles the logo library holds (decision 268, Plan B); the mock names the first one. */
+  /** Titles the logo library holds (decision 268, Plan B); accepted for callers, unused since decision 289. */
   logoTitles?: readonly string[]
 }): ShotBrief {
   const common = {
@@ -268,39 +243,14 @@ export function mockRetypedBrief(input: {
         { field: 'retyped brief' },
       )
     }
-    const claimText = input.claimTexts?.[0] ?? ''
-    const digits = figureDigitGroups(claimText)[0] ?? '0'
-    const value = claimText.toLowerCase().includes('billion') ? `$${digits}bn` : digits
-    const logoTitle = input.logoTitles?.[0]
 
     return {
       type: 'graphic',
       ...common,
-      ...(input.guidance ? { description: '[mock] Drafted again: ' + input.guidance } : {}),
-      scene: {
-        elements: [
-          {
-            kind: 'figure',
-            id: 'f1',
-            cell: { col: 0, row: 2, colSpan: 7, rowSpan: 4 },
-            value,
-            claimRef: claimId,
-            color: 'accent',
-            enter: { kind: 'count', atMs: 300 },
-          },
-          ...(logoTitle
-            ? [
-                {
-                  kind: 'logo' as const,
-                  id: 'l1',
-                  cell: { col: 8, row: 1, colSpan: 4, rowSpan: 4 },
-                  entity: logoTitle,
-                  enter: { kind: 'fade' as const, atMs: 0 },
-                },
-              ]
-            : []),
-        ],
-      },
+      intent: input.guidance
+        ? `[mock] Drafted again: ${input.guidance}`.slice(0, 300)
+        : '[mock] The figure, large, with the mark beside it.',
+      intentClaimIds: [claimId],
     }
   }
 
