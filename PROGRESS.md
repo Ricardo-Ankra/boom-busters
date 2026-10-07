@@ -6845,10 +6845,11 @@ boom-busters-broker`; merge and deploy to Vercel, then `PUT
      Decisions made where the spec left room: the late-entrance check lives
      in the app, not the render, so stage 1 needs no Remotion upload (cost if
      wrong: a scene saved by hand through some other path is not clamped by
-     the render); the model sees the film's whole claim list with the
-     intent's claims marked and may cite a better claim than the shot list
-     named, checked the same way (cost if wrong: a graphic can drift from the
-     claims the shot list chose); a graphic seeded before this has no
+     the render); the model sees the film's whole claim list in the cached
+     film message, the intent's claims are named in the slot message ("Rests
+     on claims"), not marked in that list, and it may cite a better claim
+     than the shot list named, checked the same way (cost if wrong: a
+     graphic can drift from the claims the shot list chose); a graphic seeded before this has no
      intent, so its description stands in for the intent line (cost if wrong:
      an old graphic's intent line reads as a description until it is
      redesigned). Rulings made during the build: an answer cut off twice
@@ -6856,7 +6857,29 @@ boom-busters-broker`; merge and deploy to Vercel, then `PUT
      `maxTokens` is absorbed, so a rejected key or the budget gate still
      propagates, since a designer failure keeps the slot and never stops the
      plan (cost if wrong: a graphic whose answers are always too long shows
-     "Not designed" instead of failing loudly). A retyped graphic whose
+     "Not designed" instead of failing loudly). From the final review: a
+     stored `designIssue` is cut to 500 characters at a word boundary with
+     "…", because a longer parse failure stored a brief that failed every
+     later parse (cost if wrong: the tail of a long reason is lost from the
+     card). One design attempt is the call plus its parse, so a reply cut
+     off inside its JSON gets the doubled retry like an empty one, and a cut
+     off at the doubled budget ends the design at once as "the designer's
+     answer was cut off at its length limit" with no reason-retry (cost if
+     wrong: a graphic that a third, reasoned call would have fitted shows
+     "Not designed"). The whole ladder has a 240 s deadline from its start,
+     each call carries an abort signal for the time left, no call starts
+     with under 15 s left, and any failure past the deadline (the budget
+     gate excepted) becomes "the designer took too long; press Redesign
+     graphic to try again", inside the route's 300 s limit (cost if wrong: a
+     slow but sound answer is thrown away and the owner presses Redesign).
+     A retype to graphic keeps the slot's `drafting` marker through the
+     design step, which clears it on every outcome it returns, and writes
+     the design only if the slot is still a graphic when it lands, so a
+     second retype mid-design keeps its own type and brief; the card treats
+     that marker as it treats a redesign, one status line ("Claude is
+     drafting the graphic.") and Redesign graphic locked with the format row
+     (cost if wrong: the card stays locked a few seconds longer than the
+     design call). A retyped graphic whose
      design step goes over budget stores the gate's message as its
      `designIssue`, and one that runs out of retries stores "the design step
      failed; press Redesign graphic to try again", so a graphic is never
@@ -6876,13 +6899,20 @@ boom-busters-broker`; merge and deploy to Vercel, then `PUT
      designed graphics fetches the player chunk on render). The board's
      frame count comes from `msToFrames`, the render's own rule, so the
      player is the render's length by construction (cost if wrong: one
-     import to revert). Noted, not fixed: the shot-list rules do not state
-     the intent's caps (at most six claims, 300 characters), so a planner
-     that goes over them has that slot dropped as malformed.
-     What did not change: the render, the timeline schema, the broker and
-     the compositions, so no `deploy:remotion` and no
-     `deploy:stacks boom-busters-broker`; no migration, since briefs are
-     JSON. Mock-provider mode makes no paid call anywhere in this feature.
+     import to revert). The shot-list and retype rules state the intent's
+     caps, at most six claim numbers in `intentRefs` (the claims its figures
+     or names come from) and 300 characters of `intent`, since a planner
+     that goes over them has that slot dropped as malformed. An older
+     graphic's Edit brief sends `intent` only when the brief has one or the
+     owner changed the field, since its description can run past 300.
+     What did not change: the render's behaviour, the timeline schema and
+     the broker, so no `deploy:remotion` and no
+     `deploy:stacks boom-busters-broker`. The compositions changed only in
+     source: `graphic.ts` reads the shared entrance timing (`GRAPHIC_ENTER_MS`,
+     `graphicEnterTimes`) instead of its own copies of the same values, and
+     the barrel exports `GraphicCard` for the board's player; the render
+     behaves the same, so the S3 site needs no re-upload. No migration,
+     since briefs are JSON. Mock-provider mode makes no paid call anywhere in this feature.
      Shipping: a Vercel deploy, then `PUT /api/inngest`, as after every
      Vercel deploy. To see it: open a project's visual board, press Redesign
      graphic on a few graphics and play them, or re-plan a film to see the
