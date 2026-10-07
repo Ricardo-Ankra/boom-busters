@@ -6832,9 +6832,13 @@ boom-busters-broker`; merge and deploy to Vercel, then `PUT
      in its own step, a failure stored as `designIssue`; the Fix button
      keeping a designed scene; and on the board an intent line with its
      claim chips and an editable intent, plus the Play graphic player, which
-     runs the real `GraphicCard` through the Remotion Player (loaded on the
-     first press), with Pause and Play following the player's own events,
-     Replay, Portrait and Landscape, and one graphic playing at a time.
+     runs the real `GraphicCard` through the Remotion Player (its chunk is
+     loaded on the first press, while the board imports only a light module
+     of buttons and state), swaps the thumbnail for the player while it
+     plays, and has Pause and Play follow the player's own events, with
+     Replay, Portrait and Landscape, and one graphic playing at a time. A
+     redesign shows "Redesigning" on the card. Saved settings pick up the
+     Motion graphics default on read.
      A stored graphic with a scene and no intent parses and renders
      unchanged; assembly skips a graphic with no scene, as it skips any
      placeholder.
@@ -6847,7 +6851,34 @@ boom-busters-broker`; merge and deploy to Vercel, then `PUT
      claims the shot list chose); a graphic seeded before this has no
      intent, so its description stands in for the intent line (cost if wrong:
      an old graphic's intent line reads as a description until it is
-     redesigned).
+     redesigned). Rulings made during the build: an answer cut off twice
+     becomes "Not designed" with a reason, and only a ValidationError on
+     `maxTokens` is absorbed, so a rejected key or the budget gate still
+     propagates, since a designer failure keeps the slot and never stops the
+     plan (cost if wrong: a graphic whose answers are always too long shows
+     "Not designed" instead of failing loudly). A retyped graphic whose
+     design step goes over budget stores the gate's message as its
+     `designIssue`, and one that runs out of retries stores "the design step
+     failed; press Redesign graphic to try again", so a graphic is never
+     silently stuck (cost if wrong: a transient failure reads "Not
+     designed" until the owner presses Redesign). On the undesigned card,
+     "Not designed: <reason>" is plain persistent text, not an alert,
+     "Being designed" shows only while a design is pending, the generic
+     placeholder and "Being fetched" lines are hidden, the card-level line
+     is hidden while a redesign runs, a refused redesign of a graphic with
+     no design drops "The graphic keeps the one it has.", and Play is
+     offered only on a designed graphic (cost if wrong: small copy and role
+     changes to revert). The player is split in two: a light static module
+     holds the buttons, state and hook, and only the frame (the Remotion
+     Player and `GraphicCard`) is loaded through `next/dynamic` on the first
+     Play, which spec section 4 asks for; an earlier ruling that split at
+     the board instead was wrong against it (cost if wrong: a board with
+     designed graphics fetches the player chunk on render). The board's
+     frame count comes from `msToFrames`, the render's own rule, so the
+     player is the render's length by construction (cost if wrong: one
+     import to revert). Noted, not fixed: the shot-list rules do not state
+     the intent's caps (at most six claims, 300 characters), so a planner
+     that goes over them has that slot dropped as malformed.
      What did not change: the render, the timeline schema, the broker and
      the compositions, so no `deploy:remotion` and no
      `deploy:stacks boom-busters-broker`; no migration, since briefs are
