@@ -20,6 +20,7 @@
     "db:migrate": "pnpm --filter @boom-busters/db migrate",
     "db:seed": "pnpm --filter @boom-busters/db seed",
     "db:migrate:test": "pnpm --filter @boom-busters/db migrate:test",
+    "render:graphics": "pnpm --filter @boom-busters/compositions render:graphics",
     "survey": "pnpm --filter @boom-busters/db survey"
   },
   "devDependencies": {
