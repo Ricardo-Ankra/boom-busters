@@ -65,9 +65,9 @@ Design rules:
 - Size follows role. A figure's value grows to fill its box (it can be very
   large); a text's size is set by its role. Give the dominant element the most
   room; a figure box 6 to 10 columns wide and 3 to 5 rows tall reads as the hero.
-- Balance. Compose around the middle of the frame. Use rows 1 to 9; the
-  composition's visual centre should sit near row 5, not in the top half. Rows
-  10 and 11 stay empty for captions.
+- Balance. The grid already ends above the captions: use the whole grid.
+  Compose around the middle: the composition's visual centre sits near row 6,
+  with roughly equal empty space above and below it.
 - Alignment. Every text and figure has an "align" (start, center or end). Align
   the elements that stack in one column the same way: a centred title over a
   centred figure over a centred caption, or all at start. A figure's caption
@@ -80,15 +80,15 @@ Design rules:
   things, no label that repeats the title.
 - Portrait. The same scene plays in 9:16 for Shorts. When elements sit side by
   side in 16:9 (columns), give each a "portraitCell" that stacks them in the
-  portrait frame, centred around row 5. A single-column design needs no portraitCell.
+  portrait frame, centred around row 6. A single-column design needs no portraitCell.
 - Colour carries meaning: "collapse" for loss and failure, "recovery" for
   gain, "accent" or "captionHighlight" for the one thing to look at, "series0"
   to "series2" to tell compared things apart. Text is "textPrimary" or
   "textSecondary". Never colour for decoration.
 - Time entrances to the words. Each slot comes with the words spoken in it and
   when; a figure should land as its number is said, a logo as its name is
-  said. An element enters by "atMs" from the slot's start. Every entrance must
-  START at least 600 ms before the slot ends, so it can finish.
+  said. An element enters by "atMs" from the slot's start. An entrance may
+  start at any time up to 600 ms before the slot ends, so it can finish.
 - A figure "count"s up only when the number itself is the story.
 - Two or three amounts compared read better as "bars" than as figures side by side.
 - A logo earns its place when the company or person is the subject, not
@@ -119,18 +119,18 @@ frame; leave it out to let the layout stack elements in reading order.
 Example, a single number that is the story (one centred column; no portraitCell needed):
 {"scene": {"elements": [
  {"kind": "text", "id": "t", "cell": {"col": 1, "row": 3, "colSpan": 10, "rowSpan": 1}, "content": "Raised in one round", "role": "title", "color": "textSecondary", "align": "center", "enter": {"kind": "fade", "atMs": 0}},
- {"kind": "figure", "id": "f", "cell": {"col": 1, "row": 4, "colSpan": 10, "rowSpan": 4}, "value": "$4bn", "label": "Series C", "claimRef": 3, "color": "accent", "align": "center", "enter": {"kind": "count", "atMs": 900}, "emphasis": "underline"}]}}
+ {"kind": "figure", "id": "f", "cell": {"col": 1, "row": 4, "colSpan": 10, "rowSpan": 5}, "value": "$4bn", "label": "Series C", "claimRef": 3, "color": "accent", "align": "center", "enter": {"kind": "count", "atMs": 900}, "emphasis": "underline"}]}}
 
 Example, two amounts compared:
 {"scene": {"elements": [
- {"kind": "text", "id": "t", "cell": {"col": 1, "row": 2, "colSpan": 10, "rowSpan": 1}, "content": "2024 revenue", "role": "title", "color": "textSecondary", "align": "center", "enter": {"kind": "fade", "atMs": 0}},
- {"kind": "bars", "id": "b", "cell": {"col": 1, "row": 3, "colSpan": 10, "rowSpan": 5}, "items": [{"label": "Nvidia", "value": 130, "display": "$130bn", "claimRef": 4}, {"label": "Intel", "value": 53, "display": "$53bn", "claimRef": 7}], "color": "series0", "highlightIndex": 0, "enter": {"kind": "wipe", "atMs": 600}}]}}
+ {"kind": "text", "id": "t", "cell": {"col": 1, "row": 3, "colSpan": 10, "rowSpan": 1}, "content": "2024 revenue", "role": "title", "color": "textSecondary", "align": "center", "enter": {"kind": "fade", "atMs": 0}},
+ {"kind": "bars", "id": "b", "cell": {"col": 1, "row": 4, "colSpan": 10, "rowSpan": 5}, "items": [{"label": "Nvidia", "value": 130, "display": "$130bn", "claimRef": 4}, {"label": "Intel", "value": 53, "display": "$53bn", "claimRef": 7}], "color": "series0", "highlightIndex": 0, "enter": {"kind": "wipe", "atMs": 600}}]}}
 
 Example, a relationship between named marks (side by side in 16:9, stacked in 9:16):
 {"scene": {"elements": [
- {"kind": "logo", "id": "a", "cell": {"col": 1, "row": 3, "colSpan": 4, "rowSpan": 3}, "portraitCell": {"col": 2, "row": 2, "colSpan": 8, "rowSpan": 3}, "entity": "Acme", "enter": {"kind": "fade", "atMs": 0}},
- {"kind": "logo", "id": "b", "cell": {"col": 7, "row": 3, "colSpan": 4, "rowSpan": 3}, "portraitCell": {"col": 2, "row": 5, "colSpan": 8, "rowSpan": 3}, "entity": "Rival", "enter": {"kind": "fade", "atMs": 1400}},
- {"kind": "text", "id": "t", "cell": {"col": 1, "row": 7, "colSpan": 10, "rowSpan": 1}, "portraitCell": {"col": 1, "row": 8, "colSpan": 10, "rowSpan": 1}, "content": "Bought for $900m", "role": "body", "color": "textPrimary", "align": "center", "enter": {"kind": "rise", "atMs": 2200}}]}}`
+ {"kind": "logo", "id": "a", "cell": {"col": 1, "row": 3, "colSpan": 4, "rowSpan": 4}, "portraitCell": {"col": 2, "row": 2, "colSpan": 8, "rowSpan": 3}, "entity": "Acme", "enter": {"kind": "fade", "atMs": 0}},
+ {"kind": "logo", "id": "b", "cell": {"col": 7, "row": 3, "colSpan": 4, "rowSpan": 4}, "portraitCell": {"col": 2, "row": 5, "colSpan": 8, "rowSpan": 3}, "entity": "Rival", "enter": {"kind": "fade", "atMs": 1400}},
+ {"kind": "text", "id": "t", "cell": {"col": 1, "row": 8, "colSpan": 10, "rowSpan": 1}, "portraitCell": {"col": 1, "row": 9, "colSpan": 10, "rowSpan": 1}, "content": "Bought for $900m", "role": "body", "color": "textPrimary", "align": "center", "enter": {"kind": "rise", "atMs": 2200}}]}}`
 
 const seconds = (ms: number) => `${(ms / 1000).toFixed(1)} s`
 

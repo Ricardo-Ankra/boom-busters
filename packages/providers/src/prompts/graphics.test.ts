@@ -59,8 +59,10 @@ describe('the designer rules (decision 289, round 3)', () => {
       'a figure box 6 to 10 columns wide and 3 to 5 rows tall reads as the hero',
     )
     expect(rules).toContain(
-      "Use rows 1 to 9; the composition's visual centre should sit near row 5, not in the top half. Rows 10 and 11 stay empty for captions.",
+      "The grid already ends above the captions: use the whole grid. Compose around the middle: the composition's visual centre sits near row 6, with roughly equal empty space above and below it.",
     )
+    expect(rules).not.toContain('stay empty for captions')
+    expect(rules).not.toContain('Use rows 1 to 9')
     expect(rules).toContain(
       'Every text and figure has an "align" (start, center or end). Align the elements that stack in one column the same way',
     )
@@ -73,12 +75,14 @@ describe('the designer rules (decision 289, round 3)', () => {
       'no line that only restates another element, no decorative rule or shape unless it separates two compared things, no label that repeats the title',
     )
     expect(rules).toContain(
-      'give each a "portraitCell" that stacks them in the portrait frame, centred around row 5. A single-column design needs no portraitCell.',
+      'give each a "portraitCell" that stacks them in the portrait frame, centred around row 6. A single-column design needs no portraitCell.',
     )
   })
 
   it('keeps the rules it did not change', () => {
-    expect(rules).toContain('START at least 600 ms before the slot ends')
+    expect(rules).toContain(
+      'An entrance may start at any time up to 600 ms before the slot ends, so it can finish.',
+    )
     expect(rules).toContain('the digits shown must appear in that claim')
     expect(rules).toContain('A figure "count"s up only when the number itself is the story.')
   })
@@ -90,7 +94,7 @@ describe('the designer rules (decision 289, round 3)', () => {
     expect(`${lines[at]} ${lines[at + 1]}`).toContain('"align"?: "start"|"center"|"end"')
   })
 
-  it('shows three worked examples that parse, sit in rows 1 to 9, and apply the rules', () => {
+  it('shows three worked examples that parse, are vertically centred on the 12-row grid, and apply the rules', () => {
     const examples = system
       .split('Example,')
       .slice(1)
@@ -98,12 +102,17 @@ describe('the designer rules (decision 289, round 3)', () => {
     expect(examples).toHaveLength(3)
     for (const example of examples) {
       const scene = parseGraphicScene(example)
-      const rows = scene.elements.flatMap((element) => [
-        element.cell.row,
-        element.cell.row + element.cell.rowSpan,
-      ])
-      expect(Math.min(...rows)).toBeGreaterThanOrEqual(1)
-      expect(Math.max(...rows)).toBeLessThanOrEqual(10)
+      // Landscape cells, then the portrait cells where an element has one.
+      const placements = [
+        scene.elements.map((element) => element.cell),
+        scene.elements.map((element) => element.portraitCell ?? element.cell),
+      ]
+      for (const cells of placements) {
+        const top = Math.min(...cells.map((c) => c.row))
+        const bottom = Math.max(...cells.map((c) => c.row + c.rowSpan))
+        // Equal empty space above and below: the box's middle is row 6.
+        expect(top + bottom).toBe(12)
+      }
     }
   })
 })
