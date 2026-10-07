@@ -147,7 +147,9 @@ export function buildGraphicRequest(input: GraphicDesignInput): LLMTaskRequest {
             {
               role: 'user' as const,
               content:
-                'The current design, which the producer wants changed (claimRef 0 is a claim no longer in the list):\n' +
+                // toPlannedScene writes a gone claim as 0, which the check
+                // refuses; this says what to do with one (final review M3).
+                'The current design, which the producer wants changed (claimRef 0: an element citing a claim no longer in the list must cite a listed claim or be dropped):\n' +
                 JSON.stringify(input.current, null, 2),
             },
           ]

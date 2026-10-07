@@ -101,6 +101,13 @@ describe('buildGraphicRequest (decision 289)', () => {
     const last = request.messages.at(-1)!.content
     expect(request.messages.some((m) => m.content.includes('"content": "Old"'))).toBe(true)
     expect(last).toBe("The producer's steer: Make the number bigger.")
+    // A gone claim shows as claimRef 0, which the check refuses; the
+    // message says what to do with it (final review M3).
+    const current = request.messages.find((m) => m.content.startsWith('The current design'))!
+    expect(current.content).toContain(
+      'an element citing a claim no longer in the list must cite a listed claim or be dropped',
+    )
+    expect(current.content).not.toContain('claimRef 0 is a claim no longer in the list')
   })
 
   it('names the reason a previous answer was refused', () => {
