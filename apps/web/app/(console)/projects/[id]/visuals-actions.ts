@@ -255,6 +255,8 @@ const BriefPatchSchema = z.object({
   prompt: z.string().min(1).optional(),
   negativePrompt: z.string().optional(),
   mustShow: z.string().min(1).optional(),
+  // A graphic's intent (decision 289); a brief type with no such field drops it.
+  intent: z.string().trim().min(1).max(300).optional(),
   camera: SetCameraSchema.optional(),
 })
 

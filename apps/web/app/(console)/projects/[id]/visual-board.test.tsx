@@ -845,6 +845,133 @@ describe('a graphic slot (decision 268, Plan B)', () => {
   })
 })
 
+describe('the graphic card (decision 289)', () => {
+  it('shows the intent under the preview', () => {
+    const slot = {
+      ...graphicSlot,
+      brief: { ...graphicSlot.brief!, intent: 'Four billion is the story.' },
+    } as SlotView
+    render(<VisualBoard projectId={PROJECT} model={model([slot])} colors={COLORS} brand={BRAND} />)
+    expect(screen.getByText('Intent: Four billion is the story.')).toBeInTheDocument()
+  })
+
+  it('reads the description as the intent of an older graphic', () => {
+    render(
+      <VisualBoard
+        projectId={PROJECT}
+        model={model([graphicSlot])}
+        colors={COLORS}
+        brand={BRAND}
+      />,
+    )
+    expect(screen.getByText(`Intent: ${graphicSlot.brief!.description}`)).toBeInTheDocument()
+  })
+
+  it('says why a graphic was not designed, beside Redesign graphic', () => {
+    const { scene: _scene, ...rest } = graphicSlot.brief as Record<string, unknown>
+    const slot = {
+      ...graphicSlot,
+      brief: { ...rest, intent: 'i', designIssue: 'no claim holds $5bn' },
+    } as SlotView
+    render(<VisualBoard projectId={PROJECT} model={model([slot])} colors={COLORS} brand={BRAND} />)
+    expect(screen.getByText('Not designed: no claim holds $5bn')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Redesign graphic' })).toBeInTheDocument()
+    expect(screen.queryByRole('img', { name: /^graphic:/ })).toBeNull()
+  })
+
+  it('says a graphic is being designed when it has neither scene nor issue', () => {
+    const { scene: _scene, ...rest } = graphicSlot.brief as Record<string, unknown>
+    const slot = { ...graphicSlot, brief: { ...rest, intent: 'i' } } as SlotView
+    render(<VisualBoard projectId={PROJECT} model={model([slot])} colors={COLORS} brand={BRAND} />)
+    expect(screen.getByText('Being designed. This card updates when it lands.')).toBeInTheDocument()
+  })
+
+  it('offers Redesign graphic, with its own form', async () => {
+    render(
+      <VisualBoard
+        projectId={PROJECT}
+        model={model([graphicSlot])}
+        colors={COLORS}
+        brand={BRAND}
+      />,
+    )
+    expect(screen.queryByRole('button', { name: 'Draft a different brief' })).toBeNull()
+    await userEvent.click(screen.getByRole('button', { name: 'Redesign graphic' }))
+    expect(screen.getByLabelText('What should change? (optional)')).toBeInTheDocument()
+    expect(
+      screen.getByText(
+        "The designer starts from this graphic's intent and current design. The steer is used once and not kept.",
+      ),
+    ).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Redesign it' }))
+    expect(rebriefSlotAction).toHaveBeenCalledWith(PROJECT, graphicSlot.id, '')
+    expect(toast).toHaveBeenCalledWith(
+      expect.objectContaining({ title: 'Redesigning: this card updates when it lands' }),
+    )
+  })
+
+  it('words a running redesign as a design', () => {
+    render(
+      <VisualBoard
+        projectId={PROJECT}
+        model={model([{ ...graphicSlot, retype: { state: 'rebriefing' } }])}
+        colors={COLORS}
+        brand={BRAND}
+      />,
+    )
+    expect(
+      screen.getByText('Claude is redesigning this graphic. This card updates when it lands.'),
+    ).toBeInTheDocument()
+  })
+
+  it('words a refused redesign as a design, and says the graphic keeps its own', () => {
+    render(
+      <VisualBoard
+        projectId={PROJECT}
+        model={model([
+          {
+            ...graphicSlot,
+            retype: { state: 'rebrief-refused', reason: 'no claim holds $5bn' },
+          },
+        ])}
+        colors={COLORS}
+        brand={BRAND}
+      />,
+    )
+    expect(
+      screen.getByText('No new design: no claim holds $5bn The graphic keeps the one it has.'),
+    ).toBeInTheDocument()
+  })
+
+  it('edits the intent from Edit brief', async () => {
+    const slot = {
+      ...graphicSlot,
+      brief: { ...graphicSlot.brief!, intent: 'Old intent.' },
+    } as SlotView
+    render(<VisualBoard projectId={PROJECT} model={model([slot])} colors={COLORS} brand={BRAND} />)
+    await userEvent.click(screen.getByRole('button', { name: /Edit brief/ }))
+    const intent = screen.getByLabelText('Intent')
+    await userEvent.clear(intent)
+    await userEvent.type(intent, 'New intent.')
+    await userEvent.click(screen.getByRole('button', { name: /^Save/ }))
+    expect(editBriefAction).toHaveBeenCalledWith(
+      PROJECT,
+      slot.id,
+      expect.objectContaining({ intent: 'New intent.' }),
+    )
+  })
+
+  it('keeps the other types on the old wording', () => {
+    render(
+      <VisualBoard projectId={PROJECT} model={model([stockSlot])} colors={COLORS} brand={BRAND} />,
+    )
+    expect(screen.queryByRole('button', { name: 'Redesign graphic' })).toBeNull()
+    expect(
+      screen.getAllByRole('button', { name: 'Draft a different brief' }).length,
+    ).toBeGreaterThan(0)
+  })
+})
+
 describe('the plan phase (staged-visuals design)', () => {
   const plannedStock: SlotView = {
     ...stockSlot,
