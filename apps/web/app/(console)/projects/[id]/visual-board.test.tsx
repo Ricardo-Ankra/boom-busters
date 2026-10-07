@@ -1029,6 +1029,57 @@ describe('the graphic card (decision 289)', () => {
     )
   })
 
+  it('saves an older graphic with a long description without sending an intent (final review M2)', async () => {
+    const description = `${'A counting figure beside the mark. '.repeat(12)}`.slice(0, 400)
+    const slot = {
+      ...graphicSlot,
+      brief: { ...graphicSlot.brief!, description },
+    } as SlotView
+    render(<VisualBoard projectId={PROJECT} model={model([slot])} colors={COLORS} brand={BRAND} />)
+    await userEvent.click(screen.getByRole('button', { name: /Edit brief/ }))
+    // No intent stored: the field may be left empty.
+    expect(screen.getByLabelText('Intent')).not.toBeRequired()
+    const field = screen.getByLabelText('Visual description')
+    await userEvent.type(field, ' More.')
+    await userEvent.click(screen.getByRole('button', { name: /^Save/ }))
+    expect(editBriefAction).toHaveBeenCalledTimes(1)
+    const sent = editBriefAction.mock.calls[0]![2] as Record<string, unknown>
+    expect(sent['description']).toBe(`${description} More.`)
+    expect(sent).not.toHaveProperty('intent')
+  })
+
+  it('sends an older graphic its first intent once the field is changed', async () => {
+    render(
+      <VisualBoard
+        projectId={PROJECT}
+        model={model([graphicSlot])}
+        colors={COLORS}
+        brand={BRAND}
+      />,
+    )
+    await userEvent.click(screen.getByRole('button', { name: /Edit brief/ }))
+    const intent = screen.getByLabelText('Intent')
+    await userEvent.clear(intent)
+    await userEvent.type(intent, 'Four billion is the story.')
+    await userEvent.click(screen.getByRole('button', { name: /^Save/ }))
+    expect(editBriefAction).toHaveBeenCalledWith(
+      PROJECT,
+      graphicSlot.id,
+      expect.objectContaining({ intent: 'Four billion is the story.' }),
+    )
+  })
+
+  it('requires the intent on a graphic that has one', async () => {
+    const slot = {
+      ...graphicSlot,
+      brief: { ...graphicSlot.brief!, intent: 'Old intent.' },
+    } as SlotView
+    render(<VisualBoard projectId={PROJECT} model={model([slot])} colors={COLORS} brand={BRAND} />)
+    await userEvent.click(screen.getByRole('button', { name: /Edit brief/ }))
+    expect(screen.getByLabelText('Intent')).toBeRequired()
+    expect(screen.getByLabelText('Intent')).toHaveAttribute('maxLength', '300')
+  })
+
   it('offers Play graphic on a designed graphic, and not on an undesigned one', async () => {
     const { unmount } = render(
       <VisualBoard

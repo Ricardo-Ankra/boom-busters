@@ -3666,6 +3666,15 @@ function BriefEditor({
   const [intent, setIntent] = React.useState(
     brief?.type === 'graphic' ? graphicIntentOf(brief).intent : '',
   )
+  /**
+   * An older graphic has no intent, so the field shows its description,
+   * which may run past the intent's 300 characters; sent back unasked, it
+   * fails every save (final review M2). The intent goes only when the brief
+   * has one or the producer wrote one.
+   */
+  const hasIntent = brief?.type === 'graphic' && brief.intent !== undefined
+  const [intentChanged, setIntentChanged] = React.useState(false)
+  const sendIntent = hasIntent || (intentChanged && intent.trim() !== '')
   if (!brief) return null
 
   const field =
@@ -3684,7 +3693,7 @@ function BriefEditor({
               ...(brief.type === 'stock' || brief.type === 'archival' ? { query } : {}),
               ...(brief.type === 'archival' ? { mustShow } : {}),
               ...(brief.type === 'still' ? { prompt } : {}),
-              ...(brief.type === 'graphic' ? { intent } : {}),
+              ...(brief.type === 'graphic' && sendIntent ? { intent } : {}),
             }),
           planning || brief.type === 'archival'
             ? 'Brief saved'
@@ -3709,9 +3718,13 @@ function BriefEditor({
           Intent
           <textarea
             value={intent}
-            onChange={(event) => setIntent(event.target.value)}
+            onChange={(event) => {
+              setIntent(event.target.value)
+              setIntentChanged(true)
+            }}
             rows={2}
             maxLength={300}
+            required={hasIntent}
             className={field}
           />
         </label>
