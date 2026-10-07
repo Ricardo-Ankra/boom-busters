@@ -145,7 +145,16 @@ export async function designGraphic(
 
   let rejection: string | undefined
   for (let attempt = 0; attempt < 2; attempt += 1) {
-    const text = await complete(context, rejection ? { ...base, rejection } : base)
+    let text: string
+    try {
+      text = await complete(context, rejection ? { ...base, rejection } : base)
+    } catch (error) {
+      // Cut off even after the doubled retry: a bad answer, not an outage.
+      // Any other failure (budget, provider, a rejected key) goes through.
+      if (!(error instanceof ValidationError) || error.field !== 'maxTokens') throw error
+      rejection = "the designer's answer was cut off at its length limit"
+      continue
+    }
     let checked: { scene: GraphicScene } | { issue: string }
     try {
       checked = sceneIssue(parseGraphicScene(text), context, slot.durationMs)

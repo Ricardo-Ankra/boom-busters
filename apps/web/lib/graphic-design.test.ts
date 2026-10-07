@@ -106,6 +106,40 @@ describe('designGraphic (decision 289)', () => {
     expect(callLlm.mock.calls[1]![0].maxTokens).toBe(callLlm.mock.calls[0]![0].maxTokens * 2)
   })
 
+  it('reports an answer cut off twice as a design issue, without throwing', async () => {
+    callLlm.mockRejectedValue(new ValidationError('cut off', { field: 'maxTokens' }))
+    await expect(designGraphic(CONTEXT, SLOT)).resolves.toEqual({
+      ok: false,
+      issue: "the designer's answer was cut off at its length limit",
+    })
+  })
+
+  it('lets any other ValidationError from the call through', async () => {
+    callLlm.mockRejectedValue(
+      new ValidationError('anthropic rejected the API key (401).', {
+        field: 'connections.anthropic',
+      }),
+    )
+    await expect(designGraphic(CONTEXT, SLOT)).rejects.toThrow('rejected the API key')
+  })
+
+  it('shows a redesign the current scene in claim numbers, then the steer last', async () => {
+    callLlm.mockResolvedValueOnce(answer('$4bn'))
+    const designed = await designGraphic(CONTEXT, SLOT)
+    if (!designed.ok) throw new Error('setup design failed')
+    callLlm.mockReset()
+    callLlm.mockResolvedValueOnce(answer('$4bn'))
+    await designGraphic(
+      CONTEXT,
+      { ...SLOT, brief: { ...BRIEF, scene: designed.scene } },
+      { redesign: true, guidance: 'Make the number bigger.' },
+    )
+    const messages = callLlm.mock.calls[0]![0].messages as { content: string }[]
+    const current = messages.find((m) => m.content.startsWith('The current design'))
+    expect(current?.content).toContain('"claimRef": 1')
+    expect(messages.at(-1)!.content).toBe("The producer's steer: Make the number bigger.")
+  })
+
   it('designs from the description when the graphic predates intents', async () => {
     callLlm.mockResolvedValueOnce(answer('$4bn'))
     const { intent: _i, intentClaimIds: _c, ...legacy } = BRIEF
