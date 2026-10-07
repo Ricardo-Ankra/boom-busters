@@ -6,6 +6,7 @@ import {
   scriptableClaims,
   setSlotResolution,
   setSlotRetype,
+  updateSlotBrief,
 } from '@boom-busters/db'
 import {
   buildRetypeRequest,
@@ -16,6 +17,7 @@ import {
 import {
   BudgetExceededError,
   convertBrief,
+  GraphicBriefSchema,
   parseEventData,
   serialiseError,
   ShotBriefSchema,
@@ -25,6 +27,7 @@ import {
 import type { ShotBrief } from '@boom-busters/schemas'
 import { NonRetriableError } from 'inngest'
 import { db } from '@/lib/db'
+import { designGraphic, loadGraphicContext, withDesign } from '@/lib/graphic-design'
 import { callLlm } from '@/lib/llm'
 import { requireVisualKeys, resolveSlotBrief } from '@/lib/visual-assets'
 import { inngest } from '../client'
@@ -208,6 +211,38 @@ export const slotRetyper = inngest.createFunction(
     }
     if (!converted.changed) {
       return { projectId, slotId, outcome: 'unchanged' as const }
+    }
+
+    // A slot retyped to a graphic arrives with an intent and no design
+    // (decision 289); the designer composes it in a step of its own.
+    if (targetType === 'graphic') {
+      const designed = await step.run('design-graphic', async () => {
+        const slot = await getShotSlot(db, slotId)
+        if (!slot) throw new NonRetriableError(`Shot slot ${slotId} vanished mid-retype`)
+        const brief = GraphicBriefSchema.parse(slot.brief)
+        try {
+          const context = await loadGraphicContext(projectId, slot.chapterId)
+          const result = await designGraphic(context, {
+            chapterId: slot.chapterId,
+            startMs: slot.startMs,
+            durationMs: slot.durationMs,
+            brief,
+          })
+          await updateSlotBrief(db, slotId, withDesign(brief, result))
+          return { ok: true as const }
+        } catch (error) {
+          if (error instanceof BudgetExceededError) {
+            return { ok: false as const, gate: budgetGateData(error) }
+          }
+          throw error
+        }
+      })
+      if (!designed.ok) {
+        await step.run('design-over-budget', () =>
+          markSideJobFailed(ctx, 'The graphic could not be designed', designed.gate),
+        )
+        return { projectId, slotId, outcome: 'over-budget' as const }
+      }
     }
 
     // Board phase: the owner is looking at candidate strips — resolve the

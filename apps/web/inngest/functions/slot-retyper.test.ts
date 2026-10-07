@@ -151,4 +151,17 @@ describeDb('slot-retyper (mock mode)', () => {
     expect(result).toMatchObject({ outcome: 'unchanged' })
     expect((await getShotSlot(db, slotId))?.retype).toBeNull()
   })
+
+  it('designs a slot retyped to a graphic (decision 289)', async () => {
+    const { result } = await engine.execute({ events: retypeEvent(slotId, 'graphic') })
+    expect(result).toMatchObject({ outcome: 'retyped', targetType: 'graphic' })
+
+    const slot = await getShotSlot(db, slotId)
+    expect(slot?.type).toBe('graphic')
+    expect(slot?.brief).toMatchObject({
+      type: 'graphic',
+      intent: '[mock] The figure, large, with the mark beside it.',
+      scene: { elements: expect.arrayContaining([expect.objectContaining({ id: 't1' })]) },
+    })
+  })
 })

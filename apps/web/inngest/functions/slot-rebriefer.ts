@@ -30,6 +30,7 @@ import {
 import type { ShotBrief } from '@boom-busters/schemas'
 import { NonRetriableError } from 'inngest'
 import { db } from '@/lib/db'
+import { designGraphic, loadGraphicContext, withDesign } from '@/lib/graphic-design'
 import { callLlm } from '@/lib/llm'
 import { requireVisualKeys, resolveSlotBrief } from '@/lib/visual-assets'
 import { inngest } from '../client'
@@ -49,11 +50,13 @@ import { budgetGateData, markSideJobFailed, type GateContext } from '../lib/gate
  *
  * - stock, real footage and AI image briefs are ideas, so `buildRebriefRequest`
  *   asks for another one under the same Director's Book craft rules.
- * - chart, map and graphic briefs are data, so they go back through the
- *   re-type drafting path with the target set to the type they already have.
- *   That is not a shortcut: it is how the claim-number validation stays
- *   exactly where it is, and neither a redrawn chart nor a redrawn graphic's
- *   figure can cite numbers the dossier does not hold (decision 268, Plan B).
+ * - chart and map briefs are data, so they go back through the re-type
+ *   drafting path with the target set to the type they already have. That is
+ *   not a shortcut: it is how the claim-number validation stays exactly where
+ *   it is, and a redrawn chart cannot cite numbers the dossier does not hold
+ *   (decision 268, Plan B).
+ * - a graphic is redesigned (decision 289): its intent stays and the graphics
+ *   designer composes the scene again, so it never reaches the retype prompt.
  *
  * A headline or social card never comes here at all. Every string on either is
  * read from the article or the post, so there is no idea to have again;
@@ -150,9 +153,41 @@ export const slotRebriefer = inngest.createFunction(
         return { ok: false as const, refused: reason }
       }
 
+      // A graphic is redesigned, not re-briefed (decision 289): its intent
+      // stays, the designer composes again from it, the current scene and the
+      // steer. A refusal leaves the scene the card already shows.
+      if (brief.type === 'graphic') {
+        try {
+          const context = await loadGraphicContext(projectId, slot.chapterId)
+          const result = await designGraphic(
+            context,
+            {
+              chapterId: slot.chapterId,
+              startMs: slot.startMs,
+              durationMs: slot.durationMs,
+              brief,
+            },
+            { redesign: true, ...(guidance === undefined ? {} : { guidance }) },
+          )
+          if (!result.ok) {
+            // The bare reason; the card words it.
+            await setSlotRetype(db, slotId, { state: 'rebrief-refused', reason: result.issue })
+            return { ok: false as const, refused: result.issue }
+          }
+          await updateSlotBrief(db, slotId, withDesign(brief, result))
+          await setSlotRetype(db, slotId, null)
+          return { ok: true as const, resolveNow: project.visualsPhase === 'board' }
+        } catch (error) {
+          if (error instanceof BudgetExceededError) {
+            return { ok: false as const, gate: budgetGateData(error) }
+          }
+          throw error
+        }
+      }
+
       let next: ShotBrief
       try {
-        if (brief.type === 'chart' || brief.type === 'map' || brief.type === 'graphic') {
+        if (brief.type === 'chart' || brief.type === 'map') {
           const claims = await scriptableClaims(db, projectId)
           // The logo library's index (decision 268, Plan B): a redrafted
           // graphic may name a mark the producer already holds.
