@@ -8,6 +8,7 @@ import {
   parseShotRepair,
   parseShotRepairAnswers,
   referencesPrefix,
+  GRAPHIC_INTENT_RULES,
   SHOT_LIST_FLOOR_TOKENS,
 } from './shotlist'
 import type { ShotParagraph } from './shotlist'
@@ -262,11 +263,23 @@ describe('the graphic shot (decision 268, Plan B)', () => {
     const system = request.system
     expect(system).toContain('"type": "graphic"')
     expect(system).toMatch(/never a chart with fewer points/i)
-    expect(system).toMatch(/six elements at most/i)
-    expect(system).toMatch(/bottom two rows/i)
     const prefix = request.messages[0]!.content
-    expect(prefix).toContain('Logos (marks the producer holds')
+    expect(prefix).toContain('Logos (marks the producer holds; a graphic may show them):')
     expect(prefix).toContain('- Stability AI')
+  })
+
+  it('asks for a graphic intent and carries no graphic vocabulary (decision 289)', () => {
+    const request = buildShotListRequest(baseRequest())
+    expect(request.system).toContain('"intent"')
+    expect(request.system).toContain('"intentRefs"')
+    expect(request.system).toContain(GRAPHIC_INTENT_RULES)
+    // The caps the schema enforces, said where the model reads (final review M1).
+    expect(GRAPHIC_INTENT_RULES).toMatch(/"intentRefs" lists at most six claim numbers/)
+    expect(GRAPHIC_INTENT_RULES).toMatch(/"intent" is at most 300 characters/)
+    expect(GRAPHIC_INTENT_RULES).not.toMatch(/list every claim/)
+    expect(request.system).not.toContain('"kind": "figure"')
+    expect(request.system).not.toContain('12 by 12 grid')
+    expect(request.system).not.toMatch(/six elements at most/i)
   })
 
   it('says nothing about logos when the library is empty', () => {
@@ -461,7 +474,7 @@ describe('mockShotList', () => {
     expect(noThird.slots.every((slot) => slot.brief.type !== 'social')).toBe(true)
   })
 
-  it('the mock plans one graphic citing the first claim, with a mark when the library has one', () => {
+  it('plans a mock graphic as an intent citing claim 1 (decision 289)', () => {
     const out = mockShotList({
       paragraphs: PARAGRAPHS,
       claimCount: 2,
@@ -469,25 +482,12 @@ describe('mockShotList', () => {
       logoTitles: ['Wirecard AG'],
     })
     const graphic = out.slots.find((slot) => slot.brief.type === 'graphic')
-    expect(graphic).toBeDefined()
-    if (!graphic || graphic.brief.type !== 'graphic') return
-    const figure = graphic.brief.scene.elements.find((element) => element.kind === 'figure')
-    expect(figure).toMatchObject({ claimRef: 1, value: '$4bn' })
-    expect(graphic.brief.scene.elements.find((element) => element.kind === 'logo')).toMatchObject({
-      entity: 'Wirecard AG',
+    expect(graphic?.brief).toMatchObject({
+      intent: '[mock] The figure, large, with the mark beside it.',
+      intentRefs: [1],
     })
-
-    const bare = mockShotList({
-      paragraphs: PARAGRAPHS,
-      claimCount: 1,
-      claimTexts: ['Some 94 percent left.'],
-    })
-    const bareGraphic = bare.slots.find((slot) => slot.brief.type === 'graphic')
-    expect(
-      bareGraphic && bareGraphic.brief.type === 'graphic'
-        ? bareGraphic.brief.scene.elements.some((e) => e.kind === 'logo')
-        : true,
-    ).toBe(false)
+    expect(graphic?.brief).not.toHaveProperty('scene')
+    expect(() => ShotListOutputSchema.parse(out)).not.toThrow()
   })
 
   it('plans a graphic only when the first claim carries a digit to cite', () => {

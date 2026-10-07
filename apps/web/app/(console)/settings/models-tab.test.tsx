@@ -111,6 +111,13 @@ describe('routing the set sheet generator (decision 275)', () => {
   })
 })
 
+it('offers a Motion graphics route (decision 289)', () => {
+  renderModelsTab()
+  expect(screen.getByRole('combobox', { name: 'Motion graphics model' })).toHaveValue(
+    'claude-opus-5-5',
+  )
+})
+
 describe('live model lists (decision 288)', () => {
   it('offers a live family model, labelled estimated, and says what it is priced as', async () => {
     renderModelsTab()

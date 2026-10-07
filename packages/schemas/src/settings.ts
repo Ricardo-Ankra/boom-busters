@@ -36,6 +36,8 @@ export const LLM_TASKS = [
   'digest',
   /** The per-film Director's Book (decision 252): one call, drafting tier. */
   'direction',
+  /** One call per graphic slot (decision 289): what it shows, its layout and its motion. */
+  'graphics',
 ] as const
 export const LlmTaskSchema = z.enum(LLM_TASKS)
 export type LlmTask = z.infer<typeof LlmTaskSchema>
@@ -183,6 +185,13 @@ export function modelPriceKey(provider: string, modelId: string): string {
   return `${provider}:${modelId}`
 }
 
+/**
+ * The graphics designer's default (decision 289): the most capable model,
+ * because a graphic is composed whole in one call and nothing downstream
+ * improves it. A row stored before the route existed reads this.
+ */
+export const DEFAULT_GRAPHICS_ROUTE = { provider: 'anthropic', model: 'claude-opus-5-5' } as const
+
 export const ModelRoutingSchema = z.object({
   research: ModelRefSchema,
   scripting: ModelRefSchema,
@@ -191,6 +200,7 @@ export const ModelRoutingSchema = z.object({
   metadata: ModelRefSchema,
   digest: ModelRefSchema,
   direction: ModelRefSchema,
+  graphics: ModelRefSchema.default(DEFAULT_GRAPHICS_ROUTE),
   /** The still-image generator — not an LLM task, but routed where the others are. */
   stills: StillRouteSchema,
   /**
@@ -633,6 +643,8 @@ export const DEFAULT_SETTINGS: Settings = {
     // One call per film; the book is the highest-leverage prompt in the
     // picture department, so it gets the drafting tier (decision 252).
     direction: { provider: 'anthropic', model: 'claude-sonnet-5' },
+    // Graphics get a designer of their own (decision 289).
+    graphics: DEFAULT_GRAPHICS_ROUTE,
     // Gemini rides the Google key Settings already holds for the LLM
     // adapters, so it is the default that costs no extra account.
     //

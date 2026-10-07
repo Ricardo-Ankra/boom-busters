@@ -362,7 +362,7 @@ describe('planChapterSlots plans a graphic and threads the logo library (decisio
     vi.unstubAllEnvs()
   })
 
-  it("resolves the mock graphic's logo to the library asset it names, citing the first claim", async () => {
+  it('stores the mock graphic as an intent citing the first claim, with no scene (decision 289)', async () => {
     const result = await planChapterSlots({
       projectId: FIXTURE_PROJECT_ID,
       caseTitle: 'Wirecard',
@@ -375,17 +375,15 @@ describe('planChapterSlots plans a graphic and threads the logo library (decisio
 
     const graphic = result.rows.find((row) => row.type === 'graphic')
     expect(graphic).toBeDefined()
-    const brief = graphic?.brief as {
-      type: string
-      scene: { elements: { kind: string; entity?: string; assetId?: string; claimRef?: string }[] }
-    }
-    const figure = brief.scene.elements.find((element) => element.kind === 'figure')
-    expect(figure).toMatchObject({ claimRef: 'claim-1' })
-    const logo = brief.scene.elements.find((element) => element.kind === 'logo')
-    expect(logo).toMatchObject({ entity: 'Wirecard AG', assetId: 'logo-1' })
+    expect(graphic?.brief).toMatchObject({
+      type: 'graphic',
+      intent: '[mock] The figure, large, with the mark beside it.',
+      intentClaimIds: ['claim-1'],
+    })
+    expect(graphic?.brief).not.toHaveProperty('scene')
   })
 
-  it('stores the graphic with no logo element when the library holds no marks', async () => {
+  it('plans the same intent when the library holds no marks', async () => {
     const result = await planChapterSlots({
       projectId: FIXTURE_PROJECT_ID,
       caseTitle: 'Wirecard',
@@ -397,9 +395,8 @@ describe('planChapterSlots plans a graphic and threads the logo library (decisio
     })
 
     const graphic = result.rows.find((row) => row.type === 'graphic')
-    expect(graphic).toBeDefined()
-    const brief = graphic?.brief as { type: string; scene: { elements: { kind: string }[] } }
-    expect(brief.scene.elements.some((element) => element.kind === 'logo')).toBe(false)
+    expect(graphic?.brief).toMatchObject({ type: 'graphic', intentClaimIds: ['claim-1'] })
+    expect(graphic?.brief).not.toHaveProperty('scene')
   })
 })
 

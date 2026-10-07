@@ -255,6 +255,8 @@ const BriefPatchSchema = z.object({
   prompt: z.string().min(1).optional(),
   negativePrompt: z.string().optional(),
   mustShow: z.string().min(1).optional(),
+  // A graphic's intent (decision 289); a brief type with no such field drops it.
+  intent: z.string().trim().min(1).max(300).optional(),
   camera: SetCameraSchema.optional(),
 })
 
@@ -772,10 +774,12 @@ export async function attachGraphicLogosAction(
   if (!parsed.success || parsed.data.type !== 'graphic') {
     return { ok: false, error: 'This slot is not a graphic.' }
   }
+  const scene = parsed.data.scene
+  if (!scene) return { ok: false, error: 'This graphic has not been designed yet.' }
 
   const logos = (await listLogos(db)).map((row) => ({ id: row.id, title: row.title ?? '' }))
   let missing: string | null = null
-  const elements = parsed.data.scene.elements.map((element) => {
+  const elements = scene.elements.map((element) => {
     if (element.kind !== 'logo') return element
     const logo = logoForEntity(element.entity, logos)
     if (!logo) {

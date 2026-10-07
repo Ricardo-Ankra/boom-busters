@@ -33,6 +33,7 @@ import {
   craftFindings,
   DirectorsBookSchema,
   findingContext,
+  keepGraphicDesign,
   resolvePlannedBrief,
   ShotBriefSchema,
 } from '@boom-busters/schemas'
@@ -371,8 +372,10 @@ export async function rewriteStoredBriefs(input: {
       kept.push({ id: target.id, reason: 'the answer cited figures the dossier does not hold' })
       continue
     }
-    if (stored.type === target.brief.type) await updateSlotBrief(db, target.id, stored)
-    else await retypeShotSlot(db, target.id, stored.type, stored)
+    // A rewrite changes a graphic's words, never its design (decision 289).
+    const withDesign = keepGraphicDesign(target.brief, stored)
+    if (withDesign.type === target.brief.type) await updateSlotBrief(db, target.id, withDesign)
+    else await retypeShotSlot(db, target.id, withDesign.type, withDesign)
     rewritten.push(target.id)
   }
   return { rewritten, kept }

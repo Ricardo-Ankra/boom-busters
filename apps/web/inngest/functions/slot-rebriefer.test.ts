@@ -20,7 +20,7 @@ import {
   shotSlots,
   truncateRunMirror,
 } from '@boom-busters/db'
-import type { ShotBrief } from '@boom-busters/schemas'
+import type { GraphicBrief, ShotBrief } from '@boom-busters/schemas'
 import { InngestTestEngine } from '@inngest/test'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/lib/db'
@@ -272,5 +272,63 @@ describeDb('slot-rebriefer (mock mode)', () => {
     const slot = await getShotSlot(db, headlineSlot)
     expect(slot?.retype).toMatchObject({ state: 'rebrief-refused' })
     expect((slot?.retype as { reason: string }).reason).toMatch(/read from the article/i)
+  })
+
+  const designedGraphic: GraphicBrief = {
+    type: 'graphic',
+    coversText: stockBrief.coversText,
+    description: 'The missing sum, large.',
+    motion: { kind: 'static' },
+    transition: 'cut',
+    intent: 'The money is simply gone.',
+    scene: {
+      elements: [
+        {
+          kind: 'text',
+          id: 'old',
+          cell: { col: 1, row: 3, colSpan: 10, rowSpan: 2 },
+          content: 'Old design',
+          role: 'heading',
+          align: 'start',
+          color: 'textPrimary',
+          enter: { kind: 'fade', atMs: 0 },
+        },
+      ],
+    },
+  }
+
+  it('redesigns a graphic from its intent with the steer (decision 289)', async () => {
+    const graphicId = await seedSlot(designedGraphic)
+    await setSlotRetype(db, graphicId, { state: 'rebriefing' })
+    const { result } = await engine.execute({ events: rebriefEvent(graphicId, 'bigger') })
+    expect(result).toMatchObject({ outcome: 'rebriefed' })
+
+    const slot = await getShotSlot(db, graphicId)
+    const brief = slot?.brief as { intent: string; scene: { elements: { content?: string }[] } }
+    // A redesign keeps the intent; the mock designer titles a steered design with the steer.
+    expect(brief.intent).toBe('The money is simply gone.')
+    expect(brief.scene.elements[0]?.content).toBe('[mock] Redesigned: bigger')
+    expect(slot?.retype).toBeNull()
+  })
+
+  it('keeps the old design when the redesign is refused (decision 289)', async () => {
+    const design = await import('@/lib/graphic-design')
+    const refuse = vi
+      .spyOn(design, 'designGraphic')
+      .mockResolvedValueOnce({ ok: false, issue: 'element "f" enters at 900 ms' })
+    try {
+      const graphicId = await seedSlot(designedGraphic)
+      const { result } = await engine.execute({ events: rebriefEvent(graphicId) })
+      expect(result).toMatchObject({ outcome: 'refused' })
+
+      const slot = await getShotSlot(db, graphicId)
+      expect((slot?.brief as { scene: unknown }).scene).toEqual(designedGraphic.scene)
+      expect(slot?.retype).toEqual({
+        state: 'rebrief-refused',
+        reason: 'element "f" enters at 900 ms',
+      })
+    } finally {
+      refuse.mockRestore()
+    }
   })
 })

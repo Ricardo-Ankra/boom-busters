@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { DEFAULT_SETTINGS, GRAPHIC_COLORS, resolveBrandKit } from '@boom-busters/schemas'
+import {
+  DEFAULT_SETTINGS,
+  GRAPHIC_COLORS,
+  graphicEnterTimes,
+  resolveBrandKit,
+} from '@boom-busters/schemas'
 import type { GraphicCell, GraphicScene } from '@boom-busters/schemas'
 import {
   barLengthPx,
@@ -541,6 +546,11 @@ describe('staggeredEnterMs', () => {
   it('leaves every offset exactly as written once any element carries a time', () => {
     const times = staggeredEnterMs({ elements: [at('a', 0), at('b', 900)] })
     expect([times.get('a'), times.get('b')]).toEqual([0, 900])
+  })
+
+  it('times entrances by the shared rule the designer is checked against (decision 289)', () => {
+    const scene = { elements: [at('a', 0), at('b', 0), at('c', 700)] }
+    expect(staggeredEnterMs(scene)).toEqual(graphicEnterTimes(scene))
   })
 })
 

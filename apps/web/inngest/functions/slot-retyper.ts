@@ -6,6 +6,7 @@ import {
   scriptableClaims,
   setSlotResolution,
   setSlotRetype,
+  updateSlotBrief,
 } from '@boom-busters/db'
 import {
   buildRetypeRequest,
@@ -16,6 +17,7 @@ import {
 import {
   BudgetExceededError,
   convertBrief,
+  GraphicBriefSchema,
   parseEventData,
   serialiseError,
   ShotBriefSchema,
@@ -25,6 +27,7 @@ import {
 import type { ShotBrief } from '@boom-busters/schemas'
 import { NonRetriableError } from 'inngest'
 import { db } from '@/lib/db'
+import { designGraphic, loadGraphicContext, withDesign } from '@/lib/graphic-design'
 import { callLlm } from '@/lib/llm'
 import { requireVisualKeys, resolveSlotBrief } from '@/lib/visual-assets'
 import { inngest } from '../client'
@@ -77,6 +80,22 @@ export const slotRetyper = inngest.createFunction(
       const slotId = event.data.event.data['slotId']
       if (typeof slotId === 'string') {
         await setSlotRetype(db, slotId, null).catch(() => undefined)
+        // A slot retyped to a graphic holds an intent and no design until the
+        // designer answers; a dead run must not leave it reading "being
+        // designed" forever (decision 289).
+        await (async () => {
+          const slot = await getShotSlot(db, slotId)
+          const brief = GraphicBriefSchema.safeParse(slot?.brief)
+          if (!brief.success || brief.data.scene || brief.data.designIssue) return
+          await updateSlotBrief(
+            db,
+            slotId,
+            withDesign(brief.data, {
+              ok: false,
+              issue: 'the design step failed; press Redesign graphic to try again',
+            }),
+          )
+        })().catch(() => undefined)
       }
       // Words, not a stage failure: a re-type runs while the visuals gate is
       // parked open, and the review room must survive it (decision 234).
@@ -186,6 +205,13 @@ export const slotRetyper = inngest.createFunction(
       }
 
       await retypeShotSlot(db, slotId, targetType, next)
+      // A graphic is not done until it is designed, in the next step: keep
+      // the card saying "drafting" until then, so the format picker and
+      // Redesign stay locked while the design call is in flight (final
+      // review I4). The design step clears it on every outcome.
+      if (targetType === 'graphic') {
+        await setSlotRetype(db, slotId, { state: 'drafting', target: 'graphic' })
+      }
       const project = await getProject(db, projectId)
       return { changed: true as const, resolveNow: project?.visualsPhase === 'board' }
     })
@@ -208,6 +234,62 @@ export const slotRetyper = inngest.createFunction(
     }
     if (!converted.changed) {
       return { projectId, slotId, outcome: 'unchanged' as const }
+    }
+
+    // A slot retyped to a graphic arrives with an intent and no design
+    // (decision 289); the designer composes it in a step of its own.
+    if (targetType === 'graphic') {
+      const designed = await step.run('design-graphic', async () => {
+        const slot = await getShotSlot(db, slotId)
+        if (!slot) throw new NonRetriableError(`Shot slot ${slotId} vanished mid-retype`)
+        const parsed = GraphicBriefSchema.safeParse(slot.brief)
+        if (!parsed.success || slot.type !== 'graphic') {
+          throw new NonRetriableError(`Shot slot ${slotId} is no longer a graphic`)
+        }
+        const brief = parsed.data
+        /**
+         * The design lands only on a slot that is still a graphic (final
+         * review I4). A second retype cancels this run, but a step already
+         * in flight still finishes; written blind, its graphic brief would
+         * sit on a slot of another type. Then the drafting marker goes, but
+         * only this run's: a newer retype's marker is that run's to clear.
+         */
+        const land = async (designed: Parameters<typeof withDesign>[1]) => {
+          const latest = await getShotSlot(db, slotId)
+          if (latest?.type !== 'graphic') return
+          await updateSlotBrief(db, slotId, withDesign(brief, designed))
+          const marker = latest.retype
+          if (marker?.['state'] === 'drafting' && marker['target'] === 'graphic') {
+            await setSlotRetype(db, slotId, null)
+          }
+        }
+        try {
+          const context = await loadGraphicContext(projectId, slot.chapterId)
+          const result = await designGraphic(context, {
+            chapterId: slot.chapterId,
+            startMs: slot.startMs,
+            durationMs: slot.durationMs,
+            brief,
+          })
+          await land(result)
+          return { ok: true as const }
+        } catch (error) {
+          if (error instanceof BudgetExceededError) {
+            const gate = budgetGateData(error)
+            // The slot has an intent and no design; say why on the brief, or
+            // the card reads "being designed" for good.
+            await land({ ok: false, issue: String(gate['message'] ?? 'Over budget') })
+            return { ok: false as const, gate }
+          }
+          throw error
+        }
+      })
+      if (!designed.ok) {
+        await step.run('design-over-budget', () =>
+          markSideJobFailed(ctx, 'The graphic could not be designed', designed.gate),
+        )
+        return { projectId, slotId, outcome: 'over-budget' as const }
+      }
     }
 
     // Board phase: the owner is looking at candidate strips — resolve the

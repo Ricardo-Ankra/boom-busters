@@ -589,6 +589,23 @@ References attached: 1 photograph of Emad Mostaque.`
     expect(generate).not.toHaveBeenCalled()
   })
 
+  it('holds a graphic with no scene as a placeholder (decision 289)', async () => {
+    const brief: GraphicBrief = {
+      type: 'graphic',
+      coversText: 'x',
+      description: 'y',
+      motion: { kind: 'static' },
+      transition: 'cut',
+      shotSize: 'graphic',
+      designIssue: 'no claim held the figure',
+    }
+    expect(await resolveSlotBrief({ projectId: FIXTURE_PROJECT_ID, brief, route: null })).toEqual({
+      candidates: [],
+      status: 'placeholder',
+    })
+    expect(generate).not.toHaveBeenCalled()
+  })
+
   it('a graphic whose matched mark was since deleted returns to placeholder, not resolved', async () => {
     // A stored assetId is not proof the mark is still in the library: it can
     // have been removed after this brief was written. Resolution must catch

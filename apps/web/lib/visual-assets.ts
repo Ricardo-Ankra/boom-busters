@@ -790,6 +790,9 @@ export async function resolveSlotBrief(input: {
       // is not proof by itself: the mark it names can have been removed
       // from the library after this brief was written, so a hit still
       // needs the row to actually be there.
+      // A graphic stored before it is designed (decision 289) has no scene
+      // yet: it waits as a placeholder, and the designer fills it in.
+      if (!brief.scene) return { candidates: [], status: 'placeholder' }
       let owed = false
       for (const element of brief.scene.elements) {
         if (element.kind !== 'logo') continue

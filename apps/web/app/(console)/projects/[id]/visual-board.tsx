@@ -17,6 +17,8 @@ import * as React from 'react'
 import { SOCIAL_EXCERPT_TOO_LONG, SOCIAL_TOO_LONG } from '@boom-busters/compositions/social'
 import {
   isFrontPage,
+  graphicIntentOf,
+  graphicSceneClaimIds,
   JOB_STALE_MS,
   LOGO_ACCEPT,
   missingArticleFields,
@@ -29,7 +31,6 @@ import {
 import type {
   BrandKitStored,
   GraphicElement,
-  GraphicScene,
   SetPlateView,
   ShotBrief,
   SlotCandidate,
@@ -91,6 +92,7 @@ import {
 } from './visuals-actions'
 import { CameraRow } from './camera-row'
 import { DirectionCard } from './direction-card'
+import { GraphicPlayback, GraphicPlaybackProvider, useGraphicPlayback } from './graphic-playback'
 import {
   ChartErrorCard,
   ChartPreview,
@@ -1210,22 +1212,6 @@ function SocialImageButton({
   )
 }
 
-/** Every claim id a graphic's figure and bars items cite, in scene order, each once. */
-function graphicClaimIds(scene: GraphicScene): string[] {
-  const seen = new Set<string>()
-  const ids: string[] = []
-  for (const element of scene.elements) {
-    const refs = element.kind === 'figure' ? [element.claimRef] : []
-    const barRefs = element.kind === 'bars' ? element.items.map((item) => item.claimRef) : []
-    for (const ref of [...refs, ...barRefs]) {
-      if (seen.has(ref)) continue
-      seen.add(ref)
-      ids.push(ref)
-    }
-  }
-  return ids
-}
-
 /**
  * The graphic card (decision 268, Plan B): the same preview the board shows
  * beside a headline card, the claim chips over what the scene cites, and one
@@ -1246,12 +1232,19 @@ function GraphicSlot({
   act: Act
   brand: BrandKitStored
 }) {
-  const claimIds = graphicClaimIds(brief.scene)
+  const scene = brief.scene
+  const { intent } = graphicIntentOf(brief)
+  // Play swaps the thumbnail for the player; it comes back on Close.
+  const { playing } = useGraphicPlayback(slot.id)
+  // While a redesign or a retype's design runs, the format row's own line is
+  // the one that announces.
+  const redesigning = slot.retype?.state === 'rebriefing' || slot.retype?.state === 'drafting'
+  const claimIds = scene ? graphicSceneClaimIds(scene) : (brief.intentClaimIds ?? [])
   // An `assetId` alone is not proof the mark is still there: the library row
   // it names can have been deleted since this brief was resolved. The board
   // offers the same repair either way, keyed off whether the preview can
   // actually draw it, not off whether the brief once thought it could.
-  const missingLogos = brief.scene.elements.filter(
+  const missingLogos = (scene?.elements ?? []).filter(
     (element): element is Extract<GraphicElement, { kind: 'logo' }> =>
       element.kind === 'logo' &&
       (element.assetId === undefined || slot.logoUrls[element.assetId] === undefined),
@@ -1259,7 +1252,29 @@ function GraphicSlot({
 
   return (
     <div className="flex flex-col gap-2">
-      <GraphicPreview brief={brief} brand={brand} logoUrls={slot.logoUrls} />
+      {scene ? (
+        playing ? null : (
+          <GraphicPreview brief={{ ...brief, scene }} brand={brand} logoUrls={slot.logoUrls} />
+        )
+      ) : redesigning ? null : brief.designIssue ? (
+        // Persistent state, not an event: no role, so a board of undesigned
+        // graphics does not announce assertively on load.
+        <p className="text-[13px] text-[var(--color-warning)]">Not designed: {brief.designIssue}</p>
+      ) : (
+        <p role="status" className="text-[13px] text-[var(--color-text-secondary)]">
+          Being designed. This card updates when it lands.
+        </p>
+      )}
+      {scene ? (
+        <GraphicPlayback
+          slotId={slot.id}
+          scene={scene}
+          brand={brand}
+          logoUrls={slot.logoUrls}
+          durationMs={slot.durationMs}
+        />
+      ) : null}
+      <p className="text-[12px] text-[var(--color-text-secondary)]">Intent: {intent}</p>
       {claimIds.length > 0 ? (
         <div className="flex flex-wrap gap-1" aria-label="Source claims">
           {claimIds.map((claimId, index) => (
@@ -1469,7 +1484,16 @@ export interface SetPhotoGroup {
   }[]
 }
 
-export function VisualBoard({
+/** One graphic plays at a time across the whole board (decision 289). */
+export function VisualBoard(props: React.ComponentProps<typeof VisualBoardContent>) {
+  return (
+    <GraphicPlaybackProvider>
+      <VisualBoardContent {...props} />
+    </GraphicPlaybackProvider>
+  )
+}
+
+function VisualBoardContent({
   projectId,
   model,
   colors,
@@ -2204,6 +2228,8 @@ function SlotCard({
   const [previewIndex, setPreviewIndex] = React.useState<number | null>(null)
   const { busy, pressed } = useSlotLock()
   const brief = slot.brief
+  // A graphic with no scene says so on its own card, not in the generic lines.
+  const undesignedGraphic = brief?.type === 'graphic' && brief.scene === undefined
   const planning = phase === 'plan'
   const linked = slot.reuse
   const lends = sources.filter((other) => other.reuse?.sourceSlotId === slot.id)
@@ -2384,19 +2410,21 @@ function SlotCard({
           </div>
         ) : null}
 
-        {/* A post card says what it lacks itself, in resolution's words. */}
+        {/* A post card says what it lacks itself, in resolution's words; so
+            does a graphic the designer has not composed (decision 289). */}
         {slot.status === 'placeholder' &&
         !slot.refusal &&
         brief?.type !== 'hero' &&
         brief?.type !== 'archival' &&
-        brief?.type !== 'social' ? (
+        brief?.type !== 'social' &&
+        !undesignedGraphic ? (
           <p className="text-[13px] text-[var(--color-warning)]">
             Nothing usable was found for this slot. Edit the brief and re-fetch, or upload your own
             image — approving the board with this still a placeholder must say so explicitly.
           </p>
         ) : null}
 
-        {slot.status === 'unresolved' && !planning ? (
+        {slot.status === 'unresolved' && !planning && !undesignedGraphic ? (
           <p className="text-[13px] text-[var(--color-text-muted)]" role="status">
             Being fetched — this row updates itself when candidates land.
           </p>
@@ -2496,11 +2524,19 @@ function SlotCard({
                 {!linked && brief.type !== 'headline' && brief.type !== 'social' ? (
                   <Button
                     variant="outline"
-                    disabled={slot.retype?.state === 'rebriefing'}
+                    // Either model job holds it, as it holds the format row: a
+                    // redesign racing a retype's design would write over it.
+                    disabled={
+                      slot.retype?.state === 'rebriefing' || slot.retype?.state === 'drafting'
+                    }
                     aria-expanded={rebriefing}
                     onClick={() => setRebriefing((value) => !value)}
                   >
-                    {rebriefing ? 'Close' : 'Draft a different brief'}
+                    {rebriefing
+                      ? 'Close'
+                      : brief.type === 'graphic'
+                        ? 'Redesign graphic'
+                        : 'Draft a different brief'}
                   </Button>
                 ) : null}
                 {/* Real footage has nothing to fetch (decision 214): the
@@ -2570,6 +2606,7 @@ function SlotCard({
             slot={slot}
             projectId={projectId}
             act={act}
+            graphic={brief.type === 'graphic'}
             onDone={() => setRebriefing(false)}
           />
         ) : null}
@@ -2611,6 +2648,8 @@ function SlotCard({
 const DRAFTING_NOUN: Record<string, string> = {
   chart: 'chart series and claim refs',
   map: 'map locations',
+  // The intent and then the design: the marker holds through both (final review I4).
+  graphic: 'graphic',
 }
 const draftingNoun = (target: string): string =>
   DRAFTING_NOUN[target] ?? `${slotTypeLabel(target)} brief`
@@ -2868,6 +2907,10 @@ function TypePicker({
   const drafting = job?.state === 'drafting' || job?.state === 'rebriefing'
   const refused = job?.state === 'refused' ? job : null
   const rebriefRefused = job?.state === 'rebrief-refused' ? job : null
+  // A graphic is redesigned, not re-briefed: the card words it as a design.
+  const graphic = slot.brief?.type === 'graphic'
+  // A refused redesign of a graphic that was never composed keeps nothing.
+  const graphicHasScene = slot.brief?.type === 'graphic' && slot.brief.scene !== undefined
   const fixNote = job?.state === 'fix-note' ? job : null
   // Which chooser is open: the article a headline quotes, or the post a
   // post card shows. One at a time; opening either closes the other.
@@ -2949,7 +2992,9 @@ function TypePicker({
 
       {job?.state === 'rebriefing' ? (
         <p className="text-[13px] text-[var(--color-text-secondary)]" role="status">
-          Claude is drafting a new brief. This card updates when it lands.
+          {graphic
+            ? 'Claude is redesigning this graphic. This card updates when it lands.'
+            : 'Claude is drafting a new brief. This card updates when it lands.'}
         </p>
       ) : null}
 
@@ -2981,7 +3026,11 @@ function TypePicker({
           className="flex flex-wrap items-center gap-2 rounded-[8px] border border-[var(--color-warning)] p-2"
         >
           <p className="min-w-0 flex-1 text-[13px] text-[var(--color-warning)]">
-            No new brief: {rebriefRefused.reason} The slot keeps the one it has.
+            {graphic
+              ? graphicHasScene
+                ? `No new design: ${rebriefRefused.reason} The graphic keeps the one it has.`
+                : `No new design: ${rebriefRefused.reason}`
+              : `No new brief: ${rebriefRefused.reason} The slot keeps the one it has.`}
           </p>
           <Button
             variant="outline"
@@ -3196,11 +3245,14 @@ function RebriefForm({
   slot,
   projectId,
   act,
+  graphic,
   onDone,
 }: {
   slot: SlotView
   projectId: string
   act: Act
+  /** A graphic is redesigned from its intent and current design (decision 289). */
+  graphic: boolean
   onDone: () => void
 }) {
   const { busy, pressed } = useSlotLock()
@@ -3214,7 +3266,9 @@ function RebriefForm({
         void act(
           slot.id,
           () => rebriefSlotAction(projectId, slot.id, guidance),
-          'Drafting a new brief — this card updates when it lands',
+          graphic
+            ? 'Redesigning: this card updates when it lands'
+            : 'Drafting a new brief — this card updates when it lands',
           'rebrief',
         ).then((result) => {
           if (result.ok) onDone()
@@ -3222,23 +3276,34 @@ function RebriefForm({
       }}
     >
       <label className="flex flex-col gap-1 text-[12px] text-[var(--color-text-secondary)]">
-        What are you picturing? (optional)
+        {graphic ? 'What should change? (optional)' : 'What are you picturing? (optional)'}
         <textarea
           value={guidance}
           onChange={(event) => setGuidance(event.target.value)}
           rows={2}
           maxLength={600}
-          placeholder="Leave this empty to just ask for a different idea."
+          placeholder={
+            graphic
+              ? 'Leave this empty to just ask for a different design.'
+              : 'Leave this empty to just ask for a different idea.'
+          }
           className="rounded-[8px] border border-[var(--color-border-strong)] bg-[var(--color-background)] p-2 text-[13px] text-[var(--color-text-primary)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-accent)]"
         />
       </label>
       <p className="text-[12px] text-[var(--color-text-muted)]">
-        This replaces the brief this slot has. The steer is used once and not kept, so re-planning
-        the shot list later will draft this slot again from the Director&rsquo;s Book.
+        {graphic ? (
+          "The designer starts from this graphic's intent and current design. The steer is used once and not kept."
+        ) : (
+          <>
+            This replaces the brief this slot has. The steer is used once and not kept, so
+            re-planning the shot list later will draft this slot again from the Director&rsquo;s
+            Book.
+          </>
+        )}
       </p>
       <div className="flex flex-wrap gap-2">
         <Button type="submit" variant="primary" busy={pressed === 'rebrief'} disabled={busy}>
-          Draft it
+          {graphic ? 'Redesign it' : 'Draft it'}
         </Button>
         <Button type="button" variant="ghost" onClick={onDone}>
           Cancel
@@ -3598,6 +3663,18 @@ function BriefEditor({
   const [prompt, setPrompt] = React.useState(
     brief?.type === 'still' ? (slot.scene ?? brief.prompt) : '',
   )
+  const [intent, setIntent] = React.useState(
+    brief?.type === 'graphic' ? graphicIntentOf(brief).intent : '',
+  )
+  /**
+   * An older graphic has no intent, so the field shows its description,
+   * which may run past the intent's 300 characters; sent back unasked, it
+   * fails every save (final review M2). The intent goes only when the brief
+   * has one or the producer wrote one.
+   */
+  const hasIntent = brief?.type === 'graphic' && brief.intent !== undefined
+  const [intentChanged, setIntentChanged] = React.useState(false)
+  const sendIntent = hasIntent || (intentChanged && intent.trim() !== '')
   if (!brief) return null
 
   const field =
@@ -3616,6 +3693,7 @@ function BriefEditor({
               ...(brief.type === 'stock' || brief.type === 'archival' ? { query } : {}),
               ...(brief.type === 'archival' ? { mustShow } : {}),
               ...(brief.type === 'still' ? { prompt } : {}),
+              ...(brief.type === 'graphic' && sendIntent ? { intent } : {}),
             }),
           planning || brief.type === 'archival'
             ? 'Brief saved'
@@ -3635,6 +3713,22 @@ function BriefEditor({
           className={field}
         />
       </label>
+      {brief.type === 'graphic' ? (
+        <label className="flex flex-col gap-1 text-[12px] text-[var(--color-text-secondary)]">
+          Intent
+          <textarea
+            value={intent}
+            onChange={(event) => {
+              setIntent(event.target.value)
+              setIntentChanged(true)
+            }}
+            rows={2}
+            maxLength={300}
+            required={hasIntent}
+            className={field}
+          />
+        </label>
+      ) : null}
       {brief.type === 'stock' || brief.type === 'archival' ? (
         <label className="flex flex-col gap-1 text-[12px] text-[var(--color-text-secondary)]">
           {/* Same stored field, different job: stock sends it to an API,

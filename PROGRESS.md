@@ -6791,3 +6791,137 @@ boom-busters-broker`; merge and deploy to Vercel, then `PUT
      wait ends on abort; the board offers a route-only model to its own slot
      alone. Left open: a refresh still holds a save for up to fal's 45 s, and
      a refused price marks every field of its form invalid.
+
+289. **Graphics get a designer of their own (stage 1 of 2)** (2026-10-06,
+     owner, from 2026-10-01: "in terms of generating and coding the motion
+     graphics and essentially creating what is seen, I want that to be
+     routed and handled by a specific model. Same way we have a routing for
+     stills. because it is an important element and I feel we are not
+     getting the best out of it yet."). Asked what disappoints in a graphic,
+     the owner answered all three: the content (which figures, what it
+     says), the layout (templated, weak hierarchy) and the motion (static,
+     samey). A graphic was one slot among forty in the shot list's call, on
+     Haiku 4.5 by default, sharing the chapter's output budget with every
+     other slot.
+     Owner's rulings (spec 1.2): Level 2 of the three offered, its own model
+     plus richer motion, in two stages, each deployed; the graphics step
+     owns everything inside a graphic (which cited figures and words appear,
+     the layout, the motion) but not whether a beat is a graphic, which the
+     shot list still decides and the board's retype still fixes; the board
+     plays the real composition rather than an animated SVG, so motion is
+     built once and shown by one renderer; one call per graphic slot, not a
+     polish pass and not one call per chapter.
+     What shipped in stage 1: the shot list writes an `intent` (1 to 300
+     characters) and `intentRefs` for a graphic and never a scene, and the
+     graphic vocabulary left its prompt; a new `graphics` route, "Motion
+     graphics" in Settings, Models, defaulting to Anthropic Opus 5.5, with
+     its own prompt (a cacheable film prefix, a per-slot part carrying the
+     slot's length and the words spoken in it with their offsets) and a
+     deterministic mock; one Inngest step per planned graphic in the visuals
+     run and in the re-plan, so a retry repeats one graphic, never the
+     chapter; one retry with the reason on a parse or check failure, a
+     reply cut off at the budget retried at double, and a second failure
+     stored as "Not designed: <reason>" (`designIssue`), kept on the board
+     and never dropped; the late-entrance rule (an entrance starts by the
+     slot's length minus 600 ms) enforced in the app's checks, using the
+     start times the card itself uses; the plan summary counting
+     undesigned graphics; Redesign graphic in place of "Draft a different
+     brief" on a graphic card, which hands the designer the owner's steer
+     and the current scene and keeps the old scene when the designer
+     refuses; retype to graphic asking for an intent and then designing it
+     in its own step, a failure stored as `designIssue`; the Fix button
+     keeping a designed scene; and on the board an intent line with its
+     claim chips and an editable intent, plus the Play graphic player, which
+     runs the real `GraphicCard` through the Remotion Player (its chunk is
+     loaded on the first press, while the board imports only a light module
+     of buttons and state), swaps the thumbnail for the player while it
+     plays, and has Pause and Play follow the player's own events, with
+     Replay, Portrait and Landscape, and one graphic playing at a time. A
+     redesign shows "Redesigning" on the card. Saved settings pick up the
+     Motion graphics default on read.
+     A stored graphic with a scene and no intent parses and renders
+     unchanged; assembly skips a graphic with no scene, as it skips any
+     placeholder.
+     Decisions made where the spec left room: the late-entrance check lives
+     in the app, not the render, so stage 1 needs no Remotion upload (cost if
+     wrong: a scene saved by hand through some other path is not clamped by
+     the render); the model sees the film's whole claim list in the cached
+     film message, the intent's claims are named in the slot message ("Rests
+     on claims"), not marked in that list, and it may cite a better claim
+     than the shot list named, checked the same way (cost if wrong: a
+     graphic can drift from the claims the shot list chose); a graphic seeded before this has no
+     intent, so its description stands in for the intent line (cost if wrong:
+     an old graphic's intent line reads as a description until it is
+     redesigned). Rulings made during the build: an answer cut off twice
+     becomes "Not designed" with a reason, and only a ValidationError on
+     `maxTokens` is absorbed, so a rejected key or the budget gate still
+     propagates, since a designer failure keeps the slot and never stops the
+     plan (cost if wrong: a graphic whose answers are always too long shows
+     "Not designed" instead of failing loudly). From the final review: a
+     stored `designIssue` is cut to 500 characters at a word boundary with
+     "…", because a longer parse failure stored a brief that failed every
+     later parse (cost if wrong: the tail of a long reason is lost from the
+     card). One design attempt is the call plus its parse, so a reply cut
+     off inside its JSON gets the doubled retry like an empty one, and a cut
+     off at the doubled budget ends the design at once as "the designer's
+     answer was cut off at its length limit" with no reason-retry (cost if
+     wrong: a graphic that a third, reasoned call would have fitted shows
+     "Not designed"). The whole ladder has a 240 s deadline from its start,
+     each call carries an abort signal for the time left, no call starts
+     with under 15 s left, and any failure past the deadline (the budget
+     gate excepted) becomes "the designer took too long; press Redesign
+     graphic to try again", inside the route's 300 s limit (cost if wrong: a
+     slow but sound answer is thrown away and the owner presses Redesign).
+     A retype to graphic keeps the slot's `drafting` marker through the
+     design step, which clears it on every outcome it returns, and writes
+     the design only if the slot is still a graphic when it lands, so a
+     second retype mid-design keeps its own type and brief; the card treats
+     that marker as it treats a redesign, one status line ("Claude is
+     drafting the graphic.") and Redesign graphic locked with the format row
+     (cost if wrong: the card stays locked a few seconds longer than the
+     design call). A retyped graphic whose
+     design step goes over budget stores the gate's message as its
+     `designIssue`, and one that runs out of retries stores "the design step
+     failed; press Redesign graphic to try again", so a graphic is never
+     silently stuck (cost if wrong: a transient failure reads "Not
+     designed" until the owner presses Redesign). On the undesigned card,
+     "Not designed: <reason>" is plain persistent text, not an alert,
+     "Being designed" shows only while a design is pending, the generic
+     placeholder and "Being fetched" lines are hidden, the card-level line
+     is hidden while a redesign runs, a refused redesign of a graphic with
+     no design drops "The graphic keeps the one it has.", and Play is
+     offered only on a designed graphic (cost if wrong: small copy and role
+     changes to revert). The player is split in two: a light static module
+     holds the buttons, state and hook, and only the frame (the Remotion
+     Player and `GraphicCard`) is loaded through `next/dynamic` on the first
+     Play, which spec section 4 asks for; an earlier ruling that split at
+     the board instead was wrong against it (cost if wrong: a board with
+     designed graphics fetches the player chunk on render). The board's
+     frame count comes from `msToFrames`, the render's own rule, so the
+     player is the render's length by construction (cost if wrong: one
+     import to revert). The shot-list and retype rules state the intent's
+     caps, at most six claim numbers in `intentRefs` (the claims its figures
+     or names come from) and 300 characters of `intent`, since a planner
+     that goes over them has that slot dropped as malformed. An older
+     graphic's Edit brief sends `intent` only when the brief has one or the
+     owner changed the field, since its description can run past 300.
+     What did not change: the render's behaviour, the timeline schema and
+     the broker, so no `deploy:remotion` and no
+     `deploy:stacks boom-busters-broker`. The compositions changed only in
+     source: `graphic.ts` reads the shared entrance timing (`GRAPHIC_ENTER_MS`,
+     `graphicEnterTimes`) instead of its own copies of the same values, and
+     the barrel exports `GraphicCard` for the board's player; the render
+     behaves the same, so the S3 site needs no re-upload. No migration,
+     since briefs are JSON. Mock-provider mode makes no paid call anywhere in this feature.
+     Shipping: a Vercel deploy, then `PUT /api/inngest`, as after every
+     Vercel deploy. To see it: open a project's visual board, press Redesign
+     graphic on a few graphics and play them, or re-plan a film to see the
+     shot list and the graphics step together.
+     Next: stage 2 (exits, easing and duration per entrance, staged builds,
+     camera, keyframed emphasis) gets its own short spec once the owner has
+     watched stage 1's graphics; it will need `deploy:remotion` and
+     `deploy:stacks boom-busters-broker`, since the broker bundles the
+     timeline schema. Level 3, the model writing Remotion code, is left for
+     later.
+     The number 289 is checked against `origin/master` at the merge; at the
+     time of writing master's last decision is 288.

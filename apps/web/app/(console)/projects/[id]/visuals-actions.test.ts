@@ -682,6 +682,46 @@ describeDb('attaching an uploaded mark to a waiting graphic (decision 268, Plan 
     const brief = row.brief as unknown as { scene: { elements: { assetId?: string }[] } }
     expect(brief.scene.elements[0]?.assetId).toBeUndefined()
   })
+
+  // Decision 289: a graphic's intent is the owner's to reword.
+  it('stores an edited intent on a graphic, and keeps its scene', async () => {
+    const slotId = await seedGraphicSlot('Wirecard AG')
+    const result = await editBriefAction(FIXTURE_PROJECT_ID, slotId, {
+      intent: '  Four billion is the story.  ',
+    })
+    expect(result.ok).toBe(true)
+    const brief = (await getShotSlot(db, slotId))!.brief as unknown as {
+      intent?: string
+      scene?: unknown
+    }
+    expect(brief.intent).toBe('Four billion is the story.')
+    expect(brief.scene).toBeDefined()
+  })
+
+  it('refuses an empty intent', async () => {
+    const slotId = await seedGraphicSlot('Wirecard AG')
+    expect(await editBriefAction(FIXTURE_PROJECT_ID, slotId, { intent: '   ' })).toEqual({
+      ok: false,
+      error: 'That edit is not valid.',
+    })
+  })
+
+  it('does not store an intent on a still', async () => {
+    await replaceShotList(db, FIXTURE_PROJECT_ID, [
+      {
+        chapterId,
+        index: 0,
+        type: 'still',
+        brief: still('Four.', 'a plain still, no set'),
+        startMs: 0,
+        durationMs: 6000,
+      },
+    ])
+    const [slot] = await listShotSlots(db, FIXTURE_PROJECT_ID)
+    await editBriefAction(FIXTURE_PROJECT_ID, slot!.id, { intent: 'Not for a still.' })
+    const stored = (await getShotSlot(db, slot!.id))!.brief as { intent?: string }
+    expect(stored.intent).toBeUndefined()
+  })
 })
 
 // Decision 278: a set's photo can be a slot's shot, copied so it outlives the set.

@@ -380,3 +380,19 @@ describe('monthKey', () => {
     expect(monthKey(new Date('2026-03-31T23:30:00.000Z'))).toBe('2026-03')
   })
 })
+
+describe('the graphics route (decision 289)', () => {
+  it('is an LLM task with Opus 5.5 as its default', () => {
+    expect(LLM_TASKS).toContain('graphics')
+    expect(DEFAULT_SETTINGS.modelRouting.graphics).toEqual({
+      provider: 'anthropic',
+      model: 'claude-opus-5-5',
+    })
+  })
+
+  it('fills the default into routing stored before it existed', () => {
+    const { graphics: _dropped, ...stored } = DEFAULT_SETTINGS.modelRouting
+    const parsed = ModelRoutingSchema.parse(stored)
+    expect(parsed.graphics).toEqual({ provider: 'anthropic', model: 'claude-opus-5-5' })
+  })
+})

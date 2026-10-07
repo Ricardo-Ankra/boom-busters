@@ -2,6 +2,7 @@ import { ShotBriefSchema, ValidationError } from '@boom-busters/schemas'
 import type { ShotBrief } from '@boom-busters/schemas'
 import { describe, expect, it } from 'vitest'
 import { buildRetypeRequest, mockRetypedBrief, parseRetypedBrief } from './retype'
+import { GRAPHIC_INTENT_RULES } from './shotlist'
 
 const CLAIM_A = '01HQ00000000000000000000AA'
 const CLAIM_B = '01HQ00000000000000000000AB'
@@ -83,7 +84,7 @@ describe('buildRetypeRequest', () => {
     expect(request.cacheablePrefixMessages).toBe(1)
   })
 
-  it('names the graphic shape and its rule, and lists the held marks', () => {
+  it('asks for a graphic intent, by the same rules as the shot list, and lists the held marks', () => {
     const request = buildRetypeRequest({
       caseTitle: 'Wirecard',
       brief: still,
@@ -92,7 +93,15 @@ describe('buildRetypeRequest', () => {
       logos: ['Wirecard AG'],
     })
     expect(request.system).toContain('"type": "graphic"')
-    expect(request.system).toContain('never a chart with fewer points')
+    expect(request.system).toContain('"intent"')
+    expect(request.system).toContain('"intentRefs"')
+    expect(request.system).toContain(GRAPHIC_INTENT_RULES)
+    // The caps the schema enforces, said where the model reads (final review M1).
+    expect(GRAPHIC_INTENT_RULES).toMatch(/"intentRefs" lists at most six claim numbers/)
+    expect(GRAPHIC_INTENT_RULES).toMatch(/"intent" is at most 300 characters/)
+    expect(GRAPHIC_INTENT_RULES).not.toMatch(/list every claim/)
+    expect(request.system).not.toContain('"kind": "figure"')
+    expect(request.system).not.toContain('12 by 12 grid')
     expect(request.messages[0]?.content).toContain('Wirecard AG')
   })
 
@@ -218,23 +227,48 @@ describe('mockRetypedBrief', () => {
     expect(ShotBriefSchema.parse(brief)).toMatchObject({ type: 'map', route: true })
   })
 
-  it('produces a valid graphic whose figure cites the claim and whose logo names a held mark', () => {
+  it('produces a graphic intent citing the first claim, with no scene (decision 289)', () => {
     const brief = mockRetypedBrief({
       brief: still,
       targetType: 'graphic',
       claimIds: [CLAIM_A],
-      claimTexts: ['raised $4 billion'],
-      logoTitles: ['Wirecard AG'],
     })
-    expect(ShotBriefSchema.parse(brief)).toMatchObject({ type: 'graphic' })
-    const elements = brief.type === 'graphic' ? brief.scene.elements : []
-    expect(elements.find((element) => element.kind === 'figure')).toMatchObject({
-      claimRef: CLAIM_A,
-      value: '$4bn',
+    expect(ShotBriefSchema.parse(brief)).toMatchObject({
+      type: 'graphic',
+      intent: '[mock] The figure, large, with the mark beside it.',
+      intentClaimIds: [CLAIM_A],
     })
-    expect(elements.find((element) => element.kind === 'logo')).toMatchObject({
-      entity: 'Wirecard AG',
+    expect(brief).not.toHaveProperty('scene')
+  })
+
+  it('reads a steer into the mock graphic intent', () => {
+    const brief = mockRetypedBrief({
+      brief: still,
+      targetType: 'graphic',
+      claimIds: [CLAIM_A],
+      guidance: 'Make it about the price',
     })
+    expect(brief).toMatchObject({ intent: '[mock] Drafted again: Make it about the price' })
+  })
+
+  it('parses a drafted graphic into an intent with claim ids and no scene', () => {
+    const text = JSON.stringify({
+      brief: {
+        type: 'graphic',
+        coversText: still.coversText,
+        description: still.description,
+        motion: { kind: 'static' },
+        transition: 'cut',
+        intent: 'The price, collapsing.',
+        intentRefs: [1],
+      },
+    })
+    const brief = parseRetypedBrief(text, {
+      targetType: 'graphic',
+      claims: [{ id: CLAIM_A }, { id: CLAIM_B }],
+    })
+    expect(brief).toMatchObject({ type: 'graphic', intentClaimIds: [CLAIM_A] })
+    expect(brief).not.toHaveProperty('scene')
   })
 
   it('refuses a mock graphic when the project has no claims, matching the live rule', () => {

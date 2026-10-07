@@ -89,6 +89,11 @@ vi.mock('./social-preview', () => ({
   ),
 }))
 
+/** The real player is graphic-player.test's; the board only has to mount a frame. */
+vi.mock('./graphic-player', () => ({
+  GraphicPlayerFrame: () => <div data-testid="player-frame" />,
+}))
+
 const createLogoUploadAction = vi.fn()
 const finaliseLogoAction = vi.fn()
 vi.mock('@/app/(console)/settings/logo-actions', () => ({
@@ -842,6 +847,284 @@ describe('a graphic slot (decision 268, Plan B)', () => {
     expect(toast).toHaveBeenCalledWith(
       expect.objectContaining({ title: expect.stringContaining('Drafting the graphic') }),
     )
+  })
+})
+
+describe('the graphic card (decision 289)', () => {
+  it('shows the intent under the preview', () => {
+    const slot = {
+      ...graphicSlot,
+      brief: { ...graphicSlot.brief!, intent: 'Four billion is the story.' },
+    } as SlotView
+    render(<VisualBoard projectId={PROJECT} model={model([slot])} colors={COLORS} brand={BRAND} />)
+    expect(screen.getByText('Intent: Four billion is the story.')).toBeInTheDocument()
+  })
+
+  it('reads the description as the intent of an older graphic', () => {
+    render(
+      <VisualBoard
+        projectId={PROJECT}
+        model={model([graphicSlot])}
+        colors={COLORS}
+        brand={BRAND}
+      />,
+    )
+    expect(screen.getByText(`Intent: ${graphicSlot.brief!.description}`)).toBeInTheDocument()
+  })
+
+  it('says why a graphic was not designed, beside Redesign graphic', () => {
+    const { scene: _scene, ...rest } = graphicSlot.brief as Record<string, unknown>
+    const slot = {
+      ...graphicSlot,
+      brief: { ...rest, intent: 'i', designIssue: 'no claim holds $5bn' },
+    } as SlotView
+    render(<VisualBoard projectId={PROJECT} model={model([slot])} colors={COLORS} brand={BRAND} />)
+    expect(screen.getByText('Not designed: no claim holds $5bn')).toBeInTheDocument()
+    // Persistent state, not an event: nothing announces it on load.
+    expect(screen.queryByRole('alert')).toBeNull()
+    // The generic placeholder line would say the wrong thing here.
+    expect(slot.status).toBe('placeholder')
+    expect(screen.queryByText(/Nothing usable was found/)).toBeNull()
+    expect(screen.getByRole('button', { name: 'Redesign graphic' })).toBeInTheDocument()
+    expect(screen.queryByRole('img', { name: /^graphic:/ })).toBeNull()
+  })
+
+  it('says a graphic is being designed when it has neither scene nor issue', () => {
+    const { scene: _scene, ...rest } = graphicSlot.brief as Record<string, unknown>
+    const slot = {
+      ...graphicSlot,
+      status: 'unresolved',
+      brief: { ...rest, intent: 'i' },
+    } as SlotView
+    render(<VisualBoard projectId={PROJECT} model={model([slot])} colors={COLORS} brand={BRAND} />)
+    expect(screen.getByText('Being designed. This card updates when it lands.')).toBeInTheDocument()
+    expect(screen.getByRole('status')).toHaveTextContent('Being designed.')
+    expect(screen.queryByText(/Being fetched/)).toBeNull()
+  })
+
+  it('says a graphic is being designed when it has neither scene nor issue, on a placeholder too', () => {
+    const { scene: _scene, ...rest } = graphicSlot.brief as Record<string, unknown>
+    const slot = { ...graphicSlot, brief: { ...rest, intent: 'i' } } as SlotView
+    render(<VisualBoard projectId={PROJECT} model={model([slot])} colors={COLORS} brand={BRAND} />)
+    expect(screen.queryByText(/Nothing usable was found/)).toBeNull()
+  })
+
+  it('lets the redesigning line announce alone while a redesign runs', () => {
+    const { scene: _scene, ...rest } = graphicSlot.brief as Record<string, unknown>
+    const slot = {
+      ...graphicSlot,
+      brief: { ...rest, intent: 'i' },
+      retype: { state: 'rebriefing' },
+    } as SlotView
+    render(<VisualBoard projectId={PROJECT} model={model([slot])} colors={COLORS} brand={BRAND} />)
+    expect(
+      screen.getByText('Claude is redesigning this graphic. This card updates when it lands.'),
+    ).toBeInTheDocument()
+    expect(screen.queryByText(/Being designed/)).toBeNull()
+  })
+
+  it('locks the card while a retyped graphic is designed (final review I4)', () => {
+    const { scene: _scene, ...rest } = graphicSlot.brief as Record<string, unknown>
+    const slot = {
+      ...graphicSlot,
+      status: 'unresolved',
+      brief: { ...rest, intent: 'i' },
+      retype: { state: 'drafting', target: 'graphic' },
+    } as SlotView
+    render(<VisualBoard projectId={PROJECT} model={model([slot])} colors={COLORS} brand={BRAND} />)
+    // One line announces, the format row's own.
+    expect(screen.getByRole('status')).toHaveTextContent(
+      'Claude is drafting the graphic. This card updates when it lands.',
+    )
+    expect(screen.queryByText(/Being designed/)).toBeNull()
+    expect(screen.getByRole('button', { name: 'Redesign graphic' })).toBeDisabled()
+    const formats = within(screen.getByRole('group', { name: 'Slot format' }))
+    expect(formats.getByRole('button', { name: 'AI image' })).toBeDisabled()
+  })
+
+  it('does not say the graphic keeps a design it never had', () => {
+    const { scene: _scene, ...rest } = graphicSlot.brief as Record<string, unknown>
+    const slot = {
+      ...graphicSlot,
+      brief: { ...rest, intent: 'i', designIssue: 'old issue' },
+      retype: { state: 'rebrief-refused', reason: 'no claim holds $5bn' },
+    } as SlotView
+    render(<VisualBoard projectId={PROJECT} model={model([slot])} colors={COLORS} brand={BRAND} />)
+    expect(screen.getByText('No new design: no claim holds $5bn')).toBeInTheDocument()
+    expect(screen.queryByText(/keeps the one it has/)).toBeNull()
+  })
+
+  it('offers Redesign graphic, with its own form', async () => {
+    render(
+      <VisualBoard
+        projectId={PROJECT}
+        model={model([graphicSlot])}
+        colors={COLORS}
+        brand={BRAND}
+      />,
+    )
+    expect(screen.queryByRole('button', { name: 'Draft a different brief' })).toBeNull()
+    await userEvent.click(screen.getByRole('button', { name: 'Redesign graphic' }))
+    expect(screen.getByLabelText('What should change? (optional)')).toBeInTheDocument()
+    expect(
+      screen.getByText(
+        "The designer starts from this graphic's intent and current design. The steer is used once and not kept.",
+      ),
+    ).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Redesign it' }))
+    expect(rebriefSlotAction).toHaveBeenCalledWith(PROJECT, graphicSlot.id, '')
+    expect(toast).toHaveBeenCalledWith(
+      expect.objectContaining({ title: 'Redesigning: this card updates when it lands' }),
+    )
+  })
+
+  it('words a running redesign as a design', () => {
+    render(
+      <VisualBoard
+        projectId={PROJECT}
+        model={model([{ ...graphicSlot, retype: { state: 'rebriefing' } }])}
+        colors={COLORS}
+        brand={BRAND}
+      />,
+    )
+    expect(
+      screen.getByText('Claude is redesigning this graphic. This card updates when it lands.'),
+    ).toBeInTheDocument()
+  })
+
+  it('words a refused redesign as a design, and says the graphic keeps its own', () => {
+    render(
+      <VisualBoard
+        projectId={PROJECT}
+        model={model([
+          {
+            ...graphicSlot,
+            retype: { state: 'rebrief-refused', reason: 'no claim holds $5bn' },
+          },
+        ])}
+        colors={COLORS}
+        brand={BRAND}
+      />,
+    )
+    expect(
+      screen.getByText('No new design: no claim holds $5bn The graphic keeps the one it has.'),
+    ).toBeInTheDocument()
+  })
+
+  it('edits the intent from Edit brief', async () => {
+    const slot = {
+      ...graphicSlot,
+      brief: { ...graphicSlot.brief!, intent: 'Old intent.' },
+    } as SlotView
+    render(<VisualBoard projectId={PROJECT} model={model([slot])} colors={COLORS} brand={BRAND} />)
+    await userEvent.click(screen.getByRole('button', { name: /Edit brief/ }))
+    const intent = screen.getByLabelText('Intent')
+    await userEvent.clear(intent)
+    await userEvent.type(intent, 'New intent.')
+    await userEvent.click(screen.getByRole('button', { name: /^Save/ }))
+    expect(editBriefAction).toHaveBeenCalledWith(
+      PROJECT,
+      slot.id,
+      expect.objectContaining({ intent: 'New intent.' }),
+    )
+  })
+
+  it('saves an older graphic with a long description without sending an intent (final review M2)', async () => {
+    const description = `${'A counting figure beside the mark. '.repeat(12)}`.slice(0, 400)
+    const slot = {
+      ...graphicSlot,
+      brief: { ...graphicSlot.brief!, description },
+    } as SlotView
+    render(<VisualBoard projectId={PROJECT} model={model([slot])} colors={COLORS} brand={BRAND} />)
+    await userEvent.click(screen.getByRole('button', { name: /Edit brief/ }))
+    // No intent stored: the field may be left empty.
+    expect(screen.getByLabelText('Intent')).not.toBeRequired()
+    const field = screen.getByLabelText('Visual description')
+    await userEvent.type(field, ' More.')
+    await userEvent.click(screen.getByRole('button', { name: /^Save/ }))
+    expect(editBriefAction).toHaveBeenCalledTimes(1)
+    const sent = editBriefAction.mock.calls[0]![2] as Record<string, unknown>
+    expect(sent['description']).toBe(`${description} More.`)
+    expect(sent).not.toHaveProperty('intent')
+  })
+
+  it('sends an older graphic its first intent once the field is changed', async () => {
+    render(
+      <VisualBoard
+        projectId={PROJECT}
+        model={model([graphicSlot])}
+        colors={COLORS}
+        brand={BRAND}
+      />,
+    )
+    await userEvent.click(screen.getByRole('button', { name: /Edit brief/ }))
+    const intent = screen.getByLabelText('Intent')
+    await userEvent.clear(intent)
+    await userEvent.type(intent, 'Four billion is the story.')
+    await userEvent.click(screen.getByRole('button', { name: /^Save/ }))
+    expect(editBriefAction).toHaveBeenCalledWith(
+      PROJECT,
+      graphicSlot.id,
+      expect.objectContaining({ intent: 'Four billion is the story.' }),
+    )
+  })
+
+  it('requires the intent on a graphic that has one', async () => {
+    const slot = {
+      ...graphicSlot,
+      brief: { ...graphicSlot.brief!, intent: 'Old intent.' },
+    } as SlotView
+    render(<VisualBoard projectId={PROJECT} model={model([slot])} colors={COLORS} brand={BRAND} />)
+    await userEvent.click(screen.getByRole('button', { name: /Edit brief/ }))
+    expect(screen.getByLabelText('Intent')).toBeRequired()
+    expect(screen.getByLabelText('Intent')).toHaveAttribute('maxLength', '300')
+  })
+
+  it('offers Play graphic on a designed graphic, and not on an undesigned one', async () => {
+    const { unmount } = render(
+      <VisualBoard
+        projectId={PROJECT}
+        model={model([graphicSlot])}
+        colors={COLORS}
+        brand={BRAND}
+      />,
+    )
+    expect(screen.getByRole('button', { name: 'Play graphic' })).toBeInTheDocument()
+    unmount()
+
+    const { scene: _scene, ...rest } = graphicSlot.brief as Record<string, unknown>
+    const undesigned = { ...graphicSlot, brief: { ...rest, intent: 'i' } } as SlotView
+    render(
+      <VisualBoard projectId={PROJECT} model={model([undesigned])} colors={COLORS} brand={BRAND} />,
+    )
+    expect(screen.queryByRole('button', { name: 'Play graphic' })).toBeNull()
+  })
+
+  it('swaps the thumbnail for the player while playing, and back on Close player', async () => {
+    render(
+      <VisualBoard
+        projectId={PROJECT}
+        model={model([graphicSlot])}
+        colors={COLORS}
+        brand={BRAND}
+      />,
+    )
+    expect(screen.getByRole('img', { name: /^graphic:/ })).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Play graphic' }))
+    expect(await screen.findByTestId('player-frame')).toBeInTheDocument()
+    expect(screen.queryByRole('img', { name: /^graphic:/ })).toBeNull()
+    await userEvent.click(screen.getByRole('button', { name: 'Close player' }))
+    expect(screen.getByRole('img', { name: /^graphic:/ })).toBeInTheDocument()
+  })
+
+  it('keeps the other types on the old wording', () => {
+    render(
+      <VisualBoard projectId={PROJECT} model={model([stockSlot])} colors={COLORS} brand={BRAND} />,
+    )
+    expect(screen.queryByRole('button', { name: 'Redesign graphic' })).toBeNull()
+    expect(
+      screen.getAllByRole('button', { name: 'Draft a different brief' }).length,
+    ).toBeGreaterThan(0)
   })
 })
 

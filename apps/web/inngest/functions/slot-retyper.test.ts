@@ -8,6 +8,7 @@ import {
   listShotSlots,
   replaceShotList,
   requireTestDatabase,
+  retypeShotSlot,
   saveChapter,
   seed,
   setSlotRetype,
@@ -15,7 +16,7 @@ import {
   shotSlots,
   truncateRunMirror,
 } from '@boom-busters/db'
-import type { ShotBrief } from '@boom-busters/schemas'
+import { BudgetExceededError, type ShotBrief } from '@boom-busters/schemas'
 import { InngestTestEngine } from '@inngest/test'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/lib/db'
@@ -150,5 +151,104 @@ describeDb('slot-retyper (mock mode)', () => {
     const { result } = await engine.execute({ events: retypeEvent(slotId, 'still') })
     expect(result).toMatchObject({ outcome: 'unchanged' })
     expect((await getShotSlot(db, slotId))?.retype).toBeNull()
+  })
+
+  it('designs a slot retyped to a graphic (decision 289)', async () => {
+    const { result } = await engine.execute({ events: retypeEvent(slotId, 'graphic') })
+    expect(result).toMatchObject({ outcome: 'retyped', targetType: 'graphic' })
+
+    const slot = await getShotSlot(db, slotId)
+    expect(slot?.type).toBe('graphic')
+    expect(slot?.brief).toMatchObject({
+      type: 'graphic',
+      intent: '[mock] The figure, large, with the mark beside it.',
+      scene: { elements: expect.arrayContaining([expect.objectContaining({ id: 't1' })]) },
+    })
+    expect(slot?.retype).toBeNull()
+  })
+
+  it('holds the drafting marker while the graphic is designed, and clears it after (final review I4)', async () => {
+    const design = await import('@/lib/graphic-design')
+    const real = design.designGraphic
+    let during: unknown = 'not read'
+    const spy = vi.spyOn(design, 'designGraphic').mockImplementationOnce(async (...args) => {
+      during = (await getShotSlot(db, slotId))?.retype
+      return real(...args)
+    })
+    try {
+      const { result } = await engine.execute({ events: retypeEvent(slotId, 'graphic') })
+      expect(result).toMatchObject({ outcome: 'retyped', targetType: 'graphic' })
+      // The format picker and Redesign stay locked while the call is in flight.
+      expect(during).toEqual({ state: 'drafting', target: 'graphic' })
+      const slot = await getShotSlot(db, slotId)
+      expect(slot?.retype).toBeNull()
+      expect(slot?.brief).toHaveProperty('scene')
+    } finally {
+      spy.mockRestore()
+    }
+  })
+
+  it('does not write the design over a slot retyped away while it was designed (final review I4)', async () => {
+    const design = await import('@/lib/graphic-design')
+    const real = design.designGraphic
+    const spy = vi.spyOn(design, 'designGraphic').mockImplementationOnce(async (...args) => {
+      // A second retype lands while the first one's design call is in flight.
+      await retypeShotSlot(db, slotId, 'still', stillBrief)
+      return real(...args)
+    })
+    try {
+      await engine.execute({ events: retypeEvent(slotId, 'graphic') })
+      const slot = await getShotSlot(db, slotId)
+      expect(slot?.type).toBe('still')
+      expect(slot?.brief).toEqual(stillBrief)
+    } finally {
+      spy.mockRestore()
+    }
+  })
+
+  it('keeps the reason on the brief when the designer refuses a retyped graphic', async () => {
+    const design = await import('@/lib/graphic-design')
+    const refuse = vi
+      .spyOn(design, 'designGraphic')
+      .mockResolvedValueOnce({ ok: false, issue: 'no claim holds $5bn' })
+    try {
+      const { result } = await engine.execute({ events: retypeEvent(slotId, 'graphic') })
+      expect(result).toMatchObject({ outcome: 'retyped', targetType: 'graphic' })
+
+      const slot = await getShotSlot(db, slotId)
+      expect(slot?.type).toBe('graphic')
+      expect(slot?.brief).toMatchObject({ type: 'graphic', designIssue: 'no claim holds $5bn' })
+      expect(slot?.brief).not.toHaveProperty('scene')
+      expect(slot?.retype).toBeNull()
+    } finally {
+      refuse.mockRestore()
+    }
+  })
+
+  it('says why on the brief when a retyped graphic runs out of budget', async () => {
+    const design = await import('@/lib/graphic-design')
+    const broke = vi.spyOn(design, 'designGraphic').mockRejectedValueOnce(
+      new BudgetExceededError({
+        provider: 'anthropic',
+        operation: 'llm.graphics',
+        budgetUsd: 5,
+        monthSpendUsd: 5,
+        estimateUsd: 0.05,
+      }),
+    )
+    try {
+      const { result } = await engine.execute({ events: retypeEvent(slotId, 'graphic') })
+      expect(result).toMatchObject({ outcome: 'over-budget' })
+
+      const slot = await getShotSlot(db, slotId)
+      expect(slot?.type).toBe('graphic')
+      const brief = slot?.brief as { designIssue?: string }
+      expect(brief.designIssue).toMatch(/\S/)
+      expect(slot?.brief).not.toHaveProperty('scene')
+      // The drafting marker goes with the budget stop too (final review I4).
+      expect(slot?.retype).toBeNull()
+    } finally {
+      broke.mockRestore()
+    }
   })
 })

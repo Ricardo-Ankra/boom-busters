@@ -63,10 +63,50 @@ export type GraphicCell = z.infer<typeof GraphicCellSchema>
 export const GRAPHIC_ENTERS = ['fade', 'rise', 'wipe', 'count'] as const
 export const GraphicEnterSchema = z.object({
   kind: z.enum(GRAPHIC_ENTERS),
-  /** Offset from the slot's start. The layout clamps it inside the slot. */
+  /** Offset from the slot's start. The designer is held to `lateEntranceIssue`. */
   atMs: z.number().int().min(0).max(8000).default(0),
 })
 export type GraphicEnter = z.infer<typeof GraphicEnterSchema>
+
+/** How long one entrance takes on the card. The render reads this; a check reads it too. */
+export const GRAPHIC_ENTER_MS = 600
+/** The gap between entrances when a scene times none of them. */
+export const GRAPHIC_STAGGER_MS = 180
+
+/** The least a scene must carry for its entrances to be timed. */
+export interface GraphicTimingScene {
+  elements: readonly { id: string; enter: { atMs: number } }[]
+}
+
+/**
+ * When each element starts entering, as the card plays it: the authored
+ * offsets when any element is timed, otherwise a stagger in scene order. One
+ * rule for the card and for the check that keeps entrances inside the slot.
+ */
+export function graphicEnterTimes(scene: GraphicTimingScene): Map<string, number> {
+  const timed = scene.elements.some((element) => element.enter.atMs > 0)
+  return new Map(
+    scene.elements.map((element, index) => [
+      element.id,
+      timed ? element.enter.atMs : index * GRAPHIC_STAGGER_MS,
+    ]),
+  )
+}
+
+/**
+ * The schema promised that the layout clamps an entrance inside its slot, and
+ * nothing did (decision 289). This is the clamp, as a rule the designer is
+ * held to: every entrance must have time to finish before the slot ends.
+ */
+export function lateEntranceIssue(scene: GraphicTimingScene, durationMs: number): string | null {
+  const latest = Math.max(0, durationMs - GRAPHIC_ENTER_MS)
+  for (const [id, atMs] of graphicEnterTimes(scene)) {
+    if (atMs > latest) {
+      return `element "${id}" enters at ${atMs} ms, but this ${(durationMs / 1000).toFixed(1)} s slot needs every entrance to start by ${latest} ms`
+    }
+  }
+  return null
+}
 
 const elementCommon = {
   id: z.string().min(1).max(40),
