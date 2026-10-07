@@ -30,6 +30,7 @@ import type { BrandKitTokens, GraphicBrief, GraphicScene } from '@boom-busters/s
 import { designGraphicWith, loadGraphicContextFrom } from '@/lib/graphic-design-core'
 import { BudgetExceeded, LiveBudget } from '@/lib/live-budget'
 import { parseLiveGraphicArgs } from '@/lib/live-graphic-args'
+import { refusalReasonOf } from '@/lib/live-graphic-refusal'
 
 /**
  * The live graphics harness (decision 289 follow-up): the real graphics
@@ -70,6 +71,8 @@ interface SlotRecord {
   issue?: string
   skipped?: boolean
   calls: number
+  /** The reason each retried call was given for the previous answer's refusal, in call order. */
+  refusals: string[]
   usd: number
   /** Logo element id to a presigned GET for `after`'s marks, valid one hour. */
   logos: Record<string, string>
@@ -227,6 +230,7 @@ async function main(): Promise<void> {
         durationMs: slot.durationMs,
         ...(brief.scene ? { before: brief.scene } : {}),
         calls: 0,
+        refusals: [],
         usd: 0,
         logos: {},
         beforeLogos: {},
@@ -254,6 +258,8 @@ async function main(): Promise<void> {
         )
         budget.reserve(label, estimate)
         record.calls += 1
+        const refusal = refusalReasonOf(request.messages)
+        if (refusal !== undefined) record.refusals.push(refusal)
         try {
           const result = await anthropic.complete(request, {
             apiKey,
