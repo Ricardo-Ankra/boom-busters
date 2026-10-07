@@ -12,6 +12,7 @@ vi.mock('@boom-busters/providers', async (importOriginal) => ({
 
 import {
   designGraphic,
+  designGraphicWith,
   designIssueText,
   GRAPHIC_DESIGN_DEADLINE_MS,
   withDesign,
@@ -273,6 +274,31 @@ describe('withDesign', () => {
     expect(parsed.designIssue!.length).toBeLessThanOrEqual(500)
     expect(parsed.designIssue!.endsWith('…')).toBe(true)
     expect(issue.startsWith(parsed.designIssue!.slice(0, -1))).toBe(true)
+  })
+})
+
+describe('designGraphicWith (the way in for the live harness)', () => {
+  it('designs through the function it is given, handing it the request and a signal, and never touches callLlm', async () => {
+    const complete = vi.fn().mockResolvedValue(answer('$4bn'))
+    const result = await designGraphicWith(complete, CONTEXT, SLOT)
+    expect(result).toMatchObject({ ok: true, scene: { elements: [{ claimRef: A }] } })
+    expect(complete).toHaveBeenCalledTimes(1)
+    const [request, options] = complete.mock.calls[0]!
+    expect(request.messages[1].content).toContain('0.9 s  four')
+    expect(options.signal).toBeInstanceOf(AbortSignal)
+    expect(callLlm).not.toHaveBeenCalled()
+  })
+
+  it('keeps the cut-off doubling and the reason-retry of the app path', async () => {
+    const complete = vi
+      .fn()
+      .mockRejectedValueOnce(new ValidationError('cut off', { field: 'maxTokens' }))
+      .mockResolvedValueOnce(answer('$5bn'))
+      .mockResolvedValueOnce(answer('$4bn'))
+    const result = await designGraphicWith(complete, CONTEXT, SLOT)
+    expect(result.ok).toBe(true)
+    expect(complete.mock.calls[1]![0].maxTokens).toBe(complete.mock.calls[0]![0].maxTokens * 2)
+    expect(complete.mock.calls[2]![0].messages.at(-1).content).toContain('$5bn')
   })
 })
 
