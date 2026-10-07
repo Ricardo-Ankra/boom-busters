@@ -52,6 +52,10 @@ live-set-runs/
 # imaged against production, read-only; never committed.
 live-plan-runs/
 
+# Live graphics harness output (decision 289 follow-up): designed scenes and
+# their rendered frames from production graphic slots; never committed.
+live-graphic-runs/
+
 # Claude Code discovers the vendored agent skills through symlinks the
 # `skills` CLI creates; this git cannot store symlinks, so re-run
 # `npx skills add remotion-dev/skills` after a fresh clone.

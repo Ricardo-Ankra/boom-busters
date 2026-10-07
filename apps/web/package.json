@@ -11,6 +11,7 @@
     "test": "vitest run",
     "live:set": "tsx --env-file=../../.env.local scripts/live-set-test.ts",
     "live:plan": "tsx --env-file=../../.env.local scripts/live-plan-test.ts",
+    "live:graphic": "tsx --env-file=../../.env.local scripts/live-graphic-test.ts",
     "live:compare": "tsx scripts/live-compare.ts"
   },
   "dependencies": {
