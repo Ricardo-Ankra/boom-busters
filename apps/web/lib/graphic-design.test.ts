@@ -1,5 +1,5 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { ValidationError } from '@boom-busters/schemas'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { BudgetExceededError, GraphicBriefSchema, ValidationError } from '@boom-busters/schemas'
 import type * as Providers from '@boom-busters/providers'
 
 const callLlm = vi.fn()
@@ -10,7 +10,13 @@ vi.mock('@boom-busters/providers', async (importOriginal) => ({
   mockProvidersEnabled: () => mock,
 }))
 
-import { designGraphic, withDesign, type GraphicDesignContext } from './graphic-design'
+import {
+  designGraphic,
+  designIssueText,
+  GRAPHIC_DESIGN_DEADLINE_MS,
+  withDesign,
+  type GraphicDesignContext,
+} from './graphic-design'
 
 const A = '01J00000000000000000000001'
 const CONTEXT: GraphicDesignContext = {
@@ -63,6 +69,13 @@ beforeEach(() => {
   mock = false
 })
 
+afterEach(() => {
+  vi.useRealTimers()
+})
+
+const CUT_OFF = "the designer's answer was cut off at its length limit"
+const TOO_LONG = 'the designer took too long; press Redesign graphic to try again'
+
 describe('designGraphic (decision 289)', () => {
   it('stores a scene that passes, with claim ids', async () => {
     callLlm.mockResolvedValueOnce(answer('$4bn'))
@@ -106,12 +119,92 @@ describe('designGraphic (decision 289)', () => {
     expect(callLlm.mock.calls[1]![0].maxTokens).toBe(callLlm.mock.calls[0]![0].maxTokens * 2)
   })
 
-  it('reports an answer cut off twice as a design issue, without throwing', async () => {
+  it('reports an answer cut off twice as a design issue, without a reason-retry', async () => {
     callLlm.mockRejectedValue(new ValidationError('cut off', { field: 'maxTokens' }))
-    await expect(designGraphic(CONTEXT, SLOT)).resolves.toEqual({
-      ok: false,
-      issue: "the designer's answer was cut off at its length limit",
+    await expect(designGraphic(CONTEXT, SLOT)).resolves.toEqual({ ok: false, issue: CUT_OFF })
+    // The first try and its doubled retry; a third call at the doubled
+    // budget would be cut off again (final review I2).
+    expect(callLlm).toHaveBeenCalledTimes(2)
+  })
+
+  it('retries an answer cut off mid-JSON at double the budget', async () => {
+    callLlm
+      .mockResolvedValueOnce({ text: '{"scene": {"elements": [', truncated: true })
+      .mockResolvedValueOnce(answer('$4bn'))
+    const result = await designGraphic(CONTEXT, SLOT)
+    expect(result.ok).toBe(true)
+    expect(callLlm).toHaveBeenCalledTimes(2)
+    expect(callLlm.mock.calls[1]![0].maxTokens).toBe(callLlm.mock.calls[0]![0].maxTokens * 2)
+    // The doubled call is the same request, not a reason-retry.
+    expect(callLlm.mock.calls[1]![0].messages).toEqual(callLlm.mock.calls[0]![0].messages)
+  })
+
+  it('ends the design at once when the doubled answer is cut off mid-JSON too', async () => {
+    callLlm.mockResolvedValue({ text: '{"scene": {"elements": [', truncated: true })
+    expect(await designGraphic(CONTEXT, SLOT)).toEqual({ ok: false, issue: CUT_OFF })
+    expect(callLlm).toHaveBeenCalledTimes(2)
+  })
+
+  it('still gives a cut-off after a refusal its own doubled retry', async () => {
+    callLlm
+      .mockResolvedValueOnce(answer('$5bn'))
+      .mockResolvedValueOnce({ text: '{"scene": {"elements": [', truncated: true })
+      .mockResolvedValueOnce(answer('$4bn'))
+    const result = await designGraphic(CONTEXT, SLOT)
+    expect(result.ok).toBe(true)
+    expect(callLlm.mock.calls[2]![0].maxTokens).toBe(callLlm.mock.calls[1]![0].maxTokens * 2)
+  })
+
+  it('gives every call a signal that aborts at the design deadline', async () => {
+    callLlm.mockResolvedValueOnce(answer('$4bn'))
+    await designGraphic(CONTEXT, SLOT)
+    expect(callLlm.mock.calls[0]![1]).toMatchObject({
+      projectId: CONTEXT.projectId,
+      signal: expect.any(AbortSignal),
     })
+  })
+
+  it('reports a call that fails after the deadline as too long, without throwing', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(1_000_000)
+    callLlm.mockImplementation(async () => {
+      vi.setSystemTime(1_000_000 + GRAPHIC_DESIGN_DEADLINE_MS + 1)
+      throw new Error('This operation was aborted')
+    })
+    expect(await designGraphic(CONTEXT, SLOT)).toEqual({ ok: false, issue: TOO_LONG })
+    expect(callLlm).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not start a second attempt with under 15 s left', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(1_000_000)
+    callLlm.mockImplementation(async () => {
+      vi.setSystemTime(1_000_000 + GRAPHIC_DESIGN_DEADLINE_MS - 14_000)
+      return answer('$5bn')
+    })
+    expect(await designGraphic(CONTEXT, SLOT)).toEqual({ ok: false, issue: TOO_LONG })
+    expect(callLlm).toHaveBeenCalledTimes(1)
+  })
+
+  it('lets a budget stop through even past the deadline', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(1_000_000)
+    callLlm.mockImplementation(async () => {
+      vi.setSystemTime(1_000_000 + GRAPHIC_DESIGN_DEADLINE_MS + 1)
+      throw new BudgetExceededError({
+        provider: 'anthropic',
+        operation: 'llm.graphics',
+        budgetUsd: 10,
+        monthSpendUsd: 10,
+        estimateUsd: 0.1,
+      })
+    })
+    await expect(designGraphic(CONTEXT, SLOT)).rejects.toBeInstanceOf(BudgetExceededError)
+  })
+
+  it('lets a failure inside the deadline through', async () => {
+    callLlm.mockRejectedValue(new Error('provider down'))
+    await expect(designGraphic(CONTEXT, SLOT)).rejects.toThrow('provider down')
   })
 
   it('lets any other ValidationError from the call through', async () => {
@@ -167,5 +260,36 @@ describe('withDesign', () => {
 
   it('stores the issue without a scene', () => {
     expect(withDesign(BRIEF, { ok: false, issue: 'why' })).toEqual({ ...BRIEF, designIssue: 'why' })
+  })
+
+  it('caps an overlong issue so the stored brief still parses (final review I1)', () => {
+    const issue = `The graphic is malformed: ${'elements.0.cell: too wide; '.repeat(40)}`.slice(
+      0,
+      900,
+    )
+    expect(issue).toHaveLength(900)
+    const designed = withDesign(BRIEF, { ok: false, issue })
+    const parsed = GraphicBriefSchema.parse(designed)
+    expect(parsed.designIssue!.length).toBeLessThanOrEqual(500)
+    expect(parsed.designIssue!.endsWith('…')).toBe(true)
+    expect(issue.startsWith(parsed.designIssue!.slice(0, -1))).toBe(true)
+  })
+})
+
+describe('designIssueText', () => {
+  it('leaves a short issue as it is, trimmed', () => {
+    expect(designIssueText('  why  ')).toBe('why')
+  })
+
+  it('cuts at a word boundary and marks the cut', () => {
+    const text = designIssueText(`${'word '.repeat(180)}`)
+    expect(text.length).toBeLessThanOrEqual(500)
+    expect(text).toMatch(/word…$/)
+  })
+
+  it('cuts a 900-character issue to at most 500', () => {
+    const text = designIssueText('x'.repeat(900))
+    expect(text.length).toBe(500)
+    expect(text.endsWith('…')).toBe(true)
   })
 })
