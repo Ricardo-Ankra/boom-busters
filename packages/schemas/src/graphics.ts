@@ -61,10 +61,16 @@ export const GraphicCellSchema = z
 export type GraphicCell = z.infer<typeof GraphicCellSchema>
 
 export const GRAPHIC_ENTERS = ['fade', 'rise', 'wipe', 'count'] as const
+/**
+ * The widest an entrance offset may be. Graphic slots run up to 22 s and the
+ * designer times entrances to the spoken words, so this is only a sanity
+ * bound: `lateEntranceIssue` (slot length less one entrance) is the real one.
+ */
+export const GRAPHIC_MAX_ENTER_MS = 60_000
 export const GraphicEnterSchema = z.object({
   kind: z.enum(GRAPHIC_ENTERS),
   /** Offset from the slot's start. The designer is held to `lateEntranceIssue`. */
-  atMs: z.number().int().min(0).max(8000).default(0),
+  atMs: z.number().int().min(0).max(GRAPHIC_MAX_ENTER_MS).default(0),
 })
 export type GraphicEnter = z.infer<typeof GraphicEnterSchema>
 
@@ -133,6 +139,8 @@ const figureFields = {
   value: z.string().min(1).max(24),
   label: z.string().min(1).max(60).optional(),
   color: GraphicColorSchema,
+  /** Where the value and its caption sit in the box; the caption follows the value. */
+  align: z.enum(['start', 'center', 'end']).default('start'),
 }
 
 const logoFields = {

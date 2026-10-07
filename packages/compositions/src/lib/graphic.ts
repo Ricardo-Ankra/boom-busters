@@ -8,9 +8,9 @@ import type {
   GraphicTypeRole,
   TypeRole,
 } from '@boom-busters/schemas'
-import { frameScale, typeStyle, withAlpha } from '../components/brand'
+import { frameScale, typeStyle } from '../components/brand'
 import { captionSafeArea } from './captions'
-import { MARKER_ALPHA, easeInOut } from './motion'
+import { easeInOut } from './motion'
 
 /**
  * Graphic geometry, pure and unit-tested (decision 268, Plan B). The board's
@@ -43,7 +43,7 @@ const GRAPHIC_GUTTER_PX = 8
 /**
  * A conservative average glyph width, in em, for the fit estimate: `fitFontPx`'s own
  * estimate of how wide text draws, and the board preview's only way to approximate
- * the same width for an `underline` emphasis wash without measuring text it cannot
+ * the same width for an `underline` emphasis bar without measuring text it cannot
  * measure the same way the render's Chromium would.
  */
 export const AVERAGE_GLYPH_EM = 0.56
@@ -65,7 +65,7 @@ const UPPERCASE_GLYPH_EM = 0.7
 /** Extra width a heavy weight (800 and up) adds to every glyph. */
 const HEAVY_WEIGHT_EM = 0.03
 /** The line box CSS gives a single line at `line-height: normal`, in em. */
-const LINE_HEIGHT_EM = 1.25
+export const LINE_HEIGHT_EM = 1.25
 const MIN_FONT_PX = 12
 const ENTER_MS = GRAPHIC_ENTER_MS
 const BAR_LENGTH_FRACTION = 0.62
@@ -152,13 +152,53 @@ export function figureLabelGapPx(frame: GraphicFrame): number {
 }
 
 /**
- * The accent wash an `underline` emphasis draws behind its text once fully revealed:
- * the same colour and alpha `markerSweep` (`lib/motion.ts`) sweeps in to, at rest. The
- * board's preview shows the resting frame, so it reads this colour directly rather
- * than reproducing the sweep's animation.
+ * The biggest a figure's value may draw, at 1080p, before the frame scale. A figure is the
+ * element a card is built around, so it is fitted to its box rather than held to the
+ * role's ordinary size: `roleBasePx('numbers')` (96) used to cap it, which left a value
+ * given a large cell box drawing at a third of what the box could hold. The box's width
+ * (by the glyph estimate) and the height left after the caption still bound it.
  */
-export function emphasisWashColor(brand: BrandKitTokens): string {
-  return withAlpha(brand.colors.accent, MARKER_ALPHA)
+export const FIGURE_MAX_PX = 300
+
+/** Where a glyph's baseline sits below the vertical centre of its line, in em. */
+const BASELINE_BELOW_CENTRE_EM = 0.36
+/** The gap between the baseline and the top of an underline bar, in em. */
+const UNDERLINE_GAP_EM = 0.12
+/** The bar's thickness as a share of the font size, and its floor at 1080p. */
+const UNDERLINE_THICKNESS_EM = 0.06
+const UNDERLINE_MIN_THICKNESS_PX = 3
+
+export interface UnderlineBar {
+  /** The bar's top, measured down from the vertical centre of the text's line. */
+  topFromCentrePx: number
+  thicknessPx: number
+  /** The bar's drawn width: 0 at the start of the sweep, the text's width at the end. */
+  widthPx: number
+}
+
+/**
+ * The `underline` emphasis on a graphic element: a solid accent bar under the text, not a
+ * wash behind it (a wash over large glyphs read as a block or a strikethrough). `fontPx` is
+ * the size the text draws at, `textWidthPx` how wide it draws, `progress` the sweep (0 to 1,
+ * `enterProgress` half a second after the element enters) and `frame` sets the thickness
+ * floor's scale. The board's preview calls this at progress 1; the card calls it for the
+ * thickness and offset and sweeps the width as a share of the text it can measure.
+ */
+export function underlineBar(
+  fontPx: number,
+  textWidthPx: number,
+  progress: number,
+  frame: GraphicFrame,
+): UnderlineBar {
+  const clamped = Math.min(1, Math.max(0, progress))
+  return {
+    topFromCentrePx: (BASELINE_BELOW_CENTRE_EM + UNDERLINE_GAP_EM) * fontPx,
+    thicknessPx: Math.max(
+      UNDERLINE_MIN_THICKNESS_PX * frameScale(frame.width, frame.height),
+      UNDERLINE_THICKNESS_EM * fontPx,
+    ),
+    widthPx: textWidthPx * clamped,
+  }
 }
 
 /**
@@ -208,7 +248,7 @@ export function glyphAdvanceEm(type: TypeRole): number {
 
 /**
  * How wide `text` draws at `drawnPx` in a role's type, by the same estimate
- * `fitFontPx` fits by, so the board's `underline` wash is no more invented
+ * `fitFontPx` fits by, so the board's `underline` bar is no more invented
  * than the size the text itself draws at.
  */
 export function estimatedTextWidth(text: string, drawnPx: number, type: TypeRole): number {
@@ -303,16 +343,30 @@ export function reflowPortrait(scene: GraphicScene): GraphicScene {
   let left = flowing.length
   let cursor = top
 
-  const cellByIndex = new Map<number, GraphicCell>()
+  const bands: { index: number; row: number; rowSpan: number }[] = []
   for (const entry of flowing) {
     const want = Math.min(entry.element.cell.rowSpan, GRAPHIC_GRID)
     // Reserve one row for every element still to be placed, so the running total can
     // never exceed what is left and this never needs a clamp.
     const rowSpan = Math.max(1, Math.min(want, remaining - (left - 1)))
-    cellByIndex.set(entry.index, { col: 0, row: cursor, colSpan: GRAPHIC_GRID, rowSpan })
+    bands.push({ index: entry.index, row: cursor, rowSpan })
     cursor += rowSpan
     remaining -= rowSpan
     left -= 1
+  }
+
+  // With nothing pinned the stack is the whole composition, and stacked from the top it
+  // left the rest of a tall frame empty: centre it. Any pin keeps the flow where it was
+  // put, below the pin, because the pin is the author's own placement of the rest.
+  const shift = pinnedBottom === 0 ? Math.floor((GRAPHIC_GRID - (cursor - top)) / 2) : 0
+  const cellByIndex = new Map<number, GraphicCell>()
+  for (const band of bands) {
+    cellByIndex.set(band.index, {
+      col: 0,
+      row: band.row + shift,
+      colSpan: GRAPHIC_GRID,
+      rowSpan: band.rowSpan,
+    })
   }
 
   const elements = scene.elements.map((element, index) =>
@@ -428,16 +482,10 @@ export function graphicLayout(
       return {
         id: element.id,
         ...box,
-        fontPx: fitFontPx(
-          element.value,
-          box.w,
-          roleBasePx('numbers') * scale,
-          MIN_FONT_PX * scale,
-          {
-            type: brand.typography.numbers,
-            boxHeight: Math.max(1, box.h - labelH),
-          },
-        ),
+        fontPx: fitFontPx(element.value, box.w, FIGURE_MAX_PX * scale, MIN_FONT_PX * scale, {
+          type: brand.typography.numbers,
+          boxHeight: Math.max(1, box.h - labelH),
+        }),
       }
     }
     if (element.kind === 'bars') {

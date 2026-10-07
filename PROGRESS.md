@@ -6925,3 +6925,53 @@ boom-busters-broker`; merge and deploy to Vercel, then `PUT
      later.
      The number 289 is checked against `origin/master` at the merge; at the
      time of writing master's last decision is 288.
+     Follow-up (2026-10-07, owner: "do one paid redesign, I want the same
+     logic as we did with the stills where we have a budget and paid
+     development feedback loop that you can test and deploy changes to get
+     to an optimal working version"). The owner set $1 a run and the stored
+     production Anthropic key, decrypted in memory and never printed.
+     The harness: `pnpm live:graphic` (apps/web) designs a project's graphic
+     slots through the app's own `designGraphicWith` (now in
+     `graphic-design-core.ts`, so a script can run it; `designGraphic` keeps
+     its signature) against production read only, every call reserving its
+     worst case under `LiveBudget`, nothing written to production or to the
+     cost ledger; `run.json` is the record, including why a retried answer
+     was refused. `pnpm render:graphics <run>` (compositions) renders each
+     scene, before and after, through the real `GraphicCard` to PNG frames
+     in 16:9 and 9:16, from a script-only Remotion entry, so the deployed
+     bundle is untouched by the tool.
+     Four paid runs on the Stability AI film's five graphics, $0.47 in all.
+     Run 1 showed that most of what was wrong was the renderer, not the
+     model: a figure's value was capped at 96 px (1080p) whatever box it
+     had, so "one dominant element" was impossible and the lower half of
+     every frame sat empty; the underline emphasis was a wash over the
+     glyphs that read as a strikethrough; the portrait reflow stacked from
+     the top; and a figure always sat left under a centred title. Fixed:
+     a figure's value grows to fill its box (`FIGURE_MAX_PX` 300 at 1080p,
+     line height 1.25 so its caption still fits); `underline` on a graphic
+     is a solid accent bar under the text (`underlineBar`, shared by the
+     card and the board preview; headline cards keep their marker); an
+     all-flowing portrait stack is centred; figures gain `align`
+     (start, center, end; default start, so every stored graphic renders as
+     before). Run 2 showed that the 8 s entrance cap refused long slots whose
+     words come later (two refusals), and that the prompt reserved the
+     caption rows twice, since the grid already ends above the captions: the
+     cap is now 60 s (`GRAPHIC_MAX_ENTER_MS`, the late-entrance rule still
+     bounds it by the slot), and the designer uses the whole grid with the
+     composition centred near row 6. The prompt now also asks for balance,
+     one alignment per column, an underline on at most one element, no
+     element that only restates another, and portrait cells for side by
+     side layouts. Run 3 put "Widely cited · never traced to an audited
+     filing" under a figure: no check reads a graphic's words, only its
+     numbers, so the prompt now says words on screen say only what the
+     narration or the cited claims say, never a fact, judgement, qualifier
+     or source note of the designer's own. Run 4: five graphics, one call
+     each, no refusals, $0.10, every word traceable to the narration.
+     Shipping, in this order because the timeline schema changed (figure
+     `align`, the 60 s entrance cap) and an older broker would refuse an
+     entrance past 8 s: `deploy:remotion`, then
+     `deploy:stacks boom-busters-broker`, then the Vercel deploy and
+     `PUT /api/inngest`.
+     Left: the mock designer still lays out top heavy, start aligned scenes
+     (mock mode only); a graphic citing a logo the library lacks shows its
+     upload box, as before.

@@ -46,12 +46,91 @@ const input = (over: Partial<GraphicDesignInput> = {}): GraphicDesignInput => ({
   ...over,
 })
 
+describe('the designer rules (decision 289, round 3)', () => {
+  const system = buildGraphicRequest(input()).system
+  // The rules are one string, wrapped for reading; compare with the wrapping removed.
+  const rules = system.replace(/\s+/g, ' ')
+
+  it('states the size, balance, alignment, emphasis, restraint and portrait rules', () => {
+    expect(rules).toContain(
+      "A figure's value grows to fill its box (it can be very large); a text's size is set by its role.",
+    )
+    expect(rules).toContain(
+      'a figure box 6 to 10 columns wide and 3 to 5 rows tall reads as the hero',
+    )
+    expect(rules).toContain(
+      "The grid already ends above the captions: use the whole grid. Compose around the middle: the composition's visual centre sits near row 6, with roughly equal empty space above and below it.",
+    )
+    expect(rules).not.toContain('stay empty for captions')
+    expect(rules).not.toContain('Use rows 1 to 9')
+    expect(rules).toContain(
+      'Every text and figure has an "align" (start, center or end). Align the elements that stack in one column the same way',
+    )
+    expect(rules).toContain('A figure\'s caption ("label") aligns with its value.')
+    expect(rules).toContain(
+      '"underline" draws a solid bar under the element; use it on at most one element',
+    )
+    expect(rules).toContain('"pulse" is for a figure that lands on a spoken number.')
+    expect(rules).toContain(
+      'no line that only restates another element, no decorative rule or shape unless it separates two compared things, no label that repeats the title',
+    )
+    expect(rules).toContain(
+      'give each a "portraitCell" that stacks them in the portrait frame, centred around row 6. A single-column design needs no portraitCell.',
+    )
+  })
+
+  it('keeps the rules it did not change', () => {
+    expect(rules).toContain(
+      'An entrance may start at any time up to 600 ms before the slot ends, so it can finish.',
+    )
+    expect(rules).toContain('the digits shown must appear in that claim')
+    expect(rules).toContain('A figure "count"s up only when the number itself is the story.')
+  })
+
+  it('offers align on a figure as well as on a text', () => {
+    const lines = system.split('\n')
+    const at = lines.findIndex((line) => line.startsWith('{"kind": "figure"'))
+    expect(at).toBeGreaterThan(-1)
+    expect(`${lines[at]} ${lines[at + 1]}`).toContain('"align"?: "start"|"center"|"end"')
+  })
+
+  it('shows three worked examples that parse, are vertically centred on the 12-row grid, and apply the rules', () => {
+    const examples = system
+      .split('Example,')
+      .slice(1)
+      .map((block) => block.slice(block.indexOf('\n') + 1).trim())
+    expect(examples).toHaveLength(3)
+    for (const example of examples) {
+      const scene = parseGraphicScene(example)
+      // Landscape cells, then the portrait cells where an element has one.
+      const placements = [
+        scene.elements.map((element) => element.cell),
+        scene.elements.map((element) => element.portraitCell ?? element.cell),
+      ]
+      for (const cells of placements) {
+        const top = Math.min(...cells.map((c) => c.row))
+        const bottom = Math.max(...cells.map((c) => c.row + c.rowSpan))
+        // Equal empty space above and below: the box's middle is row 6.
+        expect(top + bottom).toBe(12)
+      }
+    }
+  })
+})
+
 describe('buildGraphicRequest (decision 289)', () => {
   it('routes to graphics with one cacheable film message', () => {
     const request = buildGraphicRequest(input())
     expect(request.task).toBe('graphics')
     expect(request.cacheablePrefixMessages).toBe(1)
     expect(request.maxTokens).toBe(outputBudget(GRAPHIC_ANSWER_TOKENS))
+  })
+
+  it('forbids on-screen words the narration and the claims do not say', () => {
+    // Live run 3 (2026-10-07) put "Widely cited · never traced to an audited
+    // filing" under a figure: no check reads text elements, only numbers.
+    const { system } = buildGraphicRequest(input())
+    expect(system).toContain('Words on screen say only what the narration or the cited claims say.')
+    expect(system).toContain('no check reads your words, only your numbers.')
   })
 
   it('keeps the film message identical across two slots of one film', () => {

@@ -17,7 +17,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "studio": "remotion studio",
-    "render:timeline": "tsx scripts/render-timeline.ts"
+    "render:timeline": "tsx scripts/render-timeline.ts",
+    "render:graphics": "tsx scripts/render-graphic-frames.ts"
   },
   "dependencies": {
     "@boom-busters/schemas": "workspace:*",

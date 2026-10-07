@@ -11,12 +11,15 @@ import {
   figureLabelGapPx,
   graphicDrift,
   graphicLayout,
+  LINE_HEIGHT_EM,
+  roleFontPx,
   ruleThicknessPx,
   staggeredEnterMs,
   tokenColor,
+  underlineBar,
   type ElementBox,
 } from '../lib/graphic'
-import { markerSweep, mediaUrl } from '../lib/motion'
+import { mediaUrl } from '../lib/motion'
 import { frameScale, typeStyle, withAlpha } from './brand'
 
 /**
@@ -24,14 +27,48 @@ import { frameScale, typeStyle, withAlpha } from './brand'
  * from `graphicLayout`, and the bars and rule shapes take their remaining
  * geometry (row height, bar length, line thickness) from the same module, so
  * what was approved is what renders. Each element enters at its own offset;
- * a figure may count up; an emphasis is a single pulse or the headline
- * card's highlighter sweep. Logos are drawn as they are: contained, never
+ * a figure may count up; an emphasis is a single pulse or a solid underline
+ * bar that sweeps in beneath the text. Logos are drawn as they are: contained, never
  * stretched, never recoloured.
  */
 
 const PULSE_AT_MS = 600
 const PULSE_MS = 360
 const BAR_GROW_MS = 700
+
+/**
+ * The solid bar an `underline` emphasis draws under its text. Its thickness and offset
+ * come from `underlineBar`, the function the board's preview draws from too; its width
+ * is the sweep's progress as a share of the text it sits in, so it is the text's real
+ * width rather than an estimate of it. The parent span is `position: relative` and the
+ * bar hangs from its vertical centre, so it does not depend on the line height.
+ */
+function UnderlineBar({
+  fontPx,
+  progress,
+  color,
+  frame,
+}: {
+  fontPx: number
+  progress: number
+  color: string
+  frame: { width: number; height: number }
+}) {
+  const bar = underlineBar(fontPx, 1, progress, frame)
+  return (
+    <span
+      aria-hidden
+      style={{
+        position: 'absolute',
+        left: 0,
+        top: `calc(50% + ${bar.topFromCentrePx}px)`,
+        height: bar.thicknessPx,
+        width: `${bar.widthPx * 100}%`,
+        backgroundColor: color,
+      }}
+    />
+  )
+}
 
 function pulseScale(frame: number, fps: number, atMs: number): number {
   const t = (frame / fps) * 1000 - (atMs + PULSE_AT_MS)
@@ -116,10 +153,8 @@ export function GraphicCard({
             ...(pulse !== 1 ? { transform: `scale(${pulse})` } : {}),
             transformOrigin: 'center',
           }
-          const underline =
-            element.emphasis === 'underline'
-              ? markerSweep(colors.accent, enterProgress(frame, fps, atMs + 500))
-              : {}
+          const underlineProgress =
+            element.emphasis === 'underline' ? enterProgress(frame, fps, atMs + 500) : undefined
 
           switch (element.kind) {
             case 'text':
@@ -150,7 +185,17 @@ export function GraphicCard({
                     whiteSpace: 'nowrap',
                   }}
                 >
-                  <span style={underline}>{element.content}</span>
+                  <span style={{ position: 'relative', display: 'inline-block' }}>
+                    {element.content}
+                    {underlineProgress !== undefined ? (
+                      <UnderlineBar
+                        fontPx={roleFontPx(element.role, box.fontPx ?? 32, brand)}
+                        progress={underlineProgress}
+                        color={colors.accent}
+                        frame={{ width, height }}
+                      />
+                    ) : null}
+                  </span>
                 </div>
               )
             case 'figure': {
@@ -166,7 +211,15 @@ export function GraphicCard({
                     display: 'flex',
                     flexDirection: 'column',
                     justifyContent: 'center',
-                    alignItems: 'flex-start',
+                    // The value and its caption sit together by `align`; the value's span
+                    // shrinks to its text, so the underline bar hangs from where it sits.
+                    alignItems:
+                      element.align === 'center'
+                        ? 'center'
+                        : element.align === 'end'
+                          ? 'flex-end'
+                          : 'flex-start',
+                    textAlign: element.align,
                     overflow: 'hidden',
                     whiteSpace: 'nowrap',
                   }}
@@ -174,11 +227,23 @@ export function GraphicCard({
                   <span
                     style={{
                       ...typeStyle(typography.numbers, box.fontPx ?? 96, 1),
+                      // The line `graphicLayout` fitted the value's height by. At `normal`, the
+                      // monospaced face's line is taller (about 1.32 em), which at a figure's
+                      // new size pushed the caption below out of its box and clipped it.
+                      lineHeight: LINE_HEIGHT_EM,
                       color: tokenColor(element.color, brand),
-                      ...underline,
+                      position: 'relative',
                     }}
                   >
                     {shown}
+                    {underlineProgress !== undefined ? (
+                      <UnderlineBar
+                        fontPx={roleFontPx('numbers', box.fontPx ?? 96, brand)}
+                        progress={underlineProgress}
+                        color={colors.accent}
+                        frame={{ width, height }}
+                      />
+                    ) : null}
                   </span>
                   {element.label ? (
                     <span

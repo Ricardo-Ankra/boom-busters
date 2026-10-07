@@ -62,16 +62,33 @@ Design rules:
 - One idea per graphic. One element dominates (usually the figure); everything
   else supports it. A viewer gets it in the first second.
 - Fewer elements beat more. ${MAX_GRAPHIC_ELEMENTS} is the ceiling, not the target; two or three is common.
-- Leave room. Do not fill the grid. The bottom two rows (row 10 and 11) stay
-  empty: captions sit there.
+- Size follows role. A figure's value grows to fill its box (it can be very
+  large); a text's size is set by its role. Give the dominant element the most
+  room; a figure box 6 to 10 columns wide and 3 to 5 rows tall reads as the hero.
+- Balance. The grid already ends above the captions: use the whole grid.
+  Compose around the middle: the composition's visual centre sits near row 6,
+  with roughly equal empty space above and below it.
+- Alignment. Every text and figure has an "align" (start, center or end). Align
+  the elements that stack in one column the same way: a centred title over a
+  centred figure over a centred caption, or all at start. A figure's caption
+  ("label") aligns with its value.
+- Emphasis. "underline" draws a solid bar under the element; use it on at most
+  one element, on the word or figure the narrator stresses. "pulse" is for a
+  figure that lands on a spoken number.
+- Restraint. Every element must earn its place: no line that only restates
+  another element, no decorative rule or shape unless it separates two compared
+  things, no label that repeats the title.
+- Portrait. The same scene plays in 9:16 for Shorts. When elements sit side by
+  side in 16:9 (columns), give each a "portraitCell" that stacks them in the
+  portrait frame, centred around row 6. A single-column design needs no portraitCell.
 - Colour carries meaning: "collapse" for loss and failure, "recovery" for
   gain, "accent" or "captionHighlight" for the one thing to look at, "series0"
   to "series2" to tell compared things apart. Text is "textPrimary" or
   "textSecondary". Never colour for decoration.
 - Time entrances to the words. Each slot comes with the words spoken in it and
   when; a figure should land as its number is said, a logo as its name is
-  said. An element enters by "atMs" from the slot's start. Every entrance must
-  START at least 600 ms before the slot ends, so it can finish.
+  said. An element enters by "atMs" from the slot's start. An entrance may
+  start at any time up to 600 ms before the slot ends, so it can finish.
 - A figure "count"s up only when the number itself is the story.
 - Two or three amounts compared read better as "bars" than as figures side by side.
 - A logo earns its place when the company or person is the subject, not
@@ -82,12 +99,16 @@ Design rules:
   "$4.2bn" is not). The intent names the claims the beat rests on; you may
   cite any claim in the list when it holds the number better.
 - Words on screen are short: a title is a few words, never a sentence of narration.
+- Words on screen say only what the narration or the cited claims say. Never
+  add a fact, a judgement, a qualifier or a source note of your own ("never
+  audited", "widely cited", "allegedly"): this is a film about real companies
+  and real people, and no check reads your words, only your numbers.
 
 Elements:
 {"kind": "text", "id", "cell", "content" (max 120 chars), "role": ${GRAPHIC_TYPE_ROLES.map((r) => `"${r}"`).join('|')},
  "color", "align"?: "start"|"center"|"end", "enter"?, "emphasis"?}
 {"kind": "figure", "id", "cell", "value" (exactly what is shown, e.g. "$4bn"), "label"?,
- "claimRef": claim number, "color", "enter"?, "emphasis"?}
+ "claimRef": claim number, "color", "align"?: "start"|"center"|"end", "enter"?, "emphasis"?}
 {"kind": "logo", "id", "cell", "entity": the exact name, "enter"?}
 {"kind": "shape", "id", "cell", "form": "rect"|"rule"|"disc", "color", "opacity"?: 0.05-1}
 {"kind": "bars", "id", "cell", "items": [{"label", "value": number, "display", "claimRef": claim number}] (2 to 5),
@@ -99,22 +120,21 @@ frame; leave it out to let the layout stack elements in reading order.
 "enter" is {"kind": "fade"|"rise"|"wipe"|"count", "atMs"} ("count" only on a figure).
 "emphasis" is "pulse"|"underline". Ids are unique; one logo per entity.
 
-Example, a single number that is the story:
+Example, a single number that is the story (one centred column; no portraitCell needed):
 {"scene": {"elements": [
- {"kind": "text", "id": "t", "cell": {"col": 1, "row": 2, "colSpan": 8, "rowSpan": 1}, "content": "Raised in one round", "role": "title", "color": "textSecondary", "enter": {"kind": "fade", "atMs": 0}},
- {"kind": "figure", "id": "f", "cell": {"col": 1, "row": 3, "colSpan": 8, "rowSpan": 4}, "value": "$4bn", "claimRef": 3, "color": "accent", "enter": {"kind": "count", "atMs": 900}, "emphasis": "underline"}]}}
+ {"kind": "text", "id": "t", "cell": {"col": 1, "row": 3, "colSpan": 10, "rowSpan": 1}, "content": "Raised in one round", "role": "title", "color": "textSecondary", "align": "center", "enter": {"kind": "fade", "atMs": 0}},
+ {"kind": "figure", "id": "f", "cell": {"col": 1, "row": 4, "colSpan": 10, "rowSpan": 5}, "value": "$4bn", "label": "Series C", "claimRef": 3, "color": "accent", "align": "center", "enter": {"kind": "count", "atMs": 900}, "emphasis": "underline"}]}}
 
 Example, two amounts compared:
 {"scene": {"elements": [
- {"kind": "text", "id": "t", "cell": {"col": 1, "row": 1, "colSpan": 10, "rowSpan": 1}, "content": "2024 revenue", "role": "title", "color": "textSecondary", "enter": {"kind": "fade", "atMs": 0}},
- {"kind": "bars", "id": "b", "cell": {"col": 1, "row": 3, "colSpan": 10, "rowSpan": 5}, "items": [{"label": "Nvidia", "value": 130, "display": "$130bn", "claimRef": 4}, {"label": "Intel", "value": 53, "display": "$53bn", "claimRef": 7}], "color": "series0", "highlightIndex": 0, "enter": {"kind": "wipe", "atMs": 600}}]}}
+ {"kind": "text", "id": "t", "cell": {"col": 1, "row": 3, "colSpan": 10, "rowSpan": 1}, "content": "2024 revenue", "role": "title", "color": "textSecondary", "align": "center", "enter": {"kind": "fade", "atMs": 0}},
+ {"kind": "bars", "id": "b", "cell": {"col": 1, "row": 4, "colSpan": 10, "rowSpan": 5}, "items": [{"label": "Nvidia", "value": 130, "display": "$130bn", "claimRef": 4}, {"label": "Intel", "value": 53, "display": "$53bn", "claimRef": 7}], "color": "series0", "highlightIndex": 0, "enter": {"kind": "wipe", "atMs": 600}}]}}
 
-Example, a relationship between named marks:
+Example, a relationship between named marks (side by side in 16:9, stacked in 9:16):
 {"scene": {"elements": [
- {"kind": "logo", "id": "a", "cell": {"col": 1, "row": 3, "colSpan": 4, "rowSpan": 3}, "entity": "Acme", "enter": {"kind": "fade", "atMs": 0}},
- {"kind": "shape", "id": "r", "cell": {"col": 5, "row": 4, "colSpan": 2, "rowSpan": 1}, "form": "rule", "color": "accent"},
- {"kind": "logo", "id": "b", "cell": {"col": 7, "row": 3, "colSpan": 4, "rowSpan": 3}, "entity": "Rival", "enter": {"kind": "fade", "atMs": 1400}},
- {"kind": "text", "id": "t", "cell": {"col": 1, "row": 7, "colSpan": 10, "rowSpan": 1}, "content": "Bought for $900m", "role": "body", "color": "textPrimary", "align": "center", "enter": {"kind": "rise", "atMs": 2200}}]}}`
+ {"kind": "logo", "id": "a", "cell": {"col": 1, "row": 3, "colSpan": 4, "rowSpan": 4}, "portraitCell": {"col": 2, "row": 2, "colSpan": 8, "rowSpan": 3}, "entity": "Acme", "enter": {"kind": "fade", "atMs": 0}},
+ {"kind": "logo", "id": "b", "cell": {"col": 7, "row": 3, "colSpan": 4, "rowSpan": 4}, "portraitCell": {"col": 2, "row": 5, "colSpan": 8, "rowSpan": 3}, "entity": "Rival", "enter": {"kind": "fade", "atMs": 1400}},
+ {"kind": "text", "id": "t", "cell": {"col": 1, "row": 8, "colSpan": 10, "rowSpan": 1}, "portraitCell": {"col": 1, "row": 9, "colSpan": 10, "rowSpan": 1}, "content": "Bought for $900m", "role": "body", "color": "textPrimary", "align": "center", "enter": {"kind": "rise", "atMs": 2200}}]}}`
 
 const seconds = (ms: number) => `${(ms / 1000).toFixed(1)} s`
 

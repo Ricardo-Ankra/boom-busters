@@ -960,6 +960,7 @@ export default async function globalSetup(): Promise<void> {
                 },
                 {
                   kind: 'figure',
+                  align: 'start',
                   id: 'f1',
                   cell: { col: 0, row: 3, colSpan: 7, rowSpan: 6 },
                   enter: { kind: 'count', atMs: 300 },
