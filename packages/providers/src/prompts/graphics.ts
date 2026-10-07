@@ -99,6 +99,10 @@ Design rules:
   "$4.2bn" is not). The intent names the claims the beat rests on; you may
   cite any claim in the list when it holds the number better.
 - Words on screen are short: a title is a few words, never a sentence of narration.
+- Words on screen say only what the narration or the cited claims say. Never
+  add a fact, a judgement, a qualifier or a source note of your own ("never
+  audited", "widely cited", "allegedly"): this is a film about real companies
+  and real people, and no check reads your words, only your numbers.
 
 Elements:
 {"kind": "text", "id", "cell", "content" (max 120 chars), "role": ${GRAPHIC_TYPE_ROLES.map((r) => `"${r}"`).join('|')},

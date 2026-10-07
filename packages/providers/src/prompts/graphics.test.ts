@@ -125,6 +125,14 @@ describe('buildGraphicRequest (decision 289)', () => {
     expect(request.maxTokens).toBe(outputBudget(GRAPHIC_ANSWER_TOKENS))
   })
 
+  it('forbids on-screen words the narration and the claims do not say', () => {
+    // Live run 3 (2026-10-07) put "Widely cited · never traced to an audited
+    // filing" under a figure: no check reads text elements, only numbers.
+    const { system } = buildGraphicRequest(input())
+    expect(system).toContain('Words on screen say only what the narration or the cited claims say.')
+    expect(system).toContain('no check reads your words, only your numbers.')
+  })
+
   it('keeps the film message identical across two slots of one film', () => {
     const a = buildGraphicRequest(input())
     const b = buildGraphicRequest(input({ coversText: 'Rival raised less.', intentRefs: [2] }))
