@@ -46,6 +46,68 @@ const input = (over: Partial<GraphicDesignInput> = {}): GraphicDesignInput => ({
   ...over,
 })
 
+describe('the designer rules (decision 289, round 3)', () => {
+  const system = buildGraphicRequest(input()).system
+  // The rules are one string, wrapped for reading; compare with the wrapping removed.
+  const rules = system.replace(/\s+/g, ' ')
+
+  it('states the size, balance, alignment, emphasis, restraint and portrait rules', () => {
+    expect(rules).toContain(
+      "A figure's value grows to fill its box (it can be very large); a text's size is set by its role.",
+    )
+    expect(rules).toContain(
+      'a figure box 6 to 10 columns wide and 3 to 5 rows tall reads as the hero',
+    )
+    expect(rules).toContain(
+      "Use rows 1 to 9; the composition's visual centre should sit near row 5, not in the top half. Rows 10 and 11 stay empty for captions.",
+    )
+    expect(rules).toContain(
+      'Every text and figure has an "align" (start, center or end). Align the elements that stack in one column the same way',
+    )
+    expect(rules).toContain('A figure\'s caption ("label") aligns with its value.')
+    expect(rules).toContain(
+      '"underline" draws a solid bar under the element; use it on at most one element',
+    )
+    expect(rules).toContain('"pulse" is for a figure that lands on a spoken number.')
+    expect(rules).toContain(
+      'no line that only restates another element, no decorative rule or shape unless it separates two compared things, no label that repeats the title',
+    )
+    expect(rules).toContain(
+      'give each a "portraitCell" that stacks them in the portrait frame, centred around row 5. A single-column design needs no portraitCell.',
+    )
+  })
+
+  it('keeps the rules it did not change', () => {
+    expect(rules).toContain('START at least 600 ms before the slot ends')
+    expect(rules).toContain('the digits shown must appear in that claim')
+    expect(rules).toContain('A figure "count"s up only when the number itself is the story.')
+  })
+
+  it('offers align on a figure as well as on a text', () => {
+    const lines = system.split('\n')
+    const at = lines.findIndex((line) => line.startsWith('{"kind": "figure"'))
+    expect(at).toBeGreaterThan(-1)
+    expect(`${lines[at]} ${lines[at + 1]}`).toContain('"align"?: "start"|"center"|"end"')
+  })
+
+  it('shows three worked examples that parse, sit in rows 1 to 9, and apply the rules', () => {
+    const examples = system
+      .split('Example,')
+      .slice(1)
+      .map((block) => block.slice(block.indexOf('\n') + 1).trim())
+    expect(examples).toHaveLength(3)
+    for (const example of examples) {
+      const scene = parseGraphicScene(example)
+      const rows = scene.elements.flatMap((element) => [
+        element.cell.row,
+        element.cell.row + element.cell.rowSpan,
+      ])
+      expect(Math.min(...rows)).toBeGreaterThanOrEqual(1)
+      expect(Math.max(...rows)).toBeLessThanOrEqual(10)
+    }
+  })
+})
+
 describe('buildGraphicRequest (decision 289)', () => {
   it('routes to graphics with one cacheable film message', () => {
     const request = buildGraphicRequest(input())
