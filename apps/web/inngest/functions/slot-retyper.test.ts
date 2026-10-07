@@ -15,7 +15,7 @@ import {
   shotSlots,
   truncateRunMirror,
 } from '@boom-busters/db'
-import type { ShotBrief } from '@boom-busters/schemas'
+import { BudgetExceededError, type ShotBrief } from '@boom-busters/schemas'
 import { InngestTestEngine } from '@inngest/test'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/lib/db'
@@ -163,5 +163,50 @@ describeDb('slot-retyper (mock mode)', () => {
       intent: '[mock] The figure, large, with the mark beside it.',
       scene: { elements: expect.arrayContaining([expect.objectContaining({ id: 't1' })]) },
     })
+    expect(slot?.retype).toBeNull()
+  })
+
+  it('keeps the reason on the brief when the designer refuses a retyped graphic', async () => {
+    const design = await import('@/lib/graphic-design')
+    const refuse = vi
+      .spyOn(design, 'designGraphic')
+      .mockResolvedValueOnce({ ok: false, issue: 'no claim holds $5bn' })
+    try {
+      const { result } = await engine.execute({ events: retypeEvent(slotId, 'graphic') })
+      expect(result).toMatchObject({ outcome: 'retyped', targetType: 'graphic' })
+
+      const slot = await getShotSlot(db, slotId)
+      expect(slot?.type).toBe('graphic')
+      expect(slot?.brief).toMatchObject({ type: 'graphic', designIssue: 'no claim holds $5bn' })
+      expect(slot?.brief).not.toHaveProperty('scene')
+      expect(slot?.retype).toBeNull()
+    } finally {
+      refuse.mockRestore()
+    }
+  })
+
+  it('says why on the brief when a retyped graphic runs out of budget', async () => {
+    const design = await import('@/lib/graphic-design')
+    const broke = vi.spyOn(design, 'designGraphic').mockRejectedValueOnce(
+      new BudgetExceededError({
+        provider: 'anthropic',
+        operation: 'llm.graphics',
+        budgetUsd: 5,
+        monthSpendUsd: 5,
+        estimateUsd: 0.05,
+      }),
+    )
+    try {
+      const { result } = await engine.execute({ events: retypeEvent(slotId, 'graphic') })
+      expect(result).toMatchObject({ outcome: 'over-budget' })
+
+      const slot = await getShotSlot(db, slotId)
+      expect(slot?.type).toBe('graphic')
+      const brief = slot?.brief as { designIssue?: string }
+      expect(brief.designIssue).toMatch(/\S/)
+      expect(slot?.brief).not.toHaveProperty('scene')
+    } finally {
+      broke.mockRestore()
+    }
   })
 })

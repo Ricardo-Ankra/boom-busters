@@ -80,6 +80,22 @@ export const slotRetyper = inngest.createFunction(
       const slotId = event.data.event.data['slotId']
       if (typeof slotId === 'string') {
         await setSlotRetype(db, slotId, null).catch(() => undefined)
+        // A slot retyped to a graphic holds an intent and no design until the
+        // designer answers; a dead run must not leave it reading "being
+        // designed" forever (decision 289).
+        await (async () => {
+          const slot = await getShotSlot(db, slotId)
+          const brief = GraphicBriefSchema.safeParse(slot?.brief)
+          if (!brief.success || brief.data.scene || brief.data.designIssue) return
+          await updateSlotBrief(
+            db,
+            slotId,
+            withDesign(brief.data, {
+              ok: false,
+              issue: 'the design step failed; press Redesign graphic to try again',
+            }),
+          )
+        })().catch(() => undefined)
       }
       // Words, not a stage failure: a re-type runs while the visuals gate is
       // parked open, and the review room must survive it (decision 234).
@@ -219,7 +235,11 @@ export const slotRetyper = inngest.createFunction(
       const designed = await step.run('design-graphic', async () => {
         const slot = await getShotSlot(db, slotId)
         if (!slot) throw new NonRetriableError(`Shot slot ${slotId} vanished mid-retype`)
-        const brief = GraphicBriefSchema.parse(slot.brief)
+        const parsed = GraphicBriefSchema.safeParse(slot.brief)
+        if (!parsed.success || slot.type !== 'graphic') {
+          throw new NonRetriableError(`Shot slot ${slotId} is no longer a graphic`)
+        }
+        const brief = parsed.data
         try {
           const context = await loadGraphicContext(projectId, slot.chapterId)
           const result = await designGraphic(context, {
@@ -232,7 +252,15 @@ export const slotRetyper = inngest.createFunction(
           return { ok: true as const }
         } catch (error) {
           if (error instanceof BudgetExceededError) {
-            return { ok: false as const, gate: budgetGateData(error) }
+            const gate = budgetGateData(error)
+            // The slot has an intent and no design; say why on the brief, or
+            // the card reads "being designed" for good.
+            await updateSlotBrief(
+              db,
+              slotId,
+              withDesign(brief, { ok: false, issue: String(gate['message'] ?? 'Over budget') }),
+            )
+            return { ok: false as const, gate }
           }
           throw error
         }
