@@ -41,6 +41,7 @@ import {
   openReviewGate,
   type GateContext,
 } from '../lib/gates'
+import { designPlannedGraphics } from '../lib/graphic-steps'
 import { chunk, withinFailureTolerance } from '../lib/narration'
 import { RESOLUTION_CONCURRENCY, timedParagraphs } from '../lib/shot-list'
 
@@ -106,6 +107,7 @@ export const visualsRunner = inngest.createFunction(
       : parseEventData('gate/voice.approved', event.data)
     const ctx: GateContext = { inngestRunId: runId, functionId: FUNCTION_ID, projectId }
     let rejectedSlots = 0
+    let undesignedGraphics = 0
 
     if (!resuming) {
       const setup = await step.run('load-narration', async () => {
@@ -226,7 +228,28 @@ export const visualsRunner = inngest.createFunction(
           return { projectId, outcome: 'over-budget' as const }
         }
 
-        allRows.push(...planned.rows)
+        // Each graphic gets a designer of its own (decision 289), one step
+        // each, before the plan is saved. Step results are plain JSON, so the
+        // adapter drops Inngest's Jsonify typing.
+        const designed = await designPlannedGraphics((id, fn) => step.run(id, fn) as never, {
+          prefix: `graphic-${index}`,
+          rows: planned.rows,
+          context: {
+            projectId,
+            caseTitle: setup.caseTitle,
+            claims: setup.claims,
+            logos: setup.logos,
+            paragraphs: setup.paragraphs,
+          },
+          chapterTitle: chapter.title,
+        })
+        if (!designed.ok) {
+          await step.run(`graphic-${index}-over-budget`, () => markStageFailed(ctx, designed.gate))
+          return { projectId, outcome: 'over-budget' as const }
+        }
+        undesignedGraphics += designed.undesigned
+
+        allRows.push(...designed.rows)
         rejectedSlots += planned.rejected
       }
 
@@ -277,6 +300,9 @@ export const visualsRunner = inngest.createFunction(
             (stillCount > 0 ? ` · ${stillCount} stills to generate` : '') +
             (rejectedSlots > 0
               ? ` · ${rejectedSlots} planned slots dropped — malformed or citing unknown claims`
+              : '') +
+            (undesignedGraphics > 0
+              ? ` · ${undesignedGraphics} graphic${undesignedGraphics === 1 ? '' : 's'} not designed`
               : '') +
             (warnings.length > 0
               ? ` · ${warnings.length} craft note${warnings.length === 1 ? '' : 's'}`

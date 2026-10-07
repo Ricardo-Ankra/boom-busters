@@ -351,6 +351,19 @@ export const ShotBriefSchema = z.discriminatedUnion('type', [
 ])
 export type ShotBrief = z.infer<typeof ShotBriefSchema>
 
+/**
+ * The Fix button rewrites a graphic's words, never its design (decision 289):
+ * a planned graphic carries no scene, so a rewrite of a designed graphic keeps
+ * the scene it had, and the owner presses Redesign graphic if the new intent
+ * needs a new one.
+ */
+export function keepGraphicDesign(previous: ShotBrief, next: ShotBrief): ShotBrief {
+  if (previous.type !== 'graphic' || next.type !== 'graphic' || !previous.scene || next.scene) {
+    return next
+  }
+  return { ...next, scene: previous.scene }
+}
+
 // ---------------------------------------------------------------------------
 // Candidates
 // ---------------------------------------------------------------------------

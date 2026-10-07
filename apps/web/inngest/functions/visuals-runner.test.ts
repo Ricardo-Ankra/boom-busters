@@ -296,6 +296,95 @@ describeDb('visuals-runner (mock mode)', () => {
     expect(slots.every((slot) => slot.route === null)).toBe(true)
   })
 
+  it('designs each planned graphic before the plan is saved (decision 289)', async () => {
+    vi.stubEnv('MOCK_PROVIDERS', '')
+    const book = mockDirectorsBook({ caseTitle: 'Wirecard', chapterCount: 1, cast: [] })
+    const planned = {
+      paragraphIndex: 0,
+      seconds: 6,
+      brief: {
+        type: 'graphic',
+        coversText: 'By June, the auditors could not find the money.',
+        description: 'The missing sum, large.',
+        shotSize: 'graphic',
+        motion: { kind: 'static' },
+        transition: 'cut',
+        intent: 'The money is simply gone.',
+        intentRefs: [],
+      },
+    }
+    // A text-only scene cites no claim, so it passes whatever the fixture's claims say.
+    const scene = {
+      elements: [
+        {
+          kind: 'text',
+          id: 't',
+          cell: { col: 1, row: 3, colSpan: 10, rowSpan: 2 },
+          content: 'The money is gone',
+          role: 'heading',
+          color: 'textPrimary',
+          enter: { kind: 'fade', atMs: 0 },
+        },
+      ],
+    }
+    callLlm.mockReset()
+    callLlm.mockImplementation((request: { task: string }) => {
+      if (request.task === 'direction') return Promise.resolve({ text: JSON.stringify(book) })
+      if (request.task === 'graphics') return Promise.resolve({ text: JSON.stringify({ scene }) })
+      return Promise.resolve({ text: JSON.stringify({ slots: [planned] }) })
+    })
+
+    await engine.executeStep('open-plan-park', {
+      events: [{ name: 'gate/voice.approved', data: { projectId: FIXTURE_PROJECT_ID } }],
+    })
+
+    const stored = (await listShotSlots(db, FIXTURE_PROJECT_ID)).find((s) => s.type === 'graphic')
+    expect(stored?.brief).toMatchObject({
+      intent: 'The money is simply gone.',
+      scene: { elements: [{ id: 't', content: 'The money is gone' }] },
+    })
+  })
+
+  it('stores an undesigned graphic with its reason (decision 289)', async () => {
+    vi.stubEnv('MOCK_PROVIDERS', '')
+    const book = mockDirectorsBook({ caseTitle: 'Wirecard', chapterCount: 1, cast: [] })
+    callLlm.mockReset()
+    callLlm.mockImplementation((request: { task: string }) => {
+      if (request.task === 'direction') return Promise.resolve({ text: JSON.stringify(book) })
+      // Never a usable scene: both attempts are refused.
+      if (request.task === 'graphics')
+        return Promise.resolve({ text: '{"scene": {"elements": []}}' })
+      return Promise.resolve({
+        text: JSON.stringify({
+          slots: [
+            {
+              paragraphIndex: 0,
+              seconds: 6,
+              brief: {
+                type: 'graphic',
+                coversText: 'By June, the auditors could not find the money.',
+                description: 'd',
+                motion: { kind: 'static' },
+                transition: 'cut',
+                intent: 'The money is gone.',
+              },
+            },
+          ],
+        }),
+      })
+    })
+
+    await engine.executeStep('open-plan-park', {
+      events: [{ name: 'gate/voice.approved', data: { projectId: FIXTURE_PROJECT_ID } }],
+    })
+
+    const stored = (await listShotSlots(db, FIXTURE_PROJECT_ID)).find((s) => s.type === 'graphic')
+    expect(stored?.brief).toMatchObject({
+      designIssue: expect.stringMatching(/^The graphic is malformed/),
+    })
+    expect((stored?.brief as { scene?: unknown }).scene).toBeUndefined()
+  })
+
   // Decision 279: "Fetch visuals" after the planning run failed starts a run
   // at the fetch pass, so the plan, its choices and uploads are kept.
   it('starts at the fetch pass on a resume, keeping every planned slot', async () => {

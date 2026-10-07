@@ -35,6 +35,7 @@ import {
   rewriteStoredBriefs,
 } from '../lib/direction'
 import { budgetGateData, markSideJobFailed, type GateContext } from '../lib/gates'
+import { designPlannedGraphics } from '../lib/graphic-steps'
 import { releaseFailedVisualsJob } from '../lib/jobs'
 import { timedParagraphs } from '../lib/shot-list'
 
@@ -335,7 +336,26 @@ export const visualsReplanner = inngest.createFunction(
           )
           return { projectId, op, outcome: 'over-budget' as const }
         }
-        rows.push(...planned.rows)
+        // Each graphic gets a designer of its own (decision 289), one step each.
+        const designed = await designPlannedGraphics((id, fn) => step.run(id, fn) as never, {
+          prefix: `replan-graphic-${index}`,
+          rows: planned.rows,
+          context: {
+            projectId,
+            caseTitle: setup.caseTitle,
+            claims: setup.claims,
+            logos: setup.logos,
+            paragraphs: setup.paragraphs,
+          },
+          chapterTitle: chapter.title,
+        })
+        if (!designed.ok) {
+          await step.run(`replan-graphic-${index}-over-budget`, () =>
+            markSideJobFailed(ctx, 'The re-plan stopped', designed.gate),
+          )
+          return { projectId, op, outcome: 'over-budget' as const }
+        }
+        rows.push(...designed.rows)
         rejected += planned.rejected
       }
 

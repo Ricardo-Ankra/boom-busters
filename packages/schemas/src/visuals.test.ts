@@ -20,6 +20,7 @@ import {
   mapClaimRefs,
   graphicIntentOf,
   graphicSceneClaimIds,
+  keepGraphicDesign,
   plannedBriefRejection,
   resolvePlannedScene,
   toPlannedScene,
@@ -972,5 +973,28 @@ describe('an undesigned graphic (decision 289)', () => {
     )
     expect(planned.elements[0]).toMatchObject({ claimRef: 0 })
     expect(planned.elements[1]).not.toHaveProperty('assetId')
+  })
+
+  describe('keepGraphicDesign (decision 289)', () => {
+    const common = {
+      coversText: 'c',
+      description: 'd',
+      motion: { kind: 'static' as const },
+      transition: 'cut' as const,
+    }
+
+    it('keeps a designed scene when a rewrite returns an intent-only graphic', () => {
+      const previous = { type: 'graphic' as const, ...common, intent: 'old', scene: STORED_SCENE }
+      const next = { type: 'graphic' as const, ...common, intent: 'new', intentClaimIds: [] }
+      expect(keepGraphicDesign(previous, next)).toEqual({ ...next, scene: STORED_SCENE })
+    })
+
+    it('leaves every other rewrite alone', () => {
+      const still = { type: 'still' as const, ...common, prompt: 'p' }
+      const next = { type: 'graphic' as const, ...common, intent: 'new' }
+      expect(keepGraphicDesign(still as never, next)).toBe(next)
+      const undesigned = { type: 'graphic' as const, ...common, intent: 'old' }
+      expect(keepGraphicDesign(undesigned, next)).toBe(next)
+    })
   })
 })
