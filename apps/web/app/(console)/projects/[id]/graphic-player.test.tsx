@@ -27,6 +27,13 @@ const fire = (name: 'play' | 'pause' | 'ended') =>
     for (const callback of [...(handle.listeners.get(name) ?? [])]) callback()
   })
 
+/** Counts how many times the heavy module is evaluated: not until Play is pressed. */
+const loads = vi.hoisted(() => ({ count: 0 }))
+vi.mock('./graphic-player', async (importActual) => {
+  loads.count += 1
+  return importActual()
+})
+
 vi.mock('@remotion/player', () => ({
   Player: Object.assign(
     React.forwardRef(function MockPlayer(
@@ -51,8 +58,7 @@ vi.mock('@boom-busters/compositions', () => ({
   msToFrames: (ms: number, fps: number) => Math.round((ms * fps) / 1000),
 }))
 
-import { GraphicPlayback } from './graphic-player'
-import { GraphicPlaybackProvider } from './graphic-playback'
+import { GraphicPlayback, GraphicPlaybackProvider } from './graphic-playback'
 
 const SCENE = {
   elements: [
@@ -86,10 +92,13 @@ describe('GraphicPlayback (decision 289)', () => {
   it('mounts the player only when Play graphic is pressed, at the slot length', async () => {
     render(<GraphicPlaybackProvider>{card('s1')}</GraphicPlaybackProvider>)
     expect(screen.queryByTestId('player')).toBeNull()
+    // The player chunk is not fetched until the first press.
+    expect(loads.count).toBe(0)
     await userEvent.click(screen.getByRole('button', { name: 'Play graphic' }))
     expect(await screen.findByTestId('player')).toHaveTextContent(
       'frames:180 size:960x540 logos:l1',
     )
+    expect(loads.count).toBe(1)
     expect(screen.getByRole('button', { name: 'Pause' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Replay' })).toBeInTheDocument()
   })

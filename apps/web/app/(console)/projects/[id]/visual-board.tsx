@@ -12,7 +12,6 @@ import {
   RefreshCw,
   Search,
 } from 'lucide-react'
-import dynamic from 'next/dynamic'
 import { useRouter } from 'next/navigation'
 import * as React from 'react'
 import { SOCIAL_EXCERPT_TOO_LONG, SOCIAL_TOO_LONG } from '@boom-busters/compositions/social'
@@ -93,7 +92,7 @@ import {
 } from './visuals-actions'
 import { CameraRow } from './camera-row'
 import { DirectionCard } from './direction-card'
-import { GraphicPlaybackProvider } from './graphic-playback'
+import { GraphicPlayback, GraphicPlaybackProvider, useGraphicPlayback } from './graphic-playback'
 import {
   ChartErrorCard,
   ChartPreview,
@@ -103,17 +102,6 @@ import {
   type BrandChartColors,
 } from './slot-previews'
 import { SocialPreview } from './social-preview'
-
-/**
- * Loaded on demand (decision 289): the player carries @remotion/player and the
- * composition library, which a board nobody presses Play on never needs.
- * `ssr: false` because the Player draws frames. The playback context lives in
- * `graphic-playback`, imported statically above, so it cannot drag them in.
- */
-const GraphicPlayback = dynamic(
-  () => import('./graphic-player').then((module) => module.GraphicPlayback),
-  { ssr: false, loading: () => null },
-)
 
 /**
  * The visual board (build spec section 11.3): a filmstrip synced to an audio
@@ -1246,6 +1234,8 @@ function GraphicSlot({
 }) {
   const scene = brief.scene
   const { intent } = graphicIntentOf(brief)
+  // Play swaps the thumbnail for the player; it comes back on Close.
+  const { playing } = useGraphicPlayback(slot.id)
   // While a redesign runs, the format row's own line is the one that announces.
   const redesigning = slot.retype?.state === 'rebriefing'
   const claimIds = scene ? graphicSceneClaimIds(scene) : (brief.intentClaimIds ?? [])
@@ -1262,7 +1252,9 @@ function GraphicSlot({
   return (
     <div className="flex flex-col gap-2">
       {scene ? (
-        <GraphicPreview brief={{ ...brief, scene }} brand={brand} logoUrls={slot.logoUrls} />
+        playing ? null : (
+          <GraphicPreview brief={{ ...brief, scene }} brand={brand} logoUrls={slot.logoUrls} />
+        )
       ) : redesigning ? null : brief.designIssue ? (
         // Persistent state, not an event: no role, so a board of undesigned
         // graphics does not announce assertively on load.

@@ -89,9 +89,9 @@ vi.mock('./social-preview', () => ({
   ),
 }))
 
-/** The real player is graphic-player.test's; the board only has to mount it. */
+/** The real player is graphic-player.test's; the board only has to mount a frame. */
 vi.mock('./graphic-player', () => ({
-  GraphicPlayback: () => <button type="button">Play graphic</button>,
+  GraphicPlayerFrame: () => <div data-testid="player-frame" />,
 }))
 
 const createLogoUploadAction = vi.fn()
@@ -1019,7 +1019,7 @@ describe('the graphic card (decision 289)', () => {
         brand={BRAND}
       />,
     )
-    expect(await screen.findByRole('button', { name: 'Play graphic' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Play graphic' })).toBeInTheDocument()
     unmount()
 
     const { scene: _scene, ...rest } = graphicSlot.brief as Record<string, unknown>
@@ -1028,6 +1028,23 @@ describe('the graphic card (decision 289)', () => {
       <VisualBoard projectId={PROJECT} model={model([undesigned])} colors={COLORS} brand={BRAND} />,
     )
     expect(screen.queryByRole('button', { name: 'Play graphic' })).toBeNull()
+  })
+
+  it('swaps the thumbnail for the player while playing, and back on Close player', async () => {
+    render(
+      <VisualBoard
+        projectId={PROJECT}
+        model={model([graphicSlot])}
+        colors={COLORS}
+        brand={BRAND}
+      />,
+    )
+    expect(screen.getByRole('img', { name: /^graphic:/ })).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Play graphic' }))
+    expect(await screen.findByTestId('player-frame')).toBeInTheDocument()
+    expect(screen.queryByRole('img', { name: /^graphic:/ })).toBeNull()
+    await userEvent.click(screen.getByRole('button', { name: 'Close player' }))
+    expect(screen.getByRole('img', { name: /^graphic:/ })).toBeInTheDocument()
   })
 
   it('keeps the other types on the old wording', () => {
