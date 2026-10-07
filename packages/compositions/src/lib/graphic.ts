@@ -65,7 +65,7 @@ const UPPERCASE_GLYPH_EM = 0.7
 /** Extra width a heavy weight (800 and up) adds to every glyph. */
 const HEAVY_WEIGHT_EM = 0.03
 /** The line box CSS gives a single line at `line-height: normal`, in em. */
-const LINE_HEIGHT_EM = 1.25
+export const LINE_HEIGHT_EM = 1.25
 const MIN_FONT_PX = 12
 const ENTER_MS = GRAPHIC_ENTER_MS
 const BAR_LENGTH_FRACTION = 0.62

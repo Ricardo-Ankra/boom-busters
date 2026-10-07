@@ -11,6 +11,7 @@ import {
   figureLabelGapPx,
   graphicDrift,
   graphicLayout,
+  LINE_HEIGHT_EM,
   roleFontPx,
   ruleThicknessPx,
   staggeredEnterMs,
@@ -218,6 +219,10 @@ export function GraphicCard({
                   <span
                     style={{
                       ...typeStyle(typography.numbers, box.fontPx ?? 96, 1),
+                      // The line `graphicLayout` fitted the value's height by. At `normal`, the
+                      // monospaced face's line is taller (about 1.32 em), which at a figure's
+                      // new size pushed the caption below out of its box and clipped it.
+                      lineHeight: LINE_HEIGHT_EM,
                       color: tokenColor(element.color, brand),
                       position: 'relative',
                     }}
