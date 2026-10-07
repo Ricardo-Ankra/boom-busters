@@ -194,6 +194,9 @@ test.describe('a graphic slot (decision 268, Plan B)', () => {
     const resolved = page.locator('[id^="slot-"]').filter({ hasText: 'raised four billion' })
     await expect(resolved.getByRole('img', { name: /^graphic:/ })).toBeVisible()
     await expect(resolved.getByText('claim 1')).toBeVisible()
+    // The seeded graphics predate intents, so the intent line shows their
+    // description (decision 289).
+    await expect(resolved.getByText(/^Intent: /)).toBeVisible()
     // .first(): the card carries "graphic" twice while the format picker is
     // open, in the type badge and in the picker's own disabled "graphic"
     // button (decision 214's "the badge the accessibility tree can actually
@@ -215,6 +218,25 @@ test.describe('a graphic slot (decision 268, Plan B)', () => {
     await expect(
       page.getByRole('button', { name: 'Fetch visuals · 3 slots · est. $0.14' }),
     ).toBeVisible()
+    await expectHitTargets(page)
+  })
+
+  test('a graphic card plays the real graphic and offers a redesign (decision 289)', async ({
+    page,
+  }) => {
+    const resolved = page.locator('[id^="slot-"]').filter({ hasText: 'raised four billion' })
+    await resolved.getByRole('button', { name: 'Play graphic' }).click()
+    await expect(resolved.getByRole('region', { name: 'Graphic playback' })).toBeVisible()
+    await resolved.getByRole('button', { name: 'Portrait' }).click()
+    await expect(resolved.getByRole('button', { name: 'Landscape' })).toBeVisible()
+    await resolved.getByRole('button', { name: 'Close player' }).click()
+
+    await resolved.getByRole('button', { name: 'Redesign graphic' }).click()
+    await expect(resolved.getByLabel('What should change? (optional)')).toBeVisible()
+    // Stops at the ask, like the re-brief case in visual-board.spec.ts: the
+    // e2e run has no Inngest to hand the work to.
+    await expect(resolved.getByRole('button', { name: 'Redesign it' })).toBeVisible()
+    await resolved.getByRole('button', { name: 'Cancel' }).click()
     await expectHitTargets(page)
   })
 })

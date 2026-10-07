@@ -6791,3 +6791,76 @@ boom-busters-broker`; merge and deploy to Vercel, then `PUT
      wait ends on abort; the board offers a route-only model to its own slot
      alone. Left open: a refresh still holds a save for up to fal's 45 s, and
      a refused price marks every field of its form invalid.
+
+289. **Graphics get a designer of their own (stage 1 of 2)** (2026-10-06,
+     owner, from 2026-10-01: "in terms of generating and coding the motion
+     graphics and essentially creating what is seen, I want that to be
+     routed and handled by a specific model. Same way we have a routing for
+     stills. because it is an important element and I feel we are not
+     getting the best out of it yet."). Asked what disappoints in a graphic,
+     the owner answered all three: the content (which figures, what it
+     says), the layout (templated, weak hierarchy) and the motion (static,
+     samey). A graphic was one slot among forty in the shot list's call, on
+     Haiku 4.5 by default, sharing the chapter's output budget with every
+     other slot.
+     Owner's rulings (spec 1.2): Level 2 of the three offered, its own model
+     plus richer motion, in two stages, each deployed; the graphics step
+     owns everything inside a graphic (which cited figures and words appear,
+     the layout, the motion) but not whether a beat is a graphic, which the
+     shot list still decides and the board's retype still fixes; the board
+     plays the real composition rather than an animated SVG, so motion is
+     built once and shown by one renderer; one call per graphic slot, not a
+     polish pass and not one call per chapter.
+     What shipped in stage 1: the shot list writes an `intent` (1 to 300
+     characters) and `intentRefs` for a graphic and never a scene, and the
+     graphic vocabulary left its prompt; a new `graphics` route, "Motion
+     graphics" in Settings, Models, defaulting to Anthropic Opus 5.5, with
+     its own prompt (a cacheable film prefix, a per-slot part carrying the
+     slot's length and the words spoken in it with their offsets) and a
+     deterministic mock; one Inngest step per planned graphic in the visuals
+     run and in the re-plan, so a retry repeats one graphic, never the
+     chapter; one retry with the reason on a parse or check failure, a
+     reply cut off at the budget retried at double, and a second failure
+     stored as "Not designed: <reason>" (`designIssue`), kept on the board
+     and never dropped; the late-entrance rule (an entrance starts by the
+     slot's length minus 600 ms) enforced in the app's checks, using the
+     start times the card itself uses; the plan summary counting
+     undesigned graphics; Redesign graphic in place of "Draft a different
+     brief" on a graphic card, which hands the designer the owner's steer
+     and the current scene and keeps the old scene when the designer
+     refuses; retype to graphic asking for an intent and then designing it
+     in its own step, a failure stored as `designIssue`; the Fix button
+     keeping a designed scene; and on the board an intent line with its
+     claim chips and an editable intent, plus the Play graphic player, which
+     runs the real `GraphicCard` through the Remotion Player (loaded on the
+     first press), with Pause and Play following the player's own events,
+     Replay, Portrait and Landscape, and one graphic playing at a time.
+     A stored graphic with a scene and no intent parses and renders
+     unchanged; assembly skips a graphic with no scene, as it skips any
+     placeholder.
+     Decisions made where the spec left room: the late-entrance check lives
+     in the app, not the render, so stage 1 needs no Remotion upload (cost if
+     wrong: a scene saved by hand through some other path is not clamped by
+     the render); the model sees the film's whole claim list with the
+     intent's claims marked and may cite a better claim than the shot list
+     named, checked the same way (cost if wrong: a graphic can drift from the
+     claims the shot list chose); a graphic seeded before this has no
+     intent, so its description stands in for the intent line (cost if wrong:
+     an old graphic's intent line reads as a description until it is
+     redesigned).
+     What did not change: the render, the timeline schema, the broker and
+     the compositions, so no `deploy:remotion` and no
+     `deploy:stacks boom-busters-broker`; no migration, since briefs are
+     JSON. Mock-provider mode makes no paid call anywhere in this feature.
+     Shipping: a Vercel deploy, then `PUT /api/inngest`, as after every
+     Vercel deploy. To see it: open a project's visual board, press Redesign
+     graphic on a few graphics and play them, or re-plan a film to see the
+     shot list and the graphics step together.
+     Next: stage 2 (exits, easing and duration per entrance, staged builds,
+     camera, keyframed emphasis) gets its own short spec once the owner has
+     watched stage 1's graphics; it will need `deploy:remotion` and
+     `deploy:stacks boom-busters-broker`, since the broker bundles the
+     timeline schema. Level 3, the model writing Remotion code, is left for
+     later.
+     The number 289 is checked against `origin/master` at the merge; at the
+     time of writing master's last decision is 288.
