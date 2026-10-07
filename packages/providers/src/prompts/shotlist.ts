@@ -53,7 +53,8 @@ export const GRAPHIC_INTENT_RULES = `A "graphic" is for a beat that is one or tw
   three amounts, three dated moments). It is never a chart with fewer points: a value moving
   through time is a "chart". You do not design it: a designer composes it afterwards from
   your "intent" (what the viewer must take away, not how it looks) and the claims you list in
-  "intentRefs", so list every claim whose number or name it may show.`
+  "intentRefs". "intentRefs" lists at most six claim numbers: the claims its figures or names
+  come from, most important first. "intent" is at most 300 characters.`
 
 export interface ShotParagraph {
   index: number

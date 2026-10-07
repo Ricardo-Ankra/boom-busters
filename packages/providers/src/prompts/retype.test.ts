@@ -96,6 +96,10 @@ describe('buildRetypeRequest', () => {
     expect(request.system).toContain('"intent"')
     expect(request.system).toContain('"intentRefs"')
     expect(request.system).toContain(GRAPHIC_INTENT_RULES)
+    // The caps the schema enforces, said where the model reads (final review M1).
+    expect(GRAPHIC_INTENT_RULES).toMatch(/"intentRefs" lists at most six claim numbers/)
+    expect(GRAPHIC_INTENT_RULES).toMatch(/"intent" is at most 300 characters/)
+    expect(GRAPHIC_INTENT_RULES).not.toMatch(/list every claim/)
     expect(request.system).not.toContain('"kind": "figure"')
     expect(request.system).not.toContain('12 by 12 grid')
     expect(request.messages[0]?.content).toContain('Wirecard AG')
