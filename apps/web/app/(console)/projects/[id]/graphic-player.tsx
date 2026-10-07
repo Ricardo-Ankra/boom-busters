@@ -1,6 +1,6 @@
 'use client'
 
-import { GraphicCard, loadBrandFonts } from '@boom-busters/compositions'
+import { GraphicCard, loadBrandFonts, msToFrames } from '@boom-busters/compositions'
 import { DEFAULT_SETTINGS, resolveBrandKit } from '@boom-busters/schemas'
 import type { BrandKitStored, GraphicScene } from '@boom-busters/schemas'
 import { MASTER_FPS } from '@boom-busters/timeline'
@@ -48,7 +48,7 @@ export function GraphicPlayerFrame({
   React.useEffect(() => {
     void loadBrandFonts(tokens.typography)
   }, [tokens])
-  const durationInFrames = Math.max(1, Math.round((durationMs / 1000) * MASTER_FPS))
+  const durationInFrames = Math.max(1, msToFrames(durationMs, MASTER_FPS))
   // The card reads only each logo's URL; the size fields the timeline schema
   // requires are not read by the component, so the board passes 1 by 1.
   const logos = Object.fromEntries(
@@ -110,19 +110,31 @@ export function GraphicPlayback({
 }) {
   const { playing, play, stop } = useGraphicPlayback(slotId)
   const [portrait, setPortrait] = React.useState(false)
-  const [paused, setPaused] = React.useState(false)
+  // The Player's own state, not the last button pressed: it ends by itself and
+  // a remount (Portrait / Landscape) starts it again.
+  const [running, setRunning] = React.useState(true)
   const ref = React.useRef<PlayerRef>(null)
+
+  React.useEffect(() => {
+    const player = ref.current
+    if (!playing || !player) return
+    setRunning(player.isPlaying())
+    const onPlay = () => setRunning(true)
+    const onStopped = () => setRunning(false)
+    player.addEventListener('play', onPlay)
+    player.addEventListener('pause', onStopped)
+    player.addEventListener('ended', onStopped)
+    return () => {
+      player.removeEventListener('play', onPlay)
+      player.removeEventListener('pause', onStopped)
+      player.removeEventListener('ended', onStopped)
+    }
+  }, [playing, portrait])
 
   if (!playing) {
     return (
       <div className="flex flex-wrap gap-2">
-        <Button
-          variant="outline"
-          onClick={() => {
-            setPaused(false)
-            play()
-          }}
-        >
+        <Button variant="outline" onClick={play}>
           Play graphic
         </Button>
       </div>
@@ -143,19 +155,17 @@ export function GraphicPlayback({
         <Button
           variant="outline"
           onClick={() => {
-            if (paused) ref.current?.play()
-            else ref.current?.pause()
-            setPaused(!paused)
+            if (running) ref.current?.pause()
+            else ref.current?.play()
           }}
         >
-          {paused ? 'Play' : 'Pause'}
+          {running ? 'Pause' : 'Play'}
         </Button>
         <Button
           variant="outline"
           onClick={() => {
             ref.current?.seekTo(0)
             ref.current?.play()
-            setPaused(false)
           }}
         >
           Replay
