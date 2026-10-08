@@ -122,10 +122,13 @@ export default async function ProjectPage({
   // Who and which rooms the producer removed that the book still names: what
   // each card's "Restore from the book" brings back (decision 291).
   const book = DirectorsBookSchema.safeParse(project.direction)
-  const restorableCast =
-    showCast && book.success ? await restorableCastNames(db, project.id, book.data.principals) : []
-  const restorableSets =
-    showCast && book.success ? await restorableSetNames(db, project.id, book.data.locations) : []
+  const [restorableCast, restorableSets] =
+    showCast && book.success
+      ? await Promise.all([
+          restorableCastNames(db, project.id, book.data.principals),
+          restorableSetNames(db, project.id, book.data.locations),
+        ])
+      : [[], []]
   const plateEstimate = showCast ? await plateEstimateUsd() : 0
   const sheetEstimate = showCast ? await setSheetEstimateUsd() : 0
   // Another view carries the set's plates, so it is priced as the still it

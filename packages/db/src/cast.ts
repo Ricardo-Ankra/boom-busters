@@ -1,4 +1,4 @@
-import { and, asc, eq, isNotNull, isNull, sql } from 'drizzle-orm'
+import { and, asc, eq, isNull, sql } from 'drizzle-orm'
 import { CastMemberSchema, MAX_CAST_PHOTOS, ValidationError } from '@boom-busters/schemas'
 import type { CastMember, CastPhoto, Principal } from '@boom-busters/schemas'
 import type { Database } from './client'
@@ -262,17 +262,23 @@ async function removedNamedBy(
   projectId: string,
   principals: readonly Principal[],
 ): Promise<{ row: CastMemberRow; principal: Principal }[]> {
-  const removed = await db
-    .select()
-    .from(castMembers)
-    .where(and(eq(castMembers.projectId, projectId), isNotNull(castMembers.dismissedAt)))
-  const byName = new Map(removed.map((row) => [row.name.trim().toLowerCase(), row]))
+  const rows = await db.select().from(castMembers).where(eq(castMembers.projectId, projectId))
+  const key = (name: string) => name.trim().toLowerCase()
+  // A name someone live already carries, in any case, is never offered back:
+  // the hand-add revival matches exact names, so a removed "Emad Mostaque"
+  // can sit beside a live "emad mostaque", and restoring would cast him twice.
+  const live = new Set(rows.filter((row) => row.dismissedAt === null).map((row) => key(row.name)))
+  const byName = new Map(
+    rows
+      .filter((row) => row.dismissedAt !== null && !live.has(key(row.name)))
+      .map((row) => [key(row.name), row]),
+  )
   const found: { row: CastMemberRow; principal: Principal }[] = []
   for (const principal of principals) {
     if (principal.depiction === 'anonymous') continue
-    const row = byName.get(principal.name.trim().toLowerCase())
+    const row = byName.get(key(principal.name))
     if (!row) continue
-    byName.delete(principal.name.trim().toLowerCase())
+    byName.delete(key(principal.name))
     found.push({ row, principal })
   }
   return found

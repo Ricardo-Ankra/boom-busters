@@ -213,6 +213,19 @@ suite('cast members', () => {
       expect(await restorableCastNames(db, projectId, book)).toEqual([])
     })
 
+    it('never restores a name someone live already carries, whatever its case', async () => {
+      const gone = await insertCastMember(db, { projectId, name: 'Emad Mostaque', role: 'x' })
+      await dismissCastMember(db, gone.id)
+      // Re-added by hand in another case: the exact-name revival misses the old row.
+      await insertCastMember(db, { projectId, name: 'emad mostaque', role: 'Founder' })
+
+      expect(await restorableCastNames(db, projectId, book)).toEqual([])
+      expect(await restoreCastFromPrincipals(db, projectId, book)).toEqual([])
+      expect((await listCastMembers(db, projectId)).map((member) => member.name)).toEqual([
+        'emad mostaque',
+      ])
+    })
+
     it('matches a name whatever its case, and leaves anyone the book does not name removed', async () => {
       const gone = await insertCastMember(db, { projectId, name: 'EMAD MOSTAQUE', role: 'x' })
       await dismissCastMember(db, gone.id)

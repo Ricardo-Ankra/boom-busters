@@ -236,6 +236,18 @@ suite('project sets', () => {
       expect(await restorableSetNames(db, projectId, locations)).toEqual([])
     })
 
+    it('never restores a name a live set already carries, whatever its case', async () => {
+      const gone = await insertProjectSet(db, { projectId, name: 'The lobby', look: 'x' })
+      await dismissProjectSet(db, gone.id)
+      // A row the hand-add path cannot make today (it revives regardless of
+      // case), written directly so the guard is proven for sets as for cast.
+      await db.insert(projectSets).values({ projectId, name: 'THE LOBBY', look: 'live' })
+
+      expect(await restorableSetNames(db, projectId, locations)).toEqual([])
+      expect(await restoreSetsFromLocations(db, projectId, locations)).toEqual([])
+      expect((await listProjectSets(db, projectId)).map((set) => set.name)).toEqual(['THE LOBBY'])
+    })
+
     it('matches a name whatever its case, and leaves sets the book does not name removed', async () => {
       const gone = await insertProjectSet(db, { projectId, name: 'THE LOBBY', look: 'x' })
       await dismissProjectSet(db, gone.id)

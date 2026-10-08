@@ -1,4 +1,4 @@
-import { and, asc, eq, isNotNull, isNull, sql } from 'drizzle-orm'
+import { and, asc, eq, isNull, sql } from 'drizzle-orm'
 import { MAX_SET_PLATES, ProjectSetSchema, ValidationError } from '@boom-busters/schemas'
 import type { ProjectSet, SetPlate } from '@boom-busters/schemas'
 import type { Database } from './client'
@@ -222,17 +222,21 @@ async function removedNamedBy(
   projectId: string,
   locations: readonly { name: string; look: string }[],
 ): Promise<{ row: ProjectSetRow; location: { name: string; look: string } }[]> {
-  const removed = await db
-    .select()
-    .from(projectSets)
-    .where(and(eq(projectSets.projectId, projectId), isNotNull(projectSets.dismissedAt)))
-  const byName = new Map(removed.map((row) => [row.name.trim().toLowerCase(), row]))
+  const rows = await db.select().from(projectSets).where(eq(projectSets.projectId, projectId))
+  const key = (name: string) => name.trim().toLowerCase()
+  // A name a live set already carries, in any case, is never offered back, as
+  // for the cast: restoring it would put the same room in twice.
+  const live = new Set(rows.filter((row) => row.dismissedAt === null).map((row) => key(row.name)))
+  const byName = new Map(
+    rows
+      .filter((row) => row.dismissedAt !== null && !live.has(key(row.name)))
+      .map((row) => [key(row.name), row]),
+  )
   const found: { row: ProjectSetRow; location: { name: string; look: string } }[] = []
   for (const location of locations) {
-    const key = location.name.trim().toLowerCase()
-    const row = byName.get(key)
+    const row = byName.get(key(location.name))
     if (!row) continue
-    byName.delete(key)
+    byName.delete(key(location.name))
     found.push({ row, location })
   }
   return found
