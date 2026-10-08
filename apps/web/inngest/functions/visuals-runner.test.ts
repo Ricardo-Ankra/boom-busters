@@ -137,7 +137,7 @@ describeDb('visuals-runner (mock mode)', () => {
 
   /**
    * Guards the whole production chain (decision 275): a set's room inventory
-   * is loaded in `load-narration` (`sets.map(({ name, look, layout }) =>
+   * is loaded in `load-cast-and-sets` (`sets.map(({ name, look, layout }) =>
    * ...)`), carried through `planChapterSlots` into
    * `chapterShotListRequest`, and only shows up in the live model's prompt
    * if every hop in that chain keeps `layout` rather than quietly dropping
@@ -191,6 +191,61 @@ describeDb('visuals-runner (mock mode)', () => {
         ?.content ?? ''
     expect(prefix).toContain('- Boardroom\n  North wall: three tall windows.')
     expect(prefix).not.toContain('dark wood panelling, one window')
+  })
+
+  /**
+   * A new film, or one whose sets were all removed, has none until the book's
+   * step seeds them from its locations. The first plan must be written with
+   * those sets, not with the empty list read before the book existed.
+   */
+  it("plans the first chapter with the sets the book's step has just seeded", async () => {
+    vi.stubEnv('MOCK_PROVIDERS', '')
+    // No sets at all when the stage starts, as on a new film or one whose
+    // sets the producer removed (project sets survive between tests).
+    for (const existing of await listProjectSets(db, FIXTURE_PROJECT_ID)) {
+      await deleteProjectSet(db, existing.id)
+    }
+    const room = `Back office ${newId().slice(-6)}`
+    const drafted = mockDirectorsBook({ caseTitle: 'Wirecard', chapterCount: 1, cast: [] })
+    const book = {
+      ...drafted,
+      locations: [{ name: room, look: 'fluorescent strip lights, grey filing cabinets' }],
+    }
+    stubDirectionAndShotList(book, {
+      slots: [
+        {
+          paragraphIndex: 0,
+          seconds: 6,
+          brief: {
+            type: 'stock',
+            coversText: 'By June, the auditors could not find the money.',
+            description: 'An empty audit office at dusk.',
+            shotSize: 'wide',
+            motion: { kind: 'static' },
+            transition: 'cut',
+            query: 'empty office dusk',
+            rejectionCriteria: [],
+          },
+        },
+      ],
+    })
+
+    await engine.executeStep('open-plan-park', {
+      events: [{ name: 'gate/voice.approved', data: { projectId: FIXTURE_PROJECT_ID } }],
+    })
+
+    expect((await listProjectSets(db, FIXTURE_PROJECT_ID)).map((set) => set.name)).toContain(room)
+    const shotListCall = callLlm.mock.calls.find(
+      ([request]) => (request as { task?: string }).task === 'shotlist',
+    )
+    const prefix =
+      (shotListCall?.[0] as { messages?: { content?: string }[] } | undefined)?.messages?.[0]
+        ?.content ?? ''
+    // The book also lists its locations, so the bare name proves nothing: the
+    // planner's own Sets section is sent only when the film has sets.
+    const setsSection = prefix.slice(prefix.indexOf('Sets (the rooms this film returns to'))
+    expect(prefix).toContain('Sets (the rooms this film returns to')
+    expect(setsSection).toContain(`- ${room}`)
   })
 
   it('derives the likeness route for a still of a photographed person, storing none', async () => {
