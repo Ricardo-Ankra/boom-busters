@@ -7057,3 +7057,43 @@ boom-busters-broker`; merge and deploy to Vercel, then `PUT
      "No profitability path had appeared in between" is narration, so every
      word on screen traces to the narration or a cited claim. One run met
      every target, so the prompt was left as the final review left it.
+
+291. **The first plan sees its sets; Restore from the book** (2026-10-08,
+     owner: "I started the Stability AI project from the Dossier stage up to
+     the Visuals, but I removed all the cast and Sets. It did create a set
+     for me for Mostaque's Office. But the Cast Members never regenerated
+     after I removed them."). Two causes, both in code that worked as
+     written. A removal is a dismissal, and the book's seeders skip every
+     name ever dismissed (decisions 253 (j), 264), so a re-run could never
+     bring the people back; only "Mostaque's Office", a location name the
+     new book used and the producer had never removed, was seeded. And the
+     visuals-runner read the cast and the sets in `load-narration`, before
+     the `directors-book` step seeds them, so on a new film, or one whose
+     cast and sets were removed, the whole first plan was written without
+     its sets and without knowing who was photographed (the re-plan already
+     read them after the book).
+     What shipped: the cast and sets are read in a new step,
+     `load-cast-and-sets`, after the book's step, and the shot list and the
+     plan's craft notes use it. "Restore from the book" on the Cast card
+     ("Restore 2 from the book") and the Set card ("Restore 1 set from the
+     book"), shown only when the stored Director's Book still names someone
+     or somewhere the producer removed, with the names listed above it:
+     one press revives those rows with the book's current role, identity
+     string and guardrail (sets: the book's look), photos and plates empty
+     as removal left them, placed where a new one goes (decision 267), and
+     the toast says to press Re-plan shot list for the plan to use them.
+     Removals still stick when the book is drafted again; restoring is the
+     producer's choice. No paid call.
+     Decisions made where the request left room: names match without
+     regard to case, as seeding does, and anonymous principals have no name
+     to match (cost if wrong: a removed member whose name differs only in
+     case from the book's is restored under its old spelling); a restored
+     set keeps its room inventory, as a re-add by hand already does (cost
+     if wrong: a restored set's inventory can describe plates that were
+     deleted at removal, until its sheet is rebuilt); restore brings back
+     only removed rows, not book names that were never seeded, because
+     every draft and reuse of the book already seeds those (cost if wrong:
+     none seen).
+     Shipping: a Vercel deploy and `PUT /api/inngest` (the visuals-runner
+     changed). No migration, no Remotion or broker deploy. For the
+     Stability AI film: press Restore on both cards, then Re-plan shot list.
