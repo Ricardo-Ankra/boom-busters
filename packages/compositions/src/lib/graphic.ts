@@ -323,7 +323,7 @@ function readingOrder(a: GraphicElement, b: GraphicElement): number {
  * flowed element, and takes the whole grid when they cannot. An element overlapping a
  * pin the author placed on purpose is recoverable and visible; two auto-flowed elements
  * overlapping each other is content silently vanishing, which is what this function
- * exists to prevent. With at most six elements and twelve rows, the whole-grid fallback
+ * exists to prevent. With at most ten elements and twelve rows, the whole-grid fallback
  * always has room to give every element at least one row.
  *
  * Reading order decides which row an element gets, never the order of the returned
@@ -332,7 +332,9 @@ function readingOrder(a: GraphicElement, b: GraphicElement): number {
  *
  * Over time (decision 290): flowing elements that are never on screen together share a
  * band, so a graphic built in steps does not shrink every step to make room for the
- * others. Each joins the first band none of whose occupants it ever meets on screen.
+ * others. Each joins the band just after the last band holding an element it is ever on
+ * screen with, so it shares a band only with elements it never meets and never sits above
+ * one it does.
  * In a scene where nothing leaves, every element meets every other, so each gets a band
  * of its own and the stack is exactly what it always was.
  */
@@ -356,9 +358,15 @@ export function reflowPortrait(scene: GraphicScene): GraphicScene {
   for (const entry of flowing) {
     const span = spanOf(entry.index)
     const want = Math.min(entry.element.cell.rowSpan, GRAPHIC_GRID)
-    const shared = bands.find((band) =>
-      band.indices.every((other) => !intervalsMeet(span, spanOf(other))),
+    // The band after the last one holding an element it is on screen with: it may share
+    // a band with an element it never meets, but never sits above one it does, so 9:16
+    // keeps the reading order 16:9 has.
+    const last = bands.reduce(
+      (at, band, index) =>
+        band.indices.some((other) => intervalsMeet(span, spanOf(other))) ? index : at,
+      -1,
     )
+    const shared = bands[last + 1]
     if (shared) {
       shared.indices.push(entry.index)
       shared.want = Math.max(shared.want, want)

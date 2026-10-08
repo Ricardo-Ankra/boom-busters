@@ -819,6 +819,15 @@ describe('layout over time (decision 290)', () => {
     expect(separateOverlaps(crowded).elements[1]!.cell.row).toBe(6)
   })
 
+  it('keeps reading order in portrait: a later element never sits above one it is on screen with', () => {
+    // A title that leaves at 5 s, a figure that stays, a caption that arrives at 5 s.
+    const scene: GraphicScene = {
+      elements: [textAt('title', 1, 0, 5000), textAt('figure', 4, 300), textAt('caption', 9, 5000)],
+    }
+    const rows = reflowPortrait(scene).elements.map((element) => element.portraitCell!.row)
+    expect(rows).toEqual([3, 5, 7])
+  })
+
   it('stacks elements never on screen together in one portrait band', () => {
     // A title that stays; a line that gives way to a second; a note that arrives with the second.
     const staged: GraphicScene = {

@@ -93,8 +93,9 @@ All times are milliseconds from the slot's start, as `enter.atMs` is.
   composition at zoom 1. Each key starts a 1.5 s eased move
   (`GRAPHIC_CAMERA_MOVE_MS`) from wherever the camera is to its framing, and
   the camera holds there until the next key. `'all'` frames the whole
-  composition, centred on the safe area. Zoom 1 with an element in focus is
-  a hold, since the camera cannot pan at zoom 1 (section 4.3).
+  composition as laid out, whatever its zoom, and so does any key at zoom 1,
+  since the camera cannot pan at zoom 1 (section 4.3; amended at the final
+  review).
 - The stage 1 drift keeps running underneath the camera, so the frame is
   never dead still. A scene with no camera drifts exactly as it does today.
 
@@ -156,9 +157,10 @@ overlaps in time, and the result is identical to today.
 Today every flowing element (one with no `portraitCell`) reserves a band of
 rows of its own; with ten elements across a slot that would shrink every one
 of them. Instead, elements that are never on screen together share a band:
-flowing elements are taken in reading order, and each joins the first band
-none of whose occupants it ever meets on screen, or opens a new band below
-the last. A band's height is the largest its occupants want, under the same
+flowing elements are taken in reading order, and each joins the band just
+after the last band holding an element it is ever on screen with, or opens a
+new band below the last, so it shares a band only with elements it never
+meets and never sits above one it does (amended at the final review). A band's height is the largest its occupants want, under the same
 one-row-per-band reservation that keeps the stack on the grid, and the stack
 is centred as today when nothing is pinned. In a stage 1 scene no two
 elements can share a band, so the stack is unchanged. An element with its
