@@ -10,6 +10,7 @@ import {
   colorTokenAt,
   elementColorAt,
   exitProgress,
+  exitStyle,
   graphicCamera,
   mixColor,
   onScreenAt,
@@ -127,6 +128,24 @@ describe('the camera', () => {
   const safe = safeArea(WIDE)
   const centre = { x: safe.x + safe.w / 2, y: safe.y + safe.h / 2 }
 
+  it('frames "all" at rest whatever its zoom', () => {
+    expect(cameraFraming(null, 1.3, WIDE)).toEqual(CAMERA_REST)
+  })
+
+  it('caps the zoom and the pan in 9:16 too', () => {
+    const TALL = { width: 1080, height: 1920 }
+    const tall = safeArea(TALL)
+    // A box as wide as the safe area has no room to be pushed in.
+    expect(cameraFraming({ x: tall.x, y: tall.y + 100, w: tall.w, h: 200 }, 1.5, TALL).scale).toBe(
+      1,
+    )
+    // A box near the bottom-right corner: the pan stops at the composition's edge.
+    const view = cameraFraming({ x: 900, y: 1500, w: 100, h: 100 }, 1.5, TALL)
+    expect(view.x).toBeCloseTo(TALL.width * (1 - 1.5))
+    expect(view.y).toBeGreaterThanOrEqual(TALL.height * (1 - 1.5))
+    expect(view.y).toBeLessThanOrEqual(0)
+  })
+
   it('cannot pan at zoom 1', () => {
     expect(cameraFraming({ x: 1400, y: 200, w: 300, h: 200 }, 1, WIDE)).toEqual(CAMERA_REST)
   })
@@ -197,5 +216,19 @@ describe('onScreenAt: what a still frame of a moment shows', () => {
     expect([...onScreenAt(scene, 3999)]).toEqual(['a'])
     expect([...onScreenAt(scene, 4000)]).toEqual(['b'])
     expect([...onScreenAt(scene, Number.MAX_SAFE_INTEGER)]).toEqual(['b'])
+  })
+})
+
+describe('exitStyle', () => {
+  it('fades, drops and wipes in proportion to the exit', () => {
+    expect(exitStyle('fade', 0.5, 1)).toEqual({ opacity: 0.5 })
+    expect(exitStyle('drop', 0.5, 2)).toEqual({ opacity: 0.5, transform: 'translateY(24px)' })
+    expect(exitStyle('wipe', 0.25, 1)).toEqual({ clipPath: 'inset(0 0 0 25%)' })
+  })
+
+  it('starts where the entrance left the element', () => {
+    expect(exitStyle('fade', 0, 1)).toEqual({ opacity: 1 })
+    expect(exitStyle('drop', 0, 1)).toEqual({ opacity: 1, transform: 'translateY(0px)' })
+    expect(exitStyle('wipe', 0, 1)).toEqual({ clipPath: 'inset(0 0 0 0%)' })
   })
 })

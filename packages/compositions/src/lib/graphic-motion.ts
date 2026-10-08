@@ -1,3 +1,4 @@
+import type { CSSProperties } from 'react'
 import {
   GRAPHIC_BAR_GROW_MS,
   GRAPHIC_CAMERA_MOVE_MS,
@@ -9,6 +10,7 @@ import type {
   BrandKitTokens,
   EmphasisWindow,
   GraphicColor,
+  GraphicExit,
   GraphicScene,
 } from '@boom-busters/schemas'
 import { safeArea, tokenColor, type Box, type ElementBox, type GraphicFrame } from './graphic'
@@ -147,23 +149,26 @@ export interface CameraView {
 export const CAMERA_REST: CameraView = { scale: 1, x: 0, y: 0 }
 
 /**
- * The camera framing `focus` (a laid-out box, or null for the whole
- * composition) at `zoom`: the box's centre aimed at the safe area's centre,
- * the zoom capped so the box still fits the safe area (a push in never puts
+ * The camera framing `focus` at `zoom`; 'all' (a null focus) frames the whole composition
+ * as laid out, whatever its zoom (decision 290 final review: a push on the whole frame put
+ * a figure under the captions and the title off the top). The box's centre is aimed at the
+ * safe area's centre, the zoom capped so the box still fits the safe area (a push in never puts
  * it under the captions), and the pan capped so the composition's edges never
  * come inside the frame. At zoom 1 there is nowhere to pan.
  */
 export function cameraFraming(focus: Box | null, zoom: number, frame: GraphicFrame): CameraView {
+  // "all" is the composition as laid out; its zoom is ignored, since the whole frame has
+  // nowhere to push without sending an edge under the captions or off the frame.
+  if (focus === null) return CAMERA_REST
   const safe = safeArea(frame)
-  const fit = focus ? Math.min(safe.w / focus.w, safe.h / focus.h) : Number.POSITIVE_INFINITY
+  const fit = Math.min(safe.w / focus.w, safe.h / focus.h)
   const scale = Math.max(1, Math.min(zoom, GRAPHIC_MAX_ZOOM, fit))
-  const box = focus ?? safe
   const target = { x: safe.x + safe.w / 2, y: safe.y + safe.h / 2 }
   const clamp = (value: number, size: number) => Math.min(0, Math.max(size * (1 - scale), value))
   return {
     scale,
-    x: clamp(target.x - scale * (box.x + box.w / 2), frame.width),
-    y: clamp(target.y - scale * (box.y + box.h / 2), frame.height),
+    x: clamp(target.x - scale * (focus.x + focus.w / 2), frame.width),
+    y: clamp(target.y - scale * (focus.y + focus.h / 2), frame.height),
   }
 }
 
@@ -204,4 +209,20 @@ export function onScreenAt(scene: GraphicScene, timeMs: number): Set<string> {
     if (span.fromMs <= timeMs && timeMs < span.toMs) ids.add(id)
   }
   return ids
+}
+
+/** Leaving the frame (decision 290): the entrances in reverse, over `GRAPHIC_EXIT_MS`. */
+export function exitStyle(
+  kind: GraphicExit['kind'],
+  progress: number,
+  scale: number,
+): CSSProperties {
+  switch (kind) {
+    case 'drop':
+      return { opacity: 1 - progress, transform: `translateY(${progress * 24 * scale}px)` }
+    case 'wipe':
+      return { clipPath: `inset(0 0 0 ${progress * 100}%)` }
+    case 'fade':
+      return { opacity: 1 - progress }
+  }
 }

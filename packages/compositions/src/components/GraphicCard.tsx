@@ -1,12 +1,7 @@
 import { AbsoluteFill, Img, useCurrentFrame, useVideoConfig } from 'remotion'
 import type { CSSProperties } from 'react'
 import { barItemTimes, emphasisWindow } from '@boom-busters/schemas'
-import type {
-  BrandKitTokens,
-  GraphicElement,
-  GraphicExit,
-  GraphicPayload,
-} from '@boom-busters/schemas'
+import type { BrandKitTokens, GraphicElement, GraphicPayload } from '@boom-busters/schemas'
 import {
   barLengthPx,
   barsGapPx,
@@ -29,6 +24,7 @@ import {
   barScale,
   elementColorAt,
   exitProgress,
+  exitStyle,
   graphicCamera,
   pulseScaleAt,
   underlineSweepAt,
@@ -99,18 +95,6 @@ function enterStyle(
   }
 }
 
-/** Leaving the frame (decision 290): the entrances in reverse, over `GRAPHIC_EXIT_MS`. */
-function exitStyle(kind: GraphicExit['kind'], progress: number, scale: number): CSSProperties {
-  switch (kind) {
-    case 'drop':
-      return { opacity: 1 - progress, transform: `translateY(${progress * 24 * scale}px)` }
-    case 'wipe':
-      return { clipPath: `inset(0 0 0 ${progress * 100}%)` }
-    case 'fade':
-      return { opacity: 1 - progress }
-  }
-}
-
 export function GraphicCard({
   payload,
   brand,
@@ -150,11 +134,6 @@ export function GraphicCard({
         }}
       />
       {/*
-        One wrapper carries the drift, so the whole composition lifts together and no
-        element's own transform has to compose with it. Scaling about the centre keeps
-        the safe area's margins proportional, which is why nothing drifts off frame.
-      */}
-      {/*
         The camera (decision 290) wraps the drift: it reframes the composition, and the
         drift keeps running inside it so the frame is never dead still.
       */}
@@ -170,6 +149,11 @@ export function GraphicCard({
             : {}),
         }}
       >
+        {/*
+          One wrapper carries the drift, so the whole composition lifts together and no
+          element's own transform has to compose with it. Scaling about the centre keeps
+          the safe area's margins proportional, which is why nothing drifts off frame.
+        */}
         <div
           style={{
             position: 'absolute',
