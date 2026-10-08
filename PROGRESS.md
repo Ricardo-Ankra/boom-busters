@@ -7039,3 +7039,21 @@ boom-busters-broker`; merge and deploy to Vercel, then `PUT
      `deploy:remotion`, then `deploy:stacks boom-busters-broker`, then the
      push to `master` and `PUT /api/inngest`.
      The number 290 is checked against `origin/master` at the merge.
+     Follow-up, the live loop (2026-10-08, owner's go-ahead for one run, $1
+     cap, the stored production Anthropic key decrypted in memory and never
+     printed, production read only): `pnpm live:graphic --first 5
+     --redesign` on the Stability AI film, $0.14 in all, one call per
+     graphic, no refusals. Longest still stretch per graphic: 3.4 s of
+     6.9 s, 4.7 s of 12.1 s, 4.7 s of 22.3 s, 1.9 s of 12.2 s and 2.5 s of
+     10.8 s, all under the 6 s target; the same 22.3 s graphic sat still
+     for 10.8 s in stage 1. The designer used every new tool unprompted
+     beyond the rules: the 22.3 s graphic builds in three steps (the title,
+     then "Four times" on "Four" at 13.2 s, then "No profitability path" on
+     "profitability" at 17.9 s), grows its $4bn bar on "4" at 11.4 s while
+     the $1bn bar shrinks to a quarter, shifts the $4bn bar to the accent
+     colour, and pushes in then back out; the others push in on the figure
+     being said, underline the ledger line and pulse the $270M. A read-only
+     check of the slot's spoken words (owner's go-ahead) confirmed
+     "No profitability path had appeared in between" is narration, so every
+     word on screen traces to the narration or a cited claim. One run met
+     every target, so the prompt was left as the final review left it.
