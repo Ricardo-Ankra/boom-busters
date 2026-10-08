@@ -790,3 +790,56 @@ describe('text is fitted at its drawn size', () => {
     expect(px * tiny.sizeScale).toBe(12)
   })
 })
+
+describe('layout over time (decision 290)', () => {
+  const textAt = (
+    id: string,
+    row: number,
+    enterAt: number,
+    exitAt?: number,
+  ): GraphicScene['elements'][number] => ({
+    kind: 'text',
+    id,
+    cell: { col: 0, row, colSpan: 12, rowSpan: 2 },
+    content: id,
+    role: 'title',
+    color: 'textPrimary',
+    align: 'start',
+    enter: { kind: 'fade', atMs: enterAt },
+    ...(exitAt === undefined ? {} : { exit: { kind: 'fade' as const, atMs: exitAt } }),
+  })
+
+  it('lets an element take the cell of one that has left, in landscape', () => {
+    const staged: GraphicScene = { elements: [textAt('a', 4, 0, 4000), textAt('b', 4, 4000)] }
+    expect(separateOverlaps(staged)).toEqual(staged)
+  })
+
+  it('still separates two elements that are on screen together', () => {
+    const crowded: GraphicScene = { elements: [textAt('a', 4, 0, 4000), textAt('b', 4, 3000)] }
+    expect(separateOverlaps(crowded).elements[1]!.cell.row).toBe(6)
+  })
+
+  it('stacks elements never on screen together in one portrait band', () => {
+    // A title that stays; a line that gives way to a second; a note that arrives with the second.
+    const staged: GraphicScene = {
+      elements: [
+        textAt('title', 0, 0),
+        textAt('one', 2, 300, 5000),
+        textAt('two', 2, 5000),
+        textAt('note', 4, 5000),
+      ],
+    }
+    const rows = reflowPortrait(staged).elements.map((element) => element.portraitCell!.row)
+    // Three bands of two rows, centred on the 12-row grid: 3, 5 and 7; "one" and "two" share 5.
+    expect(rows).toEqual([3, 5, 5, 7])
+  })
+
+  it('carries the camera track through both layout passes', () => {
+    const tracked: GraphicScene = {
+      elements: [textAt('a', 4, 0)],
+      camera: [{ atMs: 1000, focus: 'a', zoom: 1.2 }],
+    }
+    expect(separateOverlaps(tracked).camera).toEqual(tracked.camera)
+    expect(reflowPortrait(tracked).camera).toEqual(tracked.camera)
+  })
+})

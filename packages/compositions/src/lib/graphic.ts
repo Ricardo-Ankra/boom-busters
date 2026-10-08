@@ -1,4 +1,10 @@
-import { GRAPHIC_ENTER_MS, GRAPHIC_GRID, graphicEnterTimes } from '@boom-busters/schemas'
+import {
+  GRAPHIC_ENTER_MS,
+  GRAPHIC_GRID,
+  graphicEnterTimes,
+  graphicOnScreen,
+  intervalsMeet,
+} from '@boom-busters/schemas'
 import type {
   BrandKitTokens,
   GraphicCell,
@@ -323,6 +329,12 @@ function readingOrder(a: GraphicElement, b: GraphicElement): number {
  * Reading order decides which row an element gets, never the order of the returned
  * array, so `elements` always comes back in scene order and paint order cannot flip
  * between orientations.
+ *
+ * Over time (decision 290): flowing elements that are never on screen together share a
+ * band, so a graphic built in steps does not shrink every step to make room for the
+ * others. Each joins the first band none of whose occupants it ever meets on screen.
+ * In a scene where nothing leaves, every element meets every other, so each gets a band
+ * of its own and the stack is exactly what it always was.
  */
 export function reflowPortrait(scene: GraphicScene): GraphicScene {
   const pinnedBottom = scene.elements.reduce(
@@ -338,18 +350,34 @@ export function reflowPortrait(scene: GraphicScene): GraphicScene {
     .filter((entry) => !entry.element.portraitCell)
     .sort((a, b) => readingOrder(a.element, b.element))
 
-  const top = GRAPHIC_GRID - pinnedBottom >= flowing.length ? pinnedBottom : 0
+  const onScreen = graphicOnScreen(scene)
+  const spanOf = (index: number) => onScreen.get(scene.elements[index]!.id)!
+  const bands: { indices: number[]; want: number }[] = []
+  for (const entry of flowing) {
+    const span = spanOf(entry.index)
+    const want = Math.min(entry.element.cell.rowSpan, GRAPHIC_GRID)
+    const shared = bands.find((band) =>
+      band.indices.every((other) => !intervalsMeet(span, spanOf(other))),
+    )
+    if (shared) {
+      shared.indices.push(entry.index)
+      shared.want = Math.max(shared.want, want)
+    } else {
+      bands.push({ indices: [entry.index], want })
+    }
+  }
+
+  const top = GRAPHIC_GRID - pinnedBottom >= bands.length ? pinnedBottom : 0
   let remaining = GRAPHIC_GRID - top
-  let left = flowing.length
+  let left = bands.length
   let cursor = top
 
-  const bands: { index: number; row: number; rowSpan: number }[] = []
-  for (const entry of flowing) {
-    const want = Math.min(entry.element.cell.rowSpan, GRAPHIC_GRID)
-    // Reserve one row for every element still to be placed, so the running total can
+  const placed: { indices: number[]; row: number; rowSpan: number }[] = []
+  for (const band of bands) {
+    // Reserve one row for every band still to be placed, so the running total can
     // never exceed what is left and this never needs a clamp.
-    const rowSpan = Math.max(1, Math.min(want, remaining - (left - 1)))
-    bands.push({ index: entry.index, row: cursor, rowSpan })
+    const rowSpan = Math.max(1, Math.min(band.want, remaining - (left - 1)))
+    placed.push({ indices: band.indices, row: cursor, rowSpan })
     cursor += rowSpan
     remaining -= rowSpan
     left -= 1
@@ -360,19 +388,21 @@ export function reflowPortrait(scene: GraphicScene): GraphicScene {
   // put, below the pin, because the pin is the author's own placement of the rest.
   const shift = pinnedBottom === 0 ? Math.floor((GRAPHIC_GRID - (cursor - top)) / 2) : 0
   const cellByIndex = new Map<number, GraphicCell>()
-  for (const band of bands) {
-    cellByIndex.set(band.index, {
-      col: 0,
-      row: band.row + shift,
-      colSpan: GRAPHIC_GRID,
-      rowSpan: band.rowSpan,
-    })
+  for (const band of placed) {
+    for (const index of band.indices) {
+      cellByIndex.set(index, {
+        col: 0,
+        row: band.row + shift,
+        colSpan: GRAPHIC_GRID,
+        rowSpan: band.rowSpan,
+      })
+    }
   }
 
   const elements = scene.elements.map((element, index) =>
     element.portraitCell ? element : { ...element, portraitCell: cellByIndex.get(index)! },
   )
-  return { elements }
+  return { ...scene, elements }
 }
 
 /** Whether two grid rectangles share any cell. */
@@ -409,15 +439,27 @@ function cellsIntersect(a: GraphicCell, b: GraphicCell): boolean {
  *
  * A scene whose elements already sit clear of one another is returned unchanged, so this
  * is a no-op for every well-formed card and cannot move a golden on its own.
+ *
+ * Over time (decision 290): two elements collide only when they are on screen together.
+ * An element entering as another leaves may take its cell; that is a cross-fade, not an
+ * overlap. In a scene where nothing leaves, every pair is on screen together, so this is
+ * the same pass it always was.
  */
 export function separateOverlaps(scene: GraphicScene): GraphicScene {
-  const taken: GraphicCell[] = []
+  const onScreen = graphicOnScreen(scene)
+  const taken: { id: string; cell: GraphicCell }[] = []
+  const blocked = (id: string, cell: GraphicCell) =>
+    taken.some(
+      (other) =>
+        cellsIntersect(cell, other.cell) &&
+        intervalsMeet(onScreen.get(id)!, onScreen.get(other.id)!),
+    )
   const elements = scene.elements.map((element) => {
     if (element.kind === 'shape') return element
 
     const planned = element.cell
-    if (!taken.some((cell) => cellsIntersect(planned, cell))) {
-      taken.push(planned)
+    if (!blocked(element.id, planned)) {
+      taken.push({ id: element.id, cell: planned })
       return element
     }
 
@@ -435,16 +477,16 @@ export function separateOverlaps(scene: GraphicScene): GraphicScene {
     )
     for (const row of [...below, ...above]) {
       const candidate = { ...planned, row }
-      if (!taken.some((cell) => cellsIntersect(candidate, cell))) {
-        taken.push(candidate)
+      if (!blocked(element.id, candidate)) {
+        taken.push({ id: element.id, cell: candidate })
         return { ...element, cell: candidate }
       }
     }
     // Nowhere clear at this size: keep what was planned rather than lose the element.
-    taken.push(planned)
+    taken.push({ id: element.id, cell: planned })
     return element
   })
-  return { elements }
+  return { ...scene, elements }
 }
 
 /** Every element's box, in scene order for landscape and reading order for portrait. */
