@@ -977,6 +977,18 @@ export default async function globalSetup(): Promise<void> {
                   entity: 'Wirecard AG (E2E)',
                   assetId: wirecardLogo!.id,
                 },
+                {
+                  // Decision 290: a line that leaves at 3 s, so the card shows its steps.
+                  kind: 'text',
+                  id: 't2',
+                  cell: { col: 0, row: 9, colSpan: 12, rowSpan: 2 },
+                  enter: { kind: 'fade', atMs: 0 },
+                  exit: { kind: 'fade', atMs: 3000 },
+                  content: 'In one round',
+                  role: 'body',
+                  color: 'textSecondary',
+                  align: 'start',
+                },
               ],
             },
           },

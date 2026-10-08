@@ -225,6 +225,11 @@ test.describe('a graphic slot (decision 268, Plan B)', () => {
     page,
   }) => {
     const resolved = page.locator('[id^="slot-"]').filter({ hasText: 'raised four billion' })
+    // Decision 290: the seeded graphic has a line that leaves at 3 s, so the
+    // card shows a frame per step under its thumbnail.
+    const steps = resolved.getByRole('list', { name: 'Graphic steps' })
+    await expect(steps.getByRole('img', { name: 'Step: At 0:03' })).toBeVisible()
+    await expect(steps.getByRole('img', { name: 'Step: End' })).toBeVisible()
     await resolved.getByRole('button', { name: 'Play graphic' }).click()
     await expect(resolved.getByRole('region', { name: 'Graphic playback' })).toBeVisible()
     await resolved.getByRole('button', { name: 'Portrait' }).click()
