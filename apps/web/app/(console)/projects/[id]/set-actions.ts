@@ -12,12 +12,14 @@ import {
   getProject,
   getProjectSet,
   insertProjectSet,
+  restoreSetsFromLocations,
   setSetPlates,
   updateProjectSet,
 } from '@boom-busters/db'
 import {
   castPhotoExtension,
   CastPhotoMimeSchema,
+  DirectorsBookSchema,
   MAX_SET_PLATES,
   platesForCamera,
   SetPlateViewSchema,
@@ -38,6 +40,7 @@ import { revalidatePath } from 'next/cache'
 import { auth } from '@/auth'
 import { db } from '@/lib/db'
 import { fetchRemoteImage } from '@/lib/remote-image'
+import { NO_BOOK_YET } from '@/lib/restore-from-book'
 import { draftSetLayout } from '@/lib/set-layout'
 import { setPlateBrief } from '@/lib/set-plates'
 import { buildSetSheet } from '@/lib/set-sheet'
@@ -173,6 +176,28 @@ export async function removeSetAction(setId: string): Promise<ActionResult> {
   await dismissProjectSet(db, setId)
   refresh(set.projectId)
   return { ok: true }
+}
+
+/**
+ * "Restore from the book" for sets (decision 291), the Cast card's restore
+ * with different nouns: every set removed that the stored Director's Book
+ * still names returns with the book's look; plates start empty. The plan
+ * reads the sets when it is drafted, so the card tells the producer to
+ * re-plan.
+ */
+export async function restoreSetsFromBookAction(
+  projectId: string,
+): Promise<ActionResult & { restored?: number }> {
+  await requireOwner()
+  const invalid = badIds(projectId)
+  if (invalid) return invalid
+  const project = await getProject(db, projectId)
+  if (!project) return { ok: false, error: 'This project no longer exists.' }
+  const book = DirectorsBookSchema.safeParse(project.direction)
+  if (!book.success) return { ok: false, error: NO_BOOK_YET }
+  const restored = await restoreSetsFromLocations(db, projectId, book.data.locations)
+  refresh(projectId)
+  return { ok: true, restored: restored.length }
 }
 
 /**

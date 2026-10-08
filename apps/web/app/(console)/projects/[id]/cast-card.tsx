@@ -18,6 +18,7 @@ import {
   finaliseCastPhotoAction,
   removeCastMemberAction,
   removeCastPhotoAction,
+  restoreCastFromBookAction,
   updateCastMemberAction,
   type ActionResult,
 } from './cast-actions'
@@ -39,6 +40,9 @@ import {
  * the same route (decision 253 (k)). The server writes the identity string
  * from the first photo; the text areas hold raw text and save on the button,
  * never on a keystroke.
+ *
+ * A removal sticks when the book is drafted again; "Restore from the book"
+ * (decision 291) is the producer's own way back for the people it still names.
  */
 
 const DESCRIBE_ESTIMATE = '≈$0.02'
@@ -55,9 +59,11 @@ export interface CastCardProps {
   members: readonly CastMember[]
   /** Presigned GET per photo content hash; absent in mock storage. */
   photoUrls: Readonly<Record<string, string>>
+  /** People removed whom the Director's Book still names (decision 291). */
+  restorable?: readonly string[]
 }
 
-export function CastCard({ projectId, members, photoUrls }: CastCardProps) {
+export function CastCard({ projectId, members, photoUrls, restorable = [] }: CastCardProps) {
   const router = useRouter()
   const { toast } = useToast()
   const [busy, setBusy] = React.useState<string | null>(null)
@@ -108,12 +114,35 @@ export function CastCard({ projectId, members, photoUrls }: CastCardProps) {
                 : `${unphotographed} people still need a photo.`}
             </p>
           ) : null}
+          {restorable.length > 0 ? (
+            <p className="mt-2 text-[12px] text-[var(--color-text-secondary)]">
+              Removed, but still in the Director&apos;s Book: {restorable.join(', ')}.
+            </p>
+          ) : null}
         </div>
-        {members.length > 0 ? (
-          <Button variant="outline" onClick={() => setOpen((value) => !value)}>
-            {open ? 'Hide cast' : 'Edit cast'}
-          </Button>
-        ) : null}
+        <div className="flex flex-wrap gap-2">
+          {restorable.length > 0 ? (
+            <Button
+              variant="outline"
+              disabled={busy !== null}
+              onClick={() =>
+                void act(
+                  'restore',
+                  () => restoreCastFromBookAction(projectId),
+                  `Restored ${restorable.length} from the book. ` +
+                    `Press Re-plan shot list for the plan to use ${restorable.length === 1 ? 'it' : 'them'}.`,
+                )
+              }
+            >
+              Restore {restorable.length} from the book
+            </Button>
+          ) : null}
+          {members.length > 0 ? (
+            <Button variant="outline" onClick={() => setOpen((value) => !value)}>
+              {open ? 'Hide cast' : 'Edit cast'}
+            </Button>
+          ) : null}
+        </div>
       </CardHeader>
       <CardContent className="space-y-5">
         {!open ? (

@@ -11,6 +11,8 @@ import {
   getProjectSet,
   insertProjectSet,
   listProjectSets,
+  restorableSetNames,
+  restoreSetsFromLocations,
   seedSetsFromLocations,
   setSetPlates,
   updateProjectSet,
@@ -201,5 +203,61 @@ suite('project sets', () => {
     expect(added).toEqual([])
     expect(await listProjectSets(db, projectId)).toEqual([])
     expect(await getProjectSet(db, gone.id)).toBeNull()
+  })
+
+  describe('restoring removed sets from the book (decision 291)', () => {
+    const locations = [
+      { name: 'The lobby', look: 'marble floor, a glass revolving door' },
+      { name: 'The trading floor', look: 'cold blue light, rows of monitors' },
+    ]
+
+    it('names the removed sets the book still carries, and no other', async () => {
+      await seedSetsFromLocations(db, projectId, locations)
+      const [lobby] = await listProjectSets(db, projectId)
+      await dismissProjectSet(db, lobby!.id)
+      const other = await insertProjectSet(db, { projectId, name: 'The car park', look: 'x' })
+      await dismissProjectSet(db, other.id)
+
+      expect(await restorableSetNames(db, projectId, locations)).toEqual(['The lobby'])
+    })
+
+    it("revives them with the book's look, after the live sets, with no plates", async () => {
+      await seedSetsFromLocations(db, projectId, locations)
+      const [lobby] = await listProjectSets(db, projectId)
+      await setSetPlates(db, lobby!.id, [plate('a')])
+      await updateProjectSet(db, lobby!.id, { look: 'an older look' })
+      await dismissProjectSet(db, lobby!.id)
+
+      const restored = await restoreSetsFromLocations(db, projectId, locations)
+      expect(restored.map((set) => set.name)).toEqual(['The lobby'])
+      const sets = await listProjectSets(db, projectId)
+      expect(sets.map((set) => set.name)).toEqual(['The trading floor', 'The lobby'])
+      expect(sets[1]).toMatchObject({ id: lobby!.id, look: locations[0]!.look, plates: [] })
+      expect(await restorableSetNames(db, projectId, locations)).toEqual([])
+    })
+
+    it('never restores a name a live set already carries, whatever its case', async () => {
+      const gone = await insertProjectSet(db, { projectId, name: 'The lobby', look: 'x' })
+      await dismissProjectSet(db, gone.id)
+      // A row the hand-add path cannot make today (it revives regardless of
+      // case), written directly so the guard is proven for sets as for cast.
+      await db.insert(projectSets).values({ projectId, name: 'THE LOBBY', look: 'live' })
+
+      expect(await restorableSetNames(db, projectId, locations)).toEqual([])
+      expect(await restoreSetsFromLocations(db, projectId, locations)).toEqual([])
+      expect((await listProjectSets(db, projectId)).map((set) => set.name)).toEqual(['THE LOBBY'])
+    })
+
+    it('matches a name whatever its case, and leaves sets the book does not name removed', async () => {
+      const gone = await insertProjectSet(db, { projectId, name: 'THE LOBBY', look: 'x' })
+      await dismissProjectSet(db, gone.id)
+      const other = await insertProjectSet(db, { projectId, name: 'The car park', look: 'x' })
+      await dismissProjectSet(db, other.id)
+
+      const restored = await restoreSetsFromLocations(db, projectId, locations)
+      expect(restored.map((set) => set.name)).toEqual(['THE LOBBY'])
+      expect((await listProjectSets(db, projectId)).map((set) => set.name)).toEqual(['THE LOBBY'])
+      expect(await restoreSetsFromLocations(db, projectId, locations)).toEqual([])
+    })
   })
 })

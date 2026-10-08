@@ -215,3 +215,74 @@ export async function seedSetsFromLocations(
   }
   return added
 }
+
+/** The removed sets a book still names, each with the location that names it. */
+async function removedNamedBy(
+  db: Database,
+  projectId: string,
+  locations: readonly { name: string; look: string }[],
+): Promise<{ row: ProjectSetRow; location: { name: string; look: string } }[]> {
+  const rows = await db.select().from(projectSets).where(eq(projectSets.projectId, projectId))
+  const key = (name: string) => name.trim().toLowerCase()
+  // A name a live set already carries, in any case, is never offered back, as
+  // for the cast: restoring it would put the same room in twice.
+  const live = new Set(rows.filter((row) => row.dismissedAt === null).map((row) => key(row.name)))
+  const byName = new Map(
+    rows
+      .filter((row) => row.dismissedAt !== null && !live.has(key(row.name)))
+      .map((row) => [key(row.name), row]),
+  )
+  const found: { row: ProjectSetRow; location: { name: string; look: string } }[] = []
+  for (const location of locations) {
+    const row = byName.get(key(location.name))
+    if (!row) continue
+    byName.delete(key(location.name))
+    found.push({ row, location })
+  }
+  return found
+}
+
+/**
+ * The sets the producer removed that the Director's Book still names
+ * (decision 291): what "Restore from the book" would bring back, matched
+ * without regard to case, as seeding matches.
+ */
+export async function restorableSetNames(
+  db: Database,
+  projectId: string,
+  locations: readonly { name: string; look: string }[],
+): Promise<string[]> {
+  return (await removedNamedBy(db, projectId, locations)).map(({ row }) => row.name)
+}
+
+/**
+ * "Restore from the book" for sets (decision 291), `restoreCastFromPrincipals`
+ * with different nouns: every removed set the book still names comes back
+ * with the book's current look; the plates were deleted at removal and start
+ * empty, and the room inventory stays as a re-add by hand leaves it. A
+ * revived set goes where a new one goes (decision 267). Returns the sets
+ * restored.
+ */
+export async function restoreSetsFromLocations(
+  db: Database,
+  projectId: string,
+  locations: readonly { name: string; look: string }[],
+): Promise<ProjectSet[]> {
+  const restored: ProjectSet[] = []
+  for (const { row, location } of await removedNamedBy(db, projectId, locations)) {
+    const [revived] = await db
+      .update(projectSets)
+      .set({
+        look: location.look.trim(),
+        dismissedAt: null,
+        plates: [],
+        // The database clock, as `insertProjectSet`'s revival uses (decision 267).
+        createdAt: sql`now()`,
+        updatedAt: sql`now()`,
+      })
+      .where(eq(projectSets.id, row.id))
+      .returning()
+    if (revived) restored.push(toSet(revived))
+  }
+  return restored
+}

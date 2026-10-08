@@ -123,10 +123,8 @@ export const visualsRunner = inngest.createFunction(
 
         const takes = await listVoiceTakes(db, projectId)
         const claims = await scriptableClaims(db, projectId)
-        const cast = await listCastMembers(db, projectId)
-        // Loaded once for the whole run: the shot-list prompt lists the film's
-        // rooms, and the craft notes count how often each one is used.
-        const sets = await listProjectSets(db, projectId)
+        // The cast and the sets are read after the Director's Book, in
+        // `load-cast-and-sets`: drafting the book is what seeds them.
         // The logo library (decision 268, Plan B): titles name the marks in the
         // prompt, ids resolve a graphic's "logo" the moment the plan is stored.
         const logos = await listLogos(db)
@@ -145,22 +143,6 @@ export const visualsRunner = inngest.createFunction(
             // Which claims a headline card may cite (decision 257).
             sourceType: claim.sourceType,
           })) satisfies ScriptClaim[],
-          // Who the producer has photographed (decision 253, amended). Their
-          // prompts name them and carry no physical description, because the
-          // photograph is the likeness.
-          photographed: cast
-            .filter((member) => member.photos.length > 0)
-            .map((member) => member.name),
-          // Every member, photographed or not: the craft findings read them
-          // (decisions 271, 277).
-          cast: cast.map((member) => ({
-            name: member.name,
-            photographed: member.photos.length > 0,
-          })),
-          // The film's rooms: named, described and inventoried for the
-          // shot-list prompt (decision 275), and counted by the craft notes
-          // below (decision 264).
-          sets: sets.map(({ name, look, layout }) => ({ name, look, layout })),
           logos: logos.map((row) => ({ id: row.id, title: row.title ?? '' })),
         }
       })
@@ -188,6 +170,33 @@ export const visualsRunner = inngest.createFunction(
         return { projectId, outcome: 'over-budget' as const }
       }
 
+      // The film's people and rooms, read AFTER the book's step, because
+      // drafting the book is what seeds them (decisions 253, 264). Read before
+      // it, a new film, or one whose cast and sets the producer had removed,
+      // had none, and its whole first plan was written without its sets.
+      const film = await step.run('load-cast-and-sets', async () => {
+        const cast = await listCastMembers(db, projectId)
+        const sets = await listProjectSets(db, projectId)
+        return {
+          // Who the producer has photographed (decision 253, amended). Their
+          // prompts name them and carry no physical description, because the
+          // photograph is the likeness.
+          photographed: cast
+            .filter((member) => member.photos.length > 0)
+            .map((member) => member.name),
+          // Every member, photographed or not: the craft findings read them
+          // (decisions 271, 277).
+          cast: cast.map((member) => ({
+            name: member.name,
+            photographed: member.photos.length > 0,
+          })),
+          // The film's rooms: named, described and inventoried for the
+          // shot-list prompt (decision 275), and counted by the craft notes
+          // below (decision 264).
+          sets: sets.map(({ name, look, layout }) => ({ name, look, layout })),
+        }
+      })
+
       // -----------------------------------------------------------------------
       // Shot-list generation, chapter by chapter, against the book
       // -----------------------------------------------------------------------
@@ -209,8 +218,8 @@ export const visualsRunner = inngest.createFunction(
                 paragraphs: setup.paragraphs,
                 claims: setup.claims,
                 direction: direction.book,
-                photographed: setup.photographed,
-                sets: setup.sets,
+                photographed: film.photographed,
+                sets: film.sets,
                 logos: setup.logos,
               })
               return { ok: true, ...result }
@@ -283,14 +292,14 @@ export const visualsRunner = inngest.createFunction(
         // Craft misses the model let through (decisions 252, 277): notes for
         // the plan screen, never rejections. Counted INSIDE the step (decision
         // 279): a run parked for days replays with the step results it saved
-        // back then, and outside a step this read `setup.cast`, which an older
+        // back then, and outside a step this read the cast, which an older
         // run's saved setup does not have, and crashed the fetch.
         const warnings = planFindings({
           rows: allRows,
           chapters: setup.chapters,
           direction: direction.book,
-          cast: setup.cast,
-          sets: setup.sets,
+          cast: film.cast,
+          sets: film.sets,
         }).findings
         return openReviewGate(ctx, {
           stage: 'visuals',

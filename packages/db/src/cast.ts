@@ -255,3 +255,80 @@ export async function seedCastFromPrincipals(
   }
   return added
 }
+
+/** The removed members a book still names, each with the principal that names it. */
+async function removedNamedBy(
+  db: Database,
+  projectId: string,
+  principals: readonly Principal[],
+): Promise<{ row: CastMemberRow; principal: Principal }[]> {
+  const rows = await db.select().from(castMembers).where(eq(castMembers.projectId, projectId))
+  const key = (name: string) => name.trim().toLowerCase()
+  // A name someone live already carries, in any case, is never offered back:
+  // the hand-add revival matches exact names, so a removed "Emad Mostaque"
+  // can sit beside a live "emad mostaque", and restoring would cast him twice.
+  const live = new Set(rows.filter((row) => row.dismissedAt === null).map((row) => key(row.name)))
+  const byName = new Map(
+    rows
+      .filter((row) => row.dismissedAt !== null && !live.has(key(row.name)))
+      .map((row) => [key(row.name), row]),
+  )
+  const found: { row: CastMemberRow; principal: Principal }[] = []
+  for (const principal of principals) {
+    if (principal.depiction === 'anonymous') continue
+    const row = byName.get(key(principal.name))
+    if (!row) continue
+    byName.delete(key(principal.name))
+    found.push({ row, principal })
+  }
+  return found
+}
+
+/**
+ * The people the producer removed whom the Director's Book still names
+ * (decision 291): what "Restore from the book" would bring back. Matched as
+ * seeding matches, without regard to case; anonymous principals have no name
+ * to match.
+ */
+export async function restorableCastNames(
+  db: Database,
+  projectId: string,
+  principals: readonly Principal[],
+): Promise<string[]> {
+  return (await removedNamedBy(db, projectId, principals)).map(({ row }) => row.name)
+}
+
+/**
+ * "Restore from the book" (decision 291). Removals stick when the book is
+ * drafted again, so a producer who removed the cast to start over had no way
+ * back but retyping every name. This revives every removed member the book
+ * still names, with the book's current role, identity string and guardrail;
+ * the photos were deleted at removal and start empty. A revived member goes
+ * where a new one goes (decision 267). Live members, and removed names the
+ * book does not carry, are left as they are. Returns the members restored.
+ */
+export async function restoreCastFromPrincipals(
+  db: Database,
+  projectId: string,
+  principals: readonly Principal[],
+): Promise<CastMember[]> {
+  const restored: CastMember[] = []
+  for (const { row, principal } of await removedNamedBy(db, projectId, principals)) {
+    const [revived] = await db
+      .update(castMembers)
+      .set({
+        role: principal.role.trim(),
+        identityString: principal.identityString.trim(),
+        guardrail: principal.guardrail.trim(),
+        dismissedAt: null,
+        photos: [],
+        // The database clock, as `insertCastMember`'s revival uses (decision 267).
+        createdAt: sql`now()`,
+        updatedAt: sql`now()`,
+      })
+      .where(eq(castMembers.id, row.id))
+      .returning()
+    if (revived) restored.push(toMember(revived))
+  }
+  return restored
+}
