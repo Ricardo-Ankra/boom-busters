@@ -5,6 +5,7 @@ import {
   getCastMember,
   getProject,
   insertCastMember,
+  restoreCastFromPrincipals,
   setCastPhotos,
   updateCastMember,
 } from '@boom-busters/db'
@@ -19,6 +20,7 @@ import {
   castPhotoExtension,
   CastPhotoMimeSchema,
   CastPhotoViewSchema,
+  DirectorsBookSchema,
   MAX_CAST_PHOTOS,
   referencePhotos,
   UlidSchema,
@@ -31,6 +33,7 @@ import { auth } from '@/auth'
 import { db } from '@/lib/db'
 import { callLlm } from '@/lib/llm'
 import { fetchRemoteImage } from '@/lib/remote-image'
+import { NO_BOOK_YET } from '@/lib/restore-from-book'
 import {
   castPhotoKey,
   deleteObject,
@@ -134,6 +137,28 @@ export async function removeCastMemberAction(memberId: string): Promise<ActionRe
   await dismissCastMember(db, memberId)
   refresh(member.projectId)
   return { ok: true }
+}
+
+/**
+ * "Restore from the book" (decision 291): removals stick when the book is
+ * drafted again, so this is the producer's own way back. Everyone removed
+ * whom the stored Director's Book still names returns with the book's text;
+ * photos start empty. The plan reads the cast when it is drafted, so the card
+ * tells the producer to re-plan.
+ */
+export async function restoreCastFromBookAction(
+  projectId: string,
+): Promise<ActionResult & { restored?: number }> {
+  await requireOwner()
+  const invalid = badIds(projectId)
+  if (invalid) return invalid
+  const project = await getProject(db, projectId)
+  if (!project) return { ok: false, error: 'This project no longer exists.' }
+  const book = DirectorsBookSchema.safeParse(project.direction)
+  if (!book.success) return { ok: false, error: NO_BOOK_YET }
+  const restored = await restoreCastFromPrincipals(db, projectId, book.data.principals)
+  refresh(projectId)
+  return { ok: true, restored: restored.length }
 }
 
 /**

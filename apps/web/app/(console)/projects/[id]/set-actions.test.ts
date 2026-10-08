@@ -9,10 +9,11 @@ import {
   listProjectSets,
   requireTestDatabase,
   seed,
+  setProjectDirection,
   updateProjectSet,
   updateSettings,
 } from '@boom-busters/db'
-import { mockImageGen } from '@boom-busters/providers'
+import { mockDirectorsBook, mockImageGen } from '@boom-busters/providers'
 import { DEFAULT_SET_SHEET_ROUTE } from '@boom-busters/schemas'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/lib/db'
@@ -31,6 +32,7 @@ import {
   redraftSetLayoutAction,
   removeSetAction,
   removeSetPlateAction,
+  restoreSetsFromBookAction,
   updateSetAction,
 } from './set-actions'
 
@@ -138,10 +140,42 @@ describeDb('set actions (mock mode)', () => {
     // rename left over from an earlier run of this suite would otherwise
     // collide with "updates the name and the look". Revive-then-hard-delete
     // every fixed name this suite uses, so each run starts genuinely clean.
-    for (const name of ['The trading floor', 'The boardroom']) {
+    for (const name of ['The trading floor', 'The boardroom', 'The lobby']) {
       const revived = await insertProjectSet(db, { projectId: FIXTURE_PROJECT_ID, name })
       await deleteProjectSet(db, revived.id)
     }
+  })
+
+  describe('Restore from the book (decision 291)', () => {
+    it("brings back the removed sets the book names, with the book's look", async () => {
+      const book = {
+        ...mockDirectorsBook({ caseTitle: 'Stability AI', chapterCount: 1, cast: [] }),
+        locations: [{ name: 'The lobby', look: 'marble floor, a glass revolving door' }],
+      }
+      await setProjectDirection(db, FIXTURE_PROJECT_ID, book)
+      const added = await addSetAction(FIXTURE_PROJECT_ID, { name: 'The lobby', look: 'older' })
+      await removeSetAction(added.id!)
+
+      expect(await restoreSetsFromBookAction(FIXTURE_PROJECT_ID)).toEqual({
+        ok: true,
+        restored: 1,
+      })
+      const [back] = await listProjectSets(db, FIXTURE_PROJECT_ID)
+      expect(back).toMatchObject({
+        name: 'The lobby',
+        look: 'marble floor, a glass revolving door',
+        plates: [],
+      })
+      await setProjectDirection(db, FIXTURE_PROJECT_ID, null)
+    })
+
+    it('says the book arrives with the Visuals stage when the film has none yet', async () => {
+      await setProjectDirection(db, FIXTURE_PROJECT_ID, null)
+      expect(await restoreSetsFromBookAction(FIXTURE_PROJECT_ID)).toEqual({
+        ok: false,
+        error: "This film has no Director's Book yet. It is drafted when the Visuals stage starts.",
+      })
+    })
   })
 
   async function addTradingFloor(): Promise<string> {

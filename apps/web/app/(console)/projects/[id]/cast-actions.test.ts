@@ -1,12 +1,15 @@
 // @vitest-environment node
 
 import {
+  deleteCastMember,
   FIXTURE_PROJECT_ID,
   listCastMembers,
   requireTestDatabase,
   seed,
   seedCastFromPrincipals,
+  setProjectDirection,
 } from '@boom-busters/db'
+import { mockDirectorsBook } from '@boom-busters/providers'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/lib/db'
 import {
@@ -17,6 +20,7 @@ import {
   finaliseCastPhotoAction,
   removeCastMemberAction,
   removeCastPhotoAction,
+  restoreCastFromBookAction,
   updateCastMemberAction,
 } from './cast-actions'
 
@@ -75,6 +79,52 @@ describeDb('cast actions (mock mode)', () => {
     for (const member of await listCastMembers(db, FIXTURE_PROJECT_ID)) {
       await removeCastMemberAction(member.id)
     }
+  })
+
+  describe('Restore from the book (decision 291)', () => {
+    // A name no other test here uses: a revived row keeps its text, so
+    // restoring the suite's own "Emad Mostaque" leaked an identity string
+    // into the photo tests that re-add him.
+    const prem = {
+      name: 'Prem Akkaraju',
+      role: 'Chief executive from 2024',
+      depiction: 'likeness' as const,
+      identityString: 'Prem Akkaraju, chief executive: dark hair, clean shaven',
+      guardrail: 'never mocked',
+    }
+
+    it("brings back the removed people the book names, with the book's text", async () => {
+      const book = {
+        ...mockDirectorsBook({ caseTitle: 'Stability AI', chapterCount: 1, cast: [] }),
+        principals: [prem],
+      }
+      await setProjectDirection(db, FIXTURE_PROJECT_ID, book)
+      await seedCastFromPrincipals(db, FIXTURE_PROJECT_ID, book.principals)
+      for (const member of await listCastMembers(db, FIXTURE_PROJECT_ID)) {
+        await removeCastMemberAction(member.id)
+      }
+
+      expect(await restoreCastFromBookAction(FIXTURE_PROJECT_ID)).toEqual({
+        ok: true,
+        restored: 1,
+      })
+      const [back] = await listCastMembers(db, FIXTURE_PROJECT_ID)
+      expect(back).toMatchObject({
+        name: 'Prem Akkaraju',
+        identityString: prem.identityString,
+        photos: [],
+      })
+      await deleteCastMember(db, back!.id)
+      await setProjectDirection(db, FIXTURE_PROJECT_ID, null)
+    })
+
+    it('says the book arrives with the Visuals stage when the film has none yet', async () => {
+      await setProjectDirection(db, FIXTURE_PROJECT_ID, null)
+      expect(await restoreCastFromBookAction(FIXTURE_PROJECT_ID)).toEqual({
+        ok: false,
+        error: "This film has no Director's Book yet. It is drafted when the Visuals stage starts.",
+      })
+    })
   })
 
   async function addEmad(): Promise<string> {
