@@ -7019,6 +7019,21 @@ boom-busters-broker`; merge and deploy to Vercel, then `PUT
      labelled by that time rounded to the second (cost if wrong: two exits
      within a second share a label); the bars' scale keeps stage 1's floor of
      1 (cost if wrong: values under 1 never fill the width alone).
+     From the final review: "all", and any camera key at zoom 1, frame the
+     composition as laid out, the zoom on "all" ignored rather than refused,
+     since a push on the whole frame put a figure under the captions and the
+     title off the top (cost if wrong: no gentle push on the whole frame; a
+     push needs an element); portrait bands keep reading order, an element
+     joining the band just after the last one holding an element it is on
+     screen with, so a caption arriving with a figure never sits above it
+     (spec 4.2 amended; cost if wrong: a staged portrait uses a little more
+     height); the dead-air measure counts a camera key only when it moves the
+     camera, and the harness frames a camera move at its end; the designer
+     prompt states every duration and limit the checks hold it to, the 180 ms
+     stagger included, and its fourth example no longer holds still for 8 s;
+     exits have unit tests of their own. Rolling the Vercel deploy back once
+     staged scenes are stored is not clean: the older app refuses a timed
+     emphasis or more than six elements and strips exits.
      Shipping, in this order because the timeline schema changed (an older
      broker refuses more than six elements and strips the new fields):
      `deploy:remotion`, then `deploy:stacks boom-busters-broker`, then the
