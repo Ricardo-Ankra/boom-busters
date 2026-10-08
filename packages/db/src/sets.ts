@@ -1,4 +1,4 @@
-import { and, asc, eq, isNull, sql } from 'drizzle-orm'
+import { and, asc, eq, isNotNull, isNull, sql } from 'drizzle-orm'
 import { MAX_SET_PLATES, ProjectSetSchema, ValidationError } from '@boom-busters/schemas'
 import type { ProjectSet, SetPlate } from '@boom-busters/schemas'
 import type { Database } from './client'
@@ -214,4 +214,71 @@ export async function seedSetsFromLocations(
     if (row) added.push(toSet(row))
   }
   return added
+}
+
+/** The removed sets a book still names, each with the location that names it. */
+async function removedNamedBy(
+  db: Database,
+  projectId: string,
+  locations: readonly { name: string; look: string }[],
+): Promise<{ row: ProjectSetRow; location: { name: string; look: string } }[]> {
+  const removed = await db
+    .select()
+    .from(projectSets)
+    .where(and(eq(projectSets.projectId, projectId), isNotNull(projectSets.dismissedAt)))
+  const byName = new Map(removed.map((row) => [row.name.trim().toLowerCase(), row]))
+  const found: { row: ProjectSetRow; location: { name: string; look: string } }[] = []
+  for (const location of locations) {
+    const key = location.name.trim().toLowerCase()
+    const row = byName.get(key)
+    if (!row) continue
+    byName.delete(key)
+    found.push({ row, location })
+  }
+  return found
+}
+
+/**
+ * The sets the producer removed that the Director's Book still names
+ * (decision 291): what "Restore from the book" would bring back, matched
+ * without regard to case, as seeding matches.
+ */
+export async function restorableSetNames(
+  db: Database,
+  projectId: string,
+  locations: readonly { name: string; look: string }[],
+): Promise<string[]> {
+  return (await removedNamedBy(db, projectId, locations)).map(({ row }) => row.name)
+}
+
+/**
+ * "Restore from the book" for sets (decision 291), `restoreCastFromPrincipals`
+ * with different nouns: every removed set the book still names comes back
+ * with the book's current look; the plates were deleted at removal and start
+ * empty, and the room inventory stays as a re-add by hand leaves it. A
+ * revived set goes where a new one goes (decision 267). Returns the sets
+ * restored.
+ */
+export async function restoreSetsFromLocations(
+  db: Database,
+  projectId: string,
+  locations: readonly { name: string; look: string }[],
+): Promise<ProjectSet[]> {
+  const restored: ProjectSet[] = []
+  for (const { row, location } of await removedNamedBy(db, projectId, locations)) {
+    const [revived] = await db
+      .update(projectSets)
+      .set({
+        look: location.look.trim(),
+        dismissedAt: null,
+        plates: [],
+        // The database clock, as `insertProjectSet`'s revival uses (decision 267).
+        createdAt: sql`now()`,
+        updatedAt: sql`now()`,
+      })
+      .where(eq(projectSets.id, row.id))
+      .returning()
+    if (revived) restored.push(toSet(revived))
+  }
+  return restored
 }

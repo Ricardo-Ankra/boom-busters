@@ -9,6 +9,8 @@ import {
   getCastMember,
   insertCastMember,
   listCastMembers,
+  restorableCastNames,
+  restoreCastFromPrincipals,
   seedCastFromPrincipals,
   setCastPhotos,
   setCastXHandle,
@@ -152,6 +154,77 @@ suite('cast members', () => {
 
       // A second draft adds nothing either.
       expect(await seedCastFromPrincipals(db, projectId, principals)).toEqual([])
+    })
+  })
+
+  describe('restoring removed people from the book (decision 291)', () => {
+    const book = [
+      {
+        name: 'Emad Mostaque',
+        role: 'Founder and former CEO',
+        depiction: 'likeness' as const,
+        identityString: 'Emad Mostaque, founder: oval face, short dark hair, close-cropped beard',
+        guardrail: 'never handling cash; never in handcuffs; never mocked',
+      },
+      {
+        name: 'The chief financial officer',
+        role: 'CFO',
+        depiction: 'anonymous' as const,
+        identityString: 'man in his forties, face turned from camera',
+        guardrail: 'never at a desk with documents',
+      },
+      {
+        name: 'Prem Akkaraju',
+        role: 'CEO from 2024',
+        depiction: 'archival-only' as const,
+        identityString: 'Prem Akkaraju, chief executive: dark hair, clean shaven',
+        guardrail: 'never mocked',
+      },
+    ]
+
+    it('names the removed people the book still carries, and no one else', async () => {
+      await seedCastFromPrincipals(db, projectId, book)
+      const [emad] = await listCastMembers(db, projectId)
+      await dismissCastMember(db, emad!.id)
+      const other = await insertCastMember(db, { projectId, name: 'Someone Else', role: 'Aide' })
+      await dismissCastMember(db, other.id)
+
+      expect(await restorableCastNames(db, projectId, book)).toEqual(['Emad Mostaque'])
+    })
+
+    it("revives them with the book's text, after the live members, with no photos", async () => {
+      await seedCastFromPrincipals(db, projectId, book)
+      const [emad] = await listCastMembers(db, projectId)
+      await setCastPhotos(db, emad!.id, [photo('a')])
+      await updateCastMember(db, emad!.id, { identityString: 'an older description' })
+      await dismissCastMember(db, emad!.id)
+
+      const restored = await restoreCastFromPrincipals(db, projectId, book)
+      expect(restored.map((member) => member.name)).toEqual(['Emad Mostaque'])
+      const members = await listCastMembers(db, projectId)
+      expect(members.map((member) => member.name)).toEqual(['Prem Akkaraju', 'Emad Mostaque'])
+      expect(members[1]).toMatchObject({
+        id: emad!.id,
+        role: 'Founder and former CEO',
+        identityString: book[0]!.identityString,
+        guardrail: book[0]!.guardrail,
+        photos: [],
+      })
+      expect(await restorableCastNames(db, projectId, book)).toEqual([])
+    })
+
+    it('matches a name whatever its case, and leaves anyone the book does not name removed', async () => {
+      const gone = await insertCastMember(db, { projectId, name: 'EMAD MOSTAQUE', role: 'x' })
+      await dismissCastMember(db, gone.id)
+      const other = await insertCastMember(db, { projectId, name: 'Someone Else', role: 'x' })
+      await dismissCastMember(db, other.id)
+
+      const restored = await restoreCastFromPrincipals(db, projectId, book)
+      expect(restored.map((member) => member.name)).toEqual(['EMAD MOSTAQUE'])
+      expect((await listCastMembers(db, projectId)).map((member) => member.name)).toEqual([
+        'EMAD MOSTAQUE',
+      ])
+      expect(await restoreCastFromPrincipals(db, projectId, book)).toEqual([])
     })
   })
 
