@@ -2,7 +2,7 @@ import {
   figureDigitGroups,
   GRAPHIC_COLORS,
   GRAPHIC_TYPE_ROLES,
-  MAX_GRAPHIC_ELEMENTS,
+  GRAPHIC_MAX_ON_SCREEN,
   PlannedGraphicSceneSchema,
   ValidationError,
 } from '@boom-busters/schemas'
@@ -61,7 +61,7 @@ Return JSON only: {"scene": {"elements": [element, ...]}}.
 Design rules:
 - One idea per graphic. One element dominates (usually the figure); everything
   else supports it. A viewer gets it in the first second.
-- Fewer elements beat more. ${MAX_GRAPHIC_ELEMENTS} is the ceiling, not the target; two or three is common.
+- Fewer elements beat more. ${GRAPHIC_MAX_ON_SCREEN} is the ceiling, not the target; two or three is common.
 - Size follows role. A figure's value grows to fill its box (it can be very
   large); a text's size is set by its role. Give the dominant element the most
   room; a figure box 6 to 10 columns wide and 3 to 5 rows tall reads as the hero.

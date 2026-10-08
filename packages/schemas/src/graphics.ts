@@ -1,5 +1,8 @@
 import { z } from 'zod'
 import { UlidSchema } from './ids'
+import { GRAPHIC_MAX_ON_SCREEN, maxOnScreen } from './graphic-timing'
+
+export * from './graphic-timing'
 
 /**
  * The scene graph a graphic slot is made of (decision 268, Plan B).
@@ -15,7 +18,8 @@ import { UlidSchema } from './ids'
  */
 
 export const GRAPHIC_GRID = 12
-export const MAX_GRAPHIC_ELEMENTS = 6
+/** Across the whole slot (decision 290); no more than `GRAPHIC_MAX_ON_SCREEN` at once. */
+export const MAX_GRAPHIC_ELEMENTS = 10
 
 /** Colour names a scene may use. The three series colours are enough; a longer palette is confetti. */
 export const GRAPHIC_COLORS = [
@@ -74,45 +78,47 @@ export const GraphicEnterSchema = z.object({
 })
 export type GraphicEnter = z.infer<typeof GraphicEnterSchema>
 
-/** How long one entrance takes on the card. The render reads this; a check reads it too. */
-export const GRAPHIC_ENTER_MS = 600
-/** The gap between entrances when a scene times none of them. */
-export const GRAPHIC_STAGGER_MS = 180
+/** Any later time inside a graphic: an offset from the slot's start, bounded like an entrance. */
+const GraphicTimeSchema = z.number().int().min(0).max(GRAPHIC_MAX_ENTER_MS)
 
-/** The least a scene must carry for its entrances to be timed. */
-export interface GraphicTimingScene {
-  elements: readonly { id: string; enter: { atMs: number } }[]
-}
+export const GRAPHIC_EXITS = ['fade', 'drop', 'wipe'] as const
+/** Leaving the frame (decision 290); an exit takes `GRAPHIC_EXIT_MS`. */
+export const GraphicExitSchema = z.object({
+  kind: z.enum(GRAPHIC_EXITS),
+  atMs: GraphicTimeSchema,
+})
+export type GraphicExit = z.infer<typeof GraphicExitSchema>
 
+export const GRAPHIC_EMPHASES = ['pulse', 'underline', 'color'] as const
 /**
- * When each element starts entering, as the card plays it: the authored
- * offsets when any element is timed, otherwise a stagger in scene order. One
- * rule for the card and for the check that keeps entrances inside the slot.
+ * An emphasis at a time the designer chooses (decision 290). `color` shifts
+ * the element to the token `to` names and keeps it there.
  */
-export function graphicEnterTimes(scene: GraphicTimingScene): Map<string, number> {
-  const timed = scene.elements.some((element) => element.enter.atMs > 0)
-  return new Map(
-    scene.elements.map((element, index) => [
-      element.id,
-      timed ? element.enter.atMs : index * GRAPHIC_STAGGER_MS,
-    ]),
-  )
-}
+export const GraphicTimedEmphasisSchema = z.object({
+  kind: z.enum(GRAPHIC_EMPHASES),
+  atMs: GraphicTimeSchema,
+  to: GraphicColorSchema.optional(),
+})
+/** The word forms fire just after the entrance, as in stage 1; the object form at its own time. */
+export const GraphicEmphasisSchema = z.union([
+  z.enum(['pulse', 'underline']),
+  GraphicTimedEmphasisSchema,
+])
+export type GraphicEmphasis = z.infer<typeof GraphicEmphasisSchema>
 
+export const GRAPHIC_MAX_ZOOM = 1.6
+export const MAX_CAMERA_KEYS = 4
 /**
- * The schema promised that the layout clamps an entrance inside its slot, and
- * nothing did (decision 289). This is the clamp, as a rule the designer is
- * held to: every entrance must have time to finish before the slot ends.
+ * A camera key (decision 290): from `atMs` the camera moves, over
+ * `GRAPHIC_CAMERA_MOVE_MS`, to frame `focus` (an element id, or 'all') at
+ * `zoom`, and holds there until the next key.
  */
-export function lateEntranceIssue(scene: GraphicTimingScene, durationMs: number): string | null {
-  const latest = Math.max(0, durationMs - GRAPHIC_ENTER_MS)
-  for (const [id, atMs] of graphicEnterTimes(scene)) {
-    if (atMs > latest) {
-      return `element "${id}" enters at ${atMs} ms, but this ${(durationMs / 1000).toFixed(1)} s slot needs every entrance to start by ${latest} ms`
-    }
-  }
-  return null
-}
+export const GraphicCameraKeySchema = z.object({
+  atMs: GraphicTimeSchema,
+  focus: z.string().min(1).max(40),
+  zoom: z.number().min(1).max(GRAPHIC_MAX_ZOOM).default(1),
+})
+export type GraphicCameraKey = z.infer<typeof GraphicCameraKeySchema>
 
 const elementCommon = {
   id: z.string().min(1).max(40),
@@ -120,7 +126,9 @@ const elementCommon = {
   /** Absent means "re-flow me in reading order into one column on 9:16". */
   portraitCell: GraphicCellSchema.optional(),
   enter: GraphicEnterSchema.default({ kind: 'fade', atMs: 0 }),
-  emphasis: z.enum(['pulse', 'underline']).optional(),
+  /** Absent: the element stays to the end of the slot (decision 290). */
+  exit: GraphicExitSchema.optional(),
+  emphasis: GraphicEmphasisSchema.optional(),
 }
 
 const TextElementSchema = z.object({
@@ -163,6 +171,8 @@ const barItemFields = {
   value: z.number().finite(),
   /** What is written at the end of the bar. */
   display: z.string().min(1).max(24),
+  /** When this bar grows in, with its label and value; absent: with its element (decision 290). */
+  atMs: GraphicTimeSchema.optional(),
 }
 
 const barsFields = {
@@ -207,13 +217,25 @@ function normaliseEntity(entity: string): string {
   return entity.trim().replace(/\s+/g, ' ').toLowerCase()
 }
 
-/** The rules no field type can carry: one count per figure, unique ids, one logo per entity. */
-function sceneRules(
-  scene: {
-    elements: readonly { kind: string; id: string; enter: { kind: string }; entity?: string }[]
-  },
-  ctx: z.RefinementCtx,
-): void {
+interface RuleScene {
+  elements: readonly {
+    kind: string
+    id: string
+    enter: { kind: string; atMs: number }
+    entity?: string
+    exit?: { atMs: number }
+    emphasis?: GraphicEmphasis
+  }[]
+  camera?: readonly { atMs: number; focus: string }[]
+}
+
+/**
+ * The rules no field type can carry: one count per figure, unique ids, one
+ * logo per entity, the timed emphasis's own rules, a camera that looks at an
+ * element of this scene, and no more than six on screen at once (decision
+ * 290). The timing rules that need the slot's length are `sceneTimingIssue`.
+ */
+function sceneRules(scene: RuleScene, ctx: z.RefinementCtx): void {
   const ids = new Set<string>()
   const entities = new Set<string>()
   scene.elements.forEach((element, index) => {
@@ -243,16 +265,60 @@ function sceneRules(
       }
       entities.add(key)
     }
+    const emphasis = element.emphasis
+    if (emphasis !== undefined && typeof emphasis !== 'string') {
+      const path = ['elements', index, 'emphasis']
+      if (emphasis.kind === 'color' && emphasis.to === undefined) {
+        ctx.addIssue({
+          code: 'custom',
+          path,
+          message: 'a colour emphasis names the colour it shifts "to"',
+        })
+      }
+      if (emphasis.kind !== 'color' && emphasis.to !== undefined) {
+        ctx.addIssue({ code: 'custom', path, message: '"to" belongs only to a colour emphasis' })
+      }
+      if (emphasis.kind === 'color' && element.kind === 'logo') {
+        ctx.addIssue({ code: 'custom', path, message: 'a logo is never recoloured' })
+      }
+      if (emphasis.kind === 'underline' && element.kind !== 'text' && element.kind !== 'figure') {
+        ctx.addIssue({ code: 'custom', path, message: 'only a text or a figure can be underlined' })
+      }
+    }
   })
+  ;(scene.camera ?? []).forEach((key, index) => {
+    if (key.focus !== 'all' && !ids.has(key.focus)) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['camera', index, 'focus'],
+        message: `camera key ${index + 1} focuses "${key.focus}", which is not an element of this graphic`,
+      })
+    }
+  })
+  const crowd = maxOnScreen(scene)
+  if (crowd.count > GRAPHIC_MAX_ON_SCREEN) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['elements'],
+      message: `${crowd.count} elements are on screen together at ${crowd.atMs} ms; at most ${GRAPHIC_MAX_ON_SCREEN} may be`,
+    })
+  }
 }
 
 export const GraphicSceneSchema = z
-  .object({ elements: z.array(GraphicElementSchema).min(1).max(MAX_GRAPHIC_ELEMENTS) })
+  .object({
+    elements: z.array(GraphicElementSchema).min(1).max(MAX_GRAPHIC_ELEMENTS),
+    /** Absent: the stage 1 drift alone (decision 290). */
+    camera: z.array(GraphicCameraKeySchema).max(MAX_CAMERA_KEYS).optional(),
+  })
   .superRefine(sceneRules)
 export type GraphicScene = z.infer<typeof GraphicSceneSchema>
 
 export const PlannedGraphicSceneSchema = z
-  .object({ elements: z.array(PlannedGraphicElementSchema).min(1).max(MAX_GRAPHIC_ELEMENTS) })
+  .object({
+    elements: z.array(PlannedGraphicElementSchema).min(1).max(MAX_GRAPHIC_ELEMENTS),
+    camera: z.array(GraphicCameraKeySchema).max(MAX_CAMERA_KEYS).optional(),
+  })
   .superRefine(sceneRules)
 export type PlannedGraphicScene = z.infer<typeof PlannedGraphicSceneSchema>
 
