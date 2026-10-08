@@ -43,7 +43,7 @@ export interface GraphicTimingElement {
 /** The least a scene must carry for its times to be read. */
 export interface GraphicTimingScene {
   elements: readonly GraphicTimingElement[]
-  camera?: readonly { atMs: number; focus: string }[]
+  camera?: readonly { atMs: number; focus: string; zoom?: number }[]
 }
 
 /** An element's time on screen: from its entrance's start to its exit's start. */
@@ -274,6 +274,11 @@ export function sceneTimingIssue(scene: GraphicTimingScene, durationMs: number):
   return null
 }
 
+/** A camera key that frames the composition as laid out: `'all'`, or any focus at zoom 1. */
+function cameraAtRest(key: { focus: string; zoom?: number }): boolean {
+  return key.focus === 'all' || (key.zoom ?? 1) <= 1
+}
+
 /** Every motion in a graphic: when it starts and how long it runs. */
 export function graphicMotions(scene: GraphicTimingScene): { atMs: number; durationMs: number }[] {
   const enters = graphicEnterTimes(scene)
@@ -289,8 +294,12 @@ export function graphicMotions(scene: GraphicTimingScene): { atMs: number; durat
         motions.push({ atMs: item.atMs, durationMs: GRAPHIC_BAR_GROW_MS })
     }
   }
-  for (const key of scene.camera ?? []) {
-    motions.push({ atMs: key.atMs, durationMs: GRAPHIC_CAMERA_MOVE_MS })
+  // A key that keeps a resting camera at rest does not move it, so it is not change.
+  let atRest = true
+  for (const key of [...(scene.camera ?? [])].sort((a, b) => a.atMs - b.atMs)) {
+    const rest = cameraAtRest(key)
+    if (!(rest && atRest)) motions.push({ atMs: key.atMs, durationMs: GRAPHIC_CAMERA_MOVE_MS })
+    atRest = rest
   }
   return motions
 }

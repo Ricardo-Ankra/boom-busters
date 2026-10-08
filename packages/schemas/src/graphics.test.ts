@@ -573,7 +573,7 @@ describe('change, stillness and steps (decision 290)', () => {
       },
       { id: 'x', enter: { atMs: 14200 } },
     ],
-    camera: [{ atMs: 14200, focus: 'b' }],
+    camera: [{ atMs: 14200, focus: 'b', zoom: 1.15 }],
   }
 
   it('finds the dead air after the last entrance of a stage 1 graphic', () => {
@@ -595,6 +595,25 @@ describe('change, stillness and steps (decision 290)', () => {
     expect(graphicChangeTimes(staged)).toEqual([2300, 10900, 13700, 14200])
     // Moving until 2.9 s, then still until the second bar at 10.9 s.
     expect(longestStill(staged, 22300)).toEqual({ fromMs: 2900, toMs: 10900 })
+  })
+
+  it('counts a camera key as change only when it moves the camera', () => {
+    const one = { id: 'f', enter: { atMs: 0 } }
+    expect(graphicChangeTimes({ elements: [one], camera: [{ atMs: 3000, focus: 'all' }] })).toEqual(
+      [0],
+    )
+    expect(
+      graphicChangeTimes({ elements: [one], camera: [{ atMs: 3000, focus: 'f', zoom: 1 }] }),
+    ).toEqual([0])
+    expect(
+      graphicChangeTimes({
+        elements: [one],
+        camera: [
+          { atMs: 3000, focus: 'f', zoom: 1.2 },
+          { atMs: 6000, focus: 'all' },
+        ],
+      }),
+    ).toEqual([0, 3000, 6000])
   })
 
   it('is empty when something moves to the very end', () => {
