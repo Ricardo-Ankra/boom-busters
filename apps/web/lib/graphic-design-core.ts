@@ -65,8 +65,11 @@ export type GraphicCompleteFn = (
   options: { signal?: AbortSignal },
 ) => Promise<{ text: string }>
 
-/** The paragraphs a slot overlaps, and its words on the slot clock. */
-function slotNarration(
+/**
+ * The paragraphs a slot overlaps, and its words on the slot clock. Exported for
+ * the live harness's still measure (decision 290).
+ */
+export function slotNarration(
   context: GraphicDesignContext,
   slot: GraphicSlotTiming & { brief: GraphicBrief },
 ) {
