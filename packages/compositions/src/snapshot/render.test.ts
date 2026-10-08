@@ -28,6 +28,8 @@ const goldenDir = path.join(here, 'golden')
 
 interface SnapshotCase {
   id: string
+  /** The golden's name, when one composition is pinned at more than one frame. */
+  name?: string
   frame: number
   /** Text-heavy frames get more antialiasing headroom. */
   maxDiffRatio?: number
@@ -51,6 +53,34 @@ const CASES: SnapshotCase[] = [
   // element has entered and the figure has finished counting.
   { id: 'GraphicCardWide', frame: 45, maxDiffRatio: 0.06 },
   { id: 'GraphicCardTall', frame: 45, maxDiffRatio: 0.06 },
+  // Graphics that move with the narration (decision 290): one staged scene at
+  // three moments. 1.5 s: the first bar alone fills the width. 4 s: the second
+  // bar has grown, the first is a quarter, and the first title is about to
+  // leave. 8.5 s: the second title, the bars shifted to red, the camera in.
+  {
+    id: 'GraphicCardStagedWide',
+    name: 'GraphicCardStagedWide-1500ms',
+    frame: 45,
+    maxDiffRatio: 0.06,
+  },
+  {
+    id: 'GraphicCardStagedWide',
+    name: 'GraphicCardStagedWide-4000ms',
+    frame: 120,
+    maxDiffRatio: 0.06,
+  },
+  {
+    id: 'GraphicCardStagedWide',
+    name: 'GraphicCardStagedWide-8500ms',
+    frame: 255,
+    maxDiffRatio: 0.06,
+  },
+  {
+    id: 'GraphicCardStagedTall',
+    name: 'GraphicCardStagedTall-8500ms',
+    frame: 255,
+    maxDiffRatio: 0.06,
+  },
   // Frame 45 is 1.5 s in: the card has settled and the highlight's sweep has
   // finished (decision 284).
   { id: 'SocialPostWide', frame: 45, maxDiffRatio: 0.06 },
@@ -79,9 +109,10 @@ beforeAll(async () => {
 
 describe('composition snapshots', () => {
   for (const snapshot of CASES) {
-    it(`${snapshot.id} still matches its golden frame`, async () => {
+    const name = snapshot.name ?? snapshot.id
+    it(`${name} still matches its golden frame`, async () => {
       const composition = await selectComposition({ serveUrl, id: snapshot.id })
-      const output = path.join(outDir, `${snapshot.id}.png`)
+      const output = path.join(outDir, `${name}.png`)
       await renderStill({
         composition,
         serveUrl,
@@ -90,16 +121,15 @@ describe('composition snapshots', () => {
         scale: 0.25,
       })
 
-      const goldenPath = path.join(goldenDir, `${snapshot.id}.png`)
+      const goldenPath = path.join(goldenDir, `${name}.png`)
       if (process.env['REGEN_GOLDEN'] === '1') {
         copyFileSync(output, goldenPath)
         return
       }
 
-      expect(
-        existsSync(goldenPath),
-        `no golden for ${snapshot.id} — run REGEN_GOLDEN=1 pnpm test`,
-      ).toBe(true)
+      expect(existsSync(goldenPath), `no golden for ${name} — run REGEN_GOLDEN=1 pnpm test`).toBe(
+        true,
+      )
 
       const actual = PNG.sync.read(readFileSync(output))
       const golden = PNG.sync.read(readFileSync(goldenPath))
@@ -118,7 +148,7 @@ describe('composition snapshots', () => {
       const ratio = differing / (actual.width * actual.height)
       expect(
         ratio,
-        `${snapshot.id} differs from its golden by ${(ratio * 100).toFixed(2)}% of pixels`,
+        `${name} differs from its golden by ${(ratio * 100).toFixed(2)}% of pixels`,
       ).toBeLessThanOrEqual(snapshot.maxDiffRatio ?? 0.03)
     })
   }

@@ -24,7 +24,7 @@ import {
   FIXTURE_SHORT_TIMELINE,
   FIXTURE_TIMELINE,
 } from './fixtures/timeline'
-import { GRAPHIC_SCENE } from './fixtures/graphic'
+import { GRAPHIC_SCENE, GRAPHIC_STAGED_SCENE } from './fixtures/graphic'
 import { FIXTURE_IMAGE_SKYLINE } from './fixtures/media'
 import { msToFrames } from './lib/motion'
 
@@ -347,6 +347,30 @@ export function Root() {
         durationInFrames={120}
         {...TALL}
         defaultProps={{ payload: GRAPHIC_SCENE, brand: FIXTURE_BRAND }}
+      />
+
+      <Composition
+        id="GraphicCardStagedWide"
+        component={GraphicCard}
+        durationInFrames={270}
+        {...WIDE}
+        defaultProps={{
+          payload: GRAPHIC_STAGED_SCENE,
+          brand: FIXTURE_BRAND,
+          durationInFrames: 270,
+        }}
+      />
+
+      <Composition
+        id="GraphicCardStagedTall"
+        component={GraphicCard}
+        durationInFrames={270}
+        {...TALL}
+        defaultProps={{
+          payload: GRAPHIC_STAGED_SCENE,
+          brand: FIXTURE_BRAND,
+          durationInFrames: 270,
+        }}
       />
 
       <Composition
