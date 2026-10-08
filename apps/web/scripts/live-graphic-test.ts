@@ -27,7 +27,8 @@ import {
   ValidationError,
 } from '@boom-busters/schemas'
 import type { BrandKitTokens, GraphicBrief, GraphicScene } from '@boom-busters/schemas'
-import { designGraphicWith, loadGraphicContextFrom } from '@/lib/graphic-design-core'
+import { designGraphicWith, loadGraphicContextFrom, slotNarration } from '@/lib/graphic-design-core'
+import { stillOf } from '@/lib/live-graphic-still'
 import { BudgetExceeded, LiveBudget } from '@/lib/live-budget'
 import { parseLiveGraphicArgs } from '@/lib/live-graphic-args'
 import { refusalReasonOf } from '@/lib/live-graphic-refusal'
@@ -67,6 +68,8 @@ interface SlotRecord {
   before?: GraphicScene
   /** The scene the designer produced. */
   after?: GraphicScene
+  /** The designed scene's longest still stretch on the slot clock, and the words spoken in it (decision 290). */
+  still?: { fromMs: number; toMs: number; words: number }
   /** Why there is no `after`. */
   issue?: string
   skipped?: boolean
@@ -294,6 +297,17 @@ async function main(): Promise<void> {
         )
         if (result.ok) {
           record.after = result.scene
+          const timing = {
+            chapterId: slot.chapterId,
+            startMs: slot.startMs,
+            durationMs: slot.durationMs,
+            brief,
+          }
+          record.still = stillOf(
+            result.scene,
+            slot.durationMs,
+            slotNarration(context, timing).words,
+          )
         } else {
           record.issue = result.issue
         }
@@ -317,6 +331,13 @@ async function main(): Promise<void> {
     writeRun()
     console.log(outDir)
     console.log(`Total spent: $${budget.spentUsd.toFixed(4)}`)
+    for (const record of slots) {
+      if (!record.still) continue
+      const seconds = ((record.still.toMs - record.still.fromMs) / 1000).toFixed(1)
+      console.log(
+        `slot ${record.index}: longest still ${seconds} s of ${(record.durationMs / 1000).toFixed(1)} s, ${record.still.words} words spoken in it`,
+      )
+    }
   } catch (error) {
     // Anything that escapes the per-slot handling (the settings or slot load,
     // a missing key) must still leave a readable run.json behind.

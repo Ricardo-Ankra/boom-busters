@@ -6975,3 +6975,85 @@ boom-busters-broker`; merge and deploy to Vercel, then `PUT
      Left: the mock designer still lays out top heavy, start aligned scenes
      (mock mode only); a graphic citing a logo the library lacks shows its
      upload box, as before.
+290. **Graphics that move with the narration (stage 2 of 289)** (2026-10-08,
+     owner, having watched stage 1's graphics: dead air in long slots). In
+     the live runs, a 22.3 s graphic's bars wiped in at 10.9 s and nothing
+     moved for the next 10.8 s while the narrator said "Four times the
+     number from six months earlier."
+     Owner's rulings: staged builds (with exits, and bars that grow one at a
+     time), camera moves and timed emphasis; easing and duration per
+     entrance left out, since they do least for dead air; six elements on
+     screen at once and ten across the slot; bars rescale as each arrives;
+     the timing lives on each element plus a camera track on the scene; the
+     board shows the final frame and one small frame per step.
+     What shipped: every new field optional, so a stage 1 scene renders
+     frame for frame as before (every stage 1 golden unchanged). An element
+     may `exit` (fade, drop or wipe, 500 ms); `emphasis` keeps its word form
+     and gains a timed form, including `color`, which shifts the element to
+     another token over 400 ms (never a logo; a timed underline only on text
+     and figures); a bar item may grow at its own `atMs`, the scale easing up
+     to the largest bar on screen and never back down; the scene may carry a
+     `camera` of up to four keys (focus an element or `all`, zoom 1 to 1.6,
+     a 1.5 s move each, holding between), over the drift, its zoom capped so
+     the focus fits the safe area and its pan so the composition's edges never
+     enter the frame. One timing module (`graphic-timing.ts`) holds when each
+     element is on screen (entrance start to exit start, so a cross-fade is
+     not a collision) and the seven rules the designer is held to, worded for
+     its retry; the six-on-screen rule and the camera's focus are also schema
+     rules, so the timeline and broker enforce them. Layout reads time: a
+     step takes the cell the last one left, and in 9:16 elements never on
+     screen together share a band. The designer prompt teaches the
+     vocabulary, the rule that a graphic over about 8 s changes with each new
+     thing said, and a fourth example built in steps; its answer budget is
+     4,000 tokens. The mock builds a slot of 8 s or more in two steps. The
+     board draws any moment of a graphic and a frame per step ("At 0:04",
+     "End"), with clip ids of its own per drawing. Resolution, redesign and
+     Add logo keep the camera track. The live harness frames every change and
+     records each graphic's longest still stretch and the words spoken in it.
+     Decisions made where the spec left room: an exit's style replaces the
+     entrance's, since the checks finish the entrance first (cost if wrong: a
+     scene saved by some other path that exits mid-entrance jumps); a timed
+     bar's label and value fade in with its bar, an untimed one's keep the
+     element's entrance (cost if wrong: none for stage 1, whose bars are all
+     untimed); the step frames are taken 1 ms before each distinct exit time,
+     labelled by that time rounded to the second (cost if wrong: two exits
+     within a second share a label); the bars' scale keeps stage 1's floor of
+     1 (cost if wrong: values under 1 never fill the width alone).
+     From the final review: "all", and any camera key at zoom 1, frame the
+     composition as laid out, the zoom on "all" ignored rather than refused,
+     since a push on the whole frame put a figure under the captions and the
+     title off the top (cost if wrong: no gentle push on the whole frame; a
+     push needs an element); portrait bands keep reading order, an element
+     joining the band just after the last one holding an element it is on
+     screen with, so a caption arriving with a figure never sits above it
+     (spec 4.2 amended; cost if wrong: a staged portrait uses a little more
+     height); the dead-air measure counts a camera key only when it moves the
+     camera, and the harness frames a camera move at its end; the designer
+     prompt states every duration and limit the checks hold it to, the 180 ms
+     stagger included, and its fourth example no longer holds still for 8 s;
+     exits have unit tests of their own. Rolling the Vercel deploy back once
+     staged scenes are stored is not clean: the older app refuses a timed
+     emphasis or more than six elements and strips exits.
+     Shipping, in this order because the timeline schema changed (an older
+     broker refuses more than six elements and strips the new fields):
+     `deploy:remotion`, then `deploy:stacks boom-busters-broker`, then the
+     push to `master` and `PUT /api/inngest`.
+     The number 290 is checked against `origin/master` at the merge.
+     Follow-up, the live loop (2026-10-08, owner's go-ahead for one run, $1
+     cap, the stored production Anthropic key decrypted in memory and never
+     printed, production read only): `pnpm live:graphic --first 5
+     --redesign` on the Stability AI film, $0.14 in all, one call per
+     graphic, no refusals. Longest still stretch per graphic: 3.4 s of
+     6.9 s, 4.7 s of 12.1 s, 4.7 s of 22.3 s, 1.9 s of 12.2 s and 2.5 s of
+     10.8 s, all under the 6 s target; the same 22.3 s graphic sat still
+     for 10.8 s in stage 1. The designer used every new tool unprompted
+     beyond the rules: the 22.3 s graphic builds in three steps (the title,
+     then "Four times" on "Four" at 13.2 s, then "No profitability path" on
+     "profitability" at 17.9 s), grows its $4bn bar on "4" at 11.4 s while
+     the $1bn bar shrinks to a quarter, shifts the $4bn bar to the accent
+     colour, and pushes in then back out; the others push in on the figure
+     being said, underline the ledger line and pulse the $270M. A read-only
+     check of the slot's spoken words (owner's go-ahead) confirmed
+     "No profitability path had appeared in between" is narration, so every
+     word on screen traces to the narration or a cited claim. One run met
+     every target, so the prompt was left as the final review left it.

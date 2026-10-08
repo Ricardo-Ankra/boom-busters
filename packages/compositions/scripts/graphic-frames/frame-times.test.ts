@@ -30,4 +30,16 @@ describe('framesToRender', () => {
     expect(framesToRender(scene(3900), 4000)).toEqual([9, 119])
     expect(framesToRender(scene(0), 200)).toEqual([5])
   })
+
+  it('takes a frame after every change: exits, timed bars and camera moves too (decision 290)', () => {
+    const staged = {
+      elements: [
+        { id: 't', enter: { atMs: 0 }, exit: { atMs: 2000 } },
+        { id: 'b', enter: { atMs: 300 }, items: [{}, { atMs: 1000 }] },
+      ],
+      camera: [{ atMs: 2500, focus: 'b', zoom: 1.2 }],
+    }
+    // Changes at 0, 300, 1000 and 2000 ms each plus 700 ms; the camera move ends at 4000 ms.
+    expect(framesToRender(staged, 5000)).toEqual([9, 21, 30, 51, 81, 120, 149])
+  })
 })

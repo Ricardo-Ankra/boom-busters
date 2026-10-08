@@ -905,7 +905,8 @@ export function resolvePlannedScene(
       elements.push(element)
     }
   }
-  return { scene: { elements } }
+  // The camera track (decision 290) has no claim or logo in it to map.
+  return { scene: { ...(scene.camera ? { camera: scene.camera } : {}), elements } }
 }
 
 /** Every claim a scene's figures and bars cite, in scene order, each once. */
@@ -934,6 +935,7 @@ export function toPlannedScene(
 ): PlannedGraphicScene {
   const number = (id: string) => claimIds.indexOf(id) + 1
   return {
+    ...(scene.camera ? { camera: scene.camera } : {}),
     elements: scene.elements.map((element) => {
       if (element.kind === 'figure') return { ...element, claimRef: number(element.claimRef) }
       if (element.kind === 'bars') {

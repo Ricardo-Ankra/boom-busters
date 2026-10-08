@@ -788,7 +788,8 @@ export async function attachGraphicLogosAction(
     }
     return { ...element, assetId: logo.id }
   })
-  const brief = { ...parsed.data, scene: { elements } }
+  // Only the marks change; the camera track and anything else on the scene stay (decision 290).
+  const brief = { ...parsed.data, scene: { ...scene, elements } }
 
   await updateSlotBrief(db, slotId, brief)
   await setSlotResolution(

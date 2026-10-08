@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest'
+import { PlannedGraphicSceneSchema } from './graphics'
+import type { GraphicScene } from './graphics'
 import { newId } from './ids'
 import {
   ChartBriefSchema,
@@ -999,5 +1001,47 @@ describe('an undesigned graphic (decision 289)', () => {
       const undesigned = { type: 'graphic' as const, ...common, intent: 'old' }
       expect(keepGraphicDesign(undesigned, next)).toBe(next)
     })
+  })
+})
+
+describe('the camera track survives resolution and the redesign mapping (decision 290)', () => {
+  const planned = PlannedGraphicSceneSchema.parse({
+    elements: [
+      {
+        kind: 'text',
+        id: 't',
+        cell: { col: 0, row: 0, colSpan: 6, rowSpan: 2 },
+        content: 'Raised',
+        role: 'title',
+        color: 'textPrimary',
+        exit: { kind: 'fade', atMs: 3000 },
+      },
+      {
+        kind: 'text',
+        id: 'u',
+        cell: { col: 0, row: 0, colSpan: 6, rowSpan: 2 },
+        content: 'Then',
+        role: 'title',
+        color: 'textPrimary',
+        enter: { kind: 'fade', atMs: 3000 },
+      },
+    ],
+    camera: [{ atMs: 3500, focus: 'u', zoom: 1.2 }],
+  })
+
+  it('keeps the camera and the exits when a planned scene is resolved', () => {
+    expect(resolvePlannedScene(planned, [])).toEqual({ scene: planned })
+  })
+
+  it('keeps them when a stored scene goes back to the designer', () => {
+    expect(toPlannedScene(planned as unknown as GraphicScene, [])).toEqual(planned)
+  })
+
+  it('adds no camera to a scene that has none', () => {
+    const resolved = resolvePlannedScene({ elements: planned.elements }, [])
+    expect('scene' in resolved && 'camera' in resolved.scene).toBe(false)
+    expect('camera' in toPlannedScene({ elements: planned.elements } as GraphicScene, [])).toBe(
+      false,
+    )
   })
 })

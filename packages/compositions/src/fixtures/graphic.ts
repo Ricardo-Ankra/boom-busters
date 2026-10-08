@@ -79,3 +79,64 @@ export const GRAPHIC_SCENE: GraphicPayload = {
   },
   claimIds: ['01HQ00000000000000000000AA', '01HQ00000000000000000000AB'],
 }
+
+/** The staged fixture's slot: 9 s, 270 frames at 30 fps. */
+export const GRAPHIC_STAGED_DURATION_MS = 9000
+
+/**
+ * A graphic built in steps (decision 290), one of each new motion: a title
+ * that leaves and a second that takes its cell, bars that grow one at a time
+ * and rescale, a colour shift and a camera push. At 1.5 s the first bar fills
+ * the width alone; at 4 s the second has grown and the first is a quarter; at
+ * 8.5 s the second title is up, the bars are red and the camera is in.
+ */
+export const GRAPHIC_STAGED_SCENE: GraphicPayload = {
+  kind: 'graphic',
+  scene: {
+    elements: [
+      {
+        kind: 'text',
+        id: 't1',
+        cell: { col: 1, row: 2, colSpan: 10, rowSpan: 1 },
+        content: 'Valuation, on paper',
+        role: 'title',
+        color: 'textSecondary',
+        align: 'center',
+        enter: { kind: 'fade', atMs: 0 },
+        exit: { kind: 'fade', atMs: 4000 },
+      },
+      {
+        kind: 'text',
+        id: 't2',
+        cell: { col: 1, row: 2, colSpan: 10, rowSpan: 1 },
+        content: 'Four times in six months',
+        role: 'title',
+        color: 'textPrimary',
+        align: 'center',
+        enter: { kind: 'rise', atMs: 4500 },
+      },
+      {
+        kind: 'bars',
+        id: 'b1',
+        cell: { col: 1, row: 3, colSpan: 10, rowSpan: 5 },
+        color: 'series0',
+        highlightIndex: 1,
+        enter: { kind: 'wipe', atMs: 300 },
+        emphasis: { kind: 'color', atMs: 5500, to: 'collapse' },
+        items: [
+          { label: 'Oct 2022', value: 1, display: '$1bn', claimRef: '01HQ00000000000000000000AA' },
+          {
+            label: 'Sought, 2023',
+            value: 4,
+            display: '$4bn',
+            claimRef: '01HQ00000000000000000000AB',
+            atMs: 2000,
+          },
+        ],
+      },
+    ],
+    camera: [{ atMs: 6000, focus: 'b1', zoom: 1.25 }],
+  },
+  logos: {},
+  claimIds: ['01HQ00000000000000000000AA', '01HQ00000000000000000000AB'],
+}

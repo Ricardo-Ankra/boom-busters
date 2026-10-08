@@ -19,8 +19,8 @@ import {
 import {
   BudgetExceededError,
   graphicIntentOf,
-  lateEntranceIssue,
   resolvePlannedScene,
+  sceneTimingIssue,
   toPlannedScene,
   ValidationError,
 } from '@boom-busters/schemas'
@@ -65,8 +65,11 @@ export type GraphicCompleteFn = (
   options: { signal?: AbortSignal },
 ) => Promise<{ text: string }>
 
-/** The paragraphs a slot overlaps, and its words on the slot clock. */
-function slotNarration(
+/**
+ * The paragraphs a slot overlaps, and its words on the slot clock. Exported for
+ * the live harness's still measure (decision 290).
+ */
+export function slotNarration(
   context: GraphicDesignContext,
   slot: GraphicSlotTiming & { brief: GraphicBrief },
 ) {
@@ -93,7 +96,8 @@ export function sceneIssue(
   context: GraphicDesignContext,
   durationMs: number,
 ): { scene: GraphicScene } | { issue: string } {
-  const timing = lateEntranceIssue(scene, durationMs)
+  // Every timing rule (decision 290), stage 1's late entrance first.
+  const timing = sceneTimingIssue(scene, durationMs)
   if (timing !== null) return { issue: timing }
   return resolvePlannedScene(scene, context.claims, context.logos)
 }

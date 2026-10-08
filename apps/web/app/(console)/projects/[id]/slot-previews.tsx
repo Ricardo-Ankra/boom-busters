@@ -25,7 +25,19 @@ import {
   tokenColor,
   underlineBar,
 } from '@boom-busters/compositions/graphic'
-import { DEFAULT_SETTINGS, resolveBrandKit } from '@boom-busters/schemas'
+import {
+  colorTokenAt,
+  onScreenAt,
+  settledBarScale,
+} from '@boom-busters/compositions/graphic-motion'
+import {
+  barItemTimes,
+  DEFAULT_SETTINGS,
+  emphasisWindow,
+  graphicEnterTimes,
+  graphicExitTimes,
+  resolveBrandKit,
+} from '@boom-busters/schemas'
 import type {
   BrandKitStored,
   ChartBrief,
@@ -561,10 +573,13 @@ export function HeadlinePreview({
 const GRAPHIC_WIDTH = 480
 const GRAPHIC_HEIGHT = 270
 const GRAPHIC_FRAME = { width: GRAPHIC_WIDTH, height: GRAPHIC_HEIGHT }
+/** The end of any graphic: every entrance has happened and every exit is over. */
+const GRAPHIC_END_MS = Number.MAX_SAFE_INTEGER
 
 /**
- * The graphic preview (decision 268, Plan B): the resting frame, drawn from
- * the SAME geometry the render uses, `graphicLayout` and its sibling helpers
+ * The graphic preview (decision 268, Plan B): one moment of the graphic, the
+ * end unless `atMs` says otherwise (decision 290), drawn from the SAME
+ * geometry the render uses, `graphicLayout` and its sibling helpers
  * in `@boom-busters/compositions/graphic`, never recomputed here.
  * What the owner approves on the board has to be what the film shows, and
  * bars are the element most likely to carry the numbers a card is built
@@ -579,15 +594,26 @@ export function GraphicPreview({
   brief,
   brand,
   logoUrls,
+  atMs = GRAPHIC_END_MS,
+  label,
 }: {
   brief: DesignedGraphicBrief
   brand: BrandKitStored
   logoUrls: Readonly<Record<string, string>>
+  /** The moment drawn, from the slot's start; the end of the graphic by default. */
+  atMs?: number
+  /** The drawing's accessible name, when it is not the card's own thumbnail. */
+  label?: string
 }) {
   // The layout wants the resolved shape; `voice` is unused by a still preview.
   const brandTokens = resolveBrandKit({ ...DEFAULT_SETTINGS, brandKit: brand })
   const boxes = graphicLayout(brief.scene, GRAPHIC_FRAME, brandTokens)
   const byId = new Map(boxes.map((box) => [box.id, box]))
+  const visible = onScreenAt(brief.scene, atMs)
+  const enters = graphicEnterTimes(brief.scene)
+  // Clip ids are document-wide: a card draws one graphic more than once (decision 290),
+  // and two graphics can share an element id, so each drawing gets its own prefix.
+  const clipPrefix = React.useId().replace(/[^a-zA-Z0-9_-]/g, '')
   const { colors, typography } = brandTokens
   // The whole type role, not only its family (decision 283): the card draws in
   // the role's weight, tracking and case, and a preview in regular-weight mixed
@@ -603,13 +629,16 @@ export function GraphicPreview({
     <svg
       viewBox={`0 0 ${GRAPHIC_WIDTH} ${GRAPHIC_HEIGHT}`}
       role="img"
-      aria-label={`graphic: ${brief.coversText}`}
+      aria-label={label ?? `graphic: ${brief.coversText}`}
       className="w-full rounded-[8px]"
     >
       <rect x={0} y={0} width={GRAPHIC_WIDTH} height={GRAPHIC_HEIGHT} fill={colors.background} />
       {brief.scene.elements.map((element) => {
         const box = byId.get(element.id)
-        if (!box) return null
+        if (!box || !visible.has(element.id)) return null
+        const enterAt = enters.get(element.id) ?? 0
+        const emphasis = emphasisWindow(element.emphasis, enterAt)
+        const underlined = emphasis?.kind === 'underline' && emphasis.atMs <= atMs
 
         switch (element.kind) {
           case 'text': {
@@ -643,13 +672,13 @@ export function GraphicPreview({
               // shrinking at a legibility floor, so a long enough string still
               // outgrows its box; the card and this preview must then cut it off at
               // the same place, or the board shows a line the video does not.
-              <g key={element.id} clipPath={`url(#clip-${element.id})`}>
+              <g key={element.id} clipPath={`url(#${clipPrefix}-clip-${element.id})`}>
                 <defs>
-                  <clipPath id={`clip-${element.id}`}>
+                  <clipPath id={`${clipPrefix}-clip-${element.id}`}>
                     <rect x={box.x} y={box.y} width={box.w} height={box.h} />
                   </clipPath>
                 </defs>
-                {element.emphasis === 'underline'
+                {underlined
                   ? (() => {
                       const bar = underlineBar(fontPx, textWidth, 1, GRAPHIC_FRAME)
                       return (
@@ -668,7 +697,7 @@ export function GraphicPreview({
                   y={y}
                   fontSize={fontPx}
                   {...typeAttrs(element.role)}
-                  fill={tokenColor(element.color, brandTokens)}
+                  fill={tokenColor(colorTokenAt(element.color, emphasis, atMs), brandTokens)}
                   textAnchor={
                     element.align === 'center'
                       ? 'middle'
@@ -723,7 +752,7 @@ export function GraphicPreview({
                   : anchorX
             return (
               <g key={element.id}>
-                {element.emphasis === 'underline'
+                {underlined
                   ? (() => {
                       const bar = underlineBar(valueFontPx, valueWidth, 1, GRAPHIC_FRAME)
                       return (
@@ -742,7 +771,7 @@ export function GraphicPreview({
                   y={valueY}
                   fontSize={valueFontPx}
                   {...typeAttrs('numbers')}
-                  fill={tokenColor(element.color, brandTokens)}
+                  fill={tokenColor(colorTokenAt(element.color, emphasis, atMs), brandTokens)}
                   textAnchor={anchor}
                   dominantBaseline="middle"
                 >
@@ -806,7 +835,7 @@ export function GraphicPreview({
             )
           }
           case 'shape': {
-            const colour = tokenColor(element.color, brandTokens)
+            const colour = tokenColor(colorTokenAt(element.color, emphasis, atMs), brandTokens)
             if (element.form === 'rule') {
               const thickness = ruleThicknessPx(GRAPHIC_FRAME)
               return (
@@ -850,13 +879,23 @@ export function GraphicPreview({
             )
           }
           case 'bars': {
-            const max = Math.max(...element.items.map((item) => Math.abs(item.value)), 1)
+            // The bars grown by this moment, on the scale they settle at (decision 290).
+            const times = barItemTimes(element, enterAt)
+            const max = settledBarScale(
+              element.items.map((item, index) => ({
+                value: item.value,
+                atMs: times[index] ?? enterAt,
+              })),
+              atMs,
+            )
+            const litColour = tokenColor(colorTokenAt(element.color, emphasis, atMs), brandTokens)
             const { rowH, labelPx } = barsGeometry(box, element.items.length, GRAPHIC_FRAME)
             const gap = barsGapPx(GRAPHIC_FRAME)
             const labelWidth = box.w * 0.2
             return (
               <g key={element.id}>
                 {element.items.map((item, index) => {
+                  if ((times[index] ?? enterAt) > atMs) return null
                   const lit =
                     element.highlightIndex === undefined || element.highlightIndex === index
                   const barW = barLengthPx(box.w, Math.abs(item.value) / max)
@@ -879,7 +918,7 @@ export function GraphicPreview({
                         y={rowY + rowH * 0.25}
                         width={barW}
                         height={rowH * 0.5}
-                        fill={lit ? tokenColor(element.color, brandTokens) : colors.textSecondary}
+                        fill={lit ? litColour : colors.textSecondary}
                         fillOpacity={lit ? 1 : 0.5}
                       />
                       <text
@@ -901,5 +940,54 @@ export function GraphicPreview({
         }
       })}
     </svg>
+  )
+}
+
+/** A slot clock, as the board writes it elsewhere: 4000 is "0:04". */
+function clockOf(ms: number): string {
+  const total = Math.round(ms / 1000)
+  return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`
+}
+
+/**
+ * A graphic built in steps (decision 290): one small frame just before each
+ * moment something leaves, and one of the end, so every word and figure can
+ * be checked without pressing Play. Nothing at all for a graphic that never
+ * steps. The frames leave the camera out, so the whole composition shows.
+ */
+export function GraphicSteps({
+  brief,
+  brand,
+  logoUrls,
+}: {
+  brief: DesignedGraphicBrief
+  brand: BrandKitStored
+  logoUrls: Readonly<Record<string, string>>
+}) {
+  const exits = graphicExitTimes(brief.scene)
+  if (exits.length === 0) return null
+  const frames = [
+    ...exits.map((exitAt) => ({
+      key: String(exitAt),
+      atMs: exitAt - 1,
+      label: `At ${clockOf(exitAt)}`,
+    })),
+    { key: 'end', atMs: GRAPHIC_END_MS, label: 'End' },
+  ]
+  return (
+    <ul aria-label="Graphic steps" className="grid grid-cols-3 gap-1">
+      {frames.map((frame) => (
+        <li key={frame.key} className="flex flex-col gap-0.5">
+          <GraphicPreview
+            brief={brief}
+            brand={brand}
+            logoUrls={logoUrls}
+            atMs={frame.atMs}
+            label={`Step: ${frame.label}`}
+          />
+          <span className="text-[11px] text-[var(--color-text-secondary)]">{frame.label}</span>
+        </li>
+      ))}
+    </ul>
   )
 }

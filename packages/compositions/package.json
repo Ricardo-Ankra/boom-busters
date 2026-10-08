@@ -7,6 +7,7 @@
     ".": "./src/index.ts",
     "./chart": "./src/lib/chart.ts",
     "./graphic": "./src/lib/graphic.ts",
+    "./graphic-motion": "./src/lib/graphic-motion.ts",
     "./social": "./src/lib/social.ts",
     "./social-card": "./src/components/SocialPostCard.tsx",
     "./geo": "./src/geo/index.ts",

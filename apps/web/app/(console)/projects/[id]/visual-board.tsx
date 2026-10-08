@@ -97,6 +97,7 @@ import {
   ChartErrorCard,
   ChartPreview,
   GraphicPreview,
+  GraphicSteps,
   HeadlinePreview,
   MapPreview,
   type BrandChartColors,
@@ -1254,7 +1255,10 @@ function GraphicSlot({
     <div className="flex flex-col gap-2">
       {scene ? (
         playing ? null : (
-          <GraphicPreview brief={{ ...brief, scene }} brand={brand} logoUrls={slot.logoUrls} />
+          <>
+            <GraphicPreview brief={{ ...brief, scene }} brand={brand} logoUrls={slot.logoUrls} />
+            <GraphicSteps brief={{ ...brief, scene }} brand={brand} logoUrls={slot.logoUrls} />
+          </>
         )
       ) : redesigning ? null : brief.designIssue ? (
         // Persistent state, not an event: no role, so a board of undesigned

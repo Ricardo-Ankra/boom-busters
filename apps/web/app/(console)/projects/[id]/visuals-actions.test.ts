@@ -683,6 +683,53 @@ describeDb('attaching an uploaded mark to a waiting graphic (decision 268, Plan 
     expect(brief.scene.elements[0]?.assetId).toBeUndefined()
   })
 
+  it('keeps the camera track when it writes the asset id back (decision 290)', async () => {
+    const brief: ShotBrief = {
+      type: 'graphic',
+      coversText: 'Four.',
+      description: 'a graphic',
+      motion: { kind: 'static' },
+      transition: 'cut',
+      scene: {
+        elements: [
+          {
+            kind: 'logo',
+            id: 'l1',
+            cell: { col: 0, row: 0, colSpan: 4, rowSpan: 4 },
+            enter: { kind: 'fade', atMs: 0 },
+            entity: 'Wirecard AG',
+          },
+        ],
+        camera: [{ atMs: 1000, focus: 'l1', zoom: 1.2 }],
+      },
+    }
+    await replaceShotList(db, FIXTURE_PROJECT_ID, [
+      { chapterId, index: 0, type: 'graphic', brief, startMs: 0, durationMs: 6000 },
+    ])
+    const [slot] = await listShotSlots(db, FIXTURE_PROJECT_ID)
+    await setSlotResolution(db, slot!.id, { status: 'placeholder', candidates: [] })
+    await db
+      .insert(assets)
+      .values({
+        id: '01HQ00000000000000000000M1',
+        kind: 'logo',
+        r2Key: 'boom-busters/logos/wirecard.png',
+        contentHash: 'fixture-logo-wirecard-ag',
+        licence: 'Uploaded by owner',
+        title: 'Wirecard AG',
+        width: 200,
+        height: 200,
+      })
+      .onConflictDoNothing()
+
+    expect(await attachGraphicLogosAction(FIXTURE_PROJECT_ID, slot!.id)).toEqual({ ok: true })
+
+    const stored = (await getShotSlot(db, slot!.id))!.brief as unknown as {
+      scene: { camera?: unknown }
+    }
+    expect(stored.scene.camera).toEqual([{ atMs: 1000, focus: 'l1', zoom: 1.2 }])
+  })
+
   // Decision 289: a graphic's intent is the owner's to reword.
   it('stores an edited intent on a graphic, and keeps its scene', async () => {
     const slotId = await seedGraphicSlot('Wirecard AG')

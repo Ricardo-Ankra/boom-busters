@@ -1,5 +1,12 @@
-import { canonicalTimelineIssues, timelineDurationMs, TimelineSchema } from '@boom-busters/schemas'
+import {
+  canonicalTimelineIssues,
+  GraphicPayloadSchema,
+  sceneTimingIssue,
+  timelineDurationMs,
+  TimelineSchema,
+} from '@boom-busters/schemas'
 import { describe, expect, it } from 'vitest'
+import { GRAPHIC_STAGED_DURATION_MS, GRAPHIC_STAGED_SCENE } from './graphic'
 import { FIXTURE_AUDIO_SILENCE, FIXTURE_IMAGE_SKYLINE } from './media'
 import { FIXTURE_SHORT_TIMELINE, FIXTURE_TIMELINE, renderFixtureTimeline } from './timeline'
 
@@ -58,5 +65,12 @@ describe('fixture media', () => {
     expect(FIXTURE_AUDIO_SILENCE.startsWith('data:audio/wav;base64,')).toBe(true)
     // A whole second of silence, so Studio playback has something to play.
     expect(FIXTURE_AUDIO_SILENCE.length).toBeGreaterThan(10_000)
+  })
+})
+
+describe('the staged graphic fixture (decision 290)', () => {
+  it('is a valid payload that passes every timing rule for its slot', () => {
+    const parsed = GraphicPayloadSchema.parse(JSON.parse(JSON.stringify(GRAPHIC_STAGED_SCENE)))
+    expect(sceneTimingIssue(parsed.scene, GRAPHIC_STAGED_DURATION_MS)).toBeNull()
   })
 })
