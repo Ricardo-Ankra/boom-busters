@@ -1,6 +1,7 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 import {
+  barLengthPx,
   barsGeometry,
   figureLabelBasePx,
   graphicLayout,
@@ -9,7 +10,7 @@ import {
 } from '@boom-busters/compositions/graphic'
 import { DEFAULT_SETTINGS, resolveBrandKit } from '@boom-busters/schemas'
 import type { ChartBrief, MapBrief } from '@boom-busters/schemas'
-import { ChartPreview, GraphicPreview, MapPreview } from './slot-previews'
+import { ChartPreview, GraphicPreview, GraphicSteps, MapPreview } from './slot-previews'
 import type { DesignedGraphicBrief } from './slot-previews'
 import type { BrandChartColors } from './slot-previews'
 
@@ -444,5 +445,108 @@ describe('GraphicPreview', () => {
     expect(ellipse).not.toBeNull()
     expect(ellipse).toHaveAttribute('rx', String(discBox.w / 2))
     expect(ellipse).toHaveAttribute('ry', String(discBox.h / 2))
+  })
+})
+
+describe('a graphic built in steps (decision 290)', () => {
+  const staged: DesignedGraphicBrief = {
+    type: 'graphic',
+    coversText: 'It was worth one billion, then four.',
+    description: 'Two steps.',
+    motion: { kind: 'static' },
+    transition: 'cut',
+    scene: {
+      elements: [
+        {
+          kind: 'text',
+          id: 't1',
+          cell: { col: 0, row: 0, colSpan: 12, rowSpan: 2 },
+          content: 'On paper',
+          role: 'title',
+          color: 'textSecondary',
+          align: 'start',
+          enter: { kind: 'fade', atMs: 0 },
+          exit: { kind: 'fade', atMs: 4000 },
+        },
+        {
+          kind: 'text',
+          id: 't2',
+          cell: { col: 0, row: 0, colSpan: 12, rowSpan: 2 },
+          content: 'Four times',
+          role: 'title',
+          color: 'textPrimary',
+          align: 'start',
+          enter: { kind: 'rise', atMs: 4500 },
+          emphasis: { kind: 'color', atMs: 6000, to: 'collapse' },
+        },
+        {
+          kind: 'bars',
+          id: 'b1',
+          cell: { col: 0, row: 3, colSpan: 12, rowSpan: 4 },
+          color: 'series0',
+          enter: { kind: 'fade', atMs: 300 },
+          items: [
+            { label: 'then', value: 1, display: '$1bn', claimRef: CLAIM },
+            { label: 'later', value: 4, display: '$4bn', claimRef: CLAIM, atMs: 2000 },
+          ],
+        },
+      ],
+    },
+  }
+  const tokens = resolveBrandKit(DEFAULT_SETTINGS)
+  const barsBox = graphicLayout(staged.scene, GRAPHIC_FRAME, tokens).find((b) => b.id === 'b1')!
+  const barWidth = (display: string) =>
+    Number(screen.getByText(display).previousElementSibling?.getAttribute('width'))
+
+  it('draws the end by default: what stays, every bar on the final scale, colours after their shift', () => {
+    render(<GraphicPreview brief={staged} brand={DEFAULT_SETTINGS.brandKit} logoUrls={{}} />)
+    expect(screen.queryByText('On paper')).toBeNull()
+    expect(screen.getByText('Four times')).toHaveAttribute('fill', tokens.colors.semantic.collapse)
+    expect(barWidth('$1bn')).toBeCloseTo(barLengthPx(barsBox.w, 1 / 4))
+    expect(barWidth('$4bn')).toBeCloseTo(barLengthPx(barsBox.w, 1))
+  })
+
+  it('draws an earlier moment: who is on screen then, the bars grown by then, on their scale then', () => {
+    render(
+      <GraphicPreview brief={staged} brand={DEFAULT_SETTINGS.brandKit} logoUrls={{}} atMs={1000} />,
+    )
+    expect(screen.getByText('On paper')).toBeInTheDocument()
+    expect(screen.queryByText('Four times')).toBeNull()
+    expect(screen.queryByText('$4bn')).toBeNull()
+    // Alone, the first bar is the full length.
+    expect(barWidth('$1bn')).toBeCloseTo(barLengthPx(barsBox.w, 1))
+  })
+
+  it('shows a frame per step, labelled by time, and nothing for a graphic that never steps', () => {
+    render(<GraphicSteps brief={staged} brand={DEFAULT_SETTINGS.brandKit} logoUrls={{}} />)
+    const list = screen.getByRole('list', { name: 'Graphic steps' })
+    expect(
+      within(list)
+        .getAllByRole('img')
+        .map((img) => img.getAttribute('aria-label')),
+    ).toEqual(['Step: At 0:04', 'Step: End'])
+    expect(within(list).getAllByText('On paper')).toHaveLength(1)
+
+    const { container } = render(
+      <GraphicSteps brief={graphicBrief} brand={DEFAULT_SETTINGS.brandKit} logoUrls={{}} />,
+    )
+    expect(container).toBeEmptyDOMElement()
+  })
+
+  it('gives every drawing its own clip ids, so two frames of one graphic never share one', () => {
+    const { container } = render(
+      <>
+        <GraphicPreview brief={staged} brand={DEFAULT_SETTINGS.brandKit} logoUrls={{}} />
+        <GraphicPreview
+          brief={staged}
+          brand={DEFAULT_SETTINGS.brandKit}
+          logoUrls={{}}
+          atMs={1000}
+        />
+      </>,
+    )
+    const ids = [...container.querySelectorAll('clipPath')].map((clip) => clip.id)
+    expect(ids.length).toBeGreaterThan(1)
+    expect(new Set(ids).size).toBe(ids.length)
   })
 })
