@@ -284,6 +284,16 @@ describe('designGraphic (decision 289)', () => {
     expect(result.ok).toBe(true)
     expect(callLlm).not.toHaveBeenCalled()
   })
+
+  it('designs a long slot in two steps in mock mode, through the same checks (decision 290)', async () => {
+    mock = true
+    const result = await designGraphic(CONTEXT, { ...SLOT, durationMs: 12_000 })
+    expect(callLlm).not.toHaveBeenCalled()
+    expect(result).toMatchObject({
+      ok: true,
+      scene: { camera: [{ atMs: 6500, focus: 'f1', zoom: 1.2 }] },
+    })
+  })
 })
 
 describe('withDesign', () => {

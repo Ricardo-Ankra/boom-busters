@@ -1,8 +1,10 @@
 import {
   figureDigitGroups,
   GRAPHIC_COLORS,
-  GRAPHIC_TYPE_ROLES,
+  GRAPHIC_EXIT_MS,
   GRAPHIC_MAX_ON_SCREEN,
+  GRAPHIC_TYPE_ROLES,
+  MAX_GRAPHIC_ELEMENTS,
   PlannedGraphicSceneSchema,
   ValidationError,
 } from '@boom-busters/schemas'
@@ -22,8 +24,8 @@ import { outputBudget, type LLMTaskRequest } from '../llm/types'
  * for its own slot message only.
  */
 
-/** A scene of six elements is well under this; the rest is the model's room to think. */
-export const GRAPHIC_ANSWER_TOKENS = 3000
+/** A scene of ten elements and a camera track is well under this; the rest is the model's room to think. */
+export const GRAPHIC_ANSWER_TOKENS = 4000
 
 export interface SlotWord {
   text: string
@@ -56,12 +58,13 @@ const SYSTEM = `You design ONE motion graphic for a documentary about a corporat
 The narration is recorded. You decide what is on screen, where, and when each
 piece enters, so the graphic lands the beat the narrator is speaking.
 
-Return JSON only: {"scene": {"elements": [element, ...]}}.
+Return JSON only: {"scene": {"elements": [element, ...], "camera"?: [key, ...]}}.
 
 Design rules:
 - One idea per graphic. One element dominates (usually the figure); everything
   else supports it. A viewer gets it in the first second.
-- Fewer elements beat more. ${GRAPHIC_MAX_ON_SCREEN} is the ceiling, not the target; two or three is common.
+- Fewer elements beat more. Two or three on screen at once is common;
+  ${GRAPHIC_MAX_ON_SCREEN} on screen at once is the ceiling, and ${MAX_GRAPHIC_ELEMENTS} across the whole slot.
 - Size follows role. A figure's value grows to fill its box (it can be very
   large); a text's size is set by its role. Give the dominant element the most
   room; a figure box 6 to 10 columns wide and 3 to 5 rows tall reads as the hero.
@@ -89,6 +92,27 @@ Design rules:
   when; a figure should land as its number is said, a logo as its name is
   said. An element enters by "atMs" from the slot's start. An entrance may
   start at any time up to 600 ms before the slot ends, so it can finish.
+- Keep a long graphic moving with the narration. A graphic on screen for more
+  than about 8 s changes each time the words bring something new: an element
+  enters or leaves, a bar grows, a colour shifts, or the camera moves. A long
+  stretch where nothing changes while the narrator keeps talking is the
+  failure to avoid.
+- Build in steps. A step makes way for the next rather than piling up: give
+  what the narration has finished with an "exit", and let the next element
+  take its cell. Bars can arrive one at a time, each as its amount is named
+  (an "atMs" on the item); the scale rescales as a bigger bar grows in.
+- Move the camera to what is being said, never at random: push in on the
+  element the narrator is talking about, or back out to "all". The camera
+  rests on an element only while that element is on screen.
+- Motion earns its place like everything else: one change for each new thing
+  said, never motion for its own sake.
+- Timing limits, all from the slot's start: an exit starts once its element's
+  entrance (600 ms) and emphasis have finished, and its ${GRAPHIC_EXIT_MS} ms end by the slot's
+  end; a timed emphasis starts after its element's entrance has finished; a
+  bar's own "atMs" falls while its element is on screen, and at least one bar
+  grows with the entrance; camera keys run in order, at least 1.5 s apart, and
+  each move ends by the slot's end; and when anything leaves, at least one
+  element that is not a shape stays to the end.
 - A figure "count"s up only when the number itself is the story.
 - Two or three amounts compared read better as "bars" than as figures side by side.
 - A logo earns its place when the company or person is the subject, not
@@ -106,19 +130,24 @@ Design rules:
 
 Elements:
 {"kind": "text", "id", "cell", "content" (max 120 chars), "role": ${GRAPHIC_TYPE_ROLES.map((r) => `"${r}"`).join('|')},
- "color", "align"?: "start"|"center"|"end", "enter"?, "emphasis"?}
+ "color", "align"?: "start"|"center"|"end", "enter"?, "exit"?, "emphasis"?}
 {"kind": "figure", "id", "cell", "value" (exactly what is shown, e.g. "$4bn"), "label"?,
- "claimRef": claim number, "color", "align"?: "start"|"center"|"end", "enter"?, "emphasis"?}
-{"kind": "logo", "id", "cell", "entity": the exact name, "enter"?}
-{"kind": "shape", "id", "cell", "form": "rect"|"rule"|"disc", "color", "opacity"?: 0.05-1}
-{"kind": "bars", "id", "cell", "items": [{"label", "value": number, "display", "claimRef": claim number}] (2 to 5),
- "color", "highlightIndex"?}
+ "claimRef": claim number, "color", "align"?: "start"|"center"|"end", "enter"?, "exit"?, "emphasis"?}
+{"kind": "logo", "id", "cell", "entity": the exact name, "enter"?, "exit"?, "emphasis"? (a pulse only)}
+{"kind": "shape", "id", "cell", "form": "rect"|"rule"|"disc", "color", "opacity"?: 0.05-1, "exit"?, "emphasis"?}
+{"kind": "bars", "id", "cell", "items": [{"label", "value": number, "display", "claimRef": claim number, "atMs"?}] (2 to 5),
+ "color", "highlightIndex"?, "enter"?, "exit"?, "emphasis"?}
 "cell" is {"col", "row", "colSpan", "rowSpan"} on a 12 by 12 grid (0-based).
 "portraitCell" (optional, same shape) places the element on the 9:16 Shorts
 frame; leave it out to let the layout stack elements in reading order.
 "color" is one of ${GRAPHIC_COLORS.join(', ')}.
-"enter" is {"kind": "fade"|"rise"|"wipe"|"count", "atMs"} ("count" only on a figure).
-"emphasis" is "pulse"|"underline". Ids are unique; one logo per entity.
+"enter" is {"kind": "fade"|"rise"|"wipe"|"count", "atMs"} ("count" only on a figure); an entrance takes 600 ms.
+"exit" is {"kind": "fade"|"drop"|"wipe", "atMs"}: the element leaves, taking ${GRAPHIC_EXIT_MS} ms. Leave it out and the element stays to the end.
+"emphasis" is "pulse"|"underline" (just after the entrance), or
+ {"kind": "pulse"|"underline"|"color", "atMs", "to"?} at a time you choose. "color" shifts the element to the colour "to" names and keeps it; never on a logo. "underline" only on a text or a figure.
+A bar item's "atMs" is when that bar grows in (700 ms), with its label and value; leave it out and it grows with the element.
+"camera" (optional, on the scene) is up to 4 keys {"atMs", "focus": an element id or "all", "zoom": 1 to 1.6}; each starts a 1.5 s move to frame its focus, then holds.
+Ids are unique; one logo per entity.
 
 Example, a single number that is the story (one centred column; no portraitCell needed):
 {"scene": {"elements": [
@@ -134,7 +163,14 @@ Example, a relationship between named marks (side by side in 16:9, stacked in 9:
 {"scene": {"elements": [
  {"kind": "logo", "id": "a", "cell": {"col": 1, "row": 3, "colSpan": 4, "rowSpan": 4}, "portraitCell": {"col": 2, "row": 2, "colSpan": 8, "rowSpan": 3}, "entity": "Acme", "enter": {"kind": "fade", "atMs": 0}},
  {"kind": "logo", "id": "b", "cell": {"col": 7, "row": 3, "colSpan": 4, "rowSpan": 4}, "portraitCell": {"col": 2, "row": 5, "colSpan": 8, "rowSpan": 3}, "entity": "Rival", "enter": {"kind": "fade", "atMs": 1400}},
- {"kind": "text", "id": "t", "cell": {"col": 1, "row": 8, "colSpan": 10, "rowSpan": 1}, "portraitCell": {"col": 1, "row": 9, "colSpan": 10, "rowSpan": 1}, "content": "Bought for $900m", "role": "body", "color": "textPrimary", "align": "center", "enter": {"kind": "rise", "atMs": 2200}}]}}`
+ {"kind": "text", "id": "t", "cell": {"col": 1, "row": 8, "colSpan": 10, "rowSpan": 1}, "portraitCell": {"col": 1, "row": 9, "colSpan": 10, "rowSpan": 1}, "content": "Bought for $900m", "role": "body", "color": "textPrimary", "align": "center", "enter": {"kind": "rise", "atMs": 2200}}]}}
+
+Example, a long slot built in steps (22.3 s; "1 billion" said at 2.3 s, "4 billion" at 10.9 s, "Four times" at 14.2 s):
+{"scene": {"elements": [
+ {"kind": "text", "id": "t", "cell": {"col": 1, "row": 3, "colSpan": 10, "rowSpan": 1}, "content": "Stability AI valuation", "role": "title", "color": "textSecondary", "align": "center", "enter": {"kind": "fade", "atMs": 2300}, "exit": {"kind": "fade", "atMs": 13700}},
+ {"kind": "text", "id": "x", "cell": {"col": 1, "row": 3, "colSpan": 10, "rowSpan": 1}, "content": "Four times", "role": "title", "color": "accent", "align": "center", "enter": {"kind": "rise", "atMs": 14200}},
+ {"kind": "bars", "id": "b", "cell": {"col": 1, "row": 4, "colSpan": 10, "rowSpan": 5}, "items": [{"label": "Oct 2022", "value": 1, "display": "$1bn", "claimRef": 5}, {"label": "Sought, 2023", "value": 4, "display": "$4bn", "claimRef": 6, "atMs": 10900}], "color": "series0", "highlightIndex": 1, "enter": {"kind": "wipe", "atMs": 2300}, "emphasis": {"kind": "color", "atMs": 14200, "to": "accent"}}],
+ "camera": [{"atMs": 14200, "focus": "b", "zoom": 1.15}]}}`
 
 const seconds = (ms: number) => `${(ms / 1000).toFixed(1)} s`
 
@@ -223,7 +259,16 @@ export function estimatedWords(coversText: string, durationMs: number): SlotWord
   return words.map((text, at) => ({ text, offsetMs: Math.round(at * step) }))
 }
 
-/** Deterministic design for MOCK_PROVIDERS=1: the figure's digits truly come from the cited claim. */
+/** The shortest slot the mock builds in two steps (decision 290). */
+export const MOCK_STAGED_MIN_MS = 8000
+
+/**
+ * Deterministic design for MOCK_PROVIDERS=1: the figure's digits truly come
+ * from the cited claim. A slot of 8 s or more is built in two steps (decision
+ * 290): halfway through, the title leaves, a second line takes its cell, and
+ * the camera pushes in on the figure, so tests and e2e see a staged graphic
+ * without spending.
+ */
 export function mockGraphicScene(input: {
   claimTexts: readonly string[]
   intentRefs: readonly number[]
@@ -242,19 +287,39 @@ export function mockGraphicScene(input: {
     ? `[mock] Redesigned: ${input.guidance}`.slice(0, 120)
     : '[mock] Raised in one round'
   const logoTitle = input.logoTitles?.[0]
+  const hasFigure = ref !== undefined && digits !== undefined
+  const titleCell = { col: 0, row: 0, colSpan: 7, rowSpan: 2 }
+  const staged = input.durationMs >= MOCK_STAGED_MIN_MS
+  const half = Math.floor(input.durationMs / 2)
+  const stepTwoAt = half + GRAPHIC_EXIT_MS
   return {
     elements: [
       {
         kind: 'text',
         id: 't1',
-        cell: { col: 0, row: 0, colSpan: 7, rowSpan: 2 },
+        cell: titleCell,
         content: title,
         role: 'title',
         color: 'textSecondary',
         align: 'start',
         enter: { kind: 'fade', atMs: 0 },
+        ...(staged ? { exit: { kind: 'fade' as const, atMs: half } } : {}),
       },
-      ...(ref && digits !== undefined
+      ...(staged
+        ? [
+            {
+              kind: 'text' as const,
+              id: 't2',
+              cell: titleCell,
+              content: '[mock] Then the next step',
+              role: 'title' as const,
+              color: 'textSecondary' as const,
+              align: 'start' as const,
+              enter: { kind: 'rise' as const, atMs: stepTwoAt },
+            },
+          ]
+        : []),
+      ...(hasFigure
         ? [
             {
               kind: 'figure' as const,
@@ -279,5 +344,6 @@ export function mockGraphicScene(input: {
           ]
         : []),
     ],
+    ...(staged && hasFigure ? { camera: [{ atMs: stepTwoAt, focus: 'f1', zoom: 1.2 }] } : {}),
   } as PlannedGraphicScene
 }

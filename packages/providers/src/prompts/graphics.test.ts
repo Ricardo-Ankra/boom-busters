@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { ValidationError } from '@boom-busters/schemas'
+import { PlannedGraphicSceneSchema, sceneTimingIssue, ValidationError } from '@boom-busters/schemas'
 import {
   buildGraphicRequest,
   estimatedWords,
   GRAPHIC_ANSWER_TOKENS,
+  MOCK_STAGED_MIN_MS,
   mockGraphicScene,
   parseGraphicScene,
   wordsInSlot,
@@ -94,14 +95,15 @@ describe('the designer rules (decision 289, round 3)', () => {
     expect(`${lines[at]} ${lines[at + 1]}`).toContain('"align"?: "start"|"center"|"end"')
   })
 
-  it('shows three worked examples that parse, are vertically centred on the 12-row grid, and apply the rules', () => {
+  it('shows four worked examples that parse, are vertically centred on the 12-row grid, and pass the timing rules in a 22.3 s slot', () => {
     const examples = system
       .split('Example,')
       .slice(1)
       .map((block) => block.slice(block.indexOf('\n') + 1).trim())
-    expect(examples).toHaveLength(3)
+    expect(examples).toHaveLength(4)
     for (const example of examples) {
       const scene = parseGraphicScene(example)
+      expect(sceneTimingIssue(scene, 22_300)).toBeNull()
       // Landscape cells, then the portrait cells where an element has one.
       const placements = [
         scene.elements.map((element) => element.cell),
@@ -255,5 +257,65 @@ describe('mockGraphicScene', () => {
       guidance: 'bigger',
     })
     expect(steered).not.toEqual(plain)
+  })
+})
+
+describe('the motion vocabulary in the prompt (decision 290)', () => {
+  const system = buildGraphicRequest(input()).system
+  const rules = system.replace(/\s+/g, ' ')
+
+  it('states the limits and teaches exits, timed emphasis, timed bars and the camera', () => {
+    expect(rules).toContain('6 on screen at once is the ceiling, and 10 across the whole slot')
+    expect(rules).toContain(
+      'A graphic on screen for more than about 8 s changes each time the words bring something new',
+    )
+    expect(rules).toContain('A step makes way for the next rather than piling up')
+    expect(rules).toContain('Move the camera to what is being said, never at random')
+    expect(rules).toContain('"exit" is {"kind": "fade"|"drop"|"wipe", "atMs"}')
+    expect(rules).toContain(
+      '{"kind": "pulse"|"underline"|"color", "atMs", "to"?} at a time you choose',
+    )
+    expect(rules).toContain('A bar item\'s "atMs" is when that bar grows in')
+    expect(rules).toContain('"camera" (optional, on the scene) is up to 4 keys')
+    expect(rules).toContain('at least one bar grows with the entrance')
+  })
+
+  it('shows a long slot built in steps as its fourth example', () => {
+    const last = system.split('Example,').at(-1)!
+    const scene = parseGraphicScene(last.slice(last.indexOf('\n') + 1).trim())
+    expect(scene.elements.some((element) => element.exit)).toBe(true)
+    expect(scene.camera).toHaveLength(1)
+  })
+
+  it('gives the answer more room for a longer scene', () => {
+    expect(GRAPHIC_ANSWER_TOKENS).toBe(4000)
+  })
+})
+
+describe('mockGraphicScene in steps (decision 290)', () => {
+  it('builds a long slot in two steps that pass the timing rules', () => {
+    const scene = mockGraphicScene({
+      claimTexts: CLAIMS.map((c) => c.text),
+      intentRefs: [1],
+      logoTitles: ['Acme'],
+      durationMs: 12_000,
+    })
+    expect(scene.elements.map((element) => element.id)).toEqual(['t1', 't2', 'f1', 'l1'])
+    expect(scene.elements[0]).toMatchObject({ exit: { kind: 'fade', atMs: 6000 } })
+    expect(scene.elements[1]).toMatchObject({
+      cell: scene.elements[0]!.cell,
+      enter: { kind: 'rise', atMs: 6500 },
+    })
+    expect(scene.camera).toEqual([{ atMs: 6500, focus: 'f1', zoom: 1.2 }])
+    expect(PlannedGraphicSceneSchema.safeParse(scene).success).toBe(true)
+    expect(sceneTimingIssue(scene, 12_000)).toBeNull()
+  })
+
+  it('keeps a slot under 8 s to one step, as before', () => {
+    expect(MOCK_STAGED_MIN_MS).toBe(8000)
+    const scene = mockGraphicScene({ claimTexts: ['4 billion'], intentRefs: [1], durationMs: 6000 })
+    expect(scene.elements.some((element) => element.exit)).toBe(false)
+    expect(scene.camera).toBeUndefined()
+    expect(sceneTimingIssue(scene, 6000)).toBeNull()
   })
 })
