@@ -13,6 +13,7 @@ const actions = vi.hoisted(() => ({
   finaliseCastPhotoAction: vi.fn(),
   removeCastPhotoAction: vi.fn(),
   describeCastMemberAction: vi.fn(),
+  restoreCastFromBookAction: vi.fn(),
 }))
 vi.mock('./cast-actions', () => actions)
 
@@ -74,6 +75,32 @@ beforeEach(() => {
 })
 
 describe('CastCard', () => {
+  it('offers to restore the people the book still names after they were removed (decision 291)', async () => {
+    render(
+      <CastCard
+        projectId={PROJECT}
+        members={[]}
+        photoUrls={{}}
+        restorable={['Emad Mostaque', 'Prem Akkaraju']}
+      />,
+    )
+    expect(
+      screen.getByText("Removed, but still in the Director's Book: Emad Mostaque, Prem Akkaraju."),
+    ).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Restore 2 from the book' }))
+    expect(actions.restoreCastFromBookAction).toHaveBeenCalledWith(PROJECT)
+    await waitFor(() =>
+      expect(toast).toHaveBeenCalledWith({
+        title: 'Restored 2 from the book. Press Re-plan shot list for the plan to use them.',
+      }),
+    )
+  })
+
+  it('offers no restore when the book names no one removed', () => {
+    render(<CastCard projectId={PROJECT} members={[emad]} photoUrls={{}} restorable={[]} />)
+    expect(screen.queryByRole('button', { name: /from the book/ })).not.toBeInTheDocument()
+  })
+
   it('collapses to faces and names, and opens for editing', async () => {
     render(<CastCard projectId={PROJECT} members={[emad]} photoUrls={{ aaa: 'https://img/aaa' }} />)
     const list = screen.getByRole('list', { name: 'Cast members' })

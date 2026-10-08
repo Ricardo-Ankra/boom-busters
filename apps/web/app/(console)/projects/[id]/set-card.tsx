@@ -16,6 +16,7 @@ import {
   addSetAction,
   addSetPlateFromUrlAction,
   buildSetSheetAction,
+  restoreSetsFromBookAction,
   chooseSetPlateAction,
   createSetPlateUploadAction,
   finaliseSetPlateAction,
@@ -87,6 +88,8 @@ export interface SetCardProps {
   viewEstimatesUsd?: Readonly<Record<string, number>>
   /** What "Build the set" will spend on the routed set-sheet model, in USD (decision 275). */
   sheetEstimateUsd?: number
+  /** Sets removed that the Director's Book still names (decision 291). */
+  restorable?: readonly string[]
 }
 
 /** `run` results a wider shape than `ActionResult` can carry, such as the candidates a generate call returns. */
@@ -109,6 +112,7 @@ export function SetCard({
   plateEstimateUsd,
   viewEstimatesUsd = {},
   sheetEstimateUsd,
+  restorable = [],
 }: SetCardProps) {
   const router = useRouter()
   const { toast } = useToast()
@@ -167,12 +171,35 @@ export function SetCard({
                 : `${unplated} sets still need a plate.`}
             </p>
           ) : null}
+          {restorable.length > 0 ? (
+            <p className="mt-2 text-[12px] text-[var(--color-text-secondary)]">
+              Removed, but still in the Director&apos;s Book: {restorable.join(', ')}.
+            </p>
+          ) : null}
         </div>
-        {sets.length > 0 ? (
-          <Button variant="outline" onClick={() => setOpen((value) => !value)}>
-            {open ? 'Hide sets' : 'Edit sets'}
-          </Button>
-        ) : null}
+        <div className="flex flex-wrap gap-2">
+          {restorable.length > 0 ? (
+            <Button
+              variant="outline"
+              disabled={busy !== null}
+              onClick={() =>
+                void act(
+                  'restore',
+                  () => restoreSetsFromBookAction(projectId),
+                  `Restored ${restorable.length} ${restorable.length === 1 ? 'set' : 'sets'} from the book. ` +
+                    `Press Re-plan shot list for the plan to use ${restorable.length === 1 ? 'it' : 'them'}.`,
+                )
+              }
+            >
+              Restore {restorable.length} {restorable.length === 1 ? 'set' : 'sets'} from the book
+            </Button>
+          ) : null}
+          {sets.length > 0 ? (
+            <Button variant="outline" onClick={() => setOpen((value) => !value)}>
+              {open ? 'Hide sets' : 'Edit sets'}
+            </Button>
+          ) : null}
+        </div>
       </CardHeader>
       <CardContent className="space-y-5">
         {!open ? (

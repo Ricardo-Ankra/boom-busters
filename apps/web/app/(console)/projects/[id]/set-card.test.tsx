@@ -16,6 +16,7 @@ const actions = vi.hoisted(() => ({
   chooseSetPlateAction: vi.fn(),
   redraftSetLayoutAction: vi.fn(),
   buildSetSheetAction: vi.fn(),
+  restoreSetsFromBookAction: vi.fn(),
 }))
 vi.mock('./set-actions', () => actions)
 
@@ -90,6 +91,41 @@ beforeEach(() => {
 })
 
 describe('SetCard', () => {
+  it('offers to restore the sets the book still names after they were removed (decision 291)', async () => {
+    render(
+      <SetCard
+        projectId={PROJECT}
+        sets={[]}
+        plateUrls={{}}
+        plateEstimateUsd={0.08}
+        restorable={['The lobby']}
+      />,
+    )
+    expect(
+      screen.getByText("Removed, but still in the Director's Book: The lobby."),
+    ).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Restore 1 set from the book' }))
+    expect(actions.restoreSetsFromBookAction).toHaveBeenCalledWith(PROJECT)
+    await waitFor(() =>
+      expect(toast).toHaveBeenCalledWith({
+        title: 'Restored 1 set from the book. Press Re-plan shot list for the plan to use it.',
+      }),
+    )
+  })
+
+  it('offers no restore when the book names no set removed', () => {
+    render(
+      <SetCard
+        projectId={PROJECT}
+        sets={[]}
+        plateUrls={{}}
+        plateEstimateUsd={0.08}
+        restorable={[]}
+      />,
+    )
+    expect(screen.queryByRole('button', { name: /from the book/ })).not.toBeInTheDocument()
+  })
+
   it('renders each set with its plate count', () => {
     render(
       <SetCard

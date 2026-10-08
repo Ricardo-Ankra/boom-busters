@@ -11,6 +11,8 @@ import {
   projectPulse,
   listCastMembers,
   listProjectSets,
+  restorableCastNames,
+  restorableSetNames,
 } from '@boom-busters/db'
 import type { ProjectStage } from '@boom-busters/db'
 import { emptyVoiceModel, voiceReviewModel } from '@/lib/voice-review'
@@ -20,6 +22,7 @@ import { emptyShortsModel, shortsModel } from '@/lib/shorts-review'
 import { emptyPublishModel, publishModel } from '@/lib/publish-review'
 import { materialiseForPreview } from '@/lib/materialise'
 import { mockProvidersEnabled } from '@boom-busters/providers'
+import { DirectorsBookSchema } from '@boom-busters/schemas'
 import { presignGet, storageConfigured } from '@/lib/storage'
 import { notFound } from 'next/navigation'
 import { ActivityList } from '@/components/activity-list'
@@ -116,6 +119,13 @@ export default async function ProjectPage({
 
   // Sets (decision 264) are the cast's twin for rooms, shown beside it.
   const sets = showCast ? await listProjectSets(db, project.id) : []
+  // Who and which rooms the producer removed that the book still names: what
+  // each card's "Restore from the book" brings back (decision 291).
+  const book = DirectorsBookSchema.safeParse(project.direction)
+  const restorableCast =
+    showCast && book.success ? await restorableCastNames(db, project.id, book.data.principals) : []
+  const restorableSets =
+    showCast && book.success ? await restorableSetNames(db, project.id, book.data.locations) : []
   const plateEstimate = showCast ? await plateEstimateUsd() : 0
   const sheetEstimate = showCast ? await setSheetEstimateUsd() : 0
   // Another view carries the set's plates, so it is priced as the still it
@@ -427,7 +437,12 @@ export default async function ProjectPage({
       {budgetGate ? <BudgetGateCard gate={budgetGate} /> : null}
 
       {showCast ? (
-        <CastCard projectId={project.id} members={cast} photoUrls={castPhotoUrls} />
+        <CastCard
+          projectId={project.id}
+          members={cast}
+          photoUrls={castPhotoUrls}
+          restorable={restorableCast}
+        />
       ) : null}
 
       {showCast ? (
@@ -438,6 +453,7 @@ export default async function ProjectPage({
           plateEstimateUsd={plateEstimate}
           viewEstimatesUsd={viewEstimates}
           sheetEstimateUsd={sheetEstimate}
+          restorable={restorableSets}
         />
       ) : null}
 
