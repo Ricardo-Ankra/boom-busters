@@ -120,6 +120,43 @@ describe('designGraphic (decision 289)', () => {
     expect(callLlm.mock.calls[1]![0].maxTokens).toBe(callLlm.mock.calls[0]![0].maxTokens * 2)
   })
 
+  it('refuses an exit that cannot finish inside the slot, and retries with the reason (decision 290)', async () => {
+    const leaving = {
+      text: JSON.stringify({
+        scene: {
+          elements: [
+            {
+              kind: 'figure',
+              id: 'f',
+              cell: { col: 0, row: 2, colSpan: 7, rowSpan: 4 },
+              value: '$4bn',
+              claimRef: 1,
+              color: 'accent',
+              enter: { kind: 'count', atMs: 900 },
+            },
+            {
+              kind: 'text',
+              id: 't',
+              cell: { col: 0, row: 0, colSpan: 7, rowSpan: 2 },
+              content: 'Raised',
+              role: 'title',
+              color: 'textSecondary',
+              enter: { kind: 'fade', atMs: 0 },
+              exit: { kind: 'fade', atMs: 5800 },
+            },
+          ],
+        },
+      }),
+    }
+    callLlm.mockResolvedValueOnce(leaving).mockResolvedValueOnce(answer('$4bn'))
+    const result = await designGraphic(CONTEXT, SLOT)
+    expect(result.ok).toBe(true)
+    expect(callLlm).toHaveBeenCalledTimes(2)
+    expect(callLlm.mock.calls[1]![0].messages.at(-1).content).toContain(
+      'element "t" leaves at 5800 ms, but this 6.0 s slot needs its exit to start by 5500 ms',
+    )
+  })
+
   it('reports an answer cut off twice as a design issue, without a reason-retry', async () => {
     callLlm.mockRejectedValue(new ValidationError('cut off', { field: 'maxTokens' }))
     await expect(designGraphic(CONTEXT, SLOT)).resolves.toEqual({ ok: false, issue: CUT_OFF })

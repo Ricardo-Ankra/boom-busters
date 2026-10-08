@@ -168,3 +168,164 @@ export function emphasisWindow(
 export function barItemTimes(element: GraphicTimingElement, enterAtMs: number): number[] {
   return (element.items ?? []).map((item) => item.atMs ?? enterAtMs)
 }
+
+const seconds = (ms: number) => `${(ms / 1000).toFixed(1)} s`
+
+/**
+ * The timing rules a designed graphic is held to (decision 290), in the words
+ * the designer's retry and the card read: the first rule broken, or null.
+ * Rule 1 is stage 1's late entrance, unchanged; the rest keep exits, emphasis,
+ * bars and the camera inside the slot and inside each element's time on
+ * screen, hold the screen to six elements, and keep a stepped graphic from
+ * ending on an empty frame.
+ */
+export function sceneTimingIssue(scene: GraphicTimingScene, durationMs: number): string | null {
+  const late = lateEntranceIssue(scene, durationMs)
+  if (late !== null) return late
+
+  const enters = graphicEnterTimes(scene)
+  const onScreen = graphicOnScreen(scene)
+  for (const element of scene.elements) {
+    const enterAt = enters.get(element.id) ?? 0
+    const settled = enterAt + GRAPHIC_ENTER_MS
+    const emphasis = emphasisWindow(element.emphasis, enterAt)
+
+    // Rule 2: an exit waits for the entrance and any emphasis, and ends inside the slot.
+    if (element.exit) {
+      const ready = Math.max(settled, emphasis ? emphasis.atMs + emphasis.durationMs : 0)
+      if (element.exit.atMs < ready) {
+        return `element "${element.id}" leaves at ${element.exit.atMs} ms, before its entrance and emphasis finish at ${ready} ms`
+      }
+      const latest = durationMs - GRAPHIC_EXIT_MS
+      if (element.exit.atMs > latest) {
+        return `element "${element.id}" leaves at ${element.exit.atMs} ms, but this ${seconds(durationMs)} slot needs its exit to start by ${latest} ms`
+      }
+    }
+
+    // Rule 3: a timed emphasis falls while the element is fully on screen.
+    // Against an exit, rule 2 has already held it; here only the slot's end is left.
+    if (emphasis && typeof element.emphasis === 'object') {
+      if (emphasis.atMs < settled) {
+        return `element "${element.id}" is emphasised at ${emphasis.atMs} ms, before its entrance finishes at ${settled} ms`
+      }
+      const ends = emphasis.atMs + emphasis.durationMs
+      if (ends > durationMs) {
+        return `element "${element.id}" is emphasised at ${emphasis.atMs} ms, but this ${seconds(durationMs)} slot ends before its ${emphasis.kind} emphasis finishes at ${ends} ms`
+      }
+    }
+
+    // Rule 4: each timed bar grows while its element is on screen; one grows at the entrance.
+    if (element.items) {
+      const leaveBy = element.exit?.atMs ?? durationMs
+      const when = element.exit ? 'when its element starts to leave' : 'when the slot ends'
+      for (const [index, item] of element.items.entries()) {
+        if (item.atMs === undefined) continue
+        if (item.atMs < enterAt) {
+          return `bar ${index + 1} of "${element.id}" grows at ${item.atMs} ms, before its element enters at ${enterAt} ms`
+        }
+        if (item.atMs + GRAPHIC_BAR_GROW_MS > leaveBy) {
+          return `bar ${index + 1} of "${element.id}" grows at ${item.atMs} ms, but must finish growing by ${leaveBy} ms, ${when}`
+        }
+      }
+      const times = barItemTimes(element, enterAt)
+      if (times.length > 0 && !times.includes(enterAt)) {
+        return `element "${element.id}" would enter empty: at least one bar must grow at its entrance, ${enterAt} ms`
+      }
+    }
+  }
+
+  // Rule 5: the camera's keys in order, each move inside the slot, each focus on screen while it rests.
+  const keys = scene.camera ?? []
+  for (const [index, key] of keys.entries()) {
+    const n = index + 1
+    const previous = keys[index - 1]
+    if (previous && key.atMs < previous.atMs + GRAPHIC_CAMERA_MOVE_MS) {
+      return `camera key ${n} at ${key.atMs} ms must start at least ${GRAPHIC_CAMERA_MOVE_MS} ms after camera key ${index} at ${previous.atMs} ms`
+    }
+    const latest = durationMs - GRAPHIC_CAMERA_MOVE_MS
+    if (key.atMs > latest) {
+      return `camera key ${n} at ${key.atMs} ms cannot finish its move in this ${seconds(durationMs)} slot; it must start by ${latest} ms`
+    }
+    if (key.focus === 'all') continue
+    const span = onScreen.get(key.focus)
+    if (!span) {
+      return `camera key ${n} focuses "${key.focus}", which is not an element of this graphic`
+    }
+    if (span.fromMs > key.atMs) {
+      return `camera key ${n} focuses "${key.focus}" at ${key.atMs} ms, before it enters at ${span.fromMs} ms`
+    }
+    const restsUntil = keys[index + 1]?.atMs ?? durationMs
+    if (span.toMs < restsUntil) {
+      return `camera key ${n} rests on "${key.focus}" until ${restsUntil} ms, but it starts to leave at ${span.toMs} ms`
+    }
+  }
+
+  // Rule 6: no more than six on screen at once.
+  const crowd = maxOnScreen(scene)
+  if (crowd.count > GRAPHIC_MAX_ON_SCREEN) {
+    return `${crowd.count} elements are on screen together at ${crowd.atMs} ms; at most ${GRAPHIC_MAX_ON_SCREEN} may be`
+  }
+
+  // Rule 7: a graphic that steps never ends on an empty frame. Stage 1 never stepped.
+  const steps = scene.elements.some((element) => element.exit)
+  if (steps && !scene.elements.some((element) => element.kind !== 'shape' && !element.exit)) {
+    return 'every element leaves before the end; at least one that is not a shape must stay on screen until the slot ends'
+  }
+  return null
+}
+
+/** Every motion in a graphic: when it starts and how long it runs. */
+export function graphicMotions(scene: GraphicTimingScene): { atMs: number; durationMs: number }[] {
+  const enters = graphicEnterTimes(scene)
+  const motions: { atMs: number; durationMs: number }[] = []
+  for (const element of scene.elements) {
+    const enterAt = enters.get(element.id) ?? 0
+    motions.push({ atMs: enterAt, durationMs: GRAPHIC_ENTER_MS })
+    if (element.exit) motions.push({ atMs: element.exit.atMs, durationMs: GRAPHIC_EXIT_MS })
+    const emphasis = emphasisWindow(element.emphasis, enterAt)
+    if (emphasis) motions.push({ atMs: emphasis.atMs, durationMs: emphasis.durationMs })
+    for (const item of element.items ?? []) {
+      if (item.atMs !== undefined)
+        motions.push({ atMs: item.atMs, durationMs: GRAPHIC_BAR_GROW_MS })
+    }
+  }
+  for (const key of scene.camera ?? []) {
+    motions.push({ atMs: key.atMs, durationMs: GRAPHIC_CAMERA_MOVE_MS })
+  }
+  return motions
+}
+
+/** Every moment something starts to change on screen, ascending and distinct. */
+export function graphicChangeTimes(scene: GraphicTimingScene): number[] {
+  return [...new Set(graphicMotions(scene).map((motion) => motion.atMs))].sort((a, b) => a - b)
+}
+
+/**
+ * The longest stretch, from the first entrance to the slot's end, in which
+ * nothing on screen moves: decision 290's measure of dead air. The drift does
+ * not count; it never stops, and it never reads as change.
+ */
+export function longestStill(
+  scene: GraphicTimingScene,
+  durationMs: number,
+): { fromMs: number; toMs: number } {
+  const motions = graphicMotions(scene).sort((a, b) => a.atMs - b.atMs)
+  let best = { fromMs: durationMs, toMs: durationMs }
+  let movingUntil = motions[0]?.atMs ?? durationMs
+  for (const motion of motions) {
+    if (motion.atMs - movingUntil > best.toMs - best.fromMs) {
+      best = { fromMs: movingUntil, toMs: motion.atMs }
+    }
+    movingUntil = Math.max(movingUntil, motion.atMs + motion.durationMs)
+  }
+  if (durationMs - movingUntil > best.toMs - best.fromMs) {
+    best = { fromMs: movingUntil, toMs: durationMs }
+  }
+  return best
+}
+
+/** The distinct moments anything starts to leave, ascending: where a graphic's steps end. */
+export function graphicExitTimes(scene: GraphicTimingScene): number[] {
+  const times = scene.elements.flatMap((element) => (element.exit ? [element.exit.atMs] : []))
+  return [...new Set(times)].sort((a, b) => a - b)
+}

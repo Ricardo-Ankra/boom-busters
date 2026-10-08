@@ -14,7 +14,12 @@ import {
   intervalsMeet,
   lateEntranceIssue,
   maxOnScreen,
+  graphicChangeTimes,
+  graphicExitTimes,
+  longestStill,
+  sceneTimingIssue,
 } from './graphics'
+import type { GraphicTimingElement, GraphicTimingScene } from './graphics'
 
 const CLAIM = '01HQ00000000000000000000AA'
 
@@ -399,5 +404,216 @@ describe('time on screen (decision 290)', () => {
     expect(
       barItemTimes({ id: 'b', enter: { atMs: 2000 }, items: [{}, { atMs: 9000 }] }, 2000),
     ).toEqual([2000, 9000])
+  })
+})
+
+describe('sceneTimingIssue (decision 290)', () => {
+  const at = (
+    id: string,
+    atMs: number,
+    extra: Partial<GraphicTimingElement> = {},
+  ): GraphicTimingElement => ({ id, kind: 'text', enter: { atMs }, ...extra })
+  const SLOT = 10_000
+
+  it('passes a stage 1 scene and a well-timed staged one', () => {
+    expect(sceneTimingIssue({ elements: [at('a', 0), at('b', 900)] }, SLOT)).toBeNull()
+    expect(
+      sceneTimingIssue(
+        {
+          elements: [
+            at('a', 0, { exit: { atMs: 4000 } }),
+            at('b', 4000),
+            at('f', 900, { kind: 'figure', emphasis: { kind: 'color', atMs: 6000, to: 'accent' } }),
+          ],
+          camera: [
+            { atMs: 5000, focus: 'f' },
+            { atMs: 7000, focus: 'all' },
+          ],
+        },
+        SLOT,
+      ),
+    ).toBeNull()
+  })
+
+  it('rule 1: keeps the stage 1 late-entrance refusal, word for word', () => {
+    expect(sceneTimingIssue({ elements: [at('a', 0), at('b', 9500)] }, SLOT)).toBe(
+      'element "b" enters at 9500 ms, but this 10.0 s slot needs every entrance to start by 9400 ms',
+    )
+  })
+
+  it('rule 2: an exit waits for its entrance and its emphasis, and finishes inside the slot', () => {
+    expect(
+      sceneTimingIssue({ elements: [at('a', 0, { exit: { atMs: 500 } }), at('b', 100)] }, SLOT),
+    ).toBe('element "a" leaves at 500 ms, before its entrance and emphasis finish at 600 ms')
+    expect(
+      sceneTimingIssue(
+        { elements: [at('a', 0, { emphasis: 'pulse', exit: { atMs: 800 } }), at('b', 100)] },
+        SLOT,
+      ),
+    ).toBe('element "a" leaves at 800 ms, before its entrance and emphasis finish at 960 ms')
+    expect(
+      sceneTimingIssue({ elements: [at('a', 0, { exit: { atMs: 9600 } }), at('b', 100)] }, SLOT),
+    ).toBe('element "a" leaves at 9600 ms, but this 10.0 s slot needs its exit to start by 9500 ms')
+  })
+
+  it('rule 3: a timed emphasis plays while its element is fully on screen', () => {
+    expect(
+      sceneTimingIssue(
+        { elements: [at('a', 1000, { emphasis: { kind: 'pulse', atMs: 1200 } })] },
+        SLOT,
+      ),
+    ).toBe('element "a" is emphasised at 1200 ms, before its entrance finishes at 1600 ms')
+    expect(
+      sceneTimingIssue(
+        { elements: [at('a', 0, { emphasis: { kind: 'color', atMs: 9800, to: 'accent' } })] },
+        SLOT,
+      ),
+    ).toBe(
+      'element "a" is emphasised at 9800 ms, but this 10.0 s slot ends before its color emphasis finishes at 10200 ms',
+    )
+  })
+
+  it('rule 4: each bar grows while its element is on screen, and one grows at the entrance', () => {
+    const bars = (items: { atMs?: number }[], extra: Partial<GraphicTimingElement> = {}) =>
+      at('b', 1000, { kind: 'bars', items, ...extra })
+    expect(sceneTimingIssue({ elements: [bars([{}, { atMs: 500 }])] }, SLOT)).toBe(
+      'bar 2 of "b" grows at 500 ms, before its element enters at 1000 ms',
+    )
+    expect(sceneTimingIssue({ elements: [bars([{}, { atMs: 9500 }])] }, SLOT)).toBe(
+      'bar 2 of "b" grows at 9500 ms, but must finish growing by 10000 ms, when the slot ends',
+    )
+    expect(
+      sceneTimingIssue(
+        { elements: [bars([{}, { atMs: 3000 }], { exit: { atMs: 3500 } }), at('t', 0)] },
+        SLOT,
+      ),
+    ).toBe(
+      'bar 2 of "b" grows at 3000 ms, but must finish growing by 3500 ms, when its element starts to leave',
+    )
+    expect(sceneTimingIssue({ elements: [bars([{ atMs: 2000 }, { atMs: 3000 }])] }, SLOT)).toBe(
+      'element "b" would enter empty: at least one bar must grow at its entrance, 1000 ms',
+    )
+  })
+
+  it('rule 5: camera keys run in order, finish inside the slot, and rest on an element on screen', () => {
+    const f = at('f', 0, { kind: 'figure' })
+    expect(
+      sceneTimingIssue(
+        {
+          elements: [f],
+          camera: [
+            { atMs: 2000, focus: 'f' },
+            { atMs: 3000, focus: 'all' },
+          ],
+        },
+        SLOT,
+      ),
+    ).toBe('camera key 2 at 3000 ms must start at least 1500 ms after camera key 1 at 2000 ms')
+    expect(sceneTimingIssue({ elements: [f], camera: [{ atMs: 9000, focus: 'f' }] }, SLOT)).toBe(
+      'camera key 1 at 9000 ms cannot finish its move in this 10.0 s slot; it must start by 8500 ms',
+    )
+    expect(
+      sceneTimingIssue(
+        { elements: [f, at('g', 4000)], camera: [{ atMs: 2000, focus: 'g' }] },
+        SLOT,
+      ),
+    ).toBe('camera key 1 focuses "g" at 2000 ms, before it enters at 4000 ms')
+    const leaving = at('g', 100, { exit: { atMs: 5000 } })
+    expect(
+      sceneTimingIssue({ elements: [f, leaving], camera: [{ atMs: 2000, focus: 'g' }] }, SLOT),
+    ).toBe('camera key 1 rests on "g" until 10000 ms, but it starts to leave at 5000 ms')
+    expect(
+      sceneTimingIssue(
+        {
+          elements: [f, leaving],
+          camera: [
+            { atMs: 2000, focus: 'g' },
+            { atMs: 4000, focus: 'all' },
+          ],
+        },
+        SLOT,
+      ),
+    ).toBeNull()
+    expect(
+      sceneTimingIssue({ elements: [f], camera: [{ atMs: 2000, focus: 'ghost' }] }, SLOT),
+    ).toBe('camera key 1 focuses "ghost", which is not an element of this graphic')
+  })
+
+  it('rule 6: no more than six on screen at once', () => {
+    const seven = Array.from({ length: 7 }, (_, i) => at(`e${i}`, i * 100))
+    expect(sceneTimingIssue({ elements: seven }, SLOT)).toBe(
+      '7 elements are on screen together at 600 ms; at most 6 may be',
+    )
+  })
+
+  it('rule 7: a graphic that steps never ends on an empty frame; one that never steps is not held to it', () => {
+    expect(
+      sceneTimingIssue(
+        { elements: [at('a', 0, { exit: { atMs: 3000 } }), at('s', 100, { kind: 'shape' })] },
+        SLOT,
+      ),
+    ).toBe(
+      'every element leaves before the end; at least one that is not a shape must stay on screen until the slot ends',
+    )
+    expect(sceneTimingIssue({ elements: [at('s', 0, { kind: 'shape' })] }, SLOT)).toBeNull()
+  })
+})
+
+describe('change, stillness and steps (decision 290)', () => {
+  // The 22.3 s valuation slot of the live runs, built in steps.
+  const staged: GraphicTimingScene = {
+    elements: [
+      { id: 't', enter: { atMs: 2300 }, exit: { atMs: 13700 } },
+      {
+        id: 'b',
+        kind: 'bars',
+        enter: { atMs: 2300 },
+        items: [{}, { atMs: 10900 }],
+        emphasis: { kind: 'color', atMs: 14200, to: 'accent' },
+      },
+      { id: 'x', enter: { atMs: 14200 } },
+    ],
+    camera: [{ atMs: 14200, focus: 'b' }],
+  }
+
+  it('finds the dead air after the last entrance of a stage 1 graphic', () => {
+    // As the live run drew it: title at 2.3 s, bars at 10.9 s, then nothing for 10.8 s.
+    expect(
+      longestStill(
+        {
+          elements: [
+            { id: 't', enter: { atMs: 2300 } },
+            { id: 'b', enter: { atMs: 10900 } },
+          ],
+        },
+        22300,
+      ),
+    ).toEqual({ fromMs: 11500, toMs: 22300 })
+  })
+
+  it('counts exits, timed bars, emphasis and camera moves as change', () => {
+    expect(graphicChangeTimes(staged)).toEqual([2300, 10900, 13700, 14200])
+    // Moving until 2.9 s, then still until the second bar at 10.9 s.
+    expect(longestStill(staged, 22300)).toEqual({ fromMs: 2900, toMs: 10900 })
+  })
+
+  it('is empty when something moves to the very end', () => {
+    expect(longestStill({ elements: [{ id: 'a', enter: { atMs: 0 } }] }, 600)).toEqual({
+      fromMs: 600,
+      toMs: 600,
+    })
+  })
+
+  it('lists each distinct moment something starts to leave, in order', () => {
+    const at = (id: string, enter: number, exit?: number) => ({
+      id,
+      enter: { atMs: enter },
+      ...(exit === undefined ? {} : { exit: { atMs: exit } }),
+    })
+    expect(
+      graphicExitTimes({
+        elements: [at('a', 0, 4000), at('b', 100, 4000), at('c', 200, 2000), at('d', 300)],
+      }),
+    ).toEqual([2000, 4000])
   })
 })

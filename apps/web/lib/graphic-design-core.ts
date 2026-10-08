@@ -19,8 +19,8 @@ import {
 import {
   BudgetExceededError,
   graphicIntentOf,
-  lateEntranceIssue,
   resolvePlannedScene,
+  sceneTimingIssue,
   toPlannedScene,
   ValidationError,
 } from '@boom-busters/schemas'
@@ -93,7 +93,8 @@ export function sceneIssue(
   context: GraphicDesignContext,
   durationMs: number,
 ): { scene: GraphicScene } | { issue: string } {
-  const timing = lateEntranceIssue(scene, durationMs)
+  // Every timing rule (decision 290), stage 1's late entrance first.
+  const timing = sceneTimingIssue(scene, durationMs)
   if (timing !== null) return { issue: timing }
   return resolvePlannedScene(scene, context.claims, context.logos)
 }
