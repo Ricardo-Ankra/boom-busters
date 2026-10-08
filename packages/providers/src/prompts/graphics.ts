@@ -102,16 +102,26 @@ Design rules:
   take its cell. Bars can arrive one at a time, each as its amount is named
   (an "atMs" on the item); the scale rescales as a bigger bar grows in.
 - Move the camera to what is being said, never at random: push in on the
-  element the narrator is talking about, or back out to "all". The camera
-  rests on an element only while that element is on screen.
+  element the narrator is talking about (a zoom above 1), or back out to
+  "all". "all" and zoom 1 frame the whole composition as laid out; a push
+  needs a zoom above 1. The camera rests on an element only while that
+  element is on screen.
 - Motion earns its place like everything else: one change for each new thing
   said, never motion for its own sake.
-- Timing limits, all from the slot's start: an exit starts once its element's
-  entrance (600 ms) and emphasis have finished, and its ${GRAPHIC_EXIT_MS} ms end by the slot's
-  end; a timed emphasis starts after its element's entrance has finished; a
-  bar's own "atMs" falls while its element is on screen, and at least one bar
-  grows with the entrance; camera keys run in order, at least 1.5 s apart, and
-  each move ends by the slot's end; and when anything leaves, at least one
+- Timing, all from the slot's start. An entrance takes 600 ms. If every
+  entrance is at 0, the entrances are staggered 180 ms apart in scene order,
+  so give real entrance times whenever an exit, a timed bar, an emphasis or a
+  camera key depends on them. An emphasis lasts: pulse 360 ms, underline
+  600 ms, colour 400 ms; the word forms play 600 ms (pulse) and 500 ms
+  (underline) after the entrance starts. A timed emphasis starts after its
+  element's entrance has finished and finishes by the slot's end. An exit
+  starts once its element's entrance and emphasis have finished, and its
+  ${GRAPHIC_EXIT_MS} ms end by the slot's end. A bar's own "atMs" is at or after its
+  element's entrance, and its 700 ms growth finishes before its element
+  starts to leave (or by the slot's end); at least one bar grows with the
+  entrance. Camera keys run in order, at least 1.5 s apart, and each 1.5 s
+  move ends by the slot's end; an element the camera rests on stays on screen
+  until the next key (or the slot's end). When anything leaves, at least one
   element that is not a shape stays to the end.
 - A figure "count"s up only when the number itself is the story.
 - Two or three amounts compared read better as "bars" than as figures side by side.
@@ -146,7 +156,7 @@ frame; leave it out to let the layout stack elements in reading order.
 "emphasis" is "pulse"|"underline" (just after the entrance), or
  {"kind": "pulse"|"underline"|"color", "atMs", "to"?} at a time you choose. "color" shifts the element to the colour "to" names and keeps it; never on a logo. "underline" only on a text or a figure.
 A bar item's "atMs" is when that bar grows in (700 ms), with its label and value; leave it out and it grows with the element.
-"camera" (optional, on the scene) is up to 4 keys {"atMs", "focus": an element id or "all", "zoom": 1 to 1.6}; each starts a 1.5 s move to frame its focus, then holds.
+"camera" (optional, on the scene) is up to 4 keys {"atMs", "focus": an element id or "all", "zoom"?: 1 to 1.6, default 1}; each starts a 1.5 s move to frame its focus, then holds. "all" and zoom 1 frame the whole composition as laid out.
 Ids are unique; one logo per entity.
 
 Example, a single number that is the story (one centred column; no portraitCell needed):
@@ -165,12 +175,12 @@ Example, a relationship between named marks (side by side in 16:9, stacked in 9:
  {"kind": "logo", "id": "b", "cell": {"col": 7, "row": 3, "colSpan": 4, "rowSpan": 4}, "portraitCell": {"col": 2, "row": 5, "colSpan": 8, "rowSpan": 3}, "entity": "Rival", "enter": {"kind": "fade", "atMs": 1400}},
  {"kind": "text", "id": "t", "cell": {"col": 1, "row": 8, "colSpan": 10, "rowSpan": 1}, "portraitCell": {"col": 1, "row": 9, "colSpan": 10, "rowSpan": 1}, "content": "Bought for $900m", "role": "body", "color": "textPrimary", "align": "center", "enter": {"kind": "rise", "atMs": 2200}}]}}
 
-Example, a long slot built in steps (22.3 s; "1 billion" said at 2.3 s, "4 billion" at 10.9 s, "Four times" at 14.2 s):
+Example, a long slot built in steps (22.3 s; "bolder" said at 1.0 s, "back in the market" at 5.6 s, "4 billion" at 10.9 s, "Four times" at 14.2 s, "six months earlier" at 18.5 s):
 {"scene": {"elements": [
- {"kind": "text", "id": "t", "cell": {"col": 1, "row": 3, "colSpan": 10, "rowSpan": 1}, "content": "Stability AI valuation", "role": "title", "color": "textSecondary", "align": "center", "enter": {"kind": "fade", "atMs": 2300}, "exit": {"kind": "fade", "atMs": 13700}},
+ {"kind": "text", "id": "t", "cell": {"col": 1, "row": 3, "colSpan": 10, "rowSpan": 1}, "content": "Stability AI valuation", "role": "title", "color": "textSecondary", "align": "center", "enter": {"kind": "fade", "atMs": 1000}, "exit": {"kind": "fade", "atMs": 13700}},
  {"kind": "text", "id": "x", "cell": {"col": 1, "row": 3, "colSpan": 10, "rowSpan": 1}, "content": "Four times", "role": "title", "color": "accent", "align": "center", "enter": {"kind": "rise", "atMs": 14200}},
- {"kind": "bars", "id": "b", "cell": {"col": 1, "row": 4, "colSpan": 10, "rowSpan": 5}, "items": [{"label": "Oct 2022", "value": 1, "display": "$1bn", "claimRef": 5}, {"label": "Sought, 2023", "value": 4, "display": "$4bn", "claimRef": 6, "atMs": 10900}], "color": "series0", "highlightIndex": 1, "enter": {"kind": "wipe", "atMs": 2300}, "emphasis": {"kind": "color", "atMs": 14200, "to": "accent"}}],
- "camera": [{"atMs": 14200, "focus": "b", "zoom": 1.15}]}}`
+ {"kind": "bars", "id": "b", "cell": {"col": 1, "row": 4, "colSpan": 10, "rowSpan": 5}, "items": [{"label": "Oct 2022", "value": 1, "display": "$1bn", "claimRef": 5}, {"label": "Sought, 2023", "value": 4, "display": "$4bn", "claimRef": 6, "atMs": 10900}], "color": "series0", "highlightIndex": 1, "enter": {"kind": "wipe", "atMs": 5600}, "emphasis": {"kind": "color", "atMs": 14200, "to": "accent"}}],
+ "camera": [{"atMs": 14200, "focus": "b", "zoom": 1.15}, {"atMs": 18500, "focus": "all"}]}}`
 
 const seconds = (ms: number) => `${(ms / 1000).toFixed(1)} s`
 

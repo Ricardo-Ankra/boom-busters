@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { PlannedGraphicSceneSchema, sceneTimingIssue, ValidationError } from '@boom-busters/schemas'
+import {
+  longestStill,
+  PlannedGraphicSceneSchema,
+  sceneTimingIssue,
+  ValidationError,
+} from '@boom-busters/schemas'
 import {
   buildGraphicRequest,
   estimatedWords,
@@ -278,13 +283,23 @@ describe('the motion vocabulary in the prompt (decision 290)', () => {
     expect(rules).toContain('A bar item\'s "atMs" is when that bar grows in')
     expect(rules).toContain('"camera" (optional, on the scene) is up to 4 keys')
     expect(rules).toContain('at least one bar grows with the entrance')
+    expect(rules).toContain('An emphasis lasts: pulse 360 ms, underline 600 ms, colour 400 ms')
+    expect(rules).toContain(
+      "A timed emphasis starts after its element's entrance has finished and finishes by the slot's end",
+    )
+    expect(rules).toContain('its 700 ms growth finishes before its element starts to leave')
+    expect(rules).toContain('the entrances are staggered 180 ms apart in scene order')
+    expect(rules).toContain('"all" and zoom 1 frame the whole composition as laid out')
   })
 
   it('shows a long slot built in steps as its fourth example', () => {
     const last = system.split('Example,').at(-1)!
     const scene = parseGraphicScene(last.slice(last.indexOf('\n') + 1).trim())
     expect(scene.elements.some((element) => element.exit)).toBe(true)
-    expect(scene.camera).toHaveLength(1)
+    expect(scene.camera).toHaveLength(2)
+    // The example this stage exists for must not teach dead air.
+    const still = longestStill(scene, 22_300)
+    expect(still.toMs - still.fromMs).toBeLessThanOrEqual(6000)
   })
 
   it('gives the answer more room for a longer scene', () => {
