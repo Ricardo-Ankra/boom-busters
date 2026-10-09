@@ -2,14 +2,24 @@ import {
   OutlineSchema,
   SelfCheckSchema,
   ShortsCandidatesSchema,
+  TEASER_PARAGRAPH_MAX,
+  TEASER_PARAGRAPH_MIN,
+  TEASER_PARAGRAPHS_MAX,
+  TEASER_PARAGRAPHS_MIN,
+  TEASER_TITLE_MAX,
+  TEASER_TITLE_MIN,
   TeaserScriptSchema,
+  ValidationError,
   claimCarriesArticle,
   claimCarriesPost,
   countWords,
   splitSentences,
 } from '@boom-busters/schemas'
 import type { Outline, SelfCheck, ShortsCandidate, TeaserScript } from '@boom-busters/schemas'
-import { parseJsonCompletion } from './json'
+import { z } from 'zod'
+import { formatIssues, parseJsonCompletion } from './json'
+import { capList, ignoreRepairs, trimField } from './repair'
+import type { Note } from './repair'
 import { SCRIPT_CRAFT } from './script-craft'
 import { outputBudget } from '../llm/types'
 import type { LLMTaskRequest } from '../llm/types'
@@ -442,6 +452,10 @@ Rules:
 - Each paragraph carries the chapterIndex whose part of the story it draws
   from, so the edit can show that chapter's visuals behind it.
 
+Limits (the app checks them): title ${TEASER_TITLE_MIN} to ${TEASER_TITLE_MAX} characters;
+${TEASER_PARAGRAPHS_MIN} to ${TEASER_PARAGRAPHS_MAX} paragraphs, each ${TEASER_PARAGRAPH_MIN} to ${TEASER_PARAGRAPH_MAX} characters;
+chapterIndex is the number of a chapter below, 0 to ${input.chapters.length - 1}.
+
 Return exactly:
 {"title": string, "paragraphs": [{"text": string, "chapterIndex": number}]}`,
     messages: [
@@ -462,8 +476,53 @@ Return exactly:
   }
 }
 
-export function parseTeaser(text: string): TeaserScript {
-  return parseJsonCompletion(text, TeaserScriptSchema, 'teaser script')
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value)
+
+/**
+ * The teaser as the model answered it, repaired before it is validated
+ * (decision 293): the title trimmed at a word, each beat at a sentence, and
+ * no more than five beats kept. A beat's chapter is a fact: one the film
+ * does not have is refused, not dropped, because it would pull the wrong
+ * chapter's visuals behind the words (spec 2.2).
+ */
+export function parseTeaser(
+  text: string,
+  chapterCount: number,
+  note: Note = ignoreRepairs,
+): TeaserScript {
+  const raw = parseJsonCompletion(text, z.looseObject({}), 'teaser script')
+  const beats = capList(raw['paragraphs'], TEASER_PARAGRAPHS_MAX, 'beats', note)
+  const parsed = TeaserScriptSchema.safeParse({
+    ...raw,
+    title: trimField(raw['title'], TEASER_TITLE_MAX, 'the title', note),
+    paragraphs: Array.isArray(beats)
+      ? beats.map((beat, index) =>
+          isRecord(beat)
+            ? {
+                ...beat,
+                text: trimField(beat['text'], TEASER_PARAGRAPH_MAX, `beat ${index + 1}`, note),
+              }
+            : beat,
+        )
+      : beats,
+  })
+  if (!parsed.success) {
+    throw new ValidationError(`The teaser script is malformed: ${formatIssues(parsed.error)}`, {
+      field: 'teaser script',
+    })
+  }
+  const stray = parsed.data.paragraphs.findIndex(
+    (paragraph) => paragraph.chapterIndex >= chapterCount,
+  )
+  if (stray !== -1) {
+    throw new ValidationError(
+      `beat ${stray + 1} draws from chapter ${parsed.data.paragraphs[stray]!.chapterIndex}, ` +
+        `but the chapters run 0 to ${chapterCount - 1}`,
+      { field: 'teaser script' },
+    )
+  }
+  return parsed.data
 }
 
 /** Deterministic, so mock runs and the E2E suite get a stable teaser. */

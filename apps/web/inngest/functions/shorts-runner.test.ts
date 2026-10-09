@@ -6,7 +6,9 @@ import {
   getProject,
   insertShort,
   insertTimeline,
+  listProjectNotices,
   listShorts,
+  notices,
   renders,
   requireTestDatabase,
   scripts,
@@ -17,10 +19,10 @@ import {
   truncateRunMirror,
   updateSettings,
 } from '@boom-busters/db'
-import { DEFAULT_SETTINGS, resolveBrandKit } from '@boom-busters/schemas'
+import { DEFAULT_SETTINGS, noticesFor, resolveBrandKit } from '@boom-busters/schemas'
 import type { Timeline } from '@boom-busters/schemas'
 import { InngestTestEngine } from '@inngest/test'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/lib/db'
 import { forgetRunRows } from '../middleware/run-mirror'
 import { seedTitle, shortsRunner } from './shorts-runner'
@@ -48,6 +50,10 @@ vi.mock('@/lib/storage', () => ({
   // take the mock:// shape, same as voice takes.
   takeStorage: () => 'regenerated' as const,
 }))
+
+// The teaser's script call (decision 293). The mock-mode tests never reach it.
+const callLlm = vi.hoisted(() => vi.fn())
+vi.mock('@/lib/llm', () => ({ callLlm }))
 
 const describeDb = requireTestDatabase() ? describe : describe.skip
 
@@ -104,6 +110,7 @@ describeDb('shorts-runner', () => {
   beforeEach(async () => {
     engine = new InngestTestEngine({ function: shortsRunner })
     vi.clearAllMocks()
+    callLlm.mockReset()
     await seed(db)
     // Seeding only creates the settings row; it never resets it. A test that
     // chooses a voice must not leak a teaser into every later test, so each
@@ -111,6 +118,7 @@ describeDb('shorts-runner', () => {
     await updateSettings(db, { tts: { provider: 'elevenlabs', voiceId: '' } })
     await truncateRunMirror(db)
     forgetRunRows()
+    await db.delete(notices)
     await db.delete(renders)
     await db.delete(shorts)
     await db.delete(timelines)
@@ -150,6 +158,10 @@ describeDb('shorts-runner', () => {
       json: canonicalMaster(),
       s3Key: '',
     })
+  })
+
+  afterEach(() => {
+    vi.unstubAllEnvs()
   })
 
   it(
@@ -373,6 +385,53 @@ describeDb('shorts-runner', () => {
       expect(result).toMatchObject({ outcome: 'no-candidates', created: 0 })
       expect(await listShorts(db, FIXTURE_PROJECT_ID)).toEqual([])
       expect((await getProject(db, FIXTURE_PROJECT_ID))?.stageStatus).toBe('failed')
+    },
+  )
+
+  it(
+    'skips the teaser with the reason on its card when its script is refused twice (decision 293)',
+    { timeout: 120_000 },
+    async () => {
+      vi.stubEnv('MOCK_PROVIDERS', '')
+      callLlm.mockResolvedValue({ text: 'no json here' })
+
+      const { result } = await engine.execute({
+        events: masterReadyEvent(),
+        steps: [{ id: 'request-short-renders', handler: () => undefined }],
+      })
+
+      expect(result).toMatchObject({ outcome: 'shorts-created', created: 1 })
+      expect((result as { teaser: string | null }).teaser).toMatch(
+        /^skipped: the teaser script failed: /,
+      )
+      expect(callLlm).toHaveBeenCalledTimes(2)
+      const [notice] = noticesFor(await listProjectNotices(db, FIXTURE_PROJECT_ID), 'teaser')
+      expect(notice).toMatchObject({
+        kind: 'skipped',
+        message: expect.stringMatching(/^The teaser was skipped: The model returned no JSON/),
+      })
+      expect((await getProject(db, FIXTURE_PROJECT_ID))?.stageStatus).toBe('awaiting_review')
+    },
+  )
+
+  it(
+    'throws a provider error on the teaser script for Inngest to retry, never a silent skip (decision 293)',
+    { timeout: 120_000 },
+    async () => {
+      vi.stubEnv('MOCK_PROVIDERS', '')
+      callLlm.mockRejectedValue(new Error('socket hang up'))
+
+      const { error } = await engine.execute({
+        events: masterReadyEvent(),
+        steps: [{ id: 'request-short-renders', handler: () => undefined }],
+      })
+
+      expect(error).toMatchObject({ message: expect.stringContaining('socket hang up') })
+      expect(callLlm).toHaveBeenCalledTimes(1)
+      expect(noticesFor(await listProjectNotices(db, FIXTURE_PROJECT_ID), 'teaser')).toEqual([])
+      expect((await listShorts(db, FIXTURE_PROJECT_ID)).some((row) => row.kind === 'teaser')).toBe(
+        false,
+      )
     },
   )
 })

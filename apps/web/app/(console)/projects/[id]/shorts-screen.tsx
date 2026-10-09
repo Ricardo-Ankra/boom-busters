@@ -1,8 +1,10 @@
 'use client'
 
 import * as React from 'react'
+import type { Notice } from '@boom-busters/schemas'
 import { Check, Clapperboard, Loader2, PenLine, Save } from 'lucide-react'
 import { ConfirmButton } from '@/components/confirm-button'
+import { Notices } from '@/components/notices'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -36,24 +38,43 @@ export function ShortsScreen({
   shorts,
   live,
   canAdvance = false,
+  teaserNotices = [],
 }: {
   projectId: string
   shorts: ShortCardModel[]
   live: boolean
   /** True while the project is ON the shorts stage with nothing running. */
   canAdvance?: boolean
+  /**
+   * The `teaser` notices (decision 293): what a repair trimmed in the teaser
+   * script, or why the teaser was skipped. On the Teaser card, or where it
+   * would be when there is none.
+   */
+  teaserNotices?: readonly Notice[]
 }) {
   const { act, busy } = useAction()
   const [studioId, setStudioId] = React.useState<string | null>(null)
   const studioShort = shorts.find((short) => short.id === studioId) ?? null
+  const hasTeaser = shorts.some((short) => short.kind === 'teaser')
   return (
     <div className="flex flex-col gap-4">
+      {/* No Teaser card to carry them: the notices say why where it would be. */}
+      {!hasTeaser && teaserNotices.length > 0 ? (
+        <section
+          aria-label="Teaser"
+          className="flex flex-col gap-2 rounded-[8px] border border-[var(--color-border)] p-3"
+        >
+          <h2 className="text-[14px] font-semibold">Teaser</h2>
+          <Notices notices={teaserNotices} />
+        </section>
+      ) : null}
       <section aria-label="Shorts" className="grid gap-4 md:grid-cols-2 2xl:grid-cols-3">
         {shorts.map((short) => (
           <ShortCard
             key={short.id}
             short={short}
             live={live}
+            notices={short.kind === 'teaser' ? teaserNotices : []}
             studioOpen={short.id === studioId}
             onToggleStudio={() =>
               setStudioId((current) => (current === short.id ? null : short.id))
@@ -172,11 +193,14 @@ function useShortRenderPoll(render: ShortCardModel['render']) {
 function ShortCard({
   short,
   live,
+  notices = [],
   studioOpen = false,
   onToggleStudio,
 }: {
   short: ShortCardModel
   live: boolean
+  /** This card's notices: the teaser's, on the Teaser card (decision 293). */
+  notices?: readonly Notice[]
   studioOpen?: boolean
   onToggleStudio?: () => void
 }) {
@@ -241,6 +265,8 @@ function ShortCard({
             The render failed: {current?.error?.message ?? 'no reason recorded'}
           </p>
         ) : null}
+
+        <Notices notices={notices} />
 
         {/* The teaser's own workbench (decision 227): script, voice and cut
             in one place, opened below the grid where there is room. */}

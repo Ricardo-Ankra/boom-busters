@@ -103,7 +103,10 @@ export const teaserRebuildRunner = inngest.createFunction(
 
         // Pre-studio teaser: regenerate the script and store it so the next
         // open of the studio has something to edit.
-        const written = await writeTeaserScript(projectId)
+        // The teaser exists already, and this runner's `fail('script-skipped')`
+        // records the stop on the Teaser card (decision 293); recording it
+        // here as well would put two lines on the card for one stop.
+        const written = await writeTeaserScript(projectId, null)
         if (!written.ok) return written
         const record: TeaserScriptRecord = {
           title: written.title,

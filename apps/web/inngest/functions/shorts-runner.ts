@@ -221,10 +221,14 @@ export const shortsRunner = inngest.createFunction(
      * An excerpt slices what was said; the teaser says something new. Its
      * 25-40s narration is written for the funnel (cold open, escalation,
      * cliffhanger), synthesised fresh, and cut over slots lifted from the
-     * master. A teaser failure SKIPS with its reason rather than failing the
-     * stage: the excerpts above are complete deliverables, and a re-run
-     * rebuilds the teaser (synthesis is idempotency-keyed, so paragraphs
-     * already bought are re-served by the vendor, not re-billed).
+     * master. A teaser whose script is refused twice, or whose voicing or cut
+     * fails, SKIPS with its reason rather than failing the stage: the
+     * excerpts above are complete deliverables, and a re-run rebuilds the
+     * teaser (synthesis is idempotency-keyed, so paragraphs already bought
+     * are re-served by the vendor, not re-billed). A refused script says why
+     * on the Teaser card's place (decision 293). A provider error on the
+     * script call is thrown, so Inngest retries the step; past the retries
+     * the stage fails, as for any other step.
      *
      * Re-entry keeps every EXISTING row exactly as curated, but a missing
      * teaser is additive and gets built: projects whose excerpts predate the

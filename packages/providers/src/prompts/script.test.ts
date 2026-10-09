@@ -1,4 +1,9 @@
-import { OutlineSchema, ValidationError } from '@boom-busters/schemas'
+import {
+  OutlineSchema,
+  TEASER_PARAGRAPH_MAX,
+  TEASER_TITLE_MAX,
+  ValidationError,
+} from '@boom-busters/schemas'
 import { describe, expect, it } from 'vitest'
 import {
   buildChapterRequest,
@@ -7,6 +12,7 @@ import {
   buildRegenerateRequest,
   buildSelfCheckRequest,
   buildShortsRequest,
+  buildTeaserRequest,
   chapterTail,
   mockChapter,
   mockOutline,
@@ -15,10 +21,12 @@ import {
   parseOutline,
   parseSelfCheck,
   parseShortsCandidates,
+  parseTeaser,
   tensionContract,
   tensionFromOutline,
 } from './script'
 import type { ScriptClaim } from './script'
+import type { Note, Repair } from './repair'
 
 const claims: ScriptClaim[] = [
   {
@@ -522,5 +530,82 @@ describe('claimList', () => {
       },
     ])
     expect(list).not.toContain('X POST')
+  })
+})
+
+describe('the teaser (decision 293)', () => {
+  const chapters = [
+    { index: 0, title: 'The audit', contentMd: 'By June, the auditors could not find the money.' },
+    { index: 1, title: 'The collapse', contentMd: 'The shares collapsed in nine days.' },
+  ]
+  const first = { text: 'One number was missing, and it was billions.', chapterIndex: 0 }
+  const second = { text: 'The auditors finally refused to sign anything at all.', chapterIndex: 1 }
+  const teaser = (overrides: Record<string, unknown> = {}) =>
+    JSON.stringify({ title: 'The audit that said no', paragraphs: [first, second], ...overrides })
+  const collect = () => {
+    const notes: Repair[] = []
+    const note: Note = (repair) => {
+      notes.push(repair)
+    }
+    return { notes, note }
+  }
+
+  it('states every limit in the prompt', () => {
+    const { system } = buildTeaserRequest({ caseTitle: 'Wirecard', chapters })
+    expect(system.replace(/\s+/g, ' ')).toContain(
+      'Limits (the app checks them): title 3 to 90 characters; 2 to 5 paragraphs, each 10 to ' +
+        '400 characters; chapterIndex is the number of a chapter below, 0 to 1.',
+    )
+  })
+
+  it('reads a clean teaser as written, noting nothing', () => {
+    const { notes, note } = collect()
+    expect(parseTeaser(teaser(), 2, note)).toEqual({
+      title: 'The audit that said no',
+      paragraphs: [first, second],
+    })
+    expect(notes).toEqual([])
+  })
+
+  it('trims the title at a word and a long beat at a sentence, keeping its chapter', () => {
+    const { notes, note } = collect()
+    const title = 'The auditors could not find the money '.repeat(3)
+    const long = {
+      text: 'One number was missing, and it was billions. '.repeat(10),
+      chapterIndex: 1,
+    }
+    const parsed = parseTeaser(teaser({ title, paragraphs: [long, second] }), 2, note)
+    expect(parsed.title.length).toBeLessThanOrEqual(TEASER_TITLE_MAX)
+    expect(title.startsWith(parsed.title)).toBe(true)
+    expect(title[parsed.title.length]).toBe(' ')
+    expect(parsed.paragraphs[0]!.text.length).toBeLessThanOrEqual(TEASER_PARAGRAPH_MAX)
+    expect(parsed.paragraphs[0]!.text.endsWith('it was billions.')).toBe(true)
+    expect(parsed.paragraphs.map((paragraph) => paragraph.chapterIndex)).toEqual([1, 1])
+    expect(notes).toEqual([
+      { action: 'trimmed', field: 'the title' },
+      { action: 'trimmed', field: 'beat 1' },
+    ])
+  })
+
+  it('keeps the first five beats', () => {
+    const { notes, note } = collect()
+    const six = Array.from({ length: 6 }, (_, at) => ({
+      text: `Beat number ${at + 1} of the story.`,
+      chapterIndex: 0,
+    }))
+    const parsed = parseTeaser(teaser({ paragraphs: six }), 2, note)
+    expect(parsed.paragraphs).toHaveLength(5)
+    expect(parsed.paragraphs[4]!.text).toBe('Beat number 5 of the story.')
+    expect(notes).toEqual([{ action: 'capped', field: 'beats', kept: 5 }])
+  })
+
+  it('refuses a beat drawn from a chapter the film does not have, naming the range', () => {
+    expect(() =>
+      parseTeaser(teaser({ paragraphs: [first, { ...second, chapterIndex: 2 }] }), 2),
+    ).toThrow('beat 2 draws from chapter 2, but the chapters run 0 to 1')
+  })
+
+  it('still refuses a teaser of one beat', () => {
+    expect(() => parseTeaser(teaser({ paragraphs: [first] }), 2)).toThrow(ValidationError)
   })
 })

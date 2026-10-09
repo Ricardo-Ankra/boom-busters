@@ -496,6 +496,7 @@ export default async function ProjectPage({
           shorts={shortCards.shorts}
           live={!mockProvidersEnabled()}
           canAdvance={project.stage === 'shorts' && !liveRun}
+          teaserNotices={noticesFor(notices, 'teaser')}
         />
       ) : showVisuals ? (
         <VisualBoard
