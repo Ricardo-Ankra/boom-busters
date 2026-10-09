@@ -534,6 +534,7 @@ export default async function ProjectPage({
           projectId={project.id}
           contentMd={dossier.contentMd}
           claims={dossier.claims}
+          notices={noticesFor(notices, 'dossier')}
         />
       ) : (
         <Card className={control.kind === 'blocked' ? 'border-[var(--color-warning)]' : undefined}>
