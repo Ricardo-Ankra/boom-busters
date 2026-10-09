@@ -162,7 +162,7 @@ async function main(): Promise<void> {
       let call = 0
       const planned = await planChapterWith(
         async (request: LLMTaskRequest, purpose) => {
-          const label = `planner-${purpose}-${(call += 1)}`
+          const label = `planner-${purpose.replace(/[: ]+/g, '-')}-${(call += 1)}`
           // Sized from the request itself, so a retry at double maxTokens
           // reserves its own larger share rather than the same flat guess.
           const promptChars = request.messages.reduce((sum, m) => sum + m.content.length, 0)

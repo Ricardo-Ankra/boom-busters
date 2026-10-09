@@ -20,7 +20,7 @@ import { promptParagraphs, type TimedParagraph } from '@/inngest/lib/shot-list'
  */
 export type CompleteFn = (
   request: LLMTaskRequest,
-  purpose: 'plan' | 'plan-retry' | 'repair',
+  purpose: 'plan' | 'repair' | 'retry: cut off' | 'retry: refused',
 ) => Promise<{ text: string; truncated?: boolean }>
 
 export interface PlanChapterInput {
@@ -134,7 +134,7 @@ export async function planChapterWith(
     await callForAnswer({
       request,
       parse: parseShotList,
-      complete: (asked, call) => complete(asked, call === 'answer' ? 'plan' : 'plan-retry'),
+      complete: (asked, call) => complete(asked, call === 'answer' ? 'plan' : call),
     }),
     `Chapter ${input.chapter.number} could not be planned`,
   )

@@ -334,6 +334,9 @@ describe('planChapterSlots against a live model', () => {
     const first = callLlm.mock.calls[0]?.[0]?.maxTokens ?? 0
     const second = callLlm.mock.calls[1]?.[0]?.maxTokens ?? 0
     expect(second).toBe(Math.min(MAX_OUTPUT_TOKENS, first * 2))
+    // The ledger names the retry's kind; the first call carries no label.
+    expect(callLlm.mock.calls[0]![1]).not.toHaveProperty('purpose')
+    expect(callLlm.mock.calls[1]![1]).toMatchObject({ purpose: 'retry: cut off' })
   })
 
   it("the shot-list request carries the project's sets", async () => {

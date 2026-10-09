@@ -54,7 +54,7 @@ describe('planChapterWith', () => {
       .mockResolvedValueOnce({ text: oneStill })
     const result = await planChapterWith(complete, input)
     expect(result?.slots).toHaveLength(1)
-    expect(complete.mock.calls[1]?.[1]).toBe('plan-retry')
+    expect(complete.mock.calls[1]?.[1]).toBe('retry: cut off')
     expect(complete.mock.calls[1]?.[0].maxTokens).toBeGreaterThan(
       complete.mock.calls[0]?.[0].maxTokens,
     )
@@ -67,7 +67,7 @@ describe('planChapterWith', () => {
       .mockResolvedValueOnce({ text: oneStill })
     const result = await planChapterWith(complete, input)
     expect(result?.slots).toHaveLength(1)
-    expect(complete.mock.calls[1]?.[1]).toBe('plan-retry')
+    expect(complete.mock.calls[1]?.[1]).toBe('retry: refused')
     expect(complete.mock.calls[1]?.[0].messages.at(-1).content).toMatch(
       /^Your previous answer was refused: /,
     )

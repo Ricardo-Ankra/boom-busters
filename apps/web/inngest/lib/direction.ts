@@ -308,7 +308,7 @@ export async function planChapterSlots(input: {
       (request, purpose) =>
         callLlm(request, {
           projectId: input.projectId,
-          ...(purpose === 'plan' ? {} : { purpose }),
+          ...(purpose === 'plan' || purpose === 'repair' ? {} : { purpose }),
         }),
       input,
     )
