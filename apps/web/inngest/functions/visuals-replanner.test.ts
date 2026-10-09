@@ -193,6 +193,23 @@ describeDb('visuals-replanner (mock mode)', () => {
     })
     expect((await listShotSlots(db, FIXTURE_PROJECT_ID))[0]?.brief['description']).toBe('old plan')
   })
+  it('op direction: two refused books stop the redraft and keep the stored book (decision 292)', async () => {
+    vi.stubEnv('MOCK_PROVIDERS', '')
+    callLlm.mockReset()
+    callLlm.mockResolvedValue({
+      text: JSON.stringify({
+        ...mockDirectorsBook({ caseTitle: 'x', chapterCount: 1 }),
+        motifs: ['the badge', 'the server rack'],
+      }),
+    })
+
+    const { result } = await engine.execute({ events: replanEvent('direction') })
+    expect(result).toMatchObject({ outcome: 'redraft-stopped' })
+    expect(callLlm).toHaveBeenCalledTimes(2)
+    expect((await getProject(db, FIXTURE_PROJECT_ID))?.direction).toMatchObject({
+      visualThesis: 'owner edit',
+    })
+  })
 
   it('refuses outside the plan checkpoint', async () => {
     await setVisualsPhase(db, FIXTURE_PROJECT_ID, 'board')
@@ -435,6 +452,18 @@ describeDb('visuals-replanner op repair (decision 271)', () => {
       state: 'fix-note',
       note: 'Fix kept this brief: the answer changed its format.',
     })
+  })
+
+  it('keeps every flagged slot with the reason when the repair answer is refused twice (decision 292)', async () => {
+    callLlm.mockResolvedValue({ text: 'no json here' })
+
+    const { result } = await engine.execute({ events: replanEvent('repair') })
+
+    expect(result).toMatchObject({ outcome: 'repaired', rewritten: 0 })
+    expect(callLlm).toHaveBeenCalledTimes(2)
+    expect(callLlm.mock.calls[1]![1]).toMatchObject({ purpose: 'retry: refused' })
+    const [stored] = await listShotSlots(db, FIXTURE_PROJECT_ID)
+    expect(stored!.brief).toMatchObject({ prompt: still.prompt })
   })
 
   it('refuses outside the plan checkpoint', async () => {

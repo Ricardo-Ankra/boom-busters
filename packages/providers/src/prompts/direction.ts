@@ -1,8 +1,16 @@
-import { DirectorsBookSchema, ValidationError } from '@boom-busters/schemas'
+import {
+  BOOK_ERA_LOCKS_MAX,
+  BOOK_LIST_MAX,
+  BOOK_MOTIFS,
+  BOOK_TEXT_MAX,
+  DirectorsBookSchema,
+  ValidationError,
+} from '@boom-busters/schemas'
 import type { DirectorsBook } from '@boom-busters/schemas'
 import { z } from 'zod'
 import { DIRECTION_CRAFT } from './direction-craft'
 import { formatIssues, parseJsonCompletion } from './json'
+import { trimText } from './repair'
 import { claimList, type ScriptClaim } from './script'
 import { outputBudget } from '../llm/types'
 import type { LLMTaskRequest } from '../llm/types'
@@ -49,7 +57,11 @@ const BOOK_SHAPE = `Return JSON of this exact shape:
                 "dominantShotFamily": "environment"|"document"|"human"|"data"|"map"|"object",
                 "moodShift": string, "keyImage": string}],
   "finalImage": string
-}`
+}
+
+Limits (the app checks them): every text value at most ${BOOK_TEXT_MAX} characters;
+1 to ${BOOK_ERA_LOCKS_MAX} era locks; exactly ${BOOK_MOTIFS} motifs; at most ${BOOK_LIST_MAX} never-shows,
+${BOOK_LIST_MAX} principals and ${BOOK_LIST_MAX} locations; one chapter entry per chapter, numbered as given.`
 
 export function buildDirectorsBookRequest(input: {
   caseTitle: string
@@ -160,11 +172,63 @@ Rules for the book:
 
 const Envelope = z.looseObject({})
 
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value)
+
+/**
+ * The book as the model answered it, repaired before it is validated
+ * (decision 292): free text over the limit trimmed, lists over their caps
+ * cut to their first items, a fourth motif dropped. Names, the accent, the
+ * era spans, enums and chapter numbers are left as they are: they carry
+ * facts, and a bad one is refused.
+ */
+export function repairDirectorsBook(raw: unknown): unknown {
+  if (!isRecord(raw)) return raw
+  const text = (value: unknown) =>
+    typeof value === 'string' ? trimText(value, BOOK_TEXT_MAX) : value
+  const texts = (list: unknown, max: number) =>
+    Array.isArray(list) ? list.slice(0, max).map(text) : list
+  const items = (list: unknown, max: number, fix: (item: Record<string, unknown>) => unknown) =>
+    Array.isArray(list)
+      ? list.slice(0, max).map((item) => (isRecord(item) ? fix(item) : item))
+      : list
+  return {
+    ...raw,
+    visualThesis: text(raw['visualThesis']),
+    eraLocks: items(raw['eraLocks'], BOOK_ERA_LOCKS_MAX, (lock) => ({
+      ...lock,
+      rules: text(lock['rules']),
+    })),
+    palette: isRecord(raw['palette'])
+      ? { ...raw['palette'], note: text(raw['palette']['note']) }
+      : raw['palette'],
+    motifs: texts(raw['motifs'], BOOK_MOTIFS),
+    anchorObject: text(raw['anchorObject']),
+    neverShow: texts(raw['neverShow'], BOOK_LIST_MAX),
+    principals: items(raw['principals'], BOOK_LIST_MAX, (principal) => ({
+      ...principal,
+      role: text(principal['role']),
+      identityString: text(principal['identityString']),
+      guardrail: text(principal['guardrail']),
+    })),
+    locations: items(raw['locations'], BOOK_LIST_MAX, (location) => ({
+      ...location,
+      look: text(location['look']),
+    })),
+    chapters: items(raw['chapters'], Number.POSITIVE_INFINITY, (chapter) => ({
+      ...chapter,
+      moodShift: text(chapter['moodShift']),
+      keyImage: text(chapter['keyImage']),
+    })),
+    finalImage: text(raw['finalImage']),
+  }
+}
+
 export function parseDirectorsBook(text: string, chapterCount: number): DirectorsBook {
   // Cast coverage is reported by `castWarnings` on the plan screen rather
   // than enforced here: a book that covers four of five people plans four.
   const raw = parseJsonCompletion(text, Envelope, "director's book")
-  const parsed = DirectorsBookSchema.safeParse(raw)
+  const parsed = DirectorsBookSchema.safeParse(repairDirectorsBook(raw))
   if (!parsed.success) {
     throw new ValidationError(`The director's book is malformed: ${formatIssues(parsed.error)}`, {
       field: "director's book",

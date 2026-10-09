@@ -46,6 +46,8 @@ import type {
 } from '@boom-busters/schemas'
 import { NonRetriableError } from 'inngest'
 import { z } from 'zod'
+import { answerOrStop, callForAnswer } from '@/lib/answer'
+import { completeForProject } from '@/lib/answer-call'
 import { db } from '@/lib/db'
 import { callLlm } from '@/lib/llm'
 import { planChapterWith } from '@/lib/plan-chapter'
@@ -216,9 +218,16 @@ export async function draftDirectorsBook(projectId: string): Promise<DirectorsBo
         chapterCount: inputs.chapters.length,
         cast: inputs.cast,
       })
-    : parseDirectorsBook(
-        (await callLlm(buildDirectorsBookRequest(inputs), { projectId })).text,
-        inputs.chapters.length,
+    : // At most two calls (decision 292): the parser trims a fixable overrun,
+      // a cut-off is asked once more at double the budget, a refusal once more
+      // with its reason; then the stage stops with the reason, never a blind retry.
+      answerOrStop(
+        await callForAnswer({
+          request: buildDirectorsBookRequest(inputs),
+          parse: (text) => parseDirectorsBook(text, inputs.chapters.length),
+          complete: completeForProject(projectId),
+        }),
+        "The director's book could not be drafted",
       )
   await setProjectDirection(db, projectId, book)
   await seedCastFromPrincipals(db, projectId, book.principals)
@@ -296,7 +305,11 @@ export async function planChapterSlots(input: {
     }).slots
   } else {
     const planned = await planChapterWith(
-      (request) => callLlm(request, { projectId: input.projectId }),
+      (request, purpose) =>
+        callLlm(request, {
+          projectId: input.projectId,
+          ...(purpose === 'plan' || purpose === 'repair' ? {} : { purpose }),
+        }),
       input,
     )
     if (!planned) return { rows: [], rejected: 0 }
@@ -327,8 +340,9 @@ export async function planChapterSlots(input: {
  * rewrote and, for each one it kept, why (decision 277), so the Fix button
  * can say per slot what happened.
  *
- * Unlike the automatic pass this throws: the producer asked for the fix and
- * must hear when it did not happen. Mock mode makes no call and rewrites
+ * The producer asked for the fix and must hear when it did not happen: a
+ * refused or cut-off answer gets one retry, then every slot is kept with the
+ * reason (decision 292). Mock mode makes no call and rewrites
  * nothing.
  */
 export async function rewriteStoredBriefs(input: {
@@ -350,15 +364,27 @@ export async function rewriteStoredBriefs(input: {
     coversText: target.brief.coversText,
     mayBecomeStill: target.mayBecomeStill,
   }))
-  const answer = await callLlm(
-    buildShotRepairRequest(
+  const answer = await callForAnswer({
+    request: buildShotRepairRequest(
       input.request,
       input.targets.map((target) => ({ brief: target.brief, problems: target.problems })),
       { allowStockToStill: true },
     ),
-    { projectId: input.projectId },
-  )
-  const answers = parseShotRepairAnswers(answer.text, originals, { allowStockToStill: true })
+    parse: (text) => parseShotRepairAnswers(text, originals, { allowStockToStill: true }),
+    complete: completeForProject(input.projectId),
+  })
+  // Two answers it could not use (decision 292): every slot is kept, and the
+  // Fix report says why, rather than a blind retry of the same request.
+  if (!answer.ok) {
+    return {
+      rewritten: [],
+      kept: input.targets.map((target) => ({
+        id: target.id,
+        reason: `the repair answer could not be used: ${answer.issue}`,
+      })),
+    }
+  }
+  const answers = answer.value
   const rewritten: string[] = []
   const kept: { id: string; reason: string }[] = []
   for (const [at, target] of input.targets.entries()) {

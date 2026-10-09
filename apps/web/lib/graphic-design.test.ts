@@ -92,6 +92,7 @@ describe('designGraphic (decision 289)', () => {
     expect(callLlm.mock.calls[1]![0].messages.at(-1).content).toContain(
       'graphic showed a number the cited claim does not contain: $5bn against claim 1',
     )
+    expect(callLlm.mock.calls[1]![1]).toMatchObject({ purpose: 'retry: refused' })
   })
 
   it('gives up after the second refusal, with the reason', async () => {
@@ -183,14 +184,23 @@ describe('designGraphic (decision 289)', () => {
     expect(callLlm).toHaveBeenCalledTimes(2)
   })
 
-  it('still gives a cut-off after a refusal its own doubled retry', async () => {
+  it('stops at two calls when the retry after a refusal is cut off (decision 292)', async () => {
     callLlm
       .mockResolvedValueOnce(answer('$5bn'))
       .mockResolvedValueOnce({ text: '{"scene": {"elements": [', truncated: true })
-      .mockResolvedValueOnce(answer('$4bn'))
-    const result = await designGraphic(CONTEXT, SLOT)
-    expect(result.ok).toBe(true)
-    expect(callLlm.mock.calls[2]![0].maxTokens).toBe(callLlm.mock.calls[1]![0].maxTokens * 2)
+    expect(await designGraphic(CONTEXT, SLOT)).toEqual({ ok: false, issue: CUT_OFF })
+    expect(callLlm).toHaveBeenCalledTimes(2)
+  })
+
+  it('stops at two calls when the doubled answer is refused (decision 292)', async () => {
+    callLlm
+      .mockRejectedValueOnce(new ValidationError('cut off', { field: 'maxTokens' }))
+      .mockResolvedValueOnce(answer('$5bn'))
+    expect(await designGraphic(CONTEXT, SLOT)).toEqual({
+      ok: false,
+      issue: 'graphic showed a number the cited claim does not contain: $5bn against claim 1',
+    })
+    expect(callLlm).toHaveBeenCalledTimes(2)
   })
 
   it('gives every call a signal that aborts at the design deadline', async () => {
@@ -336,16 +346,27 @@ describe('designGraphicWith (the way in for the live harness)', () => {
     expect(callLlm).not.toHaveBeenCalled()
   })
 
-  it('keeps the cut-off doubling and the reason-retry of the app path', async () => {
+  it('keeps the cut-off doubling of the app path, and stops at two calls (decision 292)', async () => {
     const complete = vi
       .fn()
       .mockRejectedValueOnce(new ValidationError('cut off', { field: 'maxTokens' }))
       .mockResolvedValueOnce(answer('$5bn'))
+    const result = await designGraphicWith(complete, CONTEXT, SLOT)
+    expect(result.ok).toBe(false)
+    expect(complete).toHaveBeenCalledTimes(2)
+    expect(complete.mock.calls[1]![0].maxTokens).toBe(complete.mock.calls[0]![0].maxTokens * 2)
+    expect(complete.mock.calls[1]![1]).toMatchObject({ purpose: 'retry: cut off' })
+  })
+
+  it('keeps the reason-retry of the app path', async () => {
+    const complete = vi
+      .fn()
+      .mockResolvedValueOnce(answer('$5bn'))
       .mockResolvedValueOnce(answer('$4bn'))
     const result = await designGraphicWith(complete, CONTEXT, SLOT)
     expect(result.ok).toBe(true)
-    expect(complete.mock.calls[1]![0].maxTokens).toBe(complete.mock.calls[0]![0].maxTokens * 2)
-    expect(complete.mock.calls[2]![0].messages.at(-1).content).toContain('$5bn')
+    expect(complete.mock.calls[1]![0].messages.at(-1).content).toContain('$5bn')
+    expect(complete.mock.calls[1]![1]).toMatchObject({ purpose: 'retry: refused' })
   })
 })
 

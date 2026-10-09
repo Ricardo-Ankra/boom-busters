@@ -7097,3 +7097,63 @@ boom-busters-broker`; merge and deploy to Vercel, then `PUT
      Shipping: a Vercel deploy and `PUT /api/inngest` (the visuals-runner
      changed). No migration, no Remotion or broker deploy. For the
      Stability AI film: press Restore on both cards, then Re-plan shot list.
+
+292. **One answer, at most two calls (stage 1 of 2)** (2026-10-08, owner,
+     after a redraft of the Stability AI book paid for three Opus calls and
+     stored nothing: "we need to make sure that the way these are handled
+     and formed that we mitigate errors and retries because on expensive
+     models like Opus 5.5, a retry is costly"). A survey of every model
+     call found blind retries throughout: a refused or cut-off answer was
+     thrown out of its Inngest step and the function's `retries` re-ran the
+     identical request (the Director's Book 5 calls, 3 on a redraft; the
+     outline, the self-check and the Shorts marking 5 each; the Fix repair
+     3; scoring in the refetcher 5; the shot list up to 10 a chapter); most
+     prompts never stated the limits their answers are checked against; and
+     nothing repaired a fixable answer.
+     Owner's rulings: two stages; a free-text field over its limit is
+     trimmed with no extra call (never a fact: names, numbers, links, claim
+     references, enums); at most two calls for any answer, every task, the
+     graphics designer included (it drops from four); one helper each call
+     uses.
+     What shipped: `callForAnswer` (`apps/web/lib/answer.ts`): a cut-off is
+     asked once more at double the budget (no second call at the 32,000
+     cap), a refusal once more with "Your previous answer was refused:
+     <reason>. Answer again in full with that fixed.", and the second call's
+     outcome is final; the retry is labelled in the cost ledger
+     (`purpose`). A stop is a `NonRetriableError` with the reason (the
+     stage's failure card) or the task's own report: the redraft says "The
+     redraft stopped" and keeps the stored book; the Fix repair keeps every
+     slot with the reason; scoring keeps the candidates unranked in the
+     provider's order; a graphic shows "Not designed". On the helper: the
+     Director's Book (first draft and redraft), the outline, the self-check,
+     the Shorts marking, the shot list, the Fix repair, candidate scoring
+     and the graphics designer. The book's prompt now states every limit
+     (text 600 characters; 1 to 6 era locks; exactly 3 motifs; at most 12
+     never-shows, principals and locations) and its parser trims a long
+     line at a sentence, cuts a long list to its first items and keeps the
+     first three of four motifs, so the owner's failed redraft would have
+     landed on its first call.
+     Decisions made where the spec left room: a sentence end counts only in
+     the second half of the limit (an early "Dr." would throw most of the
+     text away), and a point followed by a digit is not one (cost if wrong:
+     a trim ends at a word where a sentence end was nearer); the graphics
+     designer's retry after a refusal is rebuilt by its own request builder,
+     so the producer's steer stays last (cost if wrong: none seen). A
+     provider error the call itself throws as a `ValidationError` (a
+     rejected key, an exhausted balance) is not the answer's fault and buys
+     no retry: the helper rethrows it as `NonRetriableError`, so the stage
+     fails at once instead of after Inngest's backoff (cost if wrong: a
+     balance topped up mid-run needs a manual re-run). A reply the provider
+     marks as truncated that does not parse counts as a cut-off, so it is
+     asked again at double the budget rather than refused at the same one;
+     Gemini returns empty text when its reasoning eats the budget (cost if
+     wrong: none seen). The Costs screen shows a retry's label beside the
+     operation.
+     Stage 2 (its own spec): limits and repairs in every remaining prompt
+     (research, case suggestions, teaser, cast identity, re-brief, redirect,
+     retype), the helper for the single-shot calls, and the plain-text
+     answers that are kept half-written when cut off (the chapter draft,
+     the digest, the section rewrite).
+     Shipping: a Vercel deploy and `PUT /api/inngest`. No migration, no
+     Remotion or broker deploy. The number 292 is checked against
+     `origin/master` at the merge.

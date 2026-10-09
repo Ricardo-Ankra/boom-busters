@@ -15,16 +15,12 @@ import {
 } from '@boom-busters/db'
 import {
   buildChapterRequest,
-  buildOutlineRequest,
-  buildSelfCheckRequest,
   buildShortsRequest,
   chapterTail,
   mockChapter,
   mockOutline,
   mockSelfCheck,
   mockShortsCandidates,
-  parseOutline,
-  parseSelfCheck,
   parseShortsCandidates,
   mockProvidersEnabled,
   tensionFromOutline,
@@ -39,7 +35,9 @@ import {
 } from '@boom-busters/schemas'
 import { NonRetriableError } from 'inngest'
 import { db } from '@/lib/db'
+import { completeForProject } from '@/lib/answer-call'
 import { callLlm } from '@/lib/llm'
+import { draftOutlineWith, selfCheckWith } from '@/lib/script-answers'
 import { inngest } from '../client'
 import { events } from '../events'
 import {
@@ -149,19 +147,12 @@ export const scriptRunner = inngest.createFunction(
         try {
           return {
             ok: true,
-            outline: parseOutline(
-              (
-                await callLlm(
-                  buildOutlineRequest({
-                    caseTitle: setup.caseTitle,
-                    dossierMd: setup.dossierMd,
-                    claims: setup.claims,
-                    targetRuntimeMin: setup.targetRuntimeMin,
-                  }),
-                  { projectId },
-                )
-              ).text,
-            ),
+            outline: await draftOutlineWith(completeForProject(projectId), {
+              caseTitle: setup.caseTitle,
+              dossierMd: setup.dossierMd,
+              claims: setup.claims,
+              targetRuntimeMin: setup.targetRuntimeMin,
+            }),
           }
         } catch (error) {
           if (error instanceof BudgetExceededError)
@@ -260,18 +251,11 @@ export const scriptRunner = inngest.createFunction(
       await step.run(`self-check-${chapter.index}`, async () => {
         const check = mocked
           ? mockSelfCheck(chapter.contentMd)
-          : parseSelfCheck(
-              (
-                await callLlm(
-                  buildSelfCheckRequest({
-                    chapterTitle: chapter.title,
-                    contentMd: chapter.contentMd,
-                    claims: setup.claims,
-                  }),
-                  { projectId },
-                )
-              ).text,
-            )
+          : await selfCheckWith(completeForProject(projectId), {
+              chapterTitle: chapter.title,
+              contentMd: chapter.contentMd,
+              claims: setup.claims,
+            })
 
         await setChapterWarnings(db, chapter.chapterId, check.warnings)
         const refs = await saveClaimRefs(db, {

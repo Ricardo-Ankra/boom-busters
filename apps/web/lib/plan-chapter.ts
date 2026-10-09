@@ -2,19 +2,14 @@ import {
   BANNED_PROMPT_WORDS,
   buildShotListRequest,
   buildShotRepairRequest,
-  MAX_OUTPUT_TOKENS,
   parseShotList,
   parseShotRepair,
   withoutBannedWords,
 } from '@boom-busters/providers'
 import type { LLMTaskRequest, ScriptClaim } from '@boom-busters/providers'
-import {
-  craftFindings,
-  findingContext,
-  repairTargets,
-  ValidationError,
-} from '@boom-busters/schemas'
+import { craftFindings, findingContext, repairTargets } from '@boom-busters/schemas'
 import type { DirectorsBook, FindingContext, LogoIndex, PlannedSlot } from '@boom-busters/schemas'
+import { answerOrStop, callForAnswer } from '@/lib/answer'
 import { promptParagraphs, type TimedParagraph } from '@/inngest/lib/shot-list'
 
 /**
@@ -25,8 +20,8 @@ import { promptParagraphs, type TimedParagraph } from '@/inngest/lib/shot-list'
  */
 export type CompleteFn = (
   request: LLMTaskRequest,
-  purpose: 'plan' | 'plan-retry' | 'repair',
-) => Promise<{ text: string }>
+  purpose: 'plan' | 'repair' | 'retry: cut off' | 'retry: refused',
+) => Promise<{ text: string; truncated?: boolean }>
 
 export interface PlanChapterInput {
   caseTitle: string
@@ -68,32 +63,6 @@ export function chapterShotListRequest(input: PlanChapterInput): LLMTaskRequest 
       : {}),
     logos: input.logos?.map((logo) => logo.title),
   })
-}
-
-/**
- * Call the shot-list model, and if the answer was cut off at max_tokens, call
- * once more with double the budget before giving up.
- *
- * A truncated JSON answer is the one failure an Inngest retry cannot help
- * with: the same request at the same budget is cut off at the same place,
- * so the four blind retries the runner allows were four identical paid
- * failures (first live run under the Director's Book, 2026-09-15). The retry
- * that can succeed is a bigger one, and one doubling is the whole ladder: a
- * budget that fails twice is a chapter that needs splitting, not more room.
- * Every other error passes straight through to the runner's handling.
- */
-async function planWithBudgetEscalation(
-  complete: CompleteFn,
-  request: LLMTaskRequest,
-): Promise<ReturnType<typeof parseShotList>> {
-  try {
-    return parseShotList((await complete(request, 'plan')).text)
-  } catch (error) {
-    const cutOff = error instanceof ValidationError && error.field === 'maxTokens'
-    if (!cutOff || request.maxTokens >= MAX_OUTPUT_TOKENS) throw error
-    const bigger = { ...request, maxTokens: Math.min(MAX_OUTPUT_TOKENS, request.maxTokens * 2) }
-    return parseShotList((await complete(bigger, 'plan-retry')).text)
-  }
 }
 
 /**
@@ -158,7 +127,17 @@ export async function planChapterWith(
 ): Promise<{ slots: PlannedSlot[]; malformed: number } | null> {
   const request = chapterShotListRequest(input)
   if (!request) return null
-  const parsed = await planWithBudgetEscalation(complete, request)
+  // At most two calls (decision 292): a cut-off asked once more at double the
+  // budget, a refusal once more with its reason, then the chapter stops with
+  // the reason. The step never restarts the ladder: the stop is non-retriable.
+  const parsed = answerOrStop(
+    await callForAnswer({
+      request,
+      parse: parseShotList,
+      complete: (asked, call) => complete(asked, call === 'answer' ? 'plan' : call),
+    }),
+    `Chapter ${input.chapter.number} could not be planned`,
+  )
   const slots = await repairPlannedChapter(complete, {
     request,
     slots: parsed.slots.map((slot) => ({ ...slot, brief: withoutBannedWords(slot.brief) })),
