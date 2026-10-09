@@ -11,11 +11,12 @@ import {
 } from '@boom-busters/db'
 import {
   buildCastIdentityRequest,
+  GUARDRAIL_LABEL,
   mockCastIdentity,
   mockProvidersEnabled,
   parseCastIdentity,
 } from '@boom-busters/providers'
-import type { MsgImage } from '@boom-busters/providers'
+import type { MsgImage, Repair } from '@boom-busters/providers'
 import {
   castPhotoExtension,
   CastPhotoMimeSchema,
@@ -26,12 +27,14 @@ import {
   UlidSchema,
   ValidationError,
 } from '@boom-busters/schemas'
-import type { CastMember, CastPhoto } from '@boom-busters/schemas'
+import type { CastMember, CastPhoto, NoticeTarget } from '@boom-busters/schemas'
 import { createHash } from 'node:crypto'
 import { revalidatePath } from 'next/cache'
 import { auth } from '@/auth'
+import { callForAnswer } from '@/lib/answer'
+import { completeForProject } from '@/lib/answer-call'
 import { db } from '@/lib/db'
-import { callLlm } from '@/lib/llm'
+import { recordRepairs } from '@/lib/notices'
 import { fetchRemoteImage } from '@/lib/remote-image'
 import { NO_BOOK_YET } from '@/lib/restore-from-book'
 import {
@@ -81,6 +84,11 @@ function refresh(projectId: string): void {
 
 function failure(error: unknown, fallback: string): ActionResult {
   if (error instanceof ValidationError) return { ok: false, error: error.message }
+  // A refusal at the call (a rejected key, say) arrives wrapped for Inngest by
+  // the answer helper (decision 292); its words are still the owner's to read.
+  if (error instanceof Error && error.cause instanceof ValidationError) {
+    return { ok: false, error: error.cause.message }
+  }
   // Drizzle wraps the driver's error; the unique violation sits in the cause.
   const cause = error instanceof Error ? (error.cause as { code?: string } | undefined) : undefined
   const text = [error, cause].map((e) => (e instanceof Error ? e.message : '')).join(' ')
@@ -267,16 +275,18 @@ export async function finaliseCastPhotoAction(input: {
     view: view.data,
     ...(input.sourceUrl ? { sourceUrl: input.sourceUrl } : {}),
   }
+  let updated: CastMember
   try {
-    const updated = await setCastPhotos(db, member.id, [...member.photos, photo])
-    // The first photo writes the identity string; later ones do not overwrite
-    // what the producer may have edited.
-    if (updated.identityString.trim() === '') await describeFromPhotos(updated)
-    refresh(member.projectId)
-    return { ok: true }
+    updated = await setCastPhotos(db, member.id, [...member.photos, photo])
   } catch (error) {
     return failure(error, 'The photo could not be recorded.')
   }
+  // The first photo writes the identity string; later ones do not overwrite
+  // what the producer may have edited.
+  const described: ActionResult =
+    updated.identityString.trim() === '' ? await describeAfterUpload(updated) : { ok: true }
+  refresh(member.projectId)
+  return described
 }
 
 /**
@@ -343,14 +353,16 @@ export async function addCastPhotoFromUrlAction(input: {
     view: view.data,
     sourceUrl: resolvedUrl,
   }
+  let updated: CastMember
   try {
-    const updated = await setCastPhotos(db, member.id, [...member.photos, photo])
-    if (updated.identityString.trim() === '') await describeFromPhotos(updated)
-    refresh(member.projectId)
-    return { ok: true }
+    updated = await setCastPhotos(db, member.id, [...member.photos, photo])
   } catch (error) {
     return failure(error, 'The photo could not be recorded.')
   }
+  const described: ActionResult =
+    updated.identityString.trim() === '' ? await describeAfterUpload(updated) : { ok: true }
+  refresh(member.projectId)
+  return described
 }
 
 export async function removeCastPhotoAction(input: {
@@ -396,25 +408,61 @@ export async function describeCastMemberAction(memberId: string): Promise<Action
 // Not exported: a 'use server' module may only export async functions that
 // are actions; this is shared machinery.
 async function describeFromPhotos(member: CastMember): Promise<void> {
-  const written = mockProvidersEnabled()
-    ? mockCastIdentity({ name: member.name, role: member.role })
-    : parseCastIdentity(
-        (
-          await callLlm(
-            buildCastIdentityRequest({
-              name: member.name,
-              role: member.role,
-              photos: await loadPhotos(member),
-            }),
-            { projectId: member.projectId },
-          )
-        ).text,
-      )
+  const target: NoticeTarget = {
+    projectId: member.projectId,
+    subject: 'cast',
+    subjectId: member.id,
+  }
+  let written: { identityString: string; guardrail: string }
+  let repairs: Repair[] = []
+  if (mockProvidersEnabled()) {
+    written = mockCastIdentity({ name: member.name, role: member.role })
+  } else {
+    // At most two calls, the second told what was wrong (decision 293). A
+    // stop is thrown as the parser's refusal always was, so the toast says why.
+    const answer = await callForAnswer({
+      request: buildCastIdentityRequest({
+        name: member.name,
+        role: member.role,
+        photos: await loadPhotos(member),
+      }),
+      parse: parseCastIdentity,
+      complete: completeForProject(member.projectId),
+    })
+    if (!answer.ok) throw new ValidationError(answer.issue, { field: 'identityString' })
+    written = answer.value
+    repairs = answer.repairs ?? []
+  }
+  // A guardrail the producer already wrote is theirs; only fill an empty one.
+  const keepsGuardrail = member.guardrail.trim() !== ''
   await updateCastMember(db, member.id, {
     identityString: written.identityString,
-    // A guardrail the producer already wrote is theirs; only fill an empty one.
-    ...(member.guardrail.trim() === '' ? { guardrail: written.guardrail } : {}),
+    ...(keepsGuardrail ? {} : { guardrail: written.guardrail }),
   })
+  // The notice says only what reached the card: a trimmed guardrail the
+  // producer's own replaced is not news.
+  await recordRepairs(
+    target,
+    keepsGuardrail ? repairs.filter((repair) => repair.field !== GUARDRAIL_LABEL) : repairs,
+  )
+}
+
+/**
+ * The describe step after an upload (decision 293). The photo is stored
+ * whatever happens here, so a failure says so instead of reading as a failed
+ * upload; Describe from photos is the way to try again.
+ */
+async function describeAfterUpload(member: CastMember): Promise<ActionResult> {
+  try {
+    await describeFromPhotos(member)
+    return { ok: true }
+  } catch (error) {
+    const reason = failure(error, 'the request to the model failed').error
+    return {
+      ok: false,
+      error: `The photo is saved, but the description could not be written: ${reason}`,
+    }
+  }
 }
 
 async function loadPhotos(member: CastMember): Promise<MsgImage[]> {

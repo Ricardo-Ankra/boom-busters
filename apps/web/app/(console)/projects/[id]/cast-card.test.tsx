@@ -1,7 +1,7 @@
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import type { CastMember } from '@boom-busters/schemas'
+import type { CastMember, Notice } from '@boom-busters/schemas'
 import { CastCard } from './cast-card'
 
 const actions = vi.hoisted(() => ({
@@ -37,6 +37,9 @@ const refresh = vi.fn()
 vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh }) }))
 const toast = vi.fn()
 vi.mock('@/components/ui/toast', () => ({ useToast: () => ({ toast }) }))
+// The notice's Dismiss is a server action whose module loads next-auth,
+// which cannot load under jsdom.
+vi.mock('@/app/(console)/notice-actions', () => ({ dismissNoticeAction: vi.fn() }))
 
 const PROJECT = '01J0000000000000000000000A'
 const MEMBER = '01J0000000000000000000000B'
@@ -266,5 +269,35 @@ describe('CastCard', () => {
       ),
     )
     expect(refresh).not.toHaveBeenCalled()
+  })
+
+  it("shows a member's notice in that member's row, opening the card for it (decision 293)", () => {
+    const prem: CastMember = {
+      ...emad,
+      id: '01J0000000000000000000000C',
+      name: 'Prem Akkaraju',
+      role: 'CEO from 2024',
+    }
+    const trimmed: Notice = {
+      id: '01J0000000000000000000000N',
+      projectId: PROJECT,
+      subject: 'cast',
+      subjectId: MEMBER,
+      kind: 'trimmed',
+      message: 'Trimmed to fit: the identity.',
+      createdAt: new Date('2026-10-09T10:00:00Z'),
+    }
+    render(
+      <CastCard projectId={PROJECT} members={[emad, prem]} photoUrls={{}} notices={[trimmed]} />,
+    )
+
+    // Everyone has a photo, yet the card opens: the note sits on the row.
+    expect(screen.queryByRole('list', { name: 'Cast members' })).not.toBeInTheDocument()
+    expect(
+      within(screen.getByRole('region', { name: 'Emad Mostaque' })).getByRole('status'),
+    ).toHaveTextContent('Trimmed to fit: the identity.')
+    expect(
+      within(screen.getByRole('region', { name: 'Prem Akkaraju' })).queryByRole('status'),
+    ).not.toBeInTheDocument()
   })
 })

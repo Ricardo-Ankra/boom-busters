@@ -4,13 +4,16 @@ import {
   deleteCastMember,
   FIXTURE_PROJECT_ID,
   listCastMembers,
+  listProjectNotices,
+  notices,
   requireTestDatabase,
   seed,
   seedCastFromPrincipals,
   setProjectDirection,
 } from '@boom-busters/db'
 import { mockDirectorsBook } from '@boom-busters/providers'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { CAST_IDENTITY_MAX, noticesFor, ValidationError } from '@boom-busters/schemas'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/lib/db'
 import {
   addCastMemberAction,
@@ -54,6 +57,10 @@ vi.mock('@/lib/storage', () => ({
 // here it only has to hand the action some bytes.
 const remote = vi.hoisted(() => ({ fetchRemoteImage: vi.fn() }))
 vi.mock('@/lib/remote-image', () => remote)
+
+// The describe call (decision 293). The mock-mode tests never reach it.
+const callLlm = vi.hoisted(() => vi.fn())
+vi.mock('@/lib/llm', () => ({ callLlm }))
 
 const describeDb = requireTestDatabase() ? describe : describe.skip
 
@@ -352,5 +359,153 @@ describeDb('cast actions (mock mode)', () => {
     })
     expect(result.ok).toBe(false)
     expect(result.error).toMatch(/R2 configured/)
+  })
+
+  describe('the describe call on the answer helper (decision 293)', () => {
+    const identity = (identityString: string, guardrail = 'never mocked') => ({
+      text: JSON.stringify({ identityString, guardrail }),
+    })
+    const castNotices = async (memberId: string) =>
+      noticesFor(await listProjectNotices(db, FIXTURE_PROJECT_ID), 'cast', memberId)
+
+    /** A photo without the describe call: an identity is already there. */
+    async function withPhoto(id: string): Promise<void> {
+      await updateCastMemberAction(id, { identityString: 'stale' })
+      await finaliseCastPhotoAction({
+        memberId: id,
+        mimeType: 'image/jpeg',
+        contentHash: HASH_A,
+        width: 1200,
+        height: 1600,
+        view: 'front',
+      })
+    }
+
+    beforeEach(async () => {
+      vi.stubEnv('MOCK_PROVIDERS', '')
+      callLlm.mockReset()
+      await db.delete(notices)
+    })
+
+    afterEach(() => {
+      vi.unstubAllEnvs()
+    })
+
+    it('asks once more with the reason after a refused description, labelled in the ledger', async () => {
+      const id = await addEmad()
+      await withPhoto(id)
+      callLlm
+        .mockResolvedValueOnce({ text: 'no json here' })
+        .mockResolvedValueOnce(identity('Emad Mostaque, founder: oval face, short dark hair'))
+
+      expect(await describeCastMemberAction(id)).toEqual({ ok: true })
+      expect(callLlm).toHaveBeenCalledTimes(2)
+      expect(callLlm.mock.calls[0]![1]).toEqual({ projectId: FIXTURE_PROJECT_ID })
+      expect(callLlm.mock.calls[1]![1]).toEqual({
+        projectId: FIXTURE_PROJECT_ID,
+        purpose: 'retry: refused',
+      })
+      expect((await listCastMembers(db, FIXTURE_PROJECT_ID))[0]?.identityString).toBe(
+        'Emad Mostaque, founder: oval face, short dark hair',
+      )
+    })
+
+    it("puts a trimmed identity's notice on that member, and a clean one retires it", async () => {
+      const id = await addEmad()
+      await withPhoto(id)
+      const long =
+        'Emad Mostaque, founder: ' + 'oval face, short dark hair, close-cropped beard, '.repeat(15)
+      callLlm.mockResolvedValueOnce(identity(long))
+
+      expect(await describeCastMemberAction(id)).toEqual({ ok: true })
+      const [member] = await listCastMembers(db, FIXTURE_PROJECT_ID)
+      expect(member!.identityString.length).toBeLessThanOrEqual(CAST_IDENTITY_MAX)
+      expect(long.startsWith(member!.identityString)).toBe(true)
+      expect((await castNotices(id)).map((notice) => notice.message)).toEqual([
+        'Trimmed to fit: the identity.',
+      ])
+
+      callLlm.mockResolvedValueOnce(identity('Emad Mostaque, founder: oval face'))
+      expect(await describeCastMemberAction(id)).toEqual({ ok: true })
+      expect(await castNotices(id)).toEqual([])
+    })
+
+    it("reports no trimmed guardrail when the producer's own guardrail is kept", async () => {
+      const id = await addEmad()
+      await withPhoto(id)
+      await updateCastMemberAction(id, { guardrail: 'never in handcuffs' })
+      callLlm.mockResolvedValueOnce(
+        identity(
+          'Emad Mostaque, founder: oval face',
+          'never mocked; never in handcuffs; '.repeat(25),
+        ),
+      )
+
+      expect(await describeCastMemberAction(id)).toEqual({ ok: true })
+      expect((await listCastMembers(db, FIXTURE_PROJECT_ID))[0]?.guardrail).toBe(
+        'never in handcuffs',
+      )
+      expect(await castNotices(id)).toEqual([])
+    })
+
+    it('says why in the toast when the description stops, as before', async () => {
+      const id = await addEmad()
+      await withPhoto(id)
+      callLlm.mockResolvedValue({ text: 'no json here' })
+
+      const result = await describeCastMemberAction(id)
+      expect(result.ok).toBe(false)
+      expect(result.error).toMatch(/^The model returned no JSON for cast identity/)
+      expect(callLlm).toHaveBeenCalledTimes(2)
+      expect((await listCastMembers(db, FIXTURE_PROJECT_ID))[0]?.identityString).toBe('stale')
+    })
+
+    it('keeps a refusal at the call in its own words, though the helper wraps it for Inngest', async () => {
+      const id = await addEmad()
+      await withPhoto(id)
+      callLlm.mockRejectedValue(
+        new ValidationError('The Anthropic key was rejected', { field: 'apiKey' }),
+      )
+
+      expect(await describeCastMemberAction(id)).toEqual({
+        ok: false,
+        error: 'The Anthropic key was rejected',
+      })
+      expect(callLlm).toHaveBeenCalledTimes(1)
+    })
+
+    it('after an upload, says the photo is saved when the description could not be written', async () => {
+      const id = await addEmad()
+      // A revived row keeps its text; the first photo writes it only when empty.
+      await updateCastMemberAction(id, { identityString: '', guardrail: '' })
+      callLlm.mockResolvedValue({ text: 'no json here' })
+
+      const uploaded = await finaliseCastPhotoAction({
+        memberId: id,
+        mimeType: 'image/jpeg',
+        contentHash: HASH_A,
+        width: 1200,
+        height: 1600,
+        view: 'front',
+      })
+      expect(uploaded.ok).toBe(false)
+      expect(uploaded.error).toMatch(
+        /^The photo is saved, but the description could not be written: The model returned no JSON/,
+      )
+
+      const fromUrl = await addCastPhotoFromUrlAction({
+        memberId: id,
+        url: 'https://example.com/emad.jpg',
+        view: 'profile',
+      })
+      expect(fromUrl.ok).toBe(false)
+      expect(fromUrl.error).toMatch(
+        /^The photo is saved, but the description could not be written: /,
+      )
+
+      const [member] = await listCastMembers(db, FIXTURE_PROJECT_ID)
+      expect(member?.photos).toHaveLength(2)
+      expect(member?.identityString).toBe('')
+    })
   })
 })

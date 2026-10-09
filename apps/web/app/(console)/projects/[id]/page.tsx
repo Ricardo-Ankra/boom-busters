@@ -451,6 +451,7 @@ export default async function ProjectPage({
           members={cast}
           photoUrls={castPhotoUrls}
           restorable={restorableCast}
+          notices={notices}
         />
       ) : null}
 

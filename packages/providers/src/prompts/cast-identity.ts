@@ -1,7 +1,9 @@
-import { ValidationError } from '@boom-busters/schemas'
+import { CAST_GUARDRAIL_MAX, CAST_IDENTITY_MAX, ValidationError } from '@boom-busters/schemas'
 import { z } from 'zod'
 import { BANNED_PROMPT_WORDS } from './direction-craft'
 import { formatIssues, parseJsonCompletion } from './json'
+import { ignoreRepairs, trimField } from './repair'
+import type { Note } from './repair'
 import { outputBudget } from '../llm/types'
 import type { LLMTaskRequest, MsgImage } from '../llm/types'
 
@@ -23,7 +25,9 @@ export const DEFAULT_GUARDRAIL =
   'never handling cash or signing an invented contract; never in handcuffs; ' +
   'never mocked, caricatured or shown in humiliation'
 
-export const IDENTITY_MAX_CHARS = 600
+/** How a notice names each field on the member's card (decision 293). */
+export const IDENTITY_LABEL = 'the identity'
+export const GUARDRAIL_LABEL = 'the guardrail'
 
 export function buildCastIdentityRequest(input: {
   name: string
@@ -43,7 +47,7 @@ render their likeness. Write what a photographer would note and nothing else.
 Return JSON: {"identityString": string, "guardrail": string}
 
 Rules:
-- "identityString" is at most 60 words, one sentence, in this order: face
+- "identityString" is one sentence, in this order: face
   shape; hair (colour, length, style, or bald); beard or moustache or
   clean-shaven; glasses or none; apparent age range; build; the dress the
   photographs show. Begin with the person's full name and role exactly as
@@ -55,7 +59,10 @@ Rules:
 - "guardrail" is one line listing only defamation and mockery exclusions for
   this person. Start from: "${DEFAULT_GUARDRAIL}". Add nothing that keeps
   them away from ordinary settings such as desks, documents, boardrooms or
-  meetings.`,
+  meetings.
+
+Limits (the app checks them): "identityString" at most ${CAST_IDENTITY_MAX} characters;
+"guardrail" at most ${CAST_GUARDRAIL_MAX} characters.`,
     messages: [
       {
         role: 'user',
@@ -70,13 +77,25 @@ Rules:
 }
 
 const IdentitySchema = z.object({
-  identityString: z.string().trim().min(1).max(IDENTITY_MAX_CHARS),
-  guardrail: z.string().trim().max(IDENTITY_MAX_CHARS).optional(),
+  identityString: z.string().trim().min(1).max(CAST_IDENTITY_MAX),
+  guardrail: z.string().trim().max(CAST_GUARDRAIL_MAX).optional(),
 })
 
-export function parseCastIdentity(text: string): { identityString: string; guardrail: string } {
+/**
+ * The description as the model answered it, repaired before it is validated
+ * (decision 293): a field over its limit is trimmed at its end, so the name
+ * and role the identity begins with are kept.
+ */
+export function parseCastIdentity(
+  text: string,
+  note: Note = ignoreRepairs,
+): { identityString: string; guardrail: string } {
   const raw = parseJsonCompletion(text, z.looseObject({}), 'cast identity')
-  const parsed = IdentitySchema.safeParse(raw)
+  const parsed = IdentitySchema.safeParse({
+    ...raw,
+    identityString: trimField(raw['identityString'], CAST_IDENTITY_MAX, IDENTITY_LABEL, note),
+    guardrail: trimField(raw['guardrail'], CAST_GUARDRAIL_MAX, GUARDRAIL_LABEL, note),
+  })
   if (!parsed.success) {
     throw new ValidationError(`The identity answer was malformed: ${formatIssues(parsed.error)}`, {
       field: 'identityString',
