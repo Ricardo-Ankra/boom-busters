@@ -25,10 +25,15 @@ function NoticeList({ notices }: { notices: readonly Notice[] }) {
   async function dismiss(id: string) {
     setPending(id)
     setFailed(null)
-    const result = await dismissNoticeAction(id)
-    setPending(null)
-    if (result.ok) router.refresh()
-    else setFailed({ id, error: result.error })
+    try {
+      const result = await dismissNoticeAction(id)
+      if (result.ok) router.refresh()
+      else setFailed({ id, error: result.error })
+    } catch (error) {
+      setFailed({ id, error: error instanceof Error ? error.message : 'Something went wrong' })
+    } finally {
+      setPending(null)
+    }
   }
 
   return (

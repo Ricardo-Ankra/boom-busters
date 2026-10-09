@@ -69,4 +69,16 @@ describe('Notices (decision 293)', () => {
     expect(refresh).not.toHaveBeenCalled()
     expect(screen.getByRole('button', { name: 'Dismiss' })).toBeEnabled()
   })
+
+  it('says so when the action throws, and frees the button', async () => {
+    dismissNoticeAction.mockRejectedValue(new Error('Not signed in'))
+    const user = userEvent.setup()
+    render(
+      <Notices notices={[notice('01J0000000000000000000000A', 'Trimmed to fit: era rule 1.')]} />,
+    )
+    await user.click(screen.getByRole('button', { name: 'Dismiss' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('Could not dismiss: Not signed in')
+    expect(refresh).not.toHaveBeenCalled()
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Dismiss' })).toBeEnabled())
+  })
 })
