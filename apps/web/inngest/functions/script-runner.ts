@@ -14,7 +14,6 @@ import {
   setScriptStatus,
 } from '@boom-busters/db'
 import {
-  buildChapterRequest,
   chapterTail,
   mockChapter,
   mockOutline,
@@ -34,9 +33,9 @@ import {
 import { NonRetriableError } from 'inngest'
 import { db } from '@/lib/db'
 import { completeForProject } from '@/lib/answer-call'
-import { callLlm } from '@/lib/llm'
 import { recordRepairs, recordStop } from '@/lib/notices'
 import {
+  draftChapterWith,
   draftOutlineWith,
   markShortsWith,
   selfCheckWith,
@@ -257,18 +256,22 @@ export const scriptRunner = inngest.createFunction(
             contentMd = mockChapter(chapter.title)
           } else {
             try {
-              contentMd = (
-                await callLlm(
-                  buildChapterRequest({
-                    caseTitle: setup.caseTitle,
-                    outline,
-                    chapterIndex: index,
-                    previousTail,
-                    claims: setup.claims,
-                  }),
-                  { projectId, estimateOutputTokens: Math.round(chapter.targetWords * 1.6) },
-                )
-              ).text
+              // At most two calls (decision 293): a chapter cut off at its
+              // budget is asked once more at double it, and a second cut-off
+              // stops the stage with the reason. The chapters already saved
+              // are kept; half of this one never is.
+              contentMd = await draftChapterWith(
+                completeForProject(projectId, {
+                  estimateOutputTokens: Math.round(chapter.targetWords * 1.6),
+                }),
+                {
+                  caseTitle: setup.caseTitle,
+                  outline,
+                  chapterIndex: index,
+                  previousTail,
+                  claims: setup.claims,
+                },
+              )
             } catch (error) {
               if (error instanceof BudgetExceededError) {
                 return { ok: false, gate: budgetGateData(error) }

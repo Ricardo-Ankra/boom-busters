@@ -11,11 +11,15 @@ import {
   truncateAnalytics,
   truncateRunMirror,
 } from '@boom-busters/db'
+import { buildDigestRequest } from '@boom-busters/providers'
+import type { DigestLine } from '@boom-busters/providers'
+import { BudgetExceededError } from '@boom-busters/schemas'
+import { NonRetriableError } from 'inngest'
 import { InngestTestEngine } from '@inngest/test'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/lib/db'
 import { forgetRunRows } from '../middleware/run-mirror'
-import { analyticsRunner, worstRetentionDrop } from './analytics-runner'
+import { analyticsRunner, worstRetentionDrop, writeDigestWith } from './analytics-runner'
 
 /**
  * The analytics-runner in mock-provider mode against the real database:
@@ -57,6 +61,56 @@ describe('worstRetentionDrop', () => {
         { pct: 50, ratio: 0.895 },
       ]),
     ).toBeNull()
+  })
+})
+
+describe('writeDigestWith (decision 293)', () => {
+  const lines: DigestLine[] = [
+    {
+      label: 'The audit',
+      targetType: 'master',
+      views: 1200,
+      viewsDelta: 300,
+      avgViewDurationSec: 210,
+      topSource: 'BROWSE',
+      worstDropPct: 40,
+    },
+  ]
+  const input = { weekOf: '2026-08-31', lines }
+  const budget = buildDigestRequest(input).maxTokens
+
+  it('asks once more at double the budget when the digest is cut off, and sends none of the half', async () => {
+    const complete = vi
+      .fn()
+      .mockResolvedValueOnce({ text: 'Views rose by 300 this week, led by', truncated: true })
+      .mockResolvedValueOnce({ text: 'Views rose by 300 this week, led by browse.' })
+    expect(await writeDigestWith(complete, input)).toBe(
+      'Views rose by 300 this week, led by browse.',
+    )
+    expect(complete).toHaveBeenCalledTimes(2)
+    expect(complete.mock.calls[1]![0].maxTokens).toBe(budget * 2)
+    expect(complete.mock.calls[1]![1]).toBe('retry: cut off')
+  })
+
+  it('stops with the reason after a second cut-off, for onFailure to report', async () => {
+    const complete = vi.fn().mockResolvedValue({ text: 'Views rose by', truncated: true })
+    const writing = writeDigestWith(complete, input)
+    await expect(writing).rejects.toBeInstanceOf(NonRetriableError)
+    await expect(writing).rejects.toThrow(
+      'The weekly digest could not be written: the answer was cut off at its length limit',
+    )
+    expect(complete).toHaveBeenCalledTimes(2)
+  })
+
+  it('lets a budget stop through, for the step to skip the digest quietly', async () => {
+    const over = new BudgetExceededError({
+      provider: 'anthropic',
+      operation: 'llm.digest',
+      budgetUsd: 30,
+      monthSpendUsd: 30,
+      estimateUsd: 0.01,
+    })
+    await expect(writeDigestWith(vi.fn().mockRejectedValue(over), input)).rejects.toBe(over)
   })
 })
 

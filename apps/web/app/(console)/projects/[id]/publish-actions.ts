@@ -33,7 +33,8 @@ import { auth } from '@/auth'
 import { db } from '@/lib/db'
 import { env } from '@/lib/env'
 import { movePublishAt, refreshAccessToken, YoutubeAuthError } from '@/lib/youtube'
-import { callLlm } from '@/lib/llm'
+import { callForAnswer } from '@/lib/answer'
+import { completeForProject } from '@/lib/answer-call'
 import { descriptionIngredients } from '@/lib/publish-review'
 import { deleteObject, putObject, R2_PREFIX, storageConfigured } from '@/lib/storage'
 import { THUMB_LIMIT, THUMB_MAX_BYTES, thumbnailDimensionError } from '@/lib/thumbnail-rules'
@@ -173,16 +174,23 @@ export async function generateTitles(targetType: string, targetId: string): Prom
   } else {
     const { hook } = await descriptionIngredients(db, projectId)
     try {
-      const result = await callLlm(
-        buildTitlesRequest({
+      // At most two calls (decision 293): a cut-off is asked once more at
+      // double the budget, a refusal once more with its reason. An unusable
+      // title is still dropped by the parser, as ordinary filtering.
+      const answer = await callForAnswer({
+        request: buildTitlesRequest({
           caseTitle: project.caseTitle,
           hook: hook || project.title,
           target: type,
           workingTitle,
         }),
-        { projectId, estimateOutputTokens: 500 },
-      )
-      titles = parseTitleOptions(result.text)
+        parse: (text) => parseTitleOptions(text),
+        complete: completeForProject(projectId, { estimateOutputTokens: 500 }),
+      })
+      if (!answer.ok) {
+        return { ok: false, error: `The titles could not be generated: ${answer.issue}` }
+      }
+      titles = answer.value
     } catch (error) {
       return {
         ok: false,

@@ -28,7 +28,8 @@ import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { auth } from '@/auth'
 import { db } from '@/lib/db'
-import { callLlm } from '@/lib/llm'
+import { callForText } from '@/lib/answer'
+import { completeForProject } from '@/lib/answer-call'
 
 /**
  * Claim actions on the dossier review screen (build spec section 11.3).
@@ -244,22 +245,23 @@ export async function regenerateSection(
   }))
 
   try {
-    const proposal = mockProvidersEnabled()
-      ? mockRegeneratedSection(selection, note)
-      : (
-          await callLlm(
-            buildRegenerateRequest({
-              chapterTitle: chapter.title,
-              contentMd: chapter.contentMd,
-              selection,
-              note,
-              claims,
-            }),
-            { projectId },
-          )
-        ).text.trim()
-
-    return { ok: true, proposal }
+    if (mockProvidersEnabled()) {
+      return { ok: true, proposal: mockRegeneratedSection(selection, note) }
+    }
+    // At most two calls (decision 293): a passage cut off at its budget is
+    // asked once more at double it, so half a passage never reaches the diff.
+    const answer = await callForText({
+      request: buildRegenerateRequest({
+        chapterTitle: chapter.title,
+        contentMd: chapter.contentMd,
+        selection,
+        note,
+        claims,
+      }),
+      complete: completeForProject(projectId),
+    })
+    if (!answer.ok) return { ok: false, error: answer.issue }
+    return { ok: true, proposal: answer.value.trim() }
   } catch (error) {
     console.error('[script] regenerate failed', serialiseError(error))
     return {

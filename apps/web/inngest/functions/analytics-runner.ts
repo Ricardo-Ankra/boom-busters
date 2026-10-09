@@ -11,6 +11,7 @@ import {
 import { buildDigestRequest, mockDigest, mockProvidersEnabled } from '@boom-busters/providers'
 import type { DigestLine } from '@boom-busters/providers'
 import { BudgetExceededError } from '@boom-busters/schemas'
+import { answerOrStop, callForText, type AnswerComplete } from '@/lib/answer'
 import { db } from '@/lib/db'
 import { env } from '@/lib/env'
 import { callLlm } from '@/lib/llm'
@@ -71,6 +72,23 @@ export function worstRetentionDrop(curve: { pct: number; ratio: number }[] | nul
     }
   }
   return worstFall > 0.02 ? worstAt : null
+}
+
+/**
+ * The Monday digest's prose (decision 293): plain text on `callForText`, so a
+ * reply cut off at its budget is asked once more at double it, and a second
+ * cut-off stops the run with the reason instead of mailing half a digest.
+ * The stop is a `NonRetriableError`: `onFailure` says so, and no blind retry
+ * buys the same cut-off again.
+ */
+export async function writeDigestWith(
+  complete: AnswerComplete,
+  input: Parameters<typeof buildDigestRequest>[0],
+): Promise<string> {
+  return answerOrStop(
+    await callForText({ request: buildDigestRequest(input), complete }),
+    'The weekly digest could not be written',
+  )
 }
 
 export const analyticsRunner = inngest.createFunction(
@@ -274,7 +292,12 @@ export const analyticsRunner = inngest.createFunction(
         body = mockDigest({ weekOf, lines })
       } else {
         try {
-          body = (await callLlm(buildDigestRequest({ weekOf, lines }))).text
+          // Not a project's spend, so no project on the ledger row; a retry
+          // still carries its label to the Costs screen (decision 292).
+          body = await writeDigestWith(
+            (request, call) => callLlm(request, call === 'answer' ? {} : { purpose: call }),
+            { weekOf, lines },
+          )
         } catch (error) {
           // A digest is never worth a budget gate: the numbers keep landing
           // in snapshots, and next Monday tries again.
