@@ -37,6 +37,12 @@ export interface CallOptions {
    * that lets a run walk through a cap it should have parked on.
    */
   estimateOutputTokens?: number
+  /**
+   * Why this call was made, when it is not the first ask: "retry: cut off" or
+   * "retry: refused" (decision 292). Written to the ledger row, so what
+   * retries cost shows on the Costs screen.
+   */
+  purpose?: string
   signal?: AbortSignal
 }
 
@@ -89,7 +95,11 @@ export async function callLlm(
         outputTokens: options.estimateOutputTokens ?? request.maxTokens,
         prices: settings.modelPrices,
       }),
-      meta: { task: request.task, model: choice.model },
+      meta: {
+        task: request.task,
+        model: choice.model,
+        ...(options.purpose ? { purpose: options.purpose } : {}),
+      },
     },
     async () => {
       const result = await route(
