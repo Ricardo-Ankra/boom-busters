@@ -80,7 +80,7 @@ Owner's rulings in the conversation (2026-10-09):
 | Research brief | summary 5,000; turning point 2,000 | | principals 30; open questions 20 |
 | Timeline | what happened 1,000 | an event whose date label is over 100 | 60 events |
 | Claims | | a claim whose text is over 1,000 | 120 claims |
-| Answers | answer 3,000 | an answer whose echoed question is over 1,000 | 40 answers; 40 claims each |
+| Answers | answer 3,000 | an answer whose echoed question is over 1,000 | 40 answers; 40 claims for the pass |
 | Case suggestions | angle 2,000; demand notes 2,000; link note 500 | a suggestion whose title is over 200 | the number asked for; 10 links |
 | Teaser | title 90 (at a word); each paragraph 400 | | 5 paragraphs |
 | Cast identity | identity 600; guardrail 600 | | |
