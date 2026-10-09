@@ -46,6 +46,8 @@ import type {
 } from '@boom-busters/schemas'
 import { NonRetriableError } from 'inngest'
 import { z } from 'zod'
+import { answerOrStop, callForAnswer } from '@/lib/answer'
+import { completeForProject } from '@/lib/answer-call'
 import { db } from '@/lib/db'
 import { callLlm } from '@/lib/llm'
 import { planChapterWith } from '@/lib/plan-chapter'
@@ -216,9 +218,16 @@ export async function draftDirectorsBook(projectId: string): Promise<DirectorsBo
         chapterCount: inputs.chapters.length,
         cast: inputs.cast,
       })
-    : parseDirectorsBook(
-        (await callLlm(buildDirectorsBookRequest(inputs), { projectId })).text,
-        inputs.chapters.length,
+    : // At most two calls (decision 292): the parser trims a fixable overrun,
+      // a cut-off is asked once more at double the budget, a refusal once more
+      // with its reason; then the stage stops with the reason, never a blind retry.
+      answerOrStop(
+        await callForAnswer({
+          request: buildDirectorsBookRequest(inputs),
+          parse: (text) => parseDirectorsBook(text, inputs.chapters.length),
+          complete: completeForProject(projectId),
+        }),
+        "The director's book could not be drafted",
       )
   await setProjectDirection(db, projectId, book)
   await seedCastFromPrincipals(db, projectId, book.principals)

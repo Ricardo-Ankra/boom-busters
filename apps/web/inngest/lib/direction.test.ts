@@ -17,6 +17,7 @@ import {
   setProjectDirection,
   setScriptOutline,
 } from '@boom-busters/db'
+import { NonRetriableError } from 'inngest'
 import { MAX_OUTPUT_TOKENS, mockDirectorsBook } from '@boom-busters/providers'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/lib/db'
@@ -228,6 +229,42 @@ describeDb('direction helpers (mock mode)', () => {
     })
     const second = await loadOrDraftDirectorsBook(FIXTURE_PROJECT_ID)
     expect(second.visualThesis).toBe('edited by the owner')
+  })
+
+  describe('a refused book (decision 292)', () => {
+    const twoMotifs = () => ({
+      ...mockDirectorsBook({ caseTitle: 'Case', chapterCount: 1 }),
+      motifs: ['the badge', 'the server rack'],
+    })
+
+    it('asks once more with the reason, labelled in the ledger, and stores the second answer', async () => {
+      vi.stubEnv('MOCK_PROVIDERS', '')
+      callLlm.mockReset()
+      callLlm.mockResolvedValueOnce({ text: JSON.stringify(twoMotifs()) }).mockResolvedValueOnce({
+        text: JSON.stringify(mockDirectorsBook({ caseTitle: 'Case', chapterCount: 1 })),
+      })
+
+      const book = await draftDirectorsBook(FIXTURE_PROJECT_ID)
+      expect(book.motifs).toHaveLength(3)
+      expect(callLlm).toHaveBeenCalledTimes(2)
+      expect(callLlm.mock.calls[1]![1]).toMatchObject({ purpose: 'retry: refused' })
+      expect(callLlm.mock.calls[1]![0].messages.at(-1).content).toMatch(
+        /^Your previous answer was refused: The director's book is malformed/,
+      )
+    })
+
+    it('stops after two refusals with a stop Inngest will not retry', async () => {
+      vi.stubEnv('MOCK_PROVIDERS', '')
+      callLlm.mockReset()
+      callLlm.mockResolvedValue({ text: JSON.stringify(twoMotifs()) })
+
+      const stopped = draftDirectorsBook(FIXTURE_PROJECT_ID)
+      await expect(stopped).rejects.toBeInstanceOf(NonRetriableError)
+      await expect(draftDirectorsBook(FIXTURE_PROJECT_ID)).rejects.toThrow(
+        /^The director's book could not be drafted: The director's book is malformed/,
+      )
+      expect(callLlm).toHaveBeenCalledTimes(4)
+    })
   })
 })
 

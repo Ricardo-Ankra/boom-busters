@@ -108,14 +108,25 @@ export const visualsReplanner = inngest.createFunction(
             if (error instanceof BudgetExceededError) {
               return { ok: false as const, gate: budgetGateData(error) }
             }
+            // Two answers refused or cut off (decision 292): the stored book
+            // stays, and the plan screen says why, with no blind retry.
+            if (error instanceof NonRetriableError) {
+              return { ok: false as const, stopped: error.message }
+            }
             throw error
           }
         })
-        if (!drafted.ok) {
+        if (!drafted.ok && 'gate' in drafted) {
           await step.run('redraft-over-budget', () =>
             markSideJobFailed(ctx, 'The redraft stopped', drafted.gate),
           )
           return { projectId, op, outcome: 'over-budget' as const }
+        }
+        if (!drafted.ok) {
+          await step.run('redraft-stopped', () =>
+            markSideJobFailed(ctx, 'The redraft stopped', { message: drafted.stopped }),
+          )
+          return { projectId, op, outcome: 'redraft-stopped' as const }
         }
         return { projectId, op, outcome: 'redrafted' as const }
       }
