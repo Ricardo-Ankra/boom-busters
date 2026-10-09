@@ -54,7 +54,8 @@ import { articleForClaim } from '@/lib/article-source'
 import { db } from '@/lib/db'
 import { postForUrl } from '@/lib/social-source'
 import { env } from '@/lib/env'
-import { callLlm } from '@/lib/llm'
+import { callForAnswer } from '@/lib/answer'
+import { completeForProject } from '@/lib/answer-call'
 import { stillCatalogue, stillGenerator } from '@/lib/model-catalogue'
 import {
   assembleStillPrompt,
@@ -717,11 +718,18 @@ export async function scoreSlotCandidates(
 ): Promise<SlotCandidate[]> {
   if (candidates.length === 0) return []
 
-  const scores = mockProvidersEnabled()
-    ? mockScores(candidates)
-    : parseScores((await callLlm(buildScoringRequest({ brief, candidates }), { projectId })).text)
-
-  return applyScores(candidates, scores)
+  if (mockProvidersEnabled()) return applyScores(candidates, mockScores(candidates))
+  const answer = await callForAnswer({
+    request: buildScoringRequest({ brief, candidates }),
+    parse: parseScores,
+    complete: completeForProject(projectId),
+  })
+  if (answer.ok) return applyScores(candidates, answer.value)
+  // Two answers it could not use (decision 292): the candidates are kept,
+  // unranked in the provider's order, rather than the slot failing; the
+  // producer can still choose among them.
+  console.warn(`[visuals] candidates left unranked: ${answer.issue}`)
+  return applyScores(candidates, { scores: [] })
 }
 
 // ---------------------------------------------------------------------------
