@@ -7157,3 +7157,52 @@ boom-busters-broker`; merge and deploy to Vercel, then `PUT
      Shipping: a Vercel deploy and `PUT /api/inngest`. No migration, no
      Remotion or broker deploy. The number 292 is checked against
      `origin/master` at the merge.
+
+293. **Every answer within its limits, and told where it lands (stage 2 of 292)** (2026-10-09, owner). Stage 1 put eight tasks on one helper; a
+     survey found eighteen calls still off it: no limits stated in most
+     prompts (none in the dossier's four), every structured answer refused
+     whole for one long field or one bad claim, the chapter draft and the
+     digest re-buying identical calls and keeping half-written text, the
+     teaser and the Script stage's Shorts marking failing silently, and a
+     side job that stopped while a gate was parked reaching only a server
+     log line (production has no Resend key), so a stopped redraft showed
+     nothing in the app. Stage 1's trims were silent too.
+     Owner's rulings: notices go on the card they concern, with a Dismiss
+     button, from one store; one item in a list that breaks a rule on a
+     fact is dropped and the rest kept; the teaser and the Shorts marking
+     are fixed as well.
+     What shipped: a parser reports each repair through `note`, and the
+     helper returns the repairs of the attempt that succeeded; a deliberate
+     decline (`AnswerDeclined`) and a provider's content refusal are final
+     after one call; `callForText` gives plain text the same two calls,
+     with a truncated reply always a cut-off and nothing half-written kept.
+     The dossier's four passes, case suggestions, the teaser, cast
+     identity, re-brief, redirect, retype, the Script stage's Shorts
+     marking and title options are on the helper; the chapter draft, the
+     digest and the section rewrite are on `callForText`. Every prompt
+     states its limits, and each parser trims free text, caps lists and
+     drops a bad item. A `notices` table (migration 0033) holds one line
+     per answer or stop; the Direction card, the dossier review, Script
+     Studio's Shorts strip, the Teaser card's place, each cast card, each
+     slot card, each case row and a project strip show theirs, each with
+     Dismiss; the next answer for a subject retires its old notes.
+     `markSideJobFailed` writes a stopped notice while a gate is parked.
+     Decisions made where the spec left room: a case's priority score is
+     the model's own rating, so it is rounded and clamped with a notice
+     (cost if wrong: a rating moves a few points); a teaser paragraph
+     naming a chapter that does not exist is refused, not dropped (cost if
+     wrong: one Sonnet call); a claim's text and an answer's echoed
+     question are facts, dropped rather than trimmed (cost if wrong: one
+     claim lost until research is re-run); the Script stage's Shorts
+     marking never fails the stage, so any failure but a budget stop
+     stores no candidates and says so on the strip, since the Shorts stage
+     marks them again (cost if wrong: an empty strip until then); a teaser
+     rebuild whose voicing stops leaves a `stopped` notice, not `skipped`,
+     since the teaser exists (cost if wrong: none); a suggested case's
+     repairs are filed under its row by its title (cost if wrong: a note
+     on a neighbouring row).
+     Left as they were: the plan's automatic chapter repair (best effort;
+     the Fix button covers it) and the set inventory (already refuses a
+     truncated reply).
+     Shipping: migration 0033 on the production database, then a Vercel
+     deploy and `PUT /api/inngest`. No Remotion or broker deploy.
