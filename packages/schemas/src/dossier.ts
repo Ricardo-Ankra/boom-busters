@@ -26,6 +26,27 @@ export const ClaimConfidenceSchema = z.enum(CLAIM_CONFIDENCES)
 export type ClaimConfidenceName = z.infer<typeof ClaimConfidenceSchema>
 
 /**
+ * The research passes' limits (decision 293): one source for the schemas
+ * below, the prompts that state them and the parsers that repair to them.
+ * Free text over its limit is trimmed. A date label, a claim's text and an
+ * answer's echoed question are facts: an item whose fact runs over is
+ * dropped, never cut.
+ */
+export const DOSSIER_SUMMARY_MAX = 5000
+export const DOSSIER_TURNING_POINT_MAX = 2000
+export const DOSSIER_PRINCIPALS_MAX = 30
+export const DOSSIER_OPEN_QUESTIONS_MAX = 20
+export const DOSSIER_EVENT_WHEN_MAX = 100
+export const DOSSIER_EVENT_WHAT_MAX = 1000
+export const DOSSIER_EVENTS_MAX = 60
+export const DOSSIER_CLAIM_TEXT_MAX = 1000
+export const DOSSIER_CLAIMS_MAX = 120
+export const DOSSIER_QUESTION_MAX = 1000
+export const DOSSIER_ANSWER_MAX = 3000
+export const DOSSIER_ANSWERS_MAX = 40
+export const DOSSIER_ANSWER_CLAIMS_MAX = 40
+
+/**
  * A source the model offered, kept only if it is genuinely a web address.
  *
  * Asked for a `sourceUrl`, a model will often give a citation instead — "Munich
@@ -107,7 +128,7 @@ function foldSourceType(value: unknown): unknown {
 
 export const DraftClaimSchema = z
   .object({
-    text: z.string().trim().min(10).max(1000),
+    text: z.string().trim().min(10).max(DOSSIER_CLAIM_TEXT_MAX),
     sourceUrl: SourceUrlSchema,
     sourceType: z.preprocess(foldSourceType, ClaimSourceTypeSchema),
     confidence: ClaimConfidenceSchema,
@@ -143,20 +164,22 @@ export type DraftClaim = z.infer<typeof DraftClaimSchema>
  */
 export const TimelineEventSchema = z.object({
   /** Free text rather than a date: "March 2001", "late 2019" are all real. */
-  when: z.string().trim().min(3).max(100),
-  what: z.string().trim().min(10).max(1000),
+  when: z.string().trim().min(3).max(DOSSIER_EVENT_WHEN_MAX),
+  what: z.string().trim().min(10).max(DOSSIER_EVENT_WHAT_MAX),
   sourceUrl: SourceUrlSchema,
 })
 export type TimelineEvent = z.infer<typeof TimelineEventSchema>
 
 export const CaseBriefSchema = z.object({
-  summary: z.string().trim().min(50).max(5000),
+  summary: z.string().trim().min(50).max(DOSSIER_SUMMARY_MAX),
   /** Why this story turns — the moment the script builds toward. */
-  turningPoint: z.string().trim().min(20).max(2000),
+  turningPoint: z.string().trim().min(20).max(DOSSIER_TURNING_POINT_MAX),
   /** Named people and organisations, so the script can be consistent. */
-  principals: z.array(z.object({ name: z.string().min(2), role: z.string().min(2) })).max(30),
+  principals: z
+    .array(z.object({ name: z.string().min(2), role: z.string().min(2) }))
+    .max(DOSSIER_PRINCIPALS_MAX),
   /** What the research could not establish. Shown to the human, not hidden. */
-  openQuestions: z.array(z.string().min(10)).max(20),
+  openQuestions: z.array(z.string().min(10)).max(DOSSIER_OPEN_QUESTIONS_MAX),
 })
 export type CaseBrief = z.infer<typeof CaseBriefSchema>
 
@@ -166,11 +189,11 @@ export type CaseBrief = z.infer<typeof CaseBriefSchema>
  * bug waiting for whoever imports the wrong one.
  */
 export const ResearchTimelineSchema = z.object({
-  events: z.array(TimelineEventSchema).min(1).max(60),
+  events: z.array(TimelineEventSchema).min(1).max(DOSSIER_EVENTS_MAX),
 })
 
 export const ClaimsSchema = z.object({
-  claims: z.array(DraftClaimSchema).min(1).max(120),
+  claims: z.array(DraftClaimSchema).min(1).max(DOSSIER_CLAIMS_MAX),
 })
 
 /**
@@ -191,22 +214,22 @@ export const ResearchAnswerSchema = z.object({
    * renderer then falls back to text matching.
    */
   index: z.number().int().min(1).max(40).optional(),
-  question: z.string().trim().min(10).max(1000),
+  question: z.string().trim().min(10).max(DOSSIER_QUESTION_MAX),
   answer: z.preprocess(
     (value) => (typeof value === 'string' && value.trim().length >= 10 ? value.trim() : null),
-    z.string().max(3000).nullable(),
+    z.string().max(DOSSIER_ANSWER_MAX).nullable(),
   ),
   sourceUrl: SourceUrlSchema,
 })
 export type ResearchAnswer = z.infer<typeof ResearchAnswerSchema>
 
 export const ResearchAnswersSchema = z.object({
-  answers: z.array(ResearchAnswerSchema).max(40),
+  answers: z.array(ResearchAnswerSchema).max(DOSSIER_ANSWERS_MAX),
   /**
    * Facts surfaced while answering, in the same shape as the claims pass —
    * an answer the script might narrate must be checkable the same way.
    */
-  claims: z.array(DraftClaimSchema).max(40).default([]),
+  claims: z.array(DraftClaimSchema).max(DOSSIER_ANSWER_CLAIMS_MAX).default([]),
 })
 export type ResearchAnswers = z.infer<typeof ResearchAnswersSchema>
 

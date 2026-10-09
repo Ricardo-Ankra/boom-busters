@@ -15,6 +15,7 @@ import {
   parseTimeline,
   renderDossierMarkdown,
 } from './dossier'
+import type { Note, Repair } from './repair'
 
 const caseContext = {
   title: 'Enron',
@@ -542,5 +543,287 @@ describe('mock research', () => {
 
   it('is deterministic', () => {
     expect(mockBrief(caseContext)).toEqual(mockBrief(caseContext))
+  })
+})
+
+describe('the research limits (decision 293)', () => {
+  const flat = (request: { system: string }) => request.system.replace(/\s+/g, ' ')
+
+  it('states every limit the brief is checked against', () => {
+    expect(flat(buildBriefRequest(caseContext))).toContain(
+      'Limits (the app checks them): "summary" 50 to 5000 characters; "turningPoint" 20 to 2000 characters; at most 30 principals, each with a name and a role; at most 20 open questions, each at least 10 characters.',
+    )
+  })
+
+  it('states every limit the timeline is checked against', () => {
+    expect(flat(buildTimelineRequest(caseContext, brief))).toContain(
+      'Limits (the app checks them): 1 to 60 events; "when" 3 to 100 characters; "what" 10 to 1000 characters.',
+    )
+  })
+
+  it('states every limit the claims are checked against', () => {
+    expect(flat(buildClaimsRequest(caseContext, brief, []))).toContain(
+      'Limits (the app checks them): 1 to 120 claims; each "text" 10 to 1000 characters.',
+    )
+  })
+
+  it('states every limit the answers are checked against', () => {
+    expect(flat(buildAnswersRequest(caseContext, brief, []))).toContain(
+      'Limits (the app checks them): at most 40 answers; each "question" 10 to 1000 characters; each "answer" at most 3000 characters; at most 40 claims, each "text" 10 to 1000 characters.',
+    )
+  })
+})
+
+describe('the research repairs (decision 293)', () => {
+  const collect = () => {
+    const notes: Repair[] = []
+    const note: Note = (repair) => {
+      notes.push(repair)
+    }
+    return { notes, note }
+  }
+
+  const CLAIM = {
+    text: 'Enron filed for bankruptcy in December 2001.',
+    sourceUrl: 'https://example.com/filing',
+    sourceType: 'court',
+    confidence: 'sourced',
+    adjudicated: true,
+  }
+
+  describe('parseBrief', () => {
+    it('trims a long summary and turning point at a sentence, and says which', () => {
+      const { notes, note } = collect()
+      const parsed = parseBrief(
+        JSON.stringify({
+          ...brief,
+          summary: 'The company grew fast. '.repeat(250),
+          turningPoint: 'The auditors refused to sign. '.repeat(80),
+        }),
+        note,
+      )
+      expect(parsed.summary.length).toBeLessThanOrEqual(5000)
+      expect(parsed.summary.endsWith('The company grew fast.')).toBe(true)
+      expect(parsed.turningPoint.length).toBeLessThanOrEqual(2000)
+      expect(notes).toEqual([
+        { action: 'trimmed', field: "the brief's summary" },
+        { action: 'trimmed', field: "the brief's turning point" },
+      ])
+    })
+
+    it('keeps the first principals and open questions over their caps, names untouched', () => {
+      const { notes, note } = collect()
+      const parsed = parseBrief(
+        JSON.stringify({
+          ...brief,
+          principals: Array.from({ length: 31 }, (_, at) => ({
+            name: `Person ${at}`,
+            role: 'Director',
+          })),
+          openQuestions: Array.from({ length: 21 }, (_, at) => `Open question number ${at}?`),
+        }),
+        note,
+      )
+      expect(parsed.principals).toHaveLength(30)
+      expect(parsed.principals[29]).toEqual({ name: 'Person 29', role: 'Director' })
+      expect(parsed.openQuestions).toHaveLength(20)
+      expect(notes).toEqual([
+        { action: 'capped', field: 'principals', kept: 30 },
+        { action: 'capped', field: 'open questions', kept: 20 },
+      ])
+    })
+
+    it('notes nothing for a brief within its limits, and still refuses one with no summary', () => {
+      const { notes, note } = collect()
+      parseBrief(JSON.stringify(brief), note)
+      expect(notes).toEqual([])
+      const { summary, ...rest } = brief
+      void summary
+      expect(() => parseBrief(JSON.stringify(rest), note)).toThrow(ValidationError)
+    })
+  })
+
+  describe('parseTimeline', () => {
+    it('drops an event whose date runs over, trims a long one, and numbers both as written', () => {
+      const { notes, note } = collect()
+      const events = parseTimeline(
+        JSON.stringify({
+          events: [
+            { when: '2001', what: 'Bankruptcy filed.' },
+            { when: 'x'.repeat(101), what: 'An event with a runaway date.' },
+            {
+              when: '2006',
+              what: 'The convictions were returned. '.repeat(40),
+              sourceUrl: 'https://example.com/ruling',
+            },
+          ],
+        }),
+        note,
+      )
+      expect(events.map((event) => event.when)).toEqual(['2001', '2006'])
+      expect(events[1]!.what.length).toBeLessThanOrEqual(1000)
+      expect(events[1]!.what.endsWith('The convictions were returned.')).toBe(true)
+      expect(events[1]!.sourceUrl).toBe('https://example.com/ruling')
+      expect(notes).toEqual([
+        {
+          action: 'dropped',
+          field: 'timeline event 2',
+          reason: 'its date ran over 100 characters',
+        },
+        { action: 'trimmed', field: 'timeline event 3' },
+      ])
+    })
+
+    it('keeps the first 60 events', () => {
+      const { notes, note } = collect()
+      const events = parseTimeline(
+        JSON.stringify({
+          events: Array.from({ length: 61 }, (_, at) => ({
+            when: `Day ${at + 1}`,
+            what: `Event number ${at + 1} happened.`,
+          })),
+        }),
+        note,
+      )
+      expect(events).toHaveLength(60)
+      expect(notes).toEqual([{ action: 'capped', field: 'timeline events', kept: 60 }])
+    })
+
+    it('refuses a timeline its drops left empty', () => {
+      expect(() =>
+        parseTimeline(
+          JSON.stringify({
+            events: [{ when: 'x'.repeat(101), what: 'An event with a runaway date.' }],
+          }),
+        ),
+      ).toThrow(ValidationError)
+    })
+  })
+
+  describe('parseClaims', () => {
+    it('drops a claim whose text runs over, keeps the rest whole, and names it', () => {
+      const { notes, note } = collect()
+      const parsed = parseClaims(
+        JSON.stringify({
+          claims: [
+            { ...CLAIM, sourceType: 'SEC filing' },
+            { ...CLAIM, text: 'A'.repeat(1001) },
+            { ...CLAIM, text: 'Enron executives were convicted in 2006.' },
+          ],
+        }),
+        note,
+      )
+      expect(parsed.map((claim) => claim.text)).toEqual([
+        CLAIM.text,
+        'Enron executives were convicted in 2006.',
+      ])
+      // Facts as the model gave them, with the source rules applied as before.
+      expect(parsed[0]).toEqual({ ...CLAIM, sourceType: 'regulator' })
+      expect(notes).toEqual([
+        { action: 'dropped', field: 'claim 2', reason: 'its text ran over 1,000 characters' },
+      ])
+    })
+
+    it('keeps the first 120 claims', () => {
+      const { notes, note } = collect()
+      const parsed = parseClaims(
+        JSON.stringify({
+          claims: Array.from({ length: 121 }, (_, at) => ({
+            ...CLAIM,
+            text: `Claim number ${at + 1} about Enron.`,
+          })),
+        }),
+        note,
+      )
+      expect(parsed).toHaveLength(120)
+      expect(notes).toEqual([{ action: 'capped', field: 'claims', kept: 120 }])
+    })
+
+    it('refuses a claims list its drops left empty', () => {
+      expect(() =>
+        parseClaims(JSON.stringify({ claims: [{ ...CLAIM, text: 'A'.repeat(1001) }] })),
+      ).toThrow(ValidationError)
+    })
+  })
+
+  describe('parseAnswers', () => {
+    it('trims a long answer, drops one whose question ran over, and names each by its question', () => {
+      const { notes, note } = collect()
+      const parsed = parseAnswers(
+        JSON.stringify({
+          answers: [
+            {
+              index: 1,
+              question: 'What did the board know in 1999?',
+              answer: 'The Powers report found the board approved it. '.repeat(70),
+              sourceUrl: 'https://example.com/powers-report',
+            },
+            { index: 2, question: 'Q'.repeat(1001), answer: 'An answer that will not be kept.' },
+            { index: 3, question: 'Who leaked it to the press?', answer: null },
+          ],
+        }),
+        note,
+      )
+      expect(parsed.answers.map((answer) => answer.index)).toEqual([1, 3])
+      expect(parsed.answers[0]).toMatchObject({
+        question: 'What did the board know in 1999?',
+        sourceUrl: 'https://example.com/powers-report',
+      })
+      expect(parsed.answers[0]!.answer!.length).toBeLessThanOrEqual(3000)
+      expect(parsed.answers[0]!.answer!.endsWith('approved it.')).toBe(true)
+      expect(notes).toEqual([
+        {
+          action: 'dropped',
+          field: 'the answer to question 2',
+          reason: 'its question ran over 1,000 characters',
+        },
+        { action: 'trimmed', field: 'the answer to question 1' },
+      ])
+    })
+
+    it('numbers an answer by its place when it echoed no number', () => {
+      const { notes, note } = collect()
+      parseAnswers(
+        JSON.stringify({
+          answers: [
+            { question: 'What did the board know in 1999?', answer: 'It knew. '.repeat(400) },
+          ],
+        }),
+        note,
+      )
+      expect(notes).toEqual([{ action: 'trimmed', field: 'the answer to question 1' }])
+    })
+
+    it('caps the answers and the claims found while answering, dropping an overlong claim first', () => {
+      const { notes, note } = collect()
+      const parsed = parseAnswers(
+        JSON.stringify({
+          answers: Array.from({ length: 41 }, (_, at) => ({
+            question: `Open question number ${at + 1}?`,
+            answer: null,
+          })),
+          claims: [
+            { ...CLAIM, text: 'A'.repeat(1001) },
+            ...Array.from({ length: 41 }, (_, at) => ({
+              ...CLAIM,
+              text: `Claim number ${at + 1} about Enron.`,
+            })),
+          ],
+        }),
+        note,
+      )
+      expect(parsed.answers).toHaveLength(40)
+      expect(parsed.claims).toHaveLength(40)
+      expect(parsed.claims[0]!.text).toBe('Claim number 1 about Enron.')
+      expect(notes).toEqual([
+        { action: 'capped', field: 'answers', kept: 40 },
+        {
+          action: 'dropped',
+          field: 'claim 1 found while answering',
+          reason: 'its text ran over 1,000 characters',
+        },
+        { action: 'capped', field: 'claims found while answering', kept: 40 },
+      ])
+    })
   })
 })
