@@ -7136,12 +7136,19 @@ boom-busters-broker`; merge and deploy to Vercel, then `PUT
      Decisions made where the spec left room: a sentence end counts only in
      the second half of the limit (an early "Dr." would throw most of the
      text away), and a point followed by a digit is not one (cost if wrong:
-     a trim ends at a word where a sentence end was nearer); the shot list
-     keeps its live harness's labels, a retry of either kind is "plan-retry"
-     (cost if wrong: the harness cannot tell a cut-off retry from a refused
-     one); the graphics designer's retry after a refusal is rebuilt by its
-     own request builder, so the producer's steer stays last (cost if wrong:
-     none seen).
+     a trim ends at a word where a sentence end was nearer); the graphics
+     designer's retry after a refusal is rebuilt by its own request builder,
+     so the producer's steer stays last (cost if wrong: none seen). A
+     provider error the call itself throws as a `ValidationError` (a
+     rejected key, an exhausted balance) is not the answer's fault and buys
+     no retry: the helper rethrows it as `NonRetriableError`, so the stage
+     fails at once instead of after Inngest's backoff (cost if wrong: a
+     balance topped up mid-run needs a manual re-run). A reply the provider
+     marks as truncated that does not parse counts as a cut-off, so it is
+     asked again at double the budget rather than refused at the same one;
+     Gemini returns empty text when its reasoning eats the budget (cost if
+     wrong: none seen). The Costs screen shows a retry's label beside the
+     operation.
      Stage 2 (its own spec): limits and repairs in every remaining prompt
      (research, case suggestions, teaser, cast identity, re-brief, redirect,
      retype), the helper for the single-shot calls, and the plain-text
