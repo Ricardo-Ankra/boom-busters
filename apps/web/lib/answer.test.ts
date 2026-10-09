@@ -125,7 +125,7 @@ describe('callForAnswer (decision 292)', () => {
     })
   })
 
-  it('lets a budget stop, a provider error and a call-side validation error through', async () => {
+  it('lets a budget stop and a provider error through unchanged', async () => {
     const budget = new BudgetExceededError({
       provider: 'anthropic',
       operation: 'llm.direction',
@@ -140,10 +140,17 @@ describe('callForAnswer (decision 292)', () => {
     await expect(
       callForAnswer({ request, parse, complete: vi.fn().mockRejectedValue(down) }),
     ).rejects.toBe(down)
-    // Thrown by the CALL, not the parse, and not a cut-off: never a reason-retry.
+  })
+
+  it('stops a call-side validation error without a retry, as a NonRetriableError (spec 2.1)', async () => {
+    // Thrown by the CALL, not the parse, and not a cut-off: never a reason-retry,
+    // and wrapped so Inngest does not re-run the step either.
     const key = new ValidationError('the key was rejected', { field: 'apiKey' })
     const complete = vi.fn().mockRejectedValue(key)
-    await expect(callForAnswer({ request, parse, complete })).rejects.toBe(key)
+    const stopped = await callForAnswer({ request, parse, complete }).catch((e: unknown) => e)
+    expect(stopped).toBeInstanceOf(NonRetriableError)
+    expect((stopped as NonRetriableError).message).toBe('the key was rejected')
+    expect((stopped as NonRetriableError).cause).toBe(key)
     expect(complete).toHaveBeenCalledTimes(1)
   })
 })

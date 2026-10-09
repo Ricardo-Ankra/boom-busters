@@ -61,6 +61,11 @@ async function attempt<T>(
     // Only a cut-off from the call is the answer's fault; anything else the
     // call throws (a rejected key, a budget stop, a provider error) is not.
     if (isCutOff(error)) return { ok: false, cutOff: true, issue: error.message }
+    // A call-side ValidationError (a rejected key, an exhausted balance, a
+    // preflight miss) is wrapped as spec 2.1 says: Inngest would retry it blind.
+    if (error instanceof ValidationError) {
+      throw new NonRetriableError(error.message, { cause: error })
+    }
     throw error
   }
   try {
