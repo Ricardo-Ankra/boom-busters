@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { ValidationError } from '@boom-busters/schemas'
+import { NonRetriableError } from 'inngest'
 import { planChapterWith } from './plan-chapter'
 
 const chapter = { id: 'ch1', title: 'The fall', number: 1 }
@@ -57,6 +58,29 @@ describe('planChapterWith', () => {
     expect(complete.mock.calls[1]?.[0].maxTokens).toBeGreaterThan(
       complete.mock.calls[0]?.[0].maxTokens,
     )
+  })
+
+  it('asks once more with the reason when the plan is refused (decision 292)', async () => {
+    const complete = vi
+      .fn()
+      .mockResolvedValueOnce({ text: 'no json here' })
+      .mockResolvedValueOnce({ text: oneStill })
+    const result = await planChapterWith(complete, input)
+    expect(result?.slots).toHaveLength(1)
+    expect(complete.mock.calls[1]?.[1]).toBe('plan-retry')
+    expect(complete.mock.calls[1]?.[0].messages.at(-1).content).toMatch(
+      /^Your previous answer was refused: /,
+    )
+  })
+
+  it('stops the chapter after two refusals, with a stop Inngest will not retry', async () => {
+    const complete = vi.fn().mockResolvedValue({ text: 'no json here' })
+    const planning = planChapterWith(complete, input)
+    await expect(planning).rejects.toBeInstanceOf(NonRetriableError)
+    await expect(planChapterWith(complete, input)).rejects.toThrow(
+      /^Chapter 1 could not be planned: /,
+    )
+    expect(complete).toHaveBeenCalledTimes(4)
   })
 
   it('returns null for a chapter with no narration', async () => {

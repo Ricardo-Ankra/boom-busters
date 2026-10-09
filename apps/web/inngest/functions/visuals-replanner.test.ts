@@ -454,6 +454,18 @@ describeDb('visuals-replanner op repair (decision 271)', () => {
     })
   })
 
+  it('keeps every flagged slot with the reason when the repair answer is refused twice (decision 292)', async () => {
+    callLlm.mockResolvedValue({ text: 'no json here' })
+
+    const { result } = await engine.execute({ events: replanEvent('repair') })
+
+    expect(result).toMatchObject({ outcome: 'repaired', rewritten: 0 })
+    expect(callLlm).toHaveBeenCalledTimes(2)
+    expect(callLlm.mock.calls[1]![1]).toMatchObject({ purpose: 'retry: refused' })
+    const [stored] = await listShotSlots(db, FIXTURE_PROJECT_ID)
+    expect(stored!.brief).toMatchObject({ prompt: still.prompt })
+  })
+
   it('refuses outside the plan checkpoint', async () => {
     await setVisualsPhase(db, FIXTURE_PROJECT_ID, 'board')
     const { result } = await engine.execute({ events: replanEvent('repair') })

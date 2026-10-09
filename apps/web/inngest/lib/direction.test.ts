@@ -365,7 +365,7 @@ describe('planChapterSlots against a live model', () => {
         claims: [],
         direction: null,
       }),
-    ).rejects.toThrow(/cut off mid-answer/)
+    ).rejects.toThrow(/^Chapter 1 could not be planned: the answer was cut off/)
     expect(callLlm).toHaveBeenCalledTimes(2)
   })
 })
