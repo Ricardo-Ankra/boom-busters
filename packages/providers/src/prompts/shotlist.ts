@@ -1,5 +1,7 @@
 import {
   figureDigitGroups,
+  GRAPHIC_INTENT_MAX,
+  GRAPHIC_INTENT_REFS_MAX,
   HERO_SLOTS_ENABLED,
   PlannedSlotSchema,
   PlannedBriefSchema,
@@ -53,8 +55,8 @@ export const GRAPHIC_INTENT_RULES = `A "graphic" is for a beat that is one or tw
   three amounts, three dated moments). It is never a chart with fewer points: a value moving
   through time is a "chart". You do not design it: a designer composes it afterwards from
   your "intent" (what the viewer must take away, not how it looks) and the claims you list in
-  "intentRefs". "intentRefs" lists at most six claim numbers: the claims its figures or names
-  come from, most important first. "intent" is at most 300 characters.`
+  "intentRefs". "intentRefs" lists at most ${GRAPHIC_INTENT_REFS_MAX} claim numbers: the claims its figures or names
+  come from, most important first. "intent" is at most ${GRAPHIC_INTENT_MAX} characters.`
 
 export interface ShotParagraph {
   index: number

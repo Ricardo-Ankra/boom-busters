@@ -1,4 +1,4 @@
-import { ShotBriefSchema } from '@boom-busters/schemas'
+import { AnswerDeclined, ShotBriefSchema } from '@boom-busters/schemas'
 import type { ShotBrief } from '@boom-busters/schemas'
 import { describe, expect, it } from 'vitest'
 import { mockDirectorsBook } from './direction'
@@ -212,5 +212,14 @@ describe('the chart-kind rules (decision 259)', () => {
     expect(request.system).toContain('"line" for a value moving through time')
     expect(request.system).toContain('because it is the safe choice')
     expect(request.system).toContain('"axis": "left"')
+  })
+})
+
+describe('a deliberate decline (decision 293)', () => {
+  it("throws the model's own reason as a decline, which the answer helper takes as final", () => {
+    const declining = () =>
+      parseRebriefedBrief(JSON.stringify({ error: 'This beat has only one honest image.' }), stock)
+    expect(declining).toThrow(AnswerDeclined)
+    expect(declining).toThrow(/^This beat has only one honest image\.$/)
   })
 })
