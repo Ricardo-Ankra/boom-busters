@@ -21,7 +21,7 @@ import { promptParagraphs, type TimedParagraph } from '@/inngest/lib/shot-list'
 export type CompleteFn = (
   request: LLMTaskRequest,
   purpose: 'plan' | 'plan-retry' | 'repair',
-) => Promise<{ text: string }>
+) => Promise<{ text: string; truncated?: boolean }>
 
 export interface PlanChapterInput {
   caseTitle: string

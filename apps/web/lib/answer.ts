@@ -15,6 +15,10 @@ import { NonRetriableError } from 'inngest'
  * reason; the second call's outcome is final. Pure: the call is injected, so
  * the app binds it to the ledgered `callLlm` (`completeForProject`) and a
  * live harness binds its own.
+ *
+ * A reply the provider flags as truncated whose parse then fails counts as a
+ * cut-off, not a refusal: Gemini and OpenAI hand back empty or partial text
+ * when reasoning eats the budget, and only a bigger budget can help.
  */
 
 export type AnswerCall = 'answer' | 'retry: cut off' | 'retry: refused'
@@ -22,7 +26,7 @@ export type AnswerCall = 'answer' | 'retry: cut off' | 'retry: refused'
 export type AnswerComplete = (
   request: LLMTaskRequest,
   call: AnswerCall,
-) => Promise<{ text: string }>
+) => Promise<{ text: string; truncated?: boolean }>
 
 export type Answer<T> =
   { ok: true; value: T; calls: 1 | 2 } | { ok: false; issue: string; calls: 1 | 2 }
@@ -54,9 +58,9 @@ async function attempt<T>(
   request: LLMTaskRequest,
   call: AnswerCall,
 ): Promise<Attempt<T>> {
-  let text: string
+  let reply: { text: string; truncated?: boolean }
   try {
-    text = (await complete(request, call)).text
+    reply = await complete(request, call)
   } catch (error) {
     // Only a cut-off from the call is the answer's fault; anything else the
     // call throws (a rejected key, a budget stop, a provider error) is not.
@@ -69,10 +73,10 @@ async function attempt<T>(
     throw error
   }
   try {
-    return { ok: true, value: parse(text) }
+    return { ok: true, value: parse(reply.text) }
   } catch (error) {
     if (!(error instanceof ValidationError)) throw error
-    return { ok: false, cutOff: isCutOff(error), issue: error.message }
+    return { ok: false, cutOff: isCutOff(error) || reply.truncated === true, issue: error.message }
   }
 }
 

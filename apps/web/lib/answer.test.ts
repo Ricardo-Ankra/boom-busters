@@ -72,6 +72,39 @@ describe('callForAnswer (decision 292)', () => {
     expect(atCap).toHaveBeenCalledTimes(1)
   })
 
+  it('counts a refused reply the provider flagged as truncated as a cut-off', async () => {
+    const complete = vi
+      .fn()
+      .mockResolvedValueOnce({ text: '', truncated: true })
+      .mockResolvedValueOnce({ text: 'good' })
+    expect(await callForAnswer({ request, parse, complete })).toMatchObject({ ok: true, calls: 2 })
+    const [retry, label] = complete.mock.calls[1]!
+    expect(label).toBe('retry: cut off')
+    expect(retry).toEqual({ ...request, maxTokens: 2000 })
+  })
+
+  it('stops a truncated reply that does not parse, at the cap, after one call', async () => {
+    const complete = vi.fn().mockResolvedValue({ text: 'no json', truncated: true })
+    expect(
+      await callForAnswer({
+        request: { ...request, maxTokens: MAX_OUTPUT_TOKENS },
+        parse,
+        complete,
+      }),
+    ).toEqual({ ok: false, issue: ANSWER_CUT_OFF, calls: 1 })
+    expect(complete).toHaveBeenCalledTimes(1)
+  })
+
+  it('accepts a truncated reply that parses', async () => {
+    const complete = vi.fn().mockResolvedValue({ text: 'good', truncated: true })
+    expect(await callForAnswer({ request, parse, complete })).toEqual({
+      ok: true,
+      value: 'parsed',
+      calls: 1,
+    })
+    expect(complete).toHaveBeenCalledTimes(1)
+  })
+
   it('asks once more with the reason after a refusal, at the same budget', async () => {
     const complete = answers('nope', 'good')
     expect(await callForAnswer({ request, parse, complete })).toMatchObject({ ok: true, calls: 2 })

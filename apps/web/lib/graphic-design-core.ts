@@ -66,7 +66,7 @@ export type GraphicDesignResult = { ok: true; scene: GraphicScene } | { ok: fals
 export type GraphicCompleteFn = (
   request: LLMTaskRequest,
   options: { signal?: AbortSignal; purpose?: string },
-) => Promise<{ text: string }>
+) => Promise<{ text: string; truncated?: boolean }>
 
 /**
  * The paragraphs a slot overlaps, and its words on the slot clock. Exported for
