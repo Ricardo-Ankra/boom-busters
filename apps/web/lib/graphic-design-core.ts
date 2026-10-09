@@ -9,7 +9,6 @@ import type { Database } from '@boom-busters/db'
 import {
   buildGraphicRequest,
   estimatedWords,
-  MAX_OUTPUT_TOKENS,
   parseGraphicScene,
   wordsInSlot,
   type GraphicDesignInput,
@@ -31,6 +30,7 @@ import type {
   PlannedGraphicScene,
 } from '@boom-busters/schemas'
 import { NonRetriableError } from 'inngest'
+import { callForAnswer, type AnswerComplete } from '@/lib/answer'
 import { timedParagraphs, type TimedParagraph } from '@/inngest/lib/shot-list'
 
 /**
@@ -59,10 +59,13 @@ export interface GraphicSlotTiming {
 
 export type GraphicDesignResult = { ok: true; scene: GraphicScene } | { ok: false; issue: string }
 
-/** Whatever completes a request: the app's ledgered `callLlm`, or a harness's capped call. */
+/**
+ * Whatever completes a request: the app's ledgered `callLlm`, or a harness's
+ * capped call. `purpose` labels a retry in the ledger (decision 292).
+ */
 export type GraphicCompleteFn = (
   request: LLMTaskRequest,
-  options: { signal?: AbortSignal },
+  options: { signal?: AbortSignal; purpose?: string },
 ) => Promise<{ text: string }>
 
 /**
@@ -104,9 +107,9 @@ export function sceneIssue(
 
 /**
  * The wall time one graphic's design may take, from its start (final review
- * I3). The route's `maxDuration` is 300 s and the worst ladder is four Opus
- * calls; a killed invocation is retried and buys every call again, so the
- * ladder stops itself with room left to write the outcome.
+ * I3). The route's `maxDuration` is 300 s and the worst ladder is two Opus
+ * calls (decision 292); a killed invocation is retried and buys every call
+ * again, so the ladder stops itself with room left to write the outcome.
  */
 export const GRAPHIC_DESIGN_DEADLINE_MS = 240_000
 /** Less than this left: a call would only be aborted, so none is started. */
@@ -119,51 +122,6 @@ const TOO_LONG_ISSUE = 'the designer took too long; press Redesign graphic to tr
 class DesignEnded extends Error {
   constructor(readonly issue: string) {
     super(issue)
-  }
-}
-
-const isCutOff = (error: unknown) => error instanceof ValidationError && error.field === 'maxTokens'
-
-type CallFn = (request: LLMTaskRequest) => Promise<string>
-type Parsed = { scene: PlannedGraphicScene } | { issue: string }
-
-/**
- * One call and its parse. A cut-off (an empty reply, which the adapter
- * throws, or a reply that stops inside its JSON, which the parser throws) is
- * passed up for the escalation; any other parse failure is a refusal with its
- * reason.
- */
-async function callAndParse(call: CallFn, request: LLMTaskRequest): Promise<Parsed> {
-  const text = await call(request)
-  try {
-    return { scene: parseGraphicScene(text) }
-  } catch (error) {
-    if (!(error instanceof ValidationError) || isCutOff(error)) throw error
-    return { issue: error.message }
-  }
-}
-
-/**
- * One attempt, with the shot list's cut-off rule (plan-chapter.ts parses
- * inside its escalation too): a cut-off answer is asked once more at double
- * the room, because the same budget is cut off again. A cut-off at the
- * doubled budget ends the design (final review I2): a reason-retry would be
- * cut off a third time and double the wall time.
- */
-async function attemptDesign(call: CallFn, input: GraphicDesignInput): Promise<Parsed> {
-  const request = buildGraphicRequest(input)
-  try {
-    return await callAndParse(call, request)
-  } catch (error) {
-    if (!isCutOff(error)) throw error
-    if (request.maxTokens >= MAX_OUTPUT_TOKENS) throw new DesignEnded(CUT_OFF_ISSUE)
-    const bigger = { ...request, maxTokens: Math.min(MAX_OUTPUT_TOKENS, request.maxTokens * 2) }
-    try {
-      return await callAndParse(call, bigger)
-    } catch (retryError) {
-      if (isCutOff(retryError)) throw new DesignEnded(CUT_OFF_ISSUE)
-      throw retryError
-    }
   }
 }
 
@@ -209,22 +167,35 @@ export async function designGraphicWith(
   }
 
   const deadline = Date.now() + GRAPHIC_DESIGN_DEADLINE_MS
-  const call: CallFn = async (request) => {
+  const call: AnswerComplete = async (request, label) => {
     const remaining = deadline - Date.now()
     if (remaining < MIN_CALL_MS) throw new DesignEnded(TOO_LONG_ISSUE)
-    return (await complete(request, { signal: AbortSignal.timeout(remaining) })).text
+    return complete(request, {
+      signal: AbortSignal.timeout(remaining),
+      ...(label === 'answer' ? {} : { purpose: label }),
+    })
   }
 
   try {
-    let rejection: string | undefined
-    for (let attempt = 0; attempt < 2; attempt += 1) {
-      const parsed = await attemptDesign(call, rejection ? { ...base, rejection } : base)
-      const checked =
-        'scene' in parsed ? sceneIssue(parsed.scene, context, slot.durationMs) : parsed
-      if ('scene' in checked) return { ok: true, scene: checked.scene }
-      rejection = checked.issue
-    }
-    return { ok: false, issue: rejection! }
+    // At most two calls (decision 292): the designer's own checks refuse a
+    // scene inside the parse, so a refusal is retried once with its reason
+    // and a cut-off once at double the budget, then the design stops.
+    const answer = await callForAnswer({
+      request: buildGraphicRequest(base),
+      parse: (text) => {
+        const checked = sceneIssue(parseGraphicScene(text), context, slot.durationMs)
+        if ('issue' in checked) {
+          throw new ValidationError(checked.issue, { field: 'graphic scene' })
+        }
+        return checked.scene
+      },
+      complete: call,
+      // The designer's request carries the reason before the producer's
+      // steer, which stays the last thing the model reads.
+      retryWithReason: (reason) => buildGraphicRequest({ ...base, rejection: reason }),
+      cutOffIssue: CUT_OFF_ISSUE,
+    })
+    return answer.ok ? { ok: true, scene: answer.value } : { ok: false, issue: answer.issue }
   } catch (error) {
     if (error instanceof DesignEnded) return { ok: false, issue: error.issue }
     // A budget stop parks the run whenever it comes. Anything else once the
