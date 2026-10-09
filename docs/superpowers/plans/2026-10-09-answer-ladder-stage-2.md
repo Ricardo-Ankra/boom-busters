@@ -94,12 +94,12 @@
 
 - [ ] **Step 1: Write the failing schemas tests**
 
-`AnswerDeclined` goes in the existing errors test if there is one; check `packages/schemas/src/errors.test.ts` and add there, else in `notices.test.ts` as below. Create `packages/schemas/src/notices.test.ts`:
+Create `packages/schemas/src/notices.test.ts` (the `AnswerDeclined` test lives here too, beside the vocabulary it ships with):
 
 ```ts
 import { describe, expect, it } from 'vitest'
 import { AnswerDeclined, ValidationError } from './errors'
-import { NOTICE_MESSAGE_MAX, noticesFor } from './notices'
+import { noticesFor } from './notices'
 import type { Notice } from './notices'
 
 const notice = (over: Partial<Notice>): Notice => ({
@@ -122,10 +122,6 @@ describe('notices (decision 293)', () => {
     expect(noticesFor(all, 'direction')).toEqual([book])
     expect(noticesFor(all, 'slot', 'B')).toEqual([slotB])
     expect(noticesFor(all, 'slot')).toEqual([])
-  })
-
-  it('caps a message at 1,000 characters', () => {
-    expect(NOTICE_MESSAGE_MAX).toBe(1000)
   })
 
   it('makes a deliberate decline a ValidationError, so existing catches still see a refusal', () => {
@@ -179,7 +175,7 @@ export const NOTICE_SUBJECTS = [
 
 export const NOTICE_KINDS = ['trimmed', 'dropped', 'stopped', 'skipped'] as const
 
-/** One readable line; a longer one is cut at a sentence before it is stored. */
+/** One readable line; a longer one is cut to the limit before it is stored. */
 export const NOTICE_MESSAGE_MAX = 1000
 
 export type NoticeSubject = (typeof NOTICE_SUBJECTS)[number]
@@ -221,7 +217,7 @@ In `packages/schemas/src/index.ts`, add `export * from './notices'` beside the o
 - [ ] **Step 4: Run the schemas tests to see them pass**
 
 Run: `cd packages/schemas && pnpm exec vitest run src/notices.test.ts`
-Expected: PASS (3 tests).
+Expected: PASS (2 tests).
 
 - [ ] **Step 5: Write the failing repair tests**
 
@@ -300,7 +296,7 @@ describe('repair notes (decision 293)', () => {
   })
 
   it('lets a parser outside the helper repair without reporting', () => {
-    expect(trimField('a b c d e f', 5, 'x', ignoreRepairs)).toBe('a b c')
+    expect(trimField('a b c d e f', 6, 'x', ignoreRepairs)).toBe('a b c')
   })
 })
 ```
@@ -837,8 +833,8 @@ suite('notices', () => {
   })
 
   it('keeps Case Library notices apart from projects, by case', async () => {
-    const one = await createCase(db, { title: 'Theranos', category: 'fraud' })
-    const two = await createCase(db, { title: 'FTX', category: 'fraud' })
+    const one = await createCase(db, { title: 'Theranos', category: 'con' })
+    const two = await createCase(db, { title: 'FTX', category: 'con' })
     await addNotice(db, { projectId: null, subject: 'case', subjectId: one.id }, {
       kind: 'trimmed',
       message: 'Trimmed to fit: the angle.',
@@ -2740,8 +2736,11 @@ After the `vi.mock('@/app/(console)/settings/logo-actions', ...)` block (ends L1
 
 ```ts
 /** The notice line's own action (decision 293); `components/notices.test.tsx` tests it. */
-vi.mock('@/app/(console)/notice-actions', () => ({ dismissNoticeAction: vi.fn() }))
+const dismissNoticeAction = vi.hoisted(() => vi.fn())
+vi.mock('@/app/(console)/notice-actions', () => ({ dismissNoticeAction }))
 ```
+
+(Named, because Task 11's slot-notice test in this file drives and asserts `dismissNoticeAction`.)
 
 At the end of `describe('the plan phase (staged-visuals design)'`, after the test that ends `expect(dismissRetypeAction).toHaveBeenCalledWith(PROJECT, SLOT_A)\n  })` (L1555) and before its closing `})` (L1556), add:
 
@@ -4260,7 +4259,7 @@ Without it the existing tests break once the review renders `Notices` (the real 
 - [ ] **Step 4: Run them to see them fail**
 
 Run: `cd apps/web && pnpm exec vitest run inngest/lib/dossier-research.test.ts`
-Expected: FAIL: a refused brief stops at once (one call, `guarded` wraps the `ValidationError` as it does today); `research.repairs` is `undefined`. The budget test passes already.
+Expected: FAIL: a refused brief stops at once (one call, `guarded` wraps the `ValidationError` as it does today); `research.repairs` is `undefined`. The budget test fails only on `research.repairs`.
 
 Run: `cd apps/web && pnpm exec vitest run "app/(console)/projects/[id]/dossier-review.test.tsx"`
 Expected: FAIL, the new test: no `role="status"` line. The existing six pass.
@@ -5306,7 +5305,9 @@ describe('CaseLibrary notices (decision 293)', () => {
     expect(within(wirecard).getByRole('status')).toHaveTextContent(
       'Trimmed to fit: the angle of Wirecard.',
     )
-    expect(within(wirecard).getByRole('button', { name: 'Dismiss' })).toBeInTheDocument()
+    // The row has the case's own Dismiss too; the notice's sits on its line.
+    const noticeLine = within(wirecard).getByRole('status').parentElement!
+    expect(within(noticeLine).getByRole('button', { name: 'Dismiss' })).toBeInTheDocument()
     const theranos = screen.getByText('Theranos').closest('li')!
     expect(within(theranos).queryByRole('status')).not.toBeInTheDocument()
   })
@@ -7381,7 +7382,7 @@ to
     expect(GRAPHIC_INTENT_RULES).toMatch(/"intentRefs" lists at most 6 claim numbers/)
 ```
 
-In `packages/providers/src/prompts/rebrief.test.ts`, change the first import to `import { AnswerDeclined, ShotBriefSchema } from '@boom-busters/schemas'`, add `import type { Repair } from './repair'`, and append:
+In `packages/providers/src/prompts/rebrief.test.ts`, change the first import to `import { AnswerDeclined, ShotBriefSchema } from '@boom-busters/schemas'`, and append:
 
 ```ts
 describe('a deliberate decline (decision 293)', () => {
@@ -7391,35 +7392,15 @@ describe('a deliberate decline (decision 293)', () => {
     expect(declining).toThrow(AnswerDeclined)
     expect(declining).toThrow(/^This beat has only one honest image\.$/)
   })
-
-  it('takes a note, and an idea has no limit to repair', () => {
-    const notes: Repair[] = []
-    const parsed = parseRebriefedBrief(JSON.stringify({ brief: mockRebriefedBrief(stock) }), stock, (repair) => {
-      notes.push(repair)
-    })
-    expect(parsed.type).toBe('stock')
-    expect(notes).toEqual([])
-  })
 })
 ```
 
-In `packages/providers/src/prompts/redirect.test.ts`, add `import type { Repair } from './repair'` and append inside `describe('parseRedirectedBrief', ...)`:
-
-```ts
-  it('takes a note, and a redirected still has no limit to repair (decision 293)', () => {
-    const notes: Repair[] = []
-    const parsed = parseRedirectedBrief(JSON.stringify({ brief: mockRedirectedBrief(brief) }), brief, (repair) => {
-      notes.push(repair)
-    })
-    expect(parsed.coversText).toBe(brief.coversText)
-    expect(notes).toEqual([])
-  })
-```
+The re-brief and redirect parsers gain a `note` parameter they never call (their schemas hold no string limit to repair), so no test is written for it: the typecheck proves the signature, and a test asserting an empty list would assert nothing.
 
 - [ ] **Step 2: Run them to see them fail**
 
 Run: `cd packages/providers && pnpm exec vitest run src/prompts/retype.test.ts src/prompts/rebrief.test.ts src/prompts/redirect.test.ts src/prompts/shotlist.test.ts`
-Expected: FAIL. `GRAPHIC_INTENT_MAX` is not exported; the prompts still say "six"; the long intent, the seven references and the nine places are refused as malformed; both declines throw a plain `ValidationError`, and the retype one reads "The model declined the conversion: ...". The two note tests on the re-brief and redirect parsers fail only on the type of the third argument (TypeScript), so they may pass at run time.
+Expected: FAIL. `GRAPHIC_INTENT_MAX` is not exported; the prompts still say "six"; the long intent, the seven references and the nine places are refused as malformed; both declines throw a plain `ValidationError`, and the retype one reads "The model declined the conversion: ...".
 
 - [ ] **Step 3: Add the limits to the visuals schema**
 
@@ -7671,7 +7652,7 @@ export function parseRedirectedBrief(
 - [ ] **Step 7: Run the parser tests, then the consuming suites**
 
 Run: `cd packages/providers && pnpm exec vitest run src/prompts/retype.test.ts src/prompts/rebrief.test.ts src/prompts/redirect.test.ts src/prompts/shotlist.test.ts`
-Expected: PASS, including the 9 new tests.
+Expected: PASS, including the 7 new tests.
 
 Then, because a shared schema and a shared prompt changed: `cd packages/schemas && pnpm test`, `cd packages/providers && pnpm test`, and `pnpm typecheck` from the root (each with `timeout: 600000`).
 Expected: PASS; typecheck clean. (The web consumers of these parsers are changed and run in Steps 9 to 15.)
@@ -8088,7 +8069,7 @@ Run, one at a time, with `timeout: 600000` and Docker Desktop running:
 `cd apps/web && pnpm exec vitest run inngest/functions/slot-rebriefer.test.ts`
 `cd apps/web && pnpm exec vitest run inngest/functions/slot-redirector.test.ts`
 `cd apps/web && pnpm exec vitest run inngest/functions/slot-retyper.test.ts`
-Expected: FAIL. A refused draft costs one call, not two; a content refusal is thrown out of the step instead of landing on the card; the nine-place map is refused; an old notice stays; the retype decline reads "The model declined the conversion: ...". The re-brief decline test already passes (today's catch also ends after one call). The mock-mode tests in each file still pass.
+Expected: FAIL. A refused draft costs one call, not two; a content refusal is thrown out of the step instead of landing on the card; the nine-place map lands capped but records no notice; an old notice stays. The re-brief and retype decline tests already pass (Step 5 made the parsers throw the bare reason, and today's catch also ends after one call). The mock-mode tests in each file still pass.
 
 - [ ] **Step 11: Put the re-brief on the helper**
 
@@ -8465,7 +8446,7 @@ describe('notices on the slot card (decision 293)', () => {
 - [ ] **Step 16: Run it to see it fail**
 
 Run: `cd apps/web && pnpm exec vitest run "app/(console)/projects/[id]/visual-board.test.tsx"`
-Expected: FAIL: `VisualBoard` has no `notices` prop (a TypeScript error the run ignores), and no card renders a notice, so `getByText` finds nothing.
+Expected: FAIL: no slot card renders a notice, so `getByText` finds nothing (Task 5 already gave `VisualBoard` its `notices` prop).
 
 - [ ] **Step 17: Render the slot's notices on its card**
 
@@ -8642,7 +8623,7 @@ Message: `feat(visuals): re-brief, redirect and retype on the answer helper, wit
 
 - [ ] **Step 1: Write the failing parser and prompt tests**
 
-In `packages/providers/src/prompts/script.test.ts`, line 1 becomes `import { OutlineSchema, SHORTS_HOOK_MAX, ValidationError } from '@boom-busters/schemas'`; add `import type { Repair } from './repair'` after the type import from `./script`; append:
+In `packages/providers/src/prompts/script.test.ts`, add `SHORTS_HOOK_MAX` to the existing `@boom-busters/schemas` import (Task 9 made it a multi-line import carrying `TEASER_PARAGRAPH_MAX` and `TEASER_TITLE_MAX`, which its tests still use; keep them). `Repair` is already imported from `./repair` (Task 9); do not import it again. Append:
 
 ```ts
 describe('the Shorts marking limits (decision 293)', () => {
@@ -8825,6 +8806,8 @@ Limits (the app checks them): at most ${SHORTS_CANDIDATES_MAX} candidates; "star
 ${SHORTS_HOOK_MAX} characters.`,
 ```
 
+First delete Task 9's `const isRecord = ...` declaration (the two lines above `parseTeaser`'s doc comment): the code below declares it once, above `parseShortsCandidates`, and `parseTeaser` keeps using it from there.
+
 Replace `parseShortsCandidates` (lines 402 to 404)
 
 ```ts
@@ -8838,6 +8821,8 @@ with
 ```ts
 const LooseAnswer = z.looseObject({})
 
+// Moved up from above `parseTeaser`, where Task 9 declared it: one
+// declaration per module (a second `const isRecord` does not compile).
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
 
@@ -9194,17 +9179,7 @@ describeDb('script-runner around the Shorts marking (decision 293)', () => {
 })
 ```
 
-In `apps/web/inngest/functions/shorts-runner.test.ts`:
-- add `latestShortsCandidates,`, `listProjectNotices,` and `notices,` to the import from `@boom-busters/db`;
-- line 20 becomes `import { DEFAULT_SETTINGS, noticesFor, resolveBrandKit } from '@boom-busters/schemas'`;
-- after the `vi.mock('@/lib/storage', ...)` block (line 51) add:
-
-```ts
-const callLlm = vi.hoisted(() => vi.fn())
-vi.mock('@/lib/llm', () => ({ callLlm }))
-```
-
-and add inside `describeDb('shorts-runner', ...)`, after the test `'a script with no candidates gets them marked here, never a review over nothing'`:
+In `apps/web/inngest/functions/shorts-runner.test.ts`, Task 9 has already added `listProjectNotices` and `notices` to the `@boom-busters/db` import, `noticesFor` to the `@boom-busters/schemas` import, the hoisted `callLlm` mock of `@/lib/llm`, and `callLlm.mockReset()` / `await db.delete(notices)` in `beforeEach`. Add only `latestShortsCandidates,` to the import from `@boom-busters/db` (a second `callLlm` or a second import of those names would stop the file from loading), and add inside `describeDb('shorts-runner', ...)`, after the test `'a script with no candidates gets them marked here, never a review over nothing'`:
 
 ```ts
   it(
@@ -9345,10 +9320,9 @@ export async function markShortsStep(
   input: Parameters<typeof markShortsWith>[1],
 ): Promise<MarkedShorts> {
   const target: NoticeTarget = { projectId, subject: 'script', subjectId: null }
+  let marked: Awaited<ReturnType<typeof markShortsWith>>
   try {
-    const { candidates, repairs } = await markShortsWith(completeForProject(projectId), input)
-    await recordRepairs(target, repairs)
-    return { ok: true, candidates }
+    marked = await markShortsWith(completeForProject(projectId), input)
   } catch (error) {
     if (error instanceof BudgetExceededError) return { ok: false, gate: budgetGateData(error) }
     const reason =
@@ -9364,6 +9338,10 @@ export async function markShortsStep(
     )
     return { ok: true, candidates: [] }
   }
+  // Outside the try: a failed notice write must not discard candidates
+  // already paid for, nor be reported as the marking stopping.
+  await recordRepairs(target, marked.repairs)
+  return { ok: true, candidates: marked.candidates }
 }
 ```
 
@@ -9394,7 +9372,11 @@ with
 
 ```ts
     const marking = await step.run('mark-shorts', async (): Promise<MarkedShorts> => {
-      if (mocked) return { ok: true, candidates: mockShortsCandidates(written) }
+      if (mocked) {
+        // A landed answer retires the strip's old notes, in mock mode too.
+        await recordRepairs({ projectId, subject: 'script', subjectId: null })
+        return { ok: true, candidates: mockShortsCandidates(written) }
+      }
       return markShortsStep(projectId, { chapters: written, tension: tensionFromOutline(outline) })
     })
 
@@ -9744,7 +9726,7 @@ Message: `feat(script): the script stage marks Shorts on the answer helper and s
   - `writeDigestWith(complete: AnswerComplete, input: Parameters<typeof buildDigestRequest>[0]): Promise<string>` (`apps/web/inngest/functions/analytics-runner.ts`): the whole digest, or a stop `The weekly digest could not be written: <issue>`.
   - `regenerateSection` returns `{ ok: false, error: <issue> }` on a stop; `generateTitles` returns `{ ok: false, error: 'The titles could not be generated: <issue>' }`.
 
-No existing test relied on a half answer being kept, so none is rewritten: `script-runner.ts` has no test file; `analytics-runner.test.ts` reaches the digest only in mock mode (`mockDigest`), which this task leaves alone; `regenerateSection` and `generateTitles` had no tests (`publish-screen.test.tsx` mocks `./publish-actions` whole, and `script-studio` has no test of the action). The mock paths (`mockChapter`, `mockDigest`, `mockRegeneratedSection`, `mockTitleOptions`) are unchanged, so the e2e suite is unaffected.
+No existing test relied on a half answer being kept, so none is rewritten: `script-runner.test.ts` (Task 12's) does not reach the chapter draft, and runs in Step 12 because this task edits `script-runner.ts` and `completeForProject`; `analytics-runner.test.ts` reaches the digest only in mock mode (`mockDigest`), which this task leaves alone; `regenerateSection` and `generateTitles` had no tests (`publish-screen.test.tsx` mocks `./publish-actions` whole, and `script-studio` has no test of the action). The mock paths (`mockChapter`, `mockDigest`, `mockRegeneratedSection`, `mockTitleOptions`) are unchanged, so the e2e suite is unaffected.
 
 - [ ] **Step 1: Write the failing unit tests**
 
@@ -10426,7 +10408,7 @@ Expected: PASS (4 tests).
 
 - [ ] **Step 12: Run the consuming suites and the typecheck**
 
-`completeForProject` is shared by the outline, self-check, Shorts marking, book, Fix and scoring calls, so run them with this task's files (database; alone, one process, `timeout: 600000`): `cd apps/web && pnpm exec vitest run lib/answer.test.ts lib/answer-call.test.ts lib/script-answers.test.ts inngest/functions/analytics-runner.test.ts inngest/functions/shorts-runner.test.ts inngest/functions/visuals-replanner.test.ts "app/(console)/projects/[id]/actions.test.ts" "app/(console)/projects/[id]/publish-actions.test.ts" "app/(console)/projects/[id]/publish-screen.test.tsx"`
+`completeForProject` is shared by the outline, self-check, Shorts marking, book, Fix and scoring calls, so run them with this task's files (database; alone, one process, `timeout: 600000`): `cd apps/web && pnpm exec vitest run lib/answer.test.ts lib/answer-call.test.ts lib/script-answers.test.ts inngest/functions/analytics-runner.test.ts inngest/functions/script-runner.test.ts inngest/functions/shorts-runner.test.ts inngest/functions/visuals-replanner.test.ts "app/(console)/projects/[id]/actions.test.ts" "app/(console)/projects/[id]/publish-actions.test.ts" "app/(console)/projects/[id]/publish-screen.test.tsx"`
 Expected: PASS.
 
 Then from the root: `pnpm typecheck` (`timeout: 600000`).
@@ -10597,7 +10579,14 @@ Append to `PROGRESS.md`, after decision 292, in its numbered-list style:
      naming a chapter that does not exist is refused, not dropped (cost if
      wrong: one Sonnet call); a claim's text and an answer's echoed
      question are facts, dropped rather than trimmed (cost if wrong: one
-     claim lost until research is re-run).
+     claim lost until research is re-run); the Script stage's Shorts
+     marking never fails the stage, so any failure but a budget stop
+     stores no candidates and says so on the strip, since the Shorts stage
+     marks them again (cost if wrong: an empty strip until then); a teaser
+     rebuild whose voicing stops leaves a `stopped` notice, not `skipped`,
+     since the teaser exists (cost if wrong: none); a suggested case's
+     repairs are filed under its row by its title (cost if wrong: a note
+     on a neighbouring row).
      Left as they were: the plan's automatic chapter repair (best effort;
      the Fix button covers it) and the set inventory (already refuses a
      truncated reply).
@@ -10605,7 +10594,7 @@ Append to `PROGRESS.md`, after decision 292, in its numbered-list style:
      deploy and `PUT /api/inngest`. No Remotion or broker deploy.
 ```
 
-Run `pnpm exec prettier --write PROGRESS.md` then `--check`.
+Run `pnpm exec prettier --write PROGRESS.md e2e/tests/notices.spec.ts` then `--check` on both, and `pnpm exec eslint --max-warnings 0 e2e/tests/notices.spec.ts` (Step 3's lint covers tracked files only, and the new spec is not tracked until this commit).
 
 - [ ] **Step 5: Commit**
 
