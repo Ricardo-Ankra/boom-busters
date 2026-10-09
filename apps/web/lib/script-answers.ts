@@ -6,6 +6,8 @@ import {
   parseSelfCheck,
   parseShortsCandidates,
 } from '@boom-busters/providers'
+import type { Repair } from '@boom-busters/providers'
+import type { ShortsCandidate } from '@boom-busters/schemas'
 import { answerOrStop, callForAnswer, type AnswerComplete } from '@/lib/answer'
 
 /**
@@ -36,16 +38,23 @@ export async function selfCheckWith(
   )
 }
 
+/** What a stopped Shorts marking says before its reason. */
+export const SHORTS_UNMARKED = 'The Shorts segments could not be marked'
+
+/**
+ * The Shorts marking, with what the parser repaired in it (decision 293): the
+ * caller stores the candidates and puts the repairs on Script Studio's Shorts
+ * strip. A stop is thrown, as before, as a `NonRetriableError` with the reason.
+ */
 export async function markShortsWith(
   complete: AnswerComplete,
   input: Parameters<typeof buildShortsRequest>[0],
-) {
-  return answerOrStop(
-    await callForAnswer({
-      request: buildShortsRequest(input),
-      parse: parseShortsCandidates,
-      complete,
-    }),
-    'The Shorts segments could not be marked',
-  )
+): Promise<{ candidates: ShortsCandidate[]; repairs: Repair[] }> {
+  const answer = await callForAnswer({
+    request: buildShortsRequest(input),
+    parse: parseShortsCandidates,
+    complete,
+  })
+  const candidates = answerOrStop(answer, SHORTS_UNMARKED)
+  return { candidates, repairs: answer.ok ? (answer.repairs ?? []) : [] }
 }

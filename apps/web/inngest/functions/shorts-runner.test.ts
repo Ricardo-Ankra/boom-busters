@@ -6,6 +6,7 @@ import {
   getProject,
   insertShort,
   insertTimeline,
+  latestShortsCandidates,
   listProjectNotices,
   listShorts,
   notices,
@@ -278,6 +279,43 @@ describeDb('shorts-runner', () => {
       // The mock candidate spans the whole chapter, first sentence to last.
       expect(rows[0]?.title).toBe('By June, the auditors could not find the money.')
       expect((await getProject(db, FIXTURE_PROJECT_ID))?.stageStatus).toBe('awaiting_review')
+    },
+  )
+
+  it(
+    'puts what the marking repaired on the Shorts strip when it marks here (decision 293)',
+    { timeout: 120_000 },
+    async () => {
+      vi.stubEnv('MOCK_PROVIDERS', '')
+      try {
+        await db.update(scripts).set({ shortsCandidates: [] })
+        await db.delete(notices)
+        callLlm.mockResolvedValueOnce({
+          text: JSON.stringify({
+            candidates: [
+              {
+                chapterIndex: 0,
+                startSentence: 'EY refused to sign the accounts.',
+                endSentence: 'The shares collapsed in nine days.',
+                hookRationale:
+                  'The auditor said no. ' + 'That is the whole scandal in one line. '.repeat(40),
+              },
+            ],
+          }),
+        })
+
+        await engine.executeStep('mark-missing-candidates', { events: masterReadyEvent() })
+
+        const [marked] = await latestShortsCandidates(db, FIXTURE_PROJECT_ID)
+        expect(marked?.startSentence).toBe('EY refused to sign the accounts.')
+        expect(marked?.hookRationale.length).toBeLessThanOrEqual(1000)
+        const script = noticesFor(await listProjectNotices(db, FIXTURE_PROJECT_ID), 'script')
+        expect(script.map((notice) => notice.message)).toEqual([
+          "Trimmed to fit: candidate 1's hook.",
+        ])
+      } finally {
+        vi.unstubAllEnvs()
+      }
     },
   )
 

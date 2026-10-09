@@ -530,6 +530,7 @@ export default async function ProjectPage({
           scriptId={script.script.id}
           shorts={script.script.shortsCandidates}
           usedFallbackModel={usedFallbackModel}
+          notices={noticesFor(notices, 'script')}
         />
       ) : showDossier ? (
         <DossierReview

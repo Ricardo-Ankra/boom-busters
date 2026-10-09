@@ -2,7 +2,7 @@
 
 import type { ChapterWithWarnings } from '@boom-busters/db'
 import { EXPRESSION_TAGS, PAUSE_TAGS } from '@boom-busters/schemas'
-import type { ShortsCandidate } from '@boom-busters/schemas'
+import type { Notice, ShortsCandidate } from '@boom-busters/schemas'
 import {
   AlertTriangle,
   Check,
@@ -23,6 +23,7 @@ import StarterKit from '@tiptap/starter-kit'
 import { useRouter } from 'next/navigation'
 import * as React from 'react'
 import { Button } from '@/components/ui/button'
+import { Notices } from '@/components/notices'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { useToast } from '@/components/ui/toast'
 import {
@@ -87,6 +88,7 @@ export function ScriptStudio({
   targetRuntimeMin,
   shorts,
   usedFallbackModel,
+  notices = [],
 }: {
   projectId: string
   scriptId: string
@@ -94,6 +96,8 @@ export function ScriptStudio({
   targetRuntimeMin: number
   shorts: ShortsCandidate[]
   usedFallbackModel: boolean
+  /** What the Shorts marking repaired, or why it stopped (decision 293). */
+  notices?: readonly Notice[]
 }) {
   const [activeIndex, setActiveIndex] = React.useState(0)
   const active = chapters[activeIndex]
@@ -155,6 +159,7 @@ export function ScriptStudio({
             <ShortsStrip
               key={`shorts-${active.id}`}
               shorts={shorts.filter((candidate) => candidate.chapterIndex === active.index)}
+              notices={notices}
             />
           </div>
         ) : (
@@ -943,35 +948,55 @@ function DiffView({
 }
 
 /**
- * The Shorts candidates the self-check marked in the selected chapter,
- * folded away under the editor. A chapter with none shows nothing at all:
- * the strip is an indicator, and indicating an absence is noise.
+ * The Shorts candidates the marking picked in the selected chapter, folded
+ * away under the editor, beneath the marking's notices (decision 293): what
+ * its repair trimmed or dropped, or why it stopped. The notices are the whole
+ * script's, so they show under every chapter until dismissed, and a stop that
+ * left no candidates still shows. With neither, the strip shows nothing: it is
+ * an indicator, and indicating an absence is noise. Exported for its test.
  */
-function ShortsStrip({ shorts }: { shorts: ShortsCandidate[] }) {
+export function ShortsStrip({
+  shorts,
+  notices,
+}: {
+  shorts: ShortsCandidate[]
+  notices: readonly Notice[]
+}) {
   const [open, setOpen] = React.useState(false)
 
-  if (shorts.length === 0) return null
+  if (shorts.length === 0 && notices.length === 0) return null
 
   return (
     <section className="rounded-[8px] border border-[var(--color-border)]">
-      <button
-        type="button"
-        onClick={() => setOpen((on) => !on)}
-        aria-expanded={open}
-        className="flex min-h-[44px] w-full items-center gap-2 px-3 py-2 text-left text-[13px] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-accent)]"
-      >
-        {open ? (
-          <ChevronDown className="size-4 shrink-0" aria-hidden />
-        ) : (
-          <ChevronRight className="size-4 shrink-0" aria-hidden />
-        )}
-        <Clapperboard className="size-4 shrink-0 text-[var(--color-text-secondary)]" aria-hidden />
-        <span className="font-medium">
-          {shorts.length} Shorts candidate{shorts.length === 1 ? '' : 's'} in this chapter
-        </span>
-      </button>
+      {notices.length > 0 ? (
+        <div className={shorts.length > 0 ? 'px-3 pt-3' : 'p-3'}>
+          <Notices notices={notices} />
+        </div>
+      ) : null}
 
-      {open ? (
+      {shorts.length > 0 ? (
+        <button
+          type="button"
+          onClick={() => setOpen((on) => !on)}
+          aria-expanded={open}
+          className="flex min-h-[44px] w-full items-center gap-2 px-3 py-2 text-left text-[13px] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-accent)]"
+        >
+          {open ? (
+            <ChevronDown className="size-4 shrink-0" aria-hidden />
+          ) : (
+            <ChevronRight className="size-4 shrink-0" aria-hidden />
+          )}
+          <Clapperboard
+            className="size-4 shrink-0 text-[var(--color-text-secondary)]"
+            aria-hidden
+          />
+          <span className="font-medium">
+            {shorts.length} Shorts candidate{shorts.length === 1 ? '' : 's'} in this chapter
+          </span>
+        </button>
+      ) : null}
+
+      {open && shorts.length > 0 ? (
         <div className="flex flex-col gap-2 p-3 pt-0 text-[13px]">
           {shorts.map((candidate, index) => (
             <div key={index} className="rounded-[6px] border border-[var(--color-border)] p-2">

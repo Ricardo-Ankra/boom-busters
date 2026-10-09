@@ -47,12 +47,30 @@ describe('the script answers (decision 292)', () => {
     const good = vi
       .fn()
       .mockResolvedValue({ text: JSON.stringify({ candidates: mockShortsCandidates(chapters) }) })
-    expect(await markShortsWith(good, { chapters })).toEqual(mockShortsCandidates(chapters))
+    expect(await markShortsWith(good, { chapters })).toEqual({
+      candidates: mockShortsCandidates(chapters),
+      repairs: [],
+    })
 
     const bad = vi.fn().mockResolvedValue({ text: 'not json at all' })
     await expect(markShortsWith(bad, { chapters })).rejects.toThrow(
       /^The Shorts segments could not be marked: /,
     )
     expect(bad).toHaveBeenCalledTimes(2)
+  })
+
+  it('returns what the repair changed beside the candidates (decision 293)', async () => {
+    const [first] = mockShortsCandidates(chapters)
+    const long = 'The auditor said no. ' + 'That is the whole scandal in one line. '.repeat(40)
+    const complete = vi.fn().mockResolvedValue({
+      text: JSON.stringify({ candidates: [{ ...first, hookRationale: long }] }),
+    })
+
+    const marked = await markShortsWith(complete, { chapters })
+
+    expect(marked.candidates).toHaveLength(1)
+    expect(marked.candidates[0]!.startSentence).toBe(first!.startSentence)
+    expect(marked.repairs).toEqual([{ action: 'trimmed', field: "candidate 1's hook" }])
+    expect(complete).toHaveBeenCalledTimes(1)
   })
 })

@@ -15,18 +15,16 @@ import {
 } from '@boom-busters/db'
 import {
   buildChapterRequest,
-  buildShortsRequest,
   chapterTail,
   mockChapter,
   mockOutline,
   mockSelfCheck,
   mockShortsCandidates,
-  parseShortsCandidates,
   mockProvidersEnabled,
   tensionFromOutline,
 } from '@boom-busters/providers'
 import type { ScriptClaim } from '@boom-busters/providers'
-import type { Outline, ShortsCandidate } from '@boom-busters/schemas'
+import type { NoticeTarget, Outline, ShortsCandidate } from '@boom-busters/schemas'
 import {
   BudgetExceededError,
   estimateRuntimeSec,
@@ -37,7 +35,13 @@ import { NonRetriableError } from 'inngest'
 import { db } from '@/lib/db'
 import { completeForProject } from '@/lib/answer-call'
 import { callLlm } from '@/lib/llm'
-import { draftOutlineWith, selfCheckWith } from '@/lib/script-answers'
+import { recordRepairs, recordStop } from '@/lib/notices'
+import {
+  draftOutlineWith,
+  markShortsWith,
+  selfCheckWith,
+  SHORTS_UNMARKED,
+} from '@/lib/script-answers'
 import { inngest } from '../client'
 import { events } from '../events'
 import {
@@ -70,6 +74,64 @@ import {
  */
 
 const FUNCTION_ID = 'script-runner'
+
+/** What the mark-shorts step returns since decision 293. */
+export type MarkedShorts =
+  { ok: true; candidates: ShortsCandidate[] } | { ok: false; gate: Record<string, unknown> }
+
+/**
+ * The mark-shorts step's stored result. A run parked at the script gate
+ * before decision 293 replays the bare candidate list this step used to
+ * return (Inngest memoises step results), so that shape still reads.
+ */
+export function readMarkedShorts(stored: MarkedShorts | ShortsCandidate[]): MarkedShorts {
+  return Array.isArray(stored) ? { ok: true, candidates: stored } : stored
+}
+
+/** A stop's bare reason: without `markShortsWith`'s lead-in or a closing full stop. */
+function stopReason(message: string): string {
+  const lead = `${SHORTS_UNMARKED}: `
+  return (message.startsWith(lead) ? message.slice(lead.length) : message).replace(/\.$/, '')
+}
+
+/**
+ * The mark-shorts step on the answer helper (decision 293). Candidates that
+ * land replace the script's notices with what the repair changed. A stop
+ * stores none and says why on Script Studio's Shorts strip: the narration is
+ * this stage's deliverable, and the Shorts stage marks them again when it
+ * finds none. A budget stop is handed back for the run to park, as the outline
+ * and chapter steps do. Any other failure, a provider outage included, ends
+ * the same way as a stop: the marking is optional here, and a script whose
+ * chapters are all paid for must not fail for it (decision 293 ruling).
+ */
+export async function markShortsStep(
+  projectId: string,
+  input: Parameters<typeof markShortsWith>[1],
+): Promise<MarkedShorts> {
+  const target: NoticeTarget = { projectId, subject: 'script', subjectId: null }
+  let marked: Awaited<ReturnType<typeof markShortsWith>>
+  try {
+    marked = await markShortsWith(completeForProject(projectId), input)
+  } catch (error) {
+    if (error instanceof BudgetExceededError) return { ok: false, gate: budgetGateData(error) }
+    const reason =
+      error instanceof NonRetriableError
+        ? stopReason(error.message)
+        : error instanceof Error
+          ? error.message.replace(/\.$/, '')
+          : String(error)
+    await recordStop(
+      target,
+      'stopped',
+      `Shorts marking stopped: ${reason}. The Shorts stage will mark them again.`,
+    )
+    return { ok: true, candidates: [] }
+  }
+  // Outside the try: a failed notice write must not discard candidates
+  // already paid for, nor be reported as the marking stopping.
+  await recordRepairs(target, marked.repairs)
+  return { ok: true, candidates: marked.candidates }
+}
 
 export const scriptRunner = inngest.createFunction(
   {
@@ -272,24 +334,23 @@ export const scriptRunner = inngest.createFunction(
     // Shorts candidates
     // -----------------------------------------------------------------------
 
-    const shorts = await step.run('mark-shorts', async (): Promise<ShortsCandidate[]> => {
-      if (mocked) return mockShortsCandidates(written)
-      // A failure here must not fail the script. The candidates are a
-      // convenience for M7; the narration is the deliverable.
-      try {
-        return parseShortsCandidates(
-          (
-            await callLlm(
-              buildShortsRequest({ chapters: written, tension: tensionFromOutline(outline) }),
-              { projectId },
-            )
-          ).text,
-        )
-      } catch (error) {
-        console.error('[script-runner] Shorts marking failed', serialiseError(error))
-        return []
+    const marking = await step.run('mark-shorts', async (): Promise<MarkedShorts> => {
+      if (mocked) {
+        // A landed answer retires the strip's old notes, in mock mode too.
+        await recordRepairs({ projectId, subject: 'script', subjectId: null })
+        return { ok: true, candidates: mockShortsCandidates(written) }
       }
+      return markShortsStep(projectId, { chapters: written, tension: tensionFromOutline(outline) })
     })
+
+    // Read with the old shape too: a run parked at the script gate before
+    // decision 293 replays the bare list this step used to return.
+    const marked = readMarkedShorts(marking)
+    if (!marked.ok) {
+      await step.run('shorts-over-budget', () => markStageFailed(ctx, marked.gate))
+      return { projectId, outcome: 'over-budget' as const, chaptersWritten: written.length }
+    }
+    const shorts = marked.candidates
 
     const summary = await step.run('finish-draft', async () => {
       await setShortsCandidates(db, setup.scriptId, shorts)
