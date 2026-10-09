@@ -21,7 +21,16 @@ export const SHOT_FAMILIES = ['environment', 'document', 'human', 'data', 'map',
 export const ShotFamilySchema = z.enum(SHOT_FAMILIES)
 export type ShotFamily = z.infer<typeof ShotFamilySchema>
 
-const line = z.string().trim().min(1).max(600)
+/**
+ * The book's limits (decision 292): one source for the schema, the prompt
+ * that states them and the repair that trims to them.
+ */
+export const BOOK_TEXT_MAX = 600
+export const BOOK_ERA_LOCKS_MAX = 6
+export const BOOK_MOTIFS = 3
+export const BOOK_LIST_MAX = 12
+
+const line = z.string().trim().min(1).max(BOOK_TEXT_MAX)
 
 export const PrincipalSchema = z.object({
   name: line,
@@ -48,17 +57,17 @@ export const DirectorsBookSchema = z.object({
   eraLocks: z
     .array(z.object({ span: line, rules: line }))
     .min(1)
-    .max(6),
+    .max(BOOK_ERA_LOCKS_MAX),
   palette: z.object({
     accent: line,
     temperature: z.enum(['cold', 'neutral', 'warm']),
     note: line,
   }),
-  motifs: z.array(line).length(3, 'a film has exactly three motifs'),
+  motifs: z.array(line).length(BOOK_MOTIFS, 'a film has exactly three motifs'),
   anchorObject: line,
-  neverShow: z.array(line).max(12),
-  principals: z.array(PrincipalSchema).max(12),
-  locations: z.array(z.object({ name: line, look: line })).max(12),
+  neverShow: z.array(line).max(BOOK_LIST_MAX),
+  principals: z.array(PrincipalSchema).max(BOOK_LIST_MAX),
+  locations: z.array(z.object({ name: line, look: line })).max(BOOK_LIST_MAX),
   chapters: z.array(ChapterDirectionSchema).min(1),
   finalImage: line,
 })

@@ -1,3 +1,4 @@
+import { BOOK_TEXT_MAX } from '@boom-busters/schemas'
 import { describe, expect, it } from 'vitest'
 import { buildDirectorsBookRequest, mockDirectorsBook, parseDirectorsBook } from './direction'
 import type { ScriptClaim } from './script'
@@ -182,5 +183,54 @@ describe('the book cannot converge on one symbol (decision 271)', () => {
 
   it('keeps an era lock off the subject of a frame', () => {
     expect(request.system).toContain('Era locks constrain what a frame may contain')
+  })
+})
+
+describe("the book's limits (decision 292)", () => {
+  const book = () =>
+    JSON.parse(JSON.stringify(mockDirectorsBook({ caseTitle: 'x', chapterCount: 1 })))
+
+  it('states every limit in the prompt', () => {
+    const rules = buildDirectorsBookRequest({
+      caseTitle: 'x',
+      chapters: [{ title: 'The audit', paragraphs: ['A paragraph.'] }],
+      claims: [],
+    }).system.replace(/\s+/g, ' ')
+    expect(rules).toContain(
+      'every text value at most 600 characters; 1 to 6 era locks; exactly 3 motifs; at most 12 never-shows, 12 principals and 12 locations; one chapter entry per chapter, numbered as given',
+    )
+  })
+
+  it('trims an era rule over the limit at a sentence instead of refusing the book', () => {
+    // The owner's failed redraft (2026-10-08): era rules past 600 characters.
+    const answer = book()
+    answer.eraLocks[0].rules = 'CRT monitors on every desk. '.repeat(30)
+    const parsed = parseDirectorsBook(JSON.stringify(answer), 1)
+    expect(parsed.eraLocks[0]!.rules.length).toBeLessThanOrEqual(BOOK_TEXT_MAX)
+    expect(parsed.eraLocks[0]!.rules.endsWith('CRT monitors on every desk.')).toBe(true)
+  })
+
+  it('keeps the first items of a list over its cap, and the first three of four motifs', () => {
+    const answer = book()
+    answer.neverShow = Array.from({ length: 14 }, (_, at) => `exclusion ${at}`)
+    answer.motifs = ['the badge', 'the server rack', 'the term sheet', 'the logo']
+    const parsed = parseDirectorsBook(JSON.stringify(answer), 1)
+    expect(parsed.neverShow).toHaveLength(12)
+    expect(parsed.neverShow[11]).toBe('exclusion 11')
+    expect(parsed.motifs).toEqual(['the badge', 'the server rack', 'the term sheet'])
+  })
+
+  it('never trims a name, and still refuses two motifs and wrong chapter numbering', () => {
+    const named = book()
+    named.principals[0].name = 'N'.repeat(BOOK_TEXT_MAX + 1)
+    expect(() => parseDirectorsBook(JSON.stringify(named), 1)).toThrow(/malformed/)
+
+    const twoMotifs = book()
+    twoMotifs.motifs = ['the badge', 'the server rack']
+    expect(() => parseDirectorsBook(JSON.stringify(twoMotifs), 1)).toThrow(/malformed/)
+
+    const renumbered = book()
+    renumbered.chapters[0].chapter = 2
+    expect(() => parseDirectorsBook(JSON.stringify(renumbered), 1)).toThrow(/covers chapters/)
   })
 })
