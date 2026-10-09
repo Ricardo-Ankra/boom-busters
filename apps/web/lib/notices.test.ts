@@ -49,4 +49,32 @@ describe('recording notices (decision 293)', () => {
     })
     expect(replaceNotices).not.toHaveBeenCalled()
   })
+
+  it('does not fail the work when the repairs cannot be recorded', async () => {
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      replaceNotices.mockRejectedValue(new Error('connection lost'))
+      await expect(
+        recordRepairs(target, [{ action: 'trimmed', field: 'the summary' }]),
+      ).resolves.toBeUndefined()
+      expect(spy).toHaveBeenCalledWith(
+        '[notices] could not record a notice',
+        target,
+        expect.anything(),
+      )
+    } finally {
+      spy.mockRestore()
+    }
+  })
+
+  it('does not fail the work when a stop cannot be recorded', async () => {
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      addNotice.mockRejectedValue(new Error('connection lost'))
+      await expect(recordStop(target, 'stopped', 'The redraft stopped.')).resolves.toBeUndefined()
+      expect(spy).toHaveBeenCalled()
+    } finally {
+      spy.mockRestore()
+    }
+  })
 })
