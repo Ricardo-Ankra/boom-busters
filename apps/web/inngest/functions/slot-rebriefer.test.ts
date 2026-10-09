@@ -1,6 +1,7 @@
 // @vitest-environment node
 
 import {
+  addNotice,
   claims,
   createScriptVersion,
   deleteCastMember,
@@ -10,7 +11,9 @@ import {
   insertProjectSet,
   setCastPhotos,
   getShotSlot,
+  listProjectNotices,
   listShotSlots,
+  notices,
   replaceShotList,
   requireTestDatabase,
   saveChapter,
@@ -20,6 +23,7 @@ import {
   shotSlots,
   truncateRunMirror,
 } from '@boom-busters/db'
+import { ContentPolicyError, noticesFor } from '@boom-busters/schemas'
 import type { GraphicBrief, ShotBrief } from '@boom-busters/schemas'
 import { InngestTestEngine } from '@inngest/test'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -39,6 +43,9 @@ const notify = vi.fn()
 vi.mock('@/lib/notify', () => ({
   notify: (...args: unknown[]) => notify(...args),
 }))
+
+const callLlm = vi.hoisted(() => vi.fn())
+vi.mock('@/lib/llm', () => ({ callLlm }))
 
 const describeDb = requireTestDatabase() ? describe : describe.skip
 
@@ -330,5 +337,156 @@ describeDb('slot-rebriefer (mock mode)', () => {
     } finally {
       refuse.mockRestore()
     }
+  })
+})
+
+describeDb('slot-rebriefer on the answer helper (decision 293)', () => {
+  let engine: InngestTestEngine
+
+  async function seedOne(brief: ShotBrief): Promise<string> {
+    await db.delete(shotSlots)
+    const script = await createScriptVersion(db, FIXTURE_PROJECT_ID)
+    const chapter = await saveChapter(db, {
+      scriptId: script.id,
+      index: 0,
+      title: 'The audit',
+      contentMd: 'By June, the auditors could not find the money.',
+      estRuntimeSec: 30,
+    })
+    await replaceShotList(db, FIXTURE_PROJECT_ID, [
+      { chapterId: chapter.id, index: 0, type: brief.type, brief, startMs: 0, durationMs: 8000 },
+    ])
+    await setVisualsPhase(db, FIXTURE_PROJECT_ID, 'plan')
+    const [slot] = await listShotSlots(db, FIXTURE_PROJECT_ID)
+    return slot!.id
+  }
+
+  const slotNotices = async (slotId: string) =>
+    noticesFor(await listProjectNotices(db, FIXTURE_PROJECT_ID), 'slot', slotId).map(
+      ({ kind, message }) => ({ kind, message }),
+    )
+
+  beforeEach(async () => {
+    engine = new InngestTestEngine({ function: slotRebriefer })
+    vi.clearAllMocks()
+    callLlm.mockReset()
+    vi.stubEnv('MOCK_PROVIDERS', '')
+    await seed(db)
+    await truncateRunMirror(db)
+    forgetRunRows()
+    await db.delete(notices)
+  })
+
+  afterEach(() => {
+    vi.unstubAllEnvs()
+  })
+
+  it('asks once more with the reason after a refused draft, then puts the reason on the card', async () => {
+    const slotId = await seedOne(stockBrief)
+    callLlm.mockResolvedValue({ text: 'not json at all' })
+
+    const { result } = await engine.execute({ events: rebriefEvent(slotId) })
+
+    expect(result).toMatchObject({ outcome: 'refused' })
+    expect(callLlm).toHaveBeenCalledTimes(2)
+    expect(callLlm.mock.calls[1]![1]).toMatchObject({ purpose: 'retry: refused' })
+    expect(callLlm.mock.calls[1]![0].messages.at(-1).content).toContain(
+      'Your previous answer was refused: The model returned no JSON for new brief.',
+    )
+    const slot = await getShotSlot(db, slotId)
+    expect(slot?.retype).toEqual({
+      state: 'rebrief-refused',
+      reason: 'The model returned no JSON for new brief. It answered: not json at all',
+    })
+    expect((slot?.brief as { description: string }).description).toBe(stockBrief.description)
+  })
+
+  it("takes a decline in the model's own words as final, after one call", async () => {
+    const slotId = await seedOne(stockBrief)
+    callLlm.mockResolvedValue({
+      text: JSON.stringify({ error: 'This beat has only one honest image.' }),
+    })
+
+    const { result } = await engine.execute({ events: rebriefEvent(slotId) })
+
+    expect(result).toMatchObject({
+      outcome: 'refused',
+      reason: 'This beat has only one honest image.',
+    })
+    expect(callLlm).toHaveBeenCalledTimes(1)
+    expect((await getShotSlot(db, slotId))?.retype).toEqual({
+      state: 'rebrief-refused',
+      reason: 'This beat has only one honest image.',
+    })
+  })
+
+  it("takes the provider's content refusal as final, after one call", async () => {
+    const slotId = await seedOne(stockBrief)
+    callLlm.mockRejectedValue(new ContentPolicyError('google', 'SAFETY'))
+
+    const { result } = await engine.execute({ events: rebriefEvent(slotId) })
+
+    expect(result).toMatchObject({ outcome: 'refused', reason: 'google: SAFETY' })
+    expect(callLlm).toHaveBeenCalledTimes(1)
+    expect((await getShotSlot(db, slotId))?.retype).toEqual({
+      state: 'rebrief-refused',
+      reason: 'google: SAFETY',
+    })
+  })
+
+  it("records what the repair capped on the slot's card", async () => {
+    const map: ShotBrief = {
+      type: 'map',
+      coversText: stockBrief.coversText,
+      description: 'Where the money went.',
+      motion: { kind: 'static' },
+      transition: 'cut',
+      locations: [{ label: 'Munich', lat: 48.14, lon: 11.58 }],
+      route: false,
+    }
+    const slotId = await seedOne(map)
+    const places = Array.from({ length: 9 }, (_, at) => ({
+      label: `City ${at + 1}`,
+      lat: 10 + at,
+      lon: 20 + at,
+    }))
+    callLlm.mockResolvedValue({
+      text: JSON.stringify({
+        brief: { ...map, description: 'Nine cities, one trail.', locations: places, route: true },
+      }),
+    })
+
+    const { result } = await engine.execute({ events: rebriefEvent(slotId) })
+
+    expect(result).toMatchObject({ outcome: 'rebriefed' })
+    expect(callLlm).toHaveBeenCalledTimes(1)
+    const brief = (await getShotSlot(db, slotId))?.brief as { locations: unknown[] }
+    expect(brief.locations).toEqual(places.slice(0, 8))
+    expect(await slotNotices(slotId)).toEqual([
+      { kind: 'trimmed', message: "Kept the first 8 of the map's places." },
+    ])
+  })
+
+  it("retires the slot's old notice when a clean brief lands", async () => {
+    const slotId = await seedOne(stockBrief)
+    await addNotice(
+      db,
+      { projectId: FIXTURE_PROJECT_ID, subject: 'slot', subjectId: slotId },
+      { kind: 'stopped', message: 'The re-brief stopped: over budget.' },
+    )
+    callLlm.mockResolvedValue({
+      text: JSON.stringify({
+        brief: {
+          ...stockBrief,
+          description: 'A crowded trading floor at the open.',
+          query: 'trading floor crowd',
+        },
+      }),
+    })
+
+    const { result } = await engine.execute({ events: rebriefEvent(slotId) })
+
+    expect(result).toMatchObject({ outcome: 'rebriefed' })
+    expect(await slotNotices(slotId)).toEqual([])
   })
 })

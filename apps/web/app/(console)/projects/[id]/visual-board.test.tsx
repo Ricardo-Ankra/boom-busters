@@ -3325,3 +3325,84 @@ describe('background jobs on the board (decision 286)', () => {
     expect(header).toHaveTextContent('1 to look at')
   })
 })
+
+describe('notices on the slot card (decision 293)', () => {
+  beforeEach(() => {
+    // A chapter folded by an earlier test must not hide these cards.
+    window.localStorage.clear()
+  })
+
+  const notice = (
+    id: string,
+    subjectId: string | null,
+    message: string,
+    subject: Notice['subject'] = 'slot',
+  ): Notice => ({
+    id,
+    projectId: PROJECT,
+    subject,
+    subjectId,
+    kind: 'trimmed',
+    message,
+    createdAt: new Date('2026-10-09T10:00:00Z'),
+  })
+
+  it("shows each slot its own notices, never another slot's, and none for a slot gone from the board", () => {
+    render(
+      <VisualBoard
+        projectId={PROJECT}
+        model={model([stockSlot, chartSlot])}
+        colors={COLORS}
+        brand={BRAND}
+        notices={[
+          notice('01J000000000000000000000N1', SLOT_A, "Kept the first 8 of the map's places."),
+          notice(
+            '01J000000000000000000000N2',
+            SLOT_B,
+            'The re-type stopped: the answer was cut off.',
+          ),
+          // SLOT_C is not on this board: re-planned away (Review Focus 1).
+          notice(
+            '01J000000000000000000000N3',
+            SLOT_C,
+            'The redirect stopped: the slot was re-planned.',
+          ),
+          notice('01J000000000000000000000N4', null, 'Trimmed to fit: era rule 1.', 'direction'),
+        ]}
+      />,
+    )
+
+    const cardA = document.getElementById(`slot-${SLOT_A}`)!
+    const cardB = document.getElementById(`slot-${SLOT_B}`)!
+    expect(within(cardA).getByText("Kept the first 8 of the map's places.")).toHaveAttribute(
+      'role',
+      'status',
+    )
+    expect(within(cardA).queryByText('The re-type stopped: the answer was cut off.')).toBeNull()
+    expect(within(cardA).queryByText('Trimmed to fit: era rule 1.')).toBeNull()
+    expect(within(cardB).getByText('The re-type stopped: the answer was cut off.')).toHaveAttribute(
+      'role',
+      'status',
+    )
+    expect(screen.queryByText('The redirect stopped: the slot was re-planned.')).toBeNull()
+  })
+
+  it('dismisses a slot notice with its own button', async () => {
+    dismissNoticeAction.mockResolvedValue({ ok: true })
+    render(
+      <VisualBoard
+        projectId={PROJECT}
+        model={model([stockSlot])}
+        colors={COLORS}
+        brand={BRAND}
+        notices={[
+          notice('01J000000000000000000000N1', SLOT_A, "Kept the first 8 of the map's places."),
+        ]}
+      />,
+    )
+
+    const cardA = document.getElementById(`slot-${SLOT_A}`)!
+    await userEvent.click(within(cardA).getByRole('button', { name: 'Dismiss' }))
+    expect(dismissNoticeAction).toHaveBeenCalledWith('01J000000000000000000000N1')
+  })
+})

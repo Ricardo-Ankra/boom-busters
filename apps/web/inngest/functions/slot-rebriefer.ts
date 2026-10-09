@@ -31,7 +31,9 @@ import type { ShotBrief } from '@boom-busters/schemas'
 import { NonRetriableError } from 'inngest'
 import { db } from '@/lib/db'
 import { designGraphic, loadGraphicContext, withDesign } from '@/lib/graphic-design'
-import { callLlm } from '@/lib/llm'
+import { callForAnswer, type Answer } from '@/lib/answer'
+import { completeForProject } from '@/lib/answer-call'
+import { recordRepairs } from '@/lib/notices'
 import { requireVisualKeys, resolveSlotBrief } from '@/lib/visual-assets'
 import { inngest } from '../client'
 import { events } from '../events'
@@ -186,84 +188,89 @@ export const slotRebriefer = inngest.createFunction(
         }
       }
 
-      let next: ShotBrief
+      let answer: Answer<ShotBrief>
       try {
         if (brief.type === 'chart' || brief.type === 'map') {
           const claims = await scriptableClaims(db, projectId)
           // The logo library's index (decision 268, Plan B): a redrafted
           // graphic may name a mark the producer already holds.
           const logos = (await listLogos(db)).map((row) => ({ id: row.id, title: row.title ?? '' }))
-          next = mockProvidersEnabled()
-            ? mockRetypedBrief({
-                brief,
-                targetType: brief.type,
-                claimIds: claims.map((claim) => claim.id),
-                claimTexts: claims.map((claim) => claim.text),
-                logoTitles: logos.map((logo) => logo.title),
-                ...(guidance === undefined ? {} : { guidance }),
+          answer = mockProvidersEnabled()
+            ? {
+                ok: true,
+                value: mockRetypedBrief({
+                  brief,
+                  targetType: brief.type,
+                  claimIds: claims.map((claim) => claim.id),
+                  claimTexts: claims.map((claim) => claim.text),
+                  logoTitles: logos.map((logo) => logo.title),
+                  ...(guidance === undefined ? {} : { guidance }),
+                }),
+                calls: 1,
+              }
+            : await callForAnswer({
+                request: buildRetypeRequest({
+                  caseTitle: project.title,
+                  brief,
+                  targetType: brief.type,
+                  claims: claims.map((claim) => ({
+                    id: claim.id,
+                    text: claim.text,
+                    sourceUrl: claim.sourceUrl,
+                    confidence: claim.confidence,
+                  })),
+                  logos: logos.map((logo) => logo.title),
+                  ...(guidance === undefined ? {} : { guidance }),
+                }),
+                parse: (text, note) =>
+                  parseRetypedBrief(text, { targetType: brief.type, claims, logos }, note),
+                complete: completeForProject(projectId),
               })
-            : parseRetypedBrief(
-                (
-                  await callLlm(
-                    buildRetypeRequest({
-                      caseTitle: project.title,
-                      brief,
-                      targetType: brief.type,
-                      claims: claims.map((claim) => ({
-                        id: claim.id,
-                        text: claim.text,
-                        sourceUrl: claim.sourceUrl,
-                        confidence: claim.confidence,
-                      })),
-                      logos: logos.map((logo) => logo.title),
-                      ...(guidance === undefined ? {} : { guidance }),
-                    }),
-                    { projectId },
-                  )
-                ).text,
-                { targetType: brief.type, claims, logos },
-              )
         } else {
           const book = DirectorsBookSchema.safeParse(project.direction)
           const references =
             brief.type === 'still' && !mockProvidersEnabled()
               ? await rebriefReferences(projectId)
               : { photographed: [], sets: [] }
-          next = mockProvidersEnabled()
-            ? mockRebriefedBrief(brief, guidance)
-            : parseRebriefedBrief(
-                (
-                  await callLlm(
-                    buildRebriefRequest({
-                      caseTitle: project.title,
-                      brief,
-                      ...(guidance === undefined ? {} : { guidance }),
-                      direction: book.success ? book.data : null,
-                      ...references,
-                    }),
-                    { projectId },
-                  )
-                ).text,
-                brief,
-              )
+          answer = mockProvidersEnabled()
+            ? { ok: true, value: mockRebriefedBrief(brief, guidance), calls: 1 }
+            : await callForAnswer({
+                request: buildRebriefRequest({
+                  caseTitle: project.title,
+                  brief,
+                  ...(guidance === undefined ? {} : { guidance }),
+                  direction: book.success ? book.data : null,
+                  ...references,
+                }),
+                parse: (text, note) => parseRebriefedBrief(text, brief, note),
+                complete: completeForProject(projectId),
+              })
         }
       } catch (error) {
         if (error instanceof BudgetExceededError) {
           return { ok: false as const, gate: budgetGateData(error) }
         }
-        // A refusal or a malformed draft is an answer, not a crash: the slot
-        // keeps the brief it has and the card shows why, until it is dismissed.
-        if (error instanceof ValidationError) {
-          await setSlotRetype(db, slotId, { state: 'rebrief-refused', reason: error.message })
-          return { ok: false as const, refused: error.message }
-        }
-        throw error
+        // The mock refuses as the live parser does (a chart with no claims to
+        // cite), and its refusal lands on the card the same way below.
+        if (!(error instanceof ValidationError)) throw error
+        answer = { ok: false, issue: error.message, calls: 1 }
       }
 
-      await updateSlotBrief(db, slotId, next)
+      // A refusal after its retry, a decline in the model's own words or the
+      // provider's content refusal (decision 293): the slot keeps the brief it
+      // has and the card shows why, until it is dismissed.
+      if (!answer.ok) {
+        await setSlotRetype(db, slotId, { state: 'rebrief-refused', reason: answer.issue })
+        return { ok: false as const, refused: answer.issue }
+      }
+
+      await updateSlotBrief(db, slotId, answer.value)
       // `updateSlotBrief` clears a refusal but not this, and the pending state
       // has to end on the write that answers it.
       await setSlotRetype(db, slotId, null)
+      // What the repair capped, on this slot's card; a clean answer retires the
+      // notes of the last one (decision 293).
+      await recordRepairs({ projectId, subject: 'slot', subjectId: slotId }, answer.repairs)
       return { ok: true as const, resolveNow: project.visualsPhase === 'board' }
     })
 

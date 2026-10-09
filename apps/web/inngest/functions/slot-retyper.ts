@@ -14,6 +14,7 @@ import {
   mockRetypedBrief,
   parseRetypedBrief,
 } from '@boom-busters/providers'
+import type { Repair } from '@boom-busters/providers'
 import {
   BudgetExceededError,
   convertBrief,
@@ -28,7 +29,9 @@ import type { ShotBrief } from '@boom-busters/schemas'
 import { NonRetriableError } from 'inngest'
 import { db } from '@/lib/db'
 import { designGraphic, loadGraphicContext, withDesign } from '@/lib/graphic-design'
-import { callLlm } from '@/lib/llm'
+import { callForAnswer, type Answer } from '@/lib/answer'
+import { completeForProject } from '@/lib/answer-call'
+import { recordRepairs } from '@/lib/notices'
 import { requireVisualKeys, resolveSlotBrief } from '@/lib/visual-assets'
 import { inngest } from '../client'
 import { events } from '../events'
@@ -126,6 +129,8 @@ export const slotRetyper = inngest.createFunction(
 
       // Mechanical when the target's fields derive from the description.
       let next: ShotBrief | null = convertBrief(brief, targetType)
+      // What the model's draft repaired; a mechanical conversion has none.
+      let repairs: Repair[] | undefined
 
       // Structured targets get a model draft — validated, refusable.
       if (!next) {
@@ -151,61 +156,69 @@ export const slotRetyper = inngest.createFunction(
         // here may name a mark the producer already holds.
         const logos = (await listLogos(db)).map((row) => ({ id: row.id, title: row.title ?? '' }))
 
+        let answer: Answer<ShotBrief>
         try {
           if (mockProvidersEnabled()) {
-            // The mock refuses the same way the real path does — a chart
-            // citing no claims — so it must sit under the same catch.
-            next = mockRetypedBrief({
-              brief,
-              targetType,
-              claimIds,
-              claimTexts: claims.map((claim) => claim.text),
-              logoTitles: logos.map((logo) => logo.title),
-            })
+            // The mock refuses as the live parser does (a chart citing no
+            // claims), so its refusal lands on the card the same way below.
+            answer = {
+              ok: true,
+              value: mockRetypedBrief({
+                brief,
+                targetType,
+                claimIds,
+                claimTexts: claims.map((claim) => claim.text),
+                logoTitles: logos.map((logo) => logo.title),
+              }),
+              calls: 1,
+            }
           } else {
             const project = await getProject(db, projectId)
-            next = parseRetypedBrief(
-              (
-                await callLlm(
-                  buildRetypeRequest({
-                    caseTitle: project?.title ?? 'this case',
-                    brief,
-                    targetType,
-                    claims: claims.map((claim) => ({
-                      id: claim.id,
-                      text: claim.text,
-                      sourceUrl: claim.sourceUrl,
-                      confidence: claim.confidence,
-                    })),
-                    logos: logos.map((logo) => logo.title),
-                  }),
-                  { projectId },
-                )
-              ).text,
-              { targetType, claims, logos },
-            )
+            answer = await callForAnswer({
+              request: buildRetypeRequest({
+                caseTitle: project?.title ?? 'this case',
+                brief,
+                targetType,
+                claims: claims.map((claim) => ({
+                  id: claim.id,
+                  text: claim.text,
+                  sourceUrl: claim.sourceUrl,
+                  confidence: claim.confidence,
+                })),
+                logos: logos.map((logo) => logo.title),
+              }),
+              parse: (text, note) => parseRetypedBrief(text, { targetType, claims, logos }, note),
+              complete: completeForProject(projectId),
+            })
           }
         } catch (error) {
           if (error instanceof BudgetExceededError) {
             await setSlotRetype(db, slotId, null)
             return { changed: false as const, gate: budgetGateData(error) }
           }
-          // A refusal or a malformed draft is an answer, not a crash: the
-          // slot keeps its old brief and the card shows the reason until
-          // it is dismissed.
-          if (error instanceof ValidationError) {
-            await setSlotRetype(db, slotId, {
-              state: 'refused',
-              target: targetType,
-              reason: error.message,
-            })
-            return { changed: false as const, refused: error.message }
-          }
-          throw error
+          if (!(error instanceof ValidationError)) throw error
+          answer = { ok: false, issue: error.message, calls: 1 }
         }
+
+        // A refusal after its retry, a decline in the model's own words or the
+        // provider's content refusal (decision 293): the slot keeps its old
+        // brief and the card shows the reason until it is dismissed.
+        if (!answer.ok) {
+          await setSlotRetype(db, slotId, {
+            state: 'refused',
+            target: targetType,
+            reason: answer.issue,
+          })
+          return { changed: false as const, refused: answer.issue }
+        }
+        next = answer.value
+        repairs = answer.repairs
       }
 
       await retypeShotSlot(db, slotId, targetType, next)
+      // The new brief's repairs on this slot's card. Any retype retires the
+      // notes the old brief carried (decision 293).
+      await recordRepairs({ projectId, subject: 'slot', subjectId: slotId }, repairs)
       // A graphic is not done until it is designed, in the next step: keep
       // the card saying "drafting" until then, so the format picker and
       // Redesign stay locked while the design call is in flight (final
