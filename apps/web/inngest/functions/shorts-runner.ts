@@ -10,10 +10,8 @@ import {
   setShortsCandidates,
 } from '@boom-busters/db'
 import {
-  buildShortsRequest,
   mockProvidersEnabled,
   mockShortsCandidates,
-  parseShortsCandidates,
   tensionFromOutline,
 } from '@boom-busters/providers'
 import {
@@ -35,7 +33,8 @@ import {
 import type { TeaserParagraphAudio } from '@boom-busters/timeline'
 import { NonRetriableError } from 'inngest'
 import { db } from '@/lib/db'
-import { callLlm } from '@/lib/llm'
+import { completeForProject } from '@/lib/answer-call'
+import { markShortsWith } from '@/lib/script-answers'
 import { inngest } from '../client'
 import { events } from '../events'
 import { budgetGateData, markStageFailed, type GateContext } from '../lib/gates'
@@ -141,22 +140,15 @@ export const shortsRunner = inngest.createFunction(
         picked = mockShortsCandidates(chapterSources)
       } else {
         try {
-          picked = parseShortsCandidates(
-            (
-              await callLlm(
-                buildShortsRequest({
-                  chapters: chapterSources,
-                  ...(tension ? { tension } : {}),
-                }),
-                { projectId },
-              )
-            ).text,
-          )
+          picked = await markShortsWith(completeForProject(projectId), {
+            chapters: chapterSources,
+            ...(tension ? { tension } : {}),
+          })
         } catch (error) {
           if (error instanceof BudgetExceededError) {
             return { ok: false as const, gate: budgetGateData(error) }
           }
-          // Retries, then onFailure -> markStageFailed. Never a silent [].
+          // A bad answer has had its two calls and stops the stage with its reason (decision 292); a provider error retries, then onFailure -> markStageFailed. Never a silent [].
           throw error
         }
       }
