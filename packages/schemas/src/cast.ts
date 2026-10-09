@@ -37,6 +37,13 @@ export const CastPhotoSchema = z.object({
 })
 export type CastPhoto = z.infer<typeof CastPhotoSchema>
 
+/**
+ * The identity and guardrail limits (decision 293): one source for this
+ * schema, the describe prompt that states them and the repair that trims to them.
+ */
+export const CAST_IDENTITY_MAX = 600
+export const CAST_GUARDRAIL_MAX = 600
+
 export const CastMemberSchema = z.object({
   id: z.string().min(1),
   projectId: z.string().min(1),
@@ -44,8 +51,8 @@ export const CastMemberSchema = z.object({
   name: z.string().trim().min(1).max(120),
   role: z.string().trim().min(1).max(200),
   /** Written from the photos by a vision call, then edited by hand. Empty until then. */
-  identityString: z.string().max(600),
-  guardrail: z.string().max(600),
+  identityString: z.string().max(CAST_IDENTITY_MAX),
+  guardrail: z.string().max(CAST_GUARDRAIL_MAX),
   /** Lower case, no `@` (decision 284). Optional so existing fixtures keep compiling. */
   xHandle: z
     .string()

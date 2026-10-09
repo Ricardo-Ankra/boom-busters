@@ -1,6 +1,12 @@
-import { ShotBriefSchema, ValidationError } from '@boom-busters/schemas'
+import {
+  AnswerDeclined,
+  GRAPHIC_INTENT_MAX,
+  ShotBriefSchema,
+  ValidationError,
+} from '@boom-busters/schemas'
 import type { ShotBrief } from '@boom-busters/schemas'
 import { describe, expect, it } from 'vitest'
+import type { Repair } from './repair'
 import { buildRetypeRequest, mockRetypedBrief, parseRetypedBrief } from './retype'
 import { GRAPHIC_INTENT_RULES } from './shotlist'
 
@@ -97,7 +103,7 @@ describe('buildRetypeRequest', () => {
     expect(request.system).toContain('"intentRefs"')
     expect(request.system).toContain(GRAPHIC_INTENT_RULES)
     // The caps the schema enforces, said where the model reads (final review M1).
-    expect(GRAPHIC_INTENT_RULES).toMatch(/"intentRefs" lists at most six claim numbers/)
+    expect(GRAPHIC_INTENT_RULES).toMatch(/"intentRefs" lists at most 6 claim numbers/)
     expect(GRAPHIC_INTENT_RULES).toMatch(/"intent" is at most 300 characters/)
     expect(GRAPHIC_INTENT_RULES).not.toMatch(/list every claim/)
     expect(request.system).not.toContain('"kind": "figure"')
@@ -275,5 +281,122 @@ describe('mockRetypedBrief', () => {
     expect(() => mockRetypedBrief({ brief: still, targetType: 'graphic', claimIds: [] })).toThrow(
       ValidationError,
     )
+  })
+})
+
+describe('the retype limits (decision 293)', () => {
+  const collect = () => {
+    const notes: Repair[] = []
+    return {
+      notes,
+      note: (repair: Repair) => {
+        notes.push(repair)
+      },
+    }
+  }
+
+  const graphic = (over: Record<string, unknown>) =>
+    JSON.stringify({
+      brief: {
+        type: 'graphic',
+        coversText: still.coversText,
+        description: still.description,
+        motion: { kind: 'static' },
+        transition: 'cut',
+        intent: 'The price, collapsing.',
+        intentRefs: [1],
+        ...over,
+      },
+    })
+
+  /** Seven claim ids, numbered 1 to 7 as the prompt's claim list numbers them. */
+  const sevenClaims = Array.from({ length: 7 }, (_, at) => ({
+    id: `01HQ0000000000000000000${at}AA`,
+  }))
+
+  it("states the graphic's and the map's limits in the prompt", () => {
+    const forGraphic = buildRetypeRequest({
+      caseTitle: 'Wirecard',
+      brief: still,
+      targetType: 'graphic',
+      claims,
+    }).system.replace(/\s+/g, ' ')
+    expect(forGraphic).toContain('"intentRefs" lists at most 6 claim numbers')
+    expect(forGraphic).toContain('"intent" is at most 300 characters')
+
+    const forMap = buildRetypeRequest({
+      caseTitle: 'Wirecard',
+      brief: still,
+      targetType: 'map',
+      claims,
+    }).system
+    expect(forMap).toContain('"locations": [{"label", "lat": number, "lon": number}] (1-8 entries)')
+  })
+
+  it("trims a graphic's intent over its limit at a sentence, and says so", () => {
+    const { notes, note } = collect()
+    const brief = parseRetypedBrief(
+      graphic({ intent: 'The price collapsed in nine days. '.repeat(12) }),
+      { targetType: 'graphic', claims: [{ id: CLAIM_A }] },
+      note,
+    )
+    const intent = (brief as { intent: string }).intent
+    expect(intent.length).toBeLessThanOrEqual(GRAPHIC_INTENT_MAX)
+    expect(intent.endsWith('in nine days.')).toBe(true)
+    // The claim it rests on is a fact: untouched.
+    expect(brief).toMatchObject({ intentClaimIds: [CLAIM_A] })
+    expect(notes).toEqual([{ action: 'trimmed', field: "the graphic's intent" }])
+  })
+
+  it("keeps a graphic's first six references, in the order the model gave them", () => {
+    const { notes, note } = collect()
+    const brief = parseRetypedBrief(
+      graphic({ intentRefs: [7, 6, 5, 4, 3, 2, 1] }),
+      { targetType: 'graphic', claims: sevenClaims },
+      note,
+    )
+    expect((brief as { intentClaimIds: string[] }).intentClaimIds).toEqual(
+      [7, 6, 5, 4, 3, 2].map((number) => sevenClaims[number - 1]!.id),
+    )
+    expect(notes).toEqual([{ action: 'capped', field: "of the graphic's references", kept: 6 }])
+  })
+
+  it("keeps a map's first eight places with their coordinates as given", () => {
+    const { notes, note } = collect()
+    const places = Array.from({ length: 9 }, (_, at) => ({
+      label: `City ${at + 1}`,
+      lat: 10 + at,
+      lon: 20 + at,
+    }))
+    const text = JSON.stringify({
+      brief: {
+        type: 'map',
+        coversText: still.coversText,
+        description: still.description,
+        motion: { kind: 'static' },
+        transition: 'cut',
+        locations: places,
+        route: true,
+      },
+    })
+    const brief = parseRetypedBrief(text, { targetType: 'map', claims: [] }, note)
+    expect((brief as { locations: unknown[] }).locations).toEqual(places.slice(0, 8))
+    expect(notes).toEqual([{ action: 'capped', field: "of the map's places", kept: 8 }])
+  })
+
+  it('notes nothing for a brief within its limits', () => {
+    const { notes, note } = collect()
+    parseRetypedBrief(graphic({}), { targetType: 'graphic', claims: [{ id: CLAIM_A }] }, note)
+    expect(notes).toEqual([])
+  })
+
+  it("throws the model's own reason as a decline, which the answer helper takes as final", () => {
+    const declining = () =>
+      parseRetypedBrief(JSON.stringify({ error: 'No sourced numbers cover this beat.' }), {
+        targetType: 'chart',
+        claims: [{ id: CLAIM_A }],
+      })
+    expect(declining).toThrow(AnswerDeclined)
+    expect(declining).toThrow(/^No sourced numbers cover this beat\.$/)
   })
 })

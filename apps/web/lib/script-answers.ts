@@ -1,4 +1,5 @@
 import {
+  buildChapterRequest,
   buildOutlineRequest,
   buildSelfCheckRequest,
   buildShortsRequest,
@@ -6,7 +7,9 @@ import {
   parseSelfCheck,
   parseShortsCandidates,
 } from '@boom-busters/providers'
-import { answerOrStop, callForAnswer, type AnswerComplete } from '@/lib/answer'
+import type { Repair } from '@boom-busters/providers'
+import type { ShortsCandidate } from '@boom-busters/schemas'
+import { answerOrStop, callForAnswer, callForText, type AnswerComplete } from '@/lib/answer'
 
 /**
  * The script stage's structured answers (decision 292): the outline, each
@@ -36,16 +39,39 @@ export async function selfCheckWith(
   )
 }
 
+/** What a stopped Shorts marking says before its reason. */
+export const SHORTS_UNMARKED = 'The Shorts segments could not be marked'
+
+/**
+ * The Shorts marking, with what the parser repaired in it (decision 293): the
+ * caller stores the candidates and puts the repairs on Script Studio's Shorts
+ * strip. A stop is thrown, as before, as a `NonRetriableError` with the reason.
+ */
 export async function markShortsWith(
   complete: AnswerComplete,
   input: Parameters<typeof buildShortsRequest>[0],
-) {
+): Promise<{ candidates: ShortsCandidate[]; repairs: Repair[] }> {
+  const answer = await callForAnswer({
+    request: buildShortsRequest(input),
+    parse: parseShortsCandidates,
+    complete,
+  })
+  const candidates = answerOrStop(answer, SHORTS_UNMARKED)
+  return { candidates, repairs: answer.ok ? (answer.repairs ?? []) : [] }
+}
+
+/**
+ * One chapter's narration (decision 293): plain text on `callForText`, so a
+ * reply cut off at its budget is asked once more at double it, and a second
+ * cut-off stops the stage with the reason. Half a chapter is never returned:
+ * saved, it would be read aloud mid-sentence and become the next chapter's seam.
+ */
+export async function draftChapterWith(
+  complete: AnswerComplete,
+  input: Parameters<typeof buildChapterRequest>[0],
+): Promise<string> {
   return answerOrStop(
-    await callForAnswer({
-      request: buildShortsRequest(input),
-      parse: parseShortsCandidates,
-      complete,
-    }),
-    'The Shorts segments could not be marked',
+    await callForText({ request: buildChapterRequest(input), complete }),
+    `Chapter ${input.chapterIndex + 1} could not be drafted`,
   )
 }

@@ -9,6 +9,7 @@ import { renderDossierMarkdown } from '@boom-busters/providers'
 import { parseEventData, serialiseError } from '@boom-busters/schemas'
 import { NonRetriableError } from 'inngest'
 import { db } from '@/lib/db'
+import { recordRepairs } from '@/lib/notices'
 import { inngest } from '../client'
 import { events } from '../events'
 import { markStageFailed, openReviewGate, type GateContext } from '../lib/gates'
@@ -133,6 +134,9 @@ export const dossierReviser = inngest.createFunction(
           confidence: claim.confidence,
         })),
       })
+      // What the revision's passes trimmed or dropped, on the dossier review; a
+      // clean revision retires the last notice (decision 293).
+      await recordRepairs({ projectId, subject: 'dossier', subjectId: null }, research.repairs)
       return countClaims(saved.claims)
     })
 

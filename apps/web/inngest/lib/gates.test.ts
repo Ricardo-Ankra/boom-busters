@@ -8,8 +8,10 @@ import {
   getSettings,
   getVoiceTake,
   listOpenBudgetGates,
+  listProjectNotices,
   listRunEvents,
   listRuns,
+  notices,
   requireTestDatabase,
   saveChapter,
   seed,
@@ -19,7 +21,7 @@ import {
 } from '@boom-busters/db'
 import { budgetStatus, truncateLedger } from '@boom-busters/cost'
 import { BudgetExceededError, monthKey, takeIdempotencyKey } from '@boom-busters/schemas'
-import { beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/lib/db'
 import { forgetRunRows } from '../middleware/run-mirror'
 import {
@@ -33,6 +35,7 @@ import {
   markStageFailed,
   openBudgetGate,
   openReviewGate,
+  slotSubject,
   type GateContext,
 } from './gates'
 
@@ -46,6 +49,13 @@ import {
  * the resume half of park/resume is asserted — against the real database, with
  * both representations of a gate checked together.
  */
+
+// The notification is the only part of a side job's stop that leaves the
+// database; asserted here, not sent (decision 293).
+const notify = vi.hoisted(() => vi.fn())
+vi.mock('@/lib/notify', () => ({ notify }))
+
+const SLOT = '01J0000000000000000000000S'
 
 // Gated on TEST_DATABASE_URL, not DATABASE_URL: these truncate the run
 // mirror and the ledger, and must never reach a deployment's database.
@@ -319,10 +329,22 @@ describeDb('gate helpers', () => {
   /**
    * Decision 234, the same rule for every side job: the slot re-fetcher and
    * re-typer also run inside a parked visuals review, and their failures must
-   * not tear it down either.
+   * not tear it down either. Decision 293: while parked, the reason lands as a
+   * `stopped` notice on the card it concerns, because the notification alone
+   * reached only a server log (production sends no email).
    */
   describe('markSideJobFailed', () => {
-    it('leaves the open review room alone', async () => {
+    // Written for real here; none may outlive the test, since the e2e suite
+    // shares this database and would find them on its cards.
+    beforeEach(async () => {
+      await db.delete(notices)
+      notify.mockClear()
+    })
+    afterEach(async () => {
+      await db.delete(notices)
+    })
+
+    it('leaves the open review room alone, and says why on the project strip and in a notification', async () => {
       await setProjectStage(db, FIXTURE_PROJECT_ID, {
         stage: 'visuals',
         stageStatus: 'awaiting_review',
@@ -333,16 +355,78 @@ describeDb('gate helpers', () => {
       })
 
       expect((await getProject(db, FIXTURE_PROJECT_ID))?.stageStatus).toBe('awaiting_review')
+      expect(await listProjectNotices(db, FIXTURE_PROJECT_ID)).toEqual([
+        expect.objectContaining({
+          subject: 'project',
+          subjectId: null,
+          kind: 'stopped',
+          message: 'The slot re-fetch stopped: pexels rejected the API key (401).',
+        }),
+      ])
+      expect(notify).toHaveBeenCalledWith({
+        kind: 'run-failed',
+        title: 'The slot re-fetch stopped',
+        body: 'pexels rejected the API key (401).',
+        href: `/projects/${FIXTURE_PROJECT_ID}`,
+      })
     })
 
-    it('escalates to the stage when no review room is open', async () => {
-      await setProjectStage(db, FIXTURE_PROJECT_ID, { stage: 'visuals', stageStatus: 'running' })
-
-      await markSideJobFailed(context(), 'The slot re-fetch stopped', {
-        message: 'storage is gone',
+    it('writes the notice on the card it names: a slot, or the Direction card', async () => {
+      await setProjectStage(db, FIXTURE_PROJECT_ID, {
+        stage: 'visuals',
+        stageStatus: 'awaiting_review',
       })
 
+      await markSideJobFailed(
+        context(),
+        'The re-type stopped',
+        { message: 'over budget' },
+        slotSubject(SLOT),
+      )
+      await markSideJobFailed(
+        context(),
+        'The redraft stopped',
+        { message: 'cut off' },
+        { subject: 'direction' },
+      )
+
+      const listed = (await listProjectNotices(db, FIXTURE_PROJECT_ID)).map(
+        ({ subject, subjectId, message }) => ({ subject, subjectId, message }),
+      )
+      expect(listed).toHaveLength(2)
+      expect(listed).toEqual(
+        expect.arrayContaining([
+          { subject: 'slot', subjectId: SLOT, message: 'The re-type stopped: over budget' },
+          { subject: 'direction', subjectId: null, message: 'The redraft stopped: cut off' },
+        ]),
+      )
+    })
+
+    it('reads a slot side job with no slot id as the project', () => {
+      expect(slotSubject(undefined)).toBeUndefined()
+      expect(slotSubject(42)).toBeUndefined()
+      expect(slotSubject(SLOT)).toEqual({ subject: 'slot', subjectId: SLOT })
+    })
+
+    it('escalates to the stage, and writes no notice, when no review room is open', async () => {
+      await setProjectStage(db, FIXTURE_PROJECT_ID, { stage: 'visuals', stageStatus: 'running' })
+
+      await markSideJobFailed(
+        context(),
+        'The slot re-fetch stopped',
+        { message: 'storage is gone' },
+        slotSubject(SLOT),
+      )
+
       expect((await getProject(db, FIXTURE_PROJECT_ID))?.stageStatus).toBe('failed')
+      expect(await listProjectNotices(db, FIXTURE_PROJECT_ID)).toEqual([])
+      expect(notify).toHaveBeenCalledWith(
+        expect.objectContaining({
+          kind: 'run-failed',
+          title: 'A run failed',
+          body: 'storage is gone',
+        }),
+      )
     })
   })
 

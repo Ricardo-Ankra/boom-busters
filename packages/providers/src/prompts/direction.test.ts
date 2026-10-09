@@ -1,6 +1,13 @@
 import { BOOK_TEXT_MAX } from '@boom-busters/schemas'
 import { describe, expect, it } from 'vitest'
-import { buildDirectorsBookRequest, mockDirectorsBook, parseDirectorsBook } from './direction'
+import {
+  buildDirectorsBookRequest,
+  mockDirectorsBook,
+  parseDirectorsBook,
+  repairDirectorsBook,
+} from './direction'
+import { describeRepairs } from './repair'
+import type { Note, Repair } from './repair'
 import type { ScriptClaim } from './script'
 
 const CLAIMS: ScriptClaim[] = [
@@ -232,5 +239,132 @@ describe("the book's limits (decision 292)", () => {
     const renumbered = book()
     renumbered.chapters[0].chapter = 2
     expect(() => parseDirectorsBook(JSON.stringify(renumbered), 1)).toThrow(/covers chapters/)
+  })
+})
+
+describe("the book's repairs, in the owner's words (decision 293)", () => {
+  const book = () =>
+    JSON.parse(JSON.stringify(mockDirectorsBook({ caseTitle: 'x', chapterCount: 1 })))
+  const long = 'A sentence about the period that runs on. '.repeat(20)
+  const collect = () => {
+    const notes: Repair[] = []
+    const note: Note = (repair) => {
+      notes.push(repair)
+    }
+    return { notes, note }
+  }
+
+  it('names each trimmed text the way the Direction card does', () => {
+    const answer = book()
+    answer.visualThesis = long
+    answer.eraLocks = [
+      { span: '1995 to 2008', rules: 'CRT monitors on every desk.' },
+      { span: '2008 to 2020', rules: long },
+    ]
+    answer.palette.note = long
+    answer.anchorObject = long
+    answer.finalImage = long
+    const { notes, note } = collect()
+    repairDirectorsBook(answer, note)
+    expect(notes).toEqual([
+      { action: 'trimmed', field: 'the visual thesis' },
+      { action: 'trimmed', field: 'era rule 2' },
+      { action: 'trimmed', field: 'the palette note' },
+      { action: 'trimmed', field: 'the anchor object' },
+      { action: 'trimmed', field: 'the final image' },
+    ])
+  })
+
+  it('reports each cap, and numbers what it trims as the model wrote the list', () => {
+    const answer = book()
+    answer.eraLocks = Array.from({ length: 7 }, (_, at) => ({
+      span: `${1990 + at}`,
+      rules: 'Pagers on every belt.',
+    }))
+    answer.motifs = ['the badge', long, 'the term sheet', 'the logo']
+    answer.neverShow = [long, ...Array.from({ length: 12 }, (_, at) => `exclusion ${at}`)]
+    const { notes, note } = collect()
+    repairDirectorsBook(answer, note)
+    expect(notes).toEqual([
+      { action: 'capped', field: 'era locks', kept: 6 },
+      { action: 'capped', field: 'motifs', kept: 3 },
+      { action: 'trimmed', field: 'motif 2' },
+      { action: 'capped', field: 'never-shows', kept: 12 },
+      { action: 'trimmed', field: 'never-show 1' },
+    ])
+  })
+
+  it("names a person's and a place's fields by name, and a chapter's by its number", () => {
+    const answer = book()
+    answer.principals = [
+      {
+        name: 'Emad Mostaque',
+        role: long,
+        depiction: 'likeness',
+        identityString: long,
+        guardrail: long,
+      },
+      ...Array.from({ length: 12 }, (_, at) => ({
+        name: `Person ${at}`,
+        role: 'Director',
+        depiction: 'anonymous',
+        identityString: 'A face.',
+        guardrail: 'Never mocked.',
+      })),
+    ]
+    answer.locations = [
+      { name: 'The Server Hall', look: long },
+      ...Array.from({ length: 12 }, (_, at) => ({ name: `Room ${at}`, look: 'A room.' })),
+    ]
+    answer.chapters[0].moodShift = long
+    answer.chapters[0].keyImage = long
+    const { notes, note } = collect()
+    repairDirectorsBook(answer, note)
+    expect(notes).toEqual([
+      { action: 'capped', field: 'principals', kept: 12 },
+      { action: 'trimmed', field: "Emad Mostaque's role" },
+      { action: 'trimmed', field: "Emad Mostaque's identity" },
+      { action: 'trimmed', field: "Emad Mostaque's guardrail" },
+      { action: 'capped', field: 'locations', kept: 12 },
+      { action: 'trimmed', field: "The Server Hall's look" },
+      { action: 'trimmed', field: "chapter 1's mood shift" },
+      { action: 'trimmed', field: "chapter 1's key image" },
+    ])
+  })
+
+  it('notes nothing for a book within its limits', () => {
+    const { notes, note } = collect()
+    parseDirectorsBook(JSON.stringify(book()), 1, note)
+    expect(notes).toEqual([])
+  })
+
+  it('reads as one line for the card, and leaves every fact as the model wrote it', () => {
+    const answer = book()
+    answer.eraLocks[0].rules = long
+    answer.principals = [
+      {
+        name: 'Emad Mostaque',
+        role: 'Founder',
+        depiction: 'likeness',
+        identityString: long,
+        guardrail: 'Never mocked.',
+      },
+    ]
+    answer.neverShow = Array.from({ length: 14 }, (_, at) => `exclusion ${at}`)
+    const { notes, note } = collect()
+    const parsed = parseDirectorsBook(JSON.stringify(answer), 1, note)
+    expect(describeRepairs(notes)).toBe(
+      "Trimmed to fit: era rule 1; Emad Mostaque's identity. Kept the first 12 never-shows.",
+    )
+    expect(parsed.principals[0]).toMatchObject({
+      name: 'Emad Mostaque',
+      role: 'Founder',
+      depiction: 'likeness',
+    })
+    expect(parsed.eraLocks[0]!.span).toBe(answer.eraLocks[0].span)
+    expect(parsed.palette).toMatchObject({
+      accent: answer.palette.accent,
+      temperature: answer.palette.temperature,
+    })
   })
 })

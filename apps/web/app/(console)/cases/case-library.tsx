@@ -1,10 +1,13 @@
 'use client'
 
 import type { CaseSort, CaseSummary } from '@boom-busters/db'
+import { noticesFor } from '@boom-busters/schemas'
+import type { Notice } from '@boom-busters/schemas'
 import { Check, Plus, Sparkles, X } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import * as React from 'react'
 import { ConfirmButton } from '@/components/confirm-button'
+import { Notices } from '@/components/notices'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Input, Label, NumberInput, Select } from '@/components/ui/input'
@@ -44,7 +47,16 @@ const SORT_LABELS: Record<CaseSort, string> = {
   newest: 'Newest',
 }
 
-export function CaseLibrary({ cases, sort }: { cases: CaseSummary[]; sort: CaseSort }) {
+export function CaseLibrary({
+  cases,
+  sort,
+  notices = [],
+}: {
+  cases: CaseSummary[]
+  sort: CaseSort
+  /** The cases' open notices (decision 293); each row shows its own. */
+  notices?: readonly Notice[]
+}) {
   const router = useRouter()
   const { toast } = useToast()
 
@@ -86,7 +98,11 @@ export function CaseLibrary({ cases, sort }: { cases: CaseSummary[]; sort: CaseS
           <ul className="flex flex-col divide-y divide-[var(--color-border)] rounded-[8px] border border-[var(--color-warning)]/40">
             {suggestions.map((item) => (
               <li key={item.id}>
-                <SuggestionRow item={item} run={run} />
+                <SuggestionRow
+                  item={item}
+                  run={run}
+                  notices={noticesFor(notices, 'case', item.id)}
+                />
               </li>
             ))}
           </ul>
@@ -113,7 +129,7 @@ export function CaseLibrary({ cases, sort }: { cases: CaseSummary[]; sort: CaseS
           <ul className="flex flex-col divide-y divide-[var(--color-border)] rounded-[8px] border border-[var(--color-border)]">
             {backlog.map((item) => (
               <li key={item.id}>
-                <BacklogRow item={item} run={run} />
+                <BacklogRow item={item} run={run} notices={noticesFor(notices, 'case', item.id)} />
               </li>
             ))}
           </ul>
@@ -164,7 +180,15 @@ type Run = (
   success: string,
 ) => Promise<boolean>
 
-function SuggestionRow({ item, run }: { item: CaseSummary; run: Run }) {
+function SuggestionRow({
+  item,
+  run,
+  notices,
+}: {
+  item: CaseSummary
+  run: Run
+  notices: readonly Notice[]
+}) {
   const [busy, setBusy] = React.useState<'accept' | 'dismiss' | null>(null)
 
   return (
@@ -202,11 +226,20 @@ function SuggestionRow({ item, run }: { item: CaseSummary; run: Run }) {
           Dismiss
         </Button>
       </div>
+      <RowNotices notices={notices} />
     </div>
   )
 }
 
-function BacklogRow({ item, run }: { item: CaseSummary; run: Run }) {
+function BacklogRow({
+  item,
+  run,
+  notices,
+}: {
+  item: CaseSummary
+  run: Run
+  notices: readonly Notice[]
+}) {
   const router = useRouter()
   const [busy, setBusy] = React.useState(false)
 
@@ -263,6 +296,17 @@ function BacklogRow({ item, run }: { item: CaseSummary; run: Run }) {
           onConfirm={() => run(() => dismissCase(item.id), 'Removed')}
         />
       </div>
+      <RowNotices notices={notices} />
+    </div>
+  )
+}
+
+/** A case's notices (decision 293), full width under the row's facts and buttons. */
+function RowNotices({ notices }: { notices: readonly Notice[] }) {
+  if (notices.length === 0) return null
+  return (
+    <div className="w-full">
+      <Notices notices={notices} />
     </div>
   )
 }
@@ -326,6 +370,8 @@ function SuggestButton() {
               title: result.mocked
                 ? `${result.created} placeholder rows — mock mode researched nothing`
                 : `${result.created} new, ${result.skipped} already in your library`,
+              // A dropped suggestion has no row to carry its notice (decision 293).
+              ...(result.notice ? { description: result.notice } : {}),
             })
             setOpen(false)
             router.refresh()

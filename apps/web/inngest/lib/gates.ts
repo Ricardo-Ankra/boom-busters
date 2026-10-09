@@ -8,8 +8,9 @@ import {
 } from '@boom-busters/db'
 import type { ProjectStage } from '@boom-busters/db'
 import { monthKey } from '@boom-busters/schemas'
-import type { BudgetExceededError, GateStage } from '@boom-busters/schemas'
+import type { BudgetExceededError, GateStage, NoticeSubject } from '@boom-busters/schemas'
 import { db } from '@/lib/db'
+import { recordStop } from '@/lib/notices'
 import { notify } from '@/lib/notify'
 import { resolveRunRowId } from '../middleware/run-mirror'
 
@@ -226,30 +227,55 @@ export async function markStageFailed(
   })
 }
 
+/** The card a side job's stop is shown on (decision 293); the project strip by default. */
+export type SideJobSubject = { subject: NoticeSubject; subjectId?: string | null }
+
+/**
+ * A slot side job's subject, from the slot id its event carried; a malformed
+ * event has none, and its stop then shows on the project strip.
+ */
+export function slotSubject(slotId: unknown): SideJobSubject | undefined {
+  return typeof slotId === 'string' ? { subject: 'slot', subjectId: slotId } : undefined
+}
+
 /**
  * A side job fails while the main run may be parked at an open review gate
  * (decision 234, generalising decision 219). The retaker, the slot
  * re-fetcher and the slot re-typer all run INSIDE a parked review: failing
  * the STAGE there tears the review room down: the gate bar vanishes,
  * approval becomes unreachable, and later successes never restore it. So
- * while the review is parked, the failure is words (a notification, and
- * whatever row-level state the caller wrote); only when the stage is NOT
- * parked does it escalate to the stage, as a plain run failure would.
+ * while the review is parked, the failure is words: a `stopped` notice on
+ * the card it concerns (decision 293; the project strip unless `subject`
+ * names another), a notification, and whatever row-level state the caller
+ * wrote. Only when the stage is NOT parked does it escalate to the stage, as
+ * a plain run failure would, and the Needs-you card says why.
  */
 export async function markSideJobFailed(
   ctx: GateContext,
   title: string,
   error: Record<string, unknown>,
+  subject?: SideJobSubject,
 ): Promise<void> {
   const project = await getProject(db, ctx.projectId)
   if (project?.stageStatus !== 'awaiting_review') {
     await markStageFailed(ctx, error)
     return
   }
+  const message = String(error['message'] ?? 'Unknown error')
+  // The notification alone reached only a server log: production sends no email.
+  await recordStop(
+    {
+      projectId: ctx.projectId,
+      subject: subject?.subject ?? 'project',
+      subjectId: subject?.subjectId ?? null,
+    },
+    'stopped',
+    `${title}: ${message}`,
+  )
   await notify({
     kind: 'run-failed',
     title,
-    body: String(error['message'] ?? 'Unknown error'),
+    body: message,
     href: `/projects/${ctx.projectId}`,
   })
 }

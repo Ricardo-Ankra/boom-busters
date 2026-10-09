@@ -3,6 +3,8 @@ import type { DirectorsBook, StillBrief } from '@boom-busters/schemas'
 import { z } from 'zod'
 import { DIRECTION_CRAFT } from './direction-craft'
 import { formatIssues, parseJsonCompletion } from './json'
+import { ignoreRepairs } from './repair'
+import type { Note } from './repair'
 import { outputBudget } from '../llm/types'
 import type { LLMTaskRequest } from '../llm/types'
 
@@ -53,7 +55,16 @@ Return JSON: {"brief": {"type": "still", "coversText", "description", "shotSize"
 
 const Envelope = z.object({ brief: z.unknown() })
 
-export function parseRedirectedBrief(text: string, original: StillBrief): StillBrief {
+/**
+ * `_note` keeps the parser's shape for the answer helper (decision 293): a
+ * still's brief has no length limit a redirect can break, so nothing is
+ * repaired here.
+ */
+export function parseRedirectedBrief(
+  text: string,
+  original: StillBrief,
+  _note: Note = ignoreRepairs,
+): StillBrief {
   const envelope = parseJsonCompletion(text, Envelope, 'redirected brief')
   const parsed = StillBriefSchema.safeParse(envelope.brief)
   if (!parsed.success) {

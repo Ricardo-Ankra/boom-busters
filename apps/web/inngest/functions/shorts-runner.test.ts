@@ -6,7 +6,10 @@ import {
   getProject,
   insertShort,
   insertTimeline,
+  latestShortsCandidates,
+  listProjectNotices,
   listShorts,
+  notices,
   renders,
   requireTestDatabase,
   scripts,
@@ -17,10 +20,10 @@ import {
   truncateRunMirror,
   updateSettings,
 } from '@boom-busters/db'
-import { DEFAULT_SETTINGS, resolveBrandKit } from '@boom-busters/schemas'
+import { DEFAULT_SETTINGS, noticesFor, resolveBrandKit } from '@boom-busters/schemas'
 import type { Timeline } from '@boom-busters/schemas'
 import { InngestTestEngine } from '@inngest/test'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/lib/db'
 import { forgetRunRows } from '../middleware/run-mirror'
 import { seedTitle, shortsRunner } from './shorts-runner'
@@ -48,6 +51,10 @@ vi.mock('@/lib/storage', () => ({
   // take the mock:// shape, same as voice takes.
   takeStorage: () => 'regenerated' as const,
 }))
+
+// The teaser's script call (decision 293). The mock-mode tests never reach it.
+const callLlm = vi.hoisted(() => vi.fn())
+vi.mock('@/lib/llm', () => ({ callLlm }))
 
 const describeDb = requireTestDatabase() ? describe : describe.skip
 
@@ -104,6 +111,7 @@ describeDb('shorts-runner', () => {
   beforeEach(async () => {
     engine = new InngestTestEngine({ function: shortsRunner })
     vi.clearAllMocks()
+    callLlm.mockReset()
     await seed(db)
     // Seeding only creates the settings row; it never resets it. A test that
     // chooses a voice must not leak a teaser into every later test, so each
@@ -111,6 +119,7 @@ describeDb('shorts-runner', () => {
     await updateSettings(db, { tts: { provider: 'elevenlabs', voiceId: '' } })
     await truncateRunMirror(db)
     forgetRunRows()
+    await db.delete(notices)
     await db.delete(renders)
     await db.delete(shorts)
     await db.delete(timelines)
@@ -150,6 +159,10 @@ describeDb('shorts-runner', () => {
       json: canonicalMaster(),
       s3Key: '',
     })
+  })
+
+  afterEach(() => {
+    vi.unstubAllEnvs()
   })
 
   it(
@@ -270,6 +283,43 @@ describeDb('shorts-runner', () => {
   )
 
   it(
+    'puts what the marking repaired on the Shorts strip when it marks here (decision 293)',
+    { timeout: 120_000 },
+    async () => {
+      vi.stubEnv('MOCK_PROVIDERS', '')
+      try {
+        await db.update(scripts).set({ shortsCandidates: [] })
+        await db.delete(notices)
+        callLlm.mockResolvedValueOnce({
+          text: JSON.stringify({
+            candidates: [
+              {
+                chapterIndex: 0,
+                startSentence: 'EY refused to sign the accounts.',
+                endSentence: 'The shares collapsed in nine days.',
+                hookRationale:
+                  'The auditor said no. ' + 'That is the whole scandal in one line. '.repeat(40),
+              },
+            ],
+          }),
+        })
+
+        await engine.executeStep('mark-missing-candidates', { events: masterReadyEvent() })
+
+        const [marked] = await latestShortsCandidates(db, FIXTURE_PROJECT_ID)
+        expect(marked?.startSentence).toBe('EY refused to sign the accounts.')
+        expect(marked?.hookRationale.length).toBeLessThanOrEqual(1000)
+        const script = noticesFor(await listProjectNotices(db, FIXTURE_PROJECT_ID), 'script')
+        expect(script.map((notice) => notice.message)).toEqual([
+          "Trimmed to fit: candidate 1's hook.",
+        ])
+      } finally {
+        vi.unstubAllEnvs()
+      }
+    },
+  )
+
+  it(
     'cuts a teaser with its own narration when a voice is configured',
     { timeout: 120_000 },
     async () => {
@@ -373,6 +423,53 @@ describeDb('shorts-runner', () => {
       expect(result).toMatchObject({ outcome: 'no-candidates', created: 0 })
       expect(await listShorts(db, FIXTURE_PROJECT_ID)).toEqual([])
       expect((await getProject(db, FIXTURE_PROJECT_ID))?.stageStatus).toBe('failed')
+    },
+  )
+
+  it(
+    'skips the teaser with the reason on its card when its script is refused twice (decision 293)',
+    { timeout: 120_000 },
+    async () => {
+      vi.stubEnv('MOCK_PROVIDERS', '')
+      callLlm.mockResolvedValue({ text: 'no json here' })
+
+      const { result } = await engine.execute({
+        events: masterReadyEvent(),
+        steps: [{ id: 'request-short-renders', handler: () => undefined }],
+      })
+
+      expect(result).toMatchObject({ outcome: 'shorts-created', created: 1 })
+      expect((result as { teaser: string | null }).teaser).toMatch(
+        /^skipped: the teaser script failed: /,
+      )
+      expect(callLlm).toHaveBeenCalledTimes(2)
+      const [notice] = noticesFor(await listProjectNotices(db, FIXTURE_PROJECT_ID), 'teaser')
+      expect(notice).toMatchObject({
+        kind: 'skipped',
+        message: expect.stringMatching(/^The teaser was skipped: The model returned no JSON/),
+      })
+      expect((await getProject(db, FIXTURE_PROJECT_ID))?.stageStatus).toBe('awaiting_review')
+    },
+  )
+
+  it(
+    'throws a provider error on the teaser script for Inngest to retry, never a silent skip (decision 293)',
+    { timeout: 120_000 },
+    async () => {
+      vi.stubEnv('MOCK_PROVIDERS', '')
+      callLlm.mockRejectedValue(new Error('socket hang up'))
+
+      const { error } = await engine.execute({
+        events: masterReadyEvent(),
+        steps: [{ id: 'request-short-renders', handler: () => undefined }],
+      })
+
+      expect(error).toMatchObject({ message: expect.stringContaining('socket hang up') })
+      expect(callLlm).toHaveBeenCalledTimes(1)
+      expect(noticesFor(await listProjectNotices(db, FIXTURE_PROJECT_ID), 'teaser')).toEqual([])
+      expect((await listShorts(db, FIXTURE_PROJECT_ID)).some((row) => row.kind === 'teaser')).toBe(
+        false,
+      )
     },
   )
 })

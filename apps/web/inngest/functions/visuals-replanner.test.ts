@@ -9,14 +9,17 @@ import {
   insertCastMember,
   insertProjectSet,
   listCastMembers,
+  listProjectNotices,
   listProjectSets,
   listShotSlots,
+  replaceNotices,
   replaceShotList,
   requireTestDatabase,
   saveChapter,
   seed,
   setCastPhotos,
   setProjectDirection,
+  setProjectStage,
   setVisualsJob,
   setVisualsPhase,
   shotSlots,
@@ -25,14 +28,15 @@ import {
   updateSlotBrief,
 } from '@boom-busters/db'
 import { mockDirectorsBook } from '@boom-busters/providers'
-import { newId } from '@boom-busters/schemas'
+import { newId, noticesFor } from '@boom-busters/schemas'
 import type { ShotBrief } from '@boom-busters/schemas'
+import type * as Notices from '@/lib/notices'
 import { InngestTestEngine } from '@inngest/test'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/lib/db'
 import { notify } from '@/lib/notify'
 import { forgetRunRows } from '../middleware/run-mirror'
-import { visualsReplanner } from './visuals-replanner'
+import { bookKept, replannerFailure, visualsReplanner } from './visuals-replanner'
 
 /**
  * The visuals-replanner against the real database, in mock-provider mode
@@ -44,6 +48,41 @@ import { visualsReplanner } from './visuals-replanner'
 vi.mock('@/lib/notify', () => ({ notify: vi.fn() }))
 const callLlm = vi.hoisted(() => vi.fn())
 vi.mock('@/lib/llm', () => ({ callLlm }))
+
+// The stop is asserted, not stored; recording an answer's repairs stays real.
+const recordStop = vi.hoisted(() => vi.fn())
+vi.mock('@/lib/notices', async (importOriginal) => ({
+  ...(await importOriginal<typeof Notices>()),
+  recordStop,
+}))
+
+describe('replannerFailure (decision 293)', () => {
+  it('puts a dead redraft on the Direction card', () => {
+    expect(replannerFailure('direction')).toEqual({
+      title: 'The redraft failed',
+      subject: { subject: 'direction' },
+    })
+  })
+
+  it('keeps the fix and re-plan titles on the project', () => {
+    expect(replannerFailure('repair')).toEqual({ title: 'The fix failed' })
+    expect(replannerFailure('shots')).toEqual({ title: 'The re-plan failed' })
+  })
+})
+
+describe('bookKept (decision 293)', () => {
+  it('keeps a reason that ends in the letter s whole', () => {
+    expect(bookKept('the plan names no shots')).toBe(
+      'the plan names no shots. The book you had is kept.',
+    )
+  })
+
+  it('drops a trailing full stop and spaces before adding its own', () => {
+    expect(bookKept('the answer was cut off. ')).toBe(
+      'the answer was cut off. The book you had is kept.',
+    )
+  })
+})
 
 const describeDb = requireTestDatabase() ? describe : describe.skip
 
@@ -209,6 +248,79 @@ describeDb('visuals-replanner (mock mode)', () => {
     expect((await getProject(db, FIXTURE_PROJECT_ID))?.direction).toMatchObject({
       visualThesis: 'owner edit',
     })
+  })
+
+  it('op direction: a redraft cut off twice says why on the Direction card, in the spec words (decision 293)', async () => {
+    vi.stubEnv('MOCK_PROVIDERS', '')
+    await setProjectStage(db, FIXTURE_PROJECT_ID, {
+      stage: 'visuals',
+      stageStatus: 'awaiting_review',
+    })
+    recordStop.mockClear()
+    callLlm.mockReset()
+    callLlm.mockResolvedValue({ text: '{"visualThesis": "Half a b', truncated: true })
+
+    const { result } = await engine.execute({ events: replanEvent('direction') })
+
+    expect(result).toMatchObject({ outcome: 'redraft-stopped' })
+    expect(callLlm).toHaveBeenCalledTimes(2)
+    expect(callLlm.mock.calls[1]![1]).toMatchObject({ purpose: 'retry: cut off' })
+    expect(recordStop).toHaveBeenCalledWith(
+      { projectId: FIXTURE_PROJECT_ID, subject: 'direction', subjectId: null },
+      'stopped',
+      'The redraft stopped: the answer was cut off at its length limit. The book you had is kept.',
+    )
+    expect(vi.mocked(notify)).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: 'The redraft stopped',
+        body: 'the answer was cut off at its length limit. The book you had is kept.',
+      }),
+    )
+    expect((await getProject(db, FIXTURE_PROJECT_ID))?.direction).toMatchObject({
+      visualThesis: 'owner edit',
+    })
+  })
+
+  it('op direction: a trimmed book leaves its notice for the Direction card (decision 293)', async () => {
+    const direction = {
+      projectId: FIXTURE_PROJECT_ID,
+      subject: 'direction' as const,
+      subjectId: null,
+    }
+    await replaceNotices(db, direction, [])
+    vi.stubEnv('MOCK_PROVIDERS', '')
+    callLlm.mockReset()
+    callLlm.mockResolvedValueOnce({
+      text: JSON.stringify({
+        ...mockDirectorsBook({ caseTitle: 'x', chapterCount: 1 }),
+        eraLocks: [{ span: '1995 to 2008', rules: 'CRT monitors on every desk. '.repeat(30) }],
+      }),
+    })
+
+    const { result } = await engine.execute({ events: replanEvent('direction') })
+    expect(result).toMatchObject({ outcome: 'redrafted' })
+
+    const listed = noticesFor(await listProjectNotices(db, FIXTURE_PROJECT_ID), 'direction')
+    expect(listed.map((notice) => [notice.kind, notice.message])).toEqual([
+      ['trimmed', 'Trimmed to fit: era rule 1.'],
+    ])
+  })
+
+  it('op direction: a clean redraft retires the last notice (decision 293)', async () => {
+    const direction = {
+      projectId: FIXTURE_PROJECT_ID,
+      subject: 'direction' as const,
+      subjectId: null,
+    }
+    await replaceNotices(db, direction, [
+      { kind: 'trimmed', message: 'Trimmed to fit: era rule 1.' },
+    ])
+
+    // Mock mode: the mock book needs no repair.
+    const { result } = await engine.execute({ events: replanEvent('direction') })
+    expect(result).toMatchObject({ outcome: 'redrafted' })
+
+    expect(noticesFor(await listProjectNotices(db, FIXTURE_PROJECT_ID), 'direction')).toEqual([])
   })
 
   it('refuses outside the plan checkpoint', async () => {

@@ -7,6 +7,7 @@ import {
   latestRender,
   listActivity,
   listOpenBudgetGates,
+  listProjectNotices,
   projectDeletionSummary,
   projectPulse,
   listCastMembers,
@@ -22,12 +23,13 @@ import { emptyShortsModel, shortsModel } from '@/lib/shorts-review'
 import { emptyPublishModel, publishModel } from '@/lib/publish-review'
 import { materialiseForPreview } from '@/lib/materialise'
 import { mockProvidersEnabled } from '@boom-busters/providers'
-import { DirectorsBookSchema } from '@boom-busters/schemas'
+import { DirectorsBookSchema, noticesFor } from '@boom-busters/schemas'
 import { presignGet, storageConfigured } from '@/lib/storage'
 import { notFound } from 'next/navigation'
 import { ActivityList } from '@/components/activity-list'
 import { BudgetGateCard } from '@/components/budget-gate-card'
 import { LiveRefresh } from '@/components/live-refresh'
+import { Notices } from '@/components/notices'
 import { PipelineRail, SEGMENT_LABELS } from '@/components/pipeline-rail'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { db } from '@/lib/db'
@@ -173,6 +175,7 @@ export default async function ProjectPage({
     pulse,
     publish,
     masterRender,
+    notices,
   ] = await Promise.all([
     listActivity(db, { projectId: id, limit: 50 }),
     listOpenBudgetGates(db),
@@ -208,6 +211,7 @@ export default async function ProjectPage({
     project.stage === 'shorts' || viewing === 'shorts'
       ? latestRender(db, id)
       : Promise.resolve(undefined),
+    listProjectNotices(db, project.id),
   ])
   const budgetGate = budgetGates.find((gate) => gate.projectId === id)
 
@@ -428,6 +432,8 @@ export default async function ProjectPage({
 
       <PipelineRail views={views} projectId={project.id} viewing={viewing} />
 
+      <Notices notices={noticesFor(notices, 'project')} />
+
       <StageBanner
         projectId={project.id}
         projectStage={project.stage}
@@ -445,6 +451,7 @@ export default async function ProjectPage({
           members={cast}
           photoUrls={castPhotoUrls}
           restorable={restorableCast}
+          notices={notices}
         />
       ) : null}
 
@@ -490,6 +497,7 @@ export default async function ProjectPage({
           shorts={shortCards.shorts}
           live={!mockProvidersEnabled()}
           canAdvance={project.stage === 'shorts' && !liveRun}
+          teaserNotices={noticesFor(notices, 'teaser')}
         />
       ) : showVisuals ? (
         <VisualBoard
@@ -500,6 +508,8 @@ export default async function ProjectPage({
           // only, the cast already loaded above. The posts, their pictures and
           // the linked cast photos are read and presigned by the visuals model.
           castMembers={cast.map((member) => ({ id: member.id, name: member.name }))}
+          // Every card on the board picks its own notices (decision 293).
+          notices={notices}
           colors={{
             accent: settings.brandKit.colors.accent,
             surface: settings.brandKit.colors.surface,
@@ -520,12 +530,14 @@ export default async function ProjectPage({
           scriptId={script.script.id}
           shorts={script.script.shortsCandidates}
           usedFallbackModel={usedFallbackModel}
+          notices={noticesFor(notices, 'script')}
         />
       ) : showDossier ? (
         <DossierReview
           projectId={project.id}
           contentMd={dossier.contentMd}
           claims={dossier.claims}
+          notices={noticesFor(notices, 'dossier')}
         />
       ) : (
         <Card className={control.kind === 'blocked' ? 'border-[var(--color-warning)]' : undefined}>

@@ -7,6 +7,8 @@ import {
   getShort,
   insertShort,
   insertTimeline,
+  listProjectNotices,
+  notices,
   renders,
   requireTestDatabase,
   scripts,
@@ -17,12 +19,18 @@ import {
   truncateRunMirror,
   updateSettings,
 } from '@boom-busters/db'
-import { DEFAULT_SETTINGS, resolveBrandKit, teaserTextHash } from '@boom-busters/schemas'
+import {
+  DEFAULT_SETTINGS,
+  noticesFor,
+  resolveBrandKit,
+  teaserTextHash,
+} from '@boom-busters/schemas'
 import type { Timeline } from '@boom-busters/schemas'
 import { TEASER_CHAPTER_ID } from '@boom-busters/timeline'
 import { InngestTestEngine } from '@inngest/test'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/lib/db'
+import type * as Notices from '@/lib/notices'
 import { forgetRunRows } from '../middleware/run-mirror'
 import { teaserRebuildRunner } from './teaser-rebuild-runner'
 
@@ -44,6 +52,17 @@ vi.mock('@/lib/storage', () => ({
 
 const notify = vi.hoisted(() => vi.fn())
 vi.mock('@/lib/notify', () => ({ notify }))
+
+// The pre-studio teaser's script call (decision 293). The mock-mode tests never reach it.
+const callLlm = vi.hoisted(() => vi.fn())
+vi.mock('@/lib/llm', () => ({ callLlm }))
+
+// The stop is asserted, not stored; recording an answer's repairs stays real.
+const recordStop = vi.hoisted(() => vi.fn())
+vi.mock('@/lib/notices', async (importOriginal) => ({
+  ...(await importOriginal<typeof Notices>()),
+  recordStop,
+}))
 
 const describeDb = requireTestDatabase() ? describe : describe.skip
 
@@ -131,11 +150,13 @@ describeDb('teaser-rebuild-runner', () => {
   beforeEach(async () => {
     engine = new InngestTestEngine({ function: teaserRebuildRunner })
     vi.clearAllMocks()
+    callLlm.mockReset()
     await seed(db)
     // Seeding never resets settings; start voiceless so each test opts in.
     await updateSettings(db, { tts: { provider: 'elevenlabs', voiceId: '' } })
     await truncateRunMirror(db)
     forgetRunRows()
+    await db.delete(notices)
     await db.delete(renders)
     await db.delete(shorts)
     await db.delete(timelines)
@@ -153,6 +174,10 @@ describeDb('teaser-rebuild-runner', () => {
       contentMd: CHAPTER_MD,
     })
     await insertTimeline(db, { projectId: FIXTURE_PROJECT_ID, json: canonicalMaster(), s3Key: '' })
+  })
+
+  afterEach(() => {
+    vi.unstubAllEnvs()
   })
 
   it(
@@ -212,8 +237,56 @@ describeDb('teaser-rebuild-runner', () => {
     expect(notify).toHaveBeenCalledWith(
       expect.objectContaining({ kind: 'run-failed', title: expect.stringContaining('teaser') }),
     )
+    // And says so on the Teaser card (decision 293): production sends no email.
+    expect(recordStop).toHaveBeenCalledWith(
+      { projectId: FIXTURE_PROJECT_ID, subject: 'teaser', subjectId: null },
+      'stopped',
+      expect.stringMatching(/^Voicing stopped mid-way: /),
+    )
     expect((await getProject(db, FIXTURE_PROJECT_ID))?.stageStatus).toBe(before)
     // The old cut is kept: a failed rebuild must not leave a half-teaser.
     expect((await getShort(db, teaser.id))?.teaserScript).toMatchObject({ scriptVersion: 1 })
   })
+
+  it(
+    'a pre-studio teaser whose script is refused twice says why on the Teaser card (decision 293)',
+    { timeout: 120_000 },
+    async () => {
+      vi.stubEnv('MOCK_PROVIDERS', '')
+      callLlm.mockResolvedValue({ text: 'no json here' })
+      const teaser = await insertTeaser()
+
+      const { result } = await engine.execute({ events: rebuildEvent(teaser.id) })
+
+      expect(result).toMatchObject({ outcome: 'skipped' })
+      expect(callLlm).toHaveBeenCalledTimes(2)
+      // One line on the Teaser card, from the runner's `fail` (Task 4 mocks
+      // `recordStop` in this file); the script call records none of its own.
+      expect(recordStop).toHaveBeenCalledTimes(1)
+      expect(recordStop).toHaveBeenCalledWith(
+        { projectId: FIXTURE_PROJECT_ID, subject: 'teaser', subjectId: null },
+        'stopped',
+        expect.stringMatching(
+          /^Voicing stopped before it began: the teaser script failed: The model returned no JSON/,
+        ),
+      )
+      expect((await getShort(db, teaser.id))?.teaserScript).toBeNull()
+    },
+  )
+
+  it(
+    'throws a provider error on the script call for Inngest to retry (decision 293)',
+    { timeout: 120_000 },
+    async () => {
+      vi.stubEnv('MOCK_PROVIDERS', '')
+      callLlm.mockRejectedValue(new Error('socket hang up'))
+      const teaser = await insertTeaser()
+
+      const { error } = await engine.execute({ events: rebuildEvent(teaser.id) })
+
+      expect(error).toMatchObject({ message: expect.stringContaining('socket hang up') })
+      expect(notify).not.toHaveBeenCalled()
+      expect(noticesFor(await listProjectNotices(db, FIXTURE_PROJECT_ID), 'teaser')).toEqual([])
+    },
+  )
 })

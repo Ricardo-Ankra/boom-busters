@@ -2,6 +2,7 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { mockDirectorsBook } from '@boom-busters/providers'
+import type { Notice } from '@boom-busters/schemas'
 import type { ActionResult } from './visuals-actions'
 import { DirectionCard } from './direction-card'
 
@@ -14,6 +15,11 @@ vi.mock('./visuals-actions', () => ({
   redraftDirectionAction: (...args: unknown[]) => redraftDirectionAction(...args),
   replanShotsAction: (...args: unknown[]) => replanShotsAction(...args),
 }))
+
+// The notice line's Dismiss (decision 293) refreshes the page through its own
+// action; neither is this card's to test.
+vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: vi.fn() }) }))
+vi.mock('@/app/(console)/notice-actions', () => ({ dismissNoticeAction: vi.fn() }))
 
 const PROJECT = '01J0000000000000000000000A'
 const book = mockDirectorsBook({ caseTitle: 'Wirecard', chapterCount: 2 })
@@ -135,5 +141,67 @@ describe('toForm and fromForm', () => {
   it('round-trip a book without loss', async () => {
     const { fromForm, toForm } = await import('./direction-card')
     expect(fromForm(toForm(book))).toEqual(book)
+  })
+})
+
+describe('DirectionCard notices (decision 293)', () => {
+  const notice = (over: Partial<Notice>): Notice => ({
+    id: '01J0000000000000000000000N',
+    projectId: PROJECT,
+    subject: 'direction',
+    subjectId: null,
+    kind: 'trimmed',
+    message: 'Trimmed to fit: era rule 1.',
+    createdAt: new Date('2026-10-09T10:00:00Z'),
+    ...over,
+  })
+
+  it("says what the book's repair trimmed, with its own Dismiss button", () => {
+    render(
+      <DirectionCard
+        projectId={PROJECT}
+        direction={book}
+        act={act}
+        notices={[
+          notice({
+            message:
+              "Trimmed to fit: era rule 1; Emad Mostaque's identity. Kept the first 12 never-shows.",
+          }),
+        ]}
+      />,
+    )
+    expect(screen.getByRole('status')).toHaveTextContent(
+      "Trimmed to fit: era rule 1; Emad Mostaque's identity. Kept the first 12 never-shows.",
+    )
+    expect(screen.getByRole('button', { name: 'Dismiss' })).toBeVisible()
+    // The book's own buttons stay beside it.
+    expect(screen.getByRole('button', { name: 'Save direction' })).toBeVisible()
+  })
+
+  it('says why a draft stopped when there is no book yet', () => {
+    render(
+      <DirectionCard
+        projectId={PROJECT}
+        direction={null}
+        act={act}
+        notices={[
+          notice({
+            kind: 'stopped',
+            message:
+              'The redraft stopped: the answer was cut off at its length limit. The book you had is kept.',
+          }),
+        ]}
+      />,
+    )
+    expect(screen.getByRole('status')).toHaveTextContent(
+      'The redraft stopped: the answer was cut off at its length limit.',
+    )
+    expect(screen.getByText(/No direction has been written for this film yet/)).toBeVisible()
+  })
+
+  it('shows no notice line without notices', () => {
+    render(<DirectionCard projectId={PROJECT} direction={book} act={act} />)
+    expect(screen.queryByRole('status')).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Dismiss' })).toBeNull()
   })
 })

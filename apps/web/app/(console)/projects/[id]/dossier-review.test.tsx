@@ -1,4 +1,5 @@
 import type { ClaimRow } from '@boom-busters/db'
+import type { Notice } from '@boom-busters/schemas'
 import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -29,6 +30,9 @@ vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh }) }))
 
 const toast = vi.fn()
 vi.mock('@/components/ui/toast', () => ({ useToast: () => ({ toast }) }))
+
+// The notice line's own action (decision 293); `components/notices.test.tsx` tests it.
+vi.mock('@/app/(console)/notice-actions', () => ({ dismissNoticeAction: vi.fn() }))
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -124,5 +128,29 @@ describe('DossierReview', () => {
     render(<DossierReview projectId="p1" contentMd="" claims={[]} />)
     expect(screen.getByText('The dossier is empty.')).toBeInTheDocument()
     expect(screen.getByText(/No claims were extracted/)).toBeInTheDocument()
+  })
+
+  it('shows what the research trimmed or dropped above the document (decision 293)', () => {
+    const notice: Notice = {
+      id: '01J0000000000000000000000N',
+      projectId: 'p1',
+      subject: 'dossier',
+      subjectId: null,
+      kind: 'dropped',
+      message:
+        "Trimmed to fit: the brief's summary. Dropped claim 37: its text ran over 1,000 characters.",
+      createdAt: new Date('2026-10-09T10:00:00Z'),
+    }
+    render(<DossierReview projectId="p1" contentMd={MD} claims={[]} notices={[notice]} />)
+
+    const line = screen.getByRole('status')
+    expect(line).toHaveTextContent(
+      "Trimmed to fit: the brief's summary. Dropped claim 37: its text ran over 1,000 characters.",
+    )
+    expect(screen.getByRole('button', { name: 'Dismiss' })).toBeInTheDocument()
+    // Above the document, where the owner starts reading.
+    expect(
+      line.compareDocumentPosition(screen.getByText('Dossier')) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy()
   })
 })

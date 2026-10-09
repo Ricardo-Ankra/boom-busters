@@ -1,8 +1,18 @@
-import { PlannedBriefSchema, resolvePlannedBrief, ValidationError } from '@boom-busters/schemas'
+import {
+  AnswerDeclined,
+  GRAPHIC_INTENT_MAX,
+  GRAPHIC_INTENT_REFS_MAX,
+  MAP_LOCATIONS_MAX,
+  PlannedBriefSchema,
+  resolvePlannedBrief,
+  ValidationError,
+} from '@boom-busters/schemas'
 import type { LogoIndex, PlanningClaim, ShotBrief, ShotSlotType } from '@boom-busters/schemas'
 import { z } from 'zod'
 import { claimList, type ScriptClaim } from './script'
 import { formatIssues, parseJsonCompletion } from './json'
+import { capList, ignoreRepairs, trimField } from './repair'
+import type { Note } from './repair'
 import { GRAPHIC_INTENT_RULES, GRAPHIC_INTENT_SHAPE } from './shotlist'
 import { outputBudget } from '../llm/types'
 import type { LLMTaskRequest } from '../llm/types'
@@ -76,7 +86,7 @@ least two points. If the claims do not contain usable numbers for this
 slot's subject, do not make a chart — refuse instead.`
       : input.targetType === 'map'
         ? `{"type": "map", "coversText", "description", "motion", "transition",
-   "locations": [{"label", "lat": number, "lon": number}] (1-8 entries),
+   "locations": [{"label", "lat": number, "lon": number}] (1-${MAP_LOCATIONS_MAX} entries),
    "route": boolean}
 
 Map rules: locations are the real places this slot's narration concerns,
@@ -139,6 +149,40 @@ const RetypeEnvelopeSchema = z.union([
   z.object({ error: z.string().min(1) }),
 ])
 
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value)
+
+/**
+ * The drafted brief, repaired before it is validated (decision 293): a
+ * graphic's intent over its limit is trimmed at a sentence, and a graphic's
+ * references or a map's places past their caps keep their first items, which
+ * the prompt asks to come most important first. Claim numbers, coordinates
+ * and labels are never edited: they carry facts, and a bad one is refused.
+ * The labels are the owner's words on the slot card.
+ */
+function repairRetypedBrief(brief: unknown, note: Note): unknown {
+  if (!isRecord(brief)) return brief
+  if (brief['type'] === 'graphic') {
+    return {
+      ...brief,
+      intent: trimField(brief['intent'], GRAPHIC_INTENT_MAX, "the graphic's intent", note),
+      intentRefs: capList(
+        brief['intentRefs'],
+        GRAPHIC_INTENT_REFS_MAX,
+        "of the graphic's references",
+        note,
+      ),
+    }
+  }
+  if (brief['type'] === 'map') {
+    return {
+      ...brief,
+      locations: capList(brief['locations'], MAP_LOCATIONS_MAX, "of the map's places", note),
+    }
+  }
+  return brief
+}
+
 export function parseRetypedBrief(
   text: string,
   input: {
@@ -147,16 +191,17 @@ export function parseRetypedBrief(
     /** The logo library's index (decision 268, Plan B), for a graphic's "logo" elements. */
     logos?: readonly LogoIndex[]
   },
+  note: Note = ignoreRepairs,
 ): ShotBrief {
   const envelope = parseJsonCompletion(text, RetypeEnvelopeSchema, 'retyped brief')
 
+  // The model's own "this beat cannot honestly be one" (decision 293): final,
+  // and shown in its words, since asking again buys the same honest no.
   if ('error' in envelope) {
-    throw new ValidationError(`The model declined the conversion: ${envelope.error}`, {
-      field: 'retyped brief',
-    })
+    throw new AnswerDeclined(envelope.error, { field: 'retyped brief' })
   }
 
-  const parsed = PlannedBriefSchema.safeParse(envelope.brief)
+  const parsed = PlannedBriefSchema.safeParse(repairRetypedBrief(envelope.brief, note))
   if (!parsed.success) {
     throw new ValidationError(`The retyped brief is malformed: ${formatIssues(parsed.error)}`, {
       field: 'retyped brief',

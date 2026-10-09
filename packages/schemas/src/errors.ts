@@ -81,6 +81,13 @@ export class ValidationError extends PipelineError {
   }
 }
 
+/**
+ * The model declined the task in its own words (an `{"error": ...}` answer,
+ * decision 293). A refusal to every catch that knows only `ValidationError`,
+ * but final to the answer helper: asking again buys the same honest no.
+ */
+export class AnswerDeclined extends ValidationError {}
+
 /** A provider refused the content. Needs a human, not another attempt. */
 export class ContentPolicyError extends PipelineError {
   readonly provider: string

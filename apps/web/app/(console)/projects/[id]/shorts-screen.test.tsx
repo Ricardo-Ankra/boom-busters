@@ -1,6 +1,7 @@
 import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import type { Notice } from '@boom-busters/schemas'
 import type { ShortCardModel, TeaserShotOption } from '@/lib/shorts-review'
 import { ShortsScreen } from './shorts-screen'
 
@@ -57,6 +58,22 @@ vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh }) }))
 
 const toast = vi.fn()
 vi.mock('@/components/ui/toast', () => ({ useToast: () => ({ toast }) }))
+
+// The notice's Dismiss is a server action whose module loads next-auth,
+// which cannot load under jsdom.
+vi.mock('@/app/(console)/notice-actions', () => ({ dismissNoticeAction: vi.fn() }))
+
+function teaserNotice(message: string): Notice {
+  return {
+    id: '01HQ00000000000000000000N1',
+    projectId: PROJECT,
+    subject: 'teaser',
+    subjectId: null,
+    kind: 'skipped',
+    message,
+    createdAt: new Date('2026-10-09T10:00:00Z'),
+  }
+}
 
 /** The render-progress poll stays unavailable — cards answer from props. */
 function pollFetch() {
@@ -516,5 +533,41 @@ describe('ShortsScreen', () => {
     expect(scoped.getByRole('button', { name: /render \(mock\)/i })).toBeInTheDocument()
     expect(scoped.getByRole('button', { name: 'Loop' })).toBeInTheDocument()
     expect(scoped.getByRole('button', { name: /related video link/i })).toBeInTheDocument()
+  })
+
+  it("shows the teaser's notices on the Teaser card and nowhere else (decision 293)", () => {
+    render(
+      <ShortsScreen
+        projectId={PROJECT}
+        shorts={[card(), teaserCard({ id: '01HQ00000000000000000000T1' })]}
+        live={false}
+        teaserNotices={[teaserNotice('Trimmed to fit: beat 2.')]}
+      />,
+    )
+    const line = screen.getByRole('status')
+    expect(line).toHaveTextContent('Trimmed to fit: beat 2.')
+    // On the card that carries the studio button.
+    expect(
+      screen.getByRole('button', { name: 'Open the teaser studio' }).parentElement,
+    ).toContainElement(line)
+    expect(screen.queryByRole('region', { name: 'Teaser' })).not.toBeInTheDocument()
+  })
+
+  it('shows them where the Teaser card would be when there is none (decision 293)', () => {
+    render(
+      <ShortsScreen
+        projectId={PROJECT}
+        shorts={[card()]}
+        live={false}
+        teaserNotices={[
+          teaserNotice('The teaser was skipped: the answer was cut off at its length limit'),
+        ]}
+      />,
+    )
+    const place = screen.getByRole('region', { name: 'Teaser' })
+    expect(within(place).getByRole('status')).toHaveTextContent(
+      'The teaser was skipped: the answer was cut off at its length limit',
+    )
+    expect(within(place).getByRole('button', { name: 'Dismiss' })).toBeInTheDocument()
   })
 })

@@ -14,6 +14,7 @@ import {
   parseTimeline,
   mockProvidersEnabled,
 } from '@boom-busters/providers'
+import type { Repair } from '@boom-busters/providers'
 import type {
   CaseBrief,
   DraftClaim,
@@ -28,7 +29,9 @@ import {
 } from '@boom-busters/schemas'
 import { NonRetriableError } from 'inngest'
 import type { GetStepTools } from 'inngest'
-import { callLlm } from '@/lib/llm'
+import { answerOrStop, callForAnswer } from '@/lib/answer'
+import type { Answer } from '@/lib/answer'
+import { completeForProject } from '@/lib/answer-call'
 import type { inngest } from '../client'
 
 type StepTools = GetStepTools<typeof inngest>
@@ -42,6 +45,10 @@ type StepTools = GetStepTools<typeof inngest>
  * arrives as a shapeless object that `instanceof` will not recognise. The
  * budget gate is therefore passed as `budgetGateData()`, the same plain record
  * the Needs-you card renders from.
+ *
+ * Each pass is one answer on `callForAnswer` (decision 293): a refused or
+ * cut-off pass is asked once more, and what the parser trimmed or dropped
+ * travels beside the value as `repairs`, for the notice the save step writes.
  */
 
 export interface CaseContext {
@@ -57,11 +64,18 @@ export interface ResearchResult {
   claims: DraftClaim[]
   /** Pass 4's output (decision 201): the open questions, answered or null. */
   answers: ResearchAnswer[]
+  /**
+   * What the passes repaired (decision 293), in pass order, for the notice on
+   * the dossier review. Never missing here: each pass's list is read with a
+   * default, since a run parked before the deploy replays results without one.
+   */
+  repairs: Repair[]
   /** Set when a cap would be crossed; the caller parks on the budget gate. */
   budgetGate?: Record<string, unknown>
 }
 
-type Guarded<T> = { ok: true; value: T } | { ok: false; gate: Record<string, unknown> }
+type Guarded<T> =
+  { ok: true; value: T; repairs?: Repair[] } | { ok: false; gate: Record<string, unknown> }
 
 /**
  * `BudgetExceededError` is caught here rather than thrown, because throwing it
@@ -74,10 +88,16 @@ type Guarded<T> = { ok: true; value: T } | { ok: false; gate: Record<string, unk
  * pass that came back in the wrong shape was paid for five times over before
  * anyone saw it fail. Retrying is for a provider having a bad minute; it is
  * not a way to argue with a schema.
+ *
+ * The answer itself comes from the helper (decision 293): at most two calls,
+ * then `answerOrStop` stops the stage with the reason as a `NonRetriableError`.
+ * That is not a `PipelineError`, so `isRetriable` passes it on unchanged.
  */
-async function guarded<T>(fn: () => Promise<T>): Promise<Guarded<T>> {
+async function guarded<T>(what: string, ask: () => Promise<Answer<T>>): Promise<Guarded<T>> {
   try {
-    return { ok: true, value: await fn() }
+    const answer = await ask()
+    const value = answerOrStop(answer, what)
+    return { ok: true, value, repairs: answer.ok ? (answer.repairs ?? []) : [] }
   } catch (error) {
     if (error instanceof BudgetExceededError) return { ok: false, gate: budgetGateData(error) }
     if (!isRetriable(error)) {
@@ -109,28 +129,26 @@ export async function researchDossier(
 ): Promise<ResearchResult> {
   const { projectId, caseContext, round, note } = input
   const mocked = mockProvidersEnabled()
+  const complete = completeForProject(projectId)
 
   const brief = await step.run(`research-brief-${round}`, async (): Promise<Guarded<CaseBrief>> => {
     if (mocked) return { ok: true, value: mockBrief(caseContext) }
-    return guarded(async () => {
-      const request = buildBriefRequest(caseContext)
-      return parseBrief(
-        (
-          await callLlm(
-            note
-              ? {
-                  ...request,
-                  messages: [
-                    ...request.messages,
-                    { role: 'user' as const, content: `The human asks for changes: ${note}` },
-                  ],
-                }
-              : request,
-            { projectId },
-          )
-        ).text,
-      )
-    })
+    const request = buildBriefRequest(caseContext)
+    return guarded('The research brief could not be written', () =>
+      callForAnswer({
+        request: note
+          ? {
+              ...request,
+              messages: [
+                ...request.messages,
+                { role: 'user' as const, content: `The human asks for changes: ${note}` },
+              ],
+            }
+          : request,
+        parse: parseBrief,
+        complete,
+      }),
+    )
   })
   if (!brief.ok) return { ...empty(), budgetGate: brief.gate }
 
@@ -138,10 +156,12 @@ export async function researchDossier(
     `research-timeline-${round}`,
     async (): Promise<Guarded<TimelineEvent[]>> => {
       if (mocked) return { ok: true, value: mockTimeline() }
-      return guarded(async () =>
-        parseTimeline(
-          (await callLlm(buildTimelineRequest(caseContext, brief.value), { projectId })).text,
-        ),
+      return guarded('The research timeline could not be written', () =>
+        callForAnswer({
+          request: buildTimelineRequest(caseContext, brief.value),
+          parse: parseTimeline,
+          complete,
+        }),
       )
     },
   )
@@ -151,38 +171,48 @@ export async function researchDossier(
     `research-claims-${round}`,
     async (): Promise<Guarded<DraftClaim[]>> => {
       if (mocked) return { ok: true, value: mockClaims() }
-      return guarded(async () =>
-        parseClaims(
-          (
-            await callLlm(buildClaimsRequest(caseContext, brief.value, timeline.value), {
-              projectId,
-            })
-          ).text,
-        ),
+      return guarded('The claims could not be extracted', () =>
+        callForAnswer({
+          request: buildClaimsRequest(caseContext, brief.value, timeline.value),
+          parse: parseClaims,
+          complete,
+        }),
       )
     },
   )
   if (!claims.ok) return { ...empty(), budgetGate: claims.gate }
 
+  // What each pass repaired (decision 293), read with a default: a run parked
+  // before the deploy replays step results stored without `repairs` (spec 5.1).
+  const repairs: Repair[] = [
+    ...(brief.repairs ?? []),
+    ...(timeline.repairs ?? []),
+    ...(claims.repairs ?? []),
+  ]
+
   // Pass 4 (decision 201): the brief's own open questions, answered from the
   // record before the dossier lands. Skipped entirely when the brief raised
   // none — there is nothing to spend on.
   if (brief.value.openQuestions.length === 0) {
-    return { brief: brief.value, timeline: timeline.value, claims: claims.value, answers: [] }
+    return {
+      brief: brief.value,
+      timeline: timeline.value,
+      claims: claims.value,
+      answers: [],
+      repairs,
+    }
   }
 
   const answers = await step.run(
     `research-answers-${round}`,
     async (): Promise<Guarded<ResearchAnswers>> => {
       if (mocked) return { ok: true, value: mockAnswers(brief.value) }
-      return guarded(async () =>
-        parseAnswers(
-          (
-            await callLlm(buildAnswersRequest(caseContext, brief.value, timeline.value), {
-              projectId,
-            })
-          ).text,
-        ),
+      return guarded('The open questions could not be answered', () =>
+        callForAnswer({
+          request: buildAnswersRequest(caseContext, brief.value, timeline.value),
+          parse: parseAnswers,
+          complete,
+        }),
       )
     },
   )
@@ -197,6 +227,7 @@ export async function researchDossier(
     // two rows to triage twice.
     claims: [...claims.value, ...dedupeAgainst(claims.value, answers.value.claims)],
     answers: answers.value.answers,
+    repairs: [...repairs, ...(answers.repairs ?? [])],
   }
 }
 
@@ -217,7 +248,7 @@ function dedupeAgainst(existing: readonly DraftClaim[], candidates: readonly Dra
 }
 
 function empty(): ResearchResult {
-  return { brief: EMPTY_BRIEF, timeline: [], claims: [], answers: [] }
+  return { brief: EMPTY_BRIEF, timeline: [], claims: [], answers: [], repairs: [] }
 }
 
 /** The one-line context the gate card shows (spec section 11.3). */

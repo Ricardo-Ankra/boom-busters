@@ -1,8 +1,15 @@
-import { renderDirectorsBook, ShotBriefSchema, ValidationError } from '@boom-busters/schemas'
+import {
+  AnswerDeclined,
+  renderDirectorsBook,
+  ShotBriefSchema,
+  ValidationError,
+} from '@boom-busters/schemas'
 import type { DirectorsBook, ShotBrief } from '@boom-busters/schemas'
 import { z } from 'zod'
 import { DIRECTION_CRAFT } from './direction-craft'
 import { formatIssues, parseJsonCompletion } from './json'
+import { ignoreRepairs } from './repair'
+import type { Note } from './repair'
 import { fieldRule, PEOPLE_RULES, referencesPrefix, SCENE_ONLY_PROMPT, SET_RULES } from './shotlist'
 import { outputBudget } from '../llm/types'
 import type { LLMTaskRequest } from '../llm/types'
@@ -144,10 +151,21 @@ honestly has no other image worth cutting to.`,
 
 const Envelope = z.union([z.object({ brief: z.unknown() }), z.object({ error: z.string().min(1) })])
 
-export function parseRebriefedBrief(text: string, original: RebriefableBrief): ShotBrief {
+/**
+ * `_note` keeps the parser's shape for the answer helper (decision 293):
+ * nothing in an idea's brief has a length limit to break, so nothing is
+ * repaired here.
+ */
+export function parseRebriefedBrief(
+  text: string,
+  original: RebriefableBrief,
+  _note: Note = ignoreRepairs,
+): ShotBrief {
   const envelope = parseJsonCompletion(text, Envelope, 'new brief')
+  // The model's own "no other image is worth cutting to" (decision 293):
+  // final, and shown in its words.
   if ('error' in envelope) {
-    throw new ValidationError(envelope.error, { field: 'new brief' })
+    throw new AnswerDeclined(envelope.error, { field: 'new brief' })
   }
 
   const parsed = ShotBriefSchema.safeParse(envelope.brief)

@@ -1,4 +1,4 @@
-import { newId } from '@boom-busters/schemas'
+import { NOTICE_KINDS, NOTICE_SUBJECTS, newId } from '@boom-busters/schemas'
 import type { Settings, WordTiming } from '@boom-busters/schemas'
 import { relations, sql } from 'drizzle-orm'
 import {
@@ -745,6 +745,33 @@ export const castMembers = pgTable(
 )
 
 export type CastMemberRow = typeof castMembers.$inferSelect
+
+export const noticeSubjectEnum = pgEnum('notice_subject', NOTICE_SUBJECTS)
+export const noticeKindEnum = pgEnum('notice_kind', NOTICE_KINDS)
+
+/**
+ * Notices (decision 293): a line on the card an answer concerns, saying what a
+ * repair trimmed or dropped, or why a task stopped. `subject_id` names the cast
+ * member, slot or case for those subjects and is null for a project-wide one;
+ * `project_id` is null for the Case Library. Retired notices keep their row
+ * with `dismissed_at` set, by the owner's Dismiss or by the next answer.
+ */
+export const notices = pgTable(
+  'notices',
+  {
+    id: id(),
+    projectId: text('project_id').references(() => projects.id, { onDelete: 'cascade' }),
+    subject: noticeSubjectEnum('subject').notNull(),
+    subjectId: text('subject_id'),
+    kind: noticeKindEnum('kind').notNull(),
+    message: text('message').notNull(),
+    dismissedAt: timestamp('dismissed_at', { withTimezone: true }),
+    createdAt: createdAt(),
+  },
+  (t) => [index('notices_subject_idx').on(t.projectId, t.subject, t.subjectId)],
+)
+
+export type NoticeRow = typeof notices.$inferSelect
 
 /**
  * A film's sets (decision 264): the rooms it returns to, with the reference

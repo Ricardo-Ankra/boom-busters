@@ -1,3 +1,5 @@
+import { NOTICE_MESSAGE_MAX } from '@boom-busters/schemas'
+
 /**
  * Repairs for a model's answer (decision 292): a fixable overrun is cut down
  * here, with no extra call, rather than refused and asked again. Only for
@@ -25,4 +27,76 @@ export function trimText(text: string, max: number): string {
   const space = head.lastIndexOf(' ')
   if (space > 0) return head.slice(0, space).trimEnd()
   return head
+}
+
+/**
+ * One change a parser made to a model's answer instead of refusing it
+ * (decision 293). `field` is already words for the owner ("era rule 1",
+ * "claim 37"), never a path: it is shown on the card the answer lands on.
+ */
+export type Repair =
+  | { action: 'trimmed'; field: string }
+  | { action: 'capped'; field: string; kept: number }
+  | { action: 'dropped'; field: string; reason: string }
+  | { action: 'rounded'; field: string; from: number; to: number }
+
+/** Where a parser reports a repair; the answer helper collects them per attempt. */
+export type Note = (repair: Repair) => void
+
+/** For a parser called outside the helper: the repairs still happen, unreported. */
+export const ignoreRepairs: Note = () => {}
+
+/** `trimText`, reporting the trim. Anything but a string is left for the schema to refuse. */
+export function trimField(value: unknown, max: number, field: string, note: Note): unknown {
+  if (typeof value !== 'string') return value
+  const trimmed = trimText(value, max)
+  if (trimmed !== value) note({ action: 'trimmed', field })
+  return trimmed
+}
+
+/** The first `max` items of a list, reporting the cut. Anything but a list is left alone. */
+export function capList(value: unknown, max: number, field: string, note: Note): unknown {
+  if (!Array.isArray(value) || value.length <= max) return value
+  note({ action: 'capped', field, kept: max })
+  return value.slice(0, max)
+}
+
+/**
+ * The items of a list `bad` has no reason against; each one dropped is
+ * reported under `label`, counted from the list as the model wrote it.
+ */
+export function dropItems(
+  value: unknown,
+  bad: (item: unknown) => string | null,
+  label: (item: unknown, index: number) => string,
+  note: Note,
+): unknown {
+  if (!Array.isArray(value)) return value
+  return value.filter((item, index) => {
+    const reason = bad(item)
+    if (reason === null) return true
+    note({ action: 'dropped', field: label(item, index), reason })
+    return false
+  })
+}
+
+/** "its text ran over 1,000 characters": a drop's reason in words. */
+export function overLimit(what: string, max: number): string {
+  return `${what} ran over ${max.toLocaleString('en-GB')} characters`
+}
+
+/** One line for the owner saying what an answer's repairs changed, or null when nothing was. */
+export function describeRepairs(repairs: readonly Repair[]): string | null {
+  if (repairs.length === 0) return null
+  const parts: string[] = []
+  const trimmed = repairs.filter((repair) => repair.action === 'trimmed').map((r) => r.field)
+  if (trimmed.length > 0) parts.push(`Trimmed to fit: ${trimmed.join('; ')}.`)
+  for (const repair of repairs) {
+    if (repair.action === 'capped') parts.push(`Kept the first ${repair.kept} ${repair.field}.`)
+    if (repair.action === 'dropped') parts.push(`Dropped ${repair.field}: ${repair.reason}.`)
+    if (repair.action === 'rounded') {
+      parts.push(`Rounded ${repair.field} from ${repair.from} to ${repair.to}.`)
+    }
+  }
+  return trimText(parts.join(' '), NOTICE_MESSAGE_MAX)
 }

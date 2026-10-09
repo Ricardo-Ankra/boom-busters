@@ -118,27 +118,46 @@ export type SelfCheck = z.infer<typeof SelfCheckSchema>
 // Shorts candidates
 // ---------------------------------------------------------------------------
 
+/**
+ * The Shorts marking's limits (decision 293): one source for the schema, the
+ * prompt that states them and the repair that keeps an answer within them.
+ */
+export const SHORTS_HOOK_MAX = 1000
+export const SHORTS_SENTENCE_MAX = 2000
+export const SHORTS_CANDIDATES_MAX = 10
+
 export const ShortsCandidateSchema = z.object({
   chapterIndex: z.number().int().min(0),
   /** The opening sentence of the segment, matched back to the chapter text. */
-  startSentence: z.string().trim().min(1).max(2000),
-  endSentence: z.string().trim().min(1).max(2000),
+  startSentence: z.string().trim().min(1).max(SHORTS_SENTENCE_MAX),
+  endSentence: z.string().trim().min(1).max(SHORTS_SENTENCE_MAX),
   /** Why this would stop a thumb. Shown beside the segment in the UI. */
-  hookRationale: z.string().trim().min(10).max(1000),
+  hookRationale: z.string().trim().min(10).max(SHORTS_HOOK_MAX),
 })
 export type ShortsCandidate = z.infer<typeof ShortsCandidateSchema>
 
 export const ShortsCandidatesSchema = z.object({
-  candidates: z.array(ShortsCandidateSchema).max(10),
+  candidates: z.array(ShortsCandidateSchema).max(SHORTS_CANDIDATES_MAX),
 })
 
 // ---------------------------------------------------------------------------
 // The teaser script (decision 225)
 // ---------------------------------------------------------------------------
 
+/**
+ * The teaser's limits (decision 293): one source for the schema, the prompt
+ * that states them and the repair that fits an answer to them.
+ */
+export const TEASER_TITLE_MIN = 3
+export const TEASER_TITLE_MAX = 90
+export const TEASER_PARAGRAPH_MIN = 10
+export const TEASER_PARAGRAPH_MAX = 400
+export const TEASER_PARAGRAPHS_MIN = 2
+export const TEASER_PARAGRAPHS_MAX = 5
+
 export const TeaserParagraphSchema = z.object({
   /** One spoken beat: a sentence or two, written to be read aloud. */
-  text: z.string().trim().min(10).max(400),
+  text: z.string().trim().min(TEASER_PARAGRAPH_MIN).max(TEASER_PARAGRAPH_MAX),
   /**
    * The chapter whose visuals fit this beat. The assembly lifts a resolved
    * slot from that chapter's stretch of the master timeline.
@@ -154,8 +173,8 @@ export type TeaserParagraph = z.infer<typeof TeaserParagraphSchema>
  */
 export const TeaserScriptSchema = z.object({
   /** Seeds the Short's title field; editable on the card like any other. */
-  title: z.string().trim().min(3).max(90),
-  paragraphs: z.array(TeaserParagraphSchema).min(2).max(5),
+  title: z.string().trim().min(TEASER_TITLE_MIN).max(TEASER_TITLE_MAX),
+  paragraphs: z.array(TeaserParagraphSchema).min(TEASER_PARAGRAPHS_MIN).max(TEASER_PARAGRAPHS_MAX),
 })
 export type TeaserScript = z.infer<typeof TeaserScriptSchema>
 

@@ -2,7 +2,8 @@
 
 import * as React from 'react'
 import { SHOT_FAMILIES } from '@boom-busters/schemas'
-import type { DirectorsBook, Principal } from '@boom-busters/schemas'
+import type { DirectorsBook, Notice, Principal } from '@boom-busters/schemas'
+import { Notices } from '@/components/notices'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ConfirmButton } from '@/components/confirm-button'
@@ -140,6 +141,7 @@ export function DirectionCard({
   busy = false,
   pressed = null,
   act,
+  notices = [],
 }: {
   projectId: string
   direction: DirectorsBook | null
@@ -148,6 +150,8 @@ export function DirectionCard({
   /** Which of the two is in flight (`direction-save` or `direction-redraft`), so only it spins. */
   pressed?: string | null
   act: Act
+  /** What the book's repair trimmed, or why a redraft stopped (decision 293). */
+  notices?: readonly Notice[]
 }) {
   const [form, setForm] = React.useState<DirectionForm | null>(direction ? toForm(direction) : null)
   // Keyed on the book's content, not its identity. Every router.refresh()
@@ -169,6 +173,7 @@ export function DirectionCard({
         <CardTitle className="text-[14px]">Direction</CardTitle>
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
+        <Notices notices={notices} />
         {form ? (
           <>
             <p className="text-[13px] text-[var(--color-text-secondary)]">

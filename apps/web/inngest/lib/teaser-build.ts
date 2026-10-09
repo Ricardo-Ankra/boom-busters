@@ -12,10 +12,12 @@ import {
   serialiseError,
   teaserTextHash,
 } from '@boom-busters/schemas'
-import type { TeaserParagraph } from '@boom-busters/schemas'
+import type { NoticeTarget, TeaserParagraph } from '@boom-busters/schemas'
 import type { TeaserParagraphAudio } from '@boom-busters/timeline'
+import { callForAnswer } from '@/lib/answer'
+import { completeForProject } from '@/lib/answer-call'
 import { db } from '@/lib/db'
-import { callLlm } from '@/lib/llm'
+import { recordRepairs, recordStop } from '@/lib/notices'
 import { putObject, takeStorage } from '@/lib/storage'
 import { synthesise } from '@/lib/tts'
 import { budgetGateData } from './gates'
@@ -33,8 +35,24 @@ export type TeaserWriteResult =
   | { ok: false; gate: Record<string, unknown> }
   | { ok: false; skipped: string }
 
-/** Write the teaser script from the latest script's chapters and tension. */
-export async function writeTeaserScript(projectId: string): Promise<TeaserWriteResult> {
+/** How the Teaser card's place says a stopped script (decision 293), unless the caller words it. */
+const TEASER_SKIPPED = 'The teaser was skipped'
+
+/**
+ * Write the teaser script from the latest script's chapters and tension, on
+ * the answer helper (decision 293): at most two calls, the second told what
+ * was wrong. Its notices are written here, inside the caller's step, so no
+ * new field crosses a step boundary: what a repair trimmed, or why the script
+ * stopped, on the Teaser card's place. Two refused answers skip the teaser;
+ * the budget keeps its gate; anything else the call throws (a provider
+ * outage) is thrown, so Inngest retries the step instead of skipping a teaser
+ * a passing outage cost. `stopped` words a stop's notice for the caller's act;
+ * `null` when the caller records the stop itself (the teaser rebuild).
+ */
+export async function writeTeaserScript(
+  projectId: string,
+  stopped: string | null = TEASER_SKIPPED,
+): Promise<TeaserWriteResult> {
   const latest = await getLatestScript(db, projectId)
   if (!latest) return { ok: false, skipped: 'there is no script to write a teaser from' }
   const chapterSources = latest.chapters.map((chapter) => ({
@@ -44,32 +62,35 @@ export async function writeTeaserScript(projectId: string): Promise<TeaserWriteR
   }))
   const parsedOutline = OutlineSchema.safeParse(latest.script.outline)
   const tension = parsedOutline.success ? tensionFromOutline(parsedOutline.data) : undefined
+  const target: NoticeTarget = { projectId, subject: 'teaser', subjectId: null }
+
+  if (mockProvidersEnabled()) {
+    await recordRepairs(target)
+    return { ok: true, ...mockTeaser(chapterSources), scriptVersion: latest.script.version }
+  }
 
   try {
     const project = await getProject(db, projectId)
-    const teaser = mockProvidersEnabled()
-      ? mockTeaser(chapterSources)
-      : parseTeaser(
-          (
-            await callLlm(
-              buildTeaserRequest({
-                caseTitle: project?.title ?? '',
-                chapters: chapterSources,
-                ...(tension ? { tension } : {}),
-              }),
-              { projectId },
-            )
-          ).text,
-        )
-    return { ok: true, ...teaser, scriptVersion: latest.script.version }
+    const answer = await callForAnswer({
+      request: buildTeaserRequest({
+        caseTitle: project?.title ?? '',
+        chapters: chapterSources,
+        ...(tension ? { tension } : {}),
+      }),
+      parse: (text, note) => parseTeaser(text, chapterSources.length, note),
+      complete: completeForProject(projectId),
+    })
+    if (!answer.ok) {
+      if (stopped !== null) await recordStop(target, 'skipped', `${stopped}: ${answer.issue}`)
+      return { ok: false, skipped: `the teaser script failed: ${answer.issue}` }
+    }
+    await recordRepairs(target, answer.repairs)
+    return { ok: true, ...answer.value, scriptVersion: latest.script.version }
   } catch (error) {
     if (error instanceof BudgetExceededError) {
       return { ok: false, gate: budgetGateData(error) }
     }
-    return {
-      ok: false,
-      skipped: `the teaser script failed: ${String(serialiseError(error).message ?? 'unknown')}`,
-    }
+    throw error
   }
 }
 

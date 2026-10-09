@@ -20,16 +20,17 @@ import {
   serialiseError,
   StillBriefSchema,
   StillRouteSchema,
-  ValidationError,
 } from '@boom-busters/schemas'
 import type { StillBrief } from '@boom-busters/schemas'
 import { NonRetriableError } from 'inngest'
 import { db } from '@/lib/db'
-import { callLlm } from '@/lib/llm'
+import { callForAnswer, type Answer } from '@/lib/answer'
+import { completeForProject } from '@/lib/answer-call'
+import { recordRepairs } from '@/lib/notices'
 import { requireVisualKeys, resolveSlotBrief } from '@/lib/visual-assets'
 import { inngest } from '../client'
 import { events } from '../events'
-import { budgetGateData, markSideJobFailed, type GateContext } from '../lib/gates'
+import { budgetGateData, markSideJobFailed, slotSubject, type GateContext } from '../lib/gates'
 import { releaseFailedSlotJob } from '../lib/jobs'
 
 /**
@@ -66,6 +67,7 @@ export const slotRedirector = inngest.createFunction(
         { inngestRunId: '', functionId: FUNCTION_ID, projectId },
         'The redirect failed',
         serialiseError(event.data.error),
+        slotSubject(event.data.event.data['slotId']),
       )
     },
     triggers: [events.visualsRedirectRequested],
@@ -89,47 +91,49 @@ export const slotRedirector = inngest.createFunction(
           (slot.refusal as { reason?: unknown } | null)?.reason ?? 'the image model declined it',
         )
 
-        let next: StillBrief
+        const original = brief.data
+        let answer: Answer<StillBrief>
         try {
-          next = mockProvidersEnabled()
-            ? mockRedirectedBrief(brief.data)
-            : parseRedirectedBrief(
-                (
-                  await callLlm(
-                    buildRedirectRequest({
-                      caseTitle: project.title,
-                      brief: brief.data,
-                      reason,
-                      direction: book.success ? book.data : null,
-                    }),
-                    { projectId },
-                  )
-                ).text,
-                brief.data,
-              )
+          answer = mockProvidersEnabled()
+            ? { ok: true, value: mockRedirectedBrief(original), calls: 1 }
+            : await callForAnswer({
+                request: buildRedirectRequest({
+                  caseTitle: project.title,
+                  brief: original,
+                  reason,
+                  direction: book.success ? book.data : null,
+                }),
+                parse: (text, note) => parseRedirectedBrief(text, original, note),
+                complete: completeForProject(projectId),
+              })
         } catch (error) {
           if (error instanceof BudgetExceededError) {
             return { ok: false as const, gate: budgetGateData(error) }
           }
-          if (error instanceof ValidationError) {
-            await setSlotRefusal(db, slotId, {
-              reason: `Redirect refused: ${error.message}`,
-              at: new Date().toISOString(),
-            })
-            return { ok: false as const, refused: error.message }
-          }
           throw error
         }
 
+        // A refusal after its retry, or the provider's content refusal
+        // (decision 293): the card keeps its refusal box, now with the reason.
+        if (!answer.ok) {
+          await setSlotRefusal(db, slotId, {
+            reason: `Redirect refused: ${answer.issue}`,
+            at: new Date().toISOString(),
+          })
+          return { ok: false as const, refused: answer.issue }
+        }
+
         // The brief write clears the refusal: the refused prompt no longer exists.
-        await updateSlotBrief(db, slotId, next)
+        await updateSlotBrief(db, slotId, answer.value)
+        // A clean answer retires this slot's old notes (decision 293).
+        await recordRepairs({ projectId, subject: 'slot', subjectId: slotId }, answer.repairs)
         return { ok: true as const, resolveNow: project.visualsPhase === 'board' }
       })
 
       if (!redirected.ok) {
         if ('gate' in redirected) {
           await step.run('redirect-over-budget', () =>
-            markSideJobFailed(ctx, 'The redirect stopped', redirected.gate),
+            markSideJobFailed(ctx, 'The redirect stopped', redirected.gate, slotSubject(slotId)),
           )
           return { projectId, slotId, outcome: 'over-budget' as const }
         }
@@ -177,7 +181,12 @@ export const slotRedirector = inngest.createFunction(
 
         if ('overBudget' in outcome && outcome.overBudget) {
           await step.run('resolve-over-budget', () =>
-            markSideJobFailed(ctx, 'The redirected slot could not be resolved', outcome.overBudget),
+            markSideJobFailed(
+              ctx,
+              'The redirected slot could not be resolved',
+              outcome.overBudget,
+              slotSubject(slotId),
+            ),
           )
           return { projectId, slotId, outcome: 'over-budget' as const }
         }

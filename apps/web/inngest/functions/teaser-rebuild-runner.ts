@@ -5,6 +5,7 @@ import type { TeaserParagraphAudio } from '@boom-busters/timeline'
 import { NonRetriableError } from 'inngest'
 import { db } from '@/lib/db'
 import { notify } from '@/lib/notify'
+import { recordStop } from '@/lib/notices'
 import { inngest } from '../client'
 import { events } from '../events'
 import { voiceTeaserBeat, writeTeaserScript } from '../lib/teaser-build'
@@ -20,8 +21,8 @@ import { voiceTeaserBeat, writeTeaserScript } from '../lib/teaser-build'
  *
  * This is not a stage runner: the project may be sitting at shorts or at
  * publish while a teaser is reworked, so failures never touch the stage.
- * They notify and land in the run mirror, where the activity drawer shows
- * them.
+ * They notify, land in the run mirror, and leave a notice on the Teaser
+ * card (decision 293).
  *
  * A teaser built before the studio existed has no stored script; the first
  * voicing regenerates one from the outline and stores it. The row's curated
@@ -46,14 +47,22 @@ export const teaserRebuildRunner = inngest.createFunction(
       },
     ],
     onFailure: async ({ event }) => {
-      // The in-body refusals notify through `fail`; a crash past the retries
+      // The in-body refusals report through `fail`; a crash past the retries
       // must say so too, or the studio just never hears back (decision 236).
       const projectId = event.data.event.data['projectId']
       if (typeof projectId !== 'string') return
+      const message = String(event.data.error?.message ?? 'Unknown error')
+      // On the Teaser card as well (decision 293): production sends no email.
+      // The project can be gone by now; the notification must still go.
+      await recordStop(
+        { projectId, subject: 'teaser', subjectId: null },
+        'stopped',
+        `The teaser voicing stopped: ${message}`,
+      ).catch(() => undefined)
       await notify({
         kind: 'run-failed',
         title: 'The teaser voicing stopped',
-        body: String(event.data.error?.message ?? 'Unknown error'),
+        body: message,
         href: `/projects/${projectId}?stage=shorts`,
       })
     },
@@ -62,15 +71,18 @@ export const teaserRebuildRunner = inngest.createFunction(
   async ({ event, step }) => {
     const { projectId, shortId } = parseEventData('teaser/rebuild.requested', event.data)
 
+    // Each body already names what stopped ("Voicing stopped mid-way: ..."),
+    // so the Teaser card shows it as it is (decision 293).
     const fail = async (stepName: string, body: string) => {
-      await step.run(stepName, () =>
-        notify({
+      await step.run(stepName, async () => {
+        await recordStop({ projectId, subject: 'teaser', subjectId: null }, 'stopped', body)
+        await notify({
           kind: 'run-failed',
           title: 'The teaser voicing stopped',
           body,
           href: `/projects/${projectId}?stage=shorts`,
-        }),
-      )
+        })
+      })
     }
 
     const script = await step.run(
@@ -91,7 +103,10 @@ export const teaserRebuildRunner = inngest.createFunction(
 
         // Pre-studio teaser: regenerate the script and store it so the next
         // open of the studio has something to edit.
-        const written = await writeTeaserScript(projectId)
+        // The teaser exists already, and this runner's `fail('script-skipped')`
+        // records the stop on the Teaser card (decision 293); recording it
+        // here as well would put two lines on the card for one stop.
+        const written = await writeTeaserScript(projectId, null)
         if (!written.ok) return written
         const record: TeaserScriptRecord = {
           title: written.title,

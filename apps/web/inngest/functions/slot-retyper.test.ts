@@ -5,21 +5,30 @@ import {
   createScriptVersion,
   FIXTURE_PROJECT_ID,
   getShotSlot,
+  listProjectNotices,
   listShotSlots,
+  notices,
   replaceShotList,
   requireTestDatabase,
   retypeShotSlot,
   saveChapter,
   seed,
+  setProjectStage,
   setSlotRetype,
   setVisualsPhase,
   shotSlots,
   truncateRunMirror,
 } from '@boom-busters/db'
-import { BudgetExceededError, type ShotBrief } from '@boom-busters/schemas'
+import {
+  BudgetExceededError,
+  ContentPolicyError,
+  noticesFor,
+  type ShotBrief,
+} from '@boom-busters/schemas'
 import { InngestTestEngine } from '@inngest/test'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/lib/db'
+import type * as Notices from '@/lib/notices'
 import { forgetRunRows } from '../middleware/run-mirror'
 import { slotRetyper } from './slot-retyper'
 
@@ -33,6 +42,16 @@ import { slotRetyper } from './slot-retyper'
 const notify = vi.fn()
 vi.mock('@/lib/notify', () => ({
   notify: (...args: unknown[]) => notify(...args),
+}))
+
+const callLlm = vi.hoisted(() => vi.fn())
+vi.mock('@/lib/llm', () => ({ callLlm }))
+
+// The stop is asserted, not stored; recording an answer's repairs stays real.
+const recordStop = vi.hoisted(() => vi.fn())
+vi.mock('@/lib/notices', async (importOriginal) => ({
+  ...(await importOriginal<typeof Notices>()),
+  recordStop,
 }))
 
 const describeDb = requireTestDatabase() ? describe : describe.skip
@@ -250,5 +269,141 @@ describeDb('slot-retyper (mock mode)', () => {
     } finally {
       broke.mockRestore()
     }
+  })
+
+  it('says why on the slot card when a parked plan runs out of budget designing a retyped graphic (decision 293)', async () => {
+    await setProjectStage(db, FIXTURE_PROJECT_ID, {
+      stage: 'visuals',
+      stageStatus: 'awaiting_review',
+    })
+    const design = await import('@/lib/graphic-design')
+    const broke = vi.spyOn(design, 'designGraphic').mockRejectedValueOnce(
+      new BudgetExceededError({
+        provider: 'anthropic',
+        operation: 'llm.graphics',
+        budgetUsd: 5,
+        monthSpendUsd: 5,
+        estimateUsd: 0.05,
+      }),
+    )
+    try {
+      const { result } = await engine.execute({ events: retypeEvent(slotId, 'graphic') })
+      expect(result).toMatchObject({ outcome: 'over-budget' })
+      expect(recordStop).toHaveBeenCalledWith(
+        { projectId: FIXTURE_PROJECT_ID, subject: 'slot', subjectId: slotId },
+        'stopped',
+        expect.stringMatching(
+          /^The graphic could not be designed: The monthly spend ceiling would be crossed by anthropic llm\.graphics/,
+        ),
+      )
+    } finally {
+      broke.mockRestore()
+    }
+  })
+})
+
+describeDb('slot-retyper on the answer helper (decision 293)', () => {
+  let engine: InngestTestEngine
+  let slotId = ''
+
+  beforeEach(async () => {
+    engine = new InngestTestEngine({ function: slotRetyper })
+    callLlm.mockReset()
+    vi.stubEnv('MOCK_PROVIDERS', '')
+    await seed(db)
+    await truncateRunMirror(db)
+    forgetRunRows()
+    await db.delete(notices)
+    await db.delete(shotSlots)
+    const script = await createScriptVersion(db, FIXTURE_PROJECT_ID)
+    const chapter = await saveChapter(db, {
+      scriptId: script.id,
+      index: 0,
+      title: 'The audit',
+      contentMd: 'By June, the auditors could not find the money.',
+      estRuntimeSec: 30,
+    })
+    await replaceShotList(db, FIXTURE_PROJECT_ID, [
+      {
+        chapterId: chapter.id,
+        index: 0,
+        type: 'still',
+        brief: stillBrief,
+        startMs: 0,
+        durationMs: 8000,
+      },
+    ])
+    const [slot] = await listShotSlots(db, FIXTURE_PROJECT_ID)
+    slotId = slot!.id
+    await setVisualsPhase(db, FIXTURE_PROJECT_ID, 'plan')
+  })
+
+  afterEach(() => {
+    vi.unstubAllEnvs()
+  })
+
+  it("takes a decline as final after one call, and shows the model's reason on the card", async () => {
+    callLlm.mockResolvedValue({
+      text: JSON.stringify({ error: 'No sourced numbers cover this beat.' }),
+    })
+
+    const { result } = await engine.execute({ events: retypeEvent(slotId, 'chart') })
+
+    expect(result).toMatchObject({ outcome: 'refused' })
+    expect(callLlm).toHaveBeenCalledTimes(1)
+    const slot = await getShotSlot(db, slotId)
+    expect(slot?.type).toBe('still')
+    expect(slot?.retype).toEqual({
+      state: 'refused',
+      target: 'chart',
+      reason: 'No sourced numbers cover this beat.',
+    })
+  })
+
+  it("takes the provider's content refusal as final, after one call", async () => {
+    callLlm.mockRejectedValue(new ContentPolicyError('anthropic', 'the request was declined'))
+
+    const { result } = await engine.execute({ events: retypeEvent(slotId, 'chart') })
+
+    expect(result).toMatchObject({ outcome: 'refused' })
+    expect(callLlm).toHaveBeenCalledTimes(1)
+    expect((await getShotSlot(db, slotId))?.retype).toEqual({
+      state: 'refused',
+      target: 'chart',
+      reason: 'anthropic: the request was declined',
+    })
+  })
+
+  it("records the places a drafted map was capped to on the slot's card", async () => {
+    const places = Array.from({ length: 9 }, (_, at) => ({
+      label: `City ${at + 1}`,
+      lat: 10 + at,
+      lon: 20 + at,
+    }))
+    callLlm.mockResolvedValue({
+      text: JSON.stringify({
+        brief: {
+          type: 'map',
+          coversText: stillBrief.coversText,
+          description: stillBrief.description,
+          motion: { kind: 'static' },
+          transition: 'cut',
+          locations: places,
+          route: true,
+        },
+      }),
+    })
+
+    const { result } = await engine.execute({ events: retypeEvent(slotId, 'map') })
+
+    expect(result).toMatchObject({ outcome: 'retyped', targetType: 'map' })
+    const slot = await getShotSlot(db, slotId)
+    expect(slot?.type).toBe('map')
+    expect((slot?.brief as { locations: unknown[] }).locations).toEqual(places.slice(0, 8))
+    expect(
+      noticesFor(await listProjectNotices(db, FIXTURE_PROJECT_ID), 'slot', slotId).map(
+        ({ kind, message }) => ({ kind, message }),
+      ),
+    ).toEqual([{ kind: 'trimmed', message: "Kept the first 8 of the map's places." }])
   })
 })

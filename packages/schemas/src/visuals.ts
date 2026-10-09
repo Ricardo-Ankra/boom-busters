@@ -231,6 +231,15 @@ export const ChartBriefSchema = z.object({
 })
 export type ChartBrief = z.infer<typeof ChartBriefSchema>
 
+/**
+ * The limits a drafted graphic or map is checked against (decision 293): one
+ * source for the schema, the retype prompt that states them and the repair
+ * that trims and caps to them.
+ */
+export const GRAPHIC_INTENT_MAX = 300
+export const GRAPHIC_INTENT_REFS_MAX = 6
+export const MAP_LOCATIONS_MAX = 8
+
 export const MapLocationSchema = z.object({
   label: z.string().min(1),
   lat: z.number().min(-90).max(90),
@@ -241,7 +250,7 @@ export type MapLocation = z.infer<typeof MapLocationSchema>
 export const MapBriefSchema = z.object({
   type: z.literal('map'),
   ...briefCommon,
-  locations: z.array(MapLocationSchema).min(1).max(8),
+  locations: z.array(MapLocationSchema).min(1).max(MAP_LOCATIONS_MAX),
   /** Draw the route through `locations` in order (money flows, HQ hops). */
   route: z.boolean(),
 })
@@ -292,9 +301,9 @@ export const GraphicBriefSchema = z.object({
   ...briefCommon,
   scene: GraphicSceneSchema.optional(),
   /** What the graphic must get across, not how it looks. */
-  intent: z.string().trim().min(1).max(300).optional(),
+  intent: z.string().trim().min(1).max(GRAPHIC_INTENT_MAX).optional(),
   /** The claims the beat rests on, as the shot list named them. */
-  intentClaimIds: z.array(UlidSchema).max(6).optional(),
+  intentClaimIds: z.array(UlidSchema).max(GRAPHIC_INTENT_REFS_MAX).optional(),
   /** Why the designer could not compose it. Meaningful only without a scene. */
   designIssue: z.string().min(1).max(500).optional(),
 })
@@ -740,8 +749,8 @@ export const PlannedGraphicBriefSchema = GraphicBriefSchema.omit({
   intentClaimIds: true,
   designIssue: true,
 }).extend({
-  intent: z.string().trim().min(1).max(300),
-  intentRefs: z.array(z.number().int().min(1)).max(6).default([]),
+  intent: z.string().trim().min(1).max(GRAPHIC_INTENT_MAX),
+  intentRefs: z.array(z.number().int().min(1)).max(GRAPHIC_INTENT_REFS_MAX).default([]),
 })
 export type PlannedGraphicBrief = z.infer<typeof PlannedGraphicBriefSchema>
 

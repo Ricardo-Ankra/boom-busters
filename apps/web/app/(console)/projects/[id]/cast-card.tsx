@@ -2,13 +2,14 @@
 
 import * as React from 'react'
 import { useRouter } from 'next/navigation'
-import { CAST_PHOTO_VIEWS, MAX_CAST_PHOTOS } from '@boom-busters/schemas'
-import type { CastMember, CastPhotoView } from '@boom-busters/schemas'
+import { CAST_PHOTO_VIEWS, MAX_CAST_PHOTOS, noticesFor } from '@boom-busters/schemas'
+import type { CastMember, CastPhotoView, Notice } from '@boom-busters/schemas'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input, Label, Select } from '@/components/ui/input'
 import { useToast } from '@/components/ui/toast'
 import { ConfirmButton } from '@/components/confirm-button'
+import { Notices } from '@/components/notices'
 import { readImageSize, toUploadableImage } from '@/lib/client-image'
 import {
   addCastMemberAction,
@@ -61,14 +62,29 @@ export interface CastCardProps {
   photoUrls: Readonly<Record<string, string>>
   /** People removed whom the Director's Book still names (decision 291). */
   restorable?: readonly string[]
+  /**
+   * The project's open notices (decision 293); each member's row shows its
+   * own, such as an identity the describe call trimmed to fit.
+   */
+  notices?: readonly Notice[]
 }
 
-export function CastCard({ projectId, members, photoUrls, restorable = [] }: CastCardProps) {
+export function CastCard({
+  projectId,
+  members,
+  photoUrls,
+  restorable = [],
+  notices = [],
+}: CastCardProps) {
   const router = useRouter()
   const { toast } = useToast()
   const [busy, setBusy] = React.useState<string | null>(null)
+  // Open while anyone still needs a photo or has a notice to read: both sit
+  // on the member's row, which only the open card shows.
   const [open, setOpen] = React.useState(
-    members.length === 0 || members.some((member) => member.photos.length === 0),
+    members.length === 0 ||
+      members.some((member) => member.photos.length === 0) ||
+      members.some((member) => noticesFor(notices, 'cast', member.id).length > 0),
   )
   const unphotographed = members.filter((member) => member.photos.length === 0).length
 
@@ -165,6 +181,7 @@ export function CastCard({ projectId, members, photoUrls, restorable = [] }: Cas
               <MemberRow
                 key={member.id}
                 member={member}
+                notices={noticesFor(notices, 'cast', member.id)}
                 photoUrls={photoUrls}
                 busy={busy}
                 act={act}
@@ -215,11 +232,13 @@ type Act = (key: string, run: () => Promise<ActionResult>, success: string) => P
 
 function MemberRow({
   member,
+  notices,
   photoUrls,
   busy,
   act,
 }: {
   member: CastMember
+  notices: readonly Notice[]
   photoUrls: Readonly<Record<string, string>>
   busy: string | null
   act: Act
@@ -432,6 +451,8 @@ function MemberRow({
           image file itself, the one from &quot;Copy image address&quot;, not the page it sits on.
         </p>
       </div>
+
+      <Notices notices={notices} />
 
       <div className="space-y-1">
         <Label htmlFor={`cast-${member.id}-identity`}>Identity string</Label>

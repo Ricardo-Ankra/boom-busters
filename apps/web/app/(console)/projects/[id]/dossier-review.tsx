@@ -1,10 +1,12 @@
 'use client'
 
 import type { ClaimRow } from '@boom-busters/db'
+import type { Notice } from '@boom-busters/schemas'
 import { ExternalLink, List, Pencil, ShieldAlert } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import * as React from 'react'
 import { ConfirmButton } from '@/components/confirm-button'
+import { Notices } from '@/components/notices'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Dialog } from '@/components/ui/dialog'
@@ -52,10 +54,13 @@ export function DossierReview({
   projectId,
   contentMd,
   claims,
+  notices = [],
 }: {
   projectId: string
   contentMd: string
   claims: ClaimRow[]
+  /** What the research passes trimmed or dropped (decision 293). */
+  notices?: readonly Notice[]
 }) {
   const blocking = blockingCount(claims)
   const [showAll, setShowAll] = React.useState(false)
@@ -92,6 +97,7 @@ export function DossierReview({
 
   return (
     <div className="flex flex-col gap-4">
+      <Notices notices={notices} />
       <Card>
         <CardHeader className="flex-row flex-wrap items-center justify-between gap-2">
           <div className="flex flex-col gap-0.5">

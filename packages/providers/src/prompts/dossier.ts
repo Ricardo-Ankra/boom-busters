@@ -1,8 +1,22 @@
 import {
   CaseBriefSchema,
   ClaimsSchema,
+  DOSSIER_ANSWER_CLAIMS_MAX,
+  DOSSIER_ANSWER_MAX,
+  DOSSIER_ANSWERS_MAX,
+  DOSSIER_CLAIM_TEXT_MAX,
+  DOSSIER_CLAIMS_MAX,
+  DOSSIER_EVENT_WHAT_MAX,
+  DOSSIER_EVENT_WHEN_MAX,
+  DOSSIER_EVENTS_MAX,
+  DOSSIER_OPEN_QUESTIONS_MAX,
+  DOSSIER_PRINCIPALS_MAX,
+  DOSSIER_QUESTION_MAX,
+  DOSSIER_SUMMARY_MAX,
+  DOSSIER_TURNING_POINT_MAX,
   ResearchAnswersSchema,
   ResearchTimelineSchema,
+  ValidationError,
 } from '@boom-busters/schemas'
 import type {
   CaseBrief,
@@ -11,7 +25,10 @@ import type {
   ResearchAnswers,
   TimelineEvent,
 } from '@boom-busters/schemas'
-import { parseJsonCompletion } from './json'
+import { z } from 'zod'
+import { formatIssues, parseJsonCompletion } from './json'
+import { capList, dropItems, ignoreRepairs, overLimit, trimField } from './repair'
+import type { Note } from './repair'
 import { outputBudget } from '../llm/types'
 import type { LLMTaskRequest } from '../llm/types'
 
@@ -62,6 +79,95 @@ function caseHeader(input: CaseContext): string {
 }
 
 // ---------------------------------------------------------------------------
+// Repairs (decision 293)
+// ---------------------------------------------------------------------------
+
+/**
+ * A research answer is repaired before it is validated, as the Director's
+ * Book is (decision 292): free text over its limit is trimmed at a sentence,
+ * a list over its cap keeps its first items, and an item whose fact breaks a
+ * rule (a date label, a claim's text, an echoed question) is dropped with the
+ * rest kept, never cut. Each repair is reported through `note` in the words
+ * the dossier review shows. What is left must still match the schema, or the
+ * answer is refused and asked for once more.
+ */
+
+const Envelope = z.looseObject({})
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value)
+
+function parseRepaired<T>(
+  text: string,
+  schema: z.ZodType<T>,
+  what: string,
+  repair: (raw: Record<string, unknown>) => unknown,
+): T {
+  const raw = parseJsonCompletion(text, Envelope, what)
+  const result = schema.safeParse(repair(raw))
+  if (!result.success) {
+    throw new ValidationError(
+      `The model's ${what} did not match the expected shape: ${formatIssues(result.error)}`,
+      { field: what },
+    )
+  }
+  return result.data
+}
+
+/** Why a fact over its limit drops its item ("its date ran over 100 characters"), or null. */
+const longer = (value: unknown, max: number, what: string): string | null =>
+  typeof value === 'string' && value.trim().length > max ? overLimit(what, max) : null
+
+type Numbered = { item: unknown; at: number }
+
+interface ListRules {
+  /** The cap. */
+  max: number
+  /** The list in words, for a cap's notice ("Kept the first 120 claims."). */
+  name: string
+  /** One item in words, numbered from 1 as the model wrote the list ("claim 37"). */
+  label: (item: unknown, at: number) => string
+  /** Why an item breaks a rule on a fact, or null; such an item is dropped. */
+  bad?: (item: unknown) => string | null
+  /** Trims the free text of an item that is kept. */
+  fix?: (item: Record<string, unknown>, label: string) => unknown
+}
+
+/**
+ * One list of an answer: the items `bad` has a reason against are dropped,
+ * the rest capped, and each one kept is fixed. Every item keeps the number it
+ * had as the model wrote it, so a notice names "claim 37" even after an
+ * earlier claim was dropped.
+ */
+function repairList(value: unknown, rules: ListRules, note: Note): unknown {
+  if (!Array.isArray(value)) return value
+  const numbered: Numbered[] = value.map((item: unknown, at: number) => ({ item, at }))
+  const { bad, fix } = rules
+  const usable = bad
+    ? (dropItems(
+        numbered,
+        (entry) => bad((entry as Numbered).item),
+        (entry) => rules.label((entry as Numbered).item, (entry as Numbered).at),
+        note,
+      ) as Numbered[])
+    : numbered
+  const kept = capList(usable, rules.max, rules.name, note) as Numbered[]
+  return kept.map(({ item, at }) =>
+    fix && isRecord(item) ? fix(item, rules.label(item, at)) : item,
+  )
+}
+
+/** A claim's text is what a script narrates: over its limit the claim is dropped, never cut. */
+const claimTooLong = (claim: unknown): string | null =>
+  isRecord(claim) ? longer(claim['text'], DOSSIER_CLAIM_TEXT_MAX, 'its text') : null
+
+/** The question an answer says it answers: the number it echoed, else its place in the list. */
+function questionNumber(answer: unknown, at: number): number {
+  const index = isRecord(answer) ? answer['index'] : undefined
+  return typeof index === 'number' && Number.isInteger(index) && index >= 1 ? index : at + 1
+}
+
+// ---------------------------------------------------------------------------
 // Pass 1 — the brief
 // ---------------------------------------------------------------------------
 
@@ -73,14 +179,35 @@ export function buildBriefRequest(input: CaseContext): LLMTaskRequest {
 Produce a case brief:
 {"summary": string, "turningPoint": string,
  "principals": [{"name": string, "role": string}],
- "openQuestions": [string]}`,
+ "openQuestions": [string]}
+
+Limits (the app checks them): "summary" 50 to ${DOSSIER_SUMMARY_MAX} characters;
+"turningPoint" 20 to ${DOSSIER_TURNING_POINT_MAX} characters; at most ${DOSSIER_PRINCIPALS_MAX}
+principals, each with a name and a role; at most ${DOSSIER_OPEN_QUESTIONS_MAX} open questions,
+each at least 10 characters.`,
     messages: [{ role: 'user', content: `${caseHeader(input)}\n\nWrite the brief.` }],
     maxTokens: outputBudget(3000),
   }
 }
 
-export function parseBrief(text: string): CaseBrief {
-  return parseJsonCompletion(text, CaseBriefSchema, 'case brief')
+export function parseBrief(text: string, note: Note = ignoreRepairs): CaseBrief {
+  return parseRepaired(text, CaseBriefSchema, 'case brief', (raw) => ({
+    ...raw,
+    summary: trimField(raw['summary'], DOSSIER_SUMMARY_MAX, "the brief's summary", note),
+    turningPoint: trimField(
+      raw['turningPoint'],
+      DOSSIER_TURNING_POINT_MAX,
+      "the brief's turning point",
+      note,
+    ),
+    principals: capList(raw['principals'], DOSSIER_PRINCIPALS_MAX, 'principals', note),
+    openQuestions: capList(
+      raw['openQuestions'],
+      DOSSIER_OPEN_QUESTIONS_MAX,
+      'open questions',
+      note,
+    ),
+  }))
 }
 
 // ---------------------------------------------------------------------------
@@ -96,7 +223,10 @@ Produce a timeline of what happened, in order:
 {"events": [{"when": string, "what": string, "sourceUrl": string}]}
 
 "when" may be imprecise where the record is ("late 2019", "March 2001").
-Include the events that make the turning point make sense, not every event.`,
+Include the events that make the turning point make sense, not every event.
+
+Limits (the app checks them): 1 to ${DOSSIER_EVENTS_MAX} events; "when" 3 to
+${DOSSIER_EVENT_WHEN_MAX} characters; "what" 10 to ${DOSSIER_EVENT_WHAT_MAX} characters.`,
     messages: [
       { role: 'user', content: caseHeader(input) },
       { role: 'assistant', content: JSON.stringify(brief) },
@@ -109,8 +239,26 @@ Include the events that make the turning point make sense, not every event.`,
   }
 }
 
-export function parseTimeline(text: string): TimelineEvent[] {
-  return parseJsonCompletion(text, ResearchTimelineSchema, 'timeline').events
+export function parseTimeline(text: string, note: Note = ignoreRepairs): TimelineEvent[] {
+  return parseRepaired(text, ResearchTimelineSchema, 'timeline', (raw) => ({
+    ...raw,
+    events: repairList(
+      raw['events'],
+      {
+        max: DOSSIER_EVENTS_MAX,
+        name: 'timeline events',
+        label: (_, at) => `timeline event ${at + 1}`,
+        // A date label is a fact: over its limit the event is dropped, never cut.
+        bad: (event) =>
+          isRecord(event) ? longer(event['when'], DOSSIER_EVENT_WHEN_MAX, 'its date') : null,
+        fix: (event, label) => ({
+          ...event,
+          what: trimField(event['what'], DOSSIER_EVENT_WHAT_MAX, label, note),
+        }),
+      },
+      note,
+    ),
+  })).events
 }
 
 // ---------------------------------------------------------------------------
@@ -143,7 +291,10 @@ Extract every factual claim the script will need, each with its source:
 - "adjudicated" is true ONLY where a court or regulator formally ruled. It is
   what decides whether the script must say "alleged", so do not guess it.
 - Figures, dates and quotes each need their own claim. A claim a human cannot
-  check against your source is worse than no claim.`,
+  check against your source is worse than no claim.
+
+Limits (the app checks them): 1 to ${DOSSIER_CLAIMS_MAX} claims; each "text" 10 to
+${DOSSIER_CLAIM_TEXT_MAX} characters.`,
     messages: [
       { role: 'user', content: caseHeader(input) },
       { role: 'assistant', content: JSON.stringify({ brief, timeline }) },
@@ -154,8 +305,20 @@ Extract every factual claim the script will need, each with its source:
   }
 }
 
-export function parseClaims(text: string): DraftClaim[] {
-  return parseJsonCompletion(text, ClaimsSchema, 'claims').claims
+export function parseClaims(text: string, note: Note = ignoreRepairs): DraftClaim[] {
+  return parseRepaired(text, ClaimsSchema, 'claims', (raw) => ({
+    ...raw,
+    claims: repairList(
+      raw['claims'],
+      {
+        max: DOSSIER_CLAIMS_MAX,
+        name: 'claims',
+        label: (_, at) => `claim ${at + 1}`,
+        bad: claimTooLong,
+      },
+      note,
+    ),
+  })).claims
 }
 
 // ---------------------------------------------------------------------------
@@ -199,7 +362,11 @@ finished brief — answer each one from the record now:
   to the human as still open; an invented answer is a liability read aloud.
 - "index" is the question's number exactly as given in the numbered list —
   it is how each answer finds its question again, so it must be right.
-  Repeat the question verbatim as well.`,
+  Repeat the question verbatim as well.
+
+Limits (the app checks them): at most ${DOSSIER_ANSWERS_MAX} answers; each "question" 10 to
+${DOSSIER_QUESTION_MAX} characters; each "answer" at most ${DOSSIER_ANSWER_MAX} characters; at
+most ${DOSSIER_ANSWER_CLAIMS_MAX} claims, each "text" 10 to ${DOSSIER_CLAIM_TEXT_MAX} characters.`,
     messages: [
       { role: 'user', content: caseHeader(input) },
       { role: 'assistant', content: JSON.stringify({ brief, timeline }) },
@@ -218,8 +385,38 @@ finished brief — answer each one from the record now:
   }
 }
 
-export function parseAnswers(text: string): ResearchAnswers {
-  return parseJsonCompletion(text, ResearchAnswersSchema, 'answers')
+export function parseAnswers(text: string, note: Note = ignoreRepairs): ResearchAnswers {
+  return parseRepaired(text, ResearchAnswersSchema, 'answers', (raw) => ({
+    ...raw,
+    answers: repairList(
+      raw['answers'],
+      {
+        max: DOSSIER_ANSWERS_MAX,
+        name: 'answers',
+        label: (answer, at) => `the answer to question ${questionNumber(answer, at)}`,
+        // The echoed question is how an answer finds its question again: a fact.
+        bad: (answer) =>
+          isRecord(answer)
+            ? longer(answer['question'], DOSSIER_QUESTION_MAX, 'its question')
+            : null,
+        fix: (answer, label) => ({
+          ...answer,
+          answer: trimField(answer['answer'], DOSSIER_ANSWER_MAX, label, note),
+        }),
+      },
+      note,
+    ),
+    claims: repairList(
+      raw['claims'],
+      {
+        max: DOSSIER_ANSWER_CLAIMS_MAX,
+        name: 'claims found while answering',
+        label: (_, at) => `claim ${at + 1} found while answering`,
+        bad: claimTooLong,
+      },
+      note,
+    ),
+  }))
 }
 
 // ---------------------------------------------------------------------------

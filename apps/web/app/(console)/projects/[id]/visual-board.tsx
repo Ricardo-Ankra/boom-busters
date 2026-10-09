@@ -22,6 +22,7 @@ import {
   JOB_STALE_MS,
   LOGO_ACCEPT,
   missingArticleFields,
+  noticesFor,
   postPublicUrl,
   REUSABLE_SLOT_TYPES,
   SHOT_SLOT_TYPES,
@@ -31,6 +32,7 @@ import {
 import type {
   BrandKitStored,
   GraphicElement,
+  Notice,
   SetPlateView,
   ShotBrief,
   SlotCandidate,
@@ -42,6 +44,7 @@ import { CandidateLightbox, candidateThumb } from '@/components/candidate-media'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ConfirmButton } from '@/components/confirm-button'
+import { Notices } from '@/components/notices'
 import { Label, Select } from '@/components/ui/input'
 import { useToast } from '@/components/ui/toast'
 import { readImageSize, toUploadableImage, toUploadableLogo } from '@/lib/client-image'
@@ -1504,6 +1507,7 @@ function VisualBoardContent({
   brand,
   setPhotos = [],
   castMembers = [],
+  notices = [],
 }: {
   projectId: string
   model: VisualsReviewModel
@@ -1512,6 +1516,11 @@ function VisualBoardContent({
   setPhotos?: readonly SetPhotoGroup[]
   /** The project's cast, for a post card's "one of the cast?" question (decision 284). */
   castMembers?: readonly CastOption[]
+  /**
+   * The project's open notices, every subject (decision 293). Each card picks
+   * its own with `noticesFor`, so a notice whose slot is gone shows nowhere.
+   */
+  notices?: readonly Notice[]
 }) {
   const router = useRouter()
   const { toast } = useToast()
@@ -1714,6 +1723,7 @@ function VisualBoardContent({
                   : null
             }
             act={act}
+            notices={noticesFor(notices, 'direction')}
           />
           <Card>
             <CardHeader>
@@ -2042,6 +2052,7 @@ function VisualBoardContent({
                 sources={allSlots}
                 setPhotos={setPhotos}
                 castMembers={castMembers}
+                notices={noticesFor(notices, 'slot', slot.id)}
               />
             </SlotLockContext.Provider>
           ))}
@@ -2204,6 +2215,7 @@ function SlotCard({
   sources,
   setPhotos,
   castMembers,
+  notices,
 }: {
   slot: SlotView
   /** The server's clock, carried forward (decision 286). */
@@ -2222,6 +2234,8 @@ function SlotCard({
   sources: SlotView[]
   setPhotos: readonly SetPhotoGroup[]
   castMembers: readonly CastOption[]
+  /** What an answer for this slot repaired, or why a job on it stopped (decision 293). */
+  notices: readonly Notice[]
 }) {
   const [editing, setEditing] = React.useState(false)
   const [rebriefing, setRebriefing] = React.useState(false)
@@ -2433,6 +2447,10 @@ function SlotCard({
             Being fetched — this row updates itself when candidates land.
           </p>
         ) : null}
+
+        {/* What an answer for this slot trimmed or capped, or why a job on it
+            stopped (decision 293), each line with its own Dismiss. */}
+        <Notices notices={notices} />
 
         {/* The format picker (staged-visuals design): the suggested type is a
             suggestion, not a lock. Chart and map conversions get their

@@ -23,6 +23,7 @@ import {
   SlotDraftStateSchema,
 } from '@boom-busters/schemas'
 import { NonRetriableError } from 'inngest'
+import { AnswerStopped } from '@/lib/answer'
 import { db } from '@/lib/db'
 import { notify } from '@/lib/notify'
 import { inngest } from '../client'
@@ -54,6 +55,24 @@ import { timedParagraphs } from '../lib/shot-list'
 
 const FUNCTION_ID = 'visuals-replanner'
 
+/** A stopped redraft as the Direction card says it (spec 3.3): the book on screen stays. */
+export function bookKept(reason: string): string {
+  return `${reason.replace(/[.\s]+$/, '')}. The book you had is kept.`
+}
+
+/**
+ * What a replanner run that died past its retries says, and where. The
+ * redraft's words go on the Direction card; the fix and the re-plan are the
+ * project's own. Each names its own job, so one does not read as another.
+ */
+export function replannerFailure(op: unknown): {
+  title: string
+  subject?: { subject: 'direction' }
+} {
+  if (op === 'direction') return { title: 'The redraft failed', subject: { subject: 'direction' } }
+  return { title: op === 'repair' ? 'The fix failed' : 'The re-plan failed' }
+}
+
 export const visualsReplanner = inngest.createFunction(
   {
     id: FUNCTION_ID,
@@ -75,10 +94,12 @@ export const visualsReplanner = inngest.createFunction(
       // Words, not a stage failure: the plan park stays open (decision 234).
       // The Fix button's job names itself, so a failed fix does not read as a
       // failed re-plan.
+      const { title, subject } = replannerFailure(event.data.event.data['op'])
       await markSideJobFailed(
         { inngestRunId: '', functionId: FUNCTION_ID, projectId },
-        event.data.event.data['op'] === 'repair' ? 'The fix failed' : 'The re-plan failed',
+        title,
         serialiseError(event.data.error),
+        subject,
       )
     },
     triggers: [events.visualsReplanRequested],
@@ -109,22 +130,31 @@ export const visualsReplanner = inngest.createFunction(
               return { ok: false as const, gate: budgetGateData(error) }
             }
             // Two answers refused or cut off (decision 292): the stored book
-            // stays, and the plan screen says why, with no blind retry.
+            // stays, and the Direction card says why (decision 293), in the
+            // answer's own words rather than the first draft's stage label.
             if (error instanceof NonRetriableError) {
-              return { ok: false as const, stopped: error.message }
+              return {
+                ok: false as const,
+                stopped: error instanceof AnswerStopped ? error.issue : error.message,
+              }
             }
             throw error
           }
         })
         if (!drafted.ok && 'gate' in drafted) {
           await step.run('redraft-over-budget', () =>
-            markSideJobFailed(ctx, 'The redraft stopped', drafted.gate),
+            markSideJobFailed(ctx, 'The redraft stopped', drafted.gate, { subject: 'direction' }),
           )
           return { projectId, op, outcome: 'over-budget' as const }
         }
         if (!drafted.ok) {
           await step.run('redraft-stopped', () =>
-            markSideJobFailed(ctx, 'The redraft stopped', { message: drafted.stopped }),
+            markSideJobFailed(
+              ctx,
+              'The redraft stopped',
+              { message: bookKept(drafted.stopped) },
+              { subject: 'direction' },
+            ),
           )
           return { projectId, op, outcome: 'redraft-stopped' as const }
         }

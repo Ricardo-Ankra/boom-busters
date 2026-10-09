@@ -14,6 +14,7 @@ import {
   mockShortsCandidates,
   tensionFromOutline,
 } from '@boom-busters/providers'
+import type { Repair } from '@boom-busters/providers'
 import {
   BudgetExceededError,
   OutlineSchema,
@@ -35,6 +36,7 @@ import { NonRetriableError } from 'inngest'
 import { db } from '@/lib/db'
 import { completeForProject } from '@/lib/answer-call'
 import { markShortsWith } from '@/lib/script-answers'
+import { recordRepairs } from '@/lib/notices'
 import { inngest } from '../client'
 import { events } from '../events'
 import { budgetGateData, markStageFailed, type GateContext } from '../lib/gates'
@@ -99,9 +101,10 @@ export const shortsRunner = inngest.createFunction(
 
     /**
      * A script can arrive here with no candidates: the script-runner's
-     * marking step deliberately swallows its own failures (the narration is
-     * the script stage's deliverable, not the Shorts), and production did
-     * exactly that on 2026-09-03 — the marking response failed to parse, an
+     * marking step stores none when its answer stops (the narration is the
+     * script stage's deliverable, not the Shorts; since decision 293 the
+     * Shorts strip says why), and production did exactly that on 2026-09-03:
+     * the marking response failed to parse, an
      * empty list was stored, and this stage later sat "awaiting review" over
      * nothing. Marking here makes the stage self-healing: a re-run recovers
      * on its own, and a marking failure fails THIS stage loudly — picking
@@ -136,14 +139,17 @@ export const shortsRunner = inngest.createFunction(
       const tension = parsedOutline.success ? tensionFromOutline(parsedOutline.data) : undefined
 
       let picked
+      let repairs: Repair[] = []
       if (mockProvidersEnabled()) {
         picked = mockShortsCandidates(chapterSources)
       } else {
         try {
-          picked = await markShortsWith(completeForProject(projectId), {
+          const marked = await markShortsWith(completeForProject(projectId), {
             chapters: chapterSources,
             ...(tension ? { tension } : {}),
           })
+          picked = marked.candidates
+          repairs = marked.repairs
         } catch (error) {
           if (error instanceof BudgetExceededError) {
             return { ok: false as const, gate: budgetGateData(error) }
@@ -153,6 +159,9 @@ export const shortsRunner = inngest.createFunction(
         }
       }
       await setShortsCandidates(db, latest.script.id, picked)
+      // What the repair trimmed or dropped, on Script Studio's Shorts strip; a
+      // clean marking retires the notes of the last one (decision 293).
+      await recordRepairs({ projectId, subject: 'script', subjectId: null }, repairs)
       return { ok: true as const, marked: picked.length }
     })
 
@@ -221,10 +230,14 @@ export const shortsRunner = inngest.createFunction(
      * An excerpt slices what was said; the teaser says something new. Its
      * 25-40s narration is written for the funnel (cold open, escalation,
      * cliffhanger), synthesised fresh, and cut over slots lifted from the
-     * master. A teaser failure SKIPS with its reason rather than failing the
-     * stage: the excerpts above are complete deliverables, and a re-run
-     * rebuilds the teaser (synthesis is idempotency-keyed, so paragraphs
-     * already bought are re-served by the vendor, not re-billed).
+     * master. A teaser whose script is refused twice, or whose voicing or cut
+     * fails, SKIPS with its reason rather than failing the stage: the
+     * excerpts above are complete deliverables, and a re-run rebuilds the
+     * teaser (synthesis is idempotency-keyed, so paragraphs already bought
+     * are re-served by the vendor, not re-billed). A refused script says why
+     * on the Teaser card's place (decision 293). A provider error on the
+     * script call is thrown, so Inngest retries the step; past the retries
+     * the stage fails, as for any other step.
      *
      * Re-entry keeps every EXISTING row exactly as curated, but a missing
      * teaser is additive and gets built: projects whose excerpts predate the

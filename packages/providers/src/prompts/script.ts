@@ -1,15 +1,28 @@
 import {
   OutlineSchema,
   SelfCheckSchema,
+  SHORTS_CANDIDATES_MAX,
+  SHORTS_HOOK_MAX,
+  SHORTS_SENTENCE_MAX,
   ShortsCandidatesSchema,
+  TEASER_PARAGRAPH_MAX,
+  TEASER_PARAGRAPH_MIN,
+  TEASER_PARAGRAPHS_MAX,
+  TEASER_PARAGRAPHS_MIN,
+  TEASER_TITLE_MAX,
+  TEASER_TITLE_MIN,
   TeaserScriptSchema,
+  ValidationError,
   claimCarriesArticle,
   claimCarriesPost,
   countWords,
   splitSentences,
 } from '@boom-busters/schemas'
 import type { Outline, SelfCheck, ShortsCandidate, TeaserScript } from '@boom-busters/schemas'
-import { parseJsonCompletion } from './json'
+import { z } from 'zod'
+import { formatIssues, parseJsonCompletion } from './json'
+import { capList, dropItems, ignoreRepairs, overLimit, trimField } from './repair'
+import type { Note } from './repair'
 import { SCRIPT_CRAFT } from './script-craft'
 import { outputBudget } from '../llm/types'
 import type { LLMTaskRequest } from '../llm/types'
@@ -378,7 +391,11 @@ full video, so:
 Quote the first and last sentence of each segment EXACTLY as they appear.
 
 {"candidates": [{"chapterIndex": number, "startSentence": string,
-  "endSentence": string, "hookRationale": string}]}`,
+  "endSentence": string, "hookRationale": string}]}
+
+Limits (the app checks them): at most ${SHORTS_CANDIDATES_MAX} candidates; "startSentence" and
+"endSentence" at most ${SHORTS_SENTENCE_MAX} characters each; "hookRationale" at most
+${SHORTS_HOOK_MAX} characters.`,
     messages: [
       {
         role: 'user',
@@ -399,8 +416,69 @@ before these are answered:\n${tensionLines.join('\n')}\n`
   }
 }
 
-export function parseShortsCandidates(text: string): ShortsCandidate[] {
-  return parseJsonCompletion(text, ShortsCandidatesSchema, 'Shorts candidates').candidates
+const LooseAnswer = z.looseObject({})
+
+// Moved up from above `parseTeaser`, where Task 9 declared it: one
+// declaration per module (a second `const isRecord` does not compile).
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value)
+
+/** Why a candidate's anchor sentences cannot be kept, or null when both fit. */
+function anchorOverLimit(candidate: unknown): string | null {
+  if (!isRecord(candidate)) return null
+  for (const [key, what] of [
+    ['startSentence', 'its start sentence'],
+    ['endSentence', 'its end sentence'],
+  ] as const) {
+    const sentence = candidate[key]
+    if (typeof sentence === 'string' && sentence.trim().length > SHORTS_SENTENCE_MAX) {
+      return overLimit(what, SHORTS_SENTENCE_MAX)
+    }
+  }
+  return null
+}
+
+/**
+ * The marking as the model answered it, repaired before it is validated
+ * (decision 293). A hook rationale over its limit is trimmed at a sentence. A
+ * candidate whose start or end sentence runs over its limit is dropped and the
+ * rest kept: those sentences are matched back to the chapter character for
+ * character, so a cut one would anchor nowhere. More than ten keep the first
+ * ten. Candidates are numbered as the model wrote them.
+ */
+function repairShortsCandidates(answer: Record<string, unknown>, note: Note): unknown {
+  const candidates = answer['candidates']
+  if (!Array.isArray(candidates)) return answer
+  const trimmed = candidates.map((candidate, at) =>
+    isRecord(candidate) && anchorOverLimit(candidate) === null
+      ? {
+          ...candidate,
+          hookRationale: trimField(
+            candidate['hookRationale'],
+            SHORTS_HOOK_MAX,
+            `candidate ${at + 1}'s hook`,
+            note,
+          ),
+        }
+      : candidate,
+  )
+  const kept = dropItems(trimmed, anchorOverLimit, (_, at) => `candidate ${at + 1}`, note)
+  return {
+    ...answer,
+    candidates: capList(kept, SHORTS_CANDIDATES_MAX, 'Shorts candidates', note),
+  }
+}
+
+export function parseShortsCandidates(text: string, note: Note = ignoreRepairs): ShortsCandidate[] {
+  const answer = parseJsonCompletion(text, LooseAnswer, 'Shorts candidates')
+  const parsed = ShortsCandidatesSchema.safeParse(repairShortsCandidates(answer, note))
+  if (!parsed.success) {
+    throw new ValidationError(
+      `The model's Shorts candidates did not match the expected shape: ${formatIssues(parsed.error)}`,
+      { field: 'Shorts candidates' },
+    )
+  }
+  return parsed.data.candidates
 }
 
 // ---------------------------------------------------------------------------
@@ -442,6 +520,10 @@ Rules:
 - Each paragraph carries the chapterIndex whose part of the story it draws
   from, so the edit can show that chapter's visuals behind it.
 
+Limits (the app checks them): title ${TEASER_TITLE_MIN} to ${TEASER_TITLE_MAX} characters;
+${TEASER_PARAGRAPHS_MIN} to ${TEASER_PARAGRAPHS_MAX} paragraphs, each ${TEASER_PARAGRAPH_MIN} to ${TEASER_PARAGRAPH_MAX} characters;
+chapterIndex is the number of a chapter below, 0 to ${input.chapters.length - 1}.
+
 Return exactly:
 {"title": string, "paragraphs": [{"text": string, "chapterIndex": number}]}`,
     messages: [
@@ -462,8 +544,50 @@ Return exactly:
   }
 }
 
-export function parseTeaser(text: string): TeaserScript {
-  return parseJsonCompletion(text, TeaserScriptSchema, 'teaser script')
+/**
+ * The teaser as the model answered it, repaired before it is validated
+ * (decision 293): the title trimmed at a word, each beat at a sentence, and
+ * no more than five beats kept. A beat's chapter is a fact: one the film
+ * does not have is refused, not dropped, because it would pull the wrong
+ * chapter's visuals behind the words (spec 2.2).
+ */
+export function parseTeaser(
+  text: string,
+  chapterCount: number,
+  note: Note = ignoreRepairs,
+): TeaserScript {
+  const raw = parseJsonCompletion(text, z.looseObject({}), 'teaser script')
+  const beats = capList(raw['paragraphs'], TEASER_PARAGRAPHS_MAX, 'beats', note)
+  const parsed = TeaserScriptSchema.safeParse({
+    ...raw,
+    title: trimField(raw['title'], TEASER_TITLE_MAX, 'the title', note),
+    paragraphs: Array.isArray(beats)
+      ? beats.map((beat, index) =>
+          isRecord(beat)
+            ? {
+                ...beat,
+                text: trimField(beat['text'], TEASER_PARAGRAPH_MAX, `beat ${index + 1}`, note),
+              }
+            : beat,
+        )
+      : beats,
+  })
+  if (!parsed.success) {
+    throw new ValidationError(`The teaser script is malformed: ${formatIssues(parsed.error)}`, {
+      field: 'teaser script',
+    })
+  }
+  const stray = parsed.data.paragraphs.findIndex(
+    (paragraph) => paragraph.chapterIndex >= chapterCount,
+  )
+  if (stray !== -1) {
+    throw new ValidationError(
+      `beat ${stray + 1} draws from chapter ${parsed.data.paragraphs[stray]!.chapterIndex}, ` +
+        `but the chapters run 0 to ${chapterCount - 1}`,
+      { field: 'teaser script' },
+    )
+  }
+  return parsed.data
 }
 
 /** Deterministic, so mock runs and the E2E suite get a stable teaser. */
