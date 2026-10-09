@@ -25,6 +25,7 @@ import type {
   DirectionCastInput,
   DirectionChapterInput,
   LLMTaskRequest,
+  Repair,
   ScriptClaim,
 } from '@boom-busters/providers'
 import {
@@ -50,6 +51,7 @@ import { answerOrStop, callForAnswer } from '@/lib/answer'
 import { completeForProject } from '@/lib/answer-call'
 import { db } from '@/lib/db'
 import { callLlm } from '@/lib/llm'
+import { recordRepairs } from '@/lib/notices'
 import { planChapterWith } from '@/lib/plan-chapter'
 import { plannedToRows, promptParagraphs, type TimedParagraph } from './shot-list'
 
@@ -212,24 +214,31 @@ export async function loadDirectionInputs(projectId: string): Promise<{
  */
 export async function draftDirectorsBook(projectId: string): Promise<DirectorsBook> {
   const inputs = await loadDirectionInputs(projectId)
-  const book = mockProvidersEnabled()
-    ? mockDirectorsBook({
-        caseTitle: inputs.caseTitle,
-        chapterCount: inputs.chapters.length,
-        cast: inputs.cast,
-      })
-    : // At most two calls (decision 292): the parser trims a fixable overrun,
-      // a cut-off is asked once more at double the budget, a refusal once more
-      // with its reason; then the stage stops with the reason, never a blind retry.
-      answerOrStop(
-        await callForAnswer({
-          request: buildDirectorsBookRequest(inputs),
-          parse: (text) => parseDirectorsBook(text, inputs.chapters.length),
-          complete: completeForProject(projectId),
-        }),
-        "The director's book could not be drafted",
-      )
+  let book: DirectorsBook
+  let repairs: Repair[] | undefined
+  if (mockProvidersEnabled()) {
+    book = mockDirectorsBook({
+      caseTitle: inputs.caseTitle,
+      chapterCount: inputs.chapters.length,
+      cast: inputs.cast,
+    })
+  } else {
+    // At most two calls (decision 292): the parser trims a fixable overrun,
+    // a cut-off is asked once more at double the budget, a refusal once more
+    // with its reason; then the stage stops with the reason, never a blind retry.
+    const answer = await callForAnswer({
+      request: buildDirectorsBookRequest(inputs),
+      parse: (text, note) => parseDirectorsBook(text, inputs.chapters.length, note),
+      complete: completeForProject(projectId),
+    })
+    book = answerOrStop(answer, "The director's book could not be drafted")
+    repairs = answer.ok ? answer.repairs : undefined
+  }
   await setProjectDirection(db, projectId, book)
+  // What the repair trimmed, on the Direction card; a book that needed none
+  // retires the last book's notice (decision 293). Written here, inside the
+  // step that drafted it, so nothing new crosses a step boundary.
+  await recordRepairs({ projectId, subject: 'direction', subjectId: null }, repairs)
   await seedCastFromPrincipals(db, projectId, book.principals)
   // The book's locations are the film's sets, exactly as its principals are
   // the film's cast (decision 264). Seeded once; the producer's removals stick.

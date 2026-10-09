@@ -506,6 +506,8 @@ export default async function ProjectPage({
           // only, the cast already loaded above. The posts, their pictures and
           // the linked cast photos are read and presigned by the visuals model.
           castMembers={cast.map((member) => ({ id: member.id, name: member.name }))}
+          // Every card on the board picks its own notices (decision 293).
+          notices={notices}
           colors={{
             accent: settings.brandKit.colors.accent,
             surface: settings.brandKit.colors.surface,

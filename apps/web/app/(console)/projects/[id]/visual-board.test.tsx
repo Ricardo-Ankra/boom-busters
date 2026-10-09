@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { SOCIAL_TOO_LONG } from '@boom-busters/compositions/social'
 import { FAL_MODELS, GEMINI_IMAGE_MODELS, X_POST_MISSING } from '@boom-busters/providers'
 import { DEFAULT_SETTINGS } from '@boom-busters/schemas'
+import type { Notice } from '@boom-busters/schemas'
 import type { SlotView, VisualsReviewModel } from '@/lib/visuals-review'
 import { timecode } from '@/lib/visuals-reuse'
 import { VisualBoard } from './visual-board'
@@ -100,6 +101,10 @@ vi.mock('@/app/(console)/settings/logo-actions', () => ({
   createLogoUploadAction: (...args: unknown[]) => createLogoUploadAction(...args),
   finaliseLogoAction: (...args: unknown[]) => finaliseLogoAction(...args),
 }))
+
+/** The notice line's own action (decision 293); `components/notices.test.tsx` tests it. */
+const dismissNoticeAction = vi.hoisted(() => vi.fn())
+vi.mock('@/app/(console)/notice-actions', () => ({ dismissNoticeAction }))
 
 /**
  * The real converter needs a browser decoder jsdom does not have, so it is
@@ -1552,6 +1557,46 @@ describe('the plan phase (staged-visuals design)', () => {
 
     await userEvent.click(within(alert).getByRole('button', { name: 'Dismiss' }))
     expect(dismissRetypeAction).toHaveBeenCalledWith(PROJECT, SLOT_A)
+  })
+
+  it("puts the book's notices on the Direction card and no other subject's (decision 293)", () => {
+    const notice = (over: Partial<Notice>): Notice => ({
+      id: '01J0000000000000000000000N',
+      projectId: PROJECT,
+      subject: 'direction',
+      subjectId: null,
+      kind: 'trimmed',
+      message: 'Trimmed to fit: the visual thesis.',
+      createdAt: new Date('2026-10-09T10:00:00Z'),
+      ...over,
+    })
+    render(
+      <VisualBoard
+        projectId={PROJECT}
+        model={planModel()}
+        colors={COLORS}
+        brand={BRAND}
+        notices={[
+          notice({}),
+          notice({
+            id: '01J0000000000000000000000P',
+            subject: 'dossier',
+            kind: 'dropped',
+            message: 'Dropped claim 37: its text ran over 1,000 characters.',
+          }),
+          notice({
+            id: '01J0000000000000000000000Q',
+            subject: 'slot',
+            subjectId: 'gone',
+            kind: 'stopped',
+            message: 'The retype stopped.',
+          }),
+        ]}
+      />,
+    )
+    expect(screen.getByText('Trimmed to fit: the visual thesis.')).toBeInTheDocument()
+    expect(screen.queryByText(/Dropped claim 37/)).not.toBeInTheDocument()
+    expect(screen.queryByText('The retype stopped.')).not.toBeInTheDocument()
   })
 })
 

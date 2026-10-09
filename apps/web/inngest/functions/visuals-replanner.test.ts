@@ -9,8 +9,10 @@ import {
   insertCastMember,
   insertProjectSet,
   listCastMembers,
+  listProjectNotices,
   listProjectSets,
   listShotSlots,
+  replaceNotices,
   replaceShotList,
   requireTestDatabase,
   saveChapter,
@@ -26,7 +28,7 @@ import {
   updateSlotBrief,
 } from '@boom-busters/db'
 import { mockDirectorsBook } from '@boom-busters/providers'
-import { newId } from '@boom-busters/schemas'
+import { newId, noticesFor } from '@boom-busters/schemas'
 import type { ShotBrief } from '@boom-busters/schemas'
 import type * as Notices from '@/lib/notices'
 import { InngestTestEngine } from '@inngest/test'
@@ -263,6 +265,48 @@ describeDb('visuals-replanner (mock mode)', () => {
     expect((await getProject(db, FIXTURE_PROJECT_ID))?.direction).toMatchObject({
       visualThesis: 'owner edit',
     })
+  })
+
+  it('op direction: a trimmed book leaves its notice for the Direction card (decision 293)', async () => {
+    const direction = {
+      projectId: FIXTURE_PROJECT_ID,
+      subject: 'direction' as const,
+      subjectId: null,
+    }
+    await replaceNotices(db, direction, [])
+    vi.stubEnv('MOCK_PROVIDERS', '')
+    callLlm.mockReset()
+    callLlm.mockResolvedValueOnce({
+      text: JSON.stringify({
+        ...mockDirectorsBook({ caseTitle: 'x', chapterCount: 1 }),
+        eraLocks: [{ span: '1995 to 2008', rules: 'CRT monitors on every desk. '.repeat(30) }],
+      }),
+    })
+
+    const { result } = await engine.execute({ events: replanEvent('direction') })
+    expect(result).toMatchObject({ outcome: 'redrafted' })
+
+    const listed = noticesFor(await listProjectNotices(db, FIXTURE_PROJECT_ID), 'direction')
+    expect(listed.map((notice) => [notice.kind, notice.message])).toEqual([
+      ['trimmed', 'Trimmed to fit: era rule 1.'],
+    ])
+  })
+
+  it('op direction: a clean redraft retires the last notice (decision 293)', async () => {
+    const direction = {
+      projectId: FIXTURE_PROJECT_ID,
+      subject: 'direction' as const,
+      subjectId: null,
+    }
+    await replaceNotices(db, direction, [
+      { kind: 'trimmed', message: 'Trimmed to fit: era rule 1.' },
+    ])
+
+    // Mock mode: the mock book needs no repair.
+    const { result } = await engine.execute({ events: replanEvent('direction') })
+    expect(result).toMatchObject({ outcome: 'redrafted' })
+
+    expect(noticesFor(await listProjectNotices(db, FIXTURE_PROJECT_ID), 'direction')).toEqual([])
   })
 
   it('refuses outside the plan checkpoint', async () => {

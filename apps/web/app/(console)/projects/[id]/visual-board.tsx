@@ -22,6 +22,7 @@ import {
   JOB_STALE_MS,
   LOGO_ACCEPT,
   missingArticleFields,
+  noticesFor,
   postPublicUrl,
   REUSABLE_SLOT_TYPES,
   SHOT_SLOT_TYPES,
@@ -31,6 +32,7 @@ import {
 import type {
   BrandKitStored,
   GraphicElement,
+  Notice,
   SetPlateView,
   ShotBrief,
   SlotCandidate,
@@ -1504,6 +1506,7 @@ function VisualBoardContent({
   brand,
   setPhotos = [],
   castMembers = [],
+  notices = [],
 }: {
   projectId: string
   model: VisualsReviewModel
@@ -1512,6 +1515,11 @@ function VisualBoardContent({
   setPhotos?: readonly SetPhotoGroup[]
   /** The project's cast, for a post card's "one of the cast?" question (decision 284). */
   castMembers?: readonly CastOption[]
+  /**
+   * The project's open notices, every subject (decision 293). Each card picks
+   * its own with `noticesFor`, so a notice whose slot is gone shows nowhere.
+   */
+  notices?: readonly Notice[]
 }) {
   const router = useRouter()
   const { toast } = useToast()
@@ -1714,6 +1722,7 @@ function VisualBoardContent({
                   : null
             }
             act={act}
+            notices={noticesFor(notices, 'direction')}
           />
           <Card>
             <CardHeader>

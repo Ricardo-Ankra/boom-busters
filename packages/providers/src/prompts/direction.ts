@@ -10,7 +10,8 @@ import type { DirectorsBook } from '@boom-busters/schemas'
 import { z } from 'zod'
 import { DIRECTION_CRAFT } from './direction-craft'
 import { formatIssues, parseJsonCompletion } from './json'
-import { trimText } from './repair'
+import { capList, ignoreRepairs, trimField } from './repair'
+import type { Note } from './repair'
 import { claimList, type ScriptClaim } from './script'
 import { outputBudget } from '../llm/types'
 import type { LLMTaskRequest } from '../llm/types'
@@ -181,54 +182,84 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
  * cut to their first items, a fourth motif dropped. Names, the accent, the
  * era spans, enums and chapter numbers are left as they are: they carry
  * facts, and a bad one is refused.
+ *
+ * Each repair is reported through `note` (decision 293) in the words the
+ * Direction card shows: "era rule 2", "Emad Mostaque's identity", "Kept the
+ * first 12 never-shows". Items are numbered as the model wrote the list; a
+ * cap keeps the first items, so the numbers of those kept do not move.
  */
-export function repairDirectorsBook(raw: unknown): unknown {
+export function repairDirectorsBook(raw: unknown, note: Note = ignoreRepairs): unknown {
   if (!isRecord(raw)) return raw
-  const text = (value: unknown) =>
-    typeof value === 'string' ? trimText(value, BOOK_TEXT_MAX) : value
-  const texts = (list: unknown, max: number) =>
-    Array.isArray(list) ? list.slice(0, max).map(text) : list
-  const items = (list: unknown, max: number, fix: (item: Record<string, unknown>) => unknown) =>
-    Array.isArray(list)
-      ? list.slice(0, max).map((item) => (isRecord(item) ? fix(item) : item))
-      : list
+  const text = (value: unknown, field: string) => trimField(value, BOOK_TEXT_MAX, field, note)
+  /** The first `max` items (a cut reported under `name`), each repaired by `fix`. */
+  const list = (
+    value: unknown,
+    max: number,
+    name: string,
+    fix: (item: unknown, at: number) => unknown,
+  ) => {
+    const kept = capList(value, max, name, note)
+    return Array.isArray(kept) ? kept.map(fix) : kept
+  }
+  /** A principal or a location by its name, or by its place when it has none. */
+  const called = (item: Record<string, unknown>, fallback: string) =>
+    typeof item['name'] === 'string' && item['name'].trim() !== '' ? item['name'].trim() : fallback
   return {
     ...raw,
-    visualThesis: text(raw['visualThesis']),
-    eraLocks: items(raw['eraLocks'], BOOK_ERA_LOCKS_MAX, (lock) => ({
-      ...lock,
-      rules: text(lock['rules']),
-    })),
+    visualThesis: text(raw['visualThesis'], 'the visual thesis'),
+    eraLocks: list(raw['eraLocks'], BOOK_ERA_LOCKS_MAX, 'era locks', (lock, at) =>
+      isRecord(lock) ? { ...lock, rules: text(lock['rules'], `era rule ${at + 1}`) } : lock,
+    ),
     palette: isRecord(raw['palette'])
-      ? { ...raw['palette'], note: text(raw['palette']['note']) }
+      ? { ...raw['palette'], note: text(raw['palette']['note'], 'the palette note') }
       : raw['palette'],
-    motifs: texts(raw['motifs'], BOOK_MOTIFS),
-    anchorObject: text(raw['anchorObject']),
-    neverShow: texts(raw['neverShow'], BOOK_LIST_MAX),
-    principals: items(raw['principals'], BOOK_LIST_MAX, (principal) => ({
-      ...principal,
-      role: text(principal['role']),
-      identityString: text(principal['identityString']),
-      guardrail: text(principal['guardrail']),
-    })),
-    locations: items(raw['locations'], BOOK_LIST_MAX, (location) => ({
-      ...location,
-      look: text(location['look']),
-    })),
-    chapters: items(raw['chapters'], Number.POSITIVE_INFINITY, (chapter) => ({
-      ...chapter,
-      moodShift: text(chapter['moodShift']),
-      keyImage: text(chapter['keyImage']),
-    })),
-    finalImage: text(raw['finalImage']),
+    motifs: list(raw['motifs'], BOOK_MOTIFS, 'motifs', (motif, at) =>
+      text(motif, `motif ${at + 1}`),
+    ),
+    anchorObject: text(raw['anchorObject'], 'the anchor object'),
+    neverShow: list(raw['neverShow'], BOOK_LIST_MAX, 'never-shows', (item, at) =>
+      text(item, `never-show ${at + 1}`),
+    ),
+    principals: list(raw['principals'], BOOK_LIST_MAX, 'principals', (person, at) => {
+      if (!isRecord(person)) return person
+      const who = called(person, `principal ${at + 1}`)
+      return {
+        ...person,
+        role: text(person['role'], `${who}'s role`),
+        identityString: text(person['identityString'], `${who}'s identity`),
+        guardrail: text(person['guardrail'], `${who}'s guardrail`),
+      }
+    }),
+    locations: list(raw['locations'], BOOK_LIST_MAX, 'locations', (place, at) =>
+      isRecord(place)
+        ? {
+            ...place,
+            look: text(place['look'], `${called(place, `location ${at + 1}`)}'s look`),
+          }
+        : place,
+    ),
+    chapters: list(raw['chapters'], Number.POSITIVE_INFINITY, 'chapters', (chapter, at) =>
+      isRecord(chapter)
+        ? {
+            ...chapter,
+            moodShift: text(chapter['moodShift'], `chapter ${at + 1}'s mood shift`),
+            keyImage: text(chapter['keyImage'], `chapter ${at + 1}'s key image`),
+          }
+        : chapter,
+    ),
+    finalImage: text(raw['finalImage'], 'the final image'),
   }
 }
 
-export function parseDirectorsBook(text: string, chapterCount: number): DirectorsBook {
+export function parseDirectorsBook(
+  text: string,
+  chapterCount: number,
+  note: Note = ignoreRepairs,
+): DirectorsBook {
   // Cast coverage is reported by `castWarnings` on the plan screen rather
   // than enforced here: a book that covers four of five people plans four.
   const raw = parseJsonCompletion(text, Envelope, "director's book")
-  const parsed = DirectorsBookSchema.safeParse(repairDirectorsBook(raw))
+  const parsed = DirectorsBookSchema.safeParse(repairDirectorsBook(raw, note))
   if (!parsed.success) {
     throw new ValidationError(`The director's book is malformed: ${formatIssues(parsed.error)}`, {
       field: "director's book",

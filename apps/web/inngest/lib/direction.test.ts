@@ -33,6 +33,11 @@ import type { TimedParagraph } from './shot-list'
 const callLlm = vi.hoisted(() => vi.fn())
 vi.mock('@/lib/llm', () => ({ callLlm }))
 
+// The notice store has its own tests (decision 293); here only what the
+// draft hands it matters.
+const recordRepairs = vi.hoisted(() => vi.fn())
+vi.mock('@/lib/notices', () => ({ recordRepairs, recordStop: vi.fn() }))
+
 /**
  * The direction helpers against the real database, in mock-provider mode
  * (decision 252): the outline's tension fields reach the prompt inputs, a
@@ -45,6 +50,7 @@ const describeDb = requireTestDatabase() ? describe : describe.skip
 describeDb('direction helpers (mock mode)', () => {
   beforeEach(async () => {
     vi.stubEnv('MOCK_PROVIDERS', '1')
+    recordRepairs.mockReset()
     await seed(db)
     await setProjectDirection(db, FIXTURE_PROJECT_ID, null)
     // Sets from an earlier test are not this test's business.
@@ -264,6 +270,45 @@ describeDb('direction helpers (mock mode)', () => {
         /^The director's book could not be drafted: The director's book is malformed/,
       )
       expect(callLlm).toHaveBeenCalledTimes(4)
+      // A stop is the side job's to report; the draft itself writes no notice.
+      expect(recordRepairs).not.toHaveBeenCalled()
+    })
+  })
+
+  describe("the book's notice (decision 293)", () => {
+    const direction = { projectId: FIXTURE_PROJECT_ID, subject: 'direction', subjectId: null }
+
+    it('hands what the repair trimmed to the Direction card', async () => {
+      vi.stubEnv('MOCK_PROVIDERS', '')
+      callLlm.mockReset()
+      callLlm.mockResolvedValueOnce({
+        text: JSON.stringify({
+          ...mockDirectorsBook({ caseTitle: 'Case', chapterCount: 1 }),
+          eraLocks: [{ span: '1995 to 2008', rules: 'CRT monitors on every desk. '.repeat(30) }],
+        }),
+      })
+
+      await draftDirectorsBook(FIXTURE_PROJECT_ID)
+
+      expect(recordRepairs).toHaveBeenCalledTimes(1)
+      expect(recordRepairs).toHaveBeenCalledWith(direction, [
+        { action: 'trimmed', field: 'era rule 1' },
+      ])
+    })
+
+    it('retires the last notice when a redraft needed no repair', async () => {
+      vi.stubEnv('MOCK_PROVIDERS', '')
+      callLlm.mockReset()
+      callLlm.mockResolvedValueOnce({
+        text: JSON.stringify(mockDirectorsBook({ caseTitle: 'Case', chapterCount: 1 })),
+      })
+
+      await draftDirectorsBook(FIXTURE_PROJECT_ID)
+
+      expect(recordRepairs).toHaveBeenCalledTimes(1)
+      const [target, repairs] = recordRepairs.mock.calls[0]!
+      expect(target).toEqual(direction)
+      expect(repairs ?? []).toEqual([])
     })
   })
 })
