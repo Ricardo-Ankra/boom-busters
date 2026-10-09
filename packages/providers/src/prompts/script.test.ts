@@ -1,5 +1,6 @@
 import {
   OutlineSchema,
+  SHORTS_HOOK_MAX,
   TEASER_PARAGRAPH_MAX,
   TEASER_TITLE_MAX,
   ValidationError,
@@ -607,5 +608,100 @@ describe('the teaser (decision 293)', () => {
 
   it('still refuses a teaser of one beat', () => {
     expect(() => parseTeaser(teaser({ paragraphs: [first] }), 2)).toThrow(ValidationError)
+  })
+})
+
+describe('the Shorts marking limits (decision 293)', () => {
+  const candidate = (over: Record<string, unknown> = {}) => ({
+    chapterIndex: 0,
+    startSentence: 'EY refused to sign the accounts.',
+    endSentence: 'The shares collapsed in nine days.',
+    hookRationale: 'The auditor said no.',
+    ...over,
+  })
+
+  const collect = () => {
+    const notes: Repair[] = []
+    return {
+      notes,
+      note: (repair: Repair) => {
+        notes.push(repair)
+      },
+    }
+  }
+
+  it('states every limit in the prompt', () => {
+    const rules = buildShortsRequest({
+      chapters: [{ index: 0, title: 'One', contentMd: 'Text.' }],
+    }).system.replace(/\s+/g, ' ')
+    expect(rules).toContain(
+      'Limits (the app checks them): at most 10 candidates; "startSentence" and "endSentence" at most 2000 characters each; "hookRationale" at most 1000 characters.',
+    )
+  })
+
+  it('trims a hook over its limit at a sentence and names the candidate, leaving its anchors alone', () => {
+    const { notes, note } = collect()
+    const long = 'The auditor said no. ' + 'That is the whole scandal in one line. '.repeat(40)
+    const parsed = parseShortsCandidates(
+      JSON.stringify({ candidates: [candidate(), candidate({ hookRationale: long })] }),
+      note,
+    )
+    expect(parsed[1]!.hookRationale.length).toBeLessThanOrEqual(SHORTS_HOOK_MAX)
+    expect(parsed[1]!.hookRationale.endsWith('in one line.')).toBe(true)
+    expect(parsed[1]).toMatchObject({
+      chapterIndex: 0,
+      startSentence: 'EY refused to sign the accounts.',
+      endSentence: 'The shares collapsed in nine days.',
+    })
+    expect(notes).toEqual([{ action: 'trimmed', field: "candidate 2's hook" }])
+  })
+
+  it('drops a candidate whose start or end sentence runs over its limit, keeps the rest, and numbers them as written', () => {
+    const { notes, note } = collect()
+    const parsed = parseShortsCandidates(
+      JSON.stringify({
+        candidates: [
+          candidate(),
+          candidate({ startSentence: 'A'.repeat(2001) }),
+          // Dropped whole: its long hook is not trimmed first.
+          candidate({ endSentence: 'B'.repeat(2001), hookRationale: 'x'.repeat(1200) }),
+          candidate({ chapterIndex: 1 }),
+        ],
+      }),
+      note,
+    )
+    expect(parsed.map((kept) => kept.chapterIndex)).toEqual([0, 1])
+    expect(notes).toEqual([
+      {
+        action: 'dropped',
+        field: 'candidate 2',
+        reason: 'its start sentence ran over 2,000 characters',
+      },
+      {
+        action: 'dropped',
+        field: 'candidate 3',
+        reason: 'its end sentence ran over 2,000 characters',
+      },
+    ])
+  })
+
+  it('keeps the first ten of more', () => {
+    const { notes, note } = collect()
+    const parsed = parseShortsCandidates(
+      JSON.stringify({
+        candidates: Array.from({ length: 12 }, (_, at) => candidate({ chapterIndex: at })),
+      }),
+      note,
+    )
+    expect(parsed.map((kept) => kept.chapterIndex)).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9])
+    expect(notes).toEqual([{ action: 'capped', field: 'Shorts candidates', kept: 10 }])
+  })
+
+  it('still refuses a candidate it cannot repair', () => {
+    expect(() =>
+      parseShortsCandidates(
+        JSON.stringify({ candidates: [candidate({ hookRationale: 'short' })] }),
+      ),
+    ).toThrow(ValidationError)
   })
 })

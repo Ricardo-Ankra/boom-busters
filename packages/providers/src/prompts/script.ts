@@ -1,6 +1,9 @@
 import {
   OutlineSchema,
   SelfCheckSchema,
+  SHORTS_CANDIDATES_MAX,
+  SHORTS_HOOK_MAX,
+  SHORTS_SENTENCE_MAX,
   ShortsCandidatesSchema,
   TEASER_PARAGRAPH_MAX,
   TEASER_PARAGRAPH_MIN,
@@ -18,7 +21,7 @@ import {
 import type { Outline, SelfCheck, ShortsCandidate, TeaserScript } from '@boom-busters/schemas'
 import { z } from 'zod'
 import { formatIssues, parseJsonCompletion } from './json'
-import { capList, ignoreRepairs, trimField } from './repair'
+import { capList, dropItems, ignoreRepairs, overLimit, trimField } from './repair'
 import type { Note } from './repair'
 import { SCRIPT_CRAFT } from './script-craft'
 import { outputBudget } from '../llm/types'
@@ -388,7 +391,11 @@ full video, so:
 Quote the first and last sentence of each segment EXACTLY as they appear.
 
 {"candidates": [{"chapterIndex": number, "startSentence": string,
-  "endSentence": string, "hookRationale": string}]}`,
+  "endSentence": string, "hookRationale": string}]}
+
+Limits (the app checks them): at most ${SHORTS_CANDIDATES_MAX} candidates; "startSentence" and
+"endSentence" at most ${SHORTS_SENTENCE_MAX} characters each; "hookRationale" at most
+${SHORTS_HOOK_MAX} characters.`,
     messages: [
       {
         role: 'user',
@@ -409,8 +416,69 @@ before these are answered:\n${tensionLines.join('\n')}\n`
   }
 }
 
-export function parseShortsCandidates(text: string): ShortsCandidate[] {
-  return parseJsonCompletion(text, ShortsCandidatesSchema, 'Shorts candidates').candidates
+const LooseAnswer = z.looseObject({})
+
+// Moved up from above `parseTeaser`, where Task 9 declared it: one
+// declaration per module (a second `const isRecord` does not compile).
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value)
+
+/** Why a candidate's anchor sentences cannot be kept, or null when both fit. */
+function anchorOverLimit(candidate: unknown): string | null {
+  if (!isRecord(candidate)) return null
+  for (const [key, what] of [
+    ['startSentence', 'its start sentence'],
+    ['endSentence', 'its end sentence'],
+  ] as const) {
+    const sentence = candidate[key]
+    if (typeof sentence === 'string' && sentence.trim().length > SHORTS_SENTENCE_MAX) {
+      return overLimit(what, SHORTS_SENTENCE_MAX)
+    }
+  }
+  return null
+}
+
+/**
+ * The marking as the model answered it, repaired before it is validated
+ * (decision 293). A hook rationale over its limit is trimmed at a sentence. A
+ * candidate whose start or end sentence runs over its limit is dropped and the
+ * rest kept: those sentences are matched back to the chapter character for
+ * character, so a cut one would anchor nowhere. More than ten keep the first
+ * ten. Candidates are numbered as the model wrote them.
+ */
+function repairShortsCandidates(answer: Record<string, unknown>, note: Note): unknown {
+  const candidates = answer['candidates']
+  if (!Array.isArray(candidates)) return answer
+  const trimmed = candidates.map((candidate, at) =>
+    isRecord(candidate) && anchorOverLimit(candidate) === null
+      ? {
+          ...candidate,
+          hookRationale: trimField(
+            candidate['hookRationale'],
+            SHORTS_HOOK_MAX,
+            `candidate ${at + 1}'s hook`,
+            note,
+          ),
+        }
+      : candidate,
+  )
+  const kept = dropItems(trimmed, anchorOverLimit, (_, at) => `candidate ${at + 1}`, note)
+  return {
+    ...answer,
+    candidates: capList(kept, SHORTS_CANDIDATES_MAX, 'Shorts candidates', note),
+  }
+}
+
+export function parseShortsCandidates(text: string, note: Note = ignoreRepairs): ShortsCandidate[] {
+  const answer = parseJsonCompletion(text, LooseAnswer, 'Shorts candidates')
+  const parsed = ShortsCandidatesSchema.safeParse(repairShortsCandidates(answer, note))
+  if (!parsed.success) {
+    throw new ValidationError(
+      `The model's Shorts candidates did not match the expected shape: ${formatIssues(parsed.error)}`,
+      { field: 'Shorts candidates' },
+    )
+  }
+  return parsed.data.candidates
 }
 
 // ---------------------------------------------------------------------------
@@ -475,9 +543,6 @@ Return exactly:
     maxTokens: outputBudget(1500),
   }
 }
-
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === 'object' && value !== null && !Array.isArray(value)
 
 /**
  * The teaser as the model answered it, repaired before it is validated
