@@ -77,6 +77,11 @@ export function LedgerTable({
                         demo
                       </Badge>
                     ) : null}
+                    {typeof entry.meta['purpose'] === 'string' ? (
+                      <Badge shape="tag" className="ml-2">
+                        {entry.meta['purpose']}
+                      </Badge>
+                    ) : null}
                   </td>
                   <td className="p-3 text-right font-mono tabular-nums">
                     ${entry.estimatedUsd.toFixed(4)}
