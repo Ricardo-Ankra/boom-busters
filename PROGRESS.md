@@ -7204,5 +7204,7 @@ boom-busters-broker`; merge and deploy to Vercel, then `PUT
      Left as they were: the plan's automatic chapter repair (best effort;
      the Fix button covers it) and the set inventory (already refuses a
      truncated reply).
-     Shipping: migration 0033 on the production database, then a Vercel
-     deploy and `PUT /api/inngest`. No Remotion or broker deploy.
+     Shipping: a production deploy of master, whose build applies migration
+     0033 before the new code serves (`scripts/deploy-migrate.mjs`), then
+     `PUT /api/inngest`; no migration by hand, which could race the build's
+     own. No Remotion or broker deploy.
