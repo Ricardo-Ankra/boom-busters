@@ -15,18 +15,24 @@ import {
 import type { CaseCategory, CaseStatus } from '@boom-busters/db'
 import {
   buildSuggestCasesRequest,
+  describeRepairs,
+  fileCaseRepairs,
   mockSuggestedCases,
   parseSuggestedCases,
   mockProvidersEnabled,
 } from '@boom-busters/providers'
 import { CaseCategorySchema, UlidSchema, serialiseError } from '@boom-busters/schemas'
+import type { CaseSuggestion } from '@boom-busters/schemas'
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { auth } from '@/auth'
 import { db } from '@/lib/db'
 import { inngest } from '@/inngest/client'
 import { events } from '@/inngest/events'
+import { callForAnswer } from '@/lib/answer'
+import type { Answer, AnswerComplete } from '@/lib/answer'
 import { callLlm } from '@/lib/llm'
+import { recordRepairs } from '@/lib/notices'
 
 /**
  * Case Library actions (build spec section 11.3).
@@ -141,12 +147,26 @@ export interface SuggestResult extends ActionResult {
   skipped?: number
   /** True when the rows came from the mock adapter and researched nothing. */
   mocked?: boolean
+  /**
+   * What the answer lost that no row can show (decision 293): a suggestion
+   * dropped for breaking a rule, or the cut to the number asked for. The
+   * toast carries it.
+   */
+  notice?: string
 }
 
 const SuggestInputSchema = z.object({
   count: z.number().int().min(1).max(20),
   steer: z.string().trim().max(500).optional(),
 })
+
+/**
+ * `callForAnswer`'s call for the Case Library (decision 293): the ledgered
+ * `callLlm` with no project to attribute the spend to, as before, and the
+ * retry labelled in the ledger as `completeForProject` labels it.
+ */
+const completeForLibrary: AnswerComplete = (request, call) =>
+  callLlm(request, call === 'answer' ? {} : { purpose: call })
 
 /**
  * `Suggest cases` — proposals land as `idea` rows for triage, never as
@@ -160,23 +180,25 @@ export async function suggestCases(input: unknown): Promise<SuggestResult> {
 
   const parsed = SuggestInputSchema.safeParse(input)
   if (!parsed.success) return { ok: false, error: 'Ask for between 1 and 20 cases' }
+  const { count } = parsed.data
 
   const mocked = mockProvidersEnabled()
 
   try {
-    const suggestions = mocked
-      ? mockSuggestedCases(parsed.data.count)
-      : parseSuggestedCases(
-          (
-            await callLlm(
-              buildSuggestCasesRequest({
-                existingTitles: await existingCaseTitles(db),
-                count: parsed.data.count,
-                ...(parsed.data.steer ? { steer: parsed.data.steer } : {}),
-              }),
-            )
-          ).text,
-        )
+    // At most two calls, the second told what was wrong (decision 293).
+    const answer: Answer<CaseSuggestion[]> = mocked
+      ? { ok: true, value: mockSuggestedCases(count), calls: 1 }
+      : await callForAnswer({
+          request: buildSuggestCasesRequest({
+            existingTitles: await existingCaseTitles(db),
+            count,
+            ...(parsed.data.steer ? { steer: parsed.data.steer } : {}),
+          }),
+          parse: (text, note) => parseSuggestedCases(text, count, note),
+          complete: completeForLibrary,
+        })
+    if (!answer.ok) return { ok: false, error: answer.issue }
+    const suggestions = answer.value
 
     const { created, skippedTitles } = await createSuggestedCases(
       db,
@@ -191,8 +213,30 @@ export async function suggestCases(input: unknown): Promise<SuggestResult> {
       })),
     )
 
+    // Each created case carries its own repairs on its row. A new row has no
+    // older notes to retire, so a clean one writes nothing, and a skipped
+    // duplicate's repairs concern a row this answer did not touch.
+    const filed = fileCaseRepairs(
+      answer.repairs ?? [],
+      suggestions.map((suggestion) => suggestion.title),
+    )
+    for (const row of created) {
+      const repairs = filed.byTitle.get(row.title) ?? []
+      if (repairs.length > 0) {
+        await recordRepairs({ projectId: null, subject: 'case', subjectId: row.id }, repairs)
+      }
+    }
+    // What no row can carry goes in the toast.
+    const notice = describeRepairs(filed.rest)
+
     revalidatePath('/cases')
-    return { ok: true, created: created.length, skipped: skippedTitles.length, mocked }
+    return {
+      ok: true,
+      created: created.length,
+      skipped: skippedTitles.length,
+      mocked,
+      ...(notice === null ? {} : { notice }),
+    }
   } catch (error) {
     console.error('[cases] suggestion failed', serialiseError(error))
     return {

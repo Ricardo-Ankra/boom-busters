@@ -1,4 +1,4 @@
-import { listCases } from '@boom-busters/db'
+import { listCaseNotices, listCases } from '@boom-busters/db'
 import type { CaseSort } from '@boom-busters/db'
 import { CaseLibrary } from './case-library'
 import { db } from '@/lib/db'
@@ -28,5 +28,12 @@ export default async function CasesPage({
   const { sort } = await searchParams
   const active = readSort(sort)
 
-  return <CaseLibrary cases={await listCases(db, { sort: active })} sort={active} />
+  const cases = await listCases(db, { sort: active })
+  // Each case's notices (decision 293): what a suggestion's repair trimmed, on its row.
+  const notices = await listCaseNotices(
+    db,
+    cases.map((item) => item.id),
+  )
+
+  return <CaseLibrary cases={cases} sort={active} notices={notices} />
 }
