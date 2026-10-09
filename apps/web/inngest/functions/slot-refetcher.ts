@@ -12,7 +12,7 @@ import { db } from '@/lib/db'
 import { requireVisualKeys, resolveSlotBrief } from '@/lib/visual-assets'
 import { inngest } from '../client'
 import { events } from '../events'
-import { budgetGateData, markSideJobFailed, type GateContext } from '../lib/gates'
+import { budgetGateData, markSideJobFailed, slotSubject, type GateContext } from '../lib/gates'
 import { releaseFailedSlotJob } from '../lib/jobs'
 
 /**
@@ -57,6 +57,7 @@ export const slotRefetcher = inngest.createFunction(
         { inngestRunId: '', functionId: FUNCTION_ID, projectId },
         'The slot re-fetch failed',
         serialiseError(event.data.error),
+        slotSubject(event.data.event.data['slotId']),
       )
     },
     triggers: [events.visualsRefetchRequested],
@@ -117,7 +118,12 @@ export const slotRefetcher = inngest.createFunction(
 
       if ('overBudget' in outcome && outcome.overBudget) {
         await step.run('refetch-over-budget', () =>
-          markSideJobFailed(ctx, 'The slot re-fetch stopped', outcome.overBudget),
+          markSideJobFailed(
+            ctx,
+            'The slot re-fetch stopped',
+            outcome.overBudget,
+            slotSubject(slotId),
+          ),
         )
         return { projectId, slotId, outcome: 'over-budget' as const }
       }

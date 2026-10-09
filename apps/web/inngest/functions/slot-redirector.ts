@@ -29,7 +29,7 @@ import { callLlm } from '@/lib/llm'
 import { requireVisualKeys, resolveSlotBrief } from '@/lib/visual-assets'
 import { inngest } from '../client'
 import { events } from '../events'
-import { budgetGateData, markSideJobFailed, type GateContext } from '../lib/gates'
+import { budgetGateData, markSideJobFailed, slotSubject, type GateContext } from '../lib/gates'
 import { releaseFailedSlotJob } from '../lib/jobs'
 
 /**
@@ -66,6 +66,7 @@ export const slotRedirector = inngest.createFunction(
         { inngestRunId: '', functionId: FUNCTION_ID, projectId },
         'The redirect failed',
         serialiseError(event.data.error),
+        slotSubject(event.data.event.data['slotId']),
       )
     },
     triggers: [events.visualsRedirectRequested],
@@ -129,7 +130,7 @@ export const slotRedirector = inngest.createFunction(
       if (!redirected.ok) {
         if ('gate' in redirected) {
           await step.run('redirect-over-budget', () =>
-            markSideJobFailed(ctx, 'The redirect stopped', redirected.gate),
+            markSideJobFailed(ctx, 'The redirect stopped', redirected.gate, slotSubject(slotId)),
           )
           return { projectId, slotId, outcome: 'over-budget' as const }
         }
@@ -177,7 +178,12 @@ export const slotRedirector = inngest.createFunction(
 
         if ('overBudget' in outcome && outcome.overBudget) {
           await step.run('resolve-over-budget', () =>
-            markSideJobFailed(ctx, 'The redirected slot could not be resolved', outcome.overBudget),
+            markSideJobFailed(
+              ctx,
+              'The redirected slot could not be resolved',
+              outcome.overBudget,
+              slotSubject(slotId),
+            ),
           )
           return { projectId, slotId, outcome: 'over-budget' as const }
         }

@@ -8,7 +8,14 @@ import {
   ValidationError,
 } from '@boom-busters/schemas'
 import { NonRetriableError } from 'inngest'
-import { ANSWER_CUT_OFF, EMPTY_ANSWER, answerOrStop, callForAnswer, callForText } from './answer'
+import {
+  ANSWER_CUT_OFF,
+  AnswerStopped,
+  EMPTY_ANSWER,
+  answerOrStop,
+  callForAnswer,
+  callForText,
+} from './answer'
 
 const request: LLMTaskRequest = {
   task: 'direction',
@@ -199,12 +206,30 @@ describe('answerOrStop (decision 292)', () => {
   })
 
   it('throws a stop Inngest will not retry, naming what stopped and why', () => {
-    expect(() =>
+    const stop = () =>
+      answerOrStop({ ok: false, issue: 'bad answer', calls: 2 }, 'The outline could not be drafted')
+    expect(stop).toThrow(NonRetriableError)
+    expect(stop).toThrow('The outline could not be drafted: bad answer')
+  })
+
+  it('keeps the bare reason for a caller that words the stop its own way (decision 293)', () => {
+    let stopped: unknown
+    try {
       answerOrStop(
-        { ok: false, issue: 'bad answer', calls: 2 },
-        'The outline could not be drafted',
-      ),
-    ).toThrow(new NonRetriableError('The outline could not be drafted: bad answer'))
+        { ok: false, issue: ANSWER_CUT_OFF, calls: 2 },
+        "The director's book could not be drafted",
+      )
+    } catch (error) {
+      stopped = error
+    }
+    expect(stopped).toBeInstanceOf(AnswerStopped)
+    expect(stopped).toBeInstanceOf(NonRetriableError)
+    expect((stopped as AnswerStopped).issue).toBe(ANSWER_CUT_OFF)
+    expect((stopped as AnswerStopped).message).toBe(
+      "The director's book could not be drafted: the answer was cut off at its length limit",
+    )
+    // Inngest also recognises a stop by this name.
+    expect((stopped as AnswerStopped).name).toBe('NonRetriableError')
   })
 })
 

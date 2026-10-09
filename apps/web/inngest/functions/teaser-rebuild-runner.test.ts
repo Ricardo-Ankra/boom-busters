@@ -23,6 +23,7 @@ import { TEASER_CHAPTER_ID } from '@boom-busters/timeline'
 import { InngestTestEngine } from '@inngest/test'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/lib/db'
+import type * as Notices from '@/lib/notices'
 import { forgetRunRows } from '../middleware/run-mirror'
 import { teaserRebuildRunner } from './teaser-rebuild-runner'
 
@@ -44,6 +45,13 @@ vi.mock('@/lib/storage', () => ({
 
 const notify = vi.hoisted(() => vi.fn())
 vi.mock('@/lib/notify', () => ({ notify }))
+
+// The stop is asserted, not stored; recording an answer's repairs stays real.
+const recordStop = vi.hoisted(() => vi.fn())
+vi.mock('@/lib/notices', async (importOriginal) => ({
+  ...(await importOriginal<typeof Notices>()),
+  recordStop,
+}))
 
 const describeDb = requireTestDatabase() ? describe : describe.skip
 
@@ -211,6 +219,12 @@ describeDb('teaser-rebuild-runner', () => {
     expect(result).toMatchObject({ outcome: 'skipped' })
     expect(notify).toHaveBeenCalledWith(
       expect.objectContaining({ kind: 'run-failed', title: expect.stringContaining('teaser') }),
+    )
+    // And says so on the Teaser card (decision 293): production sends no email.
+    expect(recordStop).toHaveBeenCalledWith(
+      { projectId: FIXTURE_PROJECT_ID, subject: 'teaser', subjectId: null },
+      'stopped',
+      expect.stringMatching(/^Voicing stopped mid-way: /),
     )
     expect((await getProject(db, FIXTURE_PROJECT_ID))?.stageStatus).toBe(before)
     // The old cut is kept: a failed rebuild must not leave a half-teaser.

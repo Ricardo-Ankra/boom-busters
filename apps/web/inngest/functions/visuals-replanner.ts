@@ -23,6 +23,7 @@ import {
   SlotDraftStateSchema,
 } from '@boom-busters/schemas'
 import { NonRetriableError } from 'inngest'
+import { AnswerStopped } from '@/lib/answer'
 import { db } from '@/lib/db'
 import { notify } from '@/lib/notify'
 import { inngest } from '../client'
@@ -53,6 +54,11 @@ import { timedParagraphs } from '../lib/shot-list'
  */
 
 const FUNCTION_ID = 'visuals-replanner'
+
+/** A stopped redraft as the Direction card says it (spec 3.3): the book on screen stays. */
+function bookKept(reason: string): string {
+  return `${reason.replace(/[.s]+$/, '')}. The book you had is kept.`
+}
 
 export const visualsReplanner = inngest.createFunction(
   {
@@ -109,22 +115,31 @@ export const visualsReplanner = inngest.createFunction(
               return { ok: false as const, gate: budgetGateData(error) }
             }
             // Two answers refused or cut off (decision 292): the stored book
-            // stays, and the plan screen says why, with no blind retry.
+            // stays, and the Direction card says why (decision 293), in the
+            // answer's own words rather than the first draft's stage label.
             if (error instanceof NonRetriableError) {
-              return { ok: false as const, stopped: error.message }
+              return {
+                ok: false as const,
+                stopped: error instanceof AnswerStopped ? error.issue : error.message,
+              }
             }
             throw error
           }
         })
         if (!drafted.ok && 'gate' in drafted) {
           await step.run('redraft-over-budget', () =>
-            markSideJobFailed(ctx, 'The redraft stopped', drafted.gate),
+            markSideJobFailed(ctx, 'The redraft stopped', drafted.gate, { subject: 'direction' }),
           )
           return { projectId, op, outcome: 'over-budget' as const }
         }
         if (!drafted.ok) {
           await step.run('redraft-stopped', () =>
-            markSideJobFailed(ctx, 'The redraft stopped', { message: drafted.stopped }),
+            markSideJobFailed(
+              ctx,
+              'The redraft stopped',
+              { message: bookKept(drafted.stopped) },
+              { subject: 'direction' },
+            ),
           )
           return { projectId, op, outcome: 'redraft-stopped' as const }
         }

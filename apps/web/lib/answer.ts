@@ -182,11 +182,26 @@ export function callForText(input: {
 }
 
 /**
+ * The stop `answerOrStop` throws: a `NonRetriableError` naming what stopped
+ * and why, that also keeps the bare reason, so a caller that words the stop
+ * for a card of its own (the redraft, decision 293) need not unpick the
+ * message. Its `name` stays `NonRetriableError`, which Inngest also reads.
+ */
+export class AnswerStopped extends NonRetriableError {
+  readonly issue: string
+
+  constructor(what: string, issue: string) {
+    super(`${what}: ${issue}`)
+    this.issue = issue
+  }
+}
+
+/**
  * The value, or a stop Inngest will not retry: the reason reaches the stage's
  * failure card through the function's `onFailure`, and no blind re-run buys
  * the same answer again.
  */
 export function answerOrStop<T>(answer: Answer<T>, what: string): T {
   if (answer.ok) return answer.value
-  throw new NonRetriableError(`${what}: ${answer.issue}`)
+  throw new AnswerStopped(what, answer.issue)
 }

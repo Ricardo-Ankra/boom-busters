@@ -35,7 +35,7 @@ import { callLlm } from '@/lib/llm'
 import { requireVisualKeys, resolveSlotBrief } from '@/lib/visual-assets'
 import { inngest } from '../client'
 import { events } from '../events'
-import { budgetGateData, markSideJobFailed, type GateContext } from '../lib/gates'
+import { budgetGateData, markSideJobFailed, slotSubject, type GateContext } from '../lib/gates'
 
 /**
  * slot-rebriefer (decision 258). "Draft a different brief": the owner has
@@ -116,6 +116,7 @@ export const slotRebriefer = inngest.createFunction(
         { inngestRunId: '', functionId: FUNCTION_ID, projectId },
         'The re-brief failed',
         serialiseError(event.data.error),
+        slotSubject(slotId),
       )
     },
     triggers: [events.visualsRebriefRequested],
@@ -275,7 +276,7 @@ export const slotRebriefer = inngest.createFunction(
             state: 'rebrief-refused',
             reason: String(drafted.gate['message'] ?? 'Over budget'),
           })
-          await markSideJobFailed(ctx, 'The re-brief stopped', drafted.gate)
+          await markSideJobFailed(ctx, 'The re-brief stopped', drafted.gate, slotSubject(slotId))
         })
         return { projectId, slotId, outcome: 'over-budget' as const }
       }
@@ -320,7 +321,12 @@ export const slotRebriefer = inngest.createFunction(
 
       if ('overBudget' in outcome && outcome.overBudget) {
         await step.run('resolve-over-budget', () =>
-          markSideJobFailed(ctx, 'The re-briefed slot could not be resolved', outcome.overBudget),
+          markSideJobFailed(
+            ctx,
+            'The re-briefed slot could not be resolved',
+            outcome.overBudget,
+            slotSubject(slotId),
+          ),
         )
         return { projectId, slotId, outcome: 'over-budget' as const }
       }

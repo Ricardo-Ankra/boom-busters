@@ -17,6 +17,7 @@ import {
   seed,
   setCastPhotos,
   setProjectDirection,
+  setProjectStage,
   setVisualsJob,
   setVisualsPhase,
   shotSlots,
@@ -27,6 +28,7 @@ import {
 import { mockDirectorsBook } from '@boom-busters/providers'
 import { newId } from '@boom-busters/schemas'
 import type { ShotBrief } from '@boom-busters/schemas'
+import type * as Notices from '@/lib/notices'
 import { InngestTestEngine } from '@inngest/test'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/lib/db'
@@ -44,6 +46,13 @@ import { visualsReplanner } from './visuals-replanner'
 vi.mock('@/lib/notify', () => ({ notify: vi.fn() }))
 const callLlm = vi.hoisted(() => vi.fn())
 vi.mock('@/lib/llm', () => ({ callLlm }))
+
+// The stop is asserted, not stored; recording an answer's repairs stays real.
+const recordStop = vi.hoisted(() => vi.fn())
+vi.mock('@/lib/notices', async (importOriginal) => ({
+  ...(await importOriginal<typeof Notices>()),
+  recordStop,
+}))
 
 const describeDb = requireTestDatabase() ? describe : describe.skip
 
@@ -206,6 +215,37 @@ describeDb('visuals-replanner (mock mode)', () => {
     const { result } = await engine.execute({ events: replanEvent('direction') })
     expect(result).toMatchObject({ outcome: 'redraft-stopped' })
     expect(callLlm).toHaveBeenCalledTimes(2)
+    expect((await getProject(db, FIXTURE_PROJECT_ID))?.direction).toMatchObject({
+      visualThesis: 'owner edit',
+    })
+  })
+
+  it('op direction: a redraft cut off twice says why on the Direction card, in the spec words (decision 293)', async () => {
+    vi.stubEnv('MOCK_PROVIDERS', '')
+    await setProjectStage(db, FIXTURE_PROJECT_ID, {
+      stage: 'visuals',
+      stageStatus: 'awaiting_review',
+    })
+    recordStop.mockClear()
+    callLlm.mockReset()
+    callLlm.mockResolvedValue({ text: '{"visualThesis": "Half a b', truncated: true })
+
+    const { result } = await engine.execute({ events: replanEvent('direction') })
+
+    expect(result).toMatchObject({ outcome: 'redraft-stopped' })
+    expect(callLlm).toHaveBeenCalledTimes(2)
+    expect(callLlm.mock.calls[1]![1]).toMatchObject({ purpose: 'retry: cut off' })
+    expect(recordStop).toHaveBeenCalledWith(
+      { projectId: FIXTURE_PROJECT_ID, subject: 'direction', subjectId: null },
+      'stopped',
+      'The redraft stopped: the answer was cut off at its length limit. The book you had is kept.',
+    )
+    expect(vi.mocked(notify)).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: 'The redraft stopped',
+        body: 'the answer was cut off at its length limit. The book you had is kept.',
+      }),
+    )
     expect((await getProject(db, FIXTURE_PROJECT_ID))?.direction).toMatchObject({
       visualThesis: 'owner edit',
     })

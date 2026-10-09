@@ -32,7 +32,7 @@ import { callLlm } from '@/lib/llm'
 import { requireVisualKeys, resolveSlotBrief } from '@/lib/visual-assets'
 import { inngest } from '../client'
 import { events } from '../events'
-import { budgetGateData, markSideJobFailed, type GateContext } from '../lib/gates'
+import { budgetGateData, markSideJobFailed, slotSubject, type GateContext } from '../lib/gates'
 
 /**
  * slot-retyper (staged-visuals design, 2026-08-26).
@@ -103,6 +103,7 @@ export const slotRetyper = inngest.createFunction(
         { inngestRunId: '', functionId: FUNCTION_ID, projectId },
         'The re-type failed',
         serialiseError(event.data.error),
+        slotSubject(slotId),
       )
     },
     triggers: [events.visualsRetypeRequested],
@@ -225,7 +226,7 @@ export const slotRetyper = inngest.createFunction(
           target: targetType,
           reason: String(converted.gate['message'] ?? 'Over budget'),
         })
-        await markSideJobFailed(ctx, 'The re-type stopped', converted.gate)
+        await markSideJobFailed(ctx, 'The re-type stopped', converted.gate, slotSubject(slotId))
       })
       return { projectId, slotId, outcome: 'over-budget' as const }
     }
@@ -286,7 +287,12 @@ export const slotRetyper = inngest.createFunction(
       })
       if (!designed.ok) {
         await step.run('design-over-budget', () =>
-          markSideJobFailed(ctx, 'The graphic could not be designed', designed.gate),
+          markSideJobFailed(
+            ctx,
+            'The graphic could not be designed',
+            designed.gate,
+            slotSubject(slotId),
+          ),
         )
         return { projectId, slotId, outcome: 'over-budget' as const }
       }
@@ -325,7 +331,12 @@ export const slotRetyper = inngest.createFunction(
 
       if ('overBudget' in outcome && outcome.overBudget) {
         await step.run('resolve-over-budget', () =>
-          markSideJobFailed(ctx, 'The re-typed slot could not be resolved', outcome.overBudget),
+          markSideJobFailed(
+            ctx,
+            'The re-typed slot could not be resolved',
+            outcome.overBudget,
+            slotSubject(slotId),
+          ),
         )
         return { projectId, slotId, outcome: 'over-budget' as const }
       }

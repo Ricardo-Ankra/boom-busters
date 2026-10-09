@@ -11,6 +11,7 @@ import {
   retypeShotSlot,
   saveChapter,
   seed,
+  setProjectStage,
   setSlotRetype,
   setVisualsPhase,
   shotSlots,
@@ -20,6 +21,7 @@ import { BudgetExceededError, type ShotBrief } from '@boom-busters/schemas'
 import { InngestTestEngine } from '@inngest/test'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/lib/db'
+import type * as Notices from '@/lib/notices'
 import { forgetRunRows } from '../middleware/run-mirror'
 import { slotRetyper } from './slot-retyper'
 
@@ -33,6 +35,13 @@ import { slotRetyper } from './slot-retyper'
 const notify = vi.fn()
 vi.mock('@/lib/notify', () => ({
   notify: (...args: unknown[]) => notify(...args),
+}))
+
+// The stop is asserted, not stored; recording an answer's repairs stays real.
+const recordStop = vi.hoisted(() => vi.fn())
+vi.mock('@/lib/notices', async (importOriginal) => ({
+  ...(await importOriginal<typeof Notices>()),
+  recordStop,
 }))
 
 const describeDb = requireTestDatabase() ? describe : describe.skip
@@ -247,6 +256,36 @@ describeDb('slot-retyper (mock mode)', () => {
       expect(slot?.brief).not.toHaveProperty('scene')
       // The drafting marker goes with the budget stop too (final review I4).
       expect(slot?.retype).toBeNull()
+    } finally {
+      broke.mockRestore()
+    }
+  })
+
+  it('says why on the slot card when a parked plan runs out of budget designing a retyped graphic (decision 293)', async () => {
+    await setProjectStage(db, FIXTURE_PROJECT_ID, {
+      stage: 'visuals',
+      stageStatus: 'awaiting_review',
+    })
+    const design = await import('@/lib/graphic-design')
+    const broke = vi.spyOn(design, 'designGraphic').mockRejectedValueOnce(
+      new BudgetExceededError({
+        provider: 'anthropic',
+        operation: 'llm.graphics',
+        budgetUsd: 5,
+        monthSpendUsd: 5,
+        estimateUsd: 0.05,
+      }),
+    )
+    try {
+      const { result } = await engine.execute({ events: retypeEvent(slotId, 'graphic') })
+      expect(result).toMatchObject({ outcome: 'over-budget' })
+      expect(recordStop).toHaveBeenCalledWith(
+        { projectId: FIXTURE_PROJECT_ID, subject: 'slot', subjectId: slotId },
+        'stopped',
+        expect.stringMatching(
+          /^The graphic could not be designed: The monthly spend ceiling would be crossed by anthropic llm.graphics/,
+        ),
+      )
     } finally {
       broke.mockRestore()
     }
