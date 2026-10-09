@@ -113,6 +113,7 @@ export async function markShortsStep(
     marked = await markShortsWith(completeForProject(projectId), input)
   } catch (error) {
     if (error instanceof BudgetExceededError) return { ok: false, gate: budgetGateData(error) }
+    console.error('[script-runner] Shorts marking failed', serialiseError(error))
     const reason =
       error instanceof NonRetriableError
         ? stopReason(error.message)
