@@ -283,7 +283,7 @@ describeDb('slot-retyper (mock mode)', () => {
         { projectId: FIXTURE_PROJECT_ID, subject: 'slot', subjectId: slotId },
         'stopped',
         expect.stringMatching(
-          /^The graphic could not be designed: The monthly spend ceiling would be crossed by anthropic llm.graphics/,
+          /^The graphic could not be designed: The monthly spend ceiling would be crossed by anthropic llm\.graphics/,
         ),
       )
     } finally {

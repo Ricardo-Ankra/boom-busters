@@ -34,7 +34,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/lib/db'
 import { notify } from '@/lib/notify'
 import { forgetRunRows } from '../middleware/run-mirror'
-import { visualsReplanner } from './visuals-replanner'
+import { bookKept, visualsReplanner } from './visuals-replanner'
 
 /**
  * The visuals-replanner against the real database, in mock-provider mode
@@ -53,6 +53,20 @@ vi.mock('@/lib/notices', async (importOriginal) => ({
   ...(await importOriginal<typeof Notices>()),
   recordStop,
 }))
+
+describe('bookKept (decision 293)', () => {
+  it('keeps a reason that ends in the letter s whole', () => {
+    expect(bookKept('the plan names no shots')).toBe(
+      'the plan names no shots. The book you had is kept.',
+    )
+  })
+
+  it('drops a trailing full stop and spaces before adding its own', () => {
+    expect(bookKept('the answer was cut off. ')).toBe(
+      'the answer was cut off. The book you had is kept.',
+    )
+  })
+})
 
 const describeDb = requireTestDatabase() ? describe : describe.skip
 

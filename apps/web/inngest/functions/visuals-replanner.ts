@@ -56,8 +56,8 @@ import { timedParagraphs } from '../lib/shot-list'
 const FUNCTION_ID = 'visuals-replanner'
 
 /** A stopped redraft as the Direction card says it (spec 3.3): the book on screen stays. */
-function bookKept(reason: string): string {
-  return `${reason.replace(/[.s]+$/, '')}. The book you had is kept.`
+export function bookKept(reason: string): string {
+  return `${reason.replace(/[.\s]+$/, '')}. The book you had is kept.`
 }
 
 export const visualsReplanner = inngest.createFunction(
