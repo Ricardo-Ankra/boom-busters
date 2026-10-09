@@ -36,7 +36,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/lib/db'
 import { notify } from '@/lib/notify'
 import { forgetRunRows } from '../middleware/run-mirror'
-import { bookKept, visualsReplanner } from './visuals-replanner'
+import { bookKept, replannerFailure, visualsReplanner } from './visuals-replanner'
 
 /**
  * The visuals-replanner against the real database, in mock-provider mode
@@ -55,6 +55,20 @@ vi.mock('@/lib/notices', async (importOriginal) => ({
   ...(await importOriginal<typeof Notices>()),
   recordStop,
 }))
+
+describe('replannerFailure (decision 293)', () => {
+  it('puts a dead redraft on the Direction card', () => {
+    expect(replannerFailure('direction')).toEqual({
+      title: 'The redraft failed',
+      subject: { subject: 'direction' },
+    })
+  })
+
+  it('keeps the fix and re-plan titles on the project', () => {
+    expect(replannerFailure('repair')).toEqual({ title: 'The fix failed' })
+    expect(replannerFailure('shots')).toEqual({ title: 'The re-plan failed' })
+  })
+})
 
 describe('bookKept (decision 293)', () => {
   it('keeps a reason that ends in the letter s whole', () => {

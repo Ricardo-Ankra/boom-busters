@@ -60,6 +60,19 @@ export function bookKept(reason: string): string {
   return `${reason.replace(/[.\s]+$/, '')}. The book you had is kept.`
 }
 
+/**
+ * What a replanner run that died past its retries says, and where. The
+ * redraft's words go on the Direction card; the fix and the re-plan are the
+ * project's own. Each names its own job, so one does not read as another.
+ */
+export function replannerFailure(op: unknown): {
+  title: string
+  subject?: { subject: 'direction' }
+} {
+  if (op === 'direction') return { title: 'The redraft failed', subject: { subject: 'direction' } }
+  return { title: op === 'repair' ? 'The fix failed' : 'The re-plan failed' }
+}
+
 export const visualsReplanner = inngest.createFunction(
   {
     id: FUNCTION_ID,
@@ -81,10 +94,12 @@ export const visualsReplanner = inngest.createFunction(
       // Words, not a stage failure: the plan park stays open (decision 234).
       // The Fix button's job names itself, so a failed fix does not read as a
       // failed re-plan.
+      const { title, subject } = replannerFailure(event.data.event.data['op'])
       await markSideJobFailed(
         { inngestRunId: '', functionId: FUNCTION_ID, projectId },
-        event.data.event.data['op'] === 'repair' ? 'The fix failed' : 'The re-plan failed',
+        title,
         serialiseError(event.data.error),
+        subject,
       )
     },
     triggers: [events.visualsReplanRequested],
