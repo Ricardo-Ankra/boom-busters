@@ -8,8 +8,10 @@ import { Button } from '@/components/ui/button'
 
 /**
  * The notices on one card (decision 293): what an answer's repair trimmed or
- * dropped, or why a task stopped, each with its own Dismiss button. Styled as
- * the slot card's re-type box, so every card says these things the same way.
+ * dropped, or why a task stopped, each with its own "Dismiss note" button.
+ * Named for what it dismisses (decision 294): a case suggestion's row and a
+ * slot's refusal box carry their own Dismiss beside it. Styled as the slot
+ * card's re-type box, so every card says these things the same way.
  * With nothing to say it renders nothing and calls no hook, so a card test
  * with no notices needs no router.
  */
@@ -52,7 +54,7 @@ function NoticeList({ notices }: { notices: readonly Notice[] }) {
             disabled={pending !== null}
             onClick={() => void dismiss(notice.id)}
           >
-            Dismiss
+            Dismiss note
           </Button>
           {failed?.id === notice.id ? (
             <p role="alert" className="w-full text-[13px] text-[var(--color-danger)]">

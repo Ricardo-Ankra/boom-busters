@@ -189,42 +189,44 @@ function SuggestionRow({
   run: Run
   notices: readonly Notice[]
 }) {
-  const [busy, setBusy] = React.useState<'accept' | 'dismiss' | null>(null)
+  const [accepting, setAccepting] = React.useState(false)
 
   return (
     <div className="flex flex-wrap items-center gap-4 p-4">
       <CaseFacts item={item} />
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <Button
           variant="primary"
-          busy={busy === 'accept'}
+          busy={accepting}
           onClick={async () => {
-            setBusy('accept')
+            setAccepting(true)
             try {
               await run(() => acceptCase(item.id), 'Accepted — it is in your backlog')
             } finally {
-              setBusy(null)
+              setAccepting(false)
             }
           }}
         >
           <Check aria-hidden />
           Accept
         </Button>
-        <Button
-          variant="outline"
-          busy={busy === 'dismiss'}
-          onClick={async () => {
-            setBusy('dismiss')
-            try {
-              await run(() => dismissCase(item.id), 'Dismissed')
-            } finally {
-              setBusy(null)
-            }
-          }}
-        >
-          <X aria-hidden />
-          Dismiss
-        </Button>
+        {/* Destructive, so it asks first, as the backlog's Remove does
+            (decision 294): one click used to delete the suggestion. */}
+        <ConfirmButton
+          label={
+            <>
+              <X aria-hidden />
+              Dismiss
+            </>
+          }
+          confirmLabel="Delete it"
+          consequence={
+            item.projectCount > 0
+              ? 'It has projects behind it, so it is retired rather than deleted.'
+              : 'This suggestion is deleted. Suggest cases again for new ones.'
+          }
+          onConfirm={() => run(() => dismissCase(item.id), 'Dismissed')}
+        />
       </div>
       <RowNotices notices={notices} />
     </div>

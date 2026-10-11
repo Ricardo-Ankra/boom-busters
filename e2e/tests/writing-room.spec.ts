@@ -51,7 +51,9 @@ test.describe('Case Library', () => {
       .first()
     const title = (await row.locator('p').first().innerText()).trim()
 
+    // Deleting asks first (decision 294): Dismiss arms, Delete it confirms.
     await row.getByRole('button', { name: 'Dismiss' }).click()
+    await row.getByRole('button', { name: 'Delete it' }).click()
     await expect(page.getByText('Dismissed').first()).toBeVisible()
 
     await expect(page.getByText(title, { exact: true })).toHaveCount(0)

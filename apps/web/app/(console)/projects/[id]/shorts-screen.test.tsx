@@ -568,6 +568,6 @@ describe('ShortsScreen', () => {
     expect(within(place).getByRole('status')).toHaveTextContent(
       'The teaser was skipped: the answer was cut off at its length limit',
     )
-    expect(within(place).getByRole('button', { name: 'Dismiss' })).toBeInTheDocument()
+    expect(within(place).getByRole('button', { name: 'Dismiss note' })).toBeInTheDocument()
   })
 })

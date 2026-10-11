@@ -147,7 +147,7 @@ describe('DossierReview', () => {
     expect(line).toHaveTextContent(
       "Trimmed to fit: the brief's summary. Dropped claim 37: its text ran over 1,000 characters.",
     )
-    expect(screen.getByRole('button', { name: 'Dismiss' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Dismiss note' })).toBeInTheDocument()
     // Above the document, where the owner starts reading.
     expect(
       line.compareDocumentPosition(screen.getByText('Dossier')) & Node.DOCUMENT_POSITION_FOLLOWING,
