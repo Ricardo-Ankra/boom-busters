@@ -9,10 +9,11 @@ import { db } from '@/lib/db'
  * Notices (decision 293). An answer that lands for a subject replaces that
  * subject's open notices with one line of its repairs, or with none, so a
  * clean answer retires the old note. A stop is added beside what is there:
- * the notes of the answer the owner still has stay true.
+ * the notes of the answer the owner still has stay true. A skip, where
+ * nothing was made, replaces them (decision 294).
  *
- * Both are best-effort, as `notify()` is: a notice must never fail or retry
- * the work it reports, and they run after paid work in the same step.
+ * All three are best-effort, as `notify()` is: a notice must never fail or
+ * retry the work it reports, and they run after paid work in the same step.
  */
 export async function recordRepairs(
   target: NoticeTarget,
@@ -34,6 +35,19 @@ export async function recordStop(
 ): Promise<void> {
   try {
     await addNotice(db, target, { kind, message })
+  } catch (error) {
+    console.error('[notices] could not record a notice', target, serialiseError(error))
+  }
+}
+
+/**
+ * A skip: the thing was not made at all (the Shorts stage's teaser). It
+ * replaces the subject's open notices, since nothing is left for an older
+ * note to describe, so a retry that skips again leaves one line, not two.
+ */
+export async function recordSkip(target: NoticeTarget, message: string): Promise<void> {
+  try {
+    await replaceNotices(db, target, [{ kind: 'skipped', message }])
   } catch (error) {
     console.error('[notices] could not record a notice', target, serialiseError(error))
   }

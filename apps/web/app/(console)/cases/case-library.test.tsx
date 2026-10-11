@@ -90,8 +90,19 @@ describe('CaseLibrary notices (decision 293)', () => {
     expect(actions.dismissCase).not.toHaveBeenCalled()
     expect(row).toHaveTextContent('This suggestion is deleted. Suggest cases again for new ones.')
 
-    await userEvent.click(within(row).getByRole('button', { name: 'Delete it' }))
+    await userEvent.click(within(row).getByRole('button', { name: 'Dismiss it' }))
     await waitFor(() => expect(actions.dismissCase).toHaveBeenCalledWith(WIRECARD))
+  })
+
+  it('says a suggestion with projects behind it is retired, not deleted', async () => {
+    render(<CaseLibrary cases={[kase({ projectCount: 2 })]} sort="priority" />)
+    const row = screen.getByText('Wirecard').closest('li')!
+
+    await userEvent.click(within(row).getByRole('button', { name: 'Dismiss' }))
+    expect(row).toHaveTextContent(
+      'It has projects behind it, so it is retired rather than deleted.',
+    )
+    expect(within(row).getByRole('button', { name: 'Dismiss it' })).toBeInTheDocument()
   })
 
   it('names a dropped suggestion in the success toast', async () => {

@@ -120,7 +120,13 @@ describeDb('writeTeaserScript (decision 293)', () => {
     )
   })
 
-  it('skips the teaser with the reason on its card after two refusals', async () => {
+  it('skips the teaser with the reason on its card after two refusals, in place of the last skip', async () => {
+    // A retry that skips again leaves one line, not two (decision 294).
+    await addNotice(
+      db,
+      { projectId: FIXTURE_PROJECT_ID, subject: 'teaser', subjectId: null },
+      { kind: 'skipped', message: 'The teaser was skipped: an older reason' },
+    )
     callLlm.mockResolvedValue({ text: 'no json here' })
 
     expect(await writeTeaserScript(FIXTURE_PROJECT_ID)).toEqual({
@@ -128,11 +134,12 @@ describeDb('writeTeaserScript (decision 293)', () => {
       skipped: expect.stringMatching(/^the teaser script failed: The model returned no JSON/),
     })
     expect(callLlm).toHaveBeenCalledTimes(2)
-    const [notice] = await teaserNotices()
-    expect(notice).toMatchObject({
-      kind: 'skipped',
-      message: expect.stringMatching(/^The teaser was skipped: The model returned no JSON/),
-    })
+    expect(await teaserNotices()).toEqual([
+      expect.objectContaining({
+        kind: 'skipped',
+        message: expect.stringMatching(/^The teaser was skipped: The model returned no JSON/),
+      }),
+    ])
   })
 
   it('throws a provider error for Inngest to retry, writing no notice', async () => {

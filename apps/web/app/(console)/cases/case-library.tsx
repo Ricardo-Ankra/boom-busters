@@ -219,7 +219,9 @@ function SuggestionRow({
               Dismiss
             </>
           }
-          confirmLabel="Delete it"
+          // Neutral, as the backlog's "Remove it" is: a suggestion with
+          // projects behind it is retired, not deleted.
+          confirmLabel="Dismiss it"
           consequence={
             item.projectCount > 0
               ? 'It has projects behind it, so it is retired rather than deleted.'

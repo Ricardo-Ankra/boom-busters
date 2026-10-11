@@ -85,7 +85,7 @@ export function ShortsScreen({
                 confirmLabel="Build it"
                 consequence={
                   'Your excerpts are kept exactly as curated. The run writes, voices and cuts a ' +
-                  'teaser: one script call and its narration.'
+                  'teaser, then starts its render: one script call, its narration and one render.'
                 }
               />
             </div>

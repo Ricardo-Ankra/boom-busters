@@ -7216,14 +7216,17 @@ boom-busters-broker`; merge and deploy to Vercel, then `PUT
      the teaser as a refused script does, the excerpts render, and the
      stage reaches review. A teaser skipped at voicing or at the cut said
      so only in the run result; both now leave a `skipped` notice where the
-     teaser would be, and a teaser kept as curated leaves none. A re-brief,
+     teaser would be, and a teaser kept as curated leaves none. A teaser
+     skip replaces the teaser's open notes rather than joining them
+     (`recordSkip`), the refused script's included, so a retry that skips
+     again leaves one line, not a stack. A re-brief,
      retype or graphic design stopped by the budget wrote its reason into
      the slot's own refusal or "Not designed" line and a notice beside it:
      `markSideJobFailed` now takes a `null` subject for "the card already
      says it", which sends the notification and writes no notice. A case
      suggestion row with a notice carried two buttons named Dismiss, and
      the case's one deleted the suggestion on one click: it is now the
-     inline two-step (Dismiss, then Delete it, with the consequence), and
+     inline two-step (Dismiss, then Dismiss it, with the consequence), and
      the notice's button reads "Dismiss note" on every card. The Teaser
      place also gained "Build the teaser", the stage's own re-run (which
      keeps every curated excerpt and builds only what is missing), offered

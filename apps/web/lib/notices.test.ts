@@ -5,7 +5,7 @@ const addNotice = vi.fn()
 vi.mock('@boom-busters/db', () => ({ replaceNotices, addNotice }))
 vi.mock('@/lib/db', () => ({ db: { marker: 'db' } }))
 
-const { recordRepairs, recordStop } = await import('./notices')
+const { recordRepairs, recordSkip, recordStop } = await import('./notices')
 
 const target = { projectId: 'P', subject: 'direction' as const, subjectId: null }
 
@@ -48,6 +48,25 @@ describe('recording notices (decision 293)', () => {
       message: 'The redraft stopped: the answer was cut off.',
     })
     expect(replaceNotices).not.toHaveBeenCalled()
+  })
+
+  it('replaces the notes with one line when a thing is skipped, so a retry does not stack (decision 294)', async () => {
+    await recordSkip(target, 'The teaser was skipped: its script could not be written: 529')
+    expect(replaceNotices).toHaveBeenCalledWith({ marker: 'db' }, target, [
+      { kind: 'skipped', message: 'The teaser was skipped: its script could not be written: 529' },
+    ])
+    expect(addNotice).not.toHaveBeenCalled()
+  })
+
+  it('does not fail the work when a skip cannot be recorded', async () => {
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      replaceNotices.mockRejectedValue(new Error('connection lost'))
+      await expect(recordSkip(target, 'The teaser was skipped.')).resolves.toBeUndefined()
+      expect(spy).toHaveBeenCalled()
+    } finally {
+      spy.mockRestore()
+    }
   })
 
   it('does not fail the work when the repairs cannot be recorded', async () => {

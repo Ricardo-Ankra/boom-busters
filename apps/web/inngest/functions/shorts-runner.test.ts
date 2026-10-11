@@ -1,6 +1,7 @@
 // @vitest-environment node
 
 import {
+  addNotice,
   chapters,
   FIXTURE_PROJECT_ID,
   getProject,
@@ -434,7 +435,7 @@ describeDb('shorts-runner', () => {
           { id: 'request-short-renders', handler: () => undefined },
           {
             id: 'assemble-teaser',
-            handler: () => ({ skipped: 'the teaser could not be assembled: it runs 41 s' }),
+            handler: () => ({ skipped: 'it could not be cut: it runs 41 s' }),
           },
         ],
       })
@@ -443,7 +444,7 @@ describeDb('shorts-runner', () => {
       expect(noticesFor(await listProjectNotices(db, FIXTURE_PROJECT_ID), 'teaser')).toEqual([
         expect.objectContaining({
           kind: 'skipped',
-          message: 'The teaser was skipped: the teaser could not be assembled: it runs 41 s',
+          message: 'The teaser was skipped: it could not be cut: it runs 41 s',
         }),
       ])
     },
@@ -456,11 +457,10 @@ describeDb('shorts-runner', () => {
       // When a step's last retry fails, the SDK rejects `step.run` with a
       // StepError carrying the step's error. The test engine cannot model
       // retries (a throwing mocked step reads as a success), so the context
-      // hands the runner that rejection directly.
-      const renders = vi.fn()
-      const { result } = await engine.execute({
-        events: masterReadyEvent(),
-        steps: [{ id: 'request-short-renders', handler: renders }],
+      // hands the runner that rejection directly. On the engine itself, not
+      // `execute`: the engine's first execution reads only its own options.
+      const failing = new InngestTestEngine({
+        function: shortsRunner,
         transformCtx: (raw) => {
           const ctx = mockCtx(raw)
           const run = ctx.step.run
@@ -472,6 +472,17 @@ describeDb('shorts-runner', () => {
               : (run as (...args: unknown[]) => unknown)(id, ...rest)) as typeof run
           return ctx
         },
+      })
+      // The last run's skip, which this one must replace, not sit beside.
+      await addNotice(
+        db,
+        { projectId: FIXTURE_PROJECT_ID, subject: 'teaser', subjectId: null },
+        { kind: 'skipped', message: 'The teaser was skipped: an older outage' },
+      )
+      const renders = vi.fn()
+      const { result } = await failing.execute({
+        events: masterReadyEvent(),
+        steps: [{ id: 'request-short-renders', handler: renders }],
       })
 
       expect(result).toMatchObject({

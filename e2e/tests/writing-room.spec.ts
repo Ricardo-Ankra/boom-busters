@@ -51,9 +51,10 @@ test.describe('Case Library', () => {
       .first()
     const title = (await row.locator('p').first().innerText()).trim()
 
-    // Deleting asks first (decision 294): Dismiss arms, Delete it confirms.
-    await row.getByRole('button', { name: 'Dismiss' }).click()
-    await row.getByRole('button', { name: 'Delete it' }).click()
+    // Deleting asks first (decision 294): Dismiss arms, Dismiss it confirms.
+    // Exact, so a notice's "Dismiss note" on the row can never match.
+    await row.getByRole('button', { name: 'Dismiss', exact: true }).click()
+    await row.getByRole('button', { name: 'Dismiss it', exact: true }).click()
     await expect(page.getByText('Dismissed').first()).toBeVisible()
 
     await expect(page.getByText(title, { exact: true })).toHaveCount(0)

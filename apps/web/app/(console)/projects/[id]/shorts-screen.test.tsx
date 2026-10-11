@@ -588,7 +588,7 @@ describe('ShortsScreen', () => {
     await user.click(within(place).getByRole('button', { name: 'Build the teaser' }))
     expect(restartStage).not.toHaveBeenCalled()
     expect(place).toHaveTextContent(
-      'Your excerpts are kept exactly as curated. The run writes, voices and cuts a teaser: one script call and its narration.',
+      'Your excerpts are kept exactly as curated. The run writes, voices and cuts a teaser, then starts its render: one script call, its narration and one render.',
     )
     await user.click(within(place).getByRole('button', { name: 'Build it' }))
     expect(restartStage).toHaveBeenCalledWith(PROJECT, 'shorts')
@@ -601,7 +601,9 @@ describe('ShortsScreen', () => {
     expect(within(place).getByRole('button', { name: 'Build the teaser' })).toBeInTheDocument()
   })
 
-  it('offers no build once the project has moved on or a run is live, nor with a teaser', () => {
+  // `canAdvance` false is how the page says both "moved on" and "a run is
+  // live" (project.stage === 'shorts' && !liveRun).
+  it('offers no build when the stage cannot be re-run, nor beside a teaser', () => {
     const { unmount } = render(
       <ShortsScreen
         projectId={PROJECT}

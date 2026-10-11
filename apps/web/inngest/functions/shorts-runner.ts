@@ -37,7 +37,7 @@ import { NonRetriableError } from 'inngest'
 import { db } from '@/lib/db'
 import { completeForProject } from '@/lib/answer-call'
 import { markShortsWith } from '@/lib/script-answers'
-import { recordRepairs, recordStop } from '@/lib/notices'
+import { recordRepairs, recordSkip } from '@/lib/notices'
 import { inngest } from '../client'
 import { events } from '../events'
 import { budgetGateData, markStageFailed, type GateContext } from '../lib/gates'
@@ -240,12 +240,14 @@ export const shortsRunner = inngest.createFunction(
      * fails, SKIPS with its reason rather than failing the stage: the
      * excerpts above are complete deliverables, and a re-run rebuilds the
      * teaser (synthesis is idempotency-keyed, so paragraphs already bought
-     * are re-served by the vendor, not re-billed). Every skip says why on the
-     * Teaser card's place: a refused script from its own step (decision
-     * 293), a voicing or cut skip from this runner (decision 294). A provider
-     * error on the script call is thrown, so Inngest retries the step; past
-     * the retries the teaser skips too, rather than failing a stage whose
-     * excerpts are cut and waiting to render (decision 294).
+     * are re-served by the vendor, not re-billed). Each skip this stage can
+     * reach says why on the Teaser card's place: a refused script from its
+     * own step (decision 293), a voicing or cut skip from this runner
+     * (decision 294). A skip replaces the notes before it, so a retry that
+     * skips again leaves one line. A provider error on the script call is
+     * thrown, so Inngest retries the step; past the retries the teaser skips
+     * too, rather than failing a stage whose excerpts are cut and waiting to
+     * render (decision 294).
      *
      * Re-entry keeps every EXISTING row exactly as curated, but a missing
      * teaser is additive and gets built: projects whose excerpts predate the
@@ -269,7 +271,7 @@ export const shortsRunner = inngest.createFunction(
       // outlasted them, or a key the provider rejects.
       const reason = `its script could not be written: ${stepFailure(error)}`
       await step.run('teaser-script-failed', () =>
-        recordStop(teaserTarget, 'skipped', `The teaser was skipped: ${reason}`),
+        recordSkip(teaserTarget, `The teaser was skipped: ${reason}`),
       )
       teaserScript = { ok: false, skipped: reason }
     }
@@ -355,7 +357,7 @@ export const shortsRunner = inngest.createFunction(
               return { shortId: short.id }
             } catch (error) {
               if (error instanceof ValidationError) {
-                return { skipped: `the teaser could not be assembled: ${error.message}` }
+                return { skipped: `it could not be cut: ${error.message}` }
               }
               throw error
             }
@@ -370,7 +372,7 @@ export const shortsRunner = inngest.createFunction(
       const skipped = teaserSkipped
       if (skipped) {
         await step.run('teaser-skipped', () =>
-          recordStop(teaserTarget, 'skipped', `The teaser was skipped: ${skipped}`),
+          recordSkip(teaserTarget, `The teaser was skipped: ${skipped}`),
         )
       }
     }

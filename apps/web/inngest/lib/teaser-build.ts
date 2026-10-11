@@ -17,7 +17,7 @@ import type { TeaserParagraphAudio } from '@boom-busters/timeline'
 import { callForAnswer } from '@/lib/answer'
 import { completeForProject } from '@/lib/answer-call'
 import { db } from '@/lib/db'
-import { recordRepairs, recordStop } from '@/lib/notices'
+import { recordRepairs, recordSkip } from '@/lib/notices'
 import { putObject, takeStorage } from '@/lib/storage'
 import { synthesise } from '@/lib/tts'
 import { budgetGateData } from './gates'
@@ -81,7 +81,7 @@ export async function writeTeaserScript(
       complete: completeForProject(projectId),
     })
     if (!answer.ok) {
-      if (stopped !== null) await recordStop(target, 'skipped', `${stopped}: ${answer.issue}`)
+      if (stopped !== null) await recordSkip(target, `${stopped}: ${answer.issue}`)
       return { ok: false, skipped: `the teaser script failed: ${answer.issue}` }
     }
     await recordRepairs(target, answer.repairs)
