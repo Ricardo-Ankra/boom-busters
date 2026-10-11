@@ -59,7 +59,7 @@ describe('the Shorts strip (decision 293)', () => {
       />,
     )
     expect(screen.getByText(STOPPED)).toHaveAttribute('role', 'status')
-    expect(screen.getByRole('button', { name: 'Dismiss' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Dismiss note' })).toBeInTheDocument()
     expect(screen.queryByText(/Shorts candidate/)).toBeNull()
   })
 
@@ -95,7 +95,7 @@ describe('the Shorts strip (decision 293)', () => {
         notices={[notice('01J000000000000000000000S1', 'stopped', STOPPED)]}
       />,
     )
-    await userEvent.click(screen.getByRole('button', { name: 'Dismiss' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Dismiss note' }))
     expect(dismissNoticeAction).toHaveBeenCalledWith('01J000000000000000000000S1')
   })
 })

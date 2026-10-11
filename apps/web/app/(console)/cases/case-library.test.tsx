@@ -76,9 +76,33 @@ describe('CaseLibrary notices (decision 293)', () => {
     )
     // The row has the case's own Dismiss too; the notice's sits on its line.
     const noticeLine = within(wirecard).getByRole('status').parentElement!
-    expect(within(noticeLine).getByRole('button', { name: 'Dismiss' })).toBeInTheDocument()
+    expect(within(noticeLine).getByRole('button', { name: 'Dismiss note' })).toBeInTheDocument()
     const theranos = screen.getByText('Theranos').closest('li')!
     expect(within(theranos).queryByRole('status')).not.toBeInTheDocument()
+  })
+
+  it("asks before a suggestion's Dismiss deletes it (decision 294)", async () => {
+    actions.dismissCase.mockResolvedValue({ ok: true })
+    render(<CaseLibrary cases={[kase({})]} sort="priority" notices={[trimmed]} />)
+    const row = screen.getByText('Wirecard').closest('li')!
+
+    await userEvent.click(within(row).getByRole('button', { name: 'Dismiss' }))
+    expect(actions.dismissCase).not.toHaveBeenCalled()
+    expect(row).toHaveTextContent('This suggestion is deleted. Suggest cases again for new ones.')
+
+    await userEvent.click(within(row).getByRole('button', { name: 'Dismiss it' }))
+    await waitFor(() => expect(actions.dismissCase).toHaveBeenCalledWith(WIRECARD))
+  })
+
+  it('says a suggestion with projects behind it is retired, not deleted', async () => {
+    render(<CaseLibrary cases={[kase({ projectCount: 2 })]} sort="priority" />)
+    const row = screen.getByText('Wirecard').closest('li')!
+
+    await userEvent.click(within(row).getByRole('button', { name: 'Dismiss' }))
+    expect(row).toHaveTextContent(
+      'It has projects behind it, so it is retired rather than deleted.',
+    )
+    expect(within(row).getByRole('button', { name: 'Dismiss it' })).toBeInTheDocument()
   })
 
   it('names a dropped suggestion in the success toast', async () => {

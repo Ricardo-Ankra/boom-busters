@@ -1,6 +1,7 @@
 // @vitest-environment node
 
 import {
+  addNotice,
   chapters,
   FIXTURE_PROJECT_ID,
   getProject,
@@ -22,7 +23,8 @@ import {
 } from '@boom-busters/db'
 import { DEFAULT_SETTINGS, noticesFor, resolveBrandKit } from '@boom-busters/schemas'
 import type { Timeline } from '@boom-busters/schemas'
-import { InngestTestEngine } from '@inngest/test'
+import { InngestTestEngine, mockCtx } from '@inngest/test'
+import { StepError } from 'inngest'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/lib/db'
 import { forgetRunRows } from '../middleware/run-mirror'
@@ -256,6 +258,8 @@ describeDb('shorts-runner', () => {
         /^skipped: the teaser already exists/,
       )
       expect(await listShorts(db, FIXTURE_PROJECT_ID)).toHaveLength(2)
+      // A teaser kept as curated is not a skip worth a line (decision 294).
+      expect(noticesFor(await listProjectNotices(db, FIXTURE_PROJECT_ID), 'teaser')).toEqual([])
     },
   )
 
@@ -396,6 +400,104 @@ describeDb('shorts-runner', () => {
       expect(result).toMatchObject({ outcome: 'shorts-created', created: 1 })
       expect((result as { teaser: string | null }).teaser).toMatch(/^skipped:/)
       expect(await listShorts(db, FIXTURE_PROJECT_ID)).toHaveLength(1)
+      expect((await getProject(db, FIXTURE_PROJECT_ID))?.stageStatus).toBe('awaiting_review')
+      // Said where the teaser would be, not only in the run result (decision 294).
+      const teaser = noticesFor(await listProjectNotices(db, FIXTURE_PROJECT_ID), 'teaser')
+      expect(teaser).toEqual([
+        expect.objectContaining({
+          kind: 'skipped',
+          message: expect.stringMatching(
+            /^The teaser was skipped: beat 1 could not be synthesised: /,
+          ),
+        }),
+      ])
+    },
+  )
+
+  it(
+    'says why on the Teaser place when the cut is skipped (decision 294)',
+    { timeout: 120_000 },
+    async () => {
+      await updateSettings(db, {
+        tts: { provider: 'elevenlabs', voiceId: 'mock-narrator' },
+        budgets: { monthlyCeilingUsd: 100, approvedOverage: null },
+      })
+      await setCredential(
+        db,
+        'elevenlabs',
+        'mock-key-for-tests',
+        process.env['SECRETS_ENCRYPTION_KEY']!,
+      )
+
+      const { result } = await engine.execute({
+        events: masterReadyEvent(),
+        steps: [
+          { id: 'request-short-renders', handler: () => undefined },
+          {
+            id: 'assemble-teaser',
+            handler: () => ({ skipped: 'it could not be cut: it runs 41 s' }),
+          },
+        ],
+      })
+
+      expect(result).toMatchObject({ outcome: 'shorts-created', created: 1 })
+      expect(noticesFor(await listProjectNotices(db, FIXTURE_PROJECT_ID), 'teaser')).toEqual([
+        expect.objectContaining({
+          kind: 'skipped',
+          message: 'The teaser was skipped: it could not be cut: it runs 41 s',
+        }),
+      ])
+    },
+  )
+
+  it(
+    'skips the teaser when its script step fails past its retries, and still renders the excerpts (decision 294)',
+    { timeout: 120_000 },
+    async () => {
+      // When a step's last retry fails, the SDK rejects `step.run` with a
+      // StepError carrying the step's error. The test engine cannot model
+      // retries (a throwing mocked step reads as a success), so the context
+      // hands the runner that rejection directly. On the engine itself, not
+      // `execute`: the engine's first execution reads only its own options.
+      const failing = new InngestTestEngine({
+        function: shortsRunner,
+        transformCtx: (raw) => {
+          const ctx = mockCtx(raw)
+          const run = ctx.step.run
+          ctx.step.run = ((id: string, ...rest: unknown[]) =>
+            id === 'write-teaser'
+              ? Promise.reject(
+                  new StepError(id, { name: 'Error', message: 'anthropic is overloaded (529).' }),
+                )
+              : (run as (...args: unknown[]) => unknown)(id, ...rest)) as typeof run
+          return ctx
+        },
+      })
+      // The last run's skip, which this one must replace, not sit beside.
+      await addNotice(
+        db,
+        { projectId: FIXTURE_PROJECT_ID, subject: 'teaser', subjectId: null },
+        { kind: 'skipped', message: 'The teaser was skipped: an older outage' },
+      )
+      const renders = vi.fn()
+      const { result } = await failing.execute({
+        events: masterReadyEvent(),
+        steps: [{ id: 'request-short-renders', handler: renders }],
+      })
+
+      expect(result).toMatchObject({
+        outcome: 'shorts-created',
+        created: 1,
+        teaser: 'skipped: its script could not be written: anthropic is overloaded (529)',
+      })
+      expect(renders).toHaveBeenCalledTimes(1)
+      expect(noticesFor(await listProjectNotices(db, FIXTURE_PROJECT_ID), 'teaser')).toEqual([
+        expect.objectContaining({
+          kind: 'skipped',
+          message:
+            'The teaser was skipped: its script could not be written: anthropic is overloaded (529)',
+        }),
+      ])
       expect((await getProject(db, FIXTURE_PROJECT_ID))?.stageStatus).toBe('awaiting_review')
     },
   )

@@ -278,12 +278,13 @@ export const slotRebriefer = inngest.createFunction(
       if ('gate' in drafted && drafted.gate) {
         await step.run('rebrief-over-budget', async () => {
           // The card carries it the same way a model refusal does, and the
-          // failure stays off the parked stage (decision 234).
+          // failure stays off the parked stage (decision 234). That line is
+          // the card's say, so no notice repeats it (decision 294).
           await setSlotRetype(db, slotId, {
             state: 'rebrief-refused',
             reason: String(drafted.gate['message'] ?? 'Over budget'),
           })
-          await markSideJobFailed(ctx, 'The re-brief stopped', drafted.gate, slotSubject(slotId))
+          await markSideJobFailed(ctx, 'The re-brief stopped', drafted.gate, null)
         })
         return { projectId, slotId, outcome: 'over-budget' as const }
       }

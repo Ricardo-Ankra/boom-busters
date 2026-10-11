@@ -173,7 +173,7 @@ describe('DirectionCard notices (decision 293)', () => {
     expect(screen.getByRole('status')).toHaveTextContent(
       "Trimmed to fit: era rule 1; Emad Mostaque's identity. Kept the first 12 never-shows.",
     )
-    expect(screen.getByRole('button', { name: 'Dismiss' })).toBeVisible()
+    expect(screen.getByRole('button', { name: 'Dismiss note' })).toBeVisible()
     // The book's own buttons stay beside it.
     expect(screen.getByRole('button', { name: 'Save direction' })).toBeVisible()
   })
@@ -202,6 +202,6 @@ describe('DirectionCard notices (decision 293)', () => {
   it('shows no notice line without notices', () => {
     render(<DirectionCard projectId={PROJECT} direction={book} act={act} />)
     expect(screen.queryByRole('status')).toBeNull()
-    expect(screen.queryByRole('button', { name: 'Dismiss' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Dismiss note' })).toBeNull()
   })
 })

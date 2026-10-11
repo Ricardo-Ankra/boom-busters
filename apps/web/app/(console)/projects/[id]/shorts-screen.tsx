@@ -56,16 +56,40 @@ export function ShortsScreen({
   const [studioId, setStudioId] = React.useState<string | null>(null)
   const studioShort = shorts.find((short) => short.id === studioId) ?? null
   const hasTeaser = shorts.some((short) => short.kind === 'teaser')
+  // The stage's own re-run builds only what is missing (decision 225), so a
+  // missing teaser is built from where it would be, on the same terms as the
+  // re-run button below (decision 294).
+  const canBuildTeaser = canAdvance && !hasTeaser
   return (
     <div className="flex flex-col gap-4">
       {/* No Teaser card to carry them: the notices say why where it would be. */}
-      {!hasTeaser && teaserNotices.length > 0 ? (
+      {!hasTeaser && (teaserNotices.length > 0 || canBuildTeaser) ? (
         <section
           aria-label="Teaser"
           className="flex flex-col gap-2 rounded-[8px] border border-[var(--color-border)] p-3"
         >
           <h2 className="text-[14px] font-semibold">Teaser</h2>
-          <Notices notices={teaserNotices} />
+          {teaserNotices.length > 0 ? (
+            <Notices notices={teaserNotices} />
+          ) : (
+            <p className="text-[13px] text-[var(--color-text-secondary)]">
+              There is no teaser yet.
+            </p>
+          )}
+          {canBuildTeaser ? (
+            <div>
+              <RestartRunButton
+                projectId={projectId}
+                stage="shorts"
+                label="Build the teaser"
+                confirmLabel="Build it"
+                consequence={
+                  'Your excerpts are kept exactly as curated. The run writes, voices and cuts a ' +
+                  'teaser, then starts its render: one script call, its narration and one render.'
+                }
+              />
+            </div>
+          ) : null}
         </section>
       ) : null}
       <section aria-label="Shorts" className="grid gap-4 md:grid-cols-2 2xl:grid-cols-3">

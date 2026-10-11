@@ -568,6 +568,63 @@ describe('ShortsScreen', () => {
     expect(within(place).getByRole('status')).toHaveTextContent(
       'The teaser was skipped: the answer was cut off at its length limit',
     )
-    expect(within(place).getByRole('button', { name: 'Dismiss' })).toBeInTheDocument()
+    expect(within(place).getByRole('button', { name: 'Dismiss note' })).toBeInTheDocument()
+  })
+
+  it('offers to build a missing teaser where it would be, by running the stage again (decision 294)', async () => {
+    const user = userEvent.setup()
+    restartStage.mockResolvedValue({ ok: true })
+    render(
+      <ShortsScreen
+        projectId={PROJECT}
+        shorts={[card()]}
+        live={false}
+        canAdvance
+        teaserNotices={[teaserNotice('The teaser was skipped: its script could not be written')]}
+      />,
+    )
+    const place = screen.getByRole('region', { name: 'Teaser' })
+
+    await user.click(within(place).getByRole('button', { name: 'Build the teaser' }))
+    expect(restartStage).not.toHaveBeenCalled()
+    expect(place).toHaveTextContent(
+      'Your excerpts are kept exactly as curated. The run writes, voices and cuts a teaser, then starts its render: one script call, its narration and one render.',
+    )
+    await user.click(within(place).getByRole('button', { name: 'Build it' }))
+    expect(restartStage).toHaveBeenCalledWith(PROJECT, 'shorts')
+  })
+
+  it('says there is no teaser yet when nothing explains it, and offers the build', () => {
+    render(<ShortsScreen projectId={PROJECT} shorts={[card()]} live={false} canAdvance />)
+    const place = screen.getByRole('region', { name: 'Teaser' })
+    expect(place).toHaveTextContent('There is no teaser yet.')
+    expect(within(place).getByRole('button', { name: 'Build the teaser' })).toBeInTheDocument()
+  })
+
+  // `canAdvance` false is how the page says both "moved on" and "a run is
+  // live" (project.stage === 'shorts' && !liveRun).
+  it('offers no build when the stage cannot be re-run, nor beside a teaser', () => {
+    const { unmount } = render(
+      <ShortsScreen
+        projectId={PROJECT}
+        shorts={[card()]}
+        live={false}
+        teaserNotices={[teaserNotice('The teaser was skipped: beat 1 could not be synthesised')]}
+      />,
+    )
+    expect(screen.getByRole('region', { name: 'Teaser' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Build the teaser' })).not.toBeInTheDocument()
+    unmount()
+
+    render(
+      <ShortsScreen
+        projectId={PROJECT}
+        shorts={[card(), teaserCard({ id: '01HQ00000000000000000000T1' })]}
+        live={false}
+        canAdvance
+      />,
+    )
+    expect(screen.queryByRole('region', { name: 'Teaser' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Build the teaser' })).not.toBeInTheDocument()
   })
 })

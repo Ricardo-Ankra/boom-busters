@@ -3402,7 +3402,7 @@ describe('notices on the slot card (decision 293)', () => {
     )
 
     const cardA = document.getElementById(`slot-${SLOT_A}`)!
-    await userEvent.click(within(cardA).getByRole('button', { name: 'Dismiss' }))
+    await userEvent.click(within(cardA).getByRole('button', { name: 'Dismiss note' }))
     expect(dismissNoticeAction).toHaveBeenCalledWith('01J000000000000000000000N1')
   })
 })

@@ -72,7 +72,7 @@ test('a notice on the Direction card is dismissed with its button', async ({ pag
 
   const line = page.getByRole('status').filter({ hasText: MESSAGE })
   await expect(line).toBeVisible()
-  await line.locator('xpath=..').getByRole('button', { name: 'Dismiss' }).click()
+  await line.locator('xpath=..').getByRole('button', { name: 'Dismiss note' }).click()
   await expect(page.getByRole('status').filter({ hasText: MESSAGE })).toHaveCount(0)
 
   await page.reload()

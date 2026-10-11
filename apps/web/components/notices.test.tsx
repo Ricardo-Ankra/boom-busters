@@ -44,7 +44,7 @@ describe('Notices (decision 293)', () => {
       expect.stringContaining('Trimmed to fit: era rule 1.'),
       expect.stringContaining('The redraft stopped: cut off.'),
     ])
-    expect(screen.getAllByRole('button', { name: 'Dismiss' })).toHaveLength(2)
+    expect(screen.getAllByRole('button', { name: 'Dismiss note' })).toHaveLength(2)
   })
 
   it('dismisses a notice and refreshes the page', async () => {
@@ -53,7 +53,7 @@ describe('Notices (decision 293)', () => {
     render(
       <Notices notices={[notice('01J0000000000000000000000A', 'Trimmed to fit: era rule 1.')]} />,
     )
-    await user.click(screen.getByRole('button', { name: 'Dismiss' }))
+    await user.click(screen.getByRole('button', { name: 'Dismiss note' }))
     expect(dismissNoticeAction).toHaveBeenCalledWith('01J0000000000000000000000A')
     await waitFor(() => expect(refresh).toHaveBeenCalled())
   })
@@ -64,10 +64,10 @@ describe('Notices (decision 293)', () => {
     render(
       <Notices notices={[notice('01J0000000000000000000000A', 'Trimmed to fit: era rule 1.')]} />,
     )
-    await user.click(screen.getByRole('button', { name: 'Dismiss' }))
+    await user.click(screen.getByRole('button', { name: 'Dismiss note' }))
     expect(await screen.findByRole('alert')).toHaveTextContent('Could not dismiss: Unknown id')
     expect(refresh).not.toHaveBeenCalled()
-    expect(screen.getByRole('button', { name: 'Dismiss' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'Dismiss note' })).toBeEnabled()
   })
 
   it('says so when the action throws, and frees the button', async () => {
@@ -76,9 +76,9 @@ describe('Notices (decision 293)', () => {
     render(
       <Notices notices={[notice('01J0000000000000000000000A', 'Trimmed to fit: era rule 1.')]} />,
     )
-    await user.click(screen.getByRole('button', { name: 'Dismiss' }))
+    await user.click(screen.getByRole('button', { name: 'Dismiss note' }))
     expect(await screen.findByRole('alert')).toHaveTextContent('Could not dismiss: Not signed in')
     expect(refresh).not.toHaveBeenCalled()
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Dismiss' })).toBeEnabled())
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Dismiss note' })).toBeEnabled())
   })
 })

@@ -99,6 +99,7 @@ export function RestartRunButton({
   label,
   downstream = [],
   consequence: consequenceOverride,
+  confirmLabel = 'Run it again',
 }: {
   projectId: string
   stage: string
@@ -111,6 +112,8 @@ export function RestartRunButton({
    * only adds what is missing).
    */
   consequence?: string
+  /** The second click's words, for a re-run asked for by what it builds. */
+  confirmLabel?: string
 }) {
   const { act, busy } = useAction()
 
@@ -142,7 +145,7 @@ export function RestartRunButton({
           {label}
         </>
       }
-      confirmLabel="Run it again"
+      confirmLabel={confirmLabel}
       confirmVariant="primary"
       consequence={consequence}
       busy={busy}
