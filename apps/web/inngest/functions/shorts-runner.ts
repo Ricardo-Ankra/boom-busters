@@ -26,6 +26,7 @@ import {
   TimelineSchema,
   ValidationError,
 } from '@boom-busters/schemas'
+import type { NoticeTarget } from '@boom-busters/schemas'
 import {
   compileShortTimeline,
   compileTeaserMaster,
@@ -36,7 +37,7 @@ import { NonRetriableError } from 'inngest'
 import { db } from '@/lib/db'
 import { completeForProject } from '@/lib/answer-call'
 import { markShortsWith } from '@/lib/script-answers'
-import { recordRepairs } from '@/lib/notices'
+import { recordRepairs, recordStop } from '@/lib/notices'
 import { inngest } from '../client'
 import { events } from '../events'
 import { budgetGateData, markStageFailed, type GateContext } from '../lib/gates'
@@ -69,6 +70,11 @@ const FUNCTION_ID = 'shorts-runner'
 export function seedTitle(startSentence: string): string {
   const words = stripNarrationMarkup(startSentence)
   return words.length <= 80 ? words : `${words.slice(0, 79).trimEnd()}…`
+}
+
+/** A failed step's message for a notice line, without its closing full stop. */
+function stepFailure(error: unknown): string {
+  return (error instanceof Error ? error.message : String(error)).replace(/\.$/, '')
 }
 
 export const shortsRunner = inngest.createFunction(
@@ -234,25 +240,39 @@ export const shortsRunner = inngest.createFunction(
      * fails, SKIPS with its reason rather than failing the stage: the
      * excerpts above are complete deliverables, and a re-run rebuilds the
      * teaser (synthesis is idempotency-keyed, so paragraphs already bought
-     * are re-served by the vendor, not re-billed). A refused script says why
-     * on the Teaser card's place (decision 293). A provider error on the
-     * script call is thrown, so Inngest retries the step; past the retries
-     * the stage fails, as for any other step.
+     * are re-served by the vendor, not re-billed). Every skip says why on the
+     * Teaser card's place: a refused script from its own step (decision
+     * 293), a voicing or cut skip from this runner (decision 294). A provider
+     * error on the script call is thrown, so Inngest retries the step; past
+     * the retries the teaser skips too, rather than failing a stage whose
+     * excerpts are cut and waiting to render (decision 294).
      *
      * Re-entry keeps every EXISTING row exactly as curated, but a missing
      * teaser is additive and gets built: projects whose excerpts predate the
      * teaser feature (production, 2026-09-08 morning) would otherwise never
      * gain one, since their rows trip the guard on every re-run forever.
      */
-    const teaserScript = await step.run('write-teaser', async (): Promise<TeaserWriteResult> => {
-      const rows = await listShorts(db, projectId)
-      if (rows.some((row) => row.kind === 'teaser')) {
-        return { ok: false, skipped: 'the teaser already exists — kept as curated' }
-      }
-      // Shared with the rebuild runner (decision 227) — one implementation
-      // of the write, the voicing and their idempotency keys.
-      return writeTeaserScript(projectId)
-    })
+    const teaserTarget: NoticeTarget = { projectId, subject: 'teaser', subjectId: null }
+    let teaserScript: TeaserWriteResult
+    try {
+      teaserScript = await step.run('write-teaser', async (): Promise<TeaserWriteResult> => {
+        const rows = await listShorts(db, projectId)
+        if (rows.some((row) => row.kind === 'teaser')) {
+          return { ok: false, skipped: 'the teaser already exists — kept as curated' }
+        }
+        // Shared with the rebuild runner (decision 227) — one implementation
+        // of the write, the voicing and their idempotency keys.
+        return writeTeaserScript(projectId)
+      })
+    } catch (error) {
+      // Only a step that used up its retries lands here: an outage that
+      // outlasted them, or a key the provider rejects.
+      const reason = `its script could not be written: ${stepFailure(error)}`
+      await step.run('teaser-script-failed', () =>
+        recordStop(teaserTarget, 'skipped', `The teaser was skipped: ${reason}`),
+      )
+      teaserScript = { ok: false, skipped: reason }
+    }
 
     if (!teaserScript.ok && 'gate' in teaserScript) {
       await step.run('teaser-over-budget', () => markStageFailed(ctx, teaserScript.gate))
@@ -343,6 +363,15 @@ export const shortsRunner = inngest.createFunction(
         )
         if ('shortId' in assembled) teaserShortId = assembled.shortId
         else teaserSkipped = assembled.skipped
+      }
+
+      // The script landed but its voicing or cut did not: the run result
+      // alone reached nobody, so say it where the teaser would be.
+      const skipped = teaserSkipped
+      if (skipped) {
+        await step.run('teaser-skipped', () =>
+          recordStop(teaserTarget, 'skipped', `The teaser was skipped: ${skipped}`),
+        )
       }
     }
 
