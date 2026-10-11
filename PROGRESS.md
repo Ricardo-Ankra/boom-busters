@@ -7208,3 +7208,38 @@ boom-busters-broker`; merge and deploy to Vercel, then `PUT
      0033 before the new code serves (`scripts/deploy-migrate.mjs`), then
      `PUT /api/inngest`; no migration by hand, which could race the build's
      own. No Remotion or broker deploy.
+
+294. **The notices' loose ends: every teaser skip said, a stop said once, a delete that asks** (2026-10-11, owner: "proceed with what you recommend"). The four
+     follow-ups decision 293 left. A teaser script step that failed past
+     its retries (an outage that outlasted them, a rejected key) failed the
+     Shorts stage before the excerpt renders were requested; it now skips
+     the teaser as a refused script does, the excerpts render, and the
+     stage reaches review. A teaser skipped at voicing or at the cut said
+     so only in the run result; both now leave a `skipped` notice where the
+     teaser would be, and a teaser kept as curated leaves none. A re-brief,
+     retype or graphic design stopped by the budget wrote its reason into
+     the slot's own refusal or "Not designed" line and a notice beside it:
+     `markSideJobFailed` now takes a `null` subject for "the card already
+     says it", which sends the notification and writes no notice. A case
+     suggestion row with a notice carried two buttons named Dismiss, and
+     the case's one deleted the suggestion on one click: it is now the
+     inline two-step (Dismiss, then Delete it, with the consequence), and
+     the notice's button reads "Dismiss note" on every card. The Teaser
+     place also gained "Build the teaser", the stage's own re-run (which
+     keeps every curated excerpt and builds only what is missing), offered
+     on the same terms as the "Run the shorts stage again" button at the
+     foot of the screen.
+     Decisions made where the design left room: the teaser catch takes any
+     step failure past its retries, a rejected key included, so a key
+     fault reads as a skipped teaser with its reason rather than a failed
+     stage (cost if wrong: the fault is found on the Teaser place, not the
+     Needs-you card); "Build the teaser" repeats an action the screen
+     already had, placed where the notice says why (cost if wrong: two
+     buttons for one run, gated alike so they never disagree); the two
+     "could not be resolved" budget stops and the re-type's crash path keep
+     their notices, since nothing else on the card says those (cost if
+     wrong: none seen). The outage test hands the runner a `StepError`
+     through `transformCtx`: `@inngest/test` 1.0.0 cannot model a step
+     past its retries, and reads a throwing mocked step as a success.
+     Shipping: a Vercel deploy and `PUT /api/inngest`. No migration, no
+     Remotion or broker deploy.
