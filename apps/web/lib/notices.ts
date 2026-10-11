@@ -41,9 +41,11 @@ export async function recordStop(
 }
 
 /**
- * A skip: the thing was not made at all (the Shorts stage's teaser). It
- * replaces the subject's open notices, since nothing is left for an older
- * note to describe, so a retry that skips again leaves one line, not two.
+ * A skip: the thing was not made at all (today only the Shorts stage's
+ * teaser, when no teaser row exists). It replaces the subject's open
+ * notices, since nothing is left for an older note to describe, so a retry
+ * that skips again leaves one line, not two. Only for a subject with
+ * nothing made: a skip beside a thing that exists would retire its notes.
  */
 export async function recordSkip(target: NoticeTarget, message: string): Promise<void> {
   try {

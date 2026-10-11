@@ -240,8 +240,8 @@ export const shortsRunner = inngest.createFunction(
      * fails, SKIPS with its reason rather than failing the stage: the
      * excerpts above are complete deliverables, and a re-run rebuilds the
      * teaser (synthesis is idempotency-keyed, so paragraphs already bought
-     * are re-served by the vendor, not re-billed). Each skip this stage can
-     * reach says why on the Teaser card's place: a refused script from its
+     * are re-served by the vendor, not re-billed). Each skip that leaves no
+     * teaser says why on the Teaser card's place: a refused script from its
      * own step (decision 293), a voicing or cut skip from this runner
      * (decision 294). A skip replaces the notes before it, so a retry that
      * skips again leaves one line. A provider error on the script call is
