@@ -234,12 +234,13 @@ export const slotRetyper = inngest.createFunction(
       await step.run('retype-over-budget', async () => {
         // The card carries the refusal (the same channel a model refusal
         // uses), and the failure stays off the parked stage (decision 234).
+        // That line is the card's say, so no notice repeats it (decision 294).
         await setSlotRetype(db, slotId, {
           state: 'refused',
           target: targetType,
           reason: String(converted.gate['message'] ?? 'Over budget'),
         })
-        await markSideJobFailed(ctx, 'The re-type stopped', converted.gate, slotSubject(slotId))
+        await markSideJobFailed(ctx, 'The re-type stopped', converted.gate, null)
       })
       return { projectId, slotId, outcome: 'over-budget' as const }
     }
@@ -299,13 +300,10 @@ export const slotRetyper = inngest.createFunction(
         }
       })
       if (!designed.ok) {
+        // The brief's design issue is the card's "Not designed" line, so no
+        // notice repeats it (decision 294).
         await step.run('design-over-budget', () =>
-          markSideJobFailed(
-            ctx,
-            'The graphic could not be designed',
-            designed.gate,
-            slotSubject(slotId),
-          ),
+          markSideJobFailed(ctx, 'The graphic could not be designed', designed.gate, null),
         )
         return { projectId, slotId, outcome: 'over-budget' as const }
       }

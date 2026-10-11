@@ -402,6 +402,21 @@ describeDb('gate helpers', () => {
       )
     })
 
+    it('writes no notice when the caller says its own card already shows the stop', async () => {
+      await setProjectStage(db, FIXTURE_PROJECT_ID, {
+        stage: 'visuals',
+        stageStatus: 'awaiting_review',
+      })
+
+      await markSideJobFailed(context(), 'The re-brief stopped', { message: 'over budget' }, null)
+
+      expect((await getProject(db, FIXTURE_PROJECT_ID))?.stageStatus).toBe('awaiting_review')
+      expect(await listProjectNotices(db, FIXTURE_PROJECT_ID)).toEqual([])
+      expect(notify).toHaveBeenCalledWith(
+        expect.objectContaining({ title: 'The re-brief stopped', body: 'over budget' }),
+      )
+    })
+
     it('reads a slot side job with no slot id as the project', () => {
       expect(slotSubject(undefined)).toBeUndefined()
       expect(slotSubject(42)).toBeUndefined()

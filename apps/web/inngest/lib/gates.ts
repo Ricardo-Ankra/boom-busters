@@ -247,14 +247,16 @@ export function slotSubject(slotId: unknown): SideJobSubject | undefined {
  * while the review is parked, the failure is words: a `stopped` notice on
  * the card it concerns (decision 293; the project strip unless `subject`
  * names another), a notification, and whatever row-level state the caller
- * wrote. Only when the stage is NOT parked does it escalate to the stage, as
+ * wrote. A `subject` of `null` writes no notice: the caller's row state
+ * already says it on the card, which would otherwise say it twice (decision
+ * 294). Only when the stage is NOT parked does it escalate to the stage, as
  * a plain run failure would, and the Needs-you card says why.
  */
 export async function markSideJobFailed(
   ctx: GateContext,
   title: string,
   error: Record<string, unknown>,
-  subject?: SideJobSubject,
+  subject?: SideJobSubject | null,
 ): Promise<void> {
   const project = await getProject(db, ctx.projectId)
   if (project?.stageStatus !== 'awaiting_review') {
@@ -263,15 +265,17 @@ export async function markSideJobFailed(
   }
   const message = String(error['message'] ?? 'Unknown error')
   // The notification alone reached only a server log: production sends no email.
-  await recordStop(
-    {
-      projectId: ctx.projectId,
-      subject: subject?.subject ?? 'project',
-      subjectId: subject?.subjectId ?? null,
-    },
-    'stopped',
-    `${title}: ${message}`,
-  )
+  if (subject !== null) {
+    await recordStop(
+      {
+        projectId: ctx.projectId,
+        subject: subject?.subject ?? 'project',
+        subjectId: subject?.subjectId ?? null,
+      },
+      'stopped',
+      `${title}: ${message}`,
+    )
+  }
   await notify({
     kind: 'run-failed',
     title,

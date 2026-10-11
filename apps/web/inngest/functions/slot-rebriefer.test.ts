@@ -18,12 +18,13 @@ import {
   requireTestDatabase,
   saveChapter,
   seed,
+  setProjectStage,
   setSlotRetype,
   setVisualsPhase,
   shotSlots,
   truncateRunMirror,
 } from '@boom-busters/db'
-import { ContentPolicyError, noticesFor } from '@boom-busters/schemas'
+import { BudgetExceededError, ContentPolicyError, noticesFor } from '@boom-busters/schemas'
 import type { GraphicBrief, ShotBrief } from '@boom-busters/schemas'
 import { InngestTestEngine } from '@inngest/test'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -432,6 +433,33 @@ describeDb('slot-rebriefer on the answer helper (decision 293)', () => {
       state: 'rebrief-refused',
       reason: 'google: SAFETY',
     })
+  })
+
+  it('says a budget stop once on the card: the refused line, and no notice beside it (decision 294)', async () => {
+    const slotId = await seedOne(stockBrief)
+    await setProjectStage(db, FIXTURE_PROJECT_ID, {
+      stage: 'visuals',
+      stageStatus: 'awaiting_review',
+    })
+    callLlm.mockRejectedValue(
+      new BudgetExceededError({
+        provider: 'anthropic',
+        operation: 'llm.rebrief',
+        budgetUsd: 5,
+        monthSpendUsd: 5,
+        estimateUsd: 0.05,
+      }),
+    )
+
+    const { result } = await engine.execute({ events: rebriefEvent(slotId) })
+
+    expect(result).toMatchObject({ outcome: 'over-budget' })
+    expect((await getShotSlot(db, slotId))?.retype).toEqual({
+      state: 'rebrief-refused',
+      reason: expect.stringMatching(/^The monthly spend ceiling would be crossed/),
+    })
+    expect(await listProjectNotices(db, FIXTURE_PROJECT_ID)).toEqual([])
+    expect(notify).toHaveBeenCalledWith(expect.objectContaining({ title: 'The re-brief stopped' }))
   })
 
   it("records what the repair capped on the slot's card", async () => {

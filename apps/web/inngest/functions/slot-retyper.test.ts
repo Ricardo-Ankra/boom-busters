@@ -271,7 +271,7 @@ describeDb('slot-retyper (mock mode)', () => {
     }
   })
 
-  it('says why on the slot card when a parked plan runs out of budget designing a retyped graphic (decision 293)', async () => {
+  it('says why once on the slot card when a parked plan runs out of budget designing a retyped graphic (decisions 293, 294)', async () => {
     await setProjectStage(db, FIXTURE_PROJECT_ID, {
       stage: 'visuals',
       stageStatus: 'awaiting_review',
@@ -289,12 +289,15 @@ describeDb('slot-retyper (mock mode)', () => {
     try {
       const { result } = await engine.execute({ events: retypeEvent(slotId, 'graphic') })
       expect(result).toMatchObject({ outcome: 'over-budget' })
-      expect(recordStop).toHaveBeenCalledWith(
-        { projectId: FIXTURE_PROJECT_ID, subject: 'slot', subjectId: slotId },
-        'stopped',
-        expect.stringMatching(
-          /^The graphic could not be designed: The monthly spend ceiling would be crossed by anthropic llm\.graphics/,
-        ),
+      // The card's "Not designed" line carries the budget stop; a notice
+      // beside it would say it twice.
+      const brief = (await getShotSlot(db, slotId))?.brief as { designIssue?: string }
+      expect(brief.designIssue).toMatch(
+        /^The monthly spend ceiling would be crossed by anthropic llm\.graphics/,
+      )
+      expect(recordStop).not.toHaveBeenCalled()
+      expect(notify).toHaveBeenCalledWith(
+        expect.objectContaining({ title: 'The graphic could not be designed' }),
       )
     } finally {
       broke.mockRestore()
@@ -372,6 +375,35 @@ describeDb('slot-retyper on the answer helper (decision 293)', () => {
       target: 'chart',
       reason: 'anthropic: the request was declined',
     })
+  })
+
+  it('says a budget stop once on the card: the refused line, and no notice beside it (decision 294)', async () => {
+    await setProjectStage(db, FIXTURE_PROJECT_ID, {
+      stage: 'visuals',
+      stageStatus: 'awaiting_review',
+    })
+    recordStop.mockClear()
+    notify.mockClear()
+    callLlm.mockRejectedValue(
+      new BudgetExceededError({
+        provider: 'anthropic',
+        operation: 'llm.retype',
+        budgetUsd: 5,
+        monthSpendUsd: 5,
+        estimateUsd: 0.05,
+      }),
+    )
+
+    const { result } = await engine.execute({ events: retypeEvent(slotId, 'chart') })
+
+    expect(result).toMatchObject({ outcome: 'over-budget' })
+    expect((await getShotSlot(db, slotId))?.retype).toEqual({
+      state: 'refused',
+      target: 'chart',
+      reason: expect.stringMatching(/^The monthly spend ceiling would be crossed/),
+    })
+    expect(recordStop).not.toHaveBeenCalled()
+    expect(notify).toHaveBeenCalledWith(expect.objectContaining({ title: 'The re-type stopped' }))
   })
 
   it("records the places a drafted map was capped to on the slot's card", async () => {
