@@ -268,7 +268,8 @@ export async function shortsModel(
       const pool: TeaserShotOption[] = []
       for (const slot of poolSlots) {
         pool.push({
-          kind: slot.payload.kind,
+          // A graphic written as code (decision 295) is a graphic card in the picker.
+          kind: slot.payload.kind === 'graphic-code' ? 'graphic' : slot.payload.kind,
           url: await shotUrlOf(slot),
           slot,
           selected: chosen !== null && sameShot(chosen, slot),

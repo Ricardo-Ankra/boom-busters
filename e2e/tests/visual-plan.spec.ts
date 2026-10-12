@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
-import { VISUAL_PLAN_TITLE } from '../global-setup'
+import { CODED_GRAPHIC_TITLE, VISUAL_PLAN_TITLE } from '../global-setup'
 import { expectHitTargets, signIn } from './fixtures'
 
 /**
@@ -242,6 +242,26 @@ test.describe('a graphic slot (decision 268, Plan B)', () => {
     // e2e run has no Inngest to hand the work to.
     await expect(resolved.getByRole('button', { name: 'Redesign it' })).toBeVisible()
     await resolved.getByRole('button', { name: 'Cancel' }).click()
+    await expectHitTargets(page)
+  })
+
+  test('a graphic written as code shows its title and its own still, and plays (decision 295)', async ({
+    page,
+  }) => {
+    const coded = page.locator('[id^="slot-"]').filter({ hasText: 'arrived in a single round' })
+    await expect(coded.getByText(CODED_GRAPHIC_TITLE, { exact: true })).toBeVisible()
+    // The still is the designer's own component at 60%, not the SVG preview a
+    // scene gets. The dev server compiles its chunk on the first visit.
+    await expect(
+      coded.getByRole('img', { name: `Graphic still: ${CODED_GRAPHIC_TITLE}` }),
+    ).toBeVisible({ timeout: 30_000 })
+    await expect(coded.getByText('Four billion, raised', { exact: true })).toBeVisible()
+    await expect(coded.getByRole('img', { name: /^graphic:/ })).toHaveCount(0)
+    await coded.getByRole('button', { name: 'Play graphic' }).click()
+    // The player is fetched on the first press; the region waits for it.
+    await expect(coded.getByRole('region', { name: 'Graphic playback' })).toBeVisible()
+    await coded.getByRole('button', { name: 'Close player' }).click()
+    await expect(coded.getByRole('button', { name: 'Redesign graphic' })).toBeVisible()
     await expectHitTargets(page)
   })
 })

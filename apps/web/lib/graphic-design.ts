@@ -1,27 +1,29 @@
-import type { Database } from '@boom-busters/db'
-import { mockGraphicScene, mockProvidersEnabled } from '@boom-busters/providers'
-import type { GraphicBrief } from '@boom-busters/schemas'
+import { mockGraphicCode, mockProvidersEnabled } from '@boom-busters/providers'
+import type { DesignableBrief } from '@boom-busters/schemas'
 import { db } from '@/lib/db'
 import { callLlm } from '@/lib/llm'
+import { graphicCodeIssue } from '@/lib/graphic-code/check'
 import {
+  chartData,
   designGraphicWith,
   loadGraphicContextFrom,
-  sceneIssue,
   slotIntent,
+  slotWords,
   type GraphicDesignContext,
   type GraphicDesignResult,
   type GraphicSlotTiming,
 } from '@/lib/graphic-design-core'
 
 /**
- * The graphics designer, as the app calls it (decision 289): the pipeline's
- * per-graphic step, Redesign graphic and a retype to graphic all come here,
- * so a graphic is designed one way whichever button asked.
+ * The graphics designer, as the app calls it (decisions 289 and 295): the
+ * pipeline's per-design step, Redesign graphic, Redesign chart and a retype
+ * to graphic or chart all come here, so a design is made one way whichever
+ * button asked.
  *
  * The attempts, deadline and checks live in `graphic-design-core.ts`, which
- * takes the model call as a parameter so the live harness can run the same
- * path under its own spend cap. This file binds that path to the app's
- * ledgered `callLlm` and its database.
+ * takes the model call and the connection as parameters: it imports nothing
+ * `server-only`, so its tests run it against a stubbed call. This file binds
+ * that path to the app's ledgered `callLlm` and its database.
  */
 
 export {
@@ -35,21 +37,30 @@ export {
 
 export async function designGraphic(
   context: GraphicDesignContext,
-  slot: GraphicSlotTiming & { brief: GraphicBrief },
+  slot: GraphicSlotTiming & { brief: DesignableBrief },
   options: { guidance?: string; redesign?: boolean } = {},
 ): Promise<GraphicDesignResult> {
   if (mockProvidersEnabled()) {
-    const { intentRefs } = slotIntent(context, slot.brief)
-    const scene = mockGraphicScene({
+    // The fixture component (decision 295), through the same scan, compile,
+    // dry run and facts as a real answer, so the runners, the retyper and the
+    // rebriefer exercise every check without spending. Its figure is the
+    // cited claim's own digits, or none (ruling 11), so it passes on any seed.
+    const { brief } = slot
+    const { intentRefs } = slotIntent(context, brief)
+    const planned = mockGraphicCode({
       claimTexts: context.claims.map((claim) => claim.text),
       intentRefs: intentRefs.length > 0 ? intentRefs : [1],
-      logoTitles: context.logos.map((logo) => logo.title),
       ...(options.guidance ? { guidance: options.guidance } : {}),
       durationMs: slot.durationMs,
+      ...(brief.type === 'chart' ? { data: chartData(brief) } : {}),
     })
-    const checked = sceneIssue(scene, context, slot.durationMs)
-    return 'scene' in checked
-      ? { ok: true, scene: checked.scene }
+    const checked = graphicCodeIssue(planned, context, {
+      brief,
+      durationMs: slot.durationMs,
+      words: slotWords(context, slot),
+    })
+    return 'code' in checked
+      ? { ok: true, code: checked.code }
       : { ok: false, issue: checked.issue }
   }
 
@@ -80,23 +91,23 @@ export function designIssueText(issue: string): string {
   return `${cut}…`
 }
 
-/** A brief with the design's outcome on it: a scene, or the reason there is none. */
-export function withDesign(brief: GraphicBrief, result: GraphicDesignResult): GraphicBrief {
+/**
+ * A brief with the design's outcome on it (decision 295; ruling 8): a
+ * success sets `code` and clears any old `designIssue`; a failure sets
+ * `designIssue` and leaves a stored `code` where it is, so a refused
+ * redesign keeps the graphic the card already plays.
+ */
+export function withDesign<B extends DesignableBrief>(brief: B, result: GraphicDesignResult): B {
+  if (!result.ok) return { ...brief, designIssue: designIssueText(result.issue) }
   const { designIssue: _old, ...rest } = brief
-  return result.ok
-    ? { ...rest, scene: result.scene }
-    : { ...rest, designIssue: designIssueText(result.issue) }
+  // Spreading the rest loses the generic; it is still a B, now with its code.
+  return { ...rest, code: result.code } as unknown as B
 }
 
-/**
- * What a side job (Redesign, retype) needs to design one graphic, read fresh.
- * `database` defaults to the app's connection; the live harness passes its
- * read-only one.
- */
+/** What a side job (Redesign, retype) needs to design one graphic or chart, read fresh. */
 export async function loadGraphicContext(
   projectId: string,
   chapterId: string,
-  database: Database = db,
 ): Promise<GraphicDesignContext> {
-  return loadGraphicContextFrom(database, projectId, chapterId)
+  return loadGraphicContextFrom(db, projectId, chapterId)
 }

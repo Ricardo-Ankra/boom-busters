@@ -207,7 +207,12 @@ export const visualsReplanner = inngest.createFunction(
           // shot-list prompt (decision 275), and counted by the craft notes
           // below (decision 264).
           sets: sets.map(({ name, look, layout }) => ({ name, look, layout })),
-          logos: logos.map((row) => ({ id: row.id, title: row.title ?? '' })),
+          logos: logos.map((row) => ({
+            id: row.id,
+            title: row.title ?? '',
+            width: row.width,
+            height: row.height,
+          })),
         }
       })
 

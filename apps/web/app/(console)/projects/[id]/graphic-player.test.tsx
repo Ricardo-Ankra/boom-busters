@@ -27,6 +27,9 @@ const fire = (name: 'play' | 'pause' | 'ended') =>
     for (const callback of [...(handle.listeners.get(name) ?? [])]) callback()
   })
 
+/** Every Player render's component and props, newest last. */
+const played = vi.hoisted(() => vi.fn())
+
 /** Counts how many times the heavy module is evaluated: not until Play is pressed. */
 const loads = vi.hoisted(() => ({ count: 0 }))
 vi.mock('./graphic-player', async (importActual) => {
@@ -38,10 +41,11 @@ vi.mock('@remotion/player', () => ({
   Player: Object.assign(
     React.forwardRef(function MockPlayer(
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      { durationInFrames, compositionWidth, compositionHeight, inputProps }: any,
+      { component, durationInFrames, compositionWidth, compositionHeight, inputProps }: any,
       ref,
     ) {
       React.useImperativeHandle(ref, () => handle as never)
+      played({ component, inputProps })
       return (
         <div data-testid="player">
           frames:{durationInFrames} size:{compositionWidth}x{compositionHeight} logos:
@@ -54,9 +58,12 @@ vi.mock('@remotion/player', () => ({
 }))
 vi.mock('@boom-busters/compositions', () => ({
   GraphicCard: () => null,
+  GraphicCode: () => null,
   loadBrandFonts: () => Promise.resolve(),
   msToFrames: (ms: number, fps: number) => Math.round((ms * fps) / 1000),
 }))
+
+import { GraphicCode } from '@boom-busters/compositions'
 
 import { GraphicPlayback, GraphicPlaybackProvider } from './graphic-playback'
 
@@ -174,5 +181,122 @@ describe('GraphicPlayback (decision 289)', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Portrait' }))
     fire('play')
     expect(await screen.findByRole('button', { name: 'Pause' })).toBeInTheDocument()
+  })
+})
+
+/** A design written as code (decision 295). Plain JS: the source is its own compiled form. */
+const CODE_SOURCE = "function Graphic(props) { return props.logos['Acme'] ? null : null }"
+const CODE = {
+  version: 1 as const,
+  source: CODE_SOURCE,
+  compiled: CODE_SOURCE,
+  title: 'Acme, counted up',
+  facts: [],
+  words: [{ text: 'four', atMs: 300 }],
+  durationMs: 6000,
+}
+const ACME = { assetId: 'A1', url: 'https://r2.example/acme.png', width: 400, height: 200 }
+const DATA = {
+  series: [
+    {
+      label: 'Share price',
+      unit: 'EUR',
+      points: [
+        { x: '2020-06-17', y: 104.5 },
+        { x: '2020-06-26', y: 1.28 },
+      ],
+    },
+  ],
+  takeaway: 'From €104 to €1.28 in nine days.',
+}
+
+describe('GraphicPlayback with code (decision 295)', () => {
+  it('plays the code on GraphicCode in the full frame, its marks keyed by title', async () => {
+    render(
+      <GraphicPlayback
+        slotId="s1"
+        code={CODE}
+        codeLogos={{ Acme: ACME }}
+        brand={DEFAULT_SETTINGS.brandKit}
+        logoUrls={{}}
+        durationMs={6000}
+      />,
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'Play graphic' }))
+    // The frame the dry run checked the code in; the Player scales it to the card.
+    expect(await screen.findByTestId('player')).toHaveTextContent(
+      'frames:180 size:1920x1080 logos:Acme',
+    )
+    expect(played).toHaveBeenLastCalledWith({
+      component: GraphicCode,
+      inputProps: {
+        payload: {
+          kind: 'graphic-code',
+          version: 1,
+          compiled: CODE_SOURCE,
+          title: 'Acme, counted up',
+          words: CODE.words,
+          durationMs: 6000,
+          logos: { Acme: { r2Key: 'logos/A1', url: ACME.url, width: 400, height: 200 } },
+          claimIds: [],
+        },
+        brand: expect.objectContaining({ colors: expect.any(Object) }),
+        durationInFrames: 180,
+      },
+    })
+    await userEvent.click(screen.getByRole('button', { name: 'Portrait' }))
+    expect(await screen.findByTestId('player')).toHaveTextContent('size:1080x1920')
+  })
+
+  it('plays the code when the brief still carries the scene it replaced', async () => {
+    render(
+      <GraphicPlayback
+        slotId="s1"
+        scene={SCENE}
+        code={CODE}
+        codeLogos={{}}
+        brand={DEFAULT_SETTINGS.brandKit}
+        logoUrls={{ A1: 'https://r2.example/acme.png' }}
+        durationMs={6000}
+      />,
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'Play graphic' }))
+    await screen.findByTestId('player')
+    expect(played).toHaveBeenLastCalledWith(expect.objectContaining({ component: GraphicCode }))
+  })
+
+  it('names a chart on its button, and hands its code the series', async () => {
+    render(
+      <GraphicPlayback
+        slotId="s1"
+        code={CODE}
+        data={DATA}
+        noun="chart"
+        brand={DEFAULT_SETTINGS.brandKit}
+        logoUrls={{}}
+        durationMs={6000}
+      />,
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'Play chart' }))
+    await screen.findByTestId('player')
+    expect(played).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        inputProps: expect.objectContaining({
+          payload: expect.objectContaining({ kind: 'graphic-code', data: DATA }),
+        }),
+      }),
+    )
+  })
+
+  it('offers nothing to play without a scene or code', () => {
+    const { container } = render(
+      <GraphicPlayback
+        slotId="s1"
+        brand={DEFAULT_SETTINGS.brandKit}
+        logoUrls={{}}
+        durationMs={6000}
+      />,
+    )
+    expect(container).toBeEmptyDOMElement()
   })
 })

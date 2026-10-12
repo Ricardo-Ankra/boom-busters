@@ -2,7 +2,6 @@
 
 import {
   addNotice,
-  claims,
   createScriptVersion,
   deleteCastMember,
   deleteProjectSet,
@@ -25,7 +24,7 @@ import {
   truncateRunMirror,
 } from '@boom-busters/db'
 import { BudgetExceededError, ContentPolicyError, noticesFor } from '@boom-busters/schemas'
-import type { GraphicBrief, ShotBrief } from '@boom-busters/schemas'
+import type { ChartBrief, GraphicBrief, ShotBrief } from '@boom-busters/schemas'
 import { InngestTestEngine } from '@inngest/test'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/lib/db'
@@ -35,9 +34,9 @@ import { rebriefReferences, slotRebriefer } from './slot-rebriefer'
 /**
  * The slot-rebriefer against the real database, in mock-provider mode
  * (decision 258): a new brief lands whole and keeps the sentence it covers,
- * the steer reaches the draft, a chart goes back through the claim-validated
- * path, and a slot the button is not offered on refuses in words rather than
- * leaving the card drafting something that never arrives.
+ * the steer reaches the draft, a chart is redesigned from the data it has
+ * (decision 295), and a slot the button is not offered on refuses in words
+ * rather than leaving the card drafting something that never arrives.
  */
 
 const notify = vi.fn()
@@ -61,6 +60,61 @@ const stockBrief: ShotBrief = {
   transition: 'cut',
   query: 'empty office dusk',
   rejectionCriteria: ['no watermarks'],
+}
+
+const chartBrief: ChartBrief = {
+  type: 'chart',
+  coversText: stockBrief.coversText,
+  description: 'The collapse, drawn on.',
+  motion: { kind: 'static' },
+  transition: 'cut',
+  chartKind: 'line',
+  series: [
+    {
+      label: 'Share price',
+      unit: 'EUR',
+      points: [
+        { x: '2020-06-17', y: 104.5 },
+        { x: '2020-06-26', y: 1.28 },
+      ],
+    },
+  ],
+  // A chart may never cite nothing, by schema, so even the fixture names a claim.
+  dataRefs: [SOME_CLAIM],
+  takeaway: 'The nine-day collapse.',
+  reveal: 'draw-on',
+}
+
+/** A design stored on a chart redesigned before (decision 295). */
+const STORED_CODE = {
+  version: 1 as const,
+  source: 'function Graphic(props) { return null }',
+  compiled: 'function Graphic(props) {\n  return null;\n}\n',
+  title: 'The collapse, as it stands',
+  facts: [],
+  words: [],
+  durationMs: 8000,
+}
+
+/**
+ * A text-only design (decision 295): it shows no digit, so it passes whatever
+ * claims the project holds, and a slow drift keeps every stretch of it moving.
+ */
+const TEXT_DESIGN = {
+  source: `function Graphic(props) {
+  const frame = Remotion.useCurrentFrame()
+  const { durationInFrames } = Remotion.useVideoConfig()
+  const spacing = Remotion.interpolate(frame, [0, durationInFrames], [0, 0.08])
+  return (
+    <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: props.brand.colors.background }}>
+      <div style={{ letterSpacing: spacing + 'em', color: props.brand.colors.textPrimary, fontFamily: props.brand.fonts.heading, fontSize: 120 }}>
+        The collapse
+      </div>
+    </div>
+  )
+}`,
+  title: 'The collapse',
+  facts: [],
 }
 
 function rebriefEvent(
@@ -186,80 +240,53 @@ describeDb('slot-rebriefer (mock mode)', () => {
     expect((slot?.brief as { description: string }).description).toContain('another empty room')
   })
 
-  it('sends a chart back through the claim-validated path', async () => {
-    const chart: ShotBrief = {
-      type: 'chart',
-      coversText: stockBrief.coversText,
-      description: 'The collapse, drawn on.',
-      motion: { kind: 'static' },
-      transition: 'cut',
-      chartKind: 'line',
-      series: [
-        {
-          label: 'Share price',
-          unit: 'EUR',
-          points: [
-            { x: '2020-06-17', y: 104.5 },
-            { x: '2020-06-26', y: 1.28 },
-          ],
-        },
-      ],
-      // A chart may never cite nothing, by schema, so even the fixture has to
-      // name a claim: the rule is what this test is here to keep.
-      dataRefs: [SOME_CLAIM],
-      takeaway: 'From 104 to 1.28.',
-      reveal: 'draw-on',
-    }
-    const chartSlot = await seedSlot(chart)
+  it('redesigns a chart from its series with the steer, never re-drafting its data (decision 295)', async () => {
+    const chartSlot = await seedSlot(chartBrief)
+    await setSlotRetype(db, chartSlot, { state: 'rebriefing' })
 
     const { result } = await engine.execute({
       events: rebriefEvent(chartSlot, 'The whole decade, not just the crash.'),
     })
     expect(result).toMatchObject({ outcome: 'rebriefed' })
 
-    const brief = (await getShotSlot(db, chartSlot))?.brief as {
-      type: string
-      dataRefs: string[]
-    }
-    // Still a chart, and still citing a claim that exists on this project:
-    // asking for a different one does not suspend the sourcing rule.
+    const slot = await getShotSlot(db, chartSlot)
+    const brief = slot?.brief as ChartBrief & { code?: { title: string } }
+    // Still the same chart: its data comes from the shot list and a retype,
+    // and a steer changes only its design.
     expect(brief.type).toBe('chart')
-    expect(brief.dataRefs).toHaveLength(1)
+    expect(brief.series).toEqual(chartBrief.series)
+    expect(brief.dataRefs).toEqual([SOME_CLAIM])
+    expect(brief.takeaway).toBe(chartBrief.takeaway)
+    expect(brief.code?.title).toMatch(/^\[mock\]/)
+    expect(slot?.retype).toBeNull()
   })
 
-  it('refuses on the row when the claims cannot support a new chart', async () => {
-    const chart: ShotBrief = {
-      type: 'chart',
-      coversText: stockBrief.coversText,
-      description: 'The collapse, drawn on.',
-      motion: { kind: 'static' },
-      transition: 'cut',
-      chartKind: 'line',
-      series: [
-        {
-          label: 'Share price',
-          unit: 'EUR',
-          points: [
-            { x: '2020-06-17', y: 104.5 },
-            { x: '2020-06-26', y: 1.28 },
-          ],
-        },
-      ],
-      dataRefs: [SOME_CLAIM],
-      takeaway: 'The one the owner is keeping.',
-      reveal: 'none',
+  it('keeps the chart and the design it has when the redesign is refused (decision 295)', async () => {
+    const design = await import('@/lib/graphic-design')
+    const refuse = vi
+      .spyOn(design, 'designGraphic')
+      .mockResolvedValueOnce({ ok: false, issue: 'nothing changes between 4.2 s and 11.0 s' })
+    try {
+      const chartSlot = await seedSlot({
+        ...chartBrief,
+        takeaway: 'The one the owner is keeping.',
+        code: STORED_CODE,
+      })
+      const { result } = await engine.execute({ events: rebriefEvent(chartSlot) })
+      expect(result).toMatchObject({ outcome: 'refused' })
+
+      const slot = await getShotSlot(db, chartSlot)
+      // The brief it has survives, design and all, and the reason is where the board reads it.
+      const brief = slot?.brief as { takeaway: string; code?: unknown }
+      expect(brief.takeaway).toBe('The one the owner is keeping.')
+      expect(brief.code).toEqual(STORED_CODE)
+      expect(slot?.retype).toEqual({
+        state: 'rebrief-refused',
+        reason: 'nothing changes between 4.2 s and 11.0 s',
+      })
+    } finally {
+      refuse.mockRestore()
     }
-    const chartSlot = await seedSlot(chart)
-    await db.delete(claims)
-
-    const { result } = await engine.execute({ events: rebriefEvent(chartSlot) })
-    expect(result).toMatchObject({ outcome: 'refused' })
-
-    const slot = await getShotSlot(db, chartSlot)
-    // The brief it has survives, and the reason is where the board reads it.
-    expect((slot?.brief as { takeaway: string }).takeaway).toBe('The one the owner is keeping.')
-    expect(slot?.retype).toMatchObject({ state: 'rebrief-refused' })
-    expect((slot?.retype as { reason: string }).reason).toMatch(/claims/i)
   })
 
   it('refuses a headline in words rather than leaving the card drafting', async () => {
@@ -305,17 +332,18 @@ describeDb('slot-rebriefer (mock mode)', () => {
     },
   }
 
-  it('redesigns a graphic from its intent with the steer (decision 289)', async () => {
+  it('redesigns a graphic from its intent with the steer (decisions 289, 295)', async () => {
     const graphicId = await seedSlot(designedGraphic)
     await setSlotRetype(db, graphicId, { state: 'rebriefing' })
     const { result } = await engine.execute({ events: rebriefEvent(graphicId, 'bigger') })
     expect(result).toMatchObject({ outcome: 'rebriefed' })
 
     const slot = await getShotSlot(db, graphicId)
-    const brief = slot?.brief as { intent: string; scene: { elements: { content?: string }[] } }
+    const brief = slot?.brief as { intent: string; code?: { title: string } }
     // A redesign keeps the intent; the mock designer titles a steered design with the steer.
     expect(brief.intent).toBe('The money is simply gone.')
-    expect(brief.scene.elements[0]?.content).toBe('[mock] Redesigned: bigger')
+    expect(brief.code?.title).toMatch(/^\[mock\]/)
+    expect(brief.code?.title).toContain('bigger')
     expect(slot?.retype).toBeNull()
   })
 
@@ -516,5 +544,22 @@ describeDb('slot-rebriefer on the answer helper (decision 293)', () => {
 
     expect(result).toMatchObject({ outcome: 'rebriefed' })
     expect(await slotNotices(slotId)).toEqual([])
+  })
+
+  it('redesigns a chart on the designer and asks for no new brief (decision 295)', async () => {
+    const slotId = await seedOne(chartBrief)
+    callLlm.mockResolvedValue({ text: JSON.stringify(TEXT_DESIGN) })
+
+    const { result } = await engine.execute({ events: rebriefEvent(slotId, 'Calmer.') })
+
+    expect(result).toMatchObject({ outcome: 'rebriefed' })
+    // One call, and it is the designer's: the retype prompt is never asked.
+    expect(callLlm).toHaveBeenCalledTimes(1)
+    expect(callLlm.mock.calls[0]![0]).toMatchObject({ task: 'graphics' })
+    const brief = (await getShotSlot(db, slotId))?.brief as ChartBrief & {
+      code?: { title: string }
+    }
+    expect(brief.code?.title).toBe('The collapse')
+    expect(brief.series).toEqual(chartBrief.series)
   })
 })

@@ -683,6 +683,34 @@ describeDb('attaching an uploaded mark to a waiting graphic (decision 268, Plan 
     expect(brief.scene.elements[0]?.assetId).toBeUndefined()
   })
 
+  it('resolves a graphic written as code without asking for the scene mark it replaced (decision 295)', async () => {
+    const slotId = await seedGraphicSlot('Globex Corporation')
+    const source = 'function Graphic() { return null }'
+    const brief = {
+      ...graphicBrief('Globex Corporation'),
+      code: {
+        version: 1 as const,
+        source,
+        compiled: source,
+        title: 'Globex, counted up',
+        facts: [],
+        words: [],
+        durationMs: 6000,
+      },
+    }
+    await updateSlotBrief(db, slotId, brief)
+
+    expect(await attachGraphicLogosAction(FIXTURE_PROJECT_ID, slotId)).toEqual({ ok: true })
+
+    const row = (await getShotSlot(db, slotId))!
+    expect(row.status).toBe('resolved')
+    // The stamp matches the row, so Fetch owes the slot nothing.
+    expect(slotNeedsResolution(row)).toBe(false)
+    // The old scene is left as it was: only the code decides what plays.
+    const stored = row.brief as unknown as { scene: { elements: { assetId?: string }[] } }
+    expect(stored.scene.elements[0]?.assetId).toBeUndefined()
+  })
+
   it('keeps the camera track when it writes the asset id back (decision 290)', async () => {
     const brief: ShotBrief = {
       type: 'graphic',

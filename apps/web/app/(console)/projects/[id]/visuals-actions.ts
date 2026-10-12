@@ -774,10 +774,30 @@ export async function attachGraphicLogosAction(
   if (!parsed.success || parsed.data.type !== 'graphic') {
     return { ok: false, error: 'This slot is not a graphic.' }
   }
+  // A graphic written as code (decision 295) waits for no mark: it names its
+  // marks by title and reads what the library holds when the film is compiled,
+  // so a scene mark the library lacks, left over from before the redesign,
+  // must not stamp the slot a placeholder. It resolves as `visual-assets` does.
+  if (parsed.data.code) {
+    await setSlotResolution(db, slotId, {
+      status: 'resolved',
+      candidates: [],
+      // The row's own values: the stamp hashes them, and the parsed brief's
+      // key order is not the stored one.
+      answered: { brief: slot.brief, route: slot.route },
+    })
+    refresh(projectId)
+    return { ok: true }
+  }
   const scene = parsed.data.scene
   if (!scene) return { ok: false, error: 'This graphic has not been designed yet.' }
 
-  const logos = (await listLogos(db)).map((row) => ({ id: row.id, title: row.title ?? '' }))
+  const logos = (await listLogos(db)).map((row) => ({
+    id: row.id,
+    title: row.title ?? '',
+    width: row.width,
+    height: row.height,
+  }))
   let missing: string | null = null
   const elements = scene.elements.map((element) => {
     if (element.kind !== 'logo') return element

@@ -12,6 +12,8 @@ import type {
   ArticleMetadata,
   BrandKitTokens,
   Caption,
+  GraphicCode,
+  GraphicCodePayload,
   SocialPostRecord,
   WordTiming,
 } from '@boom-busters/schemas'
@@ -194,9 +196,33 @@ function chosenCandidate(row: AssemblySlotRow): ChosenCandidate | null {
   return candidates.find((candidate) => candidate.chosen === true) ?? null
 }
 
+type LogoBytes = { r2Key: string; width: number; height: number }
+
+/**
+ * A stored design as the timeline carries it (decision 295), less the claims
+ * and the data, which each brief type gathers its own way. The code reads its
+ * marks as `props.logos[title]` and nothing in it says which titles, so it
+ * carries every mark the library holds, as the dry run that checked it was
+ * handed every library title.
+ */
+function codePayload(
+  code: GraphicCode,
+  library: ReadonlyMap<string, LogoBytes> | undefined,
+): Omit<GraphicCodePayload, 'kind' | 'claimIds' | 'data'> {
+  return {
+    version: code.version,
+    compiled: code.compiled,
+    title: code.title,
+    words: code.words,
+    durationMs: code.durationMs,
+    logos: Object.fromEntries(library ?? []),
+  }
+}
+
 /**
  * Board rows → compiler slots. Chart and map slots carry their brief's
- * data; media slots carry a storage key (our bytes win over any URL) or
+ * data, and a graphic or chart the designer wrote carries its code
+ * (decision 295); media slots carry a storage key (our bytes win over any URL) or
  * the stable provider URL. Placeholders, hero slots (feature-flagged off)
  * and anything unresolvable are skipped AND counted — the gate summary
  * shows the human exactly what the preview lacks.
@@ -225,6 +251,12 @@ export function slotPlan(input: {
    * same way the compositions and the compiler expect.
    */
   logos?: ReadonlyMap<string, { r2Key: string; width: number; height: number }>
+  /**
+   * Every mark the logo library holds, by TITLE (decision 295), for the
+   * designs written as code. Absent, a design gets no marks: one that reads a
+   * mark then shows its title card rather than failing the render.
+   */
+  logoLibrary?: ReadonlyMap<string, LogoBytes>
   /**
    * Everything a social slot needs to compile (decision 284), read once by
    * the runner beside the articles and logos above. Absent when a caller has
@@ -276,6 +308,27 @@ export function slotPlan(input: {
     }
 
     if (brief.type === 'chart') {
+      // The designer's chart (decision 295): code built around the brief's
+      // own series, which ride along as `props.data`. A chart with no design
+      // yet keeps its own reveal.
+      if (brief.code) {
+        slots.push({
+          ...base,
+          type: 'chart',
+          graphicCode: {
+            ...codePayload(brief.code, input.logoLibrary),
+            claimIds: [
+              ...new Set([...brief.dataRefs, ...brief.code.facts.map((fact) => fact.claimId)]),
+            ],
+            data: {
+              series: brief.series,
+              takeaway: brief.takeaway,
+              ...(brief.annotations !== undefined ? { annotations: brief.annotations } : {}),
+            },
+          },
+        })
+        continue
+      }
       slots.push({
         ...base,
         type: 'chart',
@@ -332,6 +385,25 @@ export function slotPlan(input: {
     }
 
     if (brief.type === 'graphic') {
+      // A design written as code (decision 295) plays as code, whatever older
+      // scene the brief still holds: a Redesign leaves the scene beside it,
+      // and the code is what the board shows.
+      if (brief.code) {
+        slots.push({
+          ...base,
+          type: 'graphic',
+          graphicCode: {
+            ...codePayload(brief.code, input.logoLibrary),
+            claimIds: [
+              ...new Set([
+                ...brief.code.facts.map((fact) => fact.claimId),
+                ...(brief.intentClaimIds ?? []),
+              ]),
+            ],
+          },
+        })
+        continue
+      }
       // The scene keys its logos by ELEMENT id; `input.logos` (loaded once by
       // the runner, decision 268) keys the bytes by ASSET id. This is the
       // join. A logo element with no asset id, or one the map does not hold

@@ -455,7 +455,7 @@ describe('planChapterSlots plans a graphic and threads the logo library (decisio
       paragraphs: PARAGRAPHS,
       claims: CLAIMS,
       direction: null,
-      logos: [{ id: 'logo-1', title: 'Wirecard AG' }],
+      logos: [{ id: 'logo-1', title: 'Wirecard AG', width: 1200, height: 400 }],
     })
 
     const graphic = result.rows.find((row) => row.type === 'graphic')

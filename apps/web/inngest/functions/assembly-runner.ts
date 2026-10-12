@@ -6,6 +6,7 @@ import {
   insertTimeline,
   latestScriptParagraphSources,
   listCastMembers,
+  listLogos,
   listMusicBeds,
   listShotSlots,
   listVoiceTakes,
@@ -15,7 +16,7 @@ import {
 } from '@boom-busters/db'
 import type { AssetRow } from '@boom-busters/db'
 import { mockProvidersEnabled } from '@boom-busters/providers'
-import { referencePhotos } from '@boom-busters/schemas'
+import { codeLogoLibrary, referencePhotos } from '@boom-busters/schemas'
 import {
   newId,
   parseEventData,
@@ -288,6 +289,14 @@ export const assemblyRunner = inngest.createFunction(
           }
         }
       }
+      // Every mark in the library by title, for the designs written as code
+      // (decision 295): the code reads `props.logos[title]`, and nothing in
+      // it says which titles, so the whole library rides along. The first
+      // mark stored under a title wins, in `listLogos` order.
+      const logoLibrary = new Map<string, { r2Key: string; width: number; height: number }>()
+      for (const [title, asset] of codeLogoLibrary(await listLogos(db))) {
+        logoLibrary.set(title, { r2Key: asset.r2Key, width: asset.width, height: asset.height })
+      }
 
       // Everything a social slot needs (decision 284): the posts it quotes by
       // address, the owner's uploaded avatar/media by asset id, and the cast
@@ -330,6 +339,7 @@ export const assemblyRunner = inngest.createFunction(
         unusable,
         articles,
         logos,
+        logoLibrary,
         social: {
           posts: socialPosts,
           images: socialImages,

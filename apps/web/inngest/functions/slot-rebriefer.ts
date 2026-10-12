@@ -52,13 +52,13 @@ import { budgetGateData, markSideJobFailed, slotSubject, type GateContext } from
  *
  * - stock, real footage and AI image briefs are ideas, so `buildRebriefRequest`
  *   asks for another one under the same Director's Book craft rules.
- * - chart and map briefs are data, so they go back through the re-type
- *   drafting path with the target set to the type they already have. That is
- *   not a shortcut: it is how the claim-number validation stays exactly where
- *   it is, and a redrawn chart cannot cite numbers the dossier does not hold
- *   (decision 268, Plan B).
- * - a graphic is redesigned (decision 289): its intent stays and the graphics
- *   designer composes the scene again, so it never reaches the retype prompt.
+ * - a map brief is data, so it goes back through the re-type drafting path
+ *   with the target set to the type it already has. That is not a shortcut:
+ *   it is how the validation stays exactly where it is (decision 268, Plan B).
+ * - a graphic or a chart is redesigned (decisions 289, 295): a graphic's
+ *   intent and a chart's series stay, and the graphics designer writes the
+ *   code again, so neither reaches the retype prompt. A chart's data comes
+ *   from the shot list and a retype; a steer changes its design.
  *
  * A headline or social card never comes here at all. Every string on either is
  * read from the article or the post, so there is no idea to have again;
@@ -156,10 +156,11 @@ export const slotRebriefer = inngest.createFunction(
         return { ok: false as const, refused: reason }
       }
 
-      // A graphic is redesigned, not re-briefed (decision 289): its intent
-      // stays, the designer composes again from it, the current scene and the
-      // steer. A refusal leaves the scene the card already shows.
-      if (brief.type === 'graphic') {
+      // A graphic or a chart is redesigned, not re-briefed (decisions 289,
+      // 295): its intent or its series stay, and the designer writes it again
+      // from them, the current code and the steer. A refusal leaves the
+      // design the card already shows.
+      if (brief.type === 'graphic' || brief.type === 'chart') {
         try {
           const context = await loadGraphicContext(projectId, slot.chapterId)
           const result = await designGraphic(
@@ -190,11 +191,16 @@ export const slotRebriefer = inngest.createFunction(
 
       let answer: Answer<ShotBrief>
       try {
-        if (brief.type === 'chart' || brief.type === 'map') {
+        if (brief.type === 'map') {
           const claims = await scriptableClaims(db, projectId)
-          // The logo library's index (decision 268, Plan B): a redrafted
-          // graphic may name a mark the producer already holds.
-          const logos = (await listLogos(db)).map((row) => ({ id: row.id, title: row.title ?? '' }))
+          // The logo library's index (decision 268, Plan B), which the
+          // re-type prompt lists for every target.
+          const logos = (await listLogos(db)).map((row) => ({
+            id: row.id,
+            title: row.title ?? '',
+            width: row.width,
+            height: row.height,
+          }))
           answer = mockProvidersEnabled()
             ? {
                 ok: true,
@@ -250,8 +256,8 @@ export const slotRebriefer = inngest.createFunction(
         if (error instanceof BudgetExceededError) {
           return { ok: false as const, gate: budgetGateData(error) }
         }
-        // The mock refuses as the live parser does (a chart with no claims to
-        // cite), and its refusal lands on the card the same way below.
+        // The mock refuses as the live parser does, and its refusal lands on
+        // the card the same way below.
         if (!(error instanceof ValidationError)) throw error
         answer = { ok: false, issue: error.message, calls: 1 }
       }

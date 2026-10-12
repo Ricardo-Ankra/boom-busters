@@ -282,6 +282,18 @@ describe('the graphic shot (decision 268, Plan B)', () => {
     expect(request.system).not.toMatch(/six elements at most/i)
   })
 
+  it('scopes a graphic to what a motion designer would build (decision 295)', () => {
+    const rules = GRAPHIC_INTENT_RULES.replace(/\s+/g, ' ')
+    expect(rules).toContain(
+      "a figure, a comparison, a timeline of dated moments, a diagram of who did what to whom, or a kinetic restatement of the narration's key phrase",
+    )
+    expect(rules).toContain('a designer writes it afterwards')
+    expect(rules).not.toContain('one or two cited figures')
+    expect(rules).toContain(
+      'never a chart with fewer points: a value moving through time is a "chart"',
+    )
+  })
+
   it('says nothing about logos when the library is empty', () => {
     const request = buildShotListRequest(baseRequest())
     expect(request.messages[0]?.content).not.toContain('Logos')

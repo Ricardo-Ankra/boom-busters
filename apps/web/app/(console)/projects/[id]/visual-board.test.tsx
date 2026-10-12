@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { SOCIAL_TOO_LONG } from '@boom-busters/compositions/social'
 import { FAL_MODELS, GEMINI_IMAGE_MODELS, X_POST_MISSING } from '@boom-busters/providers'
 import { DEFAULT_SETTINGS } from '@boom-busters/schemas'
-import type { Notice } from '@boom-busters/schemas'
+import type { Notice, ShotBrief } from '@boom-busters/schemas'
 import type { SlotView, VisualsReviewModel } from '@/lib/visuals-review'
 import { timecode } from '@/lib/visuals-reuse'
 import { VisualBoard } from './visual-board'
@@ -90,9 +90,20 @@ vi.mock('./social-preview', () => ({
   ),
 }))
 
-/** The real player is graphic-player.test's; the board only has to mount a frame. */
+/** The real player is graphic-player.test's; the board only has to mount a frame with a design. */
 vi.mock('./graphic-player', () => ({
-  GraphicPlayerFrame: () => <div data-testid="player-frame" />,
+  GraphicPlayerFrame: ({ design }: { design: { kind: string } }) => (
+    <div data-testid="player-frame" data-design={design.kind} />
+  ),
+}))
+
+/** The still is graphic-code-still.test's; here the board only has to hand it the design. */
+const stillProps = vi.hoisted(() => vi.fn())
+vi.mock('./graphic-code-still', () => ({
+  GraphicCodeStill: (props: Record<string, unknown>) => {
+    stillProps(props)
+    return <div data-testid="graphic-code-still" />
+  },
 }))
 
 const createLogoUploadAction = vi.fn()
@@ -230,6 +241,7 @@ const stockSlot: SlotView = {
   route: null,
   derivedRoute: { provider: 'google', model: 'gemini-3-pro-image' },
   logoUrls: {},
+  logoMarks: {},
   references: [],
   social: null,
 }
@@ -277,6 +289,7 @@ const chartSlot: SlotView = {
   route: null,
   derivedRoute: { provider: 'google', model: 'gemini-3-pro-image' },
   logoUrls: {},
+  logoMarks: {},
   references: [],
   social: null,
 }
@@ -325,6 +338,7 @@ const headlineSlot: SlotView = {
   route: null,
   derivedRoute: { provider: 'google', model: 'gemini-3-pro-image' },
   logoUrls: {},
+  logoMarks: {},
   references: [],
   social: null,
 }
@@ -382,6 +396,7 @@ const graphicSlot: SlotView = {
   route: null,
   derivedRoute: { provider: 'google', model: 'gemini-3-pro-image' },
   logoUrls: {},
+  logoMarks: {},
   references: [],
   social: null,
 }
@@ -431,6 +446,7 @@ const brokenSlot: SlotView = {
   route: null,
   derivedRoute: { provider: 'google', model: 'gemini-3-pro-image' },
   logoUrls: {},
+  logoMarks: {},
   references: [],
   social: null,
 }
@@ -1132,6 +1148,167 @@ describe('the graphic card (decision 289)', () => {
     expect(
       screen.getAllByRole('button', { name: 'Draft a different brief' }).length,
     ).toBeGreaterThan(0)
+  })
+})
+
+describe('a design written as code (decision 295)', () => {
+  /** Plain JS, so the source is its own compiled form. */
+  const CODE_SOURCE =
+    "function Graphic(props) { return React.createElement('p', null, props.logos['Acme'] ? 'Acme' : 'none') }"
+  const CODE = {
+    version: 1 as const,
+    source: CODE_SOURCE,
+    compiled: CODE_SOURCE,
+    title: 'Four billion, counted up',
+    facts: [{ text: '4', claimId: CLAIM }],
+    words: [{ text: 'four', atMs: 300 }],
+    durationMs: 6000,
+  }
+  const { scene: _scene, ...unscened } = graphicSlot.brief as Record<string, unknown>
+  const codedGraphic = {
+    ...graphicSlot,
+    status: 'resolved',
+    brief: { ...unscened, intent: 'Four billion is the story.', code: CODE },
+  } as SlotView
+  const codedChart = {
+    ...chartSlot,
+    brief: { ...chartSlot.brief!, code: { ...CODE, title: 'The fall, in nine days' } },
+  } as SlotView
+  const chartSeries = (chartSlot.brief as Extract<ShotBrief, { type: 'chart' }>).series
+
+  it('shows a coded graphic by its title and its own still, with Play and no SVG preview', async () => {
+    render(
+      <VisualBoard
+        projectId={PROJECT}
+        model={model([codedGraphic])}
+        colors={COLORS}
+        brand={BRAND}
+      />,
+    )
+    expect(screen.getByText('Four billion, counted up')).toBeInTheDocument()
+    expect(await screen.findByTestId('graphic-code-still')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Play graphic' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Redesign graphic' })).toBeInTheDocument()
+    expect(screen.queryByRole('img', { name: /^graphic:/ })).toBeNull()
+    expect(screen.queryByText(/Being designed/)).toBeNull()
+    // The chips are the claims the code's facts cite.
+    expect(screen.getByTitle(CLAIM)).toHaveTextContent('claim 1')
+  })
+
+  it('hands the still every mark in the library, keyed by title, whatever the code reads (ruling 5)', async () => {
+    const slot = {
+      ...codedGraphic,
+      logoUrls: { A1: 'https://r2.example/acme.png', A2: 'https://r2.example/globex.png' },
+      logoMarks: {
+        A1: { title: 'Acme', width: 400, height: 200 },
+        A2: { title: 'Globex', width: 300, height: 300 },
+      },
+    } as SlotView
+    render(<VisualBoard projectId={PROJECT} model={model([slot])} colors={COLORS} brand={BRAND} />)
+    await screen.findByTestId('graphic-code-still')
+    // The code reads only Acme; it is handed Globex too, as the dry run and the render hand it.
+    expect(stillProps).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        code: CODE,
+        logos: {
+          Acme: { assetId: 'A1', url: 'https://r2.example/acme.png', width: 400, height: 200 },
+          Globex: { assetId: 'A2', url: 'https://r2.example/globex.png', width: 300, height: 300 },
+        },
+      }),
+    )
+  })
+
+  it('plays the code when the brief still carries the scene it replaced', async () => {
+    const slot = {
+      ...graphicSlot,
+      brief: { ...graphicSlot.brief!, code: CODE },
+    } as SlotView
+    render(<VisualBoard projectId={PROJECT} model={model([slot])} colors={COLORS} brand={BRAND} />)
+    expect(screen.queryByRole('img', { name: /^graphic:/ })).toBeNull()
+    // The old scene's missing mark is not asked for: the code draws the card now.
+    expect(screen.queryByRole('button', { name: /^Add logo for/ })).toBeNull()
+    await userEvent.click(screen.getByRole('button', { name: 'Play graphic' }))
+    expect(await screen.findByTestId('player-frame')).toHaveAttribute('data-design', 'code')
+  })
+
+  it('shows a coded chart by its title and still, with Play chart and Redesign chart', async () => {
+    render(
+      <VisualBoard projectId={PROJECT} model={model([codedChart])} colors={COLORS} brand={BRAND} />,
+    )
+    expect(screen.getByText('The fall, in nine days')).toBeInTheDocument()
+    expect(await screen.findByTestId('graphic-code-still')).toBeInTheDocument()
+    expect(stillProps).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        data: { series: chartSeries, takeaway: 'From €104 to €1.28 in nine days.' },
+      }),
+    )
+    expect(screen.queryByRole('img', { name: /line chart/ })).toBeNull()
+    expect(screen.getByText('From €104 to €1.28 in nine days.')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Redesign chart' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Draft a different brief' })).toBeNull()
+    await userEvent.click(screen.getByRole('button', { name: 'Play chart' }))
+    expect(await screen.findByTestId('player-frame')).toHaveAttribute('data-design', 'code')
+  })
+
+  it('says why a chart was not designed, and keeps the chart it renders', () => {
+    const slot = {
+      ...chartSlot,
+      brief: { ...chartSlot.brief!, designIssue: 'no claim holds 7bn' },
+    } as SlotView
+    render(<VisualBoard projectId={PROJECT} model={model([slot])} colors={COLORS} brand={BRAND} />)
+    expect(screen.getByText('Not designed: no claim holds 7bn')).toBeInTheDocument()
+    // Persistent state, not an event: nothing announces it on load.
+    expect(screen.queryByRole('alert')).toBeNull()
+    expect(screen.getByRole('img', { name: /line chart/ })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Play chart' })).toBeNull()
+  })
+
+  it('redesigns a chart from its own form', async () => {
+    render(
+      <VisualBoard projectId={PROJECT} model={model([chartSlot])} colors={COLORS} brand={BRAND} />,
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'Redesign chart' }))
+    expect(screen.getByLabelText('What should change? (optional)')).toBeInTheDocument()
+    expect(
+      screen.getByText(
+        "The designer starts from this chart's data and its current design, if it has one. The steer is used once and not kept.",
+      ),
+    ).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Redesign it' }))
+    expect(rebriefSlotAction).toHaveBeenCalledWith(PROJECT, chartSlot.id, '')
+    expect(toast).toHaveBeenCalledWith(
+      expect.objectContaining({ title: 'Redesigning: this card updates when it lands' }),
+    )
+  })
+
+  it('words a running chart redesign as a design', () => {
+    render(
+      <VisualBoard
+        projectId={PROJECT}
+        model={model([{ ...chartSlot, retype: { state: 'rebriefing' } }])}
+        colors={COLORS}
+        brand={BRAND}
+      />,
+    )
+    expect(
+      screen.getByText('Claude is redesigning this chart. This card updates when it lands.'),
+    ).toBeInTheDocument()
+  })
+
+  it('words a refused chart redesign as a design, and says the chart keeps its own', () => {
+    render(
+      <VisualBoard
+        projectId={PROJECT}
+        model={model([
+          { ...chartSlot, retype: { state: 'rebrief-refused', reason: 'no claim holds 7bn' } },
+        ])}
+        colors={COLORS}
+        brand={BRAND}
+      />,
+    )
+    expect(
+      screen.getByText('No new design: no claim holds 7bn The chart keeps the one it has.'),
+    ).toBeInTheDocument()
   })
 })
 
@@ -2328,6 +2505,7 @@ const socialSlot: SlotView = {
   route: null,
   derivedRoute: { provider: 'google', model: 'gemini-3-pro-image' },
   logoUrls: {},
+  logoMarks: {},
   references: [],
   social: {
     post: fetchedPost,

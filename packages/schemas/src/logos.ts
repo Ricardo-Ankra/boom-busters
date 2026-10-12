@@ -33,10 +33,18 @@ export const LOGO_RASTER_MAX_EDGE = 2048
 export const LOGO_ACCEPT =
   'image/png,image/webp,image/jpeg,image/svg+xml,image/avif,.png,.webp,.jpg,.jpeg,.svg,.avif'
 
-/** What a resolver needs to know about a mark: its id and the name it answers to. */
+/**
+ * What a resolver needs to know about a mark: its id, the name it answers to
+ * and the size it was stored at, null when none was recorded (both columns
+ * are nullable). A design written as code is handed only the marks with a
+ * size (decision 295, ruling 25): the render cannot place a mark it cannot
+ * size, so the dry run never shows the code one.
+ */
 export interface LogoIndex {
   id: string
   title: string
+  width: number | null
+  height: number | null
 }
 
 /**
@@ -52,4 +60,29 @@ export function logoForEntity<T extends LogoIndex>(entity: string, logos: readon
   return (
     logos.find((logo) => nameMatches(entity, logo.title) || nameMatches(logo.title, entity)) ?? null
   )
+}
+
+/**
+ * The marks a design written as code is handed (decision 295; rulings 5 and
+ * 25), keyed by title: the one rule the dry run, the assembly and the board
+ * share. A mark with no title cannot be named and one with no recorded size
+ * cannot be placed, so both are left out, and the first mark stored under a
+ * title wins, in the order given. Each row comes back whole, its size narrowed
+ * to numbers.
+ */
+export function codeLogoLibrary<
+  T extends {
+    id: string
+    title: string | null
+    width: number | null | undefined
+    height: number | null | undefined
+  },
+>(rows: readonly T[]): Map<string, T & { width: number; height: number }> {
+  const library = new Map<string, T & { width: number; height: number }>()
+  for (const row of rows) {
+    const title = row.title ?? ''
+    if (title.trim() === '' || library.has(title) || !row.width || !row.height) continue
+    library.set(title, { ...row, width: row.width, height: row.height })
+  }
+  return library
 }

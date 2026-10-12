@@ -32,8 +32,36 @@ const nextConfig: NextConfig = {
   ],
   // `sharp` is a native module, loaded only when a pasted image turns out to
   // be an AVIF (decision 266, lib/remote-image.ts). Bundling it would break
-  // the platform-specific binary, so Next leaves it where it is.
-  serverExternalPackages: ['postgres', 'sharp'],
+  // the platform-specific binary, so Next leaves it where it is. `esbuild`
+  // is the same kind of package: the graphics designer's compile check
+  // (decision 295, lib/graphic-code/compile.ts) runs its native binary.
+  serverExternalPackages: ['esbuild', 'postgres', 'sharp'],
+  // The dry run (decision 295, lib/graphic-code/dry-run.ts) requires React,
+  // react-dom/server and Remotion at run time by names the file trace cannot
+  // read, so the Inngest route's function bundle would ship without them.
+  // Only the files Node loads: the CommonJS builds.
+  outputFileTracingIncludes: {
+    '/api/inngest': [
+      './node_modules/react/package.json',
+      './node_modules/react/*.js',
+      './node_modules/react/cjs/**/*',
+      './node_modules/react-dom/package.json',
+      './node_modules/react-dom/*.js',
+      './node_modules/react-dom/cjs/**/*',
+      './node_modules/remotion/package.json',
+      './node_modules/remotion/dist/cjs/**/*',
+      // The same files at their real pnpm paths: apps/web/node_modules holds
+      // symlinks, and a deploy that copies by real path needs the targets.
+      '../../node_modules/.pnpm/react@*/node_modules/react/package.json',
+      '../../node_modules/.pnpm/react@*/node_modules/react/*.js',
+      '../../node_modules/.pnpm/react@*/node_modules/react/cjs/**/*',
+      '../../node_modules/.pnpm/react-dom@*/node_modules/react-dom/package.json',
+      '../../node_modules/.pnpm/react-dom@*/node_modules/react-dom/*.js',
+      '../../node_modules/.pnpm/react-dom@*/node_modules/react-dom/cjs/**/*',
+      '../../node_modules/.pnpm/remotion@*/node_modules/remotion/package.json',
+      '../../node_modules/.pnpm/remotion@*/node_modules/remotion/dist/cjs/**/*',
+    ],
+  },
   typedRoutes: true,
   // Next's floating dev-tools button is a 32px control that only exists in
   // dev. It fails the 40px hit-target audit the E2E suite runs over every

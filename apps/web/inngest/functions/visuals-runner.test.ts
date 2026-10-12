@@ -45,6 +45,28 @@ vi.mock('@/lib/notify', () => ({ notify: vi.fn() }))
 
 const describeDb = requireTestDatabase() ? describe : describe.skip
 
+/**
+ * A text-only design (decision 295): it shows no digit, so it passes whatever
+ * the fixture's claims say, and a slow drift keeps every stretch of it moving.
+ */
+const TEXT_DESIGN = {
+  source: `function Graphic(props) {
+  const frame = Remotion.useCurrentFrame()
+  const { durationInFrames } = Remotion.useVideoConfig()
+  const opacity = Remotion.interpolate(frame, [0, 12], [0, 1], { extrapolateRight: 'clamp' })
+  const spacing = Remotion.interpolate(frame, [0, durationInFrames], [0, 0.08])
+  return (
+    <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: props.brand.colors.background }}>
+      <div style={{ opacity, letterSpacing: spacing + 'em', color: props.brand.colors.textPrimary, fontFamily: props.brand.fonts.heading, fontSize: 120 }}>
+        The money is gone
+      </div>
+    </div>
+  )
+}`,
+  title: 'The money is gone',
+  facts: [],
+}
+
 describeDb('visuals-runner (mock mode)', () => {
   let engine: InngestTestEngine
 
@@ -351,7 +373,7 @@ describeDb('visuals-runner (mock mode)', () => {
     expect(slots.every((slot) => slot.route === null)).toBe(true)
   })
 
-  it('designs each planned graphic before the plan is saved (decision 289)', async () => {
+  it('designs each planned graphic before the plan is saved (decisions 289, 295)', async () => {
     vi.stubEnv('MOCK_PROVIDERS', '')
     const book = mockDirectorsBook({ caseTitle: 'Wirecard', chapterCount: 1, cast: [] })
     const planned = {
@@ -368,24 +390,10 @@ describeDb('visuals-runner (mock mode)', () => {
         intentRefs: [],
       },
     }
-    // A text-only scene cites no claim, so it passes whatever the fixture's claims say.
-    const scene = {
-      elements: [
-        {
-          kind: 'text',
-          id: 't',
-          cell: { col: 1, row: 3, colSpan: 10, rowSpan: 2 },
-          content: 'The money is gone',
-          role: 'heading',
-          color: 'textPrimary',
-          enter: { kind: 'fade', atMs: 0 },
-        },
-      ],
-    }
     callLlm.mockReset()
     callLlm.mockImplementation((request: { task: string }) => {
       if (request.task === 'direction') return Promise.resolve({ text: JSON.stringify(book) })
-      if (request.task === 'graphics') return Promise.resolve({ text: JSON.stringify({ scene }) })
+      if (request.task === 'graphics') return Promise.resolve({ text: JSON.stringify(TEXT_DESIGN) })
       return Promise.resolve({ text: JSON.stringify({ slots: [planned] }) })
     })
 
@@ -396,8 +404,10 @@ describeDb('visuals-runner (mock mode)', () => {
     const stored = (await listShotSlots(db, FIXTURE_PROJECT_ID)).find((s) => s.type === 'graphic')
     expect(stored?.brief).toMatchObject({
       intent: 'The money is simply gone.',
-      scene: { elements: [{ id: 't', content: 'The money is gone' }] },
+      code: { version: 1, source: TEXT_DESIGN.source, title: 'The money is gone' },
     })
+    const code = (stored?.brief as { code?: { compiled: string } }).code
+    expect(code?.compiled).not.toContain('<div')
   })
 
   it('stores an undesigned graphic with its reason (decision 289)', async () => {
@@ -406,7 +416,7 @@ describeDb('visuals-runner (mock mode)', () => {
     callLlm.mockReset()
     callLlm.mockImplementation((request: { task: string }) => {
       if (request.task === 'direction') return Promise.resolve({ text: JSON.stringify(book) })
-      // Never a usable scene: both attempts are refused.
+      // Never a usable design: both attempts are refused.
       if (request.task === 'graphics')
         return Promise.resolve({ text: '{"scene": {"elements": []}}' })
       return Promise.resolve({
@@ -434,10 +444,8 @@ describeDb('visuals-runner (mock mode)', () => {
     })
 
     const stored = (await listShotSlots(db, FIXTURE_PROJECT_ID)).find((s) => s.type === 'graphic')
-    expect(stored?.brief).toMatchObject({
-      designIssue: expect.stringMatching(/^The graphic is malformed/),
-    })
-    expect((stored?.brief as { scene?: unknown }).scene).toBeUndefined()
+    expect(stored?.brief).toMatchObject({ designIssue: expect.stringMatching(/\S/) })
+    expect((stored?.brief as { code?: unknown }).code).toBeUndefined()
   })
 
   // Decision 279: "Fetch visuals" after the planning run failed starts a run

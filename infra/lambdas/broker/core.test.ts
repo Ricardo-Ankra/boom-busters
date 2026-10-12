@@ -562,6 +562,45 @@ describe('materialiseTimeline', () => {
     ).toBeUndefined()
   })
 
+  it("presigns a graphic-code payload's logo keys, and leaves the original untouched (decision 295)", async () => {
+    const original = canonicalTimeline()
+    original.slots.push({
+      type: 'graphic',
+      startMs: 8000,
+      durationMs: 4000,
+      transition: 'cut',
+      motion: { kind: 'static' },
+      payload: {
+        kind: 'graphic-code',
+        version: 1,
+        compiled: 'function Graphic() { return null }',
+        title: 'Funding round',
+        words: [],
+        durationMs: 4000,
+        logos: {
+          'Stability AI': { r2Key: 'boom-busters/logos/abc.png', width: 1200, height: 400 },
+        },
+        claimIds: [],
+      },
+    })
+    const copy = await materialiseTimeline(original, (key) =>
+      Promise.resolve(`https://signed/${key}`),
+    )
+    const graphic = copy.slots.find((slot) => slot.payload.kind === 'graphic-code')
+    expect(
+      graphic && graphic.payload.kind === 'graphic-code'
+        ? graphic.payload.logos['Stability AI']?.url
+        : null,
+    ).toBe('https://signed/boom-busters/logos/abc.png')
+
+    const originalGraphic = original.slots.find((slot) => slot.payload.kind === 'graphic-code')
+    expect(
+      originalGraphic && originalGraphic.payload.kind === 'graphic-code'
+        ? originalGraphic.payload.logos['Stability AI']?.url
+        : undefined,
+    ).toBeUndefined()
+  })
+
   it("presigns a social post's avatar and media, leaves an externalUrl as it is, and never mutates the original", async () => {
     const original = canonicalTimeline()
     original.slots.push({

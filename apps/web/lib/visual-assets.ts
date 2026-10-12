@@ -798,6 +798,10 @@ export async function resolveSlotBrief(input: {
       // is not proof by itself: the mark it names can have been removed
       // from the library after this brief was written, so a hit still
       // needs the row to actually be there.
+      // A graphic written as code (decision 295) waits for no mark: the code
+      // reads what the library holds when the film is compiled, and it plays
+      // whatever older scene the brief still carries.
+      if (brief.code) return { candidates: [], status: 'resolved' }
       // A graphic stored before it is designed (decision 289) has no scene
       // yet: it waits as a placeholder, and the designer fills it in.
       if (!brief.scene) return { candidates: [], status: 'placeholder' }

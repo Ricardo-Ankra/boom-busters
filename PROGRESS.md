@@ -7246,3 +7246,191 @@ boom-busters-broker`; merge and deploy to Vercel, then `PUT
      past its retries, and reads a throwing mocked step as a success.
      Shipping: a Vercel deploy and `PUT /api/inngest`. No migration, no
      Remotion or broker deploy.
+
+295. **The designer writes the graphic** (2026-10-12, owner). Decisions
+     268, 289 and 290 had the model fill in a form: five element kinds on
+     a 12x12 grid, four entrances, three exits, one camera track, every
+     duration a constant, and a prompt that pushed restraint. The live
+     runs of 8 October drew two to four elements in one column every
+     time. The owner found the brand fonts and colours used well, the
+     motion unpolished and the graphics simplistic, text-only ones most
+     of all, and the chart format's single draw-on reveal behind them
+     both; the guardrails and the structure were what held them back.
+     Owner's rulings: the designer writes the animation itself, as a
+     React component, with guardrails on facts, brand, timing and frame
+     purity and none on layout, element count, easing or motion; charts
+     move onto the same designer, built around their real series, and
+     the chart reveal stays only for a chart with no design yet; the $1
+     live loop goes, since the board plays the real composition and
+     Redesign runs the real designer, and stills cannot show whether a
+     spring settles.
+     What shipped: the designer answers `{ source, title, facts }`. The
+     web server compiles the JSX with esbuild, scans the source for the
+     size cap (16 KB) and the `Graphic` declaration and the compiled
+     output for everything else (the banned globals and hooks,
+     `Suspense`, `lazy`, assignment to `Remotion.*` or `React.*`, hex
+     and `rgb(` literals, the routes out of the sandbox below,
+     `toLocaleString` and `Intl`, CSS `transition`, `animation` and
+     `@keyframes`), dry-runs it in a `vm` context every 250 ms in
+     1920x1080 and 1080x1920 at 30 fps, and checks, in each frame
+     apart and never across the two, every digit group on screen for a
+     second against the claims its facts cite (on a chart, or against
+     its own series). The order is compile, scan, dry run, facts. A
+     throw, a frame over 2 s, more than 6 s with nothing changing, text
+     outside the safe area or an empty last frame is a refusal that
+     names it, retried once with the reason (decision 292). A design
+     that passes is stored as `code` on the brief, beside any older
+     `scene`, and a timeline payload of its own, `graphic-code`, carries
+     the compiled function to `GraphicCode`, which builds it once and
+     draws it in the house frame behind an error boundary that shows the
+     title. Chart briefs gain `code` and `designIssue` and are designed
+     like graphics: in the visuals run, after a retype and on Redesign
+     chart. On the board a design in code plays in the Player at the
+     full 1080p frame and shows, under its title, a still of its own
+     component drawn at a quarter size, 60% of the way through the
+     slot; a chart card gets Play chart, Redesign chart and
+     the "Not designed" line. The prompt is rewritten around the
+     sandbox, the six rules, a short craft section and two worked
+     components; the answer budget is 12,000 tokens; the shot list's
+     graphic intents widen to what a motion designer would build for the
+     beat. `pnpm live:graphic` and `pnpm render:graphics` are deleted;
+     the saved runs stay as a record.
+     Decisions made where the spec left room:
+     the stored design is `code`,
+     not `motion`, since every brief already carries the Ken Burns `motion`
+     spec (cost if wrong: none); the checks run compile, scan, dry run,
+     facts, with the token, colour and assignment checks reading esbuild's
+     compiled output, because blanking raw JSX cannot tell an apostrophe in
+     on-screen text from a quote (cost if wrong: one esbuild call on a
+     refused size); the dry run uses the house brand, since no check reads a
+     colour (cost if wrong: none); a chart's series count as allowed digits
+     through `extraTexts`, never an uncited claim (cost if wrong: a chart's
+     own figure refused); a design is handed every sized library logo, keyed
+     by title, in the dry run, the assembly and the board through one
+     `codeLogoLibrary` rule, and a logo with no recorded size is left out
+     everywhere (cost if wrong: an unneeded mark presigned per slot);
+     `props.intent` was dropped, the intent reaching the model in the brief
+     message only (cost if wrong: none); `props.durationMs` is always the
+     design-time length, so a stretched slot holds the code's ending (cost
+     if wrong: a slot the compiler shortened cuts the held ending); a failed
+     redesign keeps the `code` the card shows and sets `designIssue` (cost
+     if wrong: none); the mock designer substitutes the fixture's figure
+     for the cited claim's first digit group, so mock mode passes the real
+     checks on any seed (cost if wrong: a mock graphic with an odd figure);
+     an over-long title is trimmed, the source and facts never repaired
+     (cost if wrong: one wasted call); the still and the dry run share one
+     one-frame shim, now held to Remotion's own Sequence rules by a parity
+     test (cost if wrong: the still draws a frame the film will not);
+     helpers in the model's code are plain functions and hooks stay at the
+     top of `Graphic`, stated in the prompt because a component declared
+     inside the outer function remounts every frame and a conditional hook
+     passes the dry run and crashes the render (cost if wrong: a crashed
+     slot shows its title card); the scan also refuses assignment under
+     `React.*` and `Remotion.*`, `Suspense`, `lazy`, `toLocaleString`,
+     `Intl` and CSS transitions, with strict mode and frozen copies of
+     `Easing` and `React` behind it (cost if wrong: an honest design
+     refused once); the facts are checked per frame, 16:9 and 9:16 each,
+     since the Short is published (cost if wrong: none); the dry run's
+     modules and esbuild are proven before the first model call and a host
+     that lacks them fails the design non-retriably (cost if wrong: none);
+     the live loop was dropped (owner) and its harness deleted; the
+     Inngest route's bundling under the `react-server` condition was met
+     with lazy run-time requires, a Remotion-free compositions subpath and
+     tracing includes rather than a Remotion server external, which broke
+     server rendering of the preview screen's Player (cost if wrong: a
+     missing traced file fails the first design, not the route); one
+     commit's trailer names Haiku 4.5, the model that wrote it (cost: none).
+     Shipping, in this order because the timeline schema gained a
+     payload and an older broker refuses it: `deploy:remotion`, then
+     `deploy:stacks boom-busters-broker` (the Lambda recipe, run by the
+     owner), then the Vercel deploy and `PUT /api/inngest`. No
+     migration: `code` lives in the brief's JSON column. Older `scene`
+     graphics keep rendering on `GraphicCard`, and a chart with no code
+     on `ChartReveal`.
+     The rollout's checks: esbuild is a server external with a native
+     binary, and `designGraphicWith` compiles one line with it
+     (`ensureGraphicCompiler`, once per process) before its first model
+     call, so a host where the binary cannot run fails the design
+     non-retriably before anything is paid for. If the first production
+     design fails with 'The package "@esbuild/linux-x64" could not be found' in its
+     message, the `outputFileTracingIncludes` entry for `/api/inngest`
+     in `next.config.ts` gains the binary's files. The
+     Inngest route is bundled with the `react-server` condition, under
+     which `react-dom/server` throws on import, React has no
+     `createContext` and Remotion refuses to load; under `pnpm dev` the
+     first request to `/api/inngest` answered 500 for all three. So the
+     route imports none of them. `dry-run.ts` requires React,
+     `react-dom/server` and Remotion at run time, on its first dry run
+     and not at module load (names built at run time and marked
+     `turbopackIgnore` and `webpackIgnore`, so the bundler leaves a
+     real Node `require`); a host that cannot load them fails the
+     design before any model call, non-retriably (`designGraphicWith`
+     calls `ensureDryRunRuntime` first), and the route stays up.
+     `one-frame.ts` is a factory over the React
+     and the Remotion functions it is given (`makeOneFrame`), the board's
+     still handing it the browser's. `check.ts`, `dry-run.ts` and
+     `one-frame.ts` import the Remotion-free subpath
+     `@boom-busters/compositions/graphic-code-pure`, which
+     `graphic-code.ts` re-exports. The file trace cannot see a run-time
+     require, so `outputFileTracingIncludes` lists the CommonJS files of
+     `react`, `react-dom` and `remotion`, under `node_modules` and at
+     their real `.pnpm` paths; after `next build` the route's trace
+     lists `react-dom/server.node.js`, both `react-dom-server*.node.production.js`
+     files, `react/index.js`, `react/jsx-runtime.js` (Remotion's CommonJS
+     build requires it) and `remotion/dist/cjs`, and `next start`
+     answers 200 on `/api/inngest`. There are no server externals
+     beyond `esbuild`, `postgres` and `sharp`: `remotion` as one broke
+     the server render of the preview screen's Player, whose client
+     components render with Next's own React. Two e2e tests guard this:
+     the route answers 200 on the e2e server, and a fresh load of a
+     film with no draft and no master renders its preview.
+     The sandbox's posture (final review I1): the scan is a lint against
+     an honest designer's mistakes, not a security boundary. The dry
+     run's `vm` context is handed objects from the Inngest function's
+     own process, and any host function's `constructor` is that
+     process's `Function`, which reaches its globals and `process.env`
+     with every secret the app holds; on the board the code runs in the
+     console's own origin, with no CSP. The fix wave refused the direct
+     routes: the function body runs in strict mode
+     (a bare `this` is undefined, an assignment to a frozen member
+     throws and the dry run refuses it), the code is handed frozen
+     copies of Remotion's `Easing` (copied by name: its statics are not
+     enumerable, so a spread copies none) and, in the dry run, of React
+     without its internals, and the scan refuses `constructor`,
+     `__proto__`, `prototype`, `getPrototypeOf`, `Reflect`, `Proxy`,
+     `self`, `navigator`, `top`, `parent`, `frames`, `opener` and
+     `location` used as the browser's, the network and storage globals,
+     `dangerouslySetInnerHTML`, those names spelt out in a string for
+     bracket access, and `script`, `iframe`, `object`, `embed`, `link`,
+     `style`, `meta`, `base` and `form` as a call's quoted element name.
+     A name or literal reached at run time still gets past the scan: a
+     concatenation, an index into `getOwnPropertyNames`, a conditional
+     or an alias (`React.createElement(x ? 'script' : 'div', ...)` is one
+     line, and the board would run it). Real isolation (an isolate
+     such as `isolated-vm` for the dry run, a sandboxed iframe or a CSP
+     for the board) is a follow-up for the owner to decide. The dry
+     run's context also runs the promise callbacks the code queues
+     inside its timeout (`microtaskMode: 'afterEvaluate'`); its memory
+     is still unbounded.
+     The one-frame shim (`one-frame.ts`) the dry run and the still share
+     copies Remotion 4.0.512's `Sequence` and `AbsoluteFill`: the same
+     TypeErrors (a `durationInFrames` of 0 or less or not a number, a
+     `from` that is not finite, a `style` under `layout="none"`), the
+     same window with its last frame rounded up, a full-frame layer laid
+     out as a row with the Sequence's `style` on top (none under
+     `layout="none"`), a Sequence's own length from `useVideoConfig`
+     inside it, and `AbsoluteFill`'s `from` and `durationInFrames`. The
+     hand copy had drifted, so a design could pass the dry run and the
+     still and then show only its title in the Player and the film. A
+     parity test renders each case through Remotion's own components in
+     a `Thumbnail` and through the shim, frame by frame, so a Remotion
+     upgrade that changes them fails it. The prompt tells the model a
+     Sequence's `durationInFrames` is at least 1, to time its motion
+     against `props.durationMs` and the words rather than
+     `durationInFrames` (in the film the compiled slot's length), to
+     format digits by hand and to drive motion from the frame alone.
+     Left: the cost per graphic, read off the Costs screen after the
+     owner's first Redesign (about $0.30 to $0.60 on Opus 5.5 by token
+     counts, against about $0.03 before); the owner decides from it
+     whether the route stays on Opus.
+     The number 295 is checked against `origin/master` at the merge.

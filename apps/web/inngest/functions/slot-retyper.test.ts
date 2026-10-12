@@ -135,19 +135,27 @@ describeDb('slot-retyper (mock mode)', () => {
     expect(slot?.retype).toBeNull()
   })
 
-  it('drafts a chart citing the project’s real claims, and plan phase stays unfetched', async () => {
+  it('drafts a chart citing the project’s real claims, designs it, and plan phase stays unfetched (decision 295)', async () => {
     const { result } = await engine.execute({ events: retypeEvent(slotId, 'chart') })
     expect(result).toMatchObject({ outcome: 'retyped', targetType: 'chart' })
 
     const slot = await getShotSlot(db, slotId)
-    const brief = slot?.brief as { type: string; dataRefs?: string[] }
+    const brief = slot?.brief as {
+      type: string
+      dataRefs?: string[]
+      code?: { title: string; compiled: string }
+    }
     expect(brief.type).toBe('chart')
     // The mock cites the first claim — a ULID that exists on this project,
     // because `resolvePlannedBrief` would refuse anything else.
     expect(brief.dataRefs).toHaveLength(1)
+    // The designer wrote the chart around the drafted series, through every check.
+    expect(brief.code?.title).toMatch(/^\[mock\]/)
+    expect(typeof brief.code?.compiled).toBe('string')
     // Plan phase: the draft LANDS, nothing is fetched for it.
     expect(slot?.status).toBe('unresolved')
     expect(slot?.candidates).toEqual([])
+    expect(slot?.retype).toBeNull()
   })
 
   it('refuses a chart when the project has no claims, on the row, keeping the brief', async () => {
@@ -172,7 +180,7 @@ describeDb('slot-retyper (mock mode)', () => {
     expect((await getShotSlot(db, slotId))?.retype).toBeNull()
   })
 
-  it('designs a slot retyped to a graphic (decision 289)', async () => {
+  it('designs a slot retyped to a graphic (decisions 289, 295)', async () => {
     const { result } = await engine.execute({ events: retypeEvent(slotId, 'graphic') })
     expect(result).toMatchObject({ outcome: 'retyped', targetType: 'graphic' })
 
@@ -181,7 +189,7 @@ describeDb('slot-retyper (mock mode)', () => {
     expect(slot?.brief).toMatchObject({
       type: 'graphic',
       intent: '[mock] The figure, large, with the mark beside it.',
-      scene: { elements: expect.arrayContaining([expect.objectContaining({ id: 't1' })]) },
+      code: expect.objectContaining({ title: expect.stringMatching(/^\[mock\]/) }),
     })
     expect(slot?.retype).toBeNull()
   })
@@ -201,7 +209,7 @@ describeDb('slot-retyper (mock mode)', () => {
       expect(during).toEqual({ state: 'drafting', target: 'graphic' })
       const slot = await getShotSlot(db, slotId)
       expect(slot?.retype).toBeNull()
-      expect(slot?.brief).toHaveProperty('scene')
+      expect(slot?.brief).toHaveProperty('code')
     } finally {
       spy.mockRestore()
     }
@@ -237,7 +245,7 @@ describeDb('slot-retyper (mock mode)', () => {
       const slot = await getShotSlot(db, slotId)
       expect(slot?.type).toBe('graphic')
       expect(slot?.brief).toMatchObject({ type: 'graphic', designIssue: 'no claim holds $5bn' })
-      expect(slot?.brief).not.toHaveProperty('scene')
+      expect(slot?.brief).not.toHaveProperty('code')
       expect(slot?.retype).toBeNull()
     } finally {
       refuse.mockRestore()
@@ -263,7 +271,7 @@ describeDb('slot-retyper (mock mode)', () => {
       expect(slot?.type).toBe('graphic')
       const brief = slot?.brief as { designIssue?: string }
       expect(brief.designIssue).toMatch(/\S/)
-      expect(slot?.brief).not.toHaveProperty('scene')
+      expect(slot?.brief).not.toHaveProperty('code')
       // The drafting marker goes with the budget stop too (final review I4).
       expect(slot?.retype).toBeNull()
     } finally {
@@ -301,6 +309,53 @@ describeDb('slot-retyper (mock mode)', () => {
       )
     } finally {
       broke.mockRestore()
+    }
+  })
+
+  it('holds the drafting marker while a retyped chart is designed, and clears it after (decision 295)', async () => {
+    const design = await import('@/lib/graphic-design')
+    const real = design.designGraphic
+    let during: unknown = 'not read'
+    const spy = vi.spyOn(design, 'designGraphic').mockImplementationOnce(async (...args) => {
+      during = (await getShotSlot(db, slotId))?.retype
+      return real(...args)
+    })
+    try {
+      const { result } = await engine.execute({ events: retypeEvent(slotId, 'chart') })
+      expect(result).toMatchObject({ outcome: 'retyped', targetType: 'chart' })
+      // The format picker and Redesign stay locked while the call is in flight.
+      expect(during).toEqual({ state: 'drafting', target: 'chart' })
+      // The designer is handed the chart, series and all.
+      expect(spy.mock.calls[0]![1]).toMatchObject({ brief: { type: 'chart' } })
+      const slot = await getShotSlot(db, slotId)
+      expect(slot?.retype).toBeNull()
+      expect(slot?.brief).toHaveProperty('code')
+    } finally {
+      spy.mockRestore()
+    }
+  })
+
+  it('keeps the reason on the chart when the designer refuses a retyped chart (decision 295)', async () => {
+    const design = await import('@/lib/graphic-design')
+    const refuse = vi
+      .spyOn(design, 'designGraphic')
+      .mockResolvedValueOnce({ ok: false, issue: 'nothing changes between 4.2 s and 11.0 s' })
+    try {
+      const { result } = await engine.execute({ events: retypeEvent(slotId, 'chart') })
+      expect(result).toMatchObject({ outcome: 'retyped', targetType: 'chart' })
+
+      const slot = await getShotSlot(db, slotId)
+      expect(slot?.type).toBe('chart')
+      // The chart keeps its drafted series and says why it has no design.
+      expect(slot?.brief).toMatchObject({
+        type: 'chart',
+        designIssue: 'nothing changes between 4.2 s and 11.0 s',
+      })
+      expect((slot?.brief as { dataRefs: string[] }).dataRefs).toHaveLength(1)
+      expect(slot?.brief).not.toHaveProperty('code')
+      expect(slot?.retype).toBeNull()
+    } finally {
+      refuse.mockRestore()
     }
   })
 })

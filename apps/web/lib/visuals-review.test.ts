@@ -16,6 +16,7 @@ import {
 } from '@boom-busters/schemas'
 import type { CastMember, SocialBrief, SocialPostRecord } from '@boom-busters/schemas'
 import {
+  codeLogoMarks,
   isFetching,
   jobsNeedPolling,
   slotJobView,
@@ -325,5 +326,31 @@ describe('jobsNeedPolling (decision 286)', () => {
         }),
       ),
     ).toBe(false)
+  })
+})
+
+describe('codeLogoMarks (decision 295)', () => {
+  const library = [
+    { id: 'A1', title: 'Acme', width: 400, height: 200 },
+    { id: 'A2', title: 'Globex', width: 300, height: 300 },
+    { id: 'A3', title: null, width: 100, height: 100 },
+    { id: 'A4', title: 'Initech', width: null, height: 50 },
+    { id: 'A5', title: 'Acme', width: 800, height: 800 },
+    { id: 'A6', title: '   ', width: 100, height: 100 },
+  ]
+
+  it('lists every titled, sized mark in the library, whatever the code reads (ruling 5)', () => {
+    expect(codeLogoMarks(library)).toEqual({
+      A1: { title: 'Acme', width: 400, height: 200 },
+      A2: { title: 'Globex', width: 300, height: 300 },
+    })
+  })
+
+  it('keeps the first mark stored under a title, as the assembly does', () => {
+    expect(codeLogoMarks(library)).not.toHaveProperty('A5')
+  })
+
+  it('lists nothing for an empty library', () => {
+    expect(codeLogoMarks([])).toEqual({})
   })
 })

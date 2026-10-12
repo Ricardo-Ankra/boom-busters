@@ -145,6 +145,21 @@ export async function materialiseForPreview(
       slots.push({ ...slot, payload: { ...slot.payload, logos } })
       continue
     }
+    if (slot.payload.kind === 'graphic-code') {
+      // The code is data; only the library's marks are bytes (decision 295).
+      // The payload carries every mark the library holds and the code may read
+      // none of them, so a mark that will not resolve is left out of the copy
+      // rather than dropping the slot: code that reads it shows its title card,
+      // and the rest of the film plays.
+      const logos: typeof slot.payload.logos = {}
+      for (const [title, ref] of Object.entries(slot.payload.logos)) {
+        const url =
+          ref.r2Key !== undefined ? await resolveKey(ref.r2Key, deps) : (ref.externalUrl ?? null)
+        if (url !== null) logos[title] = { ...ref, url }
+      }
+      slots.push({ ...slot, payload: { ...slot.payload, logos } })
+      continue
+    }
     const src = slot.payload.src
     const url =
       src.r2Key !== undefined ? await resolveKey(src.r2Key, deps) : (src.externalUrl ?? null)

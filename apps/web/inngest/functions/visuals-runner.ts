@@ -143,7 +143,12 @@ export const visualsRunner = inngest.createFunction(
             // Which claims a headline card may cite (decision 257).
             sourceType: claim.sourceType,
           })) satisfies ScriptClaim[],
-          logos: logos.map((row) => ({ id: row.id, title: row.title ?? '' })),
+          logos: logos.map((row) => ({
+            id: row.id,
+            title: row.title ?? '',
+            width: row.width,
+            height: row.height,
+          })),
         }
       })
 

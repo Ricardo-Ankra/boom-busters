@@ -8,6 +8,7 @@ import type { ChartPayload } from './components/ChartReveal'
 import { DocumentaryMaster } from './components/DocumentaryMaster'
 import { EndCta } from './components/EndCta'
 import { GraphicCard } from './components/GraphicCard'
+import { GraphicCode } from './components/GraphicCode'
 import { HeadlineCard } from './components/HeadlineCard'
 import { KaraokeCaptions } from './components/KaraokeCaptions'
 import { KenBurnsImage } from './components/KenBurnsImage'
@@ -25,6 +26,7 @@ import {
   FIXTURE_TIMELINE,
 } from './fixtures/timeline'
 import { GRAPHIC_SCENE, GRAPHIC_STAGED_SCENE } from './fixtures/graphic'
+import { GRAPHIC_CODE_PAYLOAD } from './fixtures/graphic-code'
 import { FIXTURE_IMAGE_SKYLINE } from './fixtures/media'
 import { msToFrames } from './lib/motion'
 
@@ -370,6 +372,30 @@ export function Root() {
           payload: GRAPHIC_STAGED_SCENE,
           brand: FIXTURE_BRAND,
           durationInFrames: 270,
+        }}
+      />
+
+      <Composition
+        id="GraphicCodeWide"
+        component={GraphicCode}
+        durationInFrames={240}
+        {...WIDE}
+        defaultProps={{
+          payload: GRAPHIC_CODE_PAYLOAD,
+          brand: FIXTURE_BRAND,
+          durationInFrames: 240,
+        }}
+      />
+
+      <Composition
+        id="GraphicCodeTall"
+        component={GraphicCode}
+        durationInFrames={240}
+        {...TALL}
+        defaultProps={{
+          payload: GRAPHIC_CODE_PAYLOAD,
+          brand: FIXTURE_BRAND,
+          durationInFrames: 240,
         }}
       />
 

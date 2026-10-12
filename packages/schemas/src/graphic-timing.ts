@@ -28,6 +28,8 @@ export const GRAPHIC_PULSE_MS = 360
 /** The word-form underline: when its sweep starts after its entrance starts, and how long it takes. */
 export const GRAPHIC_UNDERLINE_AFTER_ENTER_MS = 500
 export const GRAPHIC_UNDERLINE_MS = 600
+/** The longest a graphic may hold still: decision 290's target, now enforced by the dry run (decision 295). */
+export const GRAPHIC_STILL_MAX_MS = 6000
 
 /** The least an element must carry for its times to be read. */
 export interface GraphicTimingElement {

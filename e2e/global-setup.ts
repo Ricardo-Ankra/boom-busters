@@ -58,8 +58,40 @@ export const VISUAL_BOARD_TITLE = 'Visual board ready for review (E2E)'
 /** The article the seeded headline card cites, and cannot read (decision 257). */
 export const HEADLINE_ARTICLE_URL = 'https://financialrecord.example/2023/03/14/auditors'
 export const VISUAL_PLAN_TITLE = 'Shot plan awaiting fetch (E2E)'
+/** The plan board's graphic written as code (decision 295), and its title. */
+export const CODED_GRAPHIC_TITLE = 'Four billion, counted (E2E)'
+/**
+ * Plain JS, which is its own compiled form, using only what the sandbox
+ * hands it. Seeded straight into the brief: e2e has no Inngest, so the mock
+ * designer never runs here.
+ */
+const CODED_GRAPHIC_SOURCE = [
+  'function Graphic(props) {',
+  '  const frame = Remotion.useCurrentFrame()',
+  '  const { fps } = Remotion.useVideoConfig()',
+  '  const rise = Remotion.spring({ frame, fps })',
+  '  return React.createElement(',
+  '    Remotion.AbsoluteFill,',
+  "    { style: { alignItems: 'center', justifyContent: 'center' } },",
+  '    React.createElement(',
+  "      'div',",
+  '      {',
+  '        style: {',
+  '          opacity: rise,',
+  '          color: props.brand.colors.textPrimary,',
+  '          fontFamily: props.brand.fonts.heading,',
+  '          fontSize: 140,',
+  '        },',
+  '      },',
+  "      'Four billion, raised',",
+  '    ),',
+  '  )',
+  '}',
+].join('\n')
 export const PREVIEW_PROJECT_TITLE = 'Preview compiled, master rendered (E2E)'
 export const PUBLISH_PROJECT_TITLE = 'Shorts cut, ready to publish (E2E)'
+/** A freshly compiled film: a timeline, no draft and no master (decision 295's server-render guard). */
+export const FRESH_PREVIEW_TITLE = 'Preview compiled, nothing rendered (E2E)'
 
 /**
  * Twenty-two warnings across all three kinds, which is what the self-check
@@ -1023,6 +1055,38 @@ export default async function globalSetup(): Promise<void> {
           startMs: 18000,
           durationMs: 6000,
         },
+        {
+          // Decision 295: a graphic the designer wrote as code. Seeded
+          // resolved, as a designed graphic with no mark to find lands; the
+          // code is plain JS, so the source is its own compiled form.
+          chapterId: planChapter.id,
+          index: 4,
+          type: 'graphic',
+          brief: {
+            type: 'graphic',
+            motion: { kind: 'static' as const },
+            transition: 'cut' as const,
+            coversText: 'The money arrived in a single round.',
+            description: 'The raise, as the designer wrote it.',
+            intent: 'Four billion arrived at once.',
+            intentClaimIds: [fundingClaimId],
+            code: {
+              version: 1 as const,
+              source: CODED_GRAPHIC_SOURCE,
+              compiled: CODED_GRAPHIC_SOURCE,
+              title: CODED_GRAPHIC_TITLE,
+              facts: [],
+              words: [
+                { text: 'The', atMs: 0 },
+                { text: 'money', atMs: 300 },
+                { text: 'arrived', atMs: 700 },
+              ],
+              durationMs: 6000,
+            },
+          },
+          startMs: 24000,
+          durationMs: 6000,
+        },
       ])
 
       const planSlots = await listShotSlots(connection.db, plan.id)
@@ -1036,6 +1100,12 @@ export default async function globalSetup(): Promise<void> {
       await setSlotResolution(connection.db, placeholderGraphic.id, {
         status: 'placeholder',
         candidates: [],
+      })
+      const codedGraphic = planSlots.find((slot) => slot.index === 4)!
+      await setSlotResolution(connection.db, codedGraphic.id, {
+        status: 'resolved',
+        candidates: [],
+        answered: { brief: codedGraphic.brief, route: codedGraphic.route },
       })
 
       // Decision 264: one set with one plate, so the Set card starts
@@ -1318,6 +1388,28 @@ export default async function globalSetup(): Promise<void> {
         qcReport: { passed: true, integratedLufs: -14, issues: [] },
         startedAt: new Date(Date.now() - 3 * 60_000),
         completedAt: new Date(Date.now() - 60_000),
+      })
+
+      // A second film at the same gate with the same compiled timeline and
+      // no render at all, so the stage defaults to the live preview and the
+      // Player is rendered on the server by a fresh page load.
+      const fresh = await createProjectFromCase(connection.db, {
+        caseId: FIXTURE_CASE_ID,
+        title: FRESH_PREVIEW_TITLE,
+      })
+      const freshTimeline = await insertTimeline(connection.db, {
+        projectId: fresh.id,
+        json: timeline,
+        s3Key: '',
+      })
+      await setTimelineKey(
+        connection.db,
+        freshTimeline.id,
+        `boom-busters/timelines/${fresh.id}/v${freshTimeline.version}.json`,
+      )
+      await setProjectStage(connection.db, fresh.id, {
+        stage: 'assembly',
+        stageStatus: 'awaiting_review',
       })
     }
 

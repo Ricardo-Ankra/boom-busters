@@ -1,6 +1,7 @@
 'use client'
 
 import * as React from 'react'
+import dynamic from 'next/dynamic'
 import {
   barFigures,
   chartLayout,
@@ -46,8 +47,33 @@ import type {
   MapBrief,
 } from '@boom-busters/schemas'
 
-/** A graphic the designer has composed: the only kind the preview can draw. */
+/** A graphic composed as a scene (decision 268): the kind the SVG preview draws. */
 export type DesignedGraphicBrief = GraphicBrief & { scene: GraphicScene }
+
+/**
+ * A graphic or chart the designer wrote as code (decision 295): drawn by its
+ * own component at one moment (`graphic-code-still.tsx`), in place of the SVG
+ * preview a scene gets. Loaded in the browser only, so the server render of
+ * this page never runs the designer's code. That is not isolation: the code
+ * runs in the owner's browser in the console's own origin (there is no CSP),
+ * on Lambda, and in the dry run inside this deployment's Inngest function,
+ * which holds the app's secrets. The scan refuses the direct routes out, but it
+ * is a lint against honest mistakes, not a sandbox; real isolation is the
+ * owner's decision (PROGRESS decision 295). Until the module lands, a box the
+ * still's size keeps the card from jumping.
+ */
+export const GraphicCodePreview = dynamic(
+  () => import('./graphic-code-still').then((module) => module.GraphicCodeStill),
+  {
+    ssr: false,
+    loading: () => (
+      <div
+        aria-hidden
+        className="h-[270px] w-[480px] max-w-full rounded-[8px] border border-[var(--color-border)] bg-[var(--color-surface)]"
+      />
+    ),
+  },
+)
 
 /**
  * Live chart and map previews (build spec section 11.3): rendered with the
