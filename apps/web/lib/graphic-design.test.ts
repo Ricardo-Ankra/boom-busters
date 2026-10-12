@@ -14,6 +14,7 @@ import type {
   PlannedGraphicCode,
 } from '@boom-busters/schemas'
 import type * as Providers from '@boom-busters/providers'
+import type * as Compile from './graphic-code/compile'
 import type * as DryRun from './graphic-code/dry-run'
 import { NonRetriableError } from 'inngest'
 
@@ -33,6 +34,18 @@ vi.mock('./graphic-code/dry-run', async (importOriginal) => {
     ensureDryRunRuntime: () => {
       if (runtimeFault) throw runtimeFault
       original.ensureDryRunRuntime()
+    },
+  }
+})
+
+let compilerFault: Error | null = null
+vi.mock('./graphic-code/compile', async (importOriginal) => {
+  const original = await importOriginal<typeof Compile>()
+  return {
+    ...original,
+    ensureGraphicCompiler: () => {
+      if (compilerFault) throw compilerFault
+      original.ensureGraphicCompiler()
     },
   }
 })
@@ -486,6 +499,22 @@ describe('designGraphicWith (the model call is injected)', () => {
       expect(complete).not.toHaveBeenCalled()
     } finally {
       runtimeFault = null
+    }
+  })
+
+  it('stops non-retriably before any model call when esbuild cannot compile on this host (final review I2)', async () => {
+    compilerFault = new Error(
+      'the designer\'s checks cannot compile code on this host: The package "@esbuild/linux-x64" could not be found',
+    )
+    try {
+      const complete = vi.fn().mockResolvedValue(answer('$4bn'))
+      await expect(designGraphicWith(complete, CONTEXT, SLOT)).rejects.toThrow(NonRetriableError)
+      await expect(designGraphicWith(complete, CONTEXT, SLOT)).rejects.toThrow(
+        /cannot compile code on this host/,
+      )
+      expect(complete).not.toHaveBeenCalled()
+    } finally {
+      compilerFault = null
     }
   })
 

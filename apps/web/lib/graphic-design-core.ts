@@ -20,6 +20,7 @@ import type { ChartBrief, DesignableBrief, GraphicCode, LogoIndex } from '@boom-
 import { NonRetriableError } from 'inngest'
 import { callForAnswer, type AnswerComplete } from '@/lib/answer'
 import { graphicCodeIssue } from '@/lib/graphic-code/check'
+import { ensureGraphicCompiler } from '@/lib/graphic-code/compile'
 import { ensureDryRunRuntime } from '@/lib/graphic-code/dry-run'
 import { timedParagraphs, type TimedParagraph } from '@/inngest/lib/shot-list'
 
@@ -164,11 +165,13 @@ export async function designGraphicWith(
   slot: GraphicSlotTiming & { brief: DesignableBrief },
   options: { guidance?: string; redesign?: boolean } = {},
 ): Promise<GraphicDesignResult> {
-  // The checks load React, react-dom/server and Remotion at run time. A host
-  // that cannot is found here, before any model call, and not retried: a retry
-  // would pay the model again to fail on the same require.
+  // The checks load React, react-dom/server and Remotion at run time and
+  // compile with esbuild's native binary. A host that cannot do either is
+  // found here, before any model call, and not retried: a retry would pay the
+  // model again to fail on the same require or the same missing binary.
   try {
     ensureDryRunRuntime()
+    ensureGraphicCompiler()
   } catch (error) {
     throw new NonRetriableError(error instanceof Error ? error.message : String(error))
   }
