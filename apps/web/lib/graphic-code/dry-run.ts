@@ -23,8 +23,10 @@ import { makeOneFrame } from './one-frame'
 // `outputFileTracingIncludes` in next.config.ts ships the files, which the
 // trace cannot see.
 //
-// Loaded on the first dry run, not at module load: a module that is missing
-// on the host then costs one design its check, not the whole Inngest route.
+// Loaded on the first dry run, not at module load, and `designGraphicWith`
+// calls `ensureDryRunRuntime` before its first model call: a host that cannot
+// load these modules fails the design before any model call, non-retriably,
+// and the Inngest route stays up.
 const nodeRequire = createRequire(import.meta.url)
 const plainModule = (...parts: string[]): string => parts.join('')
 
@@ -37,20 +39,32 @@ interface DryRunRuntime {
 
 let runtime: DryRunRuntime | undefined
 
+/** One run-time require, whose failure names the module that is missing. */
+function loadModule(name: string): unknown {
+  try {
+    return nodeRequire(/* turbopackIgnore: true */ /* webpackIgnore: true */ name)
+  } catch (error) {
+    throw new Error(
+      `the designer's dry run cannot load ${name} on this host: ${error instanceof Error ? error.message : String(error)}`,
+    )
+  }
+}
+
 function loadRuntime(): DryRunRuntime {
   if (runtime !== undefined) return runtime
-  const React = nodeRequire(
-    /* turbopackIgnore: true */ /* webpackIgnore: true */ plainModule('re', 'act'),
-  ) as typeof ReactModule
-  const { renderToStaticMarkup } = nodeRequire(
-    /* turbopackIgnore: true */ /* webpackIgnore: true */ plainModule('react-dom', '/server'),
+  const React = loadModule(plainModule('re', 'act')) as typeof ReactModule
+  const { renderToStaticMarkup } = loadModule(
+    plainModule('react-dom', '/server'),
   ) as typeof ReactDomServer
-  const remotion = nodeRequire(
-    /* turbopackIgnore: true */ /* webpackIgnore: true */ plainModule('remo', 'tion'),
-  ) as typeof RemotionModule
+  const remotion = loadModule(plainModule('remo', 'tion')) as typeof RemotionModule
   const { FrameContext, oneFrameScope } = makeOneFrame(React, remotion)
   runtime = { React, renderToStaticMarkup, FrameContext, oneFrameScope }
   return runtime
+}
+
+/** Loads what the dry run needs now, so a host that cannot is found before a model call is paid for. Throws naming the module. */
+export function ensureDryRunRuntime(): void {
+  loadRuntime()
 }
 
 /**

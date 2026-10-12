@@ -14,6 +14,8 @@ import type {
   PlannedGraphicCode,
 } from '@boom-busters/schemas'
 import type * as Providers from '@boom-busters/providers'
+import type * as DryRun from './graphic-code/dry-run'
+import { NonRetriableError } from 'inngest'
 
 const callLlm = vi.fn()
 vi.mock('@/lib/llm', () => ({ callLlm: (...args: unknown[]) => callLlm(...args) }))
@@ -22,6 +24,18 @@ vi.mock('@boom-busters/providers', async (importOriginal) => ({
   ...(await importOriginal<typeof Providers>()),
   mockProvidersEnabled: () => mock,
 }))
+
+let runtimeFault: Error | null = null
+vi.mock('./graphic-code/dry-run', async (importOriginal) => {
+  const original = await importOriginal<typeof DryRun>()
+  return {
+    ...original,
+    ensureDryRunRuntime: () => {
+      if (runtimeFault) throw runtimeFault
+      original.ensureDryRunRuntime()
+    },
+  }
+})
 
 import { graphicCodeIssue } from './graphic-code/check'
 import { slotIntent } from './graphic-design-core'
@@ -463,6 +477,18 @@ describe('withDesign', () => {
 })
 
 describe('designGraphicWith (the model call is injected)', () => {
+  it('stops non-retriably before any model call when the dry run cannot load its modules', async () => {
+    runtimeFault = new Error("the designer's dry run cannot load remotion on this host: nope")
+    try {
+      const complete = vi.fn().mockResolvedValue(answer('$4bn'))
+      await expect(designGraphicWith(complete, CONTEXT, SLOT)).rejects.toThrow(NonRetriableError)
+      await expect(designGraphicWith(complete, CONTEXT, SLOT)).rejects.toThrow(/load remotion/)
+      expect(complete).not.toHaveBeenCalled()
+    } finally {
+      runtimeFault = null
+    }
+  })
+
   it('designs through the function it is given, handing it the request and a signal, and never touches callLlm', async () => {
     const complete = vi.fn().mockResolvedValue(answer('$4bn'))
     const result = await designGraphicWith(complete, CONTEXT, SLOT)

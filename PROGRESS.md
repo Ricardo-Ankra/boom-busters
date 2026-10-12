@@ -7312,8 +7312,10 @@ boom-busters-broker`; merge and deploy to Vercel, then `PUT
      `react-dom/server` and Remotion at run time, on its first dry run
      and not at module load (names built at run time and marked
      `turbopackIgnore` and `webpackIgnore`, so the bundler leaves a
-     real Node `require`); a module missing on the host then fails one
-     design, not the route. `one-frame.ts` is a factory over the React
+     real Node `require`); a host that cannot load them fails the
+     design before any model call, non-retriably (`designGraphicWith`
+     calls `ensureDryRunRuntime` first), and the route stays up.
+     `one-frame.ts` is a factory over the React
      and the Remotion functions it is given (`makeOneFrame`), the board's
      still handing it the browser's. `check.ts`, `dry-run.ts` and
      `one-frame.ts` import the Remotion-free subpath
@@ -7323,7 +7325,8 @@ boom-busters-broker`; merge and deploy to Vercel, then `PUT
      `react`, `react-dom` and `remotion`, under `node_modules` and at
      their real `.pnpm` paths; after `next build` the route's trace
      lists `react-dom/server.node.js`, both `react-dom-server*.node.production.js`
-     files, `react/index.js` and `remotion/dist/cjs`, and `next start`
+     files, `react/index.js`, `react/jsx-runtime.js` (Remotion's CommonJS
+     build requires it) and `remotion/dist/cjs`, and `next start`
      answers 200 on `/api/inngest`. There are no server externals
      beyond `esbuild`, `postgres` and `sharp`: `remotion` as one broke
      the server render of the preview screen's Player, whose client

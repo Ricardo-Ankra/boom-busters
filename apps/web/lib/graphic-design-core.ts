@@ -20,6 +20,7 @@ import type { ChartBrief, DesignableBrief, GraphicCode, LogoIndex } from '@boom-
 import { NonRetriableError } from 'inngest'
 import { callForAnswer, type AnswerComplete } from '@/lib/answer'
 import { graphicCodeIssue } from '@/lib/graphic-code/check'
+import { ensureDryRunRuntime } from '@/lib/graphic-code/dry-run'
 import { timedParagraphs, type TimedParagraph } from '@/inngest/lib/shot-list'
 
 /**
@@ -163,6 +164,14 @@ export async function designGraphicWith(
   slot: GraphicSlotTiming & { brief: DesignableBrief },
   options: { guidance?: string; redesign?: boolean } = {},
 ): Promise<GraphicDesignResult> {
+  // The checks load React, react-dom/server and Remotion at run time. A host
+  // that cannot is found here, before any model call, and not retried: a retry
+  // would pay the model again to fail on the same require.
+  try {
+    ensureDryRunRuntime()
+  } catch (error) {
+    throw new NonRetriableError(error instanceof Error ? error.message : String(error))
+  }
   const { brief } = slot
   const { intent, intentRefs } = slotIntent(context, brief)
   const narration = slotNarration(context, slot)

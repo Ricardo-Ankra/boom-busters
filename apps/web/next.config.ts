@@ -43,7 +43,7 @@ const nextConfig: NextConfig = {
   outputFileTracingIncludes: {
     '/api/inngest': [
       './node_modules/react/package.json',
-      './node_modules/react/index.js',
+      './node_modules/react/*.js',
       './node_modules/react/cjs/**/*',
       './node_modules/react-dom/package.json',
       './node_modules/react-dom/*.js',
@@ -53,7 +53,7 @@ const nextConfig: NextConfig = {
       // The same files at their real pnpm paths: apps/web/node_modules holds
       // symlinks, and a deploy that copies by real path needs the targets.
       '../../node_modules/.pnpm/react@*/node_modules/react/package.json',
-      '../../node_modules/.pnpm/react@*/node_modules/react/index.js',
+      '../../node_modules/.pnpm/react@*/node_modules/react/*.js',
       '../../node_modules/.pnpm/react@*/node_modules/react/cjs/**/*',
       '../../node_modules/.pnpm/react-dom@*/node_modules/react-dom/package.json',
       '../../node_modules/.pnpm/react-dom@*/node_modules/react-dom/*.js',
