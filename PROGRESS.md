@@ -7352,7 +7352,7 @@ boom-busters-broker`; merge and deploy to Vercel, then `PUT
      (`ensureGraphicCompiler`, once per process) before its first model
      call, so a host where the binary cannot run fails the design
      non-retriably before anything is paid for. If the first production
-     design fails with "The package \"@esbuild/linux-x64\" could not be found" in its
+     design fails with 'The package "@esbuild/linux-x64" could not be found' in its
      message, the `outputFileTracingIncludes` entry for `/api/inngest`
      in `next.config.ts` gains the binary's files. The
      Inngest route is bundled with the `react-server` condition, under
