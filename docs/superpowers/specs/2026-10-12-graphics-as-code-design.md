@@ -155,7 +155,7 @@ retry told what was wrong. The checks, in order, all on the web server:
    the safe insets is a refusal naming the element's text.
 
 A design that passes is stored on the brief as
-`motion: { version: 1, source, compiled, title, facts }`, beside today's
+`code: { version: 1, source, compiled, title, facts, words, durationMs }` (not `motion`: every brief already carries the Ken Burns `motion` spec), beside today's
 `scene`, which stays for graphics already built. `designIssue` keeps its
 meaning for a design that failed both calls.
 
@@ -175,15 +175,15 @@ stays for `scene` payloads. `DocumentaryMaster` picks by payload kind.
 
 **Timeline.** A new payload `{ kind: 'graphic-code', version, compiled,
 title, logos, claimIds, data? }` in `packages/schemas/src/timeline.ts`;
-`packages/timeline/src/compile.ts` emits it for a brief with `motion`, the
+`packages/timeline/src/compile.ts` emits it for a brief with `code`, the
 old `graphic` payload for a brief with only `scene`, and the `chart` payload
-for a chart brief with no `motion`. A render never depends on anything
+for a chart brief with no `code`. A render never depends on anything
 outside the timeline but the logo objects, as now.
 
 **Board.** `graphic-player.tsx` mounts `GraphicCode` in the Player for a
-brief with `motion`; the still thumbnail is a frame of the same component,
+brief with `code`; the still thumbnail is a frame of the same component,
 rendered to markup in the browser, replacing the SVG `GraphicPreview` for
-these briefs. Chart slots with `motion` get the same player.
+these briefs. Chart slots with `code` get the same player.
 
 **Version.** `version` on the payload names the sandbox contract. A payload
 whose version the composition does not know renders the title card and logs
@@ -199,27 +199,27 @@ new-style graphic would otherwise 422 at render.
 The shot list keeps writing `ChartBrief` as now (kind, series, points copied
 verbatim from claims, takeaway, annotations). When a chart slot is planned or
 retyped, the designer is called with the brief's series as `props.data` and
-writes the chart as it writes any graphic. The result is stored as `motion`
-on the chart brief; `ChartBriefSchema` gains the same optional `motion` and
+writes the chart as it writes any graphic. The result is stored as `code`
+on the chart brief; `ChartBriefSchema` gains the same optional `code` and
 `designIssue` fields as `GraphicBriefSchema`. The facts check applies to the
 chart's text; the series are validated upstream already. `ChartReveal`
-renders a chart brief with no `motion`. On the board a chart card gets the
+renders a chart brief with no `code`. On the board a chart card gets the
 Redesign button and the steer field a graphic card has. The chart format
 itself (the brief, the shot list's rules) does not change.
 
 `designPlannedGraphics` (`apps/web/inngest/lib/graphic-steps.ts`) designs
 chart rows as well as graphic rows, one step each, skipping any that already
-carry `motion`.
+carry `code`.
 
 ## 6. UI
 
 The slot card's Redesign button, steer field and "Not designed" line stay
-(decision 289). The card shows `motion.title`. Settings keep the "Motion
+(decision 289). The card shows `code.title`. Settings keep the "Motion
 graphics" route on Opus 5.5. The code is not shown or edited in the app.
 
 ## 7. Tests
 
-- `packages/schemas`: the `motion` fields and the `graphic-code` payload.
+- `packages/schemas`: the `code` fields and the `graphic-code` payload.
 - `apps/web/lib/graphic-code/`: the static scan against known-bad sources
   (a hex colour, `Math.random`, an `import`, a number not in any claim); the
   dry run against a component that throws at frame 40, one that holds still
@@ -237,7 +237,7 @@ graphics" route on Opus 5.5. The code is not shown or edited in the app.
 1. Schemas, sandbox, compiler, dry run, composition and the board, all
    tested with the mock designer; the prompt rewritten.
 2. `deploy:stacks boom-busters-broker` and `deploy:remotion`.
-3. The Vercel deploy and `PUT /api/inngest`. No migration: `motion` lives in
+3. The Vercel deploy and `PUT /api/inngest`. No migration: `code` lives in
    the brief's JSON column.
 4. The owner's first Redesign on a real slot; the cost per graphic read off
    the Costs screen and reported. Expected from token counts: $0.30 to
