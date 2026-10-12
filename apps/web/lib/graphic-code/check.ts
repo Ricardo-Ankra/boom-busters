@@ -1,5 +1,6 @@
 import { graphicBrand } from '@boom-busters/compositions/graphic-code'
 import {
+  codeLogoLibrary,
   DEFAULT_SETTINGS,
   GRAPHIC_CODE_VERSION,
   graphicFactsIssue,
@@ -55,11 +56,7 @@ function placeholderLogos(
   context: GraphicDesignContext,
 ): Record<string, { src: string; width: number; height: number }> {
   const logos: Record<string, { src: string; width: number; height: number }> = {}
-  const titles = new Set<string>()
-  for (const logo of context.logos) {
-    const { title } = logo
-    if (title.trim() === '' || titles.has(title) || !logo.width || !logo.height) continue
-    titles.add(title)
+  for (const [title, logo] of codeLogoLibrary(context.logos)) {
     logos[title] = { src: `mock://logo/${logo.id}`, width: logo.width, height: logo.height }
   }
   return logos

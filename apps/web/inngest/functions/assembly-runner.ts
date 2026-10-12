@@ -16,7 +16,7 @@ import {
 } from '@boom-busters/db'
 import type { AssetRow } from '@boom-busters/db'
 import { mockProvidersEnabled } from '@boom-busters/providers'
-import { referencePhotos } from '@boom-busters/schemas'
+import { codeLogoLibrary, referencePhotos } from '@boom-busters/schemas'
 import {
   newId,
   parseEventData,
@@ -294,11 +294,7 @@ export const assemblyRunner = inngest.createFunction(
       // it says which titles, so the whole library rides along. The first
       // mark stored under a title wins, in `listLogos` order.
       const logoLibrary = new Map<string, { r2Key: string; width: number; height: number }>()
-      for (const asset of await listLogos(db)) {
-        const title = asset.title ?? ''
-        if (title.trim() === '' || logoLibrary.has(title) || !asset.width || !asset.height) {
-          continue
-        }
+      for (const [title, asset] of codeLogoLibrary(await listLogos(db))) {
         logoLibrary.set(title, { r2Key: asset.r2Key, width: asset.width, height: asset.height })
       }
 

@@ -61,3 +61,23 @@ export function logoForEntity<T extends LogoIndex>(entity: string, logos: readon
     logos.find((logo) => nameMatches(entity, logo.title) || nameMatches(logo.title, entity)) ?? null
   )
 }
+
+/**
+ * The marks a design written as code is handed (decision 295; rulings 5 and
+ * 25), keyed by title: the one rule the dry run, the assembly and the board
+ * share. A mark with no title cannot be named and one with no recorded size
+ * cannot be placed, so both are left out, and the first mark stored under a
+ * title wins, in the order given. Each row comes back whole, its size narrowed
+ * to numbers.
+ */
+export function codeLogoLibrary<
+  T extends { id: string; title: string | null; width?: number | null; height?: number | null },
+>(rows: readonly T[]): Map<string, T & { width: number; height: number }> {
+  const library = new Map<string, T & { width: number; height: number }>()
+  for (const row of rows) {
+    const title = row.title ?? ''
+    if (title.trim() === '' || library.has(title) || !row.width || !row.height) continue
+    library.set(title, { ...row, width: row.width, height: row.height })
+  }
+  return library
+}
