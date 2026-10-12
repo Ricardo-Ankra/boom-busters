@@ -7352,7 +7352,7 @@ boom-busters-broker`; merge and deploy to Vercel, then `PUT
      (`ensureGraphicCompiler`, once per process) before its first model
      call, so a host where the binary cannot run fails the design
      non-retriably before anything is paid for. If the first production
-     design fails with "could not find @esbuild/linux-x64" in its
+     design fails with "The package \"@esbuild/linux-x64\" could not be found" in its
      message, the `outputFileTracingIncludes` entry for `/api/inngest`
      in `next.config.ts` gains the binary's files. The
      Inngest route is bundled with the `react-server` condition, under
@@ -7390,8 +7390,8 @@ boom-busters-broker`; merge and deploy to Vercel, then `PUT
      own process, and any host function's `constructor` is that
      process's `Function`, which reaches its globals and `process.env`
      with every secret the app holds; on the board the code runs in the
-     console's own origin, with no CSP. The fix wave made each one-line
-     route cost more than a line: the function body runs in strict mode
+     console's own origin, with no CSP. The fix wave refused the direct
+     routes: the function body runs in strict mode
      (a bare `this` is undefined, an assignment to a frozen member
      throws and the dry run refuses it), the code is handed frozen
      copies of Remotion's `Easing` (copied by name: its statics are not
@@ -7402,8 +7402,11 @@ boom-busters-broker`; merge and deploy to Vercel, then `PUT
      `location` used as the browser's, the network and storage globals,
      `dangerouslySetInnerHTML`, those names spelt out in a string for
      bracket access, and `script`, `iframe`, `object`, `embed`, `link`,
-     `style`, `meta`, `base` and `form` elements. A name built by string
-     concatenation still reaches the host. Real isolation (an isolate
+     `style`, `meta`, `base` and `form` as a call's quoted element name.
+     A name or literal reached at run time still gets past the scan: a
+     concatenation, an index into `getOwnPropertyNames`, a conditional
+     or an alias (`React.createElement(x ? 'script' : 'div', ...)` is one
+     line, and the board would run it). Real isolation (an isolate
      such as `isolated-vm` for the dry run, a sandboxed iframe or a CSP
      for the board) is a follow-up for the owner to decide. The dry
      run's context also runs the promise callbacks the code queues
