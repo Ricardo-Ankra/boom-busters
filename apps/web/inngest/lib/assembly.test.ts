@@ -573,6 +573,154 @@ describe('slotPlan', () => {
     })
   })
 
+  describe('designs written as code (decision 295)', () => {
+    const CLAIM_A = '01HQ00000000000000000000A2'
+    const CLAIM_B = '01HQ00000000000000000000A3'
+    const CODE = {
+      version: 1,
+      source: 'function Graphic() { return null }',
+      compiled: 'function Graphic() {\n  return null;\n}\n',
+      title: 'Raised in one round',
+      facts: [
+        { text: '4 billion', claimId: CLAIM_A },
+        { text: 'Series C', claimId: CLAIM_A },
+      ],
+      words: [{ text: 'four', atMs: 900 }],
+      durationMs: 4000,
+    }
+    const LIBRARY = new Map([
+      ['Stability AI', { r2Key: 'boom-busters/logos/abc.png', width: 1200, height: 400 }],
+      ['OpenAI', { r2Key: 'boom-busters/logos/def.png', width: 800, height: 800 }],
+    ])
+    const SERIES = [
+      {
+        label: 'Price',
+        unit: '€',
+        points: [
+          { x: 'A', y: 1 },
+          { x: 'B', y: 2 },
+        ],
+      },
+    ]
+
+    function chartRow(code?: unknown) {
+      return slotRow({
+        type: 'chart',
+        brief: {
+          type: 'chart',
+          coversText: 'covers',
+          description: 'desc',
+          motion: { kind: 'static' },
+          transition: 'dissolve',
+          chartKind: 'line',
+          series: SERIES,
+          dataRefs: [CLAIM_B],
+          takeaway: 'Up and to the right, then not.',
+          annotations: [{ atX: 'B', text: 'The peak' }],
+          reveal: 'draw-on',
+          ...(code ? { code } : {}),
+        } as unknown as Record<string, unknown>,
+        candidates: [],
+      })
+    }
+
+    it('carries a graphic with code as code, every mark in the library by title, even beside an old scene', () => {
+      const plan = slotPlan({
+        slots: [
+          slotRow({
+            type: 'graphic',
+            brief: {
+              type: 'graphic',
+              coversText: 'covers',
+              description: 'desc',
+              motion: { kind: 'static' },
+              transition: 'cut',
+              intent: 'The figure is the story.',
+              intentClaimIds: [CLAIM_B],
+              // A scene from before whose mark was never uploaded: on its own
+              // it would skip the slot; the code does not draw it.
+              scene: {
+                elements: [
+                  {
+                    kind: 'logo',
+                    id: 'l1',
+                    cell: { col: 6, row: 0, colSpan: 6, rowSpan: 3 },
+                    entity: 'Nobody Uploaded This',
+                    enter: { kind: 'fade', atMs: 0 },
+                  },
+                ],
+              },
+              code: CODE,
+            } as unknown as Record<string, unknown>,
+            candidates: [],
+          }),
+        ],
+        assetsById: new Map(),
+        logos: new Map(),
+        logoLibrary: LIBRARY,
+      })
+      expect(plan.skipped).toEqual([])
+      expect(plan.slots[0]).toMatchObject({
+        type: 'graphic',
+        graphicCode: {
+          version: 1,
+          compiled: CODE.compiled,
+          title: 'Raised in one round',
+          words: CODE.words,
+          durationMs: 4000,
+          logos: {
+            'Stability AI': { r2Key: 'boom-busters/logos/abc.png', width: 1200, height: 400 },
+            OpenAI: { r2Key: 'boom-busters/logos/def.png', width: 800, height: 800 },
+          },
+          // The facts' claims, each once, then the intent's.
+          claimIds: [CLAIM_A, CLAIM_B],
+        },
+      })
+      expect(plan.slots[0]?.graphic).toBeUndefined()
+      expect(plan.slots[0]?.graphicCode).not.toHaveProperty('data')
+    })
+
+    it('carries a chart with code as code on a chart slot, its series as data and its refs as claims', () => {
+      const plan = slotPlan({
+        slots: [chartRow(CODE)],
+        assetsById: new Map(),
+        logoLibrary: LIBRARY,
+      })
+      expect(plan.slots[0]).toMatchObject({
+        type: 'chart',
+        graphicCode: {
+          title: 'Raised in one round',
+          // The data refs first, then any other claim the facts cite.
+          claimIds: [CLAIM_B, CLAIM_A],
+          data: {
+            series: SERIES,
+            takeaway: 'Up and to the right, then not.',
+            annotations: [{ atX: 'B', text: 'The peak' }],
+          },
+          logos: {
+            'Stability AI': { r2Key: 'boom-busters/logos/abc.png' },
+            OpenAI: { r2Key: 'boom-busters/logos/def.png' },
+          },
+        },
+      })
+      expect(plan.slots[0]?.chart).toBeUndefined()
+    })
+
+    it('carries a chart without code as the chart it always was', () => {
+      const plan = slotPlan({ slots: [chartRow()], assetsById: new Map(), logoLibrary: LIBRARY })
+      expect(plan.slots[0]).toMatchObject({
+        type: 'chart',
+        chart: { chartKind: 'line', dataRefs: [CLAIM_B], reveal: 'draw-on' },
+      })
+      expect(plan.slots[0]?.graphicCode).toBeUndefined()
+    })
+
+    it('gives code no marks when the runner passes no library', () => {
+      const plan = slotPlan({ slots: [chartRow(CODE)], assetsById: new Map() })
+      expect(plan.slots[0]?.graphicCode?.logos).toEqual({})
+    })
+  })
+
   describe('social slots (decision 284)', () => {
     const CLAIM_S = '01HQ00000000000000000000S1'
     const AVATAR_ASSET = '01HQ00000000000000000000AV'
