@@ -18,8 +18,10 @@ import { dryRunGraphic, GRAPHIC_SAMPLE_MS } from './dry-run'
 import { scanGraphicSource } from './scan'
 
 /**
- * Whether a design can be kept (decision 295): the scan, the compile, the
- * dry run and the facts, in that order, cheapest first. The facts come last
+ * Whether a design can be kept (decision 295): the compile, the scan, the
+ * dry run and the facts, in that order, cheapest first. The scan reads the
+ * compiled code, where JSX text is already a string, so it cannot be fooled
+ * by an apostrophe in a caption; that is why the compile comes first. The facts come last
  * because they are read off the dry run's text: a digit group counts as
  * shown when it stays on screen for a second, so a counter's passing values
  * ("2.3bn" on the way to "4bn") are never checked and the figure it lands
@@ -92,10 +94,10 @@ export function graphicCodeIssue(
     words: readonly { text: string; atMs: number }[]
   },
 ): { code: GraphicCode } | { issue: string } {
-  const scanned = scanGraphicSource(answer.source)
-  if (scanned !== null) return { issue: scanned }
   const compiled = compileGraphicSource(answer.source)
   if (!compiled.ok) return { issue: compiled.issue }
+  const scanned = scanGraphicSource(answer.source, compiled.compiled)
+  if (scanned !== null) return { issue: scanned }
 
   const { brief } = slot
   const run = dryRunGraphic({

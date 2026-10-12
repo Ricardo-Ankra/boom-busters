@@ -114,7 +114,7 @@ describe('graphicCodeIssue (decision 295)', () => {
     })
   })
 
-  it('scans before it compiles or runs anything', () => {
+  it('scans the compiled code before it runs anything', () => {
     const source = countUp(4).replace('const frame', 'const seed = Math.random()\n  const frame')
     expect(graphicCodeIssue(answer({ source }), CONTEXT, slot(GRAPHIC))).toEqual({
       issue:
