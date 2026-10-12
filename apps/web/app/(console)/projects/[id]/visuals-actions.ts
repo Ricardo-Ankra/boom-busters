@@ -774,6 +774,19 @@ export async function attachGraphicLogosAction(
   if (!parsed.success || parsed.data.type !== 'graphic') {
     return { ok: false, error: 'This slot is not a graphic.' }
   }
+  // A graphic written as code (decision 295) waits for no mark: it names its
+  // marks by title and reads what the library holds when the film is compiled,
+  // so a scene mark the library lacks, left over from before the redesign,
+  // must not stamp the slot a placeholder. It resolves as `visual-assets` does.
+  if (parsed.data.code) {
+    await setSlotResolution(db, slotId, {
+      status: 'resolved',
+      candidates: [],
+      answered: { brief: parsed.data, route: null },
+    })
+    refresh(projectId)
+    return { ok: true }
+  }
   const scene = parsed.data.scene
   if (!scene) return { ok: false, error: 'This graphic has not been designed yet.' }
 
