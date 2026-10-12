@@ -14,6 +14,18 @@ export type { ChartPayload } from './components/ChartReveal'
 export { AnimatedMap } from './components/AnimatedMap'
 export { LowerThird } from './components/LowerThird'
 export { GraphicCard } from './components/GraphicCard'
+export { GraphicCode } from './components/GraphicCode'
+export {
+  buildGraphic,
+  graphicBrand,
+  graphicFunctionBody,
+  graphicPropsFor,
+  remotionScope,
+  safeInsets,
+  withAlpha,
+} from './lib/graphic-code'
+export type { GraphicComponent, GraphicProps, GraphicScope } from './lib/graphic-code'
+export { GRAPHIC_CODE_SOURCE } from './fixtures/graphic-code'
 export { ChapterCard } from './components/ChapterCard'
 export { KaraokeCaptions } from './components/KaraokeCaptions'
 export { MusicBed } from './components/MusicBed'

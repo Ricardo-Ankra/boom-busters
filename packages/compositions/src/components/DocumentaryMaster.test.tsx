@@ -35,6 +35,7 @@ vi.mock('remotion', async (importOriginal) => {
 vi.mock('./KenBurnsImage', () => ({ KenBurnsImage: () => <div data-testid="image" /> }))
 vi.mock('./StockClip', () => ({ StockClip: () => <div data-testid="video" /> }))
 vi.mock('./ChartReveal', () => ({ ChartReveal: () => <div data-testid="chart" /> }))
+vi.mock('./GraphicCode', () => ({ GraphicCode: () => <div data-testid="graphic-code" /> }))
 
 const IMAGE_SLOT: TimelineSlot = {
   type: 'stock',
@@ -83,6 +84,24 @@ const CHART_SLOT: TimelineSlot = {
   },
 }
 
+const GRAPHIC_CODE_SLOT: TimelineSlot = {
+  type: 'graphic',
+  startMs: 0,
+  durationMs: 4000,
+  transition: 'cut',
+  motion: { kind: 'static' },
+  payload: {
+    kind: 'graphic-code',
+    version: 1,
+    compiled: 'function Graphic() { return null }',
+    title: 'Four billion, on paper',
+    words: [],
+    durationMs: 4000,
+    logos: {},
+    claimIds: [],
+  },
+}
+
 describe('SlotView grade wrapper (spec §10, decision 287 final review)', () => {
   // `resolveBrandKit` already defaults an unset preset to 'muted', so the
   // fixture brand is graded as it stands.
@@ -112,5 +131,13 @@ describe('SlotView grade wrapper (spec §10, decision 287 final review)', () => 
       const markup = renderToStaticMarkup(<SlotView slot={slot} brand={ungradedBrand} />)
       expect(markup).not.toContain('filter:')
     }
+  })
+})
+
+describe('SlotView dispatch (decision 295)', () => {
+  it("draws the designer's code with GraphicCode, and never grades it", () => {
+    const markup = renderToStaticMarkup(<SlotView slot={GRAPHIC_CODE_SLOT} brand={FIXTURE_BRAND} />)
+    expect(markup).toContain('data-testid="graphic-code"')
+    expect(markup).not.toContain('filter:')
   })
 })

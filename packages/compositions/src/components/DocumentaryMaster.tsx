@@ -24,6 +24,7 @@ import { ChapterCard } from './ChapterCard'
 import { ChartReveal } from './ChartReveal'
 import { EndCta } from './EndCta'
 import { GraphicCard } from './GraphicCard'
+import { GraphicCode } from './GraphicCode'
 import { HeadlineCard } from './HeadlineCard'
 import { KaraokeCaptions } from './KaraokeCaptions'
 import { KenBurnsImage } from './KenBurnsImage'
@@ -180,7 +181,9 @@ export function SlotView({ slot, brand }: { slot: TimelineSlot; brand: BrandKitT
         <HeadlineCard payload={slot.payload} brand={brand} />
       ) : slot.payload.kind === 'graphic' ? (
         <GraphicCard payload={slot.payload} brand={brand} durationInFrames={durationInFrames} />
-      ) : slot.payload.kind === 'graphic-code' ? null : slot.payload.kind === 'social' ? (
+      ) : slot.payload.kind === 'graphic-code' ? (
+        <GraphicCode payload={slot.payload} brand={brand} durationInFrames={durationInFrames} />
+      ) : slot.payload.kind === 'social' ? (
         <SocialPost payload={slot.payload} brand={brand} durationInFrames={durationInFrames} />
       ) : (
         <AnimatedMap payload={slot.payload} brand={brand} durationInFrames={durationInFrames} />
