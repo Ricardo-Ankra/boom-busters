@@ -7246,3 +7246,73 @@ boom-busters-broker`; merge and deploy to Vercel, then `PUT
      past its retries, and reads a throwing mocked step as a success.
      Shipping: a Vercel deploy and `PUT /api/inngest`. No migration, no
      Remotion or broker deploy.
+
+295. **The designer writes the graphic** (2026-10-12, owner). Decisions
+     268, 289 and 290 had the model fill in a form: five element kinds on
+     a 12x12 grid, four entrances, three exits, one camera track, every
+     duration a constant, and a prompt that pushed restraint. The live
+     runs of 8 October drew two to four elements in one column every
+     time. The owner found the brand fonts and colours used well, the
+     motion unpolished and the graphics simplistic, text-only ones most
+     of all, and the chart format's single draw-on reveal behind them
+     both; the guardrails and the structure were what held them back.
+     Owner's rulings: the designer writes the animation itself, as a
+     React component, with guardrails on facts, brand, timing and frame
+     purity and none on layout, element count, easing or motion; charts
+     move onto the same designer, built around their real series, and
+     the chart reveal stays only for a chart with no design yet; the $1
+     live loop goes, since the board plays the real composition and
+     Redesign runs the real designer, and stills cannot show whether a
+     spring settles.
+     What shipped: the designer answers `{ source, title, facts }`. The
+     web server compiles the JSX with esbuild, scans the compiled output
+     (the banned globals and hooks, `Suspense`, `lazy`, assignment to
+     `Remotion.*` or `React.*`, hex and `rgb(` literals, the 16 KB cap),
+     dry-runs it in a `vm` context every 250 ms in 1920x1080 and
+     1080x1920 at 30 fps, and checks every digit group on screen for a
+     second against the claims its facts cite (on a chart, or against
+     its own series). The order is compile, scan, dry run, facts. A
+     throw, a frame over 2 s, more than 6 s with nothing changing, text
+     outside the safe area or an empty last frame is a refusal that
+     names it, retried once with the reason (decision 292). A design
+     that passes is stored as `code` on the brief, beside any older
+     `scene`, and a timeline payload of its own, `graphic-code`, carries
+     the compiled function to `GraphicCode`, which builds it once and
+     draws it in the house frame behind an error boundary that shows the
+     title. Chart briefs gain `code` and `designIssue` and are designed
+     like graphics: in the visuals run, after a retype and on Redesign
+     chart. On the board a design in code plays in the Player at the
+     full 1080p frame and shows a still of its own component at 60%
+     under its title; a chart card gets Play chart, Redesign chart and
+     the "Not designed" line. The prompt is rewritten around the
+     sandbox, the six rules, a short craft section and two worked
+     components; the answer budget is 12,000 tokens; the shot list's
+     graphic intents widen to what a motion designer would build for the
+     beat. `pnpm live:graphic` and `pnpm render:graphics` are deleted;
+     the saved runs stay as a record.
+     Decisions made where the spec left room:
+     <!-- controller: rulings -->
+     Shipping, in this order because the timeline schema gained a
+     payload and an older broker refuses it: `deploy:remotion`, then
+     `deploy:stacks boom-busters-broker` (the Lambda recipe, run by the
+     owner), then the Vercel deploy and `PUT /api/inngest`. No
+     migration: `code` lives in the brief's JSON column. Older `scene`
+     graphics keep rendering on `GraphicCard`, and a chart with no code
+     on `ChartReveal`.
+     The rollout's check: esbuild is a server external with a native
+     binary, so if the first production compile throws "could not find
+     @esbuild/linux-x64", `next.config.ts` gains an
+     `outputFileTracingIncludes` entry for `/api/inngest` that traces
+     the binary in. Next did bundle the Inngest route with the
+     `react-server` condition: under `pnpm dev` the first request to
+     `/api/inngest` answered 500, because `react-dom/server` throws on
+     import there, React has no `createContext`, and Remotion refuses to
+     load. `dry-run.ts` now loads React and `react-dom/server` through
+     `createRequire` at run time (marked `turbopackIgnore`, which keeps
+     Turbopack from bundling them again), `one-frame.ts` is a factory
+     over the React it is given (`makeOneFrame`), and `remotion` is a
+     server external in `next.config.ts`. The route then answers 200.
+     Left: the cost per graphic, read off the Costs screen after the
+     owner's first Redesign (about $0.30 to $0.60 on Opus 5.5 by token
+     counts, against about $0.03 before); the owner decides from it
+     whether the route stays on Opus.
