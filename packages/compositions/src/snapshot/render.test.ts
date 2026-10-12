@@ -81,6 +81,11 @@ const CASES: SnapshotCase[] = [
     frame: 255,
     maxDiffRatio: 0.06,
   },
+  // The designer's code (decision 295): frame 150 is 5 s into the 8 s slot.
+  // The title is up, the figure landed on $4bn at 1.3 s, the underline under
+  // it is a little past half its sweep, and the second line (in at 4 s) is up.
+  { id: 'GraphicCodeWide', frame: 150, maxDiffRatio: 0.06 },
+  { id: 'GraphicCodeTall', frame: 150, maxDiffRatio: 0.06 },
   // Frame 45 is 1.5 s in: the card has settled and the highlight's sweep has
   // finished (decision 284).
   { id: 'SocialPostWide', frame: 45, maxDiffRatio: 0.06 },
