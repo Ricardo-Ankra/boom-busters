@@ -7265,10 +7265,11 @@ boom-busters-broker`; merge and deploy to Vercel, then `PUT
      Redesign runs the real designer, and stills cannot show whether a
      spring settles.
      What shipped: the designer answers `{ source, title, facts }`. The
-     web server compiles the JSX with esbuild, scans the compiled output
-     (the banned globals and hooks, `Suspense`, `lazy`, assignment to
-     `Remotion.*` or `React.*`, hex and `rgb(` literals, the 16 KB cap),
-     dry-runs it in a `vm` context every 250 ms in 1920x1080 and
+     web server compiles the JSX with esbuild, scans the source for the
+     size cap (16 KB) and the `Graphic` declaration and the compiled
+     output for everything else (the banned globals and hooks,
+     `Suspense`, `lazy`, assignment to `Remotion.*` or `React.*`, hex
+     and `rgb(` literals), dry-runs it in a `vm` context every 250 ms in 1920x1080 and
      1080x1920 at 30 fps, and checks every digit group on screen for a
      second against the claims its facts cite (on a chart, or against
      its own series). The order is compile, scan, dry run, facts. A
@@ -7299,20 +7300,38 @@ boom-busters-broker`; merge and deploy to Vercel, then `PUT
      migration: `code` lives in the brief's JSON column. Older `scene`
      graphics keep rendering on `GraphicCard`, and a chart with no code
      on `ChartReveal`.
-     The rollout's check: esbuild is a server external with a native
+     The rollout's checks: esbuild is a server external with a native
      binary, so if the first production compile throws "could not find
-     @esbuild/linux-x64", `next.config.ts` gains an
-     `outputFileTracingIncludes` entry for `/api/inngest` that traces
-     the binary in. Next did bundle the Inngest route with the
-     `react-server` condition: under `pnpm dev` the first request to
-     `/api/inngest` answered 500, because `react-dom/server` throws on
-     import there, React has no `createContext`, and Remotion refuses to
-     load. `dry-run.ts` now loads React and `react-dom/server` through
-     `createRequire` at run time (marked `turbopackIgnore`, which keeps
-     Turbopack from bundling them again), `one-frame.ts` is a factory
-     over the React it is given (`makeOneFrame`), and `remotion` is a
-     server external in `next.config.ts`. The route then answers 200.
+     @esbuild/linux-x64", the `outputFileTracingIncludes` entry for
+     `/api/inngest` in `next.config.ts` gains the binary's files. The
+     Inngest route is bundled with the `react-server` condition, under
+     which `react-dom/server` throws on import, React has no
+     `createContext` and Remotion refuses to load; under `pnpm dev` the
+     first request to `/api/inngest` answered 500 for all three. So the
+     route imports none of them. `dry-run.ts` requires React,
+     `react-dom/server` and Remotion at run time, on its first dry run
+     and not at module load (names built at run time and marked
+     `turbopackIgnore` and `webpackIgnore`, so the bundler leaves a
+     real Node `require`); a module missing on the host then fails one
+     design, not the route. `one-frame.ts` is a factory over the React
+     and the Remotion functions it is given (`makeOneFrame`), the board's
+     still handing it the browser's. `check.ts`, `dry-run.ts` and
+     `one-frame.ts` import the Remotion-free subpath
+     `@boom-busters/compositions/graphic-code-pure`, which
+     `graphic-code.ts` re-exports. The file trace cannot see a run-time
+     require, so `outputFileTracingIncludes` lists the CommonJS files of
+     `react`, `react-dom` and `remotion`, under `node_modules` and at
+     their real `.pnpm` paths; after `next build` the route's trace
+     lists `react-dom/server.node.js`, both `react-dom-server*.node.production.js`
+     files, `react/index.js` and `remotion/dist/cjs`, and `next start`
+     answers 200 on `/api/inngest`. There are no server externals
+     beyond `esbuild`, `postgres` and `sharp`: `remotion` as one broke
+     the server render of the preview screen's Player, whose client
+     components render with Next's own React. Two e2e tests guard this:
+     the route answers 200 on the e2e server, and a fresh load of a
+     film with no draft and no master renders its preview.
      Left: the cost per graphic, read off the Costs screen after the
      owner's first Redesign (about $0.30 to $0.60 on Opus 5.5 by token
      counts, against about $0.03 before); the owner decides from it
      whether the route stays on Opus.
+     The number 295 is checked against `origin/master` at the merge.
