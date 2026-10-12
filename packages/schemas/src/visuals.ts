@@ -8,6 +8,7 @@ import {
   type PlannedGraphicScene,
 } from './graphics'
 import { UlidSchema } from './ids'
+import { GraphicCodeSchema } from './graphic-code'
 import { logoForEntity, type LogoIndex } from './logos'
 import { SetPlateDirectionSchema } from './sets'
 import { claimCarriesPost, normalisePostUrl } from './social'
@@ -228,6 +229,14 @@ export const ChartBriefSchema = z.object({
   takeaway: z.string().min(1),
   annotations: z.array(z.object({ atX: z.string().min(1), text: z.string().min(1) })).optional(),
   reveal: z.enum(['draw-on', 'none']),
+  /**
+   * The designer's component for this chart (decision 295), written around
+   * `series`. A chart with code plays it; a chart without plays its own
+   * reveal (`ChartReveal`), as every chart did before 295.
+   */
+  code: GraphicCodeSchema.optional(),
+  /** Why the designer could not write it. Meaningful only without `code`. */
+  designIssue: z.string().min(1).max(500).optional(),
 })
 export type ChartBrief = z.infer<typeof ChartBriefSchema>
 
@@ -295,19 +304,31 @@ export type HeadlineBrief = z.infer<typeof HeadlineBriefSchema>
  * (no scene, no issue: being designed) or after the designer could not
  * (no scene, `designIssue` says why). A graphic stored before 289 has a
  * scene and no intent, and its description stands in for one.
+ *
+ * Since decision 295 the designer writes the graphic as code. A brief with
+ * `code` plays the code whatever else it carries: one designed as a scene
+ * and redesigned after 295 keeps its old `scene` beside the new code.
  */
 export const GraphicBriefSchema = z.object({
   type: z.literal('graphic'),
   ...briefCommon,
   scene: GraphicSceneSchema.optional(),
+  /** The designer's component (decision 295). Takes precedence over `scene`. */
+  code: GraphicCodeSchema.optional(),
   /** What the graphic must get across, not how it looks. */
   intent: z.string().trim().min(1).max(GRAPHIC_INTENT_MAX).optional(),
   /** The claims the beat rests on, as the shot list named them. */
   intentClaimIds: z.array(UlidSchema).max(GRAPHIC_INTENT_REFS_MAX).optional(),
-  /** Why the designer could not compose it. Meaningful only without a scene. */
+  /** Why the designer could not compose it. Meaningful only without a scene or code. */
   designIssue: z.string().min(1).max(500).optional(),
 })
 export type GraphicBrief = z.infer<typeof GraphicBriefSchema>
+
+/**
+ * The briefs the graphics designer works on (decision 295): a graphic, and a
+ * chart, which the designer builds around its real series.
+ */
+export type DesignableBrief = GraphicBrief | ChartBrief
 
 /**
  * A real X post shown on screen as a card (decision 284). The brief carries
@@ -362,15 +383,20 @@ export type ShotBrief = z.infer<typeof ShotBriefSchema>
 
 /**
  * The Fix button rewrites a graphic's words, never its design (decision 289):
- * a planned graphic carries no scene, so a rewrite of a designed graphic keeps
- * the scene it had, and the owner presses Redesign graphic if the new intent
- * needs a new one.
+ * a planned graphic carries no scene and no code, so a rewrite of a designed
+ * graphic keeps the scene and the code (decision 295) it had, and the owner
+ * presses Redesign graphic if the new intent needs a new one.
  */
 export function keepGraphicDesign(previous: ShotBrief, next: ShotBrief): ShotBrief {
-  if (previous.type !== 'graphic' || next.type !== 'graphic' || !previous.scene || next.scene) {
-    return next
+  if (previous.type !== 'graphic' || next.type !== 'graphic') return next
+  const keepScene = previous.scene !== undefined && next.scene === undefined
+  const keepCode = previous.code !== undefined && next.code === undefined
+  if (!keepScene && !keepCode) return next
+  return {
+    ...next,
+    ...(keepScene ? { scene: previous.scene } : {}),
+    ...(keepCode ? { code: previous.code } : {}),
   }
-  return { ...next, scene: previous.scene }
 }
 
 // ---------------------------------------------------------------------------
@@ -700,9 +726,15 @@ export const JOB_STALE_MS = 10 * 60_000
 /**
  * The wire shape a chart brief takes inside the model's JSON: identical to
  * `ChartBriefSchema` except `dataRefs` are 1-based claim numbers into the
- * prompt's numbered claim list. `resolvePlannedBrief` converts.
+ * prompt's numbered claim list, and there is no design: the designer writes
+ * that after the chart is planned (decision 295). `resolvePlannedBrief`
+ * converts.
  */
-export const PlannedChartBriefSchema = ChartBriefSchema.omit({ dataRefs: true }).extend({
+export const PlannedChartBriefSchema = ChartBriefSchema.omit({
+  dataRefs: true,
+  code: true,
+  designIssue: true,
+}).extend({
   dataRefs: z
     .array(z.number().int().min(1))
     .min(1, 'a chart must cite the claims its numbers come from'),
@@ -745,6 +777,7 @@ export type PlannedHeadlineBrief = z.infer<typeof PlannedHeadlineBriefSchema>
  */
 export const PlannedGraphicBriefSchema = GraphicBriefSchema.omit({
   scene: true,
+  code: true,
   intent: true,
   intentClaimIds: true,
   designIssue: true,

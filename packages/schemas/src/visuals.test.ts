@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, expectTypeOf, it } from 'vitest'
 import { PlannedGraphicSceneSchema } from './graphics'
 import type { GraphicScene } from './graphics'
 import { newId } from './ids'
@@ -30,7 +30,8 @@ import {
   visualsApprovalBlockedReason,
   visualsCoverage,
 } from './visuals'
-import type { SlotRef } from './visuals'
+import type { ChartBrief, DesignableBrief, GraphicBrief, SlotRef } from './visuals'
+import type { GraphicCode } from './graphic-code'
 
 const CLAIM_A = '01HQ00000000000000000000AA'
 const CLAIM_B = '01HQ00000000000000000000AB'
@@ -1043,5 +1044,113 @@ describe('the camera track survives resolution and the redesign mapping (decisio
     expect('camera' in toPlannedScene({ elements: planned.elements } as GraphicScene, [])).toBe(
       false,
     )
+  })
+})
+
+describe('the designer writes the graphic (decision 295)', () => {
+  const DESIGNED: GraphicCode = {
+    version: 1,
+    source: 'function Graphic() { return null }',
+    compiled: 'function Graphic() { return null }',
+    title: 'Four billion, on paper',
+    facts: [{ text: '$4bn', claimId: CLAIM_A }],
+    words: [{ text: 'Four', atMs: 0 }],
+    durationMs: 6000,
+  }
+  const graphic = {
+    type: 'graphic' as const,
+    ...common,
+    intent: 'Four billion in one round is the story.',
+    intentClaimIds: [CLAIM_A],
+  }
+  const scene = {
+    elements: [
+      {
+        kind: 'figure' as const,
+        align: 'start' as const,
+        id: 'f1',
+        cell: { col: 0, row: 0, colSpan: 6, rowSpan: 3 },
+        value: '$4bn',
+        claimRef: CLAIM_A,
+        color: 'accent' as const,
+        enter: { kind: 'fade' as const, atMs: 0 },
+      },
+    ],
+  }
+  const chart = {
+    type: 'chart' as const,
+    ...common,
+    chartKind: 'bar' as const,
+    series: [
+      {
+        label: 'Valuation',
+        unit: 'USD Millions',
+        points: [
+          { x: '2022', y: 1000 },
+          { x: '2023', y: 4000 },
+        ],
+      },
+    ],
+    dataRefs: [CLAIM_A],
+    takeaway: 'Four times in a year.',
+    reveal: 'draw-on' as const,
+  }
+
+  it('stores the code on a graphic brief, beside a scene from before', () => {
+    expect(GraphicBriefSchema.parse({ ...graphic, code: DESIGNED }).code).toEqual(DESIGNED)
+    expect(GraphicBriefSchema.parse({ ...graphic, scene, code: DESIGNED })).toMatchObject({
+      scene,
+      code: DESIGNED,
+    })
+  })
+
+  it('stores the code on a chart brief, or why the designer could not write it', () => {
+    expect(ChartBriefSchema.parse({ ...chart, code: DESIGNED }).code).toEqual(DESIGNED)
+    const issue = 'the graphic shows 7, which no cited claim contains'
+    expect(ChartBriefSchema.parse({ ...chart, designIssue: issue }).designIssue).toBe(issue)
+    expect(ChartBriefSchema.safeParse({ ...chart, designIssue: 'x'.repeat(501) }).success).toBe(
+      false,
+    )
+  })
+
+  it('refuses code that is not a whole design', () => {
+    const half = { ...graphic, code: { ...DESIGNED, compiled: '' } }
+    expect(GraphicBriefSchema.safeParse(half).success).toBe(false)
+  })
+
+  it('never takes a design from the planner', () => {
+    const plannedChart = PlannedBriefSchema.parse({
+      ...chart,
+      dataRefs: [1],
+      code: DESIGNED,
+      designIssue: 'x',
+    })
+    expect(plannedChart).not.toHaveProperty('code')
+    expect(plannedChart).not.toHaveProperty('designIssue')
+    const plannedGraphic = PlannedBriefSchema.parse({
+      type: 'graphic',
+      ...common,
+      intent: graphic.intent,
+      intentRefs: [1],
+      code: DESIGNED,
+    })
+    expect(plannedGraphic).not.toHaveProperty('code')
+  })
+
+  it('keeps the code through a rewrite, as it keeps a scene', () => {
+    const next = { ...graphic, intent: 'The round, not the product, is the story.' }
+    expect(keepGraphicDesign({ ...graphic, code: DESIGNED }, next)).toEqual({
+      ...next,
+      code: DESIGNED,
+    })
+    expect(keepGraphicDesign({ ...graphic, scene, code: DESIGNED }, next)).toEqual({
+      ...next,
+      scene,
+      code: DESIGNED,
+    })
+  })
+
+  it('names the briefs the designer works on', () => {
+    expectTypeOf<DesignableBrief>().toEqualTypeOf<GraphicBrief | ChartBrief>()
   })
 })
