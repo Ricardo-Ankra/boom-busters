@@ -15,6 +15,7 @@ import {
   getSocialPosts,
   latestScriptParagraphSources,
   listCastMembers,
+  listLogos,
   listProjectSets,
   listShotSlots,
   listVoiceTakes,
@@ -29,6 +30,7 @@ import {
   articleSourceLabel,
   CANDIDATES_SHOWN,
   claimCarriesArticle,
+  codeLogoLibrary,
   craftFindings,
   DirectorsBookSchema,
   findingContext,
@@ -255,6 +257,14 @@ export interface SlotView {
    * configured, or when nothing on the board cites a mark yet.
    */
   logoUrls: Record<string, string>
+  /**
+   * The marks a design written as code may draw (decision 295; ruling 5: the
+   * whole library), by asset id: the entity title its source keys a mark by
+   * (`props.logos['Acme']`) and the size the render's payload carries.
+   * Board-wide and shared like `logoUrls`, which holds their signed URLs;
+   * empty when storage is not configured or no design on the board is code.
+   */
+  logoMarks: Record<string, LogoMark>
   /** What this brief calls on from the reference libraries, and what lands. */
   references: SlotReference[]
   /**
@@ -262,6 +272,37 @@ export interface SlotView {
    * and correct it (decision 284). Null on every other type.
    */
   social: SocialSlotView | null
+}
+
+/** A library mark as a design in code names it (decision 295). */
+export interface LogoMark {
+  title: string
+  width: number
+  height: number
+}
+
+/**
+ * Every library mark a design written as code may draw (decision 295; ruling
+ * 5): the whole library, keyed by asset id, with the entity title the code
+ * keys it by and its size, because nothing in a source says which titles it
+ * reads and the dry run handed it every one. The rule is `codeLogoLibrary`'s,
+ * shared with the dry run and the assembly: a mark with no title or no size
+ * is left out, and the first mark stored under a title wins, in `listLogos`
+ * order.
+ */
+export function codeLogoMarks(
+  logos: readonly {
+    id: string
+    title: string | null
+    width: number | null
+    height: number | null
+  }[],
+): Record<string, LogoMark> {
+  const marks: Record<string, LogoMark> = {}
+  for (const [title, logo] of codeLogoLibrary(logos)) {
+    marks[logo.id] = { title, width: logo.width, height: logo.height }
+  }
+  return marks
 }
 
 /**
@@ -826,8 +867,15 @@ export async function visualsReviewModel(
    * brief to find which asset ids a scene cites. Mock storage (no R2) leaves
    * this empty, same as `photoUrls`, so a matched mark falls back to the
    * preview's "upload" box rather than a broken `<image>`.
+   *
+   * A design written as code (decision 295) names its marks by title in its
+   * source, not by asset id, and is handed the whole library (ruling 5): when
+   * the board holds one, every library mark is signed too, and
+   * `graphicLogoMarks` gives the board each one's title and size, so the
+   * player and the still key and size them as the render does.
    */
   const graphicLogoUrls: Record<string, string> = {}
+  const graphicLogoMarks: Record<string, LogoMark> = {}
   if (storageConfigured()) {
     const assetIds = new Set(
       briefs.flatMap((parsed) =>
@@ -841,6 +889,22 @@ export async function visualsReviewModel(
     for (const assetId of assetIds) {
       const logo = await logoById(db, assetId)
       if (logo) graphicLogoUrls[assetId] = await presignGet(logo.r2Key)
+    }
+
+    const anyCode = briefs.some(
+      (parsed) =>
+        parsed.success &&
+        (parsed.data.type === 'graphic' || parsed.data.type === 'chart') &&
+        parsed.data.code !== undefined,
+    )
+    if (anyCode) {
+      const library = await listLogos(db)
+      Object.assign(graphicLogoMarks, codeLogoMarks(library))
+      for (const logo of library) {
+        if (graphicLogoMarks[logo.id] && graphicLogoUrls[logo.id] === undefined) {
+          graphicLogoUrls[logo.id] = await presignGet(logo.r2Key)
+        }
+      }
     }
   }
 
@@ -949,6 +1013,7 @@ export async function visualsReviewModel(
         ? routeForBrief(parsed.data, cast, sets, settings.modelRouting)
         : settings.modelRouting.stills,
       logoUrls: graphicLogoUrls,
+      logoMarks: graphicLogoMarks,
       references: parsed.success ? slotReferences(parsed.data, cast, sets) : [],
       social:
         parsed.success && parsed.data.type === 'social'

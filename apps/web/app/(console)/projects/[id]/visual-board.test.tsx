@@ -230,6 +230,7 @@ const stockSlot: SlotView = {
   route: null,
   derivedRoute: { provider: 'google', model: 'gemini-3-pro-image' },
   logoUrls: {},
+  logoMarks: {},
   references: [],
   social: null,
 }
@@ -277,6 +278,7 @@ const chartSlot: SlotView = {
   route: null,
   derivedRoute: { provider: 'google', model: 'gemini-3-pro-image' },
   logoUrls: {},
+  logoMarks: {},
   references: [],
   social: null,
 }
@@ -325,6 +327,7 @@ const headlineSlot: SlotView = {
   route: null,
   derivedRoute: { provider: 'google', model: 'gemini-3-pro-image' },
   logoUrls: {},
+  logoMarks: {},
   references: [],
   social: null,
 }
@@ -382,6 +385,7 @@ const graphicSlot: SlotView = {
   route: null,
   derivedRoute: { provider: 'google', model: 'gemini-3-pro-image' },
   logoUrls: {},
+  logoMarks: {},
   references: [],
   social: null,
 }
@@ -431,6 +435,7 @@ const brokenSlot: SlotView = {
   route: null,
   derivedRoute: { provider: 'google', model: 'gemini-3-pro-image' },
   logoUrls: {},
+  logoMarks: {},
   references: [],
   social: null,
 }
@@ -2328,6 +2333,7 @@ const socialSlot: SlotView = {
   route: null,
   derivedRoute: { provider: 'google', model: 'gemini-3-pro-image' },
   logoUrls: {},
+  logoMarks: {},
   references: [],
   social: {
     post: fetchedPost,
