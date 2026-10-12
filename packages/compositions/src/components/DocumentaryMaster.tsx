@@ -180,7 +180,7 @@ export function SlotView({ slot, brand }: { slot: TimelineSlot; brand: BrandKitT
         <HeadlineCard payload={slot.payload} brand={brand} />
       ) : slot.payload.kind === 'graphic' ? (
         <GraphicCard payload={slot.payload} brand={brand} durationInFrames={durationInFrames} />
-      ) : slot.payload.kind === 'social' ? (
+      ) : slot.payload.kind === 'graphic-code' ? null : slot.payload.kind === 'social' ? (
         <SocialPost payload={slot.payload} brand={brand} durationInFrames={durationInFrames} />
       ) : (
         <AnimatedMap payload={slot.payload} brand={brand} durationInFrames={durationInFrames} />

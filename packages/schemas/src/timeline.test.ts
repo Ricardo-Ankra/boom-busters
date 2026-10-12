@@ -3,6 +3,7 @@ import { DEFAULT_SETTINGS, resolveBrandKit } from './settings'
 import {
   canonicalTimelineIssues,
   gainAt,
+  GraphicCodePayloadSchema,
   GraphicPayloadSchema,
   SLOT_PAYLOAD_KINDS,
   TIMELINE_VERSION,
@@ -248,9 +249,9 @@ describe('TimelineSchema', () => {
     expect(TimelineSlotSchema.safeParse(raw).success).toBe(false)
   })
 
-  it('a graphic slot carries a graphic payload and nothing else', () => {
+  it('a graphic slot carries a scene graphic payload', () => {
     expect(TIMELINE_SLOT_TYPES).toContain('graphic')
-    expect(SLOT_PAYLOAD_KINDS.graphic).toEqual(['graphic'])
+    expect(SLOT_PAYLOAD_KINDS.graphic).toEqual(['graphic', 'graphic-code'])
     const parsed = GraphicPayloadSchema.parse({
       kind: 'graphic',
       scene: {
@@ -312,6 +313,81 @@ describe('TimelineSchema', () => {
       },
     })
     expect(TimelineSchema.safeParse(timeline).success).toBe(true)
+  })
+})
+
+describe('the graphic-code payload (decision 295)', () => {
+  const payload = {
+    kind: 'graphic-code',
+    version: 1,
+    compiled: 'function Graphic(props) { return null }',
+    title: 'Four billion, on paper',
+    words: [
+      { text: 'Four', atMs: 0 },
+      { text: 'billion.', atMs: 380 },
+    ],
+    durationMs: 6000,
+    logos: {
+      'Stability AI': { r2Key: 'boom-busters/logos/abc.png', width: 1200, height: 400 },
+    },
+    claimIds: [CLAIM],
+  }
+  const slot = (type: string, body: object = payload) => ({
+    type,
+    startMs: 0,
+    durationMs: 6000,
+    transition: 'cut',
+    motion: { kind: 'static' },
+    payload: body,
+  })
+
+  it('rides a graphic slot or a chart slot, and no other', () => {
+    expect(SLOT_PAYLOAD_KINDS.graphic).toEqual(['graphic', 'graphic-code'])
+    expect(SLOT_PAYLOAD_KINDS.chart).toEqual(['chart', 'graphic-code'])
+    expect(TimelineSlotSchema.parse(slot('graphic')).payload.kind).toBe('graphic-code')
+    expect(TimelineSlotSchema.parse(slot('chart')).payload.kind).toBe('graphic-code')
+    const still = TimelineSlotSchema.safeParse(slot('still'))
+    expect(still.success).toBe(false)
+    if (!still.success) {
+      expect(still.error.issues[0]?.message).toBe(
+        'a still slot cannot carry a graphic-code payload',
+      )
+    }
+  })
+
+  it('refuses a payload kind the timeline does not know', () => {
+    const unknown = slot('graphic', { ...payload, kind: 'graphic-script' })
+    expect(TimelineSlotSchema.safeParse(unknown).success).toBe(false)
+  })
+
+  it("keys its logos by entity and carries a chart's series as data", () => {
+    const parsed = GraphicCodePayloadSchema.parse({
+      ...payload,
+      data: {
+        series: [
+          {
+            label: 'Valuation',
+            unit: 'USD Millions',
+            points: [
+              { x: '2022', y: 1000 },
+              { x: '2023', y: 4000 },
+            ],
+          },
+        ],
+        takeaway: 'Four times in a year.',
+      },
+    })
+    expect(parsed.logos['Stability AI']?.width).toBe(1200)
+    expect(parsed.data?.series[0]?.points).toHaveLength(2)
+  })
+
+  it('keeps a sandbox version it does not know, for the renderer to refuse in words', () => {
+    expect(GraphicCodePayloadSchema.parse({ ...payload, version: 2 }).version).toBe(2)
+    expect(GraphicCodePayloadSchema.safeParse({ ...payload, version: 0 }).success).toBe(false)
+  })
+
+  it('needs compiled code to run', () => {
+    expect(GraphicCodePayloadSchema.safeParse({ ...payload, compiled: '' }).success).toBe(false)
   })
 })
 

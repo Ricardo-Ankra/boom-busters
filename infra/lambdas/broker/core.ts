@@ -175,7 +175,8 @@ export async function materialiseTimeline(
         src.url = src.externalUrl
       }
     }
-    if (slot.payload.kind === 'graphic') {
+    // A scene graphic's logos and, since decision 295, a coded graphic's.
+    if (slot.payload.kind === 'graphic' || slot.payload.kind === 'graphic-code') {
       for (const ref of Object.values(slot.payload.logos)) {
         if (ref.r2Key !== undefined) ref.url = await presign(ref.r2Key)
         else if (ref.externalUrl !== undefined) ref.url = ref.externalUrl

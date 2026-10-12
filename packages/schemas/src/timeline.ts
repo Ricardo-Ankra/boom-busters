@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { GraphicSceneSchema } from './graphics'
+import { GraphicCodeWordSchema } from './graphic-code'
 import { UlidSchema } from './ids'
 import { BrandKitTokensSchema } from './settings'
 import { ChartKindSchema, ChartSeriesSchema, MapLocationSchema, TransitionSchema } from './visuals'
@@ -261,6 +262,43 @@ export const GraphicPayloadSchema = z.object({
 })
 export type GraphicPayload = z.infer<typeof GraphicPayloadSchema>
 
+/**
+ * A graphic the designer wrote as code (decision 295), embedded whole: the
+ * compiled component, the narration it was timed to, the logos it may draw
+ * keyed by the entity the dossier names, and every claim it cites for the
+ * audit trail. A chart slot carries one too, with its series in `data`.
+ *
+ * `version` names the sandbox contract the code was written against, and is
+ * deliberately not pinned here: a renderer that does not know the version
+ * draws the slot's title rather than misrendering, so the timeline must
+ * still parse. Like a scene graphic, a render depends on nothing outside the
+ * timeline but the logo objects.
+ */
+export const GraphicCodePayloadSchema = z.object({
+  kind: z.literal('graphic-code'),
+  version: z.number().int().positive(),
+  compiled: z.string().min(1),
+  title: z.string(),
+  words: z.array(GraphicCodeWordSchema),
+  durationMs: z.number().int().positive(),
+  logos: z.record(
+    z.string(),
+    MediaRefSchema.extend({
+      width: z.number().int().positive(),
+      height: z.number().int().positive(),
+    }),
+  ),
+  claimIds: z.array(UlidSchema),
+  data: z
+    .object({
+      series: z.array(ChartSeriesSchema),
+      takeaway: z.string(),
+      annotations: z.array(z.object({ atX: z.string(), text: z.string() })).optional(),
+    })
+    .optional(),
+})
+export type GraphicCodePayload = z.infer<typeof GraphicCodePayloadSchema>
+
 export const SlotPayloadSchema = z.discriminatedUnion('kind', [
   ImagePayloadSchema,
   VideoPayloadSchema,
@@ -268,6 +306,7 @@ export const SlotPayloadSchema = z.discriminatedUnion('kind', [
   MapPayloadSchema,
   HeadlinePayloadSchema,
   GraphicPayloadSchema,
+  GraphicCodePayloadSchema,
   SocialPayloadSchema,
 ])
 export type SlotPayload = z.infer<typeof SlotPayloadSchema>
@@ -285,16 +324,20 @@ export const TIMELINE_SLOT_TYPES = [
 ] as const
 export type TimelineSlotType = (typeof TIMELINE_SLOT_TYPES)[number]
 
-/** Which payload kinds each slot type may carry. */
+/**
+ * Which payload kinds each slot type may carry. A graphic or a chart the
+ * designer wrote as code (decision 295) keeps its slot type and carries a
+ * `graphic-code` payload; the slot type is the audit trail back to its brief.
+ */
 export const SLOT_PAYLOAD_KINDS: Record<TimelineSlotType, readonly SlotPayload['kind'][]> = {
   stock: ['image', 'video'],
   archival: ['image'],
   still: ['image'],
   upload: ['image'],
-  chart: ['chart'],
+  chart: ['chart', 'graphic-code'],
   map: ['map'],
   headline: ['headline'],
-  graphic: ['graphic'],
+  graphic: ['graphic', 'graphic-code'],
   social: ['social'],
 }
 

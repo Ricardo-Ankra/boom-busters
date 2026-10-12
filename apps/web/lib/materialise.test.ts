@@ -170,6 +170,45 @@ describe('materialiseForPreview', () => {
     expect(dropped.dropped.slots).toBeGreaterThanOrEqual(1)
   })
 
+  it("resolves a graphic-code payload's logo keys, leaving out one it cannot rather than the slot (decision 295)", async () => {
+    const timeline = structuredClone(canonical())
+    timeline.slots.push({
+      type: 'graphic',
+      startMs: 0,
+      durationMs: 4000,
+      transition: 'cut',
+      motion: { kind: 'static' },
+      payload: {
+        kind: 'graphic-code',
+        version: 1,
+        compiled: 'function Graphic() { return null }',
+        title: 'Funding round',
+        words: [],
+        durationMs: 4000,
+        logos: {
+          'Stability AI': { r2Key: 'boom-busters/logos/abc.png', width: 1200, height: 400 },
+        },
+        claimIds: [],
+      },
+    })
+    const resolved = await materialiseForPreview(timeline, {
+      origin: ORIGIN,
+      presign: (key) => Promise.resolve(`https://r2.example.com/${key}`),
+    })
+    const graphic = resolved.timeline.slots.find((slot) => slot.payload.kind === 'graphic-code')
+    expect(
+      graphic && graphic.payload.kind === 'graphic-code'
+        ? graphic.payload.logos['Stability AI']?.url
+        : null,
+    ).toBe('https://r2.example.com/boom-busters/logos/abc.png')
+
+    // The payload carries the whole library (ruling 5) and the code may read
+    // none of it: the slot stays, without the mark it cannot have.
+    const unsigned = await materialiseForPreview(timeline, { origin: ORIGIN, presign: null })
+    const kept = unsigned.timeline.slots.find((slot) => slot.payload.kind === 'graphic-code')
+    expect(kept && kept.payload.kind === 'graphic-code' ? kept.payload.logos : null).toEqual({})
+  })
+
   it("presigns a social post's avatar and media, and leaves an externalUrl as it is", async () => {
     const timeline = structuredClone(canonical())
     timeline.slots.push({
