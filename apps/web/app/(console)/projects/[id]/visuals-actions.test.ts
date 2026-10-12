@@ -704,6 +704,8 @@ describeDb('attaching an uploaded mark to a waiting graphic (decision 268, Plan 
 
     const row = (await getShotSlot(db, slotId))!
     expect(row.status).toBe('resolved')
+    // The stamp matches the row, so Fetch owes the slot nothing.
+    expect(slotNeedsResolution(row)).toBe(false)
     // The old scene is left as it was: only the code decides what plays.
     const stored = row.brief as unknown as { scene: { elements: { assetId?: string }[] } }
     expect(stored.scene.elements[0]?.assetId).toBeUndefined()

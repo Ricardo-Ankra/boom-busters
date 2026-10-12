@@ -5,7 +5,6 @@ import {
   graphicPropsFor,
   loadBrandFonts,
   msToFrames,
-  withAlpha,
   type GraphicProps,
   type GraphicScope,
 } from '@boom-busters/compositions'
@@ -13,7 +12,7 @@ import { DEFAULT_SETTINGS, resolveBrandKit } from '@boom-busters/schemas'
 import type { BrandKitStored, GraphicCode, GraphicCodePayload } from '@boom-busters/schemas'
 import { MASTER_FPS } from '@boom-busters/timeline'
 import * as React from 'react'
-import { Easing, interpolate, spring } from 'remotion'
+import { FrameContext, oneFrameScope } from '@/lib/graphic-code/one-frame'
 import { codePayloadFor, type CodeLogos } from './graphic-playback'
 
 /**
@@ -43,86 +42,6 @@ const PORTRAIT = { width: 1080, height: 1920 }
 const STILL_SCALE = 0.25
 /** How far through the graphic the still is taken. */
 export const STILL_AT = 0.6
-
-/** The frame the code sees, shifted inside a Sequence as Remotion shifts it. */
-const StillFrame = React.createContext(0)
-
-function useStillFrame(): number {
-  return React.useContext(StillFrame)
-}
-
-/** Remotion's AbsoluteFill: the whole frame, its children in a flex column. */
-function StillFill({
-  style,
-  children,
-}: {
-  style?: React.CSSProperties
-  children?: React.ReactNode
-}) {
-  return (
-    <div
-      style={{
-        position: 'absolute',
-        inset: 0,
-        display: 'flex',
-        flexDirection: 'column',
-        ...style,
-      }}
-    >
-      {children}
-    </div>
-  )
-}
-
-/**
- * Remotion's Sequence at one frame: nothing outside its window, and inside it
- * the children count from its start, laid out in a fill of their own.
- */
-function StillSequence({
-  from = 0,
-  durationInFrames = Infinity,
-  children,
-}: {
-  from?: number
-  durationInFrames?: number
-  children?: React.ReactNode
-}) {
-  const frame = useStillFrame()
-  if (frame < from || frame >= from + durationInFrames) return null
-  return (
-    <StillFrame.Provider value={frame - from}>
-      <StillFill>{children}</StillFill>
-    </StillFrame.Provider>
-  )
-}
-
-/** A plain `img`: the board has no frames to hold for a picture. */
-function StillImg({ src, style }: { src: string; style?: React.CSSProperties }) {
-  return <img src={src} alt="" style={style} />
-}
-
-/** The sandbox's Remotion argument for a still of one frame size. */
-export function stillScope(
-  size: { width: number; height: number },
-  durationInFrames: number,
-): GraphicScope {
-  return {
-    useCurrentFrame: useStillFrame,
-    useVideoConfig: () => ({
-      width: size.width,
-      height: size.height,
-      fps: MASTER_FPS,
-      durationInFrames,
-    }),
-    interpolate,
-    spring,
-    Easing,
-    Sequence: StillSequence,
-    AbsoluteFill: StillFill,
-    Img: StillImg,
-    withAlpha,
-  }
-}
 
 /** Code that throws, or does not build, shows the fallback instead. */
 class StillBoundary extends React.Component<
@@ -186,7 +105,13 @@ export function GraphicCodeStill({
   const size = portrait ? PORTRAIT : LANDSCAPE
   const durationInFrames = Math.max(1, msToFrames(code.durationMs, MASTER_FPS))
   const frame = Math.min(durationInFrames - 1, msToFrames(code.durationMs * STILL_AT, MASTER_FPS))
-  const scope = React.useMemo(() => stillScope(size, durationInFrames), [size, durationInFrames])
+  const scope = React.useMemo(
+    () => oneFrameScope(size, durationInFrames, MASTER_FPS),
+    [size, durationInFrames],
+  )
+  // Keyed on the code and the titles of the marks it is handed, so a mark
+  // uploaded after a failure gets a fresh boundary and the still recovers.
+  const boundaryKey = `${code.compiled}\u0000${Object.keys(logos).sort().join('\u0000')}`
   const props = graphicPropsFor(codePayloadFor(code, logos, data), tokens, size)
   const fallback = (
     <div
@@ -204,8 +129,8 @@ export function GraphicCodeStill({
       className="relative max-w-full overflow-hidden rounded-[8px] border border-[var(--color-border)]"
       style={{ width: size.width * STILL_SCALE, height: size.height * STILL_SCALE }}
     >
-      {/* Keyed on the code, so a redesign that lands gets a fresh boundary. */}
-      <StillBoundary key={code.compiled} fallback={fallback}>
+      {/* Keyed on the code and its marks, so a redesign or a new mark gets a fresh boundary. */}
+      <StillBoundary key={boundaryKey} fallback={fallback}>
         <div
           style={{
             position: 'absolute',
@@ -221,9 +146,9 @@ export function GraphicCodeStill({
             fontFamily: `"${tokens.typography.body.family}", sans-serif`,
           }}
         >
-          <StillFrame.Provider value={frame}>
+          <FrameContext.Provider value={frame}>
             <StillGraphic compiled={code.compiled} scope={scope} props={props} />
-          </StillFrame.Provider>
+          </FrameContext.Provider>
         </div>
       </StillBoundary>
     </div>

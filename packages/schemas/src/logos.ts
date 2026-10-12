@@ -71,7 +71,12 @@ export function logoForEntity<T extends LogoIndex>(entity: string, logos: readon
  * to numbers.
  */
 export function codeLogoLibrary<
-  T extends { id: string; title: string | null; width?: number | null; height?: number | null },
+  T extends {
+    id: string
+    title: string | null
+    width: number | null | undefined
+    height: number | null | undefined
+  },
 >(rows: readonly T[]): Map<string, T & { width: number; height: number }> {
   const library = new Map<string, T & { width: number; height: number }>()
   for (const row of rows) {

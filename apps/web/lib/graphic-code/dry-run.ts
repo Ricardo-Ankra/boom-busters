@@ -1,5 +1,5 @@
 import vm from 'node:vm'
-import { graphicFunctionBody, safeInsets, withAlpha } from '@boom-busters/compositions/graphic-code'
+import { graphicFunctionBody, safeInsets } from '@boom-busters/compositions/graphic-code'
 import type {
   GraphicComponent,
   GraphicProps,
@@ -7,9 +7,8 @@ import type {
 } from '@boom-busters/compositions/graphic-code'
 import { GRAPHIC_STILL_MAX_MS } from '@boom-busters/schemas'
 import * as React from 'react'
-import type { CSSProperties, ReactNode } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { Easing, interpolate, spring } from 'remotion'
+import { FrameContext, oneFrameScope } from './one-frame'
 
 /**
  * The dry run (decision 295): the designer's compiled component rendered to
@@ -64,64 +63,6 @@ type Run = { samples: Sample[]; failure: string | null }
 type GraphicFactory = (react: typeof React, scope: GraphicScope, props: GraphicProps) => unknown
 type Side = 'top' | 'right' | 'bottom' | 'left'
 type Placement = { label: string; offsets: Partial<Record<Side, number>> }
-
-/** The frame `useCurrentFrame` reads: the sample's, or a `Sequence`'s, counted from its start. */
-const FrameContext = React.createContext(0)
-
-/**
- * A full-frame layer, as Remotion's is, spanned with `inset: 0` rather than
- * four zero offsets: the safe-area check reads offsets, and a full-frame
- * layer is the one element allowed to reach the frame's edges.
- */
-function AbsoluteFill({ style, children }: { style?: CSSProperties; children?: ReactNode }) {
-  return React.createElement(
-    'div',
-    {
-      style: { position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', ...style },
-    },
-    children,
-  )
-}
-
-/** Remotion's `Sequence`: its children only inside its window, on a clock from its start, in a full-frame layer. */
-function Sequence({
-  from = 0,
-  durationInFrames,
-  children,
-}: {
-  from?: number
-  durationInFrames?: number
-  children?: ReactNode
-}) {
-  const frame = React.useContext(FrameContext)
-  if (frame < from) return null
-  if (durationInFrames !== undefined && frame >= from + durationInFrames) return null
-  return React.createElement(
-    FrameContext.Provider,
-    { value: frame - from },
-    React.createElement(AbsoluteFill, null, children),
-  )
-}
-
-function Img({ src, style }: { src: string; style?: CSSProperties }) {
-  return React.createElement('img', { src, style })
-}
-
-/** The sandbox's `Remotion` argument for one frame size: the hooks shimmed, the rest Remotion's own. */
-function shimScope(size: FrameSize, durationInFrames: number): GraphicScope {
-  const config = { width: size.width, height: size.height, fps: GRAPHIC_FPS, durationInFrames }
-  return {
-    useCurrentFrame: () => React.useContext(FrameContext),
-    useVideoConfig: () => config,
-    interpolate,
-    spring,
-    Easing,
-    Sequence,
-    AbsoluteFill,
-    Img,
-    withAlpha,
-  }
-}
 
 const seconds = (ms: number) => `${(ms / 1000).toFixed(1)} s`
 
@@ -299,7 +240,7 @@ function runFrameSize(
 ): { issue: string | null; samples: Sample[] } {
   const durationInFrames = Math.max(1, Math.round((input.durationMs * GRAPHIC_FPS) / 1000))
   const props: GraphicProps = { ...input.props, safeArea: safeInsets(size) }
-  const scope = shimScope(size, durationInFrames)
+  const scope = oneFrameScope(size, durationInFrames, GRAPHIC_FPS)
   const frameMaxMs = input.frameMaxMs ?? GRAPHIC_FRAME_MAX_MS
   const timeoutMs = input.timeoutMs ?? GRAPHIC_DRY_RUN_MAX_MS
 

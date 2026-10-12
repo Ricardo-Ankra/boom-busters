@@ -782,7 +782,9 @@ export async function attachGraphicLogosAction(
     await setSlotResolution(db, slotId, {
       status: 'resolved',
       candidates: [],
-      answered: { brief: parsed.data, route: null },
+      // The row's own values: the stamp hashes them, and the parsed brief's
+      // key order is not the stored one.
+      answered: { brief: slot.brief, route: slot.route },
     })
     refresh(projectId)
     return { ok: true }
