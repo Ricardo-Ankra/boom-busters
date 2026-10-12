@@ -187,6 +187,61 @@ function Graphic() {
     expect(result.issue).toBe('frame 0 (0.0 s) did not finish in 0.001 s in landscape')
   })
 
+  it('runs the code in strict mode: a bare this is undefined, at the top level and in Graphic', () => {
+    const result = dryRun(`const outer = typeof this
+
+function Graphic() {
+  const frame = Remotion.useCurrentFrame()
+  return (
+    <Remotion.AbsoluteFill>
+      <div>{outer + ' ' + typeof this}</div>
+      <div style={{ width: frame }} />
+    </Remotion.AbsoluteFill>
+  )
+}
+`)
+    expect(result.issue).toBeNull()
+    expect(result.textSamples.at(-1)).toBe('undefined undefined')
+  })
+
+  it('refuses code that assigns to the frozen Easing, naming the crash', () => {
+    const result = dryRun(`function Graphic() {
+  Remotion.Easing.linear = (t) => 0
+  return <Remotion.AbsoluteFill><div>Raised</div></Remotion.AbsoluteFill>
+}
+`)
+    expect(result.issue).toMatch(
+      /^the code failed at 0\.0 s \(frame 0\) in landscape: Cannot assign to read only property 'linear' of object/,
+    )
+  })
+
+  it('refuses code that assigns to React, which it is handed as a frozen copy', () => {
+    const result = dryRun(`React.createElement = () => null
+
+function Graphic() {
+  return <Remotion.AbsoluteFill><div>Raised</div></Remotion.AbsoluteFill>
+}
+`)
+    expect(result.issue).toMatch(
+      /^the code does not run: Cannot assign to read only property 'createElement'/,
+    )
+  })
+
+  it('counts the promise callbacks the code queues inside the run limit', () => {
+    const result = dryRun(
+      `function Graphic() {
+  Promise.resolve().then(() => {
+    while (true) {}
+  })
+  return <Remotion.AbsoluteFill><div>Raised</div></Remotion.AbsoluteFill>
+}
+`,
+      4000,
+      { timeoutMs: 500 },
+    )
+    expect(result.issue).toBe('the landscape dry run did not finish in 0.5 s')
+  })
+
   it('stops a loop that never ends at the run limit', () => {
     const result = dryRun(
       `function Graphic() {

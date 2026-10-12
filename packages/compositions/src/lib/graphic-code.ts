@@ -11,15 +11,28 @@ import {
 } from 'remotion'
 import type { BrandKitTokens, GraphicCodePayload } from '@boom-busters/schemas'
 import { mediaUrl } from './motion'
-import { graphicBrand, graphicFunctionBody, safeInsets, withAlpha } from './graphic-code-pure'
+import {
+  frozenEasing,
+  graphicBrand,
+  graphicFunctionBody,
+  safeInsets,
+  withAlpha,
+} from './graphic-code-pure'
 import type { GraphicComponent, GraphicProps, GraphicScope } from './graphic-code-pure'
 
 /**
  * The Remotion-free half (props and scope types, `graphicFunctionBody`,
- * `safeInsets`, `graphicBrand`, `withAlpha`) lives in `graphic-code-pure.ts`
- * and is re-exported here, so this file's names are unchanged.
+ * `frozenEasing`, `safeInsets`, `graphicBrand`, `withAlpha`) lives in
+ * `graphic-code-pure.ts` and is re-exported here, so this file's names are
+ * unchanged.
  */
-export { graphicBrand, graphicFunctionBody, safeInsets, withAlpha } from './graphic-code-pure'
+export {
+  frozenEasing,
+  graphicBrand,
+  graphicFunctionBody,
+  safeInsets,
+  withAlpha,
+} from './graphic-code-pure'
 export type { GraphicComponent, GraphicProps, GraphicScope } from './graphic-code-pure'
 
 /**
@@ -103,7 +116,8 @@ let liveScope: GraphicScope | undefined
 /**
  * The real Remotion scope. One frozen object, shared: `buildGraphic` keys its
  * builds on the scope, and a graphic cannot reassign a name another graphic
- * reads.
+ * reads. `Easing` is a frozen copy (`frozenEasing`), so its members cannot be
+ * reassigned either; under the body's strict mode such an assignment throws.
  */
 export function remotionScope(): GraphicScope {
   liveScope ??= Object.freeze({
@@ -111,7 +125,7 @@ export function remotionScope(): GraphicScope {
     useVideoConfig,
     interpolate,
     spring,
-    Easing,
+    Easing: frozenEasing(Easing),
     Sequence,
     AbsoluteFill,
     Img,

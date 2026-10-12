@@ -18,6 +18,11 @@ const graphic = (body: string) =>
 const PURE = 'a graphic must be a pure function of the frame'
 const GIVEN = 'everything it needs arrives as React, Remotion and props'
 const COLOURS = 'colours come from props.brand.colors, with Remotion.withAlpha for opacity'
+const PAGE = 'a graphic draws React elements inside its frame and touches nothing else on the page'
+const DIGITS = 'write the digits by hand, so the board and the film show the same figure'
+const MOTION = 'motion comes from the frame alone, never from a CSS transition or animation'
+const uses = (name: string, reason: string) =>
+  `the code uses ${name}, which the sandbox bans: ${reason}`
 
 describe('scanGraphicSource (decision 295)', () => {
   it('passes a clean graphic: a function declaration is not the banned Function', () => {
@@ -149,6 +154,113 @@ describe('scanGraphicSource (decision 295)', () => {
   it('refuses a source that does not declare function Graphic', () => {
     expect(scan('const Graphic = (props) => null\n')).toBe(
       'the code does not declare function Graphic(props) at the top level',
+    )
+  })
+
+  it("refuses the reviewer's probe: a host function's constructor is the host's Function", () => {
+    // `process` sits inside a string, which the scan blanks; `constructor` does not.
+    expect(scan(graphic('  const env = React.createElement.constructor("return process")()'))).toBe(
+      uses('constructor', GIVEN),
+    )
+  })
+
+  it.each([
+    ['constructor', '  const make = Remotion.interpolate.constructor', GIVEN],
+    ['__proto__', '  const up = props.__proto__', GIVEN],
+    ['prototype', '  const shape = Object.prototype', GIVEN],
+    ['getPrototypeOf', '  const up = Object.getPrototypeOf(props)', GIVEN],
+    ['Reflect', '  const keys = Reflect.ownKeys(props)', GIVEN],
+    ['Proxy', '  const spy = new Proxy({}, {})', GIVEN],
+    ['self', "  const get = self['fe' + 'tch']", PURE],
+    ['navigator', "  navigator.sendBeacon('/x', '')", PURE],
+    ['top', '  const up = top.location', PURE],
+    ['parent', "  parent.postMessage('x', '*')", PURE],
+    ['frames', '  const first = frames[0]', PURE],
+    ['opener', '  const back = opener.document', PURE],
+    ['location', "  location = 'https://example.com'", PURE],
+    ['XMLHttpRequest', '  const request = new XMLHttpRequest()', PURE],
+    ['WebSocket', "  const socket = new WebSocket('wss://example.com')", PURE],
+    ['EventSource', "  const feed = new EventSource('/x')", PURE],
+    ['localStorage', "  const kept = localStorage.getItem('x')", PURE],
+    ['sessionStorage', "  const kept = sessionStorage.getItem('x')", PURE],
+    ['indexedDB', "  const db = indexedDB.open('x')", PURE],
+    ['postMessage', '  const send = props.postMessage', PURE],
+    ['importScripts', "  importScripts('/x.js')", PURE],
+    ['Worker', "  const worker = new Worker('/x.js')", PURE],
+    ['toLocaleString', '  const figure = (4000000).toLocaleString()', DIGITS],
+    ['Intl', "  const figure = new Intl.NumberFormat('en').format(4)", DIGITS],
+  ])('refuses %s', (name, line, reason) => {
+    expect(scan(graphic(line))).toBe(uses(name, reason))
+  })
+
+  it('refuses dangerouslySetInnerHTML, as a JSX attribute or a quoted key', () => {
+    const attribute = graphic('').replace(
+      '<div>Acme</div>',
+      "<div dangerouslySetInnerHTML={{ __html: '<b>Acme</b>' }} />",
+    )
+    expect(scan(attribute)).toBe(uses('dangerouslySetInnerHTML', PAGE))
+    const quoted = graphic("  const raw = { 'dangerouslySetInnerHTML': { html: 'x' } }")
+    expect(scan(quoted)).toBe(uses('dangerouslySetInnerHTML', PAGE))
+  })
+
+  it('refuses a banned name spelt out in a string for bracket access', () => {
+    expect(scan(graphic("  const make = React.createElement['constructor']"))).toBe(
+      uses('constructor', GIVEN),
+    )
+    expect(scan(graphic("  const up = props['__proto__']"))).toBe(uses('__proto__', GIVEN))
+    expect(scan(graphic("  const figure = (4)['toLocaleString']()"))).toBe(
+      uses('toLocaleString', DIGITS),
+    )
+  })
+
+  it('refuses elements that run code, load a page or change the document', () => {
+    for (const element of [
+      'script',
+      'iframe',
+      'object',
+      'embed',
+      'link',
+      'style',
+      'meta',
+      'base',
+      'form',
+    ]) {
+      const jsx = graphic('').replace('<div>Acme</div>', `<${element} />`)
+      expect(scan(jsx)).toBe(`the code makes a ${element} element, which the sandbox bans: ${PAGE}`)
+    }
+    // An alias for createElement is caught the same way.
+    expect(scan(graphic("  const h = React.createElement\n  h('script', { src: '/x.js' })"))).toBe(
+      `the code makes a script element, which the sandbox bans: ${PAGE}`,
+    )
+  })
+
+  it('lets those names through where they are words, keys or members of its own', () => {
+    const source = graphic(
+      [
+        '  const inset = props.safeArea',
+        '  const top = inset.top + 10',
+        "  const kind = typeof props.data === 'object' ? 'chart' : 'graphic'",
+        "  const mark = props.logos['Meta']",
+        "  const place = { location: 'Munich', parent: 'Acme' }",
+      ].join('\n'),
+    ).replace(
+      '<div>Acme</div>',
+      "<div style={{ position: 'absolute', top: top, left: inset.left }}>The parent company, its location and its prototype</div>",
+    )
+    expect(scan(source)).toBeNull()
+  })
+
+  it('refuses a CSS transition, animation or @keyframes: motion comes from the frame', () => {
+    const styled = (style: string) =>
+      graphic('').replace('<div>Acme</div>', `<div style={{ ${style} }}>Acme</div>`)
+    expect(scan(styled("transition: 'opacity 0.3s'"))).toBe(uses('transition', MOTION))
+    expect(scan(styled("transitionProperty: 'opacity'"))).toBe(uses('transition', MOTION))
+    expect(scan(styled("WebkitTransition: 'opacity 0.3s'"))).toBe(uses('transition', MOTION))
+    expect(scan(styled("animation: 'spin 1s'"))).toBe(uses('animation', MOTION))
+    expect(scan(styled("animationName: 'spin'"))).toBe(uses('animation', MOTION))
+    expect(scan(styled("'transition': 'opacity 0.3s'"))).toBe(uses('transition', MOTION))
+    expect(scan(graphic("  const css = '@keyframes spin { to { opacity: 1 } }'"))).toBe(
+      uses('@keyframes', MOTION),
     )
   })
 })

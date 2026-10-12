@@ -53,10 +53,14 @@ export type DesignedGraphicBrief = GraphicBrief & { scene: GraphicScene }
 /**
  * A graphic or chart the designer wrote as code (decision 295): drawn by its
  * own component at one moment (`graphic-code-still.tsx`), in place of the SVG
- * preview a scene gets. Loaded in the browser only: the designer's code runs
- * in the owner's browser and on Lambda, never in the server process that
- * renders this page and holds the app's secrets. Until the module lands, a box
- * the still's size keeps the card from jumping.
+ * preview a scene gets. Loaded in the browser only, so the server render of
+ * this page never runs the designer's code. That is not isolation: the code
+ * runs in the owner's browser in the console's own origin (there is no CSP),
+ * on Lambda, and in the dry run inside this deployment's Inngest function,
+ * which holds the app's secrets. The scan refuses the direct routes out, but it
+ * is a lint against honest mistakes, not a sandbox; real isolation is the
+ * owner's decision (PROGRESS decision 295). Until the module lands, a box the
+ * still's size keeps the card from jumping.
  */
 export const GraphicCodePreview = dynamic(
   () => import('./graphic-code-still').then((module) => module.GraphicCodeStill),

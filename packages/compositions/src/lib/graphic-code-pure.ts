@@ -41,9 +41,30 @@ export interface GraphicScope {
 
 export type GraphicComponent = (props: GraphicProps) => ReactElement | null
 
-/** `${compiled}\nreturn Graphic` */
+/**
+ * `"use strict";\n${compiled}\nreturn Graphic`. Strict mode on all three paths
+ * (the composition, the board and the dry run): a bare `this` is undefined
+ * rather than the global object, and an assignment to a frozen member of the
+ * sandbox throws, so the dry run refuses it whatever its syntax.
+ */
 export function graphicFunctionBody(compiled: string): string {
-  return `${compiled}\nreturn Graphic`
+  return `"use strict";\n${compiled}\nreturn Graphic`
+}
+
+/**
+ * A frozen copy of Remotion's `Easing` for the sandbox's scope, so one graphic
+ * cannot replace `Easing.linear` for every later graphic in the process.
+ * `Easing` is a class whose statics are not enumerable, so a spread would copy
+ * none of them: the copy takes each own function by name. Each method calls
+ * the class's own statics, never `this`, so the copy behaves as the class does.
+ */
+export function frozenEasing(easing: typeof Easing): typeof Easing {
+  const source = easing as unknown as Record<string, unknown>
+  const copy: Record<string, unknown> = {}
+  for (const name of Object.getOwnPropertyNames(easing)) {
+    if (typeof source[name] === 'function') copy[name] = source[name]
+  }
+  return Object.freeze(copy) as unknown as typeof Easing
 }
 
 /**

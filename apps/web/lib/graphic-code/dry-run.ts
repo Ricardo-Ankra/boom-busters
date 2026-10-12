@@ -32,6 +32,8 @@ const plainModule = (...parts: string[]): string => parts.join('')
 
 interface DryRunRuntime {
   React: typeof ReactModule
+  /** What the code is handed as `React`: a frozen copy, never the process's shared exports. */
+  sandboxReact: typeof ReactModule
   renderToStaticMarkup: typeof ReactDomServer.renderToStaticMarkup
   FrameContext: ReturnType<typeof makeOneFrame>['FrameContext']
   oneFrameScope: ReturnType<typeof makeOneFrame>['oneFrameScope']
@@ -58,8 +60,28 @@ function loadRuntime(): DryRunRuntime {
   ) as typeof ReactDomServer
   const remotion = loadModule(plainModule('remo', 'tion')) as typeof RemotionModule
   const { FrameContext, oneFrameScope } = makeOneFrame(React, remotion)
-  runtime = { React, renderToStaticMarkup, FrameContext, oneFrameScope }
+  runtime = {
+    React,
+    sandboxReact: sandboxCopyOf(React),
+    renderToStaticMarkup,
+    FrameContext,
+    oneFrameScope,
+  }
   return runtime
+}
+
+/**
+ * React as the code is handed it: a frozen copy of its exports, so an
+ * assignment to a member throws under the body's strict mode instead of
+ * changing React for every later dry run in the process. React's internals
+ * (the `__`-prefixed exports) are left out: no graphic needs them, and they are
+ * the shared state a copy would still reach. Every function in the copy is
+ * React's own and works on React's own state.
+ */
+function sandboxCopyOf(React: typeof ReactModule): typeof ReactModule {
+  return Object.freeze(
+    Object.fromEntries(Object.entries(React).filter(([name]) => !name.startsWith('__'))),
+  ) as typeof ReactModule
 }
 
 /** Loads what the dry run needs now, so a host that cannot is found before a model call is paid for. Throws naming the module. */
@@ -75,11 +97,20 @@ export function ensureDryRunRuntime(): void {
  * element placed outside the safe area. Whether the graphic is any good is
  * the owner's call on the board.
  *
- * The code runs in a `vm` context of its own, so its globals are that
- * context's (no `require`, `process` or timers), and one call into the
- * context covers a whole frame size, so its timeout stops a loop that never
- * ends. `vm` is not a security boundary; the static scan and an honest
- * designer are.
+ * The code runs in a `vm` context of its own, so a bare name it reaches for
+ * resolves against that context's globals, where `require`, `process` and the
+ * timers are missing; one call into the context covers a whole frame size, so
+ * its timeout stops a loop that never ends, and with `microtaskMode:
+ * 'afterEvaluate'` the timeout covers the promise callbacks the code queues
+ * too. The context is not isolation: the code is handed objects from this
+ * process (React's functions, the scope, the props), and any host function's
+ * `constructor` is this process's `Function`, which reaches its globals,
+ * `process.env` and every secret in it included. The static scan refuses the
+ * direct routes (`constructor`, `prototype`, the browser globals and the
+ * rest), the code is handed a frozen copy of React and runs in strict mode,
+ * but string concatenation still gets past a scan: it is a lint against
+ * honest mistakes, and the honest designer is the boundary. Real isolation (an
+ * isolate for the dry run) is the owner's decision (PROGRESS decision 295).
  */
 
 export const GRAPHIC_SAMPLE_MS = 250
@@ -298,7 +329,7 @@ function markupIssue(samples: readonly Sample[], size: FrameSize): string | null
 function runFrameSize(
   input: DryRunInput,
   size: FrameSize,
-  { React, renderToStaticMarkup, FrameContext, oneFrameScope }: DryRunRuntime,
+  { React, sandboxReact, renderToStaticMarkup, FrameContext, oneFrameScope }: DryRunRuntime,
 ): { issue: string | null; samples: Sample[] } {
   const durationInFrames = Math.max(1, Math.round((input.durationMs * GRAPHIC_FPS) / 1000))
   const props: GraphicProps = { ...input.props, safeArea: safeInsets(size) }
@@ -307,7 +338,9 @@ function runFrameSize(
   const timeoutMs = input.timeoutMs ?? GRAPHIC_DRY_RUN_MAX_MS
 
   const sandbox: Record<string, unknown> = {}
-  const context = vm.createContext(sandbox)
+  // The promise callbacks the code queues run before `runInContext` returns,
+  // inside its timeout, not after it on the process's own queue.
+  const context = vm.createContext(sandbox, { microtaskMode: 'afterEvaluate' })
   let factory: GraphicFactory
   try {
     const script = new vm.Script(
@@ -325,7 +358,7 @@ function runFrameSize(
     const samples: Sample[] = []
     let Graphic: unknown
     try {
-      Graphic = factory(React, scope, props)
+      Graphic = factory(sandboxReact, scope, props)
     } catch (error) {
       return { samples, failure: `the code does not run: ${messageOf(error)}` }
     }

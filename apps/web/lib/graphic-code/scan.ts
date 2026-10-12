@@ -7,7 +7,12 @@ import { GRAPHIC_SOURCE_MAX } from '@boom-busters/schemas'
  * too; `Date`, `Math.random`, `eval`, `Function` and the stateful hooks do
  * exist there, and each makes a frame depend on something other than the
  * frame. The scan is the guard for those. It is not a security boundary:
- * the designer is a model writing honest code, and this keeps it honest.
+ * the designer is a model writing honest code, and this keeps it honest. It
+ * also refuses the one-line routes out of the sandbox (`constructor`,
+ * `prototype`, `Reflect`, the browser's other globals, `dangerouslySetInnerHTML`
+ * and elements such as `script`), so reaching the host costs more than a line;
+ * a name built at run time (`fn['con' + 'structor']`) still gets past it, and
+ * real isolation is the owner's decision (PROGRESS decision 295).
  *
  * The scan reads the COMPILED code, not the source: after esbuild, JSX text
  * and attribute values are ordinary string literals and comments are gone,
@@ -23,6 +28,21 @@ import { GRAPHIC_SOURCE_MAX } from '@boom-busters/schemas'
 const PURE = 'a graphic must be a pure function of the frame'
 const GIVEN = 'everything it needs arrives as React, Remotion and props'
 const COLOURS = 'colours come from props.brand.colors, with Remotion.withAlpha for opacity'
+const PAGE = 'a graphic draws React elements inside its frame and touches nothing else on the page'
+const DIGITS = 'write the digits by hand, so the board and the film show the same figure'
+const MOTION = 'motion comes from the frame alone, never from a CSS transition or animation'
+
+/** The name as an identifier anywhere in the code, a member included (`fn.constructor`). */
+const word = (name: string) => new RegExp(`\\b${name}\\b`)
+/** The name as a bare identifier, not a member (`inset.self`). */
+const bare = (name: string) => new RegExp(`(?<![\\w$.])${name}\\b`)
+/**
+ * The name used as the browser global it also is: read through (`top.fetch`,
+ * `frames[0]`), called, or assigned. A style's `top:`, a member such as
+ * `inset.top` and a declaration of the code's own (`const top = ...`) are not.
+ */
+const usedAsGlobal = (name: string) =>
+  new RegExp(`(?<![\\w$.])(?<!\\b(?:const|let|var)\\s+)${name}\\s*(?:\\?\\.|\\.|\\[|\\(|=(?![=>]))`)
 
 const BANNED: readonly { name: string; pattern: RegExp; reason: string }[] = [
   { name: 'import', pattern: /(?:^|[;{}])\s*import\b|\bimport\s*\(/m, reason: GIVEN },
@@ -46,14 +66,85 @@ const BANNED: readonly { name: string; pattern: RegExp; reason: string }[] = [
   // A throw inside a Suspense boundary is swallowed by the dry run's renderer.
   { name: 'Suspense', pattern: /\bSuspense\b/, reason: PURE },
   { name: 'lazy', pattern: /\blazy\b/, reason: PURE },
+  // Past the objects the code is handed: any host function's `constructor` is
+  // the host's own `Function`, which reaches the host's globals.
+  ...['constructor', '__proto__', 'prototype', 'getPrototypeOf', 'Reflect', 'Proxy'].map(
+    (name) => ({ name, pattern: word(name), reason: GIVEN }),
+  ),
+  { name: 'dangerouslySetInnerHTML', pattern: word('dangerouslySetInnerHTML'), reason: PAGE },
+  // The browser's other ways out of the frame: other windows, storage, the network.
+  ...['self', 'navigator'].map((name) => ({ name, pattern: bare(name), reason: PURE })),
+  ...['top', 'parent', 'frames', 'opener', 'location'].map((name) => ({
+    name,
+    pattern: usedAsGlobal(name),
+    reason: PURE,
+  })),
+  ...[
+    'XMLHttpRequest',
+    'WebSocket',
+    'EventSource',
+    'localStorage',
+    'sessionStorage',
+    'indexedDB',
+    'postMessage',
+    'importScripts',
+    'Worker',
+  ].map((name) => ({ name, pattern: word(name), reason: PURE })),
+  // The viewer's locale formats these: "1,9" on a board in en-ZA, "1.9" on Lambda.
+  { name: 'toLocaleString', pattern: /\btoLocale\w*String\b/, reason: DIGITS },
+  { name: 'Intl', pattern: word('Intl'), reason: DIGITS },
+  // The Player smooths a CSS transition between frames; Lambda captures each
+  // frame as it lands, so the film would lag what the board played.
+  {
+    name: 'transition',
+    pattern: /\btransition(?:[A-Z][\w$]*)?\b|\b(?:Webkit|Moz|ms)Transition/,
+    reason: MOTION,
+  },
+  {
+    name: 'animation',
+    pattern: /\banimation(?:[A-Z][\w$]*)?\b|\b(?:Webkit|Moz|ms)Animation/,
+    reason: MOTION,
+  },
 ]
+
+/**
+ * A string that spells out a banned name, which bracket access turns into the
+ * member itself (`fn['constructor']`, a quoted style key `'transition'`).
+ */
+const BANNED_STRINGS: readonly {
+  pattern: RegExp
+  name: (text: string) => string
+  reason: string
+}[] = [
+  {
+    pattern: /^(?:constructor|__proto__|prototype|getPrototypeOf)$/,
+    name: (text) => text,
+    reason: GIVEN,
+  },
+  { pattern: /^dangerouslySetInnerHTML$/, name: (text) => text, reason: PAGE },
+  { pattern: /^toLocale\w*String$/, name: () => 'toLocaleString', reason: DIGITS },
+  { pattern: /^transition(?:[A-Z]\w*)?$/, name: () => 'transition', reason: MOTION },
+  { pattern: /^animation(?:[A-Z]\w*)?$/, name: () => 'animation', reason: MOTION },
+  { pattern: /@keyframes/, name: () => '@keyframes', reason: MOTION },
+]
+
+/**
+ * An element a graphic may not make: one that runs code, loads a page or a
+ * stylesheet, or changes the document (`React.createElement("script", ...)`,
+ * which is also what `<script>` compiles to, or an alias such as `h("iframe")`):
+ * a quoted name as the first argument of a call. Case-sensitive, as React's
+ * element names are, so a logo keyed "Meta" is not one.
+ */
+const BANNED_ELEMENT =
+  /[\w$)\]]\s*\(\s*(["'`])(script|iframe|object|embed|link|style|meta|base|form)\1/
 
 /**
  * An assignment, plain or compound (`+=`, `??=`, ...), to any member chain
  * under `Remotion` or `React` (not `==`, `===` or `=>`). The sandbox freezes
- * its scope, but a freeze is shallow and Remotion's `Easing` statics are
- * writable, so one graphic could break every later one in the same process
- * by assigning to `Remotion.Easing.linear`. The first member is named.
+ * its scope and hands the code frozen copies of `Easing` (and, in the dry run,
+ * of React), and the body runs in strict mode, so any assignment to them
+ * throws in the dry run whatever its syntax; this names the plain forms before
+ * anything runs. The first member is named.
  */
 const ASSIGNS_TO_SANDBOX =
   /\b(Remotion|React)((?:\s*\.\s*[\w$]+)+)\s*(?:[-+*/%&|^]|\*\*|<<|>>>?|&&|\|\||\?\?)?=(?![=>])/
@@ -77,6 +168,14 @@ export function scanGraphicSource(source: string, compiled: string): string | nu
   const { code, strings } = splitSource(compiled)
   const banned = BANNED.find(({ pattern }) => pattern.test(code))
   if (banned) return `the code uses ${banned.name}, which the sandbox bans: ${banned.reason}`
+  for (const text of strings) {
+    const spelt = BANNED_STRINGS.find(({ pattern }) => pattern.test(text))
+    if (spelt) return `the code uses ${spelt.name(text)}, which the sandbox bans: ${spelt.reason}`
+  }
+  const element = BANNED_ELEMENT.exec(compiled)
+  if (element) {
+    return `the code makes a ${element[2] ?? ''} element, which the sandbox bans: ${PAGE}`
+  }
   const assigned = ASSIGNS_TO_SANDBOX.exec(code)
   if (assigned) {
     const member = /[\w$]+/.exec(assigned[2] ?? '')?.[0] ?? ''

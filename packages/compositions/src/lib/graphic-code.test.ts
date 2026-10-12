@@ -8,6 +8,7 @@ import { FIXTURE_BRAND } from '../fixtures/timeline'
 import { safeArea } from './graphic'
 import {
   buildGraphic,
+  frozenEasing,
   graphicBrand,
   graphicFunctionBody,
   graphicPropsFor,
@@ -45,10 +46,29 @@ function render(compiled: string, scope: GraphicScope): string {
 }
 
 describe('graphicFunctionBody', () => {
-  it('returns the component the source declares', () => {
+  it('returns the component the source declares, in strict mode', () => {
     expect(graphicFunctionBody('function Graphic() {}')).toBe(
-      'function Graphic() {}\nreturn Graphic',
+      '"use strict";\nfunction Graphic() {}\nreturn Graphic',
     )
+  })
+})
+
+describe('frozenEasing', () => {
+  it("copies every one of Easing's statics, which a spread would miss, and freezes the copy", () => {
+    const copy = frozenEasing(Easing)
+    expect(Object.keys({ ...Easing })).toEqual([])
+    const statics = Object.getOwnPropertyNames(Easing).filter(
+      (name) => typeof (Easing as unknown as Record<string, unknown>)[name] === 'function',
+    )
+    expect(statics).toEqual(expect.arrayContaining(['linear', 'out', 'cubic', 'bezier', 'spring']))
+    for (const name of statics) {
+      expect((copy as unknown as Record<string, unknown>)[name]).toBe(
+        (Easing as unknown as Record<string, unknown>)[name],
+      )
+    }
+    expect(Object.isFrozen(copy)).toBe(true)
+    expect(copy.out(copy.cubic)(0.5)).toBe(Easing.out(Easing.cubic)(0.5))
+    expect(copy.bezier(0.2, 0, 0, 1)(0.5)).toBe(Easing.bezier(0.2, 0, 0, 1)(0.5))
   })
 })
 
@@ -99,6 +119,18 @@ describe('buildGraphic (decision 295)', () => {
   it('throws at render, naming Graphic, when the code never declares it', () => {
     expect(() => render('function Chart() { return null }', scopeAt(0))).toThrow(/Graphic/)
   })
+
+  it('runs the code in strict mode: a bare this is undefined, and the frozen Easing cannot be reassigned', () => {
+    const where =
+      "const outer = typeof this\nfunction Graphic() { return React.createElement('i', null, outer + '/' + typeof this) }"
+    expect(render(where, scopeAt(0))).toBe('<i>undefined/undefined</i>')
+    const assigns =
+      "function Graphic() { Remotion.Easing.linear = function () { return 0 }; return React.createElement('i', null, 'x') }"
+    expect(() => render(assigns, scopeAt(0))).toThrow(
+      /Cannot assign to read only property 'linear'/,
+    )
+    expect(remotionScope().Easing.linear(0.5)).toBe(0.5)
+  })
 })
 
 describe('remotionScope', () => {
@@ -119,7 +151,11 @@ describe('remotionScope', () => {
     )
     expect(scope.interpolate).toBe(interpolate)
     expect(scope.spring).toBe(spring)
-    expect(scope.Easing).toBe(Easing)
+    // A frozen copy of Remotion's own functions, not the shared class.
+    expect(scope.Easing).not.toBe(Easing)
+    expect(Object.isFrozen(scope.Easing)).toBe(true)
+    expect(scope.Easing.out).toBe(Easing.out)
+    expect(scope.Easing.cubic).toBe(Easing.cubic)
     expect(scope.withAlpha).toBe(withAlpha)
     // The subpath re-exports the same function, for the dry run and the still.
     expect(sandboxWithAlpha).toBe(withAlpha)

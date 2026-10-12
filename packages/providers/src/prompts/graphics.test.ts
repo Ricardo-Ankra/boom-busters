@@ -135,6 +135,18 @@ describe('the designer prompt (decision 295)', () => {
     expect(rules).toContain(
       'Never write import, require, window, document, fetch, setTimeout, setInterval, requestAnimationFrame, Date, Math.random, eval, Function, globalThis, process, useState, useEffect or useLayoutEffect, React.Suspense, React.lazy, a # colour, or rgb(), rgba(), hsl() or hsla(); and assign to nothing under React or Remotion. A scan refuses them.',
     )
+    expect(rules).toContain(
+      "It also refuses constructor, prototype, __proto__, getPrototypeOf, Reflect, Proxy, self, navigator, XMLHttpRequest, WebSocket, EventSource, localStorage, sessionStorage, indexedDB, postMessage, importScripts, Worker and dangerouslySetInnerHTML; top, parent, frames, opener and location read or called as the browser's (a style's top is fine); and a script, iframe, object, embed, link, style, meta, base or form element.",
+    )
+  })
+
+  it('has the digits written by hand and the motion driven by the frame (decision 295)', () => {
+    expect(rules).toContain(
+      'Format a number by hand ("1.9", "4,000,000"), never with toLocaleString or Intl',
+    )
+    expect(rules).toContain(
+      'Motion comes from the frame alone: no CSS transition, animation or @keyframes',
+    )
   })
 
   it('states the six rules and what the dry run refuses', () => {

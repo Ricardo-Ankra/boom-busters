@@ -1,4 +1,4 @@
-import { withAlpha } from '@boom-busters/compositions/graphic-code-pure'
+import { frozenEasing, withAlpha } from '@boom-busters/compositions/graphic-code-pure'
 import type { GraphicScope } from '@boom-busters/compositions/graphic-code-pure'
 import type * as ReactModule from 'react'
 import type { CSSProperties, ReactNode } from 'react'
@@ -25,6 +25,8 @@ export function makeOneFrame(
 ) {
   /** The frame `useCurrentFrame` reads: the held frame, or a `Sequence`'s, counted from its start. */
   const FrameContext = React.createContext(0)
+  /** A frozen copy, as `remotionScope` hands the code, so no graphic can reassign a member. */
+  const easing = frozenEasing(remotion.Easing)
 
   /**
    * A full-frame layer, as Remotion's is, spanned with `inset: 0` rather than
@@ -71,24 +73,28 @@ export function makeOneFrame(
     return React.createElement('img', { src, style })
   }
 
-  /** The sandbox's `Remotion` argument for one frame size: the hooks shimmed, the rest Remotion's own. */
+  /**
+   * The sandbox's `Remotion` argument for one frame size: the hooks shimmed,
+   * the rest Remotion's own. Frozen, as `remotionScope` is, so under the
+   * body's strict mode an assignment to a member throws.
+   */
   function oneFrameScope(
     size: { width: number; height: number },
     durationInFrames: number,
     fps: number,
   ): GraphicScope {
     const config = { width: size.width, height: size.height, fps, durationInFrames }
-    return {
+    return Object.freeze({
       useCurrentFrame: () => React.useContext(FrameContext),
       useVideoConfig: () => config,
       interpolate: remotion.interpolate,
       spring: remotion.spring,
-      Easing: remotion.Easing,
+      Easing: easing,
       Sequence,
       AbsoluteFill,
       Img,
       withAlpha,
-    }
+    })
   }
 
   return { FrameContext, AbsoluteFill, Sequence, Img, oneFrameScope }
