@@ -638,6 +638,48 @@ References attached: 1 photograph of Emad Mostaque.`
     })
   })
 
+  it('resolves a graphic written as code at no cost, whatever older scene it holds (decision 295)', async () => {
+    const designed: GraphicBrief = {
+      type: 'graphic',
+      coversText: 'x',
+      description: 'y',
+      motion: { kind: 'static' },
+      transition: 'cut',
+      shotSize: 'graphic',
+      code: {
+        version: 1,
+        source: 'function Graphic() { return null }',
+        compiled: 'function Graphic() {\n  return null;\n}\n',
+        title: 'Raised in one round',
+        facts: [],
+        words: [],
+        durationMs: 6000,
+      },
+    }
+    expect(
+      await resolveSlotBrief({ projectId: FIXTURE_PROJECT_ID, brief: designed, route: null }),
+    ).toEqual({ candidates: [], status: 'resolved' })
+    // A scene from before whose mark was never uploaded: the code does not draw it.
+    const redesigned: GraphicBrief = {
+      ...designed,
+      scene: {
+        elements: [
+          {
+            kind: 'logo',
+            id: 'l1',
+            cell: { col: 0, row: 0, colSpan: 4, rowSpan: 2 },
+            entity: 'Stability AI',
+            enter: { kind: 'fade', atMs: 0 },
+          },
+        ],
+      },
+    }
+    expect(
+      await resolveSlotBrief({ projectId: FIXTURE_PROJECT_ID, brief: redesigned, route: null }),
+    ).toEqual({ candidates: [], status: 'resolved' })
+    expect(generate).not.toHaveBeenCalled()
+  })
+
   describe('a social slot resolves by reading its stored post', () => {
     // A blank read never wipes a stored field (decision 284), so each case
     // starts from no row rather than writing over whatever the last one left.
