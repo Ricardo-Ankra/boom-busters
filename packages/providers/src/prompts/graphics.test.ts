@@ -140,6 +140,13 @@ describe('the designer prompt (decision 295)', () => {
     )
   })
 
+  it("says a Sequence's length is at least 1 and how it lays out its children (decision 295)", () => {
+    expect(rules).toContain(
+      "A Sequence's durationInFrames is at least 1 and its from a finite number",
+    )
+    expect(rules).toContain('Its children sit in a full-frame layer laid out as a flex row.')
+  })
+
   it('has the digits written by hand and the motion driven by the frame (decision 295)', () => {
     expect(rules).toContain(
       'Format a number by hand ("1.9", "4,000,000"), never with toLocaleString or Intl',

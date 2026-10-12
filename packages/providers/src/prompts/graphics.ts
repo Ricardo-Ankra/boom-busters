@@ -336,7 +336,10 @@ The sandbox your code runs in:
 - Remotion.Easing: Remotion's easing functions, such as
   Remotion.Easing.out(Remotion.Easing.cubic) and Remotion.Easing.bezier(0.2, 0, 0, 1).
 - Remotion.Sequence {from, durationInFrames}: its children show only inside that window,
-  and inside it useCurrentFrame() counts from 0.
+  and inside it useCurrentFrame() counts from 0. A Sequence's durationInFrames is at
+  least 1 and its from a finite number, so wrap a length worked out from the words in
+  Math.max(1, ...): anything else throws in the render, and the film shows only the
+  title. Its children sit in a full-frame layer laid out as a flex row.
 - Remotion.AbsoluteFill {style}: a full-frame layer, laid out as a flex column.
 - Remotion.Img {src, style}: an image, for a logo.
 - Remotion.withAlpha(color, alpha): a brand colour at an opacity from 0 to 1.
