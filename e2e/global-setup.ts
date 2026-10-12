@@ -90,6 +90,8 @@ const CODED_GRAPHIC_SOURCE = [
 ].join('\n')
 export const PREVIEW_PROJECT_TITLE = 'Preview compiled, master rendered (E2E)'
 export const PUBLISH_PROJECT_TITLE = 'Shorts cut, ready to publish (E2E)'
+/** A freshly compiled film: a timeline, no draft and no master (decision 295's server-render guard). */
+export const FRESH_PREVIEW_TITLE = 'Preview compiled, nothing rendered (E2E)'
 
 /**
  * Twenty-two warnings across all three kinds, which is what the self-check
@@ -1386,6 +1388,28 @@ export default async function globalSetup(): Promise<void> {
         qcReport: { passed: true, integratedLufs: -14, issues: [] },
         startedAt: new Date(Date.now() - 3 * 60_000),
         completedAt: new Date(Date.now() - 60_000),
+      })
+
+      // A second film at the same gate with the same compiled timeline and
+      // no render at all, so the stage defaults to the live preview and the
+      // Player is rendered on the server by a fresh page load.
+      const fresh = await createProjectFromCase(connection.db, {
+        caseId: FIXTURE_CASE_ID,
+        title: FRESH_PREVIEW_TITLE,
+      })
+      const freshTimeline = await insertTimeline(connection.db, {
+        projectId: fresh.id,
+        json: timeline,
+        s3Key: '',
+      })
+      await setTimelineKey(
+        connection.db,
+        freshTimeline.id,
+        `boom-busters/timelines/${fresh.id}/v${freshTimeline.version}.json`,
+      )
+      await setProjectStage(connection.db, fresh.id, {
+        stage: 'assembly',
+        stageStatus: 'awaiting_review',
       })
     }
 
