@@ -1,5 +1,4 @@
 import * as React from 'react'
-import type { ComponentType, CSSProperties, ReactElement, ReactNode } from 'react'
 import {
   AbsoluteFill,
   Easing,
@@ -11,12 +10,17 @@ import {
   useVideoConfig,
 } from 'remotion'
 import type { BrandKitTokens, GraphicCodePayload } from '@boom-busters/schemas'
-import { withAlpha } from '../components/brand'
-import { safeArea } from './graphic'
 import { mediaUrl } from './motion'
+import { graphicBrand, graphicFunctionBody, safeInsets, withAlpha } from './graphic-code-pure'
+import type { GraphicComponent, GraphicProps, GraphicScope } from './graphic-code-pure'
 
-/** Re-exported for the web server's dry run and the board's still, which build a scope of their own. */
-export { withAlpha }
+/**
+ * The Remotion-free half (props and scope types, `graphicFunctionBody`,
+ * `safeInsets`, `graphicBrand`, `withAlpha`) lives in `graphic-code-pure.ts`
+ * and is re-exported here, so this file's names are unchanged.
+ */
+export { graphicBrand, graphicFunctionBody, safeInsets, withAlpha } from './graphic-code-pure'
+export type { GraphicComponent, GraphicProps, GraphicScope } from './graphic-code-pure'
 
 /**
  * The sandbox the designer's graphic runs in (decision 295).
@@ -35,45 +39,12 @@ export { withAlpha }
  * same body with `graphicFunctionBody` and a scope of plain functions.
  */
 
-/** Everything the code is handed. Colours are hex strings; fonts are loaded family names. */
-export interface GraphicProps {
-  brand: {
-    colors: BrandKitTokens['colors']
-    fonts: { heading: string; title: string; body: string; numbers: string; captions: string }
-  }
-  words: readonly { text: string; atMs: number }[]
-  durationMs: number
-  safeArea: { top: number; right: number; bottom: number; left: number }
-  logos: Readonly<Record<string, { src: string; width: number; height: number }>>
-  data?: GraphicCodePayload['data']
-}
-
-/** The `Remotion` argument: these nine names and nothing else. `withAlpha` is ours. */
-export interface GraphicScope {
-  useCurrentFrame: () => number
-  useVideoConfig: () => { width: number; height: number; fps: number; durationInFrames: number }
-  interpolate: typeof interpolate
-  spring: typeof spring
-  Easing: typeof Easing
-  Sequence: ComponentType<{ from?: number; durationInFrames?: number; children?: ReactNode }>
-  AbsoluteFill: ComponentType<{ style?: CSSProperties; children?: ReactNode }>
-  Img: ComponentType<{ src: string; style?: CSSProperties }>
-  withAlpha: (hex: string, alpha: number) => string
-}
-
-export type GraphicComponent = (props: GraphicProps) => ReactElement | null
-
 /** What `new Function` makes of the body: the declarations run, `Graphic` comes back. */
 type SandboxFunction = (
   react: typeof React,
   remotion: GraphicScope,
   props: GraphicProps,
 ) => GraphicComponent
-
-/** `${compiled}\nreturn Graphic` */
-export function graphicFunctionBody(compiled: string): string {
-  return `${compiled}\nreturn Graphic`
-}
 
 /**
  * Builds kept per scope, then per code. A film has a few dozen graphics and a
@@ -147,41 +118,6 @@ export function remotionScope(): GraphicScope {
     withAlpha,
   })
   return liveScope
-}
-
-/**
- * The graphic card's safe area (`safeArea`) as `props.safeArea` carries it:
- * rounded insets from each edge of the frame (the margin, and the caption
- * band at the bottom). One helper for `GraphicCode`, the web server's dry run
- * and the board's still, so all three hand the code the same numbers.
- */
-export function safeInsets(frame: { width: number; height: number }): GraphicProps['safeArea'] {
-  const box = safeArea(frame)
-  return {
-    top: Math.round(box.y),
-    right: Math.round(frame.width - box.x - box.w),
-    bottom: Math.round(frame.height - box.y - box.h),
-    left: Math.round(box.x),
-  }
-}
-
-/**
- * A Brand Kit as `props.brand`: its colours, and each type role's family (the
- * faces `loadBrandFonts` loaded). One helper for `graphicPropsFor` and the web
- * server's dry run (ruling 26), so the code is handed the same names in both.
- */
-export function graphicBrand(brand: BrandKitTokens): GraphicProps['brand'] {
-  const { heading, title, body, numbers, captions } = brand.typography
-  return {
-    colors: brand.colors,
-    fonts: {
-      heading: heading.family,
-      title: title.family,
-      body: body.family,
-      numbers: numbers.family,
-      captions: captions.family,
-    },
-  }
 }
 
 /**
