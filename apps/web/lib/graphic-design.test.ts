@@ -199,7 +199,7 @@ afterEach(() => {
 })
 
 const CUT_OFF = "the designer's answer was cut off at its length limit"
-const TOO_LONG = 'the designer took too long; press Redesign graphic to try again'
+const TOO_LONG = 'the designer took too long; press Redesign to try again'
 
 describe('designGraphic (decisions 289, 295)', () => {
   it('stores code that passes every check, compiled, its facts on claim ids and its words on the slot clock', async () => {

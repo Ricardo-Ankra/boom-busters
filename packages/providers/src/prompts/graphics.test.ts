@@ -147,6 +147,12 @@ describe('the designer prompt (decision 295)', () => {
     expect(rules).toContain('Its children sit in a full-frame layer laid out as a flex row.')
   })
 
+  it("times the motion against props.durationMs and the words, not the slot's frame count (final review M2)", () => {
+    expect(rules).toContain(
+      "Time your motion against props.durationMs and the words' atMs, not durationInFrames",
+    )
+  })
+
   it('has the digits written by hand and the motion driven by the frame (decision 295)', () => {
     expect(rules).toContain(
       'Format a number by hand ("1.9", "4,000,000"), never with toLocaleString or Intl',

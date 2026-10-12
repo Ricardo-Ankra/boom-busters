@@ -126,7 +126,8 @@ export const GRAPHIC_DESIGN_DEADLINE_MS = 240_000
 const MIN_CALL_MS = 15_000
 
 const CUT_OFF_ISSUE = "the designer's answer was cut off at its length limit"
-const TOO_LONG_ISSUE = 'the designer took too long; press Redesign graphic to try again'
+// A graphic's card says Redesign graphic and a chart's Redesign chart.
+const TOO_LONG_ISSUE = 'the designer took too long; press Redesign to try again'
 
 /** The design is over with this issue; no further call can help. */
 class DesignEnded extends Error {

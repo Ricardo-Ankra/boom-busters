@@ -328,7 +328,9 @@ The sandbox your code runs in:
 - React: React itself, for elements, React.Fragment and React.useMemo.
 - Remotion.useCurrentFrame(): the frame, from 0 at the slot's start, 30 to the second.
 - Remotion.useVideoConfig(): {width, height, fps, durationInFrames}; the frame is 1920 by
-  1080 or 1080 by 1920.
+  1080 or 1080 by 1920. Time your motion against props.durationMs and the words' atMs,
+  not durationInFrames: in the film that is the length of the compiled slot, which can
+  differ from the length you design for.
 - Remotion.interpolate(value, inputRange, outputRange, {easing, extrapolateLeft,
   extrapolateRight}): inputRange strictly increasing; "clamp" holds the ends.
 - Remotion.spring({frame, fps, delay, durationInFrames, config: {damping, stiffness,

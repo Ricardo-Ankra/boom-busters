@@ -8,10 +8,10 @@ import { UlidSchema } from './ids'
  * From decision 268 to 290 a graphic was a form the model filled in: a scene
  * of five element kinds on a 12 by 12 grid. The designer now writes the
  * animation itself, as one React component, and the app checks it instead of
- * constraining it: a static scan, a compile, a frame-by-frame dry run and the
- * facts check below, in that order (`apps/web/lib/graphic-code`). What passes is stored
- * on the brief as `code`, not `motion`: every brief already carries the Ken
- * Burns `motion` spec.
+ * constraining it: a compile, a static scan of the compiled code, a
+ * frame-by-frame dry run and the facts check below, in that order
+ * (`apps/web/lib/graphic-code`). What passes is stored on the brief as `code`,
+ * not `motion`: every brief already carries the Ken Burns `motion` spec.
  *
  * The model answers in the wire shape (`PlannedGraphicCode`), citing claims by
  * NUMBER as every planning prompt does; the check maps the numbers to ids and

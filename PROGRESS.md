@@ -7269,8 +7269,11 @@ boom-busters-broker`; merge and deploy to Vercel, then `PUT
      size cap (16 KB) and the `Graphic` declaration and the compiled
      output for everything else (the banned globals and hooks,
      `Suspense`, `lazy`, assignment to `Remotion.*` or `React.*`, hex
-     and `rgb(` literals), dry-runs it in a `vm` context every 250 ms in 1920x1080 and
-     1080x1920 at 30 fps, and checks every digit group on screen for a
+     and `rgb(` literals, the routes out of the sandbox below,
+     `toLocaleString` and `Intl`, CSS `transition`, `animation` and
+     `@keyframes`), dry-runs it in a `vm` context every 250 ms in
+     1920x1080 and 1080x1920 at 30 fps, and checks, in each frame
+     apart and never across the two, every digit group on screen for a
      second against the claims its facts cite (on a chart, or against
      its own series). The order is compile, scan, dry run, facts. A
      throw, a frame over 2 s, more than 6 s with nothing changing, text
@@ -7283,8 +7286,9 @@ boom-busters-broker`; merge and deploy to Vercel, then `PUT
      title. Chart briefs gain `code` and `designIssue` and are designed
      like graphics: in the visuals run, after a retype and on Redesign
      chart. On the board a design in code plays in the Player at the
-     full 1080p frame and shows a still of its own component at 60%
-     under its title; a chart card gets Play chart, Redesign chart and
+     full 1080p frame and shows, under its title, a still of its own
+     component drawn at a quarter size, 60% of the way through the
+     slot; a chart card gets Play chart, Redesign chart and
      the "Not designed" line. The prompt is rewritten around the
      sandbox, the six rules, a short craft section and two worked
      components; the answer budget is 12,000 tokens; the shot list's
@@ -7301,9 +7305,13 @@ boom-busters-broker`; merge and deploy to Vercel, then `PUT
      graphics keep rendering on `GraphicCard`, and a chart with no code
      on `ChartReveal`.
      The rollout's checks: esbuild is a server external with a native
-     binary, so if the first production compile throws "could not find
-     @esbuild/linux-x64", the `outputFileTracingIncludes` entry for
-     `/api/inngest` in `next.config.ts` gains the binary's files. The
+     binary, and `designGraphicWith` compiles one line with it
+     (`ensureGraphicCompiler`, once per process) before its first model
+     call, so a host where the binary cannot run fails the design
+     non-retriably before anything is paid for. If the first production
+     design fails with "could not find @esbuild/linux-x64" in its
+     message, the `outputFileTracingIncludes` entry for `/api/inngest`
+     in `next.config.ts` gains the binary's files. The
      Inngest route is bundled with the `react-server` condition, under
      which `react-dom/server` throws on import, React has no
      `createContext` and Remotion refuses to load; under `pnpm dev` the
@@ -7333,6 +7341,48 @@ boom-busters-broker`; merge and deploy to Vercel, then `PUT
      components render with Next's own React. Two e2e tests guard this:
      the route answers 200 on the e2e server, and a fresh load of a
      film with no draft and no master renders its preview.
+     The sandbox's posture (final review I1): the scan is a lint against
+     an honest designer's mistakes, not a security boundary. The dry
+     run's `vm` context is handed objects from the Inngest function's
+     own process, and any host function's `constructor` is that
+     process's `Function`, which reaches its globals and `process.env`
+     with every secret the app holds; on the board the code runs in the
+     console's own origin, with no CSP. The fix wave made each one-line
+     route cost more than a line: the function body runs in strict mode
+     (a bare `this` is undefined, an assignment to a frozen member
+     throws and the dry run refuses it), the code is handed frozen
+     copies of Remotion's `Easing` (copied by name: its statics are not
+     enumerable, so a spread copies none) and, in the dry run, of React
+     without its internals, and the scan refuses `constructor`,
+     `__proto__`, `prototype`, `getPrototypeOf`, `Reflect`, `Proxy`,
+     `self`, `navigator`, `top`, `parent`, `frames`, `opener` and
+     `location` used as the browser's, the network and storage globals,
+     `dangerouslySetInnerHTML`, those names spelt out in a string for
+     bracket access, and `script`, `iframe`, `object`, `embed`, `link`,
+     `style`, `meta`, `base` and `form` elements. A name built by string
+     concatenation still reaches the host. Real isolation (an isolate
+     such as `isolated-vm` for the dry run, a sandboxed iframe or a CSP
+     for the board) is a follow-up for the owner to decide. The dry
+     run's context also runs the promise callbacks the code queues
+     inside its timeout (`microtaskMode: 'afterEvaluate'`); its memory
+     is still unbounded.
+     The one-frame shim (`one-frame.ts`) the dry run and the still share
+     copies Remotion 4.0.512's `Sequence` and `AbsoluteFill`: the same
+     TypeErrors (a `durationInFrames` of 0 or less or not a number, a
+     `from` that is not finite, a `style` under `layout="none"`), the
+     same window with its last frame rounded up, a full-frame layer laid
+     out as a row with the Sequence's `style` on top (none under
+     `layout="none"`), a Sequence's own length from `useVideoConfig`
+     inside it, and `AbsoluteFill`'s `from` and `durationInFrames`. The
+     hand copy had drifted, so a design could pass the dry run and the
+     still and then show only its title in the Player and the film. A
+     parity test renders each case through Remotion's own components in
+     a `Thumbnail` and through the shim, frame by frame, so a Remotion
+     upgrade that changes them fails it. The prompt tells the model a
+     Sequence's `durationInFrames` is at least 1, to time its motion
+     against `props.durationMs` and the words rather than
+     `durationInFrames` (in the film the compiled slot's length), to
+     format digits by hand and to drive motion from the frame alone.
      Left: the cost per graphic, read off the Costs screen after the
      owner's first Redesign (about $0.30 to $0.60 on Opus 5.5 by token
      counts, against about $0.03 before); the owner decides from it
