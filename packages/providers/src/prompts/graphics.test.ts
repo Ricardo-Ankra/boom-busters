@@ -1,20 +1,19 @@
 import { describe, expect, it } from 'vitest'
-import {
-  longestStill,
-  PlannedGraphicSceneSchema,
-  sceneTimingIssue,
-  ValidationError,
-} from '@boom-busters/schemas'
+import { PlannedGraphicCodeSchema, ValidationError } from '@boom-busters/schemas'
 import {
   buildGraphicRequest,
   estimatedWords,
   GRAPHIC_ANSWER_TOKENS,
-  MOCK_STAGED_MIN_MS,
-  mockGraphicScene,
-  parseGraphicScene,
+  GRAPHIC_CODE_FIXTURE_SOURCE,
+  GRAPHIC_EXAMPLE_CHART,
+  GRAPHIC_EXAMPLE_CHART_DATA,
+  GRAPHIC_EXAMPLE_TYPE,
+  mockGraphicCode,
+  parseGraphicCode,
   wordsInSlot,
   type GraphicDesignInput,
 } from './graphics'
+import type { Repair } from './repair'
 import { outputBudget } from '../llm/types'
 
 const CLAIMS = [
@@ -52,92 +51,157 @@ const input = (over: Partial<GraphicDesignInput> = {}): GraphicDesignInput => ({
   ...over,
 })
 
-describe('the designer rules (decision 289, round 3)', () => {
+const CHART_DATA: NonNullable<GraphicDesignInput['data']> = {
+  series: [
+    {
+      label: 'Raised',
+      unit: 'USD bn',
+      points: [
+        { x: '2023', y: 1 },
+        { x: '2024', y: 4 },
+      ],
+    },
+  ],
+  takeaway: 'Four times in a year',
+  annotations: [{ atX: '2024', text: 'The round' }],
+}
+
+describe('the designer prompt (decision 295)', () => {
   const system = buildGraphicRequest(input()).system
   // The rules are one string, wrapped for reading; compare with the wrapping removed.
   const rules = system.replace(/\s+/g, ' ')
 
-  it('states the size, balance, alignment, emphasis, restraint and portrait rules', () => {
-    expect(rules).toContain(
-      "A figure's value grows to fill its box (it can be very large); a text's size is set by its role.",
+  it('asks for a title, a facts manifest and the source as one JSON string', () => {
+    expect(system).toContain(
+      '{"title": "...", "facts": [{"text": "...", "claim": 3}], "source": "..."}',
     )
+    expect(rules).toContain('one line of at most 80 characters')
     expect(rules).toContain(
-      'a figure box 6 to 10 columns wide and 3 to 5 rows tall reads as the hero',
+      'at most 16384 characters, as one JSON string. Escape its double quotes and line breaks as JSON requires.',
     )
-    expect(rules).toContain(
-      "The grid already ends above the captions: use the whole grid. Compose around the middle: the composition's visual centre sits near row 6, with roughly equal empty space above and below it.",
-    )
-    expect(rules).not.toContain('stay empty for captions')
-    expect(rules).not.toContain('Use rows 1 to 9')
-    expect(rules).toContain(
-      'Every text and figure has an "align" (start, center or end). Align the elements that stack in one column the same way',
-    )
-    expect(rules).toContain('A figure\'s caption ("label") aligns with its value.')
-    expect(rules).toContain(
-      '"underline" draws a solid bar under the element; use it on at most one element',
-    )
-    expect(rules).toContain('"pulse" is for a figure that lands on a spoken number.')
-    expect(rules).toContain(
-      'no line that only restates another element, no decorative rule or shape unless it separates two compared things, no label that repeats the title',
-    )
-    expect(rules).toContain(
-      'give each a "portraitCell" that stacks them in the portrait frame, centred around row 6. A single-column design needs no portraitCell.',
-    )
+    expect(rules).toContain('A year is a number.')
   })
 
-  it('keeps the rules it did not change', () => {
+  it('states the sandbox: its arguments, every Remotion member and every prop', () => {
+    expect(rules).toContain('Declare function Graphic(props) at the top level')
     expect(rules).toContain(
-      'An entrance may start at any time up to 600 ms before the slot ends, so it can finish.',
+      'the sandbox runs your code as the body of a function of (React, Remotion, props) and returns Graphic',
     )
-    expect(rules).toContain('the digits shown must appear in that claim')
-    expect(rules).toContain('A figure "count"s up only when the number itself is the story.')
-  })
-
-  it('offers align on a figure as well as on a text', () => {
-    const lines = system.split('\n')
-    const at = lines.findIndex((line) => line.startsWith('{"kind": "figure"'))
-    expect(at).toBeGreaterThan(-1)
-    expect(`${lines[at]} ${lines[at + 1]}`).toContain('"align"?: "start"|"center"|"end"')
-  })
-
-  it('shows four worked examples that parse, are vertically centred on the 12-row grid, and pass the timing rules in a 22.3 s slot', () => {
-    const examples = system
-      .split('Example,')
-      .slice(1)
-      .map((block) => block.slice(block.indexOf('\n') + 1).trim())
-    expect(examples).toHaveLength(4)
-    for (const example of examples) {
-      const scene = parseGraphicScene(example)
-      expect(sceneTimingIssue(scene, 22_300)).toBeNull()
-      // Landscape cells, then the portrait cells where an element has one.
-      const placements = [
-        scene.elements.map((element) => element.cell),
-        scene.elements.map((element) => element.portraitCell ?? element.cell),
-      ]
-      for (const cells of placements) {
-        const top = Math.min(...cells.map((c) => c.row))
-        const bottom = Math.max(...cells.map((c) => c.row + c.rowSpan))
-        // Equal empty space above and below: the box's middle is row 6.
-        expect(top + bottom).toBe(12)
-      }
+    for (const member of [
+      'Remotion.useCurrentFrame()',
+      'Remotion.useVideoConfig()',
+      'Remotion.interpolate(',
+      'Remotion.spring(',
+      'Remotion.Easing',
+      'Remotion.Sequence',
+      'Remotion.AbsoluteFill',
+      'Remotion.Img',
+      'Remotion.withAlpha(',
+      'props.brand.colors',
+      'props.brand.fonts',
+      'props.words',
+      'props.durationMs',
+      'props.safeArea',
+      'props.logos',
+      'props.data',
+    ]) {
+      expect(system).toContain(member)
     }
+    // The intent reaches the model in the slot message, never as a prop (ruling 6).
+    expect(system).not.toContain('props.intent')
+  })
+
+  it('says a helper is a plain function called directly, never a component', () => {
+    expect(rules).toContain(
+      'A helper is a plain function you call directly, row(label, value), never a React component rendered with createElement or JSX',
+    )
+    expect(rules).toContain('would remount its subtree on every frame')
+  })
+
+  it('names every banned identifier and colour literal', () => {
+    expect(rules).toContain(
+      'Never write import, require, window, document, fetch, setTimeout, setInterval, requestAnimationFrame, Date, Math.random, eval, Function, globalThis, process, useState, useEffect or useLayoutEffect, a # colour, or rgb(), rgba() or hsl(). A scan refuses them.',
+    )
+  })
+
+  it('states the six rules and what the dry run refuses', () => {
+    for (const rule of [
+      '1. Facts.',
+      '2. Brand.',
+      '3. A pure function of the frame.',
+      '4. Timing to the narration.',
+      '5. Both frames.',
+      '6. Safe area.',
+    ]) {
+      expect(system).toContain(rule)
+    }
+    expect(rules).toContain(
+      "Every number on screen comes from a claim, and its digits appear in that claim's text",
+    )
+    expect(rules).toContain(
+      "a counter's passing values are not checked while they keep moving, so land a count on the claim's figure",
+    )
+    expect(rules).toContain(
+      'Colours come from props.brand.colors only, with Remotion.withAlpha for opacity',
+    )
+    expect(rules).toContain('a graphic in which nothing changes for more than 6 seconds is refused')
+    expect(rules).toContain('the 16:9 frame and the 9:16 frame are both rendered and both checked')
+    expect(rules).toContain(
+      'Everything sits inside props.safeArea at every frame, entrances included.',
+    )
+    expect(rules).toContain(
+      'a frame that throws, or takes more than 2 seconds, is refused. The last second shows the finished graphic, with words or figures on screen.',
+    )
+  })
+
+  it('keeps the words rule the scene designer learnt (live run 3, 2026-10-07)', () => {
+    expect(rules).toContain('Words on screen say only what the narration or the cited claims say.')
+    expect(rules).toContain('no check reads your words, only your numbers.')
+  })
+
+  it('teaches the craft, and carries none of the old grid', () => {
+    expect(rules).toContain('Kinetic type, not paragraphs')
+    expect(rules).toContain('One dominant idea with secondary detail')
+    expect(rules).toContain('A spring or an overshoot where the number is the story')
+    expect(rules).toContain('An ending that holds rather than vanishes.')
+    expect(rules).toContain('Portrait is a first-class frame, not a squeeze')
+    expect(system).not.toContain('12 by 12 grid')
+    expect(system).not.toContain('portraitCell')
+    expect(system).not.toContain('"kind": "figure"')
+  })
+
+  it('shows the two worked examples whole, written only against the sandbox', () => {
+    expect(system).toContain(GRAPHIC_EXAMPLE_TYPE)
+    expect(system).toContain(GRAPHIC_EXAMPLE_CHART)
+    expect(system).toContain(JSON.stringify(GRAPHIC_EXAMPLE_CHART_DATA))
+    for (const example of [GRAPHIC_EXAMPLE_TYPE, GRAPHIC_EXAMPLE_CHART]) {
+      expect(example).toMatch(/^function Graphic\(props\) \{$/m)
+      expect(example).not.toMatch(
+        /#[0-9a-fA-F]{3,8}\b|\brgba?\(|\bhsla?\(|\bDate\b|Math\.random|\bimport\b|\bexport\b|\buseState\b/,
+      )
+      expect(example).toContain('props.safeArea')
+      expect(example).toContain('Remotion.useVideoConfig()')
+      // A helper is called, never rendered: no capitalised JSX tag but Remotion's own.
+      expect(example).not.toMatch(/<(?!Remotion\.)[A-Z]/)
+    }
+    expect(GRAPHIC_EXAMPLE_TYPE).toContain('props.words')
+    expect(GRAPHIC_EXAMPLE_TYPE).not.toContain('props.data')
+    expect(GRAPHIC_EXAMPLE_CHART).toContain('props.data.series')
+  })
+
+  it('writes no dash a reader would see', () => {
+    expect(system).not.toMatch(/[–—]/)
   })
 })
 
-describe('buildGraphicRequest (decision 289)', () => {
-  it('routes to graphics with one cacheable film message', () => {
+describe('buildGraphicRequest (decision 295)', () => {
+  it('routes to graphics with one cacheable film message and the code budget', () => {
     const request = buildGraphicRequest(input())
     expect(request.task).toBe('graphics')
+    expect(request.messages).toHaveLength(2)
     expect(request.cacheablePrefixMessages).toBe(1)
-    expect(request.maxTokens).toBe(outputBudget(GRAPHIC_ANSWER_TOKENS))
-  })
-
-  it('forbids on-screen words the narration and the claims do not say', () => {
-    // Live run 3 (2026-10-07) put "Widely cited · never traced to an audited
-    // filing" under a figure: no check reads text elements, only numbers.
-    const { system } = buildGraphicRequest(input())
-    expect(system).toContain('Words on screen say only what the narration or the cited claims say.')
-    expect(system).toContain('no check reads your words, only your numbers.')
+    expect(GRAPHIC_ANSWER_TOKENS).toBe(12_000)
+    expect(request.maxTokens).toBe(outputBudget(12_000))
   })
 
   it('keeps the film message identical across two slots of one film', () => {
@@ -164,54 +228,87 @@ describe('buildGraphicRequest (decision 289)', () => {
     expect(slot).toContain('estimated from the slot length')
   })
 
-  it('carries the current scene and the steer on a redesign, steer last', () => {
+  it("carries a chart's data, and only on a chart", () => {
+    const chart = buildGraphicRequest(input({ data: CHART_DATA })).messages[1]!.content
+    expect(chart).toContain(
+      `Data (draw every point; values are verbatim from the claims):\n${JSON.stringify(CHART_DATA, null, 2)}`,
+    )
+    expect(buildGraphicRequest(input()).messages[1]!.content).not.toContain('Data (')
+  })
+
+  it('carries the current code in a fenced block on a redesign, then the reason, then the steer', () => {
     const request = buildGraphicRequest(
       input({
         current: {
-          elements: [
-            {
-              kind: 'text',
-              id: 't',
-              cell: { col: 0, row: 0, colSpan: 6, rowSpan: 2 },
-              content: 'Old',
-              role: 'title',
-              color: 'textPrimary',
-              align: 'start',
-              enter: { kind: 'fade', atMs: 0 },
-            },
-          ],
+          title: 'Old title',
+          source: 'function Graphic(props) {\n  return null\n}',
         },
+        rejection: 'nothing changes between 1.0 s and 8.0 s',
         guidance: 'Make the number bigger.',
       }),
     )
-    const last = request.messages.at(-1)!.content
-    expect(request.messages.some((m) => m.content.includes('"content": "Old"'))).toBe(true)
-    expect(last).toBe("The producer's steer: Make the number bigger.")
-    // A gone claim shows as claimRef 0, which the check refuses; the
-    // message says what to do with it (final review M3).
-    const current = request.messages.find((m) => m.content.startsWith('The current design'))!
-    expect(current.content).toContain(
-      'an element citing a claim no longer in the list must cite a listed claim or be dropped',
+    const contents = request.messages.map((message) => message.content)
+    expect(contents).toHaveLength(5)
+    expect(contents[2]).toBe(
+      'The current design, which the producer wants changed:\nTitle: Old title\n```jsx\nfunction Graphic(props) {\n  return null\n}\n```',
     )
-    expect(current.content).not.toContain('claimRef 0 is a claim no longer in the list')
-  })
-
-  it('names the reason a previous answer was refused', () => {
-    const request = buildGraphicRequest(input({ rejection: 'element "f" enters at 5800 ms' }))
-    expect(request.messages.at(-1)!.content).toContain('element "f" enters at 5800 ms')
+    expect(contents[3]).toBe(
+      'Your previous answer for this slot was refused: nothing changes between 1.0 s and 8.0 s. Answer again with that fixed.',
+    )
+    expect(contents[4]).toBe("The producer's steer: Make the number bigger.")
   })
 })
 
-describe('parseGraphicScene', () => {
-  it('reads a scene', () => {
-    const scene = parseGraphicScene(
-      '{"scene": {"elements": [{"kind": "figure", "id": "f", "cell": {"col": 0, "row": 2, "colSpan": 7, "rowSpan": 4}, "value": "$4bn", "claimRef": 1, "color": "accent", "enter": {"kind": "count", "atMs": 900}}]}}',
+describe('parseGraphicCode (decision 295)', () => {
+  const ANSWER = {
+    title: 'Raised in one round',
+    facts: [{ text: '$4bn', claim: 1 }],
+    source: 'function Graphic(props) {\n  return null\n}',
+  }
+
+  it('reads an answer, fenced or not', () => {
+    expect(parseGraphicCode(JSON.stringify(ANSWER))).toEqual(ANSWER)
+    expect(parseGraphicCode(`Here it is:\n\`\`\`json\n${JSON.stringify(ANSWER)}\n\`\`\``)).toEqual(
+      ANSWER,
     )
-    expect(scene.elements[0]).toMatchObject({ kind: 'figure', claimRef: 1 })
   })
 
-  it('refuses a malformed scene in words', () => {
-    expect(() => parseGraphicScene('{"scene": {"elements": []}}')).toThrow(ValidationError)
+  it('refuses an answer with no source, naming the field', () => {
+    const { source: _source, ...rest } = ANSWER
+    expect(() => parseGraphicCode(JSON.stringify(rest))).toThrow(
+      /^The graphic answer is malformed: source: /,
+    )
+  })
+
+  it('trims a title over 80 characters and says so, rather than refusing it (decision 293)', () => {
+    const repairs: Repair[] = []
+    const long = `${'Raised in one round '.repeat(5)}and then some`
+    const parsed = parseGraphicCode(JSON.stringify({ ...ANSWER, title: long }), (repair) =>
+      repairs.push(repair),
+    )
+    expect(parsed.title.length).toBeLessThanOrEqual(80)
+    expect(long.startsWith(parsed.title)).toBe(true)
+    expect(parsed.source).toBe(ANSWER.source)
+    expect(repairs).toEqual([{ action: 'trimmed', field: "the graphic's title" }])
+    // Without a note the trim still happens, unreported.
+    expect(parseGraphicCode(JSON.stringify({ ...ANSWER, title: long })).title).toBe(parsed.title)
+  })
+
+  it('refuses a fact citing claim 0', () => {
+    expect(() =>
+      parseGraphicCode(JSON.stringify({ ...ANSWER, facts: [{ text: '$4bn', claim: 0 }] })),
+    ).toThrow(/facts\.0\.claim: /)
+  })
+
+  it('throws a ValidationError on the graphic code field, which the answer helper retries', () => {
+    let thrown: unknown
+    try {
+      parseGraphicCode('{}')
+    } catch (error) {
+      thrown = error
+    }
+    expect(thrown).toBeInstanceOf(ValidationError)
+    expect((thrown as ValidationError).field).toBe('graphic code')
   })
 })
 
@@ -239,98 +336,72 @@ describe('word offsets', () => {
   })
 })
 
-describe('mockGraphicScene', () => {
-  it('builds a figure from the first intent claim’s digits, inside the slot', () => {
-    const scene = mockGraphicScene({
-      claimTexts: CLAIMS.map((c) => c.text),
-      intentRefs: [1],
-      logoTitles: ['Acme'],
-      durationMs: 6000,
-    })
-    expect(scene.elements.find((e) => e.kind === 'figure')).toMatchObject({
-      value: '$4bn',
-      claimRef: 1,
-    })
+describe('mockGraphicCode (decision 295)', () => {
+  const claimTexts = CLAIMS.map((claim) => claim.text)
+  /** The fixture's counting figure, which the mock swaps for a claim's own. */
+  const COUNTING = "const figure = '$' + Math.round(count * 40) / 10 + 'bn'"
+  /** The mock's source with its figure put back: split and join, so no `$` pattern is read. */
+  const unswapped = (source: string, line: string) => source.split(line).join(COUNTING)
+
+  it("answers with the fixture graphic, its figure the cited claim's first digit group", () => {
+    const mock = mockGraphicCode({ claimTexts, intentRefs: [1], durationMs: 6000 })
+    expect(mock.title).toBe('[mock] Raised in one round')
+    expect(mock.facts).toEqual([{ text: '$4bn', claim: 1 }])
+    expect(mock.source).toContain("const figure = '$4bn'")
+    expect(mock.source).not.toContain(COUNTING)
+    // Nothing else of the fixture changes.
+    expect(unswapped(mock.source, "const figure = '$4bn'")).toBe(GRAPHIC_CODE_FIXTURE_SOURCE)
+    expect(PlannedGraphicCodeSchema.safeParse(mock).success).toBe(true)
   })
 
-  it('differs when steered, so a redesign proves something offline', () => {
-    const plain = mockGraphicScene({ claimTexts: ['4 billion'], intentRefs: [1], durationMs: 6000 })
-    const steered = mockGraphicScene({
-      claimTexts: ['4 billion'],
+  it('shows the first digit group of the first intent claim that has one', () => {
+    const mock = mockGraphicCode({ claimTexts, intentRefs: [2], durationMs: 6000 })
+    expect(mock.facts).toEqual([{ text: '$900bn', claim: 2 }])
+    expect(mock.source).toContain("const figure = '$900bn'")
+  })
+
+  it('looks past intent claims without digits to the first claim with them', () => {
+    const texts = ['No figures here.', 'Rival raised 900 million dollars.']
+    expect(mockGraphicCode({ claimTexts: texts, intentRefs: [1], durationMs: 6000 }).facts).toEqual(
+      [{ text: '$900bn', claim: 2 }],
+    )
+    expect(mockGraphicCode({ claimTexts, intentRefs: [], durationMs: 6000 }).facts).toEqual([
+      { text: '$4bn', claim: 1 },
+    ])
+  })
+
+  it('shows no figure and cites nothing when no claim has a digit', () => {
+    const mock = mockGraphicCode({
+      claimTexts: ['No figures here.'],
+      intentRefs: [1],
+      durationMs: 6000,
+    })
+    expect(mock.facts).toEqual([])
+    expect(mock.source).toContain("const figure = ''")
+    expect(PlannedGraphicCodeSchema.safeParse(mock).success).toBe(true)
+  })
+
+  it('differs when steered, so a redesign proves something offline, inside the title cap', () => {
+    const steered = mockGraphicCode({
+      claimTexts,
       intentRefs: [1],
       durationMs: 6000,
       guidance: 'bigger',
     })
-    expect(steered).not.toEqual(plain)
-  })
-})
-
-describe('the motion vocabulary in the prompt (decision 290)', () => {
-  const system = buildGraphicRequest(input()).system
-  const rules = system.replace(/\s+/g, ' ')
-
-  it('states the limits and teaches exits, timed emphasis, timed bars and the camera', () => {
-    expect(rules).toContain('6 on screen at once is the ceiling, and 10 across the whole slot')
-    expect(rules).toContain(
-      'A graphic on screen for more than about 8 s changes each time the words bring something new',
-    )
-    expect(rules).toContain('A step makes way for the next rather than piling up')
-    expect(rules).toContain('Move the camera to what is being said, never at random')
-    expect(rules).toContain('"exit" is {"kind": "fade"|"drop"|"wipe", "atMs"}')
-    expect(rules).toContain(
-      '{"kind": "pulse"|"underline"|"color", "atMs", "to"?} at a time you choose',
-    )
-    expect(rules).toContain('A bar item\'s "atMs" is when that bar grows in')
-    expect(rules).toContain('"camera" (optional, on the scene) is up to 4 keys')
-    expect(rules).toContain('at least one bar grows with the entrance')
-    expect(rules).toContain('An emphasis lasts: pulse 360 ms, underline 600 ms, colour 400 ms')
-    expect(rules).toContain(
-      "A timed emphasis starts after its element's entrance has finished and finishes by the slot's end",
-    )
-    expect(rules).toContain('its 700 ms growth finishes before its element starts to leave')
-    expect(rules).toContain('the entrances are staggered 180 ms apart in scene order')
-    expect(rules).toContain('"all" and zoom 1 frame the whole composition as laid out')
-  })
-
-  it('shows a long slot built in steps as its fourth example', () => {
-    const last = system.split('Example,').at(-1)!
-    const scene = parseGraphicScene(last.slice(last.indexOf('\n') + 1).trim())
-    expect(scene.elements.some((element) => element.exit)).toBe(true)
-    expect(scene.camera).toHaveLength(2)
-    // The example this stage exists for must not teach dead air.
-    const still = longestStill(scene, 22_300)
-    expect(still.toMs - still.fromMs).toBeLessThanOrEqual(6000)
-  })
-
-  it('gives the answer more room for a longer scene', () => {
-    expect(GRAPHIC_ANSWER_TOKENS).toBe(4000)
-  })
-})
-
-describe('mockGraphicScene in steps (decision 290)', () => {
-  it('builds a long slot in two steps that pass the timing rules', () => {
-    const scene = mockGraphicScene({
-      claimTexts: CLAIMS.map((c) => c.text),
+    expect(steered.title).toBe('[mock] Redesigned: bigger')
+    const long = mockGraphicCode({
+      claimTexts,
       intentRefs: [1],
-      logoTitles: ['Acme'],
-      durationMs: 12_000,
+      durationMs: 6000,
+      guidance: 'x'.repeat(200),
     })
-    expect(scene.elements.map((element) => element.id)).toEqual(['t1', 't2', 'f1', 'l1'])
-    expect(scene.elements[0]).toMatchObject({ exit: { kind: 'fade', atMs: 6000 } })
-    expect(scene.elements[1]).toMatchObject({
-      cell: scene.elements[0]!.cell,
-      enter: { kind: 'rise', atMs: 6500 },
-    })
-    expect(scene.camera).toEqual([{ atMs: 6500, focus: 'f1', zoom: 1.2 }])
-    expect(PlannedGraphicSceneSchema.safeParse(scene).success).toBe(true)
-    expect(sceneTimingIssue(scene, 12_000)).toBeNull()
+    expect(long.title.length).toBeLessThanOrEqual(80)
+    expect(PlannedGraphicCodeSchema.safeParse(long).success).toBe(true)
   })
 
-  it('keeps a slot under 8 s to one step, as before', () => {
-    expect(MOCK_STAGED_MIN_MS).toBe(8000)
-    const scene = mockGraphicScene({ claimTexts: ['4 billion'], intentRefs: [1], durationMs: 6000 })
-    expect(scene.elements.some((element) => element.exit)).toBe(false)
-    expect(scene.camera).toBeUndefined()
-    expect(sceneTimingIssue(scene, 6000)).toBeNull()
+  it('answers the same for a chart slot: the fixture is not a chart', () => {
+    expect(
+      mockGraphicCode({ claimTexts, intentRefs: [1], durationMs: 6000, data: CHART_DATA }).source,
+    ).toBe(mockGraphicCode({ claimTexts, intentRefs: [1], durationMs: 6000 }).source)
   })
 })

@@ -1,31 +1,36 @@
 import {
   figureDigitGroups,
-  GRAPHIC_COLORS,
-  GRAPHIC_EXIT_MS,
-  GRAPHIC_MAX_ON_SCREEN,
-  GRAPHIC_TYPE_ROLES,
-  MAX_GRAPHIC_ELEMENTS,
-  PlannedGraphicSceneSchema,
+  GRAPHIC_SOURCE_MAX,
+  GRAPHIC_STILL_MAX_MS,
+  GRAPHIC_TITLE_MAX,
+  PlannedGraphicCodeSchema,
   ValidationError,
 } from '@boom-busters/schemas'
-import type { PlannedGraphicScene } from '@boom-busters/schemas'
+import type { ChartSeries, PlannedGraphicCode } from '@boom-busters/schemas'
 import { z } from 'zod'
+import { GRAPHIC_CODE_FIXTURE_SOURCE } from './graphic-code-fixture'
 import { claimList, type ScriptClaim } from './script'
 import { formatIssues, parseJsonCompletion } from './json'
+import { ignoreRepairs, trimField, type Note } from './repair'
 import { outputBudget, type LLMTaskRequest } from '../llm/types'
 
+export { GRAPHIC_CODE_FIXTURE_SOURCE }
+
 /**
- * The graphics designer (decision 289): one call per graphic slot, on its own
- * route. The shot list decides that a beat is a graphic and what it must get
- * across; this call decides what is on screen, where, and when it enters.
+ * The graphics designer (decision 289; it writes code since decision 295):
+ * one call per graphic or chart slot, on its own route. The shot list
+ * decides that a beat is a graphic and what it must get across; this call
+ * writes the graphic, a React component the sandbox in
+ * `packages/compositions` runs. The web server checks the answer
+ * (`apps/web/lib/graphic-code/`) before it is kept.
  *
  * Three messages: the system rules and the film message are identical for
  * every graphic of a film, so the provider caches them and each graphic pays
  * for its own slot message only.
  */
 
-/** A scene of ten elements and a camera track is well under this; the rest is the model's room to think. */
-export const GRAPHIC_ANSWER_TOKENS = 4000
+/** A whole component, with room to think first; a cut-off is asked again at double (decision 292). */
+export const GRAPHIC_ANSWER_TOKENS = 12_000
 
 export interface SlotWord {
   text: string
@@ -47,140 +52,374 @@ export interface GraphicDesignInput {
   wordsEstimated: boolean
   intent: string
   intentRefs: readonly number[]
-  /** A redesign: the scene being replaced, in claim numbers. */
-  current?: PlannedGraphicScene
+  /** A chart slot: its brief's series, takeaway and annotations, which the code reads as `props.data`. */
+  data?: {
+    series: ChartSeries[]
+    takeaway: string
+    annotations?: { atX: string; text: string }[]
+  }
+  /** A redesign: the source and title being replaced (ruling 9; its facts are not shown). */
+  current?: Pick<PlannedGraphicCode, 'source' | 'title'>
   guidance?: string
   /** Why the previous answer to this same slot was refused. */
   rejection?: string
 }
 
-const SYSTEM = `You design ONE motion graphic for a documentary about a corporate collapse.
-The narration is recorded. You decide what is on screen, where, and when each
-piece enters, so the graphic lands the beat the narrator is speaking.
+/**
+ * The prompt's first worked example, a text-only beat. Exported so a test
+ * can run it through the web app's checks: an example that crashes or crops
+ * teaches the model to be refused. Its helper is a plain function called
+ * directly, as the prompt tells the model to write it.
+ */
+export const GRAPHIC_EXAMPLE_TYPE = `// Kinetic type: the line builds word by word as it is spoken, the figure
+// springs in on "1.9 billion", "never existed" strikes it through, and the
+// finished frame holds to the end.
+const LINE_UNTIL_MS = 2400
+const FIGURE_AT_MS = 2600
+const CLOSING_AT_MS = 4400
+const STRIKE_AT_MS = 5000
 
-Return JSON only: {"scene": {"elements": [element, ...], "camera"?: [key, ...]}}.
+function toFrame(ms, fps) {
+  return Math.round((ms / 1000) * fps)
+}
 
-Design rules:
-- One idea per graphic. One element dominates (usually the figure); everything
-  else supports it. A viewer gets it in the first second.
-- Fewer elements beat more. Two or three on screen at once is common;
-  ${GRAPHIC_MAX_ON_SCREEN} on screen at once is the ceiling, and ${MAX_GRAPHIC_ELEMENTS} across the whole slot.
-- Size follows role. A figure's value grows to fill its box (it can be very
-  large); a text's size is set by its role. Give the dominant element the most
-  room; a figure box 6 to 10 columns wide and 3 to 5 rows tall reads as the hero.
-- Balance. The grid already ends above the captions: use the whole grid.
-  Compose around the middle: the composition's visual centre sits near row 6,
-  with roughly equal empty space above and below it.
-- Alignment. Every text and figure has an "align" (start, center or end). Align
-  the elements that stack in one column the same way: a centred title over a
-  centred figure over a centred caption, or all at start. A figure's caption
-  ("label") aligns with its value.
-- Emphasis. "underline" draws a solid bar under the element; use it on at most
-  one element, on the word or figure the narrator stresses. "pulse" is for a
-  figure that lands on a spoken number.
-- Restraint. Every element must earn its place: no line that only restates
-  another element, no decorative rule or shape unless it separates two compared
-  things, no label that repeats the title.
-- Portrait. The same scene plays in 9:16 for Shorts. When elements sit side by
-  side in 16:9 (columns), give each a "portraitCell" that stacks them in the
-  portrait frame, centred around row 6. A single-column design needs no portraitCell.
-- Colour carries meaning: "collapse" for loss and failure, "recovery" for
-  gain, "accent" or "captionHighlight" for the one thing to look at, "series0"
-  to "series2" to tell compared things apart. Text is "textPrimary" or
-  "textSecondary". Never colour for decoration.
-- Time entrances to the words. Each slot comes with the words spoken in it and
-  when; a figure should land as its number is said, a logo as its name is
-  said. An element enters by "atMs" from the slot's start. An entrance may
-  start at any time up to 600 ms before the slot ends, so it can finish.
-- Keep a long graphic moving with the narration. A graphic on screen for more
-  than about 8 s changes each time the words bring something new: an element
-  enters or leaves, a bar grows, a colour shifts, or the camera moves. A long
-  stretch where nothing changes while the narrator keeps talking is the
-  failure to avoid.
-- Build in steps. A step makes way for the next rather than piling up: give
-  what the narration has finished with an "exit", and let the next element
-  take its cell. Bars can arrive one at a time, each as its amount is named
-  (an "atMs" on the item); the scale rescales as a bigger bar grows in.
-- Move the camera to what is being said, never at random: push in on the
-  element the narrator is talking about (a zoom above 1), or back out to
-  "all". "all" and zoom 1 frame the whole composition as laid out; a push
-  needs a zoom above 1. The camera rests on an element only while that
-  element is on screen.
-- Motion earns its place like everything else: one change for each new thing
-  said, never motion for its own sake.
-- Timing, all from the slot's start. An entrance takes 600 ms. If every
-  entrance is at 0, the entrances are staggered 180 ms apart in scene order,
-  so give real entrance times whenever an exit, a timed bar, an emphasis or a
-  camera key depends on them. An emphasis lasts: pulse 360 ms, underline
-  600 ms, colour 400 ms; the word forms play 600 ms (pulse) and 500 ms
-  (underline) after the entrance starts. A timed emphasis starts after its
-  element's entrance has finished and finishes by the slot's end. An exit
-  starts once its element's entrance and emphasis have finished, and its
-  ${GRAPHIC_EXIT_MS} ms end by the slot's end. A bar's own "atMs" is at or after its
-  element's entrance, and its 700 ms growth finishes before its element
-  starts to leave (or by the slot's end); at least one bar grows with the
-  entrance. Camera keys run in order, at least 1.5 s apart, and each 1.5 s
-  move ends by the slot's end; an element the camera rests on stays on screen
-  until the next key (or the slot's end). When anything leaves, at least one
-  element that is not a shape stays to the end.
-- A figure "count"s up only when the number itself is the story.
-- Two or three amounts compared read better as "bars" than as figures side by side.
-- A logo earns its place when the company or person is the subject, not
-  because they are mentioned. Name them exactly as the Logos list does; if
-  they are not listed, still name them and the producer will upload the mark.
-- Every number shown cites the claim it comes from, by NUMBER, and the digits
-  shown must appear in that claim's text ("$4bn" from "4 billion" is fine;
-  "$4.2bn" is not). The intent names the claims the beat rests on; you may
-  cite any claim in the list when it holds the number better.
-- Words on screen are short: a title is a few words, never a sentence of narration.
-- Words on screen say only what the narration or the cited claims say. Never
-  add a fact, a judgement, a qualifier or a source note of your own ("never
-  audited", "widely cited", "allegedly"): this is a film about real companies
-  and real people, and no check reads your words, only your numbers.
+// A helper, called directly: one word of the line, entering as it is spoken.
+function wordSpan(word, frame, fps) {
+  const enter = Remotion.spring({
+    frame, fps, delay: toFrame(word.atMs, fps), config: { damping: 20, stiffness: 200 },
+  })
+  const rise = 'translateY(' + (1 - enter) * 0.4 + 'em)'
+  return (
+    <span
+      key={word.atMs}
+      style={{ display: 'inline-block', marginRight: '0.25em', opacity: enter, transform: rise }}
+    >
+      {word.text}
+    </span>
+  )
+}
 
-Elements:
-{"kind": "text", "id", "cell", "content" (max 120 chars), "role": ${GRAPHIC_TYPE_ROLES.map((r) => `"${r}"`).join('|')},
- "color", "align"?: "start"|"center"|"end", "enter"?, "exit"?, "emphasis"?}
-{"kind": "figure", "id", "cell", "value" (exactly what is shown, e.g. "$4bn"), "label"?,
- "claimRef": claim number, "color", "align"?: "start"|"center"|"end", "enter"?, "exit"?, "emphasis"?}
-{"kind": "logo", "id", "cell", "entity": the exact name, "enter"?, "exit"?, "emphasis"? (a pulse only)}
-{"kind": "shape", "id", "cell", "form": "rect"|"rule"|"disc", "color", "opacity"?: 0.05-1, "exit"?, "emphasis"?}
-{"kind": "bars", "id", "cell", "items": [{"label", "value": number, "display", "claimRef": claim number, "atMs"?}] (2 to 5),
- "color", "highlightIndex"?, "enter"?, "exit"?, "emphasis"?}
-"cell" is {"col", "row", "colSpan", "rowSpan"} on a 12 by 12 grid (0-based).
-"portraitCell" (optional, same shape) places the element on the 9:16 Shorts
-frame; leave it out to let the layout stack elements in reading order.
-"color" is one of ${GRAPHIC_COLORS.join(', ')}.
-"enter" is {"kind": "fade"|"rise"|"wipe"|"count", "atMs"} ("count" only on a figure); an entrance takes 600 ms.
-"exit" is {"kind": "fade"|"drop"|"wipe", "atMs"}: the element leaves, taking ${GRAPHIC_EXIT_MS} ms. Leave it out and the element stays to the end.
-"emphasis" is "pulse"|"underline" (just after the entrance), or
- {"kind": "pulse"|"underline"|"color", "atMs", "to"?} at a time you choose. "color" shifts the element to the colour "to" names and keeps it; never on a logo. "underline" only on a text or a figure.
-A bar item's "atMs" is when that bar grows in (700 ms), with its label and value; leave it out and it grows with the element.
-"camera" (optional, on the scene) is up to 4 keys {"atMs", "focus": an element id or "all", "zoom"?: 1 to 1.6, default 1}; each starts a 1.5 s move to frame its focus, then holds. "all" and zoom 1 frame the whole composition as laid out.
-Ids are unique; one logo per entity.
+function Graphic(props) {
+  const frame = Remotion.useCurrentFrame()
+  const { width, height, fps } = Remotion.useVideoConfig()
+  const { colors, fonts } = props.brand
+  const inset = props.safeArea
+  const portrait = height > width
+  const unit = Math.min(width, height) / 1080
+  const clamp = { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' }
 
-Example, a single number that is the story (one centred column; no portraitCell needed):
-{"scene": {"elements": [
- {"kind": "text", "id": "t", "cell": {"col": 1, "row": 3, "colSpan": 10, "rowSpan": 1}, "content": "Raised in one round", "role": "title", "color": "textSecondary", "align": "center", "enter": {"kind": "fade", "atMs": 0}},
- {"kind": "figure", "id": "f", "cell": {"col": 1, "row": 4, "colSpan": 10, "rowSpan": 5}, "value": "$4bn", "label": "Series C", "claimRef": 3, "color": "accent", "align": "center", "enter": {"kind": "count", "atMs": 900}, "emphasis": "underline"}]}}
+  // The words said before the figure, each entering as it is spoken.
+  const line = props.words.filter((word) => word.atMs < LINE_UNTIL_MS)
+  // The figure is the story, so it lands with an overshoot.
+  const pop = Remotion.spring({
+    frame, fps, delay: toFrame(FIGURE_AT_MS, fps), config: { damping: 9, stiffness: 160 },
+  })
+  const closing = Remotion.interpolate(
+    frame, [toFrame(CLOSING_AT_MS, fps), toFrame(CLOSING_AT_MS + 400, fps)], [0, 1], clamp,
+  )
+  const strike = Remotion.interpolate(
+    frame, [toFrame(STRIKE_AT_MS, fps), toFrame(STRIKE_AT_MS + 500, fps)], [0, 1],
+    { ...clamp, easing: Remotion.Easing.out(Remotion.Easing.cubic) },
+  )
 
-Example, two amounts compared:
-{"scene": {"elements": [
- {"kind": "text", "id": "t", "cell": {"col": 1, "row": 3, "colSpan": 10, "rowSpan": 1}, "content": "2024 revenue", "role": "title", "color": "textSecondary", "align": "center", "enter": {"kind": "fade", "atMs": 0}},
- {"kind": "bars", "id": "b", "cell": {"col": 1, "row": 4, "colSpan": 10, "rowSpan": 5}, "items": [{"label": "Nvidia", "value": 130, "display": "$130bn", "claimRef": 4}, {"label": "Intel", "value": 53, "display": "$53bn", "claimRef": 7}], "color": "series0", "highlightIndex": 0, "enter": {"kind": "wipe", "atMs": 600}}]}}
+  return (
+    <Remotion.AbsoluteFill
+      style={{
+        paddingTop: inset.top, paddingRight: inset.right,
+        paddingBottom: inset.bottom, paddingLeft: inset.left,
+        justifyContent: 'center', gap: 28 * unit,
+        alignItems: portrait ? 'center' : 'flex-start', textAlign: portrait ? 'center' : 'left',
+      }}
+    >
+      <div
+        style={{
+          fontFamily: fonts.heading, fontSize: 72 * unit, lineHeight: 1.15,
+          color: colors.textPrimary, maxWidth: portrait ? '100%' : '70%',
+        }}
+      >
+        {line.map((word) => wordSpan(word, frame, fps))}
+      </div>
+      <div
+        style={{
+          position: 'relative', fontFamily: fonts.numbers, fontSize: 220 * unit, lineHeight: 1,
+          color: colors.accent, transform: 'scale(' + pop + ')',
+          transformOrigin: portrait ? 'center' : 'left center',
+        }}
+      >
+        €1.9bn
+        <div
+          style={{
+            position: 'absolute', left: 0, top: '52%', height: 14 * unit,
+            width: strike * 100 + '%', backgroundColor: colors.semantic.collapse,
+          }}
+        />
+      </div>
+      <div
+        style={{
+          fontFamily: fonts.title, fontSize: 56 * unit, color: colors.semantic.collapse,
+          opacity: closing, transform: 'translateY(' + (1 - closing) * 24 * unit + 'px)',
+        }}
+      >
+        It had never existed.
+      </div>
+    </Remotion.AbsoluteFill>
+  )
+}`
 
-Example, a relationship between named marks (side by side in 16:9, stacked in 9:16):
-{"scene": {"elements": [
- {"kind": "logo", "id": "a", "cell": {"col": 1, "row": 3, "colSpan": 4, "rowSpan": 4}, "portraitCell": {"col": 2, "row": 2, "colSpan": 8, "rowSpan": 3}, "entity": "Acme", "enter": {"kind": "fade", "atMs": 0}},
- {"kind": "logo", "id": "b", "cell": {"col": 7, "row": 3, "colSpan": 4, "rowSpan": 4}, "portraitCell": {"col": 2, "row": 5, "colSpan": 8, "rowSpan": 3}, "entity": "Rival", "enter": {"kind": "fade", "atMs": 1400}},
- {"kind": "text", "id": "t", "cell": {"col": 1, "row": 8, "colSpan": 10, "rowSpan": 1}, "portraitCell": {"col": 1, "row": 9, "colSpan": 10, "rowSpan": 1}, "content": "Bought for $900m", "role": "body", "color": "textPrimary", "align": "center", "enter": {"kind": "rise", "atMs": 2200}}]}}
+/** The second worked example's data, as the slot message would carry it. */
+export const GRAPHIC_EXAMPLE_CHART_DATA = {
+  series: [
+    {
+      label: 'Trustee cash reported',
+      unit: '€bn',
+      points: [
+        { x: '2016', y: 0.3 },
+        { x: '2017', y: 0.6 },
+        { x: '2018', y: 1.1 },
+        { x: '2019', y: 1.9 },
+      ],
+    },
+  ],
+  takeaway: 'The cash grew every year',
+  annotations: [{ atX: '2019', text: 'Never found' }],
+}
 
-Example, a long slot built in steps (22.3 s; "bolder" said at 1.0 s, "back in the market" at 5.6 s, "4 billion" at 10.9 s, "Four times" at 14.2 s, "six months earlier" at 18.5 s):
-{"scene": {"elements": [
- {"kind": "text", "id": "t", "cell": {"col": 1, "row": 3, "colSpan": 10, "rowSpan": 1}, "content": "Stability AI valuation", "role": "title", "color": "textSecondary", "align": "center", "enter": {"kind": "fade", "atMs": 1000}, "exit": {"kind": "fade", "atMs": 13700}},
- {"kind": "text", "id": "x", "cell": {"col": 1, "row": 3, "colSpan": 10, "rowSpan": 1}, "content": "Four times", "role": "title", "color": "accent", "align": "center", "enter": {"kind": "rise", "atMs": 14200}},
- {"kind": "bars", "id": "b", "cell": {"col": 1, "row": 4, "colSpan": 10, "rowSpan": 5}, "items": [{"label": "Oct 2022", "value": 1, "display": "$1bn", "claimRef": 5}, {"label": "Sought, 2023", "value": 4, "display": "$4bn", "claimRef": 6, "atMs": 10900}], "color": "series0", "highlightIndex": 1, "enter": {"kind": "wipe", "atMs": 5600}, "emphasis": {"kind": "color", "atMs": 14200, "to": "accent"}}],
- "camera": [{"atMs": 14200, "focus": "b", "zoom": 1.15}, {"atMs": 18500, "focus": "all"}]}}`
+/** The prompt's second worked example, a chart. Exported for the same reason as the first. */
+export const GRAPHIC_EXAMPLE_CHART = `// A chart from props.data: one bar per point, each growing as its year is
+// spoken, the takeaway as the title, the annotation landing on its bar after
+// the last one has grown, and the finished chart held to the end.
+function toFrame(ms, fps) {
+  return Math.round((ms / 1000) * fps)
+}
+
+// When the narration names a point: the first word that starts with its label.
+function spokenAt(point, index, words) {
+  const said = words.find((word) => word.text.indexOf(point.x) === 0)
+  return said ? said.atMs : 600 + index * 700
+}
+
+// A helper, called directly: one bar with its value and, on the last, its note.
+function bar(frame, fps, props) {
+  const { colors, fonts } = props.brand
+  const unit = props.unit
+  const grow = Remotion.spring({
+    frame, fps, delay: toFrame(props.atMs, fps), durationInFrames: 18, config: { damping: 200 },
+  })
+  const noted = Remotion.spring({
+    frame, fps, delay: toFrame(props.noteAtMs, fps), config: { damping: 12, stiffness: 180 },
+  })
+  const column = { flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center' }
+  return (
+    <div key={props.point.x} style={{ ...column, justifyContent: 'flex-end' }}>
+      {props.note ? (
+        <div
+          style={{
+            fontFamily: fonts.title, fontSize: 34 * unit, marginBottom: 10 * unit,
+            color: colors.semantic.collapse, opacity: noted,
+            transform: 'scale(' + (0.8 + 0.2 * noted) + ')',
+          }}
+        >
+          {props.note}
+        </div>
+      ) : null}
+      <div
+        style={{
+          fontFamily: fonts.numbers, fontSize: 40 * unit, marginBottom: 10 * unit,
+          color: props.color, opacity: grow,
+        }}
+      >
+        {String(props.point.y)}
+      </div>
+      <div
+        style={{
+          width: '60%', height: props.share * grow * props.plot,
+          borderRadius: 6 * unit, backgroundColor: props.color,
+        }}
+      />
+      <div style={{ fontFamily: fonts.body, fontSize: 30 * unit, color: colors.textSecondary }}>
+        {props.point.x}
+      </div>
+    </div>
+  )
+}
+
+function Graphic(props) {
+  const frame = Remotion.useCurrentFrame()
+  const { width, height, fps } = Remotion.useVideoConfig()
+  const { colors, fonts } = props.brand
+  const inset = props.safeArea
+  const portrait = height > width
+  const unit = Math.min(width, height) / 1080
+  const series = props.data.series[0]
+  const top = Math.max(...series.points.map((point) => point.y))
+  const lands = series.points.map((point, index) => spokenAt(point, index, props.words))
+  const last = series.points.length - 1
+  const note = (props.data.annotations || [])[0]
+  const titleIn = Remotion.interpolate(frame, [0, 12], [0, 1], { extrapolateRight: 'clamp' })
+  const align = portrait ? 'center' : 'left'
+
+  return (
+    <Remotion.AbsoluteFill
+      style={{
+        paddingTop: inset.top, paddingRight: inset.right,
+        paddingBottom: inset.bottom, paddingLeft: inset.left,
+        justifyContent: 'center', gap: 24 * unit,
+      }}
+    >
+      <div
+        style={{
+          fontFamily: fonts.heading, fontSize: 60 * unit, lineHeight: 1.1,
+          color: colors.textPrimary, opacity: titleIn, textAlign: align,
+        }}
+      >
+        {props.data.takeaway}
+      </div>
+      <div
+        style={{
+          fontFamily: fonts.body, fontSize: 28 * unit, color: colors.textSecondary,
+          opacity: titleIn, textAlign: align,
+        }}
+      >
+        {series.label + ', ' + series.unit}
+      </div>
+      <div style={{ display: 'flex', alignItems: 'flex-end', gap: 16 * unit }}>
+        {series.points.map((point, index) =>
+          bar(frame, fps, {
+            brand: props.brand, unit: unit, point: point,
+            share: point.y / top, plot: (portrait ? 0.32 : 0.34) * height, atMs: lands[index],
+            color: index === last ? colors.accent : Remotion.withAlpha(colors.textSecondary, 0.55),
+            note: note && note.atX === point.x ? note.text : null, noteAtMs: lands[last] + 1200,
+          }),
+        )}
+      </div>
+    </Remotion.AbsoluteFill>
+  )
+}`
+
+const SYSTEM = `You write ONE motion graphic for a documentary about a corporate collapse, as a React
+component. The narration is recorded; your graphic plays over it in the 16:9 film and in
+the 9:16 Short, and it lands the beat the narrator is speaking.
+
+You get the case and its numbered claims, the logos the producer holds, and then this
+slot: its chapter, the paragraph it sits in, the words it covers, its length, every
+spoken word with its time from the slot's start, the intent (what the viewer must take
+away) and the claims it rests on. A chart slot also carries its data.
+
+Answer with JSON only:
+{"title": "...", "facts": [{"text": "...", "claim": 3}], "source": "..."}
+- "title": the slot card's name for the graphic, one line of at most ${GRAPHIC_TITLE_MAX} characters.
+- "facts": every number and every quoted phrase the graphic shows, each with the NUMBER
+  of the claim it comes from. A year is a number.
+- "source": the component, at most ${GRAPHIC_SOURCE_MAX} characters, as one JSON string. Escape
+  its double quotes and line breaks as JSON requires.
+
+The sandbox your code runs in:
+- Declare function Graphic(props) at the top level; helper functions and constants
+  beside it are fine. A helper is a plain function you call directly, row(label, value),
+  never a React component rendered with createElement or JSX: the sandbox rebuilds the
+  outer function every frame, so a component declared inside it would remount its subtree
+  on every frame. Write no import and no export: the sandbox runs your code as the
+  body of a function of (React, Remotion, props) and returns Graphic. JSX compiles to
+  React.createElement.
+- React: React itself, for elements, React.Fragment and React.useMemo.
+- Remotion.useCurrentFrame(): the frame, from 0 at the slot's start, 30 to the second.
+- Remotion.useVideoConfig(): {width, height, fps, durationInFrames}; the frame is 1920 by
+  1080 or 1080 by 1920.
+- Remotion.interpolate(value, inputRange, outputRange, {easing, extrapolateLeft,
+  extrapolateRight}): inputRange strictly increasing; "clamp" holds the ends.
+- Remotion.spring({frame, fps, delay, durationInFrames, config: {damping, stiffness,
+  mass}}): 0 to 1, overshooting when damping is low.
+- Remotion.Easing: Remotion's easing functions, such as
+  Remotion.Easing.out(Remotion.Easing.cubic) and Remotion.Easing.bezier(0.2, 0, 0, 1).
+- Remotion.Sequence {from, durationInFrames}: its children show only inside that window,
+  and inside it useCurrentFrame() counts from 0.
+- Remotion.AbsoluteFill {style}: a full-frame layer, laid out as a flex column.
+- Remotion.Img {src, style}: an image, for a logo.
+- Remotion.withAlpha(color, alpha): a brand colour at an opacity from 0 to 1.
+- props.brand.colors: primary, accent, background, surface, textPrimary, textSecondary and
+  captionHighlight; chartSeries, a list of colours for compared things; semantic.collapse
+  and semantic.recovery.
+- props.brand.fonts: heading, title, body, numbers and captions, family names for
+  fontFamily. Figures are set in numbers.
+- props.words: the narration, [{text, atMs}], atMs from the slot's start.
+- props.durationMs: the slot's length.
+- props.safeArea: {top, right, bottom, left}, insets in pixels for this frame size. The
+  captions sit below the bottom inset.
+- props.logos: {[title]: {src, width, height}} for the marks in the Logos list, under
+  their exact titles. A mark can be missing: draw it only when props.logos holds it.
+- props.data: on a chart slot, {series: [{label, unit, points: [{x, y}]}], takeaway,
+  annotations?: [{atX, text}]}. Absent otherwise.
+Never write import, require, window, document, fetch, setTimeout, setInterval,
+requestAnimationFrame, Date, Math.random, eval, Function, globalThis, process, useState,
+useEffect or useLayoutEffect, a # colour, or rgb(), rgba() or hsl(). A scan refuses them.
+
+The rules. Each one is checked, and a graphic that breaks one is refused:
+1. Facts. Every number on screen comes from a claim, and its digits appear in that
+   claim's text ("$4bn" from "4 billion dollars" is fine; "$4.2bn" is not). A number that
+   stays on screen for a second must be in a claim your facts cite; a counter's passing
+   values are not checked while they keep moving, so land a count on the claim's figure.
+   Words on screen say only what the narration or the cited claims say. Never add a
+   fact, a judgement, a qualifier or a source note of your own ("never audited", "widely
+   cited", "allegedly"): this is a film about real companies and real people, and no
+   check reads your words, only your numbers.
+2. Brand. Colours come from props.brand.colors only, with Remotion.withAlpha for opacity;
+   type comes from props.brand.fonts. The house paints the background behind your
+   graphic.
+3. A pure function of the frame. The same frame always draws the same picture: no clock,
+   no randomness, no state, nothing that runs after the render.
+4. Timing to the narration. Each new thing said gets its own change on screen, landing as
+   it is said: a figure as its number is spoken, a name as it is named, a bar as its year
+   is read. Dead air is the failure to avoid: a graphic in which nothing changes for more
+   than ${GRAPHIC_STILL_MAX_MS / 1000} seconds is refused.
+5. Both frames. Lay out from useVideoConfig()'s width and height: the 16:9 frame and the
+   9:16 frame are both rendered and both checked.
+6. Safe area. Everything sits inside props.safeArea at every frame, entrances included.
+   Pad a full-frame layer by the insets, place anything absolutely positioned at or
+   inside them, and bring an entrance in with opacity, scale or transform, never from
+   outside the insets. Only a Remotion.AbsoluteFill spans the whole frame.
+The code is run at every 250 ms of the slot in both frames before it is kept: a frame
+that throws, or takes more than 2 seconds, is refused. The last second shows the
+finished graphic, with words or figures on screen.
+
+Craft:
+- Kinetic type, not paragraphs: a few words at a time, big, entering as they are spoken.
+  A line can build word by word.
+- One dominant idea with secondary detail: one thing is biggest, and the rest supports it.
+- Motion keyed to the spoken words: each new thing said gets its own change, whether an
+  entrance, a highlight, a bar growing or a line drawing across.
+- A spring or an overshoot where the number is the story; ease everything else
+  (Remotion.Easing.out(Remotion.Easing.cubic) for an arrival). Stagger related pieces a
+  few frames apart rather than landing them together.
+- An ending that holds rather than vanishes.
+- Portrait is a first-class frame, not a squeeze: stack what sits side by side, and size
+  type from Math.min(width, height).
+- Colour carries meaning: semantic.collapse for loss and failure, semantic.recovery for
+  gain, accent or captionHighlight for the one thing to look at, chartSeries to tell
+  compared things apart, textPrimary and textSecondary for words.
+- A logo earns its place when the company or person is the subject, not because they
+  are mentioned.
+- A chart draws every point of props.data, labels each value as its claim states it, and
+  says its takeaway.
+
+Example 1, a text-only beat. The slot is 7.5 s; its words are "The" 0.0 s, "auditors"
+0.3 s, "could" 0.9 s, "not" 1.2 s, "find" 1.5 s, "1.9" 2.6 s, "billion" 3.0 s, "euros."
+3.4 s, "It" 4.4 s, "had" 4.6 s, "never" 5.0 s, "existed." 5.4 s. Claim 2 reads "Wirecard
+reported €1.9 billion in trustee accounts that auditors could not confirm existed." The
+answer is {"title": "The missing €1.9bn", "facts": [{"text": "€1.9bn", "claim": 2}],
+"source": this component as a JSON string}:
+
+${GRAPHIC_EXAMPLE_TYPE}
+
+Example 2, a chart slot. The slot is 7.2 s; "2016" is said at 1.0 s, "2017" at 2.0 s,
+"2018" at 3.0 s and "2019" at 4.2 s. Its data is
+${JSON.stringify(GRAPHIC_EXAMPLE_CHART_DATA)}
+Claims 5 to 8 hold the four years' figures. The answer is {"title": "Trustee cash, year
+by year", "facts": [{"text": "2016", "claim": 5}, {"text": "0.3", "claim": 5}, {"text":
+"2017", "claim": 6}, {"text": "0.6", "claim": 6}, {"text": "2018", "claim": 7}, {"text":
+"1.1", "claim": 7}, {"text": "2019", "claim": 8}, {"text": "1.9", "claim": 8}], "source":
+this component as a JSON string}:
+
+${GRAPHIC_EXAMPLE_CHART}`
 
 const seconds = (ms: number) => `${(ms / 1000).toFixed(1)} s`
 
@@ -200,7 +439,10 @@ export function buildGraphicRequest(input: GraphicDesignInput): LLMTaskRequest {
     `Length: ${seconds(input.durationMs)}\n\n` +
     `Words spoken in it, from its start${input.wordsEstimated ? ' (estimated from the slot length; no recorded timings)' : ''}:\n${words}\n\n` +
     `Intent: ${input.intent}\n` +
-    `Rests on claims: ${input.intentRefs.length > 0 ? input.intentRefs.join(', ') : 'none named'}`
+    `Rests on claims: ${input.intentRefs.length > 0 ? input.intentRefs.join(', ') : 'none named'}` +
+    (input.data
+      ? `\n\nData (draw every point; values are verbatim from the claims):\n${JSON.stringify(input.data, null, 2)}`
+      : '')
 
   return {
     task: 'graphics',
@@ -208,18 +450,7 @@ export function buildGraphicRequest(input: GraphicDesignInput): LLMTaskRequest {
     messages: [
       { role: 'user', content: film },
       { role: 'user', content: slot },
-      ...(input.current
-        ? [
-            {
-              role: 'user' as const,
-              content:
-                // toPlannedScene writes a gone claim as 0, which the check
-                // refuses; this says what to do with one (final review M3).
-                'The current design, which the producer wants changed (claimRef 0: an element citing a claim no longer in the list must cite a listed claim or be dropped):\n' +
-                JSON.stringify(input.current, null, 2),
-            },
-          ]
-        : []),
+      ...(input.current ? [{ role: 'user' as const, content: currentDesign(input.current) }] : []),
       ...(input.rejection
         ? [
             {
@@ -238,14 +469,33 @@ export function buildGraphicRequest(input: GraphicDesignInput): LLMTaskRequest {
   }
 }
 
-const GraphicEnvelopeSchema = z.object({ scene: z.unknown() })
+/** A redesign's starting point: the title, and the code fenced so its JSX reads as code. */
+function currentDesign(current: Pick<PlannedGraphicCode, 'source' | 'title'>): string {
+  return (
+    'The current design, which the producer wants changed:\n' +
+    `Title: ${current.title}\n` +
+    '```jsx\n' +
+    current.source +
+    '\n```'
+  )
+}
 
-export function parseGraphicScene(text: string): PlannedGraphicScene {
-  const envelope = parseJsonCompletion(text, GraphicEnvelopeSchema, 'graphic scene')
-  const parsed = PlannedGraphicSceneSchema.safeParse(envelope.scene)
+/**
+ * The designer's answer, validated. The title is free text, so one over
+ * `GRAPHIC_TITLE_MAX` is trimmed with `trimField` and the trim reported
+ * through `note` (decision 293). Nothing else is repaired: a cut source would
+ * not compile, and a claim number or a fact's text is a fact. A malformed
+ * answer is refused, and the retry is told why (decision 292).
+ */
+export function parseGraphicCode(text: string, note: Note = ignoreRepairs): PlannedGraphicCode {
+  const raw = parseJsonCompletion(text, z.looseObject({}), 'graphic code')
+  const parsed = PlannedGraphicCodeSchema.safeParse({
+    ...raw,
+    title: trimField(raw['title'], GRAPHIC_TITLE_MAX, "the graphic's title", note),
+  })
   if (!parsed.success) {
-    throw new ValidationError(`The graphic is malformed: ${formatIssues(parsed.error)}`, {
-      field: 'graphic scene',
+    throw new ValidationError(`The graphic answer is malformed: ${formatIssues(parsed.error)}`, {
+      field: 'graphic code',
     })
   }
   return parsed.data
@@ -269,91 +519,52 @@ export function estimatedWords(coversText: string, durationMs: number): SlotWord
   return words.map((text, at) => ({ text, offsetMs: Math.round(at * step) }))
 }
 
-/** The shortest slot the mock builds in two steps (decision 290). */
-export const MOCK_STAGED_MIN_MS = 8000
+/**
+ * The fixture's counting figure, which lands on "$4bn". The mock swaps the
+ * whole expression for a literal figure built from a claim's own digits.
+ */
+const FIXTURE_FIGURE = "'$' + Math.round(count * 40) / 10 + 'bn'"
 
 /**
- * Deterministic design for MOCK_PROVIDERS=1: the figure's digits truly come
- * from the cited claim. A slot of 8 s or more is built in two steps (decision
- * 290): halfway through, the title leaves, a second line takes its cell, and
- * the camera pushes in on the figure, so tests and e2e see a staged graphic
- * without spending.
+ * Deterministic design for MOCK_PROVIDERS=1 (decision 295; ruling 11): the
+ * fixture graphic, its figure swapped for `'$<digits>bn'`, where the digits
+ * are the first digit group of the claim it cites (the first intent claim
+ * with a digit, else the first claim with one), and its one fact that figure
+ * on that claim. With no digit-bearing claim the figure is `''` and the
+ * design cites nothing. Either way it passes the real checks on any seed.
+ * Steered, the title says so, so a redesign proves something offline. The
+ * fixture reads its frame and length from the sandbox: the slot's length and
+ * a chart's data change nothing, and are taken so the mock is called as the
+ * designer is.
  */
-export function mockGraphicScene(input: {
+export function mockGraphicCode(input: {
   claimTexts: readonly string[]
   intentRefs: readonly number[]
-  logoTitles?: readonly string[]
   guidance?: string
   durationMs: number
-}): PlannedGraphicScene {
-  const ref = input.intentRefs.find(
-    (n) => figureDigitGroups(input.claimTexts[n - 1] ?? '').length > 0,
-  )
-  const text = ref ? input.claimTexts[ref - 1]! : ''
-  const digits = figureDigitGroups(text)[0]
-  const value = text.toLowerCase().includes('billion') ? `$${digits}bn` : digits
-  const landAt = Math.min(900, Math.max(0, input.durationMs - 700))
-  const title = input.guidance
-    ? `[mock] Redesigned: ${input.guidance}`.slice(0, 120)
-    : '[mock] Raised in one round'
-  const logoTitle = input.logoTitles?.[0]
-  const hasFigure = ref !== undefined && digits !== undefined
-  const titleCell = { col: 0, row: 0, colSpan: 7, rowSpan: 2 }
-  const staged = input.durationMs >= MOCK_STAGED_MIN_MS
-  const half = Math.floor(input.durationMs / 2)
-  const stepTwoAt = half + GRAPHIC_EXIT_MS
+  data?: GraphicDesignInput['data']
+}): PlannedGraphicCode {
+  const cited = mockFigure(input.claimTexts, input.intentRefs)
+  const figure = cited?.text ?? ''
   return {
-    elements: [
-      {
-        kind: 'text',
-        id: 't1',
-        cell: titleCell,
-        content: title,
-        role: 'title',
-        color: 'textSecondary',
-        align: 'start',
-        enter: { kind: 'fade', atMs: 0 },
-        ...(staged ? { exit: { kind: 'fade' as const, atMs: half } } : {}),
-      },
-      ...(staged
-        ? [
-            {
-              kind: 'text' as const,
-              id: 't2',
-              cell: titleCell,
-              content: '[mock] Then the next step',
-              role: 'title' as const,
-              color: 'textSecondary' as const,
-              align: 'start' as const,
-              enter: { kind: 'rise' as const, atMs: stepTwoAt },
-            },
-          ]
-        : []),
-      ...(hasFigure
-        ? [
-            {
-              kind: 'figure' as const,
-              id: 'f1',
-              cell: { col: 0, row: 2, colSpan: 7, rowSpan: 4 },
-              value: value ?? digits,
-              claimRef: ref,
-              color: 'accent' as const,
-              enter: { kind: 'count' as const, atMs: landAt },
-            },
-          ]
-        : []),
-      ...(logoTitle
-        ? [
-            {
-              kind: 'logo' as const,
-              id: 'l1',
-              cell: { col: 8, row: 1, colSpan: 4, rowSpan: 4 },
-              entity: logoTitle,
-              enter: { kind: 'fade' as const, atMs: 0 },
-            },
-          ]
-        : []),
-    ],
-    ...(staged && hasFigure ? { camera: [{ atMs: stepTwoAt, focus: 'f1', zoom: 1.2 }] } : {}),
-  } as PlannedGraphicScene
+    title: input.guidance
+      ? `[mock] Redesigned: ${input.guidance}`.slice(0, GRAPHIC_TITLE_MAX).trim()
+      : '[mock] Raised in one round',
+    facts: cited ? [cited] : [],
+    // A replacer function, so the `$` in the figure is never read as a pattern.
+    source: GRAPHIC_CODE_FIXTURE_SOURCE.replace(FIXTURE_FIGURE, () => `'${figure}'`),
+  }
+}
+
+/** `'$<digits>bn'` on the claim it comes from, or null when no claim has a digit. */
+function mockFigure(
+  claimTexts: readonly string[],
+  intentRefs: readonly number[],
+): { text: string; claim: number } | null {
+  const everyClaim = claimTexts.map((_, index) => index + 1)
+  for (const claim of [...intentRefs, ...everyClaim]) {
+    const digits = figureDigitGroups(claimTexts[claim - 1] ?? '')[0]
+    if (digits !== undefined) return { text: `$${digits}bn`, claim }
+  }
+  return null
 }
