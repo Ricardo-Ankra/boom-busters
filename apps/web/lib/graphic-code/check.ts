@@ -20,14 +20,14 @@ import { scanGraphicSource } from './scan'
 
 /**
  * Whether a design can be kept (decision 295): the compile, the scan, the
- * dry run and the facts, in that order, cheapest first. The scan reads the
- * compiled code, where JSX text is already a string, so it cannot be fooled
- * by an apostrophe in a caption; that is why the compile comes first. The facts come last
- * because they are read off the dry run's text: a digit group counts as
- * shown when it stays on screen for a second, so a counter's passing values
- * ("2.3bn" on the way to "4bn") are never checked and the figure it lands
- * on always is. Synchronous, so it runs inside `callForAnswer`'s parse and a
- * refusal is retried once with its reason.
+ * dry run and the facts, in that order. The scan reads the compiled code,
+ * where JSX text is already a string, so it cannot be fooled by an apostrophe
+ * in a caption; that is why the compile comes first. The facts come last
+ * because they are read off the dry run's text, in each frame size apart: a
+ * digit group counts as shown when it stays on screen for a second, so a
+ * counter's passing values ("2.3bn" on the way to "4bn") are never checked
+ * and the figure it lands on always is. Synchronous, so it runs inside
+ * `callForAnswer`'s parse and a refusal is retried once with its reason.
  */
 
 /** A digit group on screen for this many consecutive samples (one second) is shown. */
@@ -118,14 +118,21 @@ export function graphicCodeIssue(
   })
   if (run.issue !== null) return { issue: run.issue }
 
-  const factsIssue = graphicFactsIssue({
-    shown: shownDigitGroups(run.textSamples, SHOWN_MIN_SAMPLES),
-    facts: answer.facts,
-    claims: context.claims,
-    // After the real claims, so the claim numbers still index them alone.
-    ...(brief.type === 'chart' ? { extraTexts: [seriesText(brief)] } : {}),
-  })
-  if (factsIssue !== null) return { issue: factsIssue }
+  // Per frame size, never across the two: a digit group counts as shown when
+  // it stays a second in one frame, and the Short's 9:16 frame may show a
+  // figure the film's 16:9 frame never does.
+  for (const orientation of ['landscape', 'portrait'] as const) {
+    const factsIssue = graphicFactsIssue({
+      shown: shownDigitGroups(run.textSamples[orientation], SHOWN_MIN_SAMPLES),
+      facts: answer.facts,
+      claims: context.claims,
+      // After the real claims, so the claim numbers still index them alone.
+      ...(brief.type === 'chart' ? { extraTexts: [seriesText(brief)] } : {}),
+    })
+    if (factsIssue !== null) {
+      return { issue: orientation === 'portrait' ? `${factsIssue}, in portrait` : factsIssue }
+    }
+  }
 
   const facts: GraphicCode['facts'] = []
   for (const fact of answer.facts) {

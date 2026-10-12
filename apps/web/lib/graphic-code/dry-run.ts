@@ -136,8 +136,13 @@ export interface DryRunInput {
 
 export interface DryRunResult {
   issue: string | null
-  /** Visible text per sample, landscape. */
-  textSamples: string[]
+  /**
+   * Visible text per sample, for each frame size apart: the facts are checked
+   * per frame, never across the two, since the Short's 9:16 frame may show
+   * text the film's 16:9 frame does not. A frame size the run never reached
+   * (an earlier one was refused) has none.
+   */
+  textSamples: { landscape: string[]; portrait: string[] }
 }
 
 const FRAME_SIZES = [
@@ -411,12 +416,10 @@ function runFrameSize(
 /** Landscape, then portrait; the first issue found stops the run. */
 export function dryRunGraphic(input: DryRunInput): DryRunResult {
   const loaded = loadRuntime()
-  let textSamples: string[] = []
+  const textSamples: DryRunResult['textSamples'] = { landscape: [], portrait: [] }
   for (const size of FRAME_SIZES) {
     const { issue, samples } = runFrameSize(input, size, loaded)
-    if (size.orientation === 'landscape') {
-      textSamples = samples.map((sample) => visibleText(sample.markup))
-    }
+    textSamples[size.orientation] = samples.map((sample) => visibleText(sample.markup))
     if (issue !== null) return { issue, textSamples }
   }
   return { issue: null, textSamples }

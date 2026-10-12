@@ -213,12 +213,13 @@ export function scanGraphicSource(source: string, compiled: string): string | nu
 // apps/web/lib/graphic-code/dry-run.ts
 export const GRAPHIC_SAMPLE_MS = 250
 export interface DryRunInput { compiled: string; props: Omit<GraphicProps, 'safeArea'>; durationMs: number; timeoutMs?: number; frameMaxMs?: number }
-export interface DryRunResult { issue: string | null; textSamples: string[] }   // visible text per sample, landscape
+export interface DryRunResult { issue: string | null; textSamples: { landscape: string[]; portrait: string[] } }   // visible text per sample, per frame size (amended, final review I4: was landscape only)
 export function dryRunGraphic(input: DryRunInput): DryRunResult
 // apps/web/lib/graphic-code/check.ts: compile, scan, dry run, facts, in that order (ruling 2, amended).
 // The dry run gets the house brand (`graphicBrand`, ruling 26) and every titled library logo with a
 // recorded size, by title, at that size (placeholder src; rulings 5 and 25);
 // a chart's series are an extra text the shown digits may come from (ruling 4).
+// The facts are checked in each frame size's samples apart, never across the two (final review I4).
 export function graphicCodeIssue(answer: PlannedGraphicCode, context: GraphicDesignContext, slot: { brief: DesignableBrief; durationMs: number; words: readonly { text: string; atMs: number }[] }): { code: GraphicCode } | { issue: string }
 
 // packages/providers/src/prompts/graphics.ts

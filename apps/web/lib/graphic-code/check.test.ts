@@ -119,6 +119,29 @@ describe('graphicCodeIssue (decision 295)', () => {
     })
   })
 
+  it('checks the portrait frame on its own: a figure only the Short shows is refused (final review I4)', () => {
+    const source = `function Graphic() {
+  const frame = Remotion.useCurrentFrame()
+  const { width, height } = Remotion.useVideoConfig()
+  const sweep = Remotion.interpolate(frame, [0, 179], [0, 100], { extrapolateRight: 'clamp' })
+  return (
+    <Remotion.AbsoluteFill>
+      <div>{height > width ? '$7bn' : '$4bn'}</div>
+      <div style={{ width: sweep + '%', height: 4 }} />
+    </Remotion.AbsoluteFill>
+  )
+}
+`
+    expect(graphicCodeIssue(answer({ source }), CONTEXT, slot(GRAPHIC))).toEqual({
+      issue: 'the graphic shows 7, which no cited claim contains, in portrait',
+    })
+    // The same figure in both frames passes: the facts hold in each.
+    const both = source.replace("'$7bn'", "'$4bn'")
+    expect(graphicCodeIssue(answer({ source: both }), CONTEXT, slot(GRAPHIC))).toHaveProperty(
+      'code',
+    )
+  })
+
   it('scans the compiled code before it runs anything', () => {
     const source = countUp(4).replace('const frame', 'const seed = Math.random()\n  const frame')
     expect(graphicCodeIssue(answer({ source }), CONTEXT, slot(GRAPHIC))).toEqual({

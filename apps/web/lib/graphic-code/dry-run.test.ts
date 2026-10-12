@@ -38,11 +38,30 @@ function dryRun(
 }
 
 describe('dryRunGraphic (decision 295)', () => {
-  it('passes the fixture graphic in both frames, with one text sample per 250 ms', () => {
+  it('passes the fixture graphic in both frames, with one text sample per 250 ms in each', () => {
     const result = dryRun(GRAPHIC_CODE_SOURCE, 6000)
     expect(result.issue).toBeNull()
-    expect(result.textSamples).toHaveLength(6000 / 250 + 1)
-    expect(result.textSamples.at(-1)).toContain('$4bn')
+    for (const samples of [result.textSamples.landscape, result.textSamples.portrait]) {
+      expect(samples).toHaveLength(6000 / 250 + 1)
+      expect(samples.at(-1)).toContain('$4bn')
+    }
+  })
+
+  it('keeps each frame size its own text, for the facts to be checked per frame', () => {
+    const result = dryRun(`function Graphic() {
+  const frame = Remotion.useCurrentFrame()
+  const { width, height } = Remotion.useVideoConfig()
+  return (
+    <Remotion.AbsoluteFill>
+      <div>{height > width ? 'Tall' : 'Wide'}</div>
+      <div style={{ width: frame }} />
+    </Remotion.AbsoluteFill>
+  )
+}
+`)
+    expect(result.issue).toBeNull()
+    expect(new Set(result.textSamples.landscape)).toEqual(new Set(['Wide']))
+    expect(new Set(result.textSamples.portrait)).toEqual(new Set(['Tall']))
   })
 
   it("runs a Sequence's children on a clock from its start, and nothing before it", () => {
@@ -61,9 +80,9 @@ function Graphic() {
 }
 `)
     expect(result.issue).toBeNull()
-    expect(result.textSamples[0]).toBe('')
+    expect(result.textSamples.landscape[0]).toBe('')
     // 1.5 s is frame 45, fifteen frames into a sequence from frame 30.
-    expect(result.textSamples[6]).toBe('15')
+    expect(result.textSamples.landscape[6]).toBe('15')
   })
 
   it('names the time, the frame and the error when the code throws', () => {
@@ -159,7 +178,7 @@ function Graphic() {
     expect(result.issue).toBeNull()
   })
 
-  it('checks the portrait frame too, and keeps the landscape text', () => {
+  it('checks the portrait frame too, and keeps the text of both', () => {
     const result = dryRun(`function Graphic() {
   const { width, height } = Remotion.useVideoConfig()
   return (
@@ -170,7 +189,8 @@ function Graphic() {
 }
 `)
     expect(result.issue).toBe('"Tall only" sits outside the safe area in portrait')
-    expect(result.textSamples).toHaveLength(4000 / 250 + 1)
+    expect(result.textSamples.landscape).toHaveLength(4000 / 250 + 1)
+    expect(result.textSamples.portrait).toHaveLength(4000 / 250 + 1)
   })
 
   it('refuses a frame slower than its limit', () => {
@@ -201,7 +221,7 @@ function Graphic() {
 }
 `)
     expect(result.issue).toBeNull()
-    expect(result.textSamples.at(-1)).toBe('undefined undefined')
+    expect(result.textSamples.landscape.at(-1)).toBe('undefined undefined')
   })
 
   it('refuses code that assigns to the frozen Easing, naming the crash', () => {
