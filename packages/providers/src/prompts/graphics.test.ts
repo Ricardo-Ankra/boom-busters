@@ -115,12 +115,25 @@ describe('the designer prompt (decision 295)', () => {
     expect(rules).toContain(
       'A helper is a plain function you call directly, row(label, value), never a React component rendered with createElement or JSX',
     )
+    expect(rules).toContain('is parsed once and run again for every frame')
     expect(rules).toContain('would remount its subtree on every frame')
+    expect(rules).not.toContain('rebuilds')
+  })
+
+  it('keeps the hooks at the top of Graphic, out of every helper', () => {
+    expect(rules).toContain(
+      'Call Remotion.useCurrentFrame(), Remotion.useVideoConfig() and React.useMemo only at the top of Graphic, never inside a helper or a condition; hand a helper the frame and fps as arguments, as both examples do.',
+    )
+  })
+
+  it('caps the facts at 40 and says a chart reads its digits off props.data', () => {
+    expect(rules).toContain('At most 40 entries: more is refused, not cut.')
+    expect(rules).toContain("A chart's digits read off props.data need no entry.")
   })
 
   it('names every banned identifier and colour literal', () => {
     expect(rules).toContain(
-      'Never write import, require, window, document, fetch, setTimeout, setInterval, requestAnimationFrame, Date, Math.random, eval, Function, globalThis, process, useState, useEffect or useLayoutEffect, a # colour, or rgb(), rgba() or hsl(). A scan refuses them.',
+      'Never write import, require, window, document, fetch, setTimeout, setInterval, requestAnimationFrame, Date, Math.random, eval, Function, globalThis, process, useState, useEffect or useLayoutEffect, React.Suspense, React.lazy, a # colour, or rgb(), rgba(), hsl() or hsla(); and assign to nothing under React or Remotion. A scan refuses them.',
     )
   })
 
@@ -190,7 +203,7 @@ describe('the designer prompt (decision 295)', () => {
   })
 
   it('writes no dash a reader would see', () => {
-    expect(system).not.toMatch(/[–—]/)
+    expect(system).not.toMatch(/[\u2013\u2014]/)
   })
 })
 

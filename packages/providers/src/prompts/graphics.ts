@@ -199,19 +199,19 @@ function spokenAt(point, index, words) {
 }
 
 // A helper, called directly: one bar with its value and, on the last, its note.
-function bar(frame, fps, props) {
-  const { colors, fonts } = props.brand
-  const unit = props.unit
+function bar(frame, fps, spec) {
+  const { colors, fonts } = spec.brand
+  const unit = spec.unit
   const grow = Remotion.spring({
-    frame, fps, delay: toFrame(props.atMs, fps), durationInFrames: 18, config: { damping: 200 },
+    frame, fps, delay: toFrame(spec.atMs, fps), durationInFrames: 18, config: { damping: 200 },
   })
   const noted = Remotion.spring({
-    frame, fps, delay: toFrame(props.noteAtMs, fps), config: { damping: 12, stiffness: 180 },
+    frame, fps, delay: toFrame(spec.noteAtMs, fps), config: { damping: 12, stiffness: 180 },
   })
   const column = { flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center' }
   return (
-    <div key={props.point.x} style={{ ...column, justifyContent: 'flex-end' }}>
-      {props.note ? (
+    <div key={spec.point.x} style={{ ...column, justifyContent: 'flex-end' }}>
+      {spec.note ? (
         <div
           style={{
             fontFamily: fonts.title, fontSize: 34 * unit, marginBottom: 10 * unit,
@@ -219,25 +219,25 @@ function bar(frame, fps, props) {
             transform: 'scale(' + (0.8 + 0.2 * noted) + ')',
           }}
         >
-          {props.note}
+          {spec.note}
         </div>
       ) : null}
       <div
         style={{
           fontFamily: fonts.numbers, fontSize: 40 * unit, marginBottom: 10 * unit,
-          color: props.color, opacity: grow,
+          color: spec.color, opacity: grow,
         }}
       >
-        {String(props.point.y)}
+        {String(spec.point.y)}
       </div>
       <div
         style={{
-          width: '60%', height: props.share * grow * props.plot,
-          borderRadius: 6 * unit, backgroundColor: props.color,
+          width: '60%', height: spec.share * grow * spec.plot,
+          borderRadius: 6 * unit, backgroundColor: spec.color,
         }}
       />
       <div style={{ fontFamily: fonts.body, fontSize: 30 * unit, color: colors.textSecondary }}>
-        {props.point.x}
+        {spec.point.x}
       </div>
     </div>
   )
@@ -309,18 +309,22 @@ Answer with JSON only:
 {"title": "...", "facts": [{"text": "...", "claim": 3}], "source": "..."}
 - "title": the slot card's name for the graphic, one line of at most ${GRAPHIC_TITLE_MAX} characters.
 - "facts": every number and every quoted phrase the graphic shows, each with the NUMBER
-  of the claim it comes from. A year is a number.
+  of the claim it comes from. A year is a number. At most 40 entries: more is refused, not
+  cut. A chart's digits read off props.data need no entry.
 - "source": the component, at most ${GRAPHIC_SOURCE_MAX} characters, as one JSON string. Escape
   its double quotes and line breaks as JSON requires.
 
 The sandbox your code runs in:
 - Declare function Graphic(props) at the top level; helper functions and constants
-  beside it are fine. A helper is a plain function you call directly, row(label, value),
-  never a React component rendered with createElement or JSX: the sandbox rebuilds the
-  outer function every frame, so a component declared inside it would remount its subtree
-  on every frame. Write no import and no export: the sandbox runs your code as the
+  beside it are fine. Write no import and no export: the sandbox runs your code as the
   body of a function of (React, Remotion, props) and returns Graphic. JSX compiles to
-  React.createElement.
+  React.createElement. Call Remotion.useCurrentFrame(), Remotion.useVideoConfig() and
+  React.useMemo only at the top of Graphic, never inside a helper or a condition; hand a
+  helper the frame and fps as arguments, as both examples do. A helper is a plain
+  function you call directly, row(label, value), never a React component rendered with
+  createElement or JSX: that outer function is parsed once and run again for every frame,
+  so a component declared inside it is a new component on each run and would remount its
+  subtree on every frame.
 - React: React itself, for elements, React.Fragment and React.useMemo.
 - Remotion.useCurrentFrame(): the frame, from 0 at the slot's start, 30 to the second.
 - Remotion.useVideoConfig(): {width, height, fps, durationInFrames}; the frame is 1920 by
@@ -351,7 +355,8 @@ The sandbox your code runs in:
   annotations?: [{atX, text}]}. Absent otherwise.
 Never write import, require, window, document, fetch, setTimeout, setInterval,
 requestAnimationFrame, Date, Math.random, eval, Function, globalThis, process, useState,
-useEffect or useLayoutEffect, a # colour, or rgb(), rgba() or hsl(). A scan refuses them.
+useEffect or useLayoutEffect, React.Suspense, React.lazy, a # colour, or rgb(), rgba(),
+hsl() or hsla(); and assign to nothing under React or Remotion. A scan refuses them.
 
 The rules. Each one is checked, and a graphic that breaks one is refused:
 1. Facts. Every number on screen comes from a claim, and its digits appear in that
@@ -414,10 +419,9 @@ Example 2, a chart slot. The slot is 7.2 s; "2016" is said at 1.0 s, "2017" at 2
 "2018" at 3.0 s and "2019" at 4.2 s. Its data is
 ${JSON.stringify(GRAPHIC_EXAMPLE_CHART_DATA)}
 Claims 5 to 8 hold the four years' figures. The answer is {"title": "Trustee cash, year
-by year", "facts": [{"text": "2016", "claim": 5}, {"text": "0.3", "claim": 5}, {"text":
-"2017", "claim": 6}, {"text": "0.6", "claim": 6}, {"text": "2018", "claim": 7}, {"text":
-"1.1", "claim": 7}, {"text": "2019", "claim": 8}, {"text": "1.9", "claim": 8}], "source":
-this component as a JSON string}:
+by year", "facts": [{"text": "2019", "claim": 8}, {"text": "1.9", "claim": 8}], "source":
+this component as a JSON string}. The facts cite the point the story lands on; the other
+points' digits come off props.data and need no entry:
 
 ${GRAPHIC_EXAMPLE_CHART}`
 
