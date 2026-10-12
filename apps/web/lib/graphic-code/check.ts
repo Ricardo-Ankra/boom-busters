@@ -1,4 +1,4 @@
-import { graphicBrand } from '@boom-busters/compositions/graphic-code'
+import { graphicBrand } from '@boom-busters/compositions/graphic-code-pure'
 import {
   codeLogoLibrary,
   DEFAULT_SETTINGS,

@@ -1,8 +1,8 @@
-import { withAlpha } from '@boom-busters/compositions/graphic-code'
-import type { GraphicScope } from '@boom-busters/compositions/graphic-code'
+import { withAlpha } from '@boom-busters/compositions/graphic-code-pure'
+import type { GraphicScope } from '@boom-busters/compositions/graphic-code-pure'
 import type * as ReactModule from 'react'
 import type { CSSProperties, ReactNode } from 'react'
-import { Easing, interpolate, spring } from 'remotion'
+import type { Easing, interpolate, spring } from 'remotion'
 
 /**
  * The one-frame shim of Remotion's side of the sandbox (decision 295), shared
@@ -15,9 +15,14 @@ import { Easing, interpolate, spring } from 'remotion'
  * It is a factory over the React it is given, with nothing React-shaped at
  * module level: the Inngest route is bundled with the `react-server`
  * condition, whose React has no `createContext`, so the dry run hands it the
- * plain Node build it loads at run time, and the still hands it the browser's.
+ * plain Node builds it loads at run time, and the still hands it the browser's.
+ * Remotion's own functions come the same way, for the same reason: this file
+ * imports `remotion` for its types only.
  */
-export function makeOneFrame(React: typeof ReactModule) {
+export function makeOneFrame(
+  React: typeof ReactModule,
+  remotion: { interpolate: typeof interpolate; spring: typeof spring; Easing: typeof Easing },
+) {
   /** The frame `useCurrentFrame` reads: the held frame, or a `Sequence`'s, counted from its start. */
   const FrameContext = React.createContext(0)
 
@@ -76,9 +81,9 @@ export function makeOneFrame(React: typeof ReactModule) {
     return {
       useCurrentFrame: () => React.useContext(FrameContext),
       useVideoConfig: () => config,
-      interpolate,
-      spring,
-      Easing,
+      interpolate: remotion.interpolate,
+      spring: remotion.spring,
+      Easing: remotion.Easing,
       Sequence,
       AbsoluteFill,
       Img,

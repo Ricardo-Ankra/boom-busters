@@ -12,10 +12,11 @@ import { DEFAULT_SETTINGS, resolveBrandKit } from '@boom-busters/schemas'
 import type { BrandKitStored, GraphicCode, GraphicCodePayload } from '@boom-busters/schemas'
 import { MASTER_FPS } from '@boom-busters/timeline'
 import * as React from 'react'
+import { Easing, interpolate, spring } from 'remotion'
 import { makeOneFrame } from '@/lib/graphic-code/one-frame'
 import { codePayloadFor, type CodeLogos } from './graphic-playback'
 
-const { FrameContext, oneFrameScope } = makeOneFrame(React)
+const { FrameContext, oneFrameScope } = makeOneFrame(React, { interpolate, spring, Easing })
 
 /**
  * The board's still of a graphic or chart the designer wrote as code

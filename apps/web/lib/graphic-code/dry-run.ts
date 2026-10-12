@@ -1,31 +1,57 @@
 import { createRequire } from 'node:module'
 import vm from 'node:vm'
-import { graphicFunctionBody, safeInsets } from '@boom-busters/compositions/graphic-code'
+import { graphicFunctionBody, safeInsets } from '@boom-busters/compositions/graphic-code-pure'
 import type {
   GraphicComponent,
   GraphicProps,
   GraphicScope,
-} from '@boom-busters/compositions/graphic-code'
+} from '@boom-busters/compositions/graphic-code-pure'
 import { GRAPHIC_STILL_MAX_MS } from '@boom-busters/schemas'
 import type * as ReactModule from 'react'
 import type * as ReactDomServer from 'react-dom/server'
+import type * as RemotionModule from 'remotion'
 import { makeOneFrame } from './one-frame'
 
 // Next bundles the Inngest route with the `react-server` condition, under
-// which `react-dom/server` throws on import and React has no `createContext`
-// (ruling 21). A require at run time resolves the plain Node builds instead,
-// and the one-frame shim is built over them rather than over the bundle's.
-// Turbopack follows `createRequire` and a constant specifier and bundles the
-// target again, so the specifiers are built at run time and marked
-// `turbopackIgnore`, which leaves a real Node `require`.
+// which `react-dom/server` throws on import, React has no `createContext`
+// and Remotion refuses to load (ruling 21). So none of the three is imported:
+// a require at run time resolves the plain Node builds instead, and the
+// one-frame shim is built over them rather than over the bundle's.
+// Turbopack and webpack follow `createRequire` and a constant specifier and
+// bundle the target again, so the specifiers are built at run time and marked
+// `turbopackIgnore` and `webpackIgnore`, which leaves a real Node `require`.
+// `outputFileTracingIncludes` in next.config.ts ships the files, which the
+// trace cannot see.
+//
+// Loaded on the first dry run, not at module load: a module that is missing
+// on the host then costs one design its check, not the whole Inngest route.
 const nodeRequire = createRequire(import.meta.url)
-const plainReact = ['re', 'act'].join('')
-const plainReactDomServer = ['react-dom', 'server'].join('/')
-const React = nodeRequire(/* turbopackIgnore: true */ plainReact) as typeof ReactModule
-const { renderToStaticMarkup } = nodeRequire(
-  /* turbopackIgnore: true */ plainReactDomServer,
-) as typeof ReactDomServer
-const { FrameContext, oneFrameScope } = makeOneFrame(React)
+const plainModule = (...parts: string[]): string => parts.join('')
+
+interface DryRunRuntime {
+  React: typeof ReactModule
+  renderToStaticMarkup: typeof ReactDomServer.renderToStaticMarkup
+  FrameContext: ReturnType<typeof makeOneFrame>['FrameContext']
+  oneFrameScope: ReturnType<typeof makeOneFrame>['oneFrameScope']
+}
+
+let runtime: DryRunRuntime | undefined
+
+function loadRuntime(): DryRunRuntime {
+  if (runtime !== undefined) return runtime
+  const React = nodeRequire(
+    /* turbopackIgnore: true */ /* webpackIgnore: true */ plainModule('re', 'act'),
+  ) as typeof ReactModule
+  const { renderToStaticMarkup } = nodeRequire(
+    /* turbopackIgnore: true */ /* webpackIgnore: true */ plainModule('react-dom', '/server'),
+  ) as typeof ReactDomServer
+  const remotion = nodeRequire(
+    /* turbopackIgnore: true */ /* webpackIgnore: true */ plainModule('remo', 'tion'),
+  ) as typeof RemotionModule
+  const { FrameContext, oneFrameScope } = makeOneFrame(React, remotion)
+  runtime = { React, renderToStaticMarkup, FrameContext, oneFrameScope }
+  return runtime
+}
 
 /**
  * The dry run (decision 295): the designer's compiled component rendered to
@@ -77,7 +103,11 @@ type FrameSize = (typeof FRAME_SIZES)[number]
 
 type Sample = { atMs: number; markup: string }
 type Run = { samples: Sample[]; failure: string | null }
-type GraphicFactory = (react: typeof React, scope: GraphicScope, props: GraphicProps) => unknown
+type GraphicFactory = (
+  react: typeof ReactModule,
+  scope: GraphicScope,
+  props: GraphicProps,
+) => unknown
 type Side = 'top' | 'right' | 'bottom' | 'left'
 type Placement = { label: string; offsets: Partial<Record<Side, number>> }
 
@@ -254,6 +284,7 @@ function markupIssue(samples: readonly Sample[], size: FrameSize): string | null
 function runFrameSize(
   input: DryRunInput,
   size: FrameSize,
+  { React, renderToStaticMarkup, FrameContext, oneFrameScope }: DryRunRuntime,
 ): { issue: string | null; samples: Sample[] } {
   const durationInFrames = Math.max(1, Math.round((input.durationMs * GRAPHIC_FPS) / 1000))
   const props: GraphicProps = { ...input.props, safeArea: safeInsets(size) }
@@ -332,9 +363,10 @@ function runFrameSize(
 
 /** Landscape, then portrait; the first issue found stops the run. */
 export function dryRunGraphic(input: DryRunInput): DryRunResult {
+  const loaded = loadRuntime()
   let textSamples: string[] = []
   for (const size of FRAME_SIZES) {
-    const { issue, samples } = runFrameSize(input, size)
+    const { issue, samples } = runFrameSize(input, size, loaded)
     if (size.orientation === 'landscape') {
       textSamples = samples.map((sample) => visibleText(sample.markup))
     }
