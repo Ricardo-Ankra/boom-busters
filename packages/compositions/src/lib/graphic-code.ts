@@ -124,6 +124,8 @@ export function remotionScope(): GraphicScope {
     useCurrentFrame,
     useVideoConfig,
     interpolate,
+    // Kept for designs stored before 2026-10-12; the prompt no longer offers it
+    // and the web app's scan refuses it in a new design.
     spring,
     Easing: frozenEasing(Easing),
     Sequence,

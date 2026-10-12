@@ -7434,3 +7434,25 @@ boom-busters-broker`; merge and deploy to Vercel, then `PUT
      counts, against about $0.03 before); the owner decides from it
      whether the route stays on Opus.
      The number 295 is checked against `origin/master` at the merge.
+     Follow-up (2026-10-12, owner: the spring entrances bounce): springs
+     leave the sandbox. The prompt no longer lists `Remotion.spring` and
+     prescribes one vocabulary: every entrance an eased `interpolate`
+     (`Easing.out(Easing.poly(4))`, which is the quart curve: Remotion
+     has no `Easing.quart`), a fade with a 16 to 24 px rise, a clip-path
+     wipe, a 0.96 to 1 scale with the fade, words 60 to 90 ms apart, bars
+     drawn on over 500 to 800 ms, moves in and out over 600 to 1200 ms,
+     nothing past its mark. The scan refuses `spring` (as
+     `Remotion.spring`, a bare call or a destructure) and `Easing.elastic`,
+     `Easing.bounce`, `Easing.back` and `Easing.spring`, each with a
+     sentence the designer can act on. Both worked examples and the house
+     fixture (`GRAPHIC_CODE_SOURCE` and its providers copy) are rewritten
+     on `interpolate`; the count-up now eases out over the same first
+     second. The `GraphicCodeWide` and `GraphicCodeTall` goldens were
+     regenerated and came out pixel-identical, since the frame they pin
+     is after the count settles. Decision: the runtime scope
+     (`remotionScope()` and `makeOneFrame`) keeps `spring`, so a design
+     stored before 2026-10-12 that calls `Remotion.spring` still renders
+     on Lambda and the board instead of falling to its title card; only
+     the prompt's contract and the scan for new designs drop it.
+     Shipping: a Vercel deploy, then `PUT /api/inngest`. No Remotion or
+     broker deploy: the runtime shape on Lambda is unchanged.

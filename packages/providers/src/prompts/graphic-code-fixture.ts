@@ -24,12 +24,10 @@ export const GRAPHIC_CODE_FIXTURE_SOURCE = `function Graphic(props) {
   // The title fades in; the figure counts up to $4bn over the first second.
   const titleIn = Remotion.interpolate(frame, [0, 12], [0, 1], clamp)
   const landAt = Math.min(9, Math.max(0, last - video.fps))
-  const count = Remotion.spring({
-    frame: frame,
-    fps: video.fps,
-    delay: landAt,
-    durationInFrames: video.fps,
-    config: { damping: 200 },
+  const count = Remotion.interpolate(frame, [landAt, landAt + video.fps], [0, 1], {
+    easing: Remotion.Easing.out(Remotion.Easing.cubic),
+    extrapolateLeft: 'clamp',
+    extrapolateRight: 'clamp',
   })
   const figure = '$' + Math.round(count * 40) / 10 + 'bn'
 

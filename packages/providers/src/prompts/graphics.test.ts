@@ -91,7 +91,6 @@ describe('the designer prompt (decision 295)', () => {
       'Remotion.useCurrentFrame()',
       'Remotion.useVideoConfig()',
       'Remotion.interpolate(',
-      'Remotion.spring(',
       'Remotion.Easing',
       'Remotion.Sequence',
       'Remotion.AbsoluteFill',
@@ -200,12 +199,29 @@ describe('the designer prompt (decision 295)', () => {
   it('teaches the craft, and carries none of the old grid', () => {
     expect(rules).toContain('Kinetic type, not paragraphs')
     expect(rules).toContain('One dominant idea with secondary detail')
-    expect(rules).toContain('A spring or an overshoot where the number is the story')
+    expect(rules).not.toContain('A spring or an overshoot where the number is the story')
     expect(rules).toContain('An ending that holds rather than vanishes.')
     expect(rules).toContain('Portrait is a first-class frame, not a squeeze')
     expect(system).not.toContain('12 by 12 grid')
     expect(system).not.toContain('portraitCell')
     expect(system).not.toContain('"kind": "figure"')
+  })
+
+  it('offers no spring and prescribes the eased, no-overshoot entrance vocabulary (follow-up, 2026-10-12)', () => {
+    expect(rules).not.toContain('Remotion.spring(')
+    expect(rules).toContain(
+      "Entrances are eased interpolations that settle at their mark, never a spring and never an overshoot: Remotion.interpolate(frame, [from, to], [0, 1], { easing: Remotion.Easing.out(Remotion.Easing.poly(4)), extrapolateRight: 'clamp' }).",
+    )
+    expect(rules).toContain(
+      'a fade with a 16 to 24 px rise over 400 to 500 ms for text and figures; a wipe (clip-path) over 400 to 600 ms for titles and rules; a scale from 0.96 to 1 with the fade for a figure, never from 0; words staggered 60 to 90 ms apart on the narration; bars and lines drawn on over 500 to 800 ms; a count-up, linear or eased, over about a second; moves and the camera easing in and out over 600 to 1200 ms. Nothing passes its mark, nothing spins, and a beat gets one kind of entrance.',
+    )
+    expect(rules).toContain(
+      'It refuses spring and Easing.elastic, Easing.bounce and Easing.back as well',
+    )
+    for (const example of [GRAPHIC_EXAMPLE_TYPE, GRAPHIC_EXAMPLE_CHART]) {
+      expect(example).not.toContain('spring')
+      expect(example).toContain('Remotion.Easing.out(Remotion.Easing.poly(4))')
+    }
   })
 
   it('shows the two worked examples whole, written only against the sandbox', () => {

@@ -72,8 +72,9 @@ export interface GraphicDesignInput {
  * directly, as the prompt tells the model to write it.
  */
 export const GRAPHIC_EXAMPLE_TYPE = `// Kinetic type: the line builds word by word as it is spoken, the figure
-// springs in on "1.9 billion", "never existed" strikes it through, and the
-// finished frame holds to the end.
+// eases in on "1.9 billion", "never existed" strikes it through, and the
+// finished frame holds to the end. Every entrance is an eased interpolation
+// that settles at its mark and never passes it.
 const LINE_UNTIL_MS = 2400
 const FIGURE_AT_MS = 2600
 const CLOSING_AT_MS = 4400
@@ -83,12 +84,19 @@ function toFrame(ms, fps) {
   return Math.round((ms / 1000) * fps)
 }
 
+// A helper, called directly: 0 to 1 over lengthMs from atMs, easing out and holding at 1.
+function settle(frame, fps, atMs, lengthMs) {
+  return Remotion.interpolate(frame, [toFrame(atMs, fps), toFrame(atMs + lengthMs, fps)], [0, 1], {
+    easing: Remotion.Easing.out(Remotion.Easing.poly(4)),
+    extrapolateLeft: 'clamp',
+    extrapolateRight: 'clamp',
+  })
+}
+
 // A helper, called directly: one word of the line, entering as it is spoken.
 function wordSpan(word, frame, fps) {
-  const enter = Remotion.spring({
-    frame, fps, delay: toFrame(word.atMs, fps), config: { damping: 20, stiffness: 200 },
-  })
-  const rise = 'translateY(' + (1 - enter) * 0.4 + 'em)'
+  const enter = settle(frame, fps, word.atMs, 450)
+  const rise = 'translateY(' + (1 - enter) * 0.3 + 'em)'
   return (
     <span
       key={word.atMs}
@@ -110,10 +118,8 @@ function Graphic(props) {
 
   // The words said before the figure, each entering as it is spoken.
   const line = props.words.filter((word) => word.atMs < LINE_UNTIL_MS)
-  // The figure is the story, so it lands with an overshoot.
-  const pop = Remotion.spring({
-    frame, fps, delay: toFrame(FIGURE_AT_MS, fps), config: { damping: 9, stiffness: 160 },
-  })
+  // The figure is the story: it fades in from 0.96 and settles at 1, never past it.
+  const pop = settle(frame, fps, FIGURE_AT_MS, 500)
   const closing = Remotion.interpolate(
     frame, [toFrame(CLOSING_AT_MS, fps), toFrame(CLOSING_AT_MS + 400, fps)], [0, 1], clamp,
   )
@@ -142,7 +148,7 @@ function Graphic(props) {
       <div
         style={{
           position: 'relative', fontFamily: fonts.numbers, fontSize: 220 * unit, lineHeight: 1,
-          color: colors.accent, transform: 'scale(' + pop + ')',
+          color: colors.accent, opacity: pop, transform: 'scale(' + (0.96 + 0.04 * pop) + ')',
           transformOrigin: portrait ? 'center' : 'left center',
         }}
       >
@@ -198,16 +204,21 @@ function spokenAt(point, index, words) {
   return said ? said.atMs : 600 + index * 700
 }
 
+// A helper, called directly: 0 to 1 over lengthMs from atMs, easing out and holding at 1.
+function settle(frame, fps, atMs, lengthMs) {
+  return Remotion.interpolate(frame, [toFrame(atMs, fps), toFrame(atMs + lengthMs, fps)], [0, 1], {
+    easing: Remotion.Easing.out(Remotion.Easing.poly(4)),
+    extrapolateLeft: 'clamp',
+    extrapolateRight: 'clamp',
+  })
+}
+
 // A helper, called directly: one bar with its value and, on the last, its note.
 function bar(frame, fps, spec) {
   const { colors, fonts } = spec.brand
   const unit = spec.unit
-  const grow = Remotion.spring({
-    frame, fps, delay: toFrame(spec.atMs, fps), durationInFrames: 18, config: { damping: 200 },
-  })
-  const noted = Remotion.spring({
-    frame, fps, delay: toFrame(spec.noteAtMs, fps), config: { damping: 12, stiffness: 180 },
-  })
+  const grow = settle(frame, fps, spec.atMs, 700)
+  const noted = settle(frame, fps, spec.noteAtMs, 450)
   const column = { flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center' }
   return (
     <div key={spec.point.x} style={{ ...column, justifyContent: 'flex-end' }}>
@@ -216,7 +227,7 @@ function bar(frame, fps, spec) {
           style={{
             fontFamily: fonts.title, fontSize: 34 * unit, marginBottom: 10 * unit,
             color: colors.semantic.collapse, opacity: noted,
-            transform: 'scale(' + (0.8 + 0.2 * noted) + ')',
+            transform: 'translateY(' + (1 - noted) * 16 * unit + 'px)',
           }}
         >
           {spec.note}
@@ -255,7 +266,11 @@ function Graphic(props) {
   const lands = series.points.map((point, index) => spokenAt(point, index, props.words))
   const last = series.points.length - 1
   const note = (props.data.annotations || [])[0]
-  const titleIn = Remotion.interpolate(frame, [0, 12], [0, 1], { extrapolateRight: 'clamp' })
+  // The title fades in over 500 ms, easing in and out.
+  const titleIn = Remotion.interpolate(frame, [0, 15], [0, 1], {
+    easing: Remotion.Easing.inOut(Remotion.Easing.cubic),
+    extrapolateRight: 'clamp',
+  })
   const align = portrait ? 'center' : 'left'
 
   return (
@@ -333,10 +348,9 @@ The sandbox your code runs in:
   differ from the length you design for.
 - Remotion.interpolate(value, inputRange, outputRange, {easing, extrapolateLeft,
   extrapolateRight}): inputRange strictly increasing; "clamp" holds the ends.
-- Remotion.spring({frame, fps, delay, durationInFrames, config: {damping, stiffness,
-  mass}}): 0 to 1, overshooting when damping is low.
 - Remotion.Easing: Remotion's easing functions, such as
-  Remotion.Easing.out(Remotion.Easing.cubic) and Remotion.Easing.bezier(0.2, 0, 0, 1).
+  Remotion.Easing.out(Remotion.Easing.poly(4)), Remotion.Easing.inOut(Remotion.Easing.cubic)
+  and Remotion.Easing.bezier(0.2, 0, 0, 1).
 - Remotion.Sequence {from, durationInFrames}: its children show only inside that window,
   and inside it useCurrentFrame() counts from 0. A Sequence's durationInFrames is at
   least 1 and its from a finite number, so wrap a length worked out from the words in
@@ -367,6 +381,8 @@ navigator, XMLHttpRequest, WebSocket, EventSource, localStorage, sessionStorage,
 indexedDB, postMessage, importScripts, Worker and dangerouslySetInnerHTML; top, parent,
 frames, opener and location read or called as the browser's (a style's top is fine); and
 a script, iframe, object, embed, link, style, meta, base or form element.
+It refuses spring and Easing.elastic, Easing.bounce and Easing.back as well: they overshoot,
+and the house settles without a bounce.
 Format a number by hand ("1.9", "4,000,000"), never with toLocaleString or Intl: those
 follow the viewer's locale, so the board and the film would show different figures.
 Motion comes from the frame alone: no CSS transition, animation or @keyframes, which the
@@ -406,9 +422,15 @@ Craft:
 - One dominant idea with secondary detail: one thing is biggest, and the rest supports it.
 - Motion keyed to the spoken words: each new thing said gets its own change, whether an
   entrance, a highlight, a bar growing or a line drawing across.
-- A spring or an overshoot where the number is the story; ease everything else
-  (Remotion.Easing.out(Remotion.Easing.cubic) for an arrival). Stagger related pieces a
-  few frames apart rather than landing them together.
+- Entrances are eased interpolations that settle at their mark, never a spring and never
+  an overshoot: Remotion.interpolate(frame, [from, to], [0, 1], { easing:
+  Remotion.Easing.out(Remotion.Easing.poly(4)), extrapolateRight: 'clamp' }). The house
+  vocabulary: a fade with a 16 to 24 px rise over 400 to 500 ms for text and figures; a
+  wipe (clip-path) over 400 to 600 ms for titles and rules; a scale from 0.96 to 1 with the
+  fade for a figure, never from 0; words staggered 60 to 90 ms apart on the narration; bars
+  and lines drawn on over 500 to 800 ms; a count-up, linear or eased, over about a second;
+  moves and the camera easing in and out over 600 to 1200 ms. Nothing passes its mark,
+  nothing spins, and a beat gets one kind of entrance.
 - An ending that holds rather than vanishes.
 - Portrait is a first-class frame, not a squeeze: stack what sits side by side, and size
   type from Math.min(width, height).

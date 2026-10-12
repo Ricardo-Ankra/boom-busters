@@ -149,6 +149,17 @@ const BANNED_ELEMENT =
 const ASSIGNS_TO_SANDBOX =
   /\b(Remotion|React)((?:\s*\.\s*[\w$]+)+)\s*(?:[-+*/%&|^]|\*\*|<<|>>>?|&&|\|\||\?\?)?=(?![=>])/
 
+/**
+ * `spring`, in any of its shapes: `Remotion.spring`, a bare `spring(` call, or
+ * a destructure of it from `Remotion`. Refused for NEW designs (the owner's
+ * ruling of 2026-10-12: no bouncy entrances); the runtime scope keeps
+ * `spring` for designs stored before 2026-10-12, so those still render.
+ */
+const USES_SPRING =
+  /\bRemotion\s*\.\s*spring\b|(?<![\w$.])spring\s*\(|\{[^}]*\bspring\b[^}]*\}\s*=\s*Remotion\b/
+/** The easings that pass their mark and come back. */
+const OVERSHOOTING_EASING = /\bEasing\s*\.\s*(elastic|bounce|back|spring)\b/
+
 /** A colour-length hex literal: #rgb, #rgba, #rrggbb or #rrggbbaa. */
 const HEX_COLOUR = /#(?:[0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{3,4})\b/
 const COLOUR_FUNCTION = /\b(rgba?|hsla?)\s*\(/i
@@ -180,6 +191,13 @@ export function scanGraphicSource(source: string, compiled: string): string | nu
   if (assigned) {
     const member = /[\w$]+/.exec(assigned[2] ?? '')?.[0] ?? ''
     return `the code assigns to ${assigned[1]}.${member}, which the sandbox bans: the sandbox is read-only`
+  }
+  if (USES_SPRING.test(code)) {
+    return 'the code uses spring, which the sandbox no longer offers: an entrance eases to its mark with interpolate and Easing.out and never overshoots'
+  }
+  const overshoot = OVERSHOOTING_EASING.exec(code)
+  if (overshoot) {
+    return `the code uses Easing.${overshoot[1] ?? ''}, which overshoots: the house settles without a bounce`
   }
   for (const text of strings) {
     const hex = HEX_COLOUR.exec(text)
