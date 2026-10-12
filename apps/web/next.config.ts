@@ -32,8 +32,10 @@ const nextConfig: NextConfig = {
   ],
   // `sharp` is a native module, loaded only when a pasted image turns out to
   // be an AVIF (decision 266, lib/remote-image.ts). Bundling it would break
-  // the platform-specific binary, so Next leaves it where it is.
-  serverExternalPackages: ['postgres', 'sharp'],
+  // the platform-specific binary, so Next leaves it where it is. `esbuild`
+  // is the same kind of package: the graphics designer's compile check
+  // (decision 295, lib/graphic-code/compile.ts) runs its native binary.
+  serverExternalPackages: ['esbuild', 'postgres', 'sharp'],
   typedRoutes: true,
   // Next's floating dev-tools button is a 32px control that only exists in
   // dev. It fails the 40px hit-target audit the E2E suite runs over every
