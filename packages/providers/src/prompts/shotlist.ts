@@ -41,20 +41,20 @@ import type { LLMTaskRequest } from '../llm/types'
 
 /**
  * What a planned graphic is (decision 289): an intent and the claims it rests
- * on, never a design. The graphics designer composes the scene afterwards, so
- * the shot list and the retype prompt share these two pieces and cannot drift.
- * The shape has no leading bullet and the rules no leading dash, so each caller
- * places them in its own list.
+ * on, never a design. The graphics designer writes the graphic afterwards
+ * (as code since decision 295), so the shot list and the retype prompt share
+ * these two pieces and cannot drift. The shape has no leading bullet and the
+ * rules no leading dash, so each caller places them in its own list.
  */
 export const GRAPHIC_INTENT_SHAPE = `{"type": "graphic", "coversText", "description", "motion", "transition",
    "intent": what the graphic must get across, in one or two sentences,
    "intentRefs": [claim numbers the beat rests on]}`
 
-export const GRAPHIC_INTENT_RULES = `A "graphic" is for a beat that is one or two cited figures, a company's or a person's
-  mark, or a relationship between named things (a before and after, a comparison of two or
-  three amounts, three dated moments). It is never a chart with fewer points: a value moving
-  through time is a "chart". You do not design it: a designer composes it afterwards from
-  your "intent" (what the viewer must take away, not how it looks) and the claims you list in
+export const GRAPHIC_INTENT_RULES = `A "graphic" is for a beat a motion designer would build: a figure, a comparison, a
+  timeline of dated moments, a diagram of who did what to whom, or a kinetic restatement of
+  the narration's key phrase. It is never a chart with fewer points: a value moving through
+  time is a "chart". You do not design it: a designer writes it afterwards from your
+  "intent" (what the viewer must take away, not how it looks) and the claims you list in
   "intentRefs". "intentRefs" lists at most ${GRAPHIC_INTENT_REFS_MAX} claim numbers: the claims its figures or names
   come from, most important first. "intent" is at most ${GRAPHIC_INTENT_MAX} characters.`
 
