@@ -19,6 +19,7 @@ import {
   resolveMotion,
 } from './compile'
 import type { CompileInput, CompileSlot } from './compile'
+import type { GraphicCodePayload } from '@boom-busters/schemas'
 import { offsetCaptions, snapToScript } from './snap'
 
 const CHAPTER_ONE = '01HQ0000000000000000000CH1'
@@ -474,5 +475,102 @@ describe('resolveMotion', () => {
       },
     }
     expect(resolveMotion({ kind: 'static' }, chart)).toEqual({ kind: 'draw-on' })
+  })
+
+  /** A stored design as the assembly hands it over (decision 295). */
+  const CODE: Omit<GraphicCodePayload, 'kind'> = {
+    version: 1,
+    compiled: 'function Graphic(props) {\n  return null;\n}\n',
+    title: 'Raised in one round',
+    words: [{ text: 'four', atMs: 900 }],
+    durationMs: 6000,
+    logos: { 'Stability AI': { r2Key: 'boom-busters/logos/abc.png', width: 1200, height: 400 } },
+    claimIds: ['01HQ00000000000000000000A1'],
+  }
+
+  it('compiles a graphic carrying code to a graphic-code payload, whatever scene it also holds (decision 295)', () => {
+    const slot: CompileSlot = {
+      type: 'graphic',
+      startMs: 0,
+      durationMs: 6000,
+      transition: 'cut',
+      motion: { kind: 'kenburns', direction: 'in', speed: 'slow' },
+      coversText: 'It raised four billion dollars.',
+      // The scene a Redesign left beside the code: the code wins.
+      graphic: {
+        scene: {
+          elements: [
+            {
+              kind: 'text',
+              id: 't',
+              cell: { col: 0, row: 0, colSpan: 6, rowSpan: 2 },
+              content: 'Raised',
+              role: 'heading',
+              color: 'textPrimary',
+              align: 'start',
+              enter: { kind: 'fade', atMs: 0 },
+            },
+          ],
+        },
+        logos: {},
+        claimIds: [],
+      },
+      graphicCode: CODE,
+    }
+    const timeline = compileTimeline({ ...goldenInput(), slots: [slot] })
+    const compiled = timeline.slots[0]!
+    // The slot keeps its board type; only the payload says how it is drawn.
+    expect(compiled.type).toBe('graphic')
+    expect(compiled.payload).toEqual({ kind: 'graphic-code', ...CODE })
+    // The code animates itself: no Ken Burns on top of it.
+    expect(compiled.motion).toEqual({ kind: 'static' })
+    expect(canonicalTimelineIssues(timeline)).toEqual([])
+  })
+
+  it('compiles a chart carrying code to a graphic-code payload on a chart slot, its series as data (decision 295)', () => {
+    const series = [
+      {
+        label: 'Share price',
+        unit: 'EUR',
+        points: [
+          { x: '2020-06-17', y: 104.5 },
+          { x: '2020-06-26', y: 1.28 },
+        ],
+      },
+    ]
+    const slot: CompileSlot = {
+      ...still,
+      type: 'chart',
+      chart: {
+        chartKind: 'line',
+        series,
+        dataRefs: [CLAIM],
+        takeaway: 'The nine-day collapse.',
+        reveal: 'draw-on',
+      },
+      graphicCode: {
+        ...CODE,
+        logos: {},
+        claimIds: [CLAIM],
+        data: { series, takeaway: 'The nine-day collapse.' },
+      },
+    }
+    const timeline = compileTimeline({ ...goldenInput(), slots: [slot] })
+    const compiled = timeline.slots[0]!
+    expect(compiled.type).toBe('chart')
+    expect(compiled.payload).toMatchObject({
+      kind: 'graphic-code',
+      claimIds: [CLAIM],
+      data: { series, takeaway: 'The nine-day collapse.' },
+    })
+    // The draw-on belongs to the chart's own reveal, which this slot no longer plays.
+    expect(compiled.motion).toEqual({ kind: 'static' })
+  })
+
+  it('still compiles a chart without code to its own reveal', () => {
+    const timeline = compileTimeline(goldenInput())
+    const chart = timeline.slots.find((slot) => slot.type === 'chart')!
+    expect(chart.payload.kind).toBe('chart')
+    expect(chart.motion).toEqual({ kind: 'draw-on' })
   })
 })

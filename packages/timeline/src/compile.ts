@@ -8,6 +8,7 @@ import type {
   BrandKitTokens,
   Caption,
   ChartBrief,
+  GraphicCodePayload,
   GraphicScene,
   HeadlinePayload,
   MapBrief,
@@ -90,6 +91,14 @@ export interface CompileSlot {
     claimIds: string[]
   }
   /**
+   * A graphic or a chart the designer wrote as code (decision 295), embedded
+   * whole: the compiled component, the words it times itself to, the logo
+   * library's marks by title, the claims it cites and, for a chart, its
+   * series. Checked before `chart` and `graphic`: a brief that carries code
+   * plays the code, whatever older design it also holds.
+   */
+  graphicCode?: Omit<GraphicCodePayload, 'kind'>
+  /**
    * A real X post, embedded whole with its avatar and attached image already
    * resolved to storage keys (decision 284). Mirrors the headline card: the
    * card shows nothing a render six months from now could lose.
@@ -123,6 +132,8 @@ export const KENBURNS_INTENSITY = { slow: 0.06, medium: 0.1, fast: 0.16 } as con
  * needs per-image framing data the board does not collect yet).
  */
 export function resolveMotion(motion: MotionSpec, slot: CompileSlot): TimelineMotion {
+  // Code animates itself (decision 295); a chart's draw-on is its own reveal's.
+  if (slot.graphicCode) return { kind: 'static' }
   if (slot.chart) return { kind: slot.chart.reveal === 'draw-on' ? 'draw-on' : 'static' }
   if (slot.map) return { kind: 'static' } // AnimatedMap animates internally.
   if (slot.graphic) return { kind: 'static' }
@@ -261,6 +272,11 @@ export function compileTimeline(input: CompileInput): Timeline {
       durationMs: endMs - startMs,
       transition: slot.transition,
       motion,
+    }
+    // Before the chart and the scene: a brief with code plays the code
+    // (decision 295). The slot's own type passes through as it is.
+    if (slot.graphicCode) {
+      return { ...base, payload: { kind: 'graphic-code' as const, ...slot.graphicCode } }
     }
     if (slot.chart) {
       return { ...base, payload: { kind: 'chart' as const, ...slot.chart } }
