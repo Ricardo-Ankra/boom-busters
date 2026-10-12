@@ -1,0 +1,24 @@
+# What a CLI deploy (`vercel deploy`) leaves out of the upload. The Git
+# integration never reads this file; it builds from the commit. Without it
+# the CLI uploads every file under the repo that is not in node_modules or
+# .git, build outputs and caches included, and the Hobby plan allows 5,000
+# uploads a day (`api-upload-free`), which one attempt exhausted on
+# 2026-10-12. Deploy with `vercel deploy --prod --archive=tgz` as well, which
+# sends one archive instead of one request per file.
+.next
+.turbo
+.vercel
+.cache
+coverage
+test-results
+playwright-report
+live-graphic-runs
+.superpowers
+.agents
+.claude
+.impeccable
+docs
+*.log
+.env
+.env.*
+!.env.example
