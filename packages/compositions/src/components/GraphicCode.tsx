@@ -11,6 +11,7 @@ import {
   type GraphicProps,
 } from '../lib/graphic-code'
 import { frameScale, typeStyle } from './brand'
+import { GraphicBackdrop } from './GraphicBackdrop'
 
 /**
  * The designer's graphic (decision 295): the component the designer wrote,
@@ -58,16 +59,9 @@ export function GraphicCode({
   }
 
   return (
-    <AbsoluteFill style={{ backgroundColor: colors.background }}>
-      <div
-        style={{
-          position: 'absolute',
-          inset: 0,
-          background: `radial-gradient(90% 75% at 50% 44%, ${colors.surface} 0%, ${colors.background} 72%)`,
-        }}
-      />
+    <GraphicBackdrop colors={colors}>
       <AbsoluteFill>{content}</AbsoluteFill>
-    </AbsoluteFill>
+    </GraphicBackdrop>
   )
 }
 

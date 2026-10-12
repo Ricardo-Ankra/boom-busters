@@ -1,4 +1,4 @@
-import { AbsoluteFill, Img, useCurrentFrame, useVideoConfig } from 'remotion'
+import { Img, useCurrentFrame, useVideoConfig } from 'remotion'
 import type { CSSProperties } from 'react'
 import { barItemTimes, emphasisWindow } from '@boom-busters/schemas'
 import type { BrandKitTokens, GraphicElement, GraphicPayload } from '@boom-busters/schemas'
@@ -31,6 +31,7 @@ import {
 } from '../lib/graphic-motion'
 import { mediaUrl } from '../lib/motion'
 import { frameScale, typeStyle, withAlpha } from './brand'
+import { GraphicBackdrop } from './GraphicBackdrop'
 
 /**
  * A composed graphic (decision 268, Plan B). Every box and font size comes
@@ -125,14 +126,7 @@ export function GraphicCard({
   const { colors, typography } = brand
 
   return (
-    <AbsoluteFill style={{ backgroundColor: colors.background }}>
-      <div
-        style={{
-          position: 'absolute',
-          inset: 0,
-          background: `radial-gradient(90% 75% at 50% 44%, ${colors.surface} 0%, ${colors.background} 72%)`,
-        }}
-      />
+    <GraphicBackdrop colors={colors}>
       {/*
         The camera (decision 290) wraps the drift: it reframes the composition, and the
         drift keeps running inside it so the frame is never dead still.
@@ -413,6 +407,6 @@ export function GraphicCard({
           })}
         </div>
       </div>
-    </AbsoluteFill>
+    </GraphicBackdrop>
   )
 }
