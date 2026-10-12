@@ -305,17 +305,18 @@ describeDb('slot-rebriefer (mock mode)', () => {
     },
   }
 
-  it('redesigns a graphic from its intent with the steer (decision 289)', async () => {
+  it('redesigns a graphic from its intent with the steer (decisions 289, 295)', async () => {
     const graphicId = await seedSlot(designedGraphic)
     await setSlotRetype(db, graphicId, { state: 'rebriefing' })
     const { result } = await engine.execute({ events: rebriefEvent(graphicId, 'bigger') })
     expect(result).toMatchObject({ outcome: 'rebriefed' })
 
     const slot = await getShotSlot(db, graphicId)
-    const brief = slot?.brief as { intent: string; scene: { elements: { content?: string }[] } }
+    const brief = slot?.brief as { intent: string; code?: { title: string } }
     // A redesign keeps the intent; the mock designer titles a steered design with the steer.
     expect(brief.intent).toBe('The money is simply gone.')
-    expect(brief.scene.elements[0]?.content).toBe('[mock] Redesigned: bigger')
+    expect(brief.code?.title).toMatch(/^\[mock\]/)
+    expect(brief.code?.title).toContain('bigger')
     expect(slot?.retype).toBeNull()
   })
 

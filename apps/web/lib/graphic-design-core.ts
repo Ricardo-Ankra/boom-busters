@@ -9,37 +9,31 @@ import type { Database } from '@boom-busters/db'
 import {
   buildGraphicRequest,
   estimatedWords,
-  parseGraphicScene,
+  parseGraphicCode,
   wordsInSlot,
   type GraphicDesignInput,
   type LLMTaskRequest,
   type ScriptClaim,
 } from '@boom-busters/providers'
-import {
-  BudgetExceededError,
-  graphicIntentOf,
-  resolvePlannedScene,
-  sceneTimingIssue,
-  toPlannedScene,
-  ValidationError,
-} from '@boom-busters/schemas'
-import type {
-  GraphicBrief,
-  GraphicScene,
-  LogoIndex,
-  PlannedGraphicScene,
-} from '@boom-busters/schemas'
+import { BudgetExceededError, graphicIntentOf, ValidationError } from '@boom-busters/schemas'
+import type { ChartBrief, DesignableBrief, GraphicCode, LogoIndex } from '@boom-busters/schemas'
 import { NonRetriableError } from 'inngest'
 import { callForAnswer, type AnswerComplete } from '@/lib/answer'
+import { graphicCodeIssue } from '@/lib/graphic-code/check'
 import { timedParagraphs, type TimedParagraph } from '@/inngest/lib/shot-list'
 
 /**
- * The graphics designer's own logic (decision 289), with no database
- * connection, no ledgered model call and no `server-only` import of its own.
- * `graphic-design.ts` binds it to the app's `db` and `callLlm`; the live
- * harness (`scripts/live-graphic-test.ts`) binds it to a read-only connection
- * and a capped Anthropic call, so the harness measures exactly the attempts,
- * cut-off escalation, deadline and checks the pipeline runs.
+ * The graphics designer's own logic (decisions 289 and 295), with no
+ * database connection of its own, no ledgered model call and no
+ * `server-only` import: the model call and the connection are parameters.
+ * That keeps it testable against a stubbed call, with the attempts, the
+ * cut-off doubling, the deadline and the checks in one place.
+ * `graphic-design.ts` binds it to the app's `db` and `callLlm`.
+ *
+ * Since decision 295 the designer writes the graphic as code: one React
+ * component, which `graphicCodeIssue` scans, compiles, dry-runs and checks
+ * against the cited claims before it is stored as `code` on the brief. A
+ * chart is designed the same way, around its brief's own series.
  */
 
 export interface GraphicDesignContext {
@@ -57,24 +51,21 @@ export interface GraphicSlotTiming {
   durationMs: number
 }
 
-export type GraphicDesignResult = { ok: true; scene: GraphicScene } | { ok: false; issue: string }
+export type GraphicDesignResult = { ok: true; code: GraphicCode } | { ok: false; issue: string }
 
 /**
- * Whatever completes a request: the app's ledgered `callLlm`, or a harness's
- * capped call. `purpose` labels a retry in the ledger (decision 292).
+ * Whatever completes a request: the app's ledgered `callLlm`, or a test's
+ * stub. `purpose` labels a retry in the ledger (decision 292).
  */
 export type GraphicCompleteFn = (
   request: LLMTaskRequest,
   options: { signal?: AbortSignal; purpose?: string },
 ) => Promise<{ text: string; truncated?: boolean }>
 
-/**
- * The paragraphs a slot overlaps, and its words on the slot clock. Exported for
- * the live harness's still measure (decision 290).
- */
+/** The paragraphs a slot overlaps, and its words on the slot clock, as the prompt and the dry run read them. */
 export function slotNarration(
   context: GraphicDesignContext,
-  slot: GraphicSlotTiming & { brief: GraphicBrief },
+  slot: GraphicSlotTiming & { brief: DesignableBrief },
 ) {
   const end = slot.startMs + slot.durationMs
   const overlapping = context.paragraphs.filter(
@@ -93,16 +84,33 @@ export function slotNarration(
   }
 }
 
-/** Why a parsed scene cannot be stored, in the words the retry and the card read. */
-export function sceneIssue(
-  scene: PlannedGraphicScene,
+/** The slot's words as the code reads them, `props.words` (decision 295). */
+export function slotWords(
   context: GraphicDesignContext,
-  durationMs: number,
-): { scene: GraphicScene } | { issue: string } {
-  // Every timing rule (decision 290), stage 1's late entrance first.
-  const timing = sceneTimingIssue(scene, durationMs)
-  if (timing !== null) return { issue: timing }
-  return resolvePlannedScene(scene, context.claims, context.logos)
+  slot: GraphicSlotTiming & { brief: DesignableBrief },
+): { text: string; atMs: number }[] {
+  return slotNarration(context, slot).words.map((word) => ({
+    text: word.text,
+    atMs: word.offsetMs,
+  }))
+}
+
+/** What a chart's code reads as `props.data` (decision 295): its series, takeaway and annotations. */
+export function chartData(brief: ChartBrief): NonNullable<GraphicDesignInput['data']> {
+  return {
+    series: brief.series,
+    takeaway: brief.takeaway,
+    ...(brief.annotations !== undefined ? { annotations: brief.annotations } : {}),
+  }
+}
+
+/**
+ * A stored design as a redesign shows it to the designer (ruling 9): its
+ * source and title only. Its facts are not passed; the designer cites claims
+ * afresh from the numbered list, and the checks hold it to them.
+ */
+function currentDesign(code: GraphicCode): NonNullable<GraphicDesignInput['current']> {
+  return { source: code.source, title: code.title }
 }
 
 /**
@@ -125,44 +133,56 @@ class DesignEnded extends Error {
   }
 }
 
-/** The intent a slot is designed from, and its claim numbers into the prompt's claim list. */
+/**
+ * The intent a slot is designed from, and its claim numbers into the prompt's
+ * claim list. A chart's intent is its takeaway, resting on the claims its
+ * series come from (decision 295).
+ */
 export function slotIntent(
   context: GraphicDesignContext,
-  brief: GraphicBrief,
+  brief: DesignableBrief,
 ): { intent: string; intentRefs: number[] } {
   const claimIds = context.claims.map((claim) => claim.id)
-  const { intent, claimIds: intentClaimIds } = graphicIntentOf(brief)
+  const { intent, claimIds: intentClaimIds } =
+    brief.type === 'chart'
+      ? { intent: brief.takeaway, claimIds: brief.dataRefs }
+      : graphicIntentOf(brief)
   const intentRefs = intentClaimIds.map((id) => claimIds.indexOf(id) + 1).filter((n) => n > 0)
   return { intent, intentRefs }
 }
 
 /**
  * The whole real-model path: the attempts, the cut-off doubling, the
- * deadline and the checks. `complete` is the only thing that differs between
- * the app and the live harness; it is handed the deadline's abort signal.
+ * deadline and the checks. `complete` is injected, so the tests drive every
+ * branch without a model and the app hands it the ledgered `callLlm`; it is
+ * handed the deadline's abort signal.
  */
 export async function designGraphicWith(
   complete: GraphicCompleteFn,
   context: GraphicDesignContext,
-  slot: GraphicSlotTiming & { brief: GraphicBrief },
+  slot: GraphicSlotTiming & { brief: DesignableBrief },
   options: { guidance?: string; redesign?: boolean } = {},
 ): Promise<GraphicDesignResult> {
-  const claimIds = context.claims.map((claim) => claim.id)
-  const { intent, intentRefs } = slotIntent(context, slot.brief)
+  const { brief } = slot
+  const { intent, intentRefs } = slotIntent(context, brief)
+  const narration = slotNarration(context, slot)
+  // The same words the prompt lists, as the dry run hands them to the code.
+  const words = narration.words.map((word) => ({ text: word.text, atMs: word.offsetMs }))
 
   const base: GraphicDesignInput = {
     caseTitle: context.caseTitle,
     claims: context.claims,
     logos: context.logos.map((logo) => logo.title),
     chapterTitle: context.chapterTitle,
-    coversText: slot.brief.coversText,
-    ...slotNarration(context, slot),
+    coversText: brief.coversText,
+    ...narration,
     durationMs: slot.durationMs,
     intent,
     intentRefs,
-    ...(options.redesign && slot.brief.scene
-      ? { current: toPlannedScene(slot.brief.scene, claimIds) }
-      : {}),
+    ...(brief.type === 'chart' ? { data: chartData(brief) } : {}),
+    // A scene from before decision 295 is not shown: the designer writes code
+    // from the intent, and the scene stays on the brief untouched.
+    ...(options.redesign && brief.code ? { current: currentDesign(brief.code) } : {}),
     ...(options.guidance ? { guidance: options.guidance } : {}),
   }
 
@@ -177,17 +197,23 @@ export async function designGraphicWith(
   }
 
   try {
-    // At most two calls (decision 292): the designer's own checks refuse a
-    // scene inside the parse, so a refusal is retried once with its reason
-    // and a cut-off once at double the budget, then the design stops.
+    // At most two calls (decision 292): the checks refuse a design inside the
+    // parse (scan, compile, dry run, facts; decision 295), so a refusal is
+    // retried once with its reason and a cut-off once at double the budget,
+    // then the design stops. A trimmed title is reported through `note`
+    // (decision 293).
     const answer = await callForAnswer({
       request: buildGraphicRequest(base),
-      parse: (text) => {
-        const checked = sceneIssue(parseGraphicScene(text), context, slot.durationMs)
+      parse: (text, note) => {
+        const checked = graphicCodeIssue(parseGraphicCode(text, note), context, {
+          brief,
+          durationMs: slot.durationMs,
+          words,
+        })
         if ('issue' in checked) {
-          throw new ValidationError(checked.issue, { field: 'graphic scene' })
+          throw new ValidationError(checked.issue, { field: 'graphic code' })
         }
-        return checked.scene
+        return checked.code
       },
       complete: call,
       // The designer's request carries the reason before the producer's
@@ -195,7 +221,7 @@ export async function designGraphicWith(
       retryWithReason: (reason) => buildGraphicRequest({ ...base, rejection: reason }),
       cutOffIssue: CUT_OFF_ISSUE,
     })
-    return answer.ok ? { ok: true, scene: answer.value } : { ok: false, issue: answer.issue }
+    return answer.ok ? { ok: true, code: answer.value } : { ok: false, issue: answer.issue }
   } catch (error) {
     if (error instanceof DesignEnded) return { ok: false, issue: error.issue }
     // A budget stop parks the run whenever it comes. Anything else once the
@@ -209,8 +235,9 @@ export async function designGraphicWith(
 }
 
 /**
- * What a side job (Redesign, retype) needs to design one graphic, read from
- * `database`: the app's connection, or the live harness's read-only one.
+ * What a side job (Redesign, retype) needs to design one graphic or chart,
+ * read from the connection it is handed, so this module imports no
+ * `server-only` database of its own.
  */
 export async function loadGraphicContextFrom(
   database: Database,
@@ -236,6 +263,8 @@ export async function loadGraphicContextFrom(
       confidence: claim.confidence,
       sourceType: claim.sourceType,
     })),
+    // Each mark's recorded size, null when none was (Task 1, ruling 25): the
+    // dry run hands the code only the marks the render can size.
     logos: logos.map((row) => ({
       id: row.id,
       title: row.title ?? '',

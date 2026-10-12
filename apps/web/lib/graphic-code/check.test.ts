@@ -1,6 +1,11 @@
 // @vitest-environment node
 import { describe, expect, it } from 'vitest'
 import type { ChartBrief, GraphicBrief, PlannedGraphicCode } from '@boom-busters/schemas'
+import {
+  GRAPHIC_EXAMPLE_CHART,
+  GRAPHIC_EXAMPLE_CHART_DATA,
+  GRAPHIC_EXAMPLE_TYPE,
+} from '@boom-busters/providers'
 import type { GraphicDesignContext } from '@/lib/graphic-design-core'
 import { graphicCodeIssue } from './check'
 
@@ -227,5 +232,94 @@ describe('graphicCodeIssue (decision 295)', () => {
       { text: 'Acme', claim: 9 },
     ]
     expect(graphicCodeIssue(answer({ facts }), CONTEXT, slot(GRAPHIC))).toHaveProperty('issue')
+  })
+  it("passes both of the prompt's worked examples (decision 295)", () => {
+    const claimId = (n: number) => `01J${String(n).padStart(23, '0')}`
+    const years = GRAPHIC_EXAMPLE_CHART_DATA.series[0]!.points
+    const context: GraphicDesignContext = {
+      ...CONTEXT,
+      claims: [
+        {
+          id: claimId(1),
+          text: 'Wirecard was a payments company.',
+          sourceUrl: null,
+          confidence: 'high',
+        },
+        {
+          id: claimId(2),
+          text: 'Wirecard reported €1.9 billion in trustee accounts that auditors could not confirm existed.',
+          sourceUrl: null,
+          confidence: 'high',
+        },
+        { id: claimId(3), text: 'The auditors were EY.', sourceUrl: null, confidence: 'high' },
+        { id: claimId(4), text: 'The filings ran for years.', sourceUrl: null, confidence: 'high' },
+        ...years.map((point, i) => ({
+          id: claimId(5 + i),
+          text: `Trustee cash reported in ${point.x} was €${point.y} billion.`,
+          sourceUrl: null,
+          confidence: 'high' as const,
+        })),
+      ],
+    }
+
+    const typeBrief: GraphicBrief = {
+      ...GRAPHIC,
+      coversText: 'The auditors could not find 1.9 billion euros. It had never existed.',
+      intentClaimIds: [claimId(2)],
+    }
+    const typeWords = [
+      ['The', 0],
+      ['auditors', 300],
+      ['could', 900],
+      ['not', 1200],
+      ['find', 1500],
+      ['1.9', 2600],
+      ['billion', 3000],
+      ['euros.', 3400],
+      ['It', 4400],
+      ['had', 4600],
+      ['never', 5000],
+      ['existed.', 5400],
+    ].map(([text, atMs]) => ({ text: text as string, atMs: atMs as number }))
+    const type = graphicCodeIssue(
+      {
+        title: 'The missing €1.9bn',
+        facts: [{ text: '€1.9bn', claim: 2 }],
+        source: GRAPHIC_EXAMPLE_TYPE,
+      },
+      context,
+      { brief: typeBrief, durationMs: 7500, words: typeWords },
+    )
+    expect(type).not.toHaveProperty('issue')
+    expect(type).toHaveProperty('code')
+
+    const chartBrief: ChartBrief = {
+      ...CHART,
+      coversText: 'The cash grew every year.',
+      series: GRAPHIC_EXAMPLE_CHART_DATA.series,
+      annotations: GRAPHIC_EXAMPLE_CHART_DATA.annotations,
+      takeaway: GRAPHIC_EXAMPLE_CHART_DATA.takeaway,
+      dataRefs: years.map((_, i) => claimId(5 + i)),
+    }
+    const chartWords = [
+      { text: '2016', atMs: 1000 },
+      { text: '2017', atMs: 2000 },
+      { text: '2018', atMs: 3000 },
+      { text: '2019', atMs: 4200 },
+    ]
+    const chart = graphicCodeIssue(
+      {
+        title: 'Trustee cash, year by year',
+        facts: [
+          { text: '2019', claim: 8 },
+          { text: '1.9', claim: 8 },
+        ],
+        source: GRAPHIC_EXAMPLE_CHART,
+      },
+      context,
+      { brief: chartBrief, durationMs: 7200, words: chartWords },
+    )
+    expect(chart).not.toHaveProperty('issue')
+    expect(chart).toHaveProperty('code')
   })
 })

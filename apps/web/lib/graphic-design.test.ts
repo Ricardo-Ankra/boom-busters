@@ -1,5 +1,18 @@
+// @vitest-environment node
+
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { BudgetExceededError, GraphicBriefSchema, ValidationError } from '@boom-busters/schemas'
+import {
+  BudgetExceededError,
+  ChartBriefSchema,
+  GraphicBriefSchema,
+  ValidationError,
+} from '@boom-busters/schemas'
+import type {
+  ChartBrief,
+  GraphicBrief,
+  GraphicCode,
+  PlannedGraphicCode,
+} from '@boom-busters/schemas'
 import type * as Providers from '@boom-busters/providers'
 
 const callLlm = vi.fn()
@@ -10,6 +23,8 @@ vi.mock('@boom-busters/providers', async (importOriginal) => ({
   mockProvidersEnabled: () => mock,
 }))
 
+import { graphicCodeIssue } from './graphic-code/check'
+import { slotIntent } from './graphic-design-core'
 import {
   designGraphic,
   designGraphicWith,
@@ -37,33 +52,115 @@ const CONTEXT: GraphicDesignContext = {
   ],
   chapterTitle: 'The raise',
 }
-const BRIEF = {
-  type: 'graphic' as const,
+const BRIEF: GraphicBrief = {
+  type: 'graphic',
   coversText: 'Acme raised four billion.',
   description: 'The figure.',
-  motion: { kind: 'static' as const },
-  transition: 'cut' as const,
+  motion: { kind: 'static' },
+  transition: 'cut',
   intent: 'Four billion is the story.',
   intentClaimIds: [A],
 }
-const SLOT = { chapterId: 'c1', startMs: 0, durationMs: 6000, brief: BRIEF }
-const answer = (value: string, atMs = 900) => ({
-  text: JSON.stringify({
-    scene: {
-      elements: [
-        {
-          kind: 'figure',
-          id: 'f',
-          cell: { col: 0, row: 2, colSpan: 7, rowSpan: 4 },
-          value,
-          claimRef: 1,
-          color: 'accent',
-          enter: { kind: 'count', atMs },
-        },
+const CHART: ChartBrief = {
+  type: 'chart',
+  coversText: 'Acme raised four billion.',
+  description: 'The raise, drawn.',
+  motion: { kind: 'static' },
+  transition: 'cut',
+  chartKind: 'bar',
+  series: [
+    {
+      label: 'Raised',
+      unit: 'USD bn',
+      points: [
+        { x: '2023', y: 1 },
+        { x: '2024', y: 4 },
       ],
     },
-  }),
+  ],
+  dataRefs: [A],
+  takeaway: 'Four billion in a year.',
+  reveal: 'draw-on',
+}
+const SLOT = { chapterId: 'c1', startMs: 0, durationMs: 6000, brief: BRIEF }
+/** The slot's words as the code reads them: "four" at 0.9 s. */
+const WORDS = [{ text: 'four', atMs: 900 }]
+
+/**
+ * A title over a figure that lands as "four" is said, with a slow drift so no
+ * stretch of the slot is still. `value` is the figure on screen.
+ */
+const figureSource = (value: string) => `function Graphic(props) {
+  const frame = Remotion.useCurrentFrame()
+  const { durationInFrames } = Remotion.useVideoConfig()
+  const land = Remotion.interpolate(frame, [27, 42], [0, 1], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' })
+  const drift = Remotion.interpolate(frame, [0, durationInFrames], [1, 1.04])
+  return (
+    <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: props.brand.colors.background, transform: 'scale(' + drift + ')' }}>
+      <div style={{ color: props.brand.colors.textSecondary, fontFamily: props.brand.fonts.title, fontSize: 56 }}>Raised in one round</div>
+      <div style={{ opacity: land, color: props.brand.colors.accent, fontFamily: props.brand.fonts.numbers, fontSize: 220 }}>${value}</div>
+    </div>
+  )
+}`
+
+const planned = (value: string): PlannedGraphicCode => ({
+  source: figureSource(value),
+  title: 'Raised in one round',
+  facts: [{ text: '4 billion', claim: 1 }],
 })
+const answer = (value: string) => ({ text: JSON.stringify(planned(value)) })
+
+/** A component that throws once the reveal comes. */
+const THROWS: PlannedGraphicCode = {
+  source: `function Graphic(props) {
+  const frame = Remotion.useCurrentFrame()
+  if (frame >= 40) throw new Error('boom at the reveal')
+  return <div style={{ color: props.brand.colors.textPrimary }}>Raised</div>
+}`,
+  title: 'Raised',
+  facts: [],
+}
+
+/** A component esbuild cannot compile. */
+const BROKEN: PlannedGraphicCode = {
+  source: 'function Graphic(props) { return <div>Raised</ }',
+  title: 'Raised',
+  facts: [],
+}
+
+/** An answer cut off mid-JSON. */
+const HALF = { text: '{"source": "function Graphic(props) {', truncated: true }
+
+/**
+ * The refusal the checks give a design in this slot, worded as the checks
+ * word it: the retry and the stored issue carry exactly this.
+ */
+function issueOf(design: PlannedGraphicCode): string {
+  const checked = graphicCodeIssue(design, CONTEXT, {
+    brief: BRIEF,
+    durationMs: 6000,
+    words: WORDS,
+  })
+  if ('code' in checked) throw new Error('expected the checks to refuse this design')
+  return checked.issue
+}
+
+/** Every message one call sent, as one text, however the prompt splits it. */
+const sent = (call = 0) =>
+  (callLlm.mock.calls[call]![0].messages as { content: string }[])
+    .map((message) => message.content)
+    .join('\n\n')
+
+/** A stored design, for the redesign and `withDesign` tests. */
+const CODE: GraphicCode = {
+  version: 1,
+  source: 'function Graphic() { return null }',
+  compiled: 'function Graphic() {\n  return null;\n}\n',
+  title: 'Raised in one round',
+  facts: [{ text: '4 billion', claimId: A }],
+  words: WORDS,
+  durationMs: 6000,
+}
 
 beforeEach(() => {
   callLlm.mockReset()
@@ -77,21 +174,32 @@ afterEach(() => {
 const CUT_OFF = "the designer's answer was cut off at its length limit"
 const TOO_LONG = 'the designer took too long; press Redesign graphic to try again'
 
-describe('designGraphic (decision 289)', () => {
-  it('stores a scene that passes, with claim ids', async () => {
+describe('designGraphic (decisions 289, 295)', () => {
+  it('stores code that passes every check, compiled, its facts on claim ids and its words on the slot clock', async () => {
     callLlm.mockResolvedValueOnce(answer('$4bn'))
     const result = await designGraphic(CONTEXT, SLOT)
-    expect(result).toMatchObject({ ok: true, scene: { elements: [{ claimRef: A }] } })
-    expect(callLlm.mock.calls[0]![0].messages[1].content).toContain('0.9 s  four')
+    expect(result).toMatchObject({
+      ok: true,
+      code: {
+        version: 1,
+        source: figureSource('$4bn'),
+        title: 'Raised in one round',
+        facts: [{ text: '4 billion', claimId: A }],
+        words: WORDS,
+        durationMs: 6000,
+      },
+    })
+    if (!result.ok) throw new Error('unreachable')
+    // Plain JavaScript: the JSX is compiled away, so the sandbox builds it as it is.
+    expect(result.code.compiled).not.toContain('<div')
+    expect(sent()).toContain('four')
   })
 
   it('asks once more with the reason, and takes the second answer', async () => {
     callLlm.mockResolvedValueOnce(answer('$5bn')).mockResolvedValueOnce(answer('$4bn'))
     const result = await designGraphic(CONTEXT, SLOT)
     expect(result.ok).toBe(true)
-    expect(callLlm.mock.calls[1]![0].messages.at(-1).content).toContain(
-      'graphic showed a number the cited claim does not contain: $5bn against claim 1',
-    )
+    expect(callLlm.mock.calls[1]![0].messages.at(-1).content).toContain(issueOf(planned('$5bn')))
     expect(callLlm.mock.calls[1]![1]).toMatchObject({ purpose: 'retry: refused' })
   })
 
@@ -99,18 +207,17 @@ describe('designGraphic (decision 289)', () => {
     callLlm.mockResolvedValue(answer('$5bn'))
     expect(await designGraphic(CONTEXT, SLOT)).toEqual({
       ok: false,
-      issue: 'graphic showed a number the cited claim does not contain: $5bn against claim 1',
+      issue: issueOf(planned('$5bn')),
     })
     expect(callLlm).toHaveBeenCalledTimes(2)
   })
 
-  it('refuses an entrance that cannot finish inside the slot', async () => {
-    callLlm.mockResolvedValue(answer('$4bn', 5800))
+  it('refuses code that throws while it plays, naming the error (decision 295)', async () => {
+    callLlm.mockResolvedValue({ text: JSON.stringify(THROWS) })
     const result = await designGraphic(CONTEXT, SLOT)
-    expect(result).toEqual({
-      ok: false,
-      issue: expect.stringMatching(/^element "f" enters at 5800 ms/),
-    })
+    expect(result).toEqual({ ok: false, issue: issueOf(THROWS) })
+    expect(result.ok ? '' : result.issue).toContain('boom at the reveal')
+    expect(callLlm).toHaveBeenCalledTimes(2)
   })
 
   it('retries a cut-off answer once at double the budget', async () => {
@@ -121,41 +228,14 @@ describe('designGraphic (decision 289)', () => {
     expect(callLlm.mock.calls[1]![0].maxTokens).toBe(callLlm.mock.calls[0]![0].maxTokens * 2)
   })
 
-  it('refuses an exit that cannot finish inside the slot, and retries with the reason (decision 290)', async () => {
-    const leaving = {
-      text: JSON.stringify({
-        scene: {
-          elements: [
-            {
-              kind: 'figure',
-              id: 'f',
-              cell: { col: 0, row: 2, colSpan: 7, rowSpan: 4 },
-              value: '$4bn',
-              claimRef: 1,
-              color: 'accent',
-              enter: { kind: 'count', atMs: 900 },
-            },
-            {
-              kind: 'text',
-              id: 't',
-              cell: { col: 0, row: 0, colSpan: 7, rowSpan: 2 },
-              content: 'Raised',
-              role: 'title',
-              color: 'textSecondary',
-              enter: { kind: 'fade', atMs: 0 },
-              exit: { kind: 'fade', atMs: 5800 },
-            },
-          ],
-        },
-      }),
-    }
-    callLlm.mockResolvedValueOnce(leaving).mockResolvedValueOnce(answer('$4bn'))
+  it('refuses code that does not compile, and retries with the reason (decision 295)', async () => {
+    callLlm
+      .mockResolvedValueOnce({ text: JSON.stringify(BROKEN) })
+      .mockResolvedValueOnce(answer('$4bn'))
     const result = await designGraphic(CONTEXT, SLOT)
     expect(result.ok).toBe(true)
     expect(callLlm).toHaveBeenCalledTimes(2)
-    expect(callLlm.mock.calls[1]![0].messages.at(-1).content).toContain(
-      'element "t" leaves at 5800 ms, but this 6.0 s slot needs its exit to start by 5500 ms',
-    )
+    expect(callLlm.mock.calls[1]![0].messages.at(-1).content).toContain(issueOf(BROKEN))
   })
 
   it('reports an answer cut off twice as a design issue, without a reason-retry', async () => {
@@ -167,9 +247,7 @@ describe('designGraphic (decision 289)', () => {
   })
 
   it('retries an answer cut off mid-JSON at double the budget', async () => {
-    callLlm
-      .mockResolvedValueOnce({ text: '{"scene": {"elements": [', truncated: true })
-      .mockResolvedValueOnce(answer('$4bn'))
+    callLlm.mockResolvedValueOnce(HALF).mockResolvedValueOnce(answer('$4bn'))
     const result = await designGraphic(CONTEXT, SLOT)
     expect(result.ok).toBe(true)
     expect(callLlm).toHaveBeenCalledTimes(2)
@@ -179,15 +257,13 @@ describe('designGraphic (decision 289)', () => {
   })
 
   it('ends the design at once when the doubled answer is cut off mid-JSON too', async () => {
-    callLlm.mockResolvedValue({ text: '{"scene": {"elements": [', truncated: true })
+    callLlm.mockResolvedValue(HALF)
     expect(await designGraphic(CONTEXT, SLOT)).toEqual({ ok: false, issue: CUT_OFF })
     expect(callLlm).toHaveBeenCalledTimes(2)
   })
 
   it('stops at two calls when the retry after a refusal is cut off (decision 292)', async () => {
-    callLlm
-      .mockResolvedValueOnce(answer('$5bn'))
-      .mockResolvedValueOnce({ text: '{"scene": {"elements": [', truncated: true })
+    callLlm.mockResolvedValueOnce(answer('$5bn')).mockResolvedValueOnce(HALF)
     expect(await designGraphic(CONTEXT, SLOT)).toEqual({ ok: false, issue: CUT_OFF })
     expect(callLlm).toHaveBeenCalledTimes(2)
   })
@@ -198,7 +274,7 @@ describe('designGraphic (decision 289)', () => {
       .mockResolvedValueOnce(answer('$5bn'))
     expect(await designGraphic(CONTEXT, SLOT)).toEqual({
       ok: false,
-      issue: 'graphic showed a number the cited claim does not contain: $5bn against claim 1',
+      issue: issueOf(planned('$5bn')),
     })
     expect(callLlm).toHaveBeenCalledTimes(2)
   })
@@ -264,7 +340,7 @@ describe('designGraphic (decision 289)', () => {
     await expect(designGraphic(CONTEXT, SLOT)).rejects.toThrow('rejected the API key')
   })
 
-  it('shows a redesign the current scene in claim numbers, then the steer last', async () => {
+  it('shows a redesign the current code, then the steer last', async () => {
     callLlm.mockResolvedValueOnce(answer('$4bn'))
     const designed = await designGraphic(CONTEXT, SLOT)
     if (!designed.ok) throw new Error('setup design failed')
@@ -272,12 +348,12 @@ describe('designGraphic (decision 289)', () => {
     callLlm.mockResolvedValueOnce(answer('$4bn'))
     await designGraphic(
       CONTEXT,
-      { ...SLOT, brief: { ...BRIEF, scene: designed.scene } },
+      { ...SLOT, brief: { ...BRIEF, code: designed.code } },
       { redesign: true, guidance: 'Make the number bigger.' },
     )
+    // The component being replaced reaches the model; `fontSize: 220` is in its source only.
+    expect(sent()).toContain('fontSize: 220')
     const messages = callLlm.mock.calls[0]![0].messages as { content: string }[]
-    const current = messages.find((m) => m.content.startsWith('The current design'))
-    expect(current?.content).toContain('"claimRef": 1')
     expect(messages.at(-1)!.content).toBe("The producer's steer: Make the number bigger.")
   })
 
@@ -285,39 +361,91 @@ describe('designGraphic (decision 289)', () => {
     callLlm.mockResolvedValueOnce(answer('$4bn'))
     const { intent: _i, intentClaimIds: _c, ...legacy } = BRIEF
     await designGraphic(CONTEXT, { ...SLOT, brief: legacy })
-    expect(callLlm.mock.calls[0]![0].messages[1].content).toContain('Intent: The figure.')
+    expect(sent()).toContain('The figure.')
   })
 
-  it('makes no call in mock mode', async () => {
+  it('sends a chart its series and takeaway, and stores the code (decision 295)', async () => {
+    callLlm.mockResolvedValueOnce(answer('$4bn'))
+    const result = await designGraphic(CONTEXT, { ...SLOT, brief: CHART })
+    expect(result).toMatchObject({
+      ok: true,
+      code: { title: 'Raised in one round', facts: [{ claimId: A }] },
+    })
+    expect(sent()).toContain('Four billion in a year.')
+    expect(sent()).toContain('USD bn')
+  })
+
+  it('makes no call in mock mode, and the fixture passes every check (decision 295)', async () => {
     mock = true
     const result = await designGraphic(CONTEXT, SLOT)
-    expect(result.ok).toBe(true)
-    expect(callLlm).not.toHaveBeenCalled()
-  })
-
-  it('designs a long slot in two steps in mock mode, through the same checks (decision 290)', async () => {
-    mock = true
-    const result = await designGraphic(CONTEXT, { ...SLOT, durationMs: 12_000 })
     expect(callLlm).not.toHaveBeenCalled()
     expect(result).toMatchObject({
       ok: true,
-      scene: { camera: [{ atMs: 6500, focus: 'f1', zoom: 1.2 }] },
+      code: { version: 1, title: expect.stringMatching(/^\[mock\]/) },
     })
+    if (!result.ok) throw new Error('unreachable')
+    expect(typeof result.code.compiled).toBe('string')
+    // The mock's figure cites the claim the intent rests on.
+    expect(result.code.facts).toContainEqual(expect.objectContaining({ claimId: A }))
+  })
+
+  it('designs a 12 s slot in mock mode, through the same dead-air check (decision 295)', async () => {
+    mock = true
+    const result = await designGraphic(CONTEXT, { ...SLOT, durationMs: 12_000 })
+    expect(callLlm).not.toHaveBeenCalled()
+    expect(result).toMatchObject({ ok: true, code: { durationMs: 12_000 } })
+  })
+
+  it('designs a chart in mock mode around its series (decision 295)', async () => {
+    mock = true
+    const result = await designGraphic(CONTEXT, { ...SLOT, brief: CHART })
+    expect(callLlm).not.toHaveBeenCalled()
+    expect(result.ok).toBe(true)
+  })
+})
+
+describe('slotIntent', () => {
+  it('designs a graphic from its intent and the claims it names', () => {
+    expect(slotIntent(CONTEXT, BRIEF)).toEqual({
+      intent: 'Four billion is the story.',
+      intentRefs: [1],
+    })
+  })
+
+  it('designs a chart from its takeaway, resting on its data refs (decision 295)', () => {
+    expect(slotIntent(CONTEXT, CHART)).toEqual({
+      intent: 'Four billion in a year.',
+      intentRefs: [1],
+    })
+  })
+
+  it('drops a data ref the claim list no longer holds', () => {
+    expect(
+      slotIntent(CONTEXT, { ...CHART, dataRefs: ['01J0000000000000000000000Z'] }).intentRefs,
+    ).toEqual([])
   })
 })
 
 describe('withDesign', () => {
-  it('stores the scene and clears any old issue', () => {
-    const designed = withDesign(
-      { ...BRIEF, designIssue: 'old' },
-      { ok: true, scene: { elements: [] } as never },
-    )
+  it('stores the code and clears any old issue', () => {
+    const designed = withDesign({ ...BRIEF, designIssue: 'old' }, { ok: true, code: CODE })
     expect(designed.designIssue).toBeUndefined()
-    expect(designed.scene).toEqual({ elements: [] })
+    expect(designed.code).toEqual(CODE)
   })
 
-  it('stores the issue without a scene', () => {
+  it('stores the issue without code', () => {
     expect(withDesign(BRIEF, { ok: false, issue: 'why' })).toEqual({ ...BRIEF, designIssue: 'why' })
+  })
+
+  it('keeps the code a refused redesign would have replaced (decision 295)', () => {
+    const kept = withDesign({ ...BRIEF, code: CODE }, { ok: false, issue: 'why' })
+    expect(kept.code).toEqual(CODE)
+    expect(kept.designIssue).toBe('why')
+  })
+
+  it("stores a chart's code on the chart, which still parses as one (decision 295)", () => {
+    const designed = ChartBriefSchema.parse(withDesign(CHART, { ok: true, code: CODE }))
+    expect(designed).toMatchObject({ type: 'chart', series: CHART.series, code: CODE })
   })
 
   it('caps an overlong issue so the stored brief still parses (final review I1)', () => {
@@ -334,14 +462,16 @@ describe('withDesign', () => {
   })
 })
 
-describe('designGraphicWith (the way in for the live harness)', () => {
+describe('designGraphicWith (the model call is injected)', () => {
   it('designs through the function it is given, handing it the request and a signal, and never touches callLlm', async () => {
     const complete = vi.fn().mockResolvedValue(answer('$4bn'))
     const result = await designGraphicWith(complete, CONTEXT, SLOT)
-    expect(result).toMatchObject({ ok: true, scene: { elements: [{ claimRef: A }] } })
+    expect(result).toMatchObject({ ok: true, code: { facts: [{ claimId: A }] } })
     expect(complete).toHaveBeenCalledTimes(1)
     const [request, options] = complete.mock.calls[0]!
-    expect(request.messages[1].content).toContain('0.9 s  four')
+    expect(
+      (request.messages as { content: string }[]).map((message) => message.content).join('\n\n'),
+    ).toContain('four')
     expect(options.signal).toBeInstanceOf(AbortSignal)
     expect(callLlm).not.toHaveBeenCalled()
   })
@@ -365,7 +495,7 @@ describe('designGraphicWith (the way in for the live harness)', () => {
       .mockResolvedValueOnce(answer('$4bn'))
     const result = await designGraphicWith(complete, CONTEXT, SLOT)
     expect(result.ok).toBe(true)
-    expect(complete.mock.calls[1]![0].messages.at(-1).content).toContain('$5bn')
+    expect(complete.mock.calls[1]![0].messages.at(-1).content).toContain(issueOf(planned('$5bn')))
     expect(complete.mock.calls[1]![1]).toMatchObject({ purpose: 'retry: refused' })
   })
 })

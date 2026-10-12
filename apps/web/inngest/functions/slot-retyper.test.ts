@@ -172,7 +172,7 @@ describeDb('slot-retyper (mock mode)', () => {
     expect((await getShotSlot(db, slotId))?.retype).toBeNull()
   })
 
-  it('designs a slot retyped to a graphic (decision 289)', async () => {
+  it('designs a slot retyped to a graphic (decisions 289, 295)', async () => {
     const { result } = await engine.execute({ events: retypeEvent(slotId, 'graphic') })
     expect(result).toMatchObject({ outcome: 'retyped', targetType: 'graphic' })
 
@@ -181,7 +181,7 @@ describeDb('slot-retyper (mock mode)', () => {
     expect(slot?.brief).toMatchObject({
       type: 'graphic',
       intent: '[mock] The figure, large, with the mark beside it.',
-      scene: { elements: expect.arrayContaining([expect.objectContaining({ id: 't1' })]) },
+      code: expect.objectContaining({ title: expect.stringMatching(/^\[mock\]/) }),
     })
     expect(slot?.retype).toBeNull()
   })
@@ -201,7 +201,7 @@ describeDb('slot-retyper (mock mode)', () => {
       expect(during).toEqual({ state: 'drafting', target: 'graphic' })
       const slot = await getShotSlot(db, slotId)
       expect(slot?.retype).toBeNull()
-      expect(slot?.brief).toHaveProperty('scene')
+      expect(slot?.brief).toHaveProperty('code')
     } finally {
       spy.mockRestore()
     }
@@ -237,7 +237,7 @@ describeDb('slot-retyper (mock mode)', () => {
       const slot = await getShotSlot(db, slotId)
       expect(slot?.type).toBe('graphic')
       expect(slot?.brief).toMatchObject({ type: 'graphic', designIssue: 'no claim holds $5bn' })
-      expect(slot?.brief).not.toHaveProperty('scene')
+      expect(slot?.brief).not.toHaveProperty('code')
       expect(slot?.retype).toBeNull()
     } finally {
       refuse.mockRestore()
@@ -263,7 +263,7 @@ describeDb('slot-retyper (mock mode)', () => {
       expect(slot?.type).toBe('graphic')
       const brief = slot?.brief as { designIssue?: string }
       expect(brief.designIssue).toMatch(/\S/)
-      expect(slot?.brief).not.toHaveProperty('scene')
+      expect(slot?.brief).not.toHaveProperty('code')
       // The drafting marker goes with the budget stop too (final review I4).
       expect(slot?.retype).toBeNull()
     } finally {
