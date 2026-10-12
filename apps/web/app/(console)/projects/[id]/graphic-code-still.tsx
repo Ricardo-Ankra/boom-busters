@@ -29,7 +29,9 @@ const { FrameContext, oneFrameScope } = makeOneFrame(React, { interpolate, sprin
  * our own that holds that one frame: `useCurrentFrame` reads it, a `Sequence`
  * shows its children only inside its window and counts their frames from its
  * start, as Remotion's does, and `interpolate`, `spring` and `Easing` are
- * Remotion's own pure functions. The frame is laid out at its full 1920 by
+ * Remotion's own pure functions (`spring` stays only so a design stored before
+ * 2026-10-12 still draws; the prompt no longer offers it and the scan refuses
+ * it in a new design). The frame is laid out at its full 1920 by
  * 1080 (or 1080 by 1920) and scaled to a quarter, so every size the code chose
  * is the size the render draws at.
  *

@@ -17,7 +17,9 @@ import type { Easing, interpolate, spring } from 'remotion'
  * condition, whose React has no `createContext`, so the dry run hands it the
  * plain Node builds it loads at run time, and the still hands it the browser's.
  * Remotion's own functions come the same way, for the same reason: this file
- * imports `remotion` for its types only.
+ * imports `remotion` for its types only. The scope still carries `spring`, so
+ * a design stored before 2026-10-12 draws as it did; the prompt no longer
+ * offers it and the scan refuses it in a new design.
  *
  * `Sequence` and `AbsoluteFill` copy Remotion 4.0.512's semantics for the
  * props a graphic uses (`Sequence.js`, `AbsoluteFill.js` and

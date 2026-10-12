@@ -83,6 +83,29 @@ describe('scanGraphicSource (decision 295)', () => {
     expect(scan(graphic('  Remotion.Easing ??= null'))).toBe(sentence('Remotion.Easing'))
   })
 
+  it.each([
+    ['Remotion.spring', '  const s = Remotion.spring({ frame: 0, fps: 30 })'],
+    ['a bare spring call', '  const s = spring({ frame: 0, fps: 30 })'],
+    [
+      'a destructured spring',
+      '  const { spring } = Remotion\n  const s = spring({ frame: 0, fps: 30 })',
+    ],
+  ])('refuses spring as %s: the sandbox no longer offers it', (_name, line) => {
+    expect(scan(graphic(line))).toBe(
+      'the code uses spring, which the sandbox no longer offers: an entrance eases to its mark with interpolate and Easing.out and never overshoots',
+    )
+  })
+
+  it('does not take a word spring in a string or a longer name for the call', () => {
+    expect(scan(graphic("  const note = 'spring'\n  const springy = 1"))).toBeNull()
+  })
+
+  it.each(['elastic', 'bounce', 'back'])('refuses Easing.%s: it overshoots', (name) => {
+    expect(scan(graphic(`  const e = Remotion.Easing.${name}(1)`))).toBe(
+      `the code uses Easing.${name}, which overshoots: the house settles without a bounce`,
+    )
+  })
+
   it('refuses Suspense and lazy: a throw inside them is swallowed', () => {
     expect(scan(graphic('  const S = React.Suspense'))).toBe(
       `the code uses Suspense, which the sandbox bans: ${PURE}`,

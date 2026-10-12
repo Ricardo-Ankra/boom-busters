@@ -66,7 +66,11 @@ const slot = (brief: GraphicBrief | ChartBrief, durationMs = 6000) => ({
 const countUp = (figure: number) => `function Graphic() {
   const frame = Remotion.useCurrentFrame()
   const { fps } = Remotion.useVideoConfig()
-  const count = Remotion.spring({ frame, fps, delay: 6, durationInFrames: fps, config: { damping: 200 } })
+  const count = Remotion.interpolate(frame, [6, 6 + fps], [0, 1], {
+    easing: Remotion.Easing.out(Remotion.Easing.cubic),
+    extrapolateLeft: 'clamp',
+    extrapolateRight: 'clamp',
+  })
   const sweep = Remotion.interpolate(frame, [0, 179], [0, 100], { extrapolateRight: 'clamp' })
   return (
     <Remotion.AbsoluteFill>
