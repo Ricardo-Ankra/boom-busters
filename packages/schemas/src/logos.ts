@@ -33,10 +33,18 @@ export const LOGO_RASTER_MAX_EDGE = 2048
 export const LOGO_ACCEPT =
   'image/png,image/webp,image/jpeg,image/svg+xml,image/avif,.png,.webp,.jpg,.jpeg,.svg,.avif'
 
-/** What a resolver needs to know about a mark: its id and the name it answers to. */
+/**
+ * What a resolver needs to know about a mark: its id, the name it answers to
+ * and the size it was stored at, null when none was recorded (both columns
+ * are nullable). A design written as code is handed only the marks with a
+ * size (decision 295, ruling 25): the render cannot place a mark it cannot
+ * size, so the dry run never shows the code one.
+ */
 export interface LogoIndex {
   id: string
   title: string
+  width: number | null
+  height: number | null
 }
 
 /**

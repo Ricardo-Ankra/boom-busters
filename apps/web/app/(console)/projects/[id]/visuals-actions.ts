@@ -777,7 +777,12 @@ export async function attachGraphicLogosAction(
   const scene = parsed.data.scene
   if (!scene) return { ok: false, error: 'This graphic has not been designed yet.' }
 
-  const logos = (await listLogos(db)).map((row) => ({ id: row.id, title: row.title ?? '' }))
+  const logos = (await listLogos(db)).map((row) => ({
+    id: row.id,
+    title: row.title ?? '',
+    width: row.width,
+    height: row.height,
+  }))
   let missing: string | null = null
   const elements = scene.elements.map((element) => {
     if (element.kind !== 'logo') return element

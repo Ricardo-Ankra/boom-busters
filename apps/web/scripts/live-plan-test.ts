@@ -192,7 +192,12 @@ async function main(): Promise<void> {
           direction: book.success ? book.data : null,
           photographed: cast.filter((m) => m.photos.length > 0).map((m) => m.name),
           sets: sets.map(({ name, look, layout }) => ({ name, look, layout })),
-          logos: logos.map((row) => ({ id: row.id, title: row.title ?? '' })),
+          logos: logos.map((row) => ({
+            id: row.id,
+            title: row.title ?? '',
+            width: row.width,
+            height: row.height,
+          })),
         },
       )
       briefs = (planned?.slots ?? [])

@@ -372,7 +372,9 @@ const CLAIMS = [
 ]
 // The brief's fixture id ended "...L1"; Crockford base32 (UlidSchema) excludes
 // the letter L, so that string cannot validate as an assetId. Corrected here.
-const LOGOS = [{ id: '01HQ00000000000000000000M1', title: 'Stability AI' }]
+const LOGOS = [
+  { id: '01HQ00000000000000000000M1', title: 'Stability AI', width: 1200, height: 400 },
+]
 
 const plannedScene = (elements: unknown[]) => ({ elements }) as never
 const cell = { col: 0, row: 0, colSpan: 6, rowSpan: 3 }

@@ -194,7 +194,12 @@ export const slotRebriefer = inngest.createFunction(
           const claims = await scriptableClaims(db, projectId)
           // The logo library's index (decision 268, Plan B): a redrafted
           // graphic may name a mark the producer already holds.
-          const logos = (await listLogos(db)).map((row) => ({ id: row.id, title: row.title ?? '' }))
+          const logos = (await listLogos(db)).map((row) => ({
+            id: row.id,
+            title: row.title ?? '',
+            width: row.width,
+            height: row.height,
+          }))
           answer = mockProvidersEnabled()
             ? {
                 ok: true,

@@ -1,10 +1,11 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, expectTypeOf, it } from 'vitest'
 import {
   LOGO_ACCEPT,
   LOGO_MAX_BYTES,
   LogoStoredMimeSchema,
   logoExtension,
   logoForEntity,
+  type LogoIndex,
 } from './logos'
 
 describe('logo formats', () => {
@@ -39,9 +40,9 @@ describe('logo formats', () => {
 })
 
 describe('logoForEntity', () => {
-  const logos = [
-    { id: 'a', title: 'Stability AI' },
-    { id: 'b', title: 'Wirecard AG' },
+  const logos: LogoIndex[] = [
+    { id: 'a', title: 'Stability AI', width: 1200, height: 400 },
+    { id: 'b', title: 'Wirecard AG', width: null, height: null },
   ]
 
   it('matches the exact name, whatever the case and spacing', () => {
@@ -54,8 +55,8 @@ describe('logoForEntity', () => {
 
   it('matches the other direction: a stored title carrying a role or suffix', () => {
     const withSuffix = [
-      { id: 'a', title: 'Stability AI' },
-      { id: 'b', title: 'Wirecard AG (Germany)' },
+      { id: 'a', title: 'Stability AI', width: null, height: null },
+      { id: 'b', title: 'Wirecard AG (Germany)', width: null, height: null },
     ]
     expect(logoForEntity('Wirecard AG', withSuffix)?.id).toBe('b')
   })
@@ -67,13 +68,35 @@ describe('logoForEntity', () => {
     // bracket or dash, just a space before the suffix word), so it stays a
     // stranger, the same as "Emad Mostaque Junior" against "Emad Mostaque"
     // in the cast's own matcher tests: a bare space is never a boundary.
-    expect(logoForEntity('Stability AI', [{ id: 'c', title: 'Stability AI Ltd' }])).toBeNull()
-    expect(logoForEntity('AI', [{ id: 'a', title: 'Stability AI' }])).toBeNull()
-    expect(logoForEntity('AI', [{ id: 'c', title: 'Stability AI Ltd' }])).toBeNull()
-    expect(logoForEntity('AI', [{ id: 'b', title: 'Wirecard AG' }])).toBeNull()
+    expect(
+      logoForEntity('Stability AI', [
+        { id: 'c', title: 'Stability AI Ltd', width: null, height: null },
+      ]),
+    ).toBeNull()
+    expect(
+      logoForEntity('AI', [{ id: 'a', title: 'Stability AI', width: null, height: null }]),
+    ).toBeNull()
+    expect(
+      logoForEntity('AI', [{ id: 'c', title: 'Stability AI Ltd', width: null, height: null }]),
+    ).toBeNull()
+    expect(
+      logoForEntity('AI', [{ id: 'b', title: 'Wirecard AG', width: null, height: null }]),
+    ).toBeNull()
   })
 
   it('returns null for an empty library', () => {
     expect(logoForEntity('Stability AI', [])).toBeNull()
+  })
+
+  it('hands back the mark whole, its recorded size or null included (ruling 25)', () => {
+    expectTypeOf<LogoIndex['width']>().toEqualTypeOf<number | null>()
+    expectTypeOf<LogoIndex['height']>().toEqualTypeOf<number | null>()
+    expect(logoForEntity('Stability AI', logos)).toEqual({
+      id: 'a',
+      title: 'Stability AI',
+      width: 1200,
+      height: 400,
+    })
+    expect(logoForEntity('Wirecard AG', logos)).toMatchObject({ width: null, height: null })
   })
 })

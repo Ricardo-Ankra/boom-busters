@@ -236,7 +236,12 @@ export async function loadGraphicContextFrom(
       confidence: claim.confidence,
       sourceType: claim.sourceType,
     })),
-    logos: logos.map((row) => ({ id: row.id, title: row.title ?? '' })),
+    logos: logos.map((row) => ({
+      id: row.id,
+      title: row.title ?? '',
+      width: row.width,
+      height: row.height,
+    })),
     paragraphs: timedParagraphs({ chapters: sources.chapters, takes }),
     chapterTitle: chapter?.title ?? '',
   }
