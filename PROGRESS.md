@@ -7296,7 +7296,50 @@ boom-busters-broker`; merge and deploy to Vercel, then `PUT
      beat. `pnpm live:graphic` and `pnpm render:graphics` are deleted;
      the saved runs stay as a record.
      Decisions made where the spec left room:
-     <!-- controller: rulings -->
+     the stored design is `code`,
+     not `motion`, since every brief already carries the Ken Burns `motion`
+     spec (cost if wrong: none); the checks run compile, scan, dry run,
+     facts, with the token, colour and assignment checks reading esbuild's
+     compiled output, because blanking raw JSX cannot tell an apostrophe in
+     on-screen text from a quote (cost if wrong: one esbuild call on a
+     refused size); the dry run uses the house brand, since no check reads a
+     colour (cost if wrong: none); a chart's series count as allowed digits
+     through `extraTexts`, never an uncited claim (cost if wrong: a chart's
+     own figure refused); a design is handed every sized library logo, keyed
+     by title, in the dry run, the assembly and the board through one
+     `codeLogoLibrary` rule, and a logo with no recorded size is left out
+     everywhere (cost if wrong: an unneeded mark presigned per slot);
+     `props.intent` was dropped, the intent reaching the model in the brief
+     message only (cost if wrong: none); `props.durationMs` is always the
+     design-time length, so a stretched slot holds the code's ending (cost
+     if wrong: a slot the compiler shortened cuts the held ending); a failed
+     redesign keeps the `code` the card shows and sets `designIssue` (cost
+     if wrong: none); the mock designer substitutes the fixture's figure
+     for the cited claim's first digit group, so mock mode passes the real
+     checks on any seed (cost if wrong: a mock graphic with an odd figure);
+     an over-long title is trimmed, the source and facts never repaired
+     (cost if wrong: one wasted call); the still and the dry run share one
+     one-frame shim, now held to Remotion's own Sequence rules by a parity
+     test (cost if wrong: the still draws a frame the film will not);
+     helpers in the model's code are plain functions and hooks stay at the
+     top of `Graphic`, stated in the prompt because a component declared
+     inside the outer function remounts every frame and a conditional hook
+     passes the dry run and crashes the render (cost if wrong: a crashed
+     slot shows its title card); the scan also refuses assignment under
+     `React.*` and `Remotion.*`, `Suspense`, `lazy`, `toLocaleString`,
+     `Intl` and CSS transitions, with strict mode and frozen copies of
+     `Easing` and `React` behind it (cost if wrong: an honest design
+     refused once); the facts are checked per frame, 16:9 and 9:16 each,
+     since the Short is published (cost if wrong: none); the dry run's
+     modules and esbuild are proven before the first model call and a host
+     that lacks them fails the design non-retriably (cost if wrong: none);
+     the live loop was dropped (owner) and its harness deleted; the
+     Inngest route's bundling under the `react-server` condition was met
+     with lazy run-time requires, a Remotion-free compositions subpath and
+     tracing includes rather than a Remotion server external, which broke
+     server rendering of the preview screen's Player (cost if wrong: a
+     missing traced file fails the first design, not the route); one
+     commit's trailer names Haiku 4.5, the model that wrote it (cost: none).
      Shipping, in this order because the timeline schema gained a
      payload and an older broker refuses it: `deploy:remotion`, then
      `deploy:stacks boom-busters-broker` (the Lambda recipe, run by the
