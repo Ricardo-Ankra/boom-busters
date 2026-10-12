@@ -40,7 +40,7 @@ Execute the tasks in this order: **1, 2, 3, 4, 8, 5, 6, 7, 9.** Task 8 (the live
 Rulings made while reconciling the task drafts (each already applied in the task text below; listed so a reviewer knows they were deliberate):
 
 1. `GRAPHIC_STILL_MAX_MS = 6000` does not exist yet; Task 1 adds it to `packages/schemas/src/graphic-timing.ts`.
-2. The checks run scan, compile, dry run, facts, in that order (the scan reads the source and saves an esbuild call; the facts are read off the dry run's text). The contract's `check.ts` comment is corrected.
+2. The checks run compile, scan, dry run, facts, in that order (amended in execution, Task 3 review: the token, colour and assignment checks read esbuild's COMPILED output, where JSX text is a string literal and comments are gone, since blanking raw JSX cannot tell an apostrophe from a quote; the size cap and `function Graphic(` stay on the source; `Suspense` and `lazy` join the ban list; the facts are read off the dry run's text).
 3. The dry run uses the house brand (`resolveBrandKit(DEFAULT_SETTINGS)`); no check reads a colour, so `GraphicDesignContext` gains no `brand` field and the runners' `setup` steps are untouched.
 4. Chart series are allowed digits: for a chart brief, `graphicCodeIssue` passes one synthetic text built from the series (each label, unit, point `x` and `y` as written) as `extraTexts` to `graphicFactsIssue`, since the series were copied verbatim from claims upstream. A shown digit group passes when a CITED claim or an extra text holds it; an uncited claim never does (the spec's rule, kept).
 5. Logos: a code design is handed EVERY library logo, keyed by entity title, in the dry run (placeholder `src`), the assembly (storage keys and sizes) and the board (presigned urls and sizes). One rule everywhere, so the code the dry run proved cannot meet a missing logo later. The slot model's new field is `logoMarks: Record<assetId, { title, width, height }>` covering the whole library.
@@ -209,13 +209,13 @@ export function GraphicCode(props: { payload: GraphicCodePayload; brand: BrandKi
 // apps/web/lib/graphic-code/compile.ts
 export function compileGraphicSource(source: string): { ok: true; compiled: string } | { ok: false; issue: string }
 // apps/web/lib/graphic-code/scan.ts
-export function scanGraphicSource(source: string): string | null   // null = clean
+export function scanGraphicSource(source: string, compiled: string): string | null   // null = clean; size and function Graphic( on source, the rest on compiled
 // apps/web/lib/graphic-code/dry-run.ts
 export const GRAPHIC_SAMPLE_MS = 250
 export interface DryRunInput { compiled: string; props: Omit<GraphicProps, 'safeArea'>; durationMs: number; timeoutMs?: number; frameMaxMs?: number }
 export interface DryRunResult { issue: string | null; textSamples: string[] }   // visible text per sample, landscape
 export function dryRunGraphic(input: DryRunInput): DryRunResult
-// apps/web/lib/graphic-code/check.ts: scan, compile, dry run, facts, in that order (ruling 2).
+// apps/web/lib/graphic-code/check.ts: compile, scan, dry run, facts, in that order (ruling 2, amended).
 // The dry run gets the house brand (`graphicBrand`, ruling 26) and every titled library logo with a
 // recorded size, by title, at that size (placeholder src; rulings 5 and 25);
 // a chart's series are an extra text the shown digits may come from (ruling 4).
