@@ -31,6 +31,7 @@ import {
 } from '@boom-busters/schemas'
 import type {
   BrandKitStored,
+  GraphicCodePayload,
   GraphicElement,
   Notice,
   SetPlateView,
@@ -95,10 +96,17 @@ import {
 } from './visuals-actions'
 import { CameraRow } from './camera-row'
 import { DirectionCard } from './direction-card'
-import { GraphicPlayback, GraphicPlaybackProvider, useGraphicPlayback } from './graphic-playback'
+import {
+  codeLogosFor,
+  GraphicPlayback,
+  GraphicPlaybackProvider,
+  useGraphicPlayback,
+  type CodeLogos,
+} from './graphic-playback'
 import {
   ChartErrorCard,
   ChartPreview,
+  GraphicCodePreview,
   GraphicPreview,
   GraphicSteps,
   HeadlinePreview,
@@ -1222,6 +1230,11 @@ function SocialImageButton({
  * `Add logo for <entity>` button per mark the library does not yet hold.
  * Resolution, flipping the slot to resolved once every mark is found, is
  * `attachGraphicLogosAction`'s job (Task 9); this card only calls it.
+ *
+ * A graphic the designer wrote as code (decision 295) shows its title, a still
+ * of its own component and Play instead, and its chips are the claims its
+ * facts cite. The code wins over a scene the brief still carries from before a
+ * redesign, as it does in the render.
  */
 function GraphicSlot({
   slot,
@@ -1237,26 +1250,40 @@ function GraphicSlot({
   brand: BrandKitStored
 }) {
   const scene = brief.scene
+  const code = brief.code
   const { intent } = graphicIntentOf(brief)
   // Play swaps the thumbnail for the player; it comes back on Close.
   const { playing } = useGraphicPlayback(slot.id)
   // While a redesign or a retype's design runs, the format row's own line is
   // the one that announces.
   const redesigning = slot.retype?.state === 'rebriefing' || slot.retype?.state === 'drafting'
-  const claimIds = scene ? graphicSceneClaimIds(scene) : (brief.intentClaimIds ?? [])
+  const claimIds = code
+    ? [...new Set(code.facts.map((fact) => fact.claimId))]
+    : scene
+      ? graphicSceneClaimIds(scene)
+      : (brief.intentClaimIds ?? [])
   // An `assetId` alone is not proof the mark is still there: the library row
   // it names can have been deleted since this brief was resolved. The board
   // offers the same repair either way, keyed off whether the preview can
-  // actually draw it, not off whether the brief once thought it could.
-  const missingLogos = (scene?.elements ?? []).filter(
-    (element): element is Extract<GraphicElement, { kind: 'logo' }> =>
-      element.kind === 'logo' &&
-      (element.assetId === undefined || slot.logoUrls[element.assetId] === undefined),
-  )
+  // actually draw it, not off whether the brief once thought it could. Code
+  // names its marks by title and has no logo element to repair.
+  const missingLogos: Extract<GraphicElement, { kind: 'logo' }>[] = code
+    ? []
+    : (scene?.elements ?? []).filter(
+        (element): element is Extract<GraphicElement, { kind: 'logo' }> =>
+          element.kind === 'logo' &&
+          (element.assetId === undefined || slot.logoUrls[element.assetId] === undefined),
+      )
+  const codeLogos: CodeLogos = code ? codeLogosFor(slot.logoUrls, slot.logoMarks) : {}
 
   return (
     <div className="flex flex-col gap-2">
-      {scene ? (
+      {code ? (
+        <>
+          <p className="text-[13px] text-[var(--color-text-primary)]">{code.title}</p>
+          {playing ? null : <GraphicCodePreview code={code} brand={brand} logos={codeLogos} />}
+        </>
+      ) : scene ? (
         playing ? null : (
           <>
             <GraphicPreview brief={{ ...brief, scene }} brand={brand} logoUrls={slot.logoUrls} />
@@ -1272,10 +1299,12 @@ function GraphicSlot({
           Being designed. This card updates when it lands.
         </p>
       )}
-      {scene ? (
+      {code || scene ? (
         <GraphicPlayback
           slotId={slot.id}
           scene={scene}
+          code={code}
+          codeLogos={codeLogos}
           brand={brand}
           logoUrls={slot.logoUrls}
           durationMs={slot.durationMs}
@@ -1310,6 +1339,91 @@ function GraphicSlot({
       ) : null}
     </div>
   )
+}
+
+/** What a chart's code is handed as `props.data` (decision 295), as the timeline carries it. */
+function chartDataOf(
+  brief: Extract<ShotBrief, { type: 'chart' }>,
+): NonNullable<GraphicCodePayload['data']> {
+  return {
+    series: brief.series,
+    takeaway: brief.takeaway,
+    ...(brief.annotations ? { annotations: brief.annotations } : {}),
+  }
+}
+
+/**
+ * The chart card. A chart the designer wrote as code (decision 295) shows its
+ * title, a still of its own component and Play chart, as a graphic card does;
+ * a chart with no code keeps the SVG of the reveal it renders with, and says
+ * why when the designer could not write one.
+ */
+function ChartSlot({
+  slot,
+  brief,
+  brand,
+  colors,
+}: {
+  slot: SlotView
+  brief: Extract<ShotBrief, { type: 'chart' }>
+  brand: BrandKitStored
+  colors: BrandChartColors
+}) {
+  const code = brief.code
+  // Play swaps the still for the player; it comes back on Close.
+  const { playing } = useGraphicPlayback(slot.id)
+  // While a redesign runs, the format row's own line is the one that announces.
+  const redesigning = slot.retype?.state === 'rebriefing' || slot.retype?.state === 'drafting'
+  const data = chartDataOf(brief)
+  const codeLogos: CodeLogos = code ? codeLogosFor(slot.logoUrls, slot.logoMarks) : {}
+
+  return (
+    <div className="flex flex-col gap-2">
+      {code ? <p className="text-[13px] text-[var(--color-text-primary)]">{code.title}</p> : null}
+      {playing ? null : code ? (
+        <GraphicCodePreview code={code} brand={brand} logos={codeLogos} data={data} />
+      ) : (
+        <ChartPreview brief={brief} colors={colors} />
+      )}
+      {!code && !redesigning && brief.designIssue ? (
+        // Persistent state, as on a graphic: nothing announces it on load.
+        <p className="text-[13px] text-[var(--color-warning)]">Not designed: {brief.designIssue}</p>
+      ) : null}
+      {code ? (
+        <GraphicPlayback
+          slotId={slot.id}
+          code={code}
+          data={data}
+          codeLogos={codeLogos}
+          noun="chart"
+          brand={brand}
+          logoUrls={slot.logoUrls}
+          durationMs={slot.durationMs}
+        />
+      ) : null}
+      <p className="text-[12px] text-[var(--color-text-secondary)]">{brief.takeaway}</p>
+      <div className="flex flex-wrap gap-1" aria-label="Source claims">
+        {brief.dataRefs.map((claimId, index) => (
+          <span
+            key={claimId}
+            title={claimId}
+            className="rounded-full border border-[var(--color-border-strong)] px-2 py-0.5 font-mono text-[11px] text-[var(--color-text-secondary)]"
+          >
+            claim {index + 1}
+          </span>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+/**
+ * What the slot's Redesign button and form call its design (decisions 289
+ * and 295): a graphic or a chart is redesigned, every other brief is drafted
+ * again.
+ */
+function designNoun(brief: ShotBrief | null): 'graphic' | 'chart' | null {
+  return brief?.type === 'graphic' || brief?.type === 'chart' ? brief.type : null
 }
 
 /**
@@ -2246,8 +2360,11 @@ function SlotCard({
   const [previewIndex, setPreviewIndex] = React.useState<number | null>(null)
   const { busy, pressed } = useSlotLock()
   const brief = slot.brief
-  // A graphic with no scene says so on its own card, not in the generic lines.
-  const undesignedGraphic = brief?.type === 'graphic' && brief.scene === undefined
+  // A graphic with no design yet says so on its own card, not in the generic lines.
+  const undesignedGraphic =
+    brief?.type === 'graphic' && brief.scene === undefined && brief.code === undefined
+  // A graphic or a chart is redesigned rather than re-briefed (decision 295).
+  const design = designNoun(brief)
   const planning = phase === 'plan'
   const linked = slot.reuse
   const lends = sources.filter((other) => other.reuse?.sourceSlotId === slot.id)
@@ -2346,21 +2463,7 @@ function SlotCard({
         {slot.briefError ? (
           <ChartErrorCard message={slot.briefError} />
         ) : brief?.type === 'chart' ? (
-          <div className="flex flex-col gap-2">
-            <ChartPreview brief={brief} colors={colors} />
-            <p className="text-[12px] text-[var(--color-text-secondary)]">{brief.takeaway}</p>
-            <div className="flex flex-wrap gap-1" aria-label="Source claims">
-              {brief.dataRefs.map((claimId, index) => (
-                <span
-                  key={claimId}
-                  title={claimId}
-                  className="rounded-full border border-[var(--color-border-strong)] px-2 py-0.5 font-mono text-[11px] text-[var(--color-text-secondary)]"
-                >
-                  claim {index + 1}
-                </span>
-              ))}
-            </div>
-          </div>
+          <ChartSlot slot={slot} brief={brief} brand={brand} colors={colors} />
         ) : brief?.type === 'map' ? (
           <MapPreview brief={brief} colors={colors} />
         ) : brief?.type === 'headline' ? (
@@ -2556,8 +2659,8 @@ function SlotCard({
                   >
                     {rebriefing
                       ? 'Close'
-                      : brief.type === 'graphic'
-                        ? 'Redesign graphic'
+                      : design
+                        ? `Redesign ${design}`
                         : 'Draft a different brief'}
                   </Button>
                 ) : null}
@@ -2628,7 +2731,7 @@ function SlotCard({
             slot={slot}
             projectId={projectId}
             act={act}
-            graphic={brief.type === 'graphic'}
+            design={design}
             onDone={() => setRebriefing(false)}
           />
         ) : null}
@@ -2929,10 +3032,14 @@ function TypePicker({
   const drafting = job?.state === 'drafting' || job?.state === 'rebriefing'
   const refused = job?.state === 'refused' ? job : null
   const rebriefRefused = job?.state === 'rebrief-refused' ? job : null
-  // A graphic is redesigned, not re-briefed: the card words it as a design.
-  const graphic = slot.brief?.type === 'graphic'
-  // A refused redesign of a graphic that was never composed keeps nothing.
-  const graphicHasScene = slot.brief?.type === 'graphic' && slot.brief.scene !== undefined
+  // A graphic or a chart is redesigned, not re-briefed (decisions 289 and
+  // 295): the card words it as a design.
+  const design = designNoun(slot.brief)
+  // A refused redesign of a graphic that was never designed keeps nothing. A
+  // chart always keeps one: with no code it renders its reveal.
+  const graphicHasDesign =
+    slot.brief?.type === 'graphic' &&
+    (slot.brief.scene !== undefined || slot.brief.code !== undefined)
   const fixNote = job?.state === 'fix-note' ? job : null
   // Which chooser is open: the article a headline quotes, or the post a
   // post card shows. One at a time; opening either closes the other.
@@ -3014,8 +3121,8 @@ function TypePicker({
 
       {job?.state === 'rebriefing' ? (
         <p className="text-[13px] text-[var(--color-text-secondary)]" role="status">
-          {graphic
-            ? 'Claude is redesigning this graphic. This card updates when it lands.'
+          {design
+            ? `Claude is redesigning this ${design}. This card updates when it lands.`
             : 'Claude is drafting a new brief. This card updates when it lands.'}
         </p>
       ) : null}
@@ -3048,11 +3155,13 @@ function TypePicker({
           className="flex flex-wrap items-center gap-2 rounded-[8px] border border-[var(--color-warning)] p-2"
         >
           <p className="min-w-0 flex-1 text-[13px] text-[var(--color-warning)]">
-            {graphic
-              ? graphicHasScene
+            {design === 'graphic'
+              ? graphicHasDesign
                 ? `No new design: ${rebriefRefused.reason} The graphic keeps the one it has.`
                 : `No new design: ${rebriefRefused.reason}`
-              : `No new brief: ${rebriefRefused.reason} The slot keeps the one it has.`}
+              : design === 'chart'
+                ? `No new design: ${rebriefRefused.reason} The chart keeps the one it has.`
+                : `No new brief: ${rebriefRefused.reason} The slot keeps the one it has.`}
           </p>
           <Button
             variant="outline"
@@ -3267,14 +3376,17 @@ function RebriefForm({
   slot,
   projectId,
   act,
-  graphic,
+  design,
   onDone,
 }: {
   slot: SlotView
   projectId: string
   act: Act
-  /** A graphic is redesigned from its intent and current design (decision 289). */
-  graphic: boolean
+  /**
+   * A graphic or a chart is redesigned, not re-briefed (decisions 289 and
+   * 295): the designer starts from what it must say and its current design.
+   */
+  design: 'graphic' | 'chart' | null
   onDone: () => void
 }) {
   const { busy, pressed } = useSlotLock()
@@ -3288,7 +3400,7 @@ function RebriefForm({
         void act(
           slot.id,
           () => rebriefSlotAction(projectId, slot.id, guidance),
-          graphic
+          design
             ? 'Redesigning: this card updates when it lands'
             : 'Drafting a new brief — this card updates when it lands',
           'rebrief',
@@ -3298,14 +3410,14 @@ function RebriefForm({
       }}
     >
       <label className="flex flex-col gap-1 text-[12px] text-[var(--color-text-secondary)]">
-        {graphic ? 'What should change? (optional)' : 'What are you picturing? (optional)'}
+        {design ? 'What should change? (optional)' : 'What are you picturing? (optional)'}
         <textarea
           value={guidance}
           onChange={(event) => setGuidance(event.target.value)}
           rows={2}
           maxLength={600}
           placeholder={
-            graphic
+            design
               ? 'Leave this empty to just ask for a different design.'
               : 'Leave this empty to just ask for a different idea.'
           }
@@ -3313,8 +3425,10 @@ function RebriefForm({
         />
       </label>
       <p className="text-[12px] text-[var(--color-text-muted)]">
-        {graphic ? (
+        {design === 'graphic' ? (
           "The designer starts from this graphic's intent and current design. The steer is used once and not kept."
+        ) : design === 'chart' ? (
+          "The designer starts from this chart's data and its current design, if it has one. The steer is used once and not kept."
         ) : (
           <>
             This replaces the brief this slot has. The steer is used once and not kept, so
@@ -3325,7 +3439,7 @@ function RebriefForm({
       </p>
       <div className="flex flex-wrap gap-2">
         <Button type="submit" variant="primary" busy={pressed === 'rebrief'} disabled={busy}>
-          {graphic ? 'Redesign it' : 'Draft it'}
+          {design ? 'Redesign it' : 'Draft it'}
         </Button>
         <Button type="button" variant="ghost" onClick={onDone}>
           Cancel

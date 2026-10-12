@@ -1,6 +1,7 @@
 'use client'
 
 import * as React from 'react'
+import dynamic from 'next/dynamic'
 import {
   barFigures,
   chartLayout,
@@ -46,8 +47,29 @@ import type {
   MapBrief,
 } from '@boom-busters/schemas'
 
-/** A graphic the designer has composed: the only kind the preview can draw. */
+/** A graphic composed as a scene (decision 268): the kind the SVG preview draws. */
 export type DesignedGraphicBrief = GraphicBrief & { scene: GraphicScene }
+
+/**
+ * A graphic or chart the designer wrote as code (decision 295): drawn by its
+ * own component at one moment (`graphic-code-still.tsx`), in place of the SVG
+ * preview a scene gets. Loaded in the browser only: the designer's code runs
+ * in the owner's browser and on Lambda, never in the server process that
+ * renders this page and holds the app's secrets. Until the module lands, a box
+ * the still's size keeps the card from jumping.
+ */
+export const GraphicCodePreview = dynamic(
+  () => import('./graphic-code-still').then((module) => module.GraphicCodeStill),
+  {
+    ssr: false,
+    loading: () => (
+      <div
+        aria-hidden
+        className="h-[270px] w-[480px] max-w-full rounded-[8px] border border-[var(--color-border)] bg-[var(--color-surface)]"
+      />
+    ),
+  },
+)
 
 /**
  * Live chart and map previews (build spec section 11.3): rendered with the
