@@ -35,6 +35,13 @@ test.describe('server bundling (decision 295)', () => {
     // after it.
     const response = await page.reload()
     expect(response?.status()).toBe(200)
-    await expect(page.locator('.__remotion-player')).toBeVisible()
+    // For a moment after the load the page holds two `.__remotion-player`
+    // elements: the Player on the stage, and a hidden copy of its content in
+    // React's streamed segment (`<div hidden id="S:0">` under body, the
+    // Player's own Suspense boundary) until the reveal script removes it.
+    // There is one Player on the page; what this asserts is a visible one.
+    const players = page.locator('.__remotion-player')
+    await expect(players.filter({ visible: true }).first()).toBeVisible()
+    expect(await players.count()).toBeGreaterThan(0)
   })
 })
