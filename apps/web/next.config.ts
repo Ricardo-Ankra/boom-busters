@@ -35,7 +35,11 @@ const nextConfig: NextConfig = {
   // the platform-specific binary, so Next leaves it where it is. `esbuild`
   // is the same kind of package: the graphics designer's compile check
   // (decision 295, lib/graphic-code/compile.ts) runs its native binary.
-  serverExternalPackages: ['esbuild', 'postgres', 'sharp'],
+  // `remotion` is external because the Inngest route is bundled with the
+  // `react-server` condition, under which React has no `createContext` and
+  // Remotion throws on import; loaded from node_modules it gets the plain
+  // React (decision 295, lib/graphic-code/dry-run.ts).
+  serverExternalPackages: ['esbuild', 'postgres', 'remotion', 'sharp'],
   typedRoutes: true,
   // Next's floating dev-tools button is a 32px control that only exists in
   // dev. It fails the 40px hit-target audit the E2E suite runs over every

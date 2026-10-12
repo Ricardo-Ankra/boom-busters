@@ -1,3 +1,4 @@
+import { createRequire } from 'node:module'
 import vm from 'node:vm'
 import { graphicFunctionBody, safeInsets } from '@boom-busters/compositions/graphic-code'
 import type {
@@ -6,9 +7,25 @@ import type {
   GraphicScope,
 } from '@boom-busters/compositions/graphic-code'
 import { GRAPHIC_STILL_MAX_MS } from '@boom-busters/schemas'
-import * as React from 'react'
-import { renderToStaticMarkup } from 'react-dom/server'
-import { FrameContext, oneFrameScope } from './one-frame'
+import type * as ReactModule from 'react'
+import type * as ReactDomServer from 'react-dom/server'
+import { makeOneFrame } from './one-frame'
+
+// Next bundles the Inngest route with the `react-server` condition, under
+// which `react-dom/server` throws on import and React has no `createContext`
+// (ruling 21). A require at run time resolves the plain Node builds instead,
+// and the one-frame shim is built over them rather than over the bundle's.
+// Turbopack follows `createRequire` and a constant specifier and bundles the
+// target again, so the specifiers are built at run time and marked
+// `turbopackIgnore`, which leaves a real Node `require`.
+const nodeRequire = createRequire(import.meta.url)
+const plainReact = ['re', 'act'].join('')
+const plainReactDomServer = ['react-dom', 'server'].join('/')
+const React = nodeRequire(/* turbopackIgnore: true */ plainReact) as typeof ReactModule
+const { renderToStaticMarkup } = nodeRequire(
+  /* turbopackIgnore: true */ plainReactDomServer,
+) as typeof ReactDomServer
+const { FrameContext, oneFrameScope } = makeOneFrame(React)
 
 /**
  * The dry run (decision 295): the designer's compiled component rendered to
