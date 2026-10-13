@@ -249,6 +249,28 @@ describe('OutlineSchema', () => {
       expect(bad.storylines).toBeUndefined()
     })
 
+    /**
+     * Decision 299: the film's close, planned on the outline root. A hint
+     * like the rest: trimmed, an empty beat folded, a bad shape folded whole.
+     */
+    it('reads the close and folds what it cannot', () => {
+      const parsed = OutlineSchema.parse({
+        close: {
+          answer: '  It gave away the file and kept the terms.  ',
+          echo: '',
+          openThread: 'Getty in the High Court.',
+        },
+        chapters: [chapter, chapter],
+      })
+      expect(parsed.close).toEqual({
+        answer: 'It gave away the file and kept the terms.',
+        openThread: 'Getty in the High Court.',
+      })
+      expect(OutlineSchema.parse({ close: 'the end', chapters: [chapter, chapter] }).close).toBe(
+        undefined,
+      )
+    })
+
     it('still reads an outline stored before the plan fields existed', () => {
       const parsed = OutlineSchema.parse({ chapters: [chapter, chapter] })
       expect(parsed.storylines).toBeUndefined()

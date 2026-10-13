@@ -78,7 +78,19 @@ invents is worse than a flat script.
 - A chapter ends on a turn: a reversal, a door closing, a fact that
   destabilises what the viewer thought they knew. The final sentence should
   make the next chapter's question feel inevitable. Never end a chapter on
-  resolution, summary or a moral.
+  resolution, summary or a moral, except the final chapter, which ends on
+  the close below.
+
+## The close
+
+- The final chapter ends on the close, its last paragraphs, in this order:
+  the central question answered in plain words as this channel's reading
+  of the record, hedged where the law needs it; an echo of the opening,
+  one image, number or phrase the film returns to so the loop it opened is
+  closed; and the open thread, the one thing still unresolved, as the last
+  line.
+- The close says what the film thinks. It never re-narrates the chapters: a
+  listener who has just heard them needs the meaning, not the list.
 
 ## Callbacks, not recaps
 

@@ -51,6 +51,11 @@ const claims: ScriptClaim[] = [
 const outline = OutlineSchema.parse({
   centralQuestion: 'How did 1.9 billion euros never exist?',
   storylines: ['the money', 'the auditors'],
+  close: {
+    answer: 'The money never existed; the signatures did.',
+    echo: 'The auditors signed.',
+    openThread: 'The trial of the chief operating officer has no date.',
+  },
   chapters: [
     {
       title: 'The setup',
@@ -141,6 +146,14 @@ describe('buildOutlineRequest', () => {
    * cold open that owns the claims of the moment it glimpses is told to
    * narrate them in full. The planner is told who owns the glimpsed moment.
    */
+  it('asks for the close: answer, echo, open thread (decision 299)', () => {
+    expect(request.system).toContain(
+      '"close": {"answer": string, "echo": string, "openThread": string}',
+    )
+    expect(request.system).toMatch(/echo/)
+    expect(request.system).toMatch(/open thread/i)
+  })
+
   it('sets a storyline rule a chapter plan can meet, and gives the glimpsed moment to its return', () => {
     expect(request.system).toMatch(/returns in the next/)
     expect(request.system).not.toMatch(/more than one chapter in a row/)
@@ -165,6 +178,20 @@ describe('tensionContract', () => {
     expect(contract).toContain(
       'Answer the question the previous chapter left open: Why did the auditors keep signing?',
     )
+  })
+
+  /**
+   * Decision 299: only the final chapter carries the close, as its last
+   * paragraphs; an earlier chapter still ends on a turn.
+   */
+  it('hands the final chapter the close, and no other chapter', () => {
+    const last = tensionContract(outline, outline.chapters.length - 1)
+    expect(last).toContain('End the film with the close')
+    expect(last).toContain('The money never existed; the signatures did.')
+    expect(last).toContain('Echo: The auditors signed.')
+    expect(last).toContain('The trial of the chief operating officer has no date.')
+    expect(last).toMatch(/never a recap/)
+    expect(tensionContract(outline, 0)).not.toContain('End the film')
   })
 
   it('carries the reveal and the wording limits (decision 296)', () => {
@@ -684,6 +711,11 @@ describe('mock script output', () => {
     })
     expect(mocked.chapters[0]!.reveals).toBeUndefined()
     expect(mocked.chapters[1]!.reveals).toBe('Mock withheld fact 1')
+    expect(mocked.close).toMatchObject({
+      answer: expect.any(String),
+      echo: expect.any(String),
+      openThread: expect.any(String),
+    })
   })
 
   it('always produces at least two chapters, as the schema requires', () => {

@@ -109,10 +109,23 @@ export const OutlineChapterSchema = z.object({
 })
 export type OutlineChapter = z.infer<typeof OutlineChapterSchema>
 
+/**
+ * The film's close (decision 299), written as the final chapter's last
+ * paragraphs: the central question answered in plain words as the channel's
+ * reading, one echo of the opening's image or number, and the thread still
+ * unresolved as the last line. A hint like the tension fields; a shape the
+ * model got wrong folds to absent and the final chapter ends on its turn.
+ */
+const closeFields = z
+  .object({ answer: tensionField, echo: tensionField, openThread: tensionField })
+  .optional()
+  .catch(undefined)
+
 export const OutlineSchema = z.object({
   /** The one question the whole film answers, only in its final chapter. */
   centralQuestion: tensionField,
   storylines,
+  close: closeFields,
   chapters: z.array(OutlineChapterSchema).min(2).max(20),
 })
 export type Outline = z.infer<typeof OutlineSchema>

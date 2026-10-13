@@ -7574,3 +7574,32 @@ boom-busters-broker`; merge and deploy to Vercel, then `PUT
      decides what the card implies; the chooser's empty-state copy stays for
      a dossier with no claims at all.
      Shipping: a Vercel deploy. No Inngest, Remotion or broker change.
+
+299. **The film gets a close** (2026-10-13, owner: "there isn't a closing
+     paragraph, or scene that summarises the video, gives a perspective or
+     leaves a cliffhanger; it just seemed to end"). Decision 296's recap ban
+     ("a chapter ends on its last fact, never a restatement or a moral")
+     applied to every chapter, the last included, so the Stability AI script
+     stopped on "has reached judgment" with nothing after it. Owner's
+     ruling, from four shapes offered: answer, echo, open thread; not a
+     recap, not a perspective piece, not a bare cliffhanger.
+     What shipped: the outline gains a root `close` with three hint fields
+     (`answer`, `echo`, `openThread`), folded like the tension fields; the
+     outline prompt asks for them and says the close is the one place the
+     film says what it thinks and never a recap. `tensionContract` hands the
+     FINAL chapter, and no other, one more line: end the film with the close
+     as its last paragraphs, in order, the central question answered as this
+     channel's reading (hedged where the law needs it), one echo of the
+     opening's image, number or phrase, and the open thread as the last
+     line. The house style's recap ban names the close as its one exception;
+     the craft file gains "## The close" and the escalation rule now ends
+     "except the final chapter". A pre-299 outline, or one whose close
+     folded, drafts as before and ends on its turn. The mock outline carries
+     a close so the mock run exercises the contract. No runner change: the
+     contract already flows through `buildChapterRequest`.
+     Decisions made where the spec left room: the close lives on the outline
+     root rather than on the final chapter, because it is planned from the
+     whole arc (the echo must point at chapter 1) and the Shorts marking and
+     teaser can read it from there later; the echo is the hook-and-payoff
+     rule from the long-form research behind decision 296.
+     Shipping: a Vercel deploy, then `PUT /api/inngest`.
