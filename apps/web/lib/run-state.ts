@@ -130,6 +130,13 @@ export interface ControlInputs {
    * this flag, no button that changes it (production, 2026-09-07).
    */
   hasShorts: boolean
+  /**
+   * Whether any excerpt the master can still serve exists (decision 300).
+   * Rows cut from an earlier script against a rebuilt master are a screen
+   * of cards that can never render; the stage is run again to cut fresh
+   * ones. Absent means every row counts as live (callers before 300).
+   */
+  hasLiveShorts?: boolean
   now?: Date
 }
 
@@ -276,6 +283,14 @@ export function projectControl(
                   'stage again picks segments from the script and cuts them fresh.',
               }
             : cannotRestart('Marked awaiting review, but there are no Shorts to curate.')
+        }
+        if (inputs.hasLiveShorts === false) {
+          const message =
+            'Every excerpt here was cut from an earlier script, and the master no longer ' +
+            'has its narration. Running the stage again cuts fresh ones from the current script.'
+          return restartable
+            ? { kind: 'restart', label: 'Run the shorts stage again', message }
+            : cannotRestart(message)
         }
         return {
           kind: 'working',

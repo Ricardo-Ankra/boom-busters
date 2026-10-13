@@ -377,8 +377,17 @@ function ShortCard({
           )}
         </div>
 
+        {/* An excerpt the rebuilt master can no longer serve (decision 300):
+            no render to offer, and the way out is the stage's own re-run. */}
+        {short.stale ? (
+          <p className="text-[13px] text-[var(--color-warning)]">
+            This excerpt was cut from an earlier script: its narration is no longer in the master.
+            Run the Shorts stage again to cut fresh ones.
+          </p>
+        ) : null}
+
         {/* Render / re-render — the card's spend decision. */}
-        {!inFlight ? (
+        {!inFlight && !short.stale ? (
           <ConfirmButton
             label={
               short.render === null

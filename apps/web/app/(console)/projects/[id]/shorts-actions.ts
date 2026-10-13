@@ -17,7 +17,12 @@ import type {
   TeaserFetchState,
   TeaserShotsRecord,
 } from '@boom-busters/schemas'
-import { compileTeaserMaster, TEASER_CHAPTER_ID } from '@boom-busters/timeline'
+import {
+  compileTeaserMaster,
+  segmentInMaster,
+  STALE_EXCERPT,
+  TEASER_CHAPTER_ID,
+} from '@boom-busters/timeline'
 import type { TeaserParagraphAudio } from '@boom-busters/timeline'
 import { revalidatePath } from 'next/cache'
 import { auth } from '@/auth'
@@ -452,6 +457,16 @@ export async function requestShortRender(shortId: string): Promise<ActionResult>
 
   if (await renderStillMoving(short)) {
     return { ok: false, error: 'This Short is already rendering. The card updates as it moves.' }
+  }
+
+  // An excerpt cut from an earlier script (decision 300): the master was
+  // rebuilt without its narration, and a run would only fail at compile.
+  if (short.kind === 'excerpt') {
+    const timelineRow = await latestTimeline(db, short.projectId)
+    const master = timelineRow ? TimelineSchema.safeParse(timelineRow.json) : null
+    if (master?.success && !segmentInMaster(master.data, short.segmentRef)) {
+      return { ok: false, error: STALE_EXCERPT }
+    }
   }
 
   try {

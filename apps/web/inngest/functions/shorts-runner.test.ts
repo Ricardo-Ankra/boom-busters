@@ -213,6 +213,68 @@ describeDb('shorts-runner', () => {
     expect(rows[0]?.ending).toBe('loop')
   })
 
+  /**
+   * Decision 300: an excerpt cut from an earlier script points at narration
+   * the master no longer has (production, 2026-10-13: Shorts cut on 8
+   * September from script v2 against a master built from script v4). It can
+   * never render, so re-entry replaces it rather than keeping it; a row the
+   * master can still serve is kept as curated.
+   */
+  it(
+    'a re-fired master.ready replaces excerpts whose narration left the master, cutting fresh ones',
+    { timeout: 120_000 },
+    async () => {
+      await insertShort(db, {
+        projectId: FIXTURE_PROJECT_ID,
+        title: 'Cut from the old script',
+        segmentRef: { chapterId: '01HQ0000000000000000000OLD', fromParagraph: 3, toParagraph: 4 },
+        ending: 'loop',
+      })
+
+      const { result } = await engine.execute({
+        events: masterReadyEvent(),
+        steps: [{ id: 'request-short-renders', handler: () => undefined }],
+      })
+
+      expect(result).toMatchObject({ outcome: 'shorts-created', created: 1, replaced: 1 })
+      const rows = await listShorts(db, FIXTURE_PROJECT_ID)
+      expect(rows).toHaveLength(1)
+      expect(rows[0]).toMatchObject({
+        title: 'EY refused to sign the accounts.',
+        segmentRef: { chapterId: CHAPTER, fromParagraph: 1, toParagraph: 2 },
+      })
+    },
+  )
+
+  it(
+    'a re-fired master.ready keeps a live excerpt and drops only the stale one beside it',
+    { timeout: 120_000 },
+    async () => {
+      await insertShort(db, {
+        projectId: FIXTURE_PROJECT_ID,
+        title: 'Still in the master',
+        segmentRef: { chapterId: CHAPTER, fromParagraph: 0, toParagraph: 0 },
+        ending: 'loop',
+      })
+      await insertShort(db, {
+        projectId: FIXTURE_PROJECT_ID,
+        title: 'Cut from the old script',
+        segmentRef: { chapterId: '01HQ0000000000000000000OLD', fromParagraph: 3, toParagraph: 4 },
+      })
+
+      const { result } = await engine.execute({ events: masterReadyEvent() })
+
+      expect(result).toMatchObject({
+        outcome: 'reused-existing',
+        created: 0,
+        reused: 1,
+        replaced: 1,
+      })
+      const rows = await listShorts(db, FIXTURE_PROJECT_ID)
+      expect(rows.map((row) => row.title)).toEqual(['Still in the master'])
+    },
+  )
+
   it(
     'a re-entry with no teaser row builds one without touching the curated excerpts',
     { timeout: 120_000 },

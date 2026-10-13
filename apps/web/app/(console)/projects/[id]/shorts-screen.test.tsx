@@ -110,6 +110,7 @@ function card(overrides: Partial<ShortCardModel> = {}): ShortCardModel {
     fromParagraph: 1,
     toParagraph: 2,
     durationMs: 42_000,
+    stale: false,
     estimatedCostUsd: 0.0117,
     render: null,
     teaser: null,
@@ -191,6 +192,18 @@ describe('ShortsScreen', () => {
   it('shows the segment source line with chapter, paragraphs and runtime', () => {
     renderScreen([card()])
     expect(screen.getByText('The audit · ¶2–3 · 0:42')).toBeInTheDocument()
+  })
+
+  /**
+   * Decision 300: an excerpt whose narration the master no longer has says
+   * so and offers no render; the stage's own re-run cuts fresh ones.
+   */
+  it('says when an excerpt was cut from an earlier script, and offers no render', () => {
+    renderScreen([card({ stale: true, durationMs: null, estimatedCostUsd: 0 })])
+    expect(
+      screen.getByText(/cut from an earlier script.*Run the Shorts stage again/),
+    ).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^Render/ })).not.toBeInTheDocument()
   })
 
   it('labels a teaser and says where its narration comes from', () => {

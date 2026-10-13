@@ -21,6 +21,7 @@ import { listLedger, truncateLedger } from '@boom-busters/cost'
 import { DEFAULT_SETTINGS, resolveBrandKit } from '@boom-busters/schemas'
 import type { Timeline } from '@boom-busters/schemas'
 import { InngestTestEngine } from '@inngest/test'
+import { updateShort } from '@boom-busters/db'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/lib/db'
 import { forgetRunRows } from '../middleware/run-mirror'
@@ -164,6 +165,27 @@ describeDb('short-render-runner', () => {
       expect(await listLedger(db)).toEqual([])
     },
   )
+
+  /**
+   * Decision 300: a Short whose narration the master no longer has (cut from
+   * an earlier script) cannot be compiled, and no retry changes that. The
+   * compile refusal is final, not retried three times (production,
+   * 2026-10-13: "Retrying compile-short" twice, then the run failed).
+   */
+  it('fails at once, with no retries, when the excerpt was cut from an earlier script', async () => {
+    await updateShort(db, shortId, {
+      segmentRef: { chapterId: '01HQ0000000000000000000OLD', fromParagraph: 3, toParagraph: 4 },
+    })
+    // The engine hands a thrown run back as a serialised `error` rather than rejecting.
+    const run = (await engine.execute({ events: requestedEvent() })) as {
+      error?: { name: string; message: string }
+    }
+    expect(run.error).toMatchObject({
+      name: 'NonRetriableError',
+      message: expect.stringMatching(/cut from an earlier script/),
+    })
+    expect(await db.select().from(renders)).toEqual([])
+  })
 
   describe('live path', () => {
     beforeEach(() => {
