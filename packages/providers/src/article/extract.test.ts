@@ -29,6 +29,50 @@ describe('extractArticle', () => {
     })
   })
 
+  /**
+   * Decision 298: a paper is a source too. arXiv and the journals publish
+   * Highwire `citation_*` tags and no JSON-LD, and their og:site_name is
+   * absent, so the card read "Arxiv" from the domain and no date at all.
+   */
+  it('reads a paper from its citation tags, naming arXiv and folding the authors', () => {
+    const html = `<html><head>
+      <title>[2112.10752] High-Resolution Image Synthesis with Latent Diffusion Models</title>
+      <meta name="citation_title" content="High-Resolution Image Synthesis with Latent Diffusion Models">
+      <meta name="citation_author" content="Rombach, Robin">
+      <meta name="citation_author" content="Blattmann, Andreas">
+      <meta name="citation_author" content="Lorenz, Dominik">
+      <meta name="citation_date" content="2021/12/20">
+      <meta name="citation_online_date" content="2021/12/20">
+      <meta name="citation_arxiv_id" content="2112.10752">
+      <meta property="og:title" content="High-Resolution Image Synthesis with Latent Diffusion Models">
+      <meta property="og:description" content="By decomposing the image formation process into a sequential application of denoising autoencoders...">
+    </head><body></body></html>`
+    const article = extractArticle(html, 'https://arxiv.org/abs/2112.10752')
+    expect(article.outlet).toBe('arXiv')
+    expect(article.headline).toBe('High-Resolution Image Synthesis with Latent Diffusion Models')
+    expect(article.author).toBe('Robin Rombach and others')
+    expect(article.publishedAt).toBe('2021-12-20')
+    expect(article.provenance).toMatchObject({
+      outlet: 'meta',
+      author: 'meta',
+      publishedAt: 'meta',
+    })
+  })
+
+  it('names a journal from its citation tags when the page has no site name', () => {
+    const html = `<html><head>
+      <meta name="citation_journal_title" content="Nature">
+      <meta name="citation_title" content="A result">
+      <meta name="citation_author" content="Ada Lovelace">
+      <meta name="citation_publication_date" content="2024-05-01">
+    </head><body></body></html>`
+    const article = extractArticle(html, 'https://nature.example/articles/1')
+    expect(article.outlet).toBe('Nature')
+    expect(article.headline).toBe('A result')
+    expect(article.author).toBe('Ada Lovelace')
+    expect(article.publishedAt).toBe('2024-05-01')
+  })
+
   it('never promotes a modified date to the publication date', () => {
     const article = extractArticle(HEAD_MODIFIED_ONLY, URL_A)
     expect(article.headline).toBe('An old story, republished')

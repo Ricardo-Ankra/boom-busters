@@ -406,11 +406,26 @@ const graphicSlot: SlotView = {
  * to be a list rather than a confirmation.
  */
 const ARTICLE_CLAIMS = [
-  { id: CLAIM, text: 'The escrow accounts never existed.', label: 'The Financial Record' },
+  {
+    id: CLAIM,
+    text: 'The escrow accounts never existed.',
+    label: 'The Financial Record',
+    sourceType: 'major_outlet',
+    hasAddress: true,
+  },
   {
     id: '01HQ00000000000000000000AB',
     text: 'Three banks denied holding the money.',
     label: 'ledgerwire.example/2023/03/…',
+    sourceType: 'major_outlet',
+    hasAddress: true,
+  },
+  {
+    id: '01HQ00000000000000000000AC',
+    text: 'The latent diffusion paper was posted to arXiv in December 2021.',
+    label: 'no address yet',
+    sourceType: 'other',
+    hasAddress: false,
   },
 ]
 
@@ -1446,6 +1461,32 @@ describe('the plan phase (staged-visuals design)', () => {
       expect(
         screen.queryByRole('group', { name: 'Which article this card quotes' }),
       ).not.toBeInTheDocument(),
+    )
+  })
+
+  /**
+   * Decision 298: a claim with no address is still offered; the owner pastes
+   * the page it comes from (a paper, a report) and the card quotes that.
+   */
+  it('lets the owner paste the address of a source a claim lacks, and quotes it', async () => {
+    render(
+      <VisualBoard projectId={PROJECT} model={model([stockSlot])} colors={COLORS} brand={BRAND} />,
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'news headline' }))
+    const chooser = screen.getByRole('group', { name: 'Which article this card quotes' })
+    expect(within(chooser).getByText(/latent diffusion paper/)).toBeInTheDocument()
+
+    const quote = within(chooser).getByRole('button', { name: 'Quote this with the address' })
+    expect(quote).toBeDisabled()
+    const address = within(chooser).getByRole('textbox', { name: 'Source address' })
+    await userEvent.type(address, 'https://arxiv.org/abs/2112.10752')
+    expect(quote).toBeEnabled()
+    await userEvent.click(quote)
+    expect(retypeToHeadlineAction).toHaveBeenCalledWith(
+      PROJECT,
+      SLOT_A,
+      '01HQ00000000000000000000AC',
+      'https://arxiv.org/abs/2112.10752',
     )
   })
 

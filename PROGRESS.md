@@ -7541,3 +7541,34 @@ boom-busters-broker`; merge and deploy to Vercel, then `PUT
      Gemini 3 Pro Image.
      Shipping: a Vercel deploy. No Inngest change, no Remotion or broker
      deploy.
+
+298. **A headline card may quote any source the owner names** (2026-10-13,
+     owner: "update the News Headline format to allow me to manually add a
+     source; on the Stability AI project I want to add the reference to the
+     arXiv paper"). Decision 257 let a headline card cite only a
+     `major_outlet` claim with a surviving URL, in three places: the board's
+     chooser listed those claims alone, `retypeToHeadlineAction` refused any
+     other, and the extractor read news tags only. The arXiv paper's three
+     claims are `other`, so the format could not reach them, and the only
+     way round was to mislabel the paper as a news outlet on the dossier.
+     What shipped: the planner's rule is unchanged (`claimCarriesArticle`,
+     news only, since a model aims at what the clipping format implies). The
+     owner's rule is new: `claimHasSourcePage`, any source type whose address
+     is a readable page and not a front page. The chooser lists every
+     un-quarantined claim, those with an address first (a non-news one
+     tagged with its source type), and the rest with an address field: the
+     owner pastes the page a claim comes from, `retypeToHeadlineAction` takes
+     it as a fourth argument, refuses a front page, sets it as the claim's
+     source (as the card's own address form does, so the dossier cites it
+     too) and converts the slot. The extractor reads a paper's Highwire tags:
+     `citation_title`, every `citation_author` ("Rombach, Robin" to "Robin
+     Rombach", folded as "and others"), `citation_publication_date` and
+     `citation_date`, `citation_journal_title` and `citation_publisher`, and
+     names arXiv from its own id tag rather than "Arxiv" from the domain. A
+     slash date ("2021/12/20") is read as a UTC day; `Date.parse` took it as
+     local midnight and the UTC read shifted it to the day before.
+     Decisions made where the spec left room: a court or regulator source is
+     offered too, since a judgment page has a title and a date and the owner
+     decides what the card implies; the chooser's empty-state copy stays for
+     a dossier with no claims at all.
+     Shipping: a Vercel deploy. No Inngest, Remotion or broker change.

@@ -53,6 +53,8 @@ interface Head {
   meta: Map<string, string>
   title: string | null
   jsonld: Record<string, unknown>[]
+  /** Every `citation_author` tag, in page order (decision 298). */
+  authors: string[]
 }
 
 /** `&amp;` and friends. The parser leaves attribute values encoded. */
@@ -96,6 +98,7 @@ function clean(value: unknown, max: number): string | null {
 function readHead(html: string): Head {
   const root = parse(html, { comment: false })
   const meta = new Map<string, string>()
+  const authors: string[] = []
 
   for (const tag of root.querySelectorAll('meta')) {
     const key =
@@ -103,6 +106,9 @@ function readHead(html: string): Head {
     const value = tag.getAttribute('content')
     if (key === undefined || value === undefined) continue
     const lower = key.toLowerCase()
+    // A paper lists one citation_author tag per author (decision 298); they
+    // are folded like a JSON-LD author list, so every one is kept.
+    if (lower === 'citation_author') authors.push(value)
     // First wins: publishers repeat og:title inside article bodies.
     if (!meta.has(lower)) meta.set(lower, value)
   }
@@ -120,7 +126,16 @@ function readHead(html: string): Head {
   }
 
   const title = root.querySelector('title')?.rawText ?? null
-  return { meta, title, jsonld }
+  return { meta, title, jsonld, authors }
+}
+
+/**
+ * "Rombach, Robin" as a paper's citation tag writes it, to "Robin Rombach".
+ * A name with no comma is left as it is.
+ */
+function citationName(name: string): string {
+  const [family, given] = name.split(',').map((part) => part.trim())
+  return given ? `${given} ${family}` : name.trim()
 }
 
 /** JSON-LD arrives as an object, an array, or an `@graph` of both. */
@@ -180,7 +195,10 @@ function readAuthor(value: unknown): string | null {
 /** Publishers write dates every way ISO 8601 allows, and a few it does not. */
 function readDate(value: unknown): string | null {
   if (typeof value !== 'string') return null
-  const text = value.trim()
+  // A citation tag writes "2021/12/20", which Date.parse reads as LOCAL
+  // midnight and the UTC read below shifts to the day before east of
+  // Greenwich; as an ISO date it is read as UTC, like every other date here.
+  const text = value.trim().replace(/^(\d{4})\/(\d{2})\/(\d{2})$/, '$1-$2-$3')
   if (text === '') return null
 
   const stamp = Date.parse(text)
@@ -254,12 +272,19 @@ export function extractArticle(html: string, url: string): ExtractedArticle {
     ],
     ['og', () => clean(head.meta.get('og:site_name'), OUTLET_MAX)],
     ['meta', () => clean(head.meta.get('application-name'), OUTLET_MAX)],
+    // A paper's journal or publisher, and arXiv by its own id tag (decision
+    // 298): arXiv sets no site name, and "Arxiv" from the domain is not how
+    // anyone writes it.
+    ['meta', () => clean(head.meta.get('citation_journal_title'), OUTLET_MAX)],
+    ['meta', () => clean(head.meta.get('citation_publisher'), OUTLET_MAX)],
+    ['meta', () => (head.meta.has('citation_arxiv_id') ? 'arXiv' : null)],
     ['domain', () => outletFromDomain(url)],
   ])
 
   const headline = take<string>('headline', [
     ['jsonld', () => clean(ld?.['headline'], HEADLINE_MAX)],
     ['og', () => clean(head.meta.get('og:title'), HEADLINE_MAX)],
+    ['meta', () => clean(head.meta.get('citation_title'), HEADLINE_MAX)],
     ['meta', () => clean(head.meta.get('twitter:title'), HEADLINE_MAX)],
     [
       'title',
@@ -276,6 +301,7 @@ export function extractArticle(html: string, url: string): ExtractedArticle {
     ['jsonld', () => readAuthor(ld?.['author'])],
     ['meta', () => clean(readAuthor(head.meta.get('author')), AUTHOR_MAX)],
     ['meta', () => clean(readAuthor(head.meta.get('article:author')), AUTHOR_MAX)],
+    ['meta', () => clean(readAuthor(head.authors.map(citationName)), AUTHOR_MAX)],
   ])
 
   const publishedAt = take<string>('publishedAt', [
@@ -284,6 +310,8 @@ export function extractArticle(html: string, url: string): ExtractedArticle {
     ['meta', () => readDate(head.meta.get('date'))],
     ['meta', () => readDate(head.meta.get('dc.date.issued'))],
     ['meta', () => readDate(head.meta.get('datepublished'))],
+    ['meta', () => readDate(head.meta.get('citation_publication_date'))],
+    ['meta', () => readDate(head.meta.get('citation_date'))],
   ])
 
   const description = take<string>('description', [
