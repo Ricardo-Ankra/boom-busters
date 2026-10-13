@@ -7510,3 +7510,34 @@ boom-busters-broker`; merge and deploy to Vercel, then `PUT
      the outline's repairs stay on the strip when the Shorts marking stops.
      Shipping: a Vercel deploy, then `PUT /api/inngest`. No Remotion or
      broker deploy.
+
+297. **Set sheets on fal too** (2026-10-13, owner: "I can't choose another
+     model besides Google's for the Set Sheets in settings; make it the same
+     as the stills, where I can pick fal with all its models that apply").
+     Decision 275 had pinned the set-sheet route to Google in three places:
+     the Models tab offered only Gemini models priced at 4K, `routePatch`
+     wrote `provider: 'google'` whatever was picked, and `buildSetSheet`
+     refused any other provider. The fal adapter already carried a reference
+     image to Kontext or flux-2/edit for stills, so nothing about the sheet
+     itself needed Gemini.
+     What shipped: the Set sheets row has a provider select like the stills
+     row. On Google the model list stays the 4K-priced one; on fal every
+     listed model is offered, because the plate always rides as a reference
+     and the adapter hands it to that model's reference endpoint, which is
+     what is billed (the estimate and the ledger both name it). The fal
+     adapter honours a 2K or 4K request on its `image_size` endpoints with
+     the largest 16:9 frame their schemas allow, 2048 by 1152 (checked
+     against the flux-2/edit and flux/dev OpenAPI schemas); Kontext takes
+     only an aspect ratio and keeps its own size, so the row says what plate
+     size to expect on each. `buildSetSheet` reads the key, the reference
+     (inline bytes for Gemini, a presigned URL for fal) and the result (a
+     data: URL or an expiring URL fetched at once) by provider, and every
+     candidate carries the provider that drew it. The 4K price is required
+     only when pricing a Google set-sheet model.
+     Decisions made where the spec left room: the fal list is not filtered
+     by capability because every fal model applies through its reference
+     route (Imagen 3 borrows Kontext, as it does for stills); Kontext is not
+     sized because its schema has no size field; the default route stays
+     Gemini 3 Pro Image.
+     Shipping: a Vercel deploy. No Inngest change, no Remotion or broker
+     deploy.

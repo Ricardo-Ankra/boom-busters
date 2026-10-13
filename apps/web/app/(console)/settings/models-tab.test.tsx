@@ -1,6 +1,6 @@
 import { buildModelOptions, mockListedModels } from '@boom-busters/providers'
 import { DEFAULT_SETTINGS, EMPTY_MODEL_PRICES, type Settings } from '@boom-busters/schemas'
-import { render, screen, waitFor } from '@testing-library/react'
+import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { SettingsForm } from './settings-form'
@@ -108,6 +108,37 @@ describe('routing the set sheet generator (decision 275)', () => {
     expect(saveSettings).toHaveBeenCalledWith({
       modelRouting: { setSheet: { provider: 'google', model: 'gemini-3.1-flash-image' } },
     })
+  })
+
+  /**
+   * Decision 297: set sheets pick a provider like stills do. On fal every
+   * listed model applies, because the plate always rides as a reference and
+   * the adapter hands it to that model's reference endpoint; the 4K filter is
+   * Google's alone, since fal prices per image.
+   */
+  it('routes set sheets to fal, offering every fal model', async () => {
+    const options = modelOptions()
+    renderModelsTab(options)
+
+    const provider = screen.getByRole('combobox', { name: 'Set sheets provider' })
+    expect(provider).toHaveValue('google')
+    await userEvent.selectOptions(provider, 'fal')
+
+    const first = options.image.fal.find((o) => o.selectable && o.status !== 'needs-price')!
+    expect(saveSettings).toHaveBeenCalledWith({
+      modelRouting: { setSheet: { provider: 'fal', model: first.id } },
+    })
+
+    const settings = structuredClone(DEFAULT_SETTINGS)
+    settings.modelRouting.setSheet = { provider: 'fal', model: first.id }
+    cleanup()
+    renderModelsTab(options, settings)
+    const select = screen.getByRole('combobox', { name: 'Set sheets model' })
+    expect(select).toHaveValue(first.id)
+    expect(Array.from(select.querySelectorAll('option')).map((option) => option.value)).toEqual(
+      options.image.fal.map((o) => o.id),
+    )
+    expect(screen.getByText(/each plate comes out about 1,000 pixels wide/)).toBeInTheDocument()
   })
 })
 

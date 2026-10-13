@@ -7,6 +7,7 @@ import type {
   ImageGenProvider,
   ImageGenRequest,
   ImageGenResult,
+  ImageSize,
   ReferenceLimits,
   StockCallOptions,
 } from './types'
@@ -144,6 +145,18 @@ const ResponseSchema = z.object({
 /** The render is 1920×1080; fal's preset generates 1344×768, scaled at compile. */
 const IMAGE_SIZE = 'landscape_16_9'
 
+/**
+ * The largest 16:9 frame fal's `image_size` endpoints take (decision 297):
+ * width and height up to 2048 on flux-2/edit and on the FLUX text-to-image
+ * endpoints, per their OpenAPI schemas (checked 2026-10-13). A set sheet
+ * asks for '4K' so its four panels cut large; this is as large as fal goes.
+ * Kontext takes only an aspect ratio and is not sized here.
+ */
+const LARGE_IMAGE_SIZE = { width: 2048, height: 1152 } as const
+
+const imageSizeFor = (size: ImageSize | undefined) =>
+  size === '2K' || size === '4K' ? LARGE_IMAGE_SIZE : IMAGE_SIZE
+
 export function createFalImageGen(models: readonly ImageGenModel[] = FAL_MODELS): ImageGenProvider {
   const adapter: ImageGenProvider = {
     id: 'fal',
@@ -178,7 +191,7 @@ export function createFalImageGen(models: readonly ImageGenModel[] = FAL_MODELS)
               prompt,
               // One field for one reference or several, unlike Kontext.
               image_urls: referenceUrls,
-              image_size: IMAGE_SIZE,
+              image_size: imageSizeFor(request.size),
               num_images: request.count,
               enable_safety_checker: true,
             }
@@ -194,7 +207,7 @@ export function createFalImageGen(models: readonly ImageGenModel[] = FAL_MODELS)
         : dialect === 'flux'
           ? {
               prompt,
-              image_size: IMAGE_SIZE,
+              image_size: imageSizeFor(request.size),
               num_images: request.count,
               enable_safety_checker: true,
             }

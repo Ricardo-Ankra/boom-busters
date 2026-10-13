@@ -1365,6 +1365,23 @@ describeDb('a live-only route the cache no longer holds (decision 288)', () => {
     expect(await lastLedgerModel()).toBe('gemini-9-flash-image')
   })
 
+  /**
+   * Decision 297: a set sheet on fal always carries the plate as a reference,
+   * so what is billed is the reference endpoint the routed model hands it to
+   * (Kontext pro for FLUX.1, flux-2/edit for FLUX.2), never the routed
+   * text-to-image price.
+   */
+  it('prices a fal set sheet at the reference endpoint its model hands the plate to', async () => {
+    await updateSettings(db, {
+      modelRouting: { setSheet: { provider: 'fal', model: 'fal-ai/flux/dev' } },
+    })
+    expect(await setSheetEstimateUsd()).toBeCloseTo(0.04)
+    await updateSettings(db, {
+      modelRouting: { setSheet: { provider: 'fal', model: 'fal-ai/flux-2' } },
+    })
+    expect(await setSheetEstimateUsd()).toBeCloseTo(0.03)
+  })
+
   it('prices a route nothing resolves at $0 rather than taking the page down, and refuses to spend on it', async () => {
     const route = { provider: 'google' as const, model: 'gemini-unknown-image' }
     await updateSettings(db, {

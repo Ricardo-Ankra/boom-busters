@@ -119,7 +119,7 @@ function withEntry<T>(table: Record<string, T>, key: string, value: T | null): R
   return copy
 }
 
-/** The routing patch that points `key` at a model; set sheets are Google's alone. */
+/** The routing patch that points `key` at a model. */
 function routePatch(
   key: RouteKey,
   provider: AnyProvider,
@@ -127,7 +127,7 @@ function routePatch(
 ): NonNullable<SettingsPatch['modelRouting']> {
   switch (key) {
     case 'setSheet':
-      return { setSheet: { provider: 'google', model } }
+      return { setSheet: { provider: provider as StillProvider, model } }
     case 'stills':
       return { stills: { provider: provider as StillProvider, model } }
     case 'stillsLikeness':
@@ -366,7 +366,7 @@ export function ModelsTab({
           title={title}
           initial={initial}
           sizes={provider === 'google'}
-          require4K={key === 'setSheet'}
+          require4K={key === 'setSheet' && provider === 'google'}
           saveLabel={saveLabel}
           onSave={(price) => savePrice(key, provider, model, { kind: 'image', price }, alsoRoute)}
           onCancel={onCancel}
@@ -525,16 +525,26 @@ export function ModelsTab({
   const likenessSelected = likenessOptions.find((o) => o.id === likeness?.model)
 
   const sheetWaiting = waitingFor('setSheet')
-  const sheetModel = sheetWaiting?.model ?? settings.modelRouting.setSheet.model
-  // Only models that make a 4K image: a sheet is cut into four plates. The
-  // stored choice stays listed so the select never shows a model it is not
-  // using.
-  const sheetOptions = options.image.google.filter(
-    (o) =>
-      (o.price?.kind === 'image' && o.price.pricesBySize?.['4K'] !== undefined) ||
-      o.id === sheetModel,
-  )
-  const sheetSelected = sheetOptions.find((o) => o.id === sheetModel)
+  const sheet = {
+    provider:
+      (sheetWaiting?.provider as StillProvider | undefined) ??
+      settings.modelRouting.setSheet.provider,
+    model: sheetWaiting?.model ?? settings.modelRouting.setSheet.model,
+  }
+  // Google: only models that make a 4K image, since a sheet is cut into four
+  // plates; the stored choice stays listed so the select never shows a model
+  // it is not using. fal (decision 297): every model, because the plate rides
+  // as a reference and the adapter hands it to that model's reference
+  // endpoint, which prices per image and draws as large as fal allows.
+  const sheetOptions =
+    sheet.provider === 'google'
+      ? options.image.google.filter(
+          (o) =>
+            (o.price?.kind === 'image' && o.price.pricesBySize?.['4K'] !== undefined) ||
+            o.id === sheet.model,
+        )
+      : options.image[sheet.provider]
+  const sheetSelected = sheetOptions.find((o) => o.id === sheet.model)
 
   return (
     <Card>
@@ -749,32 +759,61 @@ export function ModelsTab({
           Leave it on &quot;same as above&quot; to generate everything one way.
         </p>
 
-        {/* The set-sheet generator (decision 275): Google models only,
-            because the four-view contact sheet and its 4K output are Gemini
-            features. */}
+        {/* The set-sheet generator (decision 275), on either still provider
+            (decision 297): Gemini draws the four-view sheet at 4K; fal draws it
+            on the routed model's reference endpoint at the largest frame it
+            allows. */}
         <div className="flex flex-col gap-2">
-          <div className="grid items-center gap-2 sm:grid-cols-[1fr_auto]">
-            <Label htmlFor="route-set-sheet-model">{ROUTE_LABELS.setSheet}</Label>
+          <div className="grid items-center gap-2 sm:grid-cols-[1fr_auto_auto]">
+            <Label htmlFor="route-set-sheet-provider">{ROUTE_LABELS.setSheet}</Label>
+
             <Select
-              id="route-set-sheet-model"
-              aria-label="Set sheets model"
-              value={sheetModel}
+              id="route-set-sheet-provider"
+              aria-label="Set sheets provider"
+              value={sheet.provider}
               disabled={saving}
-              onChange={(event) => choose('setSheet', 'google', event.target.value)}
+              onChange={(event) => {
+                const provider = event.target.value as StillProvider
+                const first = firstRunnable(options.image[provider])
+                if (first) choose('setSheet', provider, first.id)
+              }}
+              className="sm:w-40"
+            >
+              {STILL_PROVIDERS.map((provider) => (
+                <option key={provider} value={provider}>
+                  {provider}
+                </option>
+              ))}
+            </Select>
+
+            <Select
+              aria-label="Set sheets model"
+              value={sheet.model}
+              disabled={saving}
+              onChange={(event) => choose('setSheet', sheet.provider, event.target.value)}
               className="sm:w-56"
             >
-              {renderChoices(sheetOptions, sheetModel)}
+              {renderChoices(sheetOptions, sheet.model)}
             </Select>
           </div>
 
           {renderNotes(
             'setSheet',
             sheetOptions,
-            'google',
-            sheetModel,
+            sheet.provider,
+            sheet.model,
             sheetSelected,
             sheetWaiting !== null,
           )}
+
+          {sheet.provider === 'fal' ? (
+            <p className="text-[12px] text-[var(--color-text-muted)]">
+              On fal the plate goes to the model&apos;s reference endpoint (FLUX.2 edit for FLUX.2,
+              Kontext for the rest) and the sheet comes back 2,048 pixels wide, so each plate comes
+              out about 1,000 pixels wide, about 700 on Kontext. Gemini&apos;s 4K sheet gives plates
+              near 1,600.
+            </p>
+          ) : null}
         </div>
       </CardContent>
     </Card>
