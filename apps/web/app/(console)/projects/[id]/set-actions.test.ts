@@ -736,7 +736,8 @@ describeDb('set actions (mock mode)', () => {
     }
   })
 
-  it('refuses to build the set when the set-sheet route is not Google', async () => {
+  /** Decision 297: a set sheet builds on fal too; its candidates carry that provider. */
+  it('builds the set on a fal route, naming fal on every candidate', async () => {
     const id = await addTradingFloor()
     await finaliseSetPlateAction({
       setId: id,
@@ -749,10 +750,13 @@ describeDb('set actions (mock mode)', () => {
       modelRouting: { setSheet: { provider: 'fal', model: 'fal-ai/flux/dev' } },
     })
     try {
-      expect(await buildSetSheetAction(id)).toEqual({
-        ok: false,
-        error: 'Set sheets need a Google image model; change Settings → Models → Set sheets.',
-      })
+      const built = await buildSetSheetAction(id)
+      expect(built.ok).toBe(true)
+      expect(built.candidates).toHaveLength(4)
+      for (const candidate of built.candidates!) {
+        expect(candidate.provider).toBe('fal')
+        expect(candidate.id.startsWith('fal-mock-sheet-')).toBe(true)
+      }
     } finally {
       await updateSettings(db, { modelRouting: { setSheet: DEFAULT_SET_SHEET_ROUTE } })
     }

@@ -497,6 +497,50 @@ describe('falImageGen', () => {
     expect(result.estimatedCostUsd).toBeCloseTo(FAL_REFERENCE_MODELS.flux2.pricePerImage * 2)
   })
 
+  /**
+   * A set sheet (decision 297) asks for '4K' so its four panels cut large.
+   * fal's image_size endpoints take a width and height up to 2048 (checked
+   * against the flux-2/edit and flux/dev OpenAPI schemas, 2026-10-13), so a
+   * 2K or 4K request becomes the largest 16:9 frame they allow; Kontext takes
+   * only an aspect ratio and keeps its own size.
+   */
+  it('sends the largest 16:9 frame an image_size endpoint allows for a 2K or 4K request', async () => {
+    const bodies: Record<string, unknown>[] = []
+    const fetchImpl = (async (_url: string | URL | Request, init?: RequestInit) => {
+      bodies.push(JSON.parse(String(init?.body)) as Record<string, unknown>)
+      return new Response(
+        JSON.stringify({
+          images: [{ url: 'https://fal.media/files/a.png', width: 2048, height: 1152 }],
+        }),
+        { status: 200 },
+      )
+    }) as typeof fetch
+    const sheet = { prompt: 'a room from four sides', count: 1, size: '4K' as const }
+
+    await falImageGen.generate(
+      { ...sheet, model: 'fal-ai/flux-2', referenceUrls: ['https://r2.example/plate.png'] },
+      { apiKey: 'key', fetchImpl },
+    )
+    expect(bodies[0]!['image_size']).toEqual({ width: 2048, height: 1152 })
+
+    await falImageGen.generate({ ...sheet, model: 'fal-ai/flux/dev' }, { apiKey: 'key', fetchImpl })
+    expect(bodies[1]!['image_size']).toEqual({ width: 2048, height: 1152 })
+
+    await falImageGen.generate(
+      { ...sheet, model: 'fal-ai/flux/dev', referenceUrls: ['https://r2.example/plate.png'] },
+      { apiKey: 'key', fetchImpl },
+    )
+    expect(bodies[2]!['aspect_ratio']).toBe('16:9')
+    expect(bodies[2]!['image_size']).toBeUndefined()
+
+    // A 1K still keeps the preset the render pipeline scales from.
+    await falImageGen.generate(
+      { ...sheet, size: '1K', model: 'fal-ai/flux/dev' },
+      { apiKey: 'key', fetchImpl },
+    )
+    expect(bodies[3]!['image_size']).toBe('landscape_16_9')
+  })
+
   it('sends several FLUX.2 references to the same endpoint, in one array', async () => {
     let calledUrl = ''
     let sentBody: Record<string, unknown> = {}

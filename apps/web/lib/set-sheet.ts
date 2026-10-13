@@ -4,11 +4,12 @@ import { getSettings, upsertAssetByHash, visualCredentials } from '@boom-busters
 import { ValidationError } from '@boom-busters/schemas'
 import type { ProjectSet, SetPlateDirection, SlotCandidate } from '@boom-busters/schemas'
 import { imageGenModel, imageGenPrice, mockProvidersEnabled } from '@boom-busters/providers'
+import type { ImageReference } from '@boom-busters/providers'
 import { withCost } from '@boom-busters/cost'
 import { db } from '@/lib/db'
 import { env } from '@/lib/env'
 import { stillCatalogue, stillGenerator } from '@/lib/model-catalogue'
-import { getObjectBytes, putObject, stillKey } from '@/lib/storage'
+import { getObjectBytes, presignGet, putObject, stillKey } from '@/lib/storage'
 import { mockContactSheet, splitContactSheet } from '@/lib/contact-sheet'
 import { buildSetSheetPrompt } from '@/lib/set-plates'
 
@@ -16,10 +17,17 @@ import { buildSetSheetPrompt } from '@/lib/set-plates'
  * "Build the set" (decision 275): one contact sheet of the room from four
  * sides, on the `setSheet` route at 4K, with the set's north plate as the
  * reference, cut into four candidates the Set card offers like any other.
+ *
+ * On either still provider (decision 297). Gemini takes the plate inline and
+ * draws at 4K; fal takes it as a presigned URL on the routed model's
+ * reference endpoint (Kontext or flux-2/edit) and draws as large as that
+ * endpoint allows, which is what is billed.
  */
 
 export const UNSPLIT_SHEET =
   'The sheet came back without clear borders, so it was not split; build the set again.'
+
+const PROVIDER_LABEL = { google: 'Gemini', fal: 'fal.ai' } as const
 
 /**
  * An unsplit sheet still cost the owner $0.24, so it is kept where it can be
@@ -40,24 +48,43 @@ async function keepUnsplitSheet(
   }
 }
 
+/**
+ * The generated sheet's bytes. Gemini hands them over inline as a data: URL;
+ * fal hands over an expiring URL that must be fetched at once.
+ */
+async function sheetBytes(url: string): Promise<{ sheet: Buffer; sheetType: string }> {
+  if (url.startsWith('data:')) {
+    return {
+      sheet: Buffer.from(url.slice(url.indexOf(',') + 1), 'base64'),
+      sheetType: /^data:([^;,]+)/.exec(url)?.[1] ?? 'image/png',
+    }
+  }
+  const response = await fetch(url)
+  if (!response.ok) {
+    throw new ValidationError(`The set sheet could not be fetched (${response.status}).`)
+  }
+  return {
+    sheet: Buffer.from(await response.arrayBuffer()),
+    sheetType: response.headers.get('content-type')?.split(';')[0] ?? 'image/png',
+  }
+}
+
 export async function buildSetSheet(
   set: ProjectSet,
 ): Promise<{ candidates: SlotCandidate[]; views: SetPlateDirection[] }> {
   const settings = await getSettings(db)
   const route = settings.modelRouting.setSheet
-  if (route.provider !== 'google') {
-    throw new ValidationError(
-      'Set sheets need a Google image model; change Settings → Models → Set sheets.',
-      { field: 'modelRouting.setSheet' },
-    )
-  }
+  const provider = route.provider
   const catalogue = await stillCatalogue(settings)
-  const live = catalogue.google
+  const live = catalogue[provider]
   // buildSetSheetPrompt runs the prompt through stripBannedWords itself now
   // (decision 287 final review), so the harness that calls it directly gets
   // the same text this action sends.
   const prompt = buildSetSheetPrompt({ name: set.name, layout: set.layout, look: set.look })
   const mocked = mockProvidersEnabled()
+  // The endpoint that is actually billed: on fal the plate leaves the routed
+  // model for its reference endpoint; Gemini takes it inline on the same model.
+  const billed = live.referenceRoute?.(route.model, 1) ?? null
 
   let sheet: Buffer
   let sheetType = 'image/png'
@@ -65,9 +92,11 @@ export async function buildSetSheet(
     sheet = await mockContactSheet()
   } else {
     const keys = await visualCredentials(db, env.SECRETS_ENCRYPTION_KEY)
-    if (!keys.google) {
+    const apiKey = keys[provider]
+    if (!apiKey) {
       throw new ValidationError(
-        'Set sheets run on Gemini, but no Google key is stored in Settings → Connections.',
+        `Set sheets run on ${PROVIDER_LABEL[provider]}, but no ${PROVIDER_LABEL[provider]} key ` +
+          'is stored in Settings → Connections.',
         { field: 'modelRouting.setSheet' },
       )
     }
@@ -78,16 +107,27 @@ export async function buildSetSheet(
     const plate = set.plates.find((candidate) => candidate.view === 'north') ?? set.plates[0]
     if (!plate) throw new ValidationError('Add a plate first, then build the set from it.')
     const object = await getObjectBytes(plate.r2Key)
-    const adapter = stillGenerator('google', catalogue)
+    const reference: ImageReference = {
+      name: set.name,
+      kind: 'object',
+      // The plate's own view, never a hard-coded 'north': `facing` takes no
+      // 'other', so an undirected plate sends none.
+      ...(plate.view === 'other' ? {} : { facing: plate.view }),
+      mimeType: plate.mimeType,
+      data: Buffer.from(object.bytes).toString('base64'),
+    }
+    // fal's reference endpoints want a URL, not bytes (decision 253).
+    const referenceUrls = provider === 'fal' ? [await presignGet(plate.r2Key)] : []
+    const adapter = stillGenerator(provider, catalogue)
     const result = await withCost(
       db,
       {
-        provider: 'google',
+        provider,
         operation: 'image.generate',
         projectId: set.projectId,
-        estimateUsd: imageGenPrice(live, 1, route.model, '4K'),
+        estimateUsd: billed ? billed.pricePerImage : imageGenPrice(live, 1, route.model, '4K'),
         meta: {
-          model: route.model,
+          model: billed ? billed.id : route.model,
           set: set.name,
           kind: 'set-sheet',
           prompt: prompt.slice(0, 200),
@@ -100,26 +140,15 @@ export async function buildSetSheet(
             count: 1,
             model: route.model,
             size: '4K',
-            references: [
-              {
-                name: set.name,
-                kind: 'object',
-                // The plate's own view, never a hard-coded 'north': `facing`
-                // takes no 'other', so an undirected plate sends none.
-                ...(plate.view === 'other' ? {} : { facing: plate.view }),
-                mimeType: plate.mimeType,
-                data: Buffer.from(object.bytes).toString('base64'),
-              },
-            ],
+            references: [reference],
+            ...(referenceUrls.length > 0 ? { referenceUrls } : {}),
           },
-          { apiKey: keys.google },
+          { apiKey },
         )
         return { result: generated, actualUsd: generated.estimatedCostUsd }
       },
     )
-    const url = result.images[0]!.url
-    sheet = Buffer.from(url.slice(url.indexOf(',') + 1), 'base64')
-    sheetType = /^data:([^;,]+)/.exec(url)?.[1] ?? sheetType
+    ;({ sheet, sheetType } = await sheetBytes(result.images[0]!.url))
   }
 
   const panels = await splitContactSheet(sheet)
@@ -128,7 +157,7 @@ export async function buildSetSheet(
     throw new ValidationError(UNSPLIT_SHEET)
   }
 
-  const label = imageGenModel(live, route.model).label
+  const label = billed ? billed.label : imageGenModel(live, route.model).label
   const candidates = await Promise.all(
     panels.map(async (panel): Promise<SlotCandidate> => {
       const summary = `${set.name}, facing ${panel.direction}`
@@ -137,8 +166,8 @@ export async function buildSetSheet(
         // `chooseSetPlateAction` decodes it in place.
         const small = await sharp(panel.bytes).resize(320).png().toBuffer()
         return {
-          id: `google-mock-sheet-${panel.direction}`,
-          provider: 'google',
+          id: `${provider}-mock-sheet-${panel.direction}`,
+          provider,
           kind: 'image',
           sourceUrl: `data:image/png;base64,${small.toString('base64')}`,
           thumbUrl: `data:image/png;base64,${small.toString('base64')}`,
@@ -154,7 +183,7 @@ export async function buildSetSheet(
         panel.bytes,
         'image/png',
       )
-      const sourceUrl = `generated://google/${contentHash.slice(0, 12)}`
+      const sourceUrl = `generated://${provider}/${contentHash.slice(0, 12)}`
       const asset = await upsertAssetByHash(db, {
         kind: 'image',
         r2Key: key,
@@ -165,8 +194,8 @@ export async function buildSetSheet(
         height: panel.height,
       })
       return {
-        id: `google-${contentHash.slice(0, 12)}`,
-        provider: 'google',
+        id: `${provider}-${contentHash.slice(0, 12)}`,
+        provider,
         kind: 'image',
         sourceUrl,
         r2Key: key,

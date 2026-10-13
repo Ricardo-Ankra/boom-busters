@@ -414,7 +414,12 @@ export async function plateEstimateUsd(): Promise<number> {
 export async function setSheetEstimateUsd(): Promise<number> {
   const settings = await getSettings(db)
   const catalogue = await stillCatalogue(settings)
-  return round4(routePriceUsd(catalogue, settings.modelRouting.setSheet, 1, '4K'))
+  const route = settings.modelRouting.setSheet
+  if (!adapterOffers(route, catalogue)) return 0
+  // The plate always rides as a reference (decision 297): on fal that is a
+  // different, dearer endpoint than the routed model, and it is what is billed.
+  const billed = catalogue[route.provider].referenceRoute?.(route.model, 1) ?? null
+  return round4(billed ? billed.pricePerImage : routePriceUsd(catalogue, route, 1, '4K'))
 }
 
 export async function stillSlotEstimateUsd(): Promise<number> {
