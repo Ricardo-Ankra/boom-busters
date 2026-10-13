@@ -1,4 +1,5 @@
 import {
+  OUTLINE_BEAT_MAX,
   OutlineSchema,
   SelfCheckSchema,
   SHORTS_CANDIDATES_MAX,
@@ -18,7 +19,13 @@ import {
   countWords,
   splitSentences,
 } from '@boom-busters/schemas'
-import type { Outline, SelfCheck, ShortsCandidate, TeaserScript } from '@boom-busters/schemas'
+import type {
+  Outline,
+  OutlineChapter,
+  SelfCheck,
+  ShortsCandidate,
+  TeaserScript,
+} from '@boom-busters/schemas'
 import { z } from 'zod'
 import { formatIssues, parseJsonCompletion } from './json'
 import { capList, dropItems, ignoreRepairs, overLimit, trimField } from './repair'
@@ -115,8 +122,9 @@ Sound like a person, not a language model:
 - Cut empty hedges: "generally", "arguably", "in many cases", "some would
   say". Say the thing. The legal hedges in the hard rules below are the
   opposite of empty and are never cut.
-- No summing-up closers. A chapter ends on its last fact, not on a
-  restatement or a moral.
+- No summing-up anywhere. A chapter ends on its last fact, not on a
+  restatement or a moral, and no paragraph in its middle restates what the
+  listener has already heard.
 
 Written for the ear, not the eye. Every word you write is read aloud by a
 text-to-speech narrator, and punctuation is its pacing:
@@ -147,7 +155,11 @@ The hard rules:
 - Assert nothing the claim list does not support.
 - Where a claim is NOT adjudicated, write "alleged", "reportedly", "according
   to" — never state it as established fact.
-- Never invent figures, dates, quotes or names.`
+- Never invent figures, dates, quotes or names.
+- Legal care is inline: "alleged", "reportedly", "according to". Never a
+  sentence of its own saying that nothing was proven, that no court has
+  found, or that this is an interpretation. The one exception is the film's
+  single such sentence, where a chapter's constraints ask for it.`
 
 // ---------------------------------------------------------------------------
 // Outline
@@ -168,25 +180,49 @@ export function buildOutlineRequest(input: {
 
 ${SCRIPT_CRAFT}
 
-Produce a chapter outline totalling about ${targetWords} words:
+Produce a chapter plan totalling about ${targetWords} words:
 {"centralQuestion": string,
- "chapters": [{"title": string, "beat": string, "question": string,
-   "withhold": string, "stakes": string, "targetWords": number}]}
+ "storylines": [string],
+ "chapters": [{"title": string, "storyline": string, "beat": string,
+   "claims": [number], "question": string, "withhold": string,
+   "reveals": string, "stakes": string, "constraints": string,
+   "targetWords": number}]}
 
-"beat" says what the chapter must accomplish — the drafting step sees only its
-own outline entry, the previous chapter's ending and the claim list, so
-anything the chapter needs must be in these fields.
+The plan, per chapter:
+- "beat": one to three sentences on what the chapter accomplishes. Never a
+  list of facts: the facts are the claims it owns.
+- "claims": the numbers of the claims this chapter narrates in full, from the
+  claim list below. Every claim belongs to exactly one chapter, the chapter
+  where it lands hardest. A claim listed by two chapters stays with the first;
+  the app drops the second listing. A chapter may still refer in a few words
+  to a claim another chapter owns.
+- "storyline": which of the film's "storylines" this chapter advances. Name
+  two to four storylines for the film (the money, the credit, the courts). A
+  chapter advances one and may touch the others in a few words; a storyline
+  left untouched for two chapters returns in the next.
+- "reveals": the fact an earlier chapter withheld that this chapter reveals,
+  if any. A withheld fact is revealed once.
+- "constraints": the wording limits for this chapter: what must stay
+  attributed and to whom, what is never stated as fact, which figures are
+  unsourced and must not appear. They shape the words and are never narrated.
+  Put the dossier's corrections here, not in the beat.
 
 The tension contract, per chapter:
-- "question": the open question this chapter plants and must NOT answer — the
+- "question": the open question this chapter plants and must NOT answer; the
   next chapter answers it.
 - "withhold": the fact this chapter deliberately does not say, and which later
   chapter reveals it.
-- "stakes": what is concretely at risk while this chapter runs — people,
+- "stakes": what is concretely at risk while this chapter runs: people,
   money, dates.
 "centralQuestion" is the one question the whole film exists to answer; only
 the final chapter answers it. Design the arc so each chapter's stakes are
-larger or more personal than the last.`,
+larger or more personal than the last.
+
+The opening chapter is a glimpse of the consequence in a few sentences, most
+of its detail withheld. The opening chapter owns none of the claims of the
+moment it glimpses: the chapter where the chronology returns to that moment
+owns them, opens with one line of callback, and narrates only the claims it
+owns.`,
     messages: [
       { role: 'user', content: `Case: ${input.caseTitle}\n\nDossier:\n${input.dossierMd}` },
       { role: 'user', content: `Claims available:\n${claimList(input.claims)}` },
@@ -196,8 +232,99 @@ larger or more personal than the last.`,
   }
 }
 
-export function parseOutline(text: string): Outline {
-  return parseJsonCompletion(text, OutlineSchema, 'outline')
+/**
+ * The outline as the model answered it, repaired before it is validated
+ * (decision 296, in decision 293's mould): a beat over its limit is trimmed
+ * at a sentence; a claim number listed by two chapters stays with the first
+ * and the later listing is dropped, as is a number the claim list does not
+ * have. Each repair is reported; none refuses the outline. `claimCount` is
+ * the length of the list the prompt printed; without it any number is kept.
+ */
+export function parseOutline(
+  text: string,
+  note: Note = ignoreRepairs,
+  claimCount?: number,
+): Outline {
+  const answer = parseJsonCompletion(text, LooseAnswer, 'outline')
+  const parsed = OutlineSchema.safeParse(repairOutline(answer, note, claimCount))
+  if (!parsed.success) {
+    throw new ValidationError(
+      `The model's outline did not match the expected shape: ${formatIssues(parsed.error)}`,
+      { field: 'outline' },
+    )
+  }
+  return parsed.data
+}
+
+function repairOutline(
+  answer: Record<string, unknown>,
+  note: Note,
+  claimCount: number | undefined,
+): unknown {
+  const chapters = answer['chapters']
+  if (!Array.isArray(chapters)) return answer
+  // Claim number -> the 1-based chapter that listed it first.
+  const owners = new Map<number, number>()
+  // The opening chapter glimpses the moment the film returns to, so a claim
+  // it lists that a later chapter also lists belongs to the later one:
+  // claim number -> the first later chapter (1-based) that listed it.
+  const glimpsed = new Map<number, number>()
+  const opening = chapters[0]
+  if (isRecord(opening) && Array.isArray(opening['claims'])) {
+    const openingClaims = opening['claims']
+    chapters.slice(1).forEach((later, offset) => {
+      if (!isRecord(later) || !Array.isArray(later['claims'])) return
+      for (const item of later['claims']) {
+        if (typeof item === 'number' && openingClaims.includes(item) && !glimpsed.has(item)) {
+          glimpsed.set(item, offset + 2)
+        }
+      }
+    })
+  }
+  return {
+    ...answer,
+    chapters: chapters.map((chapter, at) => {
+      if (!isRecord(chapter)) return chapter
+      const label = `chapter ${at + 1}`
+      const repaired: Record<string, unknown> = {
+        ...chapter,
+        beat: trimField(chapter['beat'], OUTLINE_BEAT_MAX, `${label}'s beat`, note),
+      }
+      if (Array.isArray(chapter['claims'])) {
+        repaired['claims'] = dropItems(
+          chapter['claims'],
+          (item) => {
+            if (typeof item !== 'number' || !Number.isInteger(item) || item < 1) {
+              return 'not a claim number'
+            }
+            if (claimCount !== undefined && item > claimCount) {
+              return `the claim list ends at ${claimCount}`
+            }
+            const later = glimpsed.get(item)
+            if (at === 0 && later !== undefined) {
+              return `glimpsed in the opening; owned by chapter ${later}`
+            }
+            const owner = owners.get(item)
+            if (owner !== undefined && owner !== at + 1) return `already owned by chapter ${owner}`
+            owners.set(item, at + 1)
+            return null
+          },
+          (item) => `${label}'s claim ${String(item)}`,
+          note,
+        )
+      } else if (chapter['claims'] !== undefined) {
+        // The schema would fold this in silence; the owner should know the
+        // chapter was planned with claims the app could not read.
+        note({
+          action: 'dropped',
+          field: `${label}'s claims`,
+          reason: 'not a list of claim numbers',
+        })
+        delete repaired['claims']
+      }
+      return repaired
+    }),
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -236,22 +363,99 @@ export function tensionContract(outline: Outline, chapterIndex: number): string 
         chapter.withhold,
     )
   }
+  if (chapter.reveals) {
+    lines.push(
+      `- Reveal here, for the first time, what an earlier chapter withheld: ${chapter.reveals}`,
+    )
+  }
+  if (chapter.constraints) {
+    lines.push(
+      `- Wording limits for this chapter. They shape the words and are never narrated as sentences, ` +
+        `except where they ask for one in so many words: ${chapter.constraints}`,
+    )
+  }
 
   return lines.length > 0 ? `The tension contract for this chapter:\n${lines.join('\n')}` : ''
+}
+
+/**
+ * Which claims this chapter narrates, which the listener has already heard,
+ * and which are a later chapter's (decision 296). The numbers are the claim
+ * list's, so the drafter needs no second list. Empty for an outline planned
+ * before claims had homes: that script drafts as it did.
+ */
+export function ownershipBrief(
+  outline: Outline,
+  chapterIndex: number,
+  /** The claim list's length, so the claims the outline placed nowhere can be named. */
+  claimCount = 0,
+): string {
+  if (!outline.chapters.some((chapter) => (chapter.claims?.length ?? 0) > 0)) return ''
+  const numbers = (chapters: readonly OutlineChapter[]) =>
+    chapters.flatMap((chapter) => chapter.claims ?? [])
+  const list = (claims: number[]) =>
+    claims.length > 0 ? claims.map((claim) => `[${claim}]`).join(', ') : 'none'
+  const own = outline.chapters[chapterIndex]?.claims ?? []
+  const told = numbers(outline.chapters.slice(0, chapterIndex))
+  const later = numbers(outline.chapters.slice(chapterIndex + 1))
+  const placed = new Set(numbers(outline.chapters))
+  const unplaced = Array.from({ length: claimCount }, (_, at) => at + 1).filter(
+    (claim) => !placed.has(claim),
+  )
+  return [
+    "Claim ownership for this chapter (the numbers are the claim list's):",
+    `- Narrate in full, once, with attribution: ${list(own)}`,
+    `- Already told in an earlier chapter. The listener remembers: refer back in a few words at most, ` +
+      `repeating no figure, date or attribution: ${list(told)}`,
+    `- Owned by a later chapter. A glimpse or a hint in a few words at most; ` +
+      `that chapter tells them in full: ${list(later)}`,
+    ...(unplaced.length > 0
+      ? [
+          `- Not placed by the outline. Free to any chapter that needs them, ` +
+            `once in the film: ${list(unplaced)}`,
+        ]
+      : []),
+  ].join('\n')
+}
+
+/**
+ * Every chapter drafted so far, in full. The previous chapter's last two
+ * sentences, which this replaced, told the drafter where to resume and
+ * nothing about what had been said; it restated the ending and re-explained
+ * the rest. A chapter is one voice take, so the words are exactly as stored.
+ */
+function scriptSoFar(previous: readonly { title: string; contentMd: string }[]): string {
+  if (previous.length === 0) return 'This is the opening chapter.'
+  const text = previous
+    .map((chapter, index) => `## ${index + 1}. ${chapter.title}\n\n${chapter.contentMd}`)
+    .join('\n\n')
+  return (
+    `The script so far. The listener has just heard every word of it:\n\n${text}\n\n` +
+    'Your first sentence moves the story forward. Never restate or paraphrase the ending ' +
+    'above, and never re-introduce a person, a company or a figure it already introduced.'
+  )
 }
 
 export function buildChapterRequest(input: {
   caseTitle: string
   outline: Outline
   chapterIndex: number
-  /** The tail of the previous chapter, so the seam reads continuously. */
-  previousTail: string
+  /** Every chapter drafted so far, in order, in full (decision 296). */
+  previousChapters: readonly { title: string; contentMd: string }[]
   claims: readonly ScriptClaim[]
 }): LLMTaskRequest {
   const chapter = input.outline.chapters[input.chapterIndex]!
   const outlineSummary = input.outline.chapters
-    .map((c, i) => `${i + 1}. ${c.title}${i === input.chapterIndex ? '  <- writing this one' : ''}`)
+    .map(
+      (c, i) =>
+        `${i + 1}. ${c.title}${c.storyline ? ` (${c.storyline})` : ''}` +
+        `${i === input.chapterIndex ? '  <- writing this one' : ''}`,
+    )
     .join('\n')
+  const storylines = input.outline.storylines
+    ? `Storylines: ${input.outline.storylines.join('; ')}\n\n`
+    : ''
+  const ownership = ownershipBrief(input.outline, input.chapterIndex, input.claims.length)
   const contract = tensionContract(input.outline, input.chapterIndex)
 
   return {
@@ -271,13 +475,9 @@ Target about ${chapter.targetWords} words.`,
       // prefix: the claim list is the largest part of this prompt and it does
       // not change between chapters.
       { role: 'user', content: `Case: ${input.caseTitle}\n\nClaims:\n${claimList(input.claims)}` },
-      { role: 'user', content: `Full outline:\n${outlineSummary}` },
-      {
-        role: 'user',
-        content: input.previousTail
-          ? `The previous chapter ended:\n\n"${input.previousTail}"\n\nContinue from there.`
-          : 'This is the opening chapter.',
-      },
+      { role: 'user', content: `${storylines}Full outline:\n${outlineSummary}` },
+      { role: 'user', content: scriptSoFar(input.previousChapters) },
+      ...(ownership ? [{ role: 'user' as const, content: ownership }] : []),
       ...(contract ? [{ role: 'user' as const, content: contract }] : []),
       { role: 'user', content: `Write "${chapter.title}". It must: ${chapter.beat}` },
     ],
@@ -285,11 +485,6 @@ Target about ${chapter.targetWords} words.`,
     // A truncated chapter reads as a chapter that stops mid-sentence.
     maxTokens: outputBudget(Math.round(chapter.targetWords * 2.2)),
   }
-}
-
-/** The last couple of sentences, to seam the next chapter onto. */
-export function chapterTail(contentMd: string, sentences = 2): string {
-  return splitSentences(contentMd).slice(-sentences).join(' ')
 }
 
 // ---------------------------------------------------------------------------
@@ -633,15 +828,22 @@ export function tensionFromOutline(outline: Outline): ShortsTension {
 
 export function mockOutline(targetRuntimeMin: number): Outline {
   const chapters = Math.max(2, Math.min(8, Math.round(targetRuntimeMin / 3)))
+  const storylines = ['Mock storyline: the money', 'Mock storyline: the courts']
 
   return {
     centralQuestion: 'Mock central question — no provider designed an arc.',
+    storylines,
     chapters: Array.from({ length: chapters }, (_, index) => ({
       title: `[mock] Chapter ${index + 1}`,
       beat: 'Placeholder beat produced in mock mode. Nothing was written by a provider.',
+      storyline: storylines[index % 2]!,
+      // Mock runs own no claims: the ownership brief is exercised by unit tests.
+      claims: [],
       question: `Mock open question ${index + 1}`,
       withhold: `Mock withheld fact ${index + 1}`,
+      ...(index > 0 ? { reveals: `Mock withheld fact ${index}` } : {}),
       stakes: `Mock stakes ${index + 1}`,
+      constraints: 'Mock constraints: attribute every figure.',
       targetWords: 300,
     })),
   }

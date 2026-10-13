@@ -81,6 +81,35 @@ describe('markShortsStep (decision 293)', () => {
     expect(recordStop).not.toHaveBeenCalled()
   })
 
+  it("records the outline's repairs beside the marking's, so the strip keeps both (decision 296)", async () => {
+    callLlm.mockResolvedValueOnce({ text: JSON.stringify({ candidates: [candidate] }) })
+    const outlineRepair = {
+      action: 'dropped' as const,
+      field: "chapter 2's claim 1",
+      reason: 'already owned by chapter 1',
+    }
+    await markShortsStep(PROJECT, { chapters }, [outlineRepair])
+    expect(recordRepairs).toHaveBeenCalledWith(SCRIPT_NOTICES, [outlineRepair])
+  })
+
+  it("keeps the outline's repairs on the strip when the marking stops (review of 296)", async () => {
+    callLlm.mockResolvedValue({ text: 'not json at all' })
+    const outlineRepair = {
+      action: 'trimmed' as const,
+      field: "chapter 1's beat",
+    }
+    expect(await markShortsStep(PROJECT, { chapters }, [outlineRepair])).toEqual({
+      ok: true,
+      candidates: [],
+    })
+    expect(recordRepairs).toHaveBeenCalledWith(SCRIPT_NOTICES, [outlineRepair])
+    expect(recordStop).toHaveBeenCalledTimes(1)
+    // The repairs land first, so the stop is added beside them, not replaced.
+    expect(recordRepairs.mock.invocationCallOrder[0]!).toBeLessThan(
+      recordStop.mock.invocationCallOrder[0]!,
+    )
+  })
+
   it('stores none after a refusal and its retry, and says on the strip that the Shorts stage will mark them', async () => {
     callLlm.mockResolvedValue({ text: 'not json at all' })
 

@@ -8,7 +8,7 @@ import {
   parseShortsCandidates,
 } from '@boom-busters/providers'
 import type { Repair } from '@boom-busters/providers'
-import type { ShortsCandidate } from '@boom-busters/schemas'
+import type { Outline, ShortsCandidate } from '@boom-busters/schemas'
 import { answerOrStop, callForAnswer, callForText, type AnswerComplete } from '@/lib/answer'
 
 /**
@@ -19,14 +19,23 @@ import { answerOrStop, callForAnswer, callForText, type AnswerComplete } from '@
  * its reason. Kept out of the runners so they can be tested without Inngest.
  */
 
+/**
+ * The outline, with what the parser repaired in it (decision 296): the
+ * runner carries the repairs to the Shorts marking's notice so Script
+ * Studio's strip shows both. The claim count is the list the prompt printed,
+ * so a number past it is dropped rather than left to the drafter.
+ */
 export async function draftOutlineWith(
   complete: AnswerComplete,
   input: Parameters<typeof buildOutlineRequest>[0],
-) {
-  return answerOrStop(
-    await callForAnswer({ request: buildOutlineRequest(input), parse: parseOutline, complete }),
-    'The outline could not be drafted',
-  )
+): Promise<{ outline: Outline; repairs: Repair[] }> {
+  const answer = await callForAnswer({
+    request: buildOutlineRequest(input),
+    parse: (text, note) => parseOutline(text, note, input.claims.length),
+    complete,
+  })
+  const outline = answerOrStop(answer, 'The outline could not be drafted')
+  return { outline, repairs: answer.ok ? (answer.repairs ?? []) : [] }
 }
 
 export async function selfCheckWith(

@@ -14,7 +14,6 @@ import {
   setScriptStatus,
 } from '@boom-busters/db'
 import {
-  chapterTail,
   mockChapter,
   mockOutline,
   mockSelfCheck,
@@ -22,11 +21,12 @@ import {
   mockProvidersEnabled,
   tensionFromOutline,
 } from '@boom-busters/providers'
-import type { ScriptClaim } from '@boom-busters/providers'
+import type { Repair, ScriptClaim } from '@boom-busters/providers'
 import type { NoticeTarget, Outline, ShortsCandidate } from '@boom-busters/schemas'
 import {
   BudgetExceededError,
   estimateRuntimeSec,
+  findRepeats,
   parseEventData,
   serialiseError,
 } from '@boom-busters/schemas'
@@ -106,6 +106,8 @@ function stopReason(message: string): string {
 export async function markShortsStep(
   projectId: string,
   input: Parameters<typeof markShortsWith>[1],
+  /** The outline's repairs (decision 296), kept on the strip beside the marking's. */
+  priorRepairs: readonly Repair[] = [],
 ): Promise<MarkedShorts> {
   const target: NoticeTarget = { projectId, subject: 'script', subjectId: null }
   let marked: Awaited<ReturnType<typeof markShortsWith>>
@@ -120,6 +122,8 @@ export async function markShortsStep(
         : error instanceof Error
           ? error.message.replace(/\.$/, '')
           : String(error)
+    // The outline's repairs still reach the strip; the stop is added beside them.
+    if (priorRepairs.length > 0) await recordRepairs(target, priorRepairs)
     await recordStop(
       target,
       'stopped',
@@ -129,7 +133,7 @@ export async function markShortsStep(
   }
   // Outside the try: a failed notice write must not discard candidates
   // already paid for, nor be reported as the marking stopping.
-  await recordRepairs(target, marked.repairs)
+  await recordRepairs(target, [...priorRepairs, ...marked.repairs])
   return { ok: true, candidates: marked.candidates }
 }
 
@@ -203,19 +207,18 @@ export const scriptRunner = inngest.createFunction(
     const outlineStep = await step.run(
       'outline',
       async (): Promise<
-        { ok: true; outline: Outline } | { ok: false; gate: Record<string, unknown> }
+        | { ok: true; outline: Outline; repairs?: Repair[] }
+        | { ok: false; gate: Record<string, unknown> }
       > => {
-        if (mocked) return { ok: true, outline: mockOutline(setup.targetRuntimeMin) }
+        if (mocked) return { ok: true, outline: mockOutline(setup.targetRuntimeMin), repairs: [] }
         try {
-          return {
-            ok: true,
-            outline: await draftOutlineWith(completeForProject(projectId), {
-              caseTitle: setup.caseTitle,
-              dossierMd: setup.dossierMd,
-              claims: setup.claims,
-              targetRuntimeMin: setup.targetRuntimeMin,
-            }),
-          }
+          const drafted = await draftOutlineWith(completeForProject(projectId), {
+            caseTitle: setup.caseTitle,
+            dossierMd: setup.dossierMd,
+            claims: setup.claims,
+            targetRuntimeMin: setup.targetRuntimeMin,
+          })
+          return { ok: true, ...drafted }
         } catch (error) {
           if (error instanceof BudgetExceededError)
             return { ok: false, gate: budgetGateData(error) }
@@ -230,6 +233,8 @@ export const scriptRunner = inngest.createFunction(
     }
 
     const outline = outlineStep.outline
+    // A run parked before decision 296 replays this step without repairs.
+    const outlineRepairs = outlineStep.repairs ?? []
 
     // The outline outlives this run on the script row: its tension fields are
     // what the Shorts marking and the teaser script select by, and both can
@@ -242,7 +247,6 @@ export const scriptRunner = inngest.createFunction(
     // Chapters, in order, each seamed onto the last
     // -----------------------------------------------------------------------
 
-    let previousTail = ''
     const written: { index: number; title: string; contentMd: string; chapterId: string }[] = []
 
     for (const [index, chapter] of outline.chapters.entries()) {
@@ -269,7 +273,7 @@ export const scriptRunner = inngest.createFunction(
                   caseTitle: setup.caseTitle,
                   outline,
                   chapterIndex: index,
-                  previousTail,
+                  previousChapters: written.map(({ title, contentMd }) => ({ title, contentMd })),
                   claims: setup.claims,
                 },
               )
@@ -300,7 +304,6 @@ export const scriptRunner = inngest.createFunction(
         return { projectId, outcome: 'over-budget' as const, chaptersWritten: written.length }
       }
 
-      previousTail = chapterTail(drafted.contentMd)
       written.push({
         index,
         title: chapter.title,
@@ -313,6 +316,12 @@ export const scriptRunner = inngest.createFunction(
     // Self-check, per chapter
     // -----------------------------------------------------------------------
 
+    // The whole-script repetition check (decision 296): deterministic, so it
+    // is computed from the replayed chapters rather than inside a step, and
+    // stored with each chapter's self-check warnings so a repeat parks the
+    // gate like any other warning.
+    const repeats = findRepeats(written)
+
     for (const chapter of written) {
       await step.run(`self-check-${chapter.index}`, async () => {
         const check = mocked
@@ -323,14 +332,17 @@ export const scriptRunner = inngest.createFunction(
               claims: setup.claims,
             })
 
-        await setChapterWarnings(db, chapter.chapterId, check.warnings)
+        const own = repeats
+          .filter((repeat) => repeat.chapterIndex === chapter.index)
+          .map((repeat) => repeat.warning)
+        await setChapterWarnings(db, chapter.chapterId, [...check.warnings, ...own])
         const refs = await saveClaimRefs(db, {
           chapterId: chapter.chapterId,
           projectId,
           refs: check.refs,
         })
 
-        return { warnings: check.warnings.length, refs }
+        return { warnings: check.warnings.length + own.length, refs }
       })
     }
 
@@ -344,7 +356,11 @@ export const scriptRunner = inngest.createFunction(
         await recordRepairs({ projectId, subject: 'script', subjectId: null })
         return { ok: true, candidates: mockShortsCandidates(written) }
       }
-      return markShortsStep(projectId, { chapters: written, tension: tensionFromOutline(outline) })
+      return markShortsStep(
+        projectId,
+        { chapters: written, tension: tensionFromOutline(outline) },
+        outlineRepairs,
+      )
     })
 
     // Read with the old shape too: a run parked at the script gate before

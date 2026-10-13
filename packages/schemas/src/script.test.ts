@@ -2,8 +2,10 @@ import { describe, expect, it } from 'vitest'
 import {
   MAX_CHAPTER_WORDS,
   MIN_CHAPTER_WORDS,
+  OUTLINE_BEAT_MAX,
   OutlineSchema,
   SelfCheckSchema,
+  WARNING_KINDS,
   countWords,
   estimateRuntimeSec,
   sentenceHash,
@@ -186,11 +188,97 @@ describe('OutlineSchema', () => {
     expect(parsed.centralQuestion).toBeUndefined()
     expect(parsed.chapters[0]?.question).toHaveLength(500)
   })
+
+  /**
+   * Decision 296: the outline is a plan. Storylines, claim ownership, the
+   * reveal and the wording limits are hints like the tension fields: folded
+   * and clamped, never a refused outline.
+   */
+  describe('the plan fields (decision 296)', () => {
+    const planned = {
+      storylines: ['the money', 'the courts'],
+      chapters: [
+        {
+          ...chapter,
+          storyline: 'the money',
+          claims: [3, 1, 3],
+          reveals: '  who Rombach is  ',
+          constraints: 'Attribute every figure to The Information.',
+        },
+        { ...chapter, claims: [2] },
+      ],
+    }
+
+    it('reads storylines, ownership, the reveal and the constraints', () => {
+      const parsed = OutlineSchema.parse(planned)
+      expect(parsed.storylines).toEqual(['the money', 'the courts'])
+      expect(parsed.chapters[0]).toMatchObject({
+        storyline: 'the money',
+        reveals: 'who Rombach is',
+        constraints: 'Attribute every figure to The Information.',
+      })
+      expect(parsed.chapters[1]!.claims).toEqual([2])
+    })
+
+    it('keeps one of a claim number listed twice in the same chapter', () => {
+      expect(OutlineSchema.parse(planned).chapters[0]!.claims).toEqual([3, 1])
+    })
+
+    it('folds a claims list it cannot read to absent rather than refusing', () => {
+      const parsed = OutlineSchema.parse({
+        chapters: [{ ...chapter, claims: 'three and one' }, chapter],
+      })
+      expect(parsed.chapters[0]!.claims).toBeUndefined()
+    })
+
+    it('folds an empty reveal or constraint to absent', () => {
+      const parsed = OutlineSchema.parse({
+        chapters: [{ ...chapter, reveals: '   ', constraints: '' }, chapter],
+      })
+      expect(parsed.chapters[0]!.reveals).toBeUndefined()
+      expect(parsed.chapters[0]!.constraints).toBeUndefined()
+    })
+
+    it('keeps at most six storylines and folds a bad list to absent', () => {
+      const seven = OutlineSchema.parse({
+        storylines: ['a', 'b', 'c', 'd', 'e', 'f', 'g'],
+        chapters: [chapter, chapter],
+      })
+      expect(seven.storylines).toBeUndefined()
+      const bad = OutlineSchema.parse({ storylines: 'the money', chapters: [chapter, chapter] })
+      expect(bad.storylines).toBeUndefined()
+    })
+
+    it('still reads an outline stored before the plan fields existed', () => {
+      const parsed = OutlineSchema.parse({ chapters: [chapter, chapter] })
+      expect(parsed.storylines).toBeUndefined()
+      expect(parsed.chapters[0]!.claims).toBeUndefined()
+    })
+
+    it('names the beat limit the outline parser trims at', () => {
+      expect(OUTLINE_BEAT_MAX).toBe(600)
+    })
+  })
 })
 
 describe('SelfCheckSchema', () => {
   it('accepts an empty check — a clean chapter is a valid result', () => {
     expect(SelfCheckSchema.safeParse({ warnings: [], refs: [] }).success).toBe(true)
+  })
+
+  it('accepts the repeat warning the whole-script check writes (decision 296)', () => {
+    expect(WARNING_KINDS).toContain('repeats-earlier')
+    const parsed = SelfCheckSchema.safeParse({
+      warnings: [
+        {
+          kind: 'repeats-earlier',
+          sentence: 'Coatue had co-led the round.',
+          message: 'Repeats chapter 3: "Coatue had co-led the round."',
+        },
+      ],
+      refs: [],
+    })
+    expect(parsed.success).toBe(true)
   })
 
   it('rejects a warning kind the gutter cannot render', () => {
