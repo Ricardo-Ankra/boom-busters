@@ -26,6 +26,19 @@ invents is worse than a flat script.
   not yet know why it matters, the paragraph is in the wrong place.
 - Stakes are concrete: named people, real money, dates. "Thirty thousand
   pensions", never "significant sums".
+- The cold open is a glimpse, not the chapter: a few sentences of
+  consequence, most of the detail withheld. When the chronology reaches
+  that moment again, one line of callback and then only new material.
+  The opening is never told twice.
+
+## One home per fact
+
+- Every claim belongs to exactly one chapter, named in the outline. That
+  chapter narrates it in full, once, with its attribution. Any other chapter
+  refers to it in a few words at most: no figure, no date and no attribution
+  repeated.
+- The listener remembers. A person, a company, a paper or a figure is
+  introduced once; afterwards it gets its name and nothing else.
 
 ## The question engine
 
@@ -45,6 +58,8 @@ invents is worse than a flat script.
 - Every chapter has something it deliberately does not say, named in the
   outline. Do not leak it. Walk to its edge and stop: name the door, not
   what is behind it.
+- A withheld fact is revealed in exactly one chapter, named in the outline
+  as that chapter's reveal, and never revealed again.
 - Foreshadow only with claim-supported facts. "That signature would be the
   last one EY ever gave them" is legitimate if the claims support it;
   inventing a shadow to point at is not.
@@ -57,8 +72,26 @@ invents is worse than a flat script.
 - Each chapter's stakes are bigger, or more personal, than the last
   chapter's. A planned chapter that does not raise the stakes is not a
   chapter; fold it into a neighbour at outline time.
+- The film sags in its middle. The chapter sitting at 40 to 60 per cent of the runtime
+  turns hardest: a reversal, or the stakes reaching people who are not
+  investors.
 - A chapter ends on a turn: a reversal, a door closing, a fact that
   destabilises what the viewer thought they knew. The final sentence should
   make the next chapter's question feel inevitable. Never end a chapter on
   resolution, summary or a moral.
+
+## Callbacks, not recaps
+
+- A callback is a few words that point back and add meaning: the name the
+  listener was told to hold on to, now attached to a paper. A recap
+  re-narrates. Write callbacks. Never write a recap, not at the end of a
+  chapter and not in its middle.
+- Never open a chapter by restating the previous chapter's ending. The
+  listener has just heard it. The first sentence moves the story forward.
+- Legal care is carried by the inline hedges: reportedly, according to,
+  alleged. Never narrate the caveat as a sentence of its own: no "no court
+  has found", no "that is an interpretation", no "the record shows the order
+  of events and nothing more". Once in the whole film, where a listener would
+  otherwise infer guilt, the outline's constraints may ask for one plain
+  sentence that nothing has been proven.
 `
