@@ -134,6 +134,18 @@ describe('buildOutlineRequest', () => {
     // The old instruction that produced fact-list beats is gone.
     expect(request.system).not.toMatch(/anything the chapter needs must be in these fields/)
   })
+
+  /**
+   * Review of decision 296: with one storyline per chapter, "absent for no
+   * more than one chapter in a row" cannot be met by three storylines, and a
+   * cold open that owns the claims of the moment it glimpses is told to
+   * narrate them in full. The planner is told who owns the glimpsed moment.
+   */
+  it('sets a storyline rule a chapter plan can meet, and gives the glimpsed moment to its return', () => {
+    expect(request.system).toMatch(/returns in the next/)
+    expect(request.system).not.toMatch(/more than one chapter in a row/)
+    expect(request.system).toMatch(/opening chapter owns none of the claims/)
+  })
 })
 
 describe('tensionContract', () => {
@@ -157,7 +169,8 @@ describe('tensionContract', () => {
 
   it('carries the reveal and the wording limits (decision 296)', () => {
     expect(tensionContract(outline, 0)).toContain(
-      'never narrated as sentences: Never state that the CEO knew; the claim is single-source.',
+      'never narrated as sentences, except where they ask for one in so many words: ' +
+        'Never state that the CEO knew; the claim is single-source.',
     )
     expect(tensionContract(outline, 1)).toContain(
       'Reveal here, for the first time, what an earlier chapter withheld: The accounts in Manila were empty all along.',
@@ -222,13 +235,23 @@ describe('buildChapterRequest', () => {
         { title: 'Three', beat: 'z'.repeat(30), claims: [4], targetWords: 300 },
       ],
     })
-    const brief = ownershipBrief(three, 1)
+    const brief = ownershipBrief(three, 1, 4)
     expect(brief).toContain('Narrate in full, once, with attribution: [2], [3]')
     expect(brief).toContain('repeating no figure, date or attribution: [1]')
-    expect(brief).toContain('Do not narrate: [4]')
+    expect(brief).toContain('that chapter tells them in full: [4]')
+    expect(brief).not.toContain('Do not narrate')
+    expect(brief).not.toContain('Not placed by the outline')
     expect(JSON.stringify(request.messages)).toContain(
       'Narrate in full, once, with attribution: [2]',
     )
+  })
+
+  it('names the claims the outline placed nowhere, free to any chapter once', () => {
+    const brief = ownershipBrief(outline, 1, 4)
+    expect(brief).toContain('Not placed by the outline')
+    expect(brief).toContain('once in the film: [3], [4]')
+    // The request knows the claim list's length, so the drafter sees them too.
+    expect(JSON.stringify(request.messages)).not.toContain('Not placed by the outline')
   })
 
   it('says "none" for an empty ownership line rather than leaving it blank', () => {
@@ -483,8 +506,10 @@ describe('parseOutline and parseShortsCandidates', () => {
       const { repairs, note } = collect()
       const parsed = parseOutline(
         JSON.stringify({
+          // The duplicate sits between chapters 2 and 3: the opening chapter
+          // glimpses, so a claim it shares goes the other way (next test).
           chapters: [
-            chapter({ claims: [1, 2] }),
+            chapter({ claims: [1] }),
             chapter({ claims: [2, 3] }),
             chapter({ claims: [3] }),
           ],
@@ -492,9 +517,8 @@ describe('parseOutline and parseShortsCandidates', () => {
         note,
         3,
       )
-      expect(parsed.chapters.map((c) => c.claims)).toEqual([[1, 2], [3], []])
+      expect(parsed.chapters.map((c) => c.claims)).toEqual([[1], [2, 3], []])
       expect(repairs).toEqual([
-        { action: 'dropped', field: "chapter 2's claim 2", reason: 'already owned by chapter 1' },
         { action: 'dropped', field: "chapter 3's claim 3", reason: 'already owned by chapter 2' },
       ])
     })
@@ -511,6 +535,42 @@ describe('parseOutline and parseShortsCandidates', () => {
         { action: 'dropped', field: "chapter 1's claim 9", reason: 'the claim list ends at 3' },
         { action: 'dropped', field: "chapter 1's claim two", reason: 'not a claim number' },
         { action: 'dropped', field: "chapter 1's claim 0", reason: 'not a claim number' },
+      ])
+    })
+
+    it('hands a claim the cold open and a later chapter both list to the later chapter', () => {
+      const { repairs, note } = collect()
+      const parsed = parseOutline(
+        JSON.stringify({
+          chapters: [
+            chapter({ claims: [1, 2] }),
+            chapter({ claims: [3] }),
+            chapter({ claims: [1, 4] }),
+          ],
+        }),
+        note,
+        4,
+      )
+      expect(parsed.chapters.map((c) => c.claims)).toEqual([[2], [3], [1, 4]])
+      expect(repairs).toEqual([
+        {
+          action: 'dropped',
+          field: "chapter 1's claim 1",
+          reason: 'glimpsed in the opening; owned by chapter 3',
+        },
+      ])
+    })
+
+    it('reports a claims field that is not a list, rather than folding it in silence', () => {
+      const { repairs, note } = collect()
+      const parsed = parseOutline(
+        JSON.stringify({ chapters: [chapter({ claims: '1, 2' }), chapter({})] }),
+        note,
+        2,
+      )
+      expect(parsed.chapters[0]!.claims).toBeUndefined()
+      expect(repairs).toEqual([
+        { action: 'dropped', field: "chapter 1's claims", reason: 'not a list of claim numbers' },
       ])
     })
 

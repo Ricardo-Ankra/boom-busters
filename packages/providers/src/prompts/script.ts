@@ -197,8 +197,9 @@ The plan, per chapter:
   the app drops the second listing. A chapter may still refer in a few words
   to a claim another chapter owns.
 - "storyline": which of the film's "storylines" this chapter advances. Name
-  two to four storylines for the film (the money, the credit, the courts).
-  No storyline is absent for more than one chapter in a row.
+  two to four storylines for the film (the money, the credit, the courts). A
+  chapter advances one and may touch the others in a few words; a storyline
+  left untouched for two chapters returns in the next.
 - "reveals": the fact an earlier chapter withheld that this chapter reveals,
   if any. A withheld fact is revealed once.
 - "constraints": the wording limits for this chapter: what must stay
@@ -218,8 +219,10 @@ the final chapter answers it. Design the arc so each chapter's stakes are
 larger or more personal than the last.
 
 The opening chapter is a glimpse of the consequence in a few sentences, most
-of its detail withheld. The chapter where the chronology returns to that
-moment gets one line of callback and only the claims it owns.`,
+of its detail withheld. The opening chapter owns none of the claims of the
+moment it glimpses: the chapter where the chronology returns to that moment
+owns them, opens with one line of callback, and narrates only the claims it
+owns.`,
     messages: [
       { role: 'user', content: `Case: ${input.caseTitle}\n\nDossier:\n${input.dossierMd}` },
       { role: 'user', content: `Claims available:\n${claimList(input.claims)}` },
@@ -262,6 +265,22 @@ function repairOutline(
   if (!Array.isArray(chapters)) return answer
   // Claim number -> the 1-based chapter that listed it first.
   const owners = new Map<number, number>()
+  // The opening chapter glimpses the moment the film returns to, so a claim
+  // it lists that a later chapter also lists belongs to the later one:
+  // claim number -> the first later chapter (1-based) that listed it.
+  const glimpsed = new Map<number, number>()
+  const opening = chapters[0]
+  if (isRecord(opening) && Array.isArray(opening['claims'])) {
+    const openingClaims = opening['claims']
+    chapters.slice(1).forEach((later, offset) => {
+      if (!isRecord(later) || !Array.isArray(later['claims'])) return
+      for (const item of later['claims']) {
+        if (typeof item === 'number' && openingClaims.includes(item) && !glimpsed.has(item)) {
+          glimpsed.set(item, offset + 2)
+        }
+      }
+    })
+  }
   return {
     ...answer,
     chapters: chapters.map((chapter, at) => {
@@ -281,6 +300,10 @@ function repairOutline(
             if (claimCount !== undefined && item > claimCount) {
               return `the claim list ends at ${claimCount}`
             }
+            const later = glimpsed.get(item)
+            if (at === 0 && later !== undefined) {
+              return `glimpsed in the opening; owned by chapter ${later}`
+            }
             const owner = owners.get(item)
             if (owner !== undefined && owner !== at + 1) return `already owned by chapter ${owner}`
             owners.set(item, at + 1)
@@ -289,6 +312,15 @@ function repairOutline(
           (item) => `${label}'s claim ${String(item)}`,
           note,
         )
+      } else if (chapter['claims'] !== undefined) {
+        // The schema would fold this in silence; the owner should know the
+        // chapter was planned with claims the app could not read.
+        note({
+          action: 'dropped',
+          field: `${label}'s claims`,
+          reason: 'not a list of claim numbers',
+        })
+        delete repaired['claims']
       }
       return repaired
     }),
@@ -338,8 +370,8 @@ export function tensionContract(outline: Outline, chapterIndex: number): string 
   }
   if (chapter.constraints) {
     lines.push(
-      `- Wording limits for this chapter. They shape the words and are never narrated as sentences: ` +
-        chapter.constraints,
+      `- Wording limits for this chapter. They shape the words and are never narrated as sentences, ` +
+        `except where they ask for one in so many words: ${chapter.constraints}`,
     )
   }
 
@@ -352,7 +384,12 @@ export function tensionContract(outline: Outline, chapterIndex: number): string 
  * list's, so the drafter needs no second list. Empty for an outline planned
  * before claims had homes: that script drafts as it did.
  */
-export function ownershipBrief(outline: Outline, chapterIndex: number): string {
+export function ownershipBrief(
+  outline: Outline,
+  chapterIndex: number,
+  /** The claim list's length, so the claims the outline placed nowhere can be named. */
+  claimCount = 0,
+): string {
   if (!outline.chapters.some((chapter) => (chapter.claims?.length ?? 0) > 0)) return ''
   const numbers = (chapters: readonly OutlineChapter[]) =>
     chapters.flatMap((chapter) => chapter.claims ?? [])
@@ -361,12 +398,23 @@ export function ownershipBrief(outline: Outline, chapterIndex: number): string {
   const own = outline.chapters[chapterIndex]?.claims ?? []
   const told = numbers(outline.chapters.slice(0, chapterIndex))
   const later = numbers(outline.chapters.slice(chapterIndex + 1))
+  const placed = new Set(numbers(outline.chapters))
+  const unplaced = Array.from({ length: claimCount }, (_, at) => at + 1).filter(
+    (claim) => !placed.has(claim),
+  )
   return [
     "Claim ownership for this chapter (the numbers are the claim list's):",
     `- Narrate in full, once, with attribution: ${list(own)}`,
     `- Already told in an earlier chapter. The listener remembers: refer back in a few words at most, ` +
       `repeating no figure, date or attribution: ${list(told)}`,
-    `- Belonging to a later chapter. Do not narrate: ${list(later)}`,
+    `- Owned by a later chapter. A glimpse or a hint in a few words at most; ` +
+      `that chapter tells them in full: ${list(later)}`,
+    ...(unplaced.length > 0
+      ? [
+          `- Not placed by the outline. Free to any chapter that needs them, ` +
+            `once in the film: ${list(unplaced)}`,
+        ]
+      : []),
   ].join('\n')
 }
 
@@ -407,7 +455,7 @@ export function buildChapterRequest(input: {
   const storylines = input.outline.storylines
     ? `Storylines: ${input.outline.storylines.join('; ')}\n\n`
     : ''
-  const ownership = ownershipBrief(input.outline, input.chapterIndex)
+  const ownership = ownershipBrief(input.outline, input.chapterIndex, input.claims.length)
   const contract = tensionContract(input.outline, input.chapterIndex)
 
   return {

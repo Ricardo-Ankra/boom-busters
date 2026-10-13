@@ -122,6 +122,8 @@ export async function markShortsStep(
         : error instanceof Error
           ? error.message.replace(/\.$/, '')
           : String(error)
+    // The outline's repairs still reach the strip; the stop is added beside them.
+    if (priorRepairs.length > 0) await recordRepairs(target, priorRepairs)
     await recordStop(
       target,
       'stopped',

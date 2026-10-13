@@ -7498,5 +7498,15 @@ boom-busters-broker`; merge and deploy to Vercel, then `PUT
      outline's repairs ride on the Shorts marking's notice rather than a
      notice of their own, because `recordRepairs` replaces a subject's notes
      and the marking lands last.
+     Review fixes before merge: the storyline rule became one a plan can
+     meet (a chapter advances one storyline and may touch the others; one
+     left untouched for two chapters returns in the next); the opening
+     chapter owns none of the claims of the moment it glimpses, and the
+     parser gives a claim it shares with a later chapter to that chapter;
+     the brief's later-chapter line asks for a glimpse rather than
+     forbidding, and names the claims the outline placed nowhere; a
+     `claims` field that is not a list is reported, not folded in silence;
+     the contract's constraints line carries the one-sentence exception;
+     the outline's repairs stay on the strip when the Shorts marking stops.
      Shipping: a Vercel deploy, then `PUT /api/inngest`. No Remotion or
      broker deploy.

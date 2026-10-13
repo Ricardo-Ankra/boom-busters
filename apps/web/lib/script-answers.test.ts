@@ -34,7 +34,7 @@ describe('the script answers (decision 292)', () => {
       ...outline,
       chapters: outline.chapters.map((chapter, index) => ({
         ...chapter,
-        claims: index < 2 ? [1] : [9],
+        claims: index === 0 ? [] : index === 1 ? [1] : [1, 9],
       })),
     }
     const complete = vi.fn().mockResolvedValue({ text: JSON.stringify(doubled) })
@@ -42,12 +42,12 @@ describe('the script answers (decision 292)', () => {
       ...outlineInput,
       claims: [{ id: 'c1', text: 'A claim.', sourceUrl: null, confidence: 'sourced' }],
     })
-    expect(drafted.outline.chapters[0]!.claims).toEqual([1])
-    expect(drafted.outline.chapters[1]!.claims).toEqual([])
+    expect(drafted.outline.chapters[1]!.claims).toEqual([1])
+    expect(drafted.outline.chapters[2]!.claims).toEqual([])
     expect(drafted.repairs).toContainEqual({
       action: 'dropped',
-      field: "chapter 2's claim 1",
-      reason: 'already owned by chapter 1',
+      field: "chapter 3's claim 1",
+      reason: 'already owned by chapter 2',
     })
     expect(drafted.repairs).toContainEqual({
       action: 'dropped',

@@ -92,6 +92,24 @@ describe('markShortsStep (decision 293)', () => {
     expect(recordRepairs).toHaveBeenCalledWith(SCRIPT_NOTICES, [outlineRepair])
   })
 
+  it("keeps the outline's repairs on the strip when the marking stops (review of 296)", async () => {
+    callLlm.mockResolvedValue({ text: 'not json at all' })
+    const outlineRepair = {
+      action: 'trimmed' as const,
+      field: "chapter 1's beat",
+    }
+    expect(await markShortsStep(PROJECT, { chapters }, [outlineRepair])).toEqual({
+      ok: true,
+      candidates: [],
+    })
+    expect(recordRepairs).toHaveBeenCalledWith(SCRIPT_NOTICES, [outlineRepair])
+    expect(recordStop).toHaveBeenCalledTimes(1)
+    // The repairs land first, so the stop is added beside them, not replaced.
+    expect(recordRepairs.mock.invocationCallOrder[0]!).toBeLessThan(
+      recordStop.mock.invocationCallOrder[0]!,
+    )
+  })
+
   it('stores none after a refusal and its retry, and says on the strip that the Shorts stage will mark them', async () => {
     callLlm.mockResolvedValue({ text: 'not json at all' })
 

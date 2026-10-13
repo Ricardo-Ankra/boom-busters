@@ -71,9 +71,14 @@ sentence, reported as a `trimmed` repair. The outline's repairs reach Script
 Studio's strip beside the Shorts marking's.
 
 The outline prompt is rewritten around the plan: the cold open is a glimpse
-with most detail withheld, and the chapter where chronology returns to it
-gets one line of callback and only new claims; no storyline is absent for
-more than one chapter in a row; constraints are a field, not a beat.
+with most detail withheld and owns none of the claims of the moment it
+glimpses; the chapter where chronology returns to it owns them, opens with
+one line of callback and narrates only its own claims (the parser gives a
+claim the opening and a later chapter both list to the later one); a chapter
+advances one storyline and may touch the others in a few words, and a
+storyline left untouched for two chapters returns in the next; constraints
+are a field, not a beat. The drafter's brief also names the claims the
+outline placed nowhere, free to any chapter once.
 
 ### 2.2 Drafting sees the story so far
 
