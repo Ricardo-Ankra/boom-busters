@@ -36,4 +36,17 @@ describe('SCRIPT_CRAFT', () => {
     expect(SCRIPT_CRAFT).toContain('revealed in exactly one chapter')
     expect(SCRIPT_CRAFT).toContain('40 to 60 per cent of the runtime')
   })
+
+  /**
+   * Decision 299: the recap ban left the film with no ending (the Stability
+   * script stopped on "has reached judgment"). The final chapter ends on the
+   * close: the answer, an echo of the opening, the open thread. Never a recap.
+   */
+  it('gives the film a close, and keeps it apart from a recap', () => {
+    expect(SCRIPT_CRAFT).toContain('## The close')
+    expect(SCRIPT_CRAFT).toContain('The final chapter ends on the close')
+    expect(SCRIPT_CRAFT).toContain('an echo of the opening')
+    expect(SCRIPT_CRAFT).toContain('the open thread')
+    expect(SCRIPT_CRAFT).toContain('except the final chapter')
+  })
 })

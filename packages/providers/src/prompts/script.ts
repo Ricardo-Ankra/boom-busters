@@ -124,7 +124,9 @@ Sound like a person, not a language model:
   opposite of empty and are never cut.
 - No summing-up anywhere. A chapter ends on its last fact, not on a
   restatement or a moral, and no paragraph in its middle restates what the
-  listener has already heard.
+  listener has already heard. The one exception is the film's close, which
+  the final chapter's contract describes: a reading, an echo and an open
+  thread, never a recap.
 
 Written for the ear, not the eye. Every word you write is read aloud by a
 text-to-speech narrator, and punctuation is its pacing:
@@ -183,6 +185,7 @@ ${SCRIPT_CRAFT}
 Produce a chapter plan totalling about ${targetWords} words:
 {"centralQuestion": string,
  "storylines": [string],
+ "close": {"answer": string, "echo": string, "openThread": string},
  "chapters": [{"title": string, "storyline": string, "beat": string,
    "claims": [number], "question": string, "withhold": string,
    "reveals": string, "stakes": string, "constraints": string,
@@ -217,6 +220,15 @@ The tension contract, per chapter:
 "centralQuestion" is the one question the whole film exists to answer; only
 the final chapter answers it. Design the arc so each chapter's stakes are
 larger or more personal than the last.
+
+"close" is how the film ends, written as the final chapter's last paragraphs:
+- "answer": the central question answered in plain words, as this channel's
+  reading of the record, hedged where the law needs it.
+- "echo": one image, number or phrase from the opening chapter that the
+  ending returns to, so the film closes the loop it opened.
+- "openThread": the one thing still unresolved, which is the last line.
+The close is the one place the film says what it thinks. It is never a recap
+of the chapters.
 
 The opening chapter is a glimpse of the consequence in a few sentences, most
 of its detail withheld. The opening chapter owns none of the claims of the
@@ -373,6 +385,23 @@ export function tensionContract(outline: Outline, chapterIndex: number): string 
       `- Wording limits for this chapter. They shape the words and are never narrated as sentences, ` +
         `except where they ask for one in so many words: ${chapter.constraints}`,
     )
+  }
+  // The film's close (decision 299): the final chapter's last paragraphs, and
+  // the one place the recap ban yields. Earlier chapters still end on a turn.
+  const close = outline.close
+  if (chapterIndex === outline.chapters.length - 1 && close) {
+    const beats = [
+      close.answer ? `Answer, as this channel's reading: ${close.answer}` : null,
+      close.echo ? `Echo: ${close.echo}` : null,
+      close.openThread ? `Open thread, the last line: ${close.openThread}` : null,
+    ].filter((beat): beat is string => beat !== null)
+    if (beats.length > 0) {
+      lines.push(
+        `- End the film with the close, as this chapter's last paragraphs, in this order. ` +
+          `It says what the film thinks and closes the loop the opening chapter opened; it is ` +
+          `never a recap of the chapters.\n  ${beats.join('\n  ')}`,
+      )
+    }
   }
 
   return lines.length > 0 ? `The tension contract for this chapter:\n${lines.join('\n')}` : ''
@@ -833,6 +862,11 @@ export function mockOutline(targetRuntimeMin: number): Outline {
   return {
     centralQuestion: 'Mock central question — no provider designed an arc.',
     storylines,
+    close: {
+      answer: 'Mock answer to the central question.',
+      echo: 'Mock echo of the opening.',
+      openThread: 'Mock open thread.',
+    },
     chapters: Array.from({ length: chapters }, (_, index) => ({
       title: `[mock] Chapter ${index + 1}`,
       beat: 'Placeholder beat produced in mock mode. Nothing was written by a provider.',
