@@ -20,10 +20,40 @@ const chapter = { chapterTitle: 'The audit', contentMd: 'The money was gone.', c
 const chapters = [{ index: 0, title: 'The audit', contentMd: 'The money was gone. Nobody asked.' }]
 
 describe('the script answers (decision 292)', () => {
-  it('drafts the outline in one call when the answer is good', async () => {
+  it('drafts the outline in one call when the answer is good, with what it repaired', async () => {
     const complete = vi.fn().mockResolvedValue({ text: JSON.stringify(mockOutline(10)) })
-    expect((await draftOutlineWith(complete, outlineInput)).chapters.length).toBeGreaterThan(1)
+    const drafted = await draftOutlineWith(complete, outlineInput)
+    expect(drafted.outline.chapters.length).toBeGreaterThan(1)
+    expect(drafted.repairs).toEqual([])
     expect(complete).toHaveBeenCalledTimes(1)
+  })
+
+  it('reports a claim listed by two chapters as a repair, against the claim list it sent (decision 296)', async () => {
+    const outline = mockOutline(10)
+    const doubled = {
+      ...outline,
+      chapters: outline.chapters.map((chapter, index) => ({
+        ...chapter,
+        claims: index < 2 ? [1] : [9],
+      })),
+    }
+    const complete = vi.fn().mockResolvedValue({ text: JSON.stringify(doubled) })
+    const drafted = await draftOutlineWith(complete, {
+      ...outlineInput,
+      claims: [{ id: 'c1', text: 'A claim.', sourceUrl: null, confidence: 'sourced' }],
+    })
+    expect(drafted.outline.chapters[0]!.claims).toEqual([1])
+    expect(drafted.outline.chapters[1]!.claims).toEqual([])
+    expect(drafted.repairs).toContainEqual({
+      action: 'dropped',
+      field: "chapter 2's claim 1",
+      reason: 'already owned by chapter 1',
+    })
+    expect(drafted.repairs).toContainEqual({
+      action: 'dropped',
+      field: "chapter 3's claim 9",
+      reason: 'the claim list ends at 1',
+    })
   })
 
   it('asks for the outline once more with the reason, then stops the stage with it', async () => {
@@ -87,7 +117,7 @@ describe('the chapter draft (decision 293)', () => {
     caseTitle: 'Case',
     outline: mockOutline(10),
     chapterIndex: 1,
-    previousTail: 'The money was gone.',
+    previousChapters: [{ title: 'The audit', contentMd: 'The money was gone.' }],
     claims: [],
   }
   const request = buildChapterRequest(chapterInput)

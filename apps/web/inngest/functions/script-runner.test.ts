@@ -81,6 +81,17 @@ describe('markShortsStep (decision 293)', () => {
     expect(recordStop).not.toHaveBeenCalled()
   })
 
+  it("records the outline's repairs beside the marking's, so the strip keeps both (decision 296)", async () => {
+    callLlm.mockResolvedValueOnce({ text: JSON.stringify({ candidates: [candidate] }) })
+    const outlineRepair = {
+      action: 'dropped' as const,
+      field: "chapter 2's claim 1",
+      reason: 'already owned by chapter 1',
+    }
+    await markShortsStep(PROJECT, { chapters }, [outlineRepair])
+    expect(recordRepairs).toHaveBeenCalledWith(SCRIPT_NOTICES, [outlineRepair])
+  })
+
   it('stores none after a refusal and its retry, and says on the strip that the Shorts stage will mark them', async () => {
     callLlm.mockResolvedValue({ text: 'not json at all' })
 

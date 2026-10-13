@@ -7456,3 +7456,47 @@ boom-busters-broker`; merge and deploy to Vercel, then `PUT
      the prompt's contract and the scan for new designs drop it.
      Shipping: a Vercel deploy, then `PUT /api/inngest`. No Remotion or
      broker deploy: the runtime shape on Lambda is unchanged.
+
+296. **The script remembers what it told** (2026-10-13, owner: "it repeats
+     certain points quite often, and jumps around a bit"). The Stability AI
+     script of 8 October (v3, Opus 5.5, the first under decision 216) told
+     March 2024 in full twice, explained the CompVis paper in three chapters,
+     opened chapter four on chapter three's ending and narrated nine
+     sentences saying nothing was proven; 1.19 per cent of its six-word runs
+     repeated an earlier chapter against 0.00 to 0.12 for every earlier
+     script (Haiku 4.5, Sonnet 5, before 216). No script was ever drafted
+     with Gemini. The causes were the pipeline's: a chapter drafted with the
+     previous tail only, "continue from there", a cold-open rule with no
+     return clause, beats as fact lists ("anything the chapter needs must be
+     in these fields"), the dossier's corrections copied into every beat, a
+     recap ban that reached only chapter endings. Opus followed all of it
+     more faithfully than Sonnet had. Owner's ruling: fix the guardrails;
+     no model comparison.
+     What shipped: the outline is a plan: `storylines`, per chapter
+     `storyline`, `claims` (1-based into the claim list; the parser keeps
+     the first owner, drops a later listing or a number past the list as a
+     `dropped` repair), `reveals` and `constraints` (wording limits, never
+     narrated), all hints in the tension-field mould; beats are one to
+     three sentences and trimmed at `OUTLINE_BEAT_MAX` (600). A chapter is
+     drafted with every chapter so far in full, an ownership brief (narrate
+     in full / already told, refer back in a few words / a later chapter's,
+     do not narrate) and a seam rule that forbids restating the ending.
+     The house style bans summing-up anywhere and narrated caveats; the
+     craft file gains the cold open as a glimpse and its return as one line
+     of callback, "One home per fact", "Callbacks, not recaps", the single
+     reveal and the sag-point turn. `findRepeats` (schemas) flags a sentence
+     carrying a six-word run an earlier chapter narrated as a gutter warning
+     of the new kind `repeats-earlier`, stored with the self-check's, so it
+     parks the gate; it runs in mock mode too, where every stand-in chapter
+     repeats the first. The outline's repairs reach the Shorts strip beside
+     the marking's. `chapterTail` is gone. No migration; a pre-296 outline
+     drafts without a brief.
+     Decisions made where the spec left room: six words for the repeat
+     run (five is connective tissue, seven misses a figure with its
+     attribution); the repeat check compares across chapters only, since a
+     mid-chapter recap is the prompt's business and now banned there; the
+     outline's repairs ride on the Shorts marking's notice rather than a
+     notice of their own, because `recordRepairs` replaces a subject's notes
+     and the marking lands last.
+     Shipping: a Vercel deploy, then `PUT /api/inngest`. No Remotion or
+     broker deploy.
