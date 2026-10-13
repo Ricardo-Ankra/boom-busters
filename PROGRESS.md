@@ -7567,6 +7567,8 @@ boom-busters-broker`; merge and deploy to Vercel, then `PUT
      names arXiv from its own id tag rather than "Arxiv" from the domain. A
      slash date ("2021/12/20") is read as a UTC day; `Date.parse` took it as
      local midnight and the UTC read shifted it to the day before.
+     A claim sourced to an X post is never offered: it has a card of its
+     own (decision 284).
      Decisions made where the spec left room: a court or regulator source is
      offered too, since a judgment page has a title and a date and the owner
      decides what the card implies; the chooser's empty-state copy stays for

@@ -561,8 +561,11 @@ async function articleClaimOptions(
 ): Promise<ArticleClaimOption[]> {
   if (claims.length === 0) return []
 
+  // A claim sourced to an X post has a card of its own (decision 284); it is
+  // never a headline.
+  const offered = claims.filter((claim) => !claimCarriesPost(claim))
   const urlByClaim = new Map<string, string>()
-  for (const claim of claims) {
+  for (const claim of offered) {
     if (!claimHasSourcePage(claim)) continue
     const url = normaliseArticleUrl(claim.sourceUrl ?? '')
     if (url !== null) urlByClaim.set(claim.id, url)
@@ -571,7 +574,7 @@ async function articleClaimOptions(
   const rows = await getArticleSources(db, [...new Set(urlByClaim.values())])
   const outletByUrl = new Map(rows.flatMap((row) => (row.outlet ? [[row.url, row.outlet]] : [])))
 
-  const options = claims.map((claim): ArticleClaimOption => {
+  const options = offered.map((claim): ArticleClaimOption => {
     const url = urlByClaim.get(claim.id)
     return url === undefined
       ? {

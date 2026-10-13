@@ -1559,6 +1559,7 @@ describeDb('re-typing to a headline card from any source (decision 298)', () => 
   let stockId: string
   const PAPER_CLAIM_ID = fixtureId('CLAIM', 41)
   const BARE_CLAIM_ID = fixtureId('CLAIM', 42)
+  const POST_CLAIM_ID = fixtureId('CLAIM', 43)
 
   beforeEach(async () => {
     vi.clearAllMocks()
@@ -1583,6 +1584,14 @@ describeDb('re-typing to a headline card from any source (decision 298)', () => 
           sourceUrl: null,
           sourceType: 'other',
           confidence: 'single_source',
+        },
+        {
+          id: POST_CLAIM_ID,
+          dossierId: FIXTURE_DOSSIER_ID,
+          text: 'Emad Mostaque announced his resignation on X.',
+          sourceUrl: 'https://x.com/EMostaque/status/1740000000000000002',
+          sourceType: 'other',
+          confidence: 'sourced',
         },
       ])
       .onConflictDoNothing()
@@ -1623,6 +1632,15 @@ describeDb('re-typing to a headline card from any source (decision 298)', () => 
     const firstBare = model.articleClaims.findIndex((claim) => !claim.hasAddress)
     const lastWithAddress = model.articleClaims.map((claim) => claim.hasAddress).lastIndexOf(true)
     expect(lastWithAddress).toBeLessThan(firstBare)
+  })
+
+  it('never offers a claim sourced to an X post, which has a card of its own', async () => {
+    const model = await visualsReviewModel(db, FIXTURE_PROJECT_ID)
+    expect(model.articleClaims.some((claim) => claim.id === POST_CLAIM_ID)).toBe(false)
+    expect(await retypeToHeadlineAction(FIXTURE_PROJECT_ID, stockId, POST_CLAIM_ID)).toEqual({
+      ok: false,
+      error: 'That claim is sourced to an X post. Show it as a post card instead.',
+    })
   })
 
   it('quotes a claim sourced to a paper', async () => {

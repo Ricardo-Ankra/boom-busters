@@ -577,6 +577,12 @@ export async function retypeToHeadlineAction(
 
   const claim = (await scriptableClaims(db, projectId)).find((row) => row.id === claimId)
   if (!claim) return { ok: false, error: 'That claim is not in this project.' }
+  if (claimCarriesPost(claim)) {
+    return {
+      ok: false,
+      error: 'That claim is sourced to an X post. Show it as a post card instead.',
+    }
+  }
   // Any readable page may be quoted by the owner (decision 298); the planner's
   // news-only rule is the model's, not this button's.
   if (!claimHasSourcePage(address === null ? claim : { ...claim, sourceUrl: address })) {
