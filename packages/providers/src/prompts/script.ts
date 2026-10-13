@@ -1,4 +1,5 @@
 import {
+  OUTLINE_BEAT_MAX,
   OutlineSchema,
   SelfCheckSchema,
   SHORTS_CANDIDATES_MAX,
@@ -168,25 +169,46 @@ export function buildOutlineRequest(input: {
 
 ${SCRIPT_CRAFT}
 
-Produce a chapter outline totalling about ${targetWords} words:
+Produce a chapter plan totalling about ${targetWords} words:
 {"centralQuestion": string,
- "chapters": [{"title": string, "beat": string, "question": string,
-   "withhold": string, "stakes": string, "targetWords": number}]}
+ "storylines": [string],
+ "chapters": [{"title": string, "storyline": string, "beat": string,
+   "claims": [number], "question": string, "withhold": string,
+   "reveals": string, "stakes": string, "constraints": string,
+   "targetWords": number}]}
 
-"beat" says what the chapter must accomplish — the drafting step sees only its
-own outline entry, the previous chapter's ending and the claim list, so
-anything the chapter needs must be in these fields.
+The plan, per chapter:
+- "beat": one to three sentences on what the chapter accomplishes. Never a
+  list of facts: the facts are the claims it owns.
+- "claims": the numbers of the claims this chapter narrates in full, from the
+  claim list below. Every claim belongs to exactly one chapter, the chapter
+  where it lands hardest. A claim listed by two chapters stays with the first;
+  the app drops the second listing. A chapter may still refer in a few words
+  to a claim another chapter owns.
+- "storyline": which of the film's "storylines" this chapter advances. Name
+  two to four storylines for the film (the money, the credit, the courts).
+  No storyline is absent for more than one chapter in a row.
+- "reveals": the fact an earlier chapter withheld that this chapter reveals,
+  if any. A withheld fact is revealed once.
+- "constraints": the wording limits for this chapter: what must stay
+  attributed and to whom, what is never stated as fact, which figures are
+  unsourced and must not appear. They shape the words and are never narrated.
+  Put the dossier's corrections here, not in the beat.
 
 The tension contract, per chapter:
-- "question": the open question this chapter plants and must NOT answer — the
+- "question": the open question this chapter plants and must NOT answer; the
   next chapter answers it.
 - "withhold": the fact this chapter deliberately does not say, and which later
   chapter reveals it.
-- "stakes": what is concretely at risk while this chapter runs — people,
+- "stakes": what is concretely at risk while this chapter runs: people,
   money, dates.
 "centralQuestion" is the one question the whole film exists to answer; only
 the final chapter answers it. Design the arc so each chapter's stakes are
-larger or more personal than the last.`,
+larger or more personal than the last.
+
+The opening chapter is a glimpse of the consequence in a few sentences, most
+of its detail withheld. The chapter where the chronology returns to that
+moment gets one line of callback and only the claims it owns.`,
     messages: [
       { role: 'user', content: `Case: ${input.caseTitle}\n\nDossier:\n${input.dossierMd}` },
       { role: 'user', content: `Claims available:\n${claimList(input.claims)}` },
@@ -196,8 +218,70 @@ larger or more personal than the last.`,
   }
 }
 
-export function parseOutline(text: string): Outline {
-  return parseJsonCompletion(text, OutlineSchema, 'outline')
+/**
+ * The outline as the model answered it, repaired before it is validated
+ * (decision 296, in decision 293's mould): a beat over its limit is trimmed
+ * at a sentence; a claim number listed by two chapters stays with the first
+ * and the later listing is dropped, as is a number the claim list does not
+ * have. Each repair is reported; none refuses the outline. `claimCount` is
+ * the length of the list the prompt printed; without it any number is kept.
+ */
+export function parseOutline(
+  text: string,
+  note: Note = ignoreRepairs,
+  claimCount?: number,
+): Outline {
+  const answer = parseJsonCompletion(text, LooseAnswer, 'outline')
+  const parsed = OutlineSchema.safeParse(repairOutline(answer, note, claimCount))
+  if (!parsed.success) {
+    throw new ValidationError(
+      `The model's outline did not match the expected shape: ${formatIssues(parsed.error)}`,
+      { field: 'outline' },
+    )
+  }
+  return parsed.data
+}
+
+function repairOutline(
+  answer: Record<string, unknown>,
+  note: Note,
+  claimCount: number | undefined,
+): unknown {
+  const chapters = answer['chapters']
+  if (!Array.isArray(chapters)) return answer
+  // Claim number -> the 1-based chapter that listed it first.
+  const owners = new Map<number, number>()
+  return {
+    ...answer,
+    chapters: chapters.map((chapter, at) => {
+      if (!isRecord(chapter)) return chapter
+      const label = `chapter ${at + 1}`
+      const repaired: Record<string, unknown> = {
+        ...chapter,
+        beat: trimField(chapter['beat'], OUTLINE_BEAT_MAX, `${label}'s beat`, note),
+      }
+      if (Array.isArray(chapter['claims'])) {
+        repaired['claims'] = dropItems(
+          chapter['claims'],
+          (item) => {
+            if (typeof item !== 'number' || !Number.isInteger(item) || item < 1) {
+              return 'not a claim number'
+            }
+            if (claimCount !== undefined && item > claimCount) {
+              return `the claim list ends at ${claimCount}`
+            }
+            const owner = owners.get(item)
+            if (owner !== undefined && owner !== at + 1) return `already owned by chapter ${owner}`
+            owners.set(item, at + 1)
+            return null
+          },
+          (item) => `${label}'s claim ${String(item)}`,
+          note,
+        )
+      }
+      return repaired
+    }),
+  }
 }
 
 // ---------------------------------------------------------------------------

@@ -105,6 +105,25 @@ describe('buildOutlineRequest', () => {
     expect(request.system).toMatch(/"stakes"/)
     expect(request.system).toMatch(/must NOT answer/)
   })
+
+  /**
+   * Decision 296: the outline is a plan. Beats are purpose, the facts are
+   * the owned claims, the wording limits have a field of their own, and the
+   * return to the cold open is one line.
+   */
+  it('asks for storylines, claim ownership, reveals and constraints', () => {
+    expect(request.system).toContain('"storylines"')
+    expect(request.system).toContain('"storyline"')
+    expect(request.system).toContain('"claims": [number]')
+    expect(request.system).toContain('"reveals"')
+    expect(request.system).toContain('"constraints"')
+    expect(request.system).toMatch(/exactly one chapter/)
+    expect(request.system).toMatch(/never narrated/)
+    expect(request.system).toMatch(/one to three sentences/)
+    expect(request.system).toMatch(/one line of callback/)
+    // The old instruction that produced fact-list beats is gone.
+    expect(request.system).not.toMatch(/anything the chapter needs must be in these fields/)
+  })
 })
 
 describe('tensionContract', () => {
@@ -355,6 +374,85 @@ describe('parseOutline and parseShortsCandidates', () => {
     expect(() => parseOutline(JSON.stringify({ chapters: [outline.chapters[0]] }))).toThrow(
       ValidationError,
     )
+  })
+
+  /**
+   * Decision 296: a beat over its limit is trimmed at a sentence, a claim
+   * listed by two chapters stays with the first, and a number the claim list
+   * does not have is dropped; each is reported, none refuses the outline.
+   */
+  describe('the outline repairs (decision 296)', () => {
+    const chapter = (over: Partial<Record<string, unknown>>) => ({
+      title: 'A chapter',
+      beat: 'What this chapter does.',
+      targetWords: 300,
+      ...over,
+    })
+    const collect = () => {
+      const repairs: Repair[] = []
+      const note: Note = (repair) => repairs.push(repair)
+      return { repairs, note }
+    }
+
+    it('trims a beat over the limit at a sentence and names the chapter', () => {
+      const { repairs, note } = collect()
+      const long = `${'A sentence of purpose. '.repeat(40)}The tail.`
+      const parsed = parseOutline(
+        JSON.stringify({ chapters: [chapter({ beat: long }), chapter({})] }),
+        note,
+      )
+      expect(parsed.chapters[0]!.beat.length).toBeLessThanOrEqual(600)
+      expect(parsed.chapters[0]!.beat.endsWith('.')).toBe(true)
+      expect(repairs).toEqual([{ action: 'trimmed', field: "chapter 1's beat" }])
+    })
+
+    it('keeps a claim with its first owner and drops the later listing, saying whose it is', () => {
+      const { repairs, note } = collect()
+      const parsed = parseOutline(
+        JSON.stringify({
+          chapters: [
+            chapter({ claims: [1, 2] }),
+            chapter({ claims: [2, 3] }),
+            chapter({ claims: [3] }),
+          ],
+        }),
+        note,
+        3,
+      )
+      expect(parsed.chapters.map((c) => c.claims)).toEqual([[1, 2], [3], []])
+      expect(repairs).toEqual([
+        { action: 'dropped', field: "chapter 2's claim 2", reason: 'already owned by chapter 1' },
+        { action: 'dropped', field: "chapter 3's claim 3", reason: 'already owned by chapter 2' },
+      ])
+    })
+
+    it('drops a number the claim list does not have, and anything that is not a number', () => {
+      const { repairs, note } = collect()
+      const parsed = parseOutline(
+        JSON.stringify({ chapters: [chapter({ claims: [1, 9, 'two', 0] }), chapter({})] }),
+        note,
+        3,
+      )
+      expect(parsed.chapters[0]!.claims).toEqual([1])
+      expect(repairs).toEqual([
+        { action: 'dropped', field: "chapter 1's claim 9", reason: 'the claim list ends at 3' },
+        { action: 'dropped', field: "chapter 1's claim two", reason: 'not a claim number' },
+        { action: 'dropped', field: "chapter 1's claim 0", reason: 'not a claim number' },
+      ])
+    })
+
+    it('keeps any number when the claim count is not given', () => {
+      const parsed = parseOutline(
+        JSON.stringify({ chapters: [chapter({ claims: [40] }), chapter({})] }),
+      )
+      expect(parsed.chapters[0]!.claims).toEqual([40])
+    })
+
+    it('still refuses an outline it cannot repair, naming the field', () => {
+      expect(() =>
+        parseOutline(JSON.stringify({ chapters: [{ title: 'No beat' }, chapter({})] })),
+      ).toThrow(/did not match the expected shape/)
+    })
   })
 
   it('reads Shorts candidates', () => {
