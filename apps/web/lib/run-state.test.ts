@@ -187,6 +187,26 @@ describe('projectControl', () => {
     })
   })
 
+  /**
+   * Decision 300: Shorts cut from an earlier script against a master that has
+   * since been rebuilt cannot render; the stage is run again to cut fresh ones.
+   */
+  it('rescues a shorts review whose every excerpt was cut from an earlier script', () => {
+    const control = projectControl(project('shorts', 'awaiting_review'), false, {
+      hasDossier: true,
+      hasScript: true,
+      hasMaster: true,
+      hasShorts: true,
+      hasLiveShorts: false,
+      now: NOW,
+    })
+    expect(control.kind).toBe('restart')
+    expect(control).toMatchObject({
+      label: 'Run the shorts stage again',
+      message: expect.stringContaining('earlier script'),
+    })
+  })
+
   it('blocks the empty-shorts rescue when no finished master exists', () => {
     const control = projectControl(project('shorts', 'awaiting_review'), false, {
       hasDossier: true,

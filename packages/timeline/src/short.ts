@@ -61,6 +61,28 @@ export interface ShortCompileInput {
   ctaText?: string
 }
 
+/**
+ * Whether the master still carries every paragraph the Short references
+ * (decision 300). False for an excerpt cut from an earlier script: the
+ * master was rebuilt from a rewritten script, its chapter ids changed, and
+ * the segment the row names no longer exists anywhere to slice.
+ */
+export function segmentInMaster(master: Timeline, segmentRef: ShortSegmentRef): boolean {
+  if (segmentRef.toParagraph < segmentRef.fromParagraph) return false
+  const found = master.narration.filter(
+    (segment) =>
+      segment.chapterId === segmentRef.chapterId &&
+      segment.paragraphIndex >= segmentRef.fromParagraph &&
+      segment.paragraphIndex <= segmentRef.toParagraph,
+  ).length
+  return found === segmentRef.toParagraph - segmentRef.fromParagraph + 1
+}
+
+/** What the owner is told about an excerpt the master can no longer serve. */
+export const STALE_EXCERPT =
+  'This excerpt was cut from an earlier script: its narration is no longer in the master. ' +
+  'Run the Shorts stage again to cut fresh ones.'
+
 export function compileShortTimeline(input: ShortCompileInput): Timeline {
   const { master, segmentRef } = input
 

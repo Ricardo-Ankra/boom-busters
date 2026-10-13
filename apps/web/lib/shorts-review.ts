@@ -17,7 +17,12 @@ import {
   TimelineSchema,
 } from '@boom-busters/schemas'
 import type { SlotCandidate, TeaserFetchState, Timeline, TimelineSlot } from '@boom-busters/schemas'
-import { masterChapterIds, pickTeaserSlot, teaserShotPool } from '@boom-busters/timeline'
+import {
+  masterChapterIds,
+  pickTeaserSlot,
+  segmentInMaster,
+  teaserShotPool,
+} from '@boom-busters/timeline'
 import { slotFromTeaserCandidate, teaserCandidateReady } from '@/lib/teaser-fetch'
 import { stillSlotEstimateUsd } from '@/lib/visual-assets'
 
@@ -119,6 +124,12 @@ export interface ShortCardModel {
   toParagraph: number
   /** The segment's runtime, from the master's narration. Null: no master. */
   durationMs: number | null
+  /**
+   * An excerpt cut from an earlier script, whose narration the rebuilt
+   * master no longer has (decision 300). It cannot render; the stage is run
+   * again to cut fresh ones. Never true for a teaser, which carries its own.
+   */
+  stale: boolean
   estimatedCostUsd: number
   render: ShortRenderProp | null
   /** The studio's data — teaser cards only, null on excerpts. */
@@ -336,6 +347,8 @@ export async function shortsModel(
       sourceParsed?.success ? sourceParsed.data : master,
       row.segmentRef,
     )
+    const stale =
+      row.kind === 'excerpt' && master !== null && !segmentInMaster(master, row.segmentRef)
     shorts.push({
       id: row.id,
       title: row.title,
@@ -347,6 +360,7 @@ export async function shortsModel(
       fromParagraph: row.segmentRef.fromParagraph,
       toParagraph: row.segmentRef.toParagraph,
       durationMs,
+      stale,
       estimatedCostUsd: durationMs === null ? 0 : estimateRenderCostUsd(durationMs / 1000, 'short'),
       render: render
         ? {

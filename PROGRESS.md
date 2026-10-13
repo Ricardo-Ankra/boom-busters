@@ -7603,3 +7603,36 @@ boom-busters-broker`; merge and deploy to Vercel, then `PUT
      teaser can read it from there later; the echo is the hook-and-payoff
      rule from the long-form research behind decision 296.
      Shipping: a Vercel deploy, then `PUT /api/inngest`.
+
+300. **Excerpts cut from an earlier script are replaced, not rendered**
+     (2026-10-13, owner report: "Render short" on the Stability AI project
+     failed three times with "the master timeline has 0 of the 2 narration
+     segment(s) the Short references (chapter 01M1MCKW..., paragraphs
+     3..4)"). The five excerpt rows were cut on 8 September from script v2;
+     the script was rewritten twice since (v3 on 8 October, v4 today) and
+     the master rebuilt from v4's chapters (timeline v27), so every row
+     named a chapter id the master never had. Three things let it get that
+     far: the shorts runner's re-entry kept every existing row as curated,
+     whatever the master could serve; the render step treated the compile
+     refusal as retryable and tried three times; and the card offered Render
+     with no word about it.
+     What shipped: `segmentInMaster` (timeline) says whether the master still
+     carries every paragraph a Short references, and `STALE_EXCERPT` is the
+     one sentence the owner reads about it. The shorts runner's re-entry
+     deletes excerpts the master cannot serve (`deleteShorts`, renders
+     cascade) and reports them as `replaced`; rows it can serve are kept as
+     curated, and when none remain it cuts fresh excerpts from the current
+     script's candidates, marking them first if the script has none. The
+     Shorts card model carries `stale`; a stale card says so and offers no
+     render; `requestShortRender` refuses one before any run starts; the
+     render runner throws `NonRetriableError` for a stale excerpt and for any
+     other compile refusal, since no retry changes a master. The project
+     controls get `hasLiveShorts`: a review whose every excerpt is stale is a
+     restart ("Run the shorts stage again"), as an empty one already was.
+     Teasers are never stale here: they carry their own narration.
+     Decisions made where the spec left room: a stale row's curated title
+     and ending are lost with it, since they named lines the new script does
+     not have; a run parked before this decision replays `resolve-candidates`
+     without `replaced` and reads 0.
+     Shipping: a Vercel deploy, then `PUT /api/inngest`. For Stability AI:
+     press "Run the shorts stage again" on the project page once deployed.

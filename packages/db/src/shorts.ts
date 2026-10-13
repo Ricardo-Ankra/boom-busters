@@ -1,4 +1,4 @@
-import { asc, desc, eq } from 'drizzle-orm'
+import { asc, desc, eq, inArray } from 'drizzle-orm'
 import type { Database } from './client'
 import { scripts, shorts } from './schema'
 import type { ShortRow } from './schema'
@@ -55,6 +55,16 @@ export async function insertShort(
 export async function getShort(db: Database, id: string): Promise<ShortRow | undefined> {
   const [row] = await db.select().from(shorts).where(eq(shorts.id, id)).limit(1)
   return row
+}
+
+/**
+ * Remove Shorts rows (decision 300): excerpts cut from an earlier script,
+ * whose narration the rebuilt master no longer has. Their renders go with
+ * them (the FK cascades); the cost trail is the ledger, not the render row.
+ */
+export async function deleteShorts(db: Database, ids: readonly string[]): Promise<void> {
+  if (ids.length === 0) return
+  await db.delete(shorts).where(inArray(shorts.id, [...ids]))
 }
 
 /** All of a project's Shorts, in creation order — the Shorts screen's grid. */

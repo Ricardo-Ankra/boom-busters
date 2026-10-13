@@ -20,9 +20,10 @@ import {
   serialiseError,
   timelineDurationMs,
   TimelineSchema,
+  ValidationError,
 } from '@boom-busters/schemas'
-import type { QcReport } from '@boom-busters/schemas'
-import { compileShortTimeline } from '@boom-busters/timeline'
+import type { QcReport, Timeline } from '@boom-busters/schemas'
+import { compileShortTimeline, segmentInMaster, STALE_EXCERPT } from '@boom-busters/timeline'
 import { mockProvidersEnabled } from '@boom-busters/providers'
 import { NonRetriableError } from 'inngest'
 import { db } from '@/lib/db'
@@ -122,12 +123,24 @@ export const shortRenderRunner = inngest.createFunction(
       )
       const beds = await listMusicBeds(db)
 
-      const timeline = compileShortTimeline({
-        master,
-        segmentRef: short.segmentRef,
-        ending: short.ending,
-        music: pickShortsBed(beds, master.brand.music.shortsStyle),
-      })
+      // An excerpt cut from an earlier script (decision 300) has no narration
+      // left to slice, and no retry changes a master; the refusal is final.
+      if (short.kind === 'excerpt' && !segmentInMaster(master, short.segmentRef)) {
+        throw new NonRetriableError(STALE_EXCERPT)
+      }
+      let timeline: Timeline
+      try {
+        timeline = compileShortTimeline({
+          master,
+          segmentRef: short.segmentRef,
+          ending: short.ending,
+          music: pickShortsBed(beds, master.brand.music.shortsStyle),
+        })
+      } catch (error) {
+        // A compile refusal is about the rows as they are; retrying buys nothing.
+        if (error instanceof ValidationError) throw new NonRetriableError(error.message)
+        throw error
+      }
 
       const durationSec = timelineDurationMs(timeline) / 1000
       const estimate = estimateRenderCostUsd(durationSec, 'short')

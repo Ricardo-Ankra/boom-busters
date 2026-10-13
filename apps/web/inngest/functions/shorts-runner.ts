@@ -1,4 +1,5 @@
 import {
+  deleteShorts,
   getLatestScript,
   getProject,
   insertShort,
@@ -30,6 +31,7 @@ import type { NoticeTarget } from '@boom-busters/schemas'
 import {
   compileShortTimeline,
   compileTeaserMaster,
+  segmentInMaster,
   TEASER_CHAPTER_ID,
 } from '@boom-busters/timeline'
 import type { TeaserParagraphAudio } from '@boom-busters/timeline'
@@ -122,7 +124,16 @@ export const shortsRunner = inngest.createFunction(
 
       await setProjectStage(db, projectId, { stage: 'shorts', stageStatus: 'running' })
 
-      if ((await listShorts(db, projectId)).length > 0) return { ok: true as const, marked: 0 }
+      // Rows the master can still serve mean the human is curating; rows it
+      // cannot (cut from an earlier script, decision 300) are replaced below
+      // and count for nothing here.
+      const timelineRow = await latestTimeline(db, projectId)
+      const master = timelineRow ? TimelineSchema.safeParse(timelineRow.json) : null
+      const live = (await listShorts(db, projectId)).filter(
+        (row) =>
+          row.kind === 'teaser' || !master?.success || segmentInMaster(master.data, row.segmentRef),
+      )
+      if (live.length > 0) return { ok: true as const, marked: 0 }
       if ((await latestShortsCandidates(db, projectId)).length > 0) {
         return { ok: true as const, marked: 0 }
       }
@@ -177,23 +188,37 @@ export const shortsRunner = inngest.createFunction(
     }
 
     const outcome = await step.run('resolve-candidates', async () => {
-      // Re-entry guard: rows exist, the human may have curated them. Keep.
-      const existing = await listShorts(db, projectId)
-      if (existing.length > 0) {
-        return { created: [] as string[], skipped: [] as string[], reused: existing.length }
-      }
-
-      const candidates = await latestShortsCandidates(db, projectId)
-      if (candidates.length === 0) {
-        return { created: [] as string[], skipped: [] as string[], reused: 0 }
-      }
-
-      const { chapters } = await latestScriptParagraphSources(db, projectId)
       const timelineRow = await latestTimeline(db, projectId)
       if (!timelineRow) {
         throw new NonRetriableError('master.ready fired but there is no compiled timeline')
       }
       const master = TimelineSchema.parse(timelineRow.json)
+
+      // Re-entry guard: rows the master can still serve were curated by the
+      // human and are kept. An excerpt cut from an earlier script (decision
+      // 300) points at narration the rebuilt master no longer has; it can
+      // never render, so it is replaced rather than kept. Teasers carry their
+      // own narration and are never stale here.
+      const existing = await listShorts(db, projectId)
+      const stale = existing.filter(
+        (row) => row.kind === 'excerpt' && !segmentInMaster(master, row.segmentRef),
+      )
+      await deleteShorts(
+        db,
+        stale.map((row) => row.id),
+      )
+      const replaced = stale.length
+      const kept = existing.length - replaced
+      if (kept > 0) {
+        return { created: [] as string[], skipped: [] as string[], reused: kept, replaced }
+      }
+
+      const candidates = await latestShortsCandidates(db, projectId)
+      if (candidates.length === 0) {
+        return { created: [] as string[], skipped: [] as string[], reused: 0, replaced }
+      }
+
+      const { chapters } = await latestScriptParagraphSources(db, projectId)
 
       const created: string[] = []
       const skipped: string[] = []
@@ -225,7 +250,7 @@ export const shortsRunner = inngest.createFunction(
         created.push(short.id)
       }
 
-      return { created, skipped, reused: 0 }
+      return { created, skipped, reused: 0, replaced }
     })
 
     // -------------------------------------------------------------------------
@@ -422,6 +447,8 @@ export const shortsRunner = inngest.createFunction(
       outcome: outcome.reused > 0 ? ('reused-existing' as const) : ('shorts-created' as const),
       created: outcome.created.length,
       reused: outcome.reused,
+      // A run parked before decision 300 replays this step without it.
+      replaced: outcome.replaced ?? 0,
       skipped: outcome.skipped,
       teaser: teaserShortId ?? (teaserSkipped ? `skipped: ${teaserSkipped}` : null),
     }

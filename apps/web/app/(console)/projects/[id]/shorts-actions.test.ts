@@ -5,6 +5,7 @@ import {
   getShort,
   insertRender,
   insertShort,
+  insertTimeline,
   renders,
   requireTestDatabase,
   seed,
@@ -12,6 +13,7 @@ import {
   updateRender,
   updateShort,
 } from '@boom-busters/db'
+import { DEFAULT_SETTINGS, resolveBrandKit } from '@boom-busters/schemas'
 import type { TeaserFetchesRecord } from '@boom-busters/schemas'
 import { TEASER_CHAPTER_ID } from '@boom-busters/timeline'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -134,6 +136,58 @@ describeDb('shorts action guards (decision 234)', () => {
 
     expect(result.ok).toBe(false)
     expect(result.error).toContain('already rendering')
+    expect(send).not.toHaveBeenCalled()
+  })
+
+  /**
+   * Decision 300: an excerpt cut from an earlier script points at narration
+   * the master no longer has. The button says so instead of starting a run
+   * that can only fail.
+   */
+  it('refuses to render an excerpt whose narration is no longer in the master', async () => {
+    await insertTimeline(db, {
+      projectId: FIXTURE_PROJECT_ID,
+      json: {
+        version: 1,
+        fps: 30,
+        width: 1920,
+        height: 1080,
+        brand: resolveBrandKit(DEFAULT_SETTINGS),
+        narration: [
+          {
+            r2Key: 'mock://voice/p0.wav',
+            startMs: 0,
+            durationMs: 6000,
+            chapterId: '01HQ0000000000000000000CH1',
+            paragraphIndex: 0,
+          },
+        ],
+        music: null,
+        captions: { words: [], style: 'karaoke' },
+        slots: [
+          {
+            type: 'still',
+            startMs: 0,
+            durationMs: 6000,
+            transition: 'cut',
+            motion: { kind: 'static' },
+            payload: { kind: 'image', src: { r2Key: 'boom-busters/stills/x.png' } },
+          },
+        ],
+        overlays: [],
+      },
+      s3Key: '',
+    })
+    const stale = await insertShort(db, {
+      projectId: FIXTURE_PROJECT_ID,
+      title: 'Cut from the old script',
+      segmentRef: { chapterId: '01HQ0000000000000000000OLD', fromParagraph: 3, toParagraph: 4 },
+    })
+
+    const result = await requestShortRender(stale.id)
+
+    expect(result.ok).toBe(false)
+    expect(result.error).toContain('cut from an earlier script')
     expect(send).not.toHaveBeenCalled()
   })
 

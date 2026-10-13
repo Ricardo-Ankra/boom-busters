@@ -234,6 +234,7 @@ export default async function ProjectPage({
     hasScript: project.hasScript,
     hasMaster: masterRender?.status === 'done',
     hasShorts: shortCards.shorts.length > 0,
+    hasLiveShorts: shortCards.shorts.some((short) => !short.stale),
   })
 
   // Driven by the stage on screen rather than the stage the project is on, so
