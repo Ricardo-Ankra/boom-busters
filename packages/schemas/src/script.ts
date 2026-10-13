@@ -25,6 +25,14 @@ export const MIN_CHAPTER_WORDS = 120
 export const MAX_CHAPTER_WORDS = 4000
 
 /**
+ * The longest beat the outline parser keeps (decision 296). A beat is one to
+ * three sentences of purpose; the facts are the claims the chapter owns. The
+ * 1,300 to 1,800 character beats of the Stability script were fact lists,
+ * and the drafter narrated every one of them, in two chapters each.
+ */
+export const OUTLINE_BEAT_MAX = 600
+
+/**
  * The tension-contract fields (decision 216) are hints, like `targetWords`:
  * clamped and folded rather than validated, because rejecting a whole good
  * outline over one over-long sentence costs a full model call. An empty or
@@ -39,6 +47,27 @@ const tensionField = z
   .optional()
   .catch(undefined)
 
+/**
+ * The claim numbers a chapter narrates in full (decision 296): 1-based into
+ * the claim list the outline prompt printed. A hint, like the tension
+ * fields: a value that is not a list of numbers folds to absent, and a
+ * number listed twice in one chapter is kept once. Ownership across chapters
+ * is settled by the outline parser, which knows the claim count.
+ */
+const claimNumbers = z
+  .array(z.number().int().positive())
+  .transform((numbers) => [...new Set(numbers)])
+  .optional()
+  .catch(undefined)
+
+/** Two to four named threads the film braids; at most six, or the list is folded. */
+const storylines = z
+  .array(z.string().trim().min(1).max(200))
+  .min(1)
+  .max(6)
+  .optional()
+  .catch(undefined)
+
 export const OutlineChapterSchema = z.object({
   title: z.string().trim().min(3).max(200),
   /** What this chapter has to accomplish, fed to the drafting step. */
@@ -49,6 +78,14 @@ export const OutlineChapterSchema = z.object({
   withhold: tensionField,
   /** What is at risk, concretely, while this chapter runs. */
   stakes: tensionField,
+  /** Which of the outline's `storylines` this chapter advances. */
+  storyline: tensionField,
+  /** The claims this chapter narrates in full; every claim has one home. */
+  claims: claimNumbers,
+  /** The fact an earlier chapter withheld that this chapter reveals, if any. */
+  reveals: tensionField,
+  /** Wording limits that shape the words and are never narrated as sentences. */
+  constraints: tensionField,
   /**
    * How long this chapter should run, clamped rather than validated.
    *
@@ -75,6 +112,7 @@ export type OutlineChapter = z.infer<typeof OutlineChapterSchema>
 export const OutlineSchema = z.object({
   /** The one question the whole film answers, only in its final chapter. */
   centralQuestion: tensionField,
+  storylines,
   chapters: z.array(OutlineChapterSchema).min(2).max(20),
 })
 export type Outline = z.infer<typeof OutlineSchema>
@@ -90,6 +128,8 @@ export const WARNING_KINDS = [
   'missing-alleged',
   /** Names a living person in a way the sources do not support. */
   'unsupported-attribution',
+  /** Repeats a six-word run an earlier chapter already narrated (decision 296). */
+  'repeats-earlier',
 ] as const
 export const WarningKindSchema = z.enum(WARNING_KINDS)
 export type WarningKind = z.infer<typeof WarningKindSchema>
