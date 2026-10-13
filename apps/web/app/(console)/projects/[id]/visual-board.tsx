@@ -46,7 +46,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ConfirmButton } from '@/components/confirm-button'
 import { Notices } from '@/components/notices'
-import { Label, Select } from '@/components/ui/input'
+import { Input, Label, Select } from '@/components/ui/input'
 import { useToast } from '@/components/ui/toast'
 import { readImageSize, toUploadableImage, toUploadableLogo } from '@/lib/client-image'
 import type { StillModelOption } from '@/lib/model-catalogue'
@@ -2821,41 +2821,112 @@ function ArticleChooser({
         <>
           <p className="text-[12px] text-[var(--color-text-secondary)]">
             {quoting === null
-              ? 'Pick the article. Every word on the card is read from it: the outlet, the headline, the byline and the date.'
-              : 'Pick a different article. The card is redrawn from that one, and a highlight you set for this headline is dropped rather than moved across.'}
+              ? 'Pick the source. Every word on the card is read from it: the outlet, the headline, the byline and the date. A paper, a report or a company page works too; paste its address where a claim has none.'
+              : 'Pick a different source. The card is redrawn from that one, and a highlight you set for this headline is dropped rather than moved across.'}
           </p>
-          {articleClaims.map((claim) => (
-            <div key={claim.id} className="flex flex-wrap items-center gap-2">
-              <span className="min-w-0 flex-1 text-[13px] text-[var(--color-text-primary)]">
-                <span className="text-[var(--color-text-secondary)]">{claim.label}</span>{' '}
-                <span className="text-[var(--color-text-muted)]">·</span> {claim.text}
-              </span>
-              {claim.id === quoting ? (
-                <Badge shape="tag">quoted now</Badge>
-              ) : (
-                <Button
-                  type="button"
-                  variant="outline"
-                  busy={pressed === `quote:${claim.id}`}
-                  disabled={busy}
-                  onClick={() =>
-                    void act(
-                      slot.id,
-                      () => retypeToHeadlineAction(projectId, slot.id, claim.id),
-                      `Now quoting ${claim.label}`,
-                      `quote:${claim.id}`,
-                    ).then((result) => {
-                      if (result.ok) onDone()
-                    })
-                  }
-                >
-                  Quote this
-                </Button>
-              )}
-            </div>
-          ))}
+          {articleClaims.map((claim) =>
+            claim.hasAddress ? (
+              <div key={claim.id} className="flex flex-wrap items-center gap-2">
+                <span className="min-w-0 flex-1 text-[13px] text-[var(--color-text-primary)]">
+                  <span className="text-[var(--color-text-secondary)]">{claim.label}</span>{' '}
+                  <span className="text-[var(--color-text-muted)]">·</span> {claim.text}
+                  {claim.sourceType === 'major_outlet' ? null : (
+                    <>
+                      {' '}
+                      <Badge shape="tag">{claim.sourceType.replace('_', ' ')}</Badge>
+                    </>
+                  )}
+                </span>
+                {claim.id === quoting ? (
+                  <Badge shape="tag">quoted now</Badge>
+                ) : (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    busy={pressed === `quote:${claim.id}`}
+                    disabled={busy}
+                    onClick={() =>
+                      void act(
+                        slot.id,
+                        () => retypeToHeadlineAction(projectId, slot.id, claim.id),
+                        `Now quoting ${claim.label}`,
+                        `quote:${claim.id}`,
+                      ).then((result) => {
+                        if (result.ok) onDone()
+                      })
+                    }
+                  >
+                    Quote this
+                  </Button>
+                )}
+              </div>
+            ) : (
+              <AddressRow
+                key={claim.id}
+                claim={claim}
+                busy={busy}
+                pressed={pressed === `quote:${claim.id}`}
+                onQuote={(address) =>
+                  void act(
+                    slot.id,
+                    () => retypeToHeadlineAction(projectId, slot.id, claim.id, address),
+                    'Now quoting the page you pasted',
+                    `quote:${claim.id}`,
+                  ).then((result) => {
+                    if (result.ok) onDone()
+                  })
+                }
+              />
+            ),
+          )}
         </>
       )}
+    </div>
+  )
+}
+
+/**
+ * A claim with no address yet (decision 298): the owner pastes the page it
+ * comes from, and the card quotes that page. The address becomes the claim's
+ * source, so the dossier cites it too.
+ */
+function AddressRow({
+  claim,
+  busy,
+  pressed,
+  onQuote,
+}: {
+  claim: ArticleClaimOption
+  busy: boolean
+  pressed: boolean
+  onQuote: (address: string) => void
+}) {
+  const [address, setAddress] = React.useState('')
+  return (
+    <div className="flex flex-col gap-1">
+      <span className="min-w-0 text-[13px] text-[var(--color-text-primary)]">
+        <span className="text-[var(--color-text-secondary)]">{claim.label}</span>{' '}
+        <span className="text-[var(--color-text-muted)]">·</span> {claim.text}
+      </span>
+      <div className="flex flex-wrap items-center gap-2">
+        <Input
+          aria-label="Source address"
+          value={address}
+          disabled={busy}
+          onChange={(event) => setAddress(event.target.value)}
+          placeholder="https://arxiv.org/abs/2112.10752"
+          className="min-w-[240px] flex-1"
+        />
+        <Button
+          type="button"
+          variant="outline"
+          busy={pressed}
+          disabled={busy || address.trim() === ''}
+          onClick={() => onQuote(address)}
+        >
+          Quote this with the address
+        </Button>
+      </div>
     </div>
   )
 }

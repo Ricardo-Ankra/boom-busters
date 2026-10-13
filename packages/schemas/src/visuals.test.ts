@@ -18,6 +18,7 @@ import {
   StillBriefSchema,
   VisualsJobSchema,
   claimCarriesArticle,
+  claimHasSourcePage,
   convertBrief,
   mapClaimRefs,
   graphicIntentOf,
@@ -831,6 +832,44 @@ describe('claimCarriesArticle', () => {
     ).toBe(false)
     expect(claimCarriesArticle(outlet(null))).toBe(false)
     expect(claimCarriesArticle(undefined)).toBe(false)
+  })
+})
+
+/**
+ * Decision 298: the OWNER may quote any claim whose source is a readable page
+ * (a paper on arXiv, a company announcement, a report), not only a news
+ * outlet's article; the planner's rule above stays the model's.
+ */
+describe('claimHasSourcePage', () => {
+  const ID = '01HQ00000000000000000000AA'
+
+  it('takes any source type with a readable address', () => {
+    expect(
+      claimHasSourcePage({
+        id: ID,
+        sourceType: 'other',
+        sourceUrl: 'https://arxiv.org/abs/2112.10752',
+      }),
+    ).toBe(true)
+    expect(
+      claimHasSourcePage({ id: ID, sourceType: 'book', sourceUrl: 'https://press.example/report' }),
+    ).toBe(true)
+    expect(
+      claimHasSourcePage({
+        id: ID,
+        sourceType: 'court',
+        sourceUrl: 'https://court.example/ruling',
+      }),
+    ).toBe(true)
+  })
+
+  it('still refuses a front page, a missing address and no claim', () => {
+    expect(
+      claimHasSourcePage({ id: ID, sourceType: 'other', sourceUrl: 'https://arxiv.org' }),
+    ).toBe(false)
+    expect(claimHasSourcePage({ id: ID, sourceType: 'other', sourceUrl: null })).toBe(false)
+    expect(claimHasSourcePage({ id: ID, sourceType: 'other', sourceUrl: 'not a url' })).toBe(false)
+    expect(claimHasSourcePage(undefined)).toBe(false)
   })
 })
 

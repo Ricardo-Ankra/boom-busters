@@ -9,6 +9,7 @@ import {
   ensureRun,
   FIXTURE_DOSSIER_ID,
   FIXTURE_PROJECT_ID,
+  getClaim,
   getProject,
   getShotSlot,
   getSocialPost,
@@ -1546,6 +1547,135 @@ describeDb('editing a social post card (decision 284)', () => {
         purpose: 'social-avatar',
       }),
     ).toEqual({ ok: false, error: 'This is not a post slot.' })
+  })
+})
+
+/**
+ * Decision 298: the owner may quote any claim whose source is a readable page
+ * (a paper, a report, a company announcement), and may paste the address a
+ * claim lacks; the planner's news-only rule is unchanged.
+ */
+describeDb('re-typing to a headline card from any source (decision 298)', () => {
+  let stockId: string
+  const PAPER_CLAIM_ID = fixtureId('CLAIM', 41)
+  const BARE_CLAIM_ID = fixtureId('CLAIM', 42)
+  const POST_CLAIM_ID = fixtureId('CLAIM', 43)
+
+  beforeEach(async () => {
+    vi.clearAllMocks()
+    inngest.send.mockResolvedValue(undefined)
+    await seed(db)
+    await db.delete(shotSlots)
+    await db
+      .insert(claims)
+      .values([
+        {
+          id: PAPER_CLAIM_ID,
+          dossierId: FIXTURE_DOSSIER_ID,
+          text: 'The latent diffusion paper was posted to arXiv in December 2021.',
+          sourceUrl: 'https://arxiv.org/abs/2112.10752',
+          sourceType: 'other',
+          confidence: 'sourced',
+        },
+        {
+          id: BARE_CLAIM_ID,
+          dossierId: FIXTURE_DOSSIER_ID,
+          text: 'Stability AI provided the compute for training.',
+          sourceUrl: null,
+          sourceType: 'other',
+          confidence: 'single_source',
+        },
+        {
+          id: POST_CLAIM_ID,
+          dossierId: FIXTURE_DOSSIER_ID,
+          text: 'Emad Mostaque announced his resignation on X.',
+          sourceUrl: 'https://x.com/EMostaque/status/1740000000000000002',
+          sourceType: 'other',
+          confidence: 'sourced',
+        },
+      ])
+      .onConflictDoNothing()
+    const script = await createScriptVersion(db, FIXTURE_PROJECT_ID)
+    const chapter = await saveChapter(db, {
+      scriptId: script.id,
+      index: 0,
+      title: 'The paper',
+      contentMd: 'One.',
+      estRuntimeSec: 6,
+    })
+    await replaceShotList(db, FIXTURE_PROJECT_ID, [
+      {
+        chapterId: chapter.id,
+        index: 0,
+        type: 'stock',
+        brief: stock('One.', 'a lab'),
+        startMs: 0,
+        durationMs: 6000,
+      },
+    ])
+    const slots = await listShotSlots(db, FIXTURE_PROJECT_ID)
+    stockId = slots[0]!.id
+    await setVisualsPhase(db, FIXTURE_PROJECT_ID, 'board')
+  })
+
+  it('offers the paper claim with its address, and the bare claim as needing one', async () => {
+    const model = await visualsReviewModel(db, FIXTURE_PROJECT_ID)
+    const paper = model.articleClaims.find((claim) => claim.id === PAPER_CLAIM_ID)
+    const bare = model.articleClaims.find((claim) => claim.id === BARE_CLAIM_ID)
+    expect(paper).toMatchObject({
+      sourceType: 'other',
+      hasAddress: true,
+      label: 'arxiv.org/abs/2112.10752',
+    })
+    expect(bare).toMatchObject({ sourceType: 'other', hasAddress: false })
+    // Claims with an address come first, so the ones ready to quote are at the top.
+    const firstBare = model.articleClaims.findIndex((claim) => !claim.hasAddress)
+    const lastWithAddress = model.articleClaims.map((claim) => claim.hasAddress).lastIndexOf(true)
+    expect(lastWithAddress).toBeLessThan(firstBare)
+  })
+
+  it('never offers a claim sourced to an X post, which has a card of its own', async () => {
+    const model = await visualsReviewModel(db, FIXTURE_PROJECT_ID)
+    expect(model.articleClaims.some((claim) => claim.id === POST_CLAIM_ID)).toBe(false)
+    expect(await retypeToHeadlineAction(FIXTURE_PROJECT_ID, stockId, POST_CLAIM_ID)).toEqual({
+      ok: false,
+      error: 'That claim is sourced to an X post. Show it as a post card instead.',
+    })
+  })
+
+  it('quotes a claim sourced to a paper', async () => {
+    expect(await retypeToHeadlineAction(FIXTURE_PROJECT_ID, stockId, PAPER_CLAIM_ID)).toEqual({
+      ok: true,
+    })
+    const slot = (await getShotSlot(db, stockId))!
+    expect(slot.type).toBe('headline')
+    expect(slot.brief).toMatchObject({ type: 'headline', sourceClaimId: PAPER_CLAIM_ID })
+  })
+
+  it('refuses a claim with no address until one is pasted, then sets it on the claim', async () => {
+    expect(await retypeToHeadlineAction(FIXTURE_PROJECT_ID, stockId, BARE_CLAIM_ID)).toEqual({
+      ok: false,
+      error: 'That claim has no address to read. Paste the address of the page it comes from.',
+    })
+    expect(
+      await retypeToHeadlineAction(FIXTURE_PROJECT_ID, stockId, BARE_CLAIM_ID, 'https://arxiv.org'),
+    ).toEqual({
+      ok: false,
+      error: "That is the site's front page. Paste the address of the page itself.",
+    })
+    expect(
+      await retypeToHeadlineAction(
+        FIXTURE_PROJECT_ID,
+        stockId,
+        BARE_CLAIM_ID,
+        ' https://www.stability.ai/news/stable-diffusion-public-release?utm_source=x ',
+      ),
+    ).toEqual({ ok: true })
+    expect((await getClaim(db, BARE_CLAIM_ID))?.sourceUrl).toBe(
+      'https://stability.ai/news/stable-diffusion-public-release',
+    )
+    const slot = (await getShotSlot(db, stockId))!
+    expect(slot.brief).toMatchObject({ type: 'headline', sourceClaimId: BARE_CLAIM_ID })
   })
 })
 

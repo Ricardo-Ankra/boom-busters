@@ -873,7 +873,18 @@ export interface PlanningClaim {
  * front page, and shared one record with every other claim from that outlet.
  */
 export function claimCarriesArticle(claim: PlanningClaim | undefined): boolean {
-  if (!claim || claim.sourceType !== 'major_outlet') return false
+  return claim?.sourceType === 'major_outlet' && claimHasSourcePage(claim)
+}
+
+/**
+ * Whether the OWNER may quote this claim on a headline card (decision 298):
+ * its source is a page the app can read, whatever kind of source it is. A
+ * paper on arXiv, a company announcement or a report has a title, an author
+ * and a date exactly as an article does, and the card reads them the same
+ * way. The planner keeps `claimCarriesArticle`: a model aims only at news.
+ */
+export function claimHasSourcePage(claim: PlanningClaim | undefined): boolean {
+  if (!claim) return false
   if (typeof claim.sourceUrl !== 'string' || claim.sourceUrl.trim() === '') return false
   const url = normaliseArticleUrl(claim.sourceUrl)
   return url !== null && !isFrontPage(url)

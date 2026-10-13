@@ -33,7 +33,7 @@ import {
 import { imageGenModel } from '@boom-busters/providers'
 import {
   articleIsRenderable,
-  claimCarriesArticle,
+  claimHasSourcePage,
   claimCarriesPost,
   convertBrief,
   DirectorsBookSchema,
@@ -534,10 +534,26 @@ export async function retypeToHeadlineAction(
   projectId: string,
   slotId: string,
   claimId: string,
+  /**
+   * The address of the page the claim comes from, when the dossier holds
+   * none (decision 298). It becomes the claim's source, as the card's own
+   * address form does, so the dossier cites it too.
+   */
+  rawAddress = '',
 ): Promise<ActionResult> {
   await requireOwner()
   const invalid = badIds(projectId, slotId, claimId)
   if (invalid) return invalid
+
+  const pasted = rawAddress.trim()
+  const address = pasted === '' ? null : normaliseArticleUrl(pasted)
+  if (pasted !== '' && address === null) return { ok: false, error: 'That is not a web address.' }
+  if (address !== null && isFrontPage(address)) {
+    return {
+      ok: false,
+      error: "That is the site's front page. Paste the address of the page itself.",
+    }
+  }
 
   const slot = await getShotSlot(db, slotId)
   if (!slot) return { ok: false, error: 'This slot no longer exists.' }
@@ -560,11 +576,23 @@ export async function retypeToHeadlineAction(
   }
 
   const claim = (await scriptableClaims(db, projectId)).find((row) => row.id === claimId)
-  if (!claimCarriesArticle(claim)) {
+  if (!claim) return { ok: false, error: 'That claim is not in this project.' }
+  if (claimCarriesPost(claim)) {
     return {
       ok: false,
-      error: 'That claim has no news article behind it, so a card cannot quote it.',
+      error: 'That claim is sourced to an X post. Show it as a post card instead.',
     }
+  }
+  // Any readable page may be quoted by the owner (decision 298); the planner's
+  // news-only rule is the model's, not this button's.
+  if (!claimHasSourcePage(address === null ? claim : { ...claim, sourceUrl: address })) {
+    return {
+      ok: false,
+      error: 'That claim has no address to read. Paste the address of the page it comes from.',
+    }
+  }
+  if (address !== null && !(await setClaimSourceUrl(db, claimId, address))) {
+    return { ok: false, error: 'That claim no longer exists.' }
   }
 
   const brief = convertBrief(current.data, 'headline', { headlineClaimId: claimId })

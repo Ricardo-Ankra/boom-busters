@@ -29,7 +29,7 @@ import {
   ArticleMetadataSchema,
   articleSourceLabel,
   CANDIDATES_SHOWN,
-  claimCarriesArticle,
+  claimHasSourcePage,
   codeLogoLibrary,
   craftFindings,
   DirectorsBookSchema,
@@ -354,13 +354,15 @@ export interface ChapterSlots {
 }
 
 /**
- * A claim this project's headline cards are allowed to quote (decision 257):
- * `major_outlet` with a surviving URL, which is exactly what
- * `resolvePlannedBrief` lets the shot-list model cite.
+ * A claim the owner may quote on a headline card (decisions 257 and 298):
+ * any un-quarantined claim. One whose source is a readable page (a news
+ * article, a paper, a report) is quoted as it stands; one with no address
+ * yet is offered too, and the owner pastes the page it comes from. The
+ * planner's own rule is narrower (`claimCarriesArticle`, news only).
  *
- * The board's format picker lists these, because choosing WHICH article is the
+ * The board's format picker lists these, because choosing WHICH source is the
  * only decision a re-type to headline carries — every string on the card comes
- * from the article itself, so there is nothing for a model to draft, and
+ * from the page itself, so there is nothing for a model to draft, and
  * nothing to spend a call on.
  */
 export interface ArticleClaimOption {
@@ -369,6 +371,10 @@ export interface ArticleClaimOption {
   text: string
   /** The outlet where one has been read, else the address, elided to fit. */
   label: string
+  /** The dossier's source type, so a paper or a court filing reads as one. */
+  sourceType: string
+  /** Whether the claim's source is a page the card can read as it stands. */
+  hasAddress: boolean
 }
 
 /** One paragraph of narration, for the scrubber: where it sits and what plays it. */
@@ -553,26 +559,41 @@ async function articleClaimOptions(
   db: Database,
   claims: readonly ScriptableClaim[],
 ): Promise<ArticleClaimOption[]> {
-  const eligible = claims.filter((claim) => claimCarriesArticle(claim))
-  if (eligible.length === 0) return []
+  if (claims.length === 0) return []
 
+  // A claim sourced to an X post has a card of its own (decision 284); it is
+  // never a headline.
+  const offered = claims.filter((claim) => !claimCarriesPost(claim))
   const urlByClaim = new Map<string, string>()
-  for (const claim of eligible) {
-    const url = claim.sourceUrl === null ? null : normaliseArticleUrl(claim.sourceUrl)
+  for (const claim of offered) {
+    if (!claimHasSourcePage(claim)) continue
+    const url = normaliseArticleUrl(claim.sourceUrl ?? '')
     if (url !== null) urlByClaim.set(claim.id, url)
   }
 
   const rows = await getArticleSources(db, [...new Set(urlByClaim.values())])
   const outletByUrl = new Map(rows.flatMap((row) => (row.outlet ? [[row.url, row.outlet]] : [])))
 
-  return eligible.flatMap((claim) => {
+  const options = offered.map((claim): ArticleClaimOption => {
     const url = urlByClaim.get(claim.id)
-    // A URL that will not normalise is not an address we could ever read.
-    if (url === undefined) return []
-    return [
-      { id: claim.id, text: claim.text, label: outletByUrl.get(url) ?? articleSourceLabel(url) },
-    ]
+    return url === undefined
+      ? {
+          id: claim.id,
+          text: claim.text,
+          label: 'no address yet',
+          sourceType: claim.sourceType,
+          hasAddress: false,
+        }
+      : {
+          id: claim.id,
+          text: claim.text,
+          label: outletByUrl.get(url) ?? articleSourceLabel(url),
+          sourceType: claim.sourceType,
+          hasAddress: true,
+        }
   })
+  // The ones ready to quote first; the ones that need an address after.
+  return [...options.filter((o) => o.hasAddress), ...options.filter((o) => !o.hasAddress)]
 }
 
 type ScriptableClaim = Awaited<ReturnType<typeof scriptableClaims>>[number]
