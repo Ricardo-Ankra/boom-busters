@@ -14,11 +14,11 @@ import {
   buildSelfCheckRequest,
   buildShortsRequest,
   buildTeaserRequest,
-  chapterTail,
   mockChapter,
   mockOutline,
   mockSelfCheck,
   mockShortsCandidates,
+  ownershipBrief,
   parseOutline,
   parseSelfCheck,
   parseShortsCandidates,
@@ -50,16 +50,26 @@ const claims: ScriptClaim[] = [
 // Chapter two has no tension fields — the pre-216 outlines still draft.
 const outline = OutlineSchema.parse({
   centralQuestion: 'How did 1.9 billion euros never exist?',
+  storylines: ['the money', 'the auditors'],
   chapters: [
     {
       title: 'The setup',
       beat: 'x'.repeat(30),
+      storyline: 'the money',
+      claims: [1],
       question: 'Why did the auditors keep signing?',
       withhold: 'The accounts in Manila were empty all along.',
       stakes: 'Thirty thousand pensions',
+      constraints: 'Never state that the CEO knew; the claim is single-source.',
       targetWords: 800,
     },
-    { title: 'The turn', beat: 'y'.repeat(30), targetWords: 900 },
+    {
+      title: 'The turn',
+      beat: 'y'.repeat(30),
+      claims: [2],
+      reveals: 'The accounts in Manila were empty all along.',
+      targetWords: 900,
+    },
   ],
 })
 
@@ -145,6 +155,16 @@ describe('tensionContract', () => {
     )
   })
 
+  it('carries the reveal and the wording limits (decision 296)', () => {
+    expect(tensionContract(outline, 0)).toContain(
+      'never narrated as sentences: Never state that the CEO knew; the claim is single-source.',
+    )
+    expect(tensionContract(outline, 1)).toContain(
+      'Reveal here, for the first time, what an earlier chapter withheld: The accounts in Manila were empty all along.',
+    )
+    expect(tensionContract(outline, 0)).not.toContain('Reveal here')
+  })
+
   it('is empty for a pre-216 outline with no tension fields', () => {
     const bare = OutlineSchema.parse({
       chapters: [
@@ -162,25 +182,92 @@ describe('buildChapterRequest', () => {
     caseTitle: 'Enron',
     outline,
     chapterIndex: 1,
-    previousTail: 'The auditors signed it anyway.',
+    previousChapters: [
+      { title: 'The setup', contentMd: 'The auditors signed it anyway. The money was not there.' },
+    ],
     claims,
   })
 
-  it('seams onto the previous chapter', () => {
-    // Without this the script reads as separate essays, each re-introducing
-    // the same people.
-    expect(JSON.stringify(request.messages)).toContain('The auditors signed it anyway.')
+  /**
+   * Decision 296: the drafter reads every chapter so far, in full. With only
+   * the previous tail it re-explained the paper in three chapters and told
+   * March 2024 twice; it cannot avoid repeating what it has never seen.
+   */
+  it('hands the drafter every chapter so far, in full, and tells it to move forward', () => {
+    const content = JSON.stringify(request.messages)
+    expect(content).toContain('## 1. The setup')
+    expect(content).toContain('The auditors signed it anyway. The money was not there.')
+    expect(content).toContain('Never restate or paraphrase the ending')
+    expect(content).not.toContain('Continue from there')
   })
 
-  it('says it is the opening chapter when there is no tail', () => {
+  it('says it is the opening chapter when nothing is drafted yet', () => {
     const first = buildChapterRequest({
       caseTitle: 'Enron',
       outline,
       chapterIndex: 0,
-      previousTail: '',
+      previousChapters: [],
       claims,
     })
-    expect(JSON.stringify(first.messages)).toContain('opening chapter')
+    const content = JSON.stringify(first.messages)
+    expect(content).toContain('opening chapter')
+    expect(content).not.toContain('script so far')
+  })
+
+  it('briefs claim ownership: narrate in full, already told, belonging to later chapters', () => {
+    const three = OutlineSchema.parse({
+      chapters: [
+        { title: 'One', beat: 'x'.repeat(30), claims: [1], targetWords: 300 },
+        { title: 'Two', beat: 'y'.repeat(30), claims: [2, 3], targetWords: 300 },
+        { title: 'Three', beat: 'z'.repeat(30), claims: [4], targetWords: 300 },
+      ],
+    })
+    const brief = ownershipBrief(three, 1)
+    expect(brief).toContain('Narrate in full, once, with attribution: [2], [3]')
+    expect(brief).toContain('repeating no figure, date or attribution: [1]')
+    expect(brief).toContain('Do not narrate: [4]')
+    expect(JSON.stringify(request.messages)).toContain(
+      'Narrate in full, once, with attribution: [2]',
+    )
+  })
+
+  it('says "none" for an empty ownership line rather than leaving it blank', () => {
+    expect(ownershipBrief(outline, 0)).toContain('repeating no figure, date or attribution: none')
+  })
+
+  it('sends no ownership brief for an outline drafted before the plan fields (decision 296)', () => {
+    const bare = OutlineSchema.parse({
+      chapters: [
+        { title: 'Act one', beat: 'x'.repeat(30), targetWords: 300 },
+        { title: 'Act two', beat: 'y'.repeat(30), targetWords: 300 },
+      ],
+    })
+    expect(ownershipBrief(bare, 1)).toBe('')
+    const without = buildChapterRequest({
+      caseTitle: 'Enron',
+      outline: bare,
+      chapterIndex: 1,
+      previousChapters: [{ title: 'Act one', contentMd: 'Words.' }],
+      claims,
+    })
+    expect(without.messages.some((message) => message.content.includes('Claim ownership'))).toBe(
+      false,
+    )
+  })
+
+  it('shows each chapter its storyline in the outline summary', () => {
+    expect(JSON.stringify(request.messages)).toContain('1. The setup (the money)')
+  })
+
+  /**
+   * Decision 296: the recap ban reaches mid-chapter, and legal care is the
+   * inline hedge, never a sentence saying nothing was proven.
+   */
+  it('bans summing-up anywhere and narrated caveats', () => {
+    expect(request.system).toMatch(/No summing-up anywhere/)
+    expect(request.system).toMatch(/no paragraph in its middle restates/)
+    expect(request.system).toMatch(/Never a\s+sentence of its own saying that nothing was proven/)
+    expect(request.system).not.toMatch(/No summing-up closers/)
   })
 
   it('shows the whole outline and marks the current chapter', () => {
@@ -288,7 +375,7 @@ describe('buildChapterRequest', () => {
       caseTitle: 'Enron',
       outline: bare,
       chapterIndex: 0,
-      previousTail: '',
+      previousChapters: [],
       claims,
     })
     expect(
@@ -305,20 +392,6 @@ describe('buildChapterRequest', () => {
       claims,
     })
     expect(regenerate.system).toContain('Script craft: how the plot builds')
-  })
-})
-
-describe('chapterTail', () => {
-  it('takes the last sentences', () => {
-    expect(chapterTail('One. Two. Three.')).toBe('Two. Three.')
-  })
-
-  it('copes with a chapter shorter than the tail', () => {
-    expect(chapterTail('Only one.')).toBe('Only one.')
-  })
-
-  it('is empty for empty text', () => {
-    expect(chapterTail('')).toBe('')
   })
 })
 
@@ -539,6 +612,18 @@ describe('mock script output', () => {
 
   it('scales the outline to the target runtime', () => {
     expect(mockOutline(6).chapters.length).toBeLessThan(mockOutline(24).chapters.length)
+  })
+
+  it('carries every plan field so CI exercises the shape (decision 296)', () => {
+    const mocked = mockOutline(10)
+    expect(mocked.storylines?.length).toBeGreaterThan(0)
+    expect(mocked.chapters[0]).toMatchObject({
+      storyline: expect.any(String),
+      claims: [],
+      constraints: expect.any(String),
+    })
+    expect(mocked.chapters[0]!.reveals).toBeUndefined()
+    expect(mocked.chapters[1]!.reveals).toBe('Mock withheld fact 1')
   })
 
   it('always produces at least two chapters, as the schema requires', () => {

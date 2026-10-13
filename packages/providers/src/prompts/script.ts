@@ -19,7 +19,13 @@ import {
   countWords,
   splitSentences,
 } from '@boom-busters/schemas'
-import type { Outline, SelfCheck, ShortsCandidate, TeaserScript } from '@boom-busters/schemas'
+import type {
+  Outline,
+  OutlineChapter,
+  SelfCheck,
+  ShortsCandidate,
+  TeaserScript,
+} from '@boom-busters/schemas'
 import { z } from 'zod'
 import { formatIssues, parseJsonCompletion } from './json'
 import { capList, dropItems, ignoreRepairs, overLimit, trimField } from './repair'
@@ -116,8 +122,9 @@ Sound like a person, not a language model:
 - Cut empty hedges: "generally", "arguably", "in many cases", "some would
   say". Say the thing. The legal hedges in the hard rules below are the
   opposite of empty and are never cut.
-- No summing-up closers. A chapter ends on its last fact, not on a
-  restatement or a moral.
+- No summing-up anywhere. A chapter ends on its last fact, not on a
+  restatement or a moral, and no paragraph in its middle restates what the
+  listener has already heard.
 
 Written for the ear, not the eye. Every word you write is read aloud by a
 text-to-speech narrator, and punctuation is its pacing:
@@ -148,7 +155,11 @@ The hard rules:
 - Assert nothing the claim list does not support.
 - Where a claim is NOT adjudicated, write "alleged", "reportedly", "according
   to" — never state it as established fact.
-- Never invent figures, dates, quotes or names.`
+- Never invent figures, dates, quotes or names.
+- Legal care is inline: "alleged", "reportedly", "according to". Never a
+  sentence of its own saying that nothing was proven, that no court has
+  found, or that this is an interpretation. The one exception is the film's
+  single such sentence, where a chapter's constraints ask for it.`
 
 // ---------------------------------------------------------------------------
 // Outline
@@ -320,22 +331,83 @@ export function tensionContract(outline: Outline, chapterIndex: number): string 
         chapter.withhold,
     )
   }
+  if (chapter.reveals) {
+    lines.push(
+      `- Reveal here, for the first time, what an earlier chapter withheld: ${chapter.reveals}`,
+    )
+  }
+  if (chapter.constraints) {
+    lines.push(
+      `- Wording limits for this chapter. They shape the words and are never narrated as sentences: ` +
+        chapter.constraints,
+    )
+  }
 
   return lines.length > 0 ? `The tension contract for this chapter:\n${lines.join('\n')}` : ''
+}
+
+/**
+ * Which claims this chapter narrates, which the listener has already heard,
+ * and which are a later chapter's (decision 296). The numbers are the claim
+ * list's, so the drafter needs no second list. Empty for an outline planned
+ * before claims had homes: that script drafts as it did.
+ */
+export function ownershipBrief(outline: Outline, chapterIndex: number): string {
+  if (!outline.chapters.some((chapter) => (chapter.claims?.length ?? 0) > 0)) return ''
+  const numbers = (chapters: readonly OutlineChapter[]) =>
+    chapters.flatMap((chapter) => chapter.claims ?? [])
+  const list = (claims: number[]) =>
+    claims.length > 0 ? claims.map((claim) => `[${claim}]`).join(', ') : 'none'
+  const own = outline.chapters[chapterIndex]?.claims ?? []
+  const told = numbers(outline.chapters.slice(0, chapterIndex))
+  const later = numbers(outline.chapters.slice(chapterIndex + 1))
+  return [
+    "Claim ownership for this chapter (the numbers are the claim list's):",
+    `- Narrate in full, once, with attribution: ${list(own)}`,
+    `- Already told in an earlier chapter. The listener remembers: refer back in a few words at most, ` +
+      `repeating no figure, date or attribution: ${list(told)}`,
+    `- Belonging to a later chapter. Do not narrate: ${list(later)}`,
+  ].join('\n')
+}
+
+/**
+ * Every chapter drafted so far, in full. The previous chapter's last two
+ * sentences, which this replaced, told the drafter where to resume and
+ * nothing about what had been said; it restated the ending and re-explained
+ * the rest. A chapter is one voice take, so the words are exactly as stored.
+ */
+function scriptSoFar(previous: readonly { title: string; contentMd: string }[]): string {
+  if (previous.length === 0) return 'This is the opening chapter.'
+  const text = previous
+    .map((chapter, index) => `## ${index + 1}. ${chapter.title}\n\n${chapter.contentMd}`)
+    .join('\n\n')
+  return (
+    `The script so far. The listener has just heard every word of it:\n\n${text}\n\n` +
+    'Your first sentence moves the story forward. Never restate or paraphrase the ending ' +
+    'above, and never re-introduce a person, a company or a figure it already introduced.'
+  )
 }
 
 export function buildChapterRequest(input: {
   caseTitle: string
   outline: Outline
   chapterIndex: number
-  /** The tail of the previous chapter, so the seam reads continuously. */
-  previousTail: string
+  /** Every chapter drafted so far, in order, in full (decision 296). */
+  previousChapters: readonly { title: string; contentMd: string }[]
   claims: readonly ScriptClaim[]
 }): LLMTaskRequest {
   const chapter = input.outline.chapters[input.chapterIndex]!
   const outlineSummary = input.outline.chapters
-    .map((c, i) => `${i + 1}. ${c.title}${i === input.chapterIndex ? '  <- writing this one' : ''}`)
+    .map(
+      (c, i) =>
+        `${i + 1}. ${c.title}${c.storyline ? ` (${c.storyline})` : ''}` +
+        `${i === input.chapterIndex ? '  <- writing this one' : ''}`,
+    )
     .join('\n')
+  const storylines = input.outline.storylines
+    ? `Storylines: ${input.outline.storylines.join('; ')}\n\n`
+    : ''
+  const ownership = ownershipBrief(input.outline, input.chapterIndex)
   const contract = tensionContract(input.outline, input.chapterIndex)
 
   return {
@@ -355,13 +427,9 @@ Target about ${chapter.targetWords} words.`,
       // prefix: the claim list is the largest part of this prompt and it does
       // not change between chapters.
       { role: 'user', content: `Case: ${input.caseTitle}\n\nClaims:\n${claimList(input.claims)}` },
-      { role: 'user', content: `Full outline:\n${outlineSummary}` },
-      {
-        role: 'user',
-        content: input.previousTail
-          ? `The previous chapter ended:\n\n"${input.previousTail}"\n\nContinue from there.`
-          : 'This is the opening chapter.',
-      },
+      { role: 'user', content: `${storylines}Full outline:\n${outlineSummary}` },
+      { role: 'user', content: scriptSoFar(input.previousChapters) },
+      ...(ownership ? [{ role: 'user' as const, content: ownership }] : []),
       ...(contract ? [{ role: 'user' as const, content: contract }] : []),
       { role: 'user', content: `Write "${chapter.title}". It must: ${chapter.beat}` },
     ],
@@ -369,11 +437,6 @@ Target about ${chapter.targetWords} words.`,
     // A truncated chapter reads as a chapter that stops mid-sentence.
     maxTokens: outputBudget(Math.round(chapter.targetWords * 2.2)),
   }
-}
-
-/** The last couple of sentences, to seam the next chapter onto. */
-export function chapterTail(contentMd: string, sentences = 2): string {
-  return splitSentences(contentMd).slice(-sentences).join(' ')
 }
 
 // ---------------------------------------------------------------------------
@@ -717,15 +780,22 @@ export function tensionFromOutline(outline: Outline): ShortsTension {
 
 export function mockOutline(targetRuntimeMin: number): Outline {
   const chapters = Math.max(2, Math.min(8, Math.round(targetRuntimeMin / 3)))
+  const storylines = ['Mock storyline: the money', 'Mock storyline: the courts']
 
   return {
     centralQuestion: 'Mock central question — no provider designed an arc.',
+    storylines,
     chapters: Array.from({ length: chapters }, (_, index) => ({
       title: `[mock] Chapter ${index + 1}`,
       beat: 'Placeholder beat produced in mock mode. Nothing was written by a provider.',
+      storyline: storylines[index % 2]!,
+      // Mock runs own no claims: the ownership brief is exercised by unit tests.
+      claims: [],
       question: `Mock open question ${index + 1}`,
       withhold: `Mock withheld fact ${index + 1}`,
+      ...(index > 0 ? { reveals: `Mock withheld fact ${index}` } : {}),
       stakes: `Mock stakes ${index + 1}`,
+      constraints: 'Mock constraints: attribute every figure.',
       targetWords: 300,
     })),
   }
