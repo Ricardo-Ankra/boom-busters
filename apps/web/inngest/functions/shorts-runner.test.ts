@@ -23,6 +23,7 @@ import {
 } from '@boom-busters/db'
 import { DEFAULT_SETTINGS, noticesFor, resolveBrandKit } from '@boom-busters/schemas'
 import type { Timeline } from '@boom-busters/schemas'
+import { TEASER_CHAPTER_ID } from '@boom-busters/timeline'
 import { InngestTestEngine, mockCtx } from '@inngest/test'
 import { StepError } from 'inngest'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -272,6 +273,42 @@ describeDb('shorts-runner', () => {
       })
       const rows = await listShorts(db, FIXTURE_PROJECT_ID)
       expect(rows.map((row) => row.title)).toEqual(['Still in the master'])
+    },
+  )
+
+  /**
+   * Decision 300, amended (production, 2026-10-13 evening): a kept teaser is
+   * not a kept excerpt. The first cut of this rule counted the September
+   * teaser as a curated row and cut nothing, leaving the project with one
+   * teaser and no excerpts. Only a live excerpt holds the fresh cut back.
+   */
+  it(
+    'cuts fresh excerpts when only a teaser survives beside the stale ones',
+    { timeout: 120_000 },
+    async () => {
+      await insertShort(db, {
+        projectId: FIXTURE_PROJECT_ID,
+        title: 'Cut from the old script',
+        segmentRef: { chapterId: '01HQ0000000000000000000OLD', fromParagraph: 3, toParagraph: 4 },
+      })
+      await insertShort(db, {
+        projectId: FIXTURE_PROJECT_ID,
+        title: 'The teaser',
+        segmentRef: { chapterId: TEASER_CHAPTER_ID, fromParagraph: 0, toParagraph: 1 },
+        kind: 'teaser',
+      })
+
+      const { result } = await engine.execute({
+        events: masterReadyEvent(),
+        steps: [{ id: 'request-short-renders', handler: () => undefined }],
+      })
+
+      expect(result).toMatchObject({ outcome: 'shorts-created', created: 1, replaced: 1 })
+      const rows = await listShorts(db, FIXTURE_PROJECT_ID)
+      expect(rows.map((row) => [row.kind, row.title])).toEqual([
+        ['teaser', 'The teaser'],
+        ['excerpt', 'EY refused to sign the accounts.'],
+      ])
     },
   )
 

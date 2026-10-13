@@ -124,16 +124,19 @@ export const shortsRunner = inngest.createFunction(
 
       await setProjectStage(db, projectId, { stage: 'shorts', stageStatus: 'running' })
 
-      // Rows the master can still serve mean the human is curating; rows it
-      // cannot (cut from an earlier script, decision 300) are replaced below
-      // and count for nothing here.
+      // Excerpts the master can still serve mean the human is curating; ones
+      // it cannot (cut from an earlier script, decision 300) are replaced
+      // below and count for nothing here. A teaser is not an excerpt: it
+      // carries its own narration and says nothing about whether excerpts
+      // need cutting (production, 2026-10-13: a kept teaser blocked the cut).
       const timelineRow = await latestTimeline(db, projectId)
       const master = timelineRow ? TimelineSchema.safeParse(timelineRow.json) : null
-      const live = (await listShorts(db, projectId)).filter(
+      const liveExcerpts = (await listShorts(db, projectId)).filter(
         (row) =>
-          row.kind === 'teaser' || !master?.success || segmentInMaster(master.data, row.segmentRef),
+          row.kind === 'excerpt' &&
+          (!master?.success || segmentInMaster(master.data, row.segmentRef)),
       )
-      if (live.length > 0) return { ok: true as const, marked: 0 }
+      if (liveExcerpts.length > 0) return { ok: true as const, marked: 0 }
       if ((await latestShortsCandidates(db, projectId)).length > 0) {
         return { ok: true as const, marked: 0 }
       }
@@ -208,7 +211,9 @@ export const shortsRunner = inngest.createFunction(
         stale.map((row) => row.id),
       )
       const replaced = stale.length
-      const kept = existing.length - replaced
+      // Only a live EXCERPT holds the fresh cut back; a kept teaser is not a
+      // curated excerpt, and a project left with a teaser alone has no Shorts.
+      const kept = existing.filter((row) => row.kind === 'excerpt' && !stale.includes(row)).length
       if (kept > 0) {
         return { created: [] as string[], skipped: [] as string[], reused: kept, replaced }
       }

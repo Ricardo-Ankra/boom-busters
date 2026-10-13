@@ -7629,7 +7629,10 @@ boom-busters-broker`; merge and deploy to Vercel, then `PUT
      other compile refusal, since no retry changes a master. The project
      controls get `hasLiveShorts`: a review whose every excerpt is stale is a
      restart ("Run the shorts stage again"), as an empty one already was.
-     Teasers are never stale here: they carry their own narration.
+     Teasers are never stale here: they carry their own narration, and a
+     kept teaser is not a kept excerpt: the first cut of this rule counted
+     the September teaser as a curated row and cut nothing (production, the
+     same evening), so only a live excerpt holds the fresh cut back.
      Decisions made where the spec left room: a stale row's curated title
      and ending are lost with it, since they named lines the new script does
      not have; a run parked before this decision replays `resolve-candidates`
