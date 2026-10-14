@@ -186,7 +186,11 @@ export function deriveIngredients(input: {
   claims: { text: string; sourceUrl: string | null; confidence: string; quarantined: boolean }[]
   /** Outlet names the article records read, by normalised URL (decision 301). */
   outlets?: ReadonlyMap<string, string>
-}): { chapters: { title: string; startMs: number }[]; sources: DescriptionSource[]; hook: string } {
+}): {
+  chapters: { id: string; title: string; startMs: number }[]
+  sources: DescriptionSource[]
+  hook: string
+} {
   const chapterStarts = new Map<string, number>()
   for (const segment of input.master?.narration ?? []) {
     const known = chapterStarts.get(segment.chapterId)
@@ -196,7 +200,11 @@ export function deriveIngredients(input: {
   }
   const chapters = input.scriptChapters
     .filter((chapter) => chapterStarts.has(chapter.id))
-    .map((chapter) => ({ title: chapter.title, startMs: chapterStarts.get(chapter.id)! }))
+    .map((chapter) => ({
+      id: chapter.id,
+      title: chapter.title,
+      startMs: chapterStarts.get(chapter.id)!,
+    }))
     .sort((a, b) => a.startMs - b.startMs)
 
   // Each source once, labelled by the first usable claim that cites it
@@ -279,7 +287,7 @@ export async function descriptionIngredients(
   db: Database,
   projectId: string,
 ): Promise<{
-  chapters: { title: string; startMs: number }[]
+  chapters: { id: string; title: string; startMs: number }[]
   sources: DescriptionSource[]
   hook: string
   musicAttribution: string | null

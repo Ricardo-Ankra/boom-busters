@@ -3,6 +3,7 @@
 import { createHash } from 'node:crypto'
 import {
   ensurePublishRecord,
+  getLatestScript,
   getProject,
   getPublishRecord,
   getRender,
@@ -10,24 +11,35 @@ import {
   getShort,
   hasLiveRun,
   latestRender,
+  latestScriptParagraphSources,
   recordVerifyResult,
+  scriptableClaims,
   setProjectStage,
   updatePublishRecord,
   youtubeRefreshToken,
 } from '@boom-busters/db'
 import type { PublishRecordRow } from '@boom-busters/db'
 import {
+  CHAPTER_GLOSS_MAX,
   composeDescription,
+  HASHTAGS_MAX,
+  OutlineSchema,
   PublishDraftSchema,
   PublishMetadataSchema,
+  splitParagraphs,
+  TeaserScriptSchema,
   UlidSchema,
 } from '@boom-busters/schemas'
 import {
+  buildDescriptionRequest,
   buildTitlesRequest,
+  mockDescription,
   mockProvidersEnabled,
   mockTitleOptions,
+  parseDescriptionAnswer,
   parseTitleOptions,
 } from '@boom-busters/providers'
+import type { DescriptionAnswer, ScriptClaim } from '@boom-busters/providers'
 import { revalidatePath } from 'next/cache'
 import { auth } from '@/auth'
 import { db } from '@/lib/db'
@@ -102,7 +114,15 @@ function editableReason(record: PublishRecordRow | undefined): string | null {
 export async function savePublishDraft(
   targetType: string,
   targetId: string,
-  draft: { title: string; descriptionBody: string; tags: string },
+  draft: {
+    title: string
+    descriptionBody: string
+    tags: string
+    /** Comma- or space-separated; normalised to one-word tags (decision 301). */
+    hashtags?: string
+    /** One per chapter, in order (decision 301). Absent keeps what is stored. */
+    chapterGlosses?: string[]
+  },
 ): Promise<ActionResult> {
   await requireOwner()
   const invalid = parseTarget(targetType, targetId)
@@ -116,18 +136,22 @@ export async function savePublishDraft(
     .split(',')
     .map((tag) => tag.trim())
     .filter((tag) => tag.length > 0)
+  const hashtags =
+    draft.hashtags === undefined ? undefined : splitHashtags(draft.hashtags).slice(0, HASHTAGS_MAX)
 
   const parsed = PublishDraftSchema.safeParse({
     title: draft.title.trim() || undefined,
     descriptionBody: draft.descriptionBody,
     tags,
+    ...(hashtags !== undefined ? { hashtags } : {}),
+    ...(draft.chapterGlosses !== undefined ? { chapterGlosses: draft.chapterGlosses } : {}),
   })
   if (!parsed.success) {
     return {
       ok: false,
       error:
         "That draft does not fit YouTube's limits — 100 characters of title, 60 tags of 100 " +
-        'characters each.',
+        `characters each, chapter notes of ${CHAPTER_GLOSS_MAX} characters.`,
     }
   }
 
@@ -135,14 +159,170 @@ export async function savePublishDraft(
   const blocked = editableReason(record)
   if (blocked) return { ok: false, error: blocked }
 
+  // An opening the owner rewrote is theirs, for the script as it is now
+  // (decision 301); one left as it was keeps the version it was written for.
+  const stored = PublishDraftSchema.safeParse(record.metadata)
+  const body = parsed.data.descriptionBody ?? ''
+  const rewritten = !stored.success || (stored.data.descriptionBody ?? '') !== body
+  const { scriptVersion } = rewritten
+    ? await latestScriptParagraphSources(db, projectId)
+    : { scriptVersion: undefined }
+
   await mergeDraft(record, {
     ...(parsed.data.title !== undefined ? { title: parsed.data.title } : {}),
-    descriptionBody: parsed.data.descriptionBody ?? '',
+    descriptionBody: body,
+    ...(rewritten ? { bodyScriptVersion: scriptVersion } : {}),
     tags: parsed.data.tags,
+    ...(hashtags !== undefined ? { hashtags: parsed.data.hashtags } : {}),
+    ...(draft.chapterGlosses !== undefined ? { chapterGlosses: parsed.data.chapterGlosses } : {}),
   })
 
   revalidatePath(`/projects/${projectId}`)
   return { ok: true }
+}
+
+/** "#Wirecard, AI Documentary" to ["#Wirecard", "#AIDocumentary"]: a comma ends a tag. */
+function splitHashtags(raw: string): string[] {
+  const tags = raw
+    .split(/,|(?=#)/)
+    .map((tag) => tag.replace(/^#+/, '').replace(/[^\p{L}\p{N}_]/gu, ''))
+    .filter((tag) => tag !== '')
+    .map((tag) => `#${tag}`)
+  return [...new Set(tags)]
+}
+
+/** The owner's tags first, then the written ones, inside YouTube's 500 characters. */
+function joinTags(kept: readonly string[], written: readonly string[]): string[] {
+  const tags: string[] = []
+  const seen = new Set<string>()
+  for (const tag of [...kept, ...written]) {
+    const key = tag.toLowerCase()
+    if (seen.has(key)) continue
+    if ([...tags, tag].join(',').length > 500 || tags.length >= 60) break
+    seen.add(key)
+    tags.push(tag)
+  }
+  return tags
+}
+
+/** The film's facts, as the claim list every metadata call reads (decision 301). */
+async function metadataGrounding(projectId: string): Promise<{
+  claims: ScriptClaim[]
+  centralQuestion: string | undefined
+  scriptVersion: number
+}> {
+  const [claims, latest] = await Promise.all([
+    scriptableClaims(db, projectId),
+    getLatestScript(db, projectId),
+  ])
+  const outline = OutlineSchema.safeParse(latest?.script.outline)
+  return {
+    claims: claims.map((claim) => ({
+      id: claim.id,
+      text: claim.text,
+      sourceUrl: claim.sourceUrl,
+      confidence: claim.confidence,
+    })),
+    centralQuestion: outline.success ? outline.data.centralQuestion : undefined,
+    scriptVersion: latest?.script.version ?? 0,
+  }
+}
+
+/**
+ * The search description (decision 301): the opening, a gloss per chapter,
+ * three hashtags and tags, written from the claim list and the film itself,
+ * never from the pitch title. One metadata-tier call; mock mode answers
+ * locally. Everything it writes stays editable before scheduling.
+ */
+export async function generateDescription(
+  targetType: string,
+  targetId: string,
+): Promise<ActionResult> {
+  await requireOwner()
+  const invalid = parseTarget(targetType, targetId)
+  if (invalid) return invalid
+  const type = targetType as 'master' | 'short'
+
+  const projectId = await projectIdOf(type, targetId)
+  if (!projectId) return { ok: false, error: 'Unknown target' }
+
+  const record = await ensurePublishRecord(db, type, targetId)
+  const blocked = editableReason(record)
+  if (blocked) return { ok: false, error: blocked }
+
+  const [grounding, ingredients, sources] = await Promise.all([
+    metadataGrounding(projectId),
+    descriptionIngredients(db, projectId),
+    latestScriptParagraphSources(db, projectId),
+  ])
+  const textOf = new Map(sources.chapters.map((chapter) => [chapter.id, chapter.contentMd]))
+  const chapters =
+    type === 'master'
+      ? ingredients.chapters.map((chapter) => ({
+          title: chapter.title,
+          text: textOf.get(chapter.id) ?? '',
+        }))
+      : []
+  const shortText = type === 'short' ? await shortNarration(targetId, textOf) : undefined
+
+  let answer: DescriptionAnswer
+  if (mockProvidersEnabled()) {
+    answer = mockDescription(chapters.length)
+  } else {
+    try {
+      const written = await callForAnswer({
+        request: buildDescriptionRequest({
+          target: type,
+          claims: grounding.claims,
+          ...(grounding.centralQuestion ? { centralQuestion: grounding.centralQuestion } : {}),
+          chapters,
+          ...(shortText ? { shortText } : {}),
+        }),
+        parse: (text, note) => parseDescriptionAnswer(text, chapters.length, note),
+        complete: completeForProject(projectId, { estimateOutputTokens: 800 }),
+      })
+      if (!written.ok) {
+        return { ok: false, error: `The description could not be written: ${written.issue}` }
+      }
+      answer = written.value
+    } catch (error) {
+      return {
+        ok: false,
+        error: `The description could not be written: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      }
+    }
+  }
+
+  const stored = PublishDraftSchema.safeParse(record.metadata)
+  await mergeDraft(record, {
+    descriptionBody: answer.body,
+    bodyScriptVersion: grounding.scriptVersion,
+    ...(type === 'master' ? { chapterGlosses: answer.chapterGlosses } : {}),
+    hashtags: answer.hashtags,
+    tags: joinTags(stored.success ? stored.data.tags : [], answer.tags),
+  })
+  revalidatePath(`/projects/${projectId}`)
+  return { ok: true }
+}
+
+/** What a Short says: a teaser's own beats, an excerpt's paragraphs of the script. */
+async function shortNarration(
+  shortId: string,
+  textOf: ReadonlyMap<string, string>,
+): Promise<string | undefined> {
+  const short = await getShort(db, shortId)
+  if (!short) return undefined
+  if (short.kind === 'teaser') {
+    const script = TeaserScriptSchema.safeParse(short.teaserScript)
+    return script.success ? script.data.paragraphs.map((p) => p.text).join(' ') : undefined
+  }
+  const chapter = textOf.get(short.segmentRef.chapterId)
+  if (chapter === undefined) return undefined
+  return splitParagraphs(chapter)
+    .slice(short.segmentRef.fromParagraph, short.segmentRef.toParagraph + 1)
+    .join(' ')
 }
 
 /**
@@ -172,7 +352,10 @@ export async function generateTitles(targetType: string, targetId: string): Prom
   if (mockProvidersEnabled()) {
     titles = mockTitleOptions(workingTitle)
   } else {
-    const { hook } = await descriptionIngredients(db, projectId)
+    const [{ hook }, grounding] = await Promise.all([
+      descriptionIngredients(db, projectId),
+      metadataGrounding(projectId),
+    ])
     try {
       // At most two calls (decision 293): a cut-off is asked once more at
       // double the budget, a refusal once more with its reason. An unusable
@@ -183,6 +366,10 @@ export async function generateTitles(targetType: string, targetId: string): Prom
           hook: hook || project.title,
           target: type,
           workingTitle,
+          // The pitch title can carry a figure the research did not support;
+          // the claims are where a title's facts come from (decision 301).
+          claims: grounding.claims,
+          ...(grounding.centralQuestion ? { centralQuestion: grounding.centralQuestion } : {}),
         }),
         parse: (text) => parseTitleOptions(text),
         complete: completeForProject(projectId, { estimateOutputTokens: 500 }),
@@ -370,13 +557,19 @@ async function requestUpload(
   }
 
   const ingredients = await descriptionIngredients(db, projectId)
+  const glosses = draft.success ? draft.data.chapterGlosses : []
   const composed = composeDescription({
     body: draft.success ? (draft.data.descriptionBody ?? ingredients.hook) : ingredients.hook,
-    // Chapter stamps only mean something on the full video.
-    chapters: type === 'master' ? ingredients.chapters : [],
+    // Chapter stamps only mean something on the full video; each carries its
+    // search gloss when one was written (decision 301).
+    chapters:
+      type === 'master'
+        ? ingredients.chapters.map((chapter, index) => ({ ...chapter, gloss: glosses[index] }))
+        : [],
     sources: ingredients.sources,
     // The bed plays under Shorts too — the licence rides on every upload.
     musicAttribution: ingredients.musicAttribution,
+    hashtags: draft.success ? draft.data.hashtags : [],
   })
 
   const metadata = PublishMetadataSchema.safeParse({
