@@ -1,4 +1,4 @@
-import { sql } from 'drizzle-orm'
+import { eq, sql } from 'drizzle-orm'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { createDb, type Database } from './client'
 import { FIXTURE_PROJECT_ID } from './fixtures'
@@ -213,6 +213,50 @@ describeDb('run mirror', () => {
       // The human pressed re-run: the stage is queued again.
       await setProjectStage(db, FIXTURE_PROJECT_ID, { stageStatus: 'queued' })
       expect(await listFailedRuns(db)).toHaveLength(0)
+    })
+
+    /**
+     * Decision 304: a job with no project has no stage to clear. Six daily
+     * analytics failures stayed on the queue through five weeks of daily
+     * successes; a later success of the same job now retires them.
+     */
+    it('drops a project-less failure once a later run of the same job completes', async () => {
+      const failedAt = new Date('2026-09-05T06:03:00Z')
+      const failed = await ensureRun(db, {
+        inngestRunId: '01JRUN0013',
+        functionName: 'analytics-runner',
+      })
+      await setRunStatus(db, failed, 'failed', { message: 'YouTube Analytics API disabled' })
+      await db.update(runs).set({ completedAt: failedAt }).where(eq(runs.id, failed))
+      // Another job's success does not retire it.
+      const other = await ensureRun(db, { inngestRunId: '01JRUN0014', functionName: 'cron-sweep' })
+      await setRunStatus(db, other, 'completed')
+      expect((await listFailedRuns(db)).map((run) => run.id)).toEqual([failed])
+
+      const later = await ensureRun(db, {
+        inngestRunId: '01JRUN0015',
+        functionName: 'analytics-runner',
+      })
+      await setRunStatus(db, later, 'completed')
+      expect(await listFailedRuns(db)).toHaveLength(0)
+    })
+
+    it('keeps a project-less failure that is newer than the last success', async () => {
+      const success = await ensureRun(db, {
+        inngestRunId: '01JRUN0016',
+        functionName: 'analytics-runner',
+      })
+      await setRunStatus(db, success, 'completed')
+      await db
+        .update(runs)
+        .set({ completedAt: new Date('2026-09-04T06:00:00Z') })
+        .where(eq(runs.id, success))
+      const failed = await ensureRun(db, {
+        inngestRunId: '01JRUN0017',
+        functionName: 'analytics-runner',
+      })
+      await setRunStatus(db, failed, 'failed', { message: 'still broken' })
+      expect((await listFailedRuns(db)).map((run) => run.id)).toEqual([failed])
     })
   })
 

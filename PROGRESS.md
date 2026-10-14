@@ -7806,3 +7806,23 @@ boom-busters-broker`; merge and deploy to Vercel, then `PUT
      Shipping: a Vercel deploy. For the two Stability AI uploads already
      scheduled, the description is edited in YouTube Studio; the app's
      editor is locked once an item is on YouTube.
+
+304. **A failed job with no project retires when the job works again**
+     (2026-10-14, owner: "Please clear the analytics-runner-failed on the
+     dashboard. There is no way for me to clear them"). Six daily
+     analytics-runner failures from 5 to 10 September (the YouTube Analytics
+     API was disabled in the Google project) sat on the Needs-you queue for
+     five weeks while the same job completed every day. `listFailedRuns`
+     kept every failed run with no project on purpose, since no stage
+     status exists to retire it, and the card's only button, Open, led to
+     the projects list. A failed run with no project now leaves the queue
+     once a later run of the same function, also with no project, has
+     completed; one newer than the last success stays. Checked read-only
+     against production before merge: the queue goes from six failure cards
+     to none. Decisions made: the rule is automatic rather than a Dismiss
+     button, because a dismissal needs a column and a migration and the
+     job's own success is the better signal; the run rows are kept as
+     history rather than deleted by hand. The exemplar corpus spec named
+     304 provisionally; Prettier numbers this list in order, so that spec
+     takes the next free number when it lands here. Shipping: a Vercel
+     deploy. No migration.
