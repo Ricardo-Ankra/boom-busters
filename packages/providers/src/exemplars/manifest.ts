@@ -192,13 +192,29 @@ export const MANIFEST: readonly ExemplarEntry[] = [
       ],
       intent: 'The fund grew every year for five years.',
       data: {
+        // Three funds over five years, so the bars have something to reorder:
+        // A leads, then B, then C, then C over A, then A again.
         series: [
-          yearly('Assets', 'bn', [
-            ['2017', 2],
-            ['2018', 5],
-            ['2019', 9],
-            ['2020', 14],
-            ['2021', 23],
+          yearly('Fund A', 'bn', [
+            ['2017', 12],
+            ['2018', 13],
+            ['2019', 14],
+            ['2020', 18],
+            ['2021', 22],
+          ]),
+          yearly('Fund B', 'bn', [
+            ['2017', 8],
+            ['2018', 14],
+            ['2019', 16],
+            ['2020', 17],
+            ['2021', 18],
+          ]),
+          yearly('Fund C', 'bn', [
+            ['2017', 5],
+            ['2018', 7],
+            ['2019', 17],
+            ['2020', 19],
+            ['2021', 20],
           ]),
         ],
         takeaway: 'The fund grew every year',

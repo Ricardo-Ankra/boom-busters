@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { DESIGNS } from './designs/index'
-import { EXEMPLARS, exemplarFor, MANIFEST, TECHNIQUES, vendoredPath } from './index'
+import { EXEMPLARS, exemplarFor, MANIFEST, TECHNIQUES, techniqueFor, vendoredPath } from './index'
 
 const HERE = new URL('./', import.meta.url)
 const DASH = /[–—]/
@@ -50,6 +50,39 @@ describe('the exemplar manifest (decision 305)', () => {
       expect(entry.description).not.toMatch(DASH)
       expect(entry.slot.intent).not.toMatch(DASH)
     }
+  })
+
+  it('gives each chart technique a slot the rules pick for that technique', () => {
+    for (const entry of MANIFEST.filter((candidate) => candidate.chart)) {
+      const series = entry.slot.data!.series
+      expect(
+        techniqueFor({
+          type: 'chart',
+          chartKind: entry.chart!.kind,
+          seriesCount: series.length,
+          xLabels: series[0]!.points.map((point) => point.x),
+          intent: entry.slot.data!.takeaway,
+          description: entry.description,
+          coversText: entry.slot.words.map((word) => word.text).join(' '),
+          logos: [],
+        }),
+        entry.id,
+      ).toBe(entry.technique)
+    }
+  })
+
+  it('gives the racing slot series whose order changes from year to year', () => {
+    const racing = MANIFEST.find((entry) => entry.technique === 'racing-chart')!
+    const series = racing.slot.data!.series
+    expect(series.length).toBeGreaterThanOrEqual(3)
+    const leaders = series[0]!.points.map((_, index) =>
+      [...series]
+        .sort((a, b) => b.points[index]!.y - a.points[index]!.y)
+        .map((s) => s.label)
+        .join(),
+    )
+    const changes = leaders.filter((order, index) => index > 0 && order !== leaders[index - 1])
+    expect(changes.length).toBeGreaterThanOrEqual(2)
   })
 
   it('returns nothing for a technique with no stored design, and the design when one is stored', () => {
