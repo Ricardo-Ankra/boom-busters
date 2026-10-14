@@ -11,6 +11,7 @@ import { z } from 'zod'
 import { GRAPHIC_CODE_FIXTURE_SOURCE } from './graphic-code-fixture'
 import { REMOTION_RULES } from './remotion-rules'
 import { claimList, type ScriptClaim } from './script'
+import type { Exemplar } from '../exemplars/index'
 import { formatIssues, parseJsonCompletion } from './json'
 import { ignoreRepairs, trimField, type Note } from './repair'
 import { outputBudget, type LLMTaskRequest } from '../llm/types'
@@ -68,6 +69,8 @@ export interface GraphicDesignInput {
   /** A redesign: the source and title being replaced (ruling 9; its facts are not shown). */
   current?: CurrentDesign
   guidance?: string
+  /** A passing design of the slot's technique, shown in the slot message (decision 305). */
+  exemplar?: Exemplar
   /** Why the previous answer to this same slot was refused. */
   rejection?: string
 }
@@ -525,7 +528,8 @@ export function buildGraphicRequest(input: GraphicDesignInput): LLMTaskRequest {
     `Rests on claims: ${input.intentRefs.length > 0 ? input.intentRefs.join(', ') : 'none named'}` +
     (input.data
       ? `\n\nData (draw every point; values are verbatim from the claims):\n${JSON.stringify(input.data, null, 2)}`
-      : '')
+      : '') +
+    (input.exemplar ? `\n\n${exemplarBlock(input.exemplar)}` : '')
 
   return {
     task: 'graphics',
@@ -550,6 +554,25 @@ export function buildGraphicRequest(input: GraphicDesignInput): LLMTaskRequest {
     cacheablePrefixMessages: 1,
     maxTokens: outputBudget(GRAPHIC_ANSWER_TOKENS),
   }
+}
+
+/**
+ * The slot's exemplar (decision 305): one passing design of the technique
+ * the brief calls for, in the sandbox and on the tokens, so the model
+ * patterns on the technique and not on the system prompt's two examples. It
+ * sits in the slot message, after the data, so the cached film message and
+ * the system prompt are untouched. Four backticks fence it, so a design that
+ * holds three in a string cannot close the block early.
+ */
+function exemplarBlock(exemplar: Exemplar): string {
+  return (
+    `A passing design of this technique (${exemplar.technique}: ${exemplar.description}), in this ` +
+    'sandbox and on the tokens, to pattern on. Its words and figures are its own; yours come ' +
+    'from this slot and its claims:\n' +
+    '````jsx\n' +
+    exemplar.source +
+    '\n````'
+  )
 }
 
 const PRE_TOKEN_DESIGN =

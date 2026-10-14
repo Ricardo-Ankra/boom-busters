@@ -8,7 +8,7 @@
 
 **Tech Stack:** TypeScript, Zod 4, Vitest, esbuild (through `compileGraphicSource`), the Anthropic adapter in `@boom-busters/providers`, `LiveBudget`, pnpm workspaces, Prettier.
 
-**Spec:** `docs/superpowers/specs/2026-10-14-exemplar-corpus-design.md` (decision 304, provisional)
+**Spec:** `docs/superpowers/specs/2026-10-14-exemplar-corpus-design.md` (decision 305, provisional)
 
 **Branch:** `exemplar-corpus`, from `master`.
 
@@ -123,7 +123,7 @@ import { EXEMPLARS, exemplarFor, MANIFEST, TECHNIQUES, vendoredPath } from './in
 const HERE = new URL('./', import.meta.url)
 const DASH = /[–—]/
 
-describe('the exemplar manifest (decision 304)', () => {
+describe('the exemplar manifest (decision 305)', () => {
   it('has exactly one entry per technique, under the technique as its id', () => {
     expect(MANIFEST.map((entry) => entry.technique).sort()).toEqual([...TECHNIQUES].sort())
     for (const entry of MANIFEST) expect(entry.id).toBe(entry.technique)
@@ -204,7 +204,7 @@ Create `packages/providers/src/exemplars/manifest.ts`:
 import type { ChartKind, ChartSeries } from '@boom-busters/schemas'
 
 /**
- * The exemplar corpus (decision 304): one hand-written entry per technique
+ * The exemplar corpus (decision 305): one hand-written entry per technique
  * the channel uses, each naming the MIT-licensed Remotion template it is
  * translated from (vendored byte for byte under `vendored/`, with the
  * repository's licence beside it) and a small synthetic slot that the
@@ -665,7 +665,7 @@ Expected: no errors; all formatted. Then confirm Prettier ignores the vendored f
 
 ```bash
 git add .prettierignore packages/providers/src/index.ts packages/providers/src/exemplars
-git commit -m "feat(providers): the exemplar manifest, eighteen vendored MIT templates with their licences, and an empty corpus (decision 304)
+git commit -m "feat(providers): the exemplar manifest, eighteen vendored MIT templates with their licences, and an empty corpus (decision 305)
 
 Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 ```
@@ -713,7 +713,7 @@ const chart = (over: Partial<TechniqueInput> = {}): TechniqueInput => ({
   ...over,
 })
 
-describe('techniqueFor (decision 304)', () => {
+describe('techniqueFor (decision 305)', () => {
   it.each([
     ['bar, one series', chart(), 'bar-chart'],
     ['stacked', chart({ chartKind: 'stacked' }), 'bar-chart'],
@@ -822,7 +822,7 @@ import type { ChartKind } from '@boom-busters/schemas'
 import type { Technique } from './manifest'
 
 /**
- * Which exemplar a slot gets (decision 304): a pure function of the brief's
+ * Which exemplar a slot gets (decision 305): a pure function of the brief's
  * fields, the film's logo titles and the producer's steer. No model call,
  * deterministic, first match wins. The steer beats every rule, and five
  * techniques are reached by the steer only (the designer does not know a
@@ -934,7 +934,7 @@ Expected: no errors; all formatted.
 
 ```bash
 git add packages/providers/src/exemplars/technique.ts packages/providers/src/exemplars/technique.test.ts packages/providers/src/exemplars/index.ts
-git commit -m "feat(providers): techniqueFor picks a slot's exemplar from the brief, the logos and the steer (decision 304)
+git commit -m "feat(providers): techniqueFor picks a slot's exemplar from the brief, the logos and the steer (decision 305)
 
 Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 ```
@@ -958,7 +958,7 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 In `packages/providers/src/prompts/graphics.test.ts`, add inside `describe('buildGraphicRequest (decision 295)', ...)`:
 
 ```ts
-  it('carries one exemplar of the slot technique in the slot message, after the data and before the current design (decision 304)', () => {
+  it('carries one exemplar of the slot technique in the slot message, after the data and before the current design (decision 305)', () => {
     const exemplar = {
       technique: 'stat-counter' as const,
       description: 'one large figure counting up to its mark, a label beneath, held',
@@ -1004,7 +1004,7 @@ Add to the imports: `import type { Exemplar } from '../exemplars/index'`.
 In `GraphicDesignInput`, after `guidance?: string`, add:
 
 ```ts
-  /** A passing design of the slot's technique, shown in the slot message (decision 304). */
+  /** A passing design of the slot's technique, shown in the slot message (decision 305). */
   exemplar?: Exemplar
 ```
 
@@ -1029,7 +1029,7 @@ and add after `buildGraphicRequest`:
 
 ```ts
 /**
- * The slot's exemplar (decision 304): one passing design of the technique
+ * The slot's exemplar (decision 305): one passing design of the technique
  * the brief calls for, in the sandbox and on the tokens, so the model
  * patterns on the technique and not on the system prompt's two examples. It
  * sits in the slot message, after the data, so the cached film message and
@@ -1057,7 +1057,7 @@ Expected: PASS.
 In `apps/web/lib/graphic-design.test.ts`, add inside the `describe` that holds the real-model path tests (the one using `designGraphicWith` with a stubbed `complete`; find it with `grep -n "describe(" apps/web/lib/graphic-design.test.ts`), using that file's existing `CONTEXT`, `BRIEF`, `CHART` and `sent()` helpers:
 
 ```ts
-  it('sends the slot an exemplar of its technique when one is stored, and none before (decision 304)', async () => {
+  it('sends the slot an exemplar of its technique when one is stored, and none before (decision 305)', async () => {
     const providers = await import('@boom-busters/providers')
     const expected = providers.exemplarFor(
       providers.techniqueFor({
@@ -1082,7 +1082,7 @@ In `apps/web/lib/graphic-design.test.ts`, add inside the `describe` that holds t
     }
   })
 
-  it('a chart with no points still reaches the request, as a bar chart (decision 304)', async () => {
+  it('a chart with no points still reaches the request, as a bar chart (decision 305)', async () => {
     const providers = await import('@boom-busters/providers')
     const empty: ChartBrief = { ...CHART, series: [{ label: 'Raised', unit: 'USD bn', points: [] }] }
     expect(
@@ -1123,7 +1123,7 @@ Add `exemplarFor` and `techniqueFor` to the `@boom-busters/providers` import.
 In `designGraphicWith`, after `const words = ...` and before `const base`, add:
 
 ```ts
-  // The slot's exemplar (decision 304): the technique from the brief, the
+  // The slot's exemplar (decision 305): the technique from the brief, the
   // logo titles and the steer; absent while the corpus holds no design for it.
   const exemplar = exemplarFor(
     techniqueFor({
@@ -1162,7 +1162,7 @@ Expected: no errors; all formatted.
 
 ```bash
 git add packages/providers/src/prompts/graphics.ts packages/providers/src/prompts/graphics.test.ts apps/web/lib/graphic-design-core.ts apps/web/lib/graphic-design.test.ts
-git commit -m "feat(graphics): the slot message carries one exemplar of the slot's technique when the corpus holds one (decision 304)
+git commit -m "feat(graphics): the slot message carries one exemplar of the slot's technique when the corpus holds one (decision 305)
 
 Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 ```
@@ -1206,7 +1206,7 @@ import {
 const stat = MANIFEST.find((entry) => entry.id === 'stat-counter')!
 const bar = MANIFEST.find((entry) => entry.id === 'bar-chart')!
 
-describe('exemplar translation, the pure parts (decision 304)', () => {
+describe('exemplar translation, the pure parts (decision 305)', () => {
   it('hashes a vendored file the same whatever its line endings', () => {
     expect(vendoredHash('a\r\nb\r\n')).toBe(vendoredHash('a\nb\n'))
     expect(vendoredHash('a\nb\n')).toMatch(/^[0-9a-f]{64}$/)
@@ -1329,7 +1329,7 @@ import type { GraphicDesignContext } from '@/lib/graphic-design-core'
 import { optionalText, readRawFlags } from '@/lib/live-set-args'
 
 /**
- * The exemplar translation's pure parts (decision 304): the hash that pins a
+ * The exemplar translation's pure parts (decision 305): the hash that pins a
  * design to its vendored template, the design and registry files, the
  * synthetic context and brief the translation and the corpus test share,
  * the designer input with the steer, and the script's arguments. No file,
@@ -1354,7 +1354,7 @@ export function vendoredHash(text: string): string {
 
 export function designHeader(entry: ExemplarEntry, hash: string): string {
   return (
-    `// Exemplar "${entry.id}" (decision 304), translated from ${vendoredPath(entry)}\n` +
+    `// Exemplar "${entry.id}" (decision 305), translated from ${vendoredPath(entry)}\n` +
     `// vendored sha256: ${hash}\n` +
     '// Written by apps/web/scripts/translate-exemplars.ts; a passing design under graphicCodeIssue.'
   )
@@ -1567,7 +1567,7 @@ import { graphicCodeIssue } from '@/lib/graphic-code/check'
 import { BudgetExceeded, LiveBudget } from '@/lib/live-budget'
 
 /**
- * The exemplar translation job (decision 304): for each manifest entry with
+ * The exemplar translation job (decision 305): for each manifest entry with
  * no stored design, or whose vendored template changed, ask the graphics
  * model to translate the template into a sandbox design through the
  * designer's own prompt and ladder, check the answer with the real
@@ -1718,7 +1718,7 @@ Expected: prints `MOCK_PROVIDERS is set; the translation needs the real model. N
 
 ```bash
 git add apps/web/lib/exemplar-translate.ts apps/web/lib/exemplar-translate.test.ts apps/web/scripts/translate-exemplars.ts apps/web/package.json packages/providers/src/exemplars/designs/index.ts
-git commit -m "feat(web): the exemplar translation job, under a budget cap, gated by the real checks (decision 304)
+git commit -m "feat(web): the exemplar translation job, under a budget cap, gated by the real checks (decision 305)
 
 Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 ```
@@ -1733,7 +1733,7 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 
 **Interfaces:**
 - Consumes: everything above.
-- Produces: the corpus gate and the record of decision 304.
+- Produces: the corpus gate and the record of decision 305.
 
 - [ ] **Step 1: Write the corpus gate**
 
@@ -1748,7 +1748,7 @@ import { exemplarBrief, exemplarContext, staleDesign } from '@/lib/exemplar-tran
 import { graphicCodeIssue } from './check'
 
 /**
- * The corpus gate (decision 304): every stored exemplar is a design the
+ * The corpus gate (decision 305): every stored exemplar is a design the
  * checks pass, with its synthetic slot, in both frames; and every design was
  * written from the vendored template as it is now. With no designs stored
  * the gate passes over nothing, and says so.
@@ -1756,7 +1756,7 @@ import { graphicCodeIssue } from './check'
 const EXEMPLARS = new URL('../../../../packages/providers/src/exemplars/', import.meta.url)
 const stored = MANIFEST.filter((entry) => DESIGNS[entry.technique] !== undefined)
 
-describe(`the exemplar corpus (decision 304): ${stored.length} of ${MANIFEST.length} designs stored`, () => {
+describe(`the exemplar corpus (decision 305): ${stored.length} of ${MANIFEST.length} designs stored`, () => {
   it('registers every design file present, and only those', () => {
     const files = readdirSync(new URL('designs/', EXEMPLARS))
       .filter((name) => name.endsWith('.ts') && name !== 'index.ts')
@@ -1857,7 +1857,7 @@ Run: `git ls-files -z | xargs -0 -n 80 pnpm exec prettier --check` and confirm n
 
 ```bash
 git add apps/web/lib/graphic-code/exemplars.test.ts PROGRESS.md
-git commit -m "test(web): the exemplar corpus gate; PROGRESS records decision 304
+git commit -m "test(web): the exemplar corpus gate; PROGRESS records decision 305
 
 Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 ```

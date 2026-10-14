@@ -333,6 +333,37 @@ describe('the designer prompt (decision 295)', () => {
 })
 
 describe('buildGraphicRequest (decision 295)', () => {
+  it('carries one exemplar of the slot technique in the slot message, after the data and before the current design (decision 305)', () => {
+    const exemplar = {
+      technique: 'stat-counter' as const,
+      description: 'one large figure counting up to its mark, a label beneath, held',
+      title: 'The 1.2bn',
+      source: 'function Graphic(props) {\n  return null\n}',
+    }
+    const request = buildGraphicRequest(
+      input({
+        data: CHART_DATA,
+        exemplar,
+        current: { source: 'function Graphic() { return null }', title: 'Old title', motion: 1 },
+      }),
+    )
+    const slot = request.messages[1]!.content
+    expect(slot).toContain(
+      'A passing design of this technique (stat-counter: one large figure counting up to its mark, a label beneath, held), in this sandbox and on the tokens, to pattern on. Its words and figures are its own; yours come from this slot and its claims:',
+    )
+    expect(slot).toContain('````jsx\n' + exemplar.source + '\n````')
+    expect(slot.indexOf('Data (draw every point')).toBeLessThan(slot.indexOf('A passing design'))
+    expect(request.messages[2]!.content).toContain('The current design')
+    expect(request.messages[0]!.content).not.toContain('A passing design')
+    expect(request.system).toBe(buildGraphicRequest(input()).system)
+  })
+
+  it('sends no block when no exemplar is given', () => {
+    const request = buildGraphicRequest(input())
+    expect(request.messages[1]!.content).not.toContain('A passing design')
+    expect(request.messages).toHaveLength(2)
+  })
+
   it('routes to graphics with one cacheable film message and the code budget', () => {
     const request = buildGraphicRequest(input())
     expect(request.task).toBe('graphics')

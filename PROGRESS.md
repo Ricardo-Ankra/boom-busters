@@ -7826,3 +7826,67 @@ boom-busters-broker`; merge and deploy to Vercel, then `PUT
      304 provisionally; Prettier numbers this list in order, so that spec
      takes the next free number when it lands here. Shipping: a Vercel
      deploy. No migration.
+
+305. **The designer gets an exemplar of the slot's technique** (2026-10-14,
+     owner: "proceed" to sub-project 2 of the motion engine research;
+     rulings: exemplars translated into the house dialect, tags matched from
+     the brief, about sixteen to start, a paid translation job gated by the
+     checks). The prompt's two worked examples were the only shapes the
+     designer had; every design patterned on one of them. The research
+     recommended MIT-licensed Remotion templates as few-shot exemplars,
+     retrieved per request.
+     What shipped. `packages/providers/src/exemplars/`: a manifest of
+     eighteen techniques (stat and KPI counters, bar, line, racing,
+     comparison and donut charts, progress bars and steps, kinetic word
+     stack, typewriter, text highlight, quote card, animated list, lower
+     third, chapter title, logo reveal, split screen), each naming its
+     template in `RenderComp/free-remotion-templates` (f648980) or
+     `reactvideoeditor/remotion-templates` (6209b72), vendored byte for byte
+     as `.tsx.txt` with each repository's MIT notice beside it, and a small
+     synthetic slot. `techniqueFor` maps a brief to a technique by fixed
+     rules (the steer first; a chart by its kind and shape; a graphic by
+     quotation, percentage, versus, a logo title, figures with units, a short
+     intent, else the word stack); `exemplarFor` returns the stored design or
+     nothing. `designGraphicWith` fills `exemplar` on the request and
+     `buildGraphicRequest` renders it in the slot message after the data, so
+     the cached system prompt is untouched. The translation job
+     (`pnpm --filter @boom-busters/web live:exemplars -- --cap <usd>`) sends
+     each template through the designer's own prompt and ladder, keeps only a
+     design `graphicCodeIssue` passes, writes it to `designs/` with the
+     vendored file's hash, and regenerates the registry; a corpus test re-runs
+     every stored design through the checks and fails on a stale hash.
+     Decisions made where the spec left room: the vendored files carry a
+     `.txt` suffix and a `.prettierignore` line so no tool reformats them;
+     the hash folds CRLF to LF; `chapter-title`, `typewriter`,
+     `animated-list`, `lower-third` and `progress-bars` are reached by the
+     steer only, since the designer does not know a slot's place in its
+     chapter and the rest are the producer's choices; the cap parser allows
+     up to $5 on the owner's word in the brainstorm, above the live
+     harnesses' $1; the translation's model comes from the Settings defaults
+     (the graphics route, claude-opus-5-5), not the owner's live route in the
+     database, since the script never reads the database; `--model`
+     overrides it. Review changed `techniqueFor` in four ways: figures are
+     counted as distinct currency-and-value pairs, so a figure written in the
+     intent and spoken in the narration counts once; logo titles are matched
+     as whole words, and skipped when the matched text is all lower-case and
+     the title has a capital ("a shell company" does not pick Shell); the
+     steer takes compound phrases only and skips a phrase negated earlier in
+     its clause; "wrote off", "told no one" and "bet against" no longer read
+     as a quote or a comparison. The final review changed four more:
+     speech verbs are read on the intent only (quotation marks still in any
+     field); a percentage with a movement word ("lost 70%") is a counter and
+     a share of a whole is a donut; "versus" and "compared" are read on the
+     intent and description, not the narration; a racing chart needs three
+     or more series over five or more years; and "less", "remove", "drop"
+     and "lose" join the refusals in a steer. The racing exemplar's slot
+     carries three funds whose order changes. Open for the owner before step
+     two: "share of" with a movement word still reads as a counter, and "up"
+     and "down" in the movement list catch phrasal verbs ("made up 40%").
+     Rollout, step one: this merge, with an empty corpus; nothing changes for
+     the designer. Step two, on the owner's go-ahead: the live run, each
+     design looked at, a second commit, a Vercel deploy and
+     `PUT /api/inngest`. The translation reserves about $0.35 a first call
+     on the default graphics model (claude-opus-5-5), so the eighteen need
+     several capped runs (the run skips stored, current designs) or a cheaper
+     `--model`. No migration, no Lambda or broker deploy.
+     The number 305 is checked against `origin/master` at the merge.

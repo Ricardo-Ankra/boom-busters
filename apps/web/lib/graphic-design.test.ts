@@ -21,10 +21,17 @@ import { NonRetriableError } from 'inngest'
 const callLlm = vi.fn()
 vi.mock('@/lib/llm', () => ({ callLlm: (...args: unknown[]) => callLlm(...args) }))
 let mock = false
-vi.mock('@boom-busters/providers', async (importOriginal) => ({
-  ...(await importOriginal<typeof Providers>()),
-  mockProvidersEnabled: () => mock,
-}))
+/** When set, stands in for the corpus: the exemplar every slot is sent. */
+let exemplarStub: Providers.Exemplar | null = null
+vi.mock('@boom-busters/providers', async (importOriginal) => {
+  const original = await importOriginal<typeof Providers>()
+  return {
+    ...original,
+    mockProvidersEnabled: () => mock,
+    exemplarFor: (technique: Providers.Technique) =>
+      exemplarStub ?? original.exemplarFor(technique),
+  }
+})
 
 let runtimeFault: Error | null = null
 vi.mock('./graphic-code/dry-run', async (importOriginal) => {
@@ -192,6 +199,7 @@ const CODE: GraphicCode = {
 beforeEach(() => {
   callLlm.mockReset()
   mock = false
+  exemplarStub = null
 })
 
 afterEach(() => {
@@ -515,6 +523,110 @@ describe('withDesign', () => {
 })
 
 describe('designGraphicWith (the model call is injected)', () => {
+  it('sends the slot an exemplar of its technique when one is stored, and none before (decision 305)', async () => {
+    const providers = await import('@boom-busters/providers')
+    // The same values designGraphicWith hands techniqueFor: the slot's intent
+    // as slotIntent resolves it, and the context's logo titles.
+    const expected = providers.exemplarFor(
+      providers.techniqueFor({
+        type: 'graphic',
+        intent: slotIntent(CONTEXT, BRIEF).intent,
+        description: BRIEF.description,
+        coversText: BRIEF.coversText,
+        logos: CONTEXT.logos.map((logo) => logo.title),
+      }),
+    )
+    const complete = vi.fn().mockResolvedValue(answer('$4bn'))
+    await designGraphicWith(complete, CONTEXT, SLOT)
+    const slot = (complete.mock.calls[0]![0].messages as { content: string }[])[1]!.content
+    if (expected) {
+      expect(slot).toContain(`A passing design of this technique (${expected.technique}:`)
+      expect(slot).toContain(expected.source)
+    } else {
+      expect(slot).not.toContain('A passing design of this technique')
+    }
+  })
+
+  it('a chart with no points still reaches the request, as a bar chart (decision 305)', async () => {
+    const providers = await import('@boom-busters/providers')
+    const empty: ChartBrief = {
+      ...CHART,
+      series: [{ label: 'Raised', unit: 'USD bn', points: [] }],
+    }
+    expect(
+      providers.techniqueFor({
+        type: 'chart',
+        chartKind: empty.chartKind,
+        seriesCount: empty.series.length,
+        xLabels: [],
+        intent: empty.takeaway,
+        description: empty.description,
+        coversText: empty.coversText,
+        logos: [],
+      }),
+    ).toBe('bar-chart')
+    const complete = vi.fn().mockResolvedValue(answer('$4bn'))
+    await designGraphicWith(complete, CONTEXT, { ...SLOT, brief: empty })
+    expect(complete).toHaveBeenCalled()
+  })
+
+  describe('with a stored exemplar (decision 305)', () => {
+    const STORED: Providers.Exemplar = {
+      technique: 'stat-counter',
+      description: 'one large figure counting up to its mark, a label beneath, held',
+      title: 'T',
+      source: 'function Graphic(props) {\n  return null\n}',
+    }
+    const BLOCK = 'A passing design of this technique (stat-counter:'
+    const messagesOf = (complete: ReturnType<typeof vi.fn>, call: number) =>
+      complete.mock.calls[call]![0].messages as { content: string }[]
+
+    beforeEach(() => {
+      exemplarStub = STORED
+    })
+
+    it('carries the exemplar on the first call and on the retry, with the refusal last', async () => {
+      const complete = vi
+        .fn()
+        .mockResolvedValueOnce({ text: JSON.stringify(BROKEN) })
+        .mockResolvedValueOnce(answer('$4bn'))
+      const result = await designGraphicWith(complete, CONTEXT, SLOT)
+      expect(result.ok).toBe(true)
+      expect(complete).toHaveBeenCalledTimes(2)
+
+      const first = messagesOf(complete, 0)
+      expect(first[1]!.content).toContain(BLOCK)
+      expect(first[1]!.content).toContain(STORED.source)
+
+      const second = messagesOf(complete, 1)
+      expect(second[1]!.content).toContain(BLOCK)
+      expect(second[1]!.content).toContain(STORED.source)
+      expect(second.at(-1)!.content).toBe(
+        `Your previous answer for this slot was refused: ${issueOf(BROKEN)}. Answer again with that fixed.`,
+      )
+      expect(complete.mock.calls[1]![1]).toMatchObject({ purpose: 'retry: refused' })
+    })
+
+    it('keeps the steer last on both calls, the exemplar still in the slot message', async () => {
+      const complete = vi
+        .fn()
+        .mockResolvedValueOnce({ text: JSON.stringify(BROKEN) })
+        .mockResolvedValueOnce(answer('$4bn'))
+      const guidance = 'Make the number bigger.'
+      const result = await designGraphicWith(complete, CONTEXT, SLOT, { guidance })
+      expect(result.ok).toBe(true)
+      expect(complete).toHaveBeenCalledTimes(2)
+      for (const call of [0, 1]) {
+        const messages = messagesOf(complete, call)
+        expect(messages[1]!.content).toContain(BLOCK)
+        expect(messages[1]!.content).toContain(STORED.source)
+        expect(messages.at(-1)!.content).toBe(`The producer's steer: ${guidance}`)
+      }
+      // The refusal sits just before the steer on the retry.
+      expect(messagesOf(complete, 1).at(-2)!.content).toContain(issueOf(BROKEN))
+    })
+  })
+
   it('stops non-retriably before any model call when the dry run cannot load its modules', async () => {
     runtimeFault = new Error("the designer's dry run cannot load remotion on this host: nope")
     try {
