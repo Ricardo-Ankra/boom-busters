@@ -14,6 +14,7 @@ import {
   type GraphicDesignInput,
 } from './graphics'
 import type { Repair } from './repair'
+import { REMOTION_RULES } from './remotion-rules'
 import { outputBudget } from '../llm/types'
 
 const CLAIMS = [
@@ -91,7 +92,14 @@ describe('the designer prompt (decision 295)', () => {
       'Remotion.useCurrentFrame()',
       'Remotion.useVideoConfig()',
       'Remotion.interpolate(',
-      'Remotion.Easing',
+      'motion.ms',
+      'motion.frames(',
+      'motion.ease',
+      'motion.spring',
+      'motion.px.rise',
+      'motion.scale.enter',
+      'motion.stagger(',
+      'motion.order',
       'Remotion.Sequence',
       'Remotion.AbsoluteFill',
       'Remotion.Img',
@@ -207,21 +215,47 @@ describe('the designer prompt (decision 295)', () => {
     expect(system).not.toContain('"kind": "figure"')
   })
 
-  it('offers no spring and prescribes the eased, no-overshoot entrance vocabulary (follow-up, 2026-10-12)', () => {
-    expect(rules).not.toContain('Remotion.spring(')
+  it('puts the motion on tokens: every curve, length and spring is named (decision 301)', () => {
     expect(rules).toContain(
-      "Entrances are eased interpolations that settle at their mark, never a spring and never an overshoot: Remotion.interpolate(frame, [from, to], [0, 1], { easing: Remotion.Easing.out(Remotion.Easing.poly(4)), extrapolateRight: 'clamp' }).",
+      'motion: the house motion tokens, declared above your code and read-only.',
     )
     expect(rules).toContain(
-      'a fade with a 16 to 24 px rise over 400 to 500 ms for text and figures; a wipe (clip-path) over 400 to 600 ms for titles and rules; a scale from 0.96 to 1 with the fade for a figure, never from 0; words staggered 60 to 90 ms apart on the narration; bars and lines drawn on over 500 to 800 ms; a count-up, linear or eased, over about a second; moves and the camera easing in and out over 600 to 1200 ms. Nothing passes its mark, nothing spins, and a beat gets one kind of entrance.',
+      'Every interpolate carries easing: motion.ease.<name>, written inside the call: enter for arrivals, exit for departures, move for a reframe or the camera, emphasis for the one hero figure of the beat, linear for counters and progress only.',
     )
     expect(rules).toContain(
-      'It refuses spring and Easing.elastic, Easing.bounce and Easing.back as well',
+      'A spring is Remotion.spring({ frame, fps, delay, config: motion.spring.<name> }) and nothing else: settle by default (no overshoot), hero at most once per beat',
     )
+    expect(rules).toContain('exits are shorter than entrances')
+    expect(rules).toContain(
+      'A change within a beat is an exit, a motion.ms.gap pause, then an entrance.',
+    )
+    expect(rules).toContain('A group of three or more elements staggers')
+    expect(rules).toContain(
+      'The hero finishes last: entrances follow motion.order, frame, title, body, hero, note.',
+    )
+    expect(rules).toContain('A beat gets one kind of entrance.')
+    expect(rules).toContain(
+      'It refuses Remotion.Easing in any form (the curves are motion.ease), an interpolate with no easing: motion.ease.<name> written inside the call, a spring other than Remotion.spring({ frame, fps, delay, config: motion.spring.<name> })',
+    )
+    expect(rules).not.toContain('Remotion.Easing.out(Remotion.Easing.poly(4))')
+    expect(rules).not.toContain('16 to 24 px rise')
     for (const example of [GRAPHIC_EXAMPLE_TYPE, GRAPHIC_EXAMPLE_CHART]) {
-      expect(example).not.toContain('spring')
-      expect(example).toContain('Remotion.Easing.out(Remotion.Easing.poly(4))')
+      expect(example).not.toMatch(/\bEasing\b/)
+      expect(example).toContain('easing: motion.ease.')
+      expect(example).toContain('motion.frames(')
+      expect(example).toContain('motion.ms.')
     }
+    expect(GRAPHIC_EXAMPLE_TYPE).toContain('config: motion.spring.hero')
+    expect(GRAPHIC_EXAMPLE_TYPE).toContain('motion.px.rise')
+    expect(GRAPHIC_EXAMPLE_CHART).not.toContain('spring')
+    expect(GRAPHIC_EXAMPLE_CHART).toContain('motion.stagger(')
+  })
+
+  it("carries Remotion's own rules, pinned to the vendored files (decision 301)", () => {
+    expect(system).toContain(REMOTION_RULES)
+    expect(system.indexOf(REMOTION_RULES)).toBeLessThan(
+      system.indexOf('Example 1, a text-only beat.'),
+    )
   })
 
   it('shows the two worked examples whole, written only against the sandbox', () => {
