@@ -120,8 +120,8 @@ const WORDS = [{ text: 'four', atMs: 900 }]
 const figureSource = (value: string) => `function Graphic(props) {
   const frame = Remotion.useCurrentFrame()
   const { durationInFrames } = Remotion.useVideoConfig()
-  const land = Remotion.interpolate(frame, [27, 42], [0, 1], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' })
-  const drift = Remotion.interpolate(frame, [0, durationInFrames], [1, 1.04])
+  const land = Remotion.interpolate(frame, [27, 42], [0, 1], { easing: motion.ease.enter, extrapolateLeft: 'clamp', extrapolateRight: 'clamp' })
+  const drift = Remotion.interpolate(frame, [0, durationInFrames], [1, 1.04], { easing: motion.ease.linear })
   return (
     <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: props.brand.colors.background, transform: 'scale(' + drift + ')' }}>
       <div style={{ color: props.brand.colors.textSecondary, fontFamily: props.brand.fonts.title, fontSize: 56 }}>Raised in one round</div>
@@ -382,6 +382,31 @@ describe('designGraphic (decisions 289, 295)', () => {
     expect(sent()).toContain('fontSize: 220')
     const messages = callLlm.mock.calls[0]![0].messages as { content: string }[]
     expect(messages.at(-1)!.content).toBe("The producer's steer: Make the number bigger.")
+  })
+
+  it("carries a stored design's motion version to a redesign, and tells one stored before the tokens so (decision 301)", async () => {
+    callLlm.mockResolvedValueOnce(answer('$4bn'))
+    const designed = await designGraphic(CONTEXT, SLOT)
+    if (!designed.ok) throw new Error('setup design failed')
+    expect(designed.code.motion).toBe(1)
+    const { motion: _motion, ...preToken } = designed.code
+    callLlm.mockReset()
+    callLlm.mockResolvedValue(answer('$4bn'))
+    await designGraphic(
+      CONTEXT,
+      { ...SLOT, brief: { ...BRIEF, code: designed.code } },
+      { redesign: true },
+    )
+    await designGraphic(
+      CONTEXT,
+      { ...SLOT, brief: { ...BRIEF, code: preToken } },
+      { redesign: true },
+    )
+    expect(sent(0)).toContain('fontSize: 220')
+    expect(sent(0)).not.toContain('written before the motion tokens')
+    expect(sent(1)).toContain(
+      '```\nThis design was written before the motion tokens: move every curve onto motion.ease',
+    )
   })
 
   it('designs from the description when the graphic predates intents', async () => {

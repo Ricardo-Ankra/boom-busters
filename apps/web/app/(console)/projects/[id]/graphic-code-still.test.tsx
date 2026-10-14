@@ -2,6 +2,7 @@ import { render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type * as Compositions from '@boom-busters/compositions'
 import { GRAPHIC_CODE_SOURCE } from '@boom-busters/compositions'
+import { MOTION_PREAMBLE } from '@boom-busters/compositions/motion-tokens'
 import { DEFAULT_SETTINGS } from '@boom-busters/schemas'
 import type { GraphicCode } from '@boom-busters/schemas'
 import { GraphicCodeStill } from './graphic-code-still'
@@ -113,7 +114,11 @@ describe('GraphicCodeStill (decision 295)', () => {
   it('draws the fixture the composition renders, without falling back to its title', () => {
     render(
       <GraphicCodeStill
-        code={code(GRAPHIC_CODE_SOURCE, { title: 'The fixture' })}
+        code={code(GRAPHIC_CODE_SOURCE, {
+          title: 'The fixture',
+          // A stored design carries the preamble the check prepended (decision 301).
+          compiled: `${MOTION_PREAMBLE}\n${GRAPHIC_CODE_SOURCE}`,
+        })}
         brand={BRAND}
         logos={{}}
       />,

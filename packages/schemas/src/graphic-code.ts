@@ -50,6 +50,13 @@ export const GraphicCodeSchema = z.object({
   words: z.array(GraphicCodeWordSchema),
   /** The slot length the dry run checked the code at. */
   durationMs: z.number().int().positive(),
+  /**
+   * The version of the house motion preamble the compiled code carries
+   * (decision 301); absent on a design stored before the tokens. Nothing
+   * reads it yet: it is here so a later token change can tell old designs
+   * from new.
+   */
+  motion: z.number().int().positive().optional(),
 })
 export type GraphicCode = z.infer<typeof GraphicCodeSchema>
 

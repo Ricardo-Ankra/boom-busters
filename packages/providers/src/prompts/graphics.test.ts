@@ -14,6 +14,7 @@ import {
   type GraphicDesignInput,
 } from './graphics'
 import type { Repair } from './repair'
+import { REMOTION_RULES } from './remotion-rules'
 import { outputBudget } from '../llm/types'
 
 const CLAIMS = [
@@ -91,7 +92,15 @@ describe('the designer prompt (decision 295)', () => {
       'Remotion.useCurrentFrame()',
       'Remotion.useVideoConfig()',
       'Remotion.interpolate(',
-      'Remotion.Easing',
+      'Remotion.spring(',
+      'motion.ms',
+      'motion.frames(',
+      'motion.ease',
+      'motion.spring',
+      'motion.px.rise',
+      'motion.scale.enter',
+      'motion.stagger(',
+      'motion.order',
       'Remotion.Sequence',
       'Remotion.AbsoluteFill',
       'Remotion.Img',
@@ -143,7 +152,9 @@ describe('the designer prompt (decision 295)', () => {
     expect(rules).toContain(
       "A Sequence's durationInFrames is at least 1 and its from a finite number",
     )
-    expect(rules).toContain('Its children sit in a full-frame layer laid out as a flex row.')
+    expect(rules).toContain(
+      'Its children sit in a full-frame layer laid out as a flex row, unless layout="none".',
+    )
   })
 
   it("times the motion against props.durationMs and the words, not the slot's frame count (final review M2)", () => {
@@ -207,21 +218,94 @@ describe('the designer prompt (decision 295)', () => {
     expect(system).not.toContain('"kind": "figure"')
   })
 
-  it('offers no spring and prescribes the eased, no-overshoot entrance vocabulary (follow-up, 2026-10-12)', () => {
-    expect(rules).not.toContain('Remotion.spring(')
+  it('puts the motion on tokens: every curve, length and spring is named (decision 301)', () => {
     expect(rules).toContain(
-      "Entrances are eased interpolations that settle at their mark, never a spring and never an overshoot: Remotion.interpolate(frame, [from, to], [0, 1], { easing: Remotion.Easing.out(Remotion.Easing.poly(4)), extrapolateRight: 'clamp' }).",
+      'The house motion. The scan holds the curve and the spring config: every interpolate names a motion.ease, every spring a motion.spring.',
     )
     expect(rules).toContain(
-      'a fade with a 16 to 24 px rise over 400 to 500 ms for text and figures; a wipe (clip-path) over 400 to 600 ms for titles and rules; a scale from 0.96 to 1 with the fade for a figure, never from 0; words staggered 60 to 90 ms apart on the narration; bars and lines drawn on over 500 to 800 ms; a count-up, linear or eased, over about a second; moves and the camera easing in and out over 600 to 1200 ms. Nothing passes its mark, nothing spins, and a beat gets one kind of entrance.',
+      'Which curve, which preset, hero once per beat and every length are judged on the board, not checked:',
+    )
+    expect(rules).not.toContain('The first three are checked')
+    expect(rules).toContain(
+      "Entrances, exits and moves come from the tokens, in the house motion below. Nothing passes its mark except the one hero spring of a beat and snap's hair of overshoot on small things; nothing spins.",
     )
     expect(rules).toContain(
-      'It refuses spring and Easing.elastic, Easing.bounce and Easing.back as well',
+      'snap for small things only (a tick, a dot, a badge), never a figure or a title.',
     )
+    expect(rules).toContain(
+      'Anything keyed to the narration keeps its spoken time; stagger only what the narration does not time.',
+    )
+    expect(rules).toContain(
+      'motion: the house motion tokens, declared above your code and read-only.',
+    )
+    expect(rules).toContain(
+      'Every interpolate carries easing: motion.ease.<name>, written inside the call: enter for arrivals, exit for departures, move for a reframe or the camera, emphasis for the one hero figure of the beat, linear for counters and progress only.',
+    )
+    expect(rules).toContain(
+      'A spring is Remotion.spring({ frame, fps, delay, config: motion.spring.<name> }) and nothing else: settle by default (no overshoot), hero at most once per beat',
+    )
+    expect(rules).toContain('exits are shorter than entrances')
+    expect(rules).toContain(
+      'Remotion.interpolate(value, inputRange, outputRange, {easing, extrapolateLeft, extrapolateRight, output})',
+    )
+    expect(rules).toContain("output: 'perceptual-scale' on any interpolate that drives a scale.")
+    expect(rules).toContain(
+      'A change within a beat is an exit, a motion.ms.gap pause, then an entrance.',
+    )
+    expect(rules).toContain('A group of three or more elements staggers')
+    expect(rules).toContain(
+      'The hero lands last, with only its note after it: entrances follow motion.order, frame, title, body, hero, note.',
+    )
+    expect(rules).toContain('A beat gets one kind of entrance.')
+    expect(rules).toContain(
+      'It refuses Remotion.Easing in any form (the curves are motion.ease), an interpolate with no easing: motion.ease.<name> written inside the call, a spring other than Remotion.spring({ frame, fps, delay, config: motion.spring.<name> })',
+    )
+    expect(rules).toContain(
+      "Remotion['...'], React['...'] or motion['...'], an assignment to motion, a motion binding of your own, a Remotion.spring or Remotion.interpolate read without being called, and a motion.ease or motion.spring name that is not a token.",
+    )
+    expect(rules).toContain('an assignment to motion, a motion binding of your own')
+    expect(rules).toContain(
+      'motion.frames(ms, fps), a length in whole frames, at least 1, and a time too: a word at 0 ms starts on frame 1.',
+    )
+    expect(rules).not.toContain('Remotion.Easing.out(Remotion.Easing.poly(4))')
+    expect(rules).not.toContain('16 to 24 px rise')
     for (const example of [GRAPHIC_EXAMPLE_TYPE, GRAPHIC_EXAMPLE_CHART]) {
-      expect(example).not.toContain('spring')
-      expect(example).toContain('Remotion.Easing.out(Remotion.Easing.poly(4))')
+      expect(example).not.toMatch(/\bEasing\b/)
+      expect(example).toContain('easing: motion.ease.')
+      expect(example).toContain('motion.frames(')
+      expect(example).toContain('motion.ms.')
+      expect(example).toContain(
+        '// Every length and every curve is a token; positions follow the narration.',
+      )
     }
+    expect(GRAPHIC_EXAMPLE_TYPE).toContain('config: motion.spring.hero')
+    expect(GRAPHIC_EXAMPLE_TYPE).toContain('motion.px.rise')
+    // The hero's overshoot shows on the rise, where a few pixels past the mark read.
+    expect(GRAPHIC_EXAMPLE_TYPE).toContain("'translateY(' + (1 - pop) * 2 * motion.px.rise * unit")
+    expect(GRAPHIC_EXAMPLE_TYPE).toContain(
+      'It rises twice motion.px.rise, so the overshoot has room to read; a plain fade keeps the single rise.',
+    )
+    expect(GRAPHIC_EXAMPLE_TYPE).toContain(
+      "// The strike is the figure's payoff, so it takes the emphasis curve.",
+    )
+    expect(GRAPHIC_EXAMPLE_CHART).toContain(
+      'noteAtMs: lands[last] + motion.ms.draw + motion.ms.gap',
+    )
+    expect(GRAPHIC_EXAMPLE_CHART).toContain(
+      'motion.ms.enter + index * (motion.ms.draw + motion.ms.gap)',
+    )
+    expect(GRAPHIC_EXAMPLE_CHART).not.toContain('spring')
+    expect(GRAPHIC_EXAMPLE_CHART).toContain('motion.stagger(')
+    expect(GRAPHIC_EXAMPLE_CHART).toContain(
+      '// The title arrives first and the subtitle one stagger step after it: motion.order (title, then body), shown on a pair.',
+    )
+  })
+
+  it("carries Remotion's own rules, pinned to the vendored files (decision 301)", () => {
+    expect(system).toContain(REMOTION_RULES)
+    expect(system.indexOf(REMOTION_RULES)).toBeLessThan(
+      system.indexOf('Example 1, a text-only beat.'),
+    )
   })
 
   it('shows the two worked examples whole, written only against the sandbox', () => {
@@ -296,6 +380,7 @@ describe('buildGraphicRequest (decision 295)', () => {
         current: {
           title: 'Old title',
           source: 'function Graphic(props) {\n  return null\n}',
+          motion: 1,
         },
         rejection: 'nothing changes between 1.0 s and 8.0 s',
         guidance: 'Make the number bigger.',
@@ -306,10 +391,22 @@ describe('buildGraphicRequest (decision 295)', () => {
     expect(contents[2]).toBe(
       'The current design, which the producer wants changed:\nTitle: Old title\n```jsx\nfunction Graphic(props) {\n  return null\n}\n```',
     )
+    expect(contents[2]).not.toContain('written before the motion tokens')
     expect(contents[3]).toBe(
       'Your previous answer for this slot was refused: nothing changes between 1.0 s and 8.0 s. Answer again with that fixed.',
     )
     expect(contents[4]).toBe("The producer's steer: Make the number bigger.")
+  })
+
+  it('tells a redesign of a design stored before the tokens to move it onto them (decision 301)', () => {
+    const request = buildGraphicRequest(
+      input({
+        current: { title: 'Old title', source: 'function Graphic(props) {\n  return null\n}' },
+      }),
+    )
+    expect(request.messages[2]!.content).toBe(
+      'The current design, which the producer wants changed:\nTitle: Old title\n```jsx\nfunction Graphic(props) {\n  return null\n}\n```\nThis design was written before the motion tokens: move every curve onto motion.ease, every spring onto motion.spring, and every length onto motion.ms, keeping what the producer has not asked to change.',
+    )
   })
 })
 

@@ -53,8 +53,8 @@ const TEXT_DESIGN = {
   source: `function Graphic(props) {
   const frame = Remotion.useCurrentFrame()
   const { durationInFrames } = Remotion.useVideoConfig()
-  const opacity = Remotion.interpolate(frame, [0, 12], [0, 1], { extrapolateRight: 'clamp' })
-  const spacing = Remotion.interpolate(frame, [0, durationInFrames], [0, 0.08])
+  const opacity = Remotion.interpolate(frame, [0, 12], [0, 1], { easing: motion.ease.enter, extrapolateRight: 'clamp' })
+  const spacing = Remotion.interpolate(frame, [0, durationInFrames], [0, 0.08], { easing: motion.ease.linear })
   return (
     <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: props.brand.colors.background }}>
       <div style={{ opacity, letterSpacing: spacing + 'em', color: props.brand.colors.textPrimary, fontFamily: props.brand.fonts.heading, fontSize: 120 }}>

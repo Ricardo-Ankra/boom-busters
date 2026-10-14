@@ -19,6 +19,8 @@ import {
   withAlpha,
 } from './graphic-code-pure'
 import type { GraphicComponent, GraphicProps, GraphicScope } from './graphic-code-pure'
+import { motionTokens } from './motion-tokens'
+import type { MotionTokens } from './motion-tokens'
 
 /**
  * The Remotion-free half (props and scope types, `graphicFunctionBody`,
@@ -34,6 +36,14 @@ export {
   withAlpha,
 } from './graphic-code-pure'
 export type { GraphicComponent, GraphicProps, GraphicScope } from './graphic-code-pure'
+
+/**
+ * The house motion tokens with the real `Easing` (decision 301), for house
+ * code. A design never imports this: it reads the `motion` constant its own
+ * compiled code declares (`MOTION_PREAMBLE`), which holds the same values.
+ */
+export const MOTION: MotionTokens = motionTokens(Easing)
+export type { MotionTokens } from './motion-tokens'
 
 /**
  * The sandbox the designer's graphic runs in (decision 295).

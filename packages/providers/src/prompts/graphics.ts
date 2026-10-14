@@ -9,6 +9,7 @@ import {
 import type { ChartSeries, PlannedGraphicCode } from '@boom-busters/schemas'
 import { z } from 'zod'
 import { GRAPHIC_CODE_FIXTURE_SOURCE } from './graphic-code-fixture'
+import { REMOTION_RULES } from './remotion-rules'
 import { claimList, type ScriptClaim } from './script'
 import { formatIssues, parseJsonCompletion } from './json'
 import { ignoreRepairs, trimField, type Note } from './repair'
@@ -37,6 +38,12 @@ export interface SlotWord {
   offsetMs: number
 }
 
+/** The design a redesign replaces, as `GraphicDesignInput.current` carries it. */
+export type CurrentDesign = Pick<PlannedGraphicCode, 'source' | 'title'> & {
+  /** The preamble version the stored design carries, absent on a design stored before decision 301. */
+  motion?: number
+}
+
 export interface GraphicDesignInput {
   caseTitle: string
   /** The film's claims in prompt order: positions are the numbers cited. */
@@ -59,7 +66,7 @@ export interface GraphicDesignInput {
     annotations?: { atX: string; text: string }[]
   }
   /** A redesign: the source and title being replaced (ruling 9; its facts are not shown). */
-  current?: Pick<PlannedGraphicCode, 'source' | 'title'>
+  current?: CurrentDesign
   guidance?: string
   /** Why the previous answer to this same slot was refused. */
   rejection?: string
@@ -69,34 +76,32 @@ export interface GraphicDesignInput {
  * The prompt's first worked example, a text-only beat. Exported so a test
  * can run it through the web app's checks: an example that crashes or crops
  * teaches the model to be refused. Its helper is a plain function called
- * directly, as the prompt tells the model to write it.
+ * directly, as the prompt tells the model to write it. It is written on the
+ * tokens (decision 301) and shows the one spring of a beat, the hero preset
+ * on the figure.
  */
 export const GRAPHIC_EXAMPLE_TYPE = `// Kinetic type: the line builds word by word as it is spoken, the figure
-// eases in on "1.9 billion", "never existed" strikes it through, and the
-// finished frame holds to the end. Every entrance is an eased interpolation
-// that settles at its mark and never passes it.
+// springs in on "1.9 billion" with the hero preset (one small overshoot, once
+// in the beat), "never existed" strikes it through, and the finished frame
+// holds to the end.
+// Every length and every curve is a token; positions follow the narration.
 const LINE_UNTIL_MS = 2400
 const FIGURE_AT_MS = 2600
 const CLOSING_AT_MS = 4400
 const STRIKE_AT_MS = 5000
 
-function toFrame(ms, fps) {
-  return Math.round((ms / 1000) * fps)
+// A helper, called directly: an arrival, 0 to 1 over motion.ms.enter from atMs, held at 1.
+function arrive(frame, fps, atMs) {
+  return Remotion.interpolate(
+    frame, [motion.frames(atMs, fps), motion.frames(atMs + motion.ms.enter, fps)], [0, 1],
+    { easing: motion.ease.enter, extrapolateLeft: 'clamp', extrapolateRight: 'clamp' },
+  )
 }
 
-// A helper, called directly: 0 to 1 over lengthMs from atMs, easing out and holding at 1.
-function settle(frame, fps, atMs, lengthMs) {
-  return Remotion.interpolate(frame, [toFrame(atMs, fps), toFrame(atMs + lengthMs, fps)], [0, 1], {
-    easing: Remotion.Easing.out(Remotion.Easing.poly(4)),
-    extrapolateLeft: 'clamp',
-    extrapolateRight: 'clamp',
-  })
-}
-
-// A helper, called directly: one word of the line, entering as it is spoken.
-function wordSpan(word, frame, fps) {
-  const enter = settle(frame, fps, word.atMs, 450)
-  const rise = 'translateY(' + (1 - enter) * 0.3 + 'em)'
+// A helper, called directly: one word of the line, rising in as it is spoken.
+function wordSpan(word, frame, fps, unit) {
+  const enter = arrive(frame, fps, word.atMs)
+  const rise = 'translateY(' + (1 - enter) * motion.px.rise * unit + 'px)'
   return (
     <span
       key={word.atMs}
@@ -114,18 +119,22 @@ function Graphic(props) {
   const inset = props.safeArea
   const portrait = height > width
   const unit = Math.min(width, height) / 1080
-  const clamp = { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' }
 
   // The words said before the figure, each entering as it is spoken.
   const line = props.words.filter((word) => word.atMs < LINE_UNTIL_MS)
-  // The figure is the story: it fades in from 0.96 and settles at 1, never past it.
-  const pop = settle(frame, fps, FIGURE_AT_MS, 500)
-  const closing = Remotion.interpolate(
-    frame, [toFrame(CLOSING_AT_MS, fps), toFrame(CLOSING_AT_MS + 400, fps)], [0, 1], clamp,
-  )
+  // The hero figure: the one spring of the beat. It rises into place and scales up from
+  // motion.scale.enter; the hero preset's one overshoot shows on the rise, a few pixels
+  // past the mark and back, not on the scale, where it would not be seen.
+  // It rises twice motion.px.rise, so the overshoot has room to read; a plain fade keeps the single rise.
+  const pop = Remotion.spring({
+    frame, fps, delay: motion.frames(FIGURE_AT_MS, fps), config: motion.spring.hero,
+  })
+  const closing = arrive(frame, fps, CLOSING_AT_MS)
+  // The strike is the figure's payoff, so it takes the emphasis curve.
+  // It draws across over motion.ms.draw.
   const strike = Remotion.interpolate(
-    frame, [toFrame(STRIKE_AT_MS, fps), toFrame(STRIKE_AT_MS + 500, fps)], [0, 1],
-    { ...clamp, easing: Remotion.Easing.out(Remotion.Easing.cubic) },
+    frame, [motion.frames(STRIKE_AT_MS, fps), motion.frames(STRIKE_AT_MS + motion.ms.draw, fps)], [0, 1],
+    { easing: motion.ease.emphasis, extrapolateLeft: 'clamp', extrapolateRight: 'clamp' },
   )
 
   return (
@@ -143,12 +152,14 @@ function Graphic(props) {
           color: colors.textPrimary, maxWidth: portrait ? '100%' : '70%',
         }}
       >
-        {line.map((word) => wordSpan(word, frame, fps))}
+        {line.map((word) => wordSpan(word, frame, fps, unit))}
       </div>
       <div
         style={{
           position: 'relative', fontFamily: fonts.numbers, fontSize: 220 * unit, lineHeight: 1,
-          color: colors.accent, opacity: pop, transform: 'scale(' + (0.96 + 0.04 * pop) + ')',
+          color: colors.accent, opacity: Math.min(1, pop),
+          transform: 'translateY(' + (1 - pop) * 2 * motion.px.rise * unit + 'px) scale('
+            + (motion.scale.enter + (1 - motion.scale.enter) * pop) + ')',
           transformOrigin: portrait ? 'center' : 'left center',
         }}
       >
@@ -163,7 +174,7 @@ function Graphic(props) {
       <div
         style={{
           fontFamily: fonts.title, fontSize: 56 * unit, color: colors.semantic.collapse,
-          opacity: closing, transform: 'translateY(' + (1 - closing) * 24 * unit + 'px)',
+          opacity: closing, transform: 'translateY(' + (1 - closing) * motion.px.rise * unit + 'px)',
         }}
       >
         It had never existed.
@@ -191,34 +202,31 @@ export const GRAPHIC_EXAMPLE_CHART_DATA = {
 }
 
 /** The prompt's second worked example, a chart. Exported for the same reason as the first. */
-export const GRAPHIC_EXAMPLE_CHART = `// A chart from props.data: one bar per point, each growing as its year is
-// spoken, the takeaway as the title, the annotation landing on its bar after
-// the last one has grown, and the finished chart held to the end.
-function toFrame(ms, fps) {
-  return Math.round((ms / 1000) * fps)
-}
+export const GRAPHIC_EXAMPLE_CHART = `// A chart from props.data: the title and its subtitle stagger in, one bar
+// per point draws on as its year is spoken, the annotation lands on its bar
+// after the last one has grown, and the finished chart holds to the end.
+// Every length and every curve is a token; positions follow the narration.
 
 // When the narration names a point: the first word that starts with its label.
 function spokenAt(point, index, words) {
   const said = words.find((word) => word.text.indexOf(point.x) === 0)
-  return said ? said.atMs : 600 + index * 700
+  return said ? said.atMs : motion.ms.enter + index * (motion.ms.draw + motion.ms.gap)
 }
 
-// A helper, called directly: 0 to 1 over lengthMs from atMs, easing out and holding at 1.
-function settle(frame, fps, atMs, lengthMs) {
-  return Remotion.interpolate(frame, [toFrame(atMs, fps), toFrame(atMs + lengthMs, fps)], [0, 1], {
-    easing: Remotion.Easing.out(Remotion.Easing.poly(4)),
-    extrapolateLeft: 'clamp',
-    extrapolateRight: 'clamp',
-  })
+// A helper, called directly: 0 to 1 over lengthMs from atMs on the arrival curve, held at 1.
+function arrive(frame, fps, atMs, lengthMs) {
+  return Remotion.interpolate(
+    frame, [motion.frames(atMs, fps), motion.frames(atMs + lengthMs, fps)], [0, 1],
+    { easing: motion.ease.enter, extrapolateLeft: 'clamp', extrapolateRight: 'clamp' },
+  )
 }
 
 // A helper, called directly: one bar with its value and, on the last, its note.
 function bar(frame, fps, spec) {
   const { colors, fonts } = spec.brand
   const unit = spec.unit
-  const grow = settle(frame, fps, spec.atMs, 700)
-  const noted = settle(frame, fps, spec.noteAtMs, 450)
+  const grow = arrive(frame, fps, spec.atMs, motion.ms.draw)
+  const noted = arrive(frame, fps, spec.noteAtMs, motion.ms.enter)
   const column = { flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center' }
   return (
     <div key={spec.point.x} style={{ ...column, justifyContent: 'flex-end' }}>
@@ -227,7 +235,7 @@ function bar(frame, fps, spec) {
           style={{
             fontFamily: fonts.title, fontSize: 34 * unit, marginBottom: 10 * unit,
             color: colors.semantic.collapse, opacity: noted,
-            transform: 'translateY(' + (1 - noted) * 16 * unit + 'px)',
+            transform: 'translateY(' + (1 - noted) * motion.px.rise * unit + 'px)',
           }}
         >
           {spec.note}
@@ -266,11 +274,9 @@ function Graphic(props) {
   const lands = series.points.map((point, index) => spokenAt(point, index, props.words))
   const last = series.points.length - 1
   const note = (props.data.annotations || [])[0]
-  // The title fades in over 500 ms, easing in and out.
-  const titleIn = Remotion.interpolate(frame, [0, 15], [0, 1], {
-    easing: Remotion.Easing.inOut(Remotion.Easing.cubic),
-    extrapolateRight: 'clamp',
-  })
+  // The title arrives first and the subtitle one stagger step after it: motion.order (title, then body), shown on a pair.
+  const titleIn = arrive(frame, fps, 0, motion.ms.enter)
+  const subtitleIn = arrive(frame - motion.stagger(1, fps), fps, 0, motion.ms.enter)
   const align = portrait ? 'center' : 'left'
 
   return (
@@ -292,7 +298,7 @@ function Graphic(props) {
       <div
         style={{
           fontFamily: fonts.body, fontSize: 28 * unit, color: colors.textSecondary,
-          opacity: titleIn, textAlign: align,
+          opacity: subtitleIn, textAlign: align,
         }}
       >
         {series.label + ', ' + series.unit}
@@ -303,7 +309,8 @@ function Graphic(props) {
             brand: props.brand, unit: unit, point: point,
             share: point.y / top, plot: (portrait ? 0.32 : 0.34) * height, atMs: lands[index],
             color: index === last ? colors.accent : Remotion.withAlpha(colors.textSecondary, 0.55),
-            note: note && note.atX === point.x ? note.text : null, noteAtMs: lands[last] + 1200,
+            note: note && note.atX === point.x ? note.text : null,
+            noteAtMs: lands[last] + motion.ms.draw + motion.ms.gap,
           }),
         )}
       </div>
@@ -347,15 +354,24 @@ The sandbox your code runs in:
   not durationInFrames: in the film that is the length of the compiled slot, which can
   differ from the length you design for.
 - Remotion.interpolate(value, inputRange, outputRange, {easing, extrapolateLeft,
-  extrapolateRight}): inputRange strictly increasing; "clamp" holds the ends.
-- Remotion.Easing: Remotion's easing functions, such as
-  Remotion.Easing.out(Remotion.Easing.poly(4)), Remotion.Easing.inOut(Remotion.Easing.cubic)
-  and Remotion.Easing.bezier(0.2, 0, 0, 1).
+  extrapolateRight, output}): inputRange strictly increasing; "clamp" holds the ends.
+  output: 'perceptual-scale' on any interpolate that drives a scale.
+- Remotion.spring({frame, fps, delay, config}): Remotion's spring, 0 to 1 from the delay;
+  its config is always a token (below).
+- motion: the house motion tokens, declared above your code and read-only. motion.ms
+  {micro 120, enter 450, exit 300, reveal 550, draw 700, count 1000, move 900, gap 120},
+  lengths in milliseconds. motion.frames(ms, fps), a length in whole frames, at least 1,
+  and a time too: a word at 0 ms starts on frame 1. motion.ease {enter, exit, move,
+  emphasis, linear}, the only curves. motion.spring {settle, hero, snap}, the only spring
+  configs. motion.px.rise (20 at 1080p; multiply by your unit). motion.scale.enter (0.96).
+  motion.stagger(index, fps), the frame offset of the index-th item of a group.
+  motion.order ['frame', 'title', 'body', 'hero', 'note'], the entrance order.
 - Remotion.Sequence {from, durationInFrames}: its children show only inside that window,
   and inside it useCurrentFrame() counts from 0. A Sequence's durationInFrames is at
   least 1 and its from a finite number, so wrap a length worked out from the words in
   Math.max(1, ...): anything else throws in the render, and the film shows only the
-  title. Its children sit in a full-frame layer laid out as a flex row.
+  title. Its children sit in a full-frame layer laid out as a flex row, unless
+  layout="none".
 - Remotion.AbsoluteFill {style}: a full-frame layer, laid out as a flex column.
 - Remotion.Img {src, style}: an image, for a logo.
 - Remotion.withAlpha(color, alpha): a brand colour at an opacity from 0 to 1.
@@ -381,8 +397,12 @@ navigator, XMLHttpRequest, WebSocket, EventSource, localStorage, sessionStorage,
 indexedDB, postMessage, importScripts, Worker and dangerouslySetInnerHTML; top, parent,
 frames, opener and location read or called as the browser's (a style's top is fine); and
 a script, iframe, object, embed, link, style, meta, base or form element.
-It refuses spring and Easing.elastic, Easing.bounce and Easing.back as well: they overshoot,
-and the house settles without a bounce.
+It refuses Remotion.Easing in any form (the curves are motion.ease), an interpolate with no
+easing: motion.ease.<name> written inside the call, a spring other than
+Remotion.spring({ frame, fps, delay, config: motion.spring.<name> }), Remotion['...'],
+React['...'] or motion['...'], an assignment to motion, a motion binding of your own, a
+Remotion.spring or Remotion.interpolate read without being called, and a motion.ease or
+motion.spring name that is not a token.
 Format a number by hand ("1.9", "4,000,000"), never with toLocaleString or Intl: those
 follow the viewer's locale, so the board and the film would show different figures.
 Motion comes from the frame alone: no CSS transition, animation or @keyframes, which the
@@ -422,15 +442,9 @@ Craft:
 - One dominant idea with secondary detail: one thing is biggest, and the rest supports it.
 - Motion keyed to the spoken words: each new thing said gets its own change, whether an
   entrance, a highlight, a bar growing or a line drawing across.
-- Entrances are eased interpolations that settle at their mark, never a spring and never
-  an overshoot: Remotion.interpolate(frame, [from, to], [0, 1], { easing:
-  Remotion.Easing.out(Remotion.Easing.poly(4)), extrapolateRight: 'clamp' }). The house
-  vocabulary: a fade with a 16 to 24 px rise over 400 to 500 ms for text and figures; a
-  wipe (clip-path) over 400 to 600 ms for titles and rules; a scale from 0.96 to 1 with the
-  fade for a figure, never from 0; words staggered 60 to 90 ms apart on the narration; bars
-  and lines drawn on over 500 to 800 ms; a count-up, linear or eased, over about a second;
-  moves and the camera easing in and out over 600 to 1200 ms. Nothing passes its mark,
-  nothing spins, and a beat gets one kind of entrance.
+- Entrances, exits and moves come from the tokens, in the house motion below. Nothing
+  passes its mark except the one hero spring of a beat and snap's hair of overshoot on
+  small things; nothing spins.
 - An ending that holds rather than vanishes.
 - Portrait is a first-class frame, not a squeeze: stack what sits side by side, and size
   type from Math.min(width, height).
@@ -441,6 +455,35 @@ Craft:
   are mentioned.
 - A chart draws every point of props.data, labels each value as its claim states it, and
   says its takeaway.
+
+The house motion. The scan holds the curve and the spring config: every interpolate names
+a motion.ease, every spring a motion.spring. Which curve, which preset, hero once per beat
+and every length are judged on the board, not checked:
+- Every interpolate carries easing: motion.ease.<name>, written inside the call: enter for
+  arrivals, exit for departures, move for a reframe or the camera, emphasis for the one
+  hero figure of the beat, linear for counters and progress only. For several keyframes
+  pass an array of them, one fewer than the keyframes. Never pass the options through a
+  variable: the check reads the call.
+- A spring is Remotion.spring({ frame, fps, delay, config: motion.spring.<name> }) and
+  nothing else: settle by default (no overshoot), hero at most once per beat (one small
+  overshoot, for the figure the beat is about), snap for small things only (a tick, a dot,
+  a badge), never a figure or a title. A spring is for an arrival that should feel
+  physical; ease everything else.
+- Lengths come from motion.ms: an entrance is motion.ms.enter, an exit motion.ms.exit
+  (exits are shorter than entrances), a wipe motion.ms.reveal, a bar or a line drawn on
+  motion.ms.draw, a count motion.ms.count, a move motion.ms.move. A change within a beat
+  is an exit, a motion.ms.gap pause, then an entrance. Convert with motion.frames(ms, fps).
+- A fade rises motion.px.rise times your unit; a figure scales in from motion.scale.enter,
+  never from 0; a wipe is a clip-path.
+- A group of three or more elements staggers: the index-th item enters motion.stagger(index,
+  fps) frames after the first. Anything keyed to the narration keeps its spoken time;
+  stagger only what the narration does not time.
+- The hero lands last, with only its note after it: entrances follow motion.order, frame,
+  title, body, hero, note.
+- A beat gets one kind of entrance. Emphasis on a word is a colour or weight change over
+  motion.ms.micro, with interpolate.
+
+${REMOTION_RULES}
 
 Example 1, a text-only beat. The slot is 7.5 s; its words are "The" 0.0 s, "auditors"
 0.3 s, "could" 0.9 s, "not" 1.2 s, "find" 1.5 s, "1.9" 2.6 s, "billion" 3.0 s, "euros."
@@ -509,14 +552,23 @@ export function buildGraphicRequest(input: GraphicDesignInput): LLMTaskRequest {
   }
 }
 
-/** A redesign's starting point: the title, and the code fenced so its JSX reads as code. */
-function currentDesign(current: Pick<PlannedGraphicCode, 'source' | 'title'>): string {
+const PRE_TOKEN_DESIGN =
+  '\nThis design was written before the motion tokens: move every curve onto motion.ease, every spring onto motion.spring, and every length onto motion.ms, keeping what the producer has not asked to change.'
+
+/**
+ * A redesign's starting point: the title, and the code fenced so its JSX reads
+ * as code. A design stored before the motion tokens (no `motion`) is said to
+ * be one, so the model moves it onto them rather than keeping `Easing`, which
+ * the scan refuses (decision 301).
+ */
+function currentDesign(current: CurrentDesign): string {
   return (
     'The current design, which the producer wants changed:\n' +
     `Title: ${current.title}\n` +
     '```jsx\n' +
     current.source +
-    '\n```'
+    '\n```' +
+    (current.motion === undefined ? PRE_TOKEN_DESIGN : '')
   )
 }
 

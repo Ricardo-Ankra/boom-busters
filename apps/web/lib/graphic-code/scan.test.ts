@@ -21,6 +21,16 @@ const COLOURS = 'colours come from props.brand.colors, with Remotion.withAlpha f
 const PAGE = 'a graphic draws React elements inside its frame and touches nothing else on the page'
 const DIGITS = 'write the digits by hand, so the board and the film show the same figure'
 const MOTION = 'motion comes from the frame alone, never from a CSS transition or animation'
+const TOKENS = 'curves come from motion.ease only'
+const NO_EASING = (call: number, of: number) =>
+  `interpolate call ${call} of ${of} carries no easing: motion.ease.<name>, so it moves on a straight line, which is the first thing that reads as generated`
+const NO_CONFIG = (call: number, of: number) =>
+  `Remotion.spring call ${call} of ${of} carries no config: motion.spring.<name>; Remotion's default spring bounces`
+const OWN_MOTION =
+  "the code declares a motion of its own, which the sandbox bans: motion is the house's token object, read it where it is needed"
+/** An interpolate on a frame the test never declares; the scan does not run the code. */
+const call = (options: string) =>
+  `  const v = Remotion.interpolate(frame, [0, 10], [0, 1], ${options})`
 const uses = (name: string, reason: string) =>
   `the code uses ${name}, which the sandbox bans: ${reason}`
 
@@ -68,7 +78,7 @@ describe('scanGraphicSource (decision 295)', () => {
     expect(
       scan(
         graphic(
-          '  const same = Remotion.Easing === null || Remotion.Easing != null\n  const bezier = Remotion.Easing.bezier(0, 0, 1, 1)',
+          '  const same = Remotion.Sequence === null || Remotion.Sequence != null\n  const ease = motion.ease.enter',
         ),
       ),
     ).toBeNull()
@@ -81,18 +91,255 @@ describe('scanGraphicSource (decision 295)', () => {
     expect(scan(graphic('  React.Children.map = () => null'))).toBe(sentence('React.Children'))
     expect(scan(graphic('  Remotion.Easing += 1'))).toBe(sentence('Remotion.Easing'))
     expect(scan(graphic('  Remotion.Easing ??= null'))).toBe(sentence('Remotion.Easing'))
+    expect(scan(graphic('  React.Children.map &&= null'))).toBe(sentence('React.Children'))
   })
 
   it.each([
-    ['Remotion.spring', '  const s = Remotion.spring({ frame: 0, fps: 30 })'],
-    ['a bare spring call', '  const s = spring({ frame: 0, fps: 30 })'],
-    [
-      'a destructured spring',
-      '  const { spring } = Remotion\n  const s = spring({ frame: 0, fps: 30 })',
-    ],
-  ])('refuses spring as %s: the sandbox no longer offers it', (_name, line) => {
+    ['Remotion.Easing.cubic', '  const e = Remotion.Easing.cubic', 'Easing.cubic'],
+    ['Easing.elastic', '  const e = Remotion.Easing.elastic(1)', 'Easing.elastic'],
+    ['a destructured Easing', '  const { Easing } = Remotion\n  const e = Easing.linear', 'Easing'],
+    ['an alias of Easing', '  const E = Remotion.Easing', 'Easing'],
+  ])('refuses %s: curves come from motion.ease only (decision 301)', (_name, line, named) => {
     expect(scan(graphic(line))).toBe(
-      'the code uses spring, which the sandbox no longer offers: an entrance eases to its mark with interpolate and Easing.out and never overshoots',
+      `the code uses ${named}, which the sandbox no longer offers: ${TOKENS}`,
+    )
+  })
+
+  it('refuses bracket access to a sandbox argument', () => {
+    expect(scan(graphic("  const e = Remotion['Easing']"))).toBe(
+      `the code reads Remotion by bracket, which the sandbox bans: ${GIVEN}`,
+    )
+    expect(scan(graphic("  const s = Remotion['spring']"))).toBe(
+      `the code reads Remotion by bracket, which the sandbox bans: ${GIVEN}`,
+    )
+    expect(scan(graphic("  const e = motion['ease']"))).toBe(
+      `the code reads motion by bracket, which the sandbox bans: ${GIVEN}`,
+    )
+    expect(scan(graphic("  const c = React['createElement']"))).toBe(
+      `the code reads React by bracket, which the sandbox bans: ${GIVEN}`,
+    )
+  })
+
+  it('lets the words Quantitative Easing be shown on screen', () => {
+    expect(
+      scan(
+        `function Graphic(props) {
+  return <div><span>Quantitative</span> <span>Easing</span></div>
+}
+`,
+      ),
+    ).toBeNull()
+  })
+
+  it.each([
+    ['spring', '  const sp = Remotion.spring\n  const s = sp({ frame: 1, fps: 30 })'],
+    ['interpolate', '  const lerp = Remotion.interpolate\n  const v = lerp(1, [0, 10], [0, 1])'],
+  ])('refuses Remotion.%s aliased instead of called', (name, line) => {
+    expect(scan(graphic(line))).toBe(
+      `the code reads Remotion.${name} without calling it, which the sandbox bans: call Remotion.${name}( where it is used, so the check can read the call`,
+    )
+  })
+
+  it.each([
+    ['plain', '  const { interpolate } = Remotion\n  const v = interpolate(1, [0, 10], [0, 1])'],
+    [
+      'with a token curve',
+      '  const { interpolate } = Remotion\n  const v = interpolate(1, [0, 10], [0, 1], { easing: motion.ease.enter })',
+    ],
+    [
+      'renamed',
+      '  const { interpolate: lerp } = Remotion\n  const v = lerp(frame, [0, 10], [0, 1])',
+    ],
+  ])('refuses interpolate destructured from Remotion, %s', (_name, line) => {
+    expect(scan(graphic(line))).toBe(
+      'the code takes interpolate out of Remotion, which the sandbox bans: call Remotion.interpolate( where it is used, so the check can read the call',
+    )
+  })
+
+  it('reads ?. as a member join: an optional spring or interpolate is held to the same rules', () => {
+    expect(scan(graphic('  const s = Remotion?.spring({ frame: 0, fps: 30 })'))).toBe(
+      NO_CONFIG(1, 1),
+    )
+    expect(scan(graphic('  const v = Remotion?.interpolate(frame, [0, 10], [0, 1])'))).toBe(
+      NO_EASING(1, 1),
+    )
+    expect(
+      scan(
+        graphic(
+          '  const v = Remotion?.interpolate(frame, [0, 10], [0, 1], { easing: motion?.ease.enter })',
+        ),
+      ),
+    ).toBeNull()
+    expect(
+      scan(
+        graphic('  const s = Remotion?.spring({ frame, fps: 30, config: motion?.spring.settle })'),
+      ),
+    ).toBeNull()
+    expect(scan(graphic("  const s = Remotion?.['spring']"))).toBe(
+      `the code reads Remotion by bracket, which the sandbox bans: ${GIVEN}`,
+    )
+    expect(scan(graphic('  const e = Remotion?.Easing.cubic'))).toBe(
+      `the code uses Easing.cubic, which the sandbox no longer offers: ${TOKENS}`,
+    )
+    expect(scan(graphic('  const sp = Remotion?.spring'))).toBe(
+      'the code reads Remotion.spring without calling it, which the sandbox bans: call Remotion.spring( where it is used, so the check can read the call',
+    )
+  })
+
+  it('checks an optional call ?.( like a plain one', () => {
+    expect(scan(graphic('  const v = Remotion.interpolate?.(frame, [0, 10], [0, 1])'))).toBe(
+      NO_EASING(1, 1),
+    )
+    expect(
+      scan(
+        graphic(
+          '  const v = Remotion.interpolate?.(frame, [0, 10], [0, 1], { easing: motion.ease.enter })',
+        ),
+      ),
+    ).toBeNull()
+    expect(
+      scan(
+        graphic('  const s = Remotion.spring?.({ frame, fps: 30, config: motion.spring.settle })'),
+      ),
+    ).toBeNull()
+    expect(scan(graphic('  const s = Remotion.spring?.({ frame, fps: 30 })'))).toBe(NO_CONFIG(1, 1))
+  })
+
+  it('still passes Remotion.spring( and Remotion.interpolate( called directly', () => {
+    expect(
+      scan(
+        graphic(
+          call('{ easing: motion.ease.enter }') +
+            '\n  const s = Remotion.spring({ frame, fps: 30, config: motion.spring.snap })',
+        ),
+      ),
+    ).toBeNull()
+  })
+
+  it('passes an interpolate on a token curve, an array of them, or a spread with one', () => {
+    expect(
+      scan(graphic(call("{ easing: motion.ease.enter, extrapolateRight: 'clamp' }"))),
+    ).toBeNull()
+    expect(scan(graphic(call('{ easing: motion.ease.linear }')))).toBeNull()
+    expect(scan(graphic(call("{ 'easing': motion.ease.enter }")))).toBeNull()
+    expect(
+      scan(
+        graphic(
+          "  const clamp = { extrapolateLeft: 'clamp' }\n" +
+            call('{ ...clamp, easing: motion.ease.exit }'),
+        ),
+      ),
+    ).toBeNull()
+    expect(
+      scan(
+        graphic(
+          '  const v = Remotion.interpolate(frame, [0, 10, 20], [0, 1, 0], { easing: [motion.ease.enter, motion.ease.exit] })',
+        ),
+      ),
+    ).toBeNull()
+    // Nested brackets inside the call are part of the call.
+    expect(
+      scan(
+        graphic(
+          '  const v = Remotion.interpolate(frame, [motion.frames(0, 30), motion.frames(450, 30)], [0, 1], { easing: motion.ease.enter })',
+        ),
+      ),
+    ).toBeNull()
+  })
+
+  it('refuses an interpolate with no easing, naming which call', () => {
+    expect(scan(graphic(call("{ extrapolateRight: 'clamp' }")))).toBe(NO_EASING(1, 1))
+    expect(scan(graphic('  const v = Remotion.interpolate(frame, [0, 10], [0, 1])'))).toBe(
+      NO_EASING(1, 1),
+    )
+    expect(
+      scan(
+        graphic(
+          call('{ easing: motion.ease.enter }') +
+            '\n  const w = Remotion.interpolate(frame, [0, 10], [0, 1])',
+        ),
+      ),
+    ).toBe(NO_EASING(2, 2))
+  })
+
+  it('refuses an easing that is not a token, or passed through a variable', () => {
+    expect(scan(graphic(call('{ easing: motion.ease.quart }')))).toBe(
+      'the code uses motion.ease.quart, which is not a token: the curves are motion.ease.enter, exit, move, emphasis and linear',
+    )
+    expect(scan(graphic('  const ease = motion.ease.enter\n' + call('{ easing: ease }')))).toBe(
+      NO_EASING(1, 1),
+    )
+  })
+
+  it('passes Remotion.spring on a token preset', () => {
+    expect(
+      scan(
+        graphic(
+          '  const s = Remotion.spring({ frame, fps: 30, delay: 3, config: motion.spring.settle })',
+        ),
+      ),
+    ).toBeNull()
+    expect(
+      scan(
+        graphic(
+          '  const s = Remotion.spring({ frame, fps: 30, config: motion.spring.hero, durationInFrames: 20 })',
+        ),
+      ),
+    ).toBeNull()
+    expect(
+      scan(
+        graphic('  const s = Remotion.spring({ frame, fps: 30, "config": motion.spring.settle })'),
+      ),
+    ).toBeNull()
+  })
+
+  it.each([
+    ['no config', '  const s = Remotion.spring({ frame: 0, fps: 30 })'],
+    [
+      'a literal config',
+      '  const s = Remotion.spring({ frame: 0, fps: 30, config: { damping: 9 } })',
+    ],
+    [
+      'a preset spread and changed',
+      '  const s = Remotion.spring({ frame: 0, fps: 30, config: { ...motion.spring.hero, damping: 5 } })',
+    ],
+  ])('refuses Remotion.spring with %s', (_name, line) => {
+    expect(scan(graphic(line))).toBe(NO_CONFIG(1, 1))
+  })
+
+  it('names which spring call when there are several', () => {
+    expect(
+      scan(
+        graphic(
+          '  const a = Remotion.spring({ frame, fps: 30, config: motion.spring.settle })\n  const b = Remotion.spring({ frame, fps: 30 })',
+        ),
+      ),
+    ).toBe(NO_CONFIG(2, 2))
+  })
+
+  it.each([
+    ['a bare call', '  const s = spring({ frame: 0, fps: 30, config: motion.spring.settle })'],
+    [
+      'a destructure',
+      '  const { spring } = Remotion\n  const s = spring({ frame: 0, fps: 30, config: motion.spring.settle })',
+    ],
+    [
+      'a renamed destructure',
+      '  const { spring: sp } = Remotion\n  const s = sp({ frame: 0, fps: 30, config: motion.spring.settle })',
+    ],
+  ])('refuses spring as %s: only Remotion.spring with a preset', (_name, line) => {
+    expect(scan(graphic(line))).toBe(
+      'the code calls spring bare, which the sandbox bans: a spring is Remotion.spring({ frame, fps, config: motion.spring.settle }) and nothing else',
+    )
+  })
+
+  it('refuses a spring preset that is not a token', () => {
+    expect(
+      scan(
+        graphic('  const s = Remotion.spring({ frame, fps: 30, config: motion.spring.bouncy })'),
+      ),
+    ).toBe(
+      'the code uses motion.spring.bouncy, which is not a token: the presets are motion.spring.settle, hero and snap',
     )
   })
 
@@ -100,9 +347,66 @@ describe('scanGraphicSource (decision 295)', () => {
     expect(scan(graphic("  const note = 'spring'\n  const springy = 1"))).toBeNull()
   })
 
-  it.each(['elastic', 'bounce', 'back'])('refuses Easing.%s: it overshoots', (name) => {
-    expect(scan(graphic(`  const e = Remotion.Easing.${name}(1)`))).toBe(
-      `the code uses Easing.${name}, which overshoots: the house settles without a bounce`,
+  it.each([
+    ['const motion', '  const motion = { ms: {} }'],
+    ['let motion', '  let motion'],
+    ['function motion', '  function motion() {}'],
+    ['a motion parameter', '  const f = (frame, motion) => frame'],
+    ['a destructured motion', '  const { motion } = props'],
+    ['a destructured motion parameter', '  const f = ({ motion }) => motion.ms.enter'],
+    [
+      'a destructured motion parameter of a function',
+      '  function g({ frame, motion }) {\n    return frame\n  }',
+    ],
+    ['a reassignment of motion', '  motion = { ms: {} }'],
+    [
+      'the whole motion object passed as an argument',
+      '  const f = (m) => m\n  const g = f(motion)',
+    ],
+    [
+      'the whole motion object as a later argument',
+      '  const f = (a, m) => m\n  const g = f(props.x, motion)',
+    ],
+    ['a motion parameter after a destructured one', '  const f = ({ a }, motion, fps) => a'],
+    ['a motion parameter after a default', '  const f = (a = 1, motion, b) => a'],
+    ['a motion parameter with a default after a default', '  const f = (a = 1, motion = 2) => a'],
+    [
+      'a motion parameter of a function, after a default',
+      '  function h(x = 1, motion, y) {\n    return x\n  }',
+    ],
+  ])("refuses %s: the token object is the house's", (_name, line) => {
+    expect(scan(graphic(line))).toBe(OWN_MOTION)
+  })
+
+  it('does not take motion read as an argument or in an object for a declaration', () => {
+    expect(
+      scan(
+        graphic(
+          '  const style = { opacity: 1, marginTop: motion.px.rise }\n  const f = motion.frames(motion.ms.enter, 30)\n  const inMotion = 1\n  const motionless = 2',
+        ),
+      ),
+    ).toBeNull()
+  })
+
+  it('does not take a motion key, a shorthand motion or a member of its own for a binding', () => {
+    expect(
+      scan(
+        graphic(
+          '  const o = { frame, motion: 1 }\n  const style = { frame, motion }\n  const p = { motion: { x: 0 } }\n  p.motion.x = 1',
+        ),
+      ),
+    ).toBeNull()
+  })
+
+  it('refuses an assignment to a token, plain or compound', () => {
+    expect(scan(graphic('  motion.ms.enter = 1'))).toBe(
+      'the code assigns to motion.ms, which the sandbox bans: the sandbox is read-only',
+    )
+    expect(scan(graphic('  motion.ease.enter ??= null'))).toBe(
+      'the code assigns to motion.ease, which the sandbox bans: the sandbox is read-only',
+    )
+    expect(scan(graphic('  motion.ms.enter ||= 1'))).toBe(
+      'the code assigns to motion.ms, which the sandbox bans: the sandbox is read-only',
     )
   })
 

@@ -104,7 +104,7 @@ const TEXT_DESIGN = {
   source: `function Graphic(props) {
   const frame = Remotion.useCurrentFrame()
   const { durationInFrames } = Remotion.useVideoConfig()
-  const spacing = Remotion.interpolate(frame, [0, durationInFrames], [0, 0.08])
+  const spacing = Remotion.interpolate(frame, [0, durationInFrames], [0, 0.08], { easing: motion.ease.linear })
   return (
     <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: props.brand.colors.background }}>
       <div style={{ letterSpacing: spacing + 'em', color: props.brand.colors.textPrimary, fontFamily: props.brand.fonts.heading, fontSize: 120 }}>

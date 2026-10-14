@@ -1,3 +1,4 @@
+import { MOTION_EASE_NAMES, MOTION_SPRING_NAMES } from '@boom-busters/compositions/motion-tokens'
 import { GRAPHIC_SOURCE_MAX } from '@boom-busters/schemas'
 
 /**
@@ -13,6 +14,11 @@ import { GRAPHIC_SOURCE_MAX } from '@boom-busters/schemas'
  * and elements such as `script`), so reaching the host costs more than a line;
  * a name built at run time (`fn['con' + 'structor']`) still gets past it, and
  * real isolation is the owner's decision (PROGRESS decision 295).
+ * Since decision 301 it also holds the motion tokens: `Easing` in any form, an
+ * `interpolate` without `easing: motion.ease.<name>` in its call text, a spring
+ * that is not `Remotion.spring` with `config: motion.spring.<name>`, bracket
+ * access to the sandbox, and a `motion` binding or assignment of the design's
+ * own.
  *
  * The scan reads the COMPILED code, not the source: after esbuild, JSX text
  * and attribute values are ordinary string literals and comments are gone,
@@ -31,6 +37,7 @@ const COLOURS = 'colours come from props.brand.colors, with Remotion.withAlpha f
 const PAGE = 'a graphic draws React elements inside its frame and touches nothing else on the page'
 const DIGITS = 'write the digits by hand, so the board and the film show the same figure'
 const MOTION = 'motion comes from the frame alone, never from a CSS transition or animation'
+const TOKENS = 'curves come from motion.ease only'
 
 /** The name as an identifier anywhere in the code, a member included (`fn.constructor`). */
 const word = (name: string) => new RegExp(`\\b${name}\\b`)
@@ -140,25 +147,120 @@ const BANNED_ELEMENT =
 
 /**
  * An assignment, plain or compound (`+=`, `??=`, ...), to any member chain
- * under `Remotion` or `React` (not `==`, `===` or `=>`). The sandbox freezes
- * its scope and hands the code frozen copies of `Easing` (and, in the dry run,
- * of React), and the body runs in strict mode, so any assignment to them
- * throws in the dry run whatever its syntax; this names the plain forms before
- * anything runs. The first member is named.
+ * under `Remotion`, `React` or `motion` (not `==`, `===` or `=>`). The sandbox
+ * freezes its scope and hands the code frozen copies of `Easing` (and, in the
+ * dry run, of React), the tokens are frozen through, and the body runs in
+ * strict mode, so any assignment to them throws in the dry run whatever its
+ * syntax; this names the plain forms before anything runs. The first member
+ * is named. A `motion` that is a member of the design's own object
+ * (`p.motion.x = 1`) is not the tokens.
  */
 const ASSIGNS_TO_SANDBOX =
-  /\b(Remotion|React)((?:\s*\.\s*[\w$]+)+)\s*(?:[-+*/%&|^]|\*\*|<<|>>>?|&&|\|\||\?\?)?=(?![=>])/
+  /\b(Remotion|React|(?<![\w$.])motion)((?:\s*\??\.\s*[\w$]+)+)\s*(?:[-+*/%&|^]|\*\*|<<|>>>?|&&|\|\||\?\?)?=(?![=>])/
 
 /**
- * `spring`, in any of its shapes: `Remotion.spring`, a bare `spring(` call, or
- * a destructure of it from `Remotion`. Refused for NEW designs (the owner's
- * ruling of 2026-10-12: no bouncy entrances); the runtime scope keeps
- * `spring` for designs stored before 2026-10-12, so those still render.
+ * What esbuild leaves of a logical assignment two members deep:
+ * `motion.ease.enter ??= x` compiles to `(_a = motion.ease).enter ?? (_a.enter = x)`,
+ * whose plain `=` is on a temporary, so the rule above cannot see it. The
+ * first member of the chain is named, as there.
  */
-const USES_SPRING =
-  /\bRemotion\s*\.\s*spring\b|(?<![\w$.])spring\s*\(|\{[^}]*\bspring\b[^}]*\}\s*=\s*Remotion\b/
-/** The easings that pass their mark and come back. */
-const OVERSHOOTING_EASING = /\bEasing\s*\.\s*(elastic|bounce|back|spring)\b/
+const ASSIGNS_VIA_TEMPORARY =
+  /\(\s*[\w$]+\s*=\s*(Remotion|React|motion)((?:\s*\.\s*[\w$]+)+)\s*\)\s*\.\s*[\w$]+\s*(?:\?\?|\|\||&&)/
+
+/**
+ * Bracket access to a sandbox argument (`Remotion['spring']`, `motion['ease']`,
+ * `Remotion?.['spring']`): the one spelling that reaches past every dot-form
+ * rule below.
+ */
+const BRACKETS_SANDBOX = /\b(Remotion|React|motion)\s*(?:\?\.\s*)?\[/
+
+/**
+ * A `motion` of the design's own: a declaration, a parameter, a destructure
+ * (in a declaration or a parameter list, `({ motion }) =>`) or a bare
+ * reassignment at a statement's start (`motion = ...`). The preamble declares
+ * `const motion` in the same function body, so a second declaration would be
+ * a syntax error at parse time; this says what to do instead. The whole
+ * `motion` object passed as an argument (`f(motion)`, `f(a.b, motion)`) is
+ * refused with them, since the clause for a parameter cannot tell the two
+ * apart. Not matched: a member of it as an argument (`f(motion.ms.enter)`),
+ * a call's object holding a token (`{ config: motion.spring.settle }`), an
+ * object literal's `motion` key or shorthand (`{ frame, motion }`), a member
+ * of the design's own object (`p.motion`) and names that contain it
+ * (`inMotion`).
+ */
+const DECLARES_MOTION = new RegExp(
+  [
+    // A declaration.
+    /\b(?:const|let|var|function|class)\s+motion\b/.source,
+    // A parameter, or the whole object as an argument: only a parameter list
+    // or a call's arguments, never an object literal's shorthand.
+    /\(\s*(?:[\w$]+\s*,\s*)*motion\s*[,)=]/.source,
+    /,\s*motion\s*\)/.source,
+    // A later parameter followed by more or by a default, only where the list
+    // closes into a body (`(a = 1, motion, b) =>`), so an object or array
+    // literal's `, motion,` is not one.
+    /,\s*motion\s*(?:,|=(?![=>]))(?=[^{}[\]]*\)\s*(?:=>|\{))/.source,
+    // A destructure in a declaration.
+    /\{[^{}]*\bmotion\b[^{}]*\}\s*=(?![=>])/.source,
+    // A destructured parameter: `motion` bound in braces (shorthand, renamed
+    // to or with a default), then the parameter list closes into a body.
+    /\{(?:[^{}]*[,:])?\s*motion\s*(?=[,}]|=(?![=>]))[^{}]*\}[^(){}]*\)\s*(?:=>|\{)/.source,
+    // A bare reassignment.
+    /(?:^|[;{}\n])\s*motion\s*=(?![=>])/.source,
+  ].join('|'),
+)
+
+/**
+ * `Easing` as an identifier in any shape: `Remotion.Easing.cubic`, a
+ * destructure, an alias. The curves are the tokens (decision 301); the only
+ * `Easing` in a stored design is the preamble's, which is prepended after this
+ * scan. The member is named when there is one.
+ */
+const USES_EASING = /\bEasing\b(?:\s*\??\.\s*([\w$]+))?/
+
+/*
+ * Each rule that joins members of `Remotion` or `motion`, here and in the
+ * sandbox rules above, reads a join as `.` or `?.`: esbuild keeps optional
+ * chaining at es2020, so `Remotion?.spring(` reaches the scan as written.
+ */
+
+/** Every `motion.ease.<x>` and `motion.spring.<x>` the code names. */
+const EASE_TOKEN = /\bmotion\s*\??\.\s*ease\s*\??\.\s*([\w$]+)/g
+const SPRING_TOKEN = /\bmotion\s*\??\.\s*spring\s*\??\.\s*([\w$]+)/g
+
+/**
+ * `easing: motion.ease.<x>`, or an array of them, as the text of an
+ * `interpolate` call must carry. A quoted key (`'easing':`) reaches the scan
+ * blanked to `""`, so a blanked key holding a token passes too, here and in
+ * SPRING_CONFIG.
+ */
+const EASING_OPTION =
+  /(?:\beasing|"")\s*:\s*(?:motion\s*\??\.\s*ease\s*\??\.\s*[\w$]+|\[\s*motion\s*\??\.\s*ease\s*\??\.\s*[\w$]+(?:\s*,\s*motion\s*\??\.\s*ease\s*\??\.\s*[\w$]+)*\s*,?\s*\])/
+/** `config: motion.spring.<x>`, as the text of a `Remotion.spring` call must carry. */
+const SPRING_CONFIG = /(?:\bconfig|"")\s*:\s*motion\s*\??\.\s*spring\s*\??\.\s*[\w$]+/
+/**
+ * A bare `spring(` call, or `spring` destructured from `Remotion`, plain or
+ * renamed (`{ spring: sp }`); `Remotion.spring` read without a call is caught
+ * by ALIASES_CALLED_API.
+ */
+const BARE_SPRING = /(?<![\w$.])spring\s*\(|\{[^}]*\bspring\b[^}]*\}\s*=\s*Remotion\b/
+/**
+ * `interpolate` destructured from `Remotion`, plain or renamed
+ * (`{ interpolate: lerp }`): a renamed call escapes the easing rule.
+ */
+const TAKES_INTERPOLATE = /\{[^}]*\binterpolate\b[^}]*\}\s*=\s*Remotion\b/
+/**
+ * `Remotion.spring` or `Remotion.interpolate` read without being called
+ * (`const sp = Remotion.spring`): the alias's calls would escape the call rules.
+ * An optional call (`Remotion.spring?.(`) is a call, and the call rules below
+ * check it like a plain one.
+ */
+const ALIASES_CALLED_API = /\bRemotion\s*\??\.\s*(spring|interpolate)\b(?!\s*(?:\?\.)?\s*\()/
+const INTERPOLATE_CALL = /\binterpolate\s*(?:\?\.)?\s*\(/g
+const REMOTION_SPRING_CALL = /\bRemotion\s*\??\.\s*spring\s*(?:\?\.)?\s*\(/g
+
+const EASE_NAMES = new Set<string>(MOTION_EASE_NAMES)
+const SPRING_NAMES = new Set<string>(MOTION_SPRING_NAMES)
 
 /** A colour-length hex literal: #rgb, #rgba, #rrggbb or #rrggbbaa. */
 const HEX_COLOUR = /#(?:[0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{3,4})\b/
@@ -187,17 +289,57 @@ export function scanGraphicSource(source: string, compiled: string): string | nu
   if (element) {
     return `the code makes a ${element[2] ?? ''} element, which the sandbox bans: ${PAGE}`
   }
-  const assigned = ASSIGNS_TO_SANDBOX.exec(code)
+  const bracketed = BRACKETS_SANDBOX.exec(code)
+  if (bracketed) {
+    return `the code reads ${bracketed[1] ?? ''} by bracket, which the sandbox bans: ${GIVEN}`
+  }
+  if (DECLARES_MOTION.test(code)) {
+    return "the code declares a motion of its own, which the sandbox bans: motion is the house's token object, read it where it is needed"
+  }
+  const assigned = ASSIGNS_TO_SANDBOX.exec(code) ?? ASSIGNS_VIA_TEMPORARY.exec(code)
   if (assigned) {
     const member = /[\w$]+/.exec(assigned[2] ?? '')?.[0] ?? ''
     return `the code assigns to ${assigned[1]}.${member}, which the sandbox bans: the sandbox is read-only`
   }
-  if (USES_SPRING.test(code)) {
-    return 'the code uses spring, which the sandbox no longer offers: an entrance eases to its mark with interpolate and Easing.out and never overshoots'
+  const easing = USES_EASING.exec(code)
+  if (easing) {
+    const named = easing[1] ? `Easing.${easing[1]}` : 'Easing'
+    return `the code uses ${named}, which the sandbox no longer offers: ${TOKENS}`
   }
-  const overshoot = OVERSHOOTING_EASING.exec(code)
-  if (overshoot) {
-    return `the code uses Easing.${overshoot[1] ?? ''}, which overshoots: the house settles without a bounce`
+  for (const match of code.matchAll(EASE_TOKEN)) {
+    const name = match[1] ?? ''
+    if (!EASE_NAMES.has(name)) {
+      return `the code uses motion.ease.${name}, which is not a token: the curves are motion.ease.enter, exit, move, emphasis and linear`
+    }
+  }
+  for (const match of code.matchAll(SPRING_TOKEN)) {
+    const name = match[1] ?? ''
+    if (!SPRING_NAMES.has(name)) {
+      return `the code uses motion.spring.${name}, which is not a token: the presets are motion.spring.settle, hero and snap`
+    }
+  }
+  const aliased = ALIASES_CALLED_API.exec(code)
+  if (aliased) {
+    const name = aliased[1] ?? ''
+    return `the code reads Remotion.${name} without calling it, which the sandbox bans: call Remotion.${name}( where it is used, so the check can read the call`
+  }
+  if (TAKES_INTERPOLATE.test(code)) {
+    return 'the code takes interpolate out of Remotion, which the sandbox bans: call Remotion.interpolate( where it is used, so the check can read the call'
+  }
+  const interpolates = calls(code, INTERPOLATE_CALL)
+  for (const [index, text] of interpolates.entries()) {
+    if (!EASING_OPTION.test(text)) {
+      return `interpolate call ${index + 1} of ${interpolates.length} carries no easing: motion.ease.<name>, so it moves on a straight line, which is the first thing that reads as generated`
+    }
+  }
+  if (BARE_SPRING.test(code)) {
+    return 'the code calls spring bare, which the sandbox bans: a spring is Remotion.spring({ frame, fps, config: motion.spring.settle }) and nothing else'
+  }
+  const springs = calls(code, REMOTION_SPRING_CALL)
+  for (const [index, text] of springs.entries()) {
+    if (!SPRING_CONFIG.test(text)) {
+      return `Remotion.spring call ${index + 1} of ${springs.length} carries no config: motion.spring.<name>; Remotion's default spring bounces`
+    }
   }
   for (const text of strings) {
     const hex = HEX_COLOUR.exec(text)
@@ -207,6 +349,35 @@ export function scanGraphicSource(source: string, compiled: string): string | nu
       return `the code writes a colour with ${(colour[1] ?? '').toLowerCase()}(): ${COLOURS}`
   }
   return null
+}
+
+/**
+ * The text of each call that `name` opens, from its first character to the
+ * bracket that closes the call, in blanked code (so a bracket inside a string
+ * does not count). A call that never closes runs to the end of the code.
+ * Known limit: the text includes any call nested inside, so a nested
+ * interpolate's `easing:` also satisfies the call around it.
+ */
+function calls(code: string, name: RegExp): string[] {
+  const found: string[] = []
+  for (const match of code.matchAll(name)) {
+    const start = match.index ?? 0
+    let depth = 0
+    let end = code.length
+    for (let at = start + match[0].length - 1; at < code.length; at += 1) {
+      const char = code[at]
+      if (char === '(' || char === '[' || char === '{') depth += 1
+      else if (char === ')' || char === ']' || char === '}') {
+        depth -= 1
+        if (depth === 0) {
+          end = at + 1
+          break
+        }
+      }
+    }
+    found.push(code.slice(start, end))
+  }
+  return found
 }
 
 /**
