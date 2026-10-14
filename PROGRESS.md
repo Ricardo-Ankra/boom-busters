@@ -7807,7 +7807,7 @@ boom-busters-broker`; merge and deploy to Vercel, then `PUT
      scheduled, the description is edited in YouTube Studio; the app's
      editor is locked once an item is on YouTube.
 
-304. **The designer gets an exemplar of the slot's technique** (2026-10-14,
+305. **The designer gets an exemplar of the slot's technique** (2026-10-14,
      owner: "proceed" to sub-project 2 of the motion engine research;
      rulings: exemplars translated into the house dialect, tags matched from
      the brief, about sixteen to start, a paid translation job gated by the
@@ -7842,7 +7842,10 @@ boom-busters-broker`; merge and deploy to Vercel, then `PUT
      steer only, since the designer does not know a slot's place in its
      chapter and the rest are the producer's choices; the cap parser allows
      up to $5 on the owner's word in the brainstorm, above the live
-     harnesses' $1. Review changed `techniqueFor` in four ways: figures are
+     harnesses' $1; the translation's model comes from the Settings defaults
+     (the graphics route, claude-opus-5-5), not the owner's live route in the
+     database, since the script never reads the database; `--model`
+     overrides it. Review changed `techniqueFor` in four ways: figures are
      counted as distinct currency-and-value pairs, so a figure written in the
      intent and spoken in the narration counts once; logo titles are matched
      as whole words, and skipped when the matched text is all lower-case and
