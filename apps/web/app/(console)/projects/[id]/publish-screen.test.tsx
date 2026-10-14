@@ -660,11 +660,11 @@ describe('PublishScreen', () => {
 })
 
 /**
- * Decision 301: the description is written for search. An opening saved for
+ * Decision 303: the description is written for search. An opening saved for
  * an earlier script says so; one button writes the opening, chapter notes,
  * hashtags and tags; every part stays editable and shows in the preview.
  */
-describe('the search description (decision 302)', () => {
+describe('the search description (decision 303)', () => {
   const draft = (over: Partial<NonNullable<PublishItemModel['record']>> = {}) => ({
     id: '01HQ00000000000000000000P1',
     status: 'draft' as const,

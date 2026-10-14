@@ -3,7 +3,7 @@ import { z } from 'zod'
 /**
  * The publish description, composed (build spec section 9): "hook paragraph
  * + chapter timestamps + sources from dossier + disclaimer". The opening, the
- * chapter notes and the hashtags are the owner's to edit; since decision 302
+ * chapter notes and the hashtags are the owner's to edit; since decision 303
  * a model may draft them from the claim list ("Write a search description"),
  * and the owner keeps them or not. Everything else is appended
  * deterministically from what is on file, and the live preview on the
@@ -26,7 +26,7 @@ export const PUBLISH_DISCLAIMER =
   'Narration is AI-generated. Some visuals are AI re-creations for illustration, including ' +
   'likenesses of real people; they are not photographs of real events. Sources are listed above.'
 
-/** How long a chapter's search gloss may run (decision 302). */
+/** How long a chapter's search gloss may run (decision 303). */
 export const CHAPTER_GLOSS_MAX = 90
 
 /** YouTube shows the first three hashtags above the title; more are noise. */
@@ -47,7 +47,7 @@ export const PublishDraftSchema = z.object({
   /** The human-owned opening — the auto-blocks are appended at compose time. */
   descriptionBody: z.string().max(DESCRIPTION_MAX_CHARS).optional(),
   /**
-   * The script version the opening was written for (decision 302). A body
+   * The script version the opening was written for (decision 303). A body
    * saved before the script was rewritten is flagged on the Publish screen;
    * absent on bodies saved before this existed, which are flagged too.
    */
@@ -55,7 +55,7 @@ export const PublishDraftSchema = z.object({
   /**
    * One search gloss per chapter, keyed by chapter id. A rewritten script has
    * new chapter ids, so its glosses fall away rather than print under a
-   * chapter they were not written for (decision 302, review).
+   * chapter they were not written for (decision 303, review).
    */
   chapterGlosses: z.record(z.string(), z.string().trim().max(CHAPTER_GLOSS_MAX)).default({}),
   /** At most three, each one word; the composer normalises them. */
@@ -79,18 +79,18 @@ export function formatTimestamp(ms: number): string {
 export interface DescriptionChapter {
   title: string
   startMs: number
-  /** What the chapter is about, for search (decision 302). Printed after the title. */
+  /** What the chapter is about, for search (decision 303). Printed after the title. */
   gloss?: string | null
 }
 
-/** A source line: the address, and what it backs when that is known (decision 302). */
+/** A source line: the address, and what it backs when that is known (decision 303). */
 export interface DescriptionSource {
   url: string
   label?: string | null
 }
 
 /**
- * A source line's label (decision 302): the outlet the article record read,
+ * A source line's label (decision 303): the outlet the article record read,
  * else the bare host, and the article's own headline when one is on file,
  * quoted whole. Only the publisher's words are printed: a claim's text was
  * written for research, and cutting it could drop the clause that
@@ -113,7 +113,7 @@ export function sourceLabel(input: {
 }
 
 /**
- * Hashtags as the owner types them (decision 302): a comma or a "#" starts a
+ * Hashtags as the owner types them (decision 303): a comma or a "#" starts a
  * new one, and the words inside one are joined, so "Stability AI, #Fraud" is
  * "#StabilityAI #Fraud". The preview and the save read the field the same way.
  */
@@ -145,10 +145,10 @@ export interface ComposeDescriptionInput {
   chapters: readonly DescriptionChapter[]
   /**
    * Source URLs from the dossier's verified claims, already deduplicated: a
-   * bare address, or one with a label saying what it backs (decision 302).
+   * bare address, or one with a label saying what it backs (decision 303).
    */
   sources: readonly (string | DescriptionSource)[]
-  /** Up to three hashtags, on their own line before the disclaimer (decision 302). */
+  /** Up to three hashtags, on their own line before the disclaimer (decision 303). */
   hashtags?: readonly string[]
   /**
    * The music bed's attribution/licence text, from the library (decision

@@ -119,9 +119,9 @@ export async function savePublishDraft(
     title: string
     descriptionBody: string
     tags: string
-    /** A comma or a "#" starts each one; the words inside one are joined (decision 302). */
+    /** A comma or a "#" starts each one; the words inside one are joined (decision 303). */
     hashtags?: string
-    /** By chapter id (decision 302). Absent keeps what is stored. */
+    /** By chapter id (decision 303). Absent keeps what is stored. */
     chapterGlosses?: Record<string, string>
   },
 ): Promise<ActionResult> {
@@ -161,7 +161,7 @@ export async function savePublishDraft(
   if (blocked) return { ok: false, error: blocked }
 
   // An opening the owner rewrote is theirs, for the script as it is now
-  // (decision 302); one left as it was keeps the version it was written for.
+  // (decision 303); one left as it was keeps the version it was written for.
   const stored = PublishDraftSchema.safeParse(record.metadata)
   const body = parsed.data.descriptionBody ?? ''
   const rewritten = !stored.success || (stored.data.descriptionBody ?? '') !== body
@@ -196,7 +196,7 @@ function joinTags(kept: readonly string[], written: readonly string[]): string[]
   return tags
 }
 
-/** The film's facts, as the claim list every metadata call reads (decision 302). */
+/** The film's facts, as the claim list every metadata call reads (decision 303). */
 async function metadataGrounding(projectId: string): Promise<{
   claims: ScriptClaim[]
   centralQuestion: string | undefined
@@ -209,7 +209,7 @@ async function metadataGrounding(projectId: string): Promise<{
   const outline = OutlineSchema.safeParse(latest?.script.outline)
   return {
     // An unverified claim is no ground for a public title or description,
-    // and its source is not listed either (decision 302, review).
+    // and its source is not listed either (decision 303, review).
     claims: claims
       .filter((claim) => claim.confidence !== 'unverified')
       .map((claim) => ({
@@ -224,7 +224,7 @@ async function metadataGrounding(projectId: string): Promise<{
 }
 
 /**
- * The search description (decision 302): the opening, a gloss per chapter,
+ * The search description (decision 303): the opening, a gloss per chapter,
  * three hashtags and tags, written from the claim list and the film itself,
  * never from the pitch title. One metadata-tier call; mock mode answers
  * locally. Everything it writes stays editable before scheduling.
@@ -308,7 +308,7 @@ export async function generateDescription(
     tags: joinTags(stored.success ? stored.data.tags : [], answer.tags),
   }
   // A patch the draft schema would refuse would make the whole draft unreadable
-  // at upload, which would then fall back to the pitch title (decision 302, review).
+  // at upload, which would then fall back to the pitch title (decision 303, review).
   if (!PublishDraftSchema.safeParse({ ...record.metadata, ...patch }).success) {
     return { ok: false, error: "The written description does not fit YouTube's limits." }
   }
@@ -386,7 +386,7 @@ export async function generateTitles(targetType: string, targetId: string): Prom
           target: type,
           workingTitle,
           // The pitch title can carry a figure the research did not support;
-          // the claims are where a title's facts come from (decision 302).
+          // the claims are where a title's facts come from (decision 303).
           claims: grounding.claims,
           ...(grounding.centralQuestion ? { centralQuestion: grounding.centralQuestion } : {}),
           ...(shortText ? { shortText } : {}),
@@ -581,7 +581,7 @@ async function requestUpload(
   const composed = composeDescription({
     body: draft.success ? (draft.data.descriptionBody ?? ingredients.hook) : ingredients.hook,
     // Chapter stamps only mean something on the full video; each carries its
-    // search gloss when one was written (decision 302).
+    // search gloss when one was written (decision 303).
     chapters:
       type === 'master'
         ? ingredients.chapters.map((chapter) => ({ ...chapter, gloss: glosses[chapter.id] }))

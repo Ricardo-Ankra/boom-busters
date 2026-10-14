@@ -118,11 +118,11 @@ describeDb('generateTitles (decision 293)', () => {
 })
 
 /**
- * Decision 301: titles are grounded in the claim list; the search description
+ * Decision 303: titles are grounded in the claim list; the search description
  * is written from the claims and the script, stamped with the script version
  * it was written for; and an opening the owner rewrites is stamped too.
  */
-describeDb('the search description (decision 302)', () => {
+describeDb('the search description (decision 303)', () => {
   const DESCRIPTION = JSON.stringify({
     body: 'How Wirecard, the German payments company, collapsed in June 2020.',
     chapterGlosses: ['The trustee accounts that never existed'],
@@ -167,7 +167,7 @@ describeDb('the search description (decision 302)', () => {
     expect(request.messages.map((m) => m.content).join('\n')).toContain(
       'Wirecard AG filed for insolvency',
     )
-    // An unverified claim is no ground for a title (decision 302, review).
+    // An unverified claim is no ground for a title (decision 303, review).
     expect(request.messages.map((m) => m.content).join('\n')).not.toContain(
       'Jan Marsalek is alleged to have maintained contacts',
     )
@@ -192,7 +192,7 @@ describeDb('the search description (decision 302)', () => {
       descriptionBody: 'How Wirecard, the German payments company, collapsed in June 2020.',
       bodyScriptVersion: 1,
       // Keyed by chapter id: a rewritten script drops a gloss rather than
-      // moving it under another chapter (decision 302, review).
+      // moving it under another chapter (decision 303, review).
       chapterGlosses: { [chapterId]: 'The trustee accounts that never existed' },
       hashtags: ['#Wirecard', '#Fraud', '#Documentary'],
       // The owner's tag is kept, first; the written ones join it.

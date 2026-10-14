@@ -21,7 +21,7 @@ import type { LLMTaskRequest } from '../llm/types'
  * beside a free-edit field. Haiku-tier work by default — the routing matrix
  * decides, this file only shapes the request.
  *
- * Titles, and since decision 302 the description's editable parts: the
+ * Titles, and since decision 303 the description's editable parts: the
  * opening, the chapter notes, the hashtags and tags, drafted from the claim
  * list and never from the pitch title. The rest of the description (chapter
  * stamps, sources, disclaimer) is composed deterministically from what is on
@@ -53,7 +53,7 @@ export function buildTitlesRequest(input: {
   /** The working title, offered to the model as the angle already chosen. */
   workingTitle: string
   /**
-   * The facts a title may use (decision 302). The working title is the
+   * The facts a title may use (decision 303). The working title is the
    * project's pitch, which can carry a figure the research did not support
    * (production: "$270M in 18 Months"), so the claims are the only source of
    * figures, dates and names.
@@ -136,7 +136,7 @@ ${
 }
 
 // ---------------------------------------------------------------------------
-// The search description (decision 302)
+// The search description (decision 303)
 // ---------------------------------------------------------------------------
 
 /** How long the written opening may run before it is trimmed at a sentence. */
@@ -155,7 +155,7 @@ export interface DescriptionAnswer {
 }
 
 /**
- * The search description (decision 302): the opening paragraphs, a gloss per
+ * The search description (decision 303): the opening paragraphs, a gloss per
  * chapter, three hashtags and the tag list, written for the words people
  * search, from the claim list and the film itself. The pitch title is never
  * sent: it is where an unsourced figure lives.
@@ -275,7 +275,7 @@ export function parseDescriptionAnswer(
 
   // One word each, the way the owner's field reads them, and short enough to
   // store: one over-long tag would fail the draft's schema and the whole
-  // draft would be ignored at upload (decision 302, review).
+  // draft would be ignored at upload (decision 303, review).
   const hashtags = splitHashtags(
     (Array.isArray(raw['hashtags']) ? raw['hashtags'] : [])
       .filter((tag): tag is string => typeof tag === 'string')

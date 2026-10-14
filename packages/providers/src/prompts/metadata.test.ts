@@ -52,11 +52,11 @@ describe('buildTitlesRequest', () => {
 })
 
 /**
- * Decision 301: the titles were fed the project's pitch title, which carried
+ * Decision 303: the titles were fed the project's pitch title, which carried
  * "$270M in 18 Months", a figure the dossier flagged as unsourced, and five
  * of eight options repeated it. Titles are now grounded in the claim list.
  */
-describe('buildTitlesRequest grounding (decision 302)', () => {
+describe('buildTitlesRequest grounding (decision 303)', () => {
   const grounded = buildTitlesRequest({
     caseTitle: 'Stability AI: The Startup That Burned $270M in 18 Months',
     hook: 'March 2024. Emad Mostaque resigned.',
@@ -72,7 +72,7 @@ describe('buildTitlesRequest grounding (decision 302)', () => {
     expect(content).toContain('What was Stability AI giving away')
   })
 
-  it('frames a claim no court has ruled on as an allegation, never a fact (decision 302, review)', () => {
+  it('frames a claim no court has ruled on as an allegation, never a fact (decision 303, review)', () => {
     expect(grounded.system).toMatch(/NOT adjudicated/)
     expect(grounded.system).toMatch(/allegation or a question/)
   })
@@ -85,7 +85,7 @@ describe('buildTitlesRequest grounding (decision 302)', () => {
   })
 })
 
-describe('buildDescriptionRequest (decision 302)', () => {
+describe('buildDescriptionRequest (decision 303)', () => {
   const request = buildDescriptionRequest({
     target: 'master',
     claims: [CLAIM],
@@ -156,7 +156,7 @@ describe('buildDescriptionRequest (decision 302)', () => {
   })
 })
 
-describe('buildTitlesRequest for a Short (decision 302)', () => {
+describe('buildTitlesRequest for a Short (decision 303)', () => {
   const clip = buildTitlesRequest({
     caseTitle: 'Stability AI',
     hook: 'March 2024. Emad Mostaque resigned.',
@@ -189,7 +189,7 @@ describe('buildTitlesRequest for a Short (decision 302)', () => {
   })
 })
 
-describe('parseDescriptionAnswer (decision 302)', () => {
+describe('parseDescriptionAnswer (decision 303)', () => {
   const answer = (over: Record<string, unknown>) =>
     JSON.stringify({
       body: 'How Stability AI, the company behind Stable Diffusion, lost its founder.',
@@ -272,7 +272,7 @@ describe('parseDescriptionAnswer (decision 302)', () => {
   })
 })
 
-describe('mockDescription (decision 302)', () => {
+describe('mockDescription (decision 303)', () => {
   it('is obviously mock, one gloss per chapter, and three hashtags', () => {
     const mocked = mockDescription(3)
     expect(mocked.body).toContain('[mock]')

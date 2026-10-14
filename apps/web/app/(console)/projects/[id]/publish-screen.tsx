@@ -626,7 +626,7 @@ function ItemEditor({
   const storedTags = (record?.tags ?? []).join(', ')
   const storedHashtags = (record?.hashtags ?? []).join(' ')
   // Glosses are stored by chapter id: one for a chapter the script no longer
-  // has is never shown (decision 302, review).
+  // has is never shown (decision 303, review).
   const storedGlosses = model.chapters.map((chapter) => record?.chapterGlosses[chapter.id] ?? '')
   const storedGlossesKey = storedGlosses.join('\u0000')
   const [title, setTitle] = React.useState(record?.title ?? item.label)
@@ -658,7 +658,7 @@ function ItemEditor({
     hashtags !== storedHashtags ||
     (isMaster && glosses.join('\u0000') !== storedGlossesKey)
 
-  // An opening saved for an earlier script (decision 302): said here, where
+  // An opening saved for an earlier script (decision 303): said here, where
   // it would be published, with the current opening one press away.
   const staleNote =
     // Shown until the opening is the current one: a typo fixed in a stale
@@ -784,7 +784,7 @@ function ItemEditor({
             </Button>
           )}
 
-          {/* The search description (decision 302): one call writes the
+          {/* The search description (decision 303): one call writes the
               opening, the chapter notes, the hashtags and tags from the claim
               list and the film; every part stays editable below. */}
           {live ? (

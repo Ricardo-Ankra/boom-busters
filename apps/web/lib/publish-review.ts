@@ -48,11 +48,11 @@ export interface PublishRecordProp {
   title: string | null
   titleOptions: string[]
   descriptionBody: string | null
-  /** The script version the saved opening was written for; null before 302 kept it. */
+  /** The script version the saved opening was written for; null before 303 kept it. */
   bodyScriptVersion: number | null
-  /** The saved opening predates the current script (decision 302). */
+  /** The saved opening predates the current script (decision 303). */
   bodyStale: boolean
-  /** One search gloss per chapter, in order (decision 302). */
+  /** One search gloss per chapter, in order (decision 303). */
   /** Search glosses by chapter id; a chapter the script no longer has is ignored. */
   chapterGlosses: Record<string, string>
   hashtags: string[]
@@ -133,11 +133,11 @@ export interface PublishModel {
   items: PublishItemModel[]
   /** For the description's chapter block — from the master timeline. */
   chapters: { id: string; title: string; startMs: number }[]
-  /** For the description's source block — the dossier's usable claims, labelled (decision 302). */
+  /** For the description's source block — the dossier's usable claims, labelled (decision 303). */
   sources: DescriptionSource[]
   /** The script's opening paragraph — the seed for the description body. */
   hook: string
-  /** The latest script's version, which a saved opening is measured against (decision 302). */
+  /** The latest script's version, which a saved opening is measured against (decision 303). */
   scriptVersion: number
   /**
    * The timeline bed's licence/attribution text (decision 207) — published
@@ -185,7 +185,7 @@ export function deriveIngredients(input: {
   master: { narration: { chapterId: string; startMs: number }[] } | null
   scriptChapters: { id: string; title: string; contentMd: string }[]
   claims: { text: string; sourceUrl: string | null; confidence: string; quarantined: boolean }[]
-  /** What the article records read, by normalised URL (decision 302). */
+  /** What the article records read, by normalised URL (decision 303). */
   articles?: ReadonlyMap<string, { outlet: string | null; headline: string | null }>
 }): {
   chapters: { id: string; title: string; startMs: number }[]
@@ -209,7 +209,7 @@ export function deriveIngredients(input: {
     .sort((a, b) => a.startMs - b.startMs)
 
   // Each usable source once, in claim order, labelled with the publisher's
-  // own words (decision 302): the outlet and the article's headline.
+  // own words (decision 303): the outlet and the article's headline.
   const urls = new Set<string>()
   for (const claim of input.claims) {
     if (claim.quarantined || claim.confidence === 'unverified') continue
@@ -242,7 +242,7 @@ export function deriveIngredients(input: {
 }
 
 /**
- * Whether a saved opening was written for an earlier script (decision 302).
+ * Whether a saved opening was written for an earlier script (decision 303).
  * The Stability AI master was scheduled with the September script's opening
  * under a film rebuilt from the October one, and nothing said so. An opening
  * saved before versions were kept counts as stale too, unless it is the

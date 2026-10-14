@@ -134,11 +134,11 @@ describe('composeDescription', () => {
 })
 
 /**
- * Decision 301: the description is written for search too. A chapter line
+ * Decision 303: the description is written for search too. A chapter line
  * carries a gloss that says what the chapter is about, a source line says
  * what it backs, and three hashtags get a line of their own.
  */
-describe('composeDescription for search (decision 302)', () => {
+describe('composeDescription for search (decision 303)', () => {
   const chapters = [
     { title: 'Stepping Down', startMs: 0, gloss: 'Emad Mostaque resigns as CEO, March 2024' },
     { title: 'The Borrowed Engine', startMs: 45_000 },
@@ -206,11 +206,11 @@ describe('composeDescription for search (decision 302)', () => {
 })
 
 /**
- * Decision 302, review: a label publishes only the outlet's own words. Claim
+ * Decision 303, review: a label publishes only the outlet's own words. Claim
  * text was written for research and cutting it could drop the very clause
  * that attributed or hedged it, so it is never printed.
  */
-describe('sourceLabel (decision 302)', () => {
+describe('sourceLabel (decision 303)', () => {
   it("quotes the outlet's own headline when the article record read one", () => {
     expect(
       sourceLabel({
@@ -242,7 +242,7 @@ describe('sourceLabel (decision 302)', () => {
   })
 })
 
-describe('splitHashtags (decision 302)', () => {
+describe('splitHashtags (decision 303)', () => {
   it('reads commas and hash marks as boundaries, and joins the words inside one tag', () => {
     expect(splitHashtags('Stability AI, #Fraud #AI Documentary')).toEqual([
       '#StabilityAI',
@@ -255,7 +255,7 @@ describe('splitHashtags (decision 302)', () => {
 })
 
 describe('PublishDraftSchema', () => {
-  it('reads the search fields and the script version the opening was written for (decision 302)', () => {
+  it('reads the search fields and the script version the opening was written for (decision 303)', () => {
     const draft = PublishDraftSchema.parse({
       descriptionBody: 'How Stability AI...',
       bodyScriptVersion: 4,
