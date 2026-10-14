@@ -40,7 +40,9 @@ describe(`the exemplar corpus (decision 305): ${stored.length} of ${MANIFEST.len
           words: entry.slot.words.map((word) => ({ text: word.text, atMs: word.atMs })),
         },
       )
-      expect(result, `${entry.id}: ${'issue' in result ? result.issue : ''}`).not.toHaveProperty('issue')
+      expect(result, `${entry.id}: ${'issue' in result ? result.issue : ''}`).not.toHaveProperty(
+        'issue',
+      )
     },
   )
 })
