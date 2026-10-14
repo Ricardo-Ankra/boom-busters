@@ -117,8 +117,7 @@ describe('GraphicCodeStill (decision 295)', () => {
         code={code(GRAPHIC_CODE_SOURCE, {
           title: 'The fixture',
           // A stored design carries the preamble the check prepended (decision 301).
-          compiled: `${MOTION_PREAMBLE}
-${GRAPHIC_CODE_SOURCE}`,
+          compiled: `${MOTION_PREAMBLE}\n${GRAPHIC_CODE_SOURCE}`,
         })}
         brand={BRAND}
         logos={{}}

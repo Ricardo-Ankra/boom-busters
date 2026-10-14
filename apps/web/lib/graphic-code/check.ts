@@ -43,8 +43,7 @@ const SHOWN_MIN_SAMPLES = 1000 / GRAPHIC_SAMPLE_MS
  * run this text, so the tokens a design was checked against travel with it.
  */
 function withMotionPreamble(compiled: string): string {
-  return `${MOTION_PREAMBLE}
-${compiled}`
+  return `${MOTION_PREAMBLE}\n${compiled}`
 }
 
 /**

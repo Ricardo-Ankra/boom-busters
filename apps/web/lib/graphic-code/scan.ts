@@ -152,10 +152,11 @@ const BANNED_ELEMENT =
  * dry run, of React), the tokens are frozen through, and the body runs in
  * strict mode, so any assignment to them throws in the dry run whatever its
  * syntax; this names the plain forms before anything runs. The first member
- * is named.
+ * is named. A `motion` that is a member of the design's own object
+ * (`p.motion.x = 1`) is not the tokens.
  */
 const ASSIGNS_TO_SANDBOX =
-  /\b(Remotion|React|motion)((?:\s*\??\.\s*[\w$]+)+)\s*(?:[-+*/%&|^]|\*\*|<<|>>>?|&&|\|\||\?\?)?=(?![=>])/
+  /\b(Remotion|React|(?<![\w$.])motion)((?:\s*\??\.\s*[\w$]+)+)\s*(?:[-+*/%&|^]|\*\*|<<|>>>?|&&|\|\||\?\?)?=(?![=>])/
 
 /**
  * What esbuild leaves of a logical assignment two members deep:
@@ -174,16 +175,36 @@ const ASSIGNS_VIA_TEMPORARY =
 const BRACKETS_SANDBOX = /\b(Remotion|React|motion)\s*(?:\?\.\s*)?\[/
 
 /**
- * A `motion` of the design's own: a declaration, a parameter or a destructure.
- * The preamble declares `const motion` in the same function body, so a second
- * declaration would be a syntax error at parse time; this says what to do
- * instead. The whole `motion` object passed as an argument (`f(motion)`) is
+ * A `motion` of the design's own: a declaration, a parameter, a destructure
+ * (in a declaration or a parameter list, `({ motion }) =>`) or a bare
+ * reassignment at a statement's start (`motion = ...`). The preamble declares
+ * `const motion` in the same function body, so a second declaration would be
+ * a syntax error at parse time; this says what to do instead. The whole
+ * `motion` object passed as an argument (`f(motion)`, `f(a.b, motion)`) is
  * refused with them, since the clause for a parameter cannot tell the two
- * apart; a member of it as an argument (`f(motion.ms.enter)`) and names that
- * contain it (`inMotion`) are not matched.
+ * apart. Not matched: a member of it as an argument (`f(motion.ms.enter)`),
+ * a call's object holding a token (`{ config: motion.spring.settle }`), an
+ * object literal's `motion` key or shorthand (`{ frame, motion }`), a member
+ * of the design's own object (`p.motion`) and names that contain it
+ * (`inMotion`).
  */
-const DECLARES_MOTION =
-  /\b(?:const|let|var|function|class)\s+motion\b|[(,]\s*motion\s*[,)=]|\{[^{}]*\bmotion\b[^{}]*\}\s*=(?![=>])/
+const DECLARES_MOTION = new RegExp(
+  [
+    // A declaration.
+    /\b(?:const|let|var|function|class)\s+motion\b/.source,
+    // A parameter, or the whole object as an argument: only a parameter list
+    // or a call's arguments, never an object literal's shorthand.
+    /\(\s*(?:[\w$]+\s*,\s*)*motion\s*[,)=]/.source,
+    /,\s*motion\s*\)/.source,
+    // A destructure in a declaration.
+    /\{[^{}]*\bmotion\b[^{}]*\}\s*=(?![=>])/.source,
+    // A destructured parameter: `motion` bound in braces (shorthand, renamed
+    // to or with a default), then the parameter list closes into a body.
+    /\{(?:[^{}]*[,:])?\s*motion\s*(?=[,}]|=(?![=>]))[^{}]*\}[^(){}]*\)\s*(?:=>|\{)/.source,
+    // A bare reassignment.
+    /(?:^|[;{}\n])\s*motion\s*=(?![=>])/.source,
+  ].join('|'),
+)
 
 /**
  * `Easing` as an identifier in any shape: `Remotion.Easing.cubic`, a
@@ -203,11 +224,16 @@ const USES_EASING = /\bEasing\b(?:\s*\??\.\s*([\w$]+))?/
 const EASE_TOKEN = /\bmotion\s*\??\.\s*ease\s*\??\.\s*([\w$]+)/g
 const SPRING_TOKEN = /\bmotion\s*\??\.\s*spring\s*\??\.\s*([\w$]+)/g
 
-/** `easing: motion.ease.<x>`, or an array of them, as the text of an `interpolate` call must carry. */
+/**
+ * `easing: motion.ease.<x>`, or an array of them, as the text of an
+ * `interpolate` call must carry. A quoted key (`'easing':`) reaches the scan
+ * blanked to `""`, so a blanked key holding a token passes too, here and in
+ * SPRING_CONFIG.
+ */
 const EASING_OPTION =
-  /\beasing\s*:\s*(?:motion\s*\??\.\s*ease\s*\??\.\s*[\w$]+|\[\s*motion\s*\??\.\s*ease\s*\??\.\s*[\w$]+(?:\s*,\s*motion\s*\??\.\s*ease\s*\??\.\s*[\w$]+)*\s*,?\s*\])/
+  /(?:\beasing|"")\s*:\s*(?:motion\s*\??\.\s*ease\s*\??\.\s*[\w$]+|\[\s*motion\s*\??\.\s*ease\s*\??\.\s*[\w$]+(?:\s*,\s*motion\s*\??\.\s*ease\s*\??\.\s*[\w$]+)*\s*,?\s*\])/
 /** `config: motion.spring.<x>`, as the text of a `Remotion.spring` call must carry. */
-const SPRING_CONFIG = /\bconfig\s*:\s*motion\s*\??\.\s*spring\s*\??\.\s*[\w$]+/
+const SPRING_CONFIG = /(?:\bconfig|"")\s*:\s*motion\s*\??\.\s*spring\s*\??\.\s*[\w$]+/
 /**
  * A bare `spring(` call, or `spring` destructured from `Remotion`, plain or
  * renamed (`{ spring: sp }`); `Remotion.spring` read without a call is caught
@@ -222,11 +248,12 @@ const TAKES_INTERPOLATE = /\{[^}]*\binterpolate\b[^}]*\}\s*=\s*Remotion\b/
 /**
  * `Remotion.spring` or `Remotion.interpolate` read without being called
  * (`const sp = Remotion.spring`): the alias's calls would escape the call rules.
- * An optional call (`Remotion.spring?.(`) is read as one too, and refused.
+ * An optional call (`Remotion.spring?.(`) is a call, and the call rules below
+ * check it like a plain one.
  */
-const ALIASES_CALLED_API = /\bRemotion\s*\??\.\s*(spring|interpolate)\b(?!\s*\()/
-const INTERPOLATE_CALL = /\binterpolate\s*\(/g
-const REMOTION_SPRING_CALL = /\bRemotion\s*\??\.\s*spring\s*\(/g
+const ALIASES_CALLED_API = /\bRemotion\s*\??\.\s*(spring|interpolate)\b(?!\s*(?:\?\.)?\s*\()/
+const INTERPOLATE_CALL = /\binterpolate\s*(?:\?\.)?\s*\(/g
+const REMOTION_SPRING_CALL = /\bRemotion\s*\??\.\s*spring\s*(?:\?\.)?\s*\(/g
 
 const EASE_NAMES = new Set<string>(MOTION_EASE_NAMES)
 const SPRING_NAMES = new Set<string>(MOTION_SPRING_NAMES)
@@ -324,6 +351,8 @@ export function scanGraphicSource(source: string, compiled: string): string | nu
  * The text of each call that `name` opens, from its first character to the
  * bracket that closes the call, in blanked code (so a bracket inside a string
  * does not count). A call that never closes runs to the end of the code.
+ * Known limit: the text includes any call nested inside, so a nested
+ * interpolate's `easing:` also satisfies the call around it.
  */
 function calls(code: string, name: RegExp): string[] {
   const found: string[] = []

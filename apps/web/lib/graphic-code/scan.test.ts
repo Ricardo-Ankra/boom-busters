@@ -91,6 +91,7 @@ describe('scanGraphicSource (decision 295)', () => {
     expect(scan(graphic('  React.Children.map = () => null'))).toBe(sentence('React.Children'))
     expect(scan(graphic('  Remotion.Easing += 1'))).toBe(sentence('Remotion.Easing'))
     expect(scan(graphic('  Remotion.Easing ??= null'))).toBe(sentence('Remotion.Easing'))
+    expect(scan(graphic('  React.Children.map &&= null'))).toBe(sentence('React.Children'))
   })
 
   it.each([
@@ -185,6 +186,25 @@ describe('scanGraphicSource (decision 295)', () => {
     )
   })
 
+  it('checks an optional call ?.( like a plain one', () => {
+    expect(scan(graphic('  const v = Remotion.interpolate?.(frame, [0, 10], [0, 1])'))).toBe(
+      NO_EASING(1, 1),
+    )
+    expect(
+      scan(
+        graphic(
+          '  const v = Remotion.interpolate?.(frame, [0, 10], [0, 1], { easing: motion.ease.enter })',
+        ),
+      ),
+    ).toBeNull()
+    expect(
+      scan(
+        graphic('  const s = Remotion.spring?.({ frame, fps: 30, config: motion.spring.settle })'),
+      ),
+    ).toBeNull()
+    expect(scan(graphic('  const s = Remotion.spring?.({ frame, fps: 30 })'))).toBe(NO_CONFIG(1, 1))
+  })
+
   it('still passes Remotion.spring( and Remotion.interpolate( called directly', () => {
     expect(
       scan(
@@ -201,6 +221,7 @@ describe('scanGraphicSource (decision 295)', () => {
       scan(graphic(call("{ easing: motion.ease.enter, extrapolateRight: 'clamp' }"))),
     ).toBeNull()
     expect(scan(graphic(call('{ easing: motion.ease.linear }')))).toBeNull()
+    expect(scan(graphic(call("{ 'easing': motion.ease.enter }")))).toBeNull()
     expect(
       scan(
         graphic(
@@ -265,6 +286,11 @@ describe('scanGraphicSource (decision 295)', () => {
         ),
       ),
     ).toBeNull()
+    expect(
+      scan(
+        graphic('  const s = Remotion.spring({ frame, fps: 30, "config": motion.spring.settle })'),
+      ),
+    ).toBeNull()
   })
 
   it.each([
@@ -327,9 +353,19 @@ describe('scanGraphicSource (decision 295)', () => {
     ['function motion', '  function motion() {}'],
     ['a motion parameter', '  const f = (frame, motion) => frame'],
     ['a destructured motion', '  const { motion } = props'],
+    ['a destructured motion parameter', '  const f = ({ motion }) => motion.ms.enter'],
+    [
+      'a destructured motion parameter of a function',
+      '  function g({ frame, motion }) {\n    return frame\n  }',
+    ],
+    ['a reassignment of motion', '  motion = { ms: {} }'],
     [
       'the whole motion object passed as an argument',
       '  const f = (m) => m\n  const g = f(motion)',
+    ],
+    [
+      'the whole motion object as a later argument',
+      '  const f = (a, m) => m\n  const g = f(props.x, motion)',
     ],
   ])("refuses %s: the token object is the house's", (_name, line) => {
     expect(scan(graphic(line))).toBe(OWN_MOTION)
@@ -345,12 +381,25 @@ describe('scanGraphicSource (decision 295)', () => {
     ).toBeNull()
   })
 
+  it('does not take a motion key, a shorthand motion or a member of its own for a binding', () => {
+    expect(
+      scan(
+        graphic(
+          '  const o = { frame, motion: 1 }\n  const style = { frame, motion }\n  const p = { motion: { x: 0 } }\n  p.motion.x = 1',
+        ),
+      ),
+    ).toBeNull()
+  })
+
   it('refuses an assignment to a token, plain or compound', () => {
     expect(scan(graphic('  motion.ms.enter = 1'))).toBe(
       'the code assigns to motion.ms, which the sandbox bans: the sandbox is read-only',
     )
     expect(scan(graphic('  motion.ease.enter ??= null'))).toBe(
       'the code assigns to motion.ease, which the sandbox bans: the sandbox is read-only',
+    )
+    expect(scan(graphic('  motion.ms.enter ||= 1'))).toBe(
+      'the code assigns to motion.ms, which the sandbox bans: the sandbox is read-only',
     )
   })
 
