@@ -262,7 +262,7 @@ function Graphic(props) {
   const lands = series.points.map((point, index) => spokenAt(point, index, props.words))
   const last = series.points.length - 1
   const note = (props.data.annotations || [])[0]
-  // The title arrives first; the subtitle one stagger step after it (motion.order: title, then body).
+  // The title arrives first and the subtitle one stagger step after it: motion.order (title, then body), shown on a pair.
   const titleIn = arrive(frame, fps, 0, motion.ms.enter)
   const subtitleIn = arrive(frame - motion.stagger(1, fps), fps, 0, motion.ms.enter)
   const align = portrait ? 'center' : 'left'
@@ -341,7 +341,8 @@ The sandbox your code runs in:
   not durationInFrames: in the film that is the length of the compiled slot, which can
   differ from the length you design for.
 - Remotion.interpolate(value, inputRange, outputRange, {easing, extrapolateLeft,
-  extrapolateRight}): inputRange strictly increasing; "clamp" holds the ends.
+  extrapolateRight, output}): inputRange strictly increasing; "clamp" holds the ends.
+  output: 'perceptual-scale' on any interpolate that drives a scale.
 - Remotion.spring({frame, fps, delay, config}): Remotion's spring, 0 to 1 from the delay;
   its config is always a token (below).
 - motion: the house motion tokens, declared above your code and read-only. motion.ms
@@ -356,7 +357,8 @@ The sandbox your code runs in:
   and inside it useCurrentFrame() counts from 0. A Sequence's durationInFrames is at
   least 1 and its from a finite number, so wrap a length worked out from the words in
   Math.max(1, ...): anything else throws in the render, and the film shows only the
-  title. Its children sit in a full-frame layer laid out as a flex row.
+  title. Its children sit in a full-frame layer laid out as a flex row, unless
+  layout="none".
 - Remotion.AbsoluteFill {style}: a full-frame layer, laid out as a flex column.
 - Remotion.Img {src, style}: an image, for a logo.
 - Remotion.withAlpha(color, alpha): a brand colour at an opacity from 0 to 1.
@@ -384,8 +386,10 @@ frames, opener and location read or called as the browser's (a style's top is fi
 a script, iframe, object, embed, link, style, meta, base or form element.
 It refuses Remotion.Easing in any form (the curves are motion.ease), an interpolate with no
 easing: motion.ease.<name> written inside the call, a spring other than
-Remotion.spring({ frame, fps, delay, config: motion.spring.<name> }), Remotion['...'] or
-motion['...'], an assignment to motion, and a motion binding of your own.
+Remotion.spring({ frame, fps, delay, config: motion.spring.<name> }), Remotion['...'],
+React['...'] or motion['...'], an assignment to motion, a motion binding of your own, a
+Remotion.spring or Remotion.interpolate read without being called, and a motion.ease or
+motion.spring name that is not a token.
 Format a number by hand ("1.9", "4,000,000"), never with toLocaleString or Intl: those
 follow the viewer's locale, so the board and the film would show different figures.
 Motion comes from the frame alone: no CSS transition, animation or @keyframes, which the
@@ -426,7 +430,7 @@ Craft:
 - Motion keyed to the spoken words: each new thing said gets its own change, whether an
   entrance, a highlight, a bar growing or a line drawing across.
 - Entrances, exits and moves come from the tokens, in the house motion below. Nothing
-  passes its mark, nothing spins.
+  passes its mark except the one hero spring of a beat; nothing spins.
 - An ending that holds rather than vanishes.
 - Portrait is a first-class frame, not a squeeze: stack what sits side by side, and size
   type from Math.min(width, height).
@@ -438,7 +442,9 @@ Craft:
 - A chart draws every point of props.data, labels each value as its claim states it, and
   says its takeaway.
 
-The house motion. The first three are checked; the rest are judged on the board:
+The house motion. The scan holds the curve and the spring config: every interpolate names
+a motion.ease, every spring a motion.spring. Which curve, which preset, hero once per beat
+and every length are judged on the board, not checked:
 - Every interpolate carries easing: motion.ease.<name>, written inside the call: enter for
   arrivals, exit for departures, move for a reframe or the camera, emphasis for the one
   hero figure of the beat, linear for counters and progress only. For several keyframes
@@ -455,8 +461,10 @@ The house motion. The first three are checked; the rest are judged on the board:
 - A fade rises motion.px.rise times your unit; a figure scales in from motion.scale.enter,
   never from 0; a wipe is a clip-path.
 - A group of three or more elements staggers: the index-th item enters motion.stagger(index,
-  fps) frames after the first. Words on the narration keep their spoken times.
-- The hero finishes last: entrances follow motion.order, frame, title, body, hero, note.
+  fps) frames after the first. Anything keyed to the narration keeps its spoken time;
+  stagger only what the narration does not time.
+- The hero lands last, with only its note after it: entrances follow motion.order, frame,
+  title, body, hero, note.
 - A beat gets one kind of entrance. Emphasis on a word is a colour or weight change over
   motion.ms.micro, with interpolate.
 

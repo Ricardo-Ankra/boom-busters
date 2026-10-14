@@ -151,7 +151,9 @@ describe('the designer prompt (decision 295)', () => {
     expect(rules).toContain(
       "A Sequence's durationInFrames is at least 1 and its from a finite number",
     )
-    expect(rules).toContain('Its children sit in a full-frame layer laid out as a flex row.')
+    expect(rules).toContain(
+      'Its children sit in a full-frame layer laid out as a flex row, unless layout="none".',
+    )
   })
 
   it("times the motion against props.durationMs and the words, not the slot's frame count (final review M2)", () => {
@@ -217,6 +219,19 @@ describe('the designer prompt (decision 295)', () => {
 
   it('puts the motion on tokens: every curve, length and spring is named (decision 301)', () => {
     expect(rules).toContain(
+      'The house motion. The scan holds the curve and the spring config: every interpolate names a motion.ease, every spring a motion.spring.',
+    )
+    expect(rules).toContain(
+      'Which curve, which preset, hero once per beat and every length are judged on the board, not checked:',
+    )
+    expect(rules).not.toContain('The first three are checked')
+    expect(rules).toContain(
+      'Entrances, exits and moves come from the tokens, in the house motion below. Nothing passes its mark except the one hero spring of a beat; nothing spins.',
+    )
+    expect(rules).toContain(
+      'Anything keyed to the narration keeps its spoken time; stagger only what the narration does not time.',
+    )
+    expect(rules).toContain(
       'motion: the house motion tokens, declared above your code and read-only.',
     )
     expect(rules).toContain(
@@ -227,15 +242,22 @@ describe('the designer prompt (decision 295)', () => {
     )
     expect(rules).toContain('exits are shorter than entrances')
     expect(rules).toContain(
+      'Remotion.interpolate(value, inputRange, outputRange, {easing, extrapolateLeft, extrapolateRight, output})',
+    )
+    expect(rules).toContain("output: 'perceptual-scale' on any interpolate that drives a scale.")
+    expect(rules).toContain(
       'A change within a beat is an exit, a motion.ms.gap pause, then an entrance.',
     )
     expect(rules).toContain('A group of three or more elements staggers')
     expect(rules).toContain(
-      'The hero finishes last: entrances follow motion.order, frame, title, body, hero, note.',
+      'The hero lands last, with only its note after it: entrances follow motion.order, frame, title, body, hero, note.',
     )
     expect(rules).toContain('A beat gets one kind of entrance.')
     expect(rules).toContain(
       'It refuses Remotion.Easing in any form (the curves are motion.ease), an interpolate with no easing: motion.ease.<name> written inside the call, a spring other than Remotion.spring({ frame, fps, delay, config: motion.spring.<name> })',
+    )
+    expect(rules).toContain(
+      "Remotion['...'], React['...'] or motion['...'], an assignment to motion, a motion binding of your own, a Remotion.spring or Remotion.interpolate read without being called, and a motion.ease or motion.spring name that is not a token.",
     )
     expect(rules).not.toContain('Remotion.Easing.out(Remotion.Easing.poly(4))')
     expect(rules).not.toContain('16 to 24 px rise')
@@ -249,6 +271,9 @@ describe('the designer prompt (decision 295)', () => {
     expect(GRAPHIC_EXAMPLE_TYPE).toContain('motion.px.rise')
     expect(GRAPHIC_EXAMPLE_CHART).not.toContain('spring')
     expect(GRAPHIC_EXAMPLE_CHART).toContain('motion.stagger(')
+    expect(GRAPHIC_EXAMPLE_CHART).toContain(
+      '// The title arrives first and the subtitle one stagger step after it: motion.order (title, then body), shown on a pair.',
+    )
   })
 
   it("carries Remotion's own rules, pinned to the vendored files (decision 301)", () => {
