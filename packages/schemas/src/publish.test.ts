@@ -5,6 +5,7 @@ import {
   formatTimestamp,
   PUBLISH_DISCLAIMER,
   PublishDraftSchema,
+  sourceLabel,
 } from './publish'
 
 describe('formatTimestamp', () => {
@@ -131,7 +132,113 @@ describe('composeDescription', () => {
   })
 })
 
+/**
+ * Decision 301: the description is written for search too. A chapter line
+ * carries a gloss that says what the chapter is about, a source line says
+ * what it backs, and three hashtags get a line of their own.
+ */
+describe('composeDescription for search (decision 301)', () => {
+  const chapters = [
+    { title: 'Stepping Down', startMs: 0, gloss: 'Emad Mostaque resigns as CEO, March 2024' },
+    { title: 'The Borrowed Engine', startMs: 45_000 },
+    { title: 'Exhibit A', startMs: 311_000, gloss: '  Getty Images and the artists sue  ' },
+  ]
+
+  it('glosses a chapter line when it has one, and leaves a bare title alone', () => {
+    const { description } = composeDescription({ body: 'Body.', chapters, sources: [] })
+    expect(description).toContain(
+      'Chapters:\n0:00 Stepping Down: Emad Mostaque resigns as CEO, March 2024\n' +
+        '0:45 The Borrowed Engine\n5:11 Exhibit A: Getty Images and the artists sue',
+    )
+  })
+
+  it('labels a source line when it has a label, and keeps a bare URL as it was', () => {
+    const { description } = composeDescription({
+      body: 'Body.',
+      chapters: [],
+      sources: [
+        { url: 'https://arxiv.org/abs/2112.10752', label: 'arXiv, the latent diffusion paper' },
+        { url: 'https://stability.ai/news', label: null },
+        'https://example.com/filing',
+      ],
+    })
+    expect(description).toContain(
+      'Sources:\narXiv, the latent diffusion paper: https://arxiv.org/abs/2112.10752\n' +
+        'https://stability.ai/news\nhttps://example.com/filing',
+    )
+  })
+
+  it('puts the hashtags on their own line before the disclaimer, three at most, each one word', () => {
+    const { description } = composeDescription({
+      body: 'Body.',
+      chapters: [],
+      sources: ['https://example.com/filing'],
+      hashtags: ['#StabilityAI', 'StableDiffusion', '#AI Documentary', '#Fourth', '#Fifth'],
+    })
+    const blocks = description.split('\n\n')
+    expect(blocks.at(-2)).toBe('#StabilityAI #StableDiffusion #AIDocumentary')
+    expect(blocks.at(-1)).toBe(PUBLISH_DISCLAIMER)
+  })
+
+  it('omits the hashtag line when there are none', () => {
+    const { description } = composeDescription({
+      body: 'Body.',
+      chapters: [],
+      sources: [],
+      hashtags: ['  ', '#'],
+    })
+    expect(description.split('\n\n')).toEqual(['Body.', PUBLISH_DISCLAIMER])
+  })
+})
+
+describe('sourceLabel (decision 301)', () => {
+  it('names the outlet the article record read, then what the claim backs', () => {
+    expect(
+      sourceLabel({
+        url: 'https://forbes.com/sites/kenrickcai/2023/06/04/stable-diffusion',
+        outlet: 'Forbes',
+        claimText: 'Forbes reported that Mostaque overstated his role.',
+      }),
+    ).toBe('Forbes, Forbes reported that Mostaque overstated his role')
+  })
+
+  it('falls back to the host, and cuts a long claim at a word', () => {
+    const label = sourceLabel({
+      url: 'https://www.theinformation.com/',
+      outlet: null,
+      claimText:
+        'The Information reported that Stability AI brought in under 5 million dollars of revenue in the first quarter of 2024 and lost more than 30 million.',
+    })
+    expect(label.startsWith('theinformation.com, The Information reported that')).toBe(true)
+    expect(label.length).toBeLessThanOrEqual(110)
+    expect(label.endsWith('...')).toBe(true)
+    expect(label).not.toMatch(/\s\.\.\.$/)
+  })
+
+  it('is the outlet alone when no claim text is at hand', () => {
+    expect(sourceLabel({ url: 'https://stability.ai/news', outlet: null, claimText: null })).toBe(
+      'stability.ai',
+    )
+  })
+})
+
 describe('PublishDraftSchema', () => {
+  it('reads the search fields and the script version the opening was written for (decision 301)', () => {
+    const draft = PublishDraftSchema.parse({
+      descriptionBody: 'How Stability AI...',
+      bodyScriptVersion: 4,
+      chapterGlosses: ['Emad Mostaque resigns', ''],
+      hashtags: ['#StabilityAI'],
+    })
+    expect(draft.bodyScriptVersion).toBe(4)
+    expect(draft.chapterGlosses).toEqual(['Emad Mostaque resigns', ''])
+    expect(draft.hashtags).toEqual(['#StabilityAI'])
+    const bare = PublishDraftSchema.parse({})
+    expect(bare.chapterGlosses).toEqual([])
+    expect(bare.hashtags).toEqual([])
+    expect(bare.bodyScriptVersion).toBeUndefined()
+  })
+
   it('defaults the lists and tolerates the final metadata keys beside it', () => {
     const draft = PublishDraftSchema.parse({
       title: 'How Wirecard Fell',

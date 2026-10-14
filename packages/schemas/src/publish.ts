@@ -26,6 +26,12 @@ export const PUBLISH_DISCLAIMER =
   'Narration is AI-generated. Some visuals are AI re-creations for illustration, including ' +
   'likenesses of real people; they are not photographs of real events. Sources are listed above.'
 
+/** How long a chapter's search gloss may run (decision 301). */
+export const CHAPTER_GLOSS_MAX = 90
+
+/** YouTube shows the first three hashtags above the title; more are noise. */
+export const HASHTAGS_MAX = 3
+
 /**
  * Draft fields the Publish screen stores in `publish_records.metadata`
  * while an item is being prepared. They live beside the final
@@ -37,6 +43,16 @@ export const PublishDraftSchema = z.object({
   titleOptions: z.array(z.string()).max(12).default([]),
   /** The human-owned opening — the auto-blocks are appended at compose time. */
   descriptionBody: z.string().max(DESCRIPTION_MAX_CHARS).optional(),
+  /**
+   * The script version the opening was written for (decision 301). A body
+   * saved before the script was rewritten is flagged on the Publish screen;
+   * absent on bodies saved before this existed, which are flagged too.
+   */
+  bodyScriptVersion: z.number().int().min(0).optional(),
+  /** One search gloss per chapter, in chapter order; an empty string is none. */
+  chapterGlosses: z.array(z.string().trim().max(CHAPTER_GLOSS_MAX)).max(40).default([]),
+  /** At most three, each one word; the composer normalises them. */
+  hashtags: z.array(z.string().trim().max(60)).max(HASHTAGS_MAX).default([]),
   tags: z.array(z.string().trim().min(1).max(100)).max(60).default([]),
 })
 export type PublishDraft = z.infer<typeof PublishDraftSchema>
@@ -56,6 +72,50 @@ export function formatTimestamp(ms: number): string {
 export interface DescriptionChapter {
   title: string
   startMs: number
+  /** What the chapter is about, for search (decision 301). Printed after the title. */
+  gloss?: string | null
+}
+
+/** A source line: the address, and what it backs when that is known (decision 301). */
+export interface DescriptionSource {
+  url: string
+  label?: string | null
+}
+
+/** How much of the claim a source label quotes before it is cut at a word. */
+const SOURCE_GIST_MAX = 80
+
+/**
+ * A source line's label (decision 301): the outlet the article record read,
+ * else the bare host, then what the first claim citing it says, cut at a
+ * word. Deterministic, and only ever words already on file: a label a model
+ * wrote could misstate what a source supports.
+ */
+export function sourceLabel(input: {
+  url: string
+  outlet: string | null
+  claimText: string | null
+}): string {
+  let host = input.url
+  try {
+    host = new URL(input.url).hostname.replace(/^www\./, '')
+  } catch {
+    // An address that will not parse is labelled by itself.
+  }
+  const outlet = input.outlet?.trim() || host
+  const claim = input.claimText?.trim().replace(/\.$/, '')
+  if (!claim) return outlet
+  if (claim.length <= SOURCE_GIST_MAX) return `${outlet}, ${claim}`
+  const cut = claim.slice(0, SOURCE_GIST_MAX)
+  const space = cut.lastIndexOf(' ')
+  const gist = (space > 0 ? cut.slice(0, space) : cut).replace(/[\s,;:]+$/, '')
+  return `${outlet}, ${gist}...`
+}
+
+/** "#AI Documentary" or "StableDiffusion" to one word with its mark; empty when nothing is left. */
+function normaliseHashtag(raw: string): string {
+  const word = raw.replace(/^#+/, '').replace(/[^\p{L}\p{N}_]/gu, '')
+  return word === '' ? '' : `#${word}`
 }
 
 export interface ComposeDescriptionInput {
@@ -64,8 +124,13 @@ export interface ComposeDescriptionInput {
   /** In playback order. Fewer than three means no chapter block — YouTube
    *  ignores chapter markers below three, so emitting them would be noise. */
   chapters: readonly DescriptionChapter[]
-  /** Source URLs from the dossier's verified claims, already deduplicated. */
-  sources: readonly string[]
+  /**
+   * Source URLs from the dossier's verified claims, already deduplicated: a
+   * bare address, or one with a label saying what it backs (decision 301).
+   */
+  sources: readonly (string | DescriptionSource)[]
+  /** Up to three hashtags, on their own line before the disclaimer (decision 301). */
+  hashtags?: readonly string[]
   /**
    * The music bed's attribution/licence text, from the library (decision
    * 207). Published verbatim in its own block so the licence rides with
@@ -98,11 +163,12 @@ export function composeDescription(input: ComposeDescriptionInput): ComposedDesc
     input.chapters.length >= 3
       ? ['Chapters:']
           .concat(
-            input.chapters.map(
+            input.chapters.map((chapter, index) => {
               // YouTube requires the first stamp to be exactly 0:00.
-              (chapter, index) =>
-                `${index === 0 ? '0:00' : formatTimestamp(chapter.startMs)} ${chapter.title}`,
-            ),
+              const stamp = index === 0 ? '0:00' : formatTimestamp(chapter.startMs)
+              const gloss = chapter.gloss?.trim()
+              return `${stamp} ${chapter.title}${gloss ? `: ${gloss}` : ''}`
+            }),
           )
           .join('\n')
       : null
@@ -110,9 +176,21 @@ export function composeDescription(input: ComposeDescriptionInput): ComposedDesc
   const attribution = input.musicAttribution?.trim()
   const musicBlock = attribution ? `Music:\n${attribution}` : null
 
-  const build = (sources: readonly string[]): string => {
-    const sourceBlock = sources.length > 0 ? ['Sources:'].concat(sources).join('\n') : null
-    return [body, chapterBlock, musicBlock, sourceBlock, PUBLISH_DISCLAIMER]
+  const hashtags = [
+    ...new Set((input.hashtags ?? []).map(normaliseHashtag).filter((tag) => tag !== '')),
+  ].slice(0, HASHTAGS_MAX)
+  const hashtagBlock = hashtags.length > 0 ? hashtags.join(' ') : null
+
+  const sourceLine = (source: string | DescriptionSource): string => {
+    if (typeof source === 'string') return source
+    const label = source.label?.trim()
+    return label ? `${label}: ${source.url}` : source.url
+  }
+
+  const build = (sources: readonly (string | DescriptionSource)[]): string => {
+    const sourceBlock =
+      sources.length > 0 ? ['Sources:'].concat(sources.map(sourceLine)).join('\n') : null
+    return [body, chapterBlock, musicBlock, sourceBlock, hashtagBlock, PUBLISH_DISCLAIMER]
       .filter((block): block is string => block !== null && block !== '')
       .join('\n\n')
   }
