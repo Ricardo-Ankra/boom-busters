@@ -1,4 +1,5 @@
 import { graphicBrand } from '@boom-busters/compositions/graphic-code-pure'
+import { MOTION_PREAMBLE, MOTION_VERSION } from '@boom-busters/compositions/motion-tokens'
 import {
   codeLogoLibrary,
   DEFAULT_SETTINGS,
@@ -20,7 +21,9 @@ import { scanGraphicSource } from './scan'
 
 /**
  * Whether a design can be kept (decision 295): the compile, the scan, the
- * dry run and the facts, in that order. The scan reads the compiled code,
+ * dry run and the facts, in that order. The house motion preamble is
+ * prepended between the scan and the dry run (decision 301), so the code the dry
+ * run checks is the code that is stored. The scan reads the compiled code,
  * where JSX text is already a string, so it cannot be fooled by an apostrophe
  * in a caption; that is why the compile comes first. The facts come last
  * because they are read off the dry run's text, in each frame size apart: a
@@ -32,6 +35,17 @@ import { scanGraphicSource } from './scan'
 
 /** A digit group on screen for this many consecutive samples (one second) is shown. */
 const SHOWN_MIN_SAMPLES = 1000 / GRAPHIC_SAMPLE_MS
+
+/**
+ * The compiled code a design is stored and run with (decision 301): the house
+ * motion preamble, then the model's code. The scan has already read the
+ * model's code on its own; the dry run, the board, the Player and Lambda all
+ * run this text, so the tokens a design was checked against travel with it.
+ */
+function withMotionPreamble(compiled: string): string {
+  return `${MOTION_PREAMBLE}
+${compiled}`
+}
 
 /**
  * The house brand (ruling 3). The dry run finds crashes, dead air, crops and
@@ -95,10 +109,11 @@ export function graphicCodeIssue(
   if (!compiled.ok) return { issue: compiled.issue }
   const scanned = scanGraphicSource(answer.source, compiled.compiled)
   if (scanned !== null) return { issue: scanned }
+  const stored = withMotionPreamble(compiled.compiled)
 
   const { brief } = slot
   const run = dryRunGraphic({
-    compiled: compiled.compiled,
+    compiled: stored,
     durationMs: slot.durationMs,
     props: {
       brand: DRY_RUN_BRAND,
@@ -144,11 +159,12 @@ export function graphicCodeIssue(
     code: {
       version: GRAPHIC_CODE_VERSION,
       source: answer.source,
-      compiled: compiled.compiled,
+      compiled: stored,
       title: answer.title,
       facts,
       words: slot.words.map((word) => ({ text: word.text, atMs: word.atMs })),
       durationMs: slot.durationMs,
+      motion: MOTION_VERSION,
     },
   }
 }

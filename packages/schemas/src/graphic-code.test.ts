@@ -33,6 +33,13 @@ describe('GraphicCodeSchema (decision 295)', () => {
     expect(GraphicCodeSchema.parse(DESIGN)).toEqual(DESIGN)
   })
 
+  it('records the preamble version a design carries, and accepts a design stored before there was one (decision 301)', () => {
+    expect(GraphicCodeSchema.parse({ ...DESIGN, motion: 1 })).toEqual({ ...DESIGN, motion: 1 })
+    expect(GraphicCodeSchema.parse(DESIGN)).not.toHaveProperty('motion')
+    expect(GraphicCodeSchema.safeParse({ ...DESIGN, motion: 0 }).success).toBe(false)
+    expect(GraphicCodeSchema.safeParse({ ...DESIGN, motion: 1.5 }).success).toBe(false)
+  })
+
   it('holds the source to 16 KB', () => {
     expect(GRAPHIC_SOURCE_MAX).toBe(16_384)
     const atCap = { ...DESIGN, source: 'x'.repeat(GRAPHIC_SOURCE_MAX) }

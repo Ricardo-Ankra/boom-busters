@@ -6,6 +6,7 @@ import {
   GRAPHIC_EXAMPLE_CHART_DATA,
   GRAPHIC_EXAMPLE_TYPE,
 } from '@boom-busters/providers'
+import { MOTION_PREAMBLE } from '@boom-busters/compositions/motion-tokens'
 import type { GraphicDesignContext } from '@/lib/graphic-design-core'
 import { graphicCodeIssue } from './check'
 
@@ -109,6 +110,7 @@ describe('graphicCodeIssue (decision 295)', () => {
         version: 1,
         source: planned.source,
         compiled: expect.stringContaining('function Graphic()'),
+        motion: 1,
         title: 'Raised in one round',
         facts: [{ text: '$4bn', claimId: A }],
         words: WORDS,
@@ -348,5 +350,48 @@ describe('graphicCodeIssue (decision 295)', () => {
     )
     expect(chart).not.toHaveProperty('issue')
     expect(chart).toHaveProperty('code')
+  })
+
+  it('stores the compiled code with the house motion preamble first, and says which version (decision 301)', () => {
+    const result = graphicCodeIssue(answer(), CONTEXT, slot(GRAPHIC))
+    expect(result).toHaveProperty('code')
+    const { code } = result as { code: { compiled: string; motion?: number } }
+    expect(code.compiled.startsWith(`${MOTION_PREAMBLE}\n`)).toBe(true)
+    expect(code.compiled.slice(MOTION_PREAMBLE.length + 1)).toContain('function Graphic()')
+    expect(code.motion).toBe(1)
+  })
+
+  it('runs the dry run with the tokens in scope: a design on motion.ms and motion.ease passes', () => {
+    const source = `function Graphic() {
+  const frame = Remotion.useCurrentFrame()
+  const { fps } = Remotion.useVideoConfig()
+  const count = Remotion.interpolate(frame, [6, 6 + motion.frames(motion.ms.count, fps)], [0, 1], {
+    easing: motion.ease.emphasis,
+    extrapolateLeft: 'clamp',
+    extrapolateRight: 'clamp',
+  })
+  const sweep = Remotion.interpolate(frame, [0, 179], [0, 100], { easing: motion.ease.linear, extrapolateRight: 'clamp' })
+  return (
+    <Remotion.AbsoluteFill>
+      <div>{'$' + Math.round(count * 40) / 10 + 'bn'}</div>
+      <div style={{ width: sweep + '%', height: motion.px.rise }} />
+    </Remotion.AbsoluteFill>
+  )
+}
+`
+    expect(graphicCodeIssue(answer({ source }), CONTEXT, slot(GRAPHIC))).toHaveProperty('code')
+  })
+
+  it("refuses a design that changes a token, by the dry run's crash report (decision 301)", () => {
+    // Not an assignment, so the scan cannot see it; the frozen object throws under strict mode.
+    const source = countUp(4).replace(
+      'const frame',
+      'Object.assign(motion.ms, { enter: 1 })\n  const frame',
+    )
+    expect(graphicCodeIssue(answer({ source }), CONTEXT, slot(GRAPHIC))).toEqual({
+      issue: expect.stringMatching(
+        /^the code failed at 0\.0 s \(frame 0\) in landscape: Cannot (assign to|add property) /,
+      ),
+    })
   })
 })
