@@ -139,12 +139,50 @@ describe('scanGraphicSource (decision 295)', () => {
     )
   })
 
-  it('refuses interpolate destructured from Remotion: its bare call carries no easing', () => {
+  it.each([
+    ['plain', '  const { interpolate } = Remotion\n  const v = interpolate(1, [0, 10], [0, 1])'],
+    [
+      'with a token curve',
+      '  const { interpolate } = Remotion\n  const v = interpolate(1, [0, 10], [0, 1], { easing: motion.ease.enter })',
+    ],
+    [
+      'renamed',
+      '  const { interpolate: lerp } = Remotion\n  const v = lerp(frame, [0, 10], [0, 1])',
+    ],
+  ])('refuses interpolate destructured from Remotion, %s', (_name, line) => {
+    expect(scan(graphic(line))).toBe(
+      'the code takes interpolate out of Remotion, which the sandbox bans: call Remotion.interpolate( where it is used, so the check can read the call',
+    )
+  })
+
+  it('reads ?. as a member join: an optional spring or interpolate is held to the same rules', () => {
+    expect(scan(graphic('  const s = Remotion?.spring({ frame: 0, fps: 30 })'))).toBe(
+      NO_CONFIG(1, 1),
+    )
+    expect(scan(graphic('  const v = Remotion?.interpolate(frame, [0, 10], [0, 1])'))).toBe(
+      NO_EASING(1, 1),
+    )
     expect(
       scan(
-        graphic('  const { interpolate } = Remotion\n  const v = interpolate(1, [0, 10], [0, 1])'),
+        graphic(
+          '  const v = Remotion?.interpolate(frame, [0, 10], [0, 1], { easing: motion?.ease.enter })',
+        ),
       ),
-    ).toBe(NO_EASING(1, 1))
+    ).toBeNull()
+    expect(
+      scan(
+        graphic('  const s = Remotion?.spring({ frame, fps: 30, config: motion?.spring.settle })'),
+      ),
+    ).toBeNull()
+    expect(scan(graphic("  const s = Remotion?.['spring']"))).toBe(
+      `the code reads Remotion by bracket, which the sandbox bans: ${GIVEN}`,
+    )
+    expect(scan(graphic('  const e = Remotion?.Easing.cubic'))).toBe(
+      `the code uses Easing.cubic, which the sandbox no longer offers: ${TOKENS}`,
+    )
+    expect(scan(graphic('  const sp = Remotion?.spring'))).toBe(
+      'the code reads Remotion.spring without calling it, which the sandbox bans: call Remotion.spring( where it is used, so the check can read the call',
+    )
   })
 
   it('still passes Remotion.spring( and Remotion.interpolate( called directly', () => {
@@ -259,6 +297,10 @@ describe('scanGraphicSource (decision 295)', () => {
       'a destructure',
       '  const { spring } = Remotion\n  const s = spring({ frame: 0, fps: 30, config: motion.spring.settle })',
     ],
+    [
+      'a renamed destructure',
+      '  const { spring: sp } = Remotion\n  const s = sp({ frame: 0, fps: 30, config: motion.spring.settle })',
+    ],
   ])('refuses spring as %s: only Remotion.spring with a preset', (_name, line) => {
     expect(scan(graphic(line))).toBe(
       'the code calls spring bare, which the sandbox bans: a spring is Remotion.spring({ frame, fps, config: motion.spring.settle }) and nothing else',
@@ -285,6 +327,10 @@ describe('scanGraphicSource (decision 295)', () => {
     ['function motion', '  function motion() {}'],
     ['a motion parameter', '  const f = (frame, motion) => frame'],
     ['a destructured motion', '  const { motion } = props'],
+    [
+      'the whole motion object passed as an argument',
+      '  const f = (m) => m\n  const g = f(motion)',
+    ],
   ])("refuses %s: the token object is the house's", (_name, line) => {
     expect(scan(graphic(line))).toBe(OWN_MOTION)
   })

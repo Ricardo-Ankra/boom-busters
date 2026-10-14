@@ -155,7 +155,7 @@ const BANNED_ELEMENT =
  * is named.
  */
 const ASSIGNS_TO_SANDBOX =
-  /\b(Remotion|React|motion)((?:\s*\.\s*[\w$]+)+)\s*(?:[-+*/%&|^]|\*\*|<<|>>>?|&&|\|\||\?\?)?=(?![=>])/
+  /\b(Remotion|React|motion)((?:\s*\??\.\s*[\w$]+)+)\s*(?:[-+*/%&|^]|\*\*|<<|>>>?|&&|\|\||\?\?)?=(?![=>])/
 
 /**
  * What esbuild leaves of a logical assignment two members deep:
@@ -167,16 +167,19 @@ const ASSIGNS_VIA_TEMPORARY =
   /\(\s*[\w$]+\s*=\s*(Remotion|React|motion)((?:\s*\.\s*[\w$]+)+)\s*\)\s*\.\s*[\w$]+\s*(?:\?\?|\|\||&&)/
 
 /**
- * Bracket access to a sandbox argument (`Remotion['spring']`, `motion['ease']`):
- * the one spelling that reaches past every dot-form rule below.
+ * Bracket access to a sandbox argument (`Remotion['spring']`, `motion['ease']`,
+ * `Remotion?.['spring']`): the one spelling that reaches past every dot-form
+ * rule below.
  */
-const BRACKETS_SANDBOX = /\b(Remotion|React|motion)\s*\[/
+const BRACKETS_SANDBOX = /\b(Remotion|React|motion)\s*(?:\?\.\s*)?\[/
 
 /**
  * A `motion` of the design's own: a declaration, a parameter or a destructure.
  * The preamble declares `const motion` in the same function body, so a second
  * declaration would be a syntax error at parse time; this says what to do
- * instead. `motion` read as an argument (`f(motion.ms.enter)`) and names that
+ * instead. The whole `motion` object passed as an argument (`f(motion)`) is
+ * refused with them, since the clause for a parameter cannot tell the two
+ * apart; a member of it as an argument (`f(motion.ms.enter)`) and names that
  * contain it (`inMotion`) are not matched.
  */
 const DECLARES_MOTION =
@@ -188,26 +191,42 @@ const DECLARES_MOTION =
  * `Easing` in a stored design is the preamble's, which is prepended after this
  * scan. The member is named when there is one.
  */
-const USES_EASING = /\bEasing\b(?:\s*\.\s*([\w$]+))?/
+const USES_EASING = /\bEasing\b(?:\s*\??\.\s*([\w$]+))?/
+
+/*
+ * Each rule that joins members of `Remotion` or `motion`, here and in the
+ * sandbox rules above, reads a join as `.` or `?.`: esbuild keeps optional
+ * chaining at es2020, so `Remotion?.spring(` reaches the scan as written.
+ */
 
 /** Every `motion.ease.<x>` and `motion.spring.<x>` the code names. */
-const EASE_TOKEN = /\bmotion\s*\.\s*ease\s*\.\s*([\w$]+)/g
-const SPRING_TOKEN = /\bmotion\s*\.\s*spring\s*\.\s*([\w$]+)/g
+const EASE_TOKEN = /\bmotion\s*\??\.\s*ease\s*\??\.\s*([\w$]+)/g
+const SPRING_TOKEN = /\bmotion\s*\??\.\s*spring\s*\??\.\s*([\w$]+)/g
 
 /** `easing: motion.ease.<x>`, or an array of them, as the text of an `interpolate` call must carry. */
 const EASING_OPTION =
-  /\beasing\s*:\s*(?:motion\s*\.\s*ease\s*\.\s*[\w$]+|\[\s*motion\s*\.\s*ease\s*\.\s*[\w$]+(?:\s*,\s*motion\s*\.\s*ease\s*\.\s*[\w$]+)*\s*,?\s*\])/
+  /\beasing\s*:\s*(?:motion\s*\??\.\s*ease\s*\??\.\s*[\w$]+|\[\s*motion\s*\??\.\s*ease\s*\??\.\s*[\w$]+(?:\s*,\s*motion\s*\??\.\s*ease\s*\??\.\s*[\w$]+)*\s*,?\s*\])/
 /** `config: motion.spring.<x>`, as the text of a `Remotion.spring` call must carry. */
-const SPRING_CONFIG = /\bconfig\s*:\s*motion\s*\.\s*spring\s*\.\s*[\w$]+/
-/** A bare `spring(` call, or `spring` destructured from `Remotion`; `Remotion.spring` read without a call is caught by ALIASES_CALLED_API. */
+const SPRING_CONFIG = /\bconfig\s*:\s*motion\s*\??\.\s*spring\s*\??\.\s*[\w$]+/
+/**
+ * A bare `spring(` call, or `spring` destructured from `Remotion`, plain or
+ * renamed (`{ spring: sp }`); `Remotion.spring` read without a call is caught
+ * by ALIASES_CALLED_API.
+ */
 const BARE_SPRING = /(?<![\w$.])spring\s*\(|\{[^}]*\bspring\b[^}]*\}\s*=\s*Remotion\b/
+/**
+ * `interpolate` destructured from `Remotion`, plain or renamed
+ * (`{ interpolate: lerp }`): a renamed call escapes the easing rule.
+ */
+const TAKES_INTERPOLATE = /\{[^}]*\binterpolate\b[^}]*\}\s*=\s*Remotion\b/
 /**
  * `Remotion.spring` or `Remotion.interpolate` read without being called
  * (`const sp = Remotion.spring`): the alias's calls would escape the call rules.
+ * An optional call (`Remotion.spring?.(`) is read as one too, and refused.
  */
-const ALIASES_CALLED_API = /\bRemotion\s*\.\s*(spring|interpolate)\b(?!\s*\()/
+const ALIASES_CALLED_API = /\bRemotion\s*\??\.\s*(spring|interpolate)\b(?!\s*\()/
 const INTERPOLATE_CALL = /\binterpolate\s*\(/g
-const REMOTION_SPRING_CALL = /\bRemotion\s*\.\s*spring\s*\(/g
+const REMOTION_SPRING_CALL = /\bRemotion\s*\??\.\s*spring\s*\(/g
 
 const EASE_NAMES = new Set<string>(MOTION_EASE_NAMES)
 const SPRING_NAMES = new Set<string>(MOTION_SPRING_NAMES)
@@ -272,6 +291,9 @@ export function scanGraphicSource(source: string, compiled: string): string | nu
   if (aliased) {
     const name = aliased[1] ?? ''
     return `the code reads Remotion.${name} without calling it, which the sandbox bans: call Remotion.${name}( where it is used, so the check can read the call`
+  }
+  if (TAKES_INTERPOLATE.test(code)) {
+    return 'the code takes interpolate out of Remotion, which the sandbox bans: call Remotion.interpolate( where it is used, so the check can read the call'
   }
   const interpolates = calls(code, INTERPOLATE_CALL)
   for (const [index, text] of interpolates.entries()) {
