@@ -19,6 +19,7 @@ vi.mock('../actions', () => ({
   stopProject: vi.fn(),
 }))
 
+const generateDescription = vi.fn()
 const generateTitles = vi.fn()
 const markProjectDone = vi.fn()
 const publishNow = vi.fn()
@@ -31,6 +32,7 @@ const schedulePublish = vi.fn()
 const unlinkPublishRecord = vi.fn()
 const uploadThumbnail = vi.fn()
 vi.mock('./publish-actions', () => ({
+  generateDescription: (...args: unknown[]) => generateDescription(...args),
   generateTitles: (...args: unknown[]) => generateTitles(...args),
   markProjectDone: (...args: unknown[]) => markProjectDone(...args),
   publishNow: (...args: unknown[]) => publishNow(...args),
@@ -60,6 +62,7 @@ vi.mock('@/components/ui/toast', () => ({ useToast: () => ({ toast }) }))
 beforeEach(() => {
   vi.clearAllMocks()
   for (const action of [
+    generateDescription,
     generateTitles,
     markProjectDone,
     publishNow,
@@ -653,5 +656,122 @@ describe('PublishScreen', () => {
       ],
     })
     expect(screen.queryByRole('button', { name: 'Move the slot' })).not.toBeInTheDocument()
+  })
+})
+
+/**
+ * Decision 301: the description is written for search. An opening saved for
+ * an earlier script says so; one button writes the opening, chapter notes,
+ * hashtags and tags; every part stays editable and shows in the preview.
+ */
+describe('the search description (decision 301)', () => {
+  const draft = (over: Partial<NonNullable<PublishItemModel['record']>> = {}) => ({
+    id: '01HQ00000000000000000000P1',
+    status: 'draft' as const,
+    publishAtIso: null,
+    youtubeVideoId: null,
+    errorMessage: null,
+    title: null,
+    titleOptions: [],
+    descriptionBody: null,
+    bodyScriptVersion: null,
+    bodyStale: false,
+    chapterGlosses: [],
+    hashtags: [],
+    tags: [],
+    thumbs: [],
+    ...over,
+  })
+
+  it('says when the opening was written for an earlier script, and swaps in the current one', async () => {
+    const user = userEvent.setup()
+    renderScreen({
+      items: [
+        masterItem({
+          record: draft({
+            descriptionBody: 'March 2024. An opening from the September script.',
+            bodyScriptVersion: 2,
+            bodyStale: true,
+          }),
+        }),
+      ],
+    })
+
+    expect(screen.getByText(/written for script v2; the film is now script v4/)).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Use the current opening' }))
+    expect(screen.getByRole('textbox', { name: /Description/ })).toHaveValue(
+      'On a June morning in 2020, 1.9 billion euros stopped existing.',
+    )
+    expect(screen.getByRole('button', { name: /save draft/i })).toBeInTheDocument()
+  })
+
+  it('names an opening saved before versions were kept without inventing a version', () => {
+    renderScreen({
+      items: [masterItem({ record: draft({ descriptionBody: 'Old.', bodyStale: true }) })],
+    })
+    expect(
+      screen.getByText(/written before the current script; the film is now script v4/),
+    ).toBeInTheDocument()
+  })
+
+  it('writes a search description in one click in mock mode, two when it spends', async () => {
+    const user = userEvent.setup()
+    const { unmount } = renderScreen()
+    await user.click(screen.getByRole('button', { name: /Write a search description \(mock\)/ }))
+    expect(generateDescription).toHaveBeenCalledWith('master', PROJECT)
+    unmount()
+
+    vi.clearAllMocks()
+    generateDescription.mockResolvedValue({ ok: true })
+    renderScreen({}, true)
+    await user.click(screen.getByRole('button', { name: /Write a search description/ }))
+    expect(generateDescription).not.toHaveBeenCalled()
+    await user.click(screen.getByRole('button', { name: 'Write it' }))
+    expect(generateDescription).toHaveBeenCalledWith('master', PROJECT)
+  })
+
+  it('previews the chapter notes and hashtags, and saves what was edited', async () => {
+    const user = userEvent.setup()
+    renderScreen({
+      items: [
+        masterItem({
+          record: draft({
+            descriptionBody: 'How Wirecard collapsed.',
+            bodyScriptVersion: 4,
+            chapterGlosses: ['Founded as a payments processor', '', ''],
+            hashtags: ['#Wirecard'],
+          }),
+        }),
+      ],
+    })
+    const preview = screen.getByText(new RegExp(PUBLISH_DISCLAIMER.slice(0, 40)))
+    expect(preview.textContent).toContain('0:00 The rise: Founded as a payments processor')
+    expect(preview.textContent).toContain('#Wirecard')
+
+    await user.type(
+      screen.getByRole('textbox', { name: 'Search note for The hole' }),
+      'The missing billions',
+    )
+    const hashtags = screen.getByRole('textbox', { name: /Hashtags/ })
+    await user.clear(hashtags)
+    await user.type(hashtags, '#Wirecard #Fraud')
+    expect(screen.getByText(new RegExp(PUBLISH_DISCLAIMER.slice(0, 40))).textContent).toContain(
+      '5:12 The hole: The missing billions',
+    )
+    await user.click(screen.getByRole('button', { name: /save draft/i }))
+    expect(savePublishDraft).toHaveBeenCalledWith(
+      'master',
+      PROJECT,
+      expect.objectContaining({
+        chapterGlosses: ['Founded as a payments processor', 'The missing billions', ''],
+        hashtags: '#Wirecard #Fraud',
+      }),
+    )
+  })
+
+  it('a Short gets no chapter notes, only the hashtags', () => {
+    renderScreen({ items: [shortItem()] })
+    expect(screen.queryByRole('textbox', { name: /Search note for/ })).not.toBeInTheDocument()
+    expect(screen.getByRole('textbox', { name: /Hashtags/ })).toBeInTheDocument()
   })
 })

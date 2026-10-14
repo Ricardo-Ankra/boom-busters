@@ -7703,3 +7703,47 @@ boom-busters-broker`; merge and deploy to Vercel, then `PUT
      retrieval per request; Lottie waits for a film that needs it.
      Shipping: a Vercel deploy, then `PUT /api/inngest`. No migration. The
      number 301 is checked against `origin/master` at the merge.
+
+301. **The description is written for search, and knows its script**
+     (2026-10-14, owner: "how do we improve this caption for SEO and
+     searchability?", then "proceed with the app changes as recommended").
+     The Stability AI master and teaser were scheduled with an opening saved
+     on 8 September from script v2, under a film rebuilt from script v4, and
+     nothing said so. The opening was the script's cold open, written for
+     the ear: its first 150 characters never named Stable Diffusion, open
+     source, Getty Images or the figures people search for. The chapter
+     titles ("Exhibit A", "The Borrowed Engine") meant nothing to search,
+     half the source lines were bare front pages, the tags field was empty,
+     and the title generator, fed the project's pitch title, offered "$270M"
+     in five of eight titles, a figure the dossier flagged as unsourced.
+     What shipped: `composeDescription` takes a gloss per chapter
+     (`0:00 Title: what it covers`), a label per source (`Outlet, what it
+     backs: URL`) and up to three one-word hashtags on their own line before
+     the disclaimer. `sourceLabel` builds a label from words already on file:
+     the outlet the article record read, else the host, and the first usable
+     claim citing it, cut at a word; `deriveIngredients` labels every source
+     that way. The draft keeps `bodyScriptVersion`, `chapterGlosses` and
+     `hashtags`; `openingIsStale` flags an opening saved for an earlier
+     script, or saved before versions were kept, unless it is the current
+     hook word for word, and the editor says which version it was written
+     for with "Use the current opening" beside it. Saving a rewritten opening
+     stamps the current version; saving only tags keeps the old stamp.
+     "Write a search description" is one metadata-tier call
+     (`buildDescriptionRequest`): the claim list, the outline's central
+     question and each chapter's narration (or what a Short says), never the
+     pitch title; it returns the opening, one gloss per chapter, three
+     hashtags and tags, repaired in decision 293's mould
+     (`parseDescriptionAnswer`), and the owner's tags are kept first. The
+     editor gains per-chapter search notes and a hashtags field; the preview
+     and the upload compose them. The title generator now gets the claim
+     list and the central question, with the rule that every figure, date
+     and name must appear in the claims and that the pitch may be wrong.
+     Decisions made where the spec left room: labels are deterministic, not
+     written by the model, because a model's label could misstate what a
+     source supports; front-page sources are labelled rather than dropped,
+     since the claim behind them is real and the label says what it backs;
+     a generated description replaces the opening, notes and hashtags but
+     only adds to tags.
+     Shipping: a Vercel deploy. For the two Stability AI uploads already
+     scheduled, the description is edited in YouTube Studio; the app's
+     editor is locked once an item is on YouTube.

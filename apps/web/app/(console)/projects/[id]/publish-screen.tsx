@@ -2,7 +2,7 @@
 
 import * as React from 'react'
 import { CalendarClock, Check, ImagePlus, Loader2, RefreshCw, Save, Sparkles } from 'lucide-react'
-import { composeDescription, formatTimestamp } from '@boom-busters/schemas'
+import { CHAPTER_GLOSS_MAX, composeDescription, formatTimestamp } from '@boom-busters/schemas'
 import { ConfirmButton } from '@/components/confirm-button'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -18,6 +18,7 @@ import {
 } from '@/lib/publish-status'
 import { RetentionOverlay } from './retention-overlay'
 import {
+  generateDescription,
   generateTitles,
   markProjectDone,
   publishNow,
@@ -613,23 +614,51 @@ function ItemEditor({
 }) {
   const { act, busy, pressed } = useAction()
   const record = item.record
+  const isMaster = item.targetType === 'master'
+  // What is stored, as the editor's fields hold it. When the stored draft
+  // changes underneath (a description was just written), the fields follow.
+  const storedBody = record?.descriptionBody ?? model.hook
+  const storedTags = (record?.tags ?? []).join(', ')
+  const storedHashtags = (record?.hashtags ?? []).join(' ')
+  const storedGlosses = model.chapters.map((_, index) => record?.chapterGlosses[index] ?? '')
+  const storedGlossesKey = storedGlosses.join('\u0000')
   const [title, setTitle] = React.useState(record?.title ?? item.label)
-  const [body, setBody] = React.useState(record?.descriptionBody ?? model.hook)
-  const [tags, setTags] = React.useState((record?.tags ?? []).join(', '))
+  const [body, setBody] = React.useState(storedBody)
+  const [tags, setTags] = React.useState(storedTags)
+  const [hashtags, setHashtags] = React.useState(storedHashtags)
+  const [glosses, setGlosses] = React.useState(storedGlosses)
+  React.useEffect(() => setBody(storedBody), [storedBody])
+  React.useEffect(() => setTags(storedTags), [storedTags])
+  React.useEffect(() => setHashtags(storedHashtags), [storedHashtags])
+  React.useEffect(() => setGlosses(storedGlossesKey.split('\u0000')), [storedGlossesKey])
   const [thumbError, setThumbError] = React.useState<string | null>(null)
   const [uploadingThumb, setUploadingThumb] = React.useState(false)
 
   const preview = composeDescription({
     body,
-    chapters: item.targetType === 'master' ? model.chapters : [],
+    chapters: isMaster
+      ? model.chapters.map((chapter, index) => ({ ...chapter, gloss: glosses[index] }))
+      : [],
     sources: model.sources,
     musicAttribution: model.musicAttribution,
+    hashtags: hashtags.split(/[\s,]+/),
   })
 
   const dirty =
     title !== (record?.title ?? item.label) ||
-    body !== (record?.descriptionBody ?? model.hook) ||
-    tags !== (record?.tags ?? []).join(', ')
+    body !== storedBody ||
+    tags !== storedTags ||
+    hashtags !== storedHashtags ||
+    (isMaster && glosses.join('\u0000') !== storedGlossesKey)
+
+  // An opening saved for an earlier script (decision 301): said here, where
+  // it would be published, with the current opening one press away.
+  const staleNote =
+    record?.bodyStale && body === storedBody
+      ? record.bodyScriptVersion !== null
+        ? `This opening was written for script v${record.bodyScriptVersion}; the film is now script v${model.scriptVersion}.`
+        : `This opening was written before the current script; the film is now script v${model.scriptVersion}.`
+      : null
 
   const onThumbFile = async (file: File | undefined) => {
     if (!file) return
@@ -746,6 +775,57 @@ function ItemEditor({
             </Button>
           )}
 
+          {/* The search description (decision 301): one call writes the
+              opening, the chapter notes, the hashtags and tags from the claim
+              list and the film; every part stays editable below. */}
+          {live ? (
+            <ConfirmButton
+              label={
+                <>
+                  <Sparkles aria-hidden className="h-4 w-4" />
+                  Write a search description
+                </>
+              }
+              confirmLabel="Write it"
+              consequence="One small model call, a fraction of a cent. It replaces the opening, the chapter notes and the hashtags, and adds to the tags."
+              confirmVariant="primary"
+              busy={pressed === 'description'}
+              disabled={busy}
+              onConfirm={() =>
+                act(
+                  () => generateDescription(item.targetType, item.targetId),
+                  'Search description written',
+                  'description',
+                )
+              }
+            />
+          ) : (
+            <Button
+              variant="outline"
+              busy={pressed === 'description'}
+              disabled={busy}
+              onClick={() =>
+                void act(
+                  () => generateDescription(item.targetType, item.targetId),
+                  'Search description written',
+                  'description',
+                )
+              }
+            >
+              <Sparkles aria-hidden className="h-4 w-4" />
+              Write a search description (mock)
+            </Button>
+          )}
+
+          {staleNote ? (
+            <div className="flex flex-col gap-2 rounded-[8px] border border-[var(--color-warning)]/40 p-2">
+              <p className="text-[13px] text-[var(--color-warning)]">{staleNote}</p>
+              <Button variant="outline" disabled={busy} onClick={() => setBody(model.hook)}>
+                Use the current opening
+              </Button>
+            </div>
+          ) : null}
+
           <label className="flex flex-col gap-1 text-[12px] text-[var(--color-text-secondary)]">
             Description — your opening; chapters, sources and the disclaimer are appended
             <textarea
@@ -754,6 +834,39 @@ function ItemEditor({
               onChange={(e) => setBody(e.target.value)}
               className="rounded-[8px] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-[13px] text-[var(--color-text-primary)] outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)]"
             />
+          </label>
+
+          {isMaster && model.chapters.length > 0 ? (
+            <fieldset className="flex flex-col gap-1.5">
+              <legend className="text-[12px] text-[var(--color-text-secondary)]">
+                Chapter notes for search, printed after each chapter title
+              </legend>
+              {model.chapters.map((chapter, index) => (
+                <label
+                  key={`${chapter.title}-${index}`}
+                  className="flex flex-col gap-1 text-[12px] text-[var(--color-text-muted)]"
+                >
+                  {index === 0 ? '0:00' : formatTimestamp(chapter.startMs)} {chapter.title}
+                  <Input
+                    aria-label={`Search note for ${chapter.title}`}
+                    value={glosses[index] ?? ''}
+                    maxLength={CHAPTER_GLOSS_MAX}
+                    onChange={(e) =>
+                      setGlosses((current) =>
+                        model.chapters.map((_, at) =>
+                          at === index ? e.target.value : (current[at] ?? ''),
+                        ),
+                      )
+                    }
+                  />
+                </label>
+              ))}
+            </fieldset>
+          ) : null}
+
+          <label className="flex flex-col gap-1 text-[12px] text-[var(--color-text-secondary)]">
+            Hashtags, three at most, shown above the title
+            <Input value={hashtags} onChange={(e) => setHashtags(e.target.value)} />
           </label>
 
           <label className="flex flex-col gap-1 text-[12px] text-[var(--color-text-secondary)]">
@@ -773,6 +886,8 @@ function ItemEditor({
                       title,
                       descriptionBody: body,
                       tags,
+                      hashtags,
+                      ...(isMaster ? { chapterGlosses: glosses } : {}),
                     }),
                   'Draft saved',
                   'save-draft',
