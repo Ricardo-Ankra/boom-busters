@@ -7704,7 +7704,7 @@ boom-busters-broker`; merge and deploy to Vercel, then `PUT
      Shipping: a Vercel deploy, then `PUT /api/inngest`. No migration. The
      number 301 is checked against `origin/master` at the merge.
 
-301. **The description is written for search, and knows its script**
+302. **The description is written for search, and knows its script**
      (2026-10-14, owner: "how do we improve this caption for SEO and
      searchability?", then "proceed with the app changes as recommended").
      The Stability AI master and teaser were scheduled with an opening saved
@@ -7717,9 +7717,9 @@ boom-busters-broker`; merge and deploy to Vercel, then `PUT
      and the title generator, fed the project's pitch title, offered "$270M"
      in five of eight titles, a figure the dossier flagged as unsourced.
      What shipped: `composeDescription` takes a gloss per chapter
-     (`0:00 Title: what it covers`), a label per source (`Outlet, what it
-     backs: URL`) and up to three one-word hashtags on their own line before
-     the disclaimer. `sourceLabel` builds a label from words already on file:
+     (`0:00 Title: what it covers`), a label per source
+     (`Outlet, what it backs: URL`) and up to three one-word hashtags on
+     their own line before the disclaimer. `sourceLabel` builds a label from words already on file:
      the outlet the article record read, else the host, and the first usable
      claim citing it, cut at a word; `deriveIngredients` labels every source
      that way. The draft keeps `bodyScriptVersion`, `chapterGlosses` and
