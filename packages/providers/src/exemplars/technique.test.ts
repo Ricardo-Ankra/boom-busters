@@ -207,6 +207,61 @@ describe('techniqueFor (decision 304)', () => {
     expect(techniqueFor(graphic({ intent: 'The R40 note was fake.' }))).toBe('text-highlight')
   })
 
+  it('merges the same figure written two ways, but not two currencies', () => {
+    const pair = (intent: string, coversText: string) =>
+      techniqueFor(graphic({ intent, coversText }))
+    expect(pair('It raised $4bn.', 'It raised 4 billion dollars.')).toBe('stat-counter')
+    expect(pair('It raised $4.2bn.', 'It raised 4.2 billion dollars.')).toBe('stat-counter')
+    expect(pair('It raised $4.2bn.', 'It raised 4.2bn.')).toBe('stat-counter')
+    expect(pair('It raised 4bn.', 'It raised 4.0bn.')).toBe('stat-counter')
+    expect(pair('It raised $4bn.', 'It raised €4bn.')).toBe('kpi-counter')
+  })
+
+  it('scopes a refusal to its clause', () => {
+    expect(techniqueFor(graphic({ guidance: 'not too fast, as a quote' }))).toBe('quote-card')
+    expect(techniqueFor(graphic({ guidance: 'No clutter, a pull quote' }))).toBe('quote-card')
+    expect(techniqueFor(graphic({ guidance: 'Do not crowd it; step by step' }))).toBe(
+      'progress-steps',
+    )
+    expect(techniqueFor(graphic({ guidance: 'no lower third or chapter title' }))).toBe(
+      'kinetic-word-stack',
+    )
+    expect(techniqueFor(graphic({ guidance: 'not a donut but a stat counter' }))).toBe(
+      'stat-counter',
+    )
+  })
+
+  it('takes the first steer phrase in table order when two are named', () => {
+    expect(techniqueFor(graphic({ guidance: 'a pie, then a lower third' }))).toBe('lower-third')
+  })
+
+  it('does not take "told no-one" for speech', () => {
+    expect(techniqueFor(graphic({ intent: 'He told no-one about the loans in the end.' }))).toBe(
+      'kinetic-word-stack',
+    )
+  })
+
+  it('does not take a leading single curly mark used as an apostrophe for a quote', () => {
+    expect(
+      techniqueFor(graphic({ intent: 'In the ‘90s the bank’s loans grew and grew every year.' })),
+    ).toBe('kinetic-word-stack')
+  })
+
+  it('skips a lower-case match of a capitalised logo title', () => {
+    const logos = ['Shell']
+    expect(
+      techniqueFor(
+        graphic({ logos, intent: 'A shell company in Cyprus held the money for years.' }),
+      ),
+    ).toBe('kinetic-word-stack')
+    expect(techniqueFor(graphic({ logos, intent: 'Shell was the name on every door.' }))).toBe(
+      'logo-reveal',
+    )
+    expect(techniqueFor(graphic({ logos: ['Acme'], intent: 'ACME was everywhere.' }))).toBe(
+      'logo-reveal',
+    )
+  })
+
   it('takes a years axis only for real years', () => {
     expect(techniqueFor(chart({ xLabels: ['1999', '2000', '2001', '2002', '2003'] }))).toBe(
       'racing-chart',

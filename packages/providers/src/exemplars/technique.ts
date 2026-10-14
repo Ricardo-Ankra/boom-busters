@@ -28,7 +28,8 @@ export interface TechniqueInput {
 /**
  * Steer phrases, in the order they are tried. Compound phrases only, so an
  * ordinary instruction ("make the logo bigger", "list fewer words") does not
- * pick a technique; "highlight" and "pie" are the two single words kept.
+ * pick a technique. The single words kept are "kinetic", "typewriter", "donut",
+ * "pie" and "highlight". When two phrases are named, the first in this order wins.
  */
 const STEER: readonly [RegExp, Technique][] = [
   [/\blower[ -]thirds?\b/gi, 'lower-third'],
@@ -47,21 +48,22 @@ const STEER: readonly [RegExp, Technique][] = [
   [/\bbullet(?:ed)? list\b|\bas a list\b/gi, 'animated-list'],
 ]
 
-/** A steer phrase one to three words after one of these is a refusal, not a request. */
+/** A steer phrase after one of these, in the same clause, is a refusal, not a request. */
 const NEGATORS = new Set(['no', 'not', "don't", 'dont', 'without', 'never'])
 
 function steerTechnique(guidance: string): Technique | undefined {
-  const text = guidance.replace(/[‘’]/g, "'")
+  // Negation is clause-scoped: a clause ends at , ; : . ! ? or the word "but".
+  const clauses = guidance.replace(/[‘’]/g, "'").split(/[,;:.!?]|\bbut\b/i)
   for (const [pattern, technique] of STEER) {
-    for (const match of text.matchAll(pattern)) {
-      const before = text
-        .slice(0, match.index)
-        .toLowerCase()
-        .split(/\s+/)
-        .map((word) => word.replace(/[^a-z']/g, ''))
-        .filter(Boolean)
-        .slice(-3)
-      if (!before.some((word) => NEGATORS.has(word))) return technique
+    for (const clause of clauses) {
+      for (const match of clause.matchAll(pattern)) {
+        const before = clause
+          .slice(0, match.index)
+          .toLowerCase()
+          .split(/\s+/)
+          .map((word) => word.replace(/[^a-z']/g, ''))
+        if (!before.some((word) => NEGATORS.has(word))) return technique
+      }
     }
   }
   return undefined
@@ -70,10 +72,12 @@ function steerTechnique(guidance: string): Technique | undefined {
 /**
  * A quotation: a pair of marks inside one field (a pair never spans fields or
  * lines, so inch marks in two fields are not a quote), or a speech verb. "wrote
- * off", "wrote down", "wrote up" and "told no one" are not speech.
+ * off", "wrote down", "wrote up" and "told no one" are not speech. A single
+ * curly pair opens at the field start or after whitespace or a bracket and is
+ * not followed by a letter, so an apostrophe ("the ‘90s", "the bank’s") is not one.
  */
 const QUOTE =
-  /["“”][^"“”\n]+["“”]|‘[^‘’\n]+’|\bsaid\b|\bwrote\b(?!\s+(?:off|down|up)\b)|\btold\b(?!\s+(?:no one|nobody|nothing)\b)/i
+  /["“”][^"“”\n]+["“”]|(?<![^\s([{])‘[^‘’\n]+’(?!\p{L})|\bsaid\b|\bwrote\b(?!\s+(?:off|down|up)\b)|\btold\b(?!\s+(?:no[ -]one|nobody|nothing)\b)/iu
 const PERCENT = /%|\bper ?cent\b|\bshare of\b/i
 const VERSUS = /\bversus\b|\bvs\.?\b|\bcompared\b|\bside by side\b/i
 /**
@@ -88,33 +92,58 @@ const FIGURE = new RegExp(
 )
 const YEAR = /^(?:19|20)\d{2}$/
 
-/** The distinct figures across the fields: "$4bn" and "$ 4bn" are one. */
+const MULTIPLIER: Record<string, number> = {
+  k: 1e3,
+  thousand: 1e3,
+  m: 1e6,
+  million: 1e6,
+  bn: 1e9,
+  billion: 1e9,
+  tn: 1e12,
+  trillion: 1e12,
+}
+
+/**
+ * The distinct figures across the fields, keyed on (currency or none, value):
+ * "$4bn", "$ 4bn", "4 billion" and "4.0bn" are one figure. A figure with no
+ * currency merges into a currency figure of the same value; "$4bn" and "€4bn"
+ * stay two.
+ */
 function distinctFigures(fields: readonly string[]): number {
-  const seen = new Set<string>()
+  const keyed = new Map<string, { currency: string; value: number }>()
   for (const field of fields) {
     for (const match of field.matchAll(FIGURE)) {
-      seen.add(
-        match[0]
-          .toLowerCase()
-          .replace(/\s+/g, '')
-          .replace(/[.,]+$/, ''),
-      )
+      const text = match[0].trim().replace(/[.,\s]+$/, '')
+      const currency = /^[$€£R]/i.test(text) ? text.charAt(0).toUpperCase() : ''
+      const number = text.match(/\d[\d,]*(?:\.\d+)?/)?.[0].replace(/,/g, '') ?? '0'
+      const unit = text.match(/(bn|billion|tn|trillion|million|thousand|m|k)$/i)?.[0].toLowerCase()
+      const value = Math.round(Number(number) * (unit ? (MULTIPLIER[unit] ?? 1) : 1))
+      keyed.set(`${currency}|${value}`, { currency, value })
     }
   }
-  return seen.size
+  const figures = [...keyed.values()]
+  const priced = new Set(figures.filter((f) => f.currency).map((f) => f.value))
+  return figures.filter((f) => f.currency || !priced.has(f.value)).length
 }
 
 function escapeRegExp(text: string): string {
   return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
 
-/** A logo title as a whole word in the intent, so "ING" is not found in "running". */
+/**
+ * A logo title as a whole word in the intent, so "ING" is not found in
+ * "running". A match written all in lower case does not count when the title
+ * has a capital ("a shell company" is not the Shell logo; "ACME" is Acme).
+ */
 function mentionsLogo(intent: string, logos: readonly string[]): boolean {
   return logos.some((logo) => {
     const title = logo.trim()
     if (title.length < 2) return false
-    const pattern = new RegExp(`(?<![\\p{L}\\p{N}])${escapeRegExp(title)}(?![\\p{L}\\p{N}])`, 'iu')
-    return pattern.test(intent)
+    const pattern = new RegExp(`(?<![\\p{L}\\p{N}])${escapeRegExp(title)}(?![\\p{L}\\p{N}])`, 'giu')
+    const hasCapital = title !== title.toLowerCase()
+    return [...intent.matchAll(pattern)].some(
+      (match) => !(hasCapital && match[0] === match[0].toLowerCase()),
+    )
   })
 }
 
