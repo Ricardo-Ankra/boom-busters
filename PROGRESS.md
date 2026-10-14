@@ -7807,6 +7807,26 @@ boom-busters-broker`; merge and deploy to Vercel, then `PUT
      scheduled, the description is edited in YouTube Studio; the app's
      editor is locked once an item is on YouTube.
 
+304. **A failed job with no project retires when the job works again**
+     (2026-10-14, owner: "Please clear the analytics-runner-failed on the
+     dashboard. There is no way for me to clear them"). Six daily
+     analytics-runner failures from 5 to 10 September (the YouTube Analytics
+     API was disabled in the Google project) sat on the Needs-you queue for
+     five weeks while the same job completed every day. `listFailedRuns`
+     kept every failed run with no project on purpose, since no stage
+     status exists to retire it, and the card's only button, Open, led to
+     the projects list. A failed run with no project now leaves the queue
+     once a later run of the same function, also with no project, has
+     completed; one newer than the last success stays. Checked read-only
+     against production before merge: the queue goes from six failure cards
+     to none. Decisions made: the rule is automatic rather than a Dismiss
+     button, because a dismissal needs a column and a migration and the
+     job's own success is the better signal; the run rows are kept as
+     history rather than deleted by hand. The exemplar corpus spec named
+     304 provisionally; Prettier numbers this list in order, so that spec
+     takes the next free number when it lands here. Shipping: a Vercel
+     deploy. No migration.
+
 305. **The designer gets an exemplar of the slot's technique** (2026-10-14,
      owner: "proceed" to sub-project 2 of the motion engine research;
      rulings: exemplars translated into the house dialect, tags matched from
@@ -7852,7 +7872,16 @@ boom-busters-broker`; merge and deploy to Vercel, then `PUT
      the title has a capital ("a shell company" does not pick Shell); the
      steer takes compound phrases only and skips a phrase negated earlier in
      its clause; "wrote off", "told no one" and "bet against" no longer read
-     as a quote or a comparison.
+     as a quote or a comparison. The final review changed four more:
+     speech verbs are read on the intent only (quotation marks still in any
+     field); a percentage with a movement word ("lost 70%") is a counter and
+     a share of a whole is a donut; "versus" and "compared" are read on the
+     intent and description, not the narration; a racing chart needs three
+     or more series over five or more years; and "less", "remove", "drop"
+     and "lose" join the refusals in a steer. The racing exemplar's slot
+     carries three funds whose order changes. Open for the owner before step
+     two: "share of" with a movement word still reads as a counter, and "up"
+     and "down" in the movement list catch phrasal verbs ("made up 40%").
      Rollout, step one: this merge, with an empty corpus; nothing changes for
      the designer. Step two, on the owner's go-ahead: the live run, each
      design looked at, a second commit, a Vercel deploy and

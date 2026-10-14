@@ -296,9 +296,14 @@ export interface FailedRun {
  * returned every failed run in history, so the queue the user is meant to
  * empty could not be emptied. The project's own `stageStatus` is the recovery
  * signal — `restartStage` clears it the moment the human acts — so a failure
- * card now retires itself the same way a gate card does. Runs with no project
- * (none exist in production since the demo harness was unregistered) are kept
- * visible, because nothing else would ever surface them.
+ * card now retires itself the same way a gate card does.
+ *
+ * A run with no project (the daily analytics job, the cron sweeps) has no
+ * stage to clear, so it retires when a later run of the same function
+ * completes (decision 304): the job works again, and the failure is history.
+ * Six analytics failures from a disabled API sat on the queue for five weeks
+ * of daily successes, with only an Open button that led nowhere. One that is
+ * still failing stays, because nothing else would surface it.
  */
 export async function listFailedRuns(db: Database, limit = 20): Promise<FailedRun[]> {
   return db
@@ -316,7 +321,21 @@ export async function listFailedRuns(db: Database, limit = 20): Promise<FailedRu
     .where(
       and(
         eq(runs.status, 'failed'),
-        or(isNull(runs.projectId), eq(projects.stageStatus, 'failed')),
+        or(
+          and(
+            isNull(runs.projectId),
+            // Literal names, as in `projectDeletionSummary`: an interpolated
+            // column inside a correlated subquery loses its table.
+            sql`not exists (
+              select 1 from runs later
+              where later.function_name = runs.function_name
+                and later.project_id is null
+                and later.status = 'completed'
+                and later.completed_at > runs.completed_at
+            )`,
+          ),
+          eq(projects.stageStatus, 'failed'),
+        ),
       ),
     )
     .orderBy(desc(runs.completedAt))
