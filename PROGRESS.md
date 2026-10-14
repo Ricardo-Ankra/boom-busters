@@ -7703,3 +7703,31 @@ boom-busters-broker`; merge and deploy to Vercel, then `PUT
      retrieval per request; Lottie waits for a film that needs it.
      Shipping: a Vercel deploy, then `PUT /api/inngest`. No migration. The
      number 301 is checked against `origin/master` at the merge.
+
+302. **The daily upload budget is a Settings control, and six by default**
+     (2026-10-14, owner: "Raise the budget to 6 uploads"). The first public
+     test upload after "Audit passed" was switched on sat under a run label
+     reading `preflight` all afternoon: it was the fifth upload start of the
+     Pacific quota day against a budget of four, so the runner was asleep in
+     `wait-quota-day` until 07:10 UTC. The budget had no control anywhere,
+     so the stored value could only change through the database.
+     What shipped. Settings → Publishing has a "Daily upload budget" card
+     with an "Uploads per quota day" dropdown, 1 to 6, saved like the Grade
+     and Grain dropdowns. `dailyUploadBudget` defaults to 6 in the schema and
+     `DEFAULT_SETTINGS`; the schema's ceiling stays 6. E2E global setup now
+     sets the budget itself, since the budget line asserts it and the stored
+     row outlives a default change.
+     Decisions made where the spec left room: the ceiling stays 6 though an
+     upload now costs about 100 quota units (December 2025 revision
+     history), not 1600; six is pacing for one channel, not the quota limit.
+     A dropdown over a number field, so no value outside 1 to 6 can reach
+     the save.
+     Open: the activity label picks `max(step_id)` among started steps, so
+     it names the alphabetically last step, not the latest; a sleeping run
+     reads as stuck. Not fixed here.
+     Shipping: a Vercel deploy, then set the dropdown to 6 in Settings, since
+     the production row stores 4 explicitly. A run already asleep in
+     `wait-quota-day` does not re-read the budget; press Schedule again to
+     replace it (the singleton cancels the sleeper). No migration. Merged
+     first with `origin/master` at 301, so this is 302; the search
+     description on `publish-search-description` renumbers at its merge.

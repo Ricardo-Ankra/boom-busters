@@ -539,8 +539,12 @@ export const PublishSettingsSchema = z.object({
    * can do it (build spec section 9).
    */
   apiAuditPassed: z.boolean().default(false),
-  /** videos.insert costs 1600 units against a 10k/day default quota. */
-  dailyUploadBudget: z.number().int().min(1).max(6).default(4),
+  /**
+   * Upload starts per Pacific quota day. Sized when videos.insert cost 1600
+   * units against the 10k/day default; it has cost about 100 since December
+   * 2025, so six is the app's own pacing, not the quota's (decision 302).
+   */
+  dailyUploadBudget: z.number().int().min(1).max(6).default(6),
 })
 
 // ---------------------------------------------------------------------------
@@ -677,7 +681,7 @@ export const DEFAULT_SETTINGS: Settings = {
       { kind: 'short', weekday: 3, timeUtc: '16:00' },
     ],
     apiAuditPassed: false,
-    dailyUploadBudget: 4,
+    dailyUploadBudget: 6,
   },
   brandKit: {
     typography: {
