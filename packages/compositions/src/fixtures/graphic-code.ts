@@ -16,10 +16,11 @@ import { MOTION_PREAMBLE } from '../lib/motion-tokens'
  * any design: it reads the frame and the frame size, lays out for 16:9 and
  * 9:16, takes every colour and face from its props, pads itself in by the
  * safe area and positions nothing absolutely. A title fades in, the figure
- * counts up to $4bn over the first second (every length and curve a token, decision 301) (the passing values hold for less
+ * counts up to $4bn over the first second (the passing values hold for less
  * than a second, so only "$4bn" is shown), an underline sweeps from the count
  * to the slot's end so nothing is ever still, a second line rises in halfway,
- * and the last frame holds with all its text up.
+ * and the last frame holds with all its text up. Every length and curve is a
+ * token (decision 301).
  */
 export const GRAPHIC_CODE_SOURCE = `function Graphic(props) {
   const h = React.createElement

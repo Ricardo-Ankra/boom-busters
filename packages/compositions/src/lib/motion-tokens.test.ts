@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import {
   MOTION_EASE_NAMES,
   MOTION_PREAMBLE,
+  MOTION_SPRING,
   MOTION_SPRING_NAMES,
   MOTION_VERSION,
   motionFrames,
@@ -60,6 +61,8 @@ describe('motion tokens (decision 301)', () => {
   it('declares the same five curves, sampled at ten points', () => {
     expect(Object.keys(evaluated.ease).sort()).toEqual([...MOTION_EASE_NAMES].sort())
     expect(Object.keys(evaluated.spring).sort()).toEqual([...MOTION_SPRING_NAMES].sort())
+    expect(Object.keys(MOTION_SPRING).sort()).toEqual([...MOTION_SPRING_NAMES].sort())
+    expect(Object.keys(typed.ease).sort()).toEqual([...MOTION_EASE_NAMES].sort())
     for (const name of MOTION_EASE_NAMES) {
       expect(SAMPLES.map(evaluated.ease[name])).toEqual(SAMPLES.map(typed.ease[name]))
     }
@@ -115,6 +118,9 @@ describe('motion tokens (decision 301)', () => {
     expect(MOTION_PREAMBLE).toContain('const motion = Object.freeze({')
     const identifiers = MOTION_PREAMBLE.match(/\bRemotion\s*\.\s*(\w+)/g) ?? []
     expect(new Set(identifiers)).toEqual(new Set(['Remotion.Easing']))
-    expect(MOTION_PREAMBLE).not.toMatch(/\b(props|React|window|require|import)\b/)
+    const code = MOTION_PREAMBLE.split('\n')
+      .filter((line) => !line.trimStart().startsWith('//'))
+      .join('\n')
+    expect(code).not.toMatch(/\b(props|React|window|require|import)\b/)
   })
 })
