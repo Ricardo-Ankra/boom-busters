@@ -68,11 +68,11 @@ const countUp = (figure: number) => `function Graphic() {
   const frame = Remotion.useCurrentFrame()
   const { fps } = Remotion.useVideoConfig()
   const count = Remotion.interpolate(frame, [6, 6 + fps], [0, 1], {
-    easing: Remotion.Easing.out(Remotion.Easing.cubic),
+    easing: motion.ease.emphasis,
     extrapolateLeft: 'clamp',
     extrapolateRight: 'clamp',
   })
-  const sweep = Remotion.interpolate(frame, [0, 179], [0, 100], { extrapolateRight: 'clamp' })
+  const sweep = Remotion.interpolate(frame, [0, 179], [0, 100], { easing: motion.ease.linear, extrapolateRight: 'clamp' })
   return (
     <Remotion.AbsoluteFill>
       <div>{'$' + Math.round(count * ${figure * 10}) / 10 + 'bn'}</div>
@@ -129,7 +129,7 @@ describe('graphicCodeIssue (decision 295)', () => {
     const source = `function Graphic() {
   const frame = Remotion.useCurrentFrame()
   const { width, height } = Remotion.useVideoConfig()
-  const sweep = Remotion.interpolate(frame, [0, 179], [0, 100], { extrapolateRight: 'clamp' })
+  const sweep = Remotion.interpolate(frame, [0, 179], [0, 100], { easing: motion.ease.linear, extrapolateRight: 'clamp' })
   return (
     <Remotion.AbsoluteFill>
       <div>{height > width ? '$7bn' : '$4bn'}</div>
@@ -215,7 +215,7 @@ describe('graphicCodeIssue (decision 295)', () => {
     // the facts cite nothing. A sweep keeps every sample moving.
     const source = `function Graphic(props) {
   const frame = Remotion.useCurrentFrame()
-  const sweep = Remotion.interpolate(frame, [0, 119], [0, 100], { extrapolateRight: 'clamp' })
+  const sweep = Remotion.interpolate(frame, [0, 119], [0, 100], { easing: motion.ease.linear, extrapolateRight: 'clamp' })
   return (
     <Remotion.AbsoluteFill>
       <div>{String(props.data.series[0].points[0].y)}</div>

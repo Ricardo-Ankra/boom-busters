@@ -120,8 +120,8 @@ const WORDS = [{ text: 'four', atMs: 900 }]
 const figureSource = (value: string) => `function Graphic(props) {
   const frame = Remotion.useCurrentFrame()
   const { durationInFrames } = Remotion.useVideoConfig()
-  const land = Remotion.interpolate(frame, [27, 42], [0, 1], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' })
-  const drift = Remotion.interpolate(frame, [0, durationInFrames], [1, 1.04])
+  const land = Remotion.interpolate(frame, [27, 42], [0, 1], { easing: motion.ease.enter, extrapolateLeft: 'clamp', extrapolateRight: 'clamp' })
+  const drift = Remotion.interpolate(frame, [0, durationInFrames], [1, 1.04], { easing: motion.ease.linear })
   return (
     <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: props.brand.colors.background, transform: 'scale(' + drift + ')' }}>
       <div style={{ color: props.brand.colors.textSecondary, fontFamily: props.brand.fonts.title, fontSize: 56 }}>Raised in one round</div>
