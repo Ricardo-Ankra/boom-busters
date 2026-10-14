@@ -7764,6 +7764,17 @@ boom-busters-broker`; merge and deploy to Vercel, then `PUT
      the film was rendered from (the hook already assumed this); YouTube
      counts quotes around a tag with a space toward its 500 characters;
      no test yet pins an unrelated refresh keeping an unsaved edit.
+     Shorts (owner: "for the shorts that are clipped, it doesn't seem to be
+     relevant to that clip"): a Short's titles were written from the film's
+     opening hook and never saw the clip, and its description got the clip
+     last, after the whole claim list and the film's question, under a rule
+     to name "what happened". Both calls now lead with what the Short says
+     (an excerpt's paragraphs, a teaser's beats), leave out the film's hook
+     and question, send the claims "for checking facts only", and ask for
+     the Short's one moment, fact or question rather than the whole case. A
+     Short whose narration cannot be read keeps the film framing. The
+     editor still seeds a Short's opening with the film's hook until the
+     description is written.
      Shipping: a Vercel deploy. For the two Stability AI uploads already
      scheduled, the description is edited in YouTube Studio; the app's
      editor is locked once an item is on YouTube.

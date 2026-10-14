@@ -5,6 +5,7 @@ import {
   ensurePublishRecord,
   FIXTURE_PROJECT_ID,
   getPublishRecord,
+  insertShort,
   insertTimeline,
   publishRecords,
   requireTestDatabase,
@@ -197,6 +198,32 @@ describeDb('the search description (decision 302)', () => {
       // The owner's tag is kept, first; the written ones join it.
       tags: ['Owner tag', 'Wirecard', 'Markus Braun'],
     })
+  })
+
+  it("writes a Short's titles and description from the clip, not the film's opening", async () => {
+    const short = await insertShort(db, {
+      projectId: FIXTURE_PROJECT_ID,
+      title: 'Nine days',
+      segmentRef: { chapterId, fromParagraph: 1, toParagraph: 1 },
+    })
+    callLlm.mockResolvedValueOnce({ text: WHOLE }).mockResolvedValueOnce({
+      text: JSON.stringify({
+        body: 'Wirecard shares collapsed in nine days.',
+        chapterGlosses: [],
+        hashtags: ['#Wirecard'],
+        tags: ['Wirecard'],
+      }),
+    })
+
+    expect(await generateTitles('short', short.id)).toEqual({ ok: true })
+    expect(await generateDescription('short', short.id)).toEqual({ ok: true })
+
+    for (const [request] of callLlm.mock.calls as [{ messages: { content: string }[] }][]) {
+      const sent = request.messages.map((m) => m.content).join('\n')
+      expect(sent).toContain('What this Short says:\nThe shares collapsed in nine days.')
+      // The film's opening is another paragraph; it is not this Short.
+      expect(sent).not.toContain('EY refused to sign the accounts')
+    }
   })
 
   it('stamps an opening the owner rewrites, and leaves the stamp when only the tags change', async () => {

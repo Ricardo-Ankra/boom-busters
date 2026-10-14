@@ -119,7 +119,7 @@ describe('buildDescriptionRequest (decision 302)', () => {
     expect(request.system).toMatch(/first sentence names the company/i)
   })
 
-  it('asks a Short for one or two sentences and no chapter glosses', () => {
+  it('asks a Short for a few sentences and no chapter glosses', () => {
     const short = buildDescriptionRequest({
       target: 'short',
       claims: [CLAIM],
@@ -131,6 +131,61 @@ describe('buildDescriptionRequest (decision 302)', () => {
     expect(short.messages.map((m) => m.content).join('\n')).toContain(
       'The chief executive of Stability AI steps down',
     )
+  })
+
+  /**
+   * Every Short was described as the whole case: the claim list led, the
+   * film's question came next and the clip's words came last. The clip now
+   * leads and the claims follow as a fact check.
+   */
+  it("writes a Short from what it says, with the film's question left out", () => {
+    const short = buildDescriptionRequest({
+      target: 'short',
+      claims: [CLAIM],
+      centralQuestion: 'What was Stability AI giving away, and what did it keep?',
+      chapters: [],
+      shortText: '[pause] The method was not Stability AI’s. It came from a lab in Munich.',
+    })
+    expect(short.messages[0]?.content).toMatch(/^What this Short says:\nThe method was not/)
+    expect(short.messages[1]?.content).toMatch(/^Claims, for checking facts only:/)
+    const content = short.messages.map((m) => m.content).join('\n')
+    expect(content).not.toContain('What was Stability AI giving away')
+    expect(content).not.toContain('[pause]')
+    expect(short.system).toMatch(/about what this\s+Short says rather than the whole case/)
+    expect(short.system).toMatch(/full documentary is on the channel/)
+  })
+})
+
+describe('buildTitlesRequest for a Short (decision 302)', () => {
+  const clip = buildTitlesRequest({
+    caseTitle: 'Stability AI',
+    hook: 'March 2024. Emad Mostaque resigned.',
+    target: 'short',
+    workingTitle: 'The Borrowed Engine',
+    claims: [CLAIM],
+    centralQuestion: 'What was Stability AI giving away, and what did it keep?',
+    shortText: 'The method was not Stability AI’s. It came from a lab in Munich.',
+  })
+
+  it("writes from what the Short says, not the film's hook or question", () => {
+    const content = clip.messages.map((m) => m.content).join('\n')
+    expect(content).toContain('What this Short says:\nThe method was not Stability AI’s.')
+    expect(content).not.toContain('Emad Mostaque resigned')
+    expect(content).not.toContain('What was Stability AI giving away')
+    expect(content).toContain('Claims, for checking facts only:')
+    expect(clip.system).toMatch(/about what this Short says, not the whole film/)
+  })
+
+  it('keeps the film framing for a Short whose narration could not be read', () => {
+    const unread = buildTitlesRequest({
+      caseTitle: 'Stability AI',
+      hook: 'March 2024. Emad Mostaque resigned.',
+      target: 'short',
+      workingTitle: 'The Borrowed Engine',
+      claims: [CLAIM],
+    })
+    expect(unread.messages.map((m) => m.content).join('\n')).toContain('Emad Mostaque resigned')
+    expect(unread.system).not.toMatch(/not the whole film/)
   })
 })
 

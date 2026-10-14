@@ -34,6 +34,17 @@ export const TITLE_OPTION_COUNT = 8
 /** YouTube truncates at 100; anything longer would publish less than shown. */
 const TITLE_MAX_CHARS = 100
 
+/** How much of a chapter, or of a Short, a metadata writer reads. */
+const NARRATION_EXCERPT_MAX = 600
+
+/** The spoken words alone, on one line, cut at the excerpt length. */
+function spokenExcerpt(text: string): string {
+  const spoken = stripNarrationMarkup(text).replace(/\s+/g, ' ').trim()
+  return spoken.length > NARRATION_EXCERPT_MAX
+    ? `${spoken.slice(0, NARRATION_EXCERPT_MAX)}...`
+    : spoken
+}
+
 export function buildTitlesRequest(input: {
   caseTitle: string
   /** The hook the title has to live up to — the script's opening paragraph. */
@@ -50,8 +61,15 @@ export function buildTitlesRequest(input: {
   claims?: readonly ScriptClaim[]
   /** The outline's central question: the film's real angle. */
   centralQuestion?: string
+  /**
+   * What a Short narrates, for a Short. When present the titles are written
+   * from it, and the film's hook and question are left out: they made every
+   * Short's titles a summary of the whole film.
+   */
+  shortText?: string
 }): LLMTaskRequest {
   const shape = `Return JSON: {"titles": ["...", ...]} — exactly ${TITLE_OPTION_COUNT} strings.`
+  const clip = input.target === 'short' && input.shortText ? spokenExcerpt(input.shortText) : null
 
   return {
     task: 'metadata',
@@ -65,7 +83,15 @@ Rules:
 - Every figure, date and name in a title must appear in the claim list below.
   The case and working title are an early pitch and may carry figures the
   research did not support; never repeat a figure from them that the claims
-  do not carry.
+  do not carry.${
+    clip
+      ? `
+- The titles are about what this Short says, not the whole film: its one
+  moment, fact or question. The claim list covers the whole film and is only
+  for checking facts; a title must not lean on a claim the Short does not
+  touch.`
+      : ''
+  }
 - A claim marked NOT adjudicated is an allegation: a title may frame it as an
   allegation or a question, never state it as fact about a named person.
 - Each title is at most ${TITLE_MAX_CHARS} characters and at least 20.
@@ -78,19 +104,33 @@ ${
     ? '- These are for a vertical Short cut from the full video: punchier, front-loaded, the payoff visible in the first five words.'
     : '- These are for the full documentary: they can breathe, but the stakes must be in the first half.'
 }`,
-    messages: [
-      {
-        role: 'user',
-        content:
-          `Case: ${input.caseTitle}\n` +
-          `Working title: ${input.workingTitle}\n\n` +
-          `Opening hook:\n${input.hook}`,
-      },
-      ...(input.centralQuestion
-        ? [{ role: 'user' as const, content: `The film's question: ${input.centralQuestion}` }]
-        : []),
-      { role: 'user', content: `Claims:\n${claimList(input.claims ?? [])}` },
-    ],
+    messages: clip
+      ? [
+          {
+            role: 'user',
+            content:
+              `Case: ${input.caseTitle}\n` +
+              `Working title: ${input.workingTitle}\n\n` +
+              `What this Short says:\n${clip}`,
+          },
+          {
+            role: 'user',
+            content: `Claims, for checking facts only:\n${claimList(input.claims ?? [])}`,
+          },
+        ]
+      : [
+          {
+            role: 'user',
+            content:
+              `Case: ${input.caseTitle}\n` +
+              `Working title: ${input.workingTitle}\n\n` +
+              `Opening hook:\n${input.hook}`,
+          },
+          ...(input.centralQuestion
+            ? [{ role: 'user' as const, content: `The film's question: ${input.centralQuestion}` }]
+            : []),
+          { role: 'user', content: `Claims:\n${claimList(input.claims ?? [])}` },
+        ],
     maxTokens: outputBudget(1000),
   }
 }
@@ -105,9 +145,6 @@ export const DESCRIPTION_BODY_MAX = 1200
 /** YouTube's tag field: 500 characters across every tag, commas included. */
 const TAGS_TOTAL_MAX = 500
 const TAGS_COUNT_MAX = 15
-
-/** How much of each chapter the description writer reads. */
-const CHAPTER_EXCERPT_MAX = 600
 
 export interface DescriptionAnswer {
   body: string
@@ -133,12 +170,7 @@ export function buildDescriptionRequest(input: {
   shortText?: string
 }): LLMTaskRequest {
   const glossCount = input.target === 'master' ? input.chapters.length : 0
-  const excerpt = (text: string) => {
-    const spoken = stripNarrationMarkup(text).replace(/\s+/g, ' ').trim()
-    return spoken.length > CHAPTER_EXCERPT_MAX
-      ? `${spoken.slice(0, CHAPTER_EXCERPT_MAX)}...`
-      : spoken
-  }
+  const clip = input.target === 'short' && input.shortText ? spokenExcerpt(input.shortText) : null
 
   return {
     task: 'metadata',
@@ -158,35 +190,51 @@ Rules:
         ? `"body" is two short paragraphs. The first sentence names the company, its
   best-known product and what happened, with the figures that matter. The
   second paragraph says what the film covers, in the order it covers it.`
-        : `"body" is one or two sentences for a vertical Short. The first sentence
-  names the company, its best-known product and what happened. Then say the
-  full documentary is on the channel.`
+        : `"body" is two or three sentences for a vertical Short, about what this
+  Short says rather than the whole case: the first sentence names the company
+  and the moment, fact or question the Short shows. The last sentence says the
+  full documentary is on the channel. The claim list covers the whole film and
+  is only for checking facts.`
     }
 - No "in this video", no channel talk, no emoji, no ALL CAPS, no em dashes.
 - "chapterGlosses": exactly ${glossCount} strings, one per chapter in order, each
   at most ${CHAPTER_GLOSS_MAX} characters, saying plainly what the chapter is
   about (a name, an event, a date) rather than repeating its title.
 - "hashtags": exactly ${HASHTAGS_MAX}, each one word with no spaces, the company
-  first.
+  first${clip ? ', then what this Short is about' : ''}.
 - "tags": 8 to ${TAGS_COUNT_MAX} search phrases, each under 30 characters: the
-  company, the product, the people, the events, the topic.`,
-    messages: [
-      { role: 'user', content: `Claims:\n${claimList(input.claims)}` },
-      {
-        role: 'user',
-        content: [
-          input.centralQuestion ? `The film's question: ${input.centralQuestion}` : null,
-          input.chapters.length > 0
-            ? `Chapters:\n${input.chapters
-                .map((chapter, index) => `${index + 1}. ${chapter.title}\n${excerpt(chapter.text)}`)
-                .join('\n\n')}`
-            : null,
-          input.shortText ? `What the Short says:\n${excerpt(input.shortText)}` : null,
+  company, the product, the people, the events, the topic${
+    clip ? ', leading with the ones this Short names' : ''
+  }.`,
+    messages: clip
+      ? [
+          // The Short first and the claims after, as a check: led by the
+          // claim list, every Short was described as the whole case.
+          { role: 'user', content: `What this Short says:\n${clip}` },
+          {
+            role: 'user',
+            content: `Claims, for checking facts only:\n${claimList(input.claims)}`,
+          },
         ]
-          .filter((part): part is string => part !== null)
-          .join('\n\n'),
-      },
-    ],
+      : [
+          { role: 'user', content: `Claims:\n${claimList(input.claims)}` },
+          {
+            role: 'user',
+            content: [
+              input.centralQuestion ? `The film's question: ${input.centralQuestion}` : null,
+              input.chapters.length > 0
+                ? `Chapters:\n${input.chapters
+                    .map(
+                      (chapter, index) =>
+                        `${index + 1}. ${chapter.title}\n${spokenExcerpt(chapter.text)}`,
+                    )
+                    .join('\n\n')}`
+                : null,
+            ]
+              .filter((part): part is string => part !== null)
+              .join('\n\n'),
+          },
+        ],
     maxTokens: outputBudget(1500),
   }
 }

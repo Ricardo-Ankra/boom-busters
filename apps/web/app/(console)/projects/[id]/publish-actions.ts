@@ -362,10 +362,19 @@ export async function generateTitles(targetType: string, targetId: string): Prom
   if (mockProvidersEnabled()) {
     titles = mockTitleOptions(workingTitle)
   } else {
-    const [{ hook }, grounding] = await Promise.all([
+    const [{ hook }, grounding, sources] = await Promise.all([
       descriptionIngredients(db, projectId),
       metadataGrounding(projectId),
+      latestScriptParagraphSources(db, projectId),
     ])
+    // A Short's titles are written from what it says, not the film's hook.
+    const shortText =
+      type === 'short'
+        ? await shortNarration(
+            targetId,
+            new Map(sources.chapters.map((chapter) => [chapter.id, chapter.contentMd])),
+          )
+        : undefined
     try {
       // At most two calls (decision 293): a cut-off is asked once more at
       // double the budget, a refusal once more with its reason. An unusable
@@ -380,6 +389,7 @@ export async function generateTitles(targetType: string, targetId: string): Prom
           // the claims are where a title's facts come from (decision 302).
           claims: grounding.claims,
           ...(grounding.centralQuestion ? { centralQuestion: grounding.centralQuestion } : {}),
+          ...(shortText ? { shortText } : {}),
         }),
         parse: (text) => parseTitleOptions(text),
         complete: completeForProject(projectId, { estimateOutputTokens: 500 }),
