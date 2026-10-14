@@ -542,7 +542,7 @@ export const PublishSettingsSchema = z.object({
   /**
    * Upload starts per Pacific quota day. Sized when videos.insert cost 1600
    * units against the 10k/day default; it has cost about 100 since December
-   * 2025, so six is the app's own pacing, not the quota's (decision 303).
+   * 2025, so six is the app's own pacing, not the quota's (decision 302).
    */
   dailyUploadBudget: z.number().int().min(1).max(6).default(6),
 })

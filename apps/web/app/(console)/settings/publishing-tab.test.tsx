@@ -6,7 +6,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { SettingsForm } from './settings-form'
 
 /**
- * The daily upload budget on the Publishing tab (decision 303). The runner
+ * The daily upload budget on the Publishing tab (decision 302). The runner
  * reads it before every upload, and a stored value outlives any change to the
  * default, so the owner sets it here rather than waiting on a deploy. Rendered
  * through `SettingsForm` with every other tab's actions module stubbed, the
@@ -65,7 +65,7 @@ beforeEach(() => {
   saveSettings.mockResolvedValue({ ok: true })
 })
 
-describe('the daily upload budget (decision 303)', () => {
+describe('the daily upload budget (decision 302)', () => {
   it('shows the stored budget and saves a new one', async () => {
     const user = userEvent.setup()
     const settings = structuredClone(DEFAULT_SETTINGS)

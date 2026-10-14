@@ -7728,6 +7728,6 @@ boom-busters-broker`; merge and deploy to Vercel, then `PUT
      Shipping: a Vercel deploy, then set the dropdown to 6 in Settings, since
      the production row stores 4 explicitly. A run already asleep in
      `wait-quota-day` does not re-read the budget; press Schedule again to
-     replace it (the singleton cancels the sleeper). No migration. The
-     number 303 is checked against `origin/master` at the merge; 302 is
-     taken on the `publish-search-description` branch.
+     replace it (the singleton cancels the sleeper). No migration. Merged
+     first with `origin/master` at 301, so this is 302; the search
+     description on `publish-search-description` renumbers at its merge.
