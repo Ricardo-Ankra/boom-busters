@@ -2,6 +2,7 @@
 import { describe, expect, it } from 'vitest'
 import type { ChartBrief, GraphicBrief, PlannedGraphicCode } from '@boom-busters/schemas'
 import {
+  GRAPHIC_CODE_FIXTURE_SOURCE,
   GRAPHIC_EXAMPLE_CHART,
   GRAPHIC_EXAMPLE_CHART_DATA,
   GRAPHIC_EXAMPLE_TYPE,
@@ -393,5 +394,19 @@ describe('graphicCodeIssue (decision 295)', () => {
         /^the code failed at 0\.0 s \(frame 0\) in landscape: Cannot (assign to|add property) /,
       ),
     })
+  })
+
+  it("passes the fixture, the mock designer's answer, under the preamble (decision 301)", () => {
+    const result = graphicCodeIssue(
+      {
+        title: 'Raised in one round',
+        facts: [{ text: '$4bn', claim: 1 }],
+        source: GRAPHIC_CODE_FIXTURE_SOURCE,
+      },
+      CONTEXT,
+      slot(GRAPHIC),
+    )
+    expect(result).not.toHaveProperty('issue')
+    expect(result).toHaveProperty('code')
   })
 })

@@ -1,5 +1,6 @@
 import { GRAPHIC_CODE_VERSION } from '@boom-busters/schemas'
 import type { GraphicCodePayload } from '@boom-busters/schemas'
+import { MOTION_PREAMBLE } from '../lib/motion-tokens'
 
 /**
  * The house fixture for the designer's code (decision 295): the source the
@@ -15,7 +16,7 @@ import type { GraphicCodePayload } from '@boom-busters/schemas'
  * any design: it reads the frame and the frame size, lays out for 16:9 and
  * 9:16, takes every colour and face from its props, pads itself in by the
  * safe area and positions nothing absolutely. A title fades in, the figure
- * counts up to $4bn over the first second (the passing values hold for less
+ * counts up to $4bn over the first second (every length and curve a token, decision 301) (the passing values hold for less
  * than a second, so only "$4bn" is shown), an underline sweeps from the count
  * to the slot's end so nothing is ever still, a second line rises in halfway,
  * and the last frame holds with all its text up.
@@ -30,24 +31,37 @@ export const GRAPHIC_CODE_SOURCE = `function Graphic(props) {
   const portrait = video.height > video.width
   const unit = Math.min(video.width, video.height) / 1080
   const last = Math.max(1, video.durationInFrames - 1)
-  const clamp = { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' }
+  const clamp = 'clamp'
 
-  // The title fades in; the figure counts up to $4bn over the first second.
-  const titleIn = Remotion.interpolate(frame, [0, 12], [0, 1], clamp)
-  const landAt = Math.min(9, Math.max(0, last - video.fps))
-  const count = Remotion.interpolate(frame, [landAt, landAt + video.fps], [0, 1], {
-    easing: Remotion.Easing.out(Remotion.Easing.cubic),
-    extrapolateLeft: 'clamp',
-    extrapolateRight: 'clamp',
+  // The title arrives over motion.ms.enter; the figure counts up to $4bn over motion.ms.count.
+  const titleIn = Remotion.interpolate(frame, [0, motion.frames(motion.ms.enter, video.fps)], [0, 1], {
+    easing: motion.ease.enter,
+    extrapolateLeft: clamp,
+    extrapolateRight: clamp,
+  })
+  const countFrames = motion.frames(motion.ms.count, video.fps)
+  const landAt = Math.min(9, Math.max(0, last - countFrames))
+  const count = Remotion.interpolate(frame, [landAt, landAt + countFrames], [0, 1], {
+    easing: motion.ease.emphasis,
+    extrapolateLeft: clamp,
+    extrapolateRight: clamp,
   })
   const figure = '$' + Math.round(count * 40) / 10 + 'bn'
 
   // The underline sweeps from the count to the slot's end, so the graphic
   // never sits still; a second line rises in halfway through.
-  const sweepFrom = landAt + video.fps
-  const sweep = Remotion.interpolate(frame, [sweepFrom, Math.max(sweepFrom + 1, last)], [0, 1], clamp)
+  const sweepFrom = landAt + countFrames
+  const sweep = Remotion.interpolate(frame, [sweepFrom, Math.max(sweepFrom + 1, last)], [0, 1], {
+    easing: motion.ease.linear,
+    extrapolateLeft: clamp,
+    extrapolateRight: clamp,
+  })
   const half = Math.round(last / 2)
-  const nextIn = Remotion.interpolate(frame, [half, half + 12], [0, 1], clamp)
+  const nextIn = Remotion.interpolate(frame, [half, half + motion.frames(motion.ms.enter, video.fps)], [0, 1], {
+    easing: motion.ease.enter,
+    extrapolateLeft: clamp,
+    extrapolateRight: clamp,
+  })
 
   return h(
     Remotion.AbsoluteFill,
@@ -102,7 +116,7 @@ export const GRAPHIC_CODE_SOURCE = `function Graphic(props) {
           marginTop: 24 * unit,
           color: colors.textPrimary,
           opacity: nextIn,
-          transform: 'translateY(' + (1 - nextIn) * 24 * unit + 'px)',
+          transform: 'translateY(' + (1 - nextIn) * motion.px.rise * unit + 'px)',
         },
       },
       'Then the next step',
@@ -119,8 +133,8 @@ export const GRAPHIC_CODE_SOURCE = `function Graphic(props) {
 export const GRAPHIC_CODE_PAYLOAD: GraphicCodePayload = {
   kind: 'graphic-code',
   version: GRAPHIC_CODE_VERSION,
-  // Plain JavaScript runs as written.
-  compiled: GRAPHIC_CODE_SOURCE,
+  // Plain JavaScript runs as written, under the house motion preamble (decision 301).
+  compiled: `${MOTION_PREAMBLE}\n${GRAPHIC_CODE_SOURCE}`,
   title: 'Four billion, on paper',
   words: [
     { text: 'Four', atMs: 0 },

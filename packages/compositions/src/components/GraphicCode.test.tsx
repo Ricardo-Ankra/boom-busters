@@ -6,6 +6,7 @@ import { GraphicCodePayloadSchema } from '@boom-busters/schemas'
 import type { GraphicCodePayload } from '@boom-busters/schemas'
 import { GRAPHIC_CODE_PAYLOAD, GRAPHIC_CODE_SOURCE } from '../fixtures/graphic-code'
 import { FIXTURE_BRAND } from '../fixtures/timeline'
+import { MOTION_PREAMBLE } from '../lib/motion-tokens'
 import { GraphicCode } from './GraphicCode'
 
 /**
@@ -156,6 +157,12 @@ describe('the fixture graphic', () => {
     expect(GRAPHIC_CODE_SOURCE).not.toMatch(/[<#`\\]|\$\{/)
     expect(GRAPHIC_CODE_SOURCE).not.toMatch(/\b(rgb|rgba|hsl)\(/)
     expect(GRAPHIC_CODE_SOURCE.split('\n').length).toBeLessThan(120)
-    expect(GRAPHIC_CODE_PAYLOAD.compiled).toBe(GRAPHIC_CODE_SOURCE)
+    expect(GRAPHIC_CODE_PAYLOAD.compiled).toBe(`${MOTION_PREAMBLE}\n${GRAPHIC_CODE_SOURCE}`)
+    // On the tokens (decision 301): every curve and length a token, no Easing of its own.
+    expect(GRAPHIC_CODE_SOURCE).not.toMatch(/\bEasing\b/)
+    expect(GRAPHIC_CODE_SOURCE.match(/Remotion\.interpolate\(/g)).toHaveLength(4)
+    expect(
+      GRAPHIC_CODE_SOURCE.match(/easing: motion\.ease\.(enter|emphasis|linear)\b/g),
+    ).toHaveLength(4)
   })
 })

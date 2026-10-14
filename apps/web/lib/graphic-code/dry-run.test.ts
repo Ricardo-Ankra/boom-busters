@@ -2,6 +2,7 @@
 import { describe, expect, it } from 'vitest'
 import { graphicBrand } from '@boom-busters/compositions/graphic-code'
 import { GRAPHIC_CODE_SOURCE } from '@boom-busters/compositions/graphic-code-fixture'
+import { MOTION_PREAMBLE } from '@boom-busters/compositions/motion-tokens'
 import { DEFAULT_SETTINGS, resolveBrandKit } from '@boom-busters/schemas'
 import { compileGraphicSource } from './compile'
 import { dryRunGraphic, type DryRunInput } from './dry-run'
@@ -30,7 +31,8 @@ function dryRun(
   limits: Pick<DryRunInput, 'timeoutMs' | 'frameMaxMs'> = {},
 ) {
   return dryRunGraphic({
-    compiled: compiled(source),
+    // As `graphicCodeIssue` runs it: the house motion preamble first (decision 301).
+    compiled: `${MOTION_PREAMBLE}\n${compiled(source)}`,
     props: { ...PROPS, durationMs },
     durationMs,
     ...limits,
