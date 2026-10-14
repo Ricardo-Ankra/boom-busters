@@ -12,6 +12,7 @@ import {
   graphicBrand,
   graphicFunctionBody,
   graphicPropsFor,
+  MOTION,
   remotionScope,
   safeInsets,
   withAlpha as sandboxWithAlpha,
@@ -249,5 +250,13 @@ describe('graphicPropsFor', () => {
       logos: { Acme: { r2Key: 'boom-busters/logos/acme.png', width: 10, height: 10 } },
     }
     expect(() => graphicPropsFor(unsigned, FIXTURE_BRAND, WIDE)).toThrow(/unmaterialised/)
+  })
+})
+
+describe('MOTION (decision 301)', () => {
+  it('is the typed tokens with the real Easing', () => {
+    expect(MOTION.ms.enter).toBe(450)
+    expect(MOTION.ease.enter(0.5)).toBeGreaterThan(0.9)
+    expect(Object.isFrozen(MOTION.spring.hero)).toBe(true)
   })
 })

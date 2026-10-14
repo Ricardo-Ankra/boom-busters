@@ -10,6 +10,7 @@
     "./graphic-motion": "./src/lib/graphic-motion.ts",
     "./graphic-code": "./src/lib/graphic-code.ts",
     "./graphic-code-pure": "./src/lib/graphic-code-pure.ts",
+    "./motion-tokens": "./src/lib/motion-tokens.ts",
     "./graphic-code-fixture": "./src/fixtures/graphic-code.ts",
     "./social": "./src/lib/social.ts",
     "./social-card": "./src/components/SocialPostCard.tsx",
