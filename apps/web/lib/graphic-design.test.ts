@@ -515,6 +515,51 @@ describe('withDesign', () => {
 })
 
 describe('designGraphicWith (the model call is injected)', () => {
+  it('sends the slot an exemplar of its technique when one is stored, and none before (decision 304)', async () => {
+    const providers = await import('@boom-busters/providers')
+    const expected = providers.exemplarFor(
+      providers.techniqueFor({
+        type: 'graphic',
+        intent: BRIEF.intent ?? '',
+        description: BRIEF.description,
+        coversText: BRIEF.coversText,
+        logos: [],
+      }),
+    )
+    const complete = vi.fn().mockResolvedValue(answer('$4bn'))
+    await designGraphicWith(complete, CONTEXT, SLOT)
+    const slot = (complete.mock.calls[0]![0].messages as { content: string }[])[1]!.content
+    if (expected) {
+      expect(slot).toContain(`A passing design of this technique (${expected.technique}:`)
+      expect(slot).toContain(expected.source)
+    } else {
+      expect(slot).not.toContain('A passing design of this technique')
+    }
+  })
+
+  it('a chart with no points still reaches the request, as a bar chart (decision 304)', async () => {
+    const providers = await import('@boom-busters/providers')
+    const empty: ChartBrief = {
+      ...CHART,
+      series: [{ label: 'Raised', unit: 'USD bn', points: [] }],
+    }
+    expect(
+      providers.techniqueFor({
+        type: 'chart',
+        chartKind: empty.chartKind,
+        seriesCount: empty.series.length,
+        xLabels: [],
+        intent: empty.takeaway,
+        description: empty.description,
+        coversText: empty.coversText,
+        logos: [],
+      }),
+    ).toBe('bar-chart')
+    const complete = vi.fn().mockResolvedValue(answer('$4bn'))
+    await designGraphicWith(complete, CONTEXT, { ...SLOT, brief: empty })
+    expect(complete).toHaveBeenCalled()
+  })
+
   it('stops non-retriably before any model call when the dry run cannot load its modules', async () => {
     runtimeFault = new Error("the designer's dry run cannot load remotion on this host: nope")
     try {

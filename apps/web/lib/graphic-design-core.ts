@@ -9,7 +9,9 @@ import type { Database } from '@boom-busters/db'
 import {
   buildGraphicRequest,
   estimatedWords,
+  exemplarFor,
   parseGraphicCode,
+  techniqueFor,
   wordsInSlot,
   type GraphicDesignInput,
   type LLMTaskRequest,
@@ -188,6 +190,26 @@ export async function designGraphicWith(
   // The same words the prompt lists, as the dry run hands them to the code.
   const words = narration.words.map((word) => ({ text: word.text, atMs: word.offsetMs }))
 
+  // The slot's exemplar (decision 304): the technique from the brief, the
+  // logo titles and the steer; absent while the corpus holds no design for it.
+  const exemplar = exemplarFor(
+    techniqueFor({
+      type: brief.type,
+      ...(brief.type === 'chart'
+        ? {
+            chartKind: brief.chartKind,
+            seriesCount: brief.series.length,
+            xLabels: brief.series[0]?.points.map((point) => point.x) ?? [],
+          }
+        : {}),
+      intent,
+      description: brief.description,
+      coversText: brief.coversText,
+      logos: context.logos.map((logo) => logo.title),
+      ...(options.guidance ? { guidance: options.guidance } : {}),
+    }),
+  )
+
   const base: GraphicDesignInput = {
     caseTitle: context.caseTitle,
     claims: context.claims,
@@ -199,6 +221,7 @@ export async function designGraphicWith(
     intent,
     intentRefs,
     ...(brief.type === 'chart' ? { data: chartData(brief) } : {}),
+    ...(exemplar ? { exemplar } : {}),
     // A scene from before decision 295 is not shown: the designer writes code
     // from the intent, and the scene stays on the brief untouched.
     ...(options.redesign && brief.code ? { current: currentDesign(brief.code) } : {}),
