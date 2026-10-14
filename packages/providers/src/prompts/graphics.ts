@@ -436,7 +436,8 @@ Craft:
 - Motion keyed to the spoken words: each new thing said gets its own change, whether an
   entrance, a highlight, a bar growing or a line drawing across.
 - Entrances, exits and moves come from the tokens, in the house motion below. Nothing
-  passes its mark except the one hero spring of a beat; nothing spins.
+  passes its mark except the one hero spring of a beat and snap's hair of overshoot on
+  small things; nothing spins.
 - An ending that holds rather than vanishes.
 - Portrait is a first-class frame, not a squeeze: stack what sits side by side, and size
   type from Math.min(width, height).
@@ -458,8 +459,9 @@ and every length are judged on the board, not checked:
   variable: the check reads the call.
 - A spring is Remotion.spring({ frame, fps, delay, config: motion.spring.<name> }) and
   nothing else: settle by default (no overshoot), hero at most once per beat (one small
-  overshoot, for the figure the beat is about), snap for small things. A spring is for an
-  arrival that should feel physical; ease everything else.
+  overshoot, for the figure the beat is about), snap for small things only (a tick, a dot,
+  a badge), never a figure or a title. A spring is for an arrival that should feel
+  physical; ease everything else.
 - Lengths come from motion.ms: an entrance is motion.ms.enter, an exit motion.ms.exit
   (exits are shorter than entrances), a wipe motion.ms.reveal, a bar or a line drawn on
   motion.ms.draw, a count motion.ms.count, a move motion.ms.move. A change within a beat

@@ -98,7 +98,11 @@ function deepFreeze<T>(value: T): T {
   return value
 }
 
-/** The typed tokens, built with the caller's `Easing` (the real one in Remotion, a frozen copy in the dry run). */
+/**
+ * The typed tokens, built with the caller's `Easing`: `MOTION` in
+ * `graphic-code.ts` passes Remotion's. The dry run never calls this; it runs
+ * `MOTION_PREAMBLE`, which reads the sandbox's `Remotion.Easing`.
+ */
 export function motionTokens(easing: typeof Easing): MotionTokens {
   return deepFreeze({
     ms: { ...MOTION_MS },

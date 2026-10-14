@@ -226,7 +226,10 @@ describe('the designer prompt (decision 295)', () => {
     )
     expect(rules).not.toContain('The first three are checked')
     expect(rules).toContain(
-      'Entrances, exits and moves come from the tokens, in the house motion below. Nothing passes its mark except the one hero spring of a beat; nothing spins.',
+      "Entrances, exits and moves come from the tokens, in the house motion below. Nothing passes its mark except the one hero spring of a beat and snap's hair of overshoot on small things; nothing spins.",
+    )
+    expect(rules).toContain(
+      'snap for small things only (a tick, a dot, a badge), never a figure or a title.',
     )
     expect(rules).toContain(
       'Anything keyed to the narration keeps its spoken time; stagger only what the narration does not time.',
