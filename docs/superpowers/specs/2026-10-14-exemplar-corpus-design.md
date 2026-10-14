@@ -162,14 +162,15 @@ path is exercised by the live run.
 
 ### 4.1 `techniqueFor`
 
-A pure function in `exemplars/index.ts`, no model call, deterministic:
+A pure function in `exemplars/technique.ts`, re-exported from
+`exemplars/index.ts`; no model call, deterministic:
 
 ```
 techniqueFor(input: {
   type: 'graphic' | 'chart'
   chartKind?: ChartKind
   seriesCount?: number
-  pointCount?: number
+  xLabels?: readonly string[] // the first series' x labels
   intent: string
   description: string
   coversText: string
@@ -190,38 +191,50 @@ Rules, first match wins:
    phrases are compound on purpose, so "make the logo bigger" or "list
    fewer words" is left to the rules. Negation is clause-scoped: the steer
    is cut into clauses at , ; : . ! ? and at "but", and a phrase is skipped
-   when "no", "not", "don't", "dont", "without" or "never" stands before it
-   in its own clause. When two phrases are named, the first in the order
-   listed here wins. `chapter-title`, `typewriter`, `animated-list`, `lower-third`
-   and `progress-bars` are reached by the steer only: the designer does not
-   know a slot's position in its chapter, and the other four are stylistic
-   choices the producer makes.
-2. A chart brief, by `chartKind`: `bar` with two or more series →
-   `comparison-chart`; `bar` with one series and five or more points whose
-   `x` are four-digit years from 1900 to 2099 → `racing-chart`; `bar` and
-   `stacked` → `bar-chart`; `line` and `area` → `line-chart`; `waterfall` →
-   `comparison-chart`.
-3. A graphic brief, by keyword over `intent`, `description` and
-   `coversText`: a pair of quotation marks (straight, curly, or a single
-   curly pair that opens at the field start or after whitespace or a
-   bracket and is not followed by a letter, so "the ‘90s" is not one)
-   inside one field, or "said", "wrote", "told" → `quote-card` ("wrote
-   off", "wrote down", "wrote up", "told no one", "told no-one", "told
-   nobody" and "told nothing" are not speech); a percentage sign, "per cent", "percent"
-   or "share of" → `donut-chart`; "versus", "vs", "compared", "side by
-   side" → `split-screen`; a title from `logos` present in the intent as a
-   whole word, matched without regard to case, titles under two characters
-   skipped, and a match written all in lower case skipped when the title has
-   a capital letter ("a shell company" is not the Shell logo) →
-   `logo-reveal`; two or more distinct figures with a unit across
-   the three fields (digits followed by bn, m, k, tn, billion, million,
-   thousand or trillion, or preceded by $, €, £, or by R when a unit
-   follows; a figure is keyed on its currency and its value, so "$4bn",
-   "4 billion dollars" and "4.0bn" are one figure, while "$4bn" and "€4bn"
-   are two) →
-   `kpi-counter`; one such figure → `stat-counter`; an intent of eight
-   words or fewer → `text-highlight`; otherwise `kinetic-word-stack`. A
-   year such as "2019" and a count such as "12,000 staff" are not figures.
+   when "no", "not", "don't", "dont", "without", "never", "less", "remove",
+   "drop" or "lose" stands before it in its own clause, so "less kinetic"
+   and "remove the highlight" are left to the rules. When two phrases are
+   named, the first in the order listed here wins. `chapter-title`,
+   `typewriter`, `animated-list`, `lower-third` and `progress-bars` are
+   reached by the steer only: the designer does not know a slot's position
+   in its chapter, and the other four are stylistic choices the producer
+   makes.
+2. A chart brief, by `chartKind`. `bar` with three or more series and five
+   or more `xLabels` (the first series' x values) that are all years (19xx
+   or 20xx) → `racing-chart`; `bar` with two or more series otherwise →
+   `comparison-chart`; `bar` with one series → `bar-chart`, however many
+   points it has. `stacked` → `bar-chart`; `line` and `area` →
+   `line-chart`; `waterfall` → `comparison-chart`.
+3. A graphic brief, by keyword, in this order:
+   - Quotation → `quote-card`: a pair of quotation marks (straight, curly,
+     or a single curly pair that opens at the field start or after
+     whitespace or a bracket and is not followed by a letter, so "the ‘90s"
+     is not one) inside one field, read per field on `intent`,
+     `description` and `coversText`; or a speech verb ("said", "told",
+     "wrote") read on the `intent` only, since the narration reports what
+     people said about a figure without the slot being a quotation ("wrote
+     off", "wrote down", "wrote up", "told no one", "told no-one", "told
+     nobody" and "told nothing" are not speech).
+   - Percentage, per field on all three: a percentage sign, "per cent" or
+     "percent" with a movement word anywhere in the same field (fell, fall,
+     falls, lost, lose, loses, rose, rise, rises, up, down, dropped, drop,
+     jumped, plunged, slumped, surged, crashed, soared) → `stat-counter`; a
+     percentage otherwise, "share of" or "per cent of" → `donut-chart`.
+   - "versus", "vs", "compared" or "side by side", read on `intent` and
+     `description` only, not `coversText` → `split-screen`.
+   - A title from `logos` present in the intent as a whole word, matched
+     without regard to case, titles under two characters skipped, and a
+     match written all in lower case skipped when the title has a capital
+     letter ("a shell company" is not the Shell logo) → `logo-reveal`.
+   - Figures across the three fields (digits followed by bn, m, k, tn,
+     billion, million, thousand or trillion, or preceded by $, €, £, or by
+     R when a unit follows; a figure is keyed on its currency and its
+     value, so "$4bn", "4 billion dollars" and "4.0bn" are one figure,
+     while "$4bn" and "€4bn" are two): two or more distinct → `kpi-counter`;
+     one → `stat-counter`. A year such as "2019" and a count such as
+     "12,000 staff" are not figures.
+   - An intent of eight words or fewer → `text-highlight`; otherwise
+     `kinetic-word-stack`.
 
 One technique, one exemplar. A second exemplar of another technique is not
 sent: the system prompt's two examples already give the model a second

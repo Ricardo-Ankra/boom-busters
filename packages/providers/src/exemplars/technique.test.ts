@@ -32,14 +32,29 @@ describe('techniqueFor (decision 305)', () => {
     ['waterfall', chart({ chartKind: 'waterfall' }), 'comparison-chart'],
     ['bar, two series', chart({ seriesCount: 2 }), 'comparison-chart'],
     [
-      'bar, one series, five years',
-      chart({ xLabels: ['2017', '2018', '2019', '2020', '2021'] }),
+      'bar, one series, six years',
+      chart({ xLabels: ['2016', '2017', '2018', '2019', '2020', '2021'] }),
+      'bar-chart',
+    ],
+    [
+      'bar, three series, five years',
+      chart({ seriesCount: 3, xLabels: ['2017', '2018', '2019', '2020', '2021'] }),
       'racing-chart',
     ],
     [
-      'bar, one series, five labels that are not years',
-      chart({ xLabels: ['Q1', 'Q2', 'Q3', 'Q4', 'Q5'] }),
-      'bar-chart',
+      'bar, two series, five years',
+      chart({ seriesCount: 2, xLabels: ['2017', '2018', '2019', '2020', '2021'] }),
+      'comparison-chart',
+    ],
+    [
+      'bar, three series, four years',
+      chart({ seriesCount: 3, xLabels: ['2018', '2019', '2020', '2021'] }),
+      'comparison-chart',
+    ],
+    [
+      'bar, three series, five labels that are not years',
+      chart({ seriesCount: 3, xLabels: ['Q1', 'Q2', 'Q3', 'Q4', 'Q5'] }),
+      'comparison-chart',
     ],
   ])('maps a chart by its kind and shape: %s', (_name, input, technique) => {
     expect(techniqueFor(input)).toBe(technique)
@@ -55,11 +70,33 @@ describe('techniqueFor (decision 305)', () => {
   it.each([
     ['a quotation', graphic({ coversText: '"We never saw it," he said.' }), 'quote-card'],
     ['said', graphic({ intent: 'The chairman said the money was safe.' }), 'quote-card'],
+    [
+      'said in the narration only',
+      graphic({
+        intent: 'EY could not find the €1.9bn the company reported.',
+        coversText: 'EY said €1.9bn could not be found.',
+      }),
+      'stat-counter',
+    ],
     ['a percentage sign', graphic({ intent: '40% of the money was gone.' }), 'donut-chart'],
+    [
+      'a percentage that moves',
+      graphic({ intent: 'Wirecard shares lost 70% in a single day.' }),
+      'stat-counter',
+    ],
     ['per cent', graphic({ intent: 'Forty per cent was gone.' }), 'donut-chart'],
+    ['per cent of', graphic({ intent: 'Forty per cent of it was gone.' }), 'donut-chart'],
     ['share of', graphic({ intent: 'The share of debt that was real.' }), 'donut-chart'],
     ['versus', graphic({ intent: 'Reported versus real.' }), 'split-screen'],
     ['side by side', graphic({ description: 'The two claims side by side.' }), 'split-screen'],
+    [
+      'compared in the narration only',
+      graphic({
+        intent: 'The debt kept growing every year after the merger.',
+        coversText: 'Compared with its rivals, the debt kept growing.',
+      }),
+      'kinetic-word-stack',
+    ],
     [
       'a logo title in the intent',
       graphic({ intent: 'Acme was the name on every door.' }),
@@ -134,8 +171,20 @@ describe('techniqueFor (decision 305)', () => {
     'no quote please',
     "don't highlight anything",
     'without a progress bar',
+    'remove the highlight',
   ])('leaves the steer "%s" to the rules', (guidance) => {
     expect(techniqueFor(graphic({ guidance }))).toBe('kinetic-word-stack')
+  })
+
+  it('reads "less" and "drop" as refusals too', () => {
+    // A short intent falls through to text-highlight, so the steer's own
+    // technique would show if "less kinetic" were taken as a request.
+    expect(techniqueFor(graphic({ intent: 'Nobody asked.', guidance: 'less kinetic' }))).toBe(
+      'text-highlight',
+    )
+    expect(techniqueFor(graphic({ guidance: 'drop the pie, lose the donut' }))).toBe(
+      'kinetic-word-stack',
+    )
   })
 
   it('reads a curly apostrophe in a refusal', () => {
@@ -263,11 +312,8 @@ describe('techniqueFor (decision 305)', () => {
   })
 
   it('takes a years axis only for real years', () => {
-    expect(techniqueFor(chart({ xLabels: ['1999', '2000', '2001', '2002', '2003'] }))).toBe(
-      'racing-chart',
-    )
-    expect(techniqueFor(chart({ xLabels: ['1011', '1012', '1013', '1014', '1015'] }))).toBe(
-      'bar-chart',
-    )
+    const three = (xLabels: string[]) => techniqueFor(chart({ seriesCount: 3, xLabels }))
+    expect(three(['1999', '2000', '2001', '2002', '2003'])).toBe('racing-chart')
+    expect(three(['1011', '1012', '1013', '1014', '1015'])).toBe('comparison-chart')
   })
 })

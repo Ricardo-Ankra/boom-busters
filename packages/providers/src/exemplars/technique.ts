@@ -48,8 +48,22 @@ const STEER: readonly [RegExp, Technique][] = [
   [/\bbullet(?:ed)? list\b|\bas a list\b/gi, 'animated-list'],
 ]
 
-/** A steer phrase after one of these, in the same clause, is a refusal, not a request. */
-const NEGATORS = new Set(['no', 'not', "don't", 'dont', 'without', 'never'])
+/**
+ * A steer phrase after one of these, in the same clause, is a refusal, not a
+ * request: "less kinetic" and "remove the highlight" leave the slot to the rules.
+ */
+const NEGATORS = new Set([
+  'no',
+  'not',
+  "don't",
+  'dont',
+  'without',
+  'never',
+  'less',
+  'remove',
+  'drop',
+  'lose',
+])
 
 function steerTechnique(guidance: string): Technique | undefined {
   // Negation is clause-scoped: a clause ends at , ; : . ! ? or the word "but".
@@ -71,14 +85,25 @@ function steerTechnique(guidance: string): Technique | undefined {
 
 /**
  * A quotation: a pair of marks inside one field (a pair never spans fields or
- * lines, so inch marks in two fields are not a quote), or a speech verb. "wrote
- * off", "wrote down", "wrote up" and "told no one" are not speech. A single
- * curly pair opens at the field start or after whitespace or a bracket and is
- * not followed by a letter, so an apostrophe ("the ‘90s", "the bank’s") is not one.
+ * lines, so inch marks in two fields are not a quote). A single curly pair
+ * opens at the field start or after whitespace or a bracket and is not
+ * followed by a letter, so an apostrophe ("the ‘90s", "the bank’s") is not one.
  */
-const QUOTE =
-  /["“”][^"“”\n]+["“”]|(?<![^\s([{])‘[^‘’\n]+’(?!\p{L})|\bsaid\b|\bwrote\b(?!\s+(?:off|down|up)\b)|\btold\b(?!\s+(?:no[ -]one|nobody|nothing)\b)/iu
+const QUOTE_MARKS = /["“”][^"“”\n]+["“”]|(?<![^\s([{])‘[^‘’\n]+’(?!\p{L})/u
+/**
+ * A speech verb, read on the intent only: narration reports what people said
+ * about a figure ("EY said €1.9bn could not be found") without the slot being
+ * a quotation. "wrote off", "wrote down", "wrote up" and "told no one" are not
+ * speech.
+ */
+const SPEECH =
+  /\bsaid\b|\bwrote\b(?!\s+(?:off|down|up)\b)|\btold\b(?!\s+(?:no[ -]one|nobody|nothing)\b)/i
+/** A percentage, or a share; "per cent of" is caught by "per cent". */
 const PERCENT = /%|\bper ?cent\b|\bshare of\b/i
+/** A movement word: a percentage that moves is a counter, not a share of a whole. */
+const MOVEMENT =
+  /\b(?:fell|fall|falls|lost|lose|loses|rose|rise|rises|up|down|dropped|drop|jumped|plunged|slumped|surged|crashed|soared)\b/i
+/** A comparison, read on the intent and the description only, not the narration. */
 const VERSUS = /\bversus\b|\bvs\.?\b|\bcompared\b|\bside by side\b/i
 /**
  * A figure with a unit or a currency: "1.2bn", "900m", "R40 billion" and
@@ -154,10 +179,14 @@ export function techniqueFor(input: TechniqueInput): Technique {
   }
   if (input.type === 'chart') return chartTechnique(input)
   const fields = [input.intent, input.description, input.coversText]
-  const text = fields.join('\n')
-  if (fields.some((field) => QUOTE.test(field))) return 'quote-card'
-  if (PERCENT.test(text)) return 'donut-chart'
-  if (VERSUS.test(text)) return 'split-screen'
+  if (fields.some((field) => QUOTE_MARKS.test(field)) || SPEECH.test(input.intent)) {
+    return 'quote-card'
+  }
+  // A percentage that moves in its own field ("shares lost 70%") is a counter;
+  // any other percentage or share ("40% of the money") is a share of a whole.
+  if (fields.some((field) => PERCENT.test(field) && MOVEMENT.test(field))) return 'stat-counter'
+  if (fields.some((field) => PERCENT.test(field))) return 'donut-chart'
+  if (VERSUS.test(input.intent) || VERSUS.test(input.description)) return 'split-screen'
   if (mentionsLogo(input.intent, input.logos)) return 'logo-reveal'
   const figures = distinctFigures(fields)
   if (figures >= 2) return 'kpi-counter'
@@ -176,10 +205,12 @@ function chartTechnique(input: TechniqueInput): Technique {
     case 'waterfall':
       return 'comparison-chart'
     case 'bar':
-      if (series >= 2) return 'comparison-chart'
-      if (series === 1 && labels.length >= 5 && labels.every((label) => YEAR.test(label))) {
+      // A race needs several series to reorder over a years axis; one series
+      // is a plain bar chart however long it runs.
+      if (series >= 3 && labels.length >= 5 && labels.every((label) => YEAR.test(label))) {
         return 'racing-chart'
       }
+      if (series >= 2) return 'comparison-chart'
       return 'bar-chart'
     case 'stacked':
     default:
