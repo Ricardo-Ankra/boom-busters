@@ -113,17 +113,27 @@ parts, each with one source:
    exits are shorter than entrances; a beat gets one kind of entrance; springs
    for arrivals that should feel physical, eased interpolation for everything
    else.
-3. Remotion's own rules: house-edited excerpts of four vendored files under
+3. Remotion's own rules: house-edited excerpts of two vendored files under
    `.agents/skills/remotion-markup/`: `timing.md` (interpolate over explicit
-   ranges, clamping, multiple keyframes), `sequencing.md` (Sequence windows
-   and offsets), `transitions.md` (a scene cut from two Sequences) and
-   `text-highlights.md` (word-level emphasis). About 60 lines. They live in
-   `packages/providers/src/prompts/remotion-rules.ts` as string constants with
-   a header naming the source file and the one edit: Remotion's
-   `Easing.spring({damping: 200})` advice is replaced by the tokens. A test
-   pins every excerpt line (after that edit) to the vendored file, so a
-   future `npx skills` upgrade fails the test rather than drifting the
-   prompt.
+   ranges, clamping, multiple keyframes) and `sequencing.md` (Sequence
+   windows and offsets, `Series` for one scene after another). About 50
+   lines. They live in `packages/providers/src/prompts/remotion-rules.ts` as
+   string constants with a header naming the source file and the one edit:
+   Remotion's `Easing.spring({damping: 200})` advice is replaced by the
+   tokens. A test pins every excerpt line (after that edit) to the vendored
+   file, so a future `npx skills` upgrade fails the test rather than
+   drifting the prompt.
+
+   `transitions.md` and `text-highlights.md` are not excerpted: the first is
+   built on `@remotion/transitions` and the second on
+   `@remotion/rough-notation`, neither of which the sandbox exposes, and
+   exposing them would change the sandbox contract and need a Lambda
+   redeploy. A graphic is one beat; the cut to the next slot is the
+   timeline's. The two rules a design needs from them are written in the
+   house rules of part 2 instead: a change within a beat is an exit on
+   `motion.ms.exit`, a `motion.ms.gap` pause, then an entrance; emphasis on a
+   word is a colour or weight change on `motion.ms.micro`, drawn with
+   `interpolate`, never a package.
 4. The two worked examples, rewritten on the tokens; the test of decision 295
    keeps running both through `graphicCodeIssue`.
 
@@ -164,7 +174,7 @@ on the board.
   equals `MOTION` (easings compared by sampling each curve at ten points,
   spring configs by value); every object frozen; `frames` and `stagger` at
   their edges (1 ms is 1 frame; the 600 ms cap).
-- `remotion-rules.test.ts`: every excerpt line is found in its vendored file.
+- `remotion-rules.test.ts`: every excerpt line is found in its vendored file; no excerpt mentions a package other than `remotion`.
 - `scan.test.ts`: each new refusal with a refused and a passing case,
   including `motion.ease.linear` passing, `config: motion.spring.hero`
   passing, a literal spring config refused, a bare `interpolate` refused.
