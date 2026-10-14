@@ -13,7 +13,7 @@ import type { GraphicDesignContext } from '@/lib/graphic-design-core'
 import { optionalText, readRawFlags } from '@/lib/live-set-args'
 
 /**
- * The exemplar translation's pure parts (decision 304): the hash that pins a
+ * The exemplar translation's pure parts (decision 305): the hash that pins a
  * design to its vendored template, the design and registry files, the
  * synthetic context and brief the translation and the corpus test share,
  * the designer input with the steer, and the script's arguments. No file,
@@ -43,7 +43,7 @@ export function vendoredHash(text: string): string {
 
 export function designHeader(entry: ExemplarEntry, hash: string): string {
   return (
-    `// Exemplar "${entry.id}" (decision 304), translated from ${vendoredPath(entry)}\n` +
+    `// Exemplar "${entry.id}" (decision 305), translated from ${vendoredPath(entry)}\n` +
     `// vendored sha256: ${hash}\n` +
     '// Written by apps/web/scripts/translate-exemplars.ts; a passing design under graphicCodeIssue.'
   )

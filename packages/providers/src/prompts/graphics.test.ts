@@ -333,7 +333,7 @@ describe('the designer prompt (decision 295)', () => {
 })
 
 describe('buildGraphicRequest (decision 295)', () => {
-  it('carries one exemplar of the slot technique in the slot message, after the data and before the current design (decision 304)', () => {
+  it('carries one exemplar of the slot technique in the slot message, after the data and before the current design (decision 305)', () => {
     const exemplar = {
       technique: 'stat-counter' as const,
       description: 'one large figure counting up to its mark, a label beneath, held',

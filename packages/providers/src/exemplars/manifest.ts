@@ -1,7 +1,7 @@
 import type { ChartKind, ChartSeries } from '@boom-busters/schemas'
 
 /**
- * The exemplar corpus (decision 304): one hand-written entry per technique
+ * The exemplar corpus (decision 305): one hand-written entry per technique
  * the channel uses, each naming the MIT-licensed Remotion template it is
  * translated from (vendored byte for byte under `vendored/`, with the
  * repository's licence beside it) and a small synthetic slot that the

@@ -28,7 +28,7 @@ import { graphicCodeIssue } from '@/lib/graphic-code/check'
 import { BudgetExceeded, LiveBudget } from '@/lib/live-budget'
 
 /**
- * The exemplar translation job (decision 304): for each manifest entry with
+ * The exemplar translation job (decision 305): for each manifest entry with
  * no stored design, or whose vendored template changed, ask the graphics
  * model to translate the template into a sandbox design through the
  * designer's own prompt and ladder, check the answer with the real

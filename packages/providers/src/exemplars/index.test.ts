@@ -6,7 +6,7 @@ import { EXEMPLARS, exemplarFor, MANIFEST, TECHNIQUES, vendoredPath } from './in
 const HERE = new URL('./', import.meta.url)
 const DASH = /[–—]/
 
-describe('the exemplar manifest (decision 304)', () => {
+describe('the exemplar manifest (decision 305)', () => {
   it('has exactly one entry per technique, under the technique as its id', () => {
     expect(MANIFEST.map((entry) => entry.technique).sort()).toEqual([...TECHNIQUES].sort())
     for (const entry of MANIFEST) expect(entry.id).toBe(entry.technique)

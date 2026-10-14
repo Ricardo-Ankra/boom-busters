@@ -69,7 +69,7 @@ export interface GraphicDesignInput {
   /** A redesign: the source and title being replaced (ruling 9; its facts are not shown). */
   current?: CurrentDesign
   guidance?: string
-  /** A passing design of the slot's technique, shown in the slot message (decision 304). */
+  /** A passing design of the slot's technique, shown in the slot message (decision 305). */
   exemplar?: Exemplar
   /** Why the previous answer to this same slot was refused. */
   rejection?: string
@@ -557,7 +557,7 @@ export function buildGraphicRequest(input: GraphicDesignInput): LLMTaskRequest {
 }
 
 /**
- * The slot's exemplar (decision 304): one passing design of the technique
+ * The slot's exemplar (decision 305): one passing design of the technique
  * the brief calls for, in the sandbox and on the tokens, so the model
  * patterns on the technique and not on the system prompt's two examples. It
  * sits in the slot message, after the data, so the cached film message and

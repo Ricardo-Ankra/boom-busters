@@ -19,7 +19,7 @@ import {
 const stat = MANIFEST.find((entry) => entry.id === 'stat-counter')!
 const bar = MANIFEST.find((entry) => entry.id === 'bar-chart')!
 
-describe('exemplar translation, the pure parts (decision 304)', () => {
+describe('exemplar translation, the pure parts (decision 305)', () => {
   it('hashes a vendored file the same whatever its line endings', () => {
     expect(vendoredHash('a\r\nb\r\n')).toBe(vendoredHash('a\nb\n'))
     expect(vendoredHash('a\nb\n')).toMatch(/^[0-9a-f]{64}$/)

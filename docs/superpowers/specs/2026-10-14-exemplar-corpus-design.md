@@ -1,4 +1,4 @@
-# An exemplar corpus for the graphics designer (decision 304)
+# An exemplar corpus for the graphics designer (decision 305)
 
 Status: approved by the owner in conversation on 2026-10-14, section by
 section; sub-project 2 of the motion engine research (sub-project 1 shipped

@@ -515,7 +515,7 @@ describe('withDesign', () => {
 })
 
 describe('designGraphicWith (the model call is injected)', () => {
-  it('sends the slot an exemplar of its technique when one is stored, and none before (decision 304)', async () => {
+  it('sends the slot an exemplar of its technique when one is stored, and none before (decision 305)', async () => {
     const providers = await import('@boom-busters/providers')
     const expected = providers.exemplarFor(
       providers.techniqueFor({
@@ -537,7 +537,7 @@ describe('designGraphicWith (the model call is injected)', () => {
     }
   })
 
-  it('a chart with no points still reaches the request, as a bar chart (decision 304)', async () => {
+  it('a chart with no points still reaches the request, as a bar chart (decision 305)', async () => {
     const providers = await import('@boom-busters/providers')
     const empty: ChartBrief = {
       ...CHART,

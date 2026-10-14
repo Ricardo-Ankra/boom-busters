@@ -190,7 +190,7 @@ export async function designGraphicWith(
   // The same words the prompt lists, as the dry run hands them to the code.
   const words = narration.words.map((word) => ({ text: word.text, atMs: word.offsetMs }))
 
-  // The slot's exemplar (decision 304): the technique from the brief, the
+  // The slot's exemplar (decision 305): the technique from the brief, the
   // logo titles and the steer; absent while the corpus holds no design for it.
   const exemplar = exemplarFor(
     techniqueFor({

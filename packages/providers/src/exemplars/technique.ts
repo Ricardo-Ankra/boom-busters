@@ -2,7 +2,7 @@ import type { ChartKind } from '@boom-busters/schemas'
 import type { Technique } from './manifest'
 
 /**
- * Which exemplar a slot gets (decision 304): a pure function of the brief's
+ * Which exemplar a slot gets (decision 305): a pure function of the brief's
  * fields, the film's logo titles and the producer's steer. No model call,
  * deterministic, first match wins. The steer beats every rule, and five
  * techniques are reached by the steer only (the designer does not know a

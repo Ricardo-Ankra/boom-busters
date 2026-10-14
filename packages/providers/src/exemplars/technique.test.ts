@@ -23,7 +23,7 @@ const chart = (over: Partial<TechniqueInput> = {}): TechniqueInput => ({
   ...over,
 })
 
-describe('techniqueFor (decision 304)', () => {
+describe('techniqueFor (decision 305)', () => {
   it.each([
     ['bar, one series', chart(), 'bar-chart'],
     ['stacked', chart({ chartKind: 'stacked' }), 'bar-chart'],
