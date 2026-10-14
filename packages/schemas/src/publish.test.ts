@@ -5,6 +5,8 @@ import {
   formatTimestamp,
   PUBLISH_DISCLAIMER,
   PublishDraftSchema,
+  sourceLabel,
+  splitHashtags,
 } from './publish'
 
 describe('formatTimestamp', () => {
@@ -131,7 +133,144 @@ describe('composeDescription', () => {
   })
 })
 
+/**
+ * Decision 303: the description is written for search too. A chapter line
+ * carries a gloss that says what the chapter is about, a source line says
+ * what it backs, and three hashtags get a line of their own.
+ */
+describe('composeDescription for search (decision 303)', () => {
+  const chapters = [
+    { title: 'Stepping Down', startMs: 0, gloss: 'Emad Mostaque resigns as CEO, March 2024' },
+    { title: 'The Borrowed Engine', startMs: 45_000 },
+    { title: 'Exhibit A', startMs: 311_000, gloss: '  Getty Images and the artists sue  ' },
+  ]
+
+  it('glosses a chapter line when it has one, and leaves a bare title alone', () => {
+    const { description } = composeDescription({ body: 'Body.', chapters, sources: [] })
+    expect(description).toContain(
+      'Chapters:\n0:00 Stepping Down: Emad Mostaque resigns as CEO, March 2024\n' +
+        '0:45 The Borrowed Engine\n5:11 Exhibit A: Getty Images and the artists sue',
+    )
+  })
+
+  it('labels a source line when it has a label, and keeps a bare URL as it was', () => {
+    const { description } = composeDescription({
+      body: 'Body.',
+      chapters: [],
+      sources: [
+        { url: 'https://arxiv.org/abs/2112.10752', label: 'arXiv, the latent diffusion paper' },
+        { url: 'https://stability.ai/news', label: null },
+        'https://example.com/filing',
+      ],
+    })
+    expect(description).toContain(
+      'Sources:\narXiv, the latent diffusion paper: https://arxiv.org/abs/2112.10752\n' +
+        'https://stability.ai/news\nhttps://example.com/filing',
+    )
+  })
+
+  it('puts the hashtags on their own line before the disclaimer, three at most, each one word', () => {
+    const { description } = composeDescription({
+      body: 'Body.',
+      chapters: [],
+      sources: ['https://example.com/filing'],
+      hashtags: ['#StabilityAI', 'StableDiffusion', '#AI Documentary', '#Fourth', '#Fifth'],
+    })
+    const blocks = description.split('\n\n')
+    expect(blocks.at(-2)).toBe('#StabilityAI #StableDiffusion #AIDocumentary')
+    expect(blocks.at(-1)).toBe(PUBLISH_DISCLAIMER)
+  })
+
+  it('keeps a gloss on its chapter line, whatever whitespace it carries', () => {
+    const { description } = composeDescription({
+      body: 'Body.',
+      chapters: [
+        { title: 'One', startMs: 0, gloss: 'A gloss\nthat wrapped' },
+        { title: 'Two', startMs: 60_000 },
+        { title: 'Three', startMs: 120_000 },
+      ],
+      sources: [],
+    })
+    expect(description).toContain('0:00 One: A gloss that wrapped\n1:00 Two')
+  })
+
+  it('omits the hashtag line when there are none', () => {
+    const { description } = composeDescription({
+      body: 'Body.',
+      chapters: [],
+      sources: [],
+      hashtags: ['  ', '#'],
+    })
+    expect(description.split('\n\n')).toEqual(['Body.', PUBLISH_DISCLAIMER])
+  })
+})
+
+/**
+ * Decision 303, review: a label publishes only the outlet's own words. Claim
+ * text was written for research and cutting it could drop the very clause
+ * that attributed or hedged it, so it is never printed.
+ */
+describe('sourceLabel (decision 303)', () => {
+  it("quotes the outlet's own headline when the article record read one", () => {
+    expect(
+      sourceLabel({
+        url: 'https://forbes.com/sites/kenrickcai/2023/06/04/stable-diffusion',
+        outlet: 'Forbes',
+        headline: "Stable Diffusion's Founder Has A Track Record Of Exaggeration",
+      }),
+    ).toBe('Forbes, "Stable Diffusion\'s Founder Has A Track Record Of Exaggeration"')
+  })
+
+  it('is the outlet alone without a headline, and the host without an outlet', () => {
+    expect(
+      sourceLabel({
+        url: 'https://www.theinformation.com/',
+        outlet: 'The Information',
+        headline: null,
+      }),
+    ).toBe('The Information')
+    expect(
+      sourceLabel({ url: 'https://www.stability.ai/news', outlet: null, headline: null }),
+    ).toBe('stability.ai')
+  })
+
+  it('never cuts a headline it quotes', () => {
+    const headline = 'A headline that runs on '.repeat(8).trim()
+    expect(sourceLabel({ url: 'https://example.com/a', outlet: 'Example', headline })).toBe(
+      `Example, "${headline}"`,
+    )
+  })
+})
+
+describe('splitHashtags (decision 303)', () => {
+  it('reads commas and hash marks as boundaries, and joins the words inside one tag', () => {
+    expect(splitHashtags('Stability AI, #Fraud #AI Documentary')).toEqual([
+      '#StabilityAI',
+      '#Fraud',
+      '#AIDocumentary',
+    ])
+    expect(splitHashtags('  ,  #,')).toEqual([])
+    expect(splitHashtags('#Wirecard, wirecard')).toEqual(['#Wirecard'])
+  })
+})
+
 describe('PublishDraftSchema', () => {
+  it('reads the search fields and the script version the opening was written for (decision 303)', () => {
+    const draft = PublishDraftSchema.parse({
+      descriptionBody: 'How Stability AI...',
+      bodyScriptVersion: 4,
+      chapterGlosses: { '01HQ0000000000000000000CH1': 'Emad Mostaque resigns' },
+      hashtags: ['#StabilityAI'],
+    })
+    expect(draft.bodyScriptVersion).toBe(4)
+    expect(draft.chapterGlosses).toEqual({ '01HQ0000000000000000000CH1': 'Emad Mostaque resigns' })
+    expect(draft.hashtags).toEqual(['#StabilityAI'])
+    const bare = PublishDraftSchema.parse({})
+    expect(bare.chapterGlosses).toEqual({})
+    expect(bare.hashtags).toEqual([])
+    expect(bare.bodyScriptVersion).toBeUndefined()
+  })
+
   it('defaults the lists and tolerates the final metadata keys beside it', () => {
     const draft = PublishDraftSchema.parse({
       title: 'How Wirecard Fell',

@@ -1,11 +1,24 @@
 import { describe, expect, it } from 'vitest'
-import { ValidationError } from '@boom-busters/schemas'
+import { CHAPTER_GLOSS_MAX, ValidationError } from '@boom-busters/schemas'
 import {
+  buildDescriptionRequest,
   buildTitlesRequest,
+  DESCRIPTION_BODY_MAX,
+  mockDescription,
   mockTitleOptions,
+  parseDescriptionAnswer,
   parseTitleOptions,
   TITLE_OPTION_COUNT,
 } from './metadata'
+import type { Note, Repair } from './repair'
+import type { ScriptClaim } from './script'
+
+const CLAIM: ScriptClaim = {
+  id: '01HQ00000000000000000000AA',
+  text: 'Stability AI announced a 101 million dollar funding round in October 2022.',
+  sourceUrl: 'https://stability.ai/news',
+  confidence: 'sourced',
+}
 
 describe('buildTitlesRequest', () => {
   const request = buildTitlesRequest({
@@ -35,6 +48,236 @@ describe('buildTitlesRequest', () => {
     })
     expect(short.system).toContain('vertical Short')
     expect(request.system).not.toContain('vertical Short')
+  })
+})
+
+/**
+ * Decision 303: the titles were fed the project's pitch title, which carried
+ * "$270M in 18 Months", a figure the dossier flagged as unsourced, and five
+ * of eight options repeated it. Titles are now grounded in the claim list.
+ */
+describe('buildTitlesRequest grounding (decision 303)', () => {
+  const grounded = buildTitlesRequest({
+    caseTitle: 'Stability AI: The Startup That Burned $270M in 18 Months',
+    hook: 'March 2024. Emad Mostaque resigned.',
+    target: 'master',
+    workingTitle: 'Stability AI: The Startup That Burned $270M in 18 Months',
+    claims: [CLAIM],
+    centralQuestion: 'What was Stability AI giving away, and what did it keep?',
+  })
+
+  it('hands the model the claim list and the central question', () => {
+    const content = grounded.messages.map((m) => m.content).join('\n')
+    expect(content).toContain('Stability AI announced a 101 million dollar funding round')
+    expect(content).toContain('What was Stability AI giving away')
+  })
+
+  it('frames a claim no court has ruled on as an allegation, never a fact (decision 303, review)', () => {
+    expect(grounded.system).toMatch(/NOT adjudicated/)
+    expect(grounded.system).toMatch(/allegation or a question/)
+  })
+
+  it('says the pitch may be wrong and every figure must come from the claims', () => {
+    expect(grounded.system).toMatch(/early pitch/)
+    expect(grounded.system).toMatch(
+      /Every figure, date and name in a title must appear in the claim list/,
+    )
+  })
+})
+
+describe('buildDescriptionRequest (decision 303)', () => {
+  const request = buildDescriptionRequest({
+    target: 'master',
+    claims: [CLAIM],
+    centralQuestion: 'What was Stability AI giving away, and what did it keep?',
+    chapters: [
+      {
+        title: 'Stepping Down',
+        text: '[pause] March 2024. Emad Mostaque resigned as chief executive.',
+      },
+      { title: 'The Borrowed Engine', text: 'The method was not Stability AI’s.' },
+    ],
+  })
+
+  it('is a metadata task that never sees the pitch title', () => {
+    expect(request.task).toBe('metadata')
+    const content = request.messages.map((m) => m.content).join('\n')
+    expect(content).not.toContain('$270M')
+    expect(content).toContain('101 million dollar funding round')
+    expect(content).toContain('1. Stepping Down')
+    // Narration tags are direction, not words the description could quote.
+    expect(content).not.toContain('[pause]')
+  })
+
+  it('asks for the opening, one gloss per chapter, three hashtags and tags', () => {
+    expect(request.system).toContain('"body"')
+    expect(request.system).toContain('"chapterGlosses"')
+    expect(request.system).toContain('exactly 2 strings')
+    expect(request.system).toContain('"hashtags"')
+    expect(request.system).toContain('"tags"')
+    expect(request.system).toMatch(/Assert nothing the claim list does not support/)
+    expect(request.system).toMatch(/first sentence names the company/i)
+  })
+
+  it('asks a Short for a few sentences and no chapter glosses', () => {
+    const short = buildDescriptionRequest({
+      target: 'short',
+      claims: [CLAIM],
+      chapters: [],
+      shortText: 'March 2024. The chief executive of Stability AI steps down.',
+    })
+    expect(short.system).toMatch(/vertical Short/)
+    expect(short.system).toContain('exactly 0 strings')
+    expect(short.messages.map((m) => m.content).join('\n')).toContain(
+      'The chief executive of Stability AI steps down',
+    )
+  })
+
+  /**
+   * Every Short was described as the whole case: the claim list led, the
+   * film's question came next and the clip's words came last. The clip now
+   * leads and the claims follow as a fact check.
+   */
+  it("writes a Short from what it says, with the film's question left out", () => {
+    const short = buildDescriptionRequest({
+      target: 'short',
+      claims: [CLAIM],
+      centralQuestion: 'What was Stability AI giving away, and what did it keep?',
+      chapters: [],
+      shortText: '[pause] The method was not Stability AI’s. It came from a lab in Munich.',
+    })
+    expect(short.messages[0]?.content).toMatch(/^What this Short says:\nThe method was not/)
+    expect(short.messages[1]?.content).toMatch(/^Claims, for checking facts only:/)
+    const content = short.messages.map((m) => m.content).join('\n')
+    expect(content).not.toContain('What was Stability AI giving away')
+    expect(content).not.toContain('[pause]')
+    expect(short.system).toMatch(/about what this\s+Short says rather than the whole case/)
+    expect(short.system).toMatch(/full documentary is on the channel/)
+  })
+})
+
+describe('buildTitlesRequest for a Short (decision 303)', () => {
+  const clip = buildTitlesRequest({
+    caseTitle: 'Stability AI',
+    hook: 'March 2024. Emad Mostaque resigned.',
+    target: 'short',
+    workingTitle: 'The Borrowed Engine',
+    claims: [CLAIM],
+    centralQuestion: 'What was Stability AI giving away, and what did it keep?',
+    shortText: 'The method was not Stability AI’s. It came from a lab in Munich.',
+  })
+
+  it("writes from what the Short says, not the film's hook or question", () => {
+    const content = clip.messages.map((m) => m.content).join('\n')
+    expect(content).toContain('What this Short says:\nThe method was not Stability AI’s.')
+    expect(content).not.toContain('Emad Mostaque resigned')
+    expect(content).not.toContain('What was Stability AI giving away')
+    expect(content).toContain('Claims, for checking facts only:')
+    expect(clip.system).toMatch(/about what this Short says, not the whole film/)
+  })
+
+  it('keeps the film framing for a Short whose narration could not be read', () => {
+    const unread = buildTitlesRequest({
+      caseTitle: 'Stability AI',
+      hook: 'March 2024. Emad Mostaque resigned.',
+      target: 'short',
+      workingTitle: 'The Borrowed Engine',
+      claims: [CLAIM],
+    })
+    expect(unread.messages.map((m) => m.content).join('\n')).toContain('Emad Mostaque resigned')
+    expect(unread.system).not.toMatch(/not the whole film/)
+  })
+})
+
+describe('parseDescriptionAnswer (decision 303)', () => {
+  const answer = (over: Record<string, unknown>) =>
+    JSON.stringify({
+      body: 'How Stability AI, the company behind Stable Diffusion, lost its founder.',
+      chapterGlosses: ['Emad Mostaque resigns, March 2024', 'The CompVis paper'],
+      hashtags: ['#StabilityAI', '#StableDiffusion', '#AIDocumentary'],
+      tags: ['Stability AI', 'Stable Diffusion'],
+      ...over,
+    })
+
+  it('reads a clean answer', () => {
+    expect(parseDescriptionAnswer(answer({}), 2)).toEqual({
+      body: 'How Stability AI, the company behind Stable Diffusion, lost its founder.',
+      chapterGlosses: ['Emad Mostaque resigns, March 2024', 'The CompVis paper'],
+      hashtags: ['#StabilityAI', '#StableDiffusion', '#AIDocumentary'],
+      tags: ['Stability AI', 'Stable Diffusion'],
+    })
+  })
+
+  it('fits the glosses to the chapters: extra ones capped and noted, missing ones empty', () => {
+    const repairs: Repair[] = []
+    const note: Note = (repair) => repairs.push(repair)
+    expect(
+      parseDescriptionAnswer(answer({ chapterGlosses: ['a', 'b', 'c'] }), 2, note).chapterGlosses,
+    ).toEqual(['a', 'b'])
+    expect(repairs).toEqual([{ action: 'capped', field: 'chapter glosses', kept: 2 }])
+    expect(parseDescriptionAnswer(answer({ chapterGlosses: ['a'] }), 3).chapterGlosses).toEqual([
+      'a',
+      '',
+      '',
+    ])
+  })
+
+  it('trims a long gloss at a word and a long body at a sentence, saying so', () => {
+    const repairs: Repair[] = []
+    const note: Note = (repair) => repairs.push(repair)
+    const parsed = parseDescriptionAnswer(
+      answer({
+        body: `${'A sentence about the company. '.repeat(80)}The end.`,
+        chapterGlosses: ['word '.repeat(40), 'ok'],
+      }),
+      2,
+      note,
+    )
+    expect(parsed.body.length).toBeLessThanOrEqual(DESCRIPTION_BODY_MAX)
+    expect(parsed.body.endsWith('.')).toBe(true)
+    expect(parsed.chapterGlosses[0]!.length).toBeLessThanOrEqual(CHAPTER_GLOSS_MAX)
+    expect(repairs).toEqual([
+      { action: 'trimmed', field: 'the opening' },
+      { action: 'trimmed', field: "chapter 1's gloss" },
+    ])
+  })
+
+  it('keeps three one-word hashtags, and tags inside YouTube’s 500 characters', () => {
+    const parsed = parseDescriptionAnswer(
+      answer({
+        hashtags: ['StabilityAI', '#AI Documentary', '#StabilityAI', '#Four', '#Five'],
+        tags: Array.from({ length: 40 }, (_, i) => `a fairly long search tag number ${i}`),
+      }),
+      2,
+    )
+    expect(parsed.hashtags).toEqual(['#StabilityAI', '#AIDocumentary', '#Four'])
+    expect(parsed.tags.join(',').length).toBeLessThanOrEqual(500)
+    expect(parsed.tags.length).toBeGreaterThan(5)
+  })
+
+  it('drops a hashtag too long to store, and flattens a gloss onto one line', () => {
+    const parsed = parseDescriptionAnswer(
+      answer({
+        hashtags: ['#' + 'x'.repeat(70), '#StabilityAI'],
+        chapterGlosses: ['Two lines\nof gloss', 'ok'],
+      }),
+      2,
+    )
+    expect(parsed.hashtags).toEqual(['#StabilityAI'])
+    expect(parsed.chapterGlosses[0]).toBe('Two lines of gloss')
+  })
+
+  it('refuses an answer with no opening', () => {
+    expect(() => parseDescriptionAnswer(answer({ body: '  ' }), 2)).toThrow(ValidationError)
+  })
+})
+
+describe('mockDescription (decision 303)', () => {
+  it('is obviously mock, one gloss per chapter, and three hashtags', () => {
+    const mocked = mockDescription(3)
+    expect(mocked.body).toContain('[mock]')
+    expect(mocked.chapterGlosses).toHaveLength(3)
+    expect(mocked.hashtags).toHaveLength(3)
   })
 })
 

@@ -7731,3 +7731,78 @@ boom-busters-broker`; merge and deploy to Vercel, then `PUT
      replace it (the singleton cancels the sleeper). No migration. Merged
      first with `origin/master` at 301, so this is 302; the search
      description on `publish-search-description` renumbers at its merge.
+
+303. **The description is written for search, and knows its script**
+     (2026-10-14, owner: "how do we improve this caption for SEO and
+     searchability?", then "proceed with the app changes as recommended").
+     The Stability AI master and teaser were scheduled with an opening saved
+     on 8 September from script v2, under a film rebuilt from script v4, and
+     nothing said so. The opening was the script's cold open, written for
+     the ear: its first 150 characters never named Stable Diffusion, open
+     source, Getty Images or the figures people search for. The chapter
+     titles ("Exhibit A", "The Borrowed Engine") meant nothing to search,
+     half the source lines were bare front pages, the tags field was empty,
+     and the title generator, fed the project's pitch title, offered "$270M"
+     in five of eight titles, a figure the dossier flagged as unsourced.
+     What shipped: `composeDescription` takes a gloss per chapter
+     (`0:00 Title: what it covers`), a label per source
+     (`Outlet, what it backs: URL`) and up to three one-word hashtags on
+     their own line before the disclaimer. `sourceLabel` builds a label from words already on file:
+     the outlet the article record read, else the host, and the first usable
+     claim citing it, cut at a word; `deriveIngredients` labels every source
+     that way. The draft keeps `bodyScriptVersion`, `chapterGlosses` and
+     `hashtags`; `openingIsStale` flags an opening saved for an earlier
+     script, or saved before versions were kept, unless it is the current
+     hook word for word, and the editor says which version it was written
+     for with "Use the current opening" beside it. Saving a rewritten opening
+     stamps the current version; saving only tags keeps the old stamp.
+     "Write a search description" is one metadata-tier call
+     (`buildDescriptionRequest`): the claim list, the outline's central
+     question and each chapter's narration (or what a Short says), never the
+     pitch title; it returns the opening, one gloss per chapter, three
+     hashtags and tags, repaired in decision 293's mould
+     (`parseDescriptionAnswer`), and the owner's tags are kept first. The
+     editor gains per-chapter search notes and a hashtags field; the preview
+     and the upload compose them. The title generator now gets the claim
+     list and the central question, with the rule that every figure, date
+     and name must appear in the claims and that the pitch may be wrong.
+     Decisions made where the spec left room: labels are deterministic, not
+     written by the model, because a model's label could misstate what a
+     source supports; front-page sources are labelled rather than dropped,
+     since the claim behind them is real and the label says what it backs;
+     a generated description replaces the opening, notes and hashtags but
+     only adds to tags.
+     Review fixes before merge: chapter glosses are keyed by chapter id, so
+     a rewritten script drops them instead of printing them under the wrong
+     chapter; a source label prints only the publisher's own words (the
+     outlet and the article's headline, quoted whole, else the outlet or
+     host alone), never claim text, which was written for research and
+     whose cut could drop the clause that hedged it; unverified claims are
+     no longer grounding for titles or the description, and the titles
+     prompt frames a claim no court has ruled on as an allegation or a
+     question; a hashtag over 60 characters is dropped and a written patch
+     is validated before it is stored, since one bad field made the whole
+     draft unreadable and the upload fell back to the pitch title; a gloss
+     is flattened to one line, or YouTube ignores every chapter; the
+     preview and the save read the hashtags field the same way
+     (`splitHashtags`); the stale-opening note stays up while a stale
+     opening is edited, until it is the current hook. Deferred, recorded:
+     pressing "Write a search description" replaces unsaved tag and hashtag
+     edits; staleness is measured against the latest script, not the one
+     the film was rendered from (the hook already assumed this); YouTube
+     counts quotes around a tag with a space toward its 500 characters;
+     no test yet pins an unrelated refresh keeping an unsaved edit.
+     Shorts (owner: "for the shorts that are clipped, it doesn't seem to be
+     relevant to that clip"): a Short's titles were written from the film's
+     opening hook and never saw the clip, and its description got the clip
+     last, after the whole claim list and the film's question, under a rule
+     to name "what happened". Both calls now lead with what the Short says
+     (an excerpt's paragraphs, a teaser's beats), leave out the film's hook
+     and question, send the claims "for checking facts only", and ask for
+     the Short's one moment, fact or question rather than the whole case. A
+     Short whose narration cannot be read keeps the film framing. The
+     editor still seeds a Short's opening with the film's hook until the
+     description is written.
+     Shipping: a Vercel deploy. For the two Stability AI uploads already
+     scheduled, the description is edited in YouTube Studio; the app's
+     editor is locked once an item is on YouTube.

@@ -1,13 +1,13 @@
 import { z } from 'zod'
 
 /**
- * The publish description, composed rather than generated (build spec
- * section 9): "hook paragraph + chapter timestamps + sources from dossier +
- * disclaimer". Everything in it already exists on file, so a model is never
- * asked to restate it — the one editable part is the opening body, which the
- * screen seeds with the script's hook paragraph and the human owns from
- * there. The blocks are appended deterministically, and the live preview on
- * the Publish screen renders exactly what this function returns.
+ * The publish description, composed (build spec section 9): "hook paragraph
+ * + chapter timestamps + sources from dossier + disclaimer". The opening, the
+ * chapter notes and the hashtags are the owner's to edit; since decision 303
+ * a model may draft them from the claim list ("Write a search description"),
+ * and the owner keeps them or not. Everything else is appended
+ * deterministically from what is on file, and the live preview on the
+ * Publish screen renders exactly what this function returns.
  */
 
 /** YouTube's own description ceiling. */
@@ -26,6 +26,15 @@ export const PUBLISH_DISCLAIMER =
   'Narration is AI-generated. Some visuals are AI re-creations for illustration, including ' +
   'likenesses of real people; they are not photographs of real events. Sources are listed above.'
 
+/** How long a chapter's search gloss may run (decision 303). */
+export const CHAPTER_GLOSS_MAX = 90
+
+/** YouTube shows the first three hashtags above the title; more are noise. */
+export const HASHTAGS_MAX = 3
+
+/** The longest hashtag a draft stores. */
+export const HASHTAG_MAX = 60
+
 /**
  * Draft fields the Publish screen stores in `publish_records.metadata`
  * while an item is being prepared. They live beside the final
@@ -37,6 +46,20 @@ export const PublishDraftSchema = z.object({
   titleOptions: z.array(z.string()).max(12).default([]),
   /** The human-owned opening — the auto-blocks are appended at compose time. */
   descriptionBody: z.string().max(DESCRIPTION_MAX_CHARS).optional(),
+  /**
+   * The script version the opening was written for (decision 303). A body
+   * saved before the script was rewritten is flagged on the Publish screen;
+   * absent on bodies saved before this existed, which are flagged too.
+   */
+  bodyScriptVersion: z.number().int().min(0).optional(),
+  /**
+   * One search gloss per chapter, keyed by chapter id. A rewritten script has
+   * new chapter ids, so its glosses fall away rather than print under a
+   * chapter they were not written for (decision 303, review).
+   */
+  chapterGlosses: z.record(z.string(), z.string().trim().max(CHAPTER_GLOSS_MAX)).default({}),
+  /** At most three, each one word; the composer normalises them. */
+  hashtags: z.array(z.string().trim().max(HASHTAG_MAX)).max(HASHTAGS_MAX).default([]),
   tags: z.array(z.string().trim().min(1).max(100)).max(60).default([]),
 })
 export type PublishDraft = z.infer<typeof PublishDraftSchema>
@@ -56,6 +79,62 @@ export function formatTimestamp(ms: number): string {
 export interface DescriptionChapter {
   title: string
   startMs: number
+  /** What the chapter is about, for search (decision 303). Printed after the title. */
+  gloss?: string | null
+}
+
+/** A source line: the address, and what it backs when that is known (decision 303). */
+export interface DescriptionSource {
+  url: string
+  label?: string | null
+}
+
+/**
+ * A source line's label (decision 303): the outlet the article record read,
+ * else the bare host, and the article's own headline when one is on file,
+ * quoted whole. Only the publisher's words are printed: a claim's text was
+ * written for research, and cutting it could drop the clause that
+ * attributed or hedged it.
+ */
+export function sourceLabel(input: {
+  url: string
+  outlet: string | null
+  headline: string | null
+}): string {
+  let host = input.url
+  try {
+    host = new URL(input.url).hostname.replace(/^www\./, '')
+  } catch {
+    // An address that will not parse is labelled by itself.
+  }
+  const outlet = input.outlet?.trim() || host
+  const headline = input.headline?.trim()
+  return headline ? `${outlet}, "${headline}"` : outlet
+}
+
+/**
+ * Hashtags as the owner types them (decision 303): a comma or a "#" starts a
+ * new one, and the words inside one are joined, so "Stability AI, #Fraud" is
+ * "#StabilityAI #Fraud". The preview and the save read the field the same way.
+ */
+export function splitHashtags(raw: string): string[] {
+  const tags = raw
+    .split(/,|(?=#)/)
+    .map(normaliseHashtag)
+    .filter((tag) => tag !== '')
+  const seen = new Set<string>()
+  return tags.filter((tag) => {
+    const key = tag.toLowerCase()
+    if (seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
+}
+
+/** "#AI Documentary" or "StableDiffusion" to one word with its mark; empty when nothing is left. */
+function normaliseHashtag(raw: string): string {
+  const word = raw.replace(/^#+/, '').replace(/[^\p{L}\p{N}_]/gu, '')
+  return word === '' ? '' : `#${word}`
 }
 
 export interface ComposeDescriptionInput {
@@ -64,8 +143,13 @@ export interface ComposeDescriptionInput {
   /** In playback order. Fewer than three means no chapter block — YouTube
    *  ignores chapter markers below three, so emitting them would be noise. */
   chapters: readonly DescriptionChapter[]
-  /** Source URLs from the dossier's verified claims, already deduplicated. */
-  sources: readonly string[]
+  /**
+   * Source URLs from the dossier's verified claims, already deduplicated: a
+   * bare address, or one with a label saying what it backs (decision 303).
+   */
+  sources: readonly (string | DescriptionSource)[]
+  /** Up to three hashtags, on their own line before the disclaimer (decision 303). */
+  hashtags?: readonly string[]
   /**
    * The music bed's attribution/licence text, from the library (decision
    * 207). Published verbatim in its own block so the licence rides with
@@ -98,11 +182,13 @@ export function composeDescription(input: ComposeDescriptionInput): ComposedDesc
     input.chapters.length >= 3
       ? ['Chapters:']
           .concat(
-            input.chapters.map(
+            input.chapters.map((chapter, index) => {
               // YouTube requires the first stamp to be exactly 0:00.
-              (chapter, index) =>
-                `${index === 0 ? '0:00' : formatTimestamp(chapter.startMs)} ${chapter.title}`,
-            ),
+              const stamp = index === 0 ? '0:00' : formatTimestamp(chapter.startMs)
+              // One line per chapter, or YouTube ignores the whole block.
+              const gloss = chapter.gloss?.replace(/\s+/g, ' ').trim()
+              return `${stamp} ${chapter.title}${gloss ? `: ${gloss}` : ''}`
+            }),
           )
           .join('\n')
       : null
@@ -110,9 +196,21 @@ export function composeDescription(input: ComposeDescriptionInput): ComposedDesc
   const attribution = input.musicAttribution?.trim()
   const musicBlock = attribution ? `Music:\n${attribution}` : null
 
-  const build = (sources: readonly string[]): string => {
-    const sourceBlock = sources.length > 0 ? ['Sources:'].concat(sources).join('\n') : null
-    return [body, chapterBlock, musicBlock, sourceBlock, PUBLISH_DISCLAIMER]
+  const hashtags = [
+    ...new Set((input.hashtags ?? []).map(normaliseHashtag).filter((tag) => tag !== '')),
+  ].slice(0, HASHTAGS_MAX)
+  const hashtagBlock = hashtags.length > 0 ? hashtags.join(' ') : null
+
+  const sourceLine = (source: string | DescriptionSource): string => {
+    if (typeof source === 'string') return source
+    const label = source.label?.trim()
+    return label ? `${label}: ${source.url}` : source.url
+  }
+
+  const build = (sources: readonly (string | DescriptionSource)[]): string => {
+    const sourceBlock =
+      sources.length > 0 ? ['Sources:'].concat(sources.map(sourceLine)).join('\n') : null
+    return [body, chapterBlock, musicBlock, sourceBlock, hashtagBlock, PUBLISH_DISCLAIMER]
       .filter((block): block is string => block !== null && block !== '')
       .join('\n\n')
   }

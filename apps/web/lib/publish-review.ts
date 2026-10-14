@@ -1,5 +1,6 @@
 import {
   countUploadsSince,
+  getArticleSources,
   getDossier,
   getProject,
   getRendersByIds,
@@ -17,14 +18,16 @@ import {
 import type { Database, PublishRecordRow } from '@boom-busters/db'
 import {
   nameMatches,
+  normaliseArticleUrl,
   PublishDraftSchema,
   quotaDayStartUtc,
   ShotBriefSchema,
   SlotCandidateSchema,
+  sourceLabel,
   stripNarrationMarkup,
   TimelineSchema,
 } from '@boom-busters/schemas'
-import type { ScheduleSlot } from '@boom-busters/schemas'
+import type { DescriptionSource, ScheduleSlot } from '@boom-busters/schemas'
 import { z } from 'zod'
 
 /**
@@ -45,6 +48,14 @@ export interface PublishRecordProp {
   title: string | null
   titleOptions: string[]
   descriptionBody: string | null
+  /** The script version the saved opening was written for; null before 303 kept it. */
+  bodyScriptVersion: number | null
+  /** The saved opening predates the current script (decision 303). */
+  bodyStale: boolean
+  /** One search gloss per chapter, in order (decision 303). */
+  /** Search glosses by chapter id; a chapter the script no longer has is ignored. */
+  chapterGlosses: Record<string, string>
+  hashtags: string[]
   tags: string[]
   thumbs: { key: string; url: string | null }[]
 }
@@ -121,11 +132,13 @@ export interface MasterAnalytics {
 export interface PublishModel {
   items: PublishItemModel[]
   /** For the description's chapter block — from the master timeline. */
-  chapters: { title: string; startMs: number }[]
-  /** For the description's source block — the dossier's usable claims. */
-  sources: string[]
+  chapters: { id: string; title: string; startMs: number }[]
+  /** For the description's source block — the dossier's usable claims, labelled (decision 303). */
+  sources: DescriptionSource[]
   /** The script's opening paragraph — the seed for the description body. */
   hook: string
+  /** The latest script's version, which a saved opening is measured against (decision 303). */
+  scriptVersion: number
   /**
    * The timeline bed's licence/attribution text (decision 207) — published
    * as the description's Music block. Null when there is no bed or the
@@ -148,6 +161,7 @@ export function emptyPublishModel(): PublishModel {
     chapters: [],
     sources: [],
     hook: '',
+    scriptVersion: 0,
     musicAttribution: null,
     slots: [],
     apiAuditPassed: false,
@@ -170,8 +184,14 @@ const MAX_SOURCES = 12
 export function deriveIngredients(input: {
   master: { narration: { chapterId: string; startMs: number }[] } | null
   scriptChapters: { id: string; title: string; contentMd: string }[]
-  claims: { sourceUrl: string | null; confidence: string; quarantined: boolean }[]
-}): { chapters: { title: string; startMs: number }[]; sources: string[]; hook: string } {
+  claims: { text: string; sourceUrl: string | null; confidence: string; quarantined: boolean }[]
+  /** What the article records read, by normalised URL (decision 303). */
+  articles?: ReadonlyMap<string, { outlet: string | null; headline: string | null }>
+}): {
+  chapters: { id: string; title: string; startMs: number }[]
+  sources: DescriptionSource[]
+  hook: string
+} {
   const chapterStarts = new Map<string, number>()
   for (const segment of input.master?.narration ?? []) {
     const known = chapterStarts.get(segment.chapterId)
@@ -181,17 +201,32 @@ export function deriveIngredients(input: {
   }
   const chapters = input.scriptChapters
     .filter((chapter) => chapterStarts.has(chapter.id))
-    .map((chapter) => ({ title: chapter.title, startMs: chapterStarts.get(chapter.id)! }))
+    .map((chapter) => ({
+      id: chapter.id,
+      title: chapter.title,
+      startMs: chapterStarts.get(chapter.id)!,
+    }))
     .sort((a, b) => a.startMs - b.startMs)
 
-  const sources = Array.from(
-    new Set(
-      input.claims
-        .filter((claim) => !claim.quarantined && claim.confidence !== 'unverified')
-        .map((claim) => claim.sourceUrl)
-        .filter((url): url is string => typeof url === 'string' && url.length > 0),
-    ),
-  ).slice(0, MAX_SOURCES)
+  // Each usable source once, in claim order, labelled with the publisher's
+  // own words (decision 303): the outlet and the article's headline.
+  const urls = new Set<string>()
+  for (const claim of input.claims) {
+    if (claim.quarantined || claim.confidence === 'unverified') continue
+    if (typeof claim.sourceUrl !== 'string' || claim.sourceUrl.length === 0) continue
+    urls.add(claim.sourceUrl)
+  }
+  const sources = [...urls].slice(0, MAX_SOURCES).map((url) => {
+    const article = input.articles?.get(normaliseArticleUrl(url) ?? url)
+    return {
+      url,
+      label: sourceLabel({
+        url,
+        outlet: article?.outlet ?? null,
+        headline: article?.headline ?? null,
+      }),
+    }
+  })
 
   const firstChapter = input.scriptChapters[0]
   const hook = firstChapter
@@ -204,6 +239,41 @@ export function deriveIngredients(input: {
     : ''
 
   return { chapters, sources, hook }
+}
+
+/**
+ * Whether a saved opening was written for an earlier script (decision 303).
+ * The Stability AI master was scheduled with the September script's opening
+ * under a film rebuilt from the October one, and nothing said so. An opening
+ * saved before versions were kept counts as stale too, unless it is the
+ * current hook word for word.
+ */
+export function openingIsStale(input: {
+  body: string | undefined
+  bodyScriptVersion: number | undefined
+  hook: string
+  scriptVersion: number
+}): boolean {
+  const body = input.body?.trim() ?? ''
+  if (body === '' || body === input.hook.trim()) return false
+  return input.bodyScriptVersion === undefined || input.bodyScriptVersion < input.scriptVersion
+}
+
+/** What the article records hold for these sources, by normalised URL. */
+async function articlesFor(
+  db: Database,
+  claims: readonly { sourceUrl: string | null }[],
+): Promise<Map<string, { outlet: string | null; headline: string | null }>> {
+  const urls = [
+    ...new Set(
+      claims.flatMap((claim) => {
+        const url = claim.sourceUrl ? normaliseArticleUrl(claim.sourceUrl) : null
+        return url ? [url] : []
+      }),
+    ),
+  ]
+  const rows = await getArticleSources(db, urls)
+  return new Map(rows.map((row) => [row.url, { outlet: row.outlet, headline: row.headline }]))
 }
 
 /** The attribution the timeline's bed carries, or null at every gap. */
@@ -221,10 +291,12 @@ export async function descriptionIngredients(
   db: Database,
   projectId: string,
 ): Promise<{
-  chapters: { title: string; startMs: number }[]
-  sources: string[]
+  chapters: { id: string; title: string; startMs: number }[]
+  sources: DescriptionSource[]
   hook: string
   musicAttribution: string | null
+  /** The latest script's version, which a saved opening is measured against. */
+  scriptVersion: number
 }> {
   const [timelineRow, scriptSources, dossier] = await Promise.all([
     latestTimeline(db, projectId),
@@ -232,19 +304,23 @@ export async function descriptionIngredients(
     getDossier(db, projectId),
   ])
   const master = timelineRow ? TimelineSchema.parse(timelineRow.json) : null
+  const claims = dossier?.claims ?? []
   return {
     ...deriveIngredients({
       master,
       scriptChapters: scriptSources.chapters,
-      claims: dossier?.claims ?? [],
+      claims,
+      articles: await articlesFor(db, claims),
     }),
     musicAttribution: await timelineMusicAttribution(db, master),
+    scriptVersion: scriptSources.scriptVersion,
   }
 }
 
 function toRecordProp(
   row: PublishRecordRow,
   thumbs: { key: string; url: string | null }[],
+  current: { hook: string; scriptVersion: number },
 ): PublishRecordProp {
   const draft = PublishDraftSchema.safeParse(row.metadata)
   const error = row.error as { message?: string } | null
@@ -257,6 +333,17 @@ function toRecordProp(
     title: draft.success ? (draft.data.title ?? null) : null,
     titleOptions: draft.success ? draft.data.titleOptions : [],
     descriptionBody: draft.success ? (draft.data.descriptionBody ?? null) : null,
+    bodyScriptVersion: draft.success ? (draft.data.bodyScriptVersion ?? null) : null,
+    bodyStale:
+      draft.success &&
+      openingIsStale({
+        body: draft.data.descriptionBody,
+        bodyScriptVersion: draft.data.bodyScriptVersion,
+        hook: current.hook,
+        scriptVersion: current.scriptVersion,
+      }),
+    chapterGlosses: draft.success ? draft.data.chapterGlosses : {},
+    hashtags: draft.success ? draft.data.hashtags : [],
     tags: draft.success ? draft.data.tags : [],
     thumbs,
   }
@@ -297,7 +384,9 @@ export async function publishModel(
     master,
     scriptChapters: scriptSources.chapters,
     claims: dossier?.claims ?? [],
+    articles: await articlesFor(db, dossier?.claims ?? []),
   })
+  const current = { hook, scriptVersion: scriptSources.scriptVersion }
 
   // --- Items ---------------------------------------------------------------
 
@@ -348,7 +437,7 @@ export async function publishModel(
           ? null
           : 'There is no finished master render yet.',
       relatedLinkChecked: null,
-      record: masterRecord ? toRecordProp(masterRecord, masterThumbs) : null,
+      record: masterRecord ? toRecordProp(masterRecord, masterThumbs, current) : null,
       syntheticLikenesses: likenesses,
     },
   ]
@@ -371,7 +460,7 @@ export async function publishModel(
       durationMs: null,
       notReadyReason,
       relatedLinkChecked: short.relatedLinkChecked,
-      record: record ? toRecordProp(record, await thumbsFor(record)) : null,
+      record: record ? toRecordProp(record, await thumbsFor(record), current) : null,
       syntheticLikenesses: likenesses,
     })
   }
@@ -392,6 +481,7 @@ export async function publishModel(
     chapters,
     sources,
     hook,
+    scriptVersion: scriptSources.scriptVersion,
     musicAttribution,
     slots: settings.publish.defaultScheduleSlots,
     apiAuditPassed: settings.publish.apiAuditPassed,
