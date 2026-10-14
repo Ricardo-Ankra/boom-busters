@@ -1,7 +1,7 @@
-# Motion tokens, Remotion's rules and the checks that hold them (decision 296)
+# Motion tokens, Remotion's rules and the checks that hold them (decision 301)
 
-Status: design approved in conversation 2026-10-14, section by section; this
-document is for the owner's review before an implementation plan is written.
+Status: approved by the owner 2026-10-14. Decision 301 (296 to 300 were
+taken by parallel sessions); the number is checked again at the merge.
 
 ## 1. The problem
 
@@ -45,10 +45,17 @@ Owner's rulings in the conversation, 2026-10-14:
 `packages/compositions/src/lib/motion-tokens.ts` owns the house motion in two
 forms a test holds equal:
 
-- `MOTION`, a typed object house code can import.
+- `motionTokens(Easing)`, which builds the typed object; `MOTION`, built with
+  the real `Easing`, is exported from `graphic-code.ts` for house code.
 - `MOTION_PREAMBLE`, JavaScript text that declares the same object as a frozen
   `motion` constant. It is evaluated inside the sandbox function body, so it
   may reference `Remotion.Easing`, and nothing else.
+
+The module imports nothing from `remotion` at run time (a type import only):
+the web server's Inngest route is bundled with the `react-server` condition
+and cannot import `remotion`, and `graphicCodeIssue` runs there. The numbers
+are written once, as constants the preamble text is built from, so the two
+forms cannot drift on a value; the test holds the curves and functions equal.
 
 Values, scaled from the Carbon and Material ratios to video and in line with
 the vocabulary of 2026-10-12. Each is one number in one file; the owner tunes
@@ -115,14 +122,16 @@ parts, each with one source:
    else.
 3. Remotion's own rules: house-edited excerpts of two vendored files under
    `.agents/skills/remotion-markup/`: `timing.md` (interpolate over explicit
-   ranges, clamping, multiple keyframes) and `sequencing.md` (Sequence
-   windows and offsets, `Series` for one scene after another). About 50
+   ranges, clamping, multiple keyframes, perceptual scale) and `sequencing.md`
+   (Sequence windows, `layout="none"`, the local frame inside a Sequence,
+   nesting; not `Series`, which the sandbox does not expose). About 50
    lines. They live in `packages/providers/src/prompts/remotion-rules.ts` as
    string constants with a header naming the source file and the one edit:
    Remotion's `Easing.spring({damping: 200})` advice is replaced by the
-   tokens. A test pins every excerpt line (after that edit) to the vendored
-   file, so a future `npx skills` upgrade fails the test rather than
-   drifting the prompt.
+   tokens. Every line of an excerpt is either a vendored line or a house
+   line marked as one; a test pins every vendored line to the vendored file
+   and checks the replaced advice is still there to replace, so a future
+   `npx skills` upgrade fails the test rather than drifting the prompt.
 
    `transitions.md` and `text-highlights.md` are not excerpted: the first is
    built on `@remotion/transitions` and the second on
@@ -192,7 +201,7 @@ on the board.
 A Vercel deploy and `PUT /api/inngest`. No migration (`motion` lives in the
 brief's JSON column), no Remotion or broker deploy (the preamble uses
 `Remotion.Easing` functions the runtime scope already has, and the sandbox
-contract is unchanged). PROGRESS records decision 296, the number checked
+contract is unchanged). PROGRESS records decision 301, the number checked
 against `origin/master` at the merge. Existing designs keep rendering;
 Redesign moves one onto the tokens. The owner's first comparison: redesign
 one graphic, then compare a `settle` spring against the eased entrance on the
