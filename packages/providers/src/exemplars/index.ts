@@ -39,3 +39,5 @@ export function vendoredPath(entry: ExemplarEntry): string {
   const name = entry.source.path.split('/').pop() ?? entry.source.path
   return `vendored/${entry.source.repo}/${name}.txt`
 }
+export { techniqueFor } from './technique'
+export type { TechniqueInput } from './technique'
