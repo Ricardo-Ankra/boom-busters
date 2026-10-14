@@ -180,26 +180,40 @@ techniqueFor(input: {
 
 Rules, first match wins:
 
-1. The steer. When `guidance` contains a technique word, that technique:
-   "typewriter", "list", "lower third", "progress bar", "steps", "quote",
-   "counter", "racing", "donut", "pie", "split", "chapter title", "logo",
-   "highlight", "word stack" or "kinetic". `chapter-title`, `typewriter`,
-   `animated-list`, `lower-third` and `progress-bars` are reached by the
-   steer only: the designer does not know a slot's position in its chapter,
-   and the other four are stylistic choices the producer makes.
+1. The steer. When `guidance` contains a technique phrase, that technique:
+   "lower third", "progress bar", "chapter title", "word stack" or
+   "kinetic", "typewriter", "progress steps" or "step by step", "split
+   screen" or "side by side", "quote card", "as a quote" or "pull quote",
+   "stat counter", "count up" or "counting up", "racing chart", "racing
+   bars" or "bar race", "donut" or "pie", "logo reveal" or "reveal the
+   logo", "highlight", "bullet list", "bulleted list" or "as a list". The
+   phrases are compound on purpose, so "make the logo bigger" or "list
+   fewer words" is left to the rules. A phrase is skipped when "no", "not",
+   "don't", "dont", "without" or "never" stands within the three words
+   before it. `chapter-title`, `typewriter`, `animated-list`, `lower-third`
+   and `progress-bars` are reached by the steer only: the designer does not
+   know a slot's position in its chapter, and the other four are stylistic
+   choices the producer makes.
 2. A chart brief, by `chartKind`: `bar` with two or more series →
    `comparison-chart`; `bar` with one series and five or more points whose
-   `x` are years → `racing-chart`; `bar` and `stacked` → `bar-chart`; `line`
-   and `area` → `line-chart`; `waterfall` → `comparison-chart`.
+   `x` are four-digit years from 1900 to 2099 → `racing-chart`; `bar` and
+   `stacked` → `bar-chart`; `line` and `area` → `line-chart`; `waterfall` →
+   `comparison-chart`.
 3. A graphic brief, by keyword over `intent`, `description` and
-   `coversText` joined: a pair of quotation marks (straight or curly) or
-   "said", "wrote", "told" → `quote-card`; a percentage sign, "per cent",
-   "percent" or "share of" → `donut-chart`; "versus", "compared", "against",
-   "side by side" → `split-screen`; a title from `logos` present in the
-   intent → `logo-reveal`; two or more figures with a unit (digits followed
-   by bn, m, k, %, or preceded by $, €, £) → `kpi-counter`; one such figure
-   → `stat-counter`; an intent of eight words or fewer → `text-highlight`;
-   otherwise `kinetic-word-stack`.
+   `coversText`: a pair of quotation marks (straight, curly, or a single
+   curly pair) inside one field, or "said", "wrote", "told" → `quote-card`
+   ("wrote off", "wrote down", "wrote up", "told no one", "told nobody" and
+   "told nothing" are not speech); a percentage sign, "per cent", "percent"
+   or "share of" → `donut-chart`; "versus", "vs", "compared", "side by
+   side" → `split-screen`; a title from `logos` present in the intent as a
+   whole word, matched without regard to case, titles under two characters
+   skipped → `logo-reveal`; two or more distinct figures with a unit across
+   the three fields (digits followed by bn, m, k, tn, billion, million,
+   thousand or trillion, or preceded by $, €, £, or by R when a unit
+   follows; the same figure restated in two fields counts once) →
+   `kpi-counter`; one such figure → `stat-counter`; an intent of eight
+   words or fewer → `text-highlight`; otherwise `kinetic-word-stack`. A
+   year such as "2019" and a count such as "12,000 staff" are not figures.
 
 One technique, one exemplar. A second exemplar of another technique is not
 sent: the system prompt's two examples already give the model a second

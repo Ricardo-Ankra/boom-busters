@@ -96,18 +96,26 @@ describe('techniqueFor (decision 304)', () => {
 
   it.each([
     ['typewriter', 'typewriter'],
-    ['make it a list', 'animated-list'],
+    ['as a list', 'animated-list'],
+    ['a bulleted list', 'animated-list'],
     ['a lower third please', 'lower-third'],
-    ['progress bar', 'progress-bars'],
-    ['show the steps', 'progress-steps'],
+    ['a progress bar', 'progress-bars'],
+    ['progress steps', 'progress-steps'],
+    ['step by step', 'progress-steps'],
+    ['a split screen', 'split-screen'],
+    ['side by side', 'split-screen'],
+    ['a quote card', 'quote-card'],
     ['as a quote', 'quote-card'],
-    ['a counter', 'stat-counter'],
+    ['a pull quote', 'quote-card'],
+    ['a stat counter', 'stat-counter'],
+    ['count up', 'stat-counter'],
     ['racing bars', 'racing-chart'],
+    ['a bar race', 'racing-chart'],
     ['a donut', 'donut-chart'],
     ['pie', 'donut-chart'],
-    ['split it', 'split-screen'],
     ['a chapter title', 'chapter-title'],
-    ['the logo', 'logo-reveal'],
+    ['a logo reveal', 'logo-reveal'],
+    ['reveal the logo', 'logo-reveal'],
     ['highlight the phrase', 'text-highlight'],
     ['word stack', 'kinetic-word-stack'],
     ['kinetic', 'kinetic-word-stack'],
@@ -116,7 +124,95 @@ describe('techniqueFor (decision 304)', () => {
     expect(techniqueFor(graphic({ guidance, intent: '"Quoted," he said.' }))).toBe(technique)
   })
 
-  it('leaves a steer with no technique word to the rules', () => {
-    expect(techniqueFor(graphic({ guidance: 'bigger and bolder' }))).toBe('kinetic-word-stack')
+  it.each([
+    'bigger and bolder',
+    'split the title onto two lines',
+    'list fewer words',
+    'fewer steps in the animation',
+    'make the logo bigger',
+    'the counter should be slower',
+    'no quote please',
+    "don't highlight anything",
+    'without a progress bar',
+  ])('leaves the steer "%s" to the rules', (guidance) => {
+    expect(techniqueFor(graphic({ guidance }))).toBe('kinetic-word-stack')
+  })
+
+  it('reads a curly apostrophe in a refusal', () => {
+    expect(techniqueFor(graphic({ guidance: 'don’t highlight anything' }))).toBe(
+      'kinetic-word-stack',
+    )
+  })
+
+  it('counts distinct figures across the three fields', () => {
+    expect(
+      techniqueFor(
+        graphic({ intent: 'The company raised 1.2bn.', coversText: 'It raised 1.2bn in March.' }),
+      ),
+    ).toBe('stat-counter')
+    expect(
+      techniqueFor(
+        graphic({
+          intent: 'Revenue of 4.2bn and a loss of 900m.',
+          coversText: 'Revenue of 4.2bn and a loss of 900m.',
+        }),
+      ),
+    ).toBe('kpi-counter')
+    expect(
+      techniqueFor(graphic({ intent: 'It raised $4bn.', coversText: 'It raised $ 4bn.' })),
+    ).toBe('stat-counter')
+  })
+
+  it('matches a logo title as a whole word only', () => {
+    const intent = 'The bank was running out of cash and the board knew it.'
+    expect(techniqueFor(graphic({ logos: ['ING'], intent }))).toBe('kinetic-word-stack')
+    expect(
+      techniqueFor(graphic({ logos: ['ING'], intent: 'ING was the name on every door.' })),
+    ).toBe('logo-reveal')
+    expect(
+      techniqueFor(graphic({ logos: ['Meta'], intent: 'The metadata showed the money moving.' })),
+    ).toBe('text-highlight')
+  })
+
+  it('does not take "wrote off", "told no one" or "bet against" for speech or a versus', () => {
+    expect(techniqueFor(graphic({ intent: 'The bank wrote off $4bn of loans.' }))).toBe(
+      'stat-counter',
+    )
+    expect(techniqueFor(graphic({ intent: 'He told no one about the loans in the end.' }))).toBe(
+      'kinetic-word-stack',
+    )
+    expect(
+      techniqueFor(graphic({ intent: 'Burry bet against the housing market for two long years.' })),
+    ).toBe('kinetic-word-stack')
+  })
+
+  it('reads a single curly quotation as a quote, and keeps a pair inside one field', () => {
+    expect(techniqueFor(graphic({ intent: '‘We never saw it,’ the auditor admitted.' }))).toBe(
+      'quote-card',
+    )
+    expect(
+      techniqueFor(
+        graphic({
+          intent: 'A 5" pipe ran from the back room to the vault under the bank.',
+          coversText: 'A 6" pipe too.',
+        }),
+      ),
+    ).toBe('kinetic-word-stack')
+  })
+
+  it('counts trillions and a rand figure with a unit, but not a bare rand sign', () => {
+    expect(techniqueFor(graphic({ intent: 'The debt came to 3tn.' }))).toBe('stat-counter')
+    expect(techniqueFor(graphic({ intent: 'The loans came to R40 billion.' }))).toBe('stat-counter')
+    expect(techniqueFor(graphic({ intent: 'R4bn went in and R2tn came out.' }))).toBe('kpi-counter')
+    expect(techniqueFor(graphic({ intent: 'The R40 note was fake.' }))).toBe('text-highlight')
+  })
+
+  it('takes a years axis only for real years', () => {
+    expect(techniqueFor(chart({ xLabels: ['1999', '2000', '2001', '2002', '2003'] }))).toBe(
+      'racing-chart',
+    )
+    expect(techniqueFor(chart({ xLabels: ['1011', '1012', '1013', '1014', '1015'] }))).toBe(
+      'bar-chart',
+    )
   })
 })
