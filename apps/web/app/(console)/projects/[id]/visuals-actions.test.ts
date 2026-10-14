@@ -1566,35 +1566,38 @@ describeDb('re-typing to a headline card from any source (decision 298)', () => 
     inngest.send.mockResolvedValue(undefined)
     await seed(db)
     await db.delete(shotSlots)
-    await db
-      .insert(claims)
-      .values([
-        {
-          id: PAPER_CLAIM_ID,
-          dossierId: FIXTURE_DOSSIER_ID,
-          text: 'The latent diffusion paper was posted to arXiv in December 2021.',
-          sourceUrl: 'https://arxiv.org/abs/2112.10752',
-          sourceType: 'other',
-          confidence: 'sourced',
-        },
-        {
-          id: BARE_CLAIM_ID,
-          dossierId: FIXTURE_DOSSIER_ID,
-          text: 'Stability AI provided the compute for training.',
-          sourceUrl: null,
-          sourceType: 'other',
-          confidence: 'single_source',
-        },
-        {
-          id: POST_CLAIM_ID,
-          dossierId: FIXTURE_DOSSIER_ID,
-          text: 'Emad Mostaque announced his resignation on X.',
-          sourceUrl: 'https://x.com/EMostaque/status/1740000000000000002',
-          sourceType: 'other',
-          confidence: 'sourced',
-        },
-      ])
-      .onConflictDoNothing()
+    // These three are not fixture claims, so `seed` never resets them: the
+    // address test below writes one's source, and a later run would read it
+    // back as already addressed. Reset each row to what is written here.
+    const rows = [
+      {
+        id: PAPER_CLAIM_ID,
+        text: 'The latent diffusion paper was posted to arXiv in December 2021.',
+        sourceUrl: 'https://arxiv.org/abs/2112.10752',
+        confidence: 'sourced' as const,
+      },
+      {
+        id: BARE_CLAIM_ID,
+        text: 'Stability AI provided the compute for training.',
+        sourceUrl: null,
+        confidence: 'single_source' as const,
+      },
+      {
+        id: POST_CLAIM_ID,
+        text: 'Emad Mostaque announced his resignation on X.',
+        sourceUrl: 'https://x.com/EMostaque/status/1740000000000000002',
+        confidence: 'sourced' as const,
+      },
+    ]
+    for (const row of rows) {
+      await db
+        .insert(claims)
+        .values({ ...row, dossierId: FIXTURE_DOSSIER_ID, sourceType: 'other' })
+        .onConflictDoUpdate({
+          target: claims.id,
+          set: { sourceUrl: row.sourceUrl, sourceType: 'other', quarantined: false },
+        })
+    }
     const script = await createScriptVersion(db, FIXTURE_PROJECT_ID)
     const chapter = await saveChapter(db, {
       scriptId: script.id,
