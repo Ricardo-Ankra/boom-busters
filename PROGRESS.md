@@ -7664,34 +7664,37 @@ boom-busters-broker`; merge and deploy to Vercel, then `PUT
      and the sandbox contract is unchanged: no Remotion or broker deploy.
      The scan refuses `Easing` as an identifier in any shape, an
      `interpolate` whose call text has no `easing: motion.ease.<name>`, a
-     spring that is not
-     `Remotion.spring` with `config: motion.spring.<name>`, bracket access
-     to the sandbox, and a `motion` binding or assignment of the design's
-     own. The prompt lists the tokens, states the house motion (the first
-     three rules checked, the rest judged on the board) and carries
-     excerpts of Remotion's own `timing.md` and `sequencing.md`, each
-     vendored line pinned by a test to `.agents/skills/remotion-markup/`
-     so an `npx skills` upgrade fails the test rather than drifting the
-     prompt. `transitions.md` and `text-highlights.md` are not excerpted:
-     they rest on `@remotion/transitions` and `@remotion/rough-notation`,
-     which the sandbox does not expose. Both worked examples and the
-     fixture are on the tokens; the type example shows the one spring of a
-     beat, the hero preset on the figure.
+     spring that is not `Remotion.spring` with
+     `config: motion.spring.<name>`, bracket access to the sandbox, and a
+     `motion` binding or assignment of the design's own. The prompt lists
+     the tokens, states the house motion (the curve and the spring config
+     checked by the scan, the rest judged on the board) and carries excerpts
+     of Remotion's own `timing.md` and `sequencing.md`, each vendored line
+     pinned by a test to `.agents/skills/remotion-markup/` so an
+     `npx skills` upgrade fails the test rather than drifting the prompt.
+     `transitions.md` and `text-highlights.md` are not excerpted: they rest
+     on `@remotion/transitions` and `@remotion/rough-notation`, which the
+     sandbox does not expose. Both worked examples and the fixture are on
+     the tokens, and the two `GraphicCode` goldens pass unchanged, since
+     frame 150 is past every entrance; the type example shows the one spring
+     of a beat, the hero preset on the figure.
      Decisions made where the spec left room: `motionTokens(Easing)` builds
      the typed object rather than the module importing `Easing`, for the
      Inngest route; the house's edits to the excerpts are marked lines in
      data rather than a single recorded edit, since the clamped examples
-     also needed a token curve to pass the scan; `Series` is left out of
-     the sequencing excerpt because the scope has no `Series`; an
-     `interpolate` whose options arrive through a variable is refused,
-     since the scan reads the call text, and the prompt says so; the
-     exact-string ban on the word Easing was dropped, since a finance
-     channel writes "Quantitative Easing" and the bracket rule already
-     refuses Remotion["Easing"]; an aliased Remotion.spring or
+     also needed a token curve to pass the scan; `Series` is left out of the
+     sequencing excerpt because the scope has no `Series`; an `interpolate`
+     whose options arrive through a variable is refused, since the scan
+     reads the call text, and the prompt says so; the exact-string ban on
+     the word Easing was dropped, since a finance channel writes
+     "Quantitative Easing" and the bracket rule already refuses
+     `Remotion["Easing"]`; an aliased Remotion.spring or
      Remotion.interpolate read without being called is refused, since an
-     alias would carry a default spring past the config rule. Not
-     checked, and said so in the spec: simultaneous entrances and the
-     entrance order, which the 250 ms dry-run samples cannot see; the
+     alias would carry a default spring past the config rule; a redesign of
+     a design stored before the tokens is told so in the prompt, so the
+     model moves it onto the tokens instead of keeping `Easing` and losing a
+     call. Not checked, and said so in the spec: simultaneous entrances and
+     the entrance order, which the 250 ms dry-run samples cannot see; the
      owner judges those on the board.
      Open for the owner: redesign one graphic, then compare a `settle`
      spring against the eased entrance on the same beat and `hero` on its
