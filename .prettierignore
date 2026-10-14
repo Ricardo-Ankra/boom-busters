@@ -31,3 +31,4 @@ infra/cdk.out
 # Vendored agent skills (remotion-dev/skills via the `skills` CLI). Third-party
 # text, pinned by skills-lock.json; the formatter never owns its bytes.
 .agents
+packages/providers/src/exemplars/vendored/
