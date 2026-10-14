@@ -1173,6 +1173,9 @@ export default async function globalSetup(): Promise<void> {
       // as channel mark" click must not survive into this one, or the
       // watermark test would find a mark already chosen before it acts.
       brandKit: { look: { ...settingsBeforeReset.brandKit.look, logoR2Key: null } },
+      // The shipped default (decision 303). A stored row keeps whatever an
+      // earlier run or the Publishing tab left, and the budget line asserts it.
+      publish: { dailyUploadBudget: 6 },
     })
 
     // Three beds, because the fixture install is "fully set up apart from

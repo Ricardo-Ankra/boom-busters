@@ -68,7 +68,7 @@ test.describe('the publish flow', () => {
     await expect(page.getByText(/flip it to public in YouTube Studio/i)).toBeVisible()
 
     // The budget line.
-    await expect(page.getByText(/of 4 upload starts used/i)).toBeVisible()
+    await expect(page.getByText(/of 6 upload starts used/i)).toBeVisible()
 
     // The items: the master, the schedulable Short, and the one that is not.
     await expect(page.getByText('Full video', { exact: true })).toBeVisible()

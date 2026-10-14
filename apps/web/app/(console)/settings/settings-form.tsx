@@ -348,6 +348,36 @@ function PublishingTab({ settings, saving, commit }: TabProps) {
 
       <Card>
         <CardHeader>
+          <CardTitle>Daily upload budget</CardTitle>
+          <CardDescription>
+            Upload starts allowed per YouTube quota day, which resets at midnight Pacific. Anything
+            over the budget waits for the next quota day on its own.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-1.5 sm:max-w-xs">
+          <Label htmlFor="daily-upload-budget">Uploads per quota day</Label>
+          <Select
+            id="daily-upload-budget"
+            aria-label="Uploads per quota day"
+            value={String(settings.publish.dailyUploadBudget)}
+            disabled={saving}
+            onChange={(event) => {
+              const next = structuredClone(settings)
+              next.publish.dailyUploadBudget = Number(event.target.value)
+              void commit({ publish: { ...next.publish } }, next)
+            }}
+          >
+            {[1, 2, 3, 4, 5, 6].map((count) => (
+              <option key={count} value={count}>
+                {count}
+              </option>
+            ))}
+          </Select>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
           <CardTitle>Default schedule slots</CardTitle>
           <CardDescription>
             Stored as UTC; the calendar renders them in your timezone.
