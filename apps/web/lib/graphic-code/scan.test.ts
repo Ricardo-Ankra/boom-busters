@@ -367,6 +367,13 @@ describe('scanGraphicSource (decision 295)', () => {
       'the whole motion object as a later argument',
       '  const f = (a, m) => m\n  const g = f(props.x, motion)',
     ],
+    ['a motion parameter after a destructured one', '  const f = ({ a }, motion, fps) => a'],
+    ['a motion parameter after a default', '  const f = (a = 1, motion, b) => a'],
+    ['a motion parameter with a default after a default', '  const f = (a = 1, motion = 2) => a'],
+    [
+      'a motion parameter of a function, after a default',
+      '  function h(x = 1, motion, y) {\n    return x\n  }',
+    ],
   ])("refuses %s: the token object is the house's", (_name, line) => {
     expect(scan(graphic(line))).toBe(OWN_MOTION)
   })

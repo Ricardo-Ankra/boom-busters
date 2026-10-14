@@ -283,6 +283,9 @@ describe('the designer prompt (decision 295)', () => {
     // The hero's overshoot shows on the rise, where a few pixels past the mark read.
     expect(GRAPHIC_EXAMPLE_TYPE).toContain("'translateY(' + (1 - pop) * 2 * motion.px.rise * unit")
     expect(GRAPHIC_EXAMPLE_TYPE).toContain(
+      'It rises twice motion.px.rise, so the overshoot has room to read; a plain fade keeps the single rise.',
+    )
+    expect(GRAPHIC_EXAMPLE_TYPE).toContain(
       "// The strike is the figure's payoff, so it takes the emphasis curve.",
     )
     expect(GRAPHIC_EXAMPLE_CHART).toContain(

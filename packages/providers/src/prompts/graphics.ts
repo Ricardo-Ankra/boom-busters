@@ -125,6 +125,7 @@ function Graphic(props) {
   // The hero figure: the one spring of the beat. It rises into place and scales up from
   // motion.scale.enter; the hero preset's one overshoot shows on the rise, a few pixels
   // past the mark and back, not on the scale, where it would not be seen.
+  // It rises twice motion.px.rise, so the overshoot has room to read; a plain fade keeps the single rise.
   const pop = Remotion.spring({
     frame, fps, delay: motion.frames(FIGURE_AT_MS, fps), config: motion.spring.hero,
   })

@@ -196,6 +196,10 @@ const DECLARES_MOTION = new RegExp(
     // or a call's arguments, never an object literal's shorthand.
     /\(\s*(?:[\w$]+\s*,\s*)*motion\s*[,)=]/.source,
     /,\s*motion\s*\)/.source,
+    // A later parameter followed by more or by a default, only where the list
+    // closes into a body (`(a = 1, motion, b) =>`), so an object or array
+    // literal's `, motion,` is not one.
+    /,\s*motion\s*(?:,|=(?![=>]))(?=[^{}[\]]*\)\s*(?:=>|\{))/.source,
     // A destructure in a declaration.
     /\{[^{}]*\bmotion\b[^{}]*\}\s*=(?![=>])/.source,
     // A destructured parameter: `motion` bound in braces (shorthand, renamed
