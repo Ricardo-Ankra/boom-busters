@@ -129,7 +129,6 @@ const BANNED_STRINGS: readonly {
     reason: GIVEN,
   },
   { pattern: /^dangerouslySetInnerHTML$/, name: (text) => text, reason: PAGE },
-  { pattern: /^Easing$/, name: () => 'Easing', reason: TOKENS },
   { pattern: /^toLocale\w*String$/, name: () => 'toLocaleString', reason: DIGITS },
   { pattern: /^transition(?:[A-Z]\w*)?$/, name: () => 'transition', reason: MOTION },
   { pattern: /^animation(?:[A-Z]\w*)?$/, name: () => 'animation', reason: MOTION },
@@ -200,8 +199,13 @@ const EASING_OPTION =
   /\beasing\s*:\s*(?:motion\s*\.\s*ease\s*\.\s*[\w$]+|\[\s*motion\s*\.\s*ease\s*\.\s*[\w$]+(?:\s*,\s*motion\s*\.\s*ease\s*\.\s*[\w$]+)*\s*,?\s*\])/
 /** `config: motion.spring.<x>`, as the text of a `Remotion.spring` call must carry. */
 const SPRING_CONFIG = /\bconfig\s*:\s*motion\s*\.\s*spring\s*\.\s*[\w$]+/
-/** `spring` in any shape but `Remotion.spring(`: a bare call, or a destructure from `Remotion`. */
+/** A bare `spring(` call, or `spring` destructured from `Remotion`; `Remotion.spring` read without a call is caught by ALIASES_CALLED_API. */
 const BARE_SPRING = /(?<![\w$.])spring\s*\(|\{[^}]*\bspring\b[^}]*\}\s*=\s*Remotion\b/
+/**
+ * `Remotion.spring` or `Remotion.interpolate` read without being called
+ * (`const sp = Remotion.spring`): the alias's calls would escape the call rules.
+ */
+const ALIASES_CALLED_API = /\bRemotion\s*\.\s*(spring|interpolate)\b(?!\s*\()/
 const INTERPOLATE_CALL = /\binterpolate\s*\(/g
 const REMOTION_SPRING_CALL = /\bRemotion\s*\.\s*spring\s*\(/g
 
@@ -263,6 +267,11 @@ export function scanGraphicSource(source: string, compiled: string): string | nu
     if (!SPRING_NAMES.has(name)) {
       return `the code uses motion.spring.${name}, which is not a token: the presets are motion.spring.settle, hero and snap`
     }
+  }
+  const aliased = ALIASES_CALLED_API.exec(code)
+  if (aliased) {
+    const name = aliased[1] ?? ''
+    return `the code reads Remotion.${name} without calling it, which the sandbox bans: call Remotion.${name}( where it is used, so the check can read the call`
   }
   const interpolates = calls(code, INTERPOLATE_CALL)
   for (const [index, text] of interpolates.entries()) {

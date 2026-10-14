@@ -104,9 +104,9 @@ describe('scanGraphicSource (decision 295)', () => {
     )
   })
 
-  it('refuses Easing spelt as a string, and bracket access to a sandbox argument', () => {
+  it('refuses bracket access to a sandbox argument', () => {
     expect(scan(graphic("  const e = Remotion['Easing']"))).toBe(
-      `the code uses Easing, which the sandbox bans: ${TOKENS}`,
+      `the code reads Remotion by bracket, which the sandbox bans: ${GIVEN}`,
     )
     expect(scan(graphic("  const s = Remotion['spring']"))).toBe(
       `the code reads Remotion by bracket, which the sandbox bans: ${GIVEN}`,
@@ -117,6 +117,45 @@ describe('scanGraphicSource (decision 295)', () => {
     expect(scan(graphic("  const c = React['createElement']"))).toBe(
       `the code reads React by bracket, which the sandbox bans: ${GIVEN}`,
     )
+  })
+
+  it('lets the words Quantitative Easing be shown on screen', () => {
+    expect(
+      scan(
+        `function Graphic(props) {
+  return <div><span>Quantitative</span> <span>Easing</span></div>
+}
+`,
+      ),
+    ).toBeNull()
+  })
+
+  it.each([
+    ['spring', '  const sp = Remotion.spring\n  const s = sp({ frame: 1, fps: 30 })'],
+    ['interpolate', '  const lerp = Remotion.interpolate\n  const v = lerp(1, [0, 10], [0, 1])'],
+  ])('refuses Remotion.%s aliased instead of called', (name, line) => {
+    expect(scan(graphic(line))).toBe(
+      `the code reads Remotion.${name} without calling it, which the sandbox bans: call Remotion.${name}( where it is used, so the check can read the call`,
+    )
+  })
+
+  it('refuses interpolate destructured from Remotion: its bare call carries no easing', () => {
+    expect(
+      scan(
+        graphic('  const { interpolate } = Remotion\n  const v = interpolate(1, [0, 10], [0, 1])'),
+      ),
+    ).toBe(NO_EASING(1, 1))
+  })
+
+  it('still passes Remotion.spring( and Remotion.interpolate( called directly', () => {
+    expect(
+      scan(
+        graphic(
+          call('{ easing: motion.ease.enter }') +
+            '\n  const s = Remotion.spring({ frame, fps: 30, config: motion.spring.snap })',
+        ),
+      ),
+    ).toBeNull()
   })
 
   it('passes an interpolate on a token curve, an array of them, or a spread with one', () => {
