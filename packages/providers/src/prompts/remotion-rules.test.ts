@@ -11,9 +11,10 @@ import { REMOTION_RULE_EXCERPTS, REMOTION_RULES } from './remotion-rules'
  */
 const VENDORED = new URL('../../../../.agents/skills/remotion-markup/', import.meta.url)
 
-function vendoredLines(file: string): Set<string> {
+/** The vendored file's lines, in order, trailing spaces aside. */
+function vendoredLines(file: string): string[] {
   const text = readFileSync(new URL(file, VENDORED), 'utf8')
-  return new Set(text.split('\n').map((line) => line.trimEnd()))
+  return text.split('\n').map((line) => line.trimEnd())
 }
 
 describe("Remotion's rules in the prompt (decision 301)", () => {
@@ -27,10 +28,24 @@ describe("Remotion's rules in the prompt (decision 301)", () => {
   it.each(REMOTION_RULE_EXCERPTS)(
     'pins every vendored line of $file to the vendored file',
     (excerpt) => {
-      const lines = vendoredLines(excerpt.file)
+      const lines = new Set(vendoredLines(excerpt.file))
       for (const line of excerpt.lines) {
         if (line.house) continue
         expect(lines.has(line.text.trimEnd()), `vendored line missing: ${line.text}`).toBe(true)
+      }
+    },
+  )
+
+  it.each(REMOTION_RULE_EXCERPTS)(
+    "keeps the vendored lines of $file in the file's order",
+    (excerpt) => {
+      const lines = vendoredLines(excerpt.file)
+      let cursor = 0
+      for (const line of excerpt.lines) {
+        if (line.house) continue
+        const at = lines.indexOf(line.text.trimEnd(), cursor)
+        expect(at, `vendored line out of the file's order: ${line.text}`).toBeGreaterThanOrEqual(0)
+        cursor = at + 1
       }
     },
   )
@@ -50,14 +65,28 @@ describe("Remotion's rules in the prompt (decision 301)", () => {
     )
   })
 
-  it('renders each excerpt under its file name, in order', () => {
-    expect(REMOTION_RULES.indexOf('timing.md')).toBeGreaterThan(0)
-    expect(REMOTION_RULES.indexOf('sequencing.md')).toBeGreaterThan(
-      REMOTION_RULES.indexOf('timing.md'),
+  it('renders each excerpt under a readable title with its file in brackets, in order', () => {
+    const timing = REMOTION_RULES.indexOf("\nTiming (Remotion's timing.md):\n")
+    expect(timing).toBeGreaterThan(0)
+    expect(REMOTION_RULES.indexOf("\nSequencing (Remotion's sequencing.md):\n")).toBeGreaterThan(
+      timing,
     )
     for (const excerpt of REMOTION_RULE_EXCERPTS) {
       for (const line of excerpt.lines) expect(REMOTION_RULES).toContain(line.text)
     }
+  })
+
+  it('says how the vendored code reads here: token ranges, no scale from 0, whole-frame Sequences', () => {
+    const timing = REMOTION_RULE_EXCERPTS[0]!.lines
+    expect(timing[1]).toEqual({
+      text: "The vendored code shows Remotion's names and numbers: here interpolate is Remotion.interpolate, every range comes from motion.frames and the tokens, and a scale starts at motion.scale.enter, never 0.",
+      house: true,
+    })
+    const sequencing = REMOTION_RULE_EXCERPTS[1]!.lines
+    expect(sequencing[sequencing.length - 1]).toEqual({
+      text: 'Write every Sequence here as Remotion.Sequence with layout="none" and whole-number from and durationInFrames.',
+      house: true,
+    })
   })
 
   it('mentions no package but remotion, no Easing member, no import, and no dash a reader would see', () => {

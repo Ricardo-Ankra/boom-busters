@@ -83,7 +83,8 @@ export interface GraphicDesignInput {
 export const GRAPHIC_EXAMPLE_TYPE = `// Kinetic type: the line builds word by word as it is spoken, the figure
 // springs in on "1.9 billion" with the hero preset (one small overshoot, once
 // in the beat), "never existed" strikes it through, and the finished frame
-// holds to the end. Every length and every curve is a token.
+// holds to the end.
+// Every length and every curve is a token; positions follow the narration.
 const LINE_UNTIL_MS = 2400
 const FIGURE_AT_MS = 2600
 const CLOSING_AT_MS = 4400
@@ -121,12 +122,15 @@ function Graphic(props) {
 
   // The words said before the figure, each entering as it is spoken.
   const line = props.words.filter((word) => word.atMs < LINE_UNTIL_MS)
-  // The hero figure: the one spring of the beat, from motion.scale.enter, settling at 1.
+  // The hero figure: the one spring of the beat. It rises into place and scales up from
+  // motion.scale.enter; the hero preset's one overshoot shows on the rise, a few pixels
+  // past the mark and back, not on the scale, where it would not be seen.
   const pop = Remotion.spring({
     frame, fps, delay: motion.frames(FIGURE_AT_MS, fps), config: motion.spring.hero,
   })
   const closing = arrive(frame, fps, CLOSING_AT_MS)
-  // The strike draws across over motion.ms.draw on the emphasis curve.
+  // The strike is the figure's payoff, so it takes the emphasis curve.
+  // It draws across over motion.ms.draw.
   const strike = Remotion.interpolate(
     frame, [motion.frames(STRIKE_AT_MS, fps), motion.frames(STRIKE_AT_MS + motion.ms.draw, fps)], [0, 1],
     { easing: motion.ease.emphasis, extrapolateLeft: 'clamp', extrapolateRight: 'clamp' },
@@ -153,7 +157,8 @@ function Graphic(props) {
         style={{
           position: 'relative', fontFamily: fonts.numbers, fontSize: 220 * unit, lineHeight: 1,
           color: colors.accent, opacity: Math.min(1, pop),
-          transform: 'scale(' + (motion.scale.enter + (1 - motion.scale.enter) * pop) + ')',
+          transform: 'translateY(' + (1 - pop) * 2 * motion.px.rise * unit + 'px) scale('
+            + (motion.scale.enter + (1 - motion.scale.enter) * pop) + ')',
           transformOrigin: portrait ? 'center' : 'left center',
         }}
       >
@@ -199,12 +204,12 @@ export const GRAPHIC_EXAMPLE_CHART_DATA = {
 export const GRAPHIC_EXAMPLE_CHART = `// A chart from props.data: the title and its subtitle stagger in, one bar
 // per point draws on as its year is spoken, the annotation lands on its bar
 // after the last one has grown, and the finished chart holds to the end.
-// Every length and every curve is a token; the words keep their spoken times.
+// Every length and every curve is a token; positions follow the narration.
 
 // When the narration names a point: the first word that starts with its label.
 function spokenAt(point, index, words) {
   const said = words.find((word) => word.text.indexOf(point.x) === 0)
-  return said ? said.atMs : 600 + index * 700
+  return said ? said.atMs : motion.ms.enter + index * (motion.ms.draw + motion.ms.gap)
 }
 
 // A helper, called directly: 0 to 1 over lengthMs from atMs on the arrival curve, held at 1.
@@ -303,7 +308,8 @@ function Graphic(props) {
             brand: props.brand, unit: unit, point: point,
             share: point.y / top, plot: (portrait ? 0.32 : 0.34) * height, atMs: lands[index],
             color: index === last ? colors.accent : Remotion.withAlpha(colors.textSecondary, 0.55),
-            note: note && note.atX === point.x ? note.text : null, noteAtMs: lands[last] + 1200,
+            note: note && note.atX === point.x ? note.text : null,
+            noteAtMs: lands[last] + motion.ms.draw + motion.ms.gap,
           }),
         )}
       </div>
@@ -353,12 +359,12 @@ The sandbox your code runs in:
   its config is always a token (below).
 - motion: the house motion tokens, declared above your code and read-only. motion.ms
   {micro 120, enter 450, exit 300, reveal 550, draw 700, count 1000, move 900, gap 120},
-  lengths in milliseconds. motion.frames(ms, fps), a length in whole frames, at least 1.
-  motion.ease {enter, exit, move, emphasis, linear}, the only curves. motion.spring {settle,
-  hero, snap}, the only spring configs. motion.px.rise (20 at 1080p; multiply by your unit).
-  motion.scale.enter (0.96). motion.stagger(index, fps), the frame offset of the index-th
-  item of a group. motion.order ['frame', 'title', 'body', 'hero', 'note'], the entrance
-  order.
+  lengths in milliseconds. motion.frames(ms, fps), a length in whole frames, at least 1,
+  and a time too: a word at 0 ms starts on frame 1. motion.ease {enter, exit, move,
+  emphasis, linear}, the only curves. motion.spring {settle, hero, snap}, the only spring
+  configs. motion.px.rise (20 at 1080p; multiply by your unit). motion.scale.enter (0.96).
+  motion.stagger(index, fps), the frame offset of the index-th item of a group.
+  motion.order ['frame', 'title', 'body', 'hero', 'note'], the entrance order.
 - Remotion.Sequence {from, durationInFrames}: its children show only inside that window,
   and inside it useCurrentFrame() counts from 0. A Sequence's durationInFrames is at
   least 1 and its from a finite number, so wrap a length worked out from the words in

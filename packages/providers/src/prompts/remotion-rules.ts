@@ -9,11 +9,13 @@
  * and not `Series`, which the sandbox scope lacks.
  *
  * A vendored line is Remotion's text; a house line is ours, marked so
- * `remotion-rules.test.ts` can pin every vendored line to its file. The
- * house's edits: Remotion's `Easing.spring({damping: 200})` advice and its
- * keyframe easings are replaced by the tokens, since a design may not name
- * `Easing`; and the examples that pass no easing get `motion.ease.enter`,
- * since the scan refuses an interpolate without one.
+ * `remotion-rules.test.ts` can pin every vendored line to its file, in the
+ * file's order. The house's edits: Remotion's `Easing.spring({damping: 200})`
+ * advice and its keyframe easings are replaced by the tokens, since a design
+ * may not name `Easing`; the examples that pass no easing get
+ * `motion.ease.enter`, since the scan refuses an interpolate without one; and
+ * two house lines say how the vendored code reads in the sandbox (its names,
+ * its ranges, a scale never from 0, a Sequence of whole frames).
  */
 
 export interface RuleLine {
@@ -23,6 +25,8 @@ export interface RuleLine {
 }
 
 export interface RemotionRuleExcerpt {
+  /** The heading the prompt shows it under, with the file in brackets. */
+  title: string
   file: 'timing.md' | 'sequencing.md'
   lines: readonly RuleLine[]
 }
@@ -32,9 +36,13 @@ const h = (text: string): RuleLine => ({ text, house: true })
 
 export const REMOTION_RULE_EXCERPTS: readonly RemotionRuleExcerpt[] = [
   {
+    title: 'Timing',
     file: 'timing.md',
     lines: [
       v('Drive motion with `interpolate()` over an explicit frame range.'),
+      h(
+        "The vendored code shows Remotion's names and numbers: here interpolate is Remotion.interpolate, every range comes from motion.frames and the tokens, and a scale starts at motion.scale.enter, never 0.",
+      ),
       h(
         'In this sandbox the curve is a token: every interpolate carries easing: motion.ease.<name>, written inside the call, and the range comes from the tokens, [from, from + motion.frames(motion.ms.enter, fps)].',
       ),
@@ -48,6 +56,12 @@ export const REMOTION_RULE_EXCERPTS: readonly RemotionRuleExcerpt[] = [
       h(
         "A push with no bounce is motion.spring.settle through Remotion.spring, or motion.ease.enter; Remotion's Easing is not available here.",
       ),
+      v('## Animating scale'),
+      v(
+        'When animating scale, if the output is linear, the perceived scale would be smaller the larger the scale gets.',
+      ),
+      v('Use this option to compensate:'),
+      h("Pass output: 'perceptual-scale' to any interpolate that drives a scale."),
       v('## Multiple keyframes'),
       v(
         'Add as many keyframes as you want. For multiple easings, pass an array with `n - 1` items:',
@@ -58,15 +72,10 @@ export const REMOTION_RULE_EXCERPTS: readonly RemotionRuleExcerpt[] = [
       v('  extrapolateRight: "clamp",'),
       v("  output: 'perceptual-scale' // <- Add this to scale animations"),
       v('});'),
-      v('## Animating scale'),
-      v(
-        'When animating scale, if the output is linear, the perceived scale would be smaller the larger the scale gets.',
-      ),
-      v('Use this option to compensate:'),
-      h("Pass output: 'perceptual-scale' to any interpolate that drives a scale."),
     ],
   },
   {
+    title: 'Sequencing',
     file: 'sequencing.md',
     lines: [
       v('Use `<Sequence>` to delay when an element appears in the timeline.'),
@@ -94,6 +103,9 @@ export const REMOTION_RULE_EXCERPTS: readonly RemotionRuleExcerpt[] = [
       v('    <Subtitle />'),
       v('  </Sequence>'),
       v('</Sequence>'),
+      h(
+        'Write every Sequence here as Remotion.Sequence with layout="none" and whole-number from and durationInFrames.',
+      ),
     ],
   },
 ]
@@ -102,5 +114,6 @@ export const REMOTION_RULE_EXCERPTS: readonly RemotionRuleExcerpt[] = [
 export const REMOTION_RULES =
   "Remotion's own rules, from its agent skills (vendored and pinned), with the house's edits where the sandbox differs:\n" +
   REMOTION_RULE_EXCERPTS.map(
-    (excerpt) => `\n${excerpt.file}:\n${excerpt.lines.map((line) => line.text).join('\n')}`,
+    (excerpt) =>
+      `\n${excerpt.title} (Remotion's ${excerpt.file}):\n${excerpt.lines.map((line) => line.text).join('\n')}`,
   ).join('\n')

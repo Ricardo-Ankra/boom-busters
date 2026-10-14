@@ -92,6 +92,7 @@ describe('the designer prompt (decision 295)', () => {
       'Remotion.useCurrentFrame()',
       'Remotion.useVideoConfig()',
       'Remotion.interpolate(',
+      'Remotion.spring(',
       'motion.ms',
       'motion.frames(',
       'motion.ease',
@@ -262,6 +263,10 @@ describe('the designer prompt (decision 295)', () => {
     expect(rules).toContain(
       "Remotion['...'], React['...'] or motion['...'], an assignment to motion, a motion binding of your own, a Remotion.spring or Remotion.interpolate read without being called, and a motion.ease or motion.spring name that is not a token.",
     )
+    expect(rules).toContain('an assignment to motion, a motion binding of your own')
+    expect(rules).toContain(
+      'motion.frames(ms, fps), a length in whole frames, at least 1, and a time too: a word at 0 ms starts on frame 1.',
+    )
     expect(rules).not.toContain('Remotion.Easing.out(Remotion.Easing.poly(4))')
     expect(rules).not.toContain('16 to 24 px rise')
     for (const example of [GRAPHIC_EXAMPLE_TYPE, GRAPHIC_EXAMPLE_CHART]) {
@@ -269,9 +274,23 @@ describe('the designer prompt (decision 295)', () => {
       expect(example).toContain('easing: motion.ease.')
       expect(example).toContain('motion.frames(')
       expect(example).toContain('motion.ms.')
+      expect(example).toContain(
+        '// Every length and every curve is a token; positions follow the narration.',
+      )
     }
     expect(GRAPHIC_EXAMPLE_TYPE).toContain('config: motion.spring.hero')
     expect(GRAPHIC_EXAMPLE_TYPE).toContain('motion.px.rise')
+    // The hero's overshoot shows on the rise, where a few pixels past the mark read.
+    expect(GRAPHIC_EXAMPLE_TYPE).toContain("'translateY(' + (1 - pop) * 2 * motion.px.rise * unit")
+    expect(GRAPHIC_EXAMPLE_TYPE).toContain(
+      "// The strike is the figure's payoff, so it takes the emphasis curve.",
+    )
+    expect(GRAPHIC_EXAMPLE_CHART).toContain(
+      'noteAtMs: lands[last] + motion.ms.draw + motion.ms.gap',
+    )
+    expect(GRAPHIC_EXAMPLE_CHART).toContain(
+      'motion.ms.enter + index * (motion.ms.draw + motion.ms.gap)',
+    )
     expect(GRAPHIC_EXAMPLE_CHART).not.toContain('spring')
     expect(GRAPHIC_EXAMPLE_CHART).toContain('motion.stagger(')
     expect(GRAPHIC_EXAMPLE_CHART).toContain(
