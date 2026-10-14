@@ -351,7 +351,7 @@ describe('buildGraphicRequest (decision 295)', () => {
     expect(slot).toContain(
       'A passing design of this technique (stat-counter: one large figure counting up to its mark, a label beneath, held), in this sandbox and on the tokens, to pattern on. Its words and figures are its own; yours come from this slot and its claims:',
     )
-    expect(slot).toContain('```jsx\n' + exemplar.source + '\n```')
+    expect(slot).toContain('````jsx\n' + exemplar.source + '\n````')
     expect(slot.indexOf('Data (draw every point')).toBeLessThan(slot.indexOf('A passing design'))
     expect(request.messages[2]!.content).toContain('The current design')
     expect(request.messages[0]!.content).not.toContain('A passing design')

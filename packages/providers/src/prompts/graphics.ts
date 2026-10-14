@@ -561,16 +561,17 @@ export function buildGraphicRequest(input: GraphicDesignInput): LLMTaskRequest {
  * the brief calls for, in the sandbox and on the tokens, so the model
  * patterns on the technique and not on the system prompt's two examples. It
  * sits in the slot message, after the data, so the cached film message and
- * the system prompt are untouched.
+ * the system prompt are untouched. Four backticks fence it, so a design that
+ * holds three in a string cannot close the block early.
  */
 function exemplarBlock(exemplar: Exemplar): string {
   return (
     `A passing design of this technique (${exemplar.technique}: ${exemplar.description}), in this ` +
     'sandbox and on the tokens, to pattern on. Its words and figures are its own; yours come ' +
     'from this slot and its claims:\n' +
-    '```jsx\n' +
+    '````jsx\n' +
     exemplar.source +
-    '\n```'
+    '\n````'
   )
 }
 

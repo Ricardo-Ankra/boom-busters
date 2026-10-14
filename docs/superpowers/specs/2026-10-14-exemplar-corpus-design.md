@@ -70,7 +70,8 @@ that use it.
   source }`, the source a sandbox design on the tokens. Its header comment
   names the vendored file and the SHA-256 of its text, so a changed vendored
   file is visible and the test (5) can say the design is stale.
-- `index.ts`: `EXEMPLARS` (the manifest joined with whatever designs exist),
+- `index.ts`: `exemplars()` (the manifest joined with whatever designs exist,
+  a function so nothing runs at import),
   `TECHNIQUES`, `techniqueFor(input)` (4) and `exemplarFor(technique)`,
   which returns `{ technique, description, source, title }` or `undefined`
   when no design is stored.
@@ -255,7 +256,7 @@ After the data block and before the current design, when `exemplar` is set:
 "A passing design of this technique (`<technique>`: <description>), in
 this sandbox and on the tokens, to pattern on. Its words and figures are its
 own; yours come from this slot and its claims:" then the design's source in
-a fenced `jsx` block. On a redesign the block still appears and the current
+a `jsx` block fenced with four backticks. On a redesign the block still appears and the current
 design follows it. The system prompt does not change, so the cache holds;
 the slot message grows by the exemplar, roughly 1,500 to 2,500 input tokens,
 uncached, a fraction of a cent per slot.

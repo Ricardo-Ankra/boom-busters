@@ -67,10 +67,13 @@ function storedIds(): string[] {
     .map((name) => name.slice(0, -3))
 }
 
-/** Roughly four characters a token, over the system prompt and every message. */
+/**
+ * Three characters a token, over the system prompt and every message: a
+ * margin over the usual four, so the last call cannot pass the cap by a cent.
+ */
 function promptTokens(request: LLMTaskRequest): number {
   const chars = request.system.length + request.messages.reduce((n, m) => n + m.content.length, 0)
-  return Math.ceil(chars / 4)
+  return Math.ceil(chars / 3)
 }
 
 async function main(): Promise<void> {

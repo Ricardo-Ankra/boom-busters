@@ -14,17 +14,21 @@ export interface Exemplar {
   source: string
 }
 
-/** The manifest joined with whatever designs are stored. */
-export const EXEMPLARS: readonly (ExemplarEntry & { design?: ExemplarDesign })[] = MANIFEST.map(
-  (entry) => {
+/**
+ * The manifest joined with whatever designs are stored. A function, not a
+ * module-level value, so a client bundle that imports the providers barrel
+ * runs nothing here and can drop the stored design sources.
+ */
+export function exemplars(): readonly (ExemplarEntry & { design?: ExemplarDesign })[] {
+  return MANIFEST.map((entry) => {
     const design = DESIGNS[entry.technique]
     return design ? { ...entry, design } : entry
-  },
-)
+  })
+}
 
 /** The exemplar for a technique, or undefined while no design is stored for it. */
 export function exemplarFor(technique: Technique): Exemplar | undefined {
-  const entry = EXEMPLARS.find((candidate) => candidate.technique === technique)
+  const entry = exemplars().find((candidate) => candidate.technique === technique)
   if (!entry?.design) return undefined
   return {
     technique,

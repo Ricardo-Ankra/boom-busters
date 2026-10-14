@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { DESIGNS } from './designs/index'
-import { EXEMPLARS, exemplarFor, MANIFEST, TECHNIQUES, techniqueFor, vendoredPath } from './index'
+import { exemplarFor, exemplars, MANIFEST, TECHNIQUES, techniqueFor, vendoredPath } from './index'
 
 const HERE = new URL('./', import.meta.url)
 const DASH = /[–—]/
@@ -102,6 +102,6 @@ describe('the exemplar manifest (decision 305)', () => {
         expect(stored.title).not.toMatch(DASH)
       }
     }
-    expect(EXEMPLARS.map((entry) => entry.id)).toEqual(MANIFEST.map((entry) => entry.id))
+    expect(exemplars().map((entry) => entry.id)).toEqual(MANIFEST.map((entry) => entry.id))
   })
 })
