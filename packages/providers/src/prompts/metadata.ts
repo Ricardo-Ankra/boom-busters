@@ -40,7 +40,7 @@ export function buildTitlesRequest(input: {
   /** The working title, offered to the model as the angle already chosen. */
   workingTitle: string
   /**
-   * The facts a title may use (decision 301). The working title is the
+   * The facts a title may use (decision 302). The working title is the
    * project's pitch, which can carry a figure the research did not support
    * (production: "$270M in 18 Months"), so the claims are the only source of
    * figures, dates and names.
@@ -92,7 +92,7 @@ ${
 }
 
 // ---------------------------------------------------------------------------
-// The search description (decision 301)
+// The search description (decision 302)
 // ---------------------------------------------------------------------------
 
 /** How long the written opening may run before it is trimmed at a sentence. */
@@ -114,7 +114,7 @@ export interface DescriptionAnswer {
 }
 
 /**
- * The search description (decision 301): the opening paragraphs, a gloss per
+ * The search description (decision 302): the opening paragraphs, a gloss per
  * chapter, three hashtags and the tag list, written for the words people
  * search, from the claim list and the film itself. The pitch title is never
  * sent: it is where an unsourced figure lives.

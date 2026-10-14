@@ -107,7 +107,7 @@ describe('syntheticLikenesses with the cast', () => {
  * the article records already on file; and an opening saved for an earlier
  * script is flagged rather than published under a rewritten film.
  */
-describe('deriveIngredients sources (decision 301)', () => {
+describe('deriveIngredients sources (decision 302)', () => {
   const claim = (text: string, sourceUrl: string | null, confidence = 'sourced') => ({
     text,
     sourceUrl,
@@ -146,7 +146,7 @@ describe('deriveIngredients sources (decision 301)', () => {
   })
 })
 
-describe('openingIsStale (decision 301)', () => {
+describe('openingIsStale (decision 302)', () => {
   const hook = 'March 2024. Emad Mostaque resigned.'
 
   it('flags an opening saved for an earlier script, and one saved before versions were kept', () => {

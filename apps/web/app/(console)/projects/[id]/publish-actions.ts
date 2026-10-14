@@ -118,9 +118,9 @@ export async function savePublishDraft(
     title: string
     descriptionBody: string
     tags: string
-    /** Comma- or space-separated; normalised to one-word tags (decision 301). */
+    /** Comma- or space-separated; normalised to one-word tags (decision 302). */
     hashtags?: string
-    /** One per chapter, in order (decision 301). Absent keeps what is stored. */
+    /** One per chapter, in order (decision 302). Absent keeps what is stored. */
     chapterGlosses?: string[]
   },
 ): Promise<ActionResult> {
@@ -160,7 +160,7 @@ export async function savePublishDraft(
   if (blocked) return { ok: false, error: blocked }
 
   // An opening the owner rewrote is theirs, for the script as it is now
-  // (decision 301); one left as it was keeps the version it was written for.
+  // (decision 302); one left as it was keeps the version it was written for.
   const stored = PublishDraftSchema.safeParse(record.metadata)
   const body = parsed.data.descriptionBody ?? ''
   const rewritten = !stored.success || (stored.data.descriptionBody ?? '') !== body
@@ -205,7 +205,7 @@ function joinTags(kept: readonly string[], written: readonly string[]): string[]
   return tags
 }
 
-/** The film's facts, as the claim list every metadata call reads (decision 301). */
+/** The film's facts, as the claim list every metadata call reads (decision 302). */
 async function metadataGrounding(projectId: string): Promise<{
   claims: ScriptClaim[]
   centralQuestion: string | undefined
@@ -229,7 +229,7 @@ async function metadataGrounding(projectId: string): Promise<{
 }
 
 /**
- * The search description (decision 301): the opening, a gloss per chapter,
+ * The search description (decision 302): the opening, a gloss per chapter,
  * three hashtags and tags, written from the claim list and the film itself,
  * never from the pitch title. One metadata-tier call; mock mode answers
  * locally. Everything it writes stays editable before scheduling.
@@ -367,7 +367,7 @@ export async function generateTitles(targetType: string, targetId: string): Prom
           target: type,
           workingTitle,
           // The pitch title can carry a figure the research did not support;
-          // the claims are where a title's facts come from (decision 301).
+          // the claims are where a title's facts come from (decision 302).
           claims: grounding.claims,
           ...(grounding.centralQuestion ? { centralQuestion: grounding.centralQuestion } : {}),
         }),
@@ -561,7 +561,7 @@ async function requestUpload(
   const composed = composeDescription({
     body: draft.success ? (draft.data.descriptionBody ?? ingredients.hook) : ingredients.hook,
     // Chapter stamps only mean something on the full video; each carries its
-    // search gloss when one was written (decision 301).
+    // search gloss when one was written (decision 302).
     chapters:
       type === 'master'
         ? ingredients.chapters.map((chapter, index) => ({ ...chapter, gloss: glosses[index] }))

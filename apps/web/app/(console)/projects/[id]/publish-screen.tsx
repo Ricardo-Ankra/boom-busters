@@ -651,7 +651,7 @@ function ItemEditor({
     hashtags !== storedHashtags ||
     (isMaster && glosses.join('\u0000') !== storedGlossesKey)
 
-  // An opening saved for an earlier script (decision 301): said here, where
+  // An opening saved for an earlier script (decision 302): said here, where
   // it would be published, with the current opening one press away.
   const staleNote =
     record?.bodyStale && body === storedBody
@@ -775,7 +775,7 @@ function ItemEditor({
             </Button>
           )}
 
-          {/* The search description (decision 301): one call writes the
+          {/* The search description (decision 302): one call writes the
               opening, the chapter notes, the hashtags and tags from the claim
               list and the film; every part stays editable below. */}
           {live ? (

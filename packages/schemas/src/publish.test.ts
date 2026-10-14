@@ -137,7 +137,7 @@ describe('composeDescription', () => {
  * carries a gloss that says what the chapter is about, a source line says
  * what it backs, and three hashtags get a line of their own.
  */
-describe('composeDescription for search (decision 301)', () => {
+describe('composeDescription for search (decision 302)', () => {
   const chapters = [
     { title: 'Stepping Down', startMs: 0, gloss: 'Emad Mostaque resigns as CEO, March 2024' },
     { title: 'The Borrowed Engine', startMs: 45_000 },
@@ -191,7 +191,7 @@ describe('composeDescription for search (decision 301)', () => {
   })
 })
 
-describe('sourceLabel (decision 301)', () => {
+describe('sourceLabel (decision 302)', () => {
   it('names the outlet the article record read, then what the claim backs', () => {
     expect(
       sourceLabel({
@@ -223,7 +223,7 @@ describe('sourceLabel (decision 301)', () => {
 })
 
 describe('PublishDraftSchema', () => {
-  it('reads the search fields and the script version the opening was written for (decision 301)', () => {
+  it('reads the search fields and the script version the opening was written for (decision 302)', () => {
     const draft = PublishDraftSchema.parse({
       descriptionBody: 'How Stability AI...',
       bodyScriptVersion: 4,

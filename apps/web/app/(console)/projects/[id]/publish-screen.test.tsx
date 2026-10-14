@@ -664,7 +664,7 @@ describe('PublishScreen', () => {
  * an earlier script says so; one button writes the opening, chapter notes,
  * hashtags and tags; every part stays editable and shows in the preview.
  */
-describe('the search description (decision 301)', () => {
+describe('the search description (decision 302)', () => {
   const draft = (over: Partial<NonNullable<PublishItemModel['record']>> = {}) => ({
     id: '01HQ00000000000000000000P1',
     status: 'draft' as const,

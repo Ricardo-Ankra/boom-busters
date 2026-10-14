@@ -26,7 +26,7 @@ export const PUBLISH_DISCLAIMER =
   'Narration is AI-generated. Some visuals are AI re-creations for illustration, including ' +
   'likenesses of real people; they are not photographs of real events. Sources are listed above.'
 
-/** How long a chapter's search gloss may run (decision 301). */
+/** How long a chapter's search gloss may run (decision 302). */
 export const CHAPTER_GLOSS_MAX = 90
 
 /** YouTube shows the first three hashtags above the title; more are noise. */
@@ -44,7 +44,7 @@ export const PublishDraftSchema = z.object({
   /** The human-owned opening — the auto-blocks are appended at compose time. */
   descriptionBody: z.string().max(DESCRIPTION_MAX_CHARS).optional(),
   /**
-   * The script version the opening was written for (decision 301). A body
+   * The script version the opening was written for (decision 302). A body
    * saved before the script was rewritten is flagged on the Publish screen;
    * absent on bodies saved before this existed, which are flagged too.
    */
@@ -72,11 +72,11 @@ export function formatTimestamp(ms: number): string {
 export interface DescriptionChapter {
   title: string
   startMs: number
-  /** What the chapter is about, for search (decision 301). Printed after the title. */
+  /** What the chapter is about, for search (decision 302). Printed after the title. */
   gloss?: string | null
 }
 
-/** A source line: the address, and what it backs when that is known (decision 301). */
+/** A source line: the address, and what it backs when that is known (decision 302). */
 export interface DescriptionSource {
   url: string
   label?: string | null
@@ -86,7 +86,7 @@ export interface DescriptionSource {
 const SOURCE_GIST_MAX = 80
 
 /**
- * A source line's label (decision 301): the outlet the article record read,
+ * A source line's label (decision 302): the outlet the article record read,
  * else the bare host, then what the first claim citing it says, cut at a
  * word. Deterministic, and only ever words already on file: a label a model
  * wrote could misstate what a source supports.
@@ -126,10 +126,10 @@ export interface ComposeDescriptionInput {
   chapters: readonly DescriptionChapter[]
   /**
    * Source URLs from the dossier's verified claims, already deduplicated: a
-   * bare address, or one with a label saying what it backs (decision 301).
+   * bare address, or one with a label saying what it backs (decision 302).
    */
   sources: readonly (string | DescriptionSource)[]
-  /** Up to three hashtags, on their own line before the disclaimer (decision 301). */
+  /** Up to three hashtags, on their own line before the disclaimer (decision 302). */
   hashtags?: readonly string[]
   /**
    * The music bed's attribution/licence text, from the library (decision

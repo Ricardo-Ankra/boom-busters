@@ -121,7 +121,7 @@ describeDb('generateTitles (decision 293)', () => {
  * is written from the claims and the script, stamped with the script version
  * it was written for; and an opening the owner rewrites is stamped too.
  */
-describeDb('the search description (decision 301)', () => {
+describeDb('the search description (decision 302)', () => {
   const DESCRIPTION = JSON.stringify({
     body: 'How Wirecard, the German payments company, collapsed in June 2020.',
     chapterGlosses: ['The trustee accounts that never existed'],

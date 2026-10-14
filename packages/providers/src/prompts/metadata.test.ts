@@ -56,7 +56,7 @@ describe('buildTitlesRequest', () => {
  * "$270M in 18 Months", a figure the dossier flagged as unsourced, and five
  * of eight options repeated it. Titles are now grounded in the claim list.
  */
-describe('buildTitlesRequest grounding (decision 301)', () => {
+describe('buildTitlesRequest grounding (decision 302)', () => {
   const grounded = buildTitlesRequest({
     caseTitle: 'Stability AI: The Startup That Burned $270M in 18 Months',
     hook: 'March 2024. Emad Mostaque resigned.',
@@ -80,7 +80,7 @@ describe('buildTitlesRequest grounding (decision 301)', () => {
   })
 })
 
-describe('buildDescriptionRequest (decision 301)', () => {
+describe('buildDescriptionRequest (decision 302)', () => {
   const request = buildDescriptionRequest({
     target: 'master',
     claims: [CLAIM],
@@ -129,7 +129,7 @@ describe('buildDescriptionRequest (decision 301)', () => {
   })
 })
 
-describe('parseDescriptionAnswer (decision 301)', () => {
+describe('parseDescriptionAnswer (decision 302)', () => {
   const answer = (over: Record<string, unknown>) =>
     JSON.stringify({
       body: 'How Stability AI, the company behind Stable Diffusion, lost its founder.',
@@ -200,7 +200,7 @@ describe('parseDescriptionAnswer (decision 301)', () => {
   })
 })
 
-describe('mockDescription (decision 301)', () => {
+describe('mockDescription (decision 302)', () => {
   it('is obviously mock, one gloss per chapter, and three hashtags', () => {
     const mocked = mockDescription(3)
     expect(mocked.body).toContain('[mock]')
