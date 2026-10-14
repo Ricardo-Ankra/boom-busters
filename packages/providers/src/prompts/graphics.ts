@@ -38,6 +38,12 @@ export interface SlotWord {
   offsetMs: number
 }
 
+/** The design a redesign replaces, as `GraphicDesignInput.current` carries it. */
+export type CurrentDesign = Pick<PlannedGraphicCode, 'source' | 'title'> & {
+  /** The preamble version the stored design carries, absent on a design stored before decision 301. */
+  motion?: number
+}
+
 export interface GraphicDesignInput {
   caseTitle: string
   /** The film's claims in prompt order: positions are the numbers cited. */
@@ -60,7 +66,7 @@ export interface GraphicDesignInput {
     annotations?: { atX: string; text: string }[]
   }
   /** A redesign: the source and title being replaced (ruling 9; its facts are not shown). */
-  current?: Pick<PlannedGraphicCode, 'source' | 'title'>
+  current?: CurrentDesign
   guidance?: string
   /** Why the previous answer to this same slot was refused. */
   rejection?: string
@@ -537,14 +543,23 @@ export function buildGraphicRequest(input: GraphicDesignInput): LLMTaskRequest {
   }
 }
 
-/** A redesign's starting point: the title, and the code fenced so its JSX reads as code. */
-function currentDesign(current: Pick<PlannedGraphicCode, 'source' | 'title'>): string {
+const PRE_TOKEN_DESIGN =
+  '\nThis design was written before the motion tokens: move every curve onto motion.ease, every spring onto motion.spring, and every length onto motion.ms, keeping what the producer has not asked to change.'
+
+/**
+ * A redesign's starting point: the title, and the code fenced so its JSX reads
+ * as code. A design stored before the motion tokens (no `motion`) is said to
+ * be one, so the model moves it onto them rather than keeping `Easing`, which
+ * the scan refuses (decision 301).
+ */
+function currentDesign(current: CurrentDesign): string {
   return (
     'The current design, which the producer wants changed:\n' +
     `Title: ${current.title}\n` +
     '```jsx\n' +
     current.source +
-    '\n```'
+    '\n```' +
+    (current.motion === undefined ? PRE_TOKEN_DESIGN : '')
   )
 }
 

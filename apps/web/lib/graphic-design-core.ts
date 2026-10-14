@@ -108,11 +108,17 @@ export function chartData(brief: ChartBrief): NonNullable<GraphicDesignInput['da
 
 /**
  * A stored design as a redesign shows it to the designer (ruling 9): its
- * source and title only. Its facts are not passed; the designer cites claims
- * afresh from the numbered list, and the checks hold it to them.
+ * source and title, and the preamble version it carries, whose absence tells
+ * the designer the design predates the motion tokens (decision 301). Its facts
+ * are not passed; the designer cites claims afresh from the numbered list, and
+ * the checks hold it to them.
  */
 function currentDesign(code: GraphicCode): NonNullable<GraphicDesignInput['current']> {
-  return { source: code.source, title: code.title }
+  return {
+    source: code.source,
+    title: code.title,
+    ...(code.motion !== undefined ? { motion: code.motion } : {}),
+  }
 }
 
 /**

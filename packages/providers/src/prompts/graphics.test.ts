@@ -355,6 +355,7 @@ describe('buildGraphicRequest (decision 295)', () => {
         current: {
           title: 'Old title',
           source: 'function Graphic(props) {\n  return null\n}',
+          motion: 1,
         },
         rejection: 'nothing changes between 1.0 s and 8.0 s',
         guidance: 'Make the number bigger.',
@@ -365,10 +366,22 @@ describe('buildGraphicRequest (decision 295)', () => {
     expect(contents[2]).toBe(
       'The current design, which the producer wants changed:\nTitle: Old title\n```jsx\nfunction Graphic(props) {\n  return null\n}\n```',
     )
+    expect(contents[2]).not.toContain('written before the motion tokens')
     expect(contents[3]).toBe(
       'Your previous answer for this slot was refused: nothing changes between 1.0 s and 8.0 s. Answer again with that fixed.',
     )
     expect(contents[4]).toBe("The producer's steer: Make the number bigger.")
+  })
+
+  it('tells a redesign of a design stored before the tokens to move it onto them (decision 301)', () => {
+    const request = buildGraphicRequest(
+      input({
+        current: { title: 'Old title', source: 'function Graphic(props) {\n  return null\n}' },
+      }),
+    )
+    expect(request.messages[2]!.content).toBe(
+      'The current design, which the producer wants changed:\nTitle: Old title\n```jsx\nfunction Graphic(props) {\n  return null\n}\n```\nThis design was written before the motion tokens: move every curve onto motion.ease, every spring onto motion.spring, and every length onto motion.ms, keeping what the producer has not asked to change.',
+    )
   })
 })
 
