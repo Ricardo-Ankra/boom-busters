@@ -129,6 +129,8 @@ describeDb('the search description (decision 302)', () => {
     tags: ['Wirecard', 'Markus Braun'],
   })
 
+  let chapterId = ''
+
   beforeEach(async () => {
     vi.stubEnv('MOCK_PROVIDERS', '')
     callLlm.mockReset()
@@ -144,6 +146,7 @@ describeDb('the search description (decision 302)', () => {
       contentMd: '[pause] EY refused to sign the accounts.\n\nThe shares collapsed in nine days.',
       estRuntimeSec: 12,
     })
+    chapterId = chapter.id
     await insertTimeline(db, {
       projectId: FIXTURE_PROJECT_ID,
       json: masterTimeline(chapter.id),
@@ -162,6 +165,10 @@ describeDb('the search description (decision 302)', () => {
     expect(request.system).toMatch(/early pitch/)
     expect(request.messages.map((m) => m.content).join('\n')).toContain(
       'Wirecard AG filed for insolvency',
+    )
+    // An unverified claim is no ground for a title (decision 302, review).
+    expect(request.messages.map((m) => m.content).join('\n')).not.toContain(
+      'Jan Marsalek is alleged to have maintained contacts',
     )
   })
 
@@ -183,7 +190,9 @@ describeDb('the search description (decision 302)', () => {
     expect((await getPublishRecord(db, 'master', FIXTURE_PROJECT_ID))?.metadata).toMatchObject({
       descriptionBody: 'How Wirecard, the German payments company, collapsed in June 2020.',
       bodyScriptVersion: 1,
-      chapterGlosses: ['The trustee accounts that never existed'],
+      // Keyed by chapter id: a rewritten script drops a gloss rather than
+      // moving it under another chapter (decision 302, review).
+      chapterGlosses: { [chapterId]: 'The trustee accounts that never existed' },
       hashtags: ['#Wirecard', '#Fraud', '#Documentary'],
       // The owner's tag is kept, first; the written ones join it.
       tags: ['Owner tag', 'Wirecard', 'Markus Braun'],
@@ -205,12 +214,12 @@ describeDb('the search description (decision 302)', () => {
       descriptionBody: 'My own opening.',
       tags: 'one more',
       hashtags: '#Wirecard, AI Documentary',
-      chapterGlosses: ['  The audit that said no  '],
+      chapterGlosses: { [chapterId]: '  The audit that said no  ' },
     })
     expect((await getPublishRecord(db, 'master', FIXTURE_PROJECT_ID))?.metadata).toMatchObject({
       bodyScriptVersion: 1,
       hashtags: ['#Wirecard', '#AIDocumentary'],
-      chapterGlosses: ['The audit that said no'],
+      chapterGlosses: { [chapterId]: 'The audit that said no' },
     })
   })
 })

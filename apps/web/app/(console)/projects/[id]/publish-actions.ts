@@ -24,6 +24,7 @@ import {
   composeDescription,
   HASHTAGS_MAX,
   OutlineSchema,
+  splitHashtags,
   PublishDraftSchema,
   PublishMetadataSchema,
   splitParagraphs,
@@ -118,10 +119,10 @@ export async function savePublishDraft(
     title: string
     descriptionBody: string
     tags: string
-    /** Comma- or space-separated; normalised to one-word tags (decision 302). */
+    /** A comma or a "#" starts each one; the words inside one are joined (decision 302). */
     hashtags?: string
-    /** One per chapter, in order (decision 302). Absent keeps what is stored. */
-    chapterGlosses?: string[]
+    /** By chapter id (decision 302). Absent keeps what is stored. */
+    chapterGlosses?: Record<string, string>
   },
 ): Promise<ActionResult> {
   await requireOwner()
@@ -181,16 +182,6 @@ export async function savePublishDraft(
   return { ok: true }
 }
 
-/** "#Wirecard, AI Documentary" to ["#Wirecard", "#AIDocumentary"]: a comma ends a tag. */
-function splitHashtags(raw: string): string[] {
-  const tags = raw
-    .split(/,|(?=#)/)
-    .map((tag) => tag.replace(/^#+/, '').replace(/[^\p{L}\p{N}_]/gu, ''))
-    .filter((tag) => tag !== '')
-    .map((tag) => `#${tag}`)
-  return [...new Set(tags)]
-}
-
 /** The owner's tags first, then the written ones, inside YouTube's 500 characters. */
 function joinTags(kept: readonly string[], written: readonly string[]): string[] {
   const tags: string[] = []
@@ -217,12 +208,16 @@ async function metadataGrounding(projectId: string): Promise<{
   ])
   const outline = OutlineSchema.safeParse(latest?.script.outline)
   return {
-    claims: claims.map((claim) => ({
-      id: claim.id,
-      text: claim.text,
-      sourceUrl: claim.sourceUrl,
-      confidence: claim.confidence,
-    })),
+    // An unverified claim is no ground for a public title or description,
+    // and its source is not listed either (decision 302, review).
+    claims: claims
+      .filter((claim) => claim.confidence !== 'unverified')
+      .map((claim) => ({
+        id: claim.id,
+        text: claim.text,
+        sourceUrl: claim.sourceUrl,
+        confidence: claim.confidence,
+      })),
     centralQuestion: outline.success ? outline.data.centralQuestion : undefined,
     scriptVersion: latest?.script.version ?? 0,
   }
@@ -296,13 +291,28 @@ export async function generateDescription(
   }
 
   const stored = PublishDraftSchema.safeParse(record.metadata)
-  await mergeDraft(record, {
+  const patch = {
     descriptionBody: answer.body,
     bodyScriptVersion: grounding.scriptVersion,
-    ...(type === 'master' ? { chapterGlosses: answer.chapterGlosses } : {}),
+    ...(type === 'master'
+      ? {
+          chapterGlosses: Object.fromEntries(
+            ingredients.chapters.map((chapter, index) => [
+              chapter.id,
+              answer.chapterGlosses[index] ?? '',
+            ]),
+          ),
+        }
+      : {}),
     hashtags: answer.hashtags,
     tags: joinTags(stored.success ? stored.data.tags : [], answer.tags),
-  })
+  }
+  // A patch the draft schema would refuse would make the whole draft unreadable
+  // at upload, which would then fall back to the pitch title (decision 302, review).
+  if (!PublishDraftSchema.safeParse({ ...record.metadata, ...patch }).success) {
+    return { ok: false, error: "The written description does not fit YouTube's limits." }
+  }
+  await mergeDraft(record, patch)
   revalidatePath(`/projects/${projectId}`)
   return { ok: true }
 }
@@ -557,14 +567,14 @@ async function requestUpload(
   }
 
   const ingredients = await descriptionIngredients(db, projectId)
-  const glosses = draft.success ? draft.data.chapterGlosses : []
+  const glosses: Record<string, string> = draft.success ? draft.data.chapterGlosses : {}
   const composed = composeDescription({
     body: draft.success ? (draft.data.descriptionBody ?? ingredients.hook) : ingredients.hook,
     // Chapter stamps only mean something on the full video; each carries its
     // search gloss when one was written (decision 302).
     chapters:
       type === 'master'
-        ? ingredients.chapters.map((chapter, index) => ({ ...chapter, gloss: glosses[index] }))
+        ? ingredients.chapters.map((chapter) => ({ ...chapter, gloss: glosses[chapter.id] }))
         : [],
     sources: ingredients.sources,
     // The bed plays under Shorts too — the licence rides on every upload.
@@ -582,7 +592,7 @@ async function requestUpload(
       ok: false,
       error:
         "The composed description is over YouTube's 5000-character limit even with sources " +
-        'trimmed — shorten the opening text.',
+        'trimmed — shorten the opening or the chapter notes.',
     }
   }
 

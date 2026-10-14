@@ -115,9 +115,9 @@ function model(overrides: Partial<PublishModel> = {}): PublishModel {
   return {
     items: [masterItem()],
     chapters: [
-      { title: 'The rise', startMs: 0 },
-      { title: 'The hole', startMs: 312_000 },
-      { title: 'The fall', startMs: 771_000 },
+      { id: '01HQ0000000000000000000CH1', title: 'The rise', startMs: 0 },
+      { id: '01HQ0000000000000000000CH2', title: 'The hole', startMs: 312_000 },
+      { id: '01HQ0000000000000000000CH3', title: 'The fall', startMs: 771_000 },
     ],
     sources: [{ url: 'https://example.com/ft-report', label: null }],
     hook: 'On a June morning in 2020, 1.9 billion euros stopped existing.',
@@ -242,7 +242,7 @@ describe('PublishScreen', () => {
             descriptionBody: null,
             bodyScriptVersion: null,
             bodyStale: false,
-            chapterGlosses: [],
+            chapterGlosses: {},
             hashtags: [],
             tags: [],
             thumbs: [],
@@ -292,7 +292,7 @@ describe('PublishScreen', () => {
             descriptionBody: null,
             bodyScriptVersion: null,
             bodyStale: false,
-            chapterGlosses: [],
+            chapterGlosses: {},
             hashtags: [],
             tags: [],
             thumbs: [],
@@ -382,7 +382,7 @@ describe('PublishScreen', () => {
             descriptionBody: null,
             bodyScriptVersion: null,
             bodyStale: false,
-            chapterGlosses: [],
+            chapterGlosses: {},
             hashtags: [],
             tags: [],
             thumbs: [
@@ -419,7 +419,7 @@ describe('PublishScreen', () => {
             descriptionBody: null,
             bodyScriptVersion: null,
             bodyStale: false,
-            chapterGlosses: [],
+            chapterGlosses: {},
             hashtags: [],
             tags: [],
             thumbs: [],
@@ -451,7 +451,7 @@ describe('PublishScreen', () => {
             descriptionBody: null,
             bodyScriptVersion: null,
             bodyStale: false,
-            chapterGlosses: [],
+            chapterGlosses: {},
             hashtags: [],
             tags: [],
             thumbs: [],
@@ -556,7 +556,7 @@ describe('PublishScreen', () => {
             descriptionBody: null,
             bodyScriptVersion: null,
             bodyStale: false,
-            chapterGlosses: [],
+            chapterGlosses: {},
             hashtags: [],
             tags: [],
             thumbs: [],
@@ -610,7 +610,7 @@ describe('PublishScreen', () => {
             descriptionBody: null,
             bodyScriptVersion: null,
             bodyStale: false,
-            chapterGlosses: [],
+            chapterGlosses: {},
             hashtags: [],
             tags: [],
             thumbs: [],
@@ -647,7 +647,7 @@ describe('PublishScreen', () => {
             descriptionBody: null,
             bodyScriptVersion: null,
             bodyStale: false,
-            chapterGlosses: [],
+            chapterGlosses: {},
             hashtags: [],
             tags: [],
             thumbs: [],
@@ -676,7 +676,7 @@ describe('the search description (decision 302)', () => {
     descriptionBody: null,
     bodyScriptVersion: null,
     bodyStale: false,
-    chapterGlosses: [],
+    chapterGlosses: {},
     hashtags: [],
     tags: [],
     thumbs: [],
@@ -697,6 +697,9 @@ describe('the search description (decision 302)', () => {
       ],
     })
 
+    expect(screen.getByText(/written for script v2; the film is now script v4/)).toBeInTheDocument()
+    // Editing does not hide it: a typo fixed in a stale opening is still stale.
+    await user.type(screen.getByRole('textbox', { name: /Description/ }), ' Edited.')
     expect(screen.getByText(/written for script v2; the film is now script v4/)).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Use the current opening' }))
     expect(screen.getByRole('textbox', { name: /Description/ })).toHaveValue(
@@ -738,7 +741,11 @@ describe('the search description (decision 302)', () => {
           record: draft({
             descriptionBody: 'How Wirecard collapsed.',
             bodyScriptVersion: 4,
-            chapterGlosses: ['Founded as a payments processor', '', ''],
+            chapterGlosses: {
+              '01HQ0000000000000000000CH1': 'Founded as a payments processor',
+              // A chapter the rewritten script no longer has: never shown.
+              '01HQ0000000000000000000OLD': 'A chapter that was cut',
+            },
             hashtags: ['#Wirecard'],
           }),
         }),
@@ -746,6 +753,7 @@ describe('the search description (decision 302)', () => {
     })
     const preview = screen.getByText(new RegExp(PUBLISH_DISCLAIMER.slice(0, 40)))
     expect(preview.textContent).toContain('0:00 The rise: Founded as a payments processor')
+    expect(preview.textContent).not.toContain('A chapter that was cut')
     expect(preview.textContent).toContain('#Wirecard')
 
     await user.type(
@@ -753,6 +761,12 @@ describe('the search description (decision 302)', () => {
       'The missing billions',
     )
     const hashtags = screen.getByRole('textbox', { name: /Hashtags/ })
+    await user.clear(hashtags)
+    // The preview reads the field as the save does: "Payments Fraud" is one tag.
+    await user.type(hashtags, 'Payments Fraud')
+    expect(screen.getByText(new RegExp(PUBLISH_DISCLAIMER.slice(0, 40))).textContent).toContain(
+      '#PaymentsFraud',
+    )
     await user.clear(hashtags)
     await user.type(hashtags, '#Wirecard #Fraud')
     expect(screen.getByText(new RegExp(PUBLISH_DISCLAIMER.slice(0, 40))).textContent).toContain(
@@ -763,7 +777,11 @@ describe('the search description (decision 302)', () => {
       'master',
       PROJECT,
       expect.objectContaining({
-        chapterGlosses: ['Founded as a payments processor', 'The missing billions', ''],
+        chapterGlosses: {
+          '01HQ0000000000000000000CH1': 'Founded as a payments processor',
+          '01HQ0000000000000000000CH2': 'The missing billions',
+          '01HQ0000000000000000000CH3': '',
+        },
         hashtags: '#Wirecard #Fraud',
       }),
     )

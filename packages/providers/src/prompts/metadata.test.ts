@@ -72,6 +72,11 @@ describe('buildTitlesRequest grounding (decision 302)', () => {
     expect(content).toContain('What was Stability AI giving away')
   })
 
+  it('frames a claim no court has ruled on as an allegation, never a fact (decision 302, review)', () => {
+    expect(grounded.system).toMatch(/NOT adjudicated/)
+    expect(grounded.system).toMatch(/allegation or a question/)
+  })
+
   it('says the pitch may be wrong and every figure must come from the claims', () => {
     expect(grounded.system).toMatch(/early pitch/)
     expect(grounded.system).toMatch(
@@ -193,6 +198,18 @@ describe('parseDescriptionAnswer (decision 302)', () => {
     expect(parsed.hashtags).toEqual(['#StabilityAI', '#AIDocumentary', '#Four'])
     expect(parsed.tags.join(',').length).toBeLessThanOrEqual(500)
     expect(parsed.tags.length).toBeGreaterThan(5)
+  })
+
+  it('drops a hashtag too long to store, and flattens a gloss onto one line', () => {
+    const parsed = parseDescriptionAnswer(
+      answer({
+        hashtags: ['#' + 'x'.repeat(70), '#StabilityAI'],
+        chapterGlosses: ['Two lines\nof gloss', 'ok'],
+      }),
+      2,
+    )
+    expect(parsed.hashtags).toEqual(['#StabilityAI'])
+    expect(parsed.chapterGlosses[0]).toBe('Two lines of gloss')
   })
 
   it('refuses an answer with no opening', () => {

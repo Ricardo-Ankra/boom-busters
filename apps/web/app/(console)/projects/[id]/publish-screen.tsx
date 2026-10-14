@@ -2,7 +2,12 @@
 
 import * as React from 'react'
 import { CalendarClock, Check, ImagePlus, Loader2, RefreshCw, Save, Sparkles } from 'lucide-react'
-import { CHAPTER_GLOSS_MAX, composeDescription, formatTimestamp } from '@boom-busters/schemas'
+import {
+  CHAPTER_GLOSS_MAX,
+  composeDescription,
+  formatTimestamp,
+  splitHashtags,
+} from '@boom-busters/schemas'
 import { ConfirmButton } from '@/components/confirm-button'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -620,7 +625,9 @@ function ItemEditor({
   const storedBody = record?.descriptionBody ?? model.hook
   const storedTags = (record?.tags ?? []).join(', ')
   const storedHashtags = (record?.hashtags ?? []).join(' ')
-  const storedGlosses = model.chapters.map((_, index) => record?.chapterGlosses[index] ?? '')
+  // Glosses are stored by chapter id: one for a chapter the script no longer
+  // has is never shown (decision 302, review).
+  const storedGlosses = model.chapters.map((chapter) => record?.chapterGlosses[chapter.id] ?? '')
   const storedGlossesKey = storedGlosses.join('\u0000')
   const [title, setTitle] = React.useState(record?.title ?? item.label)
   const [body, setBody] = React.useState(storedBody)
@@ -641,7 +648,7 @@ function ItemEditor({
       : [],
     sources: model.sources,
     musicAttribution: model.musicAttribution,
-    hashtags: hashtags.split(/[\s,]+/),
+    hashtags: splitHashtags(hashtags),
   })
 
   const dirty =
@@ -654,7 +661,9 @@ function ItemEditor({
   // An opening saved for an earlier script (decision 302): said here, where
   // it would be published, with the current opening one press away.
   const staleNote =
-    record?.bodyStale && body === storedBody
+    // Shown until the opening is the current one: a typo fixed in a stale
+    // opening does not make it current.
+    record?.bodyStale && body.trim() !== model.hook.trim()
       ? record.bodyScriptVersion !== null
         ? `This opening was written for script v${record.bodyScriptVersion}; the film is now script v${model.scriptVersion}.`
         : `This opening was written before the current script; the film is now script v${model.scriptVersion}.`
@@ -887,7 +896,16 @@ function ItemEditor({
                       descriptionBody: body,
                       tags,
                       hashtags,
-                      ...(isMaster ? { chapterGlosses: glosses } : {}),
+                      ...(isMaster
+                        ? {
+                            chapterGlosses: Object.fromEntries(
+                              model.chapters.map((chapter, index) => [
+                                chapter.id,
+                                glosses[index] ?? '',
+                              ]),
+                            ),
+                          }
+                        : {}),
                     }),
                   'Draft saved',
                   'save-draft',

@@ -6,6 +6,7 @@ import {
   PUBLISH_DISCLAIMER,
   PublishDraftSchema,
   sourceLabel,
+  splitHashtags,
 } from './publish'
 
 describe('formatTimestamp', () => {
@@ -180,6 +181,19 @@ describe('composeDescription for search (decision 302)', () => {
     expect(blocks.at(-1)).toBe(PUBLISH_DISCLAIMER)
   })
 
+  it('keeps a gloss on its chapter line, whatever whitespace it carries', () => {
+    const { description } = composeDescription({
+      body: 'Body.',
+      chapters: [
+        { title: 'One', startMs: 0, gloss: 'A gloss\nthat wrapped' },
+        { title: 'Two', startMs: 60_000 },
+        { title: 'Three', startMs: 120_000 },
+      ],
+      sources: [],
+    })
+    expect(description).toContain('0:00 One: A gloss that wrapped\n1:00 Two')
+  })
+
   it('omits the hashtag line when there are none', () => {
     const { description } = composeDescription({
       body: 'Body.',
@@ -191,34 +205,52 @@ describe('composeDescription for search (decision 302)', () => {
   })
 })
 
+/**
+ * Decision 302, review: a label publishes only the outlet's own words. Claim
+ * text was written for research and cutting it could drop the very clause
+ * that attributed or hedged it, so it is never printed.
+ */
 describe('sourceLabel (decision 302)', () => {
-  it('names the outlet the article record read, then what the claim backs', () => {
+  it("quotes the outlet's own headline when the article record read one", () => {
     expect(
       sourceLabel({
         url: 'https://forbes.com/sites/kenrickcai/2023/06/04/stable-diffusion',
         outlet: 'Forbes',
-        claimText: 'Forbes reported that Mostaque overstated his role.',
+        headline: "Stable Diffusion's Founder Has A Track Record Of Exaggeration",
       }),
-    ).toBe('Forbes, Forbes reported that Mostaque overstated his role')
+    ).toBe('Forbes, "Stable Diffusion\'s Founder Has A Track Record Of Exaggeration"')
   })
 
-  it('falls back to the host, and cuts a long claim at a word', () => {
-    const label = sourceLabel({
-      url: 'https://www.theinformation.com/',
-      outlet: null,
-      claimText:
-        'The Information reported that Stability AI brought in under 5 million dollars of revenue in the first quarter of 2024 and lost more than 30 million.',
-    })
-    expect(label.startsWith('theinformation.com, The Information reported that')).toBe(true)
-    expect(label.length).toBeLessThanOrEqual(110)
-    expect(label.endsWith('...')).toBe(true)
-    expect(label).not.toMatch(/\s\.\.\.$/)
+  it('is the outlet alone without a headline, and the host without an outlet', () => {
+    expect(
+      sourceLabel({
+        url: 'https://www.theinformation.com/',
+        outlet: 'The Information',
+        headline: null,
+      }),
+    ).toBe('The Information')
+    expect(
+      sourceLabel({ url: 'https://www.stability.ai/news', outlet: null, headline: null }),
+    ).toBe('stability.ai')
   })
 
-  it('is the outlet alone when no claim text is at hand', () => {
-    expect(sourceLabel({ url: 'https://stability.ai/news', outlet: null, claimText: null })).toBe(
-      'stability.ai',
+  it('never cuts a headline it quotes', () => {
+    const headline = 'A headline that runs on '.repeat(8).trim()
+    expect(sourceLabel({ url: 'https://example.com/a', outlet: 'Example', headline })).toBe(
+      `Example, "${headline}"`,
     )
+  })
+})
+
+describe('splitHashtags (decision 302)', () => {
+  it('reads commas and hash marks as boundaries, and joins the words inside one tag', () => {
+    expect(splitHashtags('Stability AI, #Fraud #AI Documentary')).toEqual([
+      '#StabilityAI',
+      '#Fraud',
+      '#AIDocumentary',
+    ])
+    expect(splitHashtags('  ,  #,')).toEqual([])
+    expect(splitHashtags('#Wirecard, wirecard')).toEqual(['#Wirecard'])
   })
 })
 
@@ -227,14 +259,14 @@ describe('PublishDraftSchema', () => {
     const draft = PublishDraftSchema.parse({
       descriptionBody: 'How Stability AI...',
       bodyScriptVersion: 4,
-      chapterGlosses: ['Emad Mostaque resigns', ''],
+      chapterGlosses: { '01HQ0000000000000000000CH1': 'Emad Mostaque resigns' },
       hashtags: ['#StabilityAI'],
     })
     expect(draft.bodyScriptVersion).toBe(4)
-    expect(draft.chapterGlosses).toEqual(['Emad Mostaque resigns', ''])
+    expect(draft.chapterGlosses).toEqual({ '01HQ0000000000000000000CH1': 'Emad Mostaque resigns' })
     expect(draft.hashtags).toEqual(['#StabilityAI'])
     const bare = PublishDraftSchema.parse({})
-    expect(bare.chapterGlosses).toEqual([])
+    expect(bare.chapterGlosses).toEqual({})
     expect(bare.hashtags).toEqual([])
     expect(bare.bodyScriptVersion).toBeUndefined()
   })

@@ -1,6 +1,8 @@
 import {
   CHAPTER_GLOSS_MAX,
+  HASHTAG_MAX,
   HASHTAGS_MAX,
+  splitHashtags,
   stripNarrationMarkup,
   ValidationError,
 } from '@boom-busters/schemas'
@@ -19,11 +21,11 @@ import type { LLMTaskRequest } from '../llm/types'
  * beside a free-edit field. Haiku-tier work by default — the routing matrix
  * decides, this file only shapes the request.
  *
- * Only titles are generated. The description is composed deterministically
- * from things that already exist (hook paragraph, chapter timestamps, dossier
- * sources, disclaimer — see `composeDescription` in schemas): asking a
- * model to restate facts that are already on file is how a description ends
- * up contradicting the video it sits under.
+ * Titles, and since decision 302 the description's editable parts: the
+ * opening, the chapter notes, the hashtags and tags, drafted from the claim
+ * list and never from the pitch title. The rest of the description (chapter
+ * stamps, sources, disclaimer) is composed deterministically from what is on
+ * file (`composeDescription` in schemas), so a model never restates it.
  */
 
 /** How many candidates the screen asks for. Spec: "the 8-10 generated options". */
@@ -64,6 +66,8 @@ Rules:
   The case and working title are an early pitch and may carry figures the
   research did not support; never repeat a figure from them that the claims
   do not carry.
+- A claim marked NOT adjudicated is an allegation: a title may frame it as an
+  allegation or a question, never state it as fact about a named person.
 - Each title is at most ${TITLE_MAX_CHARS} characters and at least 20.
 - Name the company or person; a title that could sit on any video is a bad title.
 - Vary the mechanism across the set: a question, a number, a timeline
@@ -216,18 +220,22 @@ export function parseDescriptionAnswer(
   const chapterGlosses = Array.from({ length: chapterCount }, (_, index) => {
     const gloss = capped[index]
     if (typeof gloss !== 'string') return ''
-    return String(trimField(gloss.trim(), CHAPTER_GLOSS_MAX, `chapter ${index + 1}'s gloss`, note))
+    // One line: a line break inside a gloss splits the chapter block.
+    const flat = gloss.replace(/\s+/g, ' ').trim()
+    return String(trimField(flat, CHAPTER_GLOSS_MAX, `chapter ${index + 1}'s gloss`, note))
   })
 
-  const hashtags = [
-    ...new Set(
-      (Array.isArray(raw['hashtags']) ? raw['hashtags'] : [])
-        .filter((tag): tag is string => typeof tag === 'string')
-        .map((tag) => tag.replace(/^#+/, '').replace(/[^\p{L}\p{N}_]/gu, ''))
-        .filter((tag) => tag !== '')
-        .map((tag) => `#${tag}`),
-    ),
-  ].slice(0, HASHTAGS_MAX)
+  // One word each, the way the owner's field reads them, and short enough to
+  // store: one over-long tag would fail the draft's schema and the whole
+  // draft would be ignored at upload (decision 302, review).
+  const hashtags = splitHashtags(
+    (Array.isArray(raw['hashtags']) ? raw['hashtags'] : [])
+      .filter((tag): tag is string => typeof tag === 'string')
+      .map((tag) => `#${tag.replace(/^#+/, '')}`)
+      .join(','),
+  )
+    .filter((tag) => tag.length <= HASHTAG_MAX)
+    .slice(0, HASHTAGS_MAX)
 
   const tags: string[] = []
   const seen = new Set<string>()

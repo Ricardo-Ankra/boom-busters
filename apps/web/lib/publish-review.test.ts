@@ -115,7 +115,7 @@ describe('deriveIngredients sources (decision 302)', () => {
     quarantined: false,
   })
 
-  it('labels each source from the outlet on file, else the host, and the first claim citing it', () => {
+  it("labels each source with the outlet's own headline on file, else the outlet or host alone", () => {
     const { sources } = deriveIngredients({
       master: null,
       scriptChapters: [],
@@ -131,17 +131,22 @@ describe('deriveIngredients sources (decision 302)', () => {
         claim('Stability AI announced a 101 million dollar round.', 'https://stability.ai/news'),
         claim('Unverified gossip.', 'https://gossip.example/a', 'unverified'),
       ],
-      outlets: new Map([['https://forbes.com/sites/x/2023/06/04/y', 'Forbes']]),
+      articles: new Map([
+        [
+          'https://forbes.com/sites/x/2023/06/04/y',
+          {
+            outlet: 'Forbes',
+            headline: "Stable Diffusion's Founder Has A Track Record Of Exaggeration",
+          },
+        ],
+      ]),
     })
     expect(sources).toEqual([
       {
         url: 'https://www.forbes.com/sites/x/2023/06/04/y',
-        label: 'Forbes, Forbes reported that Mostaque overstated his role',
+        label: 'Forbes, "Stable Diffusion\'s Founder Has A Track Record Of Exaggeration"',
       },
-      {
-        url: 'https://stability.ai/news',
-        label: 'stability.ai, Stability AI announced a 101 million dollar round',
-      },
+      { url: 'https://stability.ai/news', label: 'stability.ai' },
     ])
   })
 })

@@ -1,13 +1,13 @@
 import { z } from 'zod'
 
 /**
- * The publish description, composed rather than generated (build spec
- * section 9): "hook paragraph + chapter timestamps + sources from dossier +
- * disclaimer". Everything in it already exists on file, so a model is never
- * asked to restate it — the one editable part is the opening body, which the
- * screen seeds with the script's hook paragraph and the human owns from
- * there. The blocks are appended deterministically, and the live preview on
- * the Publish screen renders exactly what this function returns.
+ * The publish description, composed (build spec section 9): "hook paragraph
+ * + chapter timestamps + sources from dossier + disclaimer". The opening, the
+ * chapter notes and the hashtags are the owner's to edit; since decision 302
+ * a model may draft them from the claim list ("Write a search description"),
+ * and the owner keeps them or not. Everything else is appended
+ * deterministically from what is on file, and the live preview on the
+ * Publish screen renders exactly what this function returns.
  */
 
 /** YouTube's own description ceiling. */
@@ -32,6 +32,9 @@ export const CHAPTER_GLOSS_MAX = 90
 /** YouTube shows the first three hashtags above the title; more are noise. */
 export const HASHTAGS_MAX = 3
 
+/** The longest hashtag a draft stores. */
+export const HASHTAG_MAX = 60
+
 /**
  * Draft fields the Publish screen stores in `publish_records.metadata`
  * while an item is being prepared. They live beside the final
@@ -49,10 +52,14 @@ export const PublishDraftSchema = z.object({
    * absent on bodies saved before this existed, which are flagged too.
    */
   bodyScriptVersion: z.number().int().min(0).optional(),
-  /** One search gloss per chapter, in chapter order; an empty string is none. */
-  chapterGlosses: z.array(z.string().trim().max(CHAPTER_GLOSS_MAX)).max(40).default([]),
+  /**
+   * One search gloss per chapter, keyed by chapter id. A rewritten script has
+   * new chapter ids, so its glosses fall away rather than print under a
+   * chapter they were not written for (decision 302, review).
+   */
+  chapterGlosses: z.record(z.string(), z.string().trim().max(CHAPTER_GLOSS_MAX)).default({}),
   /** At most three, each one word; the composer normalises them. */
-  hashtags: z.array(z.string().trim().max(60)).max(HASHTAGS_MAX).default([]),
+  hashtags: z.array(z.string().trim().max(HASHTAG_MAX)).max(HASHTAGS_MAX).default([]),
   tags: z.array(z.string().trim().min(1).max(100)).max(60).default([]),
 })
 export type PublishDraft = z.infer<typeof PublishDraftSchema>
@@ -82,19 +89,17 @@ export interface DescriptionSource {
   label?: string | null
 }
 
-/** How much of the claim a source label quotes before it is cut at a word. */
-const SOURCE_GIST_MAX = 80
-
 /**
  * A source line's label (decision 302): the outlet the article record read,
- * else the bare host, then what the first claim citing it says, cut at a
- * word. Deterministic, and only ever words already on file: a label a model
- * wrote could misstate what a source supports.
+ * else the bare host, and the article's own headline when one is on file,
+ * quoted whole. Only the publisher's words are printed: a claim's text was
+ * written for research, and cutting it could drop the clause that
+ * attributed or hedged it.
  */
 export function sourceLabel(input: {
   url: string
   outlet: string | null
-  claimText: string | null
+  headline: string | null
 }): string {
   let host = input.url
   try {
@@ -103,13 +108,27 @@ export function sourceLabel(input: {
     // An address that will not parse is labelled by itself.
   }
   const outlet = input.outlet?.trim() || host
-  const claim = input.claimText?.trim().replace(/\.$/, '')
-  if (!claim) return outlet
-  if (claim.length <= SOURCE_GIST_MAX) return `${outlet}, ${claim}`
-  const cut = claim.slice(0, SOURCE_GIST_MAX)
-  const space = cut.lastIndexOf(' ')
-  const gist = (space > 0 ? cut.slice(0, space) : cut).replace(/[\s,;:]+$/, '')
-  return `${outlet}, ${gist}...`
+  const headline = input.headline?.trim()
+  return headline ? `${outlet}, "${headline}"` : outlet
+}
+
+/**
+ * Hashtags as the owner types them (decision 302): a comma or a "#" starts a
+ * new one, and the words inside one are joined, so "Stability AI, #Fraud" is
+ * "#StabilityAI #Fraud". The preview and the save read the field the same way.
+ */
+export function splitHashtags(raw: string): string[] {
+  const tags = raw
+    .split(/,|(?=#)/)
+    .map(normaliseHashtag)
+    .filter((tag) => tag !== '')
+  const seen = new Set<string>()
+  return tags.filter((tag) => {
+    const key = tag.toLowerCase()
+    if (seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
 }
 
 /** "#AI Documentary" or "StableDiffusion" to one word with its mark; empty when nothing is left. */
@@ -166,7 +185,8 @@ export function composeDescription(input: ComposeDescriptionInput): ComposedDesc
             input.chapters.map((chapter, index) => {
               // YouTube requires the first stamp to be exactly 0:00.
               const stamp = index === 0 ? '0:00' : formatTimestamp(chapter.startMs)
-              const gloss = chapter.gloss?.trim()
+              // One line per chapter, or YouTube ignores the whole block.
+              const gloss = chapter.gloss?.replace(/\s+/g, ' ').trim()
               return `${stamp} ${chapter.title}${gloss ? `: ${gloss}` : ''}`
             }),
           )

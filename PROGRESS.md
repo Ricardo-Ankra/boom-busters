@@ -7744,6 +7744,26 @@ boom-busters-broker`; merge and deploy to Vercel, then `PUT
      since the claim behind them is real and the label says what it backs;
      a generated description replaces the opening, notes and hashtags but
      only adds to tags.
+     Review fixes before merge: chapter glosses are keyed by chapter id, so
+     a rewritten script drops them instead of printing them under the wrong
+     chapter; a source label prints only the publisher's own words (the
+     outlet and the article's headline, quoted whole, else the outlet or
+     host alone), never claim text, which was written for research and
+     whose cut could drop the clause that hedged it; unverified claims are
+     no longer grounding for titles or the description, and the titles
+     prompt frames a claim no court has ruled on as an allegation or a
+     question; a hashtag over 60 characters is dropped and a written patch
+     is validated before it is stored, since one bad field made the whole
+     draft unreadable and the upload fell back to the pitch title; a gloss
+     is flattened to one line, or YouTube ignores every chapter; the
+     preview and the save read the hashtags field the same way
+     (`splitHashtags`); the stale-opening note stays up while a stale
+     opening is edited, until it is the current hook. Deferred, recorded:
+     pressing "Write a search description" replaces unsaved tag and hashtag
+     edits; staleness is measured against the latest script, not the one
+     the film was rendered from (the hook already assumed this); YouTube
+     counts quotes around a tag with a space toward its 500 characters;
+     no test yet pins an unrelated refresh keeping an unsaved edit.
      Shipping: a Vercel deploy. For the two Stability AI uploads already
      scheduled, the description is edited in YouTube Studio; the app's
      editor is locked once an item is on YouTube.

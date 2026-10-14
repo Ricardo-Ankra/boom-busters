@@ -48,12 +48,13 @@ export interface PublishRecordProp {
   title: string | null
   titleOptions: string[]
   descriptionBody: string | null
-  /** The script version the saved opening was written for; null before 301 kept it. */
+  /** The script version the saved opening was written for; null before 302 kept it. */
   bodyScriptVersion: number | null
   /** The saved opening predates the current script (decision 302). */
   bodyStale: boolean
   /** One search gloss per chapter, in order (decision 302). */
-  chapterGlosses: string[]
+  /** Search glosses by chapter id; a chapter the script no longer has is ignored. */
+  chapterGlosses: Record<string, string>
   hashtags: string[]
   tags: string[]
   thumbs: { key: string; url: string | null }[]
@@ -131,7 +132,7 @@ export interface MasterAnalytics {
 export interface PublishModel {
   items: PublishItemModel[]
   /** For the description's chapter block — from the master timeline. */
-  chapters: { title: string; startMs: number }[]
+  chapters: { id: string; title: string; startMs: number }[]
   /** For the description's source block — the dossier's usable claims, labelled (decision 302). */
   sources: DescriptionSource[]
   /** The script's opening paragraph — the seed for the description body. */
@@ -184,8 +185,8 @@ export function deriveIngredients(input: {
   master: { narration: { chapterId: string; startMs: number }[] } | null
   scriptChapters: { id: string; title: string; contentMd: string }[]
   claims: { text: string; sourceUrl: string | null; confidence: string; quarantined: boolean }[]
-  /** Outlet names the article records read, by normalised URL (decision 302). */
-  outlets?: ReadonlyMap<string, string>
+  /** What the article records read, by normalised URL (decision 302). */
+  articles?: ReadonlyMap<string, { outlet: string | null; headline: string | null }>
 }): {
   chapters: { id: string; title: string; startMs: number }[]
   sources: DescriptionSource[]
@@ -207,22 +208,25 @@ export function deriveIngredients(input: {
     }))
     .sort((a, b) => a.startMs - b.startMs)
 
-  // Each source once, labelled by the first usable claim that cites it
-  // (decision 302): what a line backs is said in words already on file.
-  const firstClaim = new Map<string, string>()
+  // Each usable source once, in claim order, labelled with the publisher's
+  // own words (decision 302): the outlet and the article's headline.
+  const urls = new Set<string>()
   for (const claim of input.claims) {
     if (claim.quarantined || claim.confidence === 'unverified') continue
     if (typeof claim.sourceUrl !== 'string' || claim.sourceUrl.length === 0) continue
-    if (!firstClaim.has(claim.sourceUrl)) firstClaim.set(claim.sourceUrl, claim.text)
+    urls.add(claim.sourceUrl)
   }
-  const sources = [...firstClaim.entries()].slice(0, MAX_SOURCES).map(([url, claimText]) => ({
-    url,
-    label: sourceLabel({
+  const sources = [...urls].slice(0, MAX_SOURCES).map((url) => {
+    const article = input.articles?.get(normaliseArticleUrl(url) ?? url)
+    return {
       url,
-      outlet: input.outlets?.get(normaliseArticleUrl(url) ?? url) ?? null,
-      claimText,
-    }),
-  }))
+      label: sourceLabel({
+        url,
+        outlet: article?.outlet ?? null,
+        headline: article?.headline ?? null,
+      }),
+    }
+  })
 
   const firstChapter = input.scriptChapters[0]
   const hook = firstChapter
@@ -255,11 +259,11 @@ export function openingIsStale(input: {
   return input.bodyScriptVersion === undefined || input.bodyScriptVersion < input.scriptVersion
 }
 
-/** Outlet names the article records hold for these sources, by normalised URL. */
-async function outletsFor(
+/** What the article records hold for these sources, by normalised URL. */
+async function articlesFor(
   db: Database,
   claims: readonly { sourceUrl: string | null }[],
-): Promise<Map<string, string>> {
+): Promise<Map<string, { outlet: string | null; headline: string | null }>> {
   const urls = [
     ...new Set(
       claims.flatMap((claim) => {
@@ -269,7 +273,7 @@ async function outletsFor(
     ),
   ]
   const rows = await getArticleSources(db, urls)
-  return new Map(rows.flatMap((row) => (row.outlet ? [[row.url, row.outlet] as const] : [])))
+  return new Map(rows.map((row) => [row.url, { outlet: row.outlet, headline: row.headline }]))
 }
 
 /** The attribution the timeline's bed carries, or null at every gap. */
@@ -306,7 +310,7 @@ export async function descriptionIngredients(
       master,
       scriptChapters: scriptSources.chapters,
       claims,
-      outlets: await outletsFor(db, claims),
+      articles: await articlesFor(db, claims),
     }),
     musicAttribution: await timelineMusicAttribution(db, master),
     scriptVersion: scriptSources.scriptVersion,
@@ -338,7 +342,7 @@ function toRecordProp(
         hook: current.hook,
         scriptVersion: current.scriptVersion,
       }),
-    chapterGlosses: draft.success ? draft.data.chapterGlosses : [],
+    chapterGlosses: draft.success ? draft.data.chapterGlosses : {},
     hashtags: draft.success ? draft.data.hashtags : [],
     tags: draft.success ? draft.data.tags : [],
     thumbs,
@@ -380,7 +384,7 @@ export async function publishModel(
     master,
     scriptChapters: scriptSources.chapters,
     claims: dossier?.claims ?? [],
-    outlets: await outletsFor(db, dossier?.claims ?? []),
+    articles: await articlesFor(db, dossier?.claims ?? []),
   })
   const current = { hook, scriptVersion: scriptSources.scriptVersion }
 
