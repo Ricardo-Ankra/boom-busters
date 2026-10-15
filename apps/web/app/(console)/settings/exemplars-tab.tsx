@@ -5,13 +5,15 @@ import * as React from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import type { ExemplarView } from '@/lib/exemplar-views'
 import { GraphicPlayback, GraphicPlaybackProvider } from '../projects/[id]/graphic-playback'
+import { exemplarCodeLogos, type ExemplarLogo } from './exemplar-logo'
 
 /**
  * The exemplar corpus (decision 305), read-only: what the graphics designer
  * is shown before it designs a slot of each technique. Each written example
  * plays in the board's own player, with the owner's Brand Kit, its sample
  * narration and, for a chart, its sample data, so this is exactly what the
- * designer sees. One plays at a time.
+ * designer sees. One plays at a time. The logo-reveal example plays the
+ * channel mark, when one is set, under the title its checks used.
  */
 
 /** "kpi-counter" reads "Kpi counter"; the two acronyms read as they are said. */
@@ -24,9 +26,12 @@ function techniqueName(technique: string): string {
 export function ExemplarsTab({
   exemplars,
   brand,
+  exemplarLogo = null,
 }: {
   exemplars: readonly ExemplarView[]
   brand: BrandKitStored
+  /** The channel mark, for the logo-reveal example (`exemplarLogoFor`); null when none is set. */
+  exemplarLogo?: ExemplarLogo | null
 }) {
   const written = exemplars.filter((exemplar) => exemplar.title !== undefined).length
   return (
@@ -48,14 +53,27 @@ export function ExemplarsTab({
           </CardContent>
         </Card>
         {exemplars.map((exemplar) => (
-          <ExemplarCard key={exemplar.technique} exemplar={exemplar} brand={brand} />
+          <ExemplarCard
+            key={exemplar.technique}
+            exemplar={exemplar}
+            brand={brand}
+            exemplarLogo={exemplarLogo}
+          />
         ))}
       </div>
     </GraphicPlaybackProvider>
   )
 }
 
-function ExemplarCard({ exemplar, brand }: { exemplar: ExemplarView; brand: BrandKitStored }) {
+function ExemplarCard({
+  exemplar,
+  brand,
+  exemplarLogo,
+}: {
+  exemplar: ExemplarView
+  brand: BrandKitStored
+  exemplarLogo: ExemplarLogo | null
+}) {
   const headingId = React.useId()
   const name = techniqueName(exemplar.technique)
   return (
@@ -78,12 +96,12 @@ function ExemplarCard({ exemplar, brand }: { exemplar: ExemplarView; brand: Bran
             rel="noreferrer"
             className="inline-flex min-h-10 items-center underline underline-offset-2"
           >
-            {exemplar.template.name}
+            {exemplar.template.name} <span className="sr-only">(opens in a new tab)</span>
           </a>{' '}
           in {exemplar.template.repository}, {exemplar.template.licence} licence
         </p>
         {exemplar.issue !== undefined ? (
-          <p role="alert" className="text-[13px] text-[var(--color-danger)]">
+          <p role="status" className="text-[13px] text-[var(--color-danger)]">
             This example cannot play: {exemplar.issue}
           </p>
         ) : null}
@@ -92,6 +110,7 @@ function ExemplarCard({ exemplar, brand }: { exemplar: ExemplarView; brand: Bran
             slotId={`exemplar-${exemplar.technique}`}
             code={exemplar.code}
             {...(exemplar.data ? { data: exemplar.data } : {})}
+            codeLogos={exemplarCodeLogos(exemplar.technique, exemplarLogo)}
             noun="example"
             brand={brand}
             logoUrls={{}}

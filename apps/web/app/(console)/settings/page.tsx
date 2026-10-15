@@ -5,6 +5,7 @@ import { loadModelOptions } from '@/lib/model-catalogue'
 import { exemplarViews } from '@/lib/exemplar-views'
 import { mockProvidersEnabled } from '@boom-busters/providers'
 import { presignGet, storageConfigured } from '@/lib/storage'
+import { exemplarLogoFor } from './exemplar-logo'
 import { SettingsForm } from './settings-form'
 
 export const dynamic = 'force-dynamic'
@@ -90,6 +91,7 @@ export default async function SettingsPage({
         channelMarkKey={settings.brandKit.look.logoR2Key}
         modelOptions={modelOptions}
         exemplars={exemplarViews()}
+        exemplarLogo={exemplarLogoFor(logoViews, settings.brandKit.look.logoR2Key)}
       />
     </div>
   )

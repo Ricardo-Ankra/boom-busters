@@ -55,7 +55,7 @@ describe('ExemplarsTab (decision 305)', () => {
     const card = screen.getByRole('region', { name: 'Stat counter' })
     expect(within(card).getByText(WRITTEN.description)).toBeInTheDocument()
     expect(within(card).getByText('The 1.2bn raised')).toBeInTheDocument()
-    const link = within(card).getByRole('link', { name: 'stat-counter' })
+    const link = within(card).getByRole('link', { name: 'stat-counter (opens in a new tab)' })
     expect(link).toHaveAttribute('href', TEMPLATE.url)
     expect(link).toHaveAttribute('target', '_blank')
     expect(within(card).getByText(/MIT licence/)).toBeInTheDocument()
@@ -72,7 +72,7 @@ describe('ExemplarsTab (decision 305)', () => {
   it('says why a stored design cannot play, rather than hiding it', () => {
     render(<ExemplarsTab exemplars={[BROKEN]} brand={brand} />)
     const card = screen.getByRole('region', { name: 'Typewriter' })
-    expect(within(card).getByText(/does not compile/)).toBeInTheDocument()
+    expect(within(card).getByRole('status')).toHaveTextContent(/does not compile/)
     expect(within(card).queryByRole('button', { name: 'Play example' })).not.toBeInTheDocument()
   })
 })
