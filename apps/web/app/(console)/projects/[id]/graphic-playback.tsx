@@ -146,7 +146,7 @@ export function GraphicPlayback({
   /** The library's marks, by title (`codeLogosFor`). */
   codeLogos?: CodeLogos
   /** What the Play button calls the design. */
-  noun?: 'graphic' | 'chart'
+  noun?: 'graphic' | 'chart' | 'example'
   brand: BrandKitStored
   /** A scene's marks, by asset id. */
   logoUrls: Readonly<Record<string, string>>

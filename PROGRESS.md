@@ -7889,4 +7889,25 @@ boom-busters-broker`; merge and deploy to Vercel, then `PUT
      on the default graphics model (claude-opus-5-5), so the eighteen need
      several capped runs (the run skips stored, current designs) or a cheaper
      `--model`. No migration, no Lambda or broker deploy.
+     Follow-up, 2026-10-15 (owner: "Create the exemplars here, and then
+     make them viewable in settings on the app"). The eighteen designs were
+     written by hand in the session rather than by the paid translation run,
+     so nothing was billed: each adapts its vendored template's technique
+     onto the motion tokens and the brand props, and was stored only after
+     `pnpm --filter @boom-busters/web exemplar:check` (a new tool that runs a
+     hand-written design through the real `graphicCodeIssue` with its
+     synthetic slot) passed it; the corpus test re-runs all eighteen. Settings
+     gains an Exemplars tab, read-only: a card per technique with its
+     description, the design's title, the template it adapts (linked at its
+     pinned commit, MIT licence) and a Play example button that opens the
+     board's own player with the owner's Brand Kit, the example's sample
+     narration and, for a chart, its sample data; Portrait and Landscape as
+     on the board, one example playing at a time. The views are compiled on
+     the server once per instance under the motion preamble, as a stored
+     graphic is. From this deploy every new graphic slot is shown the
+     example of its technique. A designer's worry that padding a full-frame
+     layer overflows the film was checked and is not so: Remotion injects
+     `* { box-sizing: border-box }` in the render and the Player, as the
+     board's own reset does. Shipping: a Vercel deploy and
+     `PUT /api/inngest`; no migration, no Lambda deploy.
      The number 305 is checked against `origin/master` at the merge.
