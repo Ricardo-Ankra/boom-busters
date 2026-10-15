@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { readFileSync } from 'node:fs'
+import { readdirSync, readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { MANIFEST } from '@boom-busters/providers'
 import {
@@ -114,13 +114,14 @@ describe('exemplar translation, the pure parts (decision 305)', () => {
     expect(file.indexOf('barChart')).toBeLessThan(file.indexOf('statCounter'))
     expect(file).toContain("'bar-chart': barChart,")
     expect(file).toContain('export const DESIGNS: Partial<Record<Technique, ExemplarDesign>> = {')
+    expect(renderRegistry(['typewriter'])).toContain('  typewriter: typewriter,')
     expect(renderRegistry([])).toContain('= {}')
-    expect(renderRegistry([])).toBe(
-      readFileSync(
-        new URL('../../../packages/providers/src/exemplars/designs/index.ts', import.meta.url),
-        'utf8',
-      ),
-    )
+    // The registry on disk is exactly what the generator writes for the designs present.
+    const designs = new URL('../../../packages/providers/src/exemplars/designs/', import.meta.url)
+    const present = readdirSync(designs)
+      .filter((name) => name.endsWith('.ts') && name !== 'index.ts')
+      .map((name) => name.slice(0, -3))
+    expect(renderRegistry(present)).toBe(readFileSync(new URL('index.ts', designs), 'utf8'))
   })
 
   it('parses the cap (default 1, at most 5), --only and --model', () => {

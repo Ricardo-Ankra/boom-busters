@@ -189,7 +189,9 @@ export function renderRegistry(ids: readonly string[]): string {
     return `${header}export const DESIGNS: Partial<Record<Technique, ExemplarDesign>> = {}\n`
   }
   const imports = sorted.map((id) => `import { DESIGN as ${camel(id)} } from './${id}'`).join('\n')
-  const entries = sorted.map((id) => `  '${id}': ${camel(id)},`).join('\n')
+  // Quoted only where an id is not a bare identifier, as Prettier writes it.
+  const key = (id: string) => (/^[A-Za-z_$][\w$]*$/.test(id) ? id : `'${id}'`)
+  const entries = sorted.map((id) => `  ${key(id)}: ${camel(id)},`).join('\n')
   return (
     `${imports}\n${header}` +
     `export const DESIGNS: Partial<Record<Technique, ExemplarDesign>> = {\n${entries}\n}\n`
