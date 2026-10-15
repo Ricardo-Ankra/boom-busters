@@ -26,6 +26,9 @@ import { readRawFlags } from '@/lib/live-set-args'
  *       --source <file.jsx> --title "The 1.2bn" --facts '[{"text":"1.2bn","claim":1}]' [--write]
  *     runs the checks; with --write, a passing design is stored in
  *     packages/providers/src/exemplars/designs/ and the registry regenerated
+ *
+ * After --write, run Prettier on the stored files, which are written unformatted:
+ *   pnpm exec prettier --write packages/providers/src/exemplars/designs
  */
 
 const EXEMPLARS_DIR = path.resolve(
@@ -76,11 +79,12 @@ function main(): void {
   console.log(`PASSED ${entry.id}`)
   if ('write' in raw) {
     const vendored = readFileSync(path.join(EXEMPLARS_DIR, vendoredPath(entry)), 'utf8')
-    const file = renderDesignFile(entry, vendoredHash(vendored), {
-      title: raw.title,
-      source,
-      facts,
-    })
+    const file = renderDesignFile(
+      entry,
+      vendoredHash(vendored),
+      { title: raw.title, source, facts },
+      'hand',
+    )
     writeFileSync(path.join(DESIGNS_DIR, `${entry.id}.ts`), file)
     writeFileSync(path.join(DESIGNS_DIR, 'index.ts'), renderRegistry(storedIds()))
     console.log(`stored designs/${entry.id}.ts`)

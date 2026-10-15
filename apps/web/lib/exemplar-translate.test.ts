@@ -45,6 +45,27 @@ describe('exemplar translation, the pure parts (decision 305)', () => {
     expect(file).not.toMatch(/[–—]/)
   })
 
+  it.each([
+    ['translate', 'translated from', 'Written by apps/web/scripts/translate-exemplars.ts'],
+    ['hand', 'modelled on', 'Written by hand and stored by apps/web/scripts/check-exemplar.ts'],
+  ] as const)(
+    'a design file by %s says who wrote it, and keeps the hash line',
+    (author, from, by) => {
+      const hash = vendoredHash('x')
+      const file = renderDesignFile(stat, hash, { title: 't', source: 's', facts: [] }, author)
+      expect(file).toContain(designHeader(stat, hash, author))
+      expect(file).toContain(`${from} vendored/rve/stat-counter.tsx.txt`)
+      expect(file).toContain(by)
+      expect(storedHash(file)).toBe(hash)
+      expect(file).not.toMatch(/[–—]/)
+    },
+  )
+
+  it('a design file is by the translation unless told otherwise', () => {
+    const hash = vendoredHash('x')
+    expect(designHeader(stat, hash)).toBe(designHeader(stat, hash, 'translate'))
+  })
+
   it('staleDesign names the file whose hash moved, and is quiet when nothing is stored or it matches', () => {
     const hash = vendoredHash('the template')
     const file = renderDesignFile(stat, hash, { title: 't', source: 's', facts: [] })

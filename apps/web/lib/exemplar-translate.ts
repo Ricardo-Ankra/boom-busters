@@ -41,7 +41,21 @@ export function vendoredHash(text: string): string {
   return createHash('sha256').update(text.replace(/\r\n/g, '\n')).digest('hex')
 }
 
-export function designHeader(entry: ExemplarEntry, hash: string): string {
+/** Who wrote a design: the paid translation, or a person through `check-exemplar.ts`. */
+export type DesignAuthor = 'translate' | 'hand'
+
+export function designHeader(
+  entry: ExemplarEntry,
+  hash: string,
+  author: DesignAuthor = 'translate',
+): string {
+  if (author === 'hand') {
+    return (
+      `// Exemplar "${entry.id}" (decision 305), modelled on ${vendoredPath(entry)}\n` +
+      `// vendored sha256: ${hash}\n` +
+      '// Written by hand and stored by apps/web/scripts/check-exemplar.ts; a passing design under graphicCodeIssue.'
+    )
+  }
   return (
     `// Exemplar "${entry.id}" (decision 305), translated from ${vendoredPath(entry)}\n` +
     `// vendored sha256: ${hash}\n` +
@@ -54,9 +68,10 @@ export function renderDesignFile(
   entry: ExemplarEntry,
   hash: string,
   design: ExemplarDesign,
+  author: DesignAuthor = 'translate',
 ): string {
   return (
-    `${designHeader(entry, hash)}\n` +
+    `${designHeader(entry, hash, author)}\n` +
     `import type { ExemplarDesign } from './index'\n\n` +
     `export const DESIGN: ExemplarDesign = {\n` +
     `  title: ${JSON.stringify(design.title)},\n` +
