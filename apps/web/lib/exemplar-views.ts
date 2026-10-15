@@ -1,3 +1,4 @@
+import 'server-only'
 import { MOTION_PREAMBLE, MOTION_VERSION } from '@boom-busters/compositions/motion-tokens'
 import { DESIGNS, MANIFEST } from '@boom-busters/providers'
 import type { ExemplarEntry, Technique } from '@boom-busters/providers'
@@ -11,7 +12,8 @@ import { compileGraphicSource } from '@/lib/graphic-code/compile'
  * player plays, compiled under the house motion preamble exactly as a stored
  * graphic is, with the exemplar's own sample narration and, for a chart, its
  * sample data. The designs ship with the build, so the views are built once
- * per server instance.
+ * per server instance, unless the compiler itself could not run (esbuild
+ * missing on the host): that view says so, and the next call builds again.
  */
 
 export interface ExemplarView {
@@ -24,9 +26,15 @@ export interface ExemplarView {
   code?: GraphicCode
   /** A chart's sample `props.data`. */
   data?: GraphicCodePayload['data']
-  /** Why a stored design cannot be played (a compile failure the corpus test would also catch). */
+  /**
+   * Why a stored design cannot be played: a compile failure the corpus test
+   * would also catch, or the compiler failing to run on this host.
+   */
   issue?: string
 }
+
+/** The opening of an issue that is the host's fault, not the design's; a build holding one is not kept. */
+const HOST_ISSUE = 'the compiler could not run on this host'
 
 const REPOSITORIES: Record<ExemplarEntry['source']['repo'], string> = {
   rendercomp: 'RenderComp/free-remotion-templates',
@@ -53,7 +61,13 @@ function viewOf(entry: ExemplarEntry): ExemplarView {
   }
   const design = DESIGNS[entry.technique]
   if (!design) return view
-  const compiled = compileGraphicSource(design.source)
+  let compiled: ReturnType<typeof compileGraphicSource>
+  try {
+    compiled = compileGraphicSource(design.source)
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    return { ...view, title: design.title, issue: `${HOST_ISSUE}: ${message}` }
+  }
   if (!compiled.ok) return { ...view, title: design.title, issue: compiled.issue }
   return {
     ...view,
@@ -75,6 +89,9 @@ function viewOf(entry: ExemplarEntry): ExemplarView {
 let built: ExemplarView[] | undefined
 
 export function exemplarViews(): ExemplarView[] {
-  built ??= MANIFEST.map(viewOf)
-  return built
+  if (built) return built
+  const views = MANIFEST.map(viewOf)
+  // A host failure is not cached: once the compiler runs again, the views are whole.
+  if (!views.some((view) => view.issue?.startsWith(HOST_ISSUE))) built = views
+  return views
 }
