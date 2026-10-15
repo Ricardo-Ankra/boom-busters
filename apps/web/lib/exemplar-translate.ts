@@ -41,7 +41,21 @@ export function vendoredHash(text: string): string {
   return createHash('sha256').update(text.replace(/\r\n/g, '\n')).digest('hex')
 }
 
-export function designHeader(entry: ExemplarEntry, hash: string): string {
+/** Who wrote a design: the paid translation, or a person through `check-exemplar.ts`. */
+export type DesignAuthor = 'translate' | 'hand'
+
+export function designHeader(
+  entry: ExemplarEntry,
+  hash: string,
+  author: DesignAuthor = 'translate',
+): string {
+  if (author === 'hand') {
+    return (
+      `// Exemplar "${entry.id}" (decision 305), modelled on ${vendoredPath(entry)}\n` +
+      `// vendored sha256: ${hash}\n` +
+      '// Written by hand and stored by apps/web/scripts/check-exemplar.ts; a passing design under graphicCodeIssue.'
+    )
+  }
   return (
     `// Exemplar "${entry.id}" (decision 305), translated from ${vendoredPath(entry)}\n` +
     `// vendored sha256: ${hash}\n` +
@@ -54,9 +68,10 @@ export function renderDesignFile(
   entry: ExemplarEntry,
   hash: string,
   design: ExemplarDesign,
+  author: DesignAuthor = 'translate',
 ): string {
   return (
-    `${designHeader(entry, hash)}\n` +
+    `${designHeader(entry, hash, author)}\n` +
     `import type { ExemplarDesign } from './index'\n\n` +
     `export const DESIGN: ExemplarDesign = {\n` +
     `  title: ${JSON.stringify(design.title)},\n` +
@@ -189,7 +204,9 @@ export function renderRegistry(ids: readonly string[]): string {
     return `${header}export const DESIGNS: Partial<Record<Technique, ExemplarDesign>> = {}\n`
   }
   const imports = sorted.map((id) => `import { DESIGN as ${camel(id)} } from './${id}'`).join('\n')
-  const entries = sorted.map((id) => `  '${id}': ${camel(id)},`).join('\n')
+  // Quoted only where an id is not a bare identifier, as Prettier writes it.
+  const key = (id: string) => (/^[A-Za-z_$][\w$]*$/.test(id) ? id : `'${id}'`)
+  const entries = sorted.map((id) => `  ${key(id)}: ${camel(id)},`).join('\n')
   return (
     `${imports}\n${header}` +
     `export const DESIGNS: Partial<Record<Technique, ExemplarDesign>> = {\n${entries}\n}\n`

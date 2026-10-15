@@ -1,3 +1,21 @@
+import { DESIGN as animatedList } from './animated-list'
+import { DESIGN as barChart } from './bar-chart'
+import { DESIGN as chapterTitle } from './chapter-title'
+import { DESIGN as comparisonChart } from './comparison-chart'
+import { DESIGN as donutChart } from './donut-chart'
+import { DESIGN as kineticWordStack } from './kinetic-word-stack'
+import { DESIGN as kpiCounter } from './kpi-counter'
+import { DESIGN as lineChart } from './line-chart'
+import { DESIGN as logoReveal } from './logo-reveal'
+import { DESIGN as lowerThird } from './lower-third'
+import { DESIGN as progressBars } from './progress-bars'
+import { DESIGN as progressSteps } from './progress-steps'
+import { DESIGN as quoteCard } from './quote-card'
+import { DESIGN as racingChart } from './racing-chart'
+import { DESIGN as splitScreen } from './split-screen'
+import { DESIGN as statCounter } from './stat-counter'
+import { DESIGN as textHighlight } from './text-highlight'
+import { DESIGN as typewriter } from './typewriter'
 import type { Technique } from '../manifest'
 
 /**
@@ -11,4 +29,23 @@ export interface ExemplarDesign {
   facts: { text: string; claim: number }[]
 }
 
-export const DESIGNS: Partial<Record<Technique, ExemplarDesign>> = {}
+export const DESIGNS: Partial<Record<Technique, ExemplarDesign>> = {
+  'animated-list': animatedList,
+  'bar-chart': barChart,
+  'chapter-title': chapterTitle,
+  'comparison-chart': comparisonChart,
+  'donut-chart': donutChart,
+  'kinetic-word-stack': kineticWordStack,
+  'kpi-counter': kpiCounter,
+  'line-chart': lineChart,
+  'logo-reveal': logoReveal,
+  'lower-third': lowerThird,
+  'progress-bars': progressBars,
+  'progress-steps': progressSteps,
+  'quote-card': quoteCard,
+  'racing-chart': racingChart,
+  'split-screen': splitScreen,
+  'stat-counter': statCounter,
+  'text-highlight': textHighlight,
+  typewriter: typewriter,
+}

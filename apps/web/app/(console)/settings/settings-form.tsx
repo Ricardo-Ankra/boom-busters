@@ -20,6 +20,9 @@ import { ModelsTab } from './models-tab'
 import { VoiceTab } from './voice-tab'
 import { MusicTab, type MusicBedView } from './music-tab'
 import { LogosTab, type LogoView } from './logos-tab'
+import { ExemplarsTab } from './exemplars-tab'
+import type { ExemplarLogo } from './exemplar-logo'
+import type { ExemplarView } from '@/lib/exemplar-views'
 import { YoutubeCard } from './youtube-card'
 import { useToast } from '@/components/ui/toast'
 import { saveProviderKey, saveSettings, verifyProviderKey } from './actions'
@@ -80,6 +83,8 @@ export function SettingsForm({
   logos = [],
   channelMarkKey = null,
   modelOptions,
+  exemplars = [],
+  exemplarLogo = null,
 }: {
   initialSettings: Settings
   credentials: MaskedCredential[]
@@ -94,6 +99,10 @@ export function SettingsForm({
   channelMarkKey?: string | null
   /** Live lists merged with the catalogue, built on the server (decision 288). */
   modelOptions: ModelOptions
+  /** The exemplar corpus, compiled on the server (decision 305). */
+  exemplars?: ExemplarView[]
+  /** The channel mark the logo-reveal example plays (`exemplarLogoFor`). */
+  exemplarLogo?: ExemplarLogo | null
 }) {
   const [settings, setSettings] = React.useState(initialSettings)
   const [saving, setSaving] = React.useState(false)
@@ -131,6 +140,7 @@ export function SettingsForm({
         <TabsTrigger value="voice">Voice</TabsTrigger>
         <TabsTrigger value="music">Music library</TabsTrigger>
         <TabsTrigger value="logos">Logos</TabsTrigger>
+        <TabsTrigger value="exemplars">Exemplars</TabsTrigger>
         <TabsTrigger value="publishing">Publishing</TabsTrigger>
         <TabsTrigger value="connections">Connections</TabsTrigger>
       </TabsList>
@@ -157,6 +167,10 @@ export function SettingsForm({
           channelMarkKey={channelMarkKey}
           brandBackground={settings.brandKit.colors.background}
         />
+      </TabsContent>
+
+      <TabsContent value="exemplars">
+        <ExemplarsTab exemplars={exemplars} brand={settings.brandKit} exemplarLogo={exemplarLogo} />
       </TabsContent>
 
       <TabsContent value="publishing">

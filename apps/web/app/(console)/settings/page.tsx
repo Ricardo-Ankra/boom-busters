@@ -2,8 +2,10 @@ import { getSettings, listCredentials, listLogos, listMusicBeds } from '@boom-bu
 import { hasEnvGroup } from '@boom-busters/schemas'
 import { db } from '@/lib/db'
 import { loadModelOptions } from '@/lib/model-catalogue'
+import { exemplarViews } from '@/lib/exemplar-views'
 import { mockProvidersEnabled } from '@boom-busters/providers'
 import { presignGet, storageConfigured } from '@/lib/storage'
+import { exemplarLogoFor } from './exemplar-logo'
 import { SettingsForm } from './settings-form'
 
 export const dynamic = 'force-dynamic'
@@ -15,6 +17,7 @@ const TABS = [
   'voice',
   'music',
   'logos',
+  'exemplars',
   'publishing',
   'connections',
 ] as const
@@ -87,6 +90,8 @@ export default async function SettingsPage({
         logos={logoViews}
         channelMarkKey={settings.brandKit.look.logoR2Key}
         modelOptions={modelOptions}
+        exemplars={exemplarViews()}
+        exemplarLogo={exemplarLogoFor(logoViews, settings.brandKit.look.logoR2Key)}
       />
     </div>
   )

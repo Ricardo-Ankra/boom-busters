@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { readFileSync } from 'node:fs'
+import { readdirSync, readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { MANIFEST } from '@boom-busters/providers'
 import {
@@ -43,6 +43,27 @@ describe('exemplar translation, the pure parts (decision 305)', () => {
     const match = /source: ("(?:[^"\\]|\\.)*")/.exec(file)
     expect(JSON.parse(match![1]!)).toBe('function Graphic() {\n  return `a${1}`\n}')
     expect(file).not.toMatch(/[–—]/)
+  })
+
+  it.each([
+    ['translate', 'translated from', 'Written by apps/web/scripts/translate-exemplars.ts'],
+    ['hand', 'modelled on', 'Written by hand and stored by apps/web/scripts/check-exemplar.ts'],
+  ] as const)(
+    'a design file by %s says who wrote it, and keeps the hash line',
+    (author, from, by) => {
+      const hash = vendoredHash('x')
+      const file = renderDesignFile(stat, hash, { title: 't', source: 's', facts: [] }, author)
+      expect(file).toContain(designHeader(stat, hash, author))
+      expect(file).toContain(`${from} vendored/rve/stat-counter.tsx.txt`)
+      expect(file).toContain(by)
+      expect(storedHash(file)).toBe(hash)
+      expect(file).not.toMatch(/[–—]/)
+    },
+  )
+
+  it('a design file is by the translation unless told otherwise', () => {
+    const hash = vendoredHash('x')
+    expect(designHeader(stat, hash)).toBe(designHeader(stat, hash, 'translate'))
   })
 
   it('staleDesign names the file whose hash moved, and is quiet when nothing is stored or it matches', () => {
@@ -114,13 +135,14 @@ describe('exemplar translation, the pure parts (decision 305)', () => {
     expect(file.indexOf('barChart')).toBeLessThan(file.indexOf('statCounter'))
     expect(file).toContain("'bar-chart': barChart,")
     expect(file).toContain('export const DESIGNS: Partial<Record<Technique, ExemplarDesign>> = {')
+    expect(renderRegistry(['typewriter'])).toContain('  typewriter: typewriter,')
     expect(renderRegistry([])).toContain('= {}')
-    expect(renderRegistry([])).toBe(
-      readFileSync(
-        new URL('../../../packages/providers/src/exemplars/designs/index.ts', import.meta.url),
-        'utf8',
-      ),
-    )
+    // The registry on disk is exactly what the generator writes for the designs present.
+    const designs = new URL('../../../packages/providers/src/exemplars/designs/', import.meta.url)
+    const present = readdirSync(designs)
+      .filter((name) => name.endsWith('.ts') && name !== 'index.ts')
+      .map((name) => name.slice(0, -3))
+    expect(renderRegistry(present)).toBe(readFileSync(new URL('index.ts', designs), 'utf8'))
   })
 
   it('parses the cap (default 1, at most 5), --only and --model', () => {
