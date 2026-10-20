@@ -39,6 +39,8 @@ describe('live wikidata facts', () => {
       country: 'Q183',
       cik: '0001234567',
       dissolved: '2020-06-25',
+      instanceOf: ['Q891723', 'Q4830453'],
+      isClass: false,
       people: [
         { qid: 'Q2001', name: 'Founder Alive', living: true, convicted: false },
         { qid: 'Q2002', name: 'Founder Deceased', living: false, convicted: false },
@@ -51,6 +53,8 @@ describe('live wikidata facts', () => {
     expect(sparse.cik).toBeNull()
     expect(sparse.dissolved).toBe('2015-01-01')
     expect(sparse.people).toEqual([])
+    expect(sparse.instanceOf).toEqual(['Q6256'])
+    expect(sparse.isClass).toBe(true)
     expect(facts.has('Q1003')).toBe(false)
   })
 
@@ -112,5 +116,6 @@ describe('mock wikidata', () => {
     expect(a.get('Q123')!.enTitle).toBe('Mock entity Q123')
     expect(a.get('Q123')!.sitelinks.enwiki).toBe('Mock entity Q123')
     expect(a.get('Q456')!.qid).toBe('Q456')
+    expect(a.get('Q456')).toMatchObject({ instanceOf: [], isClass: false })
   })
 })

@@ -13,13 +13,19 @@ import { loadLoPucki } from './seeds'
 
 const uri = (qid: string) => `http://www.wikidata.org/entity/${qid}`
 
-const facts = (qid: string, enTitle: string | null): EntityFacts => ({
+const facts = (
+  qid: string,
+  enTitle: string | null,
+  kind: { instanceOf?: string[]; isClass?: boolean } = {},
+): EntityFacts => ({
   qid,
   enTitle,
   sitelinks: enTitle === null ? { dewiki: 'Nur deutsch' } : { enwiki: enTitle },
   country: null,
   cik: null,
   dissolved: null,
+  instanceOf: kind.instanceOf ?? [],
+  isClass: kind.isClass ?? false,
   people: [],
 })
 
@@ -28,6 +34,7 @@ interface Fixture {
   lists?: Record<string, string[]>
   qids?: Record<string, string>
   facts?: Record<string, string | null>
+  kinds?: Record<string, { instanceOf?: string[]; isClass?: boolean }>
   dissolved?: { qid: string; date: string }[]
   founders?: { qid: string; title: string }[]
   views?: Record<string, number>
@@ -60,7 +67,7 @@ function deps(f: Fixture, log: string[] = []): HitlistDeps {
       const out = new Map<string, EntityFacts>()
       for (const q of qids) {
         const title = f.facts?.[q]
-        if (title !== undefined) out.set(q, facts(q, title))
+        if (title !== undefined) out.set(q, facts(q, title, f.kinds?.[q]))
       }
       return out
     },
@@ -185,7 +192,7 @@ describe('buildHitlist', () => {
       ...deps({ loPucki: path, qids: { Kmart: 'Q3' }, facts: { Q3: 'Kmart' } }),
       onSummary: (s) => (summary = s),
     })
-    expect(summary).toMatchObject({ unresolvedBySeed: { lopucki: 1 }, dropped: 0 })
+    expect(summary).toMatchObject({ unresolvedBySeed: { lopucki: 1 }, dropped: {} })
     expect(summary!.perSeed['lopucki']).toBe(1)
   })
 
@@ -214,7 +221,50 @@ describe('buildHitlist', () => {
     expect(entries[0]!.tags).toEqual([
       tag('wikidata:dissolved-convicted', 'downfall', '2002-08-31'),
     ])
-    expect(log.at(-1)).toContain('dropped 1')
+    expect(log.at(-1)).toContain('dropped no facts=1')
+  })
+
+  it('drops classes, people, countries and the other excluded kinds, counting each reason', async () => {
+    const log: string[] = []
+    let summary: Parameters<NonNullable<HitlistDeps['onSummary']>>[0] | undefined
+    const entries = await buildHitlist({
+      ...deps(
+        {
+          categories: {
+            'Corporate scandals': ['Fraud', 'Madoff', 'Venezuela', 'Enron', 'Ghost', 'Big Short'],
+          },
+          qids: {
+            Fraud: 'Q1',
+            Madoff: 'Q2',
+            Venezuela: 'Q3',
+            Enron: 'Q4',
+            Ghost: 'Q6',
+            'Big Short': 'Q7',
+          },
+          facts: { Q1: 'Fraud', Q2: 'Madoff', Q3: 'Venezuela', Q4: 'Enron', Q7: 'The Big Short' },
+          kinds: {
+            Q1: { isClass: true, instanceOf: ['Q4830453'] },
+            Q2: { instanceOf: ['Q5'] },
+            Q3: { instanceOf: ['Q3624078', 'Q6256'] },
+            Q4: { instanceOf: ['Q4830453'] },
+            Q7: { instanceOf: ['Q11424'] },
+          },
+        },
+        log,
+      ),
+      onSummary: (s) => (summary = s),
+    })
+    expect(entries.map((e) => e.qid)).toEqual(['Q4'])
+    expect(summary!.dropped).toEqual({
+      'no facts': 1,
+      class: 1,
+      'Q5 human': 1,
+      'Q6256 country': 1,
+      'Q11424 film': 1,
+    })
+    expect(log.at(-1)).toContain(
+      'dropped class=1, Q5 human=1, Q6256 country=1, no facts=1, Q11424 film=1',
+    )
   })
 
   it('tags a Fortune climber as success since the year met', async () => {

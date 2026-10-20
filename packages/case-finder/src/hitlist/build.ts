@@ -1,6 +1,7 @@
+import { HITLIST_EXCLUDED_CLASSES } from '../config'
 import type { DatedTag, HitlistEntry, IsoDate, Lane } from '../types'
 import type { PageviewsSource } from '../sources/pageviews'
-import type { WikidataSource } from '../sources/wikidata'
+import type { EntityFacts, WikidataSource } from '../sources/wikidata'
 import type { WikipediaSource } from '../sources/wikipedia'
 import { median } from '../stats'
 import { fortuneClimbers, type FortuneRow } from './fortune'
@@ -39,8 +40,12 @@ export interface HitlistSummary {
   perSeed: Record<string, number>
   /** Seed names that resolved to no Wikidata item, by seed. */
   unresolvedBySeed: Record<string, number>
-  /** Resolved QIDs dropped because Wikidata returned no facts for them. */
-  dropped: number
+  /**
+   * Resolved QIDs left out, by reason: `no facts` (Wikidata returned none),
+   * `class` (it has a P279 claim), or `<QID> <label>` for the first
+   * HITLIST_EXCLUDED_CLASSES kind it is an instance of.
+   */
+  dropped: Record<string, number>
 }
 
 const FORTUNE_FIRST_YEAR = 1955
@@ -56,6 +61,17 @@ export function laneOf(tags: DatedTag[]): Lane | null {
   if (tags.some((t) => t.lane === 'downfall')) return 'downfall'
   if (tags.some((t) => t.lane === 'success')) return 'success'
   return null
+}
+
+/** Why an entity is not a company case, or null when it may be one. */
+function exclusion(facts: EntityFacts | undefined): string | null {
+  if (facts === undefined) return 'no facts'
+  if (facts.isClass) return 'class'
+  const excluded = Object.keys(
+    HITLIST_EXCLUDED_CLASSES,
+  ) as (keyof typeof HITLIST_EXCLUDED_CLASSES)[]
+  const kind = excluded.find((qid) => facts.instanceOf.includes(qid))
+  return kind === undefined ? null : `${kind} ${HITLIST_EXCLUDED_CLASSES[kind]}`
 }
 
 /** `Enron (company)` gives `Enron`; null stays null. */
@@ -200,11 +216,13 @@ export async function buildHitlist(deps: HitlistDeps): Promise<HitlistEntry[]> {
 
   const facts = await wikidata.facts([...tagsByQid.keys()])
   const entries: HitlistEntry[] = []
-  let dropped = 0
+  const dropped = new Map<string, number>()
   for (const [qid, tags] of tagsByQid) {
     const f = facts.get(qid)
-    if (f === undefined) {
-      dropped++
+    const reason = exclusion(f)
+    if (f === undefined || reason !== null) {
+      const why = reason ?? 'no facts'
+      dropped.set(why, (dropped.get(why) ?? 0) + 1)
       continue
     }
     entries.push({
@@ -219,15 +237,16 @@ export async function buildHitlist(deps: HitlistDeps): Promise<HitlistEntry[]> {
   }
   entries.sort((a, b) => Number(a.qid.slice(1)) - Number(b.qid.slice(1)))
 
-  const per = [...perSeed].map(([s, n]) => `${s}=${n}`).join(', ')
-  const missed = [...unresolved].map(([s, n]) => `${s}=${n}`).join(', ') || 'none'
+  const counts = (m: Map<string, number>) =>
+    [...m].map(([s, n]) => `${s}=${n}`).join(', ') || 'none'
   log(
-    `hitlist: ${entries.length} entries; per seed ${per}; unresolved ${missed}; dropped ${dropped}`,
+    `hitlist: ${entries.length} entries; per seed ${counts(perSeed)}; ` +
+      `unresolved ${counts(unresolved)}; dropped ${counts(dropped)}`,
   )
   deps.onSummary?.({
     perSeed: Object.fromEntries(perSeed),
     unresolvedBySeed: Object.fromEntries(unresolved),
-    dropped,
+    dropped: Object.fromEntries(dropped),
   })
   return entries
 }

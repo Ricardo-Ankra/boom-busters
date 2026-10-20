@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { BACKTEST, EDGAR_FORMS, EDGAR_8K_DOWNFALL_ITEM, PRIMARY_HOSTS, WEIGHTS } from './config'
+import {
+  BACKTEST,
+  EDGAR_FORMS,
+  EDGAR_8K_DOWNFALL_ITEM,
+  HITLIST_EXCLUDED_CLASSES,
+  PRIMARY_HOSTS,
+  WEIGHTS,
+} from './config'
 
 describe('pre-registered config', () => {
   it('weights are the pre-registered ones and sum to 1', () => {
@@ -20,5 +27,18 @@ describe('pre-registered config', () => {
     expect(EDGAR_FORMS.success).toContain('424B4')
     expect(EDGAR_8K_DOWNFALL_ITEM).toBe('4.02')
     expect(PRIMARY_HOSTS).toContain('sec.gov')
+  })
+  it('pins the classes the hitlist excludes', () => {
+    expect(Object.keys(HITLIST_EXCLUDED_CLASSES)).toEqual([
+      'Q5',
+      'Q6256',
+      'Q3624078',
+      'Q11424',
+      'Q5398426',
+      'Q7725634',
+      'Q571',
+      'Q49371',
+      'Q327333',
+    ])
   })
 })

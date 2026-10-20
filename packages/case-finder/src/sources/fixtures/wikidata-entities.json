@@ -11,6 +11,28 @@
         "wikidatawiki": { "site": "wikidatawiki", "title": "Q1001" }
       },
       "claims": {
+        "P31": [
+          {
+            "mainsnak": {
+              "snaktype": "value",
+              "property": "P31",
+              "datavalue": {
+                "type": "wikibase-entityid",
+                "value": { "entity-type": "item", "id": "Q891723" }
+              }
+            }
+          },
+          {
+            "mainsnak": {
+              "snaktype": "value",
+              "property": "P31",
+              "datavalue": {
+                "type": "wikibase-entityid",
+                "value": { "entity-type": "item", "id": "Q4830453" }
+              }
+            }
+          }
+        ],
         "P17": [
           {
             "mainsnak": {
@@ -96,6 +118,30 @@
       "id": "Q1002",
       "sitelinks": { "frwiki": { "site": "frwiki", "title": "Exemple" } },
       "claims": {
+        "P31": [
+          {
+            "mainsnak": {
+              "snaktype": "value",
+              "property": "P31",
+              "datavalue": {
+                "type": "wikibase-entityid",
+                "value": { "entity-type": "item", "id": "Q6256" }
+              }
+            }
+          }
+        ],
+        "P279": [
+          {
+            "mainsnak": {
+              "snaktype": "value",
+              "property": "P279",
+              "datavalue": {
+                "type": "wikibase-entityid",
+                "value": { "entity-type": "item", "id": "Q1048835" }
+              }
+            }
+          }
+        ],
         "P576": [
           {
             "mainsnak": {

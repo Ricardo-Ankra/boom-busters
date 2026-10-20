@@ -20,6 +20,10 @@ export interface EntityFacts {
   cik: string | null
   /** P576 dissolution date; a coarser precision gives the first day of that month or year. */
   dissolved: IsoDate | null
+  /** P31 instance-of QIDs, in claim order. */
+  instanceOf: string[]
+  /** True when the entity has any P279 subclass-of claim: it is a class or concept, not a thing. */
+  isClass: boolean
   /** Founders (P112) and CEOs (P169). Living = no P570; convicted = has P1399. */
   people: Person[]
 }
@@ -173,6 +177,8 @@ export function liveWikidata(client: PoliteClient): WikidataSource {
             values(e, 'P576')
               .map(wikidataDate)
               .find((d) => d !== null) ?? null,
+          instanceOf: itemIds(e, 'P31'),
+          isClass: (e.claims?.P279 ?? []).length > 0,
           people: personQids.map(
             (qid) => people.get(qid) ?? { qid, name: qid, living: true, convicted: false },
           ),

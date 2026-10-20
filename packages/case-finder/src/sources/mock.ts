@@ -68,6 +68,8 @@ export const mockWikidata: WikidataSource = {
         country: 'Q30',
         cik: null,
         dissolved: null,
+        instanceOf: [],
+        isClass: false,
         people: [
           { qid: `${qid}0`, name: `Mock founder of ${qid}`, living: true, convicted: false },
         ],

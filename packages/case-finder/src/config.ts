@@ -79,6 +79,28 @@ export const EDGAR_8K_DOWNFALL_ITEM = '4.02'
 
 export const FORTUNE_CLIMB = { places: 200, years: 10, lateEntryAfter: 1970, topRank: 100 } as const
 
+/**
+ * Wikidata kinds (P31 values) that are never a company case, however their
+ * articles reached a seed: the scandal categories and collapse lists also
+ * hold the people, countries, films, books, laws and agencies around a case,
+ * and their pageviews would take the top demand places. The hitlist drops any
+ * entity that is an instance of one of these, and any entity that is itself a
+ * class (has a P279 subclass-of claim), which is a concept such as "Ponzi
+ * scheme" rather than a company. Keyed by QID; the label names the reason in
+ * the build's summary.
+ */
+export const HITLIST_EXCLUDED_CLASSES = {
+  Q5: 'human',
+  Q6256: 'country',
+  Q3624078: 'sovereign state',
+  Q11424: 'film',
+  Q5398426: 'television series',
+  Q7725634: 'literary work',
+  Q571: 'book',
+  Q49371: 'legislation',
+  Q327333: 'government agency',
+} as const
+
 export const BACKTEST = {
   from: '2018-01-01',
   to: '2026-06-30',
