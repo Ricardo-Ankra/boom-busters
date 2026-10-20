@@ -196,6 +196,39 @@ describe('gatherAt', () => {
     expect(listCalls).toEqual([['List of frauds', '2020-03-01']])
   })
 
+  it('a list tag also counts when the list links to one of the entry redirects', async () => {
+    const wikipedia = fakeWikipedia({
+      'Article Q1': {},
+      'List of frauds': { links: ['Old name of Q1'] },
+    })
+    vi.mocked(wikipedia.redirectsTo).mockImplementation(async (title) =>
+      title === 'Article Q1' ? ['old_name of Q1'] : [],
+    )
+    const tag: DatedTag = { tag: 'list:List of frauds', lane: 'downfall', since: null }
+    const [e] = await gather([entry('Q1', { tags: [tag] })], sources({ wikipedia }))
+    expect(e!.tagsAtT).toEqual([tag])
+  })
+
+  it('an SEC release dated on or after asOf never reaches documents', async () => {
+    const release = (number: string, date: string) => ({
+      kind: 'sec-litigation' as const,
+      number,
+      date,
+      title: `SEC v. Article Q1 and others`,
+      url: `https://www.sec.gov/litigation/${number}`,
+    })
+    const secReleases = {
+      index: async () => [
+        release('LR-1', '2020-03-14'),
+        release('LR-2', '2020-03-15'),
+        release('LR-3', '2021-01-01'),
+      ],
+    }
+    const [e] = await gather([entry('Q1')], sources({ secReleases }))
+    const sec = e!.documents.filter((d) => d.source === 'sec-litigation')
+    expect(sec.map((d) => d.url)).toEqual(['https://www.sec.gov/litigation/LR-1'])
+  })
+
   it('one monthly fetch serves two different asOf dates', async () => {
     const inner = flatPageviews()
     // A stand-in for the disk cache: identical arguments are served without a fetch.

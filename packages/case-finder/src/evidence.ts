@@ -7,7 +7,7 @@ import type { PageviewsSource } from './sources/pageviews'
 import { referencesAsDocuments } from './sources/references'
 import { releasesNaming, type SecRelease, type SecReleasesSource } from './sources/sec-releases'
 import type { WikidataSource } from './sources/wikidata'
-import type { WikipediaSource } from './sources/wikipedia'
+import { normalTitle, type WikipediaSource } from './sources/wikipedia'
 import { uploadsPlaylistId, type YoutubeSource } from './sources/youtube'
 import type {
   ChannelUploads,
@@ -82,8 +82,6 @@ interface Run {
   uploads: (channelId: string) => Promise<ChannelUploads>
 }
 
-const spaced = (title: string) => title.replaceAll('_', ' ')
-
 function addDays(day: IsoDate, n: number): IsoDate {
   return new Date(Date.parse(`${day}T00:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10)
 }
@@ -120,25 +118,26 @@ const nonBlank = (text: string | null): text is string => text !== null && text.
  * The tags that applied at T. Any tag with a `since` on or after T is out.
  * A category tag needs the article's revision before T's month to carry the
  * category, and a list tag needs the list page's revision then to link to the
- * article: categories and list entries are added after the fact, often long
+ * article under its title or any of its redirects (the list may use an older
+ * name): categories and list entries are added after the fact, often long
  * after. With `pages` null (an entry below the floor, never fetched) both
  * kinds are dropped.
  */
 async function tagsAt(
   entry: HitlistEntry,
   asOf: IsoDate,
-  pages: { page: PageAtT | null; listLinks: Run['listLinks'] } | null,
+  pages: { page: PageAtT | null; enTitles: string[]; listLinks: Run['listLinks'] } | null,
 ): Promise<DatedTag[]> {
   const out: DatedTag[] = []
   for (const tag of entry.tags) {
     if (tag.since !== null && tag.since >= asOf) continue
     if (tag.tag.startsWith('category:')) {
-      const name = spaced(tag.tag.slice('category:'.length))
-      if (pages?.page?.categories.some((c) => spaced(c) === name)) out.push(tag)
+      const name = normalTitle(tag.tag.slice('category:'.length))
+      if (pages?.page?.categories.some((c) => normalTitle(c) === name)) out.push(tag)
     } else if (tag.tag.startsWith('list:')) {
-      if (pages === null || entry.enTitle === null) continue
+      if (pages === null) continue
       const links = await pages.listLinks(tag.tag.slice('list:'.length))
-      if (links.has(spaced(entry.enTitle))) out.push(tag)
+      if (pages.enTitles.some((t) => links.has(normalTitle(t)))) out.push(tag)
     } else {
       out.push(tag)
     }
@@ -179,7 +178,7 @@ async function passOne(entry: HitlistEntry, run: Run): Promise<PassOne> {
     return { evidence, enTitles, page: null }
   }
   const page = await run.pageAt(entry.enTitle)
-  evidence.tagsAtT = await tagsAt(entry, asOf, { page, listLinks: run.listLinks })
+  evidence.tagsAtT = await tagsAt(entry, asOf, { page, enTitles, listLinks: run.listLinks })
   return { evidence, enTitles, page }
 }
 
@@ -289,7 +288,7 @@ export async function gatherAt(
   })
   const listLinks = memo(async (page: string) => {
     const list = await pageAt(`${month}|${page}`)
-    return new Set((list?.links ?? []).map(spaced))
+    return new Set((list?.links ?? []).map(normalTitle))
   })
   const uploads = memo((channelId: string) =>
     sources.youtube.uploads(channelId, uploadsPlaylistId(channelId), { maxPages: 1 }),
