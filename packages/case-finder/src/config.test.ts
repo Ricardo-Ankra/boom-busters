@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   BACKTEST,
+  CONFIG_VERSION,
   EDGAR_FORMS,
   EDGAR_8K_DOWNFALL_ITEM,
   HITLIST_EXCLUDED_CLASSES,
@@ -27,6 +28,9 @@ describe('pre-registered config', () => {
     expect(EDGAR_FORMS.success).toContain('424B4')
     expect(EDGAR_8K_DOWNFALL_ITEM).toBe('4.02')
     expect(PRIMARY_HOSTS).toContain('sec.gov')
+  })
+  it('is config version 2, the version set after the final review', () => {
+    expect(CONFIG_VERSION).toBe(2)
   })
   it('pins the classes the hitlist excludes', () => {
     expect(Object.keys(HITLIST_EXCLUDED_CLASSES)).toEqual([

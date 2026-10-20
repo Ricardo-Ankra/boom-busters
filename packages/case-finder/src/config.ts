@@ -4,6 +4,7 @@
  * run: the point of fixing them first is that they cannot be tuned to the
  * answer. Bump CONFIG_VERSION with any change so old results are never
  * compared against new rules.
+ * Version 2 (2026-10-20, before any live run) added FOUNDER_MIN_MEDIAN_VIEWS and HITLIST_EXCLUDED_CLASSES from the final review; the weights, thresholds and pass rule are unchanged from b5d5e4d.
  */
 
 /** Score weights for the four components D, G, S and W; they sum to 1. */
@@ -130,4 +131,4 @@ export const CHANNEL_HANDLES = [
   '@ModernMBA',
 ] as const
 
-export const CONFIG_VERSION = 1
+export const CONFIG_VERSION = 2
