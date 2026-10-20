@@ -21,6 +21,7 @@ import { outcomeRatio } from './outcome'
 import { renderReport, verdict, type CaseRow, type ReportMeta } from './report'
 import {
   CODE_PATH,
+  FIXTURE_PATH,
   SNAPSHOT_FILES,
   liveRefusal,
   readFixture,
@@ -202,11 +203,19 @@ export async function runBacktest(
       today: laneOf(entry.tags),
     })
   }
-  const { selected, note } = selectTestSet(
+  const { selected, note, unchecked } = selectTestSet(
     fixture,
     proposals,
     (_qid, videoId) => lanesByVideo.get(videoId) ?? { atT: null, today: null },
   )
+  // A missing verdict would let a deleted fixture line hand-pick the set; mock mode only counts.
+  if (!ctx.mock && unchecked.length > 0) {
+    ctx.log(
+      `Refusing a live run: these proposals the selection reaches have no verdict in ` +
+        `${FIXTURE_PATH}: ${unchecked.join(', ')}. Give each one a verdict and commit the fixture.`,
+    )
+    return 1
+  }
 
   const usable: UsableCase[] = []
   const unusable: ReportMeta['unusable'] = []

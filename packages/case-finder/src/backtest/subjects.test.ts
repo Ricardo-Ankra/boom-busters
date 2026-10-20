@@ -89,6 +89,22 @@ function setup(spec: { handle: string; lane: Lane; count: number; prefix: string
 }
 
 describe('selectTestSet', () => {
+  it('names only the unchecked proposals the walk reached before the set filled', () => {
+    const { proposals, checked } = setup([
+      { handle: '@A', lane: 'downfall', count: 12, prefix: 'a' },
+      { handle: '@B', lane: 'downfall', count: 12, prefix: 'b' },
+      { handle: '@D', lane: 'success', count: 12, prefix: 'd' },
+      { handle: '@E', lane: 'downfall', count: 12, prefix: 'e' },
+    ])
+    // setup numbers days downwards, so a0 is the newest proposal and e11 the oldest.
+    const reached = proposals[5]!.videoId
+    const beyond = proposals.at(-1)!.videoId
+    const fx = checked.filter((c) => c.videoId !== reached && c.videoId !== beyond)
+    const { selected, unchecked } = selectTestSet(fx, proposals, laneOf)
+    expect(selected).toHaveLength(40)
+    expect(unchecked).toEqual([reached])
+  })
+
   it('caps a channel at 12', () => {
     const { proposals, checked } = setup([
       { handle: '@A', lane: 'downfall', count: 20, prefix: 'a' },
@@ -144,8 +160,9 @@ describe('selectTestSet', () => {
       { videoId: proposals[1]!.videoId, qid: 'Qnolane', verdict: 'subject' },
       checked.find((c) => c.videoId === proposals[2]!.videoId)!,
     ]
-    const { selected, note } = selectTestSet(fx, proposals, laneOf)
+    const { selected, note, unchecked } = selectTestSet(fx, proposals, laneOf)
     expect(selected).toHaveLength(1)
+    expect(unchecked).toEqual([proposals[3]!.videoId])
     expect(note).toMatch(/1 skipped as not single/)
     expect(note).toMatch(/1 unchecked/)
     expect(note).toMatch(/1 skipped with no lane even today/)

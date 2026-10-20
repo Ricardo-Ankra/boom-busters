@@ -253,6 +253,30 @@ describe('the back-test commands', () => {
     expect(said).toMatch(/rebuild with hitlist --live then subjects --live/i)
   })
 
+  it('run --live refuses while a proposal the walk reaches has no verdict; mock counts it', async () => {
+    const ctx = context({ mock: false })
+    writeHitlist(ctx)
+    await runSubjects(ctx)
+    writeFixture(
+      ctx,
+      CHECKED.filter((f) => f.videoId !== 'b1'),
+    )
+    expect(await runBacktest(ctx, null)).toBe(1)
+    expect(ctx.lines.at(-1)).toMatch(/no verdict in .*backtest-subjects\.json: b1/)
+    expect(existsSync(reportPath(ctx, '.md'))).toBe(false)
+
+    const mock = context()
+    writeHitlist(mock)
+    await runSubjects(mock)
+    writeFixture(
+      mock,
+      CHECKED.filter((f) => f.videoId !== 'b1'),
+    )
+    expect(await runBacktest(mock, null)).toBe(0)
+    const cases = JSON.parse(readFileSync(reportPath(mock, '-mock-cases.json'), 'utf8'))
+    expect(cases.meta.selectionNote).toMatch(/1 unchecked/)
+  })
+
   it('run --live refuses a subject whose QID is not on the hitlist', async () => {
     const ctx = context({ mock: false })
     writeHitlist(ctx)

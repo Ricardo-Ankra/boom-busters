@@ -112,7 +112,12 @@ export function selectTestSet(
   proposals: SubjectProposal[],
   /** The subject's lanes for this video's test date; the same QID can differ between two videos. */
   lanesOf: (qid: string, videoId: string) => SubjectLanes,
-): { selected: SelectedSubject[]; note: string } {
+): {
+  selected: SelectedSubject[]
+  note: string
+  /** Proposals the walk reached before the set filled that have no verdict, by video id. */
+  unchecked: string[]
+} {
   const byVideo = new Map(checked.map((f) => [f.videoId, f]))
   const downfallQuota = BACKTEST.size - BACKTEST.minSuccess
   const perChannel = new Map<string, number>()
@@ -120,7 +125,7 @@ export function selectTestSet(
   let downfalls = 0
   let successes = 0
   let notSingle = 0
-  let unchecked = 0
+  const unchecked: string[] = []
   let noLane = 0
   let keptNoLaneAtT = 0
   let capped = 0
@@ -129,7 +134,7 @@ export function selectTestSet(
     if (selected.length >= BACKTEST.size) break
     const fixture = byVideo.get(p.videoId)
     if (!fixture) {
-      unchecked++
+      unchecked.push(p.videoId)
       continue
     }
     if (fixture.verdict === 'skip-not-single') {
@@ -165,9 +170,9 @@ export function selectTestSet(
   const note =
     `${selected.length} selected: ${downfalls} downfall, ${successes} success; ` +
     `${keptNoLaneAtT} kept with no lane at T (placed by their lane today); ` +
-    `${notSingle} skipped as not single; ${unchecked} unchecked; ` +
+    `${notSingle} skipped as not single; ${unchecked.length} unchecked; ` +
     `${noLane} skipped with no lane even today; ` +
     `${capped} capped by channel; success minimum (${BACKTEST.minSuccess}) ` +
     (reached ? 'reached.' : 'not reached.')
-  return { selected, note }
+  return { selected, note, unchecked }
 }
