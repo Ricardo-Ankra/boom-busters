@@ -134,6 +134,19 @@ describe('renderReport', () => {
     )
   })
 
+  it('discloses the channel-median shortcut and names every known hindsight', () => {
+    const text = renderReport(rows, verdict(rows), META)
+    const caveats = text.slice(text.indexOf('## Caveats'), text.indexOf('## Breakdown'))
+    for (const sentence of [
+      "The competition measure's channel medians use each channel's latest 50 uploads, not the six months either side of the video that the design describes, because full channel histories do not fit the YouTube quota.",
+      "Pageviews include each article's current redirects, and world interest uses each company's current language editions.",
+      'Each company is searched under its current English title, so a company renamed after a test date is searched under its later name.',
+      "Founders' and executives' living status and convictions are read from Wikidata as they stand today.",
+    ]) {
+      expect(caveats).toContain(`- ${sentence}\n`)
+    }
+  })
+
   it('puts the verdict first and lists every case, the decisions and the run facts', () => {
     const text = renderReport(rows, verdict(rows), META)
     const verdictAt = text.indexOf('## Verdict')

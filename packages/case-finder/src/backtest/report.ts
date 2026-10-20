@@ -85,6 +85,15 @@ export const CAVEAT_YOUTUBE =
   "YouTube view counts are today's, not as of each test date, so the competition measure is partly hindsight."
 export const CAVEAT_BASELINE =
   'The baseline model already knows which of these cases became hits, which gives it an unfair advantage.'
+/** Ruling R2: evidence gathering reads one page of each channel's uploads. */
+export const CAVEAT_CHANNEL_MEDIANS =
+  "The competition measure's channel medians use each channel's latest 50 uploads, not the six months either side of the video that the design describes, because full channel histories do not fit the YouTube quota."
+/** Every other known hindsight in the evidence: today's redirects, editions, titles and people facts. */
+export const CAVEATS_HINDSIGHT: readonly string[] = [
+  "Pageviews include each article's current redirects, and world interest uses each company's current language editions.",
+  'Each company is searched under its current English title, so a company renamed after a test date is searched under its later name.',
+  "Founders' and executives' living status and convictions are read from Wikidata as they stand today.",
+]
 
 const LANES: readonly Lane[] = ['downfall', 'success']
 
@@ -277,6 +286,8 @@ export function renderReport(rows: CaseRow[], v: Verdict, meta: ReportMeta): str
     '## Caveats',
     '',
     `- ${CAVEAT_YOUTUBE}`,
+    `- ${CAVEAT_CHANNEL_MEDIANS}`,
+    ...CAVEATS_HINDSIGHT.map((c) => `- ${c}`),
     `- ${CAVEAT_BASELINE}`,
     '',
     '## Breakdown',
