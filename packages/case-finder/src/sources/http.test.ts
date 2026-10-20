@@ -276,4 +276,31 @@ describe('polite client', () => {
     expect((await client.getText('https://api.example.com/denied')).fromCache).toBe(false)
     expect(fetchImpl).toHaveBeenCalledTimes(3)
   })
+
+  it('isCached is true only for a settled, fresh entry, and never fetches', async () => {
+    const cacheDir = await tmp()
+    const fetchImpl = vi.fn(async (url: string | URL | Request) =>
+      String(url).endsWith('/denied') ? new Response('x', { status: 403 }) : json({ ok: true }),
+    )
+    let day = 1
+    const client = createPoliteClient({
+      contact: 'me@example.com',
+      cacheDir,
+      fetchImpl,
+      now: () => new Date(Date.UTC(2026, 9, day)),
+    })
+    const ok = 'https://api.example.com/ok?key=SECRET'
+    expect(await client.isCached(ok)).toBe(false)
+    await client.getJson(ok, schema)
+    await client.getText('https://api.example.com/denied')
+    expect(await client.isCached(ok)).toBe(true)
+    expect(await client.isCached('https://api.example.com/ok?key=OTHER')).toBe(true)
+    expect(await client.isCached('https://api.example.com/denied')).toBe(false)
+    day = 6
+    expect(await client.isCached(ok, { maxAgeDays: 3 })).toBe(false)
+    expect(await client.isCached(ok)).toBe(true)
+    expect(fetchImpl).toHaveBeenCalledTimes(2)
+    const noCache = createPoliteClient({ contact: 'me@example.com', cacheDir: null, fetchImpl })
+    expect(await noCache.isCached(ok)).toBe(false)
+  })
 })

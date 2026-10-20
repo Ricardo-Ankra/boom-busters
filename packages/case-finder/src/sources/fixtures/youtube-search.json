@@ -1,0 +1,34 @@
+{
+  "items": [
+    {
+      "id": {
+        "kind": "youtube#video",
+        "videoId": "vid1"
+      },
+      "snippet": {
+        "channelId": "UCaaa",
+        "title": "vid1"
+      }
+    },
+    {
+      "id": {
+        "kind": "youtube#video",
+        "videoId": "vid2"
+      },
+      "snippet": {
+        "channelId": "UCaaa",
+        "title": "vid2"
+      }
+    },
+    {
+      "id": {
+        "kind": "youtube#video",
+        "videoId": "vid3"
+      },
+      "snippet": {
+        "channelId": "UCaaa",
+        "title": "vid3"
+      }
+    }
+  ]
+}

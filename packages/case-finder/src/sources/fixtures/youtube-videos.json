@@ -1,0 +1,32 @@
+{
+  "items": [
+    {
+      "id": "vid3",
+      "snippet": {
+        "channelId": "UCbbb",
+        "title": "Wirecard explained",
+        "publishedAt": "2021-06-01T12:00:00Z"
+      },
+      "contentDetails": {
+        "duration": "PT1H2M3S"
+      },
+      "statistics": {
+        "viewCount": "1500000"
+      }
+    },
+    {
+      "id": "vid1",
+      "snippet": {
+        "channelId": "UCaaa",
+        "title": "The Wirecard collapse",
+        "publishedAt": "2020-07-15T12:00:00Z"
+      },
+      "contentDetails": {
+        "duration": "PT8M"
+      },
+      "statistics": {
+        "viewCount": "420000"
+      }
+    }
+  ]
+}

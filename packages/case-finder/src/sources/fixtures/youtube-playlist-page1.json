@@ -1,0 +1,15 @@
+{
+  "nextPageToken": "PAGE2",
+  "items": [
+    {
+      "contentDetails": {
+        "videoId": "u1"
+      }
+    },
+    {
+      "contentDetails": {
+        "videoId": "u2"
+      }
+    }
+  ]
+}

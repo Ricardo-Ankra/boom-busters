@@ -34,6 +34,11 @@ export interface RequestInitLite {
 }
 
 export interface PoliteClient {
+  /**
+   * True when a settled, fresh cache entry exists, so a caller that pays per
+   * request (the YouTube quota) can ask before spending. Never fetches.
+   */
+  isCached(url: string, init?: RequestInitLite): Promise<boolean>
   getJson<T>(
     url: string,
     schema: z.ZodType<T>,
@@ -179,18 +184,20 @@ export function createPoliteClient(options: PoliteClientOptions): PoliteClient {
     return entry
   }
 
+  function cacheFile(url: string, init: RequestInitLite): string | null {
+    if (options.cacheDir === null) return null
+    return path.join(
+      options.cacheDir,
+      new URL(url).host,
+      `${createHash('sha1')
+        .update(redact(init.cacheKey ?? url))
+        .digest('hex')}.json`,
+    )
+  }
+
   async function raw(url: string, init: RequestInitLite = {}): Promise<RawResult> {
     const host = new URL(url).host
-    const file =
-      options.cacheDir === null
-        ? null
-        : path.join(
-            options.cacheDir,
-            host,
-            `${createHash('sha1')
-              .update(redact(init.cacheKey ?? url))
-              .digest('hex')}.json`,
-          )
+    const file = cacheFile(url, init)
 
     if (file !== null) {
       const hit = await readCache(file, init.maxAgeDays)
@@ -210,6 +217,11 @@ export function createPoliteClient(options: PoliteClientOptions): PoliteClient {
   }
 
   return {
+    async isCached(url: string, init: RequestInitLite = {}) {
+      const file = cacheFile(url, init)
+      // Only settled answers are ever written, so any fresh entry counts.
+      return file !== null && (await readCache(file, init.maxAgeDays)) !== null
+    },
     async getJson<T>(url: string, schema: z.ZodType<T>, init?: RequestInitLite) {
       const safeUrl = redact(url)
       const result = await raw(url, init)

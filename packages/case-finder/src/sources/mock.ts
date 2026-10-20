@@ -3,6 +3,8 @@ import type { z } from 'zod'
 import { dayRange, monthRange, type PageviewsSource } from './pageviews'
 import type { EntityFacts, WikidataSource } from './wikidata'
 import type { WikipediaSource } from './wikipedia'
+import type { YoutubeVideo } from '../types'
+import { uploadsPlaylistId, type YoutubeSource } from './youtube'
 
 /**
  * Deterministic mock sources for mock-provider mode and tests. Nothing here
@@ -110,6 +112,40 @@ export const mockWikipedia: WikipediaSource = {
     return {
       categories: [`Mock category of revision ${revid}`],
       externalLinks: [`https://example.invalid/mock/${revid}`],
+    }
+  },
+}
+
+const MOCK_VIDEOS = 3
+
+const mockVideo = (channelId: string, label: string, n: number): YoutubeVideo => ({
+  id: `mock${hash(`${label}|${n}`).toString(36)}`,
+  channelId,
+  title: `[mock] ${label} video ${n}`,
+  publishedAt: `2020-${String((n % 12) + 1).padStart(2, '0')}-15`,
+  durationSec: 300 + (hash(`${label}|${n}`) % 1200),
+  views: 1000 + (hash(`${label}|${n}|views`) % 900000),
+})
+
+export const mockYoutube: YoutubeSource = {
+  async search(query) {
+    return {
+      fetchedAt: '2026-01-01',
+      videos: Array.from({ length: MOCK_VIDEOS }, (_, i) =>
+        mockVideo(`UCmock${hash(`${query}|${i}`).toString(36)}`, query, i + 1),
+      ),
+    }
+  },
+  async channelByHandle(handle) {
+    const channelId = `UCmock${hash(handle).toString(36)}`
+    return { channelId, uploadsPlaylistId: uploadsPlaylistId(channelId) }
+  },
+  async uploads(channelId) {
+    return {
+      channelId,
+      uploads: Array.from({ length: MOCK_VIDEOS }, (_, i) =>
+        mockVideo(channelId, channelId, i + 1),
+      ),
     }
   },
 }
