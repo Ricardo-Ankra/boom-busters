@@ -129,6 +129,12 @@ export const DEFERRED_GROUPS = {
   youtube: ['YOUTUBE_CLIENT_ID', 'YOUTUBE_CLIENT_SECRET'],
   /** Resend, for the optional email copy of a notification. M2. */
   email: ['RESEND_API_KEY', 'NOTIFY_FROM_EMAIL'],
+  /**
+   * The case finder's evidence sources. Unlike the groups above, each member
+   * is optional on its own (a source without its key is skipped), so read it
+   * with `readCaseFinderEnv()`, not `requireEnv()`, which wants all three.
+   */
+  caseFinder: ['DATA_CONTACT_EMAIL', 'YOUTUBE_DATA_API_KEY', 'COURTLISTENER_TOKEN'],
 } as const satisfies Record<string, readonly string[]>
 
 export type DeferredGroup = keyof typeof DEFERRED_GROUPS
@@ -187,6 +193,30 @@ export function requireEnv<G extends DeferredGroup>(
   const out: Record<string, string> = {}
   for (const key of keys) out[key] = source[key] as string
   return out as Record<GroupKeys<G>, string>
+}
+
+const CaseFinderEnvSchema = z.object({
+  DATA_CONTACT_EMAIL: z.email().optional(),
+  YOUTUBE_DATA_API_KEY: z.string().min(1).optional(),
+  COURTLISTENER_TOKEN: z.string().min(1).optional(),
+})
+
+export type CaseFinderEnv = z.infer<typeof CaseFinderEnvSchema>
+
+/**
+ * The case finder's optional variables. Blank values count as absent; a
+ * present DATA_CONTACT_EMAIL must be a valid address.
+ */
+export function readCaseFinderEnv(source: EnvSource = process.env): CaseFinderEnv {
+  const pick = (key: keyof CaseFinderEnv): string | undefined => {
+    const value = source[key]?.trim()
+    return value === undefined || value === '' ? undefined : value
+  }
+  return CaseFinderEnvSchema.parse({
+    DATA_CONTACT_EMAIL: pick('DATA_CONTACT_EMAIL'),
+    YOUTUBE_DATA_API_KEY: pick('YOUTUBE_DATA_API_KEY'),
+    COURTLISTENER_TOKEN: pick('COURTLISTENER_TOKEN'),
+  })
 }
 
 /** Whether a deferred group is fully configured — for UI status chips. */
