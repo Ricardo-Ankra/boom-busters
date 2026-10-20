@@ -176,6 +176,19 @@ describe('buildHitlist', () => {
     expect(loadLoPucki(path).map((r) => r.filed)).toEqual(['2002-01-22', '2003-03-04'])
   })
 
+  it('hands the per-seed and unresolved counts to onSummary', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'lopucki-'))
+    const path = join(dir, 'lopucki.csv')
+    writeFileSync(path, 'Company Name,Date Filed\nKmart,1/22/2002\nGhost Ltd,3/4/2003\n')
+    let summary: Parameters<NonNullable<HitlistDeps['onSummary']>>[0] | undefined
+    await buildHitlist({
+      ...deps({ loPucki: path, qids: { Kmart: 'Q3' }, facts: { Q3: 'Kmart' } }),
+      onSummary: (s) => (summary = s),
+    })
+    expect(summary).toMatchObject({ unresolvedBySeed: { lopucki: 1 }, dropped: 0 })
+    expect(summary!.perSeed['lopucki']).toBe(1)
+  })
+
   it('loadLoPucki returns [] and logs when the file is absent', () => {
     const log: string[] = []
     expect(loadLoPucki(null, (l) => log.push(l))).toEqual([])

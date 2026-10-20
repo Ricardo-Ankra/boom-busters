@@ -31,6 +31,16 @@ export interface HitlistDeps {
   log: (line: string) => void
   /** Anchors the founder seed's 24-month window; injected so tests are deterministic. */
   now?: () => Date
+  /** The counts the summary log line states, for a caller that records them (the back-test report). */
+  onSummary?: (summary: HitlistSummary) => void
+}
+
+export interface HitlistSummary {
+  perSeed: Record<string, number>
+  /** Seed names that resolved to no Wikidata item, by seed. */
+  unresolvedBySeed: Record<string, number>
+  /** Resolved QIDs dropped because Wikidata returned no facts for them. */
+  dropped: number
 }
 
 const FORTUNE_FIRST_YEAR = 1955
@@ -214,5 +224,10 @@ export async function buildHitlist(deps: HitlistDeps): Promise<HitlistEntry[]> {
   log(
     `hitlist: ${entries.length} entries; per seed ${per}; unresolved ${missed}; dropped ${dropped}`,
   )
+  deps.onSummary?.({
+    perSeed: Object.fromEntries(perSeed),
+    unresolvedBySeed: Object.fromEntries(unresolved),
+    dropped,
+  })
   return entries
 }

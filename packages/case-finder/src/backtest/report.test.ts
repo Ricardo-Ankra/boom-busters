@@ -40,7 +40,7 @@ const META: ReportMeta = {
   unusable: [],
 }
 
-const dashes = /[–—]/
+const dashes = /[\u2013\u2014]/
 
 describe('scoreForCorrelation', () => {
   it('unrankable rows score below every ranked row', () => {
@@ -150,7 +150,7 @@ describe('renderReport', () => {
   })
 
   it('lists unusable cases with their error, and no dash from a title reaches the text', () => {
-    const titled = [row(1, { title: 'Wirecard – the missing — billion | part 1' })]
+    const titled = [row(1, { title: 'Wirecard \u2013 the missing \u2014 billion | part 1' })]
     const text = renderReport(titled, verdict(titled), {
       ...META,
       unusable: [

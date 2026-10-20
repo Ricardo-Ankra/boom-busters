@@ -150,6 +150,26 @@ describe('selectTestSet', () => {
     expect(note).toMatch(/1 with no lane/)
   })
 
+  it('the lane callback is told which video it is for', () => {
+    const proposals: SubjectProposal[] = ['v1', 'v2'].map((videoId, i) => ({
+      videoId,
+      channelHandle: '@A',
+      title: 'Same subject',
+      publishedAt: `2020-0${i + 1}-01`,
+      proposedQid: 'Q1',
+      matchedQuery: 'Same',
+    }))
+    const checked: SubjectFixture[] = proposals.map((p) => ({
+      videoId: p.videoId,
+      qid: 'Q1',
+      verdict: 'subject',
+    }))
+    const { selected } = selectTestSet(checked, proposals, (_qid, videoId) =>
+      videoId === 'v1' ? 'success' : null,
+    )
+    expect(selected.map((s) => [s.videoId, s.lane])).toEqual([['v1', 'success']])
+  })
+
   it('reports an unreached success minimum', () => {
     const { proposals, checked } = setup([
       { handle: '@A', lane: 'downfall', count: 3, prefix: 'a' },

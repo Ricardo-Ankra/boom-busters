@@ -177,13 +177,14 @@ const fixed = (x: number, digits = 3) => (Number.isFinite(x) ? x.toFixed(digits)
 const interval = ([lo, hi]: [number, number]) =>
   Number.isFinite(lo) && Number.isFinite(hi) ? `${fixed(lo)} to ${fixed(hi)}` : 'n/a'
 const count = (n: number) => n.toLocaleString('en-US')
+const cases = (n: number) => `${n} ${n === 1 ? 'case' : 'cases'}`
 const percent = (x: number) => (Number.isFinite(x) ? `${(100 * x).toFixed(0)}%` : 'n/a')
 
 /** A table cell: one line, pipes escaped. */
 const cell = (text: string) => text.replace(/\s+/g, ' ').replaceAll('|', '\\|').trim()
 
 /** House rule for owner-facing prose: no em or en dashes, whatever a title or error carried. */
-const plain = (text: string) => text.replace(/[–—]/g, '-')
+const plain = (text: string) => text.replace(/[\u2013\u2014]/g, '-')
 
 function verdictLines(v: Verdict, baselineModel: string | null): string[] {
   const level = `${Math.round(BACKTEST.intervalLevel * 100)}%`
@@ -266,12 +267,12 @@ export function renderReport(rows: CaseRow[], v: Verdict, meta: ReportMeta): str
     ...LANES.map(
       (lane) =>
         `- ${lane}: Spearman ${fixed(v.perLane[lane])} over ` +
-        `${rows.filter((r) => r.lane === lane).length} cases`,
+        cases(rows.filter((r) => r.lane === lane).length),
     ),
     `- Without the ${legalKills} of ${rows.length} cases the legal kill would have removed: ` +
       `Spearman ${fixed(v.withoutLegalKills)}`,
     `- Miss rate: ${misses} of ${rows.length} cases (${percent(v.missRate)}) had no hitlist entry`,
-    `- Spiking at T (raw spike 3 or more): ${v.spikeVsOutcome.spiking} cases, ` +
+    `- Spiking at T (raw spike 3 or more): ${cases(v.spikeVsOutcome.spiking)}, ` +
       `${v.spikeVsOutcome.aboveMedian} of them with an outcome above the median`,
     '',
     '## Cases',

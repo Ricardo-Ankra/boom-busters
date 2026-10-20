@@ -80,7 +80,8 @@ function missLane(fixture: SubjectFixture): Lane {
 export function selectTestSet(
   checked: SubjectFixture[],
   proposals: SubjectProposal[],
-  laneOfQid: (qid: string) => Lane | null,
+  /** The subject's lane at the video's test date; the same QID can differ between two videos. */
+  laneOfQid: (qid: string, videoId: string) => Lane | null,
 ): { selected: SelectedSubject[]; note: string } {
   const byVideo = new Map(checked.map((f) => [f.videoId, f]))
   const downfallQuota = BACKTEST.size - BACKTEST.minSuccess
@@ -106,7 +107,7 @@ export function selectTestSet(
     }
     let lane: Lane | null
     if (fixture.verdict === 'miss-not-on-hitlist') lane = missLane(fixture)
-    else lane = fixture.qid === null ? null : laneOfQid(fixture.qid)
+    else lane = fixture.qid === null ? null : laneOfQid(fixture.qid, p.videoId)
     if (lane === null) {
       noLane++
       continue
