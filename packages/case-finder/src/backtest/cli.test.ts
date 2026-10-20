@@ -415,6 +415,21 @@ describe('the back-test commands', () => {
     expect(readFileSync(reportPath(ctx), 'utf8')).toContain('- No lane at T: 1 of 3 cases')
   })
 
+  it('a run on a later day asks the sources what the hitlist build day asked', async () => {
+    const monthly = vi.fn(flatPageviews.monthly)
+    const ctx = context()
+    writeHitlist(ctx)
+    await runSubjects(ctx)
+    ctx.now = new Date('2027-01-15T09:00:00Z')
+    ctx.sources = { ...fakeSources(), pageviews: { ...flatPageviews, monthly } }
+    expect(await runBacktest(ctx, null)).toBe(0)
+    // The hitlist was built on 2026-10-21, so every series ends with September 2026.
+    expect(new Set(monthly.mock.calls.map((c) => c[3]))).toEqual(new Set(['2026-09']))
+    expect(
+      readFileSync(reportPath(ctx, '-mock.md').replace('2026-10-21', '2027-01-15'), 'utf8'),
+    ).toContain('- Run date: 2027-01-15')
+  })
+
   it('outcomes are measured on the day the uploads were fetched, and both dates are shown', async () => {
     const ctx = context({ now: new Date('2021-08-15T12:00:00Z') })
     writeHitlist(ctx)

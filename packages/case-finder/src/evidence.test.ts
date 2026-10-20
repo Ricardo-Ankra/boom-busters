@@ -14,7 +14,7 @@ import type { WikipediaSource } from './sources/wikipedia'
 import { YoutubeNotFoundError, type YoutubeSource } from './sources/youtube'
 import type { DatedTag, HitlistEntry, YoutubeVideo } from './types'
 
-const NOW = () => new Date('2026-10-20T12:00:00Z')
+const ANCHOR = '2026-10-20'
 const T = '2020-03-15'
 const DOWNFALL: DatedTag = {
   tag: 'wikidata:dissolved-convicted',
@@ -103,7 +103,7 @@ const video = (id: string, channelId: string): YoutubeVideo => ({
 })
 
 const gather = (hitlist: HitlistEntry[], s: Sources, asOf = T, log: (l: string) => void = silent) =>
-  gatherAt(hitlist, asOf, s, log, { now: NOW })
+  gatherAt(hitlist, asOf, s, log, { anchorDay: ANCHOR })
 
 const byQid = (evidence: Awaited<ReturnType<typeof gatherAt>>, qid: string) =>
   evidence.find((e) => e.entry.qid === qid)!
@@ -281,6 +281,19 @@ describe('gatherAt', () => {
       '2015-07-01',
       '2026-10-19',
     )
+  })
+
+  it('series ends and the CourtListener cut-off follow the anchor day, not the clock', async () => {
+    const pageviews = flatPageviews()
+    const courtlistener = { dockets: vi.fn(mockCourtListener.dockets) }
+    await gatherAt([entry('Q1')], T, sources({ pageviews, courtlistener }), silent, {
+      anchorDay: '2026-03-05',
+    })
+    const ends = (fn: typeof pageviews.monthly | typeof pageviews.daily) =>
+      vi.mocked(fn).mock.calls.map((c) => c[3])
+    expect(new Set(ends(pageviews.monthly))).toEqual(new Set(['2026-02']))
+    expect(ends(pageviews.daily)).toEqual(['2026-03-04'])
+    expect(courtlistener.dockets).toHaveBeenCalledWith('Article Q1', '2026-03-05')
   })
 
   it('worldMonthly is one summed row per month across two editions', async () => {
@@ -466,7 +479,7 @@ describe('gatherAt', () => {
 })
 
 describe('laneAt', () => {
-  const lane = (e: HitlistEntry, s: Sources, asOf = T) => laneAt(e, asOf, s, { now: NOW })
+  const lane = (e: HitlistEntry, s: Sources, asOf = T) => laneAt(e, asOf, s, { anchorDay: ANCHOR })
 
   it("dates a category tag against the revision before T's month, with no floor check", async () => {
     const pageviews = flatPageviews({ 'Article Q1': 1, 'Article Q2': 1 })

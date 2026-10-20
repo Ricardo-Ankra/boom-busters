@@ -294,7 +294,8 @@ export async function runBacktest(
   }
   const { hitlist, uploads, proposals, fixture, byQid } = inputs
   const runDate = dayOf(ctx.now)
-  const now = () => ctx.now
+  // Every request is asked as of the hitlist's build day, so a rerun on any day hits the cache.
+  const anchor = { anchorDay: hitlist.builtOn }
   const byVideo = new Map(proposals.map((p) => [p.videoId, p]))
 
   // Each subject's lanes at its own T and today, before selection, which needs them and is synchronous.
@@ -306,7 +307,7 @@ export async function runBacktest(
     const entry = byQid.get(f.qid)
     if (entry === undefined) continue
     lanesByVideo.set(p.videoId, {
-      atT: await laneAt(entry, dayBefore(p.publishedAt), ctx.sources, { now }),
+      atT: await laneAt(entry, dayBefore(p.publishedAt), ctx.sources, anchor),
       today: laneOf(entry.tags),
     })
   }
@@ -353,7 +354,7 @@ export async function runBacktest(
   const rankings = new Map<IsoDate, Record<Lane, LaneResult>>()
   try {
     for (const T of dates) {
-      const evidence = await gatherAt(hitlist.entries, T, ctx.sources, ctx.log, { now })
+      const evidence = await gatherAt(hitlist.entries, T, ctx.sources, ctx.log, anchor)
       rankings.set(T, rank(evidence, { applyLegalKill: false }))
     }
   } catch (error) {

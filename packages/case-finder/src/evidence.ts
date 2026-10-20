@@ -74,9 +74,11 @@ interface PassOne {
 interface Run {
   asOf: IsoDate
   sources: Sources
-  today: IsoDate
-  /** The month before today's: the last one whose monthly total is final. */
+  /** Stands in for today in every request; see GatherOptions. */
+  anchorDay: IsoDate
+  /** The month before the anchor's: the last one whose monthly total is final. */
   lastMonth: string
+  /** The day before the anchor: the last complete day of views. */
   yesterday: IsoDate
   pageAt: (title: string) => Promise<PageAtT | null>
   listLinks: (page: string) => Promise<Set<string>>
@@ -234,8 +236,8 @@ async function documentsOf(
   const { asOf, sources } = run
   const documents: PrimaryDocument[] = []
   if (nonBlank(entry.query)) {
-    // Asked as of today so one cached answer serves every T, then cut to T here.
-    const dockets = await sources.courtlistener.dockets(entry.query, run.today)
+    // Asked as of the anchor so one cached answer serves every T, then cut to T here.
+    const dockets = await sources.courtlistener.dockets(entry.query, run.anchorDay)
     documents.push(...dockets.filter((d) => d.datedAt === null || d.datedAt < asOf))
   }
   if (entry.cik !== null) documents.push(...(await sources.edgar.filings(entry.cik, lane, asOf)))
@@ -273,7 +275,7 @@ async function passTwo(
   const searched = nonBlank(query)
   const search = nonBlank(query)
     ? await sources.youtube.search(query)
-    : { fetchedAt: run.today, videos: [] }
+    : { fetchedAt: run.anchorDay, videos: [] }
   const channels: Record<string, ChannelUploads> = {}
   for (const channelId of new Set(search.videos.map((v) => v.channelId))) {
     // A channel with no uploads to read is left out; its videos' outlier ratio falls back to 1.
@@ -294,9 +296,19 @@ async function passTwo(
   }
 }
 
+export interface GatherOptions {
+  /**
+   * The day every request treats as today: series end the month and the day
+   * before it, and CourtListener is asked for dockets before it. The back-test
+   * passes the hitlist snapshot's build day, so a rerun on any later day asks
+   * the same questions and the cache answers them all. Default: the clock.
+   */
+  anchorDay?: IsoDate
+}
+
 /** One back-test day's shared state: dates, and the per-run memos over pages, lists and channels. */
-function createRun(asOf: IsoDate, sources: Sources, now: () => Date = () => new Date()): Run {
-  const today = now().toISOString().slice(0, 10)
+function createRun(asOf: IsoDate, sources: Sources, options: GatherOptions): Run {
+  const anchorDay = options.anchorDay ?? new Date().toISOString().slice(0, 10)
   const month = asOf.slice(0, 7)
   const firstDay = `${month}-01`
   const pageAt = memo(async (key: string): Promise<PageAtT | null> => {
@@ -320,9 +332,9 @@ function createRun(asOf: IsoDate, sources: Sources, now: () => Date = () => new 
   return {
     asOf,
     sources,
-    today,
-    lastMonth: previousMonth(today),
-    yesterday: addDays(today, -1),
+    anchorDay,
+    lastMonth: previousMonth(anchorDay),
+    yesterday: addDays(anchorDay, -1),
     pageAt: (title) => pageAt(`${month}|${title}`),
     listLinks,
     uploads,
@@ -338,9 +350,9 @@ export async function laneAt(
   entry: HitlistEntry,
   asOf: IsoDate,
   sources: Sources,
-  options: { now?: () => Date } = {},
+  options: GatherOptions = {},
 ): Promise<Lane | null> {
-  const run = createRun(asOf, sources, options.now)
+  const run = createRun(asOf, sources, options)
   const enTitles = await enTitlesOf(entry, sources)
   const page = entry.enTitle === null ? null : await run.pageAt(entry.enTitle)
   const pages = { page, enTitles, listLinks: run.listLinks }
@@ -353,9 +365,9 @@ export async function gatherAt(
   asOf: IsoDate,
   sources: Sources,
   log: (line: string) => void,
-  options: { now?: () => Date } = {},
+  options: GatherOptions = {},
 ): Promise<EntryEvidence[]> {
-  const run = createRun(asOf, sources, options.now)
+  const run = createRun(asOf, sources, options)
 
   const first: PassOne[] = []
   for (const entry of hitlist) {
