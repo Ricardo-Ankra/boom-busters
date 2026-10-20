@@ -1,5 +1,8 @@
 import { readFileSync } from 'node:fs'
-import { describe, expect, it, vi } from 'vitest'
+import { mkdtemp, readdir, readFile, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import path from 'node:path'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createPoliteClient } from './http'
 import { liveWikipedia, normalTitle } from './wikipedia'
 import { mockWikipedia } from './mock'
@@ -24,6 +27,11 @@ const sourceFor = (fetchImpl: ReturnType<typeof wikipediaFetch>) =>
       minIntervalMs: { 'wikipedia.org': 0 },
     }),
   )
+
+const dirs: string[] = []
+afterEach(async () => {
+  await Promise.all(dirs.splice(0).map((d) => rm(d, { recursive: true, force: true })))
+})
 
 const searchParamsOf = (fetchImpl: ReturnType<typeof wikipediaFetch>) =>
   fetchImpl.mock.calls.map((c) => new URL(String(c[0])).searchParams)
@@ -199,6 +207,52 @@ describe('live wikipedia', () => {
     await expect(sourceFor(hidden).parsed(987654)).resolves.toEqual(empty)
     const absent = wikipediaFetch(() => 'wikipedia-wikitext-nocontent.json')
     await expect(sourceFor(absent).parsed(987654)).resolves.toEqual(empty)
+  })
+
+  it('parsed keeps only the extracted items, per revision, and reads them back first', async () => {
+    const cacheDir = await mkdtemp(path.join(tmpdir(), 'cf-wp-'))
+    dirs.push(cacheDir)
+    const itemsCacheDir = path.join(cacheDir, 'wikipedia-items')
+    const sourceWith = (fetchImpl: ReturnType<typeof wikipediaFetch>) =>
+      liveWikipedia(
+        createPoliteClient({
+          contact: 'me@example.com',
+          cacheDir,
+          fetchImpl,
+          minIntervalMs: { 'wikipedia.org': 0 },
+        }),
+        { itemsCacheDir },
+      )
+    const fetchImpl = wikipediaFetch(() => 'wikipedia-wikitext.json')
+    const first = await sourceWith(fetchImpl).parsed(987654)
+    // The raw wikitext reply is never written; the items are, under the revision id.
+    expect(await readdir(cacheDir)).toEqual(['wikipedia-items'])
+    expect(await readdir(itemsCacheDir)).toEqual(['987654.json'])
+    expect(JSON.parse(await readFile(path.join(itemsCacheDir, '987654.json'), 'utf8'))).toEqual(
+      first,
+    )
+    const offline = wikipediaFetch(() => {
+      throw new Error('no network')
+    })
+    expect(await sourceWith(offline).parsed(987654)).toEqual(first)
+    expect(offline).not.toHaveBeenCalled()
+  })
+
+  it('a hidden revision caches its empty items; an error caches nothing', async () => {
+    const itemsCacheDir = await mkdtemp(path.join(tmpdir(), 'cf-wp-items-'))
+    dirs.push(itemsCacheDir)
+    const client = (route: string) =>
+      createPoliteClient({
+        contact: 'me@example.com',
+        cacheDir: null,
+        fetchImpl: wikipediaFetch(() => route),
+        minIntervalMs: { 'wikipedia.org': 0 },
+      })
+    await liveWikipedia(client('wikipedia-wikitext-hidden.json'), { itemsCacheDir }).parsed(5)
+    await expect(
+      liveWikipedia(client('wikipedia-wikitext-error.json'), { itemsCacheDir }).parsed(6),
+    ).rejects.toThrow()
+    expect(await readdir(itemsCacheDir)).toEqual(['5.json'])
   })
 
   it('normalTitle trims, spaces underscores and upper-cases the first letter', () => {

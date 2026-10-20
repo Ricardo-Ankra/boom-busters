@@ -1,3 +1,5 @@
+import path from 'node:path'
+
 /**
  * The back-test CLI's arguments. Pure, so every refusal is tested without a
  * process: the paid baseline call in particular must be impossible to reach
@@ -41,6 +43,17 @@ export const USAGE =
 function wholeNumber(flag: string, text: string): number {
   if (!/^\d+$/.test(text)) throw new Error(`${flag} needs a whole number, got "${text}"`)
   return Number(text)
+}
+
+/**
+ * The raw HTTP cache: `.cache/case-finder/` in the repo (decision 10), or
+ * CASE_FINDER_CACHE_DIR. The live run's cache runs to gigabytes, and a synced
+ * folder such as OneDrive chokes on that many files, so the owner can move it.
+ * The small snapshots the commands hand each other stay in the repo either way.
+ */
+export function rawCacheDir(env: Record<string, string | undefined>, root: string): string {
+  const override = env.CASE_FINDER_CACHE_DIR?.trim()
+  return override ? path.resolve(override) : path.join(root, '.cache', 'case-finder')
 }
 
 export function parseCliArgs(argv: readonly string[]): CliArgs {

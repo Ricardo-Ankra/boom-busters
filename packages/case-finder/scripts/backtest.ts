@@ -20,7 +20,7 @@ import {
   priceOf,
 } from '@boom-busters/providers'
 import { PROVIDER_ENV_SEEDS, readCaseFinderEnv } from '@boom-busters/schemas'
-import { parseCliArgs, type CliArgs } from '../src/backtest/cli-args'
+import { parseCliArgs, rawCacheDir, type CliArgs } from '../src/backtest/cli-args'
 import {
   runBacktest,
   runHitlist,
@@ -130,16 +130,17 @@ async function main(): Promise<number> {
       ['DATA_CONTACT_EMAIL', 'YOUTUBE_DATA_API_KEY', 'COURTLISTENER_TOKEN'] as const
     ).filter((key) => env[key] === undefined)
     if (missing.length > 0) throw new Error(`--live needs ${missing.join(', ')} in .env.local`)
+    const cacheDir = rawCacheDir(process.env, root)
     const client = createPoliteClient({
       contact: env.DATA_CONTACT_EMAIL!,
-      cacheDir: path.join(root, '.cache', 'case-finder'),
+      cacheDir,
       now: () => now,
     })
     const ledger = createQuotaLedger(args.dailyUnits, args.spentToday)
     sources = {
       pageviews: livePageviews(client),
       wikidata: liveWikidata(client),
-      wikipedia: liveWikipedia(client),
+      wikipedia: liveWikipedia(client, { itemsCacheDir: path.join(cacheDir, 'wikipedia-items') }),
       youtube: liveYoutube(client, env.YOUTUBE_DATA_API_KEY!, ledger),
       courtlistener: liveCourtListener(client, env.COURTLISTENER_TOKEN!),
       edgar: liveEdgar(client),

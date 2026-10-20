@@ -51,6 +51,18 @@ describe('polite client', () => {
     expect(fetchImpl).toHaveBeenCalledTimes(1)
   })
 
+  it('noStore fetches and returns without writing the body to the cache', async () => {
+    const cacheDir = await tmp()
+    const fetchImpl = vi.fn(async () => json({ ok: true }))
+    const client = createPoliteClient({ contact: 'me@example.com', cacheDir, fetchImpl })
+    const first = await client.getJson('https://api.example.com/big', schema, { noStore: true })
+    expect(first).toMatchObject({ data: { ok: true }, fromCache: false })
+    const text = await client.getText('https://api.example.com/big', { noStore: true })
+    expect(text.data).toBe('{"ok":true}')
+    expect(await readdir(cacheDir)).toEqual([])
+    expect(fetchImpl).toHaveBeenCalledTimes(2)
+  })
+
   it('refetches an entry older than maxAgeDays', async () => {
     const cacheDir = await tmp()
     const fetchImpl = vi.fn(async () => json({ ok: true }))

@@ -15,7 +15,7 @@ import {
 import { QuotaExhaustedError } from '../sources/quota'
 import { uploadsPlaylistId, type YoutubeSource } from '../sources/youtube'
 import type { HitlistEntry, YoutubeVideo } from '../types'
-import { parseCliArgs } from './cli-args'
+import { parseCliArgs, rawCacheDir } from './cli-args'
 import {
   FIXTURE_PATH,
   runBacktest,
@@ -76,6 +76,17 @@ describe('parseCliArgs', () => {
     expect(() => parseCliArgs(['run', '--live', '--baseline-model', 'm'])).toThrow(/--baseline/)
     const paid = ['--baseline', '--baseline-provider', 'google', '--baseline-model', 'm']
     expect(() => parseCliArgs(['hitlist', '--live', ...paid])).toThrow(/run/)
+  })
+
+  it('the raw cache sits in the repo unless CASE_FINDER_CACHE_DIR moves it', () => {
+    const root = path.join('C:', 'repo')
+    expect(rawCacheDir({}, root)).toBe(path.join(root, '.cache', 'case-finder'))
+    expect(rawCacheDir({ CASE_FINDER_CACHE_DIR: '  ' }, root)).toBe(
+      path.join(root, '.cache', 'case-finder'),
+    )
+    expect(rawCacheDir({ CASE_FINDER_CACHE_DIR: ' D:/cf-cache ' }, root)).toBe(
+      path.resolve('D:/cf-cache'),
+    )
   })
 
   it('reads the LoPucki path and ignores a leading -- from pnpm', () => {

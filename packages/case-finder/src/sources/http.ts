@@ -31,6 +31,11 @@ export interface RequestInitLite {
   cacheKey?: string
   /** A cached entry older than this is refetched. Default: never expires. */
   maxAgeDays?: number
+  /**
+   * Fetch and return without writing the body to the cache, for a large reply
+   * the caller keeps a small extract of instead (a revision's raw wikitext).
+   */
+  noStore?: boolean
 }
 
 export interface PoliteClient {
@@ -209,7 +214,7 @@ export function createPoliteClient(options: PoliteClientOptions): PoliteClient {
     // Only a settled answer is remembered: success, or the page is gone (404, 410).
     // Auth, rate-limit, timeout and server errors are transient and never cached.
     const settled = (status >= 200 && status < 300) || status === 404 || status === 410
-    if (file !== null && settled) {
+    if (file !== null && settled && init.noStore !== true) {
       await mkdir(path.dirname(file), { recursive: true })
       await writeFile(file, JSON.stringify(entry))
     }

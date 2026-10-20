@@ -1,3 +1,5 @@
+import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import path from 'node:path'
 import { z } from 'zod'
 import type { IsoDate } from '../types'
 import type { PoliteClient } from './http'
@@ -27,7 +29,7 @@ export interface WikipediaSource {
    * template-added categories would leak later content into an old revision. Whatever only a
    * template adds is therefore dropped, deliberately: undercounting is the conservative side.
    */
-  parsed(revid: number): Promise<{ categories: string[]; externalLinks: string[]; links: string[] }>
+  parsed(revid: number): Promise<RevisionItems>
 }
 
 const API = 'https://en.wikipedia.org/w/api.php'
@@ -120,12 +122,20 @@ function prefixed(target: string): boolean {
 
 const unique = (items: string[]) => [...new Set(items)]
 
-/** What a revision's own text says, with HTML comments removed first. */
-export function wikitextItems(wikitext: string): {
+export interface RevisionItems {
   categories: string[]
   externalLinks: string[]
   links: string[]
-} {
+}
+
+const itemsSchema = z.object({
+  categories: z.array(z.string()),
+  externalLinks: z.array(z.string()),
+  links: z.array(z.string()),
+})
+
+/** What a revision's own text says, with HTML comments removed first. */
+export function wikitextItems(wikitext: string): RevisionItems {
   const text = wikitext.replace(/<!--[\s\S]*?-->/g, '')
   const categories = [...text.matchAll(/\[\[\s*category\s*:([^|\]]*)(?:\|[^\]]*)?\]\]/gi)]
     .map((m) => normalTitle(m[1]!))
@@ -153,9 +163,50 @@ function chunks<T>(items: T[], size: number): T[][] {
   return out
 }
 
-export function liveWikipedia(client: PoliteClient): WikipediaSource {
+export interface LiveWikipediaOptions {
+  /**
+   * Where `parsed` keeps each revision's extracted items, one `<revid>.json`
+   * each. The raw wikitext is never cached: across every back-test date it
+   * would run to gigabytes, and only the items are ever read. null keeps
+   * nothing (tests).
+   */
+  itemsCacheDir?: string | null
+}
+
+export function liveWikipedia(
+  client: PoliteClient,
+  options: LiveWikipediaOptions = {},
+): WikipediaSource {
+  const itemsCacheDir = options.itemsCacheDir ?? null
   const urlFor = (params: Record<string, string>) =>
     `${API}?${new URLSearchParams({ format: 'json', formatversion: '2', ...params })}`
+
+  /** One revision's items from its wikitext, which is fetched but not cached. */
+  async function fetchItems(revid: number): Promise<RevisionItems> {
+    const { data } = await client.getJson(
+      urlFor({
+        action: 'query',
+        prop: 'revisions',
+        revids: String(revid),
+        rvprop: 'content',
+        rvslots: 'main',
+      }),
+      contentReply,
+      { noStore: true },
+    )
+    if (data.error !== undefined) {
+      throw new Error(`Wikipedia revision ${revid}: ${data.error.code} ${data.error.info ?? ''}`)
+    }
+    const revision = data.query?.pages?.[0]?.revisions?.[0]
+    if (data.query?.badrevids !== undefined || revision === undefined) {
+      throw new Error(`Wikipedia has no revision ${revid}`)
+    }
+    // The revision exists but its text is suppressed (revision deletion) or absent: it says
+    // nothing, so it has no items. Throwing here would abort every rerun on one hidden edit.
+    const content = revision.slots?.main.content
+    if (content === undefined) return { categories: [], externalLinks: [], links: [] }
+    return wikitextItems(content)
+  }
 
   /** Every reply of a query, merging each `continue` object into the next request until it is absent. */
   async function allReplies<T extends z.ZodType>(
@@ -287,28 +338,18 @@ export function liveWikipedia(client: PoliteClient): WikipediaSource {
     },
 
     async parsed(revid) {
-      const { data } = await client.getJson(
-        urlFor({
-          action: 'query',
-          prop: 'revisions',
-          revids: String(revid),
-          rvprop: 'content',
-          rvslots: 'main',
-        }),
-        contentReply,
-      )
-      if (data.error !== undefined) {
-        throw new Error(`Wikipedia revision ${revid}: ${data.error.code} ${data.error.info ?? ''}`)
+      if (itemsCacheDir === null) return fetchItems(revid)
+      // A revision never changes, so its items never expire.
+      const file = path.join(itemsCacheDir, `${revid}.json`)
+      try {
+        return itemsSchema.parse(JSON.parse(await readFile(file, 'utf8')))
+      } catch {
+        // Not cached yet, or unreadable: fetch it again.
       }
-      const revision = data.query?.pages?.[0]?.revisions?.[0]
-      if (data.query?.badrevids !== undefined || revision === undefined) {
-        throw new Error(`Wikipedia has no revision ${revid}`)
-      }
-      // The revision exists but its text is suppressed (revision deletion) or absent: it says
-      // nothing, so it has no items. Throwing here would abort every rerun on one hidden edit.
-      const content = revision.slots?.main.content
-      if (content === undefined) return { categories: [], externalLinks: [], links: [] }
-      return wikitextItems(content)
+      const items = await fetchItems(revid)
+      await mkdir(itemsCacheDir, { recursive: true })
+      await writeFile(file, JSON.stringify(items))
+      return items
     },
   }
 }
