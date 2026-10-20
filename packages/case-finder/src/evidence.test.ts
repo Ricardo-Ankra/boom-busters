@@ -1,112 +1,20 @@
 import { describe, expect, it, vi } from 'vitest'
-import { gatherAt, laneAt, type Sources } from './evidence'
-import { classify } from './score/rank'
+import { gatherAt } from './evidence'
 import {
-  mockCourtListener,
-  mockEdgar,
-  mockSecReleases,
-  mockWikidata,
-  mockYoutube,
-} from './sources/mock'
-import { dayRange, monthRange, type PageviewsSource } from './sources/pageviews'
+  T,
+  byQid,
+  entry,
+  fakeWikipedia,
+  flatPageviews,
+  gather,
+  silent,
+  sources,
+  video,
+} from './gather/fixtures'
+import { mockCourtListener, mockWikidata, mockYoutube } from './sources/mock'
+import { monthRange, type PageviewsSource } from './sources/pageviews'
 import { QuotaExhaustedError } from './sources/quota'
-import type { WikipediaSource } from './sources/wikipedia'
 import { YoutubeNotFoundError, type YoutubeSource } from './sources/youtube'
-import type { DatedTag, HitlistEntry, YoutubeVideo } from './types'
-
-const ANCHOR = '2026-10-20'
-const T = '2020-03-15'
-const DOWNFALL: DatedTag = {
-  tag: 'wikidata:dissolved-convicted',
-  lane: 'downfall',
-  since: '2019-01-01',
-}
-const silent = () => {}
-
-function entry(qid: string, overrides: Partial<HitlistEntry> = {}): HitlistEntry {
-  const enTitle = overrides.enTitle !== undefined ? overrides.enTitle : `Article ${qid}`
-  return {
-    qid,
-    enTitle,
-    query: enTitle,
-    sitelinks: enTitle === null ? {} : { enwiki: enTitle },
-    tags: [DOWNFALL],
-    country: null,
-    cik: null,
-    ...overrides,
-  }
-}
-
-/** Flat views per (project, title): 1000 a month (and 1000 a day) unless `levels` names the title. */
-function flatPageviews(levels: Record<string, number> = {}): PageviewsSource {
-  const level = (titles: string[]) => titles.reduce((sum, t) => sum + (levels[t] ?? 1000), 0)
-  return {
-    monthly: vi.fn(async (_project: string, titles: string[], from: string, to: string) =>
-      monthRange(from, to).map((month) => ({ month, views: level(titles) })),
-    ),
-    daily: vi.fn(async (_project: string, titles: string[], from: string, to: string) =>
-      dayRange(from, to).map((date) => ({ date, views: level(titles) })),
-    ),
-  }
-}
-
-/** Pages as they stood before T's month: categories, links and external links per title. */
-function fakeWikipedia(
-  pages: Record<string, { categories?: string[]; links?: string[]; externalLinks?: string[] }>,
-) {
-  const titles = Object.keys(pages)
-  const source: WikipediaSource = {
-    categoryMembers: vi.fn(async () => []),
-    listLinks: vi.fn(async () => []),
-    redirectsTo: vi.fn(async () => []),
-    qidsFor: vi.fn(async () => new Map()),
-    revisionBefore: vi.fn(async (title: string, day: string) => {
-      const i = titles.indexOf(title)
-      if (i < 0) return null
-      const timestamp = new Date(Date.parse(`${day}T00:00:00Z`) - 3_600_000)
-        .toISOString()
-        .replace('.000Z', 'Z')
-      return { revid: i + 1, timestamp }
-    }),
-    parsed: vi.fn(async (revid: number) => {
-      const page = pages[titles[revid - 1]!]!
-      return {
-        categories: page.categories ?? [],
-        externalLinks: page.externalLinks ?? [],
-        links: page.links ?? [],
-      }
-    }),
-  }
-  return source
-}
-
-function sources(overrides: Partial<Sources> = {}): Sources {
-  return {
-    pageviews: flatPageviews(),
-    wikidata: mockWikidata,
-    wikipedia: fakeWikipedia({}),
-    youtube: mockYoutube,
-    courtlistener: mockCourtListener,
-    edgar: mockEdgar,
-    secReleases: mockSecReleases,
-    ...overrides,
-  }
-}
-
-const video = (id: string, channelId: string): YoutubeVideo => ({
-  id,
-  channelId,
-  title: `[fake] ${id}`,
-  publishedAt: '2019-06-01',
-  durationSec: 900,
-  views: 1000,
-})
-
-const gather = (hitlist: HitlistEntry[], s: Sources, asOf = T, log: (l: string) => void = silent) =>
-  gatherAt(hitlist, asOf, s, log, { anchorDay: ANCHOR })
-
-const byQid = (evidence: Awaited<ReturnType<typeof gatherAt>>, qid: string) =>
-  evidence.find((e) => e.entry.qid === qid)!
 
 describe('gatherAt', () => {
   it('YouTube is searched only for the ranked population', async () => {
@@ -130,94 +38,6 @@ describe('gatherAt', () => {
       expect(e.worldMonthly).toEqual([])
     }
     expect(evidence.map((e) => e.entry.qid)).toEqual(['Q1', 'Q2', 'Q3'])
-  })
-
-  it("a category tag counts only if the revision before T's month has it", async () => {
-    const wikipedia = fakeWikipedia({ 'Article Q1': { categories: ['Accounting scandals'] } })
-    const hitlist = [
-      entry('Q1', {
-        tags: [
-          { tag: 'category:Accounting scandals', lane: 'downfall', since: null },
-          { tag: 'category:Ponzi schemes', lane: 'downfall', since: null },
-        ],
-      }),
-      entry('Q2', {
-        tags: [{ tag: 'category:Accounting scandals', lane: 'downfall', since: null }],
-      }),
-    ]
-    const evidence = await gather(hitlist, sources({ wikipedia }))
-    expect(wikipedia.revisionBefore).toHaveBeenCalledWith('Article Q1', '2020-03-01')
-    expect(byQid(evidence, 'Q1').tagsAtT.map((t) => t.tag)).toEqual([
-      'category:Accounting scandals',
-    ])
-    // Q2's article had no revision before the month, so its category tag is dropped.
-    expect(byQid(evidence, 'Q2').tagsAtT).toEqual([])
-  })
-
-  it('a dated category tag also needs its date before T', async () => {
-    const wikipedia = fakeWikipedia({
-      'Article Q1': { categories: ['Companies that filed for Chapter 11 bankruptcy in 2020'] },
-    })
-    const tag: DatedTag = {
-      tag: 'category:Companies that filed for Chapter 11 bankruptcy in 2020',
-      lane: 'downfall',
-      since: '2020-03-15',
-    }
-    const evidence = await gather([entry('Q1', { tags: [tag] })], sources({ wikipedia }))
-    expect(byQid(evidence, 'Q1').tagsAtT).toEqual([])
-  })
-
-  it('a founder-link tag counts at T only with a 24-month median of 1,000 before T', async () => {
-    const founder: DatedTag = { tag: 'founder-link', lane: 'success', since: null }
-    const hitlist = [entry('Q1', { tags: [founder] }), entry('Q2', { tags: [founder, DOWNFALL] })]
-    const pageviews = flatPageviews({ 'Article Q1': 999, 'Article Q2': 999 })
-    const evidence = await gather(hitlist, sources({ pageviews }))
-    expect(byQid(evidence, 'Q1').tagsAtT).toEqual([])
-    expect(byQid(evidence, 'Q2').tagsAtT).toEqual([DOWNFALL])
-    const popular = await gather([entry('Q1', { tags: [founder] })], sources())
-    expect(popular[0]!.tagsAtT).toEqual([founder])
-  })
-
-  it('a LoPucki tag filed after T is ignored', async () => {
-    const hitlist = [
-      entry('Q1', { tags: [{ tag: 'lopucki', lane: 'downfall', since: '2020-03-15' }] }),
-      entry('Q2', { tags: [{ tag: 'lopucki', lane: 'downfall', since: '2020-03-14' }] }),
-      entry('Q3', { tags: [{ tag: 'founder-link', lane: 'success', since: null }] }),
-    ]
-    const evidence = await gather(hitlist, sources())
-    expect(byQid(evidence, 'Q1').tagsAtT).toEqual([])
-    expect(byQid(evidence, 'Q2').tagsAtT.map((t) => t.tag)).toEqual(['lopucki'])
-    expect(byQid(evidence, 'Q3').tagsAtT.map((t) => t.tag)).toEqual(['founder-link'])
-  })
-
-  it("a list tag counts only when the list page's revision before T's month links to the entry", async () => {
-    const wikipedia = fakeWikipedia({
-      'Article Q1': {},
-      'Article Q2': {},
-      'List of frauds': { links: ['Article_Q1', 'Something else'] },
-    })
-    const tag: DatedTag = { tag: 'list:List of frauds', lane: 'downfall', since: null }
-    const hitlist = [entry('Q1', { tags: [tag] }), entry('Q2', { tags: [tag] })]
-    const evidence = await gather(hitlist, sources({ wikipedia }))
-    expect(byQid(evidence, 'Q1').tagsAtT).toEqual([tag])
-    expect(byQid(evidence, 'Q2').tagsAtT).toEqual([])
-    const listCalls = vi
-      .mocked(wikipedia.revisionBefore)
-      .mock.calls.filter(([title]) => title === 'List of frauds')
-    expect(listCalls).toEqual([['List of frauds', '2020-03-01']])
-  })
-
-  it('a list tag also counts when the list links to one of the entry redirects', async () => {
-    const wikipedia = fakeWikipedia({
-      'Article Q1': {},
-      'List of frauds': { links: ['Old name of Q1'] },
-    })
-    vi.mocked(wikipedia.redirectsTo).mockImplementation(async (title) =>
-      title === 'Article Q1' ? ['old_name of Q1'] : [],
-    )
-    const tag: DatedTag = { tag: 'list:List of frauds', lane: 'downfall', since: null }
-    const [e] = await gather([entry('Q1', { tags: [tag] })], sources({ wikipedia }))
-    expect(e!.tagsAtT).toEqual([tag])
   })
 
   it('an SEC release dated on or after asOf never reaches documents', async () => {
@@ -406,36 +226,6 @@ describe('gatherAt', () => {
     ).rejects.toThrow(/500/)
   })
 
-  it('an entry below the floor gets no revision call and keeps only its dated plain tags', async () => {
-    const wikipedia = fakeWikipedia({ 'Article Q1': { categories: ['Ponzi schemes'] } })
-    const hitlist = [
-      entry('Q1', {
-        tags: [
-          { tag: 'category:Ponzi schemes', lane: 'downfall', since: null },
-          { tag: 'list:List of frauds', lane: 'downfall', since: null },
-          { tag: 'lopucki', lane: 'downfall', since: '2019-02-01' },
-          { tag: 'wikidata:dissolved-convicted', lane: 'downfall', since: '2021-01-01' },
-        ],
-      }),
-    ]
-    const s = sources({ wikipedia, pageviews: flatPageviews({ 'Article Q1': 299 }) })
-    const [e] = await gather(hitlist, s)
-    expect(wikipedia.revisionBefore).not.toHaveBeenCalled()
-    expect(wikipedia.parsed).not.toHaveBeenCalled()
-    expect(e!.tagsAtT.map((t) => t.tag)).toEqual(['lopucki'])
-  })
-
-  it('a below-floor entry with only category tags is reported below floor', async () => {
-    const wikipedia = fakeWikipedia({ 'Article Q1': { categories: ['Ponzi schemes'] } })
-    const hitlist = [
-      entry('Q1', { tags: [{ tag: 'category:Ponzi schemes', lane: 'downfall', since: null }] }),
-    ]
-    const s = sources({ wikipedia, pageviews: flatPageviews({ 'Article Q1': 299 }) })
-    const evidence = await gather(hitlist, s)
-    expect(evidence[0]!.tagsAtT).toEqual([])
-    expect(classify(evidence).unranked).toEqual([{ qid: 'Q1', lane: null, reason: 'below floor' }])
-  })
-
   it('a population entry with no query gets an empty search, never null', async () => {
     const youtube = { ...mockYoutube, search: vi.fn(mockYoutube.search) }
     const [e] = await gather([entry('Q1', { query: '  ' })], sources({ youtube }))
@@ -475,61 +265,5 @@ describe('gatherAt', () => {
       'evidence 2020-03-15: 2 entries; population downfall=1, success=1; ' +
         '2 YouTube searches; 6 channels fetched',
     )
-  })
-})
-
-describe('laneAt', () => {
-  const lane = (e: HitlistEntry, s: Sources, asOf = T) => laneAt(e, asOf, s, { anchorDay: ANCHOR })
-
-  it("dates a category tag against the revision before T's month, with no floor check", async () => {
-    const pageviews = flatPageviews({ 'Article Q1': 1, 'Article Q2': 1 })
-    const wikipedia = fakeWikipedia({ 'Article Q1': { categories: ['Ponzi schemes'] } })
-    const tag: DatedTag = { tag: 'category:Ponzi schemes', lane: 'downfall', since: null }
-    const s = sources({ pageviews, wikipedia })
-    expect(await lane(entry('Q1', { tags: [tag] }), s)).toBe('downfall')
-    expect(await lane(entry('Q2', { tags: [tag] }), s)).toBeNull()
-    expect(wikipedia.revisionBefore).toHaveBeenCalledWith('Article Q1', '2020-03-01')
-    expect(pageviews.monthly).not.toHaveBeenCalled()
-  })
-
-  it('a tag dated on or after T does not count, and a downfall tag wins', async () => {
-    const s = sources()
-    const success: DatedTag = { tag: 'founder-link', lane: 'success', since: null }
-    const late: DatedTag = { tag: 'lopucki', lane: 'downfall', since: T }
-    expect(await lane(entry('Q1', { tags: [success, late] }), s)).toBe('success')
-    expect(await lane(entry('Q1', { tags: [success, DOWNFALL] }), s)).toBe('downfall')
-    expect(await lane(entry('Q1', { tags: [late] }), s)).toBeNull()
-  })
-
-  it('a list tag counts when the list before T links to one of the redirects', async () => {
-    const wikipedia = fakeWikipedia({
-      'Article Q1': {},
-      'List of frauds': { links: ['Old name of Q1'] },
-    })
-    vi.mocked(wikipedia.redirectsTo).mockResolvedValue(['Old name of Q1'])
-    const tag: DatedTag = { tag: 'list:List of frauds', lane: 'downfall', since: null }
-    expect(await lane(entry('Q1', { tags: [tag] }), sources({ wikipedia }))).toBe('downfall')
-  })
-
-  it('an entry with no English title keeps only its plain dated tags', async () => {
-    const tags: DatedTag[] = [
-      { tag: 'category:Ponzi schemes', lane: 'downfall', since: null },
-      { tag: 'lopucki', lane: 'downfall', since: '2019-01-01' },
-    ]
-    expect(await lane(entry('Q1', { enTitle: null, tags }), sources())).toBe('downfall')
-  })
-
-  it('a founder-link tag needs its 24-month median before T, read from the same series', async () => {
-    const founder: DatedTag = { tag: 'founder-link', lane: 'success', since: null }
-    const pageviews = flatPageviews({ 'Article Q1': 999 })
-    expect(await lane(entry('Q1', { tags: [founder] }), sources({ pageviews }))).toBeNull()
-    expect(pageviews.monthly).toHaveBeenCalledWith(
-      'en.wikipedia',
-      ['Article Q1'],
-      '2015-07',
-      '2026-09',
-    )
-    expect(await lane(entry('Q2', { tags: [founder] }), sources())).toBe('success')
-    expect(await lane(entry('Q3', { enTitle: null, tags: [founder] }), sources())).toBeNull()
   })
 })
