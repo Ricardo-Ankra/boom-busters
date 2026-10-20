@@ -25,6 +25,8 @@ import type { SubjectFixture } from './subjects'
 
 export const NOW = new Date('2026-10-21T09:00:00Z')
 
+export const COMMIT = '0123456789abcdef0123456789abcdef01234567'
+
 export const video = (
   id: string,
   title: string,
@@ -118,12 +120,13 @@ export function fakeSources(youtube: YoutubeSource = fakeYoutube()): Sources {
 export const cleanGit: GitAdapter = {
   porcelain: async () => '',
   isTracked: async () => true,
-  head: async () => 'abc1234',
-  blob: async () => 'blob1',
+  head: async () => COMMIT,
+  objectAt: async () => 'tree1',
 }
 
-export const dirtyConfig = async (p: string) =>
-  p.endsWith('config.ts') ? ' M packages/case-finder/src/config.ts' : ''
+/** git status for the package, with an edit outside config.ts: the guard covers all of it. */
+export const dirtyPackage = async (p: string) =>
+  p === 'packages/case-finder' ? ' M packages/case-finder/src/hitlist/seeds.ts\n' : ''
 
 export function context(overrides: Partial<CliContext> = {}): CliContext & { lines: string[] } {
   const lines: string[] = []
@@ -143,8 +146,8 @@ export function context(overrides: Partial<CliContext> = {}): CliContext & { lin
 /** The state `hitlist` would leave, written by hand so the subjects match. */
 export function writeHitlist(
   ctx: CliContext,
-  { configBlob = ctx.mock ? null : 'blob1', entries = HITLIST } = {} as {
-    configBlob?: string | null
+  { codeTree = ctx.mock ? null : 'tree1', entries = HITLIST } = {} as {
+    codeTree?: string | null
     entries?: HitlistEntry[]
   },
 ) {
@@ -154,7 +157,7 @@ export function writeHitlist(
     path.join(dir, 'hitlist.json'),
     JSON.stringify({
       builtOn: '2026-10-21',
-      configBlob,
+      codeTree,
       entries,
       unresolvedBySeed: { lopucki: 4 },
     }),

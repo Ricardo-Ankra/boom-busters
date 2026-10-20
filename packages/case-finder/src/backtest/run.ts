@@ -12,7 +12,7 @@ import { countByLane, dayBefore, dayOf, dirOf, readHitlist, type CliContext } fr
 import { outcomeRatio } from './outcome'
 import { renderReport, verdict, type CaseRow, type ReportMeta } from './report'
 import {
-  CONFIG_PATH,
+  CODE_PATH,
   SNAPSHOT_FILES,
   liveRefusal,
   readFixture,
@@ -32,7 +32,7 @@ import {
 
 export type { CliContext } from './context'
 export { runHitlist, runSubjects } from './prepare'
-export { CONFIG_PATH, FIXTURE_PATH, type GitAdapter } from './snapshots'
+export { FIXTURE_PATH, type GitAdapter } from './snapshots'
 
 /**
  * The back-test commands, with every outside dependency injected (sources,
@@ -147,10 +147,10 @@ async function loadInputs(ctx: CliContext) {
     'run subjects first',
   )
   if (!ctx.mock) {
-    const stale = staleRefusal(await ctx.git.blob(CONFIG_PATH), [
-      { file: SNAPSHOT_FILES.hitlist, command: 'hitlist', configBlob: hitlist.configBlob },
-      { file: SNAPSHOT_FILES.uploads, command: 'subjects', configBlob: uploads.configBlob },
-      { file: SNAPSHOT_FILES.proposals, command: 'subjects', configBlob: proposals.configBlob },
+    const stale = staleRefusal(await ctx.git.objectAt(CODE_PATH), [
+      { file: SNAPSHOT_FILES.hitlist, command: 'hitlist', codeTree: hitlist.codeTree },
+      { file: SNAPSHOT_FILES.uploads, command: 'subjects', codeTree: uploads.codeTree },
+      { file: SNAPSHOT_FILES.proposals, command: 'subjects', codeTree: proposals.codeTree },
     ])
     if (stale !== null) return { refusal: stale }
   }

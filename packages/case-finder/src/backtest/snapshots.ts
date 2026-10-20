@@ -5,12 +5,15 @@ import { SubjectFixturesSchema, type SubjectFixture, type SubjectProposal } from
 
 /**
  * What the back-test commands hand to each other on disk, and the checks
- * that keep a live run honest: the config and the hand-checked fixture are
- * committed, every snapshot was built under the committed config, and the
- * fixture says what the run will read. Mock mode skips the checks (R14).
+ * that keep a live run honest: the whole package (config, seeds, scorer and
+ * the hand-checked fixture) is committed, every snapshot was built from the
+ * committed code, and the fixture says what the run will read. Mock mode
+ * skips the checks (R14).
  */
 
-export const CONFIG_PATH = 'packages/case-finder/src/config.ts'
+export const PACKAGE_PATH = 'packages/case-finder'
+/** The code every snapshot is stamped with: what builds the hitlist, gathers and scores. */
+export const CODE_PATH = 'packages/case-finder/src'
 export const FIXTURE_PATH = 'packages/case-finder/fixtures/backtest-subjects.json'
 
 export interface GitAdapter {
@@ -18,19 +21,20 @@ export interface GitAdapter {
   porcelain(relPath: string): Promise<string>
   /** Whether `git ls-files --error-unmatch -- <path>` succeeds. */
   isTracked(relPath: string): Promise<boolean>
-  /** The short HEAD commit. */
+  /** The full HEAD commit hash (`git rev-parse HEAD`). */
   head(): Promise<string>
-  /** `git rev-parse HEAD:<path>`: the committed blob of a file. */
-  blob(relPath: string): Promise<string>
+  /** `git rev-parse HEAD:<path>`: the committed object id at a path (a tree for a folder). */
+  objectAt(relPath: string): Promise<string>
 }
 
 /**
- * Each snapshot records the config.ts blob it was built under (null in mock
- * mode), so a live run can tell a snapshot built before a config change.
+ * Each snapshot records the tree id of the committed packages/case-finder/src
+ * it was built from (null in mock mode), so a live run can tell a snapshot
+ * built before any change to the config, the seeds or the scorer.
  */
 export interface HitlistSnapshot {
   builtOn: IsoDate
-  configBlob: string | null
+  codeTree: string | null
   entries: HitlistEntry[]
   unresolvedBySeed: Record<string, number>
 }
@@ -38,12 +42,12 @@ export interface HitlistSnapshot {
 export interface UploadsSnapshot {
   /** The outcome measure's date: views are as of this fetch. */
   fetchedOn: IsoDate
-  configBlob: string | null
+  codeTree: string | null
   channels: Record<string, ChannelUploads>
 }
 
 export interface ProposalsSnapshot {
-  configBlob: string | null
+  codeTree: string | null
   proposals: SubjectProposal[]
 }
 
@@ -72,36 +76,44 @@ export async function readJson<T>(file: string, missing: string): Promise<T> {
   return JSON.parse(text) as T
 }
 
-/** Why `config.ts` stops a live command, or null when it is committed. */
-export async function configRefusal(git: GitAdapter): Promise<string | null> {
-  if ((await git.porcelain(CONFIG_PATH)).trim() === '') return null
-  return `Refusing a live run: ${CONFIG_PATH} has uncommitted changes. Its values are pre-registered; commit them first.`
+/**
+ * Why the package stops a live command, or null when it is all committed.
+ * Not config.ts alone: the seeds, the tag dating and the scorer decide the
+ * result as much as the weights do, and all of it is pre-registered.
+ */
+export async function packageRefusal(git: GitAdapter): Promise<string | null> {
+  const changed = (await git.porcelain(PACKAGE_PATH))
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line !== '')
+  if (changed.length === 0) return null
+  return (
+    `Refusing a live run: ${PACKAGE_PATH} has uncommitted changes (${changed.join('; ')}). ` +
+    `Everything it builds, gathers and scores with is pre-registered; commit it first.`
+  )
 }
 
 /** Why a live `run` must not start, or null. The pre-registration rests on these (spec anti-goals). */
 export async function liveRefusal(git: GitAdapter): Promise<string | null> {
-  const config = await configRefusal(git)
-  if (config !== null) return config
+  const dirty = await packageRefusal(git)
+  if (dirty !== null) return dirty
   if (!(await git.isTracked(FIXTURE_PATH))) {
     return `Refusing a live run: ${FIXTURE_PATH} is not committed. Hand-check the subjects draft and commit it first.`
-  }
-  if ((await git.porcelain(FIXTURE_PATH)).trim() !== '') {
-    return `Refusing a live run: ${FIXTURE_PATH} has uncommitted changes. Commit the hand-check first.`
   }
   return null
 }
 
-/** Snapshots built under a config.ts other than the committed one, named with the command that rebuilds each. */
+/** Snapshots built from code other than the committed packages/case-finder/src, named with the command that rebuilds each. */
 export function staleRefusal(
   current: string,
-  snapshots: { file: string; command: string; configBlob: string | null }[],
+  snapshots: { file: string; command: string; codeTree: string | null }[],
 ): string | null {
-  const stale = snapshots.filter((s) => s.configBlob !== current)
+  const stale = snapshots.filter((s) => s.codeTree !== current)
   if (stale.length === 0) return null
   const commands = [...new Set(stale.map((s) => `${s.command} --live`))].join(' then ')
   return (
     `Refusing a live run: ${stale.map((s) => s.file).join(', ')} ` +
-    `${stale.length === 1 ? 'was' : 'were'} not built under the committed ${CONFIG_PATH}. ` +
+    `${stale.length === 1 ? 'was' : 'were'} not built from the committed ${CODE_PATH}. ` +
     `Rebuild with ${commands}.`
   )
 }

@@ -70,8 +70,8 @@ function gitAt(root: string): GitAdapter {
         return false
       }
     },
-    head: async () => (await git('rev-parse', '--short', 'HEAD')).trim(),
-    blob: async (relPath) => (await git('rev-parse', `HEAD:${relPath}`)).trim(),
+    head: async () => (await git('rev-parse', 'HEAD')).trim(),
+    objectAt: async (relPath) => (await git('rev-parse', `HEAD:${relPath}`)).trim(),
   }
 }
 

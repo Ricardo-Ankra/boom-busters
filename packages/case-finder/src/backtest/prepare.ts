@@ -2,7 +2,7 @@ import path from 'node:path'
 import { CHANNEL_HANDLES } from '../config'
 import { buildHitlist } from '../hitlist/build'
 import type { ChannelUploads } from '../types'
-import { configBlob, countByLane, dayOf, dirOf, readHitlist, type CliContext } from './context'
+import { codeStamp, countByLane, dayOf, dirOf, readHitlist, type CliContext } from './context'
 import {
   FIXTURE_PATH,
   SNAPSHOT_FILES,
@@ -23,9 +23,9 @@ export async function runHitlist(
   ctx: CliContext,
   deps: { fetchText: (url: string) => Promise<string>; loPuckiCsv: string | null },
 ): Promise<number> {
-  const config = await configBlob(ctx)
-  if ('refusal' in config) {
-    ctx.log(config.refusal)
+  const stamp = await codeStamp(ctx)
+  if ('refusal' in stamp) {
+    ctx.log(stamp.refusal)
     return 1
   }
   let unresolvedBySeed: Record<string, number> = {}
@@ -41,7 +41,7 @@ export async function runHitlist(
   })
   const snapshot: HitlistSnapshot = {
     builtOn: dayOf(ctx.now),
-    configBlob: config.blob,
+    codeTree: stamp.codeTree,
     entries,
     unresolvedBySeed,
   }
@@ -56,9 +56,9 @@ export async function runHitlist(
 }
 
 export async function runSubjects(ctx: CliContext): Promise<number> {
-  const config = await configBlob(ctx)
-  if ('refusal' in config) {
-    ctx.log(config.refusal)
+  const stamp = await codeStamp(ctx)
+  if ('refusal' in stamp) {
+    ctx.log(stamp.refusal)
     return 1
   }
   const hitlist = await readHitlist(ctx)
@@ -80,10 +80,10 @@ export async function runSubjects(ctx: CliContext): Promise<number> {
   const dir = dirOf(ctx)
   const uploadsSnapshot: UploadsSnapshot = {
     fetchedOn: dayOf(ctx.now),
-    configBlob: config.blob,
+    codeTree: stamp.codeTree,
     channels: Object.fromEntries(uploads),
   }
-  const proposalsSnapshot: ProposalsSnapshot = { configBlob: config.blob, proposals }
+  const proposalsSnapshot: ProposalsSnapshot = { codeTree: stamp.codeTree, proposals }
   await writeJson(path.join(dir, SNAPSHOT_FILES.uploads), uploadsSnapshot)
   await writeJson(path.join(dir, SNAPSHOT_FILES.proposals), proposalsSnapshot)
   await writeJson(path.join(dir, 'backtest-subjects.draft.json'), draft)

@@ -3,9 +3,9 @@ import type { Sources } from '../evidence'
 import { laneOf } from '../hitlist/build'
 import type { HitlistEntry, IsoDate, Lane } from '../types'
 import {
-  CONFIG_PATH,
+  CODE_PATH,
   SNAPSHOT_FILES,
-  configRefusal,
+  packageRefusal,
   readJson,
   snapshotDir,
   type GitAdapter,
@@ -38,15 +38,15 @@ export const readHitlist = (ctx: CliContext) =>
   readJson<HitlistSnapshot>(path.join(dirOf(ctx), SNAPSHOT_FILES.hitlist), 'run hitlist first')
 
 /**
- * A live command that writes a snapshot refuses while config.ts is
- * uncommitted, and stamps what it writes with the committed blob.
+ * A live command refuses while the package has uncommitted changes, and
+ * stamps what it writes with the committed code tree. Mock mode does neither.
  */
-export async function configBlob(
+export async function codeStamp(
   ctx: CliContext,
-): Promise<{ blob: string | null } | { refusal: string }> {
-  if (ctx.mock) return { blob: null }
-  const refusal = await configRefusal(ctx.git)
-  return refusal === null ? { blob: await ctx.git.blob(CONFIG_PATH) } : { refusal }
+): Promise<{ codeTree: string | null } | { refusal: string }> {
+  if (ctx.mock) return { codeTree: null }
+  const refusal = await packageRefusal(ctx.git)
+  return refusal === null ? { codeTree: await ctx.git.objectAt(CODE_PATH) } : { refusal }
 }
 
 export function countByLane(entries: HitlistEntry[]): Record<Lane | 'none', number> {

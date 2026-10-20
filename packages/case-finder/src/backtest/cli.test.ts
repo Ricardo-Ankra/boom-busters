@@ -11,7 +11,8 @@ import {
   NOW,
   cleanGit,
   context,
-  dirtyConfig,
+  COMMIT,
+  dirtyPackage,
   fakeBaseline,
   fakeSources,
   fakeYoutube,
@@ -48,9 +49,9 @@ describe('the back-test commands', () => {
     const dir = ['.cache', 'case-finder', 'mock']
     const uploads = readJson(ctx, ...dir, 'channel-uploads.json')
     expect(uploads.channels['@ModernMBA'].uploads).toHaveLength(4)
-    expect(uploads).toMatchObject({ fetchedOn: '2026-10-21', configBlob: null })
+    expect(uploads).toMatchObject({ fetchedOn: '2026-10-21', codeTree: null })
     const proposals = readJson(ctx, ...dir, 'subject-proposals.json')
-    expect(proposals.configBlob).toBeNull()
+    expect(proposals.codeTree).toBeNull()
     expect(proposals.proposals.map((p: { videoId: string }) => p.videoId)).toEqual([
       'a1',
       'd1',
@@ -203,8 +204,9 @@ describe('the back-test commands', () => {
     expect(report).toContain('- Outcomes measured on: 2021-08-15')
   })
 
-  it('hitlist --live and subjects --live refuse when config.ts has uncommitted changes', async () => {
-    const ctx = context({ mock: false, git: { ...cleanGit, porcelain: dirtyConfig } })
+  it('hitlist --live and subjects --live refuse while the package has uncommitted changes', async () => {
+    const porcelain = vi.fn(dirtyPackage)
+    const ctx = context({ mock: false, git: { ...cleanGit, porcelain } })
     const deps = { fetchText: async () => 'rank,company\n', loPuckiCsv: null }
     expect(await runHitlist(ctx, deps)).toBe(1)
     expect(existsSync(path.join(ctx.root, '.cache', 'case-finder', 'hitlist.json'))).toBe(false)
@@ -213,33 +215,42 @@ describe('the back-test commands', () => {
     expect(existsSync(path.join(ctx.root, '.cache', 'case-finder', 'channel-uploads.json'))).toBe(
       false,
     )
-    expect(ctx.lines.join('\n')).toMatch(/config\.ts has uncommitted changes/)
+    expect(porcelain).toHaveBeenCalledWith('packages/case-finder')
+    expect(ctx.lines.join('\n')).toMatch(/packages\/case-finder has uncommitted changes/)
+    expect(ctx.lines.join('\n')).toContain('src/hitlist/seeds.ts')
   })
 
-  it('a live hitlist records the config blob it was built under', async () => {
-    const ctx = context({ mock: false, sources: { ...fakeSources(), wikipedia: mockWikipedia } })
+  it('a live hitlist records the code tree it was built from', async () => {
+    const objectAt = vi.fn(async () => 'tree1')
+    const ctx = context({
+      mock: false,
+      git: { ...cleanGit, objectAt },
+      sources: { ...fakeSources(), wikipedia: mockWikipedia },
+    })
     await runHitlist(ctx, { fetchText: async () => 'rank,company\n', loPuckiCsv: null })
-    expect(readJson(ctx, '.cache', 'case-finder', 'hitlist.json').configBlob).toBe('blob1')
+    expect(readJson(ctx, '.cache', 'case-finder', 'hitlist.json').codeTree).toBe('tree1')
+    expect(objectAt).toHaveBeenCalledWith('packages/case-finder/src')
   })
 
-  it('run --live completes on clean snapshots and refuses ones built under another config', async () => {
+  it('run --live completes on clean snapshots and refuses ones built from other code', async () => {
     const ctx = context({ mock: false })
     writeHitlist(ctx)
     expect(await runSubjects(ctx)).toBe(0)
-    expect(readJson(ctx, '.cache', 'case-finder', 'subject-proposals.json').configBlob).toBe(
-      'blob1',
-    )
+    expect(readJson(ctx, '.cache', 'case-finder', 'subject-proposals.json').codeTree).toBe('tree1')
     writeFixture(ctx, CHECKED)
     expect(await runBacktest(ctx, null)).toBe(0)
-    expect(readFileSync(reportPath(ctx, '.md'), 'utf8').startsWith('# Case-finder')).toBe(true)
+    const report = readFileSync(reportPath(ctx, '.md'), 'utf8')
+    expect(report.startsWith('# Case-finder')).toBe(true)
+    expect(report).toContain(`- Commit: ${COMMIT}`)
 
-    ctx.git = { ...cleanGit, blob: async () => 'blob2' }
+    ctx.git = { ...cleanGit, objectAt: async () => 'tree2' }
     expect(await runBacktest(ctx, null)).toBe(1)
     const said = ctx.lines.at(-1)!
     for (const file of ['hitlist.json', 'channel-uploads.json', 'subject-proposals.json']) {
       expect(said).toContain(file)
     }
-    expect(said).toMatch(/rebuild/i)
+    expect(said).toContain('packages/case-finder/src')
+    expect(said).toMatch(/rebuild with hitlist --live then subjects --live/i)
   })
 
   it('run --live refuses a subject whose QID is not on the hitlist', async () => {
@@ -263,24 +274,33 @@ describe('the back-test commands', () => {
     expect(ctx.lines.at(-1)).toMatch(/0\.verdict/)
   })
 
-  it('run --live refuses when config.ts has uncommitted changes', async () => {
-    const porcelain = vi.fn(async (p: string) =>
-      p.endsWith('config.ts') ? ' M packages/case-finder/src/config.ts' : '',
-    )
+  it('run --live refuses while anything in the package has uncommitted changes', async () => {
+    const porcelain = vi.fn(dirtyPackage)
     const ctx = context({ mock: false, git: { ...cleanGit, porcelain } })
     expect(await runBacktest(ctx, null)).toBe(1)
-    expect(porcelain).toHaveBeenCalledWith('packages/case-finder/src/config.ts')
-    expect(ctx.lines.join('\n')).toMatch(/config\.ts has uncommitted changes/)
+    expect(porcelain).toHaveBeenCalledWith('packages/case-finder')
+    expect(ctx.lines.join('\n')).toMatch(/packages\/case-finder has uncommitted changes/)
+  })
+
+  it('a mock run skips the git guards', async () => {
+    const git = { ...cleanGit, porcelain: vi.fn(dirtyPackage), objectAt: vi.fn(cleanGit.objectAt) }
+    const ctx = context({ git })
+    writeHitlist(ctx)
+    expect(await runSubjects(ctx)).toBe(0)
+    expect(await runBacktest(ctx, null)).toBe(0)
+    expect(git.porcelain).not.toHaveBeenCalled()
+    expect(git.objectAt).not.toHaveBeenCalled()
   })
 
   it('run --live refuses when the subjects fixture is not committed', async () => {
     const untracked = context({ mock: false, git: { ...cleanGit, isTracked: async () => false } })
     expect(await runBacktest(untracked, null)).toBe(1)
     expect(untracked.lines.join('\n')).toMatch(/backtest-subjects\.json is not committed/)
-    const porcelain = async (p: string) => (p === FIXTURE_PATH ? ' M ' + FIXTURE_PATH : '')
+    const porcelain = async (p: string) =>
+      p === 'packages/case-finder' ? ' M ' + FIXTURE_PATH : ''
     const edited = context({ mock: false, git: { ...cleanGit, porcelain } })
     expect(await runBacktest(edited, null)).toBe(1)
-    expect(edited.lines.join('\n')).toMatch(/backtest-subjects\.json has uncommitted changes/)
+    expect(edited.lines.join('\n')).toMatch(/uncommitted changes.*backtest-subjects\.json/)
   })
 
   it('QuotaExhaustedError stops the run with exit code 2 and says how far it got', async () => {
