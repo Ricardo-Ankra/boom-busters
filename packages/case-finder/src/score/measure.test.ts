@@ -153,6 +153,20 @@ describe('spike', () => {
     expect(shifted.spike).toBe(0)
   })
 
+  it('the baseline is exactly 352 sums: it ends at T-15 and starts at T-379', () => {
+    // Day T-380+k holds k views for k = 1..365, so the baseline days T-379..T-15 hold 1..365.
+    // The sum starting at k is 14k + 91 for k = 1..352; the median of those is 2562.
+    // A baseline that stopped a day early (351 sums) would give 2555, one that ran a day
+    // into the recent window (353 sums) 2569. Recent is 14 x 366 = 5124, so spike is exactly 2.
+    const ramp = Array.from({ length: 365 }, (_, i) => ({
+      date: addDays(T, -379 + i),
+      views: i + 1,
+    }))
+    const m = measure(evidence({ enDaily: [...ramp, ...days(addDays(T, -14), 14, 366)] }))
+    expect(m.spike).toBe(5124 / 2562)
+    expect(m.spike).toBe(2)
+  })
+
   it('spike is 0 when the baseline is 0', () => {
     const m = measure(evidence({ enDaily: days(addDays(T, -14), 14, 500) }))
     expect(m.spike).toBe(0)
