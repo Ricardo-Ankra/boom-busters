@@ -215,6 +215,57 @@ export function fileCaseRepairs(
 }
 
 /**
+ * The case-finder back-test's baseline (spec 9.4): the same system prompt
+ * that `Suggest cases` uses, asked to rate a fixed list of named cases rather
+ * than propose its own, so the rubric is compared against what the app's LLM
+ * would have said about the very same cases.
+ */
+export function buildScoreNamedCasesRequest(names: readonly string[]): LLMTaskRequest {
+  const list = names.map((name) => `- ${name}`).join('\n')
+  return {
+    task: 'research',
+    system: SYSTEM,
+    messages: [
+      {
+        role: 'user',
+        content:
+          'Score each of these cases. Answer with JSON only: ' +
+          '{"scores": [{"title": string, "priorityScore": number}]}, ' +
+          `one entry per case, titles exactly as given.\n\n${list}`,
+      },
+    ],
+    maxTokens: outputBudget(60 * names.length + 200),
+  }
+}
+
+/**
+ * The baseline's score per asked name. A title the model changed or invented
+ * matches nothing and is dropped, as is any score that is not a number; the
+ * rest are rounded and held to the scale. A name with no usable score gets no
+ * entry, and the back-test reports it as missing rather than guessing.
+ */
+export function parseNamedCaseScores(text: string, names: readonly string[]): Map<string, number> {
+  const raw = parseJsonCompletion(text, Envelope, 'case scores')
+  const items = raw['scores']
+  if (!Array.isArray(items)) {
+    throw new ValidationError('The case scores have no "scores" list', { field: 'case scores' })
+  }
+  const asked = new Set(names)
+  const scores = new Map<string, number>()
+  for (const item of items) {
+    if (!isRecord(item)) continue
+    const { title, priorityScore } = item
+    if (typeof title !== 'string' || !asked.has(title) || scores.has(title)) continue
+    if (typeof priorityScore !== 'number' || !Number.isFinite(priorityScore)) continue
+    scores.set(
+      title,
+      Math.min(CASE_PRIORITY_MAX, Math.max(CASE_PRIORITY_MIN, Math.round(priorityScore))),
+    )
+  }
+  return scores
+}
+
+/**
  * Deterministic mock output for `MOCK_PROVIDERS=1`.
  *
  * Real-looking case titles would be dangerous here: mock suggestions get
