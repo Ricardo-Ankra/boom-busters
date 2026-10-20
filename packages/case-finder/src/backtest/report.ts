@@ -61,6 +61,8 @@ export interface ReportMeta {
   hitlistByLane: Record<Lane | 'none', number>
   unresolvedSeedNames: number
   selectionNote: string
+  /** Cases whose subject had no lane at T, kept in their lane today (spec 9.5). */
+  noLaneAtT: number
   /** Cases dropped because their outcome could not be measured. */
   unusable: { videoId: string; title: string; error: string }[]
 }
@@ -291,6 +293,8 @@ export function renderReport(rows: CaseRow[], v: Verdict, meta: ReportMeta): str
     `- Without the ${legalKills} of ${rows.length} cases the legal kill would have removed: ` +
       `Spearman ${fixed(v.withoutLegalKills)}`,
     `- Miss rate: ${misses} of ${rows.length} cases (${percent(v.missRate)}) had no hitlist entry`,
+    `- No lane at T: ${meta.noLaneAtT} of ${cases(rows.length)}, kept in their lane today and ` +
+      'scored with the unranked',
     `- Spiking at T (raw spike 3 or more): ${cases(v.spikeVsOutcome.spiking)}, ` +
       `${v.spikeVsOutcome.aboveMedian} of them with an outcome above the median`,
     '',

@@ -32,6 +32,7 @@ import {
   selectTestSet,
   type SelectedSubject,
   type SubjectFixture,
+  type SubjectLanes,
   type SubjectProposal,
 } from './subjects'
 
@@ -296,24 +297,23 @@ export async function runBacktest(
   const now = () => ctx.now
   const byVideo = new Map(proposals.map((p) => [p.videoId, p]))
 
-  // Each subject's lane at its own T, before selection, which needs lanes and is synchronous.
+  // Each subject's lanes at its own T and today, before selection, which needs them and is synchronous.
   const verdicts = new Map(fixture.map((f) => [f.videoId, f]))
-  const laneByVideo = new Map<string, Lane | null>()
+  const lanesByVideo = new Map<string, SubjectLanes>()
   for (const p of proposals) {
     const f = verdicts.get(p.videoId)
     if (f?.verdict !== 'subject' || f.qid === null) continue
     const entry = byQid.get(f.qid)
-    laneByVideo.set(
-      p.videoId,
-      entry === undefined
-        ? null
-        : await laneAt(entry, dayBefore(p.publishedAt), ctx.sources, { now }),
-    )
+    if (entry === undefined) continue
+    lanesByVideo.set(p.videoId, {
+      atT: await laneAt(entry, dayBefore(p.publishedAt), ctx.sources, { now }),
+      today: laneOf(entry.tags),
+    })
   }
   const { selected, note } = selectTestSet(
     fixture,
     proposals,
-    (_qid, videoId) => laneByVideo.get(videoId) ?? null,
+    (_qid, videoId) => lanesByVideo.get(videoId) ?? { atT: null, today: null },
   )
 
   const usable: UsableCase[] = []
@@ -380,6 +380,7 @@ export async function runBacktest(
     hitlistByLane: countByLane(hitlist.entries),
     unresolvedSeedNames: Object.values(hitlist.unresolvedBySeed).reduce((a, b) => a + b, 0),
     selectionNote: note,
+    noLaneAtT: usable.filter((c) => c.subject.noLaneAtT).length,
     unusable,
   }
   const v = verdict(rows)

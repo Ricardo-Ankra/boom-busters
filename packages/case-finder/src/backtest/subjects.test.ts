@@ -58,7 +58,8 @@ describe('proposeSubjects', () => {
 })
 
 const lanes: Record<string, Lane> = {}
-const laneOf = (q: string): Lane | null => lanes[q] ?? null
+/** Every test subject has the same lane at T as today unless a test says otherwise. */
+const laneOf = (q: string) => ({ atT: lanes[q] ?? null, today: lanes[q] ?? null })
 
 function setup(spec: { handle: string; lane: Lane; count: number; prefix: string }[]) {
   const proposals: SubjectProposal[] = []
@@ -147,7 +148,23 @@ describe('selectTestSet', () => {
     expect(selected).toHaveLength(1)
     expect(note).toMatch(/1 skipped as not single/)
     expect(note).toMatch(/1 unchecked/)
-    expect(note).toMatch(/1 with no lane/)
+    expect(note).toMatch(/1 skipped with no lane even today/)
+  })
+
+  it('keeps a subject with no lane at T, filling the quota by its lane today', () => {
+    const { proposals, checked } = setup([{ handle: '@A', lane: 'success', count: 3, prefix: 'a' }])
+    const late = proposals[0]!.videoId
+    const { selected, note } = selectTestSet(checked, proposals, (qid, videoId) =>
+      videoId === late ? { atT: null, today: 'success' } : laneOf(qid),
+    )
+    expect(selected).toHaveLength(3)
+    expect(selected.find((s) => s.videoId === late)).toMatchObject({
+      lane: 'success',
+      noLaneAtT: true,
+    })
+    expect(selected.filter((s) => s.noLaneAtT)).toHaveLength(1)
+    expect(note).toMatch(/3 success/)
+    expect(note).toMatch(/1 kept with no lane at T/)
   })
 
   it('the lane callback is told which video it is for', () => {
@@ -165,7 +182,7 @@ describe('selectTestSet', () => {
       verdict: 'subject',
     }))
     const { selected } = selectTestSet(checked, proposals, (_qid, videoId) =>
-      videoId === 'v1' ? 'success' : null,
+      videoId === 'v1' ? { atT: 'success', today: 'success' } : { atT: null, today: null },
     )
     expect(selected.map((s) => [s.videoId, s.lane])).toEqual([['v1', 'success']])
   })

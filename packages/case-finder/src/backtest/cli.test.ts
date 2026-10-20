@@ -140,7 +140,10 @@ const flatPageviews: PageviewsSource = {
   daily: async (_p, _t, from, to) => dayRange(from, to).map((date) => ({ date, views: 30 })),
 }
 
-function fakeYoutube(overrides: Partial<YoutubeSource> = {}): YoutubeSource {
+function fakeYoutube(
+  overrides: Partial<YoutubeSource> = {},
+  modern: YoutubeVideo[] = MODERN_UPLOADS,
+): YoutubeSource {
   return {
     ...mockYoutube,
     channelByHandle: async (handle) => {
@@ -149,7 +152,7 @@ function fakeYoutube(overrides: Partial<YoutubeSource> = {}): YoutubeSource {
     },
     uploads: async (channelId, playlist, options) =>
       channelId === 'UCmodern'
-        ? { channelId, uploads: MODERN_UPLOADS }
+        ? { channelId, uploads: modern }
         : channelId.startsWith('UCmock')
           ? mockYoutube.uploads(channelId, playlist, options)
           : { channelId, uploads: [] },
@@ -195,7 +198,13 @@ function context(overrides: Partial<CliContext> = {}): CliContext & { lines: str
 }
 
 /** The state `hitlist` would leave, written by hand so the subjects match. */
-function writeHitlist(ctx: CliContext, configBlob = ctx.mock ? null : 'blob1') {
+function writeHitlist(
+  ctx: CliContext,
+  { configBlob = ctx.mock ? null : 'blob1', entries = HITLIST } = {} as {
+    configBlob?: string | null
+    entries?: HitlistEntry[]
+  },
+) {
   const dir = path.join(ctx.root, '.cache', 'case-finder', ctx.mock ? 'mock' : '')
   mkdirSync(dir, { recursive: true })
   writeFileSync(
@@ -203,7 +212,7 @@ function writeHitlist(ctx: CliContext, configBlob = ctx.mock ? null : 'blob1') {
     JSON.stringify({
       builtOn: '2026-10-21',
       configBlob,
-      entries: HITLIST,
+      entries,
       unresolvedBySeed: { lopucki: 4 },
     }),
   )
@@ -371,6 +380,28 @@ describe('the back-test commands', () => {
       ),
     ).toBe('I would rather not')
     expect(existsSync(reportPath(ctx))).toBe(false)
+  })
+
+  it('a subject with no lane at T stays in the set, in its lane today, as no lane', async () => {
+    const epsilon: HitlistEntry = {
+      ...HITLIST[0]!,
+      qid: 'Q4',
+      enTitle: 'Epsilon',
+      query: 'Epsilon',
+      sitelinks: { enwiki: 'Epsilon' },
+      // Filed years after the video: at T the subject had no lane.
+      tags: [{ tag: 'lopucki', lane: 'downfall', since: '2024-01-01' }],
+    }
+    const uploads = [...MODERN_UPLOADS, video('e1', 'Epsilon unravels', '2021-05-01', 4000)]
+    const ctx = context({ sources: fakeSources(fakeYoutube({}, uploads)) })
+    writeHitlist(ctx, { entries: [...HITLIST, epsilon] })
+    await runSubjects(ctx)
+    expect(await runBacktest(ctx, null)).toBe(0)
+    const cases = JSON.parse(readFileSync(reportPath(ctx, '-mock-cases.json'), 'utf8'))
+    const e1 = cases.rows.find((r: { videoId: string }) => r.videoId === 'e1')
+    expect(e1).toMatchObject({ status: 'no lane', lane: 'downfall', qid: 'Q4', pct: null })
+    expect(cases.meta.selectionNote).toMatch(/1 kept with no lane at T/)
+    expect(readFileSync(reportPath(ctx), 'utf8')).toContain('- No lane at T: 1 of 3 cases')
   })
 
   it('outcomes are measured on the day the uploads were fetched, and both dates are shown', async () => {

@@ -40,6 +40,7 @@ const META: ReportMeta = {
   hitlistByLane: { downfall: 1200, success: 300, none: 40 },
   unresolvedSeedNames: 17,
   selectionNote: '10 selected: 5 downfall, 5 success',
+  noLaneAtT: 2,
   unusable: [],
 }
 
@@ -176,6 +177,13 @@ describe('renderReport', () => {
       baselineScored: 1,
     })
     expect(single).toContain('not decided: baseline scored 1 of 1 case.')
+  })
+
+  it('counts the cases that had no lane at T', () => {
+    const text = renderReport(rows, verdict(rows), META)
+    expect(text).toContain(
+      '- No lane at T: 2 of 6 cases, kept in their lane today and scored with the unranked',
+    )
   })
 
   it('shows the run date and the date the outcomes were measured on', () => {

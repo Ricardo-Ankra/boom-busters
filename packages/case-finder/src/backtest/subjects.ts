@@ -29,7 +29,22 @@ export const SubjectFixturesSchema = z.array(
   }),
 )
 
-export type SelectedSubject = SubjectFixture & { lane: Lane; channelHandle: string }
+/** A subject's lane at the video's test date, and by all its tags today. */
+export interface SubjectLanes {
+  atT: Lane | null
+  today: Lane | null
+}
+
+/**
+ * `lane` is the lane at T, or today's when the subject had none at T
+ * (`noLaneAtT`): such a case is kept and counted against the rubric, which
+ * could not have found it, and today's lane only places it in the quota.
+ */
+export type SelectedSubject = SubjectFixture & {
+  lane: Lane
+  noLaneAtT: boolean
+  channelHandle: string
+}
 
 const qidNumber = (qid: string): number => Number(qid.replace(/^Q/, ''))
 
@@ -85,14 +100,18 @@ function missLane(fixture: SubjectFixture): Lane {
 /**
  * Walks the proposals newest first and applies the pre-registered selection
  * rule to the hand-checked verdicts. Misses stay in: the spec counts them
- * against the rubric. Once the downfall quota is full only success stories are
- * taken, so the set always has room for the minimum of successes.
+ * against the rubric. So does a subject with no lane at T, typically a video
+ * made weeks after the event, before any category or list carried it: leaving
+ * it out would bias the set towards cases the rubric could find (spec 9.5).
+ * Only a subject with no lane even today is skipped. Once the downfall quota
+ * is full only success stories are taken, so the set always has room for the
+ * minimum of successes.
  */
 export function selectTestSet(
   checked: SubjectFixture[],
   proposals: SubjectProposal[],
-  /** The subject's lane at the video's test date; the same QID can differ between two videos. */
-  laneOfQid: (qid: string, videoId: string) => Lane | null,
+  /** The subject's lanes for this video's test date; the same QID can differ between two videos. */
+  lanesOf: (qid: string, videoId: string) => SubjectLanes,
 ): { selected: SelectedSubject[]; note: string } {
   const byVideo = new Map(checked.map((f) => [f.videoId, f]))
   const downfallQuota = BACKTEST.size - BACKTEST.minSuccess
@@ -103,6 +122,7 @@ export function selectTestSet(
   let notSingle = 0
   let unchecked = 0
   let noLane = 0
+  let keptNoLaneAtT = 0
   let capped = 0
 
   for (const p of proposals) {
@@ -116,9 +136,14 @@ export function selectTestSet(
       notSingle++
       continue
     }
-    let lane: Lane | null
-    if (fixture.verdict === 'miss-not-on-hitlist') lane = missLane(fixture)
-    else lane = fixture.qid === null ? null : laneOfQid(fixture.qid, p.videoId)
+    let lanes: SubjectLanes
+    if (fixture.verdict === 'miss-not-on-hitlist') {
+      const lane = missLane(fixture)
+      lanes = { atT: lane, today: lane }
+    } else {
+      lanes = fixture.qid === null ? { atT: null, today: null } : lanesOf(fixture.qid, p.videoId)
+    }
+    const lane = lanes.atT ?? lanes.today
     if (lane === null) {
       noLane++
       continue
@@ -131,13 +156,17 @@ export function selectTestSet(
     perChannel.set(p.channelHandle, (perChannel.get(p.channelHandle) ?? 0) + 1)
     if (lane === 'downfall') downfalls++
     else successes++
-    selected.push({ ...fixture, lane, channelHandle: p.channelHandle })
+    const noLaneAtT = lanes.atT === null
+    if (noLaneAtT) keptNoLaneAtT++
+    selected.push({ ...fixture, lane, noLaneAtT, channelHandle: p.channelHandle })
   }
 
   const reached = successes >= BACKTEST.minSuccess
   const note =
     `${selected.length} selected: ${downfalls} downfall, ${successes} success; ` +
-    `${notSingle} skipped as not single; ${unchecked} unchecked; ${noLane} with no lane; ` +
+    `${keptNoLaneAtT} kept with no lane at T (placed by their lane today); ` +
+    `${notSingle} skipped as not single; ${unchecked} unchecked; ` +
+    `${noLane} skipped with no lane even today; ` +
     `${capped} capped by channel; success minimum (${BACKTEST.minSuccess}) ` +
     (reached ? 'reached.' : 'not reached.')
   return { selected, note }
