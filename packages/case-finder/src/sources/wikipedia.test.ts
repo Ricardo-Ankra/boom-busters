@@ -188,9 +188,17 @@ describe('live wikipedia', () => {
 
   it('parsed throws on an API error body or a missing revision', async () => {
     const error = wikipediaFetch(() => 'wikipedia-wikitext-error.json')
-    await expect(sourceFor(error).parsed(1)).rejects.toThrow()
+    await expect(sourceFor(error).parsed(1)).rejects.toThrow(/nosuchrevid/)
     const missing = wikipediaFetch(() => 'wikipedia-wikitext-badrevid.json')
     await expect(sourceFor(missing).parsed(1)).rejects.toThrow(/revision 1/)
+  })
+
+  it('a hidden revision has no items, not an error', async () => {
+    const hidden = wikipediaFetch(() => 'wikipedia-wikitext-hidden.json')
+    const empty = { categories: [], externalLinks: [], links: [] }
+    await expect(sourceFor(hidden).parsed(987654)).resolves.toEqual(empty)
+    const absent = wikipediaFetch(() => 'wikipedia-wikitext-nocontent.json')
+    await expect(sourceFor(absent).parsed(987654)).resolves.toEqual(empty)
   })
 
   it('normalTitle trims, spaces underscores and upper-cases the first letter', () => {

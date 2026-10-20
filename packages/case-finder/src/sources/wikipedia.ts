@@ -59,12 +59,14 @@ const membersQuery = z.object({
 })
 
 const contentQuery = z.object({
+  badrevids: z.record(z.string(), z.unknown()).optional(),
   pages: z
     .array(
       z.object({
         revisions: z
           .array(
             z.object({
+              // A suppressed revision has `texthidden` and no `content`; only the absence is read.
               slots: z.object({ main: z.object({ content: z.string().optional() }) }).optional(),
             }),
           )
@@ -72,6 +74,12 @@ const contentQuery = z.object({
       }),
     )
     .optional(),
+})
+
+/** The content reply keeps the API's `error` object, which the shared envelope drops. */
+const contentReply = z.object({
+  error: z.object({ code: z.string(), info: z.string().optional() }).optional(),
+  query: contentQuery.optional(),
 })
 
 /** Prefixes that put a link outside the article namespace (`<ns> talk` is matched separately). */
@@ -287,10 +295,19 @@ export function liveWikipedia(client: PoliteClient): WikipediaSource {
           rvprop: 'content',
           rvslots: 'main',
         }),
-        envelope(contentQuery),
+        contentReply,
       )
-      const content = data.query?.pages?.[0]?.revisions?.[0]?.slots?.main.content
-      if (content === undefined) throw new Error(`Wikipedia has no content for revision ${revid}`)
+      if (data.error !== undefined) {
+        throw new Error(`Wikipedia revision ${revid}: ${data.error.code} ${data.error.info ?? ''}`)
+      }
+      const revision = data.query?.pages?.[0]?.revisions?.[0]
+      if (data.query?.badrevids !== undefined || revision === undefined) {
+        throw new Error(`Wikipedia has no revision ${revid}`)
+      }
+      // The revision exists but its text is suppressed (revision deletion) or absent: it says
+      // nothing, so it has no items. Throwing here would abort every rerun on one hidden edit.
+      const content = revision.slots?.main.content
+      if (content === undefined) return { categories: [], externalLinks: [], links: [] }
       return wikitextItems(content)
     },
   }
