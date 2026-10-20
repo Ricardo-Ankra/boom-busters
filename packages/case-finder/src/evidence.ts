@@ -1,4 +1,5 @@
 import { FLOOR_MEDIAN_MONTHLY } from './config'
+import { laneOf } from './hitlist/build'
 import { populationAt } from './score/rank'
 import { measure } from './score/measure'
 import type { CourtListenerSource } from './sources/courtlistener'
@@ -79,7 +80,8 @@ interface Run {
   yesterday: IsoDate
   pageAt: (title: string) => Promise<PageAtT | null>
   listLinks: (page: string) => Promise<Set<string>>
-  uploads: (channelId: string) => Promise<ChannelUploads>
+  /** Memoised per run; `size` is how many channels were fetched. */
+  uploads: ((channelId: string) => Promise<ChannelUploads>) & { size: () => number }
 }
 
 function addDays(day: IsoDate, n: number): IsoDate {
@@ -145,13 +147,18 @@ async function tagsAt(
   return out
 }
 
+/** The English title and every redirect to it; empty with no English article. */
+async function enTitlesOf(entry: HitlistEntry, sources: Sources): Promise<string[]> {
+  if (entry.enTitle === null) return []
+  return [entry.enTitle, ...(await sources.wikipedia.redirectsTo(entry.enTitle))]
+}
+
 /** Pageviews and tags for one entry; the revision is read only above the floor. */
 async function passOne(entry: HitlistEntry, run: Run): Promise<PassOne> {
   const { asOf, sources } = run
-  let enTitles: string[] = []
+  const enTitles = await enTitlesOf(entry, sources)
   let enMonthly: MonthlyViews[] = []
   if (entry.enTitle !== null) {
-    enTitles = [entry.enTitle, ...(await sources.wikipedia.redirectsTo(entry.enTitle))]
     const series = await sources.pageviews.monthly(
       'en.wikipedia',
       enTitles,
@@ -270,14 +277,9 @@ async function passTwo(
   }
 }
 
-export async function gatherAt(
-  hitlist: HitlistEntry[],
-  asOf: IsoDate,
-  sources: Sources,
-  log: (line: string) => void,
-  options: { now?: () => Date } = {},
-): Promise<EntryEvidence[]> {
-  const today = (options.now ?? (() => new Date()))().toISOString().slice(0, 10)
+/** One back-test day's shared state: dates, and the per-run memos over pages, lists and channels. */
+function createRun(asOf: IsoDate, sources: Sources, now: () => Date = () => new Date()): Run {
+  const today = now().toISOString().slice(0, 10)
   const month = asOf.slice(0, 7)
   const firstDay = `${month}-01`
   const pageAt = memo(async (key: string): Promise<PageAtT | null> => {
@@ -293,7 +295,7 @@ export async function gatherAt(
   const uploads = memo((channelId: string) =>
     sources.youtube.uploads(channelId, uploadsPlaylistId(channelId), { maxPages: 1 }),
   )
-  const run: Run = {
+  return {
     asOf,
     sources,
     today,
@@ -303,6 +305,33 @@ export async function gatherAt(
     listLinks,
     uploads,
   }
+}
+
+/**
+ * The lane one entry had at T, by the same tag dating as pass 1 of `gatherAt`
+ * but with no floor check: the back-test needs each subject's lane to pick its
+ * test set before any evidence is gathered, whatever the subject's pageviews.
+ */
+export async function laneAt(
+  entry: HitlistEntry,
+  asOf: IsoDate,
+  sources: Sources,
+  options: { now?: () => Date } = {},
+): Promise<Lane | null> {
+  const run = createRun(asOf, sources, options.now)
+  const enTitles = await enTitlesOf(entry, sources)
+  const page = entry.enTitle === null ? null : await run.pageAt(entry.enTitle)
+  return laneOf(await tagsAt(entry, asOf, { page, enTitles, listLinks: run.listLinks }))
+}
+
+export async function gatherAt(
+  hitlist: HitlistEntry[],
+  asOf: IsoDate,
+  sources: Sources,
+  log: (line: string) => void,
+  options: { now?: () => Date } = {},
+): Promise<EntryEvidence[]> {
+  const run = createRun(asOf, sources, options.now)
 
   const first: PassOne[] = []
   for (const entry of hitlist) {
@@ -342,7 +371,7 @@ export async function gatherAt(
   const lanes = [...population].map(([lane, e]) => `${lane}=${e.length}`).join(', ')
   log(
     `evidence ${asOf}: ${hitlist.length} entries; population ${lanes}; ` +
-      `${searches} YouTube searches; ${uploads.size()} channels fetched`,
+      `${searches} YouTube searches; ${run.uploads.size()} channels fetched`,
   )
   return first.map((p) => out.get(p.evidence.entry.qid)!)
 }

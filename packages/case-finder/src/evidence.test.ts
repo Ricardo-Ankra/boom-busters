@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { gatherAt, type Sources } from './evidence'
+import { gatherAt, laneAt, type Sources } from './evidence'
 import { classify } from './score/rank'
 import {
   mockCourtListener,
@@ -428,5 +428,47 @@ describe('gatherAt', () => {
       'evidence 2020-03-15: 2 entries; population downfall=1, success=1; ' +
         '2 YouTube searches; 6 channels fetched',
     )
+  })
+})
+
+describe('laneAt', () => {
+  const lane = (e: HitlistEntry, s: Sources, asOf = T) => laneAt(e, asOf, s, { now: NOW })
+
+  it("dates a category tag against the revision before T's month, with no floor check", async () => {
+    const pageviews = flatPageviews({ 'Article Q1': 1, 'Article Q2': 1 })
+    const wikipedia = fakeWikipedia({ 'Article Q1': { categories: ['Ponzi schemes'] } })
+    const tag: DatedTag = { tag: 'category:Ponzi schemes', lane: 'downfall', since: null }
+    const s = sources({ pageviews, wikipedia })
+    expect(await lane(entry('Q1', { tags: [tag] }), s)).toBe('downfall')
+    expect(await lane(entry('Q2', { tags: [tag] }), s)).toBeNull()
+    expect(wikipedia.revisionBefore).toHaveBeenCalledWith('Article Q1', '2020-03-01')
+    expect(pageviews.monthly).not.toHaveBeenCalled()
+  })
+
+  it('a tag dated on or after T does not count, and a downfall tag wins', async () => {
+    const s = sources()
+    const success: DatedTag = { tag: 'founder-link', lane: 'success', since: null }
+    const late: DatedTag = { tag: 'lopucki', lane: 'downfall', since: T }
+    expect(await lane(entry('Q1', { tags: [success, late] }), s)).toBe('success')
+    expect(await lane(entry('Q1', { tags: [success, DOWNFALL] }), s)).toBe('downfall')
+    expect(await lane(entry('Q1', { tags: [late] }), s)).toBeNull()
+  })
+
+  it('a list tag counts when the list before T links to one of the redirects', async () => {
+    const wikipedia = fakeWikipedia({
+      'Article Q1': {},
+      'List of frauds': { links: ['Old name of Q1'] },
+    })
+    vi.mocked(wikipedia.redirectsTo).mockResolvedValue(['Old name of Q1'])
+    const tag: DatedTag = { tag: 'list:List of frauds', lane: 'downfall', since: null }
+    expect(await lane(entry('Q1', { tags: [tag] }), sources({ wikipedia }))).toBe('downfall')
+  })
+
+  it('an entry with no English title keeps only its plain dated tags', async () => {
+    const tags: DatedTag[] = [
+      { tag: 'category:Ponzi schemes', lane: 'downfall', since: null },
+      { tag: 'founder-link', lane: 'success', since: null },
+    ]
+    expect(await lane(entry('Q1', { enTitle: null, tags }), sources())).toBe('success')
   })
 })
