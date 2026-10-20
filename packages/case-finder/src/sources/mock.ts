@@ -2,6 +2,9 @@ import { createHash } from 'node:crypto'
 import type { z } from 'zod'
 import { dayRange, monthRange, type PageviewsSource } from './pageviews'
 import type { EntityFacts, WikidataSource } from './wikidata'
+import type { CourtListenerSource } from './courtlistener'
+import type { EdgarSource } from './edgar'
+import type { SecReleasesSource } from './sec-releases'
 import type { WikipediaSource } from './wikipedia'
 import type { YoutubeVideo } from '../types'
 import { uploadsPlaylistId, type YoutubeSource } from './youtube'
@@ -147,5 +150,58 @@ export const mockYoutube: YoutubeSource = {
         mockVideo(channelId, channelId, i + 1),
       ),
     }
+  },
+}
+
+export const mockCourtListener: CourtListenerSource = {
+  async dockets(name, before) {
+    const n = hash(`${name}|court`) % 4
+    return Array.from({ length: n }, (_, i) => ({
+      url: `https://example.invalid/mock/docket/${hash(`${name}|${i}`).toString(36)}`,
+      title: `[mock] docket ${i + 1} naming ${name}`,
+      source: 'courtlistener' as const,
+      datedAt: new Date(Date.parse(`${before}T00:00:00Z`) - (i + 1) * 30 * 86_400_000)
+        .toISOString()
+        .slice(0, 10),
+    }))
+  },
+}
+
+export const mockEdgar: EdgarSource = {
+  async filings(cik, lane, before) {
+    const form = lane === 'success' ? '10-K' : 'NT 10-K'
+    const n = 1 + (hash(`${cik}|edgar`) % 3)
+    return Array.from({ length: n }, (_, i) => {
+      const filed = new Date(Date.parse(`${before}T00:00:00Z`) - (i + 1) * 90 * 86_400_000)
+        .toISOString()
+        .slice(0, 10)
+      return {
+        url: `https://example.invalid/mock/edgar/${cik}/${i + 1}`,
+        title: `[mock] ${form} filed ${filed}`,
+        source: 'edgar' as const,
+        datedAt: filed,
+      }
+    })
+  },
+}
+
+export const mockSecReleases: SecReleasesSource = {
+  async index() {
+    return [
+      {
+        kind: 'sec-aaer',
+        number: 'AAER-0001',
+        date: '2015-01-01',
+        title: '[mock] Example Respondent',
+        url: 'https://example.invalid/mock/aaer/1',
+      },
+      {
+        kind: 'sec-litigation',
+        number: 'LR-0001',
+        date: '2016-01-01',
+        title: '[mock] Example Defendant',
+        url: 'https://example.invalid/mock/lr/1',
+      },
+    ]
   },
 }
