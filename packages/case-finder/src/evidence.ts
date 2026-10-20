@@ -1,19 +1,21 @@
-import { FLOOR_MEDIAN_MONTHLY, FOUNDER_MIN_MEDIAN_VIEWS } from './config'
-import { FOUNDER_TAG, laneOf } from './hitlist/build'
+import { laneOf } from './hitlist/build'
 import { populationAt } from './score/rank'
-import { measure, medianMonthly } from './score/measure'
-import type { CourtListenerSource } from './sources/courtlistener'
-import type { EdgarSource } from './sources/edgar'
-import type { PageviewsSource } from './sources/pageviews'
+import { medianMonthly } from './score/measure'
+import { enMonthlyOf, enTitlesOf, passOneAll, tagsAt, type PassOne } from './gather/pass-one'
+import {
+  SERIES_FROM_DAY,
+  SERIES_FROM_MONTH,
+  createRun,
+  daysBefore,
+  monthsBefore,
+  type GatherOptions,
+  type Run,
+  type Sources,
+} from './gather/run'
 import { referencesAsDocuments } from './sources/references'
-import { releasesNaming, type SecRelease, type SecReleasesSource } from './sources/sec-releases'
-import type { WikidataSource } from './sources/wikidata'
-import { normalTitle, type WikipediaSource } from './sources/wikipedia'
-import { uploadsPlaylistId, YoutubeNotFoundError, type YoutubeSource } from './sources/youtube'
+import { releasesNaming, type SecRelease } from './sources/sec-releases'
 import type {
   ChannelUploads,
-  DailyViews,
-  DatedTag,
   EntryEvidence,
   HitlistEntry,
   IsoDate,
@@ -22,6 +24,8 @@ import type {
   Person,
   PrimaryDocument,
 } from './types'
+
+export type { GatherOptions, Sources } from './gather/run'
 
 /**
  * Each hitlist entry's evidence as it stood on a back-test day T. The
@@ -33,178 +37,19 @@ import type {
  * people facts (undated).
  *
  * Two passes, so the YouTube quota is spent only where it counts: pass 1
- * reads pageviews and tags for everyone, which is enough to pick the ranked
- * population; pass 2 gathers the rest for that population alone.
+ * (gather/pass-one.ts) reads pageviews and tags for everyone, which is enough
+ * to pick the ranked population; pass 2 gathers the rest for that population
+ * alone.
  */
 
-export interface Sources {
-  pageviews: PageviewsSource
-  wikidata: WikidataSource
-  wikipedia: WikipediaSource
-  youtube: YoutubeSource
-  courtlistener: CourtListenerSource
-  edgar: EdgarSource
-  secReleases: SecReleasesSource
-}
-
-/**
- * Every series starts here and runs to the present whatever T is, so its
- * request is the same for every back-test date and the disk cache serves them
- * all; each T then takes the slice before it.
- */
-const SERIES_FROM_MONTH = '2015-07'
-const SERIES_FROM_DAY = '2015-07-01'
 const PROGRESS_EVERY = 100
-
-/** A page as it stood before T's month: the revision and what it parsed to. */
-interface PageAtT {
-  revision: { revid: number; timestamp: string }
-  categories: string[]
-  externalLinks: string[]
-  links: string[]
-}
-
-/** What pass 1 learned about one entry, carried into pass 2. */
-interface PassOne {
-  evidence: EntryEvidence
-  enTitles: string[]
-  page: PageAtT | null
-}
-
-interface Run {
-  asOf: IsoDate
-  sources: Sources
-  /** Stands in for today in every request; see GatherOptions. */
-  anchorDay: IsoDate
-  /** The month before the anchor's: the last one whose monthly total is final. */
-  lastMonth: string
-  /** The day before the anchor: the last complete day of views. */
-  yesterday: IsoDate
-  pageAt: (title: string) => Promise<PageAtT | null>
-  listLinks: (page: string) => Promise<Set<string>>
-  /** Memoised per run; null when the channel's uploads are gone. `size` is how many channels were fetched. */
-  uploads: ((channelId: string) => Promise<ChannelUploads | null>) & { size: () => number }
-}
-
-function addDays(day: IsoDate, n: number): IsoDate {
-  return new Date(Date.parse(`${day}T00:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10)
-}
-
-function previousMonth(day: IsoDate): string {
-  const year = Number(day.slice(0, 4))
-  const month = Number(day.slice(5, 7))
-  return new Date(Date.UTC(year, month - 2, 1)).toISOString().slice(0, 7)
-}
 
 /** `dewiki` is `de.wikipedia`; `zh_yuewiki` is `zh-yue.wikipedia`. */
 function projectOf(site: string): string {
   return `${site.replace(/wiki$/, '').replaceAll('_', '-')}.wikipedia`
 }
 
-/** One call per key for the whole run; concurrent callers share the promise. */
-function memo<T>(fetch: (key: string) => Promise<T>) {
-  const cache = new Map<string, Promise<T>>()
-  const get = (key: string) => {
-    if (!cache.has(key)) cache.set(key, fetch(key))
-    return cache.get(key)!
-  }
-  return Object.assign(get, { size: () => cache.size })
-}
-
-const monthsBefore = (series: MonthlyViews[], asOf: IsoDate) =>
-  series.filter((m) => m.month < asOf.slice(0, 7))
-
-const daysBefore = (series: DailyViews[], asOf: IsoDate) => series.filter((d) => d.date < asOf)
-
 const nonBlank = (text: string | null): text is string => text !== null && text.trim() !== ''
-
-/**
- * The tags that applied at T. Any tag with a `since` on or after T is out.
- * A category tag needs the article's revision before T's month to carry the
- * category, and a list tag needs the list page's revision then to link to the
- * article under its title or any of its redirects (the list may use an older
- * name): categories and list entries are added after the fact, often long
- * after. With `pages` null (an entry below the floor, never fetched) both
- * kinds are dropped. The founder-link tag is undated and the hitlist gave it
- * for popularity at some time, so it counts at T only if the entry was
- * popular in the 24 months before T (`enMedian`, read only for that tag).
- */
-async function tagsAt(
-  entry: HitlistEntry,
-  asOf: IsoDate,
-  pages: { page: PageAtT | null; enTitles: string[]; listLinks: Run['listLinks'] } | null,
-  enMedian: () => Promise<number>,
-): Promise<DatedTag[]> {
-  const out: DatedTag[] = []
-  for (const tag of entry.tags) {
-    if (tag.since !== null && tag.since >= asOf) continue
-    if (tag.tag === FOUNDER_TAG) {
-      if ((await enMedian()) >= FOUNDER_MIN_MEDIAN_VIEWS) out.push(tag)
-    } else if (tag.tag.startsWith('category:')) {
-      const name = normalTitle(tag.tag.slice('category:'.length))
-      if (pages?.page?.categories.some((c) => normalTitle(c) === name)) out.push(tag)
-    } else if (tag.tag.startsWith('list:')) {
-      if (pages === null) continue
-      const links = await pages.listLinks(tag.tag.slice('list:'.length))
-      if (pages.enTitles.some((t) => links.has(normalTitle(t)))) out.push(tag)
-    } else {
-      out.push(tag)
-    }
-  }
-  return out
-}
-
-/** The English title and every redirect to it; empty with no English article. */
-async function enTitlesOf(entry: HitlistEntry, sources: Sources): Promise<string[]> {
-  if (entry.enTitle === null) return []
-  return [entry.enTitle, ...(await sources.wikipedia.redirectsTo(entry.enTitle))]
-}
-
-/** The English monthly series (title and redirects) before T; empty with no English article. */
-async function enMonthlyOf(
-  entry: HitlistEntry,
-  enTitles: string[],
-  run: Run,
-): Promise<MonthlyViews[]> {
-  if (entry.enTitle === null) return []
-  const series = await run.sources.pageviews.monthly(
-    'en.wikipedia',
-    enTitles,
-    SERIES_FROM_MONTH,
-    run.lastMonth,
-  )
-  return monthsBefore(series, run.asOf)
-}
-
-/** Pageviews and tags for one entry; the revision is read only above the floor. */
-async function passOne(entry: HitlistEntry, run: Run): Promise<PassOne> {
-  const { asOf, sources } = run
-  const enTitles = await enTitlesOf(entry, sources)
-  const enMonthly = await enMonthlyOf(entry, enTitles, run)
-  const evidence: EntryEvidence = {
-    entry,
-    asOf,
-    enMonthly,
-    worldMonthly: [],
-    enDaily: [],
-    search: null,
-    channels: {},
-    documents: [],
-    people: [],
-    tagsAtT: [],
-  }
-  const enMedian = measure(evidence).enMedianMonthly
-  const median = async () => enMedian
-  // The floor needs only the English series, so an entry below it costs no revision fetch.
-  if (entry.enTitle === null || enMedian < FLOOR_MEDIAN_MONTHLY) {
-    evidence.tagsAtT = await tagsAt(entry, asOf, null, median)
-    return { evidence, enTitles, page: null }
-  }
-  const page = await run.pageAt(entry.enTitle)
-  const pages = { page, enTitles, listLinks: run.listLinks }
-  evidence.tagsAtT = await tagsAt(entry, asOf, pages, median)
-  return { evidence, enTitles, page }
-}
 
 /** Every Wikipedia edition but English, titles only, summed into one row per month. */
 async function worldMonthly(entry: HitlistEntry, run: Run): Promise<MonthlyViews[]> {
@@ -296,51 +141,6 @@ async function passTwo(
   }
 }
 
-export interface GatherOptions {
-  /**
-   * The day every request treats as today: series end the month and the day
-   * before it, and CourtListener is asked for dockets before it. The back-test
-   * passes the hitlist snapshot's build day, so a rerun on any later day asks
-   * the same questions and the cache answers them all. Default: the clock.
-   */
-  anchorDay?: IsoDate
-}
-
-/** One back-test day's shared state: dates, and the per-run memos over pages, lists and channels. */
-function createRun(asOf: IsoDate, sources: Sources, options: GatherOptions): Run {
-  const anchorDay = options.anchorDay ?? new Date().toISOString().slice(0, 10)
-  const month = asOf.slice(0, 7)
-  const firstDay = `${month}-01`
-  const pageAt = memo(async (key: string): Promise<PageAtT | null> => {
-    const title = key.slice(key.indexOf('|') + 1)
-    const revision = await sources.wikipedia.revisionBefore(title, firstDay)
-    if (revision === null) return null
-    return { revision, ...(await sources.wikipedia.parsed(revision.revid)) }
-  })
-  const listLinks = memo(async (page: string) => {
-    const list = await pageAt(`${month}|${page}`)
-    return new Set((list?.links ?? []).map(normalTitle))
-  })
-  const uploads = memo((channelId: string) =>
-    sources.youtube
-      .uploads(channelId, uploadsPlaylistId(channelId), { maxPages: 1 })
-      .catch((error: unknown) => {
-        if (error instanceof YoutubeNotFoundError) return null
-        throw error
-      }),
-  )
-  return {
-    asOf,
-    sources,
-    anchorDay,
-    lastMonth: previousMonth(anchorDay),
-    yesterday: addDays(anchorDay, -1),
-    pageAt: (title) => pageAt(`${month}|${title}`),
-    listLinks,
-    uploads,
-  }
-}
-
 /**
  * The lane one entry had at T, by the same tag dating as pass 1 of `gatherAt`
  * but with no floor check: the back-test needs each subject's lane to pick its
@@ -368,14 +168,7 @@ export async function gatherAt(
   options: GatherOptions = {},
 ): Promise<EntryEvidence[]> {
   const run = createRun(asOf, sources, options)
-
-  const first: PassOne[] = []
-  for (const entry of hitlist) {
-    first.push(await passOne(entry, run))
-    if (first.length % PROGRESS_EVERY === 0) {
-      log(`evidence ${asOf}: pass 1 ${first.length}/${hitlist.length}`)
-    }
-  }
+  const first = await passOneAll(hitlist, run, log)
 
   const population = populationAt(first.map((p) => p.evidence))
   const laneByQid = new Map<string, Lane>()
