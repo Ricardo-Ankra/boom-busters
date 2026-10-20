@@ -1,7 +1,7 @@
-import { FLOOR_MEDIAN_MONTHLY } from './config'
-import { laneOf } from './hitlist/build'
+import { FLOOR_MEDIAN_MONTHLY, FOUNDER_MIN_MEDIAN_VIEWS } from './config'
+import { FOUNDER_TAG, laneOf } from './hitlist/build'
 import { populationAt } from './score/rank'
-import { measure } from './score/measure'
+import { measure, medianMonthly } from './score/measure'
 import type { CourtListenerSource } from './sources/courtlistener'
 import type { EdgarSource } from './sources/edgar'
 import type { PageviewsSource } from './sources/pageviews'
@@ -123,17 +123,22 @@ const nonBlank = (text: string | null): text is string => text !== null && text.
  * article under its title or any of its redirects (the list may use an older
  * name): categories and list entries are added after the fact, often long
  * after. With `pages` null (an entry below the floor, never fetched) both
- * kinds are dropped.
+ * kinds are dropped. The founder-link tag is undated and the hitlist gave it
+ * for popularity at some time, so it counts at T only if the entry was
+ * popular in the 24 months before T (`enMedian`, read only for that tag).
  */
 async function tagsAt(
   entry: HitlistEntry,
   asOf: IsoDate,
   pages: { page: PageAtT | null; enTitles: string[]; listLinks: Run['listLinks'] } | null,
+  enMedian: () => Promise<number>,
 ): Promise<DatedTag[]> {
   const out: DatedTag[] = []
   for (const tag of entry.tags) {
     if (tag.since !== null && tag.since >= asOf) continue
-    if (tag.tag.startsWith('category:')) {
+    if (tag.tag === FOUNDER_TAG) {
+      if ((await enMedian()) >= FOUNDER_MIN_MEDIAN_VIEWS) out.push(tag)
+    } else if (tag.tag.startsWith('category:')) {
       const name = normalTitle(tag.tag.slice('category:'.length))
       if (pages?.page?.categories.some((c) => normalTitle(c) === name)) out.push(tag)
     } else if (tag.tag.startsWith('list:')) {
@@ -153,20 +158,27 @@ async function enTitlesOf(entry: HitlistEntry, sources: Sources): Promise<string
   return [entry.enTitle, ...(await sources.wikipedia.redirectsTo(entry.enTitle))]
 }
 
+/** The English monthly series (title and redirects) before T; empty with no English article. */
+async function enMonthlyOf(
+  entry: HitlistEntry,
+  enTitles: string[],
+  run: Run,
+): Promise<MonthlyViews[]> {
+  if (entry.enTitle === null) return []
+  const series = await run.sources.pageviews.monthly(
+    'en.wikipedia',
+    enTitles,
+    SERIES_FROM_MONTH,
+    run.lastMonth,
+  )
+  return monthsBefore(series, run.asOf)
+}
+
 /** Pageviews and tags for one entry; the revision is read only above the floor. */
 async function passOne(entry: HitlistEntry, run: Run): Promise<PassOne> {
   const { asOf, sources } = run
   const enTitles = await enTitlesOf(entry, sources)
-  let enMonthly: MonthlyViews[] = []
-  if (entry.enTitle !== null) {
-    const series = await sources.pageviews.monthly(
-      'en.wikipedia',
-      enTitles,
-      SERIES_FROM_MONTH,
-      run.lastMonth,
-    )
-    enMonthly = monthsBefore(series, asOf)
-  }
+  const enMonthly = await enMonthlyOf(entry, enTitles, run)
   const evidence: EntryEvidence = {
     entry,
     asOf,
@@ -179,13 +191,16 @@ async function passOne(entry: HitlistEntry, run: Run): Promise<PassOne> {
     people: [],
     tagsAtT: [],
   }
+  const enMedian = measure(evidence).enMedianMonthly
+  const median = async () => enMedian
   // The floor needs only the English series, so an entry below it costs no revision fetch.
-  if (entry.enTitle === null || measure(evidence).enMedianMonthly < FLOOR_MEDIAN_MONTHLY) {
-    evidence.tagsAtT = await tagsAt(entry, asOf, null)
+  if (entry.enTitle === null || enMedian < FLOOR_MEDIAN_MONTHLY) {
+    evidence.tagsAtT = await tagsAt(entry, asOf, null, median)
     return { evidence, enTitles, page: null }
   }
   const page = await run.pageAt(entry.enTitle)
-  evidence.tagsAtT = await tagsAt(entry, asOf, { page, enTitles, listLinks: run.listLinks })
+  const pages = { page, enTitles, listLinks: run.listLinks }
+  evidence.tagsAtT = await tagsAt(entry, asOf, pages, median)
   return { evidence, enTitles, page }
 }
 
@@ -328,7 +343,9 @@ export async function laneAt(
   const run = createRun(asOf, sources, options.now)
   const enTitles = await enTitlesOf(entry, sources)
   const page = entry.enTitle === null ? null : await run.pageAt(entry.enTitle)
-  return laneOf(await tagsAt(entry, asOf, { page, enTitles, listLinks: run.listLinks }))
+  const pages = { page, enTitles, listLinks: run.listLinks }
+  const median = async () => medianMonthly(await enMonthlyOf(entry, enTitles, run), asOf)
+  return laneOf(await tagsAt(entry, asOf, pages, median))
 }
 
 export async function gatherAt(

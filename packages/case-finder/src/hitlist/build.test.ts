@@ -6,7 +6,7 @@ import { describe, expect, it } from 'vitest'
 import { mockPageviews, mockWikipedia } from '../sources/mock'
 import type { EntityFacts, WikidataSource } from '../sources/wikidata'
 import type { WikipediaSource } from '../sources/wikipedia'
-import type { PageviewsSource } from '../sources/pageviews'
+import { monthRange, type PageviewsSource } from '../sources/pageviews'
 import type { DatedTag } from '../types'
 import { buildHitlist, laneOf, type HitlistDeps } from './build'
 import { loadLoPucki } from './seeds'
@@ -37,7 +37,8 @@ interface Fixture {
   kinds?: Record<string, { instanceOf?: string[]; isClass?: boolean }>
   dissolved?: { qid: string; date: string }[]
   founders?: { qid: string; title: string }[]
-  views?: Record<string, number>
+  /** Monthly views per title: a flat level, or a function of the month. */
+  views?: Record<string, number | ((month: string) => number)>
   fortune?: Record<number, string>
   loPucki?: string
 }
@@ -74,10 +75,13 @@ function deps(f: Fixture, log: string[] = []): HitlistDeps {
   }
   const pageviews: PageviewsSource = {
     ...mockPageviews,
-    monthly: async (_p, titles, from, to) => [
-      { month: `${from}`, views: f.views?.[titles[0]!] ?? 0 },
-      { month: `${to}`, views: f.views?.[titles[0]!] ?? 0 },
-    ],
+    monthly: async (_p, titles, from, to) => {
+      const level = f.views?.[titles[0]!] ?? 0
+      return monthRange(from, to).map((month) => ({
+        month,
+        views: typeof level === 'number' ? level : level(month),
+      }))
+    },
   }
   return {
     wikipedia,
@@ -279,7 +283,9 @@ describe('buildHitlist', () => {
     expect(entry!.qid).toBe('Q312')
   })
 
-  it('the founder seed drops under 1,000 median views and anything with a downfall tag', async () => {
+  it('the founder seed keeps a business whose best 24-month median reached 1,000, downfall or not', async () => {
+    const between = (from: string, to: string, views: number) => (month: string) =>
+      month >= from && month <= to ? views : 0
     const entries = await buildHitlist(
       deps({
         categories: { 'Corporate scandals': ['Fallen'] },
@@ -288,20 +294,31 @@ describe('buildHitlist', () => {
           { qid: 'Q20', title: 'Popular' },
           { qid: 'Q21', title: 'Obscure' },
           { qid: 'Q22', title: 'Fallen' },
+          { qid: 'Q23', title: 'Faded' },
+          { qid: 'Q24', title: 'Flash' },
         ],
-        views: { Popular: 1000, Obscure: 999, Fallen: 50000 },
-        facts: { Q20: 'Popular', Q21: 'Obscure', Q22: 'Fallen' },
+        views: {
+          Popular: 1000,
+          Obscure: 999,
+          Fallen: 50000,
+          // Popular for two years long before the build: still a founder-linked success seed.
+          Faded: between('2016-01', '2017-12', 5000),
+          // Eleven popular months never make half of any 24-month window.
+          Flash: between('2016-01', '2016-11', 5000),
+        },
+        facts: { Q20: 'Popular', Q21: 'Obscure', Q22: 'Fallen', Q23: 'Faded', Q24: 'Flash' },
       }),
     )
     const byQid = Object.fromEntries(entries.map((e) => [e.qid, e.tags.map((t) => t.tag)]))
     expect(byQid).toEqual({
       Q20: ['founder-link'],
-      Q22: ['category:Corporate scandals'],
+      Q22: ['category:Corporate scandals', 'founder-link'],
+      Q23: ['founder-link'],
     })
     expect(entries[0]!.tags[0]).toEqual(tag('founder-link', 'success', null))
   })
 
-  it('builds the founder window from the 24 months before the build month', async () => {
+  it('reads each founder series from 2015-07 to the month before the build month', async () => {
     const windows: [string, string][] = []
     const d = deps({ founders: [{ qid: 'Q20', title: 'Popular' }], facts: { Q20: 'Popular' } })
     d.pageviews = {
@@ -312,7 +329,7 @@ describe('buildHitlist', () => {
       },
     }
     await buildHitlist(d)
-    expect(windows).toEqual([['2024-10', '2026-09']])
+    expect(windows).toEqual([['2015-07', '2026-09']])
   })
 
   it('sorts entries by numeric QID', async () => {

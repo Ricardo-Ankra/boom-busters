@@ -167,6 +167,17 @@ describe('gatherAt', () => {
     expect(byQid(evidence, 'Q1').tagsAtT).toEqual([])
   })
 
+  it('a founder-link tag counts at T only with a 24-month median of 1,000 before T', async () => {
+    const founder: DatedTag = { tag: 'founder-link', lane: 'success', since: null }
+    const hitlist = [entry('Q1', { tags: [founder] }), entry('Q2', { tags: [founder, DOWNFALL] })]
+    const pageviews = flatPageviews({ 'Article Q1': 999, 'Article Q2': 999 })
+    const evidence = await gather(hitlist, sources({ pageviews }))
+    expect(byQid(evidence, 'Q1').tagsAtT).toEqual([])
+    expect(byQid(evidence, 'Q2').tagsAtT).toEqual([DOWNFALL])
+    const popular = await gather([entry('Q1', { tags: [founder] })], sources())
+    expect(popular[0]!.tagsAtT).toEqual([founder])
+  })
+
   it('a LoPucki tag filed after T is ignored', async () => {
     const hitlist = [
       entry('Q1', { tags: [{ tag: 'lopucki', lane: 'downfall', since: '2020-03-15' }] }),
@@ -490,8 +501,22 @@ describe('laneAt', () => {
   it('an entry with no English title keeps only its plain dated tags', async () => {
     const tags: DatedTag[] = [
       { tag: 'category:Ponzi schemes', lane: 'downfall', since: null },
-      { tag: 'founder-link', lane: 'success', since: null },
+      { tag: 'lopucki', lane: 'downfall', since: '2019-01-01' },
     ]
-    expect(await lane(entry('Q1', { enTitle: null, tags }), sources())).toBe('success')
+    expect(await lane(entry('Q1', { enTitle: null, tags }), sources())).toBe('downfall')
+  })
+
+  it('a founder-link tag needs its 24-month median before T, read from the same series', async () => {
+    const founder: DatedTag = { tag: 'founder-link', lane: 'success', since: null }
+    const pageviews = flatPageviews({ 'Article Q1': 999 })
+    expect(await lane(entry('Q1', { tags: [founder] }), sources({ pageviews }))).toBeNull()
+    expect(pageviews.monthly).toHaveBeenCalledWith(
+      'en.wikipedia',
+      ['Article Q1'],
+      '2015-07',
+      '2026-09',
+    )
+    expect(await lane(entry('Q2', { tags: [founder] }), sources())).toBe('success')
+    expect(await lane(entry('Q3', { enTitle: null, tags: [founder] }), sources())).toBeNull()
   })
 })

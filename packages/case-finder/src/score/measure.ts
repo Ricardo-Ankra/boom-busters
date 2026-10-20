@@ -40,7 +40,7 @@ function windowMonths(asOf: IsoDate): string[] {
 }
 
 /** A month missing from the series counts as 0: no recorded views is no interest. */
-function medianMonthly(series: MonthlyViews[], asOf: IsoDate): number {
+export function medianMonthly(series: MonthlyViews[], asOf: IsoDate): number {
   const byMonth = new Map(series.map((m) => [m.month, m.views]))
   return median(windowMonths(asOf).map((month) => byMonth.get(month) ?? 0))
 }

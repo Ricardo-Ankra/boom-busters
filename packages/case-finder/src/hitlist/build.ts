@@ -1,6 +1,6 @@
-import { HITLIST_EXCLUDED_CLASSES } from '../config'
-import type { DatedTag, HitlistEntry, IsoDate, Lane } from '../types'
-import type { PageviewsSource } from '../sources/pageviews'
+import { DEMAND_WINDOW_MONTHS, FOUNDER_MIN_MEDIAN_VIEWS, HITLIST_EXCLUDED_CLASSES } from '../config'
+import type { DatedTag, HitlistEntry, IsoDate, Lane, MonthlyViews } from '../types'
+import { monthRange, type PageviewsSource } from '../sources/pageviews'
 import type { EntityFacts, WikidataSource } from '../sources/wikidata'
 import type { WikipediaSource } from '../sources/wikipedia'
 import { median } from '../stats'
@@ -30,7 +30,7 @@ export interface HitlistDeps {
   /** Path to the LoPucki CSV; null or a missing file skips that seed. */
   loPuckiCsv: string | null
   log: (line: string) => void
-  /** Anchors the founder seed's 24-month window; injected so tests are deterministic. */
+  /** Ends the founder seed's pageviews series; injected so tests are deterministic. */
   now?: () => Date
   /** The counts the summary log line states, for a caller that records them (the back-test report). */
   onSummary?: (summary: HitlistSummary) => void
@@ -50,8 +50,11 @@ export interface HitlistSummary {
 
 const FORTUNE_FIRST_YEAR = 1955
 const FORTUNE_LAST_YEAR = 2019
-const FOUNDER_MIN_MEDIAN_VIEWS = 1000
-const FOUNDER_WINDOW_MONTHS = 24
+/** The first month the pageviews API has; every founder series starts here. */
+const FOUNDER_SERIES_FROM = '2015-07'
+
+/** The tag the founder seed gives; evidence gathering dates it against pageviews before T. */
+export const FOUNDER_TAG = 'founder-link'
 
 const fortuneUrl = (year: number) =>
   `https://raw.githubusercontent.com/cmusam/fortune500/master/csv/fortune500-${year}.csv`
@@ -79,11 +82,27 @@ function queryOf(enTitle: string | null): string | null {
   return enTitle === null ? null : enTitle.replace(/\s*\([^()]*\)\s*$/, '').trim()
 }
 
-/** The 24 calendar months before the month of `now`, as 'YYYY-MM' bounds. */
-function founderWindow(now: Date): { from: string; to: string } {
-  const index = now.getUTCFullYear() * 12 + now.getUTCMonth()
-  const month = (i: number) => `${Math.floor(i / 12)}-${String((i % 12) + 1).padStart(2, '0')}`
-  return { from: month(index - FOUNDER_WINDOW_MONTHS), to: month(index - 1) }
+/** The month before the month of `now`: the last whose monthly total is final. */
+function lastCompleteMonth(now: Date): string {
+  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1))
+    .toISOString()
+    .slice(0, 7)
+}
+
+/**
+ * The highest median over any 24 consecutive months from `from` to `to`, a
+ * missing month counting 0. Any window, not the last one: a company popular
+ * years before the build and forgotten since is exactly a case the back-test
+ * may meet, and judging it by today's interest would be hindsight.
+ */
+function bestWindowMedian(series: MonthlyViews[], from: string, to: string): number {
+  const byMonth = new Map(series.map((m) => [m.month, m.views]))
+  const views = monthRange(from, to).map((month) => byMonth.get(month) ?? 0)
+  let best = 0
+  for (let i = 0; i + DEMAND_WINDOW_MONTHS <= views.length; i++) {
+    best = Math.max(best, median(views.slice(i, i + DEMAND_WINDOW_MONTHS)))
+  }
+  return best
 }
 
 async function fortuneRows(deps: HitlistDeps): Promise<FortuneRow[]> {
@@ -196,22 +215,22 @@ export async function buildHitlist(deps: HitlistDeps): Promise<HitlistEntry[]> {
     'success',
   )
 
-  // Founder links last: they are filtered against every downfall tag above.
+  // A founder link stands beside any downfall tag: the lane at T gives downfall precedence, and
+  // filtering here on tags a company gained later would be hindsight.
   const founders = await wikidata.sparql(FOUNDER_QUERY, founderSchema)
-  const window = founderWindow(now())
-  perSeed.set('founder-link', 0)
+  const to = lastCompleteMonth(now())
+  perSeed.set(FOUNDER_TAG, 0)
   for (const b of founders.results.bindings) {
     const qid = qidOf(b.item.value)
     if (qid === null) continue
-    if (tagsByQid.get(qid)?.some((t) => t.lane === 'downfall')) continue
     const monthly = await deps.pageviews.monthly(
       'en.wikipedia',
       [b.title.value],
-      window.from,
-      window.to,
+      FOUNDER_SERIES_FROM,
+      to,
     )
-    if (median(monthly.map((m) => m.views)) < FOUNDER_MIN_MEDIAN_VIEWS) continue
-    add('founder-link', qid, { tag: 'founder-link', lane: 'success', since: null })
+    if (bestWindowMedian(monthly, FOUNDER_SERIES_FROM, to) < FOUNDER_MIN_MEDIAN_VIEWS) continue
+    add(FOUNDER_TAG, qid, { tag: FOUNDER_TAG, lane: 'success', since: null })
   }
 
   const facts = await wikidata.facts([...tagsByQid.keys()])

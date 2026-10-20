@@ -77,6 +77,13 @@ export const EDGAR_FORMS = {
 /** An 8-K counts for the downfall lane only when its items include this one (non-reliance on financials). */
 export const EDGAR_8K_DOWNFALL_ITEM = '4.02'
 
+/**
+ * The founder-link seed's popularity bar: an English median of this many
+ * monthly views over some 24 consecutive months to enter the hitlist, and
+ * over the 24 months before T for the tag to count at T.
+ */
+export const FOUNDER_MIN_MEDIAN_VIEWS = 1000
+
 export const FORTUNE_CLIMB = { places: 200, years: 10, lateEntryAfter: 1970, topRank: 100 } as const
 
 /**
