@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { describe, expect, it, vi } from 'vitest'
 import { createPoliteClient } from './http'
-import { liveWikipedia } from './wikipedia'
+import { liveWikipedia, normalTitle } from './wikipedia'
 import { mockWikipedia } from './mock'
 
 const fixture = (name: string) =>
@@ -146,32 +146,55 @@ describe('live wikipedia', () => {
     expect(await sourceFor(missing).revisionBefore('Nonexistent', '2010-01-01')).toBeNull()
   })
 
-  it('parsed returns category names without the Category: prefix', async () => {
-    const fetchImpl = wikipediaFetch(() => 'wikipedia-parse.json')
+  it('parsed reads the revision wikitext, not a parse of it', async () => {
+    const fetchImpl = wikipediaFetch(() => 'wikipedia-wikitext.json')
+    await sourceFor(fetchImpl).parsed(987654)
+    const params = searchParamsOf(fetchImpl)[0]!
+    expect(params.get('action')).toBe('query')
+    expect(params.get('prop')).toBe('revisions')
+    expect(params.get('revids')).toBe('987654')
+    expect(params.get('rvprop')).toBe('content')
+    expect(params.get('rvslots')).toBe('main')
+    expect(params.get('oldid')).toBeNull()
+  })
+
+  it('parsed takes categories from the wikitext, sort keys and comments dropped', async () => {
+    const fetchImpl = wikipediaFetch(() => 'wikipedia-wikitext.json')
     const parsed = await sourceFor(fetchImpl).parsed(987654)
-    expect(parsed.categories).toEqual([
-      'Companies established in 1999',
-      'Articles with short description',
+    // {{Ponzi schemes}} would add categories in a parse of today's template; the text has none.
+    expect(parsed.categories).toEqual(['Companies established in 1999', 'Accounting scandals'])
+  })
+
+  it('parsed takes article links only: piped, sectioned, deduped, colon titles kept', async () => {
+    const fetchImpl = wikipediaFetch(() => 'wikipedia-wikitext.json')
+    const parsed = await sourceFor(fetchImpl).parsed(987654)
+    expect(parsed.links).toEqual([
+      'Payment processor',
+      'Aschheim',
+      'Markus Braun',
+      'Wirecard scandal',
+      'Star Wars: Episode I',
     ])
+  })
+
+  it('parsed takes literal URLs, template parameters included, deduped', async () => {
+    const fetchImpl = wikipediaFetch(() => 'wikipedia-wikitext.json')
+    const parsed = await sourceFor(fetchImpl).parsed(987654)
     expect(parsed.externalLinks).toEqual([
-      'https://www.sec.gov/example',
+      'https://www.sec.gov/x',
       'https://example.org/report?a=1&b=2',
     ])
-    const params = searchParamsOf(fetchImpl)[0]!
-    expect(params.get('action')).toBe('parse')
-    expect(params.get('oldid')).toBe('987654')
-    expect(params.get('prop')).toBe('categories|externallinks|links')
   })
 
-  it('parsed returns namespace-0 link titles only, missing pages included', async () => {
-    const fetchImpl = wikipediaFetch(() => 'wikipedia-parse.json')
-    const parsed = await sourceFor(fetchImpl).parsed(987654)
-    expect(parsed.links).toEqual(['Markus Braun', 'Jan Marsalek'])
+  it('parsed throws on an API error body or a missing revision', async () => {
+    const error = wikipediaFetch(() => 'wikipedia-wikitext-error.json')
+    await expect(sourceFor(error).parsed(1)).rejects.toThrow()
+    const missing = wikipediaFetch(() => 'wikipedia-wikitext-badrevid.json')
+    await expect(sourceFor(missing).parsed(1)).rejects.toThrow(/revision 1/)
   })
 
-  it('parsed throws on an API error body', async () => {
-    const fetchImpl = wikipediaFetch(() => 'wikipedia-parse-missing.json')
-    await expect(sourceFor(fetchImpl).parsed(1)).rejects.toThrow()
+  it('normalTitle trims, spaces underscores and upper-cases the first letter', () => {
+    expect(normalTitle(' wirecard_scandal ')).toBe('Wirecard scandal')
   })
 })
 

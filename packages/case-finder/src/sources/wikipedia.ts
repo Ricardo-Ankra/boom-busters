@@ -21,9 +21,11 @@ export interface WikipediaSource {
   /** The newest revision before 00:00 UTC of `day`; null if the page is missing or did not exist yet. */
   revisionBefore(title: string, day: IsoDate): Promise<{ revid: number; timestamp: string } | null>
   /**
-   * Category names (underscores as spaces, hidden ones included), external links and namespace-0
-   * link titles of one revision. Links to pages that do not exist are kept: a list names its entries
-   * whether or not they have an article yet.
+   * Categories, external links and article links written in one revision's own wikitext, each
+   * normalised by `normalTitle` (URLs as written), deduped in first-seen order. It reads the raw
+   * text, not a parse: `action=parse&oldid=` expands today's templates, so navboxes and
+   * template-added categories would leak later content into an old revision. Whatever only a
+   * template adds is therefore dropped, deliberately: undercounting is the conservative side.
    */
   parsed(revid: number): Promise<{ categories: string[]; externalLinks: string[]; links: string[] }>
 }
@@ -56,13 +58,86 @@ const membersQuery = z.object({
   categorymembers: z.array(z.object({ ns: z.number(), title: z.string() })).optional(),
 })
 
-const parseSchema = z.object({
-  parse: z.object({
-    categories: z.array(z.object({ category: z.string() })),
-    externallinks: z.array(z.string()),
-    links: z.array(z.object({ ns: z.number(), title: z.string() })),
-  }),
+const contentQuery = z.object({
+  pages: z
+    .array(
+      z.object({
+        revisions: z
+          .array(
+            z.object({
+              slots: z.object({ main: z.object({ content: z.string().optional() }) }).optional(),
+            }),
+          )
+          .optional(),
+      }),
+    )
+    .optional(),
 })
+
+/** Prefixes that put a link outside the article namespace (`<ns> talk` is matched separately). */
+const NAMESPACES = new Set([
+  'category',
+  'file',
+  'image',
+  'media',
+  'template',
+  'wikipedia',
+  'wp',
+  'help',
+  'portal',
+  'draft',
+  'module',
+  'user',
+  'special',
+  'talk',
+])
+
+/** `de:`, `zh-yue:`: a language interwiki, not an article title. */
+const INTERWIKI = /^[a-z]{2,3}(-[a-z]+)*$/
+
+/** Trimmed, underscores as spaces, first letter upper-cased: how MediaWiki names a page. */
+export function normalTitle(title: string): string {
+  const spaced = title.replaceAll('_', ' ').trim()
+  return spaced.charAt(0).toUpperCase() + spaced.slice(1)
+}
+
+/** True when a link target has a namespace or interwiki prefix before its first colon. */
+function prefixed(target: string): boolean {
+  const colon = target.indexOf(':')
+  if (colon < 0) return false
+  const prefix = target.slice(0, colon).replaceAll('_', ' ').trim()
+  const lower = prefix.toLowerCase()
+  return NAMESPACES.has(lower) || lower.endsWith(' talk') || INTERWIKI.test(prefix)
+}
+
+const unique = (items: string[]) => [...new Set(items)]
+
+/** What a revision's own text says, with HTML comments removed first. */
+export function wikitextItems(wikitext: string): {
+  categories: string[]
+  externalLinks: string[]
+  links: string[]
+} {
+  const text = wikitext.replace(/<!--[\s\S]*?-->/g, '')
+  const categories = [...text.matchAll(/\[\[\s*category\s*:([^|\]]*)(?:\|[^\]]*)?\]\]/gi)]
+    .map((m) => normalTitle(m[1]!))
+    .filter((name) => name !== '')
+  const links: string[] = []
+  for (const m of text.matchAll(/\[\[([^[\]]+)\]\]/g)) {
+    const inner = m[1]!
+    // A leading colon links to a page rather than categorising or interwiki-linking this one.
+    if (inner.trimStart().startsWith(':')) continue
+    const target = inner.split('|')[0]!.split('#')[0]!
+    if (target.trim() === '' || prefixed(target)) continue
+    links.push(normalTitle(target))
+  }
+  const externalLinks = [...text.matchAll(/https?:\/\/[^\s|\]}<>"]+/g)].map((m) => m[0])
+  return {
+    categories: unique(categories),
+    externalLinks: unique(externalLinks),
+    links: unique(links),
+  }
+}
 
 function chunks<T>(items: T[], size: number): T[][] {
   const out: T[][] = []
@@ -206,17 +281,17 @@ export function liveWikipedia(client: PoliteClient): WikipediaSource {
     async parsed(revid) {
       const { data } = await client.getJson(
         urlFor({
-          action: 'parse',
-          oldid: String(revid),
-          prop: 'categories|externallinks|links',
+          action: 'query',
+          prop: 'revisions',
+          revids: String(revid),
+          rvprop: 'content',
+          rvslots: 'main',
         }),
-        parseSchema,
+        envelope(contentQuery),
       )
-      return {
-        categories: data.parse.categories.map((c) => c.category.replaceAll('_', ' ')),
-        externalLinks: data.parse.externallinks,
-        links: data.parse.links.filter((l) => l.ns === 0).map((l) => l.title),
-      }
+      const content = data.query?.pages?.[0]?.revisions?.[0]?.slots?.main.content
+      if (content === undefined) throw new Error(`Wikipedia has no content for revision ${revid}`)
+      return wikitextItems(content)
     },
   }
 }
