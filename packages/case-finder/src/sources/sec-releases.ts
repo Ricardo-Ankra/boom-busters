@@ -1,4 +1,5 @@
 import { parse } from 'node-html-parser'
+import { wholeWordPattern } from '../text'
 import type { IsoDate, PrimaryDocument } from '../types'
 import type { PoliteClient } from './http'
 
@@ -121,17 +122,13 @@ export function liveSecReleases(
   }
 }
 
-const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-
 /** Releases dated strictly before `before` whose title contains any name as a whole word. */
 export function releasesNaming(
   index: SecRelease[],
   names: string[],
   before: IsoDate,
 ): PrimaryDocument[] {
-  const patterns = names
-    .filter((n) => n.trim() !== '')
-    .map((n) => new RegExp(`(?<![\\p{L}\\p{N}])${escapeRegExp(n.trim())}(?![\\p{L}\\p{N}])`, 'iu'))
+  const patterns = names.filter((n) => n.trim() !== '').map(wholeWordPattern)
   return index
     .filter((r) => r.date < before && patterns.some((p) => p.test(r.title)))
     .map((r) => ({
