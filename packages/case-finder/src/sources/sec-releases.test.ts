@@ -60,6 +60,83 @@ describe('liveSecReleases', () => {
   })
 })
 
+/** A listing page of litigation-release rows, one per [number, title]. */
+const rowsHtml = (rows: [number: number, title: string][]) =>
+  `<table><tbody>${rows
+    .map(
+      ([n, title]) =>
+        `<tr><td><time datetime="2020-01-01T00:00:00Z">Jan. 1, 2020</time></td><td><a href="/lr-${n}">${title}</a><div>Release No. LR-${n}</div></td></tr>`,
+    )
+    .join('')}</tbody></table>`
+
+function pagedSource(pageFor: (kind: 'aaer' | 'lit', page: number) => string, maxPages?: number) {
+  const fetchImpl = vi.fn(async (url: string | URL | Request) => {
+    const u = new URL(String(url))
+    const page = Number(u.searchParams.get('page'))
+    const kind = u.pathname.includes('accounting') ? 'aaer' : 'lit'
+    const html = pageFor(kind, page)
+    return new Response(kind === 'aaer' ? html.replace(/LR-/g, 'AAER-') : html)
+  })
+  const client = createPoliteClient({
+    contact: 'me@example.com',
+    cacheDir: null,
+    fetchImpl,
+    minIntervalMs: { 'sec.gov': 0 },
+  })
+  return { fetchImpl, source: liveSecReleases(client, { maxPages }) }
+}
+
+describe('crawl safety', () => {
+  const empty = '<html></html>'
+
+  it('throws when the page guard is reached', async () => {
+    const { source } = pagedSource((_k, page) => rowsHtml([[page + 1, `Case ${page}`]]), 3)
+    await expect(source.index()).rejects.toThrow(/sec-aaer index: reached the 3-page guard/)
+  })
+
+  it('throws when page 0 has no rows', async () => {
+    const { source } = pagedSource(() => empty)
+    await expect(source.index()).rejects.toThrow(/sec-aaer index: .*no rows on page 0/)
+  })
+
+  it('stops at a repeated page and keeps no duplicates', async () => {
+    const { source, fetchImpl } = pagedSource((kind, page) => {
+      if (kind === 'aaer')
+        return rowsHtml([
+          [1, 'A'],
+          [2, 'B'],
+        ]).replace(/LR-/g, 'AAER-')
+      return page === 0
+        ? rowsHtml([
+            [1, 'A'],
+            [2, 'B'],
+          ])
+        : page === 1
+          ? rowsHtml([[3, 'C']])
+          : rowsHtml([[3, 'C']])
+    })
+    const index = await source.index()
+    const lit = index.filter((r) => r.kind === 'sec-litigation').map((r) => r.number)
+    expect(lit).toEqual(['LR-1', 'LR-2', 'LR-3'])
+    const aaer = index.filter((r) => r.kind === 'sec-aaer').map((r) => r.number)
+    expect(aaer).toEqual(['AAER-1', 'AAER-2'])
+    expect(fetchImpl.mock.calls.length).toBe(2 + 3)
+  })
+
+  it('collapses wrapped titles with non-breaking spaces so names still match', async () => {
+    const { source } = pagedSource((kind, page) =>
+      kind === 'lit' && page === 0
+        ? rowsHtml([[9, 'Wirecard\n   AG&nbsp;&nbsp;and  others']])
+        : kind === 'aaer' && page === 0
+          ? rowsHtml([[1, 'Other']]).replace(/LR-/g, 'AAER-')
+          : '<html></html>',
+    )
+    const index = await source.index()
+    expect(index.find((r) => r.number === 'LR-9')?.title).toBe('Wirecard AG and others')
+    expect(releasesNaming(index, ['Wirecard AG'], '2021-01-01')).toHaveLength(1)
+  })
+})
+
 const release = (
   kind: SecRelease['kind'],
   number: string,

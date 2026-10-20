@@ -36,8 +36,8 @@ const INDEXES = [
   },
 ] as const
 
-/** A runaway guard: the listings are a few hundred pages, never thousands. */
-const MAX_PAGES = 2000
+/** A runaway guard: litigation releases run to well over 2,000 pages, so this is generous. */
+const DEFAULT_MAX_PAGES = 10_000
 
 const MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec']
 
@@ -67,27 +67,53 @@ function parsePage(html: string, index: (typeof INDEXES)[number]): SecRelease[] 
     const link = titleCell.querySelector('a')
     const href = link?.getAttribute('href')
     const number = index.number.exec(titleCell.text)?.[0]
-    const title = link?.text.trim()
+    // Anchor text can wrap across lines and carry &nbsp;; \s covers both.
+    const title = link?.text.replace(/\s+/g, ' ').trim()
     if (!date || !href || !number || !title) continue
     out.push({ kind: index.kind, number, date, title, url: new URL(href, ORIGIN).toString() })
   }
   return out
 }
 
-export function liveSecReleases(client: PoliteClient): SecReleasesSource {
+/**
+ * A crawl that ends wrongly must fail loudly: an empty page 0 means the parser
+ * no longer matches the markup, and hitting the page guard means the end was
+ * never seen. A page that adds no new release number (a repeat of an earlier
+ * page) also ends the crawl, so duplicates never enter the index.
+ */
+export function liveSecReleases(
+  client: PoliteClient,
+  options: { maxPages?: number } = {},
+): SecReleasesSource {
+  const maxPages = options.maxPages ?? DEFAULT_MAX_PAGES
   return {
     async index() {
       const out: SecRelease[] = []
       for (const index of INDEXES) {
-        for (let page = 0; page < MAX_PAGES; page++) {
+        const seen = new Set<string>()
+        let ended = false
+        for (let page = 0; page < maxPages; page++) {
           const url = `${ORIGIN}${index.path}?page=${page}`
           const res = await client.getText(url, { maxAgeDays: 7 })
           if (res.status < 200 || res.status >= 300) {
             throw new Error(`GET ${url} failed with status ${res.status}`)
           }
           const rows = parsePage(res.data, index)
-          if (rows.length === 0) break
-          out.push(...rows)
+          if (rows.length === 0 && page === 0) {
+            throw new Error(`${index.kind} index: the parser found no rows on page 0 (${url})`)
+          }
+          const fresh = rows.filter((r) => !seen.has(r.number))
+          for (const r of fresh) seen.add(r.number)
+          out.push(...fresh)
+          if (fresh.length === 0) {
+            ended = true
+            break
+          }
+        }
+        if (!ended) {
+          throw new Error(
+            `${index.kind} index: reached the ${maxPages}-page guard without finding the end`,
+          )
         }
       }
       return out

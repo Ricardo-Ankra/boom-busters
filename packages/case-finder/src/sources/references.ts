@@ -10,12 +10,13 @@ import type { PrimaryDocument } from '../types'
 export function isPrimaryReference(url: string): boolean {
   let host: string
   try {
-    host = new URL(url).hostname.toLowerCase()
+    host = new URL(url).hostname.toLowerCase().replace(/\.$/, '')
   } catch {
     return false
   }
   if (host.startsWith('www.')) host = host.slice(4)
-  if (PRIMARY_DOMAIN_SUFFIXES.some((suffix) => host.endsWith(suffix))) return true
+  if (PRIMARY_DOMAIN_SUFFIXES.some((suffix) => host === suffix.slice(1) || host.endsWith(suffix)))
+    return true
   if (PRIMARY_HOSTS.some((h) => host === h || host.endsWith(`.${h}`))) return true
   const first = host.split('.')[0] ?? ''
   return (PRIMARY_HOST_FIRST_LABELS as readonly string[]).includes(first)
