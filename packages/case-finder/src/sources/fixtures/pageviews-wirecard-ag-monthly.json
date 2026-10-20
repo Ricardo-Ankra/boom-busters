@@ -1,0 +1,31 @@
+{
+  "items": [
+    {
+      "project": "en.wikipedia",
+      "article": "X",
+      "granularity": "monthly",
+      "timestamp": "2019040100",
+      "access": "all-access",
+      "agent": "user",
+      "views": 10
+    },
+    {
+      "project": "en.wikipedia",
+      "article": "X",
+      "granularity": "monthly",
+      "timestamp": "2019050100",
+      "access": "all-access",
+      "agent": "user",
+      "views": 20
+    },
+    {
+      "project": "en.wikipedia",
+      "article": "X",
+      "granularity": "monthly",
+      "timestamp": "2019060100",
+      "access": "all-access",
+      "agent": "user",
+      "views": 30
+    }
+  ]
+}
