@@ -59,12 +59,38 @@ const RETRY_DELAY_MS = 1000
 const RETRY_AFTER_CAP_MS = 60_000
 const DAY_MS = 86_400_000
 
-/** Strip secret query values from a URL or from a free-form cache key. */
+/**
+ * Drop every secret query parameter from a URL or a free-form cache key,
+ * keeping the rest in order. Works on the raw string so a key that is not a
+ * full URL is handled the same way.
+ */
 function redact(value: string): string {
-  const names = SECRET_PARAMS.join('|')
-  return value
-    .replace(new RegExp(`([?&])(?:${names})=[^&#]*&?`, 'gi'), (_m, sep: string) => sep)
-    .replace(/[?&]$/, '')
+  const q = value.indexOf('?')
+  if (q === -1) return value
+  const hashAt = value.indexOf('#', q)
+  const query = value.slice(q + 1, hashAt === -1 ? undefined : hashAt)
+  const tail = hashAt === -1 ? '' : value.slice(hashAt)
+  const kept = query.split('&').filter((pair) => {
+    if (pair === '') return false
+    let name = pair.split('=')[0] ?? ''
+    try {
+      name = decodeURIComponent(name)
+    } catch {
+      // keep the raw name
+    }
+    return !SECRET_PARAMS.includes(name.toLowerCase())
+  })
+  return value.slice(0, q) + (kept.length > 0 ? `?${kept.join('&')}` : '') + tail
+}
+
+/** Retry-After in ms: seconds or an HTTP date; missing, empty or unparseable is 1 s. */
+function retryAfterMs(header: string | null): number {
+  const text = header?.trim() ?? ''
+  if (text === '') return RETRY_DELAY_MS
+  const seconds = Number(text)
+  if (Number.isFinite(seconds)) return seconds >= 0 ? seconds * 1000 : RETRY_DELAY_MS
+  const date = Date.parse(text)
+  return Number.isNaN(date) ? RETRY_DELAY_MS : Math.max(0, date - Date.now())
 }
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))
@@ -126,9 +152,7 @@ export function createPoliteClient(options: PoliteClientOptions): PoliteClient {
       return { status: res.status, body: await res.text() }
     }
     if (res.status === 429) {
-      const seconds = Number(res.headers.get('Retry-After'))
-      const wait = Number.isFinite(seconds) && seconds >= 0 ? seconds * 1000 : RETRY_DELAY_MS
-      await sleep(Math.min(wait, RETRY_AFTER_CAP_MS))
+      await sleep(Math.min(retryAfterMs(res.headers.get('Retry-After')), RETRY_AFTER_CAP_MS))
       res = await attempt(url, host, headers)
     } else if (res.status >= 500) {
       await sleep(RETRY_DELAY_MS)
@@ -175,8 +199,9 @@ export function createPoliteClient(options: PoliteClientOptions): PoliteClient {
 
     const { status, body } = await request(url, host, init.headers ?? {})
     const entry: CacheEntry = { fetchedAt: now().toISOString().slice(0, 10), status, body }
-    // A transient failure must not be remembered; a settled answer (200, 404) is.
-    const settled = status < 500 && status !== 429
+    // Only a settled answer is remembered: success, or the page is gone (404, 410).
+    // Auth, rate-limit, timeout and server errors are transient and never cached.
+    const settled = (status >= 200 && status < 300) || status === 404 || status === 410
     if (file !== null && settled) {
       await mkdir(path.dirname(file), { recursive: true })
       await writeFile(file, JSON.stringify(entry))

@@ -203,4 +203,77 @@ describe('polite client', () => {
     expect((err as Error).message).toContain('api.example.com/x')
     expect((err as Error).message).not.toContain('SECRET')
   })
+
+  it.each([
+    'https://api.example.com/x?key=AAA&token=BBB&id=1',
+    'https://api.example.com/x?id=1&key=AAA&apikey=BBB&q=2',
+    'https://api.example.com/x?ID=1&KEY=AAA&Api_Key=BBB',
+  ])('strips adjacent secrets from the cache key, file and error: %s', async (url) => {
+    const cacheDir = await tmp()
+    const fetchImpl = vi.fn(async () => json({ nope: 1 }))
+    const client = createPoliteClient({ contact: 'me@example.com', cacheDir, fetchImpl })
+    const err = (await client.getJson(url, schema).catch((e: Error) => e)) as Error
+    expect(err.message).not.toMatch(/AAA|BBB/)
+    const files = await readdir(path.join(cacheDir, 'api.example.com'))
+    const content = await readFile(path.join(cacheDir, 'api.example.com', files[0]!), 'utf8')
+    expect(content).not.toMatch(/AAA|BBB/)
+    // the same call with different secrets shares the cache entry
+    const other = url.replace('AAA', 'CCC').replace('BBB', 'DDD')
+    expect((await client.getText(other)).fromCache).toBe(true)
+    // an explicit cacheKey is redacted too
+    await client.getText('https://api.example.com/y', { cacheKey: 'k?key=AAA&token=BBB&n=1' })
+    expect(
+      (
+        await client.getText('https://api.example.com/z', {
+          cacheKey: 'k?key=CCC&token=DDD&n=1',
+        })
+      ).fromCache,
+    ).toBe(true)
+  })
+
+  it('a 429 without Retry-After waits 1 s before the retry', async () => {
+    vi.useFakeTimers()
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValueOnce(json({}, 429))
+      .mockResolvedValueOnce(json({ ok: true }))
+    const client = createPoliteClient({ contact: 'me@example.com', cacheDir: null, fetchImpl })
+    const result = client.getJson('https://api.example.com/x', schema)
+    await vi.advanceTimersByTimeAsync(900)
+    expect(fetchImpl).toHaveBeenCalledTimes(1)
+    await vi.advanceTimersByTimeAsync(100)
+    expect((await result).data).toEqual({ ok: true })
+  })
+
+  it('a 429 with an empty Retry-After waits 1 s too', async () => {
+    vi.useFakeTimers()
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValueOnce(json({}, 429, { 'Retry-After': '' }))
+      .mockResolvedValueOnce(json({ ok: true }))
+    const client = createPoliteClient({ contact: 'me@example.com', cacheDir: null, fetchImpl })
+    const result = client.getJson('https://api.example.com/x', schema)
+    await vi.advanceTimersByTimeAsync(900)
+    expect(fetchImpl).toHaveBeenCalledTimes(1)
+    await vi.advanceTimersByTimeAsync(100)
+    await result
+  })
+
+  it('caches a 404 but not a 403', async () => {
+    const cacheDir = await tmp()
+    const answers = new Map([
+      ['https://api.example.com/gone', 404],
+      ['https://api.example.com/denied', 403],
+    ])
+    const fetchImpl = vi.fn(
+      async (url: string | URL | Request) =>
+        new Response('x', { status: answers.get(String(url)) }),
+    )
+    const client = createPoliteClient({ contact: 'me@example.com', cacheDir, fetchImpl })
+    await client.getText('https://api.example.com/gone')
+    expect((await client.getText('https://api.example.com/gone')).fromCache).toBe(true)
+    await client.getText('https://api.example.com/denied')
+    expect((await client.getText('https://api.example.com/denied')).fromCache).toBe(false)
+    expect(fetchImpl).toHaveBeenCalledTimes(3)
+  })
 })
