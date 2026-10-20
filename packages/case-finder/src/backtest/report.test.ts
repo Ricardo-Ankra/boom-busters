@@ -32,7 +32,10 @@ const META: ReportMeta = {
   configVersion: 1,
   commit: 'abc1234',
   baselineModel: 'claude-test',
+  baselineAsked: 6,
+  baselineScored: 6,
   runDate: '2026-10-21',
+  outcomeMeasuredOn: '2026-10-18',
   quotaNote: '9,000 YouTube units left today',
   hitlistByLane: { downfall: 1200, success: 300, none: 40 },
   unresolvedSeedNames: 17,
@@ -80,6 +83,15 @@ describe('verdict', () => {
     expect(v.ciRubric[1]).toBeGreaterThanOrEqual(v.ciRubric[0])
     expect(v.ciDifference[0]).toBeGreaterThan(0)
     expect(verdict(rows)).toEqual(v)
+  })
+
+  it('pass needs a baseline score for every row', () => {
+    const rows = Array.from({ length: 12 }, (_, i) => row(i + 1))
+    expect(verdict(rows).pass).toBe(true)
+    rows[3] = { ...rows[3]!, baseline: null }
+    const v = verdict(rows)
+    expect(v.rhoRubric).toBeGreaterThan(v.rhoBaseline)
+    expect(v.pass).toBe(false)
   })
 
   it('leaves the baseline undecided when it was not run', () => {
@@ -144,9 +156,41 @@ describe('renderReport', () => {
       ...META,
       mock: true,
       baselineModel: null,
+      baselineAsked: null,
+      baselineScored: null,
     })
     expect(text.startsWith('# MOCK')).toBe(true)
     expect(text).toContain('not decided: baseline not run')
+  })
+
+  it('a partial baseline is not decided and says how many cases it scored', () => {
+    const partial = rows.map((r, i) => ({ ...r, baseline: i === 0 ? null : r.baseline }))
+    const text = renderReport(partial, verdict(partial), { ...META, baselineScored: 5 })
+    expect(text).toContain('**Verdict: not decided: baseline scored 5 of 6 cases.**')
+    expect(text).toContain('- Baseline scored: 5 of 6 cases asked')
+    expect(text).not.toContain('baseline not run')
+    const one = [row(1)]
+    const single = renderReport(one, verdict(one), {
+      ...META,
+      baselineAsked: 1,
+      baselineScored: 1,
+    })
+    expect(single).toContain('not decided: baseline scored 1 of 1 case.')
+  })
+
+  it('shows the run date and the date the outcomes were measured on', () => {
+    const text = renderReport(rows, verdict(rows), META)
+    expect(text).toContain('- Run date: 2026-10-21')
+    expect(text).toContain('- Outcomes measured on: 2026-10-18')
+  })
+
+  it('flags a negative lane figure for the owner', () => {
+    const v = { ...verdict(rows), perLane: { downfall: -0.2, success: 0.4 } }
+    const text = renderReport(rows, v, META)
+    expect(text).toContain(
+      'The downfall figure is negative: raise this with the owner before reading the verdict.',
+    )
+    expect(text).not.toContain('The success figure is negative')
   })
 
   it('lists unusable cases with their error, and no dash from a title reaches the text', () => {

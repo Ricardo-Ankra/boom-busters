@@ -1,3 +1,4 @@
+import { z } from 'zod'
 import { BACKTEST, LONG_FORM_MIN_SEC } from '../config'
 import { titleMatches } from '../score/measure'
 import type { ChannelUploads, HitlistEntry, IsoDate, Lane } from '../types'
@@ -17,6 +18,16 @@ export interface SubjectFixture {
   verdict: 'subject' | 'skip-not-single' | 'miss-not-on-hitlist'
   note?: string
 }
+
+/** The hand-checked fixture's shape; the run refuses a file that does not match it. */
+export const SubjectFixturesSchema = z.array(
+  z.object({
+    videoId: z.string(),
+    qid: z.string().nullable(),
+    verdict: z.enum(['subject', 'skip-not-single', 'miss-not-on-hitlist']),
+    note: z.string().optional(),
+  }),
+)
 
 export type SelectedSubject = SubjectFixture & { lane: Lane; channelHandle: string }
 

@@ -173,7 +173,11 @@ const cleanGit: GitAdapter = {
   porcelain: async () => '',
   isTracked: async () => true,
   head: async () => 'abc1234',
+  blob: async () => 'blob1',
 }
+
+const dirtyConfig = async (p: string) =>
+  p.endsWith('config.ts') ? ' M packages/case-finder/src/config.ts' : ''
 
 function context(overrides: Partial<CliContext> = {}): CliContext & { lines: string[] } {
   const lines: string[] = []
@@ -191,13 +195,43 @@ function context(overrides: Partial<CliContext> = {}): CliContext & { lines: str
 }
 
 /** The state `hitlist` would leave, written by hand so the subjects match. */
-function writeHitlist(ctx: CliContext) {
+function writeHitlist(ctx: CliContext, configBlob = ctx.mock ? null : 'blob1') {
   const dir = path.join(ctx.root, '.cache', 'case-finder', ctx.mock ? 'mock' : '')
   mkdirSync(dir, { recursive: true })
   writeFileSync(
     path.join(dir, 'hitlist.json'),
-    JSON.stringify({ builtOn: '2026-10-21', entries: HITLIST, unresolvedBySeed: { lopucki: 4 } }),
+    JSON.stringify({
+      builtOn: '2026-10-21',
+      configBlob,
+      entries: HITLIST,
+      unresolvedBySeed: { lopucki: 4 },
+    }),
   )
+}
+
+const CHECKED: SubjectFixture[] = [
+  { videoId: 'a1', qid: 'Q1', verdict: 'subject' },
+  {
+    videoId: 'd1',
+    qid: null,
+    verdict: 'miss-not-on-hitlist',
+    note: 'lane: success; name: Delta Holdings',
+  },
+  { videoId: 'b1', qid: 'Q2', verdict: 'subject' },
+  { videoId: 'g1', qid: 'Q3', verdict: 'subject' },
+]
+
+/** A baseline whose reply is `text`, or JSON scoring each asked name 10, 20, 30... */
+function fakeBaseline(text?: (names: string[]) => string) {
+  const ask = vi.fn(async (names: string[]) => ({
+    text:
+      text?.(names) ??
+      JSON.stringify({ scores: names.map((title, i) => ({ title, priorityScore: 10 * (i + 1) })) }),
+    costUsd: 0.0123,
+    answeredBy: 'test/test-model',
+  }))
+  const baseline: BaselineScorer = { model: 'test-model', ask }
+  return { baseline, ask }
 }
 
 function writeFixture(ctx: CliContext, fixture: SubjectFixture[]) {
@@ -234,10 +268,17 @@ describe('the back-test commands', () => {
     writeHitlist(ctx)
     expect(await runSubjects(ctx)).toBe(0)
     const dir = ['.cache', 'case-finder', 'mock']
-    expect(readJson(ctx, ...dir, 'channel-uploads.json')['@ModernMBA'].uploads).toHaveLength(4)
-    expect(
-      readJson(ctx, ...dir, 'subject-proposals.json').map((p: { videoId: string }) => p.videoId),
-    ).toEqual(['a1', 'd1', 'b1', 'g1'])
+    const uploads = readJson(ctx, ...dir, 'channel-uploads.json')
+    expect(uploads.channels['@ModernMBA'].uploads).toHaveLength(4)
+    expect(uploads).toMatchObject({ fetchedOn: '2026-10-21', configBlob: null })
+    const proposals = readJson(ctx, ...dir, 'subject-proposals.json')
+    expect(proposals.configBlob).toBeNull()
+    expect(proposals.proposals.map((p: { videoId: string }) => p.videoId)).toEqual([
+      'a1',
+      'd1',
+      'b1',
+      'g1',
+    ])
     expect(readJson(ctx, ...dir, 'backtest-subjects.draft.json')).toEqual([
       { videoId: 'a1', qid: 'Q1', verdict: 'subject' },
       { videoId: 'd1', qid: null, verdict: 'miss-not-on-hitlist', note: 'lane: ?' },
@@ -271,24 +312,10 @@ describe('the back-test commands', () => {
     const ctx = context()
     writeHitlist(ctx)
     await runSubjects(ctx)
-    writeFixture(ctx, [
-      { videoId: 'a1', qid: 'Q1', verdict: 'subject' },
-      {
-        videoId: 'd1',
-        qid: null,
-        verdict: 'miss-not-on-hitlist',
-        note: 'lane: success; name: Delta Holdings',
-      },
-      { videoId: 'b1', qid: 'Q2', verdict: 'subject' },
-      { videoId: 'g1', qid: 'Q3', verdict: 'subject' },
-    ])
-    const score = vi.fn(async (names: string[]) => ({
-      scores: new Map(names.map((n, i) => [n, 10 * (i + 1)])),
-      costUsd: 0.0123,
-    }))
-    const baseline: BaselineScorer = { model: 'test-model', score }
+    writeFixture(ctx, CHECKED)
+    const { baseline, ask } = fakeBaseline()
     expect(await runBacktest(ctx, baseline)).toBe(0)
-    expect(score).toHaveBeenCalledWith(['Alpha Corp', 'Delta Holdings', 'Beta Inc'])
+    expect(ask).toHaveBeenCalledWith(['Alpha Corp', 'Delta Holdings', 'Beta Inc'])
     const cases = JSON.parse(readFileSync(reportPath(ctx, '-mock-cases.json'), 'utf8'))
     expect(
       cases.rows.map((r: { status: string; baseline: number }) => [r.status, r.baseline]),
@@ -298,7 +325,127 @@ describe('the back-test commands', () => {
       [expect.not.stringMatching(/^miss$/), 30],
     ])
     expect(ctx.lines.some((l) => l.includes('test-model') && l.includes('0.0123'))).toBe(true)
-    expect(readFileSync(reportPath(ctx), 'utf8')).toContain('model test-model')
+    const report = readFileSync(reportPath(ctx), 'utf8')
+    expect(report).toContain('model test-model')
+    expect(report).toContain('- Baseline scored: 3 of 3 cases asked')
+  })
+
+  it('a partial baseline is not decided, and the raw reply is kept', async () => {
+    const ctx = context()
+    writeHitlist(ctx)
+    await runSubjects(ctx)
+    writeFixture(ctx, CHECKED)
+    const reply = JSON.stringify({
+      scores: [
+        { title: 'Alpha Corp', priorityScore: 80 },
+        { title: 'Beta Inc', priorityScore: 40 },
+      ],
+    })
+    expect(await runBacktest(ctx, fakeBaseline(() => reply).baseline)).toBe(0)
+    expect(readFileSync(reportPath(ctx), 'utf8')).toContain(
+      '**Verdict: not decided: baseline scored 2 of 3 cases.**',
+    )
+    const cases = JSON.parse(readFileSync(reportPath(ctx, '-mock-cases.json'), 'utf8'))
+    expect(cases.verdict.pass).toBe(false)
+    expect(cases.meta).toMatchObject({ baselineAsked: 3, baselineScored: 2 })
+    expect(
+      readFileSync(
+        path.join(ctx.root, '.cache', 'case-finder', 'mock', 'baseline-2026-10-21.txt'),
+        'utf8',
+      ),
+    ).toBe(reply)
+  })
+
+  it('a baseline reply that does not parse is saved before the run fails', async () => {
+    const ctx = context()
+    writeHitlist(ctx)
+    await runSubjects(ctx)
+    writeFixture(ctx, CHECKED)
+    await expect(
+      runBacktest(ctx, fakeBaseline(() => 'I would rather not').baseline),
+    ).rejects.toThrow(/baseline-2026-10-21\.txt/)
+    expect(
+      readFileSync(
+        path.join(ctx.root, '.cache', 'case-finder', 'mock', 'baseline-2026-10-21.txt'),
+        'utf8',
+      ),
+    ).toBe('I would rather not')
+    expect(existsSync(reportPath(ctx))).toBe(false)
+  })
+
+  it('outcomes are measured on the day the uploads were fetched, and both dates are shown', async () => {
+    const ctx = context({ now: new Date('2021-08-15T12:00:00Z') })
+    writeHitlist(ctx)
+    await runSubjects(ctx)
+    ctx.now = NOW
+    expect(await runBacktest(ctx, null)).toBe(0)
+    const cases = JSON.parse(readFileSync(reportPath(ctx, '-mock-cases.json'), 'utf8'))
+    // Measured on 2021-08-15, a1 (2021-06-01) is not yet settled, so b1's only peer is d1.
+    const b1 = cases.rows.find((r: { videoId: string }) => r.videoId === 'b1')
+    expect(b1.outcome).toBe(3)
+    const report = readFileSync(reportPath(ctx), 'utf8')
+    expect(report).toContain('- Run date: 2026-10-21')
+    expect(report).toContain('- Outcomes measured on: 2021-08-15')
+  })
+
+  it('hitlist --live and subjects --live refuse when config.ts has uncommitted changes', async () => {
+    const ctx = context({ mock: false, git: { ...cleanGit, porcelain: dirtyConfig } })
+    const deps = { fetchText: async () => 'rank,company\n', loPuckiCsv: null }
+    expect(await runHitlist(ctx, deps)).toBe(1)
+    expect(existsSync(path.join(ctx.root, '.cache', 'case-finder', 'hitlist.json'))).toBe(false)
+    writeHitlist(ctx)
+    expect(await runSubjects(ctx)).toBe(1)
+    expect(existsSync(path.join(ctx.root, '.cache', 'case-finder', 'channel-uploads.json'))).toBe(
+      false,
+    )
+    expect(ctx.lines.join('\n')).toMatch(/config\.ts has uncommitted changes/)
+  })
+
+  it('a live hitlist records the config blob it was built under', async () => {
+    const ctx = context({ mock: false, sources: { ...fakeSources(), wikipedia: mockWikipedia } })
+    await runHitlist(ctx, { fetchText: async () => 'rank,company\n', loPuckiCsv: null })
+    expect(readJson(ctx, '.cache', 'case-finder', 'hitlist.json').configBlob).toBe('blob1')
+  })
+
+  it('run --live completes on clean snapshots and refuses ones built under another config', async () => {
+    const ctx = context({ mock: false })
+    writeHitlist(ctx)
+    expect(await runSubjects(ctx)).toBe(0)
+    expect(readJson(ctx, '.cache', 'case-finder', 'subject-proposals.json').configBlob).toBe(
+      'blob1',
+    )
+    writeFixture(ctx, CHECKED)
+    expect(await runBacktest(ctx, null)).toBe(0)
+    expect(readFileSync(reportPath(ctx, '.md'), 'utf8').startsWith('# Case-finder')).toBe(true)
+
+    ctx.git = { ...cleanGit, blob: async () => 'blob2' }
+    expect(await runBacktest(ctx, null)).toBe(1)
+    const said = ctx.lines.at(-1)!
+    for (const file of ['hitlist.json', 'channel-uploads.json', 'subject-proposals.json']) {
+      expect(said).toContain(file)
+    }
+    expect(said).toMatch(/rebuild/i)
+  })
+
+  it('run --live refuses a subject whose QID is not on the hitlist', async () => {
+    const ctx = context({ mock: false })
+    writeHitlist(ctx)
+    await runSubjects(ctx)
+    writeFixture(ctx, [...CHECKED.slice(0, 3), { videoId: 'g1', qid: 'Q99', verdict: 'subject' }])
+    expect(await runBacktest(ctx, null)).toBe(1)
+    expect(ctx.lines.at(-1)).toMatch(/g1 \(Q99\)/)
+    expect(ctx.lines.at(-1)).toMatch(/miss-not-on-hitlist/)
+  })
+
+  it('an invalid fixture is refused with the zod issues', async () => {
+    const ctx = context()
+    writeHitlist(ctx)
+    await runSubjects(ctx)
+    const file = path.join(ctx.root, FIXTURE_PATH)
+    mkdirSync(path.dirname(file), { recursive: true })
+    writeFileSync(file, JSON.stringify([{ videoId: 'a1', qid: 'Q1', verdict: 'maybe' }]))
+    expect(await runBacktest(ctx, null)).toBe(1)
+    expect(ctx.lines.at(-1)).toMatch(/0\.verdict/)
   })
 
   it('run --live refuses when config.ts has uncommitted changes', async () => {

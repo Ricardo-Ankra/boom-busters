@@ -49,7 +49,13 @@ export interface ReportMeta {
   configVersion: number
   commit: string
   baselineModel: string | null
+  /** Cases the baseline was asked to score; null when it was not run. */
+  baselineAsked: number | null
+  /** Of those, how many got a usable score; null when it was not run. */
+  baselineScored: number | null
   runDate: IsoDate
+  /** The day the channel uploads were fetched: outcomes are views as of then. */
+  outcomeMeasuredOn: IsoDate
   quotaNote: string
   /** Hitlist entries by laneOf over all their tags; `none` has no lane at all. */
   hitlistByLane: Record<Lane | 'none', number>
@@ -80,7 +86,10 @@ export const CAVEAT_BASELINE =
 
 const LANES: readonly Lane[] = ['downfall', 'success']
 
-/** The pre-registered pass rule (spec 9.4), on point estimates. No baseline, no pass. */
+/**
+ * The pre-registered pass rule (spec 9.4), on point estimates. No baseline, no
+ * pass; `verdict` also needs a baseline score for every case before it applies it.
+ */
 export function passes(rhoRubric: number, rhoBaseline: number): boolean {
   return !Number.isNaN(rhoBaseline) && rhoRubric > rhoBaseline && rhoRubric >= BACKTEST.passRho
 }
@@ -148,7 +157,8 @@ export function verdict(rows: CaseRow[]): Verdict {
       withBaseline,
       (s) => rhoAt(s, rubric, outcome) - rhoAt(s, baseline, outcome),
     ),
-    pass: passes(rhoRubric, rhoBaseline),
+    // A partial baseline would compare the rubric over all cases with the baseline over some.
+    pass: withBaseline.length === rows.length && passes(rhoRubric, rhoBaseline),
     perLane: Object.fromEntries(
       LANES.map((lane) => [
         lane,
@@ -186,12 +196,16 @@ const cell = (text: string) => text.replace(/\s+/g, ' ').replaceAll('|', '\\|').
 /** House rule for owner-facing prose: no em or en dashes, whatever a title or error carried. */
 const plain = (text: string) => text.replace(/[\u2013\u2014]/g, '-')
 
-function verdictLines(v: Verdict, baselineModel: string | null): string[] {
+function verdictLines(v: Verdict, meta: ReportMeta): string[] {
   const level = `${Math.round(BACKTEST.intervalLevel * 100)}%`
-  const decided = !Number.isNaN(v.rhoBaseline)
+  const { baselineAsked: asked, baselineScored: scored, baselineModel } = meta
+  const ran = asked !== null && scored !== null
+  const complete = ran && scored === asked && scored >= 2
   let headline: string
-  if (!decided) headline = '**Verdict: not decided: baseline not run.**'
-  else if (v.pass) {
+  if (!ran) headline = '**Verdict: not decided: baseline not run.**'
+  else if (!complete) {
+    headline = `**Verdict: not decided: baseline scored ${scored} of ${cases(asked)}.**`
+  } else if (v.pass) {
     headline =
       `**Verdict: pass.** The rubric's correlation beats the baseline's and reaches ` +
       `${BACKTEST.passRho.toFixed(2)}.`
@@ -206,7 +220,8 @@ function verdictLines(v: Verdict, baselineModel: string | null): string[] {
     headline,
     '',
     `- Rubric Spearman: ${fixed(v.rhoRubric)} (${level} interval ${interval(v.ciRubric)})`,
-    decided
+    ...(ran ? [`- Baseline scored: ${scored} of ${cases(asked)} asked`] : []),
+    ran
       ? `- Baseline Spearman: ${fixed(v.rhoBaseline)} (${level} interval ${interval(v.ciBaseline)})` +
         (baselineModel === null ? '' : `, model ${baselineModel}`)
       : '- Baseline Spearman: not run',
@@ -255,7 +270,7 @@ export function renderReport(rows: CaseRow[], v: Verdict, meta: ReportMeta): str
     ...(meta.mock
       ? ['**MOCK run: every source was a mock. None of these figures are real.**', '']
       : []),
-    ...verdictLines(v, meta.baselineModel),
+    ...verdictLines(v, meta),
     '',
     '## Caveats',
     '',
@@ -268,6 +283,10 @@ export function renderReport(rows: CaseRow[], v: Verdict, meta: ReportMeta): str
       (lane) =>
         `- ${lane}: Spearman ${fixed(v.perLane[lane])} over ` +
         cases(rows.filter((r) => r.lane === lane).length),
+    ),
+    ...LANES.filter((lane) => v.perLane[lane] < 0).map(
+      (lane) =>
+        `- The ${lane} figure is negative: raise this with the owner before reading the verdict.`,
     ),
     `- Without the ${legalKills} of ${rows.length} cases the legal kill would have removed: ` +
       `Spearman ${fixed(v.withoutLegalKills)}`,
@@ -295,6 +314,8 @@ export function renderReport(rows: CaseRow[], v: Verdict, meta: ReportMeta): str
     '',
     '## Run',
     '',
+    `- Run date: ${meta.runDate}`,
+    `- Outcomes measured on: ${meta.outcomeMeasuredOn} (the day the channel uploads were fetched)`,
     `- Hitlist by lane: downfall ${count(lanes.downfall)}, success ${count(lanes.success)}, ` +
       `no lane ${count(lanes.none)}`,
     `- Unresolved seed names: ${count(meta.unresolvedSeedNames)}`,

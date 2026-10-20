@@ -17,7 +17,6 @@ import {
   knownModel,
   LIVE_ADAPTERS,
   mockProvidersEnabled,
-  parseNamedCaseScores,
   priceOf,
 } from '@boom-busters/providers'
 import { PROVIDER_ENV_SEEDS, readCaseFinderEnv } from '@boom-busters/schemas'
@@ -72,6 +71,7 @@ function gitAt(root: string): GitAdapter {
       }
     },
     head: async () => (await git('rev-parse', '--short', 'HEAD')).trim(),
+    blob: async (relPath) => (await git('rev-parse', `HEAD:${relPath}`)).trim(),
   }
 }
 
@@ -97,15 +97,15 @@ function baselineScorer(baseline: NonNullable<CliArgs['baseline']>): BaselineSco
   }
   return {
     model,
-    async score(names) {
+    async ask(names) {
       const result = await LIVE_ADAPTERS[provider].complete(buildScoreNamedCasesRequest(names), {
         apiKey,
         model,
       })
-      console.log(`baseline: answered by ${result.provider}/${result.model}`)
       return {
-        scores: parseNamedCaseScores(result.text, names),
+        text: result.text,
         costUsd: priceOf(known, result.usage),
+        answeredBy: `${result.provider}/${result.model}`,
       }
     },
   }
