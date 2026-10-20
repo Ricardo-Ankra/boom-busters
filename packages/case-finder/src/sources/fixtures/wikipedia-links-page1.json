@@ -1,0 +1,17 @@
+{
+  "batchcomplete": true,
+  "continue": { "plcontinue": "10|0|Foo", "continue": "||" },
+  "query": {
+    "pages": [
+      {
+        "pageid": 10,
+        "ns": 0,
+        "title": "List of frauds",
+        "links": [
+          { "ns": 0, "title": "Alpha Fraud" },
+          { "ns": 0, "title": "Beta & Co" }
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "batchcomplete": true,
+  "query": {
+    "categorymembers": [
+      { "pageid": 4, "ns": 0, "title": "Gamma Scheme" },
+      { "pageid": 5, "ns": 14, "title": "Category:Sub B" }
+    ]
+  }
+}

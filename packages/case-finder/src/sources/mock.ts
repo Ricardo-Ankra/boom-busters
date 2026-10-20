@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto'
 import type { z } from 'zod'
 import { dayRange, monthRange, type PageviewsSource } from './pageviews'
 import type { EntityFacts, WikidataSource } from './wikidata'
+import type { WikipediaSource } from './wikipedia'
 
 /**
  * Deterministic mock sources for mock-provider mode and tests. Nothing here
@@ -68,5 +69,47 @@ export const mockWikidata: WikidataSource = {
       })
     }
     return out
+  },
+}
+
+const MOCK_ARTICLES = 4
+const MOCK_SUBCATEGORY_ARTICLES = 2
+
+const mockArticles = (category: string, count: number, offset = 0) =>
+  Array.from({ length: count }, (_, i) => `Mock article ${offset + i + 1} in ${category}`)
+
+export const mockWikipedia: WikipediaSource = {
+  /** Depth 1 adds two more articles from a mock subcategory, numbered after the first four. */
+  async categoryMembers(category, depth) {
+    return [
+      ...mockArticles(category, MOCK_ARTICLES),
+      ...(depth === 1
+        ? mockArticles(`${category} subcategory`, MOCK_SUBCATEGORY_ARTICLES, MOCK_ARTICLES)
+        : []),
+    ]
+  },
+  async listLinks(page) {
+    return mockArticles(page, MOCK_ARTICLES)
+  },
+  async redirectsTo(title) {
+    return [`Mock redirect to ${title}`]
+  },
+  async qidsFor(titles) {
+    return new Map(titles.map((title) => [title, `Q${900000 + (hash(title) % 99999)}`]))
+  },
+  /** Always one second before the day, so the dating logic has a revision to work from. */
+  async revisionBefore(title, day) {
+    return {
+      revid: 1000000 + (hash(`${title}|${day}`) % 8000000),
+      timestamp: new Date(Date.parse(`${day}T00:00:00Z`) - 1000)
+        .toISOString()
+        .replace('.000Z', 'Z'),
+    }
+  },
+  async parsed(revid) {
+    return {
+      categories: [`Mock category of revision ${revid}`],
+      externalLinks: [`https://example.invalid/mock/${revid}`],
+    }
   },
 }

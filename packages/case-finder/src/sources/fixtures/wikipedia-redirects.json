@@ -1,0 +1,16 @@
+{
+  "batchcomplete": true,
+  "query": {
+    "pages": [
+      {
+        "pageid": 20,
+        "ns": 0,
+        "title": "Wirecard",
+        "redirects": [
+          { "pageid": 21, "ns": 0, "title": "Wirecard AG" },
+          { "pageid": 22, "ns": 0, "title": "Wirecard scandal" }
+        ]
+      }
+    ]
+  }
+}
