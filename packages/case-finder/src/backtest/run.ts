@@ -1,48 +1,45 @@
 import { mkdir, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { parseNamedCaseScores } from '@boom-busters/providers'
-import { CHANNEL_HANDLES, CONFIG_VERSION } from '../config'
-import { gatherAt, laneAt, type Sources } from '../evidence'
-import { buildHitlist, laneOf } from '../hitlist/build'
+import { CONFIG_VERSION } from '../config'
+import { gatherAt, laneAt } from '../evidence'
+import { laneOf } from '../hitlist/build'
 import { KILL_LEGAL } from '../score/gates'
 import { rank, type LaneResult, type Scored } from '../score/rank'
 import { QuotaExhaustedError } from '../sources/quota'
-import type { ChannelUploads, HitlistEntry, IsoDate, Lane } from '../types'
+import type { IsoDate, Lane } from '../types'
+import { countByLane, dayBefore, dayOf, dirOf, readHitlist, type CliContext } from './context'
 import { outcomeRatio } from './outcome'
 import { renderReport, verdict, type CaseRow, type ReportMeta } from './report'
 import {
   CONFIG_PATH,
-  FIXTURE_PATH,
   SNAPSHOT_FILES,
-  configRefusal,
   liveRefusal,
   readFixture,
   readJson,
-  snapshotDir,
   staleRefusal,
   unlistedRefusal,
   writeJson,
-  type GitAdapter,
-  type HitlistSnapshot,
   type ProposalsSnapshot,
   type UploadsSnapshot,
 } from './snapshots'
 import {
-  proposeSubjects,
   selectTestSet,
   type SelectedSubject,
-  type SubjectFixture,
   type SubjectLanes,
   type SubjectProposal,
 } from './subjects'
 
+export type { CliContext } from './context'
+export { runHitlist, runSubjects } from './prepare'
 export { CONFIG_PATH, FIXTURE_PATH, type GitAdapter } from './snapshots'
 
 /**
- * The back-test's three commands, with every outside dependency injected
- * (sources, git, the file-system root, the clock) so the CLI test runs them
- * end to end on mocks in a temp folder. `scripts/backtest.ts` only parses the
- * arguments, wires live or mock sources and calls these.
+ * The back-test commands, with every outside dependency injected (sources,
+ * git, the file-system root, the clock) so the CLI test runs them end to end
+ * on mocks in a temp folder. `scripts/backtest.ts` only parses the arguments,
+ * wires live or mock sources and calls these. This file is the `run` command;
+ * prepare.ts builds its inputs.
  */
 
 /** The paid baseline call, wired by the script to a provider adapter. */
@@ -52,122 +49,7 @@ export interface BaselineScorer {
   ask(names: string[]): Promise<{ text: string; costUsd: number | null; answeredBy: string }>
 }
 
-export interface CliContext {
-  /** The repo root: snapshots, the fixture and the report all live under it. */
-  root: string
-  mock: boolean
-  sources: Sources
-  git: GitAdapter
-  /** One instant for the whole process, so a run that crosses midnight still hits the cache. */
-  now: Date
-  log: (line: string) => void
-  quotaNote: () => string
-}
-
 const LANES: readonly Lane[] = ['downfall', 'success']
-const DAY_MS = 86_400_000
-
-const dayOf = (now: Date): IsoDate => now.toISOString().slice(0, 10)
-const dayBefore = (day: IsoDate): IsoDate =>
-  new Date(Date.parse(`${day}T00:00:00Z`) - DAY_MS).toISOString().slice(0, 10)
-
-const dirOf = (ctx: CliContext) => snapshotDir(ctx.root, ctx.mock)
-
-const readHitlist = (ctx: CliContext) =>
-  readJson<HitlistSnapshot>(path.join(dirOf(ctx), SNAPSHOT_FILES.hitlist), 'run hitlist first')
-
-/**
- * A live command that writes a snapshot refuses while config.ts is
- * uncommitted, and stamps what it writes with the committed blob.
- */
-async function configBlob(ctx: CliContext): Promise<{ blob: string | null } | { refusal: string }> {
-  if (ctx.mock) return { blob: null }
-  const refusal = await configRefusal(ctx.git)
-  return refusal === null ? { blob: await ctx.git.blob(CONFIG_PATH) } : { refusal }
-}
-
-function countByLane(entries: HitlistEntry[]): Record<Lane | 'none', number> {
-  const counts = { downfall: 0, success: 0, none: 0 }
-  for (const e of entries) counts[laneOf(e.tags) ?? 'none']++
-  return counts
-}
-
-export async function runHitlist(
-  ctx: CliContext,
-  deps: { fetchText: (url: string) => Promise<string>; loPuckiCsv: string | null },
-): Promise<number> {
-  const config = await configBlob(ctx)
-  if ('refusal' in config) {
-    ctx.log(config.refusal)
-    return 1
-  }
-  let unresolvedBySeed: Record<string, number> = {}
-  const entries = await buildHitlist({
-    wikipedia: ctx.sources.wikipedia,
-    wikidata: ctx.sources.wikidata,
-    pageviews: ctx.sources.pageviews,
-    fetchText: deps.fetchText,
-    loPuckiCsv: deps.loPuckiCsv,
-    log: ctx.log,
-    now: () => ctx.now,
-    onSummary: (s) => (unresolvedBySeed = s.unresolvedBySeed),
-  })
-  const snapshot: HitlistSnapshot = {
-    builtOn: dayOf(ctx.now),
-    configBlob: config.blob,
-    entries,
-    unresolvedBySeed,
-  }
-  await writeJson(path.join(dirOf(ctx), SNAPSHOT_FILES.hitlist), snapshot)
-  const lanes = countByLane(entries)
-  const unresolved = Object.values(unresolvedBySeed).reduce((a, b) => a + b, 0)
-  ctx.log(
-    `hitlist: ${entries.length} entries (downfall ${lanes.downfall}, success ${lanes.success}, ` +
-      `no lane ${lanes.none}); ${unresolved} seed names unresolved`,
-  )
-  return 0
-}
-
-export async function runSubjects(ctx: CliContext): Promise<number> {
-  const config = await configBlob(ctx)
-  if ('refusal' in config) {
-    ctx.log(config.refusal)
-    return 1
-  }
-  const hitlist = await readHitlist(ctx)
-  const uploads = new Map<string, ChannelUploads>()
-  for (const handle of CHANNEL_HANDLES) {
-    const channel = await ctx.sources.youtube.channelByHandle(handle)
-    // Every page: the outcome measure needs each channel's whole history.
-    uploads.set(
-      handle,
-      await ctx.sources.youtube.uploads(channel.channelId, channel.uploadsPlaylistId),
-    )
-  }
-  const proposals = proposeSubjects(uploads, hitlist.entries)
-  const draft: SubjectFixture[] = proposals.map((p) =>
-    p.proposedQid === null
-      ? { videoId: p.videoId, qid: null, verdict: 'miss-not-on-hitlist', note: 'lane: ?' }
-      : { videoId: p.videoId, qid: p.proposedQid, verdict: 'subject' },
-  )
-  const dir = dirOf(ctx)
-  const uploadsSnapshot: UploadsSnapshot = {
-    fetchedOn: dayOf(ctx.now),
-    configBlob: config.blob,
-    channels: Object.fromEntries(uploads),
-  }
-  const proposalsSnapshot: ProposalsSnapshot = { configBlob: config.blob, proposals }
-  await writeJson(path.join(dir, SNAPSHOT_FILES.uploads), uploadsSnapshot)
-  await writeJson(path.join(dir, SNAPSHOT_FILES.proposals), proposalsSnapshot)
-  await writeJson(path.join(dir, 'backtest-subjects.draft.json'), draft)
-  const matched = proposals.filter((p) => p.proposedQid !== null).length
-  ctx.log(
-    `subjects: ${[...uploads.values()].reduce((n, c) => n + c.uploads.length, 0)} uploads; ` +
-      `${proposals.length} long-form proposals, ${matched} with a proposed subject. ` +
-      `Hand-check backtest-subjects.draft.json into ${FIXTURE_PATH} and commit it.`,
-  )
-  return 0
-}
 
 /** A miss names its subject in the fixture note (`name: ...`, up to a `;`), if the checker gave one. */
 function missName(note: string | undefined): string | null {
