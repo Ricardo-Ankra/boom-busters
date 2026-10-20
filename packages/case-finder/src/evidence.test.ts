@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { gatherAt, type Sources } from './evidence'
+import { classify } from './score/rank'
 import {
   mockCourtListener,
   mockEdgar,
@@ -342,6 +343,17 @@ describe('gatherAt', () => {
     expect(wikipedia.revisionBefore).not.toHaveBeenCalled()
     expect(wikipedia.parsed).not.toHaveBeenCalled()
     expect(e!.tagsAtT.map((t) => t.tag)).toEqual(['lopucki'])
+  })
+
+  it('a below-floor entry with only category tags is reported below floor', async () => {
+    const wikipedia = fakeWikipedia({ 'Article Q1': { categories: ['Ponzi schemes'] } })
+    const hitlist = [
+      entry('Q1', { tags: [{ tag: 'category:Ponzi schemes', lane: 'downfall', since: null }] }),
+    ]
+    const s = sources({ wikipedia, pageviews: flatPageviews({ 'Article Q1': 299 }) })
+    const evidence = await gather(hitlist, s)
+    expect(evidence[0]!.tagsAtT).toEqual([])
+    expect(classify(evidence).unranked).toEqual([{ qid: 'Q1', lane: null, reason: 'below floor' }])
   })
 
   it('a population entry with no query gets an empty search, never null', async () => {

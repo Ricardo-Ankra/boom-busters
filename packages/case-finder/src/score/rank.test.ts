@@ -245,4 +245,19 @@ describe('classify', () => {
       { qid: 'Q3', lane: null, reason: 'no lane' },
     ])
   })
+
+  it('below the floor wins over no lane: the floor is checked first', () => {
+    const { population, unranked } = classify([
+      entry('Q1', { lane: null, demand: FLOOR_MEDIAN_MONTHLY - 1 }),
+      entry('Q2', { lane: null, demand: FLOOR_MEDIAN_MONTHLY }),
+    ])
+    expect(population.get('downfall')).toEqual([])
+    expect(unranked).toEqual([
+      { qid: 'Q1', lane: null, reason: 'below floor' },
+      { qid: 'Q2', lane: null, reason: 'no lane' },
+    ])
+    const result = rank([entry('Q1', { lane: null, demand: FLOOR_MEDIAN_MONTHLY - 1 })])
+    expect(result.downfall.unranked).toEqual([{ qid: 'Q1', reason: 'below floor' }])
+    expect(result.success.unranked).toEqual([])
+  })
 })

@@ -42,13 +42,13 @@ export function classify(evidence: EntryEvidence[]): {
 
   for (const e of evidence) {
     const lane = laneOf(e.tagsAtT)
-    if (lane === null) {
-      unranked.push({ qid: e.entry.qid, lane, reason: 'no lane' })
-      continue
-    }
     const raw = measure(e)
+    // Floor before lane (ruling R10): evidence gathering never dates the category and list tags
+    // of an entry below the floor, so its missing lane says nothing; the floor is the reason.
     if (raw.enMedianMonthly < FLOOR_MEDIAN_MONTHLY) {
       unranked.push({ qid: e.entry.qid, lane, reason: 'below floor' })
+    } else if (lane === null) {
+      unranked.push({ qid: e.entry.qid, lane, reason: 'no lane' })
     } else {
       eligible.get(lane)!.push({ e, demand: raw.demand })
     }
