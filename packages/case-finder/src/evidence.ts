@@ -9,7 +9,7 @@ import { referencesAsDocuments } from './sources/references'
 import { releasesNaming, type SecRelease, type SecReleasesSource } from './sources/sec-releases'
 import type { WikidataSource } from './sources/wikidata'
 import { normalTitle, type WikipediaSource } from './sources/wikipedia'
-import { uploadsPlaylistId, type YoutubeSource } from './sources/youtube'
+import { uploadsPlaylistId, YoutubeNotFoundError, type YoutubeSource } from './sources/youtube'
 import type {
   ChannelUploads,
   DailyViews,
@@ -80,8 +80,8 @@ interface Run {
   yesterday: IsoDate
   pageAt: (title: string) => Promise<PageAtT | null>
   listLinks: (page: string) => Promise<Set<string>>
-  /** Memoised per run; `size` is how many channels were fetched. */
-  uploads: ((channelId: string) => Promise<ChannelUploads>) & { size: () => number }
+  /** Memoised per run; null when the channel's uploads are gone. `size` is how many channels were fetched. */
+  uploads: ((channelId: string) => Promise<ChannelUploads | null>) & { size: () => number }
 }
 
 function addDays(day: IsoDate, n: number): IsoDate {
@@ -261,7 +261,9 @@ async function passTwo(
     : { fetchedAt: run.today, videos: [] }
   const channels: Record<string, ChannelUploads> = {}
   for (const channelId of new Set(search.videos.map((v) => v.channelId))) {
-    channels[channelId] = await run.uploads(channelId)
+    // A channel with no uploads to read is left out; its videos' outlier ratio falls back to 1.
+    const uploads = await run.uploads(channelId)
+    if (uploads !== null) channels[channelId] = uploads
   }
   return {
     searched,
@@ -293,7 +295,12 @@ function createRun(asOf: IsoDate, sources: Sources, now: () => Date = () => new 
     return new Set((list?.links ?? []).map(normalTitle))
   })
   const uploads = memo((channelId: string) =>
-    sources.youtube.uploads(channelId, uploadsPlaylistId(channelId), { maxPages: 1 }),
+    sources.youtube
+      .uploads(channelId, uploadsPlaylistId(channelId), { maxPages: 1 })
+      .catch((error: unknown) => {
+        if (error instanceof YoutubeNotFoundError) return null
+        throw error
+      }),
   )
   return {
     asOf,

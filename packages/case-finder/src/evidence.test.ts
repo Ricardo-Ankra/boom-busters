@@ -11,7 +11,7 @@ import {
 import { dayRange, monthRange, type PageviewsSource } from './sources/pageviews'
 import { QuotaExhaustedError } from './sources/quota'
 import type { WikipediaSource } from './sources/wikipedia'
-import type { YoutubeSource } from './sources/youtube'
+import { YoutubeNotFoundError, type YoutubeSource } from './sources/youtube'
 import type { DatedTag, HitlistEntry, YoutubeVideo } from './types'
 
 const NOW = () => new Date('2026-10-20T12:00:00Z')
@@ -357,6 +357,29 @@ describe('gatherAt', () => {
     expect(shared).toEqual([['UCshared', 'UUshared', { maxPages: 1 }]])
     expect(youtube.uploads).toHaveBeenCalledTimes(3)
     for (const e of evidence) expect(Object.keys(e.channels)).toContain('UCshared')
+  })
+
+  it('a channel whose uploads playlist is not found is left out; any other error throws', async () => {
+    const search = async () => ({
+      fetchedAt: '2026-10-20',
+      videos: [video('v1', 'UCgone'), video('v2', 'UCkept')],
+    })
+    const uploads = vi.fn(async (channelId: string) => {
+      if (channelId === 'UCgone') throw new YoutubeNotFoundError('playlist UUgone not found')
+      return { channelId, uploads: [] }
+    })
+    const [e] = await gather(
+      [entry('Q1')],
+      sources({ youtube: { ...mockYoutube, search, uploads } }),
+    )
+    expect(Object.keys(e!.channels)).toEqual(['UCkept'])
+
+    const broken = vi.fn(async () => {
+      throw new Error('GET playlistItems failed with status 500')
+    })
+    await expect(
+      gather([entry('Q1')], sources({ youtube: { ...mockYoutube, search, uploads: broken } })),
+    ).rejects.toThrow(/500/)
   })
 
   it('an entry below the floor gets no revision call and keeps only its dated plain tags', async () => {

@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createPoliteClient } from './http'
 import { mockYoutube } from './mock'
 import { createQuotaLedger, QuotaExhaustedError } from './quota'
-import { liveYoutube, parseIsoDuration, uploadsPlaylistId } from './youtube'
+import { liveYoutube, parseIsoDuration, uploadsPlaylistId, YoutubeNotFoundError } from './youtube'
 
 const fixture = (name: string) =>
   readFileSync(new URL(`./fixtures/${name}`, import.meta.url), 'utf8')
@@ -197,6 +197,23 @@ describe('live youtube uploads', () => {
     await source.uploads('UCaaa', 'UUaaa')
     await source.uploads('UCaaa', 'UUaaa')
     expect(ledger.remaining()).toBe(10_000 - 4)
+  })
+
+  it('a playlistNotFound 404 throws YoutubeNotFoundError, and a cached repeat spends nothing', async () => {
+    const fetchImpl = routedFetch([['/playlistItems?', 'youtube-playlist-404.json', 404]])
+    const { source, ledger } = await setup(fetchImpl, { cache: true })
+    await expect(source.uploads('UCgone', 'UUgone')).rejects.toBeInstanceOf(YoutubeNotFoundError)
+    await expect(source.uploads('UCgone', 'UUgone')).rejects.toBeInstanceOf(YoutubeNotFoundError)
+    expect(fetchImpl).toHaveBeenCalledTimes(1)
+    expect(ledger.remaining()).toBe(10_000 - 1)
+  })
+
+  it('a 403 on the playlist is not a not-found', async () => {
+    const fetchImpl = routedFetch([['/playlistItems?', 'youtube-forbidden-403.json', 403]])
+    const { source } = await setup(fetchImpl)
+    const err = await source.uploads('UCx', 'UUx').catch((e: unknown) => e)
+    expect(err).toBeInstanceOf(Error)
+    expect(err).not.toBeInstanceOf(YoutubeNotFoundError)
   })
 })
 

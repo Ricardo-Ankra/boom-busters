@@ -38,6 +38,13 @@ describe('liveCourtListener', () => {
     expect((init?.headers as Record<string, string>).Authorization).toBe('Token SECRETTOKEN')
   })
 
+  it('strips double quotes from the name so the phrase query stays one phrase', async () => {
+    const { source, fetchImpl } = setup()
+    await source.dockets('The "Big" Company', '2022-01-01')
+    const parsed = new URL(String(fetchImpl.mock.calls[0]![0]))
+    expect(parsed.searchParams.get('q')).toBe('"The Big Company"')
+  })
+
   it('maps results to documents and drops those filed on or after T', async () => {
     const { source } = setup()
     expect(await source.dockets('Wirecard AG', '2022-01-01')).toEqual([

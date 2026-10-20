@@ -89,13 +89,25 @@ const errorBodySchema = z.object({
 })
 
 const QUOTA_REASONS = ['quotaExceeded', 'dailyLimitExceeded']
+const NOT_FOUND_REASONS = ['playlistNotFound']
 
-function isQuotaBody(body: string): boolean {
+/**
+ * A resource YouTube says is gone: a deleted or emptied channel's uploads
+ * playlist answers 404 `playlistNotFound`. The 404 is cached like any settled
+ * answer, so a caller that can do without the resource must catch this rather
+ * than fail, or every rerun fails on the same cached answer.
+ */
+export class YoutubeNotFoundError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'YoutubeNotFoundError'
+  }
+}
+
+function hasReason(body: string, reasons: string[]): boolean {
   try {
     const parsed = errorBodySchema.safeParse(JSON.parse(body))
-    return (
-      parsed.success && parsed.data.error.errors.some((e) => QUOTA_REASONS.includes(e.reason ?? ''))
-    )
+    return parsed.success && parsed.data.error.errors.some((e) => reasons.includes(e.reason ?? ''))
   } catch {
     return false
   }
@@ -132,8 +144,11 @@ export function liveYoutube(
     if (!(await client.isCached(url))) ledger.spend(units)
     const res = await client.getText(url)
     const safeUrl = `${BASE}/${endpoint}?${params}`
-    if (res.status === 403 && isQuotaBody(res.data)) {
+    if (res.status === 403 && hasReason(res.data, QUOTA_REASONS)) {
       throw new QuotaExhaustedError(`YouTube reported quota exhausted on ${safeUrl}`)
+    }
+    if (res.status === 404 || hasReason(res.data, NOT_FOUND_REASONS)) {
+      throw new YoutubeNotFoundError(`GET ${safeUrl} found nothing (status ${res.status})`)
     }
     if (res.status < 200 || res.status >= 300) {
       throw new Error(`GET ${safeUrl} failed with status ${res.status}`)

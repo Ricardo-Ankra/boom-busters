@@ -34,7 +34,8 @@ export function liveCourtListener(client: PoliteClient, token: string): CourtLis
     async dockets(name, before) {
       const params = new URLSearchParams({
         type: 'r',
-        q: `"${name}"`,
+        // A quote inside the name would end the phrase early and leave a malformed query.
+        q: `"${name.replaceAll('"', '')}"`,
         filed_before: dayBefore(before),
       })
       // The token travels in a header, never the URL, so it cannot reach a cache key or a log.
