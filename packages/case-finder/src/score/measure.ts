@@ -65,7 +65,7 @@ function spikeRatio(evidence: EntryEvidence): number {
 }
 
 /** The date `months` before `date`, with a missing day clamped to the end of that month. */
-function monthsBefore(date: IsoDate, months: number): IsoDate {
+export function monthsBefore(date: IsoDate, months: number): IsoDate {
   const year = Number(date.slice(0, 4))
   const month = Number(date.slice(5, 7))
   const day = Number(date.slice(8, 10))
