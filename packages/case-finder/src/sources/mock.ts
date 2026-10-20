@@ -115,6 +115,7 @@ export const mockWikipedia: WikipediaSource = {
     return {
       categories: [`Mock category of revision ${revid}`],
       externalLinks: [`https://example.invalid/mock/${revid}`],
+      links: [`Mock link of revision ${revid}`],
     }
   },
 }

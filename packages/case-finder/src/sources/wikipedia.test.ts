@@ -160,7 +160,13 @@ describe('live wikipedia', () => {
     const params = searchParamsOf(fetchImpl)[0]!
     expect(params.get('action')).toBe('parse')
     expect(params.get('oldid')).toBe('987654')
-    expect(params.get('prop')).toBe('categories|externallinks')
+    expect(params.get('prop')).toBe('categories|externallinks|links')
+  })
+
+  it('parsed returns namespace-0 link titles only, missing pages included', async () => {
+    const fetchImpl = wikipediaFetch(() => 'wikipedia-parse.json')
+    const parsed = await sourceFor(fetchImpl).parsed(987654)
+    expect(parsed.links).toEqual(['Markus Braun', 'Jan Marsalek'])
   })
 
   it('parsed throws on an API error body', async () => {
@@ -180,6 +186,8 @@ describe('mock wikipedia', () => {
     expect(qids.get('Mock article 1 in Frauds')).toMatch(/^Q\d+$/)
     const rev = await mockWikipedia.revisionBefore('X', '2020-01-01')
     expect(rev!.timestamp < '2020-01-01').toBe(true)
-    expect((await mockWikipedia.parsed(rev!.revid)).categories[0]).toContain('Mock')
+    const parsed = await mockWikipedia.parsed(rev!.revid)
+    expect(parsed.categories[0]).toContain('Mock')
+    expect(parsed.links[0]).toContain('Mock')
   })
 })

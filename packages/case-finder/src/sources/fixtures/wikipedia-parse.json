@@ -7,6 +7,12 @@
       { "sortkey": "", "hidden": false, "category": "Companies_established_in_1999" },
       { "sortkey": "", "hidden": true, "category": "Articles_with_short_description" }
     ],
-    "externallinks": ["https://www.sec.gov/example", "https://example.org/report?a=1&b=2"]
+    "externallinks": ["https://www.sec.gov/example", "https://example.org/report?a=1&b=2"],
+    "links": [
+      { "ns": 0, "title": "Markus Braun", "exists": true },
+      { "ns": 14, "title": "Category:Fraud", "exists": true },
+      { "ns": 0, "title": "Jan Marsalek", "exists": false },
+      { "ns": 4, "title": "Wikipedia:Citation needed", "exists": true }
+    ]
   }
 }

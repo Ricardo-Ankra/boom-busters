@@ -20,8 +20,12 @@ export interface WikipediaSource {
   qidsFor(titles: string[]): Promise<Map<string, string>>
   /** The newest revision before 00:00 UTC of `day`; null if the page is missing or did not exist yet. */
   revisionBefore(title: string, day: IsoDate): Promise<{ revid: number; timestamp: string } | null>
-  /** Category names (underscores as spaces, hidden ones included) and external links of one revision. */
-  parsed(revid: number): Promise<{ categories: string[]; externalLinks: string[] }>
+  /**
+   * Category names (underscores as spaces, hidden ones included), external links and namespace-0
+   * link titles of one revision. Links to pages that do not exist are kept: a list names its entries
+   * whether or not they have an article yet.
+   */
+  parsed(revid: number): Promise<{ categories: string[]; externalLinks: string[]; links: string[] }>
 }
 
 const API = 'https://en.wikipedia.org/w/api.php'
@@ -56,6 +60,7 @@ const parseSchema = z.object({
   parse: z.object({
     categories: z.array(z.object({ category: z.string() })),
     externallinks: z.array(z.string()),
+    links: z.array(z.object({ ns: z.number(), title: z.string() })),
   }),
 })
 
@@ -203,13 +208,14 @@ export function liveWikipedia(client: PoliteClient): WikipediaSource {
         urlFor({
           action: 'parse',
           oldid: String(revid),
-          prop: 'categories|externallinks',
+          prop: 'categories|externallinks|links',
         }),
         parseSchema,
       )
       return {
         categories: data.parse.categories.map((c) => c.category.replaceAll('_', ' ')),
         externalLinks: data.parse.externallinks,
+        links: data.parse.links.filter((l) => l.ns === 0).map((l) => l.title),
       }
     },
   }
