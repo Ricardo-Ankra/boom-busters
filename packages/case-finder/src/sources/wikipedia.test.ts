@@ -118,10 +118,25 @@ describe('live wikipedia', () => {
       timestamp: '2019-12-31T23:10:00Z',
     })
     const params = searchParamsOf(fetchImpl)[0]!
-    expect(params.get('rvstart')).toBe('2020-01-01T00:00:00Z')
+    expect(params.get('rvstart')).toBe('2019-12-31T23:59:59Z')
     expect(params.get('rvdir')).toBe('older')
     expect(params.get('rvlimit')).toBe('1')
     expect(params.get('redirects')).toBeNull()
+  })
+
+  it('revisionBefore starts one second before midnight, across a leap day', async () => {
+    const fetchImpl = wikipediaFetch(() => 'wikipedia-revision.json')
+    await sourceFor(fetchImpl).revisionBefore('Wirecard', '2020-03-01')
+    expect(searchParamsOf(fetchImpl)[0]!.get('rvstart')).toBe('2020-02-29T23:59:59Z')
+  })
+
+  it('revisionBefore makes one request and ignores continue', async () => {
+    const fetchImpl = wikipediaFetch(() => 'wikipedia-revision-continue.json')
+    expect(await sourceFor(fetchImpl).revisionBefore('Wirecard', '2020-01-01')).toEqual({
+      revid: 987654,
+      timestamp: '2019-12-31T23:10:00Z',
+    })
+    expect(fetchImpl).toHaveBeenCalledTimes(1)
   })
 
   it('revisionBefore returns null for an article created after the day', async () => {

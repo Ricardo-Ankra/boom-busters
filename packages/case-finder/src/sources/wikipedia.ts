@@ -175,19 +175,25 @@ export function liveWikipedia(client: PoliteClient): WikipediaSource {
     },
 
     async revisionBefore(title, day) {
-      const replies = await allReplies(
-        {
+      // One request, never `continue`: with rvlimit=1 the API offers a continuation whenever older
+      // revisions exist, and following it would walk the article's whole history.
+      // rvstart is inclusive, so start one second before midnight to exclude a revision stamped at T.
+      const rvstart = new Date(Date.parse(`${day}T00:00:00Z`) - 1000)
+        .toISOString()
+        .replace('.000Z', 'Z')
+      const { data } = await client.getJson(
+        urlFor({
           action: 'query',
           prop: 'revisions',
           rvprop: 'ids|timestamp',
           rvdir: 'older',
-          rvstart: `${day}T00:00:00Z`,
+          rvstart,
           rvlimit: '1',
           titles: title,
-        },
-        pagesQuery,
+        }),
+        envelope(pagesQuery),
       )
-      const page = replies.flatMap((r) => r.pages ?? [])[0]
+      const page = data.query?.pages?.[0]
       const revision = page?.missing !== undefined ? undefined : page?.revisions?.[0]
       return revision ? { revid: revision.revid, timestamp: revision.timestamp } : null
     },
