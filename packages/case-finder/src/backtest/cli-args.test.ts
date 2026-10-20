@@ -64,6 +64,13 @@ describe('parseCliArgs', () => {
     )
   })
 
+  it('reads the population command, mock or live, and refuses the baseline on it', () => {
+    expect(parseCliArgs(['population']).command).toBe('population')
+    expect(parseCliArgs(['population', '--live']).live).toBe(true)
+    const paid = ['--baseline', '--baseline-provider', 'google', '--baseline-model', 'm']
+    expect(() => parseCliArgs(['population', '--live', ...paid])).toThrow(/run/)
+  })
+
   it('reads the LoPucki path and ignores a leading -- from pnpm', () => {
     expect(parseCliArgs(['--', 'hitlist', '--lopucki', 'C:/data/lopucki.csv']).lopucki).toBe(
       'C:/data/lopucki.csv',

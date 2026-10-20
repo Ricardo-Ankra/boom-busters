@@ -160,6 +160,22 @@ export async function laneAt(
   return laneOf(await tagsAt(entry, asOf, pages, median))
 }
 
+/**
+ * Pass 1 alone over the whole hitlist: each entry's English series and tags
+ * at T, with nothing from YouTube, Wikidata facts or the document sources.
+ * Enough for `classify` to give the ranked population (the population check).
+ */
+export async function gatherPassOneAt(
+  hitlist: HitlistEntry[],
+  asOf: IsoDate,
+  sources: Sources,
+  log: (line: string) => void,
+  options: GatherOptions = {},
+): Promise<EntryEvidence[]> {
+  const first = await passOneAll(hitlist, createRun(asOf, sources, options), log)
+  return first.map((p) => p.evidence)
+}
+
 export async function gatherAt(
   hitlist: HitlistEntry[],
   asOf: IsoDate,

@@ -2,7 +2,7 @@
  * The case-finder back-test CLI (plan Task 13). Thin on purpose: it parses
  * the arguments, wires live or mock sources and calls src/backtest/run.ts.
  *
- *   pnpm --filter @boom-busters/case-finder backtest <hitlist|subjects|run> [flags]
+ *   pnpm --filter @boom-busters/case-finder backtest <hitlist|subjects|population|run> [flags]
  *
  * Without --live every source is a mock and nothing touches the network.
  * The baseline LLM call is the one paid call: it needs --live and --baseline
@@ -24,6 +24,7 @@ import { parseCliArgs, rawCacheDir, type CliArgs } from '../src/backtest/cli-arg
 import {
   runBacktest,
   runHitlist,
+  runPopulation,
   runSubjects,
   type BaselineScorer,
   type CliContext,
@@ -174,6 +175,7 @@ async function main(): Promise<number> {
     if (args.command === 'hitlist')
       return await runHitlist(ctx, { fetchText, loPuckiCsv: args.lopucki })
     if (args.command === 'subjects') return await runSubjects(ctx)
+    if (args.command === 'population') return await runPopulation(ctx)
     return await runBacktest(ctx, baseline)
   } catch (error) {
     if (!(error instanceof QuotaExhaustedError)) throw error

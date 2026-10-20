@@ -8,7 +8,15 @@ import { KILL_LEGAL } from '../score/gates'
 import { rank, type LaneResult, type Scored } from '../score/rank'
 import { QuotaExhaustedError } from '../sources/quota'
 import type { IsoDate, Lane } from '../types'
-import { countByLane, dayBefore, dayOf, dirOf, readHitlist, type CliContext } from './context'
+import {
+  countByLane,
+  dayBefore,
+  dayOf,
+  dirOf,
+  passOneWarning,
+  readHitlist,
+  type CliContext,
+} from './context'
 import { outcomeRatio } from './outcome'
 import { renderReport, verdict, type CaseRow, type ReportMeta } from './report'
 import {
@@ -31,6 +39,7 @@ import {
 } from './subjects'
 
 export type { CliContext } from './context'
+export { runPopulation } from './population'
 export { runHitlist, runSubjects } from './prepare'
 export { FIXTURE_PATH, type GitAdapter } from './snapshots'
 
@@ -234,6 +243,7 @@ export async function runBacktest(
     ...new Set(usable.filter((c) => c.subject.verdict === 'subject').map((c) => c.T)),
   ].sort()
   const rankings = new Map<IsoDate, Record<Lane, LaneResult>>()
+  if (!ctx.mock) ctx.log(passOneWarning(hitlist.entries.length, dates.length))
   try {
     for (const T of dates) {
       const evidence = await gatherAt(hitlist.entries, T, ctx.sources, ctx.log, anchor)

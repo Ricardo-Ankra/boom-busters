@@ -7,7 +7,7 @@ import path from 'node:path'
  * model, and unknown flags are errors rather than ignored.
  */
 
-export const COMMANDS = ['hitlist', 'subjects', 'run'] as const
+export const COMMANDS = ['hitlist', 'subjects', 'population', 'run'] as const
 export type Command = (typeof COMMANDS)[number]
 
 export const BASELINE_PROVIDERS = ['anthropic', 'openai', 'google'] as const
@@ -36,7 +36,7 @@ const VALUE_FLAGS = new Set([
 ])
 
 export const USAGE =
-  'Usage: backtest <hitlist|subjects|run> [--live] [--lopucki <path>] ' +
+  'Usage: backtest <hitlist|subjects|population|run> [--live] [--lopucki <path>] ' +
   '[--daily-units <n>] [--spent-today <n>] ' +
   '[--baseline --baseline-provider <anthropic|openai|google> --baseline-model <id>]'
 

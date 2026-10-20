@@ -49,6 +49,16 @@ export async function codeStamp(
   return refusal === null ? { codeTree: await ctx.git.objectAt(CODE_PATH) } : { refusal }
 }
 
+/** Said before a live pass 1 starts, so the owner knows a long first day is expected. */
+export function passOneWarning(entries: number, dates: number): string {
+  const at = dates === 1 ? 'one date' : `each of ${dates} dates`
+  return (
+    `Pass 1 walks ${entries.toLocaleString('en-US')} hitlist entries at ${at}. ` +
+    'The first day can take several hours (pageviews, redirects and revisions are fetched ' +
+    'politely, one request at a time); later runs read the cache.'
+  )
+}
+
 export function countByLane(entries: HitlistEntry[]): Record<Lane | 'none', number> {
   const counts = { downfall: 0, success: 0, none: 0 }
   for (const e of entries) counts[laneOf(e.tags) ?? 'none']++
