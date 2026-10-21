@@ -12,10 +12,10 @@ import {
   DOWNFALL_LISTS,
   FOUNDER_CANDIDATES_QUERY,
   SCANDAL_CATEGORIES,
-  businessesAmong,
+  foundedBusinessesAmong,
   chapter11Category,
   dissolvedSchema,
-  founderSchema,
+  founderCandidatesSchema,
   loadLoPucki,
   parseCsv,
   qidOf,
@@ -218,20 +218,13 @@ export async function buildHitlist(deps: HitlistDeps): Promise<HitlistEntry[]> {
 
   // A founder link stands beside any downfall tag: the lane at T gives downfall precedence, and
   // filtering here on tags a company gained later would be hindsight.
-  const candidates = await wikidata.sparql(FOUNDER_CANDIDATES_QUERY, founderSchema)
+  const candidates = await wikidata.sparql(FOUNDER_CANDIDATES_QUERY, founderCandidatesSchema)
   const candidateQids = candidates.results.bindings.flatMap((b) => qidOf(b.item.value) ?? [])
-  const businesses = await businessesAmong(candidateQids, wikidata, log)
+  const businesses = await foundedBusinessesAmong(candidateQids, wikidata, log)
   const to = lastCompleteMonth(now())
   perSeed.set(FOUNDER_TAG, 0)
-  for (const b of candidates.results.bindings) {
-    const qid = qidOf(b.item.value)
-    if (qid === null || !businesses.has(qid)) continue
-    const monthly = await deps.pageviews.monthly(
-      'en.wikipedia',
-      [b.title.value],
-      FOUNDER_SERIES_FROM,
-      to,
-    )
+  for (const [qid, title] of businesses) {
+    const monthly = await deps.pageviews.monthly('en.wikipedia', [title], FOUNDER_SERIES_FROM, to)
     if (bestWindowMedian(monthly, FOUNDER_SERIES_FROM, to) < FOUNDER_MIN_MEDIAN_VIEWS) continue
     add(FOUNDER_TAG, qid, { tag: FOUNDER_TAG, lane: 'success', since: null })
   }
