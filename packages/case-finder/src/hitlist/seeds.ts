@@ -115,44 +115,41 @@ export const DISSOLVED_CONVICTED_QUERY = `SELECT ?item ?dissolved WHERE {
 } LIMIT 5000`
 
 /**
- * Anything with a founder (P112) and an English Wikipedia article. The class
- * path is not here on purpose: with it the service runs past its 60 second
- * limit and truncates the answer. Without it the query returns in seconds, and
- * `businessesAmong` applies the class test over the candidates in batches.
+ * Every item with a founder (P112), nothing else. The class path and the
+ * English-article join are both left out on purpose: either one pushes the
+ * query past the service's 60 second limit and the answer is truncated. As
+ * bare as this it returns in seconds, and `foundedBusinessesAmong` applies the
+ * class test and fetches the titles over the candidates in batches.
  */
-export const FOUNDER_CANDIDATES_QUERY = `SELECT DISTINCT ?item ?title WHERE {
-  ?item wdt:P112 ?founder .
-  ?article schema:about ?item ;
-    schema:isPartOf <https://en.wikipedia.org/> ;
-    schema:name ?title .
-}`
+export const FOUNDER_CANDIDATES_QUERY = `SELECT DISTINCT ?item WHERE { ?item wdt:P112 ?founder . }`
 
-/** QIDs per class-check query; a GET URL carries about 150 and answers inside the time limit. */
-export const FOUNDER_CLASS_BATCH = 150
+/** QIDs per class-check query; a GET URL carries about 250 and the answer lands inside the time limit. */
+export const FOUNDER_CLASS_BATCH = 250
 
 /** Progress is logged once per this many class-check batches. */
-const CLASS_LOG_EVERY = 50
+const CLASS_LOG_EVERY = 20
 
 const value = z.object({ value: z.string() })
 const bindings = <T extends z.ZodRawShape>(shape: T) =>
   z.object({ results: z.object({ bindings: z.array(z.object(shape)) }) })
 
 export const dissolvedSchema = bindings({ item: value, dissolved: value })
-export const founderSchema = bindings({ item: value, title: value })
-const itemSchema = bindings({ item: value })
+export const founderCandidatesSchema = bindings({ item: value })
+const businessTitleSchema = bindings({ item: value, title: value })
 
 /**
- * The QIDs among `qids` that are businesses (P31/P279* of Q4830453). Sorted by
- * number before batching, so the query URLs repeat exactly from run to run and
- * come back from the disk cache.
+ * The businesses (P31/P279* of Q4830453) among `qids` that have an English
+ * Wikipedia article, as QID to that article's title. Sorted by number before
+ * batching, so the query URLs repeat exactly from run to run and come back
+ * from the disk cache. A QID that returns several rows keeps the first title.
  */
-export async function businessesAmong(
+export async function foundedBusinessesAmong(
   qids: string[],
   wikidata: Pick<WikidataSource, 'sparql'>,
   log: (line: string) => void = () => {},
-): Promise<Set<string>> {
+): Promise<Map<string, string>> {
   const sorted = [...new Set(qids)].sort((a, b) => Number(a.slice(1)) - Number(b.slice(1)))
-  const found = new Set<string>()
+  const found = new Map<string, string>()
   const batches = Math.ceil(sorted.length / FOUNDER_CLASS_BATCH)
   for (let i = 0; i < batches; i++) {
     const values = sorted
@@ -160,12 +157,15 @@ export async function businessesAmong(
       .map((qid) => `wd:${qid}`)
       .join(' ')
     const { results } = await wikidata.sparql(
-      `SELECT DISTINCT ?item WHERE { VALUES ?item { ${values} } ?item ${BUSINESS} . }`,
-      itemSchema,
+      `SELECT DISTINCT ?item ?title WHERE { VALUES ?item { ${values} } ` +
+        `?item ${BUSINESS} . ` +
+        `?article schema:about ?item ; schema:isPartOf <https://en.wikipedia.org/> ; ` +
+        `schema:name ?title . }`,
+      businessTitleSchema,
     )
     for (const b of results.bindings) {
       const qid = qidOf(b.item.value)
-      if (qid !== null) found.add(qid)
+      if (qid !== null && !found.has(qid)) found.set(qid, b.title.value)
     }
     if ((i + 1) % CLASS_LOG_EVERY === 0) {
       log(`founder class check: batch ${i + 1} of ${batches}, ${found.size} businesses so far`)
