@@ -7,8 +7,10 @@ import {
   SPIKE_WINDOW_DAYS,
 } from '../config'
 import { monthsBefore } from '../dates'
+import { reachesBack } from '../sources/youtube'
 import { median } from '../stats'
 import { wholeWordPattern } from '../text'
+import { latestMedian, peerMedian, windowStart } from './channel-median'
 import type { ChannelUploads, EntryEvidence, IsoDate, MonthlyViews, YoutubeVideo } from '../types'
 
 /**
@@ -23,6 +25,12 @@ export interface RawMeasures {
   /** null means the search was not measured, which is not the same as zero coverage. */
   coverage: number | null
   enMedianMonthly: number
+  /** Search results that count towards coverage (see `countedVideos`); 0 when not measured. */
+  countedVideos: number
+  /** Of those, the ones whose channel fetch was capped short of their window. */
+  cappedVideos: number
+  /** The distinct channels behind `cappedVideos`, in search order. */
+  cappedChannels: string[]
 }
 
 const DAY_MS = 86_400_000
@@ -72,37 +80,75 @@ export function titleMatches(query: string, title: string): boolean {
 }
 
 /**
- * Views against the median of the channel's other long-form uploads. This is
- * the measurement side, so it uses uploads of any date; the as-of date is part
- * of the signature but does not filter here.
+ * The search results that count towards coverage at T: long-form, published
+ * before T and within the 24 months before it, with the query in the title.
+ * Evidence gathering fetches uploads only for these videos' channels, since no
+ * other video's ratio is ever read.
  */
+export function countedVideos(
+  search: { videos: YoutubeVideo[] },
+  query: string,
+  asOf: IsoDate,
+): YoutubeVideo[] {
+  const from = monthsBefore(asOf, COVERAGE_WINDOW_MONTHS)
+  return search.videos.filter(
+    (v) =>
+      v.publishedAt < asOf &&
+      v.publishedAt >= from &&
+      v.durationSec >= LONG_FORM_MIN_SEC &&
+      titleMatches(query, v.title),
+  )
+}
+
+/**
+ * Views against the channel median (spec 5, "Channel medians within the
+ * quota"). When the fetch covers the video's window (the history is complete,
+ * or reaches back to the window start) the median is the outcome's peer rule,
+ * settled on the fetch day; when the page cap stopped it short, the channel's
+ * latest 50 long-form uploads stand in and the video is `capped`. Today's view
+ * counts are the sanctioned hindsight here, so T does not filter the uploads.
+ */
+export function outlierDetail(
+  video: YoutubeVideo,
+  channel: ChannelUploads | undefined,
+): { ratio: number | null; capped: boolean } {
+  if (!channel) return { ratio: null, capped: false }
+  const covered = channel.complete || reachesBack(channel.uploads, windowStart(video))
+  const base = covered
+    ? peerMedian(video, channel, channel.fetchedOn)
+    : latestMedian(video, channel)
+  return { ratio: base === null ? null : video.views / base, capped: !covered }
+}
+
 export function outlierRatio(
   video: YoutubeVideo,
   channel: ChannelUploads | undefined,
-  _asOf: IsoDate,
 ): number | null {
-  if (!channel) return null
-  const peers = channel.uploads.filter(
-    (u) => u.id !== video.id && u.durationSec >= LONG_FORM_MIN_SEC,
-  )
-  if (peers.length === 0) return null
-  const base = median(peers.map((u) => u.views))
-  return base === 0 ? null : video.views / base
+  return outlierDetail(video, channel).ratio
 }
 
-function coverageOf(evidence: EntryEvidence): number | null {
+type Coverage = Pick<RawMeasures, 'coverage' | 'countedVideos' | 'cappedVideos' | 'cappedChannels'>
+
+function coverageOf(evidence: EntryEvidence): Coverage {
   const { search, entry, asOf } = evidence
-  if (!search) return null
-  if (entry.query === null) return 0
-  const from = monthsBefore(asOf, COVERAGE_WINDOW_MONTHS)
-  let total = 0
-  for (const v of search.videos) {
-    if (v.publishedAt >= asOf || v.publishedAt < from) continue
-    if (v.durationSec < LONG_FORM_MIN_SEC) continue
-    if (!titleMatches(entry.query, v.title)) continue
-    total += Math.min(outlierRatio(v, evidence.channels[v.channelId], asOf) ?? 1, OUTLIER_CAP)
+  if (!search) return { coverage: null, countedVideos: 0, cappedVideos: 0, cappedChannels: [] }
+  if (entry.query === null) {
+    return { coverage: 0, countedVideos: 0, cappedVideos: 0, cappedChannels: [] }
   }
-  return total
+  const counted = countedVideos(search, entry.query, asOf)
+  let coverage = 0
+  const capped: YoutubeVideo[] = []
+  for (const v of counted) {
+    const detail = outlierDetail(v, evidence.channels[v.channelId])
+    coverage += Math.min(detail.ratio ?? 1, OUTLIER_CAP)
+    if (detail.capped) capped.push(v)
+  }
+  return {
+    coverage,
+    countedVideos: counted.length,
+    cappedVideos: capped.length,
+    cappedChannels: [...new Set(capped.map((v) => v.channelId))],
+  }
 }
 
 export function measure(e: EntryEvidence): RawMeasures {
@@ -111,7 +157,7 @@ export function measure(e: EntryEvidence): RawMeasures {
     demand: Math.log10(1 + enMedianMonthly),
     world: Math.log10(1 + medianMonthly(e.worldMonthly, e.asOf)),
     spike: spikeRatio(e),
-    coverage: coverageOf(e),
+    ...coverageOf(e),
     enMedianMonthly,
   }
 }

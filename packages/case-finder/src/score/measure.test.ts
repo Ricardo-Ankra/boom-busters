@@ -6,7 +6,7 @@ import type {
   MonthlyViews,
   YoutubeVideo,
 } from '../types'
-import { measure, outlierRatio, titleMatches } from './measure'
+import { countedVideos, measure, outlierDetail, outlierRatio, titleMatches } from './measure'
 
 const T = '2020-03-15'
 
@@ -201,14 +201,56 @@ describe('outlierRatio', () => {
       video({ id: 'b', views: 500 }),
       video({ id: 'short', views: 9_999_999, durationSec: 59 }),
     ])
-    expect(outlierRatio(v, uploads, T)).toBe(3000 / 750)
+    expect(outlierRatio(v, uploads)).toBe(3000 / 750)
   })
 
   it('is null without the channel, without peers, or with a zero median', () => {
     const v = video({ id: 'x' })
-    expect(outlierRatio(v, undefined, T)).toBeNull()
-    expect(outlierRatio(v, channel([v]), T)).toBeNull()
-    expect(outlierRatio(v, channel([video({ id: 'a', views: 0 })]), T)).toBeNull()
+    expect(outlierRatio(v, undefined)).toBeNull()
+    expect(outlierRatio(v, channel([v]))).toBeNull()
+    expect(outlierRatio(v, channel([video({ id: 'a', views: 0 })]))).toBeNull()
+  })
+})
+
+describe('outlierDetail', () => {
+  // The video's window runs 2018-12-01 to 2019-12-01.
+  const v = video({ id: 'x', publishedAt: '2019-06-01', views: 3000 })
+  const recent = (n: number, views: number) =>
+    Array.from({ length: n }, (_, i) => video({ id: `r${i}`, publishedAt: '2026-06-01', views }))
+
+  it('a complete history uses the peer rule, settled on the fetch day, and is not capped', () => {
+    const uploads = channel(
+      [...recent(60, 9), v, video({ id: 'p', publishedAt: '2019-01-01', views: 1000 })],
+      { fetchedOn: '2026-07-01' },
+    )
+    expect(outlierDetail(v, uploads)).toEqual({ ratio: 3, capped: false })
+  })
+
+  it('an incomplete history that reaches the window start uses the peer rule', () => {
+    const uploads = channel([v, video({ id: 'p', publishedAt: '2018-12-01', views: 1000 })], {
+      complete: false,
+    })
+    expect(outlierDetail(v, uploads)).toEqual({ ratio: 3, capped: false })
+  })
+
+  it('a history cut short of the window falls back to the latest 50 long-form uploads', () => {
+    const older = Array.from({ length: 50 }, (_, i) =>
+      video({ id: `o${i}`, publishedAt: '2025-01-01', views: 1_000_000 }),
+    )
+    // Its oldest upload is a day after the window start, and the fetch did not reach the end.
+    const uploads = channel(
+      [...recent(50, 1000), ...older, v, video({ id: 'p', publishedAt: '2018-12-02', views: 1 })],
+      { complete: false },
+    )
+    expect(outlierDetail(v, uploads)).toEqual({ ratio: 3, capped: true })
+  })
+
+  it('is null and not capped without the channel; null and capped when the fallback has no peers', () => {
+    expect(outlierDetail(v, undefined)).toEqual({ ratio: null, capped: false })
+    expect(outlierDetail(v, channel([], { complete: false }))).toEqual({
+      ratio: null,
+      capped: true,
+    })
   })
 })
 
@@ -238,6 +280,13 @@ describe('coverage', () => {
     ]
     // ok, long-enough, day-before and boundary count 1 each.
     expect(measure(withSearch(videos)).coverage).toBe(4)
+    expect(measure(withSearch(videos)).countedVideos).toBe(4)
+    expect(countedVideos({ videos }, 'Apple', T).map((v) => v.id)).toEqual([
+      'ok',
+      'long-enough',
+      'day-before',
+      'boundary',
+    ])
   })
 
   it('the 24-month boundary clamps a missing day to the end of the month', () => {
@@ -258,5 +307,33 @@ describe('coverage', () => {
     const modest = video({ id: 'modest', views: 200 })
     const channels2 = { c1: channel([modest, video({ id: 'p1', views: 100 })]) }
     expect(measure(withSearch([modest], channels2)).coverage).toBe(2)
+  })
+
+  it('counts the counted videos whose channel history was capped, and names those channels', () => {
+    const capped = { channelId: 'c2', uploads: [], fetchedOn: '2026-01-01', complete: false }
+    const e = withSearch(
+      [
+        video({ id: 'a' }),
+        video({ id: 'b', channelId: 'c2' }),
+        video({ id: 'c', channelId: 'c2' }),
+        video({ id: 'later', channelId: 'c2', publishedAt: '2020-04-01' }),
+      ],
+      { c1: channel([video({ id: 'p', views: 1000 })]), c2: capped },
+    )
+    const m = measure(e)
+    expect(m).toMatchObject({ countedVideos: 3, cappedVideos: 2, cappedChannels: ['c2'] })
+    // A capped channel with no fallback peers still counts each video as 1.
+    expect(m.coverage).toBe(3)
+  })
+
+  it('counts nothing when the search was not measured or the query is null', () => {
+    expect(measure(evidence())).toMatchObject({
+      countedVideos: 0,
+      cappedVideos: 0,
+      cappedChannels: [],
+    })
+    const e = withSearch([video({ id: 'a' })])
+    e.entry.query = null
+    expect(measure(e)).toMatchObject({ countedVideos: 0, cappedVideos: 0, cappedChannels: [] })
   })
 })

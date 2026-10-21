@@ -123,6 +123,15 @@ export const BACKTEST = {
   intervalLevel: 0.9,
 } as const
 
+/**
+ * Channel medians within the quota (decision 11): a channel's uploads are paged
+ * back at most this far (1,000 uploads, about 40 units) to reach a counted
+ * video's six-month window; a channel cut short uses its latest 50 long-form
+ * uploads instead.
+ */
+export const CHANNEL_HISTORY_MAX_PAGES = 20
+export const CHANNEL_FALLBACK_UPLOADS = 50
+
 export const CHANNEL_HANDLES = [
   '@BrightSunFilms',
   '@MagnatesMedia',
