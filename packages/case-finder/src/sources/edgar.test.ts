@@ -1,4 +1,7 @@
 import { readFileSync } from 'node:fs'
+import { mkdtemp, readdir, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import path from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 import { liveEdgar } from './edgar'
 import { createPoliteClient } from './http'
@@ -24,6 +27,29 @@ function setup(missing = false) {
   })
   return { fetchImpl, source: liveEdgar(client) }
 }
+
+describe('liveEdgar with a truncated reply', () => {
+  it('is rejected as unusable rather than cached', async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), 'cf-edgar-'))
+    try {
+      const fetchImpl = vi.fn(async () => new Response('{"filings": {"rec', { status: 200 }))
+      const source = liveEdgar(
+        createPoliteClient({
+          contact: 'me@example.com',
+          cacheDir: dir,
+          fetchImpl,
+          minIntervalMs: { 'sec.gov': 0 },
+        }),
+      )
+      await expect(source.filings('1234567', 'success', '2022-01-01')).rejects.toThrow(
+        'unusable response',
+      )
+      expect(await readdir(dir)).toEqual([])
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+})
 
 describe('liveEdgar', () => {
   it('counts only the forms the lane takes, dated before T', async () => {

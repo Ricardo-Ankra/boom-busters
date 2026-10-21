@@ -1,5 +1,6 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { z } from 'zod'
+import type { WikidataSource } from '../sources/wikidata'
 import type { IsoDate } from '../types'
 
 /**
@@ -113,13 +114,24 @@ export const DISSOLVED_CONVICTED_QUERY = `SELECT ?item ?dissolved WHERE {
   ?person wdt:P1399 ?conviction .
 } LIMIT 5000`
 
-/** Businesses with a founder (P112) and an English Wikipedia article. */
-export const FOUNDER_QUERY = `SELECT DISTINCT ?item ?title WHERE {
-  ?item ${BUSINESS} ; wdt:P112 ?founder .
+/**
+ * Anything with a founder (P112) and an English Wikipedia article. The class
+ * path is not here on purpose: with it the service runs past its 60 second
+ * limit and truncates the answer. Without it the query returns in seconds, and
+ * `businessesAmong` applies the class test over the candidates in batches.
+ */
+export const FOUNDER_CANDIDATES_QUERY = `SELECT DISTINCT ?item ?title WHERE {
+  ?item wdt:P112 ?founder .
   ?article schema:about ?item ;
     schema:isPartOf <https://en.wikipedia.org/> ;
     schema:name ?title .
-} LIMIT 20000`
+}`
+
+/** QIDs per class-check query; a GET URL carries about 150 and answers inside the time limit. */
+export const FOUNDER_CLASS_BATCH = 150
+
+/** Progress is logged once per this many class-check batches. */
+const CLASS_LOG_EVERY = 50
 
 const value = z.object({ value: z.string() })
 const bindings = <T extends z.ZodRawShape>(shape: T) =>
@@ -127,6 +139,40 @@ const bindings = <T extends z.ZodRawShape>(shape: T) =>
 
 export const dissolvedSchema = bindings({ item: value, dissolved: value })
 export const founderSchema = bindings({ item: value, title: value })
+const itemSchema = bindings({ item: value })
+
+/**
+ * The QIDs among `qids` that are businesses (P31/P279* of Q4830453). Sorted by
+ * number before batching, so the query URLs repeat exactly from run to run and
+ * come back from the disk cache.
+ */
+export async function businessesAmong(
+  qids: string[],
+  wikidata: Pick<WikidataSource, 'sparql'>,
+  log: (line: string) => void = () => {},
+): Promise<Set<string>> {
+  const sorted = [...new Set(qids)].sort((a, b) => Number(a.slice(1)) - Number(b.slice(1)))
+  const found = new Set<string>()
+  const batches = Math.ceil(sorted.length / FOUNDER_CLASS_BATCH)
+  for (let i = 0; i < batches; i++) {
+    const values = sorted
+      .slice(i * FOUNDER_CLASS_BATCH, (i + 1) * FOUNDER_CLASS_BATCH)
+      .map((qid) => `wd:${qid}`)
+      .join(' ')
+    const { results } = await wikidata.sparql(
+      `SELECT DISTINCT ?item WHERE { VALUES ?item { ${values} } ?item ${BUSINESS} . }`,
+      itemSchema,
+    )
+    for (const b of results.bindings) {
+      const qid = qidOf(b.item.value)
+      if (qid !== null) found.add(qid)
+    }
+    if ((i + 1) % CLASS_LOG_EVERY === 0) {
+      log(`founder class check: batch ${i + 1} of ${batches}, ${found.size} businesses so far`)
+    }
+  }
+  return found
+}
 
 /** The QID at the end of an entity URI; null for anything else. */
 export function qidOf(uri: string): string | null {

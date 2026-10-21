@@ -36,6 +36,13 @@ export interface RequestInitLite {
    * the caller keeps a small extract of instead (a revision's raw wikitext).
    */
   noStore?: boolean
+  /**
+   * getText only: whether a 2xx body is usable. A rejected fresh body throws
+   * "unusable response" and is not cached; a rejected cached entry is a miss.
+   * A source that reads JSON through getText passes one so a reply cut short
+   * (a SPARQL timeout appends a stack trace to a 200) is never remembered.
+   */
+  accept?: (body: string) => boolean
 }
 
 export interface PoliteClient {
@@ -62,6 +69,16 @@ const DEFAULT_INTERVALS: Record<string, number> = {
   'sec.gov': 120,
   'courtlistener.com': 800,
   'googleapis.com': 0,
+}
+
+/** An `accept` for a source that reads JSON through getText: the body parses. */
+export function isJson(body: string): boolean {
+  try {
+    JSON.parse(body)
+    return true
+  } catch {
+    return false
+  }
 }
 
 const SECRET_PARAMS = ['key', 'token', 'api_key', 'apikey']
@@ -174,6 +191,7 @@ export function createPoliteClient(options: PoliteClientOptions): PoliteClient {
   async function readCache(
     file: string,
     maxAgeDays: number | undefined,
+    usable: (entry: CacheEntry) => boolean,
   ): Promise<CacheEntry | null> {
     let entry: CacheEntry
     try {
@@ -186,7 +204,7 @@ export function createPoliteClient(options: PoliteClientOptions): PoliteClient {
         (Date.parse(now().toISOString().slice(0, 10)) - Date.parse(entry.fetchedAt)) / DAY_MS
       if (ageDays > maxAgeDays) return null
     }
-    return entry
+    return usable(entry) ? entry : null
   }
 
   function cacheFile(url: string, init: RequestInitLite): string | null {
@@ -200,20 +218,32 @@ export function createPoliteClient(options: PoliteClientOptions): PoliteClient {
     )
   }
 
-  async function raw(url: string, init: RequestInitLite = {}): Promise<RawResult> {
+  const isSuccess = (status: number) => status >= 200 && status < 300
+
+  /**
+   * `check` judges a 2xx body and throws when it is unusable. It runs before
+   * anything is written, and on a cache read where a throw means a miss, so a
+   * broken answer is neither remembered nor replayed.
+   */
+  async function raw(
+    url: string,
+    init: RequestInitLite = {},
+    check: (body: string) => void = () => {},
+  ): Promise<RawResult> {
     const host = new URL(url).host
     const file = cacheFile(url, init)
 
     if (file !== null) {
-      const hit = await readCache(file, init.maxAgeDays)
+      const hit = await readCache(file, init.maxAgeDays, (entry) => cachedUsable(entry, check))
       if (hit) return { ...hit, fromCache: true }
     }
 
     const { status, body } = await request(url, host, init.headers ?? {})
+    if (isSuccess(status)) check(body)
     const entry: CacheEntry = { fetchedAt: now().toISOString().slice(0, 10), status, body }
     // Only a settled answer is remembered: success, or the page is gone (404, 410).
     // Auth, rate-limit, timeout and server errors are transient and never cached.
-    const settled = (status >= 200 && status < 300) || status === 404 || status === 410
+    const settled = isSuccess(status) || status === 404 || status === 410
     if (file !== null && settled && init.noStore !== true) {
       await mkdir(path.dirname(file), { recursive: true })
       await writeFile(file, JSON.stringify(entry))
@@ -221,32 +251,57 @@ export function createPoliteClient(options: PoliteClientOptions): PoliteClient {
     return { ...entry, fromCache: false }
   }
 
+  /** A cached 2xx entry is usable when `check` accepts its body; other statuses are never judged. */
+  function cachedUsable(entry: CacheEntry, check: (body: string) => void): boolean {
+    if (!isSuccess(entry.status)) return true
+    try {
+      check(entry.body)
+      return true
+    } catch {
+      return false
+    }
+  }
+
+  const acceptCheck = (url: string, init: RequestInitLite | undefined) => (body: string) => {
+    if (init?.accept !== undefined && !init.accept(body)) {
+      throw new Error(`GET ${redact(url)} unusable response`)
+    }
+  }
+
   return {
     async isCached(url: string, init: RequestInitLite = {}) {
       const file = cacheFile(url, init)
-      // Only settled answers are ever written, so any fresh entry counts.
-      return file !== null && (await readCache(file, init.maxAgeDays)) !== null
+      // Only settled answers are ever written, so any fresh, usable entry counts.
+      return (
+        file !== null &&
+        (await readCache(file, init.maxAgeDays, (e) => cachedUsable(e, acceptCheck(url, init)))) !==
+          null
+      )
     },
     async getJson<T>(url: string, schema: z.ZodType<T>, init?: RequestInitLite) {
       const safeUrl = redact(url)
-      const result = await raw(url, init)
-      if (result.status < 200 || result.status >= 300) {
+      let data: T | undefined
+      const check = (body: string) => {
+        let parsed: unknown
+        try {
+          parsed = JSON.parse(body)
+        } catch {
+          throw new Error(`GET ${safeUrl} did not return JSON`)
+        }
+        const checked = schema.safeParse(parsed)
+        if (!checked.success) {
+          throw new Error(`GET ${safeUrl} returned an unexpected shape: ${checked.error.message}`)
+        }
+        data = checked.data
+      }
+      const result = await raw(url, init, check)
+      if (!isSuccess(result.status)) {
         throw new Error(`GET ${safeUrl} failed with status ${result.status}`)
       }
-      let parsed: unknown
-      try {
-        parsed = JSON.parse(result.body)
-      } catch {
-        throw new Error(`GET ${safeUrl} did not return JSON`)
-      }
-      const checked = schema.safeParse(parsed)
-      if (!checked.success) {
-        throw new Error(`GET ${safeUrl} returned an unexpected shape: ${checked.error.message}`)
-      }
-      return { data: checked.data, fetchedAt: result.fetchedAt, fromCache: result.fromCache }
+      return { data: data as T, fetchedAt: result.fetchedAt, fromCache: result.fromCache }
     },
     async getText(url: string, init?: RequestInitLite) {
-      const result = await raw(url, init)
+      const result = await raw(url, init, acceptCheck(url, init))
       return {
         data: result.body,
         fetchedAt: result.fetchedAt,

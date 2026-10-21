@@ -1,4 +1,4 @@
-import { mkdtemp, readdir, readFile, rm } from 'node:fs/promises'
+import { mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -222,10 +222,17 @@ describe('polite client', () => {
     'https://api.example.com/x?ID=1&KEY=AAA&Api_Key=BBB',
   ])('strips adjacent secrets from the cache key, file and error: %s', async (url) => {
     const cacheDir = await tmp()
-    const fetchImpl = vi.fn(async () => json({ nope: 1 }))
-    const client = createPoliteClient({ contact: 'me@example.com', cacheDir, fetchImpl })
-    const err = (await client.getJson(url, schema).catch((e: Error) => e)) as Error
+    // A body that fails the schema is never cached, so the cache file comes from a valid one.
+    const failing = createPoliteClient({
+      contact: 'me@example.com',
+      cacheDir: null,
+      fetchImpl: vi.fn(async () => json({ nope: 1 })),
+    })
+    const err = (await failing.getJson(url, schema).catch((e: Error) => e)) as Error
     expect(err.message).not.toMatch(/AAA|BBB/)
+    const fetchImpl = vi.fn(async () => json({ ok: true }))
+    const client = createPoliteClient({ contact: 'me@example.com', cacheDir, fetchImpl })
+    await client.getJson(url, schema)
     const files = await readdir(path.join(cacheDir, 'api.example.com'))
     const content = await readFile(path.join(cacheDir, 'api.example.com', files[0]!), 'utf8')
     expect(content).not.toMatch(/AAA|BBB/)
@@ -314,5 +321,112 @@ describe('polite client', () => {
     expect(fetchImpl).toHaveBeenCalledTimes(2)
     const noCache = createPoliteClient({ contact: 'me@example.com', cacheDir: null, fetchImpl })
     expect(await noCache.isCached(ok)).toBe(false)
+  })
+
+  describe('a body that does not validate is never cached', () => {
+    const url = 'https://api.example.com/q?key=SECRET'
+    const truncated = () => new Response('{"ok": tru', { status: 200 })
+
+    it('getJson: a 200 with truncated JSON throws and writes nothing, so the next call fetches again', async () => {
+      const cacheDir = await tmp()
+      const fetchImpl = vi.fn(async () => truncated())
+      const client = createPoliteClient({ contact: 'me@example.com', cacheDir, fetchImpl })
+      await expect(client.getJson(url, schema)).rejects.toThrow(
+        'GET https://api.example.com/q did not return JSON',
+      )
+      expect(await readdir(cacheDir)).toEqual([])
+      await expect(client.getJson(url, schema)).rejects.toThrow('did not return JSON')
+      expect(fetchImpl).toHaveBeenCalledTimes(2)
+    })
+
+    it('getJson: a 200 of the wrong shape is not cached either', async () => {
+      const cacheDir = await tmp()
+      const fetchImpl = vi.fn(async () => json({ nope: 1 }))
+      const client = createPoliteClient({ contact: 'me@example.com', cacheDir, fetchImpl })
+      await expect(client.getJson(url, schema)).rejects.toThrow('unexpected shape')
+      expect(await readdir(cacheDir)).toEqual([])
+    })
+
+    it('getJson: a poisoned cache file is a miss, refetched and overwritten by a valid body', async () => {
+      const cacheDir = await tmp()
+      const bad = createPoliteClient({
+        contact: 'me@example.com',
+        cacheDir,
+        fetchImpl: vi.fn(async () => json({ ok: true })),
+      })
+      await bad.getJson(url, schema)
+      const [host] = await readdir(cacheDir)
+      const [file] = await readdir(path.join(cacheDir, host!))
+      const full = path.join(cacheDir, host!, file!)
+      await writeFile(
+        full,
+        JSON.stringify({ fetchedAt: '2026-10-01', status: 200, body: '{"ok": tru' }),
+      )
+      const fetchImpl = vi.fn(async () => json({ ok: true }))
+      const client = createPoliteClient({ contact: 'me@example.com', cacheDir, fetchImpl })
+      const result = await client.getJson(url, schema)
+      expect(result).toMatchObject({ data: { ok: true }, fromCache: false })
+      expect(fetchImpl).toHaveBeenCalledTimes(1)
+      expect(JSON.parse(await readFile(full, 'utf8')).body).toBe('{"ok":true}')
+    })
+
+    it('getJson: a poisoned cache file stays in place when the fresh body is bad too', async () => {
+      const cacheDir = await tmp()
+      const seed = createPoliteClient({
+        contact: 'me@example.com',
+        cacheDir,
+        fetchImpl: vi.fn(async () => json({ ok: true })),
+      })
+      await seed.getJson(url, schema)
+      const [host] = await readdir(cacheDir)
+      const [file] = await readdir(path.join(cacheDir, host!))
+      const full = path.join(cacheDir, host!, file!)
+      const poisoned = JSON.stringify({ fetchedAt: '2026-10-01', status: 200, body: 'oops' })
+      await writeFile(full, poisoned)
+      const client = createPoliteClient({
+        contact: 'me@example.com',
+        cacheDir,
+        fetchImpl: vi.fn(async () => truncated()),
+      })
+      await expect(client.getJson(url, schema)).rejects.toThrow('did not return JSON')
+      expect(await readFile(full, 'utf8')).toBe(poisoned)
+    })
+
+    it('getText with accept: a rejected 2xx body throws "unusable response" and caches nothing', async () => {
+      const cacheDir = await tmp()
+      const fetchImpl = vi.fn(async () => truncated())
+      const client = createPoliteClient({ contact: 'me@example.com', cacheDir, fetchImpl })
+      const accept = (body: string) => body.endsWith('}')
+      await expect(client.getText(url, { accept })).rejects.toThrow(
+        'GET https://api.example.com/q unusable response',
+      )
+      expect(await readdir(cacheDir)).toEqual([])
+      expect(await client.isCached(url, { accept })).toBe(false)
+    })
+
+    it('getText with accept: a cached entry it rejects is a miss, and isCached agrees', async () => {
+      const cacheDir = await tmp()
+      const first = createPoliteClient({
+        contact: 'me@example.com',
+        cacheDir,
+        fetchImpl: vi.fn(async () => new Response('plain', { status: 200 })),
+      })
+      await first.getText(url)
+      const accept = (body: string) => body.startsWith('{')
+      expect(await first.isCached(url)).toBe(true)
+      expect(await first.isCached(url, { accept })).toBe(false)
+      const fetchImpl = vi.fn(async () => json({ ok: true }))
+      const client = createPoliteClient({ contact: 'me@example.com', cacheDir, fetchImpl })
+      const res = await client.getText(url, { accept })
+      expect(res).toMatchObject({ data: '{"ok":true}', fromCache: false })
+      expect(fetchImpl).toHaveBeenCalledTimes(1)
+    })
+
+    it('getText with accept: a non-2xx body is returned as before, accept is not asked', async () => {
+      const fetchImpl = vi.fn(async () => new Response('gone', { status: 404 }))
+      const client = createPoliteClient({ contact: 'me@example.com', cacheDir: null, fetchImpl })
+      const res = await client.getText(url, { accept: () => false })
+      expect(res).toMatchObject({ data: 'gone', status: 404 })
+    })
   })
 })

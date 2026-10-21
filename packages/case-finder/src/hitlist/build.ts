@@ -10,8 +10,9 @@ import {
   CHAPTER_11_LAST_YEAR,
   DISSOLVED_CONVICTED_QUERY,
   DOWNFALL_LISTS,
-  FOUNDER_QUERY,
+  FOUNDER_CANDIDATES_QUERY,
   SCANDAL_CATEGORIES,
+  businessesAmong,
   chapter11Category,
   dissolvedSchema,
   founderSchema,
@@ -217,12 +218,14 @@ export async function buildHitlist(deps: HitlistDeps): Promise<HitlistEntry[]> {
 
   // A founder link stands beside any downfall tag: the lane at T gives downfall precedence, and
   // filtering here on tags a company gained later would be hindsight.
-  const founders = await wikidata.sparql(FOUNDER_QUERY, founderSchema)
+  const candidates = await wikidata.sparql(FOUNDER_CANDIDATES_QUERY, founderSchema)
+  const candidateQids = candidates.results.bindings.flatMap((b) => qidOf(b.item.value) ?? [])
+  const businesses = await businessesAmong(candidateQids, wikidata, log)
   const to = lastCompleteMonth(now())
   perSeed.set(FOUNDER_TAG, 0)
-  for (const b of founders.results.bindings) {
+  for (const b of candidates.results.bindings) {
     const qid = qidOf(b.item.value)
-    if (qid === null) continue
+    if (qid === null || !businesses.has(qid)) continue
     const monthly = await deps.pageviews.monthly(
       'en.wikipedia',
       [b.title.value],
