@@ -1,4 +1,7 @@
 import { readFileSync } from 'node:fs'
+import { mkdtemp, readdir, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import path from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 import { createPoliteClient } from './http'
 import { livePageviews } from './pageviews'
@@ -108,6 +111,33 @@ describe('live pageviews', () => {
       { date: '2020-06-21', views: 0 },
     ])
     expect(String(fetchImpl.mock.calls[0]![0])).toMatch(/\/daily\/2020061700\/2020062100$/)
+  })
+})
+
+describe('live pageviews with a truncated reply', () => {
+  it('throws, and the broken body is not cached, so the next call fetches again', async () => {
+    const cacheDir = await mkdtemp(path.join(tmpdir(), 'cf-pv-'))
+    try {
+      const fetchImpl = vi.fn(async () => new Response('{"items": [{"timest', { status: 200 }))
+      const source = livePageviews(
+        createPoliteClient({
+          contact: 'me@example.com',
+          cacheDir,
+          fetchImpl,
+          minIntervalMs: { 'wikimedia.org': 0 },
+        }),
+      )
+      await expect(
+        source.monthly('en.wikipedia', ['Wirecard'], '2019-03', '2019-06'),
+      ).rejects.toThrow('unusable response')
+      await expect(
+        source.monthly('en.wikipedia', ['Wirecard'], '2019-03', '2019-06'),
+      ).rejects.toThrow('unusable response')
+      expect(fetchImpl).toHaveBeenCalledTimes(2)
+      expect(await readdir(cacheDir)).toEqual([])
+    } finally {
+      await rm(cacheDir, { recursive: true, force: true })
+    }
   })
 })
 

@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import type { ChannelUploads, IsoDate, YoutubeVideo } from '../types'
-import type { PoliteClient } from './http'
+import { isJson, type PoliteClient } from './http'
 import { QuotaExhaustedError, type QuotaLedger } from './quota'
 
 /**
@@ -155,8 +155,8 @@ export function liveYoutube(
     schema: z.ZodType<T>,
   ): Promise<{ data: T; fetchedAt: IsoDate }> {
     const url = `${BASE}/${endpoint}?${params}&key=${encodeURIComponent(apiKey)}`
-    if (!(await client.isCached(url))) ledger.spend(units)
-    const res = await client.getText(url)
+    if (!(await client.isCached(url, { accept: isJson }))) ledger.spend(units)
+    const res = await client.getText(url, { accept: isJson })
     const safeUrl = `${BASE}/${endpoint}?${params}`
     if (res.status === 403 && hasReason(res.data, QUOTA_REASONS)) {
       throw new QuotaExhaustedError(`YouTube reported quota exhausted on ${safeUrl}`)

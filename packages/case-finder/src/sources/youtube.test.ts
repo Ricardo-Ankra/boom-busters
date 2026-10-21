@@ -144,6 +144,20 @@ describe('live youtube search', () => {
   })
 })
 
+describe('live youtube with a truncated reply', () => {
+  it('throws without the key, and the broken body is not cached', async () => {
+    const fetchImpl = vi.fn(async () => new Response('{"items": [{"id": ', { status: 200 }))
+    const { source } = await setup(fetchImpl as unknown as ReturnType<typeof routedFetch>, {
+      cache: true,
+    })
+    const err = (await source.channelByHandle('@aaa').catch((e: Error) => e)) as Error
+    expect(err.message).toContain('unusable response')
+    expect(err.message).not.toContain('SECRETKEY')
+    await expect(source.channelByHandle('@aaa')).rejects.toThrow('unusable response')
+    expect(fetchImpl).toHaveBeenCalledTimes(2)
+  })
+})
+
 describe('live youtube channels', () => {
   it('looks a channel up by handle for one unit', async () => {
     const { source, ledger, fetchImpl } = await setup(

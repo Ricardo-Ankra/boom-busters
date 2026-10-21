@@ -1,7 +1,7 @@
 import { z } from 'zod'
 import { EDGAR_8K_DOWNFALL_ITEM, EDGAR_FORMS } from '../config'
 import type { IsoDate, Lane, PrimaryDocument } from '../types'
-import type { PoliteClient } from './http'
+import { isJson, type PoliteClient } from './http'
 
 /**
  * EDGAR filings by CIK, from the submissions API. The forms that count depend
@@ -36,7 +36,7 @@ type Columns = z.infer<typeof columnsSchema>
 
 /** A 404 means the company files nothing with the SEC; null tells the caller so. */
 async function fetchJson<T>(client: PoliteClient, url: string, schema: z.ZodType<T>) {
-  const res = await client.getText(url)
+  const res = await client.getText(url, { accept: isJson })
   if (res.status === 404) return null
   if (res.status < 200 || res.status >= 300) {
     throw new Error(`GET ${url} failed with status ${res.status}`)

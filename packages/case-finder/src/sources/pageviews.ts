@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import type { DailyViews, IsoDate, MonthlyViews } from '../types'
-import type { PoliteClient } from './http'
+import { isJson, type PoliteClient } from './http'
 
 /**
  * Wikimedia per-article pageviews. The caller passes a title together with its
@@ -64,7 +64,7 @@ async function series(
   end: string,
 ): Promise<Map<string, number>> {
   const url = `${BASE}/${project}/all-access/user/${encodeTitle(title)}/${granularity}/${start}/${end}`
-  const res = await client.getText(url)
+  const res = await client.getText(url, { accept: isJson })
   const out = new Map<string, number>()
   if (res.status === 404) return out
   if (res.status < 200 || res.status >= 300) {
