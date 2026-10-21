@@ -171,7 +171,7 @@ describe('polite client', () => {
     expect((await result).data).toEqual({ ok: true })
   })
 
-  it('waits for Retry-After on a 429 and retries once', async () => {
+  it('a Retry-After under the 5 s floor still waits 5 s on a 429', async () => {
     vi.useFakeTimers()
     const fetchImpl = vi
       .fn()
@@ -179,7 +179,7 @@ describe('polite client', () => {
       .mockResolvedValueOnce(json({ ok: true }))
     const client = createPoliteClient({ contact: 'me@example.com', cacheDir: null, fetchImpl })
     const result = client.getJson('https://api.example.com/x', schema)
-    await vi.advanceTimersByTimeAsync(2900)
+    await vi.advanceTimersByTimeAsync(4900)
     expect(fetchImpl).toHaveBeenCalledTimes(1)
     await vi.advanceTimersByTimeAsync(100)
     expect((await result).data).toEqual({ ok: true })
@@ -250,7 +250,7 @@ describe('polite client', () => {
     ).toBe(true)
   })
 
-  it('a 429 without Retry-After waits 1 s before the retry', async () => {
+  it('a 429 without Retry-After waits 5 s before the retry', async () => {
     vi.useFakeTimers()
     const fetchImpl = vi
       .fn()
@@ -258,13 +258,13 @@ describe('polite client', () => {
       .mockResolvedValueOnce(json({ ok: true }))
     const client = createPoliteClient({ contact: 'me@example.com', cacheDir: null, fetchImpl })
     const result = client.getJson('https://api.example.com/x', schema)
-    await vi.advanceTimersByTimeAsync(900)
+    await vi.advanceTimersByTimeAsync(4900)
     expect(fetchImpl).toHaveBeenCalledTimes(1)
     await vi.advanceTimersByTimeAsync(100)
     expect((await result).data).toEqual({ ok: true })
   })
 
-  it('a 429 with an empty Retry-After waits 1 s too', async () => {
+  it('a 429 with an empty Retry-After waits 5 s too', async () => {
     vi.useFakeTimers()
     const fetchImpl = vi
       .fn()
@@ -272,10 +272,158 @@ describe('polite client', () => {
       .mockResolvedValueOnce(json({ ok: true }))
     const client = createPoliteClient({ contact: 'me@example.com', cacheDir: null, fetchImpl })
     const result = client.getJson('https://api.example.com/x', schema)
-    await vi.advanceTimersByTimeAsync(900)
+    await vi.advanceTimersByTimeAsync(4900)
     expect(fetchImpl).toHaveBeenCalledTimes(1)
     await vi.advanceTimersByTimeAsync(100)
     await result
+  })
+
+  describe('rate limiting (R17)', () => {
+    const url = 'https://api.example.com/x'
+    const make = (fetchImpl: typeof fetch, extra: object = {}) =>
+      createPoliteClient({ contact: 'me@example.com', cacheDir: null, fetchImpl, ...extra })
+    const sequence = (...statuses: number[]) => {
+      const queue = [...statuses]
+      return vi.fn(async (_u: string | URL | Request, _i?: RequestInit) => {
+        const status = queue.shift() ?? 200
+        return status === 200 ? json({ ok: true }) : json({}, status)
+      })
+    }
+
+    it('a 429 then a 200 succeeds after a 5 s wait', async () => {
+      vi.useFakeTimers()
+      const fetchImpl = sequence(429, 200)
+      const result = make(fetchImpl).getJson(url, schema)
+      await vi.advanceTimersByTimeAsync(4999)
+      expect(fetchImpl).toHaveBeenCalledTimes(1)
+      await vi.advanceTimersByTimeAsync(1)
+      expect((await result).data).toEqual({ ok: true })
+      expect(fetchImpl).toHaveBeenCalledTimes(2)
+    })
+
+    it('three 429s then a 200 wait 5, 10 and 20 s', async () => {
+      vi.useFakeTimers()
+      const fetchImpl = sequence(429, 429, 429, 200)
+      const result = make(fetchImpl).getJson(url, schema)
+      for (const [wait, calls] of [
+        [5000, 2],
+        [10_000, 3],
+        [20_000, 4],
+      ] as const) {
+        await vi.advanceTimersByTimeAsync(wait - 1)
+        expect(fetchImpl).toHaveBeenCalledTimes(calls - 1)
+        await vi.advanceTimersByTimeAsync(1)
+        expect(fetchImpl).toHaveBeenCalledTimes(calls)
+      }
+      expect((await result).data).toEqual({ ok: true })
+    })
+
+    it('a Retry-After of 30 on the first 429 waits 30 s', async () => {
+      vi.useFakeTimers()
+      const fetchImpl = vi
+        .fn()
+        .mockResolvedValueOnce(json({}, 429, { 'Retry-After': '30' }))
+        .mockResolvedValueOnce(json({ ok: true }))
+      const result = make(fetchImpl).getJson(url, schema)
+      await vi.advanceTimersByTimeAsync(29_999)
+      expect(fetchImpl).toHaveBeenCalledTimes(1)
+      await vi.advanceTimersByTimeAsync(1)
+      expect((await result).data).toEqual({ ok: true })
+    })
+
+    it('seven 429s give up after six retries, waiting 5, 10, 20, 40, 80 and 120 s', async () => {
+      vi.useFakeTimers()
+      const fetchImpl = sequence(429, 429, 429, 429, 429, 429, 429)
+      const outcome = make(fetchImpl)
+        .getText(`${url}?key=SECRET`)
+        .then((r) => r.status)
+      await vi.advanceTimersByTimeAsync(274_999)
+      expect(fetchImpl).toHaveBeenCalledTimes(6)
+      await vi.advanceTimersByTimeAsync(1)
+      expect(await outcome).toBe(429)
+      expect(fetchImpl).toHaveBeenCalledTimes(7)
+    })
+
+    it('getJson names the redacted URL when the last retry is still a 429', async () => {
+      vi.useFakeTimers()
+      const fetchImpl = sequence(429, 429, 429, 429, 429, 429, 429)
+      const outcome = make(fetchImpl)
+        .getJson(`${url}?key=SECRET`, schema)
+        .catch((e: Error) => e)
+      await vi.advanceTimersByTimeAsync(275_000)
+      const err = (await outcome) as Error
+      expect(err.message).toMatch(/api\.example\.com\/x.*429/)
+      expect(err.message).not.toContain('SECRET')
+    })
+
+    it('a 429 is never cached', async () => {
+      vi.useFakeTimers({ toFake: ['setTimeout', 'Date'] })
+      const cacheDir = await tmp()
+      const fetchImpl = sequence(429, 429, 429, 429, 429, 429, 429)
+      const client = make(fetchImpl, { cacheDir })
+      const outcome = client.getText(url)
+      // the cache read is real disk I/O: let it finish before the fake clock moves
+      while (fetchImpl.mock.calls.length === 0) await new Promise((r) => setImmediate(r))
+      await vi.advanceTimersByTimeAsync(275_000)
+      expect((await outcome).status).toBe(429)
+      expect(await client.isCached(url)).toBe(false)
+    })
+
+    it('doubles the host spacing after a 429: 0 ms goes to 250 ms', async () => {
+      vi.useFakeTimers()
+      const fetchImpl = sequence(429, 200, 200)
+      const client = make(fetchImpl)
+      const first = client.getJson(url, schema)
+      await vi.advanceTimersByTimeAsync(5000)
+      await first
+      const second = client.getJson('https://api.example.com/y', schema)
+      await vi.advanceTimersByTimeAsync(249)
+      expect(fetchImpl).toHaveBeenCalledTimes(2)
+      await vi.advanceTimersByTimeAsync(1)
+      await second
+      expect(fetchImpl).toHaveBeenCalledTimes(3)
+    })
+
+    it('caps the doubled spacing at 2 s', async () => {
+      vi.useFakeTimers()
+      const fetchImpl = sequence(429, 200, 200)
+      const client = make(fetchImpl, { minIntervalMs: { 'example.com': 1500 } })
+      const first = client.getJson(url, schema)
+      await vi.advanceTimersByTimeAsync(5000)
+      await first
+      const second = client.getJson('https://api.example.com/y', schema)
+      await vi.advanceTimersByTimeAsync(1999)
+      expect(fetchImpl).toHaveBeenCalledTimes(2)
+      await vi.advanceTimersByTimeAsync(1)
+      await second
+      expect(fetchImpl).toHaveBeenCalledTimes(3)
+    })
+
+    it('reports each backoff through onBackoff', async () => {
+      vi.useFakeTimers()
+      const onBackoff = vi.fn()
+      const result = make(sequence(429, 429, 200), { onBackoff }).getJson(url, schema)
+      await vi.advanceTimersByTimeAsync(15_000)
+      await result
+      expect(onBackoff.mock.calls).toEqual([
+        ['api.example.com', 5000],
+        ['api.example.com', 10_000],
+      ])
+    })
+
+    it('a 5xx still retries once after 1 s and no more', async () => {
+      vi.useFakeTimers()
+      const fetchImpl = sequence(503, 503, 503)
+      const outcome = make(fetchImpl)
+        .getText(url)
+        .then((r) => r.status)
+      await vi.advanceTimersByTimeAsync(999)
+      expect(fetchImpl).toHaveBeenCalledTimes(1)
+      await vi.advanceTimersByTimeAsync(1)
+      expect(await outcome).toBe(503)
+      await vi.advanceTimersByTimeAsync(300_000)
+      expect(fetchImpl).toHaveBeenCalledTimes(2)
+    })
   })
 
   it('caches a 404 but not a 403', async () => {

@@ -136,6 +136,8 @@ async function main(): Promise<number> {
       contact: env.DATA_CONTACT_EMAIL!,
       cacheDir,
       now: () => now,
+      onBackoff: (host, waitMs) =>
+        process.stderr.write(`rate limited by ${host}, waiting ${waitMs / 1000} s\n`),
     })
     const ledger = createQuotaLedger(args.dailyUnits, args.spentToday)
     sources = {
