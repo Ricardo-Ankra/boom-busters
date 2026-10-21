@@ -1,5 +1,5 @@
 import { vi } from 'vitest'
-import { gatherAt, type Sources } from '../evidence'
+import { gatherAt, type GatherOptions, type Sources } from '../evidence'
 import {
   mockCourtListener,
   mockEdgar,
@@ -96,13 +96,19 @@ export function sources(overrides: Partial<Sources> = {}): Sources {
   }
 }
 
-export const video = (id: string, channelId: string): YoutubeVideo => ({
+/** Long-form and before T; it counts towards coverage only if its title holds the query. */
+export const video = (
+  id: string,
+  channelId: string,
+  overrides: Partial<YoutubeVideo> = {},
+): YoutubeVideo => ({
   id,
   channelId,
   title: `[fake] ${id}`,
   publishedAt: '2019-06-01',
   durationSec: 900,
   views: 1000,
+  ...overrides,
 })
 
 export const gather = (
@@ -110,7 +116,8 @@ export const gather = (
   s: Sources,
   asOf = T,
   log: (l: string) => void = silent,
-) => gatherAt(hitlist, asOf, s, log, { anchorDay: ANCHOR })
+  options: Omit<GatherOptions, 'anchorDay'> = {},
+) => gatherAt(hitlist, asOf, s, log, { anchorDay: ANCHOR, ...options })
 
 export const byQid = (evidence: Awaited<ReturnType<typeof gatherAt>>, qid: string) =>
   evidence.find((e) => e.entry.qid === qid)!

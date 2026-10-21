@@ -1,6 +1,7 @@
 import { laneOf } from './hitlist/build'
 import { populationAt } from './score/rank'
-import { medianMonthly } from './score/measure'
+import { countedVideos, medianMonthly } from './score/measure'
+import { historyNeeded } from './gather/channels'
 import { enMonthlyOf, enTitlesOf, passOneAll, tagsAt, type PassOne } from './gather/pass-one'
 import {
   SERIES_FROM_DAY,
@@ -121,10 +122,12 @@ async function passTwo(
   const search = nonBlank(query)
     ? await sources.youtube.search(query)
     : { fetchedAt: run.anchorDay, videos: [] }
+  // Only the channels behind counted videos: no other video's ratio is ever read.
+  const counted = nonBlank(query) ? countedVideos(search, query, asOf) : []
   const channels: Record<string, ChannelUploads> = {}
-  for (const channelId of new Set(search.videos.map((v) => v.channelId))) {
+  for (const [channelId, until] of historyNeeded(counted)) {
     // A channel with no uploads to read is left out; its videos' outlier ratio falls back to 1.
-    const uploads = await run.uploads(channelId)
+    const uploads = await run.uploads(channelId, until)
     if (uploads !== null) channels[channelId] = uploads
   }
   return {

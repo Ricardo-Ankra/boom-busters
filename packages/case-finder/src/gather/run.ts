@@ -4,8 +4,9 @@ import type { PageviewsSource } from '../sources/pageviews'
 import type { SecReleasesSource } from '../sources/sec-releases'
 import type { WikidataSource } from '../sources/wikidata'
 import { normalTitle, type WikipediaSource } from '../sources/wikipedia'
-import { uploadsPlaylistId, YoutubeNotFoundError, type YoutubeSource } from '../sources/youtube'
+import type { YoutubeSource } from '../sources/youtube'
 import type { ChannelUploads, DailyViews, IsoDate, MonthlyViews } from '../types'
+import { channelMemo, type ChannelMemo } from './channels'
 
 /**
  * One back-test day's shared state for evidence gathering: the dates every
@@ -31,6 +32,12 @@ export interface GatherOptions {
    * the same questions and the cache answers them all. Default: the clock.
    */
   anchorDay?: IsoDate
+  /**
+   * Channel histories to share across runs: the back-test passes one memo to
+   * every test date, so a date that needs older uploads deepens a history
+   * rather than reading it again. Default: a fresh memo for this run.
+   */
+  channels?: ChannelMemo
 }
 
 /**
@@ -60,8 +67,13 @@ export interface Run {
   yesterday: IsoDate
   pageAt: (title: string) => Promise<PageAtT | null>
   listLinks: (page: string) => Promise<Set<string>>
-  /** Memoised per run; null when the channel's uploads are gone. `size` is how many channels were fetched. */
-  uploads: ((channelId: string) => Promise<ChannelUploads | null>) & { size: () => number }
+  /**
+   * The channel's uploads back to `until` (see gather/channels.ts); null when
+   * they are gone. `size` is how many channels this run asked for.
+   */
+  uploads: ((channelId: string, until: IsoDate) => Promise<ChannelUploads | null>) & {
+    size: () => number
+  }
 }
 
 function addDays(day: IsoDate, n: number): IsoDate {
@@ -104,13 +116,14 @@ export function createRun(asOf: IsoDate, sources: Sources, options: GatherOption
     const list = await pageAt(`${month}|${page}`)
     return new Set((list?.links ?? []).map(normalTitle))
   })
-  const uploads = memo((channelId: string) =>
-    sources.youtube
-      .uploads(channelId, uploadsPlaylistId(channelId), { maxPages: 1 })
-      .catch((error: unknown) => {
-        if (error instanceof YoutubeNotFoundError) return null
-        throw error
-      }),
+  const channels = options.channels ?? channelMemo(sources.youtube)
+  const asked = new Set<string>()
+  const uploads = Object.assign(
+    (channelId: string, until: IsoDate) => {
+      asked.add(channelId)
+      return channels.fetch(channelId, until)
+    },
+    { size: () => asked.size },
   )
   return {
     asOf,

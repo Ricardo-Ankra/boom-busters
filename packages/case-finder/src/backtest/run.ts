@@ -3,6 +3,7 @@ import path from 'node:path'
 import { parseNamedCaseScores } from '@boom-busters/providers'
 import { CONFIG_VERSION } from '../config'
 import { gatherAt, laneAt } from '../evidence'
+import { channelMemo } from '../gather/channels'
 import { laneOf } from '../hitlist/build'
 import { KILL_LEGAL } from '../score/gates'
 import { rank, type LaneResult, type Scored } from '../score/rank'
@@ -187,7 +188,8 @@ export async function runBacktest(
   const { hitlist, uploads, proposals, fixture, byQid } = inputs
   const runDate = dayOf(ctx.now)
   // Every request is asked as of the hitlist's build day, so a rerun on any day hits the cache.
-  const anchor = { anchorDay: hitlist.builtOn }
+  // One channel memo for every test date: a date needing older uploads deepens a history.
+  const anchor = { anchorDay: hitlist.builtOn, channels: channelMemo(ctx.sources.youtube) }
   const byVideo = new Map(proposals.map((p) => [p.videoId, p]))
 
   // Each subject's lanes at its own T and today, before selection, which needs them and is synchronous.

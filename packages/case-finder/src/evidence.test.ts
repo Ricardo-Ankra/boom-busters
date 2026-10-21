@@ -15,6 +15,15 @@ import { mockCourtListener, mockWikidata, mockYoutube } from './sources/mock'
 import { monthRange, type PageviewsSource } from './sources/pageviews'
 import { QuotaExhaustedError } from './sources/quota'
 import { YoutubeNotFoundError, type YoutubeSource } from './sources/youtube'
+import { channelMemo } from './gather/channels'
+
+/** A channel's whole history, empty: enough for gathering, which only reads whether it came back. */
+const completeUploads = async (channelId: string) => ({
+  channelId,
+  uploads: [],
+  fetchedOn: '2026-10-20',
+  complete: true,
+})
 
 describe('gatherAt', () => {
   it('YouTube is searched only for the ranked population', async () => {
@@ -194,28 +203,88 @@ describe('gatherAt', () => {
         fetchedAt: '2026-10-20',
         videos: [video(`${query}-1`, 'UCshared'), video(`${query}-2`, `UCown${query.length}`)],
       })),
-      uploads: vi.fn(async (channelId: string) => ({
-        channelId,
-        uploads: [],
-        fetchedOn: '2026-10-20',
-        complete: true,
-      })),
+      uploads: vi.fn(completeUploads),
     }
     const evidence = await gather([entry('Q1'), entry('Q22')], sources({ youtube }))
     const shared = vi.mocked(youtube.uploads).mock.calls.filter(([id]) => id === 'UCshared')
-    expect(shared).toEqual([['UCshared', 'UUshared', { maxPages: 1 }]])
+    expect(shared).toEqual([['UCshared', 'UUshared', { until: '2018-12-01', maxPages: 20 }]])
     expect(youtube.uploads).toHaveBeenCalledTimes(3)
     for (const e of evidence) expect(Object.keys(e.channels)).toContain('UCshared')
+  })
+
+  it('fetches uploads only for channels with a video that counts towards coverage', async () => {
+    const search = async () => ({
+      fetchedAt: '2026-10-20',
+      videos: [
+        video('counted', 'UCcounted', { title: 'Inside Article Q1' }),
+        video('short', 'UCshort', { title: 'Article Q1 in a minute', durationSec: 60 }),
+        video('late', 'UClate', { title: 'Article Q1 today', publishedAt: T }),
+        video('old', 'UCold', { title: 'Article Q1 back then', publishedAt: '2018-03-14' }),
+        video('other', 'UCother', { title: 'Something else entirely' }),
+      ],
+    })
+    const uploads = vi.fn(completeUploads)
+    const [e] = await gather(
+      [entry('Q1')],
+      sources({ youtube: { ...mockYoutube, search, uploads } }),
+    )
+    expect(uploads.mock.calls.map(([id]) => id)).toEqual(['UCcounted'])
+    expect(Object.keys(e!.channels)).toEqual(['UCcounted'])
+  })
+
+  it("asks back to the window start of the channel's oldest counted video", async () => {
+    const search = async () => ({
+      fetchedAt: '2026-10-20',
+      videos: [
+        video('newer', 'UCx', { title: 'Article Q1 part 2', publishedAt: '2019-08-31' }),
+        video('older', 'UCx', { title: 'Article Q1 part 1', publishedAt: '2018-08-31' }),
+      ],
+    })
+    const uploads = vi.fn(completeUploads)
+    await gather([entry('Q1')], sources({ youtube: { ...mockYoutube, search, uploads } }))
+    expect(uploads.mock.calls).toEqual([['UCx', 'UUx', { until: '2018-02-28', maxPages: 20 }]])
+  })
+
+  it('a later back-test date that needs older history deepens the shared memo', async () => {
+    const search = async () => ({
+      fetchedAt: '2026-10-20',
+      videos: [
+        video('recent', 'UCx', { title: 'Article Q1 now', publishedAt: '2019-06-01' }),
+        video('early', 'UCx', { title: 'Article Q1 then', publishedAt: '2018-01-01' }),
+      ],
+    })
+    // Each fetch reaches exactly as far back as it was asked, and no further.
+    const uploads = vi.fn(
+      async (channelId: string, _p: string, options: { until?: string } = {}) => ({
+        channelId,
+        uploads: [video('reached', channelId, { publishedAt: options.until! })],
+        fetchedOn: '2026-10-20',
+        complete: false,
+      }),
+    )
+    const youtube = { ...mockYoutube, search, uploads }
+    const channels = channelMemo(youtube)
+    // At T only 'recent' counts; a year earlier only 'early' does.
+    await gather([entry('Q1')], sources({ youtube }), T, silent, { channels })
+    await gather([entry('Q1')], sources({ youtube }), '2019-03-15', silent, { channels })
+    await gather([entry('Q1')], sources({ youtube }), T, silent, { channels })
+    expect(uploads.mock.calls.map((c) => c[2])).toEqual([
+      { until: '2018-12-01', maxPages: 20 },
+      { until: '2017-07-01', maxPages: 20 },
+    ])
   })
 
   it('a channel whose uploads playlist is not found is left out; any other error throws', async () => {
     const search = async () => ({
       fetchedAt: '2026-10-20',
-      videos: [video('v1', 'UCgone'), video('v2', 'UCkept')],
+      videos: [
+        video('v1', 'UCgone', { title: 'Article Q1 explained' }),
+        video('v2', 'UCkept', { title: 'Article Q1 explained again' }),
+      ],
     })
     const uploads = vi.fn(async (channelId: string) => {
       if (channelId === 'UCgone') throw new YoutubeNotFoundError('playlist UUgone not found')
-      return { channelId, uploads: [], fetchedOn: '2026-10-20', complete: true }
+      return completeUploads(channelId)
     })
     const [e] = await gather(
       [entry('Q1')],
@@ -265,10 +334,23 @@ describe('gatherAt', () => {
       entry('Q1'),
       entry('Q2', { tags: [{ tag: 'founder-link', lane: 'success', since: null }] }),
     ]
-    await gather(hitlist, sources(), T, (l) => lines.push(l))
+    // Each search has a counted video on a shared channel and its own, and one that does not count.
+    const youtube: YoutubeSource = {
+      ...mockYoutube,
+      search: async (query: string) => ({
+        fetchedAt: '2026-10-20',
+        videos: [
+          video(`${query}-1`, 'UCshared'),
+          video(`${query}-2`, `UCown${query}`),
+          video(`${query}-3`, `UCshort${query}`, { durationSec: 60 }),
+        ],
+      }),
+      uploads: completeUploads,
+    }
+    await gather(hitlist, sources({ youtube }), T, (l) => lines.push(l))
     expect(lines.at(-1)).toBe(
       'evidence 2020-03-15: 2 entries; population downfall=1, success=1; ' +
-        '2 YouTube searches; 6 channels fetched',
+        '2 YouTube searches; 3 channels fetched',
     )
   })
 })
