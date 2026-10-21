@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import {
   BACKTEST,
+  CHANNEL_FALLBACK_UPLOADS,
+  CHANNEL_HISTORY_MAX_PAGES,
   CONFIG_VERSION,
   EDGAR_FORMS,
   EDGAR_8K_DOWNFALL_ITEM,
@@ -29,8 +31,12 @@ describe('pre-registered config', () => {
     expect(EDGAR_8K_DOWNFALL_ITEM).toBe('4.02')
     expect(PRIMARY_HOSTS).toContain('sec.gov')
   })
-  it('is config version 2, the version set after the final review', () => {
-    expect(CONFIG_VERSION).toBe(2)
+  it('is config version 3, the version set for the channel-median rule', () => {
+    expect(CONFIG_VERSION).toBe(3)
+  })
+  it('pins the channel history cap and its fallback', () => {
+    expect(CHANNEL_HISTORY_MAX_PAGES).toBe(20)
+    expect(CHANNEL_FALLBACK_UPLOADS).toBe(50)
   })
   it('pins the classes the hitlist excludes', () => {
     expect(Object.keys(HITLIST_EXCLUDED_CLASSES)).toEqual([
