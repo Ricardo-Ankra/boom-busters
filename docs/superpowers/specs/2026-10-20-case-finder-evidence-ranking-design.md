@@ -230,6 +230,27 @@ week). The back-test reuses one cached search per entry for every `T` and
 filters by publish date, which is why its data collection takes about a
 week of quota rather than one search per entry per test case.
 
+**Channel medians within the quota (owner's ruling, 2026-10-21, before any
+live run).** YouTube lists a channel's uploads newest first, 50 per page,
+so reaching the six months around an older video means paging back through
+everything since. Full histories for every channel in the search results
+would take weeks of quota. The middle ground:
+
+- Uploads are fetched only for channels with at least one video that passes
+  the coverage filters at `T` (long-form, before `T`, within the 24 months
+  before `T`, query in the title). Other channels' videos never count, so
+  they need no median.
+- For those channels, uploads are paged back until the oldest one fetched is
+  older than six months before the channel's oldest counted video, or the
+  channel's uploads end, or a cap of 20 pages (1,000 uploads, about 40
+  units) is reached.
+- A counted video's median uses the same rule as the outcome (section 9.3):
+  the channel's long-form uploads within six months either side, settled at
+  least 90 days on the date the uploads were fetched, excluding the video.
+- When the cap stops a channel short of the window, that channel's videos
+  use the median of its latest 50 long-form uploads instead, and the report
+  states how many channels and counted videos were capped.
+
 ## 6. Paper trail and legal risk (gates, not scores)
 
 **Paper trail level**, by lane, recorded with every document found (title,

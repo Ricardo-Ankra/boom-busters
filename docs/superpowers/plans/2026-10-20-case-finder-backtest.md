@@ -40,6 +40,7 @@ Recorded in PROGRESS.md in Task 14 and fixed in `config.ts`:
 8. **Companies House and GDELT are deferred** to the later plans: the back-test uses neither (GDELT only feeds the daily scan; Companies House is optional per the spec).
 9. **Keys for this plan come from env**, read by the CLI from `.env.local`: `YOUTUBE_DATA_API_KEY`, `COURTLISTENER_TOKEN`, `DATA_CONTACT_EMAIL`. Settings → Connections entries move to the Case Library plan, where the app first needs them.
 10. **Raw cache** lives in `.cache/case-finder/` at the repo root (gitignored). The run's hitlist snapshot and per-case table go in the report folder `docs/case-finder/`; the hand-checked subject mapping is a committed fixture.
+11. **Channel medians (owner's ruling 2026-10-21, supersedes controller ruling R2):** uploads are fetched only for channels with a video that passes the coverage filters at `T`, paged back until the window six months before the oldest counted video is covered, the uploads end, or `CHANNEL_HISTORY_MAX_PAGES` (20) is reached; a counted video's median uses the outcome's peer rule (six months either side, settled 90 days on the fetch date, itself excluded); a capped channel falls back to its latest 50 long-form uploads, counted in the report. See spec section 5, "Channel medians within the quota". Built as Task 13b.
 
 ## Review Focus
 
