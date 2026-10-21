@@ -24,6 +24,8 @@ export interface PoliteClientOptions {
   /** Minimum gap between calls, by host suffix. Merged over the defaults. */
   minIntervalMs?: Record<string, number>
   now?: () => Date
+  /** Told before each wait on a 429, so a CLI can say why it is pausing. */
+  onBackoff?: (host: string, waitMs: number) => void
 }
 
 export interface RequestInitLite {
@@ -83,7 +85,13 @@ export function isJson(body: string): boolean {
 
 const SECRET_PARAMS = ['key', 'token', 'api_key', 'apikey']
 const RETRY_DELAY_MS = 1000
-const RETRY_AFTER_CAP_MS = 60_000
+/** A 429 is a short-lived throttle (Wikimedia lifts it within a minute): retry patiently. */
+const RATE_LIMIT_RETRIES = 6
+const RATE_LIMIT_BASE_MS = 5_000
+const RATE_LIMIT_CAP_MS = 120_000
+/** After a 429 the host spacing doubles (from 250 ms if it was 0), up to this. */
+const SPACING_CAP_MS = 2000
+const SPACING_FLOOR_MS = 250
 const DAY_MS = 86_400_000
 
 /**
@@ -146,9 +154,22 @@ export function createPoliteClient(options: PoliteClientOptions): PoliteClient {
     return match === undefined ? 0 : (intervals[match] ?? 0)
   }
 
+  /** Spacing a host has been slowed to by its 429s; it overrides the configured interval. */
+  const slowed = new Map<string, number>()
+  const spacingFor = (host: string): number => slowed.get(host) ?? intervalFor(host)
+
+  /** Double a host's spacing for the rest of the client's life, capped at 2 s. */
+  function slowDown(host: string): void {
+    const current = spacingFor(host)
+    slowed.set(
+      host,
+      Math.max(current, Math.min(SPACING_CAP_MS, Math.max(SPACING_FLOOR_MS, current * 2))),
+    )
+  }
+
   /** Reserve the next slot for this host synchronously, then wait for it. */
   async function waitForSlot(host: string): Promise<void> {
-    const interval = intervalFor(host)
+    const interval = spacingFor(host)
     const at = Math.max(Date.now(), nextSlot.get(host) ?? 0)
     nextSlot.set(host, at + interval)
     const wait = at - Date.now()
@@ -179,8 +200,17 @@ export function createPoliteClient(options: PoliteClientOptions): PoliteClient {
       return { status: res.status, body: await res.text() }
     }
     if (res.status === 429) {
-      await sleep(Math.min(retryAfterMs(res.headers.get('Retry-After')), RETRY_AFTER_CAP_MS))
-      res = await attempt(url, host, headers)
+      for (let n = 1; n <= RATE_LIMIT_RETRIES && res.status === 429; n++) {
+        slowDown(host)
+        const wait = Math.min(
+          Math.max(retryAfterMs(res.headers.get('Retry-After')), RATE_LIMIT_BASE_MS * 2 ** (n - 1)),
+          RATE_LIMIT_CAP_MS,
+        )
+        options.onBackoff?.(host, wait)
+        await sleep(wait)
+        res = await attempt(url, host, headers)
+      }
+      if (res.status === 429) slowDown(host)
     } else if (res.status >= 500) {
       await sleep(RETRY_DELAY_MS)
       res = await attempt(url, host, headers)
