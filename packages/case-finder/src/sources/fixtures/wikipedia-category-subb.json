@@ -1,0 +1,9 @@
+{
+  "batchcomplete": true,
+  "query": {
+    "categorymembers": [
+      { "pageid": 7, "ns": 0, "title": "Epsilon Ponzi" },
+      { "pageid": 4, "ns": 0, "title": "Gamma Scheme" }
+    ]
+  }
+}

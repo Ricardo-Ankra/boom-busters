@@ -1,0 +1,13 @@
+{
+  "batchcomplete": true,
+  "query": {
+    "normalized": [{ "fromencoded": false, "from": "wirecard", "to": "Wirecard" }],
+    "redirects": [{ "from": "Wirecard AG", "to": "Wirecard" }],
+    "pages": [
+      { "pageid": 20, "ns": 0, "title": "Wirecard", "pageprops": { "wikibase_item": "Q1001" } },
+      { "pageid": 30, "ns": 0, "title": "Beta & Co", "pageprops": { "wikibase_item": "Q1002" } },
+      { "ns": 0, "title": "No Item", "pageid": 31 },
+      { "ns": 0, "title": "Ghost page", "missing": true }
+    ]
+  }
+}

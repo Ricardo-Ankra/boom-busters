@@ -1,0 +1,18 @@
+{
+  "items": [
+    {
+      "id": "u3",
+      "snippet": {
+        "channelId": "UCaaa",
+        "title": "Three",
+        "publishedAt": "2020-03-04T12:00:00Z"
+      },
+      "contentDetails": {
+        "duration": "PT1M5S"
+      },
+      "statistics": {
+        "viewCount": "7"
+      }
+    }
+  ]
+}

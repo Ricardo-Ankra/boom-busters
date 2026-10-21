@@ -6,9 +6,11 @@ import {
 } from '@boom-busters/schemas'
 import { describe, expect, it } from 'vitest'
 import {
+  buildScoreNamedCasesRequest,
   buildSuggestCasesRequest,
   fileCaseRepairs,
   mockSuggestedCases,
+  parseNamedCaseScores,
   parseSuggestedCases,
 } from './cases'
 import type { Note, Repair } from './repair'
@@ -265,5 +267,54 @@ describe("a suggestion's limits (decision 293)", () => {
     expect(filed.byTitle.get('Credit and Commerce International')).toEqual([repairs[1]])
     expect(filed.byTitle.get('Wirecard')).toEqual([repairs[2]])
     expect(filed.rest).toEqual([repairs[3], repairs[4]])
+  })
+})
+
+describe('the back-test baseline', () => {
+  it('buildScoreNamedCasesRequest keeps the system prompt and names every case', () => {
+    const names = ['Wirecard', 'Theranos', 'Lehman Brothers']
+    const request = buildScoreNamedCasesRequest(names)
+    expect(request.task).toBe('research')
+    expect(request.system).toBe(buildSuggestCasesRequest({ existingTitles: [], count: 1 }).system)
+    expect(request.messages).toHaveLength(1)
+    const content = request.messages[0]!.content
+    expect(content).toContain('{"scores": [{"title": string, "priorityScore": number}]}')
+    for (const name of names) expect(content).toContain(`\n- ${name}`)
+    expect(buildScoreNamedCasesRequest(['a', 'b']).maxTokens).toBeLessThan(
+      buildScoreNamedCasesRequest(names).maxTokens,
+    )
+  })
+
+  it('parseNamedCaseScores rounds and clamps, and ignores names not asked for', () => {
+    const text = JSON.stringify({
+      scores: [
+        { title: 'Wirecard', priorityScore: 71.6 },
+        { title: 'Theranos', priorityScore: 140 },
+        { title: 'Lehman Brothers', priorityScore: -3 },
+        { title: 'Enron', priorityScore: 90 },
+        { title: 'FTX', priorityScore: 'high' },
+      ],
+    })
+    const scores = parseNamedCaseScores(text, [
+      'Wirecard',
+      'Theranos',
+      'Lehman Brothers',
+      'FTX',
+      'Carillion',
+    ])
+    expect([...scores]).toEqual([
+      ['Wirecard', 72],
+      ['Theranos', 100],
+      ['Lehman Brothers', 0],
+    ])
+  })
+
+  it('parseNamedCaseScores reads JSON wrapped in prose and refuses an answer with none', () => {
+    const scores = parseNamedCaseScores(
+      'Here you go:\n{"scores": [{"title": "Wirecard", "priorityScore": 50}]}',
+      ['Wirecard'],
+    )
+    expect(scores.get('Wirecard')).toBe(50)
+    expect(() => parseNamedCaseScores('no idea', ['Wirecard'])).toThrow(ValidationError)
   })
 })

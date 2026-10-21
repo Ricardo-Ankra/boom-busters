@@ -1,0 +1,12 @@
+{
+  "error": {
+    "code": 403,
+    "message": "quota",
+    "errors": [
+      {
+        "reason": "quotaExceeded",
+        "domain": "youtube.quota"
+      }
+    ]
+  }
+}

@@ -5,6 +5,7 @@ import {
   EnvValidationError,
   hasEnvGroup,
   parseBootEnv,
+  readCaseFinderEnv,
   requireEnv,
 } from './env'
 
@@ -153,7 +154,14 @@ describe('requireEnv', () => {
     // even at the point of use: the app degrades to a log line when it is
     // absent. `push` (VAPID) was built for the same section and then removed
     // by decision — a single-user console does not need a push channel.
-    expect(Object.keys(DEFERRED_GROUPS)).toEqual(['r2', 'broker', 'inngest', 'youtube', 'email'])
+    expect(Object.keys(DEFERRED_GROUPS)).toEqual([
+      'r2',
+      'broker',
+      'inngest',
+      'youtube',
+      'email',
+      'caseFinder',
+    ])
   })
 })
 
@@ -161,5 +169,21 @@ describe('hasEnvGroup', () => {
   it('reports configured and unconfigured groups without throwing', () => {
     expect(hasEnvGroup('inngest', { INNGEST_EVENT_KEY: 'a', INNGEST_SIGNING_KEY: 'b' })).toBe(true)
     expect(hasEnvGroup('inngest', {})).toBe(false)
+  })
+})
+
+describe('readCaseFinderEnv', () => {
+  it('treats each variable as optional on its own', () => {
+    expect(readCaseFinderEnv({})).toEqual({})
+    expect(readCaseFinderEnv({ YOUTUBE_DATA_API_KEY: 'k', COURTLISTENER_TOKEN: '  ' })).toEqual({
+      YOUTUBE_DATA_API_KEY: 'k',
+    })
+  })
+
+  it('validates DATA_CONTACT_EMAIL as an email when present', () => {
+    expect(readCaseFinderEnv({ DATA_CONTACT_EMAIL: 'me@example.com' }).DATA_CONTACT_EMAIL).toBe(
+      'me@example.com',
+    )
+    expect(() => readCaseFinderEnv({ DATA_CONTACT_EMAIL: 'not-an-email' })).toThrow()
   })
 })

@@ -1,0 +1,13 @@
+{
+  "batchcomplete": true,
+  "query": {
+    "pages": [
+      {
+        "pageid": 10,
+        "ns": 0,
+        "title": "List of frauds",
+        "links": [{ "ns": 0, "title": "Gamma Scheme" }]
+      }
+    ]
+  }
+}

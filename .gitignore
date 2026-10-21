@@ -29,6 +29,7 @@ Thumbs.db
 
 # Local scratch
 *.log
+.cache/
 
 # CDK synth output
 infra/cdk.out

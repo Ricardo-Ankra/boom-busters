@@ -1,0 +1,11 @@
+{
+  "batchcomplete": true,
+  "query": {
+    "badrevids": {
+      "1": {
+        "revid": 1,
+        "missing": true
+      }
+    }
+  }
+}

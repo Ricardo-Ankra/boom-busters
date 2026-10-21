@@ -1,0 +1,31 @@
+{
+  "count": 4,
+  "next": null,
+  "previous": null,
+  "results": [
+    {
+      "caseName": "SEC v. Wirecard AG",
+      "absolute_url": "/docket/111/sec-v-wirecard-ag/",
+      "dateFiled": "2020-09-01",
+      "docket_id": 111
+    },
+    {
+      "caseName": "Wirecard Investors v. Ernst",
+      "absolute_url": "/docket/222/investors-v-ernst/",
+      "dateFiled": "2021-03-15",
+      "docket_id": 222
+    },
+    {
+      "caseName": "Undated matter",
+      "absolute_url": "/docket/333/undated/",
+      "dateFiled": null,
+      "docket_id": 333
+    },
+    {
+      "caseName": "Too late",
+      "absolute_url": "/docket/444/too-late/",
+      "dateFiled": "2022-01-01",
+      "docket_id": 444
+    }
+  ]
+}

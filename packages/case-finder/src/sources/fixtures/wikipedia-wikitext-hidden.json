@@ -1,0 +1,24 @@
+{
+  "batchcomplete": true,
+  "query": {
+    "pages": [
+      {
+        "pageid": 20,
+        "ns": 0,
+        "title": "Wirecard",
+        "revisions": [
+          {
+            "texthidden": true,
+            "slots": {
+              "main": {
+                "contentmodel": "wikitext",
+                "contentformat": "text/x-wiki",
+                "texthidden": true
+              }
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

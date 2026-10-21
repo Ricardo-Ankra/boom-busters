@@ -1,0 +1,9 @@
+{
+  "batchcomplete": true,
+  "query": {
+    "categorymembers": [
+      { "pageid": 3, "ns": 0, "title": "Beta & Co" },
+      { "pageid": 6, "ns": 0, "title": "Delta Collapse" }
+    ]
+  }
+}

@@ -1,0 +1,48 @@
+{
+  "entities": {
+    "Q2001": {
+      "type": "item",
+      "id": "Q2001",
+      "labels": { "en": { "language": "en", "value": "Founder Alive" } },
+      "claims": {}
+    },
+    "Q2002": {
+      "type": "item",
+      "id": "Q2002",
+      "labels": { "en": { "language": "en", "value": "Founder Deceased" } },
+      "claims": {
+        "P570": [
+          {
+            "mainsnak": {
+              "snaktype": "value",
+              "property": "P570",
+              "datavalue": {
+                "type": "time",
+                "value": { "time": "+2018-01-05T00:00:00Z", "precision": 11 }
+              }
+            }
+          }
+        ]
+      }
+    },
+    "Q2003": {
+      "type": "item",
+      "id": "Q2003",
+      "labels": {},
+      "claims": {
+        "P1399": [
+          {
+            "mainsnak": {
+              "snaktype": "value",
+              "property": "P1399",
+              "datavalue": {
+                "type": "wikibase-entityid",
+                "value": { "entity-type": "item", "id": "Q9999" }
+              }
+            }
+          }
+        ]
+      }
+    }
+  }
+}

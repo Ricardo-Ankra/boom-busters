@@ -1,0 +1,11 @@
+{
+  "batchcomplete": true,
+  "continue": { "cmcontinue": "page|ALPHA2|2", "continue": "-||" },
+  "query": {
+    "categorymembers": [
+      { "pageid": 1, "ns": 0, "title": "Alpha Fraud" },
+      { "pageid": 2, "ns": 14, "title": "Category:Sub A" },
+      { "pageid": 3, "ns": 0, "title": "Beta & Co" }
+    ]
+  }
+}

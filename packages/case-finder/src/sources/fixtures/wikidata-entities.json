@@ -1,0 +1,161 @@
+{
+  "entities": {
+    "Q1001": {
+      "type": "item",
+      "id": "Q1001",
+      "sitelinks": {
+        "enwiki": { "site": "enwiki", "title": "Wirecard" },
+        "dewiki": { "site": "dewiki", "title": "Wirecard (Unternehmen)" },
+        "commonswiki": { "site": "commonswiki", "title": "Category:Wirecard" },
+        "enwikiquote": { "site": "enwikiquote", "title": "Wirecard quotes" },
+        "wikidatawiki": { "site": "wikidatawiki", "title": "Q1001" }
+      },
+      "claims": {
+        "P31": [
+          {
+            "mainsnak": {
+              "snaktype": "value",
+              "property": "P31",
+              "datavalue": {
+                "type": "wikibase-entityid",
+                "value": { "entity-type": "item", "id": "Q891723" }
+              }
+            }
+          },
+          {
+            "mainsnak": {
+              "snaktype": "value",
+              "property": "P31",
+              "datavalue": {
+                "type": "wikibase-entityid",
+                "value": { "entity-type": "item", "id": "Q4830453" }
+              }
+            }
+          }
+        ],
+        "P17": [
+          {
+            "mainsnak": {
+              "snaktype": "value",
+              "property": "P17",
+              "datavalue": {
+                "type": "wikibase-entityid",
+                "value": { "entity-type": "item", "id": "Q183" }
+              }
+            }
+          }
+        ],
+        "P5531": [
+          {
+            "mainsnak": {
+              "snaktype": "value",
+              "property": "P5531",
+              "datavalue": { "type": "string", "value": "0001234567" }
+            }
+          }
+        ],
+        "P576": [
+          {
+            "mainsnak": {
+              "snaktype": "value",
+              "property": "P576",
+              "datavalue": {
+                "type": "time",
+                "value": { "time": "+2020-06-25T00:00:00Z", "precision": 11 }
+              }
+            }
+          }
+        ],
+        "P112": [
+          {
+            "mainsnak": {
+              "snaktype": "value",
+              "property": "P112",
+              "datavalue": {
+                "type": "wikibase-entityid",
+                "value": { "entity-type": "item", "id": "Q2001" }
+              }
+            }
+          },
+          {
+            "mainsnak": {
+              "snaktype": "value",
+              "property": "P112",
+              "datavalue": {
+                "type": "wikibase-entityid",
+                "value": { "entity-type": "item", "id": "Q2002" }
+              }
+            }
+          }
+        ],
+        "P169": [
+          {
+            "mainsnak": {
+              "snaktype": "value",
+              "property": "P169",
+              "datavalue": {
+                "type": "wikibase-entityid",
+                "value": { "entity-type": "item", "id": "Q2002" }
+              }
+            }
+          },
+          {
+            "mainsnak": {
+              "snaktype": "value",
+              "property": "P169",
+              "datavalue": {
+                "type": "wikibase-entityid",
+                "value": { "entity-type": "item", "id": "Q2003" }
+              }
+            }
+          },
+          { "mainsnak": { "snaktype": "somevalue", "property": "P169" } }
+        ]
+      }
+    },
+    "Q1002": {
+      "type": "item",
+      "id": "Q1002",
+      "sitelinks": { "frwiki": { "site": "frwiki", "title": "Exemple" } },
+      "claims": {
+        "P31": [
+          {
+            "mainsnak": {
+              "snaktype": "value",
+              "property": "P31",
+              "datavalue": {
+                "type": "wikibase-entityid",
+                "value": { "entity-type": "item", "id": "Q6256" }
+              }
+            }
+          }
+        ],
+        "P279": [
+          {
+            "mainsnak": {
+              "snaktype": "value",
+              "property": "P279",
+              "datavalue": {
+                "type": "wikibase-entityid",
+                "value": { "entity-type": "item", "id": "Q1048835" }
+              }
+            }
+          }
+        ],
+        "P576": [
+          {
+            "mainsnak": {
+              "snaktype": "value",
+              "property": "P576",
+              "datavalue": {
+                "type": "time",
+                "value": { "time": "+2015-00-00T00:00:00Z", "precision": 9 }
+              }
+            }
+          }
+        ]
+      }
+    },
+    "Q1003": { "id": "Q1003", "missing": "" }
+  }
+}
