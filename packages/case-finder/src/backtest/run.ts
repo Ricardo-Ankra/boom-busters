@@ -93,6 +93,9 @@ function caseRow(c: UsableCase, ranking: Record<Lane, LaneResult> | undefined): 
     baseline: null,
     outcome: c.outcome,
     spike: null,
+    countedVideos: 0,
+    cappedVideos: 0,
+    cappedChannels: [],
   }
   if (c.subject.verdict === 'miss-not-on-hitlist') return base
   if (ranking === undefined) throw new Error(`No ranking at ${c.T} for ${c.subject.videoId}`)
@@ -103,6 +106,9 @@ function caseRow(c: UsableCase, ranking: Record<Lane, LaneResult> | undefined): 
     score: s.score,
     legalKillWouldApply: s.gates.kill === KILL_LEGAL,
     spike: s.raw.spike,
+    countedVideos: s.raw.countedVideos,
+    cappedVideos: s.raw.cappedVideos,
+    cappedChannels: s.raw.cappedChannels,
   })
   for (const lane of LANES) {
     const result = ranking[lane]

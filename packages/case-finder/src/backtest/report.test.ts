@@ -23,6 +23,9 @@ function row(n: number, overrides: Partial<CaseRow> = {}): CaseRow {
     baseline: 100 - 5 * n,
     outcome: n,
     spike: 1,
+    countedVideos: 0,
+    cappedVideos: 0,
+    cappedChannels: [],
     ...overrides,
   }
 }
@@ -134,17 +137,39 @@ describe('renderReport', () => {
     )
   })
 
-  it('discloses the channel-median shortcut and names every known hindsight', () => {
+  it('discloses the channel-median rule and names every known hindsight', () => {
     const text = renderReport(rows, verdict(rows), META)
     const caveats = text.slice(text.indexOf('## Caveats'), text.indexOf('## Breakdown'))
     for (const sentence of [
-      "The competition measure's channel medians use each channel's latest 50 uploads, not the six months either side of the video that the design describes, because full channel histories do not fit the YouTube quota.",
+      "Channel medians use each channel's uploads within six months of the video; where reaching that far back needed more than 20 pages, the channel's latest 50 uploads were used instead.",
       "Pageviews include each article's current redirects, and world interest uses each company's current language editions.",
       'Each company is searched under its current English title, so a company renamed after a test date is searched under its later name.',
       "Founders' and executives' living status and convictions are read from Wikidata as they stand today.",
     ]) {
       expect(caveats).toContain(`- ${sentence}\n`)
     }
+  })
+
+  it('counts the capped channels and counted videos under the channel-median caveat', () => {
+    const counted = [
+      row(1, { countedVideos: 4, cappedVideos: 2, cappedChannels: ['UCa', 'UCb'] }),
+      row(2, { countedVideos: 3, cappedVideos: 1, cappedChannels: ['UCb'] }),
+      row(3, { countedVideos: 5 }),
+      row(4, { status: 'miss', pct: null }),
+    ]
+    const text = renderReport(counted, verdict(counted), META)
+    expect(text).toContain(
+      "- Channel medians use each channel's uploads within six months of the video; where " +
+        "reaching that far back needed more than 20 pages, the channel's latest 50 uploads " +
+        'were used instead.\n  - Capped: 2 channels, 3 of 12 counted videos.\n',
+    )
+    const none = renderReport(rows, verdict(rows), META)
+    expect(none).toContain('  - Capped: 0 channels, 0 of 0 counted videos.\n')
+  })
+
+  it('lists the channel-median decision with the others fixed before the run', () => {
+    const text = renderReport(rows, verdict(rows), META)
+    expect(text).toMatch(/\n11\. Channel medians \(owner's ruling 2026-10-21/)
   })
 
   it('puts the verdict first and lists every case, the decisions and the run facts', () => {

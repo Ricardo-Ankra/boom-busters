@@ -87,6 +87,33 @@ describe('the back-test commands', () => {
     expect(existsSync(reportPath(ctx, '.md'))).toBe(false)
   })
 
+  it('carries counted and capped videos from the evidence into the rows and the report', async () => {
+    // Every search-result channel's fetch stops at the page cap holding nothing.
+    const base = fakeYoutube()
+    const youtube = fakeYoutube({
+      uploads: async (channelId, playlist, options) =>
+        channelId.startsWith('UCmock')
+          ? { channelId, uploads: [], fetchedOn: '2026-10-21', complete: false }
+          : base.uploads(channelId, playlist, options),
+    })
+    const ctx = context({ sources: fakeSources(youtube) })
+    writeHitlist(ctx)
+    await runSubjects(ctx)
+    expect(await runBacktest(ctx, null)).toBe(0)
+    type Row = { countedVideos: number; cappedVideos: number; cappedChannels: string[] }
+    const { rows } = JSON.parse(readFileSync(reportPath(ctx, '-mock-cases.json'), 'utf8')) as {
+      rows: Row[]
+    }
+    const counted = rows.reduce((n, r) => n + r.countedVideos, 0)
+    expect(counted).toBeGreaterThan(0)
+    for (const r of rows) expect(r.cappedVideos).toBe(r.countedVideos)
+    const channels = new Set(rows.flatMap((r) => r.cappedChannels))
+    expect([...channels].every((id) => id.startsWith('UCmock'))).toBe(true)
+    expect(readFileSync(reportPath(ctx), 'utf8')).toContain(
+      `  - Capped: ${channels.size} channels, ${counted} of ${counted} counted videos.\n`,
+    )
+  })
+
   it('the baseline scores every usable case by its subject, a miss by its note name', async () => {
     const ctx = context()
     writeHitlist(ctx)

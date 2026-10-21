@@ -29,6 +29,12 @@ export interface CaseRow {
   outcome: number
   /** The subject's raw spike ratio at T; null when it was not measured (outside the population). */
   spike: number | null
+  /** The subject's search results that counted towards coverage at T; 0 when not measured. */
+  countedVideos: number
+  /** Of those, the ones whose channel fetch hit the page cap and used the fallback median. */
+  cappedVideos: number
+  /** The distinct channels behind `cappedVideos`; empty when not measured. */
+  cappedChannels: string[]
 }
 
 export interface Verdict {
@@ -79,15 +85,16 @@ export const PLAN_DECISIONS: readonly string[] = [
   'Companies House and GDELT are deferred to the later plans: the back-test uses neither (GDELT only feeds the daily scan; Companies House is optional per the spec).',
   'Keys for this plan come from env, read by the CLI from .env.local: YOUTUBE_DATA_API_KEY, COURTLISTENER_TOKEN, DATA_CONTACT_EMAIL. Settings → Connections entries move to the Case Library plan, where the app first needs them.',
   "Raw cache lives in .cache/case-finder/ at the repo root (gitignored). The run's hitlist snapshot and per-case table go in the report folder docs/case-finder/; the hand-checked subject mapping is a committed fixture.",
+  "Channel medians (owner's ruling 2026-10-21, supersedes controller ruling R2): uploads are fetched only for channels with a video that passes the coverage filters at T, paged back until the window six months before the oldest counted video is covered, the uploads end, or CHANNEL_HISTORY_MAX_PAGES (20) is reached; a counted video's median uses the outcome's peer rule (six months either side, settled 90 days on the fetch date, itself excluded); a capped channel falls back to its latest 50 long-form uploads, counted in the report.",
 ]
 
 export const CAVEAT_YOUTUBE =
   "YouTube view counts are today's, not as of each test date, so the competition measure is partly hindsight."
 export const CAVEAT_BASELINE =
   'The baseline model already knows which of these cases became hits, which gives it an unfair advantage.'
-/** Ruling R2: evidence gathering reads one page of each channel's uploads. */
+/** Decision 11: channel histories are paged back at most 20 pages, then fall back. */
 export const CAVEAT_CHANNEL_MEDIANS =
-  "The competition measure's channel medians use each channel's latest 50 uploads, not the six months either side of the video that the design describes, because full channel histories do not fit the YouTube quota."
+  "Channel medians use each channel's uploads within six months of the video; where reaching that far back needed more than 20 pages, the channel's latest 50 uploads were used instead."
 /** Every other known hindsight in the evidence: today's redirects, editions, titles and people facts. */
 export const CAVEATS_HINDSIGHT: readonly string[] = [
   "Pageviews include each article's current redirects, and world interest uses each company's current language editions.",
@@ -240,6 +247,14 @@ function verdictLines(v: Verdict, meta: ReportMeta): string[] {
   ]
 }
 
+/** How often the page cap forced the fallback median, over every case row. */
+function cappedLine(rows: CaseRow[]): string {
+  const channels = new Set(rows.flatMap((r) => r.cappedChannels))
+  const capped = rows.reduce((n, r) => n + r.cappedVideos, 0)
+  const counted = rows.reduce((n, r) => n + r.countedVideos, 0)
+  return `Capped: ${channels.size} channels, ${capped} of ${counted} counted videos.`
+}
+
 function caseTable(rows: CaseRow[]): string[] {
   const header =
     '| Video | Channel | Title | T | Lane | QID | Status | D | G | S | W | Score | Legal kill | Baseline | Outcome | Spike |'
@@ -287,6 +302,7 @@ export function renderReport(rows: CaseRow[], v: Verdict, meta: ReportMeta): str
     '',
     `- ${CAVEAT_YOUTUBE}`,
     `- ${CAVEAT_CHANNEL_MEDIANS}`,
+    `  - ${cappedLine(rows)}`,
     ...CAVEATS_HINDSIGHT.map((c) => `- ${c}`),
     `- ${CAVEAT_BASELINE}`,
     '',
