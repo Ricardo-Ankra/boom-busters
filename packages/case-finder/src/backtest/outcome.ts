@@ -1,13 +1,7 @@
 import { BACKTEST, LONG_FORM_MIN_SEC } from '../config'
-import { monthsBefore } from '../score/measure'
+import { minusDays, monthsBefore } from '../dates'
 import { median } from '../stats'
 import type { ChannelUploads, IsoDate, YoutubeVideo } from '../types'
-
-const DAY_MS = 86_400_000
-
-function minusDays(date: IsoDate, days: number): IsoDate {
-  return new Date(Date.parse(`${date}T00:00:00Z`) - days * DAY_MS).toISOString().slice(0, 10)
-}
 
 /**
  * The video's views against the median of the same channel's long-form uploads

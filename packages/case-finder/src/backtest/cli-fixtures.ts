@@ -97,10 +97,10 @@ export function fakeYoutube(
     },
     uploads: async (channelId, playlist, options) =>
       channelId === 'UCmodern'
-        ? { channelId, uploads: modern }
+        ? { channelId, uploads: modern, fetchedOn: '2026-10-21', complete: true }
         : channelId.startsWith('UCmock')
           ? mockYoutube.uploads(channelId, playlist, options)
-          : { channelId, uploads: [] },
+          : { channelId, uploads: [], fetchedOn: '2026-10-21', complete: true },
     ...overrides,
   }
 }

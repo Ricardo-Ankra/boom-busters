@@ -194,7 +194,12 @@ describe('gatherAt', () => {
         fetchedAt: '2026-10-20',
         videos: [video(`${query}-1`, 'UCshared'), video(`${query}-2`, `UCown${query.length}`)],
       })),
-      uploads: vi.fn(async (channelId: string) => ({ channelId, uploads: [] })),
+      uploads: vi.fn(async (channelId: string) => ({
+        channelId,
+        uploads: [],
+        fetchedOn: '2026-10-20',
+        complete: true,
+      })),
     }
     const evidence = await gather([entry('Q1'), entry('Q22')], sources({ youtube }))
     const shared = vi.mocked(youtube.uploads).mock.calls.filter(([id]) => id === 'UCshared')
@@ -210,7 +215,7 @@ describe('gatherAt', () => {
     })
     const uploads = vi.fn(async (channelId: string) => {
       if (channelId === 'UCgone') throw new YoutubeNotFoundError('playlist UUgone not found')
-      return { channelId, uploads: [] }
+      return { channelId, uploads: [], fetchedOn: '2026-10-20', complete: true }
     })
     const [e] = await gather(
       [entry('Q1')],

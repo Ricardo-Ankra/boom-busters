@@ -5,7 +5,12 @@ import type { ChannelUploads, YoutubeVideo } from '../types'
 function v(id: string, publishedAt: string, views: number, durationSec = 900): YoutubeVideo {
   return { id, channelId: 'UC1', title: id, publishedAt, durationSec, views }
 }
-const channel = (uploads: YoutubeVideo[]): ChannelUploads => ({ channelId: 'UC1', uploads })
+const channel = (uploads: YoutubeVideo[]): ChannelUploads => ({
+  channelId: 'UC1',
+  uploads,
+  fetchedOn: '2026-01-01',
+  complete: true,
+})
 const target = v('target', '2022-06-15', 1000)
 const MEASURED = '2026-01-01'
 

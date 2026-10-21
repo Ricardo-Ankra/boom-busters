@@ -7,7 +7,8 @@ import type { EdgarSource } from './edgar'
 import type { SecReleasesSource } from './sec-releases'
 import type { WikipediaSource } from './wikipedia'
 import type { YoutubeVideo } from '../types'
-import { uploadsPlaylistId, type YoutubeSource } from './youtube'
+import { monthsBefore } from '../dates'
+import { reachesBack, uploadsPlaylistId, type YoutubeSource } from './youtube'
 
 /**
  * Deterministic mock sources for mock-provider mode and tests. Nothing here
@@ -123,6 +124,11 @@ export const mockWikipedia: WikipediaSource = {
 }
 
 const MOCK_VIDEOS = 3
+const MOCK_FETCHED_ON = '2026-01-01'
+/** Ten years of monthly uploads ending the month before the fetch: three pages of 50. */
+const MOCK_UPLOADS = 120
+const MOCK_PAGE = 50
+const MOCK_NEWEST_UPLOAD = '2025-12-15'
 
 const mockVideo = (channelId: string, label: string, n: number): YoutubeVideo => ({
   id: `mock${hash(`${label}|${n}`).toString(36)}`,
@@ -136,7 +142,7 @@ const mockVideo = (channelId: string, label: string, n: number): YoutubeVideo =>
 export const mockYoutube: YoutubeSource = {
   async search(query) {
     return {
-      fetchedAt: '2026-01-01',
+      fetchedAt: MOCK_FETCHED_ON,
       videos: Array.from({ length: MOCK_VIDEOS }, (_, i) =>
         mockVideo(`UCmock${hash(`${query}|${i}`).toString(36)}`, query, i + 1),
       ),
@@ -146,12 +152,22 @@ export const mockYoutube: YoutubeSource = {
     const channelId = `UCmock${hash(handle).toString(36)}`
     return { channelId, uploadsPlaylistId: uploadsPlaylistId(channelId) }
   },
-  async uploads(channelId) {
-    return {
-      channelId,
-      uploads: Array.from({ length: MOCK_VIDEOS }, (_, i) =>
-        mockVideo(channelId, channelId, i + 1),
-      ),
+  /** A monthly upload history, read a page of 50 at a time like the real playlist. */
+  async uploads(channelId, _playlistId, options = {}) {
+    const history = Array.from({ length: MOCK_UPLOADS }, (_, i) => ({
+      ...mockVideo(channelId, channelId, i + 1),
+      publishedAt: monthsBefore(MOCK_NEWEST_UPLOAD, i),
+    }))
+    const maxPages = options.maxPages ?? Infinity
+    const uploads: YoutubeVideo[] = []
+    for (let page = 1; ; page++) {
+      const videos = history.slice((page - 1) * MOCK_PAGE, page * MOCK_PAGE)
+      uploads.push(...videos)
+      const complete = uploads.length === history.length
+      const reached = options.until !== undefined && reachesBack(videos, options.until)
+      if (complete || reached || page >= maxPages) {
+        return { channelId, uploads, fetchedOn: MOCK_FETCHED_ON, complete }
+      }
     }
   },
 }

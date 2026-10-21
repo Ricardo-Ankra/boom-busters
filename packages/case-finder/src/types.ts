@@ -40,9 +40,14 @@ export interface YoutubeVideo {
   views: number
 }
 
+/** A channel's uploads, newest first, as far back as the fetch read. */
 export interface ChannelUploads {
   channelId: string
   uploads: YoutubeVideo[]
+  /** The day the first page was fetched: view counts and settledness are as of then. */
+  fetchedOn: IsoDate
+  /** The last page read had no next page, so `uploads` is the channel's whole history. */
+  complete: boolean
 }
 
 export type DocumentSource =

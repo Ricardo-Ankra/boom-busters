@@ -10,7 +10,9 @@ function vid(id: string, title: string, publishedAt: string, durationSec = 900):
   return { id, channelId: 'UC1', title, publishedAt, durationSec, views: 1 }
 }
 const up = (uploads: YoutubeVideo[]): Map<string, ChannelUploads> =>
-  new Map([['@Coffeezilla', { channelId: 'UC1', uploads }]])
+  new Map([
+    ['@Coffeezilla', { channelId: 'UC1', uploads, fetchedOn: '2026-10-21', complete: true }],
+  ])
 
 describe('proposeSubjects', () => {
   it('proposes the longest matching hitlist query', () => {

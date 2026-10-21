@@ -199,6 +199,47 @@ describe('live youtube uploads', () => {
     expect(ledger.remaining()).toBe(10_000 - 4)
   })
 
+  it('a whole history is complete and carries the day its first page was fetched', async () => {
+    const { source } = await setup(routedFetch(routes))
+    const out = await source.uploads('UCaaa', 'UUaaa')
+    expect(out.complete).toBe(true)
+    expect(out.fetchedOn).toBe(new Date().toISOString().slice(0, 10))
+  })
+
+  it('stops on the page whose oldest upload reaches `until`, and is then not complete', async () => {
+    // Page 1's oldest upload is u1, published 2020-01-02.
+    const { source, ledger } = await setup(routedFetch(routes))
+    const out = await source.uploads('UCaaa', 'UUaaa', { until: '2020-01-02' })
+    expect(out.uploads.map((v) => v.id)).toEqual(['u1', 'u2'])
+    expect(out.complete).toBe(false)
+    expect(ledger.remaining()).toBe(10_000 - 2)
+  })
+
+  it('pages on while the oldest upload is still after `until`', async () => {
+    const { source } = await setup(routedFetch(routes))
+    const out = await source.uploads('UCaaa', 'UUaaa', { until: '2020-01-01' })
+    expect(out.uploads.map((v) => v.id)).toEqual(['u1', 'u2', 'u3'])
+    expect(out.complete).toBe(true)
+  })
+
+  it('maxPages cuts a history short of `until`, and it is not complete', async () => {
+    const { source } = await setup(routedFetch(routes))
+    const out = await source.uploads('UCaaa', 'UUaaa', { until: '2019-01-01', maxPages: 1 })
+    expect(out.uploads.map((v) => v.id)).toEqual(['u1', 'u2'])
+    expect(out.complete).toBe(false)
+  })
+
+  it('a deeper second call reads the earlier pages from the cache for free', async () => {
+    const { source, ledger } = await setup(routedFetch(routes), { cache: true })
+    const shallow = await source.uploads('UCaaa', 'UUaaa', { maxPages: 1 })
+    expect(ledger.remaining()).toBe(10_000 - 2)
+    const deep = await source.uploads('UCaaa', 'UUaaa', { until: '2019-01-01' })
+    expect(deep.uploads.map((v) => v.id)).toEqual(['u1', 'u2', 'u3'])
+    expect(deep.fetchedOn).toBe(shallow.fetchedOn)
+    // Only page 2 and its videos.list were paid for.
+    expect(ledger.remaining()).toBe(10_000 - 4)
+  })
+
   it('a playlistNotFound 404 throws YoutubeNotFoundError, and a cached repeat spends nothing', async () => {
     const fetchImpl = routedFetch([['/playlistItems?', 'youtube-playlist-404.json', 404]])
     const { source, ledger } = await setup(fetchImpl, { cache: true })
@@ -233,5 +274,25 @@ describe('mock youtube', () => {
     const up = await mockYoutube.uploads(ch.channelId, ch.uploadsPlaylistId)
     expect(up.channelId).toBe(ch.channelId)
     expect(up.uploads.length).toBeGreaterThan(0)
+    expect(up.complete).toBe(true)
+    expect(up.fetchedOn).toMatch(/^\d{4}-\d{2}-\d{2}$/)
+  })
+
+  it('mock uploads are newest first and honour until and maxPages', async () => {
+    const all = await mockYoutube.uploads('UCmockx', 'UUmockx')
+    const dates = all.uploads.map((v) => v.publishedAt)
+    expect(dates).toEqual([...dates].sort().reverse())
+    expect(all.uploads.length).toBeGreaterThan(50)
+
+    const one = await mockYoutube.uploads('UCmockx', 'UUmockx', { maxPages: 1 })
+    expect(one.uploads).toEqual(all.uploads.slice(0, 50))
+    expect(one.complete).toBe(false)
+
+    // The eleventh upload sits on the first page, so asking back to it reads one page.
+    const until = all.uploads[10]!.publishedAt
+    const reached = await mockYoutube.uploads('UCmockx', 'UUmockx', { until })
+    expect(reached.uploads).toEqual(all.uploads.slice(0, 50))
+    expect(reached.complete).toBe(false)
+    expect(reached.fetchedOn).toBe(all.fetchedOn)
   })
 })

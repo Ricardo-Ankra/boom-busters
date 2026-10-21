@@ -64,6 +64,11 @@ function evidence(over: Partial<EntryEvidence> = {}): EntryEvidence {
   }
 }
 
+/** A whole channel history fetched long after every video here, so every window is covered. */
+function channel(uploads: YoutubeVideo[], over: Partial<ChannelUploads> = {}): ChannelUploads {
+  return { channelId: 'c1', uploads, fetchedOn: '2026-01-01', complete: true, ...over }
+}
+
 function withSearch(videos: YoutubeVideo[], channels: Record<string, ChannelUploads> = {}) {
   return evidence({ search: { fetchedAt: '2020-03-10', videos }, channels })
 }
@@ -190,24 +195,20 @@ describe('titleMatches', () => {
 describe('outlierRatio', () => {
   it('divides by the median of the channel long-form uploads, excluding the video itself', () => {
     const v = video({ id: 'x', views: 3000 })
-    const channel: ChannelUploads = {
-      channelId: 'c1',
-      uploads: [
-        v,
-        video({ id: 'a', views: 1000 }),
-        video({ id: 'b', views: 500 }),
-        video({ id: 'short', views: 9_999_999, durationSec: 59 }),
-      ],
-    }
-    expect(outlierRatio(v, channel, T)).toBe(3000 / 750)
+    const uploads = channel([
+      v,
+      video({ id: 'a', views: 1000 }),
+      video({ id: 'b', views: 500 }),
+      video({ id: 'short', views: 9_999_999, durationSec: 59 }),
+    ])
+    expect(outlierRatio(v, uploads, T)).toBe(3000 / 750)
   })
 
   it('is null without the channel, without peers, or with a zero median', () => {
     const v = video({ id: 'x' })
     expect(outlierRatio(v, undefined, T)).toBeNull()
-    expect(outlierRatio(v, { channelId: 'c1', uploads: [v] }, T)).toBeNull()
-    const zeros = { channelId: 'c1', uploads: [video({ id: 'a', views: 0 })] }
-    expect(outlierRatio(v, zeros, T)).toBeNull()
+    expect(outlierRatio(v, channel([v]), T)).toBeNull()
+    expect(outlierRatio(v, channel([video({ id: 'a', views: 0 })]), T)).toBeNull()
   })
 })
 
@@ -251,16 +252,11 @@ describe('coverage', () => {
   it('outlier ratio is capped at 5 in coverage', () => {
     const big = video({ id: 'big', views: 1_000_000 })
     const channels = {
-      c1: {
-        channelId: 'c1',
-        uploads: [big, video({ id: 'p1', views: 100 }), video({ id: 'p2', views: 100 })],
-      },
+      c1: channel([big, video({ id: 'p1', views: 100 }), video({ id: 'p2', views: 100 })]),
     }
     expect(measure(withSearch([big], channels)).coverage).toBe(5)
     const modest = video({ id: 'modest', views: 200 })
-    const channels2 = {
-      c1: { channelId: 'c1', uploads: [modest, video({ id: 'p1', views: 100 })] },
-    }
+    const channels2 = { c1: channel([modest, video({ id: 'p1', views: 100 })]) }
     expect(measure(withSearch([modest], channels2)).coverage).toBe(2)
   })
 })

@@ -17,11 +17,15 @@ export interface YoutubeSource {
   search(query: string): Promise<{ fetchedAt: IsoDate; videos: YoutubeVideo[] }>
   /** channels.list, 1 unit. Throws if the handle matches no channel. */
   channelByHandle(handle: string): Promise<{ channelId: string; uploadsPlaylistId: string }>
-  /** playlistItems.list plus videos.list, 2 units per 50 uploads. Default: all pages. */
+  /**
+   * playlistItems.list plus videos.list, 2 units per 50 uploads, newest first.
+   * Pages back until the page whose oldest upload is on or before `until`, the
+   * end of the playlist, or `maxPages`, whichever comes first. Default: all pages.
+   */
   uploads(
     channelId: string,
     uploadsPlaylistId: string,
-    options?: { maxPages?: number },
+    options?: { maxPages?: number; until?: IsoDate },
   ): Promise<ChannelUploads>
 }
 
@@ -124,6 +128,11 @@ function toVideo(item: z.infer<typeof videosSchema>['items'][number]): YoutubeVi
   }
 }
 
+/** Some upload in `videos` is published on or before `until`. */
+export function reachesBack(videos: YoutubeVideo[], until: IsoDate): boolean {
+  return videos.some((v) => v.publishedAt <= until)
+}
+
 export function liveYoutube(
   client: PoliteClient,
   apiKey: string,
@@ -206,23 +215,29 @@ export function liveYoutube(
       }
     },
 
+    // Each page's URL is the same however deep the caller asks, so a deeper
+    // request later re-reads the earlier pages from the cache for free.
     async uploads(channelId, playlistId, options = {}) {
       const maxPages = options.maxPages ?? Infinity
       const uploads: YoutubeVideo[] = []
       let pageToken: string | undefined
-      for (let page = 0; page < maxPages; page++) {
-        const { data } = await call(
+      let fetchedOn: IsoDate | undefined
+      for (let page = 1; ; page++) {
+        const { data, fetchedAt } = await call(
           'playlistItems',
           `part=contentDetails&maxResults=50&playlistId=${encodeURIComponent(playlistId)}` +
             (pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : ''),
           COST.playlistItems,
           playlistSchema,
         )
-        uploads.push(...(await videosFor(data.items.map((item) => item.contentDetails.videoId))))
+        fetchedOn ??= fetchedAt
+        const videos = await videosFor(data.items.map((item) => item.contentDetails.videoId))
+        uploads.push(...videos)
         pageToken = data.nextPageToken
-        if (!pageToken) break
+        if (!pageToken) return { channelId, uploads, fetchedOn, complete: true }
+        const reached = options.until !== undefined && reachesBack(videos, options.until)
+        if (reached || page >= maxPages) return { channelId, uploads, fetchedOn, complete: false }
       }
-      return { channelId, uploads }
     },
   }
 }
