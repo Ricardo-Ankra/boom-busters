@@ -103,7 +103,7 @@ export function countedVideos(
 /**
  * Views against the channel median (spec 5, "Channel medians within the
  * quota"). When the fetch covers the video's window (the history is complete,
- * or reaches back to the window start) the median is the outcome's peer rule,
+ * or holds an upload strictly older than the window start) the median is the outcome's peer rule,
  * settled on the fetch day; when the page cap stopped it short, the channel's
  * latest 50 long-form uploads stand in and the video is `capped`. Today's view
  * counts are the sanctioned hindsight here, so T does not filter the uploads.

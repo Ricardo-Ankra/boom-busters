@@ -226,10 +226,42 @@ describe('outlierDetail', () => {
     expect(outlierDetail(v, uploads)).toEqual({ ratio: 3, capped: false })
   })
 
-  it('an incomplete history that reaches the window start uses the peer rule', () => {
-    const uploads = channel([v, video({ id: 'p', publishedAt: '2018-12-01', views: 1000 })], {
-      complete: false,
-    })
+  it('an incomplete history reaching before the window start uses the peer rule', () => {
+    // A peer on the start day still counts; the upload a day before is outside the window.
+    const uploads = channel(
+      [
+        v,
+        video({ id: 'p', publishedAt: '2018-12-01', views: 1000 }),
+        video({ id: 'before', publishedAt: '2018-11-30', views: 1_000_000 }),
+      ],
+      { complete: false },
+    )
+    expect(outlierDetail(v, uploads)).toEqual({ ratio: 3, capped: false })
+  })
+
+  it('an incomplete history whose oldest upload is on the window start is capped', () => {
+    const uploads = channel(
+      [
+        video({ id: 'r', publishedAt: '2026-06-01', views: 1 }),
+        v,
+        video({ id: 'p', publishedAt: '2018-12-01', views: 1000 }),
+      ],
+      { complete: false },
+    )
+    // The fallback median of r and p is 500.5.
+    expect(outlierDetail(v, uploads)).toEqual({ ratio: 3000 / 500.5, capped: true })
+  })
+
+  it("a covered window settles peers on the channel's fetch day", () => {
+    // 2019-09-01 minus 90 days is 2019-06-03.
+    const uploads = channel(
+      [
+        video({ id: 'young', publishedAt: '2019-06-04', views: 1_000_000 }),
+        video({ id: 'ok', publishedAt: '2019-06-03', views: 1000 }),
+        v,
+      ],
+      { fetchedOn: '2019-09-01' },
+    )
     expect(outlierDetail(v, uploads)).toEqual({ ratio: 3, capped: false })
   })
 

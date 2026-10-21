@@ -19,8 +19,9 @@ export interface YoutubeSource {
   channelByHandle(handle: string): Promise<{ channelId: string; uploadsPlaylistId: string }>
   /**
    * playlistItems.list plus videos.list, 2 units per 50 uploads, newest first.
-   * Pages back until the page whose oldest upload is on or before `until`, the
-   * end of the playlist, or `maxPages`, whichever comes first. Default: all pages.
+   * Pages back until the page whose oldest upload is strictly before `until`,
+   * the end of the playlist, or `maxPages`, whichever comes first. Default: all
+   * pages. An upload repeated across pages is kept once, as first read.
    */
   uploads(
     channelId: string,
@@ -128,9 +129,13 @@ function toVideo(item: z.infer<typeof videosSchema>['items'][number]): YoutubeVi
   }
 }
 
-/** Some upload in `videos` is published on or before `until`. */
+/**
+ * Some upload in `videos` is published strictly before `until`: the spec's
+ * "older than" the window start. Uploads on `until` itself are inside the
+ * window, and a newer one dated before it may not have been read yet.
+ */
 export function reachesBack(videos: YoutubeVideo[], until: IsoDate): boolean {
-  return videos.some((v) => v.publishedAt <= until)
+  return videos.some((v) => v.publishedAt < until)
 }
 
 export function liveYoutube(
@@ -216,10 +221,15 @@ export function liveYoutube(
     },
 
     // Each page's URL is the same however deep the caller asks, so a deeper
-    // request later re-reads the earlier pages from the cache for free.
+    // request later re-reads the earlier pages from the cache for free. That
+    // joins pages fetched on different days: if the channel posted in between,
+    // the first live page repeats uploads the cached one ended with. Those are
+    // dropped, keeping the earlier copy; uploads a deletion shifted past the
+    // seam cannot be recovered (the report's channel-median caveat says so).
     async uploads(channelId, playlistId, options = {}) {
       const maxPages = options.maxPages ?? Infinity
       const uploads: YoutubeVideo[] = []
+      const seen = new Set<string>()
       let pageToken: string | undefined
       let fetchedOn: IsoDate | undefined
       for (let page = 1; ; page++) {
@@ -231,7 +241,10 @@ export function liveYoutube(
           playlistSchema,
         )
         fetchedOn ??= fetchedAt
-        const videos = await videosFor(data.items.map((item) => item.contentDetails.videoId))
+        const ids = data.items.map((item) => item.contentDetails.videoId)
+        const fresh = ids.filter((id) => !seen.has(id))
+        for (const id of fresh) seen.add(id)
+        const videos = await videosFor(fresh)
         uploads.push(...videos)
         pageToken = data.nextPageToken
         if (!pageToken) return { channelId, uploads, fetchedOn, complete: true }

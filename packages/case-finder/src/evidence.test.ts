@@ -16,6 +16,7 @@ import { monthRange, type PageviewsSource } from './sources/pageviews'
 import { QuotaExhaustedError } from './sources/quota'
 import { YoutubeNotFoundError, type YoutubeSource } from './sources/youtube'
 import { channelMemo } from './gather/channels'
+import { minusDays } from './dates'
 
 /** A channel's whole history, empty: enough for gathering, which only reads whether it came back. */
 const completeUploads = async (channelId: string) => ({
@@ -253,11 +254,11 @@ describe('gatherAt', () => {
         video('early', 'UCx', { title: 'Article Q1 then', publishedAt: '2018-01-01' }),
       ],
     })
-    // Each fetch reaches exactly as far back as it was asked, and no further.
+    // Each fetch stops on the first upload strictly older than asked: the day before.
     const uploads = vi.fn(
       async (channelId: string, _p: string, options: { until?: string } = {}) => ({
         channelId,
-        uploads: [video('reached', channelId, { publishedAt: options.until! })],
+        uploads: [video('reached', channelId, { publishedAt: minusDays(options.until!, 1) })],
         fetchedOn: '2026-10-20',
         complete: false,
       }),

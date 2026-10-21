@@ -95,6 +95,9 @@ export const CAVEAT_BASELINE =
 /** Decision 11: channel histories are paged back at most 20 pages, then fall back. */
 export const CAVEAT_CHANNEL_MEDIANS =
   "Channel medians use each channel's uploads within six months of the video; where reaching that far back needed more than 20 pages, the channel's latest 50 uploads were used instead."
+/** A deeper fetch joins cached pages to live ones; new uploads in between shift the pages. */
+export const CAVEAT_PAGE_SEAMS =
+  "When a channel's history was read across more than one day, uploads posted in between can shift YouTube's pages, so a few older uploads may be missed."
 /** Every other known hindsight in the evidence: today's redirects, editions, titles and people facts. */
 export const CAVEATS_HINDSIGHT: readonly string[] = [
   "Pageviews include each article's current redirects, and world interest uses each company's current language editions.",
@@ -301,7 +304,7 @@ export function renderReport(rows: CaseRow[], v: Verdict, meta: ReportMeta): str
     '## Caveats',
     '',
     `- ${CAVEAT_YOUTUBE}`,
-    `- ${CAVEAT_CHANNEL_MEDIANS}`,
+    `- ${CAVEAT_CHANNEL_MEDIANS} ${CAVEAT_PAGE_SEAMS}`,
     `  - ${cappedLine(rows)}`,
     ...CAVEATS_HINDSIGHT.map((c) => `- ${c}`),
     `- ${CAVEAT_BASELINE}`,

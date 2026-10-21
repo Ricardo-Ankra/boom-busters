@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { mockYoutube } from '../sources/mock'
 import { YoutubeNotFoundError, type YoutubeSource } from '../sources/youtube'
+import { minusDays } from '../dates'
 import type { ChannelUploads, IsoDate, YoutubeVideo } from '../types'
 import { channelMemo, historyNeeded } from './channels'
 
@@ -14,8 +15,9 @@ const upload = (id: string, publishedAt: IsoDate, channelId = 'UCa'): YoutubeVid
 })
 
 /**
- * A channel whose history reaches exactly as far back as asked, never further,
- * and is complete only from `endsAt`; when `cap` is set, no fetch reaches past it.
+ * A channel whose fetch stops on the first upload strictly older than asked
+ * (published the day before), and is complete only from `endsAt`; when `cap`
+ * is set, no fetch reaches past it.
  */
 function fakeYoutube({ endsAt = '2000-01-01', cap }: { endsAt?: IsoDate; cap?: IsoDate } = {}) {
   const uploads = vi.fn(
@@ -24,7 +26,7 @@ function fakeYoutube({ endsAt = '2000-01-01', cap }: { endsAt?: IsoDate; cap?: I
       _playlist: string,
       options: { until?: IsoDate } = {},
     ): Promise<ChannelUploads> => {
-      const until = options.until ?? endsAt
+      const until = options.until === undefined ? endsAt : minusDays(options.until, 1)
       const oldest = [until, endsAt, cap ?? ''].reduce((a, b) => (a > b ? a : b))
       return {
         channelId,
@@ -44,7 +46,7 @@ describe('channelMemo', () => {
     const memo = channelMemo(youtube)
     const got = await memo.fetch('UCa', '2018-12-01')
     expect(uploads).toHaveBeenCalledWith('UCa', 'UUa', { until: '2018-12-01', maxPages: 20 })
-    expect(got?.uploads.at(-1)?.publishedAt).toBe('2018-12-01')
+    expect(got?.uploads.at(-1)?.publishedAt).toBe('2018-11-30')
   })
 
   it('serves a request the held history already reaches without fetching again', async () => {
@@ -63,7 +65,16 @@ describe('channelMemo', () => {
     const deeper = await memo.fetch('UCa', '2017-07-01')
     expect(uploads).toHaveBeenCalledTimes(2)
     expect(uploads.mock.calls[1]![2]).toEqual({ until: '2017-07-01', maxPages: 20 })
-    expect(deeper?.uploads.at(-1)?.publishedAt).toBe('2017-07-01')
+    expect(deeper?.uploads.at(-1)?.publishedAt).toBe('2017-06-30')
+  })
+
+  it('a held history whose oldest upload is on the date asked is not old enough', async () => {
+    const { youtube, uploads } = fakeYoutube()
+    const memo = channelMemo(youtube)
+    await memo.fetch('UCa', '2018-12-01')
+    // The held oldest upload is 2018-11-30: strictly before 2018-12-01, but not before itself.
+    await memo.fetch('UCa', '2018-11-30')
+    expect(uploads).toHaveBeenCalledTimes(2)
   })
 
   it('never fetches a complete history again', async () => {

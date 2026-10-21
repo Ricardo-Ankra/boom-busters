@@ -26,7 +26,7 @@ export interface ChannelMemo {
 
 interface Held {
   uploads: ChannelUploads
-  /** The page cap stopped the fetch before it reached the date it was asked for. */
+  /** The page cap stopped the fetch before it read an upload older than the date asked for. */
   capped: boolean
 }
 

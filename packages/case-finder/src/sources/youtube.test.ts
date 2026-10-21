@@ -206,13 +206,34 @@ describe('live youtube uploads', () => {
     expect(out.fetchedOn).toBe(new Date().toISOString().slice(0, 10))
   })
 
-  it('stops on the page whose oldest upload reaches `until`, and is then not complete', async () => {
+  it('stops on the page whose oldest upload is before `until`, and is then not complete', async () => {
     // Page 1's oldest upload is u1, published 2020-01-02.
     const { source, ledger } = await setup(routedFetch(routes))
-    const out = await source.uploads('UCaaa', 'UUaaa', { until: '2020-01-02' })
+    const out = await source.uploads('UCaaa', 'UUaaa', { until: '2020-01-03' })
     expect(out.uploads.map((v) => v.id)).toEqual(['u1', 'u2'])
     expect(out.complete).toBe(false)
     expect(ledger.remaining()).toBe(10_000 - 2)
+  })
+
+  it('pages on when the oldest upload is published on `until` itself', async () => {
+    const { source } = await setup(routedFetch(routes))
+    const out = await source.uploads('UCaaa', 'UUaaa', { until: '2020-01-02' })
+    expect(out.uploads.map((v) => v.id)).toEqual(['u1', 'u2', 'u3'])
+    expect(out.complete).toBe(true)
+  })
+
+  it('a page that repeats an upload already held keeps only the first copy', async () => {
+    // Page 2 read on a later day, after a new upload shifted the pages: it starts with u2 again.
+    const seam: Route[] = [
+      ['pageToken=PAGE2', 'youtube-playlist-page2-seam.json'],
+      ['/playlistItems?', 'youtube-playlist-page1.json'],
+      ['id=u3', 'youtube-uploads-videos2.json'],
+      ['/videos?', 'youtube-uploads-videos1.json'],
+    ]
+    const { source } = await setup(routedFetch(seam))
+    const out = await source.uploads('UCaaa', 'UUaaa')
+    expect(out.uploads.map((v) => v.id)).toEqual(['u1', 'u2', 'u3'])
+    expect(out.uploads[1]).toMatchObject({ id: 'u2', title: 'Two' })
   })
 
   it('pages on while the oldest upload is still after `until`', async () => {
