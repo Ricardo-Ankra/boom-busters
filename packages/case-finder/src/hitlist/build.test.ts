@@ -9,7 +9,12 @@ import type { WikipediaSource } from '../sources/wikipedia'
 import { monthRange, type PageviewsSource } from '../sources/pageviews'
 import type { DatedTag } from '../types'
 import { buildHitlist, laneOf, type HitlistDeps } from './build'
-import { loadLoPucki } from './seeds'
+import {
+  businessesAmong,
+  FOUNDER_CANDIDATES_QUERY,
+  FOUNDER_CLASS_BATCH,
+  loadLoPucki,
+} from './seeds'
 
 const uri = (qid: string) => `http://www.wikidata.org/entity/${qid}`
 
@@ -37,6 +42,10 @@ interface Fixture {
   kinds?: Record<string, { instanceOf?: string[]; isClass?: boolean }>
   dissolved?: { qid: string; date: string }[]
   founders?: { qid: string; title: string }[]
+  /** The candidates the class check returns; default: every founder candidate. */
+  businesses?: string[]
+  /** Every SPARQL query text sent, in order. */
+  queries?: string[]
   /** Monthly views per title: a flat level, or a function of the month. */
   views?: Record<string, number | ((month: string) => number)>
   fortune?: Record<number, string>
@@ -53,15 +62,20 @@ function deps(f: Fixture, log: string[] = []): HitlistDeps {
   }
   const wikidata: WikidataSource = {
     async sparql<T>(query: string, schema: ZodType<T>): Promise<T> {
-      const bindings = query.includes('P576')
-        ? (f.dissolved ?? []).map((d) => ({
-            item: { value: uri(d.qid) },
-            dissolved: { value: `${d.date}T00:00:00Z` },
-          }))
-        : (f.founders ?? []).map((d) => ({
-            item: { value: uri(d.qid) },
-            title: { value: d.title },
-          }))
+      f.queries?.push(query)
+      const asked = [...query.matchAll(/wd:(Q\d+)/g)].map((m) => m[1]!)
+      const businesses = f.businesses ?? (f.founders ?? []).map((d) => d.qid)
+      const bindings = query.includes('VALUES')
+        ? asked.filter((q) => businesses.includes(q)).map((q) => ({ item: { value: uri(q) } }))
+        : query.includes('P576')
+          ? (f.dissolved ?? []).map((d) => ({
+              item: { value: uri(d.qid) },
+              dissolved: { value: `${d.date}T00:00:00Z` },
+            }))
+          : (f.founders ?? []).map((d) => ({
+              item: { value: uri(d.qid) },
+              title: { value: d.title },
+            }))
       return schema.parse({ results: { bindings } })
     },
     async facts(qids) {
@@ -318,6 +332,21 @@ describe('buildHitlist', () => {
     expect(entries[0]!.tags[0]).toEqual(tag('founder-link', 'success', null))
   })
 
+  it('the founder seed leaves out a candidate the class check does not return', async () => {
+    const entries = await buildHitlist(
+      deps({
+        founders: [
+          { qid: 'Q20', title: 'Acme' },
+          { qid: 'Q21', title: 'A person' },
+        ],
+        businesses: ['Q20'],
+        views: { Acme: 5000, 'A person': 5000 },
+        facts: { Q20: 'Acme', Q21: 'A person' },
+      }),
+    )
+    expect(entries.map((e) => e.qid)).toEqual(['Q20'])
+  })
+
   it('reads each founder series from 2015-07 to the month before the build month', async () => {
     const windows: [string, string][] = []
     const d = deps({ founders: [{ qid: 'Q20', title: 'Popular' }], facts: { Q20: 'Popular' } })
@@ -341,5 +370,43 @@ describe('buildHitlist', () => {
       }),
     )
     expect(entries.map((e) => e.qid)).toEqual(['Q9', 'Q100'])
+  })
+})
+
+describe('founder candidates and the class check', () => {
+  it('the candidates query has no class path and no LIMIT', () => {
+    expect(FOUNDER_CANDIDATES_QUERY).toContain('wdt:P112')
+    expect(FOUNDER_CANDIDATES_QUERY).toContain('https://en.wikipedia.org/')
+    expect(FOUNDER_CANDIDATES_QUERY).not.toMatch(/P31|P279|Q4830453/)
+    expect(FOUNDER_CANDIDATES_QUERY).not.toMatch(/LIMIT/i)
+  })
+
+  it('checks classes in batches of 150, in numeric QID order, and logs every 50 batches', async () => {
+    const queries: string[] = []
+    const log: string[] = []
+    const total = FOUNDER_CLASS_BATCH * 100 + 7
+    // Fed in reverse and as strings that sort differently as text.
+    const qids = Array.from({ length: total }, (_, i) => `Q${total - i}`)
+    const { wikidata } = deps({ queries, businesses: ['Q5', 'Q9999'] })
+    const found = await businessesAmong(qids, wikidata, (line) => log.push(line))
+    expect([...found].sort()).toEqual(['Q5', 'Q9999'])
+    expect(queries).toHaveLength(101)
+    // The business class itself, Q4830453, is in the query but not in the VALUES batch.
+    const values = (q: string) =>
+      [...q.matchAll(/wd:(Q\d+)/g)].map((m) => m[1]!).filter((id) => id !== 'Q4830453')
+    const first = values(queries[0]!).map((id) => Number(id.slice(1)))
+    expect(first).toHaveLength(FOUNDER_CLASS_BATCH)
+    expect(first).toEqual(Array.from({ length: FOUNDER_CLASS_BATCH }, (_, i) => i + 1))
+    expect(queries[0]).toContain('VALUES ?item {')
+    expect(queries[0]).toContain('wdt:P31/wdt:P279* wd:Q4830453')
+    expect(values(queries[100]!)).toHaveLength(7)
+    expect(log.filter((l) => /batch/.test(l))).toHaveLength(2)
+  })
+
+  it('an empty candidate list asks nothing', async () => {
+    const queries: string[] = []
+    const { wikidata } = deps({ queries })
+    expect(await businessesAmong([], wikidata)).toEqual(new Set())
+    expect(queries).toEqual([])
   })
 })
