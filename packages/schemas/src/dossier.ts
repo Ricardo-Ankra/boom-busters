@@ -45,7 +45,11 @@ export const DOSSIER_CLAIMS_MAX = 120
 export const DOSSIER_QUESTION_MAX = 1000
 export const DOSSIER_ANSWER_MAX = 3000
 export const DOSSIER_ANSWERS_MAX = 40
-export const DOSSIER_ANSWER_CLAIMS_MAX = 40
+/**
+ * Per part of the answers pass, which runs as two parts for the same step
+ * limit the claims pass does (see `DOSSIER_CLAIMS_PER_PASS`).
+ */
+export const DOSSIER_ANSWER_CLAIMS_MAX = 20
 
 /**
  * Limits of the grounded pipeline (research from a gathered corpus). The
@@ -59,8 +63,12 @@ export const DOSSIER_QUOTE_MAX = 300
 export const DOSSIER_QUOTE_MIN_FOLDED = 20
 export const DOSSIER_SUPPORTS_MAX = 3
 export const DOSSIER_SERIES_POINTS_MAX = 24
-/** Forty, with a 12,000-token answer: a claims pass must finish well inside the 300 s step limit. */
-export const DOSSIER_CLAIMS_PER_PASS = 40
+/**
+ * The cap per part of the claims pass, which runs as two parts: forty in one
+ * 12,000-token answer took up to 319 s live, over the 300 s step limit, so
+ * each part writes twenty in an 8,000-token answer and the pass keeps forty.
+ */
+export const DOSSIER_CLAIMS_PER_PASS = 20
 export const DOSSIER_SCENES_MAX = 60
 export const DOSSIER_CAST_MAX = 30
 export const DOSSIER_TOLD_ALREADY_MAX = 30

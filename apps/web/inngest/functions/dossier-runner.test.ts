@@ -77,7 +77,7 @@ const BRIEF = {
   turningPoint: 'EY refused to sign the 2019 accounts.',
   cast: [],
   toldAlready: [],
-  openQuestions: ['Where did the 1.9 billion euros go?'],
+  openQuestions: ['Where did the 1.9 billion euros go?', 'Who signed off on the escrow accounts?'],
 }
 const SCENES = [
   {
@@ -99,6 +99,11 @@ const RESEARCH_CLAIMS = [
 ]
 const ANSWERS = {
   answers: [{ index: 1, question: 'Where did the 1.9 billion euros go?', answer: null }],
+  claims: [],
+}
+/** The claims and answers passes each run in two parts: two documents, two questions. */
+const ANSWERS_2 = {
+  answers: [{ index: 2, question: 'Who signed off on the escrow accounts?', answer: null }],
   claims: [],
 }
 const RESEARCH = {
@@ -185,8 +190,10 @@ function stored(options: { repairs?: Record<string, unknown[]>; claims?: Grounde
     { id: 'corpus-load-0', handler: () => ({ documents: DOCUMENTS, corpus: CORPUS }) },
     pass('research-brief-0', BRIEF),
     pass('research-scenes-0', SCENES),
-    pass('research-claims-0', RESEARCH_CLAIMS),
-    pass('research-answers-0', ANSWERS),
+    pass('research-claims-0-1', RESEARCH_CLAIMS),
+    pass('research-claims-0-2', []),
+    pass('research-answers-0-1', ANSWERS),
+    pass('research-answers-0-2', ANSWERS_2),
     {
       id: 'research-ground-0',
       handler: () => ({
@@ -240,10 +247,12 @@ describeDb('dossier-runner', () => {
           'research-scenes-0': [
             { action: 'dropped', field: 'scene 4', reason: 'its date ran over 100 characters' },
           ],
-          'research-claims-0': [
-            { action: 'dropped', field: 'claim 37', reason: 'its text ran over 1,000 characters' },
+          'research-claims-0-1': [
+            { action: 'dropped', field: 'claim 17', reason: 'its text ran over 1,000 characters' },
           ],
-          'research-answers-0': [{ action: 'trimmed', field: 'the answer to question 3' }],
+          'research-claims-0-2': [{ action: 'capped', field: 'claims', kept: 20 }],
+          'research-answers-0-1': [{ action: 'trimmed', field: 'the answer to question 1' }],
+          'research-answers-0-2': [{ action: 'trimmed', field: 'the answer to question 2' }],
           'research-ground-0': [
             {
               action: 'dropped',
@@ -260,8 +269,10 @@ describeDb('dossier-runner', () => {
     expect(recordRepairs).toHaveBeenCalledWith(DOSSIER, [
       { action: 'trimmed', field: "the brief's summary" },
       { action: 'dropped', field: 'scene 4', reason: 'its date ran over 100 characters' },
-      { action: 'dropped', field: 'claim 37', reason: 'its text ran over 1,000 characters' },
-      { action: 'trimmed', field: 'the answer to question 3' },
+      { action: 'dropped', field: 'claim 17', reason: 'its text ran over 1,000 characters' },
+      { action: 'capped', field: 'claims', kept: 20 },
+      { action: 'trimmed', field: 'the answer to question 1' },
+      { action: 'trimmed', field: 'the answer to question 2' },
       {
         action: 'dropped',
         field: 'claim 2 support 1',
@@ -297,8 +308,10 @@ describeDb('dossier-runner', () => {
       'corpus-load-0',
       'research-brief-0',
       'research-scenes-0',
-      'research-claims-0',
-      'research-answers-0',
+      'research-claims-0-1',
+      'research-claims-0-2',
+      'research-answers-0-1',
+      'research-answers-0-2',
       'research-ground-0',
       'save-dossier',
       'auto-approve',

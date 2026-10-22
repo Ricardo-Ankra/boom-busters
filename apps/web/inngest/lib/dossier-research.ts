@@ -27,7 +27,7 @@ import {
   truncateAtParagraph,
   withNote,
 } from '@boom-busters/providers'
-import type { CorpusDocument, LLMTaskRequest, Repair } from '@boom-busters/providers'
+import type { CorpusDocument, LLMTaskRequest, PassPart, Repair } from '@boom-busters/providers'
 import type {
   CaseBrief,
   GroundedClaim,
@@ -63,6 +63,7 @@ import type { Steps } from './steps'
  * Each pass is one answer on `callForAnswer` (decision 293): a refused or
  * cut-off pass is asked once more, and what the parser trimmed or dropped
  * travels beside the value as `repairs`, for the notice the save step writes.
+ * The claims and answers passes run as two such answers each (`PARTS`).
  */
 
 export interface CaseContext {
@@ -95,6 +96,52 @@ export interface ResearchResult {
 
 type Guarded<T> =
   { ok: true; value: T; repairs?: Repair[] } | { ok: false; gate: Record<string, unknown> }
+
+/**
+ * How many steps the claims and answers passes each run as. One step writing
+ * forty quoted claims took up to 319 s in the first live back-test, over the
+ * 300 s an Inngest step has; half the output per step brings each inside it.
+ */
+const PARTS = 2
+
+/**
+ * `count` items numbered 1..count as `parts` contiguous ranges, inclusive,
+ * the earlier ranges one longer where the count does not divide evenly. Fewer
+ * ranges when there are fewer items than parts, so no part is asked about
+ * nothing, and none for no items.
+ */
+export function splitRange(count: number, parts: number): { from: number; to: number }[] {
+  const ranges = Math.max(0, Math.min(count, parts))
+  const out: { from: number; to: number }[] = []
+  let from = 1
+  for (let at = 0; at < ranges; at++) {
+    const size = Math.floor(count / ranges) + (at < count % ranges ? 1 : 0)
+    out.push({ from, to: from + size - 1 })
+    from += size
+  }
+  return out
+}
+
+/**
+ * A pass run as one step per range, in order, each step's value kept apart
+ * for the caller to merge. A budget gate from any part stops the rest, as it
+ * stops the passes after a gated one. Repairs keep part order.
+ */
+async function inParts<T>(
+  ranges: readonly { from: number; to: number }[],
+  step: (part: PassPart) => Promise<Guarded<T>>,
+): Promise<Guarded<T[]>> {
+  const values: T[] = []
+  const repairs: Repair[] = []
+  for (const [at, range] of ranges.entries()) {
+    const result = await step({ index: at + 1, of: ranges.length, ...range })
+    if (!result.ok) return result
+    values.push(result.value)
+    // Read with a default, as every pass's repairs are (spec 5.1).
+    repairs.push(...(result.repairs ?? []))
+  }
+  return { ok: true, value: values, repairs }
+}
 
 /**
  * `BudgetExceededError` is caught here rather than thrown, because throwing it
@@ -183,48 +230,73 @@ export async function researchDossier(
   )
   if (!scenes.ok) return stopped(scenes.gate)
 
-  const claims = await steps.run(
-    `research-claims-${round}`,
-    async (): Promise<Guarded<ResearchClaim[]>> => {
-      if (mocked) return { ok: true, value: mockClaims() }
-      return guarded('The claims could not be extracted', () =>
-        callForAnswer({
-          request: noted(buildClaimsRequest(caseContext, corpus, brief.value, scenes.value)),
-          parse: parseClaims,
-          complete,
-        }),
-      )
-    },
+  // Each part owns the claims whose first support lies in its share of the
+  // documents, so the parts rarely overlap; what overlap there is goes below.
+  const claimParts = await inParts(splitRange(documents.length, PARTS), (part) =>
+    steps.run(
+      `research-claims-${round}-${part.index}`,
+      async (): Promise<Guarded<ResearchClaim[]>> => {
+        // The mock claims cite every mock document, so the first part has them all.
+        if (mocked) return { ok: true, value: part.index === 1 ? mockClaims() : [] }
+        return guarded('The claims could not be extracted', () =>
+          callForAnswer({
+            request: noted(
+              buildClaimsRequest(caseContext, corpus, brief.value, scenes.value, part),
+            ),
+            parse: parseClaims,
+            complete,
+          }),
+        )
+      },
+    ),
   )
-  if (!claims.ok) return stopped(claims.gate)
+  if (!claimParts.ok) return stopped(claimParts.gate)
+  // A later part's claims minus any an earlier part already wrote: a claim
+  // whose first support was misnumbered can come back from both.
+  const [firstClaims = [], ...laterClaims] = claimParts.value
+  const claims = laterClaims.reduce(
+    (merged, next) => [...merged, ...dedupeAgainst(merged, next)],
+    firstClaims,
+  )
 
   // Pass 4 (decision 201): the brief's own open questions, answered from the
-  // documents. Skipped when the brief raised none: there is nothing to spend on.
-  const answers: Guarded<ResearchAnswers> =
-    brief.value.openQuestions.length === 0
-      ? { ok: true, value: { answers: [], claims: [] } }
-      : await steps.run(
-          `research-answers-${round}`,
-          async (): Promise<Guarded<ResearchAnswers>> => {
-            if (mocked) return { ok: true, value: mockAnswers(brief.value) }
-            return guarded('The open questions could not be answered', () =>
-              callForAnswer({
-                request: noted(buildAnswersRequest(caseContext, corpus, brief.value, scenes.value)),
-                parse: parseAnswers,
-                complete,
-              }),
-            )
-          },
+  // documents, split by question. No step when the brief raised none: there
+  // is nothing to spend on.
+  const answerParts = await inParts(splitRange(brief.value.openQuestions.length, PARTS), (part) =>
+    steps.run(
+      `research-answers-${round}-${part.index}`,
+      async (): Promise<Guarded<ResearchAnswers>> => {
+        if (mocked) {
+          return {
+            ok: true,
+            value: part.index === 1 ? mockAnswers(brief.value) : { answers: [], claims: [] },
+          }
+        }
+        return guarded('The open questions could not be answered', () =>
+          callForAnswer({
+            request: noted(
+              buildAnswersRequest(caseContext, corpus, brief.value, scenes.value, part),
+            ),
+            parse: parseAnswers,
+            complete,
+          }),
         )
-  if (!answers.ok) return stopped(answers.gate)
+      },
+    ),
+  )
+  if (!answerParts.ok) return stopped(answerParts.gate)
+  const answers: ResearchAnswers = {
+    answers: answerParts.value.flatMap((part) => part.answers),
+    claims: answerParts.value.flatMap((part) => part.claims),
+  }
 
   // Read with a default: a run parked before the deploy replays step results
   // stored without `repairs` (spec 5.1).
   const passRepairs: Repair[] = [
     ...(brief.repairs ?? []),
     ...(scenes.repairs ?? []),
-    ...(claims.repairs ?? []),
-    ...(answers.repairs ?? []),
+    ...(claimParts.repairs ?? []),
+    ...(answerParts.repairs ?? []),
   ]
 
   // Grounding folds every document once and searches it for every quote, so it
@@ -239,8 +311,8 @@ export async function researchDossier(
         // Facts surfaced while answering join the claim list, minus any the
         // claims pass already extracted: the model repeats itself often enough
         // that the review would otherwise show one assertion as two rows.
-        claims: [...claims.value, ...dedupeAgainst(claims.value, answers.value.claims)],
-        answers: answers.value.answers,
+        claims: [...claims, ...dedupeAgainst(claims, answers.claims)],
+        answers: answers.answers,
         documents,
         corpus: input.corpus,
       },
@@ -260,7 +332,7 @@ export async function researchDossier(
 
 const fold = (text: string) => foldText(text).folded
 
-/** Answer-pass claims minus the ones the claims pass already produced. */
+/** Claims from a later call minus the ones an earlier call already produced. */
 function dedupeAgainst(existing: readonly ResearchClaim[], candidates: readonly ResearchClaim[]) {
   const seen = new Set(existing.map((claim) => fold(claim.text)))
   return candidates.filter((claim) => {

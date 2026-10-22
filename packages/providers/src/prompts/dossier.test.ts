@@ -1,4 +1,5 @@
 import {
+  DOSSIER_ANSWER_CLAIMS_MAX,
   DOSSIER_CLAIMS_PER_PASS,
   DOSSIER_QUOTE_MAX,
   DOSSIER_QUOTE_MIN_FOLDED,
@@ -56,11 +57,15 @@ const scenes: Scene[] = [
   },
 ]
 
+/** The claims pass splits the corpus by document, the answers pass the brief by question. */
+const claimsPart = { index: 1, of: 2, from: 1, to: 12 }
+const answersPart = { index: 1, of: 1, from: 1, to: 1 }
+
 const requests = () => [
   buildBriefRequest(caseContext, corpus),
   buildScenesRequest(caseContext, corpus, brief),
-  buildClaimsRequest(caseContext, corpus, brief, scenes),
-  buildAnswersRequest(caseContext, corpus, brief, scenes),
+  buildClaimsRequest(caseContext, corpus, brief, scenes, claimsPart),
+  buildAnswersRequest(caseContext, corpus, brief, scenes, answersPart),
 ]
 
 /** A pass's own instructions, line breaks folded so a pinned sentence can wrap in the source. */
@@ -69,7 +74,7 @@ const asked = (request: LLMTaskRequest) =>
 
 describe('the research prompts', () => {
   it('puts the corpus in the first user message and marks it cacheable', () => {
-    const request = buildClaimsRequest(caseContext, corpus, brief, scenes)
+    const request = buildClaimsRequest(caseContext, corpus, brief, scenes, claimsPart)
     expect(request.messages[0]?.content).toContain('[D1] reporting')
     expect(request.cacheablePrefixMessages).toBe(1)
   })
@@ -104,8 +109,8 @@ describe('the research prompts', () => {
     expect(requests().map((request) => request.maxTokens)).toEqual([
       outputBudget(6_000),
       outputBudget(10_000),
-      outputBudget(12_000),
-      outputBudget(10_000),
+      outputBudget(8_000),
+      outputBudget(8_000),
     ])
   })
 
@@ -165,23 +170,84 @@ describe('the research prompts', () => {
   })
 
   it('asks the claims pass for at most a pass worth of claims', () => {
-    expect(asked(buildClaimsRequest(caseContext, corpus, brief, scenes))).toContain(
+    expect(asked(buildClaimsRequest(caseContext, corpus, brief, scenes, claimsPart))).toContain(
       `Limits (the app checks them): 1 to ${DOSSIER_CLAIMS_PER_PASS} claims;`,
     )
   })
 
   it('puts the open questions to the answers pass, verbatim and numbered', () => {
     // Numbered because the number is the join key (decision 203).
-    const request = buildAnswersRequest(caseContext, corpus, brief, scenes)
+    const request = buildAnswersRequest(caseContext, corpus, brief, scenes, answersPart)
     expect(request.messages.at(-1)?.content).toContain('1. What did the board know in 1999?')
     expect(asked(request)).toMatch(/`index` is the question's number/)
     expect(asked(request)).toMatch(/set `answer` to null/)
+  })
+
+  it('tells a claims part which documents its claims start from, leaving the prefix alone', () => {
+    const part2 = buildClaimsRequest(caseContext, corpus, brief, scenes, {
+      index: 2,
+      of: 2,
+      from: 13,
+      to: 25,
+    })
+    expect(asked(part2)).toContain(
+      'This is part 2 of 2: extract claims whose FIRST support is one of documents [D13] to ' +
+        '[D25]. A later support may cite any document. The other part covers the rest.',
+    )
+    // Before the shape, so the model reads its range before it starts writing.
+    expect(asked(part2).indexOf('This is part 2 of 2')).toBeLessThan(
+      asked(part2).indexOf('{"claims"'),
+    )
+    const part1 = buildClaimsRequest(caseContext, corpus, brief, scenes, claimsPart)
+    expect(asked(part1)).toContain('documents [D1] to [D12]')
+    expect(part2.system).toBe(part1.system)
+    expect(part2.messages.slice(0, -1)).toEqual(part1.messages.slice(0, -1))
+  })
+
+  it('puts only its own questions to an answers part, under their original numbers', () => {
+    const twelve: CaseBrief = {
+      ...brief,
+      openQuestions: Array.from({ length: 12 }, (_, at) => `Open question number ${at + 1}?`),
+    }
+    const part2 = buildAnswersRequest(caseContext, corpus, twelve, scenes, {
+      index: 2,
+      of: 2,
+      from: 7,
+      to: 12,
+    })
+    const text = part2.messages.at(-1)?.content ?? ''
+    expect(text).toContain('The open questions:\n7. Open question number 7?\n')
+    expect(text).toContain('12. Open question number 12?')
+    expect(text).not.toContain('6. Open question number 6?')
+    expect(text).not.toContain('1. Open question number 1?')
+    expect(asked(part2)).toContain('This is part 2 of 2; answer only the questions listed.')
+    const part1 = buildAnswersRequest(caseContext, corpus, twelve, scenes, {
+      index: 1,
+      of: 2,
+      from: 1,
+      to: 6,
+    })
+    expect(part1.messages.at(-1)?.content).toMatch(/1\. Open question number 1\?[\s\S]*6\. Open/)
+    expect(part1.messages.at(-1)?.content).not.toContain('7. Open question number 7?')
+    expect(part2.messages.slice(0, -1)).toEqual(part1.messages.slice(0, -1))
+  })
+
+  it('says nothing about parts when a pass runs as one, since there is no other part', () => {
+    const one = { index: 1, of: 1, from: 1, to: 1 }
+    expect(asked(buildClaimsRequest(caseContext, corpus, brief, scenes, one))).not.toContain(
+      'This is part',
+    )
+    const answers = buildAnswersRequest(caseContext, corpus, brief, scenes, one)
+    expect(asked(answers)).not.toContain('This is part')
+    expect(answers.messages.at(-1)?.content).toContain(
+      'The open questions:\n1. What did the board know in 1999?',
+    )
   })
 })
 
 describe('withNote', () => {
   it('withNote appends to the last user message only', () => {
-    const request = buildClaimsRequest(caseContext, corpus, brief, scenes)
+    const request = buildClaimsRequest(caseContext, corpus, brief, scenes, claimsPart)
     const noted = withNote(request, 'More on the auditors.')
 
     expect(noted.messages.at(-1)?.content).toBe(
@@ -672,12 +738,15 @@ describe('parseAnswers', () => {
         answers: [],
         claims: [
           { ...CLAIM, supports: [{ doc: 2, quote: 'q'.repeat(301) }] },
-          ...Array.from({ length: 41 }, (_, at) => ({ ...CLAIM, text: `Claim number ${at + 1}.` })),
+          ...Array.from({ length: DOSSIER_ANSWER_CLAIMS_MAX + 1 }, (_, at) => ({
+            ...CLAIM,
+            text: `Claim number ${at + 1}.`,
+          })),
         ],
       }),
       note,
     )
-    expect(parsed.claims).toHaveLength(40)
+    expect(parsed.claims).toHaveLength(DOSSIER_ANSWER_CLAIMS_MAX)
     expect(parsed.claims[0]?.text).toBe('Claim number 1.')
     expect(notes).toEqual([
       {
@@ -690,7 +759,7 @@ describe('parseAnswers', () => {
         field: 'claim 1 found while answering',
         reason: 'no support was left',
       },
-      { action: 'capped', field: 'claims found while answering', kept: 40 },
+      { action: 'capped', field: 'claims found while answering', kept: DOSSIER_ANSWER_CLAIMS_MAX },
     ])
   })
 })
