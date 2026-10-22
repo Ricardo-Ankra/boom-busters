@@ -1,4 +1,4 @@
-import { fixtureId } from '@boom-busters/schemas'
+import { DOCUMENT_TIERS, fixtureId } from '@boom-busters/schemas'
 import type { NewCase, NewProject, NewResearchDocument } from './schema'
 
 /**
@@ -238,7 +238,7 @@ export const fixtureDocuments: NewResearchDocument[] = [
     fetchedAt: new Date('2026-01-01T00:00:00Z'),
     contentType: 'text/html',
     kind: 'regulator',
-    tier: 1,
+    tier: DOCUMENT_TIERS.regulator,
     title: 'MOCK DOCUMENT: BaFin on Wirecard short selling',
     publishedAt: '2019-02-18',
     text: 'MOCK DOCUMENT. BaFin banned short selling of Wirecard shares for two months in February 2019, citing the share price and the market situation.',
@@ -252,7 +252,7 @@ export const fixtureDocuments: NewResearchDocument[] = [
     fetchedAt: new Date('2026-01-01T00:00:00Z'),
     contentType: 'text/html',
     kind: 'reporting',
-    tier: 2,
+    tier: DOCUMENT_TIERS.reporting,
     title: 'MOCK DOCUMENT: Wirecard insolvency',
     publishedAt: '2020-06-25',
     text: 'MOCK DOCUMENT. Wirecard AG filed for insolvency in June 2020, days after its auditors refused to sign off the accounts.',

@@ -158,6 +158,8 @@ describeDb('database integration', () => {
       expect(await db.select().from(researchDocuments)).toHaveLength(fixtureDocuments.length)
       const links = await db.select().from(dossierDocuments)
       expect(links.map((l) => l.rank).sort()).toEqual([1, 2])
+      // The link carries the kind's tier: a regulator record is tier 5, reporting tier 2.
+      expect(links.map((l) => l.tier).sort()).toEqual([2, 5])
       const supports = await db.select().from(claimSupports)
       expect(supports).toHaveLength(fixtureSupports.length)
       expect(supports.every((s) => s.found && (s.offset ?? -1) >= 0)).toBe(true)
