@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it } from 'vitest'
 import type { ResearchClaim } from '@boom-busters/schemas'
 import type { Repair } from '../prompts/repair'
 import { mockAnswers, mockBrief, mockClaims, mockScenes } from '../prompts/dossier-mocks'
@@ -42,9 +42,11 @@ const docs: CorpusDocument[] = [
 const entity = { qid: null, titles: [], cik: null, ticker: null, website: null }
 let repairs: Repair[] = []
 const note = (r: Repair) => repairs.push(r)
+beforeEach(() => {
+  repairs = []
+})
 
 function withClaims(claims: ResearchClaim[]): GroundInput {
-  repairs = []
   return {
     entity,
     brief: { ...mockBrief({ title: 't' } as never), cast: [], toldAlready: [] },
@@ -216,7 +218,6 @@ describe('groundResearch', () => {
   it('grounds the mock passes into the outcomes mock mode promises', () => {
     const documents = mockCorpusDocuments().map((d, i) => ({ ...d, id: `doc-${i + 1}` }))
     const brief = mockBrief({ title: 'Mockco' } as never)
-    repairs = []
     const out = groundResearch(
       {
         entity,
@@ -243,5 +244,119 @@ describe('groundResearch', () => {
     expect(out.research.scenes[0]!.ref.found).toBe(true)
     expect(out.research.brief.toldAlready[0]!.ref.found).toBe(true)
     expect(repairs).toEqual([])
+  })
+
+  it('checks a series against the first kept support when the first listed one is out of range', () => {
+    const out = groundResearch(
+      withClaims([
+        {
+          text: 'Revenue grew.',
+          supports: [
+            { doc: 99, quote: 'a document that was never given' },
+            { doc: 1, quote: 'reported revenue of $5 million in 2020' },
+          ],
+          legal: null,
+          series: {
+            label: 'Revenue',
+            unit: 'USD',
+            currency: null,
+            points: [
+              { at: '2020', value: 5e6, asWritten: '$5 million' },
+              { at: '2021', value: 7e6, asWritten: '$7 million' },
+            ],
+          },
+        },
+      ]),
+      note,
+    )
+    expect(repairs).toEqual([
+      {
+        action: 'dropped',
+        field: 'claim 1 support 1',
+        reason: 'cites a document that was not given',
+      },
+    ])
+    expect(out.claims[0]!.supports).toHaveLength(1)
+    expect(out.claims[0]!.supports[0]).toMatchObject({ documentId: 'a', rank: 1 })
+    expect(out.claims[0]!.series!.points).toHaveLength(2)
+    expect(out.claims[0]!.text).toBe(
+      'Revenue grew. Revenue (USD): 2020 $5 million; 2021 $7 million',
+    )
+  })
+
+  it('grounds a legal status citing a document not given to none and notes it', () => {
+    const out = groundResearch(
+      withClaims([
+        {
+          text: 'The court ruled on it.',
+          supports: [{ doc: 2, quote: 'had misled investors about its revenue' }],
+          legal: { status: 'ruled', date: '2020-06', doc: 99 },
+          series: null,
+        },
+      ]),
+      note,
+    )
+    expect(out.claims[0]).toMatchObject({
+      legalStatus: 'none',
+      legalStatusDate: null,
+      legalStatusDocumentId: null,
+    })
+    expect(repairs).toEqual([
+      {
+        action: 'dropped',
+        field: 'claim 1 legal status',
+        reason: 'cites a document that was not given',
+      },
+    ])
+  })
+
+  it('keeps a stated none legal status with its date and document', () => {
+    const out = groundResearch(
+      withClaims([
+        {
+          text: 'No court has ruled on it.',
+          supports: [{ doc: 2, quote: 'had misled investors about its revenue' }],
+          legal: { status: 'none', date: '2001-03', doc: 2 },
+          series: null,
+        },
+      ]),
+      note,
+    )
+    expect(out.claims[0]).toMatchObject({
+      legalStatus: 'none',
+      legalStatusDate: '2001-03',
+      legalStatusDocumentId: 'b',
+    })
+    expect(repairs).toEqual([])
+  })
+
+  it('grounds a cast scene and answers, dropping an answer that cites a document not given', () => {
+    const input = withClaims([])
+    input.brief = {
+      ...input.brief,
+      cast: [
+        {
+          name: 'The Founder',
+          role: 'founder',
+          wanted: 'Wanted investors to keep believing.',
+          scene: { doc: 2, quote: 'had misled investors about its revenue' },
+        },
+      ],
+    }
+    input.answers = [
+      { question: 'Who promised what, and when?', answer: 'The founder promised it all.', doc: 3 },
+      { question: 'Where did the money go in the end?', answer: 'It went nowhere known.', doc: 42 },
+    ]
+    const out = groundResearch(input, note)
+    expect(out.research.brief.cast[0]!.ref).toMatchObject({
+      documentId: 'b',
+      url: 'https://two.example.org/b',
+      found: true,
+    })
+    expect(out.research.answers[0]!.ref).toMatchObject({ documentId: 'c', quote: null })
+    expect(out.research.answers[1]!.ref).toBeNull()
+    expect(repairs).toEqual([
+      { action: 'dropped', field: 'answer 2', reason: 'cites a document that was not given' },
+    ])
   })
 })
