@@ -32,8 +32,10 @@ export const BACKTEST_TARGETS = {
   figureMatch: 0.8,
   costUsd: 6,
   /**
-   * A pass is one Inngest step, and a step has 300 s (the function limit).
-   * 200 s leaves room for a slow day and the retry's own overhead.
+   * Each Inngest step has 300 s (the function limit), and a pass is one step
+   * or, split into parts, one step per part, so a split pass is held to this
+   * by its slowest part. 200 s leaves room for a slow day and the retry's
+   * own overhead.
    */
   maxPassMs: 200_000,
 } as const
@@ -426,7 +428,7 @@ export function renderReport(report: Report, date: string): string {
     '',
     '## Pass durations',
     '',
-    `Target: every pass under ${seconds(t.maxPassMs)}; a step has 300 s. A pass that did not run shows 0.0 s.`,
+    `Target: every step under ${seconds(t.maxPassMs)}; a step has 300 s, and a split pass shows its slowest part. A pass that did not run shows 0.0 s.`,
     '',
     '| Case | Brief | Scenes | Claims | Answers |',
     '| --- | --- | --- | --- | --- |',

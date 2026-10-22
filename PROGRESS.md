@@ -8065,11 +8065,16 @@ boom-busters-broker`; merge and deploy to Vercel, then `PUT
      9 say the same. Decisions made: a pass with one document or one
      question runs as one part and its prompt says nothing about parts, as
      there is no other part to defer to; the parts run one after the other,
-     not in parallel; `ClaimsSchema` still needs at least one claim per
-     part, so a part whose documents lead no claim is refused, asked once
-     more, and stops the stage if refused again (the parser was kept as it
-     was; open for the owner). Shipping: the step ids changed, so a
-     `dossier-runner` run parked at a gate under the old ids would run (and
-     pay for) all four new part steps when it wakes, then replay its stored
-     grounding and throw the new results away; drain or cancel parked
-     dossier runs before the deploy. Not yet re-run live.
+     not in parallel. After review: a claims part may return no claims
+     (`ClaimsSchema` lost its minimum and the prompt says 0 to 20), but a
+     list that repairs emptied is still refused and asked again, and the
+     stage stops with "The claims could not be extracted: no part found a
+     claim in the documents" when every part is empty, since a dossier with
+     no claim would auto-approve. An answer whose `index` falls outside its
+     part's questions loses the number and is placed by its question text.
+     The brief step's result now carries `split: true`; a brief replayed
+     without it (a run parked across the deploy) makes the run use the old
+     single ids `research-claims-<round>` and `research-answers-<round>`,
+     which replay from memo and call nothing. Shipping: draining or
+     cancelling parked dossier runs before the deploy is still the safer
+     practice, as decision 310 says. Not yet re-run live.

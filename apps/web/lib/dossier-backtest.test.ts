@@ -427,6 +427,9 @@ describe('renderReport', () => {
       '2026-10-30',
     )
     expect(md).toContain('## Pass durations')
+    expect(md).toContain(
+      'Target: every step under 200.0 s; a step has 300 s, and a split pass shows its slowest part.',
+    )
     expect(md).toContain('| Case | Brief | Scenes | Claims | Answers |')
     expect(md).toContain('| Wirecard | 41.3 s | 63.0 s | 171.9 s | 0.0 s |')
     expect(md.indexOf('## Pass durations')).toBeLessThan(md.indexOf('## Verdict'))

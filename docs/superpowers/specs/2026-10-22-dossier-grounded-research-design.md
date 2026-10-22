@@ -288,8 +288,7 @@ The design therefore treats transcripts as best-effort and optional:
   description without a transcript; the `&t=` locator exists only with
   one.
 - The back-test reports the transcript availability rate beside the
-  told-already rate, and the told-already target binds only over videos
-  with a transcript.
+  told-already rate, which is reported only, with no target (section 9).
 
 The owner decides whether to switch the flag on in production. The
 work is built either way.
@@ -337,10 +336,16 @@ the corpus is simply re-sent. The claims and answers passes each run as
 two parts, one step per part, because the first live back-test
 (2026-10-22) timed a single claims step at 266 to 319 s and an answers
 step at up to 314 s, over the 300 s a step has. A claims part asks for
-at most 20 claims (`DOSSIER_CLAIMS_PER_PASS`, the cap per part, so the
+0 to 20 claims (`DOSSIER_CLAIMS_PER_PASS`, the cap per part, so the
 pass keeps 40) whose first support is one of its half of the documents;
 a later support may cite any document, and a later part's claims are
-deduplicated against the earlier part's. An answers part lists only its
+deduplicated against the earlier part's. A part may come back empty, but
+a list that repairs emptied is refused and asked again, and the stage
+stops when no part found a claim, since a dossier with none would pass
+the gate as clean. An answer numbered outside its part's questions loses
+its number and is placed by its question text. A brief stored before the
+split carries no `split` mark, and its run replays the single
+`research-claims-<round>` and `research-answers-<round>` steps it stored. An answers part lists only its
 half of the open questions, under their numbers in the brief, and keeps
 at most 20 claims found while answering (`DOSSIER_ANSWER_CLAIMS_MAX`).
 The part text goes in the final message only, so the system prompt and
