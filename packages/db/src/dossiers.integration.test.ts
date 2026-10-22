@@ -297,6 +297,27 @@ suite('dossier research, supports and legal status', () => {
     ).toEqual(['second'])
   })
 
+  it('keeps the previous dossier when a support names a missing document', async () => {
+    const a = await makeDoc()
+    const claim = { ...plain[0]!, supports: [support(a.id, 'kept')] }
+    await saveDossier(db, { projectId, contentMd: '# v1', claims: [claim] })
+    await expect(
+      saveDossier(db, {
+        projectId,
+        contentMd: '# v2',
+        claims: [{ ...plain[0]!, supports: [support('01MISSINGDOCUMENT0000000', 'lost')] }],
+      }),
+    ).rejects.toThrow()
+    const kept = (await getDossier(db, projectId))!
+    expect(kept.contentMd).toBe('# v1')
+    expect(kept.claims).toHaveLength(1)
+    expect(
+      Object.values(kept.supports)
+        .flat()
+        .map((s) => s.quote),
+    ).toEqual(['kept'])
+  })
+
   it('stores and returns research, and clears it with null', async () => {
     const research = { entity: { label: 'Wirecard AG' } } as unknown as GroundedResearch
     const saved = await saveDossier(db, { projectId, contentMd: '# x', claims: plain, research })

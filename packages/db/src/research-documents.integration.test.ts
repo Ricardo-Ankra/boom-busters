@@ -66,6 +66,19 @@ suite('research documents', () => {
     expect(second.text).toBe('two')
   })
 
+  it('clears omitted optional fields on a refetch', async () => {
+    const base = doc({ url: 'https://example.com/a' })
+    await upsertResearchDocument(db, {
+      ...base,
+      failure: 'timeout',
+      finalUrl: 'https://example.com/final',
+    })
+    const { failure: _failure, finalUrl: _finalUrl, ...rest } = base
+    const again = await upsertResearchDocument(db, rest)
+    expect(again.failure).toBeNull()
+    expect(again.finalUrl).toBeNull()
+  })
+
   it('reads documents back by id and by url', async () => {
     const a = await upsertResearchDocument(db, doc({ url: 'https://example.com/a' }))
     await upsertResearchDocument(db, doc({ url: 'https://example.com/b' }))

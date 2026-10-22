@@ -82,51 +82,55 @@ export async function saveDossier(
    * saves cannot both read version 3 and both write 4. Gaps are fine — nothing
    * counts versions, everything compares them.
    */
-  const [dossier] = await db
-    .insert(dossiers)
-    .values({
-      projectId: input.projectId,
-      contentMd: input.contentMd,
-      research: input.research ?? null,
-    })
-    .onConflictDoUpdate({
-      target: dossiers.projectId,
-      set: {
+  // One transaction: a support or legal-status document that does not exist
+  // fails the insert, and the previous dossier and its claims must survive that.
+  await db.transaction(async (tx) => {
+    const [dossier] = await tx
+      .insert(dossiers)
+      .values({
+        projectId: input.projectId,
         contentMd: input.contentMd,
         research: input.research ?? null,
-        version: sql`${dossiers.version} + 1`,
-        updatedAt: new Date(),
-      },
-    })
-    .returning()
+      })
+      .onConflictDoUpdate({
+        target: dossiers.projectId,
+        set: {
+          contentMd: input.contentMd,
+          research: input.research ?? null,
+          version: sql`${dossiers.version} + 1`,
+          updatedAt: new Date(),
+        },
+      })
+      .returning()
 
-  await db.delete(claims).where(eq(claims.dossierId, dossier!.id))
+    await tx.delete(claims).where(eq(claims.dossierId, dossier!.id))
 
-  if (input.claims.length > 0) {
-    const inserted = await db
-      .insert(claims)
-      .values(
-        input.claims.map((claim) => ({
-          dossierId: dossier!.id,
-          text: claim.text,
-          sourceUrl: claim.sourceUrl ?? null,
-          sourceType: claim.sourceType,
-          confidence: claim.confidence,
-          legalStatus: claim.legalStatus ?? 'none',
-          legalStatusDate: claim.legalStatusDate ?? null,
-          legalStatusDocumentId: claim.legalStatusDocumentId ?? null,
-          series: claim.series ?? null,
-        })),
+    if (input.claims.length > 0) {
+      const inserted = await tx
+        .insert(claims)
+        .values(
+          input.claims.map((claim) => ({
+            dossierId: dossier!.id,
+            text: claim.text,
+            sourceUrl: claim.sourceUrl ?? null,
+            sourceType: claim.sourceType,
+            confidence: claim.confidence,
+            legalStatus: claim.legalStatus ?? 'none',
+            legalStatusDate: claim.legalStatusDate ?? null,
+            legalStatusDocumentId: claim.legalStatusDocumentId ?? null,
+            series: claim.series ?? null,
+          })),
+        )
+        .returning({ id: claims.id })
+
+      // `returning` keeps the order of the values, so row i is claim i. The old
+      // supports went with the old claims (cascade); these belong to the new ones.
+      const supports = input.claims.flatMap((claim, index) =>
+        (claim.supports ?? []).map((support) => ({ ...support, claimId: inserted[index]!.id })),
       )
-      .returning({ id: claims.id })
-
-    // `returning` keeps the order of the values, so row i is claim i. The old
-    // supports went with the old claims (cascade); these belong to the new ones.
-    const supports = input.claims.flatMap((claim, index) =>
-      (claim.supports ?? []).map((support) => ({ ...support, claimId: inserted[index]!.id })),
-    )
-    if (supports.length > 0) await db.insert(claimSupports).values(supports)
-  }
+      if (supports.length > 0) await tx.insert(claimSupports).values(supports)
+    }
+  })
 
   return (await getDossier(db, input.projectId))!
 }

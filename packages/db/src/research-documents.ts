@@ -25,7 +25,27 @@ export async function upsertResearchDocument(
     .values(input)
     .onConflictDoUpdate({
       target: researchDocuments.url,
-      set: { ...input, updatedAt: new Date() },
+      // Every column but `id` and `createdAt`, written explicitly: Drizzle drops
+      // `undefined` keys, so a refetch that omits `failure` would keep a stale one.
+      set: {
+        url: input.url,
+        finalUrl: input.finalUrl ?? null,
+        httpStatus: input.httpStatus ?? null,
+        fetchedAt: input.fetchedAt,
+        contentType: input.contentType ?? null,
+        kind: input.kind,
+        tier: input.tier,
+        title: input.title ?? null,
+        publishedAt: input.publishedAt ?? null,
+        text: input.text ?? '',
+        textHash: input.textHash ?? null,
+        tokens: input.tokens ?? 0,
+        archivedUrl: input.archivedUrl ?? null,
+        truncated: input.truncated ?? false,
+        failure: input.failure ?? null,
+        meta: input.meta ?? null,
+        updatedAt: new Date(),
+      },
     })
     .returning()
 
