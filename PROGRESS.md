@@ -2980,9 +2980,9 @@ published and audited. The daily `channels.list` health ping and the
         legal status as `adjudicated`.
   - [x] Review screen: quotes beside claims, scenes beside sources, the
         corpus line, and "Found in the document" in the claim modal.
-  - [x] Back-test harness: `pnpm --filter @boom-busters/web
-    live:dossier-backtest -- --cap <usd>` with five cases and the
-        spec section 9 targets. Built, not run.
+  - [x] Back-test harness (script `live:dossier-backtest` in the web
+        package, run with `--cap <usd>`): five cases and the spec section 9
+        targets. Built, not run.
   - [x] e2e: the fixture claim 1 modal shows "Found in the document".
 
 **Decisions (continuing the numbering):**
