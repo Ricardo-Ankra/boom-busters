@@ -3,57 +3,158 @@
 import {
   FIXTURE_CASE_ID,
   FIXTURE_PROJECT_ID,
+  listRunEvents,
+  listRuns,
   requireTestDatabase,
   seed,
+  setProjectStage,
   truncateRunMirror,
 } from '@boom-busters/db'
 import type * as Db from '@boom-busters/db'
+import type { GroundedClaim } from '@boom-busters/schemas'
 import { InngestTestEngine } from '@inngest/test'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/lib/db'
 import { forgetRunRows } from '../middleware/run-mirror'
 import { dossierRunner } from './dossier-runner'
 
 /**
- * The dossier-runner's save step (decision 293), against the test database's
- * run mirror. The research steps are handed stored results, as Inngest hands
- * a replaying run the results it kept, so no model is called; `saveDossier`
- * is stubbed so the fixture dossier other suites read is never rewritten.
+ * The dossier-runner from the case to the gate, against the test database's
+ * run mirror. The gather, the corpus load and the research steps are handed
+ * stored results, as Inngest hands a replaying run the results it kept, so no
+ * source or model is called; `saveDossier` and `markDossierApproved` are
+ * stubbed so the fixture dossier other suites read is never rewritten.
  */
 
 vi.mock('@/lib/notify', () => ({ notify: vi.fn() }))
 const recordRepairs = vi.hoisted(() => vi.fn())
 vi.mock('@/lib/notices', () => ({ recordRepairs, recordStop: vi.fn() }))
-const saveDossier = vi.hoisted(() => vi.fn())
+const { saveDossier, markDossierApproved } = vi.hoisted(() => ({
+  saveDossier: vi.fn(),
+  markDossierApproved: vi.fn(),
+}))
 vi.mock('@boom-busters/db', async (importOriginal) => ({
   ...(await importOriginal<typeof Db>()),
   saveDossier: (...args: unknown[]) => saveDossier(...args),
+  markDossierApproved: (...args: unknown[]) => markDossierApproved(...args),
 }))
 
 const describeDb = requireTestDatabase() ? describe : describe.skip
 
 const CASE = { title: 'Wirecard', category: 'con', angle: null, demandNotes: null }
+const ENTITY = { qid: 'Q1', titles: ['Wirecard'], cik: null, ticker: null, website: null }
+
+const DOCUMENTS = [
+  {
+    id: 'doc-ft',
+    url: 'https://www.ft.com/content/wirecard',
+    kind: 'reporting',
+    title: 'Wirecard files for insolvency',
+    publishedAt: '2020-06-25',
+    text: 'Wirecard filed for insolvency in Munich on 25 June 2020.',
+    archivedUrl: null,
+    httpStatus: 200,
+  },
+  {
+    id: 'doc-ir',
+    url: 'https://ir.wirecard.com/results',
+    kind: 'press-release',
+    title: 'Results',
+    publishedAt: '2019-04-25',
+    text: 'Revenue for 2018 was EUR 2,016 million.',
+    archivedUrl: null,
+    httpStatus: 403,
+  },
+]
+const CORPUS = { read: 2, unread: 1, failed: 1 }
+const CORPUS_LINE = '2 documents read, 1 gathered not read, 1 could not be fetched'
+
 const BRIEF = {
   summary:
     'Wirecard was a German payments company. It collapsed in June 2020 after EY refused to sign.',
   turningPoint: 'EY refused to sign the 2019 accounts.',
-  principals: [{ name: 'Markus Braun', role: 'Chief executive' }],
+  cast: [],
+  toldAlready: [],
   openQuestions: ['Where did the 1.9 billion euros go?'],
 }
-const EVENTS = [{ when: 'June 2020', what: 'Wirecard filed for insolvency in Munich.' }]
-const CLAIMS = [
+const SCENES = [
+  {
+    when: 'June 2020',
+    who: 'Wirecard',
+    what: 'Filed for insolvency in Munich.',
+    why: 'The end of the company the story follows.',
+    doc: 1,
+    quote: 'Wirecard filed for insolvency in Munich on 25 June 2020',
+  },
+]
+const RESEARCH_CLAIMS = [
   {
     text: 'Wirecard filed for insolvency in June 2020.',
-    sourceUrl: 'https://www.ft.com/wirecard',
-    sourceType: 'major_outlet',
-    confidence: 'sourced',
-    adjudicated: false,
+    supports: [{ doc: 1, quote: 'Wirecard filed for insolvency in Munich on 25 June 2020' }],
+    legal: null,
+    series: null,
   },
 ]
 const ANSWERS = {
   answers: [{ index: 1, question: 'Where did the 1.9 billion euros go?', answer: null }],
   claims: [],
 }
+const RESEARCH = {
+  entity: ENTITY,
+  brief: {
+    summary: BRIEF.summary,
+    turningPoint: BRIEF.turningPoint,
+    cast: [],
+    toldAlready: [],
+    openQuestions: BRIEF.openQuestions,
+  },
+  scenes: [
+    {
+      when: 'June 2020',
+      who: 'Wirecard',
+      what: 'Filed for insolvency in Munich.',
+      why: 'The end of the company the story follows.',
+      quote: SCENES[0]!.quote,
+      ref: {
+        documentId: 'doc-ft',
+        url: DOCUMENTS[0]!.url,
+        found: true,
+        locatorSeconds: null,
+        quote: SCENES[0]!.quote,
+      },
+    },
+  ],
+  answers: [{ index: 1, question: 'Where did the 1.9 billion euros go?', answer: null, ref: null }],
+  corpus: CORPUS,
+}
+
+function grounded(documentId: string, over: Partial<GroundedClaim> = {}): GroundedClaim {
+  const doc = DOCUMENTS.find((d) => d.id === documentId)!
+  return {
+    text: 'Wirecard filed for insolvency in June 2020.',
+    sourceUrl: doc.url,
+    sourceType: 'major_outlet',
+    confidence: 'single_source',
+    legalStatus: 'none',
+    legalStatusDate: null,
+    legalStatusDocumentId: null,
+    series: null,
+    supports: [
+      {
+        documentId,
+        rank: 1,
+        quote: RESEARCH_CLAIMS[0]!.supports[0]!.quote,
+        found: true,
+        offset: 0,
+        locatorSeconds: null,
+        url: doc.url,
+        archivedUrl: doc.archivedUrl,
+      },
+    ],
+    ...over,
+  }
+}
+
 const DOSSIER = { projectId: FIXTURE_PROJECT_ID, subject: 'dossier', subjectId: null }
 
 function created(): [{ name: string; data: Record<string, unknown> }] {
@@ -65,72 +166,203 @@ function created(): [{ name: string; data: Record<string, unknown> }] {
   ]
 }
 
-/** The case and the four passes' stored results; a pass carries `repairs` only when given some. */
-function stored(repairs: Record<string, unknown[]> = {}) {
+/**
+ * The case, the mock-mode gather, the corpus and every research step's stored
+ * result; a pass carries `repairs` only when given some.
+ */
+function stored(options: { repairs?: Record<string, unknown[]>; claims?: GroundedClaim[] } = {}) {
+  const repairs = options.repairs ?? {}
   const pass = (id: string, value: unknown) => ({
     id,
     handler: () => (repairs[id] ? { ok: true, value, repairs: repairs[id] } : { ok: true, value }),
   })
   return [
-    { id: 'load-case', handler: () => CASE },
+    { id: 'load-case', handler: () => ({ ...CASE, competitorLinks: [] }) },
+    { id: 'gather-entity-0', handler: () => ENTITY },
+    { id: 'gather-fetch-0-0', handler: () => DOCUMENTS.map((d) => d.id) },
+    { id: 'corpus-load-0', handler: () => ({ documents: DOCUMENTS, corpus: CORPUS }) },
     pass('research-brief-0', BRIEF),
-    pass('research-timeline-0', EVENTS),
-    pass('research-claims-0', CLAIMS),
+    pass('research-scenes-0', SCENES),
+    pass('research-claims-0', RESEARCH_CLAIMS),
     pass('research-answers-0', ANSWERS),
+    {
+      id: 'research-ground-0',
+      handler: () => ({
+        research: RESEARCH,
+        claims: options.claims ?? [grounded('doc-ft')],
+        repairs: repairs['research-ground-0'] ?? [],
+      }),
+    },
   ]
 }
 
-describeDb('dossier-runner: the dossier notice (decision 293)', () => {
+/** What `saveDossier` hands back: one row per claim, as counted for the gate. */
+function savedRows(confidences: string[]) {
+  return { claims: confidences.map((confidence) => ({ confidence, quarantined: false })) }
+}
+
+async function gateMessages(): Promise<string[]> {
+  const [run] = await listRuns(db)
+  const events = await listRunEvents(db, run!.id)
+  return events.filter((e) => e.kind === 'gate.opened').map((e) => e.message ?? '')
+}
+
+describeDb('dossier-runner', () => {
   let engine: InngestTestEngine
 
   beforeEach(async () => {
+    // Mock mode keeps the gather to its two stored steps.
+    vi.stubEnv('MOCK_PROVIDERS', '1')
     engine = new InngestTestEngine({ function: dossierRunner })
     recordRepairs.mockReset()
     saveDossier.mockReset()
     saveDossier.mockResolvedValue({ claims: [] })
+    markDossierApproved.mockReset()
     await seed(db)
     await truncateRunMirror(db)
     forgetRunRows()
   })
 
-  it("records the four passes' repairs as the dossier's notice when it is saved", async () => {
+  afterEach(async () => {
+    vi.unstubAllEnvs()
+    // The fixture's own stage, for the suites after this one.
+    await setProjectStage(db, FIXTURE_PROJECT_ID, { stage: 'dossier', stageStatus: 'queued' })
+  })
+
+  it("records the passes' and the grounding's repairs as the dossier's notice when it is saved", async () => {
     await engine.executeStep('save-dossier', {
       events: created(),
       steps: stored({
-        'research-brief-0': [{ action: 'trimmed', field: "the brief's summary" }],
-        'research-timeline-0': [
-          {
-            action: 'dropped',
-            field: 'timeline event 4',
-            reason: 'its date ran over 100 characters',
-          },
-        ],
-        'research-claims-0': [
-          { action: 'dropped', field: 'claim 37', reason: 'its text ran over 1,000 characters' },
-        ],
-        'research-answers-0': [{ action: 'trimmed', field: 'the answer to question 3' }],
+        repairs: {
+          'research-brief-0': [{ action: 'trimmed', field: "the brief's summary" }],
+          'research-scenes-0': [
+            { action: 'dropped', field: 'scene 4', reason: 'its date ran over 100 characters' },
+          ],
+          'research-claims-0': [
+            { action: 'dropped', field: 'claim 37', reason: 'its text ran over 1,000 characters' },
+          ],
+          'research-answers-0': [{ action: 'trimmed', field: 'the answer to question 3' }],
+          'research-ground-0': [
+            {
+              action: 'dropped',
+              field: 'claim 2 support 1',
+              reason: 'cites a document that was not given',
+            },
+          ],
+        },
       }),
     })
 
     expect(saveDossier).toHaveBeenCalledTimes(1)
-    expect(recordRepairs).toHaveBeenCalledTimes(1)
     expect(recordRepairs).toHaveBeenCalledWith(DOSSIER, [
       { action: 'trimmed', field: "the brief's summary" },
-      { action: 'dropped', field: 'timeline event 4', reason: 'its date ran over 100 characters' },
+      { action: 'dropped', field: 'scene 4', reason: 'its date ran over 100 characters' },
       { action: 'dropped', field: 'claim 37', reason: 'its text ran over 1,000 characters' },
       { action: 'trimmed', field: 'the answer to question 3' },
+      {
+        action: 'dropped',
+        field: 'claim 2 support 1',
+        reason: 'cites a document that was not given',
+      },
     ])
   })
 
   it('saves research replayed from before the notices, with no notice and no crash', async () => {
-    // A run parked before decision 293 replays step results stored without `repairs`.
     await engine.executeStep('save-dossier', { events: created(), steps: stored() })
 
-    expect(saveDossier).toHaveBeenCalledTimes(1)
-    expect(saveDossier.mock.calls[0]![1]).toMatchObject({
-      projectId: FIXTURE_PROJECT_ID,
-      claims: [expect.objectContaining({ text: CLAIMS[0]!.text })],
-    })
     expect(recordRepairs).toHaveBeenCalledWith(DOSSIER, [])
+  })
+
+  it('saves supports and research and auto-approves only when every claim is grounded on a fetched document', async () => {
+    saveDossier.mockResolvedValue(savedRows(['single_source']))
+
+    const { ctx } = await engine.executeStep('auto-approve', {
+      events: created(),
+      steps: stored({ claims: [grounded('doc-ft', { legalStatus: 'alleged' })] }),
+    })
+
+    const ids = vi.mocked(ctx.step.run).mock.calls.map(([id]) => id)
+    expect(ids).toEqual([
+      'load-case',
+      'gather-entity-0',
+      'gather-fetch-0-0',
+      'corpus-load-0',
+      'research-brief-0',
+      'research-scenes-0',
+      'research-claims-0',
+      'research-answers-0',
+      'research-ground-0',
+      'save-dossier',
+      'auto-approve',
+    ])
+
+    const saved = saveDossier.mock.calls[0]![1]
+    expect(saved).toMatchObject({ projectId: FIXTURE_PROJECT_ID, research: RESEARCH })
+    expect(saved.contentMd).toMatch(/^# Wirecard/)
+    expect(saved.claims).toEqual([
+      {
+        text: 'Wirecard filed for insolvency in June 2020.',
+        sourceUrl: DOCUMENTS[0]!.url,
+        sourceType: 'major_outlet',
+        confidence: 'single_source',
+        legalStatus: 'alleged',
+        legalStatusDate: null,
+        legalStatusDocumentId: null,
+        series: null,
+        // The URLs are the document's; the row keeps only the reference.
+        supports: [
+          {
+            documentId: 'doc-ft',
+            rank: 1,
+            quote: RESEARCH_CLAIMS[0]!.supports[0]!.quote,
+            found: true,
+            offset: 0,
+            locatorSeconds: null,
+          },
+        ],
+      },
+    ])
+    expect(markDossierApproved).toHaveBeenCalledWith(expect.anything(), FIXTURE_PROJECT_ID)
+    expect(await gateMessages()).toEqual([`Dossier ready · 1 claims · ${CORPUS_LINE}`])
+
+    // The same dossier with its claim resting on a page that answered 403: it parks.
+    const parked = new InngestTestEngine({ function: dossierRunner })
+    markDossierApproved.mockReset()
+    await truncateRunMirror(db)
+    forgetRunRows()
+
+    await parked.executeStep('open-gate', {
+      events: created(),
+      steps: stored({ claims: [grounded('doc-ir')] }),
+    })
+
+    expect(markDossierApproved).not.toHaveBeenCalled()
+    expect(await gateMessages()).toEqual([
+      `Dossier ready · 1 claims · 1 resting on a document that was not fetched · ${CORPUS_LINE}`,
+    ])
+  })
+
+  it('auto-approves a claim whose page failed but whose Wayback copy was read', async () => {
+    saveDossier.mockResolvedValue(savedRows(['single_source']))
+    const archived = grounded('doc-ir')
+    archived.supports[0]!.archivedUrl = 'https://web.archive.org/web/2019/https://ir.wirecard.com'
+
+    await engine.executeStep('auto-approve', {
+      events: created(),
+      steps: stored({ claims: [archived] }),
+    })
+
+    expect(markDossierApproved).toHaveBeenCalledTimes(1)
+  })
+
+  it('opens the gate with the corpus line when a claim is unverified', async () => {
+    saveDossier.mockResolvedValue(savedRows(['unverified', 'sourced', 'sourced']))
+
+    await engine.executeStep('open-gate', { events: created(), steps: stored() })
+
+    expect(markDossierApproved).not.toHaveBeenCalled()
+    expect(await gateMessages()).toEqual([
+      `Dossier ready · 3 claims · 1 unsourced · ${CORPUS_LINE}`,
+    ])
   })
 })

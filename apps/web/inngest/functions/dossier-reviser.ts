@@ -2,18 +2,24 @@ import {
   bumpDossierRevisions,
   countClaims,
   getCase,
+  getDossier,
   getProject,
+  listDossierDocuments,
   saveDossier,
 } from '@boom-busters/db'
-import { renderDossierMarkdown } from '@boom-busters/providers'
+import { mockProvidersEnabled, renderDossierMarkdown } from '@boom-busters/providers'
+import type { ResearchEntity } from '@boom-busters/schemas'
 import { parseEventData, serialiseError } from '@boom-busters/schemas'
 import { NonRetriableError } from 'inngest'
 import { db } from '@/lib/db'
 import { recordRepairs } from '@/lib/notices'
+import { liveResearchSources } from '@/lib/research-sources'
 import { inngest } from '../client'
 import { events } from '../events'
 import { markStageFailed, openReviewGate, type GateContext } from '../lib/gates'
-import { gateSummary, researchDossier } from '../lib/dossier-research'
+import { gatherCorpus } from '../lib/dossier-gather'
+import { inngestSteps } from '../lib/steps'
+import { gateSummary, loadCorpus, researchDossier, toDraftClaims } from '../lib/dossier-research'
 
 /**
  * dossier-reviser — the `Request changes` path (build spec section 7.1).
@@ -28,7 +34,14 @@ import { gateSummary, researchDossier } from '../lib/dossier-research'
  * runner — leaves the losing wait of every round outstanding in the run plan,
  * and cannot be tested with `@inngest/test`, which cannot drive a run past a
  * `waitForEvent` at all.
+ *
+ * A revision reads the corpus the first run gathered: the note asks for a
+ * different reading, not different documents, and a second gather would pay
+ * for every fetch again. Only a project researched before the corpus existed
+ * has none linked, and that one gathers first.
  */
+
+const NO_ENTITY: ResearchEntity = { qid: null, titles: [], cik: null, ticker: null, website: null }
 
 const FUNCTION_ID = 'dossier-reviser'
 
@@ -66,6 +79,7 @@ export const dossierReviser = inngest.createFunction(
   async ({ event, step, runId }) => {
     const { projectId, note } = parseEventData('gate/dossier.changes_requested', event.data)
     const ctx: GateContext = { inngestRunId: runId, functionId: FUNCTION_ID, projectId }
+    const steps = inngestSteps(step)
 
     const context = await step.run('load-case', async () => {
       const project = await getProject(db, projectId)
@@ -75,6 +89,8 @@ export const dossierReviser = inngest.createFunction(
       if (!source) throw new NonRetriableError(`Case ${project.caseId} no longer exists`)
 
       const round = await bumpDossierRevisions(db, projectId)
+      const dossier = await getDossier(db, projectId)
+      const linked = await listDossierDocuments(db, projectId)
 
       return {
         round,
@@ -84,6 +100,9 @@ export const dossierReviser = inngest.createFunction(
           angle: source.angle,
           demandNotes: source.demandNotes,
         },
+        competitorLinks: source.competitorLinks.map((link) => ({ url: link.url })),
+        entity: dossier?.research?.entity ?? NO_ENTITY,
+        linkedDocuments: linked.length,
       }
     })
 
@@ -98,11 +117,32 @@ export const dossierReviser = inngest.createFunction(
       return { projectId, outcome: 'revision-limit' as const }
     }
 
-    const research = await researchDossier(step, {
+    let entity = context.entity
+    if (context.linkedDocuments === 0) {
+      const gathered = await gatherCorpus(
+        steps,
+        {
+          projectId,
+          caseTitle: context.caseContext.title,
+          competitorLinks: context.competitorLinks,
+          round: context.round,
+        },
+        { db, sources: () => liveResearchSources(), mocked: mockProvidersEnabled() },
+      )
+      entity = gathered.entity
+    }
+    const { documents, corpus } = await step.run(`corpus-load-${context.round}`, () =>
+      loadCorpus(db, projectId),
+    )
+
+    const research = await researchDossier(steps, {
       projectId,
       caseContext: context.caseContext,
       round: context.round,
       note,
+      entity,
+      documents,
+      corpus,
     })
 
     const overBudget = research.budgetGate
@@ -122,17 +162,12 @@ export const dossierReviser = inngest.createFunction(
         projectId,
         contentMd: renderDossierMarkdown({
           caseTitle: context.caseContext.title,
-          brief: research.brief,
-          timeline: research.timeline,
+          research: research.research,
           claims: research.claims,
-          answers: research.answers,
+          documents,
         }),
-        claims: research.claims.map((claim) => ({
-          text: claim.text,
-          sourceUrl: claim.sourceUrl,
-          sourceType: claim.sourceType,
-          confidence: claim.confidence,
-        })),
+        claims: toDraftClaims(research.claims),
+        research: research.research,
       })
       // What the revision's passes trimmed or dropped, on the dossier review; a
       // clean revision retires the last notice (decision 293).
@@ -144,7 +179,7 @@ export const dossierReviser = inngest.createFunction(
       openReviewGate(ctx, {
         stage: 'dossier',
         projectStage: 'dossier',
-        summary: `${gateSummary(counts)} · revision ${context.round}`,
+        summary: `${gateSummary(counts, corpus)} · revision ${context.round}`,
       }),
     )
 

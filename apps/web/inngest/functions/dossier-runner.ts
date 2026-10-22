@@ -6,12 +6,13 @@ import {
   saveDossier,
   setProjectStage,
 } from '@boom-busters/db'
-import { renderDossierMarkdown } from '@boom-busters/providers'
+import { mockProvidersEnabled, renderDossierMarkdown } from '@boom-busters/providers'
 import { parseEventData, serialiseError } from '@boom-busters/schemas'
 import { NonRetriableError } from 'inngest'
 import type { GetStepTools } from 'inngest'
 import { db } from '@/lib/db'
 import { recordRepairs } from '@/lib/notices'
+import { liveResearchSources } from '@/lib/research-sources'
 import { inngest } from '../client'
 import { events } from '../events'
 import {
@@ -24,15 +25,24 @@ import {
   openReviewGate,
   type GateContext,
 } from '../lib/gates'
-import { gateSummary, researchDossier } from '../lib/dossier-research'
+import { gatherCorpus } from '../lib/dossier-gather'
+import { inngestSteps } from '../lib/steps'
+import {
+  gateSummary,
+  loadCorpus,
+  researchDossier,
+  toDraftClaims,
+  unfetchedClaims,
+} from '../lib/dossier-research'
 
 type StepTools = GetStepTools<typeof inngest>
 
 /**
  * dossier-runner (build spec section 7.1).
  *
- * `project/created` → research passes (brief → timeline → claims) → dossier and
- * claims rows → gate → `waitForEvent('gate/dossier.approved')`.
+ * `project/created` → gather the corpus → load it → research passes (brief →
+ * scenes → claims → answers) and grounding → dossier and claims rows → gate →
+ * `waitForEvent('gate/dossier.approved')`.
  *
  * **It waits on approval only.** A change request is handled by
  * `dossier-reviser`, a separate function, which re-researches and re-opens the
@@ -45,7 +55,7 @@ type StepTools = GetStepTools<typeof inngest>
  *
  * Each research pass is its own `step.run()`, because a step boundary is a
  * spend boundary: Inngest memoises completed steps, so a failure while
- * extracting claims re-runs claims extraction only. Merging the three into one
+ * extracting claims re-runs claims extraction only. Merging the passes into one
  * step would make every retry pay for the brief again.
  */
 
@@ -78,8 +88,9 @@ export const dossierRunner = inngest.createFunction(
   async ({ event, step, runId }) => {
     const { projectId } = parseEventData('project/created', event.data)
     const ctx: GateContext = { inngestRunId: runId, functionId: FUNCTION_ID, projectId }
+    const steps = inngestSteps(step)
 
-    const caseContext = await step.run('load-case', async () => {
+    const loaded = await step.run('load-case', async () => {
       const project = await getProject(db, projectId)
       if (!project) throw new NonRetriableError(`Project ${projectId} no longer exists`)
 
@@ -93,19 +104,40 @@ export const dossierRunner = inngest.createFunction(
         category: source.category as string,
         angle: source.angle,
         demandNotes: source.demandNotes,
+        competitorLinks: source.competitorLinks.map((link) => ({ url: link.url })),
       }
     })
+    const { competitorLinks, ...caseContext } = loaded
+
+    const mocked = mockProvidersEnabled()
+    // The sources are built inside the gather's own steps, never here: a replay
+    // must not need DATA_CONTACT_EMAIL, and mock mode never builds them.
+    const gathered = await gatherCorpus(
+      steps,
+      { projectId, caseTitle: caseContext.title, competitorLinks, round: 0 },
+      { db, sources: () => liveResearchSources(), mocked },
+    )
+    const { documents, corpus } = await step.run('corpus-load-0', () => loadCorpus(db, projectId))
+    const researchRound = (round: number) =>
+      researchDossier(steps, {
+        projectId,
+        caseContext,
+        round,
+        entity: gathered.entity,
+        documents,
+        corpus,
+      })
 
     // Research, parking on the budget gate for as many rounds as the human is
     // willing to fund. A cap is a decision to be asked about, not a failure.
     const MAX_BUDGET_ROUNDS = 3
-    let research = await researchDossier(step, { projectId, caseContext, round: 0 })
+    let research = await researchRound(0)
 
     for (let round = 0; research.budgetGate && round < MAX_BUDGET_ROUNDS; round += 1) {
       const granted = await waitOutBudgetGate(step, ctx, research.budgetGate, round)
       if (!granted) return { projectId, outcome: 'aborted-on-budget' as const }
 
-      research = await researchDossier(step, { projectId, caseContext, round: round + 1 })
+      research = await researchRound(round + 1)
     }
 
     if (research.budgetGate) {
@@ -118,22 +150,22 @@ export const dossierRunner = inngest.createFunction(
         projectId,
         contentMd: renderDossierMarkdown({
           caseTitle: caseContext.title,
-          brief: research.brief,
-          timeline: research.timeline,
+          research: research.research,
           claims: research.claims,
-          answers: research.answers,
+          documents,
         }),
-        claims: research.claims.map((claim) => ({
-          text: claim.text,
-          sourceUrl: claim.sourceUrl,
-          sourceType: claim.sourceType,
-          confidence: claim.confidence,
-        })),
+        claims: toDraftClaims(research.claims),
+        research: research.research,
       })
       // What the research passes trimmed or dropped, on the dossier review; a
       // clean dossier retires the last one's notice (decision 293).
       await recordRepairs({ projectId, subject: 'dossier', subjectId: null }, research.repairs)
-      return countClaims(saved.claims)
+      // Checked here, against the corpus this run loaded, so the approval
+      // below reads one stored answer rather than recomputing it on replay.
+      return {
+        ...countClaims(saved.claims),
+        unfetched: unfetchedClaims(research.claims, documents),
+      }
     })
 
     /**
@@ -143,14 +175,17 @@ export const dossierRunner = inngest.createFunction(
      * yet quarantined — so a dossier with zero of them is one the human
      * could only have rubber-stamped. It approves itself, says so, and the
      * script runner starts on the same event a manual approval would send.
+     *
+     * Grounded research adds one condition (spec 7): every claim's primary
+     * support must rest on a document that really answered, 2xx or Wayback.
      */
-    if (counts.blocking === 0) {
+    if (counts.blocking === 0 && counts.unfetched === 0) {
       await step.run('auto-approve', async () => {
         await markDossierApproved(db, projectId)
         await autoCloseReviewGate(ctx, {
           stage: 'dossier',
           nextStage: 'script',
-          summary: gateSummary(counts),
+          summary: gateSummary(counts, corpus),
         })
       })
       await step.sendEvent('advance-to-script', events.dossierApproved.create({ projectId }))
@@ -162,7 +197,7 @@ export const dossierRunner = inngest.createFunction(
       openReviewGate(ctx, {
         stage: 'dossier',
         projectStage: 'dossier',
-        summary: gateSummary(counts),
+        summary: gateSummary(counts, corpus),
       }),
     )
 
