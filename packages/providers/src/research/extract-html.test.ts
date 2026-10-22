@@ -22,4 +22,9 @@ describe('htmlToText', () => {
     expect(out.text).toBe('Plain')
     expect(out.title).toBeNull()
   })
+
+  it('separates table cells so a heading is not run together', () => {
+    const out = htmlToText('<body><table><tr><td>Item 1.</td><td>Business</td></tr></table></body>')
+    expect(out.text).toBe('Item 1. Business')
+  })
 })

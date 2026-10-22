@@ -23,13 +23,19 @@ describe('fetchDocument', () => {
   })
 
   it('re-checks every redirect hop and refuses a private address', async () => {
+    const calls: string[] = []
     const doc = await fetchDocument('https://example.com/a', {
-      fetchImpl: async () =>
-        new Response(null, { status: 302, headers: { location: 'https://internal.example.com/' } }),
+      fetchImpl: async (input) => {
+        calls.push(String(input))
+        return new Response(null, {
+          status: 302,
+          headers: { location: 'https://internal.example.com/' },
+        })
+      },
       lookupImpl: publicLookup,
-      archiveFallback: false,
     })
     expect(doc.failure).toContain('private')
+    expect(calls.some((call) => call.includes('archive.org'))).toBe(false)
     expect(doc.body).toBeNull()
   })
 

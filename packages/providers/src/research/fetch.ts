@@ -38,6 +38,8 @@ interface Attempt {
   contentType: string | null
   body: Uint8Array | null
   failure: string | null
+  /** The URL guard said no. A snapshot of a refused address is still that address's content. */
+  refused?: boolean
 }
 
 function timeoutSignal(external?: AbortSignal): AbortSignal {
@@ -148,7 +150,23 @@ async function attempt(
     }
     return { ...empty, failure: `redirected more than ${MAX_REDIRECT_HOPS} times` }
   } catch (error) {
-    return { ...empty, failure: error instanceof Error ? error.message : String(error) }
+    return {
+      ...empty,
+      failure: error instanceof Error ? error.message : String(error),
+      refused: error instanceof ValidationError,
+    }
+  }
+}
+
+function toDocument(url: string, archivedUrl: string | null, found: Attempt): FetchedDocument {
+  return {
+    url,
+    finalUrl: found.finalUrl,
+    httpStatus: found.httpStatus,
+    contentType: found.contentType,
+    body: found.body,
+    archivedUrl,
+    failure: found.failure,
   }
 }
 
@@ -186,17 +204,17 @@ export async function fetchDocument(
   }
 
   const live = await attempt(url, options, maxBytes)
-  if (live.failure === null) return { url, archivedUrl: null, ...live }
+  if (live.failure === null) return toDocument(url, null, live)
 
   // Too large is an answer about the page, not about our reach: a snapshot of
-  // the same page would be the same size.
-  if (options.archiveFallback === false || live.failure === 'too large') {
-    return { url, archivedUrl: null, ...live }
+  // the same page would be the same size. A refused address stays refused.
+  if (options.archiveFallback === false || live.failure === 'too large' || live.refused === true) {
+    return toDocument(url, null, live)
   }
 
   const snapshot = await archivedCopy(url, options)
-  if (snapshot === null) return { url, archivedUrl: null, ...live }
+  if (snapshot === null) return toDocument(url, null, live)
   const archived = await attempt(snapshot, options, maxBytes)
-  if (archived.failure !== null) return { url, archivedUrl: null, ...live }
-  return { url, archivedUrl: snapshot, ...archived }
+  if (archived.failure !== null) return toDocument(url, null, live)
+  return toDocument(url, snapshot, archived)
 }

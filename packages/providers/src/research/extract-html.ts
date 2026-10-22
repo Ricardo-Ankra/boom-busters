@@ -46,9 +46,12 @@ function walk(node: Node, out: string[]): void {
     out.push(LINE)
     return
   }
+  const cell = tag === 'td' || tag === 'th'
   const block = BLOCKS.has(tag)
   if (block) out.push(PARAGRAPH)
   for (const child of element.childNodes) walk(child, out)
+  // Cells are inline, so without a separator "Item 1." and "Business" join into one word.
+  if (cell) out.push(' ')
   if (block) out.push(PARAGRAPH)
 }
 

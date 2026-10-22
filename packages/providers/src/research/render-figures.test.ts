@@ -10,6 +10,31 @@ describe('xbrlFactsText', () => {
     expect(out.indexOf('Revenues | 2021')).toBeLessThan(out.indexOf('Revenues | 2022'))
   })
 
+  it('keeps the annual fact when a quarterly fact shares its fiscal year end', () => {
+    const facts = [
+      {
+        fp: 'FY',
+        form: '10-K',
+        val: 4000,
+        start: '2022-01-01',
+        end: '2022-12-31',
+        filed: '2023-02-21',
+      },
+      {
+        fp: 'FY',
+        form: '10-K',
+        val: 900,
+        start: '2022-10-01',
+        end: '2022-12-31',
+        filed: '2023-02-21',
+      },
+    ]
+    for (const ordered of [facts, [...facts].reverse()]) {
+      const out = xbrlFactsText({ facts: { 'us-gaap': { Revenues: { units: { USD: ordered } } } } })
+      expect(out).toBe('Revenues | 2022 | 4000 | USD')
+    }
+  })
+
   it('returns an empty string for a shape it does not know', () => {
     expect(xbrlFactsText({})).toBe('')
     expect(xbrlFactsText(null)).toBe('')
