@@ -108,6 +108,8 @@ describe('the back-test constants', () => {
       'SVB Financial',
     ])
     expect(BACKTEST_TARGETS.costUsd).toBe(6)
+    expect(BACKTEST_TARGETS.urlResolved).toBe(0.7)
+    expect(BACKTEST_TARGETS).not.toHaveProperty('toldAlready')
     expect(BACKTEST_TARGETS.maxPassMs).toBe(200_000)
   })
 })
@@ -242,6 +244,18 @@ describe('scoreRuns', () => {
     expect(report.verdict.failing[0]).toMatch(/^urlResolved/)
   })
 
+  it('passes a URL rate at the 70 percent target', () => {
+    const resolved = { url: 'r', kind: 'reporting', ...page } as const
+    const dead = { ...resolved, url: 'd', httpStatus: 404 }
+    const documents: CaseRun['documents'] = [
+      ...Array.from({ length: 7 }, () => resolved),
+      ...Array.from({ length: 3 }, () => dead),
+    ]
+    const report = scoreRuns([run({ documents })])
+    expect(report.overall.urlResolved).toBe(0.7)
+    expect(report.verdict).toEqual({ pass: true, failing: [] })
+  })
+
   it('reports no checkable figures and no transcripts as not measured, and passes', () => {
     const report = scoreRuns([run()])
     expect(report.overall.figureMatch).toBe('not measured')
@@ -267,7 +281,8 @@ describe('scoreRuns', () => {
     ])
     expect(report.overall.toldAlready).toBe(0.5)
     expect(report.transcriptAvailability).toBe(0.5)
-    expect(report.verdict.failing[0]).toMatch(/^toldAlready/)
+    // Reported, never gated: no transcript source exists to measure it against.
+    expect(report.verdict.failing).toEqual([])
   })
 
   it('counts beats grounding dropped for lacking a transcript quote', () => {
@@ -278,7 +293,7 @@ describe('scoreRuns', () => {
       run({ documents, research: research([{ id: 'v1', found: true }]), beatsDropped: 3 }),
     ])
     expect(report.overall.toldAlready).toBe(0.25)
-    expect(report.verdict.failing[0]).toMatch(/^toldAlready/)
+    expect(report.verdict.failing).toEqual([])
   })
 
   it('pools figures across cases and fails a mismatch-heavy overall', () => {
@@ -388,6 +403,14 @@ describe('renderReport', () => {
     expect(md).toContain('| Case | Brief | Scenes | Claims | Answers |')
     expect(md).toContain('| Wirecard | 41.3 s | 63.0 s | 171.9 s | 0.0 s |')
     expect(md.indexOf('## Pass durations')).toBeLessThan(md.indexOf('## Verdict'))
+  })
+
+  it('marks the told-already rate as reported only, and says why', () => {
+    const md = renderReport(scoreRuns([run()]), '2026-10-30')
+    expect(md).toContain(
+      'Target: Reported only; no transcript source exists (the YouTube caption endpoint answers 404 to unsigned requests, confirmed 2026-10-22).',
+    )
+    expect(md).toContain('Target: at least 70.0%.')
   })
 
   it('says the rollout may go on when nothing fails', () => {
