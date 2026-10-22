@@ -1,5 +1,4 @@
 import {
-  countClaims,
   getCase,
   getProject,
   markDossierApproved,
@@ -28,11 +27,12 @@ import {
 import { gatherCorpus } from '../lib/dossier-gather'
 import { inngestSteps } from '../lib/steps'
 import {
+  gateCounts,
   gateSummary,
   loadCorpus,
+  predatesCorpus,
   researchDossier,
   toDraftClaims,
-  unfetchedClaims,
 } from '../lib/dossier-research'
 
 type StepTools = GetStepTools<typeof inngest>
@@ -107,6 +107,12 @@ export const dossierRunner = inngest.createFunction(
         competitorLinks: source.competitorLinks.map((link) => ({ url: link.url })),
       }
     })
+    // Parked runs replay old step results: a run parked at the gate before the
+    // corpus existed has already saved and opened it, so it only waits.
+    if (predatesCorpus(loaded)) {
+      const outcome = await awaitApproval(step, ctx)
+      return { projectId, outcome }
+    }
     const { competitorLinks, ...caseContext } = loaded
 
     const mocked = mockProvidersEnabled()
@@ -162,10 +168,7 @@ export const dossierRunner = inngest.createFunction(
       await recordRepairs({ projectId, subject: 'dossier', subjectId: null }, research.repairs)
       // Checked here, against the corpus this run loaded, so the approval
       // below reads one stored answer rather than recomputing it on replay.
-      return {
-        ...countClaims(saved.claims),
-        unfetched: unfetchedClaims(research.claims, documents),
-      }
+      return gateCounts(saved.claims, research.claims, documents)
     })
 
     /**
@@ -201,31 +204,40 @@ export const dossierRunner = inngest.createFunction(
       }),
     )
 
-    const approval = await step.waitForEvent('await-dossier-gate', {
-      event: 'gate/dossier.approved',
-      timeout: '30d',
-      if: 'async.data.projectId == event.data.projectId',
-    })
-
-    if (!approval) {
-      // Thirty days without a decision. Failing is more honest than waiting
-      // forever on a run nobody remembers starting.
-      await step.run('gate-timed-out', () =>
-        markStageFailed(ctx, {
-          message: 'The dossier gate went 30 days without a decision.',
-        }),
-      )
-      return { projectId, outcome: 'gate-timeout' as const }
-    }
-
-    await step.run('close-gate', async () => {
-      await markDossierApproved(db, projectId)
-      await closeReviewGate(ctx, { stage: 'dossier', nextStage: 'script' })
-    })
-
-    return { projectId, outcome: 'approved' as const, claims: counts.total }
+    const outcome = await awaitApproval(step, ctx)
+    return { projectId, outcome, claims: counts.total }
   },
 )
+
+/** Wait on the open dossier gate, then close it, or fail it after 30 days. */
+async function awaitApproval(
+  step: StepTools,
+  ctx: GateContext,
+): Promise<'approved' | 'gate-timeout'> {
+  const approval = await step.waitForEvent('await-dossier-gate', {
+    event: 'gate/dossier.approved',
+    timeout: '30d',
+    if: 'async.data.projectId == event.data.projectId',
+  })
+
+  if (!approval) {
+    // Thirty days without a decision. Failing is more honest than waiting
+    // forever on a run nobody remembers starting.
+    await step.run('gate-timed-out', () =>
+      markStageFailed(ctx, {
+        message: 'The dossier gate went 30 days without a decision.',
+      }),
+    )
+    return 'gate-timeout'
+  }
+
+  await step.run('close-gate', async () => {
+    await markDossierApproved(db, ctx.projectId)
+    await closeReviewGate(ctx, { stage: 'dossier', nextStage: 'script' })
+  })
+
+  return 'approved'
+}
 
 /** Park on the budget gate; resolve true if the human granted the overage. */
 async function waitOutBudgetGate(

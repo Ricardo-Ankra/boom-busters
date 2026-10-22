@@ -1,10 +1,18 @@
 import { budgetGateData } from './gates'
-import { listDossierDocuments, type Database, type DraftClaimInput } from '@boom-busters/db'
+import {
+  countClaims,
+  listDossierDocuments,
+  type ClaimCounts,
+  type ClaimRow,
+  type Database,
+  type DraftClaimInput,
+} from '@boom-busters/db'
 import {
   buildAnswersRequest,
   buildBriefRequest,
   buildClaimsRequest,
   buildScenesRequest,
+  foldText,
   groundResearch,
   mockAnswers,
   mockBrief,
@@ -250,11 +258,7 @@ export async function researchDossier(
   }
 }
 
-const fold = (text: string) =>
-  text
-    .toLowerCase()
-    .replace(/[^\p{L}\p{N}]+/gu, ' ')
-    .trim()
+const fold = (text: string) => foldText(text).folded
 
 /** Answer-pass claims minus the ones the claims pass already produced. */
 function dedupeAgainst(existing: readonly ResearchClaim[], candidates: readonly ResearchClaim[]) {
@@ -353,6 +357,24 @@ export function unfetchedClaims(
     const code = status.get(primary.documentId) ?? null
     return code === null || code < 200 || code > 299
   }).length
+}
+
+/** The gate's counts: the saved rows' claim counts, and how many rest on an unfetched page. */
+export function gateCounts(
+  rows: readonly ClaimRow[],
+  claims: readonly GroundedClaim[],
+  documents: readonly Pick<CorpusDocument, 'id' | 'httpStatus'>[],
+): ClaimCounts & { unfetched: number } {
+  return { ...countClaims(rows), unfetched: unfetchedClaims(claims, documents) }
+}
+
+/**
+ * Whether a replayed `load-case` result was stored before the corpus existed:
+ * it has no `competitorLinks`. Takes `object` so the check is not narrowed
+ * away by today's type, which always has the key.
+ */
+export function predatesCorpus(loaded: object): boolean {
+  return !('competitorLinks' in loaded)
 }
 
 /** The one-line context the gate card shows (spec sections 7 and 11.3). */

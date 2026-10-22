@@ -367,6 +367,11 @@ describe('unfetchedClaims', () => {
     ).toBe(0)
     expect(unfetchedClaims([claim([])], docs)).toBe(1)
   })
+
+  it('reads only the first support: a later good page does not rescue a bad first one', () => {
+    expect(unfetchedClaims([claim([support('forbidden'), support('ok')])], docs)).toBe(1)
+    expect(unfetchedClaims([claim([support('ok'), support('forbidden')])], docs)).toBe(0)
+  })
 })
 
 describe('gateSummary', () => {

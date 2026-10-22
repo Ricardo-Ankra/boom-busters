@@ -1,6 +1,13 @@
 // @vitest-environment node
 
-import { FIXTURE_PROJECT_ID, requireTestDatabase, seed, truncateRunMirror } from '@boom-busters/db'
+import {
+  FIXTURE_PROJECT_ID,
+  getProject,
+  requireTestDatabase,
+  seed,
+  setProjectStage,
+  truncateRunMirror,
+} from '@boom-busters/db'
 import type * as Db from '@boom-busters/db'
 import type { LLMTaskRequest } from '@boom-busters/providers'
 import { InngestTestEngine } from '@inngest/test'
@@ -117,8 +124,10 @@ describeDb('dossier-reviser', () => {
     forgetRunRows()
   })
 
-  afterEach(() => {
+  afterEach(async () => {
     vi.unstubAllEnvs()
+    // The fixture's own stage, for the suites after this one.
+    await setProjectStage(db, FIXTURE_PROJECT_ID, { stage: 'dossier', stageStatus: 'queued' })
   })
 
   it("records the revision's repairs, reading a pass replayed without them as none", async () => {
@@ -149,6 +158,7 @@ describeDb('dossier-reviser', () => {
     })
 
     expect(saveDossier).toHaveBeenCalledTimes(1)
+    expect(recordRepairs).toHaveBeenCalledTimes(1)
     expect(recordRepairs).toHaveBeenCalledWith(
       { projectId: FIXTURE_PROJECT_ID, subject: 'dossier', subjectId: null },
       [
@@ -185,6 +195,17 @@ describeDb('dossier-reviser', () => {
     const saved = saveDossier.mock.calls[0]![1]
     expect(saved.research.entity).toEqual(ENTITY)
     expect(saved.claims[0].supports[0]).toMatchObject({ documentId: 'doc-ft', found: true })
+  })
+
+  it('stops a revision in flight from before the corpus rather than run new passes over it', async () => {
+    const { ctx } = await engine.executeStep('revision-predates-corpus', {
+      events: changesRequested(),
+      steps: [{ id: 'load-case', handler: () => ({ round: 1, caseContext: CASE }) }],
+    })
+
+    expect(stepIds(ctx)).toEqual(['load-case', 'revision-predates-corpus'])
+    expect(saveDossier).not.toHaveBeenCalled()
+    expect((await getProject(db, FIXTURE_PROJECT_ID))?.stageStatus).toBe('failed')
   })
 
   it('gathers first for a project researched before it had a corpus', async () => {

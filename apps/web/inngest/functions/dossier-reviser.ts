@@ -1,6 +1,5 @@
 import {
   bumpDossierRevisions,
-  countClaims,
   getCase,
   getDossier,
   getProject,
@@ -19,7 +18,14 @@ import { events } from '../events'
 import { markStageFailed, openReviewGate, type GateContext } from '../lib/gates'
 import { gatherCorpus } from '../lib/dossier-gather'
 import { inngestSteps } from '../lib/steps'
-import { gateSummary, loadCorpus, researchDossier, toDraftClaims } from '../lib/dossier-research'
+import {
+  gateCounts,
+  gateSummary,
+  loadCorpus,
+  predatesCorpus,
+  researchDossier,
+  toDraftClaims,
+} from '../lib/dossier-research'
 
 /**
  * dossier-reviser — the `Request changes` path (build spec section 7.1).
@@ -117,6 +123,19 @@ export const dossierReviser = inngest.createFunction(
       return { projectId, outcome: 'revision-limit' as const }
     }
 
+    // Parked runs replay old step results: a revision in flight across the
+    // deploy would run the new passes over its old-shape results, so it stops
+    // and asks for the changes to be requested again.
+    if (predatesCorpus(context)) {
+      await step.run('revision-predates-corpus', () =>
+        markStageFailed(ctx, {
+          message:
+            'The revision was interrupted by an update to the research. Request the changes again.',
+        }),
+      )
+      return { projectId, outcome: 'predates-corpus' as const }
+    }
+
     let entity = context.entity
     if (context.linkedDocuments === 0) {
       const gathered = await gatherCorpus(
@@ -172,7 +191,7 @@ export const dossierReviser = inngest.createFunction(
       // What the revision's passes trimmed or dropped, on the dossier review; a
       // clean revision retires the last notice (decision 293).
       await recordRepairs({ projectId, subject: 'dossier', subjectId: null }, research.repairs)
-      return countClaims(saved.claims)
+      return gateCounts(saved.claims, research.claims, documents)
     })
 
     await step.run('reopen-gate', () =>

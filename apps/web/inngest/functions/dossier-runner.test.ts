@@ -254,6 +254,7 @@ describeDb('dossier-runner', () => {
     })
 
     expect(saveDossier).toHaveBeenCalledTimes(1)
+    expect(recordRepairs).toHaveBeenCalledTimes(1)
     expect(recordRepairs).toHaveBeenCalledWith(DOSSIER, [
       { action: 'trimmed', field: "the brief's summary" },
       { action: 'dropped', field: 'scene 4', reason: 'its date ran over 100 characters' },
@@ -270,6 +271,11 @@ describeDb('dossier-runner', () => {
   it('saves research replayed from before the notices, with no notice and no crash', async () => {
     await engine.executeStep('save-dossier', { events: created(), steps: stored() })
 
+    expect(saveDossier).toHaveBeenCalledTimes(1)
+    expect(saveDossier.mock.calls[0]![1]).toMatchObject({
+      projectId: FIXTURE_PROJECT_ID,
+      claims: [expect.objectContaining({ text: 'Wirecard filed for insolvency in June 2020.' })],
+    })
     expect(recordRepairs).toHaveBeenCalledWith(DOSSIER, [])
   })
 
@@ -353,6 +359,38 @@ describeDb('dossier-runner', () => {
     })
 
     expect(markDossierApproved).toHaveBeenCalledTimes(1)
+  })
+
+  it('lets a run parked at the gate before the corpus existed go straight back to its wait', async () => {
+    // What a run parked before this deploy has stored: no competitor links in
+    // the case, the old passes, the old save, and the gate already open.
+    // `@inngest/test` cannot drive a run past a wait (see demo-pipeline.test.ts),
+    // so this stops at it; the close after it is the normal path's own helper.
+    const { ctx } = await engine.executeStep('await-dossier-gate', {
+      events: created(),
+      steps: [
+        { id: 'load-case', handler: () => CASE },
+        { id: 'research-brief-0', handler: () => ({ ok: true, value: { summary: 'Old.' } }) },
+        { id: 'research-timeline-0', handler: () => ({ ok: true, value: [] }) },
+        { id: 'research-claims-0', handler: () => ({ ok: true, value: [{ text: 'Old.' }] }) },
+        { id: 'research-answers-0', handler: () => ({ ok: true, value: ANSWERS }) },
+        {
+          id: 'save-dossier',
+          handler: () => ({ total: 1, unverified: 1, quarantined: 0, blocking: 1 }),
+        },
+        { id: 'open-gate', handler: () => undefined },
+      ],
+    })
+
+    // No gather, corpus load, new pass, grounding or save: only the wait.
+    const ids = vi.mocked(ctx.step.run).mock.calls.map(([id]) => id)
+    expect(ids).toEqual(['load-case'])
+    expect(ctx.step.waitForEvent).toHaveBeenCalledWith(
+      'await-dossier-gate',
+      expect.objectContaining({ event: 'gate/dossier.approved', timeout: '30d' }),
+    )
+    expect(saveDossier).not.toHaveBeenCalled()
+    expect(recordRepairs).not.toHaveBeenCalled()
   })
 
   it('opens the gate with the corpus line when a claim is unverified', async () => {
