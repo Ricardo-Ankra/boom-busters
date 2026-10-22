@@ -36,6 +36,12 @@ describe('Claude prices (decision 288 follow-up)', () => {
     })
   })
 
+  it.each(PUBLISHED)('prices a cache write on %s at 1.25 times its input', (id, input) => {
+    // The five-minute cache the adapter asks for; the ledger counted these as $0 before.
+    const resolved = resolveLlmModel('anthropic', id, undefined)
+    expect(resolved?.model.cacheWritePerMTok).toBe(input * 1.25)
+  })
+
   it('keeps Opus 5 the default and Haiku the cheapest model a key check spends on', () => {
     // The router's cross-provider fallback and a provider switch both take the
     // first model of the top tier; Verify sends one token to the last model.

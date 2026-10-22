@@ -50,6 +50,11 @@ export interface TokenUsage {
   outputTokens: number
   /** Input tokens served from the provider's prompt cache, where reported. */
   cachedInputTokens?: number
+  /**
+   * Input tokens written to the prompt cache, where reported. Counted in
+   * `inputTokens` like cache reads, and billed above the fresh-input rate.
+   */
+  cacheWriteInputTokens?: number
 }
 
 export interface LLMResult {
@@ -82,6 +87,8 @@ export interface KnownModel {
   outputPerMTok: number
   /** USD per million tokens read from the prompt cache, where offered. */
   cachedInputPerMTok?: number
+  /** USD per million tokens written to the prompt cache, where it costs more than input. */
+  cacheWritePerMTok?: number
   /** Whether `useBatch` does anything for this model. */
   supportsBatch: boolean
 }
@@ -156,12 +163,15 @@ export function nextTierDown(provider: LLMProvider, modelId: string): KnownModel
 /** USD for a completed call, from the model's own price row. */
 export function priceOf(model: KnownModel, usage: TokenUsage): number {
   const cached = usage.cachedInputTokens ?? 0
-  const freshInput = Math.max(0, usage.inputTokens - cached)
+  const written = usage.cacheWriteInputTokens ?? 0
+  const freshInput = Math.max(0, usage.inputTokens - cached - written)
   const cachedRate = model.cachedInputPerMTok ?? model.inputPerMTok
+  const writeRate = model.cacheWritePerMTok ?? model.inputPerMTok
 
   const usd =
     (freshInput / 1_000_000) * model.inputPerMTok +
     (cached / 1_000_000) * cachedRate +
+    (written / 1_000_000) * writeRate +
     (usage.outputTokens / 1_000_000) * model.outputPerMTok
 
   // The ledger column is numeric(12,4); rounding here keeps the estimate and

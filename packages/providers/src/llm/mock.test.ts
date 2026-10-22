@@ -116,6 +116,20 @@ describe('model helpers', () => {
     expect(warm).toBe(1.5)
   })
 
+  it('charges cache writes at the write rate, or the input rate when the model has none', () => {
+    const model = { ...adapter.models[0]!, inputPerMTok: 4, cachedInputPerMTok: 0.4 }
+    const usage = {
+      inputTokens: 3_000_000,
+      outputTokens: 0,
+      cachedInputTokens: 1_000_000,
+      cacheWriteInputTokens: 1_000_000,
+    }
+
+    // 1M fresh at 4, 1M read at 0.4, 1M written at 5.
+    expect(priceOf({ ...model, cacheWritePerMTok: 5 }, usage)).toBe(9.4)
+    expect(priceOf(model, usage)).toBe(8.4)
+  })
+
   it('rounds to the ledger column scale', () => {
     const model = { ...adapter.models[0]!, inputPerMTok: 1 / 3 }
     expect(priceOf(model, { inputTokens: 1_000_000, outputTokens: 0 })).toBe(0.3333)
