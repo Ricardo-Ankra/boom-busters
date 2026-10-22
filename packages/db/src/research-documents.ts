@@ -84,18 +84,59 @@ export async function linkDossierDocuments(
   projectId: string,
   links: readonly { documentId: string; rank: number | null; tier: number }[],
 ): Promise<void> {
-  await db.delete(dossierDocuments).where(eq(dossierDocuments.projectId, projectId))
+  // One transaction, so a failed insert cannot leave the project with no corpus.
+  await db.transaction(async (tx) => {
+    await tx.delete(dossierDocuments).where(eq(dossierDocuments.projectId, projectId))
 
-  if (links.length === 0) return
+    if (links.length === 0) return
 
-  await db.insert(dossierDocuments).values(
-    links.map((link) => ({
-      projectId,
-      documentId: link.documentId,
-      rank: link.rank,
-      tier: link.tier,
-    })),
-  )
+    await tx.insert(dossierDocuments).values(
+      links.map((link) => ({
+        projectId,
+        documentId: link.documentId,
+        rank: link.rank,
+        tier: link.tier,
+      })),
+    )
+  })
+}
+
+/** A corpus row without its text: what the review screen and the reviser's count need. */
+export interface DossierDocumentSummary {
+  id: string
+  url: string
+  title: string | null
+  kind: ResearchDocumentRow['kind']
+  rank: number | null
+  tier: number
+  failure: string | null
+  archivedUrl: string | null
+}
+
+/**
+ * A project's corpus in the order of `listDossierDocuments`, leaving out the
+ * text: a corpus can run to megabytes, and the review page renders on every
+ * request.
+ */
+export async function listDossierDocumentSummaries(
+  db: Database,
+  projectId: string,
+): Promise<DossierDocumentSummary[]> {
+  return db
+    .select({
+      id: researchDocuments.id,
+      url: researchDocuments.url,
+      title: researchDocuments.title,
+      kind: researchDocuments.kind,
+      rank: dossierDocuments.rank,
+      tier: dossierDocuments.tier,
+      failure: researchDocuments.failure,
+      archivedUrl: researchDocuments.archivedUrl,
+    })
+    .from(dossierDocuments)
+    .innerJoin(researchDocuments, eq(researchDocuments.id, dossierDocuments.documentId))
+    .where(eq(dossierDocuments.projectId, projectId))
+    .orderBy(sql`${dossierDocuments.rank} asc nulls last`, asc(dossierDocuments.createdAt))
 }
 
 /** A project's corpus, read documents first in rank order, unread ones last. */

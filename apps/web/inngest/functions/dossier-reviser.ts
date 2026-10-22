@@ -3,7 +3,7 @@ import {
   getCase,
   getDossier,
   getProject,
-  listDossierDocuments,
+  listDossierDocumentSummaries,
   saveDossier,
 } from '@boom-busters/db'
 import { mockProvidersEnabled, renderDossierMarkdown } from '@boom-busters/providers'
@@ -96,7 +96,7 @@ export const dossierReviser = inngest.createFunction(
 
       const round = await bumpDossierRevisions(db, projectId)
       const dossier = await getDossier(db, projectId)
-      const linked = await listDossierDocuments(db, projectId)
+      const linked = await listDossierDocumentSummaries(db, projectId)
 
       return {
         round,

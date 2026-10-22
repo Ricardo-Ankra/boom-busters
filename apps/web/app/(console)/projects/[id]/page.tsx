@@ -1,6 +1,6 @@
 import {
   getDossier,
-  listDossierDocuments,
+  listDossierDocumentSummaries,
   getLatestScript,
   getProject,
   getSettings,
@@ -182,7 +182,7 @@ export default async function ProjectPage({
     listActivity(db, { projectId: id, limit: 50 }),
     listOpenBudgetGates(db),
     wants('dossier') ? getDossier(db, id) : Promise.resolve(undefined),
-    wants('dossier') ? listDossierDocuments(db, id) : Promise.resolve([]),
+    wants('dossier') ? listDossierDocumentSummaries(db, id) : Promise.resolve([]),
     wants('script') ? getLatestScript(db, id) : Promise.resolve(undefined),
     projectDeletionSummary(db, id),
     wants('voice') ? voiceReviewModel(db, id) : Promise.resolve(emptyVoiceModel()),

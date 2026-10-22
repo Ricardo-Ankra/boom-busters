@@ -6,6 +6,7 @@ import {
   findResearchDocumentsByUrl,
   getResearchDocuments,
   linkDossierDocuments,
+  listDossierDocumentSummaries,
   listDossierDocuments,
   normaliseDocumentUrl,
   upsertResearchDocument,
@@ -102,6 +103,55 @@ suite('research documents', () => {
 
     await linkDossierDocuments(db, projectId, [{ documentId: b.id, rank: 1, tier: 2 }])
     expect((await listDossierDocuments(db, projectId)).map((r) => r.id)).toEqual([b.id])
+  })
+
+  it('lists a corpus without its text, in the same order', async () => {
+    const a = await upsertResearchDocument(db, {
+      ...doc({ url: 'https://example.com/a', text: 'a long body', tier: 1 }),
+      title: 'A',
+      archivedUrl: 'https://web.archive.org/web/2019/https://example.com/a',
+    })
+    const b = await upsertResearchDocument(db, {
+      ...doc({ url: 'https://example.com/b' }),
+      failure: 'could not fetch: returned 404',
+    })
+    await linkDossierDocuments(db, projectId, [
+      { documentId: b.id, rank: null, tier: 2 },
+      { documentId: a.id, rank: 1, tier: 1 },
+    ])
+    expect(await listDossierDocumentSummaries(db, projectId)).toEqual([
+      {
+        id: a.id,
+        url: 'https://example.com/a',
+        title: 'A',
+        kind: 'reporting',
+        rank: 1,
+        tier: 1,
+        failure: null,
+        archivedUrl: 'https://web.archive.org/web/2019/https://example.com/a',
+      },
+      {
+        id: b.id,
+        url: 'https://example.com/b',
+        title: null,
+        kind: 'reporting',
+        rank: null,
+        tier: 2,
+        failure: 'could not fetch: returned 404',
+        archivedUrl: null,
+      },
+    ])
+  })
+
+  it('keeps the old corpus when the new links cannot be written', async () => {
+    const a = await upsertResearchDocument(db, doc({ url: 'https://example.com/a' }))
+    await linkDossierDocuments(db, projectId, [{ documentId: a.id, rank: 1, tier: 2 }])
+    await expect(
+      linkDossierDocuments(db, projectId, [
+        { documentId: '01ZZZZZZZZZZZZZZZZZZZZZZZZ', rank: 1, tier: 2 },
+      ]),
+    ).rejects.toThrow()
+    expect((await listDossierDocuments(db, projectId)).map((r) => r.id)).toEqual([a.id])
   })
 
   it('normalises urls', () => {
