@@ -12,7 +12,13 @@ import {
 import { mockProvidersEnabled } from '@boom-busters/providers'
 import type { AnswerComplete } from '@/lib/answer'
 import { completeForProject } from '@/lib/answer-call'
-import { BACKTEST_CASES, renderReport, scoreRuns, type CaseRun } from '@/lib/dossier-backtest'
+import {
+  BACKTEST_CASES,
+  renderReport,
+  scoreRuns,
+  timedSteps,
+  type CaseRun,
+} from '@/lib/dossier-backtest'
 import { db } from '@/lib/db'
 import { optionalText, readRawFlags } from '@/lib/live-set-args'
 import { liveResearchSources } from '@/lib/research-sources'
@@ -115,8 +121,11 @@ async function main(): Promise<void> {
         cap,
       )
       console.log(`${title}: researching ${loaded.documents.length} documents`)
+      // Each pass is one step in production, so its time here is the time
+      // that step would take against the 300 s limit.
+      const timed = timedSteps(inlineSteps)
       const result = await researchDossier(
-        inlineSteps,
+        timed.steps,
         {
           projectId: project.id,
           caseContext: { title, category, angle: null, demandNotes: null },
@@ -154,6 +163,7 @@ async function main(): Promise<void> {
         xbrl,
         costUsd: ledger.costUsd,
         model: ledger.models.join(', ') || 'none recorded',
+        passDurationsMs: timed.durations,
       })
       console.log(`${title}: done, $${ledger.costUsd.toFixed(2)}`)
     } catch (error) {

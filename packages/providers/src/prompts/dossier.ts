@@ -49,7 +49,7 @@ import type { LLMTaskRequest, Msg } from '../llm/types'
  * is not a source; what it remembers but cannot quote is an open question.
  *
  * Separate passes rather than one, for a reason that survives contact with
- * real output: asking for a brief, scenes and sixty quoted claims in a single
+ * real output: asking for a brief, scenes and forty quoted claims in a single
  * completion reliably produces a good brief and a lazy claims list. Each pass
  * also becomes its own `step.run()`, so a failure in claims extraction does
  * not re-run and re-charge the brief.
@@ -223,7 +223,7 @@ type Numbered = { item: unknown; at: number }
 interface ListRules {
   /** The cap. */
   max: number
-  /** The list in words, for a cap's notice ("Kept the first 60 claims."). */
+  /** The list in words, for a cap's notice ("Kept the first 40 claims."). */
   name: string
   /** One item in words, numbered from 1 as the model wrote the list ("claim 37"). */
   label: (item: unknown, at: number) => string
@@ -616,7 +616,7 @@ brief and the scenes tell you which facts the story rests on.
 ${CLAIM_RULES}
 
 Limits (the app checks them): 1 to ${DOSSIER_CLAIMS_PER_PASS} claims; ${CLAIM_LIMITS}.`,
-    16_000,
+    12_000,
   )
 }
 
@@ -689,7 +689,7 @@ ${DOSSIER_ANSWER_CLAIMS_MAX} claims; ${CLAIM_LIMITS}.
 
 The open questions:
 ${questions}`,
-    12_000,
+    10_000,
   )
 }
 

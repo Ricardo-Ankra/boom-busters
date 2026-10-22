@@ -1,5 +1,6 @@
 import { annualXbrlFacts, type AnnualFact } from '@boom-busters/providers'
 import type { DocumentKind, GroundedClaim, GroundedResearch, Series } from '@boom-busters/schemas'
+import type { Steps } from '@/inngest/lib/steps'
 
 /**
  * The dossier back-test's pure half (spec section 9): the five closed cases,
@@ -22,7 +23,42 @@ export const BACKTEST_TARGETS = {
   figureMatch: 0.8,
   toldAlready: 0.9,
   costUsd: 6,
+  /**
+   * A pass is one Inngest step, and a step has 300 s (the function limit).
+   * 200 s leaves room for a slow day and the retry's own overhead.
+   */
+  maxPassMs: 200_000,
 } as const
+
+export const RESEARCH_PASSES = ['brief', 'scenes', 'claims', 'answers'] as const
+export type ResearchPass = (typeof RESEARCH_PASSES)[number]
+export type PassDurations = Record<ResearchPass, number>
+
+const PASS_STEP = /^research-(brief|scenes|claims|answers)-\d+$/
+
+/**
+ * `Steps` that time each research pass's step into `durations`, wall clock,
+ * model call and parse together. A pass that never ran (no open questions,
+ * so no answers pass) stays at 0.
+ */
+export function timedSteps(inner: Steps): { steps: Steps; durations: PassDurations } {
+  const durations: PassDurations = { brief: 0, scenes: 0, claims: 0, answers: 0 }
+  return {
+    durations,
+    steps: {
+      run: async (id, fn) => {
+        const pass = PASS_STEP.exec(id)?.[1] as ResearchPass | undefined
+        if (pass === undefined) return inner.run(id, fn)
+        const started = performance.now()
+        try {
+          return await inner.run(id, fn)
+        } finally {
+          durations[pass] += performance.now() - started
+        }
+      },
+    },
+  }
+}
 
 export interface CaseRun {
   title: string
@@ -46,6 +82,8 @@ export interface CaseRun {
   xbrl: unknown | null
   costUsd: number
   model: string
+  /** Wall-clock milliseconds per research pass. */
+  passDurationsMs: PassDurations
 }
 
 export interface FigureCounts {
@@ -231,7 +269,12 @@ function ratesOf(t: Tally): Rates {
 }
 
 export interface Report {
-  cases: (Rates & { title: string; costUsd: number; model: string })[]
+  cases: (Rates & {
+    title: string
+    costUsd: number
+    model: string
+    passDurationsMs: PassDurations
+  })[]
   overall: Rates & { costUsd: number; maxCostUsd: number }
   transcriptAvailability: Rate
   models: string[]
@@ -239,6 +282,7 @@ export interface Report {
 }
 
 const percent = (rate: number): string => `${(rate * 100).toFixed(1)}%`
+const seconds = (ms: number): string => `${(ms / 1000).toFixed(1)} s`
 
 export function scoreRuns(runs: readonly CaseRun[], skipped: readonly string[] = []): Report {
   const tallies = runs.map(tally)
@@ -264,6 +308,14 @@ export function scoreRuns(runs: readonly CaseRun[], skipped: readonly string[] =
         `costUsd: ${run.title} cost $${run.costUsd.toFixed(2)}, over the $${BACKTEST_TARGETS.costUsd.toFixed(2)} target`,
       )
     }
+    for (const pass of RESEARCH_PASSES) {
+      const ms = run.passDurationsMs[pass]
+      if (ms > BACKTEST_TARGETS.maxPassMs) {
+        failing.push(
+          `maxPassMs: ${run.title} ${pass} pass took ${seconds(ms)}, over the ${seconds(BACKTEST_TARGETS.maxPassMs)} limit`,
+        )
+      }
+    }
   }
 
   // A case that was never measured cannot count as passing: a report over
@@ -277,6 +329,7 @@ export function scoreRuns(runs: readonly CaseRun[], skipped: readonly string[] =
       title: run.title,
       costUsd: run.costUsd,
       model: run.model,
+      passDurationsMs: run.passDurationsMs,
     })),
     overall,
     transcriptAvailability: overallRates.transcriptAvailability,
@@ -354,6 +407,17 @@ export function renderReport(report: Report, date: string): string {
     '| --- | --- | --- |',
     ...report.cases.map((row) => `| ${row.title} | $${row.costUsd.toFixed(2)} | ${row.model} |`),
     `| Overall | $${report.overall.costUsd.toFixed(2)} mean, $${report.overall.maxCostUsd.toFixed(2)} highest | |`,
+    '',
+    '## Pass durations',
+    '',
+    `Target: every pass under ${seconds(t.maxPassMs)}; a step has 300 s. A pass that did not run shows 0.0 s.`,
+    '',
+    '| Case | Brief | Scenes | Claims | Answers |',
+    '| --- | --- | --- | --- | --- |',
+    ...report.cases.map(
+      (row) =>
+        `| ${row.title} | ${RESEARCH_PASSES.map((pass) => seconds(row.passDurationsMs[pass])).join(' | ')} |`,
+    ),
     '',
     '## Verdict',
     '',

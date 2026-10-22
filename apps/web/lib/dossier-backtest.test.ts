@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import type { GroundedClaim, GroundedResearch } from '@boom-busters/schemas'
 import {
   BACKTEST_CASES,
@@ -6,6 +6,7 @@ import {
   figureMatches,
   renderReport,
   scoreRuns,
+  timedSteps,
   type CaseRun,
 } from './dossier-backtest'
 
@@ -93,6 +94,7 @@ const run = (over: Partial<CaseRun> = {}): CaseRun => ({
   xbrl: null,
   costUsd: 3,
   model: 'claude-opus-5',
+  passDurationsMs: { brief: 40_000, scenes: 60_000, claims: 150_000, answers: 90_000 },
   ...over,
 })
 
@@ -106,6 +108,40 @@ describe('the back-test constants', () => {
       'SVB Financial',
     ])
     expect(BACKTEST_TARGETS.costUsd).toBe(6)
+    expect(BACKTEST_TARGETS.maxPassMs).toBe(200_000)
+  })
+})
+
+describe('timedSteps', () => {
+  it('times each research pass and passes every other step through untimed', async () => {
+    let clock = 0
+    const now = vi.spyOn(performance, 'now').mockImplementation(() => clock)
+    const ran: string[] = []
+    const { steps, durations } = timedSteps({
+      run: async (id, fn) => {
+        ran.push(id)
+        return fn()
+      },
+    })
+
+    const value = await steps.run('research-claims-2', async () => {
+      clock += 1_500
+      return 'claims'
+    })
+    await steps.run('research-ground-2', async () => {
+      clock += 9_000
+    })
+    await expect(
+      steps.run('research-brief-0', async () => {
+        clock += 250
+        throw new Error('model down')
+      }),
+    ).rejects.toThrow('model down')
+    now.mockRestore()
+
+    expect(value).toBe('claims')
+    expect(ran).toEqual(['research-claims-2', 'research-ground-2', 'research-brief-0'])
+    expect(durations).toEqual({ brief: 250, scenes: 0, claims: 1_500, answers: 0 })
   })
 })
 
@@ -256,6 +292,14 @@ describe('scoreRuns', () => {
 })
 
 describe('incomplete runs', () => {
+  it('fails a pass over 200 s, naming the case and the pass', () => {
+    const slow = { brief: 40_000, scenes: 60_000, claims: 212_300, answers: 200_000 }
+    const report = scoreRuns([run({ title: 'FTX', passDurationsMs: slow }), run()])
+    expect(report.verdict.failing).toEqual([
+      'maxPassMs: FTX claims pass took 212.3 s, over the 200.0 s limit',
+    ])
+  })
+
   it('fails when a case was skipped, naming it, and says Incomplete', () => {
     const report = scoreRuns([run()], ['FTX', 'Theranos'])
     expect(report.verdict.pass).toBe(false)
@@ -317,6 +361,22 @@ describe('renderReport', () => {
     expect(md).toContain('claude-opus-5')
     expect(md.indexOf('## Verdict')).toBeGreaterThan(md.indexOf('## Cost'))
     expect(md).toMatch(/Failing[\s\S]*costUsd/)
+  })
+
+  it('writes a pass-duration row per case', () => {
+    const md = renderReport(
+      scoreRuns([
+        run({
+          title: 'Wirecard',
+          passDurationsMs: { brief: 41_250, scenes: 63_000, claims: 171_940, answers: 0 },
+        }),
+      ]),
+      '2026-10-30',
+    )
+    expect(md).toContain('## Pass durations')
+    expect(md).toContain('| Case | Brief | Scenes | Claims | Answers |')
+    expect(md).toContain('| Wirecard | 41.3 s | 63.0 s | 171.9 s | 0.0 s |')
+    expect(md.indexOf('## Pass durations')).toBeLessThan(md.indexOf('## Verdict'))
   })
 
   it('says the rollout may go on when nothing fails', () => {

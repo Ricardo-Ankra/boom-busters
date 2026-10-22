@@ -59,7 +59,8 @@ export const DOSSIER_QUOTE_MAX = 300
 export const DOSSIER_QUOTE_MIN_FOLDED = 20
 export const DOSSIER_SUPPORTS_MAX = 3
 export const DOSSIER_SERIES_POINTS_MAX = 24
-export const DOSSIER_CLAIMS_PER_PASS = 60
+/** Forty, with a 12,000-token answer: a claims pass must finish well inside the 300 s step limit. */
+export const DOSSIER_CLAIMS_PER_PASS = 40
 export const DOSSIER_SCENES_MAX = 60
 export const DOSSIER_CAST_MAX = 30
 export const DOSSIER_TOLD_ALREADY_MAX = 30

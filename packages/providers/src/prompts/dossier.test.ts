@@ -104,8 +104,8 @@ describe('the research prompts', () => {
     expect(requests().map((request) => request.maxTokens)).toEqual([
       outputBudget(6_000),
       outputBudget(10_000),
-      outputBudget(16_000),
       outputBudget(12_000),
+      outputBudget(10_000),
     ])
   })
 
