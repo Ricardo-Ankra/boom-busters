@@ -18,7 +18,9 @@ const responseSchema = z.object({
   results: z.array(
     z.object({
       caseName: z.string(),
-      absolute_url: z.string(),
+      // Optional because some results come back without one: those are not
+      // dockets anything can link to, so they are dropped, not a failed search.
+      absolute_url: z.string().optional(),
       dateFiled: z.string().nullish(),
     }),
   ),
@@ -47,12 +49,18 @@ export function liveCourtListener(client: PoliteClient, token: string): CourtLis
         },
       )
       return data.results
-        .map((r) => ({
-          url: `${ORIGIN}${r.absolute_url}`,
-          title: r.caseName,
-          source: 'courtlistener' as const,
-          datedAt: r.dateFiled ? r.dateFiled.slice(0, 10) : null,
-        }))
+        .flatMap((r) =>
+          r.absolute_url === undefined
+            ? []
+            : [
+                {
+                  url: `${ORIGIN}${r.absolute_url}`,
+                  title: r.caseName,
+                  source: 'courtlistener' as const,
+                  datedAt: r.dateFiled ? r.dateFiled.slice(0, 10) : null,
+                },
+              ],
+        )
         .filter((d) => d.datedAt === null || d.datedAt < before)
     },
   }
