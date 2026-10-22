@@ -1,0 +1,3 @@
+# Case reports
+
+This folder holds the reports the dossier back-test writes, one file per run, named `dossier-backtest-<YYYY-MM-DD>.md`. Each report scores the real gather and the four research passes on closed cases (quote-found, URL resolution, figure match, told-already, transcript availability and cost per dossier), then states whether every measured rate met its target. A rate with nothing to measure is reported as "not measured" and does not fail the run. The reports are written by `pnpm --filter @boom-busters/web live:dossier-backtest -- --cap <usd>`, which spends real money and needs the owner's go-ahead.

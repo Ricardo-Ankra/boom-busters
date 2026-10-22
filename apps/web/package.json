@@ -11,6 +11,7 @@
     "test": "vitest run",
     "live:set": "tsx --env-file=../../.env.local scripts/live-set-test.ts",
     "live:plan": "tsx --env-file=../../.env.local scripts/live-plan-test.ts",
+    "live:dossier-backtest": "tsx --import ./scripts/stub-server-only.mjs --env-file=../../.env.local scripts/live-dossier-backtest.ts",
     "live:exemplars": "tsx --env-file=../../.env.local scripts/translate-exemplars.ts",
     "live:compare": "tsx scripts/live-compare.ts",
     "exemplar:check": "tsx scripts/check-exemplar.ts"

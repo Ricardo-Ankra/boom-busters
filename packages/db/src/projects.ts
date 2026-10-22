@@ -1,7 +1,7 @@
 import { and, desc, eq, notInArray, sql } from 'drizzle-orm'
 import type { DirectorsBook, VisualsJob, VisualsJobOp } from '@boom-busters/schemas'
 import type { Database } from './client'
-import { cases, dossiers, projects, scripts } from './schema'
+import { cases, costLedger, dossiers, projects, scripts } from './schema'
 import type { ProjectRow, ProjectStage, StageStatus } from './schema'
 
 /**
@@ -440,4 +440,31 @@ export async function createProjectFromCase(
     .returning()
 
   return row!
+}
+
+/**
+ * What a project's ledger rows say it cost and which model answered. The
+ * back-test reads this before deleting its throwaway project, because the
+ * rows outlive the project but lose their link to it.
+ */
+export async function projectLedgerSummary(
+  db: Database,
+  projectId: string,
+): Promise<{ costUsd: number; models: string[] }> {
+  const rows = await db
+    .select({
+      estimatedUsd: costLedger.estimatedUsd,
+      actualUsd: costLedger.actualUsd,
+      meta: costLedger.meta,
+    })
+    .from(costLedger)
+    .where(eq(costLedger.projectId, projectId))
+  const models = new Set<string>()
+  let costUsd = 0
+  for (const row of rows) {
+    costUsd += Number(row.actualUsd ?? row.estimatedUsd)
+    const model = row.meta.model
+    if (typeof model === 'string') models.add(model)
+  }
+  return { costUsd, models: [...models] }
 }
