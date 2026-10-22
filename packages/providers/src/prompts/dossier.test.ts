@@ -1,19 +1,29 @@
-import { ValidationError } from '@boom-busters/schemas'
+import { DOSSIER_CLAIMS_PER_PASS, DOSSIER_QUOTE_MAX, ValidationError } from '@boom-busters/schemas'
+import type {
+  CaseBrief,
+  GroundedClaim,
+  GroundedRef,
+  GroundedResearch,
+  Scene,
+} from '@boom-busters/schemas'
 import { describe, expect, it } from 'vitest'
+import { outputBudget } from '../llm/types'
+import { mockCorpusDocuments } from '../research/mock-corpus'
 import {
   buildAnswersRequest,
   buildBriefRequest,
   buildClaimsRequest,
-  buildTimelineRequest,
+  buildScenesRequest,
   mockAnswers,
   mockBrief,
   mockClaims,
-  mockTimeline,
+  mockScenes,
   parseAnswers,
   parseBrief,
   parseClaims,
-  parseTimeline,
+  parseScenes,
   renderDossierMarkdown,
+  withNote,
 } from './dossier'
 import type { Note, Repair } from './repair'
 
@@ -24,209 +34,179 @@ const caseContext = {
   demandNotes: null,
 }
 
-const brief = {
+const corpus = '[D1] reporting · x · 2020 · https://x\nText'
+
+const brief: CaseBrief = {
   summary: 'x'.repeat(60),
   turningPoint: 'The moment the mark-to-market accounting was approved.',
-  principals: [{ name: 'Jeffrey Skilling', role: 'CEO' }],
+  cast: [
+    {
+      name: 'Jeffrey Skilling',
+      role: 'CEO',
+      wanted: 'To make Enron look like a technology company.',
+      scene: null,
+    },
+  ],
+  toldAlready: [],
   openQuestions: ['What did the board know in 1999?'],
 }
 
+const scenes: Scene[] = [
+  {
+    when: 'August 2001',
+    who: 'Jeffrey Skilling',
+    what: 'Resigned as chief executive after six months.',
+    why: 'The first public crack in the story.',
+    doc: 1,
+    quote: 'Skilling resigned for personal reasons',
+  },
+]
+
+const requests = () => [
+  buildBriefRequest(caseContext, corpus),
+  buildScenesRequest(caseContext, corpus, brief),
+  buildClaimsRequest(caseContext, corpus, brief, scenes),
+  buildAnswersRequest(caseContext, corpus, brief, scenes),
+]
+
+/** The prompt with its line breaks folded, so a pinned sentence can wrap in the source. */
+const flat = (request: { system: string }) => request.system.replace(/\s+/g, ' ')
+
 describe('the research prompts', () => {
-  it('all route at the research task', () => {
-    expect(buildBriefRequest(caseContext).task).toBe('research')
-    expect(buildTimelineRequest(caseContext, brief).task).toBe('research')
-    expect(buildClaimsRequest(caseContext, brief, []).task).toBe('research')
+  it('puts the corpus in the first user message and marks it cacheable', () => {
+    const request = buildClaimsRequest(caseContext, corpus, brief, scenes)
+    expect(request.messages[0]?.content).toContain('[D1] reporting')
+    expect(request.cacheablePrefixMessages).toBe(1)
   })
 
-  it('forbids inventing sources in every pass', () => {
-    // The channel's liability lives in this instruction.
-    for (const request of [
-      buildBriefRequest(caseContext),
-      buildTimelineRequest(caseContext, brief),
-      buildClaimsRequest(caseContext, brief, []),
-    ]) {
-      expect(request.system).toMatch(/Never invent a URL/)
-      expect(request.system).toMatch(/Never state as fact/)
+  it('opens every pass with the same header and corpus, so the prefix is one cache entry', () => {
+    const first =
+      'Case: Enron\nCategory: collapse\nAngle to pursue: The auditors, not the traders.' +
+      `\n\nDocuments, numbered. Cite them by number.\n\n${corpus}`
+    for (const request of requests()) {
+      expect(request.task).toBe('research')
+      expect(request.messages[0]).toEqual({ role: 'user', content: first })
+      expect(request.cacheablePrefixMessages).toBe(1)
     }
   })
 
-  it('carries the angle into the research', () => {
-    expect(buildBriefRequest(caseContext).messages[0]?.content).toContain('auditors')
+  it('holds every pass to the documents in front of it', () => {
+    for (const request of requests()) {
+      expect(flat(request)).toContain(
+        'Write only what the documents in front of you say. A fact you remember but cannot ' +
+          'quote from a document is an open question, not a claim.',
+      )
+    }
   })
 
-  it('feeds each pass the output of the one before', () => {
-    expect(JSON.stringify(buildTimelineRequest(caseContext, brief).messages)).toContain(
-      'Jeffrey Skilling',
+  it('gives each pass its output budget', () => {
+    expect(requests().map((request) => request.maxTokens)).toEqual([
+      outputBudget(6_000),
+      outputBudget(10_000),
+      outputBudget(16_000),
+      outputBudget(12_000),
+    ])
+  })
+
+  it('feeds the later passes the brief and the scenes', () => {
+    const scenesRequest = buildScenesRequest(caseContext, corpus, brief)
+    expect(JSON.stringify(scenesRequest.messages.slice(1))).toContain('Jeffrey Skilling')
+    for (const request of requests().slice(2)) {
+      expect(JSON.stringify(request.messages.slice(1))).toContain(
+        'Skilling resigned for personal reasons',
+      )
+    }
+  })
+
+  it('asks the brief for what each person wanted and for told-already beats from video only', () => {
+    const system = flat(buildBriefRequest(caseContext, corpus))
+    expect(system).toContain('"wanted"')
+    expect(system).toContain('"toldAlready"')
+    expect(system).toMatch(/ONLY from documents of kind `video`/)
+  })
+
+  it('asks the scenes pass for moments in the story, not a legal chronology', () => {
+    const system = flat(buildScenesRequest(caseContext, corpus, brief))
+    expect(system).toMatch(/what was said or done/)
+    expect(system).toMatch(/why it matters to the arc/)
+    expect(system).toMatch(/not a legal chronology/)
+  })
+
+  it('pins the quote, legal status and figure rules in the claims and answers passes', () => {
+    for (const request of requests().slice(2)) {
+      const system = flat(request)
+      expect(system).toContain(
+        '`quote` is the shortest span of the document that proves the claim, copied exactly, ' +
+          'usually under 120 characters and never over 300',
+      )
+      expect(system).toContain(
+        '`legal.status` is `ruled` only when a court or regulator document in the list says ' +
+          'so; `alleged` when a filing, complaint or report makes the allegation; `none` otherwise',
+      )
+      expect(system).toContain(
+        'a figure claim carries `series` with `asWritten` copied as the document prints the number',
+      )
+    }
+  })
+
+  it('asks the claims pass for at most a pass worth of claims', () => {
+    expect(flat(buildClaimsRequest(caseContext, corpus, brief, scenes))).toContain(
+      `Limits (the app checks them): 1 to ${DOSSIER_CLAIMS_PER_PASS} claims;`,
     )
-    expect(
-      JSON.stringify(
-        buildClaimsRequest(caseContext, brief, [{ when: '2001', what: 'Bankruptcy filed.' }])
-          .messages,
-      ),
-    ).toContain('Bankruptcy filed')
   })
 
-  it('marks the repeated case header as cacheable on the later passes', () => {
-    expect(buildTimelineRequest(caseContext, brief).cacheablePrefixMessages).toBe(1)
-    expect(buildClaimsRequest(caseContext, brief, []).cacheablePrefixMessages).toBe(1)
-  })
-
-  it('tells the model not to guess adjudication', () => {
-    // "alleged" in the script hangs off this field.
-    expect(buildClaimsRequest(caseContext, brief, []).system).toMatch(/do not guess it/)
-  })
-
-  /**
-   * Decision 200. The old rule — "omit sourceUrl and mark the claim
-   * unverified" — coupled confidence to link-availability, and a model
-   * researching from memory rarely has the exact article link. It knew the
-   * FT reported something, typed it major_outlet, omitted the URL, and the
-   * schema's demotion then blocked the gate with a claim that showed no
-   * source at all. Confidence describes the record; the URL is the best
-   * real starting point, publication-level when the article is not to hand.
-   */
-  it('decouples confidence from having the exact link, and asks for a URL on every claim', () => {
-    const system = buildClaimsRequest(caseContext, brief, []).system
-    expect(system).toMatch(/Confidence is about the record, not about links/)
-    expect(system).toMatch(/Do NOT downgrade a claim to unverified/)
-    expect(system).toMatch(/EVERY claim carries the best real sourceUrl/)
-    // And the house rules name the fallback level and ban search links.
-    expect(system).toMatch(/publication's or regulator's own site or topic page/)
-    expect(system).toMatch(/never give a search-engine link/)
+  it('puts the open questions to the answers pass, verbatim and numbered', () => {
+    // Numbered because the number is the join key (decision 203).
+    const request = buildAnswersRequest(caseContext, corpus, brief, scenes)
+    expect(request.messages.at(-1)?.content).toContain('1. What did the board know in 1999?')
+    expect(request.system).toMatch(/`index` is the question's number/)
+    expect(request.system).toMatch(/set `answer` to null/)
   })
 })
 
-describe('parseClaims', () => {
-  const claim = {
-    text: 'Enron filed for bankruptcy in December 2001.',
-    sourceUrl: 'https://example.com/filing',
-    sourceType: 'court',
-    confidence: 'sourced',
-    adjudicated: true,
+describe('withNote', () => {
+  it('withNote appends to the last user message only', () => {
+    const request = buildClaimsRequest(caseContext, corpus, brief, scenes)
+    const noted = withNote(request, 'More on the auditors.')
+
+    expect(noted.messages.at(-1)?.content).toBe(
+      `${request.messages.at(-1)?.content}\n\nThe human asks for changes: More on the auditors.`,
+    )
+    // The cached prefix is untouched, so a revision still reads the corpus from cache.
+    expect(noted.messages.slice(0, -1)).toEqual(request.messages.slice(0, -1))
+    expect(request.messages.at(-1)?.content).not.toContain('More on the auditors')
+  })
+
+  it('appends to the corpus message when the pass has only that one', () => {
+    const request = buildBriefRequest(caseContext, corpus)
+    const noted = withNote(request, 'Lead with the auditors.')
+    expect(noted.messages).toHaveLength(1)
+    expect(
+      noted.messages[0]?.content.endsWith('The human asks for changes: Lead with the auditors.'),
+    ).toBe(true)
+  })
+})
+
+const collect = () => {
+  const notes: Repair[] = []
+  const note: Note = (repair) => {
+    notes.push(repair)
   }
+  return { notes, note }
+}
 
-  it('reads a well-formed claim', () => {
-    expect(parseClaims(JSON.stringify({ claims: [claim] }))).toHaveLength(1)
-  })
+const CLAIM = {
+  text: 'Enron filed for bankruptcy in December 2001.',
+  supports: [{ doc: 1, quote: 'Enron filed for Chapter 11 protection' }],
+}
 
-  it('downgrades a "sourced" claim that carries no source', () => {
-    // The single most important rule in the file: "sourced" without a source
-    // is the exact shape of an unchecked assertion reaching a script. It is
-    // enforced by demotion rather than rejection, so one bad field cannot
-    // throw away — and re-charge — a whole research pass.
-    const { sourceUrl, ...unsourced } = claim
-    void sourceUrl
-
-    const [parsed] = parseClaims(JSON.stringify({ claims: [unsourced] }))
-
-    expect(parsed?.confidence).toBe('unverified')
-    expect(parsed?.adjudicated).toBe(false)
-  })
-
-  it('folds a variant sourceType label onto the enum instead of failing the pass', () => {
-    // A live run died over three off-enum labels in nineteen claims — the
-    // same demotion-not-rejection rule applies: recognisable variants keep
-    // their strength, anything else lands honestly in "other".
-    const parse = (sourceType: string) =>
-      parseClaims(JSON.stringify({ claims: [{ ...claim, sourceType }] }))[0]?.sourceType
-
-    expect(parse('court_documents')).toBe('court')
-    expect(parse('SEC filing')).toBe('regulator')
-    expect(parse('news_article')).toBe('major_outlet')
-    expect(parse('financial press')).toBe('major_outlet')
-    expect(parse('company_statement')).toBe('other')
-    expect(parse('podcast')).toBe('other')
-  })
-
-  it('downgrades a claim whose source is a citation rather than a URL', () => {
-    // What a model actually returns when asked for a sourceUrl it does not
-    // have: "Munich court judgment, 2021", "FT, June 2020", "N/A".
-    const [parsed] = parseClaims(
-      JSON.stringify({ claims: [{ ...claim, sourceUrl: 'Munich court judgment, 2021' }] }),
-    )
-
-    expect(parsed?.sourceUrl).toBeUndefined()
-    expect(parsed?.confidence).toBe('unverified')
-  })
-
-  it('refuses a source that is not a web address at all', () => {
-    // Rendered as a link on the review screen, so a javascript: "source" is
-    // not merely useless.
-    const [parsed] = parseClaims(
-      JSON.stringify({ claims: [{ ...claim, sourceUrl: 'javascript:alert(1)' }] }),
-    )
-
-    expect(parsed?.sourceUrl).toBeUndefined()
-  })
-
-  it('refuses a search-engine link as a source — that is where you LOOK for one', () => {
-    // A model that half-remembers the outlet offers a google.com link, which
-    // renders as an authoritative-looking citation that cites nothing
-    // (decision 200). Dropping it demotes the claim honestly.
-    for (const url of [
-      'https://www.google.com/search?q=carillion+jobs+at+risk',
-      'https://google.co.uk/search?q=x',
-      'https://www.bing.com/search?q=x',
-      'https://duckduckgo.com/?q=x',
-    ]) {
-      const [parsed] = parseClaims(JSON.stringify({ claims: [{ ...claim, sourceUrl: url }] }))
-      expect(parsed?.sourceUrl, url).toBeUndefined()
-      expect(parsed?.confidence, url).toBe('unverified')
-    }
-  })
-
-  it('does not mistake a real outlet for a search engine', () => {
-    const [parsed] = parseClaims(
-      JSON.stringify({ claims: [{ ...claim, sourceUrl: 'https://www.theguardian.com/business' }] }),
-    )
-    expect(parsed?.sourceUrl).toBe('https://www.theguardian.com/business')
-  })
-
-  it('keeps a claim whose source really is a URL', () => {
-    const [parsed] = parseClaims(JSON.stringify({ claims: [claim] }))
-
-    expect(parsed?.sourceUrl).toBe('https://example.com/filing')
-    expect(parsed?.confidence).toBe('sourced')
-    expect(parsed?.adjudicated).toBe(true)
-  })
-
-  it('allows an unverified claim with no source', () => {
-    const { sourceUrl, ...rest } = claim
-    void sourceUrl
-    expect(
-      parseClaims(
-        JSON.stringify({
-          claims: [{ ...rest, confidence: 'unverified', adjudicated: false }],
-        }),
-      ),
-    ).toHaveLength(1)
-  })
-
-  it('refuses a confidence value the review UI cannot render', () => {
-    expect(() =>
-      parseClaims(JSON.stringify({ claims: [{ ...claim, confidence: 'probably' }] })),
-    ).toThrow(ValidationError)
-  })
-
-  it('folds a source type outside the enum to "other" rather than refusing', () => {
-    // Deliberately reversed from refusal: a live run threw away nineteen
-    // paid claims over three variant labels. "other" is the designed
-    // fallback bucket, and refusing was strictness with nothing to protect.
-    const [parsed] = parseClaims(JSON.stringify({ claims: [{ ...claim, sourceType: 'blog' }] }))
-    expect(parsed?.sourceType).toBe('other')
-  })
-
-  it('refuses an empty claims list', () => {
-    expect(() => parseClaims('{"claims":[]}')).toThrow(ValidationError)
-  })
-})
-
-describe('parseBrief and parseTimeline', () => {
-  it('read well-formed output', () => {
-    expect(parseBrief(JSON.stringify(brief)).principals).toHaveLength(1)
-    expect(
-      parseTimeline(JSON.stringify({ events: [{ when: '2001', what: 'Bankruptcy filed.' }] })),
-    ).toHaveLength(1)
+describe('parseBrief', () => {
+  it('reads a well-formed brief, with an empty told-already list by default', () => {
+    const { toldAlready, ...rest } = brief
+    void toldAlready
+    const parsed = parseBrief(JSON.stringify(rest))
+    expect(parsed.cast[0]?.wanted).toContain('technology company')
+    expect(parsed.toldAlready).toEqual([])
   })
 
   it('rejects a brief too thin to be research', () => {
@@ -235,595 +215,715 @@ describe('parseBrief and parseTimeline', () => {
     )
   })
 
-  it('rejects an empty timeline', () => {
-    expect(() => parseTimeline('{"events":[]}')).toThrow(ValidationError)
+  it('trims a long summary and turning point at a sentence, and says which', () => {
+    const { notes, note } = collect()
+    const parsed = parseBrief(
+      JSON.stringify({
+        ...brief,
+        summary: 'The company grew fast. '.repeat(250),
+        turningPoint: 'The auditors refused to sign. '.repeat(80),
+      }),
+      note,
+    )
+    expect(parsed.summary.length).toBeLessThanOrEqual(5000)
+    expect(parsed.summary.endsWith('The company grew fast.')).toBe(true)
+    expect(parsed.turningPoint.length).toBeLessThanOrEqual(2000)
+    expect(notes).toEqual([
+      { action: 'trimmed', field: "the brief's summary" },
+      { action: 'trimmed', field: "the brief's turning point" },
+    ])
   })
 
-  it('keeps a timeline whose sources are citations rather than URLs', () => {
-    // This exact payload failed a live run and was retried four times at full
-    // price. A timeline entry is context, not an assertion the script narrates,
-    // so an unsourced one is simply unsourced.
-    const events = parseTimeline(
+  it('keeps the first thirty cast members and twenty open questions', () => {
+    const { notes, note } = collect()
+    const parsed = parseBrief(
       JSON.stringify({
-        events: [
-          { when: '2001', what: 'Bankruptcy filed.', sourceUrl: 'Court records, Houston' },
-          { when: '2002', what: 'Executives charged.', sourceUrl: '' },
-          { when: '2006', what: 'Convictions returned.', sourceUrl: 'https://example.com/ruling' },
+        ...brief,
+        cast: Array.from({ length: 31 }, (_, at) => ({
+          name: `Person ${at}`,
+          role: 'Director',
+          wanted: 'To keep the share price up.',
+          scene: null,
+        })),
+        openQuestions: Array.from({ length: 21 }, (_, at) => `Open question number ${at}?`),
+      }),
+      note,
+    )
+    expect(parsed.cast).toHaveLength(30)
+    expect(parsed.cast[29]?.name).toBe('Person 29')
+    expect(parsed.openQuestions).toHaveLength(20)
+    expect(notes).toEqual([
+      { action: 'capped', field: 'cast', kept: 30 },
+      { action: 'capped', field: 'open questions', kept: 20 },
+    ])
+  })
+
+  it("drops a cast member's scene whose quote runs over, keeping the person", () => {
+    const { notes, note } = collect()
+    const parsed = parseBrief(
+      JSON.stringify({
+        ...brief,
+        cast: [{ ...brief.cast[0], scene: { doc: 2, quote: 'q'.repeat(DOSSIER_QUOTE_MAX + 1) } }],
+      }),
+      note,
+    )
+    expect(parsed.cast[0]?.name).toBe('Jeffrey Skilling')
+    expect(parsed.cast[0]?.scene).toBeNull()
+    expect(notes).toEqual([
+      {
+        action: 'dropped',
+        field: 'the scene of cast member 1',
+        reason: 'its quote ran over 300 characters',
+      },
+    ])
+  })
+
+  it('drops a cast member whose name runs over, and a told-already beat whose quote does', () => {
+    const { notes, note } = collect()
+    const parsed = parseBrief(
+      JSON.stringify({
+        ...brief,
+        cast: [{ ...brief.cast[0], name: 'N'.repeat(121) }, brief.cast[0]],
+        toldAlready: [
+          {
+            beat: 'The videos tell the raid on the Munich office.',
+            doc: 3,
+            quote: 'q'.repeat(301),
+          },
+          {
+            beat: 'The videos tell the missing 1.9 billion.',
+            doc: 3,
+            quote: 'the money was never there',
+          },
         ],
       }),
+      note,
     )
-
-    expect(events).toHaveLength(3)
-    expect(events[0]?.sourceUrl).toBeUndefined()
-    expect(events[1]?.sourceUrl).toBeUndefined()
-    expect(events[2]?.sourceUrl).toBe('https://example.com/ruling')
-  })
-
-  it('accepts an imprecise date, because the record often is', () => {
-    expect(
-      parseTimeline(
-        JSON.stringify({ events: [{ when: 'late 2019', what: 'Something happened.' }] }),
-      ),
-    ).toHaveLength(1)
+    expect(parsed.cast).toHaveLength(1)
+    expect(parsed.toldAlready.map((told) => told.beat)).toEqual([
+      'The videos tell the missing 1.9 billion.',
+    ])
+    expect(notes).toEqual([
+      { action: 'dropped', field: 'cast member 1', reason: 'its name ran over 120 characters' },
+      {
+        action: 'dropped',
+        field: 'told-already beat 1',
+        reason: 'its quote ran over 300 characters',
+      },
+    ])
   })
 })
 
-describe('the answers pass (decision 201)', () => {
-  const request = buildAnswersRequest(caseContext, brief, [])
+describe('parseScenes', () => {
+  const SCENE = scenes[0]!
 
-  it('routes at the research task with the case header cacheable', () => {
-    expect(request.task).toBe('research')
-    expect(request.cacheablePrefixMessages).toBe(1)
+  it('reads well-formed scenes', () => {
+    expect(parseScenes(JSON.stringify({ scenes }))).toEqual(scenes)
   })
 
-  it('puts the open questions to the model, verbatim and numbered', () => {
-    // Numbered because the number is the join key (decision 203): the first
-    // live run paraphrased every echoed question, and text matching alone
-    // placed none of its answers.
-    expect(JSON.stringify(request.messages)).toContain('1. What did the board know in 1999?')
-    expect(request.system).toMatch(/"index" is the question's number/)
+  it('parseScenes keeps sixty scenes and notes the cap', () => {
+    const { notes, note } = collect()
+    const parsed = parseScenes(
+      JSON.stringify({
+        scenes: Array.from({ length: 61 }, (_, at) => ({ ...SCENE, when: `Day ${at + 1}` })),
+      }),
+      note,
+    )
+    expect(parsed).toHaveLength(60)
+    expect(parsed[59]?.when).toBe('Day 60')
+    expect(notes).toEqual([{ action: 'capped', field: 'scenes', kept: 60 }])
   })
 
-  it('makes the honest null legal and the invented answer not', () => {
-    expect(request.system).toMatch(/set "answer" to null/)
-    expect(request.system).toMatch(/an invented answer is a liability/)
-    expect(request.system).toMatch(/Never invent a URL/)
+  it('drops a scene whose date or quote runs over, trims a long one, and numbers each as written', () => {
+    const { notes, note } = collect()
+    const parsed = parseScenes(
+      JSON.stringify({
+        scenes: [
+          { ...SCENE, when: 'x'.repeat(101) },
+          { ...SCENE, quote: 'q'.repeat(301) },
+          { ...SCENE, what: 'Skilling resigned. '.repeat(80) },
+        ],
+      }),
+      note,
+    )
+    expect(parsed).toHaveLength(1)
+    expect(parsed[0]!.what.length).toBeLessThanOrEqual(1000)
+    expect(parsed[0]!.what.endsWith('Skilling resigned.')).toBe(true)
+    expect(notes).toEqual([
+      { action: 'dropped', field: 'scene 1', reason: 'its date ran over 100 characters' },
+      { action: 'dropped', field: 'scene 2', reason: 'its quote ran over 300 characters' },
+      { action: 'trimmed', field: 'scene 3' },
+    ])
   })
 
-  it('routes narratable facts through the claim list, not around it', () => {
-    // An answer is prose in the document; only claims are gated, sourced and
-    // referenced by the script. An answer that bypassed the list would be an
-    // unchecked assertion wearing a heading.
-    expect(request.system).toMatch(/must ALSO\s+appear in "claims"/)
+  it('refuses scenes its drops left empty', () => {
+    expect(() =>
+      parseScenes(JSON.stringify({ scenes: [{ ...SCENE, when: 'x'.repeat(101) }] })),
+    ).toThrow(ValidationError)
+  })
+})
+
+describe('parseClaims', () => {
+  it('reads a well-formed claim, defaulting legal status and series to null', () => {
+    expect(parseClaims(JSON.stringify({ claims: [CLAIM] }))).toEqual([
+      { ...CLAIM, legal: null, series: null },
+    ])
   })
 
-  it('parses answers, folding a refusal-as-string into the null it is', () => {
+  it('reads a ruled claim and a figure series', () => {
+    const [ruled, figure] = parseClaims(
+      JSON.stringify({
+        claims: [
+          { ...CLAIM, legal: { status: 'ruled', date: '2006-05', doc: 4 } },
+          {
+            ...CLAIM,
+            series: {
+              label: 'Revenue',
+              unit: 'USD billion',
+              currency: 'USD',
+              points: [
+                { at: '1999', value: 40.1, asWritten: '$40.1 billion' },
+                { at: '2000', value: 100.8, asWritten: '$100.8 billion' },
+              ],
+            },
+          },
+        ],
+      }),
+    )
+    expect(ruled?.legal).toEqual({ status: 'ruled', date: '2006-05', doc: 4 })
+    expect(figure?.series?.points.map((point) => point.asWritten)).toEqual([
+      '$40.1 billion',
+      '$100.8 billion',
+    ])
+  })
+
+  it('drops a series point whose printed number runs over, and a series left with none', () => {
+    const { notes, note } = collect()
+    const series = (asWritten: string[]) => ({
+      label: 'Revenue',
+      unit: 'USD billion',
+      currency: 'USD',
+      points: asWritten.map((written, at) => ({
+        at: `${2000 + at}`,
+        value: at,
+        asWritten: written,
+      })),
+    })
+    const [kept, emptied] = parseClaims(
+      JSON.stringify({
+        claims: [
+          { ...CLAIM, series: series(['$40.1 billion', '9'.repeat(41)]) },
+          { ...CLAIM, series: series(['9'.repeat(41)]) },
+        ],
+      }),
+      note,
+    )
+    expect(kept?.series?.points.map((point) => point.asWritten)).toEqual(['$40.1 billion'])
+    expect(emptied?.series).toBeNull()
+    expect(notes).toEqual([
+      {
+        action: 'dropped',
+        field: 'point 2 of the series of claim 1',
+        reason: 'its number as written ran over 40 characters',
+      },
+      {
+        action: 'dropped',
+        field: 'point 1 of the series of claim 2',
+        reason: 'its number as written ran over 40 characters',
+      },
+      { action: 'dropped', field: 'the series of claim 2', reason: 'no point was left' },
+    ])
+  })
+
+  it('parseClaims drops a support whose quote is over 300 characters and the claim when none is left, noting both', () => {
+    const { notes, note } = collect()
+    const long = { doc: 2, quote: 'q'.repeat(DOSSIER_QUOTE_MAX + 1) }
+    const parsed = parseClaims(
+      JSON.stringify({
+        claims: [
+          { ...CLAIM, supports: [long] },
+          {
+            ...CLAIM,
+            text: 'Enron executives were convicted in 2006.',
+            supports: [long, CLAIM.supports[0]],
+          },
+        ],
+      }),
+      note,
+    )
+    expect(parsed.map((claim) => claim.text)).toEqual(['Enron executives were convicted in 2006.'])
+    expect(parsed[0]?.supports).toEqual(CLAIM.supports)
+    expect(notes).toEqual([
+      {
+        action: 'dropped',
+        field: 'claim 1 support 1',
+        reason: 'its quote ran over 300 characters',
+      },
+      {
+        action: 'dropped',
+        field: 'claim 2 support 1',
+        reason: 'its quote ran over 300 characters',
+      },
+      { action: 'dropped', field: 'claim 1', reason: 'no support was left' },
+    ])
+  })
+
+  it('drops a claim that cites no document at all rather than refusing the pass', () => {
+    const { notes, note } = collect()
+    const parsed = parseClaims(
+      JSON.stringify({ claims: [{ text: 'Enron was the seventh largest company.' }, CLAIM] }),
+      note,
+    )
+    expect(parsed).toHaveLength(1)
+    expect(notes).toEqual([{ action: 'dropped', field: 'claim 1', reason: 'no support was left' }])
+  })
+
+  it('keeps the first three supports of a claim', () => {
+    const { notes, note } = collect()
+    const [parsed] = parseClaims(
+      JSON.stringify({
+        claims: [
+          { ...CLAIM, supports: [1, 2, 3, 4].map((doc) => ({ doc, quote: 'the same words' })) },
+        ],
+      }),
+      note,
+    )
+    expect(parsed?.supports.map((support) => support.doc)).toEqual([1, 2, 3])
+    expect(notes).toEqual([{ action: 'capped', field: 'supports of claim 1', kept: 3 }])
+  })
+
+  it('drops a claim whose text runs over, keeps the rest whole, and names it', () => {
+    const { notes, note } = collect()
+    const parsed = parseClaims(
+      JSON.stringify({ claims: [CLAIM, { ...CLAIM, text: 'A'.repeat(1001) }] }),
+      note,
+    )
+    expect(parsed).toHaveLength(1)
+    expect(notes).toEqual([
+      { action: 'dropped', field: 'claim 2', reason: 'its text ran over 1,000 characters' },
+    ])
+  })
+
+  it(`keeps the first ${DOSSIER_CLAIMS_PER_PASS} claims`, () => {
+    const { notes, note } = collect()
+    const parsed = parseClaims(
+      JSON.stringify({
+        claims: Array.from({ length: DOSSIER_CLAIMS_PER_PASS + 1 }, (_, at) => ({
+          ...CLAIM,
+          text: `Claim number ${at + 1} about Enron.`,
+        })),
+      }),
+      note,
+    )
+    expect(parsed).toHaveLength(DOSSIER_CLAIMS_PER_PASS)
+    expect(notes).toEqual([{ action: 'capped', field: 'claims', kept: DOSSIER_CLAIMS_PER_PASS }])
+  })
+
+  it('refuses a legal status the gate cannot read, and an empty claims list', () => {
+    expect(() =>
+      parseClaims(
+        JSON.stringify({
+          claims: [{ ...CLAIM, legal: { status: 'probably', date: '2001', doc: 1 } }],
+        }),
+      ),
+    ).toThrow(ValidationError)
+    expect(() => parseClaims('{"claims":[]}')).toThrow(ValidationError)
+  })
+})
+
+describe('parseAnswers', () => {
+  it('parses answers with their document, folding a refusal-as-string into null', () => {
     const parsed = parseAnswers(
       JSON.stringify({
         answers: [
           {
+            index: 1,
             question: 'What did the board know in 1999?',
-            answer: 'The 2002 Powers report found the board approved the structures.',
-            sourceUrl: 'https://example.com/powers-report',
+            answer: 'The Powers report found the board approved the structures.',
+            doc: 4,
           },
-          { question: 'Why was it liquidation, not administration?', answer: 'unknown' },
+          { index: 2, question: 'Why was it liquidation, not administration?', answer: 'unknown' },
         ],
       }),
     )
-    expect(parsed.answers[0]?.answer).toContain('Powers report')
+    expect(parsed.answers[0]).toMatchObject({ doc: 4, answer: expect.stringContaining('Powers') })
     expect(parsed.answers[1]?.answer).toBeNull()
     expect(parsed.claims).toEqual([])
   })
 
-  it('holds answer-pass claims to the same rules as the claims pass', () => {
+  it('reads an honest null that names no document as "doc": null', () => {
+    const parsed = parseAnswers(
+      JSON.stringify({
+        answers: [{ index: 1, question: 'Who leaked it to the press?', answer: null, doc: null }],
+      }),
+    )
+    expect(parsed.answers).toEqual([
+      { index: 1, question: 'Who leaked it to the press?', answer: null },
+    ])
+  })
+
+  it('trims a long answer, drops one whose question ran over, and names each by its question', () => {
+    const { notes, note } = collect()
+    const parsed = parseAnswers(
+      JSON.stringify({
+        answers: [
+          {
+            index: 1,
+            question: 'What did the board know in 1999?',
+            answer: 'The Powers report found the board approved it. '.repeat(70),
+          },
+          { index: 2, question: 'Q'.repeat(1001), answer: 'An answer that will not be kept.' },
+        ],
+      }),
+      note,
+    )
+    expect(parsed.answers.map((answer) => answer.index)).toEqual([1])
+    expect(parsed.answers[0]!.answer!.length).toBeLessThanOrEqual(3000)
+    expect(notes).toEqual([
+      {
+        action: 'dropped',
+        field: 'the answer to question 2',
+        reason: 'its question ran over 1,000 characters',
+      },
+      { action: 'trimmed', field: 'the answer to question 1' },
+    ])
+  })
+
+  it('holds the claims found while answering to the claims pass rules', () => {
+    const { notes, note } = collect()
     const parsed = parseAnswers(
       JSON.stringify({
         answers: [],
         claims: [
-          {
-            text: 'The Powers report was published in February 2002.',
-            sourceUrl: 'https://www.google.com/search?q=powers+report',
-            sourceType: 'other',
-            confidence: 'single_source',
-            adjudicated: false,
-          },
+          { ...CLAIM, supports: [{ doc: 2, quote: 'q'.repeat(301) }] },
+          ...Array.from({ length: 41 }, (_, at) => ({ ...CLAIM, text: `Claim number ${at + 1}.` })),
         ],
       }),
+      note,
     )
-    // The search link is scrubbed and the claim demoted, exactly as in pass 3.
-    expect(parsed.claims[0]?.sourceUrl).toBeUndefined()
-    expect(parsed.claims[0]?.confidence).toBe('unverified')
+    expect(parsed.claims).toHaveLength(40)
+    expect(parsed.claims[0]?.text).toBe('Claim number 1.')
+    expect(notes).toEqual([
+      {
+        action: 'dropped',
+        field: 'claim 1 found while answering, support 1',
+        reason: 'its quote ran over 300 characters',
+      },
+      {
+        action: 'dropped',
+        field: 'claim 1 found while answering',
+        reason: 'no support was left',
+      },
+      { action: 'capped', field: 'claims found while answering', kept: 40 },
+    ])
   })
+})
 
-  it('mock mode answers nothing, loudly', () => {
-    const mocked = mockAnswers(brief)
-    expect(mocked.answers).toHaveLength(1)
-    expect(mocked.answers[0]?.answer).toBeNull()
-    expect(mocked.answers[0]?.index).toBe(1)
-    expect(mocked.claims).toEqual([])
-  })
+// ---------------------------------------------------------------------------
+// The renderer
+// ---------------------------------------------------------------------------
+
+const ref = (over: Partial<GroundedRef> = {}): GroundedRef => ({
+  documentId: 'doc-1',
+  url: 'https://example.com/story',
+  found: true,
+  locatorSeconds: null,
+  quote: 'the words that show it',
+  ...over,
+})
+
+const scene = (over: { ref?: Partial<GroundedRef> } = {}): GroundedResearch['scenes'][number] => ({
+  when: 'June 2020',
+  who: 'Markus Braun',
+  what: 'Resigned as chief executive',
+  why: 'The founder leaves the stage.',
+  quote: 'the words that show it',
+  ref: ref(over.ref),
+})
+
+const grounded = (over: Partial<GroundedResearch> = {}): GroundedResearch => ({
+  entity: { qid: null, titles: [], cik: null, ticker: null, website: null },
+  brief: {
+    summary: 'A payments company that reported cash it did not have.',
+    turningPoint: 'The auditors could not find the 1.9 billion.',
+    cast: [
+      {
+        name: 'Markus Braun',
+        role: 'chief executive',
+        wanted: 'To be the next big payments platform.',
+        ref: null,
+      },
+    ],
+    toldAlready: [],
+    openQuestions: [],
+  },
+  scenes: [],
+  answers: [],
+  corpus: { read: 4, unread: 0, failed: 0 },
+  ...over,
+})
+
+const withQuestions = (
+  openQuestions: string[],
+  answers: GroundedResearch['answers'],
+): GroundedResearch => {
+  const base = grounded({ answers })
+  return { ...base, brief: { ...base.brief, openQuestions } }
+}
+
+const claim = (over: Partial<GroundedClaim> = {}): GroundedClaim => ({
+  text: 'Wirecard reported 1.9 billion euros it did not have.',
+  sourceUrl: 'https://example.com/story',
+  sourceType: 'major_outlet',
+  confidence: 'sourced',
+  legalStatus: 'none',
+  legalStatusDate: null,
+  legalStatusDocumentId: null,
+  series: null,
+  supports: [],
+  ...over,
 })
 
 describe('renderDossierMarkdown', () => {
-  const rendered = renderDossierMarkdown({
-    caseTitle: 'Enron',
-    brief,
-    timeline: [{ when: '2001', what: 'Bankruptcy filed.', sourceUrl: 'https://example.com' }],
-    claims: [
-      {
-        text: 'An unsourced assertion.',
-        sourceType: 'other',
-        confidence: 'unverified',
-        adjudicated: false,
+  const render = (research: GroundedResearch, claims: GroundedClaim[] = []) =>
+    renderDossierMarkdown({ caseTitle: 'Wirecard', research, claims })
+
+  it('leads with the title, the summary and the turn', () => {
+    const md = render(grounded())
+    expect(md.startsWith('# Wirecard\n\n## Summary\n\nA payments company')).toBe(true)
+    expect(md).toContain('## The turn\n\nThe auditors could not find the 1.9 billion.')
+  })
+
+  it('lists the principals with what each one wanted', () => {
+    expect(render(grounded())).toContain(
+      '## Principals\n\n- **Markus Braun** — chief executive. *To be the next big payments platform.*',
+    )
+  })
+
+  it('renders scenes with a timestamped source and marks an unplaced one', () => {
+    const md = render(
+      grounded({
+        scenes: [
+          scene({
+            ref: { url: 'https://youtube.com/watch?v=abc', locatorSeconds: 65, found: true },
+          }),
+          scene({ ref: { found: false } }),
+        ],
+      }),
+    )
+    expect(md).toContain('([source](https://youtube.com/watch?v=abc&t=65))')
+    expect(md).toContain('(unplaced)')
+    expect(md).toContain(
+      '- **June 2020** — Resigned as chief executive (Markus Braun). *The founder leaves the stage.* ([source](https://example.com/story)) (unplaced)',
+    )
+  })
+
+  it('starts a query for a timestamp on a link that has none', () => {
+    const md = render(
+      grounded({ scenes: [scene({ ref: { url: 'https://youtu.be/abc', locatorSeconds: 5 } })] }),
+    )
+    expect(md).toContain('([source](https://youtu.be/abc?t=5))')
+  })
+
+  it('omits Told already when empty and lists beats otherwise', () => {
+    expect(render(grounded())).not.toContain('## Told already')
+
+    const base = grounded()
+    const md = renderDossierMarkdown({
+      caseTitle: 'Wirecard',
+      research: {
+        ...base,
+        brief: {
+          ...base.brief,
+          toldAlready: [
+            {
+              beat: 'The FT investigation and the short sellers.',
+              ref: ref({ documentId: 'video-1', url: 'https://youtube.com/watch?v=v1' }),
+            },
+            {
+              beat: 'The raid on the Aschheim office.',
+              ref: ref({ documentId: 'video-2', url: 'https://youtube.com/watch?v=v2' }),
+            },
+          ],
+        },
       },
-    ],
-  })
-
-  it('leads with the case title', () => {
-    expect(rendered.startsWith('# Enron')).toBe(true)
-  })
-
-  it('links a timeline source', () => {
-    expect(rendered).toContain('([source](https://example.com))')
-  })
-
-  it('puts open questions in the document when no answers pass ran', () => {
-    // What the research could not establish is the part most likely to be
-    // written around confidently if nobody sees it.
-    expect(rendered).toContain('## Open questions')
-    expect(rendered).toContain('What did the board know in 1999?')
-  })
-
-  it('renders an answered question as answered, and only nulls stay open', () => {
-    const withAnswers = renderDossierMarkdown({
-      caseTitle: 'Enron',
-      brief: { ...brief, openQuestions: ['What did the board know in 1999?', 'Who leaked it?'] },
-      timeline: [],
       claims: [],
-      answers: [
-        {
-          question: 'What did the board know in 1999.', // punctuation drift tolerated
-          answer: 'The Powers report found the board approved the structures.',
-          sourceUrl: 'https://example.com/powers-report',
-        },
-        { question: 'Who leaked it?', answer: null },
-      ],
+      documents: [{ id: 'video-1', title: 'How [Wirecard] fooled everyone' }],
     })
-
-    expect(withAnswers).toContain('## Questions the research answered')
-    expect(withAnswers).toContain('Powers report')
-    expect(withAnswers).toContain('([source](https://example.com/powers-report))')
-    expect(withAnswers).toContain('## Open questions')
-    expect(withAnswers).toContain('- Who leaked it?')
-    expect(withAnswers).not.toContain('- What did the board know in 1999?')
+    expect(md).toContain('## Told already')
+    expect(md).toContain(
+      '- The FT investigation and the short sellers. ([How (Wirecard) fooled everyone](https://youtube.com/watch?v=v1))',
+    )
+    expect(md).toContain(
+      '- The raid on the Aschheim office. ([https://youtube.com/watch?v=v2](https://youtube.com/watch?v=v2))',
+    )
   })
 
-  it('drops the Open questions section entirely when every question is answered', () => {
-    const complete = renderDossierMarkdown({
-      caseTitle: 'Enron',
-      brief,
-      timeline: [],
-      claims: [],
-      answers: [
-        {
-          question: 'What did the board know in 1999?',
-          answer: 'It approved the structures, per the Powers report.',
-        },
-      ],
-    })
-    expect(complete).toContain('## Questions the research answered')
-    expect(complete).not.toContain('## Open questions')
+  it('puts open questions in the document when nothing answered them', () => {
+    const md = render(
+      withQuestions(
+        ['What did the board know in 2019?'],
+        [{ index: 1, question: 'What did the board know in 2019?', answer: null, ref: null }],
+      ),
+    )
+    expect(md).not.toContain('## Questions the research answered')
+    expect(md).toContain('## Open questions\n\n- What did the board know in 2019?')
   })
 
-  it('places an answer by its index even when the model paraphrased the question (decision 203)', () => {
-    // The first live run: Haiku rewrote every question it echoed back, the
-    // folded-text match placed nothing, and every real answer vanished while
-    // the questions stayed "open". The index is the deterministic join key.
-    const withIndex = renderDossierMarkdown({
-      caseTitle: 'Enron',
-      brief: { ...brief, openQuestions: ['What did the board know in 1999?', 'Who leaked it?'] },
-      timeline: [],
-      claims: [],
-      answers: [
-        {
-          index: 1,
-          question: "What was the board's knowledge?", // paraphrased — must not matter
-          answer: 'The Powers report found the board approved the structures.',
-        },
-      ],
-    })
-    expect(withIndex).toContain('## Questions the research answered')
-    // Rendered under the brief's own wording, not the paraphrase.
-    expect(withIndex).toContain('- **What did the board know in 1999?** —')
-    expect(withIndex).not.toContain("What was the board's knowledge?")
-    expect(withIndex).toContain('- Who leaked it?')
+  it('places an answer by its index, under the brief wording, linked to its document', () => {
+    const md = render(
+      withQuestions(
+        ['What did the board know in 2019?', 'Who leaked it?'],
+        [
+          {
+            index: 1,
+            question: "What was the board's knowledge?",
+            answer: 'The special audit found the board was told in 2019.',
+            ref: ref({ url: 'https://example.com/kpmg' }),
+          },
+        ],
+      ),
+    )
+    expect(md).toContain(
+      '- **What did the board know in 2019?** — The special audit found the board was told in 2019. ([source](https://example.com/kpmg))',
+    )
+    expect(md).not.toContain("What was the board's knowledge?")
+    expect(md).toContain('## Open questions\n\n- Who leaked it?')
   })
 
-  it('never discards a real answer it cannot place — it renders under its own words', () => {
-    const unplaced = renderDossierMarkdown({
-      caseTitle: 'Enron',
-      brief: { ...brief, openQuestions: ['What did the board know in 1999?'] },
-      timeline: [],
-      claims: [],
-      answers: [
-        {
-          question: 'How much did the partnerships hide?', // no index, no text match
-          answer: 'Over one billion dollars in debt, per the Powers report.',
-        },
-      ],
-    })
-    // The answer was paid for and may be true: it renders. The question it
-    // failed to place against honestly stays open.
-    expect(unplaced).toContain('- **How much did the partnerships hide?** —')
-    expect(unplaced).toContain('## Open questions')
-    expect(unplaced).toContain('- What did the board know in 1999?')
+  it('falls back to the folded text when the index is missing or outside the list', () => {
+    const md = render(
+      withQuestions(
+        ['What did the board know in 2019?', 'Who leaked it?'],
+        [
+          {
+            index: 7,
+            question: 'What did the board know in 2019.',
+            answer: 'The special audit found the board was told.',
+            ref: null,
+          },
+          { question: 'who leaked it', answer: 'A whistleblower in Singapore did.', ref: null },
+        ],
+      ),
+    )
+    expect(md).toContain('- **What did the board know in 2019?** — The special audit')
+    expect(md).toContain('- **Who leaked it?** — A whistleblower in Singapore did.')
+    expect(md).not.toContain('## Open questions')
   })
 
-  it('ignores an index pointing outside the question list rather than mis-filing the answer', () => {
-    const outside = renderDossierMarkdown({
-      caseTitle: 'Enron',
-      brief: { ...brief, openQuestions: ['What did the board know in 1999?'] },
-      timeline: [],
-      claims: [],
-      answers: [
-        {
-          index: 7,
-          question: 'What did the board know in 1999?', // text still matches
-          answer: 'It approved the structures, per the Powers report.',
-        },
-      ],
-    })
-    // The bad index falls back to the text match, so the answer still lands.
-    expect(outside).toContain('- **What did the board know in 1999?** —')
-    expect(outside).not.toContain('## Open questions')
+  it('never discards a real answer it cannot place: it renders under its own words', () => {
+    const md = render(
+      withQuestions(
+        ['What did the board know in 2019?'],
+        [
+          {
+            question: 'How much cash was missing?',
+            answer: 'About 1.9 billion euros, per the special audit.',
+            ref: null,
+          },
+        ],
+      ),
+    )
+    expect(md).toContain('- **How much cash was missing?** — About 1.9 billion euros')
+    expect(md).toContain('## Open questions\n\n- What did the board know in 2019?')
   })
 
-  it('says how many claims are unverified and why it matters', () => {
-    expect(rendered).toContain('## Unverified')
-    expect(rendered).toContain('excluded from scripting')
+  it('says how many claims are unverified, and nothing when none is', () => {
+    const md = render(grounded(), [claim({ confidence: 'unverified' }), claim()])
+    expect(md).toContain('## Unverified')
+    expect(md).toContain('1 claim(s)')
+    expect(md).toContain('excluded from scripting')
+    expect(render(grounded(), [claim()])).not.toContain('## Unverified')
   })
 
-  it('omits the unverified section when every claim is sourced', () => {
-    const clean = renderDossierMarkdown({
-      caseTitle: 'Enron',
-      brief,
-      timeline: [],
-      claims: [
-        {
-          text: 'A sourced assertion.',
-          sourceUrl: 'https://example.com',
-          sourceType: 'court',
-          confidence: 'sourced',
-          adjudicated: true,
-        },
-      ],
-    })
-    expect(clean).not.toContain('## Unverified')
+  it('writes italics with asterisks only, never underscores', () => {
+    const md = render(grounded({ scenes: [scene()] }))
+    expect(md).not.toMatch(/(^|\s)_\S/m)
   })
 
   it('is a pure function of its input', () => {
-    const again = renderDossierMarkdown({
-      caseTitle: 'Enron',
-      brief,
-      timeline: [{ when: '2001', what: 'Bankruptcy filed.', sourceUrl: 'https://example.com' }],
-      claims: [
-        {
-          text: 'An unsourced assertion.',
-          sourceType: 'other',
-          confidence: 'unverified',
-          adjudicated: false,
-        },
-      ],
-    })
-    expect(again).toBe(rendered)
+    const research = grounded({ scenes: [scene()] })
+    expect(render(research, [claim()])).toBe(render(research, [claim()]))
   })
 })
 
+// ---------------------------------------------------------------------------
+// Mock mode
+// ---------------------------------------------------------------------------
+
 describe('mock research', () => {
+  const documents = mockCorpusDocuments()
+  const textOf = (doc: number) => documents[doc - 1]!.text
+
   it('says in the dossier itself that nothing was researched', () => {
-    // A mock dossier that reads plausibly is one somebody eventually approves
-    // by accident.
+    // A mock dossier that reads plausibly is one somebody eventually approves by accident.
     expect(mockBrief(caseContext).summary).toMatch(/MOCK DOSSIER/)
     expect(mockBrief(caseContext).summary).toMatch(/No research was performed/)
   })
 
-  it('produces claims that are all unverified, so nothing looks checked', () => {
-    for (const claim of mockClaims()) {
-      expect(claim.confidence).toBe('unverified')
-      expect(claim.adjudicated).toBe(false)
-      expect(claim.sourceUrl).toBeUndefined()
+  it('gathers four documents of the kinds the checks need, each labelled mock', () => {
+    expect(documents.map((document) => document.kind)).toEqual([
+      'press-release',
+      'reporting',
+      'video',
+      'regulator',
+    ])
+    for (const document of documents) expect(document.text.startsWith('MOCK DOCUMENT')).toBe(true)
+    expect(textOf(3)).toMatch(/\[\d{2}:\d{2}\]/)
+  })
+
+  it('validates against the same schemas as real output', () => {
+    const brief = parseBrief(JSON.stringify(mockBrief(caseContext)))
+    expect(brief).toEqual(mockBrief(caseContext))
+    expect(parseScenes(JSON.stringify({ scenes: mockScenes() }))).toEqual(mockScenes())
+    expect(parseClaims(JSON.stringify({ claims: mockClaims() }))).toEqual(mockClaims())
+    expect(parseAnswers(JSON.stringify(mockAnswers(brief)))).toEqual(mockAnswers(brief))
+  })
+
+  it('cites only the four mock documents', () => {
+    const brief = mockBrief(caseContext)
+    const cited = [
+      ...brief.cast.flatMap((member) => (member.scene ? [member.scene.doc] : [])),
+      ...brief.toldAlready.map((told) => told.doc),
+      ...mockScenes().map((scene) => scene.doc),
+      ...mockClaims().flatMap((claim) => [
+        ...claim.supports.map((support) => support.doc),
+        ...(claim.legal ? [claim.legal.doc] : []),
+      ]),
+      ...mockAnswers(brief).answers.flatMap((answer) => (answer.doc ? [answer.doc] : [])),
+    ]
+    expect(cited.length).toBeGreaterThan(0)
+    for (const doc of cited) {
+      expect(doc).toBeGreaterThanOrEqual(1)
+      expect(doc).toBeLessThanOrEqual(documents.length)
     }
   })
 
-  it('validates against the same schema as real output', () => {
-    expect(() => parseClaims(JSON.stringify({ claims: mockClaims() }))).not.toThrow()
-    expect(() => parseBrief(JSON.stringify(mockBrief(caseContext)))).not.toThrow()
-    expect(() => parseTimeline(JSON.stringify({ events: mockTimeline() }))).not.toThrow()
+  it('misses exactly one quote on purpose, so the e2e fixture parks at the gate', () => {
+    const brief = mockBrief(caseContext)
+    const quotes = [
+      ...brief.cast.flatMap((member) => (member.scene ? [member.scene] : [])),
+      ...brief.toldAlready,
+      ...mockScenes(),
+      ...mockClaims().flatMap((claim) => claim.supports),
+    ]
+    const missing = quotes.filter(({ doc, quote }) => !textOf(doc).includes(quote))
+    expect(missing).toEqual([mockClaims()[1]!.supports[0]])
+  })
+
+  it('carries a figure series written as doc 1 prints it, a ruled status and a transcript scene', () => {
+    const [, , figure, ruled] = mockClaims()
+    expect(figure?.supports[0]?.doc).toBe(1)
+    expect(figure?.series?.points).toHaveLength(2)
+    for (const point of figure!.series!.points) expect(textOf(1)).toContain(point.asWritten)
+    expect(ruled?.legal).toEqual({ status: 'ruled', date: '2019-02', doc: 4 })
+    expect(mockClaims()[0]?.supports.map((support) => support.doc)).toEqual([2, 4])
+    expect(mockScenes().some((scene) => documents[scene.doc - 1]?.kind === 'video')).toBe(true)
+    expect(mockBrief(caseContext).toldAlready.map((told) => told.doc)).toEqual([3])
   })
 
   it('is deterministic', () => {
     expect(mockBrief(caseContext)).toEqual(mockBrief(caseContext))
-  })
-})
-
-describe('the research limits (decision 293)', () => {
-  const flat = (request: { system: string }) => request.system.replace(/\s+/g, ' ')
-
-  it('states every limit the brief is checked against', () => {
-    expect(flat(buildBriefRequest(caseContext))).toContain(
-      'Limits (the app checks them): "summary" 50 to 5000 characters; "turningPoint" 20 to 2000 characters; at most 30 principals, each with a name and a role; at most 20 open questions, each at least 10 characters.',
-    )
-  })
-
-  it('states every limit the timeline is checked against', () => {
-    expect(flat(buildTimelineRequest(caseContext, brief))).toContain(
-      'Limits (the app checks them): 1 to 60 events; "when" 3 to 100 characters; "what" 10 to 1000 characters.',
-    )
-  })
-
-  it('states every limit the claims are checked against', () => {
-    expect(flat(buildClaimsRequest(caseContext, brief, []))).toContain(
-      'Limits (the app checks them): 1 to 120 claims; each "text" 10 to 1000 characters.',
-    )
-  })
-
-  it('states every limit the answers are checked against', () => {
-    expect(flat(buildAnswersRequest(caseContext, brief, []))).toContain(
-      'Limits (the app checks them): at most 40 answers; each "question" 10 to 1000 characters; each "answer" at most 3000 characters; at most 40 claims, each "text" 10 to 1000 characters.',
-    )
-  })
-})
-
-describe('the research repairs (decision 293)', () => {
-  const collect = () => {
-    const notes: Repair[] = []
-    const note: Note = (repair) => {
-      notes.push(repair)
-    }
-    return { notes, note }
-  }
-
-  const CLAIM = {
-    text: 'Enron filed for bankruptcy in December 2001.',
-    sourceUrl: 'https://example.com/filing',
-    sourceType: 'court',
-    confidence: 'sourced',
-    adjudicated: true,
-  }
-
-  describe('parseBrief', () => {
-    it('trims a long summary and turning point at a sentence, and says which', () => {
-      const { notes, note } = collect()
-      const parsed = parseBrief(
-        JSON.stringify({
-          ...brief,
-          summary: 'The company grew fast. '.repeat(250),
-          turningPoint: 'The auditors refused to sign. '.repeat(80),
-        }),
-        note,
-      )
-      expect(parsed.summary.length).toBeLessThanOrEqual(5000)
-      expect(parsed.summary.endsWith('The company grew fast.')).toBe(true)
-      expect(parsed.turningPoint.length).toBeLessThanOrEqual(2000)
-      expect(notes).toEqual([
-        { action: 'trimmed', field: "the brief's summary" },
-        { action: 'trimmed', field: "the brief's turning point" },
-      ])
-    })
-
-    it('keeps the first principals and open questions over their caps, names untouched', () => {
-      const { notes, note } = collect()
-      const parsed = parseBrief(
-        JSON.stringify({
-          ...brief,
-          principals: Array.from({ length: 31 }, (_, at) => ({
-            name: `Person ${at}`,
-            role: 'Director',
-          })),
-          openQuestions: Array.from({ length: 21 }, (_, at) => `Open question number ${at}?`),
-        }),
-        note,
-      )
-      expect(parsed.principals).toHaveLength(30)
-      expect(parsed.principals[29]).toEqual({ name: 'Person 29', role: 'Director' })
-      expect(parsed.openQuestions).toHaveLength(20)
-      expect(notes).toEqual([
-        { action: 'capped', field: 'principals', kept: 30 },
-        { action: 'capped', field: 'open questions', kept: 20 },
-      ])
-    })
-
-    it('notes nothing for a brief within its limits, and still refuses one with no summary', () => {
-      const { notes, note } = collect()
-      parseBrief(JSON.stringify(brief), note)
-      expect(notes).toEqual([])
-      const { summary, ...rest } = brief
-      void summary
-      expect(() => parseBrief(JSON.stringify(rest), note)).toThrow(ValidationError)
-    })
-  })
-
-  describe('parseTimeline', () => {
-    it('drops an event whose date runs over, trims a long one, and numbers both as written', () => {
-      const { notes, note } = collect()
-      const events = parseTimeline(
-        JSON.stringify({
-          events: [
-            { when: '2001', what: 'Bankruptcy filed.' },
-            { when: 'x'.repeat(101), what: 'An event with a runaway date.' },
-            {
-              when: '2006',
-              what: 'The convictions were returned. '.repeat(40),
-              sourceUrl: 'https://example.com/ruling',
-            },
-          ],
-        }),
-        note,
-      )
-      expect(events.map((event) => event.when)).toEqual(['2001', '2006'])
-      expect(events[1]!.what.length).toBeLessThanOrEqual(1000)
-      expect(events[1]!.what.endsWith('The convictions were returned.')).toBe(true)
-      expect(events[1]!.sourceUrl).toBe('https://example.com/ruling')
-      expect(notes).toEqual([
-        {
-          action: 'dropped',
-          field: 'timeline event 2',
-          reason: 'its date ran over 100 characters',
-        },
-        { action: 'trimmed', field: 'timeline event 3' },
-      ])
-    })
-
-    it('keeps the first 60 events', () => {
-      const { notes, note } = collect()
-      const events = parseTimeline(
-        JSON.stringify({
-          events: Array.from({ length: 61 }, (_, at) => ({
-            when: `Day ${at + 1}`,
-            what: `Event number ${at + 1} happened.`,
-          })),
-        }),
-        note,
-      )
-      expect(events).toHaveLength(60)
-      expect(notes).toEqual([{ action: 'capped', field: 'timeline events', kept: 60 }])
-    })
-
-    it('refuses a timeline its drops left empty', () => {
-      expect(() =>
-        parseTimeline(
-          JSON.stringify({
-            events: [{ when: 'x'.repeat(101), what: 'An event with a runaway date.' }],
-          }),
-        ),
-      ).toThrow(ValidationError)
-    })
-  })
-
-  describe('parseClaims', () => {
-    it('drops a claim whose text runs over, keeps the rest whole, and names it', () => {
-      const { notes, note } = collect()
-      const parsed = parseClaims(
-        JSON.stringify({
-          claims: [
-            { ...CLAIM, sourceType: 'SEC filing' },
-            { ...CLAIM, text: 'A'.repeat(1001) },
-            { ...CLAIM, text: 'Enron executives were convicted in 2006.' },
-          ],
-        }),
-        note,
-      )
-      expect(parsed.map((claim) => claim.text)).toEqual([
-        CLAIM.text,
-        'Enron executives were convicted in 2006.',
-      ])
-      // Facts as the model gave them, with the source rules applied as before.
-      expect(parsed[0]).toEqual({ ...CLAIM, sourceType: 'regulator' })
-      expect(notes).toEqual([
-        { action: 'dropped', field: 'claim 2', reason: 'its text ran over 1,000 characters' },
-      ])
-    })
-
-    it('keeps the first 120 claims', () => {
-      const { notes, note } = collect()
-      const parsed = parseClaims(
-        JSON.stringify({
-          claims: Array.from({ length: 121 }, (_, at) => ({
-            ...CLAIM,
-            text: `Claim number ${at + 1} about Enron.`,
-          })),
-        }),
-        note,
-      )
-      expect(parsed).toHaveLength(120)
-      expect(notes).toEqual([{ action: 'capped', field: 'claims', kept: 120 }])
-    })
-
-    it('refuses a claims list its drops left empty', () => {
-      expect(() =>
-        parseClaims(JSON.stringify({ claims: [{ ...CLAIM, text: 'A'.repeat(1001) }] })),
-      ).toThrow(ValidationError)
-    })
-  })
-
-  describe('parseAnswers', () => {
-    it('trims a long answer, drops one whose question ran over, and names each by its question', () => {
-      const { notes, note } = collect()
-      const parsed = parseAnswers(
-        JSON.stringify({
-          answers: [
-            {
-              index: 1,
-              question: 'What did the board know in 1999?',
-              answer: 'The Powers report found the board approved it. '.repeat(70),
-              sourceUrl: 'https://example.com/powers-report',
-            },
-            { index: 2, question: 'Q'.repeat(1001), answer: 'An answer that will not be kept.' },
-            { index: 3, question: 'Who leaked it to the press?', answer: null },
-          ],
-        }),
-        note,
-      )
-      expect(parsed.answers.map((answer) => answer.index)).toEqual([1, 3])
-      expect(parsed.answers[0]).toMatchObject({
-        question: 'What did the board know in 1999?',
-        sourceUrl: 'https://example.com/powers-report',
-      })
-      expect(parsed.answers[0]!.answer!.length).toBeLessThanOrEqual(3000)
-      expect(parsed.answers[0]!.answer!.endsWith('approved it.')).toBe(true)
-      expect(notes).toEqual([
-        {
-          action: 'dropped',
-          field: 'the answer to question 2',
-          reason: 'its question ran over 1,000 characters',
-        },
-        { action: 'trimmed', field: 'the answer to question 1' },
-      ])
-    })
-
-    it('numbers an answer by its place when it echoed no number', () => {
-      const { notes, note } = collect()
-      parseAnswers(
-        JSON.stringify({
-          answers: [
-            { question: 'What did the board know in 1999?', answer: 'It knew. '.repeat(400) },
-          ],
-        }),
-        note,
-      )
-      expect(notes).toEqual([{ action: 'trimmed', field: 'the answer to question 1' }])
-    })
-
-    it('caps the answers and the claims found while answering, dropping an overlong claim first', () => {
-      const { notes, note } = collect()
-      const parsed = parseAnswers(
-        JSON.stringify({
-          answers: Array.from({ length: 41 }, (_, at) => ({
-            question: `Open question number ${at + 1}?`,
-            answer: null,
-          })),
-          claims: [
-            { ...CLAIM, text: 'A'.repeat(1001) },
-            ...Array.from({ length: 41 }, (_, at) => ({
-              ...CLAIM,
-              text: `Claim number ${at + 1} about Enron.`,
-            })),
-          ],
-        }),
-        note,
-      )
-      expect(parsed.answers).toHaveLength(40)
-      expect(parsed.claims).toHaveLength(40)
-      expect(parsed.claims[0]!.text).toBe('Claim number 1 about Enron.')
-      expect(notes).toEqual([
-        { action: 'capped', field: 'answers', kept: 40 },
-        {
-          action: 'dropped',
-          field: 'claim 1 found while answering',
-          reason: 'its text ran over 1,000 characters',
-        },
-        { action: 'capped', field: 'claims found while answering', kept: 40 },
-      ])
-    })
+    expect(mockCorpusDocuments()).toEqual(mockCorpusDocuments())
   })
 })
