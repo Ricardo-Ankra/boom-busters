@@ -1,3 +1,4 @@
+import { annualXbrlFacts, type AnnualFact } from '@boom-busters/providers'
 import type { DocumentKind, GroundedClaim, GroundedResearch, Series } from '@boom-busters/schemas'
 
 /**
@@ -57,8 +58,6 @@ export type Rate = number | 'not measured'
 
 const CLAIM_PATTERN = /revenue|net income|net loss|total assets/i
 const TOLERANCE = 0.01
-/** A fiscal year is about 365 days; 350 allows 52-week years (same floor as render-figures). */
-const MIN_ANNUAL_DAYS = 350
 
 /**
  * Which us-gaap concepts a series label names. Revenue has two because
@@ -74,42 +73,13 @@ function conceptsFor(label: string): string[] {
   return []
 }
 
-interface XbrlFact {
-  fp?: string
-  form?: string
-  val?: number
-  start?: string
-  end?: string
-  filed?: string
-}
-
-/**
- * Annual 10-K USD values of one concept by fiscal year. Keyed on the period
- * end, not `fy`, because a 10-K repeats prior years tagged with its own `fy`;
- * a restatement (later filed) beats the original.
- */
-function annualValues(xbrl: unknown, concept: string): Map<number, number> {
-  const facts = (
-    xbrl as {
-      facts?: { 'us-gaap'?: Record<string, { units?: { USD?: XbrlFact[] } }> }
-    } | null
-  )?.facts?.['us-gaap']?.[concept]?.units?.USD
-  const out = new Map<number, { val: number; filed: string }>()
-  if (!Array.isArray(facts)) return new Map()
-  for (const fact of facts) {
-    if (fact.form !== '10-K' || fact.fp !== 'FY') continue
-    if (typeof fact.val !== 'number' || typeof fact.end !== 'string') continue
-    const year = Number(fact.end.slice(0, 4))
-    if (!Number.isInteger(year)) continue
-    if (fact.start !== undefined) {
-      const days = (Date.parse(fact.end) - Date.parse(fact.start)) / 86_400_000
-      if (!(days >= MIN_ANNUAL_DAYS)) continue
-    }
-    const filed = fact.filed ?? ''
-    const held = out.get(year)
-    if (held === undefined || filed > held.filed) out.set(year, { val: fact.val, filed })
-  }
-  return new Map([...out].map(([year, { val }]) => [year, val]))
+/** Annual 10-K USD values of one concept by fiscal year, from the shared reader. */
+function annualValues(facts: readonly AnnualFact[], concept: string): Map<number, number> {
+  return new Map(
+    facts
+      .filter((fact) => fact.concept === concept && fact.unit === 'USD')
+      .map((fact) => [fact.year, fact.value]),
+  )
 }
 
 /** The multiplier a series' unit text states ("USD millions" is 1e6). */
@@ -132,7 +102,8 @@ function checkSeries(series: Series, xbrl: unknown | null): FigureCounts {
   if (concepts.length === 0) return counts
   const usd = series.currency === null || series.currency.toUpperCase() === 'USD'
   const scale = scaleOf(series.unit)
-  const byConcept = concepts.map((concept) => annualValues(xbrl, concept))
+  const annual = annualXbrlFacts(xbrl)
+  const byConcept = concepts.map((concept) => annualValues(annual, concept))
 
   for (const point of series.points) {
     if (!usd || xbrl === null || !/^\d{4}$/.test(point.at)) {
@@ -269,7 +240,7 @@ export interface Report {
 
 const percent = (rate: number): string => `${(rate * 100).toFixed(1)}%`
 
-export function scoreRuns(runs: readonly CaseRun[]): Report {
+export function scoreRuns(runs: readonly CaseRun[], skipped: readonly string[] = []): Report {
   const tallies = runs.map(tally)
   const overallRates = ratesOf(sum(tallies))
   const costs = runs.map((run) => run.costUsd)
@@ -294,6 +265,11 @@ export function scoreRuns(runs: readonly CaseRun[]): Report {
       )
     }
   }
+
+  // A case that was never measured cannot count as passing: a report over
+  // fewer cases than asked for would read as a pass on evidence it lacks.
+  if (skipped.length > 0) failing.unshift(`skipped: ${skipped.join(', ')}`)
+  else if (runs.length === 0) failing.unshift('skipped: no case was scored')
 
   return {
     cases: runs.map((run, index) => ({
@@ -381,9 +357,11 @@ export function renderReport(report: Report, date: string): string {
     '',
     '## Verdict',
     '',
-    report.verdict.pass
-      ? 'Pass. Every measured rate meets its target; a rate marked "not measured" had nothing to measure.'
-      : 'Fail. The rollout stops until these are fixed.',
+    report.verdict.failing.some((item) => item.startsWith('skipped'))
+      ? 'Incomplete. Not every case was scored, so this run proves nothing yet; the rollout stops.'
+      : report.verdict.pass
+        ? 'Pass. Every measured rate meets its target; a rate marked "not measured" had nothing to measure.'
+        : 'Fail. The rollout stops until these are fixed.',
     '',
   ]
   if (!report.verdict.pass) {

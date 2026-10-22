@@ -20,7 +20,7 @@ interface Fact {
   filed?: string
 }
 
-interface Row {
+export interface AnnualFact {
   concept: string
   year: number
   value: number
@@ -30,19 +30,21 @@ interface Row {
 }
 
 /**
- * Annual XBRL facts as `concept | FY | value | unit` lines.
+ * Annual 10-K XBRL facts, one per concept, unit and fiscal year. `xbrlFactsText`
+ * renders them as `concept | FY | value | unit` lines; the back-test reads them
+ * directly so both see the same figures.
  *
  * The year comes from the period end, not the `fy` field: every 10-K repeats
  * its prior years' figures tagged with its own `fy`, so keying on `fy` would
  * let a comparative overwrite the year it describes.
  */
-export function xbrlFactsText(json: unknown): string {
+export function annualXbrlFacts(json: unknown): AnnualFact[] {
   const gaap = (
     json as { facts?: { 'us-gaap'?: Record<string, { units?: Record<string, Fact[]> }> } } | null
   )?.facts?.['us-gaap']
-  if (!gaap || typeof gaap !== 'object') return ''
+  if (!gaap || typeof gaap !== 'object') return []
 
-  const rows = new Map<string, Row>()
+  const rows = new Map<string, AnnualFact>()
   for (const concept of CONCEPTS) {
     const units = gaap[concept]?.units
     if (!units) continue
@@ -72,8 +74,12 @@ export function xbrlFactsText(json: unknown): string {
     }
   }
 
-  const order = (concept: string): number => CONCEPTS.indexOf(concept as (typeof CONCEPTS)[number])
   return [...rows.values()]
+}
+
+export function xbrlFactsText(json: unknown): string {
+  const order = (concept: string): number => CONCEPTS.indexOf(concept as (typeof CONCEPTS)[number])
+  return annualXbrlFacts(json)
     .sort((a, b) => a.year - b.year || order(a.concept) - order(b.concept))
     .map((row) => `${row.concept} | ${row.year} | ${row.value} | ${row.unit}`)
     .join('\n')

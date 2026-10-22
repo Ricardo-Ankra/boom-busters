@@ -255,6 +255,56 @@ describe('scoreRuns', () => {
   })
 })
 
+describe('incomplete runs', () => {
+  it('fails when a case was skipped, naming it, and says Incomplete', () => {
+    const report = scoreRuns([run()], ['FTX', 'Theranos'])
+    expect(report.verdict.pass).toBe(false)
+    expect(report.verdict.failing[0]).toBe('skipped: FTX, Theranos')
+    expect(renderReport(report, '2026-10-30')).toContain('Incomplete')
+  })
+
+  it('fails when no case was scored', () => {
+    const report = scoreRuns([], ['Wirecard'])
+    expect(report.verdict).toEqual({ pass: false, failing: ['skipped: Wirecard'] })
+    expect(scoreRuns([]).verdict.pass).toBe(false)
+  })
+})
+
+describe('the shared XBRL reader', () => {
+  it('prefers the longer period when two facts tie on filed', () => {
+    const tie = {
+      facts: {
+        'us-gaap': {
+          Revenues: {
+            units: {
+              USD: [
+                {
+                  start: '2022-01-01',
+                  end: '2022-12-31',
+                  val: 1,
+                  fp: 'FY',
+                  form: '10-K',
+                  filed: 'f',
+                },
+                {
+                  start: '2021-01-01',
+                  end: '2022-12-31',
+                  val: 2_000,
+                  fp: 'FY',
+                  form: '10-K',
+                  filed: 'f',
+                },
+              ],
+            },
+          },
+        },
+      },
+    }
+    const claims = [claim('Revenue 2022', series('Revenue', '2022', 2000))]
+    expect(figureMatches(claims, tie)).toEqual({ matched: 1, mismatched: 0, notCheckable: 0 })
+  })
+})
+
 describe('renderReport', () => {
   it('writes a table per rate with a row per case, then the verdict', () => {
     const report = scoreRuns([run({ title: 'Wirecard' }), run({ title: 'Enron', costUsd: 9 })])

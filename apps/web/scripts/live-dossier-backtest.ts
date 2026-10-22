@@ -159,17 +159,29 @@ async function main(): Promise<void> {
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error)
       // What a failed case cost is still spent: it counts against the cap.
-      spent = before + (await projectLedgerSummary(db, project.id)).costUsd
+      // A failing ledger read must not stop the report being written.
+      spent =
+        before +
+        (await projectLedgerSummary(db, project.id).then(
+          (l) => l.costUsd,
+          () => spent - before,
+        ))
       skipped.push({ title, reason })
       console.error(`${title}: failed, ${reason}`)
     } finally {
-      await deleteProject(db, project.id)
-      await deleteCase(db, row.id)
+      await deleteProject(db, project.id).catch((e) => console.error(`${title}: cleanup failed`, e))
+      await deleteCase(db, row.id).catch(() => undefined)
     }
   }
 
   const date = new Date().toISOString().slice(0, 10)
-  let markdown = renderReport(scoreRuns(runs), date)
+  let markdown = renderReport(
+    scoreRuns(
+      runs,
+      skipped.map((item) => item.title),
+    ),
+    date,
+  )
   if (skipped.length > 0) {
     markdown += [
       '## Cases not scored',
