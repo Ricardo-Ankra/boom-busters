@@ -633,7 +633,7 @@ export function buildClaimsRequest(
   // A pass run as one part has no other part to defer to.
   const share =
     part.of > 1
-      ? `\nThis is part ${part.index} of ${part.of}: extract claims whose FIRST support is one of documents [D${part.from}] to [D${part.to}]. A later support may cite any document. The other part covers the rest.\n`
+      ? `\nThis is part ${part.index} of ${part.of}: extract claims whose FIRST support is one of documents [D${part.from}] to [D${part.to}]. A later support may cite any document. The other part covers the rest. If no claim's first support lies in your documents, return {"claims": []}.\n`
       : ''
   return passRequest(
     input,
@@ -646,25 +646,42 @@ ${share}{"claims": [${CLAIM_SHAPE}]}
 
 ${CLAIM_RULES}
 
-Limits (the app checks them): 1 to ${DOSSIER_CLAIMS_PER_PASS} claims; ${CLAIM_LIMITS}.`,
+Limits (the app checks them): 0 to ${DOSSIER_CLAIMS_PER_PASS} claims; ${CLAIM_LIMITS}.`,
     8_000,
   )
 }
 
+/**
+ * An empty list is an answer (a part whose documents lead no claim), but a
+ * list that had claims and lost every one to repairs is refused: asked again
+ * with the reason, the model can fix what it wrote, which an empty part
+ * would silently throw away.
+ */
 export function parseClaims(text: string, note: Note = ignoreRepairs): ResearchClaim[] {
-  return parseRepaired(text, ClaimsSchema, 'claims', (raw) => ({
-    ...raw,
-    claims: repairClaims(
-      raw['claims'],
-      {
-        max: DOSSIER_CLAIMS_PER_PASS,
-        name: 'claims',
-        claim: (at) => `claim ${at + 1}`,
-        support: (at, supportAt) => `claim ${at + 1} support ${supportAt + 1}`,
-      },
-      note,
-    ),
-  })).claims
+  let written = 0
+  const { claims } = parseRepaired(text, ClaimsSchema, 'claims', (raw) => {
+    written = Array.isArray(raw['claims']) ? raw['claims'].length : 0
+    return {
+      ...raw,
+      claims: repairClaims(
+        raw['claims'],
+        {
+          max: DOSSIER_CLAIMS_PER_PASS,
+          name: 'claims',
+          claim: (at) => `claim ${at + 1}`,
+          support: (at, supportAt) => `claim ${at + 1} support ${supportAt + 1}`,
+        },
+        note,
+      ),
+    }
+  })
+  if (written > 0 && claims.length === 0) {
+    throw new ValidationError(
+      `The model's claims could not be used: every claim was dropped by repairs (${written} written)`,
+      { field: 'claims' },
+    )
+  }
+  return claims
 }
 
 // ---------------------------------------------------------------------------

@@ -171,7 +171,7 @@ describe('the research prompts', () => {
 
   it('asks the claims pass for at most a pass worth of claims', () => {
     expect(asked(buildClaimsRequest(caseContext, corpus, brief, scenes, claimsPart))).toContain(
-      `Limits (the app checks them): 1 to ${DOSSIER_CLAIMS_PER_PASS} claims;`,
+      `Limits (the app checks them): 0 to ${DOSSIER_CLAIMS_PER_PASS} claims;`,
     )
   })
 
@@ -192,7 +192,8 @@ describe('the research prompts', () => {
     })
     expect(asked(part2)).toContain(
       'This is part 2 of 2: extract claims whose FIRST support is one of documents [D13] to ' +
-        '[D25]. A later support may cite any document. The other part covers the rest.',
+        '[D25]. A later support may cite any document. The other part covers the rest. ' +
+        'If no claim\'s first support lies in your documents, return {"claims": []}.',
     )
     // Before the shape, so the model reads its range before it starts writing.
     expect(asked(part2).indexOf('This is part 2 of 2')).toBeLessThan(
@@ -661,7 +662,7 @@ describe('parseClaims', () => {
     ])
   })
 
-  it('refuses a legal status the gate cannot read, and an empty claims list', () => {
+  it('refuses a legal status the gate cannot read', () => {
     expect(() =>
       parseClaims(
         JSON.stringify({
@@ -669,7 +670,26 @@ describe('parseClaims', () => {
         }),
       ),
     ).toThrow(ValidationError)
-    expect(() => parseClaims('{"claims":[]}')).toThrow(ValidationError)
+  })
+
+  it('accepts an empty claims list: a part whose documents lead no claim says so', () => {
+    expect(parseClaims('{"claims":[]}')).toEqual([])
+  })
+
+  it('refuses a list that had claims and lost every one to repairs, so it is asked again', () => {
+    const { notes, note } = collect()
+    expect(() =>
+      parseClaims(
+        JSON.stringify({
+          claims: [
+            { ...CLAIM, text: 'A'.repeat(1001) },
+            { ...CLAIM, supports: [{ doc: 1, quote: 'q'.repeat(301) }] },
+          ],
+        }),
+        note,
+      ),
+    ).toThrow(/every claim was dropped/)
+    expect(notes).toHaveLength(3)
   })
 })
 

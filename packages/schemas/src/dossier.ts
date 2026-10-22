@@ -155,8 +155,14 @@ export const ResearchClaimSchema = z.object({
 })
 export type ResearchClaim = z.infer<typeof ResearchClaimSchema>
 
+/**
+ * Empty is allowed: the claims pass runs in parts, and a part whose share of
+ * the documents leads no claim must be able to say so. `parseClaims` still
+ * refuses a list that repairs emptied, and the research step refuses a
+ * dossier whose parts together found none.
+ */
 export const ClaimsSchema = z.object({
-  claims: z.array(ResearchClaimSchema).min(1).max(DOSSIER_CLAIMS_PER_PASS),
+  claims: z.array(ResearchClaimSchema).max(DOSSIER_CLAIMS_PER_PASS),
 })
 
 /**
