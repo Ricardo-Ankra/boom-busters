@@ -161,6 +161,14 @@ async function main(): Promise<void> {
           transcript: doc.kind === 'video' && doc.meta?.transcript === true,
         })),
         xbrl,
+        // Grounding notes each beat it drops for lacking a transcript quote;
+        // they are the only trace of the beats the model wrote but lost.
+        beatsDropped: result.repairs.filter(
+          (repair) =>
+            repair.action === 'dropped' &&
+            repair.field.startsWith('told-already beat') &&
+            repair.reason.includes('video transcript'),
+        ).length,
         costUsd: ledger.costUsd,
         model: ledger.models.join(', ') || 'none recorded',
         passDurationsMs: timed.durations,

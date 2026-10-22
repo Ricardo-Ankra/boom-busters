@@ -80,6 +80,12 @@ export interface CaseRun {
   }[]
   /** The SEC company-facts JSON for the case's filer; null when it has none. */
   xbrl: unknown | null
+  /**
+   * Beats the model wrote that grounding dropped because their quote was not
+   * found in a video transcript. Every beat that survives grounding is found,
+   * so without this count the told-already rate could only read 100%.
+   */
+  beatsDropped?: number
   costUsd: number
   model: string
   /** Wall-clock milliseconds per research pass. */
@@ -214,7 +220,7 @@ function tally(run: CaseRun): Tally {
     urls: run.documents.length,
     figures: figureMatches(run.claims, run.xbrl),
     beatsFound: beats.filter((beat) => beat.ref.found).length,
-    beats: beats.length,
+    beats: beats.length + (run.beatsDropped ?? 0),
     transcripts: videos.filter((doc) => doc.transcript === true).length,
     videos: videos.length,
   }

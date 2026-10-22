@@ -270,6 +270,17 @@ describe('scoreRuns', () => {
     expect(report.verdict.failing[0]).toMatch(/^toldAlready/)
   })
 
+  it('counts beats grounding dropped for lacking a transcript quote', () => {
+    const documents: CaseRun['documents'] = [
+      { id: 'v1', url: 'https://y.test/1', kind: 'video', transcript: true, ...page },
+    ]
+    const report = scoreRuns([
+      run({ documents, research: research([{ id: 'v1', found: true }]), beatsDropped: 3 }),
+    ])
+    expect(report.overall.toldAlready).toBe(0.25)
+    expect(report.verdict.failing[0]).toMatch(/^toldAlready/)
+  })
+
   it('pools figures across cases and fails a mismatch-heavy overall', () => {
     const report = scoreRuns([
       run({
