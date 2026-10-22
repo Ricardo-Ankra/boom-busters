@@ -1,7 +1,8 @@
 import { and, asc, eq, inArray, sql } from 'drizzle-orm'
 import type { Database } from './client'
-import { claims, dossiers } from './schema'
-import type { ClaimConfidence, ClaimRow, ClaimSourceType } from './schema'
+import type { GroundedResearch, LegalStatus, Series } from '@boom-busters/schemas'
+import { claimSupports, claims, dossiers } from './schema'
+import type { ClaimConfidence, ClaimRow, ClaimSourceType, ClaimSupportRow } from './schema'
 
 /**
  * Dossier and claims queries (build spec sections 5, 7.1 and 11.3).
@@ -13,11 +14,26 @@ import type { ClaimConfidence, ClaimRow, ClaimSourceType } from './schema'
  * so a disabled button is never the only thing preventing it.
  */
 
+/** One supporting quote for a claim, located in its document when `found`. */
+export interface DraftSupportInput {
+  documentId: string
+  rank: number
+  quote: string
+  found: boolean
+  offset: number | null
+  locatorSeconds: number | null
+}
+
 export interface DraftClaimInput {
   text: string
-  sourceUrl?: string | undefined
+  sourceUrl?: string | null
   sourceType: ClaimSourceType
   confidence: ClaimConfidence
+  legalStatus?: LegalStatus
+  legalStatusDate?: string | null
+  legalStatusDocumentId?: string | null
+  series?: Series | null
+  supports?: readonly DraftSupportInput[]
 }
 
 export interface DossierWithClaims {
@@ -26,6 +42,9 @@ export interface DossierWithClaims {
   contentMd: string
   approvedAt: Date | null
   claims: ClaimRow[]
+  research: GroundedResearch | null
+  /** Each claim's supporting quotes by claim id, in rank order. */
+  supports: Record<string, ClaimSupportRow[]>
   createdAt: Date
   updatedAt: Date
 }
@@ -41,7 +60,13 @@ export interface DossierWithClaims {
  */
 export async function saveDossier(
   db: Database,
-  input: { projectId: string; contentMd: string; claims: readonly DraftClaimInput[] },
+  input: {
+    projectId: string
+    contentMd: string
+    claims: readonly DraftClaimInput[]
+    /** `null` clears any earlier research; leaving it out does too. */
+    research?: GroundedResearch | null
+  },
 ): Promise<DossierWithClaims> {
   /**
    * Every save is a new version, and the bump happens in the same statement as
@@ -59,11 +84,16 @@ export async function saveDossier(
    */
   const [dossier] = await db
     .insert(dossiers)
-    .values({ projectId: input.projectId, contentMd: input.contentMd })
+    .values({
+      projectId: input.projectId,
+      contentMd: input.contentMd,
+      research: input.research ?? null,
+    })
     .onConflictDoUpdate({
       target: dossiers.projectId,
       set: {
         contentMd: input.contentMd,
+        research: input.research ?? null,
         version: sql`${dossiers.version} + 1`,
         updatedAt: new Date(),
       },
@@ -73,15 +103,29 @@ export async function saveDossier(
   await db.delete(claims).where(eq(claims.dossierId, dossier!.id))
 
   if (input.claims.length > 0) {
-    await db.insert(claims).values(
-      input.claims.map((claim) => ({
-        dossierId: dossier!.id,
-        text: claim.text,
-        sourceUrl: claim.sourceUrl ?? null,
-        sourceType: claim.sourceType,
-        confidence: claim.confidence,
-      })),
+    const inserted = await db
+      .insert(claims)
+      .values(
+        input.claims.map((claim) => ({
+          dossierId: dossier!.id,
+          text: claim.text,
+          sourceUrl: claim.sourceUrl ?? null,
+          sourceType: claim.sourceType,
+          confidence: claim.confidence,
+          legalStatus: claim.legalStatus ?? 'none',
+          legalStatusDate: claim.legalStatusDate ?? null,
+          legalStatusDocumentId: claim.legalStatusDocumentId ?? null,
+          series: claim.series ?? null,
+        })),
+      )
+      .returning({ id: claims.id })
+
+    // `returning` keeps the order of the values, so row i is claim i. The old
+    // supports went with the old claims (cascade); these belong to the new ones.
+    const supports = input.claims.flatMap((claim, index) =>
+      (claim.supports ?? []).map((support) => ({ ...support, claimId: inserted[index]!.id })),
     )
+    if (supports.length > 0) await db.insert(claimSupports).values(supports)
   }
 
   return (await getDossier(db, input.projectId))!
@@ -110,7 +154,24 @@ export async function getDossier(
       asc(claims.createdAt),
     )
 
-  return { ...dossier, claims: rows }
+  const supports: Record<string, ClaimSupportRow[]> = {}
+  if (rows.length > 0) {
+    const supportRows = await db
+      .select()
+      .from(claimSupports)
+      .where(
+        inArray(
+          claimSupports.claimId,
+          rows.map((row) => row.id),
+        ),
+      )
+      .orderBy(asc(claimSupports.rank))
+    for (const support of supportRows) {
+      ;(supports[support.claimId] ??= []).push(support)
+    }
+  }
+
+  return { ...dossier, claims: rows, research: dossier.research ?? null, supports }
 }
 
 /** Several claims, by id. The board reads a chapter's cited articles at once. */

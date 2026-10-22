@@ -1,3 +1,4 @@
+import type { GroundedResearch } from '@boom-busters/schemas'
 import { afterAll, beforeEach, describe, expect, it } from 'vitest'
 import { createCase, truncateCases } from './cases'
 import { createDb } from './client'
@@ -14,6 +15,8 @@ import {
   verifyClaim,
 } from './dossiers'
 import { createProjectFromCase } from './projects'
+import { upsertResearchDocument } from './research-documents'
+import { researchDocuments } from './schema'
 import { requireTestDatabase } from './test-database'
 
 const url = requireTestDatabase()
@@ -191,5 +194,119 @@ describe('countClaims', () => {
 
   it('is all zeroes for no claims', () => {
     expect(countClaims([])).toEqual({ total: 0, unverified: 0, quarantined: 0, blocking: 0 })
+  })
+})
+
+suite('dossier research, supports and legal status', () => {
+  const { sql, db } = createDb(url ?? 'postgres://unused', { max: 2 })
+  let projectId = ''
+
+  afterAll(async () => {
+    await sql.end({ timeout: 5 })
+  })
+
+  beforeEach(async () => {
+    await truncateCases(db)
+    await db.delete(researchDocuments)
+    const source = await createCase(db, { title: 'Wirecard', category: 'collapse' })
+    const project = await createProjectFromCase(db, { caseId: source.id, title: 'Wirecard' })
+    projectId = project.id
+  })
+
+  const plain = [
+    { text: 'A claim.', sourceType: 'other' as const, confidence: 'unverified' as const },
+  ]
+
+  function makeDoc() {
+    return upsertResearchDocument(db, {
+      url: 'https://example.com/a',
+      finalUrl: null,
+      httpStatus: 200,
+      fetchedAt: new Date(),
+      contentType: 'text/html',
+      kind: 'reporting',
+      tier: 2,
+      title: null,
+      publishedAt: null,
+      text: 'filed for insolvency',
+      textHash: null,
+      tokens: 3,
+      archivedUrl: null,
+      truncated: false,
+      failure: null,
+      meta: null,
+    })
+  }
+
+  const support = (documentId: string, quote: string) => ({
+    documentId,
+    rank: 1,
+    quote,
+    found: true,
+    offset: 12,
+    locatorSeconds: null,
+  })
+
+  it('saves supports, legal status and series with a claim and reads them back', async () => {
+    const a = await makeDoc()
+    const saved = await saveDossier(db, {
+      projectId,
+      contentMd: '# x',
+      research: null,
+      claims: [
+        {
+          text: 'Wirecard filed for insolvency in June 2020.',
+          sourceUrl: 'https://example.com/a',
+          sourceType: 'major_outlet',
+          confidence: 'single_source',
+          legalStatus: 'alleged',
+          legalStatusDate: '2020-06',
+          legalStatusDocumentId: a.id,
+          series: null,
+          supports: [support(a.id, 'filed for insolvency')],
+        },
+      ],
+    })
+    const claim = saved.claims[0]!
+    expect(claim.legalStatus).toBe('alleged')
+    expect(claim.legalStatusDate).toBe('2020-06')
+    expect(claim.legalStatusDocumentId).toBe(a.id)
+    expect(saved.supports[claim.id]?.[0]?.quote).toBe('filed for insolvency')
+  })
+
+  it('defaults legal status to none and supports to empty', async () => {
+    const saved = await saveDossier(db, { projectId, contentMd: '# x', claims: plain })
+    expect(saved.claims[0]!.legalStatus).toBe('none')
+    expect(saved.supports[saved.claims[0]!.id] ?? []).toEqual([])
+    expect(saved.research).toBeNull()
+  })
+
+  it('replaces supports when the dossier is saved again', async () => {
+    const a = await makeDoc()
+    const withSupport = (quote: string) => [{ ...plain[0]!, supports: [support(a.id, quote)] }]
+    await saveDossier(db, { projectId, contentMd: '# v1', claims: withSupport('first') })
+    const second = await saveDossier(db, {
+      projectId,
+      contentMd: '# v2',
+      claims: withSupport('second'),
+    })
+    expect(
+      Object.values(second.supports)
+        .flat()
+        .map((s) => s.quote),
+    ).toEqual(['second'])
+  })
+
+  it('stores and returns research, and clears it with null', async () => {
+    const research = { entity: { label: 'Wirecard AG' } } as unknown as GroundedResearch
+    const saved = await saveDossier(db, { projectId, contentMd: '# x', claims: plain, research })
+    expect(saved.research).toEqual(research)
+    const cleared = await saveDossier(db, {
+      projectId,
+      contentMd: '# x',
+      claims: plain,
+      research: null,
+    })
+    expect(cleared.research).toBeNull()
   })
 })
