@@ -1,0 +1,23 @@
+UNITED STATES SECURITIES AND EXCHANGE COMMISSION
+FORM 10-K
+Annual report for Example Corp
+
+TABLE OF CONTENTS
+Item 1. Business 3
+Item 7. Management's Discussion 40
+
+Item 1. Business
+
+We operate payment services in several markets.
+
+Item 1A. Risk Factors
+
+Risk factors body goes here.
+
+Item 7. Management's Discussion and Analysis
+
+Results of operations improved in the year.
+
+Item 8. Financial Statements
+
+Statements go here.
