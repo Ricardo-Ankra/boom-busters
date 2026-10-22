@@ -8026,3 +8026,18 @@ boom-busters-broker`; merge and deploy to Vercel, then `PUT
      at the budget gate would wait on the dossier gate and time out. Then a
      Vercel deploy and `PUT /api/inngest`. No Lambda or broker deploy. The
      numbers 306 to 310 are checked against `origin/master` at the merge.
+     First live back-test, 2026-10-22 (cap $30, `YOUTUBE_TRANSCRIPTS=1`,
+     research route claude-opus-5-5): report in
+     `docs/cases/dossier-backtest-2026-10-22.md`. Passed: quote-found 99.8%,
+     figure match 100% (14 of 14 SVB points; the other four cases have no
+     XBRL), cost $2.24 mean and $2.86 highest. Failed: URL resolution 74.2%
+     (reference links that refuse or have rotted; the archive fallback was
+     tried), told-already 0% because no video of 100 yielded a transcript,
+     and pass duration: the claims pass took 266 to 319 s on every case and
+     the answers pass up to 314 s, over the 300 s step a production run has.
+     Also seen: CourtListener's search reply carried results without
+     `absolute_url`, which the zod schema refuses, so dockets were lost for
+     one case. Open for the owner: the claims and answers passes must get
+     shorter or be split before a real case is run; the URL target needs a
+     realistic level; transcripts stay off until the reader is checked
+     against a live page.
