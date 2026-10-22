@@ -60,6 +60,16 @@ export interface PrimaryDocument {
   datedAt: IsoDate | null
 }
 
+/** What a dossier reads of one YouTube video: the words around it, not its numbers. */
+export interface VideoDetails {
+  id: string
+  title: string
+  description: string
+  publishedAt: IsoDate
+  durationSec: number
+  channelTitle: string
+}
+
 export interface Person {
   qid: string
   name: string

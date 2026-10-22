@@ -26,6 +26,12 @@ export interface PoliteClientOptions {
   now?: () => Date
   /** Told before each wait on a 429, a 5xx or a network error, so a CLI can say why it is pausing. */
   onBackoff?: (host: string, waitMs: number) => void
+  /**
+   * Retries after a 429, a 5xx or a network error, and the longest single wait. A caller that
+   * must answer within a request window (the dossier gather) passes a tight bound; the default
+   * is the patient policy the back-test CLI wants.
+   */
+  retry?: { attempts: number; maxBackoffMs: number }
 }
 
 export interface RequestInitLite {
@@ -146,6 +152,8 @@ export function createPoliteClient(options: PoliteClientOptions): PoliteClient {
   const intervals = { ...DEFAULT_INTERVALS, ...options.minIntervalMs }
   const userAgent = `boom-busters-case-finder/1.0 (+${options.contact})`
   const nextSlot = new Map<string, number>()
+  const retryAttempts = options.retry?.attempts ?? RATE_LIMIT_RETRIES
+  const maxBackoffMs = options.retry?.maxBackoffMs ?? RATE_LIMIT_CAP_MS
 
   const intervalFor = (host: string): number => {
     const match = Object.keys(intervals)
@@ -187,7 +195,7 @@ export function createPoliteClient(options: PoliteClientOptions): PoliteClient {
 
   /**
    * One request with the retry policy; the final response is returned whatever its status.
-   * A 429, a 5xx and a network error all get up to RATE_LIMIT_RETRIES patient retries, since
+   * A 429, a 5xx and a network error all get up to `retryAttempts` patient retries, since
    * each is short-lived. Only a 429 slows the host: it says we are too fast, the others do not.
    */
   async function request(
@@ -204,7 +212,7 @@ export function createPoliteClient(options: PoliteClientOptions): PoliteClient {
         // connection that drops mid-body ("terminated") is retried like any network error.
         if (!willRetry(res.status, n)) body = await res.text()
       } catch (error) {
-        if (!isNetworkFailure(error) || n === RATE_LIMIT_RETRIES) throw error
+        if (!isNetworkFailure(error) || n === retryAttempts) throw error
         await backOff(host, n + 1, null)
         continue
       }
@@ -215,7 +223,7 @@ export function createPoliteClient(options: PoliteClientOptions): PoliteClient {
   }
 
   const willRetry = (status: number, n: number) =>
-    (status === 429 || status >= 500) && n < RATE_LIMIT_RETRIES
+    (status === 429 || status >= 500) && n < retryAttempts
 
   /**
    * fetch reports a network failure as a TypeError (usually with a `cause`), and undici reports
@@ -225,14 +233,14 @@ export function createPoliteClient(options: PoliteClientOptions): PoliteClient {
     return error instanceof TypeError && (error as Error).name !== 'AbortError'
   }
 
-  /** Wait `5 s x 2^(n-1)` (a longer Retry-After wins), capped at 120 s, telling `onBackoff` first. */
+  /** Wait `5 s x 2^(n-1)` (a longer Retry-After wins), capped at `maxBackoffMs` (120 s by default), telling `onBackoff` first. */
   async function backOff(host: string, n: number, retryAfter: string | null): Promise<void> {
     const wait = Math.min(
       Math.max(
         retryAfter === null ? 0 : retryAfterMs(retryAfter),
         RATE_LIMIT_BASE_MS * 2 ** (n - 1),
       ),
-      RATE_LIMIT_CAP_MS,
+      maxBackoffMs,
     )
     options.onBackoff?.(host, wait)
     await sleep(wait)

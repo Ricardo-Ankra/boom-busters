@@ -41,6 +41,9 @@ describe('live wikidata facts', () => {
       dissolved: '2020-06-25',
       instanceOf: ['Q891723', 'Q4830453'],
       isClass: false,
+      ticker: null,
+      website: null,
+      inception: null,
       people: [
         { qid: 'Q2001', name: 'Founder Alive', living: true, convicted: false },
         { qid: 'Q2002', name: 'Founder Deceased', living: false, convicted: false },
@@ -105,6 +108,26 @@ describe('live wikidata facts', () => {
     expect(url.origin + url.pathname).toBe('https://query.wikidata.org/sparql')
     expect(url.searchParams.get('query')).toBe('SELECT ?x WHERE {}')
     expect(url.searchParams.get('format')).toBe('json')
+  })
+})
+
+describe('live wikidata ticker, website and inception', () => {
+  it('reads P249 with its P414 exchange, P856 and P571', async () => {
+    const fetchImpl = vi.fn(
+      async (_url: string | URL | Request) =>
+        new Response(fixture('wikidata-entities-ticker.json'), { status: 200 }),
+    )
+    const facts = await sourceFor(fetchImpl as never).facts(['Q3001', 'Q3002'])
+    expect(facts.get('Q3001')).toMatchObject({
+      ticker: { symbol: 'EXC', exchange: 'Q13677' },
+      website: 'https://www.example.com/',
+      inception: '1999-04-01',
+    })
+    expect(facts.get('Q3002')).toMatchObject({
+      ticker: { symbol: 'BARE', exchange: null },
+      website: null,
+      inception: null,
+    })
   })
 })
 

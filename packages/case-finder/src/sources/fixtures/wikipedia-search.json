@@ -1,0 +1,10 @@
+{
+  "batchcomplete": true,
+  "query": {
+    "searchinfo": { "totalhits": 2 },
+    "search": [
+      { "ns": 0, "title": "Wirecard", "pageid": 111, "size": 90000, "wordcount": 9000 },
+      { "ns": 0, "title": "Wirecard scandal", "pageid": 222, "size": 40000, "wordcount": 4000 }
+    ]
+  }
+}

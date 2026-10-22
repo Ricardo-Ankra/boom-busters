@@ -292,6 +292,17 @@ describe('polite client', () => {
       })
     }
 
+    it('a retry option bounds the attempts and caps each wait', async () => {
+      const onBackoff = vi.fn()
+      const fetchImpl = sequence(500, 500, 200)
+      const client = make(fetchImpl, { onBackoff, retry: { attempts: 1, maxBackoffMs: 10 } })
+      const res = await client.getText(url)
+      expect(res.status).toBe(500)
+      expect(fetchImpl).toHaveBeenCalledTimes(2)
+      expect(onBackoff).toHaveBeenCalledTimes(1)
+      expect(onBackoff.mock.calls[0]![1]).toBeLessThanOrEqual(10)
+    })
+
     it('a 429 then a 200 succeeds after a 5 s wait', async () => {
       vi.useFakeTimers()
       const fetchImpl = sequence(429, 200)

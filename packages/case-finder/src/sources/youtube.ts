@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import type { ChannelUploads, IsoDate, YoutubeVideo } from '../types'
+import type { ChannelUploads, IsoDate, VideoDetails, YoutubeVideo } from '../types'
 import { isJson, type PoliteClient } from './http'
 import { QuotaExhaustedError, type QuotaLedger } from './quota'
 
@@ -28,6 +28,25 @@ export interface YoutubeSource {
     uploadsPlaylistId: string,
     options?: { maxPages?: number; until?: IsoDate },
   ): Promise<ChannelUploads>
+  /** videos.list part=snippet,contentDetails, 1 unit per 50 ids; ids YouTube omits drop out. */
+  details(ids: readonly string[]): Promise<VideoDetails[]>
+}
+
+/** The video id in a watch, youtu.be or shorts link; null for anything else. */
+export function videoIdFromUrl(url: string): string | null {
+  let parsed: URL
+  try {
+    parsed = new URL(url)
+  } catch {
+    return null
+  }
+  const host = parsed.hostname.replace(/^(www|m)\./, '')
+  const id = (value: string | null | undefined) =>
+    value !== null && value !== undefined && /^[\w-]+$/.test(value) ? value : null
+  if (host === 'youtu.be') return id(parsed.pathname.split('/')[1])
+  if (host !== 'youtube.com') return null
+  if (parsed.pathname === '/watch') return id(parsed.searchParams.get('v'))
+  return id(/^\/shorts\/([^/]+)/.exec(parsed.pathname)?.[1])
 }
 
 const BASE = 'https://www.googleapis.com/youtube/v3'
@@ -68,6 +87,23 @@ const videosSchema = z.object({
         }),
         contentDetails: z.object({ duration: z.string().optional() }).optional(),
         statistics: z.object({ viewCount: z.string().optional() }).optional(),
+      }),
+    )
+    .default([]),
+})
+
+const detailsSchema = z.object({
+  items: z
+    .array(
+      z.object({
+        id: z.string(),
+        snippet: z.object({
+          title: z.string(),
+          description: z.string().optional(),
+          publishedAt: z.string(),
+          channelTitle: z.string().optional(),
+        }),
+        contentDetails: z.object({ duration: z.string().optional() }).optional(),
       }),
     )
     .default([]),
@@ -194,6 +230,33 @@ export function liveYoutube(
   }
 
   return {
+    async details(ids) {
+      const out: VideoDetails[] = []
+      for (let i = 0; i < ids.length; i += 50) {
+        const batch = ids.slice(i, i + 50)
+        const { data } = await call(
+          'videos',
+          `part=snippet,contentDetails&id=${batch.join(',')}`,
+          COST.videos,
+          detailsSchema,
+        )
+        const byId = new Map(data.items.map((item) => [item.id, item]))
+        for (const id of batch) {
+          const item = byId.get(id)
+          if (item === undefined) continue
+          out.push({
+            id,
+            title: item.snippet.title,
+            description: item.snippet.description ?? '',
+            publishedAt: item.snippet.publishedAt.slice(0, 10),
+            durationSec: parseIsoDuration(item.contentDetails?.duration ?? ''),
+            channelTitle: item.snippet.channelTitle ?? '',
+          })
+        }
+      }
+      return out
+    },
+
     async search(query) {
       const { data, fetchedAt } = await call(
         'search',

@@ -1,0 +1,25 @@
+{
+  "items": [
+    {
+      "id": "vid1",
+      "snippet": {
+        "channelId": "UCaaa",
+        "channelTitle": "Finance Explained",
+        "title": "The Wirecard collapse",
+        "description": "How a payments darling vanished.",
+        "publishedAt": "2020-07-15T12:00:00Z"
+      },
+      "contentDetails": { "duration": "PT8M" }
+    },
+    {
+      "id": "vid3",
+      "snippet": {
+        "channelId": "UCbbb",
+        "channelTitle": "Money Docs",
+        "title": "Wirecard explained",
+        "publishedAt": "2021-06-01T12:00:00Z"
+      },
+      "contentDetails": { "duration": "PT1H2M3S" }
+    }
+  ]
+}

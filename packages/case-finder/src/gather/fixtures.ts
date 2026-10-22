@@ -72,6 +72,8 @@ export function fakeWikipedia(
         .replace('.000Z', 'Z')
       return { revid: i + 1, timestamp }
     }),
+    search: vi.fn(async () => []),
+    currentItems: vi.fn(async () => ({ categories: [], externalLinks: [], links: [] })),
     parsed: vi.fn(async (revid: number) => {
       const page = pages[titles[revid - 1]!]!
       return {

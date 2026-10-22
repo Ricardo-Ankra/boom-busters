@@ -6,7 +6,13 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createPoliteClient } from './http'
 import { mockYoutube } from './mock'
 import { createQuotaLedger, QuotaExhaustedError } from './quota'
-import { liveYoutube, parseIsoDuration, uploadsPlaylistId, YoutubeNotFoundError } from './youtube'
+import {
+  liveYoutube,
+  videoIdFromUrl,
+  parseIsoDuration,
+  uploadsPlaylistId,
+  YoutubeNotFoundError,
+} from './youtube'
 
 const fixture = (name: string) =>
   readFileSync(new URL(`./fixtures/${name}`, import.meta.url), 'utf8')
@@ -290,6 +296,54 @@ describe('live youtube uploads', () => {
     const err = await source.uploads('UCx', 'UUx').catch((e: unknown) => e)
     expect(err).toBeInstanceOf(Error)
     expect(err).not.toBeInstanceOf(YoutubeNotFoundError)
+  })
+})
+
+describe('videoIdFromUrl', () => {
+  it('reads watch, youtu.be and shorts urls, and nothing else', () => {
+    expect(videoIdFromUrl('https://www.youtube.com/watch?v=abc_DEF-123&t=5s')).toBe('abc_DEF-123')
+    expect(videoIdFromUrl('https://youtu.be/abc_DEF-123?si=x')).toBe('abc_DEF-123')
+    expect(videoIdFromUrl('https://www.youtube.com/shorts/abc_DEF-123')).toBe('abc_DEF-123')
+    expect(videoIdFromUrl('https://www.youtube.com/@channel')).toBeNull()
+    expect(videoIdFromUrl('https://example.com/watch?v=abc')).toBeNull()
+    expect(videoIdFromUrl('not a url')).toBeNull()
+  })
+})
+
+describe('youtube details', () => {
+  it('reads snippet and contentDetails for 1 unit, in the order asked, dropping missing ids', async () => {
+    const { source, ledger, fetchImpl } = await setup(
+      routedFetch([['/videos?', 'youtube-videos-details.json']]),
+    )
+    const out = await source.details(['vid3', 'gone', 'vid1'])
+    expect(out).toEqual([
+      {
+        id: 'vid3',
+        title: 'Wirecard explained',
+        description: '',
+        publishedAt: '2021-06-01',
+        durationSec: 3723,
+        channelTitle: 'Money Docs',
+      },
+      {
+        id: 'vid1',
+        title: 'The Wirecard collapse',
+        description: 'How a payments darling vanished.',
+        publishedAt: '2020-07-15',
+        durationSec: 480,
+        channelTitle: 'Finance Explained',
+      },
+    ])
+    const url = new URL(String(fetchImpl.mock.calls[0]![0]))
+    expect(url.searchParams.get('part')).toBe('snippet,contentDetails')
+    expect(ledger.remaining()).toBe(10_000 - 1)
+    expect(await source.details([])).toEqual([])
+  })
+
+  it('the mock answers fixed fake details', async () => {
+    const out = await mockYoutube.details(['a', 'b'])
+    expect(out.map((v) => v.id)).toEqual(['a', 'b'])
+    expect(out[0]!.title).toContain('[mock]')
   })
 })
 

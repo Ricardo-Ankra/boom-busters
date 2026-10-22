@@ -1,0 +1,69 @@
+{
+  "entities": {
+    "Q3001": {
+      "type": "item",
+      "id": "Q3001",
+      "sitelinks": { "enwiki": { "site": "enwiki", "title": "Example Corp" } },
+      "claims": {
+        "P249": [
+          {
+            "mainsnak": {
+              "snaktype": "value",
+              "property": "P249",
+              "datavalue": { "type": "string", "value": "EXC" }
+            },
+            "qualifiers": {
+              "P414": [
+                {
+                  "snaktype": "value",
+                  "property": "P414",
+                  "datavalue": {
+                    "type": "wikibase-entityid",
+                    "value": { "entity-type": "item", "id": "Q13677" }
+                  }
+                }
+              ]
+            }
+          }
+        ],
+        "P856": [
+          {
+            "mainsnak": {
+              "snaktype": "value",
+              "property": "P856",
+              "datavalue": { "type": "string", "value": "https://www.example.com/" }
+            }
+          }
+        ],
+        "P571": [
+          {
+            "mainsnak": {
+              "snaktype": "value",
+              "property": "P571",
+              "datavalue": {
+                "type": "time",
+                "value": { "time": "+1999-04-00T00:00:00Z", "precision": 10 }
+              }
+            }
+          }
+        ]
+      }
+    },
+    "Q3002": {
+      "type": "item",
+      "id": "Q3002",
+      "sitelinks": {},
+      "claims": {
+        "P249": [
+          {
+            "mainsnak": {
+              "snaktype": "value",
+              "property": "P249",
+              "datavalue": { "type": "string", "value": "BARE" }
+            }
+          }
+        ]
+      }
+    }
+  }
+}

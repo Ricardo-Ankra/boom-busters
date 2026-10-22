@@ -38,6 +38,13 @@ export interface WikipediaSource {
    * template adds is therefore dropped, deliberately: undercounting is the conservative side.
    */
   parsed(revid: number): Promise<RevisionItems>
+  /** Namespace-0 full-text search, in the engine's result order. */
+  search(query: string, limit: number): Promise<{ title: string; pageid: number }[]>
+  /**
+   * The page as it reads now, through the same wikitext extraction as `parsed`. For a live
+   * dossier, where today's article is the point; a missing page has no items. Not cached.
+   */
+  currentItems(title: string): Promise<RevisionItems>
 }
 
 const API = 'https://en.wikipedia.org/w/api.php'
@@ -99,6 +106,10 @@ const contentQuery = z.object({
       }),
     )
     .optional(),
+})
+
+const searchQuery = z.object({
+  search: z.array(z.object({ title: z.string(), pageid: z.number() })).default([]),
 })
 
 /** The content reply keeps the API's `error` object, which the shared envelope drops. */
@@ -204,6 +215,8 @@ export function liveWikipedia(
   const urlFor = (params: Record<string, string>) =>
     `${API}?${new URLSearchParams({ format: 'json', formatversion: '2', ...params })}`
 
+  const emptyItems = (): RevisionItems => ({ categories: [], externalLinks: [], links: [] })
+
   /** One revision's items from its wikitext, which is fetched but not cached. */
   async function fetchItems(revid: number): Promise<RevisionItems> {
     const { data } = await client.getJson(
@@ -227,7 +240,7 @@ export function liveWikipedia(
     // The revision exists but its text is suppressed (revision deletion) or absent: it says
     // nothing, so it has no items. Throwing here would abort every rerun on one hidden edit.
     const content = revision.slots?.main.content
-    if (content === undefined) return { categories: [], externalLinks: [], links: [] }
+    if (content === undefined) return emptyItems()
     return wikitextItems(content)
   }
 
@@ -391,6 +404,41 @@ export function liveWikipedia(
       const page = data.query?.pages?.[0]
       const revision = page?.missing !== undefined ? undefined : page?.revisions?.[0]
       return revision ? { revid: revision.revid, timestamp: revision.timestamp } : null
+    },
+
+    async search(query, limit) {
+      const { data } = await client.getJson(
+        urlFor({
+          action: 'query',
+          list: 'search',
+          srsearch: query,
+          srnamespace: '0',
+          srlimit: String(limit),
+        }),
+        envelope(searchQuery),
+      )
+      return (data.query?.search ?? []).map((hit) => ({ title: hit.title, pageid: hit.pageid }))
+    },
+
+    async currentItems(title) {
+      const { data } = await client.getJson(
+        urlFor({
+          action: 'query',
+          prop: 'revisions',
+          titles: title,
+          rvprop: 'content',
+          rvslots: 'main',
+          rvlimit: '1',
+        }),
+        contentReply,
+        { noStore: true },
+      )
+      if (data.error !== undefined) {
+        throw new Error(`Wikipedia page ${title}: ${data.error.code} ${data.error.info ?? ''}`)
+      }
+      // A missing page has no `revisions`; a suppressed one has no content. Neither says anything.
+      const content = data.query?.pages?.[0]?.revisions?.[0]?.slots?.main.content
+      return content === undefined ? emptyItems() : wikitextItems(content)
     },
 
     async parsed(revid) {

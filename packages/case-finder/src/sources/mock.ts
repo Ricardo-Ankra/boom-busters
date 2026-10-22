@@ -69,6 +69,9 @@ export const mockWikidata: WikidataSource = {
         country: 'Q30',
         cik: null,
         dissolved: null,
+        ticker: { symbol: 'MOCK', exchange: 'Q13677' },
+        website: 'https://example.invalid/mock',
+        inception: '2000-01-01',
         instanceOf: [],
         isClass: false,
         people: [
@@ -118,6 +121,19 @@ export const mockWikipedia: WikipediaSource = {
         .replace('.000Z', 'Z'),
     }
   },
+  async search(query, limit) {
+    return Array.from({ length: Math.min(limit, 3) }, (_, i) => ({
+      title: `Mock result ${i + 1} for ${query}`,
+      pageid: 1000 + i,
+    }))
+  },
+  async currentItems(title) {
+    return {
+      categories: [`Mock category of ${title}`],
+      externalLinks: [`https://example.invalid/mock/${encodeURIComponent(title)}`],
+      links: [`Mock link of ${title}`],
+    }
+  },
   async parsed(revid) {
     return {
       categories: [`Mock category of revision ${revid}`],
@@ -144,6 +160,16 @@ const mockVideo = (channelId: string, label: string, n: number): YoutubeVideo =>
 })
 
 export const mockYoutube: YoutubeSource = {
+  async details(ids) {
+    return ids.map((id) => ({
+      id,
+      title: `[mock] details of ${id}`,
+      description: `[mock] description of ${id}`,
+      publishedAt: '2020-06-15',
+      durationSec: 600,
+      channelTitle: '[mock] channel',
+    }))
+  },
   async search(query) {
     return {
       fetchedAt: MOCK_FETCHED_ON,
@@ -191,6 +217,27 @@ export const mockCourtListener: CourtListenerSource = {
 }
 
 export const mockEdgar: EdgarSource = {
+  async exhibits(cik, options) {
+    return Array.from({ length: options.newest }, (_, i) => {
+      const filed = new Date(Date.parse('2025-01-01T00:00:00Z') - i * 90 * 86_400_000)
+        .toISOString()
+        .slice(0, 10)
+      return {
+        url: `https://example.invalid/mock/edgar/${cik}/ex99-1/${i + 1}`,
+        title: `[mock] 8-K exhibit 99.1 filed ${filed}`,
+        source: 'edgar' as const,
+        datedAt: filed,
+      }
+    })
+  },
+  async latestFiling(cik, form) {
+    return {
+      url: `https://example.invalid/mock/edgar/${cik}/latest-${form}`,
+      title: `[mock] ${form} filed 2025-03-01`,
+      source: 'edgar' as const,
+      datedAt: '2025-03-01',
+    }
+  },
   async filings(cik, lane, before) {
     const form = lane === 'success' ? '10-K' : 'NT 10-K'
     const n = 1 + (hash(`${cik}|edgar`) % 3)
