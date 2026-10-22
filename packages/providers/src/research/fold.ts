@@ -41,13 +41,24 @@ export function blankTranscriptMarkers(text: string): string {
   return text.replace(TRANSCRIPT_MARKER, (m) => ' '.repeat(m.length))
 }
 
-export function quoteFound(text: string, quote: string): { found: boolean; offset: number | null } {
-  const haystack = foldText(blankTranscriptMarkers(text))
+/** A document folded once, with transcript markers blanked, for many quote searches. */
+export function foldDocument(text: string): Folded {
+  return foldText(blankTranscriptMarkers(text))
+}
+
+export function quoteFoundIn(
+  haystack: Folded,
+  quote: string,
+): { found: boolean; offset: number | null } {
   const needle = foldText(quote).folded
   if (needle.length < DOSSIER_QUOTE_MIN_FOLDED) return { found: false, offset: null }
   const at = haystack.folded.indexOf(needle)
   if (at < 0) return { found: false, offset: null }
   return { found: true, offset: haystack.map[at] ?? null }
+}
+
+export function quoteFound(text: string, quote: string): { found: boolean; offset: number | null } {
+  return quoteFoundIn(foldDocument(text), quote)
 }
 
 export function locatorSeconds(text: string, offset: number): number | null {
