@@ -16,7 +16,10 @@ const PROGRESS_EVERY = 100
 /** What pass 1 learned about one entry, carried into pass 2. */
 export interface PassOne {
   evidence: EntryEvidence
+  /** The title and every redirect: what list matching sees. */
   enTitles: string[]
+  /** The title and its former titles: what pageviews are summed over. */
+  viewTitles: string[]
   page: PageAtT | null
 }
 
@@ -56,22 +59,34 @@ export async function tagsAt(
   return out
 }
 
-/** The English title and every redirect to it; empty with no English article. */
-export async function enTitlesOf(entry: HitlistEntry, sources: Sources): Promise<string[]> {
-  if (entry.enTitle === null) return []
-  return [entry.enTitle, ...(await sources.wikipedia.redirectsTo(entry.enTitle))]
+/**
+ * The English title's two title lists. `enTitles` is the title and every
+ * current redirect, for list matching (a list may link through any spelling,
+ * and the redirects call is cheap and cached). `viewTitles` is the title and
+ * its former titles only, for pageviews: a renamed article keeps its history,
+ * but a famous company has 20 to 30 redirects (nicknames, tickers) and each
+ * would cost a pageviews request. Both are empty with no English article.
+ */
+export async function titlesOf(
+  entry: HitlistEntry,
+  sources: Sources,
+): Promise<{ enTitles: string[]; viewTitles: string[] }> {
+  if (entry.enTitle === null) return { enTitles: [], viewTitles: [] }
+  const redirects = await sources.wikipedia.redirectsTo(entry.enTitle)
+  const former = await sources.wikipedia.formerTitles(entry.enTitle, redirects)
+  return { enTitles: [entry.enTitle, ...redirects], viewTitles: [entry.enTitle, ...former] }
 }
 
-/** The English monthly series (title and redirects) before T; empty with no English article. */
+/** The English monthly series (title and former titles) before T; empty with no English article. */
 export async function enMonthlyOf(
   entry: HitlistEntry,
-  enTitles: string[],
+  viewTitles: string[],
   run: Run,
 ): Promise<MonthlyViews[]> {
   if (entry.enTitle === null) return []
   const series = await run.sources.pageviews.monthly(
     'en.wikipedia',
-    enTitles,
+    viewTitles,
     SERIES_FROM_MONTH,
     run.lastMonth,
   )
@@ -81,8 +96,8 @@ export async function enMonthlyOf(
 /** Pageviews and tags for one entry; the revision is read only above the floor. */
 async function passOne(entry: HitlistEntry, run: Run): Promise<PassOne> {
   const { asOf, sources } = run
-  const enTitles = await enTitlesOf(entry, sources)
-  const enMonthly = await enMonthlyOf(entry, enTitles, run)
+  const { enTitles, viewTitles } = await titlesOf(entry, sources)
+  const enMonthly = await enMonthlyOf(entry, viewTitles, run)
   const evidence: EntryEvidence = {
     entry,
     asOf,
@@ -100,12 +115,12 @@ async function passOne(entry: HitlistEntry, run: Run): Promise<PassOne> {
   // The floor needs only the English series, so an entry below it costs no revision fetch.
   if (entry.enTitle === null || enMedian < FLOOR_MEDIAN_MONTHLY) {
     evidence.tagsAtT = await tagsAt(entry, asOf, null, median)
-    return { evidence, enTitles, page: null }
+    return { evidence, enTitles, viewTitles, page: null }
   }
   const page = await run.pageAt(entry.enTitle)
   const pages = { page, enTitles, listLinks: run.listLinks }
   evidence.tagsAtT = await tagsAt(entry, asOf, pages, median)
-  return { evidence, enTitles, page }
+  return { evidence, enTitles, viewTitles, page }
 }
 
 /** Pass 1 over the whole hitlist, in order, with a progress line every 100 entries. */

@@ -2,7 +2,7 @@ import { laneOf } from './hitlist/build'
 import { populationAt } from './score/rank'
 import { countedVideos, medianMonthly } from './score/measure'
 import { historyNeeded } from './gather/channels'
-import { enMonthlyOf, enTitlesOf, passOneAll, tagsAt, type PassOne } from './gather/pass-one'
+import { enMonthlyOf, passOneAll, tagsAt, titlesOf, type PassOne } from './gather/pass-one'
 import {
   SERIES_FROM_DAY,
   SERIES_FROM_MONTH,
@@ -105,12 +105,12 @@ async function passTwo(
   const { entry } = one.evidence
   const { asOf, sources } = run
   const enDaily =
-    one.enTitles.length === 0
+    one.viewTitles.length === 0
       ? []
       : daysBefore(
           await sources.pageviews.daily(
             'en.wikipedia',
-            one.enTitles,
+            one.viewTitles,
             SERIES_FROM_DAY,
             run.yesterday,
           ),
@@ -156,10 +156,10 @@ export async function laneAt(
   options: GatherOptions = {},
 ): Promise<Lane | null> {
   const run = createRun(asOf, sources, options)
-  const enTitles = await enTitlesOf(entry, sources)
+  const { enTitles, viewTitles } = await titlesOf(entry, sources)
   const page = entry.enTitle === null ? null : await run.pageAt(entry.enTitle)
   const pages = { page, enTitles, listLinks: run.listLinks }
-  const median = async () => medianMonthly(await enMonthlyOf(entry, enTitles, run), asOf)
+  const median = async () => medianMonthly(await enMonthlyOf(entry, viewTitles, run), asOf)
   return laneOf(await tagsAt(entry, asOf, pages, median))
 }
 

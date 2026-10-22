@@ -62,6 +62,7 @@ export function fakeWikipedia(
     categoryMembers: vi.fn(async () => []),
     listLinks: vi.fn(async () => []),
     redirectsTo: vi.fn(async () => []),
+    formerTitles: vi.fn(async () => []),
     qidsFor: vi.fn(async () => new Map()),
     revisionBefore: vi.fn(async (title: string, day: string) => {
       const i = titles.indexOf(title)

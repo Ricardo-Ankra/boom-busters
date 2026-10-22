@@ -145,21 +145,21 @@ describe('polite client', () => {
     expect(fetchImpl).toHaveBeenCalledTimes(2)
   })
 
-  it('retries a 503 once, then throws', async () => {
+  it('a persistent 503 is retried six times, then thrown with the URL redacted', async () => {
     vi.useFakeTimers()
     const fetchImpl = vi.fn(async () => json({}, 503))
     const client = createPoliteClient({ contact: 'me@example.com', cacheDir: null, fetchImpl })
     const outcome = client
       .getJson('https://api.example.com/x?key=SECRET', schema)
       .catch((e: Error) => e)
-    await vi.advanceTimersByTimeAsync(1000)
+    await vi.advanceTimersByTimeAsync(275_000)
     const err = (await outcome) as Error
     expect(err.message).toMatch(/api\.example\.com\/x.*503/)
     expect(err.message).not.toContain('SECRET')
-    expect(fetchImpl).toHaveBeenCalledTimes(2)
+    expect(fetchImpl).toHaveBeenCalledTimes(7)
   })
 
-  it('retries once on a network error', async () => {
+  it('a network error then a 200 succeeds after a 5 s wait', async () => {
     vi.useFakeTimers()
     const fetchImpl = vi
       .fn()
@@ -167,7 +167,9 @@ describe('polite client', () => {
       .mockResolvedValueOnce(json({ ok: true }))
     const client = createPoliteClient({ contact: 'me@example.com', cacheDir: null, fetchImpl })
     const result = client.getJson('https://api.example.com/x', schema)
-    await vi.advanceTimersByTimeAsync(1000)
+    await vi.advanceTimersByTimeAsync(4999)
+    expect(fetchImpl).toHaveBeenCalledTimes(1)
+    await vi.advanceTimersByTimeAsync(1)
     expect((await result).data).toEqual({ ok: true })
   })
 
@@ -411,18 +413,94 @@ describe('polite client', () => {
       ])
     })
 
-    it('a 5xx still retries once after 1 s and no more', async () => {
+    it('five 503s then a 200 wait 5, 10, 20, 40 and 80 s', async () => {
       vi.useFakeTimers()
-      const fetchImpl = sequence(503, 503, 503)
-      const outcome = make(fetchImpl)
-        .getText(url)
-        .then((r) => r.status)
-      await vi.advanceTimersByTimeAsync(999)
+      const fetchImpl = sequence(503, 503, 503, 503, 503, 200)
+      const result = make(fetchImpl).getJson(url, schema)
+      let calls = 1
+      for (const wait of [5000, 10_000, 20_000, 40_000, 80_000]) {
+        await vi.advanceTimersByTimeAsync(wait - 1)
+        expect(fetchImpl).toHaveBeenCalledTimes(calls)
+        await vi.advanceTimersByTimeAsync(1)
+        expect(fetchImpl).toHaveBeenCalledTimes(++calls)
+      }
+      expect((await result).data).toEqual({ ok: true })
+    })
+
+    it('a Retry-After on a 503 is honoured', async () => {
+      vi.useFakeTimers()
+      const fetchImpl = vi
+        .fn()
+        .mockResolvedValueOnce(json({}, 503, { 'Retry-After': '30' }))
+        .mockResolvedValueOnce(json({ ok: true }))
+      const result = make(fetchImpl).getJson(url, schema)
+      await vi.advanceTimersByTimeAsync(29_999)
       expect(fetchImpl).toHaveBeenCalledTimes(1)
       await vi.advanceTimersByTimeAsync(1)
-      expect(await outcome).toBe(503)
-      await vi.advanceTimersByTimeAsync(300_000)
-      expect(fetchImpl).toHaveBeenCalledTimes(2)
+      expect((await result).data).toEqual({ ok: true })
+    })
+
+    it('seven network errors give up after six retries and rethrow', async () => {
+      vi.useFakeTimers()
+      const fetchImpl = vi.fn().mockRejectedValue(new TypeError('fetch failed'))
+      const outcome = make(fetchImpl)
+        .getText(url)
+        .catch((e: Error) => e)
+      await vi.advanceTimersByTimeAsync(274_999)
+      expect(fetchImpl).toHaveBeenCalledTimes(6)
+      await vi.advanceTimersByTimeAsync(1)
+      expect(((await outcome) as Error).message).toBe('fetch failed')
+      expect(fetchImpl).toHaveBeenCalledTimes(7)
+    })
+
+    it('a body read that fails mid-response is retried like a network error', async () => {
+      vi.useFakeTimers()
+      const broken = {
+        status: 200,
+        headers: new Headers(),
+        text: () => Promise.reject(new TypeError('terminated')),
+      }
+      const fetchImpl = vi
+        .fn()
+        .mockResolvedValueOnce(broken)
+        .mockResolvedValueOnce(json({ ok: true }))
+      const result = make(fetchImpl).getJson(url, schema)
+      await vi.advanceTimersByTimeAsync(4999)
+      expect(fetchImpl).toHaveBeenCalledTimes(1)
+      await vi.advanceTimersByTimeAsync(1)
+      expect((await result).data).toEqual({ ok: true })
+    })
+
+    it('an AbortError, or any error that is not a TypeError, surfaces at once', async () => {
+      const abort = new DOMException('aborted', 'AbortError')
+      const first = vi.fn().mockRejectedValue(abort)
+      await expect(make(first).getText(url)).rejects.toBe(abort)
+      expect(first).toHaveBeenCalledTimes(1)
+      const other = vi.fn().mockRejectedValue(new Error('boom'))
+      await expect(make(other).getText(url)).rejects.toThrow('boom')
+      expect(other).toHaveBeenCalledTimes(1)
+    })
+
+    it('network errors and 5xx do not slow the host, and are reported through onBackoff', async () => {
+      vi.useFakeTimers()
+      const onBackoff = vi.fn()
+      const fetchImpl = vi
+        .fn()
+        .mockRejectedValueOnce(new TypeError('fetch failed'))
+        .mockResolvedValueOnce(json({}, 503))
+        .mockImplementation(async () => json({ ok: true }))
+      const client = make(fetchImpl, { onBackoff })
+      const first = client.getJson(url, schema)
+      await vi.advanceTimersByTimeAsync(15_000)
+      await first
+      expect(onBackoff.mock.calls).toEqual([
+        ['api.example.com', 5000],
+        ['api.example.com', 10_000],
+      ])
+      const second = client.getJson('https://api.example.com/y', schema)
+      await vi.advanceTimersByTimeAsync(0)
+      await second
+      expect(fetchImpl).toHaveBeenCalledTimes(4)
     })
   })
 
