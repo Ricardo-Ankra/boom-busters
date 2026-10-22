@@ -359,4 +359,110 @@ describe('groundResearch', () => {
       { action: 'dropped', field: 'answer 2', reason: 'cites a document that was not given' },
     ])
   })
+  it('matches a series figure only on number boundaries', () => {
+    const input = withClaims([
+      {
+        text: 'Revenue moved.',
+        supports: [{ doc: 1, quote: 'filings show revenue in 2015 of' }],
+        legal: null,
+        series: {
+          label: 'Revenue',
+          unit: 'EUR',
+          currency: 'EUR',
+          points: [
+            { at: '2015', value: 5, asWritten: '5' },
+            { at: '2016', value: 1_900_000, asWritten: '€1,900,000' },
+            { at: '2017', value: 1_900, asWritten: '1,900' },
+          ],
+        },
+      },
+    ])
+    input.documents = [
+      {
+        ...docs[0]!,
+        text: 'The filings show revenue in 2015 of €1,900,000 against costs in 2016.',
+      },
+    ]
+    const out = groundResearch(input, note)
+    // "5" sits inside "2015" only; "1,900" folds to "1 900", a whole-token prefix
+    // of "1 900 000", which the boundary rule accepts.
+    expect(out.claims[0]!.series!.points.map((p) => p.asWritten)).toEqual(['€1,900,000', '1,900'])
+    expect(repairs).toContainEqual(
+      expect.objectContaining({ action: 'dropped', field: 'claim 1 series point 1' }),
+    )
+  })
+
+  it('takes the source from the first found support, else from support 1', () => {
+    const out = groundResearch(
+      withClaims([
+        {
+          text: 'Revenue was misreported.',
+          supports: [
+            { doc: 1, quote: 'a quote that is nowhere in the document' },
+            { doc: 2, quote: 'had misled investors about its revenue' },
+          ],
+          legal: null,
+          series: null,
+        },
+        {
+          text: 'Nothing checks out.',
+          supports: [
+            { doc: 2, quote: 'a quote that is nowhere in the court record' },
+            { doc: 1, quote: 'another quote that is nowhere at all' },
+          ],
+          legal: null,
+          series: null,
+        },
+      ]),
+      note,
+    )
+    expect(out.claims[0]).toMatchObject({
+      sourceUrl: 'https://two.example.org/b',
+      sourceType: 'court',
+    })
+    expect(out.claims[1]).toMatchObject({
+      sourceUrl: 'https://two.example.org/b',
+      sourceType: 'court',
+      confidence: 'unverified',
+    })
+  })
+
+  it('keeps a told-already beat only when its quote is placed in a video transcript', () => {
+    const input = withClaims([])
+    input.brief = {
+      ...input.brief,
+      toldAlready: [
+        {
+          beat: 'Videos say it would be fine.',
+          doc: 3,
+          quote: 'promised everything would be fine',
+        },
+        {
+          beat: 'Reporting said revenue.',
+          doc: 1,
+          quote: 'reported revenue of $5 million in 2020',
+        },
+        { beat: 'A video line not said.', doc: 3, quote: 'a line the video never says at all' },
+      ],
+    }
+    const out = groundResearch(input, note)
+    expect(out.research.brief.toldAlready).toEqual([
+      {
+        beat: 'Videos say it would be fine.',
+        ref: expect.objectContaining({ documentId: 'c', found: true, locatorSeconds: 70 }),
+      },
+    ])
+    expect(repairs).toEqual([
+      {
+        action: 'dropped',
+        field: 'told-already beat 2',
+        reason: 'its quote is not found in a video transcript',
+      },
+      {
+        action: 'dropped',
+        field: 'told-already beat 3',
+        reason: 'its quote is not found in a video transcript',
+      },
+    ])
+  })
 })

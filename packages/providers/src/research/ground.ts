@@ -99,12 +99,13 @@ export function groundResearch(
       })
       return null
     }
-    const haystack = foldOf(doc).folded
+    // Padded so a figure must sit between fold boundaries: "5" is not in "2015".
+    const haystack = ` ${foldOf(doc).folded} `
     const points = series.points.filter((p, i) => {
       const written = foldText(p.asWritten).folded
       // No length floor here: a printed number is short. A digit is required so
       // a label alone cannot pass for a figure.
-      const ok = /\d/.test(written) && haystack.includes(written)
+      const ok = /\d/.test(written) && haystack.includes(` ${written} `)
       if (!ok) {
         note({
           action: 'dropped',
@@ -171,10 +172,15 @@ export function groundResearch(
     }
 
     const series = groundSeries(claim.series, docs[0], n)
+    // The claim's headline source is one whose quote was found; a support the
+    // check could not place is only the fallback.
+    const firstFound = supports.findIndex((s) => s.found)
+    const primary = firstFound >= 0 ? firstFound : 0
+    const primaryDoc = docs[primary]
     return {
       text: series ? `${claim.text} ${renderSeries(series)}` : claim.text,
-      sourceUrl: supports[0]?.url ?? null,
-      sourceType: docs[0] ? SOURCE_TYPES[docs[0].kind] : 'other',
+      sourceUrl: supports[primary]?.url ?? null,
+      sourceType: primaryDoc ? SOURCE_TYPES[primaryDoc.kind] : 'other',
       confidence: computeConfidence(supports),
       legalStatus,
       legalStatusDate,
@@ -196,10 +202,18 @@ export function groundResearch(
     return { ...rest, ref: scene ? refFor(scene.doc, scene.quote, `cast ${i + 1} scene`) : null }
   })
 
-  const toldAlready = input.brief.toldAlready.map((t, i) => ({
-    beat: t.beat,
-    ref: refFor(t.doc, t.quote, `told-already beat ${i + 1}`),
-  }))
+  // Spec 4.4: a told-already beat is what an existing video said, so it is kept
+  // only when its quote is found in a video's transcript and has a timestamp.
+  const toldAlready = input.brief.toldAlready.flatMap((t, i) => {
+    const field = `told-already beat ${i + 1}`
+    const ref = refFor(t.doc, t.quote, field)
+    if (ref.locatorSeconds !== null) return [{ beat: t.beat, ref }]
+    // refFor has already noted a document that was not given.
+    if (ref.documentId !== null) {
+      note({ action: 'dropped', field, reason: 'its quote is not found in a video transcript' })
+    }
+    return []
+  })
 
   const answers = input.answers.map((a, i) => {
     const { doc, ...rest } = a

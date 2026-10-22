@@ -25,4 +25,23 @@ describe('computeConfidence', () => {
       'unverified',
     )
   })
+
+  it('counts a Wayback capture as the site it captured', () => {
+    expect(
+      computeConfidence([
+        { url: 'https://www.wirecard.com/press/1', quote: 'q one', found: true },
+        {
+          url: 'https://web.archive.org/web/20190101000000/https://wirecard.com/press/2',
+          quote: 'q two',
+          found: true,
+        },
+      ]),
+    ).toBe('single_source')
+    expect(
+      computeConfidence([
+        { url: 'https://ft.com/a', quote: 'q one', found: true },
+        { url: 'https://web.archive.org/web/2019id_/wirecard.com/b', quote: 'q two', found: true },
+      ]),
+    ).toBe('sourced')
+  })
 })
