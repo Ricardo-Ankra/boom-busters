@@ -5,6 +5,10 @@ import type { EntityFacts, WikidataSource } from './wikidata'
 import type { CourtListenerSource } from './courtlistener'
 import type { EdgarSource } from './edgar'
 import type { SecReleasesSource } from './sec-releases'
+import type { StooqSource } from './stooq'
+import type { TranscriptSource } from './transcript'
+import type { WaybackSource } from './wayback'
+import type { XbrlSource } from './xbrl'
 import type { WikipediaSource } from './wikipedia'
 import type { YoutubeVideo } from '../types'
 import { monthsBefore } from '../dates'
@@ -273,5 +277,46 @@ export const mockSecReleases: SecReleasesSource = {
         url: 'https://example.invalid/mock/lr/1',
       },
     ]
+  },
+}
+
+const MOCK_TRANSCRIPT_LINES = [
+  [0, 'This is a mock transcript for a mock video.'],
+  [5, 'The company grew quickly in its first years.'],
+  [9, 'Then the numbers stopped adding up.'],
+  [14, 'Investors asked questions that nobody answered.'],
+  [20, 'By the end of the year the business had failed.'],
+] as const
+
+export const mockTranscripts: TranscriptSource = {
+  async fetch() {
+    return MOCK_TRANSCRIPT_LINES.map(([start, text]) => ({ start, text }))
+  },
+}
+
+export const mockStooq: StooqSource = {
+  async daily() {
+    return 'Date,Open,High,Low,Close,Volume\n2020-01-02,10,11,9,10.5,1000\n2020-01-03,10.5,11,10,10.2,900\n'
+  },
+}
+
+export const mockWayback: WaybackSource = {
+  async captures() {
+    return [
+      {
+        timestamp: '20180101000000',
+        url: 'https://example.invalid/mock/wayback/20180101000000',
+      },
+      {
+        timestamp: '20190101000000',
+        url: 'https://example.invalid/mock/wayback/20190101000000',
+      },
+    ]
+  },
+}
+
+export const mockXbrl: XbrlSource = {
+  async companyFacts(cik) {
+    return { cik: Number(cik), entityName: '[mock] Example Corp', facts: {} }
   },
 }

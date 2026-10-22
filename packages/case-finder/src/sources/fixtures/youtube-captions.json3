@@ -1,0 +1,1 @@
+{"wireMagic":"pb3","events":[{"tStartMs":0,"dDurationMs":4000,"segs":[{"utf8":"Welcome "},{"utf8":"back"}]},{"tStartMs":4000,"dDurationMs":500},{"tStartMs":4500,"dDurationMs":1000,"segs":[{"utf8":"\n"}]},{"tStartMs":5250,"dDurationMs":3000,"segs":[{"utf8":"The company "},{"utf8":"collapsed in 2020."}]}]}

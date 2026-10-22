@@ -1,0 +1,14 @@
+{
+  "cik": 1234567,
+  "entityName": "Example Corp",
+  "facts": {
+    "us-gaap": {
+      "Revenues": {
+        "label": "Revenues",
+        "units": {
+          "USD": [{ "end": "2020-12-31", "val": 1000000, "fy": 2020, "fp": "FY", "form": "10-K" }]
+        }
+      }
+    }
+  }
+}
