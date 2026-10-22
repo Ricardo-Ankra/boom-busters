@@ -8041,3 +8041,40 @@ boom-busters-broker`; merge and deploy to Vercel, then `PUT
      shorter or be split before a real case is run; the URL target needs a
      realistic level; transcripts stay off until the reader is checked
      against a live page.
+
+     Follow-up to the back-test, 2026-10-22 (branch `backtest-follow-ups`),
+     four changes. First, the claims and answers passes each run as two
+     steps, `research-claims-<round>-<part>` and
+     `research-answers-<round>-<part>`, because one step took up to 319 s.
+     A claims part asks for at most 20 claims (`DOSSIER_CLAIMS_PER_PASS`, now
+     the cap per part, so the pass keeps 40) whose first support is in its
+     half of the documents; an answers part lists only its half of the open
+     questions, under their numbers in the brief, and keeps at most 20
+     claims (`DOSSIER_ANSWER_CLAIMS_MAX`). Every part has an 8,000-token
+     budget, and the part text sits in the final message, so the system
+     prompt and corpus stay one cached prefix. A later part's claims are
+     deduplicated against the earlier part's, a budget gate from any part
+     stops the rest, and every part's repairs join the notice in order. The
+     back-test records a split pass as its slowest step, since the 300 s
+     limit is per step. Second, CourtListener results without `absolute_url`
+     are dropped instead of failing the search. Third, the URL resolution
+     target is 70%, from the 74% the run measured over reference links that
+     often refuse or have rotted; the told-already rate is reported with no
+     target, since no transcript source exists (the YouTube caption
+     endpoint answers 404 to unsigned requests). Fourth, spec sections 5 and
+     9 say the same. Decisions made: a pass with one document or one
+     question runs as one part and its prompt says nothing about parts, as
+     there is no other part to defer to; the parts run one after the other,
+     not in parallel. After review: a claims part may return no claims
+     (`ClaimsSchema` lost its minimum and the prompt says 0 to 20), but a
+     list that repairs emptied is still refused and asked again, and the
+     stage stops with "The claims could not be extracted: no part found a
+     claim in the documents" when every part is empty, since a dossier with
+     no claim would auto-approve. An answer whose `index` falls outside its
+     part's questions loses the number and is placed by its question text.
+     The brief step's result now carries `split: true`; a brief replayed
+     without it (a run parked across the deploy) makes the run use the old
+     single ids `research-claims-<round>` and `research-answers-<round>`,
+     which replay from memo and call nothing. Shipping: draining or
+     cancelling parked dossier runs before the deploy is still the safer
+     practice, as decision 310 says. Not yet re-run live.

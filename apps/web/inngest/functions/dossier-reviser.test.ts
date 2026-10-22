@@ -51,8 +51,19 @@ const DOCUMENTS = [
     archivedUrl: null,
     httpStatus: 200,
   },
+  {
+    id: 'doc-reuters',
+    url: 'https://www.reuters.com/wirecard',
+    kind: 'reporting',
+    title: 'Wirecard applies for insolvency',
+    publishedAt: '2020-06-25',
+    text: 'The payments company applied for insolvency proceedings at the Munich district court.',
+    archivedUrl: null,
+    httpStatus: 200,
+  },
 ]
-const CORPUS = { read: 1, unread: 0, failed: 0 }
+// Two documents and two questions, so the claims and answers passes each run in two parts.
+const CORPUS = { read: 2, unread: 0, failed: 0 }
 
 const BRIEF = {
   summary:
@@ -60,7 +71,7 @@ const BRIEF = {
   turningPoint: 'EY refused to sign the 2019 accounts.',
   cast: [],
   toldAlready: [],
-  openQuestions: ['Where did the 1.9 billion euros go?'],
+  openQuestions: ['Where did the 1.9 billion euros go?', 'Who signed off on the escrow accounts?'],
 }
 const SCENES = [
   {
@@ -82,6 +93,10 @@ const CLAIMS = [
 ]
 const ANSWERS = {
   answers: [{ index: 1, question: 'Where did the 1.9 billion euros go?', answer: null }],
+  claims: [],
+}
+const ANSWERS_2 = {
+  answers: [{ index: 2, question: 'Who signed off on the escrow accounts?', answer: null }],
   claims: [],
 }
 
@@ -142,18 +157,28 @@ describeDb('dossier-reviser', () => {
             ok: true,
             value: BRIEF,
             repairs: [{ action: 'trimmed', field: "the brief's turning point" }],
+            split: true,
           }),
         },
         { id: 'research-scenes-1', handler: () => ({ ok: true, value: SCENES }) },
         {
-          id: 'research-claims-1',
+          id: 'research-claims-1-1',
           handler: () => ({
             ok: true,
             value: CLAIMS,
-            repairs: [{ action: 'capped', field: 'claims', kept: 60 }],
+            repairs: [{ action: 'capped', field: 'claims', kept: 20 }],
           }),
         },
-        { id: 'research-answers-1', handler: () => ({ ok: true, value: ANSWERS }) },
+        { id: 'research-claims-1-2', handler: () => ({ ok: true, value: [] }) },
+        { id: 'research-answers-1-1', handler: () => ({ ok: true, value: ANSWERS }) },
+        {
+          id: 'research-answers-1-2',
+          handler: () => ({
+            ok: true,
+            value: ANSWERS_2,
+            repairs: [{ action: 'trimmed', field: 'the answer to question 2' }],
+          }),
+        },
       ],
     })
 
@@ -163,7 +188,8 @@ describeDb('dossier-reviser', () => {
       { projectId: FIXTURE_PROJECT_ID, subject: 'dossier', subjectId: null },
       [
         { action: 'trimmed', field: "the brief's turning point" },
-        { action: 'capped', field: 'claims', kept: 60 },
+        { action: 'capped', field: 'claims', kept: 20 },
+        { action: 'trimmed', field: 'the answer to question 2' },
       ],
     )
   })
@@ -188,7 +214,8 @@ describeDb('dossier-reviser', () => {
     })
 
     expect(stepIds(ctx).filter((id) => id.startsWith('gather-'))).toEqual([])
-    expect(callLlm).toHaveBeenCalledTimes(4)
+    // Brief, scenes, then two claims parts and two answers parts.
+    expect(callLlm).toHaveBeenCalledTimes(6)
     for (const [request] of callLlm.mock.calls as [LLMTaskRequest][]) {
       expect(request.messages.at(-1)!.content).toContain(`The human asks for changes: ${NOTE}`)
     }

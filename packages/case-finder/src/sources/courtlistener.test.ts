@@ -69,6 +69,18 @@ describe('liveCourtListener', () => {
     ])
   })
 
+  it('drops a result without an absolute_url and keeps the rest', async () => {
+    const reply = JSON.parse(fixture) as { results: Record<string, unknown>[] }
+    reply.results.splice(1, 0, { caseName: 'No link', dateFiled: '2020-10-01', docket_id: 555 })
+    const { source } = setup(JSON.stringify(reply))
+    const documents = await source.dockets('Wirecard AG', '2022-01-01')
+    expect(documents.map((d) => d.title)).toEqual([
+      'SEC v. Wirecard AG',
+      'Wirecard Investors v. Ernst',
+      'Undated matter',
+    ])
+  })
+
   it('throws on a response without a results array', async () => {
     const { source } = setup('{"detail":"x"}')
     await expect(source.dockets('X', '2022-01-01')).rejects.toThrow(/unexpected shape/)

@@ -595,15 +595,46 @@ export function parseScenes(text: string, note: Note = ignoreRepairs): Scene[] {
 }
 
 // ---------------------------------------------------------------------------
+// Parts
+// ---------------------------------------------------------------------------
+
+/**
+ * One share of a pass that runs as several calls. The claims and answers
+ * passes each run in parts because one call writing forty quoted claims took
+ * up to 319 s in the first live back-test, over the 300 s an Inngest step
+ * has; half the output per call brings each step well inside it. `from` and
+ * `to` are 1-based and inclusive: document numbers for the claims pass,
+ * question numbers for the answers pass.
+ */
+export interface PassPart {
+  index: number
+  of: number
+  from: number
+  to: number
+}
+
+// ---------------------------------------------------------------------------
 // Pass 3, claims and figures
 // ---------------------------------------------------------------------------
 
+/**
+ * A part owns the claims whose first support falls in its document range, so
+ * the parts cannot both extract the same claim from the same lead document.
+ * The part text goes in the final message only: the system prompt, the corpus
+ * and the brief before it are the cached prefix, shared by every part.
+ */
 export function buildClaimsRequest(
   input: CaseContext,
   corpus: string,
   brief: CaseBrief,
   scenes: readonly Scene[],
+  part: PassPart,
 ): LLMTaskRequest {
+  // A pass run as one part has no other part to defer to.
+  const share =
+    part.of > 1
+      ? `\nThis is part ${part.index} of ${part.of}: extract claims whose FIRST support is one of documents [D${part.from}] to [D${part.to}]. A later support may cite any document. The other part covers the rest. If no claim's first support lies in your documents, return {"claims": []}.\n`
+      : ''
   return passRequest(
     input,
     corpus,
@@ -611,29 +642,46 @@ export function buildClaimsRequest(
     `Now extract the facts the script will narrate, each with the words that prove
 it: what the money did, who said what, what the numbers show over time. The
 brief and the scenes tell you which facts the story rests on.
-{"claims": [${CLAIM_SHAPE}]}
+${share}{"claims": [${CLAIM_SHAPE}]}
 
 ${CLAIM_RULES}
 
-Limits (the app checks them): 1 to ${DOSSIER_CLAIMS_PER_PASS} claims; ${CLAIM_LIMITS}.`,
-    12_000,
+Limits (the app checks them): 0 to ${DOSSIER_CLAIMS_PER_PASS} claims; ${CLAIM_LIMITS}.`,
+    8_000,
   )
 }
 
+/**
+ * An empty list is an answer (a part whose documents lead no claim), but a
+ * list that had claims and lost every one to repairs is refused: asked again
+ * with the reason, the model can fix what it wrote, which an empty part
+ * would silently throw away.
+ */
 export function parseClaims(text: string, note: Note = ignoreRepairs): ResearchClaim[] {
-  return parseRepaired(text, ClaimsSchema, 'claims', (raw) => ({
-    ...raw,
-    claims: repairClaims(
-      raw['claims'],
-      {
-        max: DOSSIER_CLAIMS_PER_PASS,
-        name: 'claims',
-        claim: (at) => `claim ${at + 1}`,
-        support: (at, supportAt) => `claim ${at + 1} support ${supportAt + 1}`,
-      },
-      note,
-    ),
-  })).claims
+  let written = 0
+  const { claims } = parseRepaired(text, ClaimsSchema, 'claims', (raw) => {
+    written = Array.isArray(raw['claims']) ? raw['claims'].length : 0
+    return {
+      ...raw,
+      claims: repairClaims(
+        raw['claims'],
+        {
+          max: DOSSIER_CLAIMS_PER_PASS,
+          name: 'claims',
+          claim: (at) => `claim ${at + 1}`,
+          support: (at, supportAt) => `claim ${at + 1} support ${supportAt + 1}`,
+        },
+        note,
+      ),
+    }
+  })
+  if (written > 0 && claims.length === 0) {
+    throw new ValidationError(
+      `The model's claims could not be used: every claim was dropped by repairs (${written} written)`,
+      { field: 'claims' },
+    )
+  }
+  return claims
 }
 
 // ---------------------------------------------------------------------------
@@ -647,17 +695,28 @@ export function parseClaims(text: string, note: Note = ignoreRepairs): ResearchC
  * researcher sit with its own list and answer from the documents. `null`
  * stays legal: "the documents do not say" is a finding, and the alternative
  * is an invention narrated over footage.
+ *
+ * A part lists only its own questions, each under its number in the brief,
+ * so an answer's `index` means the same question whichever part wrote it.
  */
 export function buildAnswersRequest(
   input: CaseContext,
   corpus: string,
   brief: CaseBrief,
   scenes: readonly Scene[],
+  part: PassPart,
 ): LLMTaskRequest {
   // Numbered, not bulleted: the number is the join key the renderer places
   // each answer by (decision 203). Text matching alone lost every answer of
   // the first live run to paraphrased questions.
-  const questions = brief.openQuestions.map((question, at) => `${at + 1}. ${question}`).join('\n')
+  const questions = brief.openQuestions
+    .slice(part.from - 1, part.to)
+    .map((question, at) => `${part.from + at}. ${question}`)
+    .join('\n')
+  const share =
+    part.of > 1
+      ? `This is part ${part.index} of ${part.of}; answer only the questions listed.\n\n`
+      : ''
   return passRequest(
     input,
     corpus,
@@ -687,9 +746,9 @@ Limits (the app checks them): at most ${DOSSIER_ANSWERS_MAX} answers; each "ques
 ${DOSSIER_QUESTION_MAX} characters; each "answer" at most ${DOSSIER_ANSWER_MAX} characters; at most
 ${DOSSIER_ANSWER_CLAIMS_MAX} claims; ${CLAIM_LIMITS}.
 
-The open questions:
+${share}The open questions:
 ${questions}`,
-    10_000,
+    8_000,
   )
 }
 

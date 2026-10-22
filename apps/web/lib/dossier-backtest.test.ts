@@ -108,6 +108,8 @@ describe('the back-test constants', () => {
       'SVB Financial',
     ])
     expect(BACKTEST_TARGETS.costUsd).toBe(6)
+    expect(BACKTEST_TARGETS.urlResolved).toBe(0.7)
+    expect(BACKTEST_TARGETS).not.toHaveProperty('toldAlready')
     expect(BACKTEST_TARGETS.maxPassMs).toBe(200_000)
   })
 })
@@ -142,6 +144,33 @@ describe('timedSteps', () => {
     expect(value).toBe('claims')
     expect(ran).toEqual(['research-claims-2', 'research-ground-2', 'research-brief-0'])
     expect(durations).toEqual({ brief: 250, scenes: 0, claims: 1_500, answers: 0 })
+  })
+
+  it("records a split pass as its slowest part, since the step limit is each part's", async () => {
+    let clock = 0
+    const now = vi.spyOn(performance, 'now').mockImplementation(() => clock)
+    const ran: string[] = []
+    const { steps, durations } = timedSteps({
+      run: async (id, fn) => {
+        ran.push(id)
+        return fn()
+      },
+    })
+
+    for (const [id, ms] of [
+      ['research-claims-0-1', 140_000],
+      ['research-claims-0-2', 160_000],
+      ['research-answers-0-1', 90_000],
+      ['research-answers-0-2', 70_000],
+    ] as const) {
+      await steps.run(id, async () => {
+        clock += ms
+      })
+    }
+    now.mockRestore()
+
+    expect(ran).toHaveLength(4)
+    expect(durations).toEqual({ brief: 0, scenes: 0, claims: 160_000, answers: 90_000 })
   })
 })
 
@@ -242,6 +271,18 @@ describe('scoreRuns', () => {
     expect(report.verdict.failing[0]).toMatch(/^urlResolved/)
   })
 
+  it('passes a URL rate at the 70 percent target', () => {
+    const resolved = { url: 'r', kind: 'reporting', ...page } as const
+    const dead = { ...resolved, url: 'd', httpStatus: 404 }
+    const documents: CaseRun['documents'] = [
+      ...Array.from({ length: 7 }, () => resolved),
+      ...Array.from({ length: 3 }, () => dead),
+    ]
+    const report = scoreRuns([run({ documents })])
+    expect(report.overall.urlResolved).toBe(0.7)
+    expect(report.verdict).toEqual({ pass: true, failing: [] })
+  })
+
   it('reports no checkable figures and no transcripts as not measured, and passes', () => {
     const report = scoreRuns([run()])
     expect(report.overall.figureMatch).toBe('not measured')
@@ -267,7 +308,8 @@ describe('scoreRuns', () => {
     ])
     expect(report.overall.toldAlready).toBe(0.5)
     expect(report.transcriptAvailability).toBe(0.5)
-    expect(report.verdict.failing[0]).toMatch(/^toldAlready/)
+    // Reported, never gated: no transcript source exists to measure it against.
+    expect(report.verdict.failing).toEqual([])
   })
 
   it('counts beats grounding dropped for lacking a transcript quote', () => {
@@ -278,7 +320,7 @@ describe('scoreRuns', () => {
       run({ documents, research: research([{ id: 'v1', found: true }]), beatsDropped: 3 }),
     ])
     expect(report.overall.toldAlready).toBe(0.25)
-    expect(report.verdict.failing[0]).toMatch(/^toldAlready/)
+    expect(report.verdict.failing).toEqual([])
   })
 
   it('pools figures across cases and fails a mismatch-heavy overall', () => {
@@ -385,9 +427,20 @@ describe('renderReport', () => {
       '2026-10-30',
     )
     expect(md).toContain('## Pass durations')
+    expect(md).toContain(
+      'Target: every step under 200.0 s; a step has 300 s, and a split pass shows its slowest part.',
+    )
     expect(md).toContain('| Case | Brief | Scenes | Claims | Answers |')
     expect(md).toContain('| Wirecard | 41.3 s | 63.0 s | 171.9 s | 0.0 s |')
     expect(md.indexOf('## Pass durations')).toBeLessThan(md.indexOf('## Verdict'))
+  })
+
+  it('marks the told-already rate as reported only, and says why', () => {
+    const md = renderReport(scoreRuns([run()]), '2026-10-30')
+    expect(md).toContain(
+      'Target: Reported only; no transcript source exists (the YouTube caption endpoint answers 404 to unsigned requests, confirmed 2026-10-22).',
+    )
+    expect(md).toContain('Target: at least 70.0%.')
   })
 
   it('says the rollout may go on when nothing fails', () => {

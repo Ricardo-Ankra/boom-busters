@@ -13,12 +13,19 @@ import { BudgetExceededError, DOSSIER_DOCUMENT_TOKENS } from '@boom-busters/sche
 import { NonRetriableError } from 'inngest'
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AnswerComplete } from '@/lib/answer'
-import { gateSummary, loadCorpus, researchDossier, unfetchedClaims } from './dossier-research'
+import {
+  gateSummary,
+  loadCorpus,
+  researchDossier,
+  splitRange,
+  unfetchedClaims,
+} from './dossier-research'
 import { inlineSteps, type Steps } from './steps'
 
 /**
  * The four research passes over a small corpus, then the grounding, with a
- * fake call that answers each pass from fixture JSON. No provider, and no
+ * fake call that answers each pass, and each part of a split pass, from
+ * fixture JSON. No provider, and no
  * database but for the corpus loader's own suite: the passes write nothing;
  * the save steps do, and the runner's and reviser's tests cover them.
  */
@@ -77,7 +84,7 @@ const BRIEF = {
     },
   ],
   toldAlready: [],
-  openQuestions: ['Where did the 1.9 billion euros go?'],
+  openQuestions: ['Where did the 1.9 billion euros go?', 'Who signed off on the escrow accounts?'],
 }
 const SCENES = {
   scenes: [
@@ -100,12 +107,25 @@ const CLAIM = {
   legal: null,
   series: null,
 }
+const CLAIM_2 = {
+  text: 'The insolvency application went to the Munich district court.',
+  supports: [{ doc: 2, quote: 'applied for insolvency proceedings at the Munich district court' }],
+  legal: null,
+  series: null,
+}
+/** The answers pass runs in two parts here, one question each. */
 const ANSWERS = {
   answers: [{ index: 1, question: 'Where did the 1.9 billion euros go?', answer: null }],
   claims: [],
 }
+const ANSWERS_2 = {
+  answers: [{ index: 2, question: 'Who signed off on the escrow accounts?', answer: null }],
+  claims: [],
+}
 
 type Pass = 'brief' | 'scenes' | 'claims' | 'answers'
+/** A pass, or one part of a split pass: `claims-2` is the claims pass's second part. */
+type Key = Pass | `${'claims' | 'answers'}-${number}`
 
 const OPENINGS: [string, Pass][] = [
   ['Read the documents and write the case brief', 'brief'],
@@ -123,24 +143,37 @@ function passOf(request: LLMTaskRequest): Pass {
   throw new Error('Unknown pass')
 }
 
-const FIXTURES: Record<Pass, unknown> = {
+/** Which part of a split pass a request is, from its instructions; 1 for an unsplit pass. */
+function partOf(request: LLMTaskRequest): number {
+  for (const message of [...request.messages].reverse()) {
+    const found = /This is part (\d+) of/.exec(message.content)
+    if (found) return Number(found[1])
+  }
+  return 1
+}
+
+// Both claims parts answer CLAIM by default, so every run also merges a repeat.
+const FIXTURES: Partial<Record<Key, unknown>> = {
   brief: BRIEF,
   scenes: SCENES,
   claims: { claims: [CLAIM] },
   answers: ANSWERS,
+  'answers-2': ANSWERS_2,
 }
 
-function fixtureFor(request: LLMTaskRequest, over: Partial<Record<Pass, unknown>> = {}): string {
+/** A part's own fixture first, then its pass's, each overridden by `over`. */
+function fixtureFor(request: LLMTaskRequest, over: Partial<Record<Key, unknown>> = {}): string {
   const pass = passOf(request)
-  return JSON.stringify(over[pass] ?? FIXTURES[pass])
+  const part: Key = `${pass}-${partOf(request)}` as Key
+  return JSON.stringify(over[part] ?? over[pass] ?? FIXTURES[part] ?? FIXTURES[pass])
 }
 
 const answering =
-  (over: Partial<Record<Pass, unknown>> = {}): AnswerComplete =>
+  (over: Partial<Record<Key, unknown>> = {}): AnswerComplete =>
   async (request) => ({ text: fixtureFor(request, over) })
 
 describe('researchDossier over the corpus', () => {
-  it('runs four passes, passes the note to every one, and grounds the result', async () => {
+  it('runs the passes part by part, passes the note to every call, and grounds the result', async () => {
     const seen: string[] = []
     const complete: AnswerComplete = async (request) => {
       seen.push(request.messages.at(-1)!.content)
@@ -153,7 +186,8 @@ describe('researchDossier over the corpus', () => {
       { complete, mocked: false },
     )
 
-    expect(seen).toHaveLength(4)
+    // Brief, scenes, two claims parts and two answers parts.
+    expect(seen).toHaveLength(6)
     expect(
       seen.every((m) => m.includes('The human asks for changes: Less about the auditors')),
     ).toBe(true)
@@ -183,16 +217,56 @@ describe('researchDossier over the corpus', () => {
     expect(ids).toEqual([
       'research-brief-2',
       'research-scenes-2',
-      'research-claims-2',
-      'research-answers-2',
+      'research-claims-2-1',
+      'research-claims-2-2',
+      'research-answers-2-1',
+      'research-answers-2-2',
       'research-ground-2',
     ])
+  })
+
+  it('gives each claims part its documents and each answers part its questions', async () => {
+    const asked: Record<string, string> = {}
+    const complete: AnswerComplete = async (request) => {
+      asked[`${passOf(request)}-${partOf(request)}`] = request.messages.at(-1)!.content
+      return { text: fixtureFor(request) }
+    }
+
+    await researchDossier(inlineSteps, input, { complete, mocked: false })
+
+    const flat = (key: string) => (asked[key] ?? '').replace(/\s+/g, ' ')
+    expect(flat('claims-1')).toContain(
+      'This is part 1 of 2: extract claims whose FIRST support is one of documents [D1] to [D1].',
+    )
+    expect(flat('claims-2')).toContain(
+      'This is part 2 of 2: extract claims whose FIRST support is one of documents [D2] to [D2].',
+    )
+    expect(flat('answers-1')).toContain('This is part 1 of 2; answer only the questions listed.')
+    expect(asked['answers-1']).toContain('1. Where did the 1.9 billion euros go?')
+    expect(asked['answers-1']).not.toContain('Who signed off')
+    expect(flat('answers-2')).toContain('This is part 2 of 2; answer only the questions listed.')
+    expect(asked['answers-2']).toContain('2. Who signed off on the escrow accounts?')
+    expect(asked['answers-2']).not.toContain('Where did the 1.9 billion')
+  })
+
+  it("merges the claims parts, dropping a later part's repeats, and joins the answers", async () => {
+    const result = await researchDossier(inlineSteps, input, {
+      complete: answering({
+        'claims-2': {
+          claims: [{ ...CLAIM, text: 'WIRECARD filed for insolvency in June, 2020.' }, CLAIM_2],
+        },
+      }),
+      mocked: false,
+    })
+
+    expect(result.claims.map((c) => c.text)).toEqual([CLAIM.text, CLAIM_2.text])
+    expect(result.research.answers.map((a) => a.index)).toEqual([1, 2])
   })
 
   it("adds only the answers pass's new claims, folding text to find the repeats", async () => {
     const result = await researchDossier(inlineSteps, input, {
       complete: answering({
-        answers: {
+        'answers-1': {
           ...ANSWERS,
           claims: [
             { ...CLAIM, text: 'wirecard filed for INSOLVENCY in June, 2020' },
@@ -214,7 +288,7 @@ describe('researchDossier over the corpus', () => {
 
     const result = await researchDossier(inlineSteps, input, { complete, mocked: false })
 
-    expect(complete).toHaveBeenCalledTimes(3)
+    expect(complete).toHaveBeenCalledTimes(4)
     expect(result.research.answers).toEqual([])
   })
 
@@ -233,7 +307,15 @@ describe('researchDossier over the corpus', () => {
     const result = await researchDossier(inlineSteps, input, { complete, mocked: false })
 
     expect(result.research.brief.summary).toBe(BRIEF.summary)
-    expect(calls).toEqual(['answer', 'retry: refused', 'answer', 'answer', 'answer'])
+    expect(calls).toEqual([
+      'answer',
+      'retry: refused',
+      'answer',
+      'answer',
+      'answer',
+      'answer',
+      'answer',
+    ])
   })
 
   it('stops the stage with the reason after a second refusal, with no blind retry', async () => {
@@ -276,16 +358,40 @@ describe('researchDossier over the corpus', () => {
     ])
   })
 
+  it("carries every part's repairs in part order", async () => {
+    const result = await researchDossier(inlineSteps, input, {
+      complete: answering({
+        'claims-1': { claims: [CLAIM, { ...CLAIM, text: 'A'.repeat(1001) }] },
+        'claims-2': { claims: [{ ...CLAIM_2, text: 'B'.repeat(1001) }, CLAIM_2] },
+        'answers-2': {
+          ...ANSWERS_2,
+          answers: [
+            { ...ANSWERS_2.answers[0], answer: 'The escrow was never audited. '.repeat(120) },
+          ],
+        },
+      }),
+      mocked: false,
+    })
+
+    expect(result.repairs).toEqual([
+      { action: 'dropped', field: 'claim 2', reason: 'its text ran over 1,000 characters' },
+      { action: 'dropped', field: 'claim 1', reason: 'its text ran over 1,000 characters' },
+      { action: 'trimmed', field: 'the answer to question 2' },
+    ])
+  })
+
   it('reads replayed step results stored without repairs as none, and calls nothing', async () => {
     const complete = vi.fn(answering())
     const grounded = { research: { entity: ENTITY }, claims: [], repairs: [] }
 
     const result = await researchDossier(
       replaying({
-        'research-brief-0': { ok: true, value: BRIEF },
+        'research-brief-0': { ok: true, value: BRIEF, split: true },
         'research-scenes-0': { ok: true, value: SCENES.scenes },
-        'research-claims-0': { ok: true, value: [CLAIM] },
-        'research-answers-0': { ok: true, value: ANSWERS },
+        'research-claims-0-1': { ok: true, value: [CLAIM] },
+        'research-claims-0-2': { ok: true, value: [CLAIM_2] },
+        'research-answers-0-1': { ok: true, value: ANSWERS },
+        'research-answers-0-2': { ok: true, value: ANSWERS_2 },
         'research-ground-0': grounded,
       }),
       input,
@@ -295,6 +401,99 @@ describe('researchDossier over the corpus', () => {
     expect(result.repairs).toEqual([])
     expect(result.research).toEqual(grounded.research)
     expect(complete).not.toHaveBeenCalled()
+  })
+
+  it('marks a new brief as split, so a later replay knows which step ids it wrote', async () => {
+    const stored: Record<string, unknown> = {}
+    const recording: Steps = {
+      run: async (id, fn) => {
+        const value = await fn()
+        stored[id] = value
+        return value
+      },
+    }
+
+    await researchDossier(recording, input, { complete: answering(), mocked: false })
+
+    expect(stored['research-brief-0']).toMatchObject({ ok: true, split: true })
+  })
+
+  it('replays a run researched before the split under its single claims and answers steps', async () => {
+    const complete = vi.fn(answering())
+    const grounded = { research: { entity: ENTITY }, claims: [], repairs: [] }
+    const stored: Record<string, unknown> = {
+      // What a run parked at the gate before this deploy stored: no `split`.
+      'research-brief-0': { ok: true, value: BRIEF },
+      'research-scenes-0': { ok: true, value: SCENES.scenes },
+      'research-claims-0': { ok: true, value: [CLAIM] },
+      'research-answers-0': { ok: true, value: ANSWERS },
+      'research-ground-0': grounded,
+    }
+    const ids: string[] = []
+    const replay: Steps = {
+      run: async <T>(id: string) => {
+        ids.push(id)
+        if (!(id in stored)) throw new Error(`no stored result for ${id}`)
+        return stored[id] as T
+      },
+    }
+
+    const result = await researchDossier(replay, input, { complete, mocked: false })
+
+    expect(ids).toEqual([
+      'research-brief-0',
+      'research-scenes-0',
+      'research-claims-0',
+      'research-answers-0',
+      'research-ground-0',
+    ])
+    expect(complete).not.toHaveBeenCalled()
+    expect(result.research).toEqual(grounded.research)
+  })
+
+  it("accepts an empty claims part and keeps the other's", async () => {
+    const calls: string[] = []
+    const inner = answering({ 'claims-2': { claims: [] } })
+    const complete: AnswerComplete = async (request, call) => {
+      calls.push(call)
+      return inner(request, call)
+    }
+
+    const result = await researchDossier(inlineSteps, input, { complete, mocked: false })
+
+    expect(result.claims.map((c) => c.text)).toEqual([CLAIM.text])
+    expect(calls).toHaveLength(6)
+    expect(calls.every((call) => call === 'answer')).toBe(true)
+  })
+
+  it('stops the stage when no part found a claim', async () => {
+    const complete = vi.fn(answering({ claims: { claims: [] } }))
+
+    const stopped = researchDossier(inlineSteps, input, { complete, mocked: false })
+
+    await expect(stopped).rejects.toBeInstanceOf(NonRetriableError)
+    await expect(stopped).rejects.toThrow(
+      'The claims could not be extracted: no part found a claim in the documents',
+    )
+    // Brief, scenes and both claims parts; no answers part was asked.
+    expect(complete).toHaveBeenCalledTimes(4)
+  })
+
+  it("drops an answer's number when it falls outside its part's questions", async () => {
+    const result = await researchDossier(inlineSteps, input, {
+      complete: answering({
+        // Part 2 was asked question 2 and numbered its list from 1.
+        'answers-2': {
+          answers: [{ index: 1, question: 'Who signed off on the escrow accounts?', answer: null }],
+          claims: [],
+        },
+      }),
+      mocked: false,
+    })
+
+    expect(result.research.answers.map((a) => a.index)).toEqual([1, undefined])
+    expect(result.research.answers[1]).not.toHaveProperty('index')
+    expect(result.research.answers[1]!.question).toBe('Who signed off on the escrow accounts?')
   })
 
   it('returns the budget gate when a pass crosses the cap', async () => {
@@ -319,14 +518,74 @@ describe('researchDossier over the corpus', () => {
     expect(complete).toHaveBeenCalledTimes(2)
   })
 
+  it('stops at a budget gate in a later part, before the answers pass', async () => {
+    const complete = vi.fn<AnswerComplete>(async (request) => {
+      if (passOf(request) === 'claims' && partOf(request) === 2) {
+        throw new BudgetExceededError({
+          provider: 'anthropic',
+          operation: 'research',
+          budgetUsd: 50,
+          monthSpendUsd: 49.9,
+          estimateUsd: 0.5,
+        })
+      }
+      return { text: fixtureFor(request) }
+    })
+
+    const result = await researchDossier(inlineSteps, input, { complete, mocked: false })
+
+    expect(result.budgetGate).toMatchObject({ gate: 'budget', provider: 'anthropic' })
+    expect(result.claims).toEqual([])
+    // Brief, scenes and both claims parts; no answers part was asked.
+    expect(complete).toHaveBeenCalledTimes(4)
+  })
+
   it('researches the mock corpus with the mock passes in mock mode', async () => {
     const complete = vi.fn(answering())
+    const ids: string[] = []
+    const recording: Steps = {
+      run: (id, fn) => {
+        ids.push(id)
+        return fn()
+      },
+    }
 
-    const result = await researchDossier(inlineSteps, input, { complete, mocked: true })
+    const result = await researchDossier(recording, input, { complete, mocked: true })
 
     expect(complete).not.toHaveBeenCalled()
     expect(result.research.brief.summary).toMatch(/^MOCK DOSSIER/)
     expect(result.claims.length).toBeGreaterThan(0)
+    // The first part carries the mock claims and answers; the second adds nothing.
+    expect(ids).toContain('research-claims-0-2')
+    expect(ids).toContain('research-answers-0-2')
+    expect(result.research.answers.map((a) => a.index)).toEqual([1, 2])
+  })
+})
+
+describe('splitRange', () => {
+  it('splits a count into contiguous ranges as even as possible, the extra going first', () => {
+    expect(splitRange(12, 2)).toEqual([
+      { from: 1, to: 6 },
+      { from: 7, to: 12 },
+    ])
+    expect(splitRange(5, 2)).toEqual([
+      { from: 1, to: 3 },
+      { from: 4, to: 5 },
+    ])
+    expect(splitRange(7, 3)).toEqual([
+      { from: 1, to: 3 },
+      { from: 4, to: 5 },
+      { from: 6, to: 7 },
+    ])
+  })
+
+  it('makes fewer ranges than parts when there are fewer items, and none for none', () => {
+    expect(splitRange(1, 2)).toEqual([{ from: 1, to: 1 }])
+    expect(splitRange(2, 5)).toEqual([
+      { from: 1, to: 1 },
+      { from: 2, to: 2 },
+    ])
+    expect(splitRange(0, 2)).toEqual([])
   })
 })
 
