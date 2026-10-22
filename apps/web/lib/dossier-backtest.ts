@@ -42,12 +42,14 @@ export const RESEARCH_PASSES = ['brief', 'scenes', 'claims', 'answers'] as const
 export type ResearchPass = (typeof RESEARCH_PASSES)[number]
 export type PassDurations = Record<ResearchPass, number>
 
-const PASS_STEP = /^research-(brief|scenes|claims|answers)-\d+$/
+/** A pass's step id: the round, then the part for a pass split across steps. */
+const PASS_STEP = /^research-(brief|scenes|claims|answers)-\d+(?:-\d+)?$/
 
 /**
  * `Steps` that time each research pass's step into `durations`, wall clock,
- * model call and parse together. A pass that never ran (no open questions,
- * so no answers pass) stays at 0.
+ * model call and parse together. A pass split into parts records its slowest
+ * part, not their sum: the 300 s limit is per step. A pass that never ran (no
+ * open questions, so no answers pass) stays at 0.
  */
 export function timedSteps(inner: Steps): { steps: Steps; durations: PassDurations } {
   const durations: PassDurations = { brief: 0, scenes: 0, claims: 0, answers: 0 }
@@ -61,7 +63,7 @@ export function timedSteps(inner: Steps): { steps: Steps; durations: PassDuratio
         try {
           return await inner.run(id, fn)
         } finally {
-          durations[pass] += performance.now() - started
+          durations[pass] = Math.max(durations[pass], performance.now() - started)
         }
       },
     },

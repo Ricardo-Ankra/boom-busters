@@ -121,8 +121,8 @@ async function main(): Promise<void> {
         cap,
       )
       console.log(`${title}: researching ${loaded.documents.length} documents`)
-      // Each pass is one step in production, so its time here is the time
-      // that step would take against the 300 s limit.
+      // Each pass, or each part of a split pass, is one step in production,
+      // so the slowest step's time here is what meets the 300 s limit.
       const timed = timedSteps(inlineSteps)
       const result = await researchDossier(
         timed.steps,

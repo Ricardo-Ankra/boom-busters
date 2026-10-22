@@ -145,6 +145,33 @@ describe('timedSteps', () => {
     expect(ran).toEqual(['research-claims-2', 'research-ground-2', 'research-brief-0'])
     expect(durations).toEqual({ brief: 250, scenes: 0, claims: 1_500, answers: 0 })
   })
+
+  it("records a split pass as its slowest part, since the step limit is each part's", async () => {
+    let clock = 0
+    const now = vi.spyOn(performance, 'now').mockImplementation(() => clock)
+    const ran: string[] = []
+    const { steps, durations } = timedSteps({
+      run: async (id, fn) => {
+        ran.push(id)
+        return fn()
+      },
+    })
+
+    for (const [id, ms] of [
+      ['research-claims-0-1', 140_000],
+      ['research-claims-0-2', 160_000],
+      ['research-answers-0-1', 90_000],
+      ['research-answers-0-2', 70_000],
+    ] as const) {
+      await steps.run(id, async () => {
+        clock += ms
+      })
+    }
+    now.mockRestore()
+
+    expect(ran).toHaveLength(4)
+    expect(durations).toEqual({ brief: 0, scenes: 0, claims: 160_000, answers: 90_000 })
+  })
 })
 
 describe('figureMatches', () => {
