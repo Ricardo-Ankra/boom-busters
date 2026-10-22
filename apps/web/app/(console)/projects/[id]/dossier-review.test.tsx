@@ -333,6 +333,42 @@ describe('DossierReview', () => {
       expect(screen.getByRole('heading', { name: 'Summary' })).toBeInTheDocument()
     })
 
+    it('renders empty corpus lists as plain lines and says "1 document read" in the singular', () => {
+      const { container, rerender } = render(
+        <DossierReview
+          projectId="p1"
+          contentMd={MD}
+          claims={[]}
+          research={research({})}
+          documents={[doc({ id: 'a', rank: 1 })]}
+        />,
+      )
+      expect(screen.getByText('Researched from: Wirecard, 1 document read')).toBeInTheDocument()
+      expect(screen.getByText('0 gathered, not read')).toBeInTheDocument()
+      expect(container.querySelector('summary')).toBeNull()
+
+      rerender(
+        <DossierReview
+          projectId="p1"
+          contentMd={MD}
+          claims={[]}
+          research={research({})}
+          documents={[
+            doc({ id: 'a', rank: 1 }),
+            doc({ id: 'c', rank: null, url: 'https://example.com/unread' }),
+          ]}
+        />,
+      )
+      expect(container.querySelectorAll('summary')).toHaveLength(1)
+      expect(container.querySelector('summary svg')).not.toBeNull()
+    })
+
+    it('keeps the markdown Timeline when research has no scenes', () => {
+      const md = [MD, '', '## Timeline', '', '- **June 2020** markdown only entry'].join('\n')
+      render(<DossierReview projectId="p1" contentMd={md} claims={[]} research={research({})} />)
+      expect(screen.getByText(/markdown only entry/)).toBeInTheDocument()
+    })
+
     it('renders an old dossier with no research from its markdown', () => {
       const md = [MD, '', '## Timeline', '', '- **June 2020** markdown only entry'].join('\n')
       render(<DossierReview projectId="p1" contentMd={md} claims={[]} />)

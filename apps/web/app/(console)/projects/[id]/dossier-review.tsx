@@ -2,7 +2,7 @@
 
 import type { ClaimRow, ClaimSupportRow } from '@boom-busters/db'
 import type { DocumentKind, GroundedRef, GroundedResearch, Notice } from '@boom-busters/schemas'
-import { ExternalLink, List, Pencil, ShieldAlert } from 'lucide-react'
+import { ChevronRight, ExternalLink, List, Pencil, ShieldAlert } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import * as React from 'react'
 import { ConfirmButton } from '@/components/confirm-button'
@@ -115,7 +115,8 @@ export function DossierReview({
   // its source; the markdown's own Timeline block is skipped, not edited, so
   // the rest of the document keeps its claim anchors.
   const timeline = React.useMemo(() => {
-    if (!research) return null
+    // No scenes: keep the markdown's Timeline rather than an empty list.
+    if (!research || research.scenes.length === 0) return null
     const start = blocks.findIndex(
       (block) =>
         block.kind === 'heading' &&
@@ -727,7 +728,7 @@ function CorpusLine({
 
   return (
     <div className="flex flex-col gap-1 text-[13px] text-[var(--color-text-secondary)]">
-      <p>{`Researched from: ${[...titles, `${read} documents read`].join(', ')}`}</p>
+      <p>{`Researched from: ${[...titles, `${read} ${read === 1 ? 'document' : 'documents'} read`].join(', ')}`}</p>
       <UrlDetails summary={`${unread.length} gathered, not read`} documents={unread} />
       <UrlDetails summary={`${failed.length} could not be fetched`} documents={failed} />
     </div>
@@ -741,10 +742,16 @@ function UrlDetails({
   summary: string
   documents: readonly ReviewDocument[]
 }) {
+  // Nothing to expand: a plain line, not a control that opens onto nothing.
+  if (documents.length === 0) return <p>{summary}</p>
+
   return (
-    <details>
-      <summary className="flex min-h-[40px] cursor-pointer items-center">{summary}</summary>
-      <ul className="flex flex-col gap-1 pb-2 pl-4 text-[12px]">
+    <details className="group">
+      <summary className="flex min-h-[40px] cursor-pointer items-center gap-1">
+        <ChevronRight aria-hidden className="size-4 transition-transform group-open:rotate-90" />
+        {summary}
+      </summary>
+      <ul className="flex flex-col gap-1 pb-2 pl-5 text-[12px]">
         {documents.map((document) => (
           <li key={document.id} className="break-all">
             {document.url}
