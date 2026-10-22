@@ -7951,28 +7951,42 @@ boom-busters-broker`; merge and deploy to Vercel, then `PUT
      mechanical; the subject is the story."). The four passes read a
      gathered corpus of real documents, so what goes in is bounded. The
      corpus holds at most 120k tokens and at most 12k tokens from any one
-     document. Tiers take shares of the budget: 25, 30, 15, 10 and 20
-     percent, and a tier that cannot fill its share rolls the remainder down
+     document. Tiers take shares of the budget in tier order: primary
+     documents (filings, the company's archived pages, press releases) 25
+     percent, reporting 30, video 15, figures 10, and regulator and court
+     records 20. A tier that cannot fill its share rolls the remainder down
      to the next. Inside a tier the document nearest the case's dissolution
      date comes first. Reference sections are capped at 20, 60 and 30
      entries, and only the newest six Wayback captures of a page are kept.
-     Fetching reads at most 4 MB of body, retries twice, and caps each wait
-     at 10 s. A stored document is reused for 90 days, and a failed refetch
-     never overwrites a good shared row. Decisions made: the shares are
-     defaults held in one module, so tuning them is a one-file change.
+     A page fetch reads at most 4 MB of body and gives up after 8 s with no
+     retry; the API sources go through the PoliteClient, which retries
+     twice and caps each wait at 10 s. Only text, markup, JSON and PDF
+     bodies are read (a PDF is known by its bytes whatever its header says);
+     anything else is stored as a failure, as is a row the database
+     refuses. A stored document is reused for 90 days, and a failed refetch
+     never overwrites a good shared row. A gather that reads nothing stops
+     the stage with a message instead of running the passes over an empty
+     corpus. Decisions made: the shares are defaults held in one module, so
+     tuning them is a one-file change.
 307. **Claims are grounded in the documents, and confidence is computed**
      (2026-10-22). Documents are numbered in the prompt and a claim cites a
      document by its number with a verbatim quote. All four passes share one
-     system prompt that carries the corpus, so the corpus is cached once and
-     read cheaply by the later three. After the model answers, each quote is
+     system prompt, and the corpus is their first user message, marked as
+     the cached prefix, so it is cached once and read cheaply by the later
+     three. A claims pass asks for at most 40 claims with a 12,000-token
+     answer budget and the answers pass has 10,000, so each pass stays well
+     inside the 300 s step limit. After the model answers, each quote is
      checked against the stored text of the cited document after folding
      case, spacing and punctuation, with a floor of 20 characters so a short
      phrase cannot match by chance. Series points are checked the same way
-     without the floor, since a number is short by nature. Confidence is no
+     without the floor, since a number is short by nature, but only on
+     number boundaries, so "5" is not found inside "2015". Confidence is no
      longer the model's word: a claim is sourced when two independent
-     registrable domains support it, a syndicated copy counts once, and the
-     rest follow from what was found. A document number outside the corpus
-     drops that support and leaves the claim unverified, never an error.
+     registrable domains support it, a syndicated copy counts once, a
+     Wayback capture counts as the site it captured, and the rest follow
+     from what was found. A claim's headline source is its first support
+     whose quote was found. A document number outside the corpus drops that
+     support and leaves the claim unverified, never an error.
 308. **Legal status replaces the dropped adjudicated flag** (2026-10-22).
      The old flag was parsed from the model's answer and never saved, so
      the script stage read every claim as NOT adjudicated. Each claim now
@@ -7990,16 +8004,20 @@ boom-busters-broker`; merge and deploy to Vercel, then `PUT
      title and description from the YouTube Data API. Transcripts are
      fetched only when `YOUTUBE_TRANSCRIPTS=1`, which is off by default:
      reading them sits outside YouTube's terms, so the switch is the
-     owner's. The told-already check runs only over videos that have a
-     transcript, since a title cannot show what was said.
+     owner's. A told-already beat is kept only when its quote is placed in
+     a video transcript, and the told-already check runs only over videos
+     that have one, since a title cannot show what was said.
 310. **The back-test targets are copied from spec section 9** (2026-10-22).
      Quote-found rate at least 0.9, URL resolution at least 0.95, figure
      match at least 0.8 of the checkable figures, told-already at least 0.9
      over videos with a transcript, and cost at most $6 on the default
-     research route. A rate with nothing to measure reads "not measured" and
-     does not fail. A verdict with any unscored case is Incomplete and
-     fails, so a case that errored cannot pass quietly. Five cases are run.
-     The harness is built and tested against mocks but has not been run
+     research route. One target is ours, not the spec's: no research pass
+     may take over 200 s (`maxPassMs`), since a pass is one step and a step
+     has 300 s; the harness times each pass and reports the times in a
+     table. A rate with nothing to measure reads "not measured" and does
+     not fail. A verdict with any unscored case is Incomplete and fails, so
+     a case that errored cannot pass quietly. The harness covers five
+     cases. It is built and tested against mocks but has not been run
      live: it runs only on the owner's go-ahead, with a cap. Shipping:
      migration 0034. `DATA_CONTACT_EMAIL` must be set on Vercel, because the
      live gather throws without it. Cancel or drain any `dossier-runner` run
