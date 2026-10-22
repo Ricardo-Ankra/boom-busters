@@ -8,8 +8,9 @@ import { z } from 'zod'
  * subjects of these stories are real companies and living people. So the
  * schema is strict where it protects, not merely where it parses:
  *
- *  - A claim carries its own source. There is no "sourced" without a URL,
- *    enforced below rather than hoped for in the prompt.
+ *  - A claim carries its own evidence: one to three supports, each a document
+ *    number and a quote. The app resolves the number to a stored document and
+ *    finds the quote in its text, so a citation is checked, not trusted.
  *  - `confidence` is a closed set the review UI knows how to render. An
  *    invented fourth value would render as nothing and read as "fine".
  *  - Adjudication is tracked separately from confidence, because "this is
@@ -47,153 +48,158 @@ export const DOSSIER_ANSWERS_MAX = 40
 export const DOSSIER_ANSWER_CLAIMS_MAX = 40
 
 /**
- * A source the model offered, kept only if it is genuinely a web address.
- *
- * Asked for a `sourceUrl`, a model will often give a citation instead — "Munich
- * court judgment, 2021", "FT, June 2020", "N/A". Rejecting the whole research
- * pass over that was wrong twice over: it threw away a good timeline because
- * one field was prose, and it did so *after* paying for the completion.
- *
- * So a value that does not parse as an http(s) URL is dropped rather than
- * fatal. What is not softened is the consequence — see `DraftClaimSchema`,
- * where losing the URL costs the claim its confidence.
+ * Limits of the grounded pipeline (research from a gathered corpus). The
+ * corpus and document budgets are in tokens because the model's context is;
+ * the quote cap is in characters because a quote is matched against text.
  */
-/**
- * A search engine is where you LOOK for a source, not a source. A model that
- * half-remembers where something was reported will offer a google.com search
- * link, which renders on the review screen as an authoritative-looking
- * citation that cites nothing. Dropped like any other non-source, which
- * downgrades the claim to unverified — the honest state for "go and find it".
- */
-const SEARCH_ENGINE_HOSTS = /(^|\.)(google\.[a-z.]+|bing\.com|duckduckgo\.com|search\.yahoo\.com)$/i
+export const DOSSIER_CORPUS_TOKENS = 120_000
+export const DOSSIER_DOCUMENT_TOKENS = 12_000
+export const DOSSIER_QUOTE_MAX = 300
+/** A quote shorter than this (folded) matches too easily to prove anything. */
+export const DOSSIER_QUOTE_MIN_FOLDED = 20
+export const DOSSIER_SUPPORTS_MAX = 3
+export const DOSSIER_SERIES_POINTS_MAX = 24
+export const DOSSIER_CLAIMS_PER_PASS = 60
+export const DOSSIER_SCENES_MAX = 60
+export const DOSSIER_CAST_MAX = 30
+export const DOSSIER_TOLD_ALREADY_MAX = 30
+export const DOCUMENT_BODY_CAP_BYTES = 4 * 1024 * 1024
+/** Share of the corpus budget each tier may fill, so one tier cannot crowd out the rest. */
+export const DOSSIER_TIER_SHARES = { 1: 0.25, 2: 0.3, 3: 0.15, 4: 0.1, 5: 0.2 } as const
 
-function usableSourceUrl(value: unknown): string | undefined {
-  if (typeof value !== 'string' || value.trim() === '') return undefined
-  try {
-    const parsed = new URL(value.trim())
-    // Only http(s): a `file:` or `javascript:` "source" is not one, and this
-    // string is rendered as a link on the review screen.
-    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return undefined
-    if (SEARCH_ENGINE_HOSTS.test(parsed.hostname)) return undefined
-    return value.trim()
-  } catch {
-    return undefined
-  }
+/**
+ * What a gathered document is. The tier ranks how much a document's say-so
+ * weighs: primary filings and the company's own archived pages first, then
+ * reporting, video, third-party figures, and regulator and court records,
+ * which sit in their own tier because they are the only documents that can
+ * settle a legal status.
+ */
+export const DOCUMENT_KINDS = [
+  'filing',
+  'web-archive',
+  'press-release',
+  'reporting',
+  'video',
+  'figures',
+  'regulator',
+  'court',
+] as const
+export const DocumentKindSchema = z.enum(DOCUMENT_KINDS)
+export type DocumentKind = z.infer<typeof DocumentKindSchema>
+
+export const DOCUMENT_TIERS: Record<DocumentKind, 1 | 2 | 3 | 4 | 5> = {
+  filing: 1,
+  'web-archive': 1,
+  'press-release': 1,
+  reporting: 2,
+  video: 3,
+  figures: 4,
+  regulator: 5,
+  court: 5,
 }
 
-const SourceUrlSchema = z.preprocess(usableSourceUrl, z.string().optional())
-
 /**
- * Fold the model's sourceType label onto the enum instead of failing on it.
- *
- * A live run died with `sourceType: "..."` variants the enum refused — three
- * labels out of nineteen claims, and the whole paid research pass was thrown
- * away over them. The label has a designed-in fallback bucket (`other`, the
- * weakest), so an unrecognised value belongs there, not in a run failure.
- * Recognisable variants keep their strength: "court_documents" is still a
- * court source, "SEC filing" still a regulator.
+ * Whether a court or regulator has actually ruled, tracked apart from how well
+ * a claim is sourced. Drives the self-check pass's "'alleged' missing" warning.
  */
-function foldSourceType(value: unknown): unknown {
-  if (typeof value !== 'string') return value
-  const folded = value
-    .toLowerCase()
-    .replace(/[^a-z]+/g, '_')
-    .replace(/^_+|_+$/g, '')
-  if ((CLAIM_SOURCE_TYPES as readonly string[]).includes(folded)) return folded
+export const LEGAL_STATUSES = ['ruled', 'alleged', 'none'] as const
+export const LegalStatusSchema = z.enum(LEGAL_STATUSES)
+export type LegalStatus = z.infer<typeof LegalStatusSchema>
 
-  const words = new Set(folded.split('_'))
-  const has = (...names: string[]) => names.some((name) => words.has(name))
-  if (has('court', 'courts', 'tribunal', 'judgment', 'judgement', 'lawsuit', 'litigation'))
-    return 'court'
-  if (
-    has(
-      'regulator',
-      'regulators',
-      'regulatory',
-      'sec',
-      'fca',
-      'inquiry',
-      'government',
-      'official',
-      'parliament',
-      'parliamentary',
-    )
-  )
-    return 'regulator'
-  if (has('outlet', 'news', 'newspaper', 'press', 'media', 'journalism', 'reporting'))
-    return 'major_outlet'
-  if (has('book', 'books', 'memoir', 'biography')) return 'book'
-  return 'other'
-}
-
-export const DraftClaimSchema = z
-  .object({
-    text: z.string().trim().min(10).max(DOSSIER_CLAIM_TEXT_MAX),
-    sourceUrl: SourceUrlSchema,
-    sourceType: z.preprocess(foldSourceType, ClaimSourceTypeSchema),
-    confidence: ClaimConfidenceSchema,
-    /**
-     * Whether a court or regulator has actually ruled. Drives the self-check
-     * pass's "'alleged' missing for non-adjudicated claim" warning.
-     */
-    adjudicated: z.boolean(),
-  })
-  /**
-   * A claim with no usable source is unverified, whatever the model called it,
-   * and it is not adjudicated either.
-   *
-   * This replaces two refinements that rejected the batch instead. Rejecting
-   * was the stricter-looking option and the weaker one: it failed the whole
-   * research pass, and a retry would produce the same shape again. Downgrading
-   * keeps the claim, states the truth about it, and hands it to the reviewer as
-   * an amber row that blocks approval until they source or quarantine it —
-   * which is the mechanism that already exists for exactly this.
-   */
-  .transform((claim) =>
-    claim.sourceUrl === undefined
-      ? { ...claim, confidence: 'unverified' as const, adjudicated: false }
-      : claim,
-  )
-export type DraftClaim = z.infer<typeof DraftClaimSchema>
-
-/**
- * One dated event on the case timeline.
- *
- * Unlike a claim, a timeline entry is context rather than an assertion the
- * script will narrate, so an unsourced one is simply an unsourced one.
- */
-export const TimelineEventSchema = z.object({
-  /** Free text rather than a date: "March 2001", "late 2019" are all real. */
-  when: z.string().trim().min(3).max(DOSSIER_EVENT_WHEN_MAX),
-  what: z.string().trim().min(10).max(DOSSIER_EVENT_WHAT_MAX),
-  sourceUrl: SourceUrlSchema,
+/** A document number from the numbered corpus plus the words that prove the point. */
+export const SupportSchema = z.object({
+  doc: z.number().int().min(1),
+  quote: z.string().trim().min(1).max(DOSSIER_QUOTE_MAX),
 })
-export type TimelineEvent = z.infer<typeof TimelineEventSchema>
+export type Support = z.infer<typeof SupportSchema>
+
+export const LegalSchema = z.object({
+  status: LegalStatusSchema,
+  /** Year, month or day: a filing often dates a ruling only to the month. */
+  date: z.string().regex(/^\d{4}(-\d{2}){0,2}$/),
+  doc: z.number().int().min(1),
+})
+
+/**
+ * A figure over time. `asWritten` is the number as the document prints it
+ * ("EUR 1.9 billion"), kept beside the parsed `value` so a unit or scale slip
+ * in parsing is visible on review rather than silently narrated.
+ */
+export const SeriesPointSchema = z.object({
+  at: z.string().trim().min(1).max(40),
+  value: z.number(),
+  asWritten: z.string().trim().min(1).max(40),
+})
+export const SeriesSchema = z.object({
+  label: z.string().trim().min(1).max(120),
+  unit: z.string().trim().min(1).max(40),
+  currency: z.string().trim().max(10).nullable(),
+  points: z.array(SeriesPointSchema).min(1).max(DOSSIER_SERIES_POINTS_MAX),
+})
+export type Series = z.infer<typeof SeriesSchema>
+
+export const ResearchClaimSchema = z.object({
+  text: z.string().trim().min(10).max(DOSSIER_CLAIM_TEXT_MAX),
+  supports: z.array(SupportSchema).min(1).max(DOSSIER_SUPPORTS_MAX),
+  legal: LegalSchema.nullable().default(null),
+  series: SeriesSchema.nullable().default(null),
+})
+export type ResearchClaim = z.infer<typeof ResearchClaimSchema>
+
+export const ClaimsSchema = z.object({
+  claims: z.array(ResearchClaimSchema).min(1).max(DOSSIER_CLAIMS_PER_PASS),
+})
+
+/**
+ * A person or organisation the script follows, with what they were after.
+ * Named `BriefCast*` because `cast.ts` already owns `CastMemberSchema` (the
+ * visual cast with reference photos), and both are re-exported from the index.
+ */
+export const BriefCastMemberSchema = z.object({
+  name: z.string().trim().min(2).max(120),
+  role: z.string().trim().min(2).max(200),
+  wanted: z.string().trim().min(10).max(500),
+  /** A scene that shows them wanting it, if the corpus has one. */
+  scene: SupportSchema.nullable().default(null),
+})
+
+/** A beat earlier coverage already told, so the script can avoid retelling it. */
+export const ToldAlreadySchema = z.object({
+  beat: z.string().trim().min(10).max(500),
+  doc: z.number().int().min(1),
+  quote: z.string().trim().min(1).max(DOSSIER_QUOTE_MAX),
+})
 
 export const CaseBriefSchema = z.object({
   summary: z.string().trim().min(50).max(DOSSIER_SUMMARY_MAX),
-  /** Why this story turns — the moment the script builds toward. */
+  /** Why this story turns: the moment the script builds toward. */
   turningPoint: z.string().trim().min(20).max(DOSSIER_TURNING_POINT_MAX),
-  /** Named people and organisations, so the script can be consistent. */
-  principals: z
-    .array(z.object({ name: z.string().min(2), role: z.string().min(2) }))
-    .max(DOSSIER_PRINCIPALS_MAX),
+  cast: z.array(BriefCastMemberSchema).max(DOSSIER_CAST_MAX),
+  toldAlready: z.array(ToldAlreadySchema).max(DOSSIER_TOLD_ALREADY_MAX).default([]),
   /** What the research could not establish. Shown to the human, not hidden. */
   openQuestions: z.array(z.string().min(10)).max(DOSSIER_OPEN_QUESTIONS_MAX),
 })
 export type CaseBrief = z.infer<typeof CaseBriefSchema>
 
 /**
- * Named `Research*` because M6 introduces `TimelineSchema` for the compiled
- * video timeline. Two different things called "timeline" in one codebase is a
- * bug waiting for whoever imports the wrong one.
+ * One dated scene on the case timeline. Named `Scene*` rather than timeline
+ * because M6 introduces `TimelineSchema` for the compiled video timeline, and
+ * two different things called "timeline" in one codebase is a bug waiting for
+ * whoever imports the wrong one.
  */
-export const ResearchTimelineSchema = z.object({
-  events: z.array(TimelineEventSchema).min(1).max(DOSSIER_EVENTS_MAX),
+export const SceneSchema = z.object({
+  /** Free text rather than a date: "March 2001", "late 2019" are all real. */
+  when: z.string().trim().min(3).max(DOSSIER_EVENT_WHEN_MAX),
+  who: z.string().trim().min(2).max(200),
+  what: z.string().trim().min(10).max(DOSSIER_EVENT_WHAT_MAX),
+  why: z.string().trim().min(10).max(500),
+  doc: z.number().int().min(1),
+  quote: z.string().trim().min(1).max(DOSSIER_QUOTE_MAX),
 })
+export type Scene = z.infer<typeof SceneSchema>
 
-export const ClaimsSchema = z.object({
-  claims: z.array(DraftClaimSchema).min(1).max(DOSSIER_CLAIMS_MAX),
+export const ScenesSchema = z.object({
+  scenes: z.array(SceneSchema).min(1).max(DOSSIER_SCENES_MAX),
 })
 
 /**
@@ -219,7 +225,8 @@ export const ResearchAnswerSchema = z.object({
     (value) => (typeof value === 'string' && value.trim().length >= 10 ? value.trim() : null),
     z.string().max(DOSSIER_ANSWER_MAX).nullable(),
   ),
-  sourceUrl: SourceUrlSchema,
+  /** The document the answer rests on; the app resolves it to a stored one. */
+  doc: z.number().int().min(1).optional(),
 })
 export type ResearchAnswer = z.infer<typeof ResearchAnswerSchema>
 
@@ -229,9 +236,87 @@ export const ResearchAnswersSchema = z.object({
    * Facts surfaced while answering, in the same shape as the claims pass —
    * an answer the script might narrate must be checkable the same way.
    */
-  claims: z.array(DraftClaimSchema).max(DOSSIER_ANSWER_CLAIMS_MAX).default([]),
+  claims: z.array(ResearchClaimSchema).max(DOSSIER_ANSWER_CLAIMS_MAX).default([]),
 })
 export type ResearchAnswers = z.infer<typeof ResearchAnswersSchema>
+
+/**
+ * What the app stores once a pass's document numbers are resolved and each
+ * quote has been looked for in the document text. `found: false` is kept, not
+ * dropped: an unlocated quote is the reviewer's cue, and hiding it would
+ * restore exactly the trust this shape exists to remove.
+ */
+export const GroundedSupportSchema = z.object({
+  documentId: z.string(),
+  rank: z.number().int().min(1),
+  quote: z.string(),
+  found: z.boolean(),
+  offset: z.number().int().nullable(),
+  locatorSeconds: z.number().int().nullable(),
+  url: z.string(),
+  archivedUrl: z.string().nullable(),
+})
+export type GroundedSupport = z.infer<typeof GroundedSupportSchema>
+
+export const GroundedClaimSchema = z.object({
+  text: z.string(),
+  sourceUrl: z.string().nullable(),
+  sourceType: ClaimSourceTypeSchema,
+  confidence: ClaimConfidenceSchema,
+  legalStatus: LegalStatusSchema,
+  legalStatusDate: z.string().nullable(),
+  legalStatusDocumentId: z.string().nullable(),
+  series: SeriesSchema.nullable(),
+  supports: z.array(GroundedSupportSchema),
+})
+export type GroundedClaim = z.infer<typeof GroundedClaimSchema>
+
+export const GroundedRefSchema = z.object({
+  documentId: z.string().nullable(),
+  url: z.string().nullable(),
+  found: z.boolean(),
+  locatorSeconds: z.number().int().nullable(),
+  quote: z.string().nullable(),
+})
+export type GroundedRef = z.infer<typeof GroundedRefSchema>
+
+export const GroundedSceneSchema = SceneSchema.omit({ doc: true }).extend({
+  ref: GroundedRefSchema,
+})
+export const GroundedCastMemberSchema = BriefCastMemberSchema.omit({ scene: true }).extend({
+  ref: GroundedRefSchema.nullable(),
+})
+export const GroundedToldAlreadySchema = z.object({
+  beat: ToldAlreadySchema.shape.beat,
+  ref: GroundedRefSchema,
+})
+export const GroundedAnswerSchema = ResearchAnswerSchema.omit({ doc: true }).extend({
+  ref: GroundedRefSchema.nullable(),
+})
+
+/** The identifiers the gatherer resolved for the subject, kept for later lookups. */
+export const ResearchEntitySchema = z.object({
+  qid: z.string().nullable(),
+  titles: z.array(z.string()),
+  cik: z.string().nullable(),
+  ticker: z.string().nullable(),
+  website: z.string().nullable(),
+})
+
+export const GroundedResearchSchema = z.object({
+  entity: ResearchEntitySchema,
+  brief: z.object({
+    summary: CaseBriefSchema.shape.summary,
+    turningPoint: CaseBriefSchema.shape.turningPoint,
+    cast: z.array(GroundedCastMemberSchema),
+    toldAlready: z.array(GroundedToldAlreadySchema),
+    openQuestions: CaseBriefSchema.shape.openQuestions,
+  }),
+  scenes: z.array(GroundedSceneSchema),
+  answers: z.array(GroundedAnswerSchema),
+  corpus: z.object({ read: z.number().int(), unread: z.number().int(), failed: z.number().int() }),
+})
+export type GroundedResearch = z.infer<typeof GroundedResearchSchema>
 
 /**
  * How many claims may be unsourced before the dossier is not worth reviewing.
