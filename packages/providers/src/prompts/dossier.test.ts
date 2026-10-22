@@ -1,28 +1,22 @@
-import { DOSSIER_CLAIMS_PER_PASS, DOSSIER_QUOTE_MAX, ValidationError } from '@boom-busters/schemas'
-import type {
-  CaseBrief,
-  GroundedClaim,
-  GroundedRef,
-  GroundedResearch,
-  Scene,
+import {
+  DOSSIER_CLAIMS_PER_PASS,
+  DOSSIER_QUOTE_MAX,
+  DOSSIER_QUOTE_MIN_FOLDED,
+  ValidationError,
 } from '@boom-busters/schemas'
+import type { CaseBrief, Scene } from '@boom-busters/schemas'
 import { describe, expect, it } from 'vitest'
 import { outputBudget } from '../llm/types'
-import { mockCorpusDocuments } from '../research/mock-corpus'
+import type { LLMTaskRequest } from '../llm/types'
 import {
   buildAnswersRequest,
   buildBriefRequest,
   buildClaimsRequest,
   buildScenesRequest,
-  mockAnswers,
-  mockBrief,
-  mockClaims,
-  mockScenes,
   parseAnswers,
   parseBrief,
   parseClaims,
   parseScenes,
-  renderDossierMarkdown,
   withNote,
 } from './dossier'
 import type { Note, Repair } from './repair'
@@ -69,8 +63,9 @@ const requests = () => [
   buildAnswersRequest(caseContext, corpus, brief, scenes),
 ]
 
-/** The prompt with its line breaks folded, so a pinned sentence can wrap in the source. */
-const flat = (request: { system: string }) => request.system.replace(/\s+/g, ' ')
+/** A pass's own instructions, line breaks folded so a pinned sentence can wrap in the source. */
+const asked = (request: LLMTaskRequest) =>
+  (request.messages.at(-1)?.content ?? '').replace(/\s+/g, ' ')
 
 describe('the research prompts', () => {
   it('puts the corpus in the first user message and marks it cacheable', () => {
@@ -79,20 +74,26 @@ describe('the research prompts', () => {
     expect(request.cacheablePrefixMessages).toBe(1)
   })
 
-  it('opens every pass with the same header and corpus, so the prefix is one cache entry', () => {
+  it('sends all four passes the same system prompt and corpus message, so the corpus is cached once', () => {
     const first =
       'Case: Enron\nCategory: collapse\nAngle to pursue: The auditors, not the traders.' +
       `\n\nDocuments, numbered. Cite them by number.\n\n${corpus}`
+    const [system] = requests().map((request) => request.system)
     for (const request of requests()) {
       expect(request.task).toBe('research')
+      expect(request.system).toBe(system)
       expect(request.messages[0]).toEqual({ role: 'user', content: first })
       expect(request.cacheablePrefixMessages).toBe(1)
+      // Each pass ends on its own instructions, never on the corpus.
+      expect(request.messages.length).toBeGreaterThan(1)
+      expect(request.messages.at(-1)?.role).toBe('user')
     }
+    expect(system).toMatch(/in the final message/)
   })
 
   it('holds every pass to the documents in front of it', () => {
     for (const request of requests()) {
-      expect(flat(request)).toContain(
+      expect(request.system.replace(/\s+/g, ' ')).toContain(
         'Write only what the documents in front of you say. A fact you remember but cannot ' +
           'quote from a document is an open question, not a claim.',
       )
@@ -119,38 +120,52 @@ describe('the research prompts', () => {
   })
 
   it('asks the brief for what each person wanted and for told-already beats from video only', () => {
-    const system = flat(buildBriefRequest(caseContext, corpus))
-    expect(system).toContain('"wanted"')
-    expect(system).toContain('"toldAlready"')
-    expect(system).toMatch(/ONLY from documents of kind `video`/)
+    const brief_ = asked(buildBriefRequest(caseContext, corpus))
+    expect(brief_).toContain('"wanted"')
+    expect(brief_).toContain('"toldAlready"')
+    expect(brief_).toMatch(/ONLY from documents of kind `video`/)
   })
 
   it('asks the scenes pass for moments in the story, not a legal chronology', () => {
-    const system = flat(buildScenesRequest(caseContext, corpus, brief))
-    expect(system).toMatch(/what was said or done/)
-    expect(system).toMatch(/why it matters to the arc/)
-    expect(system).toMatch(/not a legal chronology/)
+    const scenes_ = asked(buildScenesRequest(caseContext, corpus, brief))
+    expect(scenes_).toMatch(/what was said or done/)
+    expect(scenes_).toMatch(/why it matters to the arc/)
+    expect(scenes_).toMatch(/not a legal chronology/)
+  })
+
+  it('asks every quoting pass for a quote long enough for the check to find', () => {
+    const findable = `a full clause of at least ${DOSSIER_QUOTE_MIN_FOLDED} letters and digits`
+    for (const request of requests()) expect(asked(request)).toContain(findable)
+    expect(asked(buildScenesRequest(caseContext, corpus, brief))).toContain('shortest span')
+    expect(asked(buildBriefRequest(caseContext, corpus))).toContain('shortest span')
   })
 
   it('pins the quote, legal status and figure rules in the claims and answers passes', () => {
     for (const request of requests().slice(2)) {
-      const system = flat(request)
-      expect(system).toContain(
+      const text = asked(request)
+      expect(text).toContain(
         '`quote` is the shortest span of the document that proves the claim, copied exactly, ' +
           'usually under 120 characters and never over 300',
       )
-      expect(system).toContain(
+      expect(text).toContain(
         '`legal.status` is `ruled` only when a court or regulator document in the list says ' +
           'so; `alleged` when a filing, complaint or report makes the allegation; `none` otherwise',
       )
-      expect(system).toContain(
+      expect(text).toContain(
         'a figure claim carries `series` with `asWritten` copied as the document prints the number',
+      )
+      // The two cases the pinned definition leaves open, said outright.
+      expect(text).toContain('`legal` is null for a plain fact with no wrongdoing in it')
+      expect(text).toMatch(/`none` is for a claim about alleged or possible wrongdoing/)
+      // "Strongest first" cannot override the document the series check reads.
+      expect(text).toContain(
+        "A figure claim's first support is the document that prints the numbers",
       )
     }
   })
 
   it('asks the claims pass for at most a pass worth of claims', () => {
-    expect(flat(buildClaimsRequest(caseContext, corpus, brief, scenes))).toContain(
+    expect(asked(buildClaimsRequest(caseContext, corpus, brief, scenes))).toContain(
       `Limits (the app checks them): 1 to ${DOSSIER_CLAIMS_PER_PASS} claims;`,
     )
   })
@@ -159,8 +174,8 @@ describe('the research prompts', () => {
     // Numbered because the number is the join key (decision 203).
     const request = buildAnswersRequest(caseContext, corpus, brief, scenes)
     expect(request.messages.at(-1)?.content).toContain('1. What did the board know in 1999?')
-    expect(request.system).toMatch(/`index` is the question's number/)
-    expect(request.system).toMatch(/set `answer` to null/)
+    expect(asked(request)).toMatch(/`index` is the question's number/)
+    expect(asked(request)).toMatch(/set `answer` to null/)
   })
 })
 
@@ -177,13 +192,16 @@ describe('withNote', () => {
     expect(request.messages.at(-1)?.content).not.toContain('More on the auditors')
   })
 
-  it('appends to the corpus message when the pass has only that one', () => {
-    const request = buildBriefRequest(caseContext, corpus)
-    const noted = withNote(request, 'Lead with the auditors.')
-    expect(noted.messages).toHaveLength(1)
-    expect(
-      noted.messages[0]?.content.endsWith('The human asks for changes: Lead with the auditors.'),
-    ).toBe(true)
+  it('leaves the corpus message alone on every pass, the brief included', () => {
+    for (const request of requests()) {
+      const noted = withNote(request, 'Lead with the auditors.')
+      expect(noted.messages[0]).toEqual(request.messages[0])
+      expect(
+        noted.messages
+          .at(-1)
+          ?.content.endsWith('The human asks for changes: Lead with the auditors.'),
+      ).toBe(true)
+    }
   })
 })
 
@@ -519,6 +537,64 @@ describe('parseClaims', () => {
     expect(notes).toEqual([{ action: 'capped', field: 'claims', kept: DOSSIER_CLAIMS_PER_PASS }])
   })
 
+  it('turns a none status with no usable date or document into no legal question, noted', () => {
+    const { notes, note } = collect()
+    const parsed = parseClaims(
+      JSON.stringify({
+        claims: [
+          { ...CLAIM, legal: { status: 'none', date: 'early 2001', doc: 1 } },
+          { ...CLAIM, legal: { status: 'none', date: '2001-03', doc: null } },
+          { ...CLAIM, legal: { status: 'none', date: '2001-03', doc: 2 } },
+        ],
+      }),
+      note,
+    )
+    expect(parsed.map((claim) => claim.legal)).toEqual([
+      null,
+      null,
+      { status: 'none', date: '2001-03', doc: 2 },
+    ])
+    expect(notes).toEqual([
+      {
+        action: 'dropped',
+        field: 'the legal status of claim 1',
+        reason: 'it named no usable date or document',
+      },
+      {
+        action: 'dropped',
+        field: 'the legal status of claim 2',
+        reason: 'it named no usable date or document',
+      },
+    ])
+  })
+
+  it('drops a ruled or alleged claim whose date or document is unusable, keeping the rest', () => {
+    // Keeping the claim without its status would let the script narrate an
+    // allegation as plain fact; refusing would re-charge the whole pass.
+    const { notes, note } = collect()
+    const parsed = parseClaims(
+      JSON.stringify({
+        claims: [
+          { ...CLAIM, legal: { status: 'ruled', date: 'May 2006', doc: 4 } },
+          { ...CLAIM, legal: { status: 'alleged', date: '2002', doc: 0 } },
+          { ...CLAIM, legal: { status: 'alleged', date: '2002-01-17', doc: 3 } },
+        ],
+      }),
+      note,
+    )
+    expect(parsed.map((claim) => claim.legal)).toEqual([
+      { status: 'alleged', date: '2002-01-17', doc: 3 },
+    ])
+    expect(notes).toEqual([
+      {
+        action: 'dropped',
+        field: 'claim 1',
+        reason: 'its legal date was not YYYY, YYYY-MM or YYYY-MM-DD',
+      },
+      { action: 'dropped', field: 'claim 2', reason: 'its legal status named no document' },
+    ])
+  })
+
   it('refuses a legal status the gate cannot read, and an empty claims list', () => {
     expect(() =>
       parseClaims(
@@ -616,314 +692,5 @@ describe('parseAnswers', () => {
       },
       { action: 'capped', field: 'claims found while answering', kept: 40 },
     ])
-  })
-})
-
-// ---------------------------------------------------------------------------
-// The renderer
-// ---------------------------------------------------------------------------
-
-const ref = (over: Partial<GroundedRef> = {}): GroundedRef => ({
-  documentId: 'doc-1',
-  url: 'https://example.com/story',
-  found: true,
-  locatorSeconds: null,
-  quote: 'the words that show it',
-  ...over,
-})
-
-const scene = (over: { ref?: Partial<GroundedRef> } = {}): GroundedResearch['scenes'][number] => ({
-  when: 'June 2020',
-  who: 'Markus Braun',
-  what: 'Resigned as chief executive',
-  why: 'The founder leaves the stage.',
-  quote: 'the words that show it',
-  ref: ref(over.ref),
-})
-
-const grounded = (over: Partial<GroundedResearch> = {}): GroundedResearch => ({
-  entity: { qid: null, titles: [], cik: null, ticker: null, website: null },
-  brief: {
-    summary: 'A payments company that reported cash it did not have.',
-    turningPoint: 'The auditors could not find the 1.9 billion.',
-    cast: [
-      {
-        name: 'Markus Braun',
-        role: 'chief executive',
-        wanted: 'To be the next big payments platform.',
-        ref: null,
-      },
-    ],
-    toldAlready: [],
-    openQuestions: [],
-  },
-  scenes: [],
-  answers: [],
-  corpus: { read: 4, unread: 0, failed: 0 },
-  ...over,
-})
-
-const withQuestions = (
-  openQuestions: string[],
-  answers: GroundedResearch['answers'],
-): GroundedResearch => {
-  const base = grounded({ answers })
-  return { ...base, brief: { ...base.brief, openQuestions } }
-}
-
-const claim = (over: Partial<GroundedClaim> = {}): GroundedClaim => ({
-  text: 'Wirecard reported 1.9 billion euros it did not have.',
-  sourceUrl: 'https://example.com/story',
-  sourceType: 'major_outlet',
-  confidence: 'sourced',
-  legalStatus: 'none',
-  legalStatusDate: null,
-  legalStatusDocumentId: null,
-  series: null,
-  supports: [],
-  ...over,
-})
-
-describe('renderDossierMarkdown', () => {
-  const render = (research: GroundedResearch, claims: GroundedClaim[] = []) =>
-    renderDossierMarkdown({ caseTitle: 'Wirecard', research, claims })
-
-  it('leads with the title, the summary and the turn', () => {
-    const md = render(grounded())
-    expect(md.startsWith('# Wirecard\n\n## Summary\n\nA payments company')).toBe(true)
-    expect(md).toContain('## The turn\n\nThe auditors could not find the 1.9 billion.')
-  })
-
-  it('lists the principals with what each one wanted', () => {
-    expect(render(grounded())).toContain(
-      '## Principals\n\n- **Markus Braun** — chief executive. *To be the next big payments platform.*',
-    )
-  })
-
-  it('renders scenes with a timestamped source and marks an unplaced one', () => {
-    const md = render(
-      grounded({
-        scenes: [
-          scene({
-            ref: { url: 'https://youtube.com/watch?v=abc', locatorSeconds: 65, found: true },
-          }),
-          scene({ ref: { found: false } }),
-        ],
-      }),
-    )
-    expect(md).toContain('([source](https://youtube.com/watch?v=abc&t=65))')
-    expect(md).toContain('(unplaced)')
-    expect(md).toContain(
-      '- **June 2020** — Resigned as chief executive (Markus Braun). *The founder leaves the stage.* ([source](https://example.com/story)) (unplaced)',
-    )
-  })
-
-  it('starts a query for a timestamp on a link that has none', () => {
-    const md = render(
-      grounded({ scenes: [scene({ ref: { url: 'https://youtu.be/abc', locatorSeconds: 5 } })] }),
-    )
-    expect(md).toContain('([source](https://youtu.be/abc?t=5))')
-  })
-
-  it('omits Told already when empty and lists beats otherwise', () => {
-    expect(render(grounded())).not.toContain('## Told already')
-
-    const base = grounded()
-    const md = renderDossierMarkdown({
-      caseTitle: 'Wirecard',
-      research: {
-        ...base,
-        brief: {
-          ...base.brief,
-          toldAlready: [
-            {
-              beat: 'The FT investigation and the short sellers.',
-              ref: ref({ documentId: 'video-1', url: 'https://youtube.com/watch?v=v1' }),
-            },
-            {
-              beat: 'The raid on the Aschheim office.',
-              ref: ref({ documentId: 'video-2', url: 'https://youtube.com/watch?v=v2' }),
-            },
-          ],
-        },
-      },
-      claims: [],
-      documents: [{ id: 'video-1', title: 'How [Wirecard] fooled everyone' }],
-    })
-    expect(md).toContain('## Told already')
-    expect(md).toContain(
-      '- The FT investigation and the short sellers. ([How (Wirecard) fooled everyone](https://youtube.com/watch?v=v1))',
-    )
-    expect(md).toContain(
-      '- The raid on the Aschheim office. ([https://youtube.com/watch?v=v2](https://youtube.com/watch?v=v2))',
-    )
-  })
-
-  it('puts open questions in the document when nothing answered them', () => {
-    const md = render(
-      withQuestions(
-        ['What did the board know in 2019?'],
-        [{ index: 1, question: 'What did the board know in 2019?', answer: null, ref: null }],
-      ),
-    )
-    expect(md).not.toContain('## Questions the research answered')
-    expect(md).toContain('## Open questions\n\n- What did the board know in 2019?')
-  })
-
-  it('places an answer by its index, under the brief wording, linked to its document', () => {
-    const md = render(
-      withQuestions(
-        ['What did the board know in 2019?', 'Who leaked it?'],
-        [
-          {
-            index: 1,
-            question: "What was the board's knowledge?",
-            answer: 'The special audit found the board was told in 2019.',
-            ref: ref({ url: 'https://example.com/kpmg' }),
-          },
-        ],
-      ),
-    )
-    expect(md).toContain(
-      '- **What did the board know in 2019?** — The special audit found the board was told in 2019. ([source](https://example.com/kpmg))',
-    )
-    expect(md).not.toContain("What was the board's knowledge?")
-    expect(md).toContain('## Open questions\n\n- Who leaked it?')
-  })
-
-  it('falls back to the folded text when the index is missing or outside the list', () => {
-    const md = render(
-      withQuestions(
-        ['What did the board know in 2019?', 'Who leaked it?'],
-        [
-          {
-            index: 7,
-            question: 'What did the board know in 2019.',
-            answer: 'The special audit found the board was told.',
-            ref: null,
-          },
-          { question: 'who leaked it', answer: 'A whistleblower in Singapore did.', ref: null },
-        ],
-      ),
-    )
-    expect(md).toContain('- **What did the board know in 2019?** — The special audit')
-    expect(md).toContain('- **Who leaked it?** — A whistleblower in Singapore did.')
-    expect(md).not.toContain('## Open questions')
-  })
-
-  it('never discards a real answer it cannot place: it renders under its own words', () => {
-    const md = render(
-      withQuestions(
-        ['What did the board know in 2019?'],
-        [
-          {
-            question: 'How much cash was missing?',
-            answer: 'About 1.9 billion euros, per the special audit.',
-            ref: null,
-          },
-        ],
-      ),
-    )
-    expect(md).toContain('- **How much cash was missing?** — About 1.9 billion euros')
-    expect(md).toContain('## Open questions\n\n- What did the board know in 2019?')
-  })
-
-  it('says how many claims are unverified, and nothing when none is', () => {
-    const md = render(grounded(), [claim({ confidence: 'unverified' }), claim()])
-    expect(md).toContain('## Unverified')
-    expect(md).toContain('1 claim(s)')
-    expect(md).toContain('excluded from scripting')
-    expect(render(grounded(), [claim()])).not.toContain('## Unverified')
-  })
-
-  it('writes italics with asterisks only, never underscores', () => {
-    const md = render(grounded({ scenes: [scene()] }))
-    expect(md).not.toMatch(/(^|\s)_\S/m)
-  })
-
-  it('is a pure function of its input', () => {
-    const research = grounded({ scenes: [scene()] })
-    expect(render(research, [claim()])).toBe(render(research, [claim()]))
-  })
-})
-
-// ---------------------------------------------------------------------------
-// Mock mode
-// ---------------------------------------------------------------------------
-
-describe('mock research', () => {
-  const documents = mockCorpusDocuments()
-  const textOf = (doc: number) => documents[doc - 1]!.text
-
-  it('says in the dossier itself that nothing was researched', () => {
-    // A mock dossier that reads plausibly is one somebody eventually approves by accident.
-    expect(mockBrief(caseContext).summary).toMatch(/MOCK DOSSIER/)
-    expect(mockBrief(caseContext).summary).toMatch(/No research was performed/)
-  })
-
-  it('gathers four documents of the kinds the checks need, each labelled mock', () => {
-    expect(documents.map((document) => document.kind)).toEqual([
-      'press-release',
-      'reporting',
-      'video',
-      'regulator',
-    ])
-    for (const document of documents) expect(document.text.startsWith('MOCK DOCUMENT')).toBe(true)
-    expect(textOf(3)).toMatch(/\[\d{2}:\d{2}\]/)
-  })
-
-  it('validates against the same schemas as real output', () => {
-    const brief = parseBrief(JSON.stringify(mockBrief(caseContext)))
-    expect(brief).toEqual(mockBrief(caseContext))
-    expect(parseScenes(JSON.stringify({ scenes: mockScenes() }))).toEqual(mockScenes())
-    expect(parseClaims(JSON.stringify({ claims: mockClaims() }))).toEqual(mockClaims())
-    expect(parseAnswers(JSON.stringify(mockAnswers(brief)))).toEqual(mockAnswers(brief))
-  })
-
-  it('cites only the four mock documents', () => {
-    const brief = mockBrief(caseContext)
-    const cited = [
-      ...brief.cast.flatMap((member) => (member.scene ? [member.scene.doc] : [])),
-      ...brief.toldAlready.map((told) => told.doc),
-      ...mockScenes().map((scene) => scene.doc),
-      ...mockClaims().flatMap((claim) => [
-        ...claim.supports.map((support) => support.doc),
-        ...(claim.legal ? [claim.legal.doc] : []),
-      ]),
-      ...mockAnswers(brief).answers.flatMap((answer) => (answer.doc ? [answer.doc] : [])),
-    ]
-    expect(cited.length).toBeGreaterThan(0)
-    for (const doc of cited) {
-      expect(doc).toBeGreaterThanOrEqual(1)
-      expect(doc).toBeLessThanOrEqual(documents.length)
-    }
-  })
-
-  it('misses exactly one quote on purpose, so the e2e fixture parks at the gate', () => {
-    const brief = mockBrief(caseContext)
-    const quotes = [
-      ...brief.cast.flatMap((member) => (member.scene ? [member.scene] : [])),
-      ...brief.toldAlready,
-      ...mockScenes(),
-      ...mockClaims().flatMap((claim) => claim.supports),
-    ]
-    const missing = quotes.filter(({ doc, quote }) => !textOf(doc).includes(quote))
-    expect(missing).toEqual([mockClaims()[1]!.supports[0]])
-  })
-
-  it('carries a figure series written as doc 1 prints it, a ruled status and a transcript scene', () => {
-    const [, , figure, ruled] = mockClaims()
-    expect(figure?.supports[0]?.doc).toBe(1)
-    expect(figure?.series?.points).toHaveLength(2)
-    for (const point of figure!.series!.points) expect(textOf(1)).toContain(point.asWritten)
-    expect(ruled?.legal).toEqual({ status: 'ruled', date: '2019-02', doc: 4 })
-    expect(mockClaims()[0]?.supports.map((support) => support.doc)).toEqual([2, 4])
-    expect(mockScenes().some((scene) => documents[scene.doc - 1]?.kind === 'video')).toBe(true)
-    expect(mockBrief(caseContext).toldAlready.map((told) => told.doc)).toEqual([3])
-  })
-
-  it('is deterministic', () => {
-    expect(mockBrief(caseContext)).toEqual(mockBrief(caseContext))
-    expect(mockCorpusDocuments()).toEqual(mockCorpusDocuments())
   })
 })

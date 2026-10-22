@@ -8,7 +8,7 @@ import type { CorpusDocument } from './corpus'
  * the mock dossier says loudly that it is mock: fixture text that reads like
  * a source is a source somebody eventually cites by accident.
  *
- * The mock passes in `prompts/dossier.ts` cite these by number and quote
+ * The mock passes in `prompts/dossier-mocks.ts` cite these by number and quote
  * them word for word, so the order and the wording here are load-bearing.
  * The hosts differ between the article and the regulator page so a claim
  * supported by both counts as two sources.
