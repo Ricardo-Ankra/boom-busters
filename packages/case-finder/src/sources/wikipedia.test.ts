@@ -95,6 +95,108 @@ describe('live wikipedia', () => {
     ])
   })
 
+  describe('formerTitles', () => {
+    const MOVED = 'Moved page [[Old Co]] to [[New Co]]'
+    const reply = (pages: object[], extra: object = {}) =>
+      JSON.stringify({ batchcomplete: true, query: { pages, ...extra } })
+    const respond = (body: (p: URLSearchParams) => string) =>
+      vi.fn(async (url: string | URL | Request) => {
+        return new Response(body(new URL(String(url)).searchParams), { status: 200 })
+      })
+    const source = (fetchImpl: ReturnType<typeof respond>) =>
+      liveWikipedia(
+        createPoliteClient({
+          contact: 'me@example.com',
+          cacheDir: null,
+          fetchImpl,
+          minIntervalMs: { 'wikipedia.org': 0 },
+        }),
+      )
+
+    it('keeps a redirect whose edit summary is a page move, or that transcludes R from move', async () => {
+      const fetchImpl = respond(() =>
+        reply([
+          { title: 'Old Co', revisions: [{ comment: 'Moved page [[Old Co]] to [[New Co]]' }] },
+          {
+            title: 'Old Co Inc',
+            revisions: [{ comment: 'Rcat' }],
+            templates: [{ ns: 10, title: 'Template:R from move' }],
+          },
+          { title: 'Nickname', revisions: [{ comment: 'create redirect' }] },
+        ]),
+      )
+      const former = await source(fetchImpl).formerTitles('New Co', [
+        'Old Co',
+        'Nickname',
+        'Old Co Inc',
+      ])
+      expect(former).toEqual(['Old Co', 'Old Co Inc'])
+      const params = searchParamsOf(fetchImpl as never)[0]!
+      expect(params.get('prop')).toBe('revisions|templates')
+      expect(params.get('rvprop')).toBe('comment')
+      expect(params.get('tltemplates')).toBe('Template:R from move')
+      expect(params.get('tllimit')).toBe('max')
+      expect(params.get('titles')).toBe('Old Co|Nickname|Old Co Inc')
+    })
+
+    it('a redirect with neither marker, or no revision data, is not a former title', async () => {
+      const fetchImpl = respond(() =>
+        reply([
+          { title: 'A', revisions: [{ comment: 'Moved to a better place' }] },
+          { title: 'B', missing: true },
+          { title: 'C' },
+        ]),
+      )
+      expect(await source(fetchImpl).formerTitles('X', ['A', 'B', 'C'])).toEqual([])
+    })
+
+    it('batches by 50, keeps the input order, and asks nothing for no redirects', async () => {
+      const titles = Array.from({ length: 120 }, (_, i) => `Title ${i}`)
+      const fetchImpl = respond((p) =>
+        reply(
+          p
+            .get('titles')!
+            .split('|')
+            .reverse()
+            .map((title) => ({ title, revisions: [{ comment: MOVED }] })),
+        ),
+      )
+      expect(await source(fetchImpl).formerTitles('X', titles)).toEqual(titles)
+      expect(
+        searchParamsOf(fetchImpl as never).map((p) => p.get('titles')!.split('|').length),
+      ).toEqual([50, 50, 20])
+      const none = respond(() => reply([]))
+      expect(await source(none).formerTitles('X', [])).toEqual([])
+      expect(none).not.toHaveBeenCalled()
+    })
+
+    it('maps a normalised title back to the one requested', async () => {
+      const fetchImpl = respond(() =>
+        reply([{ title: 'Old co', revisions: [{ comment: MOVED }] }], {
+          normalized: [{ from: 'old_co', to: 'Old co' }],
+        }),
+      )
+      expect(await source(fetchImpl).formerTitles('X', ['old_co'])).toEqual(['old_co'])
+    })
+
+    it('follows continue for templates and joins them to the first reply', async () => {
+      const fetchImpl = respond((p) =>
+        p.get('tlcontinue') === 'next'
+          ? reply([{ title: 'Old Co', templates: [{ ns: 10, title: 'Template:R from move' }] }])
+          : JSON.stringify({
+              continue: { tlcontinue: 'next', continue: '||' },
+              query: { pages: [{ title: 'Old Co', revisions: [{ comment: 'Rcat' }] }] },
+            }),
+      )
+      expect(await source(fetchImpl).formerTitles('X', ['Old Co'])).toEqual(['Old Co'])
+      expect(fetchImpl).toHaveBeenCalledTimes(2)
+    })
+
+    it('the mock answers every second redirect', async () => {
+      expect(await mockWikipedia.formerTitles('X', ['a', 'b', 'c'])).toEqual(['a', 'c'])
+    })
+  })
+
   it('qidsFor maps requested titles through normalisation and redirects', async () => {
     const fetchImpl = wikipediaFetch(() => 'wikipedia-qids.json')
     const map = await sourceFor(fetchImpl).qidsFor([

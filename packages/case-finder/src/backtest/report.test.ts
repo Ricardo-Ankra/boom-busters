@@ -144,7 +144,7 @@ describe('renderReport', () => {
       "- Channel medians use each channel's uploads within six months of the video; where reaching that far back needed more than 20 pages, the channel's latest 50 uploads were used instead. When a channel's history was read across more than one day, uploads posted in between can shift YouTube's pages, so a few older uploads may be missed.\n",
     )
     for (const sentence of [
-      "Pageviews include each article's current redirects, and world interest uses each company's current language editions.",
+      "Pageviews include each article's current former titles, and world interest uses each company's current language editions.",
       'Each company is searched under its current English title, so a company renamed after a test date is searched under its later name.',
       "Founders' and executives' living status and convictions are read from Wikidata as they stand today.",
     ]) {

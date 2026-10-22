@@ -80,7 +80,7 @@ export const PLAN_DECISIONS: readonly string[] = [
   'Fortune climb rule (success-lane seed): a company whose best Fortune 500 rank improved by at least 200 places within any 10 consecutive list years, or whose first appearance was after 1970 and who later reached the top 100.',
   "EDGAR forms counted: success lane 10-K, 20-F, 40-F, S-1, F-1, 424B4; downfall lane NT 10-K, NT 20-F, 10-K/A, and 8-K whose items include 4.02. The company's CIK comes from Wikidata P5531.",
   "Revision dates are quantised to the first day of T's month (the last revision before that day). Still strictly before T, and it lets 40 test dates share about 30 cached revision sets.",
-  "Pageviews include redirects: an entry's views are the sum over its title and every redirect to it, so a renamed article keeps its history.",
+  "Pageviews include former titles: an entry's views are the sum over its title and the redirects that were once its own title (left by a page move), so a renamed article keeps its history. Other redirects are not counted.",
   "Query rule: an entry's YouTube and title-match query is its English title with any trailing parenthetical removed (Enron (company) gives Enron); a video counts only if the query appears in its title as a whole word, case-insensitive.",
   'Companies House and GDELT are deferred to the later plans: the back-test uses neither (GDELT only feeds the daily scan; Companies House is optional per the spec).',
   'Keys for this plan come from env, read by the CLI from .env.local: YOUTUBE_DATA_API_KEY, COURTLISTENER_TOKEN, DATA_CONTACT_EMAIL. Settings → Connections entries move to the Case Library plan, where the app first needs them.',
@@ -100,7 +100,7 @@ export const CAVEAT_PAGE_SEAMS =
   "When a channel's history was read across more than one day, uploads posted in between can shift YouTube's pages, so a few older uploads may be missed."
 /** Every other known hindsight in the evidence: today's redirects, editions, titles and people facts. */
 export const CAVEATS_HINDSIGHT: readonly string[] = [
-  "Pageviews include each article's current redirects, and world interest uses each company's current language editions.",
+  "Pageviews include each article's current former titles, and world interest uses each company's current language editions.",
   'Each company is searched under its current English title, so a company renamed after a test date is searched under its later name.',
   "Founders' and executives' living status and convictions are read from Wikidata as they stand today.",
 ]

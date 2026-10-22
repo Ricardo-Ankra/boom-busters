@@ -105,6 +105,21 @@ describe('tags at T, through gatherAt', () => {
     expect(e!.tagsAtT).toEqual([tag])
   })
 
+  it('list matching sees a redirect that is not a former title, and pageviews do not', async () => {
+    const pageviews = flatPageviews()
+    const wikipedia = fakeWikipedia({
+      'Article Q1': {},
+      'List of frauds': { links: ['Nickname'] },
+    })
+    vi.mocked(wikipedia.redirectsTo).mockResolvedValue(['Nickname'])
+    const tag: DatedTag = { tag: 'list:List of frauds', lane: 'downfall', since: null }
+    const [e] = await gather([entry('Q1', { tags: [tag] })], sources({ wikipedia, pageviews }))
+    expect(e!.tagsAtT).toEqual([tag])
+    for (const [, titles] of vi.mocked(pageviews.monthly).mock.calls) {
+      expect(titles).toEqual(['Article Q1'])
+    }
+  })
+
   it('an entry below the floor gets no revision call and keeps only its dated plain tags', async () => {
     const wikipedia = fakeWikipedia({ 'Article Q1': { categories: ['Ponzi schemes'] } })
     const hitlist = [

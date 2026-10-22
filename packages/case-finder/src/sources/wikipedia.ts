@@ -18,6 +18,14 @@ export interface WikipediaSource {
   listLinks(page: string): Promise<string[]>
   /** Titles of the redirects that point at `title`, not `title` itself. */
   redirectsTo(title: string): Promise<string[]>
+  /**
+   * The subset of `redirects` that were once the article's own title, in input order. A move
+   * leaves a redirect whose last edit summary is MediaWiki's automatic "Moved page [[a]] to [[b]]"
+   * and which usually carries `{{R from move}}`; either marks it. Other redirects (nicknames,
+   * misspellings, tickers) are not the article's history, and counting them costs a pageviews
+   * request each.
+   */
+  formerTitles(title: string, redirects: string[]): Promise<string[]>
   /** Requested title to QID, following normalisation and redirects. Titles with no item are absent. */
   qidsFor(titles: string[]): Promise<Map<string, string>>
   /** The newest revision before 00:00 UTC of `day`; null if the page is missing or did not exist yet. */
@@ -55,6 +63,21 @@ const pagesQuery = z.object({
   redirects: z.array(z.object({ from: z.string(), to: z.string() })).optional(),
   pages: z.array(pageSchema).optional(),
 })
+
+const formerPageSchema = z.object({
+  title: z.string(),
+  revisions: z.array(z.object({ comment: z.string().optional() })).optional(),
+  templates: z.array(z.object({ title: z.string() })).optional(),
+})
+
+const formerQuery = z.object({
+  normalized: z.array(z.object({ from: z.string(), to: z.string() })).optional(),
+  pages: z.array(formerPageSchema).optional(),
+})
+
+/** MediaWiki's automatic edit summary on the redirect a page move leaves behind. */
+const MOVE_SUMMARY = /moved page \[\[[^\]]+\]\] to \[\[/i
+const MOVE_TEMPLATE = 'Template:R from move'
 
 const membersQuery = z.object({
   categorymembers: z.array(z.object({ ns: z.number(), title: z.string() })).optional(),
@@ -277,6 +300,39 @@ export function liveWikipedia(
       )
       const titles = replies.flatMap((r) => (r.pages ?? []).flatMap((p) => p.redirects ?? []))
       return [...new Set(titles.map((r) => r.title))]
+    },
+
+    async formerTitles(_title, redirects) {
+      const former = new Set<string>()
+      for (const batch of chunks([...new Set(redirects)], BATCH)) {
+        const replies = await allReplies(
+          {
+            action: 'query',
+            prop: 'revisions|templates',
+            rvprop: 'comment',
+            tltemplates: MOVE_TEMPLATE,
+            tllimit: 'max',
+            titles: batch.join('|'),
+          },
+          formerQuery,
+        )
+        const normalized = new Map<string, string>()
+        const moved = new Set<string>()
+        for (const r of replies) {
+          for (const n of r.normalized ?? []) normalized.set(n.from, n.to)
+          // A `continue` reply repeats a page with only its next templates, so the evidence is unioned.
+          for (const p of r.pages ?? []) {
+            const comment = p.revisions?.[0]?.comment ?? ''
+            if (MOVE_SUMMARY.test(comment) || p.templates?.some((t) => t.title === MOVE_TEMPLATE)) {
+              moved.add(p.title)
+            }
+          }
+        }
+        for (const requested of batch) {
+          if (moved.has(normalized.get(requested) ?? requested)) former.add(requested)
+        }
+      }
+      return redirects.filter((r) => former.has(r))
     },
 
     async qidsFor(titles) {

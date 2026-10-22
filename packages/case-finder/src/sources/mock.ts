@@ -102,6 +102,10 @@ export const mockWikipedia: WikipediaSource = {
   async redirectsTo(title) {
     return [`Mock redirect to ${title}`]
   },
+  /** Every second redirect, starting with the first. */
+  async formerTitles(_title, redirects) {
+    return redirects.filter((_, i) => i % 2 === 0)
+  },
   async qidsFor(titles) {
     return new Map(titles.map((title) => [title, `Q${900000 + (hash(title) % 99999)}`]))
   },

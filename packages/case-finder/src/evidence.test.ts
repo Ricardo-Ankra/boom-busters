@@ -94,11 +94,13 @@ describe('gatherAt', () => {
     expect(early[0]!.enMonthly[0]!.month).toBe('2015-07')
   })
 
-  it('English series sum the title with its redirects', async () => {
+  it('English series sum the title with its former titles only', async () => {
     const pageviews = flatPageviews()
     const wikipedia = fakeWikipedia({ 'Article Q1': {} })
-    vi.mocked(wikipedia.redirectsTo).mockResolvedValue(['Old Name'])
+    vi.mocked(wikipedia.redirectsTo).mockResolvedValue(['Old Name', 'Nickname'])
+    vi.mocked(wikipedia.formerTitles).mockResolvedValue(['Old Name'])
     await gather([entry('Q1')], sources({ pageviews, wikipedia }))
+    expect(wikipedia.formerTitles).toHaveBeenCalledWith('Article Q1', ['Old Name', 'Nickname'])
     expect(pageviews.monthly).toHaveBeenCalledWith(
       'en.wikipedia',
       ['Article Q1', 'Old Name'],
