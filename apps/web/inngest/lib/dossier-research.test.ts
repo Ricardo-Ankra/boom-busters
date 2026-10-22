@@ -386,7 +386,7 @@ describe('researchDossier over the corpus', () => {
 
     const result = await researchDossier(
       replaying({
-        'research-brief-0': { ok: true, value: BRIEF },
+        'research-brief-0': { ok: true, value: BRIEF, split: true },
         'research-scenes-0': { ok: true, value: SCENES.scenes },
         'research-claims-0-1': { ok: true, value: [CLAIM] },
         'research-claims-0-2': { ok: true, value: [CLAIM_2] },
@@ -401,6 +401,99 @@ describe('researchDossier over the corpus', () => {
     expect(result.repairs).toEqual([])
     expect(result.research).toEqual(grounded.research)
     expect(complete).not.toHaveBeenCalled()
+  })
+
+  it('marks a new brief as split, so a later replay knows which step ids it wrote', async () => {
+    const stored: Record<string, unknown> = {}
+    const recording: Steps = {
+      run: async (id, fn) => {
+        const value = await fn()
+        stored[id] = value
+        return value
+      },
+    }
+
+    await researchDossier(recording, input, { complete: answering(), mocked: false })
+
+    expect(stored['research-brief-0']).toMatchObject({ ok: true, split: true })
+  })
+
+  it('replays a run researched before the split under its single claims and answers steps', async () => {
+    const complete = vi.fn(answering())
+    const grounded = { research: { entity: ENTITY }, claims: [], repairs: [] }
+    const stored: Record<string, unknown> = {
+      // What a run parked at the gate before this deploy stored: no `split`.
+      'research-brief-0': { ok: true, value: BRIEF },
+      'research-scenes-0': { ok: true, value: SCENES.scenes },
+      'research-claims-0': { ok: true, value: [CLAIM] },
+      'research-answers-0': { ok: true, value: ANSWERS },
+      'research-ground-0': grounded,
+    }
+    const ids: string[] = []
+    const replay: Steps = {
+      run: async <T>(id: string) => {
+        ids.push(id)
+        if (!(id in stored)) throw new Error(`no stored result for ${id}`)
+        return stored[id] as T
+      },
+    }
+
+    const result = await researchDossier(replay, input, { complete, mocked: false })
+
+    expect(ids).toEqual([
+      'research-brief-0',
+      'research-scenes-0',
+      'research-claims-0',
+      'research-answers-0',
+      'research-ground-0',
+    ])
+    expect(complete).not.toHaveBeenCalled()
+    expect(result.research).toEqual(grounded.research)
+  })
+
+  it("accepts an empty claims part and keeps the other's", async () => {
+    const calls: string[] = []
+    const inner = answering({ 'claims-2': { claims: [] } })
+    const complete: AnswerComplete = async (request, call) => {
+      calls.push(call)
+      return inner(request, call)
+    }
+
+    const result = await researchDossier(inlineSteps, input, { complete, mocked: false })
+
+    expect(result.claims.map((c) => c.text)).toEqual([CLAIM.text])
+    expect(calls).toHaveLength(6)
+    expect(calls.every((call) => call === 'answer')).toBe(true)
+  })
+
+  it('stops the stage when no part found a claim', async () => {
+    const complete = vi.fn(answering({ claims: { claims: [] } }))
+
+    const stopped = researchDossier(inlineSteps, input, { complete, mocked: false })
+
+    await expect(stopped).rejects.toBeInstanceOf(NonRetriableError)
+    await expect(stopped).rejects.toThrow(
+      'The claims could not be extracted: no part found a claim in the documents',
+    )
+    // Brief, scenes and both claims parts; no answers part was asked.
+    expect(complete).toHaveBeenCalledTimes(4)
+  })
+
+  it("drops an answer's number when it falls outside its part's questions", async () => {
+    const result = await researchDossier(inlineSteps, input, {
+      complete: answering({
+        // Part 2 was asked question 2 and numbered its list from 1.
+        'answers-2': {
+          answers: [{ index: 1, question: 'Who signed off on the escrow accounts?', answer: null }],
+          claims: [],
+        },
+      }),
+      mocked: false,
+    })
+
+    expect(result.research.answers.map((a) => a.index)).toEqual([1, undefined])
+    expect(result.research.answers[1]).not.toHaveProperty('index')
+    expect(result.research.answers[1]!.question).toBe('Who signed off on the escrow accounts?')
   })
 
   it('returns the budget gate when a pass crosses the cap', async () => {

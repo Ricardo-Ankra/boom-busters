@@ -157,6 +157,7 @@ describeDb('dossier-reviser', () => {
             ok: true,
             value: BRIEF,
             repairs: [{ action: 'trimmed', field: "the brief's turning point" }],
+            split: true,
           }),
         },
         { id: 'research-scenes-1', handler: () => ({ ok: true, value: SCENES }) },

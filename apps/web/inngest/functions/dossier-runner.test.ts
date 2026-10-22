@@ -188,7 +188,11 @@ function stored(options: { repairs?: Record<string, unknown[]>; claims?: Grounde
     { id: 'gather-entity-0', handler: () => ENTITY },
     { id: 'gather-fetch-0-0', handler: () => DOCUMENTS.map((d) => d.id) },
     { id: 'corpus-load-0', handler: () => ({ documents: DOCUMENTS, corpus: CORPUS }) },
-    pass('research-brief-0', BRIEF),
+    // `split` marks a brief written since the claims and answers passes run in parts.
+    {
+      id: 'research-brief-0',
+      handler: () => ({ ...pass('research-brief-0', BRIEF).handler(), split: true }),
+    },
     pass('research-scenes-0', SCENES),
     pass('research-claims-0-1', RESEARCH_CLAIMS),
     pass('research-claims-0-2', []),

@@ -32,6 +32,7 @@ import type {
   CaseBrief,
   GroundedClaim,
   GroundedResearch,
+  ResearchAnswer,
   ResearchAnswers,
   ResearchClaim,
   ResearchEntity,
@@ -124,19 +125,21 @@ export function splitRange(count: number, parts: number): { from: number; to: nu
 
 /**
  * A pass run as one step per range, in order, each step's value kept apart
- * for the caller to merge. A budget gate from any part stops the rest, as it
- * stops the passes after a gated one. Repairs keep part order.
+ * with the part that wrote it, for the caller to merge. A budget gate from
+ * any part stops the rest, as it stops the passes after a gated one. Repairs
+ * keep part order.
  */
 async function inParts<T>(
   ranges: readonly { from: number; to: number }[],
   step: (part: PassPart) => Promise<Guarded<T>>,
-): Promise<Guarded<T[]>> {
-  const values: T[] = []
+): Promise<Guarded<{ part: PassPart; value: T }[]>> {
+  const values: { part: PassPart; value: T }[] = []
   const repairs: Repair[] = []
   for (const [at, range] of ranges.entries()) {
-    const result = await step({ index: at + 1, of: ranges.length, ...range })
+    const part = { index: at + 1, of: ranges.length, ...range }
+    const result = await step(part)
     if (!result.ok) return result
-    values.push(result.value)
+    values.push({ part, value: result.value })
     // Read with a default, as every pass's repairs are (spec 5.1).
     repairs.push(...(result.repairs ?? []))
   }
@@ -202,18 +205,29 @@ export async function researchDossier(
 
   const brief = await steps.run(
     `research-brief-${round}`,
-    async (): Promise<Guarded<CaseBrief>> => {
-      if (mocked) return { ok: true, value: mockBrief(caseContext) }
-      return guarded('The research brief could not be written', () =>
-        callForAnswer({
-          request: noted(buildBriefRequest(caseContext, corpus)),
-          parse: parseBrief,
-          complete,
-        }),
-      )
+    async (): Promise<Guarded<CaseBrief> & { split?: boolean }> => {
+      const result: Guarded<CaseBrief> = mocked
+        ? { ok: true, value: mockBrief(caseContext) }
+        : await guarded('The research brief could not be written', () =>
+            callForAnswer({
+              request: noted(buildBriefRequest(caseContext, corpus)),
+              parse: parseBrief,
+              complete,
+            }),
+          )
+      return { ...result, split: true }
     },
   )
   if (!brief.ok) return stopped(brief.gate)
+
+  // A brief stored before the claims and answers passes were split has no
+  // `split` mark. Its run (one parked at the gate across the deploy) stored
+  // one step per pass, so it replays those ids: new part ids would call the
+  // model again for results the stored grounding then ignores.
+  const split = brief.split === true
+  const parts = split ? PARTS : 1
+  const stepId = (pass: 'claims' | 'answers', part: PassPart) =>
+    split ? `research-${pass}-${round}-${part.index}` : `research-${pass}-${round}`
 
   const scenes = await steps.run(
     `research-scenes-${round}`,
@@ -232,62 +246,69 @@ export async function researchDossier(
 
   // Each part owns the claims whose first support lies in its share of the
   // documents, so the parts rarely overlap; what overlap there is goes below.
-  const claimParts = await inParts(splitRange(documents.length, PARTS), (part) =>
-    steps.run(
-      `research-claims-${round}-${part.index}`,
-      async (): Promise<Guarded<ResearchClaim[]>> => {
-        // The mock claims cite every mock document, so the first part has them all.
-        if (mocked) return { ok: true, value: part.index === 1 ? mockClaims() : [] }
-        return guarded('The claims could not be extracted', () =>
-          callForAnswer({
-            request: noted(
-              buildClaimsRequest(caseContext, corpus, brief.value, scenes.value, part),
-            ),
-            parse: parseClaims,
-            complete,
-          }),
-        )
-      },
-    ),
+  const claimParts = await inParts(splitRange(documents.length, parts), (part) =>
+    steps.run(stepId('claims', part), async (): Promise<Guarded<ResearchClaim[]>> => {
+      // The mock claims cite every mock document, so the first part has them all.
+      if (mocked) return { ok: true, value: part.index === 1 ? mockClaims() : [] }
+      return guarded('The claims could not be extracted', () =>
+        callForAnswer({
+          request: noted(buildClaimsRequest(caseContext, corpus, brief.value, scenes.value, part)),
+          parse: parseClaims,
+          complete,
+        }),
+      )
+    }),
   )
   if (!claimParts.ok) return stopped(claimParts.gate)
   // A later part's claims minus any an earlier part already wrote: a claim
   // whose first support was misnumbered can come back from both.
-  const [firstClaims = [], ...laterClaims] = claimParts.value
+  const [firstClaims = [], ...laterClaims] = claimParts.value.map(({ value }) => value)
   const claims = laterClaims.reduce(
     (merged, next) => [...merged, ...dedupeAgainst(merged, next)],
     firstClaims,
   )
+  // An empty part is an answer; an empty pass is not. A dossier with no claim
+  // would count as clean at the gate and auto-approve, so the stage stops,
+  // worded as `guarded` words a pass that failed so the notice reads alike.
+  if (claims.length === 0 && !mocked) {
+    throw new NonRetriableError(
+      'The claims could not be extracted: no part found a claim in the documents',
+    )
+  }
 
   // Pass 4 (decision 201): the brief's own open questions, answered from the
   // documents, split by question. No step when the brief raised none: there
   // is nothing to spend on.
-  const answerParts = await inParts(splitRange(brief.value.openQuestions.length, PARTS), (part) =>
-    steps.run(
-      `research-answers-${round}-${part.index}`,
-      async (): Promise<Guarded<ResearchAnswers>> => {
-        if (mocked) {
-          return {
-            ok: true,
-            value: part.index === 1 ? mockAnswers(brief.value) : { answers: [], claims: [] },
-          }
+  const answerParts = await inParts(splitRange(brief.value.openQuestions.length, parts), (part) =>
+    steps.run(stepId('answers', part), async (): Promise<Guarded<ResearchAnswers>> => {
+      if (mocked) {
+        // Each part answers only its own questions, as a real part is told to.
+        const mock = mockAnswers(brief.value)
+        const own = (index: number | undefined) =>
+          index !== undefined && index >= part.from && index <= part.to
+        return {
+          ok: true,
+          value: {
+            answers: mock.answers.filter((answer) => own(answer.index)),
+            claims: part.index === 1 ? mock.claims : [],
+          },
         }
-        return guarded('The open questions could not be answered', () =>
-          callForAnswer({
-            request: noted(
-              buildAnswersRequest(caseContext, corpus, brief.value, scenes.value, part),
-            ),
-            parse: parseAnswers,
-            complete,
-          }),
-        )
-      },
-    ),
+      }
+      return guarded('The open questions could not be answered', () =>
+        callForAnswer({
+          request: noted(buildAnswersRequest(caseContext, corpus, brief.value, scenes.value, part)),
+          parse: parseAnswers,
+          complete,
+        }),
+      )
+    }),
   )
   if (!answerParts.ok) return stopped(answerParts.gate)
   const answers: ResearchAnswers = {
-    answers: answerParts.value.flatMap((part) => part.answers),
-    claims: answerParts.value.flatMap((part) => part.claims),
+    answers: answerParts.value.flatMap(({ part, value }) =>
+      value.answers.map((answer) => placeable(answer, part)),
+    ),
+    claims: answerParts.value.flatMap(({ value }) => value.claims),
   }
 
   // Read with a default: a run parked before the deploy replays step results
@@ -331,6 +352,21 @@ export async function researchDossier(
 }
 
 const fold = (text: string) => foldText(text).folded
+
+/**
+ * An answer numbered outside its part's questions answered one it was not
+ * given, or numbered its own list from 1. Either way the number would place
+ * it under the wrong question, so it is dropped and the renderer places the
+ * answer by its question text instead.
+ */
+function placeable(answer: ResearchAnswer, part: PassPart): ResearchAnswer {
+  if (answer.index === undefined || (answer.index >= part.from && answer.index <= part.to)) {
+    return answer
+  }
+  const { index, ...rest } = answer
+  void index
+  return rest
+}
 
 /** Claims from a later call minus the ones an earlier call already produced. */
 function dedupeAgainst(existing: readonly ResearchClaim[], candidates: readonly ResearchClaim[]) {
