@@ -9,10 +9,12 @@ import {
   requireTestDatabase,
   upsertResearchDocument,
 } from '@boom-busters/db'
+import type { VideoDetails, YoutubeSource } from '@boom-busters/case-finder'
 import type { FetchedDocument } from '@boom-busters/providers'
 import { mockCorpusDocuments } from '@boom-busters/providers'
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ResearchSources } from '@/lib/research-sources'
+import { FAKE_USER_AGENT, fakeSources, unexpected } from '@/test/fake-research-sources'
 import { gatherCorpus } from './dossier-gather'
 import type { Steps } from './steps'
 
@@ -29,55 +31,37 @@ const suite = url ? describe : describe.skip
 const HOST = 'https://gather-test.example'
 const DAY = 86_400_000
 
-function unexpected(name: string) {
-  return () => {
-    throw new Error(`unexpected call to ${name}`)
-  }
-}
+/** Test documents that cannot live under HOST: the figures and video urls discovery builds. */
+const CIK = '9999001'
+const SYMBOL = 'gathertest.us'
+const XBRL_URL = `https://data.sec.gov/api/xbrl/companyfacts/CIK000${CIK}.json`
+const STOOQ_URL = `https://stooq.com/q/d/l/?s=${SYMBOL}&i=d`
+const VIDEO_IDS = ['gathertestA', 'gathertestB', 'gathertestC']
+const watch = (id: string) => `https://www.youtube.com/watch?v=${id}`
+const OTHER_URLS = [XBRL_URL, STOOQ_URL, ...VIDEO_IDS.map(watch)]
 
-/** Every source throws unless a test sets it, so "calls no source" is checked by construction. */
-function fakeSources(over: Partial<ResearchSources> = {}): ResearchSources {
-  return {
-    wikipedia: {
-      categoryMembers: unexpected('categoryMembers'),
-      listLinks: unexpected('listLinks'),
-      redirectsTo: unexpected('redirectsTo'),
-      formerTitles: unexpected('formerTitles'),
-      qidsFor: unexpected('qidsFor'),
-      revisionBefore: unexpected('revisionBefore'),
-      parsed: unexpected('parsed'),
-      search: unexpected('search'),
-      currentItems: unexpected('currentItems'),
-    },
-    wikidata: { sparql: unexpected('sparql'), facts: unexpected('facts') },
-    edgar: {
-      filings: unexpected('filings'),
-      exhibits: unexpected('exhibits'),
-      latestFiling: unexpected('latestFiling'),
-    },
-    courtlistener: { dockets: unexpected('dockets') },
-    youtube: null,
-    transcripts: null,
-    stooq: { daily: unexpected('daily') },
-    wayback: { captures: unexpected('captures') },
-    xbrl: { companyFacts: unexpected('companyFacts') },
-    fetchDocument: unexpected('fetchDocument'),
-    ...over,
-  }
-}
-
-/** A company with no CIK, ticker or website: its only documents are its article's references. */
-function referenceSources(
-  links: string[],
-  fetchDocument: ResearchSources['fetchDocument'],
-): ResearchSources {
+/**
+ * A company found by search, with only the facts a test gives it: its
+ * article's references, and a CIK and ticker when the test wants figures.
+ */
+function companySources(options: {
+  links?: string[]
+  cik?: string | null
+  ticker?: { symbol: string; exchange: string | null } | null
+  fetchDocument?: ResearchSources['fetchDocument']
+  over?: Partial<ResearchSources>
+}): ResearchSources {
   const base = fakeSources()
   return fakeSources({
     wikipedia: {
       ...base.wikipedia,
       search: async () => [{ title: 'Gathertest Co', pageid: 1 }],
       qidsFor: async () => new Map([['Gathertest Co', 'Q4242']]),
-      currentItems: async () => ({ categories: [], externalLinks: links, links: [] }),
+      currentItems: async () => ({
+        categories: [],
+        externalLinks: options.links ?? [],
+        links: [],
+      }),
     },
     wikidata: {
       sparql: unexpected('sparql'),
@@ -90,11 +74,11 @@ function referenceSources(
               enTitle: 'Gathertest Co',
               sitelinks: {},
               country: null,
-              cik: null,
+              cik: options.cik ?? null,
               dissolved: '2020-06-25',
               instanceOf: ['Q4830453'],
               isClass: false,
-              ticker: null,
+              ticker: options.ticker ?? null,
               website: null,
               inception: null,
               people: [],
@@ -103,9 +87,54 @@ function referenceSources(
         ]),
     },
     courtlistener: { dockets: async () => [] },
-    fetchDocument,
+    ...(options.fetchDocument === undefined ? {} : { fetchDocument: options.fetchDocument }),
+    ...options.over,
   })
 }
+
+function details(id: string, description: string): VideoDetails {
+  return {
+    id,
+    title: `Video ${id}`,
+    description,
+    publishedAt: '2021-03-04',
+    durationSec: 4000,
+    channelTitle: 'Gathertest channel',
+  }
+}
+
+function youtubeWith(detailsFn: YoutubeSource['details']): YoutubeSource {
+  return {
+    search: async () => ({ fetchedAt: '2026-10-22', videos: [] }),
+    channelByHandle: unexpected('channelByHandle'),
+    uploads: unexpected('uploads'),
+    details: detailsFn,
+  }
+}
+
+const XBRL_FACTS = {
+  facts: {
+    'us-gaap': {
+      Revenues: {
+        units: {
+          USD: [
+            {
+              form: '10-K',
+              fp: 'FY',
+              val: 1_200_000,
+              start: '2019-01-01',
+              end: '2019-12-31',
+              filed: '2020-02-01',
+            },
+          ],
+        },
+      },
+    },
+  },
+}
+
+const PRICES =
+  'Date,Open,High,Low,Close,Volume\n2020-01-02,10,11,9,10.5,1000\n2020-01-31,10.5,11,10,10.2,900\n'
 
 function page(target: string, text: string): FetchedDocument {
   return {
@@ -148,7 +177,7 @@ suite('gatherCorpus', () => {
   })
 
   async function clearDocuments() {
-    await sql`delete from research_documents where url like ${`${HOST}/%`}`
+    await sql`delete from research_documents where url like ${`${HOST}/%`} or url in ${sql(OTHER_URLS)}`
   }
 
   beforeEach(async () => {
@@ -176,7 +205,7 @@ suite('gatherCorpus', () => {
 
     const result = await gatherCorpus(steps, input(), {
       db,
-      sources: referenceSources(links, fetchDocument),
+      sources: () => companySources({ links, fetchDocument }),
       mocked: false,
     })
 
@@ -205,6 +234,11 @@ suite('gatherCorpus', () => {
     expect(linked.map((d) => d.rank)).toEqual([1, 2, 3, 4, 5, null, null, null])
     expect(linked.slice(0, 5).map((d) => d.id)).toEqual(result.read)
     expect(new Set(linked.slice(5).map((d) => d.id))).toEqual(new Set(result.unread))
+    expect(linked[5]).toMatchObject({ rank: null, tier: 2 })
+    expect(fetchDocument).toHaveBeenCalledWith(links[0], {
+      archiveFallback: true,
+      userAgent: FAKE_USER_AGENT,
+    })
 
     // The row keeps the whole page; the cut to the document cap is made when the corpus is read.
     const row = linked[0]!
@@ -234,7 +268,7 @@ suite('gatherCorpus', () => {
 
     const result = await gatherCorpus(recordingSteps(), input(), {
       db,
-      sources: referenceSources([fresh, stale], fetchDocument),
+      sources: () => companySources({ links: [fresh, stale], fetchDocument }),
       mocked: false,
     })
 
@@ -259,7 +293,7 @@ suite('gatherCorpus', () => {
 
     const result = await gatherCorpus(recordingSteps(), input(), {
       db,
-      sources: referenceSources([missing, broken, good], fetchDocument),
+      sources: () => companySources({ links: [missing, broken, good], fetchDocument }),
       mocked: false,
     })
 
@@ -281,6 +315,8 @@ suite('gatherCorpus', () => {
     ])
     expect(result.read).toEqual([linked[0]!.id])
     expect(linked.find((d) => d.url === missing)).toMatchObject({
+      rank: null,
+      tier: 2,
       httpStatus: 404,
       text: '',
       tokens: 0,
@@ -292,7 +328,9 @@ suite('gatherCorpus', () => {
 
     const result = await gatherCorpus(steps, input(2), {
       db,
-      sources: fakeSources({ courtlistener: { dockets: unexpected('dockets') } }),
+      sources: () => {
+        throw new Error('mock mode built the live sources')
+      },
       mocked: true,
     })
 
@@ -307,4 +345,209 @@ suite('gatherCorpus', () => {
     expect(linked.map((d) => d.id)).toEqual(result.read)
     expect(linked[2]).toMatchObject({ tier: 3, httpStatus: 200, failure: null })
   })
+
+  it('keeps a good stored copy when its refetch fails', async () => {
+    const old = `${HOST}/old-but-good`
+    const fetchedAt = new Date(Date.now() - 100 * DAY)
+    const stored = await upsertResearchDocument(db, {
+      url: old,
+      fetchedAt,
+      kind: 'reporting',
+      tier: 2,
+      text: 'The page as it read before.',
+      textHash: 'stored-hash',
+      tokens: 7,
+      httpStatus: 200,
+    })
+    const fetchDocument = vi.fn(async (target: string): Promise<FetchedDocument> => ({
+      ...page(target, ''),
+      httpStatus: 503,
+      body: null,
+      failure: 'returned 503',
+    }))
+
+    const result = await gatherCorpus(recordingSteps(), input(), {
+      db,
+      sources: () => companySources({ links: [old], fetchDocument }),
+      mocked: false,
+    })
+
+    expect(fetchDocument).toHaveBeenCalledTimes(1)
+    expect(result).toMatchObject({ read: [stored.id], failed: 0 })
+    const [row] = await findResearchDocumentsByUrl(db, [old])
+    expect(row).toMatchObject({
+      id: stored.id,
+      text: 'The page as it read before.',
+      textHash: 'stored-hash',
+      failure: null,
+      fetchedAt,
+    })
+  })
+
+  it('reads videos from one details call, with the transcript after the description', async () => {
+    const [withTranscript, describedOnly, unknown] = VIDEO_IDS as [string, string, string]
+    const detailsCall = vi.fn(async (ids: readonly string[]) =>
+      ids.filter((id) => id !== unknown).map((id) => details(id, `Description of ${id}.`)),
+    )
+    const steps = recordingSteps()
+
+    await gatherCorpus(
+      steps,
+      { ...input(), competitorLinks: VIDEO_IDS.map((id) => ({ url: `https://youtu.be/${id}` })) },
+      {
+        db,
+        sources: () =>
+          companySources({
+            over: {
+              youtube: youtubeWith(detailsCall),
+              transcripts: {
+                fetch: async (id) =>
+                  id === withTranscript
+                    ? [
+                        { start: 5, text: 'The opening line.' },
+                        { start: 3725.4, text: 'A line past the hour.' },
+                      ]
+                    : null,
+              },
+            },
+          }),
+        mocked: false,
+      },
+    )
+
+    expect(steps.ids).toEqual([
+      'gather-entity-0',
+      'gather-discover-0',
+      'gather-videos-0',
+      'gather-fetch-0-0',
+      'gather-rank-0',
+    ])
+    expect(detailsCall).toHaveBeenCalledTimes(1)
+    expect(detailsCall).toHaveBeenCalledWith(VIDEO_IDS)
+    const rows = Object.fromEntries(
+      (await findResearchDocumentsByUrl(db, VIDEO_IDS.map(watch))).map((r) => [r.url, r]),
+    )
+    expect(rows[watch(withTranscript)]).toMatchObject({
+      kind: 'video',
+      title: `Video ${withTranscript}`,
+      publishedAt: '2021-03-04',
+      httpStatus: 200,
+      failure: null,
+      text: `Description of ${withTranscript}.\n\n[00:05] The opening line.\n[1:02:05] A line past the hour.`,
+      meta: { videoId: withTranscript, transcript: true, channelTitle: 'Gathertest channel' },
+    })
+    expect(rows[watch(describedOnly)]).toMatchObject({
+      text: `Description of ${describedOnly}.`,
+      failure: null,
+      meta: { videoId: describedOnly, transcript: false, channelTitle: 'Gathertest channel' },
+    })
+    expect(rows[watch(unknown)]).toMatchObject({
+      text: '',
+      failure: 'could not fetch: video not found',
+    })
+  })
+
+  it('records the error of a details call that throws', async () => {
+    const [first] = VIDEO_IDS as [string]
+
+    const result = await gatherCorpus(
+      recordingSteps(),
+      { ...input(), competitorLinks: [{ url: watch(first) }] },
+      {
+        db,
+        sources: () =>
+          companySources({
+            over: {
+              youtube: youtubeWith(async () => {
+                throw new Error('YouTube quota: spending 1 units would pass the daily 1000')
+              }),
+            },
+          }),
+        mocked: false,
+      },
+    )
+
+    expect(result.failed).toBe(1)
+    const [row] = await findResearchDocumentsByUrl(db, [watch(first)])
+    expect(row?.failure).toBe(
+      'could not fetch: YouTube quota: spending 1 units would pass the daily 1000',
+    )
+  })
+
+  it('renders XBRL facts and Stooq prices as figures', async () => {
+    const result = await gatherCorpus(recordingSteps(), input(), {
+      db,
+      sources: () =>
+        companySources({
+          cik: CIK,
+          ticker: { symbol: 'GATHERTEST', exchange: 'Q13677' },
+          over: {
+            xbrl: { companyFacts: async () => XBRL_FACTS },
+            stooq: { daily: async () => PRICES },
+          },
+        }),
+      mocked: false,
+    })
+
+    expect(result).toMatchObject({ failed: 0, unread: [] })
+    const rows = Object.fromEntries(
+      (await findResearchDocumentsByUrl(db, [XBRL_URL, STOOQ_URL])).map((r) => [r.url, r]),
+    )
+    expect(rows[XBRL_URL]).toMatchObject({
+      kind: 'figures',
+      tier: 4,
+      title: `XBRL company facts, CIK ${CIK}`,
+      text: 'Revenues | 2019 | 1200000 | USD',
+      meta: { cik: CIK },
+    })
+    expect(rows[STOOQ_URL]).toMatchObject({
+      title: `Daily prices, ${SYMBOL}`,
+      text: '2020-01 | 10.2',
+      meta: { symbol: SYMBOL },
+    })
+  })
+
+  it.each([
+    {
+      facts: null,
+      prices: null,
+      xbrlFailure: 'no XBRL company facts',
+      pricesFailure: 'no prices for the symbol',
+    },
+    {
+      facts: { facts: {} },
+      prices: 'Date,Open,High,Low,Close,Volume\n',
+      xbrlFailure: 'no annual figures in the XBRL company facts',
+      pricesFailure: 'no prices for the symbol',
+    },
+  ])(
+    'records why figures could not be read: $xbrlFailure',
+    async ({ facts, prices, xbrlFailure, pricesFailure }) => {
+      const result = await gatherCorpus(recordingSteps(), input(), {
+        db,
+        sources: () =>
+          companySources({
+            cik: CIK,
+            ticker: { symbol: 'GATHERTEST', exchange: 'Q13677' },
+            over: {
+              xbrl: { companyFacts: async () => facts },
+              stooq: { daily: async () => prices },
+            },
+          }),
+        mocked: false,
+      })
+
+      expect(result).toMatchObject({ read: [], failed: 2 })
+      const failures = Object.fromEntries(
+        (await findResearchDocumentsByUrl(db, [XBRL_URL, STOOQ_URL])).map((r) => [
+          r.url,
+          r.failure,
+        ]),
+      )
+      expect(failures).toEqual({
+        [XBRL_URL]: `could not fetch: ${xbrlFailure}`,
+        [STOOQ_URL]: `could not fetch: ${pricesFailure}`,
+      })
+    },
+  )
 })

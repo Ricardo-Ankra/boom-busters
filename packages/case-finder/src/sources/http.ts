@@ -146,11 +146,16 @@ interface RawResult extends CacheEntry {
   fromCache: boolean
 }
 
+/** How every case-finder request names itself: Wikimedia and the SEC both want a contact. */
+export function caseFinderUserAgent(contact: string): string {
+  return `boom-busters-case-finder/1.0 (+${contact})`
+}
+
 export function createPoliteClient(options: PoliteClientOptions): PoliteClient {
   const fetchImpl = options.fetchImpl ?? fetch
   const now = options.now ?? (() => new Date())
   const intervals = { ...DEFAULT_INTERVALS, ...options.minIntervalMs }
-  const userAgent = `boom-busters-case-finder/1.0 (+${options.contact})`
+  const userAgent = caseFinderUserAgent(options.contact)
   const nextSlot = new Map<string, number>()
   const retryAttempts = options.retry?.attempts ?? RATE_LIMIT_RETRIES
   const maxBackoffMs = options.retry?.maxBackoffMs ?? RATE_LIMIT_CAP_MS

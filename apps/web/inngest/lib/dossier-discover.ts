@@ -39,6 +39,28 @@ const SEARCH_HITS = 5
 const MAX_RELATED = 2
 const RELATED_WORDS = /\b(scandal|collapse|bankruptcy|fraud|affair)\b/i
 
+/** No entity: what a search with no hits resolves to, and what mock mode researches. */
+export const EMPTY_ENTITY: ResolvedEntity = {
+  qid: null,
+  titles: [],
+  cik: null,
+  ticker: null,
+  website: null,
+  businessTitle: null,
+  relatedTitles: [],
+  exchange: null,
+  inception: null,
+  dissolved: null,
+}
+
+/**
+ * Reference candidates kept per kind, in page order. A scandal article can cite
+ * two hundred sources; these caps hold a gather to about 35 fetch steps of five,
+ * which keeps the run to minutes and still offers the ranker more of each tier
+ * than its share of the corpus budget can read.
+ */
+export const REFERENCE_CAPS = { pressRelease: 20, reporting: 60, primary: 30 } as const
+
 /**
  * Case titles are editorial, so the top search hit is often the scandal
  * article, whose Wikidata item holds none of the company's facts. The facts
@@ -51,20 +73,7 @@ export async function resolveEntity(
 ): Promise<ResolvedEntity> {
   const hits = (await sources.wikipedia.search(caseTitle, SEARCH_HITS)).map((hit) => hit.title)
   const first = hits[0]
-  if (first === undefined) {
-    return {
-      qid: null,
-      titles: [],
-      cik: null,
-      ticker: null,
-      website: null,
-      businessTitle: null,
-      relatedTitles: [],
-      exchange: null,
-      inception: null,
-      dissolved: null,
-    }
-  }
+  if (first === undefined) return EMPTY_ENTITY
 
   const qids = await sources.wikipedia.qidsFor(hits)
   const facts = await sources.wikidata.facts([...new Set(qids.values())])
@@ -182,7 +191,8 @@ export async function discoverCandidates(
     website === null
       ? []
       : listing('Wayback captures', [], () =>
-          sources.wayback.captures(website, { ...waybackWindow(entity, today), limit: 6 }),
+          // CDX lists oldest first; a negative limit takes the last six, the newest years.
+          sources.wayback.captures(website, { ...waybackWindow(entity, today), limit: -6 }),
         ),
     Promise.all(
       pages.map((title) =>
@@ -213,9 +223,9 @@ export async function discoverCandidates(
       publishedAt?: string | null
       meta?: Record<string, unknown>
     } = {},
-  ) => {
+  ): boolean => {
     const url = normaliseDocumentUrl(raw)
-    if (seen.has(url)) return
+    if (seen.has(url)) return false
     seen.add(url)
     out.push({
       url,
@@ -225,6 +235,19 @@ export async function discoverCandidates(
       publishedAt: extra.publishedAt ?? null,
       meta: extra.meta ?? null,
     })
+    return true
+  }
+  /** Links up to a cap, in page order; a duplicate dropped by `add` does not count. */
+  const addCapped = (
+    entries: readonly { link: string; host: string }[],
+    cap: number,
+    kindOf: (host: string) => DocumentKind,
+  ) => {
+    let added = 0
+    for (const { link, host } of entries) {
+      if (added >= cap) return
+      if (add(link, kindOf(host))) added++
+    }
   }
 
   const ownDomain = website === null ? null : registrableDomain(website)
@@ -237,6 +260,8 @@ export async function discoverCandidates(
     ({ link }) => ownDomain !== null && registrableDomain(link) === ownDomain,
   )
   const rest = links.filter((entry) => !own.includes(entry))
+  const primary = rest.filter(({ link }) => isPrimaryReference(link))
+  const reporting = rest.filter((entry) => !primary.includes(entry))
 
   // Tier 1, the company's own voice.
   for (const doc of exhibits) add(doc.url, 'filing', { title: doc.title, publishedAt: doc.datedAt })
@@ -245,10 +270,10 @@ export async function discoverCandidates(
     const day = timestampDay(capture.timestamp)
     add(capture.url, 'web-archive', { title: `${website} as archived on ${day}`, publishedAt: day })
   }
-  for (const { link } of own) add(link, 'press-release')
+  addCapped(own, REFERENCE_CAPS.pressRelease, () => 'press-release')
 
   // Tier 2, reporting.
-  for (const { link } of rest) if (!isPrimaryReference(link)) add(link, 'reporting')
+  addCapped(reporting, REFERENCE_CAPS.reporting, () => 'reporting')
 
   // Tier 3, video. A competitor link that is not a YouTube video is not a video candidate.
   for (const { url } of input.competitorLinks) {
@@ -279,9 +304,7 @@ export async function discoverCandidates(
   }
 
   // Tier 5, the record.
-  for (const { link, host } of rest) {
-    if (isPrimaryReference(link)) add(link, isCourtHost(host) ? 'court' : 'regulator')
-  }
+  addCapped(primary, REFERENCE_CAPS.primary, (host) => (isCourtHost(host) ? 'court' : 'regulator'))
   for (const docket of dockets) {
     add(docket.url, 'court', { title: docket.title, publishedAt: docket.datedAt })
   }

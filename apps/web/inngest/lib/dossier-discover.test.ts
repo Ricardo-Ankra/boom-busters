@@ -3,48 +3,30 @@
 import type { EntityFacts } from '@boom-busters/case-finder'
 import { describe, expect, it, vi } from 'vitest'
 import type { ResearchSources } from '@/lib/research-sources'
-import { discoverCandidates, resolveEntity, type ResolvedEntity } from './dossier-discover'
+import { fakeSources as sharedFakeSources, unexpected } from '@/test/fake-research-sources'
+import {
+  discoverCandidates,
+  EMPTY_ENTITY,
+  REFERENCE_CAPS,
+  resolveEntity,
+  type ResolvedEntity,
+} from './dossier-discover'
 
 /**
- * Discovery against plain fake sources: no network, no database. Every source
- * the fake does not set throws, so a test that reaches one it did not plan for
- * fails loudly instead of quietly returning nothing.
+ * Discovery against plain fake sources: no network, no database.
  */
 
-function unexpected(name: string) {
-  return () => {
-    throw new Error(`unexpected call to ${name}`)
-  }
-}
-
+/** Discovery reads every article's references and the docket search; by default both find nothing. */
 function fakeSources(over: Partial<ResearchSources> = {}): ResearchSources {
-  return {
+  const base = sharedFakeSources()
+  return sharedFakeSources({
     wikipedia: {
-      categoryMembers: unexpected('categoryMembers'),
-      listLinks: unexpected('listLinks'),
-      redirectsTo: unexpected('redirectsTo'),
-      formerTitles: unexpected('formerTitles'),
-      qidsFor: unexpected('qidsFor'),
-      revisionBefore: unexpected('revisionBefore'),
-      parsed: unexpected('parsed'),
-      search: unexpected('search'),
+      ...base.wikipedia,
       currentItems: async () => ({ categories: [], externalLinks: [], links: [] }),
     },
-    wikidata: { sparql: unexpected('sparql'), facts: unexpected('facts') },
-    edgar: {
-      filings: unexpected('filings'),
-      exhibits: unexpected('exhibits'),
-      latestFiling: unexpected('latestFiling'),
-    },
     courtlistener: { dockets: async () => [] },
-    youtube: null,
-    transcripts: null,
-    stooq: { daily: unexpected('daily') },
-    wayback: { captures: unexpected('captures') },
-    xbrl: { companyFacts: unexpected('companyFacts') },
-    fetchDocument: unexpected('fetchDocument'),
     ...over,
-  }
+  })
 }
 
 function facts(qid: string, over: Partial<EntityFacts> = {}): EntityFacts {
@@ -66,19 +48,7 @@ function facts(qid: string, over: Partial<EntityFacts> = {}): EntityFacts {
 }
 
 function entity(over: Partial<ResolvedEntity> = {}): ResolvedEntity {
-  return {
-    qid: 'Q1',
-    titles: ['Mockco'],
-    cik: null,
-    ticker: null,
-    website: null,
-    businessTitle: 'Mockco',
-    relatedTitles: [],
-    exchange: null,
-    inception: null,
-    dissolved: null,
-    ...over,
-  }
+  return { ...EMPTY_ENTITY, qid: 'Q1', titles: ['Mockco'], businessTitle: 'Mockco', ...over }
 }
 
 describe('resolveEntity', () => {
@@ -269,7 +239,7 @@ describe('discoverCandidates', () => {
     expect(captures).toHaveBeenCalledWith('https://www.mockco.com', {
       from: '2005',
       to: '20200625',
-      limit: 6,
+      limit: -6,
     })
     expect(candidates.filter((c) => c.url === exhibit)).toEqual([
       expect.objectContaining({ kind: 'filing', publishedAt: '2019-05-01' }),
@@ -339,5 +309,39 @@ describe('discoverCandidates', () => {
     )
 
     expect(candidates.map((c) => c.kind)).toEqual(['filing', 'figures'])
+  })
+
+  it('cuts a reference list over the caps, in page order', async () => {
+    const many = (n: number, at: (i: number) => string) =>
+      Array.from({ length: n }, (_, i) => at(i))
+    const externalLinks = [
+      ...many(25, (i) => `https://www.mockco.com/press/${i}`),
+      ...many(70, (i) => `https://news.example.org/story/${i}`),
+      ...many(35, (i) => `https://www.sec.gov/litigation/${i}`),
+    ]
+    const base = fakeSources()
+    const sources = fakeSources({
+      wikipedia: {
+        ...base.wikipedia,
+        currentItems: async () => ({ categories: [], externalLinks, links: [] }),
+      },
+    })
+
+    const candidates = await discoverCandidates(
+      sources,
+      entity({ website: 'https://www.mockco.com' }),
+      { competitorLinks: [], caseTitle: 'Mockco' },
+    )
+
+    const urlsOf = (kind: string) => candidates.filter((c) => c.kind === kind).map((c) => c.url)
+    expect(urlsOf('press-release')).toEqual(
+      many(REFERENCE_CAPS.pressRelease, (i) => `https://www.mockco.com/press/${i}`),
+    )
+    expect(urlsOf('reporting')).toEqual(
+      many(REFERENCE_CAPS.reporting, (i) => `https://news.example.org/story/${i}`),
+    )
+    expect(urlsOf('regulator')).toEqual(
+      many(REFERENCE_CAPS.primary, (i) => `https://www.sec.gov/litigation/${i}`),
+    )
   })
 })

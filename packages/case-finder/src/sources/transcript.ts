@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { caseFinderUserAgent } from './http'
 
 /**
  * Caption text for a YouTube video, read the way the watch page's own player
@@ -66,7 +67,7 @@ function captionTracksJson(page: string): string | null {
 
 export function liveTranscripts(options: LiveTranscriptsOptions): TranscriptSource {
   const fetchImpl = options.fetchImpl ?? fetch
-  const headers = { 'User-Agent': `boom-busters-case-finder/1.0 (+${options.contact})` }
+  const headers = { 'User-Agent': caseFinderUserAgent(options.contact) }
 
   async function transcript(videoId: string): Promise<TranscriptSegment[] | null> {
     const pageRes = await fetchImpl(

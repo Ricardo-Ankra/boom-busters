@@ -35,6 +35,8 @@ export interface FetchDocumentOptions extends UrlGuardOptions {
   signal?: AbortSignal
   archiveFallback?: boolean
   maxBytes?: number
+  /** Who the request says it is; a host with a fair-access policy (the SEC) wants a contact in it. */
+  userAgent?: string
 }
 
 interface Attempt {
@@ -107,7 +109,7 @@ async function attempt(
       const response = await call(target, {
         method: 'GET',
         redirect: 'manual',
-        headers: { 'User-Agent': USER_AGENT, Accept: '*/*' },
+        headers: { 'User-Agent': options.userAgent ?? USER_AGENT, Accept: '*/*' },
         referrerPolicy: 'no-referrer',
         signal: timeoutSignal(options.signal),
       })
@@ -180,7 +182,7 @@ async function archivedCopy(url: string, options: FetchDocumentOptions): Promise
   const call = options.fetchImpl ?? fetch
   try {
     const response = await call(`${ARCHIVE_LOOKUP}${encodeURIComponent(url)}`, {
-      headers: { 'User-Agent': USER_AGENT, Accept: 'application/json' },
+      headers: { 'User-Agent': options.userAgent ?? USER_AGENT, Accept: 'application/json' },
       signal: timeoutSignal(options.signal),
     })
     if (!response.ok) return null

@@ -1,4 +1,5 @@
 import {
+  caseFinderUserAgent,
   createPoliteClient,
   createQuotaLedger,
   liveCourtListener,
@@ -48,23 +49,34 @@ export interface ResearchSources {
   wayback: WaybackSource
   xbrl: XbrlSource
   fetchDocument: typeof fetchDocument
+  /** The identity `fetchDocument` is called with, the case-finder's own, contact included. */
+  userAgent: string
 }
 
-/** Each request's ceiling. The PoliteClient and the transcript reader have none of their own. */
-const REQUEST_TIMEOUT_MS = 8_000
+/**
+ * Each request's ceiling; neither the PoliteClient nor the transcript reader has
+ * one of its own. The client's is longer because one XBRL companyfacts answer
+ * can run to tens of megabytes.
+ */
+const CLIENT_TIMEOUT_MS = 20_000
+const TRANSCRIPT_TIMEOUT_MS = 8_000
 
 /**
- * A gather spends at most about 101 units a case (one search, a few
+ * A gather spends at most about 101 units a case (one search, one
  * `videos.list`); the ceiling keeps a runaway loop from eating the day's
- * 10,000 (spec 4.5). Nothing persists spend between runs.
+ * 10,000 (spec 4.5). Nothing persists spend between runs, and the gather builds
+ * its sources once per step, so the ceiling holds per step: the search and the
+ * details call each sit in a step of their own.
  */
 const YOUTUBE_UNITS_PER_RUN = 1_000
 
 /** `fetch` with a deadline, keeping any signal the caller passed as well. */
-const timedFetch: typeof fetch = (input, init) => {
-  const timeout = AbortSignal.timeout(REQUEST_TIMEOUT_MS)
-  const signal = init?.signal ? AbortSignal.any([init.signal, timeout]) : timeout
-  return fetch(input, { ...init, signal })
+function timedFetch(ms: number): typeof fetch {
+  return (input, init) => {
+    const timeout = AbortSignal.timeout(ms)
+    const signal = init?.signal ? AbortSignal.any([init.signal, timeout]) : timeout
+    return fetch(input, { ...init, signal })
+  }
 }
 
 const noDockets: CourtListenerSource = { dockets: async () => [] }
@@ -82,7 +94,7 @@ export function liveResearchSources(
   const client = createPoliteClient({
     contact,
     cacheDir: null,
-    fetchImpl: timedFetch,
+    fetchImpl: timedFetch(CLIENT_TIMEOUT_MS),
     retry: { attempts: 2, maxBackoffMs: 10_000 },
   })
 
@@ -105,12 +117,13 @@ export function liveResearchSources(
           ),
     transcripts:
       config.YOUTUBE_TRANSCRIPTS === '1'
-        ? liveTranscripts({ fetchImpl: timedFetch, contact })
+        ? liveTranscripts({ fetchImpl: timedFetch(TRANSCRIPT_TIMEOUT_MS), contact })
         : null,
     stooq: liveStooq(client),
     wayback: liveWayback(client),
     xbrl: liveXbrl(client),
     fetchDocument,
+    userAgent: caseFinderUserAgent(contact),
   }
 }
 
@@ -139,5 +152,6 @@ export function mockResearchSources(): ResearchSources {
     wayback: mockWayback,
     xbrl: mockXbrl,
     fetchDocument: mockFetchDocument,
+    userAgent: caseFinderUserAgent('mock@example.invalid'),
   }
 }

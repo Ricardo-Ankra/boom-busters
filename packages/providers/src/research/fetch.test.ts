@@ -22,6 +22,24 @@ describe('fetchDocument', () => {
     expect(doc.body?.byteLength).toBe('<p>hello</p>'.length)
   })
 
+  it('sends the user agent it is given, and the article one by default', async () => {
+    const agents: (string | null)[] = []
+    const fetchImpl = async (_input: string | URL | Request, init?: RequestInit) => {
+      agents.push(new Headers(init?.headers).get('user-agent'))
+      return html('<p>hello</p>')
+    }
+    await fetchDocument('https://example.com/a', {
+      fetchImpl,
+      lookupImpl: publicLookup,
+      userAgent: 'boom-busters-case-finder/1.0 (+me@example.com)',
+    })
+    await fetchDocument('https://example.com/a', { fetchImpl, lookupImpl: publicLookup })
+    expect(agents).toEqual([
+      'boom-busters-case-finder/1.0 (+me@example.com)',
+      'boom-busters/1.0 (single-user production console)',
+    ])
+  })
+
   it('re-checks every redirect hop and refuses a private address', async () => {
     const calls: string[] = []
     const doc = await fetchDocument('https://example.com/a', {
