@@ -1,0 +1,23 @@
+{
+  "batchcomplete": true,
+  "query": {
+    "pages": [
+      {
+        "pageid": 111,
+        "ns": 0,
+        "title": "Wirecard",
+        "revisions": [
+          {
+            "slots": {
+              "main": {
+                "contentmodel": "wikitext",
+                "contentformat": "text/x-wiki",
+                "content": "'''Wirecard''' was a payments firm.<ref>{{cite web |url=https://example.com/ft-report |title=Report}}</ref> See [[Markus Braun]] and [[Munich|the city]]. [[Category:Fraud in Germany]] [[Category:Payment service providers]]"
+              }
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -3,7 +3,13 @@ import { sql } from 'drizzle-orm'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { createDb, type Database } from './client'
 import { decryptSecret } from './crypto'
-import { FIXTURE_CASE_ID, FIXTURE_PROJECT_ID, fixtureClaims } from './fixtures'
+import {
+  FIXTURE_CASE_ID,
+  FIXTURE_PROJECT_ID,
+  fixtureClaims,
+  fixtureDocuments,
+  fixtureSupports,
+} from './fixtures'
 import {
   countMusicBeds,
   getSettings,
@@ -14,7 +20,18 @@ import {
   updateSettings,
 } from './queries'
 import { seed } from './seed'
-import { assets, cases, claims, dossiers, projects, providerCredentials, settings } from './schema'
+import {
+  assets,
+  cases,
+  claimSupports,
+  claims,
+  dossierDocuments,
+  dossiers,
+  projects,
+  providerCredentials,
+  researchDocuments,
+  settings,
+} from './schema'
 import { requireTestDatabase } from './test-database'
 
 const DATABASE_URL = requireTestDatabase()
@@ -42,7 +59,7 @@ describeDb('database integration', () => {
     // when this suite first ran after one), so without the truncate this
     // suite's result depends on which suite ran before it.
     await db.execute(
-      sql`TRUNCATE TABLE ${settings}, ${providerCredentials}, ${cases}, ${projects}, ${dossiers}, ${claims}, ${assets} RESTART IDENTITY CASCADE`,
+      sql`TRUNCATE TABLE ${settings}, ${providerCredentials}, ${cases}, ${projects}, ${dossiers}, ${claims}, ${assets}, ${researchDocuments} RESTART IDENTITY CASCADE`,
     )
   })
 
@@ -137,6 +154,15 @@ describeDb('database integration', () => {
       const storedClaims = await db.select().from(claims)
       expect(storedClaims).toHaveLength(fixtureClaims.length)
       expect(storedClaims.filter((c) => c.confidence === 'unverified')).toHaveLength(1)
+
+      expect(await db.select().from(researchDocuments)).toHaveLength(fixtureDocuments.length)
+      const links = await db.select().from(dossierDocuments)
+      expect(links.map((l) => l.rank).sort()).toEqual([1, 2])
+      // The link carries the kind's tier: a regulator record is tier 5, reporting tier 2.
+      expect(links.map((l) => l.tier).sort()).toEqual([2, 5])
+      const supports = await db.select().from(claimSupports)
+      expect(supports).toHaveLength(fixtureSupports.length)
+      expect(supports.every((s) => s.found && (s.offset ?? -1) >= 0)).toBe(true)
     })
 
     it('is idempotent — a second run changes nothing', async () => {
@@ -147,6 +173,9 @@ describeDb('database integration', () => {
       expect(await db.select().from(projects)).toHaveLength(1)
       expect(await db.select().from(dossiers)).toHaveLength(1)
       expect(await db.select().from(claims)).toHaveLength(fixtureClaims.length)
+      expect(await db.select().from(researchDocuments)).toHaveLength(fixtureDocuments.length)
+      expect(await db.select().from(dossierDocuments)).toHaveLength(fixtureDocuments.length)
+      expect(await db.select().from(claimSupports)).toHaveLength(fixtureSupports.length)
     })
 
     it('leaves the first-run music-bed check honestly unsatisfied', async () => {

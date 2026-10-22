@@ -1,5 +1,5 @@
-import { fixtureId } from '@boom-busters/schemas'
-import type { NewCase, NewProject } from './schema'
+import { DOCUMENT_TIERS, fixtureId } from '@boom-busters/schemas'
+import type { NewCase, NewProject, NewResearchDocument } from './schema'
 
 /**
  * The fixture case and project used by dev, unit tests and E2E throughout
@@ -15,6 +15,7 @@ import type { NewCase, NewProject } from './schema'
 export const FIXTURE_CASE_ID = fixtureId('CASE', 1)
 export const FIXTURE_PROJECT_ID = fixtureId('PROJECT', 1)
 export const FIXTURE_DOSSIER_ID = fixtureId('DOSSIER', 1)
+export const FIXTURE_DOCUMENT_IDS = [fixtureId('DOCUMENT', 1), fixtureId('DOCUMENT', 2)] as const
 
 export const fixtureCase: NewCase = {
   id: FIXTURE_CASE_ID,
@@ -220,5 +221,65 @@ export const fixtureClaims: FixtureClaim[] = [
     sourceUrl: null,
     sourceType: 'other',
     confidence: 'unverified',
+  },
+]
+
+/**
+ * Two gathered pages for the fixture project, one backing fixture claim 1 and
+ * one backing claim 2. Each is labelled MOCK DOCUMENT on its first line so a
+ * fixture page can never be mistaken for the real thing in the corpus view.
+ */
+export const fixtureDocuments: NewResearchDocument[] = [
+  {
+    id: FIXTURE_DOCUMENT_IDS[0],
+    url: 'https://www.bafin.de/mock/wirecard-short-selling',
+    finalUrl: 'https://www.bafin.de/mock/wirecard-short-selling',
+    httpStatus: 200,
+    fetchedAt: new Date('2026-01-01T00:00:00Z'),
+    contentType: 'text/html',
+    kind: 'regulator',
+    tier: DOCUMENT_TIERS.regulator,
+    title: 'MOCK DOCUMENT: BaFin on Wirecard short selling',
+    publishedAt: '2019-02-18',
+    text: 'MOCK DOCUMENT. BaFin banned short selling of Wirecard shares for two months in February 2019, citing the share price and the market situation.',
+    tokens: 30,
+  },
+  {
+    id: FIXTURE_DOCUMENT_IDS[1],
+    url: 'https://www.ft.com/mock/wirecard-insolvency',
+    finalUrl: 'https://www.ft.com/mock/wirecard-insolvency',
+    httpStatus: 200,
+    fetchedAt: new Date('2026-01-01T00:00:00Z'),
+    contentType: 'text/html',
+    kind: 'reporting',
+    tier: DOCUMENT_TIERS.reporting,
+    title: 'MOCK DOCUMENT: Wirecard insolvency',
+    publishedAt: '2020-06-25',
+    text: 'MOCK DOCUMENT. Wirecard AG filed for insolvency in June 2020, days after its auditors refused to sign off the accounts.',
+    tokens: 25,
+  },
+]
+
+/** The quotes supporting fixture claims 1 and 2, each found in its document. */
+export const fixtureSupports: {
+  claimId: string
+  documentId: string
+  rank: number
+  quote: string
+  found: boolean
+}[] = [
+  {
+    claimId: fixtureId('CLAIM', 1),
+    documentId: FIXTURE_DOCUMENT_IDS[0],
+    rank: 1,
+    quote: 'banned short selling of Wirecard shares for two months',
+    found: true,
+  },
+  {
+    claimId: fixtureId('CLAIM', 2),
+    documentId: FIXTURE_DOCUMENT_IDS[1],
+    rank: 1,
+    quote: 'filed for insolvency in June 2020',
+    found: true,
   },
 ]

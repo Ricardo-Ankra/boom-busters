@@ -43,6 +43,7 @@ export const ANTHROPIC_MODELS: readonly KnownModel[] = [
     inputPerMTok: 5,
     outputPerMTok: 25,
     cachedInputPerMTok: 0.5,
+    cacheWritePerMTok: 6.25,
     supportsBatch: true,
   },
   {
@@ -52,6 +53,7 @@ export const ANTHROPIC_MODELS: readonly KnownModel[] = [
     inputPerMTok: 4,
     outputPerMTok: 20,
     cachedInputPerMTok: 0.2,
+    cacheWritePerMTok: 5,
     supportsBatch: true,
   },
   {
@@ -61,6 +63,7 @@ export const ANTHROPIC_MODELS: readonly KnownModel[] = [
     inputPerMTok: 10,
     outputPerMTok: 50,
     cachedInputPerMTok: 0.25,
+    cacheWritePerMTok: 12.5,
     supportsBatch: true,
   },
   {
@@ -70,6 +73,7 @@ export const ANTHROPIC_MODELS: readonly KnownModel[] = [
     inputPerMTok: 10,
     outputPerMTok: 50,
     cachedInputPerMTok: 1,
+    cacheWritePerMTok: 12.5,
     supportsBatch: true,
   },
   {
@@ -79,6 +83,7 @@ export const ANTHROPIC_MODELS: readonly KnownModel[] = [
     inputPerMTok: 2,
     outputPerMTok: 10,
     cachedInputPerMTok: 0.2,
+    cacheWritePerMTok: 2.5,
     supportsBatch: true,
   },
   {
@@ -88,6 +93,7 @@ export const ANTHROPIC_MODELS: readonly KnownModel[] = [
     inputPerMTok: 2,
     outputPerMTok: 10,
     cachedInputPerMTok: 0.2,
+    cacheWritePerMTok: 2.5,
     supportsBatch: true,
   },
   {
@@ -97,6 +103,7 @@ export const ANTHROPIC_MODELS: readonly KnownModel[] = [
     inputPerMTok: 3,
     outputPerMTok: 15,
     cachedInputPerMTok: 0.3,
+    cacheWritePerMTok: 3.75,
     supportsBatch: true,
   },
   {
@@ -106,6 +113,7 @@ export const ANTHROPIC_MODELS: readonly KnownModel[] = [
     inputPerMTok: 3,
     outputPerMTok: 15,
     cachedInputPerMTok: 0.3,
+    cacheWritePerMTok: 3.75,
     supportsBatch: true,
   },
   {
@@ -115,6 +123,7 @@ export const ANTHROPIC_MODELS: readonly KnownModel[] = [
     inputPerMTok: 1,
     outputPerMTok: 5,
     cachedInputPerMTok: 0.1,
+    cacheWritePerMTok: 1.25,
     supportsBatch: true,
   },
 ]
@@ -131,6 +140,7 @@ interface AnthropicResponse {
     input_tokens?: number
     output_tokens?: number
     cache_read_input_tokens?: number
+    cache_creation_input_tokens?: number
   }
 }
 
@@ -196,6 +206,7 @@ export const anthropic: LLMProvider = {
       .join('')
 
     const cached = payload.usage?.cache_read_input_tokens ?? 0
+    const written = payload.usage?.cache_creation_input_tokens ?? 0
     const outputTokens = payload.usage?.output_tokens ?? 0
 
     /**
@@ -225,12 +236,14 @@ export const anthropic: LLMProvider = {
     return {
       text,
       usage: {
-        // Anthropic reports cache reads separately from `input_tokens`;
-        // priceOf() expects the total, so add them back together here rather
-        // than making every caller remember which vendor splits them.
-        inputTokens: (payload.usage?.input_tokens ?? 0) + cached,
+        // Anthropic reports cache reads and cache writes separately from
+        // `input_tokens`; priceOf() expects the total, so add them back
+        // together here rather than making every caller remember which
+        // vendor splits them.
+        inputTokens: (payload.usage?.input_tokens ?? 0) + cached + written,
         outputTokens,
         ...(cached > 0 ? { cachedInputTokens: cached } : {}),
+        ...(written > 0 ? { cacheWriteInputTokens: written } : {}),
       },
       provider: 'anthropic',
       model: options.model,

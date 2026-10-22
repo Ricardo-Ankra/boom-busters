@@ -1,5 +1,6 @@
 import {
   getDossier,
+  listDossierDocumentSummaries,
   getLatestScript,
   getProject,
   getSettings,
@@ -165,6 +166,7 @@ export default async function ProjectPage({
     activity,
     budgetGates,
     dossier,
+    dossierDocuments,
     script,
     deletionSummary,
     voice,
@@ -180,6 +182,7 @@ export default async function ProjectPage({
     listActivity(db, { projectId: id, limit: 50 }),
     listOpenBudgetGates(db),
     wants('dossier') ? getDossier(db, id) : Promise.resolve(undefined),
+    wants('dossier') ? listDossierDocumentSummaries(db, id) : Promise.resolve([]),
     wants('script') ? getLatestScript(db, id) : Promise.resolve(undefined),
     projectDeletionSummary(db, id),
     wants('voice') ? voiceReviewModel(db, id) : Promise.resolve(emptyVoiceModel()),
@@ -538,6 +541,16 @@ export default async function ProjectPage({
           projectId={project.id}
           contentMd={dossier.contentMd}
           claims={dossier.claims}
+          supports={dossier.supports}
+          research={dossier.research}
+          documents={dossierDocuments.map((document) => ({
+            id: document.id,
+            url: document.url,
+            title: document.title,
+            kind: document.kind,
+            rank: document.rank,
+            failure: document.failure,
+          }))}
           notices={noticesFor(notices, 'dossier')}
         />
       ) : (

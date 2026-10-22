@@ -1,8 +1,8 @@
 'use client'
 
-import type { ClaimRow } from '@boom-busters/db'
-import type { Notice } from '@boom-busters/schemas'
-import { ExternalLink, List, Pencil, ShieldAlert } from 'lucide-react'
+import type { ClaimRow, ClaimSupportRow } from '@boom-busters/db'
+import type { DocumentKind, GroundedRef, GroundedResearch, Notice } from '@boom-busters/schemas'
+import { ChevronRight, ExternalLink, List, Pencil, ShieldAlert } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import * as React from 'react'
 import { ConfirmButton } from '@/components/confirm-button'
@@ -48,6 +48,20 @@ const CONFIDENCE_LABELS: Record<string, string> = {
   unverified: 'Unverified',
 }
 
+/** One corpus document as the screen needs it (a subset of the research_documents row). */
+export interface ReviewDocument {
+  id: string
+  url: string
+  title: string | null
+  kind: DocumentKind
+  /** Null when the document was gathered but never read. */
+  rank: number | null
+  failure: string | null
+}
+
+const NO_SUPPORTS: Record<string, ClaimSupportRow[]> = {}
+const NO_DOCUMENTS: ReviewDocument[] = []
+
 const SOURCE_TYPES = ['court', 'regulator', 'major_outlet', 'book', 'other'] as const
 
 export function DossierReview({
@@ -55,12 +69,21 @@ export function DossierReview({
   contentMd,
   claims,
   notices = [],
+  supports = NO_SUPPORTS,
+  research = null,
+  documents = NO_DOCUMENTS,
 }: {
   projectId: string
   contentMd: string
   claims: ClaimRow[]
   /** What the research passes trimmed or dropped (decision 293). */
   notices?: readonly Notice[]
+  /** The quotes behind each claim, by claim id, in rank order. */
+  supports?: Record<string, ClaimSupportRow[]>
+  /** The structured research; null for a dossier written before grounded research. */
+  research?: GroundedResearch | null
+  /** The project's corpus, read documents first. */
+  documents?: readonly ReviewDocument[]
 }) {
   const blocking = blockingCount(claims)
   const [showAll, setShowAll] = React.useState(false)
@@ -83,6 +106,35 @@ export function DossierReview({
     }
   }, [contentMd, claims])
 
+  const documentsById = React.useMemo(
+    () => new Map(documents.map((document) => [document.id, document])),
+    [documents],
+  )
+
+  // With structured research the Timeline comes from its scenes, each beside
+  // its source; the markdown's own Timeline block is skipped, not edited, so
+  // the rest of the document keeps its claim anchors.
+  const timeline = React.useMemo(() => {
+    // No scenes: keep the markdown's Timeline rather than an empty list.
+    if (!research || research.scenes.length === 0) return null
+    const start = blocks.findIndex(
+      (block) =>
+        block.kind === 'heading' &&
+        block.depth === 2 &&
+        inlineText(block.inline).trim().toLowerCase() === 'timeline',
+    )
+    if (start === -1) return { start: -1, end: -1 }
+    let end = blocks.length
+    for (let index = start + 1; index < blocks.length; index += 1) {
+      const block = blocks[index]
+      if (block?.kind === 'heading' && block.depth <= 2) {
+        end = index
+        break
+      }
+    }
+    return { start, end }
+  }, [research, blocks])
+
   const claimsById = React.useMemo(
     () => new Map(claims.map((claim) => [claim.id, claim])),
     [claims],
@@ -98,6 +150,7 @@ export function DossierReview({
   return (
     <div className="flex flex-col gap-4">
       <Notices notices={notices} />
+      <CorpusLine research={research} documents={documents} />
       <Card>
         <CardHeader className="flex-row flex-wrap items-center justify-between gap-2">
           <div className="flex flex-col gap-0.5">
@@ -137,7 +190,12 @@ export function DossierReview({
             <ul className="flex max-h-[50vh] flex-col divide-y divide-[var(--color-border)] overflow-auto">
               {listed.map((claim) => (
                 <li key={claim.id}>
-                  <ClaimRowView projectId={projectId} claim={claim} />
+                  <ClaimRowView
+                    projectId={projectId}
+                    claim={claim}
+                    supports={supports[claim.id] ?? []}
+                    documentsById={documentsById}
+                  />
                 </li>
               ))}
             </ul>
@@ -160,16 +218,30 @@ export function DossierReview({
             <p className="text-[13px] text-[var(--color-text-muted)]">The dossier is empty.</p>
           ) : (
             <div className="max-h-[75vh] overflow-auto text-[14px] leading-relaxed">
-              {blocks.map((block, blockIndex) => (
-                <BlockView
-                  key={blockIndex}
-                  block={block}
-                  blockIndex={blockIndex}
-                  anchorsByUnit={anchorsByUnit}
-                  claimsById={claimsById}
-                  onOpen={setOpenClaimIds}
-                />
-              ))}
+              {blocks.map((block, blockIndex) => {
+                if (timeline && blockIndex > timeline.start && blockIndex < timeline.end)
+                  return null
+                return (
+                  <React.Fragment key={blockIndex}>
+                    <BlockView
+                      block={block}
+                      blockIndex={blockIndex}
+                      anchorsByUnit={anchorsByUnit}
+                      claimsById={claimsById}
+                      onOpen={setOpenClaimIds}
+                    />
+                    {research && timeline?.start === blockIndex ? (
+                      <SceneTimeline scenes={research.scenes} />
+                    ) : null}
+                  </React.Fragment>
+                )
+              })}
+              {research && timeline?.start === -1 && research.scenes.length > 0 ? (
+                <>
+                  <h4 className={HEADING_CLASSES[1]}>Timeline</h4>
+                  <SceneTimeline scenes={research.scenes} />
+                </>
+              ) : null}
             </div>
           )}
         </CardContent>
@@ -183,7 +255,12 @@ export function DossierReview({
           <ul className="flex flex-col divide-y divide-[var(--color-border)]">
             {openClaims.map((claim) => (
               <li key={claim.id}>
-                <ClaimRowView projectId={projectId} claim={claim} />
+                <ClaimRowView
+                  projectId={projectId}
+                  claim={claim}
+                  supports={supports[claim.id] ?? []}
+                  documentsById={documentsById}
+                />
               </li>
             ))}
           </ul>
@@ -416,7 +493,17 @@ function QuarantineAllButton({ projectId, count }: { projectId: string; count: n
   )
 }
 
-function ClaimRowView({ projectId, claim }: { projectId: string; claim: ClaimRow }) {
+function ClaimRowView({
+  projectId,
+  claim,
+  supports,
+  documentsById,
+}: {
+  projectId: string
+  claim: ClaimRow
+  supports: readonly ClaimSupportRow[]
+  documentsById: ReadonlyMap<string, ReviewDocument>
+}) {
   const router = useRouter()
   const { toast } = useToast()
   const [editing, setEditing] = React.useState(false)
@@ -494,6 +581,8 @@ function ClaimRowView({ projectId, claim }: { projectId: string; claim: ClaimRow
         ) : null}
       </div>
 
+      <SupportList supports={supports} documentsById={documentsById} />
+
       {editing ? (
         <ClaimTextEditor
           initial={claim.text}
@@ -549,6 +638,158 @@ function ClaimRowView({ projectId, claim }: { projectId: string; claim: ClaimRow
         </div>
       ) : null}
     </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Evidence: the quotes behind a claim, the scenes beside their sources, the corpus
+// ---------------------------------------------------------------------------
+
+/** A video link that opens at the second the quote is spoken. */
+function sourceHref(url: string, locatorSeconds: number | null): string {
+  if (locatorSeconds === null) return url
+  return `${url}${url.includes('?') ? '&' : '?'}t=${locatorSeconds}`
+}
+
+const linkClass =
+  'inline-flex min-h-[40px] items-center gap-1 text-[var(--color-accent-text)] underline'
+
+function SupportList({
+  supports,
+  documentsById,
+}: {
+  supports: readonly ClaimSupportRow[]
+  documentsById: ReadonlyMap<string, ReviewDocument>
+}) {
+  if (supports.length === 0) return null
+  const ordered = [...supports].sort((a, b) => a.rank - b.rank)
+
+  return (
+    <ul className="flex flex-col gap-2" aria-label="Supporting quotes">
+      {ordered.map((support) => {
+        const document = documentsById.get(support.documentId)
+        return (
+          <li
+            key={support.id}
+            className="flex flex-col gap-1 rounded-[8px] border border-[var(--color-border)] p-2 text-[12px]"
+          >
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="font-medium break-all text-[var(--color-text-primary)]">
+                {document ? (document.title ?? document.url) : 'Source not in the corpus'}
+              </span>
+              {document ? (
+                <span className="rounded-[4px] bg-[var(--color-surface-raised)] px-1.5 py-0.5 text-[var(--color-text-secondary)]">
+                  {document.kind}
+                </span>
+              ) : null}
+              {document ? (
+                <a
+                  href={sourceHref(document.url, support.locatorSeconds)}
+                  target="_blank"
+                  rel="noreferrer noopener"
+                  className={linkClass}
+                >
+                  Open source
+                  <ExternalLink aria-hidden className="size-3" />
+                </a>
+              ) : null}
+            </div>
+            <blockquote className="border-l-2 border-[var(--color-border-strong)] pl-2 text-[13px] text-[var(--color-text-primary)]">
+              {support.quote}
+            </blockquote>
+            <span
+              className={
+                support.found ? 'text-[var(--color-text-muted)]' : 'text-[var(--color-warning)]'
+              }
+            >
+              {support.found ? 'Found in the document' : 'Not found in the document'}
+            </span>
+          </li>
+        )
+      })}
+    </ul>
+  )
+}
+
+function CorpusLine({
+  research,
+  documents,
+}: {
+  research: GroundedResearch | null
+  documents: readonly ReviewDocument[]
+}) {
+  // An old dossier has neither; saying "0 documents read" would be wrong, not honest.
+  if (!research && documents.length === 0) return null
+
+  const read = documents.filter((document) => document.rank !== null).length
+  const unread = documents.filter((document) => document.rank === null && !document.failure)
+  const failed = documents.filter((document) => document.failure)
+  const titles = research?.entity.titles ?? []
+
+  return (
+    <div className="flex flex-col gap-1 text-[13px] text-[var(--color-text-secondary)]">
+      <p>{`Researched from: ${[...titles, `${read} ${read === 1 ? 'document' : 'documents'} read`].join(', ')}`}</p>
+      <UrlDetails summary={`${unread.length} gathered, not read`} documents={unread} />
+      <UrlDetails summary={`${failed.length} could not be fetched`} documents={failed} />
+    </div>
+  )
+}
+
+function UrlDetails({
+  summary,
+  documents,
+}: {
+  summary: string
+  documents: readonly ReviewDocument[]
+}) {
+  // Nothing to expand: a plain line, not a control that opens onto nothing.
+  if (documents.length === 0) return <p>{summary}</p>
+
+  return (
+    <details className="group">
+      <summary className="flex min-h-[40px] cursor-pointer items-center gap-1">
+        <ChevronRight aria-hidden className="size-4 transition-transform group-open:rotate-90" />
+        {summary}
+      </summary>
+      <ul className="flex flex-col gap-1 pb-2 pl-5 text-[12px]">
+        {documents.map((document) => (
+          <li key={document.id} className="break-all">
+            {document.url}
+          </li>
+        ))}
+      </ul>
+    </details>
+  )
+}
+
+function RefLink({ gref }: { gref: GroundedRef }) {
+  if (!gref.url) return <span className="text-[var(--color-text-muted)]">(unplaced)</span>
+  return (
+    <>
+      <a
+        href={sourceHref(gref.url, gref.locatorSeconds)}
+        target="_blank"
+        rel="noreferrer noopener"
+        className={`${linkClass} break-all`}
+      >
+        {sourceDomain(gref.url)}
+        <ExternalLink aria-hidden className="size-3" />
+      </a>
+      {gref.found ? null : <span className="ml-1 text-[var(--color-text-muted)]">(unplaced)</span>}
+    </>
+  )
+}
+
+function SceneTimeline({ scenes }: { scenes: GroundedResearch['scenes'] }) {
+  return (
+    <ul className="mb-3 flex flex-col gap-2 pl-5">
+      {scenes.map((scene, index) => (
+        <li key={index} className="list-disc">
+          <strong>{scene.when}</strong> {scene.what} ({scene.who}) <em>{scene.why}</em>{' '}
+          <RefLink gref={scene.ref} />
+        </li>
+      ))}
+    </ul>
   )
 }
 

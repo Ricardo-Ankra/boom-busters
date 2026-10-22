@@ -1,5 +1,5 @@
-import type { ClaimRow } from '@boom-busters/db'
-import type { Notice } from '@boom-busters/schemas'
+import type { ClaimRow, ClaimSupportRow } from '@boom-busters/db'
+import type { GroundedRef, GroundedResearch, Notice } from '@boom-busters/schemas'
 import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -48,6 +48,10 @@ function claim(patch: Partial<ClaimRow>): ClaimRow {
     sourceType: 'major_outlet',
     confidence: 'sourced',
     quarantined: false,
+    legalStatus: 'none',
+    legalStatusDate: null,
+    legalStatusDocumentId: null,
+    series: null,
     createdAt: new Date('2026-08-01'),
     updatedAt: new Date('2026-08-01'),
     ...patch,
@@ -152,5 +156,224 @@ describe('DossierReview', () => {
     expect(
       line.compareDocumentPosition(screen.getByText('Dossier')) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy()
+  })
+
+  describe('grounded research', () => {
+    type Doc = NonNullable<Parameters<typeof DossierReview>[0]['documents']>[number]
+
+    function support(patch: Partial<ClaimSupportRow>): ClaimSupportRow {
+      return {
+        id: 's1',
+        claimId: 'claim-1',
+        documentId: 'doc-1',
+        rank: 1,
+        quote: 'filed for insolvency',
+        found: true,
+        offset: 0,
+        locatorSeconds: null,
+        createdAt: new Date('2026-08-01'),
+        ...patch,
+      }
+    }
+
+    function doc(patch: Partial<Doc>): Doc {
+      return {
+        id: 'doc-1',
+        url: 'https://example.com/filing',
+        title: 'The annual filing',
+        kind: 'filing',
+        rank: 1,
+        failure: null,
+        ...patch,
+      }
+    }
+
+    const noRef: GroundedRef = {
+      documentId: null,
+      url: null,
+      found: false,
+      locatorSeconds: null,
+      quote: null,
+    }
+
+    function research(patch: Partial<GroundedResearch>): GroundedResearch {
+      return {
+        entity: { qid: null, titles: ['Wirecard'], cik: null, ticker: null, website: null },
+        brief: { summary: 's', turningPoint: 't', cast: [], toldAlready: [], openQuestions: [] },
+        scenes: [],
+        answers: [],
+        corpus: { read: 1, unread: 0, failed: 0 },
+        ...patch,
+      } as GroundedResearch
+    }
+
+    async function openClaim(user: ReturnType<typeof userEvent.setup>) {
+      await user.click(screen.getByRole('button', { name: /Review claim: Wirecard filed/ }))
+      return screen.getByRole('dialog')
+    }
+
+    it('shows each support with its quote and whether it was found', async () => {
+      const user = userEvent.setup()
+      render(
+        <DossierReview
+          projectId="p1"
+          contentMd={MD}
+          claims={[claim({})]}
+          documents={[doc({})]}
+          supports={{
+            'claim-1': [
+              support({}),
+              support({ id: 's2', rank: 2, quote: 'a missing line', found: false }),
+            ],
+          }}
+        />,
+      )
+      const dialog = await openClaim(user)
+      expect(within(dialog).getByText('filed for insolvency').tagName).toBe('BLOCKQUOTE')
+      expect(within(dialog).getByText('Found in the document')).toBeInTheDocument()
+      expect(within(dialog).getByText('Not found in the document')).toBeInTheDocument()
+      expect(within(dialog).getAllByText('The annual filing')).toHaveLength(2)
+    })
+
+    it('links a video support at its timestamp', async () => {
+      const user = userEvent.setup()
+      render(
+        <DossierReview
+          projectId="p1"
+          contentMd={MD}
+          claims={[claim({})]}
+          documents={[
+            doc({
+              id: 'v1',
+              url: 'https://www.youtube.com/watch?v=abc',
+              kind: 'video',
+              title: 'V',
+            }),
+            doc({ id: 'v2', url: 'https://youtu.be/xyz', kind: 'video', title: 'W' }),
+          ]}
+          supports={{
+            'claim-1': [
+              support({ documentId: 'v1', locatorSeconds: 95 }),
+              support({ id: 's2', rank: 2, documentId: 'v2', locatorSeconds: 12 }),
+              support({ id: 's3', rank: 3, documentId: 'gone' }),
+            ],
+          }}
+        />,
+      )
+      const dialog = await openClaim(user)
+      const hrefs = within(dialog)
+        .getAllByRole('link')
+        .map((a) => a.getAttribute('href'))
+      expect(hrefs).toContain('https://www.youtube.com/watch?v=abc&t=95')
+      expect(hrefs).toContain('https://youtu.be/xyz?t=12')
+    })
+
+    it('shows the corpus line with unread and failed lists', () => {
+      render(
+        <DossierReview
+          projectId="p1"
+          contentMd={MD}
+          claims={[]}
+          research={research({
+            entity: { ...research({}).entity, titles: ['Wirecard', 'Jan Marsalek'] },
+          })}
+          documents={[
+            doc({ id: 'a', rank: 1 }),
+            doc({ id: 'b', rank: 2, url: 'https://example.com/b' }),
+            doc({ id: 'c', rank: null, url: 'https://example.com/unread' }),
+            doc({ id: 'd', rank: null, url: 'https://example.com/broken', failure: 'timeout' }),
+          ]}
+        />,
+      )
+      expect(
+        screen.getByText('Researched from: Wirecard, Jan Marsalek, 2 documents read'),
+      ).toBeInTheDocument()
+      expect(screen.getByText('1 gathered, not read')).toBeInTheDocument()
+      expect(screen.getByText('1 could not be fetched')).toBeInTheDocument()
+      expect(screen.getByText('https://example.com/unread')).toBeInTheDocument()
+      expect(screen.getByText('https://example.com/broken')).toBeInTheDocument()
+    })
+
+    it('renders scenes from research with an unplaced marker', () => {
+      const md = [MD, '', '## Timeline', '', '- **June 2020** markdown only entry'].join('\n')
+      render(
+        <DossierReview
+          projectId="p1"
+          contentMd={md}
+          claims={[]}
+          research={research({
+            scenes: [
+              {
+                when: 'June 2020',
+                who: 'Wirecard',
+                what: 'The company filed for insolvency.',
+                why: 'Because the cash was never there.',
+                quote: 'q',
+                ref: { ...noRef, url: 'https://example.com/filing', found: true },
+              },
+              {
+                when: 'July 2020',
+                who: 'Braun',
+                what: 'The chief executive was arrested.',
+                why: 'Prosecutors alleged fraud.',
+                quote: 'q',
+                ref: { ...noRef, url: 'https://example.com/arrest', found: false },
+              },
+            ],
+          })}
+        />,
+      )
+      expect(screen.queryByText(/markdown only entry/)).not.toBeInTheDocument()
+      expect(screen.getByText(/The company filed for insolvency/)).toBeInTheDocument()
+      expect(screen.getByText('Because the cash was never there.').tagName).toBe('EM')
+      expect(screen.getAllByText('(unplaced)')).toHaveLength(1)
+      const links = screen.getAllByRole('link').map((a) => a.getAttribute('href'))
+      expect(links).toContain('https://example.com/arrest')
+      // The rest of the document still comes from the markdown.
+      expect(screen.getByRole('heading', { name: 'Summary' })).toBeInTheDocument()
+    })
+
+    it('renders empty corpus lists as plain lines and says "1 document read" in the singular', () => {
+      const { container, rerender } = render(
+        <DossierReview
+          projectId="p1"
+          contentMd={MD}
+          claims={[]}
+          research={research({})}
+          documents={[doc({ id: 'a', rank: 1 })]}
+        />,
+      )
+      expect(screen.getByText('Researched from: Wirecard, 1 document read')).toBeInTheDocument()
+      expect(screen.getByText('0 gathered, not read')).toBeInTheDocument()
+      expect(container.querySelector('summary')).toBeNull()
+
+      rerender(
+        <DossierReview
+          projectId="p1"
+          contentMd={MD}
+          claims={[]}
+          research={research({})}
+          documents={[
+            doc({ id: 'a', rank: 1 }),
+            doc({ id: 'c', rank: null, url: 'https://example.com/unread' }),
+          ]}
+        />,
+      )
+      expect(container.querySelectorAll('summary')).toHaveLength(1)
+      expect(container.querySelector('summary svg')).not.toBeNull()
+    })
+
+    it('keeps the markdown Timeline when research has no scenes', () => {
+      const md = [MD, '', '## Timeline', '', '- **June 2020** markdown only entry'].join('\n')
+      render(<DossierReview projectId="p1" contentMd={md} claims={[]} research={research({})} />)
+      expect(screen.getByText(/markdown only entry/)).toBeInTheDocument()
+    })
+
+    it('renders an old dossier with no research from its markdown', () => {
+      const md = [MD, '', '## Timeline', '', '- **June 2020** markdown only entry'].join('\n')
+      render(<DossierReview projectId="p1" contentMd={md} claims={[]} />)
+      expect(screen.getByText(/markdown only entry/)).toBeInTheDocument()
+      expect(screen.queryByText(/Researched from/)).not.toBeInTheDocument()
+    })
   })
 })

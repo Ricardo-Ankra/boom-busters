@@ -103,6 +103,9 @@ export function resolveLlmModel(
       ...(representative.cachedInputPerMTok !== undefined
         ? { cachedInputPerMTok: representative.cachedInputPerMTok }
         : {}),
+      ...(representative.cacheWritePerMTok !== undefined
+        ? { cacheWritePerMTok: representative.cacheWritePerMTok }
+        : {}),
       supportsBatch: false,
     },
     source: 'family',

@@ -1,0 +1,20 @@
+{
+  "directory": {
+    "name": "/Archives/edgar/data/1234567/000123456721000002",
+    "item": [
+      { "last-modified": "2021-05-10 16:01:02", "name": "b8k.htm", "type": "text.gif", "size": "" },
+      {
+        "last-modified": "2021-05-10 16:01:02",
+        "name": "ex99-1.htm",
+        "type": "EX-99.1",
+        "size": ""
+      },
+      {
+        "last-modified": "2021-05-10 16:01:02",
+        "name": "ex99-2.htm",
+        "type": "EX-99.2",
+        "size": ""
+      }
+    ]
+  }
+}

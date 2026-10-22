@@ -24,6 +24,12 @@ export interface EntityFacts {
   instanceOf: string[]
   /** True when the entity has any P279 subclass-of claim: it is a class or concept, not a thing. */
   isClass: boolean
+  /** P249 ticker symbol with the QID of its P414 exchange qualifier, when it has one. */
+  ticker: { symbol: string; exchange: string | null } | null
+  /** P856 official website. */
+  website: string | null
+  /** P571 inception; a coarser precision gives the first day of that month or year. */
+  inception: IsoDate | null
   /** Founders (P112) and CEOs (P169). Living = no P570; convicted = has P1399. */
   people: Person[]
 }
@@ -68,6 +74,14 @@ const claimSchema = z.object({
     snaktype: z.string(),
     datavalue: z.object({ value: z.unknown() }).optional(),
   }),
+  qualifiers: lenientRecord(
+    z.array(
+      z.object({
+        snaktype: z.string(),
+        datavalue: z.object({ value: z.unknown() }).optional(),
+      }),
+    ),
+  ).optional(),
 })
 
 const entitySchema = z.object({
@@ -96,6 +110,20 @@ function itemIds(entity: Entity, property: string): string[] {
     const parsed = entityIdValue.safeParse(v)
     return parsed.success ? [parsed.data.id] : []
   })
+}
+
+/** The ticker claim with its exchange: the P414 qualifier's item id on that same claim. */
+function tickerOf(entity: Entity): EntityFacts['ticker'] {
+  for (const claim of entity.claims?.P249 ?? []) {
+    const symbol = claim.mainsnak.datavalue?.value
+    if (claim.mainsnak.snaktype !== 'value' || typeof symbol !== 'string') continue
+    const exchange = (claim.qualifiers?.P414 ?? []).flatMap((q) => {
+      const id = entityIdValue.safeParse(q.datavalue?.value)
+      return q.snaktype === 'value' && id.success ? [id.data.id] : []
+    })[0]
+    return { symbol, exchange: exchange ?? null }
+  }
+  return null
 }
 
 /** `+2020-06-25T00:00:00Z` to `2020-06-25`; month or year precision rounds down to the first day. */
@@ -175,6 +203,12 @@ export function liveWikidata(client: PoliteClient): WikidataSource {
           cik: cik ?? null,
           dissolved:
             values(e, 'P576')
+              .map(wikidataDate)
+              .find((d) => d !== null) ?? null,
+          ticker: tickerOf(e),
+          website: values(e, 'P856').find((v): v is string => typeof v === 'string') ?? null,
+          inception:
+            values(e, 'P571')
               .map(wikidataDate)
               .find((d) => d !== null) ?? null,
           instanceOf: itemIds(e, 'P31'),

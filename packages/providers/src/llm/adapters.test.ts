@@ -497,6 +497,32 @@ describe('the adapter registry', () => {
   })
 })
 
+describe('anthropic: cache writes', () => {
+  it('reports cache writes and counts them in the input total', async () => {
+    const result = await anthropic.complete(request, {
+      apiKey: 'k',
+      model: 'claude-opus-5',
+      fetchImpl: respondWith({
+        content: [{ type: 'text', text: 'ok' }],
+        stop_reason: 'end_turn',
+        usage: {
+          input_tokens: 200,
+          output_tokens: 40,
+          cache_read_input_tokens: 100,
+          cache_creation_input_tokens: 700,
+        },
+      }),
+    })
+
+    expect(result.usage).toEqual({
+      inputTokens: 1000,
+      outputTokens: 40,
+      cachedInputTokens: 100,
+      cacheWriteInputTokens: 700,
+    })
+  })
+})
+
 describe('anthropic: a completion that spends everything and writes nothing', () => {
   const thinkingOnly = {
     content: [{ type: 'thinking', thinking: 'considering...' }],

@@ -371,6 +371,80 @@ describe('live wikipedia', () => {
   })
 })
 
+describe('live wikipedia search and current content', () => {
+  it('searches namespace 0 and returns title and pageid in result order', async () => {
+    const fetchImpl = wikipediaFetch(() => 'wikipedia-search.json')
+    const hits = await sourceFor(fetchImpl).search('wirecard fraud', 2)
+    expect(hits).toEqual([
+      { title: 'Wirecard', pageid: 111 },
+      { title: 'Wirecard scandal', pageid: 222 },
+    ])
+    const p = searchParamsOf(fetchImpl)[0]!
+    expect(p.get('list')).toBe('search')
+    expect(p.get('srsearch')).toBe('wirecard fraud')
+    expect(p.get('srnamespace')).toBe('0')
+    expect(p.get('srlimit')).toBe('2')
+  })
+
+  it('reads the latest revision of a page through wikitextItems, uncached', async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), 'cf-wp-cur-'))
+    dirs.push(dir)
+    const fetchImpl = wikipediaFetch(() => 'wikipedia-current-content.json')
+    const source = liveWikipedia(
+      createPoliteClient({
+        contact: 'me@example.com',
+        cacheDir: dir,
+        fetchImpl,
+        minIntervalMs: { 'wikipedia.org': 0 },
+      }),
+    )
+    const items = await source.currentItems('Wirecard')
+    expect(items).toEqual({
+      categories: ['Fraud in Germany', 'Payment service providers'],
+      externalLinks: ['https://example.com/ft-report'],
+      links: ['Markus Braun', 'Munich'],
+    })
+    const p = searchParamsOf(fetchImpl)[0]!
+    expect(p.get('prop')).toBe('revisions')
+    expect(p.get('titles')).toBe('Wirecard')
+    expect(p.get('rvlimit')).toBe('1')
+    expect(p.get('rvslots')).toBe('main')
+    expect(await readdir(dir)).toEqual([])
+  })
+
+  it('a missing page has empty items', async () => {
+    const fetchImpl = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            batchcomplete: true,
+            query: { pages: [{ ns: 0, title: 'Nope', missing: true }] },
+          }),
+        ),
+    )
+    const source = liveWikipedia(
+      createPoliteClient({
+        contact: 'me@example.com',
+        cacheDir: null,
+        fetchImpl,
+        minIntervalMs: { 'wikipedia.org': 0 },
+      }),
+    )
+    expect(await source.currentItems('Nope')).toEqual({
+      categories: [],
+      externalLinks: [],
+      links: [],
+    })
+  })
+
+  it('the mock answers both with fixed fake data', async () => {
+    const hits = await mockWikipedia.search('x', 2)
+    expect(hits).toHaveLength(2)
+    expect(hits[0]!.title).toContain('Mock')
+    expect((await mockWikipedia.currentItems('Mock')).links[0]).toContain('Mock')
+  })
+})
+
 describe('mock wikipedia', () => {
   it('is deterministic and obviously fake', async () => {
     const a = await mockWikipedia.categoryMembers('Frauds', 1)

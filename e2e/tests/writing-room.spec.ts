@@ -98,6 +98,16 @@ test.describe('the dossier gate', () => {
     await expect(page.getByRole('button', { name: 'Request changes' })).toBeVisible()
   })
 
+  test('fixture claim 1 shows its quote found in the gathered document', async ({ page }) => {
+    await openFixtureProject(page)
+
+    await page
+      .getByRole('button', { name: /Review claim: Feb 2019 . BaFin bans short selling/ })
+      .click()
+    const dialog = page.getByRole('dialog', { name: 'Claim' })
+    await expect(dialog.getByText('Found in the document')).toBeVisible()
+  })
+
   test('requesting changes needs a note, and says so', async ({ page }) => {
     await openFixtureProject(page)
 

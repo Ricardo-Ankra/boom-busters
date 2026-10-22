@@ -1,5 +1,11 @@
-import { NOTICE_KINDS, NOTICE_SUBJECTS, newId } from '@boom-busters/schemas'
-import type { Settings, WordTiming } from '@boom-busters/schemas'
+import {
+  DOCUMENT_KINDS,
+  LEGAL_STATUSES,
+  NOTICE_KINDS,
+  NOTICE_SUBJECTS,
+  newId,
+} from '@boom-busters/schemas'
+import type { GroundedResearch, Series, Settings, WordTiming } from '@boom-busters/schemas'
 import { relations, sql } from 'drizzle-orm'
 import {
   boolean,
@@ -89,6 +95,12 @@ export const stageStatusEnum = pgEnum('stage_status', [
   'failed',
   'cancelled',
 ])
+
+/** What kind of page a gathered research document is (dossier research). */
+export const documentKindEnum = pgEnum('document_kind', DOCUMENT_KINDS)
+
+/** Where a claim stands legally: ruled by a court, alleged, or no proceeding. */
+export const legalStatusEnum = pgEnum('legal_status', LEGAL_STATUSES)
 
 export const sourceTypeEnum = pgEnum('source_type', [
   'court',
@@ -377,6 +389,12 @@ export const dossiers = pgTable(
      * scratch bumps this without being a revision.
      */
     version: integer('version').notNull().default(1),
+    /**
+     * What the grounded research pass produced beyond the markdown: the
+     * entity, the cast and the scenes. The entity's label lives inside it,
+     * not in a column of its own.
+     */
+    research: jsonb('research').$type<GroundedResearch>(),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
@@ -396,10 +414,86 @@ export const claims = pgTable(
     confidence: claimConfidenceEnum('confidence').notNull().default('unverified'),
     /** Quarantined claims are excluded from the scripting prompt entirely. */
     quarantined: boolean('quarantined').notNull().default(false),
+    legalStatus: legalStatusEnum('legal_status').notNull().default('none'),
+    /** Month or day precision, as text, like `articleSources.publishedAt`. */
+    legalStatusDate: text('legal_status_date'),
+    /** The document that establishes the legal status. */
+    legalStatusDocumentId: text('legal_status_document_id').references(
+      (): AnyPgColumn => researchDocuments.id,
+      { onDelete: 'set null' },
+    ),
+    series: jsonb('series').$type<Series>(),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
   (t) => [index('claims_dossier_idx').on(t.dossierId, t.confidence)],
+)
+
+/**
+ * A page fetched while researching, shared across projects and keyed by URL:
+ * the same regulator page backs claims in several films, and fetching it
+ * again would only risk it changing under an earlier citation. A failed fetch
+ * is a row too, with `failure` set and empty text.
+ */
+export const researchDocuments = pgTable('research_documents', {
+  id: id(),
+  url: text('url').notNull().unique(),
+  finalUrl: text('final_url'),
+  httpStatus: integer('http_status'),
+  fetchedAt: timestamp('fetched_at', { withTimezone: true }).notNull(),
+  contentType: text('content_type'),
+  kind: documentKindEnum('kind').notNull(),
+  tier: integer('tier').notNull(),
+  title: text('title'),
+  publishedAt: text('published_at'),
+  text: text('text').notNull().default(''),
+  textHash: text('text_hash'),
+  tokens: integer('tokens').notNull().default(0),
+  archivedUrl: text('archived_url'),
+  truncated: boolean('truncated').notNull().default(false),
+  failure: text('failure'),
+  meta: jsonb('meta').$type<Record<string, unknown>>(),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+})
+
+/** A project's gathered corpus. `rank` is null for documents gathered but not read. */
+export const dossierDocuments = pgTable(
+  'dossier_documents',
+  {
+    id: id(),
+    projectId: text('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    documentId: text('document_id')
+      .notNull()
+      .references(() => researchDocuments.id, { onDelete: 'cascade' }),
+    rank: integer('rank'),
+    tier: integer('tier').notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [unique('dossier_documents_project_document_key').on(t.projectId, t.documentId)],
+)
+
+/** The quotes that support a claim, each located in its document when found. */
+export const claimSupports = pgTable(
+  'claim_supports',
+  {
+    id: id(),
+    claimId: text('claim_id')
+      .notNull()
+      .references(() => claims.id, { onDelete: 'cascade' }),
+    documentId: text('document_id')
+      .notNull()
+      .references(() => researchDocuments.id, { onDelete: 'cascade' }),
+    rank: integer('rank').notNull(),
+    quote: text('quote').notNull(),
+    found: boolean('found').notNull().default(false),
+    offset: integer('offset'),
+    locatorSeconds: integer('locator_seconds'),
+    createdAt: createdAt(),
+  },
+  (t) => [index('claim_supports_claim_idx').on(t.claimId)],
 )
 
 // ---------------------------------------------------------------------------
@@ -1259,6 +1353,10 @@ export type NewCase = typeof cases.$inferInsert
 export type ProjectRow = typeof projects.$inferSelect
 export type NewProject = typeof projects.$inferInsert
 export type ClaimRow = typeof claims.$inferSelect
+export type ResearchDocumentRow = typeof researchDocuments.$inferSelect
+export type NewResearchDocument = typeof researchDocuments.$inferInsert
+export type DossierDocumentRow = typeof dossierDocuments.$inferSelect
+export type ClaimSupportRow = typeof claimSupports.$inferSelect
 export type ChapterRow = typeof chapters.$inferSelect
 export type ScriptRow = typeof scripts.$inferSelect
 export type ScriptEditRow = typeof scriptEdits.$inferSelect

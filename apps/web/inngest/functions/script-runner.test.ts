@@ -11,6 +11,8 @@ import {
   setProjectStage,
   truncateRunMirror,
 } from '@boom-busters/db'
+import type * as Db from '@boom-busters/db'
+import type { ClaimRow } from '@boom-busters/db'
 import { BudgetExceededError, TransientProviderError } from '@boom-busters/schemas'
 import { InngestTestEngine } from '@inngest/test'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -35,6 +37,13 @@ const { recordRepairs, recordStop } = vi.hoisted(() => ({
   recordStop: vi.fn(),
 }))
 vi.mock('@/lib/notices', () => ({ recordRepairs, recordStop }))
+// The real query unless a test hands in its own claims.
+const scriptableClaims = vi.hoisted(() => vi.fn())
+vi.mock('@boom-busters/db', async (importOriginal) => {
+  const actual = await importOriginal<typeof Db>()
+  scriptableClaims.mockImplementation(actual.scriptableClaims)
+  return { ...actual, scriptableClaims: (...args: unknown[]) => scriptableClaims(...args) }
+})
 
 const describeDb = requireTestDatabase() ? describe : describe.skip
 
@@ -219,6 +228,45 @@ describeDb('script-runner around the Shorts marking (decision 293)', () => {
   afterEach(async () => {
     // The fixture's own stage, for the suites after this one.
     await setProjectStage(db, FIXTURE_PROJECT_ID, { stage: 'dossier', stageStatus: 'queued' })
+  })
+
+  it('marks a ruled claim adjudicated and every other claim not', async () => {
+    const row = (id: string, patch: Partial<ClaimRow>): ClaimRow => ({
+      id,
+      dossierId: 'dossier-1',
+      text: `Claim ${id}.`,
+      sourceUrl: 'https://www.bafin.de/ruling',
+      sourceType: 'regulator',
+      confidence: 'sourced',
+      quarantined: false,
+      legalStatus: 'none',
+      legalStatusDate: null,
+      legalStatusDocumentId: null,
+      series: null,
+      createdAt: new Date('2026-10-01'),
+      updatedAt: new Date('2026-10-01'),
+      ...patch,
+    })
+    scriptableClaims.mockResolvedValueOnce([
+      row('ruled', { legalStatus: 'ruled', legalStatusDate: '2020-06' }),
+      row('alleged', { legalStatus: 'alleged', sourceType: 'major_outlet' }),
+      row('none', {}),
+    ])
+
+    const { result } = await engine.executeStep('load-dossier', { events: approved() })
+
+    expect((result as { claims: unknown[] }).claims).toEqual([
+      {
+        id: 'ruled',
+        text: 'Claim ruled.',
+        sourceUrl: 'https://www.bafin.de/ruling',
+        confidence: 'sourced',
+        sourceType: 'regulator',
+        adjudicated: true,
+      },
+      expect.objectContaining({ id: 'alleged', sourceType: 'major_outlet', adjudicated: false }),
+      expect.objectContaining({ id: 'none', adjudicated: false }),
+    ])
   })
 
   it('parks the run when the marking is over budget, as the other steps do', async () => {

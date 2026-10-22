@@ -1,14 +1,18 @@
 import type { Database } from './client'
 import {
+  FIXTURE_DOCUMENT_IDS,
   FIXTURE_DOSSIER_ID,
   FIXTURE_PROJECT_ID,
   fixtureCase,
   fixtureClaims,
+  fixtureDocuments,
   fixtureProject,
+  fixtureSupports,
 } from './fixtures'
 import { getSettings, importProviderEnvSeeds } from './queries'
-import { sql } from 'drizzle-orm'
-import { cases, claims, dossiers, projects } from './schema'
+import { inArray, sql } from 'drizzle-orm'
+import { linkDossierDocuments } from './research-documents'
+import { cases, claimSupports, claims, dossiers, projects, researchDocuments } from './schema'
 
 export interface SeedResult {
   settingsCreated: boolean
@@ -71,6 +75,44 @@ export async function seed(
         updatedAt: new Date(),
       },
     })
+
+  // The fixture corpus. The pages are plain facts about a mock fetch, so they
+  // reset to the fixture's text each run, like the claims they back.
+  await db
+    .insert(researchDocuments)
+    .values(fixtureDocuments)
+    .onConflictDoUpdate({
+      target: researchDocuments.id,
+      set: {
+        text: sql`excluded.text`,
+        title: sql`excluded.title`,
+        updatedAt: new Date(),
+      },
+    })
+  await linkDossierDocuments(
+    db,
+    FIXTURE_PROJECT_ID,
+    FIXTURE_DOCUMENT_IDS.map((documentId, index) => ({
+      documentId,
+      rank: index + 1,
+      tier: fixtureDocuments[index]!.tier,
+    })),
+  )
+  // Replaced, not merged: a support with a fresh id on every run would stack up.
+  await db.delete(claimSupports).where(
+    inArray(
+      claimSupports.claimId,
+      fixtureSupports.map((support) => support.claimId),
+    ),
+  )
+  await db.insert(claimSupports).values(
+    fixtureSupports.map((support) => ({
+      ...support,
+      offset: fixtureDocuments
+        .find((doc) => doc.id === support.documentId)!
+        .text!.indexOf(support.quote),
+    })),
+  )
 
   const credentialsImported = options.encryptionKey
     ? await importProviderEnvSeeds(db, options.encryptionKey, options.env)

@@ -132,9 +132,14 @@ export const DEFERRED_GROUPS = {
   /**
    * The case finder's evidence sources. Unlike the groups above, each member
    * is optional on its own (a source without its key is skipped), so read it
-   * with `readCaseFinderEnv()`, not `requireEnv()`, which wants all three.
+   * with `readCaseFinderEnv()`, not `requireEnv()`, which wants every one.
    */
-  caseFinder: ['DATA_CONTACT_EMAIL', 'YOUTUBE_DATA_API_KEY', 'COURTLISTENER_TOKEN'],
+  caseFinder: [
+    'DATA_CONTACT_EMAIL',
+    'YOUTUBE_DATA_API_KEY',
+    'COURTLISTENER_TOKEN',
+    'YOUTUBE_TRANSCRIPTS',
+  ],
 } as const satisfies Record<string, readonly string[]>
 
 export type DeferredGroup = keyof typeof DEFERRED_GROUPS
@@ -199,6 +204,8 @@ const CaseFinderEnvSchema = z.object({
   DATA_CONTACT_EMAIL: z.email().optional(),
   YOUTUBE_DATA_API_KEY: z.string().min(1).optional(),
   COURTLISTENER_TOKEN: z.string().min(1).optional(),
+  /** '1' lets the dossier gather read a video's caption track from its watch page (spec 4.4). */
+  YOUTUBE_TRANSCRIPTS: z.enum(['0', '1']).optional(),
 })
 
 export type CaseFinderEnv = z.infer<typeof CaseFinderEnvSchema>
@@ -216,6 +223,7 @@ export function readCaseFinderEnv(source: EnvSource = process.env): CaseFinderEn
     DATA_CONTACT_EMAIL: pick('DATA_CONTACT_EMAIL'),
     YOUTUBE_DATA_API_KEY: pick('YOUTUBE_DATA_API_KEY'),
     COURTLISTENER_TOKEN: pick('COURTLISTENER_TOKEN'),
+    YOUTUBE_TRANSCRIPTS: pick('YOUTUBE_TRANSCRIPTS'),
   })
 }
 

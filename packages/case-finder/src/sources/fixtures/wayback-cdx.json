@@ -1,0 +1,13 @@
+[
+  ["urlkey", "timestamp", "original", "mimetype", "statuscode", "digest", "length"],
+  ["com,example)/", "20180105123456", "http://example.com/", "text/html", "200", "AAAA", "1111"],
+  [
+    "com,example)/",
+    "20190301000000",
+    "https://www.example.com/",
+    "text/html",
+    "200",
+    "BBBB",
+    "2222"
+  ]
+]

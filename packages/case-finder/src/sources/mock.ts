@@ -5,6 +5,10 @@ import type { EntityFacts, WikidataSource } from './wikidata'
 import type { CourtListenerSource } from './courtlistener'
 import type { EdgarSource } from './edgar'
 import type { SecReleasesSource } from './sec-releases'
+import type { StooqSource } from './stooq'
+import type { TranscriptSource } from './transcript'
+import type { WaybackSource } from './wayback'
+import type { XbrlSource } from './xbrl'
 import type { WikipediaSource } from './wikipedia'
 import type { YoutubeVideo } from '../types'
 import { monthsBefore } from '../dates'
@@ -69,6 +73,9 @@ export const mockWikidata: WikidataSource = {
         country: 'Q30',
         cik: null,
         dissolved: null,
+        ticker: { symbol: 'MOCK', exchange: 'Q13677' },
+        website: 'https://example.invalid/mock',
+        inception: '2000-01-01',
         instanceOf: [],
         isClass: false,
         people: [
@@ -118,6 +125,19 @@ export const mockWikipedia: WikipediaSource = {
         .replace('.000Z', 'Z'),
     }
   },
+  async search(query, limit) {
+    return Array.from({ length: Math.min(limit, 3) }, (_, i) => ({
+      title: `Mock result ${i + 1} for ${query}`,
+      pageid: 1000 + i,
+    }))
+  },
+  async currentItems(title) {
+    return {
+      categories: [`Mock category of ${title}`],
+      externalLinks: [`https://example.invalid/mock/${encodeURIComponent(title)}`],
+      links: [`Mock link of ${title}`],
+    }
+  },
   async parsed(revid) {
     return {
       categories: [`Mock category of revision ${revid}`],
@@ -144,6 +164,16 @@ const mockVideo = (channelId: string, label: string, n: number): YoutubeVideo =>
 })
 
 export const mockYoutube: YoutubeSource = {
+  async details(ids) {
+    return ids.map((id) => ({
+      id,
+      title: `[mock] details of ${id}`,
+      description: `[mock] description of ${id}`,
+      publishedAt: '2020-06-15',
+      durationSec: 600,
+      channelTitle: '[mock] channel',
+    }))
+  },
   async search(query) {
     return {
       fetchedAt: MOCK_FETCHED_ON,
@@ -191,6 +221,27 @@ export const mockCourtListener: CourtListenerSource = {
 }
 
 export const mockEdgar: EdgarSource = {
+  async exhibits(cik, options) {
+    return Array.from({ length: options.newest }, (_, i) => {
+      const filed = new Date(Date.parse('2025-01-01T00:00:00Z') - i * 90 * 86_400_000)
+        .toISOString()
+        .slice(0, 10)
+      return {
+        url: `https://example.invalid/mock/edgar/${cik}/ex99-1/${i + 1}`,
+        title: `[mock] 8-K exhibit 99.1 filed ${filed}`,
+        source: 'edgar' as const,
+        datedAt: filed,
+      }
+    })
+  },
+  async latestFiling(cik, form) {
+    return {
+      url: `https://example.invalid/mock/edgar/${cik}/latest-${form}`,
+      title: `[mock] ${form} filed 2025-03-01`,
+      source: 'edgar' as const,
+      datedAt: '2025-03-01',
+    }
+  },
   async filings(cik, lane, before) {
     const form = lane === 'success' ? '10-K' : 'NT 10-K'
     const n = 1 + (hash(`${cik}|edgar`) % 3)
@@ -226,5 +277,46 @@ export const mockSecReleases: SecReleasesSource = {
         url: 'https://example.invalid/mock/lr/1',
       },
     ]
+  },
+}
+
+const MOCK_TRANSCRIPT_LINES = [
+  [0, 'This is a mock transcript for a mock video.'],
+  [5, 'The company grew quickly in its first years.'],
+  [9, 'Then the numbers stopped adding up.'],
+  [14, 'Investors asked questions that nobody answered.'],
+  [20, 'By the end of the year the business had failed.'],
+] as const
+
+export const mockTranscripts: TranscriptSource = {
+  async fetch() {
+    return MOCK_TRANSCRIPT_LINES.map(([start, text]) => ({ start, text }))
+  },
+}
+
+export const mockStooq: StooqSource = {
+  async daily() {
+    return 'Date,Open,High,Low,Close,Volume\n2020-01-02,10,11,9,10.5,1000\n2020-01-03,10.5,11,10,10.2,900\n'
+  },
+}
+
+export const mockWayback: WaybackSource = {
+  async captures() {
+    return [
+      {
+        timestamp: '20180101000000',
+        url: 'https://example.invalid/mock/wayback/20180101000000',
+      },
+      {
+        timestamp: '20190101000000',
+        url: 'https://example.invalid/mock/wayback/20190101000000',
+      },
+    ]
+  },
+}
+
+export const mockXbrl: XbrlSource = {
+  async companyFacts(cik) {
+    return { cik: Number(cik), entityName: '[mock] Example Corp', facts: {} }
   },
 }
