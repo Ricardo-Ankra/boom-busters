@@ -139,6 +139,15 @@ describe('live wikipedia', () => {
       expect(params.get('titles')).toBe('Old Co|Nickname|Old Co Inc')
     })
 
+    it('counts a pre-2013 automatic summary, which has no "page"', async () => {
+      const fetchImpl = respond(() =>
+        reply([
+          { title: 'Old Co', revisions: [{ comment: 'Old Co moved [[Old Co]] to [[New Co]]' }] },
+        ]),
+      )
+      expect(await source(fetchImpl).formerTitles('New Co', ['Old Co'])).toEqual(['Old Co'])
+    })
+
     it('a redirect with neither marker, or no revision data, is not a former title', async () => {
       const fetchImpl = respond(() =>
         reply([

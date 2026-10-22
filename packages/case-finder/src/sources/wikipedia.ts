@@ -20,7 +20,7 @@ export interface WikipediaSource {
   redirectsTo(title: string): Promise<string[]>
   /**
    * The subset of `redirects` that were once the article's own title, in input order. A move
-   * leaves a redirect whose last edit summary is MediaWiki's automatic "Moved page [[a]] to [[b]]"
+   * leaves a redirect whose last edit summary is MediaWiki's automatic "Moved page [[a]] to [[b]]" (before 2013 "X moved [[a]] to [[b]]")
    * and which usually carries `{{R from move}}`; either marks it. Other redirects (nicknames,
    * misspellings, tickers) are not the article's history, and counting them costs a pageviews
    * request each.
@@ -76,7 +76,7 @@ const formerQuery = z.object({
 })
 
 /** MediaWiki's automatic edit summary on the redirect a page move leaves behind. */
-const MOVE_SUMMARY = /moved page \[\[[^\]]+\]\] to \[\[/i
+const MOVE_SUMMARY = /moved (page )?\[\[[^\]]+\]\] to \[\[/i
 const MOVE_TEMPLATE = 'Template:R from move'
 
 const membersQuery = z.object({

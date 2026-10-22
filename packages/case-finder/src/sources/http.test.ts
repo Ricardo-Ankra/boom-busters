@@ -453,6 +453,34 @@ describe('polite client', () => {
       expect(fetchImpl).toHaveBeenCalledTimes(7)
     })
 
+    it('a body read that fails mid-response is retried like a network error', async () => {
+      vi.useFakeTimers()
+      const broken = {
+        status: 200,
+        headers: new Headers(),
+        text: () => Promise.reject(new TypeError('terminated')),
+      }
+      const fetchImpl = vi
+        .fn()
+        .mockResolvedValueOnce(broken)
+        .mockResolvedValueOnce(json({ ok: true }))
+      const result = make(fetchImpl).getJson(url, schema)
+      await vi.advanceTimersByTimeAsync(4999)
+      expect(fetchImpl).toHaveBeenCalledTimes(1)
+      await vi.advanceTimersByTimeAsync(1)
+      expect((await result).data).toEqual({ ok: true })
+    })
+
+    it('an AbortError, or any error that is not a TypeError, surfaces at once', async () => {
+      const abort = new DOMException('aborted', 'AbortError')
+      const first = vi.fn().mockRejectedValue(abort)
+      await expect(make(first).getText(url)).rejects.toBe(abort)
+      expect(first).toHaveBeenCalledTimes(1)
+      const other = vi.fn().mockRejectedValue(new Error('boom'))
+      await expect(make(other).getText(url)).rejects.toThrow('boom')
+      expect(other).toHaveBeenCalledTimes(1)
+    })
+
     it('network errors and 5xx do not slow the host, and are reported through onBackoff', async () => {
       vi.useFakeTimers()
       const onBackoff = vi.fn()

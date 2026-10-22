@@ -197,19 +197,32 @@ export function createPoliteClient(options: PoliteClientOptions): PoliteClient {
   ): Promise<{ status: number; body: string }> {
     for (let n = 0; ; n++) {
       let res: Response
+      let body: string | null = null
       try {
         res = await attempt(url, host, headers)
+        // A reply is final unless its status will be retried; its body is read here so a
+        // connection that drops mid-body ("terminated") is retried like any network error.
+        if (!willRetry(res.status, n)) body = await res.text()
       } catch (error) {
-        if (n === RATE_LIMIT_RETRIES) throw error
+        if (!isNetworkFailure(error) || n === RATE_LIMIT_RETRIES) throw error
         await backOff(host, n + 1, null)
         continue
       }
-      const throttled = res.status === 429
-      if (throttled) slowDown(host)
-      if (!throttled && res.status < 500) return { status: res.status, body: await res.text() }
-      if (n === RATE_LIMIT_RETRIES) return { status: res.status, body: await res.text() }
+      if (res.status === 429) slowDown(host)
+      if (body !== null) return { status: res.status, body }
       await backOff(host, n + 1, res.headers.get('Retry-After'))
     }
+  }
+
+  const willRetry = (status: number, n: number) =>
+    (status === 429 || status >= 500) && n < RATE_LIMIT_RETRIES
+
+  /**
+   * fetch reports a network failure as a TypeError (usually with a `cause`), and undici reports
+   * a body cut short the same way. An abort or anything else is a bug or a cancel: no retry.
+   */
+  function isNetworkFailure(error: unknown): boolean {
+    return error instanceof TypeError && (error as Error).name !== 'AbortError'
   }
 
   /** Wait `5 s x 2^(n-1)` (a longer Retry-After wins), capped at 120 s, telling `onBackoff` first. */
