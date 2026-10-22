@@ -20,6 +20,13 @@ export interface UrlGuardOptions {
   lookupImpl?: (hostname: string) => Promise<{ address: string }[]>
 }
 
+/**
+ * The one refusal that is not about safety: the name has no address. Callers
+ * that fall back to an archive tell it apart from a security refusal by type,
+ * not by message, because a dead domain is exactly what a snapshot is for.
+ */
+export class UnresolvableHostError extends ValidationError {}
+
 /** Redirect chains end somewhere. Five hops is more than any publisher needs. */
 export const MAX_REDIRECT_HOPS = 5
 
@@ -125,11 +132,15 @@ export async function assertSafeArticleUrl(
   try {
     addresses = await lookup(url.hostname)
   } catch {
-    throw new ValidationError(`"${url.hostname}" does not resolve`, { field: 'article.url' })
+    throw new UnresolvableHostError(`"${url.hostname}" does not resolve`, {
+      field: 'article.url',
+    })
   }
 
   if (addresses.length === 0) {
-    throw new ValidationError(`"${url.hostname}" does not resolve`, { field: 'article.url' })
+    throw new UnresolvableHostError(`"${url.hostname}" does not resolve`, {
+      field: 'article.url',
+    })
   }
   // Every address, not the first: a host that resolves to one public and one
   // private address is a host that can be made to answer from either.

@@ -83,6 +83,21 @@ describe('fetchDocument', () => {
     expect(calls).toHaveLength(3)
   })
 
+  it('still tries the Wayback fallback for a hostname that does not resolve', async () => {
+    const calls: string[] = []
+    const doc = await fetchDocument('https://dead.example.com/a', {
+      lookupImpl: async () => {
+        throw new Error('ENOTFOUND')
+      },
+      fetchImpl: async (input) => {
+        calls.push(String(input))
+        return Response.json({ archived_snapshots: {} })
+      },
+    })
+    expect(doc.failure).toContain('does not resolve')
+    expect(calls.some((call) => call.includes('archive.org'))).toBe(true)
+  })
+
   it('reports a failure instead of throwing for a dead page', async () => {
     const doc = await fetchDocument('https://example.com/gone', {
       fetchImpl: async () => html('missing', 404),

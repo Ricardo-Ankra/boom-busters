@@ -1,5 +1,10 @@
 import { DOCUMENT_BODY_CAP_BYTES, ValidationError } from '@boom-busters/schemas'
-import { assertSafeArticleUrl, MAX_REDIRECT_HOPS, USER_AGENT } from '../article'
+import {
+  assertSafeArticleUrl,
+  MAX_REDIRECT_HOPS,
+  UnresolvableHostError,
+  USER_AGENT,
+} from '../article'
 import type { UrlGuardOptions } from '../article'
 
 /**
@@ -38,7 +43,7 @@ interface Attempt {
   contentType: string | null
   body: Uint8Array | null
   failure: string | null
-  /** The URL guard said no. A snapshot of a refused address is still that address's content. */
+  /** The URL guard refused it for safety (not merely a dead name). A snapshot of a refused address is still that address's content. */
   refused?: boolean
 }
 
@@ -153,7 +158,7 @@ async function attempt(
     return {
       ...empty,
       failure: error instanceof Error ? error.message : String(error),
-      refused: error instanceof ValidationError,
+      refused: error instanceof ValidationError && !(error instanceof UnresolvableHostError),
     }
   }
 }
