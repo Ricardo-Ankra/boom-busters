@@ -302,6 +302,7 @@ export const ResearchEntitySchema = z.object({
   ticker: z.string().nullable(),
   website: z.string().nullable(),
 })
+export type ResearchEntity = z.infer<typeof ResearchEntitySchema>
 
 export const GroundedResearchSchema = z.object({
   entity: ResearchEntitySchema,
