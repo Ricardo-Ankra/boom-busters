@@ -323,6 +323,41 @@ suite('gatherCorpus', () => {
     })
   })
 
+  it('stores an image as a failure, drops NUL bytes, and turns a refused row into a failure', async () => {
+    const image = `${HOST}/logo.png`
+    const nul = `${HOST}/nul`
+    const refused = `${HOST}/refused`
+    const fetchDocument = vi.fn(async (target: string): Promise<FetchedDocument> => {
+      if (target === image) {
+        return { ...page(target, ''), contentType: 'image/png', body: new Uint8Array([0x89, 0, 1]) }
+      }
+      if (target === nul) return page(target, 'before\u0000after')
+      // A content type Postgres will not hold stands in for any value the database refuses.
+      return { ...page(target, 'fine text'), contentType: 'text/plain\u0000' }
+    })
+
+    const result = await gatherCorpus(recordingSteps(), input(), {
+      db,
+      sources: () => companySources({ links: [image, nul, refused], fetchDocument }),
+      mocked: false,
+    })
+
+    expect(result.failed).toBe(2)
+    const linked = await listDossierDocuments(db, projectId)
+    const byUrl = new Map(linked.map((d) => [d.url, d]))
+    expect(byUrl.get(nul)).toMatchObject({ rank: 1, failure: null, text: 'beforeafter' })
+    expect(byUrl.get(image)).toMatchObject({
+      rank: null,
+      text: '',
+      contentType: 'image/png',
+      failure: 'not a text document (image/png)',
+    })
+    expect(byUrl.get(refused)).toMatchObject({ rank: null, text: '', contentType: null })
+    expect(byUrl.get(refused)?.failure).toBe(
+      'could not store: invalid byte sequence for encoding "UTF8": 0x00',
+    )
+  })
+
   it('in mock mode stores the four mock documents and calls no source', async () => {
     const steps = recordingSteps()
 

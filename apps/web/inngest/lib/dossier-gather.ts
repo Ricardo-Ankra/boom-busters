@@ -189,12 +189,12 @@ interface Reading {
   publishedAt: string | null
   text: string
   archivedUrl: string | null
-  /** The reason, without the "could not fetch" prefix the row gets. */
+  /** The row's failure note as stored, such as "could not fetch: returned 404". */
   failure: string | null
   meta?: Record<string, unknown>
 }
 
-const failedReading = (reason: string, over: Partial<Reading> = {}): Reading => ({
+const failedReading = (failure: string, over: Partial<Reading> = {}): Reading => ({
   finalUrl: null,
   httpStatus: null,
   contentType: null,
@@ -202,9 +202,15 @@ const failedReading = (reason: string, over: Partial<Reading> = {}): Reading => 
   publishedAt: null,
   text: '',
   archivedUrl: null,
-  failure: reason,
+  failure,
   ...over,
 })
+
+const couldNotFetch = (reason: string, over: Partial<Reading> = {}): Reading =>
+  failedReading(`could not fetch: ${reason}`, over)
+
+/** Postgres refuses a NUL in a text column, and some PDFs and pages carry one. */
+const withoutNul = (value: string) => value.replaceAll('\u0000', '')
 
 const messageOf = (error: unknown) => (error instanceof Error ? error.message : String(error))
 
@@ -290,20 +296,36 @@ async function fetchBatch(
       try {
         reading = await read(sources, candidate, videos)
       } catch (error) {
-        reading = failedReading(messageOf(error))
+        reading = couldNotFetch(messageOf(error))
       }
       // The row is shared by every project that cites the page. Its stale fetchedAt
       // stays, so the next gather tries again.
       if (reading.failure !== null && goodCopy(row)) return row.id
-      const saved = await upsertResearchDocument(db, toRow(candidate, reading, fetchedAt))
-      return saved.id
+      try {
+        return (await upsertResearchDocument(db, toRow(candidate, reading, fetchedAt))).id
+      } catch (error) {
+        // One row the database refuses must not reject the whole batch: the step
+        // would fail, Inngest would retry it four times, and the run would fail.
+        // The bare failure row leaves out every value read from the source.
+        if (goodCopy(row)) return row.id
+        // Drizzle's own message repeats the query and its values, the refused
+        // byte among them, so the note is the driver's cause.
+        const cause = error instanceof Error && error.cause !== undefined ? error.cause : error
+        const refused = failedReading(`could not store: ${withoutNul(messageOf(cause))}`)
+        const saved = await upsertResearchDocument(db, {
+          ...toRow(candidate, refused, fetchedAt),
+          meta: null,
+        })
+        return saved.id
+      }
     }),
   )
 }
 
 function toRow(candidate: Candidate, reading: Reading, fetchedAt: Date): ResearchDocumentInput {
   const failed = reading.failure !== null
-  const text = failed ? '' : reading.text
+  const text = failed ? '' : withoutNul(reading.text)
+  const title = reading.title ?? candidate.title
   return {
     url: candidate.url,
     finalUrl: reading.finalUrl,
@@ -312,7 +334,7 @@ function toRow(candidate: Candidate, reading: Reading, fetchedAt: Date): Researc
     contentType: reading.contentType,
     kind: candidate.kind,
     tier: candidate.tier,
-    title: reading.title ?? candidate.title,
+    title: title === null ? null : withoutNul(title),
     // The source's own date (a filing day, a capture day) beats one guessed from the page.
     publishedAt: candidate.publishedAt ?? reading.publishedAt,
     text,
@@ -320,7 +342,7 @@ function toRow(candidate: Candidate, reading: Reading, fetchedAt: Date): Researc
     tokens: estimateTokens(text),
     archivedUrl: reading.archivedUrl,
     truncated: false,
-    failure: failed ? `could not fetch: ${reading.failure}` : null,
+    failure: reading.failure,
     meta:
       candidate.meta === null && reading.meta === undefined
         ? null
@@ -361,9 +383,10 @@ async function read(
     contentType: doc.contentType,
     archivedUrl: doc.archivedUrl,
   }
-  if (doc.failure !== null) return failedReading(doc.failure, fetched)
+  if (doc.failure !== null) return couldNotFetch(doc.failure, fetched)
   const extracted = await extractText(doc, candidate.kind)
-  if (extracted.text.trim() === '') return failedReading('no text in the page', fetched)
+  if (extracted.failure !== null) return failedReading(extracted.failure, fetched)
+  if (extracted.text.trim() === '') return couldNotFetch('no text in the page', fetched)
   return { ...fetched, ...extracted, failure: null }
 }
 
@@ -377,7 +400,7 @@ async function readVideo(
   videos: VideoListing,
 ): Promise<Reading> {
   const videoId = videoIdOf(candidate)
-  if (videoId === null) return failedReading('no video id')
+  if (videoId === null) return couldNotFetch('no video id')
   const about: VideoAbout | undefined = videos.details[videoId]
   let segments: TranscriptSegment[] | null = null
   if (sources.transcripts !== null) {
@@ -390,7 +413,7 @@ async function readVideo(
   const transcript = segments !== null && segments.length > 0 ? segments : null
 
   if (about === undefined && transcript === null) {
-    return failedReading(
+    return couldNotFetch(
       sources.youtube === null
         ? 'no YouTube Data API key to read the video'
         : (videos.error ?? 'video not found'),
@@ -410,7 +433,7 @@ async function readVideo(
     publishedAt: about?.publishedAt ?? null,
     text,
     archivedUrl: null,
-    failure: text === '' ? 'no description and no transcript' : null,
+    failure: text === '' ? 'could not fetch: no description and no transcript' : null,
     meta: {
       transcript: transcript !== null,
       ...(about === undefined ? {} : { channelTitle: about.channelTitle }),
@@ -424,16 +447,16 @@ async function readFigures(sources: ResearchSources, candidate: Candidate): Prom
   let text: string
   if (typeof cik === 'string') {
     const facts = await sources.xbrl.companyFacts(cik)
-    if (facts === null) return failedReading('no XBRL company facts')
+    if (facts === null) return couldNotFetch('no XBRL company facts')
     text = xbrlFactsText(facts)
-    if (text === '') return failedReading('no annual figures in the XBRL company facts')
+    if (text === '') return couldNotFetch('no annual figures in the XBRL company facts')
   } else if (typeof symbol === 'string') {
     const csv = await sources.stooq.daily(symbol)
-    if (csv === null) return failedReading('no prices for the symbol')
+    if (csv === null) return couldNotFetch('no prices for the symbol')
     text = pricesText(csv)
-    if (text === '') return failedReading('no prices for the symbol')
+    if (text === '') return couldNotFetch('no prices for the symbol')
   } else {
-    return failedReading('no figures source')
+    return couldNotFetch('no figures source')
   }
   return {
     finalUrl: candidate.url,
