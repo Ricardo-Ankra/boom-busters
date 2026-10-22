@@ -3,6 +3,7 @@
 import {
   FIXTURE_CASE_ID,
   FIXTURE_PROJECT_ID,
+  getProject,
   listRunEvents,
   listRuns,
   requireTestDatabase,
@@ -15,6 +16,7 @@ import type { GroundedClaim } from '@boom-busters/schemas'
 import { InngestTestEngine } from '@inngest/test'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/lib/db'
+import { notify } from '@/lib/notify'
 import { forgetRunRows } from '../middleware/run-mirror'
 import { dossierRunner } from './dossier-runner'
 
@@ -391,6 +393,38 @@ describeDb('dossier-runner', () => {
     )
     expect(saveDossier).not.toHaveBeenCalled()
     expect(recordRepairs).not.toHaveBeenCalled()
+  })
+
+  it('stops the stage before the passes when no document could be read', async () => {
+    vi.mocked(notify).mockClear()
+    const steps = stored().map((s) =>
+      s.id === 'corpus-load-0'
+        ? {
+            id: s.id,
+            handler: () => ({ documents: [], corpus: { read: 0, unread: 0, failed: 3 } }),
+          }
+        : s,
+    )
+
+    const { ctx, result } = await engine.execute({ events: created(), steps })
+
+    const ids = vi.mocked(ctx.step.run).mock.calls.map(([id]) => id)
+    expect(ids).toEqual([
+      'load-case',
+      'gather-entity-0',
+      'gather-fetch-0-0',
+      'corpus-load-0',
+      'corpus-empty-0',
+    ])
+    expect(result).toEqual({ projectId: FIXTURE_PROJECT_ID, outcome: 'no-corpus' })
+    expect((await getProject(db, FIXTURE_PROJECT_ID))?.stageStatus).toBe('failed')
+    expect(notify).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: 'run-failed',
+        body: 'No documents could be gathered for this case. Add competitor links or check the case title.',
+      }),
+    )
+    expect(saveDossier).not.toHaveBeenCalled()
   })
 
   it('opens the gate with the corpus line when a claim is unverified', async () => {

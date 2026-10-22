@@ -19,6 +19,7 @@ import { markStageFailed, openReviewGate, type GateContext } from '../lib/gates'
 import { gatherCorpus } from '../lib/dossier-gather'
 import { inngestSteps } from '../lib/steps'
 import {
+  EMPTY_CORPUS_MESSAGE,
   gateCounts,
   gateSummary,
   loadCorpus,
@@ -153,6 +154,12 @@ export const dossierReviser = inngest.createFunction(
     const { documents, corpus } = await step.run(`corpus-load-${context.round}`, () =>
       loadCorpus(db, projectId),
     )
+    if (corpus.read === 0) {
+      await step.run(`corpus-empty-${context.round}`, () =>
+        markStageFailed(ctx, { message: EMPTY_CORPUS_MESSAGE }),
+      )
+      return { projectId, outcome: 'no-corpus' as const }
+    }
 
     const research = await researchDossier(steps, {
       projectId,

@@ -27,6 +27,7 @@ import {
 import { gatherCorpus } from '../lib/dossier-gather'
 import { inngestSteps } from '../lib/steps'
 import {
+  EMPTY_CORPUS_MESSAGE,
   gateCounts,
   gateSummary,
   loadCorpus,
@@ -124,6 +125,12 @@ export const dossierRunner = inngest.createFunction(
       { db, sources: () => liveResearchSources(), mocked },
     )
     const { documents, corpus } = await step.run('corpus-load-0', () => loadCorpus(db, projectId))
+    if (corpus.read === 0) {
+      await step.run('corpus-empty-0', () =>
+        markStageFailed(ctx, { message: EMPTY_CORPUS_MESSAGE }),
+      )
+      return { projectId, outcome: 'no-corpus' as const }
+    }
     const researchRound = (round: number) =>
       researchDossier(steps, {
         projectId,

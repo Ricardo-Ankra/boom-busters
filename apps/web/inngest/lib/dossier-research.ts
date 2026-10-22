@@ -291,6 +291,13 @@ export interface LoadedCorpus {
 }
 
 /**
+ * The stop when nothing could be read. Four passes over an empty corpus would
+ * spend on a dossier with nothing to cite, so the stage fails and says why.
+ */
+export const EMPTY_CORPUS_MESSAGE =
+  'No documents could be gathered for this case. Add competitor links or check the case title.'
+
+/**
  * A project's corpus as the passes read it. The rows keep their whole text and
  * nothing on them records the cut, so the per-document cap the ranker budgeted
  * with is applied again here; without it one long filing would blow the
