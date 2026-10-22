@@ -8041,3 +8041,35 @@ boom-busters-broker`; merge and deploy to Vercel, then `PUT
      shorter or be split before a real case is run; the URL target needs a
      realistic level; transcripts stay off until the reader is checked
      against a live page.
+
+     Follow-up to the back-test, 2026-10-22 (branch `backtest-follow-ups`),
+     four changes. First, the claims and answers passes each run as two
+     steps, `research-claims-<round>-<part>` and
+     `research-answers-<round>-<part>`, because one step took up to 319 s.
+     A claims part asks for at most 20 claims (`DOSSIER_CLAIMS_PER_PASS`, now
+     the cap per part, so the pass keeps 40) whose first support is in its
+     half of the documents; an answers part lists only its half of the open
+     questions, under their numbers in the brief, and keeps at most 20
+     claims (`DOSSIER_ANSWER_CLAIMS_MAX`). Every part has an 8,000-token
+     budget, and the part text sits in the final message, so the system
+     prompt and corpus stay one cached prefix. A later part's claims are
+     deduplicated against the earlier part's, a budget gate from any part
+     stops the rest, and every part's repairs join the notice in order. The
+     back-test records a split pass as its slowest step, since the 300 s
+     limit is per step. Second, CourtListener results without `absolute_url`
+     are dropped instead of failing the search. Third, the URL resolution
+     target is 70%, from the 74% the run measured over reference links that
+     often refuse or have rotted; the told-already rate is reported with no
+     target, since no transcript source exists (the YouTube caption
+     endpoint answers 404 to unsigned requests). Fourth, spec sections 5 and
+     9 say the same. Decisions made: a pass with one document or one
+     question runs as one part and its prompt says nothing about parts, as
+     there is no other part to defer to; the parts run one after the other,
+     not in parallel; `ClaimsSchema` still needs at least one claim per
+     part, so a part whose documents lead no claim is refused, asked once
+     more, and stops the stage if refused again (the parser was kept as it
+     was; open for the owner). Shipping: the step ids changed, so a
+     `dossier-runner` run parked at a gate under the old ids would run (and
+     pay for) all four new part steps when it wakes, then replay its stored
+     grounding and throw the new results away; drain or cancel parked
+     dossier runs before the deploy. Not yet re-run live.

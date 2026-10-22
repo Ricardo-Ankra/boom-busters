@@ -322,7 +322,8 @@ what the research did not look at.
 ## 5. The passes
 
 Four passes stay, each its own step, each one answer on `callForAnswer`
-(at most two calls). All four receive the same corpus as the cacheable
+(at most two calls); the claims and answers passes run as two steps each
+(below). All four receive the same corpus as the cacheable
 prefix: documents numbered `[D1]`, `[D2]`, ... in rank order, each with
 its kind, title, date and text. The model cites a document by its
 number; the parser maps the number to the id, as chart `dataRefs` map
@@ -332,13 +333,24 @@ claim numbers today, and refuses a number outside the list.
 adapter honours `cacheablePrefixMessages`, and the marker sits on a
 message, so the corpus goes in the first user message with the case
 header, and `cacheablePrefixMessages: 1` as today. On another provider
-the corpus is simply re-sent. The claims pass asks for at most 60 claims
-per answer (`DOSSIER_CLAIMS_PER_PASS`), with `outputBudget(16_000)`, and
-the prompt asks for the shortest quote that proves the claim, usually
-under 120 characters, 300 at most; the stored cap of 120 claims holds
-across the claims and answers passes together. The answers pass takes
-`outputBudget(12_000)`. These fit the 32,000-token output ceiling with
-the cut-off retry's doubling.
+the corpus is simply re-sent. The claims and answers passes each run as
+two parts, one step per part, because the first live back-test
+(2026-10-22) timed a single claims step at 266 to 319 s and an answers
+step at up to 314 s, over the 300 s a step has. A claims part asks for
+at most 20 claims (`DOSSIER_CLAIMS_PER_PASS`, the cap per part, so the
+pass keeps 40) whose first support is one of its half of the documents;
+a later support may cite any document, and a later part's claims are
+deduplicated against the earlier part's. An answers part lists only its
+half of the open questions, under their numbers in the brief, and keeps
+at most 20 claims found while answering (`DOSSIER_ANSWER_CLAIMS_MAX`).
+The part text goes in the final message only, so the system prompt and
+the corpus stay one cached prefix across every part. The prompt asks
+for the shortest quote that proves the claim, usually under 120
+characters, 300 at most; the stored cap of 120 claims holds across the
+claims and answers passes together. Budgets: the brief
+`outputBudget(6_000)`, scenes `outputBudget(10_000)`, each claims part
+and each answers part `outputBudget(8_000)`. These fit the 32,000-token
+output ceiling with the cut-off retry's doubling.
 
 The house rules change in one sentence: "Write only what the documents
 in front of you say. A fact you remember but cannot quote from a
@@ -529,14 +541,21 @@ Rates reported, all mechanical:
 - Cost per dossier, from the ledger.
 
 Targets, fixed here and copied to PROGRESS.md before the first run:
-quote-found at least 90%, URL resolution at least 95%, figure match at
-least 80% of checkable points, told-already at least 90% over videos
-with a transcript, cost at most $6 per dossier priced on the default
+quote-found at least 90%, URL resolution at least 70%, figure match at
+least 80% of checkable points, cost at most $6 per dossier priced on the default
 research route (`claude-opus-5`, as the exemplar translation was priced;
 the report names the model the ledger shows). A rate with nothing to
 measure (no checkable figures, no transcripts) is reported as "not
 measured" and does not stop the rollout; a measured rate under its
 target does, and the report says which.
+
+Amended after the first live run (2026-10-22). URL resolution was 95%;
+that run measured 74% over Wikipedia reference links, and a quarter of
+the web's links refuse a fetch or have rotted, so the target is 70%. The
+told-already rate was a target of 90% over videos with a transcript; it
+is now reported only, with no target, because no transcript source
+exists: the YouTube caption endpoint answers 404 to unsigned requests
+(confirmed 2026-10-22).
 
 The live run needs the owner's go-ahead (CLAUDE.md rule 6). The harness
 is built and tested against fixtures; it is not run in this work.
