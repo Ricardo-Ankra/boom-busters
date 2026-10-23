@@ -3,6 +3,7 @@ import {
   DOSSIER_CLAIMS_PER_PASS,
   DOSSIER_QUOTE_MAX,
   DOSSIER_QUOTE_MIN_FOLDED,
+  DOSSIER_STATUS_MAX,
   ValidationError,
 } from '@boom-busters/schemas'
 import type { CaseBrief, Scene } from '@boom-busters/schemas'
@@ -82,7 +83,7 @@ describe('the research prompts', () => {
 
   it('sends all four passes the same system prompt and corpus message, so the corpus is cached once', () => {
     const first =
-      'Case: Enron\nCategory: collapse\nAngle to pursue: The auditors, not the traders.' +
+      'Working title: Enron\nCategory: collapse\nAngle to pursue: The auditors, not the traders.' +
       `\n\nDocuments, numbered. Cite them by number.\n\n${corpus}`
     const [system] = requests().map((request) => request.system)
     for (const request of requests()) {
@@ -95,6 +96,48 @@ describe('the research prompts', () => {
       expect(request.messages.at(-1)?.role).toBe('user')
     }
     expect(system).toMatch(/in the final message/)
+  })
+
+  it('names the subject and the people first, then the working title, the same in every pass', () => {
+    const named = {
+      ...caseContext,
+      title: 'Theranos: the blood test that never worked',
+      subject: 'Theranos',
+      people: ['Elizabeth Holmes', 'Sunny Balwani'],
+      demandNotes: 'Viewers ask what happened to Holmes.',
+    }
+    const header =
+      'Subject: Theranos (company)\nPeople: Elizabeth Holmes, Sunny Balwani\n' +
+      'Working title: Theranos: the blood test that never worked\nCategory: collapse\n' +
+      'Angle to pursue: The auditors, not the traders.\n' +
+      'Audience notes: Viewers ask what happened to Holmes.' +
+      `\n\nDocuments, numbered. Cite them by number.\n\n${corpus}`
+    const passes = [
+      buildBriefRequest(named, corpus),
+      buildScenesRequest(named, corpus, brief),
+      buildClaimsRequest(named, corpus, brief, scenes, claimsPart),
+      buildAnswersRequest(named, corpus, brief, scenes, answersPart),
+    ]
+    for (const request of passes) {
+      expect(request.messages[0]).toEqual({ role: 'user', content: header })
+    }
+  })
+
+  it('leaves out an empty subject and an empty people list', () => {
+    const request = buildBriefRequest({ ...caseContext, subject: ' ', people: [] }, corpus)
+    expect(request.messages[0]?.content.startsWith('Working title: Enron\n')).toBe(true)
+  })
+
+  it('asks the brief where things stand now, dated from the newest document on the outcome', () => {
+    const brief_ = asked(buildBriefRequest(caseContext, corpus))
+    expect(brief_).toContain('"currentStatus": {"asOf": string, "text": string} | null')
+    expect(brief_).toContain(
+      '`currentStatus` is where things stand now, dated from the newest document that speaks ' +
+        'to the outcome: what happened to the people and the money after the turn, in plain ' +
+        'words. Set it to null when the documents say nothing after the turn.',
+    )
+    expect(brief_).toContain('`asOf` is YYYY-MM-DD, YYYY-MM or YYYY')
+    expect(brief_).toContain(`"currentStatus.text" 20 to ${DOSSIER_STATUS_MAX} characters`)
   })
 
   it('holds every pass to the documents in front of it', () => {
@@ -293,6 +336,59 @@ describe('parseBrief', () => {
     const parsed = parseBrief(JSON.stringify(rest))
     expect(parsed.cast[0]?.wanted).toContain('technology company')
     expect(parsed.toldAlready).toEqual([])
+  })
+
+  it('reads where things stand now, and null when the brief gives none', () => {
+    const status = {
+      asOf: '2025-05',
+      text: 'Holmes is serving an eleven-year sentence; investors recovered nothing.',
+    }
+    expect(parseBrief(JSON.stringify({ ...brief, currentStatus: status })).currentStatus).toEqual(
+      status,
+    )
+    expect(
+      parseBrief(JSON.stringify({ ...brief, currentStatus: { ...status, asOf: '2025' } }))
+        .currentStatus?.asOf,
+    ).toBe('2025')
+    const { currentStatus, ...without } = brief
+    void currentStatus
+    expect(parseBrief(JSON.stringify(without)).currentStatus).toBeNull()
+    expect(parseBrief(JSON.stringify({ ...brief, currentStatus: null })).currentStatus).toBeNull()
+  })
+
+  it('trims a long current status at a sentence, and says so', () => {
+    const { notes, note } = collect()
+    const parsed = parseBrief(
+      JSON.stringify({
+        ...brief,
+        currentStatus: { asOf: '2024', text: 'Holmes reported to prison in Texas. '.repeat(30) },
+      }),
+      note,
+    )
+    expect(parsed.currentStatus?.text.length).toBeLessThanOrEqual(DOSSIER_STATUS_MAX)
+    expect(parsed.currentStatus?.text.endsWith('Holmes reported to prison in Texas.')).toBe(true)
+    expect(notes).toEqual([{ action: 'trimmed', field: "the brief's current status" }])
+  })
+
+  it('drops a current status whose date is not a date, or that says too little, keeping the brief', () => {
+    for (const [currentStatus, reason] of [
+      [
+        { asOf: 'May 2025', text: 'Holmes is serving an eleven-year sentence.' },
+        'its date was not YYYY, YYYY-MM or YYYY-MM-DD',
+      ],
+      [
+        { text: 'Holmes is serving an eleven-year sentence.' },
+        'its date was not YYYY, YYYY-MM or YYYY-MM-DD',
+      ],
+      [{ asOf: '2025', text: 'In prison.' }, 'it said too little'],
+      ['Holmes is in prison.', 'it was not a date and a text'],
+    ] as const) {
+      const { notes, note } = collect()
+      const parsed = parseBrief(JSON.stringify({ ...brief, currentStatus }), note)
+      expect(parsed.currentStatus).toBeNull()
+      expect(parsed.summary).toBe(brief.summary)
+      expect(notes).toEqual([{ action: 'dropped', field: "the brief's current status", reason }])
+    }
   })
 
   it('rejects a brief too thin to be research', () => {

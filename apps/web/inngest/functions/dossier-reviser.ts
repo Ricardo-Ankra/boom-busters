@@ -212,7 +212,8 @@ export const dossierReviser = inngest.createFunction(
 
     const research = await researchDossier(steps, {
       projectId,
-      caseContext: context.caseContext,
+      // Every pass opens on the subject and people the gather searched with.
+      caseContext: { ...context.caseContext, subject: named.subject, people: named.people },
       round: context.round,
       note,
       entity,

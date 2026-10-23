@@ -122,6 +122,25 @@ export const LEGAL_STATUSES = ['ruled', 'alleged', 'none'] as const
 export const LegalStatusSchema = z.enum(LEGAL_STATUSES)
 export type LegalStatus = z.infer<typeof LegalStatusSchema>
 
+/**
+ * The words of a verdict (decision 6). A `ruled` status resting on reporting
+ * or a video is kept when the claim or one of its quotes says one of these,
+ * as a whole phrase: a conviction reported by a major outlet is a ruling, and
+ * a charge is not.
+ */
+export const VERDICT_WORDS = [
+  'convicted',
+  'found guilty',
+  'pleaded guilty',
+  'pled guilty',
+  'sentenced',
+  'acquitted',
+  'fined',
+  'banned',
+  'ordered to pay',
+  'ruled',
+] as const
+
 /** A document number from the numbered corpus plus the words that prove the point. */
 export const SupportSchema = z.object({
   doc: z.number().int().min(1),

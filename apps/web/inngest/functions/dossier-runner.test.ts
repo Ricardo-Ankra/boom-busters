@@ -17,6 +17,7 @@ import { InngestTestEngine } from '@inngest/test'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/lib/db'
 import { notify } from '@/lib/notify'
+import type * as Research from '../lib/dossier-research'
 import { forgetRunRows } from '../middleware/run-mirror'
 import { dossierRunner } from './dossier-runner'
 
@@ -40,6 +41,13 @@ vi.mock('@boom-busters/db', async (importOriginal) => ({
   saveDossier: (...args: unknown[]) => saveDossier(...args),
   markDossierApproved: (...args: unknown[]) => markDossierApproved(...args),
 }))
+// The real passes, watched: what case the runner hands them is under test.
+const researchDossier = vi.hoisted(() => vi.fn())
+vi.mock('../lib/dossier-research', async (importOriginal) => {
+  const original = await importOriginal<typeof Research>()
+  researchDossier.mockImplementation(original.researchDossier)
+  return { ...original, researchDossier }
+})
 
 const describeDb = requireTestDatabase() ? describe : describe.skip
 
@@ -429,6 +437,47 @@ describeDb('dossier-runner', () => {
     expect(await gateMessages()).toEqual([
       `Subject: Wirecard (company), Markus Braun, Jan Marsalek · Dossier ready · 1 claims · ${CORPUS_LINE}`,
     ])
+  })
+
+  it("hands the passes the case's subject and people from load-case, and the title for an old one", async () => {
+    researchDossier.mockClear()
+    saveDossier.mockResolvedValue(savedRows(['single_source']))
+    const steps = stored().map((s) =>
+      s.id === 'load-case'
+        ? {
+            id: s.id,
+            handler: () => ({
+              ...CASE,
+              subject: 'Wirecard AG',
+              people: ['Markus Braun'],
+              sourceLinks: [],
+              competitorLinks: [],
+            }),
+          }
+        : s,
+    )
+
+    await engine.executeStep('save-dossier', { events: created(), steps })
+
+    expect(researchDossier.mock.calls[0]![1].caseContext).toEqual({
+      ...CASE,
+      subject: 'Wirecard AG',
+      people: ['Markus Braun'],
+    })
+
+    // A load-case stored before cases had a subject: the title stands in, as it did for the gather.
+    researchDossier.mockClear()
+    await truncateRunMirror(db)
+    forgetRunRows()
+    await new InngestTestEngine({ function: dossierRunner }).executeStep('save-dossier', {
+      events: created(),
+      steps: stored(),
+    })
+    expect(researchDossier.mock.calls[0]![1].caseContext).toEqual({
+      ...CASE,
+      subject: 'Wirecard',
+      people: [],
+    })
   })
 
   it('says at the gate when the subject was not found on Wikipedia', async () => {

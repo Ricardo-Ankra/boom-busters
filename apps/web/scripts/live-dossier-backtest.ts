@@ -136,7 +136,15 @@ async function main(): Promise<void> {
         timed.steps,
         {
           projectId: project.id,
-          caseContext: { title, category, angle: null, demandNotes: null },
+          // The subject the gather searched with, until Task 8 gives each case its own.
+          caseContext: {
+            title,
+            category,
+            angle: null,
+            demandNotes: null,
+            subject: title,
+            people: [],
+          },
           round: 0,
           entity: gathered.entity,
           documents: loaded.documents,

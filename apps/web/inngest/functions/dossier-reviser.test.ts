@@ -261,6 +261,48 @@ describeDb('dossier-reviser', () => {
     const saved = saveDossier.mock.calls[0]![1]
     expect(saved.research.entity).toEqual(ENTITY)
     expect(saved.claims[0].supports[0]).toMatchObject({ documentId: 'doc-ft', found: true })
+    // A load-case stored before cases had a subject: the case title stands in.
+    for (const [request] of callLlm.mock.calls as [LLMTaskRequest][]) {
+      expect(request.messages[0]!.content).toMatch(
+        /^Subject: Wirecard \(company\)\nWorking title: Wirecard\n/,
+      )
+    }
+  })
+
+  it('opens every pass on the subject and people load-case read from the case', async () => {
+    vi.stubEnv('MOCK_PROVIDERS', '')
+    const replies: Record<string, unknown> = {
+      'Read the documents': BRIEF,
+      'Now find the scenes': { scenes: SCENES },
+      'Now extract the facts': { claims: CLAIMS },
+      'Your brief raised': ANSWERS,
+    }
+    callLlm.mockImplementation(async (request: LLMTaskRequest) => {
+      const last = request.messages.at(-1)!.content
+      const reply = Object.entries(replies).find(([opening]) => last.startsWith(opening))
+      return { text: JSON.stringify(reply?.[1] ?? {}) }
+    })
+    const named = {
+      id: 'load-case',
+      handler: () => ({
+        ...loadCase(1).handler(),
+        subject: 'Wirecard AG',
+        people: ['Markus Braun', 'Jan Marsalek'],
+        sourceLinks: [],
+      }),
+    }
+
+    await engine.executeStep('save-revision', {
+      events: changesRequested(),
+      steps: [named, corpusLoad],
+    })
+
+    expect(callLlm).toHaveBeenCalledTimes(6)
+    for (const [request] of callLlm.mock.calls as [LLMTaskRequest][]) {
+      expect(request.messages[0]!.content).toMatch(
+        /^Subject: Wirecard AG \(company\)\nPeople: Markus Braun, Jan Marsalek\nWorking title: Wirecard\n/,
+      )
+    }
   })
 
   it('stops a revision in flight from before the corpus rather than run new passes over it', async () => {

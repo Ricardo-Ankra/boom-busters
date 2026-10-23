@@ -97,7 +97,7 @@ describe('groundResearch', () => {
     const out = groundResearch(
       withClaims([
         {
-          text: 'The court ruled on it.',
+          text: 'The company misled investors about its revenue.',
           supports: [{ doc: 1, quote: 'reported revenue of $5 million in 2020' }],
           legal: { status: 'ruled', date: '2021', doc: 1 },
           series: null,
@@ -117,6 +117,126 @@ describe('groundResearch', () => {
       action: 'dropped',
       field: 'claim 1 legal status',
       reason: 'ruled needs a court or regulator document',
+    })
+  })
+
+  describe('a verdict reported by the press', () => {
+    const pressDocs: CorpusDocument[] = [
+      {
+        id: 'press',
+        url: 'https://news.example.com/holmes',
+        kind: 'reporting',
+        title: null,
+        publishedAt: '2022-01-04',
+        text:
+          'Elizabeth Holmes was convicted of defrauding investors by a federal jury in San Jose. ' +
+          'In 2018 she was charged with wire fraud by federal prosecutors in California.',
+        archivedUrl: null,
+        httpStatus: 200,
+      },
+      {
+        id: 'tape',
+        url: 'https://v.example.com/holmes',
+        kind: 'video',
+        title: null,
+        publishedAt: null,
+        text: '[00:00] Intro.\n[00:40] The judge handed down the term to the founder in court.',
+        archivedUrl: null,
+        httpStatus: 200,
+      },
+      {
+        id: 'filing',
+        url: 'https://sec.example.gov/10k',
+        kind: 'filing',
+        title: null,
+        publishedAt: null,
+        text: 'The former chief executive was convicted on four counts, the company disclosed.',
+        archivedUrl: null,
+        httpStatus: 200,
+      },
+    ]
+    const ruledOn = (doc: number, text: string, quote: string): ResearchClaim => ({
+      text,
+      supports: [{ doc, quote }],
+      legal: { status: 'ruled', date: '2022-01', doc },
+      series: null,
+    })
+    const ground = (claims: ResearchClaim[]) =>
+      groundResearch({ ...withClaims(claims), documents: pressDocs }, note).claims.map(
+        (claim) => claim.legalStatus,
+      )
+
+    it('keeps ruled when a support quote says "was convicted"', () => {
+      expect(
+        ground([
+          ruledOn(
+            1,
+            'A federal jury decided against Holmes on fraud.',
+            'Elizabeth Holmes was convicted of defrauding investors',
+          ),
+        ]),
+      ).toEqual(['ruled'])
+      expect(repairs).toEqual([])
+    })
+
+    it('folds ruled to alleged when the quote only says "was charged"', () => {
+      expect(
+        ground([
+          ruledOn(
+            1,
+            'Prosecutors brought a wire fraud case against Holmes.',
+            'she was charged with wire fraud by federal prosecutors',
+          ),
+        ]),
+      ).toEqual(['alleged'])
+      expect(repairs).toEqual([
+        {
+          action: 'dropped',
+          field: 'claim 1 legal status',
+          reason: 'ruled needs a court or regulator document',
+        },
+      ])
+    })
+
+    it('keeps ruled when the claim text carries a verdict word, in any case', () => {
+      expect(
+        ground([
+          ruledOn(
+            2,
+            'Holmes was SENTENCED to eleven years in prison.',
+            'The judge handed down the term to the founder in court',
+          ),
+          ruledOn(
+            1,
+            'Holmes Pleaded  Guilty to nothing and went to trial.',
+            'she was charged with wire fraud by federal prosecutors',
+          ),
+        ]),
+      ).toEqual(['ruled', 'ruled'])
+    })
+
+    it('reads a verdict word only as a whole phrase', () => {
+      expect(
+        ground([
+          ruledOn(
+            1,
+            'Holmes refined her pitch and unbanned nothing.',
+            'she was charged with wire fraud by federal prosecutors',
+          ),
+        ]),
+      ).toEqual(['alleged'])
+    })
+
+    it('still folds ruled on a document that is neither reporting nor video', () => {
+      expect(
+        ground([
+          ruledOn(
+            3,
+            'The former chief executive was convicted on four counts.',
+            'The former chief executive was convicted on four counts',
+          ),
+        ]),
+      ).toEqual(['alleged'])
     })
   })
 

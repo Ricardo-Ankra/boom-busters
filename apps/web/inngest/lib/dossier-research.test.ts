@@ -36,7 +36,14 @@ const replaying = (stored: Record<string, unknown>): Steps => ({
   run: async <T>(id: string) => stored[id] as T,
 })
 
-const CASE = { title: 'Wirecard', category: 'con', angle: null, demandNotes: null }
+const CASE = {
+  title: 'Wirecard: the billions that were never there',
+  category: 'con',
+  angle: null,
+  demandNotes: null,
+  subject: 'Wirecard',
+  people: ['Markus Braun'],
+}
 const ENTITY = {
   qid: 'Q1',
   titles: ['Wirecard'],
@@ -208,6 +215,24 @@ describe('researchDossier over the corpus', () => {
     expect(result.research.corpus).toEqual({ read: 2, unread: 1, failed: 1 })
     expect(result.research.scenes[0]!.ref).toMatchObject({ documentId: 'doc-ft', found: true })
     expect(result.budgetGate).toBeUndefined()
+  })
+
+  it("opens every pass on the case's subject and people, then its working title", async () => {
+    const openings: string[] = []
+    const complete: AnswerComplete = async (request) => {
+      openings.push(request.messages[0]!.content)
+      return { text: fixtureFor(request) }
+    }
+
+    await researchDossier(inlineSteps, input, { complete, mocked: false })
+
+    expect(openings).toHaveLength(6)
+    for (const opening of openings) {
+      expect(opening).toBe(openings[0])
+      expect(opening).toMatch(
+        /^Subject: Wirecard \(company\)\nPeople: Markus Braun\nWorking title: Wirecard: the billions that were never there\nCategory: con\n/,
+      )
+    }
   })
 
   it('runs each pass and the grounding under its own step id for the round', async () => {

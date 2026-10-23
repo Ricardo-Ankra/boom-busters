@@ -125,7 +125,7 @@ export const dossierRunner = inngest.createFunction(
       const outcome = await awaitDossierApproval(step, ctx)
       return { projectId, outcome }
     }
-    const { competitorLinks, ...caseContext } = loaded
+    const { competitorLinks } = loaded
     // A load-case stored before cases had a subject names none: the title
     // stands in, as the gather was searched with it then.
     const {
@@ -133,6 +133,15 @@ export const dossierRunner = inngest.createFunction(
       people: casePeople,
       sourceLinks: caseSourceLinks,
     } = replayedCase(loaded)
+    // Every pass opens on the subject and people the gather searched with.
+    const caseContext = {
+      title: loaded.title,
+      category: loaded.category,
+      angle: loaded.angle,
+      demandNotes: loaded.demandNotes,
+      subject: caseSubject,
+      people: casePeople,
+    }
 
     const mocked = mockProvidersEnabled()
     // The sources are built inside the gather's own steps, never here: a replay

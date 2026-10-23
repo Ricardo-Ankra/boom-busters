@@ -11,6 +11,7 @@ import type {
   Scene,
   Series,
 } from '@boom-busters/schemas'
+import { VERDICT_WORDS } from '@boom-busters/schemas'
 import type { Note } from '../prompts/repair'
 import { computeConfidence } from './confidence'
 import { documentByNumber, type CorpusDocument } from './corpus'
@@ -38,6 +39,24 @@ const SOURCE_TYPES: Record<DocumentKind, ClaimSourceTypeName> = {
 }
 
 const NOT_GIVEN = 'cites a document that was not given'
+
+/** Any verdict word as a whole phrase, any case, any run of spaces between its words. */
+const VERDICT = new RegExp(
+  `\\b(?:${VERDICT_WORDS.map((words) => words.split(' ').join('\\s+')).join('|')})\\b`,
+  'i',
+)
+
+/**
+ * A verdict reported by a major outlet is a ruling (decision 6): `ruled` on a
+ * reporting document or a video stands when the claim or one of its quotes
+ * says a verdict word. "Was charged" says none, so it still folds to alleged.
+ */
+function reportsVerdict(kind: DocumentKind, claim: ResearchClaim): boolean {
+  if (kind !== 'reporting' && kind !== 'video') return false
+  return [claim.text, ...claim.supports.map((support) => support.quote)].some((text) =>
+    VERDICT.test(text),
+  )
+}
 
 /**
  * Turn the research passes' numbered citations into stored shapes. Pure: the
@@ -160,7 +179,12 @@ export function groundResearch(
         legalStatusDate = claim.legal.date
         legalStatusDocumentId = legalDoc.id
         legalStatus = claim.legal.status
-        if (legalStatus === 'ruled' && legalDoc.kind !== 'court' && legalDoc.kind !== 'regulator') {
+        if (
+          legalStatus === 'ruled' &&
+          legalDoc.kind !== 'court' &&
+          legalDoc.kind !== 'regulator' &&
+          !reportsVerdict(legalDoc.kind, claim)
+        ) {
           legalStatus = 'alleged'
           note({
             action: 'dropped',

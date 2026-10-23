@@ -83,6 +83,52 @@ describe('renderDossierMarkdown', () => {
     expect(md).toContain('## The turn\n\nThe auditors could not find the 1.9 billion.')
   })
 
+  const withStatus = (currentStatus: GroundedResearch['brief']['currentStatus']) => {
+    const base = grounded()
+    return { ...base, brief: { ...base.brief, currentStatus } }
+  }
+
+  it('says where things stand now, dated in bold, right after the turn', () => {
+    const md = render(
+      withStatus({
+        asOf: '2025-05',
+        text: 'Braun is still on trial in Munich; Marsalek has not been found.',
+      }),
+    )
+    expect(md).toContain(
+      '## The turn\n\nThe auditors could not find the 1.9 billion.\n\n' +
+        '## Where it stands now\n\n' +
+        '**As of 2025-05.** Braun is still on trial in Munich; Marsalek has not been found.\n\n' +
+        '## Principals',
+    )
+  })
+
+  it('leaves out where things stand now when the documents say nothing after the turn', () => {
+    expect(render(grounded())).not.toContain('## Where it stands now')
+  })
+
+  it('renders a status dated before the turn with its date, for the reviewer to see', () => {
+    const md = render(
+      withStatus({ asOf: '2015', text: 'The company was still raising money from investors.' }),
+    )
+    expect(md).toContain(
+      '## Where it stands now\n\n**As of 2015.** The company was still raising money from investors.',
+    )
+  })
+
+  it('shows no legal label in the document, whatever status the claims carry', () => {
+    const base = grounded({ scenes: [scene()] })
+    const md = render({ ...base, brief: { ...base.brief, currentStatus: null } }, [
+      claim({ legalStatus: 'ruled', legalStatusDate: '2022-01', legalStatusDocumentId: 'doc-1' }),
+      claim({ legalStatus: 'alleged', legalStatusDate: '2018-06', legalStatusDocumentId: 'doc-1' }),
+      claim({ legalStatus: 'none', legalStatusDate: '2016', legalStatusDocumentId: 'doc-1' }),
+      claim({ confidence: 'unverified' }),
+    ])
+    expect(md).toContain('## Unverified')
+    expect(md).not.toMatch(/\b(ruled|alleged|none)\b/i)
+    expect(md).not.toMatch(/legal/i)
+  })
+
   it('lists the principals with what each one wanted', () => {
     expect(render(grounded())).toContain(
       '## Principals\n\n- **Markus Braun** — chief executive. *To be the next big payments platform.*',

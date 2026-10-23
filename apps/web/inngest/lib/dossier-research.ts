@@ -72,6 +72,9 @@ export interface CaseContext {
   category: string
   angle: string | null
   demandNotes: string | null
+  /** The case's subject and people, as `replayedCase` reads them from load-case. */
+  subject: string
+  people: readonly string[]
 }
 
 /** How the corpus split at the gather: what the passes read, and what they did not. */
