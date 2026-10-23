@@ -50,8 +50,10 @@ import {
  *
  * A revision reads the corpus the first run gathered: the note asks for a
  * different reading, not different documents, and a second gather would pay
- * for every fetch again. Only a project researched before the corpus existed
- * has none linked, and that one gathers first.
+ * for every fetch again. Two cases gather first: a project researched before
+ * the corpus existed has none linked, and a case whose subject, people or
+ * source links changed since the research was resolved would otherwise be
+ * re-read from the old subject's documents.
  *
  * Changes can be asked for after approval too (design decision 7). The
  * runner finished at that approval, so the revision re-opens the dossier gate
@@ -69,6 +71,43 @@ const NO_ENTITY: ResearchEntity = {
   people: [],
   unresolved: false,
   subject: null,
+  sourceUrls: [],
+}
+
+/** What a gather searches with, normalised so a reordering or stray space is no change. */
+function gatherKey(input: {
+  subject: string | null
+  people: readonly string[]
+  sourceUrls: readonly string[]
+}): string {
+  return JSON.stringify([
+    input.subject?.trim() ?? null,
+    input.people.map((name) => name.trim()).sort(),
+    input.sourceUrls.map((url) => url.trim()).sort(),
+  ])
+}
+
+/**
+ * The case no longer says what the stored research was resolved from. Research
+ * saved before entities recorded these reads with their defaults (no subject,
+ * no people, no source links), so it differs from any case that names a subject.
+ */
+function caseChangedSince(
+  entity: ResearchEntity,
+  current: { subject: string; people: readonly string[]; sourceLinks: readonly { url: string }[] },
+): boolean {
+  return (
+    gatherKey({
+      subject: entity.subject,
+      people: (entity.people ?? []).map((person) => person.name),
+      sourceUrls: entity.sourceUrls ?? [],
+    }) !==
+    gatherKey({
+      subject: current.subject,
+      people: current.people,
+      sourceUrls: current.sourceLinks.map((link) => link.url),
+    })
+  )
 }
 
 const FUNCTION_ID = 'dossier-reviser'
@@ -137,6 +176,11 @@ export const dossierReviser = inngest.createFunction(
 
       const round = await bumpDossierRevisions(db, projectId)
       const linked = await listDossierDocumentSummaries(db, projectId)
+      const stored = dossier?.research?.entity
+      // The owner corrected the case since it was researched: gather again.
+      const regather =
+        stored !== undefined &&
+        caseChangedSince(stored, { ...named, sourceLinks: source.sourceLinks })
 
       return {
         round,
@@ -152,6 +196,7 @@ export const dossierReviser = inngest.createFunction(
         competitorLinks: source.competitorLinks.map((link) => ({ url: link.url })),
         entity: dossier?.research?.entity ?? NO_ENTITY,
         linkedDocuments: linked.length,
+        regather,
         approvedBefore,
       }
     })
@@ -185,7 +230,8 @@ export const dossierReviser = inngest.createFunction(
     const named = replayedCase({ ...context, title: context.caseContext.title })
 
     let entity = context.entity
-    if (context.linkedDocuments === 0) {
+    // `regather` is missing from a load-case stored before it existed: no change then.
+    if (context.linkedDocuments === 0 || context.regather) {
       const gathered = await gatherCorpus(
         steps,
         {

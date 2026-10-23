@@ -53,6 +53,7 @@ const ENTITY = {
   people: [],
   unresolved: false,
   subject: null,
+  sourceUrls: [],
 }
 
 const DOCUMENTS: CorpusDocument[] = [

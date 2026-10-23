@@ -115,6 +115,7 @@ export async function gatherCorpus(
     people: resolved.people,
     unresolved: resolved.unresolved,
     subject: resolved.subject,
+    sourceUrls: input.sourceLinks.map((link) => link.url),
   }
 
   if (mocked) {

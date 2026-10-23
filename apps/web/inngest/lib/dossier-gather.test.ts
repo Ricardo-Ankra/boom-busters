@@ -329,6 +329,8 @@ suite('gatherCorpus', () => {
       people: [{ name: 'Ada Founder', qid: 'Q7', title: 'Ada Founder' }],
       unresolved: true,
       subject: 'Adaco',
+      // The owner's links as the case gave them, so a revision can tell they changed.
+      sourceUrls: [owner],
     })
     expect(currentItems.mock.calls.map(([title]) => title)).toEqual(['Ada Founder'])
     expect(youtubeSearch).toHaveBeenCalledWith('Adaco')
@@ -368,6 +370,7 @@ suite('gatherCorpus', () => {
       people: [],
       unresolved: false,
       subject: 'Gathertest',
+      sourceUrls: [],
     })
     // Tier 2's 30% share plus tier 1's unspent 25% holds five 12,000-token documents.
     expect(result.read).toHaveLength(5)

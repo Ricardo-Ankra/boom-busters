@@ -81,6 +81,7 @@ const research = (beats: { id: string; found: boolean }[] = []): GroundedResearc
     people: [],
     unresolved: false,
     subject: null,
+    sourceUrls: [],
   },
   brief: {
     currentStatus: null,

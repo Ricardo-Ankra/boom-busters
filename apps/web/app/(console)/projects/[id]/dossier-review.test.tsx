@@ -207,6 +207,7 @@ describe('DossierReview', () => {
           ticker: null,
           website: null,
           subject: null,
+          sourceUrls: [],
           people: [],
           unresolved: false,
         },

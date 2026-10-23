@@ -9,6 +9,7 @@ import {
   deleteCase,
   deleteProject,
   getProject,
+  linkDossierDocuments,
   listRunEvents,
   listRuns,
   markDossierApproved,
@@ -16,9 +17,11 @@ import {
   seed,
   setProjectStage,
   truncateRunMirror,
+  upsertResearchDocument,
 } from '@boom-busters/db'
 import type * as Db from '@boom-busters/db'
 import type { LLMTaskRequest } from '@boom-busters/providers'
+import type { GroundedResearch } from '@boom-busters/schemas'
 import { InngestTestEngine } from '@inngest/test'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/lib/db'
@@ -350,7 +353,143 @@ describeDb('dossier-reviser', () => {
       'gather-fetch-1-0',
       'corpus-load-1',
     ])
-    expect(saveDossier.mock.calls[0]![1].research.entity).toEqual(gathered)
+    expect(saveDossier.mock.calls[0]![1].research.entity).toEqual({ ...gathered, sourceUrls: [] })
+  })
+})
+
+/**
+ * The owner corrects the case's subject, then asks for changes. The corpus
+ * was gathered for the old subject, so the revision gathers again first; an
+ * unchanged case reuses what is linked. Mock mode, a project of its own.
+ */
+describeDb('dossier-reviser after the case changed', () => {
+  let caseId = ''
+  let projectId = ''
+
+  /** Research resolved from subject Wirecard, Markus Braun and one source link. */
+  const researched: GroundedResearch = {
+    entity: {
+      qid: 'Q1',
+      titles: ['Wirecard'],
+      cik: null,
+      ticker: null,
+      website: null,
+      people: [{ name: 'Markus Braun', qid: null, title: null }],
+      unresolved: false,
+      subject: 'Wirecard',
+      sourceUrls: ['https://owner.example.org/wirecard'],
+    },
+    brief: {
+      summary: BRIEF.summary,
+      turningPoint: BRIEF.turningPoint,
+      cast: [],
+      toldAlready: [],
+      openQuestions: BRIEF.openQuestions,
+      currentStatus: null,
+    },
+    scenes: [],
+    answers: [],
+    corpus: { read: 1, unread: 0, failed: 0 },
+  }
+
+  async function projectFor(input: {
+    subject: string
+    people: string[]
+    sourceLinks: { url: string }[]
+  }) {
+    const source = await createCase(db, {
+      title: `Regathertest ${Date.now()} ${Math.random().toString(36).slice(2)}`,
+      category: 'collapse',
+      ...input,
+    })
+    caseId = source.id
+    projectId = (await createProjectFromCase(db, { caseId, title: source.title })).id
+    await realSaveDossier(db, {
+      projectId,
+      contentMd: '# First pass',
+      claims: [],
+      research: researched,
+    })
+    const document = await upsertResearchDocument(db, {
+      url: `https://news.example.org/regather-${projectId}`,
+      finalUrl: null,
+      httpStatus: 200,
+      fetchedAt: new Date(),
+      contentType: 'text/html',
+      kind: 'reporting',
+      tier: 2,
+      title: null,
+      publishedAt: null,
+      text: 'Wirecard filed for insolvency in Munich on 25 June 2020.',
+      textHash: null,
+      tokens: 12,
+      archivedUrl: null,
+      truncated: false,
+      failure: null,
+      meta: null,
+    })
+    await linkDossierDocuments(db, projectId, [{ documentId: document.id, rank: 1, tier: 2 }])
+    await setProjectStage(db, projectId, { stage: 'dossier', stageStatus: 'awaiting_review' })
+  }
+
+  const requested = (): [{ name: string; data: Record<string, unknown> }] => [
+    { name: 'gate/dossier.changes_requested', data: { projectId, note: NOTE } },
+  ]
+
+  beforeEach(async () => {
+    vi.stubEnv('MOCK_PROVIDERS', '1')
+    saveDossier.mockReset()
+    saveDossier.mockResolvedValue({ claims: [] })
+    await truncateRunMirror(db)
+    forgetRunRows()
+  })
+
+  afterEach(async () => {
+    vi.unstubAllEnvs()
+    await deleteProject(db, projectId)
+    await deleteCase(db, caseId)
+  })
+
+  it('gathers again for a corrected subject and names it at the gate', async () => {
+    await projectFor({
+      subject: 'Wirecard AG',
+      people: ['Markus Braun'],
+      sourceLinks: [{ url: 'https://owner.example.org/wirecard' }],
+    })
+
+    const { ctx } = await new InngestTestEngine({ function: dossierReviser }).execute({
+      events: requested(),
+    })
+
+    expect(stepIds(ctx).slice(0, 4)).toEqual([
+      'load-case',
+      'gather-entity-1',
+      'gather-fetch-1-0',
+      'corpus-load-1',
+    ])
+    expect(saveDossier.mock.calls[0]![1].research.entity).toMatchObject({
+      subject: 'Wirecard AG',
+      people: [{ name: 'Markus Braun' }],
+      sourceUrls: ['https://owner.example.org/wirecard'],
+    })
+    expect(await gateMessages()).toEqual([
+      expect.stringMatching(/^Subject: Wirecard AG \(company\), Markus Braun · Dossier ready · /),
+    ])
+  })
+
+  it('reuses the linked corpus when the case is as it was researched, in any order or spacing', async () => {
+    await projectFor({
+      subject: ' Wirecard ',
+      people: ['Markus Braun'],
+      sourceLinks: [{ url: 'https://owner.example.org/wirecard' }],
+    })
+
+    const { ctx } = await new InngestTestEngine({ function: dossierReviser }).executeStep(
+      'corpus-load-1',
+      { events: requested() },
+    )
+
+    expect(stepIds(ctx).filter((id) => id.startsWith('gather-'))).toEqual([])
   })
 })
 

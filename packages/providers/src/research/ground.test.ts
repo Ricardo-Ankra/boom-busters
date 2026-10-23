@@ -48,6 +48,7 @@ const entity = {
   people: [],
   unresolved: false,
   subject: null,
+  sourceUrls: [],
 }
 let repairs: Repair[] = []
 const note = (r: Repair) => repairs.push(r)
@@ -227,7 +228,7 @@ describe('groundResearch', () => {
       ).toEqual(['alleged'])
     })
 
-    it('still folds ruled on a document that is not reporting, a filing or a video', () => {
+    it('still folds ruled on a filing or a video, which are not reporting', () => {
       expect(
         ground([
           ruledOn(

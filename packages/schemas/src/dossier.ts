@@ -358,6 +358,11 @@ export const ResearchEntitySchema = z.object({
     .default([]),
   unresolved: z.boolean().default(false),
   subject: z.string().nullable().default(null),
+  /**
+   * The owner's source links the gather read, as the case gave them, so a
+   * revision can tell the case changed since. Empty for research before them.
+   */
+  sourceUrls: z.array(z.string()).default([]),
 })
 export type ResearchEntity = z.infer<typeof ResearchEntitySchema>
 

@@ -30,6 +30,7 @@ const grounded = (over: Partial<GroundedResearch> = {}): GroundedResearch => ({
     people: [],
     unresolved: false,
     subject: null,
+    sourceUrls: [],
   },
   brief: {
     currentStatus: null,
