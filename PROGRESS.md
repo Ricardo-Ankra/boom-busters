@@ -8078,3 +8078,18 @@ boom-busters-broker`; merge and deploy to Vercel, then `PUT
      which replay from memo and call nothing. Shipping: draining or
      cancelling parked dossier runs before the deploy is still the safer
      practice, as decision 310 says. Not yet re-run live.
+     Second live back-test, 2026-10-23 (cap $15, transcripts off, after the
+     split): `docs/cases/dossier-backtest-2026-10-23-four-cases.md`. The split
+     did what it was for: claims steps 76 to 87 s and answers steps 61 to
+     100 s on every scored case (266 to 319 s and up to 314 s before). Cost
+     $2.10 mean, $2.70 highest; URL resolution 78.8% against the new 70%
+     target; quotes found and figures as before. Two anomalies from one
+     network incident between 05:50 and 06:07 UTC: Wirecard failed with a
+     connection reset mid-research and its cleanup hit a database connect
+     timeout (the rows were removed afterwards), and Enron's scenes call,
+     started in that window, waited 886 s for a reply that takes 80 to 140 s
+     elsewhere. The verdict is therefore Incomplete, not Fail. A Wirecard-only
+     re-run (`...-wirecard-refused.md`) stopped at the Anthropic account's
+     monthly usage limit ("regain access on 2026-11-01"), which also blocks
+     every Anthropic-routed stage in production until then or until the limit
+     is raised in the Anthropic console. Spent: $8.39 plus $1.90.
