@@ -5,6 +5,7 @@ import {
   getProject,
   listDossierDocumentSummaries,
   saveDossier,
+  setProjectStage,
 } from '@boom-busters/db'
 import { mockProvidersEnabled, renderDossierMarkdown } from '@boom-busters/providers'
 import type { ResearchEntity } from '@boom-busters/schemas'
@@ -115,13 +116,26 @@ export const dossierReviser = inngest.createFunction(
       const source = await getCase(db, project.caseId)
       if (!source) throw new NonRetriableError(`Case ${project.caseId} no longer exists`)
 
+      const dossier = await getDossier(db, projectId)
+      // Approved once already: the runner finished at that approval, so
+      // nothing is parked on the gate this revision re-opens (decision 7).
+      const approvedBefore = dossier?.approvedAt != null
+      if (approvedBefore) {
+        // The project is back on the dossier while it is researched again, so
+        // a second request is refused instead of cancelling these paid passes,
+        // the later stage's gate stops offering Approve, the rail tells the
+        // truth, and a failure from here on lands on the dossier stage rather
+        // than tearing down the later stage's review. Its parked runner is
+        // untouched until the Approve starts a fresh script.
+        await setProjectStage(db, projectId, { stage: 'dossier', stageStatus: 'running' })
+      }
+
       const named = await nameSubjectIfMissing(db, source, {
         complete: completeForProject(projectId),
         mocked: mockProvidersEnabled(),
       })
 
       const round = await bumpDossierRevisions(db, projectId)
-      const dossier = await getDossier(db, projectId)
       const linked = await listDossierDocumentSummaries(db, projectId)
 
       return {
@@ -138,9 +152,7 @@ export const dossierReviser = inngest.createFunction(
         competitorLinks: source.competitorLinks.map((link) => ({ url: link.url })),
         entity: dossier?.research?.entity ?? NO_ENTITY,
         linkedDocuments: linked.length,
-        // Approved once already: the runner finished at that approval, so
-        // nothing is parked on the gate this revision re-opens (decision 7).
-        approvedBefore: dossier?.approvedAt != null,
+        approvedBefore,
       }
     })
 

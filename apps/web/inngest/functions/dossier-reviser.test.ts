@@ -2,6 +2,7 @@
 
 import {
   FIXTURE_PROJECT_ID,
+  bumpDossierRevisions,
   createCase,
   createProjectFromCase,
   createScriptVersion,
@@ -346,6 +347,34 @@ describeDb('dossier-reviser after approval', () => {
     vi.unstubAllEnvs()
     await deleteProject(db, projectId)
     await deleteCase(db, caseId)
+  })
+
+  it('puts the project back on the dossier, running, while the revision researches', async () => {
+    await new InngestTestEngine({ function: dossierReviser }).executeStep('load-case', {
+      events: [{ name: 'gate/dossier.changes_requested', data: { projectId, note: NOTE } }],
+    })
+
+    // So a second request is refused rather than cancelling these passes, and
+    // the script gate stops offering Approve until the dossier is back.
+    expect(await getProject(db, projectId)).toMatchObject({
+      stage: 'dossier',
+      stageStatus: 'running',
+    })
+  })
+
+  it('fails the dossier stage, not the parked script review, when the revision stops', async () => {
+    for (let i = 0; i < 3; i += 1) await bumpDossierRevisions(db, projectId)
+
+    const { ctx, result } = await new InngestTestEngine({ function: dossierReviser }).execute({
+      events: [{ name: 'gate/dossier.changes_requested', data: { projectId, note: NOTE } }],
+    })
+
+    expect(stepIds(ctx)).toEqual(['load-case', 'revision-limit'])
+    expect(result).toEqual({ projectId, outcome: 'revision-limit' })
+    expect(await getProject(db, projectId)).toMatchObject({
+      stage: 'dossier',
+      stageStatus: 'failed',
+    })
   })
 
   it('re-opens the dossier gate, marks the script as written from an older dossier, and waits for the Approve', async () => {

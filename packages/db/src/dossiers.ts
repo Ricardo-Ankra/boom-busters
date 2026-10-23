@@ -315,10 +315,17 @@ export async function scriptableClaims(db: Database, projectId: string): Promise
     .orderBy(asc(claims.createdAt))
 }
 
+/**
+ * Stamp the approval, and start the revision count again.
+ *
+ * Each approval bounds what the revisions before it spent, and changes asked
+ * for after it are a new review (design decision 7), so the reviser's limit
+ * counts from the last approval rather than over the project's whole life.
+ */
 export async function markDossierApproved(db: Database, projectId: string): Promise<void> {
   await db
     .update(dossiers)
-    .set({ approvedAt: new Date(), updatedAt: new Date() })
+    .set({ approvedAt: new Date(), revisions: 0, updatedAt: new Date() })
     .where(eq(dossiers.projectId, projectId))
 }
 

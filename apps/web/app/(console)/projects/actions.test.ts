@@ -90,6 +90,28 @@ describeDb('requestChanges on the dossier', () => {
     expect(inngest.send).not.toHaveBeenCalled()
   })
 
+  it('refuses a second request, and the parked script gate, while a revision after approval runs', async () => {
+    // What the reviser's load-case leaves after approval: the project back on
+    // the dossier, running, with the script runner still parked at its gate.
+    await setProjectStage(db, projectId, { stage: 'dossier', stageStatus: 'running' })
+    const scriptRun = await ensureRun(db, {
+      inngestRunId: `script-${projectId}`,
+      functionName: 'script-runner',
+      projectId,
+      stage: 'script',
+    })
+    await setRunStatus(db, scriptRun, 'awaiting_gate')
+
+    const again = await requestChanges(projectId, 'dossier', 'And the escrow accounts.')
+    expect(again.ok).toBe(false)
+    expect(again.error).toMatch(/being researched/)
+    expect(await approveGate(projectId, 'script')).toEqual({
+      ok: false,
+      error: 'No run is waiting at this gate.',
+    })
+    expect(inngest.send).not.toHaveBeenCalled()
+  })
+
   it('refuses while the script is being written from the dossier', async () => {
     await setProjectStage(db, projectId, { stage: 'script', stageStatus: 'running' })
 

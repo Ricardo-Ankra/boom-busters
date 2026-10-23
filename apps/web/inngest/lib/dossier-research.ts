@@ -268,8 +268,9 @@ export async function researchDossier(
     firstClaims,
   )
   // An empty part is an answer; an empty pass is not. A dossier with no claim
-  // would count as clean at the gate and auto-approve, so the stage stops,
-  // worded as `guarded` words a pass that failed so the notice reads alike.
+  // would reach the gate with nothing blocking Approve and nothing to script
+  // from, so the stage stops, worded as `guarded` words a pass that failed so
+  // the notice reads alike.
   if (claims.length === 0 && !mocked) {
     throw new NonRetriableError(
       'The claims could not be extracted: no part found a claim in the documents',

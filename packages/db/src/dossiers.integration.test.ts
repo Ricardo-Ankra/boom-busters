@@ -166,6 +166,17 @@ suite('dossiers and claims', () => {
     expect(await bumpDossierRevisions(db, projectId)).toBe(2)
   })
 
+  it('starts the revision count again on approval, so a later request is a new review', async () => {
+    await saveDossier(db, { projectId, contentMd: '#', claims })
+    await bumpDossierRevisions(db, projectId)
+    await bumpDossierRevisions(db, projectId)
+    await bumpDossierRevisions(db, projectId)
+
+    await markDossierApproved(db, projectId)
+
+    expect(await bumpDossierRevisions(db, projectId)).toBe(1)
+  })
+
   it('cascades away with its project', async () => {
     await saveDossier(db, { projectId, contentMd: '#', claims })
     await truncateCases(db)
