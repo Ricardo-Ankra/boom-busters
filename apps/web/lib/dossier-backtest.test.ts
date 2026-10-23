@@ -144,7 +144,7 @@ describe('the back-test constants', () => {
       ['Enron', 'Enron', false, 2],
       ['Theranos', 'Theranos', true, 2],
       ['FTX', 'FTX', true, 1],
-      ['SVB Financial Group', 'Silicon Valley Bank', false, 1],
+      ['SVB Financial Group', 'SVB Financial Group', false, 1],
     ])
     expect(BACKTEST_CURRENT_WITHIN_DAYS).toBe(540)
     expect(BACKTEST_TARGETS.costUsd).toBe(6)
@@ -398,12 +398,12 @@ describe('the subject and currency gates', () => {
     expect(report.verdict.failing).toContain('subject: Enron resolved to nothing')
   })
 
-  it('wants Silicon Valley Bank for the SVB case, not the holding company title', () => {
+  it('wants the holding company for the SVB case, the SEC filer, not the bank article', () => {
     expect(scoreRuns([run({ title: 'SVB Financial' })]).verdict.pass).toBe(true)
     expect(
-      scoreRuns([run({ title: 'SVB Financial', resolvedTitle: 'SVB Financial Group' })]).verdict
+      scoreRuns([run({ title: 'SVB Financial', resolvedTitle: 'Silicon Valley Bank' })]).verdict
         .failing,
-    ).toContain('subject: SVB Financial resolved to SVB Financial Group')
+    ).toContain('subject: SVB Financial resolved to Silicon Valley Bank')
   })
 
   it('fails a recent-outcome case with no current status', () => {
@@ -538,14 +538,14 @@ describe('renderReport', () => {
     const theranos = BACKTEST_CASES[2].title
     const md = renderReport(
       scoreRuns([
-        run({ title: 'SVB Financial', resolvedTitle: 'Silicon Valley Bank' }),
+        run({ title: 'SVB Financial', resolvedTitle: 'SVB Financial Group' }),
         run({ title: theranos, resolvedTitle: null, currentStatusAsOf: '2026-02' }),
         run({ title: 'FTX', currentStatusAsOf: null }),
       ]),
       '2026-10-30',
     )
     expect(md).toContain('| Case | Expected | Resolved |')
-    expect(md).toContain('| SVB Financial | Silicon Valley Bank | Silicon Valley Bank |')
+    expect(md).toContain('| SVB Financial | SVB Financial Group | SVB Financial Group |')
     expect(md).toContain(`| ${theranos} | Theranos | nothing |`)
     expect(md).toContain('| Case | As of |')
     expect(md).toContain(`| ${theranos} | 2026-02 |`)

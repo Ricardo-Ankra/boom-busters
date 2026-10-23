@@ -55,7 +55,7 @@ export const BACKTEST_CASES = [
     category: 'meltdown',
     subject: 'SVB Financial Group',
     people: ['Greg Becker'],
-    expectedTitle: 'Silicon Valley Bank',
+    expectedTitle: 'SVB Financial Group',
     recentOutcome: false,
   },
 ] as const
