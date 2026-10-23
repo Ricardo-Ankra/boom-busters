@@ -122,9 +122,12 @@ describe('renderDossierMarkdown', () => {
       claim({ legalStatus: 'ruled', legalStatusDate: '2022-01', legalStatusDocumentId: 'doc-1' }),
       claim({ legalStatus: 'alleged', legalStatusDate: '2018-06', legalStatusDocumentId: 'doc-1' }),
       claim({ legalStatus: 'none', legalStatusDate: '2016', legalStatusDocumentId: 'doc-1' }),
+      claim({ confidence: 'unverified', legalStatus: 'ruled', legalStatusDate: '2022-01' }),
+      claim({ confidence: 'unverified', legalStatus: 'alleged', legalStatusDate: '2018-06' }),
       claim({ confidence: 'unverified' }),
     ])
-    expect(md).toContain('## Unverified')
+    // The renderer shows unverified claims only as a count, so the count is what can fail here.
+    expect(md).toContain('## Unverified\n\n3 claim(s) could not be attributed to a source.')
     expect(md).not.toMatch(/\b(ruled|alleged|none)\b/i)
     expect(md).not.toMatch(/legal/i)
   })
