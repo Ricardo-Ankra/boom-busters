@@ -425,6 +425,12 @@ describe('DossierReview', () => {
         )
       })
 
+      it('shows only the controls when nothing is named and nothing is unresolved', () => {
+        show(withSubject({ subject: null, people: [], unresolved: false }))
+        expect(screen.queryByText(/^Subject/)).not.toBeInTheDocument()
+        expect(screen.getByRole('button', { name: /Research again/ })).toBeInTheDocument()
+      })
+
       it('is left out for an old dossier', () => {
         show(null)
         expect(screen.queryByText(/^Subject/)).not.toBeInTheDocument()

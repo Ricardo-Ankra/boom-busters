@@ -728,6 +728,10 @@ function SubjectLine({
   // An old dossier never resolved a subject; there is nothing honest to say.
   if (!research) return null
   const { subject, people, unresolved } = research.entity
+  const named = [
+    ...(subject ? [`${subject} (company)`] : []),
+    ...people.map((person) => `${person.name} (person)`),
+  ]
 
   return (
     <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[13px]">
@@ -735,14 +739,11 @@ function SubjectLine({
         <p className="min-w-0 break-words text-[var(--color-warning)]">
           {`Subject not found on Wikipedia: ${subject ?? 'none named'}`}
         </p>
-      ) : (
+      ) : named.length > 0 ? (
         <p className="min-w-0 break-words text-[var(--color-text-secondary)]">
-          {`Subject: ${[
-            ...(subject ? [`${subject} (company)`] : []),
-            ...people.map((person) => `${person.name} (person)`),
-          ].join(', ')}`}
+          {`Subject: ${named.join(', ')}`}
         </p>
-      )}
+      ) : null}
       <div className="flex flex-wrap items-center gap-2">
         <RestartRunButton
           projectId={projectId}
