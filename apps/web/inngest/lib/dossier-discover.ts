@@ -36,7 +36,7 @@ export interface Candidate {
  * reads the exchange (for the Stooq symbol) and the company's dates (for the
  * Wayback window and the ranking anchor).
  */
-export type ResolvedEntity = ResearchEntity & {
+export type ResolvedEntity = Omit<ResearchEntity, 'sourceUrls'> & {
   businessTitle: string | null
   relatedTitles: string[]
   exchange: string | null
@@ -94,8 +94,8 @@ const itemBindings = z.object({
 /**
  * The QIDs among `qids` that are a business or an organization through any
  * chain of subclasses (P31/P279*), in one query, as `foundedBusinessesAmong`
- * asks it. A failing query answers none: the direct class check has already
- * run, and a subject it missed is reported unresolved rather than failing the
+ * asks it. A failing query answers none, so a direct match below stands and
+ * a subject neither test finds is reported unresolved rather than failing the
  * step.
  */
 async function businessesBySubclass(
@@ -138,9 +138,10 @@ async function personSearch(sources: ResearchSources, name: string) {
  * references. When none of the hits is a business the entity is unresolved:
  * the first hit of an editorial headline can be any page ("2022 in the United
  * States" once), and a corpus read from it is about something else. A hit
- * is a business when its item is directly one of `BUSINESS_CLASSES`, or else,
- * asked once over all the hits, when it is a business or organization through
- * a subclass chain. Each person is searched too, and the first human hit is
+ * is a business when its item is directly one of `BUSINESS_CLASSES`, or when
+ * it is a business or organization through a subclass chain, asked once over
+ * the hits above the first direct match; the first hit that passes either
+ * test is the entity. Each person is searched too, and the first human hit is
  * their article; a person whose search fails is kept unresolved.
  */
 export async function resolveEntity(
@@ -173,11 +174,18 @@ export async function resolveEntity(
     return { name, qid: title === null ? null : (qids.get(title) ?? null), title }
   })
 
-  let business = hits.find((title) => isA(title, BUSINESS_CLASSES)) ?? null
-  if (business === null) {
-    const hitQids = [...new Set(hits.flatMap((title) => qids.get(title) ?? []))]
+  // The first hit that passes either test. The chain is walked only over the
+  // hits above the first direct match, so a top hit that matches directly
+  // sends no query, and FTX at the top beats Alameda Research below it.
+  const direct = hits.findIndex((title) => isA(title, BUSINESS_CLASSES))
+  let business = direct === 0 ? hits[0]! : null
+  if (direct !== 0) {
+    const above = direct === -1 ? hits : hits.slice(0, direct)
+    const hitQids = [...new Set(above.flatMap((title) => qids.get(title) ?? []))]
     const bySubclass = await businessesBySubclass(sources, hitQids)
-    business = hits.find((title) => bySubclass.has(qids.get(title) ?? '')) ?? null
+    business =
+      above.find((title) => bySubclass.has(qids.get(title) ?? '')) ??
+      (direct === -1 ? null : hits[direct]!)
   }
   const relatedTitles = hits
     .filter((title) => title !== business && RELATED_WORDS.test(title))

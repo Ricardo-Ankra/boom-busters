@@ -382,6 +382,40 @@ describe('resolveEntity through the subclass walk', () => {
     expect(resolved).toMatchObject({ qid: null, businessTitle: null, unresolved: true })
   })
 
+  it('takes a chain-only business at the top over a direct business lower down', async () => {
+    const queries: string[] = []
+    const hits = ['FTX', 'Bankruptcy of FTX', 'Alameda Research']
+    const sources = fakeSources({
+      wikipedia: {
+        ...fakeSources().wikipedia,
+        search: async () => hits.map((title, i) => ({ title, pageid: i })),
+        qidsFor: async () =>
+          new Map([
+            ['FTX', 'Q108864780'],
+            ['Bankruptcy of FTX', 'Q115364245'],
+            ['Alameda Research', 'Q115175564'],
+          ]),
+      },
+      wikidata: {
+        sparql: subclassWalk(['Q108864780', 'Q115175564'], queries),
+        facts: async () =>
+          new Map([
+            ['Q108864780', facts('Q108864780', { instanceOf: ['Q25401607'] })],
+            ['Q115364245', facts('Q115364245', { instanceOf: ['Q1456832'] })],
+            // Alameda Research is directly a business.
+            ['Q115175564', facts('Q115175564', { instanceOf: ['Q4830453'] })],
+          ]),
+      },
+    })
+
+    const resolved = await resolveEntity(sources, { subject: 'FTX', people: [] })
+
+    expect(resolved).toMatchObject({ qid: 'Q108864780', businessTitle: 'FTX' })
+    // Only the hits above the direct match are walked.
+    expect(queries).toHaveLength(1)
+    expect(queries[0]).toContain('VALUES ?item { wd:Q108864780 wd:Q115364245 }')
+  })
+
   it('falls back to the direct class check when the query fails, without failing the step', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     const resolved = await resolveEntity(
