@@ -8099,3 +8099,78 @@ boom-busters-broker`; merge and deploy to Vercel, then `PUT
      runs every one of the five cases now meets every gated rate, so the
      rollout gate of decision 310 is met: the split passes fit the step,
      grounding holds, and a dossier costs about $2 on claude-opus-5-5.
+
+311. **The dossier gate always opens** (2026-10-23). The owner's words:
+     "the script generates automatically once the dossier finishes so that
+     also needs to stop. It must wait for us to be able to revise and check
+     and refine the Dossier." Auto-approval is gone: the script starts only
+     on Approve, and unverified claims still block Approve. Why: a dossier
+     can be fully grounded and still be about the wrong subject. The first
+     production Theranos dossier was researched from "2022 in the United
+     States", every claim matched a document, it approved itself, and the
+     script was written. The note box is offered whenever a dossier exists
+     and no dossier run is active, including after approval. A revision
+     after approval moves the project to dossier/running, the reviser holds
+     the gate and closes it on Approve, and the script is marked as written
+     from an older dossier, as a re-run marks it. `revisions` resets to 0
+     on approval, so the allowance applies to each round of review. A
+     reviser parked before this change keeps the old path.
+312. **A case has a subject, separate from its title** (2026-10-23). The
+     title is a working title: the company and the turn in plain words, with
+     no verdicts or questions (the hook is the angle's job). "Suggest cases"
+     returns `subject` (the company's common name) and `people` (the main
+     people) as their own fields under that rule, and the case form has
+     Subject and People boxes. A case saved before this change has none:
+     the runner makes one cheap model call, naming a subject from the title
+     and angle, and stores it on the case once, before gathering. Why: the
+     resolver searched Wikipedia with a headline title, "Theranos on the
+     Record: Why the Jury Convicted Elizabeth Holmes for Defrauding
+     Investors but Not Patients", found no company among the top hits, and
+     kept the first. Migration 0035 adds `cases.subject`, `cases.people` and
+     `cases.source_links`.
+313. **The gather reads the people and the owner's sources, newest first**
+     (2026-10-23). Wikipedia is searched with the subject, and the first
+     hit that is a company is the entity. When none of the top five is, the
+     entity is marked unresolved, no Wikipedia references are taken, and the
+     gate says "Subject not found on Wikipedia: check the case's Subject".
+     Each person is searched too, and the first human hit's article
+     references (20 per person) join the reporting tier, because a founder's
+     article carries the aftermath (sentence, appeal, prison) that the
+     company's article often lacks. The owner's `sourceLinks` enter at tier
+     one, above everything else in it. Court and regulator pages are read
+     newest first; reporting is read half nearest the turning point and half
+     newest, interleaved. Owner links are pinned per case, not per shared
+     document row, since one page may serve two cases. Known drop: a link's
+     note is not carried into the corpus. The owner's words: "we want to
+     back up what we're saying with facts, but we want the commentary to be
+     engaging and intriguing, not stuffed with legal jargon and diving too
+     deep into the court cases. It's the whole story."
+314. **The brief says where it stands now, and a reported verdict counts as
+     ruled** (2026-10-23). `currentStatus` is dated from the newest
+     document and rendered as "## Where it stands now"; it is null when the
+     documents say nothing after the turn. `ruled` is kept from a reporting
+     document when the claim's text or quote carries a verdict word
+     (convicted, found guilty, pleaded guilty, sentenced, acquitted, fined,
+     banned, ordered to pay, ruled); otherwise it folds to alleged as
+     before. The dossier document shows no legal labels, since the field
+     exists only for the script's "alleged" guard. Known loose edges:
+     negation ("was not convicted") and a bare "ruled" or "banned" can
+     still read as a verdict. Add a guard if a production run shows them.
+315. **The back-test gates subjects and currency** (2026-10-23). Each of
+     the five cases carries `subject`, `people`, `expectedTitle` (the
+     Wikipedia article the gather must land on) and `recentOutcome`, and the
+     script creates the case row with them and passes them to the gather.
+     Wirecard, Enron and SVB Financial (subject SVB Financial Group, expected
+     "Silicon Valley Bank") have no recent outcome; Theranos and FTX do.
+     Theranos is entered under its headline title, with subject "Theranos"
+     and people Elizabeth Holmes and Ramesh Balwani, so the back-test
+     reproduces the production failure. Two gates, both mechanical: every
+     case's resolved title equals its expected title, and a `recentOutcome`
+     case has a `currentStatus` whose `asOf` (first day of its period) is
+     within 540 days of the run (`BACKTEST_CURRENT_WITHIN_DAYS`). The report
+     gains a Subject table and a Current status table. `--cases` accepts a
+     subject as well as a title. Shipping: migration 0035, a Vercel deploy,
+     `PUT /api/inngest`, then re-run the Theranos project from its page; the
+     back-test's Theranos case is the live check before that and has not yet
+     been run. The numbers 311 to 315 are checked against `origin/master` at
+     the merge.

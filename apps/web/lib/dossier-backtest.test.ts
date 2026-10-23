@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from 'vitest'
-import type { GroundedClaim, GroundedResearch } from '@boom-busters/schemas'
+import {
+  BACKTEST_CURRENT_WITHIN_DAYS,
+  type GroundedClaim,
+  type GroundedResearch,
+} from '@boom-busters/schemas'
 import {
   BACKTEST_CASES,
   BACKTEST_TARGETS,
@@ -96,8 +100,24 @@ const research = (beats: { id: string; found: boolean }[] = []): GroundedResearc
 
 const page = { httpStatus: 200, archivedUrl: null, failure: null } as const
 
-const run = (over: Partial<CaseRun> = {}): CaseRun => ({
+/** A status dated a month ago, so a default run is current whenever the suite runs. */
+const recently = (): string => new Date(Date.now() - 30 * 86_400_000).toISOString().slice(0, 10)
+
+/** A run that resolved to its case's expected article and, where one is due, has a recent status. */
+const run = (over: Partial<CaseRun> = {}): CaseRun => {
+  const title = over.title ?? 'Enron'
+  const spec = BACKTEST_CASES.find((c) => c.title === title)
+  return runOf({
+    resolvedTitle: spec?.expectedTitle ?? title,
+    currentStatusAsOf: spec?.recentOutcome ? recently() : null,
+    ...over,
+  })
+}
+
+const runOf = (over: Partial<CaseRun> = {}): CaseRun => ({
   title: 'Enron',
+  resolvedTitle: 'Enron',
+  currentStatusAsOf: null,
   claims: [claim('Revenue grew.', null, [true, true])],
   research: research(),
   documents: [{ url: 'https://a.test', kind: 'reporting', ...page }],
@@ -113,10 +133,20 @@ describe('the back-test constants', () => {
     expect(BACKTEST_CASES.map((c) => c.title)).toEqual([
       'Wirecard',
       'Enron',
-      'Theranos',
+      'Theranos on the Record: Why the Jury Convicted Elizabeth Holmes for Defrauding Investors but Not Patients',
       'FTX',
       'SVB Financial',
     ])
+    expect(
+      BACKTEST_CASES.map((c) => [c.subject, c.expectedTitle, c.recentOutcome, c.people.length]),
+    ).toEqual([
+      ['Wirecard', 'Wirecard', false, 2],
+      ['Enron', 'Enron', false, 2],
+      ['Theranos', 'Theranos', true, 2],
+      ['FTX', 'FTX', true, 1],
+      ['SVB Financial Group', 'Silicon Valley Bank', false, 1],
+    ])
+    expect(BACKTEST_CURRENT_WITHIN_DAYS).toBe(540)
     expect(BACKTEST_TARGETS.costUsd).toBe(6)
     expect(BACKTEST_TARGETS.urlResolved).toBe(0.7)
     expect(BACKTEST_TARGETS).not.toHaveProperty('toldAlready')
@@ -354,6 +384,57 @@ describe('scoreRuns', () => {
   })
 })
 
+describe('the subject and currency gates', () => {
+  const theranos = BACKTEST_CASES[2].title
+  const now = new Date('2026-10-23T00:00:00Z')
+
+  it('fails a case that resolved to another article, naming both', () => {
+    const report = scoreRuns([run({ title: 'FTX', resolvedTitle: '2022 in the United States' })])
+    expect(report.verdict.failing).toContain('subject: FTX resolved to 2022 in the United States')
+  })
+
+  it('says "nothing" when the entity was unresolved', () => {
+    const report = scoreRuns([run({ resolvedTitle: null })])
+    expect(report.verdict.failing).toContain('subject: Enron resolved to nothing')
+  })
+
+  it('wants Silicon Valley Bank for the SVB case, not the holding company title', () => {
+    expect(scoreRuns([run({ title: 'SVB Financial' })]).verdict.pass).toBe(true)
+    expect(
+      scoreRuns([run({ title: 'SVB Financial', resolvedTitle: 'SVB Financial Group' })]).verdict
+        .failing,
+    ).toContain('subject: SVB Financial resolved to SVB Financial Group')
+  })
+
+  it('fails a recent-outcome case with no current status', () => {
+    const report = scoreRuns([run({ title: theranos, currentStatusAsOf: null })], [], now)
+    expect(report.verdict.failing).toContain(`currentStatus: ${theranos} has none`)
+  })
+
+  it('does not ask a case without a recent outcome for a status', () => {
+    expect(scoreRuns([run({ currentStatusAsOf: null })], [], now).verdict.pass).toBe(true)
+  })
+
+  it('fails a status older than 540 days, from the first day of its period', () => {
+    // 540 days before 2026-10-23 is 2025-05-01.
+    const stale = scoreRuns([run({ title: theranos, currentStatusAsOf: '2025-04' })], [], now)
+    expect(stale.verdict.failing).toContain(
+      `currentStatus: ${theranos} dated 2025-04, older than 540 days`,
+    )
+    const edge = scoreRuns([run({ title: theranos, currentStatusAsOf: '2025-05-01' })], [], now)
+    expect(edge.verdict.pass).toBe(true)
+    const year = scoreRuns([run({ title: theranos, currentStatusAsOf: '2025' })], [], now)
+    expect(year.verdict.failing).toContain(
+      `currentStatus: ${theranos} dated 2025, older than 540 days`,
+    )
+  })
+
+  it('passes a recent status', () => {
+    const report = scoreRuns([run({ title: theranos, currentStatusAsOf: '2026-03' })], [], now)
+    expect(report.verdict.pass).toBe(true)
+  })
+})
+
 describe('incomplete runs', () => {
   it('fails a pass over 200 s, naming the case and the pass', () => {
     const slow = { brief: 40_000, scenes: 60_000, claims: 212_300, answers: 200_000 }
@@ -451,6 +532,25 @@ describe('renderReport', () => {
       'Target: Reported only; no transcript source exists (the YouTube caption endpoint answers 404 to unsigned requests, confirmed 2026-10-22).',
     )
     expect(md).toContain('Target: at least 70.0%.')
+  })
+
+  it('writes a Subject table and a Current status table, one row per case', () => {
+    const theranos = BACKTEST_CASES[2].title
+    const md = renderReport(
+      scoreRuns([
+        run({ title: 'SVB Financial', resolvedTitle: 'Silicon Valley Bank' }),
+        run({ title: theranos, resolvedTitle: null, currentStatusAsOf: '2026-02' }),
+        run({ title: 'FTX', currentStatusAsOf: null }),
+      ]),
+      '2026-10-30',
+    )
+    expect(md).toContain('| Case | Expected | Resolved |')
+    expect(md).toContain('| SVB Financial | Silicon Valley Bank | Silicon Valley Bank |')
+    expect(md).toContain(`| ${theranos} | Theranos | nothing |`)
+    expect(md).toContain('| Case | As of |')
+    expect(md).toContain(`| ${theranos} | 2026-02 |`)
+    expect(md).toContain('| FTX | none |')
+    expect(md.indexOf('## Subject')).toBeLessThan(md.indexOf('## Cost'))
   })
 
   it('says the rollout may go on when nothing fails', () => {

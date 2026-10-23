@@ -43,6 +43,9 @@ export const DOSSIER_EVENT_WHAT_MAX = 1000
 export const DOSSIER_EVENTS_MAX = 60
 export const DOSSIER_CLAIM_TEXT_MAX = 1000
 export const DOSSIER_CLAIMS_MAX = 120
+
+/** The back-test's currency gate: a recent-outcome case's status is dated within this many days of the run. */
+export const BACKTEST_CURRENT_WITHIN_DAYS = 540
 export const DOSSIER_QUESTION_MAX = 1000
 export const DOSSIER_ANSWER_MAX = 3000
 export const DOSSIER_ANSWERS_MAX = 40

@@ -54,7 +54,10 @@ function parseArgs(argv: readonly string[]): { cap: number; titles: string[] } {
 
   const known = BACKTEST_CASES.map((c) => c.title)
   const chosen = optionalText(raw, 'cases')
-  const titles = chosen ? chosen.split(',').map((title) => title.trim()) : [...known]
+  // A case may be named by its subject too, since Theranos's title is a headline.
+  const asTitle = (name: string): string =>
+    BACKTEST_CASES.find((c) => c.title === name || c.subject === name)?.title ?? name
+  const titles = chosen ? chosen.split(',').map((name) => asTitle(name.trim())) : [...known]
   const unknown = titles.filter((title) => !known.some((name) => name === title))
   if (unknown.length > 0) {
     throw new Error(
@@ -103,8 +106,10 @@ async function main(): Promise<void> {
       })
       continue
     }
-    const category = BACKTEST_CASES.find((c) => c.title === title)!.category
-    const row = await createCase(db, { title, category })
+    const spec = BACKTEST_CASES.find((c) => c.title === title)!
+    const { category, subject } = spec
+    const people = [...spec.people]
+    const row = await createCase(db, { title, category, subject, people, sourceLinks: [] })
     const project = await createProjectFromCase(db, { caseId: row.id, title })
     const before = spent
     try {
@@ -113,9 +118,8 @@ async function main(): Promise<void> {
         inlineSteps,
         {
           projectId: project.id,
-          // The cases carry no subject until the back-test gains its subject gate (Task 8).
-          subject: title,
-          people: [],
+          subject,
+          people,
           sourceLinks: [],
           competitorLinks: [],
           round: 0,
@@ -136,14 +140,13 @@ async function main(): Promise<void> {
         timed.steps,
         {
           projectId: project.id,
-          // The subject the gather searched with, until Task 8 gives each case its own.
           caseContext: {
             title,
             category,
             angle: null,
             demandNotes: null,
-            subject: title,
-            people: [],
+            subject,
+            people,
           },
           round: 0,
           entity: gathered.entity,
@@ -165,6 +168,8 @@ async function main(): Promise<void> {
       spent = before + ledger.costUsd
       runs.push({
         title,
+        resolvedTitle: gathered.entity.titles[0] ?? null,
+        currentStatusAsOf: result.research.brief.currentStatus?.asOf ?? null,
         claims: result.claims,
         research: result.research,
         documents: rows.map((doc) => ({
