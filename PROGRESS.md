@@ -8113,8 +8113,9 @@ boom-busters-broker`; merge and deploy to Vercel, then `PUT
      after approval moves the project to dossier/running, the reviser holds
      the gate and closes it on Approve, and the script is marked as written
      from an older dossier, as a re-run marks it. `revisions` resets to 0
-     on approval, so the allowance applies to each round of review. A
-     reviser parked before this change keeps the old path.
+     on approval, so the allowance applies to each round of review;
+     migration 0036 resets it on dossiers approved before this. A reviser
+     parked before this change keeps the old path.
 312. **A case has a subject, separate from its title** (2026-10-23). The
      title is a working title: the company and the turn in plain words, with
      no verdicts or questions (the hook is the angle's job). "Suggest cases"
@@ -8129,14 +8130,20 @@ boom-busters-broker`; merge and deploy to Vercel, then `PUT
      kept the first. Migration 0035 adds `cases.subject`, `cases.people` and
      `cases.source_links`. A mock-mode run stores the title head (the text
      before any colon) as the subject, permanently; the fixture case carries
-     its own subject.
+     its own subject. A revision gathers again before its passes when the
+     case's subject, people or source links (trimmed, sorted) differ from
+     what the research was resolved from; the entity records the owner's
+     links as `sourceUrls` for this. Research saved before entities named a
+     subject differs from any case that does, so its first revision
+     gathers again.
 313. **The gather reads the people and the owner's sources, newest first**
      (2026-10-23). Wikipedia is searched with the subject, and the first
-     hit that is a company is the entity: its item is directly a business
-     class, or else, asked in one SPARQL query over the hits, a business or
-     organization through a subclass chain (FTX's only class is
-     "cryptocurrency exchange"); a failed query falls back to the direct
-     check. When none of the top five is, the
+     hit that is a company is the entity: the first hit whose item is
+     directly a business class, or a business or organization through a
+     subclass chain (FTX's only class is "cryptocurrency exchange"). The
+     chain is asked in one SPARQL query over the hits above the first
+     direct match, so a direct top hit sends none; a failed query leaves
+     the direct match. When none of the top five is, the
      entity is marked unresolved, no Wikipedia references are taken, and the
      gate says "Subject not found on Wikipedia: check the case's Subject".
      Each person is searched too, and the first human hit's article
@@ -8178,7 +8185,7 @@ boom-busters-broker`; merge and deploy to Vercel, then `PUT
      case has a `currentStatus` whose `asOf` (first day of its period) is
      within 540 days of the run (`BACKTEST_CURRENT_WITHIN_DAYS`). The report
      gains a Subject table and a Current status table. `--cases` accepts a
-     subject as well as a title. Shipping: migration 0035, a Vercel deploy,
+     subject as well as a title. Shipping: migrations 0035 and 0036, a Vercel deploy,
      `PUT /api/inngest`, then re-run the Theranos project from its page; the
      back-test's Theranos case is the live check before that and has not yet
      been run. The numbers 311 to 315 are checked against `origin/master` at
