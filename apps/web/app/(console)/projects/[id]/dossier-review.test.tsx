@@ -26,6 +26,8 @@ vi.mock('./actions', () => ({
   quarantineAllBlocking: (...args: unknown[]) => quarantineAllBlocking(...args),
 }))
 
+vi.mock('../actions', () => ({ restartStage: vi.fn() }))
+
 vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh }) }))
 
 const toast = vi.fn()
@@ -198,7 +200,17 @@ describe('DossierReview', () => {
 
     function research(patch: Partial<GroundedResearch>): GroundedResearch {
       return {
-        entity: { qid: null, titles: ['Wirecard'], cik: null, ticker: null, website: null },
+        entity: {
+          qid: null,
+          titles: ['Wirecard'],
+          cik: null,
+          ticker: null,
+          website: null,
+          subject: null,
+          sourceUrls: [],
+          people: [],
+          unresolved: false,
+        },
         brief: { summary: 's', turningPoint: 't', cast: [], toldAlready: [], openQuestions: [] },
         scenes: [],
         answers: [],
@@ -374,6 +386,86 @@ describe('DossierReview', () => {
       render(<DossierReview projectId="p1" contentMd={md} claims={[]} />)
       expect(screen.getByText(/markdown only entry/)).toBeInTheDocument()
       expect(screen.queryByText(/Researched from/)).not.toBeInTheDocument()
+    })
+
+    describe('the subject line', () => {
+      const withSubject = (patch: Record<string, unknown>) =>
+        research({ entity: { ...research({}).entity, ...patch } as GroundedResearch['entity'] })
+      const show = (r: GroundedResearch | null) =>
+        render(<DossierReview projectId="p1" contentMd={MD} claims={[]} research={r} />)
+
+      it('names the company and each person', () => {
+        show(
+          withSubject({
+            subject: 'Wirecard',
+            people: [
+              { name: 'Jan Marsalek', qid: 'Q1', title: 'chief operating officer' },
+              { name: 'Markus Braun', qid: null, title: null },
+            ],
+          }),
+        )
+        expect(
+          screen.getByText(
+            'Subject: Wirecard (company), Jan Marsalek (person), Markus Braun (person)',
+          ),
+        ).toBeInTheDocument()
+      })
+
+      it('warns when the subject was not found on Wikipedia', () => {
+        show(withSubject({ subject: 'Wirecard', unresolved: true }))
+        const line = screen.getByText('Subject not found on Wikipedia: Wirecard')
+        expect(line.className).toContain('--color-warning')
+      })
+
+      it('offers Research again and an edit link to the library', () => {
+        show(withSubject({ subject: 'Wirecard' }))
+        expect(screen.getByRole('button', { name: /Research again/ })).toBeInTheDocument()
+        expect(screen.getByRole('link', { name: 'Edit the case in the library' })).toHaveAttribute(
+          'href',
+          '/cases',
+        )
+      })
+
+      it('says to stop the run instead of offering Research again while a run is parked', () => {
+        render(
+          <DossierReview
+            projectId="p1"
+            contentMd={MD}
+            claims={[]}
+            research={withSubject({ subject: 'Wirecard' })}
+            liveRun
+          />,
+        )
+        expect(screen.queryByRole('button', { name: /Research again/ })).not.toBeInTheDocument()
+        expect(
+          screen.getByText('Stop the run at the top of the screen to research again'),
+        ).toBeInTheDocument()
+        expect(
+          screen.getByRole('link', { name: 'Edit the case in the library' }),
+        ).toBeInTheDocument()
+      })
+
+      it('renders an entity stored before people were resolved without throwing', () => {
+        const { people: _people, ...old } = research({}).entity
+        show(
+          research({
+            entity: { ...old, subject: 'Wirecard' } as unknown as GroundedResearch['entity'],
+          }),
+        )
+        expect(screen.getByText('Subject: Wirecard (company)')).toBeInTheDocument()
+      })
+
+      it('shows only the controls when nothing is named and nothing is unresolved', () => {
+        show(withSubject({ subject: null, people: [], unresolved: false }))
+        expect(screen.queryByText(/^Subject/)).not.toBeInTheDocument()
+        expect(screen.getByRole('button', { name: /Research again/ })).toBeInTheDocument()
+      })
+
+      it('is left out for an old dossier', () => {
+        show(null)
+        expect(screen.queryByText(/^Subject/)).not.toBeInTheDocument()
+        expect(screen.queryByRole('button', { name: /Research again/ })).not.toBeInTheDocument()
+      })
     })
   })
 })

@@ -341,7 +341,9 @@ test.describe('moving between stages', () => {
     await page.getByRole('link', { name: /Dossier/ }).click()
 
     await expect(page.getByRole('button', { name: 'Approve' })).toHaveCount(0)
-    await expect(page.getByRole('button', { name: 'Request changes' })).toHaveCount(0)
+    // But the approved dossier still takes a change request (design decision
+    // 7): the project is past it and nothing is running.
+    await expect(page.getByRole('button', { name: 'Request changes' })).toBeVisible()
   })
 
   test('comes back to where the project actually is', async ({ page }) => {

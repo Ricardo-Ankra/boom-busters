@@ -21,7 +21,16 @@ import {
   parseSuggestedCases,
   mockProvidersEnabled,
 } from '@boom-busters/providers'
-import { CaseCategorySchema, UlidSchema, serialiseError } from '@boom-busters/schemas'
+import {
+  CASE_PEOPLE_MAX,
+  CASE_PERSON_MAX,
+  CASE_SOURCE_LINKS_MAX,
+  CASE_SUBJECT_MAX,
+  CASE_SUBJECT_MIN,
+  CaseCategorySchema,
+  UlidSchema,
+  serialiseError,
+} from '@boom-busters/schemas'
 import type { CaseSuggestion } from '@boom-busters/schemas'
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
@@ -57,6 +66,29 @@ const CaseFormSchema = z.object({
   angle: z.string().trim().max(2000).optional(),
   demandNotes: z.string().trim().max(2000).optional(),
   priorityScore: z.number().int().min(0).max(100),
+  subject: z
+    .string()
+    .trim()
+    .min(CASE_SUBJECT_MIN, 'Give the case a subject: the company, as Wikipedia names it')
+    .max(CASE_SUBJECT_MAX),
+  people: z
+    .array(z.string().trim().min(2).max(CASE_PERSON_MAX))
+    .max(CASE_PEOPLE_MAX, `Name at most ${CASE_PEOPLE_MAX} people`)
+    .default([]),
+  sourceLinks: z
+    .array(
+      z.object({
+        url: z
+          .string()
+          .url()
+          .refine((url) => /^https?:\/\//i.test(url), {
+            message: 'Each source link must start with http:// or https://',
+          }),
+        note: z.string().max(500).optional(),
+      }),
+    )
+    .max(CASE_SOURCE_LINKS_MAX, `Add at most ${CASE_SOURCE_LINKS_MAX} source links`)
+    .default([]),
 })
 
 export async function addCase(input: unknown): Promise<ActionResult> {
@@ -81,7 +113,14 @@ export async function editCase(id: string, input: unknown): Promise<ActionResult
   await requireOwner()
   if (!UlidSchema.safeParse(id).success) return { ok: false, error: 'Unknown case' }
 
-  const parsed = CaseFormSchema.partial().safeParse(input)
+  // A partial edit must not fill a field the owner never sent: `.default` would
+  // turn a missing list into an empty one and wipe the stored people or links.
+  const parsed = CaseFormSchema.partial()
+    .extend({
+      people: CaseFormSchema.shape.people.unwrap().optional(),
+      sourceLinks: CaseFormSchema.shape.sourceLinks.unwrap().optional(),
+    })
+    .safeParse(input)
   if (!parsed.success) {
     return { ok: false, error: parsed.error.issues[0]?.message ?? 'That change is not valid' }
   }
@@ -209,6 +248,8 @@ export async function suggestCases(input: unknown): Promise<SuggestResult> {
         demandNotes: suggestion.demandNotes ?? null,
         competitorLinks: suggestion.competitorLinks ?? [],
         priorityScore: suggestion.priorityScore,
+        subject: suggestion.subject,
+        people: suggestion.people,
         status: 'idea' as const,
       })),
     )

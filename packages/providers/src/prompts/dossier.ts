@@ -16,6 +16,7 @@ import {
   DOSSIER_QUOTE_MIN_FOLDED,
   DOSSIER_SCENES_MAX,
   DOSSIER_SERIES_POINTS_MAX,
+  DOSSIER_STATUS_MAX,
   DOSSIER_SUMMARY_MAX,
   DOSSIER_SUPPORTS_MAX,
   DOSSIER_TOLD_ALREADY_MAX,
@@ -88,11 +89,22 @@ export interface CaseContext {
   category: string
   angle?: string | null
   demandNotes?: string | null
+  /** The company's common name (decision 2), named before the title, which only works. */
+  subject?: string | null
+  people?: readonly string[]
 }
 
+/**
+ * The case, as every pass reads it before the corpus: who the story is about
+ * first, then the working title, which names the turn but is not the subject.
+ */
 function caseHeader(input: CaseContext): string {
+  const subject = input.subject?.trim()
+  const people = (input.people ?? []).map((name) => name.trim()).filter(Boolean)
   return [
-    `Case: ${input.title}`,
+    subject ? `Subject: ${subject} (company)` : null,
+    people.length > 0 ? `People: ${people.join(', ')}` : null,
+    `Working title: ${input.title}`,
     `Category: ${input.category}`,
     input.angle ? `Angle to pursue: ${input.angle}` : null,
     input.demandNotes ? `Audience notes: ${input.demandNotes}` : null,
@@ -449,9 +461,12 @@ the list already told.
  "cast": [{"name": string, "role": string, "wanted": string,
    "scene": {"doc": number, "quote": string} | null}],
  "toldAlready": [{"beat": string, "doc": number, "quote": string}],
- "openQuestions": [string]}
+ "openQuestions": [string],
+ "currentStatus": {"asOf": string, "text": string} | null}
 
 - \`turningPoint\` is the moment the story turns: what the script builds toward.
+- \`currentStatus\` is where things stand now, dated from the newest document that speaks to the outcome: what happened to the people and the money after the turn, in plain words. Set it to null when the documents say nothing after the turn.
+  \`asOf\` is YYYY-MM-DD, YYYY-MM or YYYY: the date of that newest document.
 - \`cast\` are the people and organisations the story follows. \`wanted\` is
   what that person wanted, in one sentence ("to make every quarter look like
   growth"), not their job title. \`scene\` is the document and the quote that
@@ -468,14 +483,42 @@ the list already told.
 Limits (the app checks them): "summary" 50 to ${DOSSIER_SUMMARY_MAX} characters; "turningPoint" 20 to
 ${DOSSIER_TURNING_POINT_MAX} characters; at most ${DOSSIER_CAST_MAX} cast members, each "name" 2 to ${CAST_NAME_MAX}, "role" 2 to
 ${CAST_ROLE_MAX} and "wanted" 10 to ${CAST_WANTED_MAX} characters; at most ${DOSSIER_TOLD_ALREADY_MAX} told-already beats, each
-"beat" 10 to ${BEAT_MAX} characters; at most ${DOSSIER_OPEN_QUESTIONS_MAX} open questions, each at least 10 characters.`,
+"beat" 10 to ${BEAT_MAX} characters; at most ${DOSSIER_OPEN_QUESTIONS_MAX} open questions, each at least 10 characters;
+"currentStatus.text" 20 to ${DOSSIER_STATUS_MAX} characters.`,
     6_000,
   )
+}
+
+const CurrentStatusSchema = CaseBriefSchema.shape.currentStatus.unwrap().unwrap()
+const STATUS_TEXT_MIN = CurrentStatusSchema.shape.text.minLength ?? 0
+const STATUS_FIELD = "the brief's current status"
+
+/**
+ * Where the story stands now is one part of the brief, never a reason to
+ * refuse it: a status with no usable date or too little to say becomes null,
+ * noted, and one over its limit is trimmed at a sentence.
+ */
+function repairStatus(status: unknown, note: Note): unknown {
+  if (status === undefined || status === null) return null
+  const drop = (reason: string) => {
+    note({ action: 'dropped', field: STATUS_FIELD, reason })
+    return null
+  }
+  if (!isRecord(status)) return drop('it was not a date and a text')
+  if (!CurrentStatusSchema.shape.asOf.safeParse(status['asOf']).success) {
+    return drop('its date was not YYYY, YYYY-MM or YYYY-MM-DD')
+  }
+  const said = status['text']
+  if (typeof said !== 'string' || said.trim().length < STATUS_TEXT_MIN) {
+    return drop('it said too little')
+  }
+  return { ...status, text: trimField(said, DOSSIER_STATUS_MAX, STATUS_FIELD, note) }
 }
 
 export function parseBrief(text: string, note: Note = ignoreRepairs): CaseBrief {
   return parseRepaired(text, CaseBriefSchema, 'case brief', (raw) => ({
     ...raw,
+    currentStatus: repairStatus(raw['currentStatus'], note),
     summary: trimField(raw['summary'], DOSSIER_SUMMARY_MAX, "the brief's summary", note),
     turningPoint: trimField(
       raw['turningPoint'],

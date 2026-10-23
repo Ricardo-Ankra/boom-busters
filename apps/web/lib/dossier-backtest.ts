@@ -1,5 +1,11 @@
 import { annualXbrlFacts, type AnnualFact } from '@boom-busters/providers'
-import type { DocumentKind, GroundedClaim, GroundedResearch, Series } from '@boom-busters/schemas'
+import {
+  BACKTEST_CURRENT_WITHIN_DAYS,
+  type DocumentKind,
+  type GroundedClaim,
+  type GroundedResearch,
+  type Series,
+} from '@boom-busters/schemas'
 import type { Steps } from '@/inngest/lib/steps'
 
 /**
@@ -10,11 +16,48 @@ import type { Steps } from '@/inngest/lib/steps'
  */
 
 export const BACKTEST_CASES = [
-  { title: 'Wirecard', category: 'con' },
-  { title: 'Enron', category: 'collapse' },
-  { title: 'Theranos', category: 'con' },
-  { title: 'FTX', category: 'collapse' },
-  { title: 'SVB Financial', category: 'meltdown' },
+  {
+    title: 'Wirecard',
+    category: 'con',
+    subject: 'Wirecard',
+    people: ['Markus Braun', 'Jan Marsalek'],
+    expectedTitle: 'Wirecard',
+    recentOutcome: false,
+  },
+  {
+    title: 'Enron',
+    category: 'collapse',
+    subject: 'Enron',
+    people: ['Kenneth Lay', 'Jeffrey Skilling'],
+    expectedTitle: 'Enron',
+    recentOutcome: false,
+  },
+  {
+    // The headline title that failed in production: the subject, not the title, must find the company.
+    title:
+      'Theranos on the Record: Why the Jury Convicted Elizabeth Holmes for Defrauding Investors but Not Patients',
+    category: 'con',
+    subject: 'Theranos',
+    people: ['Elizabeth Holmes', 'Ramesh Balwani'],
+    expectedTitle: 'Theranos',
+    recentOutcome: true,
+  },
+  {
+    title: 'FTX',
+    category: 'collapse',
+    subject: 'FTX',
+    people: ['Sam Bankman-Fried'],
+    expectedTitle: 'FTX',
+    recentOutcome: true,
+  },
+  {
+    title: 'SVB Financial',
+    category: 'meltdown',
+    subject: 'SVB Financial Group',
+    people: ['Greg Becker'],
+    expectedTitle: 'SVB Financial Group',
+    recentOutcome: false,
+  },
 ] as const
 
 /**
@@ -74,6 +117,10 @@ export function timedSteps(inner: Steps): { steps: Steps; durations: PassDuratio
 
 export interface CaseRun {
   title: string
+  /** The entity's first title: the Wikipedia article the gather landed on; null when unresolved. */
+  resolvedTitle: string | null
+  /** `currentStatus.asOf` of the brief; null when the brief has none. */
+  currentStatusAsOf: string | null
   claims: GroundedClaim[]
   research: GroundedResearch
   documents: {
@@ -289,6 +336,8 @@ function ratesOf(t: Tally): Rates {
 export interface Report {
   cases: (Rates & {
     title: string
+    resolvedTitle: string | null
+    currentStatusAsOf: string | null
     costUsd: number
     model: string
     passDurationsMs: PassDurations
@@ -302,7 +351,19 @@ export interface Report {
 const percent = (rate: number): string => `${(rate * 100).toFixed(1)}%`
 const seconds = (ms: number): string => `${(ms / 1000).toFixed(1)} s`
 
-export function scoreRuns(runs: readonly CaseRun[], skipped: readonly string[] = []): Report {
+const DAY_MS = 86_400_000
+
+/** The first day of a period an `asOf` names: "2024", "2024-03" or "2024-03-09". */
+function periodStart(asOf: string): number {
+  const [year, month = '01', day = '01'] = asOf.split('-')
+  return Date.parse(`${year}-${month}-${day}T00:00:00Z`)
+}
+
+export function scoreRuns(
+  runs: readonly CaseRun[],
+  skipped: readonly string[] = [],
+  now: Date = new Date(),
+): Report {
   const tallies = runs.map(tally)
   const overallRates = ratesOf(sum(tallies))
   const costs = runs.map((run) => run.costUsd)
@@ -336,6 +397,25 @@ export function scoreRuns(runs: readonly CaseRun[], skipped: readonly string[] =
     }
   }
 
+  for (const run of runs) {
+    const spec = BACKTEST_CASES.find((c) => c.title === run.title)
+    if (spec === undefined) continue
+    if (run.resolvedTitle !== spec.expectedTitle) {
+      failing.push(`subject: ${run.title} resolved to ${run.resolvedTitle ?? 'nothing'}`)
+    }
+    if (!spec.recentOutcome) continue
+    if (run.currentStatusAsOf === null) {
+      failing.push(`currentStatus: ${run.title} has none`)
+    } else if (
+      now.getTime() - periodStart(run.currentStatusAsOf) >
+      BACKTEST_CURRENT_WITHIN_DAYS * DAY_MS
+    ) {
+      failing.push(
+        `currentStatus: ${run.title} dated ${run.currentStatusAsOf}, older than ${BACKTEST_CURRENT_WITHIN_DAYS} days`,
+      )
+    }
+  }
+
   // A case that was never measured cannot count as passing: a report over
   // fewer cases than asked for would read as a pass on evidence it lacks.
   if (skipped.length > 0) failing.unshift(`skipped: ${skipped.join(', ')}`)
@@ -345,6 +425,8 @@ export function scoreRuns(runs: readonly CaseRun[], skipped: readonly string[] =
     cases: runs.map((run, index) => ({
       ...ratesOf(tallies[index]!),
       title: run.title,
+      resolvedTitle: run.resolvedTitle,
+      currentStatusAsOf: run.currentStatusAsOf,
       costUsd: run.costUsd,
       model: run.model,
       passDurationsMs: run.passDurationsMs,
@@ -417,6 +499,25 @@ export function renderReport(report: Report, date: string): string {
       (r) => show(r.transcriptAvailability),
       report,
     ),
+    '## Subject',
+    '',
+    'Target: each case resolves to the Wikipedia article named here.',
+    '',
+    '| Case | Expected | Resolved |',
+    '| --- | --- | --- |',
+    ...report.cases.map((row) => {
+      const expected = BACKTEST_CASES.find((c) => c.title === row.title)?.expectedTitle ?? 'unknown'
+      return `| ${row.title} | ${expected} | ${row.resolvedTitle ?? 'nothing'} |`
+    }),
+    '',
+    '## Current status',
+    '',
+    `Target: a case with a recent outcome has a status dated within ${BACKTEST_CURRENT_WITHIN_DAYS} days of the run.`,
+    '',
+    '| Case | As of |',
+    '| --- | --- |',
+    ...report.cases.map((row) => `| ${row.title} | ${row.currentStatusAsOf ?? 'none'} |`),
+    '',
     '## Cost',
     '',
     `Target: at most $${t.costUsd.toFixed(2)} per dossier.`,

@@ -246,6 +246,20 @@
       "when": 1792669002147,
       "tag": "0034_fantastic_sunspot",
       "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1792767096800,
+      "tag": "0035_yummy_patriot",
+      "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1792780717678,
+      "tag": "0036_reset_approved_revisions",
+      "breakpoints": true
     }
   ]
 }

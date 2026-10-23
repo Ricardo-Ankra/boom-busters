@@ -3,7 +3,7 @@
 import type { CaseSort, CaseSummary } from '@boom-busters/db'
 import { noticesFor } from '@boom-busters/schemas'
 import type { Notice } from '@boom-busters/schemas'
-import { Check, Plus, Sparkles, X } from 'lucide-react'
+import { Check, Pencil, Plus, Sparkles, X } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import * as React from 'react'
 import { ConfirmButton } from '@/components/confirm-button'
@@ -16,10 +16,18 @@ import {
   acceptCase,
   addCase,
   dismissCase,
+  editCase,
   setStatus,
   startProjectFromCase,
   suggestCases,
 } from './actions'
+import {
+  joinPeople,
+  joinSourceLinks,
+  splitPeople,
+  splitSourceLinks,
+  subjectFromTitle,
+} from './case-details'
 
 /**
  * The Case Library table and its triage controls.
@@ -180,6 +188,125 @@ type Run = (
   success: string,
 ) => Promise<boolean>
 
+const TEXTAREA_CLASS =
+  'min-h-[80px] w-full rounded-[8px] border border-[var(--color-border-strong)] bg-[var(--color-background)] ' +
+  'px-3 py-2 text-[14px] text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)] ' +
+  'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-accent)]'
+
+/** Subject, People and Source links: the three fields the dossier reads, shared by the add and edit forms. */
+function DetailFields({
+  idPrefix,
+  subject,
+  onSubject,
+  people,
+  onPeople,
+  links,
+  onLinks,
+}: {
+  idPrefix: string
+  subject: string
+  onSubject: (value: string) => void
+  people: string
+  onPeople: (value: string) => void
+  links: string
+  onLinks: (value: string) => void
+}) {
+  return (
+    <>
+      <div className="flex flex-col gap-1">
+        <Label htmlFor={`${idPrefix}-subject`}>Subject</Label>
+        <Input
+          id={`${idPrefix}-subject`}
+          value={subject}
+          placeholder="The company, as Wikipedia names it"
+          onChange={(event) => onSubject(event.target.value)}
+          className="w-64"
+        />
+      </div>
+      <div className="flex flex-col gap-1">
+        <Label htmlFor={`${idPrefix}-people`}>People</Label>
+        <Input
+          id={`${idPrefix}-people`}
+          value={people}
+          placeholder="Full names, separated by commas"
+          onChange={(event) => onPeople(event.target.value)}
+          className="w-72"
+        />
+      </div>
+      <div className="flex flex-col gap-1">
+        <Label htmlFor={`${idPrefix}-links`}>Source links</Label>
+        <textarea
+          id={`${idPrefix}-links`}
+          value={links}
+          rows={3}
+          placeholder="One web address per line, starting with http:// or https://"
+          onChange={(event) => onLinks(event.target.value)}
+          className={`${TEXTAREA_CLASS} w-96`}
+        />
+      </div>
+    </>
+  )
+}
+
+/** The `Edit details` panel on a row: the same three fields, saved with `editCase`. */
+function EditDetails({ item, run }: { item: CaseSummary; run: Run }) {
+  const [open, setOpen] = React.useState(false)
+  const [subject, setSubject] = React.useState(item.subject ?? '')
+  const [people, setPeople] = React.useState(joinPeople(item.people))
+  const [links, setLinks] = React.useState(joinSourceLinks(item.sourceLinks))
+  const [busy, setBusy] = React.useState(false)
+
+  if (!open) {
+    return (
+      <Button variant="outline" onClick={() => setOpen(true)}>
+        <Pencil aria-hidden />
+        Edit details
+      </Button>
+    )
+  }
+
+  return (
+    <div className="flex w-full flex-wrap items-end gap-2 rounded-[8px] border border-[var(--color-border)] p-3">
+      <DetailFields
+        idPrefix={`edit-${item.id}`}
+        subject={subject}
+        onSubject={setSubject}
+        people={people}
+        onPeople={setPeople}
+        links={links}
+        onLinks={setLinks}
+      />
+      <Button
+        variant="primary"
+        busy={busy}
+        onClick={async () => {
+          setBusy(true)
+          try {
+            // A link keeps the note it came with when its address is left alone.
+            const notes = new Map(item.sourceLinks.map((link) => [link.url, link.note]))
+            const sourceLinks = splitSourceLinks(links).map(({ url }) => {
+              const note = notes.get(url)
+              return note === undefined ? { url } : { url, note }
+            })
+            const ok = await run(
+              () => editCase(item.id, { subject, people: splitPeople(people), sourceLinks }),
+              'Details saved',
+            )
+            if (ok) setOpen(false)
+          } finally {
+            setBusy(false)
+          }
+        }}
+      >
+        Save details
+      </Button>
+      <Button variant="ghost" onClick={() => setOpen(false)} disabled={busy}>
+        Cancel
+      </Button>
+    </div>
+  )
+}
+
 function SuggestionRow({
   item,
   run,
@@ -230,6 +357,7 @@ function SuggestionRow({
           onConfirm={() => run(() => dismissCase(item.id), 'Dismissed')}
         />
       </div>
+      <EditDetails item={item} run={run} />
       <RowNotices notices={notices} />
     </div>
   )
@@ -300,6 +428,7 @@ function BacklogRow({
           onConfirm={() => run(() => dismissCase(item.id), 'Removed')}
         />
       </div>
+      <EditDetails item={item} run={run} />
       <RowNotices notices={notices} />
     </div>
   )
@@ -398,6 +527,11 @@ function AddCaseButton({ run }: { run: Run }) {
   const [title, setTitle] = React.useState('')
   const [category, setCategory] = React.useState<string>('collapse')
   const [angle, setAngle] = React.useState('')
+  // Subject follows the title until the owner types in it themselves.
+  const [subject, setSubject] = React.useState('')
+  const [subjectTouched, setSubjectTouched] = React.useState(false)
+  const [people, setPeople] = React.useState('')
+  const [links, setLinks] = React.useState('')
   const [priorityScore, setPriorityScore] = React.useState(50)
   const [busy, setBusy] = React.useState(false)
 
@@ -417,7 +551,10 @@ function AddCaseButton({ run }: { run: Run }) {
         <Input
           id="case-title"
           value={title}
-          onChange={(event) => setTitle(event.target.value)}
+          onChange={(event) => {
+            setTitle(event.target.value)
+            if (!subjectTouched) setSubject(subjectFromTitle(event.target.value))
+          }}
           className="w-64"
         />
       </div>
@@ -445,6 +582,18 @@ function AddCaseButton({ run }: { run: Run }) {
           className="w-72"
         />
       </div>
+      <DetailFields
+        idPrefix="case"
+        subject={subject}
+        onSubject={(value) => {
+          setSubject(value)
+          setSubjectTouched(value !== '')
+        }}
+        people={people}
+        onPeople={setPeople}
+        links={links}
+        onLinks={setLinks}
+      />
       <div className="flex flex-col gap-1">
         <Label htmlFor="case-priority">Priority</Label>
         <NumberInput
@@ -463,12 +612,25 @@ function AddCaseButton({ run }: { run: Run }) {
           setBusy(true)
           try {
             const ok = await run(
-              () => addCase({ title, category, angle: angle || undefined, priorityScore }),
+              () =>
+                addCase({
+                  title,
+                  category,
+                  angle: angle || undefined,
+                  priorityScore,
+                  subject,
+                  people: splitPeople(people),
+                  sourceLinks: splitSourceLinks(links),
+                }),
               'Case added to your backlog',
             )
             if (ok) {
               setTitle('')
               setAngle('')
+              setSubject('')
+              setSubjectTouched(false)
+              setPeople('')
+              setLinks('')
               setOpen(false)
             }
           } finally {

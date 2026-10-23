@@ -46,6 +46,13 @@ export function renderDossierMarkdown(input: {
 
   lines.push('## The turn', '', brief.turningPoint, '')
 
+  // The story runs to today (decision 5). Dated so the reviewer sees how
+  // recent "now" is, even when the newest document predates the turn.
+  if (brief.currentStatus) {
+    const { asOf, text } = brief.currentStatus
+    lines.push('## Where it stands now', '', `**As of ${asOf}.** ${text.trim()}`, '')
+  }
+
   if (brief.cast.length > 0) {
     lines.push('## Principals', '')
     for (const person of brief.cast) {

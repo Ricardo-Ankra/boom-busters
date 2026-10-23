@@ -17,6 +17,7 @@ import { InngestTestEngine } from '@inngest/test'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/lib/db'
 import { notify } from '@/lib/notify'
+import type * as Research from '../lib/dossier-research'
 import { forgetRunRows } from '../middleware/run-mirror'
 import { dossierRunner } from './dossier-runner'
 
@@ -40,6 +41,13 @@ vi.mock('@boom-busters/db', async (importOriginal) => ({
   saveDossier: (...args: unknown[]) => saveDossier(...args),
   markDossierApproved: (...args: unknown[]) => markDossierApproved(...args),
 }))
+// The real passes, watched: what case the runner hands them is under test.
+const researchDossier = vi.hoisted(() => vi.fn())
+vi.mock('../lib/dossier-research', async (importOriginal) => {
+  const original = await importOriginal<typeof Research>()
+  researchDossier.mockImplementation(original.researchDossier)
+  return { ...original, researchDossier }
+})
 
 const describeDb = requireTestDatabase() ? describe : describe.skip
 
@@ -296,10 +304,11 @@ describeDb('dossier-runner', () => {
     expect(recordRepairs).toHaveBeenCalledWith(DOSSIER, [])
   })
 
-  it('saves supports and research and auto-approves only when every claim is grounded on a fetched document', async () => {
+  it('saves supports and research, then opens the gate and waits even when every claim is grounded on a fetched document', async () => {
     saveDossier.mockResolvedValue(savedRows(['single_source']))
 
-    const { ctx } = await engine.executeStep('auto-approve', {
+    // `@inngest/test` cannot drive a run past a wait, so this stops at it.
+    const { ctx } = await engine.executeStep('await-dossier-gate', {
       events: created(),
       steps: stored({ claims: [grounded('doc-ft', { legalStatus: 'alleged' })] }),
     })
@@ -318,7 +327,7 @@ describeDb('dossier-runner', () => {
       'research-answers-0-2',
       'research-ground-0',
       'save-dossier',
-      'auto-approve',
+      'open-gate',
     ])
 
     const saved = saveDossier.mock.calls[0]![1]
@@ -347,12 +356,21 @@ describeDb('dossier-runner', () => {
         ],
       },
     ])
-    expect(markDossierApproved).toHaveBeenCalledWith(expect.anything(), FIXTURE_PROJECT_ID)
-    expect(await gateMessages()).toEqual([`Dossier ready · 1 claims · ${CORPUS_LINE}`])
+    // Nothing approves itself: the script starts only on the owner's Approve.
+    expect(markDossierApproved).not.toHaveBeenCalled()
+    expect(ctx.step.sendEvent).not.toHaveBeenCalled()
+    expect(ctx.step.waitForEvent).toHaveBeenCalledWith(
+      'await-dossier-gate',
+      expect.objectContaining({ event: 'gate/dossier.approved', timeout: '30d' }),
+    )
+    expect((await getProject(db, FIXTURE_PROJECT_ID))?.stageStatus).toBe('awaiting_review')
+    // A load-case stored before cases had a subject: the case title stands in.
+    expect(await gateMessages()).toEqual([
+      `Subject: Wirecard (company) · Dossier ready · 1 claims · ${CORPUS_LINE}`,
+    ])
 
-    // The same dossier with its claim resting on a page that answered 403: it parks.
+    // The same dossier with its claim resting on a page that answered 403 says so.
     const parked = new InngestTestEngine({ function: dossierRunner })
-    markDossierApproved.mockReset()
     await truncateRunMirror(db)
     forgetRunRows()
 
@@ -363,21 +381,128 @@ describeDb('dossier-runner', () => {
 
     expect(markDossierApproved).not.toHaveBeenCalled()
     expect(await gateMessages()).toEqual([
-      `Dossier ready · 1 claims · 1 resting on a document that was not fetched · ${CORPUS_LINE}`,
+      `Subject: Wirecard (company) · Dossier ready · 1 claims · ` +
+        `1 resting on a document that was not fetched · ${CORPUS_LINE}`,
     ])
   })
 
-  it('auto-approves a claim whose page failed but whose Wayback copy was read', async () => {
+  it('counts a claim whose page failed but whose Wayback copy was read as fetched', async () => {
     saveDossier.mockResolvedValue(savedRows(['single_source']))
     const archived = grounded('doc-ir')
     archived.supports[0]!.archivedUrl = 'https://web.archive.org/web/2019/https://ir.wirecard.com'
 
-    await engine.executeStep('auto-approve', {
+    await engine.executeStep('open-gate', {
       events: created(),
       steps: stored({ claims: [archived] }),
     })
 
-    expect(markDossierApproved).toHaveBeenCalledTimes(1)
+    expect(markDossierApproved).not.toHaveBeenCalled()
+    expect(await gateMessages()).toEqual([
+      `Subject: Wirecard (company) · Dossier ready · 1 claims · ${CORPUS_LINE}`,
+    ])
+  })
+
+  it("names the case's subject and people at the gate, from the case it loaded", async () => {
+    saveDossier.mockResolvedValue(savedRows(['single_source']))
+    const steps = stored().map((s) =>
+      s.id === 'load-case'
+        ? {
+            id: s.id,
+            handler: () => ({
+              ...CASE,
+              subject: 'Wirecard',
+              people: ['Markus Braun', 'Jan Marsalek'],
+              sourceLinks: [],
+              competitorLinks: [],
+            }),
+          }
+        : s.id === 'gather-entity-0'
+          ? {
+              id: s.id,
+              handler: () => ({
+                ...ENTITY,
+                subject: 'Wirecard',
+                unresolved: false,
+                people: [
+                  { name: 'Markus Braun', qid: 'Q2', title: 'Markus Braun' },
+                  { name: 'Jan Marsalek', qid: 'Q3', title: 'Jan Marsalek' },
+                ],
+              }),
+            }
+          : s,
+    )
+
+    await engine.executeStep('open-gate', { events: created(), steps })
+
+    expect(await gateMessages()).toEqual([
+      `Subject: Wirecard (company), Markus Braun, Jan Marsalek · Dossier ready · 1 claims · ${CORPUS_LINE}`,
+    ])
+  })
+
+  it("hands the passes the case's subject and people from load-case, and the title for an old one", async () => {
+    researchDossier.mockClear()
+    saveDossier.mockResolvedValue(savedRows(['single_source']))
+    const steps = stored().map((s) =>
+      s.id === 'load-case'
+        ? {
+            id: s.id,
+            handler: () => ({
+              ...CASE,
+              subject: 'Wirecard AG',
+              people: ['Markus Braun'],
+              sourceLinks: [],
+              competitorLinks: [],
+            }),
+          }
+        : s,
+    )
+
+    await engine.executeStep('save-dossier', { events: created(), steps })
+
+    expect(researchDossier.mock.calls[0]![1].caseContext).toEqual({
+      ...CASE,
+      subject: 'Wirecard AG',
+      people: ['Markus Braun'],
+    })
+
+    // A load-case stored before cases had a subject: the title stands in, as it did for the gather.
+    researchDossier.mockClear()
+    await truncateRunMirror(db)
+    forgetRunRows()
+    await new InngestTestEngine({ function: dossierRunner }).executeStep('save-dossier', {
+      events: created(),
+      steps: stored(),
+    })
+    expect(researchDossier.mock.calls[0]![1].caseContext).toEqual({
+      ...CASE,
+      subject: 'Wirecard',
+      people: [],
+    })
+  })
+
+  it('says at the gate when the subject was not found on Wikipedia', async () => {
+    saveDossier.mockResolvedValue(savedRows(['single_source']))
+    const steps = stored().map((s) =>
+      s.id === 'gather-entity-0'
+        ? {
+            id: s.id,
+            handler: () => ({
+              ...ENTITY,
+              qid: null,
+              titles: [],
+              subject: 'Wirecard',
+              unresolved: true,
+              people: [],
+            }),
+          }
+        : s,
+    )
+
+    await engine.executeStep('open-gate', { events: created(), steps })
+
+    expect(await gateMessages()).toEqual([
+      `Subject not found on Wikipedia: check the case's Subject · Dossier ready · 1 claims · ${CORPUS_LINE}`,
+    ])
   })
 
   it('lets a run parked at the gate before the corpus existed go straight back to its wait', async () => {
@@ -451,7 +576,7 @@ describeDb('dossier-runner', () => {
 
     expect(markDossierApproved).not.toHaveBeenCalled()
     expect(await gateMessages()).toEqual([
-      `Dossier ready · 3 claims · 1 unsourced · ${CORPUS_LINE}`,
+      `Subject: Wirecard (company) · Dossier ready · 3 claims · 1 unsourced · ${CORPUS_LINE}`,
     ])
   })
 })

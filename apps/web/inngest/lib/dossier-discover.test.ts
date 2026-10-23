@@ -1,7 +1,9 @@
 // @vitest-environment node
 
 import type { EntityFacts } from '@boom-busters/case-finder'
+import { PERSON_REFERENCE_CAP } from '@boom-busters/schemas'
 import { describe, expect, it, vi } from 'vitest'
+import type { z } from 'zod'
 import type { ResearchSources } from '@/lib/research-sources'
 import { fakeSources as sharedFakeSources, unexpected } from '@/test/fake-research-sources'
 import {
@@ -47,12 +49,29 @@ function facts(qid: string, over: Partial<EntityFacts> = {}): EntityFacts {
   }
 }
 
+/**
+ * A SPARQL fake for the subclass walk: it answers the QIDs of the query's
+ * `VALUES ?item` list that `businesses` names, as the real service answers
+ * the items whose class chain reaches business or organization.
+ */
+function subclassWalk(businesses: readonly string[], queries: string[] = []) {
+  return async <T>(query: string, schema: z.ZodType<T>): Promise<T> => {
+    queries.push(query)
+    const items = /VALUES \?item \{([^}]*)\}/.exec(query)?.[1] ?? ''
+    const bindings = [...items.matchAll(/wd:(Q\d+)/g)]
+      .map((m) => m[1]!)
+      .filter((qid) => businesses.includes(qid))
+      .map((qid) => ({ item: { value: `http://www.wikidata.org/entity/${qid}` } }))
+    return schema.parse({ results: { bindings } })
+  }
+}
+
 function entity(over: Partial<ResolvedEntity> = {}): ResolvedEntity {
   return { ...EMPTY_ENTITY, qid: 'Q1', titles: ['Mockco'], businessTitle: 'Mockco', ...over }
 }
 
 describe('resolveEntity', () => {
-  it('prefers the business item among the search hits and takes references from the scandal article too', async () => {
+  it('prefers the business item among the subject hits and takes references from the scandal article too', async () => {
     const hits = [
       'Wirecard scandal',
       'Wirecard',
@@ -61,6 +80,9 @@ describe('resolveEntity', () => {
       'Wirecard affair',
     ]
     const qids = new Map(hits.map((title, i) => [title, `Q${i + 1}`]))
+    const search = vi.fn(async (_query: string, limit: number) =>
+      hits.slice(0, limit).map((title, i) => ({ title, pageid: i })),
+    )
     const currentItems = vi.fn(async (title: string) => ({
       categories: [],
       externalLinks: [`https://news.example.org/${encodeURIComponent(title)}`],
@@ -69,8 +91,7 @@ describe('resolveEntity', () => {
     const sources = fakeSources({
       wikipedia: {
         ...fakeSources().wikipedia,
-        search: async (_query, limit) =>
-          hits.slice(0, limit).map((title, i) => ({ title, pageid: i })),
+        search,
         qidsFor: async () => qids,
         currentItems,
       },
@@ -94,8 +115,9 @@ describe('resolveEntity', () => {
       },
     })
 
-    const resolved = await resolveEntity(sources, 'Wirecard: The Billions That Never Were')
+    const resolved = await resolveEntity(sources, { subject: 'Wirecard', people: [] })
 
+    expect(search).toHaveBeenCalledWith('Wirecard', 5)
     expect(resolved).toMatchObject({
       qid: 'Q2',
       businessTitle: 'Wirecard',
@@ -106,11 +128,15 @@ describe('resolveEntity', () => {
       website: 'https://www.wirecard.com',
       inception: '1999-01-01',
       dissolved: '2020-11-18',
+      subject: 'Wirecard',
+      unresolved: false,
+      people: [],
     })
 
     const candidates = await discoverCandidates(sources, resolved, {
       competitorLinks: [],
-      caseTitle: 'Wirecard',
+      sourceLinks: [],
+      subject: 'Wirecard',
     })
     expect(currentItems.mock.calls.map(([title]) => title)).toEqual([
       'Wirecard',
@@ -120,19 +146,288 @@ describe('resolveEntity', () => {
     expect(candidates.map((c) => c.url)).toContain('https://news.example.org/Wirecard%20scandal')
   })
 
-  it('falls back to the first hit when no hit is a business', async () => {
+  it('marks an editorial headline with no business among its hits unresolved and takes no company references', async () => {
+    const subject = 'Theranos on the Record: Why the Jury Convicted Elizabeth Holmes'
+    const currentItems = vi.fn(async () => ({
+      categories: [],
+      externalLinks: ['https://news.example.org/2022'],
+      links: [],
+    }))
+    const youtubeSearch = vi.fn(async () => ({ fetchedAt: '2026-10-23', videos: [] }))
     const sources = fakeSources({
       wikipedia: {
         ...fakeSources().wikipedia,
-        search: async () => [{ title: 'Some fraud', pageid: 1 }],
-        qidsFor: async () => new Map([['Some fraud', 'Q9']]),
+        search: async () => [
+          { title: '2022 in the United States', pageid: 1 },
+          { title: 'Theranos fraud trial', pageid: 2 },
+        ],
+        qidsFor: async () =>
+          new Map([
+            ['2022 in the United States', 'Q9'],
+            ['Theranos fraud trial', 'Q10'],
+          ]),
+        currentItems,
       },
-      wikidata: { sparql: unexpected('sparql'), facts: async () => new Map([['Q9', facts('Q9')]]) },
+      wikidata: {
+        sparql: subclassWalk([]),
+        facts: async () =>
+          new Map([
+            ['Q9', facts('Q9', { instanceOf: ['Q14795564'] })],
+            ['Q10', facts('Q10', { instanceOf: ['Q1456832'] })],
+          ]),
+      },
+      youtube: {
+        search: youtubeSearch,
+        channelByHandle: unexpected('channelByHandle'),
+        uploads: unexpected('uploads'),
+        details: unexpected('details'),
+      },
     })
 
-    const resolved = await resolveEntity(sources, 'Some fraud')
+    const resolved = await resolveEntity(sources, { subject, people: [] })
 
-    expect(resolved).toMatchObject({ qid: 'Q9', businessTitle: 'Some fraud', relatedTitles: [] })
+    expect(resolved).toMatchObject({
+      qid: null,
+      titles: [],
+      businessTitle: null,
+      cik: null,
+      ticker: null,
+      website: null,
+      unresolved: true,
+      subject,
+      relatedTitles: ['Theranos fraud trial'],
+    })
+
+    const candidates = await discoverCandidates(sources, resolved, {
+      competitorLinks: [],
+      sourceLinks: [],
+      subject,
+    })
+    expect(currentItems).not.toHaveBeenCalled()
+    expect(candidates).toEqual([])
+    expect(youtubeSearch).toHaveBeenCalledWith(subject)
+  })
+
+  it('resolves each person to the first human among their top three hits', async () => {
+    const search = vi.fn(async (query: string, limit: number) => {
+      const byQuery: Record<string, string[]> = {
+        Theranos: ['Theranos'],
+        'Elizabeth Holmes': [
+          'Elizabeth Holmes (disambiguation)',
+          'Elizabeth Holmes',
+          'The Dropout',
+          'Elizabeth Holmes (character)',
+        ],
+        'Sunny Balwani': ['Sunny (film)'],
+      }
+      return (byQuery[query] ?? []).slice(0, limit).map((title, i) => ({ title, pageid: i }))
+    })
+    const qids = new Map([
+      ['Theranos', 'Q1'],
+      ['Elizabeth Holmes (disambiguation)', 'Q2'],
+      ['Elizabeth Holmes', 'Q3'],
+      ['The Dropout', 'Q4'],
+      ['Elizabeth Holmes (character)', 'Q5x'],
+      ['Sunny (film)', 'Q6'],
+    ])
+    const sources = fakeSources({
+      wikipedia: {
+        ...fakeSources().wikipedia,
+        search,
+        qidsFor: async (titles) =>
+          new Map(titles.flatMap((t) => (qids.has(t) ? [[t, qids.get(t)!]] : []))),
+      },
+      wikidata: {
+        sparql: unexpected('sparql'),
+        facts: async () =>
+          new Map([
+            ['Q1', facts('Q1', { instanceOf: ['Q4830453'] })],
+            ['Q2', facts('Q2', { instanceOf: ['Q4167410'] })],
+            ['Q3', facts('Q3', { instanceOf: ['Q5'] })],
+            ['Q4', facts('Q4', { instanceOf: ['Q5398426'] })],
+            ['Q5x', facts('Q5x', { instanceOf: ['Q5'] })],
+            ['Q6', facts('Q6', { instanceOf: ['Q11424'] })],
+          ]),
+      },
+    })
+
+    const resolved = await resolveEntity(sources, {
+      subject: 'Theranos',
+      people: ['Elizabeth Holmes', 'Sunny Balwani'],
+    })
+
+    expect(search).toHaveBeenCalledWith('Elizabeth Holmes', 3)
+    expect(search).toHaveBeenCalledWith('Sunny Balwani', 3)
+    expect(resolved.people).toEqual([
+      { name: 'Elizabeth Holmes', qid: 'Q3', title: 'Elizabeth Holmes' },
+      { name: 'Sunny Balwani', qid: null, title: null },
+    ])
+    expect(resolved).toMatchObject({ qid: 'Q1', businessTitle: 'Theranos', unresolved: false })
+  })
+
+  it('records the people of a subject with no company article', async () => {
+    const sources = fakeSources({
+      wikipedia: {
+        ...fakeSources().wikipedia,
+        search: async (query) =>
+          query === 'Ada Founder'
+            ? [{ title: 'Ada Founder', pageid: 1 }]
+            : [{ title: 'Startup (film)', pageid: 2 }],
+        qidsFor: async () =>
+          new Map([
+            ['Ada Founder', 'Q7'],
+            ['Startup (film)', 'Q8'],
+          ]),
+      },
+      wikidata: {
+        sparql: subclassWalk([]),
+        facts: async () =>
+          new Map([
+            ['Q7', facts('Q7', { instanceOf: ['Q5'] })],
+            ['Q8', facts('Q8', { instanceOf: ['Q11424'] })],
+          ]),
+      },
+    })
+
+    const resolved = await resolveEntity(sources, { subject: 'Adaco', people: ['Ada Founder'] })
+
+    expect(resolved).toMatchObject({
+      unresolved: true,
+      titles: [],
+      qid: null,
+      subject: 'Adaco',
+      people: [{ name: 'Ada Founder', qid: 'Q7', title: 'Ada Founder' }],
+    })
+  })
+
+  it('keeps a person whose search fails, unresolved, and still resolves the entity', async () => {
+    const sources = fakeSources({
+      wikipedia: {
+        ...fakeSources().wikipedia,
+        search: async (query) => {
+          if (query === 'Ada Founder') throw new Error('network down')
+          return [{ title: 'Adaco', pageid: 1 }]
+        },
+        qidsFor: async () => new Map([['Adaco', 'Q1']]),
+      },
+      wikidata: {
+        sparql: unexpected('sparql'),
+        facts: async () => new Map([['Q1', facts('Q1', { instanceOf: ['Q4830453'] })]]),
+      },
+    })
+
+    const resolved = await resolveEntity(sources, { subject: 'Adaco', people: ['Ada Founder'] })
+
+    expect(resolved).toMatchObject({
+      qid: 'Q1',
+      businessTitle: 'Adaco',
+      unresolved: false,
+      people: [{ name: 'Ada Founder', qid: null, title: null }],
+    })
+  })
+})
+
+describe('resolveEntity through the subclass walk', () => {
+  /** FTX's search as Wikipedia answers it, and its items' real direct classes. */
+  const ftxHits = ['FTX', 'Bankruptcy of FTX', 'FTX Arena']
+  const ftxQids = new Map([
+    ['FTX', 'Q108864780'],
+    ['Bankruptcy of FTX', 'Q115364245'],
+    ['FTX Arena', 'Q1140478'],
+  ])
+  const ftxFacts = new Map([
+    // FTX's only P31 is "cryptocurrency exchange", which no direct class names.
+    ['Q108864780', facts('Q108864780', { instanceOf: ['Q25401607'], cik: null })],
+    // A bankruptcy case and an arena.
+    ['Q115364245', facts('Q115364245', { instanceOf: ['Q1456832'] })],
+    ['Q1140478', facts('Q1140478', { instanceOf: ['Q641226'] })],
+  ])
+  const ftxSources = (sparql: ResearchSources['wikidata']['sparql']) =>
+    fakeSources({
+      wikipedia: {
+        ...fakeSources().wikipedia,
+        search: async (_query, limit) =>
+          ftxHits.slice(0, limit).map((title, i) => ({ title, pageid: i })),
+        qidsFor: async () => ftxQids,
+      },
+      wikidata: { sparql, facts: async () => ftxFacts },
+    })
+
+  it('resolves FTX, a cryptocurrency exchange, as a business through its class chain', async () => {
+    const queries: string[] = []
+    const resolved = await resolveEntity(ftxSources(subclassWalk(['Q108864780'], queries)), {
+      subject: 'FTX',
+      people: [],
+    })
+
+    expect(resolved).toMatchObject({
+      qid: 'Q108864780',
+      businessTitle: 'FTX',
+      titles: ['FTX', 'Bankruptcy of FTX'],
+      unresolved: false,
+    })
+    // One query over every subject hit, climbing to business and organization.
+    expect(queries).toHaveLength(1)
+    expect(queries[0]).toContain('wd:Q108864780 wd:Q115364245 wd:Q1140478')
+    expect(queries[0]).toContain('wdt:P31/wdt:P279*')
+    expect(queries[0]).toContain('wd:Q4830453 wd:Q43229')
+  })
+
+  it('leaves a subject unresolved when no hit is a business through its class chain either', async () => {
+    const resolved = await resolveEntity(ftxSources(subclassWalk([])), {
+      subject: 'FTX',
+      people: [],
+    })
+
+    expect(resolved).toMatchObject({ qid: null, businessTitle: null, unresolved: true })
+  })
+
+  it('takes a chain-only business at the top over a direct business lower down', async () => {
+    const queries: string[] = []
+    const hits = ['FTX', 'Bankruptcy of FTX', 'Alameda Research']
+    const sources = fakeSources({
+      wikipedia: {
+        ...fakeSources().wikipedia,
+        search: async () => hits.map((title, i) => ({ title, pageid: i })),
+        qidsFor: async () =>
+          new Map([
+            ['FTX', 'Q108864780'],
+            ['Bankruptcy of FTX', 'Q115364245'],
+            ['Alameda Research', 'Q115175564'],
+          ]),
+      },
+      wikidata: {
+        sparql: subclassWalk(['Q108864780', 'Q115175564'], queries),
+        facts: async () =>
+          new Map([
+            ['Q108864780', facts('Q108864780', { instanceOf: ['Q25401607'] })],
+            ['Q115364245', facts('Q115364245', { instanceOf: ['Q1456832'] })],
+            // Alameda Research is directly a business.
+            ['Q115175564', facts('Q115175564', { instanceOf: ['Q4830453'] })],
+          ]),
+      },
+    })
+
+    const resolved = await resolveEntity(sources, { subject: 'FTX', people: [] })
+
+    expect(resolved).toMatchObject({ qid: 'Q108864780', businessTitle: 'FTX' })
+    // Only the hits above the direct match are walked.
+    expect(queries).toHaveLength(1)
+    expect(queries[0]).toContain('VALUES ?item { wd:Q108864780 wd:Q115364245 }')
+  })
+
+  it('falls back to the direct class check when the query fails, without failing the step', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const resolved = await resolveEntity(
+      ftxSources(async () => {
+        throw new Error('query.wikidata.org timed out')
+      }),
+      { subject: 'FTX', people: [] },
+    )
+
+    expect(resolved).toMatchObject({ businessTitle: null, unresolved: true })
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('query.wikidata.org timed out'))
+    warn.mockRestore()
   })
 })
 
@@ -220,7 +515,7 @@ describe('discoverCandidates', () => {
         inception: '2005-03-01',
         dissolved: '2020-06-25',
       }),
-      { competitorLinks: [], caseTitle: 'Mockco' },
+      { competitorLinks: [], sourceLinks: [], subject: 'Mockco' },
     )
 
     expect(candidates.map((c) => [c.kind, c.tier])).toEqual([
@@ -265,7 +560,8 @@ describe('discoverCandidates', () => {
         { url: 'https://youtu.be/abc123' },
         { url: 'https://www.example.com/an-article' },
       ],
-      caseTitle: 'Mockco',
+      sourceLinks: [],
+      subject: 'Mockco',
     })
 
     expect(candidates).toEqual([
@@ -305,7 +601,7 @@ describe('discoverCandidates', () => {
     const candidates = await discoverCandidates(
       sources,
       entity({ cik: '1', website: 'https://www.mockco.com' }),
-      { competitorLinks: [], caseTitle: 'Mockco' },
+      { competitorLinks: [], sourceLinks: [], subject: 'Mockco' },
     )
 
     expect(candidates.map((c) => c.kind)).toEqual(['filing', 'figures'])
@@ -330,7 +626,7 @@ describe('discoverCandidates', () => {
     const candidates = await discoverCandidates(
       sources,
       entity({ website: 'https://www.mockco.com' }),
-      { competitorLinks: [], caseTitle: 'Mockco' },
+      { competitorLinks: [], sourceLinks: [], subject: 'Mockco' },
     )
 
     const urlsOf = (kind: string) => candidates.filter((c) => c.kind === kind).map((c) => c.url)
@@ -343,5 +639,98 @@ describe('discoverCandidates', () => {
     expect(urlsOf('regulator')).toEqual(
       many(REFERENCE_CAPS.primary, (i) => `https://www.sec.gov/litigation/${i}`),
     )
+  })
+
+  it('takes each resolved person article references, twenty a person, the record among them at tier 5', async () => {
+    const many = (n: number, at: (i: number) => string) =>
+      Array.from({ length: n }, (_, i) => at(i))
+    const holmesLinks = [
+      'https://www.justice.gov/usao-ndca/pr/holmes-sentenced',
+      'https://news.example.org/company-story',
+      ...many(30, (i) => `https://news.example.org/holmes/${i}`),
+    ]
+    const currentItems = vi.fn(async (title: string) => ({
+      categories: [],
+      externalLinks:
+        title === 'Elizabeth Holmes'
+          ? holmesLinks
+          : ['https://news.example.org/company-story', 'https://www.sec.gov/litigation/theranos'],
+      links: [],
+    }))
+    const sources = fakeSources({
+      wikipedia: { ...fakeSources().wikipedia, currentItems },
+    })
+
+    const candidates = await discoverCandidates(
+      sources,
+      entity({
+        titles: ['Theranos'],
+        businessTitle: 'Theranos',
+        people: [
+          { name: 'Elizabeth Holmes', qid: 'Q3', title: 'Elizabeth Holmes' },
+          { name: 'Sunny Balwani', qid: null, title: null },
+        ],
+      }),
+      { competitorLinks: [], sourceLinks: [], subject: 'Theranos' },
+    )
+
+    expect(currentItems.mock.calls.map(([title]) => title)).toEqual([
+      'Theranos',
+      'Elizabeth Holmes',
+    ])
+    const holmes = candidates.filter((c) => c.url.includes('holmes'))
+    // The shared company story is the company's, so twenty of Holmes's own: one record, nineteen stories.
+    expect(holmes).toHaveLength(PERSON_REFERENCE_CAP)
+    expect(holmes.filter((c) => c.kind === 'reporting' && c.tier === 2)).toHaveLength(19)
+    expect(candidates.find((c) => c.url.includes('holmes-sentenced'))).toMatchObject({
+      kind: 'regulator',
+      tier: 5,
+    })
+    expect(
+      candidates.filter((c) => c.url === 'https://news.example.org/company-story'),
+    ).toHaveLength(1)
+    expect(candidates.map((c) => c.tier)).toEqual([...candidates.map((c) => c.tier)].sort())
+  })
+
+  it('puts the owner sources first at tier 1, pinned, outside the reference caps', async () => {
+    const many = (n: number, at: (i: number) => string) =>
+      Array.from({ length: n }, (_, i) => at(i))
+    const owned = [
+      'https://longreads.example.org/the-whole-story?utm_source=x',
+      'https://news.example.org/story/0',
+      'https://podcasts.example.org/episode-9',
+    ]
+    const sources = fakeSources({
+      wikipedia: {
+        ...fakeSources().wikipedia,
+        currentItems: async () => ({
+          categories: [],
+          externalLinks: many(70, (i) => `https://news.example.org/story/${i}`),
+          links: [],
+        }),
+      },
+    })
+
+    const candidates = await discoverCandidates(sources, entity(), {
+      competitorLinks: [],
+      sourceLinks: owned.map((url) => ({ url })),
+      subject: 'Mockco',
+    })
+
+    expect(candidates.slice(0, 3)).toEqual([
+      {
+        url: 'https://longreads.example.org/the-whole-story',
+        kind: 'reporting',
+        tier: 1,
+        title: null,
+        publishedAt: null,
+        meta: { pinned: true },
+      },
+      expect.objectContaining({ url: 'https://news.example.org/story/0', tier: 1 }),
+      expect.objectContaining({ url: 'https://podcasts.example.org/episode-9', tier: 1 }),
+    ])
+    const reporting = candidates.filter((c) => c.tier === 2)
+    expect(reporting).toHaveLength(REFERENCE_CAPS.reporting)
+    expect(reporting[0]?.url).toBe('https://news.example.org/story/1')
   })
 })

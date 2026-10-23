@@ -209,4 +209,37 @@ suite('cases', () => {
     expect(updated?.angle).toBe('original')
     expect(updated?.title).toBe('Enron')
   })
+
+  it('round-trips subject, people and source links, and defaults them', async () => {
+    const plain = await createCase(db, { title: 'Plain', category: 'collapse' })
+    expect(plain.subject).toBeNull()
+    expect(plain.people).toEqual([])
+    expect(plain.sourceLinks).toEqual([])
+
+    const row = await createCase(db, {
+      title: 'The Auditors',
+      category: 'con',
+      subject: 'Wirecard',
+      people: ['Markus Braun'],
+      sourceLinks: [{ url: 'https://example.com/a', note: 'FT' }],
+    })
+    const got = await getCase(db, row.id)
+    expect(got?.subject).toBe('Wirecard')
+    expect(got?.people).toEqual(['Markus Braun'])
+    expect(got?.sourceLinks).toEqual([{ url: 'https://example.com/a', note: 'FT' }])
+  })
+
+  it('updateCase patches subject, people and source links', async () => {
+    const row = await createCase(db, { title: 'Patchable', category: 'con' })
+    const updated = await updateCase(db, row.id, {
+      subject: 'Enron',
+      people: ['Jeff Skilling'],
+      sourceLinks: [{ url: 'https://example.com/b' }],
+    })
+    expect(updated?.subject).toBe('Enron')
+    expect(updated?.people).toEqual(['Jeff Skilling'])
+    expect(updated?.sourceLinks).toEqual([{ url: 'https://example.com/b' }])
+    const cleared = await updateCase(db, row.id, { subject: null })
+    expect(cleared?.subject).toBeNull()
+  })
 })

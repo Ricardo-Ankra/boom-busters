@@ -166,6 +166,17 @@ suite('dossiers and claims', () => {
     expect(await bumpDossierRevisions(db, projectId)).toBe(2)
   })
 
+  it('starts the revision count again on approval, so a later request is a new review', async () => {
+    await saveDossier(db, { projectId, contentMd: '#', claims })
+    await bumpDossierRevisions(db, projectId)
+    await bumpDossierRevisions(db, projectId)
+    await bumpDossierRevisions(db, projectId)
+
+    await markDossierApproved(db, projectId)
+
+    expect(await bumpDossierRevisions(db, projectId)).toBe(1)
+  })
+
   it('cascades away with its project', async () => {
     await saveDossier(db, { projectId, contentMd: '#', claims })
     await truncateCases(db)
@@ -329,5 +340,33 @@ suite('dossier research, supports and legal status', () => {
       research: null,
     })
     expect(cleared.research).toBeNull()
+  })
+
+  it('reads research saved before the subject fields with their defaults', async () => {
+    // The shape a dossier written before people, unresolved, subject and
+    // currentStatus existed has in the column.
+    const old = {
+      entity: { qid: 'Q1', titles: ['Wirecard'], cik: null, ticker: 'WDI', website: null },
+      brief: {
+        summary: 'Wirecard was a payments company that reported cash it did not have.',
+        turningPoint: 'The auditors could not find the money.',
+        cast: [],
+        toldAlready: [],
+        openQuestions: [],
+      },
+      scenes: [],
+      answers: [],
+      corpus: { read: 3, unread: 0, failed: 0 },
+    } as unknown as GroundedResearch
+    await saveDossier(db, { projectId, contentMd: '# x', claims: plain, research: old })
+
+    const read = (await getDossier(db, projectId))!.research!
+    expect(read.entity).toMatchObject({
+      qid: 'Q1',
+      people: [],
+      unresolved: false,
+      subject: null,
+    })
+    expect(read.brief.currentStatus).toBeNull()
   })
 })

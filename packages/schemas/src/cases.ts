@@ -35,6 +35,11 @@ export const CASE_LINK_NOTE_MAX = 500
 export const CASE_PRIORITY_MIN = 0
 export const CASE_PRIORITY_MAX = 100
 export const CASE_SUGGESTIONS_MAX = 20
+export const CASE_SUBJECT_MIN = 2
+export const CASE_SUBJECT_MAX = 120
+export const CASE_PEOPLE_MAX = 6
+export const CASE_PERSON_MAX = 80
+export const CASE_SOURCE_LINKS_MAX = 20
 
 export const CaseSuggestionSchema = z.object({
   title: z.string().min(CASE_TITLE_MIN).max(CASE_TITLE_MAX),
@@ -49,6 +54,10 @@ export const CaseSuggestionSchema = z.object({
     .max(CASE_LINKS_MAX)
     .optional(),
   priorityScore: z.number().int().min(CASE_PRIORITY_MIN).max(CASE_PRIORITY_MAX),
+  /** The company or entity the dossier research resolves, apart from the editorial title. */
+  subject: z.string().trim().min(CASE_SUBJECT_MIN).max(CASE_SUBJECT_MAX),
+  /** The people at the centre of the case. */
+  people: z.array(z.string().trim().min(2).max(CASE_PERSON_MAX)).max(CASE_PEOPLE_MAX).default([]),
 })
 export type CaseSuggestion = z.infer<typeof CaseSuggestionSchema>
 

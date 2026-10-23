@@ -37,6 +37,7 @@ export const DOSSIER_SUMMARY_MAX = 5000
 export const DOSSIER_TURNING_POINT_MAX = 2000
 export const DOSSIER_PRINCIPALS_MAX = 30
 export const DOSSIER_OPEN_QUESTIONS_MAX = 20
+export const DOSSIER_STATUS_MAX = 600
 export const DOSSIER_EVENT_WHEN_MAX = 100
 export const DOSSIER_EVENT_WHAT_MAX = 1000
 export const DOSSIER_EVENTS_MAX = 60
@@ -75,6 +76,15 @@ export const DOSSIER_TOLD_ALREADY_MAX = 30
 export const DOCUMENT_BODY_CAP_BYTES = 4 * 1024 * 1024
 /** Share of the corpus budget each tier may fill, so one tier cannot crowd out the rest. */
 export const DOSSIER_TIER_SHARES = { 1: 0.25, 2: 0.3, 3: 0.15, 4: 0.1, 5: 0.2 } as const
+/**
+ * References the gather takes from each person's Wikipedia article. A
+ * founder's article carries the aftermath (sentence, appeal, prison) that the
+ * company's article often does not.
+ */
+export const PERSON_REFERENCE_CAP = 20
+
+/** The back-test's currency gate: a recent-outcome case's status is dated within this many days of the run. */
+export const BACKTEST_CURRENT_WITHIN_DAYS = 540
 
 /**
  * What a gathered document is. The tier ranks how much a document's say-so
@@ -114,6 +124,25 @@ export const DOCUMENT_TIERS: Record<DocumentKind, 1 | 2 | 3 | 4 | 5> = {
 export const LEGAL_STATUSES = ['ruled', 'alleged', 'none'] as const
 export const LegalStatusSchema = z.enum(LEGAL_STATUSES)
 export type LegalStatus = z.infer<typeof LegalStatusSchema>
+
+/**
+ * The words of a verdict (decision 6). A `ruled` status resting on reporting
+ * or a video is kept when the claim or one of its quotes says one of these,
+ * as a whole phrase: a conviction reported by a major outlet is a ruling, and
+ * a charge is not.
+ */
+export const VERDICT_WORDS = [
+  'convicted',
+  'found guilty',
+  'pleaded guilty',
+  'pled guilty',
+  'sentenced',
+  'acquitted',
+  'fined',
+  'banned',
+  'ordered to pay',
+  'ruled',
+] as const
 
 /** A document number from the numbered corpus plus the words that prove the point. */
 export const SupportSchema = z.object({
@@ -193,6 +222,14 @@ export const CaseBriefSchema = z.object({
   toldAlready: z.array(ToldAlreadySchema).max(DOSSIER_TOLD_ALREADY_MAX).default([]),
   /** What the research could not establish. Shown to the human, not hidden. */
   openQuestions: z.array(z.string().min(10)).max(DOSSIER_OPEN_QUESTIONS_MAX),
+  /** Where the story stands today, dated. Null for briefs written before this existed. */
+  currentStatus: z
+    .object({
+      asOf: z.string().regex(/^\d{4}(-\d{2}){0,2}$/),
+      text: z.string().trim().min(20).max(DOSSIER_STATUS_MAX),
+    })
+    .nullable()
+    .default(null),
 })
 export type CaseBrief = z.infer<typeof CaseBriefSchema>
 
@@ -316,6 +353,16 @@ export const ResearchEntitySchema = z.object({
   cik: z.string().nullable(),
   ticker: z.string().nullable(),
   website: z.string().nullable(),
+  people: z
+    .array(z.object({ name: z.string(), qid: z.string().nullable(), title: z.string().nullable() }))
+    .default([]),
+  unresolved: z.boolean().default(false),
+  subject: z.string().nullable().default(null),
+  /**
+   * The owner's source links the gather read, as the case gave them, so a
+   * revision can tell the case changed since. Empty for research before them.
+   */
+  sourceUrls: z.array(z.string()).default([]),
 })
 export type ResearchEntity = z.infer<typeof ResearchEntitySchema>
 
@@ -327,6 +374,7 @@ export const GroundedResearchSchema = z.object({
     cast: z.array(GroundedCastMemberSchema),
     toldAlready: z.array(GroundedToldAlreadySchema),
     openQuestions: CaseBriefSchema.shape.openQuestions,
+    currentStatus: CaseBriefSchema.shape.currentStatus,
   }),
   scenes: z.array(GroundedSceneSchema),
   answers: z.array(GroundedAnswerSchema),

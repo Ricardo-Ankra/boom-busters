@@ -32,6 +32,43 @@ export function isGateOpen(project: { stageStatus: StageStatus }, liveRun: boole
   return project.stageStatus === 'awaiting_review' && liveRun
 }
 
+/**
+ * Why changes to the dossier cannot be asked for now, or null when they can
+ * (design decision 7).
+ *
+ * The note box used to exist only at the open dossier gate, so after approval
+ * the one way back was a re-run that could not say what was wrong. Now it is
+ * offered whenever a dossier exists and no run is working from it: at the
+ * open gate, and at any later stage that is not running. A dossier stage that
+ * failed or was stopped has no review to return to, and is run again instead.
+ */
+export function dossierChangesRefusal(
+  project: { stage: ProjectStage; stageStatus: StageStatus },
+  hasDossier: boolean,
+): string | null {
+  if (!hasDossier) return 'There is no dossier yet to change.'
+  const active = project.stageStatus === 'running' || project.stageStatus === 'queued'
+  if (project.stage === 'dossier') {
+    if (active) {
+      return 'The dossier is being researched now. Ask for changes once it is ready to review.'
+    }
+    return project.stageStatus === 'awaiting_review'
+      ? null
+      : 'The dossier stage stopped before its review. Run it again from the top of the screen.'
+  }
+  return active
+    ? `The ${project.stage} stage is running from this dossier. Ask for changes once it stops.`
+    : null
+}
+
+/** Whether the dossier's note box is offered: `dossierChangesRefusal`'s yes. */
+export function dossierChangesAllowed(
+  project: { stage: ProjectStage; stageStatus: StageStatus },
+  hasDossier: boolean,
+): boolean {
+  return dossierChangesRefusal(project, hasDossier) === null
+}
+
 // ---------------------------------------------------------------------------
 // What the project header should offer
 // ---------------------------------------------------------------------------

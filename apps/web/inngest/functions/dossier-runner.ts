@@ -1,37 +1,34 @@
-import {
-  getCase,
-  getProject,
-  markDossierApproved,
-  saveDossier,
-  setProjectStage,
-} from '@boom-busters/db'
+import { getCase, getProject, saveDossier, setProjectStage } from '@boom-busters/db'
 import { mockProvidersEnabled, renderDossierMarkdown } from '@boom-busters/providers'
 import { parseEventData, serialiseError } from '@boom-busters/schemas'
 import { NonRetriableError } from 'inngest'
 import type { GetStepTools } from 'inngest'
+import { completeForProject } from '@/lib/answer-call'
 import { db } from '@/lib/db'
 import { recordRepairs } from '@/lib/notices'
 import { liveResearchSources } from '@/lib/research-sources'
 import { inngest } from '../client'
 import { events } from '../events'
 import {
-  autoCloseReviewGate,
   closeBudgetGate,
-  closeReviewGate,
   grantOverage,
   markStageFailed,
   openBudgetGate,
   openReviewGate,
   type GateContext,
 } from '../lib/gates'
+import { awaitDossierApproval } from '../lib/dossier-approval'
+import { nameSubjectIfMissing } from '../lib/name-subject'
 import { gatherCorpus } from '../lib/dossier-gather'
 import { inngestSteps } from '../lib/steps'
 import {
   EMPTY_CORPUS_MESSAGE,
   gateCounts,
+  gateSubject,
   gateSummary,
   loadCorpus,
   predatesCorpus,
+  replayedCase,
   researchDossier,
   toDraftClaims,
 } from '../lib/dossier-research'
@@ -52,7 +49,13 @@ type StepTools = GetStepTools<typeof inngest>
  * here for two reasons: the losing wait of every round stays outstanding in
  * the run plan, and the behaviour cannot be tested — `@inngest/test` cannot
  * drive a run past a `waitForEvent` at all. A separate function for the side
- * path is the shape M2 already proved with `cancel-reconciler`.
+ * path is the shape M2 already proved with `cancel-reconciler`. Changes asked
+ * for after approval find this run finished, so the reviser then holds the
+ * gate itself (design decision 7).
+ *
+ * The gate always opens (decision 1). The runner once approved a dossier
+ * with nothing blocking on its own and started the script; the owner wants to
+ * read, revise and refine the dossier first, so only the Approve moves on.
  *
  * Each research pass is its own `step.run()`, because a step boundary is a
  * spend boundary: Inngest memoises completed steps, so a failure while
@@ -100,28 +103,59 @@ export const dossierRunner = inngest.createFunction(
 
       await setProjectStage(db, projectId, { stage: 'dossier', stageStatus: 'running' })
 
+      const named = await nameSubjectIfMissing(db, source, {
+        complete: completeForProject(projectId),
+        mocked: mockProvidersEnabled(),
+      })
+
       return {
         title: source.title,
         category: source.category as string,
         angle: source.angle,
         demandNotes: source.demandNotes,
+        subject: named.subject,
+        people: named.people,
+        sourceLinks: source.sourceLinks,
         competitorLinks: source.competitorLinks.map((link) => ({ url: link.url })),
       }
     })
     // Parked runs replay old step results: a run parked at the gate before the
     // corpus existed has already saved and opened it, so it only waits.
     if (predatesCorpus(loaded)) {
-      const outcome = await awaitApproval(step, ctx)
+      const outcome = await awaitDossierApproval(step, ctx)
       return { projectId, outcome }
     }
-    const { competitorLinks, ...caseContext } = loaded
+    const { competitorLinks } = loaded
+    // A load-case stored before cases had a subject names none: the title
+    // stands in, as the gather was searched with it then.
+    const {
+      subject: caseSubject,
+      people: casePeople,
+      sourceLinks: caseSourceLinks,
+    } = replayedCase(loaded)
+    // Every pass opens on the subject and people the gather searched with.
+    const caseContext = {
+      title: loaded.title,
+      category: loaded.category,
+      angle: loaded.angle,
+      demandNotes: loaded.demandNotes,
+      subject: caseSubject,
+      people: casePeople,
+    }
 
     const mocked = mockProvidersEnabled()
     // The sources are built inside the gather's own steps, never here: a replay
     // must not need DATA_CONTACT_EMAIL, and mock mode never builds them.
     const gathered = await gatherCorpus(
       steps,
-      { projectId, caseTitle: caseContext.title, competitorLinks, round: 0 },
+      {
+        projectId,
+        subject: caseSubject,
+        people: casePeople,
+        sourceLinks: caseSourceLinks,
+        competitorLinks,
+        round: 0,
+      },
       { db, sources: () => liveResearchSources(), mocked },
     )
     const { documents, corpus } = await step.run('corpus-load-0', () => loadCorpus(db, projectId))
@@ -173,78 +207,30 @@ export const dossierRunner = inngest.createFunction(
       // What the research passes trimmed or dropped, on the dossier review; a
       // clean dossier retires the last one's notice (decision 293).
       await recordRepairs({ projectId, subject: 'dossier', subjectId: null }, research.repairs)
-      // Checked here, against the corpus this run loaded, so the approval
-      // below reads one stored answer rather than recomputing it on replay.
+      // Checked here, against the corpus this run loaded, so the gate below
+      // reads one stored answer rather than recomputing it on replay.
       return gateCounts(saved.claims, research.claims, documents)
     })
 
-    /**
-     * Exception-based gating (decision, 2026-08-16): the gate parks only when
-     * something actually needs a human. `counts.blocking` is the same
-     * predicate `approveGate` enforces server-side — unverified claims not
-     * yet quarantined — so a dossier with zero of them is one the human
-     * could only have rubber-stamped. It approves itself, says so, and the
-     * script runner starts on the same event a manual approval would send.
-     *
-     * Grounded research adds one condition (spec 7): every claim's primary
-     * support must rest on a document that really answered, 2xx or Wayback.
-     */
-    if (counts.blocking === 0 && counts.unfetched === 0) {
-      await step.run('auto-approve', async () => {
-        await markDossierApproved(db, projectId)
-        await autoCloseReviewGate(ctx, {
-          stage: 'dossier',
-          nextStage: 'script',
-          summary: gateSummary(counts, corpus),
-        })
-      })
-      await step.sendEvent('advance-to-script', events.dossierApproved.create({ projectId }))
-
-      return { projectId, outcome: 'auto-approved' as const, claims: counts.total }
-    }
-
+    // The gate always opens (design decision 1): the script starts only on the
+    // owner's Approve, never on its own, however clean the dossier reads.
+    // Unverified claims still block that Approve, server-side.
     await step.run('open-gate', () =>
       openReviewGate(ctx, {
         stage: 'dossier',
         projectStage: 'dossier',
-        summary: gateSummary(counts, corpus),
+        summary: gateSummary(
+          counts,
+          corpus,
+          gateSubject(gathered.entity, { subject: caseSubject, people: casePeople }),
+        ),
       }),
     )
 
-    const outcome = await awaitApproval(step, ctx)
+    const outcome = await awaitDossierApproval(step, ctx)
     return { projectId, outcome, claims: counts.total }
   },
 )
-
-/** Wait on the open dossier gate, then close it, or fail it after 30 days. */
-async function awaitApproval(
-  step: StepTools,
-  ctx: GateContext,
-): Promise<'approved' | 'gate-timeout'> {
-  const approval = await step.waitForEvent('await-dossier-gate', {
-    event: 'gate/dossier.approved',
-    timeout: '30d',
-    if: 'async.data.projectId == event.data.projectId',
-  })
-
-  if (!approval) {
-    // Thirty days without a decision. Failing is more honest than waiting
-    // forever on a run nobody remembers starting.
-    await step.run('gate-timed-out', () =>
-      markStageFailed(ctx, {
-        message: 'The dossier gate went 30 days without a decision.',
-      }),
-    )
-    return 'gate-timeout'
-  }
-
-  await step.run('close-gate', async () => {
-    await markDossierApproved(db, ctx.projectId)
-    await closeReviewGate(ctx, { stage: 'dossier', nextStage: 'script' })
-  })
-
-  return 'approved'
-}
 
 /** Park on the budget gate; resolve true if the human granted the overage. */
 async function waitOutBudgetGate(

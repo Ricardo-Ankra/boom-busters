@@ -41,7 +41,12 @@ const FRESH_FOR_MS = 90 * 86_400_000
 
 export interface GatherInput {
   projectId: string
-  caseTitle: string
+  /** The company's common name, which Wikipedia and YouTube are searched with. */
+  subject: string
+  /** The main people; each one's Wikipedia article adds its references. */
+  people: readonly string[]
+  /** The owner's own links, read first. */
+  sourceLinks: readonly { url: string }[]
   competitorLinks: readonly { url: string }[]
   round: number
 }
@@ -92,7 +97,14 @@ export async function gatherCorpus(
   const { round } = input
 
   const resolved = await steps.run(`gather-entity-${round}`, async () =>
-    mocked ? EMPTY_ENTITY : resolveEntity(sources(), input.caseTitle),
+    mocked
+      ? // The case's own subject and people, so a mock run's gate names them.
+        {
+          ...EMPTY_ENTITY,
+          subject: input.subject,
+          people: input.people.map((name) => ({ name, qid: null, title: null })),
+        }
+      : resolveEntity(sources(), { subject: input.subject, people: input.people }),
   )
   const entity: ResearchEntity = {
     qid: resolved.qid,
@@ -100,6 +112,10 @@ export async function gatherCorpus(
     cik: resolved.cik,
     ticker: resolved.ticker,
     website: resolved.website,
+    people: resolved.people,
+    unresolved: resolved.unresolved,
+    subject: resolved.subject,
+    sourceUrls: input.sourceLinks.map((link) => link.url),
   }
 
   if (mocked) {
@@ -112,7 +128,8 @@ export async function gatherCorpus(
   const candidates = await steps.run(`gather-discover-${round}`, () =>
     discoverCandidates(sources(), resolved, {
       competitorLinks: input.competitorLinks,
-      caseTitle: input.caseTitle,
+      sourceLinks: input.sourceLinks,
+      subject: input.subject,
     }),
   )
 
@@ -133,7 +150,7 @@ export async function gatherCorpus(
   }
 
   const ranked = await steps.run(`gather-rank-${round}`, () =>
-    rankAndLink(db, input.projectId, ids, resolved.dissolved),
+    rankAndLink(db, input.projectId, placed(candidates, ids), resolved.dissolved),
   )
   return { entity, ...ranked }
 }
@@ -470,6 +487,32 @@ async function readFigures(sources: ResearchSources, candidate: Candidate): Prom
   }
 }
 
+/** A fetched document's id with the tier and pin its candidate gave it in this gather. */
+interface Placed {
+  id: string
+  /** Null only if the ids outrun the candidates, when the row's own kind decides. */
+  tier: Candidate['tier'] | null
+  pinned: boolean
+}
+
+/**
+ * The fetch steps hand back one id per candidate, in candidate order. The
+ * tier and the pin are this case's, read from the candidate and not from the
+ * stored row: the row is shared by every project that cites the page, so an
+ * owner's link another project fetched as a reference keeps that project's
+ * tier and no pin, and a page one owner pinned is not pinned for every case.
+ */
+function placed(candidates: readonly Candidate[], ids: readonly string[]): Placed[] {
+  return ids.map((id, i) => {
+    const candidate = candidates[i]
+    return {
+      id,
+      tier: candidate?.tier ?? null,
+      pinned: candidate?.meta?.['pinned'] === true,
+    }
+  })
+}
+
 /**
  * Rank the fetched documents and write the project's corpus links. Rows keep
  * their whole text: the cut to the per-document cap is the ranker's view, and
@@ -478,12 +521,18 @@ async function readFigures(sources: ResearchSources, candidate: Candidate): Prom
 async function rankAndLink(
   db: Database,
   projectId: string,
-  ids: readonly string[],
+  docs: readonly Placed[],
   anchorDate: string | null,
 ): Promise<{ read: string[]; unread: string[]; failed: number }> {
-  const byId = new Map((await getResearchDocuments(db, ids)).map((row) => [row.id, row]))
+  const placement = new Map<string, Placed>()
+  for (const doc of docs) if (!placement.has(doc.id)) placement.set(doc.id, doc)
+  const byId = new Map(
+    (await getResearchDocuments(db, [...placement.keys()])).map((row) => [row.id, row]),
+  )
   // Candidate order, so documents the ranker cannot tell apart keep the order discovery gave them.
-  const rows = [...new Set(ids)].flatMap((id) => byId.get(id) ?? [])
+  const rows = [...placement.keys()].flatMap((id) => byId.get(id) ?? [])
+  const tierOf = (row: ResearchDocumentRow) =>
+    placement.get(row.id)?.tier ?? DOCUMENT_TIERS[row.kind]
   const usable = rows.filter((row) => row.failure === null)
   const failed = rows.filter((row) => row.failure !== null)
 
@@ -491,10 +540,11 @@ async function rankAndLink(
     usable.map((row) => ({
       id: row.id,
       kind: row.kind,
-      tier: DOCUMENT_TIERS[row.kind],
+      tier: tierOf(row),
       tokens: row.tokens,
       publishedAt: row.publishedAt,
       text: row.text,
+      pinned: placement.get(row.id)?.pinned === true,
     })),
     { anchorDate },
   )
@@ -502,7 +552,7 @@ async function rankAndLink(
   await linkDossierDocuments(db, projectId, [
     ...read.map((doc) => ({ documentId: doc.id, rank: doc.rank, tier: doc.tier })),
     ...unread.map((doc) => ({ documentId: doc.id, rank: null, tier: doc.tier })),
-    ...failed.map((row) => ({ documentId: row.id, rank: null, tier: DOCUMENT_TIERS[row.kind] })),
+    ...failed.map((row) => ({ documentId: row.id, rank: null, tier: tierOf(row) })),
   ])
 
   return {

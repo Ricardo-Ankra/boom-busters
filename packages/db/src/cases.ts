@@ -26,6 +26,9 @@ export interface CaseSummary {
   angle: string | null
   demandNotes: string | null
   competitorLinks: { url: string; note?: string }[]
+  subject: string | null
+  people: string[]
+  sourceLinks: { url: string; note?: string }[]
   priorityScore: number
   status: CaseStatus
   /** How many projects have been started from this case. */
@@ -41,6 +44,9 @@ const summaryColumns = {
   angle: cases.angle,
   demandNotes: cases.demandNotes,
   competitorLinks: cases.competitorLinks,
+  subject: cases.subject,
+  people: cases.people,
+  sourceLinks: cases.sourceLinks,
   priorityScore: cases.priorityScore,
   status: cases.status,
   createdAt: cases.createdAt,
@@ -99,6 +105,9 @@ export interface CaseInput {
   angle?: string | null
   demandNotes?: string | null
   competitorLinks?: { url: string; note?: string }[]
+  subject?: string | null
+  people?: string[]
+  sourceLinks?: { url: string; note?: string }[]
   priorityScore?: number
   status?: CaseStatus
 }
@@ -112,6 +121,9 @@ export async function createCase(db: Database, input: CaseInput): Promise<CaseRo
       angle: input.angle ?? null,
       demandNotes: input.demandNotes ?? null,
       competitorLinks: input.competitorLinks ?? [],
+      subject: input.subject ?? null,
+      people: input.people ?? [],
+      sourceLinks: input.sourceLinks ?? [],
       priorityScore: input.priorityScore ?? 0,
       status: input.status ?? 'idea',
     })

@@ -35,13 +35,65 @@ describe('rankCorpus', () => {
 
   it('orders a tier by nearness to the anchor date, undated last', () => {
     const docs = [
-      doc('undated', 2, 10),
-      doc('far', 2, 10, '2015-01-01'),
-      doc('near', 2, 10, '2020-06'),
-      doc('mid', 2, 10, '2018'),
+      doc('undated', 1, 10),
+      doc('far', 1, 10, '2015-01-01'),
+      doc('near', 1, 10, '2020-06'),
+      doc('mid', 1, 10, '2018'),
     ]
     const { read } = rankCorpus(docs, { anchorDate: '2020-07-01' })
     expect(read.map((d) => d.id)).toEqual(['near', 'mid', 'far', 'undated'])
+  })
+
+  it('reads the reporting tier nearest the anchor and newest in turn, undated last', () => {
+    const docs = [
+      doc('undated', 2, 10),
+      doc('newest', 2, 10, '2024-05-01'),
+      doc('later', 2, 10, '2023-01-01'),
+      doc('nearest', 2, 10, '2020-02-01'),
+      doc('before', 2, 10, '2019-11-01'),
+      doc('oldest', 2, 10, '2018-01-01'),
+    ]
+    const { read } = rankCorpus(docs, { anchorDate: '2020-01-01' })
+    // Nearest: nearest, before, oldest, later, newest. Newest: newest, later, nearest, before, oldest.
+    expect(read.map((d) => d.id)).toEqual([
+      'nearest',
+      'newest',
+      'before',
+      'later',
+      'oldest',
+      'undated',
+    ])
+  })
+
+  it('reads court and regulator records newest first whatever the anchor, undated last', () => {
+    const docs = [
+      doc('undated', 5, 10),
+      doc('near-anchor', 5, 10, '2014-12-01'),
+      doc('newest', 5, 10, '2023-06-01'),
+      doc('middle', 5, 10, '2016'),
+    ]
+    const { read } = rankCorpus(docs, { anchorDate: '2015-01-01' })
+    expect(read.map((d) => d.id)).toEqual(['newest', 'middle', 'near-anchor', 'undated'])
+  })
+
+  it('reads pinned documents first in their tier, in the order given, and no earlier than their tier', () => {
+    const docs = [
+      doc('filing', 1, 10, '2020-06-01'),
+      { ...doc('owner-undated', 1, 10), pinned: true },
+      doc('filing-far', 1, 10, '2010-01-01'),
+      { ...doc('owner-far', 1, 10, '2001-01-01'), pinned: true },
+      { ...doc('pinned-reporting', 2, 10, '1990'), pinned: true },
+      doc('reporting', 2, 10, '2020-07-01'),
+    ]
+    const { read } = rankCorpus(docs, { anchorDate: '2020-07-01' })
+    expect(read.map((d) => d.id)).toEqual([
+      'owner-undated',
+      'owner-far',
+      'filing',
+      'filing-far',
+      'pinned-reporting',
+      'reporting',
+    ])
   })
 
   it('orders newest first with undated last when there is no anchor', () => {

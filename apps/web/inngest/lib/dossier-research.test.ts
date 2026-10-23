@@ -14,8 +14,10 @@ import { NonRetriableError } from 'inngest'
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AnswerComplete } from '@/lib/answer'
 import {
+  gateSubject,
   gateSummary,
   loadCorpus,
+  replayedCase,
   researchDossier,
   splitRange,
   unfetchedClaims,
@@ -34,8 +36,25 @@ const replaying = (stored: Record<string, unknown>): Steps => ({
   run: async <T>(id: string) => stored[id] as T,
 })
 
-const CASE = { title: 'Wirecard', category: 'con', angle: null, demandNotes: null }
-const ENTITY = { qid: 'Q1', titles: ['Wirecard'], cik: null, ticker: null, website: null }
+const CASE = {
+  title: 'Wirecard: the billions that were never there',
+  category: 'con',
+  angle: null,
+  demandNotes: null,
+  subject: 'Wirecard',
+  people: ['Markus Braun'],
+}
+const ENTITY = {
+  qid: 'Q1',
+  titles: ['Wirecard'],
+  cik: null,
+  ticker: null,
+  website: null,
+  people: [],
+  unresolved: false,
+  subject: null,
+  sourceUrls: [],
+}
 
 const DOCUMENTS: CorpusDocument[] = [
   {
@@ -197,6 +216,24 @@ describe('researchDossier over the corpus', () => {
     expect(result.research.corpus).toEqual({ read: 2, unread: 1, failed: 1 })
     expect(result.research.scenes[0]!.ref).toMatchObject({ documentId: 'doc-ft', found: true })
     expect(result.budgetGate).toBeUndefined()
+  })
+
+  it("opens every pass on the case's subject and people, then its working title", async () => {
+    const openings: string[] = []
+    const complete: AnswerComplete = async (request) => {
+      openings.push(request.messages[0]!.content)
+      return { text: fixtureFor(request) }
+    }
+
+    await researchDossier(inlineSteps, input, { complete, mocked: false })
+
+    expect(openings).toHaveLength(6)
+    for (const opening of openings) {
+      expect(opening).toBe(openings[0])
+      expect(opening).toMatch(
+        /^Subject: Wirecard \(company\)\nPeople: Markus Braun\nWorking title: Wirecard: the billions that were never there\nCategory: con\n/,
+      )
+    }
   })
 
   it('runs each pass and the grounding under its own step id for the round', async () => {
@@ -634,12 +671,101 @@ describe('unfetchedClaims', () => {
 })
 
 describe('gateSummary', () => {
-  it('ends with the corpus line', () => {
+  const WIRECARD = {
+    subject: 'Wirecard',
+    people: ['Markus Braun', 'Jan Marsalek'],
+    unresolved: false,
+  }
+
+  it('opens with the subject and its people, and ends with the corpus line', () => {
     expect(
-      gateSummary({ total: 10, unverified: 1, quarantined: 0 }, { read: 42, unread: 9, failed: 3 }),
+      gateSummary(
+        { total: 10, unverified: 1, quarantined: 0 },
+        { read: 42, unread: 9, failed: 3 },
+        WIRECARD,
+      ),
     ).toBe(
-      'Dossier ready · 10 claims · 1 unsourced · 42 documents read, 9 gathered not read, 3 could not be fetched',
+      'Subject: Wirecard (company), Markus Braun, Jan Marsalek · Dossier ready · 10 claims · ' +
+        '1 unsourced · 42 documents read, 9 gathered not read, 3 could not be fetched',
     )
+  })
+
+  it('says so when the subject was not found on Wikipedia', () => {
+    expect(
+      gateSummary(
+        { total: 2, unverified: 0, quarantined: 0 },
+        { read: 4, unread: 0, failed: 0 },
+        { ...WIRECARD, unresolved: true },
+      ),
+    ).toBe(
+      "Subject not found on Wikipedia: check the case's Subject · Dossier ready · 2 claims · " +
+        '4 documents read, 0 gathered not read, 0 could not be fetched',
+    )
+  })
+})
+
+describe('gateSubject', () => {
+  const CASE = { subject: 'Wirecard', people: ['Markus Braun'] }
+
+  it("names the entity's subject and people", () => {
+    expect(
+      gateSubject(
+        {
+          subject: 'Wirecard AG',
+          people: [
+            { name: 'Markus Braun', qid: 'Q1', title: 'Markus Braun' },
+            { name: 'Jan Marsalek', qid: null, title: null },
+          ],
+          unresolved: false,
+        },
+        CASE,
+      ),
+    ).toEqual({
+      subject: 'Wirecard AG',
+      people: ['Markus Braun', 'Jan Marsalek'],
+      unresolved: false,
+    })
+  })
+
+  it('falls back to the case for an entity stored before it carried a subject', () => {
+    // What a gather replayed from before Task 3 hands back.
+    const old = { qid: 'Q1', titles: ['Wirecard'], cik: null, ticker: null, website: null }
+    expect(gateSubject(old, CASE)).toEqual({
+      subject: 'Wirecard',
+      people: ['Markus Braun'],
+      unresolved: false,
+    })
+  })
+
+  it('keeps an unresolved entity unresolved', () => {
+    expect(gateSubject({ subject: 'Wirecard', people: [], unresolved: true }, CASE)).toMatchObject({
+      unresolved: true,
+    })
+  })
+})
+
+describe('replayedCase', () => {
+  it("reads the subject, people and the owner's links a load-case stored", () => {
+    expect(
+      replayedCase({
+        title: 'The payments darling that was never there',
+        subject: 'Wirecard',
+        people: ['Markus Braun'],
+        sourceLinks: [{ url: 'https://example.com/long-read' }],
+      }),
+    ).toEqual({
+      subject: 'Wirecard',
+      people: ['Markus Braun'],
+      sourceLinks: [{ url: 'https://example.com/long-read' }],
+    })
+  })
+
+  it('falls back to the case title for a load-case stored before cases had a subject', () => {
+    expect(replayedCase({ title: 'Wirecard' })).toEqual({
+      subject: 'Wirecard',
+      people: [],
+      sourceLinks: [],
+    })
   })
 })
 

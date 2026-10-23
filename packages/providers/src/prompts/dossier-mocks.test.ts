@@ -17,6 +17,12 @@ describe('mock research', () => {
     expect(mockBrief(caseContext).summary).toMatch(/No research was performed/)
   })
 
+  it('says where the mock story stands now, dated, so the fixture shows the section', () => {
+    const status = mockBrief(caseContext).currentStatus
+    expect(status?.asOf).toMatch(/^\d{4}(-\d{2}){0,2}$/)
+    expect(status?.text).toMatch(/^MOCK STATUS/)
+  })
+
   it('gathers four documents of the kinds the checks need, each labelled mock', () => {
     expect(documents.map((document) => document.kind)).toEqual([
       'press-release',

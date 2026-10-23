@@ -16,6 +16,12 @@ import type { CaseContext } from './dossier'
  */
 export function mockBrief(input: CaseContext): CaseBrief {
   return {
+    currentStatus: {
+      asOf: '2024-03',
+      text:
+        'MOCK STATUS: the mock company was wound up and Placeholder Person was never heard ' +
+        'from again. Nothing here was researched.',
+    },
     summary:
       `MOCK DOSSIER for "${input.title}". No research was performed and no provider was ` +
       'called: the documents cited are fixture text written for mock mode. Every statement ' +

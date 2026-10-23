@@ -26,6 +26,9 @@ export const fixtureCase: NewCase = {
   competitorLinks: [
     { url: 'https://www.ft.com/wirecard', note: 'FT investigation series — the primary source' },
   ],
+  subject: 'Wirecard',
+  people: ['Markus Braun', 'Jan Marsalek'],
+  sourceLinks: [],
   priorityScore: 90,
   status: 'shortlisted',
 }

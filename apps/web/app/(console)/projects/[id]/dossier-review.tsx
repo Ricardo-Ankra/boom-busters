@@ -23,6 +23,7 @@ import {
   type DossierBlock,
   type InlineSegment,
 } from '@/lib/dossier-markdown'
+import { RestartRunButton } from './project-controls'
 import { editClaim, quarantineAllBlocking, quarantineClaim, verifyClaimAction } from './actions'
 
 /**
@@ -72,6 +73,8 @@ export function DossierReview({
   supports = NO_SUPPORTS,
   research = null,
   documents = NO_DOCUMENTS,
+  downstream = [],
+  liveRun = false,
 }: {
   projectId: string
   contentMd: string
@@ -84,6 +87,13 @@ export function DossierReview({
   research?: GroundedResearch | null
   /** The project's corpus, read documents first. */
   documents?: readonly ReviewDocument[]
+  /** The stages a re-run of the dossier would leave stale, named in its confirm. */
+  downstream?: readonly { stage: string }[]
+  /**
+   * A run is live or parked at a gate. Research again restarts the stage, and
+   * a restart is refused while any run is live, so the button is not offered.
+   */
+  liveRun?: boolean
 }) {
   const blocking = blockingCount(claims)
   const [showAll, setShowAll] = React.useState(false)
@@ -150,6 +160,12 @@ export function DossierReview({
   return (
     <div className="flex flex-col gap-4">
       <Notices notices={notices} />
+      <SubjectLine
+        projectId={projectId}
+        research={research}
+        downstream={downstream}
+        liveRun={liveRun}
+      />
       <CorpusLine research={research} documents={documents} />
       <Card>
         <CardHeader className="flex-row flex-wrap items-center justify-between gap-2">
@@ -708,6 +724,59 @@ function SupportList({
         )
       })}
     </ul>
+  )
+}
+
+function SubjectLine({
+  projectId,
+  research,
+  downstream,
+  liveRun,
+}: {
+  projectId: string
+  research: GroundedResearch | null
+  downstream: readonly { stage: string }[]
+  liveRun: boolean
+}) {
+  // An old dossier never resolved a subject; there is nothing honest to say.
+  if (!research) return null
+  const { subject, unresolved } = research.entity
+  // Research saved before people were resolved has none, should it reach here unparsed.
+  const people = research.entity.people ?? []
+  const named = [
+    ...(subject ? [`${subject} (company)`] : []),
+    ...people.map((person) => `${person.name} (person)`),
+  ]
+
+  return (
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[13px]">
+      {unresolved ? (
+        <p className="min-w-0 break-words text-[var(--color-warning)]">
+          {`Subject not found on Wikipedia: ${subject ?? 'none named'}`}
+        </p>
+      ) : named.length > 0 ? (
+        <p className="min-w-0 break-words text-[var(--color-text-secondary)]">
+          {`Subject: ${named.join(', ')}`}
+        </p>
+      ) : null}
+      <div className="flex flex-wrap items-center gap-2">
+        {liveRun ? (
+          <p className="text-[var(--color-text-secondary)]">
+            Stop the run at the top of the screen to research again
+          </p>
+        ) : (
+          <RestartRunButton
+            projectId={projectId}
+            stage="dossier"
+            label="Research again"
+            downstream={downstream}
+          />
+        )}
+        <a href="/cases" className={linkClass}>
+          Edit the case in the library
+        </a>
+      </div>
+    </div>
   )
 }
 

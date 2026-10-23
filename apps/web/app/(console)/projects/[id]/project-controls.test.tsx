@@ -128,6 +128,35 @@ describe('GateActionBar', () => {
     expect(screen.getByText(/Changes happen on the rows/i)).toBeInTheDocument()
   })
 
+  /**
+   * After approval (design decision 7): the project is at the script stage,
+   * the dossier is on screen, and the bar offers the note box with no Approve,
+   * because no dossier gate is open to approve.
+   */
+  it('offers Request changes alone on an approved dossier', async () => {
+    requestChanges.mockResolvedValue({ ok: true })
+    render(
+      <GateActionBar
+        projectId="01J0000000000000000000000A"
+        stage="dossier"
+        changesOnly
+        context="Approved. The script is written from this dossier."
+      />,
+    )
+
+    expect(screen.queryByRole('button', { name: 'Approve' })).not.toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Request changes' }))
+    await userEvent.type(screen.getByLabelText('What needs to change?'), 'More on the auditors')
+    await userEvent.click(screen.getByRole('button', { name: 'Send change request' }))
+
+    expect(requestChanges).toHaveBeenCalledWith(
+      '01J0000000000000000000000A',
+      'dossier',
+      'More on the auditors',
+    )
+    expect(approveGate).not.toHaveBeenCalled()
+  })
+
   it('refuses an empty change request without asking the server', async () => {
     requestChanges.mockResolvedValue({ ok: false, error: 'Say what needs to change.' })
     renderBar()

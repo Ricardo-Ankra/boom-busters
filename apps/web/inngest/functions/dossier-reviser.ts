@@ -5,25 +5,31 @@ import {
   getProject,
   listDossierDocumentSummaries,
   saveDossier,
+  setProjectStage,
 } from '@boom-busters/db'
 import { mockProvidersEnabled, renderDossierMarkdown } from '@boom-busters/providers'
 import type { ResearchEntity } from '@boom-busters/schemas'
 import { parseEventData, serialiseError } from '@boom-busters/schemas'
 import { NonRetriableError } from 'inngest'
+import { completeForProject } from '@/lib/answer-call'
 import { db } from '@/lib/db'
 import { recordRepairs } from '@/lib/notices'
 import { liveResearchSources } from '@/lib/research-sources'
 import { inngest } from '../client'
 import { events } from '../events'
 import { markStageFailed, openReviewGate, type GateContext } from '../lib/gates'
+import { awaitDossierApproval } from '../lib/dossier-approval'
+import { nameSubjectIfMissing } from '../lib/name-subject'
 import { gatherCorpus } from '../lib/dossier-gather'
 import { inngestSteps } from '../lib/steps'
 import {
   EMPTY_CORPUS_MESSAGE,
   gateCounts,
+  gateSubject,
   gateSummary,
   loadCorpus,
   predatesCorpus,
+  replayedCase,
   researchDossier,
   toDraftClaims,
 } from '../lib/dossier-research'
@@ -44,11 +50,65 @@ import {
  *
  * A revision reads the corpus the first run gathered: the note asks for a
  * different reading, not different documents, and a second gather would pay
- * for every fetch again. Only a project researched before the corpus existed
- * has none linked, and that one gathers first.
+ * for every fetch again. Two cases gather first: a project researched before
+ * the corpus existed has none linked, and a case whose subject, people or
+ * source links changed since the research was resolved would otherwise be
+ * re-read from the old subject's documents.
+ *
+ * Changes can be asked for after approval too (design decision 7). The
+ * runner finished at that approval, so the revision re-opens the dossier gate
+ * and waits on it itself; the script stays, marked as written from an older
+ * dossier through the version `saveDossier` bumps, and the Approve starts a
+ * fresh one.
  */
 
-const NO_ENTITY: ResearchEntity = { qid: null, titles: [], cik: null, ticker: null, website: null }
+const NO_ENTITY: ResearchEntity = {
+  qid: null,
+  titles: [],
+  cik: null,
+  ticker: null,
+  website: null,
+  people: [],
+  unresolved: false,
+  subject: null,
+  sourceUrls: [],
+}
+
+/** What a gather searches with, normalised so a reordering or stray space is no change. */
+function gatherKey(input: {
+  subject: string | null
+  people: readonly string[]
+  sourceUrls: readonly string[]
+}): string {
+  return JSON.stringify([
+    input.subject?.trim() ?? null,
+    input.people.map((name) => name.trim()).sort(),
+    input.sourceUrls.map((url) => url.trim()).sort(),
+  ])
+}
+
+/**
+ * The case no longer says what the stored research was resolved from. Research
+ * saved before entities recorded these reads with their defaults (no subject,
+ * no people, no source links), so it differs from any case that names a subject.
+ */
+function caseChangedSince(
+  entity: ResearchEntity,
+  current: { subject: string; people: readonly string[]; sourceLinks: readonly { url: string }[] },
+): boolean {
+  return (
+    gatherKey({
+      subject: entity.subject,
+      people: (entity.people ?? []).map((person) => person.name),
+      sourceUrls: entity.sourceUrls ?? [],
+    }) !==
+    gatherKey({
+      subject: current.subject,
+      people: current.people,
+      sourceUrls: current.sourceLinks.map((link) => link.url),
+    })
+  )
+}
 
 const FUNCTION_ID = 'dossier-reviser'
 
@@ -95,9 +155,32 @@ export const dossierReviser = inngest.createFunction(
       const source = await getCase(db, project.caseId)
       if (!source) throw new NonRetriableError(`Case ${project.caseId} no longer exists`)
 
-      const round = await bumpDossierRevisions(db, projectId)
       const dossier = await getDossier(db, projectId)
+      // Approved once already: the runner finished at that approval, so
+      // nothing is parked on the gate this revision re-opens (decision 7).
+      const approvedBefore = dossier?.approvedAt != null
+      if (approvedBefore) {
+        // The project is back on the dossier while it is researched again, so
+        // a second request is refused instead of cancelling these paid passes,
+        // the later stage's gate stops offering Approve, the rail tells the
+        // truth, and a failure from here on lands on the dossier stage rather
+        // than tearing down the later stage's review. Its parked runner is
+        // untouched until the Approve starts a fresh script.
+        await setProjectStage(db, projectId, { stage: 'dossier', stageStatus: 'running' })
+      }
+
+      const named = await nameSubjectIfMissing(db, source, {
+        complete: completeForProject(projectId),
+        mocked: mockProvidersEnabled(),
+      })
+
+      const round = await bumpDossierRevisions(db, projectId)
       const linked = await listDossierDocumentSummaries(db, projectId)
+      const stored = dossier?.research?.entity
+      // The owner corrected the case since it was researched: gather again.
+      const regather =
+        stored !== undefined &&
+        caseChangedSince(stored, { ...named, sourceLinks: source.sourceLinks })
 
       return {
         round,
@@ -107,9 +190,14 @@ export const dossierReviser = inngest.createFunction(
           angle: source.angle,
           demandNotes: source.demandNotes,
         },
+        subject: named.subject,
+        people: named.people,
+        sourceLinks: source.sourceLinks,
         competitorLinks: source.competitorLinks.map((link) => ({ url: link.url })),
         entity: dossier?.research?.entity ?? NO_ENTITY,
         linkedDocuments: linked.length,
+        regather,
+        approvedBefore,
       }
     })
 
@@ -137,13 +225,20 @@ export const dossierReviser = inngest.createFunction(
       return { projectId, outcome: 'predates-corpus' as const }
     }
 
+    // A load-case stored between deploys may name no subject: the case title
+    // stands in, as the gather was searched with it then.
+    const named = replayedCase({ ...context, title: context.caseContext.title })
+
     let entity = context.entity
-    if (context.linkedDocuments === 0) {
+    // `regather` is missing from a load-case stored before it existed: no change then.
+    if (context.linkedDocuments === 0 || context.regather) {
       const gathered = await gatherCorpus(
         steps,
         {
           projectId,
-          caseTitle: context.caseContext.title,
+          subject: named.subject,
+          people: named.people,
+          sourceLinks: named.sourceLinks,
           competitorLinks: context.competitorLinks,
           round: context.round,
         },
@@ -163,7 +258,8 @@ export const dossierReviser = inngest.createFunction(
 
     const research = await researchDossier(steps, {
       projectId,
-      caseContext: context.caseContext,
+      // Every pass opens on the subject and people the gather searched with.
+      caseContext: { ...context.caseContext, subject: named.subject, people: named.people },
       round: context.round,
       note,
       entity,
@@ -205,9 +301,20 @@ export const dossierReviser = inngest.createFunction(
       openReviewGate(ctx, {
         stage: 'dossier',
         projectStage: 'dossier',
-        summary: `${gateSummary(counts, corpus)} · revision ${context.round}`,
+        summary: `${gateSummary(counts, corpus, gateSubject(entity, named))} · revision ${context.round}`,
       }),
     )
+
+    // Before approval the runner is parked on the gate and closes it on the
+    // Approve. After approval it has finished, so this run holds the gate:
+    // the gate bar and the approve action look for a live run, and the
+    // Approve starts a fresh script from the revised dossier. `approvedBefore`
+    // is missing from a load-case stored before this rule; such a revision was
+    // asked for at an open gate, where the runner waits.
+    if (context.approvedBefore) {
+      const outcome = await awaitDossierApproval(step, ctx)
+      return { projectId, outcome, round: context.round }
+    }
 
     return { projectId, outcome: 'revised' as const, round: context.round }
   },
