@@ -425,6 +425,35 @@ describe('DossierReview', () => {
         )
       })
 
+      it('says to stop the run instead of offering Research again while a run is parked', () => {
+        render(
+          <DossierReview
+            projectId="p1"
+            contentMd={MD}
+            claims={[]}
+            research={withSubject({ subject: 'Wirecard' })}
+            liveRun
+          />,
+        )
+        expect(screen.queryByRole('button', { name: /Research again/ })).not.toBeInTheDocument()
+        expect(
+          screen.getByText('Stop the run at the top of the screen to research again'),
+        ).toBeInTheDocument()
+        expect(
+          screen.getByRole('link', { name: 'Edit the case in the library' }),
+        ).toBeInTheDocument()
+      })
+
+      it('renders an entity stored before people were resolved without throwing', () => {
+        const { people: _people, ...old } = research({}).entity
+        show(
+          research({
+            entity: { ...old, subject: 'Wirecard' } as unknown as GroundedResearch['entity'],
+          }),
+        )
+        expect(screen.getByText('Subject: Wirecard (company)')).toBeInTheDocument()
+      })
+
       it('shows only the controls when nothing is named and nothing is unresolved', () => {
         show(withSubject({ subject: null, people: [], unresolved: false }))
         expect(screen.queryByText(/^Subject/)).not.toBeInTheDocument()

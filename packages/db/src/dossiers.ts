@@ -1,5 +1,6 @@
 import { and, asc, eq, inArray, sql } from 'drizzle-orm'
 import type { Database } from './client'
+import { GroundedResearchSchema } from '@boom-busters/schemas'
 import type { GroundedResearch, LegalStatus, Series } from '@boom-busters/schemas'
 import { claimSupports, claims, dossiers } from './schema'
 import type { ClaimConfidence, ClaimRow, ClaimSourceType, ClaimSupportRow } from './schema'
@@ -175,7 +176,19 @@ export async function getDossier(
     }
   }
 
-  return { ...dossier, claims: rows, research: dossier.research ?? null, supports }
+  return { ...dossier, claims: rows, research: readResearch(dossier.research), supports }
+}
+
+/**
+ * The stored research through its schema, so a dossier written before a field
+ * existed reads with that field's default (an entity saved before people were
+ * resolved has `people: []`). The column is raw jsonb; a value the schema
+ * refuses is returned as stored rather than lost.
+ */
+function readResearch(stored: GroundedResearch | null): GroundedResearch | null {
+  if (stored === null) return null
+  const parsed = GroundedResearchSchema.safeParse(stored)
+  return parsed.success ? parsed.data : stored
 }
 
 /** Several claims, by id. The board reads a chapter's cited articles at once. */

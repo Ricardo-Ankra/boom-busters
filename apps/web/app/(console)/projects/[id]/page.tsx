@@ -574,6 +574,7 @@ export default async function ProjectPage({
           supports={dossier.supports}
           research={dossier.research}
           downstream={downstreamOf('dossier', views)}
+          liveRun={liveRun}
           documents={dossierDocuments.map((document) => ({
             id: document.id,
             url: document.url,
