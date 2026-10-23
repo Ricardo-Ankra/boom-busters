@@ -8127,10 +8127,16 @@ boom-busters-broker`; merge and deploy to Vercel, then `PUT
      Record: Why the Jury Convicted Elizabeth Holmes for Defrauding
      Investors but Not Patients", found no company among the top hits, and
      kept the first. Migration 0035 adds `cases.subject`, `cases.people` and
-     `cases.source_links`.
+     `cases.source_links`. A mock-mode run stores the title head (the text
+     before any colon) as the subject, permanently; the fixture case carries
+     its own subject.
 313. **The gather reads the people and the owner's sources, newest first**
      (2026-10-23). Wikipedia is searched with the subject, and the first
-     hit that is a company is the entity. When none of the top five is, the
+     hit that is a company is the entity: its item is directly a business
+     class, or else, asked in one SPARQL query over the hits, a business or
+     organization through a subclass chain (FTX's only class is
+     "cryptocurrency exchange"); a failed query falls back to the direct
+     check. When none of the top five is, the
      entity is marked unresolved, no Wikipedia references are taken, and the
      gate says "Subject not found on Wikipedia: check the case's Subject".
      Each person is searched too, and the first human hit's article
@@ -8150,7 +8156,8 @@ boom-busters-broker`; merge and deploy to Vercel, then `PUT
      document and rendered as "## Where it stands now"; it is null when the
      documents say nothing after the turn. `ruled` is kept from a reporting
      document when the claim's text or quote carries a verdict word
-     (convicted, found guilty, pleaded guilty, sentenced, acquitted, fined,
+     (convicted, found guilty, pleaded guilty, pled guilty, sentenced,
+     acquitted, fined,
      banned, ordered to pay, ruled); otherwise it folds to alleged as
      before. The dossier document shows no legal labels, since the field
      exists only for the script's "alleged" guard. Known loose edges:
@@ -8160,8 +8167,10 @@ boom-busters-broker`; merge and deploy to Vercel, then `PUT
      the five cases carries `subject`, `people`, `expectedTitle` (the
      Wikipedia article the gather must land on) and `recentOutcome`, and the
      script creates the case row with them and passes them to the gather.
-     Wirecard, Enron and SVB Financial (subject SVB Financial Group, expected
-     "Silicon Valley Bank") have no recent outcome; Theranos and FTX do.
+     Wirecard, Enron and SVB Financial (subject and expected title both
+     "SVB Financial Group", the SEC filer whose CIK the figure check needs;
+     "Collapse of Silicon Valley Bank" joins as a related title) have no
+     recent outcome; Theranos and FTX do.
      Theranos is entered under its headline title, with subject "Theranos"
      and people Elizabeth Holmes and Ramesh Balwani, so the back-test
      reproduces the production failure. Two gates, both mechanical: every

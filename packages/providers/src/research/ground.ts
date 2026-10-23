@@ -48,11 +48,12 @@ const VERDICT = new RegExp(
 
 /**
  * A verdict reported by a major outlet is a ruling (decision 6): `ruled` on a
- * reporting document or a video stands when the claim or one of its quotes
- * says a verdict word. "Was charged" says none, so it still folds to alleged.
+ * reporting document stands when the claim or one of its quotes says a
+ * verdict word. "Was charged" says none, so it still folds to alleged. A video
+ * is not reporting: a commentator saying "convicted" is not an outlet's record.
  */
 function reportsVerdict(kind: DocumentKind, claim: ResearchClaim): boolean {
-  if (kind !== 'reporting' && kind !== 'video') return false
+  if (kind !== 'reporting') return false
   return [claim.text, ...claim.supports.map((support) => support.quote)].some((text) =>
     VERDICT.test(text),
   )

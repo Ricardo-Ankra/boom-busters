@@ -202,9 +202,9 @@ describe('groundResearch', () => {
       expect(
         ground([
           ruledOn(
-            2,
+            1,
             'Holmes was SENTENCED to eleven years in prison.',
-            'The judge handed down the term to the founder in court',
+            'she was charged with wire fraud by federal prosecutors',
           ),
           ruledOn(
             1,
@@ -227,7 +227,7 @@ describe('groundResearch', () => {
       ).toEqual(['alleged'])
     })
 
-    it('still folds ruled on a document that is neither reporting nor video', () => {
+    it('still folds ruled on a document that is not reporting, a filing or a video', () => {
       expect(
         ground([
           ruledOn(
@@ -235,8 +235,13 @@ describe('groundResearch', () => {
             'The former chief executive was convicted on four counts.',
             'The former chief executive was convicted on four counts',
           ),
+          ruledOn(
+            2,
+            'Holmes was sentenced to eleven years in prison.',
+            'The judge handed down the term to the founder in court',
+          ),
         ]),
-      ).toEqual(['alleged'])
+      ).toEqual(['alleged', 'alleged'])
     })
   })
 
