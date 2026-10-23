@@ -10,12 +10,14 @@ import { mockProvidersEnabled, renderDossierMarkdown } from '@boom-busters/provi
 import type { ResearchEntity } from '@boom-busters/schemas'
 import { parseEventData, serialiseError } from '@boom-busters/schemas'
 import { NonRetriableError } from 'inngest'
+import { completeForProject } from '@/lib/answer-call'
 import { db } from '@/lib/db'
 import { recordRepairs } from '@/lib/notices'
 import { liveResearchSources } from '@/lib/research-sources'
 import { inngest } from '../client'
 import { events } from '../events'
 import { markStageFailed, openReviewGate, type GateContext } from '../lib/gates'
+import { nameSubjectIfMissing } from '../lib/name-subject'
 import { gatherCorpus } from '../lib/dossier-gather'
 import { inngestSteps } from '../lib/steps'
 import {
@@ -104,6 +106,11 @@ export const dossierReviser = inngest.createFunction(
       const source = await getCase(db, project.caseId)
       if (!source) throw new NonRetriableError(`Case ${project.caseId} no longer exists`)
 
+      const named = await nameSubjectIfMissing(db, source, {
+        complete: completeForProject(projectId),
+        mocked: mockProvidersEnabled(),
+      })
+
       const round = await bumpDossierRevisions(db, projectId)
       const dossier = await getDossier(db, projectId)
       const linked = await listDossierDocumentSummaries(db, projectId)
@@ -116,6 +123,9 @@ export const dossierReviser = inngest.createFunction(
           angle: source.angle,
           demandNotes: source.demandNotes,
         },
+        subject: named.subject,
+        people: named.people,
+        sourceLinks: source.sourceLinks,
         competitorLinks: source.competitorLinks.map((link) => ({ url: link.url })),
         entity: dossier?.research?.entity ?? NO_ENTITY,
         linkedDocuments: linked.length,

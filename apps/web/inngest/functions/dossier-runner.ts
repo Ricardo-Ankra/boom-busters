@@ -9,6 +9,7 @@ import { mockProvidersEnabled, renderDossierMarkdown } from '@boom-busters/provi
 import { parseEventData, serialiseError } from '@boom-busters/schemas'
 import { NonRetriableError } from 'inngest'
 import type { GetStepTools } from 'inngest'
+import { completeForProject } from '@/lib/answer-call'
 import { db } from '@/lib/db'
 import { recordRepairs } from '@/lib/notices'
 import { liveResearchSources } from '@/lib/research-sources'
@@ -24,6 +25,7 @@ import {
   openReviewGate,
   type GateContext,
 } from '../lib/gates'
+import { nameSubjectIfMissing } from '../lib/name-subject'
 import { gatherCorpus } from '../lib/dossier-gather'
 import { inngestSteps } from '../lib/steps'
 import {
@@ -100,11 +102,19 @@ export const dossierRunner = inngest.createFunction(
 
       await setProjectStage(db, projectId, { stage: 'dossier', stageStatus: 'running' })
 
+      const named = await nameSubjectIfMissing(db, source, {
+        complete: completeForProject(projectId),
+        mocked: mockProvidersEnabled(),
+      })
+
       return {
         title: source.title,
         category: source.category as string,
         angle: source.angle,
         demandNotes: source.demandNotes,
+        subject: named.subject,
+        people: named.people,
+        sourceLinks: source.sourceLinks,
         competitorLinks: source.competitorLinks.map((link) => ({ url: link.url })),
       }
     })

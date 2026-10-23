@@ -1,5 +1,6 @@
 export * from './json'
 export * from './cases'
+export * from './subject'
 export * from './dossier'
 export * from './dossier-render'
 export * from './dossier-mocks'
